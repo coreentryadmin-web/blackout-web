@@ -1291,6 +1291,18 @@ body {
     @apply px-3 py-2.5;
   }
 
+  .spx-gex-ladder-list {
+    min-height: 9.5rem;
+  }
+
+  .spx-gex-ladder-empty {
+    min-height: 9.5rem;
+  }
+
+  .spx-desk-panel-refreshing .spx-gex-ladder-list {
+    @apply opacity-90;
+  }
+
   .spx-desk-list {
     @apply space-y-1 list-none;
   }

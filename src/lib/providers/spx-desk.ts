@@ -36,8 +36,8 @@ import {
   fetchUwNetPremTicks,
   fetchUwNope,
   fetchUwOdteGex,
+  fetchUwOdteSpotExposuresByStrike,
   fetchUwOiChange,
-  fetchUwSpotExposuresByStrike,
   fetchUwTickerFlowAlerts,
   type DarkPoolSnapshot,
   type IvTermPoint,
@@ -45,6 +45,10 @@ import {
   type OiChangeItem,
 } from "./unusual-whales";
 import { fetchEngine } from "@/lib/engine";
+
+let lastGoodGexWalls: GexWall[] = [];
+let lastGoodGammaFlip: number | null = null;
+let lastGoodGammaRegime = "unknown";
 
 const SPX = "I:SPX";
 const VIX = "I:VIX";
@@ -331,7 +335,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     fetchUwNope("SPX"),
     fetchUwIvRank("SPX"),
     fetchUwFlow0dte("SPX"),
-    fetchUwSpotExposuresByStrike("SPX"),
+    fetchUwOdteSpotExposuresByStrike("SPX"),
     fetchUwDarkPool("SPX", { limit: 20, min_premium: 500_000 }),
     fetchUwTickerFlowAlerts("SPX", 12),
     fetchUwNetPremTicks("SPY"),
@@ -362,10 +366,15 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
   }));
   const computedFlip = computeGammaFlip(flipLevels, price);
   const gammaFlip =
-    (intel?.gamma_flip as number | null) ?? computedFlip ?? null;
+    (intel?.gamma_flip as number | null) ?? computedFlip ?? lastGoodGammaFlip ?? null;
   const aboveFlip = gammaFlip != null ? price > gammaFlip : false;
   const gRegime = gammaRegime(price, gammaFlip);
-  const walls = topGexWalls(gexAnalysis.ranked_levels, price, 5);
+  const freshWalls = topGexWalls(gexAnalysis.ranked_levels, price, 5);
+  if (freshWalls.length) lastGoodGexWalls = freshWalls;
+  const walls = freshWalls.length ? freshWalls : lastGoodGexWalls;
+  if (gammaFlip != null) lastGoodGammaFlip = gammaFlip;
+  const gammaRegimeLabel = gRegime !== "unknown" ? gRegime : lastGoodGammaRegime;
+  if (gRegime !== "unknown") lastGoodGammaRegime = gRegime;
 
   const gexNet = (intel?.gex_net as number | null) ?? uwGex?.net_gex ?? gexAnalysis.net_gex ?? null;
   const gexKing =
@@ -452,7 +461,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     max_pain: maxPain,
     gamma_flip: gammaFlip,
     above_gamma_flip: aboveFlip,
-    gamma_regime: gRegime,
+    gamma_regime: gammaRegimeLabel,
     gex_walls: walls,
     flow_0dte_call_premium:
       (intel?.flow_0dte_call_premium as number | null) ?? uwFlow?.call_premium ?? null,

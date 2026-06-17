@@ -2,9 +2,10 @@
 
 import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
+import { useStableArray, useStableValue } from "@/hooks/useStableValue";
 import { fmtPct, fmtPremium, fmtPrice } from "@/lib/api";
 
-type DeskProps = { desk?: SpxDeskPayload; live?: boolean };
+type DeskProps = { desk?: SpxDeskPayload; live?: boolean; refreshing?: boolean };
 
 function Panel({
   title,
@@ -125,15 +126,25 @@ export function SpxDarkPoolCard({ desk, live }: DeskProps) {
   );
 }
 
-export function SpxGexLadder({ desk, live }: DeskProps) {
-  const walls = desk?.gex_walls ?? [];
+export function SpxGexLadder({ desk, live, refreshing }: DeskProps) {
+  const walls = useStableArray(desk?.gex_walls ?? []);
+  const gammaFlip = useStableValue(desk?.gamma_flip, (v) => v != null);
+  const gammaRegime = useStableValue(desk?.gamma_regime, (v) => Boolean(v && v !== "unknown"));
+  const hasWalls = walls.length > 0;
 
   return (
-    <Panel title="GEX Walls" subtitle="0DTE gamma nodes" accent="spx-panel-gold">
-      {!live || !walls.length ? (
-        <p className="font-mono text-[11px] text-grey-500 py-2">Loading gamma ladder…</p>
+    <Panel
+      title="GEX Walls"
+      subtitle="0DTE gamma nodes"
+      accent="spx-panel-gold"
+      className={clsx(refreshing && hasWalls && "spx-desk-panel-refreshing")}
+    >
+      {!hasWalls ? (
+        <p className="font-mono text-[11px] text-grey-500 py-2 spx-gex-ladder-empty">
+          Loading gamma ladder…
+        </p>
       ) : (
-        <ul className="spx-desk-list">
+        <ul className="spx-desk-list spx-gex-ladder-list">
           {walls.map((w) => (
             <li
               key={w.strike}
@@ -156,9 +167,10 @@ export function SpxGexLadder({ desk, live }: DeskProps) {
           ))}
         </ul>
       )}
-      {live && desk?.gamma_flip != null && (
+      {gammaFlip != null && (
         <p className="font-mono text-[10px] text-grey-400 mt-2 pt-2 border-t border-white/5">
-          γ flip {fmtPrice(desk.gamma_flip)} · {desk.gamma_regime.replace("_", " ")}
+          γ flip {fmtPrice(gammaFlip)}
+          {gammaRegime ? ` · ${gammaRegime.replace("_", " ")}` : ""}
         </p>
       )}
     </Panel>

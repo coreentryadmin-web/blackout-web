@@ -122,6 +122,16 @@ export async function fetchUwOdteGex(ticker = "SPX") {
   return { net_gex: gex.net_gex, gex_king: gex.gex_king_strike, expiry };
 }
 
+/** 0DTE strike GEX ladder — same expiry-strike feed, strike-level rows for gamma walls. */
+export async function fetchUwOdteSpotExposuresByStrike(ticker = "SPX", limit = 500) {
+  const expiry = todayIso();
+  const data = await uwGetSafe<unknown>(`/api/stock/${ticker}/spot-exposures/expiry-strike`, {
+    "expirations[]": expiry,
+    limit,
+  });
+  return extractRows(data);
+}
+
 export async function fetchUwMaxPain(ticker = "SPX") {
   const data = await uwGetSafe<unknown>(`/api/stock/${ticker}/max-pain`, {});
   const rows = extractRows(data);
