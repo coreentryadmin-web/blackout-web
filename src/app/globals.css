@@ -1205,8 +1205,23 @@ body {
     @apply min-w-[120px] max-w-[220px];
   }
 
-  .spx-sector-chip {
-    @apply min-w-[72px];
+  .spx-sector-chip,
+  .spx-stock-chip {
+    @apply min-w-[88px];
+  }
+
+  .spx-stock-chip-bull {
+    border-color: rgba(34, 197, 94, 0.22);
+    background: rgba(34, 197, 94, 0.06);
+  }
+
+  .spx-stock-chip-bear {
+    border-color: rgba(239, 68, 68, 0.22);
+    background: rgba(239, 68, 68, 0.06);
+  }
+
+  .spx-intel-ticker {
+    @apply font-mono text-[10px] tracking-[0.12em] uppercase text-zinc-300 font-semibold;
   }
 
   .spx-intel-label {

@@ -192,9 +192,9 @@ function deskContext(desk: SpxDeskPayload): Record<string, unknown> {
       recent_ticks: netPrem.slice(-12).map((t) => ({ time: t.time, net: t.net })),
     },
 
-    sector_rotation: {
-      leaders: (desk.sector_heat ?? []).slice(0, 4),
-      laggards: [...(desk.sector_heat ?? [])].sort((a, b) => a.change_pct - b.change_pct).slice(0, 4),
+    mega_cap_stocks: {
+      leaders: [...(desk.leader_stocks ?? [])].sort((a, b) => b.change_pct - a.change_pct),
+      laggards: [...(desk.leader_stocks ?? [])].sort((a, b) => a.change_pct - b.change_pct),
     },
 
     macro_calendar_today: desk.macro_events,
@@ -239,7 +239,7 @@ export async function generateSpxCommentary(
 
   const prompt = `You are the lead mentor for BlackOut SPX-Sniper — a 0DTE SPX index options desk. Write a live desk commentary update for members watching the dashboard.
 
-You receive the FULL desk snapshot below: price structure, dealer/GEX, dark pool prints, SPX option flow, unified tape, 0DTE flow, market tide, NOPE, VIX term, sector rotation, OI changes, net premium velocity (SPY), macro calendar, and Benzinga headlines. Use ALL relevant sections — synthesize across sources.
+You receive the FULL desk snapshot below: price structure, dealer/GEX, dark pool prints, SPX option flow, unified tape, 0DTE flow, market tide, NOPE, VIX term, mega-cap stock moves (AAPL/NVDA/MSFT/GOOG/TSLA/META), OI changes, net premium velocity (SPY), macro calendar, and Benzinga headlines. Use ALL relevant sections — synthesize across sources.
 
 CURRENT DESK (JSON):
 ${JSON.stringify(ctx)}
@@ -251,7 +251,7 @@ Respond with ONLY valid JSON (no markdown fences):
 {
   "headline": "One punchy line — max 12 words",
   "bias": "bullish" | "bearish" | "neutral",
-  "body": "4-6 short bullet lines separated by \\n. Cover: price vs VWAP/levels, dealer/GEX/γ flip, dark pool + flow tape, 0DTE bias, VIX/IV context, sector rotation if notable, headline catalyst if any, what changed, next 15-30 min playbook. Mentor voice — direct, no hype, no disclaimers.",
+  "body": "4-6 short bullet lines separated by \\n. Cover: price vs VWAP/levels, dealer/GEX/γ flip, dark pool + flow tape, 0DTE bias, VIX/IV context, mega-cap leadership if notable, headline catalyst if any, what changed, next 15-30 min playbook. Mentor voice — direct, no hype, no disclaimers.",
   "watch": ["level or trigger 1", "level or trigger 2", "level or trigger 3"],
   "changed": ["what shifted 1", "what shifted 2"]
 }

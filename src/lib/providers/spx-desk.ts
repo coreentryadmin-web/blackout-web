@@ -16,7 +16,7 @@ import {
   fetchIndexSma,
   fetchIndexSnapshots,
   fetchIndexVwap,
-  fetchSectorPerformance,
+  fetchLeaderStockSnapshots,
 } from "./polygon";
 import {
   distancePct,
@@ -137,6 +137,7 @@ export type SpxDeskPayload = {
     detail: string;
   };
   sector_heat: Array<{ name: string; ticker: string; change_pct: number }>;
+  leader_stocks: Array<{ name: string; ticker: string; change_pct: number }>;
   oi_changes: OiChangeItem[];
   iv_term_structure: IvTermPoint[];
   macro_events: MacroEvent[];
@@ -267,6 +268,7 @@ function emptyPayload(asOf: string): SpxDeskPayload {
     net_prem_ticks: [],
     vix_term: { vix9d: null, vix3m: null, structure: "unknown", detail: "" },
     sector_heat: [],
+    leader_stocks: [],
     oi_changes: [],
     iv_term_structure: [],
     macro_events: [],
@@ -309,7 +311,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     netPremTicks,
     oiChanges,
     ivTerm,
-    sectors,
+    leaderStocks,
     macroEvents,
     newsRaw,
     intel,
@@ -335,7 +337,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     fetchUwNetPremTicks("SPY"),
     fetchUwOiChange("SPX"),
     fetchUwIvTermStructure("SPX"),
-    fetchSectorPerformance().catch(() => []),
+    fetchLeaderStockSnapshots().catch(() => []),
     fetchEconomicCalendarToday().catch(() => []),
     fetchBenzingaNews(15).catch(() => []),
     intelPromise,
@@ -476,9 +478,8 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
       structure: vixTerm.structure,
       detail: vixTerm.detail,
     },
-    sector_heat: (sectors ?? [])
-      .sort((a, b) => b.change_pct - a.change_pct)
-      .slice(0, 11),
+    sector_heat: [],
+    leader_stocks: leaderStocks ?? [],
     oi_changes: oiChanges ?? [],
     iv_term_structure: ivTerm ?? [],
     macro_events: macroEvents ?? [],

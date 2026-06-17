@@ -37,62 +37,40 @@ function Panel({
   );
 }
 
+const LEADER_TICKERS = ["AAPL", "NVDA", "MSFT", "GOOG", "TSLA", "META"] as const;
+
 export function SpxIntelStrip({ desk, live }: DeskProps) {
-  const sectors = desk?.sector_heat ?? [];
-  const macro = desk?.macro_events ?? [];
-  const vt = desk?.vix_term;
+  const byTicker = new Map((desk?.leader_stocks ?? []).map((s) => [s.ticker, s]));
+  const stocks = LEADER_TICKERS.map(
+    (ticker) => byTicker.get(ticker) ?? { ticker, name: ticker, change_pct: 0 }
+  );
 
   return (
     <div className="spx-intel-strip">
-      <div className="spx-intel-chip">
-        <span className="spx-intel-label">ADD</span>
-        <span className="font-mono text-sm font-semibold tabular-nums">
-          {live && desk?.add != null ? Math.round(desk.add) : "—"}
-        </span>
-      </div>
-      <div className="spx-intel-chip">
-        <span className="spx-intel-label">VIX9D</span>
-        <span className="font-mono text-sm tabular-nums text-orange-300">
-          {live && vt?.vix9d != null ? fmtPrice(vt.vix9d, 2) : "—"}
-        </span>
-      </div>
-      <div className="spx-intel-chip">
-        <span className="spx-intel-label">VIX3M</span>
-        <span className="font-mono text-sm tabular-nums text-orange-300">
-          {live && vt?.vix3m != null ? fmtPrice(vt.vix3m, 2) : "—"}
-        </span>
-      </div>
-      <div
-        className={clsx(
-          "spx-intel-chip spx-intel-chip-wide",
-          vt?.structure === "contango" && "text-bull",
-          vt?.structure === "backwardation" && "text-bear"
-        )}
-      >
-        <span className="spx-intel-label">Vol Term</span>
-        <span className="font-mono text-xs uppercase tracking-wider capitalize">
-          {live ? (vt?.structure ?? "—") : "—"}
-        </span>
-      </div>
-      {sectors.slice(0, 6).map((s) => (
-        <div key={s.ticker} className="spx-intel-chip spx-sector-chip">
-          <span className="spx-intel-label">{s.ticker}</span>
-          <span
+      {stocks.map((s) => {
+        const hasData = live && byTicker.has(s.ticker);
+        const up = s.change_pct >= 0;
+        return (
+          <div
+            key={s.ticker}
             className={clsx(
-              "font-mono text-[11px] tabular-nums font-semibold",
-              s.change_pct >= 0 ? "num-bull" : "num-bear"
+              "spx-intel-chip spx-stock-chip",
+              hasData && (up ? "spx-stock-chip-bull" : "spx-stock-chip-bear")
             )}
           >
-            {fmtPct(s.change_pct)}
-          </span>
-        </div>
-      ))}
-      {macro.slice(0, 2).map((e) => (
-        <div key={`${e.time}-${e.event}`} className="spx-intel-chip spx-intel-chip-wide">
-          <span className="spx-intel-label">Macro</span>
-          <span className="font-mono text-[10px] text-grey-200 truncate">{e.event}</span>
-        </div>
-      ))}
+            <span className="spx-intel-ticker">{s.ticker}</span>
+            <span
+              className={clsx(
+                "font-mono text-sm tabular-nums font-semibold",
+                !hasData && "text-grey-500",
+                hasData && (up ? "num-bull" : "num-bear")
+              )}
+            >
+              {hasData ? fmtPct(s.change_pct) : "—"}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }

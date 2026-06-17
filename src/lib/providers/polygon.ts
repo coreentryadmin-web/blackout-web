@@ -16,6 +16,15 @@ async function polygonGet<T>(path: string, params: Record<string, string> = {}):
   return res.json() as Promise<T>;
 }
 
+const LEADER_STOCKS = [
+  { name: "Apple", ticker: "AAPL" },
+  { name: "NVIDIA", ticker: "NVDA" },
+  { name: "Microsoft", ticker: "MSFT" },
+  { name: "Alphabet", ticker: "GOOG" },
+  { name: "Tesla", ticker: "TSLA" },
+  { name: "Meta", ticker: "META" },
+];
+
 const SECTOR_ETFS = [
   { name: "Technology", ticker: "XLK" },
   { name: "Financials", ticker: "XLF" },
@@ -37,8 +46,10 @@ type SnapshotTicker = {
   prevDay?: { c?: number };
 };
 
-export async function fetchSectorPerformance() {
-  const tickers = SECTOR_ETFS.map((s) => s.ticker).join(",");
+async function fetchStockSnapshotPerformance(
+  symbols: Array<{ name: string; ticker: string }>
+) {
+  const tickers = symbols.map((s) => s.ticker).join(",");
   const data = await polygonGet<{ tickers?: SnapshotTicker[] }>(
     "/v2/snapshot/locale/us/markets/stocks/tickers",
     { tickers }
@@ -46,16 +57,24 @@ export async function fetchSectorPerformance() {
 
   const byTicker = new Map((data.tickers ?? []).map((t) => [t.ticker, t]));
 
-  return SECTOR_ETFS.map((sector) => {
-    const snap = byTicker.get(sector.ticker);
+  return symbols.map((symbol) => {
+    const snap = byTicker.get(symbol.ticker);
     const change = snap?.todaysChangePerc ?? 0;
     return {
-      name: sector.name,
-      ticker: sector.ticker,
+      name: symbol.name,
+      ticker: symbol.ticker,
       change_pct: Number(change.toFixed(2)),
       volume: snap?.day?.v,
     };
   });
+}
+
+export function fetchLeaderStockSnapshots() {
+  return fetchStockSnapshotPerformance(LEADER_STOCKS);
+}
+
+export async function fetchSectorPerformance() {
+  return fetchStockSnapshotPerformance(SECTOR_ETFS);
 }
 
 export async function fetchMarketMovers(limit = 20) {
