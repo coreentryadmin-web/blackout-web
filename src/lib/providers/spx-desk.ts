@@ -13,15 +13,16 @@ import {
 import {
   computeVixTermStructure,
   fetchBenzingaNews,
+  fetchBreadthUniverseSnapshots,
   fetchIndexDailyBars,
   fetchIndexEma,
   fetchIndexMinuteBars,
   fetchIndexSma,
   fetchIndexSnapshots,
   fetchIndexVwap,
-  fetchLeaderStockSnapshots,
   fetchMarketStatusNow,
 } from "./polygon";
+import { resolveMarketInternals } from "@/lib/market-internals";
 import {
   isSpxRthActive,
   marketStatusLabel,
@@ -79,6 +80,7 @@ type PulseStructureCache = {
   sma50: number | null;
   sma200: number | null;
   leader_stocks: Array<{ name: string; ticker: string; change_pct: number }>;
+  breadth_samples: Array<{ change_pct: number }>;
 };
 
 let cachedPulseStructure: PulseStructureCache = {
@@ -92,6 +94,7 @@ let cachedPulseStructure: PulseStructureCache = {
   sma50: null,
   sma200: null,
   leader_stocks: [],
+  breadth_samples: [],
 };
 
 const SPX = "I:SPX";
@@ -101,6 +104,13 @@ const VIX3M = "I:VIX3M";
 const TICK = "I:TICK";
 const TRIN = "I:TRIN";
 const ADD = "I:ADD";
+const LEADER_TICKERS = new Set(["AAPL", "NVDA", "MSFT", "GOOG", "TSLA", "META"]);
+
+function leaderStocksFromBreadth(
+  samples: Array<{ name: string; ticker: string; change_pct: number }>
+) {
+  return samples.filter((s) => LEADER_TICKERS.has(s.ticker));
+}
 
 export type SpxDeskLevel = {
   label: string;
@@ -500,7 +510,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     uwFlow,
     strikeRows,
     darkPool,
-    leaderStocks,
+    breadthAll,
     macroEvents,
     newsRaw,
     intel,
@@ -522,7 +532,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     fetchUwFlow0dte("SPX"),
     fetchUwOdteSpotExposuresByStrike("SPX"),
     fetchUwDarkPool("SPX", { limit: 20, min_premium: 500_000 }),
-    fetchLeaderStockSnapshots().catch(() => []),
+    fetchBreadthUniverseSnapshots().catch(() => []),
     fetchEconomicCalendarToday().catch(() => []),
     fetchBenzingaNews(15).catch(() => []),
     intelPromise,
@@ -595,6 +605,16 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     })
     .slice(0, 10);
 
+  const leaderStocks = leaderStocksFromBreadth(breadthAll ?? []);
+  const internals = resolveMarketInternals(
+    {
+      tick: snaps[TICK]?.price ?? (intel?.tick as number | null) ?? null,
+      trin: snaps[TRIN]?.price ?? (intel?.trin as number | null) ?? null,
+      add: snaps[ADD]?.price ?? null,
+    },
+    breadthAll ?? []
+  );
+
   const levels = buildLevels({
     price,
     lod,
@@ -631,9 +651,9 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     ema200,
     sma50,
     sma200,
-    tick: snaps[TICK]?.price ?? (intel?.tick as number | null) ?? null,
-    trin: snaps[TRIN]?.price ?? (intel?.trin as number | null) ?? null,
-    add: snaps[ADD]?.price ?? null,
+    tick: internals.tick,
+    trin: internals.trin,
+    add: internals.add,
     gex_net: gexNet,
     gex_king: gexKing,
     max_pain: maxPain,
@@ -694,7 +714,7 @@ async function refreshPulseStructureIfNeeded(today: string): Promise<PulseStruct
     return cachedPulseStructure;
   }
 
-  const [minuteBars, ema20, ema50, ema200, sma50, sma200, vwapInd, leaderStocks] =
+  const [minuteBars, ema20, ema50, ema200, sma50, sma200, vwapInd, breadthAll] =
     await Promise.all([
       fetchIndexMinuteBars(SPX, today, today).catch(() => []),
       fetchIndexEma(SPX, 20, "minute"),
@@ -703,10 +723,11 @@ async function refreshPulseStructureIfNeeded(today: string): Promise<PulseStruct
       fetchIndexSma(SPX, 50, "day"),
       fetchIndexSma(SPX, 200, "day"),
       fetchIndexVwap(SPX, "minute"),
-      fetchLeaderStockSnapshots().catch(() => []),
+      fetchBreadthUniverseSnapshots().catch(() => []),
     ]);
 
   const session = sessionStatsFromMinuteBars(minuteBars);
+  const leaderStocks = leaderStocksFromBreadth(breadthAll ?? []);
   cachedPulseStructure = {
     fetchedAt: now,
     lod: session.lod,
@@ -717,7 +738,8 @@ async function refreshPulseStructureIfNeeded(today: string): Promise<PulseStruct
     ema200,
     sma50,
     sma200,
-    leader_stocks: leaderStocks ?? [],
+    leader_stocks: leaderStocks,
+    breadth_samples: breadthAll ?? [],
   };
   return cachedPulseStructure;
 }
@@ -810,6 +832,15 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     snaps[VIX3M]?.price ?? null
   );
 
+  const internals = resolveMarketInternals(
+    {
+      tick: snaps[TICK]?.price ?? null,
+      trin: snaps[TRIN]?.price ?? null,
+      add: snaps[ADD]?.price ?? null,
+    },
+    structure.breadth_samples
+  );
+
   const result: SpxDeskPulse = {
     available: true,
     polled_at: polledAt,
@@ -828,9 +859,9 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     ema200: structure.ema200,
     sma50: structure.sma50,
     sma200: structure.sma200,
-    tick: snaps[TICK]?.price ?? null,
-    trin: snaps[TRIN]?.price ?? null,
-    add: snaps[ADD]?.price ?? null,
+    tick: internals.tick,
+    trin: internals.trin,
+    add: internals.add,
     regime: String(inferRegime(price, ema20, ema50)),
     leader_stocks: structure.leader_stocks,
     vix_term: {

@@ -1,6 +1,7 @@
 import type { SpxConfluence } from "@/lib/spx-signals";
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import type { PlayConfirmationResult } from "@/lib/spx-play-confirmations";
+import { buildPlayIdeaIntel } from "@/lib/spx-play-intel";
 import {
   gradeRank,
   playBuyCooldownSec,
@@ -20,6 +21,7 @@ export type PlayGateResult = {
   blocks: string[];
   warnings: string[];
   entry_mode: "none" | "starter" | "full";
+  play_idea: string | null;
 };
 
 function etMinutes(now: Date): number {
@@ -84,7 +86,10 @@ export function evaluatePlayGates(
   }
 
   if (confluence.conflicts >= playConflictBlockMin()) {
-    blocks.push(`${confluence.conflicts} headwinds — too many conflicts`);
+    const idea = buildPlayIdeaIntel(desk, confluence);
+    blocks.push(
+      idea ?? `Tape's mixed — waiting for cleaner ${dir === "long" ? "call" : dir === "short" ? "put" : "0DTE"} alignment`
+    );
   }
 
   if (gradeRank(confluence.grade) < playMinGradeRank()) {
@@ -173,6 +178,7 @@ export function evaluatePlayGates(
   }
 
   const passed = blocks.length === 0 && entry_mode === "full" && dir != null;
+  const play_idea = buildPlayIdeaIntel(desk, confluence);
 
-  return { passed, blocks, warnings, entry_mode };
+  return { passed, blocks, warnings, entry_mode, play_idea };
 }

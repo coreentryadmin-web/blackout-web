@@ -10,7 +10,7 @@ const LAYER_CACHE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 export type PlayConfirmationLayer = {
   confirmations: NonNullable<SpxPlayPayload["confirmations"]>;
   technicals: SpxPlayPayload["technicals"];
-  gates: Pick<SpxPlayPayload["gates"], "blocks" | "warnings">;
+  gates: Pick<SpxPlayPayload["gates"], "blocks" | "warnings" | "play_idea">;
   watch: SpxPlayPayload["watch"];
   telemetry: SpxPlayPayload["telemetry"];
   as_of: string;
@@ -21,7 +21,11 @@ function layerFromPlay(play: SpxPlayPayload): PlayConfirmationLayer | null {
   return {
     confirmations: play.confirmations,
     technicals: play.technicals,
-    gates: { blocks: play.gates.blocks, warnings: play.gates.warnings },
+    gates: {
+      blocks: play.gates.blocks,
+      warnings: play.gates.warnings,
+      play_idea: play.gates.play_idea,
+    },
     watch: play.watch,
     telemetry: play.telemetry,
     as_of: play.as_of,

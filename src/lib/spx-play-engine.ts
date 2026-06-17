@@ -6,12 +6,13 @@ import {
   type SpxPlayDirection,
   type SpxSignalFactor,
 } from "@/lib/spx-signals";
-import { evaluatePlayGates } from "@/lib/spx-play-gates";
+import { evaluatePlayGates, type PlayGateResult } from "@/lib/spx-play-gates";
 import { evaluatePlayConfirmations } from "@/lib/spx-play-confirmations";
 import { buildPlayTechnicals, type PlayTechnicals } from "@/lib/spx-play-technicals";
 import type { PlayConfirmationResult } from "@/lib/spx-play-confirmations";
 import { evaluateClaudePlayApproval, type ClaudePlayVerdict } from "@/lib/spx-play-claude";
 import { pickIdleMessage, watchMessage } from "@/lib/spx-play-idle";
+import { buildPlayIdeaIntel, humanizeGateBlock, humanizeGateBlocks } from "@/lib/spx-play-intel";
 import {
   gradeRank,
   playFullMinScore,
@@ -73,6 +74,7 @@ export type SpxPlayPayload = {
     blocks: string[];
     warnings: string[];
     entry_mode: string;
+    play_idea: string | null;
   };
   claude: ClaudePlayVerdict | null;
   open_play: {
@@ -133,6 +135,21 @@ function telemetrySummary(adaptive: Awaited<ReturnType<typeof loadAdaptivePlayGa
   };
 }
 
+function intelGates(
+  desk: SpxDeskPayload,
+  confluence: SpxConfluence,
+  gates: PlayGateResult
+): SpxPlayPayload["gates"] {
+  const play_idea = gates.play_idea ?? buildPlayIdeaIntel(desk, confluence);
+  return {
+    passed: gates.passed,
+    blocks: humanizeGateBlocks(gates.blocks, desk, confluence),
+    warnings: gates.warnings,
+    entry_mode: gates.entry_mode,
+    play_idea,
+  };
+}
+
 function scanningPayload(
   desk: SpxDeskPayload,
   confluence: SpxConfluence | null,
@@ -140,6 +157,15 @@ function scanningPayload(
   gates?: SpxPlayPayload["gates"],
   extras?: Partial<SpxPlayPayload>
 ): SpxPlayPayload {
+  const playIdea =
+    gates?.play_idea ??
+    (confluence ? buildPlayIdeaIntel(desk, confluence) : null);
+  const thesis =
+    playIdea ??
+    (confluence ? humanizeGateBlock(gates?.blocks[0] ?? "", desk, confluence) : null) ??
+    gates?.blocks[0] ??
+    "No A+ setup yet — scanning all lanes.";
+
   return {
     available: Boolean(desk.available && desk.market_open),
     phase: "SCANNING",
@@ -149,11 +175,11 @@ function scanningPayload(
     score: confluence?.score ?? 0,
     confidence: confluence?.confidence ?? 0,
     headline: idle,
-    thesis: gates?.blocks[0] ?? "No A+ setup yet — scanning all lanes.",
+    thesis,
     idle_message: idle,
     factors: confluence?.factors ?? [],
     levels: confluence?.levels ?? { entry: null, stop: null, target: null, invalidation: "" },
-    gates: gates ?? { passed: false, blocks: [], warnings: [], entry_mode: "none" },
+    gates: gates ?? { passed: false, blocks: [], warnings: [], entry_mode: "none", play_idea: null },
     claude: null,
     open_play: null,
     confirmations: null,
@@ -346,7 +372,7 @@ async function evaluateOpenPlay(
       target: row.target,
       invalidation: confluence.levels.invalidation,
     },
-    gates: { passed: false, blocks: [], warnings: [], entry_mode: "none" },
+    gates: { passed: false, blocks: [], warnings: [], entry_mode: "none", play_idea: null },
     claude: null,
     open_play:
       action === "SELL"
@@ -415,6 +441,7 @@ async function evaluateFlatPlay(
   const gates = evaluatePlayGates(desk, confluence, session, confirmations, {
     min_score_boost: adaptive.global_min_score_boost,
   });
+  const gatesView = intelGates(desk, confluence, gates);
   const abs = Math.abs(confluence.score);
   const techSum = technicalsSummary(technicals, mtf);
 
@@ -447,7 +474,7 @@ async function evaluateFlatPlay(
   const watchState = {
     active: Boolean(watchRec),
     promote_ready: promoteEligible,
-    reason: promoteReason,
+    reason: gatesView.play_idea ?? promoteReason,
     since: watchRec?.first_at ?? null,
   };
 
@@ -480,17 +507,13 @@ async function evaluateFlatPlay(
   if (nearMiss && !promoteEligible) {
     const dirLabel = confluence.direction === "long" ? "bullish" : "bearish";
     return {
-      ...scanningPayload(desk, confluence, watchMessage(confluence.grade, dirLabel), {
-        passed: false,
-        blocks: gates.blocks,
-        warnings: gates.warnings,
-        entry_mode: gates.entry_mode,
-      }),
+      ...scanningPayload(desk, confluence, watchMessage(confluence.grade, dirLabel), gatesView),
       phase: "WATCHING",
       action: "WATCHING",
       headline: `${confluence.grade} ${dirLabel} — almost there`,
       thesis:
-        gates.blocks[0] ??
+        gatesView.play_idea ??
+        gatesView.blocks[0] ??
         `High-quality setup building (${confirmations.passed_count}/${confirmations.total} checks).`,
       idle_message: null,
       claude: null,
@@ -502,13 +525,13 @@ async function evaluateFlatPlay(
     };
   }
 
-  let entryGates = gates;
+  let entryGatesRaw: PlayGateResult = gates;
   if (promoteEligible && direction != null) {
     const promoteBlocks = [...gates.blocks];
     if (adaptive.promote_blocked && adaptive.promote_block_reason) {
       promoteBlocks.push(adaptive.promote_block_reason);
     }
-    entryGates = {
+    entryGatesRaw = {
       ...gates,
       blocks: promoteBlocks.filter((b) => !b.includes("cooldown") && !b.includes("below minimum")),
       warnings: [
@@ -518,21 +541,17 @@ async function evaluateFlatPlay(
           : []),
       ],
     };
-    if (abs >= promoteMin && entryGates.entry_mode === "full" && !adaptive.promote_blocked) {
-      entryGates = { ...entryGates, passed: entryGates.blocks.length === 0 };
+    if (abs >= promoteMin && entryGatesRaw.entry_mode === "full" && !adaptive.promote_blocked) {
+      entryGatesRaw = { ...entryGatesRaw, passed: entryGatesRaw.blocks.length === 0 };
     } else {
-      entryGates = { ...entryGates, passed: false, entry_mode: "none" };
+      entryGatesRaw = { ...entryGatesRaw, passed: false, entry_mode: "none" };
     }
   }
+  const entryGatesView = intelGates(desk, confluence, entryGatesRaw);
 
-  if (!entryGates.passed) {
+  if (!entryGatesRaw.passed) {
     return {
-      ...scanningPayload(desk, confluence, pickIdleMessage(), {
-        passed: false,
-        blocks: entryGates.blocks,
-        warnings: entryGates.warnings,
-        entry_mode: entryGates.entry_mode,
-      }),
+      ...scanningPayload(desk, confluence, pickIdleMessage(), entryGatesView),
       confirmations,
       technicals: techSum,
       mtf,
@@ -543,24 +562,26 @@ async function evaluateFlatPlay(
       headline: watchBand
         ? `${confluence.grade} ${direction === "long" ? "bullish" : "bearish"} — on watch`
         : pickIdleMessage(),
-      thesis: watchBand
-        ? `MTF ladder ${mtf?.summary ?? ""} · waiting for full gate pass.`
-        : entryGates.blocks[0] ?? pickIdleMessage(),
+      thesis:
+        entryGatesView.play_idea ??
+        entryGatesView.blocks[0] ??
+        (watchBand
+          ? `MTF ladder ${mtf?.summary ?? ""} · waiting for full gate pass.`
+          : pickIdleMessage()),
     };
   }
 
-  const claude = await evaluateClaudePlayApproval(desk, confluence, entryGates, confirmations, technicals);
+  const claude = await evaluateClaudePlayApproval(desk, confluence, entryGatesRaw, confirmations, technicals);
 
   if (!claude.approved || !confluence.direction) {
     return {
       ...scanningPayload(desk, confluence, pickIdleMessage(), {
+        ...entryGatesView,
         passed: false,
         blocks:
           claude.verdict === "VETO"
             ? [`Claude veto: ${claude.headline}`]
-            : entryGates.blocks,
-        warnings: entryGates.warnings,
-        entry_mode: entryGates.entry_mode,
+            : entryGatesView.blocks,
       }),
       phase: "SCANNING",
       action: "SCANNING",
@@ -583,8 +604,9 @@ async function evaluateFlatPlay(
       ...scanningPayload(desk, confluence, pickIdleMessage(), {
         passed: false,
         blocks: [optionTicket.block_reason ?? "Option chain unavailable"],
-        warnings: entryGates.warnings,
+        warnings: entryGatesRaw.warnings,
         entry_mode: "none",
+        play_idea: entryGatesView.play_idea,
       }),
       confirmations,
       technicals: techSum,
@@ -688,8 +710,9 @@ async function evaluateFlatPlay(
     gates: {
       passed: true,
       blocks: [],
-      warnings: entryGates.warnings,
-      entry_mode: entryGates.entry_mode,
+      warnings: entryGatesRaw.warnings,
+      entry_mode: entryGatesRaw.entry_mode,
+      play_idea: entryGatesView.play_idea,
     },
     claude,
     open_play: {
@@ -733,7 +756,7 @@ export async function evaluateSpxPlay(
       idle_message: null,
       factors: [],
       levels: { entry: null, stop: null, target: null, invalidation: "" },
-      gates: { passed: false, blocks: ["Session closed"], warnings: [], entry_mode: "none" },
+      gates: { passed: false, blocks: ["Session closed"], warnings: [], entry_mode: "none", play_idea: null },
       claude: null,
       open_play: null,
       confirmations: null,

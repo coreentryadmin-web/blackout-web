@@ -34,6 +34,7 @@ function mergePlayWithCache(
         ...fresh.gates,
         blocks: fresh.gates.blocks.length ? fresh.gates.blocks : cached.gates.blocks,
         warnings: fresh.gates.warnings.length ? fresh.gates.warnings : cached.gates.warnings,
+        play_idea: fresh.gates.play_idea ?? cached.gates.play_idea,
       },
     };
   }

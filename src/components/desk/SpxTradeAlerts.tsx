@@ -72,6 +72,16 @@ function scoreClass(action: SpxPlayAction, score: number): string {
   return "text-grey-400";
 }
 
+function isPlayIdeaLine(line: string): boolean {
+  return (
+    line.startsWith("I like ") ||
+    line.startsWith("Leaning ") ||
+    line.startsWith("Tape's mixed") ||
+    line.includes(" could be the play") ||
+    line.includes(" is the play")
+  );
+}
+
 function playId(p: SpxPlayPayload): string {
   return `${p.action}|${p.direction}|${p.confidence}|${Math.round(p.score)}|${p.headline}`;
 }
@@ -109,9 +119,8 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
     >
       <SpxSniperBackdrop action={play?.action} />
       <div className="spx-sniper-panel-content">
-      <header className="spx-trade-alerts-header">
-        <h2 className="spx-trade-alerts-title font-display">SPX Sniper</h2>
-        <span className={clsx("spx-live-pill", live ? "spx-live-pill-on" : "spx-live-pill-off")}>
+      <header className="spx-trade-alerts-header spx-trade-alerts-header-minimal">
+        <span className={clsx("spx-live-pill ml-auto", live ? "spx-live-pill-on" : "spx-live-pill-off")}>
           {live ? "LIVE" : "OFFLINE"}
         </span>
       </header>
@@ -145,7 +154,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
                   </p>
                 )}
               </div>
-              <div className="text-right shrink-0">
+              <div className="spx-trade-alert-score-block text-right shrink-0">
                 <p className="spx-trade-alert-score-label">Score</p>
                 <p className={clsx("spx-trade-alert-score", scoreClass(play.action, play.score))}>
                   {play.score > 0 ? "+" : ""}
@@ -248,11 +257,23 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
                       : ""}
                   </p>
                 )}
-                {confirmationLayer.gates.blocks.slice(0, 2).map((b) => (
-                  <p key={b} className="spx-trade-block-warn">
-                    ⛔ {b}
-                  </p>
-                ))}
+                {confirmationLayer.gates.play_idea && (
+                  <p className="spx-trade-idea-line">{confirmationLayer.gates.play_idea}</p>
+                )}
+                {confirmationLayer.gates.blocks
+                  .filter((b) => b !== confirmationLayer.gates.play_idea)
+                  .slice(0, 2)
+                  .map((b) =>
+                    isPlayIdeaLine(b) ? (
+                      <p key={b} className="spx-trade-idea-line">
+                        {b}
+                      </p>
+                    ) : (
+                      <p key={b} className="spx-trade-block-warn">
+                        ⛔ {b}
+                      </p>
+                    )
+                  )}
               </div>
             )}
 
