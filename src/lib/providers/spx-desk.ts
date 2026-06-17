@@ -49,6 +49,7 @@ import { fetchEngine } from "@/lib/engine";
 let lastGoodGexWalls: GexWall[] = [];
 let lastGoodGammaFlip: number | null = null;
 let lastGoodGammaRegime = "unknown";
+let lastGoodUnifiedTape: SpxTapeItem[] = [];
 
 const SPX = "I:SPX";
 const VIX = "I:VIX";
@@ -401,7 +402,9 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     alerted_at: f.alerted_at,
   }));
 
-  const unifiedTape = buildUnifiedTape(spxFlows, darkPool);
+  const freshTape = buildUnifiedTape(spxFlows, darkPool);
+  if (freshTape.length) lastGoodUnifiedTape = freshTape;
+  const unifiedTape = freshTape.length ? freshTape : lastGoodUnifiedTape;
 
   const newsHeadlines: DeskNewsHeadline[] = (newsRaw ?? [])
     .map((a) => ({

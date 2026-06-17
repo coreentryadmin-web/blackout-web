@@ -1224,6 +1224,26 @@ body {
     @apply flex flex-col gap-3 min-h-0 overflow-y-auto xl:max-h-[calc(100vh-200px)] xl:overflow-y-auto;
   }
 
+  .spx-left-stack .spx-left-tape-panel {
+    @apply flex-1 min-h-[12rem] flex flex-col;
+  }
+
+  .spx-left-stack .spx-left-tape-panel .spx-desk-panel-body {
+    @apply flex flex-col flex-1 min-h-0;
+  }
+
+  .spx-tape-empty {
+    min-height: 8rem;
+  }
+
+  .spx-tape-panel .spx-tape-list {
+    @apply overflow-y-auto min-h-[8rem];
+  }
+
+  .spx-left-stack .spx-tape-panel .spx-tape-list {
+    @apply max-h-none flex-1;
+  }
+
   .spx-center-stack {
     @apply flex flex-col gap-3 min-h-0 min-w-0;
   }
@@ -1313,10 +1333,6 @@ body {
 
   .spx-desk-bias-pill {
     @apply text-[9px] font-syne uppercase tracking-wider px-2 py-0.5 border;
-  }
-
-  .spx-tape-panel .spx-tape-list {
-    @apply max-h-[200px] overflow-y-auto;
   }
 
   .spx-sparkline {

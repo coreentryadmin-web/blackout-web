@@ -177,49 +177,26 @@ export function SpxGexLadder({ desk, live, refreshing }: DeskProps) {
   );
 }
 
-export function SpxFlowStrip({ desk, live }: DeskProps) {
-  const flows = desk?.spx_flows ?? [];
+export function SpxUnifiedTape({ desk, refreshing }: DeskProps) {
+  const tape = useStableArray(desk?.unified_tape ?? []);
+  const hasTape = tape.length > 0;
 
   return (
-    <Panel title="SPX Flow" subtitle="Options sweeps" accent="spx-panel-purple">
-      {!live || !flows.length ? (
-        <p className="font-mono text-[11px] text-grey-500 py-2">Waiting for SPX flow…</p>
-      ) : (
-        <ul className="spx-desk-list">
-          {flows.slice(0, 8).map((f, i) => (
-            <li key={`${f.alerted_at}-${i}`} className="spx-desk-list-row">
-              <span
-                className={clsx(
-                  "font-mono text-[10px] font-bold uppercase w-10",
-                  f.option_type === "CALL" ? "text-bull" : "text-bear"
-                )}
-              >
-                {f.option_type.slice(0, 1)}
-              </span>
-              <span className="font-mono text-xs text-white tabular-nums">{fmtPrice(f.strike)}</span>
-              <span className="font-mono text-[10px] text-grey-500">{f.expiry}</span>
-              <span className="font-mono text-xs text-purple-light tabular-nums ml-auto">
-                {fmtPremium(f.premium)}
-              </span>
-            </li>
-          ))}
-        </ul>
+    <Panel
+      title="Live Tape"
+      subtitle="Flow + dark pool"
+      accent="spx-panel-cyan"
+      className={clsx(
+        "spx-tape-panel spx-left-tape-panel",
+        refreshing && hasTape && "spx-desk-panel-refreshing"
       )}
-    </Panel>
-  );
-}
-
-export function SpxUnifiedTape({ desk, live }: DeskProps) {
-  const tape = desk?.unified_tape ?? [];
-
-  return (
-    <Panel title="Live Tape" subtitle="Flow + dark pool" accent="spx-panel-cyan" className="spx-tape-panel">
-      {!live || !tape.length ? (
-        <p className="font-mono text-[11px] text-grey-500 py-2">Tape quiet…</p>
+    >
+      {!hasTape ? (
+        <p className="font-mono text-[11px] text-grey-500 py-2 spx-tape-empty">Tape quiet…</p>
       ) : (
         <ul className="spx-desk-list spx-tape-list">
           {tape.map((t, i) => (
-            <li key={`${t.time}-${i}`} className="spx-desk-list-row">
+            <li key={`${t.kind}-${t.time}-${t.label}-${i}`} className="spx-desk-list-row">
               <span
                 className={clsx(
                   "font-mono text-[9px] uppercase tracking-wider w-12 shrink-0",

@@ -1,12 +1,12 @@
 "use client";
 
 import useSWR from "swr";
-import { fetchSpxDesk } from "@/lib/api";import { SpxSniperHeader } from "@/components/desk/SpxSniperHeader";
+import { fetchSpxDesk } from "@/lib/api";
+import { SpxSniperHeader } from "@/components/desk/SpxSniperHeader";
 import { SpxCommentaryRail } from "@/components/desk/SpxCommentaryRail";
 import { SpxChart } from "@/components/desk/SpxChart";
 import {
   SpxDarkPoolCard,
-  SpxFlowStrip,
   SpxGexLadder,
   SpxIntelStrip,
   SpxIvTermBars,
@@ -36,20 +36,17 @@ export function SpxDashboard() {
         <aside className="spx-sniper-left-rail spx-left-stack">
           <SpxDarkPoolCard desk={desk} live={live} />
           <SpxGexLadder desk={desk} live={live} refreshing={deskRefreshing} />
+          <SpxUnifiedTape desk={desk} live={live} refreshing={deskRefreshing} />
         </aside>
 
         <div className="spx-sniper-chart-col spx-center-stack">
           <SpxChart fill />
           <div className="spx-center-panels">
-            <SpxUnifiedTape desk={desk} live={live} />
             <div className="spx-center-panels-row">
-              <SpxFlowStrip desk={desk} live={live} />
               <SpxNetPremSpark desk={desk} live={live} />
-            </div>
-            <div className="spx-center-panels-row">
               <SpxIvTermBars desk={desk} live={live} />
-              <SpxOiChangeStrip desk={desk} live={live} />
             </div>
+            <SpxOiChangeStrip desk={desk} live={live} />
           </div>
         </div>
 
