@@ -192,13 +192,25 @@ export async function fetchMarketFlowAlerts(params?: {
   limit?: number;
   ticker?: string;
   min_premium?: number;
+  newer_than?: string;
 }): Promise<MarketFlowAlert[]> {
+  const rows = await fetchMarketFlowAlertRows(params);
+  return rows.map((r) => r.flow);
+}
+
+export async function fetchMarketFlowAlertRows(params?: {
+  limit?: number;
+  ticker?: string;
+  min_premium?: number;
+  newer_than?: string;
+}): Promise<Array<{ raw: Record<string, unknown>; flow: MarketFlowAlert }>> {
   const query: Record<string, string | number> = {
     limit: Math.min(params?.limit ?? 50, 200),
   };
   if (params?.ticker) query.ticker_symbol = params.ticker.toUpperCase();
   if (params?.min_premium) query.min_premium = params.min_premium;
+  if (params?.newer_than) query.newer_than = params.newer_than;
 
   const data = await uwGet<unknown>("/api/option-trades/flow-alerts", query);
-  return extractRows(data).map(rowToFlow);
+  return extractRows(data).map((raw) => ({ raw, flow: rowToFlow(raw) }));
 }

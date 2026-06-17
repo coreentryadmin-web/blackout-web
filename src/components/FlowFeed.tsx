@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { fetchFlows, createFlowSocket, fmtPremium, type FlowAlert } from "@/lib/api";
+import { fetchFlows, createFlowEventSource, fmtPremium, type FlowAlert } from "@/lib/api";
 import { clsx } from "clsx";
 import { EngineStatusBar } from "@/components/desk/EngineStatusBar";
 import { FlowAlertStream } from "@/components/desk/FlowAlertStream";
@@ -41,7 +41,7 @@ export function FlowFeed() {
   }, [loadFlows]);
 
   useEffect(() => {
-    const ws = createFlowSocket((alert) => {
+    const es = createFlowEventSource((alert) => {
       const id = `${alert.ticker}-${alert.alerted_at}`;
       if (seenRef.current.has(id)) return;
       seenRef.current.add(id);
@@ -49,9 +49,9 @@ export function FlowFeed() {
       setLive(true);
     });
 
-    if (ws) {
-      ws.onerror = () => setLive(false);
-      return () => ws.close();
+    if (es) {
+      es.onerror = () => setLive(false);
+      return () => es.close();
     }
 
     const interval = setInterval(loadFlows, FLOW_REST_POLL_MS);

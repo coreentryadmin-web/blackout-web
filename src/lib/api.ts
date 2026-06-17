@@ -353,8 +353,25 @@ export const queryLargo = (question: string, sessionId: string) =>
     body: JSON.stringify({ question, session_id: sessionId }),
   });
 
-// ── WebSocket — scored alerts from engine when live; market uses polling ─────
+// ── Live flow stream (website SSE — no engine WebSocket required) ─────────────
 
+export function createFlowEventSource(
+  onMessage: (alert: FlowAlert) => void
+): EventSource | null {
+  if (typeof window === "undefined") return null;
+  const es = new EventSource("/api/market/flows/stream");
+  es.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data) as { type?: string } & Partial<FlowAlert>;
+      if (data.type === "flow" && data.ticker) onMessage(data as FlowAlert);
+    } catch {
+      /* ignore */
+    }
+  };
+  return es;
+}
+
+/** @deprecated Use createFlowEventSource — engine WS optional legacy fallback */
 export function createFlowSocket(onMessage: (alert: FlowAlert) => void): WebSocket | null {
   const engineBase = process.env.NEXT_PUBLIC_ENGINE_WS_URL ?? process.env.NEXT_PUBLIC_API_BASE ?? "";
   if (!engineBase || typeof window === "undefined") return null;

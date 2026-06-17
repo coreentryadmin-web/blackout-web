@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 import { fetchMarketFlowAlerts } from "@/lib/providers/unusual-whales";
 import { uwConfigured } from "@/lib/providers/config";
-import { engineConfigured, fetchEngine } from "@/lib/engine";
+import { maybeRunFlowIngest } from "@/lib/providers/flow-ingest";
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -9,25 +10,19 @@ export async function GET(req: NextRequest) {
   const ticker = sp.get("ticker") ?? undefined;
   const min_premium = Number(sp.get("min_premium") ?? 0) || undefined;
 
-  const qs = new URLSearchParams();
-  qs.set("limit", String(limit));
-  if (ticker) qs.set("ticker", ticker);
-  if (min_premium) qs.set("min_premium", String(min_premium));
-
-  if (engineConfigured()) {
+  if (dbConfigured()) {
+    void maybeRunFlowIngest();
     try {
-      const data = await fetchEngine<{ flows: unknown[]; count: number }>(
-        `/flows/recent?${qs.toString()}`
-      );
-      return NextResponse.json({ source: "engine", flows: data.flows, count: data.count });
+      const flows = await fetchRecentFlows({ limit, ticker, min_premium });
+      return NextResponse.json({ source: "postgres", flows, count: flows.length });
     } catch (error) {
-      console.warn("[market/flows] engine fallback to UW:", error);
+      console.error("[market/flows] postgres:", error);
     }
   }
 
   if (!uwConfigured()) {
     return NextResponse.json(
-      { error: "No flow source configured", flows: [], count: 0 },
+      { error: "No flow source configured — set DATABASE_URL or UW_API_KEY", flows: [], count: 0 },
       { status: 503 }
     );
   }
