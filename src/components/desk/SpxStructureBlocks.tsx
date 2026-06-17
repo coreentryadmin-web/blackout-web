@@ -1,0 +1,210 @@
+"use client";
+
+import { motion } from "framer-motion";
+import { clsx } from "clsx";
+import type { SpxDeskPayload } from "@/lib/api";
+import { fmtPct, fmtPremium, fmtPrice } from "@/lib/api";
+
+type BlockProps = { desk?: SpxDeskPayload; live?: boolean };
+
+const CARD_THEMES = {
+  session: {
+    border: "border-cyan-500/35",
+    header: "text-cyan-300",
+    glow: "rgba(34, 211, 238, 0.08)",
+    accent: "bg-cyan-500/10",
+  },
+  dealer: {
+    border: "border-amber-400/35",
+    header: "text-amber-300",
+    glow: "rgba(251, 191, 36, 0.08)",
+    accent: "bg-amber-500/10",
+  },
+  levels: {
+    border: "border-violet-400/35",
+    header: "text-violet-300",
+    glow: "rgba(167, 139, 250, 0.08)",
+    accent: "bg-violet-500/10",
+  },
+} as const;
+
+export function SpxStructureBlocks({ desk, live }: BlockProps) {
+  return (
+    <div className="spx-structure-grid">
+      <StructureCard theme="session" title="Price Structure" subtitle="Session · MAs">
+        <Row label="LOD" value={live ? fmtPrice(desk?.lod ?? null) : "—"} tone="support" />
+        <Row label="HOD" value={live ? fmtPrice(desk?.hod ?? null) : "—"} tone="resistance" />
+        <Row
+          label="VWAP"
+          value={live ? fmtPrice(desk?.vwap ?? null) : "—"}
+          tone={desk?.above_vwap ? "bull" : "bear"}
+          highlight={desk?.above_vwap}
+        />
+        <Row label="PDH" value={live ? fmtPrice(desk?.pdh ?? null) : "—"} tone="resistance" />
+        <Row label="PDL" value={live ? fmtPrice(desk?.pdl ?? null) : "—"} tone="support" />
+        <div className="spx-structure-divider" />
+        <Row label="EMA 20" value={live ? fmtPrice(desk?.ema20 ?? null) : "—"} tone="orange" />
+        <Row label="EMA 50" value={live ? fmtPrice(desk?.ema50 ?? null) : "—"} tone="purple" />
+        <Row label="EMA 200" value={live ? fmtPrice(desk?.ema200 ?? null) : "—"} tone="blue" />
+      </StructureCard>
+
+      <StructureCard theme="dealer" title="Dealer Desk" subtitle="GEX · Flow">
+        <Row
+          label="GEX Net"
+          value={live && desk?.gex_net != null ? fmtPremium(desk.gex_net) : "—"}
+          tone={(desk?.gex_net ?? 0) >= 0 ? "bull" : "bear"}
+        />
+        <Row label="GEX King" value={live ? fmtPrice(desk?.gex_king ?? null) : "—"} tone="gold" />
+        <Row label="γ Flip" value={live ? fmtPrice(desk?.gamma_flip ?? null) : "—"} tone="magenta" />
+        <Row label="Max Pain" value={live ? fmtPrice(desk?.max_pain ?? null) : "—"} tone="cyan" />
+        <Row
+          label="0DTE Net"
+          value={live && desk?.flow_0dte_net != null ? fmtPremium(desk.flow_0dte_net) : "—"}
+          tone={(desk?.flow_0dte_net ?? 0) >= 0 ? "bull" : "bear"}
+        />
+        <Row
+          label="Tide"
+          value={live ? (desk?.tide_bias ?? "—") : "—"}
+          tone={desk?.tide_bias === "bullish" ? "bull" : desk?.tide_bias === "bearish" ? "bear" : "neutral"}
+        />
+        <Row label="NOPE" value={live && desk?.nope != null ? desk.nope.toFixed(2) : "—"} tone="teal" />
+        <Row
+          label="IV Rank"
+          value={live && desk?.uw_iv_rank != null ? String(desk.uw_iv_rank) : "—"}
+          tone="orange"
+        />
+      </StructureCard>
+
+      <StructureCard theme="levels" title="Levels · Tape" subtitle="Internals · Ladder">
+        <Row
+          label="TICK"
+          value={live && desk?.tick != null ? String(Math.round(desk.tick)) : "—"}
+          tone={(desk?.tick ?? 0) >= 0 ? "bull" : "bear"}
+        />
+        <Row
+          label="TRIN"
+          value={live && desk?.trin != null ? desk.trin.toFixed(2) : "—"}
+          tone={(desk?.trin ?? 1) < 1 ? "bull" : "bear"}
+        />
+        <Row
+          label="Regime"
+          value={live ? (desk?.regime ?? "—") : "—"}
+          tone="violet"
+          highlight
+        />
+        <div className="spx-structure-divider" />
+        {(desk?.levels ?? []).slice(0, 6).map((lv) => (
+          <LevelRow key={lv.label} label={lv.label} value={lv.value} dist={lv.distance_pct} live={live} kind={lv.kind} />
+        ))}
+      </StructureCard>
+    </div>
+  );
+}
+
+function StructureCard({
+  theme,
+  title,
+  subtitle,
+  children,
+}: {
+  theme: keyof typeof CARD_THEMES;
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  const t = CARD_THEMES[theme];
+  return (
+    <div
+      className={clsx("spx-structure-card", t.border)}
+      style={{ boxShadow: `inset 0 0 40px ${t.glow}` }}
+    >
+      <div className={clsx("spx-structure-card-header", t.accent)}>
+        <span className="badge-live-dot animate-pulse" />
+        <div>
+          <p className={clsx("font-mono text-[9px] tracking-[0.35em] uppercase font-semibold", t.header)}>
+            {title}
+          </p>
+          <p className="font-mono text-[7px] tracking-widest uppercase text-grey-500">{subtitle}</p>
+        </div>
+      </div>
+      <div className="spx-structure-card-body">{children}</div>
+    </div>
+  );
+}
+
+const TONE_CLASS: Record<string, string> = {
+  bull: "text-bull text-glow-green",
+  bear: "text-bear text-glow-red",
+  support: "text-emerald-400",
+  resistance: "text-rose-400",
+  neutral: "text-grey-300",
+  orange: "text-orange-400",
+  purple: "text-purple-400",
+  blue: "text-sky-400",
+  gold: "text-amber-300",
+  magenta: "text-fuchsia-400",
+  cyan: "text-cyan-400",
+  teal: "text-teal-400",
+  violet: "text-violet-300",
+};
+
+function Row({
+  label,
+  value,
+  tone = "neutral",
+  highlight,
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div className={clsx("spx-structure-row", highlight && "spx-structure-row-hot")}>
+      <span className="spx-structure-label">{label}</span>
+      <motion.span
+        key={value}
+        initial={{ opacity: 0.6, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.2 }}
+        className={clsx("spx-structure-value", TONE_CLASS[tone] ?? TONE_CLASS.neutral)}
+      >
+        {value}
+      </motion.span>
+    </div>
+  );
+}
+
+function LevelRow({
+  label,
+  value,
+  dist,
+  live,
+  kind,
+}: {
+  label: string;
+  value: number;
+  dist?: number | null;
+  live?: boolean;
+  kind?: string;
+}) {
+  const tone = kind === "support" ? "support" : kind === "resistance" ? "resistance" : "violet";
+  return (
+    <div className={clsx("spx-structure-level", `spx-structure-level-${kind ?? "neutral"}`)}>
+      <span className="spx-structure-label">{label}</span>
+      <motion.span
+        key={value}
+        initial={{ opacity: 0.6 }}
+        animate={{ opacity: 1 }}
+        className={clsx("spx-structure-value", TONE_CLASS[tone])}
+      >
+        {live ? fmtPrice(value) : "—"}
+      </motion.span>
+      {dist != null && live && (
+        <span className={clsx("spx-structure-dist", dist >= 0 ? "num-bull" : "num-bear")}>
+          {fmtPct(dist)}
+        </span>
+      )}
+    </div>
+  );
+}

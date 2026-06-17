@@ -811,6 +811,66 @@ body {
     @apply grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4 items-stretch;
   }
 
+  .spx-sniper-split {
+    @apply grid grid-cols-1 xl:grid-cols-[1fr_420px] 2xl:grid-cols-[1fr_460px] gap-4 items-stretch min-h-[720px];
+  }
+
+  .spx-sniper-right-rail {
+    @apply flex flex-col gap-3 min-h-0 xl:max-h-[calc(100vh-220px)];
+  }
+
+  .spx-structure-grid {
+    @apply grid grid-cols-1 gap-2 shrink-0;
+  }
+
+  .spx-structure-card {
+    @apply flex flex-col border bg-black/60 backdrop-blur-md overflow-hidden;
+  }
+
+  .spx-structure-card-header {
+    @apply flex items-center gap-2 px-3 py-2 border-b border-white/5;
+  }
+
+  .spx-structure-card-body {
+    @apply px-2 py-2 space-y-0.5 max-h-[140px] xl:max-h-[120px] overflow-y-auto;
+  }
+
+  .spx-structure-divider {
+    @apply my-1.5 border-t border-white/5;
+  }
+
+  .spx-structure-row {
+    @apply flex items-center justify-between gap-2 py-1 px-1.5 rounded-sm transition-colors;
+  }
+
+  .spx-structure-row-hot {
+    @apply bg-bull/5;
+  }
+
+  .spx-structure-label {
+    @apply text-[9px] font-mono uppercase tracking-wider text-grey-500;
+  }
+
+  .spx-structure-value {
+    @apply font-mono text-[10px] font-semibold tabular-nums;
+  }
+
+  .spx-structure-level {
+    @apply flex items-center gap-1.5 py-1 px-1.5 text-[9px] border-l-2 border-transparent;
+  }
+
+  .spx-structure-level-support { @apply border-l-emerald-500/50; }
+  .spx-structure-level-resistance { @apply border-l-rose-500/50; }
+  .spx-structure-level-neutral { @apply border-l-violet-500/40; }
+
+  .spx-structure-dist {
+    @apply font-mono text-[8px] tabular-nums ml-auto;
+  }
+
+  .spx-stat-pill-hot {
+    box-shadow: inset 0 0 20px rgba(139, 92, 246, 0.12);
+  }
+
   .spx-sniper-triple {
     @apply xl:grid-cols-[280px_1fr_300px];
   }
@@ -867,7 +927,7 @@ body {
   .spx-level-neutral { @apply border-l-2 border-grey-700; }
 
   .spx-sniper-chart-col {
-    @apply min-h-[640px];
+    @apply min-h-[640px] xl:min-h-[720px];
   }
 
   .spx-chart-frame {
@@ -906,8 +966,12 @@ body {
 
   /* ── SPX live commentary rail ── */
   .spx-commentary-rail {
-    @apply flex flex-col border border-purple/30 bg-black/55 backdrop-blur-md min-h-[400px] xl:min-h-[640px] xl:max-h-[640px] overflow-hidden;
+    @apply flex flex-col border border-purple/30 bg-black/55 backdrop-blur-md overflow-hidden flex-1 min-h-[280px];
     box-shadow: inset 0 0 50px rgba(139, 92, 246, 0.06);
+  }
+
+  .spx-commentary-rail-full {
+    @apply xl:min-h-0;
   }
 
   .spx-commentary-header {

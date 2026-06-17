@@ -80,12 +80,17 @@ export function SpxCommentaryRail({
   }, [live, desk, pullCommentary]);
 
   return (
-    <aside className="spx-commentary-rail">
+    <aside className="spx-commentary-rail spx-commentary-rail-full">
       <div className="spx-commentary-header">
         <span className={clsx("badge-live-dot", live && "animate-pulse")} />
-        <span className="font-mono text-[9px] tracking-[0.4em] uppercase text-purple-light">
-          Live Desk AI
-        </span>
+        <div>
+          <span className="font-mono text-[9px] tracking-[0.4em] uppercase text-purple-light block">
+            Live Desk AI
+          </span>
+          <span className="font-mono text-[7px] tracking-wider text-grey-500">
+            Claude · checks 15s · updates on tape moves (~55s min)
+          </span>
+        </div>
         {loading && (
           <span className="ml-auto font-mono text-[8px] text-grey-500 animate-pulse">
             Thinking…
