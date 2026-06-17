@@ -727,8 +727,7 @@ body {
   }
 
   .news-ticker-wrap {
-    @apply flex items-stretch border border-bull/25 bg-black/80 overflow-hidden;
-    box-shadow: inset 0 0 40px rgba(34, 197, 94, 0.04);
+    @apply flex items-stretch border border-white/[0.06] bg-[#050505] overflow-hidden;
   }
 
   .news-ticker-label {
@@ -777,6 +776,35 @@ body {
     box-shadow: 0 0 60px rgba(34, 197, 94, 0.1), inset 0 0 40px rgba(34, 197, 94, 0.04);
   }
 
+  .spx-sniper-command {
+    @apply relative overflow-hidden border border-white/[0.07] bg-[#050505] px-5 py-5 md:px-7 md:py-6;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+
+  .spx-sniper-command-grid {
+    @apply absolute inset-0 opacity-[0.12] pointer-events-none;
+    background:
+      linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .spx-command-live {
+    @apply inline-flex items-center gap-1.5 font-mono text-[9px] tracking-[0.25em] uppercase text-grey-600 px-2.5 py-1 border border-grey-800/80 bg-black/60;
+  }
+
+  .spx-command-live-on {
+    @apply text-grey-400 border-grey-700/80;
+  }
+
+  .spx-sniper-command .spx-sniper-title {
+    @apply font-anton text-4xl md:text-5xl leading-none tracking-wide uppercase;
+  }
+
+  .spx-stat-pill-dark {
+    @apply border bg-[#0a0a0a] px-2.5 py-1.5;
+  }
+
   .spx-sniper-header-inner {
     @apply relative z-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4;
   }
@@ -804,7 +832,7 @@ body {
   }
 
   .spx-stat-pill {
-    @apply border border-grey-800/80 bg-black/40 px-3 py-2 backdrop-blur-sm;
+    @apply border border-grey-900/90 bg-[#0a0a0a] px-3 py-2;
   }
 
   .spx-sniper-main {
@@ -1113,11 +1141,11 @@ body {
   }
 
   .spx-intel-strip {
-    @apply flex flex-wrap items-center gap-2 py-2 px-1 border border-white/5 bg-black/40 backdrop-blur-sm;
+    @apply flex flex-wrap items-center gap-2 py-2 px-1 border border-white/[0.06] bg-[#050505];
   }
 
   .spx-intel-chip {
-    @apply flex items-center gap-2 px-2.5 py-1.5 border border-grey-800/80 bg-black/50 rounded-sm;
+    @apply flex items-center gap-2 px-2.5 py-1.5 border border-grey-900/90 bg-[#0a0a0a] rounded-sm;
   }
 
   .spx-intel-chip-wide {
