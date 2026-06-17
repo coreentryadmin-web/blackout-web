@@ -8,9 +8,6 @@ import {
   SpxDarkPoolCard,
   SpxGexLadder,
   SpxIntelStrip,
-  SpxIvTermBars,
-  SpxNetPremSpark,
-  SpxOiChangeStrip,
   SpxUnifiedTape,
 } from "@/components/desk/SpxDeskPanels";
 
@@ -32,13 +29,6 @@ export function SpxDashboard() {
 
         <div className="spx-sniper-chart-col spx-center-stack">
           <SpxChart fill />
-          <div className="spx-center-panels">
-            <div className="spx-center-panels-row">
-              <SpxNetPremSpark desk={desk} live={live} />
-              <SpxIvTermBars desk={desk} live={live} />
-            </div>
-            <SpxOiChangeStrip desk={desk} live={live} />
-          </div>
         </div>
 
         <SpxCommentaryRail desk={desk} live={live} />
