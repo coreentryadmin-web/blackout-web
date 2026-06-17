@@ -28,6 +28,13 @@ function isEtWeekday(now: Date): boolean {
   return d >= 1 && d <= 5;
 }
 
+/** 7:00–10:30 AM ET weekdays — parallel lotto engine window. */
+export function isLottoWindow(now = new Date()): boolean {
+  if (!isEtWeekday(now)) return false;
+  const etMins = etMinutes(now);
+  return etMins >= PREMARKET_START_ET_MINS && etMins < etClock(10, 30);
+}
+
 /** 7:00–9:30 AM ET weekdays — desk tracks data; lotto playbook only (no BUY). */
 export function isPremarketPlanningWindow(now = new Date()): boolean {
   if (!isEtWeekday(now)) return false;

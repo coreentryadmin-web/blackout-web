@@ -25,6 +25,17 @@ import {
   isPremarketPlanningWindow,
 } from "@/lib/spx-play-session-guards";
 import { etClock, etMinutes } from "@/lib/spx-play-session-time";
+import {
+  lottoBuyStatusMessage,
+  lottoHoldStatusMessage,
+  lottoNoneCopy,
+  lottoPhaseKicker,
+  lottoWatchHeadline,
+  lottoWatchStatusMessage,
+  lottoWatchThesis,
+  lottoWinStatusMessage,
+  type LottoNoneReason,
+} from "@/lib/spx-lotto-copy";
 
 export type LottoPlayPayload = {
   phase: LottoPhase;
@@ -66,23 +77,8 @@ function isLottoExpired(now = new Date()): boolean {
   return etMinutes(now) >= etClock(playLottoExpireEtHour(), playLottoExpireEtMin());
 }
 
-function phaseLabel(phase: LottoPhase): string {
-  switch (phase) {
-    case "SCAN":
-      return "LOTTO SCAN";
-    case "WATCH":
-      return "LOTTO WATCH";
-    case "BUY":
-      return "BUY LOTTO";
-    case "HOLD":
-      return "LOTTO HOLD";
-    case "SELL":
-      return "LOTTO CLOSED";
-    case "INVALID":
-      return "LOTTO INVALID";
-    default:
-      return "NO LOTTO";
-  }
+function phaseLabel(phase: LottoPhase, isReversal = false): string {
+  return lottoPhaseKicker(phase, isReversal);
 }
 
 function legacyStatus(phase: LottoPhase): LottoPlayPayload["status"] {
@@ -100,7 +96,7 @@ function flowSummary(catalysts: string[]): string | null {
 function recordToPayload(rec: LottoRecord): LottoPlayPayload {
   return {
     phase: rec.phase,
-    status_label: phaseLabel(rec.phase),
+    status_label: phaseLabel(rec.phase, rec.is_reversal),
     direction: rec.direction,
     strike: rec.strike,
     contract_label: rec.contract_label,
@@ -126,10 +122,11 @@ function recordToPayload(rec: LottoRecord): LottoPlayPayload {
   };
 }
 
-function nonePayload(message: string): LottoPlayPayload {
+function nonePayload(reason: LottoNoneReason): LottoPlayPayload {
+  const copy = lottoNoneCopy(reason);
   return {
     phase: "NONE",
-    status_label: "NO LOTTO",
+    status_label: copy.kicker,
     direction: null,
     strike: null,
     contract_label: null,
@@ -142,12 +139,12 @@ function nonePayload(message: string): LottoPlayPayload {
     catalyst_summary: null,
     catalysts: [],
     confidence: 0,
-    headline: message,
-    thesis: message,
-    status_message: message,
+    headline: copy.headline,
+    thesis: copy.thesis,
+    status_message: copy.footnote ?? copy.thesis,
     status: "none",
     drivers: [],
-    footnote: null,
+    footnote: copy.footnote ?? null,
     flow_summary: null,
     sizing_note: LOTTO_SIZING_NOTE,
     spread_pct: null,
@@ -185,9 +182,8 @@ function buildWatchRecord(
       ? `+${confirmPts}pt from ${anchorLabel}`
       : `−${confirmPts}pt from ${anchorLabel}`;
 
-  const dirLabel = direction === "long" ? "CALL" : "PUT";
-  const headline = `${dirLabel} · Strike ${strike} · ±${targetPts}pt lotto`;
-  const thesis = `Morning thesis: ${catalyst.catalyst_summary}`;
+  const headline = lottoWatchHeadline(direction, strike, targetPts, isReversal);
+  const thesis = lottoWatchThesis(catalyst.catalyst_summary, isReversal);
 
   return {
     session_date: todayEt(),
@@ -210,9 +206,7 @@ function buildWatchRecord(
     confidence: catalyst.confidence,
     headline,
     thesis,
-    status_message: ticket.blocked
-      ? `${ticket.block_reason ?? "Chain estimate only"} · ${LOTTO_SIZING_NOTE}`
-      : `Watching for open confirm — ${LOTTO_SIZING_NOTE}`,
+    status_message: lottoWatchStatusMessage(isReversal, ticket.blocked, ticket.block_reason),
     open_anchor_price: null,
     entry_price: null,
     picked_at: new Date().toISOString(),
@@ -317,11 +311,11 @@ export async function evaluateSpxLotto(
   const afterCash = !beforeCash;
 
   if (!premarket && beforeCash) {
-    return nonePayload("No lottos today");
+    return nonePayload("off_hours");
   }
 
   if (isLottoExpired(now) && beforeCash) {
-    return nonePayload("No lottos today");
+    return nonePayload("off_hours");
   }
 
   let rec = await loadLottoRecord();
@@ -338,7 +332,7 @@ export async function evaluateSpxLotto(
       rec = {
         ...rec,
         phase: "SELL",
-        status_message: `LOTTO WIN — +${rec.target_pts}pt target reached`,
+        status_message: lottoWinStatusMessage(rec.target_pts),
       };
       await saveLottoRecord(rec);
       void logLottoPhase(rec, {
@@ -357,7 +351,7 @@ export async function evaluateSpxLotto(
         closed_at: new Date().toISOString(),
       });
       await clearLottoRecord();
-      return nonePayload("LOTTO STOPPED — −8pt from entry price");
+      return nonePayload("stopped");
     }
     return recordToPayload(rec);
   }
@@ -365,7 +359,7 @@ export async function evaluateSpxLotto(
   if (rec?.phase === "WATCH" && afterCash) {
     if (isLottoExpired(now)) {
       await clearLottoRecord();
-      return nonePayload("Lotto expired — no entry by 10:30 AM ET");
+      return nonePayload("expired");
     }
 
     if (openConfirm(rec, desk, technicals)) {
@@ -374,7 +368,7 @@ export async function evaluateSpxLotto(
         phase: "BUY",
         entry_price: desk.price,
         buy_at: new Date().toISOString(),
-        status_message: "BUY LOTTO — open confirmed thesis (separate from desk plays)",
+        status_message: lottoBuyStatusMessage(),
       };
       await saveLottoRecord(bought);
       void logLottoPhase(bought, {
@@ -382,7 +376,7 @@ export async function evaluateSpxLotto(
         entry_price: desk.price,
         buy_at: bought.buy_at,
       });
-      rec = { ...bought, phase: "HOLD" };
+      rec = { ...bought, phase: "HOLD", status_message: lottoHoldStatusMessage() };
       await saveLottoRecord(rec);
       void logLottoPhase(rec, { phase: "HOLD", entry_price: desk.price });
       return recordToPayload(rec);
@@ -392,10 +386,10 @@ export async function evaluateSpxLotto(
       const prev = rec.pick_count;
       await clearLottoRecord();
       if (prev >= playLottoMaxPicksPerDay()) {
-        return nonePayload("No lottos today");
+        return nonePayload("max_picks");
       }
       const reversal = await tryNewWatch(desk, prev + 1, true);
-      if (!reversal) return nonePayload("No lottos today — INVALIDATED pre-BUY (≥8pt vs open anchor)");
+      if (!reversal) return nonePayload("invalidated_no_reversal");
       await saveLottoRecord(reversal);
       void logLottoWatch(reversal);
       return recordToPayload(reversal);
@@ -410,18 +404,18 @@ export async function evaluateSpxLotto(
 
   if (!rec || rec.phase === "NONE" || rec.phase === "INVALID" || rec.phase === "SELL") {
     if (!premarket) {
-      return nonePayload(rec?.phase === "SELL" ? "Lotto closed for today" : "No lottos today");
+      return nonePayload(rec?.phase === "SELL" ? "closed_for_today" : "no_qualify");
     }
     const candidate = await tryNewWatch(desk, 1, false);
     if (!candidate) {
-      return nonePayload("No lottos today");
+      return nonePayload("no_qualify");
     }
     await saveLottoRecord(candidate);
     void logLottoWatch(candidate);
     return recordToPayload(candidate);
   }
 
-  return rec ? recordToPayload(rec) : nonePayload("No lottos today");
+  return rec ? recordToPayload(rec) : nonePayload("no_qualify");
 }
 
 /** @deprecated Lotto is independent — no-op for main BUY path. */
