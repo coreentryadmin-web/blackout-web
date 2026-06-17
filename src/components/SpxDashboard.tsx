@@ -6,7 +6,7 @@ import { clsx } from "clsx";
 import { fetchSpxDesk, fmtPct, fmtPrice, fmtPremium } from "@/lib/api";
 import { SpxSniperHeader } from "@/components/desk/SpxSniperHeader";
 import { SpxTechnicalsPanel } from "@/components/desk/SpxTechnicalsPanel";
-import { BenzingaNewsRail } from "@/components/desk/BenzingaNewsRail";
+import { SpxCommentaryRail } from "@/components/desk/SpxCommentaryRail";
 import { SpxChart } from "@/components/desk/SpxChart";
 
 const REFRESH_MS = 5_000;
@@ -79,7 +79,7 @@ export function SpxDashboard() {
         <div className="spx-sniper-chart-col">
           <SpxChart height={640} />
         </div>
-        <BenzingaNewsRail />
+        <SpxCommentaryRail desk={desk} live={live} />
       </div>
     </div>
   );

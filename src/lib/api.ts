@@ -172,8 +172,37 @@ export type SpxDeskPayload = {
   levels: SpxDeskLevel[];
 };
 
+export type SpxCommentaryResult = {
+  headline: string;
+  bias: "bullish" | "bearish" | "neutral";
+  body: string;
+  watch: string[];
+  changed: string[];
+  as_of: string;
+};
+
+/** Claude live desk commentary — requires auth */
+export async function requestSpxCommentary(
+  desk: SpxDeskPayload,
+  previous?: Partial<SpxDeskPayload> | null
+): Promise<SpxCommentaryResult> {
+  const res = await fetch("/api/market/spx/commentary", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ desk, previous }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? `Commentary → ${res.status}`);
+  }
+  const data = (await res.json()) as { commentary: SpxCommentaryResult };
+  return data.commentary;
+}
+
 /** Full SPX-Sniper desk — Polygon structure + UW dealer/flow + optional engine overlay */
 export const fetchSpxDesk = () => marketFetch<SpxDeskPayload>("/spx/desk");
+
 
 /** Website-first: Polygon indices + optional BlackOut intel overlay (GEX, levels, regime). */
 export async function fetchSpxState(): Promise<SpxState> {
