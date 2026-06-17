@@ -11,6 +11,7 @@ export type GexWall = {
   strike: number;
   net_gex: number;
   kind: "support" | "resistance";
+  distance_pts: number;
 };
 
 export function analyzeStrikeGexRows(rows: Record<string, unknown>[]): {
@@ -102,17 +103,44 @@ export function gammaRegime(spot: number, flip: number | null): string {
   return spot > flip ? "mean_revert" : "amplification";
 }
 
-export function topGexWalls(levels: GexStrikeLevel[], spot: number, limit = 5): GexWall[] {
+export function topGexWalls(levels: GexStrikeLevel[], spot: number, limit = 6): GexWall[] {
+  if (!levels.length || spot <= 0) return [];
+
+  const band = Math.max(spot * 0.012, 75);
+  const near = levels.filter((l) => Math.abs(l.strike - spot) <= band);
+  const pool =
+    near.length >= 3
+      ? near
+      : [...levels]
+          .sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot))
+          .slice(0, Math.max(limit * 4, 24));
+
+  const above = pool
+    .filter((l) => l.strike > spot)
+    .sort((a, b) => a.strike - b.strike || Math.abs(b.net_gex) - Math.abs(a.net_gex));
+  const below = pool
+    .filter((l) => l.strike <= spot)
+    .sort((a, b) => b.strike - a.strike || Math.abs(b.net_gex) - Math.abs(a.net_gex));
+
+  const half = Math.ceil(limit / 2);
   const walls: GexWall[] = [];
-  const above = levels.filter((l) => l.strike > spot).sort((a, b) => b.strike - a.strike);
-  const below = levels.filter((l) => l.strike <= spot).sort((a, b) => b.strike - a.strike);
 
-  for (const lv of above.slice(0, Math.ceil(limit / 2))) {
-    walls.push({ strike: lv.strike, net_gex: lv.net_gex, kind: "resistance" });
+  for (const lv of below.slice(0, half)) {
+    walls.push({
+      strike: lv.strike,
+      net_gex: lv.net_gex,
+      kind: "support",
+      distance_pts: Math.round((lv.strike - spot) * 100) / 100,
+    });
   }
-  for (const lv of below.slice(0, Math.floor(limit / 2))) {
-    walls.push({ strike: lv.strike, net_gex: lv.net_gex, kind: "support" });
+  for (const lv of above.slice(0, half)) {
+    walls.push({
+      strike: lv.strike,
+      net_gex: lv.net_gex,
+      kind: "resistance",
+      distance_pts: Math.round((lv.strike - spot) * 100) / 100,
+    });
   }
 
-  return walls.sort((a, b) => b.strike - a.strike).slice(0, limit);
+  return walls.sort((a, b) => b.strike - a.strike);
 }

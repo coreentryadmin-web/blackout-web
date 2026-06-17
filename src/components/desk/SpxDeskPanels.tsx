@@ -126,16 +126,23 @@ export function SpxDarkPoolCard({ desk, live }: DeskProps) {
   );
 }
 
-export function SpxGexLadder({ desk, live, refreshing }: DeskProps) {
+function tapeSideClass(t: { kind: string; side: string }) {
+  if (t.kind === "darkpool") return { tag: "DP", tagClass: "text-amber-300", labelClass: "text-zinc-200" };
+  if (t.side === "put") return { tag: "PUT", tagClass: "text-bear", labelClass: "text-bear" };
+  return { tag: "CALL", tagClass: "text-bull", labelClass: "text-bull" };
+}
+
+export function SpxGexLadder({ desk, refreshing }: DeskProps) {
   const walls = useStableArray(desk?.gex_walls ?? []);
   const gammaFlip = useStableValue(desk?.gamma_flip, (v) => v != null);
   const gammaRegime = useStableValue(desk?.gamma_regime, (v) => Boolean(v && v !== "unknown"));
+  const spot = desk?.price ?? null;
   const hasWalls = walls.length > 0;
 
   return (
     <Panel
       title="GEX Walls"
-      subtitle="0DTE gamma nodes"
+      subtitle={spot != null ? `0DTE nodes · spot ${fmtPrice(spot)}` : "0DTE gamma nodes"}
       accent="spx-panel-gold"
       className={clsx(refreshing && hasWalls && "spx-desk-panel-refreshing")}
     >
@@ -145,26 +152,42 @@ export function SpxGexLadder({ desk, live, refreshing }: DeskProps) {
         </p>
       ) : (
         <ul className="spx-desk-list spx-gex-ladder-list">
-          {walls.map((w) => (
-            <li
-              key={w.strike}
-              className={clsx(
-                "spx-desk-list-row border-l-2",
-                w.kind === "support" ? "border-l-emerald-500/50" : "border-l-rose-500/50"
-              )}
-            >
-              <span className="font-mono text-[10px] uppercase text-grey-500 w-16">{w.kind}</span>
-              <span className="font-mono text-sm text-white tabular-nums">{fmtPrice(w.strike)}</span>
-              <span
+          {walls.map((w) => {
+            const dist =
+              w.distance_pts ??
+              (spot != null ? Math.round((w.strike - spot) * 100) / 100 : null);
+            return (
+              <li
+                key={`${w.kind}-${w.strike}`}
                 className={clsx(
-                  "font-mono text-xs tabular-nums ml-auto",
-                  w.net_gex >= 0 ? "num-bull" : "num-bear"
+                  "spx-desk-list-row border-l-2",
+                  w.kind === "support" ? "border-l-emerald-500/50" : "border-l-rose-500/50"
                 )}
               >
-                {fmtPremium(w.net_gex)}
-              </span>
-            </li>
-          ))}
+                <span className="font-mono text-[10px] uppercase text-grey-500 w-16">{w.kind}</span>
+                <span className="font-mono text-sm text-white tabular-nums">{fmtPrice(w.strike)}</span>
+                {dist != null && (
+                  <span
+                    className={clsx(
+                      "font-mono text-[10px] tabular-nums",
+                      dist >= 0 ? "text-rose-300/80" : "text-emerald-300/80"
+                    )}
+                  >
+                    {dist >= 0 ? "+" : ""}
+                    {dist.toFixed(0)} pts
+                  </span>
+                )}
+                <span
+                  className={clsx(
+                    "font-mono text-xs tabular-nums ml-auto",
+                    w.net_gex >= 0 ? "num-bull" : "num-bear"
+                  )}
+                >
+                  {fmtPremium(w.net_gex)}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
       {gammaFlip != null && (
@@ -195,30 +218,40 @@ export function SpxUnifiedTape({ desk, refreshing }: DeskProps) {
         <p className="font-mono text-[11px] text-grey-500 py-2 spx-tape-empty">Tape quiet…</p>
       ) : (
         <ul className="spx-desk-list spx-tape-list">
-          {tape.map((t, i) => (
-            <li key={`${t.kind}-${t.time}-${t.label}-${i}`} className="spx-desk-list-row">
-              <span
-                className={clsx(
-                  "font-mono text-[9px] uppercase tracking-wider w-12 shrink-0",
-                  t.kind === "flow" ? "text-purple-light" : "text-amber-300"
-                )}
-              >
-                {t.kind === "flow" ? "FLOW" : "DP"}
-              </span>
-              <span className="font-mono text-[10px] text-grey-500 shrink-0">
-                {t.time
-                  ? new Date(t.time).toLocaleTimeString("en-US", {
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })
-                  : "—"}
-              </span>
-              <span className="font-mono text-xs text-white truncate">{t.label}</span>
-              <span className="font-mono text-xs tabular-nums ml-auto shrink-0 text-grey-200">
-                {fmtPremium(t.premium)}
-              </span>
-            </li>
-          ))}
+          {tape.map((t, i) => {
+            const side = tapeSideClass(t);
+            return (
+              <li key={`${t.kind}-${t.time}-${t.label}-${i}`} className="spx-desk-list-row">
+                <span
+                  className={clsx(
+                    "font-mono text-[9px] uppercase tracking-wider w-12 shrink-0 font-bold",
+                    side.tagClass
+                  )}
+                >
+                  {side.tag}
+                </span>
+                <span className="font-mono text-[10px] text-grey-500 shrink-0">
+                  {t.time
+                    ? new Date(t.time).toLocaleTimeString("en-US", {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })
+                    : "—"}
+                </span>
+                <span className={clsx("font-mono text-xs truncate font-semibold", side.labelClass)}>
+                  {t.label}
+                </span>
+                <span
+                  className={clsx(
+                    "font-mono text-xs tabular-nums ml-auto shrink-0",
+                    t.side === "put" ? "text-bear" : t.side === "call" ? "text-bull" : "text-grey-200"
+                  )}
+                >
+                  {fmtPremium(t.premium)}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
     </Panel>

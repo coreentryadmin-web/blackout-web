@@ -5,6 +5,7 @@ import {
   computeGammaFlip,
   gammaRegime,
   topGexWalls,
+  type GexStrikeLevel,
   type GexWall,
 } from "./gamma-desk";
 import {
@@ -47,6 +48,7 @@ import {
 import { fetchEngine } from "@/lib/engine";
 
 let lastGoodGexWalls: GexWall[] = [];
+let lastGoodStrikeLevels: GexStrikeLevel[] = [];
 let lastGoodGammaFlip: number | null = null;
 let lastGoodGammaRegime = "unknown";
 let lastGoodUnifiedTape: SpxTapeItem[] = [];
@@ -78,6 +80,7 @@ export type SpxFlowBrief = {
 
 export type SpxTapeItem = {
   kind: "flow" | "darkpool";
+  side: "call" | "put" | "neutral";
   time: string;
   label: string;
   premium: number;
@@ -201,10 +204,12 @@ function buildUnifiedTape(
   const items: SpxTapeItem[] = [];
 
   for (const f of flows) {
+    const isPut = f.option_type.toUpperCase().startsWith("P");
     items.push({
       kind: "flow",
+      side: isPut ? "put" : "call",
       time: f.alerted_at,
-      label: `${f.option_type} ${f.strike}`,
+      label: `${isPut ? "PUT" : "CALL"} ${f.strike}`,
       premium: f.premium,
       detail: `${f.ticker} · ${f.direction}`,
     });
@@ -213,6 +218,7 @@ function buildUnifiedTape(
   for (const p of darkPool?.prints ?? []) {
     items.push({
       kind: "darkpool",
+      side: "neutral",
       time: p.executed_at,
       label: p.strike > 0 ? `@ ${p.strike.toFixed(0)}` : "DP",
       premium: p.premium,
@@ -361,7 +367,13 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
   const hod = session.hod ?? (intel?.hod as number | null) ?? spxSnap.price;
 
   const gexAnalysis = analyzeStrikeGexRows(strikeRows.length ? strikeRows : []);
-  const flipLevels = gexAnalysis.ranked_levels.map((l) => ({
+  if (gexAnalysis.ranked_levels.length) {
+    lastGoodStrikeLevels = gexAnalysis.ranked_levels;
+  }
+  const levelsForWalls = gexAnalysis.ranked_levels.length
+    ? gexAnalysis.ranked_levels
+    : lastGoodStrikeLevels;
+  const flipLevels = levelsForWalls.map((l) => ({
     strike: l.strike,
     net_gex: l.net_gex,
   }));
@@ -370,9 +382,9 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     (intel?.gamma_flip as number | null) ?? computedFlip ?? lastGoodGammaFlip ?? null;
   const aboveFlip = gammaFlip != null ? price > gammaFlip : false;
   const gRegime = gammaRegime(price, gammaFlip);
-  const freshWalls = topGexWalls(gexAnalysis.ranked_levels, price, 5);
-  if (freshWalls.length) lastGoodGexWalls = freshWalls;
-  const walls = freshWalls.length ? freshWalls : lastGoodGexWalls;
+  const walls = topGexWalls(levelsForWalls, price, 6);
+  if (walls.length) lastGoodGexWalls = walls;
+  const finalWalls = walls.length ? walls : lastGoodGexWalls;
   if (gammaFlip != null) lastGoodGammaFlip = gammaFlip;
   const gammaRegimeLabel = gRegime !== "unknown" ? gRegime : lastGoodGammaRegime;
   if (gRegime !== "unknown") lastGoodGammaRegime = gRegime;
@@ -465,7 +477,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     gamma_flip: gammaFlip,
     above_gamma_flip: aboveFlip,
     gamma_regime: gammaRegimeLabel,
-    gex_walls: walls,
+    gex_walls: finalWalls,
     flow_0dte_call_premium:
       (intel?.flow_0dte_call_premium as number | null) ?? uwFlow?.call_premium ?? null,
     flow_0dte_put_premium:
