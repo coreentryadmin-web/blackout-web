@@ -13,6 +13,7 @@ export default async function FlowsPage() {
         variant="flows"
         title="Flow Feed"
         subtitle="Whale & dark pool alerts · Real-time tape"
+        deskMode
       >
         <FlowFeed />
       </PlatformShell>

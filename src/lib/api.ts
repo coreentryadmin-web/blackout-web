@@ -1,14 +1,19 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
-const API_KEY = process.env.DASHBOARD_API_SECRET ?? "";
+const INTEL_BASE = "/api/engine";
+const MARKET_BASE = "/api/market";
 
-async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const url = `${API_BASE}${path}${path.includes("?") ? "&" : "?"}key=${API_KEY}`;
-  const res = await fetch(url, {
+async function marketFetch<T>(path: string): Promise<T> {
+  const res = await fetch(`${MARKET_BASE}${path}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Market ${path} → ${res.status}`);
+  return res.json();
+}
+
+async function intelFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${INTEL_BASE}${path}`, {
     ...options,
     headers: { "Content-Type": "application/json", ...options?.headers },
-    next: { revalidate: 0 }, // always fresh
+    cache: "no-store",
   });
-  if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
+  if (!res.ok) throw new Error(`Intel ${path} → ${res.status}`);
   return res.json();
 }
 
@@ -16,6 +21,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
 export interface SpxState {
   available: boolean;
+  source?: "polygon" | "blackout_intel" | "merged";
   as_of: string;
   price: number;
   vwap: number;
@@ -63,7 +69,118 @@ export interface SpxState {
   };
 }
 
-export const fetchSpxState = () => apiFetch<SpxState>("/api/spx/state");
+function emptySpxState(): SpxState {
+  return {
+    available: false,
+    as_of: new Date().toISOString(),
+    price: 0,
+    vwap: 0,
+    lod: 0,
+    hod: 0,
+    vix: null,
+    vix_change_pct: 0,
+    spx_change_pct: 0,
+    above_vwap: false,
+    uw_iv_rank: null,
+    gex_net: null,
+    gex_king: null,
+    max_pain: null,
+    gamma_flip: null,
+    flow_0dte_call_premium: null,
+    flow_0dte_put_premium: null,
+    flow_0dte_net: null,
+    adv: null,
+    dec: null,
+    trin: null,
+    tick: null,
+    sector_bias: null,
+    sector_leaders: [],
+    sector_laggards: [],
+    tide_bias: null,
+    tide_call: null,
+    tide_put: null,
+    nope: null,
+    vol_regime: null,
+    chart_levels: {
+      regime: null,
+      vah: null,
+      val: null,
+      poc: null,
+      fib_382: null,
+      fib_50: null,
+      fib_618: null,
+      ema20: null,
+      ema50: null,
+      ema200: null,
+      onh: null,
+      onl: null,
+      pdh: null,
+      pdl: null,
+    },
+  };
+}
+
+/** Website-first: Polygon indices + optional BlackOut intel overlay (GEX, levels, regime). */
+export async function fetchSpxState(): Promise<SpxState> {
+  const [indicesRes, intelRes] = await Promise.allSettled([
+    marketFetch<{
+      spx?: { price: number; change_pct: number };
+      vix?: { price: number; change_pct: number };
+      as_of?: string;
+    }>("/indices"),
+    intelFetch<SpxState>("/spx/state"),
+  ]);
+
+  const base = emptySpxState();
+
+  if (indicesRes.status === "fulfilled" && indicesRes.value.spx) {
+    const { spx, vix, as_of } = indicesRes.value;
+    base.available = true;
+    base.source = "polygon";
+    base.as_of = as_of ?? new Date().toISOString();
+    base.price = spx?.price ?? 0;
+    base.spx_change_pct = spx?.change_pct ?? 0;
+    base.vix = vix?.price ?? null;
+    base.vix_change_pct = vix?.change_pct ?? 0;
+  }
+
+  if (intelRes.status === "fulfilled" && intelRes.value?.available) {
+    return { ...intelRes.value, source: "blackout_intel" };
+  }
+
+  if (intelRes.status === "fulfilled" && indicesRes.status === "fulfilled" && base.available) {
+    const intel = intelRes.value;
+    return {
+      ...base,
+      ...intel,
+      available: true,
+      source: "merged",
+      price: base.price || intel.price,
+      spx_change_pct: base.spx_change_pct || intel.spx_change_pct,
+      vix: base.vix ?? intel.vix,
+      vix_change_pct: base.vix_change_pct || intel.vix_change_pct,
+    };
+  }
+
+  return base;
+}
+
+export interface PlatformHealth {
+  market: { ok: boolean; polygon?: boolean; unusual_whales?: boolean };
+  intel: { ok: boolean; engine?: string };
+}
+
+export async function fetchPlatformHealth(): Promise<PlatformHealth> {
+  const [market, intel] = await Promise.allSettled([
+    fetch("/api/market/health", { cache: "no-store" }).then((r) => r.json()),
+    fetch("/api/engine/health", { cache: "no-store" }).then((r) => r.json()),
+  ]);
+
+  return {
+    market: market.status === "fulfilled" ? market.value : { ok: false },
+    intel: intel.status === "fulfilled" ? intel.value : { ok: false, engine: "offline" },
+  };
+}
 
 // ── Flows ─────────────────────────────────────────────────────────────────────
 
@@ -79,15 +196,30 @@ export interface FlowAlert {
   alerted_at: string;
 }
 
-export const fetchFlows = (params?: { limit?: number; ticker?: string; min_premium?: number }) => {
+/** Website-first: Unusual Whales direct. Engine DB is fallback only. */
+export async function fetchFlows(params?: {
+  limit?: number;
+  ticker?: string;
+  min_premium?: number;
+}) {
   const qs = new URLSearchParams();
   if (params?.limit) qs.set("limit", String(params.limit));
   if (params?.ticker) qs.set("ticker", params.ticker);
   if (params?.min_premium) qs.set("min_premium", String(params.min_premium));
-  return apiFetch<{ flows: FlowAlert[]; count: number }>(`/api/flows/recent?${qs}`);
-};
+  const query = qs.toString();
 
-// ── Night Hawk ────────────────────────────────────────────────────────────────
+  try {
+    return await marketFetch<{ flows: FlowAlert[]; count: number }>(
+      `/flows${query ? `?${query}` : ""}`
+    );
+  } catch {
+    return intelFetch<{ flows: FlowAlert[]; count: number }>(
+      `/flows/recent${query ? `?${query}` : ""}`
+    );
+  }
+}
+
+// ── Night Hawk (BlackOut intel only) ──────────────────────────────────────────
 
 export interface NightHawkPlay {
   ticker: string;
@@ -102,7 +234,7 @@ export interface NightHawkPlay {
 }
 
 export const fetchNightHawkPlays = () =>
-  apiFetch<{ plays: NightHawkPlay[] }>("/api/nighthawk/plays");
+  intelFetch<{ plays: NightHawkPlay[] }>("/nighthawk/plays");
 
 // ── Heatmap ───────────────────────────────────────────────────────────────────
 
@@ -112,26 +244,53 @@ export interface HeatmapData {
   as_of: string;
 }
 
-export const fetchHeatmap = () => apiFetch<HeatmapData>("/api/heatmap");
+/** Website-first: Polygon sector ETFs + movers. */
+export async function fetchHeatmap(): Promise<HeatmapData> {
+  try {
+    return await marketFetch<HeatmapData>("/heatmap");
+  } catch {
+    return intelFetch<HeatmapData>("/heatmap");
+  }
+}
 
-// ── Largo ─────────────────────────────────────────────────────────────────────
+// ── News ──────────────────────────────────────────────────────────────────────
+
+export interface NewsArticle {
+  id: string;
+  title: string;
+  teaser: string;
+  published: string;
+  tickers: string[];
+  url: string;
+}
+
+export const fetchMarketNews = () =>
+  marketFetch<{ articles: NewsArticle[] }>("/news");
+
+// ── Largo (BlackOut intel only) ───────────────────────────────────────────────
 
 export const queryLargo = (question: string, sessionId: string) =>
-  apiFetch<{ answer: string; session_id: string }>("/api/largo/query", {
+  intelFetch<{ answer: string; session_id: string }>("/largo/query", {
     method: "POST",
     body: JSON.stringify({ question, session_id: sessionId }),
   });
 
-// ── WebSocket ─────────────────────────────────────────────────────────────────
+// ── WebSocket — scored alerts from engine when live; market uses polling ─────
 
-export function createFlowSocket(onMessage: (alert: FlowAlert) => void): WebSocket {
-  const wsBase = API_BASE.replace(/^https/, "wss").replace(/^http/, "ws");
-  const ws = new WebSocket(`${wsBase}/ws/flows?key=${API_KEY}`);
+export function createFlowSocket(onMessage: (alert: FlowAlert) => void): WebSocket | null {
+  const engineBase = process.env.NEXT_PUBLIC_ENGINE_WS_URL ?? process.env.NEXT_PUBLIC_API_BASE ?? "";
+  if (!engineBase || typeof window === "undefined") return null;
+
+  const wsBase = engineBase.replace(/^https/, "wss").replace(/^http/, "ws");
+  const key = process.env.NEXT_PUBLIC_ENGINE_WS_KEY ?? "";
+  const ws = new WebSocket(`${wsBase}/ws/flows${key ? `?key=${key}` : ""}`);
   ws.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data);
       if (data.type !== "heartbeat") onMessage(data as FlowAlert);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   };
   return ws;
 }

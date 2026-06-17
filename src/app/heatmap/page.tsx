@@ -13,6 +13,7 @@ export default async function HeatmapPage() {
         variant="heatmap"
         title="Heatmaps"
         subtitle="Sector rotation · Institutional movers"
+        deskMode
       >
         <Heatmap />
       </PlatformShell>

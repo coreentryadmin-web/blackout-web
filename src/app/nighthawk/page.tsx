@@ -13,6 +13,7 @@ export default async function NightHawkPage() {
         variant="nighthawk"
         title="Night Hawk"
         subtitle="2–10 DTE swing plays · Full dossier intel"
+        deskMode
       >
         <NightHawkFeed />
       </PlatformShell>

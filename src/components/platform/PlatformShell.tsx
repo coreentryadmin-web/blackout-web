@@ -10,6 +10,7 @@ type PlatformShellProps = {
   subtitle?: string;
   imageSrc?: string;
   imageAlt?: string;
+  deskMode?: boolean;
   children: ReactNode;
 };
 
@@ -132,6 +133,7 @@ export function PlatformShell({
   subtitle,
   imageSrc,
   imageAlt,
+  deskMode,
   children,
 }: PlatformShellProps) {
   const theme = CONFIG[variant];
@@ -139,29 +141,35 @@ export function PlatformShell({
   return (
     <>
       <div className={clsx("platform-ambient", theme.ambient)} aria-hidden />
-      <main className="relative z-10 max-w-7xl mx-auto px-4 md:px-6 pt-24 pb-16">
-        <header className="mb-10">
-          {imageSrc && imageAlt ? (
+      <main className={clsx("relative z-10 max-w-7xl mx-auto px-4 md:px-6 pb-16", deskMode ? "pt-20" : "pt-24")}>
+        <header className={clsx(deskMode ? "mb-6" : "mb-10")}>
+          {!deskMode && (imageSrc && imageAlt ? (
             <HeroImage src={imageSrc} alt={imageAlt} variant={variant} />
           ) : (
             <HeroArt variant={variant} />
-          )}
+          ))}
 
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mt-8 platform-header-reveal">
+          <div
+            className={clsx(
+              "flex flex-col md:flex-row md:items-end md:justify-between gap-4 platform-header-reveal",
+              !deskMode && (imageSrc || !imageSrc) && "mt-8"
+            )}
+          >
             <div>
               <p className="font-mono text-[10px] tracking-[0.45em] text-grey-300 uppercase mb-2">
                 {theme.label}
               </p>
               <h1
                 className={clsx(
-                  "font-anton text-5xl md:text-7xl lg:text-8xl leading-[0.9] tracking-wide uppercase",
+                  "font-anton leading-[0.9] tracking-wide uppercase",
+                  deskMode ? "text-4xl md:text-5xl" : "text-5xl md:text-7xl lg:text-8xl",
                   theme.titleClass
                 )}
               >
                 {title}
               </h1>
               {subtitle && (
-                <p className="font-mono text-xs md:text-sm text-grey-200 mt-3 tracking-widest uppercase">
+                <p className="font-mono text-xs md:text-sm text-grey-200 mt-2 tracking-widest uppercase">
                   {subtitle}
                 </p>
               )}

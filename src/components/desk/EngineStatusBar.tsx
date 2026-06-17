@@ -1,0 +1,44 @@
+"use client";
+
+import useSWR from "swr";
+import { fetchPlatformHealth } from "@/lib/api";
+import { clsx } from "clsx";
+
+export function EngineStatusBar() {
+  const { data } = useSWR("platform-health", fetchPlatformHealth, { refreshInterval: 25_000 });
+
+  const marketOn = data?.market?.ok === true;
+  const intelOn = data?.intel?.ok === true;
+  const polygon = data?.market?.polygon;
+  const uw = data?.market?.unusual_whales;
+
+  return (
+    <div className="engine-status-bar">
+      <div className="flex items-center gap-3 flex-wrap">
+        <span
+          className={clsx(
+            "engine-status-dot",
+            marketOn ? "engine-status-online" : "engine-status-offline"
+          )}
+        />
+        <span className="font-mono text-[10px] tracking-[0.35em] uppercase text-grey-200">
+          BlackOut Data Desk
+        </span>
+        <span className="font-mono text-[10px] text-grey-500 hidden sm:inline">
+          {marketOn
+            ? `${polygon ? "Polygon" : ""}${polygon && uw ? " · " : ""}${uw ? "UW" : ""} live`
+            : "Add API keys on Railway (server-side)"}
+        </span>
+        {intelOn && (
+          <span className="font-mono text-[9px] tracking-widest uppercase text-bull/80 border border-bull/30 px-2 py-0.5">
+            + Intel layer
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-4 font-mono text-[9px] tracking-widest uppercase text-grey-500">
+        <span className={marketOn ? "text-bull/80" : ""}>Market APIs</span>
+        <span className={intelOn ? "text-purple-light/80" : ""}>BlackOut Engine</span>
+      </div>
+    </div>
+  );
+}

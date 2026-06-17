@@ -496,4 +496,254 @@ body {
     15% { opacity: 1; }
     100% { opacity: 0; transform: translate(-50%, -50%) scale(1.4); }
   }
+
+  /* ── Trading desk UI ── */
+  .desk-layout {
+    @apply relative;
+  }
+
+  .engine-status-bar {
+    @apply flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-2.5
+           border border-grey-800/80 bg-black/70 backdrop-blur-md;
+    box-shadow: inset 0 1px 0 rgba(34, 197, 94, 0.08);
+  }
+
+  .engine-status-dot {
+    @apply w-2 h-2 rounded-full shrink-0;
+  }
+
+  .engine-status-online {
+    @apply bg-bull;
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.9);
+    animation: engine-pulse 2s ease-in-out infinite;
+  }
+
+  .engine-status-offline {
+    @apply bg-bear;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+  }
+
+  .engine-status-missing {
+    @apply bg-grey-600;
+  }
+
+  @keyframes engine-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+
+  .desk-hero-ticker {
+    @apply relative overflow-hidden border border-bull/30 bg-black/80;
+    box-shadow: 0 0 80px rgba(34, 197, 94, 0.08), inset 0 0 60px rgba(34, 197, 94, 0.04);
+  }
+
+  .desk-hero-grid {
+    @apply absolute inset-0 opacity-30 pointer-events-none;
+    background:
+      linear-gradient(rgba(34, 197, 94, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34, 197, 94, 0.06) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(ellipse 90% 80% at 50% 50%, black, transparent);
+  }
+
+  .desk-ticker-chip {
+    @apply border border-grey-800 bg-grey-900/60 px-3 py-2.5 backdrop-blur-sm;
+  }
+
+  .desk-panel {
+    @apply relative overflow-hidden border bg-black/70 backdrop-blur-sm;
+  }
+
+  .desk-panel-green { @apply border-bull/25; box-shadow: inset 0 0 40px rgba(34, 197, 94, 0.05); }
+  .desk-panel-purple { @apply border-purple/30; box-shadow: inset 0 0 50px rgba(139, 92, 246, 0.07); }
+  .desk-panel-red { @apply border-bear/25; box-shadow: inset 0 0 40px rgba(239, 68, 68, 0.06); }
+  .desk-panel-neutral { @apply border-grey-800; }
+
+  .desk-panel-glow {
+    box-shadow: 0 0 30px rgba(139, 92, 246, 0.15), inset 0 0 40px rgba(139, 92, 246, 0.06);
+  }
+
+  .desk-panel-header {
+    @apply flex items-start justify-between gap-3 px-4 py-3 border-b border-grey-800/80;
+  }
+
+  .desk-panel-title {
+    @apply font-mono text-[10px] tracking-[0.35em] uppercase text-white;
+  }
+
+  .desk-panel-subtitle {
+    @apply font-mono text-[9px] tracking-widest uppercase text-grey-500 mt-1;
+  }
+
+  .desk-panel-body {
+    @apply p-4;
+  }
+
+  .desk-panel-scan {
+    @apply absolute inset-x-0 h-px top-0 pointer-events-none opacity-40;
+    background: linear-gradient(90deg, transparent, rgba(34, 197, 94, 0.8), transparent);
+    animation: desk-scan 4s linear infinite;
+  }
+
+  @keyframes desk-scan {
+    0% { transform: translateY(0); opacity: 0; }
+    10% { opacity: 0.5; }
+    100% { transform: translateY(280px); opacity: 0; }
+  }
+
+  .desk-meter {
+    @apply h-2 bg-grey-900 overflow-hidden;
+  }
+
+  .desk-meter-fill {
+    @apply h-full transition-all duration-700;
+  }
+
+  .desk-meter-bull {
+    @apply bg-gradient-to-r from-bull/40 to-bull;
+    box-shadow: 0 0 16px rgba(34, 197, 94, 0.5);
+  }
+
+  .desk-meter-bear {
+    @apply bg-gradient-to-r from-bear/40 to-bear;
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.5);
+  }
+
+  .desk-flow-split {
+    @apply h-3 bg-grey-900 flex overflow-hidden;
+  }
+
+  .desk-flow-calls {
+    @apply h-full bg-gradient-to-r from-bull/60 to-bull;
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
+    transition: width 0.6s ease;
+  }
+
+  .desk-metric {
+    @apply border border-grey-800/60 bg-grey-900/40 px-3 py-2;
+  }
+
+  .desk-level-row {
+    @apply flex items-center gap-3 px-2 py-2 border-l-2 border-transparent transition-colors;
+  }
+
+  .desk-level-support { @apply border-l-bull/40; }
+  .desk-level-resistance { @apply border-l-bear/40; }
+  .desk-level-near { @apply bg-bull/10 border-l-bull; }
+
+  .desk-flow-card {
+    @apply border border-purple/25 bg-purple/5 px-4 py-3 transition-all;
+  }
+
+  .desk-flow-card:hover {
+    @apply border-purple/50 bg-purple/10;
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.12);
+  }
+
+  .desk-flow-badge {
+    @apply text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 border;
+  }
+
+  .desk-flow-call { @apply border-bull/40 text-bull bg-bull/10; }
+  .desk-flow-put { @apply border-bear/40 text-bear bg-bear/10; }
+
+  .desk-thermal-cell {
+    @apply p-3 border text-center transition-transform hover:scale-[1.03];
+    opacity: calc(0.65 + var(--heat, 0.3) * 0.35);
+  }
+
+  .desk-thermal-bull {
+    @apply border-bull/30;
+    background: rgba(34, 197, 94, calc(0.08 + var(--heat, 0.2) * 0.25));
+  }
+
+  .desk-thermal-bear {
+    @apply border-bear/30;
+    background: rgba(239, 68, 68, calc(0.08 + var(--heat, 0.2) * 0.25));
+  }
+
+  .desk-mover-row {
+    @apply flex items-center gap-3 py-2 px-2 border-b border-grey-800/60 last:border-0 hover:bg-white/[0.02];
+  }
+
+  .desk-nighthawk-card {
+    @apply border border-bear/30 bg-gradient-to-br from-bear/10 to-black p-4;
+    box-shadow: inset 0 0 30px rgba(239, 68, 68, 0.06);
+  }
+
+  .desk-nh-direction {
+    @apply text-[9px] font-mono uppercase tracking-widest px-2 py-1 border;
+  }
+
+  .desk-nh-bull { @apply border-bull/40 text-bull; }
+  .desk-nh-bear { @apply border-bear/40 text-bear; }
+
+  .desk-mini-stat {
+    @apply border border-grey-800 bg-black/40 py-2 px-1;
+  }
+
+  .desk-largo-user {
+    @apply border-l-2 border-purple/50 pl-4 py-2;
+  }
+
+  .desk-largo-assistant {
+    @apply border-l-2 border-bull/40 pl-4 py-2 bg-bull/[0.03];
+  }
+
+  .desk-largo-input-row {
+    @apply flex gap-2 border-t border-grey-800 pt-4;
+  }
+
+  .desk-largo-input {
+    @apply flex-1 bg-black border border-grey-700 px-4 py-3 font-mono text-sm text-white
+           placeholder:text-grey-600 focus:outline-none focus:border-purple/60;
+  }
+
+  .desk-largo-send {
+    @apply px-6 py-3 bg-purple text-white font-syne text-xs tracking-[0.2em] uppercase font-bold
+           hover:bg-purple-light transition-colors disabled:opacity-40;
+  }
+
+  .desk-filter-bar {
+    @apply px-4 py-3 border border-grey-800 bg-black/60;
+  }
+
+  .desk-filter-btn {
+    @apply px-3 py-1.5 font-mono text-[10px] tracking-wider uppercase border border-grey-700
+           text-grey-400 hover:border-purple/50 hover:text-white transition-colors;
+  }
+
+  .desk-filter-btn-active {
+    @apply border-purple text-purple-light bg-purple/10;
+  }
+
+  .desk-filter-input {
+    @apply bg-black border border-grey-700 px-3 py-1.5 font-mono text-xs text-white
+           placeholder:text-grey-600 w-24 focus:outline-none focus:border-purple/50;
+  }
+
+  .desk-skeleton-grid {
+    @apply grid grid-cols-2 gap-4;
+  }
+
+  .news-ticker-wrap {
+    @apply flex items-stretch border border-bull/25 bg-black/80 overflow-hidden;
+    box-shadow: inset 0 0 40px rgba(34, 197, 94, 0.04);
+  }
+
+  .news-ticker-label {
+    @apply flex items-center gap-2 shrink-0 px-4 py-3 border-r border-grey-800 bg-grey-900/80;
+  }
+
+  .news-ticker-viewport {
+    @apply flex-1 min-w-0 py-3;
+  }
+
+  .news-ticker-track {
+    @apply inline-flex items-center gap-10 whitespace-nowrap px-4;
+  }
+
+  .news-ticker-item {
+    @apply inline-flex items-center gap-3 shrink-0 max-w-[min(100vw,520px)] font-mono text-[11px] tracking-wide;
+  }
 }
