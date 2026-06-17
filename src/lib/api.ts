@@ -137,40 +137,8 @@ export type SpxDeskLevel = {
   distance_pct: number | null;
 };
 
-export type SpxDeskPayload = {
-  available: boolean;
-  as_of: string;
-  source: string;
-  price: number;
-  spx_change_pct: number;
-  vix: number | null;
-  vix_change_pct: number;
-  above_vwap: boolean;
-  lod: number | null;
-  hod: number | null;
-  vwap: number | null;
-  pdh: number | null;
-  pdl: number | null;
-  ema20: number | null;
-  ema50: number | null;
-  ema200: number | null;
-  sma50: number | null;
-  sma200: number | null;
-  tick: number | null;
-  trin: number | null;
-  gex_net: number | null;
-  gex_king: number | null;
-  max_pain: number | null;
-  gamma_flip: number | null;
-  flow_0dte_call_premium: number | null;
-  flow_0dte_put_premium: number | null;
-  flow_0dte_net: number | null;
-  tide_bias: string | null;
-  nope: number | null;
-  uw_iv_rank: number | null;
-  regime: string;
-  levels: SpxDeskLevel[];
-};
+export type { SpxDeskPayload } from "@/lib/providers/spx-desk";
+import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 
 export type SpxCommentaryResult = {
   headline: string;

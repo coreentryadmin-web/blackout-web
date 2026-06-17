@@ -239,3 +239,48 @@ export async function fetchIndexVwap(symbol: string, timespan: "minute" | "day" 
   });
 }
 
+export type VixTermSnapshot = {
+  vix9d: number | null;
+  vix3m: number | null;
+  structure: "contango" | "backwardation" | "flat" | "unknown";
+  detail: string;
+};
+
+export function computeVixTermStructure(
+  spot: number | null,
+  near: number | null,
+  far: number | null
+): VixTermSnapshot {
+  if (spot == null || near == null) {
+    return { vix9d: near, vix3m: far, structure: "unknown", detail: "Insufficient VIX term data" };
+  }
+  const spreadNear = near - spot;
+  if (far != null) {
+    const spreadFar = far - spot;
+    if (spreadNear > 0.5 && spreadFar > spreadNear) {
+      return {
+        vix9d: near,
+        vix3m: far,
+        structure: "contango",
+        detail: `Contango — near +${spreadNear.toFixed(2)}, far +${spreadFar.toFixed(2)}`,
+      };
+    }
+    if (spreadNear < -0.5) {
+      return {
+        vix9d: near,
+        vix3m: far,
+        structure: "backwardation",
+        detail: `Backwardation — front below spot`,
+      };
+    }
+    return { vix9d: near, vix3m: far, structure: "flat", detail: `Flat — spot ${spot.toFixed(2)}` };
+  }
+  if (spreadNear > 0.5) {
+    return { vix9d: near, vix3m: far, structure: "contango", detail: `Contango +${spreadNear.toFixed(2)}` };
+  }
+  if (spreadNear < -0.5) {
+    return { vix9d: near, vix3m: far, structure: "backwardation", detail: `Backwardation ${spreadNear.toFixed(2)}` };
+  }
+  return { vix9d: near, vix3m: far, structure: "flat", detail: `Flat term` };
+}
+

@@ -6,7 +6,7 @@ import { EmbedFrame } from "@/components/embeds/EmbedFrame";
 const SPX_SYMBOL = "CBOE:SPX";
 
 /** SPX-only chart — symbol locked, remounts clean so TV cannot stick on AAPL */
-export function SpxChart({ height = 620 }: { height?: number }) {
+export function SpxChart({ height, fill }: { height?: number; fill?: boolean }) {
   const src = useMemo(() => {
     const config = {
       autosize: true,
@@ -41,7 +41,7 @@ export function SpxChart({ height = 620 }: { height?: number }) {
         src={src}
         title="SPX Live Chart"
         className="w-full border-0"
-        style={{ height }}
+        style={fill ? { height: "100%", minHeight: "calc(100vh - 280px)" } : { height: height ?? 620 }}
         allowTransparency
         loading="eager"
       />

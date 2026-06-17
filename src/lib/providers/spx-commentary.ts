@@ -80,15 +80,36 @@ function deskContext(desk: SpxDeskPayload): Record<string, unknown> {
     sma200: desk.sma200,
     tick: desk.tick,
     trin: desk.trin,
+    add: desk.add,
     gex_net: desk.gex_net,
     gex_king: desk.gex_king,
     max_pain: desk.max_pain,
     gamma_flip: desk.gamma_flip,
+    gamma_regime: desk.gamma_regime,
+    above_gamma_flip: desk.above_gamma_flip,
+    gex_walls: desk.gex_walls?.slice(0, 5),
+    flow_0dte_call: desk.flow_0dte_call_premium,
+    flow_0dte_put: desk.flow_0dte_put_premium,
     flow_0dte_net: desk.flow_0dte_net,
     tide_bias: desk.tide_bias,
+    tide_call: desk.tide_call_premium,
+    tide_put: desk.tide_put_premium,
     nope: desk.nope,
+    nope_net_delta: desk.nope_net_delta,
     iv_rank: desk.uw_iv_rank,
     regime: desk.regime,
+    vix_term: desk.vix_term,
+    dark_pool: desk.dark_pool
+      ? {
+          bias: desk.dark_pool.bias,
+          total: desk.dark_pool.total_premium,
+          prints: desk.dark_pool.prints.length,
+        }
+      : null,
+    recent_flows: desk.spx_flows?.slice(0, 5),
+    tape_highlights: desk.unified_tape?.slice(0, 5),
+    oi_changes: desk.oi_changes?.slice(0, 4),
+    macro_today: desk.macro_events?.slice(0, 3),
     key_levels: desk.levels?.slice(0, 8),
   };
 }
@@ -132,7 +153,7 @@ Respond with ONLY valid JSON (no markdown fences):
 {
   "headline": "One punchy line — max 12 words",
   "bias": "bullish" | "bearish" | "neutral",
-  "body": "3-5 short bullet lines separated by \\n. Cover: price vs VWAP, dealer/GEX context, 0DTE flow bias, what changed, what to expect next 15-30 min. Mentor voice — direct, no hype, no disclaimers.",
+  "body": "3-5 short bullet lines separated by \\n. Cover: price vs VWAP, dealer/GEX/dark pool context, 0DTE flow bias, recent tape, what changed, what to expect next 15-30 min. Mentor voice — direct, no hype, no disclaimers.",
   "watch": ["level or trigger 1", "level or trigger 2", "level or trigger 3"],
   "changed": ["what shifted 1", "what shifted 2"]
 }

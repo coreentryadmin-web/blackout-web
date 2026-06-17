@@ -769,7 +769,7 @@ body {
   }
 
   .spx-sniper-desk {
-    @apply space-y-4;
+    @apply space-y-3 w-full max-w-none;
   }
 
   .spx-sniper-header {
@@ -816,21 +816,22 @@ body {
   }
 
   .spx-sniper-triple {
-    @apply grid grid-cols-1 gap-4 items-stretch;
-    @apply xl:grid-cols-[minmax(280px,22%)_1fr_minmax(380px,30%)] 2xl:grid-cols-[320px_1fr_440px];
-    min-height: calc(100vh - 260px);
+    @apply grid grid-cols-1 gap-3 items-stretch w-full max-w-none;
+    @apply xl:grid-cols-[minmax(280px,17vw)_minmax(0,1fr)_minmax(400px,27vw)];
+    @apply 2xl:grid-cols-[minmax(300px,16vw)_minmax(0,1fr)_minmax(440px,28vw)];
+    min-height: calc(100vh - 240px);
   }
 
   .spx-sniper-left-rail {
-    @apply flex flex-col min-h-0 h-full order-2 xl:order-1;
+    @apply flex flex-col min-h-0 h-full order-2 xl:order-1 xl:pr-0;
   }
 
   .spx-sniper-triple .spx-sniper-chart-col {
-    @apply order-1 xl:order-2 min-h-[520px] xl:min-h-0 xl:h-full;
+    @apply order-1 xl:order-2 flex flex-col min-h-[520px] xl:min-h-0 xl:h-full min-w-0;
   }
 
   .spx-sniper-triple .spx-commentary-rail-desk {
-    @apply order-3 xl:order-3;
+    @apply order-3 xl:order-3 xl:pl-0;
   }
 
   .spx-sniper-right-rail {
@@ -985,7 +986,20 @@ body {
   }
 
   .spx-chart-frame {
-    @apply h-full border-bull/30 bg-black/45 backdrop-blur-sm;
+    @apply h-full min-h-0 flex flex-col border-bull/30 bg-black/45 backdrop-blur-sm;
+  }
+
+  .spx-sniper-triple .spx-chart-frame {
+    @apply flex-1;
+  }
+
+  .spx-sniper-triple .spx-chart-frame .embed-frame-body {
+    @apply flex-1 min-h-0;
+  }
+
+  .spx-sniper-triple .spx-chart-frame iframe {
+    @apply h-full w-full;
+    min-height: calc(100vh - 280px);
   }
 
   .news-rail {
@@ -1025,7 +1039,7 @@ body {
   }
 
   .spx-commentary-rail-full {
-    @apply xl:min-h-0 xl:h-full xl:max-h-[calc(100vh-260px)];
+    @apply xl:min-h-0 xl:h-full xl:max-h-[calc(100vh-240px)];
   }
 
   .spx-commentary-rail-desk {
@@ -1080,6 +1094,106 @@ body {
 
   .spx-commentary-watch li {
     @apply font-mono text-xs text-purple-light/95 leading-relaxed;
+  }
+
+  .spx-left-stack {
+    @apply flex flex-col gap-3 min-h-0 overflow-y-auto xl:max-h-[calc(100vh-200px)] xl:overflow-y-auto;
+  }
+
+  .spx-center-stack {
+    @apply flex flex-col gap-3 min-h-0 min-w-0;
+  }
+
+  .spx-center-panels {
+    @apply flex flex-col gap-3 shrink-0;
+  }
+
+  .spx-center-panels-row {
+    @apply grid grid-cols-1 lg:grid-cols-2 gap-3;
+  }
+
+  .spx-intel-strip {
+    @apply flex flex-wrap items-center gap-2 py-2 px-1 border border-white/5 bg-black/40 backdrop-blur-sm;
+  }
+
+  .spx-intel-chip {
+    @apply flex items-center gap-2 px-2.5 py-1.5 border border-grey-800/80 bg-black/50 rounded-sm;
+  }
+
+  .spx-intel-chip-wide {
+    @apply min-w-[120px] max-w-[220px];
+  }
+
+  .spx-sector-chip {
+    @apply min-w-[72px];
+  }
+
+  .spx-intel-label {
+    @apply font-mono text-[8px] tracking-[0.25em] uppercase text-grey-500;
+  }
+
+  .spx-desk-panel {
+    @apply flex flex-col border bg-black/55 backdrop-blur-md overflow-hidden;
+  }
+
+  .spx-panel-amber { @apply border-amber-500/35; box-shadow: inset 0 0 30px rgba(251, 191, 36, 0.05); }
+  .spx-panel-gold { @apply border-yellow-500/30; box-shadow: inset 0 0 30px rgba(234, 179, 8, 0.05); }
+  .spx-panel-purple { @apply border-purple/35; box-shadow: inset 0 0 30px rgba(139, 92, 246, 0.06); }
+  .spx-panel-cyan { @apply border-cyan-500/35; box-shadow: inset 0 0 30px rgba(34, 211, 238, 0.05); }
+  .spx-panel-teal { @apply border-teal-500/35; }
+  .spx-panel-violet { @apply border-violet-500/35; }
+  .spx-panel-rose { @apply border-rose-500/30; }
+
+  .spx-desk-panel-header {
+    @apply flex items-center gap-2 px-3 py-2.5 border-b border-white/5 bg-white/[0.02];
+  }
+
+  .spx-desk-panel-body {
+    @apply px-3 py-2.5;
+  }
+
+  .spx-desk-list {
+    @apply space-y-1 list-none;
+  }
+
+  .spx-desk-list-row {
+    @apply flex items-center gap-2 py-1.5 px-1 rounded-sm;
+  }
+
+  .spx-desk-bias-pill {
+    @apply text-[9px] font-syne uppercase tracking-wider px-2 py-0.5 border;
+  }
+
+  .spx-tape-panel .spx-tape-list {
+    @apply max-h-[200px] overflow-y-auto;
+  }
+
+  .spx-sparkline {
+    @apply h-12 text-teal-400;
+  }
+
+  .spx-iv-bars {
+    @apply flex items-end justify-between gap-1 h-20;
+  }
+
+  .spx-iv-bar-col {
+    @apply flex flex-col items-center flex-1 h-full justify-end;
+  }
+
+  .spx-iv-bar-fill {
+    @apply w-full bg-violet-500/50 rounded-t min-h-[4px];
+  }
+
+  .spx-odte-bar-wrap {
+    @apply py-1;
+  }
+
+  .spx-odte-bar {
+    @apply h-2 rounded-full bg-bear/30 overflow-hidden flex;
+  }
+
+  .spx-odte-bar-call {
+    @apply h-full bg-bull/70 transition-all duration-500;
   }
 
   @keyframes news-rail-scroll {

@@ -2,7 +2,8 @@
 
 import { motion } from "framer-motion";
 import { clsx } from "clsx";
-import type { SpxDeskPayload } from "@/lib/api";
+import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
+import { OdteFlowBar } from "@/components/desk/SpxDeskPanels";
 import { fmtPct, fmtPremium, fmtPrice } from "@/lib/api";
 
 type BlockProps = { desk?: SpxDeskPayload; live?: boolean };
@@ -53,6 +54,8 @@ export function SpxStructureBlocks({
         <Row label="EMA 20" value={live ? fmtPrice(desk?.ema20 ?? null) : "—"} tone="orange" />
         <Row label="EMA 50" value={live ? fmtPrice(desk?.ema50 ?? null) : "—"} tone="purple" />
         <Row label="EMA 200" value={live ? fmtPrice(desk?.ema200 ?? null) : "—"} tone="blue" />
+        <Row label="SMA 50" value={live ? fmtPrice(desk?.sma50 ?? null) : "—"} tone="orange" />
+        <Row label="SMA 200" value={live ? fmtPrice(desk?.sma200 ?? null) : "—"} tone="blue" />
       </StructureCard>
 
       <StructureCard theme="dealer" title="Dealer Desk" subtitle="GEX · Flow" large={isLeftRail}>
@@ -74,7 +77,24 @@ export function SpxStructureBlocks({
           value={live ? (desk?.tide_bias ?? "—") : "—"}
           tone={desk?.tide_bias === "bullish" ? "bull" : desk?.tide_bias === "bearish" ? "bear" : "neutral"}
         />
+        <Row
+          label="Tide Call $"
+          value={live && desk?.tide_call_premium != null ? fmtPremium(desk.tide_call_premium) : "—"}
+          tone="bull"
+        />
+        <Row
+          label="Tide Put $"
+          value={live && desk?.tide_put_premium != null ? fmtPremium(desk.tide_put_premium) : "—"}
+          tone="bear"
+        />
         <Row label="NOPE" value={live && desk?.nope != null ? desk.nope.toFixed(2) : "—"} tone="teal" />
+        <Row
+          label="NOPE Δ"
+          value={live && desk?.nope_net_delta != null ? desk.nope_net_delta.toFixed(2) : "—"}
+          tone="teal"
+        />
+        <div className="spx-structure-divider" />
+        <OdteFlowBar desk={desk} live={live} />
         <Row
           label="IV Rank"
           value={live && desk?.uw_iv_rank != null ? String(desk.uw_iv_rank) : "—"}
@@ -92,6 +112,11 @@ export function SpxStructureBlocks({
           label="TRIN"
           value={live && desk?.trin != null ? desk.trin.toFixed(2) : "—"}
           tone={(desk?.trin ?? 1) < 1 ? "bull" : "bear"}
+        />
+        <Row
+          label="ADD"
+          value={live && desk?.add != null ? String(Math.round(desk.add)) : "—"}
+          tone={(desk?.add ?? 0) >= 0 ? "bull" : "bear"}
         />
         <Row
           label="Regime"

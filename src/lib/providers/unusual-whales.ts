@@ -214,3 +214,164 @@ export async function fetchMarketFlowAlertRows(params?: {
   const data = await uwGet<unknown>("/api/option-trades/flow-alerts", query);
   return extractRows(data).map((raw) => ({ raw, flow: rowToFlow(raw) }));
 }
+
+export type DarkPoolPrint = {
+  strike: number;
+  premium: number;
+  side: string;
+  executed_at: string;
+};
+
+export type DarkPoolSnapshot = {
+  prints: DarkPoolPrint[];
+  total_premium: number;
+  call_premium: number;
+  put_premium: number;
+  bias: string;
+  pcr: number | null;
+  detail: string;
+};
+
+function bucketPrice(price: number, step = 5): number {
+  return Math.round(Math.round(price / step) * step * 100) / 100;
+}
+
+function darkPoolBias(call: number, put: number, total: number): string {
+  if (total <= 0) return "neutral";
+  if (call >= total * 0.65) return "bullish";
+  if (put >= total * 0.65) return "bearish";
+  if (Math.abs(call - put) < total * 0.15) return "mixed";
+  return call > put ? "bullish" : "bearish";
+}
+
+/** GET /api/darkpool/{ticker} — large institutional prints */
+export async function fetchUwDarkPool(
+  ticker = "SPX",
+  opts?: { limit?: number; min_premium?: number }
+): Promise<DarkPoolSnapshot | null> {
+  const params: Record<string, string | number> = {
+    limit: Math.min(opts?.limit ?? 20, 100),
+  };
+  if (opts?.min_premium) params.min_premium = opts.min_premium;
+
+  const data = await uwGetSafe<unknown>(`/api/darkpool/${ticker.toUpperCase()}`, params);
+  const rows = extractRows(data);
+  if (!rows.length) {
+    return {
+      prints: [],
+      total_premium: 0,
+      call_premium: 0,
+      put_premium: 0,
+      bias: "neutral",
+      pcr: null,
+      detail: "No large dark pool prints today",
+    };
+  }
+
+  const today = todayIso();
+  const prints: DarkPoolPrint[] = [];
+  let callPrem = 0;
+  let putPrem = 0;
+  let total = 0;
+
+  for (const row of rows) {
+    const execAt = String(row.executed_at ?? row.date ?? "");
+    if (execAt && !execAt.startsWith(today)) continue;
+
+    const premium = Number(row.premium ?? row.size ?? row.notional ?? 0);
+    if (premium <= 0) continue;
+
+    const strikeRaw = Number(row.strike ?? row.price ?? row.ref_price ?? 0);
+    const strike = Number.isFinite(strikeRaw) ? bucketPrice(strikeRaw) : 0;
+    const side = String(row.side ?? row.direction ?? "unknown").toLowerCase();
+    const optType = String(row.type ?? row.option_type ?? "").toLowerCase();
+
+    prints.push({
+      strike,
+      premium,
+      side,
+      executed_at: execAt.slice(0, 19) || new Date().toISOString(),
+    });
+    total += premium;
+    if (optType.includes("call")) callPrem += premium;
+    else if (optType.includes("put")) putPrem += premium;
+  }
+
+  const bias = darkPoolBias(callPrem, putPrem, total);
+  return {
+    prints: prints.slice(0, 20),
+    total_premium: total,
+    call_premium: callPrem,
+    put_premium: putPrem,
+    bias,
+    pcr: callPrem > 0 ? Math.round((putPrem / callPrem) * 100) / 100 : null,
+    detail: prints.length ? `${prints.length} print(s) · $${(total / 1_000_000).toFixed(2)}M` : "No prints today",
+  };
+}
+
+/** Full strike GEX ladder — GET /api/stock/{t}/spot-exposures/strike */
+export async function fetchUwSpotExposuresByStrike(ticker = "SPX", limit = 500) {
+  const data = await uwGetSafe<unknown>(`/api/stock/${ticker}/spot-exposures/strike`, { limit });
+  return extractRows(data);
+}
+
+/** Per-ticker flow — GET /api/stock/{t}/flow-alerts */
+export async function fetchUwTickerFlowAlerts(ticker = "SPX", limit = 15) {
+  const data = await uwGetSafe<unknown>(`/api/stock/${ticker.toUpperCase()}/flow-alerts`, {
+    limit: Math.min(limit, 50),
+  });
+  return extractRows(data).map((raw) => rowToFlow(raw));
+}
+
+export type NetPremTick = { time: string; net: number };
+
+/** Tick-level net premium velocity */
+export async function fetchUwNetPremTicks(ticker = "SPY"): Promise<NetPremTick[]> {
+  const data = await uwGetSafe<unknown>(`/api/stock/${ticker.toUpperCase()}/net-prem-ticks`, {});
+  const rows = extractRows(data);
+  return rows
+    .map((r) => ({
+      time: String(r.timestamp ?? r.time ?? r.t ?? ""),
+      net: Number(r.net_premium ?? r.net ?? r.value ?? 0),
+    }))
+    .filter((t) => t.time)
+    .slice(-40);
+}
+
+export type OiChangeItem = {
+  strike: number;
+  oi_change: number;
+  kind: string;
+};
+
+/** Intraday OI changes by strike */
+export async function fetchUwOiChange(ticker = "SPX"): Promise<OiChangeItem[]> {
+  const data = await uwGetSafe<unknown>(`/api/stock/${ticker.toUpperCase()}/oi-change`, {});
+  return extractRows(data)
+    .map((r) => ({
+      strike: Number(r.strike ?? 0),
+      oi_change: Number(r.oi_change ?? r.change ?? r.diff ?? 0),
+      kind: String(r.type ?? r.option_type ?? "unknown").toLowerCase(),
+    }))
+    .filter((r) => r.strike > 0 && r.oi_change !== 0)
+    .sort((a, b) => Math.abs(b.oi_change) - Math.abs(a.oi_change))
+    .slice(0, 12);
+}
+
+export type IvTermPoint = { expiry: string; iv: number };
+
+/** IV term structure curve */
+export async function fetchUwIvTermStructure(ticker = "SPX"): Promise<IvTermPoint[]> {
+  const data = await uwGetSafe<unknown>(
+    `/api/stock/${ticker.toUpperCase()}/implied-volatility-term-structure`,
+    {}
+  );
+  return extractRows(data)
+    .map((r) => ({
+      expiry: String(r.expiry ?? r.expiration ?? r.date ?? "").slice(0, 10),
+      iv: Number(r.iv ?? r.implied_volatility ?? r.volatility ?? 0),
+    }))
+    .filter((p) => p.expiry && p.iv > 0)
+    .slice(0, 8);
+}
+
