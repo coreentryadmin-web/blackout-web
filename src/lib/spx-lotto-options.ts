@@ -1,7 +1,9 @@
 import { polygonConfigured } from "@/lib/providers/config";
 import { todayEtYmd } from "@/lib/providers/spx-session";
-import { gradeRank } from "@/lib/spx-play-config";
-import { effectiveChainMaxSpreadPct } from "@/lib/spx-play-chain";
+import { playLottoChainMaxSpreadPct, playLottoTargetPts } from "@/lib/spx-play-config";
+import { suggestPlayStrike } from "@/lib/spx-play-intel";
+import type { SpxPlayDirection } from "@/lib/spx-signals";
+import type { OptionTicket } from "@/lib/spx-play-options";
 
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
 const KEY = process.env.POLYGON_API_KEY ?? "";
@@ -10,34 +12,24 @@ type ChainContract = {
   details?: {
     strike_price?: number;
     contract_type?: string;
-    expiration_date?: string;
     ticker?: string;
   };
-  greeks?: { delta?: number; gamma?: number };
+  greeks?: { delta?: number };
   open_interest?: number;
   day?: { volume?: number };
-  last_quote?: { bid?: number; ask?: number; midpoint?: number };
-  implied_volatility?: number;
+  last_quote?: { bid?: number; ask?: number };
 };
 
-export type OptionTicket = {
-  underlying: string;
-  strike: number;
-  option_type: "call" | "put";
-  contract_label: string;
-  ticker: string | null;
-  bid: number | null;
-  ask: number | null;
-  mid: number | null;
-  spread_pct: number | null;
-  delta: number | null;
-  open_interest: number | null;
-  premium_range: string;
-  blocked: boolean;
-  block_reason: string | null;
-};
+let lottoTicketCache: {
+  at: number;
+  spot: number;
+  dir: SpxPlayDirection;
+  ticket: OptionTicket;
+} | null = null;
 
-let ticketCache: { at: number; spot: number; dir: string; grade: string; ticket: OptionTicket } | null = null;
+function round5(n: number): number {
+  return Math.round(n / 5) * 5;
+}
 
 async function fetchChainUrl(url: string): Promise<{ results?: ChainContract[]; next_url?: string } | null> {
   if (!polygonConfigured()) return null;
@@ -53,7 +45,7 @@ async function fetchChainUrl(url: string): Promise<{ results?: ChainContract[]; 
 }
 
 async function fetchOdteContracts(spot: number, expiry: string): Promise<ChainContract[]> {
-  const band = Math.max(spot * 0.012, 60);
+  const band = Math.max(spot * 0.02, playLottoTargetPts() + 15);
   const lo = Math.floor(spot - band);
   const hi = Math.ceil(spot + band);
   const params = new URLSearchParams({
@@ -76,33 +68,30 @@ async function fetchOdteContracts(spot: number, expiry: string): Promise<ChainCo
   return out;
 }
 
-function deltaBand(grade: string): { min: number; max: number; target: number } {
-  if (gradeRank(grade) >= 4) return { min: 0.45, max: 0.55, target: 0.5 };
-  if (gradeRank(grade) >= 3) return { min: 0.35, max: 0.45, target: 0.4 };
-  return { min: 0.25, max: 0.35, target: 0.3 };
+function fallbackLottoStrike(spot: number, direction: SpxPlayDirection): number {
+  const base = suggestPlayStrike(
+    { price: spot, gex_walls: [] } as import("@/lib/providers/spx-desk").SpxDeskPayload,
+    direction,
+    "D"
+  );
+  return base + (direction === "long" ? 10 : -10);
 }
 
-function round5(n: number): number {
-  return Math.round(n / 5) * 5;
-}
-
-function fallbackStrike(spot: number, type: "call" | "put", steps: number): number {
-  const atm = round5(spot);
-  if (type === "call") return atm + steps * 5;
-  return atm - steps * 5;
-}
-
-export async function buildOptionTicket(
+/**
+ * Far-OTM lotto ticket — wider spread cap than main plays (default 50%).
+ * Main play filter (18–20%) rejects typical $0.30–$0.50 OTM quotes.
+ */
+export async function buildLottoOptionTicket(
   spot: number,
-  direction: "long" | "short",
-  grade: string
+  direction: SpxPlayDirection
 ): Promise<OptionTicket> {
   const option_type = direction === "long" ? "call" : "put";
+  const fallbackStrike = fallbackLottoStrike(spot, direction);
   const empty: OptionTicket = {
     underlying: "SPXW",
-    strike: fallbackStrike(spot, option_type, gradeRank(grade) >= 3 ? 0 : 1),
+    strike: fallbackStrike,
     option_type,
-    contract_label: "",
+    contract_label: `${fallbackStrike}${option_type === "call" ? "C" : "P"}`,
     ticker: null,
     bid: null,
     ask: null,
@@ -110,31 +99,30 @@ export async function buildOptionTicket(
     spread_pct: null,
     delta: null,
     open_interest: null,
-    premium_range: "—",
+    premium_range: "~$0.35–$0.65",
     blocked: true,
-    block_reason: "Chain unavailable",
+    block_reason: "Chain unavailable — estimated premium only",
   };
 
   if (!polygonConfigured() || spot <= 0) return empty;
 
   const now = Date.now();
   if (
-    ticketCache &&
-    now - ticketCache.at < 45_000 &&
-    Math.abs(ticketCache.spot - spot) < 5 &&
-    ticketCache.dir === direction &&
-    ticketCache.grade === grade
+    lottoTicketCache &&
+    now - lottoTicketCache.at < 60_000 &&
+    Math.abs(lottoTicketCache.spot - spot) < 8 &&
+    lottoTicketCache.dir === direction
   ) {
-    return ticketCache.ticket;
+    return lottoTicketCache.ticket;
   }
 
-  const expiry = todayEtYmd();
-  const contracts = await fetchOdteContracts(spot, expiry);
-  const band = deltaBand(grade);
-  const maxSpread = effectiveChainMaxSpreadPct();
-  const minOi = Number(process.env.SPX_CHAIN_MIN_OI ?? 25);
-  const radius = Number(process.env.SPX_CHAIN_STRIKE_RADIUS ?? 40);
+  const maxSpread = playLottoChainMaxSpreadPct();
+  const minOtmPts = playLottoTargetPts();
+  const minPremium = Number(process.env.SPX_LOTTO_MIN_PREMIUM ?? 0.2);
+  const maxPremium = Number(process.env.SPX_LOTTO_MAX_PREMIUM ?? 0.85);
+  const minOi = Number(process.env.SPX_LOTTO_CHAIN_MIN_OI ?? 5);
 
+  const contracts = await fetchOdteContracts(spot, todayEtYmd());
   type Scored = { c: ChainContract; score: number };
   const scored: Scored[] = [];
 
@@ -142,14 +130,14 @@ export async function buildOptionTicket(
     const strike = Number(c.details?.strike_price);
     const type = String(c.details?.contract_type ?? "").toLowerCase();
     if (!Number.isFinite(strike) || type !== option_type) continue;
-    if (Math.abs(strike - spot) > radius) continue;
-    if (option_type === "call" && strike < round5(spot)) continue;
-    if (option_type === "put" && strike > round5(spot)) continue;
+
+    const otmPts = direction === "long" ? strike - spot : spot - strike;
+    if (otmPts < minOtmPts - 5) continue;
 
     const bid = Number(c.last_quote?.bid ?? 0);
     const ask = Number(c.last_quote?.ask ?? 0);
     const mid = ask > 0 && bid > 0 ? (bid + ask) / 2 : ask || bid;
-    if (mid <= 0) continue;
+    if (mid < minPremium || mid > maxPremium) continue;
 
     const spreadPct = ask > 0 && bid > 0 ? ((ask - bid) / mid) * 100 : 999;
     if (spreadPct > maxSpread) continue;
@@ -159,11 +147,10 @@ export async function buildOptionTicket(
     if (oi < minOi && vol < minOi) continue;
 
     const delta = Math.abs(Number(c.greeks?.delta ?? 0));
-    if (delta < band.min || delta > band.max) continue;
-
-    const deltaScore = 1 - Math.abs(delta - band.target) / band.target;
-    const liqScore = Math.min(oi, 500) / 500;
-    const score = deltaScore * 3 + liqScore - spreadPct / 20;
+    const otmScore = Math.min(otmPts / (minOtmPts + 10), 1.5);
+    const premScore = 1 - Math.abs(mid - 0.45) / 0.45;
+    const spreadScore = 1 - spreadPct / maxSpread;
+    const score = otmScore * 2 + premScore + spreadScore - delta * 0.5;
     scored.push({ c, score });
   }
 
@@ -171,15 +158,10 @@ export async function buildOptionTicket(
   const best = scored[0]?.c;
 
   if (!best) {
-    const strike = fallbackStrike(spot, option_type, gradeRank(grade) >= 3 ? 0 : 1);
-    const ticket: OptionTicket = {
+    return {
       ...empty,
-      strike,
-      contract_label: `${strike}${option_type === "call" ? "C" : "P"}`,
-      blocked: true,
-      block_reason: "No liquid chain match — index plan only",
+      block_reason: `No lotto strike ≤${maxSpread}% spread in $${minPremium.toFixed(2)}–$${maxPremium.toFixed(2)} band`,
     };
-    return ticket;
   }
 
   const strike = Number(best.details?.strike_price);
@@ -187,10 +169,10 @@ export async function buildOptionTicket(
   const ask = Number(best.last_quote?.ask ?? 0) || null;
   const mid = bid && ask ? (bid + ask) / 2 : ask ?? bid;
   const spreadPct = bid && ask && mid ? ((ask - bid) / mid) * 100 : null;
-  const lo = bid ?? (mid != null ? mid * 0.97 : null);
-  const hi = ask ?? (mid != null ? mid * 1.03 : null);
+  const lo = bid ?? (mid != null ? mid * 0.92 : null);
+  const hi = ask ?? (mid != null ? mid * 1.08 : null);
   const premium_range =
-    lo != null && hi != null ? `${lo.toFixed(2)}–${hi.toFixed(2)}` : "—";
+    lo != null && hi != null ? `$${lo.toFixed(2)}–$${hi.toFixed(2)}` : "~$0.35–$0.65";
 
   const ticket: OptionTicket = {
     underlying: "SPXW",
@@ -209,6 +191,6 @@ export async function buildOptionTicket(
     block_reason: null,
   };
 
-  ticketCache = { at: now, spot, dir: direction, grade, ticket };
+  lottoTicketCache = { at: now, spot, dir: direction, ticket };
   return ticket;
 }

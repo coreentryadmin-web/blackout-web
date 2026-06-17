@@ -12,6 +12,7 @@ export type OpenPlayRow = {
   session_date: string;
   direction: SpxPlayDirection;
   entry_price: number;
+  entry_score: number;
   stop: number | null;
   target: number | null;
   grade: string;
@@ -32,6 +33,7 @@ export type PlaySessionMeta = {
   last_sell_at: number | null;
   last_sell_was_loss: boolean;
   last_direction: SpxPlayDirection | null;
+  last_stop_at: number | null;
 };
 
 const SESSION_META_KEY = "spx_play_session_meta";
@@ -41,6 +43,7 @@ const MEMORY_SESSION: PlaySessionMeta = {
   last_sell_at: null,
   last_sell_was_loss: false,
   last_direction: null,
+  last_stop_at: null,
 };
 
 function todayEt(): string {
@@ -53,7 +56,7 @@ export async function loadPlaySessionMeta(): Promise<PlaySessionMeta> {
   if (!dbConfigured()) return { ...MEMORY_SESSION };
   const raw = await getMeta(SESSION_META_KEY);
   if (!raw) {
-    return { last_buy_at: null, last_sell_at: null, last_sell_was_loss: false, last_direction: null };
+    return { last_buy_at: null, last_sell_at: null, last_sell_was_loss: false, last_direction: null, last_stop_at: null };
   }
   try {
     const p = JSON.parse(raw) as PlaySessionMeta;
@@ -62,9 +65,10 @@ export async function loadPlaySessionMeta(): Promise<PlaySessionMeta> {
       last_sell_at: p.last_sell_at ?? null,
       last_sell_was_loss: Boolean(p.last_sell_was_loss),
       last_direction: p.last_direction ?? null,
+      last_stop_at: p.last_stop_at ?? null,
     };
   } catch {
-    return { last_buy_at: null, last_sell_at: null, last_sell_was_loss: false, last_direction: null };
+    return { last_buy_at: null, last_sell_at: null, last_sell_was_loss: false, last_direction: null, last_stop_at: null };
   }
 }
 
@@ -132,11 +136,13 @@ export async function closeOpenPlay(
     await closeOpenSpxPlayRow(id);
   }
   const meta = await loadPlaySessionMeta();
+  const exitAction = outcome.close?.exit_action;
   await savePlaySessionMeta({
     last_buy_at: meta.last_buy_at,
     last_sell_at: Date.now(),
     last_sell_was_loss: outcome.was_loss,
     last_direction: outcome.direction,
+    last_stop_at: exitAction === "STOP" ? Date.now() : meta.last_stop_at,
   });
 }
 

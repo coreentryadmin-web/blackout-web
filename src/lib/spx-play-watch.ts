@@ -1,6 +1,8 @@
 import { dbConfigured, getMeta, setMeta } from "@/lib/db";
+import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import type { SpxPlayDirection } from "@/lib/spx-signals";
-import { playMtfBufferPts } from "@/lib/spx-play-config";
+import { playMtfBufferPts, playWatchExtendAgeMin, playWatchMaxAgeMin } from "@/lib/spx-play-config";
+import { flowAlignedForDirection } from "@/lib/spx-play-confirmations";
 
 export type WatchRecord = {
   setup_key: string;
@@ -18,10 +20,14 @@ export type WatchRecord = {
 const WATCH_KEY = "spx_watch_record";
 const memoryWatch: { record: WatchRecord | null } = { record: null };
 
-function watchMaxAgeMin(): number {
-  return Number(process.env.SPX_WATCH_ENTRY_MAX_AGE_MINUTES ?? 30);
+function effectiveWatchMaxAgeMin(desk: SpxDeskPayload, direction: SpxPlayDirection): number {
+  const flowOk = flowAlignedForDirection(desk, direction);
+  const tickOk =
+    desk.tick == null ||
+    (direction === "long" ? desk.tick > -100 : desk.tick < 100);
+  if (flowOk && tickOk) return playWatchExtendAgeMin();
+  return playWatchMaxAgeMin();
 }
-
 function watchMaxDriftPts(): number {
   return Number(process.env.SPX_WATCH_ENTRY_MAX_PRICE_DRIFT_PTS ?? 10);
 }
@@ -89,6 +95,8 @@ export async function evaluateWatchPromote(params: {
   hybridHardOk: boolean;
   score: number;
   fullMinScore: number;
+  desk: SpxDeskPayload;
+  flowOk: boolean;
 }): Promise<WatchPromoteResult> {
   const rec = await loadWatchRecord();
   if (!rec) {
@@ -107,10 +115,15 @@ export async function evaluateWatchPromote(params: {
     return { eligible: false, reason: "MTF hard confirm required for promote", record: rec };
   }
 
+  if (!params.flowOk) {
+    return { eligible: false, reason: "WATCH→ENTRY requires 0DTE flow alignment", record: rec };
+  }
+
   const ageMin = (Date.now() - new Date(rec.first_at).getTime()) / 60_000;
-  if (ageMin > watchMaxAgeMin()) {
+  const maxAge = effectiveWatchMaxAgeMin(params.desk, params.direction);
+  if (ageMin > maxAge) {
     await clearWatchRecord();
-    return { eligible: false, reason: `WATCH expired (${watchMaxAgeMin()}m)`, record: null };
+    return { eligible: false, reason: `WATCH expired (${maxAge}m)`, record: null };
   }
 
   const drift = Math.abs(params.price - rec.price);

@@ -13,11 +13,11 @@ export type MtfHybrid = {
 };
 
 function soft3mAllowed(grade: string, score: number): boolean {
-  return gradeRank(grade) >= 3 && Math.abs(score) >= 75;
+  return gradeRank(grade) >= 2 && Math.abs(score) >= 58;
 }
 
 function soft5mAllowed(grade: string): boolean {
-  return gradeRank(grade) >= 3;
+  return gradeRank(grade) >= 2;
 }
 
 /** Discord-style hybrid MTF: 1m trigger → 3m close hold → 5m regime filter. */

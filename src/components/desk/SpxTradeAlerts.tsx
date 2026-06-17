@@ -5,6 +5,7 @@ import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import type { SpxPlayPayload, SpxPlayAction } from "@/lib/spx-play-engine";
 import { useSpxPlay } from "@/hooks/useSpxPlay";
+import { useSpxLotto } from "@/hooks/useSpxLotto";
 import { useStablePlayConfirmations } from "@/hooks/useStablePlayConfirmations";
 import { SpxSniperBackdrop } from "@/components/desk/SpxSniperBackdrop";
 import { fmtPrice } from "@/lib/api";
@@ -82,12 +83,22 @@ function isPlayIdeaLine(line: string): boolean {
   );
 }
 
+function isDeskOfflineCopy(text: string | undefined): boolean {
+  if (!text) return false;
+  return (
+    text.startsWith("Desk offline") ||
+    text.includes("resumes 6:30 AM PT") ||
+    text.includes("Session closed")
+  );
+}
+
 function playId(p: SpxPlayPayload): string {
   return `${p.action}|${p.direction}|${p.confidence}|${Math.round(p.score)}|${p.headline}`;
 }
 
 export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }: Props) {
   const { play, playRefreshing } = useSpxPlay(sessionActive);
+  const { lotto, lottoRefreshing } = useSpxLotto(sessionActive);
   const confirmationLayer = useStablePlayConfirmations(play);
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const lastIdRef = useRef<string>("");
@@ -126,7 +137,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
       </header>
 
       {!show ? (
-        <p className="font-mono text-[11px] text-grey-500 py-8 text-center">
+        <p className="spx-desk-offline-line font-mono py-8 text-center">
           {live ? "Loading play engine…" : "Session closed · resumes 6:30 AM PT"}
         </p>
       ) : (
@@ -144,7 +155,15 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
                       : ""}
                   </p>
                 )}
-                <p className="spx-trade-alert-thesis">{play.thesis}</p>
+                <p
+                  className={clsx(
+                    "spx-trade-alert-thesis",
+                    (play.session_phase === "closed" || isDeskOfflineCopy(play.thesis)) &&
+                      "spx-desk-offline-line"
+                  )}
+                >
+                  {play.thesis}
+                </p>
                 {play.grade && play.action !== "SCANNING" && (
                   <p className="spx-trade-grade-line">
                     Grade {play.grade}
@@ -199,6 +218,66 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
               </p>
             )}
           </div>
+
+          {lotto && lotto.phase !== "NONE" && (
+              <div
+                className={clsx(
+                  "spx-lotto-play-block",
+                  lotto.phase === "WATCH" && "spx-lotto-play-block-watch",
+                  (lotto.phase === "BUY" || lotto.phase === "HOLD") && "spx-lotto-play-block-ready",
+                  lotto.phase === "INVALID" && "spx-lotto-play-block-invalid"
+                )}
+              >
+                <p className="spx-lotto-play-kicker">{lotto.status_label}</p>
+                {lotto.contract_label && (
+                  <p className="spx-lotto-play-headline">
+                    {lotto.direction === "long" ? "CALL" : "PUT"} · Strike {lotto.strike}
+                    {lotto.premium_estimate ? ` · ${lotto.premium_estimate}` : ""}
+                  </p>
+                )}
+                {lotto.target_price != null && lotto.entry_zone != null && (
+                  <p className="spx-lotto-play-contract">
+                    Target: +{lotto.target_pts} pts · Zone: {lotto.entry_zone.toFixed(0)}
+                  </p>
+                )}
+                {lotto.entry_trigger && lotto.phase === "WATCH" && (
+                  <p className="spx-lotto-play-contract">Confirm: {lotto.entry_trigger}</p>
+                )}
+                {lotto.open_anchor_price != null && lotto.phase === "WATCH" && (
+                  <p className="spx-lotto-play-anchor">
+                    Open anchor: {lotto.open_anchor_price.toFixed(2)} (9:30 cash print)
+                  </p>
+                )}
+                {lotto.invalidation && lotto.phase === "WATCH" && (
+                  <p className="spx-lotto-play-invalidation">{lotto.invalidation}</p>
+                )}
+                {lotto.catalyst_summary && (
+                  <p className="spx-lotto-play-thesis">Catalyst: {lotto.catalyst_summary}</p>
+                )}
+                {lotto.flow_summary && (
+                  <p className="spx-lotto-play-flow">Flow: {lotto.flow_summary}</p>
+                )}
+                {lotto.sizing_note && (
+                  <p className="spx-lotto-play-sizing">{lotto.sizing_note}</p>
+                )}
+                {lotto.spread_pct != null && (
+                  <p className="spx-lotto-play-spread">
+                    Spread: {lotto.spread_pct.toFixed(0)}% (lotto cap)
+                  </p>
+                )}
+                <p className="spx-lotto-play-footnote">
+                  Status: {lotto.status_message}
+                  {lottoRefreshing && " · updating"}
+                </p>
+              </div>
+            )}
+
+          {lotto && lotto.phase === "NONE" && play?.session_phase === "premarket" && (
+              <div className="spx-lotto-play-block spx-lotto-play-block-empty">
+                <p className="spx-lotto-play-kicker">NO LOTTO</p>
+                <p className="spx-lotto-play-thesis">{lotto.headline}</p>
+              </div>
+            )}
 
           {showConfirmationPanel && confirmationLayer && (
               <div
@@ -260,6 +339,11 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
                 {confirmationLayer.gates.play_idea && (
                   <p className="spx-trade-idea-line">{confirmationLayer.gates.play_idea}</p>
                 )}
+                {confirmationLayer.gates.warnings.slice(0, 2).map((w) => (
+                  <p key={w} className="spx-trade-confirmation-meta text-amber-300/90">
+                    ⚠ {w}
+                  </p>
+                ))}
                 {confirmationLayer.gates.blocks
                   .filter((b) => b !== confirmationLayer.gates.play_idea)
                   .slice(0, 2)

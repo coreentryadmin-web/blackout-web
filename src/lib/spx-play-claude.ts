@@ -55,7 +55,7 @@ function mechanicalVerdict(
   const strict =
     gates.passed &&
     c.direction != null &&
-    gradeRank(c.grade) >= 3 &&
+    gradeRank(c.grade) >= 2 &&
     confirmations.passed;
   return {
     verdict: strict ? "APPROVE_BUY" : "VETO",

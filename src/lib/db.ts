@@ -127,6 +127,7 @@ async function runMigrations(): Promise<void> {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
   `);
+  /* platform_meta: shared KV (key TEXT PK, value TEXT, updated_at). See platform-meta-keys.ts */
   await p.query(`
     CREATE TABLE IF NOT EXISTS spx_signal_log (
       id BIGSERIAL PRIMARY KEY,
@@ -175,7 +176,8 @@ async function runMigrations(): Promise<void> {
     ADD COLUMN IF NOT EXISTS option_strike NUMERIC,
     ADD COLUMN IF NOT EXISTS option_type TEXT,
     ADD COLUMN IF NOT EXISTS option_label TEXT,
-    ADD COLUMN IF NOT EXISTS option_premium TEXT;
+    ADD COLUMN IF NOT EXISTS option_premium TEXT,
+    ADD COLUMN IF NOT EXISTS entry_score INT;
   `);
   await p.query(`
     CREATE TABLE IF NOT EXISTS spx_play_outcomes (
@@ -219,6 +221,38 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     CREATE INDEX IF NOT EXISTS idx_spx_play_outcomes_entry_path
     ON spx_play_outcomes(entry_path, outcome);
+  `);
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS lotto_plays (
+      id BIGSERIAL PRIMARY KEY,
+      session_date DATE NOT NULL,
+      pick_index INT NOT NULL DEFAULT 1,
+      is_reversal BOOLEAN DEFAULT FALSE,
+      phase TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      strike NUMERIC NOT NULL,
+      contract_label TEXT NOT NULL,
+      entry_zone NUMERIC,
+      target_price NUMERIC,
+      target_pts NUMERIC,
+      invalidation_level NUMERIC,
+      catalyst_summary TEXT,
+      catalysts JSONB,
+      confidence INT,
+      headline TEXT,
+      thesis TEXT,
+      entry_price NUMERIC,
+      exit_price NUMERIC,
+      outcome TEXT,
+      picked_at TIMESTAMPTZ,
+      buy_at TIMESTAMPTZ,
+      closed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_lotto_plays_session
+    ON lotto_plays(session_date, pick_index);
   `);
 }
 
@@ -477,6 +511,7 @@ export async function fetchOpenSpxPlay(sessionDate: string): Promise<{
   session_date: string;
   direction: "long" | "short";
   entry_price: number;
+  entry_score: number;
   stop: number | null;
   target: number | null;
   grade: string;
@@ -494,7 +529,7 @@ export async function fetchOpenSpxPlay(sessionDate: string): Promise<{
   await ensureSchema();
   const res = await (await getPool()).query(
     `
-    SELECT id, session_date, direction, entry_price, stop, target, grade, headline,
+    SELECT id, session_date, direction, entry_price, entry_score, stop, target, grade, headline,
            trim_done, mfe_pts, mae_pts, opened_at, status,
            option_strike, option_type, option_label, option_premium
     FROM spx_open_play
@@ -511,6 +546,7 @@ export async function fetchOpenSpxPlay(sessionDate: string): Promise<{
     session_date: String(r.session_date).slice(0, 10),
     direction: r.direction === "short" ? "short" : "long",
     entry_price: Number(r.entry_price),
+    entry_score: Number(r.entry_score ?? 0),
     stop: r.stop != null ? Number(r.stop) : null,
     target: r.target != null ? Number(r.target) : null,
     grade: String(r.grade),
@@ -531,6 +567,7 @@ export async function insertOpenSpxPlay(row: {
   session_date: string;
   direction: string;
   entry_price: number;
+  entry_score: number;
   stop: number | null;
   target: number | null;
   grade: string;
@@ -549,16 +586,17 @@ export async function insertOpenSpxPlay(row: {
   const res = await (await getPool()).query<{ id: string }>(
     `
     INSERT INTO spx_open_play (
-      session_date, direction, entry_price, stop, target, grade, headline, opened_at, status,
+      session_date, direction, entry_price, entry_score, stop, target, grade, headline, opened_at, status,
       option_strike, option_type, option_label, option_premium
     )
-    VALUES ($1::date,$2,$3,$4,$5,$6,$7,$8,'open',$9,$10,$11,$12)
+    VALUES ($1::date,$2,$3,$4,$5,$6,$7,$8,$9,'open',$10,$11,$12,$13)
     RETURNING id
     `,
     [
       row.session_date,
       row.direction,
       row.entry_price,
+      row.entry_score,
       row.stop,
       row.target,
       row.grade,
@@ -930,4 +968,140 @@ export async function fetchSpxAdminRollups(): Promise<{
     avg_mae_pts: Number(avgRes.rows[0]?.avg_mae ?? 0),
     recent_signals,
   };
+}
+
+export async function insertLottoPlay(row: {
+  session_date: string;
+  pick_index: number;
+  is_reversal: boolean;
+  phase: string;
+  direction: string;
+  strike: number;
+  contract_label: string;
+  entry_zone: number;
+  target_price: number;
+  target_pts: number;
+  invalidation_level: number;
+  catalyst_summary: string;
+  catalysts: string[];
+  confidence: number;
+  headline: string;
+  thesis: string;
+  picked_at: string;
+}): Promise<number | null> {
+  if (!dbConfigured()) return null;
+  await ensureSchema();
+  const res = await (await getPool()).query<{ id: string }>(
+    `
+    INSERT INTO lotto_plays (
+      session_date, pick_index, is_reversal, phase, direction, strike, contract_label,
+      entry_zone, target_price, target_pts, invalidation_level, catalyst_summary, catalysts,
+      confidence, headline, thesis, picked_at
+    )
+    VALUES ($1::date,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,$17)
+    RETURNING id
+    `,
+    [
+      row.session_date,
+      row.pick_index,
+      row.is_reversal,
+      row.phase,
+      row.direction,
+      row.strike,
+      row.contract_label,
+      row.entry_zone,
+      row.target_price,
+      row.target_pts,
+      row.invalidation_level,
+      row.catalyst_summary,
+      JSON.stringify(row.catalysts),
+      row.confidence,
+      row.headline,
+      row.thesis,
+      row.picked_at,
+    ]
+  );
+  return res.rows[0] ? Number(res.rows[0].id) : null;
+}
+
+export async function updateLottoPlay(
+  id: number,
+  patch: {
+    phase: string;
+    entry_price?: number | null;
+    buy_at?: string | null;
+    outcome?: string | null;
+    exit_price?: number | null;
+    closed_at?: string | null;
+  }
+): Promise<void> {
+  if (!dbConfigured()) return;
+  await ensureSchema();
+  await (await getPool()).query(
+    `
+    UPDATE lotto_plays
+    SET phase = $2,
+        entry_price = COALESCE($3, entry_price),
+        buy_at = COALESCE($4, buy_at),
+        outcome = COALESCE($5, outcome),
+        exit_price = COALESCE($6, exit_price),
+        closed_at = COALESCE($7, closed_at)
+    WHERE id = $1
+    `,
+    [
+      id,
+      patch.phase,
+      patch.entry_price ?? null,
+      patch.buy_at ?? null,
+      patch.outcome ?? null,
+      patch.exit_price ?? null,
+      patch.closed_at ?? null,
+    ]
+  );
+}
+
+export async function fetchLottoPlaysForDate(sessionDate: string): Promise<
+  Array<{
+    id: number;
+    session_date: string;
+    pick_index: number;
+    phase: string;
+    direction: string;
+    strike: number;
+    contract_label: string;
+    catalyst_summary: string | null;
+    outcome: string | null;
+    headline: string | null;
+    picked_at: string | null;
+    buy_at: string | null;
+    closed_at: string | null;
+  }>
+> {
+  if (!dbConfigured()) return [];
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    SELECT id, session_date, pick_index, phase, direction, strike, contract_label,
+           catalyst_summary, outcome, headline, picked_at, buy_at, closed_at
+    FROM lotto_plays
+    WHERE session_date = $1::date
+    ORDER BY pick_index ASC, id ASC
+    `,
+    [sessionDate]
+  );
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    session_date: String(r.session_date).slice(0, 10),
+    pick_index: Number(r.pick_index),
+    phase: String(r.phase),
+    direction: String(r.direction),
+    strike: Number(r.strike),
+    contract_label: String(r.contract_label),
+    catalyst_summary: r.catalyst_summary != null ? String(r.catalyst_summary) : null,
+    outcome: r.outcome != null ? String(r.outcome) : null,
+    headline: r.headline != null ? String(r.headline) : null,
+    picked_at: r.picked_at != null ? new Date(String(r.picked_at)).toISOString() : null,
+    buy_at: r.buy_at != null ? new Date(String(r.buy_at)).toISOString() : null,
+    closed_at: r.closed_at != null ? new Date(String(r.closed_at)).toISOString() : null,
+  }));
 }

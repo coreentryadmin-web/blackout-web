@@ -12,37 +12,46 @@ function flag(env: string | undefined, fallback: boolean): boolean {
 }
 
 export function playStarterMinScore(): number {
-  return num(process.env.SPX_PLAY_STARTER_MIN_SCORE, 58);
+  return num(process.env.SPX_PLAY_STARTER_MIN_SCORE, 48);
 }
 
 export function playFullMinScore(): number {
-  return num(process.env.SPX_PLAY_FULL_MIN_SCORE, 68);
+  return num(process.env.SPX_PLAY_FULL_MIN_SCORE, 58);
 }
 
 export function playWatchMinScore(): number {
-  return num(process.env.SPX_PLAY_WATCH_MIN_SCORE, 50);
+  return num(process.env.SPX_PLAY_WATCH_MIN_SCORE, 38);
+}
+
+export function playPromoteMinScore(): number {
+  return num(process.env.SPX_PLAY_PROMOTE_MIN_SCORE, 48);
 }
 
 export function playConflictBlockMin(): number {
-  return num(process.env.SPX_PLAY_CONFLICT_BLOCK_MIN, 2);
+  return num(process.env.SPX_PLAY_CONFLICT_BLOCK_MIN, 4);
 }
 
 export function playMinAgreeingFactors(): number {
-  return num(process.env.SPX_PLAY_MIN_AGREEING_FACTORS, 6);
+  return num(process.env.SPX_PLAY_MIN_AGREEING_FACTORS, 4);
 }
 
 export function playMinGradeRank(): number {
-  const g = process.env.SPX_PLAY_MIN_GRADE?.trim().toUpperCase() ?? "A";
+  const g = process.env.SPX_PLAY_MIN_GRADE?.trim().toUpperCase() ?? "B";
   const ranks: Record<string, number> = { D: 0, C: 1, B: 2, A: 3, "A+": 4 };
-  return ranks[g] ?? 3;
+  return ranks[g] ?? 2;
 }
 
 export function playOnlyFullEntry(): boolean {
-  return flag(process.env.SPX_PLAY_ONLY_FULL_ENTRY, true);
+  return flag(process.env.SPX_PLAY_ONLY_FULL_ENTRY, false);
 }
 
 export function playBuyCooldownSec(): number {
   return num(process.env.SPX_PLAY_BUY_COOLDOWN_SEC, 600);
+}
+
+/** A+ setups alert on buy cooldown but do not block entry (default on). */
+export function playBuyCooldownAplusBypass(): boolean {
+  return flag(process.env.SPX_PLAY_BUY_COOLDOWN_APLUS_BYPASS, true);
 }
 
 export function playReentryLockSec(): number {
@@ -72,16 +81,118 @@ export function playThesisBreakScore(): number {
   return num(process.env.SPX_PLAY_THESIS_BREAK_SCORE, 40);
 }
 
+export function playThesisBreakDropPts(): number {
+  return num(process.env.SPX_PLAY_THESIS_BREAK_DROP_PTS, 12);
+}
+
+export function playNoEntryAfterEtHour(): number {
+  return num(process.env.SPX_PLAY_NO_ENTRY_ET_HOUR, 15);
+}
+
+export function playNoEntryAfterEtMin(): number {
+  return num(process.env.SPX_PLAY_NO_ENTRY_ET_MIN, 30);
+}
+
+export function playForceExitEtHour(): number {
+  return num(process.env.SPX_PLAY_FORCE_EXIT_ET_HOUR, 15);
+}
+
+export function playForceExitEtMin(): number {
+  return num(process.env.SPX_PLAY_FORCE_EXIT_ET_MIN, 50);
+}
+
+export function playOpeningRangeMinutes(): number {
+  return num(process.env.SPX_PLAY_OPENING_RANGE_MINUTES, 15);
+}
+
+export function playCooldownAfterStopMin(): number {
+  return num(process.env.SPX_PLAY_COOLDOWN_AFTER_STOP_MIN, 20);
+}
+
+export function playTrimProgressPct(): number {
+  return num(process.env.SPX_PLAY_TRIM_PROGRESS_PCT, 0.7);
+}
+
+export function playWatchMaxAgeMin(): number {
+  return num(process.env.SPX_PLAY_WATCH_MAX_AGE_MIN, 30);
+}
+
+export function playWatchExtendAgeMin(): number {
+  return num(process.env.SPX_PLAY_WATCH_EXTEND_AGE_MIN, 45);
+}
+
+export function playChainMaxSpreadPct(): number {
+  return num(process.env.SPX_CHAIN_MAX_SPREAD_PCT, 18);
+}
+
+/** Looser spread cap for the opening window (volatile SPXW quotes). */
+export function playChainMaxSpreadPctOpen(): number {
+  return num(process.env.SPX_CHAIN_MAX_SPREAD_PCT_OPEN, 20);
+}
+
+/** Minutes after 9:30 AM ET to use the open spread cap. */
+export function playChainOpenSpreadMinutes(): number {
+  return num(process.env.SPX_CHAIN_OPEN_SPREAD_MINUTES, 30);
+}
+
+export function playLottoMinScore(): number {
+  return num(process.env.SPX_PLAY_LOTTO_MIN_SCORE, 18);
+}
+
+export function playLottoTargetPts(): number {
+  return num(process.env.SPX_PLAY_LOTTO_TARGET_PTS, 25);
+}
+
+export function playLottoMaxPicksPerDay(): number {
+  return num(process.env.SPX_PLAY_LOTTO_MAX_PICKS, 2);
+}
+
+export function playLottoFlowMinNotional(): number {
+  return num(process.env.SPX_PLAY_LOTTO_FLOW_MIN, 5_000_000);
+}
+
+export function playLottoGapMinPct(): number {
+  return num(process.env.SPX_PLAY_LOTTO_GAP_MIN_PCT, 0.4);
+}
+
+export function playLottoConfirmMovePts(): number {
+  return num(process.env.SPX_PLAY_LOTTO_CONFIRM_MOVE_PTS, 8);
+}
+
+export function playLottoExpireEtHour(): number {
+  return num(process.env.SPX_PLAY_LOTTO_EXPIRE_ET_HOUR, 10);
+}
+
+export function playLottoExpireEtMin(): number {
+  return num(process.env.SPX_PLAY_LOTTO_EXPIRE_ET_MIN, 30);
+}
+
+export function playLottoMinDirectionSignals(): number {
+  return num(process.env.SPX_PLAY_LOTTO_MIN_DIRECTION_SIGNALS, 3);
+}
+
+/** Far-OTM lotto chain spread cap — separate from main play (default 50%). */
+export function playLottoChainMaxSpreadPct(): number {
+  return num(process.env.SPX_LOTTO_CHAIN_MAX_SPREAD_PCT, 50);
+}
+
+export const LOTTO_SIZING_NOTE =
+  "Lotto sizing: 25–50% of standard play size. These are thesis bets, not conviction plays.";
+
+export function playWeightedConflictBlockMin(): number {
+  return num(process.env.SPX_PLAY_WEIGHTED_CONFLICT_BLOCK_MIN, playConflictBlockMin());
+}
+
 export function playMtfBufferPts(): number {
   return num(process.env.SPX_PLAY_MTF_BUFFER_PTS, 0.25);
 }
 
 export function playStructureProximityPts(): number {
-  return num(process.env.SPX_PLAY_STRUCTURE_PROX_PTS, 10);
+  return num(process.env.SPX_PLAY_STRUCTURE_PROX_PTS, 15);
 }
 
 export function playMinConfirmationsRequired(): number {
-  return num(process.env.SPX_PLAY_MIN_CONFIRMATIONS, 7);
+  return num(process.env.SPX_PLAY_MIN_CONFIRMATIONS, 6);
 }
 
 export function playTechnicalsCacheSec(): number {

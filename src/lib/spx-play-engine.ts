@@ -7,7 +7,9 @@ import {
   type SpxSignalFactor,
 } from "@/lib/spx-signals";
 import { evaluatePlayGates, type PlayGateResult } from "@/lib/spx-play-gates";
-import { evaluatePlayConfirmations } from "@/lib/spx-play-confirmations";
+import { forceExitCutoffLabel, isPastForceExitCutoff, isBeforeCashOpen, isPremarketPlanningWindow } from "@/lib/spx-play-session-guards";
+import type { LottoPlayPayload } from "@/lib/spx-play-lotto";
+import { evaluatePlayConfirmations, flowAlignedForDirection } from "@/lib/spx-play-confirmations";
 import { buildPlayTechnicals, type PlayTechnicals } from "@/lib/spx-play-technicals";
 import type { PlayConfirmationResult } from "@/lib/spx-play-confirmations";
 import { evaluateClaudePlayApproval, type ClaudePlayVerdict } from "@/lib/spx-play-claude";
@@ -17,10 +19,12 @@ import {
   gradeRank,
   playFullMinScore,
   playOptionChainRequired,
-  playThesisBreakScore,
   playTrimMfePts,
+  playTrimProgressPct,
   playWatchMinScore,
+  playPromoteMinScore,
 } from "@/lib/spx-play-config";
+import { evaluateThesisBreak } from "@/lib/spx-play-thesis";
 import {
   closeOpenPlay,
   loadOpenPlay,
@@ -115,11 +119,19 @@ export type SpxPlayPayload = {
     promote_score_boost: number;
     total_closed: number;
   } | null;
+  lotto_play: LottoPlayPayload | null;
+  session_phase: "premarket" | "cash" | "closed";
   as_of: string;
 };
 
 function pnlPts(direction: SpxPlayDirection, entry: number, exit: number): number {
   return direction === "long" ? exit - entry : entry - exit;
+}
+
+function currentSessionPhase(desk: SpxDeskPayload): SpxPlayPayload["session_phase"] {
+  if (isPremarketPlanningWindow() && isBeforeCashOpen()) return "premarket";
+  if (desk.market_open) return "cash";
+  return "closed";
 }
 
 function telemetrySummary(adaptive: Awaited<ReturnType<typeof loadAdaptivePlayGates>>): SpxPlayPayload["telemetry"] {
@@ -167,7 +179,7 @@ function scanningPayload(
     "No A+ setup yet — scanning all lanes.";
 
   return {
-    available: Boolean(desk.available && desk.market_open),
+    available: Boolean(desk.available && (desk.market_open || isPremarketPlanningWindow())),
     phase: "SCANNING",
     action: "SCANNING",
     direction: confluence?.direction ?? null,
@@ -188,6 +200,8 @@ function scanningPayload(
     option_ticket: null,
     watch: null,
     telemetry: null,
+    lotto_play: null,
+    session_phase: currentSessionPhase(desk),
     as_of: desk.polled_at ?? desk.as_of ?? new Date().toISOString(),
     ...extras,
   };
@@ -216,6 +230,7 @@ async function evaluateOpenPlay(
   mtf: MtfHybrid | null,
   telemetry: SpxPlayPayload["telemetry"]
 ): Promise<SpxPlayPayload> {
+  // Open-play path only: force-exit cutoff is independent from flat-path no-entry gates.
   const price = desk.price;
   const dir = row.direction;
   const mfe = Math.max(row.mfe_pts, dir === "long" ? price - row.entry_price : row.entry_price - price);
@@ -232,18 +247,25 @@ async function evaluateOpenPlay(
   const stopHit = stop != null && (dir === "long" ? price <= stop : price >= stop);
   const targetHit = target != null && (dir === "long" ? price >= target : price <= target);
 
-  const thesisBreak =
-    dir === "long"
-      ? confluence.score <= -playThesisBreakScore()
-      : confluence.score >= playThesisBreakScore();
+  const entryScore = row.entry_score ?? confluence.score;
+  const thesisEval = evaluateThesisBreak(dir, confluence.score, entryScore);
+  const thesisBreak = thesisEval.broken;
 
+  const totalRun =
+    target != null ? Math.abs(target - row.entry_price) : 0;
+  const progress =
+    totalRun > 0
+      ? dir === "long"
+        ? (price - row.entry_price) / totalRun
+        : (row.entry_price - price) / totalRun
+      : 0;
   const trimZone =
     !row.trim_done &&
     mfe >= playTrimMfePts() &&
     target != null &&
-    (dir === "long"
-      ? target - price <= Math.max(4, (target - row.entry_price) * 0.2)
-      : price - target <= Math.max(4, (row.entry_price - target) * 0.2));
+    progress >= playTrimProgressPct();
+
+  const forceExit = isPastForceExitCutoff();
 
   const closeSnapshot = (exitAction: PlayExitAction, wasLoss: boolean, trimDone: boolean) => ({
     exit_price: price,
@@ -255,24 +277,28 @@ async function evaluateOpenPlay(
     pnl_pts: pnlPts(dir, row.entry_price, price),
   });
 
-  if (stopHit || thesisBreak || !desk.market_open) {
+  if (forceExit || stopHit || thesisBreak || !desk.market_open) {
     action = "SELL";
-    headline = stopHit
-      ? "STOP — structure broken"
-      : !desk.market_open
-        ? "SESSION FLAT — close 0DTE"
-        : "THESIS BREAK — exit";
-    thesis = stopHit
-      ? `Price ${price.toFixed(2)} through stop ${stop?.toFixed(0)}. Flatten.`
-      : thesisBreak
-        ? `Confluence flipped against ${dir} position (score ${confluence.score}).`
-        : "Cash session closed — flatten runners.";
+    headline = forceExit
+      ? `THETA FLAT — ${forceExitCutoffLabel()} cutoff`
+      : stopHit
+        ? "STOP — structure broken"
+        : !desk.market_open
+          ? "SESSION FLAT — close 0DTE"
+          : "THESIS BREAK — exit";
+    thesis = forceExit
+      ? "0DTE theta window — flatten open runners before illiquid close."
+      : stopHit
+        ? `Price ${price.toFixed(2)} through stop ${stop?.toFixed(0)}. Flatten.`
+        : thesisBreak
+          ? `Thesis break (${thesisEval.trigger ?? "or"}) — score ${confluence.score} vs ${thesisEval.trigger === "floor" ? "±" : ""}${Math.abs(thesisEval.threshold).toFixed(0)} threshold (entry ${entryScore}).`
+          : "Cash session closed — flatten runners.";
     await closeOpenPlay(row.id, {
-      was_loss: stopHit || thesisBreak,
+      was_loss: forceExit ? false : stopHit || thesisBreak,
       direction: dir,
       close: closeSnapshot(
-        stopHit ? "STOP" : !desk.market_open ? "SESSION" : "THESIS",
-        stopHit || thesisBreak,
+        forceExit ? "THETA" : stopHit ? "STOP" : !desk.market_open ? "SESSION" : "THESIS",
+        forceExit ? false : stopHit || thesisBreak,
         row.trim_done
       ),
     });
@@ -326,7 +352,7 @@ async function evaluateOpenPlay(
   } else if (trimZone) {
     action = "TRIM";
     headline = "TRIM — bank partial, trail runner";
-    thesis = `+${mfe.toFixed(1)} pts MFE into target — trim ~50%, hold runner.`;
+    thesis = `+${mfe.toFixed(1)} pts MFE · ${Math.round(progress * 100)}% to target — trim ~50%, trail runner.`;
     await updateOpenPlay(row.id, { trim_done: true });
     void maybeLogSpxPlay(
       { price: desk.price, market_open: desk.market_open },
@@ -413,6 +439,8 @@ async function evaluateOpenPlay(
       : null,
     watch: null,
     telemetry,
+    lotto_play: null,
+    session_phase: "cash",
     as_of: confluence.as_of,
   };
 }
@@ -440,21 +468,27 @@ async function evaluateFlatPlay(
 
   const gates = evaluatePlayGates(desk, confluence, session, confirmations, {
     min_score_boost: adaptive.global_min_score_boost,
+    entry_intent: "buy",
   });
   const gatesView = intelGates(desk, confluence, gates);
   const abs = Math.abs(confluence.score);
   const techSum = technicalsSummary(technicals, mtf);
 
   const watchRec = await loadWatchRecord();
+  const flowOk = direction != null ? flowAlignedForDirection(desk, direction) : false;
   const promoteEval =
     direction != null
       ? await evaluateWatchPromote({
           direction,
           price: desk.price,
           level: keyLevel,
-          hybridHardOk: mtfHardPass(direction, keyLevel, technicals),
+          hybridHardOk:
+            mtfHardPass(direction, keyLevel, technicals) ||
+            Boolean(mtf?.ok && gradeRank(confluence.grade) >= 2),
           score: abs,
-          fullMinScore: fullMin,
+          fullMinScore: playPromoteMinScore(),
+          desk,
+          flowOk,
         })
       : { eligible: false, reason: "No direction", record: watchRec };
 
@@ -479,15 +513,15 @@ async function evaluateFlatPlay(
   };
 
   const nearMiss =
-    gradeRank(confluence.grade) >= 3 &&
-    abs >= fullMin - 8 &&
-    confirmations.passed_count >= confirmations.total - 2 &&
+    gradeRank(confluence.grade) >= 2 &&
+    abs >= fullMin - 12 &&
+    confirmations.passed_count >= confirmations.total - 3 &&
     !gates.passed &&
     !promoteEligible;
 
   const watchBand =
     direction != null &&
-    gradeRank(confluence.grade) >= 2 &&
+    gradeRank(confluence.grade) >= 1 &&
     abs >= playWatchMinScore() &&
     Boolean(mtf?.ok);
 
@@ -533,7 +567,13 @@ async function evaluateFlatPlay(
     }
     entryGatesRaw = {
       ...gates,
-      blocks: promoteBlocks.filter((b) => !b.includes("cooldown") && !b.includes("below minimum")),
+      blocks: promoteBlocks.filter(
+        (b) =>
+          !b.includes("Buy cooldown") &&
+          !b.includes("Quality cooldown") &&
+          !b.includes("below minimum") &&
+          !b.includes("Re-entry lock")
+      ),
       warnings: [
         ...gates.warnings,
         ...(adaptive.promote_min_score_boost > 0
@@ -548,10 +588,11 @@ async function evaluateFlatPlay(
     }
   }
   const entryGatesView = intelGates(desk, confluence, entryGatesRaw);
+  const sessionExtras = { session_phase: currentSessionPhase(desk) };
 
   if (!entryGatesRaw.passed) {
     return {
-      ...scanningPayload(desk, confluence, pickIdleMessage(), entryGatesView),
+      ...scanningPayload(desk, confluence, pickIdleMessage(), entryGatesView, sessionExtras),
       confirmations,
       technicals: techSum,
       mtf,
@@ -582,7 +623,7 @@ async function evaluateFlatPlay(
           claude.verdict === "VETO"
             ? [`Claude veto: ${claude.headline}`]
             : entryGatesView.blocks,
-      }),
+      }, sessionExtras),
       phase: "SCANNING",
       action: "SCANNING",
       headline: claude.headline,
@@ -607,7 +648,7 @@ async function evaluateFlatPlay(
         warnings: entryGatesRaw.warnings,
         entry_mode: "none",
         play_idea: entryGatesView.play_idea,
-      }),
+      }, sessionExtras),
       confirmations,
       technicals: techSum,
       mtf,
@@ -645,6 +686,7 @@ async function evaluateFlatPlay(
     session_date: sessionDate,
     direction: dir,
     entry_price: desk.price,
+    entry_score: confluence.score,
     stop: confluence.levels.stop,
     target: confluence.levels.target,
     grade: confluence.grade,
@@ -734,6 +776,8 @@ async function evaluateFlatPlay(
     option_ticket: optionTicket,
     watch: { active: false, promote_ready: false, reason: "Entered", since: null },
     telemetry,
+    lotto_play: null,
+    session_phase: currentSessionPhase(desk),
     as_of: confluence.as_of,
   };
 }
@@ -742,7 +786,8 @@ export async function evaluateSpxPlay(
   desk: SpxDeskPayload,
   prefetchedTechnicals?: PlayTechnicals | null
 ): Promise<SpxPlayPayload> {
-  if (!desk.market_open) {
+  const premarket = isPremarketPlanningWindow();
+  if (!desk.market_open && !premarket) {
     return {
       available: false,
       phase: "SCANNING",
@@ -765,6 +810,8 @@ export async function evaluateSpxPlay(
       option_ticket: null,
       watch: null,
       telemetry: null,
+      lotto_play: null,
+      session_phase: "closed",
       as_of: desk.polled_at ?? desk.as_of ?? new Date().toISOString(),
     };
   }

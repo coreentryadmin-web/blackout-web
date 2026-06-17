@@ -184,6 +184,24 @@ export const fetchSpxDeskFlow = () => marketFetch<import("@/lib/providers/spx-de
 /** Server play engine — BUY / HOLD / TRIM / SELL with gates + Claude arbiter. */
 export const fetchSpxPlay = () => marketFetch<import("@/lib/spx-play-engine").SpxPlayPayload>("/spx/play");
 
+/** Parallel pre-market lotto track — catalyst thesis, independent from desk plays. */
+export const fetchSpxLottoToday = () =>
+  marketFetch<{
+    available: boolean;
+    as_of: string;
+    lotto: import("@/lib/spx-lotto-engine").LottoPlayPayload;
+    history: Array<{
+      id: number;
+      phase: string;
+      direction: string;
+      strike: number;
+      contract_label: string;
+      catalyst_summary: string | null;
+      outcome: string | null;
+      headline: string | null;
+    }>;
+  }>("/lotto/today");
+
 /** Website-first: Polygon indices + optional BlackOut intel overlay (GEX, levels, regime). */
 export async function fetchSpxState(): Promise<SpxState> {
   const [indicesRes, intelRes] = await Promise.allSettled([

@@ -2,6 +2,8 @@ import { polygonConfigured, engineIntelOverlayEnabled, uwConfigured, deskPulseSt
 import { fetchPolygonOdteGexRows } from "./polygon-options-gex";
 import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 import { fetchEconomicCalendarToday, type MacroEvent } from "./finnhub";
+import { mergeMacroEventsToday } from "./macro-events";
+import { resolveDeskGap } from "./gap-proxy";
 import {
   analyzeStrikeGexRows,
   computeGammaFlip,
@@ -27,6 +29,7 @@ import {
   isSpxRthActive,
   marketStatusLabel,
 } from "@/lib/spx-market-session";
+import { isPremarketPlanningWindow } from "@/lib/spx-play-session-guards";
 import {
   distancePct,
   inferRegime,
@@ -66,6 +69,7 @@ export function getLastPulseForSignals(): SpxDeskPulse | null {
 let cachedPriorDay = {
   pdh: null as number | null,
   pdl: null as number | null,
+  pdc: null as number | null,
   fetchedAt: 0,
 };
 
@@ -158,6 +162,9 @@ export type SpxDeskPayload = {
   vwap: number | null;
   pdh: number | null;
   pdl: number | null;
+  prior_close: number | null;
+  gap_pct: number | null;
+  gap_source: "SPY" | "SPX" | null;
   ema20: number | null;
   ema50: number | null;
   ema200: number | null;
@@ -223,6 +230,9 @@ export type SpxDeskPulse = Pick<
   | "vwap"
   | "pdh"
   | "pdl"
+  | "prior_close"
+  | "gap_pct"
+  | "gap_source"
   | "ema20"
   | "ema50"
   | "ema200"
@@ -438,6 +448,9 @@ function emptyPayload(asOf: string): SpxDeskPayload {
     vwap: null,
     pdh: null,
     pdl: null,
+    prior_close: null,
+    gap_pct: null,
+    gap_source: null,
     ema20: null,
     ema50: null,
     ema200: null,
@@ -605,6 +618,17 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     })
     .slice(0, 10);
 
+  const macroEventsResolved = await mergeMacroEventsToday({
+    finnhub: macroEvents ?? [],
+    headlines: newsHeadlines,
+  });
+
+  const gapSnap = await resolveDeskGap({
+    spx_price: price,
+    prior_close: prior.pdc,
+    premarket: isPremarketPlanningWindow(),
+  });
+
   const leaderStocks = leaderStocksFromBreadth(breadthAll ?? []);
   const internals = resolveMarketInternals(
     {
@@ -646,6 +670,9 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     vwap,
     pdh: prior.pdh,
     pdl: prior.pdl,
+    prior_close: prior.pdc,
+    gap_pct: gapSnap.gap_pct,
+    gap_source: gapSnap.gap_source,
     ema20,
     ema50,
     ema200,
@@ -689,21 +716,31 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     leader_stocks: leaderStocks ?? [],
     oi_changes: [],
     iv_term_structure: [],
-    macro_events: macroEvents ?? [],
+    macro_events: macroEventsResolved,
     news_headlines: newsHeadlines,
   };
 }
 
-async function fetchPriorDayCached(): Promise<{ pdh: number | null; pdl: number | null }> {
+async function fetchPriorDayCached(): Promise<{
+  pdh: number | null;
+  pdl: number | null;
+  pdc: number | null;
+}> {
   const now = Date.now();
   if (now - cachedPriorDay.fetchedAt < 60_000 && cachedPriorDay.pdh != null) {
-    return { pdh: cachedPriorDay.pdh, pdl: cachedPriorDay.pdl };
+    return { pdh: cachedPriorDay.pdh, pdl: cachedPriorDay.pdl, pdc: cachedPriorDay.pdc };
   }
   const today = todayEtYmd();
   const bars = await fetchIndexDailyBars(SPX, priorEtYmd(10), today).catch(() => []);
   const prior = priorDayFromDailyBars(bars);
-  cachedPriorDay = { pdh: prior.pdh, pdl: prior.pdl, fetchedAt: now };
-  return { pdh: prior.pdh, pdl: prior.pdl };
+  cachedPriorDay = { pdh: prior.pdh, pdl: prior.pdl, pdc: prior.pdc, fetchedAt: now };
+  return { pdh: prior.pdh, pdl: prior.pdl, pdc: prior.pdc };
+}
+
+/** @deprecated use resolveDeskGap from gap-proxy */
+function gapFromPrice(price: number, pdc: number | null): number | null {
+  if (pdc == null || pdc <= 0 || price <= 0) return null;
+  return ((price - pdc) / pdc) * 100;
 }
 
 /** EMAs / VWAP / HOD/LOD — refreshed on a slower cadence so 1s pulse stays light. */
@@ -775,6 +812,9 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     vwap: null,
     pdh: null,
     pdl: null,
+    prior_close: null,
+    gap_pct: null,
+    gap_source: null,
     ema20: null,
     ema50: null,
     ema200: null,
@@ -795,10 +835,11 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
 
   const marketNow = await fetchMarketStatusNow();
   const now = new Date();
+  const premarketPlan = isPremarketPlanningWindow(now);
   const rthOpen = isSpxRthActive(now, marketNow);
   const label = marketStatusLabel(now, marketNow);
 
-  if (!rthOpen) {
+  if (!rthOpen && !premarketPlan) {
     const closedPulse: SpxDeskPulse = {
       ...empty,
       market_open: false,
@@ -822,8 +863,8 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
 
   const price = spxSnap.price;
   const vwap = structure.vwap;
-  const lod = structure.lod ?? price;
-  const hod = structure.hod ?? price;
+  const lod = premarketPlan && !rthOpen ? prior.pdl ?? price : structure.lod ?? price;
+  const hod = premarketPlan && !rthOpen ? prior.pdh ?? price : structure.hod ?? price;
   const ema20 = structure.ema20;
   const ema50 = structure.ema50;
   const vixTerm = computeVixTermStructure(
@@ -841,6 +882,12 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     structure.breadth_samples
   );
 
+  const gapSnap = await resolveDeskGap({
+    spx_price: price,
+    prior_close: prior.pdc,
+    premarket: premarketPlan && !rthOpen,
+  });
+
   const result: SpxDeskPulse = {
     available: true,
     polled_at: polledAt,
@@ -854,6 +901,9 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     vwap,
     pdh: prior.pdh,
     pdl: prior.pdl,
+    prior_close: prior.pdc,
+    gap_pct: gapSnap.gap_pct,
+    gap_source: gapSnap.gap_source,
     ema20,
     ema50,
     ema200: structure.ema200,
@@ -871,8 +921,8 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
       detail: vixTerm.detail,
     },
     market_open: rthOpen,
-    market_status: marketNow?.market ?? "open",
-    market_label: label,
+    market_status: premarketPlan && !rthOpen ? "premarket" : marketNow?.market ?? "open",
+    market_label: premarketPlan && !rthOpen ? "PRE-MARKET" : label,
   };
   lastPulseForSignals = result;
   return result;
@@ -899,7 +949,7 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
     flow_0dte_net: null,
   };
 
-  if (!isSpxRthActive()) return empty;
+  if (!isSpxRthActive() && !isPremarketPlanningWindow()) return empty;
 
   const [spxSnap, darkPool, spxFlowsRaw, uwGex, uwFlow] = await Promise.all([
     polygonConfigured()

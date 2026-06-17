@@ -2,6 +2,7 @@
  * 0DTE SPX confluence engine — client + server safe (no provider imports).
  */
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
+import { computeWeightedConflicts } from "@/lib/spx-play-conflicts";
 
 export type SpxSignalAction = "BUY_CALL" | "BUY_PUT" | "HOLD" | "WAIT";
 export type SpxPlayAction = "SCANNING" | "WATCHING" | "BUY" | "HOLD" | "TRIM" | "SELL";
@@ -34,6 +35,7 @@ export type SpxTradeSignal = {
 export type SpxConfluence = SpxTradeSignal & {
   grade: SpxConfluenceGrade;
   conflicts: number;
+  weighted_conflicts: number;
   agreeing: number;
   direction: SpxPlayDirection | null;
 };
@@ -68,10 +70,10 @@ function tapeSkew(desk: SpxDeskPayload): { bull: number; bear: number } {
 }
 
 function scoreToGrade(absScore: number, conflicts: number): SpxConfluenceGrade {
-  if (absScore >= 80 && conflicts === 0) return "A+";
-  if (absScore >= 68 && conflicts <= 1) return "A";
-  if (absScore >= 55 && conflicts <= 2) return "B";
-  if (absScore >= 40) return "C";
+  if (absScore >= 72 && conflicts <= 1) return "A+";
+  if (absScore >= 58 && conflicts <= 2) return "A";
+  if (absScore >= 45 && conflicts <= 3) return "B";
+  if (absScore >= 30) return "C";
   return "D";
 }
 
@@ -347,17 +349,17 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
   const abs = Math.abs(score);
   const bullFactors = factors.filter((f) => f.weight > 0).length;
   const bearFactors = factors.filter((f) => f.weight < 0).length;
-  const conflicts = score > 0 ? bearFactors : score < 0 ? bullFactors : Math.min(bullFactors, bearFactors);
+  const { conflicts, weighted_conflicts } = computeWeightedConflicts(desk, score, factors);
 
   let action: SpxSignalAction;
   let bias: "bullish" | "bearish" | "neutral";
-  if (score >= 28) {
+  if (score >= 22) {
     action = "BUY_CALL";
     bias = "bullish";
-  } else if (score <= -28) {
+  } else if (score <= -22) {
     action = "BUY_PUT";
     bias = "bearish";
-  } else if (abs >= 12) {
+  } else if (abs >= 10) {
     action = "HOLD";
     bias = score > 0 ? "bullish" : "bearish";
   } else {
@@ -380,6 +382,7 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
     score,
     grade,
     conflicts,
+    weighted_conflicts,
     agreeing,
     direction,
     headline: "",

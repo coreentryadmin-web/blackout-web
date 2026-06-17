@@ -32,7 +32,7 @@ async function finnhubGet<T>(path: string, params: Record<string, string> = {}):
   }
 }
 
-/** Today's US macro events (FOMC, CPI, NFP, etc.) */
+/** Today's US macro events — requires Finnhub Economic Data subscription ($50/mo). Free tier returns null. */
 export async function fetchEconomicCalendarToday(): Promise<MacroEvent[]> {
   const from = todayUtc();
   const data = await finnhubGet<{ economicCalendar?: Array<Record<string, unknown>> }>(

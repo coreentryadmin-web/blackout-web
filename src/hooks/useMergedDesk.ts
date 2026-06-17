@@ -44,6 +44,19 @@ function mergeDeskLayers(
   return out;
 }
 
+function isDeskSessionLive(pulse?: {
+  market_open?: boolean;
+  market_label?: string;
+  market_status?: string;
+}): boolean {
+  if (!pulse) return true;
+  return (
+    pulse.market_open === true ||
+    pulse.market_label === "PRE-MARKET" ||
+    pulse.market_status === "premarket"
+  );
+}
+
 export function useMergedDesk() {
   const deskStable = useRef<SpxDeskPayload | undefined>(
     readSessionCache<SpxDeskPayload>(DESK_CACHE_KEY, DESK_CACHE_MAX_AGE_MS)
@@ -54,14 +67,13 @@ export function useMergedDesk() {
     fetchSpxDeskPulse,
     {
       ...swrLiveOpts,
-      refreshInterval: (latest) => (latest?.market_open === false ? 0 : PULSE_MS),
+      refreshInterval: (latest) => (isDeskSessionLive(latest) ? PULSE_MS : 0),
       dedupingInterval: 800,
       focusThrottleInterval: PULSE_MS,
     }
   );
 
-  const sessionActive =
-    pulse?.market_open ?? deskStable.current?.market_open ?? true;
+  const sessionActive = isDeskSessionLive(pulse) || isDeskSessionLive(deskStable.current);
 
   const {
     data: desk,

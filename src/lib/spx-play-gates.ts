@@ -4,17 +4,22 @@ import type { PlayConfirmationResult } from "@/lib/spx-play-confirmations";
 import { buildPlayIdeaIntel } from "@/lib/spx-play-intel";
 import {
   gradeRank,
+  playBuyCooldownAplusBypass,
   playBuyCooldownSec,
-  playConflictBlockMin,
+  playCooldownAfterStopMin,
   playFullMinScore,
   playGexStaleMaxSec,
   playMinAgreeingFactors,
   playMinGradeRank,
   playOnlyFullEntry,
+  playOpeningRangeMinutes,
   playReentryLockSec,
   playStarterMinScore,
   playWatchMinScore,
+  playWeightedConflictBlockMin,
 } from "@/lib/spx-play-config";
+import { isPastNoEntryCutoff, isBeforeCashOpen, cashOpenLabel, noEntryCutoffLabel } from "@/lib/spx-play-session-guards";
+import { etClock, etMinutes, formatEtTime } from "@/lib/spx-play-session-time";
 
 export type PlayGateResult = {
   passed: boolean;
@@ -23,18 +28,6 @@ export type PlayGateResult = {
   entry_mode: "none" | "starter" | "full";
   play_idea: string | null;
 };
-
-function etMinutes(now: Date): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hour: "numeric",
-    minute: "numeric",
-    hour12: false,
-  }).formatToParts(now);
-  const h = Number(parts.find((p) => p.type === "hour")?.value ?? 0);
-  const m = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
-  return h * 60 + m;
-}
 
 function macroHardBlock(desk: SpxDeskPayload): string | null {
   const events = desk.macro_events ?? [];
@@ -50,6 +43,7 @@ function macroHardBlock(desk: SpxDeskPayload): string | null {
   return null;
 }
 
+/** Entry gates for the flat path only (SCANNING → WATCH → BUY). Does not manage open plays. */
 export function evaluatePlayGates(
   desk: SpxDeskPayload,
   confluence: SpxConfluence,
@@ -58,9 +52,10 @@ export function evaluatePlayGates(
     last_sell_at: number | null;
     last_sell_was_loss: boolean;
     last_direction: "long" | "short" | null;
+    last_stop_at: number | null;
   },
   confirmations?: PlayConfirmationResult | null,
-  opts?: { min_score_boost?: number }
+  opts?: { min_score_boost?: number; entry_intent?: "buy" | "watch" }
 ): PlayGateResult {
   const blocks: string[] = [];
   const warnings: string[] = [];
@@ -68,6 +63,7 @@ export function evaluatePlayGates(
   const scoreBoost = opts?.min_score_boost ?? 0;
   const fullMin = playFullMinScore() + scoreBoost;
   const dir = confluence.bias === "bullish" ? "long" : confluence.bias === "bearish" ? "short" : null;
+  const buyIntent = opts?.entry_intent !== "watch";
 
   if (!desk.market_open) {
     blocks.push("Session closed — no new entries");
@@ -85,7 +81,7 @@ export function evaluatePlayGates(
     }
   }
 
-  if (confluence.conflicts >= playConflictBlockMin()) {
+  if (confluence.weighted_conflicts >= playWeightedConflictBlockMin()) {
     const idea = buildPlayIdeaIntel(desk, confluence);
     blocks.push(
       idea ?? `Tape's mixed — waiting for cleaner ${dir === "long" ? "call" : dir === "short" ? "put" : "0DTE"} alignment`
@@ -93,18 +89,29 @@ export function evaluatePlayGates(
   }
 
   if (gradeRank(confluence.grade) < playMinGradeRank()) {
-    blocks.push(`Grade ${confluence.grade} below minimum (need A or A+)`);
+    blocks.push(`Grade ${confluence.grade} below minimum (need B or better)`);
   }
 
   const macro = macroHardBlock(desk);
   if (macro) blocks.push(macro);
 
-  const etMins = etMinutes(new Date());
-  if (etMins >= 14 * 60 + 30) {
-    blocks.push("After 2:30 PM ET — no new 0DTE entries");
+  if (buyIntent && isBeforeCashOpen()) {
+    blocks.push(`Pre-market — no 0DTE BUY until ${cashOpenLabel()} cash open (lotto watch ok)`);
   }
+
+  if (buyIntent && isPastNoEntryCutoff()) {
+    blocks.push(`After ${noEntryCutoffLabel()} — no new 0DTE entries`);
+  }
+
+  const etMins = etMinutes(new Date());
   if (etMins < 7 * 60 + 0) {
     blocks.push("Before 7:00 AM ET — opening volatility, no entries");
+  }
+
+  const openingRangeEnd = etClock(9, 30) + playOpeningRangeMinutes();
+  if (buyIntent && etMins < openingRangeEnd) {
+    const endMin = 30 + playOpeningRangeMinutes();
+    blocks.push(`Opening range — no BUY until ${formatEtTime(9, endMin)} (WATCH ok)`);
   }
 
   if (abs < playWatchMinScore()) {
@@ -116,9 +123,9 @@ export function evaluatePlayGates(
   }
 
   let entry_mode: PlayGateResult["entry_mode"] = "none";
-  if (abs >= fullMin && confluence.conflicts <= 1) {
+  if (abs >= fullMin && confluence.weighted_conflicts <= 2) {
     entry_mode = "full";
-  } else if (!playOnlyFullEntry() && abs >= playStarterMinScore() && confluence.conflicts <= 1) {
+  } else if (!playOnlyFullEntry() && abs >= playStarterMinScore() && confluence.weighted_conflicts <= 3) {
     entry_mode = "starter";
   }
 
@@ -128,18 +135,45 @@ export function evaluatePlayGates(
   }
 
   const now = Date.now();
-  if (session.last_buy_at && now - session.last_buy_at < playBuyCooldownSec() * 1000) {
-    blocks.push(`Quality cooldown (${Math.round(playBuyCooldownSec() / 60)}m between plays)`);
+  const buyCooldownSec = playBuyCooldownSec();
+  const buyCooldownActive =
+    buyIntent &&
+    session.last_sell_at != null &&
+    now - session.last_sell_at < buyCooldownSec * 1000;
+  if (buyCooldownActive) {
+    const minsSinceExit = Math.round((now - session.last_sell_at!) / 60_000);
+    const aplusBypass =
+      playBuyCooldownAplusBypass() && gradeRank(confluence.grade) >= gradeRank("A+");
+    if (aplusBypass) {
+      warnings.push(
+        `A+ setup — buy cooldown bypassed (${minsSinceExit}m since last exit, ${Math.round(buyCooldownSec / 60)}m default)`
+      );
+    } else {
+      blocks.push(
+        `Buy cooldown (${Math.round(buyCooldownSec / 60)}m after any exit — ${minsSinceExit}m elapsed)`
+      );
+    }
   }
 
   if (
+    buyIntent &&
+    session.last_stop_at &&
+    now - session.last_stop_at < playCooldownAfterStopMin() * 60_000
+  ) {
+    blocks.push(`Post-STOP cooldown (${playCooldownAfterStopMin()}m — STOP exits only, WATCH ok)`);
+  }
+
+  if (
+    buyIntent &&
     session.last_sell_was_loss &&
     session.last_sell_at &&
     session.last_direction &&
     dir === session.last_direction &&
     now - session.last_sell_at < playReentryLockSec() * 1000
   ) {
-    blocks.push(`Re-entry lock after loss (${Math.round(playReentryLockSec() / 60)}m)`);
+    blocks.push(
+      `Re-entry lock after loss (${Math.round(playReentryLockSec() / 60)}m same direction — STOP + THESIS)`
+    );
   }
 
   if (desk.vix != null && desk.vix > 32) {
@@ -177,7 +211,10 @@ export function evaluatePlayGates(
     entry_mode = "none";
   }
 
-  const passed = blocks.length === 0 && entry_mode === "full" && dir != null;
+  const passed =
+    blocks.length === 0 &&
+    (entry_mode === "full" || entry_mode === "starter") &&
+    dir != null;
   const play_idea = buildPlayIdeaIntel(desk, confluence);
 
   return { passed, blocks, warnings, entry_mode, play_idea };

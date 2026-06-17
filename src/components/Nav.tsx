@@ -8,6 +8,7 @@ import { clsx } from "clsx";
 
 const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/docs/spx-sniper", label: "Playbook" },
   { href: "/flows", label: "Flows" },
   { href: "/heatmap", label: "Heatmaps" },
   { href: "/terminal", label: "Largo" },

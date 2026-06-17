@@ -40,7 +40,7 @@ function nearLevel(price: number, level: number | null, pts = playStructureProxi
 
 function flowAligned(desk: SpxDeskPayload, direction: "long" | "short"): boolean {
   const net = desk.flow_0dte_net;
-  if (net != null && Math.abs(net) > 75_000) {
+  if (net != null && Math.abs(net) > 40_000) {
     if (direction === "long" && net > 0) return true;
     if (direction === "short" && net < 0) return true;
   }
@@ -51,8 +51,12 @@ function flowAligned(desk: SpxDeskPayload, direction: "long" | "short"): boolean
     if (f.direction === "bullish" || f.option_type.toUpperCase().startsWith("C")) bull += f.premium;
     else bear += f.premium;
   }
-  if (bull + bear < 100_000) return false;
-  return direction === "long" ? bull > bear * 1.2 : bear > bull * 1.2;
+  if (bull + bear < 50_000) return false;
+  return direction === "long" ? bull > bear * 1.1 : bear > bull * 1.1;
+}
+
+export function flowAlignedForDirection(desk: SpxDeskPayload, direction: "long" | "short"): boolean {
+  return flowAligned(desk, direction);
 }
 
 function structureAligned(desk: SpxDeskPayload, direction: "long" | "short"): { passed: boolean; detail: string } {
@@ -208,7 +212,7 @@ export function evaluatePlayConfirmations(
   const topHeadline = desk.news_headlines?.[0]?.title?.slice(0, 80) ?? "none";
   checks.push({
     label: "News catalyst",
-    required: true,
+    required: false,
     passed: newsOk,
     detail: newsOk ? `News ${news} · ${topHeadline}` : `News opposes ${direction}: ${topHeadline}`,
   });

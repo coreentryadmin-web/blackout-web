@@ -27,7 +27,7 @@ export type PlayEntrySnapshot = {
   opened_at: string;
 };
 
-export type PlayExitAction = "STOP" | "TARGET" | "THESIS" | "SESSION" | "UNKNOWN";
+export type PlayExitAction = "STOP" | "TARGET" | "THESIS" | "SESSION" | "THETA" | "UNKNOWN";
 
 export type PlayCloseSnapshot = {
   exit_price: number;
