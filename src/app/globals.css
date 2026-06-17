@@ -1113,6 +1113,96 @@ body {
     @apply flex flex-col h-full min-h-0 border border-bull/25 bg-black/55 backdrop-blur-md p-4 md:p-5;
   }
 
+  .spx-sniper-panel {
+    @apply relative overflow-hidden;
+  }
+
+  .spx-sniper-panel-content {
+    @apply relative z-10 flex flex-col flex-1 min-h-0;
+  }
+
+  .spx-sniper-backdrop {
+    @apply absolute inset-0 z-0 pointer-events-none overflow-hidden;
+  }
+
+  .spx-sniper-backdrop-layer {
+    @apply absolute inset-0 bg-cover bg-center opacity-0;
+    transform: scale(1.06);
+    transition:
+      opacity 2.2s ease-in-out,
+      transform 12s ease-out;
+    will-change: opacity, transform;
+  }
+
+  .spx-sniper-backdrop-layer.is-active {
+    opacity: 0.42;
+    transform: scale(1);
+  }
+
+  .spx-sniper-backdrop-scrim {
+    @apply absolute inset-0;
+    background: linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0.72) 0%,
+      rgba(0, 0, 0, 0.55) 38%,
+      rgba(0, 0, 0, 0.78) 100%
+    );
+    transition: background 1.2s ease;
+  }
+
+  .spx-sniper-tint-scan {
+    background: linear-gradient(
+      180deg,
+      rgba(8, 12, 24, 0.82) 0%,
+      rgba(20, 10, 40, 0.5) 45%,
+      rgba(0, 0, 0, 0.85) 100%
+    );
+  }
+
+  .spx-sniper-tint-watch {
+    background: linear-gradient(
+      180deg,
+      rgba(30, 15, 0, 0.8) 0%,
+      rgba(120, 60, 0, 0.22) 40%,
+      rgba(0, 0, 0, 0.88) 100%
+    );
+  }
+
+  .spx-sniper-tint-buy {
+    background: linear-gradient(
+      180deg,
+      rgba(0, 20, 10, 0.82) 0%,
+      rgba(0, 120, 60, 0.18) 42%,
+      rgba(0, 0, 0, 0.88) 100%
+    );
+  }
+
+  .spx-sniper-tint-sell {
+    background: linear-gradient(
+      180deg,
+      rgba(24, 0, 8, 0.84) 0%,
+      rgba(140, 0, 30, 0.2) 42%,
+      rgba(0, 0, 0, 0.9) 100%
+    );
+  }
+
+  .spx-sniper-tint-hold {
+    background: linear-gradient(
+      180deg,
+      rgba(20, 12, 0, 0.82) 0%,
+      rgba(180, 90, 0, 0.16) 42%,
+      rgba(0, 0, 0, 0.88) 100%
+    );
+  }
+
+  .spx-sniper-panel .spx-trade-alert-hero {
+    @apply bg-black/35 backdrop-blur-sm;
+  }
+
+  .spx-sniper-panel .spx-trade-confirmations {
+    @apply bg-black/45 backdrop-blur-sm;
+  }
+
   .spx-trade-alerts-header {
     @apply flex items-center justify-between gap-3 pb-2 mb-3 border-b border-white/10 shrink-0;
   }

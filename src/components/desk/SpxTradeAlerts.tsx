@@ -6,6 +6,7 @@ import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import type { SpxPlayPayload, SpxPlayAction } from "@/lib/spx-play-engine";
 import { useSpxPlay } from "@/hooks/useSpxPlay";
 import { useStablePlayConfirmations } from "@/hooks/useStablePlayConfirmations";
+import { SpxSniperBackdrop } from "@/components/desk/SpxSniperBackdrop";
 import { fmtPrice } from "@/lib/api";
 
 type Props = {
@@ -102,10 +103,12 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
   return (
     <section
       className={clsx(
-        "spx-trade-alerts-panel",
+        "spx-trade-alerts-panel spx-sniper-panel",
         panelRefreshing && "spx-desk-panel-refreshing"
       )}
     >
+      <SpxSniperBackdrop action={play?.action} />
+      <div className="spx-sniper-panel-content">
       <header className="spx-trade-alerts-header">
         <h2 className="spx-trade-alerts-title font-display">SPX Sniper</h2>
         <span className={clsx("spx-live-pill", live ? "spx-live-pill-on" : "spx-live-pill-off")}>
@@ -311,6 +314,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
           </ul>
         </div>
       )}
+      </div>
     </section>
   );
 }
