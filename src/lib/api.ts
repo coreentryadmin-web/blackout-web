@@ -120,6 +120,16 @@ function emptySpxState(): SpxState {
   };
 }
 
+/** Fast Polygon-only quote — polled every 5s on dashboard */
+export async function fetchSpxIndices() {
+  return marketFetch<{
+    source?: string;
+    as_of?: string;
+    spx?: { price: number; change_pct: number };
+    vix?: { price: number; change_pct: number };
+  }>("/indices");
+}
+
 /** Website-first: Polygon indices + optional BlackOut intel overlay (GEX, levels, regime). */
 export async function fetchSpxState(): Promise<SpxState> {
   const [indicesRes, intelRes] = await Promise.allSettled([

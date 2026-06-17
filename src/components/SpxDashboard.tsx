@@ -1,92 +1,141 @@
 "use client";
 
 import useSWR from "swr";
-import { fetchSpxState, fmtPct, type SpxState } from "@/lib/api";
+import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
-import { EngineStatusBar } from "@/components/desk/EngineStatusBar";
-import { DeskHeroTicker } from "@/components/desk/DeskHeroTicker";
-import { GexDealerPanel, Flow0dtePanel, BreadthPanel } from "@/components/desk/GexDealerPanel";
-import { LevelLadder } from "@/components/desk/LevelLadder";
-import { BenzingaNewsTicker } from "@/components/desk/BenzingaNewsTicker";
-import { TradingViewWidget } from "@/components/embeds/TradingViewWidget";
-import { PlatformEmpty } from "@/components/platform/PlatformEmpty";
+import { fetchSpxIndices, fetchSpxState, fmtPct, fmtPrice, fmtPremium, type SpxState } from "@/lib/api";
+import { SpxSniperHeader } from "@/components/desk/SpxSniperHeader";
+import { BenzingaNewsRail } from "@/components/desk/BenzingaNewsRail";
+import { SpxChart } from "@/components/desk/SpxChart";
 
-export function SpxDashboard() {
-  const { data, isLoading, error } = useSWR<SpxState>("spx-state", fetchSpxState, {
-    refreshInterval: 12_000,
+const REFRESH_MS = 5_000;
+
+function useSpxLive() {
+  const { data: indices } = useSWR("spx-indices", fetchSpxIndices, {
+    refreshInterval: REFRESH_MS,
+    revalidateOnFocus: true,
   });
 
-  const live = !error && data?.available === true;
-  const s = data;
+  const { data: intel, error: intelError } = useSWR<SpxState>("spx-state", fetchSpxState, {
+    refreshInterval: REFRESH_MS,
+    revalidateOnFocus: true,
+  });
+
+  const merged: SpxState | undefined = intel
+    ? {
+        ...intel,
+        available:
+          Boolean(indices?.spx) ||
+          intel.available ||
+          (intel.price > 0 && !intelError),
+        price: indices?.spx?.price ?? intel.price,
+        spx_change_pct: indices?.spx?.change_pct ?? intel.spx_change_pct,
+        vix: indices?.vix?.price ?? intel.vix,
+        vix_change_pct: indices?.vix?.change_pct ?? intel.vix_change_pct,
+        as_of: indices?.as_of ?? intel.as_of,
+        source: indices?.spx ? (intel.available ? "merged" : "polygon") : intel.source,
+      }
+    : undefined;
+
+  const live = Boolean(merged?.available && merged.price > 0);
+
+  return { data: merged, live };
+}
+
+export function SpxDashboard() {
+  const { data: s, live } = useSpxLive();
+  const bull = (s?.spx_change_pct ?? 0) >= 0;
 
   return (
-    <div className="desk-layout space-y-5">
-      <EngineStatusBar />
-      <BenzingaNewsTicker />
-      <DeskHeroTicker data={s} live={live && !isLoading} />
+    <div className="spx-sniper-desk">
+      <SpxSniperHeader live={live} />
 
-      {!live && !isLoading && (
-        <PlatformEmpty
-          variant="dashboard"
-          title="MARKET DATA STANDBY"
-          description="Add POLYGON_API_KEY and UW_API_KEY on Railway (server-side, not NEXT_PUBLIC). SPX quotes load from Polygon; GEX and levels overlay when BlackOut Engine is online."
-        />
-      )}
-
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-        <div className="xl:col-span-8 space-y-4">
-          <TradingViewWidget type="advanced-chart" symbol="CBOE:SPX" title="SPX Live Chart" height={420} />
-          <div className="grid md:grid-cols-3 gap-4">
-            <GexDealerPanel data={s} live={live} />
-            <Flow0dtePanel data={s} live={live} />
-            <BreadthPanel data={s} live={live} />
+      <div className="spx-sniper-hero">
+        <div className="spx-sniper-hero-grid" aria-hidden />
+        <div className="relative z-10 flex flex-col xl:flex-row xl:items-end xl:justify-between gap-6">
+          <div>
+            <p className="font-mono text-[10px] tracking-[0.45em] text-bull uppercase mb-2">
+              ◆ I:SPX · updates every 5s
+            </p>
+            <AnimatePresence mode="popLayout">
+              <motion.p
+                key={s?.price}
+                initial={{ opacity: 0.5, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25 }}
+                className="font-anton text-6xl md:text-8xl text-white leading-none tabular-nums text-glow-green"
+              >
+                {live ? fmtPrice(s?.price ?? null, 2) : "— — —"}
+              </motion.p>
+            </AnimatePresence>
+            <div className="flex flex-wrap items-center gap-4 mt-4">
+              <span
+                className={clsx(
+                  "font-mono text-xl font-bold tabular-nums",
+                  bull ? "num-bull" : "num-bear"
+                )}
+              >
+                {live ? fmtPct(s?.spx_change_pct ?? null) : "—"}
+              </span>
+              <StatPill label="VIX" value={live && s?.vix != null ? fmtPrice(s.vix, 2) : "—"} />
+              <StatPill label="VWAP" value={live ? fmtPrice(s?.vwap ?? null) : "—"} />
+              <StatPill label="HOD" value={live ? fmtPrice(s?.hod ?? null) : "—"} />
+              <StatPill label="LOD" value={live ? fmtPrice(s?.lod ?? null) : "—"} />
+              <StatPill
+                label="GEX"
+                value={live && s?.gex_net != null ? fmtPremium(s.gex_net) : "—"}
+                accent
+              />
+            </div>
           </div>
-        </div>
-        <div className="xl:col-span-4 space-y-4">
-          <LevelLadder data={s} live={live} />
-          {live && s && (s.sector_leaders.length > 0 || s.sector_laggards.length > 0) && (
-            <SectorPulse leaders={s.sector_leaders} laggards={s.sector_laggards} />
-          )}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 min-w-[240px]">
+            <StatPill label="Regime" value={live ? (s?.chart_levels?.regime ?? "—") : "—"} accent />
+            <StatPill
+              label="γ Flip"
+              value={live && s?.gamma_flip ? fmtPrice(s.gamma_flip) : "—"}
+            />
+            <StatPill
+              label="Max Pain"
+              value={live && s?.max_pain ? fmtPrice(s.max_pain) : "—"}
+            />
+            <StatPill
+              label="IV Rank"
+              value={live && s?.uw_iv_rank != null ? String(s.uw_iv_rank) : "—"}
+            />
+          </div>
         </div>
       </div>
 
-      <TradingViewWidget type="ticker-tape" title="Market Tape" height={48} />
+      <div className="spx-sniper-main">
+        <div className="spx-sniper-chart-col">
+          <SpxChart height={640} />
+        </div>
+        <BenzingaNewsRail />
+      </div>
     </div>
   );
 }
 
-function SectorPulse({
-  leaders,
-  laggards,
+function StatPill({
+  label,
+  value,
+  accent,
 }: {
-  leaders: Array<{ sector: string; change_pct: number }>;
-  laggards: Array<{ sector: string; change_pct: number }>;
+  label: string;
+  value: string;
+  accent?: boolean;
 }) {
   return (
-    <div className="desk-panel desk-panel-neutral">
-      <div className="desk-panel-header">
-        <p className="desk-panel-title">Sector Pulse</p>
-      </div>
-      <div className="desk-panel-body grid grid-cols-2 gap-4">
-        <div>
-          <p className="text-[9px] tracking-widest uppercase text-grey-500 mb-2">Leaders</p>
-          {leaders.slice(0, 4).map((sec) => (
-            <div key={sec.sector} className="flex justify-between py-1.5 border-b border-grey-800/80 last:border-0">
-              <span className="text-xs text-grey-300 truncate pr-2">{sec.sector}</span>
-              <span className="font-mono text-xs num-bull">{fmtPct(sec.change_pct)}</span>
-            </div>
-          ))}
-        </div>
-        <div>
-          <p className="text-[9px] tracking-widest uppercase text-grey-500 mb-2">Laggards</p>
-          {laggards.slice(0, 4).map((sec) => (
-            <div key={sec.sector} className="flex justify-between py-1.5 border-b border-grey-800/80 last:border-0">
-              <span className="text-xs text-grey-300 truncate pr-2">{sec.sector}</span>
-              <span className={clsx("font-mono text-xs", "num-bear")}>{fmtPct(sec.change_pct)}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+    <div className="spx-stat-pill">
+      <p className="text-[8px] tracking-widest uppercase text-grey-500 mb-0.5">{label}</p>
+      <p
+        className={clsx(
+          "font-mono text-xs font-semibold tabular-nums capitalize truncate",
+          accent ? "text-bull" : "text-white"
+        )}
+      >
+        {value}
+      </p>
     </div>
   );
 }
