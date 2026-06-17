@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { clsx } from "clsx";
 
@@ -16,6 +17,24 @@ const NAV_LINKS = [
 export function Nav() {
   const path = usePathname();
   const isHome = path === "/";
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.admin) setIsAdmin(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const links = isAdmin
+    ? [...NAV_LINKS, { href: "/admin", label: "Admin" }]
+    : NAV_LINKS;
 
   return (
     <nav className={clsx("nav-bar", isHome && "bg-transparent border-bull/10")}>
@@ -30,7 +49,7 @@ export function Nav() {
 
       <SignedIn>
         <ul className="hidden md:flex items-center gap-6 lg:gap-8">
-          {NAV_LINKS.map(({ href, label }) => (
+          {links.map(({ href, label }) => (
             <li key={href}>
               <Link
                 href={href}

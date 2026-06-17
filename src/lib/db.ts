@@ -780,3 +780,154 @@ export async function fetchRecentPlayOutcomeRows(limit = 50): Promise<
   );
   return res.rows.map(mapPlayOutcomeRow);
 }
+
+export async function fetchSpxAdminRollups(): Promise<{
+  grade_breakdown: Array<{
+    grade: string;
+    count: number;
+    wins: number;
+    losses: number;
+    win_rate: number;
+    avg_pnl: number;
+  }>;
+  exit_breakdown: Array<{ exit_action: string; count: number; avg_pnl: number }>;
+  daily_rollup: Array<{
+    day: string;
+    trades: number;
+    wins: number;
+    losses: number;
+    avg_pnl: number;
+    total_pnl: number;
+  }>;
+  signal_actions_30d: Array<{ action: string; count: number }>;
+  signals_today: number;
+  flow_alerts_today: number;
+  open_outcomes: number;
+  avg_pnl_pts: number;
+  avg_mfe_pts: number;
+  avg_mae_pts: number;
+  recent_signals: Awaited<ReturnType<typeof fetchRecentSpxSignalLogs>>;
+}> {
+  await ensureSchema();
+  const pool = await getPool();
+
+  const gradeRes = await pool.query(
+    `
+    SELECT grade,
+           COUNT(*)::int AS count,
+           COUNT(*) FILTER (WHERE outcome = 'win')::int AS wins,
+           COUNT(*) FILTER (WHERE outcome = 'loss')::int AS losses,
+           COALESCE(AVG(pnl_pts) FILTER (WHERE pnl_pts IS NOT NULL), 0) AS avg_pnl
+    FROM spx_play_outcomes
+    WHERE outcome <> 'open'
+    GROUP BY grade
+    ORDER BY grade
+    `
+  );
+
+  const exitRes = await pool.query(
+    `
+    SELECT COALESCE(exit_action, 'UNKNOWN') AS exit_action,
+           COUNT(*)::int AS count,
+           COALESCE(AVG(pnl_pts), 0) AS avg_pnl
+    FROM spx_play_outcomes
+    WHERE outcome <> 'open'
+    GROUP BY exit_action
+    ORDER BY count DESC
+    `
+  );
+
+  const dailyRes = await pool.query(
+    `
+    SELECT to_char(closed_at AT TIME ZONE 'America/New_York', 'YYYY-MM-DD') AS day,
+           COUNT(*)::int AS trades,
+           COUNT(*) FILTER (WHERE outcome = 'win')::int AS wins,
+           COUNT(*) FILTER (WHERE outcome = 'loss')::int AS losses,
+           COALESCE(AVG(pnl_pts), 0) AS avg_pnl,
+           COALESCE(SUM(pnl_pts), 0) AS total_pnl
+    FROM spx_play_outcomes
+    WHERE outcome <> 'open' AND closed_at IS NOT NULL
+    GROUP BY 1
+    ORDER BY 1 DESC
+    LIMIT 21
+    `
+  );
+
+  const signalActionsRes = await pool.query(
+    `
+    SELECT action, COUNT(*)::int AS count
+    FROM spx_signal_log
+    WHERE created_at >= NOW() - INTERVAL '30 days'
+    GROUP BY action
+    ORDER BY count DESC
+    `
+  );
+
+  const signalsTodayRes = await pool.query<{ count: string }>(
+    `SELECT COUNT(*)::int AS count FROM spx_signal_log WHERE created_at::date = CURRENT_DATE`
+  );
+
+  const flowTodayRes = await pool.query<{ count: string }>(
+    `SELECT COUNT(*)::int AS count FROM flow_alerts WHERE inserted_at::date = CURRENT_DATE`
+  );
+
+  const openRes = await pool.query<{ count: string }>(
+    `SELECT COUNT(*)::int AS count FROM spx_play_outcomes WHERE outcome = 'open'`
+  );
+
+  const avgRes = await pool.query<{
+    avg_pnl: string;
+    avg_mfe: string;
+    avg_mae: string;
+  }>(
+    `
+    SELECT COALESCE(AVG(pnl_pts), 0) AS avg_pnl,
+           COALESCE(AVG(mfe_pts), 0) AS avg_mfe,
+           COALESCE(AVG(mae_pts), 0) AS avg_mae
+    FROM spx_play_outcomes
+    WHERE outcome <> 'open'
+    `
+  );
+
+  const recent_signals = await fetchRecentSpxSignalLogs(30);
+
+  return {
+    grade_breakdown: gradeRes.rows.map((r) => {
+      const count = Number(r.count);
+      const wins = Number(r.wins);
+      const losses = Number(r.losses);
+      return {
+        grade: String(r.grade),
+        count,
+        wins,
+        losses,
+        win_rate: count > 0 ? wins / count : 0,
+        avg_pnl: Number(r.avg_pnl),
+      };
+    }),
+    exit_breakdown: exitRes.rows.map((r) => ({
+      exit_action: String(r.exit_action),
+      count: Number(r.count),
+      avg_pnl: Number(r.avg_pnl),
+    })),
+    daily_rollup: dailyRes.rows.map((r) => ({
+      day: String(r.day),
+      trades: Number(r.trades),
+      wins: Number(r.wins),
+      losses: Number(r.losses),
+      avg_pnl: Number(r.avg_pnl),
+      total_pnl: Number(r.total_pnl),
+    })),
+    signal_actions_30d: signalActionsRes.rows.map((r) => ({
+      action: String(r.action),
+      count: Number(r.count),
+    })),
+    signals_today: Number(signalsTodayRes.rows[0]?.count ?? 0),
+    flow_alerts_today: Number(flowTodayRes.rows[0]?.count ?? 0),
+    open_outcomes: Number(openRes.rows[0]?.count ?? 0),
+    avg_pnl_pts: Number(avgRes.rows[0]?.avg_pnl ?? 0),
+    avg_mfe_pts: Number(avgRes.rows[0]?.avg_mfe ?? 0),
+    avg_mae_pts: Number(avgRes.rows[0]?.avg_mae ?? 0),
+    recent_signals,
+  };
+}
