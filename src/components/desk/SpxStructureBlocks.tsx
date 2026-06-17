@@ -28,10 +28,17 @@ const CARD_THEMES = {
   },
 } as const;
 
-export function SpxStructureBlocks({ desk, live }: BlockProps) {
+export function SpxStructureBlocks({
+  desk,
+  live,
+  variant = "stacked",
+}: BlockProps & { variant?: "stacked" | "left-rail" }) {
+  const isLeftRail = variant === "left-rail";
+  const levelCap = isLeftRail ? 12 : 6;
+
   return (
-    <div className="spx-structure-grid">
-      <StructureCard theme="session" title="Price Structure" subtitle="Session · MAs">
+    <div className={clsx("spx-structure-grid", isLeftRail && "spx-structure-left-rail")}>
+      <StructureCard theme="session" title="Price Structure" subtitle="Session · MAs" large={isLeftRail}>
         <Row label="LOD" value={live ? fmtPrice(desk?.lod ?? null) : "—"} tone="support" />
         <Row label="HOD" value={live ? fmtPrice(desk?.hod ?? null) : "—"} tone="resistance" />
         <Row
@@ -48,7 +55,7 @@ export function SpxStructureBlocks({ desk, live }: BlockProps) {
         <Row label="EMA 200" value={live ? fmtPrice(desk?.ema200 ?? null) : "—"} tone="blue" />
       </StructureCard>
 
-      <StructureCard theme="dealer" title="Dealer Desk" subtitle="GEX · Flow">
+      <StructureCard theme="dealer" title="Dealer Desk" subtitle="GEX · Flow" large={isLeftRail}>
         <Row
           label="GEX Net"
           value={live && desk?.gex_net != null ? fmtPremium(desk.gex_net) : "—"}
@@ -75,7 +82,7 @@ export function SpxStructureBlocks({ desk, live }: BlockProps) {
         />
       </StructureCard>
 
-      <StructureCard theme="levels" title="Levels · Tape" subtitle="Internals · Ladder">
+      <StructureCard theme="levels" title="Levels · Tape" subtitle="Internals · Ladder" large={isLeftRail}>
         <Row
           label="TICK"
           value={live && desk?.tick != null ? String(Math.round(desk.tick)) : "—"}
@@ -93,7 +100,7 @@ export function SpxStructureBlocks({ desk, live }: BlockProps) {
           highlight
         />
         <div className="spx-structure-divider" />
-        {(desk?.levels ?? []).slice(0, 6).map((lv) => (
+        {(desk?.levels ?? []).slice(0, levelCap).map((lv) => (
           <LevelRow key={lv.label} label={lv.label} value={lv.value} dist={lv.distance_pct} live={live} kind={lv.kind} />
         ))}
       </StructureCard>
@@ -106,25 +113,40 @@ function StructureCard({
   title,
   subtitle,
   children,
+  large,
 }: {
   theme: keyof typeof CARD_THEMES;
   title: string;
   subtitle: string;
   children: React.ReactNode;
+  large?: boolean;
 }) {
   const t = CARD_THEMES[theme];
   return (
     <div
-      className={clsx("spx-structure-card", t.border)}
+      className={clsx("spx-structure-card", t.border, large && "spx-structure-card-large")}
       style={{ boxShadow: `inset 0 0 40px ${t.glow}` }}
     >
       <div className={clsx("spx-structure-card-header", t.accent)}>
         <span className="badge-live-dot animate-pulse" />
         <div>
-          <p className={clsx("font-mono text-[9px] tracking-[0.35em] uppercase font-semibold", t.header)}>
+          <p
+            className={clsx(
+              "font-syne tracking-[0.12em] uppercase font-bold",
+              large ? "text-sm" : "text-[9px] tracking-[0.35em] font-semibold font-mono",
+              t.header
+            )}
+          >
             {title}
           </p>
-          <p className="font-mono text-[7px] tracking-widest uppercase text-grey-500">{subtitle}</p>
+          <p
+            className={clsx(
+              "uppercase text-grey-500",
+              large ? "font-mono text-[10px] tracking-[0.25em] mt-0.5" : "font-mono text-[7px] tracking-widest"
+            )}
+          >
+            {subtitle}
+          </p>
         </div>
       </div>
       <div className="spx-structure-card-body">{children}</div>

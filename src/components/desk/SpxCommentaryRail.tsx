@@ -80,15 +80,15 @@ export function SpxCommentaryRail({
   }, [live, desk, pullCommentary]);
 
   return (
-    <aside className="spx-commentary-rail spx-commentary-rail-full">
+    <aside className="spx-commentary-rail spx-commentary-rail-full spx-commentary-rail-desk">
       <div className="spx-commentary-header">
         <span className={clsx("badge-live-dot", live && "animate-pulse")} />
         <div>
-          <span className="font-mono text-[9px] tracking-[0.4em] uppercase text-purple-light block">
+          <span className="font-syne text-base tracking-[0.15em] uppercase text-purple-light block font-bold">
             Live Desk AI
           </span>
-          <span className="font-mono text-[7px] tracking-wider text-grey-500">
-            Claude · checks 15s · updates on tape moves (~55s min)
+          <span className="font-mono text-[10px] tracking-[0.2em] text-grey-500 mt-0.5 block">
+            Claude · live tape · refreshes on moves
           </span>
         </div>
         {loading && (
@@ -114,12 +114,12 @@ export function SpxCommentaryRail({
         ) : (
           <div className="spx-commentary-feed">
             <AnimatePresence initial={false}>
-              {entries.map((entry) => (
+              {entries.map((entry, idx) => (
                 <motion.article
                   key={entry.id}
                   initial={{ opacity: 0, y: -12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="spx-commentary-card"
+                  className={clsx("spx-commentary-card", idx === 0 && "spx-commentary-card-featured")}
                 >
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <span
@@ -139,7 +139,12 @@ export function SpxCommentaryRail({
                       })}
                     </time>
                   </div>
-                  <h3 className="font-syne text-sm font-bold text-white leading-snug mb-2">
+                  <h3
+                    className={clsx(
+                      "font-syne font-bold text-white leading-snug mb-2",
+                      idx === 0 ? "text-lg md:text-xl" : "text-sm"
+                    )}
+                  >
                     {entry.headline}
                   </h3>
                   {entry.changed.length > 0 && (
@@ -152,7 +157,7 @@ export function SpxCommentaryRail({
                   <div className="spx-commentary-body whitespace-pre-line">{entry.body}</div>
                   {entry.watch.length > 0 && (
                     <div className="mt-3 pt-2 border-t border-grey-800/80">
-                      <p className="text-[8px] tracking-widest uppercase text-grey-500 mb-1">
+                      <p className="font-syne text-[10px] tracking-[0.2em] uppercase text-grey-400 mb-1.5">
                         Watch
                       </p>
                       <ul className="spx-commentary-watch">

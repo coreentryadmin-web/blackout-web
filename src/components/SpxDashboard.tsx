@@ -80,15 +80,16 @@ export function SpxDashboard() {
         )}
       </div>
 
-      <div className="spx-sniper-split">
+      <div className="spx-sniper-triple">
+        <aside className="spx-sniper-left-rail">
+          <SpxStructureBlocks desk={desk} live={live} variant="left-rail" />
+        </aside>
+
         <div className="spx-sniper-chart-col">
           <SpxChart height={720} />
         </div>
 
-        <aside className="spx-sniper-right-rail">
-          <SpxStructureBlocks desk={desk} live={live} />
-          <SpxCommentaryRail desk={desk} live={live} />
-        </aside>
+        <SpxCommentaryRail desk={desk} live={live} />
       </div>
     </div>
   );
