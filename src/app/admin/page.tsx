@@ -8,7 +8,7 @@ export default async function AdminPage() {
   await requireAdmin();
 
   return (
-    <div className="admin-page">
+    <div className="admin-page admin-page-canvas">
       <Nav />
       <main className="admin-page-main">
         <AdminAnalyticsDashboard />

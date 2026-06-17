@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { clsx } from "clsx";
 import type { ApiDashboardPayload, ProviderDashboardRow } from "@/lib/admin-api-dashboard";
+import { ActionButton, LivePill, MegaStat } from "@/components/admin/AdminUi";
 
 function statusDot(status: string): string {
   switch (status) {
@@ -49,7 +50,8 @@ function ProviderCard({
         : "admin-api-card-idle";
 
   return (
-    <article className={clsx("admin-api-card", healthClass, expanded && "admin-api-card-open")}>
+    <article className={clsx("admin-api-card admin-provider-card", healthClass, expanded && "admin-api-card-open")}>
+      <div className="admin-provider-strip" aria-hidden />
       <button type="button" className="admin-api-card-head" onClick={onToggle}>
         <div className="admin-api-card-title-row">
           <span className={clsx("admin-api-dot", statusDot(provider.probe.ok ? "ok" : provider.configured ? "error" : "unconfigured"))} />
@@ -205,39 +207,44 @@ export function AdminApiDashboard() {
           </p>
         </div>
         <div className="admin-api-toolbar-actions">
-          <span className="admin-api-live">
-            <span className="admin-api-live-dot" />
-            {loading && !data ? "Loading…" : probing ? "Probing…" : "Live · 5s"}
-          </span>
-          <button type="button" className="admin-refresh-btn" onClick={() => load(true)} disabled={probing}>
+          <LivePill label={loading && !data ? "Loading…" : probing ? "Probing…" : "Live · 5s"} />
+          <ActionButton onClick={() => load(true)} disabled={probing} variant="primary">
             {probing ? "Probing…" : "Probe all APIs"}
-          </button>
+          </ActionButton>
         </div>
       </header>
 
       {error && <p className="admin-error">{error}</p>}
 
       {summary && (
-        <section className="admin-stat-grid admin-api-stat-grid">
-          <div className="admin-stat-card">
-            <p className="admin-stat-label">Providers</p>
-            <p className="admin-stat-value">
-              {summary.providers_healthy}/{summary.providers_configured}
-            </p>
-            <p className="admin-stat-sub">healthy / configured</p>
-          </div>
-          <div className="admin-stat-card">
-            <p className="admin-stat-label">Calls ({summary.window_label})</p>
-            <p className="admin-stat-value">{summary.calls_window}</p>
-          </div>
-          <div className="admin-stat-card admin-stat-bear">
-            <p className="admin-stat-label">Errors ({summary.window_label})</p>
-            <p className="admin-stat-value">{summary.errors_window}</p>
-          </div>
-          <div className="admin-stat-card">
-            <p className="admin-stat-label">Error rate</p>
-            <p className="admin-stat-value">{summary.error_rate.toFixed(1)}%</p>
-          </div>
+        <section className="admin-mega-grid admin-api-stat-grid">
+          <MegaStat
+            label="Providers healthy"
+            value={`${summary.providers_healthy}/${summary.providers_configured}`}
+            sub="live probe pass"
+            tone="bull"
+            bar={(summary.providers_healthy / Math.max(1, summary.providers_configured)) * 100}
+          />
+          <MegaStat
+            label={`Calls (${summary.window_label})`}
+            value={String(summary.calls_window)}
+            sub="outbound requests"
+            tone="cyan"
+          />
+          <MegaStat
+            label={`Errors (${summary.window_label})`}
+            value={String(summary.errors_window)}
+            sub="failed / non-2xx"
+            tone="bear"
+            trend={summary.errors_window > 0 ? "down" : "flat"}
+          />
+          <MegaStat
+            label="Error rate"
+            value={`${summary.error_rate.toFixed(1)}%`}
+            sub="rolling window"
+            tone={summary.error_rate > 10 ? "bear" : "amber"}
+            bar={summary.error_rate}
+          />
         </section>
       )}
 
@@ -254,8 +261,8 @@ export function AdminApiDashboard() {
 
       {data && (data.recent_errors.length > 0 || data.recent_events.length > 0) && (
         <section className="admin-two-col">
-          <div className="admin-panel">
-            <h3 className="admin-section-title">Recent errors</h3>
+          <div className="admin-panel admin-glass admin-glass-bear">
+            <h3 className="admin-section-title admin-section-title-glow">Recent errors</h3>
             {data.recent_errors.length === 0 ? (
               <p className="admin-api-muted">No errors in the current window.</p>
             ) : (
@@ -284,8 +291,8 @@ export function AdminApiDashboard() {
             )}
           </div>
 
-          <div className="admin-panel">
-            <h3 className="admin-section-title">Recent calls</h3>
+          <div className="admin-panel admin-glass admin-glass-cyan">
+            <h3 className="admin-section-title admin-section-title-glow">Recent calls</h3>
             <div className="admin-scroll-table">
               <table className="admin-table">
                 <thead>

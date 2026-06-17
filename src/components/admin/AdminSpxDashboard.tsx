@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import type { SpxAdminDashboardPayload } from "@/lib/admin-spx-dashboard";
 import type { PlayOutcomeRow } from "@/lib/spx-play-outcomes";
+import { ActionButton, LivePill, MegaStat } from "@/components/admin/AdminUi";
 
 type SectionId =
   | "overview"
@@ -41,24 +42,8 @@ function fmtTime(iso: string | null | undefined): string {
   });
 }
 
-function StatCard({
-  label,
-  value,
-  sub,
-  tone = "neutral",
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  tone?: "bull" | "bear" | "neutral" | "violet";
-}) {
-  return (
-    <div className={clsx("admin-stat-card", `admin-stat-${tone}`)}>
-      <p className="admin-stat-label">{label}</p>
-      <p className="admin-stat-value">{value}</p>
-      {sub && <p className="admin-stat-sub">{sub}</p>}
-    </div>
-  );
+function StatCard(props: Parameters<typeof MegaStat>[0]) {
+  return <MegaStat {...props} />;
 }
 
 function CollapsiblePanel({
@@ -165,7 +150,7 @@ function OverviewSection({ data }: { data: SpxAdminDashboardPayload }) {
         </div>
       </div>
 
-      <section className="admin-stat-grid admin-spx-stat-grid">
+      <section className="admin-mega-grid admin-spx-stat-grid">
         <StatCard
           label="Win rate"
           value={pct(stats.overall.win_rate)}
@@ -859,21 +844,13 @@ export function AdminSpxDashboard() {
           </p>
         </div>
         <div className="admin-spx-toolbar-actions">
-          <span className="admin-api-live">
-            <span className="admin-api-live-dot" />
-            {loading ? "Loading…" : data?.live_engine ? "Live engine on" : "Desk snapshot"}
-          </span>
-          <button type="button" className="admin-refresh-btn" onClick={() => load(false)} disabled={loading}>
+          <LivePill label={loading ? "Loading…" : data?.live_engine ? "Live engine on" : "Desk snapshot"} />
+          <ActionButton onClick={() => load(false)} disabled={loading}>
             Refresh
-          </button>
-          <button
-            type="button"
-            className="admin-refresh-btn admin-spx-live-btn"
-            onClick={() => load(true)}
-            disabled={liveLoading}
-          >
+          </ActionButton>
+          <ActionButton onClick={() => load(true)} disabled={liveLoading} variant="primary">
             {liveLoading ? "Running…" : "Run live engine"}
-          </button>
+          </ActionButton>
         </div>
       </header>
 
