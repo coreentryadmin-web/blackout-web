@@ -687,34 +687,3 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     },
   };
 }
-
-/** Overlay fast Polygon pulse onto the slower UW desk snapshot. */
-export function mergePulseIntoDesk(
-  base: SpxDeskPayload,
-  pulse: SpxDeskPulse
-): SpxDeskPayload {
-  const price = pulse.price || base.price;
-  return {
-    ...base,
-    ...pulse,
-    as_of: pulse.polled_at,
-    polled_at: pulse.polled_at,
-    source: base.source,
-    levels: buildLevels({
-      price,
-      lod: pulse.lod ?? base.lod,
-      hod: pulse.hod ?? base.hod,
-      vwap: pulse.vwap ?? base.vwap,
-      pdh: pulse.pdh ?? base.pdh,
-      pdl: pulse.pdl ?? base.pdl,
-      ema20: pulse.ema20 ?? base.ema20,
-      ema50: pulse.ema50 ?? base.ema50,
-      ema200: pulse.ema200 ?? base.ema200,
-      sma50: pulse.sma50 ?? base.sma50,
-      sma200: pulse.sma200 ?? base.sma200,
-      gex_king: base.gex_king,
-      max_pain: base.max_pain,
-      gamma_flip: pulse.gamma_flip ?? base.gamma_flip,
-    }),
-  };
-}

@@ -193,7 +193,9 @@ export function SpxGexLadder({ desk, refreshing }: DeskProps) {
       {gammaFlip != null && (
         <p className="font-mono text-[10px] text-grey-400 mt-2 pt-2 border-t border-white/5">
           γ flip {fmtPrice(gammaFlip)}
-          {gammaRegime ? ` · ${gammaRegime.replace("_", " ")}` : ""}
+          {gammaRegime && gammaRegime !== "unknown"
+            ? ` · ${String(gammaRegime).replace("_", " ")}`
+            : ""}
         </p>
       )}
     </Panel>

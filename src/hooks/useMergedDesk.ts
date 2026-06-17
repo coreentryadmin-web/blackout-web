@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 import useSWR from "swr";
 import { fetchSpxDesk, fetchSpxDeskPulse } from "@/lib/api";
-import { mergePulseIntoDesk, type SpxDeskPayload } from "@/lib/providers/spx-desk";
+import { mergePulseIntoDesk } from "@/lib/spx-desk-merge";
+import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 
 const PULSE_MS = 2_000;
 const FULL_DESK_MS = 8_000;
@@ -40,7 +41,11 @@ export function useMergedDesk() {
   const merged = useMemo((): SpxDeskPayload | undefined => {
     if (!desk) return undefined;
     if (!pulse?.available) return desk;
-    return mergePulseIntoDesk(desk, pulse);
+    try {
+      return mergePulseIntoDesk(desk, pulse);
+    } catch {
+      return desk;
+    }
   }, [desk, pulse]);
 
   const live = Boolean(merged?.available && (merged?.price ?? 0) > 0);
