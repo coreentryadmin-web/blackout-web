@@ -3,7 +3,7 @@
 import useSWR from "swr";
 import { fetchSpxPlay } from "@/lib/api";
 
-const PLAY_MS = 2_000;
+const PLAY_MS = 3_000;
 
 export function useSpxPlay(sessionActive = true) {
   const { data, isValidating, isLoading } = useSWR("spx-play", fetchSpxPlay, {

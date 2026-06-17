@@ -112,7 +112,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
           </p>
           <h2 className="font-display text-lg text-white tracking-wide">Trade Alerts</h2>
           <p className="font-mono text-[10px] text-grey-500 mt-0.5">
-            Gates · Claude · one play {live ? `· ${updatedAt}` : ""}
+            Confluence · MTF · news · flow · S/R {live ? `· ${updatedAt}` : ""}
           </p>
         </div>
         <span className={clsx("spx-live-pill", live ? "spx-live-pill-on" : "spx-live-pill-off")}>
@@ -185,17 +185,28 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
             )}
           </div>
 
-          {(play.gates.blocks.length > 0 || play.gates.warnings.length > 0) &&
+          {(play.gates.blocks.length > 0 || play.gates.warnings.length > 0 || play.confirmations) &&
             (play.action === "SCANNING" || play.action === "WATCHING") && (
               <div className="mt-3 font-mono text-[10px] text-grey-500 space-y-1">
-                {play.gates.blocks.slice(0, 3).map((b) => (
-                  <p key={b} className="text-rose-300/80">
-                    ⛔ {b}
+                {play.confirmations && (
+                  <p className="text-grey-400 mb-2">
+                    Confirmations {play.confirmations.passed_count}/{play.confirmations.total}
+                  </p>
+                )}
+                {play.confirmations?.checks.map((c) => (
+                  <p key={c.label} className={c.passed ? "text-emerald-300/80" : "text-rose-300/70"}>
+                    {c.passed ? "✓" : "✗"} {c.label}: {c.detail}
                   </p>
                 ))}
-                {play.gates.warnings.slice(0, 2).map((w) => (
-                  <p key={w} className="text-amber-200/70">
-                    ⚠ {w}
+                {play.technicals && (
+                  <p className="text-grey-500 pt-1">
+                    5m {play.technicals.m5_trend} · RSI {play.technicals.m5_rsi?.toFixed(0) ?? "—"} · 3m{" "}
+                    {play.technicals.m3_close?.toFixed(2) ?? "—"}
+                  </p>
+                )}
+                {play.gates.blocks.slice(0, 2).map((b) => (
+                  <p key={b} className="text-rose-300/80">
+                    ⛔ {b}
                   </p>
                 ))}
               </div>

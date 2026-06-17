@@ -1,10 +1,15 @@
 import type { SpxConfluence } from "@/lib/spx-signals";
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
+import type { PlayConfirmationResult } from "@/lib/spx-play-confirmations";
 import {
+  gradeRank,
   playBuyCooldownSec,
   playConflictBlockMin,
   playFullMinScore,
   playGexStaleMaxSec,
+  playMinAgreeingFactors,
+  playMinGradeRank,
+  playOnlyFullEntry,
   playReentryLockSec,
   playStarterMinScore,
   playWatchMinScore,
@@ -51,7 +56,8 @@ export function evaluatePlayGates(
     last_sell_at: number | null;
     last_sell_was_loss: boolean;
     last_direction: "long" | "short" | null;
-  }
+  },
+  confirmations?: PlayConfirmationResult | null
 ): PlayGateResult {
   const blocks: string[] = [];
   const warnings: string[] = [];
@@ -62,20 +68,24 @@ export function evaluatePlayGates(
     blocks.push("Session closed — no new entries");
   }
 
-  if (desk.gex_walls.length === 0) {
-    warnings.push("GEX walls empty — using structure levels only");
+  if (!desk.gex_walls?.length) {
+    blocks.push("GEX walls required — no entry without dealer map");
   }
 
   const polledAt = desk.polled_at ?? desk.as_of;
   if (polledAt) {
     const ageSec = (Date.now() - new Date(polledAt).getTime()) / 1000;
     if (ageSec > playGexStaleMaxSec()) {
-      blocks.push(`Desk data stale (${Math.round(ageSec)}s > ${playGexStaleMaxSec()}s)`);
+      blocks.push(`Desk data stale (${Math.round(ageSec)}s)`);
     }
   }
 
   if (confluence.conflicts >= playConflictBlockMin()) {
-    blocks.push(`${confluence.conflicts} headwinds — conflicts block entry`);
+    blocks.push(`${confluence.conflicts} headwinds — too many conflicts`);
+  }
+
+  if (gradeRank(confluence.grade) < playMinGradeRank()) {
+    blocks.push(`Grade ${confluence.grade} below minimum (need A or A+)`);
   }
 
   const macro = macroHardBlock(desk);
@@ -85,26 +95,29 @@ export function evaluatePlayGates(
   if (etMins >= 14 * 60 + 30) {
     blocks.push("After 2:30 PM ET — no new 0DTE entries");
   }
+  if (etMins < 7 * 60 + 0) {
+    blocks.push("Before 7:00 AM ET — opening volatility, no entries");
+  }
 
   if (abs < playWatchMinScore()) {
-    blocks.push(`Score ${abs} below watch minimum (${playWatchMinScore()})`);
+    blocks.push(`Score ${abs} too low — quality setups only`);
   }
 
   let entry_mode: PlayGateResult["entry_mode"] = "none";
   if (abs >= playFullMinScore() && confluence.conflicts <= 1) {
     entry_mode = "full";
-  } else if (abs >= playStarterMinScore() && confluence.conflicts <= 2) {
+  } else if (!playOnlyFullEntry() && abs >= playStarterMinScore() && confluence.conflicts <= 1) {
     entry_mode = "starter";
-  } else if (abs >= playWatchMinScore()) {
+  }
+
+  if (playOnlyFullEntry() && entry_mode === "starter") {
     entry_mode = "none";
-    if (!blocks.some((b) => b.includes("headwinds"))) {
-      warnings.push("Watch band only — awaiting full entry score");
-    }
+    warnings.push("Starter size disabled — full A/A+ only");
   }
 
   const now = Date.now();
   if (session.last_buy_at && now - session.last_buy_at < playBuyCooldownSec() * 1000) {
-    blocks.push(`Buy cooldown (${playBuyCooldownSec()}s)`);
+    blocks.push(`Quality cooldown (${Math.round(playBuyCooldownSec() / 60)}m between plays)`);
   }
 
   if (
@@ -114,11 +127,13 @@ export function evaluatePlayGates(
     dir === session.last_direction &&
     now - session.last_sell_at < playReentryLockSec() * 1000
   ) {
-    blocks.push(`Re-entry lock after loss (${playReentryLockSec()}s)`);
+    blocks.push(`Re-entry lock after loss (${Math.round(playReentryLockSec() / 60)}m)`);
   }
 
-  if (desk.vix != null && desk.vix > 28) {
-    warnings.push(`Elevated VIX ${desk.vix.toFixed(1)} — size down`);
+  if (desk.vix != null && desk.vix > 32) {
+    blocks.push(`VIX ${desk.vix.toFixed(1)} too hot for new 0DTE entries`);
+  } else if (desk.vix != null && desk.vix > 28) {
+    warnings.push(`Elevated VIX ${desk.vix.toFixed(1)}`);
   }
 
   const agreeing =
@@ -127,12 +142,30 @@ export function evaluatePlayGates(
       : confluence.bias === "bearish"
         ? confluence.factors.filter((f) => f.weight < 0).length
         : 0;
-  if (entry_mode !== "none" && agreeing < 4) {
-    blocks.push(`Only ${agreeing}/4+ factors agree — need more confluence`);
+  if (entry_mode !== "none" && agreeing < playMinAgreeingFactors()) {
+    blocks.push(`Only ${agreeing}/${playMinAgreeingFactors()} factors agree`);
     entry_mode = "none";
   }
 
-  const passed = blocks.length === 0 && entry_mode !== "none" && dir != null;
+  if (confirmations) {
+    if (!confirmations.passed) {
+      const failed = confirmations.checks.filter((c) => c.required && !c.passed);
+      for (const f of failed.slice(0, 3)) {
+        blocks.push(`${f.label}: ${f.detail}`);
+      }
+      if (!failed.length) {
+        blocks.push(
+          `Confirmations ${confirmations.passed_count}/${confirmations.total} — need stronger alignment`
+        );
+      }
+      entry_mode = "none";
+    }
+  } else {
+    blocks.push("Technicals / confirmations unavailable");
+    entry_mode = "none";
+  }
+
+  const passed = blocks.length === 0 && entry_mode === "full" && dir != null;
 
   return { passed, blocks, warnings, entry_mode };
 }

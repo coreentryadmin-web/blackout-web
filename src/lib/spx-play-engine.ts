@@ -7,9 +7,12 @@ import {
   type SpxSignalFactor,
 } from "@/lib/spx-signals";
 import { evaluatePlayGates } from "@/lib/spx-play-gates";
+import { evaluatePlayConfirmations } from "@/lib/spx-play-confirmations";
+import { buildPlayTechnicals, type PlayTechnicals } from "@/lib/spx-play-technicals";
+import type { PlayConfirmationResult } from "@/lib/spx-play-confirmations";
 import { evaluateClaudePlayApproval, type ClaudePlayVerdict } from "@/lib/spx-play-claude";
 import { pickIdleMessage, watchMessage } from "@/lib/spx-play-idle";
-import { playThesisBreakScore, playTrimMfePts, playWatchMinScore } from "@/lib/spx-play-config";
+import { gradeRank, playFullMinScore, playThesisBreakScore, playTrimMfePts, playWatchMinScore } from "@/lib/spx-play-config";
 import {
   closeOpenPlay,
   loadOpenPlay,
@@ -59,6 +62,13 @@ export type SpxPlayPayload = {
     mfe_pts: number;
     trim_done: boolean;
   } | null;
+  confirmations: PlayConfirmationResult | null;
+  technicals: {
+    m5_trend: string;
+    m5_rsi: number | null;
+    m3_close: number | null;
+    breakout: PlayTechnicals["breakout"];
+  } | null;
   as_of: string;
 };
 
@@ -84,14 +94,28 @@ function scanningPayload(
     gates: gates ?? { passed: false, blocks: [], warnings: [], entry_mode: "none" },
     claude: null,
     open_play: null,
+    confirmations: null,
+    technicals: null,
     as_of: desk.polled_at ?? desk.as_of ?? new Date().toISOString(),
+  };
+}
+
+function technicalsSummary(tech: PlayTechnicals | null): SpxPlayPayload["technicals"] {
+  if (!tech?.available) return null;
+  return {
+    m5_trend: tech.m5_trend,
+    m5_rsi: tech.m5_rsi,
+    m3_close: tech.m3_close,
+    breakout: tech.breakout,
   };
 }
 
 async function evaluateOpenPlay(
   desk: SpxDeskPayload,
   confluence: SpxConfluence,
-  row: OpenPlayRow
+  row: OpenPlayRow,
+  technicals: PlayTechnicals | null,
+  confirmations: PlayConfirmationResult | null
 ): Promise<SpxPlayPayload> {
   const price = desk.price;
   const dir = row.direction;
@@ -142,7 +166,9 @@ async function evaluateOpenPlay(
       was_loss: stopHit || thesisBreak,
       direction: dir,
     });
-    void maybeLogSpxPlay(desk, {
+    void maybeLogSpxPlay(
+      { price: desk.price, market_open: desk.market_open },
+      {
       action: "SELL",
       direction: dir,
       grade: row.grade,
@@ -158,7 +184,9 @@ async function evaluateOpenPlay(
     headline = "TARGET — take profit";
     thesis = `Hit target zone ${target?.toFixed(0)} from ${row.entry_price.toFixed(2)}.`;
     await closeOpenPlay(row.id, { was_loss: false, direction: dir });
-    void maybeLogSpxPlay(desk, {
+    void maybeLogSpxPlay(
+      { price: desk.price, market_open: desk.market_open },
+      {
       action: "SELL",
       direction: dir,
       grade: row.grade,
@@ -174,7 +202,9 @@ async function evaluateOpenPlay(
     headline = "TRIM — bank partial, trail runner";
     thesis = `+${mfe.toFixed(1)} pts MFE into target — trim ~50%, hold runner.`;
     await updateOpenPlay(row.id, { trim_done: true });
-    void maybeLogSpxPlay(desk, {
+    void maybeLogSpxPlay(
+      { price: desk.price, market_open: desk.market_open },
+      {
       action: "TRIM",
       direction: dir,
       grade: row.grade,
@@ -221,19 +251,30 @@ async function evaluateOpenPlay(
             mfe_pts: mfe,
             trim_done: row.trim_done || action === "TRIM",
           },
+    confirmations,
+    technicals: technicalsSummary(technicals),
     as_of: confluence.as_of,
   };
 }
 
 async function evaluateFlatPlay(
   desk: SpxDeskPayload,
-  confluence: SpxConfluence
+  confluence: SpxConfluence,
+  technicals: PlayTechnicals,
+  confirmations: PlayConfirmationResult
 ): Promise<SpxPlayPayload> {
   const session = await loadPlaySessionMeta();
-  const gates = evaluatePlayGates(desk, confluence, session);
+  const gates = evaluatePlayGates(desk, confluence, session, confirmations);
   const abs = Math.abs(confluence.score);
+  const techSum = technicalsSummary(technicals);
 
-  if (abs >= playWatchMinScore() && !gates.passed) {
+  const nearMiss =
+    gradeRank(confluence.grade) >= 3 &&
+    abs >= playFullMinScore() - 8 &&
+    confirmations.passed_count >= confirmations.total - 2 &&
+    !gates.passed;
+
+  if (nearMiss) {
     const dirLabel = confluence.direction === "long" ? "bullish" : "bearish";
     return {
       ...scanningPayload(desk, confluence, watchMessage(confluence.grade, dirLabel), {
@@ -244,23 +285,29 @@ async function evaluateFlatPlay(
       }),
       phase: "WATCHING",
       action: "WATCHING",
-      headline: watchMessage(confluence.grade, dirLabel),
-      thesis: gates.blocks[0] ?? `Setup forming — ${confluence.agreeing} factors agree, gates pending.`,
+      headline: `${confluence.grade} ${dirLabel} — almost there`,
+      thesis: gates.blocks[0] ?? `High-quality setup building (${confirmations.passed_count}/${confirmations.total} checks).`,
       idle_message: null,
       claude: null,
+      confirmations,
+      technicals: techSum,
     };
   }
 
   if (!gates.passed) {
-    return scanningPayload(desk, confluence, pickIdleMessage(), {
-      passed: false,
-      blocks: gates.blocks,
-      warnings: gates.warnings,
-      entry_mode: gates.entry_mode,
-    });
+    return {
+      ...scanningPayload(desk, confluence, pickIdleMessage(), {
+        passed: false,
+        blocks: gates.blocks,
+        warnings: gates.warnings,
+        entry_mode: gates.entry_mode,
+      }),
+      confirmations,
+      technicals: techSum,
+    };
   }
 
-  const claude = await evaluateClaudePlayApproval(desk, confluence, gates);
+  const claude = await evaluateClaudePlayApproval(desk, confluence, gates, confirmations, technicals);
 
   if (!claude.approved || !confluence.direction) {
     return {
@@ -270,18 +317,20 @@ async function evaluateFlatPlay(
         warnings: gates.warnings,
         entry_mode: gates.entry_mode,
       }),
-      phase: claude.verdict === "HOLD_WATCH" ? "WATCHING" : "SCANNING",
-      action: claude.verdict === "HOLD_WATCH" ? "WATCHING" : "SCANNING",
+      phase: "SCANNING",
+      action: "SCANNING",
       headline: claude.headline,
       thesis: claude.thesis,
       claude,
+      confirmations,
+      technicals: techSum,
     };
   }
 
   const direction = confluence.direction;
   const existingBeforeOpen = await loadOpenPlay();
   if (existingBeforeOpen) {
-    return evaluateOpenPlay(desk, confluence, existingBeforeOpen);
+    return evaluateOpenPlay(desk, confluence, existingBeforeOpen, technicals, confirmations);
   }
 
   const sessionDate = new Intl.DateTimeFormat("en-CA", {
@@ -301,18 +350,20 @@ async function evaluateFlatPlay(
 
   await recordBuy(direction);
 
-  const playDesk = { ...desk, available: true };
-  void maybeLogSpxPlay(playDesk, {
-    action: "BUY",
-    direction,
-    grade: confluence.grade,
-    score: confluence.score,
-    confidence: confluence.confidence,
-    headline: claude.headline,
-    thesis: claude.thesis,
-    factors: confluence.factors,
-    levels: confluence.levels,
-  }).catch(() => undefined);
+  void maybeLogSpxPlay(
+    { price: desk.price, market_open: desk.market_open },
+    {
+      action: "BUY",
+      direction,
+      grade: confluence.grade,
+      score: confluence.score,
+      confidence: confluence.confidence,
+      headline: claude.headline,
+      thesis: claude.thesis,
+      factors: confluence.factors,
+      levels: confluence.levels,
+    }
+  ).catch(() => undefined);
 
   return {
     available: true,
@@ -345,11 +396,16 @@ async function evaluateFlatPlay(
       mfe_pts: 0,
       trim_done: false,
     },
+    confirmations,
+    technicals: techSum,
     as_of: confluence.as_of,
   };
 }
 
-export async function evaluateSpxPlay(desk: SpxDeskPayload): Promise<SpxPlayPayload> {
+export async function evaluateSpxPlay(
+  desk: SpxDeskPayload,
+  prefetchedTechnicals?: PlayTechnicals | null
+): Promise<SpxPlayPayload> {
   if (!desk.market_open) {
     return {
       available: false,
@@ -367,19 +423,33 @@ export async function evaluateSpxPlay(desk: SpxDeskPayload): Promise<SpxPlayPayl
       gates: { passed: false, blocks: ["Session closed"], warnings: [], entry_mode: "none" },
       claude: null,
       open_play: null,
+      confirmations: null,
+      technicals: null,
       as_of: desk.polled_at ?? desk.as_of ?? new Date().toISOString(),
     };
   }
+
+  const technicals =
+    prefetchedTechnicals ??
+    (await buildPlayTechnicals(desk.price, {
+      vwap: desk.vwap,
+      pdh: desk.pdh,
+      pdl: desk.pdl,
+      hod: desk.hod,
+      lod: desk.lod,
+    }));
 
   const confluence = computeSpxConfluence(desk);
   if (!confluence) {
     return scanningPayload(desk, null, pickIdleMessage());
   }
 
+  const confirmations = evaluatePlayConfirmations(desk, confluence, technicals);
+
   const open = await loadOpenPlay();
   if (open) {
-    return evaluateOpenPlay(desk, confluence, open);
+    return evaluateOpenPlay(desk, confluence, open, technicals, confirmations);
   }
 
-  return evaluateFlatPlay(desk, confluence);
+  return evaluateFlatPlay(desk, confluence, technicals, confirmations);
 }

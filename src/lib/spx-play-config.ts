@@ -1,36 +1,56 @@
-/** Play engine thresholds — aligned with Discord SPX desk defaults. */
+/** Play engine thresholds — quality over quantity. */
 
 function num(env: string | undefined, fallback: number): number {
   const n = Number(env?.trim());
   return Number.isFinite(n) ? n : fallback;
 }
 
+function flag(env: string | undefined, fallback: boolean): boolean {
+  if (!env?.trim()) return fallback;
+  const v = env.trim().toLowerCase();
+  return v === "1" || v === "true";
+}
+
 export function playStarterMinScore(): number {
-  return num(process.env.SPX_PLAY_STARTER_MIN_SCORE, 52);
+  return num(process.env.SPX_PLAY_STARTER_MIN_SCORE, 58);
 }
 
 export function playFullMinScore(): number {
-  return num(process.env.SPX_PLAY_FULL_MIN_SCORE, 62);
+  return num(process.env.SPX_PLAY_FULL_MIN_SCORE, 68);
 }
 
 export function playWatchMinScore(): number {
-  return num(process.env.SPX_PLAY_WATCH_MIN_SCORE, 35);
+  return num(process.env.SPX_PLAY_WATCH_MIN_SCORE, 50);
 }
 
 export function playConflictBlockMin(): number {
-  return num(process.env.SPX_PLAY_CONFLICT_BLOCK_MIN, 3);
+  return num(process.env.SPX_PLAY_CONFLICT_BLOCK_MIN, 2);
+}
+
+export function playMinAgreeingFactors(): number {
+  return num(process.env.SPX_PLAY_MIN_AGREEING_FACTORS, 6);
+}
+
+export function playMinGradeRank(): number {
+  const g = process.env.SPX_PLAY_MIN_GRADE?.trim().toUpperCase() ?? "A";
+  const ranks: Record<string, number> = { D: 0, C: 1, B: 2, A: 3, "A+": 4 };
+  return ranks[g] ?? 3;
+}
+
+export function playOnlyFullEntry(): boolean {
+  return flag(process.env.SPX_PLAY_ONLY_FULL_ENTRY, true);
 }
 
 export function playBuyCooldownSec(): number {
-  return num(process.env.SPX_PLAY_BUY_COOLDOWN_SEC, 180);
+  return num(process.env.SPX_PLAY_BUY_COOLDOWN_SEC, 600);
 }
 
 export function playReentryLockSec(): number {
-  return num(process.env.SPX_PLAY_REENTRY_LOCK_SEC, 900);
+  return num(process.env.SPX_PLAY_REENTRY_LOCK_SEC, 1200);
 }
 
 export function playGexStaleMaxSec(): number {
-  return num(process.env.SPX_PLAY_GEX_STALE_MAX_SEC, 240);
+  return num(process.env.SPX_PLAY_GEX_STALE_MAX_SEC, 120);
 }
 
 export function playClaudeGateEnabled(): boolean {
@@ -41,7 +61,7 @@ export function playClaudeGateEnabled(): boolean {
 }
 
 export function playClaudeCacheSec(): number {
-  return num(process.env.SPX_CLAUDE_PLAY_CACHE_SEC, 45);
+  return num(process.env.SPX_CLAUDE_PLAY_CACHE_SEC, 60);
 }
 
 export function playTrimMfePts(): number {
@@ -50,4 +70,25 @@ export function playTrimMfePts(): number {
 
 export function playThesisBreakScore(): number {
   return num(process.env.SPX_PLAY_THESIS_BREAK_SCORE, 40);
+}
+
+export function playMtfBufferPts(): number {
+  return num(process.env.SPX_PLAY_MTF_BUFFER_PTS, 0.25);
+}
+
+export function playStructureProximityPts(): number {
+  return num(process.env.SPX_PLAY_STRUCTURE_PROX_PTS, 10);
+}
+
+export function playMinConfirmationsRequired(): number {
+  return num(process.env.SPX_PLAY_MIN_CONFIRMATIONS, 7);
+}
+
+export function playTechnicalsCacheSec(): number {
+  return num(process.env.SPX_PLAY_TECHNICALS_CACHE_SEC, 60);
+}
+
+export function gradeRank(grade: string): number {
+  const ranks: Record<string, number> = { D: 0, C: 1, B: 2, A: 3, "A+": 4 };
+  return ranks[grade.toUpperCase()] ?? 0;
 }

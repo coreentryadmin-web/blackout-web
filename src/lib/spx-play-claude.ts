@@ -2,7 +2,9 @@ import { anthropicConfigured, anthropicText } from "@/lib/providers/anthropic";
 import type { SpxConfluence } from "@/lib/spx-signals";
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import type { PlayGateResult } from "@/lib/spx-play-gates";
-import { playClaudeCacheSec, playClaudeGateEnabled } from "@/lib/spx-play-config";
+import type { PlayConfirmationResult } from "@/lib/spx-play-confirmations";
+import type { PlayTechnicals } from "@/lib/spx-play-technicals";
+import { gradeRank, playClaudeCacheSec, playClaudeGateEnabled } from "@/lib/spx-play-config";
 import { dbConfigured, getMeta, setMeta } from "@/lib/db";
 
 export type ClaudePlayVerdict = {
@@ -47,19 +49,24 @@ async function writeCache(key: string, verdict: ClaudePlayVerdict): Promise<void
 
 function mechanicalVerdict(
   c: SpxConfluence,
-  gates: PlayGateResult
+  gates: PlayGateResult,
+  confirmations: PlayConfirmationResult
 ): ClaudePlayVerdict {
-  const approved = gates.passed && c.direction != null;
+  const strict =
+    gates.passed &&
+    c.direction != null &&
+    gradeRank(c.grade) >= 3 &&
+    confirmations.passed;
   return {
-    verdict: approved ? "APPROVE_BUY" : "HOLD_WATCH",
+    verdict: strict ? "APPROVE_BUY" : "VETO",
     direction: c.direction,
-    headline: approved
-      ? `${c.grade} ${c.direction === "long" ? "CALL" : "PUT"} — mechanical pass`
-      : "Gates not cleared — stay flat",
-    thesis: approved
-      ? `Score ${c.score} with ${c.agreeing} agreeing factors (${gates.entry_mode} size).`
-      : gates.blocks[0] ?? "Waiting for cleaner confluence.",
-    approved,
+    headline: strict
+      ? `${c.grade} ${c.direction === "long" ? "CALL" : "PUT"} — all checks passed`
+      : "Quality bar not met — stay flat",
+    thesis: strict
+      ? `${confirmations.passed_count}/${confirmations.total} confirmations · score ${c.score}.`
+      : gates.blocks[0] ?? "Waiting for A/A+ confluence with full confirmations.",
+    approved: strict,
     source: "mechanical",
   };
 }
@@ -67,10 +74,12 @@ function mechanicalVerdict(
 export async function evaluateClaudePlayApproval(
   desk: SpxDeskPayload,
   confluence: SpxConfluence,
-  gates: PlayGateResult
+  gates: PlayGateResult,
+  confirmations: PlayConfirmationResult,
+  technicals: PlayTechnicals
 ): Promise<ClaudePlayVerdict> {
   if (!gates.passed || !confluence.direction) {
-    return mechanicalVerdict(confluence, gates);
+    return mechanicalVerdict(confluence, gates, confirmations);
   }
 
   const key = cacheKey(desk, confluence);
@@ -78,34 +87,75 @@ export async function evaluateClaudePlayApproval(
   if (cached) return cached;
 
   if (!playClaudeGateEnabled() || !anthropicConfigured()) {
-    const mech = mechanicalVerdict(confluence, gates);
-    mech.approved = gates.passed;
-    mech.verdict = gates.passed ? "APPROVE_BUY" : "HOLD_WATCH";
+    const mech = mechanicalVerdict(confluence, gates, confirmations);
     await writeCache(key, mech);
     return mech;
   }
 
-  const prompt = `You are the SPX 0DTE play arbiter for BlackOut Ops. Approve or veto a BUY ticket.
+  const supports = (desk.levels ?? []).filter((l) => l.kind === "support").slice(0, 4);
+  const resistances = (desk.levels ?? []).filter((l) => l.kind === "resistance").slice(0, 4);
 
-RULES:
-- APPROVE_BUY only when confluence, gates, and structure align for a high-quality 0DTE index options play.
-- VETO when data conflicts, late session risk, or headline risk dominates.
-- One open play at a time — be selective.
+  const prompt = `You are the SPX 0DTE quality arbiter for BlackOut Ops. We want FEW, HIGH-QUALITY plays — veto aggressively.
 
-DESK SNAPSHOT:
+APPROVE_BUY only if ALL are true:
+- Grade A or A+ confluence
+- 3m AND 5m timeframe align with direction
+- Clear support/resistance or breakout context
+- Flow, tide, and news do NOT oppose the trade
+- Risk/reward to stop and target is sensible for 0DTE
+
+Default to VETO when anything is mixed.
+
+PRICE & STRUCTURE:
 ${JSON.stringify({
   price: desk.price,
   vwap: desk.vwap,
+  above_vwap: desk.above_vwap,
+  hod: desk.hod,
+  lod: desk.lod,
+  pdh: desk.pdh,
+  pdl: desk.pdl,
   regime: desk.regime,
+  nearest_support: supports,
+  nearest_resistance: resistances,
+})}
+
+DEALER / GEX:
+${JSON.stringify({
   gamma_flip: desk.gamma_flip,
   gamma_regime: desk.gamma_regime,
-  gex_walls: desk.gex_walls?.slice(0, 6),
+  gex_king: desk.gex_king,
+  max_pain: desk.max_pain,
+  gex_walls: desk.gex_walls?.slice(0, 8),
+})}
+
+FLOW & TAPE:
+${JSON.stringify({
   flow_0dte_net: desk.flow_0dte_net,
   tide_bias: desk.tide_bias,
-  dark_pool_bias: desk.dark_pool?.bias,
+  dark_pool: desk.dark_pool?.bias,
+  spx_flows: desk.spx_flows?.slice(0, 6),
+  live_tape: desk.unified_tape?.slice(0, 6),
+  nope: desk.nope,
+})}
+
+MULTI-TIMEFRAME (Polygon 1m bars):
+${JSON.stringify({
+  m3_close: technicals.m3_close,
+  m5_close: technicals.m5_close,
+  m5_ema20: technicals.m5_ema20,
+  m5_rsi: technicals.m5_rsi,
+  m5_trend: technicals.m5_trend,
+  breakout: technicals.breakout,
+  mtf: technicals.mtf,
+})}
+
+NEWS & MACRO:
+${JSON.stringify({
+  headlines: desk.news_headlines?.slice(0, 5),
+  macro: desk.macro_events?.slice(0, 3),
   vix: desk.vix,
-  tick: desk.tick,
-  macro: desk.macro_events?.slice(0, 2),
+  iv_rank: desk.uw_iv_rank,
 })}
 
 CONFLUENCE:
@@ -115,24 +165,24 @@ ${JSON.stringify({
   direction: confluence.direction,
   conflicts: confluence.conflicts,
   agreeing: confluence.agreeing,
-  factors: confluence.factors.slice(0, 8),
+  factors: confluence.factors.slice(0, 12),
   levels: confluence.levels,
 })}
 
-GATES:
-${JSON.stringify(gates)}
+CONFIRMATION CHECKLIST (${confirmations.passed_count}/${confirmations.total}):
+${JSON.stringify(confirmations.checks)}
 
 Respond ONLY valid JSON:
 {
-  "verdict": "APPROVE_BUY" | "HOLD_WATCH" | "VETO",
+  "verdict": "APPROVE_BUY" | "VETO",
   "direction": "long" | "short" | null,
-  "headline": "max 12 words punchy",
-  "thesis": "2 sentences max"
+  "headline": "max 12 words — specific level or catalyst",
+  "thesis": "2 sentences — cite MTF + S/R + flow + news"
 }`;
 
-  const raw = await anthropicText(prompt, 400);
+  const raw = await anthropicText(prompt, 500);
   if (!raw) {
-    const mech = mechanicalVerdict(confluence, gates);
+    const mech = mechanicalVerdict(confluence, gates, confirmations);
     await writeCache(key, mech);
     return mech;
   }
@@ -146,7 +196,7 @@ Respond ONLY valid JSON:
         ? parsed.direction
         : confluence.direction;
     const result: ClaudePlayVerdict = {
-      verdict,
+      verdict: verdict === "APPROVE_BUY" ? "APPROVE_BUY" : "VETO",
       direction,
       headline: String(parsed.headline ?? "Play review"),
       thesis: String(parsed.thesis ?? ""),
@@ -156,7 +206,7 @@ Respond ONLY valid JSON:
     await writeCache(key, result);
     return result;
   } catch {
-    const mech = mechanicalVerdict(confluence, gates);
+    const mech = mechanicalVerdict(confluence, gates, confirmations);
     await writeCache(key, mech);
     return mech;
   }

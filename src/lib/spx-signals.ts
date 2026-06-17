@@ -68,10 +68,10 @@ function tapeSkew(desk: SpxDeskPayload): { bull: number; bear: number } {
 }
 
 function scoreToGrade(absScore: number, conflicts: number): SpxConfluenceGrade {
-  if (absScore >= 75 && conflicts === 0) return "A+";
-  if (absScore >= 62 && conflicts <= 1) return "A";
-  if (absScore >= 52 && conflicts <= 2) return "B";
-  if (absScore >= 35) return "C";
+  if (absScore >= 80 && conflicts === 0) return "A+";
+  if (absScore >= 68 && conflicts <= 1) return "A";
+  if (absScore >= 55 && conflicts <= 2) return "B";
+  if (absScore >= 40) return "C";
   return "D";
 }
 
