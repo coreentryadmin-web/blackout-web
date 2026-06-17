@@ -1,4 +1,5 @@
 import { polygonConfigured, engineIntelOverlayEnabled, uwConfigured, deskPulseStructureCacheTtlMs } from "./config";
+import { fetchPolygonOdteGexRows } from "./polygon-options-gex";
 import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 import { fetchEconomicCalendarToday, type MacroEvent } from "./finnhub";
 import {
@@ -19,7 +20,12 @@ import {
   fetchIndexSnapshots,
   fetchIndexVwap,
   fetchLeaderStockSnapshots,
+  fetchMarketStatusNow,
 } from "./polygon";
+import {
+  isSpxRthActive,
+  marketStatusLabel,
+} from "@/lib/spx-market-session";
 import {
   distancePct,
   inferRegime,
@@ -51,6 +57,11 @@ let lastGoodGammaFlip: number | null = null;
 let lastGoodGammaRegime = "unknown";
 let lastGoodUnifiedTape: SpxTapeItem[] = [];
 let lastGoodSpxFlowBriefs: SpxFlowBrief[] = [];
+let lastPulseForSignals: SpxDeskPulse | null = null;
+
+export function getLastPulseForSignals(): SpxDeskPulse | null {
+  return lastPulseForSignals;
+}
 let cachedPriorDay = {
   pdh: null as number | null,
   pdl: null as number | null,
@@ -182,6 +193,10 @@ export type SpxDeskPayload = {
   news_headlines: DeskNewsHeadline[];
   /** Set on each API response so clients can detect fresh polls. */
   polled_at?: string;
+  /** Cash RTH active (Mon–Fri 6:30 AM – 1:00 PM PT). */
+  market_open?: boolean;
+  market_status?: string;
+  market_label?: string;
 };
 
 /** Fast-moving Polygon fields — merged over the full desk on the client every ~2s. */
@@ -209,6 +224,9 @@ export type SpxDeskPulse = Pick<
   | "regime"
   | "leader_stocks"
   | "vix_term"
+  | "market_open"
+  | "market_status"
+  | "market_label"
 > & { polled_at: string };
 
 /** UW fast lane — live tape, dark pool, 0DTE GEX walls (refreshed every ~4s). */
@@ -746,9 +764,28 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     regime: "unknown",
     leader_stocks: [],
     vix_term: { vix9d: null, vix3m: null, structure: "unknown", detail: "" },
+    market_open: false,
+    market_status: "closed",
+    market_label: "CLOSED",
   };
 
   if (!polygonConfigured()) return empty;
+
+  const marketNow = await fetchMarketStatusNow();
+  const now = new Date();
+  const rthOpen = isSpxRthActive(now, marketNow);
+  const label = marketStatusLabel(now, marketNow);
+
+  if (!rthOpen) {
+    const closedPulse: SpxDeskPulse = {
+      ...empty,
+      market_open: false,
+      market_status: marketNow?.market ?? "closed",
+      market_label: label,
+    };
+    lastPulseForSignals = closedPulse;
+    return closedPulse;
+  }
 
   const today = todayEtYmd();
   const [snaps, prior, structure] = await Promise.all([
@@ -773,7 +810,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     snaps[VIX3M]?.price ?? null
   );
 
-  return {
+  const result: SpxDeskPulse = {
     available: true,
     polled_at: polledAt,
     price,
@@ -802,7 +839,12 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
       structure: vixTerm.structure,
       detail: vixTerm.detail,
     },
+    market_open: rthOpen,
+    market_status: marketNow?.market ?? "open",
+    market_label: label,
   };
+  lastPulseForSignals = result;
+  return result;
 }
 
 /** UW flow lane — GEX strike ladder, live tape, dark pool (~4s). */
@@ -826,11 +868,12 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
     flow_0dte_net: null,
   };
 
-  const [spxSnap, strikeRows, darkPool, spxFlowsRaw, uwGex, uwFlow] = await Promise.all([
+  if (!isSpxRthActive()) return empty;
+
+  const [spxSnap, darkPool, spxFlowsRaw, uwGex, uwFlow] = await Promise.all([
     polygonConfigured()
       ? fetchIndexSnapshots([SPX]).then((m) => m[SPX])
       : Promise.resolve(null),
-    uwConfigured() ? fetchUwOdteSpotExposuresByStrike("SPX") : Promise.resolve([]),
     uwConfigured()
       ? fetchUwDarkPool("SPX", { limit: 20, min_premium: 500_000 })
       : Promise.resolve(null),
@@ -840,7 +883,15 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
   ]);
 
   const price = spxSnap?.price ?? 0;
-  if (!price && !strikeRows.length && !spxFlowsRaw.length) return empty;
+  if (!price && !spxFlowsRaw.length) return empty;
+
+  let strikeRows: Record<string, unknown>[] = [];
+  if (polygonConfigured() && price > 0) {
+    strikeRows = await fetchPolygonOdteGexRows(price);
+  }
+  if (!strikeRows.length && uwConfigured()) {
+    strikeRows = await fetchUwOdteSpotExposuresByStrike("SPX");
+  }
 
   const gexAnalysis = analyzeStrikeGexRows(strikeRows.length ? strikeRows : []);
   if (gexAnalysis.ranked_levels.length) {

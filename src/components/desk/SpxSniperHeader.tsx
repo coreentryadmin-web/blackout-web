@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import { fmtPct, fmtPremium, fmtPrice } from "@/lib/api";
+import type { MarketStatusLabel } from "@/lib/spx-market-session";
 
 type Props = {
   desk?: SpxDeskPayload;
@@ -97,10 +98,13 @@ export function SpxSniperHeader({ desk, live }: Props) {
           </div>
 
           <div className="flex flex-col items-start xl:items-end gap-3 shrink-0">
-            <span className={clsx("spx-command-live", live && "spx-command-live-on animate-pulse")}>
-              <span className={clsx("badge-live-dot", live && "animate-pulse")} />
-              {live ? "Live Fire" : "Standby"}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <MarketStatusPill label={desk?.market_label} live={live} />
+              <span className={clsx("spx-command-live", live && "spx-command-live-on animate-pulse")}>
+                <span className={clsx("badge-live-dot", live && "animate-pulse")} />
+                {live ? "Live Fire" : desk?.market_label === "CLOSED" ? "Session closed" : "Standby"}
+              </span>
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full xl:w-auto min-w-[200px]">
               <StatPill label="Regime" value={live ? (desk?.regime ?? "—") : "—"} tone="violet" hot />
               <StatPill label="γ Flip" value={live && desk?.gamma_flip ? fmtPrice(desk.gamma_flip) : "—"} tone="magenta" />
@@ -160,6 +164,28 @@ const BLOCK_BORDER: Record<string, string> = {
   orange: "border-orange-500/35",
   violet: "border-violet-500/40",
 };
+
+const MARKET_PILL: Record<MarketStatusLabel, string> = {
+  "RTH OPEN": "border-emerald-500/50 bg-emerald-500/10 text-emerald-300",
+  "PRE-MARKET": "border-amber-500/50 bg-amber-500/10 text-amber-200",
+  EXTENDED: "border-orange-500/50 bg-orange-500/10 text-orange-200",
+  CLOSED: "border-zinc-600/50 bg-zinc-800/40 text-zinc-400",
+};
+
+function MarketStatusPill({ label, live }: { label?: string; live?: boolean }) {
+  const key = (label ?? "CLOSED") as MarketStatusLabel;
+  return (
+    <span
+      className={clsx(
+        "font-mono text-[10px] uppercase tracking-[0.2em] px-2.5 py-1 rounded border",
+        MARKET_PILL[key] ?? MARKET_PILL.CLOSED,
+        live && key === "RTH OPEN" && "animate-pulse"
+      )}
+    >
+      {label ?? "—"}
+    </span>
+  );
+}
 
 function MetricBlock({
   title,

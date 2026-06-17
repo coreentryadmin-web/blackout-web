@@ -303,3 +303,32 @@ export function computeVixTermStructure(
   return { vix9d: near, vix3m: far, structure: "flat", detail: `Flat term` };
 }
 
+export type PolygonMarketNow = {
+  market: string;
+  earlyHours: boolean;
+  afterHours: boolean;
+  serverTime: string;
+};
+
+/** GET /v1/marketstatus/now — RTH / extended / closed. */
+export async function fetchMarketStatusNow(): Promise<PolygonMarketNow | null> {
+  if (!polygonConfigured()) return null;
+  try {
+    const data = await polygonGet<{
+      market?: string;
+      earlyHours?: boolean;
+      afterHours?: boolean;
+      serverTime?: string;
+    }>("/v1/marketstatus/now", {});
+    if (!data?.market) return null;
+    return {
+      market: String(data.market),
+      earlyHours: Boolean(data.earlyHours),
+      afterHours: Boolean(data.afterHours),
+      serverTime: String(data.serverTime ?? ""),
+    };
+  } catch {
+    return null;
+  }
+}
+

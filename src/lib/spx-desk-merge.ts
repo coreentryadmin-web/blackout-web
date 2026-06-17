@@ -163,6 +163,9 @@ export function mergePulseIntoDesk(
     regime: pulse.regime ?? base.regime,
     leader_stocks: pulse.leader_stocks.length ? pulse.leader_stocks : base.leader_stocks,
     vix_term: pulse.vix_term ?? base.vix_term,
+    market_open: pulse.market_open ?? base.market_open,
+    market_status: pulse.market_status ?? base.market_status,
+    market_label: pulse.market_label ?? base.market_label,
     as_of: pulse.polled_at,
     polled_at: pulse.polled_at,
     gex_walls: recalcGexWallDistances(base.gex_walls, price),
@@ -182,5 +185,73 @@ export function mergePulseIntoDesk(
       max_pain: base.max_pain,
       gamma_flip: base.gamma_flip,
     }),
+  };
+}
+
+const signalDeskStub = (): SpxDeskPayload => ({
+  available: false,
+  as_of: new Date().toISOString(),
+  source: "pulse+flow",
+  price: 0,
+  spx_change_pct: 0,
+  vix: null,
+  vix_change_pct: 0,
+  above_vwap: false,
+  lod: null,
+  hod: null,
+  vwap: null,
+  pdh: null,
+  pdl: null,
+  ema20: null,
+  ema50: null,
+  ema200: null,
+  sma50: null,
+  sma200: null,
+  tick: null,
+  trin: null,
+  add: null,
+  gex_net: null,
+  gex_king: null,
+  max_pain: null,
+  gamma_flip: null,
+  above_gamma_flip: false,
+  gamma_regime: "unknown",
+  gex_walls: [],
+  flow_0dte_call_premium: null,
+  flow_0dte_put_premium: null,
+  flow_0dte_net: null,
+  tide_bias: null,
+  tide_call_premium: null,
+  tide_put_premium: null,
+  tide_net: null,
+  nope: null,
+  nope_net_delta: null,
+  uw_iv_rank: null,
+  regime: "unknown",
+  levels: [],
+  dark_pool: null,
+  spx_flows: [],
+  unified_tape: [],
+  net_prem_ticks: [],
+  vix_term: { vix9d: null, vix3m: null, structure: "unknown", detail: "" },
+  sector_heat: [],
+  leader_stocks: [],
+  oi_changes: [],
+  iv_term_structure: [],
+  macro_events: [],
+  news_headlines: [],
+});
+
+/** Minimal merged desk for server-side signal logging (pulse + flow lanes). */
+export function buildDeskFromPulseFlow(pulse: SpxDeskPulse, flow: SpxDeskFlow): SpxDeskPayload {
+  const price = pulse.price || flow.price;
+  let out = mergeFlowIntoDesk({ ...signalDeskStub(), price, available: price > 0 }, flow);
+  out = mergePulseIntoDesk(out, pulse);
+  return {
+    ...out,
+    available: price > 0 && (pulse.market_open ?? true),
+    market_open: pulse.market_open,
+    market_status: pulse.market_status,
+    market_label: pulse.market_label,
   };
 }

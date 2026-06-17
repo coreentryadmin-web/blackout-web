@@ -18,13 +18,26 @@ const swrLiveOpts = {
 };
 
 export function useMergedDesk() {
+  const { data: pulse, isValidating: pulseValidating } = useSWR(
+    "spx-desk-pulse",
+    fetchSpxDeskPulse,
+    {
+      ...swrLiveOpts,
+      refreshInterval: (latest) => (latest?.market_open === false ? 0 : PULSE_MS),
+      dedupingInterval: 800,
+      focusThrottleInterval: PULSE_MS,
+    }
+  );
+
+  const sessionActive = pulse?.market_open ?? true;
+
   const {
     data: desk,
     isLoading: deskLoading,
     isValidating: deskValidating,
   } = useSWR("spx-desk-full", fetchSpxDesk, {
     ...swrLiveOpts,
-    refreshInterval: FULL_DESK_MS,
+    refreshInterval: sessionActive ? FULL_DESK_MS : 0,
     dedupingInterval: FULL_DESK_MS - 500,
     focusThrottleInterval: FULL_DESK_MS,
   });
@@ -34,20 +47,9 @@ export function useMergedDesk() {
     fetchSpxDeskFlow,
     {
       ...swrLiveOpts,
-      refreshInterval: FLOW_MS,
+      refreshInterval: sessionActive ? FLOW_MS : 0,
       dedupingInterval: 1_500,
       focusThrottleInterval: FLOW_MS,
-    }
-  );
-
-  const { data: pulse, isValidating: pulseValidating } = useSWR(
-    "spx-desk-pulse",
-    fetchSpxDeskPulse,
-    {
-      ...swrLiveOpts,
-      refreshInterval: PULSE_MS,
-      dedupingInterval: 800,
-      focusThrottleInterval: PULSE_MS,
     }
   );
 
@@ -56,15 +58,29 @@ export function useMergedDesk() {
     try {
       let out = desk;
       if (flow?.available) out = mergeFlowIntoDesk(out, flow);
-      if (pulse?.available) out = mergePulseIntoDesk(out, pulse);
+      if (pulse) {
+        if (pulse.available) out = mergePulseIntoDesk(out, pulse);
+        else {
+          out = {
+            ...out,
+            market_open: pulse.market_open,
+            market_status: pulse.market_status,
+            market_label: pulse.market_label,
+            polled_at: pulse.polled_at,
+          };
+        }
+      }
       return out;
     } catch {
       return desk;
     }
   }, [desk, flow, pulse]);
 
-  const live = Boolean(merged?.available && (merged?.price ?? 0) > 0);
-  const refreshing = (deskValidating && !deskLoading) || flowValidating || pulseValidating;
+  const live = Boolean(
+    sessionActive && merged?.market_open !== false && merged?.available && (merged?.price ?? 0) > 0
+  );
+  const refreshing =
+    sessionActive && ((deskValidating && !deskLoading) || flowValidating || pulseValidating);
 
-  return { desk: merged, live, refreshing, deskLoading };
+  return { desk: merged, live, refreshing, deskLoading, sessionActive, marketLabel: pulse?.market_label };
 }

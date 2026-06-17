@@ -127,6 +127,27 @@ async function runMigrations(): Promise<void> {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
   `);
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS spx_signal_log (
+      id BIGSERIAL PRIMARY KEY,
+      signal_key TEXT NOT NULL,
+      action TEXT NOT NULL,
+      bias TEXT NOT NULL,
+      score INT NOT NULL,
+      confidence INT NOT NULL,
+      price NUMERIC,
+      entry NUMERIC,
+      stop NUMERIC,
+      target NUMERIC,
+      headline TEXT NOT NULL,
+      factors JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_spx_signal_log_created_at
+    ON spx_signal_log(created_at DESC);
+  `);
 }
 
 export async function ensureSchema(): Promise<void> {
@@ -294,4 +315,87 @@ export async function insertFlowAlert(row: {
     ]
   );
   return (res.rowCount ?? 0) > 0;
+}
+
+export async function insertSpxSignalLog(row: {
+  signal_key: string;
+  action: string;
+  bias: string;
+  score: number;
+  confidence: number;
+  price: number | null;
+  entry: number | null;
+  stop: number | null;
+  target: number | null;
+  headline: string;
+  factors: unknown;
+}): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `
+    INSERT INTO spx_signal_log (
+      signal_key, action, bias, score, confidence, price,
+      entry, stop, target, headline, factors
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+    `,
+    [
+      row.signal_key,
+      row.action,
+      row.bias,
+      row.score,
+      row.confidence,
+      row.price,
+      row.entry,
+      row.stop,
+      row.target,
+      row.headline,
+      JSON.stringify(row.factors ?? []),
+    ]
+  );
+}
+
+export async function fetchRecentSpxSignalLogs(limit = 50): Promise<
+  Array<{
+    id: number;
+    signal_key: string;
+    action: string;
+    bias: string;
+    score: number;
+    confidence: number;
+    price: number | null;
+    entry: number | null;
+    stop: number | null;
+    target: number | null;
+    headline: string;
+    factors: unknown;
+    created_at: string;
+  }>
+> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    SELECT id, signal_key, action, bias, score, confidence, price,
+           entry, stop, target, headline, factors, created_at
+    FROM spx_signal_log
+    ORDER BY created_at DESC
+    LIMIT $1
+    `,
+    [limit]
+  );
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    signal_key: String(r.signal_key),
+    action: String(r.action),
+    bias: String(r.bias),
+    score: Number(r.score),
+    confidence: Number(r.confidence),
+    price: r.price != null ? Number(r.price) : null,
+    entry: r.entry != null ? Number(r.entry) : null,
+    stop: r.stop != null ? Number(r.stop) : null,
+    target: r.target != null ? Number(r.target) : null,
+    headline: String(r.headline),
+    factors: r.factors,
+    created_at: new Date(String(r.created_at)).toISOString(),
+  }));
 }

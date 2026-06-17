@@ -1118,31 +1118,122 @@ body {
   }
 
   .spx-trade-alert-hero {
-    @apply rounded-sm border p-4;
+    @apply rounded-sm border p-4 md:p-5;
   }
 
   .spx-alert-buy-call {
-    @apply border-bull/40 bg-bull/5;
+    @apply border-bull/50 bg-bull/[0.07];
+    box-shadow: inset 0 0 48px rgba(34, 197, 94, 0.06);
   }
 
   .spx-alert-buy-put {
-    @apply border-bear/40 bg-bear/5;
+    @apply border-bear/50 bg-bear/[0.07];
+    box-shadow: inset 0 0 48px rgba(239, 68, 68, 0.06);
   }
 
   .spx-alert-hold {
-    @apply border-amber-500/30 bg-amber-500/5;
+    @apply border-orange-500/45 bg-orange-500/[0.08];
+    box-shadow: inset 0 0 48px rgba(249, 115, 22, 0.07);
   }
 
   .spx-alert-wait {
-    @apply border-grey-700 bg-white/[0.02];
+    @apply border-orange-500/25 bg-orange-500/[0.04];
+    box-shadow: inset 0 0 32px rgba(249, 115, 22, 0.04);
   }
 
   .spx-trade-alert-action {
-    @apply font-mono text-xs uppercase tracking-[0.35em] text-grey-400;
+    @apply font-anton uppercase leading-none tracking-wide;
+    font-size: clamp(2.75rem, 8vw, 4.5rem);
+  }
+
+  .spx-alert-buy-call .spx-trade-alert-action {
+    @apply text-bull;
+    text-shadow: 0 0 32px rgba(34, 197, 94, 0.55), 0 0 64px rgba(34, 197, 94, 0.2);
+  }
+
+  .spx-alert-buy-put .spx-trade-alert-action {
+    @apply text-bear;
+    text-shadow: 0 0 32px rgba(239, 68, 68, 0.55), 0 0 64px rgba(239, 68, 68, 0.2);
+  }
+
+  .spx-alert-hold .spx-trade-alert-action,
+  .spx-alert-wait .spx-trade-alert-action {
+    @apply text-orange-400;
+    text-shadow: 0 0 28px rgba(249, 115, 22, 0.45), 0 0 56px rgba(249, 115, 22, 0.15);
+  }
+
+  .spx-alert-wait .spx-trade-alert-action {
+    @apply text-orange-300/80;
   }
 
   .spx-trade-alert-headline {
-    @apply font-display text-xl text-white mt-1;
+    @apply font-display leading-tight mt-2;
+    font-size: clamp(1.35rem, 3.5vw, 2rem);
+    letter-spacing: 0.04em;
+  }
+
+  .spx-alert-buy-call .spx-trade-alert-headline {
+    @apply text-emerald-200;
+  }
+
+  .spx-alert-buy-put .spx-trade-alert-headline {
+    @apply text-rose-200;
+  }
+
+  .spx-alert-hold .spx-trade-alert-headline,
+  .spx-alert-wait .spx-trade-alert-headline {
+    @apply text-orange-200;
+  }
+
+  .spx-trade-alert-thesis {
+    @apply font-mono mt-3 leading-relaxed;
+    font-size: clamp(0.8rem, 1.8vw, 0.95rem);
+  }
+
+  .spx-alert-buy-call .spx-trade-alert-thesis {
+    @apply text-emerald-300/90;
+  }
+
+  .spx-alert-buy-put .spx-trade-alert-thesis {
+    @apply text-rose-300/90;
+  }
+
+  .spx-alert-hold .spx-trade-alert-thesis,
+  .spx-alert-wait .spx-trade-alert-thesis {
+    @apply text-orange-200/85;
+  }
+
+  .spx-trade-alert-score {
+    @apply font-anton tabular-nums leading-none;
+    font-size: clamp(2rem, 5vw, 3rem);
+  }
+
+  .spx-trade-alert-levels {
+    @apply rounded-sm border border-white/5 bg-black/25 p-3;
+  }
+
+  .spx-trade-alert-levels .spx-level-value {
+    @apply font-mono font-bold tabular-nums;
+    font-size: clamp(0.95rem, 2.2vw, 1.15rem);
+  }
+
+  .spx-trade-alert-history-action {
+    @apply font-mono uppercase shrink-0 font-bold tracking-wide;
+    font-size: 0.65rem;
+    min-width: 4.5rem;
+  }
+
+  .spx-history-buy-call {
+    @apply text-bull;
+  }
+
+  .spx-history-buy-put {
+    @apply text-bear;
+  }
+
+  .spx-history-hold,
+  .spx-history-wait {
+    @apply text-orange-400;
   }
 
   .spx-live-pill {
