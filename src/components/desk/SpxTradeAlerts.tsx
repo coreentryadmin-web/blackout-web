@@ -90,13 +90,6 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
   }, [play]);
 
   const show = play != null;
-  const updatedAt = play?.as_of
-    ? new Date(play.as_of).toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        second: "2-digit",
-      })
-    : "—";
 
   const panelRefreshing = (refreshing || playRefreshing) && play && play.action !== "SCANNING";
 
@@ -114,13 +107,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
       )}
     >
       <header className="spx-trade-alerts-header">
-        <div>
-          <p className="spx-trade-alerts-kicker">0DTE SPX · Play Engine</p>
-          <h2 className="spx-trade-alerts-title font-display">Trade Alerts</h2>
-          <p className="spx-trade-alerts-sub">
-            Confluence · MTF · news · flow · S/R {live ? `· ${updatedAt}` : ""}
-          </p>
-        </div>
+        <h2 className="spx-trade-alerts-title font-display">SPX Sniper</h2>
         <span className={clsx("spx-live-pill", live ? "spx-live-pill-on" : "spx-live-pill-off")}>
           {live ? "LIVE" : "OFFLINE"}
         </span>
