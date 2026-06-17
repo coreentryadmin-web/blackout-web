@@ -20,7 +20,7 @@ export function SpxSniperHeader({ desk, live }: Props) {
       <div className="spx-sniper-command-scan" aria-hidden />
       <div className="relative z-10">
         <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5">
-          <div className="flex flex-col md:flex-row md:items-end gap-5 md:gap-8 min-w-0 flex-1">
+          <div className="flex flex-col lg:flex-row lg:items-end gap-5 lg:gap-6 min-w-0 flex-1">
             <div className="shrink-0">
               <p className="font-mono text-[9px] tracking-[0.45em] text-bull/80 uppercase mb-1">
                 ◆ BlackOut Ops
@@ -65,14 +65,34 @@ export function SpxSniperHeader({ desk, live }: Props) {
                   value={live ? fmtPrice(desk?.vwap ?? null) : "—"}
                   tone={desk?.above_vwap ? "bull" : "bear"}
                 />
-                <StatPill label="HOD" value={live ? fmtPrice(desk?.hod ?? null) : "—"} tone="resistance" />
-                <StatPill label="LOD" value={live ? fmtPrice(desk?.lod ?? null) : "—"} tone="support" />
                 <StatPill
                   label="GEX"
                   value={live && desk?.gex_net != null ? fmtPremium(desk.gex_net) : "—"}
                   tone={(desk?.gex_net ?? 0) >= 0 ? "bull" : "bear"}
                 />
               </div>
+            </div>
+
+            <div className="spx-hero-metric-blocks">
+              <MetricBlock title="EMA" tone="orange">
+                <MetricRow label="20" value={live ? fmtPrice(desk?.ema20 ?? null) : "—"} tone="orange" />
+                <MetricRow label="50" value={live ? fmtPrice(desk?.ema50 ?? null) : "—"} tone="magenta" />
+                <MetricRow label="200" value={live ? fmtPrice(desk?.ema200 ?? null) : "—"} tone="cyan" />
+              </MetricBlock>
+              <MetricBlock title="SMA" tone="violet">
+                <MetricRow label="50" value={live ? fmtPrice(desk?.sma50 ?? null) : "—"} tone="orange" />
+                <MetricRow label="200" value={live ? fmtPrice(desk?.sma200 ?? null) : "—"} tone="cyan" />
+              </MetricBlock>
+              <MetricBlock title="Session" tone="bull">
+                <div className="spx-hero-metric-pair">
+                  <MetricRow label="HOD" value={live ? fmtPrice(desk?.hod ?? null) : "—"} tone="resistance" compact />
+                  <MetricRow label="PDH" value={live ? fmtPrice(desk?.pdh ?? null) : "—"} tone="resistance" compact />
+                </div>
+                <div className="spx-hero-metric-pair">
+                  <MetricRow label="LOD" value={live ? fmtPrice(desk?.lod ?? null) : "—"} tone="support" compact />
+                  <MetricRow label="PDL" value={live ? fmtPrice(desk?.pdl ?? null) : "—"} tone="support" compact />
+                </div>
+              </MetricBlock>
             </div>
           </div>
 
@@ -129,6 +149,50 @@ const VALUE_TONE: Record<string, string> = {
   gold: "text-amber-200",
   neutral: "text-zinc-100",
 };
+
+const BLOCK_BORDER: Record<string, string> = {
+  bull: "border-emerald-500/35",
+  orange: "border-orange-500/35",
+  violet: "border-violet-500/40",
+};
+
+function MetricBlock({
+  title,
+  tone = "bull",
+  children,
+}: {
+  title: string;
+  tone?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={clsx("spx-hero-metric-block", BLOCK_BORDER[tone] ?? BLOCK_BORDER.bull)}>
+      <p className="spx-hero-metric-block-title">{title}</p>
+      <div className="spx-hero-metric-block-body">{children}</div>
+    </div>
+  );
+}
+
+function MetricRow({
+  label,
+  value,
+  tone = "neutral",
+  compact,
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+  compact?: boolean;
+}) {
+  return (
+    <div className={clsx("spx-hero-metric-row", compact && "spx-hero-metric-row-compact")}>
+      <span className="spx-hero-metric-row-label">{label}</span>
+      <span className={clsx("spx-hero-metric-row-value", VALUE_TONE[tone] ?? VALUE_TONE.neutral)}>
+        {value}
+      </span>
+    </div>
+  );
+}
 
 function StatPill({
   label,

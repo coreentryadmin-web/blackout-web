@@ -3,7 +3,6 @@
 import useSWR from "swr";
 import { fetchSpxDesk } from "@/lib/api";
 import { SpxSniperHeader } from "@/components/desk/SpxSniperHeader";
-import { SpxStructureBlocks } from "@/components/desk/SpxStructureBlocks";
 import { SpxCommentaryRail } from "@/components/desk/SpxCommentaryRail";
 import { SpxChart } from "@/components/desk/SpxChart";
 import {
@@ -35,7 +34,6 @@ export function SpxDashboard() {
 
       <div className="spx-sniper-triple">
         <aside className="spx-sniper-left-rail spx-left-stack">
-          <SpxStructureBlocks desk={desk} live={live} variant="left-rail" />
           <SpxDarkPoolCard desk={desk} live={live} />
           <SpxGexLadder desk={desk} live={live} />
         </aside>
