@@ -1,8 +1,12 @@
 import { clerkClient } from "@clerk/nextjs/server";
-import type { Membership } from "@whop/sdk/resources/shared.js";
 import type { MembershipListResponse } from "@whop/sdk/resources/memberships.js";
 import { type Tier } from "@/lib/tiers";
-import { getWhopClient, resolveTierFromMemberships } from "@/lib/whop";
+import {
+  getPremiumProductIds,
+  getWhopClient,
+  PREMIUM_MEMBERSHIP_STATUSES,
+  resolveTierFromMemberships,
+} from "@/lib/whop";
 
 type MembershipMetadata = {
   tier?: Tier;
@@ -39,6 +43,27 @@ export async function updateClerkMembershipMetadata(
   });
 }
 
+async function findWhopUserIdsByEmail(
+  email: string,
+  companyId: string
+): Promise<string[]> {
+  const whop = getWhopClient();
+  const normalized = email.trim().toLowerCase();
+  const userIds = new Set<string>();
+
+  for await (const member of whop.members.list({
+    company_id: companyId,
+    query: normalized,
+  })) {
+    const memberEmail = member.user?.email?.toLowerCase();
+    if (memberEmail === normalized && member.user?.id) {
+      userIds.add(member.user.id);
+    }
+  }
+
+  return Array.from(userIds);
+}
+
 export async function syncWhopMembershipForEmail(email: string): Promise<{
   tier: Tier;
   updatedUserIds: string[];
@@ -46,16 +71,24 @@ export async function syncWhopMembershipForEmail(email: string): Promise<{
   const whop = getWhopClient();
   const companyId = process.env.WHOP_COMPANY_ID;
   const normalized = email.trim().toLowerCase();
+  const premiumProductIds = getPremiumProductIds();
+
+  const userIds = companyId ? await findWhopUserIdsByEmail(normalized, companyId) : [];
 
   const memberships: MembershipListResponse[] = [];
   const membershipParams = {
     ...(companyId ? { company_id: companyId } : {}),
-    statuses: ["active", "trialing", "past_due", "canceling"] as MembershipListResponse["status"][],
+    ...(premiumProductIds.length ? { product_ids: premiumProductIds } : {}),
+    ...(userIds.length ? { user_ids: userIds } : {}),
+    statuses: PREMIUM_MEMBERSHIP_STATUSES,
   };
 
   for await (const membership of whop.memberships.list(membershipParams)) {
-    const memberEmail = membership.user?.email?.toLowerCase();
-    if (memberEmail === normalized) memberships.push(membership);
+    if (!userIds.length) {
+      const memberEmail = membership.user?.email?.toLowerCase();
+      if (memberEmail !== normalized) continue;
+    }
+    memberships.push(membership);
   }
 
   const tier = resolveTierFromMemberships(memberships);

@@ -4,12 +4,15 @@ import type { Tier } from "@/lib/tiers";
 
 type WhopMembershipLike = Pick<MembershipListResponse, "status" | "plan" | "product">;
 
-const ACTIVE_STATUSES = new Set<WhopMembershipLike["status"]>([
+export const PREMIUM_MEMBERSHIP_STATUSES: WhopMembershipLike["status"][] = [
   "active",
   "trialing",
   "past_due",
   "canceling",
-]);
+  "completed", // one-time / lifetime purchases
+];
+
+const ACTIVE_STATUSES = new Set(PREMIUM_MEMBERSHIP_STATUSES);
 
 let client: Whop | null = null;
 
@@ -29,7 +32,7 @@ function parseIdList(...values: Array<string | undefined>): string[] {
     .filter(Boolean);
 }
 
-function getPremiumProductIds(): string[] {
+export function getPremiumProductIds(): string[] {
   return parseIdList(
     process.env.WHOP_PREMIUM_PRODUCT_IDS,
     process.env.WHOP_PRO_PRODUCT_IDS,
