@@ -1,11 +1,9 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { requireTier } from "@/lib/auth-access";
 import { Nav } from "@/components/Nav";
 import { NightHawkFeed } from "@/components/NightHawkFeed";
 
 export default async function NightHawkPage() {
-  const { userId } = await auth();
-  if (!userId) redirect("/sign-in");
+  await requireTier("elite");
 
   return (
     <div className="page-shell">

@@ -1,5 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { requireTier } from "@/lib/auth-access";
 import { Nav } from "@/components/Nav";
 import { PageBanner } from "@/components/PageBanner";
 import { SpxDashboard } from "@/components/SpxDashboard";
@@ -8,8 +7,7 @@ import { IMAGES } from "@/lib/images";
 export const revalidate = 0;
 
 export default async function DashboardPage() {
-  const { userId } = await auth();
-  if (!userId) redirect("/sign-in");
+  await requireTier("pro");
 
   return (
     <div className="page-shell">

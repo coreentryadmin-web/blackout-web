@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^5.1.0",
-    "@stripe/stripe-js": "^3.5.0",
+    "@whop/sdk": "^0.0.40",
     "clsx": "^2.1.1",
     "framer-motion": "^11.18.2",
     "lucide-react": "^0.395.0",
@@ -19,7 +19,6 @@
     "react-dom": "^18",
     "recharts": "^2.12.7",
     "sharp": "^0.35.1",
-    "stripe": "^15.7.0",
     "swr": "^2.2.5"
   },
   "devDependencies": {

@@ -1,0 +1,46 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+
+export function SyncMembershipButton() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function handleSync() {
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch("/api/membership/sync", { method: "POST" });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setMessage(data.error ?? "Sync failed. Try again in a moment.");
+        return;
+      }
+
+      setMessage(`Access updated: ${String(data.tier).toUpperCase()}`);
+      router.refresh();
+    } catch {
+      setMessage("Sync failed. Check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <button
+        type="button"
+        onClick={handleSync}
+        disabled={loading}
+        className="btn-outline disabled:opacity-50"
+      >
+        {loading ? "Syncing..." : "I paid — refresh my access"}
+      </button>
+      {message && <p className="font-mono text-xs text-bull text-center">{message}</p>}
+    </div>
+  );
+}

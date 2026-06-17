@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 
+const WHOP_CHECKOUT = {
+  pro: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_PRO ?? "",
+  elite: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_ELITE ?? "",
+};
+
 const TIERS = [
   {
     name: "Free",
@@ -10,6 +15,8 @@ const TIERS = [
     period: "forever",
     featured: false,
     cta: "Get Started",
+    href: "/sign-up",
+    external: false,
     accent: "border-grey-700",
     features: [
       { text: "Flow Feed (delayed 15m)", active: true },
@@ -24,7 +31,9 @@ const TIERS = [
     price: "$97",
     period: "per month",
     featured: true,
-    cta: "Join Pro",
+    cta: "Join Pro on Whop",
+    href: WHOP_CHECKOUT.pro || "/sign-up",
+    external: Boolean(WHOP_CHECKOUT.pro),
     accent: "border-bull",
     features: [
       { text: "Live Flow Feed", active: true },
@@ -39,7 +48,9 @@ const TIERS = [
     price: "$197",
     period: "per month",
     featured: false,
-    cta: "Join Elite",
+    cta: "Join Elite on Whop",
+    href: WHOP_CHECKOUT.elite || "/sign-up",
+    external: Boolean(WHOP_CHECKOUT.elite),
     accent: "border-purple",
     features: [
       { text: "Everything in Pro", active: true },
@@ -50,6 +61,35 @@ const TIERS = [
     ],
   },
 ];
+
+function TierCta({
+  tier,
+}: {
+  tier: (typeof TIERS)[number];
+}) {
+  const className = tier.featured
+    ? "btn-primary w-full text-center !px-0"
+    : "btn-outline w-full text-center";
+
+  if (tier.external) {
+    return (
+      <a
+        href={tier.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={className}
+      >
+        {tier.cta}
+      </a>
+    );
+  }
+
+  return (
+    <Link href={tier.href} className={className}>
+      {tier.cta}
+    </Link>
+  );
+}
 
 export function PricingSection() {
   return (
@@ -73,6 +113,9 @@ export function PricingSection() {
           <h2 className="font-syne font-extrabold text-5xl md:text-7xl tracking-tight">
             CHOOSE YOUR <span className="text-gradient-fire">TIER</span>
           </h2>
+          <p className="text-grey-500 text-sm mt-4 max-w-xl font-mono">
+            Sign up first, then pay on Whop with the same email. Access unlocks automatically.
+          </p>
         </motion.div>
 
         <div className="flex flex-col md:flex-row items-center md:items-stretch justify-center gap-0 md:-space-x-4">
@@ -111,12 +154,7 @@ export function PricingSection() {
                   </li>
                 ))}
               </ul>
-              <Link
-                href="/sign-up"
-                className={t.featured ? "btn-primary w-full text-center !px-0" : "btn-outline"}
-              >
-                {t.cta}
-              </Link>
+              <TierCta tier={t} />
             </motion.div>
           ))}
         </div>

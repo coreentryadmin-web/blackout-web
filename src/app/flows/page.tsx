@@ -1,11 +1,9 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { requireTier } from "@/lib/auth-access";
 import { Nav } from "@/components/Nav";
 import { FlowFeed } from "@/components/FlowFeed";
 
 export default async function FlowsPage() {
-  const { userId } = await auth();
-  if (!userId) redirect("/sign-in");
+  await requireTier("pro");
 
   return (
     <div className="page-shell">

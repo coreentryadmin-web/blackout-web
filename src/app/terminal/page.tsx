@@ -1,13 +1,11 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { requireTier } from "@/lib/auth-access";
 import { Nav } from "@/components/Nav";
 import { PageBanner } from "@/components/PageBanner";
 import { LargoTerminal } from "@/components/LargoTerminal";
 import { IMAGES } from "@/lib/images";
 
 export default async function TerminalPage() {
-  const { userId } = await auth();
-  if (!userId) redirect("/sign-in");
+  await requireTier("elite");
 
   return (
     <div className="page-shell flex flex-col">

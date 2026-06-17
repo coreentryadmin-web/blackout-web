@@ -6,7 +6,6 @@ const isProtectedRoute = createRouteMatcher([
   "/terminal(.*)",
   "/heatmap(.*)",
   "/nighthawk(.*)",
-  "/api/checkout(.*)",
 ]);
 
 export default clerkMiddleware((auth, req) => {
