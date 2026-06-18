@@ -6601,7 +6601,7 @@ body {
   }
 
   .admin-deck-badge-warn {
-    @apply border-amber-500/35 bg-amber-500/12 text-amber-100 ml-2;
+    @apply border-amber-500/35 bg-amber-500/10 text-amber-100 ml-2;
   }
 
   .admin-kv-tile {
@@ -8014,7 +8014,7 @@ body {
   }
 
   .admin-spx-term-header {
-    @apply relative z-10 flex flex-wrap items-start justify-between gap-4 p-6 md:p-8 border-b border-white/8;
+    @apply relative z-10 flex flex-wrap items-start justify-between gap-4 p-6 md:p-8 border-b border-white/10;
   }
 
   .admin-spx-term-kicker {
@@ -8043,7 +8043,7 @@ body {
   }
 
   .admin-spx-term-stream-pill-live {
-    @apply border-emerald-500/45 text-emerald-300 bg-emerald-500/8;
+    @apply border-emerald-500/45 text-emerald-300 bg-emerald-500/10;
     box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
   }
 
@@ -8070,11 +8070,11 @@ body {
   }
 
   .admin-spx-term-stats {
-    @apply relative z-10 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 p-4 md:px-8 border-b border-white/6;
+    @apply relative z-10 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 p-4 md:px-8 border-b border-white/10;
   }
 
   .admin-spx-term-stat {
-    @apply rounded-xl border border-white/8 bg-black/25 px-4 py-3 md:py-4;
+    @apply rounded-xl border border-white/10 bg-black/25 px-4 py-3 md:py-4;
   }
 
   .admin-spx-term-stat-label {
@@ -8089,11 +8089,11 @@ body {
   .admin-spx-term-stat-bear .admin-spx-term-stat-value { @apply text-red-300; }
   .admin-spx-term-stat-amber .admin-spx-term-stat-value { @apply text-amber-300; }
   .admin-spx-term-stat-violet .admin-spx-term-stat-value { @apply text-violet-300; }
-  .admin-spx-term-stat-cyan .admin-spx-term-stat-value { @apply text-cyan-300; }
+  .admin-spx-term-stat-cyan .admin-spx-term-stat-value { @apply text-cyan; }
   .admin-spx-term-stat-neutral .admin-spx-term-stat-value { @apply text-grey-200; }
 
   .admin-spx-term-toolbar {
-    @apply relative z-10 flex flex-wrap items-center justify-between gap-3 px-4 md:px-8 py-4 border-b border-white/6;
+    @apply relative z-10 flex flex-wrap items-center justify-between gap-3 px-4 md:px-8 py-4 border-b border-white/10;
   }
 
   .admin-spx-term-filters {
@@ -8105,7 +8105,7 @@ body {
   }
 
   .admin-spx-term-filter-active {
-    @apply text-cyan-200 border-cyan/40 bg-cyan/10;
+    @apply text-cyan border-cyan/40 bg-cyan/10;
     box-shadow: 0 0 16px rgba(0, 212, 255, 0.12);
   }
 
@@ -8114,7 +8114,7 @@ body {
   }
 
   .admin-spx-term-pause-active {
-    @apply border-amber-500/35 text-amber-200 bg-amber-500/8;
+    @apply border-amber-500/35 text-amber-200 bg-amber-500/10;
   }
 
   .admin-spx-term-feed-wrap {
@@ -8137,7 +8137,7 @@ body {
   }
 
   .admin-spx-term-line {
-    @apply relative flex gap-0 rounded-xl overflow-hidden border border-white/6 bg-black/35 transition-colors;
+    @apply relative flex gap-0 rounded-xl overflow-hidden border border-white/10 bg-black/30 transition-colors;
   }
 
   .admin-spx-term-line-new {
@@ -8155,7 +8155,7 @@ body {
 
   .admin-spx-term-line-critical .admin-spx-term-line-rail { @apply bg-red-500; box-shadow: 0 0 12px rgba(239, 68, 68, 0.6); }
   .admin-spx-term-line-warning .admin-spx-term-line-rail { @apply bg-amber-400; box-shadow: 0 0 10px rgba(251, 191, 36, 0.5); }
-  .admin-spx-term-line-info .admin-spx-term-line-rail { @apply bg-cyan-400; }
+  .admin-spx-term-line-info .admin-spx-term-line-rail { @apply bg-cyan; }
   .admin-spx-term-line-api .admin-spx-term-line-rail { @apply bg-violet-400; box-shadow: 0 0 10px rgba(167, 139, 250, 0.45); }
   .admin-spx-term-line-pulse .admin-spx-term-line-rail { @apply bg-emerald-400/80; }
   .admin-spx-term-line-ok .admin-spx-term-line-rail { @apply bg-emerald-500; }
@@ -8174,7 +8174,7 @@ body {
 
   .admin-spx-term-line-critical .admin-spx-term-marker { @apply text-red-400; }
   .admin-spx-term-line-warning .admin-spx-term-marker { @apply text-amber-400; }
-  .admin-spx-term-line-info .admin-spx-term-marker { @apply text-cyan-400; }
+  .admin-spx-term-line-info .admin-spx-term-marker { @apply text-cyan; }
   .admin-spx-term-line-api .admin-spx-term-marker { @apply text-violet-400; }
   .admin-spx-term-line-pulse .admin-spx-term-marker { @apply text-emerald-400; }
   .admin-spx-term-line-ok .admin-spx-term-marker { @apply text-emerald-300; }
@@ -8183,10 +8183,10 @@ body {
     @apply text-xs md:text-sm font-mono font-bold uppercase tracking-[0.15em] px-2 py-0.5 rounded border;
   }
 
-  .admin-spx-term-kind-critical { @apply text-red-300 border-red-500/35 bg-red-500/12; }
-  .admin-spx-term-kind-warning { @apply text-amber-300 border-amber-500/35 bg-amber-500/12; }
-  .admin-spx-term-kind-info { @apply text-cyan-300 border-cyan/35 bg-cyan/10; }
-  .admin-spx-term-kind-api { @apply text-violet-300 border-violet-500/35 bg-violet-500/12; }
+  .admin-spx-term-kind-critical { @apply text-red-300 border-red-500/35 bg-red-500/10; }
+  .admin-spx-term-kind-warning { @apply text-amber-300 border-amber-500/35 bg-amber-500/10; }
+  .admin-spx-term-kind-info { @apply text-cyan border-cyan/35 bg-cyan/10; }
+  .admin-spx-term-kind-api { @apply text-violet-300 border-violet-500/35 bg-violet-500/10; }
   .admin-spx-term-kind-pulse { @apply text-emerald-300 border-emerald-500/35 bg-emerald-500/10; }
   .admin-spx-term-kind-ok { @apply text-emerald-200 border-emerald-500/30 bg-emerald-500/10; }
 
@@ -8241,6 +8241,6 @@ body {
   }
 
   .admin-spx-term-footer {
-    @apply relative z-10 flex flex-wrap items-center gap-2 px-6 md:px-8 py-4 border-t border-white/8 text-sm md:text-base font-mono text-grey-500 uppercase tracking-wider;
+    @apply relative z-10 flex flex-wrap items-center gap-2 px-6 md:px-8 py-4 border-t border-white/10 text-sm md:text-base font-mono text-grey-500 uppercase tracking-wider;
   }
 }
