@@ -6,8 +6,14 @@ import { useEffect, useState } from "react";
 import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { clsx } from "clsx";
 
-const NAV_LINKS = [
-  { href: "/dashboard", label: "Dashboard" },
+type NavLink = {
+  href: string;
+  label: string;
+  lines?: [string, string];
+};
+
+const NAV_LINKS: NavLink[] = [
+  { href: "/dashboard", label: "SPX Slayer", lines: ["SPX", "Slayer"] },
   { href: "/docs/spx-sniper", label: "Playbook" },
   { href: "/flows", label: "Flows" },
   { href: "/heatmap", label: "Heatmaps" },
@@ -50,13 +56,20 @@ export function Nav() {
 
       <SignedIn>
         <ul className="hidden md:flex items-center gap-6 lg:gap-8">
-          {links.map(({ href, label }) => (
+          {links.map(({ href, label, lines }) => (
             <li key={href}>
               <Link
                 href={href}
                 className={clsx("nav-link", path.startsWith(href) && "nav-link-active")}
               >
-                {label}
+                {lines ? (
+                  <span className="nav-link-stacked">
+                    <span>{lines[0]}</span>
+                    <span>{lines[1]}</span>
+                  </span>
+                ) : (
+                  label
+                )}
               </Link>
             </li>
           ))}

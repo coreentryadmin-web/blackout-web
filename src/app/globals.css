@@ -142,6 +142,22 @@ body {
            hover:text-bull transition-colors duration-200;
   }
 
+  .nav-link-stacked {
+    @apply flex flex-col items-center leading-none gap-0.5 tracking-[0.25em];
+  }
+
+  .nav-link-stacked span:first-child {
+    @apply text-[10px];
+  }
+
+  .nav-link-stacked span:last-child {
+    @apply text-[9px] tracking-[0.35em] text-grey-300;
+  }
+
+  .nav-link-active .nav-link-stacked span:last-child {
+    @apply text-bull/80;
+  }
+
   .nav-link-active { @apply text-bull; }
 
   .nav-link-active::after {
