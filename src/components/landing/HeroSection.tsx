@@ -60,7 +60,7 @@ export function HeroSection() {
         ))}
       </div>
 
-      <div className="absolute bottom-48 left-4 md:left-12 z-20 hidden lg:block">
+      <div className="absolute bottom-64 left-4 md:left-12 z-20 hidden lg:block">
         <motion.div
           initial={{ opacity: 0, x: -40 }}
           animate={{ opacity: 1, x: 0 }}
@@ -72,10 +72,10 @@ export function HeroSection() {
         </motion.div>
       </div>
 
-      <div className="relative z-10 mt-auto">
+      <div className="relative z-10 mt-auto hero-bottom-stack">
         <HeroToolsRail />
 
-        <div className="overlap-panel landing-overlap-panel scan-line">
+        <div className="hero-cta-panel landing-overlap-panel scan-line">
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}

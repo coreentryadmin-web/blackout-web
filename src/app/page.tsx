@@ -5,6 +5,7 @@ import { MarqueeBlock } from "@/components/landing/MarqueeStrip";
 import { FeaturesGrid } from "@/components/landing/FeaturesGrid";
 import { OverlapShowcase } from "@/components/landing/OverlapShowcase";
 import { PricingSection } from "@/components/landing/PricingSection";
+import { FaqSection } from "@/components/landing/FaqSection";
 import { LandingFooter } from "@/components/landing/LandingFooter";
 import { IMAGES } from "@/lib/images";
 
@@ -39,6 +40,7 @@ export default function LandingPage() {
         reverse
         accent="purple"
       />
+      <FaqSection />
       <PricingSection />
       <LandingFooter />
     </div>

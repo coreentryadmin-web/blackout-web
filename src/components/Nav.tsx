@@ -2,55 +2,129 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
+import { SignedIn, SignedOut, UserButton, useAuth } from "@clerk/nextjs";
 import { clsx } from "clsx";
 
-type NavLink = {
+type FeatureLink = {
   href: string;
   label: string;
-  lines?: [string, string];
+  sub?: string;
+  accent?: string;
 };
 
-const NAV_LINKS: NavLink[] = [
-  { href: "/dashboard", label: "SPX Slayer", lines: ["SPX", "Slayer"] },
-  { href: "/flows", label: "Flows" },
-  { href: "/heatmap", label: "Heatmaps" },
-  { href: "/terminal", label: "Largo" },
-  { href: "/nighthawk", label: "Night Hawk" },
+const FEATURE_LINKS: FeatureLink[] = [
+  { href: "/dashboard", label: "SPX Slayer", sub: "0DTE · GEX · VWAP", accent: "green" },
+  { href: "/flows", label: "Flow Feed", sub: "Whale · Dark Pool", accent: "purple" },
+  { href: "/heatmap", label: "Heatmaps", sub: "Sector Rotation", accent: "orange" },
+  { href: "/terminal", label: "Largo AI", sub: "Desk Terminal", accent: "blue" },
+  { href: "/nighthawk", label: "Night Hawk", sub: "2–10 DTE Swings", accent: "red" },
 ];
+
+const TOP_LINKS = [
+  { hash: "faq", label: "FAQ's" },
+  { hash: "pricing", label: "Pricing" },
+] as const;
+
+function NavFeaturesMenu({
+  links,
+  path,
+  onNavigate,
+}: {
+  links: FeatureLink[];
+  path: string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <ul className="nav-features-menu-list">
+      {links.map((item) => (
+        <li key={item.href}>
+          <Link
+            href={item.href}
+            onClick={onNavigate}
+            className={clsx(
+              "nav-features-menu-item",
+              `nav-features-accent-${item.accent}`,
+              path.startsWith(item.href) && "nav-features-menu-item-active"
+            )}
+          >
+            <span className="nav-features-menu-label">{item.label}</span>
+            {item.sub && <span className="nav-features-menu-sub">{item.sub}</span>}
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export function Nav() {
   const path = usePathname();
   const isHome = path === "/";
+  const { isSignedIn, isLoaded } = useAuth();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [featuresOpen, setFeaturesOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const featuresRef = useRef<HTMLLIElement>(null);
+
+  const showAdmin = isLoaded && isSignedIn && isAdmin;
+  const featureLinks = FEATURE_LINKS;
+  const isFeatureActive = featureLinks.some((l) => path.startsWith(l.href));
 
   useEffect(() => {
+    if (!isLoaded) return;
+
+    if (!isSignedIn) {
+      setIsAdmin(false);
+      return;
+    }
+
     let cancelled = false;
     fetch("/api/admin/me")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (!cancelled && data?.admin) setIsAdmin(true);
+        if (!cancelled) setIsAdmin(Boolean(data?.admin));
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setIsAdmin(false);
+      });
+
     return () => {
       cancelled = true;
     };
+  }, [isLoaded, isSignedIn]);
+
+  useEffect(() => {
+    setFeaturesOpen(false);
+    setMobileOpen(false);
+  }, [path]);
+
+  useEffect(() => {
+    const onPointerDown = (e: MouseEvent) => {
+      if (!featuresRef.current?.contains(e.target as Node)) {
+        setFeaturesOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
   }, []);
 
-  const links = isAdmin
-    ? [...NAV_LINKS, { href: "/admin", label: "Admin" }]
-    : NAV_LINKS;
+  const navLinkClass = (href: string) =>
+    clsx(
+      "nav-link",
+      isHome && "nav-link-landing nav-link-landing-bold",
+      (href.startsWith("#") ? path === "/" && false : path.startsWith(href)) && "nav-link-active",
+      isHome && path.startsWith(href) && !href.startsWith("#") && "nav-link-active-landing"
+    );
 
   return (
     <motion.nav
       initial={isHome ? { opacity: 0, y: -20 } : undefined}
       animate={isHome ? { opacity: 1, y: 0 } : undefined}
       transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-      className={clsx("nav-bar", isHome && "nav-bar-landing", isHome && "bg-transparent border-bull/10")}
+      className={clsx("nav-bar relative", isHome && "nav-bar-landing", isHome && "bg-transparent border-bull/10")}
     >
-      <Link href="/" className="group relative">
+      <Link href="/" className="group relative shrink-0">
         <span className="font-anton text-xl md:text-2xl tracking-[0.2em] text-white group-hover:text-bull transition-colors">
           BLACKOUT
         </span>
@@ -59,34 +133,72 @@ export function Nav() {
         </span>
       </Link>
 
-      <SignedIn>
-        <ul className="hidden md:flex items-center gap-6 lg:gap-8">
-          {links.map(({ href, label, lines }) => (
-            <li key={href}>
-              <Link
-                href={href}
-                className={clsx(
-                  "nav-link",
-                  isHome && "nav-link-landing nav-link-landing-bold",
-                  path.startsWith(href) && "nav-link-active",
-                  isHome && path.startsWith(href) && "nav-link-active-landing"
-                )}
-              >
-                {lines ? (
-                  <span className="nav-link-stacked">
-                    <span>{lines[0]}</span>
-                    <span>{lines[1]}</span>
-                  </span>
-                ) : (
-                  label
-                )}
+      <ul className="hidden md:flex items-center gap-6 lg:gap-10">
+        <li ref={featuresRef} className="nav-features-dropdown">
+          <button
+            type="button"
+            aria-expanded={featuresOpen}
+            aria-haspopup="true"
+            onClick={() => setFeaturesOpen((o) => !o)}
+            className={clsx(
+              "nav-link nav-features-trigger",
+              isHome && "nav-link-landing nav-link-landing-bold",
+              (isFeatureActive || featuresOpen) && "nav-link-active",
+              isHome && isFeatureActive && "nav-link-active-landing"
+            )}
+          >
+            Features
+            <span className={clsx("nav-features-chevron", featuresOpen && "nav-features-chevron-open")}>
+              ▾
+            </span>
+          </button>
+
+          {featuresOpen && (
+            <div className="nav-features-panel">
+              <NavFeaturesMenu links={featureLinks} path={path} onNavigate={() => setFeaturesOpen(false)} />
+            </div>
+          )}
+        </li>
+
+        {TOP_LINKS.map(({ hash, label }) => {
+          const href = isHome ? `#${hash}` : `/#${hash}`;
+          return (
+            <li key={hash}>
+              <Link href={href} className={navLinkClass(href)}>
+                {label}
               </Link>
             </li>
-          ))}
-        </ul>
-      </SignedIn>
+          );
+        })}
+
+        {showAdmin && (
+          <li>
+            <Link
+              href="/admin"
+              className={clsx(
+                "nav-link",
+                isHome && "nav-link-landing nav-link-landing-bold",
+                path.startsWith("/admin") && "nav-link-active",
+                isHome && path.startsWith("/admin") && "nav-link-active-landing"
+              )}
+            >
+              Admin
+            </Link>
+          </li>
+        )}
+      </ul>
 
       <div className="flex items-center gap-3 md:gap-5">
+        <button
+          type="button"
+          className="nav-mobile-toggle md:hidden"
+          aria-label="Open menu"
+          aria-expanded={mobileOpen}
+          onClick={() => setMobileOpen((o) => !o)}
+        >
+          {mobileOpen ? "✕" : "☰"}
+        </button>
+
         <SignedOut>
           <Link href="/sign-in" className="nav-link hidden sm:inline">
             Sign In
@@ -106,6 +218,37 @@ export function Nav() {
           />
         </SignedIn>
       </div>
+
+      {mobileOpen && (
+        <div className="nav-mobile-drawer md:hidden">
+          <p className="nav-mobile-drawer-label">Features</p>
+          <NavFeaturesMenu
+            links={featureLinks}
+            path={path}
+            onNavigate={() => setMobileOpen(false)}
+          />
+          <div className="nav-mobile-drawer-divider" />
+          {TOP_LINKS.map(({ hash, label }) => (
+            <Link
+              key={hash}
+              href={isHome ? `#${hash}` : `/#${hash}`}
+              onClick={() => setMobileOpen(false)}
+              className="nav-mobile-top-link"
+            >
+              {label}
+            </Link>
+          ))}
+          {showAdmin && (
+            <Link
+              href="/admin"
+              onClick={() => setMobileOpen(false)}
+              className="nav-mobile-top-link"
+            >
+              Admin
+            </Link>
+          )}
+        </div>
+      )}
     </motion.nav>
   );
 }
