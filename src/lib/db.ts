@@ -139,6 +139,10 @@ async function runMigrations(): Promise<void> {
     ON flow_alerts(ticker);
   `);
   await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_flow_alerts_ticker_created
+    ON flow_alerts(ticker, created_at DESC NULLS LAST);
+  `);
+  await p.query(`
     CREATE TABLE IF NOT EXISTS platform_meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL,
@@ -188,6 +192,10 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     CREATE INDEX IF NOT EXISTS idx_spx_open_play_session_status
     ON spx_open_play(session_date, status);
+  `);
+  await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_spx_open_play_one_open_per_session
+    ON spx_open_play(session_date) WHERE status = 'open';
   `);
   await p.query(`
     ALTER TABLE spx_open_play
@@ -353,6 +361,28 @@ export async function pingDatabase(): Promise<{
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { ok: false, error: message, mode: activeMode };
+  }
+}
+
+export async function getDatabasePoolStats(): Promise<{
+  configured: boolean;
+  total: number;
+  idle: number;
+  waiting: number;
+} | null> {
+  if (!dbConfigured()) {
+    return { configured: false, total: 0, idle: 0, waiting: 0 };
+  }
+  try {
+    const p = await getPool();
+    return {
+      configured: true,
+      total: p.totalCount,
+      idle: p.idleCount,
+      waiting: p.waitingCount,
+    };
+  } catch {
+    return { configured: true, total: 0, idle: 0, waiting: 0 };
   }
 }
 
@@ -654,8 +684,9 @@ export async function insertOpenSpxPlay(row: {
     `UPDATE spx_open_play SET status = 'closed', closed_at = NOW() WHERE session_date = $1::date AND status = 'open'`,
     [row.session_date]
   );
-  const res = await (await getPool()).query<{ id: string }>(
-    `
+  try {
+    const res = await (await getPool()).query<{ id: string }>(
+      `
     INSERT INTO spx_open_play (
       session_date, direction, entry_price, entry_score, stop, target, grade, headline, opened_at, status,
       option_strike, option_type, option_label, option_premium
@@ -663,23 +694,31 @@ export async function insertOpenSpxPlay(row: {
     VALUES ($1::date,$2,$3,$4,$5,$6,$7,$8,$9,'open',$10,$11,$12,$13)
     RETURNING id
     `,
-    [
-      row.session_date,
-      row.direction,
-      row.entry_price,
-      row.entry_score,
-      row.stop,
-      row.target,
-      row.grade,
-      row.headline,
-      row.opened_at,
-      row.option_strike ?? null,
-      row.option_type ?? null,
-      row.option_label ?? null,
-      row.option_premium ?? null,
-    ]
-  );
-  return Number(res.rows[0]?.id ?? 0);
+      [
+        row.session_date,
+        row.direction,
+        row.entry_price,
+        row.entry_score,
+        row.stop,
+        row.target,
+        row.grade,
+        row.headline,
+        row.opened_at,
+        row.option_strike ?? null,
+        row.option_type ?? null,
+        row.option_label ?? null,
+        row.option_premium ?? null,
+      ]
+    );
+    return Number(res.rows[0]?.id ?? 0);
+  } catch (err) {
+    const code = (err as { code?: string })?.code;
+    if (code === "23505") {
+      const existing = await fetchOpenSpxPlay(row.session_date);
+      if (existing) return existing.id;
+    }
+    throw err;
+  }
 }
 
 export async function updateOpenSpxPlayRow(

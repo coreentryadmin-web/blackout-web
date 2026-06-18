@@ -41,17 +41,22 @@ export function FlowFeed() {
   }, [loadFlows]);
 
   useEffect(() => {
-    const es = createFlowEventSource((alert) => {
-      const id = `${alert.ticker}-${alert.alerted_at}`;
-      if (seenRef.current.has(id)) return;
-      seenRef.current.add(id);
-      setAlerts((prev) => [alert, ...prev.slice(0, 99)]);
-      setLive(true);
-    });
+    const conn = createFlowEventSource(
+      (alert) => {
+        const id = `${alert.ticker}-${alert.alerted_at}`;
+        if (seenRef.current.has(id)) return;
+        seenRef.current.add(id);
+        setAlerts((prev) => [alert, ...prev.slice(0, 99)]);
+        setLive(true);
+      },
+      {
+        onOpen: () => setLive(true),
+        onClose: () => setLive(false),
+      }
+    );
 
-    if (es) {
-      es.onerror = () => setLive(false);
-      return () => es.close();
+    if (conn) {
+      return () => conn.close();
     }
 
     const interval = setInterval(loadFlows, FLOW_REST_POLL_MS);

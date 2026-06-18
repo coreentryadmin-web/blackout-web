@@ -10,15 +10,11 @@ import {
 } from "@/lib/providers/finnhub";
 import {
   fetchMarketFlowAlertRows,
-  fetchUwCongressTrades,
   fetchUwDarkPool,
   fetchUwFlowPerExpiry,
   fetchUwIvRank,
-  fetchUwIvTermStructure,
   fetchUwNewsHeadlines,
   fetchUwOiChange,
-  fetchUwRealizedVol,
-  fetchUwRiskReversalSkew,
 } from "@/lib/providers/unusual-whales";
 import { computeFlowStrikeStacks, type FlowStrikeStack } from "@/lib/largo/flow-strike-stacks";
 import { fetchTickerFlowStreak, type FlowStreak } from "./flow-streak";
@@ -52,18 +48,20 @@ export type TickerDossier = {
   scored?: ScoredCandidate;
 };
 
-function latestSkew(rows: Record<string, unknown>[]): number | null {
-  const last = rows[rows.length - 1];
-  if (!last) return null;
-  const v = Number(last.risk_reversal ?? last.skew ?? last.value ?? NaN);
-  return Number.isFinite(v) ? v : null;
+let editionCongressCache: Record<string, unknown>[] | null = null;
+
+export function resetEditionCongressCache() {
+  editionCongressCache = null;
 }
 
-function latestRealizedVol(rows: Record<string, unknown>[]): number | null {
-  const last = rows[rows.length - 1];
-  if (!last) return null;
-  const v = Number(last.realized_vol ?? last.rv ?? last.value ?? NaN);
-  return Number.isFinite(v) ? v : null;
+async function getEditionCongressTrades(ticker: string): Promise<Record<string, unknown>[]> {
+  if (!uwConfigured()) return [];
+  if (!editionCongressCache) {
+    const { fetchUwCongressTrades } = await import("@/lib/providers/unusual-whales");
+    editionCongressCache = (await fetchUwCongressTrades(undefined).catch(() => [])) as Record<string, unknown>[];
+  }
+  const sym = ticker.toUpperCase();
+  return editionCongressCache.filter((t) => String(t.ticker ?? t.symbol ?? "").toUpperCase() === sym).slice(0, 5);
 }
 
 function formatAnalyst(recs: Array<Record<string, unknown>> | null): string | null {
@@ -122,9 +120,6 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
     darkPool,
     oiChange,
     ivRankRaw,
-    ivTerm,
-    realizedVolRows,
-    skewRows,
     flowExpiry,
     positioning,
     tech,
@@ -135,17 +130,14 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
     profile,
     shortSi,
     flowStreak,
-    congress,
     analystRecs,
     priceTargetRaw,
+    congress,
   ] = await Promise.all([
     fetchMarketFlowAlertRows({ ticker: sym, limit: 80, min_premium: 50_000 }).catch(() => []),
     fetchUwDarkPool(sym).catch(() => null),
     fetchUwOiChange(sym).catch(() => []),
     resolveIvRank(sym),
-    fetchUwIvTermStructure(sym).catch(() => []),
-    fetchUwRealizedVol(sym, 10).catch(() => []),
-    fetchUwRiskReversalSkew(sym, 10).catch(() => []),
     fetchUwFlowPerExpiry(sym, 12).catch(() => []),
     fetchPositioningSummary(sym),
     buildTechnicalCard(sym),
@@ -156,9 +148,9 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
     fetchFinnhubCompanyProfile(sym).catch(() => null),
     fetchShortInterest(sym).catch(() => null),
     fetchTickerFlowStreak(sym),
-    fetchUwCongressTrades(sym, 5).then((d) => (Array.isArray(d) ? d : []) as Record<string, unknown>[]).catch(() => []),
     fetchFinnhubRecommendations(sym).catch(() => null),
     fetchFinnhubPriceTarget(sym).catch(() => null),
+    getEditionCongressTrades(sym),
   ]);
 
   const flows = flowRows.map((r) => r.raw);
@@ -193,9 +185,9 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
     dark_pool: darkPool,
     oi_change: oiChange,
     iv_rank: ivRank,
-    iv_term: ivTerm,
-    realized_vol: latestRealizedVol(realizedVolRows),
-    risk_reversal_skew: latestSkew(skewRows),
+    iv_term: [],
+    realized_vol: null,
+    risk_reversal_skew: null,
     flow_by_expiry: flowExpiry,
     positioning,
     congress_trades: congress,
@@ -237,7 +229,7 @@ export async function fetchAllDossiers(
     const results = await Promise.all(batch.map((t) => fetchTickerDossier(t)));
     for (const d of results) out[d.ticker] = d;
     if (i + batchSize < tickers.length) {
-      await new Promise((r) => setTimeout(r, 800));
+      await new Promise((r) => setTimeout(r, 2000));
     }
   }
   return out;

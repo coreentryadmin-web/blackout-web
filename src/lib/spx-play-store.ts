@@ -155,11 +155,11 @@ export async function closeOpenPlay(
     const { recordPlayClose } = await import("@/lib/spx-play-outcomes");
     await recordPlayClose(id, outcome.close);
   }
-  MEMORY_OPEN.row = null;
   if (dbConfigured()) {
     const { closeOpenSpxPlayRow } = await import("@/lib/db");
     await closeOpenSpxPlayRow(id);
   }
+  MEMORY_OPEN.row = null;
   const meta = await loadPlaySessionMeta();
   const exitAction = outcome.close?.exit_action;
   await savePlaySessionMeta({

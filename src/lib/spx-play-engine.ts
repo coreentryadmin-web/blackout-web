@@ -1,4 +1,11 @@
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
+import { notifyPlayDiscord } from "@/lib/spx-play-notify";
+
+function firePlayTelemetry(label: string, work: () => Promise<unknown>) {
+  void work().catch((err) => {
+    console.error(`[spx-play-engine] ${label}:`, err instanceof Error ? err.message : err);
+  });
+}
 import {
   computeSpxConfluence,
   type SpxConfluence,
@@ -306,7 +313,8 @@ async function evaluateOpenPlay(
         row.trim_done
       ),
     });
-    void maybeLogSpxPlay(
+    firePlayTelemetry("maybeLogSpxPlay:SELL", () =>
+      maybeLogSpxPlay(
       { price: desk.price, market_open: desk.market_open },
       {
         action: "SELL",
@@ -324,7 +332,16 @@ async function evaluateOpenPlay(
           invalidation: confluence.levels.invalidation,
         },
       }
-    ).catch(() => undefined);
+    ));
+    void notifyPlayDiscord({
+      action: "SELL",
+      direction: dir,
+      headline,
+      thesis,
+      price: desk.price,
+      grade: row.grade,
+      score: confluence.score,
+    });
   } else if (targetHit) {
     action = "SELL";
     headline = "TARGET — take profit";
@@ -334,7 +351,8 @@ async function evaluateOpenPlay(
       direction: dir,
       close: closeSnapshot("TARGET", false, row.trim_done),
     });
-    void maybeLogSpxPlay(
+    firePlayTelemetry("maybeLogSpxPlay:TARGET", () =>
+      maybeLogSpxPlay(
       { price: desk.price, market_open: desk.market_open },
       {
         action: "SELL",
@@ -352,13 +370,23 @@ async function evaluateOpenPlay(
           invalidation: confluence.levels.invalidation,
         },
       }
-    ).catch(() => undefined);
+    ));
+    void notifyPlayDiscord({
+      action: "SELL",
+      direction: dir,
+      headline,
+      thesis,
+      price: desk.price,
+      grade: row.grade,
+      score: confluence.score,
+    });
   } else if (trimZone) {
     action = "TRIM";
     headline = "TRIM — bank partial, trail runner";
     thesis = `+${mfe.toFixed(1)} pts MFE · ${Math.round(progress * 100)}% to target — trim ~50%, trail runner.`;
     await updateOpenPlay(row.id, { trim_done: true });
-    void maybeLogSpxPlay(
+    firePlayTelemetry("maybeLogSpxPlay:TRIM", () =>
+      maybeLogSpxPlay(
       { price: desk.price, market_open: desk.market_open },
       {
         action: "TRIM",
@@ -376,7 +404,16 @@ async function evaluateOpenPlay(
           invalidation: confluence.levels.invalidation,
         },
       }
-    ).catch(() => undefined);
+    ));
+    void notifyPlayDiscord({
+      action: "TRIM",
+      direction: dir,
+      headline,
+      thesis,
+      price: desk.price,
+      grade: row.grade,
+      score: confluence.score,
+    });
   }
 
   const optionLabel = row.option_label;
@@ -718,7 +755,8 @@ async function evaluateFlatPlay(
   await recordBuy(dir);
   if (promoteEligible) await consumeWatchRecord();
 
-  void recordPlayEntry({
+  firePlayTelemetry("recordPlayEntry", () =>
+    recordPlayEntry({
     open_play_id: opened.id,
     session_date: sessionDate,
     direction: dir,
@@ -736,9 +774,20 @@ async function evaluateFlatPlay(
     claude,
     option_ticket: optionTicket,
     opened_at: openedAt,
-  }).catch(() => undefined);
+  }));
 
-  void maybeLogSpxPlay(
+  void notifyPlayDiscord({
+    action: "BUY",
+    direction: dir,
+    headline: contractHeadline,
+    thesis: claude.thesis,
+    price: desk.price,
+    grade: confluence.grade,
+    score: confluence.score,
+  });
+
+  firePlayTelemetry("maybeLogSpxPlay:BUY", () =>
+    maybeLogSpxPlay(
     { price: desk.price, market_open: desk.market_open },
     {
       action: "BUY",
@@ -751,7 +800,7 @@ async function evaluateFlatPlay(
       factors: confluence.factors,
       levels: confluence.levels,
     }
-  ).catch(() => undefined);
+  ));
 
   return {
     available: true,

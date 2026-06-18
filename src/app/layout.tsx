@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { LandingChrome } from "@/components/LandingChrome";
+import { SessionCacheGuard } from "@/components/SessionCacheGuard";
 import { IMAGES } from "@/lib/images";
 import { SITE } from "@/lib/site";
 import "./globals.css";
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="void-bg antialiased">
         <ClerkProvider>
+          <SessionCacheGuard />
           <LandingChrome />
           {children}
         </ClerkProvider>

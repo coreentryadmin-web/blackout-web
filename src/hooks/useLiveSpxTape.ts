@@ -17,13 +17,13 @@ export function useLiveSpxTape(seed: SpxTapeItem[] | undefined): SpxTapeItem[] {
   }, [seed]);
 
   useEffect(() => {
-    const es = createFlowEventSource((alert: FlowAlert) => {
+    const conn = createFlowEventSource((alert: FlowAlert) => {
       const ticker = alert.ticker?.toUpperCase() ?? "";
       if (!SPX_TICKERS.has(ticker)) return;
       const item = flowAlertToTapeItem(alert);
       setTape((prev) => mergeTapeItems([item], prev));
     });
-    return () => es?.close();
+    return () => conn?.close();
   }, []);
 
   return tape.length > 0 ? tape : seed ?? [];

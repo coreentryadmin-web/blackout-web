@@ -19,16 +19,21 @@ export default async function SpxSniperPlaybookPage() {
             lotto engine, entry gates, exit cooldowns, confirmations, session cutoffs, and how the panel interprets
             every action.
           </p>
-          <Link href="/dashboard" className="docs-back-link">
-            ← Back to desk
-          </Link>
-          <a
-            href="/docs/SPX-Sniper-Playbook.docx"
-            download
-            className="docs-download-link"
-          >
-            Download offline Word doc (.docx)
-          </a>
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
+            <Link href="/dashboard" className="docs-back-link">
+              ← Back to desk
+            </Link>
+            <Link href="/docs/spx-sniper/cursor-spx-slayer-analysis" className="docs-back-link">
+              Full system analysis →
+            </Link>
+            <a
+              href="/docs/SPX-Sniper-Playbook.docx"
+              download
+              className="docs-download-link"
+            >
+              Download offline Word doc (.docx)
+            </a>
+          </div>
         </header>
 
         <section className="docs-section">

@@ -176,6 +176,7 @@ export function mergeFlowIntoDesk(base: SpxDeskPayload, flow: SpxDeskFlow): SpxD
     flow_0dte_call_premium: flow.flow_0dte_call_premium ?? base.flow_0dte_call_premium,
     flow_0dte_put_premium: flow.flow_0dte_put_premium ?? base.flow_0dte_put_premium,
     flow_0dte_net: flow.flow_0dte_net ?? base.flow_0dte_net,
+    flow_data_age_ms: flow.flow_data_age_ms ?? base.flow_data_age_ms ?? null,
     price,
     levels: buildLevels({
       price,
@@ -202,7 +203,7 @@ export function mergePulseIntoDesk(
   pulse: SpxDeskPulse
 ): SpxDeskPayload {
   seedStructureCacheFromBase(base);
-  const price = pulse.price || base.price;
+  const price = pulse.price > 0 ? pulse.price : base.price;
   const lod = stickyStructureLevel("lod", pulse.lod, base.lod);
   const hod = stickyStructureLevel("hod", pulse.hod, base.hod);
   const vwap = stickyStructureLevel("vwap", pulse.vwap, base.vwap);
@@ -213,11 +214,12 @@ export function mergePulseIntoDesk(
   const ema200 = stickyStructureLevel("ema200", pulse.ema200, base.ema200);
   const sma50 = stickyStructureLevel("sma50", pulse.sma50, base.sma50);
   const sma200 = stickyStructureLevel("sma200", pulse.sma200, base.sma200);
+  const vix = pulse.vix != null && pulse.vix > 0 ? pulse.vix : base.vix;
   return {
     ...base,
     price,
     spx_change_pct: pulse.spx_change_pct,
-    vix: pulse.vix,
+    vix,
     vix_change_pct: pulse.vix_change_pct,
     above_vwap: pulse.above_vwap,
     lod,
@@ -236,6 +238,7 @@ export function mergePulseIntoDesk(
     regime: pulse.regime ?? base.regime,
     leader_stocks: pulse.leader_stocks.length ? pulse.leader_stocks : base.leader_stocks,
     vix_term: pulse.vix_term ?? base.vix_term,
+    data_quality: pulse.data_quality ?? base.data_quality,
     market_open: pulse.market_open ?? base.market_open,
     market_status: pulse.market_status ?? base.market_status,
     market_label: pulse.market_label ?? base.market_label,
@@ -334,6 +337,7 @@ const signalDeskStub = (): SpxDeskPayload => ({
   strike_stacks: [],
   net_prem_ticks: [],
   vix_term: { vix9d: null, vix3m: null, structure: "unknown", detail: "" },
+  data_quality: { vix_term_partial: false, missing: [] },
   sector_heat: [],
   leader_stocks: [],
   oi_changes: [],

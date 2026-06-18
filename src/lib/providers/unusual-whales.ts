@@ -90,13 +90,34 @@ export function parseUwFlowAlert(row: Record<string, unknown>): MarketFlowAlert 
 /** @deprecated use parseUwFlowAlert */
 const rowToFlow = parseUwFlowAlert;
 
-async function uwGetSafe<T>(path: string, params: Record<string, string | number> = {}): Promise<T | null> {
+async function uwGetSafe<T>(
+  path: string,
+  params: Record<string, string | number> = {},
+  retries = 2
+): Promise<T | null> {
   if (!uwConfigured()) return null;
-  try {
-    return await uwGet<T>(path, params);
-  } catch {
-    return null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await uwGet<T>(path, params);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("403")) {
+        console.error(`[uw] PLAN_BLOCKED ${path} — endpoint requires higher tier. Returning null.`);
+        return null;
+      }
+      if (msg.includes("429") && attempt < retries) {
+        const delay = 1000 * Math.pow(2, attempt) + Math.random() * 500;
+        console.warn(`[uw] RATE_LIMITED ${path} — retry ${attempt + 1} in ${delay.toFixed(0)}ms`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      if (attempt === retries && msg.includes("429")) {
+        console.warn(`[uw] RATE_LIMITED ${path}`);
+      }
+      return null;
+    }
   }
+  return null;
 }
 
 function todayIso(): string {
@@ -222,6 +243,8 @@ export async function fetchUwFlow0dte(ticker = "SPX") {
 
 type MarketFlowRow = { raw: Record<string, unknown>; flow: MarketFlowAlert };
 
+const MARKET_FLOW_CACHE_KEY = "uw:market_flow_alerts";
+
 let marketFlowCache: { expiresAt: number; rows: MarketFlowRow[] } | null = null;
 
 function marketFlowCacheMs(): number {
@@ -264,9 +287,20 @@ export async function fetchMarketFlowAlertRows(params?: {
   const now = Date.now();
   const hasFreshCache = marketFlowCache && marketFlowCache.expiresAt > now;
 
-  // Incremental ingest bypasses cache when polling newer_than.
-  if (!params?.newer_than && hasFreshCache) {
-    return filterMarketFlowRows(marketFlowCache!.rows, params);
+  if (!params?.newer_than) {
+    if (hasFreshCache) {
+      return filterMarketFlowRows(marketFlowCache!.rows, params);
+    }
+    try {
+      const { sharedCacheGet } = await import("@/lib/shared-cache");
+      const redisRows = await sharedCacheGet<MarketFlowRow[]>(MARKET_FLOW_CACHE_KEY);
+      if (redisRows?.length) {
+        marketFlowCache = { expiresAt: now + marketFlowCacheMs(), rows: redisRows };
+        return filterMarketFlowRows(redisRows, params);
+      }
+    } catch {
+      /* fall through to fetch */
+    }
   }
 
   const query: Record<string, string | number> = {
@@ -281,6 +315,9 @@ export async function fetchMarketFlowAlertRows(params?: {
     const rows = extractRows(data).map((raw) => ({ raw, flow: rowToFlow(raw) }));
     if (!params?.newer_than) {
       marketFlowCache = { expiresAt: now + marketFlowCacheMs(), rows };
+      void import("@/lib/shared-cache").then(({ sharedCacheSet }) =>
+        sharedCacheSet(MARKET_FLOW_CACHE_KEY, rows, Math.ceil(marketFlowCacheMs() / 1000))
+      );
     }
     return filterMarketFlowRows(rows, params);
   } catch (error) {
@@ -385,6 +422,53 @@ export async function fetchUwDarkPool(
     bias,
     pcr: callPrem > 0 ? Math.round((putPrem / callPrem) * 100) / 100 : null,
     detail: prints.length ? `${prints.length} print(s) · $${(total / 1_000_000).toFixed(2)}M` : "No prints today",
+  };
+}
+
+/**
+ * Normalize a raw UW `off_lit_trades` WebSocket payload into DarkPoolSnapshot shape.
+ * The WS sends individual trade objects (or arrays of them) — not the REST aggregate structure.
+ */
+export function normalizeDarkPoolWsPayload(raw: unknown): DarkPoolSnapshot | null {
+  const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
+  const list = Array.isArray(rows) ? rows : typeof raw === "object" && raw !== null ? [raw] : [];
+  if (!list.length) return null;
+
+  const today = todayIso();
+  const prints: DarkPoolPrint[] = [];
+  let callPrem = 0;
+  let putPrem = 0;
+  let total = 0;
+
+  for (const row of list) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const execAt = String(r.executed_at ?? r.date ?? r.timestamp ?? "");
+    // Accept both UTC ISO (2025-06-18T...) and date-only strings for today's ET session.
+    const datePrefix = execAt.slice(0, 10);
+    if (execAt && datePrefix !== today) continue;
+    const premium = Number(r.premium ?? r.size ?? r.notional ?? 0);
+    if (premium <= 0) continue;
+    const strikeRaw = Number(r.strike ?? r.price ?? r.ref_price ?? 0);
+    const strike = Number.isFinite(strikeRaw) ? bucketPrice(strikeRaw) : 0;
+    const side = String(r.side ?? r.direction ?? "unknown").toLowerCase();
+    const optType = String(r.type ?? r.option_type ?? "").toLowerCase();
+    prints.push({ strike, premium, side, executed_at: execAt.slice(0, 19) || new Date().toISOString() });
+    total += premium;
+    if (optType.includes("call")) callPrem += premium;
+    else if (optType.includes("put")) putPrem += premium;
+  }
+
+  if (!prints.length) return null;
+  const bias = darkPoolBias(callPrem, putPrem, total);
+  return {
+    prints: prints.slice(0, 20),
+    total_premium: total,
+    call_premium: callPrem,
+    put_premium: putPrem,
+    bias,
+    pcr: callPrem > 0 ? Math.round((putPrem / callPrem) * 100) / 100 : null,
+    detail: `${prints.length} print(s) · $${(total / 1_000_000).toFixed(2)}M`,
   };
 }
 
@@ -569,9 +653,11 @@ export async function fetchUwMarketOiChange(limit = 25) {
   return extractRows(data).slice(0, limit);
 }
 
-export async function fetchUwAtmChains(ticker: string, expiry?: string, limit = 30) {
-  const params: Record<string, string | number> = { limit };
-  if (expiry) params.expiry = expiry;
+export async function fetchUwAtmChains(ticker: string, expirationDate?: string, limit = 30) {
+  const params: Record<string, string | number> = {
+    limit,
+    expiration_date: expirationDate ?? todayIso(),
+  };
   const data = await uwGetSafe<unknown>(`/api/stock/${ticker.toUpperCase()}/atm-chains`, params);
   return extractRows(data).slice(0, limit);
 }
@@ -627,14 +713,6 @@ export async function fetchUwFtds(ticker: string, limit = 15) {
   return extractRows(data).slice(0, limit);
 }
 
-export async function fetchUwVolatilityAnomaly(ticker: string) {
-  return uwGetSafe<unknown>(`/api/stock/${ticker.toUpperCase()}/volatility/anomaly`, {});
-}
-
-export async function fetchUwVolatilityCharacter(ticker: string) {
-  return uwGetSafe<unknown>(`/api/stock/${ticker.toUpperCase()}/volatility/character`, {});
-}
-
 export async function fetchUwRealizedVol(ticker: string, limit = 15) {
   const data = await uwGetSafe<unknown>(`/api/stock/${ticker.toUpperCase()}/volatility/realized`, {});
   return extractRows(data).slice(0, limit);
@@ -645,14 +723,6 @@ export async function fetchUwRiskReversalSkew(ticker: string, limit = 15) {
     `/api/stock/${ticker.toUpperCase()}/historical-risk-reversal-skew`,
     {}
   );
-  return extractRows(data).slice(0, limit);
-}
-
-export async function fetchUwVolAnomalyTop(direction = "long_vol", limit = 20) {
-  const data = await uwGetSafe<unknown>("/api/volatility/anomaly/top", {
-    direction,
-    limit: String(Math.min(limit, 50)),
-  });
   return extractRows(data).slice(0, limit);
 }
 
@@ -889,19 +959,12 @@ export async function fetchUwMarketEconomicCalendar(limit = 20) {
   return extractRows(data);
 }
 
-export async function fetchUwVixTermStructure(limit = 20) {
-  const data = await uwGetSafe<unknown>("/api/volatility/vix-term-structure", { limit: Math.min(limit, 50) });
-  return extractRows(data);
+export async function fetchUwSpotExposures(ticker = "SPX") {
+  return uwGetSafe<unknown>(`/api/stock/${ticker.toUpperCase()}/spot-exposures`, {});
 }
 
-export async function fetchUwVolatilityCharacterTop(limit = 25) {
-  const data = await uwGetSafe<unknown>("/api/volatility/character/top", { limit: Math.min(limit, 50) });
-  return extractRows(data).slice(0, limit);
-}
-
-export async function fetchUwVarianceRiskPremium(ticker: string, limit = 30) {
-  const data = await uwGetSafe<unknown>(`/api/stock/${sym(ticker)}/volatility/variance-risk-premium`, {});
-  return extractRows(data).slice(0, limit);
+export async function fetchUwOptionPriceLevels(ticker = "SPX") {
+  return uwGetSafe<unknown>(`/api/stock/${ticker.toUpperCase()}/option/stock-price-levels`, {});
 }
 
 export async function fetchUwEarningsPremarket(limit = 25) {

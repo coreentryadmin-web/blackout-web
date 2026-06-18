@@ -1,4 +1,6 @@
 import { trackedFetch } from "@/lib/api-tracked-fetch";
+import { computeVixTermStructure, type VixTermSnapshot } from "@/lib/vix-term-utils";
+export { computeVixTermStructure, type VixTermSnapshot } from "@/lib/vix-term-utils";
 import { polygonConfigured } from "./config";
 import { sessionStatsFromMinuteBars, todayEtYmd, priorEtYmd } from "./spx-session";
 
@@ -412,49 +414,18 @@ export async function fetchIndexVwap(symbol: string, timespan: "minute" | "day" 
   return computeIndexVwapFromBars(bars);
 }
 
-export type VixTermSnapshot = {
-  vix9d: number | null;
-  vix3m: number | null;
-  structure: "contango" | "backwardation" | "flat" | "unknown";
-  detail: string;
-};
-
-export function computeVixTermStructure(
-  spot: number | null,
-  near: number | null,
-  far: number | null
-): VixTermSnapshot {
-  if (spot == null || near == null) {
-    return { vix9d: near, vix3m: far, structure: "unknown", detail: "Insufficient VIX term data" };
-  }
-  const spreadNear = near - spot;
-  if (far != null) {
-    const spreadFar = far - spot;
-    if (spreadNear > 0.5 && spreadFar > spreadNear) {
-      return {
-        vix9d: near,
-        vix3m: far,
-        structure: "contango",
-        detail: `Contango — near +${spreadNear.toFixed(2)}, far +${spreadFar.toFixed(2)}`,
-      };
-    }
-    if (spreadNear < -0.5) {
-      return {
-        vix9d: near,
-        vix3m: far,
-        structure: "backwardation",
-        detail: `Backwardation — front below spot`,
-      };
-    }
-    return { vix9d: near, vix3m: far, structure: "flat", detail: `Flat — spot ${spot.toFixed(2)}` };
-  }
-  if (spreadNear > 0.5) {
-    return { vix9d: near, vix3m: far, structure: "contango", detail: `Contango +${spreadNear.toFixed(2)}` };
-  }
-  if (spreadNear < -0.5) {
-    return { vix9d: near, vix3m: far, structure: "backwardation", detail: `Backwardation ${spreadNear.toFixed(2)}` };
-  }
-  return { vix9d: near, vix3m: far, structure: "flat", detail: `Flat term` };
+export async function fetchIndexRsi(
+  symbol: string,
+  window = 14,
+  timespan: "minute" | "hour" | "day" = "minute"
+): Promise<number | null> {
+  const sym = symbol.startsWith("I:") ? encodeURIComponent(symbol) : encodeURIComponent(`I:${symbol}`);
+  const data = await polygonGet<{ results?: { values?: Array<{ value?: number }> } }>(
+    `/v1/indicators/rsi/${sym}`,
+    { window: String(window), timespan, series_type: "close", limit: "1" }
+  );
+  const v = data?.results?.values?.[0]?.value;
+  return v != null && Number.isFinite(v) ? v : null;
 }
 
 const VIX = "I:VIX";
@@ -499,9 +470,15 @@ export type PolygonMarketNow = {
   serverTime: string;
 };
 
-/** GET /v1/marketstatus/now — RTH / extended / closed. */
+let marketStatusCache: { data: PolygonMarketNow | null; fetchedAt: number } = { data: null, fetchedAt: 0 };
+const MARKET_STATUS_CACHE_MS = 60_000;
+
+/** GET /v1/marketstatus/now — RTH / extended / closed. Cached 60s to avoid ~23k calls/day at 1s pulse. */
 export async function fetchMarketStatusNow(): Promise<PolygonMarketNow | null> {
   if (!polygonConfigured()) return null;
+  if (Date.now() - marketStatusCache.fetchedAt < MARKET_STATUS_CACHE_MS) {
+    return marketStatusCache.data;
+  }
   try {
     const data = await polygonGet<{
       market?: string;
@@ -510,14 +487,16 @@ export async function fetchMarketStatusNow(): Promise<PolygonMarketNow | null> {
       serverTime?: string;
     }>("/v1/marketstatus/now", {});
     if (!data?.market) return null;
-    return {
+    const result: PolygonMarketNow = {
       market: String(data.market),
       earlyHours: Boolean(data.earlyHours),
       afterHours: Boolean(data.afterHours),
       serverTime: String(data.serverTime ?? ""),
     };
+    marketStatusCache = { data: result, fetchedAt: Date.now() };
+    return result;
   } catch {
-    return null;
+    return marketStatusCache.data; // return last good value on error
   }
 }
 

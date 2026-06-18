@@ -47,3 +47,10 @@ export async function authorizeCronOrTierApi(
   if (result instanceof Response) return result;
   return { userId: result.userId, via: "user" };
 }
+
+/** Premium desk / flow / SSE market data — cron OR signed-in premium user. */
+export async function authorizeMarketDeskApi(
+  req: NextRequest
+): Promise<{ userId: string | null; via: "cron" | "user" } | Response> {
+  return authorizeCronOrTierApi(req, "premium");
+}

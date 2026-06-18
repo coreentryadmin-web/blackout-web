@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 import { fetchMarketFlowAlerts } from "@/lib/providers/unusual-whales";
 import { uwConfigured } from "@/lib/providers/config";
@@ -8,6 +9,9 @@ import { marketPlatform } from "@/lib/platform";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const auth = await authorizeMarketDeskApi(req);
+  if (auth instanceof Response) return auth;
+
   const sp = req.nextUrl.searchParams;
   const limit = Number(sp.get("limit") ?? 50);
   const ticker = sp.get("ticker") ?? undefined;

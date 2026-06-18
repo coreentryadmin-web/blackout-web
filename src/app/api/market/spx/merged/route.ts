@@ -1,11 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { loadMergedSpxDesk } from "@/lib/spx-desk-loader";
 import { marketPlatform } from "@/lib/platform";
 
 export const dynamic = "force-dynamic";
 
 /** Merged SPX Sniper desk — pulse + flow + full desk (same feed as dashboard & play engine). */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await authorizeMarketDeskApi(req);
+  if (auth instanceof Response) return auth;
+
   try {
     const [{ merged, pulse, flow }, platform] = await Promise.all([
       loadMergedSpxDesk(),

@@ -4,7 +4,7 @@ import { uwConfigured } from "@/lib/providers/config";
 import { polygonConfigured } from "@/lib/providers/config";
 import { anthropicConfigured } from "@/lib/providers/anthropic";
 import { extractCandidateTickers } from "./candidates";
-import { fetchAllDossiers } from "./dossier";
+import { fetchAllDossiers, resetEditionCongressCache } from "./dossier";
 import { generateEditionPlays } from "./claude-edition";
 import { formatTickerDossierText } from "./format";
 import { fetchIndexDossiers } from "./index-dossier";
@@ -58,6 +58,7 @@ export async function buildEveningEdition(opts?: {
     }
 
     console.info(`[nighthawk/edition] phase 3: dossiers for ${candidates.length} tickers`);
+    resetEditionCongressCache();
     const dossiers = await fetchAllDossiers(candidates, DOSSIER_BATCH_SIZE);
 
     const scoredList = Object.values(dossiers)

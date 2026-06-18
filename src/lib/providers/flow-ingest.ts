@@ -1,10 +1,10 @@
-import { dbConfigured, getMeta, insertFlowAlert, setMeta, type FlowRow } from "@/lib/db";
-import { publishFlowEvent } from "@/lib/flow-events";
-import { fetchMarketFlowAlertRows, type MarketFlowAlert } from "@/lib/providers/unusual-whales";
+import { dbConfigured, getMeta, setMeta } from "@/lib/db";
+import { persistAndPublishFlowAlert } from "@/lib/flow-persist";
+import { fetchMarketFlowAlertRows } from "@/lib/providers/unusual-whales";
 import { uwConfigured } from "@/lib/providers/config";
+import { uwSocket } from "@/lib/ws/uw-socket";
 
 const CURSOR_KEY = "uw_flow_cursor";
-const MIN_PREMIUM = Number(process.env.UW_FLOW_MIN_PREMIUM ?? 200_000);
 const INGEST_LOCK_MS = 5_000;
 
 let lastIngestAt = 0;
@@ -17,48 +17,17 @@ export type FlowIngestResult = {
   skipped?: string;
 };
 
-function toFlowRow(alert: MarketFlowAlert): FlowRow {
-  return {
-    ticker: alert.ticker,
-    premium: alert.premium,
-    option_type: alert.option_type,
-    expiry: alert.expiry,
-    strike: alert.strike,
-    direction: alert.direction,
-    score: alert.score,
-    route: alert.route,
-    alerted_at: alert.alerted_at,
-  };
-}
-
-function alertId(row: Record<string, unknown>, flow: MarketFlowAlert): string {
-  const id = row.id ?? row.alert_id;
-  if (id != null) return `uw:${id}`;
-  return `uw:${flow.ticker}:${flow.alerted_at}:${flow.strike}:${flow.option_type}`;
-}
-
-async function notifyDiscord(flow: FlowRow): Promise<void> {
-  const url = process.env.DISCORD_FLOW_WEBHOOK_URL?.trim();
-  if (!url) return;
-
-  const emoji = flow.route === "whale" ? "🐋" : flow.route === "0dte" ? "⚡" : "📈";
-  const content = [
-    `${emoji} **${flow.ticker}** ${flow.option_type} $${flow.strike} · ${flow.expiry}`,
-    `Premium **$${flow.premium.toLocaleString()}** · ${flow.direction} · ${flow.route.toUpperCase()}`,
-    `[View on Blackout](https://blackouttrades.com/flows)`,
-  ].join("\n");
-
-  await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: content.slice(0, 1900) }),
-  }).catch((err) => console.warn("[flow-ingest] discord webhook:", err));
-}
-
 export async function runFlowIngest(): Promise<FlowIngestResult> {
   if (!uwConfigured()) {
     return { ok: false, ingested: 0, polled: 0, skipped: "UW_API_KEY not set" };
   }
+
+  const wsStatus = uwSocket.getStatus();
+  if (wsStatus["flow_alerts"] === "OPEN") {
+    // WS path persists via persistAndPublishFlowAlert — skip REST to avoid duplicate UW calls.
+    return { ok: true, ingested: 0, polled: 0, skipped: "ws_active" };
+  }
+
   if (!dbConfigured()) {
     return { ok: false, ingested: 0, polled: 0, skipped: "DATABASE_URL not set" };
   }
@@ -68,7 +37,7 @@ export async function runFlowIngest(): Promise<FlowIngestResult> {
   try {
     rows = await fetchMarketFlowAlertRows({
       limit: 100,
-      min_premium: MIN_PREMIUM,
+      min_premium: Number(process.env.UW_FLOW_MIN_PREMIUM ?? 200_000),
       newer_than: cursor ?? undefined,
     });
   } catch (error) {
@@ -80,29 +49,11 @@ export async function runFlowIngest(): Promise<FlowIngestResult> {
   let newestCursor = cursor;
 
   for (const { raw, flow } of rows) {
-    const id = alertId(raw, flow);
-
     try {
-      const inserted = await insertFlowAlert({
-        alert_id: id,
-        ticker: flow.ticker,
-        strike: Number.isFinite(flow.strike) ? flow.strike : null,
-        expiry: flow.expiry || null,
-        option_type: flow.option_type,
-        total_premium: flow.premium,
-        score: flow.score,
-        created_at: flow.alerted_at || null,
-        raw_payload: raw,
-      });
-
-      if (inserted) {
-        ingested += 1;
-        const event = toFlowRow(flow);
-        publishFlowEvent(event);
-        void notifyDiscord(event);
-      }
+      const { inserted } = await persistAndPublishFlowAlert(raw, flow);
+      if (inserted) ingested += 1;
     } catch (error) {
-      console.warn("[flow-ingest] skip row:", id, error);
+      console.error("[flow-ingest] persist row failed:", error);
     }
 
     const created = String(raw.created_at ?? raw.start_time ?? flow.alerted_at ?? "");

@@ -24,7 +24,7 @@ export const MAX_CANDIDATES = 20;
 export const MAX_DOSSIER_STOCKS = 5;
 export const MIN_STOCK_FLOW_PREMIUM = 100_000;
 export const MIN_HOT_CHAIN_PREMIUM = 500_000;
-export const DOSSIER_BATCH_SIZE = 4;
+export const DOSSIER_BATCH_SIZE = 3;
 
 /** Max option entry premium per share — 1 standard contract (100 shares) ≤ $2,000. */
 export const MAX_OPTION_PREMIUM_PER_SHARE = 20;

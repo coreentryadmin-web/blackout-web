@@ -43,6 +43,48 @@ const US_MACRO_SCHEDULE_2026: Array<{ date: string; event: string; impact: "high
   { date: "2026-12-11", event: "CPI", impact: "high" },
 ];
 
+const US_MACRO_SCHEDULE_2027: Array<{ date: string; event: string; impact: "high" | "medium" }> = [
+  { date: "2027-01-08", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2027-01-13", event: "CPI", impact: "high" },
+  { date: "2027-01-27", event: "FOMC Decision", impact: "high" },
+  { date: "2027-01-28", event: "FOMC Press Conference", impact: "high" },
+  { date: "2027-02-05", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2027-02-10", event: "CPI", impact: "high" },
+  { date: "2027-03-05", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2027-03-10", event: "CPI", impact: "high" },
+  { date: "2027-03-17", event: "FOMC Decision", impact: "high" },
+  { date: "2027-03-18", event: "FOMC Press Conference", impact: "high" },
+  { date: "2027-04-02", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2027-04-13", event: "CPI", impact: "high" },
+  { date: "2027-05-07", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2027-05-12", event: "CPI", impact: "high" },
+  { date: "2027-05-05", event: "FOMC Decision", impact: "high" },
+  { date: "2027-06-04", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2027-06-10", event: "CPI", impact: "high" },
+  { date: "2027-06-16", event: "FOMC Decision", impact: "high" },
+  { date: "2027-06-17", event: "FOMC Press Conference", impact: "high" },
+  { date: "2027-07-02", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2027-07-14", event: "CPI", impact: "high" },
+  { date: "2027-07-28", event: "FOMC Decision", impact: "high" },
+  { date: "2027-07-29", event: "FOMC Press Conference", impact: "high" },
+  { date: "2027-08-06", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2027-08-11", event: "CPI", impact: "high" },
+  { date: "2027-09-03", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2027-09-14", event: "CPI", impact: "high" },
+  { date: "2027-09-22", event: "FOMC Decision", impact: "high" },
+  { date: "2027-09-23", event: "FOMC Press Conference", impact: "high" },
+  { date: "2027-10-01", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2027-10-13", event: "CPI", impact: "high" },
+  { date: "2027-11-05", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2027-11-03", event: "FOMC Decision", impact: "high" },
+  { date: "2027-11-04", event: "FOMC Press Conference", impact: "high" },
+  { date: "2027-11-10", event: "CPI", impact: "high" },
+  { date: "2027-12-03", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2027-12-08", event: "FOMC Decision", impact: "high" },
+  { date: "2027-12-09", event: "FOMC Press Conference", impact: "high" },
+  { date: "2027-12-10", event: "CPI", impact: "high" },
+];
+
 const MACRO_HEADLINE_RE =
   /\b(CPI|FOMC|FED|PCE|NFP|NONFARM|JOBS|PAYROLL|PPI|GDP|RETAIL SALES|ISM|PMI|UNEMPLOYMENT|CLAIMS|RATE DECISION|POWELL)\b/i;
 
@@ -52,7 +94,8 @@ function todayEtYmd(now = new Date()): string {
 
 function staticMacroToday(now = new Date()): MacroEvent[] {
   const today = todayEtYmd(now);
-  return US_MACRO_SCHEDULE_2026.filter((e) => e.date === today).map((e) => ({
+  const schedule = [...US_MACRO_SCHEDULE_2026, ...US_MACRO_SCHEDULE_2027];
+  return schedule.filter((e) => e.date === today).map((e) => ({
     time: "08:30",
     event: e.event,
     country: "US",

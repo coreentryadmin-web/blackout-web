@@ -1,13 +1,21 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { deskCacheTtlMs } from "@/lib/providers/config";
 import { buildSpxDesk } from "@/lib/providers/spx-desk";
 import { withServerCache } from "@/lib/server-cache";
+import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await authorizeMarketDeskApi(req);
+  if (auth instanceof Response) return auth;
+
+  ensureDataSockets();
   try {
-    const desk = await withServerCache("spx-desk", deskCacheTtlMs(), buildSpxDesk);
+    const desk = await withServerCache("spx-desk", deskCacheTtlMs(), buildSpxDesk, {
+      staleWhileRevalidate: false,
+    });
     return NextResponse.json(
       { ...desk, polled_at: new Date().toISOString() },
       {

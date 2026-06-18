@@ -100,7 +100,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t("get_top_net_impact", "UW ONLY — highest net premium impact tickers."),
 
-  t("get_iv_stats", "IV rank + vol character. Polygon VIX rank for index proxies; UW fallback for single names.", T, ["ticker"]),
+  t("get_iv_stats", "IV rank + OI changes. Polygon VIX rank for index proxies; UW fallback for single names.", T, ["ticker"]),
 
   t("get_iv_term_structure", "IV term structure. UW only.", T, ["ticker"]),
 
@@ -109,14 +109,6 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   t("get_realized_vol", "UW ONLY — realized vs implied vol.", T, ["ticker"]),
 
   t("get_risk_reversal_skew", "UW ONLY — put/call skew history.", T, ["ticker"]),
-
-  t("get_vol_anomaly", "UW ONLY — IV anomaly vs history.", {
-
-    ticker: { type: "string" },
-
-    direction: { type: "string", enum: ["long_vol", "short_vol"] },
-
-  }),
 
   t("get_market_context", "Polygon indices + session status; UW market tide (exclusive)."),
 
@@ -170,9 +162,9 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t("get_congress_trades", "UW ONLY — congressional trading disclosures.", { ticker: { type: "string" } }),
 
-  t("get_screener", "UW ONLY — stocks, short_squeeze, option_flow, vol_anomaly, dark_pool, analysts.", {
+  t("get_screener", "UW ONLY — stocks, short_squeeze, option_flow, dark_pool, analysts.", {
 
-    type: { type: "string", enum: ["stocks", "short_squeeze", "contracts", "option_flow", "vol_anomaly", "dark_pool", "analysts"] },
+    type: { type: "string", enum: ["stocks", "short_squeeze", "contracts", "option_flow", "dark_pool", "analysts"] },
 
   }),
 
@@ -290,5 +282,105 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   }),
 
 ];
+
+export const TOOL_GROUPS = {
+  spx_desk: [
+    "get_spx_structure",
+    "get_spx_play",
+    "get_open_plays",
+    "get_flow_tape",
+    "get_signal_log",
+    "get_lotto_state",
+    "get_setup_stats",
+    "get_trade_history",
+  ],
+  flow_analysis: [
+    "get_options_flow",
+    "get_global_flow",
+    "get_dark_pool",
+    "get_nope",
+    "get_flow_per_strike",
+    "get_flow_expiry_breakdown",
+    "get_net_prem_ticks",
+    "get_postgres_flows",
+    "get_lit_flow",
+    "get_unusual_trades",
+  ],
+  stock_analysis: [
+    "get_quote",
+    "get_technicals",
+    "get_gex",
+    "get_options_chain",
+    "get_oi_per_strike",
+    "get_max_pain",
+    "get_greeks",
+    "get_atm_chains",
+    "get_options_volume",
+    "get_peer_rs",
+    "get_short_interest",
+    "get_nbbo",
+  ],
+  vol_analysis: ["get_iv_stats", "get_iv_term_structure", "get_volatility_regime", "get_vix_term", "get_market_context"],
+  news_events: [
+    "get_news",
+    "get_web_search",
+    "get_earnings",
+    "get_economic_calendar",
+    "get_earnings_market",
+    "get_fda_calendar",
+    "get_ipo_calendar",
+  ],
+  fundamental: [
+    "get_analyst_ratings",
+    "get_financials",
+    "get_insider_flow",
+    "get_congress_trades",
+    "get_company_profile",
+    "get_earnings_history",
+    "get_dividends",
+  ],
+  platform: ["get_platform_snapshot", "get_nighthawk_edition"],
+  screener: ["get_screener", "get_market_movers", "get_market_breadth", "get_sector_flow", "get_top_net_impact"],
+} as const;
+
+const CORE_TOOLS = [
+  "get_market_context",
+  ...TOOL_GROUPS.spx_desk,
+  ...TOOL_GROUPS.stock_analysis,
+  ...TOOL_GROUPS.vol_analysis,
+];
+
+export function getToolsForIntent(question: string): string[] {
+  const lower = question.toLowerCase();
+  const names = new Set<string>(["get_market_context"]);
+
+  if (/\b(flow|tape|sweep|whale|dark pool|premium|unusual)\b/.test(lower)) {
+    for (const n of [...TOOL_GROUPS.spx_desk, ...TOOL_GROUPS.flow_analysis]) names.add(n);
+  }
+  if (/\b(spx|s&p|play|signal|0dte|sniper|gamma|gex|dealer)\b/.test(lower)) {
+    for (const n of [...TOOL_GROUPS.spx_desk, ...TOOL_GROUPS.vol_analysis]) names.add(n);
+  }
+  if (/\b(vol|vix|iv|skew|rank)\b/.test(lower)) {
+    for (const n of [...TOOL_GROUPS.vol_analysis, ...TOOL_GROUPS.spx_desk]) names.add(n);
+  }
+  if (/\b(earnings|news|catalyst|cpi|fomc|macro|calendar)\b/.test(lower)) {
+    for (const n of [...TOOL_GROUPS.news_events, ...TOOL_GROUPS.stock_analysis]) names.add(n);
+  }
+  if (/\b(nighthawk|night hawk|playbook|hawk)\b/.test(lower)) {
+    for (const n of TOOL_GROUPS.platform) names.add(n);
+  }
+  if (/\b(screener|squeeze|movers|breadth|sector)\b/.test(lower)) {
+    for (const n of TOOL_GROUPS.screener) names.add(n);
+  }
+  if (/\b(fundamental|financial|insider|congress|analyst)\b/.test(lower)) {
+    for (const n of TOOL_GROUPS.fundamental) names.add(n);
+  }
+
+  if (names.size <= 2) {
+    for (const n of CORE_TOOLS) names.add(n);
+  }
+
+  return Array.from(names);
+}
 
 

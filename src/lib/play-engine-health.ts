@@ -1,0 +1,28 @@
+import { dbConfigured } from "@/lib/db";
+import { loadOpenPlay, loadPlaySessionMeta } from "@/lib/spx-play-store";
+import { fetchRecentSpxSignals } from "@/lib/providers/spx-signal-log";
+
+export async function getPlayEngineHealth() {
+  const [openPlay, sessionMeta, recentSignals] = await Promise.all([
+    loadOpenPlay(),
+    loadPlaySessionMeta(),
+    fetchRecentSpxSignals(3).catch(() => []),
+  ]);
+
+  const lastSignal = recentSignals[0] ?? null;
+
+  return {
+    db_configured: dbConfigured(),
+    open_play: openPlay,
+    session_meta: sessionMeta,
+    last_signal: lastSignal
+      ? {
+          action: lastSignal.action,
+          bias: lastSignal.bias,
+          headline: lastSignal.headline,
+          score: lastSignal.score,
+          created_at: lastSignal.created_at,
+        }
+      : null,
+  };
+}

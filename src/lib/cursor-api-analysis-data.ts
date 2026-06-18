@@ -1,15 +1,15 @@
 /** Auto-generated — run: node scripts/analyze-api-usage.mjs */
 export const CURSOR_API_ANALYSIS = {
-  "generatedAt": "2026-06-18T18:39:58.472Z",
+  "generatedAt": "2026-06-18T20:07:28.558Z",
   "summary": {
-    "internalRoutes": 33,
+    "internalRoutes": 37,
     "polygonEndpoints": 36,
-    "uwEndpoints": 106,
+    "uwEndpoints": 102,
     "finnhubEndpoints": 4,
     "anthropicEndpoints": 1,
     "engineEndpoints": 1,
     "webSearchEndpoints": 3,
-    "clientCalls": 23,
+    "clientCalls": 25,
     "largoTools": 75
   },
   "internalRoutes": [
@@ -22,6 +22,21 @@ export const CURSOR_API_ANALYSIS = {
       "method": "GET",
       "path": "/api/admin/apis/dashboard",
       "file": "src/app/api/admin/apis/dashboard/route.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/apis/events/[id]",
+      "file": "src/app/api/admin/apis/events/[id]/route.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/apis/rescan",
+      "file": "src/app/api/admin/apis/rescan/route.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/apis/stream",
+      "file": "src/app/api/admin/apis/stream/route.ts"
     },
     {
       "method": "GET",
@@ -162,6 +177,11 @@ export const CURSOR_API_ANALYSIS = {
       "method": "GET",
       "path": "/api/market/spx/pulse",
       "file": "src/app/api/market/spx/pulse/route.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/market/spx/pulse/stream",
+      "file": "src/app/api/market/spx/pulse/stream/route.ts"
     },
     {
       "method": "GET",
@@ -806,12 +826,6 @@ export const CURSOR_API_ANALYSIS = {
         ]
       },
       {
-        "path": "/api/stock/${sym(ticker)}/volatility/variance-risk-premium",
-        "files": [
-          "src/lib/providers/unusual-whales.ts"
-        ]
-      },
-      {
         "path": "/api/stock/${ticker.toUpperCase()}/atm-chains",
         "files": [
           "src/lib/providers/unusual-whales.ts"
@@ -938,25 +952,25 @@ export const CURSOR_API_ANALYSIS = {
         ]
       },
       {
+        "path": "/api/stock/${ticker.toUpperCase()}/option/stock-price-levels",
+        "files": [
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
         "path": "/api/stock/${ticker.toUpperCase()}/options-volume",
         "files": [
           "src/lib/providers/unusual-whales.ts"
         ]
       },
       {
+        "path": "/api/stock/${ticker.toUpperCase()}/spot-exposures",
+        "files": [
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
         "path": "/api/stock/${ticker.toUpperCase()}/technical-indicator/${fn.toLowerCase()}",
-        "files": [
-          "src/lib/providers/unusual-whales.ts"
-        ]
-      },
-      {
-        "path": "/api/stock/${ticker.toUpperCase()}/volatility/anomaly",
-        "files": [
-          "src/lib/providers/unusual-whales.ts"
-        ]
-      },
-      {
-        "path": "/api/stock/${ticker.toUpperCase()}/volatility/character",
         "files": [
           "src/lib/providers/unusual-whales.ts"
         ]
@@ -1010,25 +1024,7 @@ export const CURSOR_API_ANALYSIS = {
         ]
       },
       {
-        "path": "/api/volatility/anomaly/top",
-        "files": [
-          "src/lib/providers/unusual-whales.ts"
-        ]
-      },
-      {
-        "path": "/api/volatility/character/top",
-        "files": [
-          "src/lib/providers/unusual-whales.ts"
-        ]
-      },
-      {
-        "path": "/api/volatility/vix-term-structure",
-        "files": [
-          "src/lib/providers/unusual-whales.ts"
-        ]
-      },
-      {
-        "path": "en-CA",
+        "path": "403",
         "files": [
           "src/lib/providers/unusual-whales.ts"
         ]
@@ -1107,6 +1103,18 @@ export const CURSOR_API_ANALYSIS = {
   "clientCalls": [
     {
       "path": "/api/admin/apis/dashboard${qs}",
+      "files": [
+        "src/components/admin/AdminApiDashboard.tsx"
+      ]
+    },
+    {
+      "path": "/api/admin/apis/events/${encodeURIComponent(eventId)}",
+      "files": [
+        "src/components/admin/AdminApiEventDetail.tsx"
+      ]
+    },
+    {
+      "path": "/api/admin/apis/rescan",
       "files": [
         "src/components/admin/AdminApiDashboard.tsx"
       ]

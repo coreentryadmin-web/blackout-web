@@ -11,6 +11,8 @@ import { loadLottoRecord } from "@/lib/spx-lotto-store";
 import { fetchLottoPlaysForDate } from "@/lib/db";
 import { computeSpxConfluence } from "@/lib/spx-signals";
 import { fetchRecentPlayOutcomes } from "@/lib/spx-play-outcomes";
+import { buildSpxAdminIssues, type SpxAdminIssuesPayload } from "@/lib/admin-spx-issues";
+import { buildSpxTerminalFeed, type SpxTerminalPayload } from "@/lib/admin-spx-terminal";
 
 export type DeskIntelSection = {
   polled_at: string | null;
@@ -53,6 +55,8 @@ export type SpxAdminDashboardPayload = {
     watch: Awaited<ReturnType<typeof loadWatchRecord>>;
     session_meta: Awaited<ReturnType<typeof loadPlaySessionMeta>>;
   };
+  issues: SpxAdminIssuesPayload;
+  terminal: SpxTerminalPayload;
   outcomes_all: Awaited<ReturnType<typeof fetchRecentPlayOutcomes>>;
 };
 
@@ -171,6 +175,21 @@ export async function fetchSpxAdminDashboard(options?: {
     ]);
   }
 
+  const issues = await buildSpxAdminIssues({
+    desk: merged,
+    play,
+    marketOpen: merged.market_open === true,
+  });
+
+  const terminal = buildSpxTerminalFeed({
+    issues,
+    desk: merged,
+    play,
+    liveEngine,
+    signalsToday: analytics.signals_today,
+    flowAlertsToday: analytics.flow_alerts_today,
+  });
+
   return {
     generated_at: new Date().toISOString(),
     live_engine: liveEngine,
@@ -185,6 +204,8 @@ export async function fetchSpxAdminDashboard(options?: {
       history: lottoHistory,
     },
     state: { watch, session_meta },
+    issues,
+    terminal,
     outcomes_all,
   };
 }

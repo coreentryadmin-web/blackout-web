@@ -10,9 +10,7 @@ import {
   fetchUwMarketTopNetImpact,
   fetchUwSectorTide,
   fetchUwTickerFlowAlerts,
-  fetchUwVixTermStructure,
-} from "@/lib/providers/unusual-whales";
-import {
+} from "@/lib/providers/unusual-whales";import {
   INDEX_SET,
   INDEX_TICKERS,
   MIN_HOT_CHAIN_PREMIUM,
@@ -95,10 +93,6 @@ async function fetchVixTermPreferPolygon(): Promise<Record<string, unknown>[]> {
         },
       ];
     }
-  }
-  if (uwConfigured()) {
-    const uw = await fetchUwVixTermStructure(12).catch(() => []);
-    return uw.map((row) => ({ ...row, source: "unusual_whales" }));
   }
   return [];
 }

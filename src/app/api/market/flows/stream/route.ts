@@ -1,9 +1,16 @@
-import { subscribeFlowEvents } from "@/lib/flow-events";
+import { NextRequest } from "next/server";
+import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { initFlowEventBridge, subscribeFlowEvents } from "@/lib/flow-events";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await authorizeMarketDeskApi(req);
+  if (auth instanceof Response) return auth;
+
+  await initFlowEventBridge();
+
   const encoder = new TextEncoder();
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let unsubscribe: (() => void) | undefined;
@@ -11,7 +18,12 @@ export async function GET() {
   const stream = new ReadableStream({
     start(controller) {
       const send = (payload: unknown) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+        } catch {
+          if (heartbeat) clearInterval(heartbeat);
+          unsubscribe?.();
+        }
       };
 
       send({ type: "connected", ts: Date.now() });

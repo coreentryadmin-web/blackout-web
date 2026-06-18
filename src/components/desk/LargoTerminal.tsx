@@ -4,13 +4,12 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import { queryLargo, fetchLargoSession } from "@/lib/api";
+import { LARGO_SESSION_KEY } from "@/lib/session-cache";
 import { DeskPanel } from "./DeskPanel";
 import { LargoThinkingState } from "./LargoThinkingState";
 import { LargoMessageBody } from "./LargoMessageBody";
 
 type Message = { id: string; role: "user" | "assistant"; content: string; tools?: string[] };
-
-const LARGO_SESSION_KEY = "largo-terminal-session";
 
 const INPUT_PLACEHOLDER = "summon the neural oracle ...";
 const INPUT_PLACEHOLDER_BUSY = "neural link processing ...";

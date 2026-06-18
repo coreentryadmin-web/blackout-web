@@ -301,3 +301,75 @@ function diagnoseEvent(event: ApiCallEvent): string[] {
   }
   return tips;
 }
+
+export type ProviderHealthRow = {
+  calls_5m: number;
+  errors_5m: number;
+  rate_limits_5m: number;
+  last_at: string | null;
+  last_status: number | null;
+  last_ok: boolean;
+  last_error: string | null;
+  last_endpoint: string | null;
+};
+
+/** Condensed provider health for /api/market/health and ops dashboards. */
+export function getProviderHealthSummary(sinceMs = 5 * 60_000) {
+  const cutoff = Date.now() - sinceMs;
+  const recent = events.filter((e) => new Date(e.at).getTime() >= cutoff);
+
+  const by_provider: Record<ApiProviderId, ProviderHealthRow> = {
+    polygon: emptyProviderRow(),
+    unusual_whales: emptyProviderRow(),
+    finnhub: emptyProviderRow(),
+    anthropic: emptyProviderRow(),
+    blackout_engine: emptyProviderRow(),
+    postgres: emptyProviderRow(),
+    web_search: emptyProviderRow(),
+  };
+
+  const rate_limits: Partial<Record<ApiProviderId, number>> = {};
+  const last_calls: Partial<
+    Record<ApiProviderId, { endpoint: string; at: string; status: number | null; ok: boolean }>
+  > = {};
+
+  for (const e of recent) {
+    const row = by_provider[e.provider];
+    row.calls_5m += 1;
+    if (!e.ok) row.errors_5m += 1;
+    if (e.rate_limited || e.status === 429) {
+      row.rate_limits_5m += 1;
+      rate_limits[e.provider] = (rate_limits[e.provider] ?? 0) + 1;
+    }
+    const atMs = new Date(e.at).getTime();
+    const prevMs = row.last_at ? new Date(row.last_at).getTime() : 0;
+    if (atMs >= prevMs) {
+      row.last_at = e.at;
+      row.last_status = e.status;
+      row.last_ok = e.ok;
+      row.last_error = e.error;
+      row.last_endpoint = e.endpoint;
+      last_calls[e.provider] = {
+        endpoint: e.endpoint,
+        at: e.at,
+        status: e.status,
+        ok: e.ok,
+      };
+    }
+  }
+
+  return { by_provider, rate_limits, last_calls };
+}
+
+function emptyProviderRow(): ProviderHealthRow {
+  return {
+    calls_5m: 0,
+    errors_5m: 0,
+    rate_limits_5m: 0,
+    last_at: null,
+    last_status: null,
+    last_ok: true,
+    last_error: null,
+    last_endpoint: null,
+  };
+}

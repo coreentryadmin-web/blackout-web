@@ -54,6 +54,7 @@ import {
   fetchShortVolume,
   fetchStockSnapshot,
   fetchVixIvRankPercentile,
+  computeVixTermStructure,
 } from "@/lib/providers/polygon";
 import { priorEtYmd, todayEtYmd } from "@/lib/providers/spx-session";
 import {
@@ -151,12 +152,6 @@ import {
   fetchUwTechnicalIndicator,
   fetchUwTickerFlowAlerts,
   fetchUwUnusualTrades,
-  fetchUwVarianceRiskPremium,
-  fetchUwVolAnomalyTop,
-  fetchUwVolatilityAnomaly,
-  fetchUwVolatilityCharacter,
-  fetchUwVolatilityCharacterTop,
-  fetchUwVixTermStructure,
   formatUwOptionContracts,
   uwOptionsMeta,
 } from "@/lib/providers/unusual-whales";
@@ -572,25 +567,22 @@ export async function runLargoTool(name: string, input: Record<string, unknown>)
           ? Promise.all([
               fetchUwIvRank(sym),
               fetchUwOiChange(sym),
-              fetchUwVolatilityCharacter(sym),
               fetchUwIvRankSeries(sym),
               fetchUwInterpolatedIv(sym),
             ])
           : Promise.all([
               Promise.resolve(null),
               fetchUwOiChange(sym),
-              fetchUwVolatilityCharacter(sym),
               Promise.resolve(null),
               fetchUwInterpolatedIv(sym),
             ]);
-      const [uwIvRank, oiChange, volChar, ivSeries, interpolated] = await uwCalls;
+      const [uwIvRank, oiChange, ivSeries, interpolated] = await uwCalls;
       return {
         ticker: sym,
         ...(ivRank != null ? polygonOptionsMeta() : uwOptionsMeta()),
         source: ivRank != null ? "polygon" : "unusual_whales",
         iv_rank: ivRank ?? uwIvRank,
         oi_changes: oiChange?.slice(0, 8),
-        vol_character: volChar,
         iv_rank_series: ivSeries,
         interpolated_iv: interpolated,
       };
@@ -618,9 +610,10 @@ export async function runLargoTool(name: string, input: Record<string, unknown>)
     case "get_risk_reversal_skew":
       return { ticker: uwTicker(ticker), skew: await fetchUwRiskReversalSkew(uwTicker(ticker)) };
     case "get_vol_anomaly":
-      return input.ticker
-        ? fetchUwVolatilityAnomaly(uwTicker(String(input.ticker)))
-        : fetchUwVolAnomalyTop(String(input.direction ?? "long_vol"), 25);
+      return {
+        error: "not_available",
+        message: "Volatility anomaly data requires the UW volatility scope — not included in current plan.",
+      };
 
     case "get_market_context": {
       const [indices, tide, status, upcoming, desk] = await Promise.all([
@@ -765,7 +758,6 @@ export async function runLargoTool(name: string, input: Record<string, unknown>)
       if (type === "short_squeeze") return fetchUwShortScreener(25);
       if (type === "contracts") return fetchUwScreenerContracts(25);
       if (type === "option_flow") return fetchUwScreenerOptionContracts(25);
-      if (type === "vol_anomaly") return fetchUwVolAnomalyTop("long_vol", 25);
       if (type === "dark_pool") return fetchUwDarkPoolRecent(25);
       if (type === "analysts") return fetchUwScreenerAnalysts(25);
       return fetchUwScreenerStocks(25);
@@ -1013,14 +1005,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>)
       const indices = await fetchIndexSnapshots(["I:VIX", "I:VIX3M", "I:VIX9D", "I:SPX"]);
       const vix = indices["I:VIX"]?.price;
       const vix3m = indices["I:VIX3M"]?.price;
-      const computedTerm = vix != null && vix3m != null ? { spot: vix, three_month: vix3m, spread: vix - vix3m } : null;
-      let uwVixTerm: unknown = null;
-      let vrp: unknown = null;
-      if (!computedTerm) {
-        uwVixTerm = await fetchUwVixTermStructure(20);
-      }
-      if (sym !== "SPX") vrp = await fetchUwVarianceRiskPremium(sym);
-      return { ticker: sym, source: computedTerm ? "polygon" : "unusual_whales", indices, vix_term: computedTerm, uw_vix_term: uwVixTerm, variance_risk_premium: vrp };
+      const vix9d = indices["I:VIX9D"]?.price;
+      const computedTerm =
+        vix != null && vix3m != null
+          ? { spot: vix, three_month: vix3m, spread: vix - vix3m, ...computeVixTermStructure(vix, vix9d, vix3m) }
+          : null;
+      return { ticker: sym, source: "polygon", indices, vix_term: computedTerm };
     }
     case "get_dividends": {
       const sym = uwTicker(ticker);

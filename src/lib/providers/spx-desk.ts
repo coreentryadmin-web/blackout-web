@@ -1,6 +1,7 @@
 import { polygonConfigured, engineIntelOverlayEnabled, uwConfigured, deskPulseStructureCacheTtlMs } from "./config";
 import { fetchPolygonOdteDeskBundle } from "./polygon-options-gex";
 import { dbConfigured, fetchRecentFlows } from "@/lib/db";
+import { flowDataAgeMs, markFlowDataFromBriefs } from "@/lib/flow-data-freshness";
 import {
   computeFlowStrikeStacks,
   type FlowStrikeStack,
@@ -58,6 +59,7 @@ import {
   type OiChangeItem,
 } from "./unusual-whales";
 import { fetchEngine } from "@/lib/engine";
+import { indexStore } from "@/lib/ws/polygon-socket";
 
 let lastGoodGexWalls: GexWall[] = [];
 let lastGoodStrikeLevels: GexStrikeLevel[] = [];
@@ -66,6 +68,74 @@ let lastGoodGammaRegime = "unknown";
 let lastGoodUnifiedTape: SpxTapeItem[] = [];
 let lastGoodSpxFlowBriefs: SpxFlowBrief[] = [];
 let lastPulseForSignals: SpxDeskPulse | null = null;
+
+const DARK_POOL_CACHE_MS = 10_000;
+const TIDE_STALE_MS = 10_000;
+const DARK_POOL_WS_STALE_MS = 15_000;
+const INDEX_STORE_STALE_MS = 5_000;
+
+let cachedDarkPool: { data: DarkPoolSnapshot | null; fetchedAt: number; key: string } = {
+  data: null,
+  fetchedAt: 0,
+  key: "",
+};
+
+async function resolveMarketTide(): Promise<Awaited<ReturnType<typeof fetchUwMarketTide>>> {
+  if (!uwConfigured()) return null;
+  try {
+    const { tideStore } = await import("@/lib/ws/uw-socket");
+    if (Date.now() - tideStore.updatedAt < TIDE_STALE_MS) {
+      return tideStore;
+    }
+  } catch {
+    /* WS optional */
+  }
+  return fetchUwMarketTide().catch(() => null);
+}
+
+async function resolveDarkPool(
+  ticker: string,
+  opts?: { limit?: number; min_premium?: number }
+): Promise<DarkPoolSnapshot | null> {
+  if (!uwConfigured()) return null;
+  const key = `${ticker}:${opts?.limit ?? 20}:${opts?.min_premium ?? 500_000}`;
+  const now = Date.now();
+  try {
+    const { darkPoolStore } = await import("@/lib/ws/uw-socket");
+    if (Date.now() - darkPoolStore.updatedAt < DARK_POOL_WS_STALE_MS && darkPoolStore.data) {
+      return darkPoolStore.data;
+    }
+  } catch {
+    /* WS optional */
+  }
+  if (cachedDarkPool.key === key && now - cachedDarkPool.fetchedAt < DARK_POOL_CACHE_MS) {
+    return cachedDarkPool.data;
+  }
+  const fresh = await fetchUwDarkPool(ticker, opts).catch(() => null);
+  if (fresh !== null) {
+    cachedDarkPool = { data: fresh, fetchedAt: now, key };
+    return fresh;
+  }
+  return cachedDarkPool.data;
+}
+
+function mergeWsIndexSnapshots(
+  snaps: Awaited<ReturnType<typeof fetchIndexSnapshots>>
+): Awaited<ReturnType<typeof fetchIndexSnapshots>> {
+  const now = Date.now();
+  const out = { ...snaps };
+  for (const sym of [SPX, VIX, VIX9D, VIX3M, TICK, TRIN, ADD]) {
+    const ws = indexStore[sym];
+    if (ws?.updatedAt && now - ws.updatedAt < INDEX_STORE_STALE_MS && ws.price > 0) {
+      out[sym] = {
+        symbol: sym,
+        price: ws.price,
+        change_pct: ws.change_pct ?? out[sym]?.change_pct ?? 0,
+      };
+    }
+  }
+  return out;
+}
 
 async function syncDeskStickyFromRedis(): Promise<void> {
   if (!process.env.REDIS_URL?.trim()) return;
@@ -150,6 +220,19 @@ const TICK = "I:TICK";
 const TRIN = "I:TRIN";
 const ADD = "I:ADD";
 const LEADER_TICKERS = new Set(["AAPL", "NVDA", "MSFT", "GOOG", "TSLA", "META"]);
+
+function buildDeskDataQuality(
+  snaps: Awaited<ReturnType<typeof fetchIndexSnapshots>>,
+  vixTerm: ReturnType<typeof computeVixTermStructure>
+): DeskDataQuality {
+  const missing: string[] = [];
+  if ((snaps[VIX]?.price ?? 0) <= 0) missing.push("VIX");
+  if ((snaps[VIX9D]?.price ?? 0) <= 0) missing.push("VIX9D");
+  if ((snaps[VIX3M]?.price ?? 0) <= 0) missing.push("VIX3M");
+  const vix_term_partial =
+    Boolean(vixTerm.partial) || (missing.includes("VIX9D") && !missing.includes("VIX3M"));
+  return { vix_term_partial, missing };
+}
 
 function leaderStocksFromBreadth(
   samples: Array<{ name: string; ticker: string; change_pct: number }>
@@ -260,6 +343,15 @@ export type SpxDeskPayload = {
   market_open?: boolean;
   market_status?: string;
   market_label?: string;
+  /** Flags partial/missing index feeds so clients can surface data quality warnings. */
+  data_quality?: DeskDataQuality;
+  /** Milliseconds since last UW flow alert (WS or REST). Null if unknown. */
+  flow_data_age_ms?: number | null;
+};
+
+export type DeskDataQuality = {
+  vix_term_partial: boolean;
+  missing: string[];
 };
 
 /** Fast-moving Polygon fields — merged over the full desk on the client every ~2s. */
@@ -290,6 +382,7 @@ export type SpxDeskPulse = Pick<
   | "regime"
   | "leader_stocks"
   | "vix_term"
+  | "data_quality"
   | "market_open"
   | "market_status"
   | "market_label"
@@ -313,6 +406,7 @@ export type SpxDeskFlow = {
   flow_0dte_put_premium: number | null;
   flow_0dte_net: number | null;
   strike_stacks: FlowStrikeStack[];
+  flow_data_age_ms?: number | null;
 };
 
 function level(
@@ -537,6 +631,7 @@ function emptyPayload(asOf: string): SpxDeskPayload {
     strike_stacks: [],
     net_prem_ticks: [],
     vix_term: { vix9d: null, vix3m: null, structure: "unknown", detail: "" },
+    data_quality: { vix_term_partial: false, missing: [] },
     sector_heat: [],
     leader_stocks: [],
     oi_changes: [],
@@ -605,10 +700,10 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
 
   const uwExclusive = uwConfigured()
     ? await Promise.all([
-        fetchUwMarketTide(),
+        resolveMarketTide(),
         fetchUwNope("SPX"),
         fetchUwFlow0dte("SPX"),
-        fetchUwDarkPool("SPX", { limit: 20, min_premium: 500_000 }),
+        resolveDarkPool("SPX", { limit: 20, min_premium: 500_000 }),
         strikeRows.length ? Promise.resolve(null) : fetchUwOdteGex("SPX"),
         maxPain != null ? Promise.resolve(null) : fetchUwMaxPain("SPX"),
         polygonIvRank != null ? Promise.resolve(null) : fetchUwIvRank("SPX"),
@@ -661,9 +756,22 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     snaps[VIX9D]?.price ?? null,
     snaps[VIX3M]?.price ?? null
   );
+  const dataQuality = buildDeskDataQuality(snaps, vixTerm);
 
-  const spxFlows: SpxFlowBrief[] = lastGoodSpxFlowBriefs;
-  const unifiedTape = lastGoodUnifiedTape;
+  // Fetch fresh flows for the full desk (same as flow lane) so commentary/play engine gets live tape.
+  // 2s hard cap — slow UW must not stall the desk build; sticky fallback covers the gap.
+  const freshFlowsRaw = uwConfigured()
+    ? await Promise.race([
+        fetchSpxDeskFlowAlertsWithDb(32),
+        new Promise<SpxFlowBrief[]>((resolve) => setTimeout(() => resolve([]), 2000)),
+      ]).catch(() => [])
+    : [];
+  const spxFlows: SpxFlowBrief[] = freshFlowsRaw.length ? freshFlowsRaw : lastGoodSpxFlowBriefs;
+  if (freshFlowsRaw.length) lastGoodSpxFlowBriefs = freshFlowsRaw;
+  markFlowDataFromBriefs(spxFlows);
+  const freshTape = buildUnifiedTape(spxFlows, darkPool);
+  if (freshTape.length) lastGoodUnifiedTape = mergeTapeBuffer(lastGoodUnifiedTape, freshTape);
+  const unifiedTape = lastGoodUnifiedTape.length ? lastGoodUnifiedTape : freshTape;
 
   const newsHeadlines: DeskNewsHeadline[] = (newsRaw ?? [])
     .map((a) => ({
@@ -774,6 +882,8 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
       structure: vixTerm.structure,
       detail: vixTerm.detail,
     },
+    data_quality: dataQuality,
+    flow_data_age_ms: flowDataAgeMs(),
     sector_heat: [],
     leader_stocks: leaderStocks ?? [],
     oi_changes: [],
@@ -859,6 +969,8 @@ function gexSnapshotForPrice(price: number) {
 
 /** Polygon-only fast lane — 1s price tick + slower structure refresh. */
 export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
+  const { ensureDataSockets } = await import("@/lib/ws/init-data-sockets");
+  ensureDataSockets();
   const polledAt = new Date().toISOString();
   const empty: SpxDeskPulse = {
     available: false,
@@ -887,6 +999,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     regime: "unknown",
     leader_stocks: [],
     vix_term: { vix9d: null, vix3m: null, structure: "unknown", detail: "" },
+    data_quality: { vix_term_partial: false, missing: [] },
     market_open: false,
     market_status: "closed",
     market_label: "CLOSED",
@@ -912,11 +1025,12 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
   }
 
   const today = todayEtYmd();
-  const [snaps, prior, structure] = await Promise.all([
+  const [snapsRaw, prior, structure] = await Promise.all([
     fetchIndexSnapshots([SPX, VIX, VIX9D, VIX3M, TICK, TRIN, ADD]),
     fetchPriorDayCached(),
     refreshPulseStructureIfNeeded(today),
   ]);
+  const snaps = mergeWsIndexSnapshots(snapsRaw);
 
   const spxSnap = snaps[SPX];
   const vixSnap = snaps[VIX];
@@ -933,6 +1047,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     snaps[VIX9D]?.price ?? null,
     snaps[VIX3M]?.price ?? null
   );
+  const dataQuality = buildDeskDataQuality(snaps, vixTerm);
 
   const internals = resolveMarketInternals(
     {
@@ -981,6 +1096,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
       structure: vixTerm.structure,
       detail: vixTerm.detail,
     },
+    data_quality: dataQuality,
     market_open: rthOpen,
     market_status: premarketPlan && !rthOpen ? "premarket" : marketNow?.market ?? "open",
     market_label: premarketPlan && !rthOpen ? "PRE-MARKET" : label,
@@ -991,6 +1107,8 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
 
 /** UW flow lane — GEX strike ladder, live tape, dark pool (~4s). */
 export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
+  const { ensureDataSockets } = await import("@/lib/ws/init-data-sockets");
+  ensureDataSockets();
   await syncDeskStickyFromRedis();
   const polledAt = new Date().toISOString();
   const empty: SpxDeskFlow = {
@@ -1012,19 +1130,23 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
     strike_stacks: [],
   };
 
-  if (!isSpxRthActive() && !isPremarketPlanningWindow()) return empty;
+  // Use Polygon market status for holiday-aware guard (matches pulse lane behavior).
+  const flowMarketNow = polygonConfigured() ? await fetchMarketStatusNow() : null;
+  const flowNow = new Date();
+  if (!isSpxRthActive(flowNow, flowMarketNow) && !isPremarketPlanningWindow(flowNow)) return empty;
 
-  const [spxSnap, darkPool, spxFlowsRaw, uwFlow] = await Promise.all([
+  const [spxSnapRaw, darkPool, spxFlowsRaw, uwFlow] = await Promise.all([
     polygonConfigured()
-      ? fetchIndexSnapshots([SPX]).then((m) => m[SPX])
+      ? fetchIndexSnapshots([SPX]).then((m) => mergeWsIndexSnapshots(m)[SPX])
       : Promise.resolve(null),
     uwConfigured()
-      ? fetchUwDarkPool("SPX", { limit: 20, min_premium: 500_000 })
+      ? resolveDarkPool("SPX", { limit: 20, min_premium: 500_000 })
       : Promise.resolve(null),
     uwConfigured() ? fetchSpxDeskFlowAlertsWithDb(32) : Promise.resolve([]),
     uwConfigured() ? fetchUwFlow0dte("SPX") : Promise.resolve(null),
   ]);
 
+  const spxSnap = spxSnapRaw;
   const price = spxSnap?.price ?? 0;
   if (!price && !spxFlowsRaw.length) return empty;
 
@@ -1069,6 +1191,7 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
 
   const spxFlows: SpxFlowBrief[] = spxFlowsRaw ?? [];
   if (spxFlows.length) lastGoodSpxFlowBriefs = spxFlows;
+  markFlowDataFromBriefs(spxFlows);
   const strike_stacks = computeFlowStrikeStacks(spxFlows);
 
   const freshTape = buildUnifiedTape(spxFlows, darkPool);
@@ -1096,5 +1219,6 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
     flow_0dte_call_premium: uwFlow?.call_premium ?? null,
     flow_0dte_put_premium: uwFlow?.put_premium ?? null,
     flow_0dte_net: uwFlow?.net ?? null,
+    flow_data_age_ms: flowDataAgeMs(),
   };
 }

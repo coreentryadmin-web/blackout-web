@@ -145,12 +145,12 @@ export async function evaluateClaudePlayApproval(
   const forceClaude = options?.forceClaude === true;
 
   if (!anthropicConfigured()) {
-    if (forceClaude) {
+    if (forceClaude || playClaudeGateEnabled()) {
       return {
         verdict: "VETO",
         direction: confluence.direction,
-        headline: "Promote blocked — Claude required",
-        thesis: "Telemetry requires Claude approval for WATCH→ENTRY, but Anthropic is not configured.",
+        headline: "Claude gate blocked — API not configured",
+        thesis: "SPX_CLAUDE_GATE requires Anthropic — entry blocked (fail-closed).",
         approved: false,
         source: "mechanical",
       };
@@ -167,6 +167,16 @@ export async function evaluateClaudePlayApproval(
   }
 
   if (await claudeBudgetExceeded()) {
+    if (playClaudeGateEnabled() || forceClaude) {
+      return {
+        verdict: "VETO",
+        direction: confluence.direction,
+        headline: "Claude daily cap — entry blocked",
+        thesis: `Daily Claude budget (${playClaudeDailyMaxCalls()}) reached. Fail-closed while gate is enabled.`,
+        approved: false,
+        source: "mechanical",
+      };
+    }
     const mech = mechanicalVerdict(
       confluence,
       gates,
@@ -268,6 +278,16 @@ Respond ONLY valid JSON:
   await incrementDailyBudget();
   const raw = await anthropicText(prompt, 500);
   if (!raw) {
+    if (playClaudeGateEnabled() || forceClaude) {
+      return {
+        verdict: "VETO",
+        direction: confluence.direction,
+        headline: "Claude unavailable — entry blocked",
+        thesis: "Anthropic API did not respond. Fail-closed while SPX_CLAUDE_GATE is enabled.",
+        approved: false,
+        source: "mechanical",
+      };
+    }
     const mech = mechanicalVerdict(confluence, gates, confirmations);
     await writeCache(key, mech);
     return mech;

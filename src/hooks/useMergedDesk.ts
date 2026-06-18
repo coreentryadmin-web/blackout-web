@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetchSpxDesk, fetchSpxDeskFlow, fetchSpxDeskPulse } from "@/lib/api";
 import { mergeDeskLayers, mergePulseIntoDesk } from "@/lib/spx-desk-merge";
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import { readSessionCache, writeSessionCache } from "@/lib/session-cache";
+import { usePulseStream } from "@/hooks/usePulseStream";
 
-const PULSE_MS = 1_000;
+const PULSE_REST_MS = 1_000;
+const PULSE_REST_SSE_MS = 10_000;
 const FLOW_MS = 2_000;
 const FULL_DESK_MS = 10_000;
 const DESK_CACHE_KEY = "spx-merged-desk";
@@ -40,17 +42,26 @@ export function useMergedDesk() {
   const deskStable = useRef<SpxDeskPayload | undefined>(
     readSessionCache<SpxDeskPayload>(DESK_CACHE_KEY, DESK_CACHE_MAX_AGE_MS)
   );
+  const [pulseSseConnected, setPulseSseConnected] = useState(false);
+  const onPulseConnection = useCallback((connected: boolean) => {
+    setPulseSseConnected(connected);
+  }, []);
 
-  const { data: pulse, isValidating: pulseValidating } = useSWR(
+  const { data: pulseRest, isValidating: pulseValidating } = useSWR(
     "spx-desk-pulse",
     fetchSpxDeskPulse,
     {
       ...swrLiveOpts,
-      refreshInterval: (latest) => (isDeskSessionLive(latest) ? PULSE_MS : 0),
+      refreshInterval: (latest) => {
+        if (!isDeskSessionLive(latest)) return 0;
+        return pulseSseConnected ? PULSE_REST_SSE_MS : PULSE_REST_MS;
+      },
       dedupingInterval: 800,
-      focusThrottleInterval: PULSE_MS,
+      focusThrottleInterval: PULSE_REST_MS,
     }
   );
+
+  const { pulse } = usePulseStream(pulseRest, onPulseConnection);
 
   const sessionActive = isDeskSessionLive(pulse) || isDeskSessionLive(deskStable.current);
 

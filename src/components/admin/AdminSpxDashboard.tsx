@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import type { SpxAdminDashboardPayload } from "@/lib/admin-spx-dashboard";
 import type { PlayOutcomeRow } from "@/lib/spx-play-outcomes";
+import { AdminSpxTerminal } from "@/components/admin/AdminSpxTerminal";
 import {
   ActionButton,
   DataTable,
@@ -28,6 +29,7 @@ import {
 
 type SectionId =
   | "overview"
+  | "terminal"
   | "live"
   | "desk"
   | "lotto"
@@ -38,6 +40,7 @@ type SectionId =
 
 const SECTIONS: Array<{ id: SectionId; label: string; icon: string }> = [
   { id: "overview", label: "Overview", icon: "◎" },
+  { id: "terminal", label: "Terminal", icon: "▸" },
   { id: "live", label: "Live Engine", icon: "⚡" },
   { id: "desk", label: "Desk Intel", icon: "◈" },
   { id: "lotto", label: "Lotto", icon: "◆" },
@@ -776,7 +779,8 @@ export function AdminSpxDashboard() {
 
   useEffect(() => {
     const live = section === "live";
-    const ms = live ? 10_000 : 30_000;
+    const terminal = section === "terminal";
+    const ms = live ? 10_000 : terminal ? 5_000 : 30_000;
     const id = setInterval(() => load(live), ms);
     return () => clearInterval(id);
   }, [load, section]);
@@ -807,6 +811,11 @@ export function AdminSpxDashboard() {
               <>
                 <span className="admin-hero-chip">Signals today {stats.signals_today}</span>
                 <span className="admin-hero-chip">Flow alerts {stats.flow_alerts_today}</span>
+                {data?.terminal && data.terminal.counts.critical + data.terminal.counts.warning > 0 && (
+                  <span className="admin-hero-chip admin-hero-chip-warn">
+                    {data.terminal.counts.critical} critical · {data.terminal.counts.warning} warn
+                  </span>
+                )}
               </>
             )}
           </>
@@ -822,7 +831,7 @@ export function AdminSpxDashboard() {
           </>
         }
         rings={
-          stats ? (
+          stats && section !== "terminal" ? (
             <>
               <WinRateRing
                 value={wr}
@@ -844,7 +853,7 @@ export function AdminSpxDashboard() {
         }
       />
 
-      {stats && (
+      {stats && section !== "terminal" && (
         <section className="admin-mega-grid">
           <MegaStat
             label="Closed plays"
@@ -887,6 +896,11 @@ export function AdminSpxDashboard() {
           >
             <span className="admin-deck-nav-icon">{s.icon}</span>
             <span>{s.label}</span>
+            {s.id === "terminal" && data && data.terminal.counts.critical + data.terminal.counts.warning > 0 && (
+              <span className="admin-deck-badge admin-deck-badge-warn">
+                {data.terminal.counts.critical + data.terminal.counts.warning}
+              </span>
+            )}
           </button>
         ))}
       </nav>
@@ -894,6 +908,9 @@ export function AdminSpxDashboard() {
       {data && (
         <div className="admin-deck-content" key={section}>
           {section === "overview" && <OverviewSection data={data} />}
+          {section === "terminal" && (
+            <AdminSpxTerminal data={data} loading={loading} onRefresh={() => load(false)} />
+          )}
           {section === "live" && <LiveEngineSection data={data} />}
           {section === "desk" && <DeskSection data={data} />}
           {section === "lotto" && <LottoSection data={data} />}
@@ -901,10 +918,12 @@ export function AdminSpxDashboard() {
           {section === "signals" && <SignalsSection data={data} />}
           {section === "analytics" && <AnalyticsSection data={data} />}
           {section === "config" && <ConfigSection data={data} />}
-          <p className="admin-api-footer">
-            Updated {fmtTime(data.generated_at)}
-            {data.live_engine ? " · live engine evaluated" : " · desk snapshot only"}
-          </p>
+          {section !== "terminal" && (
+            <p className="admin-api-footer">
+              Updated {fmtTime(data.generated_at)}
+              {data.live_engine ? " · live engine evaluated" : " · desk snapshot only"}
+            </p>
+          )}
         </div>
       )}
     </div>

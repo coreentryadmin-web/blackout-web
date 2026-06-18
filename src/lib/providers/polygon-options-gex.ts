@@ -37,6 +37,8 @@ let cachedOdteBundle: {
   maxPain: number | null;
 } | null = null;
 
+const POLYGON_ODTE_CACHE_KEY = "polygon:odte_gex_bundle";
+
 function polygonGexCacheMs(): number {
   const sec = Number(process.env.SPX_POLYGON_GEX_CACHE_SEC ?? 15);
   return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 15_000;
@@ -66,11 +68,34 @@ export async function fetchPolygonOdteDeskBundle(
     return { rows: cachedOdteBundle.rows, maxPain: cachedOdteBundle.maxPain };
   }
 
+  try {
+    const { sharedCacheGet } = await import("@/lib/shared-cache");
+    const redisHit = await sharedCacheGet<{
+      at: number;
+      spot: number;
+      rows: Record<string, unknown>[];
+      maxPain: number | null;
+    }>(POLYGON_ODTE_CACHE_KEY);
+    if (
+      redisHit &&
+      now - redisHit.at < polygonGexCacheMs() &&
+      Math.abs(redisHit.spot - spot) < Math.max(spot * 0.003, 5)
+    ) {
+      cachedOdteBundle = redisHit;
+      return { rows: redisHit.rows, maxPain: redisHit.maxPain };
+    }
+  } catch {
+    /* redis optional */
+  }
+
   const contracts = await loadOdteContracts(spot, expiry);
   const rows = aggregateGexRows(contracts, spot);
   const maxPain = computeMaxPainFromChain(contracts);
   if (rows.length) {
     cachedOdteBundle = { at: now, spot, rows, maxPain };
+    void import("@/lib/shared-cache").then(({ sharedCacheSet }) =>
+      sharedCacheSet(POLYGON_ODTE_CACHE_KEY, cachedOdteBundle, Math.ceil(polygonGexCacheMs() / 1000))
+    );
   }
   return { rows, maxPain };
 }

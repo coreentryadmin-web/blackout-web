@@ -430,20 +430,110 @@ export const fetchLargoSession = (sessionId: string) =>
 
 // ── Live flow stream (website SSE — no engine WebSocket required) ─────────────
 
-export function createFlowEventSource(
-  onMessage: (alert: FlowAlert) => void
-): EventSource | null {
-  if (typeof window === "undefined") return null;
-  const es = new EventSource("/api/market/flows/stream");
-  es.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data) as { type?: string } & Partial<FlowAlert>;
-      if (data.type === "flow" && data.ticker) onMessage(data as FlowAlert);
-    } catch {
-      /* ignore */
+export type PulseStreamSnapshot = {
+  spx?: { price: number; change_pct?: number };
+  vix?: { price: number; change_pct?: number };
+  vix9d?: { price: number };
+  vix3m?: { price: number };
+  tick?: { price: number };
+  trin?: { price: number };
+  add?: { price: number };
+  t?: number;
+};
+
+type ReconnectingEventSource = {
+  close: () => void;
+};
+
+function createReconnectingEventSource(
+  url: string,
+  onData: (raw: string) => void,
+  hooks?: { onOpen?: () => void; onClose?: () => void }
+): ReconnectingEventSource {
+  let es: EventSource | null = null;
+  let closed = false;
+  let retryMs = 1_000;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearRetry = () => {
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
     }
   };
-  return es;
+
+  const connect = () => {
+    if (closed || typeof window === "undefined") return;
+    es?.close();
+    es = new EventSource(url);
+    es.onopen = () => {
+      retryMs = 1_000;
+      hooks?.onOpen?.();
+    };
+    es.onmessage = (e) => onData(e.data);
+    es.onerror = () => {
+      hooks?.onClose?.();
+      es?.close();
+      es = null;
+      if (closed) return;
+      clearRetry();
+      retryTimer = setTimeout(() => {
+        retryMs = Math.min(retryMs * 2, 30_000);
+        connect();
+      }, retryMs);
+    };
+  };
+
+  connect();
+
+  return {
+    close: () => {
+      closed = true;
+      clearRetry();
+      es?.close();
+      es = null;
+      hooks?.onClose?.();
+    },
+  };
+}
+
+export function createFlowEventSource(
+  onMessage: (alert: FlowAlert) => void,
+  hooks?: { onOpen?: () => void; onClose?: () => void }
+): ReconnectingEventSource | null {
+  if (typeof window === "undefined") return null;
+  return createReconnectingEventSource(
+    "/api/market/flows/stream",
+    (raw) => {
+      try {
+        const data = JSON.parse(raw) as { type?: string } & Partial<FlowAlert>;
+        if (data.type === "flow" && data.ticker) onMessage(data as FlowAlert);
+      } catch {
+        /* ignore */
+      }
+    },
+    hooks
+  );
+}
+
+export function createPulseEventSource(
+  onMessage: (snap: PulseStreamSnapshot) => void,
+  hooks?: { onOpen?: () => void; onClose?: () => void }
+): ReconnectingEventSource | null {
+  if (typeof window === "undefined") return null;
+  return createReconnectingEventSource(
+    "/api/market/spx/pulse/stream",
+    (raw) => {
+      try {
+        const data = JSON.parse(raw) as PulseStreamSnapshot;
+        if ((data.spx?.price ?? 0) <= 0) return;
+        onMessage(data);
+      } catch {
+        /* ignore */
+      }
+    },
+    hooks
+  );
 }
 
 /** @deprecated Use createFlowEventSource — engine WS optional legacy fallback */

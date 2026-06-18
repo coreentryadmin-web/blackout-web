@@ -1,11 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { deskPulseCacheTtlMs } from "@/lib/providers/config";
 import { buildSpxDeskPulse } from "@/lib/providers/spx-desk";
 import { withServerCache } from "@/lib/server-cache";
+import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await authorizeMarketDeskApi(req);
+  if (auth instanceof Response) return auth;
+
+  ensureDataSockets();
   try {
     const pulse = await withServerCache("spx-desk-pulse", deskPulseCacheTtlMs(), buildSpxDeskPulse, {
       staleWhileRevalidate: false,

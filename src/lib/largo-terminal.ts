@@ -12,7 +12,7 @@ import { dbConfigured } from "@/lib/db";
 
 import { LARGO_SYSTEM_PROMPT } from "@/lib/largo/system-prompt";
 
-import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
+import { LARGO_TOOL_DEFS, getToolsForIntent } from "@/lib/largo/tool-defs";
 
 import { runLargoTool } from "@/lib/largo/run-tool";
 
@@ -195,13 +195,16 @@ export async function runLargoQuery(
 
   resetLargoSpxDeskCache();
 
+  const allowedToolNames = new Set(getToolsForIntent(question));
+  const filteredTools = LARGO_TOOL_DEFS.filter((t) => allowedToolNames.has(t.name));
+
   try {
 
     const answer = await anthropicToolLoop({
 
       system,
 
-      tools: LARGO_TOOL_DEFS,
+      tools: filteredTools,
 
       messages: history,
 
