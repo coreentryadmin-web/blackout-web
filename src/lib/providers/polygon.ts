@@ -126,6 +126,81 @@ export function fetchBreadthUniverseSnapshots() {
   return fetchStockSnapshotPerformance([...LEADER_STOCKS, ...SECTOR_ETFS]);
 }
 
+export type DailyMarketBar = {
+  T: string;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  vw: number;
+  v: number;
+};
+
+export type MarketBreadthMetrics = {
+  advance_decline_ratio: number | null;
+  pct_above_vwap: number | null;
+  pct_advancing: number | null;
+  new_highs: number;
+  new_lows: number;
+  volume_leaders: Array<{ ticker: string; volume: number; change_pct: number }>;
+  sample_size: number;
+};
+
+/** Full-market OHLC+VWAP — one call for breadth internals. */
+export async function fetchDailyMarketSummary(date: string) {
+  return polygonGet<{ results?: DailyMarketBar[] }>(
+    `/v2/aggs/grouped/locale/us/market/stocks/${date}`,
+    { adjusted: "true", include_otc: "false" }
+  );
+}
+
+export function computeMarketBreadthFromSummary(results: DailyMarketBar[]): MarketBreadthMetrics {
+  let advancing = 0;
+  let declining = 0;
+  let aboveVwap = 0;
+  let newHighs = 0;
+  let newLows = 0;
+  const byVolume: Array<{ ticker: string; volume: number; change_pct: number }> = [];
+
+  for (const row of results) {
+    const ticker = String(row.T ?? "");
+    if (!ticker || ticker.includes(".")) continue;
+    const c = Number(row.c ?? 0);
+    const o = Number(row.o ?? 0);
+    const vw = Number(row.vw ?? 0);
+    const h = Number(row.h ?? 0);
+    const l = Number(row.l ?? 0);
+    const v = Number(row.v ?? 0);
+    if (c <= 0 || o <= 0) continue;
+
+    if (c > o) advancing++;
+    else if (c < o) declining++;
+    if (vw > 0 && c > vw) aboveVwap++;
+    if (h > 0 && c >= h * 0.998) newHighs++;
+    if (l > 0 && c <= l * 1.002) newLows++;
+
+    byVolume.push({
+      ticker,
+      volume: v,
+      change_pct: Number((((c - o) / o) * 100).toFixed(2)),
+    });
+  }
+
+  const sample = advancing + declining;
+  byVolume.sort((a, b) => b.volume - a.volume);
+
+  return {
+    advance_decline_ratio:
+      declining > 0 ? Number((advancing / declining).toFixed(2)) : sample > 0 ? advancing : null,
+    pct_above_vwap: sample > 0 ? Number(((aboveVwap / sample) * 100).toFixed(1)) : null,
+    pct_advancing: sample > 0 ? Number(((advancing / sample) * 100).toFixed(1)) : null,
+    new_highs: newHighs,
+    new_lows: newLows,
+    volume_leaders: byVolume.slice(0, 8),
+    sample_size: sample,
+  };
+}
+
 export async function fetchSectorPerformance() {
   return fetchStockSnapshotPerformance(SECTOR_ETFS);
 }
@@ -343,6 +418,43 @@ export async function fetchShortInterest(ticker: string) {
       avg_daily_volume: Number(row.avg_daily_volume ?? 0),
       days_to_cover: Number(row.days_to_cover ?? 0),
       source: "massive_stocks_v1",
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type PolygonFinancialRatios = {
+  pe_ratio: number | null;
+  roe: number | null;
+  debt_to_equity: number | null;
+  as_of: string | null;
+};
+
+function ratioNum(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** TTM valuation / leverage ratios — GET /stocks/financials/v1/ratios */
+export async function fetchPolygonFinancialRatios(ticker: string): Promise<PolygonFinancialRatios | null> {
+  const sym = ticker.toUpperCase();
+  try {
+    const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
+      "/stocks/financials/v1/ratios",
+      { ticker: sym, limit: "1", sort: "date", order: "desc" }
+    );
+    const row = data.results?.[0];
+    if (!row) return null;
+    return {
+      pe_ratio: ratioNum(
+        row.price_to_earnings ?? row.pe_ratio ?? row.price_to_earnings_ratio ?? row.priceToEarnings
+      ),
+      roe: ratioNum(row.return_on_equity ?? row.roe ?? row.returnOnEquity),
+      debt_to_equity: ratioNum(
+        row.debt_to_equity ?? row.debt_to_equity_ratio ?? row.debtToEquity
+      ),
+      as_of: row.date != null ? String(row.date).slice(0, 10) : null,
     };
   } catch {
     return null;

@@ -20,6 +20,9 @@ import { anthropicConfigured } from "@/lib/providers/anthropic";
 import { engineConfigured } from "@/lib/engine";
 import { dbConfigured } from "@/lib/db";
 import { webSearchConfigured } from "@/lib/providers/web-search";
+import {
+  isUwPathLiveIntegrated,
+} from "@/lib/live-api-integrations";
 
 export type RegistryProbeStatus = "ok" | "fail" | "blocked" | "rate_limited" | "unknown";
 
@@ -261,6 +264,9 @@ export function buildEndpointRegistry(windowMs = 5 * 60_000): EndpointRegistryPa
     const catalog = findCatalogMeta(doc.pathTemplate, providerId);
     const tel = findTelemetry(doc.pathTemplate, telemetryId, allTelemetryStats);
     const sourceFiles = findCodeFiles(doc.pathTemplate, providerId, codebase);
+    const liveIntegrated =
+      providerId === "unusual_whales" && isUwPathLiveIntegrated(doc.pathTemplate);
+    const usedInCode = doc.usedInCode || sourceFiles.length > 0 || liveIntegrated;
     const probeStatus = probeToStatus(doc.probe);
     const pathKey = `${providerId}|${doc.pathTemplate}`;
 
@@ -274,8 +280,8 @@ export function buildEndpointRegistry(windowMs = 5 * 60_000): EndpointRegistryPa
       path: doc.resolvedPath ?? doc.pathTemplate,
       pathTemplate: doc.pathTemplate,
       documented: true,
-      usedInCode: doc.usedInCode,
-      sourceFiles: sourceFiles.length ? sourceFiles : doc.usedInCode ? ["(matched via template)"] : [],
+      usedInCode,
+      sourceFiles: sourceFiles.length ? sourceFiles : usedInCode ? ["(matched via template)"] : [],
       catalogUsedBy: catalog?.used_by ?? [],
       catalogDescription: catalog?.description ?? null,
       probeStatus,
@@ -285,9 +291,9 @@ export function buildEndpointRegistry(windowMs = 5 * 60_000): EndpointRegistryPa
       probeBlocked: doc.probe.blocked ?? false,
       telemetry: tel,
       runtimeStatus: runtimeStatus(configured, tel, probeStatus),
-      integrationCandidate: !doc.usedInCode && doc.probe.ok,
+      integrationCandidate: !usedInCode && doc.probe.ok,
       productionRisk:
-        doc.usedInCode &&
+        usedInCode &&
         (doc.probe.blocked || (!doc.probe.ok && Number(doc.probe.status) !== 429)),
     });
   }

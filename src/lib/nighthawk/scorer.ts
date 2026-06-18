@@ -1,4 +1,5 @@
 import type { FlowStrikeStack } from "@/lib/largo/flow-strike-stacks";
+import type { PolygonFinancialRatios } from "@/lib/providers/polygon";
 import type { FlowStreak } from "./flow-streak";
 import type { PositioningSummary } from "./positioning";
 import type { TechnicalCard } from "./technicals";
@@ -12,7 +13,37 @@ export type ScoredCandidate = {
   pos_score: number;
   news_score: number;
   conviction: string;
+  fundamental_block?: boolean;
+  fundamental_flags?: string[];
+  trading_halt?: boolean;
 };
+
+function normalizeRatioPct(v: number | null): number | null {
+  if (v == null || !Number.isFinite(v)) return null;
+  return Math.abs(v) > 1 ? v / 100 : v;
+}
+
+/** Polygon P/E, ROE, D/E sanity check — blocks broken fundamentals from Night Hawk ranking. */
+export function passesFundamentalSanity(ratios: PolygonFinancialRatios | null): {
+  ok: boolean;
+  reasons: string[];
+} {
+  if (!ratios) return { ok: true, reasons: [] };
+  const reasons: string[] = [];
+  const pe = ratios.pe_ratio;
+  if (pe != null && (pe < 0 || pe > 120)) {
+    reasons.push(`P/E ${pe.toFixed(1)} extreme`);
+  }
+  const roe = normalizeRatioPct(ratios.roe);
+  if (roe != null && roe < -0.05) {
+    reasons.push(`ROE ${(roe * 100).toFixed(1)}% negative`);
+  }
+  const de = ratios.debt_to_equity;
+  if (de != null && de > 3) {
+    reasons.push(`D/E ${de.toFixed(1)} elevated`);
+  }
+  return { ok: reasons.length === 0, reasons };
+}
 
 function safeFloat(v: unknown): number {
   const n = Number(String(v ?? 0).replace(/[$,]/g, ""));
@@ -174,14 +205,37 @@ export function scoreCandidate(
     strike_stacks?: FlowStrikeStack[];
     news_headlines?: string[];
     insider_buys?: number;
+    fundamental_ratios?: PolygonFinancialRatios | null;
+    trading_halt?: boolean;
   },
   flowStreak?: FlowStreak
 ): ScoredCandidate {
+  if (dossierExtras.trading_halt) {
+    return {
+      ticker,
+      score: 0,
+      direction: "long",
+      flow_score: 0,
+      tech_score: 0,
+      pos_score: 0,
+      news_score: 0,
+      conviction: "C",
+      trading_halt: true,
+      fundamental_block: true,
+      fundamental_flags: ["Trading halt active"],
+    };
+  }
+
   const flow = scoreFlowQuality(flows, flowStreak);
   const techScore = scoreTechnicalSetup(tech, flow.direction);
   const posScore = scoreOptionsPositioning(dossierExtras);
   const newsScore = scoreNewsCatalyst(dossierExtras);
-  const total = Math.round(flow.score + techScore + posScore + newsScore);
+  let total = Math.round(flow.score + techScore + posScore + newsScore);
+
+  const fundCheck = passesFundamentalSanity(dossierExtras.fundamental_ratios ?? null);
+  if (!fundCheck.ok) {
+    total = Math.min(total, 20);
+  }
 
   return {
     ticker,
@@ -192,6 +246,9 @@ export function scoreCandidate(
     pos_score: posScore,
     news_score: newsScore,
     conviction: convictionFromScore(total),
+    fundamental_block: !fundCheck.ok,
+    fundamental_flags: fundCheck.reasons,
+    trading_halt: false,
   };
 }
 
@@ -199,5 +256,8 @@ export function rankCandidates(
   scored: ScoredCandidate[],
   max = 5
 ): ScoredCandidate[] {
-  return [...scored].sort((a, b) => b.score - a.score).slice(0, max);
+  return [...scored]
+    .filter((c) => !c.trading_halt && !c.fundamental_block)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, max);
 }

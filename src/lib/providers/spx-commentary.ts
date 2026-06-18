@@ -160,6 +160,20 @@ function deskContext(desk: SpxDeskPayload): Record<string, unknown> {
       add: desk.add,
     },
 
+    market_breadth: desk.market_breadth
+      ? {
+          advance_decline_ratio: desk.market_breadth.advance_decline_ratio,
+          pct_advancing: desk.market_breadth.pct_advancing,
+          pct_above_vwap: desk.market_breadth.pct_above_vwap,
+          new_highs: desk.market_breadth.new_highs,
+          new_lows: desk.market_breadth.new_lows,
+          volume_leaders: desk.market_breadth.volume_leaders?.slice(0, 5),
+          sample_size: desk.market_breadth.sample_size,
+        }
+      : null,
+
+    sector_heat: desk.sector_heat?.slice(0, 11),
+
     volatility: {
       vix: desk.vix,
       vix_change_pct: desk.vix_change_pct,
@@ -176,6 +190,29 @@ function deskContext(desk: SpxDeskPayload): Record<string, unknown> {
       above_gamma_flip: desk.above_gamma_flip,
       gamma_regime: desk.gamma_regime,
     },
+
+    greek_exposure_by_expiry: desk.greek_exposure
+      ? {
+          headline: desk.greek_exposure.headline,
+          pinned_expiry: desk.greek_exposure.pinned_expiry,
+          pinned_pct: desk.greek_exposure.pinned_pct,
+          buckets: desk.greek_exposure.buckets,
+        }
+      : null,
+
+    flow_by_expiry: (desk.flow_by_expiry ?? []).slice(0, 8).map((r) => ({
+      expiry: String(r.expiry ?? r.expiration ?? "").slice(0, 10),
+      call_premium: r.call_premium ?? r.calls,
+      put_premium: r.put_premium ?? r.puts,
+      net: r.net ?? r.net_premium,
+    })),
+
+    net_flow_by_expiry: (desk.net_flow_by_expiry ?? []).slice(0, 8).map((r) => ({
+      expiry: String(r.expiry ?? r.expiration ?? r.dte ?? "").slice(0, 10),
+      call_premium: r.call_premium ?? r.calls,
+      put_premium: r.put_premium ?? r.puts,
+      net: r.net ?? r.net_premium,
+    })),
 
     gex_walls_0dte: {
       support_nodes: gexSupport.map((w) => ({
@@ -408,6 +445,9 @@ DASHBOARD SECTIONS IN THE JSON (use each when populated):
 9. market_tide + nope
 10. volatility — VIX, IV rank, term structure
 11. internals — TICK, TRIN, ADD
+11b. market_breadth — A/D ratio, % advancing, % above VWAP, new highs/lows
+11c. greek_exposure_by_expiry — which expiry pins dealer gamma (e.g. 0DTE share)
+11d. flow_by_expiry / net_flow_by_expiry — call/put net per DTE bucket
 12. net_premium_velocity
 13. oi_changes
 14. mega_cap_stocks

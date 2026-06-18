@@ -124,6 +124,22 @@ function loadCodebaseUsage() {
   const data = JSON.parse(json);
   const polygon = new Set(data.external.polygon.map((e) => e.path));
   const uw = new Set(data.external.unusual_whales.map((e) => e.path));
+
+  // Overlay live integration registry (WS channels + fetch wrappers)
+  try {
+    const liveSrc = readFileSync(join(root, "src/lib/live-api-integrations.ts"), "utf8");
+    for (const m of liveSrc.matchAll(/export const UW_WS_CHANNELS = \[([\s\S]*?)\] as const/g)) {
+      for (const ch of m[1].matchAll(/"([^"]+)"/g)) {
+        uw.add(`/api/socket/${ch[1]}`);
+      }
+    }
+    for (const m of liveSrc.matchAll(/fetchUw\w+:\s*"([^"]+)"/g)) {
+      uw.add(m[1]);
+    }
+  } catch {
+    /* optional */
+  }
+
   return { polygon: [...polygon], uw: [...uw], generatedAt: data.generatedAt };
 }
 
@@ -151,6 +167,10 @@ function isUsedInCode(pathTemplate, usedPaths, provider) {
   if (pathTemplate.includes("/marketstatus/") && usedPaths.some((u) => u.includes("/marketstatus"))) return true;
   if (pathTemplate.includes("/indicators/") && usedPaths.some((u) => u.includes("/indicators/"))) return true;
   if (pathTemplate.includes("/short") && usedPaths.some((u) => u.includes("/short"))) return true;
+  if (pathTemplate.startsWith("/api/socket/") && usedPaths.some((u) => u.startsWith("/api/socket/"))) {
+    const ch = pathTemplate.replace("/api/socket/", "");
+    if (usedPaths.some((u) => u === pathTemplate || u.endsWith(`/${ch}`))) return true;
+  }
   return false;
 }
 

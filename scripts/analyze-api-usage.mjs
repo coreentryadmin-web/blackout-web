@@ -128,6 +128,69 @@ for (const f of files) {
   }
 }
 
+// ── Live integration registry (WS channels + fetchUw* wrappers) ───────────────
+try {
+  const livePath = join(__dirname, "..", "src", "lib", "live-api-integrations.ts");
+  const liveSrc = readFileSync(livePath, "utf8");
+  for (const m of liveSrc.matchAll(/export const UW_WS_CHANNELS = \[([\s\S]*?)\] as const/g)) {
+    for (const ch of m[1].matchAll(/"([^"]+)"/g)) {
+      add(uw, `/api/socket/${ch[1]}`, "src/lib/live-api-integrations.ts");
+      add(uw, `/api/socket/${ch[1]}`, "src/lib/ws/uw-socket.ts");
+    }
+  }
+  for (const m of liveSrc.matchAll(/fetchUw\w+:\s*"([^"]+)"/g)) {
+    add(uw, m[1], "src/lib/live-api-integrations.ts");
+  }
+} catch {
+  /* optional */
+}
+
+// Scan unusual-whales.ts for fetchUw* → path mappings and mark callers
+try {
+  const uwProviderPath = join(__dirname, "..", "src", "lib", "providers", "unusual-whales.ts");
+  const uwProvider = readFileSync(uwProviderPath, "utf8");
+  const fnPathMap = new Map();
+  const fnRe = /export async function (fetchUw\w+)[\s\S]*?uwGetSafe[\s\S]*?["'`](\/api\/[^"'`]+)["'`]/g;
+  let fm;
+  while ((fm = fnRe.exec(uwProvider)) !== null) {
+    fnPathMap.set(fm[1], fm[2]);
+    add(uw, fm[2], "src/lib/providers/unusual-whales.ts");
+  }
+  const fnTplRe = /export async function (fetchUw\w+)[\s\S]*?uwGetSafe[\s\S]*?`(\/api\/[^`]+)`/g;
+  while ((fm = fnTplRe.exec(uwProvider)) !== null) {
+    const path = fm[2].replace(/\$\{[^}]+\}/g, "{param}");
+    fnPathMap.set(fm[1], path);
+    add(uw, path, "src/lib/providers/unusual-whales.ts");
+  }
+  for (const f of files) {
+    const t = readFileSync(f, "utf8");
+    const r = rel(f);
+    if (!scanFile(r)) continue;
+    for (const [fn, path] of fnPathMap) {
+      if (new RegExp(`\\b${fn}\\s*\\(`).test(t)) {
+        add(uw, path, r);
+      }
+    }
+  }
+} catch {
+  /* optional */
+}
+
+// API provider catalog endpoints
+try {
+  const catalogPath = join(__dirname, "..", "src", "lib", "api-provider-catalog.ts");
+  const catalogSrc = readFileSync(catalogPath, "utf8");
+  for (const m of catalogSrc.matchAll(/endpoint:\s*"([^"]+)"/g)) {
+    const ep = m[1];
+    if (ep.startsWith("/api/") || ep.startsWith("/v")) {
+      const provider = catalogSrc.includes("unusual_whales") && ep.startsWith("/api/") ? uw : polygon;
+      add(provider, ep, "src/lib/api-provider-catalog.ts");
+    }
+  }
+} catch {
+  /* optional */
+}
+
 function mapToArr(m) {
   return [...m.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))

@@ -70,7 +70,7 @@ export function analyzeLargoQuestion(
   const toolHints: string[] = ["get_market_context"];
 
   if (needsSpxDesk || scopeTicker === "SPX") {
-    toolHints.push("get_spx_structure", "get_gex");
+    toolHints.push("get_spx_structure", "get_gex", "get_greek_flow");
   }
   if (needsPlayState) {
     toolHints.push("get_spx_play", "get_open_plays");

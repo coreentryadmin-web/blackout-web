@@ -1,4 +1,4 @@
-import { fetchSectorPerformance, fetchIndexDailyBars, fetchIndexSnapshots, fetchVixIvRankPercentile, computeVixTermStructure } from "@/lib/providers/polygon";
+import { fetchSectorPerformance, fetchIndexDailyBars, fetchIndexSnapshots, fetchVixIvRankPercentile, computeVixTermStructure, fetchDailyMarketSummary, computeMarketBreadthFromSummary, type MarketBreadthMetrics } from "@/lib/providers/polygon";
 import { fetchPolygonMarketNews } from "@/lib/providers/polygon-largo";
 import { fetchFinnhubEarningsOnDate, fetchFinnhubEconomicCalendarRange } from "@/lib/providers/finnhub";
 import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
@@ -8,9 +8,12 @@ import {
   fetchUwMarketNewsHeadlines,
   fetchUwMarketTide,
   fetchUwMarketTopNetImpact,
+  fetchUwPredictionsConsensus,
   fetchUwSectorTide,
   fetchUwTickerFlowAlerts,
-} from "@/lib/providers/unusual-whales";import {
+  type PredictionConsensusSignal,
+} from "@/lib/providers/unusual-whales";
+import {
   INDEX_SET,
   INDEX_TICKERS,
   MIN_HOT_CHAIN_PREMIUM,
@@ -37,6 +40,8 @@ export type MarketWideContext = {
   top_net_impact: Record<string, unknown>[];
   vix_term: Record<string, unknown>[];
   vix_iv_rank: number | null;
+  market_breadth: MarketBreadthMetrics | null;
+  predictions_consensus: PredictionConsensusSignal[];
 };
 
 function flowRowToDict(row: { raw: Record<string, unknown>; flow: { ticker: string; premium: number } }) {
@@ -131,6 +136,8 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     vixTerm,
     vixIvRank,
     topNetImpact,
+    dailyMarket,
+    predictionsRaw,
   ] = await Promise.all([
     uwConfigured() ? fetchUwMarketTide().catch(() => null) : Promise.resolve(null),
     uwConfigured()
@@ -152,6 +159,8 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     fetchVixTermPreferPolygon(),
     fetchVixIvRankPercentile().catch(() => null),
     uwConfigured() ? fetchUwMarketTopNetImpact(12).catch(() => []) : Promise.resolve([]),
+    fetchDailyMarketSummary(today).catch(() => null),
+    uwConfigured() ? fetchUwPredictionsConsensus(15).catch(() => null) : Promise.resolve(null),
   ]);
 
   const stockFlows = flowRows
@@ -195,6 +204,10 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
 
   const tomorrowEarnings = await fetchFinnhubEarningsOnDate(tomorrow).catch(() => []);
 
+  const marketBreadth = dailyMarket?.results?.length
+    ? computeMarketBreadthFromSummary(dailyMarket.results)
+    : null;
+
   return {
     today,
     tomorrow,
@@ -213,5 +226,7 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     top_net_impact: topNetImpact,
     vix_term: vixTerm,
     vix_iv_rank: vixIvRank,
+    market_breadth: marketBreadth,
+    predictions_consensus: predictionsRaw?.top_signals ?? [],
   };
 }

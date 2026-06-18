@@ -1,16 +1,16 @@
 /** Auto-generated — run: node scripts/analyze-api-usage.mjs */
 export const CURSOR_API_ANALYSIS = {
-  "generatedAt": "2026-06-18T20:07:28.558Z",
+  "generatedAt": "2026-06-18T23:49:55.305Z",
   "summary": {
-    "internalRoutes": 37,
-    "polygonEndpoints": 36,
-    "uwEndpoints": 102,
+    "internalRoutes": 40,
+    "polygonEndpoints": 43,
+    "uwEndpoints": 198,
     "finnhubEndpoints": 4,
     "anthropicEndpoints": 1,
     "engineEndpoints": 1,
     "webSearchEndpoints": 3,
-    "clientCalls": 25,
-    "largoTools": 75
+    "clientCalls": 27,
+    "largoTools": 76
   },
   "internalRoutes": [
     {
@@ -37,6 +37,21 @@ export const CURSOR_API_ANALYSIS = {
       "method": "GET",
       "path": "/api/admin/apis/stream",
       "file": "src/app/api/admin/apis/stream/route.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/health",
+      "file": "src/app/api/admin/health/route.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/incidents",
+      "file": "src/app/api/admin/incidents/route.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/incidents",
+      "file": "src/app/api/admin/incidents/route.ts"
     },
     {
       "method": "GET",
@@ -210,6 +225,12 @@ export const CURSOR_API_ANALYSIS = {
         ]
       },
       {
+        "path": "/stocks/financials/v1/ratios",
+        "files": [
+          "src/lib/providers/polygon.ts"
+        ]
+      },
+      {
         "path": "/stocks/v1/float",
         "files": [
           "src/lib/providers/polygon-largo.ts"
@@ -225,6 +246,12 @@ export const CURSOR_API_ANALYSIS = {
         "path": "/stocks/v1/short-volume",
         "files": [
           "src/lib/providers/polygon.ts"
+        ]
+      },
+      {
+        "path": "/v1/indicators/ema/{symbol}",
+        "files": [
+          "src/lib/api-provider-catalog.ts"
         ]
       },
       {
@@ -258,6 +285,12 @@ export const CURSOR_API_ANALYSIS = {
         ]
       },
       {
+        "path": "/v1/indicators/sma/{symbol}",
+        "files": [
+          "src/lib/api-provider-catalog.ts"
+        ]
+      },
+      {
         "path": "/v1/indicators/sma/${sym}",
         "files": [
           "src/lib/providers/polygon.ts"
@@ -278,6 +311,7 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/v1/marketstatus/now",
         "files": [
+          "src/lib/api-provider-catalog.ts",
           "src/lib/providers/polygon.ts"
         ]
       },
@@ -288,9 +322,33 @@ export const CURSOR_API_ANALYSIS = {
         ]
       },
       {
+        "path": "/v1/messages",
+        "files": [
+          "src/lib/api-provider-catalog.ts"
+        ]
+      },
+      {
         "path": "/v1/open-close/${sym}/${d}",
         "files": [
           "src/lib/providers/polygon-largo.ts"
+        ]
+      },
+      {
+        "path": "/v2/aggs/grouped/locale/us/market/stocks/${date}",
+        "files": [
+          "src/lib/providers/polygon.ts"
+        ]
+      },
+      {
+        "path": "/v2/aggs/ticker/{symbol}/range/1/day/{from}/{to}",
+        "files": [
+          "src/lib/api-provider-catalog.ts"
+        ]
+      },
+      {
+        "path": "/v2/aggs/ticker/{symbol}/range/1/minute/{from}/{to}",
+        "files": [
+          "src/lib/api-provider-catalog.ts"
         ]
       },
       {
@@ -350,6 +408,7 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/v2/snapshot/locale/us/markets/stocks/tickers",
         "files": [
+          "src/lib/api-provider-catalog.ts",
           "src/lib/providers/gap-proxy.ts",
           "src/lib/providers/polygon.ts"
         ]
@@ -387,12 +446,14 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/v3/snapshot/indices",
         "files": [
+          "src/lib/api-provider-catalog.ts",
           "src/lib/providers/polygon.ts"
         ]
       },
       {
         "path": "/v3/snapshot/options/{underlying}",
         "files": [
+          "src/lib/api-provider-catalog.ts",
           "src/lib/providers/polygon-options-gex.ts"
         ]
       },
@@ -424,8 +485,38 @@ export const CURSOR_API_ANALYSIS = {
     ],
     "unusual_whales": [
       {
+        "path": "/api/companies/{param}/dividends",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/spx-desk.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/companies/{param}/earnings-estimates",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/companies/{param}/profile",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/companies/{param}/splits",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
         "path": "/api/companies/${sym(ticker)}/dividends",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -444,6 +535,7 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/companies/${ticker.toUpperCase()}/earnings-estimates",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -456,6 +548,7 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/congress/politicians",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -469,6 +562,22 @@ export const CURSOR_API_ANALYSIS = {
         "path": "/api/congress/unusual-trades",
         "files": [
           "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/darkpool/{param}",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/dossier.ts",
+          "src/lib/providers/spx-desk.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/darkpool/{ticker}",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts"
         ]
       },
       {
@@ -486,12 +595,28 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/earnings/afterhours",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
       {
         "path": "/api/earnings/premarket",
         "files": [
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/etf/{param}/in-outflow",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/etf/{param}/tide",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/market-wide.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -508,6 +633,35 @@ export const CURSOR_API_ANALYSIS = {
         ]
       },
       {
+        "path": "/api/etfs/{param}/exposure",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/etfs/{param}/holdings",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/dossier.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/etfs/{param}/info",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/etfs/{param}/weights",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
         "path": "/api/etfs/${etf.toUpperCase()}/exposure",
         "files": [
           "src/lib/providers/unusual-whales.ts"
@@ -516,6 +670,7 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/etfs/${etf.toUpperCase()}/holdings",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -527,6 +682,19 @@ export const CURSOR_API_ANALYSIS = {
       },
       {
         "path": "/api/etfs/${etf.toUpperCase()}/weights",
+        "files": [
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/insider/{param}",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/insider/{param}/sector-flow",
         "files": [
           "src/lib/providers/unusual-whales.ts"
         ]
@@ -550,6 +718,27 @@ export const CURSOR_API_ANALYSIS = {
         ]
       },
       {
+        "path": "/api/institution/{param}/activity",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/institution/{param}/holdings",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/institution/{param}/ownership",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
         "path": "/api/institution/${encodeURIComponent(name)}/activity",
         "files": [
           "src/lib/providers/unusual-whales.ts"
@@ -564,6 +753,8 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/institution/${sym(ticker)}/ownership",
         "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/dossier.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -586,6 +777,14 @@ export const CURSOR_API_ANALYSIS = {
         ]
       },
       {
+        "path": "/api/market/{param}/sector-tide",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/market-wide.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
         "path": "/api/market/${sector.toLowerCase()}/sector-tide",
         "files": [
           "src/lib/providers/unusual-whales.ts"
@@ -594,6 +793,7 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/market/correlations",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -606,12 +806,15 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/market/fda-calendar",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
       {
         "path": "/api/market/market-tide",
         "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -624,36 +827,66 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/market/oi-change",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
       {
         "path": "/api/market/sector-etfs",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
       {
         "path": "/api/market/top-net-impact",
         "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/market-wide.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
       {
         "path": "/api/market/total-options-volume",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
       {
         "path": "/api/net-flow/expiry",
         "files": [
+          "src/lib/live-api-integrations.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
       {
         "path": "/api/news/headlines",
         "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/dossier.ts",
+          "src/lib/nighthawk/market-wide.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/option-contract/{param}/flow",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/option-contract/{param}/intraday",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/option-contract/{param}/volume-profile",
+        "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -678,24 +911,53 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/option-trades/flow-alerts",
         "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/predictions/insiders",
+        "files": [
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/predictions/smart-money",
+        "files": [
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/predictions/unusual",
+        "files": [
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/predictions/whales",
+        "files": [
           "src/lib/providers/unusual-whales.ts"
         ]
       },
       {
         "path": "/api/screener/analysts",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
       {
         "path": "/api/screener/contracts",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
       {
         "path": "/api/screener/option-contracts",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -706,13 +968,56 @@ export const CURSOR_API_ANALYSIS = {
         ]
       },
       {
+        "path": "/api/seasonality/{param}/monthly",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
         "path": "/api/seasonality/${ticker.toUpperCase()}/monthly",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
       {
         "path": "/api/seasonality/market",
+        "files": [
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/shorts/{param}/data",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/shorts/{param}/ftds",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/shorts/{param}/interest-float/v2",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/dossier.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/shorts/{param}/volume-and-ratio",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/shorts/{param}/volumes-by-exchange",
         "files": [
           "src/lib/providers/unusual-whales.ts"
         ]
@@ -738,12 +1043,14 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/shorts/${ticker.toUpperCase()}/interest-float/v2",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
       {
         "path": "/api/shorts/${ticker.toUpperCase()}/volume-and-ratio",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -751,6 +1058,472 @@ export const CURSOR_API_ANALYSIS = {
         "path": "/api/shorts/screener",
         "files": [
           "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/socket/flow_alerts",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts",
+          "src/lib/ws/uw-socket.ts"
+        ]
+      },
+      {
+        "path": "/api/socket/gex",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts",
+          "src/lib/ws/uw-socket.ts"
+        ]
+      },
+      {
+        "path": "/api/socket/interval_flow",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts",
+          "src/lib/ws/uw-socket.ts"
+        ]
+      },
+      {
+        "path": "/api/socket/market_tide",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts",
+          "src/lib/ws/uw-socket.ts"
+        ]
+      },
+      {
+        "path": "/api/socket/net_flow",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts",
+          "src/lib/ws/uw-socket.ts"
+        ]
+      },
+      {
+        "path": "/api/socket/off_lit_trades",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts",
+          "src/lib/ws/uw-socket.ts"
+        ]
+      },
+      {
+        "path": "/api/socket/trading_halts",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts",
+          "src/lib/ws/uw-socket.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/atm-chains",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/balance-sheets",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/cash-flows",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/expiry-breakdown",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/financials",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/flow-alerts",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/market-wide.ts",
+          "src/lib/providers/spx-desk.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/flow-per-expiry",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/flow-per-strike",
+        "files": [
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/flow-per-strike-intraday",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/spx-desk.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/flow-recent",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/fundamental-breakdown",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/gex-levels",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/greek-exposure/expiry",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/spx-desk.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/greek-exposure/strike",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/greek-flow/{param}",
+        "files": [
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/greeks",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/historical-risk-reversal-skew",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/income-statements",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/info",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/insider-buy-sells",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/interpolated-iv",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/iv-rank",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/max-pain",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/positioning.ts",
+          "src/lib/providers/spx-desk.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/net-prem-ticks",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/spx-desk.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/nope",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/market-wide.ts",
+          "src/lib/providers/spx-desk.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/ohlc/{param}",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/oi-change",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/dossier.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/oi-per-expiry",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/oi-per-strike",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/option-chains",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/option-contracts",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/option/stock-price-levels",
+        "files": [
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/option/volume-oi-expiry",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/options-volume",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/ownership",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/spot-exposures",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/spot-exposures/{param}/strike",
+        "files": [
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/spot-exposures/expiry-strike",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/spx-desk.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/spot-exposures/strike",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/positioning.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/stock-state",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/technical-indicator/{param}",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/volatility/realized",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{param}/volatility/stats",
+        "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/dossier.ts",
+          "src/lib/providers/spx-desk.ts",
+          "src/lib/providers/unusual-whales.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/flow-alerts",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/flow-per-expiry",
+        "files": [
+          "src/lib/live-api-integrations.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/flow-per-strike-intraday",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/gex-levels",
+        "files": [
+          "src/lib/live-api-integrations.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/greek-exposure/expiry",
+        "files": [
+          "src/lib/live-api-integrations.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/greek-exposure/strike",
+        "files": [
+          "src/lib/live-api-integrations.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/implied-volatility-term-structure",
+        "files": [
+          "src/lib/api-provider-catalog.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/max-pain",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/net-prem-ticks",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/nope",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/oi-change",
+        "files": [
+          "src/lib/api-provider-catalog.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/spot-exposures",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/spot-exposures/expiry-strike",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/spot-exposures/strike",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts"
+        ]
+      },
+      {
+        "path": "/api/stock/{ticker}/volatility/stats",
+        "files": [
+          "src/lib/api-provider-catalog.ts",
+          "src/lib/live-api-integrations.ts"
         ]
       },
       {
@@ -816,6 +1589,9 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/stock/${sym(ticker)}/spot-exposures/expiry-strike",
         "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/dossier.ts",
+          "src/lib/nighthawk/market-wide.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -828,6 +1604,7 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/stock/${ticker.toUpperCase()}/atm-chains",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -846,6 +1623,7 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/stock/${ticker.toUpperCase()}/financials",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -858,6 +1636,9 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/stock/${ticker.toUpperCase()}/flow-per-expiry",
         "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/dossier.ts",
+          "src/lib/providers/spx-desk.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -966,6 +1747,7 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/stock/${ticker.toUpperCase()}/spot-exposures",
         "files": [
+          "src/lib/providers/spx-desk.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -996,6 +1778,8 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/stock/${ticker}/nope",
         "files": [
+          "src/lib/largo/run-tool.ts",
+          "src/lib/providers/spx-desk.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -1020,6 +1804,7 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/unusual-trades/recent",
         "files": [
+          "src/lib/largo/run-tool.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -1117,6 +1902,18 @@ export const CURSOR_API_ANALYSIS = {
       "path": "/api/admin/apis/rescan",
       "files": [
         "src/components/admin/AdminApiDashboard.tsx"
+      ]
+    },
+    {
+      "path": "/api/admin/health",
+      "files": [
+        "src/components/admin/AdminHealthBanner.tsx"
+      ]
+    },
+    {
+      "path": "/api/admin/incidents",
+      "files": [
+        "src/components/admin/AdminSpxTerminal.tsx"
       ]
     },
     {
@@ -1304,6 +2101,7 @@ export const CURSOR_API_ANALYSIS = {
     "get_peer_rs",
     "get_platform_snapshot",
     "get_postgres_flows",
+    "get_predictions_consensus",
     "get_qqq_relative_strength",
     "get_quote",
     "get_realized_vol",

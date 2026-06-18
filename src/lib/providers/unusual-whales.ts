@@ -472,6 +472,109 @@ export function normalizeDarkPoolWsPayload(raw: unknown): DarkPoolSnapshot | nul
   };
 }
 
+/** Normalize UW `gex` WS payload into strike rows (spot-exposures shape). */
+export function normalizeGexWsPayload(raw: unknown): Record<string, unknown>[] {
+  const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
+  const list = Array.isArray(rows) ? rows : typeof raw === "object" && raw !== null ? [raw] : [];
+  const out: Record<string, unknown>[] = [];
+  for (const row of list) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const strike = Number(r.strike ?? r.price ?? 0);
+    if (!Number.isFinite(strike)) continue;
+    out.push({
+      strike,
+      call_gamma_oi: r.call_gamma_oi ?? r.call_gex ?? r.call_gamma ?? 0,
+      put_gamma_oi: r.put_gamma_oi ?? r.put_gex ?? r.put_gamma ?? 0,
+      call_gex: r.call_gex ?? r.call_gamma_oi ?? 0,
+      put_gex: r.put_gex ?? r.put_gamma_oi ?? 0,
+      net_gex: r.net_gex ?? r.gamma_oi ?? r.gex ?? 0,
+    });
+  }
+  return out;
+}
+
+/** Normalize UW `net_flow` WS payload into 0DTE flow totals. */
+export function normalizeNetFlowWsPayload(
+  raw: unknown,
+  ticker = "SPX"
+): { call_premium: number; put_premium: number; net: number; ticker: string } | null {
+  const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
+  const list = Array.isArray(rows) ? rows : typeof raw === "object" && raw !== null ? [raw] : [];
+  if (!list.length) return null;
+
+  const sym = ticker.toUpperCase();
+  let calls = 0;
+  let puts = 0;
+  for (const row of list) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const rowTicker = String(r.ticker ?? r.symbol ?? sym).toUpperCase();
+    if (rowTicker !== sym && rowTicker !== "SPXW") continue;
+    calls += Number(r.call_premium ?? r.net_call_premium ?? r.calls ?? 0);
+    puts += Number(r.put_premium ?? r.net_put_premium ?? r.puts ?? 0);
+  }
+  if (calls === 0 && puts === 0) {
+    const r = list[list.length - 1] as Record<string, unknown>;
+    calls = Number(r.call_premium ?? r.net_call_premium ?? 0);
+    puts = Number(r.put_premium ?? r.net_put_premium ?? 0);
+  }
+  return { call_premium: calls, put_premium: puts, net: calls - puts, ticker: sym };
+}
+
+/** Normalize UW `interval_flow` WS payload into strike-level intraday flow rows. */
+export function normalizeIntervalFlowWsPayload(raw: unknown): Record<string, unknown>[] {
+  const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
+  const list = Array.isArray(rows) ? rows : typeof raw === "object" && raw !== null ? [raw] : [];
+  const out: Record<string, unknown>[] = [];
+  for (const row of list) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const strike = Number(r.strike ?? 0);
+    if (!Number.isFinite(strike)) continue;
+    out.push({
+      strike,
+      call_premium: Number(r.call_premium ?? r.call_volume ?? 0),
+      put_premium: Number(r.put_premium ?? r.put_volume ?? 0),
+    });
+  }
+  return out;
+}
+
+export type TradingHaltEvent = {
+  symbol: string;
+  halt_type: string;
+  reason: string | null;
+  halted_at: string | null;
+  active: boolean;
+};
+
+/** Normalize UW `trading_halts` WS payload into halt events. */
+export function normalizeTradingHaltsWsPayload(raw: unknown): TradingHaltEvent[] {
+  const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
+  const list = Array.isArray(rows) ? rows : typeof raw === "object" && raw !== null ? [raw] : [];
+  const out: TradingHaltEvent[] = [];
+  for (const row of list) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const symbol = String(r.ticker ?? r.symbol ?? "").toUpperCase();
+    if (!symbol) continue;
+    const haltType = String(r.halt_type ?? r.type ?? r.state ?? "halt").toLowerCase();
+    const active =
+      haltType.includes("halt") ||
+      haltType.includes("paused") ||
+      Boolean(r.halted ?? r.is_halted ?? r.active);
+    out.push({
+      symbol,
+      halt_type: haltType,
+      reason: r.reason != null ? String(r.reason) : null,
+      halted_at: r.halted_at != null ? String(r.halted_at) : r.timestamp != null ? String(r.timestamp) : null,
+      active,
+    });
+  }
+  return out;
+}
+
 /** Full strike GEX ladder — GET /api/stock/{t}/spot-exposures/strike */
 export async function fetchUwSpotExposuresByStrike(ticker = "SPX", limit = 500) {
   const data = await uwGetSafe<unknown>(`/api/stock/${ticker}/spot-exposures/strike`, { limit });
@@ -893,6 +996,120 @@ function sym(ticker: string) {
 export async function fetchUwGexLevels(ticker: string, limit = 500) {
   const data = await uwGetSafe<unknown>(`/api/stock/${sym(ticker)}/gex-levels`, { limit: Math.min(limit, 500) });
   return extractRows(data);
+}
+
+export async function fetchUwPredictionsInsiders(limit = 25) {
+  const data = await uwGetSafe<unknown>("/api/predictions/insiders", { limit: Math.min(limit, 100) });
+  return extractRows(data).slice(0, limit);
+}
+
+export async function fetchUwPredictionsSmartMoney(limit = 25) {
+  const data = await uwGetSafe<unknown>("/api/predictions/smart-money", { limit: Math.min(limit, 100) });
+  return extractRows(data).slice(0, limit);
+}
+
+export async function fetchUwPredictionsUnusual(limit = 25) {
+  const data = await uwGetSafe<unknown>("/api/predictions/unusual", { limit: Math.min(limit, 100) });
+  return extractRows(data).slice(0, limit);
+}
+
+export async function fetchUwPredictionsWhales(limit = 25) {
+  const data = await uwGetSafe<unknown>("/api/predictions/whales", { limit: Math.min(limit, 100) });
+  return extractRows(data).slice(0, limit);
+}
+
+export type PredictionConsensusSignal = {
+  ticker: string;
+  direction: "bullish" | "bearish" | "neutral";
+  confidence_pct: number;
+  sources: string[];
+  headline: string;
+};
+
+function parsePredictionRow(row: Record<string, unknown>, source: string): PredictionConsensusSignal | null {
+  const ticker = String(row.ticker ?? row.symbol ?? row.asset ?? row.underlying ?? "").toUpperCase();
+  if (!ticker || ticker.length > 6) return null;
+
+  const bullish = Number(row.bullish_pct ?? row.bullish ?? row.yes_pct ?? row.long_pct ?? 0);
+  const bearish = Number(row.bearish_pct ?? row.bearish ?? row.no_pct ?? row.short_pct ?? 0);
+  let confidence = Number(row.confidence ?? row.confidence_score ?? row.score ?? row.conviction ?? 0);
+  if (confidence <= 0) confidence = Math.max(bullish, bearish);
+
+  let direction: "bullish" | "bearish" | "neutral" = "neutral";
+  if (bullish > bearish + 5) direction = "bullish";
+  else if (bearish > bullish + 5) direction = "bearish";
+
+  const confidence_pct = confidence > 0 && confidence <= 1 ? confidence * 100 : confidence;
+  if (!Number.isFinite(confidence_pct) || confidence_pct <= 0) return null;
+
+  const pct = Number(confidence_pct.toFixed(0));
+  return {
+    ticker,
+    direction,
+    confidence_pct: pct,
+    sources: [source],
+    headline: `${source.replace(/_/g, " ")} ${pct}% ${direction} on ${ticker}`,
+  };
+}
+
+function mergePredictionSignals(
+  byTicker: Map<string, PredictionConsensusSignal>,
+  rows: Record<string, unknown>[],
+  source: string
+) {
+  for (const r of rows) {
+    const sig = parsePredictionRow(r, source);
+    if (!sig) continue;
+    const cur = byTicker.get(sig.ticker);
+    if (!cur) {
+      byTicker.set(sig.ticker, sig);
+      continue;
+    }
+    byTicker.set(sig.ticker, {
+      ...cur,
+      confidence_pct: Math.max(cur.confidence_pct, sig.confidence_pct),
+      sources: Array.from(new Set([...cur.sources, ...sig.sources])),
+      direction: sig.confidence_pct >= cur.confidence_pct ? sig.direction : cur.direction,
+      headline:
+        sig.confidence_pct >= cur.confidence_pct
+          ? sig.headline
+          : `${cur.sources.join("+")} ${cur.confidence_pct}% ${cur.direction} on ${cur.ticker}`,
+    });
+  }
+}
+
+/** UW prediction-market consensus — insiders, smart money, unusual, whales. */
+export async function fetchUwPredictionsConsensus(limit = 20, ticker?: string) {
+  const [insiders, smart, unusual, whales] = await Promise.all([
+    fetchUwPredictionsInsiders(limit),
+    fetchUwPredictionsSmartMoney(limit),
+    fetchUwPredictionsUnusual(limit),
+    fetchUwPredictionsWhales(limit),
+  ]);
+
+  const byTicker = new Map<string, PredictionConsensusSignal>();
+  mergePredictionSignals(byTicker, insiders, "insiders");
+  mergePredictionSignals(byTicker, smart, "smart_money");
+  mergePredictionSignals(byTicker, unusual, "unusual");
+  mergePredictionSignals(byTicker, whales, "whales");
+
+  let signals = Array.from(byTicker.values()).sort((a, b) => b.confidence_pct - a.confidence_pct);
+  if (ticker) {
+    const filterSym = sym(ticker);
+    signals = signals.filter((s) => s.ticker === filterSym);
+  }
+
+  return {
+    source: "unusual_whales",
+    signal_count: signals.length,
+    top_signals: signals.slice(0, limit),
+    raw_counts: {
+      insiders: insiders.length,
+      smart_money: smart.length,
+      unusual: unusual.length,
+      whales: whales.length,
+    },
+  };
 }
 
 export async function fetchUwGreekFlow(ticker: string, expiry?: string, limit = 500) {

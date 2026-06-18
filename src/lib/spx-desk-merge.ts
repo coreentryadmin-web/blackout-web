@@ -177,6 +177,10 @@ export function mergeFlowIntoDesk(base: SpxDeskPayload, flow: SpxDeskFlow): SpxD
     flow_0dte_put_premium: flow.flow_0dte_put_premium ?? base.flow_0dte_put_premium,
     flow_0dte_net: flow.flow_0dte_net ?? base.flow_0dte_net,
     flow_data_age_ms: flow.flow_data_age_ms ?? base.flow_data_age_ms ?? null,
+    net_prem_ticks: flow.net_prem_ticks?.length ? flow.net_prem_ticks : base.net_prem_ticks,
+    flow_by_expiry: flow.flow_by_expiry?.length ? flow.flow_by_expiry : base.flow_by_expiry,
+    net_flow_by_expiry: flow.net_flow_by_expiry?.length ? flow.net_flow_by_expiry : base.net_flow_by_expiry,
+    greek_exposure: flow.greek_exposure ?? base.greek_exposure,
     price,
     levels: buildLevels({
       price,
@@ -344,6 +348,10 @@ const signalDeskStub = (): SpxDeskPayload => ({
   iv_term_structure: [],
   macro_events: [],
   news_headlines: [],
+  greek_exposure: null,
+  flow_by_expiry: [],
+  net_flow_by_expiry: [],
+  market_breadth: null,
 });
 
 /** Minimal merged desk for server-side signal logging (pulse + flow lanes). */

@@ -21,6 +21,9 @@ import {
   computeVixTermStructure,
   fetchBenzingaNews,
   fetchBreadthUniverseSnapshots,
+  computeMarketBreadthFromSummary,
+  fetchDailyMarketSummary,
+  type MarketBreadthMetrics,
   fetchIndexDailyBars,
   fetchIndexEma,
   fetchIndexMinuteBars,
@@ -30,6 +33,7 @@ import {
   fetchVixIvRankPercentile,
 } from "./polygon";
 import { resolveMarketInternals } from "@/lib/market-internals";
+import { summarizeGreekExposureByExpiry, type GreekExposureSummary } from "@/lib/greek-exposure-summary";
 import {
   isSpxRthActive,
   marketStatusLabel,
@@ -46,12 +50,17 @@ import {
 import {
   fetchUwDarkPool,
   fetchUwFlow0dte,
+  fetchUwFlowPerExpiry,
+  fetchUwGreekExposureExpiry,
   fetchUwIvRank,
   fetchUwMarketTide,
   fetchUwMaxPain,
+  fetchUwNetFlowExpiry,
+  fetchUwNetPremTicks,
   fetchUwNope,
   fetchUwOdteGex,
   fetchUwOdteSpotExposuresByStrike,
+  fetchUwSpotExposures,
   fetchUwTickerFlowAlerts,
   type DarkPoolSnapshot,
   type IvTermPoint,
@@ -72,6 +81,10 @@ let lastPulseForSignals: SpxDeskPulse | null = null;
 const DARK_POOL_CACHE_MS = 10_000;
 const TIDE_STALE_MS = 10_000;
 const DARK_POOL_WS_STALE_MS = 15_000;
+const GEX_WS_STALE_MS = 15_000;
+const NET_FLOW_WS_STALE_MS = 10_000;
+const INTERVAL_FLOW_WS_STALE_MS = 10_000;
+const SPOT_EXPOSURES_CACHE_MS = 60_000;
 const INDEX_STORE_STALE_MS = 5_000;
 
 let cachedDarkPool: { data: DarkPoolSnapshot | null; fetchedAt: number; key: string } = {
@@ -92,6 +105,75 @@ async function resolveMarketTide(): Promise<Awaited<ReturnType<typeof fetchUwMar
   }
   return fetchUwMarketTide().catch(() => null);
 }
+
+async function resolveGexStrikeRows(ticker = "SPX"): Promise<Record<string, unknown>[]> {
+  try {
+    const { gexStore } = await import("@/lib/ws/uw-socket");
+    if (Date.now() - gexStore.updatedAt < GEX_WS_STALE_MS && gexStore.rows.length) {
+      return gexStore.rows;
+    }
+  } catch {
+    /* WS optional */
+  }
+  if (!uwConfigured()) return [];
+  const now = Date.now();
+  if (cachedSpotExposures.rows.length && now - cachedSpotExposures.fetchedAt < SPOT_EXPOSURES_CACHE_MS) {
+    return cachedSpotExposures.rows;
+  }
+  const rest = await fetchUwSpotExposures(ticker).catch(() => null);
+  const rows = rest ? extractUwSpotExposureRows(rest) : [];
+  if (rows.length) {
+    cachedSpotExposures = { rows, fetchedAt: now };
+  }
+  return rows.length ? rows : cachedSpotExposures.rows;
+}
+
+function extractUwSpotExposureRows(data: unknown): Record<string, unknown>[] {
+  if (!data || typeof data !== "object") return [];
+  const block = (data as Record<string, unknown>).data;
+  if (Array.isArray(block)) return block as Record<string, unknown>[];
+  if (Array.isArray(data)) return data as Record<string, unknown>[];
+  return [];
+}
+
+async function resolveFlow0dte(ticker = "SPX"): Promise<{
+  call_premium: number;
+  put_premium: number;
+  net: number;
+} | null> {
+  try {
+    const { netFlowStore } = await import("@/lib/ws/uw-socket");
+    if (Date.now() - netFlowStore.updatedAt < NET_FLOW_WS_STALE_MS) {
+      return {
+        call_premium: netFlowStore.call_premium,
+        put_premium: netFlowStore.put_premium,
+        net: netFlowStore.net,
+      };
+    }
+  } catch {
+    /* WS optional */
+  }
+  try {
+    const { intervalFlowStore } = await import("@/lib/ws/uw-socket");
+    if (Date.now() - intervalFlowStore.updatedAt < INTERVAL_FLOW_WS_STALE_MS && intervalFlowStore.rows.length) {
+      let calls = 0;
+      let puts = 0;
+      for (const row of intervalFlowStore.rows) {
+        calls += Number(row.call_premium ?? 0);
+        puts += Number(row.put_premium ?? 0);
+      }
+      return { call_premium: calls, put_premium: puts, net: calls - puts };
+    }
+  } catch {
+    /* WS optional */
+  }
+  return fetchUwFlow0dte(ticker).catch(() => null);
+}
+
+let cachedSpotExposures: { rows: Record<string, unknown>[]; fetchedAt: number } = {
+  rows: [],
+  fetchedAt: 0,
+};
 
 async function resolveDarkPool(
   ticker: string,
@@ -347,6 +429,14 @@ export type SpxDeskPayload = {
   data_quality?: DeskDataQuality;
   /** Milliseconds since last UW flow alert (WS or REST). Null if unknown. */
   flow_data_age_ms?: number | null;
+  /** Dealer gamma concentration by expiry (UW greek-exposure/expiry). */
+  greek_exposure: GreekExposureSummary | null;
+  /** SPX premium flow by expiry bucket. */
+  flow_by_expiry: Record<string, unknown>[];
+  /** Market-wide net flow by DTE bucket. */
+  net_flow_by_expiry: Record<string, unknown>[];
+  /** Full-market breadth from Polygon daily grouped aggs. */
+  market_breadth: MarketBreadthMetrics | null;
 };
 
 export type DeskDataQuality = {
@@ -407,6 +497,10 @@ export type SpxDeskFlow = {
   flow_0dte_net: number | null;
   strike_stacks: FlowStrikeStack[];
   flow_data_age_ms?: number | null;
+  net_prem_ticks: NetPremTick[];
+  flow_by_expiry: Record<string, unknown>[];
+  net_flow_by_expiry: Record<string, unknown>[];
+  greek_exposure: GreekExposureSummary | null;
 };
 
 function level(
@@ -638,6 +732,10 @@ function emptyPayload(asOf: string): SpxDeskPayload {
     iv_term_structure: [],
     macro_events: [],
     news_headlines: [],
+    greek_exposure: null,
+    flow_by_expiry: [],
+    net_flow_by_expiry: [],
+    market_breadth: null,
   };
 }
 
@@ -694,7 +792,10 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
   ]);
   let strikeRows = polygonBundle.rows;
   if (!strikeRows.length && uwConfigured()) {
-    strikeRows = await fetchUwOdteSpotExposuresByStrike("SPX");
+    strikeRows = await resolveGexStrikeRows("SPX");
+    if (!strikeRows.length) {
+      strikeRows = await fetchUwOdteSpotExposuresByStrike("SPX");
+    }
   }
   let maxPain = polygonBundle.maxPain;
 
@@ -702,7 +803,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     ? await Promise.all([
         resolveMarketTide(),
         fetchUwNope("SPX"),
-        fetchUwFlow0dte("SPX"),
+        resolveFlow0dte("SPX"),
         resolveDarkPool("SPX", { limit: 20, min_premium: 500_000 }),
         strikeRows.length ? Promise.resolve(null) : fetchUwOdteGex("SPX"),
         maxPain != null ? Promise.resolve(null) : fetchUwMaxPain("SPX"),
@@ -799,6 +900,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
   });
 
   const leaderStocks = leaderStocksFromBreadth(breadthAll ?? []);
+  const sectorHeat = (breadthAll ?? []).filter((s) => !LEADER_TICKERS.has(s.ticker));
   const internals = resolveMarketInternals(
     {
       tick: snaps[TICK]?.price ?? (intel?.tick as number | null) ?? null,
@@ -807,6 +909,23 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     },
     breadthAll ?? []
   );
+
+  const [greekExpRows, flowByExpiry, netFlowByExpiry, netPremTicks, dailyMarket] =
+    await Promise.all([
+      uwConfigured() ? fetchUwGreekExposureExpiry("SPX").catch(() => []) : Promise.resolve([]),
+      uwConfigured() ? fetchUwFlowPerExpiry("SPX", 12).catch(() => []) : Promise.resolve([]),
+      uwConfigured() ? fetchUwNetFlowExpiry(20).catch(() => []) : Promise.resolve([]),
+      uwConfigured() ? fetchUwNetPremTicks("SPY").catch(() => []) : Promise.resolve([]),
+      fetchDailyMarketSummary(today).catch(() => null),
+    ]);
+
+  const greekExposure = summarizeGreekExposureByExpiry(
+    greekExpRows as Record<string, unknown>[],
+    today
+  );
+  const marketBreadth = dailyMarket?.results?.length
+    ? computeMarketBreadthFromSummary(dailyMarket.results)
+    : null;
 
   const levels = buildLevels({
     price,
@@ -875,7 +994,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     spx_flows: spxFlows,
     unified_tape: unifiedTape,
     strike_stacks: computeFlowStrikeStacks(spxFlows),
-    net_prem_ticks: [],
+    net_prem_ticks: netPremTicks,
     vix_term: {
       vix9d: vixTerm.vix9d,
       vix3m: vixTerm.vix3m,
@@ -884,12 +1003,16 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     },
     data_quality: dataQuality,
     flow_data_age_ms: flowDataAgeMs(),
-    sector_heat: [],
+    sector_heat: sectorHeat,
     leader_stocks: leaderStocks ?? [],
     oi_changes: [],
     iv_term_structure: [],
     macro_events: macroEventsResolved,
     news_headlines: newsHeadlines,
+    greek_exposure: greekExposure,
+    flow_by_expiry: flowByExpiry,
+    net_flow_by_expiry: netFlowByExpiry,
+    market_breadth: marketBreadth,
   };
 }
 
@@ -1128,6 +1251,10 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
     flow_0dte_put_premium: null,
     flow_0dte_net: null,
     strike_stacks: [],
+    net_prem_ticks: [],
+    flow_by_expiry: [],
+    net_flow_by_expiry: [],
+    greek_exposure: null,
   };
 
   // Use Polygon market status for holiday-aware guard (matches pulse lane behavior).
@@ -1135,7 +1262,8 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
   const flowNow = new Date();
   if (!isSpxRthActive(flowNow, flowMarketNow) && !isPremarketPlanningWindow(flowNow)) return empty;
 
-  const [spxSnapRaw, darkPool, spxFlowsRaw, uwFlow] = await Promise.all([
+  const [spxSnapRaw, darkPool, spxFlowsRaw, uwFlow, greekExpRows, flowByExpiry, netFlowByExpiry, netPremTicks] =
+    await Promise.all([
     polygonConfigured()
       ? fetchIndexSnapshots([SPX]).then((m) => mergeWsIndexSnapshots(m)[SPX])
       : Promise.resolve(null),
@@ -1143,7 +1271,11 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
       ? resolveDarkPool("SPX", { limit: 20, min_premium: 500_000 })
       : Promise.resolve(null),
     uwConfigured() ? fetchSpxDeskFlowAlertsWithDb(32) : Promise.resolve([]),
-    uwConfigured() ? fetchUwFlow0dte("SPX") : Promise.resolve(null),
+    uwConfigured() ? resolveFlow0dte("SPX") : Promise.resolve(null),
+    uwConfigured() ? fetchUwGreekExposureExpiry("SPX").catch(() => []) : Promise.resolve([]),
+    uwConfigured() ? fetchUwFlowPerExpiry("SPX", 12).catch(() => []) : Promise.resolve([]),
+    uwConfigured() ? fetchUwNetFlowExpiry(20).catch(() => []) : Promise.resolve([]),
+    uwConfigured() ? fetchUwNetPremTicks("SPY").catch(() => []) : Promise.resolve([]),
   ]);
 
   const spxSnap = spxSnapRaw;
@@ -1158,7 +1290,10 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
     strikeRows = bundle.rows;
   }
   if (!strikeRows.length && uwConfigured()) {
-    strikeRows = await fetchUwOdteSpotExposuresByStrike("SPX");
+    strikeRows = await resolveGexStrikeRows("SPX");
+    if (!strikeRows.length) {
+      strikeRows = await fetchUwOdteSpotExposuresByStrike("SPX");
+    }
   }
 
   const gexAnalysis = analyzeStrikeGexRows(strikeRows.length ? strikeRows : []);
@@ -1202,6 +1337,11 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
 
   publishDeskStickyToRedis();
 
+  const greekExposure = summarizeGreekExposureByExpiry(
+    greekExpRows as Record<string, unknown>[],
+    todayEtYmd()
+  );
+
   return {
     available: spot > 0,
     polled_at: polledAt,
@@ -1220,5 +1360,9 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
     flow_0dte_put_premium: uwFlow?.put_premium ?? null,
     flow_0dte_net: uwFlow?.net ?? null,
     flow_data_age_ms: flowDataAgeMs(),
+    net_prem_ticks: netPremTicks,
+    flow_by_expiry: flowByExpiry,
+    net_flow_by_expiry: netFlowByExpiry,
+    greek_exposure: greekExposure,
   };
 }

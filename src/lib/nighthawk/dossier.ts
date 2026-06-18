@@ -1,4 +1,4 @@
-import { fetchBenzingaNews, fetchShortInterest, fetchVixIvRankPercentile } from "@/lib/providers/polygon";
+import { fetchBenzingaNews, fetchPolygonFinancialRatios, fetchShortInterest, fetchVixIvRankPercentile, type PolygonFinancialRatios } from "@/lib/providers/polygon";
 import { fetchPolygonNews } from "@/lib/providers/polygon-largo";
 import { uwConfigured } from "@/lib/providers/config";
 import {
@@ -10,11 +10,16 @@ import {
 } from "@/lib/providers/finnhub";
 import {
   fetchMarketFlowAlertRows,
+  fetchUwCongressUnusualTrades,
   fetchUwDarkPool,
   fetchUwFlowPerExpiry,
+  fetchUwInstitutionOwnership,
   fetchUwIvRank,
   fetchUwNewsHeadlines,
   fetchUwOiChange,
+  fetchUwPredictionsConsensus,
+  fetchUwScreenerStocks,
+  type PredictionConsensusSignal,
 } from "@/lib/providers/unusual-whales";
 import { computeFlowStrikeStacks, type FlowStrikeStack } from "@/lib/largo/flow-strike-stacks";
 import { fetchTickerFlowStreak, type FlowStreak } from "./flow-streak";
@@ -22,6 +27,7 @@ import { fetchPositioningSummary, type PositioningSummary } from "./positioning"
 import { buildTechnicalCard, type TechnicalCard } from "./technicals";
 import type { ScoredCandidate } from "./scorer";
 import { scoreCandidate } from "./scorer";
+import { hasActiveTradingHalt } from "@/lib/ws/uw-socket";
 
 export type TickerDossier = {
   ticker: string;
@@ -37,6 +43,10 @@ export type TickerDossier = {
   flow_by_expiry: Record<string, unknown>[];
   positioning: PositioningSummary;
   congress_trades: Record<string, unknown>[];
+  congress_unusual: Record<string, unknown>[];
+  institutional_activity: Record<string, unknown>[];
+  predictions_signal: PredictionConsensusSignal | null;
+  screener_confirmed: boolean;
   tech: TechnicalCard | null;
   news_headlines: string[];
   polygon_sentiment: string[];
@@ -45,13 +55,19 @@ export type TickerDossier = {
   insider_buys: number;
   sector: string | null;
   short_days_to_cover: number | null;
+  fundamental_ratios: PolygonFinancialRatios | null;
+  trading_halt: boolean;
   scored?: ScoredCandidate;
 };
 
 let editionCongressCache: Record<string, unknown>[] | null = null;
+let editionPredictionsCache: Awaited<ReturnType<typeof fetchUwPredictionsConsensus>> | null = null;
+let editionScreenerCache: Record<string, unknown>[] | null = null;
 
 export function resetEditionCongressCache() {
   editionCongressCache = null;
+  editionPredictionsCache = null;
+  editionScreenerCache = null;
 }
 
 async function getEditionCongressTrades(ticker: string): Promise<Record<string, unknown>[]> {
@@ -62,6 +78,24 @@ async function getEditionCongressTrades(ticker: string): Promise<Record<string, 
   }
   const sym = ticker.toUpperCase();
   return editionCongressCache.filter((t) => String(t.ticker ?? t.symbol ?? "").toUpperCase() === sym).slice(0, 5);
+}
+
+async function getEditionPredictionsSignal(ticker: string): Promise<PredictionConsensusSignal | null> {
+  if (!uwConfigured()) return null;
+  if (!editionPredictionsCache) {
+    editionPredictionsCache = await fetchUwPredictionsConsensus(40).catch(() => null);
+  }
+  const sym = ticker.toUpperCase();
+  return editionPredictionsCache?.top_signals?.find((s) => s.ticker === sym) ?? null;
+}
+
+async function isScreenerConfirmed(ticker: string): Promise<boolean> {
+  if (!uwConfigured()) return false;
+  if (!editionScreenerCache) {
+    editionScreenerCache = (await fetchUwScreenerStocks(30).catch(() => [])) as Record<string, unknown>[];
+  }
+  const sym = ticker.toUpperCase();
+  return editionScreenerCache.some((r) => String(r.ticker ?? r.symbol ?? "").toUpperCase() === sym);
 }
 
 function formatAnalyst(recs: Array<Record<string, unknown>> | null): string | null {
@@ -133,6 +167,11 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
     analystRecs,
     priceTargetRaw,
     congress,
+    congressUnusual,
+    institutional,
+    predictionsSignal,
+    screenerConfirmed,
+    fundamentalRatios,
   ] = await Promise.all([
     fetchMarketFlowAlertRows({ ticker: sym, limit: 80, min_premium: 50_000 }).catch(() => []),
     fetchUwDarkPool(sym).catch(() => null),
@@ -151,6 +190,11 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
     fetchFinnhubRecommendations(sym).catch(() => null),
     fetchFinnhubPriceTarget(sym).catch(() => null),
     getEditionCongressTrades(sym),
+    fetchUwCongressUnusualTrades(sym, 5).catch(() => []),
+    fetchUwInstitutionOwnership(sym, 8).catch(() => []),
+    getEditionPredictionsSignal(sym),
+    isScreenerConfirmed(sym),
+    fetchPolygonFinancialRatios(sym).catch(() => null),
   ]);
 
   const flows = flowRows.map((r) => r.raw);
@@ -176,6 +220,7 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
   }).length;
 
   const ivRank = ivRankRaw != null && Number.isFinite(ivRankRaw) ? Number(ivRankRaw) : null;
+  const tradingHalt = hasActiveTradingHalt([sym]);
 
   const dossier: TickerDossier = {
     ticker: sym,
@@ -191,6 +236,10 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
     flow_by_expiry: flowExpiry,
     positioning,
     congress_trades: congress,
+    congress_unusual: congressUnusual,
+    institutional_activity: institutional,
+    predictions_signal: predictionsSignal,
+    screener_confirmed: screenerConfirmed,
     tech,
     news_headlines: headlines,
     polygon_sentiment: polygonSentiment,
@@ -199,6 +248,8 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
     insider_buys: insiderBuys,
     sector: profile ? String((profile as { finnhubIndustry?: string }).finnhubIndustry ?? "") : null,
     short_days_to_cover: shortSi?.days_to_cover ?? null,
+    fundamental_ratios: fundamentalRatios,
+    trading_halt: tradingHalt,
   };
 
   dossier.scored = scoreCandidate(
@@ -212,6 +263,8 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
       strike_stacks: strikeStacks,
       news_headlines: [...headlines, ...polygonSentiment],
       insider_buys: insiderBuys,
+      fundamental_ratios: fundamentalRatios,
+      trading_halt: tradingHalt,
     },
     flowStreak
   );

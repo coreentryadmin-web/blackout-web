@@ -46,6 +46,8 @@ import {
 import {
   fetchBenzingaNews,
   fetchBreadthUniverseSnapshots,
+  computeMarketBreadthFromSummary,
+  fetchDailyMarketSummary,
   fetchIndexSnapshots,
   fetchMarketMovers,
   fetchMarketStatusNow,
@@ -131,6 +133,7 @@ import {
   fetchUwOptionVolumeOiExpiry,
   fetchUwOptionsVolume,
   fetchUwOwnership,
+  fetchUwPredictionsConsensus,
   fetchUwRealizedVol,
   fetchUwRiskReversalSkew,
   fetchUwScreenerAnalysts,
@@ -631,8 +634,16 @@ export async function runLargoTool(name: string, input: Record<string, unknown>)
         spx_desk: desk ? spxDeskSummary(desk) : null,
       };
     }
-    case "get_market_breadth":
-      return fetchBreadthUniverseSnapshots();
+    case "get_market_breadth": {
+      const today = todayEtYmd();
+      const [etfUniverse, daily] = await Promise.all([
+        fetchBreadthUniverseSnapshots(),
+        fetchDailyMarketSummary(today).catch(() => null),
+      ]);
+      const fullMarket =
+        daily?.results?.length ? computeMarketBreadthFromSummary(daily.results) : null;
+      return { etf_universe: etfUniverse, full_market: fullMarket, date: today };
+    }
     case "get_sector_flow": {
       const sector = String(input.sector ?? "technology").toLowerCase();
       const [tide, etfs] = await Promise.all([fetchUwSectorTide(sector), fetchSectorPerformance()]);
@@ -862,6 +873,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>)
         fetchUwGreekExposureExpiry(sym),
       ]);
       return { ticker: sym, expiry: exp, source: "unusual_whales", note: UW_EXCLUSIVE_NOTE, greek_flow: flow, greek_exposure_by_expiry: byExpiry };
+    }
+    case "get_predictions_consensus": {
+      const limit = Number(input.limit ?? 20);
+      const filterTicker = input.ticker ? String(input.ticker) : undefined;
+      const consensus = await fetchUwPredictionsConsensus(limit, filterTicker);
+      return { ...consensus, note: UW_EXCLUSIVE_NOTE };
     }
     case "get_option_contract": {
       const cid = String(input.contract_id ?? "").toUpperCase();

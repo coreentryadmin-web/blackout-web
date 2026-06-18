@@ -4,22 +4,30 @@
  */
 import { persistAndPublishFlowAlert } from "@/lib/flow-persist";
 import {
+  UW_WS_CHANNELS,
+  type UwWsChannel,
+  PLAY_HALT_WATCH_SYMBOLS,
+} from "@/lib/live-api-integrations";
+import {
   normalizeDarkPoolWsPayload,
+  normalizeGexWsPayload,
+  normalizeIntervalFlowWsPayload,
+  normalizeNetFlowWsPayload,
+  normalizeTradingHaltsWsPayload,
   parseUwFlowAlert,
   type DarkPoolSnapshot,
+  type TradingHaltEvent,
 } from "@/lib/providers/unusual-whales";
-
-type UwChannel = "flow_alerts" | "market_tide" | "off_lit_trades";
 
 type Handler = (data: unknown) => void;
 
 type ChannelState = "idle" | "connecting" | "open" | "auth_failed";
 
-const CHANNEL_JOIN_NAME: Record<UwChannel, string> = {
-  flow_alerts: "flow_alerts",
-  market_tide: "market_tide",
-  off_lit_trades: "off_lit_trades",
-};
+const ALL_CHANNELS: UwWsChannel[] = [...UW_WS_CHANNELS];
+
+const CHANNEL_JOIN_NAME: Record<UwWsChannel, string> = Object.fromEntries(
+  ALL_CHANNELS.map((ch) => [ch, ch])
+) as Record<UwWsChannel, string>;
 
 const AUTH_FAILED_BACKOFF_MS = 5 * 60_000;
 
@@ -41,37 +49,32 @@ function buildSocketUrl(): string {
   return `${root}?token=${encodeURIComponent(UW_API_KEY)}`;
 }
 
-function channelFromWireName(name: string): UwChannel | null {
+function channelFromWireName(name: string): UwWsChannel | null {
   const n = name.replace(/-/g, "_");
-  if (n === "flow_alerts") return "flow_alerts";
-  if (n === "market_tide") return "market_tide";
-  if (n === "off_lit_trades") return "off_lit_trades";
-  return null;
+  return ALL_CHANNELS.includes(n as UwWsChannel) ? (n as UwWsChannel) : null;
 }
 
 class UwSocketManager {
   private ws: WebSocket | null = null;
-  private handlers = new Map<UwChannel, Set<Handler>>();
+  private handlers = new Map<UwWsChannel, Set<Handler>>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = 1000;
-  private joined = new Set<UwChannel>();
-  private authenticated = new Map<UwChannel, boolean>();
-  private channelState = new Map<UwChannel, ChannelState>();
+  private joined = new Set<UwWsChannel>();
+  private authenticated = new Map<UwWsChannel, boolean>();
+  private channelState = new Map<UwWsChannel, ChannelState>();
   private authFailedUntil = 0;
   private lastCloseReason: string | null = null;
   private authFailedLogged = false;
   private connectStarted = false;
 
-  private channelsWithHandlers(): UwChannel[] {
-    return (["flow_alerts", "market_tide", "off_lit_trades"] as UwChannel[]).filter(
-      (ch) => (this.handlers.get(ch)?.size ?? 0) > 0
-    );
+  private channelsWithHandlers(): UwWsChannel[] {
+    return ALL_CHANNELS.filter((ch) => (this.handlers.get(ch)?.size ?? 0) > 0);
   }
 
   private markAuthFailed(reason: string) {
     this.authFailedUntil = Date.now() + AUTH_FAILED_BACKOFF_MS;
     this.lastCloseReason = reason;
-    for (const ch of ["flow_alerts", "market_tide", "off_lit_trades"] as UwChannel[]) {
+    for (const ch of ALL_CHANNELS) {
       this.authenticated.set(ch, false);
       this.channelState.set(ch, "auth_failed");
     }
@@ -115,7 +118,7 @@ class UwSocketManager {
     }, delay || 1000);
   }
 
-  private sendJoin(channel: UwChannel) {
+  private sendJoin(channel: UwWsChannel) {
     const ws = this.ws;
     if (!ws || ws.readyState !== 1) return;
     ws.send(
@@ -134,7 +137,7 @@ class UwSocketManager {
     }
   }
 
-  private dispatch(channel: UwChannel, payload: unknown) {
+  private dispatch(channel: UwWsChannel, payload: unknown) {
     if (
       payload &&
       typeof payload === "object" &&
@@ -191,7 +194,7 @@ class UwSocketManager {
     }
   }
 
-  subscribe(channel: UwChannel, handler: Handler): () => void {
+  subscribe(channel: UwWsChannel, handler: Handler): () => void {
     if (!this.handlers.has(channel)) this.handlers.set(channel, new Set());
     this.handlers.get(channel)!.add(handler);
     this.connect();
@@ -258,7 +261,7 @@ class UwSocketManager {
         this.lastCloseReason = reason;
         this.ws = null;
         this.joined.clear();
-        for (const ch of ["flow_alerts", "market_tide", "off_lit_trades"] as UwChannel[]) {
+        for (const ch of ALL_CHANNELS) {
           this.authenticated.set(ch, false);
           if (this.channelState.get(ch) !== "auth_failed") {
             this.channelState.set(ch, "idle");
@@ -303,7 +306,7 @@ class UwSocketManager {
 
   getStatus(): Record<string, string> {
     const result: Record<string, string> = {};
-    for (const channel of ["flow_alerts", "market_tide", "off_lit_trades"] as UwChannel[]) {
+    for (const channel of ALL_CHANNELS) {
       if (this.channelState.get(channel) === "auth_failed") {
         result[channel] = "AUTH_FAILED";
       } else if (this.authenticated.get(channel)) {
@@ -318,7 +321,7 @@ class UwSocketManager {
   }
 
   getChannelHealth(): Record<
-    UwChannel,
+    UwWsChannel,
     {
       ws_state: string;
       authenticated: boolean;
@@ -329,10 +332,9 @@ class UwSocketManager {
       last_error: string | null;
     }
   > {
-    const channels: UwChannel[] = ["flow_alerts", "market_tide", "off_lit_trades"];
     const multiplexOpen = this.ws?.readyState === 1;
     const out = {} as Record<
-      UwChannel,
+      UwWsChannel,
       {
         ws_state: string;
         authenticated: boolean;
@@ -344,7 +346,7 @@ class UwSocketManager {
       }
     >;
 
-    for (const channel of channels) {
+    for (const channel of ALL_CHANNELS) {
       const authFailed = this.channelState.get(channel) === "auth_failed";
       const authed = Boolean(this.authenticated.get(channel));
       const retryAt = this.authFailedUntil > Date.now() ? this.authFailedUntil : null;
@@ -383,11 +385,48 @@ export const darkPoolStore: {
   updatedAt: number;
 } = { data: null, updatedAt: 0 };
 
+export const gexStore: {
+  rows: Record<string, unknown>[];
+  updatedAt: number;
+} = { rows: [], updatedAt: 0 };
+
+export const netFlowStore: {
+  call_premium: number;
+  put_premium: number;
+  net: number;
+  ticker: string;
+  updatedAt: number;
+} = { call_premium: 0, put_premium: 0, net: 0, ticker: "SPX", updatedAt: 0 };
+
+export const intervalFlowStore: {
+  rows: Record<string, unknown>[];
+  updatedAt: number;
+} = { rows: [], updatedAt: 0 };
+
+export const tradingHaltsStore: {
+  halts: Map<string, TradingHaltEvent>;
+  updatedAt: number;
+} = { halts: new Map(), updatedAt: 0 };
+
+/** Check if any watched symbol has an active trading halt. */
+export function hasActiveTradingHalt(symbols: readonly string[] = PLAY_HALT_WATCH_SYMBOLS): boolean {
+  const watch = new Set(symbols.map((s) => s.toUpperCase()));
+  for (const sym of Array.from(tradingHaltsStore.halts.keys())) {
+    const halt = tradingHaltsStore.halts.get(sym);
+    if (halt && watch.has(sym) && halt.active) return true;
+  }
+  return false;
+}
+
+/** List active halts for watched symbols. */
+export function getActiveTradingHalts(symbols: readonly string[] = PLAY_HALT_WATCH_SYMBOLS): TradingHaltEvent[] {
+  const watch = new Set(symbols.map((s) => s.toUpperCase()));
+  return Array.from(tradingHaltsStore.halts.values()).filter((h) => watch.has(h.symbol) && h.active);
+}
+
 let uwSocketInitialized = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-let lastFlowMessageAt: number | null = null;
-let lastTideMessageAt: number | null = null;
-let lastDarkPoolMessageAt: number | null = null;
+const lastMessageAt: Partial<Record<UwWsChannel, number>> = {};
 
 export function initUwSocket() {
   if (uwSocketInitialized) return;
@@ -400,7 +439,7 @@ export function initUwSocket() {
   uwSocket.subscribe("flow_alerts", (payload) => {
     try {
       const block = Array.isArray(payload) ? payload : [payload];
-      lastFlowMessageAt = Date.now();
+      lastMessageAt.flow_alerts = Date.now();
       for (const raw of block) {
         if (!raw || typeof raw !== "object") continue;
         const flow = parseUwFlowAlert(raw as Record<string, unknown>);
@@ -416,7 +455,7 @@ export function initUwSocket() {
       const row = Array.isArray(payload) ? payload[payload.length - 1] : payload;
       if (!row || typeof row !== "object") return;
       if ("status" in (row as Record<string, unknown>)) return;
-      lastTideMessageAt = Date.now();
+      lastMessageAt.market_tide = Date.now();
       const r = row as Record<string, unknown>;
       const call = Number(r.net_call_premium ?? r.call_premium ?? 0);
       const put = Number(r.net_put_premium ?? r.put_premium ?? 0);
@@ -438,44 +477,106 @@ export function initUwSocket() {
     }
     const normalized = normalizeDarkPoolWsPayload(payload);
     if (normalized) {
-      lastDarkPoolMessageAt = Date.now();
+      lastMessageAt.off_lit_trades = Date.now();
       darkPoolStore.data = normalized;
       darkPoolStore.updatedAt = Date.now();
     }
+  });
+
+  uwSocket.subscribe("gex", (payload) => {
+    if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
+      return;
+    }
+    const rows = normalizeGexWsPayload(payload);
+    if (rows.length) {
+      lastMessageAt.gex = Date.now();
+      gexStore.rows = rows;
+      gexStore.updatedAt = Date.now();
+    }
+  });
+
+  uwSocket.subscribe("net_flow", (payload) => {
+    if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
+      return;
+    }
+    const flow = normalizeNetFlowWsPayload(payload, "SPX");
+    if (flow) {
+      lastMessageAt.net_flow = Date.now();
+      Object.assign(netFlowStore, { ...flow, updatedAt: Date.now() });
+    }
+  });
+
+  uwSocket.subscribe("interval_flow", (payload) => {
+    if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
+      return;
+    }
+    const rows = normalizeIntervalFlowWsPayload(payload);
+    if (rows.length) {
+      lastMessageAt.interval_flow = Date.now();
+      intervalFlowStore.rows = rows;
+      intervalFlowStore.updatedAt = Date.now();
+    }
+  });
+
+  uwSocket.subscribe("trading_halts", (payload) => {
+    if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
+      return;
+    }
+    const events = normalizeTradingHaltsWsPayload(payload);
+    if (!events.length) return;
+    lastMessageAt.trading_halts = Date.now();
+    for (const ev of events) {
+      if (ev.active) {
+        tradingHaltsStore.halts.set(ev.symbol, ev);
+      } else {
+        tradingHaltsStore.halts.delete(ev.symbol);
+      }
+    }
+    tradingHaltsStore.updatedAt = Date.now();
   });
 
   if (!heartbeatTimer) {
     heartbeatTimer = setInterval(() => uwSocket.heartbeat(), 30_000);
   }
 
-  console.log("[uw-socket] initialized — multiplex flow_alerts, market_tide, off_lit_trades");
+  console.log(
+    `[uw-socket] initialized — multiplex ${ALL_CHANNELS.join(", ")}`
+  );
 }
 
 export function getUwSocketHealth() {
   const now = Date.now();
   const channels = uwSocket.getChannelHealth();
-  const authFailedChannels = (Object.entries(channels) as [UwChannel, (typeof channels)[UwChannel]][])
+  const authFailedChannels = (Object.entries(channels) as [UwWsChannel, (typeof channels)[UwWsChannel]][])
     .filter(([, row]) => row.auth_failed)
     .map(([ch]) => ch);
+
+  const last_message_at: Record<string, number | null> = {};
+  const last_message_age_ms: Record<string, number | null> = {};
+  for (const ch of ALL_CHANNELS) {
+    const at = lastMessageAt[ch] ?? null;
+    last_message_at[ch] = at;
+    last_message_age_ms[ch] = at ? now - at : null;
+  }
+
   return {
     configured: Boolean(UW_API_KEY),
     initialized: uwSocketInitialized,
     auth_failed: authFailedChannels.length > 0,
     auth_failed_channels: authFailedChannels,
     channels,
-    last_message_at: {
-      flow_alerts: lastFlowMessageAt,
-      market_tide: lastTideMessageAt,
-      off_lit_trades: lastDarkPoolMessageAt,
-    },
-    last_message_age_ms: {
-      flow_alerts: lastFlowMessageAt ? now - lastFlowMessageAt : null,
-      market_tide: lastTideMessageAt ? now - lastTideMessageAt : null,
-      off_lit_trades: lastDarkPoolMessageAt ? now - lastDarkPoolMessageAt : null,
-    },
+    last_message_at,
+    last_message_age_ms,
     stores: {
       tide_updated_at: tideStore.updatedAt || null,
       dark_pool_updated_at: darkPoolStore.updatedAt || null,
+      gex_updated_at: gexStore.updatedAt || null,
+      net_flow_updated_at: netFlowStore.updatedAt || null,
+      interval_flow_updated_at: intervalFlowStore.updatedAt || null,
+      trading_halts_updated_at: tradingHaltsStore.updatedAt || null,
+      active_halts: Array.from(tradingHaltsStore.halts.values())
+        .filter((h) => h.active)
+        .map((h) => h.symbol),
     },
   };
 }

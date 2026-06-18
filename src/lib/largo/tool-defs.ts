@@ -5,6 +5,7 @@ import {
   matchesIntent,
   NEWS_TOOLS_RE,
   NIGHTHAWK_RE,
+  PREDICTIONS_RE,
   SCREENER_RE,
   SPX_DESK_TOOLS_RE,
   VOL_TOOLS_RE,
@@ -229,6 +230,11 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   }, ["ticker"]),
 
+  t("get_predictions_consensus", "UW ONLY — prediction market confidence from insiders, smart money, unusual flow, whales.", {
+    ticker: { type: "string", description: "Optional filter e.g. NVDA" },
+    limit: { type: "integer", default: 20 },
+  }),
+
   t("get_option_contract", "UW ONLY — single contract flow/intraday (OCC symbol required).", {
 
     contract_id: { type: "string", description: "OCC symbol e.g. NVDA250117C00124000" },
@@ -303,6 +309,8 @@ export const TOOL_GROUPS = {
     "get_lotto_state",
     "get_setup_stats",
     "get_trade_history",
+    "get_greek_flow",
+    "get_gex",
   ],
   flow_analysis: [
     "get_options_flow",
@@ -320,6 +328,7 @@ export const TOOL_GROUPS = {
     "get_quote",
     "get_technicals",
     "get_gex",
+    "get_greek_flow",
     "get_options_chain",
     "get_oi_per_strike",
     "get_max_pain",
@@ -345,6 +354,9 @@ export const TOOL_GROUPS = {
     "get_financials",
     "get_insider_flow",
     "get_congress_trades",
+    "get_congress_unusual",
+    "get_institutional",
+    "get_predictions_consensus",
     "get_company_profile",
     "get_earnings_history",
     "get_dividends",
@@ -384,6 +396,9 @@ export function getToolsForIntent(question: string): string[] {
   }
   if (matchesIntent(lower, FUNDAMENTAL_RE)) {
     for (const n of TOOL_GROUPS.fundamental) names.add(n);
+  }
+  if (matchesIntent(lower, PREDICTIONS_RE)) {
+    for (const n of [...TOOL_GROUPS.fundamental, "get_predictions_consensus"]) names.add(n);
   }
 
   if (names.size <= 2) {

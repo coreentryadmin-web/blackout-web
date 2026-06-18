@@ -76,7 +76,17 @@ export function buildMarketRecap(ctx: MarketWideContext): {
     .join(", ");
 
   const headline = `Evening Playbook · ${ctx.tomorrow}`;
-  const summary = `${tide}. ${spx}. Leaders: ${leaders.map((s) => `${s.name} ${s.change_pct >= 0 ? "+" : ""}${s.change_pct.toFixed(2)}%`).join(", ") || "n/a"}.${netImpact ? ` Net impact: ${netImpact}.` : ""}`;
+  const breadthLine = ctx.market_breadth
+    ? `${ctx.market_breadth.pct_advancing ?? "?"}% advancing · A/D ${ctx.market_breadth.advance_decline_ratio ?? "?"} · ${ctx.market_breadth.pct_above_vwap ?? "?"}% above VWAP`
+    : "";
+  const predictionsLine =
+    ctx.predictions_consensus.length > 0
+      ? ctx.predictions_consensus
+          .slice(0, 3)
+          .map((s) => s.headline)
+          .join("; ")
+      : "";
+  const summary = `${tide}. ${spx}.${breadthLine ? ` Breadth: ${breadthLine}.` : ""} Leaders: ${leaders.map((s) => `${s.name} ${s.change_pct >= 0 ? "+" : ""}${s.change_pct.toFixed(2)}%`).join(", ") || "n/a"}.${netImpact ? ` Net impact: ${netImpact}.` : ""}${predictionsLine ? ` Predictions: ${predictionsLine}.` : ""}`;
 
   return {
     headline,
@@ -168,6 +178,25 @@ export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCa
   if (dossier.price_target) lines.push(dossier.price_target);
   if (dossier.congress_trades.length) {
     lines.push(`Congress trades: ${dossier.congress_trades.length} recent filing(s)`);
+  }
+  if (dossier.congress_unusual.length) {
+    lines.push(`Congress unusual: ${dossier.congress_unusual.length} flagged trade(s)`);
+  }
+  if (dossier.institutional_activity.length) {
+    const top = dossier.institutional_activity[0];
+    const name = String(top?.institution ?? top?.name ?? top?.holder ?? "Institution");
+    const value = Number(top?.value ?? top?.market_value ?? top?.amount ?? 0);
+    lines.push(
+      value > 0
+        ? `Institutional: ${name} · ${fmtPrem(value)} position`
+        : `Institutional: ${dossier.institutional_activity.length} holder(s) tracked`
+    );
+  }
+  if (dossier.predictions_signal) {
+    lines.push(`Predictions: ${dossier.predictions_signal.headline}`);
+  }
+  if (dossier.screener_confirmed) {
+    lines.push("Screener: confirmed by UW stock screener");
   }
   if (dossier.short_days_to_cover != null) {
     lines.push(`Short days-to-cover: ${dossier.short_days_to_cover.toFixed(1)}`);

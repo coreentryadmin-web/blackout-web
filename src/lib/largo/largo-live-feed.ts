@@ -1,5 +1,6 @@
 import { runLargoTool } from "@/lib/largo/run-tool";
 import type { LargoQuestionIntent } from "@/lib/largo/question-intent";
+import { summarizeGreekExposureByExpiry } from "@/lib/greek-exposure-summary";
 import {
   computeFlowStrikeStacks,
   formatFlowStrikeStackLine,
@@ -18,7 +19,9 @@ type FeedKey =
   | "play"
   | "open_plays"
   | "nighthawk"
-  | "flow_tape";
+  | "flow_tape"
+  | "greek_flow"
+  | "breadth";
 
 export type LargoLiveFeed = Partial<Record<FeedKey, unknown>>;
 
@@ -50,7 +53,9 @@ export async function captureLargoLiveFeed(intent: LargoQuestionIntent): Promise
   if (intent.needsPlayState || intent.needsSpxDesk || ticker === "SPX") {
     jobs.push(
       { key: "play", promise: safeTool("get_spx_play") },
-      { key: "open_plays", promise: safeTool("get_open_plays") }
+      { key: "open_plays", promise: safeTool("get_open_plays") },
+      { key: "greek_flow", promise: safeTool("get_greek_flow", { ticker: "SPX" }) },
+      { key: "breadth", promise: safeTool("get_market_breadth") }
     );
   }
 
@@ -176,6 +181,45 @@ export function formatLargoLiveFeed(feed: LargoLiveFeed, ticker: string): string
       lines.push("Desk headlines: " + deskNews.map(headline).filter(Boolean).join(" · "));
     }
     lines.push("");
+  }
+
+  const greek = asObj(feed.greek_flow);
+  if (greek && !greek.error) {
+    lines.push("### Dealer greek flow (SPX)");
+    const byExp = asArr(greek.greek_exposure_by_expiry);
+    const summary = summarizeGreekExposureByExpiry(
+      byExp.filter((r) => r && typeof r === "object") as Record<string, unknown>[]
+    );
+    if (summary) {
+      lines.push(summary.headline);
+      lines.push(
+        summary.buckets
+          .slice(0, 5)
+          .map((b) => `${b.dte_label}: ${b.pct_of_total}%`)
+          .join(" · ")
+      );
+    }
+    lines.push("");
+  }
+
+  const breadth = asObj(feed.breadth);
+  if (breadth && !breadth.error) {
+    const fm = asObj(breadth.full_market);
+    if (fm) {
+      lines.push("### Market breadth");
+      lines.push(
+        [
+          fm.pct_advancing != null ? `${fm.pct_advancing}% advancing` : null,
+          fm.advance_decline_ratio != null ? `A/D ${fm.advance_decline_ratio}` : null,
+          fm.pct_above_vwap != null ? `${fm.pct_above_vwap}% above VWAP` : null,
+          fm.new_highs != null ? `NH ${fm.new_highs}` : null,
+          fm.new_lows != null ? `NL ${fm.new_lows}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      );
+      lines.push("");
+    }
   }
 
   const tech = asObj(feed.technicals);

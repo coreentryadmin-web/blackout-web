@@ -160,10 +160,58 @@ export const API_PROVIDER_CATALOG: ApiProviderCatalogEntry[] = [
         used_by: ["desk flow"],
       },
       {
+        endpoint: "/api/stock/{ticker}/spot-exposures",
+        method: "GET",
+        description: "1-min spot GEX time series at current price",
+        used_by: ["desk GEX", "commentary"],
+      },
+      {
         endpoint: "/api/darkpool/{ticker}",
         method: "GET",
         description: "Dark pool prints",
         used_by: ["desk flow"],
+      },
+      {
+        endpoint: "/api/socket/flow_alerts",
+        method: "WS",
+        description: "Real-time flow alerts multiplex",
+        used_by: ["uw-socket", "flow ingest"],
+      },
+      {
+        endpoint: "/api/socket/market_tide",
+        method: "WS",
+        description: "Real-time market tide",
+        used_by: ["uw-socket", "desk flow"],
+      },
+      {
+        endpoint: "/api/socket/off_lit_trades",
+        method: "WS",
+        description: "Real-time dark pool prints",
+        used_by: ["uw-socket", "desk flow"],
+      },
+      {
+        endpoint: "/api/socket/gex",
+        method: "WS",
+        description: "Real-time GEX strike updates",
+        used_by: ["uw-socket", "desk GEX"],
+      },
+      {
+        endpoint: "/api/socket/net_flow",
+        method: "WS",
+        description: "Real-time 0DTE net flow",
+        used_by: ["uw-socket", "desk flow"],
+      },
+      {
+        endpoint: "/api/socket/interval_flow",
+        method: "WS",
+        description: "Real-time interval flow by strike",
+        used_by: ["uw-socket", "desk flow"],
+      },
+      {
+        endpoint: "/api/socket/trading_halts",
+        method: "WS",
+        description: "Real-time trading halt notifications",
+        used_by: ["uw-socket", "play gates"],
       },
       {
         endpoint: "/api/stock/{ticker}/implied-volatility-term-structure",

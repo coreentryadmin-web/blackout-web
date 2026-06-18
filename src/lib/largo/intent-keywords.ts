@@ -1,9 +1,9 @@
 /** Shared intent keyword patterns for Largo tool routing and question analysis. */
 
 export const SPX_DESK_RE =
-  /\b(spx|s&p 500|s&p|0dte|sniper|gamma flip|gex|dealer|max pain|vwap|hod|lod|pdh|pdl|internals|tick|trin)\b/;
+  /\b(spx|s&p 500|s&p|0dte|sniper|gamma flip|gex|dealer|max pain|vwap|hod|lod|pdh|pdl|internals|tick|trin|greek flow|dealer gamma)\b/;
 
-export const SPX_DESK_TOOLS_RE = /\b(spx|s&p|play|signal|0dte|sniper|gamma|gex|dealer)\b/;
+export const SPX_DESK_TOOLS_RE = /\b(spx|s&p|play|signal|0dte|sniper|gamma|gex|dealer|greek flow)\b/;
 
 export const FLOW_RE =
   /\b(flow|sweep|whale|dark pool|tape|premium|unusual|sweeps|nope|tide)\b/;
@@ -26,7 +26,9 @@ export const NIGHTHAWK_RE =
 
 export const SCREENER_RE = /\b(screener|squeeze|movers|breadth|sector)\b/;
 
-export const FUNDAMENTAL_RE = /\b(fundamental|financial|insider|congress|analyst)\b/;
+export const FUNDAMENTAL_RE = /\b(fundamental|financial|insider|congress|analyst|institutional|predictions|smart money|whales)\b/;
+
+export const PREDICTIONS_RE = /\b(predictions|prediction market|smart money|whales|insiders|consensus)\b/;
 
 export function matchesIntent(text: string, pattern: RegExp): boolean {
   return pattern.test(text.toLowerCase());

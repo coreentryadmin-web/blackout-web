@@ -3,6 +3,10 @@ import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import type { PlayConfirmationResult } from "@/lib/spx-play-confirmations";
 import { buildPlayIdeaIntel } from "@/lib/spx-play-intel";
 import {
+  getActiveTradingHalts,
+  hasActiveTradingHalt,
+} from "@/lib/ws/uw-socket";
+import {
   gradeRank,
   playBuyCooldownAplusBypass,
   playBuyCooldownSec,
@@ -79,6 +83,12 @@ export function evaluatePlayGates(
 
   if (!desk.market_open) {
     blocks.push("Session closed — no new entries");
+  }
+
+  if (hasActiveTradingHalt()) {
+    const halts = getActiveTradingHalts();
+    const labels = halts.map((h) => h.symbol).join(", ");
+    blocks.push(`Trading halt active — ${labels} halted, no entries`);
   }
 
   if (!desk.gex_walls?.length) {

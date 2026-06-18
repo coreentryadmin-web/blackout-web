@@ -110,6 +110,7 @@ export const LARGO_TOOL_PROVIDERS: Record<string, string> = {
   get_platform_snapshot: "Platform cross-access",
   get_gex: "Polygon → UW",
   get_greek_flow: "UW",
+  get_predictions_consensus: "UW",
   get_option_contract: "UW",
   get_stock_state: "UW",
   get_ownership: "UW",
