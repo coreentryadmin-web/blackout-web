@@ -10,6 +10,9 @@ export type LargoStoredMessage = {
 };
 
 const MAX_MESSAGES_LOAD = 28;
+/** Max rows stored per session in Postgres (UI/Claude still use last MAX_MESSAGES_LOAD). */
+const MAX_MESSAGES_STORED = 50;
+const DEFAULT_RETENTION_DAYS = 7;
 const memorySessions = new Map<string, AnthropicMessage[]>();
 
 export async function ensureLargoSession(sessionId: string, userId: string): Promise<void> {
@@ -136,6 +139,18 @@ export async function appendLargoMessage(
     [sessionId, role, trimmed, JSON.stringify(toolsUsed)]
   );
 
+  await dbQuery(
+    `DELETE FROM largo_messages
+     WHERE session_id = $1
+       AND id NOT IN (
+         SELECT id FROM largo_messages
+         WHERE session_id = $1
+         ORDER BY created_at DESC
+         LIMIT $2
+       )`,
+    [sessionId, MAX_MESSAGES_STORED]
+  );
+
   if (role === "user") {
     await dbQuery(
       `UPDATE largo_sessions
@@ -150,4 +165,39 @@ export async function appendLargoMessage(
       userId,
     ]);
   }
+}
+
+export function largoSessionRetentionDays(): number {
+  const raw = process.env.LARGO_SESSION_RETENTION_DAYS?.trim();
+  const n = raw ? Number(raw) : DEFAULT_RETENTION_DAYS;
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_RETENTION_DAYS;
+  return Math.min(Math.round(n), 365);
+}
+
+/** Remove Largo sessions inactive longer than retention (messages cascade). */
+export async function purgeStaleLargoSessions(retentionDays = largoSessionRetentionDays()): Promise<{
+  ok: boolean;
+  retention_days: number;
+  sessions_deleted: number;
+  skipped?: boolean;
+  reason?: string;
+}> {
+  if (!dbConfigured()) {
+    return { ok: true, retention_days: retentionDays, sessions_deleted: 0, skipped: true, reason: "no_database" };
+  }
+
+  await ensureSchema();
+
+  const res = await dbQuery<{ id: string }>(
+    `DELETE FROM largo_sessions
+     WHERE updated_at < NOW() - ($1::text || ' days')::interval
+     RETURNING id`,
+    [String(retentionDays)]
+  );
+
+  return {
+    ok: true,
+    retention_days: retentionDays,
+    sessions_deleted: res.rowCount ?? res.rows.length,
+  };
 }
