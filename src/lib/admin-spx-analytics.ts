@@ -1,4 +1,5 @@
 import { dbConfigured, ensureSchema } from "@/lib/db";
+import { outcomeAdaptiveMinDays, outcomeAdaptiveMinTrades } from "@/lib/spx-play-config";
 import { fetchPlayOutcomeStats, fetchRecentPlayOutcomes } from "@/lib/spx-play-outcomes";
 import { computeAdaptiveGates } from "@/lib/spx-play-telemetry";
 import type { PlayOutcomeStats } from "@/lib/spx-play-outcomes";
@@ -65,7 +66,7 @@ function insightsFromAnalytics(
 
   if (!adaptive.active) {
     lines.push(
-      `Adaptive gates collecting data (${stats.total_closed}/8 trades, ${stats.days_of_data.toFixed(0)}/14 days).`
+      `Adaptive gates collecting data (${stats.total_closed}/${outcomeAdaptiveMinTrades()} trades, ${stats.days_of_data.toFixed(0)}/${outcomeAdaptiveMinDays()} days).`
     );
   } else {
     lines.push(adaptive.summary);

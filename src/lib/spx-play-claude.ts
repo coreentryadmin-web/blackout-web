@@ -4,7 +4,13 @@ import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import type { PlayGateResult } from "@/lib/spx-play-gates";
 import type { PlayConfirmationResult } from "@/lib/spx-play-confirmations";
 import type { PlayTechnicals } from "@/lib/spx-play-technicals";
-import { gradeRank, playClaudeCacheSec, playClaudeGateEnabled } from "@/lib/spx-play-config";
+import {
+  gradeRank,
+  playClaudeCachePriceStepPts,
+  playClaudeCacheSec,
+  playClaudeDailyMaxCalls,
+  playClaudeGateEnabled,
+} from "@/lib/spx-play-config";
 import { dbConfigured, getMeta, setMeta } from "@/lib/db";
 
 export type ClaudePlayVerdict = {
@@ -17,10 +23,57 @@ export type ClaudePlayVerdict = {
 };
 
 const CACHE_KEY = "spx_claude_play_cache";
+const BUDGET_KEY = "spx_claude_play_daily_budget";
 const memoryCache = new Map<string, { at: number; verdict: ClaudePlayVerdict }>();
 
+type ClaudeDailyBudget = { date: string; calls: number };
+let memoryBudget: ClaudeDailyBudget | null = null;
+
+function todayEt(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+}
+
 function cacheKey(desk: SpxDeskPayload, c: SpxConfluence): string {
-  return `${c.direction}|${c.grade}|${Math.round(c.score)}|${desk.price.toFixed(1)}`;
+  const step = Math.max(0.5, playClaudeCachePriceStepPts());
+  const bucketedPrice = Math.round(desk.price / step) * step;
+  return `${c.direction}|${c.grade}|${Math.round(c.score)}|${bucketedPrice.toFixed(1)}`;
+}
+
+async function readDailyBudget(): Promise<ClaudeDailyBudget> {
+  const today = todayEt();
+  if (memoryBudget?.date === today) return memoryBudget;
+
+  if (dbConfigured()) {
+    const raw = await getMeta(BUDGET_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as ClaudeDailyBudget;
+        if (parsed.date === today) {
+          memoryBudget = { date: today, calls: parsed.calls ?? 0 };
+          return memoryBudget;
+        }
+      } catch {
+        /* fresh day */
+      }
+    }
+  }
+
+  memoryBudget = { date: today, calls: 0 };
+  return memoryBudget;
+}
+
+async function incrementDailyBudget(): Promise<void> {
+  const budget = await readDailyBudget();
+  const next = { date: budget.date, calls: budget.calls + 1 };
+  memoryBudget = next;
+  if (dbConfigured()) {
+    await setMeta(BUDGET_KEY, JSON.stringify(next));
+  }
+}
+
+async function claudeBudgetExceeded(): Promise<boolean> {
+  const budget = await readDailyBudget();
+  return budget.calls >= playClaudeDailyMaxCalls();
 }
 
 async function readCache(key: string): Promise<ClaudePlayVerdict | null> {
@@ -50,22 +103,24 @@ async function writeCache(key: string, verdict: ClaudePlayVerdict): Promise<void
 function mechanicalVerdict(
   c: SpxConfluence,
   gates: PlayGateResult,
-  confirmations: PlayConfirmationResult
+  confirmations: PlayConfirmationResult,
+  note?: string
 ): ClaudePlayVerdict {
   const strict =
     gates.passed &&
     c.direction != null &&
     gradeRank(c.grade) >= 2 &&
     confirmations.passed;
+  const baseThesis = strict
+    ? `${confirmations.passed_count}/${confirmations.total} confirmations · score ${c.score}.`
+    : gates.blocks[0] ?? "Waiting for A/A+ confluence with full confirmations.";
   return {
     verdict: strict ? "APPROVE_BUY" : "VETO",
     direction: c.direction,
     headline: strict
       ? `${c.grade} ${c.direction === "long" ? "CALL" : "PUT"} — all checks passed`
       : "Quality bar not met — stay flat",
-    thesis: strict
-      ? `${confirmations.passed_count}/${confirmations.total} confirmations · score ${c.score}.`
-      : gates.blocks[0] ?? "Waiting for A/A+ confluence with full confirmations.",
+    thesis: note ? `${baseThesis} ${note}` : baseThesis,
     approved: strict,
     source: "mechanical",
   };
@@ -107,6 +162,17 @@ export async function evaluateClaudePlayApproval(
 
   if (!playClaudeGateEnabled() && !forceClaude) {
     const mech = mechanicalVerdict(confluence, gates, confirmations);
+    await writeCache(key, mech);
+    return mech;
+  }
+
+  if (await claudeBudgetExceeded()) {
+    const mech = mechanicalVerdict(
+      confluence,
+      gates,
+      confirmations,
+      `(Claude daily cap ${playClaudeDailyMaxCalls()} reached — mechanical fallback)`
+    );
     await writeCache(key, mech);
     return mech;
   }
@@ -199,6 +265,7 @@ Respond ONLY valid JSON:
   "thesis": "2 sentences — cite MTF + S/R + flow + news"
 }`;
 
+  await incrementDailyBudget();
   const raw = await anthropicText(prompt, 500);
   if (!raw) {
     const mech = mechanicalVerdict(confluence, gates, confirmations);

@@ -1,7 +1,6 @@
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import type { PlayTechnicals } from "@/lib/spx-play-technicals";
 import type { SpxPlayDirection } from "@/lib/spx-signals";
-import { flowAlignedForDirection } from "@/lib/spx-play-confirmations";
 import { buildLottoOptionTicket } from "@/lib/spx-lotto-options";
 import { computeSpxConfluence } from "@/lib/spx-signals";
 import {
@@ -211,6 +210,7 @@ function buildWatchRecord(
     status_message: lottoWatchStatusMessage(isReversal, ticket.blocked, ticket.block_reason),
     open_anchor_price: null,
     entry_price: null,
+    peak_pnl_pts: null,
     picked_at: new Date().toISOString(),
     buy_at: null,
     pick_count: pickCount,
@@ -222,6 +222,39 @@ function buildWatchRecord(
       macro: desk.macro_events?.slice(0, 3),
     },
     spread_pct: ticket.spread_pct,
+  };
+}
+
+/** Placeholder after a win when follow-up catalyst isn't ready — keeps pick slot alive. */
+function buildPickSlotAwaitingRecord(completedPicks: number): LottoRecord {
+  return {
+    session_date: todayEt(),
+    phase: "NONE",
+    direction: "long",
+    strike: 0,
+    contract_label: "",
+    premium_estimate: null,
+    spread_pct: null,
+    entry_zone: 0,
+    entry_trigger: "",
+    target_price: 0,
+    target_pts: playLottoTargetPts(),
+    invalidation_level: 0,
+    invalidation_note: "",
+    catalyst_summary: "",
+    catalysts: [],
+    confidence: 0,
+    headline: "Awaiting follow-up lotto setup",
+    thesis: "Prior pick won — scanning for next catalyst",
+    status_message: lottoWinStatusMessage(playLottoTargetPts()) + " · scanning for follow-up",
+    open_anchor_price: null,
+    entry_price: null,
+    peak_pnl_pts: null,
+    picked_at: new Date().toISOString(),
+    buy_at: null,
+    pick_count: completedPicks,
+    is_reversal: false,
+    catalyst_snapshot: {},
   };
 }
 
@@ -245,8 +278,7 @@ function openConfirm(
       ? technicals.m5_trend === "up" || technicals.breakout.pdh_break
       : technicals.m5_trend === "down" || technicals.breakout.pdl_break);
 
-  const flowOk = flowAlignedForDirection(desk, rec.direction);
-  return moveOk && Boolean(candleOk) && flowOk;
+  return moveOk && Boolean(candleOk);
 }
 
 function openInvalidate(
@@ -284,6 +316,16 @@ function holdExit(
   if (rec.entry_price == null || desk.price <= 0) return null;
   const pnl = rec.direction === "long" ? desk.price - rec.entry_price : rec.entry_price - desk.price;
   if (pnl >= rec.target_pts) return "win";
+
+  const trailTrigger = rec.target_pts * 0.6;
+  const peak = rec.peak_pnl_pts ?? pnl;
+
+  if (peak >= trailTrigger) {
+    if (pnl <= 0) return "stop";
+    if (pnl <= peak * 0.4) return "stop";
+    return null;
+  }
+
   if (pnl <= -playLottoConfirmMovePts()) return "stop";
   return null;
 }
@@ -327,27 +369,54 @@ export async function evaluateSpxLotto(
 
   let rec = await loadLottoRecord();
 
-  if (rec && rec.phase === "WATCH" && afterCash && rec.open_anchor_price == null) {
-    // Open anchor = first SPX print at or immediately after 9:30 AM ET (~9:30:01 poll).
-    rec = { ...rec, open_anchor_price: desk.price > 0 ? desk.price : rec.entry_zone };
+  if (rec && rec.phase === "WATCH" && afterCash && rec.open_anchor_price == null && desk.price > 0) {
+    // Open anchor = first valid SPX cash print at or after 9:30 AM ET.
+    rec = { ...rec, open_anchor_price: desk.price };
     await saveLottoRecord(rec);
   }
 
   if (rec?.phase === "HOLD") {
+    const pnl =
+      rec.entry_price != null && desk.price > 0
+        ? rec.direction === "long"
+          ? desk.price - rec.entry_price
+          : rec.entry_price - desk.price
+        : null;
+    if (pnl != null) {
+      const peak = Math.max(rec.peak_pnl_pts ?? pnl, pnl);
+      if (peak !== rec.peak_pnl_pts) {
+        rec = { ...rec, peak_pnl_pts: peak };
+        await saveLottoRecord(rec);
+      }
+    }
+
     const exit = holdExit(rec, desk);
     if (exit === "win") {
-      rec = {
-        ...rec,
-        phase: "SELL",
-        status_message: lottoWinStatusMessage(rec.target_pts),
-      };
-      await saveLottoRecord(rec);
       void logLottoPhase(rec, {
         phase: "SELL",
         outcome: "win",
         exit_price: desk.price,
         closed_at: new Date().toISOString(),
       });
+
+      const prev = rec.pick_count;
+      if (prev < playLottoMaxPicksPerDay()) {
+        const followUp = await tryNewWatch(desk, prev + 1, false);
+        if (followUp) {
+          await saveLottoRecord(followUp);
+          void logLottoWatch(followUp);
+          return recordToPayload(followUp);
+        }
+        await saveLottoRecord(buildPickSlotAwaitingRecord(prev));
+        return nonePayload("no_qualify");
+      }
+
+      rec = {
+        ...rec,
+        phase: "SELL",
+        status_message: lottoWinStatusMessage(rec.target_pts),
+      };
+      await saveLottoRecord(rec);
       return recordToPayload(rec);
     }
     if (exit === "stop") {
@@ -383,7 +452,7 @@ export async function evaluateSpxLotto(
         entry_price: desk.price,
         buy_at: bought.buy_at,
       });
-      rec = { ...bought, phase: "HOLD", status_message: lottoHoldStatusMessage() };
+      rec = { ...bought, phase: "HOLD", peak_pnl_pts: 0, status_message: lottoHoldStatusMessage() };
       await saveLottoRecord(rec);
       void logLottoPhase(rec, { phase: "HOLD", entry_price: desk.price });
       return recordToPayload(rec);
@@ -409,7 +478,24 @@ export async function evaluateSpxLotto(
     return recordToPayload(rec);
   }
 
-  if (!rec || rec.phase === "NONE" || rec.phase === "INVALID" || rec.phase === "SELL") {
+  if (rec?.phase === "NONE" && afterCash && !premarket) {
+    if (isLottoExpired(now)) {
+      await clearLottoRecord();
+      return nonePayload("expired");
+    }
+    if (rec.pick_count >= playLottoMaxPicksPerDay()) {
+      return nonePayload("closed_for_today");
+    }
+    const candidate = await tryNewWatch(desk, rec.pick_count + 1, false);
+    if (!candidate) {
+      return nonePayload("no_qualify");
+    }
+    await saveLottoRecord(candidate);
+    void logLottoWatch(candidate);
+    return recordToPayload(candidate);
+  }
+
+  if (!rec || rec.phase === "INVALID" || rec.phase === "SELL") {
     if (!premarket) {
       return nonePayload(rec?.phase === "SELL" ? "closed_for_today" : "no_qualify");
     }

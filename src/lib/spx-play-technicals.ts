@@ -13,6 +13,7 @@ export type PlayTechnicals = {
   m5_close: number | null;
   m5_ema20: number | null;
   m5_rsi: number | null;
+  m5_rsi_warning: string | null;
   m5_trend: "up" | "down" | "flat";
   m3_above_vwap: boolean | null;
   breakout: {
@@ -59,16 +60,27 @@ function resampleBars(bars: Bar[], minutes: number): Bar[] {
 
 function rsi(bars: Bar[], period = 14): number | null {
   if (bars.length < period + 1) return null;
-  const slice = bars.slice(-(period + 1));
-  let gains = 0;
-  let losses = 0;
-  for (let i = 1; i < slice.length; i++) {
-    const d = slice[i].c - slice[i - 1].c;
-    if (d >= 0) gains += d;
-    else losses -= d;
+
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = bars[i].c - bars[i - 1].c;
+    if (d >= 0) avgGain += d;
+    else avgLoss -= d;
   }
-  if (losses === 0) return 100;
-  const rs = gains / losses;
+  avgGain /= period;
+  avgLoss /= period;
+
+  for (let i = period + 1; i < bars.length; i++) {
+    const d = bars[i].c - bars[i - 1].c;
+    const gain = d > 0 ? d : 0;
+    const loss = d < 0 ? -d : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+  }
+
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
   return 100 - 100 / (1 + rs);
 }
 
@@ -100,6 +112,7 @@ export async function buildPlayTechnicals(
     m5_close: null,
     m5_ema20: null,
     m5_rsi: null,
+    m5_rsi_warning: null,
     m5_trend: "flat",
     m3_above_vwap: null,
     breakout: {
@@ -169,8 +182,14 @@ export async function buildPlayTechnicals(
   const level = vwap ?? ctx.pdh ?? ctx.pdl ?? price;
   const m3Long = m3Close != null && m3Close >= level + buf;
   const m3Short = m3Close != null && m3Close <= level - buf;
-  const m5Long = m5Trend === "up" && (m5Rsi == null || m5Rsi < 72);
-  const m5Short = m5Trend === "down" && (m5Rsi == null || m5Rsi > 28);
+  const m5Long = m5Trend === "up";
+  const m5Short = m5Trend === "down";
+  const m5RsiWarning =
+    m5Rsi != null && m5Rsi >= 72
+      ? `5m RSI ${m5Rsi.toFixed(0)} overbought — momentum extended (not blocking)`
+      : m5Rsi != null && m5Rsi <= 28
+        ? `5m RSI ${m5Rsi.toFixed(0)} oversold — downside extended (not blocking)`
+        : null;
 
   const result: PlayTechnicals = {
     available: true,
@@ -180,6 +199,7 @@ export async function buildPlayTechnicals(
     m5_close: m5Close,
     m5_ema20: m5Ema20,
     m5_rsi: m5Rsi,
+    m5_rsi_warning: m5RsiWarning,
     m5_trend: m5Trend,
     m3_above_vwap: m3AboveVwap,
     breakout,

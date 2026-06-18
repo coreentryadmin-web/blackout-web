@@ -31,13 +31,25 @@ export type PlayGateResult = {
 
 function macroHardBlock(desk: SpxDeskPayload): string | null {
   const events = desk.macro_events ?? [];
+  const mins = etMinutes(new Date());
   for (const ev of events) {
     const title = String(ev.event ?? ev.country ?? "").toUpperCase();
-    if (title.includes("CPI") || title.includes("FOMC") || title.includes("FED")) {
-      const mins = etMinutes(new Date());
-      if (mins >= 8 * 60 + 25 && mins <= 10 * 60 + 30) {
-        return `Macro hard block: ${title.slice(0, 40)}`;
-      }
+    const isMacro =
+      title.includes("CPI") ||
+      title.includes("FOMC") ||
+      title.includes("FED") ||
+      title.includes("NFP") ||
+      title.includes("PAYROLL");
+    if (!isMacro) continue;
+
+    if (mins >= 8 * 60 + 25 && mins <= 10 * 60 + 30) {
+      return `Macro hard block: ${title.slice(0, 40)} (morning window)`;
+    }
+
+    const isAfternoonFed =
+      title.includes("FOMC") || title.includes("FED") || title.includes("RATE DECISION");
+    if (isAfternoonFed && mins >= 13 * 60 + 45 && mins <= 14 * 60 + 15) {
+      return `Macro hard block: ${title.slice(0, 40)} (2:00 PM ET Fed window)`;
     }
   }
   return null;

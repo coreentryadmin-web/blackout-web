@@ -59,6 +59,61 @@ function level(
   return { label, value, kind, distance_pct: distancePct(price, value) };
 }
 
+/** Sticky session structure — pulse gaps must not drop HOD/PDH/VWAP from the desk. */
+const lastGoodStructure: {
+  hod: number | null;
+  lod: number | null;
+  pdh: number | null;
+  pdl: number | null;
+  vwap: number | null;
+  ema20: number | null;
+  ema50: number | null;
+  ema200: number | null;
+  sma50: number | null;
+  sma200: number | null;
+} = {
+  hod: null,
+  lod: null,
+  pdh: null,
+  pdl: null,
+  vwap: null,
+  ema20: null,
+  ema50: null,
+  ema200: null,
+  sma50: null,
+  sma200: null,
+};
+
+function seedStructureCacheFromBase(base: {
+  hod: number | null;
+  lod: number | null;
+  pdh: number | null;
+  pdl: number | null;
+  vwap: number | null;
+  ema20: number | null;
+  ema50: number | null;
+  ema200: number | null;
+  sma50: number | null;
+  sma200: number | null;
+}): void {
+  (Object.keys(lastGoodStructure) as Array<keyof typeof lastGoodStructure>).forEach((key) => {
+    const val = base[key];
+    if (lastGoodStructure[key] == null && val != null) {
+      lastGoodStructure[key] = val;
+    }
+  });
+}
+
+function stickyStructureLevel(
+  key: keyof typeof lastGoodStructure,
+  pulseVal: number | null | undefined,
+  baseVal: number | null | undefined
+): number | null {
+  const next = pulseVal ?? baseVal ?? lastGoodStructure[key];
+  if (next != null) lastGoodStructure[key] = next;
+  return next;
+}
+
 function buildLevels(input: {
   price: number;
   lod: number | null;
@@ -139,7 +194,18 @@ export function mergePulseIntoDesk(
   base: SpxDeskPayload,
   pulse: SpxDeskPulse
 ): SpxDeskPayload {
+  seedStructureCacheFromBase(base);
   const price = pulse.price || base.price;
+  const lod = stickyStructureLevel("lod", pulse.lod, base.lod);
+  const hod = stickyStructureLevel("hod", pulse.hod, base.hod);
+  const vwap = stickyStructureLevel("vwap", pulse.vwap, base.vwap);
+  const pdh = stickyStructureLevel("pdh", pulse.pdh, base.pdh);
+  const pdl = stickyStructureLevel("pdl", pulse.pdl, base.pdl);
+  const ema20 = stickyStructureLevel("ema20", pulse.ema20, base.ema20);
+  const ema50 = stickyStructureLevel("ema50", pulse.ema50, base.ema50);
+  const ema200 = stickyStructureLevel("ema200", pulse.ema200, base.ema200);
+  const sma50 = stickyStructureLevel("sma50", pulse.sma50, base.sma50);
+  const sma200 = stickyStructureLevel("sma200", pulse.sma200, base.sma200);
   return {
     ...base,
     price,
@@ -147,16 +213,16 @@ export function mergePulseIntoDesk(
     vix: pulse.vix,
     vix_change_pct: pulse.vix_change_pct,
     above_vwap: pulse.above_vwap,
-    lod: pulse.lod ?? base.lod,
-    hod: pulse.hod ?? base.hod,
-    vwap: pulse.vwap ?? base.vwap,
-    pdh: pulse.pdh ?? base.pdh,
-    pdl: pulse.pdl ?? base.pdl,
-    ema20: pulse.ema20 ?? base.ema20,
-    ema50: pulse.ema50 ?? base.ema50,
-    ema200: pulse.ema200 ?? base.ema200,
-    sma50: pulse.sma50 ?? base.sma50,
-    sma200: pulse.sma200 ?? base.sma200,
+    lod,
+    hod,
+    vwap,
+    pdh,
+    pdl,
+    ema20,
+    ema50,
+    ema200,
+    sma50,
+    sma200,
     tick: pulse.tick ?? base.tick,
     trin: pulse.trin ?? base.trin,
     add: pulse.add ?? base.add,
@@ -171,16 +237,16 @@ export function mergePulseIntoDesk(
     gex_walls: recalcGexWallDistances(base.gex_walls, price),
     levels: buildLevels({
       price,
-      lod: pulse.lod ?? base.lod,
-      hod: pulse.hod ?? base.hod,
-      vwap: pulse.vwap ?? base.vwap,
-      pdh: pulse.pdh ?? base.pdh,
-      pdl: pulse.pdl ?? base.pdl,
-      ema20: pulse.ema20 ?? base.ema20,
-      ema50: pulse.ema50 ?? base.ema50,
-      ema200: pulse.ema200 ?? base.ema200,
-      sma50: pulse.sma50 ?? base.sma50,
-      sma200: pulse.sma200 ?? base.sma200,
+      lod,
+      hod,
+      vwap,
+      pdh,
+      pdl,
+      ema20,
+      ema50,
+      ema200,
+      sma50,
+      sma200,
       gex_king: base.gex_king,
       max_pain: base.max_pain,
       gamma_flip: base.gamma_flip,

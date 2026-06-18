@@ -4,6 +4,7 @@ import {
   getMeta,
   setMeta,
 } from "@/lib/db";
+import { nextMemoryPlayId } from "@/lib/spx-play-memory-id";
 import type { SpxPlayDirection } from "@/lib/spx-signals";
 import type { PlayCloseSnapshot } from "@/lib/spx-play-outcomes";
 
@@ -52,6 +53,22 @@ function todayEt(): string {
   }).format(new Date());
 }
 
+async function setMetaWithRetry(key: string, value: string, attempts = 3): Promise<void> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await setMeta(key, value);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, 50 * (i + 1)));
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Failed to persist session meta");
+}
+
 export async function loadPlaySessionMeta(): Promise<PlaySessionMeta> {
   if (!dbConfigured()) return { ...MEMORY_SESSION };
   const raw = await getMeta(SESSION_META_KEY);
@@ -60,22 +77,26 @@ export async function loadPlaySessionMeta(): Promise<PlaySessionMeta> {
   }
   try {
     const p = JSON.parse(raw) as PlaySessionMeta;
-    return {
+    const meta = {
       last_buy_at: p.last_buy_at ?? null,
       last_sell_at: p.last_sell_at ?? null,
       last_sell_was_loss: Boolean(p.last_sell_was_loss),
       last_direction: p.last_direction ?? null,
       last_stop_at: p.last_stop_at ?? null,
     };
+    Object.assign(MEMORY_SESSION, meta);
+    return meta;
   } catch {
     return { last_buy_at: null, last_sell_at: null, last_sell_was_loss: false, last_direction: null, last_stop_at: null };
   }
 }
 
 export async function savePlaySessionMeta(meta: PlaySessionMeta): Promise<void> {
+  const json = JSON.stringify(meta);
+  if (dbConfigured()) {
+    await setMetaWithRetry(SESSION_META_KEY, json);
+  }
   Object.assign(MEMORY_SESSION, meta);
-  if (!dbConfigured()) return;
-  await setMeta(SESSION_META_KEY, JSON.stringify(meta));
 }
 
 export async function loadOpenPlay(): Promise<OpenPlayRow | null> {
@@ -91,19 +112,23 @@ export async function loadOpenPlay(): Promise<OpenPlayRow | null> {
 export async function openPlay(row: Omit<OpenPlayRow, "id" | "status" | "trim_done" | "mfe_pts" | "mae_pts">): Promise<OpenPlayRow> {
   const full: OpenPlayRow = {
     ...row,
-    id: Date.now(),
+    id: nextMemoryPlayId(),
     trim_done: false,
     mfe_pts: 0,
     mae_pts: 0,
     status: "open",
   };
 
-  MEMORY_OPEN.row = full;
-  if (!dbConfigured()) return full;
+  if (!dbConfigured()) {
+    MEMORY_OPEN.row = full;
+    return full;
+  }
 
   const { insertOpenSpxPlay } = await import("@/lib/db");
   const id = await insertOpenSpxPlay(full);
-  return { ...full, id };
+  const persisted = { ...full, id };
+  MEMORY_OPEN.row = persisted;
+  return persisted;
 }
 
 export async function updateOpenPlay(
@@ -152,5 +177,6 @@ export async function recordBuy(direction: SpxPlayDirection): Promise<void> {
     ...meta,
     last_buy_at: Date.now(),
     last_direction: direction,
+    last_sell_was_loss: false,
   });
 }

@@ -3,9 +3,9 @@ import type { SpxPlayDirection } from "@/lib/spx-signals";
 
 export type ThesisBreakDetail = {
   broken: boolean;
-  /** Effective threshold on the confluence score axis */
+  /** Effective threshold on the confluence score axis (primary branch when broken) */
   threshold: number;
-  /** Which OR branch bound first: drop from entry vs absolute floor */
+  /** Which OR branch fired: drop from entry vs absolute floor */
   trigger: "drop" | "floor" | null;
 };
 
@@ -14,10 +14,6 @@ export type ThesisBreakDetail = {
  *
  * LONG:  score <= entry - dropPts  OR  score <= -floor
  * SHORT: score >= entry + dropPts  OR  score >= +floor
- *
- * Implemented as a single comparison against the tighter threshold:
- * - Long:  score <= max(entry - drop, -floor)   — e.g. entry 44 → exit at 32, not -40
- * - Short: score >= min(entry + drop, +floor)   — e.g. entry -44 → exit at -32, not +40
  */
 export function evaluateThesisBreak(
   direction: SpxPlayDirection,
@@ -31,16 +27,20 @@ export function evaluateThesisBreak(
   if (direction === "long") {
     const dropThreshold = entryScore - dropPts;
     const floorThreshold = -floor;
-    const threshold = Math.max(dropThreshold, floorThreshold);
-    const broken = score <= threshold;
-    const trigger = !broken ? null : dropThreshold >= floorThreshold ? "drop" : "floor";
+    const dropBroken = score <= dropThreshold;
+    const floorBroken = score <= floorThreshold;
+    const broken = dropBroken || floorBroken;
+    const threshold = dropBroken ? dropThreshold : floorBroken ? floorThreshold : dropThreshold;
+    const trigger = !broken ? null : dropBroken ? "drop" : "floor";
     return { broken, threshold, trigger };
   }
 
   const dropThreshold = entryScore + dropPts;
   const floorThreshold = floor;
-  const threshold = Math.min(dropThreshold, floorThreshold);
-  const broken = score >= threshold;
-  const trigger = !broken ? null : dropThreshold <= floorThreshold ? "drop" : "floor";
+  const dropBroken = score >= dropThreshold;
+  const floorBroken = score >= floorThreshold;
+  const broken = dropBroken || floorBroken;
+  const threshold = dropBroken ? dropThreshold : floorBroken ? floorThreshold : dropThreshold;
+  const trigger = !broken ? null : dropBroken ? "drop" : "floor";
   return { broken, threshold, trigger };
 }

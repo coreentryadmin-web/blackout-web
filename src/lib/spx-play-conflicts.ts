@@ -27,6 +27,7 @@ function isHardOpposingFactor(factor: SpxSignalFactor): boolean {
   const label = factor.label;
   return (
     label === "Market tide" ||
+    label === "Dark pool" ||
     label === "IV rank" ||
     label.includes("γ") ||
     label.includes("GEX resistance") ||
@@ -83,7 +84,7 @@ export function computeWeightedConflicts(
     weighted += isHardOpposingFactor(f) ? 2 : 1;
   }
 
-  if (newsOpposed(desk, direction) && !factors.some((f) => f.label.includes("News"))) {
+  if (newsOpposed(desk, direction)) {
     weighted += 2;
   }
   if (tideOpposed(desk, direction) && !factors.some((f) => f.label === "Market tide")) {

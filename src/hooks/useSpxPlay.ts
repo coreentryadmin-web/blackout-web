@@ -23,6 +23,12 @@ function mergePlayWithCache(
   const cachedHasLayer = Boolean(cached.confirmations?.checks?.length);
 
   if (!freshHasLayer && cachedHasLayer) {
+    const sameDirection =
+      fresh.direction != null &&
+      cached.direction != null &&
+      fresh.direction === cached.direction;
+    if (!sameDirection) return fresh;
+
     return {
       ...fresh,
       confirmations: cached.confirmations,

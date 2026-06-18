@@ -40,6 +40,7 @@ import type { MtfHybrid } from "@/lib/spx-play-mtf";
 import {
   consumeWatchRecord,
   evaluateWatchPromote,
+  clearWatchRecord,
   loadWatchRecord,
   recordWatch,
   watchSetupKey,
@@ -98,6 +99,7 @@ export type SpxPlayPayload = {
   technicals: {
     m5_trend: string;
     m5_rsi: number | null;
+    m5_rsi_warning: string | null;
     m3_close: number | null;
     breakout: PlayTechnicals["breakout"];
     mtf_summary: string | null;
@@ -215,6 +217,7 @@ function technicalsSummary(
   return {
     m5_trend: tech.m5_trend,
     m5_rsi: tech.m5_rsi,
+    m5_rsi_warning: tech.m5_rsi_warning,
     m3_close: tech.m3_close,
     breakout: tech.breakout,
     mtf_summary: mtf?.summary ?? null,
@@ -475,6 +478,10 @@ async function evaluateFlatPlay(
   const techSum = technicalsSummary(technicals, mtf);
 
   const watchRec = await loadWatchRecord();
+  if (watchRec && direction != null && watchRec.direction !== direction) {
+    await clearWatchRecord();
+  }
+  const activeWatch = watchRec && direction != null && watchRec.direction === direction ? watchRec : null;
   const flowOk = direction != null ? flowAlignedForDirection(desk, direction) : false;
   const promoteEval =
     direction != null
@@ -490,7 +497,7 @@ async function evaluateFlatPlay(
           desk,
           flowOk,
         })
-      : { eligible: false, reason: "No direction", record: watchRec };
+      : { eligible: false, reason: "No direction", record: activeWatch };
 
   let promoteEligible = promoteEval.eligible;
   let promoteReason = promoteEval.reason;
@@ -506,10 +513,10 @@ async function evaluateFlatPlay(
   }
 
   const watchState = {
-    active: Boolean(watchRec),
+    active: Boolean(activeWatch),
     promote_ready: promoteEligible,
     reason: gatesView.play_idea ?? promoteReason,
-    since: watchRec?.first_at ?? null,
+    since: activeWatch?.first_at ?? null,
   };
 
   const nearMiss =

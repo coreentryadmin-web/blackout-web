@@ -1,4 +1,5 @@
 import { dbConfigured, ensureSchema } from "@/lib/db";
+import { nextMemoryPlayId } from "@/lib/spx-play-memory-id";
 import type { ClaudePlayVerdict } from "@/lib/spx-play-claude";
 import type { PlayConfirmationResult } from "@/lib/spx-play-confirmations";
 import type { MtfHybrid } from "@/lib/spx-play-mtf";
@@ -73,12 +74,11 @@ export type PlayOutcomeStats = {
 };
 
 const memoryOutcomes: PlayOutcomeRow[] = [];
-let memoryNextId = 1;
 
 function classifyOutcome(close: PlayCloseSnapshot): "win" | "loss" | "breakeven" {
   if (close.exit_action === "THETA" || close.exit_action === "SESSION") {
     if (close.pnl_pts <= -1) return "loss";
-    if (close.pnl_pts >= 2) return "win";
+    if (close.pnl_pts > 0) return "win";
     return "breakeven";
   }
   if (close.was_loss || close.exit_action === "STOP" || close.exit_action === "THESIS") {
@@ -91,7 +91,7 @@ function classifyOutcome(close: PlayCloseSnapshot): "win" | "loss" | "breakeven"
 
 export async function recordPlayEntry(snapshot: PlayEntrySnapshot): Promise<number | null> {
   if (!dbConfigured()) {
-    const id = memoryNextId++;
+    const id = nextMemoryPlayId();
     memoryOutcomes.unshift({
       id,
       open_play_id: snapshot.open_play_id,

@@ -1,5 +1,6 @@
 import {
   outcomeAdaptiveMinDays,
+  outcomeAdaptiveMinPathTrades,
   outcomeAdaptiveMinTrades,
   outcomeMinWinRate,
   promoteUnderperformGap,
@@ -34,6 +35,7 @@ export async function loadAdaptivePlayGates(): Promise<AdaptivePlayGates> {
 export function computeAdaptiveGates(stats: PlayOutcomeStats): AdaptivePlayGates {
   const minTrades = outcomeAdaptiveMinTrades();
   const minDays = outcomeAdaptiveMinDays();
+  const minPathTrades = outcomeAdaptiveMinPathTrades();
   const active =
     stats.total_closed >= minTrades && stats.days_of_data >= minDays;
 
@@ -55,7 +57,7 @@ export function computeAdaptiveGates(stats: PlayOutcomeStats): AdaptivePlayGates
     const cold = stats.cold_buy;
     const promote = stats.watch_promote;
 
-    if (promote.count >= 3 && cold.count >= 3) {
+    if (promote.count >= minPathTrades && cold.count >= minPathTrades) {
       const gap = cold.win_rate - promote.win_rate;
       if (gap >= promoteUnderperformGap()) {
         promote_min_score_boost = promoteUnderperformScoreBoost();
@@ -69,7 +71,7 @@ export function computeAdaptiveGates(stats: PlayOutcomeStats): AdaptivePlayGates
         promote_block_reason = `WATCH→ENTRY underperforming (${(promote.win_rate * 100).toFixed(0)}% win rate)`;
         notes.push("promote path blocked until stats improve");
       }
-    } else if (promote.count >= 2 && promote.win_rate === 0) {
+    } else if (promote.count >= Math.max(3, Math.floor(minPathTrades / 2)) && promote.win_rate === 0) {
       promote_min_score_boost = Math.max(promote_min_score_boost, 5);
       notes.push("early promote losses — +5 score on promote");
     }

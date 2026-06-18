@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     });
 
     const [play, lotto] = await Promise.all([
-      evaluateSpxPlay(merged),
+      evaluateSpxPlay(merged, technicals),
       evaluateSpxLotto(merged, technicals),
     ]);
 

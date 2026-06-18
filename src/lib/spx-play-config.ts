@@ -188,7 +188,7 @@ export function playMtfBufferPts(): number {
 }
 
 export function playStructureProximityPts(): number {
-  return num(process.env.SPX_PLAY_STRUCTURE_PROX_PTS, 15);
+  return num(process.env.SPX_PLAY_STRUCTURE_PROX_PTS, 22);
 }
 
 export function playMinConfirmationsRequired(): number {
@@ -208,16 +208,38 @@ export function playWatchEntryMaxPriceDriftPts(): number {
   return num(process.env.SPX_WATCH_ENTRY_MAX_PRICE_DRIFT_PTS, 10);
 }
 
+/** Relaxed drift cap when WATCH formed during opening range and promote happens after OR ends. */
+export function playWatchOpeningRangeDriftPts(): number {
+  return num(process.env.SPX_WATCH_OPENING_RANGE_DRIFT_PTS, 25);
+}
+
+export function playClaudeDailyMaxCalls(): number {
+  return num(process.env.SPX_CLAUDE_DAILY_MAX_CALLS, 40);
+}
+
+export function playClaudeCachePriceStepPts(): number {
+  return num(process.env.SPX_CLAUDE_CACHE_PRICE_STEP_PTS, 2);
+}
+
+export function playLottoMinDirectionWeight(): number {
+  return num(process.env.SPX_PLAY_LOTTO_MIN_DIRECTION_WEIGHT, 3);
+}
+
 export function playOptionChainRequired(): boolean {
   return flag(process.env.SPX_OPTION_CHAIN_REQUIRED, true);
 }
 
 export function outcomeAdaptiveMinTrades(): number {
-  return num(process.env.SPX_OUTCOME_MIN_TRADES, 8);
+  return num(process.env.SPX_OUTCOME_MIN_TRADES, 30);
 }
 
 export function outcomeAdaptiveMinDays(): number {
-  return num(process.env.SPX_OUTCOME_MIN_DAYS, 14);
+  return num(process.env.SPX_OUTCOME_MIN_DAYS, 30);
+}
+
+/** Minimum closed trades per entry path before path-split telemetry adjusts promote gates. */
+export function outcomeAdaptiveMinPathTrades(): number {
+  return num(process.env.SPX_OUTCOME_MIN_PATH_TRADES, 10);
 }
 
 export function outcomeMinWinRate(): number {

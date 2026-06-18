@@ -38,11 +38,22 @@ function nearLevel(price: number, level: number | null, pts = playStructureProxi
   return level != null && Math.abs(price - level) <= pts;
 }
 
-function flowAligned(desk: SpxDeskPayload, direction: "long" | "short"): boolean {
+export type FlowAlignment = {
+  aligned: boolean;
+  thin: boolean;
+  detail: string;
+};
+
+function evaluateFlowAlignment(desk: SpxDeskPayload, direction: "long" | "short"): FlowAlignment {
   const net = desk.flow_0dte_net;
   if (net != null && Math.abs(net) > 40_000) {
-    if (direction === "long" && net > 0) return true;
-    if (direction === "short" && net < 0) return true;
+    if (direction === "long" && net > 0) {
+      return { aligned: true, thin: false, detail: "0DTE call premium leading" };
+    }
+    if (direction === "short" && net < 0) {
+      return { aligned: true, thin: false, detail: "0DTE put premium leading" };
+    }
+    return { aligned: false, thin: false, detail: "0DTE net flow opposes direction" };
   }
 
   let bull = 0;
@@ -51,15 +62,32 @@ function flowAligned(desk: SpxDeskPayload, direction: "long" | "short"): boolean
     if (f.direction === "bullish" || f.option_type.toUpperCase().startsWith("C")) bull += f.premium;
     else bear += f.premium;
   }
-  if (bull + bear < 50_000) return false;
-  return direction === "long" ? bull > bear * 1.1 : bear > bull * 1.1;
+  if (bull + bear < 50_000) {
+    return {
+      aligned: false,
+      thin: true,
+      detail: "Thin 0DTE flow — early session, not blocking",
+    };
+  }
+  const aligned = direction === "long" ? bull > bear * 1.1 : bear > bull * 1.1;
+  return {
+    aligned,
+    thin: false,
+    detail: aligned ? "SPX flow skew aligned" : "Flow not confirming direction",
+  };
 }
 
 export function flowAlignedForDirection(desk: SpxDeskPayload, direction: "long" | "short"): boolean {
-  return flowAligned(desk, direction);
+  const flow = evaluateFlowAlignment(desk, direction);
+  if (flow.thin) return true;
+  return flow.aligned;
 }
 
-function structureAligned(desk: SpxDeskPayload, direction: "long" | "short"): { passed: boolean; detail: string } {
+function structureAligned(
+  desk: SpxDeskPayload,
+  direction: "long" | "short",
+  opts: { t1Trigger: boolean; keyLevel: number }
+): { passed: boolean; detail: string } {
   const price = desk.price;
   const supports = (desk.levels ?? []).filter((l) => l.kind === "support");
   const resistances = (desk.levels ?? []).filter((l) => l.kind === "resistance");
@@ -78,6 +106,12 @@ function structureAligned(desk: SpxDeskPayload, direction: "long" | "short"): { 
     if (desk.above_vwap && nearLevel(price, desk.vwap)) {
       return { passed: true, detail: "Long — holding VWAP support" };
     }
+    if (desk.above_vwap && desk.vwap != null) {
+      return { passed: true, detail: "Long — above VWAP trend hold (between nodes)" };
+    }
+    if (opts.t1Trigger) {
+      return { passed: true, detail: `Long — MTF trigger @ ${opts.keyLevel.toFixed(0)}` };
+    }
     return { passed: false, detail: "Long needs support node / VWAP hold" };
   }
 
@@ -93,6 +127,12 @@ function structureAligned(desk: SpxDeskPayload, direction: "long" | "short"): { 
   }
   if (!desk.above_vwap && nearLevel(price, desk.vwap)) {
     return { passed: true, detail: "Short — below VWAP resistance" };
+  }
+  if (!desk.above_vwap && desk.vwap != null) {
+    return { passed: true, detail: "Short — below VWAP trend hold (between nodes)" };
+  }
+  if (opts.t1Trigger) {
+    return { passed: true, detail: `Short — MTF trigger @ ${opts.keyLevel.toFixed(0)}` };
   }
   return { passed: false, detail: "Short needs resistance node / VWAP reject" };
 }
@@ -123,16 +163,20 @@ export function evaluatePlayConfirmations(
   });
 
   const m5Ok = hybrid.t3_regime_5m || (hybrid.ok && hybrid.soft_5m);
+  const m5Detail = m5Ok
+    ? `${hybrid.summary} · RSI ${technicals.m5_rsi?.toFixed(0) ?? "—"}${technicals.m5_rsi_warning ? ` · ${technicals.m5_rsi_warning}` : ""}`
+    : `5m ${technicals.m5_trend} opposes ${direction}`;
   checks.push({
     label: "5m trend",
     required: true,
     passed: m5Ok,
-    detail: m5Ok
-      ? `${hybrid.summary} · RSI ${technicals.m5_rsi?.toFixed(0) ?? "—"}`
-      : `5m ${technicals.m5_trend} opposes ${direction}`,
+    detail: m5Detail,
   });
 
-  const struct = structureAligned(desk, direction);
+  const struct = structureAligned(desk, direction, {
+    t1Trigger: hybrid.t1_trigger,
+    keyLevel,
+  });
   checks.push({
     label: "S/R structure",
     required: true,
@@ -145,11 +189,13 @@ export function evaluatePlayConfirmations(
       ? technicals.breakout.pdh_break ||
         technicals.breakout.hod_break ||
         technicals.breakout.vwap_reclaim ||
-        struct.passed
+        (desk.above_vwap && desk.vwap != null) ||
+        hybrid.t1_trigger
       : technicals.breakout.pdl_break ||
         technicals.breakout.lod_break ||
         technicals.breakout.vwap_lost ||
-        struct.passed;
+        (!desk.above_vwap && desk.vwap != null) ||
+        hybrid.t1_trigger;
   checks.push({
     label: "Breakout / level",
     required: true,
@@ -158,22 +204,34 @@ export function evaluatePlayConfirmations(
       direction === "long"
         ? technicals.breakout.pdh_break
           ? "PDH breakout"
-          : technicals.breakout.vwap_reclaim
-            ? "VWAP reclaim"
-            : struct.detail
+          : technicals.breakout.hod_break
+            ? "HOD breakout"
+            : technicals.breakout.vwap_reclaim
+              ? "VWAP reclaim"
+              : desk.above_vwap
+                ? "Above VWAP — trend hold"
+                : hybrid.t1_trigger
+                  ? "At key level trigger"
+                  : "No breakout / level hold"
         : technicals.breakout.pdl_break
           ? "PDL breakdown"
-          : technicals.breakout.vwap_lost
-            ? "VWAP rejection"
-            : struct.detail,
+          : technicals.breakout.lod_break
+            ? "LOD breakdown"
+            : technicals.breakout.vwap_lost
+              ? "VWAP rejection"
+              : !desk.above_vwap
+                ? "Below VWAP — trend hold"
+                : hybrid.t1_trigger
+                  ? "At key level trigger"
+                  : "No breakdown / level hold",
   });
 
-  const flowOk = flowAligned(desk, direction);
+  const flow = evaluateFlowAlignment(desk, direction);
   checks.push({
     label: "0DTE flow",
-    required: true,
-    passed: flowOk,
-    detail: flowOk ? "SPX flow skew aligned" : "Flow not confirming direction",
+    required: !flow.thin,
+    passed: flow.aligned || flow.thin,
+    detail: flow.detail,
   });
 
   const dp = desk.dark_pool?.bias;

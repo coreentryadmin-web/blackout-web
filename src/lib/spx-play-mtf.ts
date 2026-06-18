@@ -52,7 +52,7 @@ export function evaluateMtfHybrid(
   let t3 =
     direction === "long" ? technicals.mtf.m5_confirms_long : technicals.mtf.m5_confirms_short;
   if (!t3) {
-    fail.push(`5m ${technicals.m5_trend} RSI ${technicals.m5_rsi?.toFixed(0) ?? "—"} opposes ${direction}`);
+    fail.push(`5m trend ${technicals.m5_trend} opposes ${direction}`);
   }
 
   let ok = t1 && t2 && t3;

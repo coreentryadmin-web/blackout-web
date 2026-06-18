@@ -1,8 +1,16 @@
 import { dbConfigured, getMeta, setMeta } from "@/lib/db";
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import type { SpxPlayDirection } from "@/lib/spx-signals";
-import { playMtfBufferPts, playWatchEntryMaxPriceDriftPts, playWatchExtendAgeMin, playWatchMaxAgeMin } from "@/lib/spx-play-config";
 import { flowAlignedForDirection } from "@/lib/spx-play-confirmations";
+import {
+  playMtfBufferPts,
+  playOpeningRangeMinutes,
+  playWatchEntryMaxPriceDriftPts,
+  playWatchExtendAgeMin,
+  playWatchMaxAgeMin,
+  playWatchOpeningRangeDriftPts,
+} from "@/lib/spx-play-config";
+import { etClock, etMinutes } from "@/lib/spx-play-session-time";
 
 export type WatchRecord = {
   setup_key: string;
@@ -28,7 +36,16 @@ function effectiveWatchMaxAgeMin(desk: SpxDeskPayload, direction: SpxPlayDirecti
   if (flowOk && tickOk) return playWatchExtendAgeMin();
   return playWatchMaxAgeMin();
 }
-function watchMaxDriftPts(): number {
+function watchMaxDriftPts(rec: WatchRecord): number {
+  const openingRangeEnd = etClock(9, 30) + playOpeningRangeMinutes();
+  const watchEtMins = etMinutes(new Date(rec.first_at));
+  const watchFormedInOpeningRange =
+    watchEtMins >= etClock(9, 30) && watchEtMins < openingRangeEnd;
+  const afterOpeningRange = etMinutes(new Date()) >= openingRangeEnd;
+
+  if (watchFormedInOpeningRange && afterOpeningRange) {
+    return playWatchOpeningRangeDriftPts();
+  }
   return playWatchEntryMaxPriceDriftPts();
 }
 
@@ -104,7 +121,8 @@ export async function evaluateWatchPromote(params: {
   }
 
   if (rec.direction !== params.direction) {
-    return { eligible: false, reason: "WATCH direction mismatch", record: rec };
+    await clearWatchRecord();
+    return { eligible: false, reason: "WATCH cleared — direction flipped", record: null };
   }
 
   if (params.score < params.fullMinScore) {
@@ -127,8 +145,9 @@ export async function evaluateWatchPromote(params: {
   }
 
   const drift = Math.abs(params.price - rec.price);
-  if (drift > watchMaxDriftPts()) {
-    return { eligible: false, reason: `Price drift ${drift.toFixed(1)} pts`, record: rec };
+  const maxDrift = watchMaxDriftPts(rec);
+  if (drift > maxDrift) {
+    return { eligible: false, reason: `Price drift ${drift.toFixed(1)} pts (max ${maxDrift})`, record: rec };
   }
 
   const buf = playMtfBufferPts();

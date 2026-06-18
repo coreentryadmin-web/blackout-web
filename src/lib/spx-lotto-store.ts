@@ -26,6 +26,7 @@ export type LottoRecord = {
   status_message: string;
   open_anchor_price: number | null;
   entry_price: number | null;
+  peak_pnl_pts: number | null;
   picked_at: string;
   buy_at: string | null;
   pick_count: number;
