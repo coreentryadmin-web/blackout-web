@@ -20,7 +20,6 @@ for (const f of [".env.local", ".env"]) {
 }
 
 const KEY = (process.env.UW_API_KEY ?? "").trim();
-const BASE = process.env.UW_WS_BASE ?? "wss://api.unusualwhales.com/api/socket";
 
 async function testRest() {
   const r = await fetch("https://api.unusualwhales.com/api/market/market-tide", {
@@ -30,24 +29,34 @@ async function testRest() {
   console.log(`REST market-tide: ${r.status} ${text.slice(0, 120)}`);
 }
 
-function testWs(channel, opts, label) {
+function testMultiplex(label, withToken) {
   return new Promise((resolve) => {
-    const ws = new WebSocket(`${BASE}/${channel}`, opts ?? undefined);
+    const url = withToken
+      ? `wss://api.unusualwhales.com/socket?token=${encodeURIComponent(KEY)}`
+      : "wss://api.unusualwhales.com/socket";
+    const ws = new WebSocket(url, {
+      headers: {
+        Accept: "application/json",
+        "UW-CLIENT-API-ID": process.env.UW_CLIENT_API_ID ?? "100001",
+      },
+    });
     let gotMessage = false;
     let opened = false;
     const timer = setTimeout(() => {
       ws.close();
       resolve({ label, detail: gotMessage ? "message received" : opened ? "open/no message" : "timeout/no open", ok: gotMessage || opened });
-    }, 6000);
+    }, 8000);
 
     ws.onopen = () => {
       opened = true;
+      ws.send(JSON.stringify({ channel: "flow_alerts", msg_type: "join" }));
+      ws.send(JSON.stringify({ channel: "off_lit_trades", msg_type: "join" }));
     };
     ws.onmessage = (ev) => {
       gotMessage = true;
       clearTimeout(timer);
       ws.close();
-      resolve({ label, detail: String(ev.data).slice(0, 100), ok: true });
+      resolve({ label, detail: String(ev.data).slice(0, 120), ok: true });
     };
     ws.onclose = (ev) => {
       if (!gotMessage) {
@@ -55,9 +64,7 @@ function testWs(channel, opts, label) {
         resolve({ label, detail: opened ? `opened then closed code=${ev.code}` : `closed code=${ev.code}`, ok: opened });
       }
     };
-    ws.onerror = () => {
-      /* wait for close */
-    };
+    ws.onerror = () => {};
   });
 }
 
@@ -67,19 +74,12 @@ async function main() {
     process.exit(1);
   }
   await testRest();
-  const bearerOpts = {
-    headers: {
-      Authorization: `Bearer ${KEY}`,
-      Accept: "application/json",
-      "UW-CLIENT-API-ID": process.env.UW_CLIENT_API_ID ?? "100001",
-    },
-  };
-  for (const [label, opts] of [
-    ["no auth (expect 401)", null],
-    ["Bearer header (UW docs)", bearerOpts],
+  for (const [label, withToken] of [
+    ["no token (expect fail)", false],
+    ["?token= (official)", true],
   ]) {
-    const r = await testWs("flow_alerts", opts, label);
-    console.log(`WS flow_alerts ${label} → ${r.ok ? "OK" : "FAIL"}: ${r.detail}`);
+    const r = await testMultiplex(label, withToken);
+    console.log(`WS multiplex ${label} → ${r.ok ? "OK" : "FAIL"}: ${r.detail}`);
   }
 }
 

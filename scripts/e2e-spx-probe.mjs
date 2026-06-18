@@ -196,17 +196,16 @@ async function probeMarketStatusCache() {
   );
 }
 
-function probeUwWs(channel, timeoutMs = 8000) {
+function probeUwWs(timeoutMs = 12000) {
   return new Promise((resolve) => {
     if (!UW_KEY) {
       resolve({ ok: false, detail: "UW_API_KEY missing" });
       return;
     }
-    const url = `${UW_WS_BASE}/${channel}`;
+    const url = `wss://api.unusualwhales.com/socket?token=${encodeURIComponent(UW_KEY)}`;
     let settled = false;
     const ws = new WebSocket(url, {
       headers: {
-        Authorization: `Bearer ${UW_KEY}`,
         Accept: "application/json",
         "UW-CLIENT-API-ID": UW_CLIENT_ID,
       },
@@ -227,6 +226,9 @@ function probeUwWs(channel, timeoutMs = 8000) {
 
     ws.onopen = () => {
       opened = true;
+      ws.send(JSON.stringify({ channel: "flow_alerts", msg_type: "join" }));
+      ws.send(JSON.stringify({ channel: "market_tide", msg_type: "join" }));
+      ws.send(JSON.stringify({ channel: "off_lit_trades", msg_type: "join" }));
     };
 
     ws.onmessage = () => {
@@ -256,12 +258,10 @@ function probeUwWs(channel, timeoutMs = 8000) {
 }
 
 async function probeUwSockets() {
-  console.log("\n── UW WebSocket auth (Bearer handshake) ──");
-  for (const ch of ["flow_alerts", "market_tide", "off_lit_trades"]) {
-    const r = await probeUwWs(ch);
-    const ok = r.ok || r.detail.includes("connected") || r.detail.includes("message");
-    record("ws", `UW ${ch}`, ok, r.detail);
-  }
+  console.log("\n── UW WebSocket (multiplex ?token=) ──");
+  const r = await probeUwWs();
+  const ok = r.ok || r.detail.includes("connected") || r.detail.includes("message");
+  record("ws", "UW multiplex", ok, r.detail);
 }
 
 async function probePolygonWs() {
