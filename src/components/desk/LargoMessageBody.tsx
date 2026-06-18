@@ -10,6 +10,7 @@ type Token = { kind: TokenKind; value: string };
 type ContentBlock =
   | { type: "spacer" }
   | { type: "verdict"; text: string }
+  | { type: "heading"; text: string }
   | { type: "bottomline"; paragraphs: string[]; bullets: string[] }
   | { type: "section"; title: string; inline?: string }
   | { type: "list"; items: string[] }
@@ -121,6 +122,11 @@ function isVerdictLine(line: string): boolean {
   );
 }
 
+function isStandaloneBoldHeading(line: string): string | null {
+  const m = line.trim().match(/^\*\*(.+)\*\*\s*$/);
+  return m ? m[1].trim() : null;
+}
+
 function isBottomLineTitle(title: string): boolean {
   return /bottom\s*line/i.test(title.trim());
 }
@@ -220,6 +226,13 @@ function parseContentBlocks(content: string): ContentBlock[] {
       continue;
     }
 
+    const boldHeading = isStandaloneBoldHeading(trimmed);
+    if (boldHeading) {
+      blocks.push({ type: "heading", text: boldHeading });
+      i++;
+      continue;
+    }
+
     if (/^[-•*]\s+/.test(trimmed)) {
       const items: string[] = [];
       while (i < lines.length && /^[-•*]\s+/.test(lines[i].trim())) {
@@ -240,7 +253,8 @@ function parseContentBlocks(content: string): ContentBlock[] {
         isTableRow(next) ||
         /^[-•*]\s+/.test(next) ||
         isSectionLine(next) ||
-        isVerdictLine(next)
+        isVerdictLine(next) ||
+        isStandaloneBoldHeading(next)
       ) {
         break;
       }
@@ -326,6 +340,14 @@ export function LargoMessageBody({ content, className }: LargoMessageBodyProps) 
                 </ul>
               ) : null}
             </div>
+          );
+        }
+
+        if (block.type === "heading") {
+          return (
+            <p key={bi} className="largo-fmt-heading">
+              {block.text}
+            </p>
           );
         }
 

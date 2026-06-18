@@ -12,8 +12,8 @@ type Message = { id: string; role: "user" | "assistant"; content: string; tools?
 
 const LARGO_SESSION_KEY = "largo-terminal-session";
 
-const INPUT_PLACEHOLDER = "Jack into the tape — SPX · GEX · flow · any ticker…";
-const INPUT_PLACEHOLDER_BUSY = "Neural link processing…";
+const INPUT_PLACEHOLDER = "Jack into the tape";
+const INPUT_PLACEHOLDER_BUSY = "Neural Link Processing…";
 
 const WELCOME: Message = {
   id: "welcome",
@@ -195,13 +195,12 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
             />
             {!input && !loading && hydrated && (
               <span className="largo-input-placeholder" aria-hidden>
-                <span className="largo-input-placeholder-prompt">▸</span>
-                {INPUT_PLACEHOLDER}
+                <span className="largo-input-placeholder-marquee">{INPUT_PLACEHOLDER}</span>
               </span>
             )}
             {loading && (
-              <span className="largo-input-placeholder largo-input-placeholder-busy" aria-hidden>
-                {INPUT_PLACEHOLDER_BUSY}
+              <span className="largo-input-placeholder" aria-hidden>
+                <span className="largo-input-placeholder-marquee">{INPUT_PLACEHOLDER_BUSY}</span>
               </span>
             )}
           </div>
