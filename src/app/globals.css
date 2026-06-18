@@ -5263,6 +5263,17 @@ body {
     --admin-info: var(--admin-cyan);
     --admin-link: var(--admin-turquoise);
     --admin-accent: var(--admin-purple);
+    --admin-fs-2xs: 10px;
+    --admin-fs-xs: 11px;
+    --admin-fs-sm: 12px;
+    --admin-fs-base: 13px;
+    --admin-fs-md: 14px;
+    --admin-fs-lg: 15px;
+    --admin-fs-xl: 16px;
+    --admin-fs-2xl: 18px;
+    --admin-fs-3xl: 20px;
+    --admin-fs-4xl: 22px;
+    font-size: var(--admin-fs-base);
   }
 
   .admin-page-canvas {
@@ -5279,7 +5290,8 @@ body {
   }
 
   .admin-dashboard {
-    @apply relative isolate text-[13px] leading-snug text-grey-100;
+    @apply relative isolate leading-snug text-grey-100;
+    font-size: var(--admin-fs-base);
     font-feature-settings: "tnum" 1, "ss01" 1;
   }
 
@@ -5387,7 +5399,7 @@ body {
   }
 
   .admin-title-xl {
-    @apply text-2xl sm:text-3xl leading-tight font-semibold tracking-tight;
+    @apply text-xl sm:text-2xl leading-tight font-semibold tracking-tight;
   }
 
   .admin-title-accent {
@@ -5466,7 +5478,7 @@ body {
   }
 
   .admin-mega-stat-value {
-    @apply text-xl md:text-2xl font-semibold text-white tabular-nums tracking-tight;
+    @apply text-lg md:text-xl font-semibold text-white tabular-nums tracking-tight;
   }
 
   .admin-mega-stat-sub {
@@ -5517,7 +5529,7 @@ body {
   }
 
   .admin-ring-value {
-    @apply text-xl md:text-2xl font-bold text-white tabular-nums;
+    @apply text-lg md:text-xl font-bold text-white tabular-nums;
   }
 
   .admin-ring-label {
@@ -5642,7 +5654,7 @@ body {
   }
 
   .admin-title {
-    @apply font-anton text-3xl md:text-4xl tracking-wide text-white;
+    @apply font-anton text-xl md:text-2xl tracking-wide text-white;
   }
 
   .admin-sub {
@@ -5692,7 +5704,7 @@ body {
   }
 
   .admin-stat-value {
-    @apply text-xl font-semibold text-white;
+    @apply text-lg font-semibold text-white;
   }
 
   .admin-stat-sub {
@@ -5988,7 +6000,7 @@ body {
   }
 
   .admin-spx-hero-title {
-    @apply font-anton text-2xl md:text-3xl text-white tracking-wide;
+    @apply font-anton text-xl md:text-2xl text-white tracking-wide;
   }
 
   .admin-spx-hero-sub {
@@ -6000,11 +6012,11 @@ body {
   }
 
   .admin-spx-hero-price {
-    @apply text-3xl font-semibold text-white tabular-nums;
+    @apply text-2xl font-semibold text-white tabular-nums;
   }
 
   .admin-spx-hero-grade {
-    @apply text-2xl font-semibold text-bull tabular-nums;
+    @apply text-xl font-semibold text-bull tabular-nums;
   }
 
   .admin-spx-stat-grid {
@@ -6121,7 +6133,7 @@ body {
   }
 
   .admin-deck-heading {
-    @apply text-xl md:text-2xl font-semibold text-white tracking-tight;
+    @apply text-lg md:text-xl font-semibold text-white tracking-tight;
     background: linear-gradient(90deg, #fff 0%, #a5f3fc 50%, #d580ff 100%);
     -webkit-background-clip: text;
     background-clip: text;
@@ -6231,25 +6243,25 @@ body {
   }
 
   .admin-spx-hero-title {
-    @apply text-3xl md:text-4xl lg:text-5xl;
+    @apply text-xl md:text-2xl;
   }
 
   .admin-spx-hero-price {
-    @apply text-4xl md:text-5xl font-bold text-white tabular-nums;
+    @apply text-2xl md:text-3xl font-bold text-white tabular-nums;
     text-shadow: 0 0 30px rgba(255, 255, 255, 0.15);
   }
 
   .admin-spx-hero-grade {
-    @apply text-3xl md:text-4xl font-bold text-bull tabular-nums;
+    @apply text-xl md:text-2xl font-bold text-bull tabular-nums;
     text-shadow: 0 0 20px rgba(52, 211, 153, 0.4);
   }
 
   .admin-spx-hero-sub {
-    @apply text-base md:text-lg text-grey-300 mt-2 max-w-2xl;
+    @apply text-sm text-grey-300 mt-2 max-w-2xl;
   }
 
   .admin-insight-list-pro {
-    @apply space-y-3 text-base md:text-lg text-grey-100 list-none;
+    @apply space-y-2 text-sm text-grey-100 list-none;
   }
 
   .admin-insight-list-pro li {
@@ -6274,7 +6286,7 @@ body {
 
   .admin-filter-select,
   .admin-filter-input {
-    @apply px-4 py-2.5 rounded-lg border border-white/15 bg-black/60 text-base text-white
+    @apply px-3 py-2 rounded-lg border border-white/15 bg-black/60 text-sm text-white
            focus:border-cyan/50 focus:outline-none focus:ring-1 focus:ring-cyan/30 transition-colors;
   }
 
@@ -6292,7 +6304,7 @@ body {
   }
 
   .admin-metric-chip-value {
-    @apply text-lg md:text-xl font-bold text-white tabular-nums;
+    @apply text-base md:text-lg font-bold text-white tabular-nums;
   }
 
   .admin-metric-chip-bull { @apply border-bull/30; }
@@ -6347,7 +6359,7 @@ body {
   }
 
   .admin-adaptive-summary {
-    @apply text-base md:text-lg text-grey-200 leading-relaxed;
+    @apply text-sm md:text-base text-grey-200 leading-relaxed;
   }
 
   .admin-path-compare {
@@ -6371,7 +6383,7 @@ body {
   }
 
   .admin-kv-tile-val {
-    @apply text-base md:text-lg font-medium text-white break-all;
+    @apply text-sm md:text-base font-medium text-white break-all;
   }
 
   .admin-json-block {
@@ -6459,11 +6471,11 @@ body {
   }
 
   .admin-empty-deck-title {
-    @apply text-xl md:text-2xl font-semibold text-white mb-2;
+    @apply text-lg md:text-xl font-semibold text-white mb-2;
   }
 
   .admin-empty-deck-hint {
-    @apply text-base text-grey-400 max-w-md mx-auto;
+    @apply text-sm text-grey-400 max-w-md mx-auto;
   }
 
   .admin-glass-title.admin-deck-title {
@@ -6484,7 +6496,7 @@ body {
   }
 
   .admin-mega-stat-value {
-    @apply text-3xl md:text-4xl;
+    @apply text-lg md:text-xl;
   }
 
   .admin-mega-stat-sub {
@@ -6743,7 +6755,7 @@ body {
   }
 
   .admin-ring-value {
-    @apply text-2xl md:text-3xl;
+    @apply text-lg md:text-xl;
   }
 
   .admin-ring-label {
@@ -7541,7 +7553,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-title-xl {
-    @apply text-2xl sm:text-3xl font-semibold;
+    @apply text-xl sm:text-2xl font-semibold;
   }
 
   .admin-cmd-vivid .admin-sub-hero {
@@ -7562,7 +7574,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-mega-stat-value {
-    @apply text-xl md:text-2xl font-semibold;
+    @apply text-lg md:text-xl font-semibold;
   }
 
   .admin-cmd-vivid .admin-mega-stat-sub {
@@ -7844,7 +7856,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-cmd-drawer-title {
-    @apply text-2xl font-bold;
+    @apply text-lg font-bold;
   }
 
   .admin-cmd-vivid .admin-cmd-drawer-close {
@@ -7973,7 +7985,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-ring-value {
-    @apply text-2xl md:text-3xl font-bold;
+    @apply text-lg md:text-xl font-bold;
   }
 
   .admin-cmd-vivid .admin-ring-label {
@@ -8063,7 +8075,7 @@ body {
   }
 
   .admin-spx-term-title {
-    @apply text-2xl md:text-3xl font-semibold tracking-tight mt-1;
+    @apply text-xl md:text-2xl font-semibold tracking-tight mt-1;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     background: linear-gradient(100deg, #e2e8f0 0%, #00d4ff 50%, #a78bfa 100%);
     -webkit-background-clip: text;
@@ -8123,7 +8135,7 @@ body {
   }
 
   .admin-spx-term-stat-value {
-    @apply block text-lg md:text-xl font-semibold font-mono tabular-nums text-white;
+    @apply block text-sm md:text-base font-semibold font-mono tabular-nums text-white;
   }
 
   .admin-spx-term-stat-bull .admin-spx-term-stat-value { @apply text-[color:var(--admin-green)]; }
@@ -8202,7 +8214,7 @@ body {
   .admin-spx-term-line-ok .admin-spx-term-line-rail { @apply bg-[color:var(--admin-green)]; }
 
   .admin-spx-term-line-body {
-    @apply flex-1 min-w-0 px-4 py-4 md:px-5 md:py-5;
+    @apply flex-1 min-w-0 px-3 py-3 md:px-4 md:py-3.5;
   }
 
   .admin-spx-term-line-head {
@@ -8210,7 +8222,7 @@ body {
   }
 
   .admin-spx-term-marker {
-    @apply text-lg md:text-xl font-bold w-6 text-center;
+    @apply text-sm md:text-base font-bold w-5 text-center;
   }
 
   .admin-spx-term-line-critical .admin-spx-term-marker { @apply text-[color:var(--admin-orange)]; }
@@ -8240,7 +8252,7 @@ body {
   }
 
   .admin-spx-term-headline {
-    @apply text-sm md:text-base font-semibold text-white leading-snug tracking-tight;
+    @apply text-xs md:text-sm font-semibold text-white leading-snug tracking-tight;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
 
@@ -8265,11 +8277,11 @@ body {
   }
 
   .admin-spx-term-empty {
-    @apply text-center text-lg md:text-xl text-grey-200 font-mono py-16;
+    @apply text-center text-sm md:text-base text-grey-200 font-mono py-12;
   }
 
   .admin-spx-term-cursor {
-    @apply px-5 py-3 font-mono text-2xl text-cyan/60;
+    @apply px-4 py-2 font-mono text-lg text-cyan/60;
   }
 
   .admin-spx-term-cursor-blink {
@@ -8282,7 +8294,7 @@ body {
   }
 
   .admin-spx-term-footer {
-    @apply relative z-10 flex flex-wrap items-center gap-2 px-6 md:px-8 py-4 border-t border-white/10 text-sm md:text-base font-mono text-grey-200 uppercase tracking-wider;
+    @apply relative z-10 flex flex-wrap items-center gap-2 px-4 md:px-6 py-3 border-t border-white/10 text-xs md:text-sm font-mono text-grey-200 uppercase tracking-wider;
   }
 
   /* ── Admin health banner + ops UI ── */
@@ -8601,6 +8613,54 @@ body {
   .admin-spx-term-incident-btn-muted {
     @apply border-white/20 hover:bg-white/5;
     color: var(--admin-text-label);
+  }
+
+  /* ── Admin typography scale (entire dashboard) ── */
+  .admin-page .text-xs { font-size: var(--admin-fs-xs) !important; line-height: 1.35 !important; }
+  .admin-page .text-sm { font-size: var(--admin-fs-sm) !important; line-height: 1.4 !important; }
+  .admin-page .text-base { font-size: var(--admin-fs-base) !important; line-height: 1.45 !important; }
+  .admin-page .text-lg { font-size: var(--admin-fs-lg) !important; line-height: 1.4 !important; }
+  .admin-page .text-xl { font-size: var(--admin-fs-xl) !important; line-height: 1.35 !important; }
+  .admin-page .text-2xl { font-size: var(--admin-fs-2xl) !important; line-height: 1.3 !important; }
+  .admin-page .text-3xl { font-size: var(--admin-fs-3xl) !important; line-height: 1.25 !important; }
+  .admin-page .text-4xl { font-size: var(--admin-fs-4xl) !important; line-height: 1.2 !important; }
+  .admin-page .text-5xl { font-size: 24px !important; line-height: 1.15 !important; }
+  .admin-page .text-6xl { font-size: 26px !important; line-height: 1.1 !important; }
+  .admin-page .text-7xl { font-size: 28px !important; line-height: 1.1 !important; }
+
+  @media (min-width: 640px) {
+    .admin-page .sm\:text-2xl { font-size: var(--admin-fs-2xl) !important; }
+    .admin-page .sm\:text-3xl { font-size: var(--admin-fs-3xl) !important; }
+  }
+
+  @media (min-width: 768px) {
+    .admin-page .md\:text-xs { font-size: var(--admin-fs-xs) !important; }
+    .admin-page .md\:text-sm { font-size: var(--admin-fs-sm) !important; }
+    .admin-page .md\:text-base { font-size: var(--admin-fs-base) !important; }
+    .admin-page .md\:text-lg { font-size: var(--admin-fs-md) !important; }
+    .admin-page .md\:text-xl { font-size: var(--admin-fs-xl) !important; }
+    .admin-page .md\:text-2xl { font-size: 17px !important; }
+    .admin-page .md\:text-3xl { font-size: var(--admin-fs-2xl) !important; }
+    .admin-page .md\:text-4xl { font-size: var(--admin-fs-3xl) !important; }
+    .admin-page .md\:text-5xl { font-size: var(--admin-fs-4xl) !important; }
+    .admin-page .md\:text-6xl { font-size: 24px !important; }
+    .admin-page .md\:text-7xl { font-size: 26px !important; }
+  }
+
+  @media (min-width: 1024px) {
+    .admin-page .lg\:text-4xl { font-size: var(--admin-fs-3xl) !important; }
+    .admin-page .lg\:text-5xl { font-size: var(--admin-fs-4xl) !important; }
+  }
+
+  .admin-page .font-anton {
+    font-size: var(--admin-fs-xl) !important;
+    line-height: 1.2 !important;
+  }
+
+  @media (min-width: 768px) {
+    .admin-page .font-anton {
+      font-size: var(--admin-fs-2xl) !important;
+    }
   }
 
   /* ── Admin approved palette: readability + color lock ── */
