@@ -5397,7 +5397,7 @@ body {
 
   .admin-sub-hero {
     @apply text-xs md:text-sm max-w-2xl leading-relaxed;
-    color: var(--admin-text-3);
+    color: var(--admin-text-dim);
   }
 
   .admin-hero-chips {
@@ -5458,7 +5458,7 @@ body {
   .admin-mega-stat-neutral .admin-mega-stat-glow { background: rgba(255, 255, 255, 0.08); }
 
   .admin-mega-stat-label {
-    @apply text-[10px] font-mono uppercase tracking-[0.2em] text-grey-500 mb-2 relative z-10;
+    @apply text-[10px] font-mono uppercase tracking-[0.2em] text-grey-200 mb-2 relative z-10;
   }
 
   .admin-mega-stat-row {
@@ -5470,7 +5470,7 @@ body {
   }
 
   .admin-mega-stat-sub {
-    @apply text-[11px] text-grey-500 mt-2 relative z-10;
+    @apply text-[11px] text-grey-200 mt-2 relative z-10;
   }
 
   .admin-mega-trend {
@@ -5479,7 +5479,7 @@ body {
 
   .admin-mega-trend-up { @apply text-bull; }
   .admin-mega-trend-down { @apply text-bear; }
-  .admin-mega-trend-flat { @apply text-grey-500; }
+  .admin-mega-trend-flat { @apply text-grey-200; }
 
   .admin-mega-bar {
     @apply mt-3 h-1 rounded-full bg-white/5 overflow-hidden relative z-10;
@@ -5525,7 +5525,7 @@ body {
   }
 
   .admin-ring-sub {
-    @apply text-[9px] text-grey-500 mt-0.5;
+    @apply text-[9px] text-grey-200 mt-0.5;
   }
 
   .admin-live-pill {
@@ -5607,7 +5607,7 @@ body {
   }
 
   .admin-tab-blurb {
-    @apply text-[10px] text-grey-500 font-mono;
+    @apply text-[10px] text-grey-200 font-mono;
   }
 
   .admin-provider-card {
@@ -5688,7 +5688,7 @@ body {
   }
 
   .admin-stat-label {
-    @apply text-[10px] font-mono uppercase tracking-wider text-grey-500 mb-1;
+    @apply text-[10px] font-mono uppercase tracking-wider text-grey-200 mb-1;
   }
 
   .admin-stat-value {
@@ -5696,7 +5696,7 @@ body {
   }
 
   .admin-stat-sub {
-    @apply text-[11px] text-grey-500 mt-1;
+    @apply text-[11px] text-grey-200 mt-1;
   }
 
   .admin-stat-bull .admin-stat-value {
@@ -5724,7 +5724,7 @@ body {
   }
 
   .admin-table th {
-    @apply pb-2 pr-3 font-mono text-[10px] uppercase tracking-wider text-grey-500 border-b border-grey-800;
+    @apply pb-2 pr-3 font-mono text-[10px] uppercase tracking-wider text-grey-200 border-b border-grey-800;
   }
 
   .admin-table td {
@@ -5838,7 +5838,7 @@ body {
   }
 
   .admin-api-card-meta {
-    @apply flex flex-wrap items-center gap-3 text-xs font-mono text-grey-500 shrink-0;
+    @apply flex flex-wrap items-center gap-3 text-xs font-mono text-grey-200 shrink-0;
   }
 
   .admin-api-meta-error {
@@ -5846,7 +5846,7 @@ body {
   }
 
   .admin-api-chevron {
-    @apply text-grey-500 ml-1;
+    @apply text-grey-200 ml-1;
   }
 
   .admin-api-card-body {
@@ -5858,7 +5858,7 @@ body {
   }
 
   .admin-api-probe-label {
-    @apply uppercase tracking-wider text-grey-500;
+    @apply uppercase tracking-wider text-grey-200;
   }
 
   .admin-api-probe-error {
@@ -5878,7 +5878,7 @@ body {
   }
 
   .admin-api-env {
-    @apply text-xs text-grey-500;
+    @apply text-xs text-grey-200;
   }
 
   .admin-api-env code {
@@ -5902,7 +5902,7 @@ body {
   }
 
   .admin-api-used-by {
-    @apply text-[11px] text-grey-500 max-w-[140px];
+    @apply text-[11px] text-grey-200 max-w-[140px];
   }
 
   .admin-api-dot {
@@ -5934,11 +5934,11 @@ body {
   }
 
   .admin-api-muted {
-    @apply text-sm text-grey-500;
+    @apply text-sm text-grey-200;
   }
 
   .admin-api-footer {
-    @apply text-[11px] font-mono text-grey-600 text-center pt-2;
+    @apply text-[11px] font-mono text-grey-300 text-center pt-2;
   }
 
   /* ── Admin SPX Sniper dashboard ── */
@@ -5963,7 +5963,7 @@ body {
   }
 
   .admin-spx-section-tab {
-    @apply px-3 py-1.5 rounded-lg text-xs font-mono uppercase tracking-wider text-grey-500
+    @apply px-3 py-1.5 rounded-lg text-xs font-mono uppercase tracking-wider text-grey-200
            hover:text-white hover:bg-grey-800/60 transition-colors;
   }
 
@@ -6033,7 +6033,7 @@ body {
   }
 
   .admin-spx-chevron {
-    @apply text-grey-500 text-sm;
+    @apply text-grey-200 text-sm;
   }
 
   .admin-spx-kv-grid {
@@ -6041,7 +6041,7 @@ body {
   }
 
   .admin-spx-kv-row dt {
-    @apply font-mono text-[10px] uppercase tracking-wider text-grey-500;
+    @apply font-mono text-[10px] uppercase tracking-wider text-grey-200;
   }
 
   .admin-spx-kv-row dd {
@@ -6058,7 +6058,7 @@ body {
   }
 
   .admin-spx-filter {
-    @apply flex flex-col gap-1 text-xs font-mono text-grey-500;
+    @apply flex flex-col gap-1 text-xs font-mono text-grey-200;
   }
 
   .admin-spx-filter-search {
@@ -6072,7 +6072,7 @@ body {
   }
 
   .admin-spx-meta {
-    @apply text-xs font-mono text-grey-500;
+    @apply text-xs font-mono text-grey-200;
   }
 
   .admin-spx-idea {
@@ -6269,7 +6269,7 @@ body {
   }
 
   .admin-filter-label {
-    @apply text-[11px] font-mono uppercase tracking-[0.2em] text-grey-500;
+    @apply text-[11px] font-mono uppercase tracking-[0.2em] text-grey-200;
   }
 
   .admin-filter-select,
@@ -6288,7 +6288,7 @@ body {
   }
 
   .admin-metric-chip-label {
-    @apply text-[10px] font-mono uppercase tracking-[0.2em] text-grey-500;
+    @apply text-[10px] font-mono uppercase tracking-[0.2em] text-grey-200;
   }
 
   .admin-metric-chip-value {
@@ -6367,7 +6367,7 @@ body {
   }
 
   .admin-kv-tile-key {
-    @apply font-mono text-[11px] uppercase tracking-[0.2em] text-grey-500 mb-1;
+    @apply font-mono text-[11px] uppercase tracking-[0.2em] text-grey-200 mb-1;
   }
 
   .admin-kv-tile-val {
@@ -6642,7 +6642,7 @@ body {
   }
 
   .admin-deck-badge-warn {
-    @apply border-amber-500/35 bg-amber-500/10 text-amber-100 ml-2;
+    @apply border-[color:rgb(255_215_0/0.35)] bg-[color:rgb(255_215_0/0.1)] text-[color:var(--admin-gold)] ml-2;
   }
 
   .admin-kv-tile {
@@ -6703,11 +6703,11 @@ body {
   }
 
   .admin-pnl-chart-label {
-    @apply text-[10px] md:text-xs font-mono text-grey-500 mt-2 uppercase;
+    @apply text-[10px] md:text-xs font-mono text-grey-200 mt-2 uppercase;
   }
 
   .admin-pnl-chart-trades {
-    @apply text-[9px] font-mono text-grey-600;
+    @apply text-[9px] font-mono text-grey-300;
   }
 
   .admin-health-meter {
@@ -6735,7 +6735,7 @@ body {
   }
 
   .admin-tab-blurb {
-    @apply text-xs text-grey-500;
+    @apply text-xs text-grey-200;
   }
 
   .admin-command-hero {
@@ -6808,7 +6808,7 @@ body {
   }
 
   .docs-table th {
-    @apply text-left font-mono text-[10px] uppercase tracking-wider text-grey-500 pb-2 border-b border-grey-700;
+    @apply text-left font-mono text-[10px] uppercase tracking-wider text-grey-200 pb-2 border-b border-grey-700;
   }
 
   .docs-table td {
@@ -6821,7 +6821,7 @@ body {
   }
 
   .docs-note {
-    @apply text-grey-500 text-xs italic;
+    @apply text-grey-200 text-xs italic;
   }
 
   .docs-section code {
@@ -6850,7 +6850,7 @@ body {
   }
 
   .docs-ref-nav-heading {
-    @apply font-mono text-[9px] tracking-[0.35em] uppercase text-grey-500 mb-2;
+    @apply font-mono text-[9px] tracking-[0.35em] uppercase text-grey-200 mb-2;
   }
 
   .docs-ref-nav-list {
@@ -6866,7 +6866,7 @@ body {
   }
 
   .docs-ref-nav-desc {
-    @apply block font-mono text-[9px] text-grey-600 mt-0.5 tracking-wide;
+    @apply block font-mono text-[9px] text-grey-300 mt-0.5 tracking-wide;
   }
 
   .docs-badge {
@@ -6882,7 +6882,7 @@ body {
   }
 
   .docs-badge-muted {
-    @apply text-grey-500 border-grey-600 bg-grey-800/50;
+    @apply text-grey-200 border-grey-600 bg-grey-800/50;
   }
 
   .docs-feed-card {
@@ -6934,7 +6934,7 @@ body {
   }
 
   .docs-rest-doc-link {
-    @apply text-[10px] text-grey-500 hover:text-cyan transition-colors;
+    @apply text-[10px] text-grey-200 hover:text-cyan transition-colors;
   }
 
   .docs-rest-usecases {
@@ -6950,7 +6950,7 @@ body {
   }
 
   .docs-rest-toc-count {
-    @apply font-mono text-[9px] text-grey-600 bg-grey-800/80 px-1.5 py-0.5 rounded;
+    @apply font-mono text-[9px] text-grey-300 bg-grey-800/80 px-1.5 py-0.5 rounded;
   }
 
   .docs-ref-sidebar-wide {
@@ -6966,7 +6966,7 @@ body {
   }
 
   .docs-rest-op {
-    @apply text-[10px] break-all text-grey-500;
+    @apply text-[10px] break-all text-grey-200;
   }
 
   .docs-ref-content-full {
@@ -6990,11 +6990,11 @@ body {
   }
 
   .docs-analysis-label {
-    @apply block font-mono text-[9px] uppercase tracking-wider text-grey-500 mt-1;
+    @apply block font-mono text-[9px] uppercase tracking-wider text-grey-200 mt-1;
   }
 
   .docs-file-ref {
-    @apply block text-[10px] text-grey-500 mb-1 font-mono;
+    @apply block text-[10px] text-grey-200 mb-1 font-mono;
   }
 
   .docs-provider-tabs {
@@ -7060,11 +7060,11 @@ body {
   }
 
   .docs-probe-note {
-    @apply text-[11px] text-grey-500 max-w-xs break-words;
+    @apply text-[11px] text-grey-200 max-w-xs break-words;
   }
 
   .docs-probe-provider {
-    @apply text-[11px] text-grey-500;
+    @apply text-[11px] text-grey-200;
   }
 
   .docs-probe-usage-used {
@@ -7101,7 +7101,7 @@ body {
   }
 
   .admin-ep-meta {
-    @apply font-mono text-[10px] uppercase tracking-wider text-grey-500 -mt-2;
+    @apply font-mono text-[10px] uppercase tracking-wider text-grey-200 -mt-2;
   }
 
   .admin-ep-docs-link {
@@ -7125,7 +7125,7 @@ body {
   }
 
   .admin-ep-provider-chip-stats {
-    @apply text-[10px] font-mono text-grey-500;
+    @apply text-[10px] font-mono text-grey-200;
   }
 
   .admin-ep-toolbar {
@@ -7133,7 +7133,7 @@ body {
   }
 
   .admin-ep-search {
-    @apply w-full max-w-md rounded-lg border border-grey-800 bg-black/50 px-3 py-2 text-sm text-white placeholder:text-grey-600 focus:border-cyan/50 focus:outline-none;
+    @apply w-full max-w-md rounded-lg border border-grey-800 bg-black/50 px-3 py-2 text-sm text-white placeholder:text-grey-300 focus:border-cyan/50 focus:outline-none;
   }
 
   .admin-ep-filter-tabs {
@@ -7157,7 +7157,7 @@ body {
   }
 
   .admin-ep-section {
-    @apply text-grey-500 whitespace-nowrap;
+    @apply text-grey-200 whitespace-nowrap;
   }
 
   .admin-ep-name {
@@ -7169,15 +7169,15 @@ body {
   }
 
   .admin-ep-note {
-    @apply text-[10px] text-grey-500 max-w-[180px] truncate;
+    @apply text-[10px] text-grey-200 max-w-[180px] truncate;
   }
 
   .admin-ep-used {
-    @apply text-[10px] font-mono uppercase text-emerald-400;
+    @apply text-[10px] font-mono uppercase text-[color:var(--admin-green)];
   }
 
   .admin-ep-unused {
-    @apply text-[10px] font-mono uppercase text-amber-400/90;
+    @apply text-[10px] font-mono uppercase text-[color:rgb(255_215_0/0.9)];
   }
 
   .admin-ep-badge {
@@ -7185,35 +7185,35 @@ body {
   }
 
   .admin-ep-badge-ok {
-    @apply bg-emerald-500/15 text-emerald-400 border border-emerald-500/25;
+    @apply bg-[color:rgb(57_255_20/0.15)] text-[color:var(--admin-green)] border border-[color:rgb(57_255_20/0.25)];
   }
 
   .admin-ep-badge-fail {
-    @apply bg-red-500/15 text-red-400 border border-red-500/25;
+    @apply bg-[color:rgb(255_140_0/0.15)] text-[color:var(--admin-orange)] border border-[color:rgb(255_140_0/0.25)];
   }
 
   .admin-ep-badge-blocked {
-    @apply bg-orange-500/15 text-orange-400 border border-orange-500/25;
+    @apply bg-[color:rgb(255_140_0/0.15)] text-[color:var(--admin-orange)] border border-[color:rgb(255_140_0/0.25)];
   }
 
   .admin-ep-badge-warn {
-    @apply bg-yellow-500/15 text-yellow-400 border border-yellow-500/25;
+    @apply bg-[color:rgb(255_215_0/0.15)] text-[color:var(--admin-gold)] border border-[color:rgb(255_215_0/0.25)];
   }
 
   .admin-ep-badge-unknown {
-    @apply bg-grey-800/50 text-grey-500 border border-grey-700;
+    @apply bg-grey-800/50 text-grey-200 border border-grey-700;
   }
 
   .admin-ep-row-risk {
-    @apply bg-red-950/20;
+    @apply bg-[color:rgb(255_140_0/0.12)];
   }
 
   .admin-ep-row-candidate {
-    @apply bg-emerald-950/10;
+    @apply bg-[color:rgb(57_255_20/0.08)];
   }
 
   .admin-ep-count {
-    @apply px-4 py-2 text-[10px] font-mono text-grey-500 border-t border-grey-900;
+    @apply px-4 py-2 text-[10px] font-mono text-grey-200 border-t border-grey-900;
   }
 
   .admin-ep-empty {
@@ -7251,7 +7251,7 @@ body {
   }
 
   .admin-cmd-feed {
-    @apply rounded-2xl border border-red-500/20 bg-gradient-to-b from-red-950/20 to-black/40 backdrop-blur-xl overflow-hidden sticky top-4;
+    @apply rounded-2xl border border-[color:rgb(255_140_0/0.2)] bg-gradient-to-b from-[color:rgb(255_140_0/0.12)] to-black/40 backdrop-blur-xl overflow-hidden sticky top-4;
     box-shadow: 0 0 40px rgba(239, 68, 68, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
@@ -7260,7 +7260,7 @@ body {
   }
 
   .admin-cmd-feed-kicker {
-    @apply text-[10px] font-mono uppercase tracking-[0.2em] text-red-400/80;
+    @apply text-[10px] font-mono uppercase tracking-[0.2em] text-[color:rgb(255_140_0/0.8)];
   }
 
   .admin-cmd-feed-title {
@@ -7268,11 +7268,11 @@ body {
   }
 
   .admin-cmd-stream-pill {
-    @apply inline-flex items-center gap-2 rounded-full border border-grey-700 px-2.5 py-1 text-[10px] font-mono uppercase text-grey-500;
+    @apply inline-flex items-center gap-2 rounded-full border border-grey-700 px-2.5 py-1 text-[10px] font-mono uppercase text-grey-200;
   }
 
   .admin-cmd-stream-pill-live {
-    @apply border-emerald-500/40 text-emerald-400;
+    @apply border-[color:rgb(57_255_20/0.4)] text-[color:var(--admin-green)];
   }
 
   .admin-cmd-stream-dot {
@@ -7280,15 +7280,15 @@ body {
   }
 
   .admin-cmd-stream-pill-live .admin-cmd-stream-dot {
-    @apply bg-emerald-400 animate-pulse;
+    @apply bg-[color:var(--admin-green)] animate-pulse;
   }
 
   .admin-cmd-retry-banner {
-    @apply mx-3 mb-2 p-3 rounded-xl border border-amber-500/30 bg-amber-950/30;
+    @apply mx-3 mb-2 p-3 rounded-xl border border-[color:rgb(255_215_0/0.3)] bg-[color:rgb(255_215_0/0.18)];
   }
 
   .admin-cmd-retry-title {
-    @apply text-[10px] font-mono uppercase tracking-wider text-amber-400 mb-2;
+    @apply text-[10px] font-mono uppercase tracking-wider text-[color:var(--admin-gold)] mb-2;
   }
 
   .admin-cmd-retry-row {
@@ -7296,15 +7296,15 @@ body {
   }
 
   .admin-cmd-retry-spin {
-    @apply w-3 h-3 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin;
+    @apply w-3 h-3 rounded-full border-2 border-[color:rgb(255_215_0/0.3)] border-t-[color:var(--admin-gold)] animate-spin;
   }
 
   .admin-cmd-retry-provider {
-    @apply font-mono text-amber-300 uppercase text-[10px];
+    @apply font-mono text-[color:var(--admin-gold)] uppercase text-[10px];
   }
 
   .admin-cmd-retry-meta {
-    @apply text-grey-500 font-mono text-[10px];
+    @apply text-grey-200 font-mono text-[10px];
   }
 
   .admin-cmd-feed-list {
@@ -7316,7 +7316,7 @@ body {
   }
 
   .admin-cmd-incident {
-    @apply w-full text-left rounded-xl border border-white/5 bg-black/30 p-3 transition-all hover:border-red-500/30 hover:bg-red-950/20;
+    @apply w-full text-left rounded-xl border border-white/5 bg-black/30 p-3 transition-all hover:border-[color:rgb(255_140_0/0.3)] hover:bg-[color:rgb(255_140_0/0.12)];
   }
 
   .admin-cmd-incident-active {
@@ -7328,11 +7328,11 @@ body {
   }
 
   .admin-cmd-status {
-    @apply text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/30;
+    @apply text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-[color:rgb(255_140_0/0.2)] text-[color:var(--admin-orange)] border border-[color:rgb(255_140_0/0.3)];
   }
 
   .admin-cmd-status-warn {
-    @apply bg-amber-500/20 text-amber-300 border-amber-500/30;
+    @apply bg-[color:rgb(255_215_0/0.2)] text-[color:var(--admin-gold)] border-[color:rgb(255_215_0/0.3)];
   }
 
   .admin-cmd-incident-provider {
@@ -7340,7 +7340,7 @@ body {
   }
 
   .admin-cmd-incident-time {
-    @apply ml-auto text-[10px] font-mono text-grey-600;
+    @apply ml-auto text-[10px] font-mono text-grey-300;
   }
 
   .admin-cmd-incident-path {
@@ -7348,11 +7348,11 @@ body {
   }
 
   .admin-cmd-incident-error {
-    @apply text-[11px] text-red-300/90 mt-1 line-clamp-2;
+    @apply text-[11px] text-[color:rgb(255_140_0/0.9)] mt-1 line-clamp-2;
   }
 
   .admin-cmd-incident-retry {
-    @apply inline-block mt-1.5 text-[9px] font-mono uppercase tracking-wide text-amber-400/90;
+    @apply inline-block mt-1.5 text-[9px] font-mono uppercase tracking-wide text-[color:rgb(255_215_0/0.9)];
   }
 
   .admin-cmd-drawer-backdrop {
@@ -7389,15 +7389,15 @@ body {
   }
 
   .admin-cmd-detail-error-box {
-    @apply border-red-500/25 bg-red-950/20;
+    @apply border-[color:rgb(255_140_0/0.25)] bg-[color:rgb(255_140_0/0.12)];
   }
 
   .admin-cmd-detail-retry-box {
-    @apply border-amber-500/25 bg-amber-950/20;
+    @apply border-[color:rgb(255_215_0/0.25)] bg-[color:rgb(255_215_0/0.12)];
   }
 
   .admin-cmd-detail-heading {
-    @apply text-[10px] font-mono uppercase tracking-wider text-grey-500 mb-2;
+    @apply text-[10px] font-mono uppercase tracking-wider text-grey-200 mb-2;
   }
 
   .admin-cmd-detail-grid {
@@ -7409,7 +7409,7 @@ body {
   }
 
   .admin-cmd-detail-label {
-    @apply text-[9px] font-mono uppercase text-grey-600;
+    @apply text-[9px] font-mono uppercase text-grey-300;
   }
 
   .admin-cmd-detail-value {
@@ -7433,7 +7433,7 @@ body {
   }
 
   .admin-cmd-detail-meta {
-    @apply text-[10px] font-mono text-grey-600 mt-2;
+    @apply text-[10px] font-mono text-grey-300 mt-2;
   }
 
   .admin-cmd-chain {
@@ -7453,11 +7453,11 @@ body {
   }
 
   .admin-cmd-chain-time {
-    @apply float-right text-grey-600 font-mono text-[10px];
+    @apply float-right text-grey-300 font-mono text-[10px];
   }
 
   .admin-cmd-chain-error {
-    @apply text-red-300/80 mt-1 text-[10px];
+    @apply text-[color:rgb(255_140_0/0.8)] mt-1 text-[10px];
   }
 
   .admin-cmd-timeline {
@@ -7481,11 +7481,11 @@ body {
   }
 
   .admin-cmd-timeline-bar-ok {
-    @apply bg-emerald-500/70 hover:bg-emerald-400;
+    @apply bg-[color:rgb(57_255_20/0.7)] hover:bg-[color:var(--admin-green)];
   }
 
   .admin-cmd-timeline-bar-fail {
-    @apply bg-red-500/80 hover:bg-red-400;
+    @apply bg-[color:rgb(255_140_0/0.8)] hover:bg-[color:var(--admin-orange)];
   }
 
   .admin-cmd-timeline-bar-active {
@@ -7558,7 +7558,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-mega-stat-label {
-    @apply text-[10px] text-grey-500 mb-1;
+    @apply text-[10px] text-grey-200 mb-1;
   }
 
   .admin-cmd-vivid .admin-mega-stat-value {
@@ -7583,7 +7583,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-api-muted {
-    @apply text-xs text-grey-500;
+    @apply text-xs text-grey-200;
   }
 
   .admin-cmd-vivid .admin-api-footer {
@@ -7670,19 +7670,19 @@ body {
   }
 
   .admin-cmd-vivid .admin-ep-files {
-    @apply max-w-[180px] text-emerald-300/90 font-mono text-xs;
+    @apply max-w-[180px] text-[color:rgb(57_255_20/0.9)] font-mono text-xs;
   }
 
   .admin-cmd-vivid .admin-ep-note {
-    @apply text-xs text-amber-200/90 max-w-[220px];
+    @apply text-xs text-[color:rgb(255_215_0/0.9)] max-w-[220px];
   }
 
   .admin-cmd-vivid .admin-ep-used {
-    @apply text-xs font-semibold text-emerald-400;
+    @apply text-xs font-semibold text-[color:var(--admin-green)];
   }
 
   .admin-cmd-vivid .admin-ep-unused {
-    @apply text-xs font-semibold text-amber-300;
+    @apply text-xs font-semibold text-[color:var(--admin-gold)];
   }
 
   .admin-cmd-vivid .admin-ep-badge {
@@ -7690,19 +7690,19 @@ body {
   }
 
   .admin-cmd-vivid .admin-ep-badge-ok {
-    @apply bg-emerald-500/25 text-emerald-300 border-emerald-400/40;
+    @apply bg-[color:rgb(57_255_20/0.25)] text-[color:var(--admin-green)] border-[color:rgb(57_255_20/0.4)];
   }
 
   .admin-cmd-vivid .admin-ep-badge-fail {
-    @apply bg-red-500/25 text-red-300 border-red-400/40;
+    @apply bg-[color:rgb(255_140_0/0.25)] text-[color:var(--admin-orange)] border-[color:rgb(255_140_0/0.4)];
   }
 
   .admin-cmd-vivid .admin-ep-badge-blocked {
-    @apply bg-orange-500/25 text-orange-300 border-orange-400/40;
+    @apply bg-[color:rgb(255_140_0/0.25)] text-[color:var(--admin-orange)] border-[color:rgb(255_140_0/0.4)];
   }
 
   .admin-cmd-vivid .admin-ep-badge-warn {
-    @apply bg-yellow-500/25 text-yellow-300 border-yellow-400/40;
+    @apply bg-[color:rgb(255_215_0/0.25)] text-[color:var(--admin-gold)] border-[color:rgb(255_215_0/0.4)];
   }
 
   .admin-cmd-vivid .admin-ep-badge-unknown {
@@ -7730,16 +7730,16 @@ body {
   }
 
   .admin-cmd-vivid .admin-cmd-feed {
-    @apply border-red-400/30 from-red-950/35 to-black/50;
+    @apply border-[color:rgb(255_140_0/0.3)] from-[color:rgb(255_140_0/0.2)] to-black/50;
     box-shadow: 0 0 50px rgba(239, 68, 68, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
 
   .admin-cmd-vivid .admin-cmd-feed-head {
-    @apply p-5 border-red-400/20;
+    @apply p-5 border-[color:rgb(255_140_0/0.2)];
   }
 
   .admin-cmd-vivid .admin-cmd-feed-kicker {
-    @apply text-xs text-red-300 font-semibold;
+    @apply text-xs text-[color:var(--admin-orange)] font-semibold;
   }
 
   .admin-cmd-vivid .admin-cmd-feed-title {
@@ -7751,7 +7751,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-cmd-stream-pill-live {
-    @apply border-emerald-400/50 text-emerald-300 bg-emerald-500/10;
+    @apply border-[color:rgb(57_255_20/0.5)] text-[color:var(--admin-green)] bg-[color:rgb(57_255_20/0.1)];
   }
 
   .admin-cmd-vivid .admin-cmd-stream-dot {
@@ -7759,23 +7759,23 @@ body {
   }
 
   .admin-cmd-vivid .admin-cmd-retry-banner {
-    @apply mx-4 mb-3 p-4 border-amber-400/40 bg-amber-950/40;
+    @apply mx-4 mb-3 p-4 border-[color:rgb(255_215_0/0.4)] bg-[color:rgb(255_215_0/0.22)];
   }
 
   .admin-cmd-vivid .admin-cmd-retry-title {
-    @apply text-xs text-amber-300 font-semibold;
+    @apply text-xs text-[color:var(--admin-gold)] font-semibold;
   }
 
   .admin-cmd-vivid .admin-cmd-retry-row {
-    @apply text-sm text-amber-100;
+    @apply text-sm text-[color:var(--admin-gold)];
   }
 
   .admin-cmd-vivid .admin-cmd-retry-spin {
-    @apply w-4 h-4 border-t-amber-300;
+    @apply w-4 h-4 border-t-[color:var(--admin-gold)];
   }
 
   .admin-cmd-vivid .admin-cmd-retry-provider {
-    @apply text-xs text-amber-200 font-semibold;
+    @apply text-xs text-[color:var(--admin-gold)] font-semibold;
   }
 
   .admin-cmd-vivid .admin-cmd-retry-meta {
@@ -7791,7 +7791,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-cmd-incident {
-    @apply border-white/10 bg-black/40 p-4 hover:border-red-400/40 hover:bg-red-950/30;
+    @apply border-white/10 bg-black/40 p-4 hover:border-[color:rgb(255_140_0/0.4)] hover:bg-[color:rgb(255_140_0/0.18)];
   }
 
   .admin-cmd-vivid .admin-cmd-incident-active {
@@ -7803,11 +7803,11 @@ body {
   }
 
   .admin-cmd-vivid .admin-cmd-status {
-    @apply text-xs px-2 py-1 rounded-md bg-red-500/30 text-red-200 border-red-400/40;
+    @apply text-xs px-2 py-1 rounded-md bg-[color:rgb(255_140_0/0.3)] text-[color:var(--admin-orange)] border-[color:rgb(255_140_0/0.4)];
   }
 
   .admin-cmd-vivid .admin-cmd-status-warn {
-    @apply bg-amber-500/30 text-amber-200 border-amber-400/40;
+    @apply bg-[color:rgb(255_215_0/0.3)] text-[color:var(--admin-gold)] border-[color:rgb(255_215_0/0.4)];
   }
 
   .admin-cmd-vivid .admin-cmd-incident-provider {
@@ -7823,11 +7823,11 @@ body {
   }
 
   .admin-cmd-vivid .admin-cmd-incident-error {
-    @apply text-sm text-red-300 mt-1.5;
+    @apply text-sm text-[color:var(--admin-orange)] mt-1.5;
   }
 
   .admin-cmd-vivid .admin-cmd-incident-retry {
-    @apply mt-2 text-xs text-amber-300 font-semibold;
+    @apply mt-2 text-xs text-[color:var(--admin-gold)] font-semibold;
   }
 
   .admin-cmd-vivid .admin-cmd-drawer {
@@ -7860,11 +7860,11 @@ body {
   }
 
   .admin-cmd-vivid .admin-cmd-detail-error-box {
-    @apply border-red-400/35 bg-red-950/30;
+    @apply border-[color:rgb(255_140_0/0.35)] bg-[color:rgb(255_140_0/0.18)];
   }
 
   .admin-cmd-vivid .admin-cmd-detail-retry-box {
-    @apply border-amber-400/35 bg-amber-950/30;
+    @apply border-[color:rgb(255_215_0/0.35)] bg-[color:rgb(255_215_0/0.18)];
   }
 
   .admin-cmd-vivid .admin-cmd-detail-heading {
@@ -7888,7 +7888,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-cmd-detail-code {
-    @apply text-sm text-emerald-200 bg-black/50 p-3 border border-emerald-500/20;
+    @apply text-sm text-[color:var(--admin-green)] bg-black/50 p-3 border border-[color:rgb(57_255_20/0.2)];
   }
 
   .admin-cmd-vivid .admin-cmd-detail-pre {
@@ -7924,7 +7924,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-cmd-chain-error {
-    @apply text-red-300 text-sm mt-1.5;
+    @apply text-[color:var(--admin-orange)] text-sm mt-1.5;
   }
 
   .admin-cmd-vivid .admin-cmd-timeline {
@@ -7949,11 +7949,11 @@ body {
   }
 
   .admin-cmd-vivid .admin-cmd-timeline-bar-ok {
-    @apply bg-emerald-400 hover:bg-emerald-300;
+    @apply bg-[color:var(--admin-green)] hover:bg-[color:var(--admin-green)];
   }
 
   .admin-cmd-vivid .admin-cmd-timeline-bar-fail {
-    @apply bg-red-400 hover:bg-red-300;
+    @apply bg-[color:var(--admin-orange)] hover:bg-[color:var(--admin-orange)];
   }
 
   .admin-cmd-vivid .admin-cmd-timeline-bar-active {
@@ -7965,7 +7965,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-cmd-health-status {
-    @apply text-sm font-semibold text-emerald-300;
+    @apply text-sm font-semibold text-[color:var(--admin-green)];
   }
 
   .admin-cmd-vivid .admin-cmd-registry-filters {
@@ -7985,7 +7985,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-live-pill {
-    @apply px-4 py-2 text-sm text-emerald-300 border-emerald-400/40 bg-emerald-500/10;
+    @apply px-4 py-2 text-sm text-[color:var(--admin-green)] border-[color:rgb(57_255_20/0.4)] bg-[color:rgb(57_255_20/0.1)];
   }
 
   .admin-cmd-vivid .admin-action-btn {
@@ -7997,7 +7997,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-api-endpoint {
-    @apply text-sm text-emerald-200 max-w-md;
+    @apply text-sm text-[color:var(--admin-green)] max-w-md;
   }
 
   .admin-cmd-vivid .docs-rest-method {
@@ -8013,7 +8013,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-error {
-    @apply text-base text-red-300 font-medium;
+    @apply text-base text-[color:var(--admin-orange)] font-medium;
   }
 
   /* ── SPX Sniper Terminal ── */
@@ -8072,7 +8072,7 @@ body {
   }
 
   .admin-spx-term-sub {
-    @apply text-xs text-grey-500 mt-1 max-w-2xl;
+    @apply text-xs text-grey-200 mt-1 max-w-2xl;
   }
 
   .admin-spx-term-header-right {
@@ -8080,11 +8080,11 @@ body {
   }
 
   .admin-spx-term-stream-pill {
-    @apply inline-flex items-center gap-2 rounded-full border border-grey-700 px-4 py-2 text-xs md:text-sm font-mono uppercase tracking-wider text-grey-500;
+    @apply inline-flex items-center gap-2 rounded-full border border-grey-700 px-4 py-2 text-xs md:text-sm font-mono uppercase tracking-wider text-grey-200;
   }
 
   .admin-spx-term-stream-pill-live {
-    @apply border-emerald-500/45 text-emerald-300 bg-emerald-500/10;
+    @apply border-[color:rgb(57_255_20/0.45)] text-[color:var(--admin-green)] bg-[color:rgb(57_255_20/0.1)];
     box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
   }
 
@@ -8093,7 +8093,7 @@ body {
   }
 
   .admin-spx-term-stream-pill-live .admin-spx-term-stream-dot {
-    @apply bg-emerald-400;
+    @apply bg-[color:var(--admin-green)];
     animation: admin-spx-term-pulse 1.4s ease-in-out infinite;
   }
 
@@ -8119,17 +8119,17 @@ body {
   }
 
   .admin-spx-term-stat-label {
-    @apply block text-[9px] font-mono uppercase tracking-[0.18em] text-grey-600 mb-0.5;
+    @apply block text-[9px] font-mono uppercase tracking-[0.18em] text-grey-300 mb-0.5;
   }
 
   .admin-spx-term-stat-value {
     @apply block text-lg md:text-xl font-semibold font-mono tabular-nums text-white;
   }
 
-  .admin-spx-term-stat-bull .admin-spx-term-stat-value { @apply text-emerald-300; }
-  .admin-spx-term-stat-bear .admin-spx-term-stat-value { @apply text-red-300; }
-  .admin-spx-term-stat-amber .admin-spx-term-stat-value { @apply text-amber-300; }
-  .admin-spx-term-stat-violet .admin-spx-term-stat-value { @apply text-violet-300; }
+  .admin-spx-term-stat-bull .admin-spx-term-stat-value { @apply text-[color:var(--admin-green)]; }
+  .admin-spx-term-stat-bear .admin-spx-term-stat-value { @apply text-[color:var(--admin-orange)]; }
+  .admin-spx-term-stat-amber .admin-spx-term-stat-value { @apply text-[color:var(--admin-gold)]; }
+  .admin-spx-term-stat-violet .admin-spx-term-stat-value { @apply text-[color:var(--admin-purple)]; }
   .admin-spx-term-stat-cyan .admin-spx-term-stat-value { @apply text-cyan; }
   .admin-spx-term-stat-neutral .admin-spx-term-stat-value { @apply text-grey-200; }
 
@@ -8142,7 +8142,7 @@ body {
   }
 
   .admin-spx-term-filter {
-    @apply px-2.5 py-1.5 rounded-md border border-white/10 bg-black/20 text-[11px] font-mono font-medium uppercase tracking-wider text-grey-500 transition-all hover:text-grey-200 hover:border-white/15;
+    @apply px-2.5 py-1.5 rounded-md border border-white/10 bg-black/20 text-[11px] font-mono font-medium uppercase tracking-wider text-grey-200 transition-all hover:text-grey-200 hover:border-white/15;
   }
 
   .admin-spx-term-filter-active {
@@ -8155,7 +8155,7 @@ body {
   }
 
   .admin-spx-term-pause-active {
-    @apply border-amber-500/35 text-amber-200 bg-amber-500/10;
+    @apply border-[color:rgb(255_215_0/0.35)] text-[color:var(--admin-gold)] bg-[color:rgb(255_215_0/0.1)];
   }
 
   .admin-spx-term-feed-wrap {
@@ -8194,12 +8194,12 @@ body {
     @apply w-1.5 shrink-0;
   }
 
-  .admin-spx-term-line-critical .admin-spx-term-line-rail { @apply bg-red-500; box-shadow: 0 0 12px rgba(239, 68, 68, 0.6); }
-  .admin-spx-term-line-warning .admin-spx-term-line-rail { @apply bg-amber-400; box-shadow: 0 0 10px rgba(251, 191, 36, 0.5); }
+  .admin-spx-term-line-critical .admin-spx-term-line-rail { @apply bg-[color:var(--admin-orange)]; box-shadow: 0 0 12px rgba(239, 68, 68, 0.6); }
+  .admin-spx-term-line-warning .admin-spx-term-line-rail { @apply bg-[color:var(--admin-gold)]; box-shadow: 0 0 10px rgba(251, 191, 36, 0.5); }
   .admin-spx-term-line-info .admin-spx-term-line-rail { @apply bg-cyan; }
-  .admin-spx-term-line-api .admin-spx-term-line-rail { @apply bg-violet-400; box-shadow: 0 0 10px rgba(167, 139, 250, 0.45); }
-  .admin-spx-term-line-pulse .admin-spx-term-line-rail { @apply bg-emerald-400/80; }
-  .admin-spx-term-line-ok .admin-spx-term-line-rail { @apply bg-emerald-500; }
+  .admin-spx-term-line-api .admin-spx-term-line-rail { @apply bg-[color:var(--admin-purple)]; box-shadow: 0 0 10px rgba(167, 139, 250, 0.45); }
+  .admin-spx-term-line-pulse .admin-spx-term-line-rail { @apply bg-[color:rgb(57_255_20/0.8)]; }
+  .admin-spx-term-line-ok .admin-spx-term-line-rail { @apply bg-[color:var(--admin-green)]; }
 
   .admin-spx-term-line-body {
     @apply flex-1 min-w-0 px-4 py-4 md:px-5 md:py-5;
@@ -8213,30 +8213,30 @@ body {
     @apply text-lg md:text-xl font-bold w-6 text-center;
   }
 
-  .admin-spx-term-line-critical .admin-spx-term-marker { @apply text-red-400; }
-  .admin-spx-term-line-warning .admin-spx-term-marker { @apply text-amber-400; }
+  .admin-spx-term-line-critical .admin-spx-term-marker { @apply text-[color:var(--admin-orange)]; }
+  .admin-spx-term-line-warning .admin-spx-term-marker { @apply text-[color:var(--admin-gold)]; }
   .admin-spx-term-line-info .admin-spx-term-marker { @apply text-cyan; }
-  .admin-spx-term-line-api .admin-spx-term-marker { @apply text-violet-400; }
-  .admin-spx-term-line-pulse .admin-spx-term-marker { @apply text-emerald-400; }
-  .admin-spx-term-line-ok .admin-spx-term-marker { @apply text-emerald-300; }
+  .admin-spx-term-line-api .admin-spx-term-marker { @apply text-[color:var(--admin-purple)]; }
+  .admin-spx-term-line-pulse .admin-spx-term-marker { @apply text-[color:var(--admin-green)]; }
+  .admin-spx-term-line-ok .admin-spx-term-marker { @apply text-[color:var(--admin-green)]; }
 
   .admin-spx-term-kind {
     @apply text-xs md:text-sm font-mono font-bold uppercase tracking-[0.15em] px-2 py-0.5 rounded border;
   }
 
-  .admin-spx-term-kind-critical { @apply text-red-300 border-red-500/35 bg-red-500/10; }
-  .admin-spx-term-kind-warning { @apply text-amber-300 border-amber-500/35 bg-amber-500/10; }
+  .admin-spx-term-kind-critical { @apply text-[color:var(--admin-orange)] border-[color:rgb(255_140_0/0.35)] bg-[color:rgb(255_140_0/0.1)]; }
+  .admin-spx-term-kind-warning { @apply text-[color:var(--admin-gold)] border-[color:rgb(255_215_0/0.35)] bg-[color:rgb(255_215_0/0.1)]; }
   .admin-spx-term-kind-info { @apply text-cyan border-cyan/35 bg-cyan/10; }
-  .admin-spx-term-kind-api { @apply text-violet-300 border-violet-500/35 bg-violet-500/10; }
-  .admin-spx-term-kind-pulse { @apply text-emerald-300 border-emerald-500/35 bg-emerald-500/10; }
-  .admin-spx-term-kind-ok { @apply text-emerald-200 border-emerald-500/30 bg-emerald-500/10; }
+  .admin-spx-term-kind-api { @apply text-[color:var(--admin-purple)] border-[color:rgb(187_134_252/0.35)] bg-[color:rgb(187_134_252/0.1)]; }
+  .admin-spx-term-kind-pulse { @apply text-[color:var(--admin-green)] border-[color:rgb(57_255_20/0.35)] bg-[color:rgb(57_255_20/0.1)]; }
+  .admin-spx-term-kind-ok { @apply text-[color:var(--admin-green)] border-[color:rgb(57_255_20/0.3)] bg-[color:rgb(57_255_20/0.1)]; }
 
   .admin-spx-term-cat {
-    @apply text-xs md:text-sm font-mono uppercase tracking-wider text-grey-500;
+    @apply text-xs md:text-sm font-mono uppercase tracking-wider text-grey-200;
   }
 
   .admin-spx-term-time {
-    @apply ml-auto text-sm md:text-base font-mono text-grey-600 tabular-nums;
+    @apply ml-auto text-sm md:text-base font-mono text-grey-300 tabular-nums;
   }
 
   .admin-spx-term-headline {
@@ -8244,16 +8244,16 @@ body {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
 
-  .admin-spx-term-line-critical .admin-spx-term-headline { @apply text-red-100; }
-  .admin-spx-term-line-warning .admin-spx-term-headline { @apply text-amber-50; }
-  .admin-spx-term-line-api .admin-spx-term-headline { @apply text-violet-100; }
+  .admin-spx-term-line-critical .admin-spx-term-headline { @apply text-[color:var(--admin-orange)]; }
+  .admin-spx-term-line-warning .admin-spx-term-headline { @apply text-[color:var(--admin-gold)]; }
+  .admin-spx-term-line-api .admin-spx-term-headline { @apply text-[color:var(--admin-purple)]; }
 
   .admin-spx-term-detail {
     @apply text-xs text-grey-400 mt-1 leading-relaxed;
   }
 
   .admin-spx-term-meta {
-    @apply text-[10px] font-mono text-grey-600 mt-1 uppercase tracking-wide;
+    @apply text-[10px] font-mono text-grey-300 mt-1 uppercase tracking-wide;
   }
 
   .admin-spx-term-sep {
@@ -8265,7 +8265,7 @@ body {
   }
 
   .admin-spx-term-empty {
-    @apply text-center text-lg md:text-xl text-grey-500 font-mono py-16;
+    @apply text-center text-lg md:text-xl text-grey-200 font-mono py-16;
   }
 
   .admin-spx-term-cursor {
@@ -8282,7 +8282,7 @@ body {
   }
 
   .admin-spx-term-footer {
-    @apply relative z-10 flex flex-wrap items-center gap-2 px-6 md:px-8 py-4 border-t border-white/10 text-sm md:text-base font-mono text-grey-500 uppercase tracking-wider;
+    @apply relative z-10 flex flex-wrap items-center gap-2 px-6 md:px-8 py-4 border-t border-white/10 text-sm md:text-base font-mono text-grey-200 uppercase tracking-wider;
   }
 
   /* ── Admin health banner + ops UI ── */
@@ -8291,15 +8291,15 @@ body {
   }
 
   .admin-health-banner-ok {
-    @apply border-emerald-500/30 bg-emerald-500/10 text-emerald-200;
+    @apply border-[color:rgb(57_255_20/0.3)] bg-[color:rgb(57_255_20/0.1)] text-[color:var(--admin-green)];
   }
 
   .admin-health-banner-warn {
-    @apply border-amber-500/30 bg-amber-500/10 text-amber-200;
+    @apply border-[color:rgb(255_215_0/0.3)] bg-[color:rgb(255_215_0/0.1)] text-[color:var(--admin-gold)];
   }
 
   .admin-health-banner-critical {
-    @apply border-red-500/35 bg-red-500/10 text-red-200;
+    @apply border-[color:rgb(255_140_0/0.35)] bg-[color:rgb(255_140_0/0.1)] text-[color:var(--admin-orange)];
   }
 
   .admin-health-banner-label {
@@ -8315,23 +8315,23 @@ body {
   }
 
   .admin-health-banner-chip-critical {
-    @apply border-red-500/35 bg-red-500/15 text-red-100;
+    @apply border-[color:rgb(255_140_0/0.35)] bg-[color:rgb(255_140_0/0.15)] text-[color:var(--admin-orange)];
   }
 
   .admin-health-banner-chip-warn {
-    @apply border-amber-500/35 bg-amber-500/15 text-amber-100;
+    @apply border-[color:rgb(255_215_0/0.35)] bg-[color:rgb(255_215_0/0.15)] text-[color:var(--admin-gold)];
   }
 
   .admin-health-banner-chip-api {
-    @apply border-violet-500/35 bg-violet-500/15 text-violet-100;
+    @apply border-[color:rgb(187_134_252/0.35)] bg-[color:rgb(187_134_252/0.15)] text-[color:var(--admin-purple)];
   }
 
   .admin-cmd-incident-p1 {
-    @apply border-red-500/35 bg-red-950/25;
+    @apply border-[color:rgb(255_140_0/0.35)] bg-[color:rgb(255_140_0/0.15)];
   }
 
   .admin-cmd-incident-p2 {
-    @apply border-amber-500/30 bg-amber-950/20;
+    @apply border-[color:rgb(255_215_0/0.3)] bg-[color:rgb(255_215_0/0.12)];
   }
 
   .admin-cmd-incident-p3 {
@@ -8343,11 +8343,11 @@ body {
   }
 
   .admin-cmd-retry-banner-urgent {
-    @apply border-red-500/40 bg-red-950/35;
+    @apply border-[color:rgb(255_140_0/0.4)] bg-[color:rgb(255_140_0/0.2)];
   }
 
   .admin-cmd-retry-row-urgent {
-    @apply text-red-200;
+    @apply text-[color:var(--admin-orange)];
   }
 
   .admin-cmd-timeline-axis {
@@ -8356,7 +8356,7 @@ body {
   }
 
   .admin-cmd-timeline-tick {
-    @apply text-[9px] font-mono text-grey-600 text-center truncate;
+    @apply text-[9px] font-mono text-grey-300 text-center truncate;
   }
 
   .admin-cmd-ws-status {
@@ -8380,7 +8380,7 @@ body {
   }
 
   .admin-stale-banner {
-    @apply border-amber-500/35 bg-amber-500/10 text-amber-100 px-4 py-3 rounded-xl mb-4;
+    @apply border-[color:rgb(255_215_0/0.35)] bg-[color:rgb(255_215_0/0.1)] text-[color:var(--admin-gold)] px-4 py-3 rounded-xl mb-4;
   }
 
   .admin-confirm-backdrop {
@@ -8412,11 +8412,11 @@ body {
   }
 
   .admin-claude-card-bull {
-    @apply border-emerald-500/35 bg-emerald-500/10;
+    @apply border-[color:rgb(57_255_20/0.35)] bg-[color:rgb(57_255_20/0.1)];
   }
 
   .admin-claude-card-bear {
-    @apply border-red-500/35 bg-red-500/10;
+    @apply border-[color:rgb(255_140_0/0.35)] bg-[color:rgb(255_140_0/0.1)];
   }
 
   .admin-claude-card-head {
@@ -8428,15 +8428,15 @@ body {
   }
 
   .admin-claude-badge-bull {
-    @apply border-emerald-500/40 text-emerald-200 bg-emerald-500/15;
+    @apply border-[color:rgb(57_255_20/0.4)] text-[color:var(--admin-green)] bg-[color:rgb(57_255_20/0.15)];
   }
 
   .admin-claude-badge-bear {
-    @apply border-red-500/40 text-red-200 bg-red-500/15;
+    @apply border-[color:rgb(255_140_0/0.4)] text-[color:var(--admin-orange)] bg-[color:rgb(255_140_0/0.15)];
   }
 
   .admin-claude-source {
-    @apply text-xs font-mono uppercase text-grey-500;
+    @apply text-xs font-mono uppercase text-grey-200;
   }
 
   .admin-claude-verdict {
@@ -8448,7 +8448,7 @@ body {
   }
 
   .admin-cmd-incident-sla {
-    @apply border-amber-500/30;
+    @apply border-[color:rgb(255_215_0/0.3)];
   }
 
   .admin-cmd-ops-grid {
@@ -8468,11 +8468,11 @@ body {
   }
 
   .admin-cmd-rate-warn {
-    @apply border-amber-500/30;
+    @apply border-[color:rgb(255_215_0/0.3)];
   }
 
   .admin-cmd-rate-critical {
-    @apply border-red-500/40;
+    @apply border-[color:rgb(255_140_0/0.4)];
   }
 
   .admin-cmd-rate-head {
@@ -8488,11 +8488,11 @@ body {
   }
 
   .admin-cmd-rate-critical .admin-cmd-rate-fill {
-    @apply bg-red-400;
+    @apply bg-[color:var(--admin-orange)];
   }
 
   .admin-cmd-rate-warn .admin-cmd-rate-fill {
-    @apply bg-amber-400;
+    @apply bg-[color:var(--admin-gold)];
   }
 
   .admin-confirm-card,
@@ -8502,12 +8502,12 @@ body {
 
   .admin-confirm-card-bull,
   .admin-mtf-card-bull {
-    @apply border-emerald-500/25 bg-emerald-500/5;
+    @apply border-[color:rgb(57_255_20/0.25)] bg-[color:rgb(57_255_20/0.05)];
   }
 
   .admin-confirm-card-bear,
   .admin-mtf-card-bear {
-    @apply border-red-500/25 bg-red-500/5;
+    @apply border-[color:rgb(255_140_0/0.25)] bg-[color:rgb(255_140_0/0.05)];
   }
 
   .admin-confirm-card-head {
@@ -8527,11 +8527,11 @@ body {
   }
 
   .admin-confirm-check-pass .admin-confirm-check-mark {
-    @apply text-emerald-400;
+    @apply text-[color:var(--admin-green)];
   }
 
   .admin-confirm-check-fail .admin-confirm-check-mark {
-    @apply text-red-400;
+    @apply text-[color:var(--admin-orange)];
   }
 
   .admin-confirm-check-label {
@@ -8539,7 +8539,7 @@ body {
   }
 
   .admin-confirm-required {
-    @apply ml-2 text-[10px] uppercase text-amber-400;
+    @apply ml-2 text-[10px] uppercase text-[color:var(--admin-gold)];
   }
 
   .admin-confirm-check-detail {
@@ -8555,23 +8555,23 @@ body {
   }
 
   .admin-mtf-step-pass {
-    @apply border-emerald-500/30 text-emerald-300;
+    @apply border-[color:rgb(57_255_20/0.3)] text-[color:var(--admin-green)];
   }
 
   .admin-mtf-step-fail {
-    @apply border-red-500/30 text-red-300;
+    @apply border-[color:rgb(255_140_0/0.3)] text-[color:var(--admin-orange)];
   }
 
   .admin-mtf-fail {
-    @apply text-sm text-red-300 mt-2;
+    @apply text-sm text-[color:var(--admin-orange)] mt-2;
   }
 
   .admin-spx-term-incidents {
-    @apply mx-4 mb-3 p-3 rounded-lg border border-amber-500/20 bg-amber-500/5;
+    @apply mx-4 mb-3 p-3 rounded-lg border border-[color:rgb(255_215_0/0.2)] bg-[color:rgb(255_215_0/0.05)];
   }
 
   .admin-spx-term-incidents-title {
-    @apply text-xs font-mono uppercase tracking-wider text-amber-300 mb-2;
+    @apply text-xs font-mono uppercase tracking-wider text-[color:var(--admin-gold)] mb-2;
   }
 
   .admin-spx-term-incident {
@@ -8587,7 +8587,7 @@ body {
   }
 
   .admin-spx-term-incident-meta {
-    @apply text-[10px] font-mono text-grey-500 mt-1 uppercase;
+    @apply text-[10px] font-mono text-grey-200 mt-1 uppercase;
   }
 
   .admin-spx-term-incident-actions {
@@ -8605,8 +8605,8 @@ body {
 
   /* ── Admin approved palette: readability + color lock ── */
   .admin-page .text-grey-100,
-  .admin-page .text-grey-200 { color: var(--admin-text-2) !important; }
-  .admin-page .text-grey-300 { color: var(--admin-text-3) !important; }
+  .admin-page .text-grey-200 { color: var(--admin-text-muted) !important; }
+  .admin-page .text-grey-300 { color: var(--admin-text-dim) !important; }
   .admin-page .text-grey-400,
   .admin-page .text-grey-500,
   .admin-page .text-grey-600 { color: var(--admin-text-label) !important; }
@@ -8704,7 +8704,7 @@ body {
   .admin-page .admin-table td,
   .admin-page .admin-insight-list,
   .admin-page .admin-mini-grid {
-    color: var(--admin-text-3) !important;
+    color: var(--admin-text-dim) !important;
   }
 
   .admin-page .admin-sub,
