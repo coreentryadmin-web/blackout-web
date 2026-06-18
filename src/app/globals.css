@@ -2347,11 +2347,15 @@ body {
   }
 
   .largo-page-subtitle-accent {
-    color: #6b1010;
-    font-size: 14px;
+    color: #ff1a2e;
+    font-size: 16px;
     text-transform: none;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
     font-weight: 800;
+    text-shadow:
+      0 0 10px rgba(255, 26, 46, 0.9),
+      0 0 22px rgba(220, 20, 45, 0.55),
+      0 0 40px rgba(180, 10, 30, 0.25);
   }
 
   .largo-page-badge {
