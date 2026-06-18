@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { motion } from "framer-motion";
+import { clsx } from "clsx";
+import { LandingCta } from "@/components/landing/LandingCta";
 import { WHOP_CHECKOUT, WHOP_PREMIUM_CHECKOUT_OPTIONS } from "@/lib/whop-checkout";
 
 const TIERS = [
@@ -35,13 +36,20 @@ const TIERS = [
   },
 ];
 
+const cardVariants = {
+  hidden: { opacity: 0, y: 50 },
+  show: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.55, delay: i * 0.12, ease: [0.22, 1, 0.36, 1] },
+  }),
+};
+
 export function PricingSection() {
   return (
-    <section id="pricing" className="relative py-32 px-4 md:px-8 overflow-hidden">
+    <section id="pricing" className="landing-section landing-section-cut relative py-32 px-4 md:px-8 overflow-hidden">
       <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
-        <span className="absolute -right-10 top-20 font-anton text-[20vw] text-white/[0.03] leading-none">
-          VIP
-        </span>
+        <span className="absolute -right-10 top-20 font-anton text-[20vw] text-white/[0.03] leading-none">VIP</span>
       </div>
 
       <div className="max-w-5xl mx-auto relative z-10">
@@ -51,15 +59,13 @@ export function PricingSection() {
           viewport={{ once: true }}
           className="mb-16 text-center md:text-left"
         >
-          <p className="font-mono text-[10px] tracking-[0.5em] text-purple-light uppercase mb-2">
-            ◆ Pricing
-          </p>
+          <p className="font-mono text-[10px] tracking-[0.5em] text-purple-light uppercase mb-2">◆ Pricing</p>
           <h2 className="font-syne font-extrabold text-5xl md:text-7xl tracking-tight">
             FREE OR <span className="text-gradient-fire">PREMIUM</span>
           </h2>
           <p className="text-red-400 text-sm mt-4 max-w-xl font-mono leading-relaxed">
-            Sign up on BlackOut, then choose monthly, yearly, or lifetime on Whop — same
-            email unlocks everything.
+            Sign up on BlackOut, then choose monthly, yearly, or lifetime on Whop — same email unlocks
+            everything.
           </p>
         </motion.div>
 
@@ -67,71 +73,79 @@ export function PricingSection() {
           {TIERS.map((t, i) => (
             <motion.div
               key={t.name}
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
+              custom={i}
+              initial="hidden"
+              whileInView="show"
               viewport={{ once: true }}
-              transition={{ delay: i * 0.1 }}
-              className={`relative flex flex-col p-8 md:p-10 bg-black border-2 ${t.accent}
-                ${t.featured ? "shadow-glow-bull md:scale-[1.02]" : "opacity-95"}
-                hover:scale-[1.02] transition-all duration-300`}
+              variants={cardVariants}
+              className={clsx(
+                "relative flex flex-col",
+                t.featured ? "pricing-card-featured-wrap" : "pricing-card-wrap"
+              )}
             >
-              {t.featured && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-bull text-black font-mono text-[9px] tracking-[0.3em] uppercase px-4 py-1 font-bold">
-                  Full Access
-                </span>
-              )}
-              <p className={`font-mono text-[10px] tracking-[0.4em] uppercase mb-2 ${t.featured ? "text-bull" : "text-red-400"}`}>
-                {t.name}
-              </p>
-              <div className="font-anton text-6xl md:text-7xl text-white leading-none">{t.price}</div>
-              <p className="font-mono text-[10px] text-grey-300 mt-1 mb-8 uppercase tracking-widest">
-                {t.period}
-              </p>
-              <ul className="flex flex-col gap-3 mb-10 flex-1">
-                {t.features.map((f) => (
-                  <li key={f.text} className="flex gap-3 text-xs font-mono">
-                    <span className={f.active ? "text-bull" : "text-bear"}>
-                      {f.active ? "▸" : "—"}
-                    </span>
-                    <span className={f.active ? "text-white" : "text-bear/80"}>{f.text}</span>
-                  </li>
-                ))}
-              </ul>
-
-              {t.featured ? (
-                <div className="flex flex-col gap-3">
-                  {WHOP_PREMIUM_CHECKOUT_OPTIONS.length > 0 ? (
-                    WHOP_PREMIUM_CHECKOUT_OPTIONS.map((option) => (
-                      <a
-                        key={option.label}
-                        href={option.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn-primary w-full text-center !px-0 text-xs"
-                      >
-                        {option.label}
-                      </a>
-                    ))
-                  ) : WHOP_CHECKOUT.store ? (
-                    <a
-                      href={WHOP_CHECKOUT.store}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-primary w-full text-center !px-0"
-                    >
-                      Get Premium on Whop →
-                    </a>
-                  ) : (
-                    <Link href="/sign-up" className="btn-primary w-full text-center !px-0">
-                      Sign up first →
-                    </Link>
+              {t.featured && <div className="pricing-card-glow-always" aria-hidden />}
+              <div
+                className={clsx(
+                  "pricing-card-inner flex flex-col flex-1 p-8 md:p-10 border-2",
+                  t.accent,
+                  t.featured && "shadow-glow-bull md:scale-[1.02]"
+                )}
+              >
+                {t.featured && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-bull text-black font-mono text-[9px] tracking-[0.3em] uppercase px-4 py-1 font-bold">
+                    Full Access
+                  </span>
+                )}
+                <p
+                  className={clsx(
+                    "font-mono text-[10px] tracking-[0.4em] uppercase mb-2",
+                    t.featured ? "text-bull" : "text-red-400"
                   )}
-                </div>
-              ) : (
-                <Link href="/sign-up" className="btn-outline w-full text-center">
-                  Get Started
-                </Link>
-              )}
+                >
+                  {t.name}
+                </p>
+                <div className="font-anton text-6xl md:text-7xl text-white leading-none">{t.price}</div>
+                <p className="font-mono text-[10px] text-grey-300 mt-1 mb-8 uppercase tracking-widest">
+                  {t.period}
+                </p>
+                <ul className="flex flex-col gap-3 mb-10 flex-1">
+                  {t.features.map((f) => (
+                    <li key={f.text} className="flex gap-3 text-xs font-mono">
+                      <span className={f.active ? "text-bull" : "text-bear"}>{f.active ? "▸" : "—"}</span>
+                      <span className={f.active ? "text-white" : "text-bear/80"}>{f.text}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                {t.featured ? (
+                  <div className="flex flex-col gap-3">
+                    {WHOP_PREMIUM_CHECKOUT_OPTIONS.length > 0 ? (
+                      WHOP_PREMIUM_CHECKOUT_OPTIONS.map((option) => (
+                        <LandingCta
+                          key={option.label}
+                          href={option.href}
+                          external
+                          className="w-full text-center !px-0 text-xs"
+                        >
+                          {option.label}
+                        </LandingCta>
+                      ))
+                    ) : WHOP_CHECKOUT.store ? (
+                      <LandingCta href={WHOP_CHECKOUT.store} external className="w-full text-center !px-0">
+                        Get Premium on Whop →
+                      </LandingCta>
+                    ) : (
+                      <LandingCta href="/sign-up" className="w-full text-center !px-0">
+                        Sign up first →
+                      </LandingCta>
+                    )}
+                  </div>
+                ) : (
+                  <LandingCta href="/sign-up" variant="outline" className="w-full text-center">
+                    Get Started
+                  </LandingCta>
+                )}
+              </div>
             </motion.div>
           ))}
         </div>

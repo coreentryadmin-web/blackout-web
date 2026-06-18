@@ -26,6 +26,7 @@ type MarqueeStripProps = {
   items: string[];
   direction?: "left" | "right";
   variant?: "green" | "dark" | "red";
+  dimmed?: boolean;
 };
 
 const variantStyles = {
@@ -34,18 +35,27 @@ const variantStyles = {
   red: "bg-bear/10 text-bear border-y border-bear/30",
 };
 
-export function MarqueeStrip({ items, direction = "left", variant = "green" }: MarqueeStripProps) {
+export function MarqueeStrip({
+  items,
+  direction = "left",
+  variant = "green",
+  dimmed = false,
+}: MarqueeStripProps) {
   const doubled = [...items, ...items];
   return (
-    <div className={`overflow-hidden whitespace-nowrap py-2.5 ${variantStyles[variant]}`}>
+    <div
+      className={`overflow-hidden whitespace-nowrap py-4 landing-marquee-strip ${variantStyles[variant]} ${
+        dimmed ? "opacity-60" : ""
+      }`}
+    >
       <div className={`inline-flex gap-8 ${direction === "left" ? "marquee-left" : "marquee-right"}`}>
         {doubled.map((item, i) => (
           <span
             key={`${item}-${i}`}
-            className="inline-flex items-center gap-8 font-mono text-[11px] md:text-xs tracking-[0.25em] uppercase font-semibold shrink-0"
+            className="inline-flex items-center gap-8 font-mono text-xs md:text-sm tracking-[0.25em] uppercase font-semibold shrink-0"
           >
             {item}
-            <span className="opacity-40">◆</span>
+            <span className="landing-marquee-dot opacity-80">◆</span>
           </span>
         ))}
       </div>
@@ -55,9 +65,9 @@ export function MarqueeStrip({ items, direction = "left", variant = "green" }: M
 
 export function MarqueeBlock() {
   return (
-    <div className="relative z-30">
+    <div className="landing-section landing-section-cut relative z-30">
       <MarqueeStrip items={TICKER_A} direction="left" variant="green" />
-      <MarqueeStrip items={TICKER_B} direction="right" variant="dark" />
+      <MarqueeStrip items={TICKER_B} direction="right" variant="dark" dimmed />
     </div>
   );
 }

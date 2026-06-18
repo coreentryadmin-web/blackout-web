@@ -5,7 +5,7 @@ import { SITE } from "@/lib/site";
 
 export function LandingFooter() {
   return (
-    <footer className="relative border-t border-bull/20 overflow-hidden">
+    <footer className="landing-section landing-section-cut relative border-t border-bull/20 overflow-hidden">
       <MarqueeBlock />
       <div className="px-8 py-10 flex flex-col md:flex-row items-center justify-between gap-6 bg-black">
         <span className="font-anton text-3xl tracking-[0.15em] text-gradient-fire">BLACKOUT</span>

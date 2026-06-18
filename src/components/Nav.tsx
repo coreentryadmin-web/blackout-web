@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { clsx } from "clsx";
 
@@ -44,7 +45,12 @@ export function Nav() {
     : NAV_LINKS;
 
   return (
-    <nav className={clsx("nav-bar", isHome && "bg-transparent border-bull/10")}>
+    <motion.nav
+      initial={isHome ? { opacity: 0, y: -20 } : undefined}
+      animate={isHome ? { opacity: 1, y: 0 } : undefined}
+      transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+      className={clsx("nav-bar", isHome && "nav-bar-landing", isHome && "bg-transparent border-bull/10")}
+    >
       <Link href="/" className="group relative">
         <span className="font-anton text-xl md:text-2xl tracking-[0.2em] text-white group-hover:text-bull transition-colors">
           BLACKOUT
@@ -60,7 +66,12 @@ export function Nav() {
             <li key={href}>
               <Link
                 href={href}
-                className={clsx("nav-link", path.startsWith(href) && "nav-link-active")}
+                className={clsx(
+                  "nav-link",
+                  isHome && "nav-link-landing",
+                  path.startsWith(href) && "nav-link-active",
+                  isHome && path.startsWith(href) && "nav-link-active-landing"
+                )}
               >
                 {lines ? (
                   <span className="nav-link-stacked">
@@ -96,6 +107,6 @@ export function Nav() {
           />
         </SignedIn>
       </div>
-    </nav>
+    </motion.nav>
   );
 }

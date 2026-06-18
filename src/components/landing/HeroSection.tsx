@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { motion } from "framer-motion";
+import { clsx } from "clsx";
+import { LandingCta } from "@/components/landing/LandingCta";
 import { HeroBanner } from "@/components/HeroBanner";
 import { MarqueeStrip } from "./MarqueeStrip";
 
@@ -12,12 +13,26 @@ const STATS = [
   { num: "24/7", label: "Night Hawk", color: "text-grey-200" },
 ];
 
+const headlineWords = [
+  { text: "Trade.", className: "text-gradient-fire" },
+  { text: "Execute.", className: "text-white" },
+  { text: "Dominate.", className: "text-bear" },
+];
+
+const wordVariants = {
+  hidden: { opacity: 0, y: 40 },
+  show: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { type: "spring" as const, stiffness: 120, damping: 16, delay: 0.35 + i * 0.15 },
+  }),
+};
+
 export function HeroSection() {
   return (
-    <section className="relative min-h-screen flex flex-col overflow-hidden pt-20">
+    <section className="landing-section landing-section-hero relative min-h-screen flex flex-col overflow-hidden pt-20">
       <HeroBanner />
 
-      {/* Giant background type — overlaps image */}
       <div
         className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden"
         aria-hidden
@@ -26,16 +41,10 @@ export function HeroSection() {
           OUT
         </span>
       </div>
-      <div
-        className="absolute top-[18%] left-[-5%] pointer-events-none select-none"
-        aria-hidden
-      >
-        <span className="font-display text-[18vw] leading-none text-white/5 tracking-[0.3em]">
-          BLACK
-        </span>
+      <div className="absolute top-[18%] left-[-5%] pointer-events-none select-none" aria-hidden>
+        <span className="font-display text-[18vw] leading-none text-white/5 tracking-[0.3em]">BLACK</span>
       </div>
 
-      {/* Floating stat chips — overlap hero bottom */}
       <div className="absolute top-32 right-4 md:right-12 z-20 hidden lg:flex flex-col gap-3">
         {STATS.slice(0, 2).map((s, i) => (
           <motion.div
@@ -63,7 +72,6 @@ export function HeroSection() {
         </motion.div>
       </div>
 
-      {/* Main hero copy — bottom overlap */}
       <div className="relative z-10 mt-auto">
         <MarqueeStrip
           items={["INSTITUTIONAL GRADE", "REAL-TIME FLOW", "AI DESK", "0DTE SNIPER"]}
@@ -71,9 +79,9 @@ export function HeroSection() {
           variant="dark"
         />
 
-        <div className="overlap-panel scan-line">
+        <div className="overlap-panel landing-overlap-panel scan-line">
           <motion.div
-            initial={{ opacity: 0, y: 40 }}
+            initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7 }}
             className="text-center md:text-left max-w-3xl mx-auto md:mx-0"
@@ -83,27 +91,33 @@ export function HeroSection() {
             </p>
 
             <h1 className="font-syne font-extrabold text-4xl md:text-6xl lg:text-7xl leading-[0.95] tracking-tight mb-4">
-              <span className="text-gradient-fire">Trade.</span>{" "}
-              <span className="text-white">Execute.</span>{" "}
-              <span className="text-bear">Dominate.</span>
+              {headlineWords.map((w, i) => (
+                <motion.span
+                  key={w.text}
+                  custom={i}
+                  initial="hidden"
+                  animate="show"
+                  variants={wordVariants}
+                  className={clsx("inline-block mr-[0.25em]", w.className)}
+                >
+                  {w.text}
+                </motion.span>
+              ))}
             </h1>
 
             <p className="text-grey-300 text-sm md:text-base leading-relaxed max-w-xl mx-auto md:mx-0 font-light">
-              Real-time options flow, AI market intelligence, live SPX analysis, and the
-              Night Hawk swing scanner — built for traders who don&apos;t guess.
+              Real-time options flow, AI market intelligence, live SPX analysis, and the Night Hawk swing
+              scanner — built for traders who don&apos;t guess.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 mt-8 justify-center md:justify-start">
-              <Link href="/sign-up" className="btn-primary glitch-hover">
-                Start Trading →
-              </Link>
-              <Link href="#features" className="btn-ghost">
+              <LandingCta href="/sign-up">Start Trading →</LandingCta>
+              <LandingCta href="#features" variant="ghost">
                 See Platform
-              </Link>
+              </LandingCta>
             </div>
           </motion.div>
 
-          {/* Mobile stats row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-12 lg:hidden">
             {STATS.map((s) => (
               <div key={s.label} className="border border-grey-800 p-3 text-center bg-black/50">

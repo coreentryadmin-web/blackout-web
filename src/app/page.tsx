@@ -1,4 +1,5 @@
 import { Nav } from "@/components/Nav";
+import { CustomCursor } from "@/components/CustomCursor";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { MarqueeBlock } from "@/components/landing/MarqueeStrip";
 import { FeaturesGrid } from "@/components/landing/FeaturesGrid";
@@ -9,7 +10,8 @@ import { IMAGES } from "@/lib/images";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen void-bg text-white overflow-x-hidden">
+    <div className="landing-page min-h-screen void-bg text-white overflow-x-hidden">
+      <CustomCursor />
       <Nav />
       <HeroSection />
       <MarqueeBlock />
