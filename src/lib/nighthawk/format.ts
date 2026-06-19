@@ -47,7 +47,7 @@ function formatMarketBreadth(ctx: MarketWideContext): string {
     `${b.pct_advancing ?? "?"}% advancing`,
     `A/D ${b.advance_decline_ratio ?? "?"}`,
     `${b.pct_above_vwap ?? "?"}% above VWAP`,
-    `new highs ${b.new_highs} / lows ${b.new_lows}`,
+    `closed strong ${b.closed_near_high} / weak ${b.closed_near_low}`,
     `sample ${b.sample_size}`,
   ].join(" · ");
 }

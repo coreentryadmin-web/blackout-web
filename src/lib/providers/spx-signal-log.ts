@@ -1,4 +1,5 @@
 import { dbConfigured, ensureSchema, getMeta, insertSpxSignalLog, setMeta } from "@/lib/db";
+import { todayEtYmd } from "@/lib/providers/spx-session";
 import type { SpxSignalFactor } from "@/lib/spx-signals";
 
 const CURSOR_KEY = "spx_signal_log_cursor";
@@ -19,14 +20,14 @@ export type SpxSignalLogRow = {
   created_at: string;
 };
 
-function signalKey(parts: {
-  action: string;
-  direction?: string | null;
-  confidence: number;
-  score: number;
-  headline: string;
-}): string {
-  return `${parts.action}|${parts.direction ?? ""}|${parts.confidence}|${Math.round(parts.score)}|${parts.headline}`;
+/**
+ * Stable per-session signal identity. Deliberately EXCLUDES score/confidence/
+ * headline — those jitter between otherwise-identical plays and previously caused
+ * near-duplicate signals to log as "new". Session date is included so a new
+ * session re-logs even if its first signal matches yesterday's last.
+ */
+function signalKey(parts: { action: string; direction?: string | null }): string {
+  return `${todayEtYmd()}|${parts.action}|${parts.direction ?? ""}`;
 }
 
 export async function maybeLogSpxPlay(
@@ -54,9 +55,6 @@ export async function maybeLogSpxPlay(
   const key = signalKey({
     action: play.action,
     direction: play.direction,
-    confidence: play.confidence,
-    score: play.score,
-    headline: play.headline,
   });
   const prev = await getMeta(CURSOR_KEY);
   if (prev === key) return;

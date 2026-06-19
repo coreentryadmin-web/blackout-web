@@ -216,8 +216,8 @@ export function formatLargoLiveFeed(feed: LargoLiveFeed, ticker: string): string
           fm.pct_advancing != null ? `${fm.pct_advancing}% advancing` : null,
           fm.advance_decline_ratio != null ? `A/D ${fm.advance_decline_ratio}` : null,
           fm.pct_above_vwap != null ? `${fm.pct_above_vwap}% above VWAP` : null,
-          fm.new_highs != null ? `NH ${fm.new_highs}` : null,
-          fm.new_lows != null ? `NL ${fm.new_lows}` : null,
+          fm.closed_near_high != null ? `closed-strong ${fm.closed_near_high}` : null,
+          fm.closed_near_low != null ? `closed-weak ${fm.closed_near_low}` : null,
         ]
           .filter(Boolean)
           .join(" · ")

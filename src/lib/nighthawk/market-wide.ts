@@ -1,4 +1,4 @@
-import { fetchSectorPerformance, fetchIndexDailyBars, fetchIndex5MinBars, fetchIndexSnapshots, fetchVixIvRankPercentile, computeVixTermStructure, fetchDailyMarketSummary, computeMarketBreadthFromSummary, type MarketBreadthMetrics } from "@/lib/providers/polygon";
+import { fetchSectorPerformance, fetchIndexDailyBars, fetchIndex5MinBars, fetchIndexSnapshots, fetchVixIvRankPercentile, computeVixTermStructure, fetchDailyMarketSummary, fetchPriorDayCloses, computeMarketBreadthFromSummary, type MarketBreadthMetrics } from "@/lib/providers/polygon";
 import { fetchPolygonMarketNews } from "@/lib/providers/polygon-largo";
 import { macroEventsOnDate } from "@/lib/providers/macro-events";
 import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
@@ -239,8 +239,11 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
 
   const tomorrowEarnings = await fetchEarningsOnDate(tomorrow).catch(() => []);
 
+  const priorCloses = dailyMarket?.results?.length
+    ? await fetchPriorDayCloses(today).catch(() => ({}))
+    : {};
   const marketBreadth = dailyMarket?.results?.length
-    ? computeMarketBreadthFromSummary(dailyMarket.results)
+    ? computeMarketBreadthFromSummary(dailyMarket.results, priorCloses)
     : null;
 
   const spxBars = mapBars(spxRaw as Array<{ o?: number; h?: number; l?: number; c?: number; t?: number }>);

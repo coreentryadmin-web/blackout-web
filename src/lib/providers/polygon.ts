@@ -140,8 +140,10 @@ export type MarketBreadthMetrics = {
   advance_decline_ratio: number | null;
   pct_above_vwap: number | null;
   pct_advancing: number | null;
-  new_highs: number;
-  new_lows: number;
+  /** Count of stocks that CLOSED within 0.2% of their intraday high/low.
+   *  NOTE: this is "closed strong/weak", NOT 52-week new highs/lows. */
+  closed_near_high: number;
+  closed_near_low: number;
   volume_leaders: Array<{ ticker: string; volume: number; change_pct: number }>;
   sample_size: number;
 };
@@ -154,12 +156,46 @@ export async function fetchDailyMarketSummary(date: string) {
   );
 }
 
-export function computeMarketBreadthFromSummary(results: DailyMarketBar[]): MarketBreadthMetrics {
+/**
+ * Ticker→close map for the most recent trading day strictly before `beforeYmd`.
+ * Walks back up to `maxLookback` calendar days to skip weekends/holidays (empty
+ * grouped results). Returns {} on failure so breadth degrades gracefully.
+ */
+export async function fetchPriorDayCloses(
+  beforeYmd: string,
+  maxLookback = 5
+): Promise<Record<string, number>> {
+  const base = new Date(`${beforeYmd}T12:00:00`);
+  for (let i = 1; i <= maxLookback; i++) {
+    const d = new Date(base.getTime() - i * 86_400_000);
+    const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(d);
+    try {
+      const data = await fetchDailyMarketSummary(ymd);
+      const results = data.results ?? [];
+      if (!results.length) continue;
+      const map: Record<string, number> = {};
+      for (const row of results) {
+        const t = String(row.T ?? "");
+        const c = Number(row.c ?? 0);
+        if (t && c > 0) map[t] = c;
+      }
+      return map;
+    } catch {
+      /* try the next day back */
+    }
+  }
+  return {};
+}
+
+export function computeMarketBreadthFromSummary(
+  results: DailyMarketBar[],
+  priorCloseByTicker?: Record<string, number>
+): MarketBreadthMetrics {
   let advancing = 0;
   let declining = 0;
   let aboveVwap = 0;
-  let newHighs = 0;
-  let newLows = 0;
+  let closedNearHigh = 0;
+  let closedNearLow = 0;
   const byVolume: Array<{ ticker: string; volume: number; change_pct: number }> = [];
 
   for (const row of results) {
@@ -173,16 +209,20 @@ export function computeMarketBreadthFromSummary(results: DailyMarketBar[]): Mark
     const v = Number(row.v ?? 0);
     if (c <= 0 || o <= 0) continue;
 
-    if (c > o) advancing++;
-    else if (c < o) declining++;
+    // True advance/decline = close vs PRIOR close when available; fall back to
+    // close-vs-open (session direction) only if no prior-close map was supplied.
+    const prior = priorCloseByTicker?.[ticker];
+    const ref = prior != null && prior > 0 ? prior : o;
+    if (c > ref) advancing++;
+    else if (c < ref) declining++;
     if (vw > 0 && c > vw) aboveVwap++;
-    if (h > 0 && c >= h * 0.998) newHighs++;
-    if (l > 0 && c <= l * 1.002) newLows++;
+    if (h > 0 && c >= h * 0.998) closedNearHigh++;
+    if (l > 0 && c <= l * 1.002) closedNearLow++;
 
     byVolume.push({
       ticker,
       volume: v,
-      change_pct: Number((((c - o) / o) * 100).toFixed(2)),
+      change_pct: Number((((c - ref) / ref) * 100).toFixed(2)),
     });
   }
 
@@ -194,8 +234,8 @@ export function computeMarketBreadthFromSummary(results: DailyMarketBar[]): Mark
       declining > 0 ? Number((advancing / declining).toFixed(2)) : sample > 0 ? advancing : null,
     pct_above_vwap: sample > 0 ? Number(((aboveVwap / sample) * 100).toFixed(1)) : null,
     pct_advancing: sample > 0 ? Number(((advancing / sample) * 100).toFixed(1)) : null,
-    new_highs: newHighs,
-    new_lows: newLows,
+    closed_near_high: closedNearHigh,
+    closed_near_low: closedNearLow,
     volume_leaders: byVolume.slice(0, 8),
     sample_size: sample,
   };

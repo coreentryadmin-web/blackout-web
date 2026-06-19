@@ -165,8 +165,8 @@ function deskContext(desk: SpxDeskPayload): Record<string, unknown> {
           advance_decline_ratio: desk.market_breadth.advance_decline_ratio,
           pct_advancing: desk.market_breadth.pct_advancing,
           pct_above_vwap: desk.market_breadth.pct_above_vwap,
-          new_highs: desk.market_breadth.new_highs,
-          new_lows: desk.market_breadth.new_lows,
+          closed_near_high: desk.market_breadth.closed_near_high,
+          closed_near_low: desk.market_breadth.closed_near_low,
           volume_leaders: desk.market_breadth.volume_leaders?.slice(0, 5),
           sample_size: desk.market_breadth.sample_size,
         }
