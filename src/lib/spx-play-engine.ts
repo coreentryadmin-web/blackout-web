@@ -827,26 +827,32 @@ async function evaluateFlatPlay(
   }
 
   if (mutate) {
-    firePlayTelemetry("recordPlayEntry", () =>
-      recordPlayEntry({
-      open_play_id: opened.id,
-      session_date: sessionDate,
-      direction: dir,
-      entry_path: entryPath,
-      grade: confluence.grade,
-      score: confluence.score,
-      confidence: confluence.confidence,
-      entry_price: desk.price,
-      stop: confluence.levels.stop,
-      target: confluence.levels.target,
-      headline: contractHeadline,
-      factors: confluence.factors,
-      confirmations,
-      mtf,
-      claude,
-      option_ticket: optionTicket,
-      opened_at: openedAt,
-    }));
+    try {
+      await recordPlayEntry({
+        open_play_id: opened.id,
+        session_date: sessionDate,
+        direction: dir,
+        entry_path: entryPath,
+        grade: confluence.grade,
+        score: confluence.score,
+        confidence: confluence.confidence,
+        entry_price: desk.price,
+        stop: confluence.levels.stop,
+        target: confluence.levels.target,
+        headline: contractHeadline,
+        factors: confluence.factors,
+        confirmations,
+        mtf,
+        claude,
+        option_ticket: optionTicket,
+        opened_at: openedAt,
+      });
+    } catch (err) {
+      console.error(
+        "[spx-play-engine] recordPlayEntry:",
+        err instanceof Error ? err.message : err
+      );
+    }
 
     void notifyPlayDiscord({
       action: "BUY",

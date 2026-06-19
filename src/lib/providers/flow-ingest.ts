@@ -5,6 +5,7 @@ import { uwConfigured } from "@/lib/providers/config";
 import { uwSocket, isUwChannelFresh } from "@/lib/ws/uw-socket";
 
 const CURSOR_KEY = "uw_flow_cursor";
+const CURSOR_ID_KEY = "uw_flow_cursor_max_id";
 const INGEST_LOCK_MS = 5_000;
 
 let lastIngestAt = 0;
@@ -36,6 +37,7 @@ export async function runFlowIngest(): Promise<FlowIngestResult> {
   }
 
   const cursor = await getMeta(CURSOR_KEY);
+  const cursorMaxId = Number((await getMeta(CURSOR_ID_KEY)) ?? 0);
   let rows: Awaited<ReturnType<typeof fetchMarketFlowAlertRows>>;
   try {
     rows = await fetchMarketFlowAlertRows({
@@ -50,8 +52,15 @@ export async function runFlowIngest(): Promise<FlowIngestResult> {
   }
   let ingested = 0;
   let newestCursor = cursor;
+  let newestMaxId = cursorMaxId;
 
   for (const { raw, flow } of rows) {
+    const rowId = Number(raw.id ?? raw.alert_id ?? 0);
+    const created = String(raw.created_at ?? "");
+    if (!created && rowId > 0 && rowId <= cursorMaxId) {
+      continue;
+    }
+
     try {
       const { inserted } = await persistAndPublishFlowAlert(raw, flow);
       if (inserted) ingested += 1;
@@ -62,15 +71,19 @@ export async function runFlowIngest(): Promise<FlowIngestResult> {
     // Cursor must stay in UW's native `created_at` format and is echoed back as
     // `newer_than`. Never mix in `start_time` (epoch) — comparing epoch vs ISO
     // strings corrupts ordering and can drop or duplicate alerts. Rows without
-    // `created_at` simply don't advance the cursor (still ingested + deduped).
-    const created = String(raw.created_at ?? "");
+    // `created_at` advance a numeric id cursor instead (still ingested + deduped).
     if (created && (!newestCursor || created > newestCursor)) {
       newestCursor = created;
+    } else if (!created && rowId > newestMaxId) {
+      newestMaxId = rowId;
     }
   }
 
   if (newestCursor && newestCursor !== cursor) {
     await setMeta(CURSOR_KEY, newestCursor);
+  }
+  if (newestMaxId > cursorMaxId) {
+    await setMeta(CURSOR_ID_KEY, String(newestMaxId));
   }
 
   return { ok: true, ingested, polled: rows.length };

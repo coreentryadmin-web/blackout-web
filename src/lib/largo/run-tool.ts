@@ -299,8 +299,13 @@ export async function runLargoTool(name: string, input: Record<string, unknown>)
   switch (name) {
     case "get_quote":
       return toolQuote(ticker);
-    case "get_technicals":
-      return fetchPolygonMtfTechnicals(polySymbol(ticker));
+    case "get_technicals": {
+      const sym = polySymbol(ticker);
+      const mtf = await fetchPolygonMtfTechnicals(sym);
+      if (mtf) return mtf;
+      const { buildLargoTechnicals } = await import("@/lib/largo/technicals");
+      return buildLargoTechnicals(ticker);
+    }
     case "get_peer_rs":
       return buildPeerRelativeStrength(ticker);
     case "get_seasonality": {
@@ -672,7 +677,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>)
       const sym = uwTicker(ticker);
       const rows = await fetchUwScreenerAnalysts(50);
       const forTicker = rows.filter((r) => String(r.ticker ?? r.symbol ?? "").toUpperCase() === sym);
-      return { ticker: sym, source: "unusual_whales", analysts: forTicker.length ? forTicker : rows.slice(0, 10) };
+      return { ticker: sym, source: "unusual_whales", analysts: forTicker, note: forTicker.length ? undefined : "No analyst ratings for ticker" };
     }
     case "get_news":
       return toolNews(String(input.ticker ?? ""), String(input.channels ?? ""));

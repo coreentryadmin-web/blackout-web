@@ -36,7 +36,7 @@ export function NightHawkRadar() {
   }, []);
 
   return (
-    <EmbedFrame title="Swing Scanner" subtitle="2–10 DTE radar" variant="radar">
+    <EmbedFrame title="Swing Scanner" subtitle="2–10 DTE radar · demo visualization" variant="radar">
       <div className="relative h-[280px] md:h-[320px] overflow-hidden bg-[#050505]">
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="radar-scope">

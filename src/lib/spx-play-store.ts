@@ -35,6 +35,7 @@ export type PlaySessionMeta = {
   last_sell_was_loss: boolean;
   last_direction: SpxPlayDirection | null;
   last_stop_at: number | null;
+  version?: number;
 };
 
 const SESSION_META_KEY = "spx_play_session_meta";
@@ -83,6 +84,7 @@ export async function loadPlaySessionMeta(): Promise<PlaySessionMeta> {
       last_sell_was_loss: Boolean(p.last_sell_was_loss),
       last_direction: p.last_direction ?? null,
       last_stop_at: p.last_stop_at ?? null,
+      version: typeof p.version === "number" ? p.version : 0,
     };
     Object.assign(MEMORY_SESSION, meta);
     return meta;
@@ -111,13 +113,33 @@ function mergeSessionMeta(existing: PlaySessionMeta, incoming: PlaySessionMeta):
 }
 
 export async function savePlaySessionMeta(meta: PlaySessionMeta): Promise<void> {
-  const existing = await loadPlaySessionMeta();
-  const merged = mergeSessionMeta(existing, meta);
-  const json = JSON.stringify(merged);
-  if (dbConfigured()) {
-    await setMetaWithRetry(SESSION_META_KEY, json);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const existing = await loadPlaySessionMeta();
+    const existingVersion = existing.version ?? 0;
+    const merged = mergeSessionMeta(existing, meta);
+    const payload: PlaySessionMeta = { ...merged, version: existingVersion + 1 };
+    const json = JSON.stringify(payload);
+
+    if (dbConfigured()) {
+      const raw = await getMeta(SESSION_META_KEY);
+      if (raw) {
+        try {
+          const current = JSON.parse(raw) as PlaySessionMeta;
+          const currentVersion = current.version ?? 0;
+          if (currentVersion > existingVersion && attempt < 2) {
+            continue;
+          }
+        } catch {
+          /* proceed with write */
+        }
+      }
+      await setMetaWithRetry(SESSION_META_KEY, json);
+    }
+
+    const { version: _v, ...memoryMeta } = payload;
+    Object.assign(MEMORY_SESSION, memoryMeta);
+    return;
   }
-  Object.assign(MEMORY_SESSION, merged);
 }
 
 export async function loadOpenPlay(): Promise<OpenPlayRow | null> {

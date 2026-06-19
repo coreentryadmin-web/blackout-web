@@ -27,6 +27,7 @@ const NON_TICKER_CAPS = new Set([
   "DTE", "ETF", "USD", "EUR", "CEO", "CFO", "IPO", "WSB", "YOLO", "FOMO", "EOD", "RTH",
   "AH", "PM", "AM", "OK", "USA", "EU", "UK", "NYSE", "SEC", "AI", "ML", "PE", "EPS",
   "ER", "PT", "TP", "SL", "HOD", "LOD", "VWAP", "EMA", "RSI", "MACD", "GEX", "OI",
+  "IT", "OR", "ALL", "FOR", "ARE", "BUT", "NOT", "YOU", "CAN", "HOW", "WHY", "WHO",
 ]);
 export const KNOWN_TICKERS = new Set([
   "SPX", "SPY", "QQQ", "IWM", "VIX", "NDX", "ES", "NQ", "DIA", "VOO", "IVV", "RSP",
@@ -48,16 +49,17 @@ function recentUserText(history: AnthropicMessage[], limit = 6): string {
 }
 
 function extractTicker(question: string, historyText: string): string | null {
+  const qMatch = question.match(/\$?\b([A-Z]{2,5})\b/g) ?? [];
+  for (let i = qMatch.length - 1; i >= 0; i--) {
+    const cand = qMatch[i].replace(/^\$/, "");
+    if (KNOWN_TICKERS.has(cand) || !NON_TICKER_CAPS.has(cand)) return cand;
+  }
   const combined = `${historyText} ${question}`;
   const matches = combined.toUpperCase().match(TICKER_RE) ?? [];
-  for (const raw of matches) {
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const raw = matches[i];
     if (KNOWN_TICKERS.has(raw)) return raw;
   }
-  // Real tickers are typed in uppercase — match the ORIGINAL text (not uppercased),
-  // so "what is the cpi print" doesn't pin "WHAT". Strip a leading $ cashtag.
-  const qMatch = question.match(/\$?\b([A-Z]{2,5})\b/);
-  const cand = qMatch?.[1];
-  if (cand && !NON_TICKER_CAPS.has(cand)) return cand;
   return null;
 }
 

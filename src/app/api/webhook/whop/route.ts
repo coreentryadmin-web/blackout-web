@@ -10,6 +10,11 @@ function getWhopWebhookClient() {
 }
 
 export async function POST(req: NextRequest) {
+  if (!process.env.WHOP_WEBHOOK_SECRET?.trim()) {
+    console.error("[whop webhook] WHOP_WEBHOOK_SECRET unset — rejecting (fail closed)");
+    return NextResponse.json({ error: "Webhook not configured" }, { status: 503 });
+  }
+
   const whop = getWhopWebhookClient();
   const body = await req.text();
   const headers = Object.fromEntries(req.headers);

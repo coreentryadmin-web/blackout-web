@@ -10,9 +10,8 @@ async function main() {
     const result = await buildEveningEdition({ force });
     console.log("[nighthawk-worker] result:", JSON.stringify(result, null, 2));
     await logCronRun("nighthawk-playbook", started, {
-      ok: result.ok,
       ...result,
-      error: result.error,
+      ok: result.ok,
     });
     process.exit(result.ok ? 0 : 1);
   } catch (e) {

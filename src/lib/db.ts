@@ -172,6 +172,10 @@ async function runMigrations(): Promise<void> {
     ON spx_signal_log(created_at DESC);
   `);
   await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_spx_signal_log_signal_key
+    ON spx_signal_log(signal_key);
+  `);
+  await p.query(`
     CREATE TABLE IF NOT EXISTS spx_open_play (
       id BIGSERIAL PRIMARY KEY,
       session_date DATE NOT NULL,
@@ -241,6 +245,10 @@ async function runMigrations(): Promise<void> {
     ON spx_play_outcomes(open_play_id);
   `);
   await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_spx_play_outcomes_one_open
+    ON spx_play_outcomes(open_play_id) WHERE outcome = 'open';
+  `);
+  await p.query(`
     CREATE INDEX IF NOT EXISTS idx_spx_play_outcomes_closed
     ON spx_play_outcomes(closed_at DESC) WHERE outcome <> 'open';
   `);
@@ -277,7 +285,7 @@ async function runMigrations(): Promise<void> {
     );
   `);
   await p.query(`
-    CREATE INDEX IF NOT EXISTS idx_lotto_plays_session
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_lotto_plays_session_pick
     ON lotto_plays(session_date, pick_index);
   `);
   await p.query(`
@@ -742,6 +750,7 @@ export async function insertSpxSignalLog(row: {
       entry, stop, target, headline, factors
     )
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+    ON CONFLICT (signal_key) DO NOTHING
     `,
     [
       row.signal_key,
@@ -1032,6 +1041,7 @@ export async function insertPlayOutcomeEntry(row: {
       option_ticket, opened_at, outcome
     )
     VALUES ($1,$2::date,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16::jsonb,$17,'open')
+    ON CONFLICT (open_play_id) WHERE outcome = 'open' DO NOTHING
     RETURNING id
     `,
     [
@@ -1315,6 +1325,7 @@ export async function insertLottoPlay(row: {
       confidence, headline, thesis, picked_at
     )
     VALUES ($1::date,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,$17)
+    ON CONFLICT (session_date, pick_index) DO NOTHING
     RETURNING id
     `,
     [

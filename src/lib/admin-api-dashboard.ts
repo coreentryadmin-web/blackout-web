@@ -34,7 +34,7 @@ export type EndpointDashboardRow = CatalogEndpoint & {
 export type ProviderDashboardRow = Omit<ApiProviderCatalogEntry, "endpoints"> & {
   configured: boolean;
   probe: {
-    ok: boolean;
+    ok: boolean | null;
     latency_ms: number | null;
     error: string | null;
     at: string | null;
@@ -278,11 +278,12 @@ export async function fetchApiDashboard(options?: {
   const providers: ProviderDashboardRow[] = API_PROVIDER_CATALOG.map((catalog) => {
     const configured = isConfigured(catalog.id);
     const tel = telemetry.by_provider[catalog.id];
-    const probe = probeResults.get(catalog.id) ?? {
-      ok: false,
-      latency_ms: null,
+    const probe = probeResults.get(catalog.id);
+    const probeFallback = probe ?? {
+      ok: options?.probe ? false : tel && tel.calls > 0 ? tel.errors === 0 : null,
+      latency_ms: null as number | null,
       error: options?.probe ? "Probe skipped" : null,
-      at: null,
+      at: null as string | null,
     };
 
     const endpointStats = tel?.endpoints ?? [];
@@ -302,10 +303,10 @@ export async function fetchApiDashboard(options?: {
       endpoints,
       configured,
       probe: {
-        ok: probe.ok && configured,
-        latency_ms: probe.latency_ms,
-        error: configured ? probe.error : "Not configured",
-        at: probe.at,
+        ok: probeFallback.ok === null ? null : probeFallback.ok && configured,
+        latency_ms: probeFallback.latency_ms,
+        error: configured ? probeFallback.error : "Not configured",
+        at: probeFallback.at,
       },
       telemetry: {
         calls: tel?.calls ?? 0,
@@ -316,7 +317,7 @@ export async function fetchApiDashboard(options?: {
   });
 
   const configuredCount = providers.filter((p) => p.configured).length;
-  const healthyCount = providers.filter((p) => p.configured && p.probe.ok).length;
+  const healthyCount = providers.filter((p) => p.configured && p.probe.ok === true).length;
 
   const [dbPool, playEngine] = await Promise.all([getDatabasePoolStats(), getPlayEngineHealth()]);
   const rateHeadroom = buildRateQuotaHeadroom(getCallsByProvider1m());

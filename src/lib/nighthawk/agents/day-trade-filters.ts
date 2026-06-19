@@ -41,10 +41,19 @@ export function isShortDirection(direction: string): boolean {
   return d.includes("SHORT") || d === "BEAR" || d === "BEARISH";
 }
 
+export function isAmbiguousDirection(direction: string): boolean {
+  const d = direction.trim().toUpperCase();
+  if (!d || d === "—" || d === "NEUTRAL" || d === "UNKNOWN") return true;
+  const long = isLongDirection(direction);
+  const short = isShortDirection(direction);
+  return !long && !short;
+}
+
 export function playAlignsWithSpxBias(direction: string, bias: SpxMacroBias): boolean {
+  if (isAmbiguousDirection(direction)) return false;
   if (bias === "neutral") return true;
-  if (bias === "bull") return isLongDirection(direction) || !isShortDirection(direction);
-  return isShortDirection(direction) || !isLongDirection(direction);
+  if (bias === "bull") return isLongDirection(direction);
+  return isShortDirection(direction);
 }
 
 export function filterSignalsBySpxAlignment(
@@ -77,13 +86,14 @@ export function optionsPlayWithinMaxDte(optionsPlay: string, maxDte: number): bo
 
   const iso = text.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
   if (iso) {
-    const expiry = new Date(`${iso[1]}T16:00:00`);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dte = Math.round((expiry.getTime() - today.getTime()) / 86_400_000);
+    const expiry = new Date(`${iso[1]}T16:00:00-04:00`);
+    const todayEt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+    const todayMs = new Date(`${todayEt}T12:00:00-04:00`).getTime();
+    const dte = Math.round((expiry.getTime() - todayMs) / 86_400_000);
     return dte <= maxDte;
   }
-  return true;
+  // No parseable expiry — reject when enforcing tight DTE (0–1 DTE day trade).
+  return maxDte > 1;
 }
 
 export function filterPlaysByMaxDte(plays: PlaybookPlay[], maxDte: number): PlaybookPlay[] {

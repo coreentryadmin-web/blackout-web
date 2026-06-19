@@ -17,11 +17,11 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
-  const dbDenied = requireDatabaseInProduction();
-  if (dbDenied) return dbDenied;
-
   const authResult = await authorizeCronOrTierApi(req, "premium");
   if (authResult instanceof Response) return authResult;
+
+  const dbDenied = requireDatabaseInProduction();
+  if (dbDenied) return dbDenied;
 
   let body: PlayExplainRequest;
   try {

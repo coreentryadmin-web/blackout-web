@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "@clerk/nextjs";
 
 export function SyncMembershipButton() {
   const router = useRouter();
+  const { session } = useSession();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -22,6 +24,7 @@ export function SyncMembershipButton() {
       }
 
       setMessage(`Access updated: ${String(data.tier).toUpperCase()}`);
+      await session?.reload();
       router.refresh();
     } catch {
       setMessage("Sync failed. Check your connection and try again.");

@@ -65,11 +65,11 @@ async function fetchLegacyPlays(): Promise<NightHawkEdition | null> {
 }
 
 export async function GET(req: NextRequest) {
-  const dbDenied = requireDatabaseInProduction();
-  if (dbDenied) return dbDenied;
-
   const authResult = await authorizeCronOrTierApi(req, "premium");
   if (authResult instanceof Response) return authResult;
+
+  const dbDenied = requireDatabaseInProduction();
+  if (dbDenied) return dbDenied;
 
   const editionFor = req.nextUrl.searchParams.get("date") ?? nextTradingDayEt(todayEt());
 

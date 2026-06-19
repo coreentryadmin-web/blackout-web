@@ -25,6 +25,23 @@ import {
 
 export type RegistryProbeStatus = "ok" | "fail" | "blocked" | "rate_limited" | "unknown";
 
+/** Probe row shape — explicit type avoids `never` collapse on large `as const` tuples under strict TS. */
+type DocProbeRow = {
+  provider: string;
+  docSection: string;
+  name: string;
+  pathTemplate: string;
+  resolvedPath?: string;
+  usedInCode: boolean;
+  probe: {
+    status?: number | null;
+    ok: boolean;
+    blocked?: boolean;
+    ms?: number | null;
+    note?: string | null;
+  };
+};
+
 export type RegistryEndpointRow = {
   id: string;
   provider: string;
@@ -106,8 +123,10 @@ function pathsMatch(a: string, b: string): boolean {
 
 function probeToStatus(probe: {
   ok: boolean;
-  blocked: boolean;
-  status: number;
+  blocked?: boolean;
+  status?: number | null;
+  ms?: number | null;
+  note?: string | null;
 } | null): RegistryProbeStatus {
   if (!probe) return "unknown";
   if (probe.ok) return "ok";
@@ -252,7 +271,7 @@ export function buildEndpointRegistry(windowMs = 5 * 60_000): EndpointRegistryPa
   const rows: RegistryEndpointRow[] = [];
   const seenPaths = new Set<string>();
 
-  for (const doc of DOCS_PROBE_REPORT.results) {
+  for (const doc of DOCS_PROBE_REPORT.results as readonly DocProbeRow[]) {
     const { id: providerId, label: providerLabel, telemetryId } = mapDocProvider(doc.provider);
     const configured = isProviderConfigured(providerId);
     const catalog = findCatalogMeta(doc.pathTemplate, providerId);

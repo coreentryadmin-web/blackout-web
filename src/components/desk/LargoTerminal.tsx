@@ -100,7 +100,9 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
       if (raw.includes("401")) content = "Sign in with Premium to access Largo neural link.";
       else if (raw.includes("403")) content = "Largo requires a Premium subscription.";
       else if (raw.includes("503")) content = "Largo offline — ANTHROPIC_API_KEY not set on server.";
-      setMessages((m) => [...m, { id: `e-${++msgId.current}`, role: "assistant", content }]);
+      setMessages((m) =>
+        m.map((msg) => (msg.id === assistantId ? { ...msg, content } : msg))
+      );
     } finally {
       setLoading(false);
       setStreaming(false);

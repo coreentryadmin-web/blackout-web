@@ -2,7 +2,7 @@
 
 import { TradingViewWidget } from "@/components/embeds/TradingViewWidget";
 import { LiveMarketPulse } from "@/components/embeds/LiveMarketPulse";
-import { LargoTerminal } from "@/components/LargoTerminal";
+import { LargoTerminal } from "@/components/desk/LargoTerminal";
 
 export function LargoWorkspace() {
   return (

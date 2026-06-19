@@ -134,8 +134,8 @@ export function AgentPowerModal({ mode, onClose }: AgentPowerModalProps) {
                 <p className="nighthawk-result-message">{result.message}</p>
                 {result.plays.length > 0 ? (
                   <ul className="nighthawk-result-plays">
-                    {result.plays.map((play) => (
-                      <li key={play.ticker} className="nighthawk-result-play">
+                    {result.plays.map((play, idx) => (
+                      <li key={`${play.ticker}-${play.contract ?? idx}`} className="nighthawk-result-play">
                         <span className="nighthawk-result-ticker">{play.ticker}</span>
                         <span>{play.thesis}</span>
                       </li>

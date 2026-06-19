@@ -26,6 +26,8 @@ export type NormalizedHuntFilters = {
   dte_max: number | null;
   /** Leap mode: require news/macro/catalyst signal on dossier. */
   require_catalyst: boolean;
+  /** Swing mode: cap max entry premium from flow. */
+  max_entry_premium: number | null;
   /** Day mode: require SPX desk alignment. */
   spx_context: boolean;
 };
@@ -88,6 +90,10 @@ export function normalizeHuntFilters(
     filters.require_catalyst !== false &&
     String(filters.require_catalyst) !== "false";
 
+  const maxPremiumRaw = Number(filters.max_entry_premium);
+  const max_entry_premium =
+    mode === "swing" && Number.isFinite(maxPremiumRaw) && maxPremiumRaw > 0 ? maxPremiumRaw : null;
+
   const spx_context =
     mode === "day" ? filters.spx_context !== false && String(filters.spx_context) !== "false" : false;
 
@@ -106,6 +112,7 @@ export function normalizeHuntFilters(
     dte_min,
     dte_max,
     require_catalyst,
+    max_entry_premium,
     spx_context,
   };
 }

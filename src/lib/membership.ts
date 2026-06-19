@@ -69,15 +69,18 @@ export async function syncWhopMembershipForEmail(email: string): Promise<{
   updatedUserIds: string[];
 }> {
   const whop = getWhopClient();
-  const companyId = process.env.WHOP_COMPANY_ID;
+  const companyId = process.env.WHOP_COMPANY_ID?.trim();
+  if (!companyId) {
+    throw new Error("WHOP_COMPANY_ID is required for membership sync");
+  }
   const normalized = email.trim().toLowerCase();
   const premiumProductIds = getPremiumProductIds();
 
-  const userIds = companyId ? await findWhopUserIdsByEmail(normalized, companyId) : [];
+  const userIds = await findWhopUserIdsByEmail(normalized, companyId);
 
   const memberships: MembershipListResponse[] = [];
   const membershipParams = {
-    ...(companyId ? { company_id: companyId } : {}),
+    company_id: companyId,
     ...(premiumProductIds.length ? { product_ids: premiumProductIds } : {}),
     ...(userIds.length ? { user_ids: userIds } : {}),
     statuses: PREMIUM_MEMBERSHIP_STATUSES,

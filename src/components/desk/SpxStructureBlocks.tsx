@@ -230,7 +230,7 @@ function LevelRow({
   kind,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   dist?: number | null;
   live?: boolean;
   kind?: string;
@@ -245,7 +245,7 @@ function LevelRow({
         animate={{ opacity: 1 }}
         className={clsx("spx-structure-value", TONE_CLASS[tone])}
       >
-        {live ? fmtPrice(value) : "—"}
+        {live && value != null ? fmtPrice(value) : "—"}
       </motion.span>
       {dist != null && live && (
         <span className={clsx("spx-structure-dist", dist >= 0 ? "num-bull" : "num-bear")}>

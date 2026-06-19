@@ -2,10 +2,8 @@ import type { SpxConfluence } from "@/lib/spx-signals";
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import type { PlayConfirmationResult } from "@/lib/spx-play-confirmations";
 import { buildPlayIdeaIntel } from "@/lib/spx-play-intel";
-import {
-  getActiveTradingHalts,
-  hasActiveTradingHalt,
-} from "@/lib/ws/uw-socket";
+import { shouldBlockForTradingHalt } from "@/lib/ws/uw-socket";
+import { todayEtYmd } from "@/lib/providers/spx-session";
 import {
   gradeRank,
   playBuyCooldownAplusBypass,
@@ -33,9 +31,22 @@ export type PlayGateResult = {
   play_idea: string | null;
 };
 
+function parseMacroEventMinutes(timeRaw: string, todayYmd: string): number | null {
+  const time = timeRaw.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(time)) {
+    if (time !== todayYmd) return null;
+    return 8 * 60 + 30;
+  }
+  const match = time.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
 function macroHardBlock(desk: SpxDeskPayload): string | null {
   const events = desk.macro_events ?? [];
+  const todayYmd = todayEtYmd();
   const mins = etMinutes(new Date());
+
   for (const ev of events) {
     const title = String(ev.event ?? ev.country ?? "").toUpperCase();
     const isMacro =
@@ -43,17 +54,28 @@ function macroHardBlock(desk: SpxDeskPayload): string | null {
       title.includes("FOMC") ||
       title.includes("FED") ||
       title.includes("NFP") ||
-      title.includes("PAYROLL");
+      title.includes("PAYROLL") ||
+      title.includes("PPI") ||
+      title.includes("GDP");
     if (!isMacro) continue;
 
-    if (mins >= 8 * 60 + 25 && mins <= 10 * 60 + 30) {
-      return `Macro hard block: ${title.slice(0, 40)} (morning window)`;
-    }
+    const eventMins = parseMacroEventMinutes(String(ev.time ?? ""), todayYmd);
+    if (eventMins == null) continue;
 
     const isAfternoonFed =
       title.includes("FOMC") || title.includes("FED") || title.includes("RATE DECISION");
-    if (isAfternoonFed && mins >= 13 * 60 + 45 && mins <= 14 * 60 + 15) {
-      return `Macro hard block: ${title.slice(0, 40)} (2:00 PM ET Fed window)`;
+
+    if (isAfternoonFed) {
+      const fedMins = eventMins >= 12 * 60 ? eventMins : 14 * 60;
+      if (mins >= fedMins - 15 && mins <= fedMins + 15) {
+        return `Macro hard block: ${title.slice(0, 40)} (Fed window)`;
+      }
+      continue;
+    }
+
+    if (mins >= eventMins - 5 && mins <= eventMins + 60) {
+      const label = String(ev.time ?? "08:30").slice(0, 5);
+      return `Macro hard block: ${title.slice(0, 40)} (${label} ET window)`;
     }
   }
   return null;
@@ -85,10 +107,11 @@ export function evaluatePlayGates(
     blocks.push("Session closed — no new entries");
   }
 
-  if (hasActiveTradingHalt()) {
-    const halts = getActiveTradingHalts();
-    const labels = halts.map((h) => h.symbol).join(", ");
-    blocks.push(`Trading halt active — ${labels} halted, no entries`);
+  const halt = shouldBlockForTradingHalt(undefined, {
+    failClosedOnStale: desk.market_open === true,
+  });
+  if (halt.block && halt.reason) {
+    blocks.push(halt.reason);
   }
 
   if (!desk.gex_walls?.length) {

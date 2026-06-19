@@ -3,10 +3,10 @@ import { engineConfigured, fetchEngine } from "@/lib/engine";
 
 export async function GET() {
   if (!engineConfigured()) {
-    return NextResponse.json({
+      return NextResponse.json({
       ok: false,
       engine: "missing",
-      message: "Set NEXT_PUBLIC_API_BASE on Railway",
+      message: "Engine API not configured",
     });
   }
 

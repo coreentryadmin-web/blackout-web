@@ -302,10 +302,12 @@ export function validatePlayAgainstChain(
 ): boolean {
   const parsed = parseOptionsContract(optionsPlay);
   if (!parsed) return false;
+  if (!parsed.expiryYmd) return false;
 
   const match = rows.find((row) => {
     if (Math.abs(row.strike - parsed.strike) > 0.05) return false;
-    if (parsed.expiryYmd && row.expiry !== parsed.expiryYmd) return false;
+    if (!parsed.expiryYmd) return false;
+    if (row.expiry !== parsed.expiryYmd) return false;
     if (parsed.side === "call") return row.call_oi >= minOi;
     if (parsed.side === "put") return row.put_oi >= minOi;
     return row.call_oi >= minOi || row.put_oi >= minOi;

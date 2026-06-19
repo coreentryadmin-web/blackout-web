@@ -37,6 +37,12 @@ function toHuntPlay(play: PlaybookPlay): HuntPlay {
   };
 }
 
+function flowPremium(flow: Record<string, unknown>): number | null {
+  const raw = flow.premium ?? flow.total_premium ?? flow.premium_total;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 function flowDteDays(flow: Record<string, unknown>): number | null {
   const exp = String(flow.expiry ?? flow.expiration ?? "");
   if (!exp) return null;
@@ -78,6 +84,10 @@ function dossierPassesPrefilters(dossier: TickerDossier, filters: ReturnType<typ
   }
   if (filters.require_catalyst && !dossierHasCatalyst(dossier)) {
     return false;
+  }
+  if (filters.max_entry_premium != null) {
+    const premiums = dossier.flows.map(flowPremium).filter((p): p is number => p != null);
+    if (premiums.length && Math.min(...premiums) > filters.max_entry_premium) return false;
   }
   return true;
 }

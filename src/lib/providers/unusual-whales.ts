@@ -248,7 +248,9 @@ type MarketFlowRow = { raw: Record<string, unknown>; flow: MarketFlowAlert };
 
 const MARKET_FLOW_CACHE_KEY = "uw:market_flow_alerts";
 
-let marketFlowCache: { expiresAt: number; rows: MarketFlowRow[] } | null = null;
+let marketFlowCache: { expiresAt: number; cachedAt: number; rows: MarketFlowRow[] } | null = null;
+
+const MARKET_FLOW_MAX_STALE_MS = 30 * 60 * 1000;
 
 function marketFlowCacheMs(): number {
   const sec = Number(process.env.UW_FLOW_ALERTS_CACHE_SEC ?? 15);
@@ -319,7 +321,7 @@ export async function fetchMarketFlowAlertRows(params?: {
       const { sharedCacheGet } = await import("@/lib/shared-cache");
       const redisRows = await sharedCacheGet<MarketFlowRow[]>(MARKET_FLOW_CACHE_KEY);
       if (redisRows?.length) {
-        marketFlowCache = { expiresAt: now + marketFlowCacheMs(), rows: redisRows };
+        marketFlowCache = { expiresAt: now + marketFlowCacheMs(), cachedAt: now, rows: redisRows };
         return filterMarketFlowRows(redisRows, params);
       }
     } catch {
@@ -371,7 +373,7 @@ export async function fetchMarketFlowAlertRows(params?: {
     }
 
     if (!params?.newer_than && !params?.older_than) {
-      marketFlowCache = { expiresAt: now + marketFlowCacheMs(), rows: merged };
+      marketFlowCache = { expiresAt: now + marketFlowCacheMs(), cachedAt: now, rows: merged };
       void import("@/lib/shared-cache").then(({ sharedCacheSet }) =>
         sharedCacheSet(MARKET_FLOW_CACHE_KEY, merged, Math.ceil(marketFlowCacheMs() / 1000))
       );
@@ -379,11 +381,15 @@ export async function fetchMarketFlowAlertRows(params?: {
     return filterMarketFlowRows(merged, params);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (marketFlowCache) {
+    if (marketFlowCache && now - marketFlowCache.cachedAt <= MARKET_FLOW_MAX_STALE_MS) {
       console.warn("[uw] flow-alerts rate limited — serving cache:", message);
       return filterMarketFlowRows(marketFlowCache.rows, params);
     }
-    console.warn("[uw] flow-alerts failed:", message);
+    if (marketFlowCache) {
+      console.warn("[uw] flow-alerts cache too stale — not serving:", message);
+    } else {
+      console.warn("[uw] flow-alerts failed:", message);
+    }
     return [];
   }
 }

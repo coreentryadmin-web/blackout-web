@@ -80,7 +80,7 @@ function filterRthBars(bars: AggBar[]): AggBar[] {
     const hour = Number(parts.find((p) => p.type === "hour")?.value ?? 0);
     const minute = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
     const mins = hour * 60 + minute;
-    return mins >= 9 * 60 + 30 && mins <= 16 * 60;
+    return mins >= 9 * 60 + 30 && mins < 16 * 60;
   });
 }
 

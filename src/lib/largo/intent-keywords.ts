@@ -11,7 +11,7 @@ export const FLOW_RE =
 export const FLOW_TOOLS_RE = /\b(flow|tape|sweep|whale|dark pool|premium|unusual)\b/;
 
 export const PLAY_STATE_RE =
-  /\b(buy|sell|hold|trim|play|setup|trade|lotto|signal|outlook|analysis)\b/;
+  /\b(spx|s&p|0dte|sniper|lotto)\b.*\b(buy|sell|hold|trim|play|setup|signal)\b|\b(play state|open play|desk play)\b/i;
 
 export const NEWS_RE = /\b(news|headline|catalyst|earnings|cpi|fomc|macro|calendar|gdp|unemployment|inflation)\b/;
 

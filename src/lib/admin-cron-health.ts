@@ -160,15 +160,17 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     const health = evaluateJob(job, lastByKey[job.key], runs24hByKey.get(job.key) ?? []);
 
     if (job.key === "spx-evaluate" && playHb.last_tick_at) {
-      const cronAge = health.age_min;
       const hbAgeMin = playHb.age_ms != null ? Math.round(playHb.age_ms / 60_000) : null;
-      if ((cronAge == null || cronAge > 20) && hbAgeMin != null && hbAgeMin <= 15) {
+      const staleThreshold = effectiveStaleMinutes(job);
+      const cronStale = health.age_min != null && health.age_min > staleThreshold;
+
+      if (cronStale && hbAgeMin != null) {
         return {
           ...health,
-          status: playHb.stale ? ("warning" as const) : ("healthy" as const),
+          status: playHb.stale ? ("stale" as const) : ("warning" as const),
           status_label: playHb.stale
-            ? `Cron quiet · engine tick ${hbAgeMin}m ago (stale)`
-            : `Engine tick ${hbAgeMin}m ago via ${playHb.last_source ?? "?"}`,
+            ? `Cron stale · engine tick ${hbAgeMin}m ago (stale)`
+            : `Cron stale · engine tick ${hbAgeMin}m ago (heartbeat only)`,
           meta: {
             ...(health.meta ?? {}),
             play_engine_heartbeat: playHb,

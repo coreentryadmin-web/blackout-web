@@ -85,19 +85,48 @@ async function readCache(key: string): Promise<ClaudePlayVerdict | null> {
   const raw = await getMeta(CACHE_KEY);
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as { key: string; at: number; verdict: ClaudePlayVerdict };
-    if (parsed.key !== key) return null;
-    if (Date.now() - parsed.at > playClaudeCacheSec() * 1000) return null;
-    return { ...parsed.verdict, source: "cache" };
+    const parsed = JSON.parse(raw) as
+      | { version?: number; slots?: Record<string, { at: number; verdict: ClaudePlayVerdict }> }
+      | { key: string; at: number; verdict: ClaudePlayVerdict };
+    const slot =
+      "slots" in parsed && parsed.slots?.[key]
+        ? parsed.slots[key]
+        : "key" in parsed && parsed.key === key
+          ? { at: parsed.at, verdict: parsed.verdict }
+          : null;
+    if (!slot || Date.now() - slot.at > playClaudeCacheSec() * 1000) return null;
+    memoryCache.set(key, slot);
+    return { ...slot.verdict, source: "cache" };
   } catch {
     return null;
   }
 }
 
 async function writeCache(key: string, verdict: ClaudePlayVerdict): Promise<void> {
-  memoryCache.set(key, { at: Date.now(), verdict });
+  const slot = { at: Date.now(), verdict };
+  memoryCache.set(key, slot);
   if (!dbConfigured()) return;
-  await setMeta(CACHE_KEY, JSON.stringify({ key, at: Date.now(), verdict }));
+
+  const raw = await getMeta(CACHE_KEY);
+  const slots: Record<string, { at: number; verdict: ClaudePlayVerdict }> = {};
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as
+        | { version?: number; slots?: Record<string, { at: number; verdict: ClaudePlayVerdict }> }
+        | { key: string; at: number; verdict: ClaudePlayVerdict };
+      if ("slots" in parsed && parsed.slots) Object.assign(slots, parsed.slots);
+      else if ("key" in parsed) slots[parsed.key] = { at: parsed.at, verdict: parsed.verdict };
+    } catch {
+      /* fresh store */
+    }
+  }
+  slots[key] = slot;
+  const keys = Object.keys(slots);
+  if (keys.length > 24) {
+    keys.sort((a, b) => slots[a].at - slots[b].at);
+    for (const staleKey of keys.slice(0, keys.length - 24)) delete slots[staleKey];
+  }
+  await setMeta(CACHE_KEY, JSON.stringify({ version: 2, slots }));
 }
 
 function mechanicalVerdict(
@@ -275,7 +304,6 @@ Respond ONLY valid JSON:
   "thesis": "2 sentences — cite MTF + S/R + flow + news"
 }`;
 
-  await incrementDailyBudget();
   const raw = await anthropicText(prompt, 500);
   if (!raw) {
     if (playClaudeGateEnabled() || forceClaude) {
@@ -292,6 +320,8 @@ Respond ONLY valid JSON:
     await writeCache(key, mech);
     return mech;
   }
+
+  await incrementDailyBudget();
 
   try {
     const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();

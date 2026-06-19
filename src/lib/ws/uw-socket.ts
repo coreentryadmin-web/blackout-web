@@ -408,6 +408,14 @@ export const tradingHaltsStore: {
   updatedAt: number;
 } = { halts: new Map(), updatedAt: 0 };
 
+const TRADING_HALT_CHANNEL_MAX_AGE_MS = 120_000;
+
+/** True when the UW trading_halts channel has not delivered data recently. */
+export function isTradingHaltChannelStale(maxAgeMs = TRADING_HALT_CHANNEL_MAX_AGE_MS): boolean {
+  if (!UW_API_KEY) return true;
+  return !isUwChannelFresh("trading_halts", maxAgeMs);
+}
+
 /** Check if any watched symbol has an active trading halt. */
 export function hasActiveTradingHalt(symbols: readonly string[] = PLAY_HALT_WATCH_SYMBOLS): boolean {
   const watch = new Set(symbols.map((s) => s.toUpperCase()));
@@ -416,6 +424,26 @@ export function hasActiveTradingHalt(symbols: readonly string[] = PLAY_HALT_WATC
     if (halt && watch.has(sym) && halt.active) return true;
   }
   return false;
+}
+
+/** Fail closed when halt feed is stale during live sessions (empty map ≠ safe). */
+export function shouldBlockForTradingHalt(
+  symbols: readonly string[] = PLAY_HALT_WATCH_SYMBOLS,
+  opts?: { failClosedOnStale?: boolean }
+): { block: boolean; reason: string | null } {
+  if (hasActiveTradingHalt(symbols)) {
+    const labels = getActiveTradingHalts(symbols)
+      .map((h) => h.symbol)
+      .join(", ");
+    return { block: true, reason: `Trading halt active — ${labels} halted, no entries` };
+  }
+  if (opts?.failClosedOnStale !== false && isTradingHaltChannelStale()) {
+    return {
+      block: true,
+      reason: "Trading halt feed stale — entries blocked until UW halts channel recovers",
+    };
+  }
+  return { block: false, reason: null };
 }
 
 /** List active halts for watched symbols. */

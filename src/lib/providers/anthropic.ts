@@ -174,6 +174,7 @@ export async function anthropicToolLoop(params: {
   model?: string;
   maxTokens?: number;
   maxRounds?: number;
+  temperature?: number;
   runTool: (name: string, input: Record<string, unknown>) => Promise<unknown>;
   onEvent?: (event: AnthropicToolLoopEvent) => void;
 }): Promise<string | null> {
@@ -183,6 +184,7 @@ export async function anthropicToolLoop(params: {
   const model = resolveModel(params.model);
   const maxTokens = params.maxTokens ?? 4096;
   const maxRounds = params.maxRounds ?? 12;
+  const loopTemperature = params.temperature ?? TEMPERATURE;
   const messages: MessageParam[] = params.messages.map((m) => ({
     role: m.role as "user" | "assistant",
     content: m.content as MessageParam["content"],
@@ -203,7 +205,7 @@ export async function anthropicToolLoop(params: {
     const createParams: MessageCreateParams = {
       model,
       max_tokens: maxTokens,
-      temperature: TEMPERATURE,
+      temperature: loopTemperature,
       system: systemParam,
       tools,
       messages,
@@ -264,5 +266,14 @@ export async function anthropicToolLoop(params: {
     if (stopReason === "end_turn") break;
   }
 
-  return extractTextFromLastAssistant(messages as AnthropicMessage[]);
+  const final = await withTelemetry("anthropic-tool-loop-final", () =>
+    client.messages.create({
+      model,
+      max_tokens: maxTokens,
+      temperature: loopTemperature,
+      system: systemParam,
+      messages,
+    })
+  );
+  return extractTextFromBlocks(final.content as Array<{ type: string; text?: string }>) || null;
 }

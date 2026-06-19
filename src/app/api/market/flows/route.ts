@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
   const min_premium = Number(sp.get("min_premium") ?? 0) || undefined;
 
   if (dbConfigured()) {
+    // Lazy side-effect: background ingest keeps Postgres fresh on read (cron also runs ingest).
     void maybeRunFlowIngest();
     try {
       const [flows, platform] = await Promise.all([

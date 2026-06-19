@@ -28,7 +28,9 @@ export function summarizeGreekExposureByExpiry(
 ): GreekExposureSummary | null {
   if (!rows.length) return null;
 
-  const today = todayYmd ?? new Date().toISOString().slice(0, 10);
+  const today =
+    todayYmd ??
+    new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
   const byExpiry = new Map<string, number>();
 
   for (const r of rows) {

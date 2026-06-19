@@ -317,7 +317,7 @@ export async function buildSpxAdminIssues(input: {
   return {
     generated_at: new Date().toISOString(),
     counts,
-    health_ok: health.ok,
+    health_ok: counts.critical === 0 && counts.warning === 0 && health.ok,
     issues,
     api_errors,
   };

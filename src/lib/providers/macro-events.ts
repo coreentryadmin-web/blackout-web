@@ -185,8 +185,8 @@ export function fetchUpcomingMacroEvents(daysAhead = 7): MacroEvent[] {
   const endMs = Date.now() + Math.max(1, daysAhead) * 86400000;
   const end = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date(endMs));
 
-  return US_MACRO_SCHEDULE_2026.filter((e) => e.date >= today && e.date <= end).map((e) => ({
-    time: e.date,
+  return ALL_MACRO_SCHEDULE.filter((e) => e.date >= today && e.date <= end).map((e) => ({
+    time: "08:30",
     event: e.event,
     country: "US",
     impact: e.impact,

@@ -9,11 +9,11 @@ import { buildPlayTechnicals } from "@/lib/spx-play-technicals";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const dbDenied = requireDatabaseInProduction();
-  if (dbDenied) return dbDenied;
-
   const authResult = await authorizeCronOrTierApi(req, "premium");
   if (authResult instanceof Response) return authResult;
+
+  const dbDenied = requireDatabaseInProduction();
+  if (dbDenied) return dbDenied;
 
   try {
     const { merged } = await loadMergedSpxDesk();

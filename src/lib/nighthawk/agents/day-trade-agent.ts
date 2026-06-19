@@ -32,9 +32,7 @@ export async function runDayTradeAgent(config: DayTradeAgentConfig): Promise<Day
   ]);
 
   let playbookPlays = scan.playbookPlays;
-  if (maxDte < 1) {
-    playbookPlays = filterPlaysByMaxDte(playbookPlays, maxDte);
-  }
+  playbookPlays = filterPlaysByMaxDte(playbookPlays, maxDte);
 
   const huntByTicker = new Map(scan.plays.map((p) => [p.ticker, p]));
   let signals: DayTradeSignal[] = playbookPlays.map((p) => {

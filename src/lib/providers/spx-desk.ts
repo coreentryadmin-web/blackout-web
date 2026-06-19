@@ -755,6 +755,9 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
 
   if (!polygonConfigured()) return empty;
 
+  const { ensureDataSockets } = await import("@/lib/ws/init-data-sockets");
+  ensureDataSockets();
+
   const today = todayEtYmd();
   const fromWeek = priorEtYmd(10);
 
@@ -763,7 +766,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     : Promise.resolve(null);
 
   const [
-    snaps,
+    snapsRaw,
     minuteBars,
     dailyBars,
     ema20,
@@ -787,6 +790,8 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     fetchBenzingaNews(15).catch(() => []),
     intelPromise,
   ]);
+
+  const snaps = mergeWsIndexSnapshots(snapsRaw);
 
   const spxSnap = snaps[SPX];
   const vixSnap = snaps[VIX];

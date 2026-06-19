@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const result = await purgeStaleLargoSessions(retentionDays);
-    await logCronRun("largo-cleanup", started, { ok: true, ...result });
+    await logCronRun("largo-cleanup", started, result);
     return NextResponse.json(result);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
