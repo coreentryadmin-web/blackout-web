@@ -1,20 +1,21 @@
 import { anthropicConfigured, anthropicText } from "@/lib/providers/anthropic";
 import type { TickerDossier } from "./dossier";
 import { buildClaudePrompt, buildMarketRecap } from "./format";
-import type { IndexDossier } from "./index-dossier";
 import type { MarketWideContext } from "./market-wide";
+import { fetchEditionChainTables } from "./option-chain-prompt";
 import {
   applyPremiumCapToPlay,
   filterPlaysWithinPremiumCap,
   type ClaudePlayRaw,
 } from "./play-constraints";
 import {
+  EDITION_CHAIN_PREFETCH,
   MAX_OPTION_COST_PER_CONTRACT,
   MAX_OPTION_PREMIUM_PER_SHARE,
   PLAYBOOK_PREMIUM_CAP_LINE,
-} from "./constants";
-import type { ScoredCandidate } from "./scorer";
+} from "./constants";import type { ScoredCandidate } from "./scorer";
 import type { PlaybookPlay } from "./types";
+import type { HuntMode } from "./types";
 
 const SYSTEM = `You are an elite options strategist. Output ONLY a valid JSON array. No markdown fences. Every number and level must come from the prompt data.
 
@@ -61,13 +62,14 @@ export function mapClaudePlayToEdition(play: ClaudePlayRaw, rank: number, dossie
   };
   return applyPremiumCapToPlay(base, play);
 }
+
 export async function generateEditionPlays(params: {
   ctx: MarketWideContext;
   dossiers: TickerDossier[];
   ranked: ScoredCandidate[];
-  indexDossiers?: IndexDossier[];
-}): Promise<{ plays: PlaybookPlay[]; recap: ReturnType<typeof buildMarketRecap>; raw: string | null }> {
-  const recap = buildMarketRecap(params.ctx);
+  huntMode?: HuntMode;
+  maxDte?: number;
+}): Promise<{ plays: PlaybookPlay[]; recap: ReturnType<typeof buildMarketRecap>; raw: string | null }> {  const recap = buildMarketRecap(params.ctx);
   const dossierMap = Object.fromEntries(params.dossiers.map((d) => [d.ticker, d]));
 
   if (!anthropicConfigured()) {
@@ -97,17 +99,22 @@ export async function generateEditionPlays(params: {
     recap,
     dossiers: params.dossiers,
     ranked: params.ranked,
-    indexDossiers: params.indexDossiers,
+    chainTables: await fetchEditionChainTables({
+      stockTickers: params.ranked.slice(0, EDITION_CHAIN_PREFETCH).map((s) => s.ticker),
+      dossiers: params.dossiers,
+    }),
+    huntMode: params.huntMode,
+    maxDte: params.maxDte,
   });
-
   const raw = await anthropicText(prompt, 4500, SYSTEM);
   if (!raw) {
     return { plays: [], recap, raw: null };
   }
 
   const parsed = parsePlaysJson(raw).slice(0, 8);
-  const mapped = parsed.map((p, i) => mapClaudePlayToEdition(p, i + 1, dossierMap));
-  const { plays, rejected } = filterPlaysWithinPremiumCap(mapped);
+  const mapped = parsed
+    .map((p, i) => mapClaudePlayToEdition(p, i + 1, dossierMap))
+    .filter((p) => p.play_type === "stock");  const { plays, rejected } = filterPlaysWithinPremiumCap(mapped);
   const capped = plays.slice(0, 5).map((p, i) => ({ ...p, rank: i + 1 }));
 
   if (rejected.length) {

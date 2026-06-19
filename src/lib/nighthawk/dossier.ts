@@ -15,9 +15,12 @@ import {
   fetchUwFlowPerExpiry,
   fetchUwInstitutionOwnership,
   fetchUwIvRank,
+  fetchUwIvTermStructure,
   fetchUwNewsHeadlines,
   fetchUwOiChange,
   fetchUwPredictionsConsensus,
+  fetchUwRealizedVol,
+  fetchUwRiskReversalSkew,
   fetchUwScreenerStocks,
   type PredictionConsensusSignal,
 } from "@/lib/providers/unusual-whales";
@@ -25,9 +28,12 @@ import { computeFlowStrikeStacks, type FlowStrikeStack } from "@/lib/largo/flow-
 import { fetchTickerFlowStreak, type FlowStreak } from "./flow-streak";
 import { fetchPositioningSummary, type PositioningSummary } from "./positioning";
 import { buildTechnicalCard, type TechnicalCard } from "./technicals";
-import type { ScoredCandidate } from "./scorer";
+import type { ScoredCandidate, NightHawkRegimeContext } from "./scorer";
 import { scoreCandidate } from "./scorer";
 import { hasActiveTradingHalt } from "@/lib/ws/uw-socket";
+import { DOSSIER_BATCH_SIZE, DOSSIER_FETCH_TIMEOUT_MS } from "./constants";
+import { dossierFetch } from "./fetch-timeout";
+import { parseLatestRealizedVol, parseLatestRiskReversalSkew } from "./vol-metrics";
 
 export type TickerDossier = {
   ticker: string;
@@ -64,6 +70,38 @@ let editionCongressCache: Record<string, unknown>[] | null = null;
 let editionPredictionsCache: Awaited<ReturnType<typeof fetchUwPredictionsConsensus>> | null = null;
 let editionScreenerCache: Record<string, unknown>[] | null = null;
 
+const RECENT_SIGNAL_DAYS = 30;
+
+function parseTradeDate(row: Record<string, unknown>): Date | null {
+  const raw =
+    row.filed_at ??
+    row.filed_date ??
+    row.transaction_date ??
+    row.transactionDate ??
+    row.disclosure_date ??
+    row.report_date ??
+    row.date ??
+    row.created_at;
+  if (raw == null || raw === "") return null;
+  const d = new Date(String(raw));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function isWithinRecentSignalWindow(row: Record<string, unknown>, days = RECENT_SIGNAL_DAYS): boolean {
+  const tradeDate = parseTradeDate(row);
+  if (!tradeDate) return false;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  return tradeDate >= cutoff;
+}
+
+function isRecentInsiderBuy(row: Record<string, unknown>): boolean {
+  if (!isWithinRecentSignalWindow(row)) return false;
+  const tx = String(row.transactionCode ?? row.transaction_code ?? "").toUpperCase();
+  const type = String(row.type ?? row.transaction_type ?? "").toUpperCase();
+  return tx === "P" || type.includes("BUY") || type.includes("PURCHASE");
+}
+
 export function resetEditionCongressCache() {
   editionCongressCache = null;
   editionPredictionsCache = null;
@@ -77,7 +115,10 @@ async function getEditionCongressTrades(ticker: string): Promise<Record<string, 
     editionCongressCache = (await fetchUwCongressTrades(undefined).catch(() => [])) as Record<string, unknown>[];
   }
   const sym = ticker.toUpperCase();
-  return editionCongressCache.filter((t) => String(t.ticker ?? t.symbol ?? "").toUpperCase() === sym).slice(0, 5);
+  return editionCongressCache
+    .filter((t) => String(t.ticker ?? t.symbol ?? "").toUpperCase() === sym)
+    .filter((t) => isWithinRecentSignalWindow(t))
+    .slice(0, 5);
 }
 
 async function getEditionPredictionsSignal(ticker: string): Promise<PredictionConsensusSignal | null> {
@@ -146,14 +187,22 @@ async function resolveTickerNews(
   return [...headlines, ...uw.map((n) => String(n.title ?? n.headline ?? ""))].filter(Boolean);
 }
 
-export async function fetchTickerDossier(ticker: string): Promise<TickerDossier> {
+export async function fetchTickerDossier(
+  ticker: string,
+  regime?: NightHawkRegimeContext | null
+): Promise<TickerDossier> {
   const sym = ticker.toUpperCase();
+  const t = DOSSIER_FETCH_TIMEOUT_MS;
+  const uw = uwConfigured();
 
   const [
     flowRows,
     darkPool,
     oiChange,
     ivRankRaw,
+    ivTermRaw,
+    realizedVolRaw,
+    skewRaw,
     flowExpiry,
     positioning,
     tech,
@@ -173,28 +222,44 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
     screenerConfirmed,
     fundamentalRatios,
   ] = await Promise.all([
-    fetchMarketFlowAlertRows({ ticker: sym, limit: 80, min_premium: 50_000 }).catch(() => []),
-    fetchUwDarkPool(sym).catch(() => null),
-    fetchUwOiChange(sym).catch(() => []),
-    resolveIvRank(sym),
-    fetchUwFlowPerExpiry(sym, 12).catch(() => []),
-    fetchPositioningSummary(sym),
-    buildTechnicalCard(sym),
-    fetchPolygonNews(sym, 8).catch(() => []),
-    fetchBenzingaNews(5, { ticker: sym }).catch(() => []),
-    fetchFinnhubCompanyNews(sym, 5).catch(() => []),
-    fetchFinnhubInsiderTransactions(sym).catch(() => []),
-    fetchFinnhubCompanyProfile(sym).catch(() => null),
-    fetchShortInterest(sym).catch(() => null),
-    fetchTickerFlowStreak(sym),
-    fetchFinnhubRecommendations(sym).catch(() => null),
-    fetchFinnhubPriceTarget(sym).catch(() => null),
-    getEditionCongressTrades(sym),
-    fetchUwCongressUnusualTrades(sym, 5).catch(() => []),
-    fetchUwInstitutionOwnership(sym, 8).catch(() => []),
-    getEditionPredictionsSignal(sym),
-    isScreenerConfirmed(sym),
-    fetchPolygonFinancialRatios(sym).catch(() => null),
+    dossierFetch(() => fetchMarketFlowAlertRows({ ticker: sym, limit: 80, min_premium: 50_000 }), [], t),
+    uw ? dossierFetch(() => fetchUwDarkPool(sym), null, t) : Promise.resolve(null),
+    uw ? dossierFetch(() => fetchUwOiChange(sym), [], t) : Promise.resolve([]),
+    dossierFetch(() => resolveIvRank(sym), null, t),
+    uw ? dossierFetch(() => fetchUwIvTermStructure(sym), [], t) : Promise.resolve([]),
+    uw ? dossierFetch(() => fetchUwRealizedVol(sym), [], t) : Promise.resolve([]),
+    uw ? dossierFetch(() => fetchUwRiskReversalSkew(sym), [], t) : Promise.resolve([]),
+    uw ? dossierFetch(() => fetchUwFlowPerExpiry(sym, 12), [], t) : Promise.resolve([]),
+    dossierFetch(() => fetchPositioningSummary(sym), {
+      net_gex: 0,
+      gex_king_strike: null,
+      negative_gamma: false,
+      gamma_regime: "unknown",
+      gamma_flip: null,
+      net_vex: null,
+      max_pain: null,
+      wall_summary: "n/a",
+    }, t),
+    dossierFetch(() => buildTechnicalCard(sym), null, t),
+    dossierFetch(() => fetchPolygonNews(sym, 8), [], t),
+    dossierFetch(() => fetchBenzingaNews(5, { ticker: sym }), [], t),
+    dossierFetch(() => fetchFinnhubCompanyNews(sym, 5), [], t),
+    dossierFetch(() => fetchFinnhubInsiderTransactions(sym), [], t),
+    dossierFetch(() => fetchFinnhubCompanyProfile(sym), null, t),
+    dossierFetch(() => fetchShortInterest(sym), null, t),
+    dossierFetch(
+      () => fetchTickerFlowStreak(sym),
+      { streak_days: 0, net_3d: 0, net_5d: 0, direction: "mixed" as const },
+      t
+    ),
+    dossierFetch(() => fetchFinnhubRecommendations(sym), null, t),
+    dossierFetch(() => fetchFinnhubPriceTarget(sym), null, t),
+    dossierFetch(() => getEditionCongressTrades(sym), [], t),
+    uw ? dossierFetch(() => fetchUwCongressUnusualTrades(sym, 5), [], t) : Promise.resolve([]),
+    uw ? dossierFetch(() => fetchUwInstitutionOwnership(sym, 8), [], t) : Promise.resolve([]),
+    dossierFetch(() => getEditionPredictionsSignal(sym), null, t),
+    dossierFetch(() => isScreenerConfirmed(sym), false, t),
+    dossierFetch(() => fetchPolygonFinancialRatios(sym), null, t),
   ]);
 
   const flows = flowRows.map((r) => r.raw);
@@ -214,12 +279,12 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
 
   const headlines = await resolveTickerNews(sym, polyNews, bzNews, fhNews);
 
-  const insiderBuys = insider.filter((t) => {
-    const tx = String((t as { transactionCode?: string }).transactionCode ?? "").toUpperCase();
-    return tx === "P" || tx.includes("BUY");
-  }).length;
+  const insiderBuys = insider.filter((t) => isRecentInsiderBuy(t as Record<string, unknown>)).length;
 
   const ivRank = ivRankRaw != null && Number.isFinite(ivRankRaw) ? Number(ivRankRaw) : null;
+  const ivTerm = ivTermRaw ?? [];
+  const realizedVol = parseLatestRealizedVol((realizedVolRaw ?? []) as Record<string, unknown>[]);
+  const riskReversalSkew = parseLatestRiskReversalSkew((skewRaw ?? []) as Record<string, unknown>[]);
   const tradingHalt = hasActiveTradingHalt([sym]);
 
   const dossier: TickerDossier = {
@@ -230,9 +295,9 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
     dark_pool: darkPool,
     oi_change: oiChange,
     iv_rank: ivRank,
-    iv_term: [],
-    realized_vol: null,
-    risk_reversal_skew: null,
+    iv_term: ivTerm,
+    realized_vol: realizedVol,
+    risk_reversal_skew: riskReversalSkew,
     flow_by_expiry: flowExpiry,
     positioning,
     congress_trades: congress,
@@ -263,10 +328,16 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
       strike_stacks: strikeStacks,
       news_headlines: [...headlines, ...polygonSentiment],
       insider_buys: insiderBuys,
+      predictions_signal: predictionsSignal,
+      congress_unusual: congressUnusual,
+      congress_trades: congress,
+      institutional_activity: institutional,
       fundamental_ratios: fundamentalRatios,
       trading_halt: tradingHalt,
+      risk_reversal_skew: riskReversalSkew,
     },
-    flowStreak
+    flowStreak,
+    regime
   );
 
   return dossier;
@@ -274,15 +345,16 @@ export async function fetchTickerDossier(ticker: string): Promise<TickerDossier>
 
 export async function fetchAllDossiers(
   tickers: string[],
-  batchSize = 4
+  batchSize = DOSSIER_BATCH_SIZE,
+  regime?: NightHawkRegimeContext | null
 ): Promise<Record<string, TickerDossier>> {
   const out: Record<string, TickerDossier> = {};
   for (let i = 0; i < tickers.length; i += batchSize) {
     const batch = tickers.slice(i, i + batchSize);
-    const results = await Promise.all(batch.map((t) => fetchTickerDossier(t)));
+    const results = await Promise.all(batch.map((ticker) => fetchTickerDossier(ticker, regime)));
     for (const d of results) out[d.ticker] = d;
     if (i + batchSize < tickers.length) {
-      await new Promise((r) => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, 2500));
     }
   }
   return out;

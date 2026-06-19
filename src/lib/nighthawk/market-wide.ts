@@ -1,4 +1,4 @@
-import { fetchSectorPerformance, fetchIndexDailyBars, fetchIndexSnapshots, fetchVixIvRankPercentile, computeVixTermStructure, fetchDailyMarketSummary, computeMarketBreadthFromSummary, type MarketBreadthMetrics } from "@/lib/providers/polygon";
+import { fetchSectorPerformance, fetchIndexDailyBars, fetchIndex5MinBars, fetchIndexSnapshots, fetchVixIvRankPercentile, computeVixTermStructure, fetchDailyMarketSummary, computeMarketBreadthFromSummary, type MarketBreadthMetrics } from "@/lib/providers/polygon";
 import { fetchPolygonMarketNews } from "@/lib/providers/polygon-largo";
 import { fetchFinnhubEarningsOnDate, fetchFinnhubEconomicCalendarRange } from "@/lib/providers/finnhub";
 import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
@@ -22,8 +22,10 @@ import {
   INDEX_TICKERS,
   MIN_HOT_CHAIN_PREMIUM,
   MIN_STOCK_FLOW_PREMIUM,
+  MARKET_FLOW_ALERT_LIMIT,
   SECTOR_WATCH,
 } from "./constants";
+import { computeSpxGapContext, type SpxGapContext } from "./spx-gap";
 import { nextTradingDayEt, priorEt, todayEt } from "./session";
 
 export type MarketWideContext = {
@@ -34,6 +36,8 @@ export type MarketWideContext = {
   hot_chains: Record<string, unknown>[];
   index_flows: Record<string, unknown>;
   spx_bars: Array<{ o: number; h: number; l: number; c: number; t?: number }>;
+  spx_intraday_5m: Array<{ o: number; h: number; l: number; c: number; t?: number }>;
+  spx_gap: SpxGapContext | null;
   vix_bars: Array<{ o: number; h: number; l: number; c: number; t?: number }>;
   market_news: Record<string, unknown>[];
   macro_events: Record<string, unknown>[];
@@ -132,12 +136,16 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     tide,
     flowRows,
     spxRaw,
+    spxIntradayRaw,
     vixRaw,
     sectorPerf,
     macroRaw,
     sectorTides,
     etfSpy,
     etfQqq,
+    etfIwm,
+    etfXlf,
+    etfXle,
     marketNews,
     vixTerm,
     vixIvRank,
@@ -149,9 +157,10 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
   ] = await Promise.all([
     uwConfigured() ? fetchUwMarketTide().catch(() => null) : Promise.resolve(null),
     uwConfigured()
-      ? fetchMarketFlowAlertRows({ limit: 200, min_premium: MIN_STOCK_FLOW_PREMIUM }).catch(() => [])
+      ? fetchMarketFlowAlertRows({ limit: MARKET_FLOW_ALERT_LIMIT, min_premium: MIN_STOCK_FLOW_PREMIUM }).catch(() => [])
       : Promise.resolve([]),
     fetchIndexDailyBars("I:SPX", from, today, "30").catch(() => []),
+    polygonConfigured() ? fetchIndex5MinBars("I:SPX", today, today).catch(() => []) : Promise.resolve([]),
     fetchIndexDailyBars("I:VIX", from, today, "30").catch(() => []),
     fetchSectorPerformance().catch(() => []),
     fetchFinnhubEconomicCalendarRange(tomorrow, tomorrow).catch(() => null),
@@ -163,6 +172,9 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     ),
     uwConfigured() ? fetchUwEtfTide("SPY").catch(() => null) : Promise.resolve(null),
     uwConfigured() ? fetchUwEtfTide("QQQ").catch(() => null) : Promise.resolve(null),
+    uwConfigured() ? fetchUwEtfTide("IWM").catch(() => null) : Promise.resolve(null),
+    uwConfigured() ? fetchUwEtfTide("XLF").catch(() => null) : Promise.resolve(null),
+    uwConfigured() ? fetchUwEtfTide("XLE").catch(() => null) : Promise.resolve(null),
     fetchMarketNewsPreferPolygon(),
     fetchVixTermPreferPolygon(),
     fetchVixIvRankPercentile().catch(() => null),
@@ -218,6 +230,12 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     ? computeMarketBreadthFromSummary(dailyMarket.results)
     : null;
 
+  const spxBars = mapBars(spxRaw as Array<{ o?: number; h?: number; l?: number; c?: number; t?: number }>);
+  const spxIntraday5m = mapBars(
+    spxIntradayRaw as Array<{ o?: number; h?: number; l?: number; c?: number; t?: number }>
+  );
+  const spxGap = computeSpxGapContext(spxBars, spxIntraday5m);
+
   return {
     today,
     tomorrow,
@@ -225,13 +243,21 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     stock_flows: stockFlows,
     hot_chains: hotChains,
     index_flows: indexFlows,
-    spx_bars: mapBars(spxRaw as Array<{ o?: number; h?: number; l?: number; c?: number; t?: number }>),
+    spx_bars: spxBars,
+    spx_intraday_5m: spxIntraday5m,
+    spx_gap: spxGap,
     vix_bars: mapBars(vixRaw as Array<{ o?: number; h?: number; l?: number; c?: number; t?: number }>),
     market_news: marketNews,
     macro_events: macroEvents,
     tomorrow_earnings: tomorrowEarnings,
     sector_tides: sectorTides,
-    etf_tides: { SPY: etfSpy as Record<string, unknown> | null, QQQ: etfQqq as Record<string, unknown> | null },
+    etf_tides: {
+      SPY: etfSpy as Record<string, unknown> | null,
+      QQQ: etfQqq as Record<string, unknown> | null,
+      IWM: etfIwm as Record<string, unknown> | null,
+      XLF: etfXlf as Record<string, unknown> | null,
+      XLE: etfXle as Record<string, unknown> | null,
+    },
     sector_performance: sectorPerf,
     top_net_impact: topNetImpact,
     vix_term: vixTerm,

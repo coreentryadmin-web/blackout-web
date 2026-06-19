@@ -95,6 +95,7 @@ export async function resolveDossierContext(
       tech_score: 0,
       pos_score: 0,
       news_score: 0,
+      smart_money_score: 0,
     };
     return formatTickerDossierText(dossier, scored);
   } catch {

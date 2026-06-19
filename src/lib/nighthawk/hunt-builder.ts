@@ -1,0 +1,209 @@
+import { getPlatformSnapshot } from "@/lib/platform";
+import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
+import { anthropicConfigured } from "@/lib/providers/anthropic";
+import { extractCandidateTickers } from "./candidates";
+import { generateEditionPlays } from "./claude-edition";
+import { DOSSIER_BATCH_SIZE, MAX_CANDIDATES, MAX_DOSSIER_STOCKS } from "./constants";
+import { fetchAllDossiers, resetEditionCongressCache, type TickerDossier } from "./dossier";
+import {
+  applyHuntScoreFilters,
+  huntModeWeights,
+  normalizeHuntFilters,
+} from "./hunt-mode";
+import { fetchMarketWideContext } from "./market-wide";
+import { rankCandidates, regimeContextFromMarket, scoreCandidate } from "./scorer";
+import type { HuntMode, HuntPlay, HuntRequest, PlaybookPlay } from "./types";
+
+export type HuntBuildResult = {
+  ok: boolean;
+  plays: HuntPlay[];
+  playbookPlays: PlaybookPlay[];
+  message: string;
+  candidates: number;
+  error?: string;
+  duration_ms: number;
+};
+
+function toHuntPlay(play: PlaybookPlay): HuntPlay {
+  return {
+    ticker: play.ticker,
+    direction: play.direction,
+    thesis: play.thesis || play.key_signal,
+    contract: play.options_play,
+    entry: play.entry_range,
+    target: play.target,
+    stop: play.stop,
+    score: play.score,
+  };
+}
+
+function dossierPassesPrefilters(dossier: TickerDossier, filters: ReturnType<typeof normalizeHuntFilters>): boolean {
+  if (filters.sector) {
+    const sector = (dossier.sector ?? "").toLowerCase();
+    if (!sector.includes(filters.sector.toLowerCase())) return false;
+  }
+  if (filters.min_streak != null && dossier.flow_streak.streak_days < filters.min_streak) {
+    return false;
+  }
+  if (filters.max_iv_rank != null && dossier.iv_rank != null && dossier.iv_rank > filters.max_iv_rank) {
+    return false;
+  }
+  return true;
+}
+
+function rescoreDossier(
+  dossier: TickerDossier,
+  regime: ReturnType<typeof regimeContextFromMarket>,
+  streakWeight: number
+) {
+  dossier.scored = scoreCandidate(
+    dossier.ticker,
+    dossier.flows,
+    dossier.tech,
+    {
+      dark_pool: dossier.dark_pool,
+      oi_change: dossier.oi_change,
+      positioning: dossier.positioning,
+      strike_stacks: dossier.strike_stacks,
+      news_headlines: [...dossier.news_headlines, ...dossier.polygon_sentiment],
+      insider_buys: dossier.insider_buys,
+      predictions_signal: dossier.predictions_signal,
+      congress_unusual: dossier.congress_unusual,
+      congress_trades: dossier.congress_trades,
+      institutional_activity: dossier.institutional_activity,
+      fundamental_ratios: dossier.fundamental_ratios,
+      trading_halt: dossier.trading_halt,
+      risk_reversal_skew: dossier.risk_reversal_skew,
+    },
+    dossier.flow_streak,
+    regime,
+    { streakWeight }
+  );
+}
+
+/** Run the full Night Hawk hunt scan synchronously (edition pipeline + mode overrides). */
+export async function runHuntScan(request: HuntRequest): Promise<HuntBuildResult> {
+  const started = Date.now();
+  const mode = request.mode;
+  const weights = huntModeWeights(mode);
+  const filters = normalizeHuntFilters(mode, request.filters ?? {});
+
+  if (!uwConfigured() && !polygonConfigured()) {
+    return {
+      ok: false,
+      plays: [],
+      playbookPlays: [],
+      message: "No market data API keys configured (UW or Polygon required).",
+      candidates: 0,
+      error: "missing_api_keys",
+      duration_ms: Date.now() - started,
+    };
+  }
+
+  try {
+    console.info("[nighthawk/hunt] phase 1: market-wide context");
+    const ctx = await fetchMarketWideContext();
+    const regime = regimeContextFromMarket(ctx);
+
+    console.info("[nighthawk/hunt] phase 2: candidate selection");
+    const candidates = await extractCandidateTickers(ctx.stock_flows, ctx.hot_chains, MAX_CANDIDATES, {
+      sweepBonus: weights.sweepBonus,
+      minLiquidity: filters.min_premium ?? weights.minLiquidity,
+      watchlist: filters.watchlist,
+    });
+
+    if (!candidates.length) {
+      return {
+        ok: false,
+        plays: [],
+        playbookPlays: [],
+        message: "No flow candidates matched your hunt filters.",
+        candidates: 0,
+        error: "no_candidates",
+        duration_ms: Date.now() - started,
+      };
+    }
+
+    console.info(`[nighthawk/hunt] phase 3: dossiers for ${candidates.length} tickers`);
+    resetEditionCongressCache();
+    const dossiers = await fetchAllDossiers(candidates, DOSSIER_BATCH_SIZE, regime);
+
+    const dossierList = Object.values(dossiers).filter((d) => d.tech != null && dossierPassesPrefilters(d, filters));
+
+    for (const dossier of dossierList) {
+      rescoreDossier(dossier, regime, weights.streakWeight);
+    }
+
+    const scoredList = dossierList.map((d) => d.scored!).filter(Boolean);
+    const filtered = applyHuntScoreFilters(scoredList, filters);
+    const ranked = rankCandidates(filtered, MAX_DOSSIER_STOCKS);
+    const topDossiers = ranked.map((s) => dossiers[s.ticker]).filter(Boolean);
+
+    if (!ranked.length) {
+      return {
+        ok: false,
+        plays: [],
+        playbookPlays: [],
+        message: "Candidates scanned but none passed hunt score filters.",
+        candidates: candidates.length,
+        error: "no_ranked",
+        duration_ms: Date.now() - started,
+      };
+    }
+
+    console.info(`[nighthawk/hunt] phase 4: Claude synthesis (${ranked.length} ranked)`);
+    const { plays: playbookPlays } = await generateEditionPlays({
+      ctx,
+      dossiers: topDossiers,
+      ranked,
+      huntMode: mode,
+      maxDte: weights.maxDte,
+    });
+
+    if (!playbookPlays.length) {
+      return {
+        ok: false,
+        plays: [],
+        playbookPlays: [],
+        message: anthropicConfigured()
+          ? "Scan complete but Claude returned no parseable plays."
+          : "Claude not configured — mechanical fallback produced no plays.",
+        candidates: candidates.length,
+        error: "no_plays",
+        duration_ms: Date.now() - started,
+      };
+    }
+
+    const huntPlays = playbookPlays.map(toHuntPlay);
+    return {
+      ok: true,
+      plays: huntPlays,
+      playbookPlays,
+      message: `${mode} hunt complete — ${huntPlays.length} plays from ${candidates.length} candidates.`,
+      candidates: candidates.length,
+      duration_ms: Date.now() - started,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[nighthawk/hunt] failed:", error);
+    return {
+      ok: false,
+      plays: [],
+      playbookPlays: [],
+      message: `Hunt failed: ${message}`,
+      candidates: 0,
+      error: message,
+      duration_ms: Date.now() - started,
+    };
+  }
+}
+
+export async function huntPlatformContext() {
+  const platform = await getPlatformSnapshot({ include: ["spx", "flows", "nighthawk"], flowLimit: 40 });
+  return {
+    spx_price: platform.spx?.price ?? null,
+    flow_alerts: platform.flows?.count ?? 0,
+    edition_for: platform.nighthawk?.edition_for ?? null,
+    edition_plays: platform.nighthawk?.play_count ?? 0,
+  };
+}

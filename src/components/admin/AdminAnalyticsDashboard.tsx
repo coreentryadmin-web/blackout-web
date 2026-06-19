@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
 import { AdminApiDashboard } from "@/components/admin/AdminApiDashboard";
+import { AdminNightHawkDashboard } from "@/components/admin/AdminNightHawkDashboard";
 import { AdminSpxDashboard } from "@/components/admin/AdminSpxDashboard";
 import { AdminHealthBanner } from "@/components/admin/AdminHealthBanner";
 import { ActionButton, TabCanvas } from "@/components/admin/AdminUi";
@@ -13,7 +14,7 @@ type ToolTab = "spx" | "nighthawk" | "largo" | "apis";
 const TABS: Array<{ id: ToolTab; label: string; icon: string; blurb: string }> = [
   { id: "apis", label: "API Command", icon: "⬡", blurb: "Live ops · incidents · 265 endpoints" },
   { id: "spx", label: "SPX Sniper", icon: "◎", blurb: "Live engine · outcomes · desk" },
-  { id: "nighthawk", label: "Night Hawk", icon: "◈", blurb: "Coming soon" },
+  { id: "nighthawk", label: "Night Hawk", icon: "◈", blurb: "Win rate · conviction · sectors" },
   { id: "largo", label: "Largo", icon: "◆", blurb: "Coming soon" },
 ];
 
@@ -83,10 +84,15 @@ export function AdminAnalyticsDashboard() {
             <AdminSpxDashboard />
           </TabCanvas>
         )}
-        {tab !== "spx" && tab !== "apis" && (
+        {tab === "nighthawk" && (
+          <TabCanvas theme="neutral">
+            <AdminNightHawkDashboard />
+          </TabCanvas>
+        )}
+        {tab === "largo" && (
           <TabCanvas theme="neutral">
             <div className="admin-coming-soon admin-coming-soon-neon">
-              <p className="admin-kicker">{tab === "nighthawk" ? "Night Hawk" : "Largo"}</p>
+              <p className="admin-kicker">Largo</p>
               <h2 className="admin-deck-heading">Intel engine analytics incoming</h2>
               <p>Win rate, signal quality, and engagement telemetry will land in this slot next.</p>
               <ActionButton variant="primary" onClick={() => selectTab("apis")}>

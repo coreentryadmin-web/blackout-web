@@ -326,6 +326,39 @@ async function runMigrations(): Promise<void> {
     ON nighthawk_editions(published_at DESC);
   `);
   await p.query(`
+    CREATE TABLE IF NOT EXISTS nighthawk_play_outcomes (
+      id BIGSERIAL PRIMARY KEY,
+      edition_for DATE NOT NULL,
+      ticker VARCHAR(16) NOT NULL,
+      direction TEXT NOT NULL CHECK (direction IN ('LONG', 'SHORT')),
+      conviction TEXT NOT NULL,
+      entry_range_low NUMERIC,
+      entry_range_high NUMERIC,
+      target NUMERIC,
+      stop NUMERIC,
+      score INT,
+      sector TEXT,
+      next_day_open NUMERIC,
+      next_day_close NUMERIC,
+      session_high NUMERIC,
+      session_low NUMERIC,
+      hit_target BOOLEAN DEFAULT FALSE,
+      hit_stop BOOLEAN DEFAULT FALSE,
+      outcome TEXT NOT NULL DEFAULT 'pending' CHECK (outcome IN ('target', 'stop', 'open', 'pending')),
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (edition_for, ticker)
+    );
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_nighthawk_play_outcomes_pending
+    ON nighthawk_play_outcomes(edition_for DESC) WHERE outcome = 'pending';
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_nighthawk_play_outcomes_resolved
+    ON nighthawk_play_outcomes(edition_for DESC) WHERE outcome <> 'pending';
+  `);
+  await p.query(`
     CREATE TABLE IF NOT EXISTS api_telemetry_events (
       seq_id BIGSERIAL PRIMARY KEY,
       event_id TEXT NOT NULL UNIQUE,
@@ -1429,4 +1462,263 @@ export async function fetchTickerFlowDailyNet(
       net: call - put,
     };
   });
+}
+
+/** Trailing average daily total premium per ticker (excludes today). */
+export async function fetchTickersAvgDailyPremium(
+  tickers: string[],
+  lookbackDays = 30
+): Promise<Record<string, number>> {
+  if (!tickers.length) return {};
+  await ensureSchema();
+  const syms = Array.from(new Set(tickers.map((t) => t.toUpperCase())));
+  const res = await (await getPool()).query<QueryResultRow>(
+    `
+    SELECT ticker,
+           COALESCE(AVG(daily_prem), 0) AS avg_premium
+    FROM (
+      SELECT ticker,
+             (created_at AT TIME ZONE 'America/New_York')::date AS day,
+             SUM(COALESCE(total_premium, 0)) AS daily_prem
+      FROM flow_alerts
+      WHERE ticker = ANY($1::text[])
+        AND created_at >= (NOW() AT TIME ZONE 'America/New_York')::date - ($2::int || ' days')::interval
+        AND (created_at AT TIME ZONE 'America/New_York')::date < (NOW() AT TIME ZONE 'America/New_York')::date
+      GROUP BY ticker, day
+    ) daily
+    GROUP BY ticker
+    `,
+    [syms, lookbackDays]
+  );
+  const out: Record<string, number> = {};
+  for (const row of res.rows) {
+    out[String(row.ticker).toUpperCase()] = Number(row.avg_premium ?? 0);
+  }
+  return out;
+}
+
+/** Per-ticker daily call/put nets for batch streak computation. */
+export async function fetchTickersFlowDailyNets(
+  tickers: string[],
+  lookbackDays = 10
+): Promise<Record<string, Array<{ day: string; net: number; call: number; put: number }>>> {
+  if (!tickers.length) return {};
+  await ensureSchema();
+  const syms = Array.from(new Set(tickers.map((t) => t.toUpperCase())));
+  const res = await (await getPool()).query<QueryResultRow>(
+    `
+    SELECT
+      ticker,
+      (created_at AT TIME ZONE 'America/New_York')::date AS day,
+      COALESCE(SUM(CASE WHEN LOWER(option_type) LIKE 'c%' THEN COALESCE(total_premium, 0) ELSE 0 END), 0) AS call_prem,
+      COALESCE(SUM(CASE WHEN LOWER(option_type) LIKE 'p%' THEN COALESCE(total_premium, 0) ELSE 0 END), 0) AS put_prem
+    FROM flow_alerts
+    WHERE ticker = ANY($1::text[])
+      AND created_at >= (NOW() AT TIME ZONE 'America/New_York')::date - ($2::int || ' days')::interval
+    GROUP BY ticker, day
+    ORDER BY ticker ASC, day DESC
+    `,
+    [syms, lookbackDays]
+  );
+  const out: Record<string, Array<{ day: string; net: number; call: number; put: number }>> = {};
+  for (const row of res.rows) {
+    const ticker = String(row.ticker).toUpperCase();
+    const call = Number(row.call_prem ?? 0);
+    const put = Number(row.put_prem ?? 0);
+    const bucket = out[ticker] ?? [];
+    bucket.push({
+      day: String(row.day).slice(0, 10),
+      call,
+      put,
+      net: call - put,
+    });
+    out[ticker] = bucket;
+  }
+  return out;
+}
+
+export type NighthawkPlayOutcomeRow = {
+  id: number;
+  edition_for: string;
+  ticker: string;
+  direction: "LONG" | "SHORT";
+  conviction: string;
+  entry_range_low: number | null;
+  entry_range_high: number | null;
+  target: number | null;
+  stop: number | null;
+  score: number | null;
+  sector: string | null;
+  next_day_open: number | null;
+  next_day_close: number | null;
+  session_high: number | null;
+  session_low: number | null;
+  hit_target: boolean;
+  hit_stop: boolean;
+  outcome: "target" | "stop" | "open" | "pending";
+  created_at: string;
+};
+
+function mapNighthawkPlayOutcomeRow(r: QueryResultRow): NighthawkPlayOutcomeRow {
+  return {
+    id: Number(r.id),
+    edition_for: String(r.edition_for).slice(0, 10),
+    ticker: String(r.ticker),
+    direction: String(r.direction) as "LONG" | "SHORT",
+    conviction: String(r.conviction),
+    entry_range_low: r.entry_range_low != null ? Number(r.entry_range_low) : null,
+    entry_range_high: r.entry_range_high != null ? Number(r.entry_range_high) : null,
+    target: r.target != null ? Number(r.target) : null,
+    stop: r.stop != null ? Number(r.stop) : null,
+    score: r.score != null ? Number(r.score) : null,
+    sector: r.sector != null ? String(r.sector) : null,
+    next_day_open: r.next_day_open != null ? Number(r.next_day_open) : null,
+    next_day_close: r.next_day_close != null ? Number(r.next_day_close) : null,
+    session_high: r.session_high != null ? Number(r.session_high) : null,
+    session_low: r.session_low != null ? Number(r.session_low) : null,
+    hit_target: Boolean(r.hit_target),
+    hit_stop: Boolean(r.hit_stop),
+    outcome: String(r.outcome) as NighthawkPlayOutcomeRow["outcome"],
+    created_at: new Date(String(r.created_at)).toISOString(),
+  };
+}
+
+export async function upsertNighthawkPlayOutcomes(
+  rows: Array<{
+    edition_for: string;
+    ticker: string;
+    direction: "LONG" | "SHORT";
+    conviction: string;
+    entry_range_low: number | null;
+    entry_range_high: number | null;
+    target: number | null;
+    stop: number | null;
+    score: number;
+    sector: string | null;
+  }>
+): Promise<void> {
+  if (!rows.length) return;
+  await ensureSchema();
+  const pool = await getPool();
+  for (const row of rows) {
+    await pool.query(
+      `
+      INSERT INTO nighthawk_play_outcomes (
+        edition_for, ticker, direction, conviction,
+        entry_range_low, entry_range_high, target, stop, score, sector, outcome
+      ) VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending')
+      ON CONFLICT (edition_for, ticker) DO UPDATE SET
+        direction = EXCLUDED.direction,
+        conviction = EXCLUDED.conviction,
+        entry_range_low = EXCLUDED.entry_range_low,
+        entry_range_high = EXCLUDED.entry_range_high,
+        target = EXCLUDED.target,
+        stop = EXCLUDED.stop,
+        score = EXCLUDED.score,
+        sector = EXCLUDED.sector,
+        updated_at = NOW()
+      WHERE nighthawk_play_outcomes.outcome = 'pending'
+      `,
+      [
+        row.edition_for,
+        row.ticker,
+        row.direction,
+        row.conviction,
+        row.entry_range_low,
+        row.entry_range_high,
+        row.target,
+        row.stop,
+        row.score,
+        row.sector,
+      ]
+    );
+  }
+}
+
+export async function fetchPendingNighthawkOutcomes(lookbackDays = 7): Promise<NighthawkPlayOutcomeRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    SELECT id, edition_for, ticker, direction, conviction,
+           entry_range_low, entry_range_high, target, stop, score, sector,
+           next_day_open, next_day_close, session_high, session_low,
+           hit_target, hit_stop, outcome, created_at
+    FROM nighthawk_play_outcomes
+    WHERE outcome = 'pending'
+      AND edition_for >= (CURRENT_DATE - ($1::int || ' days')::interval)
+    ORDER BY edition_for ASC, ticker ASC
+    `,
+    [lookbackDays]
+  );
+  return res.rows.map(mapNighthawkPlayOutcomeRow);
+}
+
+export async function updateNighthawkPlayOutcome(
+  id: number,
+  patch: {
+    next_day_open: number;
+    next_day_close: number;
+    session_high: number;
+    session_low: number;
+    hit_target: boolean;
+    hit_stop: boolean;
+    outcome: "target" | "stop" | "open" | "pending";
+  }
+): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `
+    UPDATE nighthawk_play_outcomes
+    SET next_day_open = $2,
+        next_day_close = $3,
+        session_high = $4,
+        session_low = $5,
+        hit_target = $6,
+        hit_stop = $7,
+        outcome = $8,
+        updated_at = NOW()
+    WHERE id = $1
+    `,
+    [
+      id,
+      patch.next_day_open,
+      patch.next_day_close,
+      patch.session_high,
+      patch.session_low,
+      patch.hit_target,
+      patch.hit_stop,
+      patch.outcome,
+    ]
+  );
+}
+
+export async function fetchNighthawkOutcomeAnalytics(windowDays = 30): Promise<{
+  rows: NighthawkPlayOutcomeRow[];
+  pending_count: number;
+}> {
+  await ensureSchema();
+  const pool = await getPool();
+  const [resolvedRes, pendingRes] = await Promise.all([
+    pool.query(
+      `
+      SELECT o.id, o.edition_for, o.ticker, o.direction, o.conviction,
+             o.entry_range_low, o.entry_range_high, o.target, o.stop, o.score, o.sector,
+             o.next_day_open, o.next_day_close, o.session_high, o.session_low,
+             o.hit_target, o.hit_stop, o.outcome, o.created_at
+      FROM nighthawk_play_outcomes o
+      INNER JOIN nighthawk_editions e ON e.edition_for = o.edition_for
+      WHERE o.outcome <> 'pending'
+        AND o.edition_for >= (CURRENT_DATE - ($1::int || ' days')::interval)
+      ORDER BY o.edition_for DESC, o.ticker ASC
+      `,
+      [windowDays]
+    ),
+    pool.query<{ count: string }>(
+      `SELECT COUNT(*)::int AS count FROM nighthawk_play_outcomes WHERE outcome = 'pending'`
+    ),
+  ]);
+  return {
+    rows: resolvedRes.rows.map(mapNighthawkPlayOutcomeRow),
+    pending_count: Number(pendingRes.rows[0]?.count ?? 0),
+  };
 }

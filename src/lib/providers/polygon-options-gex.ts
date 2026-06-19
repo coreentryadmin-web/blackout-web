@@ -124,9 +124,10 @@ async function polygonFetchUrl(url: string): Promise<ChainResponse | null> {
 async function fetchChainBand(
   underlying: string,
   spot: number,
-  expiry: string
+  expiry: string,
+  bandPct = 0.015
 ): Promise<ChainContract[]> {
-  const band = Math.max(spot * 0.015, 80);
+  const band = Math.max(spot * bandPct, bandPct >= 0.04 ? spot * 0.02 : 80);
   const lo = Math.floor(spot - band);
   const hi = Math.ceil(spot + band);
 
@@ -199,12 +200,31 @@ export async function fetchPolygonOptionsChain(
   const root = underlying.toUpperCase();
   if (root === "SPX") {
     const [spx, spxw] = await Promise.all([
-      fetchChainBand("SPX", spot, expiry),
-      fetchChainBand("SPXW", spot, expiry),
+      fetchChainBand("SPX", spot, expiry, 0.015),
+      fetchChainBand("SPXW", spot, expiry, 0.015),
     ]);
     return [...spx, ...spxw];
   }
-  return fetchChainBand(root, spot, expiry);
+  return fetchChainBand(root, spot, expiry, 0.015);
+}
+
+/** ATM ± bandPct chain snapshot for Night Hawk playbook validation. */
+export async function fetchPolygonAtmOptionsChain(
+  underlying: string,
+  spot: number,
+  expiry: string,
+  bandPct = 0.05
+): Promise<ChainContract[]> {
+  if (!polygonConfigured() || spot <= 0) return [];
+  const root = underlying.toUpperCase();
+  if (root === "SPX") {
+    const [spx, spxw] = await Promise.all([
+      fetchChainBand("SPX", spot, expiry, bandPct),
+      fetchChainBand("SPXW", spot, expiry, bandPct),
+    ]);
+    return [...spx, ...spxw];
+  }
+  return fetchChainBand(root, spot, expiry, bandPct);
 }
 
 export function summarizeOiByStrike(contracts: ChainContract[], limit = 20) {

@@ -1,0 +1,56 @@
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { requireDatabaseInProduction } from "@/lib/db";
+import { resolvePendingNighthawkOutcomes } from "@/lib/nighthawk/play-outcomes";
+import { isWeekdayEt, etNowParts } from "@/lib/nighthawk/session";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 120;
+
+function cronAuthorized(req: NextRequest): boolean {
+  const secret = process.env.CRON_SECRET?.trim();
+  if (!secret) return false;
+  const auth = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  const q = req.nextUrl.searchParams.get("secret");
+  return auth === secret || q === secret;
+}
+
+function inOutcomeWindow(force: boolean): boolean {
+  if (force) return true;
+  if (!isWeekdayEt()) return false;
+  const hour = Number(process.env.NIGHTHAWK_OUTCOMES_HOUR_ET ?? "16");
+  const minute = Number(process.env.NIGHTHAWK_OUTCOMES_MINUTE_ET ?? "30");
+  const { hour: nowH, minute: nowM } = etNowParts();
+  const now = nowH * 60 + nowM;
+  const target = hour * 60 + minute;
+  const catchup = Number(process.env.NIGHTHAWK_OUTCOMES_CATCHUP_MIN ?? "90");
+  return now >= target && now <= target + catchup;
+}
+
+export async function GET(req: NextRequest) {
+  if (!cronAuthorized(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const dbDenied = requireDatabaseInProduction();
+  if (dbDenied) return dbDenied;
+
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  if (!inOutcomeWindow(force)) {
+    return NextResponse.json({
+      ok: false,
+      skipped: true,
+      reason: "Outside outcome window (4:30 PM ET) — use ?force=1 to override",
+    });
+  }
+
+  try {
+    const lookbackDays = Number(req.nextUrl.searchParams.get("days") ?? "7");
+    const result = await resolvePendingNighthawkOutcomes({ lookbackDays });
+    return NextResponse.json({ ok: true, ...result });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("[cron/nighthawk-outcomes]", error);
+    return NextResponse.json({ ok: false, error: "Outcome resolution failed", detail }, { status: 500 });
+  }
+}

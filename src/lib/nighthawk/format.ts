@@ -4,16 +4,29 @@ import {
   MAX_OPTION_PREMIUM_PER_SHARE,
   PLAYBOOK_PREMIUM_CAP_LINE,
 } from "./constants";
-import type { IndexDossier } from "./index-dossier";
-import { formatIndexDossierBlock } from "./index-dossier";
 import type { TickerDossier } from "./dossier";
+import type { HuntMode } from "./types";
+import { huntDteGuidance } from "./hunt-mode";
 import type { MarketWideContext } from "./market-wide";
 import type { ScoredCandidate } from "./scorer";
+import { formatSpxGapContext } from "./spx-gap";
 
 function fmtPrem(prem: number): string {
   if (prem >= 1_000_000) return `$${(prem / 1_000_000).toFixed(1)}M`;
   if (prem >= 1_000) return `$${Math.round(prem / 1_000)}K`;
   return `$${Math.round(prem)}`;
+}
+
+export type TideBias = "BULLISH" | "BEARISH" | "NEUTRAL";
+
+export function tideBias(tide: Record<string, unknown> | null): TideBias {
+  if (!tide) return "NEUTRAL";
+  const call = Number(tide.call_premium ?? tide.total_call_premium ?? 0);
+  const put = Number(tide.put_premium ?? tide.total_put_premium ?? 0);
+  const total = call + put;
+  if (total <= 0) return "NEUTRAL";
+  const callPct = (call / total) * 100;
+  return callPct > 55 ? "BULLISH" : callPct < 45 ? "BEARISH" : "NEUTRAL";
 }
 
 function tideSummary(tide: Record<string, unknown> | null): string {
@@ -23,8 +36,59 @@ function tideSummary(tide: Record<string, unknown> | null): string {
   const total = call + put;
   if (total <= 0) return "Market tide flat / no premium.";
   const callPct = (call / total) * 100;
-  const bias = callPct > 55 ? "BULLISH" : callPct < 45 ? "BEARISH" : "NEUTRAL";
+  const bias = tideBias(tide);
   return `${bias} — calls ${callPct.toFixed(0)}% (${fmtPrem(call)}) vs puts ${fmtPrem(put)}`;
+}
+
+function formatMarketBreadth(ctx: MarketWideContext): string {
+  const b = ctx.market_breadth;
+  if (!b) return "Market breadth unavailable.";
+  return [
+    `${b.pct_advancing ?? "?"}% advancing`,
+    `A/D ${b.advance_decline_ratio ?? "?"}`,
+    `${b.pct_above_vwap ?? "?"}% above VWAP`,
+    `new highs ${b.new_highs} / lows ${b.new_lows}`,
+    `sample ${b.sample_size}`,
+  ].join(" · ");
+}
+
+function formatMag7GreekFlow(ctx: MarketWideContext): string {
+  const g = ctx.mag7_greek_flow;
+  if (!g) return "Mag7 greek flow unavailable.";
+  return [
+    g.headline,
+    `net Δ ${Math.round(g.net_delta)} · net Γ ${Math.round(g.net_gamma)}`,
+    `bias ${g.bias}`,
+  ].join(" · ");
+}
+
+function formatMacroIndicators(ctx: MarketWideContext): string {
+  if (ctx.macro_indicators.length === 0) return "Macro indicators unavailable.";
+  return ctx.macro_indicators
+    .slice(0, 4)
+    .map((m) => {
+      const val = m.latest_value != null ? m.latest_value.toFixed(2) : "—";
+      const chg =
+        m.change_pct != null ? ` (${m.change_pct >= 0 ? "+" : ""}${m.change_pct.toFixed(1)}%)` : "";
+      return `${m.label} ${val}${chg}`;
+    })
+    .join(" · ");
+}
+
+function formatPredictionsConsensus(ctx: MarketWideContext): string {
+  if (ctx.predictions_consensus.length === 0) return "UW predictions consensus unavailable.";
+  return ctx.predictions_consensus
+    .slice(0, 5)
+    .map((s) => `${s.ticker} ${s.direction} ${s.confidence_pct}% — ${s.headline}`)
+    .join(" · ");
+}
+
+function formatEtfTides(ctx: MarketWideContext): string {
+  const entries = Object.entries(ctx.etf_tides);
+  if (!entries.length) return "ETF tides unavailable.";
+  return entries
+    .map(([sym, tide]) => (tide ? `${sym}: ${tideSummary(tide)}` : `${sym}: n/a`))
+    .join("\n");
 }
 
 function spxContext(ctx: MarketWideContext): string {
@@ -94,7 +158,7 @@ export function buildMarketRecap(ctx: MarketWideContext): {
           .map((m) => `${m.label} ${m.latest_value ?? "—"}`)
           .join(" · ")
       : "";
-  const summary = `${tide}. ${spx}.${breadthLine ? ` Breadth: ${breadthLine}.` : ""}${mag7Line ? ` ${mag7Line}.` : ""}${macroLine ? ` Macro: ${macroLine}.` : ""} Leaders: ${leaders.map((s) => `${s.name} ${s.change_pct >= 0 ? "+" : ""}${s.change_pct.toFixed(2)}%`).join(", ") || "n/a"}.${netImpact ? ` Net impact: ${netImpact}.` : ""}${predictionsLine ? ` Predictions: ${predictionsLine}.` : ""}`;
+  const summary = `${tide}. ${spx}.${ctx.spx_gap ? ` ${formatSpxGapContext(ctx.spx_gap)}.` : ""}${breadthLine ? ` Breadth: ${breadthLine}.` : ""}${mag7Line ? ` ${mag7Line}.` : ""}${macroLine ? ` Macro: ${macroLine}.` : ""} Leaders: ${leaders.map((s) => `${s.name} ${s.change_pct >= 0 ? "+" : ""}${s.change_pct.toFixed(2)}%`).join(", ") || "n/a"}.${netImpact ? ` Net impact: ${netImpact}.` : ""}${predictionsLine ? ` Predictions: ${predictionsLine}.` : ""}`;
 
   return {
     headline,
@@ -110,6 +174,9 @@ export function buildMarketRecap(ctx: MarketWideContext): {
 export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCandidate): string {
   const lines: string[] = [];
   lines.push(`=== ${dossier.ticker} · Score ${scored.score}/100 (${scored.conviction}) · ${scored.direction.toUpperCase()} ===`);
+  if (scored.regime_multiplier != null && scored.regime_multiplier !== 1) {
+    lines.push(`Regime multiplier: ×${scored.regime_multiplier.toFixed(2)} (VIX IV rank + tide)`);
+  }
 
   const totalPrem = dossier.flows.reduce((s, f) => s + Number(f.total_premium ?? f.premium ?? 0), 0);
   lines.push(`Flow today: ${fmtPrem(totalPrem)} across ${dossier.flows.length} alerts`);
@@ -185,7 +252,7 @@ export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCa
   if (dossier.analyst_summary) lines.push(`Analyst: ${dossier.analyst_summary}`);
   if (dossier.price_target) lines.push(dossier.price_target);
   if (dossier.congress_trades.length) {
-    lines.push(`Congress trades: ${dossier.congress_trades.length} recent filing(s)`);
+    lines.push(`Congress trades (30d): ${dossier.congress_trades.length} recent filing(s)`);
   }
   if (dossier.congress_unusual.length) {
     lines.push(`Congress unusual: ${dossier.congress_unusual.length} flagged trade(s)`);
@@ -212,7 +279,7 @@ export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCa
 
   if (dossier.sector) lines.push(`Sector: ${dossier.sector}`);
   lines.push(
-    `Score breakdown: flow ${scored.flow_score}/40 · technical ${scored.tech_score}/30 · positioning ${scored.pos_score}/20 · news ${scored.news_score}/10`
+    `Score breakdown: flow ${scored.flow_score}/38 · technical ${scored.tech_score}/28 · positioning ${scored.pos_score}/18 · news ${scored.news_score}/8 · smart money ${scored.smart_money_score}/8`
   );
 
   return lines.join("\n");
@@ -223,15 +290,19 @@ export function buildClaudePrompt(params: {
   recap: ReturnType<typeof buildMarketRecap>;
   dossiers: TickerDossier[];
   ranked: ScoredCandidate[];
-  indexDossiers?: IndexDossier[];
+  chainTables?: Record<string, string>;
+  huntMode?: HuntMode;
+  maxDte?: number;
 }): string {
-  const { ctx, recap, dossiers, ranked, indexDossiers = [] } = params;
+  const { ctx, recap, dossiers, ranked, chainTables = {}, huntMode, maxDte } = params;
   const dossierMap = Object.fromEntries(dossiers.map((d) => [d.ticker, d]));
 
   const stockBlocks = ranked
     .map((s) => {
       const d = dossierMap[s.ticker];
-      return d ? formatTickerDossierText(d, s) : "";
+      const chain = chainTables[s.ticker];
+      const dossierText = d ? formatTickerDossierText(d, s) : "";
+      return [chain, dossierText].filter(Boolean).join("\n\n");
     })
     .filter(Boolean)
     .join("\n\n");
@@ -254,14 +325,13 @@ export function buildClaudePrompt(params: {
     .filter(Boolean)
     .join(" · ");
 
-  const indexBlock = formatIndexDossierBlock(indexDossiers);
-
   return `You are the lead options strategist for BlackOut Trading. Generate exactly 5 next-session plays for ${ctx.tomorrow} (today was ${ctx.today}).
+${huntMode && maxDte != null ? `\nHUNT MODE: ${huntDteGuidance(huntMode, maxDte)}\n` : ""}
 
 RULES — CRITICAL:
 - Use ONLY data provided below. Never invent premiums, strikes, flow, or levels.
 - Output valid JSON array ONLY — no markdown, no prose outside JSON.
-- Exactly 5 plays: 3 individual STOCKS + 2 INDEX/ETF (SPY, QQQ, IWM, XLF, XLE, XLK).
+- Exactly 5 plays: 5 individual STOCKS. Do NOT include index/ETF plays (SPY, QQQ, IWM, etc.).
 - Each play must align flow direction with technical structure.
 - Entry, target, stop must reference actual support/resistance from dossiers.
 - options_play must specify call/put, strike, expiry (0DTE/weekly), size 1-3 contracts, and estimated entry premium per share.
@@ -270,18 +340,26 @@ RULES — CRITICAL:
 - If the only contracts that fit the thesis cost more than $${MAX_OPTION_PREMIUM_PER_SHARE}/share ($${MAX_OPTION_COST_PER_CONTRACT.toLocaleString()}/contract), do NOT force it — pick a cheaper strike/expiry or choose a different ticker.
 - conviction: A+ if score≥70, A if ≥55, B if ≥40, else C.
 - Skip earnings names unless A+ conviction.
+- The actual option chain for each ticker is provided above its dossier (ATM ±5%, front two expiries).
+- You MUST select a strike from the provided chain that has OI > 500 on the chosen side (call or put).
+- entry_premium must match the chain's ask price for that strike and side (C_ASK for calls, P_ASK for puts).
+- Do not invent strikes — use only strikes listed in the chain table.
 
 MARKET RECAP:
 Tide: ${recap.tide}
 SPX/VIX: ${recap.spx_vix}
+SPX gap: ${formatSpxGapContext(ctx.spx_gap)}
+Market breadth: ${formatMarketBreadth(ctx)}
+Mag7 greek flow: ${formatMag7GreekFlow(ctx)}
+Macro indicators: ${formatMacroIndicators(ctx)}
+UW predictions: ${formatPredictionsConsensus(ctx)}
+ETF tides:
+${formatEtfTides(ctx)}
 Sector strength: ${recap.sector_strength}
 Sector weakness: ${recap.sector_weakness}
 Catalysts: ${recap.catalysts}
 Hot chains: ${hotChains || "n/a"}
 ${vixContext ? `Vol regime: ${vixContext}` : ""}
-
-INDEX / ETF DOSSIERS:
-${indexBlock}
 
 TOP STOCK DOSSIERS (ranked):
 ${stockBlocks || "No stock dossiers available."}
@@ -289,7 +367,7 @@ ${stockBlocks || "No stock dossiers available."}
 OUTPUT SCHEMA — JSON array of 5 objects:
 {
   "ticker": "SYMBOL",
-  "type": "stock|index",
+  "type": "stock",
   "direction": "LONG|SHORT",
   "conviction": "A+|A|B|C",
   "bias": "one sentence",

@@ -3,13 +3,14 @@ import { marketPlatform } from "@/lib/platform";
 import { uwConfigured } from "@/lib/providers/config";
 import { polygonConfigured } from "@/lib/providers/config";
 import { anthropicConfigured } from "@/lib/providers/anthropic";
+import { syncNighthawkPlayOutcomes } from "./play-outcomes";
 import { extractCandidateTickers } from "./candidates";
 import { fetchAllDossiers, resetEditionCongressCache } from "./dossier";
 import { generateEditionPlays } from "./claude-edition";
 import { formatTickerDossierText } from "./format";
 import { fetchIndexDossiers } from "./index-dossier";
 import { fetchMarketWideContext } from "./market-wide";
-import { rankCandidates } from "./scorer";
+import { rankCandidates, regimeContextFromMarket } from "./scorer";
 import { DOSSIER_BATCH_SIZE, MAX_CANDIDATES, MAX_DOSSIER_STOCKS } from "./constants";
 import { nextTradingDayEt, todayEt } from "./session";
 import type { NightHawkEdition, PlaybookPlay } from "./types";
@@ -45,7 +46,7 @@ export async function buildEveningEdition(opts?: {
     const ctx = await fetchMarketWideContext();
 
     console.info("[nighthawk/edition] phase 2: candidate selection");
-    const candidates = extractCandidateTickers(ctx.stock_flows, ctx.hot_chains, MAX_CANDIDATES);
+    const candidates = await extractCandidateTickers(ctx.stock_flows, ctx.hot_chains, MAX_CANDIDATES);
     if (!candidates.length) {
       return {
         ok: false,
@@ -59,7 +60,8 @@ export async function buildEveningEdition(opts?: {
 
     console.info(`[nighthawk/edition] phase 3: dossiers for ${candidates.length} tickers`);
     resetEditionCongressCache();
-    const dossiers = await fetchAllDossiers(candidates, DOSSIER_BATCH_SIZE);
+    const regime = regimeContextFromMarket(ctx);
+    const dossiers = await fetchAllDossiers(candidates, DOSSIER_BATCH_SIZE, regime);
 
     const scoredList = Object.values(dossiers)
       .filter((d) => d.tech != null)
@@ -83,7 +85,6 @@ export async function buildEveningEdition(opts?: {
       ctx,
       dossiers: topDossiers,
       ranked,
-      indexDossiers,
     });
 
     if (!plays.length) {
@@ -141,6 +142,11 @@ export async function buildEveningEdition(opts?: {
         },
       },
     });
+
+    const sectorByTicker = Object.fromEntries(
+      topDossiers.map((d) => [d.ticker.toUpperCase(), d.sector ?? null])
+    );
+    await syncNighthawkPlayOutcomes(editionFor, plays, sectorByTicker);
 
     return {
       ok: true,

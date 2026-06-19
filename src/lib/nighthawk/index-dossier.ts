@@ -58,14 +58,19 @@ export async function fetchIndexDossiers(
   return out;
 }
 
-export function formatIndexDossierBlock(dossiers: IndexDossier[]): string {
+export function formatIndexDossierBlock(
+  dossiers: IndexDossier[],
+  chainTables: Record<string, string> = {}
+): string {
   if (!dossiers.length) return "No index/ETF met $100K+ flow threshold.";
   return dossiers
     .map((d) => {
+      const chain = chainTables[d.ticker];
       const lines = [
+        chain,
         `=== ${d.ticker} (INDEX/ETF) ===`,
         `Flow: calls $${Math.round(d.call_premium / 1000)}K / puts $${Math.round(d.put_premium / 1000)}K → ${d.flow_bias}`,
-      ];
+      ].filter(Boolean) as string[];
       if (d.tech_summary) lines.push(`Technicals: ${d.tech_summary}`);
       if (d.positioning_summary) lines.push(`Positioning: ${d.positioning_summary}`);
       return lines.join("\n");
