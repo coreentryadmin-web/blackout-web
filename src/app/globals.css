@@ -8923,6 +8923,14 @@ body {
     @apply border-warning/40 text-warning bg-warning/10;
   }
 
+  .admin-cron-diagnostics {
+    @apply rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-grey-200;
+  }
+
+  .admin-cron-diagnostics p {
+    @apply m-0 leading-relaxed;
+  }
+
   .admin-cron-stats {
     @apply grid gap-3 sm:grid-cols-2 xl:grid-cols-4;
   }

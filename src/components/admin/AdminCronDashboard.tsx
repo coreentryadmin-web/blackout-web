@@ -64,24 +64,33 @@ export function AdminCronDashboard() {
   const [data, setData] = useState<CronHealthPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [ageSec, setAgeSec] = useState(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (manual = false) => {
+    if (manual) setRefreshing(true);
     try {
       const res = await fetch("/api/admin/cron-health", { cache: "no-store" });
       if (!res.ok) throw new Error(res.status === 403 ? "Not authorized" : `HTTP ${res.status}`);
       setData(await res.json());
+      setAgeSec(0);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 30_000);
-    return () => clearInterval(id);
+    const poll = setInterval(() => load(), 10_000);
+    const tick = setInterval(() => setAgeSec((s) => s + 1), 1000);
+    return () => {
+      clearInterval(poll);
+      clearInterval(tick);
+    };
   }, [load]);
 
   if (loading && !data) {
@@ -113,11 +122,22 @@ export function AdminCronDashboard() {
           <p className="admin-kicker">Operations</p>
           <h2 className="admin-deck-heading">Cron job health</h2>
           <p className="admin-muted">
-            Last refresh {fmtTime(data.generated_at)} ET · polls every 30s
+            Refreshed {ageSec}s ago · auto-poll every 10s
+            {data.generated_at ? ` · snapshot ${fmtTime(data.generated_at)} ET` : ""}
           </p>
         </div>
         <div className="admin-cron-hero-chips">
-          <LivePill label="LIVE" active />
+          <LivePill label={refreshing ? "SYNC" : "LIVE"} active={!refreshing} />
+          <ActionButton variant="default" onClick={() => load(true)}>
+            Refresh now
+          </ActionButton>
+          <span className="admin-cron-chip">
+            DB {data.db_configured ? "OK" : "MISSING"}
+          </span>
+          <span className="admin-cron-chip">
+            SECRET {data.cron_secret_configured ? "OK" : "MISSING"}
+          </span>
+          <span className="admin-cron-chip">LOGGED {data.logged_runs_total}</span>
           {!data.cron_secret_configured && (
             <span className="admin-cron-chip admin-cron-chip-warn">CRON_SECRET not set</span>
           )}
@@ -126,6 +146,12 @@ export function AdminCronDashboard() {
           )}
         </div>
       </div>
+
+      {data.diagnostics_note && (
+        <div className="admin-cron-diagnostics">
+          <p>{data.diagnostics_note}</p>
+        </div>
+      )}
 
       <div className="admin-cron-stats">
         <MegaStat
@@ -150,7 +176,7 @@ export function AdminCronDashboard() {
         <MegaStat
           label="Unknown"
           value={String(data.summary.unknown)}
-          sub="No runs logged yet"
+          sub={data.logged_runs_total === 0 ? "Awaiting first logged run" : "No cron log row yet"}
           tone={data.summary.unknown > 0 ? "violet" : "neutral"}
         />
       </div>
@@ -237,7 +263,8 @@ export function AdminCronDashboard() {
           ))}
           {!data.recent_events.length && (
             <li className="admin-cron-event admin-cron-event-empty">
-              No cron runs logged yet — they appear after the next scheduled execution.
+              {data.diagnostics_note ??
+                "No cron runs logged yet — they appear when HTTP crons hit blackout-web or the Night Hawk worker finishes."}
             </li>
           )}
         </ul>

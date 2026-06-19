@@ -3,6 +3,7 @@ import {
   dbConfigured,
   fetchCronJobLastRuns,
   fetchCronJobRecentRuns,
+  fetchCronJobRunCount,
   fetchLatestNighthawkJob,
   type CronJobRunRow,
 } from "@/lib/db";
@@ -34,6 +35,8 @@ export type CronHealthPayload = {
   generated_at: string;
   cron_secret_configured: boolean;
   db_configured: boolean;
+  logged_runs_total: number;
+  diagnostics_note: string | null;
   summary: {
     total: number;
     healthy: number;
@@ -175,8 +178,31 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     }
 
     if (job.key === "nighthawk-playbook" && latestNhJob) {
+      const updatedAt = latestNhJob.updated_at;
+      const ageMin =
+        updatedAt != null
+          ? Math.round((Date.now() - new Date(updatedAt).getTime()) / 60_000)
+          : null;
+      let status = health.status;
+      let statusLabel = health.status_label;
+
+      if (latestNhJob.status === "failed") {
+        status = "failed";
+        statusLabel = `Job failed: ${latestNhJob.error ?? latestNhJob.current_stage ?? "unknown"}`;
+      } else if (latestNhJob.status === "published") {
+        status = health.status === "unknown" || health.status === "stale" ? "healthy" : health.status;
+        statusLabel = `Published ${latestNhJob.edition_for}`;
+      } else if (health.status === "unknown") {
+        status = "warning";
+        statusLabel = `${latestNhJob.status}${latestNhJob.current_stage ? ` · ${latestNhJob.current_stage}` : ""}`;
+      }
+
       return {
         ...health,
+        status,
+        status_label: statusLabel,
+        last_run_at: health.last_run_at ?? updatedAt,
+        age_min: health.age_min ?? ageMin,
         meta: {
           ...(health.meta ?? {}),
           nighthawk_job: {
@@ -187,19 +213,8 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
             updated_at: latestNhJob.updated_at,
             published_at: latestNhJob.published_at,
           },
+          source: health.last_run_at ? "cron_log+nighthawk_job" : "nighthawk_job_only",
         },
-        status_label:
-          latestNhJob.status === "failed"
-            ? `Job failed: ${latestNhJob.error ?? latestNhJob.current_stage ?? "unknown"}`
-            : latestNhJob.status === "published"
-              ? `Published ${latestNhJob.edition_for}`
-              : health.status_label,
-        status:
-          latestNhJob.status === "failed"
-            ? ("failed" as const)
-            : latestNhJob.status === "published" && health.status === "stale"
-              ? ("healthy" as const)
-              : health.status,
       };
     }
 
@@ -216,11 +231,28 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   };
 
   const jobNameByKey = Object.fromEntries(CRON_JOBS.map((j) => [j.key, j.name]));
+  const loggedRunsTotal = dbConfigured() ? await fetchCronJobRunCount() : 0;
+
+  let diagnosticsNote: string | null = null;
+  if (loggedRunsTotal === 0) {
+    if (!dbConfigured()) {
+      diagnosticsNote =
+        "DATABASE_URL is not set on blackout-web — cron runs cannot be logged to Postgres.";
+    } else if (!process.env.CRON_SECRET?.trim()) {
+      diagnosticsNote =
+        "CRON_SECRET is not set on blackout-web — HTTP cron routes return 401 and never log a run.";
+    } else {
+      diagnosticsNote =
+        "No runs in cron_job_runs yet. HTTP crons must curl blackout-web with ?secret=CRON_SECRET after this deploy. Railway Ready/Running status is separate from this dashboard.";
+    }
+  }
 
   return {
     generated_at: new Date().toISOString(),
     cron_secret_configured: Boolean(process.env.CRON_SECRET?.trim()),
     db_configured: dbConfigured(),
+    logged_runs_total: loggedRunsTotal,
+    diagnostics_note: diagnosticsNote,
     summary,
     jobs,
     recent_events: recentRuns.slice(0, 24).map((r) => ({

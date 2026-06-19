@@ -2046,3 +2046,11 @@ export async function fetchCronJobRecentRuns(limit = 48): Promise<CronJobRunRow[
   );
   return res.rows.map(mapCronJobRunRow);
 }
+
+export async function fetchCronJobRunCount(): Promise<number> {
+  await ensureSchema();
+  const res = await (await getPool()).query<{ count: string }>(
+    `SELECT COUNT(*)::int AS count FROM cron_job_runs`
+  );
+  return Number(res.rows[0]?.count ?? 0);
+}
