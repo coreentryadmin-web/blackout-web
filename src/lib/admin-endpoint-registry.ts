@@ -14,7 +14,6 @@ import {
 import {
   polygonConfigured,
   uwConfigured,
-  finnhubConfigured,
 } from "@/lib/providers/config";
 import { anthropicConfigured } from "@/lib/providers/anthropic";
 import { engineConfigured } from "@/lib/engine";
@@ -133,8 +132,6 @@ function isProviderConfigured(id: string): boolean {
       return polygonConfigured();
     case "unusual_whales":
       return uwConfigured();
-    case "finnhub":
-      return finnhubConfigured();
     case "anthropic":
       return anthropicConfigured();
     case "blackout_engine":
@@ -206,9 +203,6 @@ function loadCodebasePaths(): Map<string, { provider: string; files: string[] }>
   }
   for (const row of CURSOR_API_ANALYSIS.external.unusual_whales) {
     add("unusual_whales", row.path, row.files);
-  }
-  for (const row of CURSOR_API_ANALYSIS.external.finnhub) {
-    add("finnhub", row.path, row.files);
   }
   for (const row of CURSOR_API_ANALYSIS.external.anthropic) {
     add("anthropic", row.path, row.files);

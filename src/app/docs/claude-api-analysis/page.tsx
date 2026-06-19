@@ -279,20 +279,6 @@ const UW_SECTIONS: ApiSection[] = [
   },
 ];
 
-// ─── Finnhub ─────────────────────────────────────────────────────────────────
-
-const FINNHUB_ENDPOINTS: ApiEndpoint[] = [
-  { method: "GET", path: "/calendar/economic", usedFor: "US economic events calendar (macro gates)", file: "providers/finnhub.ts", live: true },
-  { method: "GET", path: "/stock/profile2", usedFor: "Company profile", file: "providers/finnhub.ts" },
-  { method: "GET", path: "/stock/recommendation", usedFor: "Analyst recommendations", file: "providers/finnhub.ts" },
-  { method: "GET", path: "/calendar/earnings", usedFor: "Earnings calendar", file: "providers/finnhub.ts" },
-  { method: "GET", path: "/stock/metric", usedFor: "Company metrics (P/E, ROE, etc.)", file: "providers/finnhub.ts" },
-  { method: "GET", path: "/company-news", usedFor: "Company-specific news feed", file: "providers/finnhub.ts" },
-  { method: "GET", path: "/stock/price-target", usedFor: "Analyst price targets", file: "providers/finnhub.ts" },
-  { method: "GET", path: "/stock/insider-transactions", usedFor: "Insider transaction history", file: "providers/finnhub.ts" },
-  { method: "GET", path: "/calendar/ipo", usedFor: "IPO calendar", file: "providers/finnhub.ts" },
-];
-
 // ─── Anthropic ─────────────────────────────────────────────────────────────
 
 const ANTHROPIC_ENDPOINTS: ApiEndpoint[] = [
@@ -442,12 +428,11 @@ function FlatTable({ endpoints, title, id }: { endpoints: ApiEndpoint[]; title: 
 
 const polygonRestCount = POLYGON_REST.reduce((n, s) => n + s.endpoints.length, 0);
 const uwCount = UW_SECTIONS.reduce((n, s) => n + s.endpoints.length, 0);
-const totalCount = polygonRestCount + POLYGON_WS.length + uwCount + FINNHUB_ENDPOINTS.length + ANTHROPIC_ENDPOINTS.length + WEBSEARCH_ENDPOINTS.length;
+const totalCount = polygonRestCount + POLYGON_WS.length + uwCount + ANTHROPIC_ENDPOINTS.length + WEBSEARCH_ENDPOINTS.length;
 const liveCount = [
   ...POLYGON_REST.flatMap((s) => s.endpoints),
   ...POLYGON_WS,
   ...UW_SECTIONS.flatMap((s) => s.endpoints),
-  ...FINNHUB_ENDPOINTS,
   ...ANTHROPIC_ENDPOINTS,
   ...INTERNAL_ROUTES,
 ].filter((e) => e.live).length;
@@ -462,7 +447,7 @@ export default function ClaudeApiAnalysisPage() {
         <h1 className="docs-title">Full API Endpoint Catalog</h1>
         <p className="docs-lead">
           Every external and internal API endpoint used across the entire BlackOut codebase —{" "}
-          <strong>{totalCount} external endpoints</strong> across 5 providers, audited file-by-file.{" "}
+          <strong>{totalCount} external endpoints</strong> across 4 providers, audited file-by-file.{" "}
           <span style={{ color: "#22c55e" }}>●</span> Live = polled in the real-time play engine.
         </p>
         <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
@@ -498,13 +483,6 @@ export default function ClaudeApiAnalysisPage() {
               <td>HTTPS</td>
               <td><code>UW_API_KEY</code> · <code>UW_CLIENT_API_ID</code></td>
               <td><code>api.unusualwhales.com</code></td>
-            </tr>
-            <tr>
-              <td><strong>Finnhub</strong></td>
-              <td>{FINNHUB_ENDPOINTS.length} REST</td>
-              <td>HTTPS</td>
-              <td><code>FINNHUB_API_KEY</code></td>
-              <td><code>finnhub.io/api/v1</code></td>
             </tr>
             <tr>
               <td><strong>Anthropic</strong></td>
@@ -564,19 +542,9 @@ export default function ClaudeApiAnalysisPage() {
         {UW_SECTIONS.map((s) => <SectionTable key={s.id} section={s} />)}
       </section>
 
-      {/* ── Finnhub ── */}
-      <section className="docs-section">
-        <h2 id="finnhub">3. Finnhub</h2>
-        <p style={{ fontSize: 13, opacity: 0.75, marginBottom: "1rem" }}>
-          Economic calendar, earnings, fundamentals. The <code>/calendar/economic</code> endpoint requires Finnhub premium
-          — enable with <code>FINNHUB_ECONOMIC_CALENDAR=true</code>.
-        </p>
-        <FlatTable endpoints={FINNHUB_ENDPOINTS} title="REST endpoints" id="finnhub-rest" />
-      </section>
-
       {/* ── Anthropic ── */}
       <section className="docs-section">
-        <h2 id="anthropic">4. Anthropic</h2>
+        <h2 id="anthropic">3. Anthropic</h2>
         <p style={{ fontSize: 13, opacity: 0.75, marginBottom: "1rem" }}>
           Claude model for desk commentary, Night Hawk dossiers, play narratives, and agentic ticker research.
           Model set via <code>ANTHROPIC_MODEL</code> (default: <code>claude-sonnet-4-20250514</code>).

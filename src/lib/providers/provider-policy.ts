@@ -22,6 +22,6 @@ export function uwFlowAvailable(): boolean {
   return uwConfigured();
 }
 
-export function providerLabel(source: "polygon" | "unusual_whales" | "benzinga" | "finnhub" | "postgres"): string {
+export function providerLabel(source: "polygon" | "unusual_whales" | "benzinga" | "postgres"): string {
   return source;
 }

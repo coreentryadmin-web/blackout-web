@@ -1,18 +1,12 @@
 import { fetchBenzingaNews, fetchPolygonFinancialRatios, fetchShortInterest, fetchVixIvRankPercentile, type PolygonFinancialRatios } from "@/lib/providers/polygon";
-import { fetchPolygonNews } from "@/lib/providers/polygon-largo";
+import { fetchPolygonNews, fetchPolygonTickerDetails } from "@/lib/providers/polygon-largo";
 import { uwConfigured } from "@/lib/providers/config";
-import {
-  fetchFinnhubCompanyNews,
-  fetchFinnhubCompanyProfile,
-  fetchFinnhubInsiderTransactions,
-  fetchFinnhubPriceTarget,
-  fetchFinnhubRecommendations,
-} from "@/lib/providers/finnhub";
 import {
   fetchMarketFlowAlertRows,
   fetchUwCongressUnusualTrades,
   fetchUwDarkPool,
   fetchUwFlowPerExpiry,
+  fetchUwInsiderTransactions,
   fetchUwInstitutionOwnership,
   fetchUwIvRank,
   fetchUwIvTermStructure,
@@ -98,8 +92,16 @@ function isWithinRecentSignalWindow(row: Record<string, unknown>, days = RECENT_
 function isRecentInsiderBuy(row: Record<string, unknown>): boolean {
   if (!isWithinRecentSignalWindow(row)) return false;
   const tx = String(row.transactionCode ?? row.transaction_code ?? "").toUpperCase();
-  const type = String(row.type ?? row.transaction_type ?? "").toUpperCase();
-  return tx === "P" || type.includes("BUY") || type.includes("PURCHASE");
+  const type = String(row.type ?? row.transaction_type ?? row.action ?? "").toUpperCase();
+  const buySell = String(row.buy_sell ?? row.buySell ?? "").toUpperCase();
+  return tx === "P" || type.includes("BUY") || type.includes("PURCHASE") || buySell.includes("BUY");
+}
+
+function sectorFromPolygonDetails(profile: Record<string, unknown> | null): string | null {
+  if (!profile) return null;
+  const results = (profile.results as Record<string, unknown> | undefined) ?? profile;
+  const sector = results.sic_description ?? results.sector ?? results.industry;
+  return sector != null ? String(sector) : null;
 }
 
 export function resetEditionCongressCache() {
@@ -139,23 +141,6 @@ async function isScreenerConfirmed(ticker: string): Promise<boolean> {
   return editionScreenerCache.some((r) => String(r.ticker ?? r.symbol ?? "").toUpperCase() === sym);
 }
 
-function formatAnalyst(recs: Array<Record<string, unknown>> | null): string | null {
-  if (!recs?.length) return null;
-  const latest = recs[recs.length - 1];
-  if (!latest) return null;
-  const buy = Number(latest.buy ?? 0);
-  const hold = Number(latest.hold ?? 0);
-  const sell = Number(latest.sell ?? 0);
-  return `Buy ${buy} / Hold ${hold} / Sell ${sell}`;
-}
-
-function formatPriceTarget(pt: Record<string, unknown> | null): string | null {
-  if (!pt) return null;
-  const target = pt.targetMean ?? pt.targetHigh ?? pt.targetMedian;
-  if (target == null) return null;
-  return `Street PT ~$${Number(target).toFixed(2)}`;
-}
-
 const INDEX_IV_PROXY = new Set(["SPX", "SPY", "QQQ", "VIX", "IWM"]);
 
 /** Polygon VIX IV rank for index proxies; UW only as fallback for single names. */
@@ -172,12 +157,10 @@ async function resolveIvRank(sym: string): Promise<number | null> {
 async function resolveTickerNews(
   sym: string,
   polyNews: Awaited<ReturnType<typeof fetchPolygonNews>>,
-  bzNews: Awaited<ReturnType<typeof fetchBenzingaNews>>,
-  fhNews: Awaited<ReturnType<typeof fetchFinnhubCompanyNews>>
+  bzNews: Awaited<ReturnType<typeof fetchBenzingaNews>>
 ): Promise<string[]> {
   const headlines = [
     ...bzNews.map((n) => String(n.title ?? "")),
-    ...fhNews.map((n) => String(n.headline ?? n.title ?? "")),
     ...polyNews.map((n) => String(n.title ?? "")),
   ].filter(Boolean);
 
@@ -208,13 +191,10 @@ export async function fetchTickerDossier(
     tech,
     polyNews,
     bzNews,
-    fhNews,
     insider,
     profile,
     shortSi,
     flowStreak,
-    analystRecs,
-    priceTargetRaw,
     congress,
     congressUnusual,
     institutional,
@@ -243,17 +223,14 @@ export async function fetchTickerDossier(
     dossierFetch(() => buildTechnicalCard(sym), null, t),
     dossierFetch(() => fetchPolygonNews(sym, 8), [], t),
     dossierFetch(() => fetchBenzingaNews(5, { ticker: sym }), [], t),
-    dossierFetch(() => fetchFinnhubCompanyNews(sym, 5), [], t),
-    dossierFetch(() => fetchFinnhubInsiderTransactions(sym), [], t),
-    dossierFetch(() => fetchFinnhubCompanyProfile(sym), null, t),
+    uw ? dossierFetch(() => fetchUwInsiderTransactions(sym, 20), [], t) : Promise.resolve([]),
+    dossierFetch(() => fetchPolygonTickerDetails(sym), null, t),
     dossierFetch(() => fetchShortInterest(sym), null, t),
     dossierFetch(
       () => fetchTickerFlowStreak(sym),
       { streak_days: 0, net_3d: 0, net_5d: 0, direction: "mixed" as const },
       t
     ),
-    dossierFetch(() => fetchFinnhubRecommendations(sym), null, t),
-    dossierFetch(() => fetchFinnhubPriceTarget(sym), null, t),
     dossierFetch(() => getEditionCongressTrades(sym), [], t),
     uw ? dossierFetch(() => fetchUwCongressUnusualTrades(sym, 5), [], t) : Promise.resolve([]),
     uw ? dossierFetch(() => fetchUwInstitutionOwnership(sym, 8), [], t) : Promise.resolve([]),
@@ -277,9 +254,10 @@ export async function fetchTickerDossier(
     }
   }
 
-  const headlines = await resolveTickerNews(sym, polyNews, bzNews, fhNews);
+  const headlines = await resolveTickerNews(sym, polyNews, bzNews);
 
-  const insiderBuys = insider.filter((t) => isRecentInsiderBuy(t as Record<string, unknown>)).length;
+  const insiderRows = insider as Record<string, unknown>[];
+  const insiderBuys = insiderRows.filter((row) => isRecentInsiderBuy(row)).length;
 
   const ivRank = ivRankRaw != null && Number.isFinite(ivRankRaw) ? Number(ivRankRaw) : null;
   const ivTerm = ivTermRaw ?? [];
@@ -308,10 +286,10 @@ export async function fetchTickerDossier(
     tech,
     news_headlines: headlines,
     polygon_sentiment: polygonSentiment,
-    analyst_summary: formatAnalyst(analystRecs),
-    price_target: formatPriceTarget(priceTargetRaw),
+    analyst_summary: null,
+    price_target: null,
     insider_buys: insiderBuys,
-    sector: profile ? String((profile as { finnhubIndustry?: string }).finnhubIndustry ?? "") : null,
+    sector: sectorFromPolygonDetails(profile),
     short_days_to_cover: shortSi?.days_to_cover ?? null,
     fundamental_ratios: fundamentalRatios,
     trading_halt: tradingHalt,

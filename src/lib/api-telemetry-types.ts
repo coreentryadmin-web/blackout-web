@@ -1,7 +1,6 @@
 export type ApiProviderId =
   | "polygon"
   | "unusual_whales"
-  | "finnhub"
   | "anthropic"
   | "blackout_engine"
   | "postgres"

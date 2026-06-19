@@ -1,9 +1,11 @@
 import { fetchSectorPerformance, fetchIndexDailyBars, fetchIndex5MinBars, fetchIndexSnapshots, fetchVixIvRankPercentile, computeVixTermStructure, fetchDailyMarketSummary, computeMarketBreadthFromSummary, type MarketBreadthMetrics } from "@/lib/providers/polygon";
 import { fetchPolygonMarketNews } from "@/lib/providers/polygon-largo";
-import { fetchFinnhubEarningsOnDate, fetchFinnhubEconomicCalendarRange } from "@/lib/providers/finnhub";
+import { macroEventsOnDate } from "@/lib/providers/macro-events";
 import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
 import {
   fetchMarketFlowAlertRows,
+  fetchUwEarningsAfterhours,
+  fetchUwEarningsPremarket,
   fetchUwEtfTide,
   fetchUwGroupGreekFlow,
   fetchUwMacroIndicators,
@@ -127,6 +129,18 @@ async function fetchMarketNewsPreferPolygon(): Promise<Record<string, unknown>[]
   ];
 }
 
+async function fetchEarningsOnDate(dateYmd: string): Promise<Record<string, unknown>[]> {
+  if (!uwConfigured()) return [];
+  const [pre, aft] = await Promise.all([
+    fetchUwEarningsPremarket(50).catch(() => []),
+    fetchUwEarningsAfterhours(50).catch(() => []),
+  ]);
+  return [...pre, ...aft].filter((row) => {
+    const d = String(row.report_date ?? row.date ?? row.earnings_date ?? row.announce_date ?? "").slice(0, 10);
+    return d === dateYmd;
+  });
+}
+
 export async function fetchMarketWideContext(): Promise<MarketWideContext> {
   const today = todayEt();
   const tomorrow = nextTradingDayEt(today);
@@ -139,7 +153,6 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     spxIntradayRaw,
     vixRaw,
     sectorPerf,
-    macroRaw,
     sectorTides,
     etfSpy,
     etfQqq,
@@ -163,7 +176,6 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     polygonConfigured() ? fetchIndex5MinBars("I:SPX", today, today).catch(() => []) : Promise.resolve([]),
     fetchIndexDailyBars("I:VIX", from, today, "30").catch(() => []),
     fetchSectorPerformance().catch(() => []),
-    fetchFinnhubEconomicCalendarRange(tomorrow, tomorrow).catch(() => null),
     Promise.all(
       SECTOR_WATCH.map(async (s) => ({
         sector: s.label,
@@ -220,11 +232,11 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     for (const row of indexResults) indexFlows[row.ticker] = row;
   }
 
-  const macroEvents = (macroRaw?.economicCalendar ?? []).filter(
-    (e) => String(e.country ?? "").toUpperCase() === "US" && String(e.impact ?? "").toLowerCase() === "high"
-  );
+  const macroEvents = macroEventsOnDate(tomorrow)
+    .filter((e) => e.impact === "high")
+    .map((e) => ({ ...e }) as Record<string, unknown>);
 
-  const tomorrowEarnings = await fetchFinnhubEarningsOnDate(tomorrow).catch(() => []);
+  const tomorrowEarnings = await fetchEarningsOnDate(tomorrow).catch(() => []);
 
   const marketBreadth = dailyMarket?.results?.length
     ? computeMarketBreadthFromSummary(dailyMarket.results)

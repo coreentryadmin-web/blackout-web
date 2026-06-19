@@ -11,18 +11,8 @@ export function uwConfigured(): boolean {
   return Boolean(process.env.UW_API_KEY?.trim());
 }
 
-export function finnhubConfigured(): boolean {
-  return Boolean(process.env.FINNHUB_API_KEY?.trim());
-}
-
-/** Finnhub economic calendar is premium-only (~$50/mo). Opt in with FINNHUB_ECONOMIC_CALENDAR=1. */
-export function finnhubEconomicCalendarEnabled(): boolean {
-  const raw = process.env.FINNHUB_ECONOMIC_CALENDAR?.trim().toLowerCase();
-  return raw === "1" || raw === "true";
-}
-
 export function marketDataConfigured(): boolean {
-  return polygonConfigured() || uwConfigured() || finnhubConfigured();
+  return polygonConfigured() || uwConfigured();
 }
 
 /** Full SPX desk cache (UW + Polygon). Default 10s — matches client full-desk poll. */

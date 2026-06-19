@@ -58,7 +58,6 @@ function EndpointTable({
 const PROVIDER_BASE: Record<string, string> = {
   polygon: "https://api.massive.com",
   unusual_whales: "https://api.unusualwhales.com",
-  finnhub: "https://finnhub.io",
   anthropic: "https://api.anthropic.com",
   engine: process.env.NEXT_PUBLIC_API_BASE ?? "(NEXT_PUBLIC_API_BASE)",
   web_search: "",
@@ -113,10 +112,6 @@ export default function CursorApiAnalysisPage() {
             <span className="docs-analysis-label">UW paths</span>
           </div>
           <div className="docs-analysis-stat">
-            <span className="docs-analysis-num">{summary.finnhubEndpoints}</span>
-            <span className="docs-analysis-label">Finnhub paths</span>
-          </div>
-          <div className="docs-analysis-stat">
             <span className="docs-analysis-num">{summary.largoTools}</span>
             <span className="docs-analysis-label">Largo tools</span>
           </div>
@@ -131,7 +126,7 @@ export default function CursorApiAnalysisPage() {
         <h2>Architecture</h2>
         <pre className="docs-code docs-mermaid">{`Browser (React)
     │
-    ├─ /api/market/*  ──► Polygon / UW / Finnhub / Postgres / Claude
+    ├─ /api/market/*  ──► Polygon / UW / Postgres / Claude
     ├─ /api/engine/*  ──► Blackout Engine (optional overlay)
     ├─ /api/admin/*   ──► Telemetry + Postgres
     ├─ /api/cron/*    ──► Scheduled jobs (CRON_SECRET)
@@ -208,7 +203,7 @@ Provider policy: Polygon first (unlimited) · UW for flow exclusives`}</pre>
       <section className="docs-section" id="external">
         <h2>External provider endpoints</h2>
         <div className="docs-provider-tabs">
-          {(["all", "polygon", "unusual_whales", "finnhub", "anthropic", "engine", "web_search"] as const).map(
+          {(["all", "polygon", "unusual_whales", "anthropic", "engine", "web_search"] as const).map(
             (p) => (
               <button
                 key={p}
@@ -231,12 +226,6 @@ Provider policy: Polygon first (unlimited) · UW for flow exclusives`}</pre>
           <>
             <h3 className="docs-subheading">Unusual Whales ({external.unusual_whales.length})</h3>
             <EndpointTable rows={external.unusual_whales} baseUrl={PROVIDER_BASE.unusual_whales} />
-          </>
-        )}
-        {(providerFilter === "all" || providerFilter === "finnhub") && (
-          <>
-            <h3 className="docs-subheading">Finnhub ({external.finnhub.length})</h3>
-            <EndpointTable rows={external.finnhub} baseUrl={PROVIDER_BASE.finnhub} />
           </>
         )}
         {(providerFilter === "all" || providerFilter === "anthropic") && (

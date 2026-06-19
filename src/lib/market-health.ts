@@ -5,7 +5,7 @@ import {
 } from "@/lib/api-telemetry";
 import { getFlowEventsBridgeStatus } from "@/lib/flow-events";
 import { getDatabasePoolStats, pingDatabase, databaseConnectionMode } from "@/lib/db";
-import { polygonConfigured, uwConfigured, finnhubConfigured } from "@/lib/providers/config";
+import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
 import { getIndexStoreStatus } from "@/lib/ws/polygon-socket";
 import { getUwSocketHealth } from "@/lib/ws/uw-socket";
 import { getRedisPubSubStatus } from "@/lib/redis-pubsub";
@@ -46,7 +46,6 @@ export async function buildMarketHealthSnapshot() {
     providers: {
       polygon: polygonConfigured(),
       unusual_whales: uwConfigured(),
-      finnhub: finnhubConfigured(),
     },
     postgres: {
       ok: db.ok,
@@ -86,7 +85,7 @@ function buildRateLimitAlerts(
     count_5m: number;
   }> = [];
 
-  const providers: ApiProviderId[] = ["polygon", "unusual_whales", "finnhub", "anthropic"];
+  const providers: ApiProviderId[] = ["polygon", "unusual_whales", "anthropic"];
 
   for (const provider of providers) {
     const localCount = local.rate_limits[provider] ?? 0;

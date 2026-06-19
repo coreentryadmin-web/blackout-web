@@ -1,4 +1,4 @@
-import type { MacroEvent } from "@/lib/providers/finnhub";
+import type { MacroEvent } from "@/lib/providers/macro-events";
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import type { SpxPlayDirection } from "@/lib/spx-signals";
 import {

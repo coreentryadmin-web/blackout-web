@@ -10,17 +10,6 @@ import {
   buildSeasonality,
   largoSymbol,
 } from "@/lib/largo/technicals";
-import {
-  fetchFinnhubBasicMetrics,
-  fetchFinnhubCompanyNews,
-  fetchFinnhubCompanyProfile,
-  fetchFinnhubEarningsCalendar,
-  fetchFinnhubEconomicCalendarRange,
-  fetchFinnhubInsiderTransactions,
-  fetchFinnhubIpoCalendar,
-  fetchFinnhubPriceTarget,
-  fetchFinnhubRecommendations,
-} from "@/lib/providers/finnhub";
 import { fetchUpcomingMacroEvents } from "@/lib/providers/macro-events";
 import {
   computeMaxPainFromChain,
@@ -223,7 +212,6 @@ async function toolNews(ticker: string, channels: string) {
     channels: channel || undefined,
   });
   const polygonNews = sym ? await fetchPolygonNews(sym, 12) : [];
-  const finnhub = sym ? await fetchFinnhubCompanyNews(sym, 7) : null;
 
   let articles: Array<{
     title: string;
@@ -249,13 +237,6 @@ async function toolNews(ticker: string, channels: string) {
       tickers: a.tickers,
       sentiment: a.insights,
       source: "polygon",
-    })),
-    ...((finnhub ?? []) as Array<Record<string, unknown>>).map((a) => ({
-      title: String(a.headline ?? ""),
-      teaser: String(a.summary ?? "").slice(0, 280),
-      published: String(a.datetime ?? ""),
-      tickers: sym ? [sym] : [],
-      source: "finnhub",
     })),
   ];
 
@@ -304,21 +285,12 @@ async function toolNews(ticker: string, channels: string) {
     });
   }
 
-  return { articles: deduped.slice(0, 12), priority: "benzinga → polygon → finnhub → uw (fallback)" };
+  return { articles: deduped.slice(0, 12), priority: "benzinga → polygon → uw (fallback)" };
 }
 
 async function toolEconomicCalendar(daysAhead: number) {
   const staticEvents = fetchUpcomingMacroEvents(daysAhead);
-  const from = todayEtYmd();
-  const to = new Date(Date.now() + daysAhead * 86400000).toISOString().slice(0, 10);
-  const finnhub = await fetchFinnhubEconomicCalendarRange(from, to);
-  const fhRows = (finnhub?.economicCalendar ?? []).map((r) => ({
-    time: String(r.date ?? r.time ?? ""),
-    event: String(r.event ?? ""),
-    country: String(r.country ?? "US"),
-    impact: String(r.impact ?? "medium"),
-  }));
-  return { static_schedule: staticEvents, finnhub: fhRows.slice(0, 20) };
+  return { static_schedule: staticEvents };
 }
 
 export async function runLargoTool(name: string, input: Record<string, unknown>): Promise<unknown> {
@@ -669,47 +641,38 @@ export async function runLargoTool(name: string, input: Record<string, unknown>)
 
     case "get_company_profile": {
       const sym = uwTicker(ticker);
-      const [polygon, finnhub, related] = await Promise.all([
+      const [polygon, related] = await Promise.all([
         fetchPolygonTickerDetails(sym),
-        fetchFinnhubCompanyProfile(sym),
         fetchRelatedTickers(sym),
       ]);
-      const uw = !polygon && !finnhub ? await fetchUwStockInfo(sym) : null;
-      return { ticker: sym, polygon, finnhub, related_tickers: related, unusual_whales: uw };
+      const uw = !polygon ? await fetchUwStockInfo(sym) : null;
+      return { ticker: sym, polygon, related_tickers: related, unusual_whales: uw };
     }
     case "get_financials": {
       const sym = uwTicker(ticker);
-      const finnhub = await fetchFinnhubBasicMetrics(sym);
-      if (finnhub && Object.keys(finnhub).length > 2) {
-        return { ticker: sym, source: "finnhub", finnhub };
-      }
       const [uwFin, income, balance, cashflow] = await Promise.all([
         fetchUwFinancials(sym),
         fetchUwIncomeStatements(sym),
         fetchUwBalanceSheets(sym),
         fetchUwCashFlows(sym),
       ]);
-      return { ticker: sym, source: "unusual_whales", finnhub, unusual_whales: { summary: uwFin, income, balance, cashflow } };
+      return { ticker: sym, source: "unusual_whales", unusual_whales: { summary: uwFin, income, balance, cashflow } };
     }
     case "get_earnings": {
       const sym = uwTicker(ticker);
-      const finnhub = await fetchFinnhubEarningsCalendar(sym);
-      const fhRows = finnhub?.earningsCalendar ?? [];
-      if (fhRows.length) {
-        return { ticker: sym, source: "finnhub", finnhub: fhRows };
-      }
       const [uw, estimates] = await Promise.all([fetchUwEarnings(sym), fetchUwEarningsEstimates(sym)]);
       return { ticker: sym, source: "unusual_whales", unusual_whales: uw, estimates };
     }
-    case "get_earnings_history":
-      return fetchFinnhubBasicMetrics(uwTicker(ticker));
+    case "get_earnings_history": {
+      const sym = uwTicker(ticker);
+      const [earnings, estimates] = await Promise.all([fetchUwEarnings(sym), fetchUwEarningsEstimates(sym)]);
+      return { ticker: sym, source: "unusual_whales", earnings, estimates };
+    }
     case "get_analyst_ratings": {
       const sym = uwTicker(ticker);
-      const [recs, target] = await Promise.all([
-        fetchFinnhubRecommendations(sym),
-        fetchFinnhubPriceTarget(sym),
-      ]);
-      return { recommendations: recs, price_target: target };
+      const rows = await fetchUwScreenerAnalysts(50);
+      const forTicker = rows.filter((r) => String(r.ticker ?? r.symbol ?? "").toUpperCase() === sym);
+      return { ticker: sym, source: "unusual_whales", analysts: forTicker.length ? forTicker : rows.slice(0, 10) };
     }
     case "get_news":
       return toolNews(String(input.ticker ?? ""), String(input.channels ?? ""));
@@ -718,7 +681,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>)
     case "get_fda_calendar":
       return fetchUwFdaCalendar(uwTicker(ticker));
     case "get_ipo_calendar":
-      return fetchFinnhubIpoCalendar();
+      return { ipos: [], note: "IPO calendar unavailable — use web search for upcoming listings." };
 
     case "get_short_interest": {
       const sym = uwTicker(ticker);
@@ -752,13 +715,8 @@ export async function runLargoTool(name: string, input: Record<string, unknown>)
     }
     case "get_insider_flow": {
       const sym = uwTicker(ticker);
-      const finnhub = await fetchFinnhubInsiderTransactions(sym);
-      const fhRows = Array.isArray(finnhub) ? finnhub : [];
-      if (fhRows.length >= 3) {
-        return { ticker: sym, source: "finnhub", finnhub: fhRows };
-      }
       const [uw, uwTx] = await Promise.all([fetchUwInsiderFlow(sym), fetchUwInsiderTransactions(sym)]);
-      return { ticker: sym, finnhub: fhRows, aggregate: uw, transactions: uwTx };
+      return { ticker: sym, source: "unusual_whales", aggregate: uw, transactions: uwTx };
     }
     case "get_congress_trades": {
       const [trades, late] = await Promise.all([

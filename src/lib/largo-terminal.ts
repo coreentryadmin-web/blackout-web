@@ -20,7 +20,7 @@ import {
 } from "@/lib/largo/largo-store";
 import { analyzeLargoQuestion } from "@/lib/largo/question-intent";
 import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-live-feed";
-import { finnhubConfigured, polygonConfigured, uwConfigured } from "@/lib/providers/config";
+import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
 import { webSearchConfigured } from "@/lib/providers/web-search";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 
@@ -74,7 +74,6 @@ export function largoConfigured(): boolean {
 export function largoDataSources(): {
   polygon: boolean;
   uw: boolean;
-  finnhub: boolean;
   postgres: boolean;
   web_search: boolean;
   anthropic: boolean;
@@ -82,7 +81,6 @@ export function largoDataSources(): {
   return {
     polygon: polygonConfigured(),
     uw: uwConfigured(),
-    finnhub: finnhubConfigured(),
     postgres: dbConfigured(),
     web_search: webSearchConfigured(),
     anthropic: anthropicConfigured(),

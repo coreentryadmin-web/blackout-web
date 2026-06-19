@@ -9,7 +9,6 @@ export type RateQuotaSpec = {
 export const PROVIDER_RATE_QUOTAS: Partial<Record<ApiProviderId, RateQuotaSpec>> = {
   unusual_whales: { per_minute: 120, label: "UW Advanced burst" },
   polygon: { per_minute: 100, label: "Massive REST (plan est.)" },
-  finnhub: { per_minute: 60, label: "Finnhub free tier" },
   anthropic: { per_minute: 50, label: "Claude API (est.)" },
 };
 

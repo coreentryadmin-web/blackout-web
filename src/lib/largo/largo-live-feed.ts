@@ -333,10 +333,9 @@ export function formatLargoLiveFeed(feed: LargoLiveFeed, ticker: string): string
   const cal = asObj(feed.calendar);
   if (cal && !cal.error) {
     const staticEv = asArr(cal.static_schedule).slice(0, 6);
-    const fh = asArr(cal.finnhub).slice(0, 6);
-    if (staticEv.length || fh.length) {
+    if (staticEv.length) {
       lines.push("### Catalysts / calendar");
-      for (const e of [...staticEv, ...fh]) {
+      for (const e of staticEv) {
         const o = asObj(e);
         if (!o) continue;
         lines.push(`- ${o.time ?? o.date ?? ""} ${o.event ?? o.name ?? ""} (${o.impact ?? "macro"})`);

@@ -232,7 +232,6 @@ export function getApiTelemetrySnapshot(sinceMs = 5 * 60_000) {
   > = {
     polygon: { calls: 0, errors: 0, endpoints: [] },
     unusual_whales: { calls: 0, errors: 0, endpoints: [] },
-    finnhub: { calls: 0, errors: 0, endpoints: [] },
     anthropic: { calls: 0, errors: 0, endpoints: [] },
     blackout_engine: { calls: 0, errors: 0, endpoints: [] },
     postgres: { calls: 0, errors: 0, endpoints: [] },
@@ -335,7 +334,6 @@ export function getProviderHealthSummary(sinceMs = 5 * 60_000) {
   const by_provider: Record<ApiProviderId, ProviderHealthRow> = {
     polygon: emptyProviderRow(),
     unusual_whales: emptyProviderRow(),
-    finnhub: emptyProviderRow(),
     anthropic: emptyProviderRow(),
     blackout_engine: emptyProviderRow(),
     postgres: emptyProviderRow(),

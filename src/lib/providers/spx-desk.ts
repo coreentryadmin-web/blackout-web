@@ -6,8 +6,7 @@ import {
   computeFlowStrikeStacks,
   type FlowStrikeStack,
 } from "@/lib/largo/flow-strike-stacks";
-import { fetchEconomicCalendarToday, type MacroEvent } from "./finnhub";
-import { mergeMacroEventsToday } from "./macro-events";
+import { mergeMacroEventsToday, type MacroEvent } from "./macro-events";
 import { resolveDeskGap } from "./gap-proxy";
 import {
   analyzeStrikeGexRows,
@@ -772,7 +771,6 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     sma50,
     sma200,
     breadthAll,
-    macroEvents,
     newsRaw,
     intel,
   ] = await Promise.all([
@@ -785,7 +783,6 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     fetchIndexSma(SPX, 50, "day"),
     fetchIndexSma(SPX, 200, "day"),
     fetchBreadthUniverseSnapshots().catch(() => []),
-    fetchEconomicCalendarToday().catch(() => []),
     fetchBenzingaNews(15).catch(() => []),
     intelPromise,
   ]);
@@ -899,7 +896,6 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     .slice(0, 10);
 
   const macroEventsResolved = await mergeMacroEventsToday({
-    finnhub: macroEvents ?? [],
     headlines: newsHeadlines,
   });
 

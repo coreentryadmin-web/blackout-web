@@ -222,27 +222,6 @@ export const API_PROVIDER_CATALOG: ApiProviderCatalogEntry[] = [
     ],
   },
   {
-    id: "finnhub",
-    name: "Finnhub",
-    description: "US economic calendar (macro events).",
-    docs_url: "https://finnhub.io/docs/api",
-    env_keys: ["FINNHUB_API_KEY", "FINNHUB_ECONOMIC_CALENDAR"],
-    endpoints: [
-      {
-        endpoint: "/calendar/economic",
-        method: "GET",
-        description: "US macro calendar (premium — opt in with FINNHUB_ECONOMIC_CALENDAR=1)",
-        used_by: ["macro rail", "play gates"],
-      },
-      {
-        endpoint: "/quote",
-        method: "GET",
-        description: "Quote probe (free tier health check)",
-        used_by: ["admin probe"],
-      },
-    ],
-  },
-  {
     id: "anthropic",
     name: "Anthropic (Claude)",
     description: "LLM commentary and narrative generation.",

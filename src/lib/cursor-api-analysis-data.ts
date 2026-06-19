@@ -1,15 +1,15 @@
 /** Auto-generated — run: node scripts/analyze-api-usage.mjs */
 export const CURSOR_API_ANALYSIS = {
-  "generatedAt": "2026-06-19T00:28:45.065Z",
+  "generatedAt": "2026-06-19T06:59:53.640Z",
   "summary": {
-    "internalRoutes": 40,
-    "polygonEndpoints": 43,
+    "internalRoutes": 43,
+    "polygonEndpoints": 44,
     "uwEndpoints": 203,
-    "finnhubEndpoints": 4,
+    "finnhubEndpoints": 0,
     "anthropicEndpoints": 1,
     "engineEndpoints": 1,
     "webSearchEndpoints": 3,
-    "clientCalls": 27,
+    "clientCalls": 29,
     "largoTools": 78
   },
   "internalRoutes": [
@@ -40,6 +40,11 @@ export const CURSOR_API_ANALYSIS = {
     },
     {
       "method": "GET",
+      "path": "/api/admin/cron-health",
+      "file": "src/app/api/admin/cron-health/route.ts"
+    },
+    {
+      "method": "GET",
       "path": "/api/admin/health",
       "file": "src/app/api/admin/health/route.ts"
     },
@@ -60,6 +65,11 @@ export const CURSOR_API_ANALYSIS = {
     },
     {
       "method": "GET",
+      "path": "/api/admin/nighthawk/analytics",
+      "file": "src/app/api/admin/nighthawk/analytics/route.ts"
+    },
+    {
+      "method": "GET",
       "path": "/api/admin/spx/dashboard",
       "file": "src/app/api/admin/spx/dashboard/route.ts"
     },
@@ -77,6 +87,11 @@ export const CURSOR_API_ANALYSIS = {
       "method": "GET",
       "path": "/api/cron/nighthawk-edition",
       "file": "src/app/api/cron/nighthawk-edition/route.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cron/nighthawk-outcomes",
+      "file": "src/app/api/cron/nighthawk-outcomes/route.ts"
     },
     {
       "method": "GET",
@@ -376,6 +391,12 @@ export const CURSOR_API_ANALYSIS = {
         ]
       },
       {
+        "path": "/v2/aggs/ticker/${sym}/range/5/minute/${from}/${to}",
+        "files": [
+          "src/lib/providers/polygon.ts"
+        ]
+      },
+      {
         "path": "/v2/last/nbbo/${sym}",
         "files": [
           "src/lib/providers/polygon-largo.ts"
@@ -496,6 +517,7 @@ export const CURSOR_API_ANALYSIS = {
         "path": "/api/companies/{param}/earnings-estimates",
         "files": [
           "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/dossier.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -596,6 +618,7 @@ export const CURSOR_API_ANALYSIS = {
         "path": "/api/earnings/afterhours",
         "files": [
           "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/market-wide.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -619,7 +642,7 @@ export const CURSOR_API_ANALYSIS = {
         ]
       },
       {
-        "path": "/api/economy/${id}",
+        "path": "/api/economy/${slug}",
         "files": [
           "src/lib/largo/run-tool.ts",
           "src/lib/nighthawk/dossier.ts",
@@ -1206,6 +1229,7 @@ export const CURSOR_API_ANALYSIS = {
         "path": "/api/stock/{param}/flow-per-strike-intraday",
         "files": [
           "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/dossier.ts",
           "src/lib/providers/spx-desk.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
@@ -1263,6 +1287,7 @@ export const CURSOR_API_ANALYSIS = {
         "path": "/api/stock/{param}/historical-risk-reversal-skew",
         "files": [
           "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/dossier.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -1360,6 +1385,7 @@ export const CURSOR_API_ANALYSIS = {
         "path": "/api/stock/{param}/option-chains",
         "files": [
           "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/market-wide.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -1444,6 +1470,7 @@ export const CURSOR_API_ANALYSIS = {
         "path": "/api/stock/{param}/volatility/realized",
         "files": [
           "src/lib/largo/run-tool.ts",
+          "src/lib/nighthawk/dossier.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -1600,6 +1627,7 @@ export const CURSOR_API_ANALYSIS = {
       {
         "path": "/api/stock/${sym(ticker)}/option-chains",
         "files": [
+          "src/lib/nighthawk/option-chain-prompt.ts",
           "src/lib/providers/unusual-whales.ts"
         ]
       },
@@ -1853,32 +1881,7 @@ export const CURSOR_API_ANALYSIS = {
         ]
       }
     ],
-    "finnhub": [
-      {
-        "path": "/api/v1/calendar/earnings",
-        "files": [
-          "src/lib/providers/finnhub.ts"
-        ]
-      },
-      {
-        "path": "/api/v1/calendar/economic",
-        "files": [
-          "src/lib/providers/finnhub.ts"
-        ]
-      },
-      {
-        "path": "/api/v1/calendar/ipo",
-        "files": [
-          "src/lib/providers/finnhub.ts"
-        ]
-      },
-      {
-        "path": "/api/v1/quote",
-        "files": [
-          "src/lib/admin-api-dashboard.ts"
-        ]
-      }
-    ],
+    "finnhub": [],
     "anthropic": [
       {
         "path": "/v1/messages",
@@ -1937,6 +1940,12 @@ export const CURSOR_API_ANALYSIS = {
       ]
     },
     {
+      "path": "/api/admin/cron-health",
+      "files": [
+        "src/components/admin/AdminCronDashboard.tsx"
+      ]
+    },
+    {
       "path": "/api/admin/health",
       "files": [
         "src/components/admin/AdminHealthBanner.tsx"
@@ -1952,6 +1961,12 @@ export const CURSOR_API_ANALYSIS = {
       "path": "/api/admin/me",
       "files": [
         "src/components/Nav.tsx"
+      ]
+    },
+    {
+      "path": "/api/admin/nighthawk/analytics?window=${windowDays}",
+      "files": [
+        "src/components/admin/AdminNightHawkDashboard.tsx"
       ]
     },
     {

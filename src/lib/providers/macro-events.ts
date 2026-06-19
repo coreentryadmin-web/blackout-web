@@ -1,6 +1,13 @@
-import type { MacroEvent } from "@/lib/providers/finnhub";
+export type MacroEvent = {
+  time: string;
+  event: string;
+  country: string;
+  impact: string;
+  actual?: string | null;
+  estimate?: string | null;
+};
 
-/** Curated US macro dates — update quarterly. Finnhub calendar is premium-only. */
+/** Curated US macro dates — update quarterly. */
 const US_MACRO_SCHEDULE_2026: Array<{ date: string; event: string; impact: "high" | "medium" }> = [
   { date: "2026-01-10", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2026-01-14", event: "CPI", impact: "high" },
@@ -85,6 +92,8 @@ const US_MACRO_SCHEDULE_2027: Array<{ date: string; event: string; impact: "high
   { date: "2027-12-10", event: "CPI", impact: "high" },
 ];
 
+const ALL_MACRO_SCHEDULE = [...US_MACRO_SCHEDULE_2026, ...US_MACRO_SCHEDULE_2027];
+
 const MACRO_HEADLINE_RE =
   /\b(CPI|FOMC|FED|PCE|NFP|NONFARM|JOBS|PAYROLL|PPI|GDP|RETAIL SALES|ISM|PMI|UNEMPLOYMENT|CLAIMS|RATE DECISION|POWELL)\b/i;
 
@@ -92,17 +101,25 @@ function todayEtYmd(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
 }
 
-function staticMacroToday(now = new Date()): MacroEvent[] {
-  const today = todayEtYmd(now);
-  const schedule = [...US_MACRO_SCHEDULE_2026, ...US_MACRO_SCHEDULE_2027];
-  return schedule.filter((e) => e.date === today).map((e) => ({
+function scheduleRowToEvent(e: { date: string; event: string; impact: "high" | "medium" }): MacroEvent {
+  return {
     time: "08:30",
     event: e.event,
     country: "US",
     impact: e.impact,
     actual: null,
     estimate: null,
-  }));
+  };
+}
+
+function staticMacroToday(now = new Date()): MacroEvent[] {
+  const today = todayEtYmd(now);
+  return ALL_MACRO_SCHEDULE.filter((e) => e.date === today).map(scheduleRowToEvent);
+}
+
+/** High-impact US macro events on a specific ET calendar date. */
+export function macroEventsOnDate(dateYmd: string): MacroEvent[] {
+  return ALL_MACRO_SCHEDULE.filter((e) => e.date === dateYmd).map(scheduleRowToEvent);
 }
 
 function macroFromHeadlines(
@@ -136,24 +153,13 @@ function dedupeEvents(events: MacroEvent[]): MacroEvent[] {
   return out.slice(0, 8);
 }
 
-/**
- * Resolve today's macro catalysts without Finnhub premium:
- * 1) Curated static calendar (primary)
- * 2) Finnhub economic calendar if subscription allows
- * 3) Benzinga headline keyword fallback
- */
+/** Resolve today's macro catalysts from curated schedule + headline keywords. */
 export async function resolveMacroEventsToday(input: {
-  finnhub?: MacroEvent[];
   headlines?: Array<{ title?: string }>;
-}): Promise<{ events: MacroEvent[]; source: "static" | "finnhub" | "headlines" | "none" }> {
+}): Promise<{ events: MacroEvent[]; source: "static" | "headlines" | "none" }> {
   const staticHits = staticMacroToday();
   if (staticHits.length > 0) {
     return { events: staticHits, source: "static" };
-  }
-
-  const finnhub = input.finnhub?.filter((e) => e.event) ?? [];
-  if (finnhub.length > 0) {
-    return { events: finnhub, source: "finnhub" };
   }
 
   const fromNews = macroFromHeadlines(input.headlines);
@@ -164,18 +170,16 @@ export async function resolveMacroEventsToday(input: {
   return { events: [], source: "none" };
 }
 
-/** Merge static + finnhub + headlines for desk (static wins on known dates). */
+/** Merge static schedule + headline keywords for desk macro rail. */
 export async function mergeMacroEventsToday(input: {
-  finnhub?: MacroEvent[];
   headlines?: Array<{ title?: string }>;
 }): Promise<MacroEvent[]> {
   const staticHits = staticMacroToday();
-  const finnhub = input.finnhub ?? [];
   const fromNews = macroFromHeadlines(input.headlines);
-  return dedupeEvents([...staticHits, ...finnhub, ...fromNews]);
+  return dedupeEvents([...staticHits, ...fromNews]);
 }
 
-/** Upcoming US macro from curated schedule (no Finnhub premium required). */
+/** Upcoming US macro from curated schedule. */
 export function fetchUpcomingMacroEvents(daysAhead = 7): MacroEvent[] {
   const today = todayEtYmd();
   const endMs = Date.now() + Math.max(1, daysAhead) * 86400000;

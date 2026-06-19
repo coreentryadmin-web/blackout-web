@@ -1,5 +1,5 @@
 import * as playConfig from "@/lib/spx-play-config";
-import { polygonConfigured, uwConfigured, finnhubConfigured } from "@/lib/providers/config";
+import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
 import { anthropicConfigured } from "@/lib/providers/anthropic";
 import { dbConfigured } from "@/lib/db";
 import { engineConfigured } from "@/lib/engine";
@@ -110,7 +110,6 @@ export function buildSpxConfigSnapshot(): ConfigSnapshotGroup[] {
       items: [
         { key: "POLYGON", value: polygonConfigured() },
         { key: "UNUSUAL_WHALES", value: uwConfigured() },
-        { key: "FINNHUB", value: finnhubConfigured() },
         { key: "BLACKOUT_ENGINE", value: engineConfigured() },
         { key: "POSTGRES", value: dbConfigured() },
       ],

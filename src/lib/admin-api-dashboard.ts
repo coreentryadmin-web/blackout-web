@@ -18,7 +18,6 @@ import { engineConfigured, fetchEngine } from "@/lib/engine";
 import {
   polygonConfigured,
   uwConfigured,
-  finnhubConfigured,
 } from "@/lib/providers/config";
 import { webSearchConfigured } from "@/lib/providers/web-search";
 import { anthropicConfigured } from "@/lib/providers/anthropic";
@@ -179,32 +178,6 @@ async function probeUnusualWhales(): Promise<{ ok: boolean; latency_ms: number; 
   }
 }
 
-async function probeFinnhub(): Promise<{ ok: boolean; latency_ms: number; error: string | null }> {
-  if (!finnhubConfigured()) return { ok: false, latency_ms: 0, error: "Not configured" };
-  const key = process.env.FINNHUB_API_KEY?.trim() ?? "";
-  const qs = new URLSearchParams({ symbol: "SPY", token: key });
-  const start = Date.now();
-  try {
-    const res = await trackedFetch(
-      "finnhub",
-      "/quote",
-      `https://finnhub.io/api/v1/quote?${qs}`,
-      { headers: { Accept: "application/json" }, cache: "no-store" }
-    );
-    return {
-      ok: res.ok,
-      latency_ms: Date.now() - start,
-      error: res.ok ? null : `HTTP ${res.status}`,
-    };
-  } catch (e) {
-    return {
-      ok: false,
-      latency_ms: Date.now() - start,
-      error: e instanceof Error ? e.message : "Probe failed",
-    };
-  }
-}
-
 async function probeEngine(): Promise<{ ok: boolean; latency_ms: number; error: string | null }> {
   if (!engineConfigured()) return { ok: false, latency_ms: 0, error: "Not configured" };
   const start = Date.now();
@@ -247,8 +220,6 @@ function isConfigured(id: ApiProviderId): boolean {
       return polygonConfigured();
     case "unusual_whales":
       return uwConfigured();
-    case "finnhub":
-      return finnhubConfigured();
     case "anthropic":
       return anthropicConfigured();
     case "blackout_engine":
@@ -268,7 +239,6 @@ const PROBE_FNS: Record<
 > = {
   polygon: probePolygon,
   unusual_whales: probeUnusualWhales,
-  finnhub: probeFinnhub,
   anthropic: async () =>
     anthropicConfigured()
       ? { ok: true, latency_ms: 0, error: null }

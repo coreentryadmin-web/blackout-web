@@ -133,21 +133,21 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t("get_market_movers", "Top gainers/losers (Polygon)."),
 
-  t("get_economic_calendar", "FOMC, CPI, NFP — static schedule + Finnhub.", { days_ahead: { type: "integer", default: 14 } }),
+  t("get_economic_calendar", "FOMC, CPI, NFP — curated static US macro schedule.", { days_ahead: { type: "integer", default: 14 } }),
 
   t("get_etf_flow", "UW ONLY — ETF in/outflow + tide. Polygon quote for price.", { etf: { type: "string" } }),
 
-  t("get_company_profile", "Polygon ticker details + Finnhub profile. UW fallback only.", T, ["ticker"]),
+  t("get_company_profile", "Polygon ticker details; UW fallback.", T, ["ticker"]),
 
-  t("get_financials", "Finnhub metrics first; UW statements fallback.", T, ["ticker"]),
+  t("get_financials", "UW financial statements.", T, ["ticker"]),
 
-  t("get_earnings", "Finnhub earnings first; UW fallback.", T, ["ticker"]),
+  t("get_earnings", "UW earnings + estimates.", T, ["ticker"]),
 
-  t("get_earnings_history", "EPS history and metrics (Finnhub).", T, ["ticker"]),
+  t("get_earnings_history", "UW earnings history and estimates.", T, ["ticker"]),
 
-  t("get_analyst_ratings", "Analyst consensus and price targets (Finnhub).", T, ["ticker"]),
+  t("get_analyst_ratings", "UW analyst screener.", T, ["ticker"]),
 
-  t("get_news", "Benzinga full-text primary → Polygon sentiment → Finnhub → UW last.", {
+  t("get_news", "Benzinga full-text primary → Polygon sentiment → UW fallback.", {
 
     ticker: { type: "string" },
 
@@ -163,13 +163,13 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t("get_fda_calendar", "UW ONLY — FDA events for biotech/pharma.", T, ["ticker"]),
 
-  t("get_ipo_calendar", "Upcoming IPOs (Finnhub)."),
+  t("get_ipo_calendar", "IPO calendar (unavailable — use web search)."),
 
   t("get_short_interest", "Polygon short interest first; UW fallback.", T, ["ticker"]),
 
   t("get_short_data", "Polygon SI + short volume first; UW float/FTDs fallback.", { ticker: { type: "string" } }),
 
-  t("get_insider_flow", "Finnhub insider first; UW fallback.", T, ["ticker"]),
+  t("get_insider_flow", "UW insider transactions.", T, ["ticker"]),
 
   t("get_congress_trades", "UW ONLY — congressional trading disclosures.", { ticker: { type: "string" } }),
 
