@@ -20,6 +20,14 @@ export type LargoQuestionIntent = {
 };
 
 const TICKER_RE = /\b([A-Z]{1,5})\b/g;
+/** Common all-caps acronyms users type that are NOT tickers — avoids the fallback
+ *  pinning "FED"/"CPI"/"WHAT" as a ticker on non-ticker questions. */
+const NON_TICKER_CAPS = new Set([
+  "THE", "AND", "FED", "CPI", "PPI", "GDP", "FOMC", "ATH", "ATL", "IV", "OTM", "ITM",
+  "DTE", "ETF", "USD", "EUR", "CEO", "CFO", "IPO", "WSB", "YOLO", "FOMO", "EOD", "RTH",
+  "AH", "PM", "AM", "OK", "USA", "EU", "UK", "NYSE", "SEC", "AI", "ML", "PE", "EPS",
+  "ER", "PT", "TP", "SL", "HOD", "LOD", "VWAP", "EMA", "RSI", "MACD", "GEX", "OI",
+]);
 export const KNOWN_TICKERS = new Set([
   "SPX", "SPY", "QQQ", "IWM", "VIX", "NDX", "ES", "NQ", "DIA", "VOO", "IVV", "RSP",
   "XLF", "XLE", "XLK", "XLV", "XLI", "XLP", "XLU", "XLY", "XLRE", "XLB", "XLC",
@@ -45,8 +53,11 @@ function extractTicker(question: string, historyText: string): string | null {
   for (const raw of matches) {
     if (KNOWN_TICKERS.has(raw)) return raw;
   }
-  const qMatch = question.toUpperCase().match(/\b([A-Z]{2,5})\b/);
-  if (qMatch && qMatch[1] !== "THE" && qMatch[1] !== "AND") return qMatch[1];
+  // Real tickers are typed in uppercase — match the ORIGINAL text (not uppercased),
+  // so "what is the cpi print" doesn't pin "WHAT". Strip a leading $ cashtag.
+  const qMatch = question.match(/\$?\b([A-Z]{2,5})\b/);
+  const cand = qMatch?.[1];
+  if (cand && !NON_TICKER_CAPS.has(cand)) return cand;
   return null;
 }
 
