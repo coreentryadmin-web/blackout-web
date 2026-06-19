@@ -2,6 +2,7 @@ import {
   upsertNighthawkEdition,
   dbConfigured,
   clearNighthawkStaging,
+  fetchNighthawkEditionByDate,
   fetchNighthawkJob,
   fetchStagedDossierTickers,
   fetchStagedDossiers,
@@ -84,10 +85,11 @@ export async function buildEveningEdition(opts?: {
     job = await fetchNighthawkJob(editionFor);
     logNighthawkJob(editionFor, "info", null, "Force rebuild — job reset");
   } else if (job?.status === "published" && !opts?.force) {
+    const existing = await fetchNighthawkEditionByDate(editionFor);
     return {
       ok: true,
       edition_for: editionFor,
-      plays_count: 5,
+      plays_count: existing?.plays?.length ?? 0,
       candidates: job.candidates_json?.length ?? 0,
       duration_ms: Date.now() - started,
       job_status: job.status,
@@ -266,6 +268,19 @@ export async function buildEveningEdition(opts?: {
       ctx,
     });
 
+    let finalPlays = vettedPlays;
+    let finalCriticNotes = criticNotes;
+    if (!finalPlays.length) {
+      finalPlays = [...rawPlays]
+        .sort((a, b) => Number(b.score ?? 0) - Number(a.score ?? 0))
+        .slice(0, 2)
+        .map((play, i) => ({ ...play, rank: i + 1 }));
+      finalCriticNotes = [
+        ...finalCriticNotes,
+        "Critic rejected all plays; published top unvetted fallback by score.",
+      ];
+    }
+
     // STAGE 6 — Publish
     console.info("[nighthawk/edition] publish edition");
     await upsertNighthawkEdition({
@@ -289,7 +304,7 @@ export async function buildEveningEdition(opts?: {
         spx_desk: spxDesk,
         flow_tape: flowTape,
       },
-      plays: vettedPlays,
+      plays: finalPlays,
       meta: {
         candidates: candidates.length,
         ranked_tickers: ranked.map((r) => r.ticker),
@@ -302,8 +317,8 @@ export async function buildEveningEdition(opts?: {
             .map((d) => [d.ticker, formatTickerDossierText(d, d.scored!)])
         ),
         play_explanations: {},
-        critic_notes: criticNotes,
-        critic_applied: Boolean(criticNotes.length),
+        critic_notes: finalCriticNotes,
+        critic_applied: Boolean(finalCriticNotes.length),
         platform: {
           spx_price: spxDesk?.price ?? null,
           spx_regime: spxDesk?.gamma_regime ?? null,
@@ -313,7 +328,7 @@ export async function buildEveningEdition(opts?: {
     });
 
     const sectorByTicker = Object.fromEntries(topDossiers.map((d) => [d.ticker.toUpperCase(), d.sector ?? null]));
-    await syncNighthawkPlayOutcomes(editionFor, vettedPlays, sectorByTicker);
+    await syncNighthawkPlayOutcomes(editionFor, finalPlays, sectorByTicker);
 
     if (checkpointing) {
       await upsertNighthawkJob(editionFor, {
@@ -323,7 +338,7 @@ export async function buildEveningEdition(opts?: {
         error: null,
       });
       await clearNighthawkStaging(editionFor);
-      logNighthawkJob(editionFor, "info", "published", `Edition published with ${vettedPlays.length} plays`);
+      logNighthawkJob(editionFor, "info", "published", `Edition published with ${finalPlays.length} plays`);
     }
 
     const finalJob = checkpointing ? await fetchNighthawkJob(editionFor) : null;
@@ -331,7 +346,7 @@ export async function buildEveningEdition(opts?: {
     return {
       ok: true,
       edition_for: editionFor,
-      plays_count: vettedPlays.length,
+      plays_count: finalPlays.length,
       candidates: candidates.length,
       duration_ms: Date.now() - started,
       job_status: finalJob?.status ?? "published",

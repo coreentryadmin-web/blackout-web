@@ -49,7 +49,7 @@ function EditionWinRateTrend({ editions }: { editions: NighthawkMetrics["by_edit
 
   return (
     <div className="admin-nh-trend-wrap">
-      <svg viewBox={`0 0 ${width} ${height}`} className="admin-nh-trend" role="img" aria-label="Win rate by edition">
+      <svg viewBox={`0 0 ${width} ${height}`} className="admin-nh-trend" role="img" aria-label="Target-hit rate by edition">
         <line
           x1={pad.left}
           y1={pad.top + plotH}
@@ -159,7 +159,7 @@ export function AdminNightHawkDashboard() {
           <>
             <WinRateRing
               value={data.win_rate}
-              label="Win rate"
+              label="Target-hit rate"
               sub={`${Math.round(data.win_rate * data.total_resolved)} targets`}
               tone="bull"
               size={120}
@@ -192,6 +192,12 @@ export function AdminNightHawkDashboard() {
       {error && <p className="admin-error">{error}</p>}
 
       <section className="admin-mega-grid admin-nh-stats-row">
+        <MegaStat
+          label="Profitable rate"
+          value={pct(data.profitable_rate)}
+          sub="Close better than entry"
+          tone="bull"
+        />
         <MegaStat label="Winners avg" value={fmtReturn(data.avg_winner_return_pct)} tone="bull" />
         <MegaStat label="Losers avg" value={fmtReturn(data.avg_loser_return_pct)} tone="bear" />
         <MegaStat label="Loss rate" value={pct(data.loss_rate)} sub={`${Math.round(data.loss_rate * data.total_resolved)} stops`} tone="bear" />
@@ -207,7 +213,7 @@ export function AdminNightHawkDashboard() {
               <tr>
                 <th>Conviction</th>
                 <th>N</th>
-                <th>Win rate</th>
+                <th>Target-hit rate</th>
                 <th>Avg return</th>
               </tr>
             </thead>
@@ -258,7 +264,7 @@ export function AdminNightHawkDashboard() {
                 <tr>
                   <th>Direction</th>
                   <th>N</th>
-                  <th>Win rate</th>
+                  <th>Target-hit rate</th>
                   <th>Avg return</th>
                 </tr>
               </thead>
@@ -289,7 +295,7 @@ export function AdminNightHawkDashboard() {
                 <tr>
                   <th>Sector</th>
                   <th>N</th>
-                  <th>Win rate</th>
+                  <th>Target-hit rate</th>
                   <th>Avg return</th>
                 </tr>
               </thead>
@@ -311,7 +317,7 @@ export function AdminNightHawkDashboard() {
       </div>
 
       <SectionDeck accent="violet">
-        <DeckPanel title="Win rate by edition" accent="violet" defaultOpen storageKey="nh-edition-trend">
+        <DeckPanel title="Target-hit rate by edition" accent="violet" defaultOpen storageKey="nh-edition-trend">
           <EditionWinRateTrend editions={data.by_edition} />
         </DeckPanel>
       </SectionDeck>

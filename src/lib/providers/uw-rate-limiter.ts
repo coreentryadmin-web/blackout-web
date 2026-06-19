@@ -20,6 +20,7 @@ let inFlight = 0;
 type RedisClient = {
   incr(key: string): Promise<number>;
   expire(key: string, seconds: number): Promise<number>;
+  get(key: string): Promise<string | null>;
   disconnect(): void;
 };
 
@@ -68,12 +69,22 @@ async function acquireGlobalRedisSlot(): Promise<boolean> {
   const client = await getSharedRedis();
   if (!client) return true;
 
-  const second = Math.floor(Date.now() / 1000);
-  const key = `blackout:uw:rps:${second}`;
+  const nowMs = Date.now();
+  const sec = Math.floor(nowMs / 1000);
+  const elapsedFrac = (nowMs % 1000) / 1000;
+  const currKey = `blackout:uw:rps:${sec}`;
+  const prevKey = `blackout:uw:rps:${sec - 1}`;
+
   try {
-    const count = await client.incr(key);
-    if (count === 1) await client.expire(key, 3);
-    return count <= Math.ceil(GLOBAL_MAX_RPS);
+    const [currRaw, prevRaw] = await Promise.all([client.get(currKey), client.get(prevKey)]);
+    const curr = Number(currRaw ?? 0);
+    const prev = Number(prevRaw ?? 0);
+    const estimated = curr + prev * (1 - elapsedFrac);
+    if (estimated >= GLOBAL_MAX_RPS) return false;
+
+    const count = await client.incr(currKey);
+    if (count === 1) await client.expire(currKey, 3);
+    return true;
   } catch {
     return true;
   }

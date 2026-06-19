@@ -430,9 +430,6 @@ export function scoreCandidate(
   );
 
   const fundCheck = passesFundamentalSanity(dossierExtras.fundamental_ratios ?? null);
-  if (!fundCheck.ok) {
-    total = Math.min(total, 20);
-  }
 
   return {
     ticker,

@@ -5,6 +5,8 @@ export type NighthawkMetrics = {
   total_resolved: number;
   pending_count: number;
   win_rate: number;
+  /** Close vs entry mid — positive P&L regardless of target/stop tags. */
+  profitable_rate: number;
   loss_rate: number;
   open_rate: number;
   avg_return_pct: number;
@@ -47,6 +49,13 @@ function winRate(rows: NighthawkPlayOutcomeRow[]): number {
   return rows.filter((r) => r.outcome === "target").length / rows.length;
 }
 
+function profitableRate(rows: NighthawkPlayOutcomeRow[]): number {
+  if (rows.length === 0) return 0;
+  const withReturn = rows.filter((r) => realizedReturnPct(r) != null);
+  if (withReturn.length === 0) return 0;
+  return withReturn.filter((r) => (realizedReturnPct(r) ?? 0) > 0).length / withReturn.length;
+}
+
 function scoreBucket(score: number | null): string | null {
   if (score == null) return null;
   if (score >= 40 && score <= 54) return "40-54";
@@ -72,6 +81,7 @@ function emptyMetrics(windowDays: number): NighthawkMetrics {
     total_resolved: 0,
     pending_count: 0,
     win_rate: 0,
+    profitable_rate: 0,
     loss_rate: 0,
     open_rate: 0,
     avg_return_pct: 0,
@@ -149,6 +159,7 @@ export async function getNighthawkMetrics(windowDays = 30): Promise<NighthawkMet
     total_resolved: total,
     pending_count,
     win_rate: winners.length / total,
+    profitable_rate: profitableRate(rows),
     loss_rate: losers.length / total,
     open_rate: opens.length / total,
     avg_return_pct: avgReturn(rows),

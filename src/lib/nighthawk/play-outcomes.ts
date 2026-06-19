@@ -76,7 +76,7 @@ export async function syncNighthawkPlayOutcomes(
   await upsertNighthawkPlayOutcomes(rows);
 }
 
-function resolveOutcome(row: NighthawkPlayOutcomeRow): {
+export function resolveOutcome(row: NighthawkPlayOutcomeRow): {
   hit_target: boolean;
   hit_stop: boolean;
   outcome: "target" | "stop" | "open" | "pending";
@@ -84,6 +84,7 @@ function resolveOutcome(row: NighthawkPlayOutcomeRow): {
   const close = row.next_day_close;
   const high = row.session_high;
   const low = row.session_low;
+  const open = row.next_day_open;
   const target = row.target;
   const stop = row.stop;
 
@@ -92,19 +93,35 @@ function resolveOutcome(row: NighthawkPlayOutcomeRow): {
   }
 
   const isLong = row.direction === "LONG";
+  const hasIntraday = high != null && low != null;
   let hit_target = false;
   let hit_stop = false;
 
   if (target != null) {
-    hit_target = isLong ? close >= target : close <= target;
+    hit_target = hasIntraday
+      ? isLong
+        ? high! >= target
+        : low! <= target
+      : isLong
+        ? close >= target
+        : close <= target;
   }
-  if (stop != null && high != null && low != null) {
-    hit_stop = isLong ? low <= stop : high >= stop;
+  if (stop != null && hasIntraday) {
+    hit_stop = isLong ? low! <= stop : high! >= stop;
   }
 
   let outcome: "target" | "stop" | "open" | "pending" = "open";
-  if (hit_stop) outcome = "stop";
-  else if (hit_target) outcome = "target";
+  if (hit_target && hit_stop) {
+    if (open != null && target != null && (isLong ? open >= target : open <= target)) {
+      outcome = "target";
+    } else if (open != null && stop != null && (isLong ? open <= stop : open >= stop)) {
+      outcome = "stop";
+    }
+  } else if (hit_stop) {
+    outcome = "stop";
+  } else if (hit_target) {
+    outcome = "target";
+  }
 
   return { hit_target, hit_stop, outcome };
 }
