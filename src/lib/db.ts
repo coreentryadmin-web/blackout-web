@@ -408,6 +408,21 @@ async function runMigrations(): Promise<void> {
     ON nighthawk_job_log(edition_for, created_at DESC);
   `);
   await p.query(`
+    CREATE TABLE IF NOT EXISTS cron_job_runs (
+      id BIGSERIAL PRIMARY KEY,
+      job_key TEXT NOT NULL,
+      status TEXT NOT NULL,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      duration_ms INT,
+      message TEXT,
+      meta_json JSONB
+    );
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_cron_job_runs_key_at
+    ON cron_job_runs(job_key, started_at DESC);
+  `);
+  await p.query(`
     CREATE TABLE IF NOT EXISTS api_telemetry_events (
       seq_id BIGSERIAL PRIMARY KEY,
       event_id TEXT NOT NULL UNIQUE,
@@ -1943,4 +1958,91 @@ export function logNighthawkJob(
 export async function clearNighthawkStaging(editionFor: string): Promise<void> {
   await ensureSchema();
   await (await getPool()).query(`DELETE FROM nighthawk_dossiers_staging WHERE edition_for = $1::date`, [editionFor]);
+}
+
+export async function fetchLatestNighthawkJob(): Promise<NighthawkJobRow | null> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    SELECT id, edition_for, status, current_stage, context_json, candidates_json, scored_json,
+           error, started_at, updated_at, published_at
+    FROM nighthawk_jobs
+    ORDER BY updated_at DESC
+    LIMIT 1
+    `
+  );
+  const row = res.rows[0];
+  return row ? mapNighthawkJobRow(row) : null;
+}
+
+export type CronJobRunRow = {
+  id: number;
+  job_key: string;
+  status: string;
+  started_at: string;
+  duration_ms: number | null;
+  message: string | null;
+  meta_json: Record<string, unknown> | null;
+};
+
+function mapCronJobRunRow(row: Record<string, unknown>): CronJobRunRow {
+  return {
+    id: Number(row.id),
+    job_key: String(row.job_key),
+    status: String(row.status),
+    started_at: String(row.started_at),
+    duration_ms: row.duration_ms != null ? Number(row.duration_ms) : null,
+    message: row.message != null ? String(row.message) : null,
+    meta_json: (row.meta_json as Record<string, unknown>) ?? null,
+  };
+}
+
+export async function recordCronJobRun(input: {
+  job_key: string;
+  status: string;
+  duration_ms?: number;
+  message?: string;
+  meta_json?: Record<string, unknown>;
+}): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `
+    INSERT INTO cron_job_runs (job_key, status, duration_ms, message, meta_json)
+    VALUES ($1, $2, $3, $4, $5::jsonb)
+    `,
+    [
+      input.job_key,
+      input.status,
+      input.duration_ms ?? null,
+      input.message ?? null,
+      JSON.stringify(input.meta_json ?? null),
+    ]
+  );
+}
+
+export async function fetchCronJobLastRuns(): Promise<CronJobRunRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    SELECT DISTINCT ON (job_key)
+      id, job_key, status, started_at, duration_ms, message, meta_json
+    FROM cron_job_runs
+    ORDER BY job_key, started_at DESC
+    `
+  );
+  return res.rows.map(mapCronJobRunRow);
+}
+
+export async function fetchCronJobRecentRuns(limit = 48): Promise<CronJobRunRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    SELECT id, job_key, status, started_at, duration_ms, message, meta_json
+    FROM cron_job_runs
+    ORDER BY started_at DESC
+    LIMIT $1
+    `,
+    [limit]
+  );
+  return res.rows.map(mapCronJobRunRow);
 }

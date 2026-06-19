@@ -4,22 +4,25 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
 import { AdminApiDashboard } from "@/components/admin/AdminApiDashboard";
+import { AdminCronDashboard } from "@/components/admin/AdminCronDashboard";
 import { AdminNightHawkDashboard } from "@/components/admin/AdminNightHawkDashboard";
 import { AdminSpxDashboard } from "@/components/admin/AdminSpxDashboard";
 import { AdminHealthBanner } from "@/components/admin/AdminHealthBanner";
 import { ActionButton, TabCanvas } from "@/components/admin/AdminUi";
 
-type ToolTab = "spx" | "nighthawk" | "largo" | "apis";
+type ToolTab = "spx" | "nighthawk" | "largo" | "apis" | "crons";
 
 const TABS: Array<{ id: ToolTab; label: string; icon: string; blurb: string }> = [
   { id: "apis", label: "API Command", icon: "⬡", blurb: "Live ops · incidents · 265 endpoints" },
+  { id: "crons", label: "Crons", icon: "⏱", blurb: "Job health · schedules · last run" },
   { id: "spx", label: "SPX Sniper", icon: "◎", blurb: "Live engine · outcomes · desk" },
   { id: "nighthawk", label: "Night Hawk", icon: "◈", blurb: "Win rate · signal quality" },
   { id: "largo", label: "Largo", icon: "◆", blurb: "Coming soon" },
 ];
 
 function parseTab(value: string | null): ToolTab {
-  if (value === "spx" || value === "nighthawk" || value === "largo" || value === "apis") return value;
+  if (value === "spx" || value === "nighthawk" || value === "largo" || value === "apis" || value === "crons")
+    return value;
   return "apis";
 }
 
@@ -77,6 +80,11 @@ export function AdminAnalyticsDashboard() {
         {tab === "apis" && (
           <TabCanvas theme="api">
             <AdminApiDashboard />
+          </TabCanvas>
+        )}
+        {tab === "crons" && (
+          <TabCanvas theme="neutral">
+            <AdminCronDashboard />
           </TabCanvas>
         )}
         {tab === "spx" && (

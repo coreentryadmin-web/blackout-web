@@ -6,6 +6,7 @@ import { evaluateSpxLotto } from "@/lib/spx-lotto-engine";
 import { buildPlayTechnicals } from "@/lib/spx-play-technicals";
 import { isSpxEngineCronWindow } from "@/lib/spx-play-session-guards";
 import { recordPlayEngineTick } from "@/lib/play-engine-heartbeat";
+import { logCronRun } from "@/lib/cron-run";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ function cronAuthorized(req: NextRequest): boolean {
 
 /** Optional market-hours evaluator — hit from Railway/Vercel cron with CRON_SECRET. */
 export async function GET(req: NextRequest) {
+  const started = Date.now();
   if (!cronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -28,11 +30,13 @@ export async function GET(req: NextRequest) {
 
   const force = req.nextUrl.searchParams.get("force") === "1";
   if (!force && !isSpxEngineCronWindow() && process.env.SPX_CRON_EVAL_ALWAYS !== "1") {
-    return NextResponse.json({
+    const payload = {
       ok: true,
       skipped: true,
       reason: "Outside SPX engine evaluation window (7:00–16:00 ET weekdays)",
-    });
+    };
+    await logCronRun("spx-evaluate", started, payload);
+    return NextResponse.json(payload);
   }
 
   try {
@@ -51,17 +55,20 @@ export async function GET(req: NextRequest) {
     ]);
     recordPlayEngineTick("cron");
 
-    return NextResponse.json({
+    const payload = {
       ok: true,
       as_of: merged.polled_at ?? new Date().toISOString(),
       market_open: merged.market_open,
       play_action: play.action,
       play_phase: play.phase,
       lotto_phase: lotto.phase,
-    });
+    };
+    await logCronRun("spx-evaluate", started, payload);
+    return NextResponse.json(payload);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[cron/spx-evaluate]", error);
+    await logCronRun("spx-evaluate", started, { ok: false, error: detail });
     return NextResponse.json({ ok: false, error: "Evaluation failed", detail }, { status: 500 });
   }
 }

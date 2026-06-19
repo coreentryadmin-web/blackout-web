@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireDatabaseInProduction } from "@/lib/db";
 import { resolvePendingNighthawkOutcomes } from "@/lib/nighthawk/play-outcomes";
 import { isWeekdayEt, etNowParts } from "@/lib/nighthawk/session";
+import { logCronRun } from "@/lib/cron-run";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -28,6 +29,7 @@ function inOutcomeWindow(force: boolean): boolean {
 }
 
 export async function GET(req: NextRequest) {
+  const started = Date.now();
   if (!cronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -37,20 +39,30 @@ export async function GET(req: NextRequest) {
 
   const force = req.nextUrl.searchParams.get("force") === "1";
   if (!inOutcomeWindow(force)) {
-    return NextResponse.json({
+    const payload = {
       ok: false,
       skipped: true,
       reason: "Outside outcome window (4:30 PM ET) — use ?force=1 to override",
-    });
+    };
+    await logCronRun("nighthawk-outcomes", started, payload);
+    return NextResponse.json(payload);
   }
 
   try {
     const lookbackDays = Number(req.nextUrl.searchParams.get("days") ?? "7");
     const result = await resolvePendingNighthawkOutcomes({ lookbackDays });
-    return NextResponse.json({ ok: true, ...result });
+    const payload = { ok: true, ...result };
+    await logCronRun("nighthawk-outcomes", started, {
+      ok: true,
+      resolved: result.resolved,
+      skipped_count: result.skipped,
+      errors: result.errors,
+    });
+    return NextResponse.json(payload);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[cron/nighthawk-outcomes]", error);
+    await logCronRun("nighthawk-outcomes", started, { ok: false, error: detail });
     return NextResponse.json({ ok: false, error: "Outcome resolution failed", detail }, { status: 500 });
   }
 }
