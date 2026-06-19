@@ -2,7 +2,7 @@ import { anthropicConfigured, anthropicText } from "@/lib/providers/anthropic";
 import type { TickerDossier } from "./dossier";
 import { buildClaudePrompt, buildMarketRecap } from "./format";
 import type { MarketWideContext } from "./market-wide";
-import { fetchEditionChainTables } from "./option-chain-prompt";
+import { fetchEditionChainTables, fetchEditionChainRows, validatePlayAgainstChain } from "./option-chain-prompt";
 import {
   applyPremiumCapToPlay,
   filterPlaysWithinPremiumCap,
@@ -96,15 +96,18 @@ export async function generateEditionPlays(params: {
     return { plays: fallback, recap, raw: null };
   }
 
+  const chainTickers = params.ranked.slice(0, EDITION_CHAIN_PREFETCH).map((s) => s.ticker);
+  const [chainTables, chainRows] = await Promise.all([
+    fetchEditionChainTables({ stockTickers: chainTickers, dossiers: params.dossiers }),
+    fetchEditionChainRows({ stockTickers: chainTickers, dossiers: params.dossiers }),
+  ]);
+
   const prompt = buildClaudePrompt({
     ctx: params.ctx,
     recap,
     dossiers: params.dossiers,
     ranked: params.ranked,
-    chainTables: await fetchEditionChainTables({
-      stockTickers: params.ranked.slice(0, EDITION_CHAIN_PREFETCH).map((s) => s.ticker),
-      dossiers: params.dossiers,
-    }),
+    chainTables,
     huntMode: params.huntMode,
     maxDte: params.maxDte,
   });
@@ -118,7 +121,23 @@ export async function generateEditionPlays(params: {
     .map((p, i) => mapClaudePlayToEdition(p, i + 1, dossierMap))
     .filter((p) => p.play_type === "stock");
   const { plays, rejected } = filterPlaysWithinPremiumCap(mapped);
-  const capped = plays.slice(0, 5).map((p, i) => ({ ...p, rank: i + 1 }));
+  const strikeOk: PlaybookPlay[] = [];
+  const strikeRejected: PlaybookPlay[] = [];
+  for (const play of plays) {
+    const rows = chainRows[play.ticker];
+    if (!rows?.length || validatePlayAgainstChain(play.options_play, rows)) {
+      strikeOk.push(play);
+    } else {
+      strikeRejected.push(play);
+    }
+  }
+  if (strikeRejected.length) {
+    console.warn(
+      "[nighthawk/edition] strike validation rejected:",
+      strikeRejected.map((p) => `${p.ticker}: ${p.options_play.slice(0, 80)}`)
+    );
+  }
+  const capped = strikeOk.slice(0, 5).map((p, i) => ({ ...p, rank: i + 1 }));
 
   if (rejected.length) {
     console.warn(

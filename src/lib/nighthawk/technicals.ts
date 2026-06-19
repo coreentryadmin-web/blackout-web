@@ -115,23 +115,9 @@ export async function buildTechnicalCard(ticker: string): Promise<TechnicalCard 
   const mtf = await fetchPolygonMtfTechnicals(ticker);
   if (!mtf?.price) return null;
 
-  const dailyBars: AggBar[] = [];
-  if (mtf.prev_day) {
-    dailyBars.push({
-      o: mtf.prev_day.open ?? mtf.prev_day.close ?? mtf.price,
-      h: mtf.prev_day.high ?? mtf.price,
-      l: mtf.prev_day.low ?? mtf.price,
-      c: mtf.prev_day.close ?? mtf.price,
-    });
-  }
-  dailyBars.push({
-    o: mtf.prev_day?.open ?? mtf.price,
-    h: mtf.range_high_20d ?? mtf.price,
-    l: mtf.range_low_20d ?? mtf.price,
-    c: mtf.price,
-  });
-
-  const swings = swingLevels(dailyBars);
+  const dailyBars = mtf.daily_bars?.length ? mtf.daily_bars : [];
+  const swings = swingLevels(dailyBars, 45);
+  const relVol = mtf.rel_volume ?? null;
   const setupTags = classifySetup({
     price: mtf.price,
     ema20: mtf.emas?.ema20 ?? null,
@@ -139,7 +125,7 @@ export async function buildTechnicalCard(ticker: string): Promise<TechnicalCard 
     ema200: mtf.emas?.ema200 ?? null,
     rsi14: mtf.rsi?.daily ?? null,
     atr14: mtf.atr14 ?? null,
-    relVol: null,
+    relVol,
     priorHigh: mtf.prev_day?.high ?? null,
     priorClose: mtf.prev_day?.close ?? null,
     weekHigh: mtf.weekly?.high ?? null,
@@ -170,9 +156,9 @@ export async function buildTechnicalCard(ticker: string): Promise<TechnicalCard 
     },
     weekly: { high: mtf.weekly?.high ?? null, low: mtf.weekly?.low ?? null },
     rsi14: mtf.rsi?.daily ?? null,
-    rel_volume: null,
+    rel_volume: relVol,
     atr14: mtf.atr14 ?? null,
-    vwap: null,
+    vwap: mtf.timeframes?.daily?.vwap ?? null,
     ema20: mtf.emas?.ema20 ?? null,
     ema50: mtf.emas?.ema50 ?? null,
     ema200: mtf.emas?.ema200 ?? null,

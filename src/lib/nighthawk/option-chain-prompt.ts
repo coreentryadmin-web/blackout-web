@@ -225,10 +225,10 @@ async function frontExpiries(ticker: string): Promise<string[]> {
   return unique.slice(0, FRONT_EXPIRIES);
 }
 
-export async function fetchTickerChainTable(
+async function resolveTickerChainRows(
   ticker: string,
   dossier?: TickerDossier
-): Promise<string | null> {
+): Promise<{ spot: number; rows: ChainStrikeRow[] } | null> {
   const sym = ticker.toUpperCase();
   const spot = await resolveSpot(sym, dossier);
   if (spot <= 0) return null;
@@ -251,7 +251,91 @@ export async function fetchTickerChainTable(
   }
 
   if (!rows.length) return null;
-  return formatChainTableText(sym, spot, rows);
+  return { spot, rows };
+}
+
+export type ParsedOptionsContract = {
+  strike: number;
+  side: "call" | "put" | null;
+  expiryYmd: string | null;
+};
+
+export function parseOptionsContract(optionsPlay: string): ParsedOptionsContract | null {
+  const text = optionsPlay.trim();
+  if (!text || text === "—") return null;
+
+  const sideMatch = text.match(/\b(CALL|PUT|C|P)\b/i);
+  const sideRaw = sideMatch?.[1]?.toUpperCase() ?? "";
+  const side: "call" | "put" | null =
+    sideRaw.startsWith("C") ? "call" : sideRaw.startsWith("P") ? "put" : null;
+
+  const strikeMatch =
+    text.match(/\$\s*(\d+(?:\.\d+)?)\s*(?:C|P|call|put)\b/i) ??
+    text.match(/(?:strike|@)\s*\$?\s*(\d+(?:\.\d+)?)/i) ??
+    text.match(/\b(\d+(?:\.\d+)?)\s*(?:C|P)\b/i);
+  const strike = strikeMatch?.[1] ? Number(strikeMatch[1]) : NaN;
+  if (!Number.isFinite(strike) || strike <= 0) return null;
+
+  const isoMatch = text.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
+  let expiryYmd = isoMatch?.[1] ?? null;
+  if (!expiryYmd) {
+    const labelMatch = text.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*(\d{1,2})\b/i);
+    if (labelMatch) {
+      const year = new Date().getFullYear();
+      const parsed = new Date(`${labelMatch[1]} ${labelMatch[2]}, ${year} 12:00:00`);
+      if (!Number.isNaN(parsed.getTime())) {
+        expiryYmd = parsed.toISOString().slice(0, 10);
+      }
+    }
+  }
+
+  return { strike, side, expiryYmd };
+}
+
+export function validatePlayAgainstChain(
+  optionsPlay: string,
+  rows: ChainStrikeRow[],
+  minOi = 500
+): boolean {
+  const parsed = parseOptionsContract(optionsPlay);
+  if (!parsed) return false;
+
+  const match = rows.find((row) => {
+    if (Math.abs(row.strike - parsed.strike) > 0.05) return false;
+    if (parsed.expiryYmd && row.expiry !== parsed.expiryYmd) return false;
+    if (parsed.side === "call") return row.call_oi >= minOi;
+    if (parsed.side === "put") return row.put_oi >= minOi;
+    return row.call_oi >= minOi || row.put_oi >= minOi;
+  });
+
+  return Boolean(match);
+}
+
+export async function fetchTickerChainTable(
+  ticker: string,
+  dossier?: TickerDossier
+): Promise<string | null> {
+  const resolved = await resolveTickerChainRows(ticker, dossier);
+  if (!resolved) return null;
+  return formatChainTableText(ticker.toUpperCase(), resolved.spot, resolved.rows);
+}
+
+/** Pre-fetch ATM ±5% chain rows for ranked stocks. */
+export async function fetchEditionChainRows(params: {
+  stockTickers: string[];
+  dossiers: TickerDossier[];
+}): Promise<Record<string, ChainStrikeRow[]>> {
+  const dossierMap = Object.fromEntries(params.dossiers.map((d) => [d.ticker, d]));
+  const tickers = Array.from(new Set(params.stockTickers.map((t) => t.toUpperCase())));
+
+  const entries = await Promise.all(
+    tickers.map(async (ticker) => {
+      const resolved = await resolveTickerChainRows(ticker, dossierMap[ticker]);
+      return resolved ? ([ticker, resolved.rows] as const) : null;
+    })
+  );
+
+  return Object.fromEntries(entries.filter((e): e is [string, ChainStrikeRow[]] => e != null));
 }
 
 /** Pre-fetch ATM ±5% chain tables for ranked stocks. */

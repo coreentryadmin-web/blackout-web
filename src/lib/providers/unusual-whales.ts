@@ -267,7 +267,7 @@ function filterMarketFlowRows(
   if (params?.min_premium) {
     out = out.filter((r) => r.flow.premium >= params.min_premium!);
   }
-  const limit = Math.min(params?.limit ?? 50, 200);
+  const limit = Math.min(params?.limit ?? 50, 450);
   return out.slice(0, limit);
 }
 
@@ -281,16 +281,37 @@ export async function fetchMarketFlowAlerts(params?: {
   return rows.map((r) => r.flow);
 }
 
+function flowRowTimestamp(row: MarketFlowRow): number {
+  const ms = Date.parse(row.flow.alerted_at);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function flowRowKey(row: MarketFlowRow): string {
+  const id = row.raw.id ?? row.raw.uuid ?? row.raw.alert_id;
+  if (id != null && String(id).trim()) return String(id);
+  const f = row.flow;
+  return `${f.ticker}|${f.alerted_at}|${f.strike}|${f.premium}`;
+}
+
+async function fetchMarketFlowAlertPage(
+  query: Record<string, string | number>
+): Promise<MarketFlowRow[]> {
+  const data = await uwGet<unknown>("/api/option-trades/flow-alerts", query);
+  return extractRows(data).map((raw) => ({ raw, flow: rowToFlow(raw) }));
+}
+
 export async function fetchMarketFlowAlertRows(params?: {
   limit?: number;
   ticker?: string;
   min_premium?: number;
   newer_than?: string;
+  older_than?: string;
 }): Promise<MarketFlowRow[]> {
   const now = Date.now();
   const hasFreshCache = marketFlowCache && marketFlowCache.expiresAt > now;
+  const desired = Math.min(params?.limit ?? 50, 450);
 
-  if (!params?.newer_than) {
+  if (!params?.newer_than && !params?.older_than) {
     if (hasFreshCache) {
       return filterMarketFlowRows(marketFlowCache!.rows, params);
     }
@@ -306,23 +327,56 @@ export async function fetchMarketFlowAlertRows(params?: {
     }
   }
 
-  const query: Record<string, string | number> = {
-    limit: Math.min(params?.limit ?? 50, 200),
+  const baseQuery: Record<string, string | number> = {
+    limit: Math.min(desired, 200),
   };
-  if (params?.ticker) query.ticker_symbol = params.ticker.toUpperCase();
-  if (params?.min_premium) query.min_premium = params.min_premium;
-  if (params?.newer_than) query.newer_than = params.newer_than;
+  if (params?.ticker) baseQuery.ticker_symbol = params.ticker.toUpperCase();
+  if (params?.min_premium) baseQuery.min_premium = params.min_premium;
+  if (params?.newer_than) baseQuery.newer_than = params.newer_than;
 
   try {
-    const data = await uwGet<unknown>("/api/option-trades/flow-alerts", query);
-    const rows = extractRows(data).map((raw) => ({ raw, flow: rowToFlow(raw) }));
-    if (!params?.newer_than) {
-      marketFlowCache = { expiresAt: now + marketFlowCacheMs(), rows };
+    const paginate = !params?.ticker && desired > 200;
+    const merged: MarketFlowRow[] = [];
+    const seen = new Set<string>();
+    let olderThan: string | undefined = params?.older_than;
+
+    for (let page = 0; page < (paginate ? 3 : 1); page++) {
+      const query: Record<string, string | number> = {
+        ...baseQuery,
+        limit: Math.min(200, desired - merged.length),
+      };
+      if (olderThan) query.older_than = olderThan;
+
+      const batch = await fetchMarketFlowAlertPage(query);
+      if (!batch.length) break;
+
+      for (const row of batch) {
+        const key = flowRowKey(row);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(row);
+      }
+
+      if (!paginate || merged.length >= desired || batch.length < 200) break;
+
+      const oldest = batch.reduce(
+        (acc, row) => {
+          const ts = flowRowTimestamp(row);
+          return ts < acc.ts ? { ts, iso: row.flow.alerted_at } : acc;
+        },
+        { ts: Infinity, iso: "" }
+      );
+      if (!oldest.iso || oldest.ts === Infinity) break;
+      olderThan = oldest.iso;
+    }
+
+    if (!params?.newer_than && !params?.older_than) {
+      marketFlowCache = { expiresAt: now + marketFlowCacheMs(), rows: merged };
       void import("@/lib/shared-cache").then(({ sharedCacheSet }) =>
-        sharedCacheSet(MARKET_FLOW_CACHE_KEY, rows, Math.ceil(marketFlowCacheMs() / 1000))
+        sharedCacheSet(MARKET_FLOW_CACHE_KEY, merged, Math.ceil(marketFlowCacheMs() / 1000))
       );
     }
-    return filterMarketFlowRows(rows, params);
+    return filterMarketFlowRows(merged, params);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (marketFlowCache) {

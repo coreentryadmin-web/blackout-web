@@ -267,12 +267,26 @@ export async function fetchPolygonMtfTechnicals(ticker: string) {
   const weekSlice = daily.slice(-5);
   const monthSlice = daily.slice(-22);
 
+  const priorVols = daily
+    .slice(-21, -1)
+    .map((b) => b.v ?? 0)
+    .filter((v) => v > 0);
+  const todayVol = daily.at(-1)?.v ?? prevDay?.v ?? 0;
+  const avgVol20 =
+    priorVols.length >= 5 ? priorVols.reduce((sum, v) => sum + v, 0) / priorVols.length : null;
+  const rel_volume =
+    avgVol20 != null && avgVol20 > 0 && todayVol > 0
+      ? Number((todayVol / avgVol20).toFixed(2))
+      : null;
+
   return {
     ticker: polygonSym,
     price,
     is_index: isIndex,
     trend_stack: trendStack,
     atr14,
+    rel_volume,
+    daily_bars: daily.slice(-60),
     prev_day: prevDay
       ? { open: prevDay.o, high: prevDay.h, low: prevDay.l, close: prevDay.c, volume: prevDay.v }
       : null,

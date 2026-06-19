@@ -28,7 +28,8 @@ import {
   SECTOR_WATCH,
 } from "./constants";
 import { computeSpxGapContext, type SpxGapContext } from "./spx-gap";
-import { nextTradingDayEt, priorEt, todayEt } from "./session";
+import { nextTradingDayEt, todayEt } from "./session";
+import { priorEtYmd } from "@/lib/providers/spx-session";
 
 export type MarketWideContext = {
   today: string;
@@ -144,7 +145,7 @@ async function fetchEarningsOnDate(dateYmd: string): Promise<Record<string, unkn
 export async function fetchMarketWideContext(): Promise<MarketWideContext> {
   const today = todayEt();
   const tomorrow = nextTradingDayEt(today);
-  const from = priorEt();
+  const from = priorEtYmd(45);
 
   const [
     tide,
