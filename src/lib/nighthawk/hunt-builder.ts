@@ -10,6 +10,8 @@ import {
   huntModeWeights,
   normalizeHuntFilters,
 } from "./hunt-mode";
+import { parseEntryPremiumPerShare } from "./play-constraints";
+import { optionsPlayWithinMaxDte } from "./agents/day-trade-filters";
 import { fetchMarketWideContext } from "./market-wide";
 import { rankCandidates, regimeContextFromMarket, scoreCandidate } from "./scorer";
 import type { HuntMode, HuntPlay, HuntRequest, PlaybookPlay } from "./types";
@@ -41,6 +43,39 @@ function flowPremium(flow: Record<string, unknown>): number | null {
   const raw = flow.premium ?? flow.total_premium ?? flow.premium_total;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Per-share option premium from UW flow row (not block total). */
+function flowEntryPremiumPerShare(flow: Record<string, unknown>): number | null {
+  const direct = Number(flow.price ?? flow.fill_price ?? flow.avg_fill ?? flow.per_share_premium);
+  if (Number.isFinite(direct) && direct > 0 && direct < 500) return direct;
+
+  const block = flowPremium(flow);
+  if (block == null) return null;
+
+  const contracts = Number(flow.size ?? flow.volume ?? flow.total_size ?? flow.contracts);
+  if (Number.isFinite(contracts) && contracts > 0) {
+    const perShare = block / (contracts * 100);
+    if (Number.isFinite(perShare) && perShare > 0 && perShare < 500) return perShare;
+  }
+  return null;
+}
+
+function filterPlaybookPlays(
+  plays: PlaybookPlay[],
+  filters: ReturnType<typeof normalizeHuntFilters>
+): PlaybookPlay[] {
+  let out = plays;
+  if (filters.max_entry_premium != null) {
+    out = out.filter((p) => {
+      const prem = p.entry_premium ?? parseEntryPremiumPerShare(p);
+      return prem == null || prem <= filters.max_entry_premium!;
+    });
+  }
+  if (filters.dte_max != null) {
+    out = out.filter((p) => optionsPlayWithinMaxDte(p.options_play, filters.dte_max!));
+  }
+  return out;
 }
 
 function flowDteDays(flow: Record<string, unknown>): number | null {
@@ -86,8 +121,10 @@ function dossierPassesPrefilters(dossier: TickerDossier, filters: ReturnType<typ
     return false;
   }
   if (filters.max_entry_premium != null) {
-    const premiums = dossier.flows.map(flowPremium).filter((p): p is number => p != null);
-    if (premiums.length && Math.min(...premiums) > filters.max_entry_premium) return false;
+    const perShare = dossier.flows
+      .map(flowEntryPremiumPerShare)
+      .filter((p): p is number => p != null);
+    if (perShare.length && Math.min(...perShare) > filters.max_entry_premium) return false;
   }
   return true;
 }
@@ -195,16 +232,22 @@ export async function runHuntScan(request: HuntRequest): Promise<HuntBuildResult
     }
 
     const effectiveMaxDte =
-      mode === "day" && filters.max_dte != null ? filters.max_dte : weights.maxDte;
+      filters.dte_max != null
+        ? filters.dte_max
+        : mode === "day" && filters.max_dte != null
+          ? filters.max_dte
+          : weights.maxDte;
 
     console.info(`[nighthawk/hunt] phase 4: Claude synthesis (${ranked.length} ranked)`);
-    const { plays: playbookPlays } = await generateEditionPlays({
+    const { plays: rawPlays } = await generateEditionPlays({
       ctx,
       dossiers: topDossiers,
       ranked,
       huntMode: mode,
       maxDte: effectiveMaxDte,
     });
+
+    const playbookPlays = filterPlaybookPlays(rawPlays, filters);
 
     if (!playbookPlays.length) {
       return {

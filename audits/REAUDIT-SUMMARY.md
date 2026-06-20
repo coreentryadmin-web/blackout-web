@@ -29,10 +29,10 @@ No CRITICAL findings remain open. **2 HIGH** issues are new or partial regressio
 
 | Status | Count | Notes |
 |--------|------:|-------|
-| ✅ **FIXED** | **59** | Critical play path + auth + most provider fixes verified |
-| ⚠️ **PARTIAL** | **15** | Halt fail-open in NH dossier, NH-M1 filters, lotto mutator, H5 meta, admin ops |
-| ❌ **OPEN** | **17** | Mostly LOW-tier UX/ops; F7 `strict: false`; Largo Step 3 items |
-| 🆕 **NEW** | **5** | 1 HIGH (NH premium units), 1 HIGH (lotto GET), 3 MEDIUM/LOW |
+| ✅ **FIXED** | **62** | Critical play path + auth + NH premium/DTE + halt dossier verified |
+| ⚠️ **PARTIAL** | **12** | Lotto mutator, H5 meta, admin ops, Largo UX |
+| ❌ **OPEN** | **17** | Mostly LOW / cosmetic / documented-by-design |
+| 🆕 **NEW** | **2** | Lotto GET lock, playbook docx (see batch files) |
 | ℹ️ **INFO** | **2** | F8 Railway liveness, F9 public env vars |
 
 *Prior Phase 3 REAUDIT claimed 103 FIXED / 0 OPEN — overstated by ~44 items.*
@@ -56,13 +56,13 @@ No CRITICAL findings remain open. **2 HIGH** issues are new or partial regressio
 | Batch | Re-audit file | FIXED | PARTIAL | OPEN | NEW |
 |-------|---------------|------:|--------:|-----:|----:|
 | 01 Payments & Auth | [`REAUDIT-Payments-Auth.md`](./REAUDIT-Payments-Auth.md) | 5 | 0 | 1 | 0 |
-| 02 Market Data | [`REAUDIT-Market-Data-Providers.md`](./REAUDIT-Market-Data-Providers.md) | 11 | 1 | 0 | 1 |
+| 02 Market Data | [`REAUDIT-Market-Data-Providers.md`](./REAUDIT-Market-Data-Providers.md) | 12 | 0 | 0 | 0 |
 | 03 API Routes | [`REAUDIT-API-Routes.md`](./REAUDIT-API-Routes.md) | 6 | 0 | 1 | 0 |
-| 04 Night Hawk | [`REAUDIT-Night-Hawk.md`](./REAUDIT-Night-Hawk.md) | 6 | 2 | 1 | 2 |
+| 04 Night Hawk | [`REAUDIT-Night-Hawk.md`](./REAUDIT-Night-Hawk.md) | 8 | 1 | 1 | 0 |
 | 05 Largo AI | [`REAUDIT-Largo-AI.md`](./REAUDIT-Largo-AI.md) | 9 | 2 | 6 | 1 |
 | 06 SPX Desk + Admin | [`REAUDIT-SPX-Desk-Admin.md`](./REAUDIT-SPX-Desk-Admin.md) | 22 | 9 | 8 | 1 |
 | 07 Frontend + Config | [`REAUDIT-Frontend-Config.md`](./REAUDIT-Frontend-Config.md) | 6 | 1 | 1 | 0 |
-| **Total** | | **59** | **15** | **17** | **5** |
+| **Total** | | **62** | **12** | **17** | **2** |
 
 ---
 

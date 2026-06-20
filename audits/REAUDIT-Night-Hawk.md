@@ -18,7 +18,7 @@
 
 | ID | Original severity | Status | Evidence |
 |----|-------------------|--------|----------|
-| **NH-M1** | MEDIUM | ⚠️ **PARTIAL** | `hunt-mode.ts:69-96` + `hunt-builder.ts:66-92` — swing/leap filters wired at dossier prefilter; `max_entry_premium` compares wrong units (see NH-NEW-01); `filters.dte_max` not passed to Claude (`hunt-builder.ts:197-198`) |
+| **NH-M1** | MEDIUM | ✅ **FIXED** | `hunt-mode.ts:69-96` + `hunt-builder.ts` — per-share `flowEntryPremiumPerShare`, post-Claude `filterPlaybookPlays` on `entry_premium` + `dte_max` |
 | **NH-M2** | MEDIUM | ✅ **FIXED** | `hunt-builder.ts:172-173` — gates on `d.scored != null` (matches edition) |
 | **NH-LM1** | LOW-MED | ✅ **FIXED** | `day-trade-filters.ts:44-56` — ambiguous direction rejected |
 | **NH-L1** | LOW | ⚠️ **PARTIAL** | `embeds/NightHawkRadar.tsx:7-36` — subtitle says "demo visualization"; footer still shows "Scan active" |
@@ -36,8 +36,8 @@
 
 | ID | Severity | Status | Evidence |
 |----|----------|--------|----------|
-| **NH-NEW-01** | HIGH | 🆕 **NEW** | `hunt-builder.ts:40-44,88-91` — `flowPremium()` returns UW block premium ($50K+) compared to per-contract `max_entry_premium` cap ($5–15); default Swing filters likely yield **empty results** |
-| **NH-NEW-02** | MEDIUM | 🆕 **NEW** | `hunt-builder.ts:197-206` — user `filters.dte_max` ignored; Claude uses `weights.maxDte` (30/90); no post-Claude DTE enforcement on `options_play` |
+| **NH-NEW-01** | HIGH | ✅ **FIXED** | `hunt-builder.ts` — per-share premium estimate + post-Claude cap filter (no block-premium compare) |
+| **NH-NEW-02** | MEDIUM | ✅ **FIXED** | `hunt-builder.ts` — `filters.dte_max` → `effectiveMaxDte` + post-Claude DTE filter |
 
 ---
 
@@ -45,7 +45,7 @@
 
 | Status | Count |
 |--------|------:|
-| ✅ FIXED | 6 |
-| ⚠️ PARTIAL | 2 |
+| ✅ FIXED | 8 |
+| ⚠️ PARTIAL | 1 |
 | ❌ OPEN | 1 |
-| 🆕 NEW | 2 |
+| 🆕 NEW | 0 |
