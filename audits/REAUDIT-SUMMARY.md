@@ -87,8 +87,8 @@ No CRITICAL findings remain open. **2 HIGH** issues are new or partial regressio
 | 0 OPEN across all batches | ❌ **17 OPEN** + **15 PARTIAL** |
 | F7 `strict: true` | ❌ **`strict: false`** at `tsconfig.json:10` |
 | L1–L10 all fixed | ❌ L2–L10 largely still open; no ErrorBoundary |
-| NH-M1 fixed (`max_entry_premium`) | ⚠️ **PARTIAL** — wired but unit mismatch breaks filter |
-| B2-02 halt fail-closed | ⚠️ **PARTIAL** — play gates only; NH dossier fail-open |
+| NH-M1 fixed (`max_entry_premium`) | ✅ Per-share premium + post-Claude filter |
+| B2-02 halt fail-closed | ✅ Play gates + NH dossier via `shouldBlockForTradingHalt` |
 | API-NEW-1 deploy liveness | ✅ `/api/health` + `railway.toml` |
 | C1/C2 stale play/structure | ✅ Fixed |
 | M1/M6/M7 DB dedup | ✅ Fixed |
