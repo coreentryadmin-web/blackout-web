@@ -1,10 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
-import { parseTier, tierAtLeast } from "@/lib/tiers";
 
-const isPublicRoute = createRouteMatcher(["/api/health"]);
-
-// Routes that require the user to be authenticated.
 const isProtectedRoute = createRouteMatcher([
   "/dashboard(.*)",
   "/flows(.*)",
@@ -15,38 +10,9 @@ const isProtectedRoute = createRouteMatcher([
   "/docs(.*)",
 ]);
 
-// Premium page routes that require at least the "pro" tier.
-// Free (authenticated) users are redirected to /upgrade at the middleware layer
-// so that a missed requireTier() call in a page cannot expose premium content.
-const isPremiumRoute = createRouteMatcher([
-  "/dashboard(.*)",
-  "/flows(.*)",
-  "/terminal(.*)",
-  "/heatmap(.*)",
-  "/nighthawk(.*)",
-  "/admin(.*)",
-  "/docs(.*)",
-]);
-
-export default clerkMiddleware(async (auth, req) => {
-  if (isPublicRoute(req)) return;
-
+export default clerkMiddleware((auth, req) => {
   if (isProtectedRoute(req)) {
-    // Enforce authentication first; redirects to /sign-in if not signed in.
     auth().protect();
-
-    // Tier gate: check publicMetadata.tier from Clerk session claims.
-    // This avoids an extra DB round-trip for every request.
-    if (isPremiumRoute(req)) {
-      const { sessionClaims } = await auth();
-      const rawTier = (sessionClaims?.publicMetadata as Record<string, unknown> | undefined)?.tier;
-      const tier = parseTier(rawTier);
-
-      if (!tierAtLeast(tier, "premium")) {
-        const upgradeUrl = new URL("/upgrade", req.url);
-        return NextResponse.redirect(upgradeUrl);
-      }
-    }
   }
 });
 
