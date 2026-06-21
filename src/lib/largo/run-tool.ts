@@ -342,8 +342,8 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return {
         ticker: sym,
         expiry: exp,
-        source: polygonOi.length ? "polygon" : "unusual_whales",
         ...polygonOptionsMeta(),
+        source: polygonOi.length ? "polygon" : "unusual_whales",
         oi_by_strike: polygonOi.length ? polygonOi : uwOi,
         gex_by_strike: polygonGex.length ? polygonGex : uwGex,
       };
