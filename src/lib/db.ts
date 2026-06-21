@@ -181,15 +181,29 @@ async function runMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_spx_signal_log_created_at
     ON spx_signal_log(created_at DESC);
   `);
-  await p.query(`
-    DELETE FROM spx_signal_log a
-    USING spx_signal_log b
-    WHERE a.id > b.id AND a.signal_key = b.signal_key;
-  `);
-  await p.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_spx_signal_log_signal_key
-    ON spx_signal_log(signal_key);
-  `);
+  // Dedup + unique index in one transaction with a table lock so concurrent
+  // inserts from api-telemetry-persist cannot sneak in between the DELETE and
+  // CREATE UNIQUE INDEX and re-introduce duplicates.
+  const client = await p.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("LOCK TABLE spx_signal_log IN SHARE ROW EXCLUSIVE MODE");
+    await client.query(`
+      DELETE FROM spx_signal_log a
+      USING spx_signal_log b
+      WHERE a.id > b.id AND a.signal_key = b.signal_key;
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_spx_signal_log_signal_key
+      ON spx_signal_log(signal_key);
+    `);
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
   await p.query(`
     CREATE TABLE IF NOT EXISTS spx_open_play (
       id BIGSERIAL PRIMARY KEY,
