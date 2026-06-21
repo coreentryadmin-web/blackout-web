@@ -47,20 +47,24 @@ function playWhaleBeep() {
   } catch { /* AudioContext unavailable in this environment */ }
 }
 
-// Bug 15: CSV export of current tape
 function exportCSV(alerts: FlowAlert[]) {
-  const header = "Ticker,Type,Strike,Expiry,Premium,DTE,Score,Route,Alert Rule,Alerted At\n";
-  const rows = alerts.map((a) =>
-    [a.ticker, a.option_type, a.strike, a.expiry, a.premium,
-     a.dte ?? "", a.score ?? "", a.route ?? "", a.alert_rule ?? "", a.alerted_at].join(",")
-  ).join("\n");
-  const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `helix-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
+  try {
+    const header = "Ticker,Type,Strike,Expiry,Premium,DTE,Score,Route,Alert Rule,Alerted At\n";
+    const rows = alerts.map((a) =>
+      [a.ticker, a.option_type, a.strike, a.expiry, a.premium,
+       a.dte ?? "", a.score ?? "", a.route ?? "", a.alert_rule ?? "", a.alerted_at].join(",")
+    ).join("\n");
+    const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `helix-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error("[FlowFeed] CSV export failed:", e);
+    alert("Export failed — check console for details.");
+  }
 }
 
 export function FlowFeed() {
@@ -99,7 +103,7 @@ export function FlowFeed() {
 
   // Feature 7: earnings calendar (cached 12h server-side)
   useEffect(() => {
-    fetchEarningsCalendar().then(setEarningsMap).catch(() => {});
+    fetchEarningsCalendar().then(setEarningsMap).catch((e) => console.warn("[FlowFeed] earnings fetch:", e));
   }, []);
 
   // Feature 2: dark pool prints for coordination detection (refresh every 60s)
@@ -107,7 +111,7 @@ export function FlowFeed() {
     const load = () =>
       fetchDarkPoolPrints({ min_premium: 500_000 })
         .then((d) => setDarkPoolPrints(d.prints ?? []))
-        .catch(() => {});
+        .catch((e) => console.warn("[FlowFeed] dark-pool fetch:", e));
     load();
     const id = setInterval(load, 60_000);
     return () => clearInterval(id);
@@ -118,7 +122,7 @@ export function FlowFeed() {
     fetch("/api/market/nighthawk/edition", { credentials: "same-origin", cache: "no-store" })
       .then((r) => r.ok ? r.json() : null)
       .then((d: NightHawkEdition | null) => { if (d?.plays) setNighthawkEdition(d); })
-      .catch(() => {});
+      .catch((e) => console.warn("[FlowFeed] nighthawk edition fetch:", e));
   }, []);
 
   // Derived counts for filter pills
@@ -324,6 +328,11 @@ export function FlowFeed() {
         const id = `${alert.ticker}|${alert.strike}|${alert.option_type}|${String(alert.alerted_at).slice(0, 19)}`;
         if (seenRef.current.has(id)) return;
         seenRef.current.add(id);
+        // Trim seenRef when it grows large; keep newest 1000 to prevent unbounded memory growth
+        if (seenRef.current.size > 2000) {
+          const entries = Array.from(seenRef.current);
+          seenRef.current = new Set(entries.slice(-1000));
+        }
         setAlerts((prev) => [alert, ...prev]);
         setLive(true);
         // Bug 14: play beep for whale prints when audio is enabled
@@ -386,7 +395,7 @@ export function FlowFeed() {
   return (
     <div className="desk-layout flex flex-col gap-4">
       {/* ── AI Brief ────────────────────────────────────────────────────── */}
-      <FlowBrief alerts={alerts} />
+      <FlowBrief />
 
       {/* ── Filter bar ──────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">

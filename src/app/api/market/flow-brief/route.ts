@@ -1,70 +1,176 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { anthropicConfigured, anthropicText } from "@/lib/providers/anthropic";
-import { serverCache } from "@/lib/server-cache";
+import { serverCache, TTL } from "@/lib/server-cache";
+import { dbConfigured, fetchRecentFlows } from "@/lib/db";
+import { fetchMarketFlowAlerts, fetchUwDarkPoolRecent } from "@/lib/providers/unusual-whales";
+import { uwConfigured } from "@/lib/providers/config";
 import type { FlowAlert } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-const BRIEF_TTL_MS = 2 * 60 * 1000; // 2 minutes
+// One shared brief per 15-minute window — same response for every user.
+// First request in the window triggers Claude; all others get the cached result instantly.
+const BRIEF_TTL_MS    = 15 * 60 * 1000;
+const MASSIVE_FLOW    = 15_000_000;   // $15M+ options flow
+const MASSIVE_BLOCK   = 15_000_000;   // $15M+ dark pool block
 
-function buildPrompt(alerts: FlowAlert[]): string {
-  if (!alerts.length) return "";
-
-  const callPrem = alerts.filter((a) => a.option_type === "CALL").reduce((s, a) => s + a.premium, 0);
-  const putPrem  = alerts.filter((a) => a.option_type === "PUT").reduce((s, a) => s + a.premium, 0);
-  const total = callPrem + putPrem;
-  const callPct = total > 0 ? Math.round((callPrem / total) * 100) : 50;
-  const whalePrints = alerts.filter((a) => a.premium >= 1_000_000).length;
-
-  const topAlerts = alerts.slice(0, 12).map((a) =>
-    `${a.ticker} ${a.option_type} $${a.strike} ${a.expiry} ${a.route} $${(a.premium / 1000).toFixed(0)}K score:${a.score}`
-  ).join("\n");
-
-  return `You are a real-time options flow analyst. Summarize the current market flow tape in exactly 2 short sentences (max 180 chars total). Be direct, data-driven, no fluff. Write like a trading desk memo.
-
-Flow stats:
-- ${alerts.length} alerts in tape · ${callPct}% call premium · ${100 - callPct}% put premium
-- Call premium: $${(callPrem / 1e6).toFixed(2)}M · Put premium: $${(putPrem / 1e6).toFixed(2)}M
-- Whale prints (>$1M): ${whalePrints}
-
-Recent alerts:
-${topAlerts}
-
-Write 2 sentences max. Example format: "SPY and QQQ seeing concentrated call sweeps at 68% call premium. Floor prints on SPX suggest institutional positioning into close." Do NOT say "the tape shows" or start with "I".`;
+// ─── Inline normalization (mirrors dark-pool/route.ts) ────────────────────────
+interface NormalizedBlock {
+  ticker: string;
+  premium: number;
+  side: string;
+  share_size?: number;
 }
 
-export async function POST(req: NextRequest) {
+function normalizeDark(raw: unknown): NormalizedBlock | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const ticker = String(r.ticker ?? r.symbol ?? r.underlying ?? "").toUpperCase();
+  const premium = Number(r.premium ?? r.notional ?? r.size_premium ?? 0);
+  if (!ticker || premium <= 0) return null;
+  const sideRaw = String(r.side ?? r.sentiment ?? r.direction ?? "neutral").toLowerCase();
+  const side = sideRaw.includes("buy") ? "BUY" : sideRaw.includes("sell") ? "SELL" : "NEUTRAL";
+  const share_size = r.size != null ? Number(r.size) : undefined;
+  return { ticker, premium, side, share_size };
+}
+
+// ─── Prompt builder ───────────────────────────────────────────────────────────
+function buildPrompt(alerts: FlowAlert[], darkPrints: NormalizedBlock[]): string {
+  if (!alerts.length) return "";
+
+  const callPrem    = alerts.filter((a) => a.option_type === "CALL").reduce((s, a) => s + a.premium, 0);
+  const putPrem     = alerts.filter((a) => a.option_type === "PUT").reduce((s, a) => s + a.premium, 0);
+  const total       = callPrem + putPrem;
+  const callPct     = total > 0 ? Math.round((callPrem / total) * 100) : 50;
+  const whalePrints = alerts.filter((a) => a.premium >= 1_000_000).length;
+
+  // Highlight massive options flow ($15M+) — most notable signals
+  const massiveFlows = alerts
+    .filter((a) => a.premium >= MASSIVE_FLOW)
+    .slice(0, 5)
+    .map((a) =>
+      `${a.ticker} ${a.option_type} $${a.strike} exp:${a.expiry} ${a.route} $${(a.premium / 1e6).toFixed(1)}M`
+    );
+
+  // Highlight massive dark pool blocks ($15M+) — institutional block trades
+  const massiveBlocks = darkPrints
+    .filter((d) => d.premium >= MASSIVE_BLOCK)
+    .slice(0, 4)
+    .map((d) =>
+      `${d.ticker} ${d.side} $${(d.premium / 1e6).toFixed(1)}M block${d.share_size ? ` (${(d.share_size / 1000).toFixed(0)}K shares)` : ""}`
+    );
+
+  // Top flow alerts for context
+  const topAlerts = alerts
+    .slice(0, 10)
+    .map((a) =>
+      `${a.ticker} ${a.option_type} $${a.strike} ${a.expiry} ${a.route} $${(a.premium / 1000).toFixed(0)}K score:${a.score}`
+    )
+    .join("\n");
+
+  let prompt = `You are a real-time options flow analyst. Summarize the current market flow tape in 2-3 short sentences (max 240 chars total). Be direct, data-driven, no fluff. Write like a trading desk memo.
+
+Flow stats:
+- ${alerts.length} alerts · ${callPct}% call premium · ${100 - callPct}% put premium
+- Total: $${(total / 1e6).toFixed(1)}M · Call: $${(callPrem / 1e6).toFixed(1)}M · Put: $${(putPrem / 1e6).toFixed(1)}M
+- Whale prints (>$1M): ${whalePrints}`;
+
+  if (massiveFlows.length > 0) {
+    prompt += `\n\n🔥 MASSIVE options flow ($15M+) — mention these:\n${massiveFlows.join("\n")}`;
+  }
+
+  if (massiveBlocks.length > 0) {
+    prompt += `\n\n🏦 MASSIVE dark pool blocks ($15M+) — mention these:\n${massiveBlocks.join("\n")}`;
+  }
+
+  prompt += `\n\nRecent top alerts:\n${topAlerts}`;
+
+  prompt += `\n\nRules: 2-3 sentences max. If there are massive blocks or sweeps ($15M+), lead with or explicitly name them. Example: "Institutional $23M AAPL dark pool BUY and $18M SPX call sweep signal bull positioning. Call bias at 68% with whale concentration in mega-caps ahead of close." Do NOT say "the tape shows" or start with "I".`;
+
+  return prompt;
+}
+
+// ─── Shared data fetcher (reuses the same serverCache keys as other routes) ───
+async function fetchSharedData(): Promise<{ alerts: FlowAlert[]; darkPrints: NormalizedBlock[] }> {
+  // Fetch flows — uses the same cache key as /api/market/flows for cache sharing
+  let alerts: FlowAlert[] = [];
+  try {
+    if (dbConfigured()) {
+      const payload = await serverCache(
+        "flows:pg:168:200000:all",
+        TTL.DARK_POOL,
+        () => fetchRecentFlows({ limit: 500, min_premium: 200_000, since_hours: 168 })
+      );
+      alerts = Array.isArray(payload) ? payload : (payload as { flows?: FlowAlert[] })?.flows ?? [];
+    } else if (uwConfigured()) {
+      alerts = await serverCache(
+        "flows:uw:200:all:200000",
+        TTL.DARK_POOL,
+        () => fetchMarketFlowAlerts({ limit: 200, min_premium: 200_000 })
+      ) as FlowAlert[];
+    }
+  } catch (err) {
+    console.error("[flow-brief] flows fetch error:", err);
+  }
+
+  // Fetch dark pool prints — uses the same cache key as /api/market/dark-pool
+  let darkPrints: NormalizedBlock[] = [];
+  try {
+    const rawRows = await serverCache("dark-pool:recent:50", TTL.DARK_POOL, () =>
+      fetchUwDarkPoolRecent(50)
+    );
+    darkPrints = (Array.isArray(rawRows) ? rawRows : [])
+      .map(normalizeDark)
+      .filter((r): r is NormalizedBlock => r !== null)
+      .sort((a, b) => b.premium - a.premium);
+  } catch (err) {
+    console.error("[flow-brief] dark-pool fetch error:", err);
+  }
+
+  return { alerts, darkPrints };
+}
+
+// ─── GET — shared endpoint, one Claude call per 15-min window ─────────────────
+export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
   if (auth instanceof Response) return auth;
 
   if (!anthropicConfigured()) {
-    return NextResponse.json({ brief: null, reason: "ANTHROPIC_API_KEY not set" }, { status: 200 });
+    return NextResponse.json({ brief: null, reason: "ANTHROPIC_API_KEY not set" });
   }
 
-  let alerts: FlowAlert[] = [];
-  try {
-    const body = await req.json();
-    alerts = Array.isArray(body?.alerts) ? body.alerts.slice(0, 50) : []; // Bug 17: cap input size
-  } catch {
-    return NextResponse.json({ brief: null }, { status: 400 });
-  }
-
-  if (alerts.length === 0) {
-    return NextResponse.json({ brief: null }, { status: 200 });
-  }
-
-  // Cache key based on top-5 alert fingerprint so identical tapes return instantly
-  const cacheKey = `flow-brief:${alerts.slice(0, 5).map((a) => `${a.ticker}${a.alerted_at}`).join("|")}`;
+  // Time-window cache key — same for every user in the same 15-min slot
+  const windowSlot = Math.floor(Date.now() / BRIEF_TTL_MS);
+  const cacheKey   = `flow-brief:shared:v3:${windowSlot}`;
 
   try {
-    const brief = await serverCache(cacheKey, BRIEF_TTL_MS, () =>
-      anthropicText(buildPrompt(alerts), 120, "You are a terse trading desk analyst. Two sentences only.")
-    );
-    return NextResponse.json({ brief: brief?.trim() ?? null });
+    const result = await serverCache(cacheKey, BRIEF_TTL_MS, async () => {
+      const { alerts, darkPrints } = await fetchSharedData();
+      const prompt = buildPrompt(alerts, darkPrints);
+      if (!prompt) return null;
+
+      const massiveCount = alerts.filter((a) => a.premium >= MASSIVE_FLOW).length +
+                           darkPrints.filter((d) => d.premium >= MASSIVE_BLOCK).length;
+
+      const brief = await anthropicText(
+        prompt,
+        180,
+        "You are a terse trading desk analyst. 2-3 sentences only. Highlight $15M+ signals by ticker name."
+      );
+
+      return { brief: brief?.trim() ?? null, massive_signals: massiveCount };
+    });
+
+    return NextResponse.json({
+      brief: result?.brief ?? null,
+      massive_signals: result?.massive_signals ?? 0,
+      window_slot: windowSlot,
+      next_refresh_ms: BRIEF_TTL_MS - (Date.now() % BRIEF_TTL_MS),
+      generated_at: new Date().toISOString(),
+    });
   } catch (err) {
     console.error("[flow-brief]", err);
-    // Bug 7: return 503 so clients can distinguish transient error from "no brief yet"
     return NextResponse.json({ brief: null, error: "api_error" }, { status: 503 });
   }
 }

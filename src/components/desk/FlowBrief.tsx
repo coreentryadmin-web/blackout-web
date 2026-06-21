@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import type { FlowAlert } from "@/lib/api";
 
-const REFRESH_MS = 10 * 60 * 1000;
-const MIN_ALERTS = 5;
+// One shared brief per 15-min window — generated server-side for all users
+const REFRESH_MS = 15 * 60 * 1000;
 
 const AFTER_HOURS_LINES = [
   "Market's dark. The flow you saw today already told you where tomorrow opens.",
@@ -44,14 +43,9 @@ function afterHoursLine(): string {
   return AFTER_HOURS_LINES[h % AFTER_HOURS_LINES.length];
 }
 
-async function fetchBrief(alerts: FlowAlert[]): Promise<string | null> {
+async function fetchBrief(): Promise<string | null> {
   try {
-    const res = await fetch("/api/market/flow-brief", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ alerts: alerts.slice(0, 20) }),
-      cache: "no-store",
-    });
+    const res = await fetch("/api/market/flow-brief", { cache: "no-store" });
     if (!res.ok) return null;
     return (await res.json()).brief ?? null;
   } catch {
@@ -59,34 +53,30 @@ async function fetchBrief(alerts: FlowAlert[]): Promise<string | null> {
   }
 }
 
-export function FlowBrief({ alerts }: { alerts: FlowAlert[] }) {
+// No props needed — the server generates one shared brief for every user.
+export function FlowBrief() {
   const [brief, setBrief]     = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [marketOpen, setMarketOpen] = useState(isRTH());
-  const lastFpRef = useRef("");
 
-  const refresh = useCallback(async (forAlerts: FlowAlert[]) => {
+  const refresh = useCallback(async () => {
     if (!isRTH()) {
       setMarketOpen(false);
-      return; // Bug 4: don't clear brief — preserve last known text across the 4 PM boundary
+      return; // preserve last RTH brief text across the 4 PM boundary
     }
     setMarketOpen(true);
-    if (forAlerts.length < MIN_ALERTS) return;
-    const fp = forAlerts.slice(0, 3).map((a) => a.alerted_at).join("|");
-    if (fp === lastFpRef.current) return;
-    lastFpRef.current = fp;
     setLoading(true);
-    const text = await fetchBrief(forAlerts);
+    const text = await fetchBrief();
     setLoading(false);
     if (text) setBrief(text);
   }, []);
 
-  useEffect(() => { refresh(alerts); }, [alerts, refresh]);
+  useEffect(() => { refresh(); }, [refresh]);
 
   useEffect(() => {
-    const id = setInterval(() => refresh(alerts), REFRESH_MS);
+    const id = setInterval(() => refresh(), REFRESH_MS);
     return () => clearInterval(id);
-  }, [alerts, refresh]);
+  }, [refresh]);
 
   // Re-check RTH every minute so the banner flips at open/close automatically
   useEffect(() => {

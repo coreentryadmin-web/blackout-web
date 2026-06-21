@@ -54,6 +54,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ prints, count: prints.length });
   } catch (err) {
     console.error("[dark-pool]", err);
-    return NextResponse.json({ prints: [], count: 0 }, { status: 200 });
+    return NextResponse.json({ prints: [], count: 0 }, { status: 503 });
   }
 }

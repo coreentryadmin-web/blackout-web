@@ -57,6 +57,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ source: "unusual_whales", flows, count: flows.length });
   } catch (error) {
     console.error("[market/flows]", error);
-    return NextResponse.json({ error: "Flow fetch failed" }, { status: 502 });
+    return NextResponse.json({ error: "Flow fetch failed" }, { status: 503 });
   }
 }

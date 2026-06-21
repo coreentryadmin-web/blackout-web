@@ -149,7 +149,7 @@ export function DarkPoolPanel() {
       const buy  = rows.filter((p) => p.side === "buy").reduce((s, p) => s + p.premium, 0);
       const sell = rows.filter((p) => p.side === "sell").reduce((s, p) => s + p.premium, 0);
       setHistory((prev) => [...prev.slice(-(MAX_HISTORY - 1)), { t: Date.now(), net: buy - sell }]);
-    } catch { /* silently ignore */ }
+    } catch (e) { console.warn("[DarkPoolPanel] fetch error:", e); }
     finally   { setLoading(false); }
   }, []);
 
