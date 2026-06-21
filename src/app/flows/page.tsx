@@ -11,7 +11,7 @@ export default async function FlowsPage() {
       <Nav />
       <PlatformShell
         variant="flows"
-        title="Flow Feed"
+        title="HELIX"
         subtitle="Whale & dark pool alerts · Real-time tape"
         deskMode
         fullWidth

@@ -16,7 +16,7 @@ type FeatureLink = {
 
 const FEATURE_LINKS: FeatureLink[] = [
   { href: "/dashboard", label: "SPX Slayer", sub: "0DTE · GEX · VWAP", accent: "green" },
-  { href: "/flows", label: "Flow Feed", sub: "Whale · Dark Pool", accent: "purple" },
+  { href: "/flows", label: "HELIX", sub: "Whale · Dark Pool", accent: "purple" },
   { href: "/heatmap", label: "Heatmaps", sub: "Sector Rotation", accent: "orange" },
   { href: "/terminal", label: "Largo AI", sub: "Desk Terminal", accent: "blue" },
   { href: "/nighthawk", label: "Night Hawk", sub: "Playbook · Hunt modes", accent: "red" },

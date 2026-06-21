@@ -27,7 +27,7 @@ const TIERS = [
     featured: true,
     accent: "border-bull",
     features: [
-      { text: "Live Flow Feed", active: true },
+      { text: "Live HELIX Feed", active: true },
       { text: "SPX Live Dashboard", active: true },
       { text: "Full heatmaps", active: true },
       { text: "AI Terminal — Largo", active: true },
