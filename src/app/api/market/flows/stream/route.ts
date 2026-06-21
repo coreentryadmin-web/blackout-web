@@ -5,9 +5,11 @@ import { initFlowEventBridge, subscribeFlowEvents } from "@/lib/flow-events";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Bug 16: cap concurrent SSE connections to prevent resource exhaustion
+// Cap concurrent SSE connections per instance. Each connection is cheap (one timer + one callback)
+// but Railway containers have fd limits. 500 per instance is safe; scale horizontally for more.
+// Override via SSE_MAX_STREAMS env var.
 let activeStreams = 0;
-const MAX_STREAMS = 50;
+const MAX_STREAMS = Number(process.env.SSE_MAX_STREAMS ?? 500);
 
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
