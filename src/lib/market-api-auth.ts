@@ -21,7 +21,7 @@ export async function requireTierApi(
     });
   }
 
-  const user = await (await clerkClient()).users.getUser(userId);
+  const user = await clerkClient.users.getUser(userId);
   const tier = parseTier(user.publicMetadata?.tier);
 
   if (!tierAtLeast(tier, minTier)) {

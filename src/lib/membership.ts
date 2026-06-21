@@ -18,7 +18,7 @@ export async function findClerkUsersByEmail(email: string) {
   const normalized = email.trim().toLowerCase();
   if (!normalized) return [];
 
-  const client = await clerkClient();
+  const client = clerkClient;
   const { data } = await client.users.getUserList({
     emailAddress: [normalized],
     limit: 10,
@@ -31,7 +31,7 @@ export async function updateClerkMembershipMetadata(
   clerkUserId: string,
   metadata: MembershipMetadata
 ) {
-  const client = await clerkClient();
+  const client = clerkClient;
   // Use updateUserMetadata (not updateUser) so Clerk performs a server-side
   // deep-merge of publicMetadata rather than a full overwrite. This eliminates
   // the read-modify-write race where two concurrent calls could each read stale

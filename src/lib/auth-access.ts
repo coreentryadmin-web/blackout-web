@@ -26,7 +26,7 @@ export async function getUserTier(userId: string): Promise<Tier> {
         "token on the next poll cycle (≤60 s)."
     );
   }
-  const user = await (await clerkClient()).users.getUser(userId);
+  const user = await clerkClient.users.getUser(userId);
   return parseTier(user.publicMetadata?.tier);
 }
 
