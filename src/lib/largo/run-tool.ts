@@ -355,7 +355,6 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       if (polygonExpiries.length) {
         return {
           ticker: sym,
-          source: "polygon",
           ...polygonOptionsMeta(),
           expiries: polygonExpiries,
         };
@@ -375,8 +374,8 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return {
         ticker: sym,
         expiry: exp,
-        source: maxPainPolygon != null ? "polygon" : maxPainUw != null ? "unusual_whales" : "none",
         ...polygonOptionsMeta(),
+        source: maxPainPolygon != null ? "polygon" : maxPainUw != null ? "unusual_whales" : "none",
         max_pain: maxPainPolygon ?? maxPainUw,
       };
     }
@@ -397,8 +396,8 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return {
         ticker: sym,
         expiry: exp,
-        source: polygonContracts.length ? "polygon" : "unusual_whales",
         ...(polygonContracts.length ? polygonOptionsMeta() : uwOptionsMeta()),
+        source: polygonContracts.length ? "polygon" : "unusual_whales",
         contracts: polygonContracts.length ? polygonContracts : uwContracts,
       };
     }
@@ -411,7 +410,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         (c) => Math.abs(Number(c.strike) - spot) <= band
       );
       if (atmPolygon.length) {
-        return { ticker: sym, expiry: exp, source: "polygon", ...polygonOptionsMeta(), chains: atmPolygon };
+        return { ticker: sym, expiry: exp, ...polygonOptionsMeta(), chains: atmPolygon };
       }
       return {
         ticker: sym,
@@ -427,7 +426,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const { spot, chain } = await polygonChainBundle(ticker, exp);
       const polygonContracts = formatChainContracts(chain, spot, optType, 28);
       if (polygonContracts.length) {
-        return { ticker: sym, expiry: exp, spot, source: "polygon", ...polygonOptionsMeta(), contracts: polygonContracts };
+        return { ticker: sym, expiry: exp, spot, ...polygonOptionsMeta(), contracts: polygonContracts };
       }
       const uwChain = await fetchUwOptionContracts(sym, { expiry: exp, option_type: optType, limit: 300 });
       return {
@@ -586,7 +585,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const sym = uwTicker(ticker);
       const polygonCurve = await fetchPolygonIvTermStructure(sym);
       if (polygonCurve && polygonCurve.length > 0) {
-        return { ticker: sym, source: "polygon", ...polygonOptionsMeta(), curve: polygonCurve };
+        return { ticker: sym, ...polygonOptionsMeta(), curve: polygonCurve };
       }
       return { ticker: sym, source: "unusual_whales", curve: await fetchUwIvTermStructure(sym) };
     }
@@ -610,7 +609,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const sym = uwTicker(ticker);
       const polyVol = await fetchPolygonRealizedVol(sym);
       if (polyVol && (polyVol.realized_vol_30d > 0 || polyVol.realized_vol_10d > 0)) {
-        return { ticker: sym, source: "polygon", ...polygonOptionsMeta(), realized: polyVol };
+        return { ticker: sym, ...polygonOptionsMeta(), realized: polyVol };
       }
       return { ticker: sym, source: "unusual_whales", realized: await fetchUwRealizedVol(sym) };
     }
@@ -880,7 +879,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const spot = await resolveSpot(ticker);
       const polygonGex = spot > 0 ? await fetchPolygonOdteGexRows(spot, exp) : [];
       if (polygonGex.length) {
-        return { ticker: sym, expiry: exp, source: "polygon", ...polygonOptionsMeta(), gex_rows: polygonGex };
+        return { ticker: sym, expiry: exp, ...polygonOptionsMeta(), gex_rows: polygonGex };
       }
       const [spotStrike, staticGex, gexLevels, odte] = await Promise.all([
         fetchUwSpotExposuresByStrike(sym, 300),
