@@ -180,7 +180,7 @@ export default function UnusualWhalesDocsIndexPage() {
               <td>
                 <code>/api/option-trades/flow-alerts</code>
               </td>
-              <td>Flow Feed ingest, cron, SSE stream</td>
+              <td>HELIX ingest, cron, SSE stream</td>
             </tr>
             <tr>
               <td>

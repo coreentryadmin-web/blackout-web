@@ -9591,7 +9591,7 @@ body {
     @apply text-grey-500 text-right tabular-nums hidden md:block;
   }
 
-  /* ── Flow Feed UI System ─────────────────────────────────────────────────── */
+  /* ── HELIX UI System ─────────────────────────────────────────────────────── */
 
   /* Thin custom scrollbar for flow tape */
   .flow-scroll { scrollbar-width: thin; scrollbar-color: #3f3f46 transparent; }

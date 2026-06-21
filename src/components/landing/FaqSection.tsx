@@ -13,7 +13,7 @@ const FAQS = [
   },
   {
     q: "What's included in Premium?",
-    a: "Live Flow Feed, SPX Live Dashboard, full heatmaps, Largo AI terminal, and Night Hawk scanner — all in one membership.",
+    a: "Live HELIX, SPX Live Dashboard, full heatmaps, Largo AI terminal, and Night Hawk scanner — all in one membership.",
   },
   {
     q: "Do I need a broker connection?",

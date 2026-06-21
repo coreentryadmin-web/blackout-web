@@ -293,7 +293,7 @@ wss://${MASSIVE_WS_STOCKS.replace("wss://", "")}
               <td>
                 <code>LULD.*</code>
               </td>
-              <td>Halt/volatility alerts on Flow Feed or SPX panel</td>
+              <td>Halt/volatility alerts on HELIX or SPX panel</td>
             </tr>
             <tr>
               <td>

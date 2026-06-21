@@ -58,7 +58,7 @@ export default async function CursorSpxSlayerAnalysisPage() {
                 <td>Real-time 0DTE SPX desk + play engine + lotto</td>
               </tr>
               <tr>
-                <td>Flow feed</td>
+                <td>HELIX</td>
                 <td>
                   <code>/flows</code>
                 </td>
@@ -537,7 +537,7 @@ flow-events.ts (in-process Set) → /api/market/flows/stream → useLiveSpxTape`
                 </td>
               </tr>
               <tr>
-                <td>Flow feed</td>
+                <td>HELIX</td>
                 <td>REST seed + SSE; 30s REST fallback</td>
                 <td>SSE primary</td>
                 <td>

@@ -99,7 +99,7 @@ export function FlowAlertStream({
 
   return (
     <DeskPanel
-      title={replayMode ? "Flow Tape · REPLAY" : "Flow Tape"}
+      title={replayMode ? "HELIX · REPLAY" : "HELIX"}
       subtitle={`Unusual Whales · live sweep${visible.length > 0 ? ` · ${visible.length} alerts` : ""}`}
       variant="purple"
       feedStatus={replayMode ? undefined : feedStatus}

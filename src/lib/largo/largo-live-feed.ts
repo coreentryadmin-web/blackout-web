@@ -429,7 +429,7 @@ export function formatLargoLiveFeed(feed: LargoLiveFeed, ticker: string): string
 
   const tape = asObj(feed.flow_tape);
   if (tape && !tape.error && tape.count) {
-    lines.push("### Flow feed tape (Postgres)");
+    lines.push("### HELIX tape (Postgres)");
     lines.push(`Alerts: ${tape.count} · Total prem $${Number(tape.total_premium ?? 0).toLocaleString()}`);
     const tops = asArr(tape.top_tickers).slice(0, 6);
     if (tops.length) {

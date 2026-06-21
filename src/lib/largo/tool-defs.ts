@@ -202,7 +202,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
     date: { type: "string", description: "Edition date YYYY-MM-DD; defaults to latest published." },
   }),
 
-  t("get_flow_tape", "Flow feed tape from Postgres — recent alerts + top tickers by premium.", {
+  t("get_flow_tape", "HELIX tape from Postgres — recent alerts + top tickers by premium.", {
     ticker: { type: "string" },
     limit: { type: "integer", default: 50 },
   }),

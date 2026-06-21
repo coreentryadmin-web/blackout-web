@@ -1,5 +1,5 @@
 /**
- * BlackOut Market Platform — shared data plane for SPX Slayer, Night Hawk, Largo AI, and Flow feed.
+ * BlackOut Market Platform — shared data plane for SPX Slayer, Night Hawk, Largo AI, and HELIX.
  * Any product module can import `marketPlatform` to read another service's live or persisted state.
  */
 import type { PlatformServiceId, PlatformSnapshot } from "./types";

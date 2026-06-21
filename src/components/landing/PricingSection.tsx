@@ -15,7 +15,7 @@ const TIERS = [
     features: [
       { text: "Community landing & updates", active: true },
       { text: "Create your account", active: true },
-      { text: "Live flow feed", active: false },
+      { text: "Live HELIX Feed", active: false },
       { text: "SPX dashboard & tools", active: false },
       { text: "AI terminal & Night Hawk", active: false },
     ],
