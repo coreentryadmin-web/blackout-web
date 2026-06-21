@@ -34,10 +34,13 @@ export function databaseConnectionMode(): "private" | "public" | "unknown" {
 
 function poolSsl(connectionString: string): false | { rejectUnauthorized: boolean } {
   if (process.env.DATABASE_SSL === "0") return false;
-  if (connectionString.includes("localhost") || connectionString.includes("127.0.0.1")) {
-    return false;
-  }
-  return { rejectUnauthorized: false };
+  if (connectionString.includes("localhost") || connectionString.includes("127.0.0.1")) return false;
+  // Railway private network — traffic never leaves the internal VPC, no TLS needed
+  if (connectionString.includes(".railway.internal")) return false;
+  // Set DATABASE_SSL_STRICT=1 when using a managed Postgres with a properly-signed CA cert.
+  // Default false because Railway's public endpoint uses a cert not in Node's default trust store.
+  const strict = process.env.DATABASE_SSL_STRICT === "1";
+  return { rejectUnauthorized: strict };
 }
 
 function connectionCandidates(): Array<{ url: string; mode: "private" | "public" }> {

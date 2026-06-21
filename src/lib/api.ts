@@ -595,17 +595,24 @@ function createReconnectingEventSource(
     }
   };
 
+  let hasOpened = false;
+
   const connect = () => {
     if (closed || typeof window === "undefined") return;
     es?.close();
+    hasOpened = false;
     es = new EventSource(url);
     es.onopen = () => {
+      hasOpened = true;
       retryMs = 1_000;
       hooks?.onOpen?.();
     };
     es.onmessage = (e) => onData(e.data);
     es.onerror = () => {
-      hooks?.onClose?.();
+      // Only signal close to callers if the connection was actually open — avoids
+      // triggering loadFlows() on initial connect failures before the stream was used.
+      if (hasOpened) hooks?.onClose?.();
+      hasOpened = false;
       es?.close();
       es = null;
       if (closed) return;
@@ -640,7 +647,19 @@ export function createFlowEventSource(
     (raw) => {
       try {
         const data = JSON.parse(raw) as { type?: string } & Partial<FlowAlert>;
-        if (data.type === "flow" && data.ticker) onMessage(data as FlowAlert);
+        // Validate all required fields before casting — avoids downstream crashes
+        // on malformed payloads from the SSE bridge.
+        if (
+          data.type === "flow" &&
+          data.ticker &&
+          data.option_type &&
+          data.premium != null &&
+          data.strike != null &&
+          data.expiry &&
+          data.alerted_at
+        ) {
+          onMessage(data as FlowAlert);
+        }
       } catch {
         /* ignore */
       }

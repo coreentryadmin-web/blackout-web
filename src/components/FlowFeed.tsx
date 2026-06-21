@@ -360,7 +360,7 @@ export function FlowFeed() {
       if (idx >= src.length) { if (replayTimerRef.current) clearInterval(replayTimerRef.current); return; }
       setReplayAlerts((prev) => [src[idx], ...prev]);
       replayIdxRef.current = idx + 1;
-    }, REPLAY_TICK_MS / replaySpeed);
+    }, REPLAY_TICK_MS / Math.max(0.1, replaySpeed));
   }, [alerts, replaySpeed]);
 
   // Bug 12: restart replay interval when speed changes mid-replay
@@ -373,7 +373,7 @@ export function FlowFeed() {
       if (idx >= src.length) { if (replayTimerRef.current) clearInterval(replayTimerRef.current); return; }
       setReplayAlerts((prev) => [src[idx], ...prev]);
       replayIdxRef.current = idx + 1;
-    }, REPLAY_TICK_MS / replaySpeed);
+    }, REPLAY_TICK_MS / Math.max(0.1, replaySpeed));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replaySpeed, replayMode]);
 
