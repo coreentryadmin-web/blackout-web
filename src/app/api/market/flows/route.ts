@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const limit = Number(sp.get("limit") ?? 5000);
   const ticker = sp.get("ticker") ?? undefined;
   const min_premium = Number(sp.get("min_premium") ?? 0) || undefined;
-  const since_hours = Number(sp.get("since_hours") ?? 48) || 48;
+  const since_hours = Number(sp.get("since_hours") ?? 168) || 168; // widen to 7 days — data is older than 48h
 
   console.log(`[market/flows] dbConfigured=${dbConfigured()} uwConfigured=${uwConfigured()} min_premium=${min_premium} since_hours=${since_hours}`);
 
