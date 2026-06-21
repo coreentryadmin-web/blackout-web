@@ -68,16 +68,24 @@ export function NetPremiumLeaderboard({ alerts }: { alerts: FlowAlert[] }) {
                   <div className="flex items-center gap-2">
                     <span className="font-anton text-[13px] text-yellow-300 leading-none tracking-wide">{row.ticker}</span>
                     <span className={clsx(
-                      "font-mono text-[9px] tracking-wider uppercase",
-                      isBull ? "text-fuchsia-400" : "text-rose-500"
-                    )}>
-                      {isBull ? "↑" : "↓"} {row.callPct}%
+                      "font-mono text-[10px] font-bold tracking-wider",
+                      isBull ? "text-emerald-400" : "text-red-500"
+                    )}
+                    style={isBull
+                      ? { textShadow: "0 0 8px rgba(52,211,153,0.7)" }
+                      : { textShadow: "0 0 8px rgba(239,68,68,0.7)" }
+                    }>
+                      {isBull ? "▲" : "▼"} {row.callPct}%
                     </span>
                   </div>
-                  <span className={clsx(
-                    "font-mono text-[11px] font-semibold tabular-nums",
-                    isBull ? "text-fuchsia-400" : "text-rose-400"
-                  )}>
+                  <span
+                    className="font-mono font-bold tabular-nums"
+                    style={{
+                      fontSize: "13px",
+                      color: isBull ? "#34d399" : "#ef4444",
+                      textShadow: isBull ? "0 0 10px rgba(52,211,153,0.6)" : "0 0 10px rgba(239,68,68,0.6)",
+                    }}
+                  >
                     {isBull ? "+" : ""}{fmtPremium(row.net)}
                   </span>
                 </div>
