@@ -16,9 +16,8 @@ function timeAgo(iso: string): string {
 
 function fmtExpiry(expiry: string): string {
   if (!expiry) return "";
-  const [, m, d] = expiry.split("-");
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  return `${months[Number(m) - 1]} ${Number(d)}`;
+  const [y, m, d] = expiry.split("-");
+  return `${m}/${d}/${y.slice(2)}`;
 }
 
 type State = { flows: FlowAlert[]; dp: DarkPoolRow[]; loading: boolean };
@@ -39,8 +38,8 @@ function FlowRow({ f }: { f: FlowAlert }) {
           <span className={clsx("flow-badge", isCall ? "flow-badge-call" : "flow-badge-put")}>
             {f.option_type}
           </span>
-          <span className="font-mono text-[11px] text-zinc-300 font-medium">${f.strike}</span>
-          <span className="font-mono text-[10px] text-zinc-600">{fmtExpiry(f.expiry)}</span>
+          <span className="font-mono text-[11px] text-yellow-300 font-medium">{f.strike}{isCall ? "C" : "P"}</span>
+          <span className="font-mono text-[10px] text-zinc-400">{fmtExpiry(f.expiry)}</span>
           {f.route === "0dte"  && <span className="flow-badge flow-badge-0dte">0DTE</span>}
           {isWhale             && <span className="flow-badge flow-badge-whale">WHALE</span>}
           {f.alert_rule        && <span className="flow-badge flow-badge-sweep">{f.alert_rule.toUpperCase().slice(0,6)}</span>}

@@ -8,9 +8,8 @@ import { computeFlowStrikeStacks, fmtFlowPremShort } from "@/lib/largo/flow-stri
 
 function fmtExpiry(expiry: string): string {
   if (!expiry) return "";
-  const [, m, d] = expiry.split("-");
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  return `${months[Number(m) - 1]} ${Number(d)}`;
+  const [y, m, d] = expiry.split("-");
+  return `${m}/${d}/${y.slice(2)}`;
 }
 
 const KIND_META = {
@@ -103,7 +102,7 @@ export function StrikeStackDetector({
 
                     <div className="flex items-center justify-between mt-1.5 gap-2">
                       <p className="font-mono text-[10px] text-zinc-400">
-                        ${stack.strike} · {fmtExpiry(stack.expiry)}
+                        {stack.strike}{isCall ? "C" : "P"} · {fmtExpiry(stack.expiry)}
                       </p>
                       <p className="font-mono text-[10px] text-zinc-500">
                         {stack.premiums.map(fmtFlowPremShort).join(" + ")}

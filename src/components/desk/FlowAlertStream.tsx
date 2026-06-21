@@ -26,9 +26,8 @@ function calcDte(expiry: string): number | null {
 
 function fmtExpiry(expiry: string): string {
   if (!expiry) return "";
-  const [, m, d] = expiry.split("-");
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  return `${months[Number(m) - 1]} ${Number(d)}`;
+  const [y, m, d] = expiry.split("-");
+  return `${m}/${d}/${y.slice(2)}`;
 }
 
 function ruleLabel(rule: string): string {
@@ -214,7 +213,7 @@ export function FlowAlertStream({
                     {/* Row 2: contract details */}
                     <div className="flex items-center justify-between mt-1.5 gap-2">
                       <p className="font-mono text-[11px] text-zinc-400 leading-none flex items-center gap-1 flex-wrap">
-                        <span className="text-yellow-300 font-semibold">${flow.strike}</span>
+                        <span className="text-yellow-300 font-semibold">{flow.strike}{isCall ? "C" : "P"}</span>
                         <span className="text-zinc-600">·</span>
                         <span>{fmtExpiry(flow.expiry)}</span>
                         {dte !== null && !is0dte && (

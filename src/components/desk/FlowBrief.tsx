@@ -108,9 +108,9 @@ export function FlowBrief({ alerts }: { alerts: FlowAlert[] }) {
         transition={{ duration: 0.3, ease: "easeOut" }}
         className="relative overflow-hidden rounded-lg"
         style={showAfterHours ? {
-          background: "linear-gradient(135deg, rgba(30,30,40,0.95) 0%, rgba(10,10,20,0.98) 100%)",
-          border: "1px solid rgba(100,100,130,0.25)",
-          boxShadow: "0 0 20px rgba(0,0,0,0.5)",
+          background: "linear-gradient(135deg, rgba(59,7,100,0.25) 0%, rgba(10,10,25,0.95) 50%, rgba(7,42,100,0.2) 100%)",
+          border: "1px solid rgba(139,92,246,0.35)",
+          boxShadow: "0 0 25px rgba(139,92,246,0.12), 0 0 50px rgba(59,130,246,0.06)",
         } : {
           background: "linear-gradient(135deg, rgba(217,70,239,0.12) 0%, rgba(0,0,0,0.7) 40%, rgba(0,255,102,0.08) 100%)",
           border: "1px solid",
@@ -131,8 +131,11 @@ export function FlowBrief({ alerts }: { alerts: FlowAlert[] }) {
           <div className="flex-shrink-0 flex items-center gap-1.5 pt-0.5">
             {showAfterHours ? (
               <>
-                <span className="w-2 h-2 rounded-full block" style={{ background: "rgba(120,120,160,0.6)" }} />
-                <span className="font-mono text-[9px] tracking-[0.35em] uppercase font-bold" style={{ color: "rgba(140,140,180,0.8)" }}>
+                <div className="relative">
+                  <span className="w-2 h-2 rounded-full block relative z-10" style={{ background: "#818cf8", boxShadow: "0 0 8px #818cf8" }} />
+                  <span className="absolute inset-0 rounded-full animate-ping opacity-30" style={{ background: "#818cf8" }} />
+                </div>
+                <span className="font-mono text-[9px] tracking-[0.35em] uppercase font-bold" style={{ color: "#a78bfa", textShadow: "0 0 10px rgba(167,139,250,0.8)" }}>
                   AFTER-HOURS
                 </span>
               </>
@@ -168,9 +171,10 @@ export function FlowBrief({ alerts }: { alerts: FlowAlert[] }) {
                 transition={{ duration: 0.4 }}
                 className="flex-1 font-mono leading-relaxed font-medium"
                 style={showAfterHours ? {
-                  color: "rgba(160,160,200,0.85)",
+                  color: "#c4b5fd",
                   fontSize: "11px",
                   fontStyle: "italic",
+                  textShadow: "0 0 12px rgba(167,139,250,0.4)",
                 } : {
                   color: "#f0f0f0",
                   fontSize: "12px",
