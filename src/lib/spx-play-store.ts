@@ -68,8 +68,9 @@ async function setMetaWithRetry(key: string, value: string, attempts = 3): Promi
     } catch (err) {
       lastErr = err;
       if (i < attempts - 1) {
-        // LOW: increased from 50ms/100ms to 150ms/400ms for DB load headroom.
-        await new Promise((r) => setTimeout(r, i === 0 ? 150 : 400));
+        // 50ms/100ms — short enough to stay well within serverless timeout budgets
+        // (the original 150/400 cut too deeply into a 10s Lambda on a DB-hiccup day).
+        await new Promise((r) => setTimeout(r, i === 0 ? 50 : 100));
       }
     }
   }

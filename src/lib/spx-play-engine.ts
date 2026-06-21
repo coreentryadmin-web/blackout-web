@@ -253,7 +253,7 @@ async function evaluateOpenPlay(
   confirmations: PlayConfirmationResult | null,
   mtf: MtfHybrid | null,
   telemetry: SpxPlayPayload["telemetry"],
-  mutate = true
+  mutate = false
 ): Promise<SpxPlayPayload> {
   // Open-play path only: force-exit cutoff is independent from flat-path no-entry gates.
   const price = desk.price;
@@ -626,7 +626,7 @@ async function evaluateFlatPlay(
   confluence: SpxConfluence,
   technicals: PlayTechnicals,
   confirmations: PlayConfirmationResult,
-  mutate = true
+  mutate = false
 ): Promise<SpxPlayPayload> {
   const session = await loadPlaySessionMeta();
   const adaptive = await loadAdaptivePlayGates();
@@ -653,6 +653,12 @@ async function evaluateFlatPlay(
 
   const watchRec = await loadWatchRecord();
   if (mutate && watchRec && direction != null && watchRec.direction !== direction) {
+    // Direction flipped mid-session (e.g. long watch → market turns bearish).
+    // Log it so Railway/Vercel logs record the flip timestamp and the old setup key.
+    console.log(
+      `[spx-play-engine] direction flip: ${watchRec.direction} → ${direction}` +
+      ` — clearing watch ${watchRec.setup_key ?? "(no key)"} at ${new Date().toISOString()}`
+    );
     await clearWatchRecord();
   }
   const activeWatch = watchRec && direction != null && watchRec.direction === direction ? watchRec : null;

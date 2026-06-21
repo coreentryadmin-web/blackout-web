@@ -112,7 +112,9 @@ export function evaluatePlayGates(
   const abs = Math.abs(confluence.score);
   const scoreBoost = opts?.min_score_boost ?? 0;
   const fullMin = playFullMinScore() + scoreBoost;
-  const dir = confluence.bias === "bullish" ? "long" : confluence.bias === "bearish" ? "short" : null;
+  // Use confluence.direction ("long"/"short"|null) directly rather than re-deriving
+  // from bias to keep a single authoritative source for play direction.
+  const dir = confluence.direction;
   const buyIntent = opts?.entry_intent !== "watch";
 
   if (!desk.market_open) {
