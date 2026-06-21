@@ -108,9 +108,9 @@ export function FlowFeed() {
   useEffect(() => () => { if (replayTimerRef.current) clearInterval(replayTimerRef.current); }, []);
 
   const displayAlerts = useMemo(() => {
-    const base = replayMode ? replayAlerts : alerts;
-    if (!tickerFilter) return base;
-    return base.filter((a) => a.ticker === tickerFilter.toUpperCase());
+    let base = replayMode ? replayAlerts : alerts;
+    if (tickerFilter) base = base.filter((a) => a.ticker === tickerFilter.toUpperCase());
+    return [...base].sort((a, b) => b.premium - a.premium);
   }, [replayMode, replayAlerts, alerts, tickerFilter]);
 
   return (
