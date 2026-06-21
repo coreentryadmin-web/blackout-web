@@ -96,6 +96,21 @@ body {
   100% { transform: perspective(1100px) rotateY(360deg) scale(1.35) translateY(0px); }
 }
 
+/* Gentle sway — never goes edge-on, always fully visible */
+@keyframes helix-sway {
+  0%   { transform: perspective(700px) rotateY(-18deg) translateY(0px);   }
+  25%  { transform: perspective(700px) rotateY(0deg)   translateY(-22px);  }
+  50%  { transform: perspective(700px) rotateY(18deg)  translateY(0px);   }
+  75%  { transform: perspective(700px) rotateY(0deg)   translateY(22px);  }
+  100% { transform: perspective(700px) rotateY(-18deg) translateY(0px);   }
+}
+
+@keyframes helix-float {
+  0%   { transform: translateY(0px);   }
+  50%  { transform: translateY(-28px); }
+  100% { transform: translateY(0px);   }
+}
+
 /* ── Float ── */
 @keyframes float-y {
   0%, 100% { transform: translateY(0); }

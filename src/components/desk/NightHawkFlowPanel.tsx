@@ -122,30 +122,47 @@ export function NightHawkFlowPanel({
                         style={{ background: "linear-gradient(90deg, #9f1239, #f43f5e)", width: `${100 - callPct}%` }} />
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="font-mono text-[9px] text-zinc-500">
+                      <span className="font-mono text-[11px] text-zinc-400">
                         {flowData.printCount} prints · top {fmtPremium(flowData.topPrint)}
                       </span>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-[9px] text-emerald-600">{callPct}% C</span>
-                        <span className="font-mono text-[9px] text-rose-600">{100 - callPct}% P</span>
-                        <span className="font-mono text-[9px] text-zinc-400 font-semibold tabular-nums">
+                        <span
+                          className="font-mono text-[12px] font-bold"
+                          style={{ color: "#34d399", textShadow: "0 0 6px rgba(52,211,153,0.5)" }}
+                        >
+                          {callPct}% C
+                        </span>
+                        <span
+                          className="font-mono text-[12px] font-bold"
+                          style={{ color: "#fb7185", textShadow: "0 0 6px rgba(251,113,133,0.5)" }}
+                        >
+                          {100 - callPct}% P
+                        </span>
+                        <span
+                          className="font-mono font-bold tabular-nums"
+                          style={{
+                            fontSize: "13px",
+                            color: "#a5b4fc",
+                            textShadow: "0 0 8px rgba(165,180,252,0.5)",
+                          }}
+                        >
                           {fmtPremium(flowData.totalPremium)}
                         </span>
                       </div>
                     </div>
                     {flowData.flowAgreement && (
-                      <p className="font-mono text-[8px] text-emerald-600 mt-1">
+                      <p className="font-mono text-[10px] text-emerald-500 mt-1">
                         ✓ tape agrees with {isLong ? "long" : "short"} thesis
                       </p>
                     )}
                     {!flowData.flowAgreement && flowData.conviction !== "none" && (
-                      <p className="font-mono text-[8px] text-amber-700 mt-1">
+                      <p className="font-mono text-[10px] text-amber-600 mt-1">
                         ⚠ tape diverges from {isLong ? "long" : "short"} thesis
                       </p>
                     )}
                   </>
                 ) : (
-                  <p className="font-mono text-[9px] text-zinc-700 mt-1">
+                  <p className="font-mono text-[11px] text-zinc-600 mt-1">
                     No flow prints found in 7d window
                   </p>
                 )}

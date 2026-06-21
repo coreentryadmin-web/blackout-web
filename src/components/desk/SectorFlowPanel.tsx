@@ -38,7 +38,7 @@ export function SectorFlowPanel({
           <span className="font-mono text-[10px] text-sky-400">▦</span>
           <span className="flow-panel-title">Sector Flow</span>
         </div>
-        <span className="font-mono text-[9px] text-sky-600/60 tabular-nums">
+        <span className="font-mono text-[10px] text-sky-600/60 tabular-nums">
           7d rotation
         </span>
       </div>
@@ -61,23 +61,35 @@ export function SectorFlowPanel({
                 className="space-y-1"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-[10px] font-semibold text-zinc-300 w-24 truncate">
+                  <span className="font-mono text-[12px] font-semibold text-zinc-200 w-28 truncate">
                     {e.sector}
                   </span>
                   <div className="flex items-center gap-2">
-                    <span className={`font-mono text-[9px] font-bold ${
-                      isBull ? "text-emerald-400" : isBear ? "text-rose-400" : "text-zinc-400"
-                    }`}>
+                    <span
+                      className="font-mono text-[12px] font-bold tabular-nums"
+                      style={{ color: isBull ? "#34d399" : isBear ? "#fb7185" : "#a1a1aa" }}
+                    >
                       {e.callPct}% C
                     </span>
-                    <span className="font-mono text-[9px] text-zinc-600 tabular-nums">
+                    <span
+                      className="font-mono font-bold tabular-nums"
+                      style={{
+                        fontSize: "13px",
+                        color: isBull ? "#34d399" : isBear ? "#fb7185" : "#e4e4e7",
+                        textShadow: isBull
+                          ? "0 0 8px rgba(52,211,153,0.5)"
+                          : isBear
+                            ? "0 0 8px rgba(251,113,133,0.5)"
+                            : "none",
+                      }}
+                    >
                       {fmtPremium(e.total)}
                     </span>
                   </div>
                 </div>
 
                 {/* Call / put bar */}
-                <div className="relative h-1.5 rounded-full overflow-hidden bg-zinc-900">
+                <div className="relative h-2 rounded-full overflow-hidden bg-zinc-900">
                   <motion.div
                     className="absolute inset-y-0 left-0 rounded-full"
                     style={{

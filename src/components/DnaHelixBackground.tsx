@@ -1,12 +1,12 @@
 "use client";
 
-// ─── Helix geometry (computed once at module load, never re-runs) ─────────────
-const VW     = 260;   // SVG viewBox width
-const VH     = 1100;  // SVG viewBox height
+// ─── Geometry (module-level, computed once) ───────────────────────────────────
+const VW     = 280;
+const VH     = 1100;
 const CX     = VW / 2;
-const AMP    = 88;    // sine wave amplitude (horizontal spread)
-const PERIOD = 192;   // vertical pixels per full revolution
-const STEPS  = 320;   // path resolution — higher = smoother curves
+const AMP    = 92;
+const PERIOD = 186;
+const STEPS  = 320;
 
 function buildPath(phase: number): string {
   const d: string[] = [];
@@ -35,33 +35,45 @@ function buildRungs(): RungDatum[] {
   return out;
 }
 
-// Pre-compute once
-const S1      = buildPath(0);
-const S2      = buildPath(Math.PI);
-const RUNGS   = buildRungs();
+const S1    = buildPath(0);
+const S2    = buildPath(Math.PI);
+const RUNGS = buildRungs();
 
-// Traveling particle timings — staggered so they're always spread out
+// Particles: 6 per strand — varied speeds, always spread across full length
 const DOTS_S1 = [
-  { dur: "7s",  begin: "0s"    },
-  { dur: "10s", begin: "-3.5s" },
-  { dur: "13s", begin: "-7s"   },
-  { dur: "9s",  begin: "-5s"   },
-  { dur: "15s", begin: "-11s"  },
+  { dur: "6s",  begin: "0s"    },
+  { dur: "9s",  begin: "-3s"   },
+  { dur: "12s", begin: "-6s"   },
+  { dur: "8s",  begin: "-4.5s" },
+  { dur: "14s", begin: "-10s"  },
+  { dur: "7s",  begin: "-1.5s" },
 ];
 const DOTS_S2 = [
-  { dur: "8s",  begin: "-1s"   },
-  { dur: "11s", begin: "-4s"   },
-  { dur: "14s", begin: "-9s"   },
-  { dur: "6s",  begin: "-2.5s" },
-  { dur: "12s", begin: "-7.5s" },
+  { dur: "7s",  begin: "-0.5s" },
+  { dur: "10s", begin: "-4s"   },
+  { dur: "13s", begin: "-7.5s" },
+  { dur: "5s",  begin: "-2s"   },
+  { dur: "11s", begin: "-8.5s" },
+  { dur: "8s",  begin: "-3.5s" },
 ];
 
+// ─── Color palette ────────────────────────────────────────────────────────────
+// Strand 1: electric violet    Strand 2: neon cyan    Rungs: violet→cyan
+const C_S1    = "#c500ff";  // neon magenta-violet
+const C_S2    = "#00f0ff";  // neon cyan
+const C_DOT1  = "#e040ff";  // bright violet dots
+const C_DOT2  = "#40ffff";  // bright cyan dots
+const C_PART1 = "#ff80ff";  // particle on strand 1
+const C_PART2 = "#80ffff";  // particle on strand 2
+
 // ─── Single helix SVG ─────────────────────────────────────────────────────────
-function HelixSvg({ uid }: { uid: string }) {
-  const F  = `f-${uid}`;   // bloom filter id
-  const RG = `rg-${uid}`;  // rung gradient id
-  const M1 = `m1-${uid}`;  // motion path 1
-  const M2 = `m2-${uid}`;  // motion path 2
+function HelixSvg({ uid, intense = false }: { uid: string; intense?: boolean }) {
+  const F  = `f-${uid}`;
+  const RG = `rg-${uid}`;
+  const M1 = `m1-${uid}`;
+  const M2 = `m2-${uid}`;
+
+  const sw = intense ? 4 : 3.2; // stroke width
 
   return (
     <svg
@@ -72,142 +84,99 @@ function HelixSvg({ uid }: { uid: string }) {
       style={{ overflow: "visible" }}
     >
       <defs>
-        {/* ── Bloom glow — 3 layers: wide halo + tight halo + crisp source ── */}
-        <filter id={F} x="-110%" y="-8%" width="320%" height="116%">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="9"   result="wideBlur"/>
-          <feGaussianBlur in="SourceGraphic" stdDeviation="3"   result="tightBlur"/>
-          <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="crispBlur"/>
+        {/* ── 3-layer bloom filter ── */}
+        <filter id={F} x="-130%" y="-10%" width="360%" height="120%">
+          {/* Wide atmospheric halo */}
+          <feGaussianBlur in="SourceGraphic" stdDeviation={intense ? "14" : "11"} result="wideBlur"/>
+          {/* Mid glow */}
+          <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="midBlur"/>
+          {/* Tight crisp edge */}
+          <feGaussianBlur in="SourceGraphic" stdDeviation="1" result="crispBlur"/>
           <feMerge>
             <feMergeNode in="wideBlur"/>
-            <feMergeNode in="tightBlur"/>
+            <feMergeNode in="midBlur"/>
             <feMergeNode in="crispBlur"/>
             <feMergeNode in="SourceGraphic"/>
           </feMerge>
         </filter>
 
-        {/* ── Rung gradient: cyan left → white centre → blue right ── */}
+        {/* ── Rung gradient: violet → white → cyan ── */}
         <linearGradient id={RG} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stopColor="#00d4ff" stopOpacity="1"/>
-          <stop offset="40%"  stopColor="#b8f0ff" stopOpacity="1"/>
-          <stop offset="60%"  stopColor="#b8f0ff" stopOpacity="1"/>
-          <stop offset="100%" stopColor="#4488ff" stopOpacity="1"/>
+          <stop offset="0%"   stopColor={C_S1}    stopOpacity="1"/>
+          <stop offset="35%"  stopColor="#f0d0ff" stopOpacity="1"/>
+          <stop offset="65%"  stopColor="#d0ffff" stopOpacity="1"/>
+          <stop offset="100%" stopColor={C_S2}    stopOpacity="1"/>
         </linearGradient>
 
-        {/* ── Hidden paths used only for animateMotion ── */}
+        {/* Hidden motion paths */}
         <path id={M1} d={S1} fill="none" stroke="none"/>
         <path id={M2} d={S2} fill="none" stroke="none"/>
       </defs>
 
-      {/* ──────────────────────────────────────────────────────────── */}
-      {/* MAIN HELIX GEOMETRY                                          */}
-      {/* ──────────────────────────────────────────────────────────── */}
       <g filter={`url(#${F})`}>
+        {/* Strand 1 — electric violet */}
+        <path d={S1} fill="none" stroke={C_S1} strokeWidth={sw} strokeLinecap="round"/>
 
-        {/* Strand 1 — electric cyan */}
-        <path
-          d={S1}
-          fill="none"
-          stroke="#00d4ff"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
+        {/* Strand 2 — neon cyan */}
+        <path d={S2} fill="none" stroke={C_S2} strokeWidth={sw} strokeLinecap="round"/>
 
-        {/* Strand 2 — deep electric blue */}
-        <path
-          d={S2}
-          fill="none"
-          stroke="#3b6fff"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
-
-        {/* Base-pair rungs — thicker & brighter when facing viewer (absCos→1) */}
+        {/* Base-pair rungs — thicker when facing viewer */}
         {RUNGS.map((r, i) => (
           <line
-            key={`rung-${i}`}
-            x1={r.x1} y1={r.y}
-            x2={r.x2} y2={r.y}
+            key={`r${i}`}
+            x1={r.x1} y1={r.y} x2={r.x2} y2={r.y}
             stroke={`url(#${RG})`}
-            strokeWidth={0.4 + 2.4 * r.absCos}
-            strokeOpacity={0.28 + 0.72 * r.absCos}
+            strokeWidth={0.5 + 2.8 * r.absCos}
+            strokeOpacity={0.32 + 0.68 * r.absCos}
             strokeLinecap="round"
           />
         ))}
 
         {/* Nucleotide dots — strand 1 */}
         {RUNGS.map((r, i) => (
-          <circle
-            key={`nd1-${i}`}
-            cx={r.x1} cy={r.y}
-            r={2.2 + 1.4 * r.absCos}
-            fill="#00e8ff"
-            fillOpacity={0.45 + 0.55 * r.absCos}
+          <circle key={`d1${i}`} cx={r.x1} cy={r.y}
+            r={2 + 2 * r.absCos}
+            fill={C_DOT1}
+            fillOpacity={0.4 + 0.6 * r.absCos}
           />
         ))}
 
         {/* Nucleotide dots — strand 2 */}
         {RUNGS.map((r, i) => (
-          <circle
-            key={`nd2-${i}`}
-            cx={r.x2} cy={r.y}
-            r={2.2 + 1.4 * r.absCos}
-            fill="#7ab4ff"
-            fillOpacity={0.45 + 0.55 * r.absCos}
+          <circle key={`d2${i}`} cx={r.x2} cy={r.y}
+            r={2 + 2 * r.absCos}
+            fill={C_DOT2}
+            fillOpacity={0.4 + 0.6 * r.absCos}
           />
         ))}
       </g>
 
-      {/* ──────────────────────────────────────────────────────────── */}
-      {/* TRAVELING PARTICLES — travel along each strand continuously  */}
-      {/* ──────────────────────────────────────────────────────────── */}
-
-      {/* Strand 1 particles (cyan/white) */}
+      {/* ── Traveling particles — strand 1 ── */}
       {DOTS_S1.map((p, j) => (
-        <g key={`dp1-${j}`} filter={`url(#${F})`}>
-          <circle r="5" fill="#00ffee" fillOpacity="0.95">
-            <animateMotion
-              dur={p.dur}
-              begin={p.begin}
-              repeatCount="indefinite"
-              rotate="none"
-            >
+        <g key={`p1${j}`} filter={`url(#${F})`}>
+          <circle r="5.5" fill={C_PART1} fillOpacity="1">
+            <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite" rotate="none">
               <mpath href={`#${M1}`}/>
             </animateMotion>
           </circle>
-          {/* Outer halo ring on each particle */}
-          <circle r="9" fill="#00d4ff" fillOpacity="0.22">
-            <animateMotion
-              dur={p.dur}
-              begin={p.begin}
-              repeatCount="indefinite"
-              rotate="none"
-            >
+          <circle r="11" fill={C_S1} fillOpacity="0.28">
+            <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite" rotate="none">
               <mpath href={`#${M1}`}/>
             </animateMotion>
           </circle>
         </g>
       ))}
 
-      {/* Strand 2 particles (blue/violet) */}
+      {/* ── Traveling particles — strand 2 ── */}
       {DOTS_S2.map((p, j) => (
-        <g key={`dp2-${j}`} filter={`url(#${F})`}>
-          <circle r="5" fill="#a5c8ff" fillOpacity="0.95">
-            <animateMotion
-              dur={p.dur}
-              begin={p.begin}
-              repeatCount="indefinite"
-              rotate="none"
-            >
+        <g key={`p2${j}`} filter={`url(#${F})`}>
+          <circle r="5.5" fill={C_PART2} fillOpacity="1">
+            <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite" rotate="none">
               <mpath href={`#${M2}`}/>
             </animateMotion>
           </circle>
-          <circle r="9" fill="#4488ff" fillOpacity="0.22">
-            <animateMotion
-              dur={p.dur}
-              begin={p.begin}
-              repeatCount="indefinite"
-              rotate="none"
-            >
+          <circle r="11" fill={C_S2} fillOpacity="0.28">
+            <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite" rotate="none">
               <mpath href={`#${M2}`}/>
             </animateMotion>
           </circle>
@@ -217,14 +186,17 @@ function HelixSvg({ uid }: { uid: string }) {
   );
 }
 
-// ─── Column layout: 3 helices staggered across the viewport ──────────────────
+// ─── Layout: 4 columns weighted toward the flow-feed area ────────────────────
+// helix-sway = gentle ±18° tilt + drift — never goes edge-on, always visible
 const COLS = [
-  // left column — dimmer, slightly slower
-  { left: "11%",  w: 180, dur: "68s", delay: "-24s", opacity: 0.055 },
-  // centre column — the hero, most visible
-  { left: "50%",  w: 300, dur: "46s", delay:   "0s", opacity: 0.14  },
-  // right column — dimmer, different phase
-  { left: "89%",  w: 180, dur: "75s", delay: "-38s", opacity: 0.055 },
+  // Far left — dimmer accent
+  { left: "10%",  w: 220, dur: "70s", delay: "-18s", opacity: 0.22, intense: false },
+  // Left-centre — covers main flow feed (the circled area)
+  { left: "34%",  w: 310, dur: "52s", delay:  "-5s", opacity: 0.40, intense: true  },
+  // Right-centre
+  { left: "62%",  w: 310, dur: "58s", delay: "-25s", opacity: 0.35, intense: true  },
+  // Far right — dimmer accent
+  { left: "88%",  w: 220, dur: "76s", delay: "-40s", opacity: 0.20, intense: false },
 ] as const;
 
 // ─── Root export ─────────────────────────────────────────────────────────────
@@ -235,16 +207,16 @@ export function DnaHelixBackground() {
       style={{ zIndex: 0 }}
       aria-hidden
     >
-      {/* Deep blue atmospheric glow — matches DNA image palette */}
+      {/* Deep violet atmospheric base */}
       <div
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 110% 65% at 50% 30%, rgba(0,30,110,0.28) 0%, rgba(0,5,25,0) 70%)",
+            "radial-gradient(ellipse 120% 70% at 45% 35%, rgba(100,0,160,0.18) 0%, rgba(0,60,100,0.12) 55%, transparent 80%)",
         }}
       />
 
-      {/* The three helix columns */}
+      {/* Helix columns */}
       {COLS.map((col, i) => (
         <div
           key={i}
@@ -256,36 +228,34 @@ export function DnaHelixBackground() {
             width:          col.w,
             transform:      "translateX(-50%)",
             opacity:        col.opacity,
-            animation:      `dna-helix-drift ${col.dur} linear infinite`,
+            animation:      `helix-sway ${col.dur} ease-in-out infinite`,
             animationDelay: col.delay,
             willChange:     "transform",
           }}
         >
-          <HelixSvg uid={`h${i}`} />
+          <HelixSvg uid={`h${i}`} intense={col.intense} />
         </div>
       ))}
 
-      {/* ── Overlays to keep content readable ── */}
-
-      {/* Radial vignette — darkens far edges */}
+      {/* Soft vignette — only darkens the very corners, not the body */}
       <div
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 80% 80% at 50% 50%, transparent 22%, rgba(0,0,0,0.68) 100%)",
+            "radial-gradient(ellipse 90% 90% at 50% 50%, transparent 45%, rgba(0,0,0,0.55) 100%)",
         }}
       />
 
-      {/* Bottom blackout — keeps bottom nav/data clean */}
+      {/* Top edge fade */}
       <div
-        className="absolute bottom-0 left-0 right-0 h-48"
-        style={{ background: "linear-gradient(to bottom, transparent, rgba(0,0,0,0.92))" }}
+        className="absolute top-0 left-0 right-0 h-16"
+        style={{ background: "linear-gradient(to top, transparent, rgba(4,4,7,0.9))" }}
       />
 
-      {/* Top blackout — keeps nav clean */}
+      {/* Bottom edge fade */}
       <div
-        className="absolute top-0 left-0 right-0 h-24"
-        style={{ background: "linear-gradient(to top, transparent, rgba(0,0,0,0.88))" }}
+        className="absolute bottom-0 left-0 right-0 h-28"
+        style={{ background: "linear-gradient(to bottom, transparent, rgba(4,4,7,0.95))" }}
       />
     </div>
   );
