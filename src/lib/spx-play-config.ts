@@ -111,6 +111,23 @@ export function playForceExitEtMin(): number {
 }
 
 /**
+ * Validates that no-entry cutoff is before force-exit cutoff, preventing a
+ * misconfiguration where a BUY entry fires moments before theta force-exit.
+ * Called at startup — logs a warning but does not crash the server.
+ */
+export function warnIfPlayTimingMisconfigured(): void {
+  const noEntryMins = playNoEntryAfterEtHour() * 60 + playNoEntryAfterEtMin();
+  const forceExitMins = playForceExitEtHour() * 60 + playForceExitEtMin();
+  if (noEntryMins >= forceExitMins) {
+    console.warn(
+      `[spx-play-config] TIMING MISCONFIGURATION: no-entry cutoff (${playNoEntryAfterEtHour()}:${String(playNoEntryAfterEtMin()).padStart(2, "0")}) ` +
+      `is at or after force-exit (${playForceExitEtHour()}:${String(playForceExitEtMin()).padStart(2, "0")}). ` +
+      `New entries could be opened immediately before force-exit fires.`
+    );
+  }
+}
+
+/**
  * How many minutes after 9:30 AM ET constitute the "opening range" — BUY entries are
  * blocked during this window (WATCH is still ok). Default 12 min → no BUY until 9:42.
  * At 9:40 only 2 completed 3m bars exist so MTF is thin; 12 minutes captures real

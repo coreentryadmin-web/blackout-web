@@ -31,6 +31,18 @@ export type PlayGateResult = {
   play_idea: string | null;
 };
 
+/**
+ * Stable prefixes for gate block messages that the promote filter pattern-matches on.
+ * Use these constants instead of bare string literals to avoid silent breakage when
+ * user-facing block messages are reworded.
+ */
+export const GATE_BLOCK = {
+  BUY_COOLDOWN: "Buy cooldown",
+  QUALITY_COOLDOWN: "Quality cooldown",
+  GRADE_BELOW_MIN: "below minimum",
+  REENTRY_LOCK: "Re-entry lock",
+} as const;
+
 function parseMacroEventMinutes(timeRaw: string, todayYmd: string): number | null {
   const time = timeRaw.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(time)) {

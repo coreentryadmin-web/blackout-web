@@ -253,11 +253,12 @@ export function evaluatePlayConfirmations(
     detail: tide ? `Tide ${tide}` : "Tide neutral",
   });
 
-  // Symmetric TICK thresholds: ±800 allows normal market breadth noise while
-  // blocking extreme internals that oppose the trade direction.
+  // TICK thresholds: ±400 is a meaningful signal threshold — NYSE TICK routinely
+  // fluctuates ±300 on normal days, so ±800 was nearly always passing and added
+  // no real filter. ±400 blocks entries when breadth is genuinely opposed.
   const tickOk =
     desk.tick == null ||
-    (direction === "long" ? desk.tick > -800 : desk.tick < 800);
+    (direction === "long" ? desk.tick > -400 : desk.tick < 400);
   checks.push({
     label: "Internals",
     required: false,
@@ -281,13 +282,15 @@ export function evaluatePlayConfirmations(
   const price = desk.price;
   const gexOk =
     direction === "long"
-      ? // Require a support wall within 10 pts below price — a wall at SPX 4000 while
+      ? // Require a GEX support wall within 10 pts below price — a wall at SPX 4000 while
         // price is at 5600 is irrelevant and should not satisfy the GEX confirmation.
         (desk.gamma_regime !== "amplification" || desk.above_gamma_flip) &&
         (desk.gex_walls?.some((w) => w.kind === "support" && w.strike >= price - 10) ?? false)
-      : // For shorts: require a resistance wall at or above current price (within 10 pts).
+      : // Require a GEX resistance wall AT OR ABOVE current price for shorts.
+        // The old check (strike >= price - 10) incorrectly allowed a resistance wall
+        // 9 pts below price, which is a broken level providing no cap on upside.
         (desk.gamma_regime !== "amplification" || !desk.above_gamma_flip) &&
-        (desk.gex_walls?.some((w) => w.kind === "resistance" && w.strike >= price - 10) ?? false);
+        (desk.gex_walls?.some((w) => w.kind === "resistance" && w.strike >= price) ?? false);
   checks.push({
     label: "Dealer GEX",
     required: false,

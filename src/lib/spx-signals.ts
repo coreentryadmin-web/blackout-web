@@ -62,8 +62,10 @@ function nearestWall(
 function tapeSkew(desk: SpxDeskPayload): { bull: number; bear: number } {
   let bull = 0;
   let bear = 0;
-  for (const t of (desk.unified_tape ?? []).slice(0, 8)) {
-    if (t.kind !== "flow") continue;
+  // Filter by kind before slicing so dark-pool prints don't crowd out flow items.
+  // Without this, a premarket or dark-pool-heavy tape would yield 0 bull/bear and
+  // the tape signal would silently drop out even with plenty of flow prints present.
+  for (const t of (desk.unified_tape ?? []).filter((t) => t.kind === "flow").slice(0, 8)) {
     if (t.side === "call") bull += t.premium;
     else if (t.side === "put") bear += t.premium;
   }

@@ -7,6 +7,10 @@ import { buildPlayTechnicals } from "@/lib/spx-play-technicals";
 import { isSpxEngineCronWindow } from "@/lib/spx-play-session-guards";
 import { logCronRun } from "@/lib/cron-run";
 import { isCronAuthorized } from "@/lib/market-api-auth";
+import { warnIfPlayTimingMisconfigured } from "@/lib/spx-play-config";
+
+// Validate timing config on every cold start so Railway logs surface misconfiguration.
+warnIfPlayTimingMisconfigured();
 
 export const dynamic = "force-dynamic";
 

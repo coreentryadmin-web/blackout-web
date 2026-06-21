@@ -13,7 +13,7 @@ import {
   type SpxPlayDirection,
   type SpxSignalFactor,
 } from "@/lib/spx-signals";
-import { evaluatePlayGates, type PlayGateResult } from "@/lib/spx-play-gates";
+import { evaluatePlayGates, GATE_BLOCK, type PlayGateResult } from "@/lib/spx-play-gates";
 import { forceExitCutoffLabel, isPastForceExitCutoff, isBeforeCashOpen, isPremarketPlanningWindow } from "@/lib/spx-play-session-guards";
 import type { LottoPlayPayload } from "@/lib/spx-play-lotto";
 import { evaluatePlayConfirmations, flowAlignedForDirection } from "@/lib/spx-play-confirmations";
@@ -469,8 +469,13 @@ async function evaluateOpenPlay(
       : thesisBreak
         ? `Thesis break (${thesisEval.trigger ?? "or"}) — score ${confluence.score} vs ${thesisEval.trigger === "floor" ? "±" : ""}${Math.abs(thesisEval.threshold).toFixed(0)} threshold (entry ${entryScore}).`
         : "Cash session closed — flatten runners.";
-    // C4: was_loss is true if stop hit OR thesis break (even when market also closing).
-    const wasLoss = stopHit || thesisBreak || sessionCloseWithStop;
+    // C4: was_loss is true for stop hits and thesis breaks regardless of market state.
+    // SESSION-only closes (theta/time, no stop or thesis break) use actual PnL so a
+    // losing session close correctly triggers the same-direction re-entry lock.
+    const wasLoss =
+      stopHit ||
+      thesisBreak ||
+      (!stopHit && !thesisBreak && pnlPts(dir, row.entry_price, price) < 0);
     const exitAction = stopHit ? "STOP" : !desk.market_open ? "SESSION" : "THESIS";
     if (mutate) {
       await closeOpenPlay(row.id, {
@@ -692,6 +697,9 @@ async function evaluateFlatPlay(
     gradeRank(confluence.grade) >= 2 &&
     abs >= fullMin - 12 &&
     confirmations.passed_count >= confirmations.total - 3 &&
+    // Guard: don't show WATCHING if any required check (3m MTF, 5m trend, S/R) is
+    // still failing — the setup isn't actually close, just numerically passing on optionals.
+    !confirmations.checks.some((c) => c.required && !c.passed) &&
     !gates.passed &&
     !promoteEligible;
 
@@ -745,10 +753,10 @@ async function evaluateFlatPlay(
       ...gates,
       blocks: promoteBlocks.filter(
         (b) =>
-          !b.includes("Buy cooldown") &&
-          !b.includes("Quality cooldown") &&
-          !b.includes("below minimum") &&
-          !b.includes("Re-entry lock")
+          !b.includes(GATE_BLOCK.BUY_COOLDOWN) &&
+          !b.includes(GATE_BLOCK.QUALITY_COOLDOWN) &&
+          !b.includes(GATE_BLOCK.GRADE_BELOW_MIN) &&
+          !b.includes(GATE_BLOCK.REENTRY_LOCK)
       ),
       warnings: [
         ...gates.warnings,
@@ -879,17 +887,18 @@ async function evaluateFlatPlay(
     : `${promotePrefix}${claude.headline}`;
 
   if (!mutate) {
+    // Read-only snapshot: all gates passed and Claude approved, but mutate:false so no
+    // play was opened. Surface action:"BUY" so member-facing UIs know a live entry would
+    // fire right now rather than showing a misleading SCANNING/WATCHING phase.
     return {
       available: true,
-      phase: watchState?.active ? "WATCHING" : "SCANNING",
-      action: watchState?.active ? "WATCHING" : "SCANNING",
+      phase: "SCANNING",
+      action: "BUY",
       direction: dir,
       grade: confluence.grade,
       score: confluence.score,
       confidence: confluence.confidence,
-      headline: watchState?.active
-        ? `${confluence.grade} ${dir === "long" ? "bullish" : "bearish"} — on watch`
-        : pickIdleMessage(),
+      headline: contractHeadline,
       thesis: entryGatesView.play_idea ?? claude.thesis,
       idle_message: null,
       factors: confluence.factors,
@@ -940,6 +949,17 @@ async function evaluateFlatPlay(
         mutate
       );
     }
+    // Race: concurrent request created the play between our pre-checks and openPlay()
+    // returning created:false, but the play has already been cleaned up or the DB row
+    // disappeared. Bail without firing Discord/telemetry to avoid duplicate side effects.
+    return {
+      ...scanningPayload(desk, confluence, pickIdleMessage(), entryGatesView, sessionExtras),
+      confirmations,
+      technicals: techSum,
+      mtf,
+      watch: watchState,
+      telemetry,
+    };
   }
 
   if (mutate) {

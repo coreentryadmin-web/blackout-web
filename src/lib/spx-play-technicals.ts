@@ -137,7 +137,9 @@ export async function buildPlayTechnicals(
 
   const now = Date.now();
   const cacheMs = playTechnicalsCacheSec() * 1000;
-  if (cached && now - cached.at < cacheMs && Math.abs(cached.data.price - price) < 3) {
+  // 1.5-pt price step is tight enough to catch gap-open moves (which can gap 10+ pts
+  // between minutes) while avoiding needless Polygon refetches on sub-tick noise.
+  if (cached && now - cached.at < cacheMs && Math.abs(cached.data.price - price) < 1.5) {
     return cached.data;
   }
 

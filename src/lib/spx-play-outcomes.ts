@@ -77,7 +77,9 @@ const memoryOutcomes: PlayOutcomeRow[] = [];
 
 function classifyOutcome(close: PlayCloseSnapshot): "win" | "loss" | "breakeven" {
   if (close.exit_action === "THETA" || close.exit_action === "SESSION") {
-    if (close.pnl_pts <= -1) return "loss";
+    // Any negative PnL is a loss — the old -1 floor was classifying -0.5 pt exits
+    // (−$50/contract) as "breakeven," inflating win-rate statistics.
+    if (close.pnl_pts < 0) return "loss";
     if (close.pnl_pts > 0) return "win";
     return "breakeven";
   }
