@@ -107,7 +107,11 @@ export function FlowFeed() {
 
   useEffect(() => () => { if (replayTimerRef.current) clearInterval(replayTimerRef.current); }, []);
 
-  const displayAlerts = replayMode ? replayAlerts : alerts;
+  const displayAlerts = useMemo(() => {
+    const base = replayMode ? replayAlerts : alerts;
+    if (!tickerFilter) return base;
+    return base.filter((a) => a.ticker === tickerFilter.toUpperCase());
+  }, [replayMode, replayAlerts, alerts, tickerFilter]);
 
   return (
     <div className="desk-layout flex flex-col gap-4">
