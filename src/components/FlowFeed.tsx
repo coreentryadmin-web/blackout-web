@@ -123,7 +123,7 @@ export function FlowFeed() {
       {/* ── Filter bar ──────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Premium presets */}
-        <span className="font-mono text-[9px] tracking-[0.3em] uppercase text-zinc-400 font-semibold hidden sm:block">MIN</span>
+        <span className="font-mono text-[9px] tracking-[0.3em] uppercase font-bold hidden sm:block" style={{color:"#00e566",textShadow:"0 0 8px rgba(0,229,102,0.6)"}}>MIN</span>
         <div className="flow-seg-group">
           {PREMIUM_PRESETS.map((v) => (
             <button
@@ -175,9 +175,9 @@ export function FlowFeed() {
             placeholder="TICKER"
             maxLength={6}
             className={clsx(
-              "font-mono text-[10px] font-semibold px-3 py-[5px] rounded-lg border bg-zinc-900 outline-none w-24",
-              "border-zinc-600 text-zinc-200 placeholder:text-zinc-500",
-              "focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/30 transition-all"
+              "font-mono text-[10px] font-semibold px-3 py-[5px] rounded-lg border bg-zinc-950 outline-none w-24",
+              "border-[rgba(0,255,102,0.3)] text-[#00e566] placeholder:text-[rgba(0,229,102,0.4)]",
+              "focus:border-[rgba(0,255,102,0.7)] focus:ring-1 focus:ring-[rgba(0,255,102,0.2)] transition-all"
             )}
           />
           <AnimatePresence>
@@ -205,7 +205,7 @@ export function FlowFeed() {
             "font-mono text-[10px] font-semibold px-3 py-[5px] rounded-lg border transition-all",
             replayMode
               ? "border-amber-600/70 text-amber-300 bg-amber-950/50 hover:bg-amber-950/70"
-              : "border-zinc-600 text-zinc-300 hover:text-white hover:border-zinc-400 disabled:opacity-30 disabled:cursor-not-allowed"
+              : "border-[rgba(0,255,102,0.3)] text-[#00e566] hover:text-[#39ff85] hover:border-[rgba(0,255,102,0.6)] disabled:opacity-30 disabled:cursor-not-allowed"
           )}
         >
           {replayMode ? "■ Stop" : "▶ Replay"}

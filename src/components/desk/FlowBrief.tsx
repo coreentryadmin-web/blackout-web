@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { FlowAlert } from "@/lib/api";
 
-const REFRESH_MS = 2 * 60 * 1000;
+const REFRESH_MS = 10 * 60 * 1000;
 const MIN_ALERTS = 5;
 
 async function fetchBrief(alerts: FlowAlert[]): Promise<string | null> {
@@ -52,20 +52,33 @@ export function FlowBrief({ alerts }: { alerts: FlowAlert[] }) {
         initial={{ opacity: 0, y: -4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
-        className="relative overflow-hidden rounded-lg border border-violet-900/40 bg-gradient-to-r from-violet-950/30 via-zinc-950/60 to-zinc-950/30"
-        style={{ boxShadow: "0 0 30px rgba(139,92,246,0.08)" }}
+        className="relative overflow-hidden rounded-lg"
+        style={{
+          background: "linear-gradient(135deg, rgba(217,70,239,0.12) 0%, rgba(0,0,0,0.7) 40%, rgba(0,255,102,0.08) 100%)",
+          border: "1px solid",
+          borderImage: "linear-gradient(90deg, rgba(217,70,239,0.6), rgba(0,255,102,0.5)) 1",
+          boxShadow: "0 0 30px rgba(217,70,239,0.15), 0 0 60px rgba(0,255,102,0.05)",
+        }}
       >
-        {/* Top gradient line */}
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-600/40 to-transparent" />
+        {/* Animated top gradient line */}
+        <div className="absolute inset-x-0 top-0 h-[2px]" style={{
+          background: "linear-gradient(90deg, transparent, #e879f9, #00ff66, transparent)",
+          animation: "brief-scan 3s ease-in-out infinite",
+        }} />
 
         <div className="flex items-start gap-3 px-4 py-3">
           {/* AI icon */}
           <div className="flex-shrink-0 flex items-center gap-1.5 pt-0.5">
             <div className="relative">
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-500 block" />
-              <span className="absolute inset-0 rounded-full bg-violet-500 animate-ping opacity-40" />
+              <span className="w-2 h-2 rounded-full block relative z-10" style={{ background: "#e879f9", boxShadow: "0 0 8px #e879f9" }} />
+              <span className="absolute inset-0 rounded-full animate-ping opacity-50" style={{ background: "#e879f9" }} />
             </div>
-            <span className="font-mono text-[8px] tracking-[0.3em] uppercase text-violet-600">AI</span>
+            <span className="font-mono text-[9px] tracking-[0.35em] uppercase font-bold" style={{ color: "#e879f9", textShadow: "0 0 8px rgba(232,121,249,0.7)" }}>
+              AI BRIEF
+            </span>
+            <span className="font-mono text-[8px] tracking-[0.2em] uppercase" style={{ color: "#00e566", textShadow: "0 0 6px rgba(0,229,102,0.6)" }}>
+              · LIVE
+            </span>
           </div>
 
           {/* Text */}
@@ -82,20 +95,26 @@ export function FlowBrief({ alerts }: { alerts: FlowAlert[] }) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.4 }}
-                className="flex-1 font-mono text-[11px] leading-relaxed text-zinc-300"
+                className="flex-1 font-mono text-[12px] leading-relaxed font-medium"
+                style={{ color: "#f0f0f0", textShadow: "0 0 1px rgba(255,255,255,0.3)" }}
               >
                 {brief}
               </motion.p>
             )}
           </AnimatePresence>
 
-          {/* Refresh indicator */}
+          {/* Updating indicator */}
           {loading && brief && (
-            <span className="flex-shrink-0 font-mono text-[9px] text-violet-800 animate-pulse pt-0.5">
+            <span className="flex-shrink-0 font-mono text-[9px] animate-pulse pt-0.5" style={{ color: "#00e566" }}>
               updating
             </span>
           )}
         </div>
+
+        {/* Bottom line */}
+        <div className="absolute inset-x-0 bottom-0 h-px" style={{
+          background: "linear-gradient(90deg, transparent, rgba(0,255,102,0.3), rgba(217,70,239,0.3), transparent)",
+        }} />
       </motion.div>
     </AnimatePresence>
   );

@@ -9612,6 +9612,14 @@ body {
     border-radius: 6px;
   }
 
+  /* AI brief scan line animation */
+  @keyframes brief-scan {
+    0%   { transform: translateX(-100%); opacity: 0; }
+    20%  { opacity: 1; }
+    80%  { opacity: 1; }
+    100% { transform: translateX(100%); opacity: 0; }
+  }
+
   /* New-alert entrance flash */
   @keyframes flow-alert-flash {
     0%   { background-color: rgba(139, 92, 246, 0.18); }
@@ -9700,28 +9708,30 @@ body {
   /* Segmented filter control */
   .flow-seg-group {
     display: inline-flex;
-    background: #18181b;
-    border: 1px solid #3f3f46;
+    background: #0a0a0a;
+    border: 1px solid rgba(0, 255, 102, 0.25);
     border-radius: 8px;
     padding: 2px;
     gap: 1px;
+    box-shadow: 0 0 12px rgba(0, 255, 102, 0.06);
   }
   .flow-seg-btn {
     font-family: monospace;
     font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-weight: 700;
+    letter-spacing: 0.1em;
     padding: 5px 12px;
     border-radius: 6px;
     border: none;
     background: transparent;
-    color: #b4b4bc;
+    color: #00e566;
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
     white-space: nowrap;
+    text-shadow: 0 0 8px rgba(0, 229, 102, 0.5);
   }
-  .flow-seg-btn:hover { color: #f4f4f5; background: #27272a; }
-  .flow-seg-btn-active-all   { background: #3f3f46; color: #f4f4f5; border: 1px solid #52525b; }
+  .flow-seg-btn:hover { color: #39ff85; background: rgba(0,255,102,0.08); text-shadow: 0 0 12px rgba(0,255,102,0.7); }
+  .flow-seg-btn-active-all   { background: rgba(0,255,102,0.12); color: #39ff85; border: 1px solid rgba(0,255,102,0.5); box-shadow: 0 0 10px rgba(0,255,102,0.2); text-shadow: 0 0 10px rgba(0,255,102,0.8); }
   .flow-seg-btn-active-call  { background: rgba(217,70,239,0.18); color: #f0abfc; border: 1px solid rgba(217,70,239,0.5); }
   .flow-seg-btn-active-put   { background: rgba(244,63,94,0.2);  color: #fb7185; border: 1px solid rgba(244,63,94,0.4); }
 
@@ -9736,10 +9746,11 @@ body {
     height: 14px;
     padding: 0 4px;
     border-radius: 99px;
-    background: #3f3f46;
-    color: #a1a1aa;
+    background: rgba(0,255,102,0.1);
+    color: #00e566;
     margin-left: 4px;
     transition: background 0.15s, color 0.15s;
+    border: 1px solid rgba(0,255,102,0.2);
   }
   .flow-seg-btn-active-call .flow-count-pill { background: rgba(217,70,239,0.2);  color: #f0abfc; }
   .flow-seg-btn-active-put  .flow-count-pill { background: rgba(244,63,94,0.25);  color: #fb7185; }
