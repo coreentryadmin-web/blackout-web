@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
-import { fetchFlows, createFlowEventSource, fmtPremium, type FlowAlert } from "@/lib/api";
+import { fetchFlows, fetchEarningsCalendar, createFlowEventSource, fmtPremium, type FlowAlert } from "@/lib/api";
 import { computeFlowStrikeStacks } from "@/lib/largo/flow-strike-stacks";
 import { FlowAlertStream } from "@/components/desk/FlowAlertStream";
 import { FlowBrief } from "@/components/desk/FlowBrief";
@@ -12,6 +12,7 @@ import { StrikeStackDetector } from "@/components/desk/StrikeStackDetector";
 import { FlowMomentumChart } from "@/components/desk/FlowMomentumChart";
 import { DarkPoolPanel } from "@/components/desk/DarkPoolPanel";
 import { TickerDrawer } from "@/components/desk/TickerDrawer";
+import { SplitFlowRadar, type SplitFlowEntry } from "@/components/desk/SplitFlowRadar";
 
 const PREMIUM_PRESETS = [200_000, 500_000, 1_000_000, 20_000_000] as const;
 const FLOOR_PREMIUM = 100_000;
@@ -72,6 +73,9 @@ export function FlowFeed() {
   const [audioEnabled, setAudioEnabled]     = useState(false);
   const audioEnabledRef                     = useRef(false);
 
+  // Feature 7: earnings calendar
+  const [earningsMap, setEarningsMap] = useState<Record<string, string>>({});
+
   const seenRef         = useRef(new Set<string>());
   const replaySourceRef = useRef<FlowAlert[]>([]);
   const replayIdxRef    = useRef(0);
@@ -79,6 +83,11 @@ export function FlowFeed() {
 
   // Bug 14: keep ref in sync so SSE closure always reads current value
   useEffect(() => { audioEnabledRef.current = audioEnabled; }, [audioEnabled]);
+
+  // Feature 7: fetch earnings calendar once on mount (cached 12h server-side)
+  useEffect(() => {
+    fetchEarningsCalendar().then(setEarningsMap).catch(() => {});
+  }, []);
 
   // Derived counts for filter pills
   const callCount = useMemo(() => alerts.filter((a) => a.option_type === "CALL").length, [alerts]);
@@ -89,6 +98,58 @@ export function FlowFeed() {
     const stacks = computeFlowStrikeStacks(alerts.slice(0, 500), { minAlerts: 2, limit: 20 });
     return new Set(stacks.map((s) => s.ticker));
   }, [alerts]);
+
+  // Feature 6: detect opposing call+put flow within 30-min window (>= $500K each leg)
+  const splitFlowMap = useMemo<Map<string, SplitFlowEntry>>(() => {
+    const now       = Date.now();
+    const WINDOW_MS = 30 * 60 * 1000;
+    const MIN_LEG   = 500_000;
+    const byTicker  = new Map<string, { callPrem: number; putPrem: number }>();
+
+    for (const alert of alerts) {
+      if (now - new Date(alert.alerted_at).getTime() > WINDOW_MS) continue;
+      const cur = byTicker.get(alert.ticker) ?? { callPrem: 0, putPrem: 0 };
+      if (alert.option_type === "CALL") cur.callPrem += alert.premium;
+      else cur.putPrem += alert.premium;
+      byTicker.set(alert.ticker, cur);
+    }
+
+    const result = new Map<string, SplitFlowEntry>();
+    for (const [ticker, { callPrem, putPrem }] of Array.from(byTicker)) {
+      if (callPrem >= MIN_LEG && putPrem >= MIN_LEG) {
+        const total   = callPrem + putPrem;
+        const callPct = Math.round((callPrem / total) * 100);
+        result.set(ticker, {
+          ticker,
+          callPremium: callPrem,
+          putPremium:  putPrem,
+          callPct,
+          total,
+          direction: callPct >= 60 ? "bullish" : callPct <= 40 ? "bearish" : "mixed",
+        });
+      }
+    }
+    return result;
+  }, [alerts]);
+
+  const splitFlowTickers = useMemo(() => new Set(splitFlowMap.keys()), [splitFlowMap]);
+  const splitFlowEntries = useMemo(
+    () => Array.from(splitFlowMap.values()).sort((a, b) => b.total - a.total),
+    [splitFlowMap]
+  );
+
+  // Feature 7: earnings days until event (ticker → days, only ≤ 30d shown)
+  const earningsDays = useMemo<Record<string, number>>(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const out: Record<string, number> = {};
+    for (const [ticker, dateStr] of Object.entries(earningsMap)) {
+      const d    = new Date(dateStr + "T00:00:00");
+      const diff = Math.floor((d.getTime() - today.getTime()) / 86_400_000);
+      if (diff >= 0 && diff <= 30) out[ticker] = diff;
+    }
+    return out;
+  }, [earningsMap]);
 
   // ── Data loading ──────────────────────────────────────────────────────────
   const loadFlows = useCallback(async () => {
@@ -374,12 +435,15 @@ export function FlowFeed() {
             compoundTickers={compoundTickers}
             onTickerClick={setSelectedTicker}
             replayMode={replayMode}
+            splitFlowTickers={splitFlowTickers}
+            earningsDays={earningsDays}
           />
         </div>
 
         {/* Right column — 4 cols */}
         <div className="xl:col-span-4 flex flex-col gap-3">
           <NetPremiumLeaderboard alerts={alerts} />
+          <SplitFlowRadar entries={splitFlowEntries} onTickerClick={setSelectedTicker} />
           <StrikeStackDetector alerts={alerts} onSelectTicker={setSelectedTicker} />
           <FlowMomentumChart alerts={alerts} />
           <DarkPoolPanel />

@@ -88,6 +88,8 @@ export function FlowAlertStream({
   compoundTickers,
   onTickerClick,
   replayMode = false,
+  splitFlowTickers,
+  earningsDays,
 }: {
   flows: FlowAlert[];
   live?: boolean;
@@ -98,6 +100,8 @@ export function FlowAlertStream({
   compoundTickers?: Set<string>;
   onTickerClick?: (ticker: string) => void;
   replayMode?: boolean;
+  splitFlowTickers?: Set<string>;
+  earningsDays?: Record<string, number>;
 }) {
   const [renderLimit, setRenderLimit] = useState(RENDER_LIMIT); // Bug 8
   const [newCount, setNewCount]       = useState(0);            // Bug 11
@@ -197,6 +201,14 @@ export function FlowAlertStream({
                   const isCompound = compoundTickers?.has(flow.ticker) ?? false;
                   const isDiverge  = (isCall && flow.direction === "bearish") ||
                                      (!isCall && flow.direction === "bullish");
+                  const hasSplit   = splitFlowTickers?.has(flow.ticker) ?? false;
+                  const earnIn     = earningsDays?.[flow.ticker] ?? null;
+                  // IV display: if < 3 treat as decimal (0.45 → 45%), else as already pct
+                  const ivDisplay  = flow.implied_volatility != null && flow.implied_volatility > 0
+                    ? flow.implied_volatility < 3
+                      ? `${(flow.implied_volatility * 100).toFixed(0)}%`
+                      : `${flow.implied_volatility.toFixed(0)}%`
+                    : null;
 
                   const cardCls = clsx(
                     "flow-card",
@@ -239,6 +251,25 @@ export function FlowAlertStream({
                           {isWhale && <span className="flow-badge flow-badge-whale">WHALE</span>}
                           {is0dte && <span className="flow-badge flow-badge-0dte">0DTE</span>}
                           {isDiverge && <span className="flow-badge flow-badge-diverge">DIVERGE</span>}
+                          {hasSplit && (
+                            <span
+                              className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border"
+                              style={{ color: "#f59e0b", borderColor: "rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.08)", letterSpacing: "0.06em" }}
+                            >
+                              SPLIT
+                            </span>
+                          )}
+                          {earnIn !== null && earnIn <= 14 && (
+                            <span className={clsx(
+                              "font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border",
+                              earnIn === 0 ? "text-red-400 border-red-700/60 bg-red-950/30 animate-pulse" :
+                              earnIn <= 2  ? "text-red-400 border-red-700/50 bg-red-950/20" :
+                              earnIn <= 5  ? "text-orange-400 border-orange-700/50 bg-orange-950/20" :
+                                             "text-amber-500 border-amber-800/40 bg-amber-950/15"
+                            )}>
+                              ⚡{earnIn === 0 ? "EARN TODAY" : `EARN ${earnIn}D`}
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-3 ml-auto flex-shrink-0">
@@ -293,6 +324,40 @@ export function FlowAlertStream({
                           </span>
                         </div>
                       </div>
+
+                      {/* Row 3: Options chain context (Feature 5) */}
+                      {(flow.otm_pct !== undefined || (flow.open_interest != null && flow.open_interest > 0) || ivDisplay) && (
+                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                          {flow.otm_pct !== undefined && (
+                            <span className={clsx(
+                              "font-mono text-[9px] px-1.5 py-0.5 rounded border",
+                              flow.otm_pct < 0
+                                ? "text-fuchsia-400 border-fuchsia-900/40 bg-fuchsia-950/15"
+                                : flow.otm_pct <= 2
+                                  ? "text-rose-400 border-rose-900/40 bg-rose-950/15"
+                                  : flow.otm_pct <= 8
+                                    ? "text-amber-400 border-amber-900/40 bg-amber-950/15"
+                                    : "text-emerald-400 border-emerald-900/40 bg-emerald-950/15"
+                            )}>
+                              {flow.otm_pct < 0
+                                ? `${Math.abs(flow.otm_pct).toFixed(1)}% ITM`
+                                : `${flow.otm_pct.toFixed(1)}% OTM`}
+                            </span>
+                          )}
+                          {flow.open_interest != null && flow.open_interest > 0 && (
+                            <span className="font-mono text-[9px] text-zinc-500 px-1.5 py-0.5 rounded border border-zinc-800/50">
+                              OI {flow.open_interest >= 1000
+                                ? `${(flow.open_interest / 1000).toFixed(1)}K`
+                                : flow.open_interest.toFixed(0)}
+                            </span>
+                          )}
+                          {ivDisplay && (
+                            <span className="font-mono text-[9px] text-zinc-500 px-1.5 py-0.5 rounded border border-zinc-800/50">
+                              IV {ivDisplay}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </motion.div>
                   );
                 })}

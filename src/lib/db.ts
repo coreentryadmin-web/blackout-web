@@ -659,6 +659,13 @@ export type FlowRow = {
   score: number;
   route: string;
   alerted_at: string;
+  dte?: number;
+  alert_rule?: string;
+  ask_pct?: number;
+  underlying_price?: number;
+  open_interest?: number;
+  implied_volatility?: number;
+  otm_pct?: number;
 };
 
 export async function fetchRecentFlows(params: {
@@ -710,7 +717,21 @@ export async function fetchRecentFlows(params: {
              raw_payload->>'alert_rule',
              raw_payload->>'rule_name'
            ), '') AS alert_rule,
-           (raw_payload->>'ask_side_pct')::numeric AS ask_pct
+           (raw_payload->>'ask_side_pct')::numeric AS ask_pct,
+           COALESCE(
+             (raw_payload->>'underlying_last')::numeric,
+             (raw_payload->>'underlying_price')::numeric,
+             (raw_payload->>'stock_price')::numeric,
+             (raw_payload->>'underlying')::numeric
+           ) AS underlying_price,
+           COALESCE(
+             (raw_payload->>'open_interest')::numeric,
+             (raw_payload->>'oi')::numeric
+           ) AS open_interest,
+           COALESCE(
+             (raw_payload->>'iv')::numeric,
+             (raw_payload->>'implied_volatility')::numeric
+           ) AS implied_volatility
     FROM flow_alerts
     ${where}
     ORDER BY COALESCE(total_premium, 0) DESC NULLS LAST
@@ -732,6 +753,20 @@ export async function fetchRecentFlows(params: {
     dte: row.dte != null ? Number(row.dte) : undefined,
     alert_rule: row.alert_rule ? String(row.alert_rule) : undefined,
     ask_pct: row.ask_pct != null ? Number(row.ask_pct) : undefined,
+    underlying_price: row.underlying_price != null ? Number(row.underlying_price) : undefined,
+    open_interest: row.open_interest != null ? Number(row.open_interest) : undefined,
+    implied_volatility: row.implied_volatility != null ? Number(row.implied_volatility) : undefined,
+    otm_pct: (() => {
+      if (row.underlying_price != null) {
+        const stock = Number(row.underlying_price);
+        const k     = Number(row.strike ?? 0);
+        if (stock > 0 && k > 0) {
+          const isCall = String(row.option_type ?? "").toLowerCase().startsWith("c");
+          return Math.round(((isCall ? k - stock : stock - k) / stock) * 1000) / 10;
+        }
+      }
+      return undefined;
+    })(),
   }));
 }
 

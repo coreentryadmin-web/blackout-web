@@ -321,6 +321,11 @@ export interface FlowAlert {
   alert_rule?: string;
   ask_pct?: number;
   dte?: number;
+  // Feature 5: options chain context at time of print
+  underlying_price?: number;
+  open_interest?: number;
+  implied_volatility?: number;
+  otm_pct?: number;
 }
 
 export interface DarkPoolRow {
@@ -363,6 +368,16 @@ export async function fetchFlows(params?: {
   return marketFetch<{ flows: FlowAlert[]; count: number; source?: string }>(
     `/flows${query ? `?${query}` : ""}`
   );
+}
+
+/** Upcoming earnings dates — ticker → YYYY-MM-DD. Returns {} on error (graceful degradation). */
+export async function fetchEarningsCalendar(): Promise<Record<string, string>> {
+  try {
+    const d = await marketFetch<{ earnings: Record<string, string> }>("/earnings-calendar");
+    return d.earnings ?? {};
+  } catch {
+    return {};
+  }
 }
 
 /** Dark pool prints — market-wide institutional off-lit trades. */
