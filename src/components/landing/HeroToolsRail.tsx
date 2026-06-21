@@ -15,8 +15,8 @@ const TOOLS = [
   },
   {
     href: "/flows",
-    name: "FLOW",
-    accent: "FEED",
+    name: "HELIX",
+    accent: "FLOW",
     tag: "WHALE · DARK POOL",
     color: "purple",
     rotate: "rotate-1",

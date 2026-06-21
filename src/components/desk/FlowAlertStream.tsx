@@ -147,7 +147,7 @@ export function FlowAlertStream({
   return (
     <DeskPanel
       title={replayMode ? "HELIX · REPLAY" : "HELIX"}
-      subtitle={`Unusual Whales · live sweep${visible.length > 0 ? ` · ${visible.length} alerts` : ""}`}
+      subtitle={undefined}
       variant="purple"
       feedStatus={replayMode ? undefined : feedStatus}
       glow
@@ -300,10 +300,17 @@ export function FlowAlertStream({
                         </div>
 
                         <div className="flex items-center gap-3 ml-auto flex-shrink-0">
-                          <span className={clsx(
-                            "font-mono text-[15px] font-bold tabular-nums tracking-tight",
-                            isCompound ? "text-yellow-300" : isCall ? "text-fuchsia-400" : "text-rose-400"
-                          )}>
+                          <span
+                            className="font-mono text-[19px] font-black tabular-nums tracking-tight"
+                            style={{
+                              color: isCompound ? "#fde047"
+                                   : isCall     ? "#00ff7f"
+                                   :              "#ff2d55",
+                              textShadow: isCompound ? "0 0 10px rgba(253,224,71,0.7)"
+                                        : isCall     ? "0 0 12px rgba(0,255,127,0.65)"
+                                        :              "0 0 12px rgba(255,45,85,0.65)",
+                            }}
+                          >
                             {fmtPremium(flow.premium)}
                           </span>
                           <span className="font-mono text-[10px] text-zinc-400 w-6 text-right tabular-nums">
@@ -343,10 +350,17 @@ export function FlowAlertStream({
                               ▲{flow.score.toFixed(1)}
                             </span>
                           )}
-                          <span className={clsx(
-                            "font-mono text-[9px] font-semibold uppercase tracking-wider",
-                            isCall ? "text-fuchsia-400" : "text-rose-500"
-                          )}>
+                          <span
+                            className="font-mono text-[10px] font-black uppercase tracking-wider"
+                            style={{
+                              color: flow.direction?.toLowerCase() === "bullish" ? "#00ff7f"
+                                   : flow.direction?.toLowerCase() === "bearish" ? "#ff2d55"
+                                   : isCall ? "#00ff7f" : "#ff2d55",
+                              textShadow: flow.direction?.toLowerCase() === "bullish"
+                                ? "0 0 8px rgba(0,255,127,0.55)"
+                                : "0 0 8px rgba(255,45,85,0.55)",
+                            }}
+                          >
                             {flow.direction}
                           </span>
                         </div>
