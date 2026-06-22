@@ -31,6 +31,9 @@ export type SpxDeskSummary = {
   tide_bias: string | null;
   tide_net: number | null;
   nope: number | null;
+  tick: number | null;
+  trin: number | null;
+  add: number | null;
   uw_iv_rank: number | null;
   regime: string | null;
   levels: unknown;

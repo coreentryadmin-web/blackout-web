@@ -1,7 +1,8 @@
 import { anthropicConfigured, anthropicText } from "@/lib/providers/anthropic";
 import type { TickerDossier } from "./dossier";
-import { buildClaudePrompt, buildMarketRecap } from "./format";
+import { buildClaudePrompt, buildMarketRecap, type EngineState } from "./format";
 import type { MarketWideContext } from "./market-wide";
+import type { SpxDeskSummary, FlowTapeSummary } from "@/lib/platform/types";
 import {
   fetchEditionChains,
   formatEditionChainTables,
@@ -74,6 +75,9 @@ export async function generateEditionPlays(params: {
   ranked: ScoredCandidate[];
   huntMode?: HuntMode;
   maxDte?: number;
+  engineState?: EngineState | null;
+  spxDesk?: SpxDeskSummary | null;
+  flowTape?: FlowTapeSummary | null;
 }): Promise<{ plays: PlaybookPlay[]; recap: ReturnType<typeof buildMarketRecap>; raw: string | null }> {
   const recap = buildMarketRecap(params.ctx);
   const dossierMap = Object.fromEntries(params.dossiers.map((d) => [d.ticker, d]));
@@ -113,6 +117,9 @@ export async function generateEditionPlays(params: {
     chainTables,
     huntMode: params.huntMode,
     maxDte: params.maxDte,
+    engineState: params.engineState,
+    spxDesk: params.spxDesk ?? null,
+    flowTape: params.flowTape ?? null,
   });
   const raw = await anthropicText(prompt, 4500, SYSTEM);
   if (!raw) {

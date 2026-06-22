@@ -10,6 +10,106 @@ import { huntDteGuidance } from "./hunt-mode";
 import type { MarketWideContext } from "./market-wide";
 import type { ScoredCandidate } from "./scorer";
 import { formatSpxGapContext } from "./spx-gap";
+import type { SpxDeskSummary, FlowTapeSummary } from "@/lib/platform/types";
+import type { marketPlatform } from "@/lib/platform";
+
+export type EngineState = {
+  play: Awaited<ReturnType<typeof marketPlatform.spx.getSpxPlayState>> | null;
+  openPlay: Awaited<ReturnType<typeof marketPlatform.spx.getSpxOpenPlay>>["open_play"] | null;
+  lotto: Awaited<ReturnType<typeof marketPlatform.spx.getSpxLottoState>>;
+};
+
+// Cross-tool: the live SPX engine state (play + open play + lotto) so the overnight
+// edition AI knows what the platform's own engines are holding into the next session.
+function formatEngineState(engine?: EngineState | null): string {
+  if (!engine) return "Live engines unavailable.";
+  const parts: string[] = [];
+
+  const play = engine.play;
+  if (play && play.available) {
+    const dir = play.direction ? play.direction.toUpperCase() : "-";
+    const lvl = play.levels;
+    const lvlStr = lvl
+      ? `entry ${lvl.entry ?? "-"} · stop ${lvl.stop ?? "-"} · target ${lvl.target ?? "-"}`
+      : "no levels";
+    parts.push(
+      `SPX engine: ${play.phase} · ${play.action} ${dir} · grade ${play.grade} · score ${play.score} (${lvlStr})`
+    );
+  } else {
+    parts.push("SPX engine: SCANNING - no live play.");
+  }
+
+  const op = engine.openPlay;
+  if (op) {
+    const opt = op.option_label ? ` · ${op.option_label}${op.option_premium ? ` @ ${op.option_premium}` : ""}` : "";
+    parts.push(
+      `SPX open play: ${op.direction.toUpperCase()} from ${op.entry_price} · stop ${op.stop ?? "-"} · target ${op.target ?? "-"} · grade ${op.grade}${opt}`
+    );
+  } else {
+    parts.push("SPX open play: none.");
+  }
+
+  const lotto = engine.lotto ?? [];
+  if (lotto.length) {
+    const lottoStr = lotto
+      .slice(0, 4)
+      .map((l) => `${l.contract_label} (${l.phase}${l.outcome ? `/${l.outcome}` : ""})`)
+      .join(", ");
+    parts.push(`Lotto: ${lotto.length} pick(s) - ${lottoStr}`);
+  } else {
+    parts.push("Lotto: no picks today.");
+  }
+
+  return parts.join("\n");
+}
+
+/** Summarized LIVE SPX desk + HELIX flow tape for the overnight edition prompt.
+ *  Overnight context only - keep it terse. gex_walls/levels/greek_exposure are typed
+ *  `unknown` on SpxDeskSummary, so narrow defensively here. */
+function formatLiveSpxSection(
+  spxDesk: SpxDeskSummary | null | undefined,
+  flowTape: FlowTapeSummary | null | undefined
+): string {
+  if (!spxDesk && !flowTape) return "";
+  const lines: string[] = [];
+
+  if (spxDesk) {
+    const d = spxDesk;
+    const chg = d.change_pct != null ? ` (${d.change_pct >= 0 ? "+" : ""}${d.change_pct.toFixed(2)}%)` : "";
+    const vwapTag = d.vwap != null ? ` · VWAP ${d.vwap.toFixed(0)} (${d.above_vwap ? "above" : "below"})` : "";
+    const vixTag = d.vix != null ? ` · VIX ${d.vix.toFixed(2)}` : "";
+    lines.push(`SPX ${d.price.toFixed(2)}${chg}${vwapTag}${vixTag} · regime ${d.regime ?? "?"}`);
+
+    const walls = Array.isArray(d.gex_walls) ? (d.gex_walls as Array<{ strike?: number; kind?: string }>) : [];
+    const wallStr = walls
+      .slice(0, 4)
+      .map((w) => `${w.kind === "support" ? "S" : "R"} ${Number(w.strike).toFixed(0)}`)
+      .join(", ");
+    const flipTag = d.gamma_flip != null ? `gamma flip ${d.gamma_flip.toFixed(0)} (${d.gamma_regime ?? "?"})` : `gamma regime ${d.gamma_regime ?? "?"}`;
+    lines.push(`${flipTag}${wallStr ? ` · GEX walls: ${wallStr}` : ""}${d.gex_king != null ? ` · GEX king ${d.gex_king.toFixed(0)}` : ""}${d.max_pain != null ? ` · max pain ${d.max_pain.toFixed(0)}` : ""}`);
+
+    const flowBits = [
+      d.flow_0dte_net != null ? `0DTE net ${d.flow_0dte_net >= 0 ? "+" : ""}${fmtPrem(Math.abs(d.flow_0dte_net))}${d.flow_0dte_net >= 0 ? " call lean" : " put lean"}` : null,
+      d.nope != null ? `NOPE ${d.nope >= 0 ? "+" : ""}${d.nope.toFixed(1)}` : null,
+      d.tide_bias ? `tide ${d.tide_bias}` : null,
+      d.uw_iv_rank != null ? `IV rank ${Number(d.uw_iv_rank).toFixed(0)}` : null,
+    ].filter(Boolean);
+    if (flowBits.length) lines.push(flowBits.join(" · "));
+
+    const ge = d.greek_exposure as { headline?: string } | null | undefined;
+    if (ge?.headline) lines.push(`Dealer gamma: ${ge.headline}`);
+  }
+
+  if (flowTape?.recent?.length) {
+    const tape = flowTape.recent
+      .slice(0, 5)
+      .map((f) => `${f.ticker} ${String(f.option_type).toUpperCase().startsWith("P") ? "PUT" : "CALL"} ${f.strike} ${String(f.expiry).slice(0, 10)} ${fmtPrem(Number(f.premium ?? 0))} ${f.direction}`)
+      .join("; ");
+    lines.push(`HELIX tape (top ${Math.min(5, flowTape.recent.length)} of ${flowTape.count}): ${tape}`);
+  }
+
+  return lines.join("\n");
+}
 
 function fmtPrem(prem: number): string {
   if (prem >= 1_000_000) return `$${(prem / 1_000_000).toFixed(1)}M`;
@@ -300,8 +400,12 @@ export function buildClaudePrompt(params: {
   chainTables?: Record<string, string>;
   huntMode?: HuntMode;
   maxDte?: number;
+  engineState?: EngineState | null;
+  spxDesk?: SpxDeskSummary | null;
+  flowTape?: FlowTapeSummary | null;
 }): string {
-  const { ctx, recap, dossiers, ranked, chainTables = {}, huntMode, maxDte } = params;
+  const { ctx, recap, dossiers, ranked, chainTables = {}, huntMode, maxDte, engineState, spxDesk, flowTape } = params;
+  const liveSpxSection = formatLiveSpxSection(spxDesk, flowTape);
   const dossierMap = Object.fromEntries(dossiers.map((d) => [d.ticker, d]));
 
   const stockBlocks = ranked
@@ -365,9 +469,11 @@ ${formatEtfTides(ctx)}
 Sector strength: ${recap.sector_strength}
 Sector weakness: ${recap.sector_weakness}
 Catalysts: ${recap.catalysts}
+LIVE ENGINE STATE:
+${formatEngineState(engineState)}
 Hot chains: ${hotChains || "n/a"}
 ${vixContext ? `Vol regime: ${vixContext}` : ""}
-
+${liveSpxSection ? `\nLIVE SPX / 0DTE + HELIX TAPE (real-time desk snapshot - anchor index-level bias and confirm/contradict single-name flow):\n${liveSpxSection}\n` : ""}
 TOP STOCK DOSSIERS (ranked):
 ${stockBlocks || "No stock dossiers available."}
 

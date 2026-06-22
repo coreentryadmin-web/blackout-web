@@ -233,16 +233,27 @@ export async function buildEveningEdition(opts?: {
 
     // Index context for recap only
     console.info("[nighthawk/edition] stage_synthesis: index recap + Claude");
-    const [indexDossiers, spxDesk, flowTape] = await Promise.all([
+    const [indexDossiers, spxDesk, flowTape, spxPlay, spxOpenPlay, spxLotto] = await Promise.all([
       fetchIndexDossiers(ctx),
       marketPlatform.spx.getSpxDeskSummary().catch(() => null),
       marketPlatform.flows.getFlowTapeSummary({ limit: 30 }).catch(() => null),
+      marketPlatform.spx.getSpxPlayState().catch(() => null),
+      marketPlatform.spx.getSpxOpenPlay().catch(() => null),
+      marketPlatform.spx.getSpxLottoState().catch(() => []),
     ]);
+    const engineState = {
+      play: spxPlay,
+      openPlay: spxOpenPlay?.open_play ?? null,
+      lotto: spxLotto ?? [],
+    };
 
     const { plays: rawPlays, recap, raw } = await generateEditionPlays({
       ctx,
       dossiers: synthesisDossiers,
       ranked: synthesisRanked,
+      engineState,
+      spxDesk,
+      flowTape,
     });
 
     if (!rawPlays.length) {

@@ -198,6 +198,14 @@ export function formatLargoLiveFeed(feed: LargoLiveFeed, ticker: string): string
         .filter(Boolean)
         .join(" · ")
     );
+    const internals = [
+      spx.tick != null ? `TICK ${spx.tick}` : null,
+      spx.trin != null ? `TRIN ${spx.trin}` : null,
+      spx.add != null ? `ADD ${spx.add}` : null,
+    ].filter(Boolean);
+    if (internals.length) {
+      lines.push("Internals: " + internals.join(" · "));
+    }
     const walls = asArr(spx.gex_walls).slice(0, 6);
     if (walls.length) {
       lines.push(
