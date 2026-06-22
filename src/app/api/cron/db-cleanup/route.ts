@@ -53,8 +53,10 @@ async function runCleanup(): Promise<Record<string, number>> {
     // api_telemetry_events: very high volume (~30k rows/day) — keep 7 days
     deleteOlderThan("api_telemetry_events", "created_at", 7),
 
-    // flow_alerts: hundreds/day during RTH — keep 30 days
-    deleteOlderThan("flow_alerts", "inserted_at", 30),
+    // flow_alerts: keep 60 days
+    // Hard floor is 30d (Night Hawk avg-premium scorer uses 30-day rolling window).
+    // 60d gives safety margin + covers user lookback and Largo historical queries.
+    deleteOlderThan("flow_alerts", "inserted_at", 60),
 
     // cron_job_runs: keep 30 days of run history
     deleteOlderThan("cron_job_runs", "started_at", 30),
@@ -62,8 +64,8 @@ async function runCleanup(): Promise<Record<string, number>> {
     // spx_signal_log: evaluator fires every 30-60s during RTH — keep 90 days
     deleteOlderThan("spx_signal_log", "created_at", 90),
 
-    // nighthawk_dossiers_staging: temp staging data — keep 7 days
-    deleteOlderThan("nighthawk_dossiers_staging", "created_at", 7),
+    // nighthawk_dossiers_staging: temp staging — never queried after nightly build completes
+    deleteOlderThan("nighthawk_dossiers_staging", "created_at", 2),
 
     // nighthawk_job_log: nightly runs — keep 60 days
     deleteOlderThan("nighthawk_job_log", "created_at", 60),
