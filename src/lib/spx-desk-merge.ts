@@ -6,6 +6,7 @@ import type { SpxDeskLevel, SpxDeskPayload, SpxDeskPulse, SpxDeskFlow, SpxTapeIt
 import type { GexWall } from "@/lib/providers/gamma-desk";
 import { todayEtYmd, distancePct } from "@/lib/providers/spx-session";
 import { computeFlowStrikeStacks } from "@/lib/largo/flow-strike-stacks";
+import { safeTime } from "@/lib/safe-time";
 
 export function recalcGexWallDistances(walls: GexWall[], spot: number): GexWall[] {
   if (!walls.length || spot <= 0) return walls;
@@ -33,7 +34,7 @@ export function mergeTapeItems(
   // tape reflects real tape order instead of a static premium ranking that looks frozen
   // during fast prints (matches the server-side time-sort in the flows feed).
   return out.sort((a, b) => {
-    const timeDiff = new Date(b.time).getTime() - new Date(a.time).getTime();
+    const timeDiff = safeTime(b.time) - safeTime(a.time);
     if (timeDiff !== 0) return timeDiff;
     return (b.premium ?? 0) - (a.premium ?? 0);
   });

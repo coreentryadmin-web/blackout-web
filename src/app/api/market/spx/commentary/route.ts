@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       // Redis unavailable or key expired — no delta this window
     }
 
-    const result = await serverCache<CommentaryCache | null>(cacheKey, COMMENTARY_TTL_MS, async () => {
+    const result = await serverCache<CommentaryCache>(cacheKey, COMMENTARY_TTL_MS, async () => {
       // Cross-tool access: give the desk AI the platform's OWN engine state (open play,
       // lotto, power-hour) + recent win-rate so its read aligns with the rest of the
       // platform (never contradicts an open position) and can calibrate conviction. All
@@ -67,13 +67,12 @@ export async function POST(req: NextRequest) {
         import("@/lib/spx-play-outcomes").then((m) => m.fetchPlayOutcomeStats()).catch(() => null),
       ]);
       const commentary = await generateSpxCommentary(desk, prevDesk, { openPlay, lotto, powerHour, outcomes });
-      if (!commentary) return null;
+      // Throw (don't return null) on failure so serverCache's refreshCache skips its
+      // .then store/Redis write and rethrows to us — nothing is negatively cached and
+      // the next request retries immediately instead of being poisoned for the window.
+      if (!commentary) throw new Error("spx-commentary: generation returned null");
       return { commentary, desk };
     });
-
-    if (!result) {
-      return NextResponse.json({ error: "Commentary generation failed" }, { status: 502 });
-    }
 
     return NextResponse.json({
       commentary: result.commentary,
@@ -82,6 +81,13 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("[market/spx/commentary]", error);
+    const message = error instanceof Error ? error.message : String(error);
+    // Commentary generation failure (null Haiku result / transient upstream) is
+    // retryable — return 502 so the client retries immediately and the next request
+    // rebuilds the cache (nothing was stored). Other errors stay 500.
+    if (message.startsWith("spx-commentary:")) {
+      return NextResponse.json({ error: "Commentary generation failed" }, { status: 502 });
+    }
     return NextResponse.json({ error: "Commentary failed" }, { status: 500 });
   }
 }

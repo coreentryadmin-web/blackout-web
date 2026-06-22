@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Whop from "@whop/sdk";
 import { syncWhopMembershipForEmail } from "@/lib/membership";
+import { notifyOpsDiscord } from "@/lib/spx-play-notify";
 
 function getWhopWebhookClient() {
   return new Whop({
@@ -24,9 +25,17 @@ export async function POST(req: NextRequest) {
     // Return 200 so Whop does not retry-loop or blacklist this endpoint.
     // The startup warning above already alerts the operator.
     console.error(
-      "[whop webhook] REQUEST DROPPED: WHOP_WEBHOOK_SECRET is missing. " +
+      "[whop webhook] CRITICAL: REQUEST DROPPED — WHOP_WEBHOOK_SECRET is missing. " +
       "Returning 200 to prevent Whop retry storms. Fix the env var to restore processing."
     );
+    // Emit a LOUD, alertable signal so this does not stay silent at 200. Fire-and-forget
+    // (matches cron-run.ts) so we still return fast and never block/throw on the webhook
+    // path; notifyOpsDiscord self-guards on a missing URL.
+    void notifyOpsDiscord({
+      title: "Whop webhook DROPPED — WHOP_WEBHOOK_SECRET unset",
+      body: "Incoming Whop webhooks are being acknowledged (HTTP 200) but NOT verified or processed. Membership changes are being silently lost. Set WHOP_WEBHOOK_SECRET to restore processing.",
+      severity: "critical",
+    }).catch(() => undefined);
     return NextResponse.json({ ok: true, warning: "webhook_secret_not_configured" }, { status: 200 });
   }
 
@@ -73,6 +82,17 @@ export async function POST(req: NextRequest) {
             "and the reconcile cron cannot heal it (both key on email). whop_user_id=" +
             (event.data.user?.id ?? "unknown") + ". Grant member:email:read on the Whop app to fix."
         );
+        // Same loud-signal pattern as the missing-secret path: this membership change is
+        // silently lost (no id-based heal exists), so surface it via ops alerts.
+        void notifyOpsDiscord({
+          title: "Whop webhook: membership change LOST — user.email is null",
+          body:
+            event.type +
+            " could not be synced because user.email is null (app likely lacks member:email:read; reconcile cron keys on email so it cannot heal). whop_user_id=" +
+            (event.data.user?.id ?? "unknown") +
+            ". Grant member:email:read on the Whop app.",
+          severity: "warning",
+        }).catch(() => undefined);
       }
     }
   } catch (error) {

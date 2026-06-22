@@ -1,4 +1,5 @@
 import { polygonConfigured, engineIntelOverlayEnabled, uwConfigured, deskPulseStructureCacheTtlMs } from "./config";
+import { safeTime } from "@/lib/safe-time";
 import { fetchPolygonOdteDeskBundle } from "./polygon-options-gex";
 import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 import { flowDataAgeMs, markFlowDataFromBriefs } from "@/lib/flow-data-freshness";
@@ -550,7 +551,7 @@ function buildUnifiedTape(
   }
 
   return items
-    .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+    .sort((a, b) => safeTime(b.time) - safeTime(a.time))
     .slice(0, 32);
 }
 
@@ -569,7 +570,7 @@ function mergeTapeBuffer(prev: SpxTapeItem[], incoming: SpxTapeItem[], max = 32)
     out.push(t);
     if (out.length >= max) break;
   }
-  return out.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+  return out.sort((a, b) => safeTime(b.time) - safeTime(a.time));
 }
 
 function spxTapeMinPremium(): number {

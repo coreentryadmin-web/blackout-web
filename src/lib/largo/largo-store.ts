@@ -29,21 +29,23 @@ function touchMemorySession(sessionId: string, hist: AnthropicMessage[]): void {
 export async function ensureLargoSession(sessionId: string, userId: string): Promise<void> {
   if (!dbConfigured()) return;
   await ensureSchema();
-  const existing = await dbQuery<{ user_id: string }>(
-    `SELECT user_id FROM largo_sessions WHERE id = $1`,
-    [sessionId]
+  // Atomic upsert: collapses check+insert+touch into one statement so two concurrent
+  // requests for a brand-new session id can't both pass an existence check and race the
+  // INSERT (the loser previously hit a 23505 primary-key violation surfaced as a 500).
+  // ON CONFLICT only touches updated_at (title intentionally left unset on insert, matching
+  // prior behavior); RETURNING user_id is the existing owner on conflict, so we assert
+  // ownership against it exactly as before. Do NOT add user_id to the DO UPDATE SET — that
+  // would let a second user silently hijack someone else's session.
+  const upserted = await dbQuery<{ user_id: string }>(
+    `INSERT INTO largo_sessions (id, user_id, updated_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (id) DO UPDATE SET updated_at = NOW()
+     RETURNING user_id`,
+    [sessionId, userId]
   );
-  if (!existing.rows.length) {
-    await dbQuery(`INSERT INTO largo_sessions (id, user_id, updated_at) VALUES ($1, $2, NOW())`, [
-      sessionId,
-      userId,
-    ]);
-    return;
-  }
-  if (existing.rows[0].user_id !== userId) {
+  if (upserted.rows[0]?.user_id !== userId) {
     throw new Error("Largo session not found");
   }
-  await dbQuery(`UPDATE largo_sessions SET updated_at = NOW() WHERE id = $1`, [sessionId]);
 }
 
 export async function sessionOwnedByUser(sessionId: string, userId: string): Promise<boolean> {
