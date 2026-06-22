@@ -121,10 +121,44 @@ export type MarketFlowAlert = {
   has_sweep: boolean;
 };
 
+/** Parse an OCC option symbol (e.g. "GOOG260116C00200000") → strike + expiry + side.
+ *  UW's WebSocket flow_alerts payload often carries the contract as an OCC symbol
+ *  rather than split strike/expiry fields — which left HELIX rows showing "0C -"
+ *  once the WS became the primary writer. */
+function parseOccSymbol(sym: string): { strike: number; expiry: string; option_type: string } | null {
+  const m = /([A-Z.]{1,6})(\d{6})([CP])(\d{8})/.exec(sym.toUpperCase());
+  if (!m) return null;
+  const [, , ymd, cp, strikeRaw] = m;
+  const expiry = `20${ymd.slice(0, 2)}-${ymd.slice(2, 4)}-${ymd.slice(4, 6)}`;
+  const strike = Number(strikeRaw) / 1000;
+  return {
+    strike: Number.isFinite(strike) ? strike : 0,
+    expiry,
+    option_type: cp === "P" ? "PUT" : "CALL",
+  };
+}
+
 export function parseUwFlowAlert(row: Record<string, unknown>): MarketFlowAlert {
-  const opt = String(row.type ?? row.option_type ?? "call").toLowerCase();
+  // strike/expiry/side: cover REST + WS key variants, then fall back to parsing the
+  // OCC option symbol (the WS flow_alerts feed sends the contract symbol, not split
+  // fields — REST already had strike/expiry, so this only adds, never overrides).
+  let strike = Number(row.strike ?? row.strike_price ?? 0);
+  let expiry = String(row.expiry ?? row.expiry_date ?? row.expiration ?? "").slice(0, 10);
+  let optRaw = String(row.type ?? row.option_type ?? "").toLowerCase();
+  if (!strike || !expiry || !optRaw) {
+    const occRaw = String(
+      row.option_chain ?? row.option_symbol ?? row.osi_symbol ?? row.chain ?? row.contract ?? ""
+    );
+    const occ = occRaw ? parseOccSymbol(occRaw) : null;
+    if (occ) {
+      if (!strike) strike = occ.strike;
+      if (!expiry) expiry = occ.expiry;
+      if (!optRaw) optRaw = occ.option_type.toLowerCase();
+    }
+  }
+  const opt = optRaw || "call";
   const premium = Number(row.total_premium ?? row.premium ?? 0);
-  const dte = row.expiry ? Math.ceil((new Date(String(row.expiry)).getTime() - Date.now()) / 86400000) : 99;
+  const dte = expiry ? Math.ceil((new Date(expiry).getTime() - Date.now()) / 86400000) : 99;
   const route = premium >= 1_000_000 ? "whale" : dte <= 0 ? "0dte" : "stock";
 
   let alertedAt = String(row.created_at ?? "");
@@ -140,8 +174,8 @@ export function parseUwFlowAlert(row: Record<string, unknown>): MarketFlowAlert 
     ticker: String(row.ticker ?? "").toUpperCase(),
     premium,
     option_type: opt.startsWith("p") ? "PUT" : "CALL",
-    expiry: String(row.expiry ?? "").slice(0, 10),
-    strike: Number(row.strike ?? 0),
+    expiry,
+    strike,
     direction: opt.startsWith("p") ? "bearish" : "bullish",
     score: Number(row.score ?? 0),
     route,
