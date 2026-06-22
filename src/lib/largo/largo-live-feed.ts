@@ -234,6 +234,25 @@ export function formatLargoLiveFeed(feed: LargoLiveFeed, ticker: string): string
     if (deskNews.length) {
       lines.push("Desk headlines: " + deskNews.map(headline).filter(Boolean).join(" · "));
     }
+    // Macro calendar from the desk snapshot (already fetched via get_spx_structure at zero
+    // extra cost) so Largo proactively knows FOMC/CPI/NFP on EVERY SPX-desk question —
+    // previously macro only appeared on news-intent questions, leaving plain desk Q's blind.
+    const deskMacro = asArr(spx.macro_events).slice(0, 6);
+    if (deskMacro.length) {
+      const macroLine = deskMacro
+        .map((m) => {
+          const o = asObj(m);
+          if (!o) return "";
+          const ev = String(o.event ?? "").trim();
+          if (!ev) return "";
+          const imp = String(o.impact ?? "").trim();
+          const t = String(o.time ?? "").trim();
+          return `${ev}${imp ? ` [${imp}]` : ""}${t ? ` ${t} ET` : ""}`;
+        })
+        .filter(Boolean)
+        .join(" · ");
+      if (macroLine) lines.push("Macro calendar: " + macroLine);
+    }
     lines.push("");
   }
 

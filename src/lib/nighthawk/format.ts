@@ -120,7 +120,14 @@ export function buildMarketRecap(ctx: MarketWideContext): {
 
   const macro = ctx.macro_events
     .slice(0, 4)
-    .map((e) => String(e.event ?? ""))
+    .map((e) => {
+      const ev = String(e.event ?? "").trim();
+      if (!ev) return "";
+      // events are pre-filtered upstream to tomorrow + high impact; surface the impact so
+      // Claude can explicitly weight a next-session catalyst (e.g. "FOMC Decision (high)").
+      const imp = String(e.impact ?? "").trim();
+      return imp ? `${ev} (${imp})` : ev;
+    })
     .filter(Boolean)
     .join("; ");
   const earnings = ctx.tomorrow_earnings
