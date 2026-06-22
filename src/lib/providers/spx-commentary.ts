@@ -433,23 +433,64 @@ function validateDeskData(ctx: Record<string, unknown>): { ok: true } | { ok: fa
 export async function generateSpxCommentary(
   desk: SpxDeskPayload,
   previous?: Partial<SpxDeskPayload> | null,
-  livePlay?: import("@/lib/spx-play-store").OpenPlayRow | null
+  cross?: {
+    openPlay?: import("@/lib/spx-play-store").OpenPlayRow | null;
+    lotto?: import("@/lib/spx-lotto-store").LottoRecord | null;
+    powerHour?: import("@/lib/spx-power-hour-store").PowerHourRecord | null;
+    outcomes?: import("@/lib/spx-play-outcomes").PlayOutcomeStats | null;
+  }
 ): Promise<SpxCommentaryResult | null> {
   const delta = computeDelta(desk, previous);
   const ctx = deskContext(desk);
+  const ctxRec = ctx as Record<string, unknown>;
 
-  // Cross-tool: surface the platform's OWN live open SPX play so the AI aligns its read
-  // with it (or flags the conflict) instead of contradicting the engine's own position.
-  if (livePlay && livePlay.status === "open") {
-    (ctx as Record<string, unknown>).live_spx_play = {
-      direction: livePlay.direction,
-      entry: livePlay.entry_price,
-      stop: livePlay.stop,
-      target: livePlay.target,
-      grade: livePlay.grade,
-      mfe_pts: livePlay.mfe_pts,
-      trim_done: livePlay.trim_done,
-      opened_at: livePlay.opened_at,
+  // Cross-tool access: surface the platform's OWN engine state (open play + lotto +
+  // power-hour) and recent track record so the desk AI aligns with the rest of the
+  // platform (never contradicts a live position) and can calibrate conviction. These are
+  // CONTEXT only — the prompt still renders crisply, surfacing them only when material.
+  const op = cross?.openPlay;
+  if (op && op.status === "open") {
+    ctxRec.live_spx_play = {
+      direction: op.direction,
+      entry: op.entry_price,
+      stop: op.stop,
+      target: op.target,
+      grade: op.grade,
+      mfe_pts: op.mfe_pts,
+      trim_done: op.trim_done,
+      opened_at: op.opened_at,
+    };
+  }
+  const lp = cross?.lotto;
+  if (lp && lp.phase !== "NONE" && lp.phase !== "INVALID") {
+    ctxRec.lotto_play = {
+      phase: lp.phase,
+      direction: lp.direction,
+      strike: lp.strike,
+      contract: lp.contract_label,
+      entry: lp.entry_price,
+      target: lp.target_price,
+    };
+  }
+  const ph = cross?.powerHour;
+  if (ph && ph.phase !== "NONE") {
+    ctxRec.power_hour_play = {
+      phase: ph.phase,
+      direction: ph.direction,
+      strike: ph.strike,
+      entry: ph.entry_price,
+      target: ph.target_price,
+      stop: ph.stop_price,
+    };
+  }
+  const oc = cross?.outcomes;
+  if (oc && oc.total_closed > 0) {
+    ctxRec.recent_play_outcomes = {
+      win_rate: oc.overall.win_rate,
+      wins: oc.overall.wins,
+      losses: oc.overall.losses,
+      total_closed: oc.total_closed,
+      days_of_data: oc.days_of_data,
     };
   }
 
@@ -514,7 +555,8 @@ Hard rules:
 - Null/empty section -> skip. strike_stacks empty -> no stack language.
 - watch and changed MUST be empty arrays — everything lives in headline + body.
 - Every number + every verbatim headline wrapped in {{...}}; teaching words/labels stay outside. No prose paragraphs, one line per label.
-- live_spx_play (if present) is the desk's OWN open position — your READ + SETUP MUST ALIGN with its direction, or explicitly flag the conflict (e.g. "engine still long X — countertrend"). NEVER tell the trader the opposite side of an open desk play without calling out that it contradicts the live engine.
+- live_spx_play / lotto_play / power_hour_play (if present) are the platform's OWN live positions — your READ + SETUP MUST ALIGN with them, or explicitly flag the conflict (e.g. "engine still long X — countertrend"). NEVER hand the trader the opposite side of an open desk position without calling out that it contradicts the live engine.
+- recent_play_outcomes (if present) is the desk's own realized win-rate — you MAY use it to calibrate conviction ("desk's been hot/cold lately"), but never fabricate numbers or over-promise.
 - ALWAYS show WHY, LEVELS, SETUP, RISK, NEXT 5M, FLIPS IT. Δ/FLOW/NEWS only when they carry signal. Still ~a 20-second read.`;
 
   const raw = await anthropicText(prompt, 1550, undefined, {

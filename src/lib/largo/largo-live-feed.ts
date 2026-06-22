@@ -191,6 +191,7 @@ export function formatLargoLiveFeed(feed: LargoLiveFeed, ticker: string): string
         spx.gamma_flip != null ? `γ flip ${spx.gamma_flip}` : null,
         spx.max_pain != null ? `max pain ${spx.max_pain}` : null,
         spx.flow_0dte_net != null ? `0DTE prem net ${spx.flow_0dte_net}` : null,
+        spx.nope != null ? `NOPE ${spx.nope}` : null,
         spx.tide_bias ? `tide ${spx.tide_bias}` : null,
         spx.regime ? `regime ${spx.regime}` : null,
       ]
