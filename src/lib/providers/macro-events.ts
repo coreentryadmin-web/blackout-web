@@ -7,92 +7,113 @@ export type MacroEvent = {
   estimate?: string | null;
 };
 
-/** Curated US macro dates — update quarterly. */
+/** Curated US macro dates — FALLBACK only (the live UW /api/market/economic-calendar feed
+ *  is the primary source once wired). FOMC verified vs federalreserve.gov and CPI/NFP vs
+ *  the BLS *revised* 2026 schedule (post-2025-shutdown), 2026-06-22. FOMC is ONE row on the
+ *  decision day — the decision, statement, and press conference all release that final
+ *  afternoon (no separate next-day presser row). Update from
+ *  federalreserve.gov/monetarypolicy/fomccalendars.htm + bls.gov/schedule. */
 const US_MACRO_SCHEDULE_2026: Array<{ date: string; event: string; impact: "high" | "medium" }> = [
-  { date: "2026-01-10", event: "Nonfarm Payrolls (NFP)", impact: "high" },
-  { date: "2026-01-14", event: "CPI", impact: "high" },
+  { date: "2026-01-09", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2026-01-13", event: "CPI", impact: "high" },
   { date: "2026-01-28", event: "FOMC Decision", impact: "high" },
-  { date: "2026-01-29", event: "FOMC Press Conference", impact: "high" },
-  { date: "2026-02-07", event: "Nonfarm Payrolls (NFP)", impact: "high" },
-  { date: "2026-02-12", event: "CPI", impact: "high" },
-  { date: "2026-03-07", event: "Nonfarm Payrolls (NFP)", impact: "high" },
-  { date: "2026-03-12", event: "CPI", impact: "high" },
+  { date: "2026-02-11", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2026-02-13", event: "CPI", impact: "high" },
+  { date: "2026-03-06", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2026-03-11", event: "CPI", impact: "high" },
   { date: "2026-03-18", event: "FOMC Decision", impact: "high" },
-  { date: "2026-03-19", event: "FOMC Press Conference", impact: "high" },
-  { date: "2026-04-04", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2026-04-03", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2026-04-10", event: "CPI", impact: "high" },
-  { date: "2026-05-02", event: "Nonfarm Payrolls (NFP)", impact: "high" },
-  { date: "2026-05-13", event: "CPI", impact: "high" },
-  { date: "2026-05-07", event: "FOMC Decision", impact: "high" },
+  { date: "2026-04-29", event: "FOMC Decision", impact: "high" },
+  { date: "2026-05-08", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2026-05-12", event: "CPI", impact: "high" },
   { date: "2026-06-05", event: "Nonfarm Payrolls (NFP)", impact: "high" },
-  { date: "2026-06-11", event: "CPI", impact: "high" },
+  { date: "2026-06-10", event: "CPI", impact: "high" },
   { date: "2026-06-17", event: "FOMC Decision", impact: "high" },
-  { date: "2026-06-18", event: "FOMC Press Conference", impact: "high" },
-  { date: "2026-07-03", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2026-07-02", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2026-07-14", event: "CPI", impact: "high" },
   { date: "2026-07-29", event: "FOMC Decision", impact: "high" },
-  { date: "2026-07-30", event: "FOMC Press Conference", impact: "high" },
   { date: "2026-08-07", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2026-08-12", event: "CPI", impact: "high" },
   { date: "2026-09-04", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2026-09-11", event: "CPI", impact: "high" },
   { date: "2026-09-16", event: "FOMC Decision", impact: "high" },
-  { date: "2026-09-17", event: "FOMC Press Conference", impact: "high" },
   { date: "2026-10-02", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2026-10-14", event: "CPI", impact: "high" },
+  { date: "2026-10-28", event: "FOMC Decision", impact: "high" },
   { date: "2026-11-06", event: "Nonfarm Payrolls (NFP)", impact: "high" },
-  { date: "2026-11-04", event: "FOMC Decision", impact: "high" },
-  { date: "2026-11-05", event: "FOMC Press Conference", impact: "high" },
-  { date: "2026-11-13", event: "CPI", impact: "high" },
+  { date: "2026-11-10", event: "CPI", impact: "high" },
   { date: "2026-12-04", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2026-12-09", event: "FOMC Decision", impact: "high" },
-  { date: "2026-12-10", event: "FOMC Press Conference", impact: "high" },
-  { date: "2026-12-11", event: "CPI", impact: "high" },
+  { date: "2026-12-10", event: "CPI", impact: "high" },
 ];
 
+/** 2027: FOMC verified vs federalreserve.gov (8 meetings; subject to Fed revision until
+ *  nearer the dates). CPI/NFP are ESTIMATES — BLS has NOT published the 2027 release
+ *  calendar yet, so these are best-effort placeholders that the live UW feed supersedes;
+ *  do not treat the 2027 CPI/NFP rows as authoritative. */
 const US_MACRO_SCHEDULE_2027: Array<{ date: string; event: string; impact: "high" | "medium" }> = [
   { date: "2027-01-08", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2027-01-13", event: "CPI", impact: "high" },
   { date: "2027-01-27", event: "FOMC Decision", impact: "high" },
-  { date: "2027-01-28", event: "FOMC Press Conference", impact: "high" },
   { date: "2027-02-05", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2027-02-10", event: "CPI", impact: "high" },
   { date: "2027-03-05", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2027-03-10", event: "CPI", impact: "high" },
   { date: "2027-03-17", event: "FOMC Decision", impact: "high" },
-  { date: "2027-03-18", event: "FOMC Press Conference", impact: "high" },
   { date: "2027-04-02", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2027-04-13", event: "CPI", impact: "high" },
+  { date: "2027-04-28", event: "FOMC Decision", impact: "high" },
   { date: "2027-05-07", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2027-05-12", event: "CPI", impact: "high" },
-  { date: "2027-05-05", event: "FOMC Decision", impact: "high" },
   { date: "2027-06-04", event: "Nonfarm Payrolls (NFP)", impact: "high" },
+  { date: "2027-06-09", event: "FOMC Decision", impact: "high" },
   { date: "2027-06-10", event: "CPI", impact: "high" },
-  { date: "2027-06-16", event: "FOMC Decision", impact: "high" },
-  { date: "2027-06-17", event: "FOMC Press Conference", impact: "high" },
   { date: "2027-07-02", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2027-07-14", event: "CPI", impact: "high" },
   { date: "2027-07-28", event: "FOMC Decision", impact: "high" },
-  { date: "2027-07-29", event: "FOMC Press Conference", impact: "high" },
   { date: "2027-08-06", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2027-08-11", event: "CPI", impact: "high" },
   { date: "2027-09-03", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2027-09-14", event: "CPI", impact: "high" },
-  { date: "2027-09-22", event: "FOMC Decision", impact: "high" },
-  { date: "2027-09-23", event: "FOMC Press Conference", impact: "high" },
+  { date: "2027-09-15", event: "FOMC Decision", impact: "high" },
   { date: "2027-10-01", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2027-10-13", event: "CPI", impact: "high" },
+  { date: "2027-10-27", event: "FOMC Decision", impact: "high" },
   { date: "2027-11-05", event: "Nonfarm Payrolls (NFP)", impact: "high" },
-  { date: "2027-11-03", event: "FOMC Decision", impact: "high" },
-  { date: "2027-11-04", event: "FOMC Press Conference", impact: "high" },
   { date: "2027-11-10", event: "CPI", impact: "high" },
   { date: "2027-12-03", event: "Nonfarm Payrolls (NFP)", impact: "high" },
   { date: "2027-12-08", event: "FOMC Decision", impact: "high" },
-  { date: "2027-12-09", event: "FOMC Press Conference", impact: "high" },
   { date: "2027-12-10", event: "CPI", impact: "high" },
 ];
 
 const ALL_MACRO_SCHEDULE = [...US_MACRO_SCHEDULE_2026, ...US_MACRO_SCHEDULE_2027];
+
+/** Authoritative FOMC decision dates (federalreserve.gov, verified 2026-06-22) — 8/year,
+ *  each the final day of the 2-day meeting. Source of truth for the canary below. */
+const EXPECTED_FOMC: Record<string, readonly string[]> = {
+  "2026": ["2026-01-28", "2026-03-18", "2026-04-29", "2026-06-17", "2026-07-29", "2026-09-16", "2026-10-28", "2026-12-09"],
+  "2027": ["2027-01-27", "2027-03-17", "2027-04-28", "2027-06-09", "2027-07-28", "2027-09-15", "2027-10-27", "2027-12-08"],
+};
+
+// Cold-start canary: if the curated FOMC rows ever drift from the expected dates (a stale
+// hand-edit), log LOUD so it's caught before it can mis-gate a real-money 0DTE trade. This
+// is deterministic (no LLM); the live UW feed is the primary source once wired.
+(function assertFomcConsistency() {
+  for (const [year, expected] of Object.entries(EXPECTED_FOMC)) {
+    const actual = ALL_MACRO_SCHEDULE.filter(
+      (e) => e.date.startsWith(year) && e.event === "FOMC Decision"
+    )
+      .map((e) => e.date)
+      .sort();
+    const ok = actual.length === expected.length && actual.every((d, i) => d === expected[i]);
+    if (!ok) {
+      console.error(
+        `[macro-events] FOMC schedule drift for ${year}: expected [${expected.join(", ")}] but literal has [${actual.join(", ")}] — update US_MACRO_SCHEDULE from federalreserve.gov/monetarypolicy/fomccalendars.htm`
+      );
+    }
+  }
+})();
 
 const MACRO_HEADLINE_RE =
   /\b(CPI|FOMC|FED|PCE|NFP|NONFARM|JOBS|PAYROLL|PPI|GDP|RETAIL SALES|ISM|PMI|UNEMPLOYMENT|CLAIMS|RATE DECISION|POWELL)\b/i;
