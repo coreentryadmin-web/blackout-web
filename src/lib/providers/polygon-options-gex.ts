@@ -93,6 +93,11 @@ export async function fetchPolygonOdteDeskBundle(
 ): Promise<{ rows: Record<string, unknown>[]; maxPain: number | null }> {
   if (!polygonConfigured() || spot <= 0) return { rows: [], maxPain: null };
 
+  // Feed the fast-move ring buffer on every desk GEX fetch so isSpxFastMove can actually
+  // fire — without this call spxPriceHistory stays empty and the fast-move cache bypass
+  // below is dead code (GEX walls served stale during the exact move they matter for).
+  recordSpxPriceObservation(spot);
+
   const now = Date.now();
   // During fast moves (SPX >0.5% in the last 5 min) bypass cache entirely so
   // GEX reflects the new price level. Also bypass when callers set forceRefresh.

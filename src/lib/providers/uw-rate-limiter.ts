@@ -39,10 +39,15 @@ type RedisClient = {
 };
 
 let sharedRedis: RedisClient | null = null;
-let sharedRedisFailed = false;
+let sharedRedisFailedAt = 0;
+const SHARED_REDIS_RETRY_BACKOFF_MS = 30_000;
 
 async function getSharedRedis(): Promise<RedisClient | null> {
-  if (sharedRedisFailed) return null;
+  // Backoff, not a permanent kill-switch: after a Redis blip the cluster-wide UW limiter
+  // retries once the window elapses instead of degrading to local-only pacing forever.
+  if (sharedRedisFailedAt && Date.now() - sharedRedisFailedAt < SHARED_REDIS_RETRY_BACKOFF_MS) {
+    return null;
+  }
   const url = process.env.REDIS_URL?.trim();
   if (!url) return null;
   if (sharedRedis) return sharedRedis;
@@ -60,9 +65,10 @@ async function getSharedRedis(): Promise<RedisClient | null> {
     client.on("error", (err) => console.warn("[uw-rate-limiter] redis error:", err instanceof Error ? err.message : err));
     await client.connect();
     sharedRedis = client as unknown as RedisClient;
+    sharedRedisFailedAt = 0; // clear failure on success
     return sharedRedis;
   } catch {
-    sharedRedisFailed = true;
+    sharedRedisFailedAt = Date.now();
     return null;
   }
 }
@@ -308,7 +314,9 @@ export function uwRateLimiterStats(): {
     minSpacingMs: MIN_SPACING_MS,
     inFlight,
     tokens,
-    redisGlobal: Boolean(process.env.REDIS_URL?.trim()) && !sharedRedisFailed,
+    redisGlobal:
+      Boolean(process.env.REDIS_URL?.trim()) &&
+      !(sharedRedisFailedAt && now - sharedRedisFailedAt < SHARED_REDIS_RETRY_BACKOFF_MS),
     circuitOpen: now < circuitOpenUntil,
     circuitOpenUntil: now < circuitOpenUntil ? circuitOpenUntil : null,
     recent429s: recent429Timestamps.length,
