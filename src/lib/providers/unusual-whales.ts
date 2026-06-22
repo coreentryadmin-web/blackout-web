@@ -91,7 +91,12 @@ async function uwGet<T>(path: string, params: Record<string, string | number> = 
       cache: "no-store",
     });
     if (res.status === 429) {
-      noteUw429(path);
+      // Do NOT count the 429 here. uwGetSafe's catch is the single counting site
+      // (noteUw429) for the breaker; counting in both this fetch path AND the catch
+      // double-incremented recent429Timestamps, tripping the breaker at half
+      // CIRCUIT_429_THRESHOLD (and faster under request coalescing: 1 here + N waiters
+      // in the catch). Direct-uwGet callers (fetchMarketFlowAlertRows) record the 429
+      // in their own catch instead.
       throw new Error(`Unusual Whales ${path} → 429`);
     }
     if (!res.ok) throw new Error(`Unusual Whales ${path} → ${res.status}`);
@@ -565,6 +570,13 @@ export async function fetchMarketFlowAlertRows(params?: {
     return filterMarketFlowRows(merged, params);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("429")) {
+      // fetchMarketFlowAlertRows uses uwGet directly (not uwGetSafe), and the 429 count
+      // was removed from uwGet's fetch path — record it here so this endpoint still
+      // contributes to the breaker once per failed attempt (path isn't in scope at this
+      // catch, so use the static endpoint label).
+      noteUw429("market/flow-alerts");
+    }
     if (marketFlowCache && now - marketFlowCache.cachedAt <= MARKET_FLOW_MAX_STALE_MS) {
       console.warn("[uw] flow-alerts rate limited — serving cache:", message);
       return filterMarketFlowRows(marketFlowCache.rows, params);

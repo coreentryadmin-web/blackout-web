@@ -58,7 +58,22 @@ export async function POST(req: NextRequest) {
       event.type === "membership.deactivated"
     ) {
       const email = event.data.user?.email;
-      if (email) await syncWhopMembershipForEmail(email);
+      if (email) {
+        await syncWhopMembershipForEmail(email);
+      } else {
+        // Whop returns user.email === null when this app lacks the `member:email:read`
+        // permission (or the user was deleted). syncWhopMembershipForEmail AND the
+        // reconcile cron both key ONLY on email, so with no email we can neither sync
+        // nor self-heal — the membership change is silently lost. Log a WARNING so the
+        // missing permission surfaces (there is no id-based heal path today). Grant
+        // member:email:read on the Whop app to populate user.email.
+        console.warn(
+          "[whop webhook] " + event.type + ": user.email is missing (null). This app likely " +
+            "lacks the `member:email:read` permission, so the membership change cannot be synced " +
+            "and the reconcile cron cannot heal it (both key on email). whop_user_id=" +
+            (event.data.user?.id ?? "unknown") + ". Grant member:email:read on the Whop app to fix."
+        );
+      }
     }
   } catch (error) {
     console.error("[whop webhook]", event.type, error);

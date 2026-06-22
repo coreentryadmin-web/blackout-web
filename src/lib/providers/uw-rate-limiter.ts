@@ -236,6 +236,14 @@ export function noteUw429(_path?: string): void {
   maybeFlushRateLimitSummary(now);
 }
 
+// Test-only: clear breaker state between cases (module state persists across a test
+// file). Not used in production code.
+export function resetUwCircuitForTest(): void {
+  circuitOpenUntil = 0;
+  recent429Timestamps = [];
+  rateLimitSummaryCount = 0;
+}
+
 /** Pace a single UW HTTP call through local + optional Redis-global buckets. */
 export async function throttleUw<T>(fn: () => Promise<T>): Promise<T> {
   await acquireSlot();

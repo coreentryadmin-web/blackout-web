@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireDatabaseInProduction } from "@/lib/db";
 import { resolvePendingNighthawkOutcomes } from "@/lib/nighthawk/play-outcomes";
-import { isWeekdayEt, etNowParts } from "@/lib/nighthawk/session";
+import { inEtWindow } from "@/lib/nighthawk/et-window";
 import { logCronRun } from "@/lib/cron-run";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 
@@ -11,14 +11,13 @@ export const maxDuration = 120;
 
 function inOutcomeWindow(force: boolean): boolean {
   if (force) return true;
-  if (!isWeekdayEt()) return false;
-  const hour = Number(process.env.NIGHTHAWK_OUTCOMES_HOUR_ET ?? "16");
-  const minute = Number(process.env.NIGHTHAWK_OUTCOMES_MINUTE_ET ?? "30");
-  const { hour: nowH, minute: nowM } = etNowParts();
-  const now = nowH * 60 + nowM;
-  const target = hour * 60 + minute;
-  const catchup = Number(process.env.NIGHTHAWK_OUTCOMES_CATCHUP_MIN ?? "90");
-  return now >= target && now <= target + catchup;
+  // DST-aware window (America/New_York). The Railway cron now fires at both 20:30 and
+  // 21:30 UTC so 16:30 ET is hit in EDT and EST; this guard self-skips the off-band fire.
+  return inEtWindow({
+    targetHour: Number(process.env.NIGHTHAWK_OUTCOMES_HOUR_ET ?? "16"),
+    targetMinute: Number(process.env.NIGHTHAWK_OUTCOMES_MINUTE_ET ?? "30"),
+    catchupMin: Number(process.env.NIGHTHAWK_OUTCOMES_CATCHUP_MIN ?? "90"),
+  });
 }
 
 export async function GET(req: NextRequest) {

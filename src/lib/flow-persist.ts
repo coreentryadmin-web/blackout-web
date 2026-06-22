@@ -2,6 +2,7 @@ import { dbConfigured, insertFlowAlert, type FlowRow } from "@/lib/db";
 import { markFlowDataFresh } from "@/lib/flow-data-freshness";
 import { publishFlowEvent } from "@/lib/flow-events";
 import type { MarketFlowAlert } from "@/lib/providers/unusual-whales";
+import { shouldFanOut } from "@/lib/flow-fanout";
 
 const MIN_PREMIUM = Number(process.env.UW_FLOW_MIN_PREMIUM ?? 200_000);
 
@@ -73,8 +74,10 @@ export async function persistAndPublishFlowAlert(
   const event = toFlowRow(flow);
   event.event_at = realCreatedAt;
   let inserted = false;
+  let insertFailed = false;
+  const usingDb = dbConfigured();
 
-  if (dbConfigured()) {
+  if (usingDb) {
     try {
       inserted = await insertFlowAlert({
         alert_id: id,
@@ -88,13 +91,24 @@ export async function persistAndPublishFlowAlert(
         raw_payload: raw,
       });
     } catch (error) {
+      // Transient DB failure: `inserted` is an unreliable false. Mark it so we still
+      // fan out (a real ON-CONFLICT duplicate returns false WITHOUT throwing, so this
+      // does not defeat dedup).
+      insertFailed = true;
       console.error("[flow-persist] DB insert failed:", id, error);
     }
   }
 
-  publishFlowEvent(event);
-  if (flow.premium >= MIN_PREMIUM) markFlowDataFresh();
-  void notifyDiscord(event);
+  // Only fan out when this call actually created the row, when there is no DB to dedup
+  // against, or when the insert threw. Suppressing a genuine ON-CONFLICT duplicate
+  // (usingDb && !inserted && !insertFailed) is what stops the WS+REST double-post of the
+  // same whale to Discord + the redundant SSE traffic.
+  const shouldPublish = shouldFanOut(inserted, usingDb, insertFailed);
+  if (shouldPublish) {
+    publishFlowEvent(event);
+    if (flow.premium >= MIN_PREMIUM) markFlowDataFresh();
+    void notifyDiscord(event);
+  }
 
-  return { inserted, published: true };
+  return { inserted, published: shouldPublish };
 }

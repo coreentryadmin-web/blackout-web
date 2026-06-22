@@ -7,6 +7,12 @@ buildCommand = "echo 'cron trigger service: no app build needed'"
 
 [deploy]
 startCommand = "node scripts/hit-cron.mjs /api/cron/nighthawk-outcomes"
-cronSchedule = "30 20 * * 1-5"
+# 20:30 + 21:30 UTC covers the 16:30 ET outcome target in BOTH EDT (UTC-4: 20:30 UTC =
+# 16:30 ET) and EST (UTC-5: 21:30 UTC = 16:30 ET). The route self-skips the off-band fire
+# via inOutcomeWindow() (DST-aware Intl ET clock); the EDT 21:30 UTC = 17:30 ET second fire
+# is a no-op (resolvePendingNighthawkOutcomes only retries still-pending rows). Mirrors
+# railway.spx-evaluate.toml's dual-band convention. NOTE: if cronSchedule was set in the
+# Railway dashboard UI, the dashboard value overrides this TOML — update it there too.
+cronSchedule = "30 20,21 * * 1-5"
 restartPolicyType = "never"
 numReplicas = 1
