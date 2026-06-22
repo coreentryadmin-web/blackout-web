@@ -58,7 +58,7 @@ function renderEmphasis(text: string): ReactNode[] {
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) out.push(text.slice(last, m.index));
     out.push(
-      <span key={k++} className="spx-ai-white">
+      <span key={k++} className="spx-ai-key">
         {m[1]}
       </span>
     );
