@@ -409,7 +409,7 @@ export async function fetchMarketFlowAlertRows(params?: {
       return filterMarketFlowRows(marketFlowCache!.rows, params);
     }
     try {
-      const { sharedCacheGet } = await import("@/lib/shared-cache");
+      const { sharedCacheGet } = await import("../shared-cache");
       const redisRows = await sharedCacheGet<MarketFlowRow[]>(MARKET_FLOW_CACHE_KEY);
       if (redisRows?.length) {
         marketFlowCache = { expiresAt: now + marketFlowCacheMs(), cachedAt: now, rows: redisRows };
@@ -465,7 +465,7 @@ export async function fetchMarketFlowAlertRows(params?: {
 
     if (!params?.newer_than && !params?.older_than) {
       marketFlowCache = { expiresAt: now + marketFlowCacheMs(), cachedAt: now, rows: merged };
-      void import("@/lib/shared-cache").then(({ sharedCacheSet }) =>
+      void import("../shared-cache").then(({ sharedCacheSet }) =>
         sharedCacheSet(MARKET_FLOW_CACHE_KEY, merged, Math.ceil(marketFlowCacheMs() / 1000))
       );
     }

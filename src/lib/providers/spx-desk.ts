@@ -96,7 +96,7 @@ let cachedDarkPool: { data: DarkPoolSnapshot | null; fetchedAt: number; key: str
 async function resolveMarketTide(): Promise<Awaited<ReturnType<typeof fetchUwMarketTide>>> {
   if (!uwConfigured()) return null;
   try {
-    const { tideStore } = await import("@/lib/ws/uw-socket");
+    const { tideStore } = await import("../ws/uw-socket");
     if (Date.now() - tideStore.updatedAt < TIDE_STALE_MS) {
       return tideStore;
     }
@@ -112,7 +112,7 @@ async function resolveFlow0dte(ticker = "SPX"): Promise<{
   net: number;
 } | null> {
   try {
-    const { netFlowStore } = await import("@/lib/ws/uw-socket");
+    const { netFlowStore } = await import("../ws/uw-socket");
     if (Date.now() - netFlowStore.updatedAt < NET_FLOW_WS_STALE_MS) {
       return {
         call_premium: netFlowStore.call_premium,
@@ -124,7 +124,7 @@ async function resolveFlow0dte(ticker = "SPX"): Promise<{
     /* WS optional */
   }
   try {
-    const { intervalFlowStore } = await import("@/lib/ws/uw-socket");
+    const { intervalFlowStore } = await import("../ws/uw-socket");
     if (Date.now() - intervalFlowStore.updatedAt < INTERVAL_FLOW_WS_STALE_MS && intervalFlowStore.rows.length) {
       let calls = 0;
       let puts = 0;
@@ -148,7 +148,7 @@ async function resolveDarkPool(
   const key = `${ticker}:${opts?.limit ?? 20}:${opts?.min_premium ?? 500_000}`;
   const now = Date.now();
   try {
-    const { darkPoolStore } = await import("@/lib/ws/uw-socket");
+    const { darkPoolStore } = await import("../ws/uw-socket");
     if (Date.now() - darkPoolStore.updatedAt < DARK_POOL_WS_STALE_MS && darkPoolStore.data) {
       return darkPoolStore.data;
     }
@@ -187,7 +187,7 @@ function mergeWsIndexSnapshots(
 async function syncDeskStickyFromRedis(): Promise<void> {
   if (!process.env.REDIS_URL?.trim()) return;
   try {
-    const { sharedCacheGet, DESK_STICKY_KEYS } = await import("@/lib/shared-cache");
+    const { sharedCacheGet, DESK_STICKY_KEYS } = await import("../shared-cache");
     const [walls, tape, flip, regime, strikes, flows] = await Promise.all([
       sharedCacheGet<GexWall[]>(DESK_STICKY_KEYS.gexWalls),
       sharedCacheGet<SpxTapeItem[]>(DESK_STICKY_KEYS.unifiedTape),
@@ -209,7 +209,7 @@ async function syncDeskStickyFromRedis(): Promise<void> {
 
 function publishDeskStickyToRedis(): void {
   if (!process.env.REDIS_URL?.trim()) return;
-  void import("@/lib/shared-cache").then(({ sharedCacheSet, DESK_STICKY_KEYS, DESK_STICKY_TTL_SEC }) =>
+  void import("../shared-cache").then(({ sharedCacheSet, DESK_STICKY_KEYS, DESK_STICKY_TTL_SEC }) =>
     Promise.all([
       sharedCacheSet(DESK_STICKY_KEYS.gexWalls, lastGoodGexWalls, DESK_STICKY_TTL_SEC.gex),
       sharedCacheSet(DESK_STICKY_KEYS.unifiedTape, lastGoodUnifiedTape, DESK_STICKY_TTL_SEC.tape),
@@ -737,7 +737,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
 
   if (!polygonConfigured()) return empty;
 
-  const { ensureDataSockets } = await import("@/lib/ws/init-data-sockets");
+  const { ensureDataSockets } = await import("../ws/init-data-sockets");
   ensureDataSockets();
 
   const today = todayEtYmd();
@@ -1092,7 +1092,7 @@ function gexSnapshotForPrice(price: number) {
 
 /** Polygon-only fast lane — 1s price tick + slower structure refresh. */
 export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
-  const { ensureDataSockets } = await import("@/lib/ws/init-data-sockets");
+  const { ensureDataSockets } = await import("../ws/init-data-sockets");
   ensureDataSockets();
   const polledAt = new Date().toISOString();
   const empty: SpxDeskPulse = {
@@ -1230,7 +1230,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
 
 /** UW flow lane — GEX strike ladder, live tape, dark pool (~4s). */
 export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
-  const { ensureDataSockets } = await import("@/lib/ws/init-data-sockets");
+  const { ensureDataSockets } = await import("../ws/init-data-sockets");
   ensureDataSockets();
   await syncDeskStickyFromRedis();
   const polledAt = new Date().toISOString();

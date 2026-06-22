@@ -40,7 +40,7 @@ export function isDegraded(key: string): boolean {
 async function readRedisCache<T>(key: string): Promise<{ value: T; remainingTtlSec: number } | null> {
   if (!process.env.REDIS_URL?.trim()) return null;
   try {
-    const { sharedCacheGetWithTtl } = await import("@/lib/shared-cache");
+    const { sharedCacheGetWithTtl } = await import("./shared-cache");
     return sharedCacheGetWithTtl<T>(`server:${key}`);
   } catch {
     return null;
@@ -50,7 +50,7 @@ async function readRedisCache<T>(key: string): Promise<{ value: T; remainingTtlS
 async function writeRedisCache<T>(key: string, value: T, ttlMs: number): Promise<void> {
   if (!process.env.REDIS_URL?.trim() || ttlMs <= 0) return;
   try {
-    const { sharedCacheSet } = await import("@/lib/shared-cache");
+    const { sharedCacheSet } = await import("./shared-cache");
     await sharedCacheSet(`server:${key}`, value, Math.max(1, Math.round(ttlMs / 1000)));
   } catch {
     // ignore redis write failures

@@ -105,7 +105,7 @@ export async function fetchPolygonOdteDeskBundle(
   }
 
   try {
-    const { sharedCacheGet } = await import("@/lib/shared-cache");
+    const { sharedCacheGet } = await import("../shared-cache");
     const redisHit = await sharedCacheGet<{
       at: number;
       spot: number;
@@ -130,7 +130,7 @@ export async function fetchPolygonOdteDeskBundle(
   const maxPain = computeMaxPainFromChain(contracts);
   if (rows.length) {
     cachedOdteBundle = { at: now, spot, rows, maxPain };
-    void import("@/lib/shared-cache").then(({ sharedCacheSet }) =>
+    void import("../shared-cache").then(({ sharedCacheSet }) =>
       sharedCacheSet(POLYGON_ODTE_CACHE_KEY, cachedOdteBundle, Math.ceil(polygonGexCacheMs() / 1000))
     );
   }
