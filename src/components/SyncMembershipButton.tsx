@@ -39,7 +39,13 @@ export function SyncMembershipButton() {
         {loading ? "Syncing..." : "I paid — refresh my access"}
       </button>
       {message && (
-        <p role="status" aria-live="polite" className="font-mono text-xs text-bull text-center">
+        <p
+          role="status"
+          aria-live="polite"
+          className={`font-mono text-xs text-center ${
+            message.startsWith("Access updated") ? "text-bull" : "text-bear"
+          }`}
+        >
           {message.startsWith("Access updated") ? `✓ ${message}` : message}
         </p>
       )}

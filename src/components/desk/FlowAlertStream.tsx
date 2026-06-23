@@ -323,10 +323,10 @@ export function FlowAlertStream({
                             className="font-mono text-[19px] font-black tabular-nums tracking-tight"
                             style={{
                               color: isCompound ? "#fde047"
-                                   : isCall     ? "#00ff7f"
+                                   : isCall     ? "#00e676"
                                    :              "#ff2d55",
                               textShadow: isCompound ? "0 0 10px rgba(253,224,71,0.7)"
-                                        : isCall     ? "0 0 12px rgba(0,255,127,0.65)"
+                                        : isCall     ? "0 0 12px rgba(0,230,118,0.65)"
                                         :              "0 0 12px rgba(255,45,85,0.65)",
                             }}
                           >
@@ -372,11 +372,11 @@ export function FlowAlertStream({
                           <span
                             className="font-mono text-[10px] font-black uppercase tracking-wider"
                             style={{
-                              color: flow.direction?.toLowerCase() === "bullish" ? "#00ff7f"
+                              color: flow.direction?.toLowerCase() === "bullish" ? "#00e676"
                                    : flow.direction?.toLowerCase() === "bearish" ? "#ff2d55"
-                                   : isCall ? "#00ff7f" : "#ff2d55",
+                                   : isCall ? "#00e676" : "#ff2d55",
                               textShadow: flow.direction?.toLowerCase() === "bullish"
-                                ? "0 0 8px rgba(0,255,127,0.55)"
+                                ? "0 0 8px rgba(0,230,118,0.55)"
                                 : "0 0 8px rgba(255,45,85,0.55)",
                             }}
                           >

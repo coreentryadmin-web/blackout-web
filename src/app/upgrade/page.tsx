@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { PricingBackdrop } from "@/components/landing/PricingBackdrop";
@@ -5,6 +6,11 @@ import { SyncMembershipButton } from "@/components/SyncMembershipButton";
 import { PlanLadder } from "@/components/upgrade/PlanLadder";
 import { FeatureComparison } from "@/components/upgrade/FeatureComparison";
 import { AuthProofRail } from "@/components/auth/AuthProofRail";
+
+export const metadata: Metadata = {
+  title: "Upgrade · BlackOut",
+  description: "Unlock the live BlackOut desk — HELIX flow, the SPX dashboard, Largo and Night Hawk.",
+};
 
 export default function UpgradePage() {
   return (

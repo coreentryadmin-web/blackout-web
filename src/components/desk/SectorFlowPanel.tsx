@@ -67,7 +67,7 @@ export function SectorFlowPanel({
                   <div className="flex items-center gap-2">
                     <span
                       className="font-mono text-[12px] font-bold tabular-nums"
-                      style={{ color: isBull ? "#34d399" : isBear ? "#fb7185" : "#a1a1aa" }}
+                      style={{ color: isBull ? "#34d399" : isBear ? "#fb7185" : "#7dd3fc" }}
                     >
                       {e.callPct}% C
                     </span>
@@ -75,7 +75,7 @@ export function SectorFlowPanel({
                       className="font-mono font-bold tabular-nums"
                       style={{
                         fontSize: "13px",
-                        color: isBull ? "#34d399" : isBear ? "#fb7185" : "#e4e4e7",
+                        color: isBull ? "#34d399" : isBear ? "#fb7185" : "#f4f6fb",
                         textShadow: isBull
                           ? "0 0 8px rgba(52,211,153,0.5)"
                           : isBear
@@ -97,7 +97,7 @@ export function SectorFlowPanel({
                         ? "linear-gradient(90deg, #065f46, #10b981)"
                         : isBear
                           ? "linear-gradient(90deg, #9f1239, #f43f5e)"
-                          : "linear-gradient(90deg, #3f3f46, #71717a)",
+                          : "linear-gradient(90deg, #0c4a6e, #7dd3fc)",
                       width: `${widthPct}%`,
                     }}
                     initial={{ width: 0 }}

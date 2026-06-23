@@ -197,6 +197,7 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={loading ? INPUT_PLACEHOLDER_BUSY : INPUT_PLACEHOLDER}
+              aria-label="Ask Largo"
               className={clsx(
                 "desk-largo-input w-full",
                 loading && "largo-input-busy",

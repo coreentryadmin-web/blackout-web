@@ -460,7 +460,7 @@ export function FlowFeed() {
       {/* ── Filter bar ──────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Premium presets */}
-        <span className="font-mono text-[9px] tracking-[0.3em] uppercase font-bold hidden sm:block" style={{color:"#00e566",textShadow:"0 0 8px rgba(0,229,102,0.6)"}}>MIN</span>
+        <span className="font-mono text-[9px] tracking-[0.3em] uppercase font-bold hidden sm:block" style={{color:"#00e676",textShadow:"0 0 8px rgba(0,230,118,0.6)"}}>MIN</span>
         <div className="flow-seg-group">
           {PREMIUM_PRESETS.map((v) => (
             <button
@@ -507,13 +507,14 @@ export function FlowFeed() {
               setTickerFilter(val);
             }}
             placeholder="TICKER"
+            aria-label="Search ticker"
             maxLength={6}
             className={clsx(
               "font-mono text-[13px] font-bold px-4 py-2 rounded-lg border bg-zinc-950 outline-none w-32 tracking-widest uppercase",
-              "border-[rgba(0,255,102,0.35)] text-[#00e566] placeholder:text-[rgba(0,229,102,0.35)]",
-              "focus:border-[rgba(0,255,102,0.8)] focus:ring-2 focus:ring-[rgba(0,255,102,0.15)] transition-all"
+              "border-[rgba(0,230,118,0.35)] text-[#00e676] placeholder:text-[rgba(0,230,118,0.35)]",
+              "focus:border-[rgba(0,230,118,0.8)] focus:ring-2 focus:ring-[rgba(0,230,118,0.15)] transition-all"
             )}
-            style={{ textShadow: tickerFilter ? "0 0 10px rgba(0,229,102,0.6)" : "none" }}
+            style={{ textShadow: tickerFilter ? "0 0 10px rgba(0,230,118,0.6)" : "none" }}
           />
           <AnimatePresence>
             {tickerFilter && (
@@ -523,6 +524,7 @@ export function FlowFeed() {
                 exit={{ opacity: 0, scale: 0.8 }}
                 type="button"
                 onClick={() => setTickerFilter("")}
+                aria-label="Close"
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-cyan-400 hover:text-sky-200 font-mono text-sm font-bold"
               >
                 ×
@@ -540,7 +542,7 @@ export function FlowFeed() {
             "font-mono text-[10px] font-semibold px-3 py-[5px] rounded-lg border transition-all",
             replayMode
               ? "border-amber-600/70 text-amber-300 bg-amber-950/50 hover:bg-amber-950/70"
-              : "border-[rgba(0,255,102,0.3)] text-[#00e566] hover:text-[#39ff85] hover:border-[rgba(0,255,102,0.6)] disabled:opacity-30 disabled:cursor-not-allowed"
+              : "border-[rgba(0,230,118,0.3)] text-[#00e676] hover:text-[#34d399] hover:border-[rgba(0,230,118,0.6)] disabled:opacity-30 disabled:cursor-not-allowed"
           )}
         >
           {replayMode ? "■ Stop" : "▶ Replay"}

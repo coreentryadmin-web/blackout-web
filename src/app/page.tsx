@@ -13,12 +13,14 @@ export default function LandingPage() {
     <div className="landing-page min-h-screen void-bg text-white overflow-x-hidden">
       <CustomCursor />
       <Nav />
-      <HeroSection />
-      <MarqueeBlock />
-      <FeaturesGrid />
-      <EdgeSection />
-      <FaqSection />
-      <PricingSection />
+      <main id="main">
+        <HeroSection />
+        <MarqueeBlock />
+        <FeaturesGrid />
+        <EdgeSection />
+        <FaqSection />
+        <PricingSection />
+      </main>
       <LandingFooter />
     </div>
   );

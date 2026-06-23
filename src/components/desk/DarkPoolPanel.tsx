@@ -56,7 +56,7 @@ function biasFromSide(prints: DarkPoolRow[]) {
   const buy   = prints.filter((p) => p.side === "buy").reduce((s, p) => s + p.premium, 0);
   const sell  = prints.filter((p) => p.side === "sell").reduce((s, p) => s + p.premium, 0);
   const total = buy + sell;
-  if (total <= 0) return { label: "MIXED",   color: "#71717a", glow: "rgba(113,113,122,0.3)" };
+  if (total <= 0) return { label: "MIXED",   color: "#7dd3fc", glow: "rgba(125,211,252,0.3)" };
   const r = buy / total;
   if (r >= 0.65) return { label: "BULLISH",  color: "#34d399", glow: "rgba(52,211,153,0.35)" };
   if (r <= 0.35) return { label: "BEARISH",  color: "#fb7185", glow: "rgba(251,113,133,0.35)" };
@@ -90,7 +90,7 @@ function PrintRow({ p, showDate = false }: { p: DarkPoolRow; showDate?: boolean 
       <span
         className="font-mono text-[14px] font-black w-4 flex-shrink-0"
         style={{
-          color: isBuy ? "#34d399" : isSell ? "#fb7185" : "#52525b",
+          color: isBuy ? "#34d399" : isSell ? "#fb7185" : "#7dd3fc",
           textShadow: isBuy  ? "0 0 6px rgba(52,211,153,0.7)"
                     : isSell ? "0 0 6px rgba(251,113,133,0.7)"
                     : "none",
@@ -102,7 +102,7 @@ function PrintRow({ p, showDate = false }: { p: DarkPoolRow; showDate?: boolean 
       {/* Ticker */}
       <span
         className="font-anton text-[14px] leading-none flex-shrink-0"
-        style={{ color: isBuy ? "#6ee7b7" : isSell ? "#fda4af" : "#d4d4d8" }}
+        style={{ color: isBuy ? "#6ee7b7" : isSell ? "#fda4af" : "#f4f6fb" }}
       >
         {p.ticker}
       </span>
@@ -111,7 +111,7 @@ function PrintRow({ p, showDate = false }: { p: DarkPoolRow; showDate?: boolean 
       {p.share_size != null && p.share_size > 0 && (
         <span
           className="font-mono text-[12px] font-semibold flex-shrink-0"
-          style={{ color: isBuy ? "#6ee7b7" : isSell ? "#fda4af" : "#a1a1aa" }}
+          style={{ color: isBuy ? "#6ee7b7" : isSell ? "#fda4af" : "#7dd3fc" }}
         >
           {fmtShares(p.share_size)} shares
         </span>
@@ -122,7 +122,7 @@ function PrintRow({ p, showDate = false }: { p: DarkPoolRow; showDate?: boolean 
         className="font-mono font-bold tabular-nums ml-auto flex-shrink-0"
         style={{
           fontSize: "15px",
-          color: isBuy ? "#34d399" : isSell ? "#fb7185" : "#e4e4e7",
+          color: isBuy ? "#34d399" : isSell ? "#fb7185" : "#f4f6fb",
           textShadow: isBuy  ? "0 0 10px rgba(52,211,153,0.55)"
                     : isSell ? "0 0 10px rgba(251,113,133,0.55)"
                     : "none",
@@ -218,7 +218,7 @@ export function DarkPoolPanel() {
             className="font-mono text-[11px] font-bold uppercase px-3 py-1 rounded-lg border bg-zinc-950 outline-none w-28 tracking-widest transition-all"
             style={{
               borderColor: search ? "rgba(167,139,250,0.65)" : "rgba(167,139,250,0.22)",
-              color:       search ? "#c4b5fd" : "#52525b",
+              color:       search ? "#c4b5fd" : "#7dd3fc",
               boxShadow:   search ? "0 0 0 2px rgba(167,139,250,0.12)" : "none",
             }}
           />
@@ -230,6 +230,7 @@ export function DarkPoolPanel() {
                 exit={{ opacity: 0, scale: 0.8 }}
                 type="button"
                 onClick={() => setSearch("")}
+                aria-label="Close"
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-cyan-400 hover:text-sky-200 font-mono text-sm font-bold"
               >
                 ×

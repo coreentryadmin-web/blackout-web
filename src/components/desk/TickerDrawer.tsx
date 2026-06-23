@@ -169,6 +169,7 @@ export function TickerDrawer({
               <button
                 type="button"
                 onClick={onClose}
+                aria-label="Close"
                 className="w-8 h-8 flex items-center justify-center rounded-lg border border-zinc-800 text-cyan-400 hover:text-sky-100 hover:border-zinc-600 hover:bg-zinc-900 transition-all font-mono text-lg"
               >
                 ×

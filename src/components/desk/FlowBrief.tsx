@@ -137,7 +137,7 @@ export function FlowBrief() {
                 <span className="font-mono text-[9px] tracking-[0.35em] uppercase font-bold" style={{ color: "#e879f9", textShadow: "0 0 8px rgba(232,121,249,0.7)" }}>
                   AI BRIEF
                 </span>
-                <span className="font-mono text-[8px] tracking-[0.2em] uppercase" style={{ color: "#00e566", textShadow: "0 0 6px rgba(0,229,102,0.6)" }}>
+                <span className="font-mono text-[8px] tracking-[0.2em] uppercase" style={{ color: "#00e676", textShadow: "0 0 6px rgba(0,230,118,0.6)" }}>
                   · LIVE
                 </span>
               </>
@@ -176,7 +176,7 @@ export function FlowBrief() {
           </AnimatePresence>
 
           {loading && brief && (
-            <span className="flex-shrink-0 font-mono text-[9px] animate-pulse pt-0.5" style={{ color: "#00e566" }}>
+            <span className="flex-shrink-0 font-mono text-[9px] animate-pulse pt-0.5" style={{ color: "#00e676" }}>
               updating
             </span>
           )}
