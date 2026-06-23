@@ -1,211 +1,203 @@
-﻿"use client";
+"use client";
 
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { clsx } from "clsx";
 import type { CSSProperties } from "react";
-import { ProductMark, type MarkProduct } from "@/components/marks/ProductMark";
+import { ProductMark, MARK_ACCENT, type MarkProduct } from "@/components/marks/ProductMark";
+import { LandingBackdrop } from "@/components/landing/LandingBackdrop";
 
-const FEATURES: {
-  num: string;
-  title: string;
-  sub: string;
-  desc: string;
-  tier: string;
-  accent: string;
-  rotate: string;
-  topAccent: string;
-  badgeGlow: string;
-  /** Per-product sigil; null for cards with no single product (e.g. Pre-Market Brief). */
+type Weapon = {
+  /** null => Pre-Market (feature, no sigil). */
   mark: MarkProduct | null;
-}[] = [
+  accentKey: string;
+  accent: string;
+  name: string;
+  spec: string;
+  desc: string;
+  meta: string;
+  href: string;
+};
+
+const ARSENAL: Weapon[] = [
   {
-    num: "01",
-    title: "SPX LIVE",
-    sub: "Dashboard",
-    desc: "Live GEX, VWAP, regime shifts, and dealer gamma exposure — every 0DTE edge fused into one war room.",
-    tier: "Premium",
-    accent: "border-bull text-bull",
-    rotate: "-rotate-1",
-    topAccent: "green",
-    badgeGlow: "bull",
     mark: "spx",
+    accentKey: "green",
+    accent: MARK_ACCENT.spx,
+    name: "SPX Slayer",
+    spec: "0DTE · GEX · VWAP",
+    meta: "Instrument · 01",
+    href: "/dashboard",
+    desc: "The 0DTE command desk — live SPX with VWAP, gamma and internals, plus a graded play card that tells you the setup and the one thing that kills it.",
   },
   {
-    num: "02",
-    title: "HELIX",
-    sub: "Flow Feed",
-    desc: "Institutional block prints and dark pool sweeps in real time. Smart money leaves footprints — HELIX catches every one.",
-    tier: "Premium",
-    accent: "border-purple text-purple-light",
-    rotate: "rotate-1",
-    topAccent: "purple",
-    badgeGlow: "purple",
     mark: "helix",
+    accentKey: "purple",
+    accent: MARK_ACCENT.helix,
+    name: "HELIX",
+    spec: "Whale · Dark Pool",
+    meta: "Instrument · 02",
+    href: "/flows",
+    desc: "Real-time options flow that surfaces institutional footprints — repeated-hit strike stacks, sweeps versus blocks, where size is actually positioning.",
   },
   {
-    num: "03",
-    title: "SECTOR",
-    sub: "Heatmaps",
-    desc: "Live rotation heatmaps that show where the real bid is hiding before the crowd finds out.",
-    tier: "Premium",
-    accent: "border-ember text-ember",
-    rotate: "-rotate-2",
-    topAccent: "ember",
-    badgeGlow: "ember",
     mark: "heatmap",
+    accentKey: "orange",
+    accent: MARK_ACCENT.heatmap,
+    name: "Heatmaps",
+    spec: "Sector Rotation",
+    meta: "Instrument · 03",
+    href: "/heatmap",
+    desc: "The market at a glance — sector heatmaps, leaders and laggards, internals and market tide, so you know the regime before you take a single trade.",
   },
   {
-    num: "04",
-    title: "LARGO",
-    sub: "AI Desk",
-    desc: "Your personal trading desk intelligence. Ask anything — Largo reads the live tape, pulls flow, and thinks in structure.",
-    tier: "Premium",
-    accent: "border-purple text-purple-light",
-    rotate: "rotate-2",
-    topAccent: "blue",
-    badgeGlow: "purple",
     mark: "largo",
+    accentKey: "cyan",
+    accent: MARK_ACCENT.largo,
+    name: "Largo AI",
+    spec: "Desk Terminal",
+    meta: "Instrument · 04",
+    href: "/terminal",
+    desc: "Your AI desk analyst with full access to every tool's live data. Ask anything in plain English — it answers grounded in the tape and shows its work.",
   },
   {
-    num: "05",
-    title: "NIGHT",
-    sub: "Hawk",
-    desc: "Every night, Night Hawk hunts the close for 2–10 DTE setups — full dossier on every play, zero noise.",
-    tier: "Premium",
-    accent: "border-cyan text-cyan",
-    rotate: "-rotate-1",
-    topAccent: "cyan",
-    badgeGlow: "cyan",
     mark: "nighthawk",
+    accentKey: "red",
+    accent: MARK_ACCENT.nighthawk,
+    name: "Night Hawk",
+    spec: "Playbook · Hunt modes",
+    meta: "Instrument · 05",
+    href: "/nighthawk",
+    desc: "Your AI evening playbook — after the close it builds ranked swing and leap setups with a per-ticker dossier, so you walk in tomorrow with a plan.",
   },
   {
-    num: "06",
-    title: "PRE-MARKET",
-    sub: "Brief",
-    desc: "Before the bell rings, your AI desk reads overnight developments and serves a precise SPX battle plan. Know your levels before price moves.",
-    tier: "Premium",
-    accent: "border-bull text-bull",
-    rotate: "rotate-1",
-    topAccent: "yellow",
-    badgeGlow: "gold",
     mark: null,
+    accentKey: "yellow",
+    accent: "#ffd23f",
+    name: "Pre-Market Brief",
+    spec: "Before the bell",
+    meta: "Feature",
+    href: "/dashboard",
+    desc: "Before the open, your AI desk reads the overnight tape and serves a precise SPX battle plan — your levels, mapped, before price moves.",
   },
 ];
 
-const ACCENT_COLORS: Record<string, string> = {
-  green: "#00e676",
-  purple: "#bf5fff",
-  orange: "#ff6b2b",
-  ember: "#ff6b2b",
-  blue: "#3b82f6",
-  red: "#ff2d55",
-  cyan: "#00d4ff",
-  yellow: "#ffd23f",
-};
-
-const headingLines = ["EVERYTHING", "YOU NEED"];
-
-const cardVariants = {
-  hidden: { opacity: 0, y: 60 },
+const card = {
+  hidden: { opacity: 0, y: 48 },
   show: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: i * 0.1 },
-  }),
-};
-
-const lineVariants = {
-  hidden: { opacity: 0, x: -48 },
-  show: (i: number) => ({
-    opacity: 1,
-    x: 0,
-    transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: i * 0.2 },
+    transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] as const, delay: i * 0.08 },
   }),
 };
 
 export function FeaturesGrid() {
   return (
-    <section id="features" className="landing-section landing-section-cut relative py-32 px-4 md:px-8 overflow-hidden">
-      <div className="relative z-10 mb-16 md:mb-24">
-        <motion.p
-          initial={{ opacity: 0, x: -30 }}
-          whileInView={{ opacity: 1, x: 0 }}
-          viewport={{ once: true }}
-          className="font-mono text-[10px] tracking-[0.5em] text-bull uppercase mb-2"
-        >
-          ◆ Platform
-        </motion.p>
-        <h2 className="font-anton text-6xl md:text-8xl lg:text-9xl leading-none tracking-tight text-white mix-blend-difference">
-          {headingLines.map((line, i) => (
-            <motion.span
-              key={line}
-              custom={i}
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true, margin: "-80px" }}
-              variants={lineVariants}
-              className={clsx("block", i === 1 && "text-stroke-green")}
-            >
-              {line}
-            </motion.span>
-          ))}
-        </h2>
-      </div>
+    <section id="features" className="relative py-28 md:py-32 px-4 md:px-8 overflow-hidden">
+      <LandingBackdrop />
 
-      <div className="relative max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-5">
-          {FEATURES.map((f, i) => (
+      <div className="relative z-10 max-w-7xl mx-auto">
+        {/* header — mirrors Pricing/Faq */}
+        <motion.div
+          initial={{ opacity: 0, y: 26 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="mb-14 md:mb-20 text-center"
+        >
+          <p className="font-mono text-[10px] tracking-[0.5em] text-bull uppercase mb-3 flex items-center justify-center gap-2">
+            <span
+              aria-hidden
+              className="inline-block h-[6px] w-[6px] rounded-full bg-bull animate-pulse motion-reduce:animate-none"
+              style={{ boxShadow: "0 0 10px #00e676" }}
+            />
+            The Desk · 5 Instruments
+          </p>
+          <h2 className="font-anton text-5xl md:text-[4.5rem] leading-[0.92] tracking-tight text-white">
+            THE{" "}
+            <span
+              style={{
+                background: "linear-gradient(90deg,#00e676,#34d399 55%,#7dd3fc)",
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+                color: "transparent",
+              }}
+            >
+              ARSENAL.
+            </span>
+          </h2>
+          <p className="mt-5 text-[15px] leading-relaxed text-white/65 max-w-2xl mx-auto">
+            One membership. The whole desk — every instrument the floor runs on, in one screen.
+          </p>
+        </motion.div>
+
+        {/* grid — flat, no rotation, no mt offsets */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6 items-stretch">
+          {ARSENAL.map((w, i) => (
             <motion.div
-              key={f.num}
+              key={w.name}
               custom={i}
               initial="hidden"
               whileInView="show"
               whileHover={{ y: -6 }}
               viewport={{ once: true, margin: "-40px" }}
-              variants={cardVariants}
-              className={clsx(
-                "relative group",
-                i % 3 === 1 && "md:-mt-8 lg:-mt-12",
-                i % 3 === 2 && "md:mt-4"
-              )}
+              variants={card}
+              className="group"
             >
-              <div
-                className={clsx("bento-card-wrap", f.rotate, "transition-transform duration-500 group-hover:rotate-0")}
-                style={
-                  {
-                    "--card-accent-color": ACCENT_COLORS[f.topAccent] ?? ACCENT_COLORS.green,
-                  } as CSSProperties
-                }
+              <Link
+                href={w.href}
+                className={clsx("bento-card-wrap block h-full", `bento-accent-${w.accentKey}`)}
+                style={{ "--card-accent-color": w.accent } as CSSProperties}
               >
-                <div
-                  className={clsx(
-                    "bento-card-inner",
-                    `bento-accent-${f.topAccent}`,
-                    f.accent.split(" ")[1]
-                  )}
-                >
-                  <span className="bento-card-watermark" aria-hidden>
-                    {f.num}
-                  </span>
-                  {f.mark && (
-                    <span className="mb-3 block" aria-hidden>
-                      <ProductMark product={f.mark} size={42} />
+                <div className="bento-card-inner flex flex-col h-full">
+                  {/* top row: sigil + meta */}
+                  <div className="flex items-start justify-between">
+                    <span className="relative inline-flex" aria-hidden>
+                      <span
+                        className="absolute inset-0 -z-10 rounded-full blur-xl transition-opacity opacity-50 group-hover:opacity-90"
+                        style={{ background: `radial-gradient(closest-side, ${w.accent}, transparent)` }}
+                      />
+                      {w.mark ? (
+                        <ProductMark product={w.mark} size={48} />
+                      ) : (
+                        <span
+                          className="grid h-12 w-12 place-items-center font-anton text-2xl"
+                          style={{ color: w.accent }}
+                        >
+                          PM
+                        </span>
+                      )}
                     </span>
-                  )}
-                  <span className={clsx("font-mono text-sm font-bold opacity-40", f.accent.split(" ")[1])}>
-                    {f.num}
-                  </span>
-                  <h3 className="font-syne font-extrabold text-3xl md:text-4xl leading-none tracking-tight text-white mt-2">
-                    {f.title}
-                    <br />
-                    <span className={f.accent.split(" ")[1]}>{f.sub}</span>
+                    <span
+                      className="font-mono text-[10px] tracking-[0.25em] uppercase"
+                      style={{ color: w.accent }}
+                    >
+                      {w.meta}
+                    </span>
+                  </div>
+
+                  {/* name + spec */}
+                  <h3 className="font-syne font-extrabold text-3xl leading-none tracking-tight text-white mt-6">
+                    {w.name}
                   </h3>
-                  <p className="text-sky-300 text-xs md:text-sm mt-4 leading-relaxed">{f.desc}</p>
-                  <span className={clsx("tier-badge-pro mt-5 inline-block", `tier-badge-glow-${f.badgeGlow}`)}>
-                    {f.tier}
+                  <p
+                    className="font-mono text-[11px] tracking-[0.2em] uppercase mt-2"
+                    style={{ color: w.accent }}
+                  >
+                    {w.spec}
+                  </p>
+
+                  {/* benefit */}
+                  <p className="text-sky-300 text-[13.5px] leading-relaxed mt-4">{w.desc}</p>
+
+                  {/* open affordance — pinned bottom */}
+                  <span
+                    className="mt-auto pt-6 font-mono text-[11px] tracking-[0.2em] uppercase inline-flex items-center gap-1.5 transition-transform group-hover:translate-x-1"
+                    style={{ color: w.accent }}
+                  >
+                    Open <span aria-hidden>→</span>
                   </span>
                 </div>
-              </div>
+              </Link>
             </motion.div>
           ))}
         </div>

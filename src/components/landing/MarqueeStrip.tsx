@@ -8,18 +8,6 @@ const TICKER_A = [
   "WHALE DETECTED",
   "NIGHT HAWK",
   "LARGO ONLINE",
-  "93K+ SIGNALS",
-];
-
-const TICKER_B = [
-  "EXECUTE",
-  "DOMINATE",
-  "NO GUESSING",
-  "DEALER GAMMA",
-  "MAX PAIN",
-  "IV CRUSH",
-  "SWING PLAYS",
-  "BLACKOUT",
 ];
 
 type MarqueeStripProps = {
@@ -73,8 +61,6 @@ export function MarqueeBlock() {
   return (
     <div className="landing-section landing-section-cut relative z-30">
       <MarqueeStrip items={TICKER_A} direction="left" variant="green" />
-      <MarqueeStrip items={TICKER_A} direction="right" variant="green" dimmed small />
-      <MarqueeStrip items={TICKER_B} direction="right" variant="dark" dimmed />
     </div>
   );
 }

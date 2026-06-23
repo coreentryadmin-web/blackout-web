@@ -1,133 +1,201 @@
-﻿"use client";
+"use client";
 
-import { motion } from "framer-motion";
-import { clsx } from "clsx";
+import { useRef } from "react";
+import { motion, useMotionValue, useSpring, useReducedMotion } from "framer-motion";
 import { LandingCta } from "@/components/landing/LandingCta";
-import { HeroBanner } from "@/components/HeroBanner";
-import { HeroToolsRail } from "./HeroToolsRail";
+import { LandingBackdrop } from "@/components/landing/LandingBackdrop";
+import { ProductMark } from "@/components/marks/ProductMark";
 
-const STATS = [
-  { num: "93K+", label: "Flow Alerts", color: "text-bull" },
-  { num: "4", label: "AI Systems", color: "text-purple-light" },
-  { num: "0DTE", label: "SPX Precision", color: "text-cyan" },
-  { num: "24/7", label: "Night Hawk", color: "text-sky-100" },
-];
+const HEAD_A = "READ THE TAPE.".split(" ");
+const HEAD_B = "TRADE THE EDGE.".split(" ");
 
-const headlineWords = [
-  { text: "Trade.", className: "text-gradient-fire" },
-  { text: "Execute.", className: "text-white" },
-  { text: "Dominate.", className: "text-bear" },
-];
-
-const wordVariants = {
+const wordV = {
   hidden: { opacity: 0, y: 40 },
   show: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { type: "spring" as const, stiffness: 120, damping: 16, delay: 0.35 + i * 0.15 },
+    transition: { type: "spring" as const, stiffness: 120, damping: 16, delay: 0.2 + i * 0.12 },
   }),
 };
 
+// 4 orbit stations (deg around the ring) — radius via CSS clamp on the stage
+const ORBIT = [
+  { p: "helix" as const, deg: -90 },
+  { p: "heatmap" as const, deg: 0 },
+  { p: "nighthawk" as const, deg: 90 },
+  { p: "largo" as const, deg: 180 },
+];
+
+const GRAD = "linear-gradient(90deg,#00e676,#34d399 55%,#7dd3fc)";
+
+const CREDENTIALS = [
+  "Institutional-grade data",
+  "Real-time · tick-by-tick",
+  "Trade on your own broker",
+  "A terminal, not a Discord",
+];
+
 export function HeroSection() {
+  const reduced = useReducedMotion();
+  const stage = useRef<HTMLDivElement>(null);
+  const px = useSpring(useMotionValue(0), { stiffness: 120, damping: 18 });
+  const py = useSpring(useMotionValue(0), { stiffness: 120, damping: 18 });
+
+  const onMove = (e: React.MouseEvent) => {
+    if (reduced || !stage.current) return;
+    const r = stage.current.getBoundingClientRect();
+    px.set(((e.clientX - r.left) / r.width - 0.5) * 20); // ±10px
+    py.set(((e.clientY - r.top) / r.height - 0.5) * 20);
+  };
+  const reset = () => {
+    px.set(0);
+    py.set(0);
+  };
+
   return (
-    <section className="landing-section landing-section-hero relative min-h-screen flex flex-col overflow-hidden pt-20">
-      <HeroBanner />
-      <div className="hero-noise-overlay" aria-hidden />
+    <section className="landing-section landing-section-hero relative min-h-screen flex flex-col items-center justify-center overflow-hidden pt-28 pb-20 px-4">
+      <LandingBackdrop />
 
-      <div
-        className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden"
-        aria-hidden
-      >
-        <span className="font-anton text-[28vw] leading-none text-stroke-green opacity-40 tracking-tighter">
-          OUT
-        </span>
-      </div>
-      <div className="absolute top-[18%] left-[-5%] pointer-events-none select-none" aria-hidden>
-        <span className="font-display text-[18vw] leading-none text-white/5 tracking-[0.3em]">BLACK</span>
-      </div>
-
-      <div className="absolute top-32 right-4 md:right-12 z-20 hidden lg:flex flex-col gap-3">
-        {STATS.slice(0, 2).map((s, i) => (
-          <motion.div
-            key={s.label}
-            initial={{ opacity: 0, x: 40 }}
-            animate={{ opacity: 1, x: 0 }}
-            whileHover={{ scale: 1.05, rotate: 0 }}
-            transition={{ delay: 0.3 + i * 0.15 }}
-            className="bg-black/80 border border-bull/40 px-5 py-3 backdrop-blur-md -rotate-2 hover:rotate-0 transition-transform"
-          >
-            <p className={`font-display text-3xl ${s.color}`}>{s.num}</p>
-            <p className="font-mono text-[9px] tracking-[0.2em] text-sky-300 uppercase">{s.label}</p>
-          </motion.div>
-        ))}
-      </div>
-
-      <div className="absolute bottom-64 left-4 md:left-12 z-20 hidden lg:block">
-        <motion.div
-          initial={{ opacity: 0, x: -40 }}
-          animate={{ opacity: 1, x: 0 }}
-          whileHover={{ scale: 1.05, rotate: 0 }}
-          transition={{ delay: 0.5 }}
-          className="bg-black/80 border border-purple/40 px-5 py-3 backdrop-blur-md rotate-2"
+      <div className="relative z-10 w-full max-w-5xl mx-auto text-center flex flex-col items-center gap-7">
+        {/* KICKER */}
+        <motion.p
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="font-mono text-[10px] tracking-[0.4em] uppercase text-bull inline-flex items-center gap-2"
         >
-          <p className="font-display text-3xl text-purple-light">24/7</p>
-          <p className="font-mono text-[9px] tracking-[0.2em] text-sky-300 uppercase">Night Hawk</p>
-        </motion.div>
-      </div>
+          <span
+            aria-hidden
+            className="inline-block h-1.5 w-1.5 rounded-full bg-bull animate-pulse motion-reduce:animate-none"
+            style={{ boxShadow: "0 0 10px #00e676" }}
+          />
+          Institutional desk · 5 instruments
+        </motion.p>
 
-      <div className="relative z-10 mt-auto hero-bottom-stack">
-        <HeroToolsRail />
-
-        <div className="hero-cta-panel landing-overlap-panel scan-line">
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7 }}
-            className="text-center md:text-left max-w-3xl mx-auto md:mx-0"
-          >
-            <p className="font-mono text-[10px] tracking-[0.4em] text-bull uppercase mb-4">
-              ◆ BlackOut Trading Community ◆
-            </p>
-
-            <h1 className="font-syne font-extrabold text-4xl md:text-6xl lg:text-7xl leading-[0.95] tracking-tight mb-4">
-              {headlineWords.map((w, i) => (
-                <motion.span
-                  key={w.text}
-                  custom={i}
-                  initial="hidden"
-                  animate="show"
-                  variants={wordVariants}
-                  className={clsx("inline-block mr-[0.25em]", w.className)}
-                >
-                  {w.text}
-                </motion.span>
-              ))}
-            </h1>
-
-            <p className="text-sky-200 text-sm md:text-base leading-relaxed max-w-xl mx-auto md:mx-0 font-light">
-              Institutional-grade flow intelligence, a live 0DTE war room, and an AI desk that reads the
-              tape while you sleep — built for traders who don&apos;t guess.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-4 mt-8 justify-center md:justify-start">
-              <LandingCta href="/sign-up" className="btn-cta-primary">
-                Start Trading →
-              </LandingCta>
-              <LandingCta href="#features" variant="ghost">
-                See Platform
-              </LandingCta>
-            </div>
-          </motion.div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-12 lg:hidden">
-            {STATS.map((s) => (
-              <div key={s.label} className="border border-sky-900/40 p-3 text-center bg-black/50">
-                <p className={`font-display text-2xl ${s.color}`}>{s.num}</p>
-                <p className="font-mono text-[8px] tracking-widest text-cyan-400 uppercase">{s.label}</p>
-              </div>
+        {/* HEADLINE */}
+        <h1 className="font-anton text-5xl md:text-7xl lg:text-8xl leading-[0.9] tracking-tight">
+          <span className="block text-white">
+            {HEAD_A.map((w, i) => (
+              <motion.span
+                key={w}
+                custom={i}
+                initial="hidden"
+                animate="show"
+                variants={wordV}
+                className="inline-block mr-[0.25em]"
+              >
+                {w}
+              </motion.span>
             ))}
-          </div>
+          </span>
+          <span className="block">
+            {HEAD_B.map((w, i) => (
+              <motion.span
+                key={w}
+                custom={i + HEAD_A.length}
+                initial="hidden"
+                animate="show"
+                variants={wordV}
+                className="inline-block mr-[0.25em]"
+                style={{
+                  background: GRAD,
+                  WebkitBackgroundClip: "text",
+                  backgroundClip: "text",
+                  color: "transparent",
+                }}
+              >
+                {w}
+              </motion.span>
+            ))}
+          </span>
+        </h1>
+
+        {/* SUBHEAD */}
+        <motion.p
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="max-w-2xl text-white/70 text-base md:text-lg leading-relaxed font-light"
+        >
+          The institutional data spine — live options flow, dealer gamma, an SPX 0DTE command desk,
+          and an AI analyst — fused into one decision terminal. Not a Discord. Not a signal-seller.
+        </motion.p>
+
+        {/* CTAS */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="flex flex-col sm:flex-row gap-4 mt-1"
+        >
+          <LandingCta href="/sign-up" className="btn-cta-primary">
+            Start Trading →
+          </LandingCta>
+          <LandingCta href="#features" variant="ghost">
+            See the Arsenal
+          </LandingCta>
+        </motion.div>
+
+        {/* SIGIL CONSTELLATION */}
+        <div
+          ref={stage}
+          onMouseMove={onMove}
+          onMouseLeave={reset}
+          className="relative mt-6 grid place-items-center"
+          style={{ width: "clamp(300px,42vw,460px)", height: "clamp(300px,42vw,460px)" }}
+        >
+          {/* slow-rotating orbit ring */}
+          <span
+            aria-hidden
+            className="absolute rounded-full border border-dashed border-bull/20 motion-safe:animate-[spin_60s_linear_infinite]"
+            style={{ width: "82%", height: "82%" }}
+          />
+          <motion.div className="absolute inset-0" style={{ x: px, y: py }}>
+            {/* center SPX (large) */}
+            <motion.span
+              aria-hidden
+              initial={{ opacity: 0, scale: 0.7 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 120, damping: 16, delay: 0.45 }}
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+            >
+              <ProductMark product="spx" size={160} hero title="SPX Slayer" />
+            </motion.span>
+            {/* 4 orbit stations on glass chips */}
+            {ORBIT.map((o, i) => (
+              <motion.span
+                key={o.p}
+                aria-hidden
+                initial={{ opacity: 0, scale: 0.4 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ type: "spring", stiffness: 140, damping: 18, delay: 0.55 + i * 0.12 }}
+                className="absolute left-1/2 top-1/2 grid place-items-center rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-2.5"
+                style={{
+                  transform: `translate(-50%,-50%) translate(${
+                    Math.cos((o.deg * Math.PI) / 180) * 42
+                  }%, ${Math.sin((o.deg * Math.PI) / 180) * 42}%)`,
+                }}
+              >
+                <ProductMark product={o.p} size={64} hero />
+              </motion.span>
+            ))}
+          </motion.div>
         </div>
+
+        {/* CREDENTIAL ROW — honest, no numbers */}
+        <motion.ul
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.8 }}
+          className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 font-mono text-[11px] tracking-[0.15em] uppercase text-sky-300/80 mt-2"
+        >
+          {CREDENTIALS.map((c, i) => (
+            <li key={c} className="flex items-center gap-5">
+              {i > 0 && <span aria-hidden className="hidden sm:inline h-3 w-px bg-bull/30" />}
+              <span>{c}</span>
+            </li>
+          ))}
+        </motion.ul>
       </div>
     </section>
   );
