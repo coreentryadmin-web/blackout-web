@@ -14,7 +14,7 @@ export function SectorThermal({ data, live }: { data?: HeatmapData; live?: boole
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-2">
         {sectors.length === 0 ? (
           <p className="col-span-full text-cyan-400 text-sm font-mono py-6 text-center">
-            {live ? "Loading sector data…" : "Connect engine for live sectors"}
+            {live ? "Acquiring sector rotation…" : "Feed offline — sectors go live at the bell"}
           </p>
         ) : (
           sectors.map((s) => <ThermalCell key={s.name} name={s.name} change={s.change_pct} />)
@@ -31,7 +31,7 @@ export function MoversTape({ data, live }: { data?: HeatmapData; live?: boolean 
     <DeskPanel title="Top Movers" subtitle="Polygon stocks" variant="neutral" live={live}>
       <div className="space-y-1 max-h-[400px] overflow-y-auto">
         {movers.length === 0 ? (
-          <p className="text-cyan-400 text-sm font-mono py-6 text-center">No movers yet</p>
+          <p className="text-cyan-400 text-sm font-mono py-6 text-center">No movers on the board yet</p>
         ) : (
           movers.map((m) => (
             <div key={m.ticker} className="desk-mover-row">

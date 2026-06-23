@@ -15,9 +15,9 @@ const PLANS: Record<
   monthly: {
     price: "$111",
     per: "/ month",
-    note: "Billed monthly · cancel anytime",
+    note: "Billed monthly · stand down anytime",
     save: null,
-    badge: "Flexible",
+    badge: "Standing",
     href: WHOP_CHECKOUT.monthly,
   },
   yearly: {
@@ -25,15 +25,15 @@ const PLANS: Record<
     per: "/ year",
     note: "≈ $93/mo · billed yearly",
     save: "Save $221 vs monthly",
-    badge: "Most popular",
+    badge: "Standard issue",
     href: WHOP_CHECKOUT.yearly,
   },
   lifetime: {
     price: "$2,222",
     per: "once",
-    note: "Pay once · yours forever",
-    save: "Never pay again",
-    badge: "All-in",
+    note: "One payment · permanent access",
+    save: "No renewals",
+    badge: "Permanent",
     href: WHOP_CHECKOUT.lifetime,
   },
 };
@@ -45,22 +45,22 @@ const TERMS: { key: Term; label: string; tag?: string }[] = [
 ];
 
 const PREMIUM_FEATURES = [
-  "Live HELIX options-flow feed",
-  "SPX Sniper 0DTE command desk",
+  "HELIX live options-flow feed",
+  "SPX Slayer · 0DTE command desk",
   "Largo AI desk analyst",
   "Dealer gamma / GEX positioning",
-  "Dark-pool activity",
+  "Dark-pool prints",
   "Night Hawk evening playbook",
-  "Full strike-level heatmaps",
-  "Verified track record",
+  "Strike-level heatmaps",
+  "Transparent play log, graded A–F",
 ];
 
 const FREE_FEATURES: { text: string; on: boolean }[] = [
   { text: "Community access & updates", on: true },
   { text: "Create your account", on: true },
   { text: "Ticker search", on: true },
-  { text: "Live HELIX feed", on: false },
-  { text: "SPX Sniper desk", on: false },
+  { text: "HELIX live flow feed", on: false },
+  { text: "SPX Slayer desk", on: false },
   { text: "Largo AI & Night Hawk", on: false },
 ];
 
@@ -105,8 +105,7 @@ export function PricingSection() {
             </span>
           </h2>
           <p className="mt-5 text-[15px] leading-relaxed text-white/65 max-w-2xl mx-auto">
-            One membership unlocks the entire arsenal — the SPX Sniper desk, HELIX flow, Largo AI,
-            dealer positioning, dark pool, and Night Hawk. No tiers, nothing held back.
+            One membership. Every instrument on the desk. No tiers, no add-ons.
           </p>
         </motion.div>
 
@@ -177,7 +176,7 @@ export function PricingSection() {
               <span className="font-mono text-[11px] text-white/45 uppercase tracking-widest mb-1.5">forever</span>
             </div>
             <p className="mt-4 text-[13px] text-white/55 leading-relaxed">
-              A look inside — create an account and explore the floor before you go live.
+              Step onto the floor — open an account and walk the desk before you go live.
             </p>
             <ul className="flex flex-col gap-3 my-8 flex-1">
               {FREE_FEATURES.map((f) => (
@@ -199,7 +198,7 @@ export function PricingSection() {
               ))}
             </ul>
             <LandingCta href="/sign-up" variant="outline" className="w-full text-center">
-              Create free account
+              Open free account →
             </LandingCta>
           </motion.div>
 
@@ -267,7 +266,7 @@ export function PricingSection() {
               </motion.div>
             </AnimatePresence>
 
-            <p className="mt-4 text-[13px] text-bull/90 font-semibold">Institutional intelligence — retail access.</p>
+            <p className="mt-4 text-[13px] text-bull/90 font-semibold">Every instrument. One flat price. No tiers.</p>
 
             <ul className="grid grid-cols-1 gap-2.5 my-7 flex-1">
               {PREMIUM_FEATURES.map((f) => (
@@ -288,10 +287,10 @@ export function PricingSection() {
               external={ctaExternal}
               className="w-full text-center !px-0"
             >
-              {hasCheckout ? "Unlock Premium →" : "Create account first →"}
+              {hasCheckout ? "Unlock Premium →" : "Open account first →"}
             </LandingCta>
             <p className="mt-4 text-center font-mono text-[10px] tracking-[0.12em] text-white/45 uppercase">
-              Secure checkout · Whop · cancel anytime
+              Secure checkout · Whop · stand down anytime
             </p>
           </motion.div>
         </div>
@@ -304,9 +303,8 @@ export function PricingSection() {
           className="mt-10 text-center text-sm md:text-[15px] leading-relaxed font-medium text-white/85"
           style={{ textShadow: "0 2px 14px rgba(0,0,0,0.7)" }}
         >
-          Sign up on BlackOut, then unlock on Whop with the same email — instant access, nothing held
-          back.{" "}
-          <span className="text-bull font-bold">Stop trading blind.</span>
+          Sign up on BlackOut, then unlock on Whop with the same email — same login, instant access.{" "}
+          <span className="text-bull font-bold">Educational tools, not financial advice. Every trade is your own decision.</span>
         </motion.p>
         <p
           className="mt-3 text-center text-[13px] md:text-sm font-medium text-white/75"

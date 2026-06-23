@@ -21,7 +21,7 @@ const PLATFORM = [
   { label: "FAQ", href: "/#faq" },
   { label: "Upgrade", href: "/upgrade" },
   { label: "Sign in", href: "/sign-in" },
-  { label: "Join the desk", href: "/sign-up" },
+  { label: "Deploy", href: "/sign-up" },
 ];
 
 const colReveal = {
@@ -137,7 +137,7 @@ export function LandingFooter() {
               STOP TRADING <span className="auth-grad">BLIND.</span>
             </h2>
             <p className="mt-3 max-w-md text-sm leading-relaxed text-white/65">
-              The institutional edge — flow, dealer positioning, dark pool and an AI desk analyst — in one screen.
+              The whole desk in one command surface — flow, dealer positioning, dark-pool prints and an AI analyst, live.
             </p>
           </div>
           <div className="flex items-center gap-4">
@@ -145,7 +145,7 @@ export function LandingFooter() {
               Sign In
             </Link>
             <Link href="/sign-up" className="nav-join font-syne">
-              Join the desk →
+              Deploy →
             </Link>
           </div>
         </motion.div>

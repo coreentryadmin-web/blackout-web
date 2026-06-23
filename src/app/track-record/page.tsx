@@ -10,20 +10,20 @@ export async function generateMetadata(): Promise<Metadata> {
   const r = await buildPublicTrackRecord();
   const headline = r.available
     ? `${r.win_rate_pct}% win rate across ${r.total_closed} verified SPX plays`
-    : `${SITE.name} — SPX Sniper track record`;
+    : `${SITE.name} — SPX Slayer track record`;
   return {
     title: `Track Record — ${SITE.name}`,
     description: headline,
     alternates: { canonical: `${SITE.url}/track-record` },
     openGraph: {
-      title: `${SITE.name} — SPX Sniper Track Record`,
+      title: `${SITE.name} — SPX Slayer Track Record`,
       description: headline,
       url: `${SITE.url}/track-record`,
       siteName: SITE.name,
     },
     twitter: {
       card: "summary_large_image",
-      title: `${SITE.name} — SPX Sniper Track Record`,
+      title: `${SITE.name} — SPX Slayer Track Record`,
       description: headline,
     },
   };

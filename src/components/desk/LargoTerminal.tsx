@@ -11,14 +11,14 @@ import { LargoMessageBody } from "./LargoMessageBody";
 
 type Message = { id: string; role: "user" | "assistant"; content: string; tools?: string[] };
 
-const INPUT_PLACEHOLDER = "summon the neural oracle ...";
-const INPUT_PLACEHOLDER_BUSY = "neural link processing ...";
+const INPUT_PLACEHOLDER = "Ask the desk — SPX levels, a ticker, flow, news ...";
+const INPUT_PLACEHOLDER_BUSY = "Pulling live data ...";
 
 const WELCOME: Message = {
   id: "welcome",
   role: "assistant",
   content:
-    "Largo online — neural link established. Ask anything specific: SPX levels, a ticker, flow, news. I'll pull live data and remember our thread.",
+    "Largo online. Ask anything specific — SPX levels, a ticker, flow, news. I pull live data on every question and keep the thread.",
 };
 
 export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
@@ -96,10 +96,10 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
     } catch (err) {
       const raw = err instanceof Error ? err.message : "";
       let content =
-        "Link interrupted — couldn't pull live data. Hit me again with your question.";
-      if (raw.includes("401")) content = "Sign in with Premium to access Largo neural link.";
-      else if (raw.includes("403")) content = "Largo requires a Premium subscription.";
-      else if (raw.includes("503")) content = "Largo intelligence offline — the desk will reconnect shortly.";
+        "Connection interrupted — couldn't reach live data. Send your question again.";
+      if (raw.includes("401")) content = "Sign in with Premium to reach Largo.";
+      else if (raw.includes("403")) content = "Largo is a Premium instrument. Unlock Premium to deploy it.";
+      else if (raw.includes("503")) content = "Largo offline — the desk will reconnect shortly.";
       setMessages((m) =>
         m.map((msg) => (msg.id === assistantId ? { ...msg, content } : msg))
       );
@@ -112,7 +112,7 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
   return (
     <DeskPanel
       title="Largo Terminal"
-      subtitle="Neural desk · live market intelligence"
+      subtitle="Your AI desk officer · grounded in live data"
       variant="purple"
       glow
       bare={fullPage}
@@ -225,10 +225,10 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
             {loading ? (
               <span className="largo-send-pulse">
                 <span className="largo-send-dot" />
-                SYNC
+                WORKING
               </span>
             ) : (
-              "EXECUTE"
+              "DEPLOY"
             )}
           </button>
         </form>

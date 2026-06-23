@@ -25,8 +25,8 @@ export function AgentSidebar({ activeMode, onSelect }: AgentSidebarProps) {
   return (
     <aside className="nighthawk-agent-sidebar">
       <header className="nighthawk-agent-sidebar-header">
-        <p className="nighthawk-agent-kicker">Hunt modes</p>
-        <h2 className="nighthawk-agent-title">Power up an agent</h2>
+        <p className="nighthawk-agent-kicker">◆ HUNT MODES</p>
+        <h2 className="nighthawk-agent-title">Arm an agent</h2>
         <p className="nighthawk-agent-sub">
           Flow, technicals, and contract logic tuned to your horizon.
         </p>
@@ -49,7 +49,7 @@ export function AgentSidebar({ activeMode, onSelect }: AgentSidebarProps) {
                 {MODE_ICON[agent.mode]}
               </span>
               <span className="nighthawk-agent-card-power">
-                {agent.mode === "day" ? "Launch" : "Power"}
+                {agent.mode === "day" ? "Deploy" : "Arm"}
               </span>
             </div>
             <p className="nighthawk-agent-card-name">{agent.title}</p>

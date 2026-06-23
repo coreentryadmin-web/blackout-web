@@ -3,7 +3,7 @@ export const SITE = {
   legalName: "BlackOut Trading",
   domain: "blackouttrades.com",
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://blackouttrades.com",
-  tagline: "Trade. Execute. Dominate.",
+  tagline: "See the structure. Make the call.",
   description:
-    "Institutional-grade options flow, AI market intelligence, live SPX analysis, and Night Hawk swing scanner.",
+    "Institutional-grade options flow, dealer positioning, live SPX structure, and the Night Hawk swing scanner — one command surface for the floor.",
 } as const;

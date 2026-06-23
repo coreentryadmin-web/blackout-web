@@ -21,7 +21,7 @@ export function DashboardEmbeds() {
       </div>
       <TradingViewWidget
         type="market-overview"
-        title="Indices & Mag 7"
+        title="Index & Mag 7 Recon"
         height={340}
       />
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">

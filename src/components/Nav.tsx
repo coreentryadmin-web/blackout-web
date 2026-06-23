@@ -15,13 +15,13 @@ type FeatureLink = { href: string; label: string; sub: string; accent: Accent };
 const FEATURE_LINKS: FeatureLink[] = [
   { href: "/dashboard", label: "SPX Slayer", sub: "The 0DTE war room", accent: "green" },
   { href: "/flows", label: "HELIX", sub: "Follow the smart money", accent: "purple" },
-  { href: "/heatmap", label: "Heatmaps", sub: "Where the bid hides", accent: "orange" },
-  { href: "/terminal", label: "Largo AI", sub: "Ask the desk anything", accent: "blue" },
+  { href: "/heatmap", label: "Heatmaps", sub: "Read the regime at a glance", accent: "orange" },
+  { href: "/terminal", label: "Largo AI", sub: "The desk officer on call", accent: "blue" },
   { href: "/nighthawk", label: "Night Hawk", sub: "Tomorrow's plan, tonight", accent: "red" },
 ];
 
 const TOP_LINKS = [
-  { hash: "faq", label: "FAQ's" },
+  { hash: "faq", label: "FAQ" },
   { hash: "pricing", label: "Pricing" },
 ] as const;
 
@@ -289,7 +289,7 @@ export function Nav() {
               Sign In
             </Link>
             <Link href="/sign-up" className="nav-join font-syne glitch-hover">
-              Join →
+              Deploy →
             </Link>
           </SignedOut>
           <SignedIn>
@@ -355,7 +355,7 @@ export function Nav() {
                     Sign In
                   </Link>
                   <Link href="/sign-up" className="nav-join font-syne w-full justify-center" onClick={() => setMobileOpen(false)}>
-                    Join →
+                    Deploy →
                   </Link>
                 </SignedOut>
                 <SignedIn>

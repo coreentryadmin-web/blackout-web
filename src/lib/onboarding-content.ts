@@ -35,15 +35,15 @@ export const ONBOARDING_OPEN_EVENT = "blackout:open-onboarding";
 export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
   {
     id: "welcome",
-    kicker: "◆ Start Here",
-    title: "Welcome to BlackOut",
-    body: "BlackOut is a market-intelligence platform, not a broker. We surface institutional flow, dealer positioning, and live structure so you are never trading blind. You place every trade on your own broker. Nothing here is financial advice — it is education and pattern recognition.",
+    kicker: "◆ Briefing",
+    title: "Step onto the floor",
+    body: "BlackOut is a market-intelligence desk, not a broker. We surface institutional flow, dealer positioning, and live structure so you are never flying blind on the setup. You place every trade on your own broker. Nothing here is financial advice — it is education and pattern recognition.",
   },
   {
     id: "spx",
-    kicker: "◆ 0DTE War Room",
+    kicker: "◆ 0DTE Command Desk",
     title: "SPX Slayer",
-    body: "Live 0DTE SPX desk: GEX walls, VWAP, regime detection, and dealer positioning. Watch the levels; wait for the setup; the desk tells you when structure aligns before price moves.",
+    body: "Live 0DTE SPX desk: GEX walls, VWAP, regime detection, and dealer positioning. Watch the levels; wait for the setup; the desk surfaces structure as it aligns — before price moves.",
     href: "/dashboard",
     cta: "Open SPX Slayer",
   },
@@ -83,7 +83,7 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
     id: "finish",
     kicker: "◆ You’re Set",
     title: "Trade With Structure",
-    body: "That is the arsenal. Start with SPX Slayer or ask Largo a question. You can reopen this guide any time from the Learn button in the top nav.",
+    body: "That is the arsenal. Open SPX Slayer or put a ticker to Largo. Reopen this briefing any time from the Learn button in the top nav.",
   },
 ];
 

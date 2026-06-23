@@ -49,7 +49,7 @@ export function PlanLadder() {
               href={option.href}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label={`Choose ${option.label}`}
+              aria-label={`Unlock Premium — ${option.label}`}
               className={
                 "mt-6 inline-flex w-full items-center justify-center rounded-xl py-3 font-syne text-xs font-extrabold uppercase tracking-[0.2em] transition-all duration-200 " +
                 (vp.featured
@@ -57,7 +57,7 @@ export function PlanLadder() {
                   : "border-2 border-white/15 text-sky-100 hover:border-bull hover:bg-bull/5 hover:text-bull")
               }
             >
-              Choose →
+              Unlock Premium →
             </a>
           </div>
         );

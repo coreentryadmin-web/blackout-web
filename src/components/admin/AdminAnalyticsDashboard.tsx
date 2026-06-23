@@ -17,7 +17,7 @@ const TABS: Array<{ id: ToolTab; label: string; icon: string; blurb: string }> =
   { id: "ops",       label: "Operations",  icon: "◉", blurb: "Incidents · audit trail · system vitals" },
   { id: "apis",      label: "API Command", icon: "⬡", blurb: "Live ops · incidents · 265 endpoints" },
   { id: "crons",     label: "Crons",       icon: "⏱", blurb: "Job health · schedules · last run" },
-  { id: "spx",       label: "SPX Sniper",  icon: "◎", blurb: "Live engine · outcomes · desk" },
+  { id: "spx",       label: "SPX Slayer",  icon: "◎", blurb: "Live engine · outcomes · desk" },
   { id: "nighthawk", label: "Night Hawk",  icon: "◈", blurb: "Target-hit · signal quality" },
 ];
 

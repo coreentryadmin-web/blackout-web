@@ -36,7 +36,7 @@ export function LiveFlowTape({ alerts, className }: LiveFlowTapeProps) {
 
   return (
     <EmbedFrame
-      title="Institutional Tape"
+      title="Live Flow Tape"
       subtitle="Real-time prints"
       variant="flow"
       className={className}

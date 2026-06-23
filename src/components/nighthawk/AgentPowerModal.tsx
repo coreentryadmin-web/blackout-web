@@ -49,7 +49,7 @@ export function AgentPowerModal({ mode, onClose }: AgentPowerModalProps) {
       setResult(res);
       setStep("results");
     } catch {
-      setError("Agent failed to arm. Try again.");
+      setError("Agent failed to arm. Re-arm to retry.");
       setStep("filters");
     }
   }
@@ -109,7 +109,7 @@ export function AgentPowerModal({ mode, onClose }: AgentPowerModalProps) {
                 {error && <p className="nighthawk-modal-error">{error}</p>}
                 <div className="nighthawk-modal-actions">
                   <button type="button" className="nighthawk-btn-ghost" onClick={onClose}>
-                    Cancel
+                    Stand down
                   </button>
                   <button type="button" className="nighthawk-btn-power" onClick={handlePowerUp}>
                     {config.powerLabel}
@@ -121,9 +121,9 @@ export function AgentPowerModal({ mode, onClose }: AgentPowerModalProps) {
             {step === "powering" && (
               <div className="nighthawk-modal-body nighthawk-modal-powering">
                 <div className="nighthawk-power-ring" aria-hidden />
-                <p className="nighthawk-power-title">Agent powering up…</p>
+                <p className="nighthawk-power-title">Agent arming…</p>
                 <p className="nighthawk-power-copy">
-                  Loading dossiers · scoring universe · applying {config.title.toLowerCase()} rules
+                  Building dossiers · scoring the universe · applying {config.title.toLowerCase()} rules
                 </p>
               </div>
             )}
@@ -155,7 +155,7 @@ export function AgentPowerModal({ mode, onClose }: AgentPowerModalProps) {
                     Adjust filters
                   </button>
                   <button type="button" className="nighthawk-btn-power" onClick={onClose}>
-                    Done
+                    Dismiss
                   </button>
                 </div>
               </div>

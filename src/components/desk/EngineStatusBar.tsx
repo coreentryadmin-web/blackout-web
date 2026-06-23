@@ -27,7 +27,7 @@ export function EngineStatusBar() {
         <span className="font-mono text-[10px] text-cyan-400 hidden sm:inline">
           {marketOn
             ? `${polygon ? "Polygon" : ""}${polygon && uw ? " · " : ""}${uw ? "UW" : ""} live`
-            : "Add API keys on Railway (server-side)"}
+            : "Market feed offline — reconnecting"}
         </span>
         {intelOn && (
           <span className="font-mono text-[9px] tracking-widest uppercase text-bull/80 border border-bull/30 px-2 py-0.5">

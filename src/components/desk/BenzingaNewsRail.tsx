@@ -68,7 +68,7 @@ export function BenzingaNewsRail() {
       <div className="news-rail-viewport">
         {!live ? (
           <p className="font-mono text-[10px] text-cyan-400 p-4 text-center">
-            {data ? "News standby" : "Loading headlines…"}
+            {data ? "Wire quiet — no fresh headlines" : "Acquiring headlines…"}
           </p>
         ) : (
           <div className="news-rail-track">

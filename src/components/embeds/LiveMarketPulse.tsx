@@ -34,7 +34,7 @@ export function LiveMarketPulse({ compact, className }: LiveMarketPulseProps) {
   return (
     <EmbedFrame
       title="Market Pulse"
-      subtitle={live ? "SPX Sniper Desk" : "Standby"}
+      subtitle={live ? "SPX Slayer Desk" : "Standby"}
       variant="pulse"
       className={className}
       live={live}

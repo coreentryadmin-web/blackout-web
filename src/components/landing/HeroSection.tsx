@@ -29,10 +29,10 @@ const ORBIT = [
 const GRAD = "linear-gradient(90deg,#00e676,#34d399 55%,#7dd3fc)";
 
 const CREDENTIALS = [
-  "Institutional-grade data",
-  "Real-time · tick-by-tick",
-  "Trade on your own broker",
-  "A terminal, not a Discord",
+  "Professional-grade feeds",
+  "Live · the moment it prints",
+  "Your broker, your trigger",
+  "Decision surface, not a chat room",
 ];
 
 export function HeroSection() {
@@ -118,7 +118,7 @@ export function HeroSection() {
           className="max-w-2xl text-white/70 text-base md:text-lg leading-relaxed font-light"
         >
           The institutional data spine — live options flow, dealer gamma, an SPX 0DTE command desk,
-          and an AI analyst — fused into one decision terminal. Not a Discord. Not a signal-seller.
+          and an AI analyst — fused into one decision terminal. No chatroom. No signal-seller.
         </motion.p>
 
         {/* CTAS */}
@@ -129,10 +129,10 @@ export function HeroSection() {
           className="flex flex-col sm:flex-row gap-4 mt-1"
         >
           <LandingCta href="/sign-up" className="btn-cta-primary">
-            Start Trading →
+            Deploy →
           </LandingCta>
           <LandingCta href="#features" variant="ghost">
-            See the Arsenal
+            Tour the desk
           </LandingCta>
         </motion.div>
 

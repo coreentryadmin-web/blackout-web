@@ -30,7 +30,7 @@ export function FlowsEmbeds({ alerts }: FlowsEmbedsProps) {
           height={280}
         />
       </div>
-      <TradingViewWidget type="hotlists" title="US Hot Lists" height={420} />
+      <TradingViewWidget type="hotlists" title="US Movers" height={420} />
     </div>
   );
 }

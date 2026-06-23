@@ -12,21 +12,21 @@ const GRAD = "linear-gradient(90deg,#00e676,#34d399 55%,#7dd3fc)";
 const STEPS = [
   {
     n: "01",
-    title: "Read the tape",
+    title: "Recon the floor",
     accent: "#00e676",
     mark: "spx" as const,
-    desc: "Live SPX, options flow, dealer gamma and dark-pool prints — the whole desk on one screen, the moment the market moves.",
+    desc: "Live SPX, options flow, dealer gamma and dark-pool prints — the whole floor on one surface, the moment the market moves.",
   },
   {
     n: "02",
-    title: "Get the graded setup",
+    title: "Grade the setup",
     accent: "#22d3ee",
     mark: "largo" as const,
-    desc: "A graded play card and Largo's read tell you the setup, the strike, and the one thing that kills the trade.",
+    desc: "A graded read and Largo's call surface the setup, the strike, and the invalidation level.",
   },
   {
     n: "03",
-    title: "Trade your own broker",
+    title: "Execute on your broker",
     accent: "#bf5fff",
     mark: null,
     desc: "We surface the structure before price moves. You pull the trigger wherever you already trade — no broker to connect.",
@@ -35,7 +35,7 @@ const STEPS = [
 
 const PILLARS = [
   {
-    claim: "Institutional data spine",
+    claim: "Professional-grade feeds",
     proof: "The same caliber of feeds professional desks pay a premium for.",
     c: "#00e676",
   },
@@ -45,13 +45,13 @@ const PILLARS = [
     c: "#22d3ee",
   },
   {
-    claim: "Trade your own broker",
-    proof: "A pure intelligence layer — you execute wherever you already are.",
+    claim: "A pure intelligence layer",
+    proof: "No order routing, no broker to connect — the intel, then your trigger.",
     c: "#bf5fff",
   },
   {
-    claim: "A terminal, not a Discord",
-    proof: "A decision surface, not a signal-seller or a chat room.",
+    claim: "Built for the operator",
+    proof: "A command surface for one decision-maker — no feeds, no followers, no noise.",
     c: "#ff6b2b",
   },
 ];
@@ -66,7 +66,7 @@ export function EdgeSection() {
           ◆ How it works
         </p>
         <h2 className="font-anton text-5xl md:text-7xl leading-none tracking-tight text-white">
-          READ. GRADE.{" "}
+          RECON. GRADE.{" "}
           <span
             style={{
               background: GRAD,

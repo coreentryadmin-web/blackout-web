@@ -26,7 +26,7 @@ export const AGENT_MODES: AgentModeConfig[] = [
     title: "Day Trade",
     tagline: "0–1 DTE · intraday structure",
     accent: "gold",
-    powerLabel: "Power Up Day Hawk",
+    powerLabel: "Arm Day Hawk",
     description:
       "Full intraday command surface — live flow dossiers, validated 0DTE chains, and SPX desk alignment in one agentic scan.",
     filters: [
@@ -84,7 +84,7 @@ export const AGENT_MODES: AgentModeConfig[] = [
     title: "Swing",
     tagline: "2–10 DTE · multi-day hold",
     accent: "bear",
-    powerLabel: "Power Up Swing Hawk",
+    powerLabel: "Arm Swing Hawk",
     description:
       "Finds 2–10 DTE swings with flow streak, technical alignment, and affordable entry premiums.",
     filters: [
@@ -171,7 +171,7 @@ export const AGENT_MODES: AgentModeConfig[] = [
     title: "Leap",
     tagline: "30+ DTE · institutional runway",
     accent: "purple",
-    powerLabel: "Power Up Leap Hawk",
+    powerLabel: "Arm Leap Hawk",
     description:
       "Surfaces LEAP accumulation with catalyst runway, OI build, and macro/sector tailwinds.",
     filters: [

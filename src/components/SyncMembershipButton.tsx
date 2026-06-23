@@ -19,11 +19,11 @@ export function SyncMembershipButton() {
       const data = await res.json();
 
       if (!res.ok) {
-        setMessage(data.error ?? "Sync failed. Try again in a moment.");
+        setMessage(data.error ?? "Sync failed. Stand by and re-arm in a moment.");
         return;
       }
 
-      setMessage(`Access updated: ${String(data.tier).toUpperCase()}`);
+      setMessage(`Access granted — ${String(data.tier).toUpperCase()}. Floor is open.`);
       await session?.reload();
       router.refresh();
     } catch {
@@ -36,17 +36,17 @@ export function SyncMembershipButton() {
   return (
     <div className="flex flex-col items-center gap-3">
       <button type="button" onClick={handleSync} disabled={loading} className="btn-outline-bull">
-        {loading ? "Syncing..." : "I paid — refresh my access"}
+        {loading ? "Syncing…" : "I paid — refresh my access"}
       </button>
       {message && (
         <p
           role="status"
           aria-live="polite"
           className={`font-mono text-xs text-center ${
-            message.startsWith("Access updated") ? "text-bull" : "text-bear"
+            message.startsWith("Access granted") ? "text-bull" : "text-bear"
           }`}
         >
-          {message.startsWith("Access updated") ? `✓ ${message}` : message}
+          {message.startsWith("Access granted") ? `✓ ${message}` : message}
         </p>
       )}
     </div>

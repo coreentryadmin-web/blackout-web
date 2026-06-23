@@ -36,7 +36,7 @@ const CONFIG: Record<
   dashboard: {
     ambient: "platform-ambient-dashboard",
     frame: "platform-frame-dashboard",
-    label: "◆ SPX SNIPER OPS",
+    label: "◆ SPX SLAYER OPS",
     titleClass: "text-white platform-title-glow-green",
     heroArt: "platform-hero-dashboard",
     badgeClass: "badge-live",

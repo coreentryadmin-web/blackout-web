@@ -58,7 +58,7 @@ const ARSENAL: Weapon[] = [
     spec: "Desk Terminal",
     meta: "Instrument · 04",
     href: "/terminal",
-    desc: "Your AI desk analyst with full access to every tool's live data. Ask anything in plain English — it answers grounded in the tape and shows its work.",
+    desc: "Your AI desk analyst with full access to every tool's live data. Ask anything in plain English — it answers grounded in live data and shows its work.",
   },
   {
     mark: "nighthawk",
@@ -78,7 +78,7 @@ const ARSENAL: Weapon[] = [
     spec: "Before the bell",
     meta: "Feature",
     href: "/dashboard",
-    desc: "Before the open, your AI desk reads the overnight tape and serves a precise SPX battle plan — your levels, mapped, before price moves.",
+    desc: "Before the open, your AI desk reads the overnight session and maps a precise SPX plan — your levels, set before price moves.",
   },
 ];
 

@@ -30,11 +30,11 @@ export function FlowVolumeChart({ alerts }: FlowVolumeChartProps) {
   }, [alerts]);
 
   return (
-    <EmbedFrame title="Premium by Ticker" subtitle="Last 50 alerts" variant="flow">
+    <EmbedFrame title="Premium by Ticker" subtitle="Last 50 prints" variant="flow">
       {data.length === 0 ? (
         <div className="h-[220px] flex items-center justify-center">
           <p className="font-mono text-xs text-purple-light/70 animate-pulse">
-            Waiting for whale prints…
+            Standby — tape quiet…
           </p>
         </div>
       ) : (

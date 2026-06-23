@@ -150,7 +150,7 @@ export function TradingViewWidget({
   const src = useMemo(() => buildWidgetSrc(type, symbol), [type, symbol]);
 
   return (
-    <EmbedFrame title={title ?? "Live Market Feed"} variant="tv" className={className}>
+    <EmbedFrame title={title ?? "Live Feed"} variant="tv" className={className}>
       <iframe
         src={src}
         title={title ?? "TradingView widget"}

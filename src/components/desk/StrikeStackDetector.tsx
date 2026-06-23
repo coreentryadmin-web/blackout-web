@@ -49,7 +49,7 @@ export function StrikeStackDetector({
               exit={{ opacity: 0 }}
               className="py-4 text-center"
             >
-              <p className="font-mono text-[10px] text-cyan-400">Watching for accumulation…</p>
+              <p className="font-mono text-[10px] text-cyan-400">Tracking strike accumulation…</p>
             </motion.div>
           ) : (
             <div className="space-y-2">

@@ -85,7 +85,7 @@ export function SpxDarkPoolCard({ desk, live }: DeskProps) {
   return (
     <Panel title="Dark Pool" subtitle="SPX · institutional prints" accent="spx-panel-amber">
       {!live || !prints.length ? (
-        <p className="font-mono text-[11px] text-cyan-400 py-2">{dp?.detail ?? "No prints"}</p>
+        <p className="font-mono text-[11px] text-cyan-400 py-2">{dp?.detail ?? "No prints on the tape"}</p>
       ) : (
         <>
           <div className="flex items-center justify-between gap-2 mb-2">
@@ -155,7 +155,7 @@ export function SpxGexLadder({ desk, refreshing }: DeskProps) {
     >
       {!hasWalls ? (
         <p className="font-mono text-[11px] text-cyan-400 py-2 spx-gex-ladder-empty">
-          Loading gamma ladder…
+          Mapping gamma nodes…
         </p>
       ) : (
         <ul className="spx-desk-list spx-gex-ladder-list">

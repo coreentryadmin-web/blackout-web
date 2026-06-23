@@ -960,7 +960,7 @@ export function AdminSpxDashboard() {
       <TabCommandHero
         compact={section === "terminal"}
         kicker="Blackout · SPX Engine"
-        title="SPX Sniper"
+        title="SPX Slayer"
         titleAccent="Command"
         subtitle="Live engine · desk intel · outcomes · signals · adaptive telemetry · full config"
         chips={

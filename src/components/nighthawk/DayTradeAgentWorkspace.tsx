@@ -21,15 +21,15 @@ const ARMING_PHASES = [
   { id: "candidates", label: "Mining flow candidates", detail: "UW sweeps · hot chains · watchlist merge" },
   { id: "dossiers", label: "Building ticker dossiers", detail: "Technicals · GEX · dark pool · news" },
   { id: "score", label: "Scoring & ranking universe", detail: "Day weights · liquidity · conviction gates" },
-  { id: "synth", label: "Claude contract synthesis", detail: "ATM chains · strike validation · premium cap" },
+  { id: "synth", label: "Contract synthesis", detail: "ATM chains · strike validation · premium cap" },
   { id: "align", label: "SPX alignment filter", detail: "Desk bias · 0DTE contract filter" },
 ] as const;
 
 const CAPABILITIES = [
-  "Live flow + Polygon technical dossiers across the full candidate universe",
-  "0–1 DTE contract synthesis with real chain strikes and $20/share premium cap",
-  "SPX desk alignment — drops plays fighting gamma / tide / 0DTE flow",
-  "Validated strikes only — hallucinated contracts rejected before surfacing",
+  "Live flow and technical dossiers across the full candidate universe",
+  "0–1 DTE contract synthesis with real chain strikes and a $20/share premium cap",
+  "SPX desk alignment — drops setups fighting gamma, tide, or 0DTE flow",
+  "Validated strikes only — unverified contracts are rejected before they surface",
 ];
 
 function filterChipLabel(id: string, value: string | number | boolean): string {
@@ -121,7 +121,7 @@ export function DayTradeAgentWorkspace({ open, onClose }: DayTradeAgentWorkspace
       setStep("live");
       if (res.plays[0]) setSelectedTicker(res.plays[0].ticker);
     } catch {
-      setError("Day Hawk failed to arm. Check connectivity and try again.");
+      setError("Day Hawk failed to arm. Check the connection and re-arm.");
       setStep("configure");
     }
   }
@@ -147,7 +147,7 @@ export function DayTradeAgentWorkspace({ open, onClose }: DayTradeAgentWorkspace
                 Day Hawk Command
               </h1>
               <p className="dayhawk-workspace-sub">
-                Agentic intraday hunt · flow dossiers · validated 0DTE contracts
+                Agentic intraday recon · flow dossiers · live 0DTE chains
               </p>
             </div>
             <div className="dayhawk-workspace-header-actions">
@@ -229,7 +229,7 @@ export function DayTradeAgentWorkspace({ open, onClose }: DayTradeAgentWorkspace
                 <div className="dayhawk-arm-ring" aria-hidden />
                 <div className="dayhawk-arm-ring dayhawk-arm-ring-2" aria-hidden />
                 <p className="dayhawk-arm-title">Agent arming</p>
-                <p className="dayhawk-arm-copy">Day Hawk is running the live hunt pipeline…</p>
+                <p className="dayhawk-arm-copy">Day Hawk is running the live scan pipeline…</p>
               </div>
               <ol className="dayhawk-arm-phases">
                 {ARMING_PHASES.map((phase, i) => (
@@ -299,13 +299,13 @@ export function DayTradeAgentWorkspace({ open, onClose }: DayTradeAgentWorkspace
                     {selectedPlay ? (
                       <SignalDetailPanel play={selectedPlay} />
                     ) : (
-                      <p className="dayhawk-signal-detail-empty">Select a signal for full breakdown</p>
+                      <p className="dayhawk-signal-detail-empty">Select a signal for the full dossier</p>
                     )}
                   </aside>
                 </div>
               ) : (
                 <div className="dayhawk-live-empty">
-                  <p>No actionable signals surfaced.</p>
+                  <p>No qualifying signals surfaced this scan.</p>
                   <p>Relax SPX alignment, widen DTE, or lower the flow premium floor.</p>
                   <button
                     type="button"

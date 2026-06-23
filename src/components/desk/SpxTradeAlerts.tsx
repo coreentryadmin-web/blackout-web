@@ -202,6 +202,9 @@ function LottoPlayBlock({
           {lotto.status_message}
           {lottoRefreshing && " · live"}
         </p>
+        <p className="font-mono text-[9px] text-sky-300/60 mt-2">
+          Educational. Not advice. Every trade is your own decision.
+        </p>
       </div>
     );
   }
@@ -216,7 +219,7 @@ function LottoPlayBlock({
         <p className="spx-lotto-play-headline">{copy.headline}</p>
         <p className="spx-lotto-play-thesis">{copy.thesis}</p>
         {lottoRefreshing && !lottoLoading && (
-          <p className="spx-lotto-play-footnote">{copy.footnote ?? "Oracle still listening…"}</p>
+          <p className="spx-lotto-play-footnote">{copy.footnote ?? "Scanning…"}</p>
         )}
       </div>
     );
@@ -291,8 +294,8 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
       {!show ? (
         <p className="spx-desk-offline-line font-mono py-8 text-center">
           {sessionActive && live
-            ? "Loading play engine…"
-            : "Session closed · resumes 6:30 AM PT"}
+            ? "Arming play engine…"
+            : "Session closed · desk re-arms 6:30 AM PT"}
         </p>
       ) : (
         <>
@@ -369,6 +372,11 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
             {play.claude && play.action === "BUY" && (
               <p className="font-mono text-[10px] text-emerald-300/70 mt-2">
                 Claude {play.claude.source} · {play.claude.verdict}
+              </p>
+            )}
+            {play.levels.entry != null && play.action !== "SCANNING" && play.action !== "WATCHING" && (
+              <p className="font-mono text-[9px] text-sky-300/60 mt-3">
+                Educational. Not advice. Every trade is your own decision.
               </p>
             )}
           </div>
@@ -541,7 +549,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
       )}
       </div>
 
-      <div className="spx-lotto-dock" aria-label="Lotto engine">
+      <div className="spx-lotto-dock" aria-label="0DTE setup engine">
         <LottoPlayBlock
           lotto={lotto}
           lottoLoading={lottoLoading}

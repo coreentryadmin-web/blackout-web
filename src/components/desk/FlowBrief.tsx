@@ -7,16 +7,16 @@ import { motion, AnimatePresence } from "framer-motion";
 const REFRESH_MS = 15 * 60 * 1000;
 
 const AFTER_HOURS_LINES = [
-  "Market's dark. The flow you saw today already told you where tomorrow opens.",
-  "RTH closed. Whales don't stop — they just move without noise now.",
-  "Bell rang. Smart money spent all session leaving footprints. HELIX caught every one.",
-  "After-hours. Where institutional repositioning happens before retail even knows the story.",
-  "Tape's silent. But the $401M in premium printed today? That conviction doesn't expire overnight.",
-  "Dark pools never sleep. They're just quieter when the retail crowd goes home.",
-  "Market closed. The sweep you saw at 3:58 PM wasn't an accident — it was a signal.",
-  "Off-hours. The whales are positioned. The question is: are you on the right side?",
-  "RTH offline. Every block print today was a breadcrumb. HELIX has the trail.",
-  "Closed for business. Open for edge. Come back at 9:30 ET and let the tape talk.",
+  "Market closed. Today's flow is logged and ready to review before the open.",
+  "RTH closed. Institutional repositioning keeps printing in extended hours — quieter, but tracked.",
+  "Bell rang. Every sweep and block today is captured in the HELIX tape.",
+  "After-hours. This is when institutional positioning sets up ahead of the next session.",
+  "Market closed. Today's largest prints are still on the tape — review them before tomorrow.",
+  "Dark pools keep printing after the bell. HELIX logs the blocks in real time.",
+  "Market closed. That late-session sweep is on record — read it as an observation, not a forecast.",
+  "Off-hours. Positioning is set; the open will show whether it follows through.",
+  "RTH closed. Every block print today is on the HELIX tape for review.",
+  "Market closed. The desk reopens at 9:30 ET.",
 ];
 
 function isRTH(): boolean {
@@ -177,7 +177,7 @@ export function FlowBrief() {
 
           {loading && brief && (
             <span className="flex-shrink-0 font-mono text-[9px] animate-pulse pt-0.5" style={{ color: "#00e676" }}>
-              updating
+              UPDATING
             </span>
           )}
         </div>

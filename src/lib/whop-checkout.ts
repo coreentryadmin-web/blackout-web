@@ -32,7 +32,7 @@ export const WHOP_CHECKOUT = {
  * configured. Prevents the page from rendering an empty options list.
  */
 export const WHOP_CHECKOUT_UNAVAILABLE_MESSAGE =
-  "Upgrade options temporarily unavailable — please contact support.";
+  "Checkout offline — stand by, or reach billing@blackouttrades.com.";
 
 // Displayed prices. NOTE: these are UI labels only — the amount actually charged is
 // configured on the Whop product behind each checkout URL. Keep these in sync with the

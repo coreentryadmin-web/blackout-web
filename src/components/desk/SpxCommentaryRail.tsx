@@ -247,12 +247,12 @@ export function SpxCommentaryRail({
         <span className={clsx("badge-live-dot", live && "animate-pulse")} />
         <div>
           <span className="font-syne text-base tracking-[0.15em] uppercase text-purple-light block font-bold">
-            {live ? "Live Desk AI" : "Desk AI · Standby"}
+            {live ? "Largo · Live" : "Largo · Standby"}
           </span>
         </div>
         {loading && (
           <span className="ml-auto font-mono text-[8px] text-cyan-400 animate-pulse">
-            Thinking…
+            Reading…
           </span>
         )}
       </div>
@@ -272,11 +272,11 @@ export function SpxCommentaryRail({
           </div>
         ) : error && entries.length === 0 ? (
           <p className="font-mono text-[10px] text-bear/80 p-4 text-center">
-            {error.includes("ANTHROPIC") ? "Set ANTHROPIC_API_KEY on Railway" : error}
+            {error.includes("ANTHROPIC") ? "Intel feed offline — reconnecting" : error}
           </p>
         ) : entries.length === 0 ? (
           <p className="font-mono text-[10px] text-cyan-400 p-4 text-center animate-pulse">
-            Claude reading the tape…
+            Largo, standing by for live tape…
           </p>
         ) : (
           <div className="spx-commentary-feed">

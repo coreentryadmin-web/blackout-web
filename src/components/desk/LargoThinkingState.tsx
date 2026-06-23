@@ -4,21 +4,21 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export const LARGO_THINKING_PHRASES = [
-  "Jacking into the live tape…",
-  "Reading dealer gamma like scripture…",
-  "Cross-referencing flow vs GEX…",
-  "Pulling Polygon feeds at lightspeed…",
-  "Scanning 0DTE for asymmetric edge…",
-  "Syncing SPX Sniper desk…",
+  "Pulling the live tape…",
+  "Reading dealer gamma…",
+  "Cross-referencing flow against GEX…",
+  "Pulling Polygon feeds…",
+  "Scanning the 0DTE chain…",
+  "Syncing the SPX Slayer desk…",
   "Running confluence on your ask…",
-  "Hunting sweeps in the dark pool…",
-  "Computing max pain geometry…",
+  "Tracking sweeps in the dark pool…",
+  "Computing max-pain geometry…",
   "Stress-testing your thesis…",
-  "Claude is cooking…",
-  "Loading institutional intent…",
+  "Scoring the setup…",
+  "Reading institutional positioning…",
   "Mapping gamma walls in real time…",
-  "Decrypting the order flow…",
-  "Building your edge…",
+  "Parsing the order flow…",
+  "Building the read…",
 ] as const;
 
 const PIPELINE_NODES = [
@@ -75,7 +75,7 @@ export function LargoThinkingState({ active = true }: LargoThinkingStateProps) {
       </div>
 
       <div className="largo-thinking-copy">
-        <p className="largo-thinking-kicker">◆ LARGO NEURAL LINK</p>
+        <p className="largo-thinking-kicker">◆ LARGO · WORKING</p>
         <AnimatePresence mode="wait">
           <motion.p
             key={phrase}

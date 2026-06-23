@@ -34,7 +34,7 @@ export function NightHawkRadar({ plays, live }: { plays: NightHawkPlay[]; live?:
         >
           {plays.length === 0 ? (
             <p className="col-span-full text-cyan-400 text-sm font-mono py-10 text-center">
-              {live ? "Scanning for plays…" : "Engine offline"}
+              {live ? "Scanning for setups…" : "Scanner offline — re-arms after the close"}
             </p>
           ) : (
             plays.map((play) => {

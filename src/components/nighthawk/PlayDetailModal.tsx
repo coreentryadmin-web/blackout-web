@@ -132,12 +132,16 @@ export function PlayDetailModal({ play, editionFor, onClose }: PlayDetailModalPr
               </span>
             </div>
 
+            <p className="font-mono text-[9px] text-sky-300/60 mt-2">
+              Educational. Not advice. Every trade is your own decision.
+            </p>
+
             <div className="nighthawk-play-detail-body">
               {isLoading && (
                 <div className="nighthawk-play-detail-loading">
                   <div className="nighthawk-power-ring" />
-                  <p>Generating detailed playbook briefing…</p>
-                  <span>Claude is synthesizing flow, positioning, technicals & catalysts</span>
+                  <p>Building the Hawk Intel briefing…</p>
+                  <span>Synthesizing flow, positioning, technicals and catalysts</span>
                 </div>
               )}
 

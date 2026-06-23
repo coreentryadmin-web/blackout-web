@@ -331,8 +331,8 @@ export function DarkPoolPanel() {
                 <div className="py-8 text-center">
                   <p className="font-mono text-[12px] text-cyan-400">
                     {activeTicker
-                      ? `No block trades found for ${activeTicker} in current tape`
-                      : "No prints available"}
+                      ? `No blocks for ${activeTicker} on the current tape`
+                      : "No blocks on the tape yet"}
                   </p>
                   {activeTicker && (
                     <p className="font-mono text-[10px] text-cyan-500 mt-1">

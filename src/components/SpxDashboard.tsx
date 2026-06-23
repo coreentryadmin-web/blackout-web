@@ -26,7 +26,7 @@ class SpxPanelErrorBoundary extends React.Component<
     if (this.state.hasError)
       return (
         <div className="text-red-400 p-4 text-xs font-mono">
-          Panel error — refresh to retry
+          Panel offline — reload to reconnect
         </div>
       );
     return this.props.children;
@@ -41,9 +41,9 @@ export function SpxDashboard() {
   if (isLoaded && tier && tier !== "premium" && tier !== "admin") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center">
-        <p className="text-2xl font-display text-white">Premium Required</p>
+        <p className="text-2xl font-display text-white">Premium clearance required</p>
         <p className="text-sky-300 font-mono text-sm">
-          Your session no longer has premium access. Please upgrade or re-authenticate.
+          This session no longer has Premium access. Re-authenticate or unlock Premium to re-enter the desk.
         </p>
       </div>
     );

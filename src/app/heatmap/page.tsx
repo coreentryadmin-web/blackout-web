@@ -11,7 +11,7 @@ export default async function HeatmapPage() {
       <Nav />
       <PlatformShell
         variant="heatmap"
-        title="Heatmaps"
+        title="THERMAL"
         subtitle="Sector rotation · Institutional movers"
         deskMode
       >

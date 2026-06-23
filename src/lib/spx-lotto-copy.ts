@@ -20,19 +20,19 @@ export type LottoCopyLine = {
 export function lottoPhaseKicker(phase: LottoPhase, isReversal = false): string {
   switch (phase) {
     case "SCAN":
-      return "🔮 ORACLE MODE";
+      return "◆ SCANNING";
     case "WATCH":
-      return isReversal ? "🔄 HOUSE FLIPPED" : "🎫 TICKET PRINTED";
+      return isReversal ? "◆ THESIS FLIPPED" : "◆ SETUP ARMED";
     case "BUY":
-      return "🚀 DEGEN MODE: ENGAGED";
+      return "◆ ENTRY LIVE";
     case "HOLD":
-      return "🎲 CHIP IN PLAY";
+      return "◆ POSITION OPEN";
     case "SELL":
-      return "💰 TABLE PAID";
+      return "◆ TARGET REACHED";
     case "INVALID":
-      return "☠️ TICKET SHREDDED";
+      return "◆ STOPPED OUT";
     default:
-      return "🎰 LOTTO VAULT";
+      return "◆ 0DTE STANDBY";
   }
 }
 
@@ -40,45 +40,45 @@ export function lottoNoneCopy(reason: LottoNoneReason): LottoCopyLine {
   switch (reason) {
     case "off_hours":
       return {
-        kicker: "🌙 VAULT LOCKED",
-        headline: "Lotto engines sleep until dawn.",
-        thesis: "Back at 7:00 AM ET — when catalysts wake up and degenerates return to the floor.",
+        kicker: "◆ 0DTE STANDBY",
+        headline: "Pre-market scan resumes at the open.",
+        thesis: "The 0DTE window opens 7:00 AM ET — catalysts, gap and flow get scored then.",
       };
     case "no_qualify":
       return {
-        kicker: "😴 DREAMLESS MORNING",
-        headline: "No lotto today — tape refused to cooperate.",
-        thesis: "Catalyst thin or direction split. The house passes. Come back when the story's obvious.",
+        kicker: "◆ NO SETUP",
+        headline: "No 0DTE setup cleared the filter today.",
+        thesis: "Catalyst thin or direction split — the desk stands down rather than force a play.",
       };
     case "expired":
       return {
-        kicker: "⏰ WINDOW SHUT",
-        headline: "10:30 ET — the lotto window slammed closed.",
-        thesis: "Far-OTM premium doesn't wait. No entry, no regret. Tomorrow's another spin.",
+        kicker: "◆ WINDOW CLOSED",
+        headline: "10:30 ET — the 0DTE entry window is closed.",
+        thesis: "Far-OTM premium decays fast past the open. No entry surfaced inside the window.",
       };
     case "stopped":
       return {
-        kicker: "🔻 RUG PULLED",
-        headline: "LOTTO STOPPED — −8pt from entry.",
-        thesis: "Premium went poof. That's the 0DTE tax. Small size, move on.",
+        kicker: "◆ STOPPED OUT",
+        headline: "Stopped — −8pt from entry.",
+        thesis: "0DTE premium decays fast against you. Defined risk, small size — that's the point.",
       };
     case "invalidated_no_reversal":
       return {
-        kicker: "💨 WRONG AT THE BELL",
-        headline: "Thesis murdered at the open — no reversal ticket.",
-        thesis: "≥8pt against the anchor before fill. Reversal scan found nothing. House collects.",
+        kicker: "◆ INVALIDATED",
+        headline: "Thesis invalidated at the open — no reversal setup.",
+        thesis: "Price ran ≥8pt against the anchor before fill. Reversal scan surfaced nothing.",
       };
     case "max_picks":
       return {
-        kicker: "🛑 TWO STRIKES",
-        headline: "Max lotto picks burned for the day.",
-        thesis: "Primary + reversal both spent. Floor's closed — main desk still open.",
+        kicker: "◆ DAILY LIMIT",
+        headline: "0DTE setups capped for the day.",
+        thesis: "Primary and reversal both used. The main desk stays live for the rest of the session.",
       };
     case "closed_for_today":
       return {
-        kicker: "🚪 TABLE CLOSED",
-        headline: "Lotto session wrapped — see you tomorrow.",
-        thesis: "Ticket settled. Vault locks until the next pre-market hunt.",
+        kicker: "◆ SESSION CLOSED",
+        headline: "0DTE session closed for today.",
+        thesis: "Last setup settled. The scan re-arms at the next pre-market open.",
       };
   }
 }
@@ -90,8 +90,8 @@ export function lottoWatchHeadline(
   isReversal: boolean
 ): string {
   const side = direction === "long" ? "CALL" : "PUT";
-  const vibe = isReversal ? "Reversal rocket" : "Moonshot";
-  return `${side} ${vibe} · ${strike} strike · ±${targetPts}pt chaos`;
+  const setup = isReversal ? "Reversal" : "Breakout";
+  return `${side} ${setup} · ${strike} strike · ±${targetPts}pt range`;
 }
 
 export function lottoWatchThesis(catalystSummary: string, isReversal: boolean): string {
@@ -107,31 +107,31 @@ export function lottoWatchStatusMessage(
   blockReason?: string | null
 ): string {
   if (ticketBlocked) {
-    return `${blockReason ?? "Chain estimate only"} · size it like a lottery ticket, not a conviction play`;
+    return `${blockReason ?? "Chain estimate only"} · defined risk, small size — treat it as a probe, not a core position`;
   }
   if (isReversal) {
-    return "Reversal watch live — waiting for the tape to prove the flip at open.";
+    return "Reversal armed — waiting for the open to confirm the flip.";
   }
-  return "Ticket's printed — waiting for the bell and an 8pt confirm at cash open.";
+  return "Setup armed — waiting for the bell and an 8pt confirm at cash open.";
 }
 
 export function lottoBuyStatusMessage(): string {
-  return "Open confirmed — ticket live on the floor. Separate from main desk plays.";
+  return "Open confirmed — entry live. Tracked separately from main desk plays.";
 }
 
 export function lottoHoldStatusMessage(): string {
-  return "Runner working — far OTM, max theta, pure lotto energy.";
+  return "Position open — far OTM, max theta. High decay, defined risk.";
 }
 
 export function lottoWinStatusMessage(targetPts: number): string {
-  return `JACKPOT — +${targetPts}pt target hit. The lotto actually paid.`;
+  return `Target reached — +${targetPts}pt from entry. Manage your own exit.`;
 }
 
 export function lottoPanelLoadingCopy(): LottoCopyLine {
   return {
-    kicker: "🔮 READING THE ORACLE",
-    headline: "Shuffling catalysts, flow, and gap…",
-    thesis: "The machine is whispering. Stand by for a ticket or a pass.",
+    kicker: "◆ ACQUIRING",
+    headline: "Scoring catalysts, flow, and the overnight gap…",
+    thesis: "Stand by — the scan surfaces a setup or stands down.",
     footnote: "Scanning pre-market intel",
   };
 }

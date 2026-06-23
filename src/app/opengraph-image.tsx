@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "BlackOut — The Living Terminal";
+export const alt = "BlackOut Trading — the command surface for 0DTE and options flow";
 
 // Satori-safe ONLY: divs + flexbox + gradients + text. NO inline <svg>, NO React
 // fragments, NO blur filters (Satori chokes on all three). Every div with children
@@ -50,7 +50,7 @@ export default function OgImage() {
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", paddingLeft: 84, width: 720 }}>
           <div style={{ display: "flex", fontSize: 22, letterSpacing: 8, color: "#00e676", textTransform: "uppercase" }}>{KICK}</div>
           <div style={{ display: "flex", fontSize: 150, fontWeight: 800, color: "#ffffff", lineHeight: 0.9, marginTop: 6 }}>BLACKOUT</div>
-          <div style={{ display: "flex", fontSize: 36, color: "#7dd3fc", marginTop: 14 }}>The Living Terminal</div>
+          <div style={{ display: "flex", fontSize: 36, color: "#7dd3fc", marginTop: 14 }}>The command surface for the floor.</div>
           <div style={{ display: "flex", marginTop: 24, width: 240, height: 3, background: "linear-gradient(90deg, transparent, #00e676, #7dd3fc, transparent)" }} />
         </div>
 

@@ -23,32 +23,32 @@ export type FeatureRow = {
  */
 export const FEATURE_MATRIX: FeatureRow[] = [
   {
-    label: "Live HELIX flow feed",
-    detail: "Real-time options flow tape, sorted and tagged",
+    label: "HELIX live flow feed",
+    detail: "Real-time options-flow tape, sorted and tagged",
     free: false,
     premium: true,
   },
   {
-    label: "SPX live dashboard",
-    detail: "Confluence, GEX walls, gamma desk — live",
+    label: "SPX Slayer desk",
+    detail: "Confluence, GEX walls, dealer gamma — live",
     free: false,
     premium: true,
   },
   {
-    label: "Largo AI terminal",
-    detail: "Ask the desk anything across every tool",
+    label: "Largo AI desk analyst",
+    detail: "Plain-English answers grounded in every tool's live data",
     free: false,
     premium: true,
   },
   {
-    label: "Night Hawk scanner",
-    detail: "Evening plays scanner, ranked setups",
+    label: "Night Hawk evening playbook",
+    detail: "Overnight scan of the session, ranked setups",
     free: false,
     premium: true,
   },
   {
-    label: "Full heatmaps",
-    detail: "Strike-level positioning across the chain",
+    label: "Strike-level heatmaps",
+    detail: "Dealer positioning mapped across the full chain",
     free: false,
     premium: true,
   },
@@ -60,7 +60,7 @@ export const FEATURE_MATRIX: FeatureRow[] = [
   },
   {
     label: "Playbook & docs",
-    detail: "SPX Sniper playbook and method docs",
+    detail: "SPX Slayer playbook and method docs",
     free: false,
     premium: true,
   },
@@ -100,17 +100,17 @@ export type PlanValueProp = {
  */
 export const PLAN_VALUE_PROPS: Record<string, PlanValueProp> = {
   "Monthly — $111": {
-    subline: "Billed monthly. Cancel anytime.",
+    subline: "Billed monthly · stand down anytime",
   },
   "Yearly — $1,111": {
-    badge: "Best value",
-    subline: "≈ $93/mo, billed yearly",
+    badge: "Standard issue",
+    subline: "≈ $93/mo · billed yearly",
     savings: "Save $221 vs monthly",
     featured: true,
   },
   "Lifetime — $2,222": {
-    subline: "One payment. Yours forever.",
-    savings: "Pays for itself in ~2 years",
+    subline: "One payment · permanent access",
+    savings: "≈ 20 months of monthly",
   },
 };
 

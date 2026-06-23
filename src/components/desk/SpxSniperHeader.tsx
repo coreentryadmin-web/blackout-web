@@ -38,15 +38,15 @@ export function SpxSniperHeader({ desk, live }: Props) {
           <div className="flex flex-col lg:flex-row lg:items-end gap-5 lg:gap-6 min-w-0 flex-1">
             <div className="shrink-0">
               <p className="font-mono text-[9px] tracking-[0.45em] text-bull/80 uppercase mb-1">
-                ◆ BlackOut Ops
+                ◆ SPX SLAYER OPS
               </p>
               <h1 className="spx-sniper-title">
                 <span className="text-stroke-green">SPX</span>
                 <span className="text-white">-</span>
-                <span className="text-gradient-fire">SNIPER</span>
+                <span className="text-gradient-fire">SLAYER</span>
               </h1>
               <p className="spx-hero-tagline font-mono text-[10px] tracking-[0.32em] uppercase mt-1.5">
-                Precision · Patience · 0DTE Structure
+                The 0DTE command desk
               </p>
             </div>
 
@@ -135,7 +135,7 @@ export function SpxSniperHeader({ desk, live }: Props) {
         {live && (desk?.polled_at ?? desk?.as_of) && (
           <p className="spx-hero-desk-tick mt-4 font-mono text-[10px] tracking-wider flex items-center gap-2">
             {isStale ? (
-              <span className="text-amber-400 font-semibold text-xs animate-pulse">⚠ STALE</span>
+              <span className="text-amber-400 font-semibold text-xs animate-pulse">STALE</span>
             ) : (
               <span className="text-sky-300 text-xs">
                 Desk ·{" "}

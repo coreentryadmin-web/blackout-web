@@ -23,7 +23,7 @@ export function Heatmap() {
         <PlatformEmpty
           variant="heatmap"
           title="THERMAL IDLE"
-          description="Sector heatmaps light up during RTH when Polygon rotation data is live."
+          description="Sector rotation goes live during RTH, the moment the feed prints. Standby until the bell."
         />
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">

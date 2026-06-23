@@ -12,7 +12,7 @@ export function HeatmapEmbeds() {
       />
       <TradingViewWidget
         type="market-overview"
-        title="Sector Rotation Monitor"
+        title="Sector Rotation"
         height={360}
       />
     </div>

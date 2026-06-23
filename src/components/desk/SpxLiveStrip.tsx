@@ -5,7 +5,7 @@ import { fmtPct, fmtPremium, fmtPrice } from "@/lib/api";
 import { clsx } from "clsx";
 
 /**
- * Live SPX strip — same merged desk feed as SPX Sniper dashboard.
+ * Live SPX strip — same merged desk feed as SPX Slayer dashboard.
  *
  * NOTE: This component calls useMergedDesk() directly, which opens its own
  * SSE pulse connection. If rendered on the same page as SpxDashboard (which
@@ -18,7 +18,7 @@ export function SpxLiveStrip({ className }: { className?: string }) {
 
   return (
     <div className={clsx("largo-spx-live-strip", className)} aria-live="polite">
-      <span className="largo-spx-live-label">SPX SNIPER</span>
+      <span className="largo-spx-live-label">SPX SLAYER</span>
       <span className="largo-spx-live-price tabular-nums">
         {live ? fmtPrice(desk?.price ?? null, 2) : "—"}
       </span>

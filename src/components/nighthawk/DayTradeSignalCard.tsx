@@ -82,6 +82,10 @@ export function DayTradeSignalCard({ play, rank, selected, onSelect }: DayTradeS
       </div>
 
       <p className="dayhawk-signal-contract">{play.contract}</p>
+
+      <p className="font-mono text-[9px] text-sky-300/60 mt-2">
+        Educational. Not advice. Every trade is your own decision.
+      </p>
     </article>
   );
 }

@@ -171,7 +171,7 @@ export function OnboardingGuide() {
                     className="onboarding-btn-primary"
                     onClick={() => (last ? close() : setStep((s) => s + 1))}
                   >
-                    {last ? "Start Trading" : "Next"}
+                    {last ? "Step onto the floor" : "Next"}
                   </button>
                 </div>
               </div>

@@ -17,8 +17,8 @@ export function TrackRecordEmbed({
   const live = record.available;
   return (
     <EmbedFrame
-      title="SPX Sniper Track Record"
-      subtitle={live ? `${record.days_of_data}d verified` : "Standby"}
+      title="SPX Slayer Track Record"
+      subtitle={live ? `${record.days_of_data}d logged` : "Standby"}
       variant="pulse"
       className={className}
       live={live}
@@ -27,7 +27,7 @@ export function TrackRecordEmbed({
         <div className="flex items-end justify-between gap-4 mb-5">
           <div>
             <p className="font-mono text-[9px] tracking-[0.4em] text-bull uppercase mb-1">
-              Win Rate
+              Hit Rate
             </p>
             <p className="font-anton text-5xl md:text-6xl text-white leading-none tabular-nums">
               {live ? `${record.win_rate_pct}%` : "——"}
@@ -65,7 +65,7 @@ export function TrackRecordEmbed({
         </div>
 
         <p className="font-mono text-[10px] text-sky-300 mt-5 leading-relaxed">
-          {live ? record.summary : "Track record warming up — check back soon."}
+          {live ? record.summary : "Play log warming up — closed trades populate as the desk grades them."}
         </p>
       </div>
     </EmbedFrame>

@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "BlackOut SPX Sniper Track Record";
+export const alt = "BlackOut SPX Slayer Track Record";
 
 // Dynamic social-share image so a shared link previews the LIVE win rate.
 export default async function OgImage() {
@@ -35,7 +35,7 @@ export default async function OgImage() {
         }}
       >
         <div style={{ fontSize: 28, letterSpacing: 8, color: "#00e676", textTransform: "uppercase" }}>
-          {SITE.name} · SPX Sniper
+          {SITE.name} · SPX Slayer
         </div>
         <div style={{ fontSize: 220, fontWeight: 800, color: "#00e676", lineHeight: 1 }}>
           {winRate}

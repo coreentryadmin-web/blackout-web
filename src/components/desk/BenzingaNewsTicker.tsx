@@ -62,7 +62,7 @@ export function BenzingaNewsTicker() {
           Benzinga
         </div>
         <p className="font-mono text-[10px] text-cyan-400 px-4 py-3 animate-pulse">
-          Loading headlines…
+          Scanning the wire…
         </p>
       </div>
     );
@@ -76,7 +76,7 @@ export function BenzingaNewsTicker() {
           Benzinga
         </div>
         <p className="font-mono text-[10px] text-cyan-400 px-4 py-3">
-          News standby — set POLYGON_API_KEY on Railway
+          News wire offline — reconnecting
         </p>
       </div>
     );

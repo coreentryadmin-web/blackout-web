@@ -56,7 +56,7 @@ export function SpxDayPerformancePanel() {
 
       <div className="spx-desk-panel-body">
         {noPlays ? (
-          <p className="font-mono text-[11px] text-cyan-400 py-2">No completed plays today</p>
+          <p className="font-mono text-[11px] text-cyan-400 py-2">No closed plays yet today</p>
         ) : (
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
             <div>

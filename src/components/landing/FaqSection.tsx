@@ -12,51 +12,51 @@ type Faq = { id: string; catKey: CatKey; cat: string; q: string; a: string };
 
 const CATEGORIES: { key: CatKey; label: string; n: string; blurb: string; wide?: boolean }[] = [
   { key: "platform", label: "Platform", n: "01", blurb: "What BlackOut is, and how it runs." },
-  { key: "arsenal", label: "The Arsenal", n: "02", blurb: "Every weapon on the desk, explained." },
-  { key: "signals", label: "Signals & Data", n: "03", blurb: "Alerts, latency, and the receipts." },
+  { key: "arsenal", label: "The Arsenal", n: "02", blurb: "Every instrument on the desk, broken down." },
+  { key: "signals", label: "Signals & Data", n: "03", blurb: "Alerts, latency, and the proof." },
   { key: "member", label: "Membership", n: "04", blurb: "Access, pricing, and cancellation.", wide: true },
-  { key: "start", label: "Getting Started", n: "05", blurb: "From zero to reading the tape.", wide: true },
+  { key: "start", label: "Getting Started", n: "05", blurb: "From zero to live in one session.", wide: true },
 ];
 
 const RAW: Record<CatKey, { q: string; a: string }[]> = {
   platform: [
     {
       q: "What exactly is BlackOut?",
-      a: "BlackOut is an institutional-grade trading intelligence platform built for options and 0DTE traders. It fuses live options flow, an SPX 0DTE command desk, dealer gamma positioning, dark-pool activity, an AI desk analyst (Largo), and an evening swing/leap scanner (Night Hawk) into one screen — compressing what a hedge-fund desk sees into a single decision surface. It is not a Discord, not a signal-seller. It's a decision terminal.",
+      a: "BlackOut is an institutional-grade trading intelligence platform built for options and 0DTE traders. It fuses live options flow, the SPX Slayer 0DTE command desk, dealer gamma positioning, dark-pool activity, an AI desk analyst (Largo), and an evening swing/leap scanner (Night Hawk) into a single command surface — what a hedge-fund desk sees, compressed for one operator.",
     },
     {
       q: "Who is BlackOut built for?",
-      a: "Active options, SPX and 0DTE traders — anyone who wants institutional data and structure instead of guessing. Serious beginners are covered by the in-app Learn layer; full-time traders get a command center dense enough to run their whole session from.",
+      a: "Active options, SPX and 0DTE traders — anyone who wants real structure on the screen instead of a hunch. Serious beginners are covered by the in-app Learn layer; full-time operators get a command surface dense enough to run a whole session from.",
     },
     {
       q: "Where does your data come from?",
-      a: "From the same caliber of market data that professional trading desks pay a premium for — institutional-grade options and equity feeds, streamed live in real time. We aggregate dealer positioning, options flow, dark-pool prints, and full market internals into one clean signal layer, so you're reading the tape with the same depth the pros do — without stitching together a dozen terminals yourself. No watered-down retail snapshots. No 15-minute delays. Just the real flow, the moment it happens.",
+      a: "Aggregated from professional-grade options and equity feeds, streamed live. We merge dealer positioning, options flow, dark-pool prints, and full market internals into one clean signal layer — the depth the pros run on, without stitching together a dozen terminals yourself.",
     },
     {
       q: "Do I need to connect a broker?",
-      a: "No. BlackOut is a pure intelligence and signal platform — you execute on your own broker. We surface the data, structure, and setups before price moves; you pull the trigger wherever you trade.",
+      a: "No. BlackOut is a pure intelligence layer — you execute on your own broker. We surface the data, structure, and setups before price moves; you pull the trigger wherever you already trade.",
     },
     {
       q: "Is any of this financial advice?",
-      a: "No. BlackOut provides market data, analytics, and pattern-recognition tools for educational and informational purposes only. Nothing here is a recommendation to buy or sell — every trade is your own decision. We just make sure you're never trading blind.",
+      a: "No. BlackOut provides market data, analytics, and pattern-recognition tools for educational and informational purposes only. Nothing here is a recommendation to buy or sell — every trade is your own decision. We just make sure you're never guessing the structure.",
     },
     {
       q: "Can I use BlackOut on my phone?",
-      a: "Yes. BlackOut installs as an app on your phone — an alert-first, glanceable command center built for the way 0DTE traders actually live during market hours.",
+      a: "Yes. BlackOut installs as an app on your phone — an alert-first, glanceable command surface built for the way 0DTE traders actually live during market hours.",
     },
   ],
   arsenal: [
     {
-      q: "What is the SPX Sniper desk?",
-      a: "The 0DTE command center. Live SPX with VWAP, gamma exposure and market internals, plus a graded PLAY CARD: a letter grade (A–F), a numeric score and a confidence read, an 11-point confirmation checklist (MTF, trend, structure, VWAP, flow, dark pool, tide, internals, catalyst, dealer GEX, vol regime), a suggested strike with entry / target / stop — and, critically, the invalidation: the one thing that kills the trade. It answers “what's the setup, and what's the risk” in a single glance.",
+      q: "What is the SPX Slayer desk?",
+      a: "The 0DTE command desk. Live SPX with VWAP, gamma exposure and market internals, plus a graded PLAY CARD: a letter grade (A-F), a numeric score and a confidence read, an 11-point confirmation checklist (MTF, trend, structure, VWAP, flow, dark pool, tide, internals, catalyst, dealer GEX, vol regime), a suggested strike with entry / target / stop — and, critically, the invalidation: the one thing that kills the trade. It answers 'what's the setup, and what's the risk' in a single glance.",
     },
     {
       q: "What is Largo, the AI desk analyst?",
-      a: "Largo is your AI analyst with full access to every tool's live data — flow, gamma, dark pool, the desk, news. Ask it anything in plain English: “what's the SPX setup right now,” “is this flow real or noise,” “where are dealers trapped.” It answers grounded in the live tape and shows its work, rather than guessing like a generic chatbot.",
+      a: "Largo is your AI desk analyst with full access to every tool's live data — flow, gamma, dark pool, the desk, news. Ask it anything in plain English: 'what's the SPX setup right now,' 'is this flow real or noise,' 'where are dealers trapped.' It answers grounded in live data and shows its work — never a guess pulled from thin air.",
     },
     {
       q: "What is the HELIX options-flow feed?",
-      a: "Real-time options flow that surfaces institutional footprints instead of a firehose: repeated-hits strike stacks (same-strike accumulation), sweeps versus blocks, call/put pressure, premium and fill counts. You see where size is actually positioning — and our engine merges the live feed with the full session's flow so big prints aren't missed.",
+      a: "Live options flow filtered down to what moves the desk, not a firehose: repeated-hit strike stacks (same-strike accumulation), sweeps versus blocks, call/put pressure, premium and fill counts. The engine merges the live feed with the full session's flow so the big prints never slip past.",
     },
     {
       q: "What is GEX / dealer positioning?",
@@ -64,7 +64,7 @@ const RAW: Record<CatKey, { q: string; a: string }[]> = {
     },
     {
       q: "What does the dark-pool view show?",
-      a: "Off-exchange institutional prints and levels, anchored to price — where big money is quietly accumulating or distributing away from the lit tape. It makes the invisible part of the market visible.",
+      a: "Off-exchange institutional prints and levels, anchored to price — where size is quietly accumulating or distributing away from the lit tape. The flow that prints in the dark, surfaced next to the level it sits on.",
     },
     {
       q: "What is Night Hawk?",
@@ -72,7 +72,7 @@ const RAW: Record<CatKey, { q: string; a: string }[]> = {
     },
     {
       q: "Is there a market overview / heatmap?",
-      a: "Yes. A market-intelligence layer gives you the regime at a glance: sector heatmaps, leaders and laggards, internals (TICK / TRIN / ADD), market tide, and the macro catalysts on the calendar — so you know the environment before you take a single trade.",
+      a: "Yes. A market-intelligence layer reads the regime at a glance: sector heatmaps, leaders and laggards, internals (TICK / TRIN / ADD), market tide, and the macro catalysts on the calendar — the environment mapped before the first trade goes on.",
     },
   ],
   signals: [
@@ -82,21 +82,21 @@ const RAW: Record<CatKey, { q: string; a: string }[]> = {
     },
     {
       q: "Is the data really real-time?",
-      a: "Yes — everything streams live, tick by tick. Quotes, options flow, dealer gamma, dark-pool activity, and your alerts all update the instant the market moves, not on a delay. When a sweep hits the tape or positioning shifts, you see it in real time, the same way an institutional desk would. The platform is built around a live data spine, so the screen in front of you is always the market as it is right now — never a stale snapshot.",
+      a: "Yes — everything streams live, tick by tick. Quotes, options flow, dealer gamma, dark-pool activity, and your alerts all update the instant the market moves, not on a delay. When a sweep hits or positioning shifts, you see it as it prints — the screen in front of you is always the market as it is right now, never a stale snapshot.",
     },
     {
       q: "Do you track your performance?",
-      a: "Yes — transparently. BlackOut keeps a verified, append-only track record of closed setups (win rate, best- and worst-case excursion), not a cherry-picked highlight reel. You can judge the engine on its actual results, by grade.",
+      a: "Yes — transparently. BlackOut keeps an append-only log of every closed SPX setup, scored by its original grade, with best- and worst-case excursion recorded — not a cherry-picked highlight reel. You judge the grader on its own logged results, not our word. Past performance is no guarantee of future results.",
     },
   ],
   member: [
     {
       q: "How do I get access?",
-      a: "Create your free BlackOut account, then choose monthly, yearly, or lifetime access using the same email. One click unlocks the full platform — no separate logins, no friction.",
+      a: "Create your free BlackOut account, then choose monthly, yearly, or lifetime access using the same email. One click unlocks the full platform — same login, full clearance.",
     },
     {
       q: "What's included in Premium?",
-      a: "The entire arsenal, one membership: the SPX Sniper desk, the HELIX live flow feed, Largo AI, GEX / dealer positioning, dark-pool activity, Night Hawk, the market heatmap, and the verified track record. Nothing is held back behind a higher tier.",
+      a: "The entire arsenal, one membership: the SPX Slayer desk, the HELIX live flow feed, Largo AI, GEX / dealer positioning, dark-pool activity, Night Hawk, the market heatmap, and the public play log. One tier, full clearance — nothing held back.",
     },
     {
       q: "Can I cancel anytime?",
@@ -106,11 +106,11 @@ const RAW: Record<CatKey, { q: string; a: string }[]> = {
   start: [
     {
       q: "How do I get started in 5 minutes?",
-      a: "Create your account, unlock Premium, and open the SPX Sniper desk — the live read is there immediately. Ask Largo your first question (“what's the SPX setup right now?”), and if you're newer to options, start with the in-app Learn layer. You'll be reading the tape like a desk by the end of your first session.",
+      a: "Create your account, unlock Premium, and open the SPX Slayer desk — the live read is there immediately. Ask Largo your first question ('what's the SPX setup right now?'), and if you're newer to options, start with the in-app Learn layer. Inside your first session you'll have the desk's full read in front of you.",
     },
     {
       q: "How do I reach the team?",
-      a: `Email us anytime at ${SUPPORT_EMAIL} — real humans, fast replies. Whether it's billing, access, a feature request, or a question about a setup, we've got you.`,
+      a: `Email us anytime at ${SUPPORT_EMAIL} — real people, fast replies. Billing, access, a feature request, or a question about a setup: it reaches the desk.`,
     },
   ],
 };
@@ -192,8 +192,8 @@ export function FaqSection() {
               </h2>
             </div>
             <p className="hidden md:block max-w-md text-left sm:text-right text-[14px] leading-relaxed text-white/70">
-              Every tool, every signal, every answer — what BlackOut is and how the arsenal
-              works, in one screen.
+              Every tool, every signal, every answer — what BlackOut is and how the
+              arsenal works, end to end.
             </p>
           </div>
         </div>
@@ -266,7 +266,7 @@ export function FaqSection() {
               </span>
               <div>
                 <p className="text-white font-semibold text-[15px] leading-tight m-0">
-                  Still stuck? Talk to a human on the desk.
+                  Need a human? Reach the desk directly.
                 </p>
               </div>
             </div>

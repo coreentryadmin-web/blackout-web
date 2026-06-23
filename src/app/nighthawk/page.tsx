@@ -22,7 +22,7 @@ export default async function NightHawkPage() {
       <PlatformShell
         variant="nighthawk"
         title="Night Hawk"
-        subtitle="Tomorrow's playbook · Hunt modes"
+        subtitle="Tomorrow's playbook · After-hours recon"
         deskMode
         frameless
         fullWidth

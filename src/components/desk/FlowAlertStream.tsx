@@ -190,14 +190,14 @@ export function FlowAlertStream({
               </div>
               <p className="font-mono text-[11px] text-cyan-400 text-center">
                 {tickerFilter
-                  ? `No alerts found for ${tickerFilter} — try a different ticker or lower the premium filter`
+                  ? `No prints for ${tickerFilter} on the current tape — widen the ticker or lower the premium floor`
                   : typeFilter !== "ALL"
-                    ? `No ${typeFilter} alerts above the current premium threshold`
+                    ? `No ${typeFilter} prints above the premium floor`
                     : hasData
-                      ? "Watching for flow alerts…"
+                      ? "Tape live — watching for the next print…"
                       : live
-                        ? "Loading flow data…"
-                        : "Reconnecting to flow data…"}
+                        ? "Acquiring the tape…"
+                        : "Reconnecting to the tape…"}
               </p>
             </div>
           ) : (

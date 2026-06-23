@@ -132,6 +132,10 @@ export function PlaybookPlayRow({ rank, play, empty, onSelect }: PlaybookPlayRow
             </p>
           )}
 
+          <p className="font-mono text-[9px] text-sky-300/60 mt-2">
+            Educational. Not advice. Every trade is your own decision.
+          </p>
+
           {onSelect && <span className="nighthawk-play-open-hint">Hawk Intel →</span>}
         </div>
       )}

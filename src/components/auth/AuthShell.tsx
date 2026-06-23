@@ -64,7 +64,7 @@ export function AuthShell({ mode, children }: { mode: "signin" | "signup"; child
               </>
             ) : (
               <>
-                Step onto <span className="auth-grad">the floor.</span>
+                Clear in. <span className="auth-grad">Take the floor.</span>
               </>
             )}
           </motion.p>
@@ -77,7 +77,7 @@ export function AuthShell({ mode, children }: { mode: "signin" | "signup"; child
           <span className="badge-live">
             <span className="badge-live-dot" aria-hidden /> Market Open
           </span>
-          <span className="font-mono text-[10px] text-sky-300/80">Encrypted by Clerk · Built for the desk</span>
+          <span className="font-mono text-[10px] text-sky-300/80">Encrypted by Clerk · Brokerless by design</span>
         </motion.div>
       </motion.section>
 
@@ -105,7 +105,7 @@ export function AuthShell({ mode, children }: { mode: "signin" | "signup"; child
               aria-label="Back to BlackOut home"
               className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.35em] uppercase text-sky-300 hover:text-bull"
             >
-              <span className="nav-dot" aria-hidden /> ← Home
+              <span className="nav-dot" aria-hidden /> ← Stand down
             </Link>
             <h1 className="mt-4 font-anton text-5xl tracking-[0.04em] text-white text-glow-green">BLACKOUT</h1>
             <p className="mt-2 font-mono text-[10px] tracking-[0.4em] uppercase text-bull">Institutional 0DTE · Options Flow</p>

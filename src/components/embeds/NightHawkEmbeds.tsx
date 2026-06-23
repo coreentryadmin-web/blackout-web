@@ -9,7 +9,7 @@ export function NightHawkEmbeds() {
       <NightHawkRadar />
       <TradingViewWidget
         type="hotlists"
-        title="Momentum Watchlist"
+        title="Momentum Targets"
         height={320}
       />
     </div>
