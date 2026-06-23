@@ -1384,6 +1384,20 @@ body {
     transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s, background 0.2s;
   }
   .nav-card:last-child { @apply col-span-2 xl:col-span-1; }
+  /* per-tool top accent divider (the product's color) */
+  .nav-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 16px;
+    right: 16px;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.65;
+    transition: opacity 0.2s ease;
+  }
+  .nav-card:hover::before, .nav-card:focus-visible::before { opacity: 1; }
   .nav-card::after {
     content: "";
     @apply absolute inset-0 rounded-xl opacity-0 pointer-events-none;

@@ -13,11 +13,11 @@ type Accent = "green" | "purple" | "orange" | "blue" | "red";
 type FeatureLink = { href: string; label: string; sub: string; accent: Accent };
 
 const FEATURE_LINKS: FeatureLink[] = [
-  { href: "/dashboard", label: "SPX Slayer", sub: "0DTE · GEX · VWAP", accent: "green" },
-  { href: "/flows", label: "HELIX", sub: "Whale · Dark Pool", accent: "purple" },
-  { href: "/heatmap", label: "Heatmaps", sub: "Sector Rotation", accent: "orange" },
-  { href: "/terminal", label: "Largo AI", sub: "Desk Terminal", accent: "blue" },
-  { href: "/nighthawk", label: "Night Hawk", sub: "Playbook · Hunt modes", accent: "red" },
+  { href: "/dashboard", label: "SPX Slayer", sub: "The 0DTE war room", accent: "green" },
+  { href: "/flows", label: "HELIX", sub: "Follow the smart money", accent: "purple" },
+  { href: "/heatmap", label: "Heatmaps", sub: "Where the bid hides", accent: "orange" },
+  { href: "/terminal", label: "Largo AI", sub: "Ask the desk anything", accent: "blue" },
+  { href: "/nighthawk", label: "Night Hawk", sub: "Tomorrow's plan, tonight", accent: "red" },
 ];
 
 const TOP_LINKS = [
@@ -229,8 +229,12 @@ export function Nav() {
                 >
                   <div className="nav-mega-head">
                     <span className="nav-mega-kicker font-mono">The Desk · 5 Instruments</span>
-                    <Link href="/dashboard" className="nav-mega-all font-mono" onClick={() => setFeaturesOpen(false)}>
-                      View all →
+                    <Link
+                      href={isHome ? "#features" : "/#features"}
+                      className="nav-mega-all font-mono"
+                      onClick={() => setFeaturesOpen(false)}
+                    >
+                      View the Arsenal →
                     </Link>
                   </div>
                   <div className="nav-mega-grid">
