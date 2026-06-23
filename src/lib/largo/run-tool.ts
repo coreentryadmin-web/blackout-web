@@ -8,11 +8,17 @@ import { fetchPositioningSummary } from "@/lib/nighthawk/positioning";
 import {
   fetchNighthawkOutcomeAnalytics,
   fetchPendingNighthawkOutcomes,
+  fetchRecentFlows,
   fetchStagedDossiers,
   fetchStagedDossierTickers,
 } from "@/lib/db";
 import { summarizeGroupGreekFlow } from "@/lib/group-greek-flow-summary";
-import { computeFlowStrikeStacks, withStrikeStacks } from "@/lib/largo/flow-strike-stacks";
+import {
+  computeFlowStrikeStacks,
+  normalizeFlowAlertForStack,
+  withStrikeStacks,
+  type FlowAlertForStack,
+} from "@/lib/largo/flow-strike-stacks";
 import { isSpxTicker } from "@/lib/spx-desk-live";
 import { getPlatformSnapshot, marketPlatform } from "@/lib/platform";
 import { summarizeSpxDesk } from "@/lib/platform/spx-service";
@@ -503,26 +509,59 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           );
         }
       }
+      // Per-ticker flow for a non-SPX name. The live UW per-stock pull is small
+      // (server-capped at 50 alerts / 100 recent), so on a busy name like IBM it
+      // misses most of the day's stacked prints. HELIX (fetchRecentFlows) already
+      // ingests this ticker's full session flow (market-wide WS/cron capture,
+      // >= UW_FLOW_MIN_PREMIUM) — so merge BOTH: the live pull contributes the
+      // smaller/sub-floor recent alerts, HELIX contributes the whole day's big
+      // prints the small window drops. Strike-stacks then see the complete picture.
       const [alerts, flow0dte, recent] = await Promise.all([
-        fetchUwTickerFlowAlerts(sym, 40),
+        fetchUwTickerFlowAlerts(sym, 50),
         fetchUwFlow0dte(sym),
-        fetchUwFlowRecent(sym, 40),
+        fetchUwFlowRecent(sym, 100),
       ]);
+      let helix: Awaited<ReturnType<typeof fetchRecentFlows>> = [];
+      try {
+        helix = await fetchRecentFlows({ ticker: sym, since_hours: 48, limit: 500 });
+      } catch {
+        /* HELIX optional (no DB in dev) — the live UW pull still stands on its own */
+      }
+
       const callPrem = alerts.filter((a) => a.option_type === "CALL").reduce((s, a) => s + a.premium, 0);
       const putPrem = alerts.filter((a) => a.option_type === "PUT").reduce((s, a) => s + a.premium, 0);
-      return withStrikeStacks(
-        {
-          ticker: sym,
-          source: "unusual_whales",
-          note: UW_EXCLUSIVE_NOTE,
-          flow_alerts: alerts,
-          flow_recent: recent,
-          intraday_0dte: flow0dte,
-          alert_premium: { calls: callPrem, puts: putPrem, net: callPrem - putPrem },
-          bias: callPrem > putPrem ? "bullish" : putPrem > callPrem ? "bearish" : "neutral",
-        },
-        [alerts, recent]
-      );
+
+      // Dedup the union BEFORE stacking so an alert present in both the live pull
+      // and HELIX is never premium-double-counted. Key on strike|type|expiry|
+      // premium|epoch-minute — epoch-normalized so UW's ISO timestamps and HELIX's
+      // pg Date strings collapse to the same key for the same print. Live-pull rows
+      // first so they win the 500-row cap, then HELIX (premium-DESC) fills the tail.
+      const seenFlow = new Set<string>();
+      const mergedFlow: FlowAlertForStack[] = [];
+      for (const raw of [...alerts, ...recent, ...helix]) {
+        const n = normalizeFlowAlertForStack(raw);
+        if (!n) continue;
+        const t = new Date(n.alerted_at).getTime();
+        const minute = Number.isFinite(t) ? Math.floor(t / 60_000) : 0;
+        const key = `${n.strike}|${n.option_type}|${n.expiry}|${Math.round(n.premium)}|${minute}`;
+        if (seenFlow.has(key)) continue;
+        seenFlow.add(key);
+        mergedFlow.push(n);
+      }
+      const strike_stacks = computeFlowStrikeStacks(mergedFlow, { limit: 24 });
+
+      return {
+        ticker: sym,
+        source: helix.length ? "unusual_whales + helix" : "unusual_whales",
+        note: UW_EXCLUSIVE_NOTE,
+        flow_alerts: alerts,
+        flow_recent: recent,
+        helix_session_alerts: helix.length,
+        intraday_0dte: flow0dte,
+        alert_premium: { calls: callPrem, puts: putPrem, net: callPrem - putPrem },
+        bias: callPrem > putPrem ? "bullish" : putPrem > callPrem ? "bearish" : "neutral",
+        strike_stacks,
+      };
     }
     case "get_net_prem_ticks":
       return toolNetPremTicks(ticker);
