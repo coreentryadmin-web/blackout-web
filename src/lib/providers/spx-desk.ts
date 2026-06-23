@@ -88,7 +88,19 @@ const TIDE_STALE_MS = 10_000;
 const DARK_POOL_WS_STALE_MS = 15_000;
 const NET_FLOW_WS_STALE_MS = 10_000;
 const INTERVAL_FLOW_WS_STALE_MS = 10_000;
-const INDEX_STORE_STALE_MS = 5_000;
+// How long a Polygon WS index tick (I:SPX, VIX, internals) stays preferred over the
+// REST snapshot in mergeWsIndexSnapshots. SPX *index* aggregate ticks are naturally
+// sparse (often >5s apart on quiet tape), and the REST fallback (fetchIndexSnapshots)
+// is a DELAYED index snapshot — so a tight 5s window made the play/desk price drop to
+// a stale REST level whenever ticks were quiet, pinning the suggested strike to a stale
+// node (e.g. 7400) while the live header showed the real last WS print. Keep the last
+// real WS tick for up to ~2 min (env-tunable) before ever falling back to delayed REST:
+// a 30-120s-old REAL print is far better than a 15-min-delayed one for strike + exits.
+const INDEX_STORE_STALE_MS = (() => {
+  const raw = process.env.SPX_INDEX_WS_STALE_SEC?.trim();
+  const sec = raw ? Number(raw) : 120;
+  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 120_000;
+})();
 
 let cachedDarkPool: { data: DarkPoolSnapshot | null; fetchedAt: number; key: string } = {
   data: null,
