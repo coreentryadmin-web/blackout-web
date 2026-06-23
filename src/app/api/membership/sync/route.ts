@@ -2,6 +2,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { syncWhopMembershipForEmail } from "@/lib/membership";
 import { acquireMembershipSyncSlot } from "@/lib/membership-sync-limit";
+import { notifyOpsDiscord } from "@/lib/spx-play-notify";
 
 export async function POST() {
   const { userId } = await auth();
@@ -35,6 +36,16 @@ export async function POST() {
     });
   } catch (error) {
     console.error("[membership sync]", error);
+    // Surface manual membership-sync failures in ops (warning: user-triggered, single
+    // account, lower blast radius than the webhook). Fire-and-forget so it never
+    // blocks/throws on the response path; notifyOpsDiscord self-guards on a missing URL.
+    void notifyOpsDiscord({
+      title: "Membership sync FAILED (500)",
+      body:
+        "syncWhopMembershipForEmail threw on a manual /api/membership/sync. error=" +
+        (error instanceof Error ? error.message : String(error)),
+      severity: "warning",
+    }).catch(() => undefined);
     return NextResponse.json({ error: "Failed to sync Whop membership" }, { status: 500 });
   }
 }

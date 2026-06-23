@@ -97,6 +97,18 @@ export async function POST(req: NextRequest) {
     }
   } catch (error) {
     console.error("[whop webhook]", event.type, error);
+    // Surface billing-state handler failures in ops. Fire-and-forget (void + .catch,
+    // matching the alerts above) so it never blocks/throws on the response path;
+    // notifyOpsDiscord self-guards on a missing webhook URL.
+    void notifyOpsDiscord({
+      title: "Whop webhook handler FAILED (500)",
+      body:
+        "Processing of a Whop webhook threw — membership state may be stale. event.type=" +
+        event.type +
+        ". error=" +
+        (error instanceof Error ? error.message : String(error)),
+      severity: "critical",
+    }).catch(() => undefined);
     return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
   }
 

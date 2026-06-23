@@ -9,6 +9,38 @@ import type {
   ToolUseBlock,
 } from "@anthropic-ai/sdk/resources/messages/messages";
 import { recordApiCall } from "@/lib/api-telemetry";
+import { SpendTracker, type AnthropicUsage } from "@/lib/ai-spend";
+import { notifyOpsDiscord } from "@/lib/spx-play-notify";
+
+// Per-process daily AI-spend tripwire. Multi-replica caveat documented in ai-spend.ts:
+// each replica tracks its own slice, so the org-wide total is the SUM across replicas.
+const spendTracker = new SpendTracker({
+  thresholdUsd: Number(process.env.DAILY_AI_SPEND_ALERT_USD) || 50,
+});
+
+/**
+ * Fire-and-forget spend accounting. MUST NOT add latency to the AI path: no await,
+ * no throw. No-ops when usage is missing or the model is unknown (estimateCostUsd
+ * returns null inside the tracker). Fires notifyOpsDiscord('warning') exactly once
+ * per ET day when the running per-process total first crosses the threshold.
+ */
+function trackSpend(model: string, usage: AnthropicUsage | null | undefined): void {
+  try {
+    const rec = spendTracker.record(model, usage);
+    if (rec.thresholdJustCrossed) {
+      void notifyOpsDiscord({
+        title: "AI spend threshold crossed",
+        body:
+          `Anthropic spend for ET day ${rec.day} reached $${rec.dayTotal.toFixed(2)} ` +
+          `(threshold $${rec.threshold.toFixed(2)}). Note: per-process total — ` +
+          `multiply by replica count for org-wide spend.`,
+        severity: "warning",
+      });
+    }
+  } catch {
+    /* spend telemetry is best-effort — never throw into the AI path */
+  }
+}
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 export const LARGO_MODEL = "claude-sonnet-4-6";
@@ -161,6 +193,7 @@ export async function anthropicText(
 
   try {
     const data = await withTelemetry("anthropic-text", () => client.messages.create(body, reqOpts));
+    trackSpend(model, data.usage);
     const block = data.content.find((c) => c.type === "text");
     return block?.type === "text" ? block.text.trim() || null : null;
   } catch {
@@ -239,11 +272,13 @@ export async function anthropicToolLoop(params: {
       const finalMessage = await withTelemetry("anthropic-tool-loop-stream", () =>
         stream.finalMessage()
       );
+      trackSpend(model, finalMessage.usage);
       content = finalMessage.content;
     } else {
       const data = await withTelemetry("anthropic-tool-loop", () =>
         client.messages.create(createParams)
       );
+      trackSpend(model, data.usage);
       content = data.content;
     }
 
@@ -302,5 +337,6 @@ export async function anthropicToolLoop(params: {
       messages,
     })
   );
+  trackSpend(model, final.usage);
   return extractTextFromBlocks(final.content as Array<{ type: string; text?: string }>) || null;
 }
