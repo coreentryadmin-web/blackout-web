@@ -125,6 +125,10 @@ export function SpxCommentaryRail({
   const cancelledRef = useRef(false);
   /** Milliseconds until the server cache expires — set after each successful call. */
   const nextRefreshMsRef = useRef<number | null>(null);
+  /** as_of of the most recent feed entry — the server caps generation at one per
+   *  shared 5-min window, so refetches inside a window return the SAME as_of. We
+   *  dedup on it so identical analysis is never stacked as a new card. */
+  const lastAsOfRef = useRef<string | null>(null);
 
   // sessionStorage write is intentionally done inside pullCommentary after
   // new entries are added — see below — instead of watching the full entries
@@ -143,20 +147,29 @@ export function SpxCommentaryRail({
     try {
       const { commentary, next_refresh_ms } = await requestSpxCommentary(desk, prev);
       nextRefreshMsRef.current = next_refresh_ms ?? null;
-      const entry: FeedEntry = {
-        ...commentary,
-        id: `${commentary.as_of}-${Date.now()}`,
-      };
-      let nextEntries: FeedEntry[] = [];
-      setEntries((e) => {
-        nextEntries = [entry, ...e].slice(0, 24);
-        hydratedRef.current = true;
-        return nextEntries;
-      });
-      // Write to sessionStorage only when a new entry arrives, not on every render
-      if (live) writeSessionCache(COMMENTARY_CACHE_KEY, [entry]);
+      // Always advance the polling clock + delta baseline, even when the content
+      // is unchanged, so the scheduler keeps aligning to the server window.
       prevRef.current = { ...desk };
       lastFetchRef.current = Date.now();
+
+      // Dedup: the server generates at most ONE commentary per shared 5-min window,
+      // so every refetch inside a window returns the SAME as_of. Only prepend a
+      // genuinely-new generation — otherwise the feed stacks identical cards (the
+      // bug where the same 9:38 analysis printed 2-3x). The visible cadence then
+      // matches the real 5-min generation cadence.
+      if (commentary.as_of && commentary.as_of === lastAsOfRef.current) return;
+      lastAsOfRef.current = commentary.as_of ?? null;
+
+      const entry: FeedEntry = {
+        ...commentary,
+        // Stable key per generation (was as_of+Date.now(), which defeated React's
+        // reconciliation and let duplicates render).
+        id: commentary.as_of || `c-${Date.now()}`,
+      };
+      setEntries((e) => [entry, ...e].slice(0, 24));
+      hydratedRef.current = true;
+      // Write to sessionStorage only when a new entry arrives, not on every render
+      if (live) writeSessionCache(COMMENTARY_CACHE_KEY, [entry]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Commentary unavailable";
       nextRefreshMsRef.current = null;
@@ -174,6 +187,9 @@ export function SpxCommentaryRail({
       if (cached.length > 0) {
         setEntries(cached);
         hydratedRef.current = true;
+        // Seed the dedup key from the newest cached entry so a first live fetch
+        // landing in the same 5-min window doesn't re-add the hydrated card.
+        lastAsOfRef.current = cached[0]?.as_of ?? null;
       }
     }
   }, [live, entries.length]);
