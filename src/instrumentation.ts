@@ -48,6 +48,16 @@ export async function register(): Promise<void> {
         .catch((e) => {
           console.error("[instrumentation] failed to send ops alert:", e);
         });
+
+      // Durable error sink (no-op unless DATABASE_URL / SENTRY_DSN set). Lazy import
+      // keeps server-only deps (pg) out of the edge/client graph; load on first failure.
+      void import("@/lib/error-sink")
+        .then(({ captureError }) =>
+          captureError(err, { source: "unhandled_rejection" })
+        )
+        .catch((e) => {
+          console.error("[instrumentation] failed to persist error:", e);
+        });
     } catch (e) {
       console.error("[instrumentation] handler error (swallowed):", e);
     }

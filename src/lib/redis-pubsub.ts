@@ -28,17 +28,8 @@ async function connectPublisher(): Promise<RedisClient | null> {
 
   publisherInit = (async () => {
     try {
-      const mod = await import("ioredis");
-      const Redis = mod.default;
-      const client = new Redis(url, {
-        maxRetriesPerRequest: 2,
-        lazyConnect: true,
-        connectTimeout: 2_000,
-      });
-      // Without an 'error' listener, ioredis throws on the EventEmitter when the
-      // connection drops post-connect — which crashes the whole process/replica.
-      client.on("error", (err) => console.warn("[redis-pubsub] redis error:", err instanceof Error ? err.message : err));
-      await client.connect();
+      const { makeRedis } = await import("./make-redis");
+      const client = await makeRedis("redis-pubsub", url, { maxRetriesPerRequest: 2 });
       publisher = client;
       publisherReady = true;
       publisherLastFailedAt = 0; // clear failure on success
@@ -64,17 +55,8 @@ async function connectSubscriber(): Promise<RedisClient | null> {
 
   subscriberInit = (async () => {
     try {
-      const mod = await import("ioredis");
-      const Redis = mod.default;
-      const client = new Redis(url, {
-        maxRetriesPerRequest: 2,
-        lazyConnect: true,
-        connectTimeout: 2_000,
-      });
-      // Without an 'error' listener, ioredis throws on the EventEmitter when the
-      // connection drops post-connect — which crashes the whole process/replica.
-      client.on("error", (err) => console.warn("[redis-pubsub] redis error:", err instanceof Error ? err.message : err));
-      await client.connect();
+      const { makeRedis } = await import("./make-redis");
+      const client = await makeRedis("redis-pubsub", url, { maxRetriesPerRequest: 2 });
       client.on("message", (channel, message) => {
         channelHandlers.get(channel)?.forEach((handler) => {
           try {

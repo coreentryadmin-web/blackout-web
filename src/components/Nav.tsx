@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { SignedIn, SignedOut, UserButton, useAuth } from "@clerk/nextjs";
 import { clsx } from "clsx";
+import { OnboardingTrigger } from "@/components/OnboardingTrigger";
 
 type FeatureLink = {
   href: string;
@@ -190,6 +191,10 @@ export function Nav() {
           );
         })}
 
+        <li>
+          <OnboardingTrigger className="nav-link onboarding-nav-trigger" />
+        </li>
+
         {showAdmin && (
           <li>
             <Link
@@ -265,6 +270,7 @@ export function Nav() {
                 {label}
               </Link>
             ))}
+            <OnboardingTrigger className="nav-mobile-top-link onboarding-nav-trigger" />
             {showAdmin && (
               <Link
                 href="/admin"

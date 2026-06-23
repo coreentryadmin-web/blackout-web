@@ -93,6 +93,8 @@ export function FlowAlertStream({
   velocitySpikeTickers,
   coordinatedTickers,
   hawkTickers,
+  watchlistTickers,
+  onToggleStar,
 }: {
   flows: FlowAlert[];
   live?: boolean;
@@ -108,6 +110,8 @@ export function FlowAlertStream({
   velocitySpikeTickers?: Set<string>;
   coordinatedTickers?: Set<string>;
   hawkTickers?: Set<string>;
+  watchlistTickers?: Set<string>;
+  onToggleStar?: (ticker: string) => void;
 }) {
   const [renderLimit, setRenderLimit] = useState(RENDER_LIMIT); // Bug 8
   const [newCount, setNewCount]       = useState(0);            // Bug 11
@@ -212,6 +216,7 @@ export function FlowAlertStream({
                   const hasVelocity  = velocitySpikeTickers?.has(flow.ticker) ?? false;
                   const hasCoord     = coordinatedTickers?.has(flow.ticker) ?? false;
                   const isHawk       = hawkTickers?.has(flow.ticker) ?? false;
+                  const isStarred    = watchlistTickers?.has(flow.ticker) ?? false;
                   // IV display: if < 3 treat as decimal (0.45 → 45%), else as already pct
                   const ivDisplay  = flow.implied_volatility != null && flow.implied_volatility > 0
                     ? flow.implied_volatility < 3
@@ -245,6 +250,20 @@ export function FlowAlertStream({
                         <div className="flex items-center gap-2 flex-wrap min-w-0">
                           {isCompound && (
                             <span className="flow-badge flow-badge-stack">⚡ STACKING</span>
+                          )}
+                          {onToggleStar && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onToggleStar(flow.ticker); }}
+                              title={isStarred ? `Remove ${flow.ticker} from watchlist` : `Add ${flow.ticker} to watchlist`}
+                              aria-pressed={isStarred}
+                              className={clsx(
+                                "leading-none text-[14px] transition-colors",
+                                isStarred ? "text-yellow-300" : "text-cyan-400 hover:text-yellow-300"
+                              )}
+                            >
+                              {isStarred ? "★" : "☆"}
+                            </button>
                           )}
                           <span className="font-anton text-[18px] leading-none text-yellow-300 tracking-wide">
                             {flow.ticker}

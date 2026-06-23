@@ -12,6 +12,7 @@ import {
   SpxUnifiedTape,
 } from "@/components/desk/SpxDeskPanels";
 import { SpxDayPerformancePanel } from "@/components/desk/SpxDayPerformancePanel";
+import { SpxTrackRecordPanel } from "@/components/desk/SpxTrackRecordPanel";
 
 class SpxPanelErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -70,6 +71,7 @@ export function SpxDashboard() {
         <SpxPanelErrorBoundary>
           <aside className="spx-sniper-left-rail spx-left-stack">
             <SpxDayPerformancePanel />
+            <SpxTrackRecordPanel />
             <SpxGexLadder desk={desk} live={live} refreshing={refreshing} />
             <SpxUnifiedTape desk={desk} live={live} refreshing={refreshing} />
           </aside>

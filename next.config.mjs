@@ -68,7 +68,7 @@ const nextConfig = {
   // so the build doesn't fail on "Can't resolve 'stream'/'crypto'/'dns'/'net'/'tls'".
   // (This replaced a `webpackIgnore: true` hack that left an unresolvable
   //  import("@/lib/shared-cache") in the server runtime -> ERR_MODULE_NOT_FOUND.)
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, nextRuntime }) => {
     if (!isServer) {
       // ioredis is server-only (pulled lazily by shared-cache for cross-instance
       // Redis sticky state, guarded by process.env.REDIS_URL). It must never enter
@@ -83,6 +83,26 @@ const nextConfig = {
         dns: false,
         net: false,
         tls: false,
+      };
+    }
+    // EDGE runtime: src/instrumentation.ts is bundled for BOTH the node and edge
+    // runtimes (instrumentationHook). Its error sink lazily reaches @/lib/db -> pg,
+    // and pg imports Node built-ins (fs/path/stream/...) that don't exist on edge,
+    // failing the build. The edge path NEVER executes that code (instrumentation
+    // returns early unless NEXT_RUNTIME === "nodejs"), so drop pg + its built-ins
+    // from the edge graph exactly as we do for the client. The node server build is
+    // untouched, so the DB sink still works at runtime.
+    if (nextRuntime === "edge") {
+      config.resolve.alias = { ...config.resolve.alias, pg: false, "pg-native": false };
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        dns: false,
+        path: false,
+        stream: false,
+        crypto: false,
       };
     }
     return config;

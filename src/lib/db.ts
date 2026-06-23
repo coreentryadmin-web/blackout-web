@@ -555,6 +555,39 @@ async function runMigrations(): Promise<void> {
       END IF;
     END $$;
   `);
+  // Durable error sink (P1: no external error tracking). Written by error-sink.ts
+  // when DATABASE_URL is set; inert otherwise. Bounded via opportunistic prune.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS error_events (
+      id BIGSERIAL PRIMARY KEY,
+      source TEXT NOT NULL,
+      scope TEXT,
+      name TEXT NOT NULL,
+      message TEXT NOT NULL,
+      stack TEXT,
+      meta_json JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_error_events_created_at
+    ON error_events(created_at DESC);
+  `);
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS user_journal (
+      id BIGSERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      open_play_id BIGINT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_user_journal_user_play
+    ON user_journal(user_id, open_play_id);
+  `);
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
     try { await lockClient.query(`SELECT pg_advisory_unlock($1)`, [MIGRATION_LOCK_ID]); } catch { /* ignore */ }
@@ -1263,6 +1296,54 @@ export async function closePlayOutcomeRow(
       close.outcome,
       close.closed_at,
     ]
+  );
+}
+
+export type UserJournalRow = { open_play_id: number; note: string; tags: string[]; updated_at: string };
+
+function mapUserJournalRow(r: QueryResultRow): UserJournalRow {
+  return {
+    open_play_id: Number(r.open_play_id),
+    note: typeof r.note === "string" ? r.note : "",
+    tags: Array.isArray(r.tags) ? (r.tags as unknown[]).map(String) : [],
+    updated_at: new Date(String(r.updated_at)).toISOString(),
+  };
+}
+
+export async function fetchUserJournalRows(userId: string): Promise<UserJournalRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `SELECT open_play_id, note, tags, updated_at FROM user_journal WHERE user_id = $1 ORDER BY updated_at DESC`,
+    [userId]
+  );
+  return res.rows.map(mapUserJournalRow);
+}
+
+export async function upsertUserJournalEntry(
+  userId: string,
+  openPlayId: number,
+  note: string,
+  tags: string[]
+): Promise<UserJournalRow> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    INSERT INTO user_journal (user_id, open_play_id, note, tags, updated_at)
+    VALUES ($1, $2, $3, $4::jsonb, NOW())
+    ON CONFLICT (user_id, open_play_id)
+    DO UPDATE SET note = EXCLUDED.note, tags = EXCLUDED.tags, updated_at = NOW()
+    RETURNING open_play_id, note, tags, updated_at
+    `,
+    [userId, openPlayId, note, JSON.stringify(tags)]
+  );
+  return mapUserJournalRow(res.rows[0]!);
+}
+
+export async function deleteUserJournalEntry(userId: string, openPlayId: number): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `DELETE FROM user_journal WHERE user_id = $1 AND open_play_id = $2`,
+    [userId, openPlayId]
   );
 }
 

@@ -57,17 +57,8 @@ async function redisClient() {
 
   _redisClientInit = (async () => {
     try {
-      const mod = await import("ioredis");
-      const Redis = mod.default;
-      const client = new Redis(url, {
-        maxRetriesPerRequest: 1,
-        lazyConnect: true,
-        connectTimeout: 2_000,
-      });
-      // Without an 'error' listener, ioredis throws on the EventEmitter when the
-      // connection drops post-connect — which crashes the whole process/replica.
-      client.on("error", (err) => console.warn("[api-telemetry-redis] redis error:", err instanceof Error ? err.message : err));
-      await client.connect();
+      const { makeRedis } = await import("./make-redis");
+      const client = await makeRedis("api-telemetry-redis", url, { maxRetriesPerRequest: 1 });
       _redisClient = client;
       return client;
     } catch {

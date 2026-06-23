@@ -2,7 +2,7 @@ import { requireTier } from "@/lib/auth-access";
 import { Nav } from "@/components/Nav";
 import { PlatformShell } from "@/components/platform/PlatformShell";
 import { FlowFeed } from "@/components/FlowFeed";
-import { DnaHelixBackground } from "@/components/DnaHelixBackground";
+import { DnaHelixBackgroundLazy as DnaHelixBackground } from "@/components/DnaHelixBackgroundLazy";
 
 export default async function FlowsPage() {
   await requireTier("premium");

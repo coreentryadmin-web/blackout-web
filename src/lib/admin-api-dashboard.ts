@@ -25,6 +25,7 @@ import { getIndexStoreStatus } from "@/lib/ws/polygon-socket";
 import { getUwSocketHealth } from "@/lib/ws/uw-socket";
 import { getDatabasePoolStats } from "@/lib/db";
 import { getPlayEngineHealth } from "@/lib/play-engine-health";
+import { flushTelemetryToRedis, readCrossInstanceTelemetry } from "@/lib/api-telemetry-redis";
 
 export type EndpointDashboardRow = CatalogEndpoint & {
   telemetry: ApiEndpointStats | null;
@@ -72,6 +73,16 @@ export type ApiDashboardPayload = {
     play_engine: Awaited<ReturnType<typeof getPlayEngineHealth>>;
     rate_headroom: RateQuotaHeadroom[];
   };
+  /**
+   * Cluster-wide telemetry aggregated across all live replicas via Redis.
+   * null when REDIS_URL is unset or Redis is unavailable — in that case the
+   * dashboard is replica-local exactly as before (local-only fallback unchanged).
+   */
+  cluster: {
+    instances_reporting: number;
+    rate_limits: Partial<Record<ApiProviderId, number>>;
+    by_provider: Partial<Record<ApiProviderId, { cross_calls_5m: number; cross_errors_5m: number }>>;
+  } | null;
 };
 
 function normalizeEndpointKey(endpoint: string): string {
@@ -319,7 +330,28 @@ export async function fetchApiDashboard(options?: {
   const configuredCount = providers.filter((p) => p.configured).length;
   const healthyCount = providers.filter((p) => p.configured && p.probe.ok === true).length;
 
-  const [dbPool, playEngine] = await Promise.all([getDatabasePoolStats(), getPlayEngineHealth()]);
+  // Flush this replica's own rollup first so it is counted in the cross-instance
+  // read (matches market-health.ts ordering). Both are best-effort and no-op
+  // without REDIS_URL, so the local-only path is unchanged.
+  await flushTelemetryToRedis();
+  const [dbPool, playEngine, crossTelemetry] = await Promise.all([
+    getDatabasePoolStats(),
+    getPlayEngineHealth(),
+    readCrossInstanceTelemetry(),
+  ]);
+
+  const cluster: ApiDashboardPayload["cluster"] = crossTelemetry
+    ? {
+        instances_reporting: crossTelemetry.instances_reporting,
+        rate_limits: crossTelemetry.rate_limits,
+        by_provider: Object.fromEntries(
+          Object.entries(crossTelemetry.providers).map(([provider, stats]) => [
+            provider,
+            { cross_calls_5m: stats?.calls_5m ?? 0, cross_errors_5m: stats?.errors_5m ?? 0 },
+          ])
+        ) as NonNullable<ApiDashboardPayload["cluster"]>["by_provider"],
+      }
+    : null;
   const rateHeadroom = buildRateQuotaHeadroom(getCallsByProvider1m());
 
   return {
@@ -349,5 +381,6 @@ export async function fetchApiDashboard(options?: {
       play_engine: playEngine,
       rate_headroom: rateHeadroom,
     },
+    cluster,
   };
 }

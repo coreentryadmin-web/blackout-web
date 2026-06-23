@@ -18,19 +18,8 @@ async function getRedis(): Promise<import("ioredis").default | null> {
   if (_connectingPromise) return _connectingPromise;
   _connectingPromise = (async () => {
     try {
-      const mod = await import("ioredis");
-      const Redis = mod.default;
-      const client = new Redis(url, {
-        maxRetriesPerRequest: 1,
-        lazyConnect: true,
-        connectTimeout: 2_000,
-      });
-      // Required: without an 'error' listener ioredis throws on the EventEmitter
-      // when the connection drops post-connect, crashing the replica.
-      client.on("error", (err) =>
-        console.warn("[membership-sync-limit] redis error:", err instanceof Error ? err.message : err)
-      );
-      await client.connect();
+      const { makeRedis } = await import("./make-redis");
+      const client = await makeRedis("membership-sync-limit", url, { maxRetriesPerRequest: 1 });
       _redisClient = client;
       return _redisClient;
     } catch {

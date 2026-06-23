@@ -1,0 +1,27 @@
+{
+  "name": "BlackOut Trades",
+  "short_name": "BlackOut",
+  "description": "Institutional-grade options flow, AI market intelligence, live SPX analysis, and Night Hawk swing scanner.",
+  "id": "/",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#040407",
+  "theme_color": "#040407",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

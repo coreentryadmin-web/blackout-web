@@ -1,4 +1,5 @@
 import { postDiscordWebhook } from "@/lib/discord-post";
+import { notifyPlayPersonal } from "@/lib/personal-alert-fanout";
 
 export type PlayDiscordAction = "BUY" | "SELL" | "TRIM";
 
@@ -25,7 +26,13 @@ export async function notifyPlayDiscord(input: {
   if (input.thesis) lines.push(input.thesis.slice(0, 500));
   lines.push("[Blackout Desk](https://blackouttrades.com/dashboard)");
 
-  await postDiscordWebhook(url, { content: lines.join("\n").slice(0, 1900) }, "spx-play");
+  const content = lines.join("\n").slice(0, 1900);
+  await postDiscordWebhook(url, { content }, "spx-play");
+
+  // Additive: fan the same content out to opt-in personal webhooks. Fire-and-forget,
+  // never throws, and no-ops unless SPX_PERSONAL_ALERTS is enabled. The shared
+  // webhook delivery above is unchanged.
+  void notifyPlayPersonal(content);
 }
 
 export async function notifyOpsDiscord(input: {

@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
 import type { SpxAdminDashboardPayload } from "@/lib/admin-spx-dashboard";
 import type { PlayOutcomeRow } from "@/lib/spx-play-outcomes";
+import type { JournalEntry } from "@/lib/journal/journal-core";
+import { JournalEditor } from "@/components/admin/JournalEditor";
 import { AdminSpxTerminal } from "@/components/admin/AdminSpxTerminal";
 import {
   ActionButton,
@@ -493,7 +495,7 @@ function LottoSection({ data }: { data: SpxAdminDashboardPayload }) {
   );
 }
 
-function OutcomesSection({ rows }: { rows: PlayOutcomeRow[] }) {
+function OutcomesSection({ rows, journal, journalUserId }: { rows: PlayOutcomeRow[]; journal: Record<string, JournalEntry>; journalUserId: string }) {
   const [grade, setGrade] = useState("all");
   const [path, setPath] = useState("all");
   const [outcome, setOutcome] = useState("all");
@@ -606,6 +608,7 @@ function OutcomesSection({ rows }: { rows: PlayOutcomeRow[] }) {
                 {expanded === r.id && (
                   <tr>
                     <td colSpan={11}>
+                      <JournalEditor openPlayId={r.open_play_id} userId={journalUserId} initial={journal[String(r.open_play_id)] ?? null} />
                       <JsonBlock value={r} />
                     </td>
                   </tr>
@@ -830,6 +833,11 @@ export function AdminSpxDashboard() {
   const [confirmLive, setConfirmLive] = useState(false);
   // EDGE-10: two-step confirmation for real mutations.
   const [confirmMutate, setConfirmMutate] = useState(false);
+  // Trade journal: per-user notes keyed by open_play_id, loaded once for the
+  // Outcomes section. journalUserId namespaces the localStorage fallback; "anon"
+  // is a safe default for the no-DB path (server scopes by Clerk session).
+  const [journal, setJournal] = useState<Record<string, JournalEntry>>({});
+  const [journalUserId, setJournalUserId] = useState("anon");
 
   /** Returns true if the current ET clock is within regular market hours (09:30–16:00). */
   function isMarketHours(): boolean {
@@ -896,6 +904,16 @@ export function AdminSpxDashboard() {
   useEffect(() => {
     load(false);
   }, [load]);
+
+  // Load the signed-in user's trade-journal once (per-user notes for the Outcomes
+  // section). Best-effort: a failure leaves journal empty and the editor falls
+  // back to localStorage. Server scopes by Clerk session, so no userId is sent.
+  useEffect(() => {
+    fetch("/api/market/spx/journal")
+      .then((r) => (r.ok ? r.json() : { entries: {} }))
+      .then((j: { entries?: Record<string, JournalEntry> }) => setJournal(j.entries ?? {}))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const terminal = section === "terminal";
@@ -1054,6 +1072,7 @@ export function AdminSpxDashboard() {
 
       {data && (
         <div className="admin-deck-content">
+          {/* journal-anchor: see useEffect that loads `journal` + `journalUserId` near the data loader */}
           {section === "overview" && <OverviewSection data={data} />}
           {section === "terminal" && (
             <AdminSpxTerminal data={data} loading={loading} onRefresh={() => load(false)} />
@@ -1061,7 +1080,9 @@ export function AdminSpxDashboard() {
           {section === "live" && <LiveEngineSection data={data} onRunMutate={() => setConfirmMutate(true)} />}
           {section === "desk" && <DeskSection data={data} />}
           {section === "lotto" && <LottoSection data={data} />}
-          {section === "outcomes" && <OutcomesSection rows={data.outcomes_all} />}
+          {section === "outcomes" && (
+            <OutcomesSection rows={data.outcomes_all} journal={journal} journalUserId={journalUserId} />
+          )}
           {section === "signals" && <SignalsSection data={data} />}
           {section === "analytics" && <AnalyticsSection data={data} />}
           {section === "config" && <ConfigSection data={data} />}

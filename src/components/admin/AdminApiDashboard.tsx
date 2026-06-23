@@ -352,6 +352,30 @@ export function AdminApiDashboard() {
                   </div>
                 </section>
               )}
+              {data.cluster && data.cluster.instances_reporting > 0 && (
+                <section className="admin-cmd-ws-status">
+                  <h3 className="admin-cmd-ws-title">
+                    Cluster · {data.cluster.instances_reporting} replica{data.cluster.instances_reporting === 1 ? "" : "s"} reporting (5m)
+                  </h3>
+                  <div className="admin-cmd-ws-grid">
+                    {Object.entries(data.cluster.by_provider).map(([provider, stats]) => {
+                      const calls = stats?.cross_calls_5m ?? 0;
+                      const errors = stats?.cross_errors_5m ?? 0;
+                      const rl = data.cluster?.rate_limits?.[provider as keyof typeof data.cluster.rate_limits] ?? 0;
+                      return (
+                        <div key={provider} className="admin-cmd-ws-card">
+                          <p className="admin-ep-name">{provider}</p>
+                          <p className="admin-api-muted">
+                            <strong className="admin-cmd-ws-ok">{calls}</strong> calls ·{" "}
+                            <strong className={errors > 0 ? "admin-cmd-ws-err" : "admin-cmd-ws-ok"}>{errors}</strong> err
+                            {rl > 0 ? <span className="admin-cmd-ws-err"> · {rl} rate-limited</span> : null}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
               <section className="admin-cmd-provider-health">
                 {data.providers.map((p) => {
                   const latency = p.endpoints.find((ep) => ep.telemetry?.p95_latency_ms)?.telemetry;

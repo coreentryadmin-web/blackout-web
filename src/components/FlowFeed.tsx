@@ -14,13 +14,23 @@ import { FlowAlertStream } from "@/components/desk/FlowAlertStream";
 import { FlowBrief } from "@/components/desk/FlowBrief";
 import { NetPremiumLeaderboard } from "@/components/desk/NetPremiumLeaderboard";
 import { StrikeStackDetector } from "@/components/desk/StrikeStackDetector";
-import { FlowMomentumChart } from "@/components/desk/FlowMomentumChart";
+import dynamic from "next/dynamic";
+// Code-split: recharts lives only inside FlowMomentumChart, so lazy-load it
+// (ssr:false) to keep recharts out of the initial /flows client chunk. The
+// chart already renders client-side once >=2 samples exist, so deferring it is
+// behavior-identical; the loading placeholder matches its 72px container.
+const FlowMomentumChart = dynamic(
+  () => import("@/components/desk/FlowMomentumChart").then((m) => m.FlowMomentumChart),
+  { ssr: false, loading: () => <div className="flow-panel"><div className="flow-panel-header"><span className="flow-panel-title">Flow Momentum</span></div><div className="px-1 pt-2 pb-1"><div className="h-[72px]"><div className="flow-skeleton h-full w-full rounded-md" /></div></div></div> },
+);
 import { DarkPoolPanel } from "@/components/desk/DarkPoolPanel";
 import { TickerDrawer } from "@/components/desk/TickerDrawer";
 import { SplitFlowRadar, type SplitFlowEntry } from "@/components/desk/SplitFlowRadar";
 import { VelocityRadar, type VelocityEntry } from "@/components/desk/VelocityRadar";
 import { SectorFlowPanel, type SectorFlowEntry } from "@/components/desk/SectorFlowPanel";
 import { NightHawkFlowPanel, type NightHawkPlayWithFlow } from "@/components/desk/NightHawkFlowPanel";
+import { WatchlistBar } from "@/components/desk/WatchlistBar";
+import { useWatchlist } from "@/hooks/useWatchlist";
 import type { NightHawkEdition } from "@/lib/nighthawk/types";
 
 const PREMIUM_PRESETS = [200_000, 500_000, 1_000_000, 20_000_000] as const;
@@ -78,6 +88,9 @@ export function FlowFeed() {
   const [tickerFilter, setTickerFilter]   = useState("");
   // UI
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
+  // P2: saved-tickers watchlist (localStorage-backed, client-only)
+  const watchlist = useWatchlist();
+  const [watchlistOnly, setWatchlistOnly] = useState(false);
   const [replayMode, setReplayMode]         = useState(false);
   const [replayAlerts, setReplayAlerts]     = useState<FlowAlert[]>([]);
   // Bug 12: replay speed control
@@ -403,6 +416,7 @@ export function FlowFeed() {
     let base = replayMode ? replayAlerts : alerts;
     base = base.filter((a) => a.premium >= Math.max(FLOOR_PREMIUM, minPremium));
     if (tickerFilter) base = base.filter((a) => a.ticker === tickerFilter.toUpperCase());
+    if (watchlistOnly && watchlist.watchlistSet.size > 0) base = base.filter((a) => watchlist.watchlistSet.has(a.ticker));
     if (typeFilter !== "ALL") base = base.filter((a) => a.option_type === typeFilter);
     // Real-time tape → newest first. (Largest-by-premium ranking belongs in the
     // NET PREMIUM / STRIKE STACKS panels; sorting the TAPE by premium pinned old
@@ -410,7 +424,7 @@ export function FlowFeed() {
     return [...base].sort(
       (a, b) => new Date(b.alerted_at).getTime() - new Date(a.alerted_at).getTime()
     );
-  }, [replayMode, replayAlerts, alerts, tickerFilter, minPremium, typeFilter]);
+  }, [replayMode, replayAlerts, alerts, tickerFilter, minPremium, typeFilter, watchlistOnly, watchlist.watchlistSet]);
 
   // Tape freshness — newest print age drives an honest LIVE/STALE badge.
   // Connection success alone is NOT data freshness: a stale tape over a weekend
@@ -433,6 +447,15 @@ export function FlowFeed() {
     <div className="desk-layout flex flex-col gap-4">
       {/* ── AI Brief ────────────────────────────────────────────────────── */}
       <FlowBrief />
+
+      {/* ── Watchlist rail (P2) ─────────────────────────────────────────── */}
+      <WatchlistBar
+        watchlist={watchlist.watchlist}
+        activeTicker={tickerFilter}
+        onSelect={(t) => setTickerFilter(t)}
+        onRemove={watchlist.remove}
+        onClear={() => { watchlist.clear(); setWatchlistOnly(false); }}
+      />
 
       {/* ── Filter bar ──────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
@@ -566,6 +589,22 @@ export function FlowFeed() {
           {audioEnabled ? "AUDIO ON" : "AUDIO"}
         </button>
 
+        {/* P2: watchlist-only filter toggle */}
+        <button
+          type="button"
+          onClick={() => setWatchlistOnly((v) => !v)}
+          disabled={watchlist.watchlist.length === 0}
+          title="Show only starred (watchlist) tickers"
+          className={clsx(
+            "font-mono text-[9px] font-semibold px-2 py-[5px] rounded-lg border transition-all disabled:opacity-30 disabled:cursor-not-allowed",
+            watchlistOnly
+              ? "border-yellow-500/70 text-yellow-300 bg-yellow-950/40"
+              : "border-cyan-800/40 text-cyan-400 hover:text-white hover:border-cyan-600/60"
+          )}
+        >
+          ★ {watchlist.watchlist.length > 0 ? watchlist.watchlist.length : "WATCH"}
+        </button>
+
         {/* Bug 15: CSV export */}
         <button
           type="button"
@@ -631,6 +670,8 @@ export function FlowFeed() {
             velocitySpikeTickers={velocitySpikeTickers}
             coordinatedTickers={coordinatedTickers}
             hawkTickers={hawkTickers}
+            watchlistTickers={watchlist.watchlistSet}
+            onToggleStar={watchlist.toggle}
           />
         </div>
 
@@ -652,7 +693,13 @@ export function FlowFeed() {
       </div>
 
       {/* Ticker drawer — Bug 13: typeFilter passed so drawer matches tape */}
-      <TickerDrawer ticker={selectedTicker} typeFilter={typeFilter} onClose={() => setSelectedTicker(null)} />
+      <TickerDrawer
+        ticker={selectedTicker}
+        typeFilter={typeFilter}
+        onClose={() => setSelectedTicker(null)}
+        isStarred={selectedTicker ? watchlist.watchlistSet.has(selectedTicker) : false}
+        onToggleStar={watchlist.toggle}
+      />
     </div>
   );
 }

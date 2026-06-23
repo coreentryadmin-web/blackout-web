@@ -2,7 +2,14 @@
 
 import { TradingViewWidget } from "@/components/embeds/TradingViewWidget";
 import { LiveFlowTape } from "@/components/embeds/LiveFlowTape";
-import { FlowVolumeChart } from "@/components/embeds/FlowVolumeChart";
+import dynamic from "next/dynamic";
+// Code-split: FlowVolumeChart is a recharts BarChart leaf — lazy-load it
+// (ssr:false) so recharts is not in the initial embeds bundle. It already gates
+// on data.length client-side; placeholder matches its h-[240px] frame body.
+const FlowVolumeChart = dynamic(
+  () => import("@/components/embeds/FlowVolumeChart").then((m) => m.FlowVolumeChart),
+  { ssr: false, loading: () => <div className="h-[240px]" /> },
+);
 import type { FlowAlert } from "@/lib/api";
 
 type FlowsEmbedsProps = {

@@ -67,10 +67,14 @@ export function TickerDrawer({
   ticker,
   typeFilter,
   onClose,
+  isStarred,
+  onToggleStar,
 }: {
   ticker: string | null;
   typeFilter?: "ALL" | "CALL" | "PUT";
   onClose: () => void;
+  isStarred?: boolean;
+  onToggleStar?: (ticker: string) => void;
 }) {
   const [state, setState] = useState<State>({ flows: [], dp: [], loading: false });
 
@@ -138,6 +142,20 @@ export function TickerDrawer({
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800/80 flex-shrink-0 sticky top-0 bg-zinc-950/95 backdrop-blur z-10">
               <div className="flex items-center gap-3">
+                {onToggleStar && ticker && (
+                  <button
+                    type="button"
+                    onClick={() => onToggleStar(ticker)}
+                    title={isStarred ? `Remove ${ticker} from watchlist` : `Add ${ticker} to watchlist`}
+                    aria-pressed={!!isStarred}
+                    className={clsx(
+                      "leading-none text-[22px] transition-colors",
+                      isStarred ? "text-yellow-300" : "text-cyan-400 hover:text-yellow-300"
+                    )}
+                  >
+                    {isStarred ? "★" : "☆"}
+                  </button>
+                )}
                 <span className="font-anton text-[28px] text-white leading-none tracking-wide">{ticker}</span>
                 {!state.loading && state.flows.length > 0 && (
                   <div className={clsx(

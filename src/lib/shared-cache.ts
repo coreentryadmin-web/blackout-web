@@ -27,18 +27,11 @@ async function getRedis(): Promise<RedisClient | null> {
 
   redisInitPromise = (async () => {
     try {
-      const mod = await import("ioredis");
-      const Redis = mod.default;
-      const client = new Redis(process.env.REDIS_URL!.trim(), {
+      const { makeRedis } = await import("./make-redis");
+      const client = await makeRedis("shared-cache", process.env.REDIS_URL!.trim(), {
         maxRetriesPerRequest: 1,
-        lazyConnect: true,
-        connectTimeout: 2_000,
       });
-      // Without an 'error' listener, ioredis throws on the EventEmitter when the
-      // connection drops post-connect — which crashes the whole process/replica.
-      client.on("error", (err) => console.warn("[shared-cache] redis error:", err instanceof Error ? err.message : err));
-      await client.connect();
-      redisClient = client;
+      redisClient = client as unknown as RedisClient;
       lastFailedAt = 0; // clear failure on success
       return redisClient;
     } catch (error) {

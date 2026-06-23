@@ -2,6 +2,7 @@
 
 import { TradingViewWidget } from "@/components/embeds/TradingViewWidget";
 import { LiveMarketPulse } from "@/components/embeds/LiveMarketPulse";
+import { DashboardTrackRecordEmbed } from "@/components/embeds/DashboardTrackRecordEmbed";
 
 export function DashboardEmbeds() {
   return (
@@ -23,6 +24,9 @@ export function DashboardEmbeds() {
         title="Indices & Mag 7"
         height={340}
       />
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        <DashboardTrackRecordEmbed className="xl:col-span-1" />
+      </div>
     </div>
   );
 }

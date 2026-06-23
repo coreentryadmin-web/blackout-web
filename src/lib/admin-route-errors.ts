@@ -1,4 +1,5 @@
 import { recordApiCall } from "@/lib/api-telemetry";
+import { captureError } from "@/lib/error-sink";
 
 const MAX = 40;
 const errors: Array<{ route: string; message: string; at: string }> = [];
@@ -21,6 +22,10 @@ export function recordAdminRouteError(route: string, error: unknown): void {
     phase: "failure",
     synthetic: true,
   });
+
+  // Durable sink (no-op unless DATABASE_URL / SENTRY_DSN set). Fire-and-forget:
+  // must never throw into the route's catch block or delay the response.
+  void captureError(error, { source: "admin_route", scope: route });
 }
 export function getAdminRouteErrors(): typeof errors {
   return [...errors];

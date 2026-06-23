@@ -1,9 +1,17 @@
 ﻿"use client";
 
 import { useState, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePulse } from "@/lib/usePulse";
-import { AreaChart, Area, ResponsiveContainer, ReferenceLine } from "recharts";
+// Code-split: the dark-pool sparkline (recharts) is the only recharts use in
+// this file. It is extracted to DarkPoolSpark and lazy-loaded (ssr:false) so
+// recharts stays out of DarkPoolPanel's static client graph while the rest of
+// the panel (framer-motion markup) still SSR-renders unchanged.
+const DarkPoolSpark = dynamic(
+  () => import("@/components/desk/DarkPoolSpark").then((m) => m.DarkPoolSpark),
+  { ssr: false, loading: () => null },
+);
 import { clsx } from "clsx";
 import {
   fmtPremium,
@@ -300,19 +308,7 @@ export function DarkPoolPanel() {
                 </span>
                 {history.length >= 3 && (
                   <div className="flex-1 h-6">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={history} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
-                        <defs>
-                          <linearGradient id="dpSparkGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%"   stopColor={sparkColor} stopOpacity={0.45} />
-                            <stop offset="100%" stopColor={sparkColor} stopOpacity={0}    />
-                          </linearGradient>
-                        </defs>
-                        <ReferenceLine y={0} stroke="#3f3f46" strokeWidth={1} />
-                        <Area type="monotone" dataKey="net" stroke={sparkColor} strokeWidth={2}
-                          fill="url(#dpSparkGrad)" dot={false} isAnimationActive={false} />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    <DarkPoolSpark history={history} color={sparkColor} />
                   </div>
                 )}
                 <span
