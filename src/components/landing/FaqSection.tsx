@@ -9,12 +9,12 @@ type FaqCategory = "Platform" | "The Arsenal" | "Signals & Data" | "Membership" 
 
 type Faq = { cat: FaqCategory; q: string; a: string };
 
-const CATEGORIES: { key: FaqCategory; label: string; blurb: string }[] = [
-  { key: "Platform", label: "Platform", blurb: "What BlackOut is + who it's for" },
-  { key: "The Arsenal", label: "The Arsenal", blurb: "Every tool, explained" },
-  { key: "Signals & Data", label: "Signals & Data", blurb: "Alerts, feeds, track record" },
-  { key: "Membership", label: "Membership", blurb: "Access, plans, billing" },
-  { key: "Getting Started", label: "Getting Started", blurb: "First 5 minutes + support" },
+const CATEGORY_ORDER: FaqCategory[] = [
+  "Platform",
+  "The Arsenal",
+  "Signals & Data",
+  "Membership",
+  "Getting Started",
 ];
 
 const FAQS: Faq[] = [
@@ -42,7 +42,7 @@ const FAQS: Faq[] = [
   {
     cat: "Platform",
     q: "Is any of this financial advice?",
-    a: "No. BlackOut provides market data, analytics, and pattern-recognition tools for educational and informational purposes only. Nothing here is a recommendation to buy or sell — every trade is your own decision. We make sure you're never trading blind.",
+    a: "No. BlackOut provides market data, analytics, and pattern-recognition tools for educational and informational purposes only. Nothing here is a recommendation to buy or sell — every trade is your own decision. We just make sure you're never trading blind.",
   },
   {
     cat: "Platform",
@@ -135,239 +135,279 @@ const FAQS: Faq[] = [
 ];
 
 export function FaqSection() {
-  const [active, setActive] = useState<FaqCategory | "All">("All");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<string | null>(FAQS[0].q);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return FAQS.filter((f) => {
-      if (active !== "All" && f.cat !== active) return false;
-      if (!q) return true;
-      return f.q.toLowerCase().includes(q) || f.a.toLowerCase().includes(q);
-    });
-  }, [active, query]);
+  const q = query.trim().toLowerCase();
+  const matches = useMemo(() => {
+    if (!q) return null;
+    return FAQS.filter((f) => f.q.toLowerCase().includes(q) || f.a.toLowerCase().includes(q));
+  }, [q]);
+
+  // global index for the mono number badges (stable across grouping)
+  const indexOf = (qq: string) => FAQS.findIndex((f) => f.q === qq);
 
   return (
     <section
       id="faq"
       className="landing-section landing-section-cut relative py-24 md:py-32 px-4 md:px-8 overflow-hidden"
     >
-      {/* ambient brand glow */}
+      {/* ambient depth: brand glow + faint institutional grid */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-[420px] w-[820px] rounded-full blur-[120px] opacity-[0.10]"
+        className="pointer-events-none absolute -top-32 right-[-10%] h-[520px] w-[760px] rounded-full blur-[140px] opacity-[0.12]"
         style={{ background: "radial-gradient(closest-side, #00e676, transparent)" }}
       />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.035]"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(0,230,118,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(0,230,118,0.6) 1px, transparent 1px)",
+          backgroundSize: "64px 64px",
+          maskImage: "radial-gradient(ellipse 70% 60% at 50% 40%, #000 30%, transparent 75%)",
+          WebkitMaskImage: "radial-gradient(ellipse 70% 60% at 50% 40%, #000 30%, transparent 75%)",
+        }}
+      />
 
-      <div className="max-w-3xl mx-auto relative z-10">
-        {/* header */}
-        <motion.div
+      <div className="max-w-6xl mx-auto relative z-10 grid lg:grid-cols-[0.82fr_1.18fr] gap-10 lg:gap-16 items-start">
+        {/* ───────────────── LEFT: brand intro + support (sticky) ───────────────── */}
+        <motion.aside
           initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="mb-10 text-center"
+          className="lg:sticky lg:top-28"
         >
-          <p className="font-mono text-[10px] tracking-[0.5em] text-bull uppercase mb-3">
-            &#9670; Frequently Asked
+          <p className="font-mono text-[10px] tracking-[0.5em] text-bull uppercase mb-4 flex items-center gap-2">
+            <span className="inline-block h-[6px] w-[6px] rounded-full bg-bull" style={{ boxShadow: "0 0 10px #00e676" }} />
+            The Briefing
           </p>
-          <h2 className="font-anton text-5xl md:text-6xl tracking-tight text-white leading-none">
-            EVERYTHING<span className="text-bull">.</span>
+          <h2 className="font-anton text-5xl md:text-[4.25rem] leading-[0.92] tracking-tight text-white">
+            EVERYTHING,
+            <br />
+            <span
+              style={{
+                background: "linear-gradient(90deg, #00e676, #34d399 60%, #7dd3fc)",
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+                color: "transparent",
+              }}
+            >
+              EXPLAINED.
+            </span>
           </h2>
-          <p className="mt-4 text-[15px] leading-relaxed text-white/70 max-w-xl mx-auto">
+          <p className="mt-6 text-[15px] leading-relaxed text-white/65 max-w-sm">
             Every tool, every signal, every answer — what BlackOut is, how the arsenal works, and how
-            to get the institutional edge running for you.
+            to get the institutional edge running for you in minutes.
           </p>
-        </motion.div>
 
-        {/* search */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="relative mb-5"
-        >
-          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-bull/70 font-mono text-sm">
-            &#9906;
-          </span>
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search the FAQ — flow, Largo, gamma, billing…"
-            aria-label="Search frequently asked questions"
-            className="w-full rounded-lg bg-[rgba(8,8,14,0.7)] border border-[rgba(0,230,118,0.18)] py-3 pl-11 pr-4 text-sm text-white placeholder:text-white/40 outline-none transition-colors focus:border-bull/60"
-            style={{ backdropFilter: "blur(10px)" }}
-          />
-        </motion.div>
+          {/* support card */}
+          <div
+            className="mt-8 rounded-2xl border p-6 relative overflow-hidden"
+            style={{
+              borderColor: "rgba(0,230,118,0.22)",
+              background: "linear-gradient(180deg, rgba(0,230,118,0.07), rgba(8,8,14,0.6))",
+              backdropFilter: "blur(14px)",
+            }}
+          >
+            <p className="font-mono text-[10px] tracking-[0.35em] text-bull uppercase mb-2">
+              Still stuck?
+            </p>
+            <p className="text-white font-semibold text-[15px] leading-snug">
+              Talk to a human on the desk.
+            </p>
+            <p className="mt-1.5 text-[13px] text-white/55 leading-relaxed">
+              Real people, fast replies — billing, access, or a read on a setup.
+            </p>
+            <a
+              href={`mailto:${SUPPORT_EMAIL}`}
+              className="mt-4 inline-flex items-center gap-2.5 rounded-xl px-5 py-3 font-semibold text-[14px] tracking-[0.01em] transition-transform duration-200 hover:scale-[1.02]"
+              style={{
+                background: "linear-gradient(180deg, #00e676, #0f9d58)",
+                color: "#021c14",
+                boxShadow: "0 0 34px -10px rgba(0,230,118,0.6)",
+              }}
+            >
+              <span className="font-mono text-[15px]" aria-hidden>
+                &#9993;
+              </span>
+              {SUPPORT_EMAIL}
+            </a>
+          </div>
+        </motion.aside>
 
-        {/* category filter */}
-        <div className="mb-7 flex flex-wrap gap-2">
-          <CategoryPill
-            label="All"
-            active={active === "All"}
-            onClick={() => setActive("All")}
-          />
-          {CATEGORIES.map((c) => (
-            <CategoryPill
-              key={c.key}
-              label={c.label}
-              active={active === c.key}
-              onClick={() => setActive(c.key)}
+        {/* ───────────────── RIGHT: search + grouped accordion ───────────────── */}
+        <div>
+          {/* search */}
+          <div className="relative mb-7">
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-bull/70 font-mono text-sm" aria-hidden>
+              &#9906;
+            </span>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search — flow, Largo, gamma, billing…"
+              aria-label="Search frequently asked questions"
+              className="w-full rounded-xl bg-[rgba(8,8,14,0.7)] border border-[rgba(0,230,118,0.16)] py-3.5 pl-11 pr-4 text-sm text-white placeholder:text-white/35 outline-none transition-colors focus:border-bull/60"
+              style={{ backdropFilter: "blur(10px)" }}
             />
-          ))}
-        </div>
+          </div>
 
-        {/* accordion */}
-        <div className="flex flex-col gap-3">
-          <AnimatePresence initial={false} mode="popLayout">
-            {filtered.map((item, i) => {
-              const isOpen = open === item.q;
-              const answerId = `faq-answer-${i}`;
-              return (
-                <motion.div
-                  key={item.q}
-                  layout
-                  initial={{ opacity: 0, y: 14 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-                  className="rounded-xl border bg-[rgba(8,8,14,0.7)] overflow-hidden transition-colors"
-                  style={{
-                    backdropFilter: "blur(10px)",
-                    borderColor: isOpen ? "rgba(0,230,118,0.4)" : "rgba(0,230,118,0.14)",
-                    boxShadow: isOpen ? "0 0 40px -16px rgba(0,230,118,0.45)" : "none",
-                  }}
-                >
-                  <button
-                    onClick={() => setOpen(isOpen ? null : item.q)}
-                    aria-expanded={isOpen}
-                    aria-controls={answerId}
-                    className="w-full flex items-center gap-4 px-5 py-4 text-left"
-                  >
-                    <span
-                      className="font-mono text-[11px] tabular-nums shrink-0 transition-colors"
-                      style={{ color: isOpen ? "#00e676" : "rgba(125,211,252,0.65)" }}
-                    >
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    <span className="flex-1 text-[15px] md:text-base font-semibold tracking-[0.01em] text-white">
-                      {item.q}
-                    </span>
-                    <span
-                      className="font-mono text-lg leading-none shrink-0 text-bull transition-transform duration-300"
-                      style={{ transform: isOpen ? "rotate(45deg)" : "rotate(0deg)" }}
-                      aria-hidden
-                    >
-                      +
-                    </span>
-                  </button>
-
-                  <AnimatePresence initial={false}>
-                    {isOpen && (
-                      <motion.div
-                        id={answerId}
-                        key="content"
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
-                        style={{ overflow: "hidden" }}
-                      >
-                        <div className="px-5 pb-5 pl-[3.4rem]">
-                          <p className="text-[14px] leading-[1.7] text-white/75 m-0">{item.a}</p>
-                          <span className="mt-3 inline-block font-mono text-[10px] tracking-[0.18em] uppercase text-bull/60">
-                            {item.cat}
-                          </span>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-
-          {filtered.length === 0 && (
-            <div className="rounded-xl border border-[rgba(0,230,118,0.14)] bg-[rgba(8,8,14,0.7)] px-5 py-8 text-center">
-              <p className="text-sm text-white/70 m-0">
-                No matches for &ldquo;{query}&rdquo;. Try another term — or just ask us directly.
+          {matches ? (
+            <div className="flex flex-col gap-3">
+              <p className="font-mono text-[10px] tracking-[0.3em] uppercase text-white/40 mb-1">
+                {matches.length} result{matches.length === 1 ? "" : "s"}
               </p>
+              <AnimatePresence initial={false} mode="popLayout">
+                {matches.map((item) => (
+                  <FaqItem
+                    key={item.q}
+                    item={item}
+                    index={indexOf(item.q)}
+                    isOpen={open === item.q}
+                    onToggle={() => setOpen(open === item.q ? null : item.q)}
+                  />
+                ))}
+              </AnimatePresence>
+              {matches.length === 0 && (
+                <div className="rounded-xl border border-[rgba(0,230,118,0.14)] bg-[rgba(8,8,14,0.7)] px-5 py-8 text-center">
+                  <p className="text-sm text-white/65 m-0">
+                    No matches for &ldquo;{query}&rdquo;. Try another term — or email us directly.
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-9">
+              {CATEGORY_ORDER.map((cat, ci) => {
+                const items = FAQS.filter((f) => f.cat === cat);
+                return (
+                  <div key={cat}>
+                    <div className="flex items-center gap-3 mb-3.5">
+                      <span className="font-mono text-[11px] text-bull/70 tabular-nums">
+                        {String(ci + 1).padStart(2, "0")}
+                      </span>
+                      <span className="font-mono text-[11px] tracking-[0.28em] uppercase text-white/55">
+                        {cat}
+                      </span>
+                      <span className="flex-1 h-px" style={{ background: "linear-gradient(90deg, rgba(0,230,118,0.25), transparent)" }} />
+                    </div>
+                    <div className="flex flex-col gap-2.5">
+                      {items.map((item) => (
+                        <FaqItem
+                          key={item.q}
+                          item={item}
+                          index={indexOf(item.q)}
+                          isOpen={open === item.q}
+                          onToggle={() => setOpen(open === item.q ? null : item.q)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
-
-        {/* support CTA */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="mt-10 rounded-2xl border border-[rgba(0,230,118,0.22)] p-7 md:p-8 text-center relative overflow-hidden"
-          style={{
-            background:
-              "linear-gradient(180deg, rgba(0,230,118,0.06), rgba(8,8,14,0.75))",
-            backdropFilter: "blur(14px)",
-          }}
-        >
-          <p className="font-mono text-[10px] tracking-[0.4em] text-bull uppercase mb-3">
-            &#9670; Still have a question?
-          </p>
-          <h3 className="font-anton text-2xl md:text-3xl text-white tracking-tight leading-tight">
-            TALK TO A HUMAN ON THE DESK
-          </h3>
-          <p className="mt-3 text-sm text-white/70 max-w-md mx-auto">
-            Real people, fast replies — billing, access, feature requests, or a read on a setup.
-          </p>
-          <a
-            href={`mailto:${SUPPORT_EMAIL}`}
-            className="group mt-6 inline-flex items-center gap-3 rounded-xl px-6 py-3.5 font-semibold text-[15px] tracking-[0.02em] transition-transform duration-200 hover:scale-[1.02]"
-            style={{
-              background: "linear-gradient(180deg, #00e676, #0f9d58)",
-              color: "#021c14",
-              boxShadow: "0 0 36px -8px rgba(0,230,118,0.55)",
-            }}
-          >
-            <span className="font-mono text-base" aria-hidden>
-              &#9993;
-            </span>
-            {SUPPORT_EMAIL}
-          </a>
-        </motion.div>
       </div>
     </section>
   );
 }
 
-function CategoryPill({
-  label,
-  active,
-  onClick,
+function FaqItem({
+  item,
+  index,
+  isOpen,
+  onToggle,
 }: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
+  item: Faq;
+  index: number;
+  isOpen: boolean;
+  onToggle: () => void;
 }) {
+  const answerId = `faq-a-${index}`;
   return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      className="rounded-full px-4 py-2 text-[12px] font-semibold tracking-[0.04em] transition-all duration-200"
-      style={
-        active
-          ? {
-              background: "rgba(0,230,118,0.14)",
-              border: "1px solid rgba(0,230,118,0.5)",
-              color: "#00e676",
-              boxShadow: "0 0 22px -10px rgba(0,230,118,0.6)",
-            }
-          : {
-              background: "rgba(8,8,14,0.6)",
-              border: "1px solid rgba(125,211,252,0.12)",
-              color: "rgba(255,255,255,0.62)",
-            }
-      }
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -6 }}
+      transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+      className="group relative rounded-xl overflow-hidden"
+      style={{
+        background: isOpen ? "rgba(12,16,22,0.92)" : "rgba(8,9,14,0.66)",
+        border: `1px solid ${isOpen ? "rgba(0,230,118,0.42)" : "rgba(125,211,252,0.08)"}`,
+        backdropFilter: "blur(12px)",
+        boxShadow: isOpen ? "0 18px 50px -22px rgba(0,230,118,0.5)" : "none",
+        transition: "background .25s ease, border-color .25s ease, box-shadow .25s ease",
+      }}
     >
-      {label}
-    </button>
+      {/* left accent rail */}
+      <span
+        aria-hidden
+        className="absolute left-0 top-0 bottom-0 w-[2px] transition-all duration-300"
+        style={{
+          background: isOpen ? "#00e676" : "rgba(0,230,118,0.25)",
+          boxShadow: isOpen ? "0 0 16px #00e676" : "none",
+        }}
+      />
+      <button
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        aria-controls={answerId}
+        className="w-full flex items-center gap-4 pl-5 pr-5 py-[18px] text-left"
+      >
+        <span
+          className="font-mono text-[11px] tabular-nums shrink-0 w-6 transition-colors"
+          style={{ color: isOpen ? "#00e676" : "rgba(125,211,252,0.5)" }}
+        >
+          {String(index + 1).padStart(2, "0")}
+        </span>
+        <span
+          className="flex-1 text-[15px] md:text-[15.5px] font-semibold tracking-[0.005em] transition-colors"
+          style={{ color: isOpen ? "#fff" : "rgba(255,255,255,0.9)" }}
+        >
+          {item.q}
+        </span>
+        <span
+          className="relative shrink-0 h-6 w-6 grid place-items-center rounded-md transition-all duration-300"
+          style={{
+            border: `1px solid ${isOpen ? "rgba(0,230,118,0.5)" : "rgba(255,255,255,0.12)"}`,
+            background: isOpen ? "rgba(0,230,118,0.12)" : "transparent",
+          }}
+          aria-hidden
+        >
+          <span
+            className="font-mono text-[15px] leading-none text-bull transition-transform duration-300"
+            style={{ transform: isOpen ? "rotate(45deg)" : "rotate(0deg)" }}
+          >
+            +
+          </span>
+        </span>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            id={answerId}
+            key="content"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+            style={{ overflow: "hidden" }}
+          >
+            <div className="pl-[3.4rem] pr-6 pb-5 -mt-1">
+              <div
+                className="mb-3 h-px w-full"
+                style={{ background: "linear-gradient(90deg, rgba(0,230,118,0.22), transparent 70%)" }}
+              />
+              <p className="text-[14px] leading-[1.72] text-white/75 m-0">{item.a}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
