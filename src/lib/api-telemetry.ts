@@ -8,6 +8,7 @@ import type {
   ProviderHealthRow,
 } from "@/lib/api-telemetry-types";
 import { classifyEventSeverity } from "@/lib/api-telemetry-types";
+import { sanitizeTelemetryBody } from "@/lib/api-telemetry-sanitize";
 
 export type {
   ApiProviderId,
@@ -327,7 +328,7 @@ function diagnoseEvent(event: ApiCallEvent): string[] {
   }
   if (event.status === 422) {
     tips.push("Validation error — missing or invalid query parameters.");
-    if (event.request_body) tips.push(`Request: ${event.request_body.slice(0, 120)}`);
+    if (event.request_body) tips.push(`Request: ${(sanitizeTelemetryBody(event.request_body) ?? "").slice(0, 120)}`);
   }
   if (event.status === null) {
     tips.push("Network failure — DNS, timeout, or connection reset.");

@@ -6,6 +6,7 @@ import {
 import {
   sanitizeTrackedFetchUrl as sanitizeUrl,
   sanitizeHeaderNames,
+  sanitizeTelemetrySnippet,
 } from "@/lib/api-telemetry-sanitize";
 
 export type TrackedFetchOptions = RequestInit & {
@@ -45,7 +46,7 @@ async function readSnippet(res: Response): Promise<string | null> {
   try {
     const clone = res.clone();
     const text = await clone.text();
-    return text.slice(0, 600) || null;
+    return sanitizeTelemetrySnippet(text.slice(0, 600));
   } catch {
     return null;
   }

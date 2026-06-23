@@ -1,4 +1,5 @@
 import { trackedFetch } from "@/lib/api-tracked-fetch";
+import { isUwUpstream5xx } from "@/lib/uw-upstream-5xx";
 import {
   buildUwRequestKey,
   isUwCircuitOpen,
@@ -242,6 +243,23 @@ async function uwGetSafe<T>(
         const stale = cacheable ? readUwCache<T>(cacheKey, true) : undefined;
         if (stale !== undefined) return stale;
         console.warn(`[uw] RATE_LIMITED ${path} — exhausted retries`);
+        return null;
+      }
+      // Transient upstream 5xx (502/503/504 blips). NOT a rate-limit, so do NOT call
+      // noteUw429 — it must never feed the 429 breaker. Retry with bounded backoff, then
+      // fall to stale cache so a single blip can't blank the desk.
+      if (isUwUpstream5xx(msg)) {
+        if (attempt < retries) {
+          const delay = 1000 * Math.pow(2, attempt) + Math.random() * 500;
+          if (process.env.UW_DEBUG_RETRIES === "1") {
+            console.debug(`[uw] UPSTREAM_5XX ${path} — retry ${attempt + 1} in ${delay.toFixed(0)}ms`);
+          }
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+        const stale = cacheable ? readUwCache<T>(cacheKey, true) : undefined;
+        if (stale !== undefined) return stale;
+        console.warn(`[uw] UPSTREAM_5XX ${path} — exhausted retries`);
         return null;
       }
       return null;

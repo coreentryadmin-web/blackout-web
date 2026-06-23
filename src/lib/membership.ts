@@ -106,8 +106,10 @@ export async function syncWhopMembershipForEmail(email: string): Promise<{
     const bPriority = STATUS_PRIORITY[b.status] ?? 99;
     if (aPriority !== bPriority) return aPriority - bPriority;
     // Within the same priority bucket, prefer the most recently created.
-    const aTs = (a as unknown as { created_at?: number }).created_at ?? 0;
-    const bTs = (b as unknown as { created_at?: number }).created_at ?? 0;
+    // created_at is an ISO datetime STRING — parse to epoch ms; the prior numeric
+    // cast made string subtraction yield NaN, so the tiebreak never reordered.
+    const aTs = Date.parse((a as unknown as { created_at?: string }).created_at ?? "") || 0;
+    const bTs = Date.parse((b as unknown as { created_at?: string }).created_at ?? "") || 0;
     return bTs - aTs;
   });
 

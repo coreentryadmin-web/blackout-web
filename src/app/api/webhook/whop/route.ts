@@ -42,15 +42,12 @@ export async function POST(req: NextRequest) {
   const whop = getWhopWebhookClient();
   const body = await req.text();
 
-  // Guard: reject requests that are missing the HMAC signature header entirely.
-  // Without this check, some SDK versions silently skip HMAC verification when
-  // the header is absent, allowing unauthenticated callers to trigger membership
-  // sync for arbitrary email addresses.
-  const signatureHeader = req.headers.get("x-whop-signature");
-  if (!signatureHeader) {
-    console.error("[whop webhook] Rejected: missing x-whop-signature header");
-    return NextResponse.json({ error: "Missing signature" }, { status: 401 });
-  }
+  // Signature verification is performed by whop.webhooks.unwrap() below. The Whop SDK
+  // uses the Standard Webhooks scheme (webhook-id / webhook-timestamp / webhook-signature,
+  // NOT x-whop-signature): unwrap() throws when any of those headers is missing or the
+  // HMAC doesn't match, and the catch returns 400. There is no silent-skip path, so a
+  // pre-check on x-whop-signature would be wrong (that header plays no role here) and
+  // would 401 legitimate signed deliveries.
 
   const headers = Object.fromEntries(req.headers);
 

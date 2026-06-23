@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import type { PlayTechnicals } from "@/lib/spx-play-technicals";
 import type { SpxPlayDirection } from "@/lib/spx-signals";

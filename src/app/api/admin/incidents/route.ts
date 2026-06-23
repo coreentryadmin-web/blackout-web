@@ -28,12 +28,15 @@ export async function POST(req: NextRequest) {
     if (!body.id || !body.action) {
       return NextResponse.json({ error: "id and action required" }, { status: 400 });
     }
+    if (body.action !== "ack" && body.action !== "resolve") {
+      return NextResponse.json({ error: "action must be 'ack' or 'resolve'" }, { status: 400 });
+    }
 
     const actor = await getAdminApiActor();
     let ok = false;
     if (body.action === "ack") {
       ok = await ackAdminIncident(body.id, actor?.email ?? null);
-    } else {
+    } else if (body.action === "resolve") {
       ok = await resolveAdminIncident(body.id);
     }
 

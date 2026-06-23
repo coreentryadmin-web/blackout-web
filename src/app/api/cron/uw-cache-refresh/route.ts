@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
+import { logCronRun } from "@/lib/cron-run";
 import { getUwCacheRedis, uwCacheSet, UW_KEYS, UW_CACHE_TTL } from "@/lib/providers/uw-shared-cache";
 import {
   fetchUwMarketTide,
@@ -30,6 +31,7 @@ const SECTORS = [
 ] as const;
 
 export async function GET(req: NextRequest) {
+  const started = Date.now();
   if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -107,6 +109,19 @@ export async function GET(req: NextRequest) {
   if (failed > 0) {
     console.warn(`[cron/uw-cache-refresh] ${failed} task(s) failed`);
   }
+
+  // Log the run so the watchdog/dashboard can see it. ok:false (=> status 'failed' +
+  // critical alert) only when the WHOLE batch fails; partial failures log ok with the
+  // count so one flaky UW task doesn't page ops every 2 min. Failure text goes under
+  // `error` so logCronRun surfaces it in the message column + Discord body.
+  const allFailed = tasks.length > 0 && failed === tasks.length;
+  await logCronRun("uw-cache-refresh", started, {
+    ok: !allFailed,
+    refreshed,
+    failed,
+    total: tasks.length,
+    ...(failed > 0 ? { error: `${failed}/${tasks.length} refresh task(s) failed` } : {}),
+  });
 
   return NextResponse.json({ ok: true, refreshed, total: tasks.length });
 }

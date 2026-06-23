@@ -16,6 +16,15 @@ const FULL_DESK_MS = 10_000;
 const DESK_CACHE_KEY = "spx-merged-desk";
 /** Keep cached desk for the trading day across refresh/navigation. */
 const DESK_CACHE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+/**
+ * Throttle the sessionStorage write of the merged desk. The desk re-merges on
+ * every pulse tick (~1s); persisting that hot a stream to sessionStorage on each
+ * change is wasteful (JSON.stringify of the full payload + a synchronous storage
+ * write). 7.5s keeps a fresh-enough snapshot for refresh/navigation restore while
+ * staying well under the pulse cadence. The latest value is always flushed on
+ * visibilitychange/unmount, so throttling never loses the final state.
+ */
+const DESK_CACHE_WRITE_MS = 7_500;
 
 const swrLiveOpts = {
   refreshWhenHidden: false,
@@ -125,6 +134,10 @@ export function useMergedDesk() {
     }
   );
 
+  // PURE: derive the merged desk only. No ref mutation, no sessionStorage write
+  // here — those are commit-phase side effects handled by the effect below.
+  // Reading deskStable.current as the fallback base is safe: it holds the prior
+  // committed value and the effect updates it only after this render commits.
   const merged = useMemo((): SpxDeskPayload | undefined => {
     let out: SpxDeskPayload | undefined;
 
@@ -153,13 +166,47 @@ export function useMergedDesk() {
       }
     }
 
-    if (out) {
-      deskStable.current = out;
-      writeSessionCache(DESK_CACHE_KEY, out);
-    }
-
     return out;
   }, [desk, flow, pulse]);
+
+  // Side effects for the merged desk, in commit phase:
+  //  1. deskStable.current is updated on EVERY change (unthrottled) — sessionActive
+  //     and the merge fallback above read it, so it must stay current.
+  //  2. The sessionStorage write is throttled to DESK_CACHE_WRITE_MS to avoid a
+  //     storage write on every ~1s pulse tick.
+  const lastDeskWriteRef = useRef(0);
+  const pendingDeskRef = useRef<SpxDeskPayload | undefined>(undefined);
+  useEffect(() => {
+    if (!merged) return;
+    deskStable.current = merged;
+    pendingDeskRef.current = merged;
+    const now = Date.now();
+    if (now - lastDeskWriteRef.current >= DESK_CACHE_WRITE_MS) {
+      lastDeskWriteRef.current = now;
+      pendingDeskRef.current = undefined;
+      writeSessionCache(DESK_CACHE_KEY, merged);
+    }
+  }, [merged]);
+
+  // Flush the latest desk to sessionStorage on tab-hide and unmount so a
+  // throttled-but-not-yet-written snapshot is never lost across navigation/refresh.
+  useEffect(() => {
+    const flush = () => {
+      const pending = pendingDeskRef.current;
+      if (!pending) return;
+      pendingDeskRef.current = undefined;
+      lastDeskWriteRef.current = Date.now();
+      writeSessionCache(DESK_CACHE_KEY, pending);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      flush();
+    };
+  }, []);
 
   const live = Boolean(
     sessionActive &&

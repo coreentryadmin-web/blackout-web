@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import type { ApiCallEvent } from "@/lib/api-telemetry-types";
-import { sanitizeTelemetryBody, sanitizeTelemetryUrl } from "@/lib/api-telemetry-sanitize";
+import { sanitizeTelemetryBody, sanitizeTelemetrySnippet, sanitizeTelemetryUrl } from "@/lib/api-telemetry-sanitize";
 
 type EventDetail = {
   event: ApiCallEvent;
@@ -136,7 +136,7 @@ export function AdminApiEventDetail({
                 {detail.event.response_snippet && (
                   <section className="admin-cmd-detail-section">
                     <h4 className="admin-cmd-detail-heading">Response snippet</h4>
-                    <pre className="admin-cmd-detail-pre">{detail.event.response_snippet}</pre>
+                    <pre className="admin-cmd-detail-pre">{sanitizeTelemetrySnippet(detail.event.response_snippet)}</pre>
                   </section>
                 )}
 

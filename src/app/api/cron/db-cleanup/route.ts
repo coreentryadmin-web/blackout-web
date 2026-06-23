@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { dbQuery, requireDatabaseInProduction } from "@/lib/db";
 import { logCronRun } from "@/lib/cron-run";
 import { isCronAuthorized } from "@/lib/market-api-auth";
+import { isAllowedCleanupTarget } from "@/lib/db-cleanup-targets";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +35,17 @@ export async function GET(req: NextRequest) {
 }
 
 async function deleteOlderThan(table: string, column: string, days: number): Promise<number> {
+  // Identifiers cannot be parameterized — validate against the allow-list and reject unknowns.
+  if (!isAllowedCleanupTarget(table, column)) {
+    throw new Error(`Refusing cleanup of unrecognized target: ${table}.${column}`);
+  }
+  if (!Number.isInteger(days) || days < 0) {
+    throw new Error(`Invalid retention window (days must be a non-negative integer): ${days}`);
+  }
+  // Window parameterized — mirrors fetchRecentFlows' ($i || ' hours')::interval pattern in db.ts.
   const res = await dbQuery<{ count: string }>(
-    `DELETE FROM ${table} WHERE ${column} < NOW() - INTERVAL '${days} days' RETURNING 1`
+    `DELETE FROM ${table} WHERE ${column} < NOW() - ($1::int || ' days')::interval RETURNING 1`,
+    [days]
   );
   return res.rowCount ?? 0;
 }

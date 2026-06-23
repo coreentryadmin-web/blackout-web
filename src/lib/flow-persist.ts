@@ -3,6 +3,7 @@ import { markFlowDataFresh } from "@/lib/flow-data-freshness";
 import { publishFlowEvent } from "@/lib/flow-events";
 import type { MarketFlowAlert } from "@/lib/providers/unusual-whales";
 import { shouldFanOut } from "@/lib/flow-fanout";
+import { flowFallbackAlertId } from "@/lib/flow-alert-id";
 
 const MIN_PREMIUM = Number(process.env.UW_FLOW_MIN_PREMIUM ?? 200_000);
 
@@ -23,7 +24,7 @@ function toFlowRow(alert: MarketFlowAlert): FlowRow {
 function alertId(row: Record<string, unknown>, flow: MarketFlowAlert): string {
   const id = row.id ?? row.alert_id;
   if (id != null) return `uw:${id}`;
-  return `uw:${flow.ticker}:${flow.alerted_at}:${flow.strike}:${flow.option_type}`;
+  return flowFallbackAlertId(flow);
 }
 
 async function notifyDiscord(flow: FlowRow): Promise<void> {

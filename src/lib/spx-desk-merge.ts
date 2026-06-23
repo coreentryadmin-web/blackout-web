@@ -7,11 +7,15 @@ import type { GexWall } from "@/lib/providers/gamma-desk";
 import { todayEtYmd, distancePct } from "@/lib/providers/spx-session";
 import { computeFlowStrikeStacks } from "@/lib/largo/flow-strike-stacks";
 import { safeTime } from "@/lib/safe-time";
+import { tapeDedupKey } from "@/lib/tape-dedup-key";
 
 export function recalcGexWallDistances(walls: GexWall[], spot: number): GexWall[] {
   if (!walls.length || spot <= 0) return walls;
   return walls.map((w) => ({
     ...w,
+    // Recompute kind alongside distance so a price crossing flips support/resistance
+    // (matches topGexWalls: strike <= spot is support, strike > spot is resistance).
+    kind: w.strike > spot ? "resistance" : "support",
     distance_pts: Math.round((w.strike - spot) * 100) / 100,
   }));
 }
@@ -24,7 +28,7 @@ export function mergeTapeItems(
   const seen = new Set<string>();
   const out: SpxTapeItem[] = [];
   for (const t of [...incoming, ...prev]) {
-    const key = `${t.kind}|${t.time}|${t.label}|${t.premium}`;
+    const key = tapeDedupKey(t);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(t);

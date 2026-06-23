@@ -1,5 +1,6 @@
 import { polygonConfigured, engineIntelOverlayEnabled, uwConfigured, deskPulseStructureCacheTtlMs } from "./config";
 import { safeTime } from "@/lib/safe-time";
+import { tapeDedupKey } from "@/lib/tape-dedup-key";
 import { fetchPolygonOdteDeskBundle } from "./polygon-options-gex";
 import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 import { flowDataAgeMs, markFlowDataFromBriefs } from "@/lib/flow-data-freshness";
@@ -556,7 +557,7 @@ function buildUnifiedTape(
 }
 
 function tapeItemKey(t: SpxTapeItem): string {
-  return `${t.kind}|${t.time}|${t.label}|${t.premium}`;
+  return tapeDedupKey(t);
 }
 
 /** Rolling tape — prepend new prints instead of replacing the whole list each poll. */
