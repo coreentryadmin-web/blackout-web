@@ -45,7 +45,7 @@ function FeatureCards({ path, onNavigate }: { path: string; onNavigate?: () => v
           className={clsx("nav-card", `nav-accent-${it.accent}`, path.startsWith(it.href) && "nav-card-active")}
         >
           <span className="nav-card-chip" aria-hidden>
-            <ProductMark product={NAV_TO_MARK[it.accent]} size={30} />
+            <ProductMark product={NAV_TO_MARK[it.accent]} size={46} />
           </span>
           <span className="nav-card-label font-syne">{it.label}</span>
           <span className="nav-card-sub font-mono">{it.sub}</span>
