@@ -44,25 +44,56 @@ export async function getAdminStatus(): Promise<{ admin: boolean; email: string 
   return { admin: await isAdminUser(userId), email };
 }
 
-/** For API routes — returns 403 response or null if allowed. */
-export async function requireAdminApi(): Promise<Response | null> {
-  const actor = await getAdminApiActor();
-  if (!actor) {
-    const { userId } = await auth();
-    return new Response(JSON.stringify({ error: userId ? "Forbidden" : "Unauthorized" }), {
-      status: userId ? 403 : 401,
-      headers: { "Content-Type": "application/json" },
-    });
+/** Single source of truth for admin-API gating. Performs at most ONE
+ * clerkClient.users.getUser() call and returns BOTH the resolved actor (or null
+ * when denied) and the canonical deny Response (or null when allowed). 401 when
+ * unauthenticated, 403 when authenticated-but-not-admin — identical to the prior
+ * requireAdminApi behavior. */
+export async function resolveAdminApi(): Promise<{
+  actor: { userId: string; email: string | null } | null;
+  denied: Response | null;
+}> {
+  const { userId } = await auth();
+  if (!userId) {
+    return {
+      actor: null,
+      denied: new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    };
   }
-  return null;
+
+  // Single getUser covers BOTH the admin role/email gate and the actor email,
+  // replacing the previous isAdminUser()+getUser() double fetch. Logic mirrors
+  // isAdminUser() exactly so authorization is unchanged.
+  const user = await clerkClient.users.getUser(userId);
+  const role = String(user.publicMetadata?.role ?? "").toLowerCase();
+  const email =
+    user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ?? null;
+  const isAdmin = role === "admin" || isAdminEmail(email);
+
+  if (!isAdmin) {
+    return {
+      actor: null,
+      denied: new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      }),
+    };
+  }
+
+  return { actor: { userId, email }, denied: null };
+}
+
+/** For API routes — returns 403/401 response or null if allowed. */
+export async function requireAdminApi(): Promise<Response | null> {
+  const { denied } = await resolveAdminApi();
+  return denied;
 }
 
 /** Returns admin actor for audit logging, or null if denied. */
 export async function getAdminApiActor(): Promise<{ userId: string; email: string | null } | null> {
-  const { userId } = await auth();
-  if (!userId || !(await isAdminUser(userId))) return null;
-  const user = await clerkClient.users.getUser(userId);
-  const email =
-    user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ?? null;
-  return { userId, email };
+  const { actor } = await resolveAdminApi();
+  return actor;
 }

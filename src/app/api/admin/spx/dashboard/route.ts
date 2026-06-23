@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminApi, getAdminApiActor } from "@/lib/admin-access";
+import { resolveAdminApi } from "@/lib/admin-access";
 import { fetchSpxAdminDashboard } from "@/lib/admin-spx-dashboard";
 import { logAdminAction } from "@/lib/admin-audit";
 import { recordAdminRouteError } from "@/lib/admin-route-errors";
@@ -7,10 +7,8 @@ import { recordAdminRouteError } from "@/lib/admin-route-errors";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  // Retrieve actor once; requireAdminApi also calls getAdminApiActor internally
-  // so we cache the result here to avoid a second round-trip on live requests.
-  const actor = await getAdminApiActor();
-  const denied = await requireAdminApi();
+  // Single resolve: one getUser for both the gate and the audit actor.
+  const { actor, denied } = await resolveAdminApi();
   if (denied) return denied;
 
   const live = req.nextUrl.searchParams.get("live") === "1";

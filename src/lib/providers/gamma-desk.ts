@@ -29,7 +29,13 @@ export function analyzeStrikeGexRows(rows: Record<string, unknown>[]): {
     const callG = Number(row.call_gamma_oi ?? row.call_gex ?? 0);
     const putG = Number(row.put_gamma_oi ?? row.put_gex ?? 0);
     const net = callG + putG;
-    if (net === 0 && callG === 0 && putG === 0) continue;
+    // Drop ONLY genuinely empty (0/0) strikes. Since net = callG + putG, the test
+    // (callG === 0 && putG === 0) already implies net === 0, so the old `net === 0 &&`
+    // clause was redundant. A balanced strike (callG = -putG, net = 0) deliberately
+    // SURVIVES: it adds 0 to computeGammaFlip's cumulative sum (output-neutral), so it
+    // never distorts the flip. Do NOT change this to `if (net === 0) continue;` — that
+    // would delete real balanced strikes and shift flip anchoring.
+    if (callG === 0 && putG === 0) continue;
     totalCall += callG;
     totalPut += putG;
     levels.push({ strike, net_gex: net, call_gex: callG, put_gex: putG });

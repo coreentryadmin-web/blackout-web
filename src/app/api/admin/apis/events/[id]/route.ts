@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminApi, getAdminApiActor } from "@/lib/admin-access";
+import { resolveAdminApi } from "@/lib/admin-access";
 import { buildEventDetail } from "@/lib/api-telemetry";
 import { fetchPersistedApiEvent } from "@/lib/api-telemetry-persist";
 import { logAdminAction } from "@/lib/admin-audit";
@@ -10,7 +10,7 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const denied = await requireAdminApi();
+  const { actor, denied } = await resolveAdminApi();
   if (denied) return denied;
 
   let detail = buildEventDetail(params.id);
@@ -31,7 +31,7 @@ export async function GET(
     return NextResponse.json({ error: "Event not found" }, { status: 404 });
   }
 
-  const actor = await getAdminApiActor();
+  // actor was resolved above by resolveAdminApi()
   void logAdminAction({
     actorUserId: actor?.userId,
     actorEmail: actor?.email,
