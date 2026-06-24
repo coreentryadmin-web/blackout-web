@@ -8,7 +8,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { requireDatabaseInProduction, listUserPositions, createUserPosition } from "@/lib/db";
-import { valueContract, enrichPosition } from "@/lib/nights-watch/valuation";
+import { enrichPosition, valuationFromContract, type ContractValuation } from "@/lib/nights-watch/valuation";
+import { getNwChain, matchContract, nwChainKey, type NwChain } from "@/lib/nights-watch/chain-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,19 +32,26 @@ export async function GET(req: Request) {
 
   try {
     const positions = await listUserPositions(userId, status);
-    // Value each position concurrently; a single snapshot failure → unavailable,
-    // never blocks the others and never fabricates a price.
-    const enriched = await Promise.all(
-      positions.map(async (p) => {
-        const valuation = await valueContract({
-          ticker: p.ticker,
-          optionType: p.option_type,
-          strike: p.strike,
-          expiry: p.expiry,
-        }).catch(() => null);
-        return enrichPosition(p, valuation);
+    // Batch by (underlying, expiry): each distinct chain is fetched ONCE via the shared
+    // single-flight cache, then every strike is matched in-memory. Upstream cost is
+    // O(distinct chains) regardless of user/position count — never a per-position call.
+    const groupKeys = Array.from(new Set(positions.map((p) => nwChainKey(p.ticker, p.expiry))));
+    const chains = new Map<string, NwChain | null>();
+    await Promise.all(
+      groupKeys.map(async (key) => {
+        const [root, exp] = key.split("|");
+        chains.set(key, await getNwChain(root, exp).catch(() => null));
       })
     );
+    const enriched = positions.map((p) => {
+      const chain = chains.get(nwChainKey(p.ticker, p.expiry)) ?? null;
+      let valuation: ContractValuation | null = null;
+      if (chain) {
+        const contract = matchContract(chain.contracts, p.strike, p.option_type);
+        if (contract) valuation = valuationFromContract(contract, chain.spot);
+      }
+      return enrichPosition(p, valuation);
+    });
     return NextResponse.json({ positions: enriched });
   } catch (error) {
     console.error("[account/positions GET]", error);

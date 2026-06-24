@@ -18,7 +18,7 @@ export function polygonOptionsMeta() {
   return { data_delay: POLYGON_OPTIONS_DATA_DELAY, source: "polygon", plan: "options_advanced" };
 }
 
-type ChainContract = {
+export type ChainContract = {
   details?: {
     strike_price?: number;
     contract_type?: string;
@@ -34,46 +34,32 @@ type ChainContract = {
 };
 
 /**
- * Single-contract snapshot for valuation (Night's Watch). Fetches the chain band
- * around `strike` for the underlying + expiry and returns the exact matching
- * contract (strike + type), reusing the shared auth/fetch (polygonFetchUrl).
- * Returns null when not configured, no spot, or no exact match — never fabricates.
+ * Night's Watch chain fetch — the BATCHABLE valuation primitive. Returns a band of
+ * contracts around spot for an underlying + expiry, plus the spot, so the caller can
+ * match every saved strike for that (underlying, expiry) IN-MEMORY from a single call.
+ *
+ * This is intentionally NOT per-contract: it is wrapped by getNwChain() in
+ * lib/nights-watch/chain-cache.ts with withServerCache, so 500 users holding contracts
+ * on the same (underlying, expiry) collapse to ONE upstream fetch per TTL window.
+ * Returns null when not configured or spot is unavailable — never fabricates.
+ * (A future optimization can swap to /v3/snapshot/options/{underlying}/{contract}.)
  */
-export async function fetchPolygonContractSnapshot(opts: {
-  underlying: string;
-  optionType: "call" | "put";
-  strike: number;
-  expiry: string; // YYYY-MM-DD
-  spot?: number;
-}): Promise<{ contract: ChainContract; underlyingPrice: number } | null> {
-  if (!polygonConfigured() || !(opts.strike > 0)) return null;
-  const root = opts.underlying.toUpperCase();
-
-  let spot = opts.spot ?? 0;
-  if (!(spot > 0)) {
-    const snap = await fetchStockSnapshot(root === "SPX" ? "I:SPX" : root).catch(() => null);
-    spot = snap?.price ?? 0;
-  }
-  // Without a spot we still query a tight band centered on the strike itself.
-  const center = spot > 0 ? spot : opts.strike;
+export async function fetchNwOptionChain(
+  underlying: string,
+  expiry: string, // YYYY-MM-DD
+  bandPct = 0.35
+): Promise<{ contracts: ChainContract[]; spot: number } | null> {
+  if (!polygonConfigured()) return null;
+  const root = underlying.toUpperCase();
   const underlyingRoot = root === "SPX" ? "I:SPX" : root;
 
-  // Band must contain the strike. Use the larger of a small % of center or the
-  // strike-to-center gap so the requested contract is always inside the window.
-  const gap = Math.abs(opts.strike - center);
-  const bandPct = Math.min(0.5, Math.max(0.03, (gap / Math.max(center, 1)) * 1.2 + 0.01));
-  const contracts = await fetchChainBand(underlyingRoot, center, opts.expiry, bandPct);
+  const snap = await fetchStockSnapshot(underlyingRoot).catch(() => null);
+  const spot = snap?.price ?? 0;
+  if (!(spot > 0)) return null; // no spot → can't center a band; report unavailable
+
+  const contracts = await fetchChainBand(underlyingRoot, spot, expiry, bandPct);
   if (!contracts.length) return null;
-
-  const match = contracts.find((c) => {
-    const s = Number(c.details?.strike_price);
-    const t = String(c.details?.contract_type ?? "").toLowerCase();
-    return Number.isFinite(s) && Math.abs(s - opts.strike) < 1e-6 && t === opts.optionType;
-  });
-  if (!match) return null;
-
-  const underlyingPrice = Number(match.underlying_asset?.price ?? spot ?? 0);
-  return { contract: match, underlyingPrice };
+  return { contracts, spot };
 }
 
 type ChainResponse = {
@@ -194,6 +180,244 @@ export async function fetchPolygonOdteDeskBundle(
     );
   }
   return { rows, maxPain };
+}
+
+// ---------------------------------------------------------------------------
+// GEX Heatmap — dealer gamma matrix (strike rows × expiry columns)
+// ---------------------------------------------------------------------------
+
+export type GexHeatmap = {
+  underlying: string;
+  spot: number;
+  change_pct: number;
+  asof: string;
+  /** Ascending, ~8 nearest expirations present in the band. */
+  expiries: string[];
+  /** Descending, strike-banded around spot. */
+  strikes: number[];
+  /** Net dealer dollar-gamma per (strike, expiry). Sparse — absent = no data. */
+  cells: Record<string, Record<string, number>>;
+  /** Net dealer dollar-gamma summed across all expiries, per strike. */
+  strike_totals: Record<string, number>;
+  /** Linear-interpolated zero-gamma flip strike, or null when undetermined. */
+  zero_gamma_flip: number | null;
+  /** Total net dealer dollar-gamma across the whole matrix. */
+  total_gex: number;
+  source: "polygon";
+  data_delay: string;
+};
+
+const GEX_HEATMAP_CACHE_PREFIX = "gex-heatmap";
+/** In-memory mirror of the Redis matrix so co-located requests skip Redis too. */
+const cachedHeatmaps = new Map<string, { at: number; data: GexHeatmap }>();
+
+function gexHeatmapCacheMs(): number {
+  const sec = Number(process.env.GEX_HEATMAP_CACHE_SEC ?? 45);
+  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 45_000;
+}
+
+/**
+ * Strike-banded options chain snapshot across ALL expiries in one paginated pass
+ * (NO expiration_date filter — the snapshot returns every expiry inside the strike
+ * window). Reuses polygonFetchUrl + the next_url pagination exactly like fetchChainBand.
+ */
+async function fetchHeatmapBand(
+  underlying: string,
+  spot: number,
+  bandPct: number
+): Promise<ChainContract[]> {
+  const band = Math.max(spot * bandPct, 1);
+  const lo = Math.floor(spot - band);
+  const hi = Math.ceil(spot + band);
+
+  const params = new URLSearchParams({
+    "strike_price.gte": String(lo),
+    "strike_price.lte": String(hi),
+    limit: "250",
+    apiKey: KEY,
+  });
+
+  const out: ChainContract[] = [];
+  let page = await polygonFetchUrl(`/v3/snapshot/options/${underlying}?${params}`);
+  // ~8 expiries × banded strikes × calls+puts can exceed one page; allow generous paging.
+  let guard = 0;
+  while (page && guard < 16) {
+    out.push(...(page.results ?? []));
+    if (!page.next_url) break;
+    page = await polygonFetchUrl(page.next_url);
+    guard += 1;
+  }
+  return out;
+}
+
+/**
+ * Compute the zero-gamma flip from per-strike NET dealer gamma totals: the strike
+ * where cumulative dealer gamma (ascending by strike) crosses zero. Linear-interpolated
+ * between the bracketing strikes. Returns null when no sign change is present.
+ */
+function computeZeroGammaFlip(strikeTotals: Record<string, number>): number | null {
+  const rows = Object.entries(strikeTotals)
+    .map(([s, g]) => ({ strike: Number(s), gamma: g }))
+    .filter((r) => Number.isFinite(r.strike))
+    .sort((a, b) => a.strike - b.strike);
+  if (rows.length < 2) return null;
+
+  let cumulative = 0;
+  let prevStrike = rows[0].strike;
+  let prevCum = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const nextCum = cumulative + rows[i].gamma;
+    if (i > 0 && prevCum !== 0 && Math.sign(nextCum) !== Math.sign(prevCum) && nextCum !== 0) {
+      // Cross between prevStrike and rows[i].strike — interpolate on cumulative gamma.
+      const span = rows[i].strike - prevStrike;
+      const frac = prevCum / (prevCum - nextCum); // 0..1
+      return Number((prevStrike + span * frac).toFixed(2));
+    }
+    if (i > 0) {
+      prevStrike = rows[i - 1].strike;
+      prevCum = cumulative;
+    }
+    cumulative = nextCum;
+  }
+  return null;
+}
+
+/**
+ * Dealer GEX heatmap for `underlying` (default SPY): a (strike × expiry) matrix of
+ * NET dealer dollar-gamma, computed ONCE and cached server-side (in-memory + Redis)
+ * so 500 concurrent users read one matrix and never trigger a per-user chain fetch.
+ *
+ * Sign convention MIRRORS aggregateGexRows exactly: per contract dollar gamma is
+ * `gamma × open_interest × 100 × spot`; calls add it, puts subtract it. Summed per
+ * (strike, expiry) cell → net dealer gamma. On any Polygon failure / empty chain this
+ * returns null (never fabricates gamma).
+ *
+ * NOTE: SPY (equity ETF options) is used by default — listed directly under "SPY".
+ * SPX index options live under I:SPX; this fn supports it but the desk GEX walls use
+ * SPX, so SPY here gives a liquid, broadly-comparable dealer gamma surface.
+ */
+export async function fetchGexHeatmap(
+  underlying = "SPY",
+  { forceRefresh = false }: { forceRefresh?: boolean } = {}
+): Promise<GexHeatmap | null> {
+  if (!polygonConfigured()) return null;
+  const root = underlying.toUpperCase();
+  const cacheKey = `${GEX_HEATMAP_CACHE_PREFIX}:${root}`;
+  const now = Date.now();
+  const ttlMs = gexHeatmapCacheMs();
+
+  if (!forceRefresh) {
+    const mem = cachedHeatmaps.get(cacheKey);
+    if (mem && now - mem.at < ttlMs) return mem.data;
+    try {
+      const { sharedCacheGet } = await import("../shared-cache");
+      const hit = await sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey);
+      if (hit && now - hit.at < ttlMs) {
+        cachedHeatmaps.set(cacheKey, hit);
+        return hit.data;
+      }
+    } catch {
+      /* redis optional */
+    }
+  }
+
+  // Resolve spot + day change%. SPX index options are listed under I:SPX, but the
+  // quote comes from the index snapshot; for equity/ETF roots use the stock snapshot.
+  const quoteSym = root === "SPX" ? "I:SPX" : root;
+  const snap = await fetchStockSnapshot(quoteSym).catch(() => null);
+  const spot = snap?.price ?? 0;
+  if (!(spot > 0)) return null;
+  const changePct = snap?.change_pct ?? 0;
+
+  const optionsRoot = root === "SPX" ? "I:SPX" : root;
+  const contracts = await fetchHeatmapBand(optionsRoot, spot, 0.04);
+  if (!contracts.length) {
+    console.warn(
+      `[gex-heatmap] 0 contracts for ${optionsRoot} @ ${spot} via ${hostOf(BASE)} — heatmap will be empty. Verify POLYGON_API_KEY has options-chain access.`
+    );
+    return null;
+  }
+
+  const today = todayEtYmd();
+  // Net dealer gamma per (strike, expiry). Sign convention mirrors aggregateGexRows.
+  const cellMap = new Map<number, Map<string, number>>();
+  const strikeTotalMap = new Map<number, number>();
+  const expirySet = new Set<string>();
+  let totalGex = 0;
+
+  for (const c of contracts) {
+    const strike = Number(c.details?.strike_price);
+    const expiry = String(c.details?.expiration_date ?? "").slice(0, 10);
+    const gamma = Number(c.greeks?.gamma ?? 0);
+    const oi = Number(c.open_interest ?? 0);
+    const type = String(c.details?.contract_type ?? "").toLowerCase();
+    if (!Number.isFinite(strike) || strike <= 0 || !expiry || expiry < today) continue;
+    if (!oi || !gamma) continue; // missing data → skip, never fabricate
+
+    const dollarGamma = gamma * oi * 100 * spot;
+    const signed = type === "call" ? dollarGamma : type === "put" ? -dollarGamma : 0;
+    if (signed === 0) continue;
+
+    expirySet.add(expiry);
+    const byExpiry = cellMap.get(strike) ?? new Map<string, number>();
+    byExpiry.set(expiry, (byExpiry.get(expiry) ?? 0) + signed);
+    cellMap.set(strike, byExpiry);
+    strikeTotalMap.set(strike, (strikeTotalMap.get(strike) ?? 0) + signed);
+    totalGex += signed;
+  }
+
+  if (expirySet.size === 0) return null;
+
+  // Keep the nearest ~8 expiries (ascending).
+  const expiries = Array.from(expirySet).sort().slice(0, 8);
+  const expirySetKeep = new Set(expiries);
+  // Strikes descending (heatmap rows render high→low like a ladder).
+  const strikes = Array.from(cellMap.keys()).sort((a, b) => b - a);
+
+  const cells: Record<string, Record<string, number>> = {};
+  const strikeTotals: Record<string, number> = {};
+  let prunedTotal = 0;
+  for (const strike of strikes) {
+    const byExpiry = cellMap.get(strike)!;
+    const row: Record<string, number> = {};
+    let strikeSum = 0;
+    for (const [expiry, val] of Array.from(byExpiry.entries())) {
+      if (!expirySetKeep.has(expiry)) continue; // drop the >8th expiry's cells
+      row[expiry] = val;
+      strikeSum += val;
+    }
+    if (Object.keys(row).length === 0) continue;
+    cells[String(strike)] = row;
+    strikeTotals[String(strike)] = strikeSum;
+    prunedTotal += strikeSum;
+  }
+
+  const finalStrikes = strikes.filter((s) => cells[String(s)] != null);
+  const zeroGammaFlip = computeZeroGammaFlip(strikeTotals);
+
+  const heatmap: GexHeatmap = {
+    underlying: root,
+    spot,
+    change_pct: changePct,
+    asof: new Date().toISOString(),
+    expiries,
+    strikes: finalStrikes,
+    cells,
+    strike_totals: strikeTotals,
+    zero_gamma_flip: zeroGammaFlip,
+    total_gex: prunedTotal || totalGex,
+    source: "polygon",
+    data_delay: POLYGON_OPTIONS_DATA_DELAY,
+  };
+
+  // Cache once for everyone: in-memory + Redis. 500 users → one matrix, zero per-user fetch.
+  const entry = { at: now, data: heatmap };
+  cachedHeatmaps.set(cacheKey, entry);
+  void import("../shared-cache").then(({ sharedCacheSet }) =>
+    sharedCacheSet(cacheKey, entry, Math.ceil(ttlMs / 1000))
+  );
+
+  return heatmap;
 }
 
 async function polygonFetchUrl(url: string): Promise<ChainResponse | null> {
