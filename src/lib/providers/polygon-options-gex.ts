@@ -24,10 +24,57 @@ type ChainContract = {
     contract_type?: string;
     expiration_date?: string;
   };
-  greeks?: { gamma?: number };
+  greeks?: { delta?: number; gamma?: number; theta?: number; vega?: number };
+  implied_volatility?: number;
   open_interest?: number;
+  last_quote?: { bid?: number; ask?: number };
+  last_trade?: { price?: number };
+  day?: { close?: number };
   underlying_asset?: { price?: number };
 };
+
+/**
+ * Single-contract snapshot for valuation (Night's Watch). Fetches the chain band
+ * around `strike` for the underlying + expiry and returns the exact matching
+ * contract (strike + type), reusing the shared auth/fetch (polygonFetchUrl).
+ * Returns null when not configured, no spot, or no exact match — never fabricates.
+ */
+export async function fetchPolygonContractSnapshot(opts: {
+  underlying: string;
+  optionType: "call" | "put";
+  strike: number;
+  expiry: string; // YYYY-MM-DD
+  spot?: number;
+}): Promise<{ contract: ChainContract; underlyingPrice: number } | null> {
+  if (!polygonConfigured() || !(opts.strike > 0)) return null;
+  const root = opts.underlying.toUpperCase();
+
+  let spot = opts.spot ?? 0;
+  if (!(spot > 0)) {
+    const snap = await fetchStockSnapshot(root === "SPX" ? "I:SPX" : root).catch(() => null);
+    spot = snap?.price ?? 0;
+  }
+  // Without a spot we still query a tight band centered on the strike itself.
+  const center = spot > 0 ? spot : opts.strike;
+  const underlyingRoot = root === "SPX" ? "I:SPX" : root;
+
+  // Band must contain the strike. Use the larger of a small % of center or the
+  // strike-to-center gap so the requested contract is always inside the window.
+  const gap = Math.abs(opts.strike - center);
+  const bandPct = Math.min(0.5, Math.max(0.03, (gap / Math.max(center, 1)) * 1.2 + 0.01));
+  const contracts = await fetchChainBand(underlyingRoot, center, opts.expiry, bandPct);
+  if (!contracts.length) return null;
+
+  const match = contracts.find((c) => {
+    const s = Number(c.details?.strike_price);
+    const t = String(c.details?.contract_type ?? "").toLowerCase();
+    return Number.isFinite(s) && Math.abs(s - opts.strike) < 1e-6 && t === opts.optionType;
+  });
+  if (!match) return null;
+
+  const underlyingPrice = Number(match.underlying_asset?.price ?? spot ?? 0);
+  return { contract: match, underlyingPrice };
+}
 
 type ChainResponse = {
   results?: ChainContract[];

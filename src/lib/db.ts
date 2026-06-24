@@ -588,6 +588,32 @@ async function runMigrations(): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_user_journal_user_play
     ON user_journal(user_id, open_play_id);
   `);
+  // Night's Watch: per-user saved option positions. Isolated table, no FK into and
+  // no mutation of any money-path table. Every query is scoped by user_id (Clerk).
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS user_positions (
+      id BIGSERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      ticker TEXT NOT NULL,
+      option_type TEXT NOT NULL CHECK (option_type IN ('call', 'put')),
+      strike NUMERIC NOT NULL,
+      expiry DATE NOT NULL,
+      side TEXT NOT NULL DEFAULT 'long' CHECK (side IN ('long', 'short')),
+      contracts INTEGER NOT NULL,
+      entry_premium NUMERIC NOT NULL,
+      entry_date DATE NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+      exit_premium NUMERIC,
+      notes TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      closed_at TIMESTAMPTZ
+    );
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_user_positions_user_status
+    ON user_positions(user_id, status);
+  `);
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
     try { await lockClient.query(`SELECT pg_advisory_unlock($1)`, [MIGRATION_LOCK_ID]); } catch { /* ignore */ }
@@ -1345,6 +1371,208 @@ export async function deleteUserJournalEntry(userId: string, openPlayId: number)
     `DELETE FROM user_journal WHERE user_id = $1 AND open_play_id = $2`,
     [userId, openPlayId]
   );
+}
+
+// --- Night's Watch: per-user saved option positions (user_positions) ----------
+
+export type UserPositionRow = {
+  id: number;
+  ticker: string;
+  option_type: "call" | "put";
+  strike: number;
+  expiry: string; // YYYY-MM-DD
+  side: "long" | "short";
+  contracts: number;
+  entry_premium: number;
+  entry_date: string; // YYYY-MM-DD
+  status: "open" | "closed";
+  exit_premium: number | null;
+  notes: string | null;
+  created_at: string; // ISO
+  updated_at: string; // ISO
+  closed_at: string | null; // ISO
+};
+
+export type UserPositionInput = {
+  ticker: string;
+  option_type: "call" | "put";
+  strike: number;
+  expiry: string; // YYYY-MM-DD
+  side: "long" | "short";
+  contracts: number;
+  entry_premium: number;
+  entry_date: string; // YYYY-MM-DD
+  notes: string | null;
+};
+
+/** Fields a PATCH may update. All optional; user_id/id are never patchable. */
+export type UserPositionPatch = Partial<{
+  ticker: string;
+  option_type: "call" | "put";
+  strike: number;
+  expiry: string;
+  side: "long" | "short";
+  contracts: number;
+  entry_premium: number;
+  entry_date: string;
+  notes: string | null;
+}>;
+
+/** YYYY-MM-DD from a pg DATE column (which `pg` returns as a JS Date in local tz). */
+function ymdOf(value: unknown): string {
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return String(value).slice(0, 10);
+}
+
+function mapUserPositionRow(r: QueryResultRow): UserPositionRow {
+  return {
+    id: Number(r.id),
+    ticker: String(r.ticker),
+    option_type: r.option_type === "put" ? "put" : "call",
+    strike: Number(r.strike),
+    expiry: ymdOf(r.expiry),
+    side: r.side === "short" ? "short" : "long",
+    contracts: Number(r.contracts),
+    entry_premium: Number(r.entry_premium),
+    entry_date: ymdOf(r.entry_date),
+    status: r.status === "closed" ? "closed" : "open",
+    exit_premium: r.exit_premium == null ? null : Number(r.exit_premium),
+    notes: r.notes == null ? null : String(r.notes),
+    created_at: new Date(String(r.created_at)).toISOString(),
+    updated_at: new Date(String(r.updated_at)).toISOString(),
+    closed_at: r.closed_at == null ? null : new Date(String(r.closed_at)).toISOString(),
+  };
+}
+
+/** List a user's positions, newest first. Optionally filter by status. */
+export async function listUserPositions(
+  userId: string,
+  status?: "open" | "closed"
+): Promise<UserPositionRow[]> {
+  await ensureSchema();
+  const res = status
+    ? await (await getPool()).query(
+        `SELECT * FROM user_positions WHERE user_id = $1 AND status = $2 ORDER BY created_at DESC`,
+        [userId, status]
+      )
+    : await (await getPool()).query(
+        `SELECT * FROM user_positions WHERE user_id = $1 ORDER BY created_at DESC`,
+        [userId]
+      );
+  return res.rows.map(mapUserPositionRow);
+}
+
+/** Create a new open position for a user. */
+export async function createUserPosition(
+  userId: string,
+  input: UserPositionInput
+): Promise<UserPositionRow> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    INSERT INTO user_positions
+      (user_id, ticker, option_type, strike, expiry, side, contracts, entry_premium, entry_date, notes)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    RETURNING *
+    `,
+    [
+      userId,
+      input.ticker,
+      input.option_type,
+      input.strike,
+      input.expiry,
+      input.side,
+      input.contracts,
+      input.entry_premium,
+      input.entry_date,
+      input.notes,
+    ]
+  );
+  return mapUserPositionRow(res.rows[0]!);
+}
+
+/**
+ * Patch editable fields of a user's position. Builds a dynamic SET from the
+ * provided keys only; always bumps updated_at. Returns null if no row matched
+ * (wrong user or unknown id) or nothing to update.
+ */
+export async function updateUserPosition(
+  userId: string,
+  id: number,
+  patch: UserPositionPatch
+): Promise<UserPositionRow | null> {
+  await ensureSchema();
+  const allowed: Array<keyof UserPositionPatch> = [
+    "ticker",
+    "option_type",
+    "strike",
+    "expiry",
+    "side",
+    "contracts",
+    "entry_premium",
+    "entry_date",
+    "notes",
+  ];
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(patch, key)) {
+      values.push(patch[key]);
+      sets.push(`${key} = $${values.length}`);
+    }
+  }
+  if (!sets.length) {
+    // Nothing to change — return the current row (still user-scoped).
+    const cur = await (await getPool()).query(
+      `SELECT * FROM user_positions WHERE user_id = $1 AND id = $2`,
+      [userId, id]
+    );
+    return cur.rows[0] ? mapUserPositionRow(cur.rows[0]) : null;
+  }
+  sets.push(`updated_at = NOW()`);
+  values.push(userId);
+  const userIdx = values.length;
+  values.push(id);
+  const idIdx = values.length;
+  const res = await (await getPool()).query(
+    `UPDATE user_positions SET ${sets.join(", ")} WHERE user_id = $${userIdx} AND id = $${idIdx} RETURNING *`,
+    values
+  );
+  return res.rows[0] ? mapUserPositionRow(res.rows[0]) : null;
+}
+
+/** Close a user's open position with an exit premium. Returns null if no match. */
+export async function closeUserPosition(
+  userId: string,
+  id: number,
+  exitPremium: number
+): Promise<UserPositionRow | null> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    UPDATE user_positions
+    SET status = 'closed', exit_premium = $3, closed_at = NOW(), updated_at = NOW()
+    WHERE user_id = $1 AND id = $2
+    RETURNING *
+    `,
+    [userId, id, exitPremium]
+  );
+  return res.rows[0] ? mapUserPositionRow(res.rows[0]) : null;
+}
+
+/** Delete a user's position. Returns true if a row was removed. */
+export async function deleteUserPosition(userId: string, id: number): Promise<boolean> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `DELETE FROM user_positions WHERE user_id = $1 AND id = $2`,
+    [userId, id]
+  );
+  return (res.rowCount ?? 0) > 0;
 }
 
 export async function fetchClosedPlayOutcomes(limit = 500): Promise<
