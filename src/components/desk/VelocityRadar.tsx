@@ -55,7 +55,7 @@ export function VelocityRadar({
                 exit={{ opacity: 0, scale: 0.97 }}
                 transition={{ delay: i * 0.04, type: "spring", damping: 22, stiffness: 300 }}
                 onClick={() => onTickerClick?.(e.ticker)}
-                className="rounded-xl border border-orange-900/30 bg-gradient-to-br from-orange-950/15 to-zinc-950/50 px-3 py-2.5 cursor-pointer hover:border-orange-700/40 transition-colors"
+                className="rounded-xl border border-orange-900/30 bg-gradient-to-br from-orange-950/15 to-[#08080e]/50 px-3 py-2.5 cursor-pointer hover:border-orange-700/40 transition-colors"
                 style={{ boxShadow: "inset 0 0 18px rgba(251,146,60,0.04)" }}
               >
                 <div className="flex items-center justify-between mb-2">
@@ -90,7 +90,7 @@ export function VelocityRadar({
                 </div>
 
                 {/* Velocity bar */}
-                <div className="relative h-1.5 rounded-full overflow-hidden bg-zinc-900 mb-2">
+                <div className="relative h-1.5 rounded-full overflow-hidden bg-[#0b0e16] mb-2">
                   <motion.div
                     className="h-full rounded-full"
                     style={{ background: "linear-gradient(90deg, #92400e, #fb923c)" }}

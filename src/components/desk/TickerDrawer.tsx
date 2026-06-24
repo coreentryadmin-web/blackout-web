@@ -172,7 +172,7 @@ export function TickerDrawer({
                   {/* Call/put bar */}
                   {total > 0 && (
                     <div>
-                      <div className="h-1.5 rounded-full overflow-hidden bg-zinc-900 flex">
+                      <div className="h-1.5 rounded-full overflow-hidden bg-[#0b0e16] flex">
                         <motion.div
                           className="h-full bg-gradient-to-r from-[#0f9d58] to-bull"
                           initial={{ width: 0 }}
@@ -217,7 +217,7 @@ export function TickerDrawer({
                               "flex items-center justify-between rounded-lg border px-3 py-2",
                               p.side === "buy"  ? "border-emerald-900/30 bg-emerald-950/10" :
                               p.side === "sell" ? "border-rose-900/30 bg-rose-950/10" :
-                              "border-zinc-800 bg-zinc-900/30"
+                              "border-white/10 bg-white/[0.04]"
                             )}
                           >
                             <div className="flex items-center gap-2">

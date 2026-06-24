@@ -962,7 +962,7 @@ function StatusBadge({ status }: { status: Status }) {
     status === 404 ? "#ef4444" :
     status === 422 ? "#f97316" :
     status === 429 ? "#f59e0b" :
-    "#6b7280";
+    "#0369a1";
   return (
     <span style={{ display: "inline-block", padding: "1px 6px", borderRadius: 4, fontSize: 11, fontWeight: 700, background: color, color: "#fff", minWidth: 36, textAlign: "center" }}>
       {status}
@@ -974,7 +974,7 @@ function UsageBadge({ usage }: { usage: UsageStatus }) {
   const cfg: Record<UsageStatus, { bg: string; label: string }> = {
     used: { bg: "#22c55e", label: "USED" },
     partial: { bg: "#f59e0b", label: "PARTIAL" },
-    unused: { bg: "#6b7280", label: "UNUSED" },
+    unused: { bg: "#0369a1", label: "UNUSED" },
   };
   const c = cfg[usage];
   return (
@@ -986,7 +986,7 @@ function UsageBadge({ usage }: { usage: UsageStatus }) {
 
 function UwBadge({ blackout }: { blackout: boolean }) {
   return (
-    <span style={{ display: "inline-block", padding: "1px 6px", borderRadius: 4, fontSize: 11, fontWeight: 700, background: blackout ? "#22c55e" : "#6b7280", color: "#fff" }}>
+    <span style={{ display: "inline-block", padding: "1px 6px", borderRadius: 4, fontSize: 11, fontWeight: 700, background: blackout ? "#22c55e" : "#0369a1", color: "#fff" }}>
       {blackout ? "USED" : "UNUSED"}
     </span>
   );
@@ -1093,7 +1093,7 @@ export default function ApiProbePage() {
               <td>{polyTotal}</td>
               <td style={{ color: "#22c55e" }}><strong>{polyUsed}</strong></td>
               <td style={{ color: "#f59e0b" }}>{polyPartial}</td>
-              <td style={{ color: "#6b7280" }}>{polyUnused}</td>
+              <td style={{ color: "#9fb4d4" }}>{polyUnused}</td>
               <td><span style={{ color: "#22c55e" }}>All 200 ✓</span></td>
             </tr>
             <tr>
@@ -1101,7 +1101,7 @@ export default function ApiProbePage() {
               <td>{uwTotal}</td>
               <td style={{ color: "#22c55e" }}><strong>{uwUsed}</strong></td>
               <td>—</td>
-              <td style={{ color: "#6b7280" }}>{uwUnused}</td>
+              <td style={{ color: "#9fb4d4" }}>{uwUnused}</td>
               <td><span style={{ color: "#22c55e" }}>Live probed ✓ · 6× 403 (plan gap)</span></td>
             </tr>
           </tbody>

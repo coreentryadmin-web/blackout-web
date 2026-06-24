@@ -71,7 +71,7 @@ export function NightHawkRadar({ plays, live }: { plays: NightHawkPlay[]; live?:
                       <span className="text-[10px] font-mono uppercase tracking-widest text-cyan-400">Conviction</span>
                       <span className="text-[10px] font-mono text-purple-light">{pct}%</span>
                     </div>
-                    <div className="h-1.5 bg-grey-900 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-[#08080e] rounded-full overflow-hidden">
                       <motion.div
                         className={clsx("h-full rounded-full", isBull ? "bg-bull" : "bg-bear")}
                         initial={{ width: "0%" }}

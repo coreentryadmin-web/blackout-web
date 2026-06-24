@@ -334,7 +334,7 @@ function MethodBadge({ method }: { method: string }) {
         fontSize: 11,
         fontWeight: 700,
         letterSpacing: "0.04em",
-        background: METHOD_COLORS[method] ?? "#6b7280",
+        background: METHOD_COLORS[method] ?? "#0369a1",
         color: "#fff",
         minWidth: 36,
         textAlign: "center",

@@ -12,7 +12,7 @@ type LiveMarketPulseProps = {
 
 function PulseBar({ label, value, bull }: { label: string; value: string; bull?: boolean | null }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-2 border-b border-grey-800 last:border-0">
+    <div className="flex items-center justify-between gap-3 py-2 border-b border-white/10 last:border-0">
       <span className="font-mono text-[10px] tracking-widest uppercase text-sky-300">{label}</span>
       <span
         className={clsx(

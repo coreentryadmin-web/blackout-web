@@ -19,7 +19,7 @@ export function DarkPoolSpark({ history, color }: { history: SparkPoint[]; color
             <stop offset="100%" stopColor={color} stopOpacity={0}    />
           </linearGradient>
         </defs>
-        <ReferenceLine y={0} stroke="#3f3f46" strokeWidth={1} />
+        <ReferenceLine y={0} stroke="rgba(255,255,255,0.14)" strokeWidth={1} />
         <Area type="monotone" dataKey="net" stroke={color} strokeWidth={2}
           fill="url(#dpSparkGrad)" dot={false} isAnimationActive={false} />
       </AreaChart>

@@ -23,8 +23,8 @@ export type NightHawkPlayWithFlow = PlaybookPlay & {
 const CONVICTION_STYLE: Record<FlowConviction, { label: string; cls: string }> = {
   strong:   { label: "STRONG",   cls: "text-emerald-400 border-emerald-700/50 bg-emerald-950/30" },
   moderate: { label: "MODERATE", cls: "text-gold       border-gold/50         bg-gold/15" },
-  weak:     { label: "WEAK",     cls: "text-sky-300    border-zinc-700/50     bg-zinc-900/40" },
-  none:     { label: "NO DATA",  cls: "text-cyan-400    border-zinc-800/50     bg-zinc-950/40" },
+  weak:     { label: "WEAK",     cls: "text-sky-300    border-white/15        bg-white/[0.06]" },
+  none:     { label: "NO DATA",  cls: "text-cyan-400    border-white/10        bg-[#08080e]/40" },
 };
 
 export function NightHawkFlowPanel({
@@ -79,7 +79,7 @@ export function NightHawkFlowPanel({
                 exit={{ opacity: 0, scale: 0.97 }}
                 transition={{ delay: i * 0.05, type: "spring", damping: 22, stiffness: 300 }}
                 onClick={() => onTickerClick?.(play.ticker)}
-                className="rounded-xl border border-indigo-900/25 bg-gradient-to-br from-indigo-950/10 to-zinc-950/40 px-3 py-2.5 cursor-pointer hover:border-indigo-700/35 transition-colors"
+                className="rounded-xl border border-indigo-900/25 bg-gradient-to-br from-indigo-950/10 to-[#08080e]/40 px-3 py-2.5 cursor-pointer hover:border-indigo-700/35 transition-colors"
                 style={{ boxShadow: "inset 0 0 16px rgba(99,102,241,0.04)" }}
               >
                 {/* Row 1 */}
@@ -112,7 +112,7 @@ export function NightHawkFlowPanel({
                 {flowData.totalPremium > 0 ? (
                   <>
                     {/* Call/put bar */}
-                    <div className="relative h-1.5 rounded-full overflow-hidden bg-zinc-900 mb-1.5">
+                    <div className="relative h-1.5 rounded-full overflow-hidden bg-[#0b0e16] mb-1.5">
                       <motion.div
                         className="h-full rounded-l-full"
                         style={{ background: "linear-gradient(90deg, #0f9d58, #00e676)", width: `${callPct}%` }}

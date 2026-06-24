@@ -1871,7 +1871,7 @@ body {
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center border-2 border-grey-600 text-sky-100
+    @apply inline-flex items-center justify-center border-2 border-white/15 text-sky-100
            px-10 py-4 font-syne text-sm tracking-[0.2em] uppercase font-bold
            hover:border-bull hover:text-bull hover:bg-bull/5 transition-all duration-300
            skew-x-[3deg] hover:skew-x-0;
@@ -1879,11 +1879,11 @@ body {
 
   .btn-outline {
     @apply w-full py-4 text-center font-syne text-xs tracking-[0.2em] uppercase font-bold
-           border-2 border-grey-700 text-sky-300
+           border-2 border-white/10 text-sky-300
            hover:border-purple hover:text-purple-light transition-all duration-200;
   }
 
-  .card-void { @apply bg-grey-900 border border-grey-700; }
+  .card-void { @apply bg-[#08080e] border border-white/10; }
 
   .badge-live { @apply inline-flex items-center gap-1.5 text-[10px] tracking-[2px] text-bull uppercase font-mono; }
   .badge-live-dot {
@@ -1903,11 +1903,11 @@ body {
   .num-neutral { @apply text-sky-200; }
 
   .data-table { @apply w-full border-collapse; }
-  .data-table th { @apply text-[10px] tracking-[2px] uppercase text-sky-300 py-2.5 px-4 border-b border-grey-700 text-left; }
-  .data-table td { @apply py-3 px-4 text-[13px] text-sky-100 border-b border-grey-800 font-mono; }
+  .data-table th { @apply text-[10px] tracking-[2px] uppercase text-sky-300 py-2.5 px-4 border-b border-white/10 text-left; }
+  .data-table td { @apply py-3 px-4 text-[13px] text-sky-100 border-b border-white/10 font-mono; }
   .data-table tr:hover td { @apply bg-bull/5; }
 
-  .card { @apply bg-grey-900 border border-grey-700; }
+  .card { @apply bg-[#08080e] border border-white/10; }
 
   /* Overlap panel — slides over previous section */
   .overlap-panel {
@@ -2836,7 +2836,7 @@ body {
   }
 
   .nighthawk-modal-header {
-    @apply flex items-start justify-between gap-4 p-5 border-b border-grey-800/80;
+    @apply flex items-start justify-between gap-4 p-5 border-b border-white/10;
   }
 
   .nighthawk-modal-kicker {
@@ -2852,7 +2852,7 @@ body {
   }
 
   .nighthawk-modal-close {
-    @apply shrink-0 w-8 h-8 flex items-center justify-center font-mono text-sky-300 border border-grey-700 hover:text-white hover:border-grey-500 transition-colors;
+    @apply shrink-0 w-8 h-8 flex items-center justify-center font-mono text-sky-300 border border-white/10 hover:text-white hover:border-white/15 transition-colors;
   }
 
   .nighthawk-modal-body {
@@ -2877,7 +2877,7 @@ body {
   }
 
   .nighthawk-filter-input {
-    @apply w-full bg-black/80 border border-grey-700 px-3 py-2 font-mono text-xs text-white;
+    @apply w-full bg-black/80 border border-white/10 px-3 py-2 font-mono text-xs text-white;
     @apply focus:outline-none focus:border-[rgba(255,210,63,0.45)];
   }
 
@@ -2886,7 +2886,7 @@ body {
   }
 
   .nighthawk-toggle {
-    @apply relative w-11 h-6 rounded-full border border-grey-600 bg-grey-900 transition-colors;
+    @apply relative w-11 h-6 rounded-full border border-white/15 bg-[#08080e] transition-colors;
   }
 
   .nighthawk-toggle-on {
@@ -2894,7 +2894,7 @@ body {
   }
 
   .nighthawk-toggle-thumb {
-    @apply absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-grey-400 transition-transform;
+    @apply absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white/70 transition-transform;
   }
 
   .nighthawk-toggle-on .nighthawk-toggle-thumb {
@@ -2980,7 +2980,7 @@ body {
   }
 
   .nighthawk-result-play {
-    @apply font-mono text-[11px] text-sky-200 border border-grey-800 px-3 py-2;
+    @apply font-mono text-[11px] text-sky-200 border border-white/10 px-3 py-2;
   }
 
   .nighthawk-result-ticker {
@@ -3175,7 +3175,7 @@ body {
   }
 
   .dayhawk-arm-phase-dot {
-    @apply shrink-0 w-2 h-2 rounded-full mt-1 bg-grey-700;
+    @apply shrink-0 w-2 h-2 rounded-full mt-1 bg-white/[0.08];
   }
 
   .dayhawk-arm-phase-active {
@@ -3435,11 +3435,11 @@ body {
     @apply relative overflow-hidden border p-10 md:p-14 text-center;
   }
 
-  .platform-empty-dashboard { @apply border-bull/30 bg-grey-900/80; }
-  .platform-empty-flows { @apply border-purple/30 bg-grey-900/80; }
-  .platform-empty-heatmap { @apply border-bear/25 bg-grey-900/80; }
-  .platform-empty-largo { @apply border-purple/30 bg-grey-900/80; }
-  .platform-empty-nighthawk { @apply border-bear/35 bg-grey-900/80; }
+  .platform-empty-dashboard { @apply border-bull/30 bg-[#08080e]/80; }
+  .platform-empty-flows { @apply border-purple/30 bg-[#08080e]/80; }
+  .platform-empty-heatmap { @apply border-bear/25 bg-[#08080e]/80; }
+  .platform-empty-largo { @apply border-purple/30 bg-[#08080e]/80; }
+  .platform-empty-nighthawk { @apply border-bear/35 bg-[#08080e]/80; }
 
   @keyframes platform-stream {
     from { transform: translateX(-20px); }
@@ -3453,7 +3453,7 @@ body {
 
   /* ── Live embeds ── */
   .embed-frame-header {
-    @apply flex items-center justify-between gap-3 px-4 py-2.5 border-b border-grey-800 bg-grey-900/90;
+    @apply flex items-center justify-between gap-3 px-4 py-2.5 border-b border-white/10 bg-[#08080e]/90;
   }
 
   .embed-frame-body { @apply relative; }
@@ -3482,7 +3482,7 @@ body {
   }
 
   .embed-pulse-meter {
-    @apply h-1.5 w-full bg-grey-800 overflow-hidden;
+    @apply h-1.5 w-full bg-white/[0.06] overflow-hidden;
   }
 
   .embed-pulse-meter-fill {
@@ -3555,7 +3555,7 @@ body {
 
   .engine-status-bar {
     @apply flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-2.5
-           border border-grey-800/80 bg-black/70 backdrop-blur-md;
+           border border-white/10 bg-black/70 backdrop-blur-md;
     box-shadow: inset 0 1px 0 rgba(0, 230, 118, 0.08);
   }
 
@@ -3575,7 +3575,7 @@ body {
   }
 
   .engine-status-missing {
-    @apply bg-grey-600;
+    @apply bg-white/20;
   }
 
   @keyframes engine-pulse {
@@ -3598,7 +3598,7 @@ body {
   }
 
   .desk-ticker-chip {
-    @apply border border-grey-800 bg-grey-900/60 px-3 py-2.5 backdrop-blur-sm;
+    @apply border border-white/10 bg-[#08080e]/60 px-3 py-2.5 backdrop-blur-sm;
   }
 
   .desk-panel {
@@ -3608,14 +3608,14 @@ body {
   .desk-panel-green { @apply border-bull/25; box-shadow: inset 0 0 40px rgba(0, 230, 118, 0.05); }
   .desk-panel-purple { @apply border-purple/30; box-shadow: inset 0 0 50px rgba(191, 95, 255, 0.07); }
   .desk-panel-red { @apply border-bear/25; box-shadow: inset 0 0 40px rgba(255, 45, 85, 0.06); }
-  .desk-panel-neutral { @apply border-grey-800; }
+  .desk-panel-neutral { @apply border-white/10; }
 
   .desk-panel-glow {
     box-shadow: 0 0 30px rgba(34, 211, 238, 0.15), inset 0 0 40px rgba(34, 211, 238, 0.06);
   }
 
   .desk-panel-header {
-    @apply flex items-start justify-between gap-3 px-4 py-3 border-b border-grey-800/80;
+    @apply flex items-start justify-between gap-3 px-4 py-3 border-b border-white/10;
   }
 
   .desk-panel-title {
@@ -3643,7 +3643,7 @@ body {
   }
 
   .desk-meter {
-    @apply h-2 bg-grey-900 overflow-hidden;
+    @apply h-2 bg-[#08080e] overflow-hidden;
   }
 
   .desk-meter-fill {
@@ -3661,7 +3661,7 @@ body {
   }
 
   .desk-flow-split {
-    @apply h-3 bg-grey-900 flex overflow-hidden;
+    @apply h-3 bg-[#08080e] flex overflow-hidden;
   }
 
   .desk-flow-calls {
@@ -3671,7 +3671,7 @@ body {
   }
 
   .desk-metric {
-    @apply border border-grey-800/60 bg-grey-900/40 px-3 py-2;
+    @apply border border-white/10 bg-[#08080e]/40 px-3 py-2;
   }
 
   .desk-level-row {
@@ -3743,7 +3743,7 @@ body {
   }
 
   .desk-mover-row {
-    @apply flex items-center gap-3 py-2 px-2 border-b border-grey-800/60 last:border-0 hover:bg-white/[0.02];
+    @apply flex items-center gap-3 py-2 px-2 border-b border-white/10 last:border-0 hover:bg-white/[0.02];
   }
 
   .desk-nighthawk-card {
@@ -3790,7 +3790,7 @@ body {
   .desk-nh-bear { @apply border-bear/40 text-bear; }
 
   .desk-mini-stat {
-    @apply border border-grey-800 bg-black/40 py-2 px-1;
+    @apply border border-white/10 bg-black/40 py-2 px-1;
   }
 
   .largo-msg-bubble {
@@ -4792,11 +4792,11 @@ body {
   }
 
   .desk-largo-input-row {
-    @apply flex gap-2 border-t border-grey-800 pt-4;
+    @apply flex gap-2 border-t border-white/10 pt-4;
   }
 
   .desk-largo-input {
-    @apply flex-1 bg-black border border-grey-700 px-4 py-3 font-mono text-sm text-white
+    @apply flex-1 bg-black border border-white/10 px-4 py-3 font-mono text-sm text-white
            focus:outline-none transition-all duration-300;
     caret-color: #22d3ee;
   }
@@ -4847,7 +4847,7 @@ body {
   }
 
   .desk-filter-btn {
-    @apply px-3 py-1.5 font-mono text-[10px] tracking-wider uppercase border border-grey-700
+    @apply px-3 py-1.5 font-mono text-[10px] tracking-wider uppercase border border-white/10
            text-sky-300 hover:border-purple/50 hover:text-white transition-colors;
   }
 
@@ -4856,7 +4856,7 @@ body {
   }
 
   .desk-filter-input {
-    @apply bg-black border border-grey-700 px-3 py-1.5 font-mono text-xs text-white
+    @apply bg-black border border-white/10 px-3 py-1.5 font-mono text-xs text-white
            placeholder:text-cyan-400 w-24 focus:outline-none focus:border-purple/50;
   }
 
@@ -4869,7 +4869,7 @@ body {
   }
 
   .news-ticker-label {
-    @apply flex items-center gap-2 shrink-0 px-4 py-3 border-r border-grey-800 bg-grey-900/80;
+    @apply flex items-center gap-2 shrink-0 px-4 py-3 border-r border-white/10 bg-[#08080e]/80;
   }
 
   .news-ticker-viewport {
@@ -5595,7 +5595,7 @@ body {
   }
 
   .spx-alert-scanning {
-    @apply border-cyan/25 bg-zinc-950/50;
+    @apply border-cyan/25 bg-[#08080e]/50;
     box-shadow:
       inset 0 0 40px rgba(0, 212, 255, 0.04),
       0 0 28px rgba(213, 128, 255, 0.08);
@@ -6016,7 +6016,7 @@ body {
   }
 
   .news-rail-header {
-    @apply flex items-center gap-2 shrink-0 px-4 py-3 border-b border-grey-800/80;
+    @apply flex items-center gap-2 shrink-0 px-4 py-3 border-b border-white/10;
   }
 
   .news-rail-viewport {
@@ -6034,7 +6034,7 @@ body {
   }
 
   .news-rail-card {
-    @apply border border-grey-800/80 bg-black/50 p-3 backdrop-blur-sm transition-colors;
+    @apply border border-white/10 bg-black/50 p-3 backdrop-blur-sm transition-colors;
   }
 
   .news-rail-card:hover {
@@ -6704,7 +6704,7 @@ body {
   }
 
   .admin-live-pill-dot {
-    @apply w-2 h-2 rounded-full bg-grey-600;
+    @apply w-2 h-2 rounded-full bg-white/20;
   }
 
   .admin-live-pill-on .admin-live-pill-dot {
@@ -6790,8 +6790,8 @@ body {
   }
 
   .admin-api-card-off .admin-provider-strip {
-    @apply bg-grey-700;
-    background: #374151;
+    @apply bg-white/[0.06];
+    background: rgba(255,255,255,0.06);
   }
 
   .admin-coming-soon-neon {
@@ -6816,7 +6816,7 @@ body {
   }
 
   .admin-refresh-btn {
-    @apply px-4 py-2 rounded-lg border border-grey-700 bg-grey-900/80 text-sm text-sky-100
+    @apply px-4 py-2 rounded-lg border border-white/10 bg-[#08080e]/80 text-sm text-sky-100
            hover:border-bull/40 hover:text-white transition-colors disabled:opacity-50;
   }
 
@@ -6826,7 +6826,7 @@ body {
 
   .admin-tab {
     @apply px-4 py-2 rounded-lg text-sm font-medium text-sky-300 border border-transparent
-           hover:text-white hover:bg-grey-900/60 transition-colors;
+           hover:text-white hover:bg-[#08080e]/60 transition-colors;
   }
 
   .admin-tab-active {
@@ -6890,11 +6890,11 @@ body {
   }
 
   .admin-table th {
-    @apply pb-2 pr-3 font-mono text-[10px] uppercase tracking-wider text-sky-100 border-b border-grey-800;
+    @apply pb-2 pr-3 font-mono text-[10px] uppercase tracking-wider text-sky-100 border-b border-white/10;
   }
 
   .admin-table td {
-    @apply py-2 pr-3 border-b border-grey-800/50 text-sky-200;
+    @apply py-2 pr-3 border-b border-white/10 text-sky-200;
   }
 
   .admin-scroll-table {
@@ -6906,7 +6906,7 @@ body {
   }
 
   .admin-coming-soon {
-    @apply p-8 rounded-xl border border-dashed border-grey-700 text-center;
+    @apply p-8 rounded-xl border border-dashed border-white/10 text-center;
   }
 
   .admin-coming-soon h2 {
@@ -6975,20 +6975,20 @@ body {
   }
 
   .admin-api-card-off {
-    @apply border-grey-800 opacity-80;
+    @apply border-white/10 opacity-80;
   }
 
   .admin-api-card-idle {
-    @apply border-grey-700;
+    @apply border-white/10;
   }
 
   .admin-api-card-open {
-    @apply border-bull/30 bg-grey-900/70;
+    @apply border-bull/30 bg-[#08080e]/70;
   }
 
   .admin-api-card-head {
     @apply w-full text-left p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3
-           hover:bg-grey-800/30 transition-colors;
+           hover:bg-white/[0.04] transition-colors;
   }
 
   .admin-api-card-title-row {
@@ -7016,7 +7016,7 @@ body {
   }
 
   .admin-api-card-body {
-    @apply px-4 pb-4 pt-0 border-t border-grey-800/80 space-y-4;
+    @apply px-4 pb-4 pt-0 border-t border-white/10 space-y-4;
   }
 
   .admin-api-probe-row {
@@ -7048,7 +7048,7 @@ body {
   }
 
   .admin-api-env code {
-    @apply mx-1 px-1.5 py-0.5 rounded bg-grey-800 text-sky-200 font-mono text-[10px];
+    @apply mx-1 px-1.5 py-0.5 rounded bg-white/[0.06] text-sky-200 font-mono text-[10px];
   }
 
   .admin-api-docs-link {
@@ -7084,11 +7084,11 @@ body {
   }
 
   .admin-api-dot-idle {
-    @apply bg-grey-600;
+    @apply bg-white/20;
   }
 
   .admin-api-dot-off {
-    @apply bg-grey-700;
+    @apply bg-white/[0.08];
   }
 
   .admin-api-endpoint-errors {
@@ -7125,12 +7125,12 @@ body {
   }
 
   .admin-spx-section-nav {
-    @apply flex flex-wrap gap-2 pb-2 border-b border-grey-800;
+    @apply flex flex-wrap gap-2 pb-2 border-b border-white/10;
   }
 
   .admin-spx-section-tab {
     @apply px-3 py-1.5 rounded-lg text-xs font-mono uppercase tracking-wider text-sky-100
-           hover:text-white hover:bg-grey-800/60 transition-colors;
+           hover:text-white hover:bg-white/[0.07] transition-colors;
   }
 
   .admin-spx-section-tab-active {
@@ -7182,7 +7182,7 @@ body {
   }
 
   .admin-spx-panel-head {
-    @apply w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-grey-800/30 transition-colors;
+    @apply w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.04] transition-colors;
   }
 
   .admin-spx-panel-title {
@@ -7190,12 +7190,12 @@ body {
   }
 
   .admin-spx-panel-body {
-    @apply px-4 pb-4 pt-1 border-t border-grey-800/80;
+    @apply px-4 pb-4 pt-1 border-t border-white/10;
   }
 
   .admin-spx-badge {
     @apply px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider
-           bg-grey-800 text-sky-200 border border-grey-700;
+           bg-white/[0.06] text-sky-200 border border-white/10;
   }
 
   .admin-spx-chevron {
@@ -7215,8 +7215,8 @@ body {
   }
 
   .admin-spx-json {
-    @apply text-[11px] font-mono text-sky-200 bg-grey-900/80 rounded-lg p-3 overflow-x-auto
-           max-h-96 overflow-y-auto border border-grey-800;
+    @apply text-[11px] font-mono text-sky-200 bg-[#08080e]/80 rounded-lg p-3 overflow-x-auto
+           max-h-96 overflow-y-auto border border-white/10;
   }
 
   .admin-spx-filters {
@@ -7233,7 +7233,7 @@ body {
 
   .admin-spx-select,
   .admin-spx-input {
-    @apply px-3 py-2 rounded-lg border border-grey-700 bg-grey-900 text-sm text-sky-100
+    @apply px-3 py-2 rounded-lg border border-white/10 bg-[#08080e] text-sm text-sky-100
            focus:border-bull/40 focus:outline-none;
   }
 
@@ -7918,7 +7918,7 @@ body {
 
   /* ── Docs / playbook ── */
   .docs-page {
-    @apply min-h-screen bg-grey-900 text-white;
+    @apply min-h-screen bg-[#08080e] text-white;
   }
 
   .docs-page-main {
@@ -7946,7 +7946,7 @@ body {
   }
 
   .docs-section {
-    @apply mb-10 pb-8 border-b border-grey-800 last:border-0;
+    @apply mb-10 pb-8 border-b border-white/10 last:border-0;
   }
 
   .docs-section h2 {
@@ -7974,16 +7974,16 @@ body {
   }
 
   .docs-table th {
-    @apply text-left font-mono text-[10px] uppercase tracking-wider text-sky-100 pb-2 border-b border-grey-700;
+    @apply text-left font-mono text-[10px] uppercase tracking-wider text-sky-100 pb-2 border-b border-white/10;
   }
 
   .docs-table td {
-    @apply py-2 pr-3 border-b border-grey-800/60 text-sky-200 align-top;
+    @apply py-2 pr-3 border-b border-white/10 text-sky-200 align-top;
   }
 
   .docs-diagram,
   .docs-code {
-    @apply font-mono text-xs text-cyan/90 bg-black/40 border border-grey-800 rounded-lg p-4 overflow-x-auto mb-4 whitespace-pre-wrap;
+    @apply font-mono text-xs text-cyan/90 bg-black/40 border border-white/10 rounded-lg p-4 overflow-x-auto mb-4 whitespace-pre-wrap;
   }
 
   .docs-note {
@@ -8000,7 +8000,7 @@ body {
   }
 
   .docs-ref-sidebar {
-    @apply lg:w-56 shrink-0 lg:sticky lg:top-20 lg:self-start py-6 lg:py-8 border-b lg:border-b-0 lg:border-r border-grey-800 lg:pr-4;
+    @apply lg:w-56 shrink-0 lg:sticky lg:top-20 lg:self-start py-6 lg:py-8 border-b lg:border-b-0 lg:border-r border-white/10 lg:pr-4;
   }
 
   .docs-ref-content {
@@ -8048,11 +8048,11 @@ body {
   }
 
   .docs-badge-muted {
-    @apply text-sky-100 border-grey-600 bg-grey-800/50;
+    @apply text-sky-100 border-white/15 bg-white/[0.06];
   }
 
   .docs-feed-card {
-    @apply mb-8 pb-6 border-b border-grey-800 last:border-0;
+    @apply mb-8 pb-6 border-b border-white/10 last:border-0;
   }
 
   .docs-feed-card-head {
@@ -8112,11 +8112,11 @@ body {
   }
 
   .docs-rest-toc-link {
-    @apply inline-flex items-center gap-2 rounded-lg border border-grey-800 bg-black/30 px-3 py-1.5 text-sm text-sky-200 hover:text-white hover:border-grey-600 transition-colors;
+    @apply inline-flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-1.5 text-sm text-sky-200 hover:text-white hover:border-white/15 transition-colors;
   }
 
   .docs-rest-toc-count {
-    @apply font-mono text-[10px] text-sky-200 bg-grey-800/80 px-1.5 py-0.5 rounded;
+    @apply font-mono text-[10px] text-sky-200 bg-white/[0.08] px-1.5 py-0.5 rounded;
   }
 
   .docs-ref-sidebar-wide {
@@ -8148,7 +8148,7 @@ body {
   }
 
   .docs-analysis-stat {
-    @apply rounded-lg border border-grey-800 bg-black/30 p-4 text-center;
+    @apply rounded-lg border border-white/10 bg-black/30 p-4 text-center;
   }
 
   .docs-analysis-num {
@@ -8173,7 +8173,7 @@ body {
   }
 
   .docs-provider-tab {
-    @apply border-grey-800 text-sky-300 hover:text-white hover:border-grey-600;
+    @apply border-white/10 text-sky-300 hover:text-white hover:border-white/15;
   }
 
   .docs-provider-tab-active {
@@ -8189,7 +8189,7 @@ body {
   }
 
   .docs-probe-card {
-    @apply rounded-lg border border-grey-800 bg-black/30 p-4;
+    @apply rounded-lg border border-white/10 bg-black/30 p-4;
   }
 
   .docs-probe-metrics {
@@ -8197,7 +8197,7 @@ body {
   }
 
   .docs-probe-metrics li {
-    @apply flex justify-between gap-4 border-b border-grey-900/80 pb-1;
+    @apply flex justify-between gap-4 border-b border-white/[0.06] pb-1;
   }
 
   .docs-probe-metrics strong {
@@ -8213,7 +8213,7 @@ body {
   }
 
   .docs-probe-select {
-    @apply rounded-lg border border-grey-800 bg-black/40 px-3 py-1.5 text-xs text-white;
+    @apply rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white;
   }
 
   .docs-probe-table td,
@@ -8279,7 +8279,7 @@ body {
   }
 
   .admin-ep-provider-chip {
-    @apply flex flex-col gap-1 min-w-[160px] rounded-xl border border-grey-800 bg-black/40 p-3 text-left transition-colors hover:border-grey-600;
+    @apply flex flex-col gap-1 min-w-[160px] rounded-xl border border-white/10 bg-black/40 p-3 text-left transition-colors hover:border-white/15;
   }
 
   .admin-ep-provider-chip-active {
@@ -8299,7 +8299,7 @@ body {
   }
 
   .admin-ep-search {
-    @apply w-full max-w-md rounded-lg border border-grey-800 bg-black/50 px-3 py-2 text-sm text-white placeholder:text-sky-200 focus:border-cyan/50 focus:outline-none;
+    @apply w-full max-w-md rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm text-white placeholder:text-sky-200 focus:border-cyan/50 focus:outline-none;
   }
 
   .admin-ep-filter-tabs {
@@ -8307,7 +8307,7 @@ body {
   }
 
   .admin-ep-table-section {
-    @apply rounded-xl border border-grey-800 bg-black/20 overflow-hidden;
+    @apply rounded-xl border border-white/10 bg-black/20 overflow-hidden;
   }
 
   .admin-ep-table {
@@ -8367,7 +8367,7 @@ body {
   }
 
   .admin-ep-badge-unknown {
-    @apply bg-grey-800/50 text-sky-100 border border-grey-700;
+    @apply bg-white/[0.06] text-sky-100 border border-white/10;
   }
 
   .admin-ep-row-risk {
@@ -8379,7 +8379,7 @@ body {
   }
 
   .admin-ep-count {
-    @apply px-4 py-2 text-[10px] font-mono text-sky-100 border-t border-grey-900;
+    @apply px-4 py-2 text-[10px] font-mono text-sky-100 border-t border-white/[0.06];
   }
 
   .admin-ep-empty {
@@ -8391,7 +8391,7 @@ body {
   }
 
   .admin-ep-provider-health-row {
-    @apply flex items-center gap-3 text-sm border-b border-grey-900/80 pb-2;
+    @apply flex items-center gap-3 text-sm border-b border-white/[0.06] pb-2;
   }
 
   /* ── API Command Center ── */
@@ -8434,7 +8434,7 @@ body {
   }
 
   .admin-cmd-stream-pill {
-    @apply inline-flex items-center gap-2 rounded-full border border-grey-700 px-2.5 py-1 text-[10px] font-mono uppercase text-sky-100;
+    @apply inline-flex items-center gap-2 rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-mono uppercase text-sky-100;
   }
 
   .admin-cmd-stream-pill-live {
@@ -8442,7 +8442,7 @@ body {
   }
 
   .admin-cmd-stream-dot {
-    @apply w-1.5 h-1.5 rounded-full bg-grey-600;
+    @apply w-1.5 h-1.5 rounded-full bg-white/20;
   }
 
   .admin-cmd-stream-pill-live .admin-cmd-stream-dot {
@@ -8543,7 +8543,7 @@ body {
   }
 
   .admin-cmd-drawer-close {
-    @apply w-9 h-9 rounded-lg border border-grey-700 text-sky-300 hover:text-white hover:border-grey-500 transition-colors;
+    @apply w-9 h-9 rounded-lg border border-white/10 text-sky-300 hover:text-white hover:border-white/15 transition-colors;
   }
 
   .admin-cmd-drawer-body {
@@ -8892,7 +8892,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-ep-badge-unknown {
-    @apply bg-grey-700/50 text-sky-100 border-grey-500/40;
+    @apply bg-white/[0.08] text-sky-100 border-white/15;
   }
 
   .admin-cmd-vivid .admin-ep-count {
@@ -8933,7 +8933,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-cmd-stream-pill {
-    @apply px-3 py-1.5 text-xs text-sky-200 border-grey-500;
+    @apply px-3 py-1.5 text-xs text-sky-200 border-white/15;
   }
 
   .admin-cmd-vivid .admin-cmd-stream-pill-live {
@@ -9034,7 +9034,7 @@ body {
   }
 
   .admin-cmd-vivid .admin-cmd-drawer-close {
-    @apply w-10 h-10 rounded-xl border-grey-600 text-sky-200 hover:border-cyan/50 text-lg;
+    @apply w-10 h-10 rounded-xl border-white/15 text-sky-200 hover:border-cyan/50 text-lg;
   }
 
   .admin-cmd-vivid .admin-cmd-drawer-body {
@@ -9266,7 +9266,7 @@ body {
   }
 
   .admin-spx-term-stream-pill {
-    @apply inline-flex items-center gap-2 rounded-full border border-grey-700 px-4 py-2 text-xs md:text-sm font-mono uppercase tracking-wider text-sky-100;
+    @apply inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-xs md:text-sm font-mono uppercase tracking-wider text-sky-100;
   }
 
   .admin-spx-term-stream-pill-live {
@@ -9275,7 +9275,7 @@ body {
   }
 
   .admin-spx-term-stream-dot {
-    @apply w-2 h-2 rounded-full bg-grey-600;
+    @apply w-2 h-2 rounded-full bg-white/20;
   }
 
   .admin-spx-term-stream-pill-live .admin-spx-term-stream-dot {
@@ -10067,7 +10067,7 @@ body {
   }
 
   .admin-cron-card {
-    @apply relative overflow-hidden rounded-xl border border-grey-800/80 bg-grey-900/50 backdrop-blur-sm p-4;
+    @apply relative overflow-hidden rounded-xl border border-white/10 bg-[#08080e]/50 backdrop-blur-sm p-4;
     animation: admin-cron-card-in 0.45s ease-out both;
   }
 
@@ -10108,11 +10108,11 @@ body {
   }
 
   .admin-cron-card-unknown {
-    @apply border-grey-700/60 opacity-95;
+    @apply border-white/10 opacity-95;
   }
 
   .admin-cron-card:hover {
-    @apply border-grey-600/80 -translate-y-0.5 transition-transform duration-200;
+    @apply border-white/15 -translate-y-0.5 transition-transform duration-200;
   }
 
   .admin-cron-card-head {
@@ -10120,7 +10120,7 @@ body {
   }
 
   .admin-cron-card-icon {
-    @apply w-10 h-10 shrink-0 flex items-center justify-center rounded-lg border border-grey-700/80 bg-black/30 text-lg;
+    @apply w-10 h-10 shrink-0 flex items-center justify-center rounded-lg border border-white/10 bg-black/30 text-lg;
     box-shadow: inset 0 0 20px rgba(0, 212, 255, 0.08);
   }
 
@@ -10186,7 +10186,7 @@ body {
   }
 
   .admin-cron-card-pill-dim {
-    @apply border-grey-700 text-sky-300 bg-grey-800/40;
+    @apply border-white/10 text-sky-300 bg-white/[0.05];
   }
 
   .admin-cron-card-stats {
@@ -10194,7 +10194,7 @@ body {
   }
 
   .admin-cron-card-stat {
-    @apply rounded-lg border border-grey-800/80 bg-black/25 px-2 py-2;
+    @apply rounded-lg border border-white/10 bg-black/25 px-2 py-2;
   }
 
   .admin-cron-card-stat-label {
@@ -10246,7 +10246,7 @@ body {
   }
 
   .admin-cron-feed-row {
-    @apply grid gap-x-3 gap-y-1 items-center px-3 py-2 rounded-lg border border-grey-800/60 bg-black/20;
+    @apply grid gap-x-3 gap-y-1 items-center px-3 py-2 rounded-lg border border-white/10 bg-black/20;
     grid-template-columns: 7.5rem 1fr auto;
     animation: admin-cron-feed-in 0.35s ease-out both;
   }
@@ -10313,10 +10313,10 @@ body {
   /* ── HELIX UI System ─────────────────────────────────────────────────────── */
 
   /* Thin custom scrollbar for flow tape */
-  .flow-scroll { scrollbar-width: thin; scrollbar-color: #3f3f46 transparent; }
+  .flow-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.14) transparent; }
   .flow-scroll::-webkit-scrollbar { width: 3px; }
   .flow-scroll::-webkit-scrollbar-track { background: transparent; }
-  .flow-scroll::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 99px; }
+  .flow-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 99px; }
   .flow-scroll::-webkit-scrollbar-thumb:hover { background: rgba(125, 211, 252, 0.45); }
 
   /* Skeleton shimmer */
@@ -10325,7 +10325,7 @@ body {
     100% { background-position: 400px 0; }
   }
   .flow-skeleton {
-    background: linear-gradient(90deg, #18181b 25%, #27272a 50%, #18181b 75%);
+    background: linear-gradient(90deg, #0b0e16 25%, #161628 50%, #0b0e16 75%);
     background-size: 800px 100%;
     animation: flow-shimmer 1.6s ease-in-out infinite;
     border-radius: 6px;
@@ -10502,15 +10502,15 @@ body {
 
   /* Right panel (stacked panels) */
   .flow-panel {
-    border: 1px solid #27272a;
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: 10px;
-    background: rgba(9, 9, 11, 0.85);
+    background: rgba(8, 9, 14, 0.85);
     backdrop-filter: blur(8px);
     overflow: hidden;
   }
   .flow-panel-header {
     padding: 10px 14px 8px;
-    border-bottom: 1px solid #1c1c1e;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -10530,7 +10530,7 @@ body {
   /* Leaderboard bar */
   .flow-leader-bar-track {
     height: 3px;
-    background: #27272a;
+    background: rgba(255,255,255,0.08);
     border-radius: 99px;
     overflow: hidden;
     margin-top: 3px;
