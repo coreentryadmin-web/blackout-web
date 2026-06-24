@@ -1484,6 +1484,31 @@ export async function listDistinctOpenPositionChains(): Promise<
   return res.rows.map((r) => ({ ticker: String(r.ticker), expiry: ymdOf(r.expiry) }));
 }
 
+/**
+ * DISTINCT (ticker, expiry, strike, option_type) across ALL users' OPEN positions — the
+ * per-CONTRACT key the Night's Watch warm cron iterates so each held contract is fetched
+ * exactly once via the Massive unified snapshot (batched ≤250/call). Mirrors the same
+ * source the options-socket reconciler enumerates. NOT user-scoped on purpose: a server-side
+ * cache warmer, never exposed to a user. expiry is normalized to YYYY-MM-DD via ymdOf so it
+ * matches buildOcc's expiry contract.
+ */
+export async function listDistinctOpenPositionContracts(): Promise<
+  Array<{ ticker: string; expiry: string; strike: number; option_type: "call" | "put" }>
+> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `SELECT DISTINCT ticker, expiry, strike, option_type
+       FROM user_positions
+      WHERE status = 'open'`
+  );
+  return res.rows.map((r) => ({
+    ticker: String(r.ticker),
+    expiry: ymdOf(r.expiry),
+    strike: Number(r.strike),
+    option_type: String(r.option_type) === "put" ? "put" : "call",
+  }));
+}
+
 /** Create a new open position for a user. */
 export async function createUserPosition(
   userId: string,

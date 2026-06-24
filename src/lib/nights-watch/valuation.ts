@@ -6,6 +6,7 @@
 // valuationFromContract() returns null and enrichPosition() reports 'unavailable'.
 
 import type { ChainContract } from "@/lib/providers/polygon-options-gex";
+import type { OptionSnapshot } from "@/lib/providers/options-snapshot";
 import { todayEt } from "@/lib/et-date";
 import type { UserPositionRow } from "@/lib/db";
 
@@ -48,6 +49,51 @@ function finiteOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+type MarkInputs = {
+  bid: number | null;
+  ask: number | null;
+  last: number | null;
+  dayClose: number | null;
+};
+
+/**
+ * THE single price-ladder, used by BOTH the chain valuer and the unified-snapshot valuer, so
+ * the two sources produce an IDENTICAL mark for the same Massive inputs (no drift, by
+ * construction). Priority:
+ *   1. fresh live WS mark (real-time mid) — and prefer its bid/ask too
+ *   2. mid(bid,ask)  [ask>0 && bid>=0 — bid may be 0 deep-OTM; ask>0 keeps it a real two-sided quote]
+ *   3. last trade (>0)
+ *   4. day / session close (>0)
+ * Returns null (→ mark_source 'none') when no usable price exists — NEVER a fabricated value.
+ */
+function resolveMark(
+  inputs: MarkInputs,
+  liveMark?: LiveMark | null
+): { mark: number; bid: number | null; ask: number | null; mark_source: MarkSource } | null {
+  let bid = inputs.bid;
+  let ask = inputs.ask;
+  let mark: number | null = null;
+  let mark_source: MarkSource = "none";
+
+  if (liveMark && Number.isFinite(liveMark.mark) && liveMark.mark >= 0) {
+    mark = liveMark.mark;
+    mark_source = "ws";
+    if (liveMark.bid != null) bid = liveMark.bid;
+    if (liveMark.ask != null) ask = liveMark.ask;
+  } else if (inputs.bid != null && inputs.ask != null && inputs.ask > 0 && inputs.bid >= 0) {
+    mark = (inputs.bid + inputs.ask) / 2;
+    mark_source = "snapshot";
+  } else if (inputs.last != null && inputs.last > 0) {
+    mark = inputs.last;
+    mark_source = "snapshot";
+  } else if (inputs.dayClose != null && inputs.dayClose > 0) {
+    mark = inputs.dayClose;
+    mark_source = "snapshot";
+  }
+  if (mark == null || !(mark >= 0)) return null;
+  return { mark: Number(mark.toFixed(4)), bid, ask, mark_source };
+}
+
 /**
  * Extract mark + greeks from a chain contract already matched by chain-cache.
  * PRICE PRIORITY:
@@ -64,39 +110,22 @@ export function valuationFromContract(
   spot: number,
   liveMark?: LiveMark | null
 ): ContractValuation | null {
-  const snapBid = finiteOrNull(contract.last_quote?.bid);
-  const snapAsk = finiteOrNull(contract.last_quote?.ask);
-  const lastTrade = finiteOrNull(contract.last_trade?.price);
-  const dayClose = finiteOrNull(contract.day?.close);
-
-  let mark: number | null = null;
-  let mark_source: MarkSource = "none";
-  let bid = snapBid;
-  let ask = snapAsk;
-
-  // 1) Live WS mark first — freshest real-time mid. Prefer its bid/ask too.
-  if (liveMark && Number.isFinite(liveMark.mark) && liveMark.mark >= 0) {
-    mark = liveMark.mark;
-    mark_source = "ws";
-    if (liveMark.bid != null) bid = liveMark.bid;
-    if (liveMark.ask != null) ask = liveMark.ask;
-  } else if (snapBid != null && snapAsk != null && snapAsk > 0 && snapBid >= 0) {
-    // 2) snapshot mid — bid may be 0 for deep-OTM; ask>0 keeps it a real quote
-    mark = (snapBid + snapAsk) / 2;
-    mark_source = "snapshot";
-  } else if (lastTrade != null && lastTrade > 0) {
-    mark = lastTrade;
-    mark_source = "snapshot";
-  } else if (dayClose != null && dayClose > 0) {
-    mark = dayClose;
-    mark_source = "snapshot";
-  }
-  if (mark == null || !(mark >= 0)) return null;
+  const resolved = resolveMark(
+    {
+      bid: finiteOrNull(contract.last_quote?.bid),
+      ask: finiteOrNull(contract.last_quote?.ask),
+      last: finiteOrNull(contract.last_trade?.price),
+      dayClose: finiteOrNull(contract.day?.close),
+    },
+    liveMark
+  );
+  if (!resolved) return null;
+  const { mark, bid, ask, mark_source } = resolved;
 
   const up = finiteOrNull(contract.underlying_asset?.price) ?? (spot > 0 ? spot : null);
 
   return {
-    mark: Number(mark.toFixed(4)),
+    mark,
     bid,
     ask,
     delta: finiteOrNull(contract.greeks?.delta),
@@ -105,6 +134,56 @@ export function valuationFromContract(
     iv: finiteOrNull(contract.implied_volatility),
     openInterest: finiteOrNull(contract.open_interest),
     underlyingPrice: up != null && up > 0 ? up : null,
+    mark_source,
+  };
+}
+
+/**
+ * Extract mark + greeks from a Massive UNIFIED-SNAPSHOT contract (per-OCC), already keyed
+ * by OCC in the per-OCC cache. This is the SAME data the chain contract carries — the
+ * snapshot returns the identical Massive fields (greeks/last_quote/iv/oi/underlying) — so
+ * a valuation built here equals the chain valuation by construction (same inputs, same
+ * priority, same rounding). It is a FETCH OPTIMIZATION, not a valuation-logic change.
+ *
+ * PRICE PRIORITY (identical to valuationFromContract):
+ *   1. fresh live WS mark (`liveMark`) — real-time bid/ask mid, when present
+ *   2. snapshot resolved mark (`snap.mark` = midpoint ?? mid(bid,ask) ?? last_trade)
+ * Greeks/IV/OI/underlying ALWAYS come from the snapshot (the WS Q feed has none), exactly
+ * like the chain path. Returns null (→ mark_source 'none') when no usable price exists —
+ * NEVER a fabricated value.
+ */
+export function valuationFromSnapshot(
+  snap: OptionSnapshot,
+  liveMark?: LiveMark | null
+): ContractValuation | null {
+  // Resolve through the SAME shared ladder as the chain (resolveMark) using the snapshot's RAW
+  // bid/ask/last/dayClose — so a snapshot-served valuation is byte-identical to a chain-served
+  // one for the same Massive data: no provider-midpoint-first divergence (C2), and the day-close
+  // tier is present on both paths (C1). Greeks/IV/OI/underlying come from the snapshot.
+  const resolved = resolveMark(
+    {
+      bid: finiteOrNull(snap.bid),
+      ask: finiteOrNull(snap.ask),
+      last: finiteOrNull(snap.last),
+      dayClose: finiteOrNull(snap.dayClose),
+    },
+    liveMark
+  );
+  if (!resolved) return null;
+  const { mark, bid, ask, mark_source } = resolved;
+
+  const up = snap.underlyingPrice != null && snap.underlyingPrice > 0 ? snap.underlyingPrice : null;
+
+  return {
+    mark,
+    bid,
+    ask,
+    delta: finiteOrNull(snap.delta),
+    gamma: finiteOrNull(snap.gamma),
+    theta: finiteOrNull(snap.theta),
+    iv: finiteOrNull(snap.iv),
+    openInterest: finiteOrNull(snap.openInterest),
+    underlyingPrice: up,
     mark_source,
   };
 }

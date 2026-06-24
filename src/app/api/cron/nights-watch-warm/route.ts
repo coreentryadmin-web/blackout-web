@@ -12,9 +12,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
-import { listDistinctOpenPositionChains } from "@/lib/db";
+import { listDistinctOpenPositionChains, listDistinctOpenPositionContracts } from "@/lib/db";
 import { getNwChain } from "@/lib/nights-watch/chain-cache";
 import { getNwTickerGex } from "@/lib/nights-watch/position-context";
+import { buildOcc } from "@/lib/ws/options-socket";
+import {
+  fetchOptionsUnifiedSnapshot,
+  setOptionSnapshots,
+} from "@/lib/providers/options-snapshot";
 import { isSpxTicker } from "@/lib/spx-desk-live";
 import { etMinutes, etClock } from "@/lib/spx-play-session-time";
 
@@ -106,6 +111,38 @@ export async function GET(req: NextRequest) {
     console.warn(`[cron/nights-watch-warm] ${gexFailed} GEX warm(s) failed`);
   }
 
+  // Also batch-warm the DISTINCT held CONTRACTS via the Massive unified snapshot: build each
+  // contract's OCC, fetch in ≤250 chunks through the rate-limited Polygon funnel, and write
+  // each into the per-OCC cache so the user-facing GET reads a warm cache hit (the per-OCC
+  // valuation source ABOVE the chain). Upstream cost is O(distinct contracts / 250), not
+  // O(positions). FULLY best-effort + isolated in its own try/catch: a snapshot failure NEVER
+  // affects the chain-warm result or status above — the chain stays the valuation fallback.
+  let snapWarmed = 0;
+  let snapContracts = 0;
+  try {
+    const contracts = await listDistinctOpenPositionContracts();
+    const occs = Array.from(
+      new Set(
+        contracts
+          .map((c) => buildOcc(c.ticker, c.expiry, c.option_type, c.strike))
+          .filter((o): o is string => Boolean(o))
+      )
+    );
+    snapContracts = occs.length;
+    if (occs.length > 0) {
+      const snaps = await fetchOptionsUnifiedSnapshot(occs);
+      await setOptionSnapshots(Array.from(snaps.values()));
+      snapWarmed = snaps.size;
+    }
+  } catch (error) {
+    // Never fails the chain warm — log host-level and move on (chain fallback unaffected).
+    console.warn(
+      `[cron/nights-watch-warm] snapshot warm failed (non-fatal): ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+
   // ok:false (=> failed status + critical alert) only when the WHOLE batch fails; a
   // partial failure logs ok with the count so one flaky underlying doesn't page ops.
   const allFailed = capped.length > 0 && failed === capped.length;
@@ -117,6 +154,8 @@ export async function GET(req: NextRequest) {
     distinct_chains: chains.length,
     gex_warmed: gexWarmed,
     gex_total: gexTickers.length,
+    snapshot_warmed: snapWarmed,
+    snapshot_contracts: snapContracts,
     capped: chains.length > capped.length,
     ...(failed > 0 ? { error: `${failed}/${capped.length} chain warm(s) failed` } : {}),
   });
@@ -128,5 +167,7 @@ export async function GET(req: NextRequest) {
     distinct_chains: chains.length,
     gex_warmed: gexWarmed,
     gex_total: gexTickers.length,
+    snapshot_warmed: snapWarmed,
+    snapshot_contracts: snapContracts,
   });
 }

@@ -14,11 +14,13 @@ import { listUserPositions } from "@/lib/db";
 import {
   enrichPosition,
   valuationFromContract,
+  valuationFromSnapshot,
   type ContractValuation,
   type EnrichedPosition,
   type LiveMark,
 } from "@/lib/nights-watch/valuation";
 import { getNwChain, matchContract, nwChainKey, type NwChain } from "@/lib/nights-watch/chain-cache";
+import { getOptionSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
 import { buildOcc, getLiveOptionMark } from "@/lib/ws/options-socket";
 import { buildPositionContextMap } from "@/lib/nights-watch/position-context";
 import { computeVerdict, type Verdict } from "@/lib/nights-watch/verdict";
@@ -45,17 +47,47 @@ export async function getEnrichedPositionsForUser(
       chains.set(key, await getNwChain(root, exp).catch(() => null));
     })
   );
+  // Build each position's OCC ONCE and reuse it for both the live WS mark and the
+  // per-OCC unified-snapshot read (a malformed OCC simply yields null on both → chain path).
+  const occByPosition = new Map<number, string | null>();
+  for (const p of positions) {
+    let occ: string | null = null;
+    try {
+      occ = buildOcc(p.ticker, p.expiry, p.option_type, p.strike);
+    } catch {
+      occ = null;
+    }
+    occByPosition.set(p.id, occ);
+  }
+
   // Resolve a fresh live WS mark per position (in-memory store first, Redis
   // fallback). Best-effort: any miss yields null and the valuation cleanly
-  // falls back to the cached snapshot mark, so a WS outage never degrades this.
+  // falls back to the cached snapshot/chain mark, so a WS outage never degrades this.
   const liveMarks = new Map<number, LiveMark | null>();
   await Promise.all(
     positions.map(async (p) => {
+      const occ = occByPosition.get(p.id);
+      if (!occ) return;
       try {
-        const occ = buildOcc(p.ticker, p.expiry, p.option_type, p.strike);
-        if (occ) liveMarks.set(p.id, await getLiveOptionMark(occ));
+        liveMarks.set(p.id, await getLiveOptionMark(occ));
       } catch {
-        /* live mark optional — snapshot fallback covers it */
+        /* live mark optional — snapshot/chain fallback covers it */
+      }
+    })
+  );
+
+  // Read the warmed per-OCC unified snapshot per position (cache READER — in-mem first,
+  // Redis fallback; never an upstream call on this read path). A miss yields null and the
+  // valuation cleanly falls back to the EXISTING chain path, so this is purely additive.
+  const snapshots = new Map<number, OptionSnapshot | null>();
+  await Promise.all(
+    positions.map(async (p) => {
+      const occ = occByPosition.get(p.id);
+      if (!occ) return;
+      try {
+        snapshots.set(p.id, await getOptionSnapshot(occ));
+      } catch {
+        /* snapshot optional — chain fallback covers it */
       }
     })
   );
@@ -67,14 +99,39 @@ export async function getEnrichedPositionsForUser(
   const contextMap = await buildPositionContextMap(positions.map((p) => p.ticker));
 
   return positions.map((p) => {
-    const chain = chains.get(nwChainKey(p.ticker, p.expiry)) ?? null;
+    const liveMark = liveMarks.get(p.id) ?? null;
     let valuation: ContractValuation | null = null;
-    if (chain) {
-      const contract = matchContract(chain.contracts, p.strike, p.option_type);
-      if (contract) {
-        valuation = valuationFromContract(contract, chain.spot, liveMarks.get(p.id) ?? null);
+
+    // VALUATION SOURCE PRIORITY (WS mark is folded into both snapshot + chain valuers, so it
+    // is honored FIRST regardless of which body runs):
+    //   1. WS mark → 2. per-OCC unified snapshot → 3. chain (matchContract) → 4. none.
+    // The per-OCC snapshot carries the SAME Massive fields as the chain, so when present it
+    // yields the identical valuation. When ABSENT (cache miss / warm not run / parse skip), we
+    // fall through to the EXISTING chain path UNCHANGED — the chain stays the fallback.
+    const snap = snapshots.get(p.id) ?? null;
+    // Identity guard (cheap money-safety): only trust a snapshot whose contract identity
+    // (strike / type / expiry) matches the position. If buildOcc and Massive's OCC normalization
+    // ever disagree (adjusted / non-standard strikes), a mismatched snapshot is ignored → clean
+    // fall-through to the chain path, which re-matches strike+type in matchContract.
+    const snapMatches =
+      snap != null &&
+      snap.optionType === p.option_type &&
+      snap.strike != null &&
+      Math.abs(snap.strike - p.strike) <= 0.005 &&
+      snap.expiry === String(p.expiry).slice(0, 10);
+    if (snap && snapMatches) {
+      valuation = valuationFromSnapshot(snap, liveMark);
+    }
+    if (!valuation) {
+      const chain = chains.get(nwChainKey(p.ticker, p.expiry)) ?? null;
+      if (chain) {
+        const contract = matchContract(chain.contracts, p.strike, p.option_type);
+        if (contract) {
+          valuation = valuationFromContract(contract, chain.spot, liveMark);
+        }
       }
     }
+
     const enrichedPosition = enrichPosition(p, valuation);
     const ctx = contextMap.get(p.ticker.trim().toUpperCase());
     // Deterministic, pure, free verdict — every action traces to named signals.

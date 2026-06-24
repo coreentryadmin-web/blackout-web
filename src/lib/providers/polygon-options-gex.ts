@@ -1945,6 +1945,40 @@ async function polygonFetchUrl(url: string): Promise<ChainResponse | null> {
   }
 }
 
+/**
+ * Reusable raw Polygon/Massive REST JSON fetch — SAME BASE/KEY/rate-limited funnel
+ * (polygonTrackedFetch) + host-only logging as polygonFetchUrl, but returns the raw
+ * decoded JSON for callers that map a DIFFERENT response shape (e.g. the unified
+ * /v3/snapshot endpoint). `path` is an app-relative path beginning with `/` (the
+ * apiKey + BASE are appended here) OR a full http(s) next_url. `endpointKey` groups
+ * the call for tracked-fetch metrics. Returns null on any non-2xx / throw — never
+ * throws, so best-effort callers degrade cleanly to their fallback.
+ */
+export async function polygonRawJson<T = unknown>(
+  path: string,
+  endpointKey: string
+): Promise<T | null> {
+  if (!polygonConfigured()) return null;
+  const sep = path.includes("?") ? "&" : "?";
+  const full = path.startsWith("http")
+    ? `${path}${sep}apiKey=${KEY}`
+    : `${BASE}${path}${sep}apiKey=${KEY}`;
+  try {
+    const res = await polygonTrackedFetch(endpointKey, full, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      console.warn(`[polygon-snapshot] fetch ${res.status} ${res.statusText || ""} from ${hostOf(full)} ${endpointKey}`.trim());
+      return null;
+    }
+    return (await res.json()) as T;
+  } catch (err) {
+    console.warn(`[polygon-snapshot] fetch threw from ${hostOf(full)} ${endpointKey}: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
 async function fetchChainBand(
   underlying: string,
   spot: number,
