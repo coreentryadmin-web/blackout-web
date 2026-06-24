@@ -67,7 +67,7 @@ export default async function OgImage() {
             position: "absolute",
             inset: 0,
             display: "flex",
-            background: "radial-gradient(900px 520px at 50% -12%, rgba(0,230,118,0.18), transparent)",
+            background: "radial-gradient(circle at 50% -10%, rgba(0,230,118,0.18), transparent 55%)",
           }}
         />
         {/* corner vignettes so type pops */}
