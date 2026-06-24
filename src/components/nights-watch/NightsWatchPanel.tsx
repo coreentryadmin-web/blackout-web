@@ -435,19 +435,26 @@ function PositionCard({
 }) {
   const [busy, setBusy] = useState<null | "close" | "delete">(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // I-05: the Close + Delete actions use inline UI instead of native browser dialogs (off-brand for a money desk).
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [closeExit, setCloseExit] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const live = position.valuation_status === "live";
   const pnl = position.unrealized_pnl;
   const pnlTone = pnl != null && pnl >= 0 ? "text-bull" : "text-bear";
 
-  async function handleClose() {
+  function openCloseForm() {
     setActionError(null);
-    const raw = window.prompt(
-      `Close ${position.ticker} ${position.strike}${position.option_type === "call" ? "C" : "P"} — exit premium per contract?`,
-      position.valuation?.mark != null ? String(position.valuation.mark) : ""
-    );
-    if (raw == null) return; // cancelled
-    const exit = Number(raw);
+    setConfirmDelete(false);
+    // Prefill the live mark so the common "close at mark" path is one keystroke (Enter).
+    setCloseExit(position.valuation?.mark != null ? String(position.valuation.mark) : "");
+    setCloseOpen(true);
+  }
+
+  async function submitClose() {
+    setActionError(null);
+    const exit = Number(closeExit);
     if (!Number.isFinite(exit) || exit < 0) {
       setActionError("Exit premium must be a number ≥ 0.");
       return;
@@ -464,6 +471,7 @@ function PositionCard({
         setActionError(data?.error ?? "Could not close the position.");
         return;
       }
+      setCloseOpen(false);
       onChanged();
     } catch {
       setActionError("Network error — could not close the position.");
@@ -472,10 +480,8 @@ function PositionCard({
     }
   }
 
-  async function handleDelete() {
+  async function confirmDeleteAction() {
     setActionError(null);
-    if (!window.confirm(`Delete ${position.ticker} ${position.strike}${position.option_type === "call" ? "C" : "P"}? This cannot be undone.`))
-      return;
     setBusy("delete");
     try {
       const res = await fetch(`/api/account/positions/${position.id}`, { method: "DELETE" });
@@ -484,6 +490,7 @@ function PositionCard({
         setActionError(data?.error ?? "Could not delete the position.");
         return;
       }
+      setConfirmDelete(false);
       onChanged();
     } catch {
       setActionError("Network error — could not delete the position.");
@@ -602,48 +609,141 @@ function PositionCard({
         </p>
       )}
 
-      {/* Footer actions — all stopPropagation so they never trigger the card's
-          open-detail click. "Full intel" is the primary; Close + Delete ghost/danger. */}
-      <div className="mt-auto flex items-center gap-2 pt-1">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          block
-          onClick={(e) => {
-            e.stopPropagation();
-            openDetail();
-          }}
+      {/* Footer actions — all stopPropagation so they never trigger the card's open-detail click.
+          Close opens an inline exit-premium form; Delete a two-step confirm (I-05: no native dialogs).
+          "Full intel" is the primary; Close + Delete ghost/danger. */}
+      {closeOpen ? (
+        <div
+          className="mt-auto flex items-center gap-2 pt-1"
+          onClick={(e) => e.stopPropagation()}
         >
-          Full intel →
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            void handleClose();
-          }}
-          loading={busy === "close"}
-          disabled={busy != null}
+          <label htmlFor={`nw-close-${position.id}`} className="sr-only">
+            Exit premium per contract
+          </label>
+          <input
+            id={`nw-close-${position.id}`}
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="0.01"
+            autoFocus
+            value={closeExit}
+            onChange={(e) => setCloseExit(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void submitClose();
+              } else if (e.key === "Escape") {
+                setCloseOpen(false);
+                setActionError(null);
+              }
+            }}
+            placeholder="Exit / contract"
+            className="w-28 rounded border border-cyan-500/30 bg-black/40 px-2 py-1 font-mono text-xs text-white outline-none placeholder:text-sky-300/40 focus:border-cyan-400"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              void submitClose();
+            }}
+            loading={busy === "close"}
+            disabled={busy != null}
+          >
+            Confirm close
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              setCloseOpen(false);
+              setActionError(null);
+            }}
+            disabled={busy != null}
+          >
+            Cancel
+          </Button>
+        </div>
+      ) : confirmDelete ? (
+        <div
+          className="mt-auto flex items-center gap-2 pt-1"
+          onClick={(e) => e.stopPropagation()}
         >
-          Close
-        </Button>
-        <Button
-          type="button"
-          variant="danger"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            void handleDelete();
-          }}
-          loading={busy === "delete"}
-          disabled={busy != null}
-        >
-          Delete
-        </Button>
-      </div>
+          <span className="flex-1 font-mono text-[11px] text-bear">
+            Delete permanently? Can&apos;t be undone.
+          </span>
+          <Button
+            type="button"
+            variant="danger"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              void confirmDeleteAction();
+            }}
+            loading={busy === "delete"}
+            disabled={busy != null}
+          >
+            Yes, delete
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmDelete(false);
+              setActionError(null);
+            }}
+            disabled={busy != null}
+          >
+            Cancel
+          </Button>
+        </div>
+      ) : (
+        <div className="mt-auto flex items-center gap-2 pt-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            block
+            onClick={(e) => {
+              e.stopPropagation();
+              openDetail();
+            }}
+          >
+            Full intel →
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              openCloseForm();
+            }}
+            disabled={busy != null}
+          >
+            Close
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActionError(null);
+              setConfirmDelete(true);
+            }}
+            disabled={busy != null}
+          >
+            Delete
+          </Button>
+        </div>
+      )}
     </article>
   );
 }
