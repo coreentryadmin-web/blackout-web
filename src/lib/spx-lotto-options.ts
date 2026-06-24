@@ -1,5 +1,5 @@
 import { polygonConfigured } from "@/lib/providers/config";
-import { trackedFetch } from "@/lib/api-tracked-fetch";
+import { polygonTrackedFetch } from "@/lib/providers/polygon-rate-limiter";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { playLottoChainMaxSpreadPct, playLottoTargetPts } from "@/lib/spx-play-config";
 import type { SpxPlayDirection } from "@/lib/spx-signals";
@@ -55,7 +55,7 @@ async function fetchChainUrl(url: string): Promise<{ results?: ChainContract[]; 
   const full = url.startsWith("http") ? `${url}${sep}apiKey=${KEY}` : `${BASE}${url}${sep}apiKey=${KEY}`;
   const label = url.startsWith("http") ? "/v3/snapshot/options/SPXW" : url.split("?")[0];
   try {
-    const res = await trackedFetch("polygon", label, full, { headers: { Accept: "application/json" }, cache: "no-store" });
+    const res = await polygonTrackedFetch(label, full, { headers: { Accept: "application/json" }, cache: "no-store" });
     if (!res.ok) return null;
     return (await res.json()) as { results?: ChainContract[]; next_url?: string };
   } catch {

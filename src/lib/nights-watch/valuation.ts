@@ -9,6 +9,15 @@ import type { ChainContract } from "@/lib/providers/polygon-options-gex";
 import { todayEt } from "@/lib/et-date";
 import type { UserPositionRow } from "@/lib/db";
 
+/**
+ * Where the live `mark` came from:
+ *  - 'ws'       — fresh Massive options WebSocket quote (real-time bid/ask mid)
+ *  - 'snapshot' — cached REST chain snapshot (mid/last/close)
+ *  - 'none'     — no usable price anywhere (paired with a null valuation)
+ * Never fabricated: a mark always traces to one of the first two sources.
+ */
+export type MarkSource = "ws" | "snapshot" | "none";
+
 export type ContractValuation = {
   mark: number;
   bid: number | null;
@@ -19,6 +28,19 @@ export type ContractValuation = {
   iv: number | null;
   openInterest: number | null;
   underlyingPrice: number | null;
+  mark_source: MarkSource;
+};
+
+/**
+ * A fresh live WS mark for the contract, when one is available. bid/ask may be
+ * null even with a usable mid (the engine only requires ask>0). Greeks/IV/OI are
+ * NOT carried here — the WS Q feed doesn't provide them; they stay from the snapshot.
+ */
+export type LiveMark = {
+  mark: number;
+  bid: number | null;
+  ask: number | null;
+  ts: number;
 };
 
 function finiteOrNull(v: unknown): number | null {
@@ -28,25 +50,46 @@ function finiteOrNull(v: unknown): number | null {
 
 /**
  * Extract mark + greeks from a chain contract already matched by chain-cache.
- * mark = mid of bid/ask; falls back to last trade, then day close.
- * Returns null when no usable price exists (never a fabricated value).
+ * PRICE PRIORITY:
+ *   1. fresh live WS mark (`liveMark`) — real-time bid/ask mid, when present
+ *   2. snapshot mid of bid/ask
+ *   3. snapshot last trade
+ *   4. snapshot day close
+ * Greeks/IV/OI/underlying ALWAYS come from the snapshot (the WS Q feed has none).
+ * Returns null + would report mark_source 'none' when no usable price exists
+ * (never a fabricated value).
  */
 export function valuationFromContract(
   contract: ChainContract,
-  spot: number
+  spot: number,
+  liveMark?: LiveMark | null
 ): ContractValuation | null {
-  const bid = finiteOrNull(contract.last_quote?.bid);
-  const ask = finiteOrNull(contract.last_quote?.ask);
+  const snapBid = finiteOrNull(contract.last_quote?.bid);
+  const snapAsk = finiteOrNull(contract.last_quote?.ask);
   const lastTrade = finiteOrNull(contract.last_trade?.price);
   const dayClose = finiteOrNull(contract.day?.close);
 
   let mark: number | null = null;
-  if (bid != null && ask != null && ask > 0 && bid >= 0) {
-    mark = (bid + ask) / 2; // bid may be 0 for deep-OTM; ask>0 keeps it a real quote
+  let mark_source: MarkSource = "none";
+  let bid = snapBid;
+  let ask = snapAsk;
+
+  // 1) Live WS mark first — freshest real-time mid. Prefer its bid/ask too.
+  if (liveMark && Number.isFinite(liveMark.mark) && liveMark.mark >= 0) {
+    mark = liveMark.mark;
+    mark_source = "ws";
+    if (liveMark.bid != null) bid = liveMark.bid;
+    if (liveMark.ask != null) ask = liveMark.ask;
+  } else if (snapBid != null && snapAsk != null && snapAsk > 0 && snapBid >= 0) {
+    // 2) snapshot mid — bid may be 0 for deep-OTM; ask>0 keeps it a real quote
+    mark = (snapBid + snapAsk) / 2;
+    mark_source = "snapshot";
   } else if (lastTrade != null && lastTrade > 0) {
     mark = lastTrade;
+    mark_source = "snapshot";
   } else if (dayClose != null && dayClose > 0) {
     mark = dayClose;
+    mark_source = "snapshot";
   }
   if (mark == null || !(mark >= 0)) return null;
 
@@ -62,6 +105,7 @@ export function valuationFromContract(
     iv: finiteOrNull(contract.implied_volatility),
     openInterest: finiteOrNull(contract.open_interest),
     underlyingPrice: up != null && up > 0 ? up : null,
+    mark_source,
   };
 }
 

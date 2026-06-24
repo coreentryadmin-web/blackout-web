@@ -8,8 +8,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { requireDatabaseInProduction, listUserPositions, createUserPosition } from "@/lib/db";
-import { enrichPosition, valuationFromContract, type ContractValuation } from "@/lib/nights-watch/valuation";
+import { enrichPosition, valuationFromContract, type ContractValuation, type LiveMark } from "@/lib/nights-watch/valuation";
 import { getNwChain, matchContract, nwChainKey, type NwChain } from "@/lib/nights-watch/chain-cache";
+import { buildOcc, getLiveOptionMark } from "@/lib/ws/options-socket";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,12 +44,29 @@ export async function GET(req: Request) {
         chains.set(key, await getNwChain(root, exp).catch(() => null));
       })
     );
+    // Resolve a fresh live WS mark per position (in-memory store first, Redis
+    // fallback). Best-effort: any miss yields null and the valuation cleanly
+    // falls back to the cached snapshot mark, so a WS outage never degrades GET.
+    const liveMarks = new Map<number, LiveMark | null>();
+    await Promise.all(
+      positions.map(async (p) => {
+        try {
+          const occ = buildOcc(p.ticker, p.expiry, p.option_type, p.strike);
+          if (occ) liveMarks.set(p.id, await getLiveOptionMark(occ));
+        } catch {
+          /* live mark optional — snapshot fallback covers it */
+        }
+      })
+    );
+
     const enriched = positions.map((p) => {
       const chain = chains.get(nwChainKey(p.ticker, p.expiry)) ?? null;
       let valuation: ContractValuation | null = null;
       if (chain) {
         const contract = matchContract(chain.contracts, p.strike, p.option_type);
-        if (contract) valuation = valuationFromContract(contract, chain.spot);
+        if (contract) {
+          valuation = valuationFromContract(contract, chain.spot, liveMarks.get(p.id) ?? null);
+        }
       }
       return enrichPosition(p, valuation);
     });

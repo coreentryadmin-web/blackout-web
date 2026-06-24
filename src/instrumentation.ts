@@ -25,6 +25,13 @@ export async function register(): Promise<void> {
   if (g[INSTALLED_FLAG]) return; // idempotent: already installed (HMR-safe)
   g[INSTALLED_FLAG] = true;
 
+  // NOTE: the shared data sockets (uw/polygon/options) are NOT booted here. Next
+  // statically traces instrumentation.ts for the EDGE runtime too, and even a
+  // dynamic import() of the socket graph pulls ioredis/node:crypto into the edge
+  // bundle (UnhandledSchemeError at build). The established pattern is lazy init
+  // via ensureDataSockets() from the nodejs route handlers (src/app/api/market/*),
+  // which boots the options socket on first request exactly like uw/polygon today.
+
   process.on("unhandledRejection", (reason: unknown) => {
     // The handler itself must never throw. Everything below is wrapped so a failure
     // in logging/alerting can't crash the process.

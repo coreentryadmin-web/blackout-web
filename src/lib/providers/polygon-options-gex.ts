@@ -1,7 +1,7 @@
 import { polygonConfigured } from "./config";
 import { fetchStockSnapshot } from "./polygon";
 import { todayEtYmd } from "./spx-session";
-import { trackedFetch } from "@/lib/api-tracked-fetch";
+import { polygonTrackedFetch } from "./polygon-rate-limiter";
 
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
 const KEY = process.env.POLYGON_API_KEY ?? "";
@@ -430,7 +430,7 @@ async function polygonFetchUrl(url: string): Promise<ChainResponse | null> {
     ? "/v3/snapshot/options/{underlying}"
     : url.split("?")[0] || "/v3/snapshot/options/{underlying}";
   try {
-    const res = await trackedFetch("polygon", endpointKey, full, {
+    const res = await polygonTrackedFetch(endpointKey, full, {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
@@ -920,7 +920,7 @@ async function polygonRefFetch(url: string): Promise<RefContractsResponse | null
     ? "/v3/reference/options/contracts"
     : url.split("?")[0] || "/v3/reference/options/contracts";
   try {
-    const res = await trackedFetch("polygon", endpointKey, full, {
+    const res = await polygonTrackedFetch(endpointKey, full, {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });

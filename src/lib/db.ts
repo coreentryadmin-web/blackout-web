@@ -1467,6 +1467,23 @@ export async function listUserPositions(
   return res.rows.map(mapUserPositionRow);
 }
 
+/**
+ * DISTINCT (ticker, expiry) across ALL users' OPEN positions — the batching key the
+ * Night's Watch warm cron iterates so each shared chain is pre-fetched exactly once
+ * (getNwChain dedups per (ticker, expiry)). NOT user-scoped on purpose: this is a
+ * server-side cache warmer, never exposed to a user. expiry is normalized to YYYY-MM-DD
+ * via ymdOf so it matches nwChainKey/getNwChain's expiry.slice(0, 10) contract.
+ */
+export async function listDistinctOpenPositionChains(): Promise<
+  Array<{ ticker: string; expiry: string }>
+> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `SELECT DISTINCT ticker, expiry FROM user_positions WHERE status = 'open'`
+  );
+  return res.rows.map((r) => ({ ticker: String(r.ticker), expiry: ymdOf(r.expiry) }));
+}
+
 /** Create a new open position for a user. */
 export async function createUserPosition(
   userId: string,

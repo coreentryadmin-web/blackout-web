@@ -2,7 +2,7 @@
  * Extended Polygon/Massive endpoints for Largo terminal.
  * Primary data source — unlimited calls on paid plan.
  */
-import { trackedFetch } from "@/lib/api-tracked-fetch";
+import { polygonTrackedFetch } from "./polygon-rate-limiter";
 import { polygonConfigured } from "./config";
 import { priorEtYmd, todayEtYmd } from "./spx-session";
 
@@ -15,7 +15,7 @@ async function polygonGet<T>(path: string, params: Record<string, string> = {}):
   if (!polygonConfigured()) return null;
   const qs = new URLSearchParams({ ...params, apiKey: KEY });
   try {
-    const res = await trackedFetch("polygon", path, `${BASE}${path}?${qs}`, {
+    const res = await polygonTrackedFetch(path, `${BASE}${path}?${qs}`, {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });

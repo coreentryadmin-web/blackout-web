@@ -74,6 +74,17 @@ export const CRON_JOBS: CronJobDefinition[] = [
     description: "Pre-warm Redis cache for UW market-wide + index-ticker signals to stay under 120/min plan cap",
   },
   {
+    key: "nights-watch-warm",
+    name: "Night's Watch Warm",
+    kind: "http",
+    path: "/api/cron/nights-watch-warm",
+    schedule_label: "~Every 60s (market hours)",
+    stale_after_min: 10,
+    weekdays_only: true,
+    market_hours_only: true,
+    description: "Pre-warm shared option-chain cache for all open user positions so Night's Watch GETs are pure cache hits",
+  },
+  {
     key: "db-cleanup",
     name: "DB Cleanup",
     kind: "http",

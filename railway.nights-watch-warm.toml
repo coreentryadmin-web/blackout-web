@@ -1,0 +1,18 @@
+# Railway config for the Night's-Watch-Warm cron service.
+# Wire it up: service Settings -> Config-as-code -> set path to "railway.nights-watch-warm.toml"
+# Requires CRON_SECRET on this service (same value as blackout-web).
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+
+[deploy]
+startCommand = "node scripts/hit-cron.mjs /api/cron/nights-watch-warm"
+# Every minute during the UTC band that covers RTH in BOTH EDT (UTC-4) and EST (UTC-5):
+# 11-21 UTC spans ~7AM-5PM ET. The route's in-process ET gate (inMarketHours, 9:30AM-4:00PM
+# ET weekdays, DST-aware) self-skips the pre-open / off-band minutes, so warms only fire while
+# chains actually move. Mirrors railway.uw-cache-refresh.toml's market-hours band convention.
+# NOTE: Railway must wire this — if cronSchedule was set in the dashboard UI, the dashboard
+# value overrides this TOML, so update it there too.
+cronSchedule = "* 11-21 * * 1-5"
+restartPolicyType = "never"
+numReplicas = 1

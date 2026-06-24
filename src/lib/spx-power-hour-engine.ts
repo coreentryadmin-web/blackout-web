@@ -26,7 +26,7 @@ import type { SpxPlayDirection } from "@/lib/spx-signals";
 import { todayEt } from "@/lib/et-date";
 import { computeSpxConfluence } from "@/lib/spx-signals";
 import { polygonConfigured } from "@/lib/providers/config";
-import { trackedFetch } from "@/lib/api-tracked-fetch";
+import { polygonTrackedFetch } from "@/lib/providers/polygon-rate-limiter";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { round5 } from "@/lib/round5";
 import { notifyPlayDiscord } from "@/lib/spx-play-notify";
@@ -170,7 +170,7 @@ async function buildPowerHourOptionTicket(
       `&limit=30` +
       `&apiKey=${process.env.POLYGON_API_KEY}`;
 
-    const res = await trackedFetch("polygon", "/v3/snapshot/options/I:SPX", url, { headers: { Accept: "application/json" }, cache: "no-store" });
+    const res = await polygonTrackedFetch("/v3/snapshot/options/I:SPX", url, { headers: { Accept: "application/json" }, cache: "no-store" });
     if (!res.ok) return fallback(`Chain fetch ${res.status}`);
 
     const json = await res.json() as { results?: RawContract[] };
