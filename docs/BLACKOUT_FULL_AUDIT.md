@@ -16,7 +16,16 @@ Fixes that landed on `main` **since** this audit was written. The findings below
 - ✅ **Night's Watch expiry off-by-one + AI date arithmetic — FIXED** (`a1241ab`); **playbook empty-slot contrast** scrim (`e063a9e`).
 - ➕ **Night's Watch valuation — Massive Unified Snapshot batch adoption** (`99587b6`) + **indices V (tick) channel** (`8e577fc`).
 
-**Still open from the launch-blocker set (Section S):** the Redis fail-open cascade (Risk #1), PgBouncer confirmation + pool sizing (Risk #3), arming the AI-spend hard cap (Risk #4 — opt-in via `DAILY_AI_SPEND_KILL_USD`), SSE pulse fan-out + caps (Risk #5), telemetry batching, ticker allowlisting, and `DISCORD_OPS_WEBHOOK_URL`.
+**Backend hardening + adversarial-review batch (2026-06-24):**
+- ✅ **SSE capacity + fan-out (Risk #5) — RESOLVED.** SPX pulse stream now shares ONE module-level poller (was a per-connection Redis `GET` every 250 ms ≈ 2 k GET/s/instance); `/api/market/live` + the admin telemetry stream (`2637517`) gained connection caps + backpressure; the `/market/live` broadcaster was rewritten on the global `WebSocket` — fixing an **inverted `typeof WebSocket` guard that meant it never connected (dead feed)** and the hard give-up after 10 reconnects (`41428dc`).
+- ✅ **Telemetry endpoint-stats leak (§3.1) — RESOLVED.** Per-symbol/OCC/date paths templated to bounded keys — incl. the plural `/tickers/{sym}` + `/v1/indicators/*` cases a first pass missed (`41428dc`) — and `endpointStats` LRU-bounded (500).
+- ✅ **Indices stall watchdog (§3.2) — RESOLVED** and early-close-aware: the hardcoded 16:00 close is replaced by `getEarlyCloseMinutes()` so half-days don't churn the socket every ~90 s for 3 h (`41428dc`).
+- ✅ **Unbounded cache Maps (§3.3) — RESOLVED.** `tier-cache` + `shared-cache.memory` now LRU+sweep-bounded (5 k) on the proven `server-cache` pattern (`8850706`).
+- ✅ **Largo org-wide concurrency (§3.7b, part of Risk #4) — RESOLVED.** A cross-replica ceiling (`LARGO_GLOBAL_MAX_CONCURRENT`, default 40, leak-safe ZSET that self-heals a crashed replica's reservation) caps simultaneous Largo loops cluster-wide on top of the per-user gate (`9becf96`). The hard *spend* kill-switch stays opt-in (`DAILY_AI_SPEND_KILL_USD`).
+- ✅ **Input clamps.** `/market/quote` + `/flows` ticker is regex-validated → 400; `since_hours` clamped to [1, 720].
+- ✅ **A11y + UX.** HELIX flow-tape card is keyboard-reachable (I-04, WCAG 2.1.1/4.1.2, `f601ab2`); Night's Watch Close/Delete use inline UI, not native `prompt`/`confirm` (I-05, `c0cc3fa`); **adding a position now refreshes immediately** — `load()` coalesces a trailing re-run instead of dropping a mutation's refresh when a poll is in-flight (`1c7165c`, caught in live prod verification).
+
+**Still open from the launch-blocker set (Section S):** the Redis fail-open cascade (Risk #1 — a policy decision), PgBouncer confirmation + pool sizing (Risk #3), arming the hard *spend* cap (`DAILY_AI_SPEND_KILL_USD`) + `DISCORD_OPS_WEBHOOK_URL`, a full warm-set ticker allowlist (regex validation has landed), and the I-01 monolithic-CSS split.
 
 ---
 
