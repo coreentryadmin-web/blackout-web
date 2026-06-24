@@ -870,7 +870,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
   const { data, isLoading, error } = useSWR<GexHeatmapResponse>(
     `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`,
     fetchGexHeatmap,
-    { refreshInterval: 45_000, revalidateOnFocus: false, keepPreviousData: true }
+    { refreshInterval: 20_000, revalidateOnFocus: false, keepPreviousData: true }
   );
 
   const live = !error && Boolean(data?.available);

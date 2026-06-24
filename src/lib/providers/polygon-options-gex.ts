@@ -526,8 +526,8 @@ const GEX_HEATMAP_CACHE_PREFIX = "gex-heatmap";
 const cachedHeatmaps = new Map<string, { at: number; data: GexHeatmap }>();
 
 function gexHeatmapCacheMs(): number {
-  const sec = Number(process.env.GEX_HEATMAP_CACHE_SEC ?? 45);
-  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 45_000;
+  const sec = Number(process.env.GEX_HEATMAP_CACHE_SEC ?? 20);
+  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 20_000;
 }
 
 /**
