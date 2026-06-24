@@ -13,6 +13,7 @@ import {
 } from "@/components/desk/SpxDeskPanels";
 import { SpxDayPerformancePanel } from "@/components/desk/SpxDayPerformancePanel";
 import { SpxTrackRecordPanel } from "@/components/desk/SpxTrackRecordPanel";
+import { EmptyState, Button } from "@/components/ui";
 
 class SpxPanelErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -25,7 +26,7 @@ class SpxPanelErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError)
       return (
-        <div className="text-red-400 p-4 text-xs font-mono">
+        <div className="text-bear p-4 text-xs font-mono">
           Panel offline — reload to reconnect
         </div>
       );
@@ -40,11 +41,18 @@ export function SpxDashboard() {
 
   if (isLoaded && tier && tier !== "premium" && tier !== "admin") {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center">
-        <p className="text-2xl font-display text-white">Premium clearance required</p>
-        <p className="text-sky-300 font-mono text-sm">
-          This session no longer has Premium access. Re-authenticate or unlock Premium to re-enter the desk.
-        </p>
+      <div className="flex min-h-[60vh] items-center justify-center px-4">
+        <EmptyState
+          icon="◆"
+          title="Premium clearance required"
+          description="This session no longer has Premium access. Re-authenticate or unlock Premium to re-enter the desk."
+          action={
+            <Button href="/upgrade" variant="primary" size="sm">
+              Unlock Premium
+            </Button>
+          }
+          className="max-w-md"
+        />
       </div>
     );
   }

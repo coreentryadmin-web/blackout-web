@@ -8,6 +8,7 @@ import { useSpxPlay } from "@/hooks/useSpxPlay";
 import { useSpxLotto } from "@/hooks/useSpxLotto";
 import { useStablePlayConfirmations } from "@/hooks/useStablePlayConfirmations";
 import { SpxSniperBackdrop } from "@/components/desk/SpxSniperBackdrop";
+import { Badge, Kicker } from "@/components/ui";
 import { fmtPrice } from "@/lib/api";
 import type { LottoPlayPayload } from "@/lib/spx-lotto-engine";
 import { isLottoWindow } from "@/lib/spx-play-session-guards";
@@ -284,10 +285,14 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
     >
       <SpxSniperBackdrop action={play?.action} />
       <div className="spx-sniper-panel-content">
-      <header className="spx-trade-alerts-header spx-trade-alerts-header-minimal">
-        <span className={clsx("spx-live-pill ml-auto", live ? "spx-live-pill-on" : "spx-live-pill-off")}>
+      <header className="spx-trade-alerts-header">
+        <div className="min-w-0">
+          <Kicker className="mb-1">PLAY ENGINE</Kicker>
+          <h3 className="t-label text-[15px] uppercase leading-tight text-white">Trade Alerts</h3>
+        </div>
+        <Badge tone={live ? "bull" : "neutral"} dot={live} className="shrink-0">
           {live ? "LIVE" : "OFFLINE"}
-        </span>
+        </Badge>
       </header>
 
       <div className="spx-sniper-panel-body">

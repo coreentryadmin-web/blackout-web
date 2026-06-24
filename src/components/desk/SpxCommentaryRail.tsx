@@ -245,7 +245,13 @@ export function SpxCommentaryRail({
     >
       <div className="spx-commentary-header">
         <span className={clsx("badge-live-dot", live && "animate-pulse")} />
-        <div>
+        <div className="min-w-0">
+          <p className="t-kicker flex items-center gap-2 text-purple-light/80 mb-0.5">
+            <span aria-hidden className="leading-none">
+              ◆
+            </span>
+            LIVE INTEL
+          </p>
           <span className="font-syne text-base tracking-[0.15em] uppercase text-purple-light block font-bold">
             {live ? "Largo · Live" : "Largo · Standby"}
           </span>
@@ -326,7 +332,7 @@ export function SpxCommentaryRail({
                   )}
                   <CommentaryBody body={entry.body} featured={idx === 0} />
                   {entry.watch.length > 0 && (
-                    <div className="mt-3 pt-2 border-t border-grey-800/80">
+                    <div className="mt-3 pt-2 border-t border-white/10">
                       <p className="font-syne text-[10px] tracking-[0.2em] uppercase text-sky-300 mb-1.5">
                         Watch
                       </p>

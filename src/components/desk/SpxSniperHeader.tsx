@@ -6,6 +6,8 @@ import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import { fmtPct, fmtPremium, fmtPrice } from "@/lib/api";
 import type { MarketStatusLabel } from "@/lib/spx-market-session";
+import { ProductMark } from "@/components/marks/ProductMark";
+import { Kicker } from "@/components/ui";
 
 type Props = {
   desk?: SpxDeskPayload;
@@ -36,18 +38,25 @@ export function SpxSniperHeader({ desk, live }: Props) {
       <div className="relative z-10">
         <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5">
           <div className="flex flex-col lg:flex-row lg:items-end gap-5 lg:gap-6 min-w-0 flex-1">
-            <div className="shrink-0">
-              <p className="font-mono text-[9px] tracking-[0.45em] text-bull/80 uppercase mb-1">
-                ◆ SPX SLAYER OPS
-              </p>
-              <h1 className="spx-sniper-title">
-                <span className="text-stroke-green">SPX</span>
-                <span className="text-white">-</span>
-                <span className="text-gradient-fire">SLAYER</span>
-              </h1>
-              <p className="spx-hero-tagline font-mono text-[10px] tracking-[0.32em] uppercase mt-1.5">
-                The 0DTE command desk
-              </p>
+            <div className="shrink-0 flex items-start gap-3">
+              <ProductMark
+                product="spx"
+                size={52}
+                hero
+                title="SPX Slayer"
+                className="mt-1 shrink-0 drop-shadow-[0_0_24px_rgba(0,230,118,0.35)]"
+              />
+              <div className="min-w-0">
+                <Kicker className="mb-1">0DTE COMMAND DESK</Kicker>
+                <h1 className="spx-sniper-title">
+                  <span className="text-stroke-green">SPX</span>
+                  <span className="text-white">-</span>
+                  <span className="text-gradient-fire">SLAYER</span>
+                </h1>
+                <p className="spx-hero-tagline font-mono text-[10px] tracking-[0.32em] uppercase mt-1.5">
+                  The 0DTE command desk
+                </p>
+              </div>
             </div>
 
             <div className="min-w-0">
@@ -189,7 +198,7 @@ const MARKET_PILL: Record<MarketStatusLabel, string> = {
   "RTH OPEN": "border-emerald-500/50 bg-emerald-500/10 text-emerald-300",
   "PRE-MARKET": "border-gold/50 bg-gold/10 text-gold",
   EXTENDED: "border-orange-500/50 bg-orange-500/10 text-orange-200",
-  CLOSED: "border-zinc-600/50 bg-zinc-800/40 text-sky-300",
+  CLOSED: "border-sky-300/25 bg-sky-300/[0.06] text-sky-300",
 };
 
 function MarketStatusPill({ label, live }: { label?: string; live?: boolean }) {

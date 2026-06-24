@@ -2,13 +2,14 @@
 
 import { clsx } from "clsx";
 import { useSpxTrackRecord } from "@/hooks/useSpxTrackRecord";
+import { Panel, Stat, Skeleton, type StatTone } from "@/components/ui";
 
 function pct(v: number): string {
   return `${Math.round(v * 100)}%`;
 }
 
-function winRateTone(v: number): string {
-  return v >= 0.5 ? "num-bull" : "num-bear";
+function winRateTone(v: number): StatTone {
+  return v >= 0.5 ? "bull" : "bear";
 }
 
 export function SpxTrackRecordPanel() {
@@ -16,19 +17,13 @@ export function SpxTrackRecordPanel() {
 
   if (loading) {
     return (
-      <div className="spx-desk-panel spx-panel-cyan animate-pulse">
-        <div className="spx-desk-panel-header">
-          <span className="badge-live-dot" />
-          <p className="font-syne text-xs tracking-[0.12em] uppercase font-bold">Track Record</p>
+      <Panel accent="accent" kicker="ALL CLOSED PLAYS" title="Track Record">
+        <div className="grid grid-cols-2 gap-2">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} height={32} rounded="md" />
+          ))}
         </div>
-        <div className="spx-desk-panel-body">
-          <div className="grid grid-cols-2 gap-2">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-8 bg-neutral-700/50 rounded" />
-            ))}
-          </div>
-        </div>
-      </div>
+      </Panel>
     );
   }
 
@@ -36,96 +31,79 @@ export function SpxTrackRecordPanel() {
   const overallWr = stats ? stats.overall.win_rate : 0;
 
   return (
-    <div className="spx-desk-panel spx-panel-cyan">
-      <div className="spx-desk-panel-header">
-        <span className="badge-live-dot" />
-        <div>
-          <p className="font-syne text-xs tracking-[0.12em] uppercase font-bold">Track Record</p>
-          <p className="font-mono text-[9px] tracking-[0.2em] uppercase text-cyan-400 mt-0.5">
-            All closed plays
-          </p>
-        </div>
-        {!empty && (
-          <span className={clsx("ml-auto font-mono text-xs font-bold tabular-nums", winRateTone(overallWr))}>
+    <Panel
+      accent="accent"
+      kicker="ALL CLOSED PLAYS"
+      title="Track Record"
+      actions={
+        !empty ? (
+          <span
+            className={clsx(
+              "font-mono text-xs font-bold tabular-nums",
+              overallWr >= 0.5 ? "num-bull" : "num-bear"
+            )}
+          >
             {pct(overallWr)}
           </span>
-        )}
-      </div>
-
-      <div className="spx-desk-panel-body">
-        {empty ? (
-          <p className="font-mono text-[11px] text-cyan-400 py-2">
-            Track record warming up — no closed plays logged yet
-          </p>
-        ) : (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
-            <div>
-              <div className="font-mono text-[9px] uppercase tracking-wider text-cyan-400 mb-0.5">
-                Win Rate
-              </div>
-              <div className={clsx("font-syne font-bold tabular-nums", winRateTone(overallWr))}>
-                {pct(overallWr)}
-              </div>
-            </div>
-
-            <div>
-              <div className="font-mono text-[9px] uppercase tracking-wider text-cyan-400 mb-0.5">
-                Record
-              </div>
-              <div className="font-syne font-bold text-white">
+        ) : undefined
+      }
+    >
+      {empty ? (
+        <p className="font-mono text-[11px] text-cyan-400 py-2">
+          Track record warming up — no closed plays logged yet
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          <Stat
+            compact
+            label="Win Rate"
+            value={pct(overallWr)}
+            tone={winRateTone(overallWr)}
+          />
+          <Stat
+            compact
+            label="Record"
+            value={
+              <>
                 {stats!.overall.wins}W / {stats!.overall.losses}L
                 {stats!.overall.breakeven > 0 && (
                   <span className="text-sky-300 font-normal"> / {stats!.overall.breakeven}BE</span>
                 )}
-              </div>
-            </div>
-
-            <div>
-              <div className="font-mono text-[9px] uppercase tracking-wider text-cyan-400 mb-0.5">
-                Closed
-              </div>
-              <div className="font-syne font-bold text-white tabular-nums">
-                {stats!.total_closed}
-                <span className="text-sky-300 font-normal"> plays</span>
-              </div>
-            </div>
-
-            <div>
-              <div className="font-mono text-[9px] uppercase tracking-wider text-cyan-400 mb-0.5">
-                History
-              </div>
-              <div className="font-syne font-bold text-white tabular-nums">
-                {Math.round(stats!.days_of_data)}
-                <span className="text-sky-300 font-normal"> days</span>
-              </div>
-            </div>
-
-            {stats!.cold_buy.count > 0 && (
-              <div>
-                <div className="font-mono text-[9px] uppercase tracking-wider text-cyan-400 mb-0.5">
-                  Cold BUY
-                </div>
-                <div className={clsx("font-syne font-bold tabular-nums", winRateTone(stats!.cold_buy.win_rate))}>
-                  {pct(stats!.cold_buy.win_rate)}
-                  <span className="text-sky-300 font-normal text-[10px]"> · {stats!.cold_buy.count}</span>
-                </div>
-              </div>
-            )}
-
-            {stats!.watch_promote.count > 0 && (
-              <div>
-                <div className="font-mono text-[9px] uppercase tracking-wider text-cyan-400 mb-0.5">
-                  WATCH→ENTRY
-                </div>
-                <div className={clsx("font-syne font-bold tabular-nums", winRateTone(stats!.watch_promote.win_rate))}>
-                  {pct(stats!.watch_promote.win_rate)}
-                  <span className="text-sky-300 font-normal text-[10px]"> · {stats!.watch_promote.count}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+              </>
+            }
+          />
+          <Stat
+            compact
+            label="Closed"
+            value={stats!.total_closed}
+            sublabel="plays"
+          />
+          <Stat
+            compact
+            label="History"
+            value={Math.round(stats!.days_of_data)}
+            sublabel="days"
+          />
+          {stats!.cold_buy.count > 0 && (
+            <Stat
+              compact
+              label="Cold BUY"
+              value={pct(stats!.cold_buy.win_rate)}
+              tone={winRateTone(stats!.cold_buy.win_rate)}
+              sublabel={`${stats!.cold_buy.count} plays`}
+            />
+          )}
+          {stats!.watch_promote.count > 0 && (
+            <Stat
+              compact
+              label="WATCH→ENTRY"
+              value={pct(stats!.watch_promote.win_rate)}
+              tone={winRateTone(stats!.watch_promote.win_rate)}
+              sublabel={`${stats!.watch_promote.count} plays`}
+            />
+          )}
+        </div>
+      )}
+    </Panel>
   );
 }

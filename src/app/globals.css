@@ -4959,7 +4959,7 @@ body {
   }
 
   .spx-sniper-command {
-    @apply relative overflow-hidden border border-bull/35 bg-zinc-950/90 backdrop-blur-md px-5 py-5 md:px-7 md:py-6;
+    @apply relative overflow-hidden rounded-2xl border border-bull/35 bg-void-deep/90 backdrop-blur-md px-5 py-5 md:px-7 md:py-6;
     box-shadow:
       0 0 60px rgba(0, 230, 118, 0.14),
       inset 0 0 48px rgba(0, 230, 118, 0.04);
@@ -5005,7 +5005,7 @@ body {
   }
 
   .spx-hero-stat-pill {
-    @apply rounded border bg-zinc-950/95 px-3 py-2 min-w-[76px];
+    @apply rounded-lg border bg-void-deep/95 px-3 py-2 min-w-[76px];
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.07),
       0 2px 8px rgba(0, 0, 0, 0.45);
@@ -5024,7 +5024,7 @@ body {
   }
 
   .spx-hero-metric-block {
-    @apply rounded border bg-zinc-950/95 px-3 py-2.5 min-w-[108px] flex-1;
+    @apply rounded-lg border bg-void-deep/95 px-3 py-2.5 min-w-[108px] flex-1;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.06),
       0 2px 10px rgba(0, 0, 0, 0.5);
@@ -5063,11 +5063,11 @@ body {
   }
 
   .spx-command-live {
-    @apply inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] uppercase text-sky-300 px-3 py-1.5 border border-grey-700 bg-zinc-950/90;
+    @apply inline-flex items-center gap-1.5 rounded-full font-mono text-[10px] tracking-[0.22em] uppercase text-sky-300 px-3 py-1.5 border border-sky-300/25 bg-void-deep/90;
   }
 
   .spx-command-live-on {
-    @apply text-bull border-bull/45 bg-grey-900/40;
+    @apply text-bull border-bull/45 bg-bull/[0.06];
   }
 
   .spx-sniper-command .spx-sniper-title {
@@ -5109,7 +5109,7 @@ body {
   }
 
   .spx-stat-pill {
-    @apply border border-grey-800/80 bg-black/40 px-3 py-2 backdrop-blur-sm;
+    @apply rounded-lg border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-sm;
   }
 
   .spx-sniper-main {
@@ -5241,7 +5241,7 @@ body {
   }
 
   .spx-technicals-header {
-    @apply flex items-center gap-2 shrink-0 px-4 py-3 border-b border-grey-800/80;
+    @apply flex items-center gap-2 shrink-0 px-4 py-3 border-b border-white/10;
   }
 
   .spx-technicals-body {
@@ -5268,7 +5268,7 @@ body {
   }
 
   .spx-level-row {
-    @apply flex items-center gap-2 py-1.5 px-2 text-[10px] border-b border-grey-900/80;
+    @apply flex items-center gap-2 py-1.5 px-2 text-[10px] border-b border-white/[0.06];
   }
 
   .spx-level-label {
@@ -5285,7 +5285,7 @@ body {
 
   .spx-level-support { @apply border-l-2 border-bull/30; }
   .spx-level-resistance { @apply border-l-2 border-bear/30; }
-  .spx-level-neutral { @apply border-l-2 border-grey-700; }
+  .spx-level-neutral { @apply border-l-2 border-sky-300/25; }
 
   .spx-sniper-chart-col {
     @apply flex flex-col min-h-[640px] xl:min-h-[720px];
@@ -5310,7 +5310,7 @@ body {
   }
 
   .spx-trade-alerts-panel {
-    @apply flex flex-col h-full min-h-0 border border-bull/25 backdrop-blur-md p-4 md:p-5;
+    @apply flex flex-col h-full min-h-0 rounded-2xl border border-bull/25 backdrop-blur-md p-4 md:p-5;
   }
 
   .spx-sniper-panel.spx-trade-alerts-panel {
@@ -5988,7 +5988,7 @@ body {
   }
 
   .spx-live-pill {
-    @apply font-mono text-[9px] uppercase tracking-widest px-2 py-1 rounded-sm border;
+    @apply font-mono text-[9px] uppercase tracking-widest px-2.5 py-1 rounded-full border;
   }
 
   .spx-live-pill-on {
@@ -5996,7 +5996,7 @@ body {
   }
 
   .spx-live-pill-off {
-    @apply border-grey-700 text-cyan-400;
+    @apply border-sky-300/25 text-cyan-400 bg-sky-300/[0.04];
   }
 
   .spx-chart-frame {
@@ -6048,7 +6048,7 @@ body {
 
   /* ── SPX live commentary rail ── */
   .spx-commentary-rail {
-    @apply flex flex-col border border-purple/30 bg-black/55 backdrop-blur-md overflow-hidden flex-1 min-h-[280px];
+    @apply flex flex-col rounded-2xl border border-purple/30 bg-black/55 backdrop-blur-md overflow-hidden flex-1 min-h-[280px];
     box-shadow: inset 0 0 50px rgba(191, 95, 255, 0.06);
   }
 
@@ -6087,7 +6087,7 @@ body {
 
   .spx-bias-bull { @apply border-bull/40 text-bull bg-bull/10; }
   .spx-bias-bear { @apply border-bear/40 text-bear bg-bear/10; }
-  .spx-bias-neutral { @apply border-grey-600 text-sky-300; }
+  .spx-bias-neutral { @apply border-sky-300/30 text-sky-300; }
 
   .spx-commentary-changed {
     @apply space-y-0.5 list-none;
@@ -6278,7 +6278,7 @@ body {
   }
 
   .spx-intel-chip {
-    @apply flex items-center gap-2 px-2.5 py-1.5 border border-grey-900/90 bg-[#08080e] rounded-sm;
+    @apply flex items-center gap-2 px-2.5 py-1.5 border border-white/[0.08] bg-[#08080e] rounded-md;
   }
 
   .spx-intel-chip-wide {

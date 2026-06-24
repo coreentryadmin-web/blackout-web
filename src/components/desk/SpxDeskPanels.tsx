@@ -6,9 +6,27 @@ import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import { useLiveSpxTape } from "@/hooks/useLiveSpxTape";
 import { useStableArray, useStableValue } from "@/hooks/useStableValue";
 import { fmtPct, fmtPremium, fmtPrice } from "@/lib/api";
+import { Panel as UiPanel, type PanelAccent } from "@/components/ui";
 
 type DeskProps = { desk?: SpxDeskPayload; live?: boolean; refreshing?: boolean };
 
+// Map the legacy per-panel accent class to the UI Panel accent vocab.
+const ACCENT_MAP: Record<string, PanelAccent> = {
+  "spx-panel-amber": "accent",
+  "spx-panel-gold": "accent",
+  "spx-panel-purple": "sky",
+  "spx-panel-cyan": "accent",
+};
+
+/**
+ * Desk panel — re-skinned onto the shared UI <Panel> primitive (glass surface,
+ * accent top-strip, kicker + title header). The UI Panel supplies the chrome, so we
+ * deliberately do NOT carry the legacy `.spx-desk-panel` visual class (border/bg) to
+ * avoid doubling it. We DO keep emitting `spx-desk-panel-body` on the body plus the
+ * caller's layout/refresh hook classes (`spx-left-tape-panel`, `spx-tape-panel`,
+ * `spx-desk-panel-refreshing`, `spx-gex-ladder-*`) so the grid/flex sizing and
+ * refresh CSS hooks in globals.css keep applying.
+ */
 function Panel({
   title,
   subtitle,
@@ -23,20 +41,16 @@ function Panel({
   className?: string;
 }) {
   return (
-    <div className={clsx("spx-desk-panel", accent, className)}>
-      <div className="spx-desk-panel-header">
-        <span className="badge-live-dot animate-pulse" />
-        <div>
-          <p className="font-syne text-xs tracking-[0.12em] uppercase font-bold">{title}</p>
-          {subtitle && (
-            <p className="font-mono text-[9px] tracking-[0.2em] uppercase text-cyan-400 mt-0.5">
-              {subtitle}
-            </p>
-          )}
-        </div>
-      </div>
-      <div className="spx-desk-panel-body">{children}</div>
-    </div>
+    <UiPanel
+      accent={ACCENT_MAP[accent] ?? "bull"}
+      kicker={subtitle}
+      title={title}
+      actions={<span className="badge-live-dot animate-pulse" aria-hidden />}
+      className={clsx("flex flex-col", className)}
+      bodyClassName="spx-desk-panel-body !px-4 !py-3.5"
+    >
+      {children}
+    </UiPanel>
   );
 }
 
