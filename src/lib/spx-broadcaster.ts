@@ -1,4 +1,6 @@
-// NOTE: This broadcaster is currently unused by pulse/stream/route.ts which reads Redis directly. It is retained for future use.
+// Used by /api/market/live (SSE): ONE Polygon indices WS shared by all SSE subscribers
+// (fan-out). The pulse stream uses a separate in-memory/Redis path; this serves the AM 1-min
+// SPX/VIX bar feed.
 /**
  * Server-side Polygon WebSocket → SSE broadcaster.
  * Maintains ONE WebSocket connection to Polygon indices feed.
@@ -25,13 +27,22 @@ class SpxBroadcaster {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private authenticated = false
   private reconnectAttempts = 0
-  private readonly MAX_RECONNECT_ATTEMPTS = 10
   private reconnecting = false
 
   subscribe(fn: Subscriber): () => void {
     this.subscribers.add(fn)
     if (!this.ws && !this.reconnecting) this.connect()
-    return () => this.subscribers.delete(fn)
+    return () => {
+      this.subscribers.delete(fn)
+      // Last listener gone — drop any pending reconnect and close the upstream WS so we don't
+      // hold a Polygon connection (or reconnect-loop) with nobody listening. A new subscriber
+      // re-establishes it via the !this.ws check above.
+      if (this.subscribers.size === 0) {
+        this.clearReconnect()
+        this.reconnecting = false
+        try { this.ws?.close?.() } catch { /* already closed */ }
+      }
+    }
   }
 
   private connect() {
@@ -59,15 +70,19 @@ class SpxBroadcaster {
   }
 
   private scheduleReconnect() {
-    if (this.reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
-      console.error('[SpxBroadcaster] Max reconnect attempts reached')
+    // No listeners → don't maintain a reconnect loop. A new subscriber re-establishes it.
+    if (this.subscribers.size === 0) {
       this.reconnecting = false
       return
     }
     // Cancel any pending reconnect so overlapping 'close' events cannot stack
     // multiple concurrent connect() attempts (single-timer pattern, see uw-socket.ts).
     this.clearReconnect()
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 60000)
+    // Exponential backoff CAPPED at 60s, retried INDEFINITELY while subscribers exist. The old
+    // hard give-up (MAX_RECONNECT_ATTEMPTS=10) left the live feed permanently dead after a short
+    // outage with no recovery until a process restart — but the network/Polygon feed do come
+    // back. reconnectAttempts resets to 0 on a successful open, so backoff restarts after recovery.
+    const delay = Math.min(1000 * Math.pow(2, Math.min(this.reconnectAttempts, 6)), 60000)
     const jitter = Math.random() * 1000
     this.reconnectAttempts++
     this.reconnectTimer = setTimeout(() => {

@@ -5,10 +5,16 @@ import { authorizeMarketDeskApi } from '@/lib/market-api-auth'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
+// Per-instance connection cap (fd/memory guard). The broadcaster fans out a single Polygon
+// WS to all subscribers, so each connection is cheap — this just bounds a runaway fan-out
+// (the route previously had NO cap). Override via SSE_MAX_STREAMS.
+let activeStreams = 0
+const MAX_STREAMS = Number(process.env.SSE_MAX_STREAMS ?? 2000)
+
 /**
  * GET /api/market/live
- * SSE stream of live SPX/VIX 1-minute bars from Polygon WebSocket.
- * 500 users share ONE Polygon WS connection via the spxBroadcaster singleton.
+ * SSE stream of live SPX/VIX 1-minute bars from the Polygon WebSocket.
+ * All viewers share ONE Polygon WS via the spxBroadcaster singleton (fan-out).
  *
  * Client usage:
  *   const es = new EventSource('/api/market/live')
@@ -19,26 +25,47 @@ export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req)
   if (auth instanceof Response) return auth
 
+  if (activeStreams >= MAX_STREAMS) {
+    return new Response('Too many active streams — try again shortly', { status: 503 })
+  }
+
   const encoder = new TextEncoder()
+  let closed = false
+  let counted = false
+  let unsub: (() => void) | null = null
+
+  // Idempotent teardown: decrements the count exactly once and drops the broadcaster
+  // subscription. Reachable from start()'s abort handler / failed enqueue and from cancel().
+  const cleanup = () => {
+    if (closed) return
+    closed = true
+    if (counted) activeStreams = Math.max(0, activeStreams - 1)
+    if (unsub) unsub()
+  }
 
   const stream = new ReadableStream({
     start(controller) {
-      // Send initial connection confirmation
       controller.enqueue(encoder.encode('data: {"connected":true}\n\n'))
+      activeStreams++
+      counted = true
 
-      const unsub = spxBroadcaster.subscribe((bar) => {
+      unsub = spxBroadcaster.subscribe((bar) => {
+        if (closed) return
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(bar)}\n\n`))
         } catch {
-          unsub()
+          cleanup()
+          try { controller.close() } catch { /* already closed */ }
         }
       })
 
-      // Cleanup when client disconnects
       req.signal.addEventListener('abort', () => {
-        unsub()
-        try { controller.close() } catch {}
+        cleanup()
+        try { controller.close() } catch { /* already closed */ }
       })
+    },
+    cancel() {
+      cleanup()
     },
   })
 
