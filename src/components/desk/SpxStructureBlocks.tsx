@@ -16,10 +16,10 @@ const CARD_THEMES = {
     accent: "bg-cyan-500/10",
   },
   dealer: {
-    border: "border-amber-400/35",
-    header: "text-amber-300",
-    glow: "rgba(251, 191, 36, 0.08)",
-    accent: "bg-amber-500/10",
+    border: "border-gold/35",
+    header: "text-gold",
+    glow: "rgba(255, 210, 63, 0.08)",
+    accent: "bg-gold/10",
   },
   levels: {
     border: "border-violet-400/35",
@@ -188,7 +188,7 @@ const TONE_CLASS: Record<string, string> = {
   orange: "text-orange-400",
   purple: "text-purple-400",
   blue: "text-sky-400",
-  gold: "text-amber-300",
+  gold: "text-gold",
   magenta: "text-fuchsia-400",
   cyan: "text-cyan-400",
   teal: "text-teal-400",

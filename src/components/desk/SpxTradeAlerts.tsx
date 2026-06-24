@@ -416,7 +416,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
                   </p>
                 )}
                 {confirmationLayer.watch?.active && (
-                  <p className="spx-trade-confirmation-meta text-amber-300/90">
+                  <p className="spx-trade-confirmation-meta text-gold/90">
                     WATCH since{" "}
                     {confirmationLayer.watch.since
                       ? new Date(confirmationLayer.watch.since).toLocaleTimeString("en-US", {
@@ -442,7 +442,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
                   <p className="spx-trade-idea-line">{confirmationLayer.gates.play_idea}</p>
                 )}
                 {confirmationLayer.gates.warnings.map((w) => (
-                  <p key={w} className="spx-trade-confirmation-meta text-amber-300/90">
+                  <p key={w} className="spx-trade-confirmation-meta text-gold/90">
                     ⚠ {w}
                   </p>
                 ))}

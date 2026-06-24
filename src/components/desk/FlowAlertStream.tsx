@@ -259,13 +259,13 @@ export function FlowAlertStream({
                               aria-pressed={isStarred}
                               className={clsx(
                                 "leading-none text-[14px] transition-colors",
-                                isStarred ? "text-yellow-300" : "text-cyan-400 hover:text-yellow-300"
+                                isStarred ? "text-gold" : "text-cyan-400 hover:text-gold"
                               )}
                             >
                               {isStarred ? "★" : "☆"}
                             </button>
                           )}
-                          <span className="font-anton text-[18px] leading-none text-yellow-300 tracking-wide">
+                          <span className="font-anton text-[18px] leading-none text-gold tracking-wide">
                             {flow.ticker}
                           </span>
                           <span className={clsx("flow-badge", isCall ? "flow-badge-call" : "flow-badge-put")}>
@@ -282,7 +282,7 @@ export function FlowAlertStream({
                           {hasSplit && (
                             <span
                               className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border"
-                              style={{ color: "#f59e0b", borderColor: "rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.08)", letterSpacing: "0.06em" }}
+                              style={{ color: "#ffd23f", borderColor: "rgba(255,210,63,0.4)", background: "rgba(255,210,63,0.08)", letterSpacing: "0.06em" }}
                             >
                               SPLIT
                             </span>
@@ -311,7 +311,7 @@ export function FlowAlertStream({
                               earnIn === 0 ? "text-red-400 border-red-700/60 bg-red-950/30 animate-pulse" :
                               earnIn <= 2  ? "text-red-400 border-red-700/50 bg-red-950/20" :
                               earnIn <= 5  ? "text-orange-400 border-orange-700/50 bg-orange-950/20" :
-                                             "text-amber-500 border-amber-800/40 bg-amber-950/15"
+                                             "text-gold border-gold/40 bg-gold/10"
                             )}>
                               ⚡{earnIn === 0 ? "EARN TODAY" : `EARN ${earnIn}D`}
                             </span>
@@ -322,10 +322,10 @@ export function FlowAlertStream({
                           <span
                             className="font-mono text-[19px] font-black tabular-nums tracking-tight"
                             style={{
-                              color: isCompound ? "#fde047"
+                              color: isCompound ? "#ffd23f"
                                    : isCall     ? "#00e676"
                                    :              "#ff2d55",
-                              textShadow: isCompound ? "0 0 10px rgba(253,224,71,0.7)"
+                              textShadow: isCompound ? "0 0 10px rgba(255,210,63,0.7)"
                                         : isCall     ? "0 0 12px rgba(0,230,118,0.65)"
                                         :              "0 0 12px rgba(255,45,85,0.65)",
                             }}
@@ -341,7 +341,7 @@ export function FlowAlertStream({
                       {/* Row 2: contract details */}
                       <div className="flex items-center justify-between mt-1.5 gap-2">
                         <p className="font-mono text-[11px] text-sky-300 leading-none flex items-center gap-1 flex-wrap">
-                          <span className="text-yellow-300 font-semibold">{flow.strike}{isCall ? "C" : "P"}</span>
+                          <span className="text-gold font-semibold">{flow.strike}{isCall ? "C" : "P"}</span>
                           <span className="text-cyan-400">·</span>
                           <span>{fmtExpiry(flow.expiry)}</span>
                           {dte !== null && !is0dte && (
@@ -353,7 +353,7 @@ export function FlowAlertStream({
                           {flow.ask_pct != null && flow.ask_pct > 0 && (
                             <>
                               <span className="text-cyan-400">·</span>
-                              <span className={flow.ask_pct >= 85 ? "text-amber-400" : "text-sky-300"}>
+                              <span className={flow.ask_pct >= 85 ? "text-gold" : "text-sky-300"}>
                                 {Math.round(flow.ask_pct)}% ask
                               </span>
                             </>
@@ -396,7 +396,7 @@ export function FlowAlertStream({
                                 : flow.otm_pct <= 2
                                   ? "text-rose-400 border-rose-900/40 bg-rose-950/15"
                                   : flow.otm_pct <= 8
-                                    ? "text-amber-400 border-amber-900/40 bg-amber-950/15"
+                                    ? "text-gold border-gold/40 bg-gold/10"
                                     : "text-emerald-400 border-emerald-900/40 bg-emerald-950/15"
                             )}>
                               {flow.otm_pct < 0

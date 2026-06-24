@@ -60,7 +60,7 @@ function biasFromSide(prints: DarkPoolRow[]) {
   const r = buy / total;
   if (r >= 0.65) return { label: "BULLISH",  color: "#34d399", glow: "rgba(52,211,153,0.35)" };
   if (r <= 0.35) return { label: "BEARISH",  color: "#fb7185", glow: "rgba(251,113,133,0.35)" };
-  return         { label: "MIXED",   color: "#94a3b8", glow: "rgba(148,163,184,0.2)" };
+  return         { label: "MIXED",   color: "#7dd3fc", glow: "rgba(125,211,252,0.3)" };
 }
 
 // ─── Shared print row ─────────────────────────────────────────────────────────

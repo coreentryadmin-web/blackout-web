@@ -38,7 +38,7 @@ function FlowRow({ f }: { f: FlowAlert }) {
           <span className={clsx("flow-badge", isCall ? "flow-badge-call" : "flow-badge-put")}>
             {f.option_type}
           </span>
-          <span className="font-mono text-[11px] text-yellow-300 font-medium">{f.strike}{isCall ? "C" : "P"}</span>
+          <span className="font-mono text-[11px] text-gold font-medium">{f.strike}{isCall ? "C" : "P"}</span>
           <span className="font-mono text-[10px] text-sky-300">{fmtExpiry(f.expiry)}</span>
           {f.route === "0dte"  && <span className="flow-badge flow-badge-0dte">0DTE</span>}
           {isWhale             && <span className="flow-badge flow-badge-whale">WHALE</span>}
@@ -150,7 +150,7 @@ export function TickerDrawer({
                     aria-pressed={!!isStarred}
                     className={clsx(
                       "leading-none text-[22px] transition-colors",
-                      isStarred ? "text-yellow-300" : "text-cyan-400 hover:text-yellow-300"
+                      isStarred ? "text-gold" : "text-cyan-400 hover:text-gold"
                     )}
                   >
                     {isStarred ? "★" : "☆"}
@@ -209,7 +209,7 @@ export function TickerDrawer({
                     <div>
                       <div className="h-1.5 rounded-full overflow-hidden bg-zinc-900 flex">
                         <motion.div
-                          className="h-full bg-gradient-to-r from-emerald-700 to-emerald-500"
+                          className="h-full bg-gradient-to-r from-[#0f9d58] to-bull"
                           initial={{ width: 0 }}
                           animate={{ width: `${callPct}%` }}
                           transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1] }}

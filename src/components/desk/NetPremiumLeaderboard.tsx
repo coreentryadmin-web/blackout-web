@@ -66,7 +66,7 @@ export function NetPremiumLeaderboard({ alerts }: { alerts: FlowAlert[] }) {
               >
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-anton text-[13px] text-yellow-300 leading-none tracking-wide">{row.ticker}</span>
+                    <span className="font-anton text-[13px] text-gold leading-none tracking-wide">{row.ticker}</span>
                     <span className={clsx(
                       "font-mono text-[10px] font-bold tracking-wider",
                       isBull ? "text-emerald-400" : "text-red-500"

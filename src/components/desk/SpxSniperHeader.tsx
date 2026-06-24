@@ -135,7 +135,7 @@ export function SpxSniperHeader({ desk, live }: Props) {
         {live && (desk?.polled_at ?? desk?.as_of) && (
           <p className="spx-hero-desk-tick mt-4 font-mono text-[10px] tracking-wider flex items-center gap-2">
             {isStale ? (
-              <span className="text-amber-400 font-semibold text-xs animate-pulse">STALE</span>
+              <span className="text-gold font-semibold text-xs animate-pulse">STALE</span>
             ) : (
               <span className="text-sky-300 text-xs">
                 Desk ·{" "}
@@ -162,7 +162,7 @@ const PILL_BORDER: Record<string, string> = {
   violet: "border-violet-500/40",
   magenta: "border-fuchsia-500/40",
   cyan: "border-cyan-500/40",
-  gold: "border-amber-500/40",
+  gold: "border-gold/40",
   neutral: "border-sky-900/50",
 };
 
@@ -175,7 +175,7 @@ const VALUE_TONE: Record<string, string> = {
   violet: "text-violet-200",
   magenta: "text-fuchsia-300",
   cyan: "text-cyan-300",
-  gold: "text-amber-200",
+  gold: "text-gold",
   neutral: "text-white",
 };
 
@@ -187,7 +187,7 @@ const BLOCK_BORDER: Record<string, string> = {
 
 const MARKET_PILL: Record<MarketStatusLabel, string> = {
   "RTH OPEN": "border-emerald-500/50 bg-emerald-500/10 text-emerald-300",
-  "PRE-MARKET": "border-amber-500/50 bg-amber-500/10 text-amber-200",
+  "PRE-MARKET": "border-gold/50 bg-gold/10 text-gold",
   EXTENDED: "border-orange-500/50 bg-orange-500/10 text-orange-200",
   CLOSED: "border-zinc-600/50 bg-zinc-800/40 text-sky-300",
 };

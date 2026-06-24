@@ -42,7 +42,7 @@ export function FlowMomentumChart({ alerts }: { alerts: FlowAlert[] }) {
   const prevNet   = points[points.length - 2]?.net ?? 0;
   const delta     = latestNet - prevNet;
   const isBull    = latestNet >= 0;
-  const color     = isBull ? "#10b981" : "#f43f5e";
+  const color     = isBull ? "#00e676" : "#f43f5e";
 
   return (
     <div className="flow-panel">
@@ -54,7 +54,7 @@ export function FlowMomentumChart({ alerts }: { alerts: FlowAlert[] }) {
               {isBull ? "+" : ""}{fmtPremium(latestNet)}
             </span>
             {delta !== 0 && (
-              <span className={clsx("font-mono text-[9px]", delta > 0 ? "text-emerald-600" : "text-rose-600")}>
+              <span className={clsx("font-mono text-[9px]", delta > 0 ? "text-bull" : "text-rose-600")}>
                 {delta > 0 ? "▲" : "▼"}
               </span>
             )}

@@ -541,7 +541,7 @@ export function FlowFeed() {
           className={clsx(
             "font-mono text-[10px] font-semibold px-3 py-[5px] rounded-lg border transition-all",
             replayMode
-              ? "border-amber-600/70 text-amber-300 bg-amber-950/50 hover:bg-amber-950/70"
+              ? "border-gold/70 text-gold bg-gold/15 hover:bg-gold/25"
               : "border-[rgba(0,230,118,0.3)] text-[#00e676] hover:text-[#34d399] hover:border-[rgba(0,230,118,0.6)] disabled:opacity-30 disabled:cursor-not-allowed"
           )}
         >
@@ -565,7 +565,7 @@ export function FlowFeed() {
                   className={clsx(
                     "font-mono text-[9px] px-1.5 py-[3px] rounded transition-colors whitespace-nowrap",
                     replaySpeed === s
-                      ? "bg-amber-800/60 text-amber-200 border border-amber-700/60"
+                      ? "bg-gold/20 text-gold border border-gold/60"
                       : "text-cyan-400 hover:text-sky-300 bg-zinc-900 border border-zinc-800"
                   )}
                 >
@@ -600,7 +600,7 @@ export function FlowFeed() {
           className={clsx(
             "font-mono text-[9px] font-semibold px-2 py-[5px] rounded-lg border transition-all disabled:opacity-30 disabled:cursor-not-allowed",
             watchlistOnly
-              ? "border-yellow-500/70 text-yellow-300 bg-yellow-950/40"
+              ? "border-gold/70 text-gold bg-gold/15"
               : "border-cyan-800/40 text-cyan-400 hover:text-white hover:border-cyan-600/60"
           )}
         >
@@ -640,12 +640,12 @@ export function FlowFeed() {
             <div className="flow-live-dot">
               <span className={clsx(
                 "w-1.5 h-1.5 rounded-full block relative z-10",
-                !live ? "bg-zinc-700" : dataStale ? "bg-amber-400" : "bg-emerald-400"
+                !live ? "bg-zinc-700" : dataStale ? "bg-gold" : "bg-bull"
               )} />
             </div>
             <span className={clsx(
               "font-mono text-[9px] tracking-widest uppercase",
-              !live ? "text-cyan-500" : dataStale ? "text-amber-400" : "text-emerald-500"
+              !live ? "text-cyan-500" : dataStale ? "text-gold" : "text-bull"
             )}>
               {!live ? "Offline" : dataStale ? `Stale ${newestAgeLabel}` : "Live"}
             </span>

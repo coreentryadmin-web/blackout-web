@@ -116,7 +116,7 @@ export function SpxDarkPoolCard({ desk, live }: DeskProps) {
                 <span className="font-mono text-xs text-white tabular-nums">
                   {p.strike > 0 ? fmtPrice(p.strike) : "—"}
                 </span>
-                <span className="font-mono text-xs text-amber-300 tabular-nums ml-auto">
+                <span className="font-mono text-xs text-gold tabular-nums ml-auto">
                   {fmtPremium(p.premium)}
                 </span>
               </li>
@@ -129,7 +129,7 @@ export function SpxDarkPoolCard({ desk, live }: DeskProps) {
 }
 
 function tapeSideClass(t: { kind: string; side: string }) {
-  if (t.kind === "darkpool") return { tag: "DP", tagClass: "text-amber-300", labelClass: "text-sky-100" };
+  if (t.kind === "darkpool") return { tag: "DP", tagClass: "text-gold", labelClass: "text-sky-100" };
   if (t.side === "put") return { tag: "PUT", tagClass: "text-bear", labelClass: "text-bear" };
   return { tag: "CALL", tagClass: "text-bull", labelClass: "text-bull" };
 }

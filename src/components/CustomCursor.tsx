@@ -14,6 +14,12 @@ export function CustomCursor() {
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     if (coarse) return;
 
+    // The custom cursor is motion (spring-followed ring). Respect the user's
+    // reduced-motion setting: render nothing, don't attach handlers, and leave
+    // the native cursor visible.
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) return;
+
     document.documentElement.classList.add("landing-cursor-on");
     setEnabled(true);
 

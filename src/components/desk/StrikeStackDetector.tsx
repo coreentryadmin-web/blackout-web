@@ -35,7 +35,7 @@ export function StrikeStackDetector({
       <div className="flow-panel-header">
         <span className="flow-panel-title">Strike Stacks</span>
         {stacks.length > 0 && (
-          <span className="font-mono text-[9px] text-amber-600">{stacks.length} active</span>
+          <span className="font-mono text-[9px] text-gold">{stacks.length} active</span>
         )}
       </div>
 
@@ -86,7 +86,7 @@ export function StrikeStackDetector({
                         )}>
                           ×{stack.alert_count}
                         </span>
-                        <span className="font-anton text-[14px] text-yellow-300 leading-none">{stack.ticker}</span>
+                        <span className="font-anton text-[14px] text-gold leading-none">{stack.ticker}</span>
                         <span className={clsx("flow-badge", isCall ? "flow-badge-call" : "flow-badge-put")}>
                           {stack.option_type}
                         </span>
@@ -106,8 +106,8 @@ export function StrikeStackDetector({
                           className="font-bold tabular-nums"
                           style={{
                             fontSize: "13px",
-                            color: "#fde047",
-                            textShadow: "0 0 10px rgba(253,224,71,0.6)",
+                            color: "#ffd23f",
+                            textShadow: "0 0 10px rgba(255,210,63,0.6)",
                           }}
                         >
                           {stack.strike}{isCall ? "C" : "P"}

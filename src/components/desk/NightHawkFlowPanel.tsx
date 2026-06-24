@@ -22,7 +22,7 @@ export type NightHawkPlayWithFlow = PlaybookPlay & {
 
 const CONVICTION_STYLE: Record<FlowConviction, { label: string; cls: string }> = {
   strong:   { label: "STRONG",   cls: "text-emerald-400 border-emerald-700/50 bg-emerald-950/30" },
-  moderate: { label: "MODERATE", cls: "text-amber-400   border-amber-700/50   bg-amber-950/25" },
+  moderate: { label: "MODERATE", cls: "text-gold       border-gold/50         bg-gold/15" },
   weak:     { label: "WEAK",     cls: "text-sky-300    border-zinc-700/50     bg-zinc-900/40" },
   none:     { label: "NO DATA",  cls: "text-cyan-400    border-zinc-800/50     bg-zinc-950/40" },
 };
@@ -115,7 +115,7 @@ export function NightHawkFlowPanel({
                     <div className="relative h-1.5 rounded-full overflow-hidden bg-zinc-900 mb-1.5">
                       <motion.div
                         className="h-full rounded-l-full"
-                        style={{ background: "linear-gradient(90deg, #065f46, #10b981)", width: `${callPct}%` }}
+                        style={{ background: "linear-gradient(90deg, #0f9d58, #00e676)", width: `${callPct}%` }}
                         initial={{ width: 0 }}
                         animate={{ width: `${callPct}%` }}
                         transition={{ duration: 0.8, ease: [0.34, 1.56, 0.64, 1] }}
@@ -153,12 +153,12 @@ export function NightHawkFlowPanel({
                       </div>
                     </div>
                     {flowData.flowAgreement && (
-                      <p className="font-mono text-[10px] text-emerald-500 mt-1">
+                      <p className="font-mono text-[10px] text-bull mt-1">
                         ✓ tape agrees with {isLong ? "long" : "short"} thesis
                       </p>
                     )}
                     {!flowData.flowAgreement && flowData.conviction !== "none" && (
-                      <p className="font-mono text-[10px] text-amber-600 mt-1">
+                      <p className="font-mono text-[10px] text-gold mt-1">
                         ⚠ tape diverges from {isLong ? "long" : "short"} thesis
                       </p>
                     )}

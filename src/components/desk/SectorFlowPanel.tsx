@@ -94,7 +94,7 @@ export function SectorFlowPanel({
                     className="absolute inset-y-0 left-0 rounded-full"
                     style={{
                       background: isBull
-                        ? "linear-gradient(90deg, #065f46, #10b981)"
+                        ? "linear-gradient(90deg, #0f9d58, #00e676)"
                         : isBear
                           ? "linear-gradient(90deg, #9f1239, #f43f5e)"
                           : "linear-gradient(90deg, #0c4a6e, #7dd3fc)",
