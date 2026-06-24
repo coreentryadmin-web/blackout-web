@@ -14,8 +14,27 @@
   --color-void: #040407;
   /* Signature brand gradient (emerald → mint → sky) used across the marketing surface. */
   --grad-brand: linear-gradient(90deg, #00e676, #34d399 55%, #7dd3fc);
-  /* Layout tokens */
-  --nav-offset: 60px; /* scrolled nav height */
+
+  /* ── Layout tokens ──────────────────────────────────────────────────────
+     Canonical spacing/width ramp for the centered content rail. Authors must
+     consume these (via .content-rail) instead of hardcoding px-6 / max-w-7xl
+     so the page-padding ramp and rail width stay in one place.
+     --content-max mirrors Tailwind's max-w-7xl (80rem) — the desktop rail width.
+     --page-pad-x ramps from a tight mobile gutter up to the desktop value;
+     the desktop step (1.5rem == px-6) preserves the existing look at ≥768px. */
+  --content-max: 80rem;      /* desktop rail max-width (== Tailwind max-w-7xl) */
+  --page-pad-x: 1rem;        /* mobile gutter (base) */
+  --nav-offset: 60px;        /* scrolled nav height */
+}
+
+/* Page-padding ramp: nudge the gutter up at the sm tier, then lock to the
+   desktop value (1.5rem == px-6) from md+ so the rail looks identical to the
+   old flat px-6 at the common desktop breakpoints — just tokenized. */
+@media (min-width: 640px) {
+  :root { --page-pad-x: 1.25rem; }
+}
+@media (min-width: 768px) {
+  :root { --page-pad-x: 1.5rem; }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -111,8 +130,25 @@ body {
   }
 
   /* ── Layout ──────────────────────────────────────────────────────────── */
+  /* Centered content rail. Consumes the layout tokens (--content-max +
+     --page-pad-x ramp) instead of a flat px-6 / max-w-7xl so width + gutter
+     live in :root. Visually identical to the old `mx-auto w-full max-w-7xl
+     px-6` at the common desktop breakpoints (md+ resolves --page-pad-x to
+     1.5rem == px-6, --content-max == max-w-7xl). Night Hawk intentionally
+     bypasses this rail (PageShell fullBleed / max-w-none) for its edge-to-edge
+     desk — do NOT wrap it. */
   .content-rail {
-    @apply mx-auto w-full max-w-7xl px-6;
+    @apply mx-auto w-full;
+    max-width: var(--content-max);
+    padding-left: var(--page-pad-x);
+    padding-right: var(--page-pad-x);
+  }
+
+  /* Default desk grid — the codified multi-column tier so future grids don't
+     skip the md/lg step. Use `.grid-desk` for standard card/panel grids;
+     reach for bespoke grid-cols only when a layout genuinely differs. */
+  .grid-desk {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3;
   }
 }
 

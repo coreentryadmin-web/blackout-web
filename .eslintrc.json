@@ -1,7 +1,10 @@
 {
   "extends": "next/core-web-vitals",
-  "plugins": ["jsx-a11y"],
+  "plugins": ["jsx-a11y", "tailwindcss"],
   "rules": {
+    "tailwindcss/enforces-shorthand": "warn",
+    "tailwindcss/no-contradicting-classname": "warn",
+    "tailwindcss/no-custom-classname": "off",
     "jsx-a11y/alt-text": "warn",
     "jsx-a11y/anchor-has-content": "warn",
     "jsx-a11y/anchor-is-valid": "warn",

@@ -22,3 +22,6 @@ jobs:
       - name: Accessibility lint (jsx-a11y, non-blocking)
         run: npm run lint
         continue-on-error: true
+      - name: Stylelint (non-blocking)
+        run: npm run lint:css
+        continue-on-error: true
