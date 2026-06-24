@@ -10,9 +10,19 @@ import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+// Per-instance connection cap (fd/memory guard) — admin-only + push-fan-out via subscribeApiTelemetry,
+// so each connection is cheap; this just bounds runaway fan-out, matching the market SSE routes. The
+// route previously had NO cap (audit §3.7). Override via ADMIN_SSE_MAX_STREAMS.
+let activeStreams = 0;
+const MAX_STREAMS = Number(process.env.ADMIN_SSE_MAX_STREAMS ?? 100);
+
 export async function GET(req: NextRequest) {
   const denied = await requireAdminApi();
   if (denied) return denied;
+
+  if (activeStreams >= MAX_STREAMS) {
+    return new NextResponse("Too many active admin streams — try again shortly", { status: 503 });
+  }
 
   const lastEventId = req.headers.get("last-event-id");
   const sinceSeqParam = req.nextUrl.searchParams.get("since_seq");
@@ -26,10 +36,12 @@ export async function GET(req: NextRequest) {
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let unsubscribe: (() => void) | undefined;
   let closed = false;
+  let counted = false;
 
   const cleanup = () => {
     if (closed) return;
     closed = true;
+    if (counted) activeStreams = Math.max(0, activeStreams - 1);
     if (heartbeat) clearInterval(heartbeat);
     heartbeat = undefined;
     unsubscribe?.();
@@ -60,6 +72,8 @@ export async function GET(req: NextRequest) {
         }
       };
 
+      activeStreams++;
+      counted = true;
       req.signal.addEventListener("abort", cleanup);
 
       if (sinceSeq > 0) {
