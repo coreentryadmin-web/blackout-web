@@ -46,7 +46,7 @@ No route was found that serves per-user or premium data without a server-side ga
 **Impact:** Account-creation abuse / spam signups; email-verification bypass; polluted user table + signup metrics; a free surface to probe premium gates. The Whop entitlement gate still applies (so it is not *direct* premium access), but it is an open hole on the identity boundary.
 **Not app-detectable:** Clerk does **not** expose "test mode on" to the application — the `pk_live` publishable key does not reflect it — so there is **no runtime guard the code can add.** This is dashboard-only by nature.
 **Fix (USER ACTION — dashboard, ~30s):** Clerk Dashboard → **Production** instance → toggle **Test mode OFF** before launch; keep test mode only on the **Development** instance. After disabling, confirm a real sign-up requires a real emailed code (not `424242`).
-**Status:** **OPEN — must-fix-before-launch.** Surfaced during live UI verification on 2026-06-24 (test mode had been enabled to grant screenshot-based access).
+**Status:** **RESOLVED 2026-06-24** — user disabled Test mode on the **Production** Clerk instance (confirmed via dashboard screenshot); the Development instance correctly retains test mode. Surfaced during live UI verification (test mode had been temporarily enabled on prod to grant screenshot-based access). Re-verify post-launch that a `+clerk_test` sign-up on prod is rejected.
 
 ### H-1 · Per-replica 60s tier cache + fire-and-forget webhook → up to 60s of post-churn premium access per replica
 **Severity:** Medium
