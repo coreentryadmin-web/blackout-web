@@ -3,7 +3,7 @@
 // SPX/VIX bar feed.
 /**
  * Server-side Polygon WebSocket → SSE broadcaster.
- * Maintains ONE WebSocket connection to Polygon indices feed.
+ * Maintains ONE WebSocket connection to the Polygon indices feed.
  * All connected SSE clients share this single connection.
  * Only runs server-side (imported only from API routes).
  */
@@ -23,7 +23,7 @@ export interface SpxBar {
 
 class SpxBroadcaster {
   private subscribers = new Set<Subscriber>()
-  private ws: any = null
+  private ws: WebSocket | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private authenticated = false
   private reconnectAttempts = 0
@@ -34,33 +34,54 @@ class SpxBroadcaster {
     if (!this.ws && !this.reconnecting) this.connect()
     return () => {
       this.subscribers.delete(fn)
-      // Last listener gone — drop any pending reconnect and close the upstream WS so we don't
-      // hold a Polygon connection (or reconnect-loop) with nobody listening. A new subscriber
-      // re-establishes it via the !this.ws check above.
+      // Last listener gone — drop any pending reconnect and tear down the upstream WS so we don't
+      // hold a Polygon connection (or reconnect-loop) with nobody listening. teardownSocket()
+      // nulls this.ws SYNCHRONOUSLY (close() fires 'close' async) so a resubscribe in the close
+      // window re-connects via the !this.ws guard above instead of attaching to a doomed socket.
       if (this.subscribers.size === 0) {
         this.clearReconnect()
         this.reconnecting = false
-        try { this.ws?.close?.() } catch { /* already closed */ }
+        this.teardownSocket()
+      }
+    }
+  }
+
+  /** Synchronously detach + null the socket so a resubscribe in the async-close window re-connects
+   *  cleanly, and the stale 'close' handler can't fire against (or schedule a reconnect over) a new
+   *  connection. */
+  private teardownSocket() {
+    const sock = this.ws
+    this.ws = null
+    if (sock) {
+      try {
+        sock.onopen = null
+        sock.onmessage = null
+        sock.onclose = null
+        sock.onerror = null
+        sock.close()
+      } catch {
+        /* already closed */
       }
     }
   }
 
   private connect() {
     this.reconnecting = true
-    if (typeof WebSocket === 'undefined') {
-      // Node.js — use ws package
-      try {
-        const WS = require('ws')
-        const wsUrl =
-          process.env.POLYGON_WS_INDICES ??
-          process.env.POLYGON_WS_URL ??
-          'wss://socket.polygon.io/indices'
-        this.ws = new WS(wsUrl)
-        this.setupHandlers()
-      } catch {
-        console.error('[SpxBroadcaster] ws package not installed — run: npm install ws')
-        this.reconnecting = false
-      }
+    const wsUrl =
+      process.env.POLYGON_WS_INDICES ??
+      process.env.POLYGON_WS_URL ??
+      'wss://socket.polygon.io/indices'
+    try {
+      // Node >=20.9 (our runtime is v24) and browsers ship a GLOBAL WebSocket — use it directly,
+      // matching the sibling socket modules (polygon-socket / uw-socket / options-socket). The
+      // prior `typeof WebSocket === 'undefined'` guard INVERTED this: on every supported runtime
+      // the global exists, so connect()'s body was skipped entirely and the feed never connected
+      // (reconnecting stuck true, never re-armed). That's the dead-feed fix.
+      this.ws = new WebSocket(wsUrl)
+      this.setupHandlers(this.ws)
+    } catch (e) {
+      console.error('[SpxBroadcaster] failed to open WS:', e)
+      this.reconnecting = false
     }
   }
 
@@ -91,20 +112,22 @@ class SpxBroadcaster {
     }, delay + jitter)
   }
 
-  private setupHandlers() {
+  private setupHandlers(ws: WebSocket) {
     const apiKey = process.env.POLYGON_API_KEY ?? ''
-    this.ws.on('open', () => {
+    ws.onopen = () => {
+      if (this.ws !== ws) return // stale socket
       this.reconnecting = false
       this.reconnectAttempts = 0
-      this.ws.send(JSON.stringify({ action: 'auth', params: apiKey }))
-    })
-    this.ws.on('message', (raw: Buffer) => {
+      ws.send(JSON.stringify({ action: 'auth', params: apiKey }))
+    }
+    ws.onmessage = (event) => {
+      if (this.ws !== ws) return // stale socket — ignore late frames
       try {
-        const packets = JSON.parse(raw.toString())
+        const packets = JSON.parse(String(event.data))
         for (const pkt of Array.isArray(packets) ? packets : [packets]) {
           if (pkt.status === 'auth_success') {
             this.authenticated = true
-            this.ws.send(JSON.stringify({ action: 'subscribe', params: 'AM.I:SPX,AM.I:VIX' }))
+            ws.send(JSON.stringify({ action: 'subscribe', params: 'AM.I:SPX,AM.I:VIX' }))
           }
           if (pkt.ev === 'AM' && this.authenticated) {
             const bar: SpxBar = {
@@ -120,20 +143,28 @@ class SpxBroadcaster {
             this.subscribers.forEach((fn) => fn(bar))
           }
         }
-      } catch (e) { console.warn('[SpxBroadcaster] message parse error:', e) }
-    })
-    this.ws.on('close', () => {
+      } catch (e) {
+        console.warn('[SpxBroadcaster] message parse error:', e)
+      }
+    }
+    ws.onclose = () => {
+      // Identity guard: only the CURRENT socket's close should reset state + reconnect. A stale
+      // socket's late close (after teardown/replacement) must not null the live ws or schedule
+      // a reconnect over it.
+      if (this.ws !== ws) return
       this.authenticated = false
       this.ws = null
       this.reconnecting = true
       this.scheduleReconnect()
-    })
-    this.ws.on('error', (err: Error) => {
-      console.error('[SpxBroadcaster] WS error:', err.message)
-    })
+    }
+    ws.onerror = (event) => {
+      console.error('[SpxBroadcaster] WS error:', event instanceof ErrorEvent ? event.message : event.type)
+    }
   }
 
-  get subscriberCount() { return this.subscribers.size }
+  get subscriberCount() {
+    return this.subscribers.size
+  }
 }
 
 // Singleton — shared across all API route invocations in the same Node.js process

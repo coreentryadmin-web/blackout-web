@@ -3,6 +3,7 @@
  */
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { etMinutes, etClock } from "@/lib/spx-play-session-time";
+import { getEarlyCloseMinutes } from "@/lib/spx-play-session-guards";
 export type PolygonAgg = {
   ev: "A" | "AM";
   sym: string;
@@ -84,8 +85,11 @@ let indicesWatchdog: ReturnType<typeof setInterval> | null = null;
  * RTH gate (DST-aware via etMinutes), weekdays only. The index feed is naturally SILENT off-hours
  * (no aggregates when the market is closed), so we only treat silence as a stall during regular
  * hours — reconnecting on off-hours quiet would just churn the socket all night (the same
- * false-positive class as the UW-halts feed). Holidays are not modeled; a reconnect on a holiday
- * is rare and harmless.
+ * false-positive class as the UW-halts feed). The upper bound honors NYSE early-close half-days
+ * (13:00 ET) via getEarlyCloseMinutes — the same annually-maintained table the SPX session guards
+ * use — so the watchdog doesn't churn the socket every ~90s from 13:00–16:00 on those days. (Full
+ * market holidays are not modeled — a holiday reconnect loop is rarer and harmless: the market is
+ * closed and no one is trading.)
  */
 function inIndicesMarketHours(now = new Date()): boolean {
   const weekday = new Intl.DateTimeFormat("en-US", {
@@ -94,7 +98,8 @@ function inIndicesMarketHours(now = new Date()): boolean {
   }).format(now);
   if (weekday === "Sat" || weekday === "Sun") return false;
   const mins = etMinutes(now);
-  return mins >= etClock(9, 30) && mins <= etClock(16, 0);
+  const close = getEarlyCloseMinutes(now) ?? etClock(16, 0); // 13:00 ET on half-days, else 16:00
+  return mins >= etClock(9, 30) && mins <= close;
 }
 
 function startIndicesWatchdog() {

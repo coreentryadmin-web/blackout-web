@@ -64,8 +64,10 @@ export function endpointTemplate(endpoint: string): string {
   return path
     .replace(/O:[A-Z0-9]+/g, ":occ") // OCC option symbols (O:SPXW250101C05850000)
     .replace(/\b[A-Z]{1,6}\d{6}[CP]\d{8}\b/g, ":occ") // bare OCC (SPXW250101C05850000)
+    .replace(/(\/indicators\/(?:ema|sma|macd|rsi))\/[^/?]+/g, "$1/:sym") // /v1/indicators/ema/AAPL or /I:SPX
     .replace(/I:[A-Z0-9]+/g, ":idx") // index symbols (I:SPX, I:VIX)
-    .replace(/\/ticker\/[^/]+/g, "/ticker/:sym") // /ticker/AAPL -> /ticker/:sym
+    .replace(/\/tickers\/[^/]+/g, "/tickers/:sym") // PLURAL: /v3/reference/tickers/AAPL, /v2/snapshot/.../tickers/NVDA
+    .replace(/\/ticker\/[^/]+/g, "/ticker/:sym") // singular: /v2/aggs/ticker/AAPL
     .replace(/\d{4}-\d{2}-\d{2}/g, ":date"); // ISO dates in range/aggs paths
 }
 

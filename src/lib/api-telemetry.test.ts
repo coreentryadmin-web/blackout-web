@@ -19,8 +19,21 @@ test("endpointTemplate: collapses OCC / ticker / index / date and strips the que
     endpointTemplate("/v2/aggs/ticker/AAPL/range/1/day/2024-01-01/2024-12-31"),
     "/v2/aggs/ticker/:sym/range/1/day/:date/:date"
   );
-  // index symbol
-  assert.equal(endpointTemplate("/v1/indicators/ema/I:SPX"), "/v1/indicators/ema/:idx");
+  // indicator paths collapse the per-symbol segment (bare stock AND I:idx → :sym, one bounded key)
+  assert.equal(endpointTemplate("/v1/indicators/ema/AAPL"), "/v1/indicators/ema/:sym");
+  assert.equal(endpointTemplate("/v1/indicators/macd/I:SPX"), "/v1/indicators/macd/:sym");
+  // index symbol in a NON-indicator path still collapses via the I: rule
+  assert.equal(endpointTemplate("/v3/snapshot/indices/I:VIX"), "/v3/snapshot/indices/:idx");
+  // PLURAL /tickers/{sym} — the leak the review caught (the singular /ticker/ rule missed it)
+  assert.equal(endpointTemplate("/v3/reference/tickers/AAPL"), "/v3/reference/tickers/:sym");
+  assert.equal(
+    endpointTemplate("/v3/reference/tickers/AAPL/related"),
+    "/v3/reference/tickers/:sym/related"
+  );
+  assert.equal(
+    endpointTemplate("/v2/snapshot/locale/us/markets/stocks/tickers/NVDA"),
+    "/v2/snapshot/locale/us/markets/stocks/tickers/:sym"
+  );
   // the query string (the unified-snapshot ticker.any_of CSV is the worst leak source) is dropped
   assert.equal(
     endpointTemplate("/v3/snapshot?ticker.any_of=O:SPXW250101C05850000,O:SPXW250101P05850000&limit=250"),
