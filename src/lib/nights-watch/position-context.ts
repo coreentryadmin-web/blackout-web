@@ -151,7 +151,11 @@ function contextFromHeatmap(hm: GexHeatmap | null): PositionContext {
     walls.push({
       strike: callWall,
       net_gex: hm.gex.strike_totals[String(callWall)] ?? 0,
-      kind: "resistance",
+      // kind is GEOMETRIC (spot-side), matching the GexWall contract the verdict engine assumes — NOT
+      // the gamma sign. computeGexRegime picks call_wall/put_wall by max +/- net-gamma with no spot-side
+      // constraint, so a call_wall can sit BELOW spot (a support); hardcoding "resistance" here fed
+      // verdict.ts false gex_wall_broken / approaching signals for non-SPX tickers.
+      kind: callWall > spot ? "resistance" : "support",
       distance_pts: Number((callWall - spot).toFixed(2)),
     });
   }
@@ -160,7 +164,7 @@ function contextFromHeatmap(hm: GexHeatmap | null): PositionContext {
     walls.push({
       strike: putWall,
       net_gex: hm.gex.strike_totals[String(putWall)] ?? 0,
-      kind: "support",
+      kind: putWall > spot ? "resistance" : "support", // geometric (see call_wall note above)
       distance_pts: Number((putWall - spot).toFixed(2)),
     });
   }

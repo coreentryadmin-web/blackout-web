@@ -620,7 +620,10 @@ export async function buildPositionDetail(
 // Section builders / context assembly
 // ---------------------------------------------------------------------------
 
-/** GexHeatmap → GexWall[] (call wall = resistance, put wall = support) with distance from spot. */
+/** GexHeatmap → GexWall[] with distance from spot. `kind` is GEOMETRIC (strike vs spot), matching the
+ *  GexWall contract the verdict engine assumes — call_wall/put_wall are NOT guaranteed to sit on the
+ *  resistance/support side of spot (computeGexRegime picks them by gamma sign), so deriving kind from
+ *  spot geometry here prevents false verdict signals on non-SPX tickers. */
 function gexWallsFromHeatmapSpot(
   gex: NonNullable<Awaited<ReturnType<typeof getNwTickerGex>>>
 ): GexWall[] {
@@ -631,7 +634,7 @@ function gexWallsFromHeatmapSpot(
     walls.push({
       strike: cw,
       net_gex: gex.gex.strike_totals[String(cw)] ?? 0,
-      kind: "resistance",
+      kind: cw > spot ? "resistance" : "support",
       distance_pts: Number((cw - spot).toFixed(2)),
     });
   }
@@ -640,7 +643,7 @@ function gexWallsFromHeatmapSpot(
     walls.push({
       strike: pw,
       net_gex: gex.gex.strike_totals[String(pw)] ?? 0,
-      kind: "support",
+      kind: pw > spot ? "resistance" : "support",
       distance_pts: Number((pw - spot).toFixed(2)),
     });
   }

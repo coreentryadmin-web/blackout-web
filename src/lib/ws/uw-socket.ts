@@ -104,11 +104,25 @@ class UwSocketManager {
     const ws = this.ws;
     this.ws = null;
     this.connectStarted = false;
-    if (ws && ws.readyState <= 1) {
+    if (ws) {
+      // Detach handlers BEFORE closing: the ws close handshake can DEFER the 'close' event up to ~30s
+      // on a half-open peer (exactly when reconnectIfStalled tears down), so a still-attached onclose
+      // could fire AFTER a new socket is live and null/clobber it + double-schedule a reconnect. The
+      // onclose identity guard below is the second line of defence. (Mirrors shutdown() + spx-broadcaster.)
       try {
-        ws.close();
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
       } catch {
         /* ignore */
+      }
+      if (ws.readyState <= 1) {
+        try {
+          ws.close();
+        } catch {
+          /* ignore */
+        }
       }
     }
   }
@@ -265,6 +279,7 @@ class UwSocketManager {
       this.ws = ws;
 
       ws.onopen = () => {
+        if (this.ws !== ws) return; // superseded socket — ignore late open
         this.connectStarted = false;
         this.reconnectDelay = 1000;
         console.log("[uw-socket] multiplex connected — joining channels");
@@ -272,6 +287,7 @@ class UwSocketManager {
       };
 
       ws.onmessage = (event) => {
+        if (this.ws !== ws) return; // superseded socket — ignore late frames
         this.handleMessage(String(event.data));
       };
 
@@ -280,6 +296,10 @@ class UwSocketManager {
       };
 
       ws.onclose = (event) => {
+        // Identity guard: a superseded socket's late close must not null/clobber the live ws or
+        // double-schedule a reconnect (teardownSocket also detaches handlers; this covers any close
+        // path that bypasses it).
+        if (this.ws !== ws) return;
         this.connectStarted = false;
         const reason = event.reason?.trim() || `code=${event.code}`;
         this.lastCloseReason = reason;
