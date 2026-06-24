@@ -5,7 +5,6 @@
 // Per-user isolation: user_id always comes from Clerk auth(); every query is
 // scoped by (user_id, id) so one user can never touch another's rows.
 
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import {
   requireDatabaseInProduction,
@@ -17,6 +16,7 @@ import {
 } from "@/lib/db";
 import { enrichPosition } from "@/lib/nights-watch/valuation";
 import { requireToolApi } from "@/lib/tool-access-server";
+import { requireTierApi } from "@/lib/market-api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,8 +27,9 @@ function isValidYmd(v: unknown): v is string {
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await requireTierApi("premium");
+  if (gate instanceof Response) return gate;
+  const { userId } = gate;
 
   // Launch gate — locked to non-admins until this tool ships.
   const locked = await requireToolApi("nighthawk");
@@ -151,8 +152,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await requireTierApi("premium");
+  if (gate instanceof Response) return gate;
+  const { userId } = gate;
 
   // Launch gate — locked to non-admins until this tool ships.
   const locked = await requireToolApi("nighthawk");

@@ -5,12 +5,12 @@
 //
 // Per-user isolation: user_id always comes from Clerk auth(), never the client.
 
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { requireDatabaseInProduction, createUserPosition } from "@/lib/db";
 import { enrichPosition } from "@/lib/nights-watch/valuation";
 import { getEnrichedPositionsForUser } from "@/lib/nights-watch/enrichment";
 import { requireToolApi } from "@/lib/tool-access-server";
+import { requireTierApi } from "@/lib/market-api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,8 +23,9 @@ function isValidYmd(v: unknown): v is string {
 }
 
 export async function GET(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await requireTierApi("premium");
+  if (gate instanceof Response) return gate;
+  const { userId } = gate;
 
   // Launch gate — locked to non-admins until this tool ships.
   const locked = await requireToolApi("nighthawk");
@@ -48,8 +49,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await requireTierApi("premium");
+  if (gate instanceof Response) return gate;
+  const { userId } = gate;
 
   // Launch gate — locked to non-admins until this tool ships.
   const locked = await requireToolApi("nighthawk");

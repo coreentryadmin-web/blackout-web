@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { requireToolApi } from "@/lib/tool-access-server";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 
 export const runtime = "nodejs";
@@ -20,6 +21,12 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
   if (auth instanceof Response) return auth;
+
+  // Launch gate — this route returns the SAME dealer-positioning the locked Heatmaps tool shows, so
+  // gate it to non-admins until Heatmaps ships (parity with gex-heatmap + explain). Verified: no
+  // in-repo HTTP caller — internal consumers call getGexPositioning() directly, so nothing breaks.
+  const locked = await requireToolApi("heatmap");
+  if (locked) return locked;
 
   const ticker = (req.nextUrl.searchParams.get("ticker") || "SPY").toUpperCase();
 

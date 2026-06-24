@@ -7,6 +7,13 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const as_of = new Date().toISOString();
 
+  if (process.env.NODE_ENV === "production" && !process.env.WHOP_WEBHOOK_SECRET?.trim()) {
+    return NextResponse.json(
+      { ok: false, reason: "WHOP_WEBHOOK_SECRET unset — billing webhooks would be dropped" },
+      { status: 503 }
+    );
+  }
+
   if (!dbConfigured()) {
     return NextResponse.json({ ok: true, as_of, db: "skipped" });
   }

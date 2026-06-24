@@ -2,7 +2,6 @@ import { clerkClient } from "@clerk/nextjs/server";
 import type { MembershipListResponse } from "@whop/sdk/resources/memberships.js";
 import { type Tier } from "@/lib/tiers";
 import {
-  getPremiumProductIds,
   getWhopClient,
   PREMIUM_MEMBERSHIP_STATUSES,
   resolveTierFromMemberships,
@@ -72,24 +71,45 @@ export async function syncWhopMembershipForEmail(email: string): Promise<{
     throw new Error("WHOP_COMPANY_ID is required for membership sync");
   }
   const normalized = email.trim().toLowerCase();
-  const premiumProductIds = getPremiumProductIds();
 
   const userIds = await findWhopUserIdsByEmail(normalized, companyId);
 
   const memberships: MembershipListResponse[] = [];
+  // Do NOT pass a server-side product_ids/plan_ids filter. resolveTierFromMembership already
+  // classifies by product OR plan id; a server-side product_ids-only filter silently DROPS
+  // plan-identified premium memberships, so a plan-config paying customer would resolve to 'free'
+  // and be locked out (audit launch-path #1). user_ids is the real narrowing key; classification
+  // happens in resolveTierFromMemberships below.
   const membershipParams = {
     company_id: companyId,
-    ...(premiumProductIds.length ? { product_ids: premiumProductIds } : {}),
     ...(userIds.length ? { user_ids: userIds } : {}),
     statuses: PREMIUM_MEMBERSHIP_STATUSES,
   };
 
+  // In the no-userIds fallback we email-match in code, which depends on Whop's member:email:read.
+  // Track whether ANY row was actually email-readable so we can distinguish "no membership" from
+  // "couldn't read emails" and never mass-downgrade the paying base on a permission outage.
+  let sawAnyMembershipRow = false;
+  let sawReadableEmail = false;
   for await (const membership of whop.memberships.list(membershipParams)) {
+    sawAnyMembershipRow = true;
     if (!userIds.length) {
       const memberEmail = membership.user?.email?.toLowerCase();
+      if (memberEmail) sawReadableEmail = true;
       if (memberEmail !== normalized) continue;
     }
     memberships.push(membership);
+  }
+
+  // Fail CLOSED: rows existed but NONE had a readable email (Whop app likely lacks member:email:read,
+  // or a transient null-email page) — we couldn't actually check this user, so refuse rather than
+  // silently write 'free' fleet-wide. The caller (webhook/manual-sync 500s; reconcile per-email
+  // catch records an error) leaves the existing tier intact (audit launch-path #2).
+  if (!userIds.length && memberships.length === 0 && sawAnyMembershipRow && !sawReadableEmail) {
+    throw new Error(
+      `Cannot resolve membership for ${normalized}: rows returned but every user.email was null ` +
+        "(Whop app likely lacks member:email:read). Refusing to downgrade to 'free'."
+    );
   }
 
   // Sort memberships deterministically: prefer ACTIVE/TRIALING status first,
@@ -159,10 +179,11 @@ export async function reconcileAllMemberships(opts?: { maxEmails?: number }): Pr
 
   // 1) Emails holding an active/grace Whop membership (catches missed upgrades).
   const whop = getWhopClient();
-  const premiumProductIds = getPremiumProductIds();
+  // No product_ids/plan_ids server filter (see syncWhopMembershipForEmail): the discovery pass must
+  // enumerate ALL active/grace memberships so plan-identified premium subscribers are also found;
+  // step 3 re-resolves each (classifying by product OR plan).
   const params = {
     company_id: companyId,
-    ...(premiumProductIds.length ? { product_ids: premiumProductIds } : {}),
     statuses: PREMIUM_MEMBERSHIP_STATUSES,
   };
   for await (const membership of whop.memberships.list(params)) {
@@ -182,7 +203,13 @@ export async function reconcileAllMemberships(opts?: { maxEmails?: number }): Pr
         (user.publicMetadata as { tier?: string } | undefined)?.tier ?? ""
       );
       if (tier === "premium") {
-        const email = user.emailAddresses?.[0]?.emailAddress?.toLowerCase();
+        // Use the PRIMARY email, not emailAddresses[0] — Clerk does not guarantee [0] is primary,
+        // and re-resolving a premium user against an arbitrary secondary address yields 'free' and
+        // downgrades a paying multi-email customer (audit launch-path #7). (A fuller per-user
+        // resolution — premium if ANY of the account's emails has a membership — is a tracked follow-up.)
+        const primaryId = user.primaryEmailAddressId;
+        const primary = user.emailAddresses?.find((e) => e.id === primaryId)?.emailAddress;
+        const email = (primary ?? user.emailAddresses?.[0]?.emailAddress)?.toLowerCase();
         if (email) emails.add(email);
       }
     }
