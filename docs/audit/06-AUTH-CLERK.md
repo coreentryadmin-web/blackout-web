@@ -48,6 +48,13 @@ No route was found that serves per-user or premium data without a server-side ga
 **Fix (USER ACTION — dashboard, ~30s):** Clerk Dashboard → **Production** instance → toggle **Test mode OFF** before launch; keep test mode only on the **Development** instance. After disabling, confirm a real sign-up requires a real emailed code (not `424242`).
 **Status:** **RESOLVED 2026-06-24** — user disabled Test mode on the **Production** Clerk instance (confirmed via dashboard screenshot); the Development instance correctly retains test mode. Surfaced during live UI verification (test mode had been temporarily enabled on prod to grant screenshot-based access). Re-verify post-launch that a `+clerk_test` sign-up on prod is rejected.
 
+### H-B · [LIVE FINDING → FIXED 2026-06-24] Intermittent sign-in bounce on RSC soft-navigation
+**Severity:** High (UX/auth) — **RESOLVED** via the Clerk 7 + Next 15 upgrade (`a4bb594`, deployed).
+**Symptom:** a logged-in user clicking between tools (e.g. SPX desk → HELIX) was *intermittently* redirected to `/sign-in?redirect_url=…` despite a valid session; a hard reload of the same route logged them straight back in.
+**Root cause (reproduced live + confirmed in code):** protected pages are guarded by `auth().protect()` in `clerkMiddleware` (`middleware.ts`). Clerk's session JWT lives ~60s and is refreshed by a **handshake that runs only on top-level *document* requests — never on RSC (soft-navigation) requests.** So when a soft-nav carried a JWT aged past its lifetime (the client SDK hadn't refreshed it yet — right after login, or after a backgrounded tab throttled the refresh timer), `protect()` could not handshake to refresh and redirected to `/sign-in`. The session itself was still valid (a hard nav to the same route handshaked and loaded — verified both directions). The prior `clockSkewInMs: 10_000` covered clock drift only, not a truly-expired token. `@clerk/nextjs` 5.x was frozen at 5.7.6 (no patch), so the fix required v7 — which requires Next.js 15.
+**Fix:** Next 14.2.35 → 15.5.19 + Clerk 5.7.6 → 7.5.8 (`a4bb594`). v7 drives the token refresh through the handshake on the protected RSC request (verified: a browser nav to `/dashboard` now 307s to the Clerk handshake endpoint with `__clerk_hs_reason`, not a sign-in bounce). Same upgrade clears `GHSA-w24r-5266-9c3c`. Migration detail: `BLACKOUT_FULL_AUDIT.md` → Post-Audit Resolutions.
+**Status:** **RESOLVED — deployed.** Pending a final human prod sign-in / soft-nav confirmation.
+
 ### H-1 · Per-replica 60s tier cache + fire-and-forget webhook → up to 60s of post-churn premium access per replica
 **Severity:** Medium
 **File:** `src/lib/tier-cache.ts`

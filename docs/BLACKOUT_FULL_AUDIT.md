@@ -4,6 +4,22 @@
 
 ---
 
+## ⏱ Post-Audit Resolutions (updated 2026-06-24)
+
+Fixes that landed on `main` **since** this audit was written. The findings below stay as the historical record; this is the running "what's been done."
+
+- ✅ **R-1 / Risk #2 — Clerk auth-bypass CVE (GHSA-w24r-5266-9c3c) + the 14 Next.js advisories — RESOLVED.** Upgraded **Next.js 14.2.35 → 15.5.19** and **`@clerk/nextjs` ^5.7.6 → ^7.5.8** (commit `a4bb594`, deployed). `npm audit`: **10 vulns (9 high) → 2 moderate**; the Clerk + Next high-severity advisories cleared. Validated: tsc/build/289 tests + a logged-in auth smoke test (sign-in, protected routes, tier gate, admin gate, UserButton) against the dev Clerk instance, plus a clean prod boot (`Next.js 15.5.19`, postgres ok).
+- ✅ **Intermittent sign-in bounce — FIXED (same upgrade).** Root cause: in Clerk v5 the session-JWT handshake ran only on *document* requests, never on RSC soft-navs, so a stale JWT on a soft-nav couldn't refresh and `auth().protect()` redirected to `/sign-in`. v7 drives the refresh through the handshake instead. Reproduced live; verified the handshake redirect fires post-upgrade. *Cosmetic follow-up:* rename the deprecated `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL`/`AFTER_SIGN_UP_URL` env vars to the `…FALLBACK_REDIRECT_URL` form to clear v7 deprecation warnings (redirects still work).
+- ✅ **Prod Clerk Test mode — DISABLED** (was an open account-creation hole; see `audit/06-AUTH-CLERK.md` H-0).
+- ✅ **UW trading-halts false-positive entry block — FIXED** (`e063a9e`): the event-only channel now keys staleness off socket liveness, not last-halt time, so a normal no-halt session no longer blocks desk entries.
+- ✅ **Largo GEX-wall unit mislabel (−3.59B vs panel −$3.6M) — FIXED** (`0b0cba1`): `net_gex` is pre-formatted to the panel's K/M/B string and quoted verbatim.
+- ✅ **Night's Watch expiry off-by-one + AI date arithmetic — FIXED** (`a1241ab`); **playbook empty-slot contrast** scrim (`e063a9e`).
+- ➕ **Night's Watch valuation — Massive Unified Snapshot batch adoption** (`99587b6`) + **indices V (tick) channel** (`8e577fc`).
+
+**Still open from the launch-blocker set (Section S):** the Redis fail-open cascade (Risk #1), PgBouncer confirmation + pool sizing (Risk #3), arming the AI-spend hard cap (Risk #4 — opt-in via `DAILY_AI_SPEND_KILL_USD`), SSE pulse fan-out + caps (Risk #5), telemetry batching, ticker allowlisting, and `DISCORD_OPS_WEBHOOK_URL`.
+
+---
+
 ## A. Executive Summary
 
 **What BLACKOUT is.** BLACKOUT is a premium, "Bloomberg-terminal-for-retail" options-trading desk built on Next.js 14 (App Router) and deployed on Railway. It fuses several live tools behind a single premium paywall: a real-time SPX play card with an 11-point live confluence checklist, the **HELIX** options-flow tape (live SSE), **GEX/dealer-positioning heat maps**, **Night Hawk** (an evening playbook + dossier scanner with a track record), **Night's Watch** (a per-user options-position manager with a deterministic, no-fabrication valuation engine), and **Largo** (an interactive Claude/Anthropic tool-loop analyst grounded in live market data). Market data comes from Unusual Whales (hard **2 RPS** cluster ceiling), Polygon/Massive (~40 RPS), and live UW/Polygon/options WebSockets. Auth/identity is Clerk; billing/entitlements are Whop; state is Postgres + Redis; alerting is a single Discord webhook.
@@ -23,7 +39,7 @@
 
 ## B. System Architecture Summary
 
-**Stack.** Next.js 14.2.35 (App Router, React Server Components, SSE) · TypeScript · Postgres (`pg` 8.21) · Redis (`ioredis` 5.11) · Clerk auth (`@clerk/nextjs` ^5.7.6) · Whop billing (`@whop/sdk` 0.0.40) · Anthropic (`@anthropic-ai/sdk` ^0.105). Deployed on Railway (nixpacks; `next start`; healthcheck `/api/health`).
+**Stack.** Next.js **15.5.19** (App Router, React Server Components, SSE; upgraded from 14.2.35 on 2026-06-24, see Post-Audit Resolutions) · TypeScript · Postgres (`pg` 8.21) · Redis (`ioredis` 5.11) · Clerk auth (`@clerk/nextjs` **^7.5.8**, upgraded from ^5.7.6) · Whop billing (`@whop/sdk` 0.0.40) · Anthropic (`@anthropic-ai/sdk` ^0.105). Deployed on Railway (nixpacks; `next start`; healthcheck `/api/health`; Node ≥20.9).
 
 **Data flow (the cache-reader architecture).**
 - **Ingest (writers):** Live UW/Polygon/options **WebSockets** (singleton per replica) + a set of Railway **crons** (`uw-cache-refresh`, `flow-ingest`, `nights-watch-warm`, `spx-evaluate`, Night Hawk playbook/outcomes, etc.) curl `/api/cron/*` and **write Redis caches + Postgres**. These are the only components that spend the UW 2-RPS budget at steady state.
