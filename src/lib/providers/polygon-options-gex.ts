@@ -485,9 +485,11 @@ export type DexRegime = {
  * Lives under `heatmap.dex`. Mirrors the gex block shape but with a `zero_level`
  * (per-strike net-delta sign-crossing nearest spot) in place of call/put walls.
  *
- * Net dealer dollar-delta per (strike, expiry) = dealerSign · delta · OI · 100 · spot, where
- * dealerSign is the SAME call(+)/put(−) convention used for gamma (delta already carries its
- * own +/− by option type; the dealer sign flips the put leg so the book nets correctly).
+ * Net dealer dollar-delta per (strike, expiry) = −(delta · OI · 100 · spot), summed over
+ * contracts. `delta` is ALREADY signed by option type (calls +, puts −), so Σ(delta · OI) is the
+ * CUSTOMER/aggregate net option delta; dealers are the counterparty, so the dealer book is its
+ * NEGATION (no extra gamma-style call/put sign — that would double-sign delta and pin DEX
+ * permanently positive). Positive ⇒ dealers net LONG delta (stabilizing); negative ⇒ SHORT.
  */
 export type DexMetricBlock = {
   /** Net dealer dollar-delta per (strike, expiry). Sparse — absent = no data. */
@@ -1557,11 +1559,20 @@ export async function fetchGexHeatmap(
       }
     }
 
-    // ── DEX: dealer delta × oi × 100 × spot, call +/put − ────────────────────
-    // delta already carries its own +/− by option type (calls 0..1, puts −1..0); the dealer
-    // sign flips the PUT leg so the book nets correctly, identical to the gamma sign pattern.
+    // ── DEX: net DEALER dollar-delta = −(net option delta of OI) × 100 × spot ─────────────────
+    // UNLIKE gamma (always ≥0, so the call(+)/put(−) dealer sign is what creates the bipolar
+    // signal), `delta` is ALREADY signed by option type (calls 0..1, puts −1..0). So the net
+    // option delta of the open interest is simply Σ(delta · OI) — applying the gamma-style
+    // `sign` here too would DOUBLE-SIGN it (puts: (−1)·negative = positive), forcing net DEX
+    // permanently positive (posture stuck "long", no zero-level, one-color cells).
+    //
+    // Convention (SpotGamma/FlashAlpha dealer-DEX): Σ(delta · OI) is the CUSTOMER/aggregate net
+    // option delta; dealers are the COUNTERPARTY to that open interest, so the dealer's delta
+    // book is the NEGATION: dealerDelta = −Σ(delta · OI). We negate explicitly here so the
+    // posture read is oriented correctly — positive dealer delta ⇒ dealers net LONG delta ⇒ they
+    // SELL rallies / BUY dips ⇒ mean-reverting ⇒ STABILIZING (and negative ⇒ DESTABILIZING).
     if (Number.isFinite(delta) && delta !== 0) {
-      const signedDelta = sign * delta * oi * 100 * spot;
+      const signedDelta = -(delta * oi * 100 * spot);
       if (signedDelta !== 0 && Number.isFinite(signedDelta)) {
         expirySet.add(expiry);
         const byExpiry = deltaCellMap.get(strike) ?? new Map<string, number>();

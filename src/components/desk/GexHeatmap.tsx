@@ -415,16 +415,17 @@ function recomputeLevels(
   if (posMax <= 0) posWall = null;
   if (negMin >= 0) negWall = null;
 
-  // Flip: ascending sign crossing nearest spot, linearly interpolated. Among all
-  // negative→positive (or positive→negative) crossings, pick the one whose interpolated
-  // strike is closest to spot — that's the regime pivot a desk reads off the profile.
+  // Flip: ascending NEGATIVE→POSITIVE sign crossing nearest spot, linearly interpolated — the
+  // structural gamma flip (below it dealers net short, above net long). This MATCHES the server's
+  // `computeZeroGammaFlip` (which also keys on neg→pos only); the prior either-direction match
+  // could place the filtered-subset divider at a pos→neg crossing the server would never mark.
   let flip: number | null = null;
   let bestDist = Infinity;
   for (let i = 1; i < entries.length; i++) {
     const a = entries[i - 1];
     const b = entries[i];
     if (a.value === 0 || b.value === 0) continue;
-    if ((a.value < 0 && b.value > 0) || (a.value > 0 && b.value < 0)) {
+    if (a.value < 0 && b.value > 0) {
       const t = Math.abs(a.value) / (Math.abs(a.value) + Math.abs(b.value));
       const cross = a.strike + t * (b.strike - a.strike);
       const dist = spot > 0 ? Math.abs(cross - spot) : 0;
@@ -567,7 +568,6 @@ type ProfileRow = {
   strike: number;
   value: number;
   isSpot: boolean;
-  isFlip: boolean;
   isPosWall: boolean;
   isNegWall: boolean;
   /** HELIX net premium flow hitting this strike today, or null when no overlay data. */
@@ -1779,6 +1779,12 @@ function ExpiryScopeBar({
     );
   };
 
+  // Whether a narrowed scope is active — drives the clarifying caption below. The scope filter
+  // applies ONLY to the profile + cumulative curve; the regime tiles and key levels stay
+  // server-authoritative (all-expiry) by design, so we say so to avoid a "0DTE-but-all-expiry"
+  // mismatch reading as a bug.
+  const scoped = scope !== "all";
+
   return (
     <div className="mb-3 flex flex-wrap items-center gap-1.5">
       <span className="mr-0.5 font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/60">
@@ -1792,6 +1798,14 @@ function ExpiryScopeBar({
           `Nearest expiry${zeroDteExpiry ? ` (${fmtExpiry(zeroDteExpiry)})` : ""} — today's positioning`
         )}
       {expiries.map((e) => chip(e, fmtExpiry(e), `${fmtExpiry(e)} positioning only`))}
+      {scoped && (
+        <span
+          className="ml-1 font-mono text-[9px] normal-case tracking-normal text-sky-300/50"
+          title="Scope narrows the profile bars and cumulative curve. Regime tiles and key levels stay all-expiry (server-authoritative)."
+        >
+          filters profile &amp; curve · tiles &amp; levels stay all-expiry
+        </span>
+      )}
     </div>
   );
 }
@@ -2274,17 +2288,21 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
   const posWall = lens === "gex" ? (data?.gex?.call_wall ?? null) : lens === "vex" ? (data?.vex?.pos_wall ?? null) : null;
   const negWall = lens === "gex" ? (data?.gex?.put_wall ?? null) : lens === "vex" ? (data?.vex?.neg_wall ?? null) : null;
   // Per-lens regime posture + read, pulled from whichever block is active.
-  const gexPosture = data?.gex?.regime.posture ?? null;
-  const vexPosture = data?.vex?.regime.posture ?? null;
-  const dexPosture = data?.dex?.regime.posture ?? null;
-  const charmPosture = data?.charm?.regime.posture ?? null;
-  const regimeRead = block?.regime.read ?? "Regime read unavailable.";
+  // Defensive `?.regime?.` — the engine always writes `regime` today, but an older CACHED payload
+  // could lack it; non-optional `.regime` access would white-screen the whole component.
+  const gexPosture = data?.gex?.regime?.posture ?? null;
+  const vexPosture = data?.vex?.regime?.posture ?? null;
+  const dexPosture = data?.dex?.regime?.posture ?? null;
+  const charmPosture = data?.charm?.regime?.posture ?? null;
+  const regimeRead = block?.regime?.read ?? "Regime read unavailable.";
 
   // ── Per-expiry / 0DTE scope (Rank 5) ─────────────────────────────────────────
   // "0dte" resolves to today's date if it's on the axis, else the earliest expiry.
   const zeroDteExpiry = useMemo<string | null>(() => {
     if (expiries.length === 0) return null;
-    const today = new Date().toISOString().slice(0, 10);
+    // ET, not UTC: `toISOString().slice(0,10)` rolls to "tomorrow" after ~20:00 ET, mislabeling
+    // the 0DTE chip. en-CA formats as YYYY-MM-DD, matching the expiry-axis date strings.
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
     return expiries.includes(today) ? today : expiries[0];
   }, [expiries]);
 
@@ -2392,12 +2410,11 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
       strike,
       value: filteredTotals[String(strike)] ?? 0,
       isSpot: strike === spotStrike,
-      isFlip: profileFlip != null && strike === profileFlip,
       isPosWall: profilePosWall != null && strike === profilePosWall,
       isNegWall: profileNegWall != null && strike === profileNegWall,
       flow: flowByStrike?.[String(strike)] ?? null,
     }));
-  }, [strikes, filteredTotals, spotStrike, profileFlip, profilePosWall, profileNegWall, flowByStrike]);
+  }, [strikes, filteredTotals, spotStrike, profilePosWall, profileNegWall, flowByStrike]);
 
   const changePct = data?.change_pct ?? 0;
   const changeBull = changePct >= 0;
