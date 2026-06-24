@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { clsx } from "clsx";
 import type { ApiDashboardPayload } from "@/lib/admin-api-dashboard";
 import type { RegistryEndpointRow } from "@/lib/admin-endpoint-registry";
@@ -201,9 +200,6 @@ export function AdminApiDashboard() {
             <ActionButton onClick={rescan} disabled={rescanning}>
               {rescanning ? "Scanning…" : "Rescan codebase"}
             </ActionButton>
-            <Link href="/docs/cursor-api-analysis/live-probe" className="admin-ep-docs-link">
-              Probe report ↗
-            </Link>
           </>
         }
         rings={
