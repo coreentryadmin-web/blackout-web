@@ -72,12 +72,21 @@ const VERDICT_LABEL: Record<VerdictAction, string> = {
   watch: "WATCH",
 };
 
-// Card accent that echoes the verdict, so a strong SELL reads at a glance.
-const VERDICT_CARD_ACCENT: Record<VerdictAction, "bull" | "bear" | "sky" | "none"> = {
-  hold: "bull",
-  trim: "none",
-  sell: "bear",
-  watch: "sky",
+// Card accent class that echoes the verdict (drives the left stripe + hover glow
+// via CSS custom props in globals.css). A strong SELL reads at a glance.
+const VERDICT_CARD_CLASS: Record<VerdictAction, string> = {
+  hold: "nighthawk-position-card-hold",
+  trim: "nighthawk-position-card-trim",
+  sell: "nighthawk-position-card-sell",
+  watch: "nighthawk-position-card-watch",
+};
+
+// Verdict text tone for the inline "what to do" line.
+const VERDICT_TEXT: Record<VerdictAction, string> = {
+  hold: "text-bull",
+  trim: "text-gold",
+  sell: "text-bear",
+  watch: "text-sky-300",
 };
 
 function VerdictChip({ verdict }: { verdict: Verdict }) {
@@ -489,14 +498,17 @@ function PositionCard({
     onOpenDetail(position.id);
   }
 
+  const reason = position.verdict.reasons[0];
+
   return (
-    <Card
-      accent={VERDICT_CARD_ACCENT[position.verdict.action]}
-      padding="sm"
-      hover
+    <article
+      className={clsx(
+        "nighthawk-position-card",
+        VERDICT_CARD_CLASS[position.verdict.action]
+      )}
       role="button"
       tabIndex={0}
-      aria-label={`View detail for ${position.ticker} ${position.strike}${position.option_type === "call" ? "C" : "P"}`}
+      aria-label={`View full intel for ${position.ticker} ${position.strike}${position.option_type === "call" ? "C" : "P"}`}
       onClick={openDetail}
       onKeyDown={(e: React.KeyboardEvent) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -504,18 +516,17 @@ function PositionCard({
           openDetail();
         }
       }}
-      className="flex cursor-pointer flex-col gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
     >
-      {/* Header: ticker + type + strike + expiry + side */}
-      <div className="flex items-start justify-between gap-2">
+      {/* Top row: ticker (large) + contract spec | verdict pill */}
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-syne text-[16px] font-bold tracking-tight text-white">
+          <div className="flex items-baseline gap-2">
+            <span className="font-anton text-[24px] leading-none tracking-tight text-white">
               {position.ticker}
             </span>
             <span
               className={clsx(
-                "font-mono text-[12px] font-semibold tabular-nums",
+                "font-mono text-[14px] font-semibold tabular-nums",
                 position.option_type === "call" ? "text-bull" : "text-bear"
               )}
             >
@@ -523,72 +534,65 @@ function PositionCard({
               {position.option_type === "call" ? "C" : "P"}
             </span>
           </div>
-          <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-mute">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-mute">
             <span>{position.expiry}</span>
             <span aria-hidden>·</span>
             <span className={position.side === "long" ? "text-sky-300" : "text-bear"}>
               {position.side}
             </span>
             <span aria-hidden>·</span>
-            <span>
-              {position.contracts}× @ {position.entry_premium}
+            <span className="text-white/80">
+              ×{position.contracts} @ {position.entry_premium}
             </span>
           </div>
         </div>
         <VerdictChip verdict={position.verdict} />
       </div>
 
-      {/* P&L row — honest: "—" + tag when not live */}
-      <div className="flex items-end justify-between gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2">
-        <div className="flex flex-col gap-0.5">
+      {/* P&L block — big colored number + % + LIVE/freshness tag. Honest "—" off-live. */}
+      <div className="flex items-end justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3.5 py-3">
+        <div className="flex flex-col gap-1">
           <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-mute">
             Unrealized P&amp;L
           </span>
           {live ? (
-            <span className={clsx("font-mono text-[18px] font-bold tabular-nums", pnlTone)}>
-              {money(pnl)}
-            </span>
+            <div className="flex items-baseline gap-2">
+              <span className={clsx("font-mono text-[26px] font-bold leading-none tabular-nums", pnlTone)}>
+                {money(pnl)}
+              </span>
+              <span className={clsx("font-mono text-[14px] font-semibold tabular-nums", pnlTone)}>
+                {pct(position.pnl_pct)}
+              </span>
+            </div>
           ) : (
-            <span className="font-mono text-[18px] font-bold tabular-nums text-mute">{EM_DASH}</span>
-          )}
-        </div>
-        <div className="flex flex-col items-end gap-1">
-          <StatusTag status={position.valuation_status} />
-          {live && (
-            <span className={clsx("font-mono text-[13px] font-semibold tabular-nums", pnlTone)}>
-              {pct(position.pnl_pct)}
+            <span className="font-mono text-[26px] font-bold leading-none tabular-nums text-mute">
+              {EM_DASH}
             </span>
           )}
         </div>
+        <StatusTag status={position.valuation_status} />
       </div>
 
-      {/* Greeks / risk row */}
-      <div className="grid grid-cols-4 gap-x-2 gap-y-2">
+      {/* Greeks / risk micro-grid — labeled, mono, tidy. */}
+      <div className="grid grid-cols-4 gap-x-2.5 gap-y-2.5">
         <Metric label="Mark" value={live ? num(position.valuation?.mark) : EM_DASH} />
         <Metric label="Δ" value={live ? num(position.valuation?.delta) : EM_DASH} />
         <Metric label="Θ/day" value={live ? num(position.valuation?.theta) : EM_DASH} />
         <Metric label="IV" value={live ? ivPct(position.valuation?.iv) : EM_DASH} />
         <Metric label="DTE" value={num(position.dte, 0)} />
         <Metric label="B/E" value={num(position.breakeven)} />
-        <Metric
-          label="Dist→K"
-          value={live ? pct(position.distance_to_strike_pct) : EM_DASH}
-        />
+        <Metric label="Dist→K" value={live ? pct(position.distance_to_strike_pct) : EM_DASH} />
         <Metric label="OI" value={live ? num(position.valuation?.openInterest, 0) : EM_DASH} />
       </div>
 
-      {/* Verdict reasons */}
-      {position.verdict.reasons.length > 0 && (
-        <ul className="flex flex-col gap-1">
-          {position.verdict.reasons.slice(0, 2).map((reason, i) => (
-            <li key={i} className="flex gap-1.5 font-mono text-[11px] leading-snug text-sky-300/85">
-              <span aria-hidden className="text-mute">
-                ◆
-              </span>
-              <span>{reason}</span>
-            </li>
-          ))}
-        </ul>
+      {/* One-line "what to do" — first verdict reason, clamped. */}
+      {reason && (
+        <p className="flex items-start gap-1.5 font-mono text-[11px] leading-snug">
+          <span aria-hidden className={clsx("shrink-0", VERDICT_TEXT[position.verdict.action])}>
+            ◆
+          </span>
+          <span className="line-clamp-2 text-sky-300/90">{reason}</span>
+        </p>
       )}
 
       {actionError && (
@@ -597,11 +601,12 @@ function PositionCard({
         </p>
       )}
 
-      {/* Actions — stopPropagation so the card's open-detail click never fires for these. */}
-      <div className="flex gap-2">
+      {/* Footer actions — all stopPropagation so they never trigger the card's
+          open-detail click. "Full intel" is the primary; Close + Delete ghost/danger. */}
+      <div className="mt-auto flex items-center gap-2 pt-1">
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="sm"
           block
           onClick={(e) => {
@@ -609,13 +614,12 @@ function PositionCard({
             openDetail();
           }}
         >
-          Details
+          Full intel →
         </Button>
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
-          block
           onClick={(e) => {
             e.stopPropagation();
             void handleClose();
@@ -629,7 +633,6 @@ function PositionCard({
           type="button"
           variant="danger"
           size="sm"
-          block
           onClick={(e) => {
             e.stopPropagation();
             void handleDelete();
@@ -640,7 +643,119 @@ function PositionCard({
           Delete
         </Button>
       </div>
-    </Card>
+    </article>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio summary strip (Tier 2).
+//
+// Honest aggregation: P&L sums ONLY positions whose valuation is live and whose
+// unrealized_pnl is a finite number — never fabricate a 0 for a pending/unavailable
+// leg. If no leg is live, the money + return tiles read "—". The return % is a
+// cost-weighted blend (Σpnl / Σbasis) so it stays meaningful across mixed sizes.
+// ---------------------------------------------------------------------------
+type Summary = {
+  count: number;
+  pnlSum: number | null; // null = no live leg to sum
+  returnPct: number | null;
+  verdicts: Record<VerdictAction, number>;
+};
+
+function summarize(positions: ApiPosition[]): Summary {
+  const verdicts: Record<VerdictAction, number> = { hold: 0, trim: 0, sell: 0, watch: 0 };
+  let pnlSum = 0;
+  let basisSum = 0;
+  let livePnlLegs = 0;
+
+  for (const p of positions) {
+    verdicts[p.verdict.action] += 1;
+    const live = p.valuation_status === "live";
+    if (live && p.unrealized_pnl != null && Number.isFinite(p.unrealized_pnl)) {
+      pnlSum += p.unrealized_pnl;
+      livePnlLegs += 1;
+      // Cost basis for this leg = entry premium × contracts × 100 (option multiplier).
+      const basis = p.entry_premium * p.contracts * 100;
+      if (Number.isFinite(basis) && basis > 0) basisSum += basis;
+    }
+  }
+
+  return {
+    count: positions.length,
+    pnlSum: livePnlLegs > 0 ? pnlSum : null,
+    returnPct: livePnlLegs > 0 && basisSum > 0 ? (pnlSum / basisSum) * 100 : null,
+    verdicts,
+  };
+}
+
+function StatTile({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="nighthawk-watch-stat">
+      <span className="nighthawk-watch-stat-label">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+function PortfolioSummary({ summary }: { summary: Summary }) {
+  const pnlClass =
+    summary.pnlSum == null
+      ? "nighthawk-watch-stat-value-mute"
+      : summary.pnlSum >= 0
+        ? "nighthawk-watch-stat-value-bull"
+        : "nighthawk-watch-stat-value-bear";
+  const retClass =
+    summary.returnPct == null
+      ? "nighthawk-watch-stat-value-mute"
+      : summary.returnPct >= 0
+        ? "nighthawk-watch-stat-value-bull"
+        : "nighthawk-watch-stat-value-bear";
+
+  return (
+    <div className="nighthawk-watch-summary" aria-label="Portfolio summary">
+      <StatTile label="Open positions">
+        <span className="nighthawk-watch-stat-value">{summary.count}</span>
+      </StatTile>
+
+      <StatTile label="Unrealized P&L">
+        <span className={clsx("nighthawk-watch-stat-value", pnlClass)}>
+          {money(summary.pnlSum)}
+        </span>
+      </StatTile>
+
+      <StatTile label="Return">
+        <span className={clsx("nighthawk-watch-stat-value", retClass)}>
+          {pct(summary.returnPct)}
+        </span>
+      </StatTile>
+
+      <StatTile label="Verdicts">
+        <div className="nighthawk-watch-verdict-row">
+          <span className="nighthawk-watch-verdict-chip nighthawk-watch-vd-hold">
+            {summary.verdicts.hold}
+            <span>hold</span>
+          </span>
+          <span className="nighthawk-watch-verdict-chip nighthawk-watch-vd-trim">
+            {summary.verdicts.trim}
+            <span>trim</span>
+          </span>
+          <span className="nighthawk-watch-verdict-chip nighthawk-watch-vd-sell">
+            {summary.verdicts.sell}
+            <span>sell</span>
+          </span>
+          <span className="nighthawk-watch-verdict-chip nighthawk-watch-vd-watch">
+            {summary.verdicts.watch}
+            <span>watch</span>
+          </span>
+        </div>
+      </StatTile>
+    </div>
   );
 }
 
@@ -657,6 +772,9 @@ export function NightsWatchPanel() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   // Which position's detail modal is open (null = closed). One fetch per open.
   const [detailId, setDetailId] = useState<number | null>(null);
+  // Collapsible add-position form. null = follow default (collapsed when positions
+  // exist, expanded when empty); a boolean = the user's explicit choice.
+  const [formOpen, setFormOpen] = useState<boolean | null>(null);
   // Keep a ref so the poll loop never shows a flash of skeleton on refetch.
   const loadedOnce = useRef(false);
 
@@ -701,35 +819,81 @@ export function NightsWatchPanel() {
     };
   }, [load]);
 
+  const ready = state.kind === "ready" ? state : null;
+  const positions = ready?.positions ?? [];
+  const hasPositions = positions.length > 0;
+  const summary = ready ? summarize(positions) : null;
+  // Resolve the collapsible default: collapsed when positions already exist.
+  const isFormOpen = formOpen ?? !hasPositions;
+  const showLive = state.kind === "ready";
+
   return (
-    <aside className="nighthawk-agent-sidebar" aria-label="Night's Watch positions">
-      <header className="nighthawk-agent-sidebar-header">
-        <p className="nighthawk-agent-kicker">◆ NIGHT&apos;S WATCH</p>
-        <h2 className="nighthawk-agent-title">Your positions</h2>
-        <p className="nighthawk-agent-sub">
-          Live P&amp;L and a hold / trim / sell read on every contract you hold.
-        </p>
+    <section className="nighthawk-watch" aria-label="Night's Watch positions">
+      {/* ---- Tier 1: header ---- */}
+      <header className="nighthawk-watch-header">
+        <div className="min-w-0">
+          <p className="nighthawk-watch-kicker">◆ NIGHT&apos;S WATCH</p>
+          <h2 className="nighthawk-watch-title">Your Positions</h2>
+          <p className="nighthawk-watch-sub">
+            Live P&amp;L + a hold / trim / sell read on every contract — grounded in
+            BlackOut&apos;s tools.
+          </p>
+        </div>
+        <span
+          className={clsx(
+            "nighthawk-watch-live",
+            !showLive && "nighthawk-watch-live-idle"
+          )}
+        >
+          <span className="nighthawk-watch-live-dot" aria-hidden />
+          {showLive ? "Live · updating" : "Connecting"}
+        </span>
       </header>
 
-      {/* Scrollable body */}
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-0.5">
-        {/* Add-position form */}
-        <Card padding="sm">
-          <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-sky-300">
-            ◆ Add a position
-          </p>
-          <AddPositionForm onCreated={load} />
-        </Card>
+      {/* ---- Scrollable body: summary · add-form · grid ---- */}
+      <div className="nighthawk-watch-body">
+        {/* Tier 2: portfolio summary strip (only when we have a loaded set) */}
+        {summary && hasPositions && <PortfolioSummary summary={summary} />}
 
-        {/* List / states */}
+        {/* Tier 3a: collapsible add-position form */}
+        {(state.kind === "ready" || state.kind === "loading") && (
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              className="nighthawk-watch-addtoggle"
+              aria-expanded={isFormOpen}
+              aria-controls="nw-add-form"
+              onClick={() => setFormOpen(!isFormOpen)}
+            >
+              <span>{isFormOpen ? "Add a position — hide form" : "Add a position"}</span>
+              <span className="nighthawk-watch-addtoggle-icon" aria-hidden>
+                ＋
+              </span>
+            </button>
+            {isFormOpen && (
+              <div id="nw-add-form">
+                <Card padding="sm">
+                  <AddPositionForm
+                    onCreated={() => {
+                      void load();
+                      setFormOpen(false);
+                    }}
+                  />
+                </Card>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tier 3b: positions grid / states */}
         {state.kind === "loading" && !loadedOnce.current ? (
-          <div className="flex flex-col gap-3" aria-busy>
-            {[0, 1].map((i) => (
+          <div className="nighthawk-watch-grid" aria-busy>
+            {[0, 1, 2, 3].map((i) => (
               <Card key={i} padding="sm" className="flex flex-col gap-3">
-                <Skeleton height={20} width="55%" />
-                <Skeleton height={48} />
-                <Skeleton height={40} />
-                <Skeleton height={28} />
+                <Skeleton height={24} width="55%" />
+                <Skeleton height={56} />
+                <Skeleton height={44} />
+                <Skeleton height={32} />
               </Card>
             ))}
           </div>
@@ -755,15 +919,15 @@ export function NightsWatchPanel() {
               </Button>
             }
           />
-        ) : state.kind === "ready" && state.positions.length === 0 ? (
+        ) : state.kind === "ready" && positions.length === 0 ? (
           <EmptyState
             icon="◆"
             title="No open positions"
             description="No open positions — add your first above."
           />
         ) : state.kind === "ready" ? (
-          <div className="flex flex-col gap-3">
-            {state.positions.map((p) => (
+          <div className="nighthawk-watch-grid">
+            {positions.map((p) => (
               <PositionCard
                 key={p.id}
                 position={p}
@@ -776,7 +940,7 @@ export function NightsWatchPanel() {
       </div>
 
       {/* Persistent disclaimer */}
-      <p className="shrink-0 pt-2 font-mono text-[9px] leading-relaxed text-mute">
+      <p className="nighthawk-watch-footer">
         Analysis from BlackOut signals — not financial advice. You decide.
       </p>
 
@@ -788,6 +952,6 @@ export function NightsWatchPanel() {
           onClose={() => setDetailId(null)}
         />
       )}
-    </aside>
+    </section>
   );
 }

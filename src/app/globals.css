@@ -2268,7 +2268,11 @@ body {
 
   @media (min-width: 1024px) {
     .nighthawk-layout {
-      grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
+      /* Phase 4 redesign: Tomorrow's Playbook ~40% · Night's Watch ~60%.
+         Night's Watch is now the primary surface (live P&L + verdicts), so it
+         takes the larger column; the playbook (a vertical list of 5 slots)
+         reads cleanly at 40%. */
+      grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
       gap: 0.625rem;
       align-items: stretch;
     }
@@ -2739,8 +2743,266 @@ body {
     margin-top: 0.35rem;
   }
 
-  /* Agent sidebar — 25% width, full height, 3 equal hunt cards */
+  /* =====================================================================
+     NIGHT'S WATCH — Phase 4 redesigned positions panel (the 60% column).
+     Three tiers: header · portfolio summary strip · positions grid.
+     NO grey — bull #00e676 / bear #ff2d55 / gold #ffd23f / sky #38bdf8 /
+     mute #9fb4d4 / white. Surfaces are subtle white-alpha on a dark void.
+     Reduced-motion safe (see the prefers-reduced-motion block at the end).
+     ===================================================================== */
+
+  /* Panel shell — fills the column, scrolls its body, keeps header pinned. */
+  .nighthawk-watch {
+    @apply relative flex flex-col min-h-0 h-full overflow-hidden;
+    border: 1px solid rgba(56, 189, 248, 0.18);
+    background:
+      radial-gradient(120% 80% at 100% 0%, rgba(56, 189, 248, 0.06), transparent 55%),
+      linear-gradient(195deg, rgba(8, 9, 14, 0.55), rgba(4, 4, 7, 0.35));
+    backdrop-filter: blur(4px);
+    box-shadow: inset 0 0 90px rgba(56, 189, 248, 0.04), 0 0 40px rgba(0, 0, 0, 0.35);
+  }
+
+  /* --- Tier 1: header ------------------------------------------------- */
+  .nighthawk-watch-header {
+    @apply shrink-0 flex flex-wrap items-end justify-between gap-3;
+    padding: clamp(0.7rem, 1.4vh, 1.05rem) clamp(0.85rem, 1.5vw, 1.35rem);
+    border-bottom: 1px solid rgba(56, 189, 248, 0.14);
+    background: linear-gradient(90deg, rgba(56, 189, 248, 0.06), transparent 60%);
+  }
+
+  .nighthawk-watch-kicker {
+    @apply font-mono uppercase mb-0.5;
+    font-size: clamp(0.625rem, 0.72vh, 0.625rem);
+    letter-spacing: 0.4em;
+    color: rgba(56, 189, 248, 0.85);
+  }
+
+  .nighthawk-watch-title {
+    @apply font-anton uppercase tracking-wide;
+    font-size: clamp(1.6rem, 2.6vh, 1.9rem);
+    color: #fff8e8;
+    text-shadow: 0 0 20px rgba(56, 189, 248, 0.22);
+  }
+
+  .nighthawk-watch-sub {
+    @apply font-mono leading-snug mt-1;
+    font-size: clamp(0.625rem, 0.95vh, 0.72rem);
+    color: #9fb4d4;
+    max-width: 34rem;
+  }
+
+  .nighthawk-watch-live {
+    @apply inline-flex items-center gap-2 font-mono uppercase border shrink-0;
+    font-size: clamp(0.625rem, 0.72vh, 0.625rem);
+    letter-spacing: 0.22em;
+    padding: 0.35rem 0.7rem;
+    border-radius: 9999px;
+    border-color: rgba(0, 230, 118, 0.4);
+    color: #00e676;
+    background: rgba(0, 230, 118, 0.06);
+  }
+
+  .nighthawk-watch-live-dot {
+    @apply w-1.5 h-1.5 rounded-full animate-pulse;
+    background: #00e676;
+    box-shadow: 0 0 8px rgba(0, 230, 118, 0.85);
+  }
+
+  .nighthawk-watch-live-idle {
+    border-color: rgba(56, 189, 248, 0.35);
+    color: #7dd3fc;
+    background: rgba(56, 189, 248, 0.06);
+  }
+
+  .nighthawk-watch-live-idle .nighthawk-watch-live-dot {
+    background: #38bdf8;
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.85);
+    animation: none;
+  }
+
+  /* --- Scrollable body ------------------------------------------------ */
+  .nighthawk-watch-body {
+    @apply flex-1 min-h-0 overflow-y-auto flex flex-col;
+    gap: clamp(0.75rem, 1.4vh, 1.1rem);
+    padding: clamp(0.75rem, 1.4vh, 1.1rem) clamp(0.85rem, 1.5vw, 1.35rem);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(56, 189, 248, 0.25) transparent;
+  }
+
+  /* --- Tier 2: portfolio summary strip -------------------------------- */
+  .nighthawk-watch-summary {
+    @apply grid shrink-0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  @media (min-width: 768px) {
+    .nighthawk-watch-summary {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .nighthawk-watch-stat {
+    @apply flex flex-col gap-1 rounded-xl border px-3.5 py-3;
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.025);
+  }
+
+  .nighthawk-watch-stat-label {
+    @apply font-mono uppercase;
+    font-size: 0.5625rem;
+    letter-spacing: 0.18em;
+    color: #9fb4d4;
+  }
+
+  .nighthawk-watch-stat-value {
+    @apply font-mono font-bold tabular-nums leading-none;
+    font-size: clamp(1.1rem, 2vh, 1.4rem);
+    color: #fff8e8;
+  }
+
+  .nighthawk-watch-stat-value-bull { color: #00e676; }
+  .nighthawk-watch-stat-value-bear { color: #ff2d55; }
+  .nighthawk-watch-stat-value-mute { color: #9fb4d4; }
+
+  /* Verdict-breakdown chips inside the 4th stat tile. */
+  .nighthawk-watch-verdict-row {
+    @apply flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono tabular-nums;
+    font-size: 0.8125rem;
+    font-weight: 700;
+  }
+
+  .nighthawk-watch-verdict-chip {
+    @apply inline-flex items-baseline gap-1;
+  }
+
+  .nighthawk-watch-verdict-chip span {
+    @apply font-mono uppercase;
+    font-size: 0.5rem;
+    letter-spacing: 0.14em;
+    font-weight: 600;
+  }
+
+  .nighthawk-watch-vd-hold { color: #00e676; }
+  .nighthawk-watch-vd-trim { color: #ffd23f; }
+  .nighthawk-watch-vd-sell { color: #ff2d55; }
+  .nighthawk-watch-vd-watch { color: #7dd3fc; }
+
+  /* --- Tier 3: add-position toggle + collapsible region --------------- */
+  .nighthawk-watch-addtoggle {
+    @apply w-full flex items-center justify-between gap-2 rounded-xl border px-4 py-3 font-mono uppercase tracking-[0.16em] transition-colors duration-150;
+    font-size: 0.6875rem;
+    border-color: rgba(0, 230, 118, 0.3);
+    color: #00e676;
+    background: rgba(0, 230, 118, 0.05);
+  }
+
+  .nighthawk-watch-addtoggle:hover {
+    border-color: rgba(0, 230, 118, 0.55);
+    background: rgba(0, 230, 118, 0.09);
+  }
+
+  .nighthawk-watch-addtoggle-icon {
+    @apply text-base leading-none transition-transform duration-200;
+  }
+
+  .nighthawk-watch-addtoggle[aria-expanded="true"] .nighthawk-watch-addtoggle-icon {
+    transform: rotate(45deg);
+  }
+
+  /* --- Positions grid: 2 columns inside the 60% panel ≥768px ---------- */
+  .nighthawk-watch-grid {
+    @apply grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: clamp(0.65rem, 1.2vh, 0.9rem);
+  }
+
+  @media (min-width: 768px) {
+    .nighthawk-watch-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .nighthawk-watch-footer {
+    @apply shrink-0 font-mono leading-relaxed;
+    font-size: 0.5625rem;
+    color: #9fb4d4;
+    padding: 0.5rem clamp(0.85rem, 1.5vw, 1.35rem) clamp(0.6rem, 1.1vh, 0.85rem);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  /* --- Position card: verdict-colored accent stripe + hover lift ------ */
+  .nighthawk-position-card {
+    @apply relative flex flex-col gap-3 cursor-pointer rounded-2xl border text-left overflow-hidden;
+    padding: clamp(0.85rem, 1.4vh, 1.1rem);
+    padding-left: calc(clamp(0.85rem, 1.4vh, 1.1rem) + 4px);
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(8, 9, 14, 0.6);
+    backdrop-filter: blur(4px);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+
+  /* Left accent stripe — verdict color. */
+  .nighthawk-position-card::before {
+    content: "";
+    @apply absolute left-0 top-0 bottom-0;
+    width: 4px;
+    background: var(--nw-accent, rgba(56, 189, 248, 0.5));
+    box-shadow: 0 0 18px -2px var(--nw-accent, rgba(56, 189, 248, 0.5));
+  }
+
+  .nighthawk-position-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--nw-accent, rgba(56, 189, 248, 0.45));
+    box-shadow: 0 0 0 1px var(--nw-accent-faint, rgba(56, 189, 248, 0.18)),
+      0 18px 50px -24px rgba(0, 0, 0, 0.85);
+  }
+
+  .nighthawk-position-card:focus-visible {
+    @apply outline-none;
+    box-shadow: 0 0 0 2px #38bdf8;
+  }
+
+  .nighthawk-position-card-hold {
+    --nw-accent: #00e676;
+    --nw-accent-faint: rgba(0, 230, 118, 0.18);
+  }
+  .nighthawk-position-card-trim {
+    --nw-accent: #ffd23f;
+    --nw-accent-faint: rgba(255, 210, 63, 0.18);
+  }
+  .nighthawk-position-card-sell {
+    --nw-accent: #ff2d55;
+    --nw-accent-faint: rgba(255, 45, 85, 0.18);
+  }
+  .nighthawk-position-card-watch {
+    --nw-accent: #38bdf8;
+    --nw-accent-faint: rgba(56, 189, 248, 0.18);
+  }
+
+  /* Reduced-motion: kill all transforms/animations on the new surfaces. */
+  @media (prefers-reduced-motion: reduce) {
+    .nighthawk-position-card,
+    .nighthawk-watch-addtoggle,
+    .nighthawk-watch-addtoggle-icon {
+      transition: none;
+    }
+    .nighthawk-position-card:hover {
+      transform: none;
+    }
+    .nighthawk-watch-live-dot {
+      animation: none;
+    }
+  }
+
+  /* Agent sidebar — DEPRECATED (Phase 4). The Hunt-Modes sidebar is no longer
+     rendered; Night's Watch replaced it. Kept hidden so any stray reference
+     can't reintroduce the old cramped column. */
   .nighthawk-agent-sidebar {
+    display: none !important;
+  }
+
+  .nighthawk-agent-sidebar-legacy {
     @apply flex flex-col min-h-0 h-full;
     border: 1px solid rgba(255, 45, 85, 0.22);
     background: linear-gradient(200deg, rgba(8, 4, 6, 0.22), rgba(0, 0, 0, 0.12));
