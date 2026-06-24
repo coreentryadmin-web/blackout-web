@@ -22,7 +22,7 @@ export function WatchlistBar({
   if (watchlist.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="font-mono text-[9px] tracking-[0.3em] uppercase font-bold text-gold hidden sm:block">
+      <span className="font-mono text-[10px] tracking-[0.3em] uppercase font-bold text-gold hidden sm:block">
         ★ Watchlist
       </span>
       <AnimatePresence initial={false}>
@@ -60,7 +60,7 @@ export function WatchlistBar({
       <button
         type="button"
         onClick={onClear}
-        className="font-mono text-[9px] text-cyan-400 hover:text-white underline-offset-2 hover:underline ml-1"
+        className="font-mono text-[10px] text-cyan-400 hover:text-white underline-offset-2 hover:underline ml-1"
       >
         clear
       </button>

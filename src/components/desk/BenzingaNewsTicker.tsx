@@ -88,7 +88,7 @@ export function BenzingaNewsTicker() {
     <div className="news-ticker-wrap">
       <div className="news-ticker-label">
         <span className={clsx("badge-live-dot", live && "animate-pulse")} />
-        <span className="font-mono text-[9px] tracking-[0.35em] uppercase text-bull">
+        <span className="font-mono text-[10px] tracking-[0.35em] uppercase text-bull">
           Benzinga Live
         </span>
       </div>

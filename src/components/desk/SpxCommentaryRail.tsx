@@ -257,7 +257,7 @@ export function SpxCommentaryRail({
           </span>
         </div>
         {loading && (
-          <span className="ml-auto font-mono text-[8px] text-cyan-400 animate-pulse">
+          <span className="ml-auto font-mono text-[10px] text-cyan-400 animate-pulse">
             Reading…
           </span>
         )}
@@ -305,7 +305,7 @@ export function SpxCommentaryRail({
                     >
                       {entry.bias}
                     </span>
-                    <time className="font-mono text-[8px] text-cyan-400 shrink-0">
+                    <time className="font-mono text-[10px] text-cyan-400 shrink-0">
                       {new Date(entry.as_of).toLocaleTimeString("en-US", {
                         hour: "numeric",
                         minute: "2-digit",

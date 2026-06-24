@@ -60,7 +60,7 @@ export function DeskHeroTicker({ data, live }: { data?: SpxState; live?: boolean
 function TickerChip({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
     <div className="desk-ticker-chip">
-      <p className="text-[9px] tracking-widest uppercase text-cyan-400 mb-1">{label}</p>
+      <p className="text-[10px] tracking-widest uppercase text-cyan-400 mb-1">{label}</p>
       <p className={clsx("font-mono text-sm font-semibold capitalize truncate", accent ? "text-bull" : "text-white")}>
         {value}
       </p>

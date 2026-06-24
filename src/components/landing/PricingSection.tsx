@@ -230,7 +230,7 @@ export function PricingSection() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 6 }}
                 transition={{ duration: 0.2 }}
-                className="absolute -top-3 left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.3em] uppercase px-4 py-1.5 rounded-full font-bold"
+                className="absolute -top-3 left-1/2 -translate-x-1/2 font-mono text-[10px] tracking-[0.3em] uppercase px-4 py-1.5 rounded-full font-bold"
                 style={{ background: "linear-gradient(180deg,#00e676,#0f9d58)", color: "#021c14", boxShadow: "0 0 24px -6px rgba(0,230,118,0.7)" }}
               >
                 {plan.badge}

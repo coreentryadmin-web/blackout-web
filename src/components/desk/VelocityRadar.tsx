@@ -37,7 +37,7 @@ export function VelocityRadar({
           </motion.span>
           <span className="flow-panel-title">Velocity Radar</span>
         </div>
-        <span className="font-mono text-[9px] text-orange-600/60 tabular-nums">
+        <span className="font-mono text-[10px] text-orange-600/60 tabular-nums">
           {entries.length} spike{entries.length !== 1 ? "s" : ""} · 15min
         </span>
       </div>
@@ -61,7 +61,7 @@ export function VelocityRadar({
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <span
-                      className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border animate-pulse"
+                      className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border animate-pulse"
                       style={{
                         color: "#fb923c",
                         borderColor: "rgba(251,146,60,0.4)",
@@ -120,7 +120,7 @@ export function VelocityRadar({
           })}
         </AnimatePresence>
 
-        <p className="font-mono text-[8px] text-sky-500 text-center pt-1">
+        <p className="font-mono text-[10px] text-sky-500 text-center pt-1">
           ≥3× acceleration vs prior 15 min window · min 2 prints
         </p>
       </div>

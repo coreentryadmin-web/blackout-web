@@ -103,7 +103,7 @@ export function PlayDetailModal({ play, editionFor, onClose }: PlayDetailModalPr
               </span>
             </div>
 
-            <p className="font-mono text-[9px] text-sky-300/60 mt-2">
+            <p className="font-mono text-[10px] text-sky-300/60 mt-2">
               Educational. Not advice. Every trade is your own decision.
             </p>
 

@@ -124,7 +124,7 @@ export function FlowBrief() {
                   <span className="w-2 h-2 rounded-full block relative z-10" style={{ background: "#bf5fff", boxShadow: "0 0 8px #bf5fff" }} />
                   <span className="absolute inset-0 rounded-full animate-ping opacity-30 motion-reduce:animate-none" style={{ background: "#bf5fff" }} />
                 </div>
-                <span className="font-mono text-[9px] tracking-[0.35em] uppercase font-bold" style={{ color: "#d580ff", textShadow: "0 0 10px rgba(191,95,255,0.8)" }}>
+                <span className="font-mono text-[10px] tracking-[0.35em] uppercase font-bold" style={{ color: "#d580ff", textShadow: "0 0 10px rgba(191,95,255,0.8)" }}>
                   AFTER-HOURS
                 </span>
               </>
@@ -134,10 +134,10 @@ export function FlowBrief() {
                   <span className="w-2 h-2 rounded-full block relative z-10" style={{ background: "#bf5fff", boxShadow: "0 0 8px #bf5fff" }} />
                   <span className="absolute inset-0 rounded-full animate-ping opacity-50 motion-reduce:animate-none" style={{ background: "#bf5fff" }} />
                 </div>
-                <span className="font-mono text-[9px] tracking-[0.35em] uppercase font-bold" style={{ color: "#d580ff", textShadow: "0 0 8px rgba(191,95,255,0.7)" }}>
+                <span className="font-mono text-[10px] tracking-[0.35em] uppercase font-bold" style={{ color: "#d580ff", textShadow: "0 0 8px rgba(191,95,255,0.7)" }}>
                   AI BRIEF
                 </span>
-                <span className="font-mono text-[8px] tracking-[0.2em] uppercase" style={{ color: "#00e676", textShadow: "0 0 6px rgba(0,230,118,0.6)" }}>
+                <span className="font-mono text-[10px] tracking-[0.2em] uppercase" style={{ color: "#00e676", textShadow: "0 0 6px rgba(0,230,118,0.6)" }}>
                   · LIVE
                 </span>
               </>
@@ -176,7 +176,7 @@ export function FlowBrief() {
           </AnimatePresence>
 
           {loading && brief && (
-            <span className="flex-shrink-0 font-mono text-[9px] animate-pulse pt-0.5" style={{ color: "#00e676" }}>
+            <span className="flex-shrink-0 font-mono text-[10px] animate-pulse pt-0.5" style={{ color: "#00e676" }}>
               UPDATING
             </span>
           )}

@@ -43,19 +43,19 @@ export function DeskPanel({
             {subtitle && <p className="desk-panel-subtitle">{subtitle}</p>}
           </div>
           {feedStatus === "live" && (
-            <span className="badge-live text-[9px]">
+            <span className="badge-live text-[10px]">
               <span className="badge-live-dot" />
               LIVE
             </span>
           )}
           {feedStatus === "reconnecting" && (
-            <span className="badge-reconnecting text-[9px]">
+            <span className="badge-reconnecting text-[10px]">
               <span className="badge-offline-dot" />
               RECONNECTING
             </span>
           )}
           {feedStatus === undefined && live && (
-            <span className="badge-live text-[9px]">
+            <span className="badge-live text-[10px]">
               <span className="badge-live-dot" />
               Live
             </span>

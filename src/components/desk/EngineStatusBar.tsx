@@ -30,12 +30,12 @@ export function EngineStatusBar() {
             : "Market feed offline — reconnecting"}
         </span>
         {intelOn && (
-          <span className="font-mono text-[9px] tracking-widest uppercase text-bull/80 border border-bull/30 px-2 py-0.5">
+          <span className="font-mono text-[10px] tracking-widest uppercase text-bull/80 border border-bull/30 px-2 py-0.5">
             + Intel layer
           </span>
         )}
       </div>
-      <div className="flex items-center gap-4 font-mono text-[9px] tracking-widest uppercase text-cyan-400">
+      <div className="flex items-center gap-4 font-mono text-[10px] tracking-widest uppercase text-cyan-400">
         <span className={marketOn ? "text-bull/80" : ""}>Market APIs</span>
         <span className={intelOn ? "text-purple-light/80" : ""}>BlackOut Engine</span>
       </div>

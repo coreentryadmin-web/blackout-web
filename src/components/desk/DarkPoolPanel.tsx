@@ -102,7 +102,7 @@ function PrintRow({ p, showDate = false }: { p: DarkPoolRow; showDate?: boolean 
 
       {/* Ticker */}
       <span
-        className="font-anton text-[14px] leading-none flex-shrink-0"
+        className="font-anton text-[24px] leading-none flex-shrink-0"
         style={{ color: isBuy ? "#6ee7b7" : isSell ? "#fda4af" : "#f4f6fb" }}
       >
         {p.ticker}
@@ -259,7 +259,7 @@ export function DarkPoolPanel() {
               <div className="mb-3 rounded-xl border border-purple/30 bg-purple/[0.08] px-3 py-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="font-anton text-[18px] text-purple-light leading-none">
+                    <span className="font-anton text-[24px] text-purple-light leading-none">
                       {activeTicker}
                     </span>
                     {visible.length > 0 && (

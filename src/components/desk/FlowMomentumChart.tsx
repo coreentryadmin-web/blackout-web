@@ -18,7 +18,7 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: { valu
       <p className={clsx("font-mono text-[10px] font-semibold", net >= 0 ? "text-bull" : "text-bear")}>
         {net >= 0 ? "+" : ""}{fmtPremium(net)}
       </p>
-      <p className="font-mono text-[9px] text-cyan-400">net flow</p>
+      <p className="font-mono text-[10px] text-cyan-400">net flow</p>
     </div>
   );
 }
@@ -57,7 +57,7 @@ export function FlowMomentumChart({ alerts }: { alerts: FlowAlert[] }) {
               {isBull ? "+" : ""}{fmtPremium(latestNet)}
             </span>
             {delta !== 0 && (
-              <span className={clsx("font-mono text-[9px]", delta > 0 ? "text-bull" : "text-bear")}>
+              <span className={clsx("font-mono text-[10px]", delta > 0 ? "text-bull" : "text-bear")}>
                 {delta > 0 ? "▲" : "▼"}
               </span>
             )}
@@ -95,7 +95,7 @@ export function FlowMomentumChart({ alerts }: { alerts: FlowAlert[] }) {
             </ResponsiveContainer>
           </div>
         )}
-        <p className="font-mono text-[9px] text-cyan-500 text-center mt-1">call − put premium · {points.length} samples</p>
+        <p className="font-mono text-[10px] text-cyan-500 text-center mt-1">call − put premium · {points.length} samples</p>
       </div>
     </Panel>
   );

@@ -105,7 +105,7 @@ export function SectorFlowPanel({
           })}
       </AnimatePresence>
 
-      <p className="font-mono text-[8px] text-sky-300/70 text-center pt-1">
+      <p className="font-mono text-[10px] text-sky-300/70 text-center pt-1">
         Premium weighted · bar = relative size vs top sector
       </p>
     </Panel>

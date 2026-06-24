@@ -56,7 +56,7 @@ export function NightHawkRadar() {
             ))}
           </div>
         </div>
-        <div className="absolute bottom-3 left-3 right-3 flex justify-between font-mono text-[9px] text-bear/80 uppercase tracking-widest">
+        <div className="absolute bottom-3 left-3 right-3 flex justify-between font-mono text-[10px] text-bear/80 uppercase tracking-widest">
           <span>Scanning</span>
           <span className={clsx("animate-pulse")}>Acquiring</span>
         </div>

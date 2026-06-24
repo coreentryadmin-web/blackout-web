@@ -460,7 +460,7 @@ export function FlowFeed() {
       {/* ── Filter bar ──────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Premium presets */}
-        <span className="font-mono text-[9px] tracking-[0.3em] uppercase font-bold hidden sm:block" style={{color:"#00e676",textShadow:"0 0 8px rgba(0,230,118,0.6)"}}>MIN</span>
+        <span className="font-mono text-[10px] tracking-[0.3em] uppercase font-bold hidden sm:block" style={{color:"#00e676",textShadow:"0 0 8px rgba(0,230,118,0.6)"}}>MIN</span>
         <div className="flow-seg-group">
           {PREMIUM_PRESETS.map((v) => (
             <button
@@ -563,7 +563,7 @@ export function FlowFeed() {
                   type="button"
                   onClick={() => setReplaySpeed(s)}
                   className={clsx(
-                    "font-mono text-[9px] px-1.5 py-[3px] rounded transition-colors whitespace-nowrap",
+                    "font-mono text-[10px] px-1.5 py-[3px] rounded transition-colors whitespace-nowrap",
                     replaySpeed === s
                       ? "bg-gold/20 text-gold border border-gold/60"
                       : "text-cyan-400 hover:text-sky-300 bg-white/[0.04] border border-white/10"
@@ -582,7 +582,7 @@ export function FlowFeed() {
           onClick={() => setAudioEnabled((v) => !v)}
           title="Toggle audio alert for whale prints (>$1M)"
           className={clsx(
-            "font-mono text-[9px] font-semibold px-2 py-[5px] rounded-lg border transition-all",
+            "font-mono text-[10px] font-semibold px-2 py-[5px] rounded-lg border transition-all",
             audioEnabled
               ? "border-purple/60 text-purple-light bg-purple/15"
               : "border-white/10 text-cyan-400 hover:text-sky-300 hover:border-white/20"
@@ -598,7 +598,7 @@ export function FlowFeed() {
           disabled={watchlist.watchlist.length === 0}
           title="Show only starred (watchlist) tickers"
           className={clsx(
-            "font-mono text-[9px] font-semibold px-2 py-[5px] rounded-lg border transition-all disabled:opacity-30 disabled:cursor-not-allowed",
+            "font-mono text-[10px] font-semibold px-2 py-[5px] rounded-lg border transition-all disabled:opacity-30 disabled:cursor-not-allowed",
             watchlistOnly
               ? "border-gold/70 text-gold bg-gold/15"
               : "border-cyan-800/40 text-cyan-400 hover:text-white hover:border-cyan-600/60"
@@ -612,7 +612,7 @@ export function FlowFeed() {
           type="button"
           onClick={() => exportCSV(displayAlerts)}
           disabled={displayAlerts.length === 0}
-          className="font-mono text-[9px] font-semibold px-2 py-[5px] rounded-lg border border-white/10 text-cyan-400 hover:text-sky-300 hover:border-white/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          className="font-mono text-[10px] font-semibold px-2 py-[5px] rounded-lg border border-white/10 text-cyan-400 hover:text-sky-300 hover:border-white/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
           title="Export current tape to CSV"
         >
           CSV
@@ -644,7 +644,7 @@ export function FlowFeed() {
               )} />
             </div>
             <span className={clsx(
-              "font-mono text-[9px] tracking-widest uppercase",
+              "font-mono text-[10px] tracking-widest uppercase",
               !live ? "text-cyan-500" : dataStale ? "text-gold" : "text-bull"
             )}>
               {!live ? "Offline" : dataStale ? `Stale ${newestAgeLabel}` : "Live"}

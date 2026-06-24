@@ -38,7 +38,7 @@ export function SplitFlowRadar({
             </motion.span>
             <h3 className="t-label text-[15px] uppercase leading-tight text-white">Split Flow Radar</h3>
           </div>
-          <span className="font-mono text-[9px] text-gold/60 tabular-nums">
+          <span className="font-mono text-[10px] text-gold/60 tabular-nums">
             {entries.length} ticker{entries.length !== 1 ? "s" : ""} · 30min
           </span>
         </div>
@@ -70,7 +70,7 @@ export function SplitFlowRadar({
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <span
-                      className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border"
+                      className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border"
                       style={{
                         color: "#ffd23f",
                         borderColor: "rgba(255,210,63,0.35)",
@@ -86,7 +86,7 @@ export function SplitFlowRadar({
                   </div>
                   <span
                     className={clsx(
-                      "font-mono text-[9px] font-bold px-2 py-0.5 rounded-full border",
+                      "font-mono text-[10px] font-bold px-2 py-0.5 rounded-full border",
                       isBull
                         ? "text-bull border-bull/40 bg-bull/12"
                         : isBear
@@ -130,14 +130,14 @@ export function SplitFlowRadar({
                 {/* Row 3: premium breakdown */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-[9px] text-bull">
+                    <span className="font-mono text-[10px] text-bull">
                       ▲ {fmtPremium(e.callPremium)} · {e.callPct}%
                     </span>
-                    <span className="font-mono text-[9px] text-bear">
+                    <span className="font-mono text-[10px] text-bear">
                       ▼ {fmtPremium(e.putPremium)} · {100 - e.callPct}%
                     </span>
                   </div>
-                  <span className="font-mono text-[9px] text-cyan-400 tabular-nums">
+                  <span className="font-mono text-[10px] text-cyan-400 tabular-nums">
                     {fmtPremium(e.total)}
                   </span>
                 </div>
@@ -147,7 +147,7 @@ export function SplitFlowRadar({
         </AnimatePresence>
 
         {/* Legend */}
-        <p className="font-mono text-[8px] text-sky-500 text-center pt-1">
+        <p className="font-mono text-[10px] text-sky-500 text-center pt-1">
           Both call &amp; put ≥ $500K within 30 min window
         </p>
       </div>

@@ -132,7 +132,7 @@ export function PlaybookPlayRow({ rank, play, empty, onSelect }: PlaybookPlayRow
             </p>
           )}
 
-          <p className="font-mono text-[9px] text-sky-300/60 mt-2">
+          <p className="font-mono text-[10px] text-sky-300/60 mt-2">
             Educational. Not advice. Every trade is your own decision.
           </p>
 

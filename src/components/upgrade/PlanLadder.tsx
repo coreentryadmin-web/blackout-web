@@ -35,7 +35,7 @@ export function PlanLadder() {
             }
           >
             {vp.badge && (
-              <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-bull px-3 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.25em] text-black">
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-bull px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-black">
                 {vp.badge}
               </span>
             )}

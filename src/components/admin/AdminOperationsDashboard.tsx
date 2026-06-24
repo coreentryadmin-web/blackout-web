@@ -169,17 +169,17 @@ function IncidentRow({
 
       {/* Footer metadata */}
       <div className="flex items-center gap-4 mt-2 flex-wrap">
-        <span className="font-mono text-[9px] text-cyan uppercase tracking-widest">{incident.category}</span>
-        <span className="font-mono text-[9px] text-cyan">
+        <span className="font-mono text-[10px] text-cyan uppercase tracking-widest">{incident.category}</span>
+        <span className="font-mono text-[10px] text-cyan">
           opened {timeAgo(incident.opened_at)}
         </span>
         {incident.status === "acked" && incident.acked_by && (
-          <span className="font-mono text-[9px] text-sky-300/70">
+          <span className="font-mono text-[10px] text-sky-300/70">
             acked by {incident.acked_by} · {timeAgo(incident.acked_at)}
           </span>
         )}
         {incident.mtta_ms != null && (
-          <span className="font-mono text-[9px] text-cyan">
+          <span className="font-mono text-[10px] text-cyan">
             MTTA {fmtDuration(incident.mtta_ms)}
           </span>
         )}
@@ -212,7 +212,7 @@ function AuditEntry({ entry }: { entry: AuditLogEntry }) {
           <span className={clsx("font-mono text-[11px] font-bold", meta.color)}>
             {fmtAction(entry.action)}
           </span>
-          <span className="font-mono text-[9px] text-cyan flex-shrink-0">
+          <span className="font-mono text-[10px] text-cyan flex-shrink-0">
             {timeAgo(entry.created_at)}
           </span>
         </div>
@@ -223,7 +223,7 @@ function AuditEntry({ entry }: { entry: AuditLogEntry }) {
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="font-mono text-[9px] text-cyan hover:text-sky-300 mt-0.5 transition-colors"
+            className="font-mono text-[10px] text-cyan hover:text-sky-300 mt-0.5 transition-colors"
           >
             {expanded ? "▲ hide" : "▼ detail"}
           </button>
@@ -234,7 +234,7 @@ function AuditEntry({ entry }: { entry: AuditLogEntry }) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="font-mono text-[9px] text-sky-300 bg-black/60 border border-white/10 rounded p-2 mt-1 overflow-x-auto"
+              className="font-mono text-[10px] text-sky-300 bg-black/60 border border-white/10 rounded p-2 mt-1 overflow-x-auto"
             >
               {JSON.stringify(entry.detail, null, 2)}
             </motion.pre>
@@ -261,7 +261,7 @@ function VitalRow({
     <div className="flex items-center justify-between py-2 border-b border-white/10 last:border-0">
       <div>
         <p className="font-mono text-[11px] text-sky-200 font-semibold">{label}</p>
-        {sub && <p className="font-mono text-[9px] text-cyan">{sub}</p>}
+        {sub && <p className="font-mono text-[10px] text-cyan">{sub}</p>}
       </div>
       <div className="flex items-center gap-2">
         <span className="font-mono text-[11px] font-bold text-sky-200">{value}</span>
@@ -443,7 +443,7 @@ export function AdminOperationsDashboard() {
                 <button
                   type="button"
                   onClick={loadIncidents}
-                  className="font-mono text-[9px] text-cyan hover:text-sky-200 transition-colors"
+                  className="font-mono text-[10px] text-cyan hover:text-sky-200 transition-colors"
                 >
                   ↺ refresh
                 </button>
@@ -501,9 +501,9 @@ export function AdminOperationsDashboard() {
                 {/* Recent route errors */}
                 {(h?.route_errors?.length ?? 0) > 0 && (
                   <div className="mt-3 space-y-1 border-t border-white/10 pt-3">
-                    <p className="font-mono text-[9px] text-cyan uppercase tracking-widest mb-2">Recent Route Errors</p>
+                    <p className="font-mono text-[10px] text-cyan uppercase tracking-widest mb-2">Recent Route Errors</p>
                     {h!.route_errors.slice(0, 4).map((e: { route?: string; message?: string; at?: string }, i: number) => (
-                      <div key={i} className="font-mono text-[9px] rounded px-2 py-1 bg-bear/10 border border-bear/30">
+                      <div key={i} className="font-mono text-[10px] rounded px-2 py-1 bg-bear/10 border border-bear/30">
                         <p className="text-bear font-bold">{e.route ?? "unknown"}</p>
                         <p className="text-cyan truncate">{e.message ?? "Error"}</p>
                         <p className="text-sky-300/70">{timeAgo(e.at ?? "")}</p>
@@ -537,12 +537,12 @@ export function AdminOperationsDashboard() {
             <button
               type="button"
               onClick={() => { setAuditAction(""); setAuditActor(""); }}
-              className="font-mono text-[9px] text-cyan hover:text-sky-200 transition-colors pb-2"
+              className="font-mono text-[10px] text-cyan hover:text-sky-200 transition-colors pb-2"
             >
               × clear
             </button>
           )}
-          <span className="ml-auto font-mono text-[9px] text-cyan pb-2">
+          <span className="ml-auto font-mono text-[10px] text-cyan pb-2">
             last updated {timeAgo(audit.lastAt)}
           </span>
         </div>

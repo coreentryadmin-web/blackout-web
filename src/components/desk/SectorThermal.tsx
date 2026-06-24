@@ -52,7 +52,7 @@ export function MoversTape({ data, live }: { data?: HeatmapData; live?: boolean 
         ) : (
           movers.map((m) => (
             <div key={m.ticker} className="desk-mover-row">
-              <span className="font-anton text-base text-white w-16">{m.ticker}</span>
+              <span className="font-anton text-2xl text-white w-16">{m.ticker}</span>
               <span className="font-mono text-xs text-sky-300 flex-1">${m.price?.toFixed(2)}</span>
               <span className={clsx("font-mono text-sm font-bold tabular-nums", m.change_pct >= 0 ? "num-bull" : "num-bear")}>
                 {fmtPct(m.change_pct)}
@@ -74,7 +74,7 @@ function ThermalCell({ name, change }: { name: string; change: number }) {
       className={clsx("desk-thermal-cell", bull ? "desk-thermal-bull" : "desk-thermal-bear")}
       style={{ "--heat": intensity } as CSSProperties}
     >
-      <p className="text-[9px] font-mono uppercase tracking-wider text-sky-200 truncate">{name}</p>
+      <p className="text-[10px] font-mono uppercase tracking-wider text-sky-200 truncate">{name}</p>
       <p className={clsx("font-mono text-sm font-bold mt-1 tabular-nums", bull ? "text-bull" : "text-bear")}>
         {fmtPct(change)}
       </p>

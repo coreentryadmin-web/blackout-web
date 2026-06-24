@@ -53,7 +53,7 @@ export function NightHawkFlowPanel({
           <span className="flow-panel-title">Hawk Conviction</span>
         </div>
         {editionFor && (
-          <span className="font-mono text-[9px] text-indigo-600/60">
+          <span className="font-mono text-[10px] text-indigo-600/60">
             {editionFor}
           </span>
         )}
@@ -85,7 +85,7 @@ export function NightHawkFlowPanel({
                 {/* Row 1 */}
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border text-indigo-400 border-indigo-700/40 bg-indigo-950/30"
+                    <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border text-indigo-400 border-indigo-700/40 bg-indigo-950/30"
                       style={{ letterSpacing: "0.06em" }}>
                       #{play.rank} HAWK
                     </span>
@@ -93,7 +93,7 @@ export function NightHawkFlowPanel({
                       {play.ticker}
                     </span>
                     <span className={clsx(
-                      "font-mono text-[9px] font-bold px-1.5 py-0.5 rounded-full border",
+                      "font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full border",
                       isLong ? "text-emerald-400 border-emerald-800/50 bg-emerald-950/30"
                              : "text-rose-400 border-rose-800/50 bg-rose-950/30"
                     )}>
@@ -101,7 +101,7 @@ export function NightHawkFlowPanel({
                     </span>
                   </div>
                   <span className={clsx(
-                    "font-mono text-[9px] font-bold px-2 py-0.5 rounded-full border",
+                    "font-mono text-[10px] font-bold px-2 py-0.5 rounded-full border",
                     cvCls
                   )}>
                     {cvLabel}
@@ -173,7 +173,7 @@ export function NightHawkFlowPanel({
           })}
         </AnimatePresence>
 
-        <p className="font-mono text-[8px] text-sky-500 text-center pt-1">
+        <p className="font-mono text-[10px] text-sky-500 text-center pt-1">
           Flow conviction from 7d tape · strong = $2M+ aligned
         </p>
       </div>

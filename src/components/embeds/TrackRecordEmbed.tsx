@@ -26,7 +26,7 @@ export function TrackRecordEmbed({
       <div className="p-5">
         <div className="flex items-end justify-between gap-4 mb-5">
           <div>
-            <p className="font-mono text-[9px] tracking-[0.4em] text-bull uppercase mb-1">
+            <p className="font-mono text-[10px] tracking-[0.4em] text-bull uppercase mb-1">
               Hit Rate
             </p>
             <p className="font-anton text-5xl md:text-6xl text-white leading-none tabular-nums">
@@ -93,7 +93,7 @@ function Stat({
       >
         {value}
       </p>
-      <p className="font-mono text-[9px] text-sky-300 uppercase tracking-widest mt-0.5">
+      <p className="font-mono text-[10px] text-sky-300 uppercase tracking-widest mt-0.5">
         {label}
       </p>
     </div>

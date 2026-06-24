@@ -158,7 +158,7 @@ function StructureCard({
           <p
             className={clsx(
               "font-syne tracking-[0.12em] uppercase font-bold",
-              large ? "text-sm" : "text-[9px] tracking-[0.35em] font-semibold font-mono",
+              large ? "text-sm" : "text-[10px] tracking-[0.35em] font-semibold font-mono",
               t.header
             )}
           >
@@ -167,7 +167,7 @@ function StructureCard({
           <p
             className={clsx(
               "uppercase text-cyan-400",
-              large ? "font-mono text-[10px] tracking-[0.25em] mt-0.5" : "font-mono text-[7px] tracking-widest"
+              large ? "font-mono text-[10px] tracking-[0.25em] mt-0.5" : "font-mono text-[10px] tracking-widest"
             )}
           >
             {subtitle}

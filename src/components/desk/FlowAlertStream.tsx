@@ -265,7 +265,7 @@ export function FlowAlertStream({
                               {isStarred ? "★" : "☆"}
                             </button>
                           )}
-                          <span className="font-anton text-[18px] leading-none text-gold tracking-wide">
+                          <span className="font-anton text-[24px] leading-none text-gold tracking-wide">
                             {flow.ticker}
                           </span>
                           <span className={clsx("flow-badge", isCall ? "flow-badge-call" : "flow-badge-put")}>
@@ -281,33 +281,33 @@ export function FlowAlertStream({
                           {isDiverge && <span className="flow-badge flow-badge-diverge">DIVERGE</span>}
                           {hasSplit && (
                             <span
-                              className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border"
+                              className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border"
                               style={{ color: "#ffd23f", borderColor: "rgba(255,210,63,0.4)", background: "rgba(255,210,63,0.08)", letterSpacing: "0.06em" }}
                             >
                               SPLIT
                             </span>
                           )}
                           {isHawk && (
-                            <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border text-sky-300 border-sky-400/40 bg-sky-400/10"
+                            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border text-sky-300 border-sky-400/40 bg-sky-400/10"
                               style={{ letterSpacing: "0.06em" }}>
                               ◈ HAWK
                             </span>
                           )}
                           {hasVelocity && (
-                            <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border text-ember border-ember/40 bg-ember/10 animate-pulse motion-reduce:animate-none"
+                            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border text-ember border-ember/40 bg-ember/10 animate-pulse motion-reduce:animate-none"
                               style={{ letterSpacing: "0.06em" }}>
                               ◉ VELOCITY
                             </span>
                           )}
                           {hasCoord && (
-                            <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border text-cyan-400 border-cyan-700/40 bg-cyan-950/25"
+                            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border text-cyan-400 border-cyan-700/40 bg-cyan-950/25"
                               style={{ letterSpacing: "0.06em" }}>
                               ⬡ COORD
                             </span>
                           )}
                           {earnIn !== null && earnIn <= 14 && (
                             <span className={clsx(
-                              "font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border",
+                              "font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border",
                               earnIn === 0 ? "text-bear border-bear/60 bg-bear/15 animate-pulse motion-reduce:animate-none" :
                               earnIn <= 2  ? "text-bear border-bear/50 bg-bear/10" :
                               earnIn <= 5  ? "text-ember border-ember/50 bg-ember/10" :
@@ -390,7 +390,7 @@ export function FlowAlertStream({
                         <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                           {flow.otm_pct !== undefined && (
                             <span className={clsx(
-                              "font-mono text-[9px] px-1.5 py-0.5 rounded border",
+                              "font-mono text-[10px] px-1.5 py-0.5 rounded border",
                               flow.otm_pct < 0
                                 ? "text-purple-light border-purple/40 bg-purple/10"
                                 : flow.otm_pct <= 2
@@ -405,14 +405,14 @@ export function FlowAlertStream({
                             </span>
                           )}
                           {flow.open_interest != null && flow.open_interest > 0 && (
-                            <span className="font-mono text-[9px] text-cyan-400 px-1.5 py-0.5 rounded border border-white/10">
+                            <span className="font-mono text-[10px] text-cyan-400 px-1.5 py-0.5 rounded border border-white/10">
                               OI {flow.open_interest >= 1000
                                 ? `${(flow.open_interest / 1000).toFixed(1)}K`
                                 : flow.open_interest.toFixed(0)}
                             </span>
                           )}
                           {ivDisplay && (
-                            <span className="font-mono text-[9px] text-cyan-400 px-1.5 py-0.5 rounded border border-white/10">
+                            <span className="font-mono text-[10px] text-cyan-400 px-1.5 py-0.5 rounded border border-white/10">
                               IV {ivDisplay}
                             </span>
                           )}

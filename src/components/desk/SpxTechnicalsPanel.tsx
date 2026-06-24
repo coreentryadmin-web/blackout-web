@@ -9,7 +9,7 @@ export function SpxTechnicalsPanel({ desk, live }: { desk?: SpxDeskPayload; live
     <aside className="spx-technicals-panel">
       <div className="spx-technicals-header">
         <span className="badge-live-dot" />
-        <span className="font-mono text-[9px] tracking-[0.4em] uppercase text-bull">
+        <span className="font-mono text-[10px] tracking-[0.4em] uppercase text-bull">
           Structure
         </span>
       </div>

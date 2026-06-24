@@ -45,7 +45,7 @@ function FlowRow({ f }: { f: FlowAlert }) {
           {isWhale             && <span className="flow-badge flow-badge-whale">WHALE</span>}
           {f.alert_rule        && <span className="flow-badge flow-badge-sweep">{f.alert_rule.toUpperCase().slice(0,6)}</span>}
         </div>
-        <p className="font-mono text-[9px] text-cyan-500 mt-1">{timeAgo(f.alerted_at)}</p>
+        <p className="font-mono text-[10px] text-cyan-500 mt-1">{timeAgo(f.alerted_at)}</p>
       </div>
 
       {/* Right: premium + score */}
@@ -54,7 +54,7 @@ function FlowRow({ f }: { f: FlowAlert }) {
           {fmtPremium(f.premium)}
         </p>
         {f.score > 0 && (
-          <p className={clsx("font-mono text-[9px]", f.score >= 7 ? "text-violet-500" : "text-cyan-500")}>
+          <p className={clsx("font-mono text-[10px]", f.score >= 7 ? "text-violet-500" : "text-cyan-500")}>
             ▲{f.score.toFixed(1)}
           </p>
         )}
@@ -157,14 +157,14 @@ export function TickerDrawer({
                   {displayFlows.length > 0 && (
                     <div className="grid grid-cols-2 gap-3">
                       <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/15 p-3">
-                        <p className="font-mono text-[9px] tracking-widest text-emerald-800 uppercase mb-1.5">Call Premium</p>
+                        <p className="font-mono text-[10px] tracking-widest text-emerald-800 uppercase mb-1.5">Call Premium</p>
                         <p className="font-mono text-lg font-bold text-emerald-400 tabular-nums">{fmtPremium(callPrem)}</p>
-                        <p className="font-mono text-[9px] text-emerald-800 mt-0.5">{callPct}% of flow</p>
+                        <p className="font-mono text-[10px] text-emerald-800 mt-0.5">{callPct}% of flow</p>
                       </div>
                       <div className="rounded-lg border border-rose-900/40 bg-rose-950/15 p-3">
-                        <p className="font-mono text-[9px] tracking-widest text-rose-800 uppercase mb-1.5">Put Premium</p>
+                        <p className="font-mono text-[10px] tracking-widest text-rose-800 uppercase mb-1.5">Put Premium</p>
                         <p className="font-mono text-lg font-bold text-rose-400 tabular-nums">{fmtPremium(putPrem)}</p>
-                        <p className="font-mono text-[9px] text-rose-800 mt-0.5">{100 - callPct}% of flow</p>
+                        <p className="font-mono text-[10px] text-rose-800 mt-0.5">{100 - callPct}% of flow</p>
                       </div>
                     </div>
                   )}
@@ -191,7 +191,7 @@ export function TickerDrawer({
 
                   {/* Flow alerts */}
                   <div>
-                    <p className="font-mono text-[9px] tracking-[0.25em] uppercase text-cyan-500 mb-2">
+                    <p className="font-mono text-[10px] tracking-[0.25em] uppercase text-cyan-500 mb-2">
                       Flow · {displayFlows.length} alerts{typeFilter && typeFilter !== "ALL" ? ` · ${typeFilter}` : ""}
                     </p>
                     {displayFlows.length === 0 ? (
@@ -206,7 +206,7 @@ export function TickerDrawer({
                   {/* Dark pool */}
                   {state.dp.length > 0 && (
                     <div>
-                      <p className="font-mono text-[9px] tracking-[0.25em] uppercase text-cyan-500 mb-2">
+                      <p className="font-mono text-[10px] tracking-[0.25em] uppercase text-cyan-500 mb-2">
                         Dark Pool · {state.dp.length} prints
                       </p>
                       <div className="space-y-1.5">
@@ -227,7 +227,7 @@ export function TickerDrawer({
                               )}>
                                 {p.side === "buy" ? "↑ BUY" : p.side === "sell" ? "↓ SELL" : "— DARK"}
                               </span>
-                              <span className="font-mono text-[9px] text-cyan-500">{timeAgo(p.executed_at)}</span>
+                              <span className="font-mono text-[10px] text-cyan-500">{timeAgo(p.executed_at)}</span>
                             </div>
                             <span className={clsx(
                               "font-mono text-[13px] font-bold tabular-nums",

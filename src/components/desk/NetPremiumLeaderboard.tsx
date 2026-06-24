@@ -40,7 +40,7 @@ export function NetPremiumLeaderboard({ alerts }: { alerts: FlowAlert[] }) {
       bodyClassName="!px-4 !py-3.5"
       actions={
         rows.length > 0 ? (
-          <span className="font-mono text-[9px] text-sky-300 font-semibold">
+          <span className="font-mono text-[10px] text-sky-300 font-semibold">
             {fmtPremium(rows.reduce((s, r) => s + r.total, 0))} total
           </span>
         ) : undefined
@@ -69,7 +69,7 @@ export function NetPremiumLeaderboard({ alerts }: { alerts: FlowAlert[] }) {
               >
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-anton text-[13px] text-gold leading-none tracking-wide">{row.ticker}</span>
+                    <span className="font-anton text-[24px] text-gold leading-none tracking-wide">{row.ticker}</span>
                     <span className={clsx(
                       "font-mono text-[10px] font-bold tracking-wider",
                       isBull ? "text-bull" : "text-bear"

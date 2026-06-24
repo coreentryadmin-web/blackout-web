@@ -65,7 +65,7 @@ export function AuthProofRail({ variant }: { variant: "auth" | "upgrade" }) {
           >
             <div className="font-anton text-3xl text-white">{s.value}</div>
             <div className="mt-1 font-mono text-[10px] tracking-[0.2em] uppercase text-bull">{s.label}</div>
-            <div className="mt-0.5 text-[9px] text-sky-300">
+            <div className="mt-0.5 text-[10px] text-sky-300">
               verified ✓<span className="sr-only"> independently verified</span>
             </div>
           </div>

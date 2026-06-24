@@ -24,7 +24,7 @@ function NewsCard({ article }: { article: NewsArticle }) {
     <article className="news-rail-card">
       <div className="flex items-center justify-between gap-2 mb-2">
         {time && <span className="font-mono text-[10px] text-bull">{time}</span>}
-        <span className="font-mono text-[8px] tracking-widest uppercase text-cyan-400">Benzinga</span>
+        <span className="font-mono text-[10px] tracking-widest uppercase text-cyan-400">Benzinga</span>
       </div>
       {tickers.length > 0 && (
         <p className="font-mono text-[10px] text-purple-light mb-2 truncate">
@@ -60,7 +60,7 @@ export function BenzingaNewsRail() {
     <aside className="news-rail">
       <div className="news-rail-header">
         <span className={clsx("badge-live-dot", live && "animate-pulse")} />
-        <span className="font-mono text-[9px] tracking-[0.4em] uppercase text-bull">
+        <span className="font-mono text-[10px] tracking-[0.4em] uppercase text-bull">
           Benzinga Live
         </span>
       </div>

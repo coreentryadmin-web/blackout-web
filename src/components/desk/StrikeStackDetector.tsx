@@ -89,7 +89,7 @@ export function StrikeStackDetector({
                         )}>
                           ×{stack.alert_count}
                         </span>
-                        <span className="font-anton text-[14px] text-gold leading-none">{stack.ticker}</span>
+                        <span className="font-anton text-[24px] text-gold leading-none">{stack.ticker}</span>
                         <span className={clsx("flow-badge", isCall ? "flow-badge-call" : "flow-badge-put")}>
                           {stack.option_type}
                         </span>

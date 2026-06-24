@@ -57,7 +57,7 @@ export function LiveFlowTape({ alerts, className }: LiveFlowTapeProps) {
                   {scanning ? "SCANNING" : fmtPremium(alert.premium)}
                 </span>
                 {!scanning && (
-                  <span className="font-mono text-[9px] text-cyan-400 uppercase">{alert.route}</span>
+                  <span className="font-mono text-[10px] text-cyan-400 uppercase">{alert.route}</span>
                 )}
               </div>
             );

@@ -203,7 +203,7 @@ function LottoPlayBlock({
           {lotto.status_message}
           {lottoRefreshing && " · live"}
         </p>
-        <p className="font-mono text-[9px] text-sky-300/60 mt-2">
+        <p className="font-mono text-[10px] text-sky-300/60 mt-2">
           Educational. Not advice. Every trade is your own decision.
         </p>
       </div>
@@ -380,7 +380,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
               </p>
             )}
             {play.levels.entry != null && play.action !== "SCANNING" && play.action !== "WATCHING" && (
-              <p className="font-mono text-[9px] text-sky-300/60 mt-3">
+              <p className="font-mono text-[10px] text-sky-300/60 mt-3">
                 Educational. Not advice. Every trade is your own decision.
               </p>
             )}
@@ -496,7 +496,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
 
           {play.factors.length > 0 && play.action !== "SCANNING" && (
             <div className="spx-trade-factors mt-4">
-              <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-cyan-400 mb-2">
+              <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-cyan-400 mb-2">
                 Confluence factors
               </p>
               <ul className="spx-desk-list">
@@ -530,7 +530,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
 
       {history.length > 1 && (
         <div className="spx-trade-alert-history mt-4 pt-4 border-t border-white/5">
-          <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-cyan-400 mb-2">
+          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-cyan-400 mb-2">
             Play log
           </p>
           <ul className="spx-desk-list max-h-[200px] overflow-y-auto">

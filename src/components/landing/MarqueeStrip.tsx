@@ -43,7 +43,7 @@ export function MarqueeStrip({
           <span
             key={`${item}-${i}`}
             className={`inline-flex items-center gap-8 font-mono tracking-[0.25em] uppercase font-semibold shrink-0 ${
-              small ? "text-[9px]" : "text-xs md:text-sm"
+              small ? "text-[10px]" : "text-xs md:text-sm"
             }`}
           >
             {item}

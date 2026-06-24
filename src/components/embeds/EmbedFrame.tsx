@@ -46,12 +46,12 @@ export function EmbedFrame({
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {subtitle && (
-            <span className="font-mono text-[9px] text-sky-300 uppercase tracking-widest hidden sm:inline">
+            <span className="font-mono text-[10px] text-sky-300 uppercase tracking-widest hidden sm:inline">
               {subtitle}
             </span>
           )}
           {live && (
-            <span className="badge-live text-[9px]">
+            <span className="badge-live text-[10px]">
               <span className="badge-live-dot" />
               Live
             </span>

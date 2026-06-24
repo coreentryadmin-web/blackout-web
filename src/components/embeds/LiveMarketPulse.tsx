@@ -42,7 +42,7 @@ export function LiveMarketPulse({ compact, className }: LiveMarketPulseProps) {
       <div className={clsx("p-4", compact && "p-3")}>
         <div className="flex items-end justify-between gap-4 mb-4">
           <div>
-            <p className="font-mono text-[9px] tracking-[0.4em] text-bull uppercase mb-1">SPX</p>
+            <p className="font-mono text-[10px] tracking-[0.4em] text-bull uppercase mb-1">SPX</p>
             <p className="font-anton text-4xl md:text-5xl text-white leading-none tabular-nums">
               {live ? fmtPrice(data.price, 2) : "— — —"}
             </p>
