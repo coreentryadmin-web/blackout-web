@@ -595,14 +595,20 @@ export async function fetchShortVolume(ticker: string, limit = 5) {
 }
 
 // ---------------------------------------------------------------------------
-// Index moving averages — derived from AGGREGATE BARS, not Polygon's
-// /v1/indicators/{ema,sma} endpoints. Those endpoints DO NOT support index tickers
-// (I:SPX) and fail ("Request failed" in the SLA monitor) — the same reason index VWAP
-// is computed from bars (computeIndexVwapFromBars). Index aggregate bars work, so we
-// fetch enough closes and compute the MA locally (SMA exact; EMA SMA-seeded + iterated).
+// Index moving averages.
+//   PRIMARY: Massive's documented indices indicator endpoints
+//     GET /v1/indicators/{ema,sma}/{I:TICKER}  ("Included in all Indices plans")
+//   — server-computed over full history, one call, most accurate.
+//   FALLBACK: derive from index aggregate bars when the endpoint returns null — the
+//   "Request failed" entries seen in the SLA monitor were TRANSIENT (the same
+//   api.massive.com connectivity blip as RT-2, badge still "OK · SLA"), NOT an
+//   unsupported endpoint. The fallback keeps the desk MAs populated through a Massive
+//   hiccup instead of leaving a hole. (An earlier change wrongly made bars the PRIMARY
+//   on the inference that indices weren't supported; the docs confirm they ARE — bars
+//   are the resilience fallback only.)
 // ---------------------------------------------------------------------------
 
-/** Oldest→newest index closes over enough bars to compute a `window`-period MA. */
+/** Oldest→newest index closes over enough bars to compute a `window`-period MA (fallback). */
 async function indexClosesAsc(
   sym: string,
   window: number,
@@ -627,8 +633,18 @@ export async function fetchIndexEma(
   window: number,
   timespan: "minute" | "hour" | "day" = "minute"
 ): Promise<number | null> {
-  const closes = await indexClosesAsc(symbol.toUpperCase(), window, timespan);
-  return emaFromCloses(closes, window);
+  const sym = symbol.toUpperCase();
+  // Primary: the documented Massive indices EMA endpoint.
+  const v = await latestIndicator(`/v1/indicators/ema/${sym}`, {
+    window: String(window),
+    timespan,
+    series_type: "close",
+    order: "desc",
+    limit: "1",
+  });
+  if (v != null) return v;
+  // Fallback: derive from bars when the endpoint blips.
+  return emaFromCloses(await indexClosesAsc(sym, window, timespan), window);
 }
 
 export async function fetchIndexSma(
@@ -636,8 +652,18 @@ export async function fetchIndexSma(
   window: number,
   timespan: "minute" | "hour" | "day" = "day"
 ): Promise<number | null> {
-  const closes = await indexClosesAsc(symbol.toUpperCase(), window, timespan);
-  return smaFromCloses(closes, window);
+  const sym = symbol.toUpperCase();
+  // Primary: the documented Massive indices SMA endpoint.
+  const v = await latestIndicator(`/v1/indicators/sma/${sym}`, {
+    window: String(window),
+    timespan,
+    series_type: "close",
+    order: "desc",
+    limit: "1",
+  });
+  if (v != null) return v;
+  // Fallback: derive from bars when the endpoint blips.
+  return smaFromCloses(await indexClosesAsc(sym, window, timespan), window);
 }
 
 /** Polygon has no `/v1/indicators/vwap` for indices — derive from RTH minute aggregates. */

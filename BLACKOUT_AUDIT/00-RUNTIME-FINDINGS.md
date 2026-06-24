@@ -105,14 +105,20 @@ one flagged for a deliberate fix.
   The ×3 ema + ×2 sma map exactly to the desk's 5 indicator calls (`spx-desk.ts:781-785`:
   `fetchIndexEma 20/50/200` + `fetchIndexSma 50/200`). `latestIndicator` (`polygon.ts`) catches the failure
   and returns `null`, so the desk degrades but logs every failure + pays the per-call connect timeout.
-- **Root cause:** Polygon/Massive's `/v1/indicators/{ema,sma}` endpoints **do not support index tickers**
-  (`I:SPX`) — the same limitation the codebase already documents for VWAP (`polygon.ts:626` — "Polygon has
-  no `/v1/indicators/vwap` for indices — derive from RTH minute aggregates"). Index **aggregate bars** work
-  (the desk uses them for VWAP/session stats), only the indicator endpoints reject indices.
-- **Fix applied:** `fetchIndexEma`/`fetchIndexSma` now compute the MA locally from index aggregate bars
-  (new pure, unit-tested `src/lib/providers/ma-math.ts`: SMA exact; EMA SMA-seeded + iterated to
-  convergence), fetching enough closes (daily ≈2.2× window in calendar days; intraday a few sessions).
-  Non-index (stock) callers are unchanged — the indicators endpoint works for stocks.
-- **Verify on deploy (NOT runtime-verified here):** spot-check the computed SPX EMA20/50/200 + SMA50/200
-  against a charting reference (e.g. TradingView SPX). The math is standard and the bars are reliable, but
-  the actual values can't be confirmed without hitting Massive from the deploy environment.
+- **Root cause (CORRECTED after checking the docs):** The indicator endpoints **DO support index tickers.**
+  Massive documents `GET /v1/indicators/{sma,ema,macd,rsi}/{I:TICKER}` as **"Included in all Indices plans"**,
+  and the code's call (`window` / `timespan` / `series_type=close` / `order` / `limit`) matches the documented
+  params. My initial diagnosis ("indices unsupported," *inferred* from the older VWAP-not-for-indices comment
+  at `polygon.ts:626`) was an **incorrect inference** — corrected after the user pointed to the Massive REST
+  docs. The "Request failed" entries were **transient**: the same `api.massive.com` connectivity blip as RT-2
+  (the SLA badge stayed **"OK · SLA"** = occasional failures within tolerance, not a broken endpoint).
+- **Fix applied (revised):** `fetchIndexEma`/`fetchIndexSma` now use the **documented Massive indices
+  endpoint as PRIMARY** (server-computed, full history, one call — most accurate), and fall back to the
+  bars-derived MA (pure, unit-tested `src/lib/providers/ma-math.ts`) **only when the endpoint returns null** —
+  so a transient Massive blip no longer leaves the desk MAs blank. Non-index (stock) callers unchanged.
+- **The real systemic cause is the same as RT-2:** transient `api.massive.com` connectivity affects ALL
+  Massive calls (indicators, aggs, snapshots). The durable fix is connect-level **retry/backoff + circuit
+  breaker** on the Massive fetch path (audit priority **R-16**; `api-tracked-fetch` retries are opt-in/default
+  0 today). The bars fallback is a belt-and-suspenders for the MA path specifically.
+- **Lesson:** verify provider behavior against the **docs/a live probe** before inferring "unsupported" from
+  an adjacent code comment.
