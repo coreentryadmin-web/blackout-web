@@ -28,6 +28,21 @@ type VexRegime = {
   read: string;
 };
 
+/**
+ * DEX regime read — derived server-side from the net dealer dollar-DELTA sign.
+ * 'long' → dealers sell rallies / buy dips (stabilizing); 'short' → amplifies trend.
+ */
+type DexRegime = {
+  posture: "long" | "short" | null;
+  read: string;
+};
+
+/** CHARM regime read — derived server-side from the net dealer dollar-CHARM sign. */
+type CharmRegime = {
+  posture: "positive" | "negative" | null;
+  read: string;
+};
+
 /** Net dealer dollar-gamma block. */
 type GexBlock = {
   cells: Record<string, Record<string, number>>;
@@ -48,6 +63,40 @@ type VexBlock = {
   total: number;
   flip: number | null;
   regime: VexRegime;
+};
+
+/**
+ * Net dealer dollar-DELTA block (DEX lens). SAME MetricBlock shape as gex/vex except it has a
+ * `zero_level` (per-strike net-delta sign-crossing nearest spot) in place of walls/flip/max-pain.
+ */
+type DexBlock = {
+  cells: Record<string, Record<string, number>>;
+  strike_totals: Record<string, number>;
+  total: number;
+  zero_level: number | null;
+  regime: DexRegime;
+};
+
+/** Net dealer dollar-CHARM block (delta-decay / pinning lens). Same shape as DexBlock. */
+type CharmBlock = {
+  cells: Record<string, Record<string, number>>;
+  strike_totals: Record<string, number>;
+  total: number;
+  zero_level: number | null;
+  regime: CharmRegime;
+};
+
+/**
+ * Server-computed alert event — a pure diff of the prior history snapshot vs the current sample.
+ * Never fabricated client-side; comes free on the already-polled 20s matrix payload.
+ */
+type GexEvent = {
+  type: "flip_crossed" | "wall_broken" | "regime_flipped" | "net_gex_sign_flipped";
+  severity: "info" | "warn";
+  message: string;
+  level?: number;
+  direction?: string;
+  at: string;
 };
 
 /** Gamma flip migration over the shift window — earlier → current. */
@@ -101,8 +150,21 @@ type GexHeatmapResponse = {
   max_pain?: number | null;
   gex?: GexBlock;
   vex?: VexBlock;
+  /**
+   * Net dealer dollar-DELTA + dollar-CHARM blocks (additive — absent on older caches).
+   * Same MetricBlock shape as gex/vex but with `zero_level` instead of walls/flip/max-pain.
+   */
+  dex?: DexBlock;
+  charm?: CharmBlock;
   /** Intraday gamma migration (GEX-only). Present whenever a matrix is returned. */
   shift?: GexShift;
+  /** Intraday VANNA migration — same GexShift shape as `shift`. Additive (absent on older caches). */
+  vex_shift?: GexShift;
+  /**
+   * Server-computed alert events for this sample vs the prior snapshot. Additive — absent on
+   * cold history (<2 snapshots), empty array when nothing crossed. Never fabricated client-side.
+   */
+  events?: GexEvent[];
   overlays?: Overlays;
   error?: string;
 };
@@ -197,16 +259,52 @@ function fmtExpiry(ymd: string): string {
   return `${months[m - 1]} ${d}`;
 }
 
-type Lens = "gex" | "vex";
+type Lens = "gex" | "vex" | "dex" | "charm";
 
 /**
- * Per-lens color identity (brand tokens only, never grey):
- *  - GEX: positive = bull green #00e676, negative = violet #bf5fff (matches the v1 scale)
- *  - VEX: positive = sky #7dd3fc,        negative = violet #bf5fff
+ * Per-lens color identity (brand tokens only, never grey) — each lens gets a distinct
+ * positive identity so the four lenses never read alike:
+ *  - GEX:   positive = bull green #00e676, negative = violet #bf5fff (matches the v1 scale)
+ *  - VEX:   positive = sky    #7dd3fc,     negative = violet #bf5fff
+ *  - DEX:   positive = cyan   #22d3ee,     negative = violet #bf5fff (net dealer delta)
+ *  - CHARM: positive = gold   #ffd23f,     negative = violet #bf5fff (delta-decay / pinning)
  */
 const LENS_COLORS: Record<Lens, { posRgb: string; negRgb: string; posHex: string; negHex: string }> = {
   gex: { posRgb: "0,230,118", negRgb: "191,95,255", posHex: "#00e676", negHex: "#bf5fff" },
   vex: { posRgb: "125,211,252", negRgb: "191,95,255", posHex: "#7dd3fc", negHex: "#bf5fff" },
+  dex: { posRgb: "34,211,238", negRgb: "191,95,255", posHex: "#22d3ee", negHex: "#bf5fff" },
+  charm: { posRgb: "255,210,63", negRgb: "191,95,255", posHex: "#ffd23f", negHex: "#bf5fff" },
+};
+
+/** Convenience: lenses that carry walls/flip/max-pain (GEX/VEX) vs zero_level lenses (DEX/CHARM). */
+function isWallLens(l: Lens): l is "gex" | "vex" {
+  return l === "gex" || l === "vex";
+}
+
+/**
+ * Per-lens display vocabulary — parameterizes the profile / curve / matrix copy so all four
+ * lenses share one block-shape-agnostic render path. `pivot`/`pivotShort` name the central
+ * divider (γ/vanna flip for GEX/VEX, delta-/charm-zero for DEX/CHARM); `pos`/`neg` name the
+ * two halves; `unit` is the noun used in totals. Brand-token colors come from LENS_COLORS.
+ */
+type LensVocab = {
+  /** Short tab + profile title noun, e.g. "Gamma" / "Vanna" / "Delta" / "Charm". */
+  noun: string;
+  /** The central pivot label, e.g. "γ flip" / "vanna flip" / "δ-zero" / "charm-zero". */
+  pivot: string;
+  /** Positive-side label, e.g. "long γ" / "pos vanna" / "long δ" / "+charm". */
+  pos: string;
+  /** Negative-side label, e.g. "short γ" / "neg vanna" / "short δ" / "−charm". */
+  neg: string;
+  /** Total noun, e.g. "$-gamma" / "$-vanna" / "$-delta" / "$-charm". */
+  unit: string;
+};
+
+const LENS_VOCAB: Record<Lens, LensVocab> = {
+  gex: { noun: "Gamma", pivot: "γ flip", pos: "long γ", neg: "short γ", unit: "$-gamma" },
+  vex: { noun: "Vanna", pivot: "vanna flip", pos: "pos vanna", neg: "neg vanna", unit: "$-vanna" },
+  dex: { noun: "Delta", pivot: "δ-zero", pos: "long δ", neg: "short δ", unit: "$-delta" },
+  charm: { noun: "Charm", pivot: "charm-zero", pos: "+charm", neg: "−charm", unit: "$-charm" },
 };
 
 // ---------------------------------------------------------------------------
@@ -386,6 +484,18 @@ const METRIC_HELP = {
   negVannaWall: "The strike with the most negative dealer vanna — where vol-driven hedging fades directional moves.",
   netVex: "Total net dealer dollar-vanna — the aggregate sensitivity of dealer hedging to shifts in implied volatility.",
   spot: "The current underlying price — where the tape sits relative to the structural levels below.",
+  deltaZero:
+    "The strike where net dealer dollar-delta flips sign — the pivot between stabilizing (long-delta) and trend-amplifying (short-delta) hedging.",
+  netDex:
+    "Total net dealer dollar-delta. Long → dealers sell rallies / buy dips (mean-reverting, stabilizing); short → they buy rallies / sell dips (trend-amplifying, destabilizing).",
+  dexPosture:
+    "Net dealer delta sign. Long = stabilizing (dealers fade the move); short = destabilizing (dealers chase the move).",
+  charmZero:
+    "The strike where net dealer dollar-charm flips sign — the axis of delta-decay pinning pressure that strengthens into OPEX / the close.",
+  netCharm:
+    "Total net dealer dollar-charm (delta decay). As expiry nears, this passive hedging flow pins price toward heavy strikes — strongest pre-OPEX and end-of-day.",
+  charmPosture:
+    "Net dealer charm sign. Positive → decay pins price UP toward heavy strikes; negative → it drags price DOWN. Both intensify as expiration approaches.",
 } as const;
 
 /**
@@ -479,11 +589,9 @@ function ExposureProfile({
     return map;
   }, [darkPoolLevels, rows, showDarkPool]);
 
-  const flipLabel = lens === "gex" ? "γ flip" : "vanna flip";
-  const profileLabel =
-    lens === "gex"
-      ? "Net dealer gamma profile by strike — positive bars right of center, negative left"
-      : "Net dealer vanna profile by strike — positive bars right of center, negative left";
+  const v = LENS_VOCAB[lens];
+  const flipLabel = v.pivot;
+  const profileLabel = `Net dealer ${v.noun.toLowerCase()} profile by strike — positive bars right of center, negative left`;
 
   return (
     <div role="img" aria-label={profileLabel} className="space-y-px">
@@ -609,16 +717,15 @@ function ExposureProfile({
                 )}
               </span>
 
-              {/* signed value + wall tag (right gutter) */}
+              {/* signed value + wall tag (right gutter) — value tinted by the lens identity */}
               <span
-                className={clsx(
-                  "w-24 shrink-0 text-right font-mono text-[11px] font-semibold tabular-nums",
-                  positive ? (lens === "gex" ? "text-bull" : "text-sky-300") : "text-purple-light"
-                )}
+                className="w-24 shrink-0 text-right font-mono text-[11px] font-semibold tabular-nums"
+                style={{ color: r.value === 0 ? undefined : positive ? c.posHex : c.negHex }}
               >
                 {fmtMoneySigned(r.value)}
               </span>
               <span className="w-10 shrink-0 text-left">
+                {/* Wall tags only exist on GEX/VEX (DEX/CHARM have no walls → these never fire). */}
                 {r.isPosWall && (
                   <span className="font-mono text-[8px] uppercase tracking-wider text-gold">
                     {lens === "gex" ? "call" : "+vex"}
@@ -646,17 +753,17 @@ function ExposureProfile({
 
       {/* axis legend */}
       <div className="mt-3 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/70">
-        <span className="text-purple-light">
-          ◀ {lens === "gex" ? "short γ" : "neg vanna"} (−)
+        <span style={{ color: c.negHex }}>
+          ◀ {v.neg} (−)
         </span>
         <span
           className="text-sky-300"
-          title={spot > 0 ? "Profile reflects the 20s gamma snapshot; the header price updates live." : undefined}
+          title={spot > 0 ? "Profile reflects the 20s snapshot; the header price updates live." : undefined}
         >
-          {spot > 0 ? `spot ${fmtStrike(spot)}` : lens === "gex" ? "net dealer gamma" : "net dealer vanna"}
+          {spot > 0 ? `spot ${fmtStrike(spot)}` : `net dealer ${v.noun.toLowerCase()}`}
         </span>
-        <span className={lens === "gex" ? "text-bull" : "text-sky-300"}>
-          {lens === "gex" ? "long γ" : "pos vanna"} (+) ▶
+        <span style={{ color: c.posHex }}>
+          {v.pos} (+) ▶
         </span>
       </div>
 
@@ -774,10 +881,8 @@ function CumulativeCurve({
     );
   }
 
-  const label =
-    lens === "gex"
-      ? "Cumulative net dealer gamma across strikes — zero-crossing is the gamma flip; short-gamma below, long-gamma above"
-      : "Cumulative net dealer vanna across strikes — zero-crossing is the vanna flip; negative below, positive above";
+  const v = LENS_VOCAB[lens];
+  const label = `Cumulative net dealer ${v.noun.toLowerCase()} across strikes — zero-crossing is the ${v.pivot}; ${v.neg} below, ${v.pos} above`;
   const gradId = `cum-grad-${lens}`;
   const clipBullId = `cum-clip-bull-${lens}`;
   const clipBearId = `cum-clip-bear-${lens}`;
@@ -862,7 +967,7 @@ function CumulativeCurve({
           {geom.flipX != null && (
             <span className="flex items-center gap-1 text-gold">
               <span aria-hidden className="inline-block h-2.5 w-px" style={{ backgroundColor: "#ffd23f" }} />
-              {lens === "gex" ? "γ flip" : "vanna flip"}
+              {v.pivot}
             </span>
           )}
           {geom.spotX != null && (
@@ -875,13 +980,13 @@ function CumulativeCurve({
         <span className="tabular-nums">{fmtStrike(geom.strikeMax)}</span>
       </div>
 
-      {/* identity legend — short vs long gamma halves */}
+      {/* identity legend — negative vs positive halves */}
       <div className="flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/70">
         <span style={{ color: c.negHex }}>
-          {lens === "gex" ? "short γ" : "neg vanna"} (below flip)
+          {v.neg} (below {v.pivot})
         </span>
         <span style={{ color: c.posHex }}>
-          {lens === "gex" ? "long γ" : "pos vanna"} (above flip)
+          {v.pos} (above {v.pivot})
         </span>
       </div>
     </div>
@@ -911,11 +1016,15 @@ function ShiftView({
   shift,
   strikes,
   spotStrike,
+  lens,
 }: {
   shift: GexShift;
   strikes: number[];
   spotStrike: number | null;
+  /** Lens whose migration this is — drives the "γ flip" vs "vanna flip" / Δ-noun labels. */
+  lens: Lens;
 }) {
+  const v = LENS_VOCAB[lens];
   // Δ rows on the SHARED strike axis (descending), each strike's build/melt vs the baseline.
   const rows = useMemo<ShiftRow[]>(() => {
     const deltas = shift.delta_by_strike ?? {};
@@ -963,7 +1072,7 @@ function ShiftView({
       {/* Flip migration + "vs {elapsed} ago" */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 font-mono text-[11px]">
         <span className="flex items-center gap-2">
-          <span className="text-[9px] uppercase tracking-[0.2em] text-sky-300/60">γ flip</span>
+          <span className="text-[9px] uppercase tracking-[0.2em] text-sky-300/60">{v.pivot}</span>
           <span className="tabular-nums text-sky-300">
             {fm?.from != null ? fmtStrike(fm.from) : "—"}
           </span>
@@ -985,8 +1094,8 @@ function ShiftView({
         </span>
       </div>
 
-      {/* Δ-gamma ladder — built (right, green) vs melted (left, red) */}
-      <div role="img" aria-label="Intraday Δ dealer-gamma by strike — built right (green), melted left (red)" className="space-y-px">
+      {/* Δ ladder — built (right, green) vs melted (left, red) */}
+      <div role="img" aria-label={`Intraday Δ dealer-${v.noun.toLowerCase()} by strike — built right (green), melted left (red)`} className="space-y-px">
         {rows.map((r) => {
           const mag = peak > 0 ? Math.min(1, Math.abs(r.delta) / peak) : 0;
           // Match the profile: fill the full per-side track with a gentle gamma curve.
@@ -1050,7 +1159,7 @@ function ShiftView({
       {/* axis legend */}
       <div className="mt-1 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/70">
         <span style={{ color: SHIFT_MELT_HEX }}>◀ melted (−)</span>
-        <span className="text-sky-300">Δ dealer gamma</span>
+        <span className="text-sky-300">{`Δ dealer ${v.noun.toLowerCase()}`}</span>
         <span style={{ color: SHIFT_BUILD_HEX }}>built (+) ▶</span>
       </div>
     </div>
@@ -1606,6 +1715,120 @@ function ExpiryScopeBar({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Alerts strip (Rank 4c) — compact, dismissible row of server-computed events that
+// rides on the already-polled 20s matrix payload (ZERO extra fetch). `warn` reads
+// bear/amber, `info` reads sky. Relative "Xm ago" is computed client-side from the
+// event `at` timestamp. Reduced-motion safe: a gentle motion-safe pulse on the worst
+// chip only; reduced-motion users get a static strip. Renders nothing when empty.
+// ---------------------------------------------------------------------------
+
+/** Relative "just now" / "2m ago" / "1h ago" from an ISO timestamp. Never throws. */
+function fmtRelative(iso: string, nowMs: number): string {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "";
+  const diff = Math.max(0, nowMs - t);
+  const mins = Math.round(diff / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h${m}m ago` : `${h}h ago`;
+}
+
+/** Glyph by event type — ⚡ for crosses/breaks, ▲/▼ for directional flips, • fallback. */
+function eventGlyph(e: GexEvent): string {
+  if (e.type === "wall_broken" || e.type === "flip_crossed") return "⚡";
+  const d = (e.direction ?? "").toLowerCase();
+  if (d.includes("above") || d.includes("long") || d.includes("positive") || d.includes("up")) return "▲";
+  if (d.includes("below") || d.includes("short") || d.includes("negative") || d.includes("down")) return "▼";
+  return "•";
+}
+
+function AlertsStrip({ events }: { events: GexEvent[] }) {
+  // Dismissed locally; re-keyed by the event signature so a NEW event re-opens the strip.
+  const [dismissed, setDismissed] = useState(false);
+  const sig = useMemo(() => events.map((e) => `${e.type}@${e.at}`).join("|"), [events]);
+  const lastSigRef = useRef(sig);
+  // A fresh batch (new signature) clears the dismissal so a new cross is never hidden.
+  if (sig !== lastSigRef.current) {
+    lastSigRef.current = sig;
+    if (dismissed) setDismissed(false);
+  }
+
+  // `nowMs` recomputed each render; the 20s matrix poll re-renders the parent, keeping
+  // "Xm ago" reasonably fresh without a dedicated timer (no extra interval needed).
+  const nowMs = Date.now();
+
+  if (events.length === 0 || dismissed) return null;
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="mb-4 rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] px-3 py-2.5"
+    >
+      <div className="mb-2 flex items-center justify-between">
+        <span className="flex items-center gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-mute">
+            Positioning alerts
+          </span>
+          <Badge tone="accent" size="sm">
+            {events.length}
+          </Badge>
+        </span>
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          aria-label="Dismiss positioning alerts"
+          className={clsx(
+            "rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider outline-none transition-colors",
+            "text-sky-300/70 hover:bg-white/[0.06] hover:text-white focus-visible:ring-2 focus-visible:ring-sky-400"
+          )}
+        >
+          Dismiss ✕
+        </button>
+      </div>
+      <ul className="space-y-1.5">
+        {events.map((e, i) => {
+          const warn = e.severity === "warn";
+          // warn → bear red / amber accent; info → sky.
+          const hex = warn ? "#ff2d55" : "#7dd3fc";
+          const rel = fmtRelative(e.at, nowMs);
+          return (
+            <li
+              key={`${e.type}-${e.at}-${i}`}
+              className={clsx(
+                "flex items-start gap-2.5 rounded-lg border px-3 py-1.5",
+                warn
+                  ? "border-bear/35 bg-bear/[0.06]"
+                  : "border-sky-400/25 bg-sky-400/[0.05]"
+              )}
+              style={warn ? { boxShadow: "inset 0 0 14px rgba(255,45,85,0.05)" } : undefined}
+            >
+              <span
+                aria-hidden
+                className={clsx("mt-px shrink-0 text-[12px] leading-none", warn && "motion-safe:animate-pulse")}
+                style={{ color: hex }}
+              >
+                {eventGlyph(e)}
+              </span>
+              <span className="min-w-0 flex-1 text-[12px] leading-snug" style={{ color: warn ? "#ffd6de" : "#dff1ff" }}>
+                {e.message}
+              </span>
+              {rel && (
+                <span className="shrink-0 font-mono text-[10px] tabular-nums text-sky-300/70">
+                  {rel}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string }) {
   const [ticker, setTicker] = useState(initialTicker.toUpperCase());
   const [lens, setLens] = useState<Lens>("gex");
@@ -1754,8 +1977,30 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
   const hasFlowOverlay = flowByStrike != null && Object.keys(flowByStrike).length > 0;
   const hasDarkPoolOverlay = darkPoolLevels != null && darkPoolLevels.length > 0;
 
-  // ── Intraday gamma migration (GEX-only; server-computed, cached with the matrix) ──
-  const shift = data?.shift ?? null;
+  // ── Intraday migration: GEX shift under the GEX lens, VEX shift under the VEX lens
+  //    (same GexShift shape, server-computed, cached with the matrix). DEX/CHARM ship
+  //    no shift → the Shift tab is hidden/disabled for them (never fabricated). ──
+  const shift = lens === "gex" ? data?.shift ?? null : lens === "vex" ? data?.vex_shift ?? null : null;
+  // Which lenses are actually present in THIS payload — older caches omit dex/charm/vex_shift,
+  // so we hide those affordances rather than render empty (never fabricate a missing block).
+  const hasDex = data?.dex != null;
+  const hasCharm = data?.charm != null;
+  const hasShiftForLens = (lens === "gex" && data?.shift != null) || (lens === "vex" && data?.vex_shift != null);
+
+  // Server-computed alert events (Rank 4c) — already on the polled 20s matrix payload, no
+  // extra fetch. Only trust the CURRENT ticker's events (keepPreviousData can leave a prior
+  // ticker's list in hand across a switch). Empty/absent → strip renders nothing.
+  const events = useMemo<GexEvent[]>(() => (stale ? [] : data?.events ?? []), [stale, data?.events]);
+
+  // Guard: if the active lens's block vanishes (ticker switch to an older cache, or DEX/CHARM
+  // simply absent), fall back to GEX so we never sit on a lens with no data. GEX/VEX always
+  // ship when a matrix exists; only DEX/CHARM can disappear, so we only need to watch those.
+  useEffect(() => {
+    if (data == null) return;
+    if (lens === "dex" && !hasDex) setLens("gex");
+    else if (lens === "charm" && !hasCharm) setLens("gex");
+  }, [data, lens, hasDex, hasCharm]);
+
   // Peak |net premium| across mapped strikes — drives the flow-marker width scale.
   const flowPeak = useMemo(() => {
     if (!flowByStrike) return 0;
@@ -1767,22 +2012,36 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
     return p;
   }, [flowByStrike]);
 
-  // Active metric block (client-side switch — no refetch, both are in the payload).
-  const block = lens === "gex" ? data?.gex : data?.vex;
+  // Active metric block (client-side switch — no refetch; every block is in the payload).
+  // All four lenses share the SAME cells/strike_totals shape, so the profile/curve/matrix/
+  // filter machinery below is block-shape-agnostic — only the levels differ (GEX/VEX carry
+  // walls + flip; DEX/CHARM carry a single `zero_level` pivot in place of walls/flip).
+  const block =
+    lens === "gex" ? data?.gex : lens === "vex" ? data?.vex : lens === "dex" ? data?.dex : data?.charm;
   const cells = useMemo(() => block?.cells ?? {}, [block?.cells]);
   const strikeTotals = useMemo(() => block?.strike_totals ?? {}, [block?.strike_totals]);
-  const flip = block?.flip ?? null;
+  // Central pivot: gamma/vanna FLIP for GEX/VEX, delta-/charm-ZERO level for DEX/CHARM.
+  // Both are a single strike the profile divider + curve zero-crossing render against, so
+  // we unify them into one `flip` for the shared visuals.
+  const flip =
+    lens === "gex"
+      ? data?.gex?.flip ?? null
+      : lens === "vex"
+        ? data?.vex?.flip ?? null
+        : lens === "dex"
+          ? data?.dex?.zero_level ?? null
+          : data?.charm?.zero_level ?? null;
   const total = block?.total ?? 0;
 
-  // Per-lens walls + regime read.
-  const posWall = lens === "gex" ? (data?.gex?.call_wall ?? null) : (data?.vex?.pos_wall ?? null);
-  const negWall = lens === "gex" ? (data?.gex?.put_wall ?? null) : (data?.vex?.neg_wall ?? null);
+  // Per-lens walls — GEX/VEX only; DEX/CHARM have NO walls (null → wall tiles/tags hide).
+  const posWall = lens === "gex" ? (data?.gex?.call_wall ?? null) : lens === "vex" ? (data?.vex?.pos_wall ?? null) : null;
+  const negWall = lens === "gex" ? (data?.gex?.put_wall ?? null) : lens === "vex" ? (data?.vex?.neg_wall ?? null) : null;
+  // Per-lens regime posture + read, pulled from whichever block is active.
   const gexPosture = data?.gex?.regime.posture ?? null;
   const vexPosture = data?.vex?.regime.posture ?? null;
-  const regimeRead =
-    lens === "gex"
-      ? data?.gex?.regime.read ?? "Regime read unavailable."
-      : data?.vex?.regime.read ?? "Regime read unavailable.";
+  const dexPosture = data?.dex?.regime.posture ?? null;
+  const charmPosture = data?.charm?.regime.posture ?? null;
+  const regimeRead = block?.regime.read ?? "Regime read unavailable.";
 
   // ── Per-expiry / 0DTE scope (Rank 5) ─────────────────────────────────────────
   // "0dte" resolves to today's date if it's on the axis, else the earliest expiry.
@@ -1807,13 +2066,16 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
     [cells, strikeTotals, selectedExpiries]
   );
 
-  // Walls + flip recomputed from the FILTERED totals so the profile levels track the
+  // Walls + flip/zero recomputed from the FILTERED totals so the profile levels track the
   // selected scope. For "All" we keep the server-computed levels (authoritative); for a
-  // subset we mirror the server's primary method client-side.
+  // subset we mirror the server's primary method client-side. DEX/CHARM have NO walls — we
+  // null them so a filtered scope never synthesizes phantom call/put tags, but the central
+  // pivot (zero_level) still re-derives via the same sign-crossing path.
   const filteredLevels = useMemo(() => {
     if (selectedExpiries == null) return { posWall, negWall, flip };
-    return recomputeLevels(filteredTotals, spot);
-  }, [selectedExpiries, filteredTotals, spot, posWall, negWall, flip]);
+    const r = recomputeLevels(filteredTotals, spot);
+    return isWallLens(lens) ? r : { posWall: null, negWall: null, flip: r.flip };
+  }, [selectedExpiries, filteredTotals, spot, posWall, negWall, flip, lens]);
   const profilePosWall = filteredLevels.posWall;
   const profileNegWall = filteredLevels.negWall;
   const profileFlip = filteredLevels.flip;
@@ -1903,7 +2165,16 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
   const changePct = data?.change_pct ?? 0;
   const changeBull = changePct >= 0;
   const isGex = lens === "gex";
-  const posColorClass = isGex ? "text-bull" : "text-sky-300";
+  const vocab = LENS_VOCAB[lens];
+  const lensUpper = lens.toUpperCase();
+  // Tailwind class for the active lens's positive identity (matches LENS_COLORS.posHex).
+  const posColorClass =
+    lens === "gex" ? "text-bull" : lens === "vex" ? "text-sky-300" : lens === "dex" ? "text-cyan-400" : "text-gold";
+  // Panel accent per lens — constrained to the Panel's supported PanelAccent tokens
+  // (no gold strip exists). GEX→bull, VEX→sky, DEX→accent (cyan), CHARM→sky. The lens's
+  // true identity is carried by the tiles/bars/legends below; this is only the top strip.
+  const panelAccent: "bull" | "sky" | "accent" =
+    lens === "gex" ? "bull" : lens === "dex" ? "accent" : "sky";
 
   // ── Live header tape ─────────────────────────────────────────────────────────
   // Use the fast quote feed for the HEADER price/change; fall back to the matrix
@@ -1922,14 +2193,14 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
 
   return (
     <Panel
-      accent={isGex ? "bull" : "sky"}
-      kicker={isGex ? "Dealer gamma exposure · Polygon options" : "Dealer vanna exposure · Polygon options"}
+      accent={panelAccent}
+      kicker={`Dealer ${vocab.noun.toLowerCase()} exposure · Polygon options`}
       title={
         <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span>
             {/* While stale (old ticker's payload still in hand), show the SELECTED
                 ticker so the title never reads the previous underlying. (Rank 10) */}
-            {stale ? ticker : data?.underlying ?? ticker} {isGex ? "GEX" : "VEX"} Positioning
+            {stale ? ticker : data?.underlying ?? ticker} {lensUpper} Positioning
           </span>
         </span>
       }
@@ -2014,16 +2285,27 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
           </div>
         )}
 
-        {/* Lens switcher — on the shared Tabs primitive (controlled by `lens`) for
-            consistent ARIA wiring + keyboard nav (Arrow/Home/End, roving tabindex).
-            `unstyled` keeps the per-lens bull/sky color identity. */}
+        {/* Lens switcher — FOUR lenses on the shared Tabs primitive (controlled by `lens`)
+            for consistent ARIA wiring + keyboard nav (Arrow/Home/End, roving tabindex).
+            `unstyled` keeps each lens's distinct on-brand color identity. DEX/CHARM tabs
+            appear only when their block ships in THIS payload (older caches omit them →
+            hide the tab rather than render an empty lens). */}
         <Tabs value={lens} onValueChange={(v) => setLens(v as Lens)}>
           <TabList
             aria-label="Exposure lens"
             className="flex items-center gap-1 rounded-lg border border-white/10 bg-[rgba(8,9,14,0.5)] p-1"
           >
-            {(["gex", "vex"] as Lens[]).map((l) => {
+            {(["gex", "vex", ...(hasDex ? (["dex"] as const) : []), ...(hasCharm ? (["charm"] as const) : [])] as Lens[]).map((l) => {
               const active = l === lens;
+              // Per-lens active chip: gex→bull, vex→sky, dex→cyan, charm→gold.
+              const activeChip =
+                l === "gex"
+                  ? "bg-bull/15 text-bull outline outline-1 outline-bull/50"
+                  : l === "vex"
+                    ? "bg-sky-400/15 text-sky-300 outline outline-1 outline-sky-400/50"
+                    : l === "dex"
+                      ? "bg-cyan-400/15 text-cyan-400 outline outline-1 outline-cyan-400/50"
+                      : "bg-gold/15 text-gold outline outline-1 outline-gold/50";
               return (
                 <Tab
                   key={l}
@@ -2032,11 +2314,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                   className={clsx(
                     "rounded-md px-3.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider outline-none transition-colors",
                     "focus-visible:ring-2 focus-visible:ring-sky-400",
-                    active
-                      ? l === "gex"
-                        ? "bg-bull/15 text-bull outline outline-1 outline-bull/50"
-                        : "bg-sky-400/15 text-sky-300 outline outline-1 outline-sky-400/50"
-                      : "text-sky-300/70 hover:text-white"
+                    active ? activeChip : "text-sky-300/70 hover:text-white"
                   )}
                 >
                   {l}
@@ -2055,7 +2333,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
         >
           <span className="text-bear text-sm leading-none">⚠</span>
           <span className="font-mono text-[12px] font-bold text-bear tracking-wide">
-            {isGex ? "GEX" : "VEX"} feed unavailable — retrying
+            {lensUpper} feed unavailable — retrying
           </span>
         </div>
       )}
@@ -2094,17 +2372,29 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
       ) : blockEmpty ? (
         <EmptyState
           icon="◆"
-          title={isGex ? "GAMMA PROFILE IDLE" : "VANNA PROFILE IDLE"}
+          title={`${vocab.noun.toUpperCase()} PROFILE IDLE`}
           description={
             isGex
               ? "The options chain returned no contracts right now — the snapshot is quiet outside regular trading hours. Dealer gamma prints live during the session; try another ticker if it stays idle at the open."
-              : "Vanna needs implied vol + time-to-expiry on the chain. No qualifying contracts right now — try GEX or another ticker."
+              : lens === "vex"
+                ? "Vanna needs implied vol + time-to-expiry on the chain. No qualifying contracts right now — try GEX or another ticker."
+                : lens === "dex"
+                  ? "Net dealer delta needs live contracts on the chain. No qualifying open interest right now — try GEX or another ticker."
+                  : "Charm needs implied vol + time-to-expiry on the chain. No qualifying contracts right now — try GEX or another ticker."
           }
         />
       ) : (
         <>
-          {/* ── Regime tiles (full-width row) — evenly spread polished stat cards ── */}
-          {isGex ? (
+          {/* ── Positioning alerts (Rank 4c) — server-computed events riding on the polled
+              20s matrix payload (ZERO extra fetch). Dismissible, reduced-motion safe;
+              renders nothing when empty/absent. Sits above the regime header. ── */}
+          <AlertsStrip events={events} />
+
+          {/* ── Regime tiles (full-width row) — evenly spread polished stat cards.
+              GEX/VEX carry flip + two walls + max-pain + net; DEX/CHARM have NO
+              walls/flip/max-pain → their tiles are zero-level + net + posture only
+              (we never render empty wall tiles under those lenses). ── */}
+          {lens === "gex" ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               <RegimeTile
                 label="Gamma Flip"
@@ -2147,7 +2437,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                 help={METRIC_HELP.netGex}
               />
             </div>
-          ) : (
+          ) : lens === "vex" ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               <RegimeTile
                 label="Vanna Flip"
@@ -2190,21 +2480,87 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                 help={METRIC_HELP.netVex}
               />
             </div>
+          ) : lens === "dex" ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <RegimeTile
+                label="Delta-Zero Level"
+                value={flip != null ? fmtStrike(flip) : "—"}
+                sublabel="Delta sign pivot"
+                tone="flip"
+                active={flip != null}
+                help={METRIC_HELP.deltaZero}
+              />
+              <RegimeTile
+                label="Net DEX"
+                value={fmtMoneySigned(total)}
+                sublabel="$-delta total"
+                tone={total >= 0 ? "flip" : "bear"}
+                help={METRIC_HELP.netDex}
+              />
+              <RegimeTile
+                label="Posture"
+                value={dexPosture === "long" ? "Long δ" : dexPosture === "short" ? "Short δ" : "—"}
+                sublabel={dexPosture === "long" ? "Stabilizing" : dexPosture === "short" ? "Destabilizing" : "Undetermined"}
+                tone={dexPosture === "long" ? "bull" : "bear"}
+                active={dexPosture != null}
+                help={METRIC_HELP.dexPosture}
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <RegimeTile
+                label="Charm-Zero Level"
+                value={flip != null ? fmtStrike(flip) : "—"}
+                sublabel="Charm sign pivot"
+                tone="wall"
+                active={flip != null}
+                help={METRIC_HELP.charmZero}
+              />
+              <RegimeTile
+                label="Net CHARM"
+                value={fmtMoneySigned(total)}
+                sublabel="$-charm total"
+                tone={total >= 0 ? "wall" : "bear"}
+                help={METRIC_HELP.netCharm}
+              />
+              <RegimeTile
+                label="Posture"
+                value={charmPosture === "positive" ? "Positive" : charmPosture === "negative" ? "Negative" : "—"}
+                sublabel={charmPosture === "positive" ? "Pins up into OPEX" : charmPosture === "negative" ? "Drags down into OPEX" : "Undetermined"}
+                tone={charmPosture === "positive" ? "wall" : "bear"}
+                active={charmPosture != null}
+                help={METRIC_HELP.charmPosture}
+              />
+            </div>
           )}
 
           {/* regime read strip — clean full-width band below the tiles */}
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] px-4 py-3">
-            {isGex
-              ? gexPosture != null && (
-                  <Badge tone={gexPosture === "long" ? "bull" : "bear"} dot>
-                    {gexPosture === "long" ? "Long Gamma" : "Short Gamma"}
-                  </Badge>
-                )
-              : vexPosture != null && (
-                  <Badge tone={vexPosture === "positive" ? "sky" : "accent"} dot>
-                    {vexPosture === "positive" ? "Vanna Positive" : "Vanna Negative"}
-                  </Badge>
-                )}
+            {lens === "gex" ? (
+              gexPosture != null && (
+                <Badge tone={gexPosture === "long" ? "bull" : "bear"} dot>
+                  {gexPosture === "long" ? "Long Gamma" : "Short Gamma"}
+                </Badge>
+              )
+            ) : lens === "vex" ? (
+              vexPosture != null && (
+                <Badge tone={vexPosture === "positive" ? "sky" : "accent"} dot>
+                  {vexPosture === "positive" ? "Vanna Positive" : "Vanna Negative"}
+                </Badge>
+              )
+            ) : lens === "dex" ? (
+              dexPosture != null && (
+                <Badge tone={dexPosture === "long" ? "bull" : "bear"} dot>
+                  {dexPosture === "long" ? "Long Delta · Stabilizing" : "Short Delta · Destabilizing"}
+                </Badge>
+              )
+            ) : (
+              charmPosture != null && (
+                <Badge tone={charmPosture === "positive" ? "accent" : "bear"} dot>
+                  {charmPosture === "positive" ? "Charm Positive · Pins Up" : "Charm Negative · Drags Down"}
+                </Badge>
+              )
+            )}
             <p className="min-w-0 flex-1 text-[13px] leading-snug text-sky-100">{regimeRead}</p>
           </div>
 
@@ -2251,15 +2607,16 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
           <div className="mt-5 grid gap-5 lg:grid-cols-[1.62fr_1fr] xl:grid-cols-[1.85fr_1fr]">
             {/* LEFT (~62–65%): the profile hero with Profile | Shift | Matrix toggle */}
             <div className="min-w-0">
-          {/* ── Profile | Shift | Matrix toggle ───────────────────────────
-              Keyed on lens so switching GEX↔VEX resets to Profile — the Shift
-              tab is GEX-only (VEX migration is future work), so it can't be
-              left selected when the lens flips to VEX. */}
+          {/* ── Profile | Curve | Shift | Matrix toggle ───────────────────
+              Keyed on lens so switching lenses resets to Profile — the Shift tab
+              only exists for GEX (data.shift) and VEX (data.vex_shift); the engine
+              ships no shift for DEX/CHARM, so it must never be left selected when
+              the lens flips to one of those. */}
           <Tabs key={lens} defaultValue="profile">
-            <TabList aria-label={`${isGex ? "GEX" : "VEX"} view`} className="w-fit">
-              <Tab value="profile">{isGex ? "Gamma Profile" : "Vanna Profile"}</Tab>
+            <TabList aria-label={`${lensUpper} view`} className="w-fit">
+              <Tab value="profile">{`${vocab.noun} Profile`}</Tab>
               <Tab value="curve">Curve</Tab>
-              {isGex && <Tab value="shift">Shift</Tab>}
+              {hasShiftForLens && <Tab value="shift">Shift</Tab>}
               <Tab value="matrix">Matrix</Tab>
             </TabList>
 
@@ -2326,9 +2683,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                   showDarkPool={showDarkPool && hasDarkPoolOverlay}
                 />
                 <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-sky-300/75">
-                  {isGex
-                    ? "Net dealer $-gamma per strike · green long / violet short · "
-                    : "Net dealer $-vanna per strike · sky positive / violet negative · "}
+                  {`Net dealer ${vocab.unit} per strike · ${vocab.pos} / ${vocab.neg} · `}
                   {scopeLabel} total{" "}
                   <span className={clsx(filteredTotal >= 0 ? posColorClass : "text-purple-light")}>
                     {fmtMoney(filteredTotal)}
@@ -2337,7 +2692,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
               </TabPanel>
 
               {/* Cumulative exposure curve (Rank 12) — running sum of the FILTERED
-                  per-strike totals; zero-crossing = flip, short-γ below / long-γ above. */}
+                  per-strike totals; zero-crossing = pivot, neg below / pos above. */}
               <TabPanel value="curve">
                 <ExpiryScopeBar
                   expiries={expiries}
@@ -2347,9 +2702,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                 />
                 <CumulativeCurve rows={profileRows} spot={spot} flip={profileFlip} lens={lens} />
                 <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-sky-300/75">
-                  {isGex
-                    ? "Cumulative net dealer $-gamma across strikes · zero-crossing = γ flip · "
-                    : "Cumulative net dealer $-vanna across strikes · zero-crossing = vanna flip · "}
+                  {`Cumulative net dealer ${vocab.unit} across strikes · zero-crossing = ${vocab.pivot} · `}
                   {scopeLabel} total{" "}
                   <span className={clsx(filteredTotal >= 0 ? posColorClass : "text-purple-light")}>
                     {fmtMoney(filteredTotal)}
@@ -2357,22 +2710,23 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                 </p>
               </TabPanel>
 
-              {/* Shift: intraday gamma migration (GEX-only) */}
-              {isGex && (
+              {/* Shift: intraday migration. GEX reads data.shift, VEX reads data.vex_shift
+                  (same GexShift shape). The engine ships NO shift for DEX/CHARM, so the tab
+                  itself is hidden for those lenses (hasShiftForLens) — never fabricated. */}
+              {hasShiftForLens && (
                 <TabPanel value="shift">
                   {shift && shift.available ? (
                     <>
-                      <ShiftView shift={shift} strikes={strikes} spotStrike={spotStrike} />
+                      <ShiftView shift={shift} strikes={strikes} spotStrike={spotStrike} lens={lens} />
                       <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-sky-300/75">
-                        Δ net dealer $-gamma vs earlier snapshot · green built / red melted ·
-                        flip drift up = dealers longer
+                        {`Δ net dealer ${vocab.unit} vs earlier snapshot · green built / red melted · pivot drift up = dealers longer`}
                       </p>
                     </>
                   ) : (
                     <EmptyState
                       icon="◷"
                       title="BUILDING POSITIONING HISTORY"
-                      description="The shift view fills in as snapshots accumulate (first read ~after the open). Gamma migration — where dealer gamma is building vs melting and how the flip drifts — appears once enough history is collected."
+                      description={`The shift view fills in as snapshots accumulate (first read ~after the open). ${vocab.noun} migration — where dealer ${vocab.noun.toLowerCase()} is building vs melting and how the pivot drifts — appears once enough history is collected.`}
                     />
                   )}
                 </TabPanel>
@@ -2386,18 +2740,18 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                       className="inline-block h-3 w-3 rounded-sm"
                       style={{ backgroundColor: `rgba(${LENS_COLORS[lens].posRgb},0.5)` }}
                     />
-                    {isGex ? "Long gamma (+)" : "Pos vanna (+)"}
+                    {`${vocab.pos} (+)`}
                   </span>
                   <span className="flex items-center gap-1.5 text-sky-300">
                     <span
                       className="inline-block h-3 w-3 rounded-sm"
                       style={{ backgroundColor: `rgba(${LENS_COLORS[lens].negRgb},0.5)` }}
                     />
-                    {isGex ? "Short gamma (−)" : "Neg vanna (−)"}
+                    {`${vocab.neg} (−)`}
                   </span>
                   {flip != null && (
                     <span className="flex items-center gap-1.5 text-gold">
-                      <span aria-hidden>◀ flip</span>
+                      <span aria-hidden>◀ {vocab.pivot}</span>
                       <span className="text-white">{fmtStrike(flip)}</span>
                     </span>
                   )}
@@ -2416,7 +2770,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                     className="overflow-x-auto"
                     role="region"
                     tabIndex={0}
-                    aria-label={`${data?.underlying ?? ticker} dealer ${isGex ? "gamma" : "vanna"} exposure matrix, strikes by expiration`}
+                    aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} exposure matrix, strikes by expiration`}
                   >
                     <table className="w-full min-w-[34rem] border-separate border-spacing-0 font-mono text-[11px]">
                     <thead>
@@ -2509,9 +2863,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                 </div>
 
                 <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-sky-300/75">
-                  {isGex
-                    ? "Net dealer $-gamma per strike × expiry · green long / violet short · total "
-                    : "Net dealer $-vanna per strike × expiry · sky positive / violet negative · total "}
+                  {`Net dealer ${vocab.unit} per strike × expiry · ${vocab.pos} / ${vocab.neg} · total `}
                   <span className={clsx(total >= 0 ? posColorClass : "text-purple-light")}>
                     {fmtMoney(total)}
                   </span>
@@ -2531,9 +2883,12 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                 <LargoRead key={ticker} ticker={ticker} />
               </div>
 
+              {/* Key levels are adapted per lens — DEX/CHARM have no walls, so their rail
+                  shows the delta-/charm-zero pivot (anchored to `flip`) + spot + max pain
+                  instead of stale wall numbers under the wrong header. */}
               <KeyLevels
                 levels={
-                  isGex
+                  lens === "gex"
                     ? [
                         { label: "Spot", value: spot > 0 ? spot : null, tone: "cyan", help: METRIC_HELP.spot },
                         { label: "Gamma flip", value: flip, tone: "gold", help: METRIC_HELP.gammaFlip },
@@ -2541,13 +2896,25 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                         { label: "Put wall", value: negWall, tone: "bear", help: METRIC_HELP.putWall },
                         { label: "Max pain", value: maxPain, tone: "sky", help: METRIC_HELP.maxPain },
                       ]
-                    : [
-                        { label: "Spot", value: spot > 0 ? spot : null, tone: "cyan", help: METRIC_HELP.spot },
-                        { label: "Vanna flip", value: flip, tone: "gold", help: METRIC_HELP.vannaFlip },
-                        { label: "+Vanna wall", value: posWall, tone: "sky", help: METRIC_HELP.posVannaWall },
-                        { label: "−Vanna wall", value: negWall, tone: "violet", help: METRIC_HELP.negVannaWall },
-                        { label: "Max pain", value: maxPain, tone: "sky", help: METRIC_HELP.maxPain },
-                      ]
+                    : lens === "vex"
+                      ? [
+                          { label: "Spot", value: spot > 0 ? spot : null, tone: "cyan", help: METRIC_HELP.spot },
+                          { label: "Vanna flip", value: flip, tone: "gold", help: METRIC_HELP.vannaFlip },
+                          { label: "+Vanna wall", value: posWall, tone: "sky", help: METRIC_HELP.posVannaWall },
+                          { label: "−Vanna wall", value: negWall, tone: "violet", help: METRIC_HELP.negVannaWall },
+                          { label: "Max pain", value: maxPain, tone: "sky", help: METRIC_HELP.maxPain },
+                        ]
+                      : lens === "dex"
+                        ? [
+                            { label: "Spot", value: spot > 0 ? spot : null, tone: "cyan", help: METRIC_HELP.spot },
+                            { label: "Delta-zero", value: flip, tone: "gold", help: METRIC_HELP.deltaZero },
+                            { label: "Max pain", value: maxPain, tone: "sky", help: METRIC_HELP.maxPain },
+                          ]
+                        : [
+                            { label: "Spot", value: spot > 0 ? spot : null, tone: "cyan", help: METRIC_HELP.spot },
+                            { label: "Charm-zero", value: flip, tone: "gold", help: METRIC_HELP.charmZero },
+                            { label: "Max pain", value: maxPain, tone: "sky", help: METRIC_HELP.maxPain },
+                          ]
                 }
                 darkPoolLevels={darkPoolLevels}
               />
