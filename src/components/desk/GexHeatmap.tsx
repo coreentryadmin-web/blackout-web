@@ -51,6 +51,33 @@ type VexBlock = {
   regime: VexRegime;
 };
 
+/** Gamma flip migration over the shift window — earlier → current. */
+type FlipMigration = { from: number | null; to: number | null; delta_pts: number | null };
+
+/** How a single wall moved over the shift window. */
+type WallChange = {
+  from: number | null;
+  to: number | null;
+  moved_pts: number | null;
+  grew_pct: number | null;
+};
+
+/**
+ * Intraday GEX migration (build/melt + flip drift) computed server-side and cached with the
+ * matrix. `available:false` (status 'collecting') until ≥2 positioning snapshots accumulate —
+ * the client never fabricates a shift. GEX-only for now; VEX migration is future work.
+ */
+type GexShift = {
+  available: boolean;
+  status?: "collecting";
+  delta_by_strike?: Record<string, number>;
+  flip_migration?: FlipMigration;
+  wall_changes?: { call_wall: WallChange; put_wall: WallChange };
+  summary?: string;
+  since_ms?: number;
+  baseline_ts?: number;
+};
+
 /**
  * Cross-tool overlays from the route (browser-safe shapes — NO server import).
  * Flow-per-strike is keyed by strike string; dark-pool levels are price lines.
@@ -75,6 +102,8 @@ type GexHeatmapResponse = {
   max_pain?: number | null;
   gex?: GexBlock;
   vex?: VexBlock;
+  /** Intraday gamma migration (GEX-only). Present whenever a matrix is returned. */
+  shift?: GexShift;
   overlays?: Overlays;
   error?: string;
 };
@@ -425,6 +454,174 @@ function ExposureProfile({
 }
 
 // ---------------------------------------------------------------------------
+// Shift view — intraday gamma migration (Δ-gamma ladder: built green / melted red)
+// ---------------------------------------------------------------------------
+
+/** Human elapsed label from ms, e.g. "1h47m" / "12m". */
+function fmtElapsed(ms: number): string {
+  const mins = Math.max(0, Math.round(ms / 60_000));
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h${m}m` : `${h}h`;
+}
+
+// Build (more positive gamma) = bull green to the RIGHT; melt (more negative) = bear red to the LEFT.
+const SHIFT_BUILD_HEX = "#00e676";
+const SHIFT_MELT_HEX = "#ff2d55";
+
+type ShiftRow = { strike: number; delta: number; isSpot: boolean };
+
+function ShiftView({
+  shift,
+  strikes,
+  spotStrike,
+}: {
+  shift: GexShift;
+  strikes: number[];
+  spotStrike: number | null;
+}) {
+  // Δ rows on the SHARED strike axis (descending), each strike's build/melt vs the baseline.
+  const rows = useMemo<ShiftRow[]>(() => {
+    const deltas = shift.delta_by_strike ?? {};
+    // Union the matrix axis with any strike that changed (a strike built from 0 may sit
+    // just off the current band) so migration into/out of the band is still visible.
+    const axis = new Set<number>(strikes);
+    for (const k of Object.keys(deltas)) {
+      const n = Number(k);
+      if (Number.isFinite(n)) axis.add(n);
+    }
+    return Array.from(axis)
+      .sort((a, b) => b - a)
+      .map((strike) => ({
+        strike,
+        delta: deltas[String(strike)] ?? 0,
+        isSpot: strike === spotStrike,
+      }));
+  }, [shift.delta_by_strike, strikes, spotStrike]);
+
+  const peak = useMemo(() => {
+    let p = 0;
+    for (const r of rows) {
+      const a = Math.abs(r.delta);
+      if (a > p) p = a;
+    }
+    return p;
+  }, [rows]);
+
+  const fm = shift.flip_migration;
+  const elapsed = shift.since_ms != null ? fmtElapsed(shift.since_ms) : "—";
+  const flipUp = fm?.delta_pts != null && fm.delta_pts > 0;
+  const flipDown = fm?.delta_pts != null && fm.delta_pts < 0;
+  const flipArrow = flipUp ? "▲" : flipDown ? "▼" : "→";
+  const flipHex = flipUp ? SHIFT_BUILD_HEX : flipDown ? SHIFT_MELT_HEX : "#7dd3fc";
+
+  return (
+    <div className="space-y-3">
+      {/* Summary one-liner — prominent */}
+      {shift.summary && (
+        <div className="rounded-xl border border-white/12 bg-[rgba(8,9,14,0.5)] px-4 py-3">
+          <p className="text-[13px] leading-snug text-sky-100">{shift.summary}</p>
+        </div>
+      )}
+
+      {/* Flip migration + "vs {elapsed} ago" */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 font-mono text-[11px]">
+        <span className="flex items-center gap-2">
+          <span className="text-[9px] uppercase tracking-[0.2em] text-sky-300/60">γ flip</span>
+          <span className="tabular-nums text-sky-300">
+            {fm?.from != null ? fmtStrike(fm.from) : "—"}
+          </span>
+          <span aria-hidden style={{ color: flipHex }}>
+            {flipArrow}
+          </span>
+          <span className="tabular-nums font-bold text-white">
+            {fm?.to != null ? fmtStrike(fm.to) : "—"}
+          </span>
+          {fm?.delta_pts != null && fm.delta_pts !== 0 && (
+            <span className="tabular-nums" style={{ color: flipHex }}>
+              {fm.delta_pts > 0 ? "+" : ""}
+              {fm.delta_pts} pts
+            </span>
+          )}
+        </span>
+        <span className="text-[9px] uppercase tracking-[0.2em] text-cyan-400">
+          vs {elapsed} ago
+        </span>
+      </div>
+
+      {/* Δ-gamma ladder — built (right, green) vs melted (left, red) */}
+      <div role="img" aria-label="Intraday Δ dealer-gamma by strike — built right (green), melted left (red)" className="space-y-px">
+        {rows.map((r) => {
+          const mag = peak > 0 ? Math.min(1, Math.abs(r.delta) / peak) : 0;
+          const widthPct = (mag * 50).toFixed(2);
+          const built = r.delta > 0;
+          const barHex = built ? SHIFT_BUILD_HEX : SHIFT_MELT_HEX;
+          const title = `${fmtStrike(r.strike)} · ${built ? "built" : "melted"} ${fmtMoney(r.delta)}`;
+          return (
+            <div
+              key={r.strike}
+              className={clsx(
+                "group relative flex items-center gap-2 rounded-sm py-0.5 pr-1",
+                r.isSpot && "outline outline-1 outline-cyan-400/70 bg-cyan-400/[0.06]"
+              )}
+              title={title}
+            >
+              <span
+                className={clsx(
+                  "w-14 shrink-0 text-right font-mono text-[11px] tabular-nums",
+                  r.isSpot ? "font-bold text-white" : "text-sky-300"
+                )}
+              >
+                <span className="inline-flex items-center justify-end gap-1">
+                  {r.isSpot && <span className="text-cyan-400">●</span>}
+                  {fmtStrike(r.strike)}
+                </span>
+              </span>
+
+              <span className="relative h-4 flex-1">
+                <span
+                  aria-hidden
+                  className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-white/15"
+                />
+                {r.delta !== 0 && (
+                  <span
+                    aria-hidden
+                    className="absolute top-1/2 h-2.5 -translate-y-1/2 rounded-[2px] motion-safe:transition-all motion-safe:duration-300"
+                    style={{
+                      width: `${widthPct}%`,
+                      left: built ? "50%" : undefined,
+                      right: built ? undefined : "50%",
+                      backgroundColor: barHex,
+                      boxShadow: mag > 0.55 ? `0 0 8px ${barHex}88` : undefined,
+                      opacity: 0.35 + mag * 0.6,
+                    }}
+                  />
+                )}
+              </span>
+
+              <span
+                className="w-20 shrink-0 text-right font-mono text-[10px] tabular-nums"
+                style={{ color: r.delta === 0 ? undefined : barHex }}
+              >
+                {r.delta !== 0 ? `${built ? "+" : ""}${fmtMoney(r.delta)}` : "·"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* axis legend */}
+      <div className="mt-1 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/70">
+        <span style={{ color: SHIFT_MELT_HEX }}>◀ melted (−)</span>
+        <span className="text-sky-300">Δ dealer gamma</span>
+        <span style={{ color: SHIFT_BUILD_HEX }}>built (+) ▶</span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Ticker switcher — preset chips + search input wired to /api/market/ticker-search
 // ---------------------------------------------------------------------------
 
@@ -572,6 +769,9 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
   );
   const hasFlowOverlay = flowByStrike != null && Object.keys(flowByStrike).length > 0;
   const hasDarkPoolOverlay = darkPoolLevels != null && darkPoolLevels.length > 0;
+
+  // ── Intraday gamma migration (GEX-only; server-computed, cached with the matrix) ──
+  const shift = data?.shift ?? null;
   // Peak |net premium| across mapped strikes — drives the flow-marker width scale.
   const flowPeak = useMemo(() => {
     if (!flowByStrike) return 0;
@@ -848,10 +1048,14 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
             <p className="min-w-0 flex-1 text-[13px] leading-snug text-sky-100">{regimeRead}</p>
           </div>
 
-          {/* ── Profile | Matrix toggle ───────────────────────────────── */}
-          <Tabs defaultValue="profile">
+          {/* ── Profile | Shift | Matrix toggle ───────────────────────────
+              Keyed on lens so switching GEX↔VEX resets to Profile — the Shift
+              tab is GEX-only (VEX migration is future work), so it can't be
+              left selected when the lens flips to VEX. */}
+          <Tabs key={lens} defaultValue="profile">
             <TabList aria-label={`${isGex ? "GEX" : "VEX"} view`} className="mt-4 w-fit">
               <Tab value="profile">{isGex ? "Gamma Profile" : "Vanna Profile"}</Tab>
+              {isGex && <Tab value="shift">Shift</Tab>}
               <Tab value="matrix">Matrix</Tab>
             </TabList>
 
@@ -918,6 +1122,27 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                   </span>
                 </p>
               </TabPanel>
+
+              {/* Shift: intraday gamma migration (GEX-only) */}
+              {isGex && (
+                <TabPanel value="shift">
+                  {shift && shift.available ? (
+                    <>
+                      <ShiftView shift={shift} strikes={strikes} spotStrike={spotStrike} />
+                      <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-sky-300/60">
+                        Δ net dealer $-gamma vs earlier snapshot · green built / red melted ·
+                        flip drift up = dealers longer
+                      </p>
+                    </>
+                  ) : (
+                    <EmptyState
+                      icon="◷"
+                      title="BUILDING POSITIONING HISTORY"
+                      description="The shift view fills in as snapshots accumulate (first read ~after the open). Gamma migration — where dealer gamma is building vs melting and how the flip drifts — appears once enough history is collected."
+                    />
+                  )}
+                </TabPanel>
+              )}
 
               {/* Secondary detail: strike × expiry matrix */}
               <TabPanel value="matrix">

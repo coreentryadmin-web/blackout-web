@@ -262,6 +262,74 @@ export type GexHeatmapOverlays = {
   dark_pool_levels: GexDarkPoolLevel[] | null;
 };
 
+/**
+ * One sampled GEX snapshot in the intraday positioning-history ring. Captured ONLY on a
+ * fresh matrix compute (cache miss), throttled to ~1 per 5 min, and persisted to Redis
+ * under `gex-history:{ticker}`. The SHIFT view diffs the newest vs the earliest snapshot
+ * still in the window. GEX-only for now (VEX migration is future work).
+ */
+export type GexHistorySnapshot = {
+  /** epoch-ms the snapshot was taken. */
+  ts: number;
+  /** spot at capture time. */
+  spot: number;
+  /** zero-gamma flip strike at capture, or null. */
+  flip: number | null;
+  /** per-strike NET dealer dollar-gamma totals at capture (sparse, keyed by strike string). */
+  strike_totals: Record<string, number>;
+};
+
+/** Gamma flip migration over the shift window — earlier flip → current flip. */
+export type GexFlipMigration = {
+  /** Earliest-snapshot flip strike, or null when undetermined then. */
+  from: number | null;
+  /** Current flip strike, or null when undetermined now. */
+  to: number | null;
+  /** Signed flip move in points (to − from); null when either end is null. */
+  delta_pts: number | null;
+};
+
+/** How a single wall (call or put) moved over the shift window. */
+export type GexWallChange = {
+  /** Earliest-snapshot wall strike, or null. */
+  from: number | null;
+  /** Current wall strike, or null. */
+  to: number | null;
+  /** Signed strike move (to − from) in points; null when either end is null. */
+  moved_pts: number | null;
+  /**
+   * Fractional change in the wall's |net gamma| at the CURRENT wall strike vs the same
+   * strike earlier (grew/melted). null when not computable (e.g. strike absent earlier).
+   */
+  grew_pct: number | null;
+};
+
+/**
+ * Intraday gamma MIGRATION — where dealer gamma is building vs melting and how the flip
+ * is moving — diffed from the positioning-history ring. Computed once per fresh matrix
+ * compute and cached with the matrix, so every user reads one shared shift (never per-user).
+ * When fewer than 2 usable snapshots exist, `available` is false and only `status` is set —
+ * never fabricated.
+ */
+export type GexShift = {
+  /** True only when ≥2 usable snapshots span the window and a diff was computed. */
+  available: boolean;
+  /** 'collecting' while history is still filling in (available === false). */
+  status?: "collecting";
+  /** Per-strike Δ-gamma = current − earliest (union of strike keys; missing side = 0). */
+  delta_by_strike?: Record<string, number>;
+  /** Gamma-flip migration earlier → current. */
+  flip_migration?: GexFlipMigration;
+  /** Call/put wall movement earlier → current. */
+  wall_changes?: { call_wall: GexWallChange; put_wall: GexWallChange };
+  /** Computed one-liner with REAL numbers describing the migration. */
+  summary?: string;
+  /** Actual elapsed ms vs the earliest snapshot in the window. */
+  since_ms?: number;
+  /** epoch-ms of the earliest (baseline) snapshot. */
+  baseline_ts?: number;
+};
+
 export type GexHeatmap = {
   underlying: string;
   spot: number;
@@ -277,6 +345,12 @@ export type GexHeatmap = {
   gex: GexMetricBlock;
   /** Net dealer dollar-VANNA block. */
   vex: VexMetricBlock;
+  /**
+   * Intraday GEX migration (build/melt + flip drift) vs positioning history. GEX-only.
+   * Always present; `available:false` (status 'collecting') until ≥2 snapshots accumulate.
+   * VEX shift is future work.
+   */
+  shift: GexShift;
   source: "polygon";
   data_delay: string;
 };
@@ -522,6 +596,217 @@ function computeZeroGammaFlip(strikeTotals: Record<string, number>): number | nu
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// SHIFT — intraday gamma migration (positioning-history ring + diff)
+// ---------------------------------------------------------------------------
+
+const GEX_HISTORY_PREFIX = "gex-history";
+/** Min spacing between sampled snapshots (~5 min) so the ring spans real time, not poll noise. */
+const GEX_HISTORY_SAMPLE_MS = 5 * 60_000;
+/** Max snapshots kept (~24 × 5 min ≈ 2h of intraday positioning history). */
+const GEX_HISTORY_MAX = 24;
+/** Redis TTL for the history ring (~3h) — outlives the window so a quiet patch doesn't drop it. */
+const GEX_HISTORY_TTL_SEC = 3 * 60 * 60;
+
+/**
+ * Best-effort: append a sampled GEX snapshot to the `gex-history:{ticker}` ring and return
+ * the resulting (trimmed) ring. THROTTLED — a new entry is only appended when the last one is
+ * ≥5 min old (or the ring is empty); otherwise the ring is returned unchanged. Read-modify-write
+ * races are benign (worst case a duplicate/near-dupe sample). Any Redis miss/error returns the
+ * snapshots read so far (or just the fresh one) and NEVER throws — the matrix must not break.
+ *
+ * Called ONLY on a fresh matrix compute (cache miss) → one history read/write per ticker per
+ * compute, never per user.
+ */
+async function appendGexHistory(
+  cacheKey: string,
+  snapshot: GexHistorySnapshot
+): Promise<GexHistorySnapshot[]> {
+  const key = `${GEX_HISTORY_PREFIX}:${cacheKey}`;
+  try {
+    const { sharedCacheGet, sharedCacheSet } = await import("../shared-cache");
+    const prior = (await sharedCacheGet<GexHistorySnapshot[]>(key)) ?? [];
+    const ring = Array.isArray(prior) ? prior.filter((s) => s && typeof s.ts === "number") : [];
+    const last = ring[ring.length - 1];
+    // Throttle: keep existing ring if the most recent sample is younger than the sample window.
+    if (last && snapshot.ts - last.ts < GEX_HISTORY_SAMPLE_MS) {
+      return ring;
+    }
+    ring.push(snapshot);
+    // Trim to the most-recent GEX_HISTORY_MAX (~2h).
+    const trimmed = ring.slice(-GEX_HISTORY_MAX);
+    await sharedCacheSet(key, trimmed, GEX_HISTORY_TTL_SEC);
+    return trimmed;
+  } catch {
+    // Redis unavailable → at least let the diff see the current snapshot (still <2 → collecting).
+    return [snapshot];
+  }
+}
+
+/** Compact signed dollar magnitude for the shift summary, e.g. "$38.2M" / "-$4.1K". */
+function fmtShiftMoney(n: number): string {
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1_000_000_000) return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}$${abs.toFixed(0)}`;
+}
+
+/** Human elapsed label from ms, e.g. "1h47m" / "12m". */
+function fmtElapsed(ms: number): string {
+  const mins = Math.max(0, Math.round(ms / 60_000));
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h${m}m` : `${h}h`;
+}
+
+/** Largest-positive (call) and largest-negative (put) wall strikes from per-strike totals. */
+function wallsOf(strikeTotals: Record<string, number>): {
+  callWall: number | null;
+  putWall: number | null;
+} {
+  let callWall: number | null = null;
+  let putWall: number | null = null;
+  let maxPos = 0;
+  let maxNeg = 0;
+  for (const [s, g] of Object.entries(strikeTotals)) {
+    const strike = Number(s);
+    if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
+    if (g > maxPos) {
+      maxPos = g;
+      callWall = strike;
+    }
+    if (g < maxNeg) {
+      maxNeg = g;
+      putWall = strike;
+    }
+  }
+  return { callWall, putWall };
+}
+
+/**
+ * Build a single wall-change record (earlier vs current). `grew_pct` compares the CURRENT
+ * wall strike's |net gamma| now vs at that same strike earlier — null when not computable.
+ */
+function wallChange(
+  toWall: number | null,
+  fromWall: number | null,
+  current: Record<string, number>,
+  earlier: Record<string, number>
+): GexWallChange {
+  const moved_pts =
+    toWall != null && fromWall != null ? Number((toWall - fromWall).toFixed(2)) : null;
+  let grew_pct: number | null = null;
+  if (toWall != null) {
+    const nowMag = Math.abs(current[String(toWall)] ?? 0);
+    const thenMag = Math.abs(earlier[String(toWall)] ?? 0);
+    if (thenMag > 0) grew_pct = Number((((nowMag - thenMag) / thenMag) * 100).toFixed(1));
+  }
+  return { from: fromWall, to: toWall, moved_pts, grew_pct };
+}
+
+/**
+ * Diff the current GEX state against the EARLIEST snapshot still in the window to produce the
+ * shift payload. `ring` is the full positioning-history ring (ascending by ts) INCLUDING the
+ * just-appended current snapshot. With <2 usable snapshots → { available:false, status:'collecting' }
+ * (never fabricated).
+ */
+function computeGexShift(
+  ring: GexHistorySnapshot[],
+  current: { ts: number; spot: number; flip: number | null; strike_totals: Record<string, number> }
+): GexShift {
+  const usable = ring
+    .filter((s) => s && typeof s.ts === "number" && s.strike_totals)
+    .sort((a, b) => a.ts - b.ts);
+  // Earliest snapshot strictly before "now" — need ≥2 distinct points to diff.
+  const baseline = usable.find((s) => s.ts < current.ts) ?? null;
+  if (!baseline || usable.length < 2) {
+    return { available: false, status: "collecting" };
+  }
+
+  const earlier = baseline.strike_totals;
+  const now = current.strike_totals;
+
+  // Per-strike Δ = current − earlier, UNION of keys (missing side = 0 → built-from-0 / melted-to-0).
+  const delta_by_strike: Record<string, number> = {};
+  const keys = new Set<string>(Object.keys(now).concat(Object.keys(earlier)));
+  for (const k of Array.from(keys)) {
+    const d = (Number(now[k]) || 0) - (Number(earlier[k]) || 0);
+    if (Number.isFinite(d) && d !== 0) delta_by_strike[k] = d;
+  }
+
+  // Flip migration.
+  const flip_migration: GexFlipMigration = {
+    from: baseline.flip,
+    to: current.flip,
+    delta_pts:
+      current.flip != null && baseline.flip != null
+        ? Number((current.flip - baseline.flip).toFixed(2))
+        : null,
+  };
+
+  // Wall changes (current walls recomputed from totals; earlier from the snapshot's totals).
+  const curWalls = wallsOf(now);
+  const earWalls = wallsOf(earlier);
+  const wall_changes = {
+    call_wall: wallChange(curWalls.callWall, earWalls.callWall, now, earlier),
+    put_wall: wallChange(curWalls.putWall, earWalls.putWall, now, earlier),
+  };
+
+  const since_ms = current.ts - baseline.ts;
+  const elapsed = fmtElapsed(since_ms);
+
+  // ── Summary: real numbers + a directional read on dealer length / vol. ──
+  // Net Δ gamma over the window → dealers getting longer (vol compressing) or shorter (vol expanding).
+  let netDelta = 0;
+  for (const d of Object.values(delta_by_strike)) netDelta += d;
+  const fmtK = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+
+  const parts: string[] = [];
+  const cw = wall_changes.call_wall;
+  if (cw.to != null && cw.grew_pct != null) {
+    const verb = cw.grew_pct >= 0 ? "built" : "melted";
+    parts.push(`the ${fmtK(cw.to)} call wall ${verb} ${cw.grew_pct >= 0 ? "+" : ""}${cw.grew_pct}%`);
+  } else if (cw.to != null && cw.moved_pts != null && cw.moved_pts !== 0) {
+    parts.push(`the call wall slid ${cw.moved_pts > 0 ? "up" : "down"} to ${fmtK(cw.to)}`);
+  }
+  if (flip_migration.delta_pts != null && flip_migration.delta_pts !== 0) {
+    const dir = flip_migration.delta_pts > 0 ? "up" : "down";
+    parts.push(
+      `gamma flip migrated ${dir} ${Math.abs(flip_migration.delta_pts)} pts`
+    );
+  } else if (flip_migration.to != null && flip_migration.from == null) {
+    parts.push(`a gamma flip formed at ${fmtK(flip_migration.to)}`);
+  }
+
+  let lengthRead: string;
+  if (netDelta > 0) {
+    lengthRead = "dealers getting longer → vol compressing";
+  } else if (netDelta < 0) {
+    lengthRead = "dealers getting shorter → vol expansion risk";
+  } else {
+    lengthRead = "net dealer gamma roughly flat";
+  }
+
+  const body =
+    parts.length > 0
+      ? `${parts.join(", ")} (${lengthRead}).`
+      : `net dealer gamma moved ${fmtShiftMoney(netDelta)} (${lengthRead}).`;
+  const summary = `Over the last ${elapsed}: ${body}`;
+
+  return {
+    available: true,
+    delta_by_strike,
+    flip_migration,
+    wall_changes,
+    summary,
+    since_ms,
+    baseline_ts: baseline.ts,
+  };
+}
+
 /**
  * Dealer GEX heatmap for `underlying` (default SPY): a (strike × expiry) matrix of
  * NET dealer dollar-gamma, computed ONCE and cached server-side (in-memory + Redis)
@@ -698,6 +983,30 @@ export async function fetchGexHeatmap(
     vexBuilt.total || totalVanna
   );
 
+  // ── SHIFT (intraday gamma migration) — fresh compute ONLY, GEX-only ──────────
+  // Append a throttled GEX snapshot to the positioning-history ring, then diff current vs the
+  // earliest snapshot still in the window. Entirely best-effort: any failure → 'collecting' so
+  // the matrix is never blocked. Computed once here and cached with the matrix (all users read
+  // the cached shift — never per user). VEX migration is future work.
+  let shift: GexShift = { available: false, status: "collecting" };
+  try {
+    const snapshot: GexHistorySnapshot = {
+      ts: now,
+      spot,
+      flip: gexFlip,
+      strike_totals: gexBuilt.strikeTotals,
+    };
+    const ring = await appendGexHistory(cacheKey, snapshot);
+    shift = computeGexShift(ring, {
+      ts: now,
+      spot,
+      flip: gexFlip,
+      strike_totals: gexBuilt.strikeTotals,
+    });
+  } catch {
+    shift = { available: false, status: "collecting" };
+  }
+
   const heatmap: GexHeatmap = {
     underlying: root,
     spot,
@@ -724,6 +1033,7 @@ export async function fetchGexHeatmap(
       flip: vexFlip,
       regime: vexRegime,
     },
+    shift,
     source: "polygon",
     data_delay: POLYGON_OPTIONS_DATA_DELAY,
   };
@@ -781,6 +1091,8 @@ function emptyHeatmap(
         read: "No options-chain data for this ticker — dealer vanna profile unavailable.",
       },
     },
+    // No matrix → no positioning to migrate; the shift view stays in its collecting state.
+    shift: { available: false, status: "collecting" },
     source: "polygon",
     data_delay: POLYGON_OPTIONS_DATA_DELAY,
   };
