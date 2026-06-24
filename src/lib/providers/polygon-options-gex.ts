@@ -386,8 +386,68 @@ export type GexHeatmap = {
    * (<2 snapshots) so the client can tell "nothing crossed" from "no prior to diff".
    */
   events?: GexEvent[];
+  /**
+   * Day-over-day HISTORICAL context — current levels diffed vs the most recent PRIOR-day EOD
+   * snapshot ("vs prior close"). OPTIONAL + additive: present ONLY when ≥1 prior-day snapshot
+   * exists in the `gex-eod:{ticker}` series; omitted otherwise (never fabricated). Read from a
+   * cheap Redis list inside the already-cached matrix build (one read per ticker per TTL).
+   */
+  history_context?: GexHistoryContext;
   source: "polygon";
   data_delay: string;
+};
+
+/**
+ * One end-of-day GEX close snapshot, persisted to the `gex-eod:{ticker}` rolling series (one
+ * entry per trading day). Compact by design — just the levels pros anchor to "vs prior close".
+ * Captured by the `gex-eod-snapshot` cron (~4:10pm ET) from the SHARED cached matrix.
+ */
+export type GexEodSnapshot = {
+  /** ET trading day this close belongs to (YYYY-MM-DD). One snapshot per date (idempotent). */
+  date: string;
+  /** Underlying spot at capture. */
+  spot: number;
+  /** Zero-gamma flip strike at close, or null. */
+  flip: number | null;
+  /** Largest-positive net-gamma wall (call wall) at close, or null. */
+  call_wall: number | null;
+  /** Largest-negative net-gamma wall (put wall) at close, or null. */
+  put_wall: number | null;
+  /** Total net dealer dollar-gamma across the matrix at close. */
+  net_gex: number;
+  /** Max-pain strike at close, or null. */
+  max_pain: number | null;
+};
+
+/**
+ * Day-over-day historical context surfaced on `GexHeatmap.history_context`. Diffs CURRENT values
+ * against the most recent PRIOR-day EOD snapshot (a snapshot whose `date` ≠ today), plus min/max
+ * over the rolling series. Deltas are null when either end is null — NEVER fabricated.
+ */
+export type GexHistoryContext = {
+  /** The prior-day close levels the deltas are measured against, or null when no prior day exists. */
+  prior_close: {
+    date: string;
+    flip: number | null;
+    call_wall: number | null;
+    put_wall: number | null;
+    net_gex: number;
+    max_pain: number | null;
+  } | null;
+  /** Current flip − prior-day flip (points); null when either end is null. */
+  flip_delta_pts: number | null;
+  /** Current call wall − prior-day call wall (points); null when either end is null. */
+  call_wall_delta_pts: number | null;
+  /** Current put wall − prior-day put wall (points); null when either end is null. */
+  put_wall_delta_pts: number | null;
+  /** Current net GEX − prior-day net GEX (dollars); null when prior is unavailable. */
+  net_gex_delta: number | null;
+  /** Min/max flip strike over the rolling EOD series (incl. today's snapshot if present), or null. */
+  recent_flip_range: { min: number; max: number } | null;
+  /** Min/max spot over the rolling EOD series, or null. */
+  recent_spot_range: { min: number; max: number } | null;
+  /** Number of EOD sessions in the rolling series. */
+  sessions: number;
 };
 
 export type GexRegime = {
@@ -892,6 +952,145 @@ async function appendGexHistory(
     // Redis unavailable → at least let the diff see the current snapshot (still <2 → collecting).
     return [snapshot];
   }
+}
+
+// ---------------------------------------------------------------------------
+// EOD SNAPSHOT — day-over-day historical context ("vs prior close")
+// ---------------------------------------------------------------------------
+
+const GEX_EOD_PREFIX = "gex-eod";
+/** Rolling EOD snapshots kept (~10 trading days ≈ two weeks of "vs prior close" anchors). */
+const GEX_EOD_MAX = 10;
+/** Redis TTL for the EOD series (~20 days) — outlives the rolling window so a long weekend/holiday gap doesn't drop it. */
+const GEX_EOD_TTL_SEC = 20 * 24 * 60 * 60;
+
+/**
+ * Best-effort: capture the close GEX snapshot for `ticker` into the `gex-eod:{ticker}` rolling
+ * series (one entry per trading day). CACHE-READER — reads the SHARED cached matrix via
+ * fetchGexHeatmap(ticker) (NO new upstream beyond what the matrix already does) and persists the
+ * compact close levels.
+ *
+ * IDEMPOTENT per day: if a snapshot for today's ET date already exists in the series it is
+ * REPLACED (not duplicated), so cron re-runs / manual "Run now" are safe. Trims to the most-recent
+ * GEX_EOD_MAX dates. NEVER throws — a Redis miss / unconfigured matrix / empty heatmap is a no-op
+ * that returns null so the cron can record it as "skipped" without aborting the rest of the batch.
+ */
+export async function appendGexEodSnapshot(ticker: string): Promise<GexEodSnapshot | null> {
+  try {
+    const { root } = resolveOptionsRoot(ticker);
+    if (!root) return null;
+    // Cache-reader: the matrix is mostly warm from the trading day; a cold one is ONE shared compute.
+    const heatmap = await fetchGexHeatmap(root);
+    // No spot / empty chain → nothing meaningful to anchor; skip (never fabricate a close).
+    if (!heatmap || !(heatmap.spot > 0) || heatmap.strikes.length === 0) return null;
+
+    const snapshot: GexEodSnapshot = {
+      date: todayEtYmd(),
+      spot: heatmap.spot,
+      flip: heatmap.gex.flip,
+      call_wall: heatmap.gex.call_wall,
+      put_wall: heatmap.gex.put_wall,
+      net_gex: heatmap.gex.total,
+      max_pain: heatmap.max_pain,
+    };
+
+    const key = `${GEX_EOD_PREFIX}:${root}`;
+    const { sharedCacheGet, sharedCacheSet } = await import("../shared-cache");
+    const prior = (await sharedCacheGet<GexEodSnapshot[]>(key)) ?? [];
+    const series = Array.isArray(prior)
+      ? prior.filter((s) => s && typeof s.date === "string")
+      : [];
+    // Idempotent per-day: drop any existing entry for today's date, then append the fresh one.
+    const deduped = series.filter((s) => s.date !== snapshot.date);
+    deduped.push(snapshot);
+    // Keep the most-recent GEX_EOD_MAX dates (series is chronological by construction).
+    const trimmed = deduped.slice(-GEX_EOD_MAX);
+    await sharedCacheSet(key, trimmed, GEX_EOD_TTL_SEC);
+    return snapshot;
+  } catch {
+    // Redis unavailable / unexpected error → best-effort no-op; the matrix path is unaffected.
+    return null;
+  }
+}
+
+/**
+ * Read the rolling `gex-eod:{ticker}` series, MOST-RECENT-FIRST. Parses defensively (skips
+ * malformed entries) and returns [] on any miss/error — never throws.
+ */
+export async function getGexEodHistory(ticker: string): Promise<GexEodSnapshot[]> {
+  try {
+    const { root } = resolveOptionsRoot(ticker);
+    if (!root) return [];
+    const { sharedCacheGet } = await import("../shared-cache");
+    const raw = (await sharedCacheGet<GexEodSnapshot[]>(`${GEX_EOD_PREFIX}:${root}`)) ?? [];
+    const series = Array.isArray(raw) ? raw.filter((s) => s && typeof s.date === "string") : [];
+    // Stored chronological → reverse for most-recent-first.
+    return series.slice().reverse();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Build the day-over-day `history_context` for the CURRENT matrix values by diffing against the
+ * most recent PRIOR-DAY EOD snapshot (a snapshot whose date ≠ today), plus min/max over the
+ * rolling series. Returns undefined when the series is empty (NO prior snapshot at all) so the
+ * caller can OMIT the field — never fabricated. Deltas are null when either end is null.
+ *
+ * `series` is the rolling EOD series MOST-RECENT-FIRST (as returned by getGexEodHistory).
+ */
+function buildGexHistoryContext(
+  series: GexEodSnapshot[],
+  current: {
+    flip: number | null;
+    call_wall: number | null;
+    put_wall: number | null;
+    net_gex: number;
+    spot: number;
+  }
+): GexHistoryContext | undefined {
+  const usable = series.filter((s) => s && typeof s.date === "string");
+  if (usable.length === 0) return undefined; // no prior close → omit, never fabricate
+
+  const today = todayEtYmd();
+  // Most-recent snapshot whose date is a PRIOR trading day (≠ today). `usable` is most-recent-first.
+  const priorSnap = usable.find((s) => s.date !== today) ?? null;
+
+  const diff = (a: number | null, b: number | null): number | null =>
+    a != null && b != null && Number.isFinite(a) && Number.isFinite(b)
+      ? Number((a - b).toFixed(2))
+      : null;
+
+  const prior_close = priorSnap
+    ? {
+        date: priorSnap.date,
+        flip: priorSnap.flip,
+        call_wall: priorSnap.call_wall,
+        put_wall: priorSnap.put_wall,
+        net_gex: priorSnap.net_gex,
+        max_pain: priorSnap.max_pain,
+      }
+    : null;
+
+  // Min/max over the WHOLE rolling series (includes today's snapshot if already persisted).
+  const flips = usable.map((s) => s.flip).filter((f): f is number => f != null && Number.isFinite(f));
+  const spots = usable.map((s) => s.spot).filter((p): p is number => Number.isFinite(p) && p > 0);
+  const recent_flip_range = flips.length ? { min: Math.min(...flips), max: Math.max(...flips) } : null;
+  const recent_spot_range = spots.length ? { min: Math.min(...spots), max: Math.max(...spots) } : null;
+
+  return {
+    prior_close,
+    flip_delta_pts: diff(current.flip, priorSnap?.flip ?? null),
+    call_wall_delta_pts: diff(current.call_wall, priorSnap?.call_wall ?? null),
+    put_wall_delta_pts: diff(current.put_wall, priorSnap?.put_wall ?? null),
+    net_gex_delta:
+      priorSnap && Number.isFinite(current.net_gex) && Number.isFinite(priorSnap.net_gex)
+        ? current.net_gex - priorSnap.net_gex
+        : null,
+    recent_flip_range,
+    recent_spot_range,
+    sessions: usable.length,
+  };
 }
 
 /** Compact signed dollar magnitude for the shift summary, e.g. "$38.2M" / "-$4.1K". */
@@ -1557,6 +1756,24 @@ export async function fetchGexHeatmap(
     events = undefined;
   }
 
+  // ── DAY-OVER-DAY HISTORY CONTEXT ("vs prior close") ──────────────────────────
+  // Cheap Redis read of the rolling EOD series (written once/day by the gex-eod-snapshot cron),
+  // diffed against the most recent PRIOR-day close. Best-effort + additive: any failure or an
+  // empty series leaves history_context undefined → the field is OMITTED (never fabricated).
+  let historyContext: GexHistoryContext | undefined;
+  try {
+    const eodSeries = await getGexEodHistory(root);
+    historyContext = buildGexHistoryContext(eodSeries, {
+      flip: gexFlip,
+      call_wall: callWall,
+      put_wall: putWall,
+      net_gex: gexBuilt.total || totalGamma,
+      spot,
+    });
+  } catch {
+    historyContext = undefined;
+  }
+
   const heatmap: GexHeatmap = {
     underlying: root,
     spot,
@@ -1590,6 +1807,8 @@ export async function fetchGexHeatmap(
     // Omit `events` on cold history (undefined) so the client distinguishes "nothing crossed" ([])
     // from "no prior to diff yet".
     ...(events !== undefined ? { events } : {}),
+    // Omit `history_context` when no EOD snapshot exists yet (never fabricated).
+    ...(historyContext !== undefined ? { history_context: historyContext } : {}),
     source: "polygon",
     data_delay: POLYGON_OPTIONS_DATA_DELAY,
   };
