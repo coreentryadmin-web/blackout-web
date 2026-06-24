@@ -33,7 +33,11 @@ import { withServerCache, serverCache, TTL } from "@/lib/server-cache";
 import { todayEt } from "@/lib/et-date";
 import { isSpxTicker } from "@/lib/spx-desk-live";
 import { loadMergedSpxDesk } from "@/lib/spx-desk-loader";
-import { computeSpxConfluence, type SpxConfluence } from "@/lib/spx-signals";
+import {
+  computeSpxConfluence,
+  computeSpxTradeSignal,
+  type SpxConfluence,
+} from "@/lib/spx-signals";
 import { fetchPolygonMtfTechnicals, fetchPolygonNews } from "@/lib/providers/polygon-largo";
 import { fetchBenzingaEarnings } from "@/lib/providers/polygon";
 import { fetchUwEarnings, fetchUwEarningsEstimates } from "@/lib/providers/unusual-whales";
@@ -541,13 +545,16 @@ export async function buildPositionDetail(
   if (spx && deskBundle?.merged) {
     const c = computeSpxConfluence(deskBundle.merged);
     if (c) {
+      // computeSpxConfluence hard-codes headline/thesis to "" — the human prose lives in
+      // computeSpxTradeSignal (same desk, pure compute). Pull it so the panel isn't blank.
+      const sig = computeSpxTradeSignal(deskBundle.merged);
       confluence = {
         action: c.action,
         bias: c.bias,
         score: c.score,
         grade: c.grade,
-        headline: c.headline,
-        thesis: c.thesis,
+        headline: sig?.headline ?? "",
+        thesis: sig?.thesis ?? "",
         agreeing: c.agreeing,
         conflicts: c.conflicts,
         entry: c.levels.entry,
