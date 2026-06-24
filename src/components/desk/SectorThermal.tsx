@@ -22,7 +22,7 @@ export function SectorThermal({ data, live }: { data?: HeatmapData; live?: boole
 
   return (
     <Panel
-      accent="accent"
+      accent="ember"
       kicker="Polygon indices"
       title="Sector Thermal"
       actions={<FeedBadge live={live} />}

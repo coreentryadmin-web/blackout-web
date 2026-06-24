@@ -2,13 +2,14 @@ import { forwardRef } from "react";
 import { clsx } from "clsx";
 import { Kicker } from "./Kicker";
 
-export type PanelAccent = "bull" | "bear" | "sky" | "accent";
+export type PanelAccent = "bull" | "bear" | "sky" | "accent" | "ember";
 
 const ACCENT_BORDER: Record<PanelAccent, string> = {
   bull: "border-bull/30",
   bear: "border-bear/30",
   sky: "border-sky-400/25",
   accent: "border-cyan-400/25",
+  ember: "border-[#ff6b2b]/30",
 };
 
 // Top hairline strip that signals the panel's accent.
@@ -17,6 +18,7 @@ const ACCENT_STRIP: Record<PanelAccent, string> = {
   bear: "from-transparent via-bear to-transparent shadow-[0_0_18px_#ff2d55]",
   sky: "from-transparent via-sky-400 to-transparent shadow-[0_0_18px_#38bdf8]",
   accent: "from-transparent via-cyan-400 to-transparent shadow-[0_0_18px_#22d3ee]",
+  ember: "from-transparent via-[#ff6b2b] to-transparent shadow-[0_0_18px_#ff6b2b]",
 };
 
 export type PanelHeaderProps = Omit<React.HTMLAttributes<HTMLDivElement>, "title"> & {

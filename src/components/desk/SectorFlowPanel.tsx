@@ -34,7 +34,7 @@ export function SectorFlowPanel({
 
   return (
     <Panel
-      accent="accent"
+      accent="ember"
       kicker="▦ 7d rotation"
       title="Sector Flow"
       bodyClassName="space-y-1.5"

@@ -2301,10 +2301,6 @@ body {
     background: rgba(255, 45, 85, 0.06);
   }
 
-  .nighthawk-status-loading {
-    @apply border-grey-600 text-sky-300 bg-black/40;
-  }
-
   .nighthawk-status-dot {
     @apply w-1.5 h-1.5 rounded-full;
     background: #ffd23f;
@@ -2904,10 +2900,6 @@ body {
 
   .nighthawk-modal-actions {
     @apply flex items-center justify-end gap-2 pt-2;
-  }
-
-  .nighthawk-btn-ghost {
-    @apply px-4 py-2 font-mono text-[10px] tracking-[0.2em] uppercase text-sky-300 border border-grey-700 hover:text-white hover:border-grey-500 transition-colors;
   }
 
   .nighthawk-btn-power {
@@ -3616,7 +3608,7 @@ body {
   .desk-panel-neutral { @apply border-grey-800; }
 
   .desk-panel-glow {
-    box-shadow: 0 0 30px rgba(191, 95, 255, 0.15), inset 0 0 40px rgba(191, 95, 255, 0.06);
+    box-shadow: 0 0 30px rgba(34, 211, 238, 0.15), inset 0 0 40px rgba(34, 211, 238, 0.06);
   }
 
   .desk-panel-header {
@@ -3920,14 +3912,14 @@ body {
   }
 
   .largo-msg-user {
-    background: linear-gradient(270deg, rgba(191, 95, 255, 0.1), rgba(191, 95, 255, 0.02) 55%, transparent);
+    background: linear-gradient(270deg, rgba(34, 211, 238, 0.1), rgba(34, 211, 238, 0.02) 55%, transparent);
     border-radius: 4px 0 0 4px;
-    box-shadow: -8px 0 24px rgba(191, 95, 255, 0.06);
+    box-shadow: -8px 0 24px rgba(34, 211, 238, 0.06);
   }
 
   .largo-msg-user .largo-msg-label {
     text-align: right;
-    color: rgba(213, 128, 255, 0.9);
+    color: rgba(125, 211, 252, 0.9);
   }
 
   .largo-msg-assistant {
@@ -4022,9 +4014,9 @@ body {
     height: 14px;
     margin: -7px 0 0 -7px;
     border-radius: 50%;
-    background: radial-gradient(circle, #fff 0%, #bf5fff 40%, #6b21a8 100%);
+    background: radial-gradient(circle, #fff 0%, #22d3ee 40%, #0e7490 100%);
     box-shadow:
-      0 0 12px rgba(191, 95, 255, 1),
+      0 0 12px rgba(34, 211, 238, 1),
       0 0 28px rgba(0, 255, 200, 0.5);
     animation: largo-core-pulse 1.2s ease-in-out infinite;
   }
@@ -4064,8 +4056,8 @@ body {
     width: 44px;
     height: 44px;
     margin: -22px 0 0 -22px;
-    border-top-color: #bf5fff;
-    border-right-color: rgba(191, 95, 255, 0.2);
+    border-top-color: #22d3ee;
+    border-right-color: rgba(34, 211, 238, 0.2);
     animation: largo-orbit-spin 1.4s linear infinite;
   }
 
@@ -4082,7 +4074,7 @@ body {
     width: 36px;
     height: 36px;
     margin: -18px 0 0 -18px;
-    border-top-color: rgba(255, 100, 200, 0.7);
+    border-top-color: rgba(125, 211, 252, 0.7);
     animation: largo-orbit-spin 0.9s linear infinite;
   }
 
@@ -4101,7 +4093,7 @@ body {
     font-family: var(--font-jetbrains), monospace;
     font-size: 8px;
     letter-spacing: 0.35em;
-    color: #d580ff;
+    color: #7dd3fc;
     margin-bottom: 0.35rem;
   }
 
@@ -4219,12 +4211,12 @@ body {
   }
 
   .desk-largo-send-busy {
-    background: linear-gradient(135deg, #6b21a8, #bf5fff) !important;
+    background: linear-gradient(135deg, #0e7490, #22d3ee) !important;
     animation: largo-send-glow 1.2s ease-in-out infinite;
   }
 
   @keyframes largo-send-glow {
-    0%, 100% { box-shadow: 0 0 12px rgba(191, 95, 255, 0.4); }
+    0%, 100% { box-shadow: 0 0 12px rgba(34, 211, 238, 0.4); }
     50% { box-shadow: 0 0 24px rgba(0, 255, 200, 0.35); }
   }
 
@@ -4385,7 +4377,7 @@ body {
   .largo-input-form-fullpage {
     flex-shrink: 0;
     padding-top: 1rem;
-    border-top-color: rgba(191, 95, 255, 0.2);
+    border-top-color: rgba(34, 211, 238, 0.2);
   }
 
   .largo-input-fullpage {
@@ -4803,7 +4795,7 @@ body {
   .desk-largo-input {
     @apply flex-1 bg-black border border-grey-700 px-4 py-3 font-mono text-sm text-white
            focus:outline-none transition-all duration-300;
-    caret-color: #00e676;
+    caret-color: #22d3ee;
   }
 
   .desk-largo-input::placeholder {
@@ -4811,33 +4803,33 @@ body {
   }
 
   .desk-largo-input.largo-input-idle {
-    border-color: rgba(0, 230, 118, 0.28);
-    background: linear-gradient(90deg, rgba(0, 230, 118, 0.04), rgba(0, 0, 0, 0.95) 35%);
+    border-color: rgba(34, 211, 238, 0.28);
+    background: linear-gradient(90deg, rgba(34, 211, 238, 0.04), rgba(0, 0, 0, 0.95) 35%);
     box-shadow:
-      inset 0 0 24px rgba(0, 230, 118, 0.04),
-      0 0 18px rgba(0, 230, 118, 0.08);
+      inset 0 0 24px rgba(34, 211, 238, 0.04),
+      0 0 18px rgba(34, 211, 238, 0.08);
   }
 
   .desk-largo-input:focus {
-    border-color: rgba(0, 230, 118, 0.55);
+    border-color: rgba(34, 211, 238, 0.55);
     box-shadow:
-      0 0 20px rgba(0, 230, 118, 0.22),
-      0 0 36px rgba(191, 95, 255, 0.12),
-      inset 0 0 28px rgba(0, 230, 118, 0.06);
+      0 0 20px rgba(34, 211, 238, 0.22),
+      0 0 36px rgba(125, 211, 252, 0.12),
+      inset 0 0 28px rgba(34, 211, 238, 0.06);
   }
 
   .largo-input-busy {
-    border-color: rgba(191, 95, 255, 0.45) !important;
-    box-shadow: 0 0 22px rgba(191, 95, 255, 0.18) !important;
+    border-color: rgba(34, 211, 238, 0.45) !important;
+    box-shadow: 0 0 22px rgba(34, 211, 238, 0.18) !important;
   }
 
   .desk-largo-send {
-    @apply px-6 py-3 bg-purple text-white font-syne text-xs tracking-[0.2em] uppercase font-bold
+    @apply px-6 py-3 bg-cyan-500 text-white font-syne text-xs tracking-[0.2em] uppercase font-bold
            transition-all disabled:opacity-40;
   }
 
   .desk-largo-send:hover:not(:disabled) {
-    box-shadow: 0 0 20px rgba(191, 95, 255, 0.5);
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.5);
     transform: scale(1.05);
   }
 
@@ -6306,10 +6298,6 @@ body {
 
   .spx-intel-label {
     @apply font-mono text-[8px] tracking-[0.25em] uppercase text-cyan-400;
-  }
-
-  .spx-desk-panel {
-    @apply flex flex-col border bg-black/55 backdrop-blur-md overflow-hidden;
   }
 
   .spx-panel-amber { @apply border-gold/35; box-shadow: inset 0 0 30px rgba(255, 210, 63, 0.05); }
