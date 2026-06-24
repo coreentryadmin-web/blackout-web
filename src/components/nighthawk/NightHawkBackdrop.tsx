@@ -51,7 +51,7 @@ export function NightHawkBackdrop() {
         transition={{ duration: 4.2, ease: "easeInOut", repeat: Infinity }}
         style={{
           background:
-            "radial-gradient(22% 16% at 40% 49%, rgba(0,230,118,0.55), rgba(0,230,118,0) 70%)",
+            "radial-gradient(24% 18% at 40% 14%, rgba(0,230,118,0.6), rgba(0,230,118,0) 70%)",
         }}
       />
 
@@ -61,14 +61,14 @@ export function NightHawkBackdrop() {
         className="absolute inset-0"
         style={{
           background:
-            "linear-gradient(180deg, rgba(4,4,7,0.04) 0%, rgba(4,4,7,0.12) 38%, rgba(4,4,7,0.38) 72%, rgba(4,4,7,0.74) 90%, #040407 100%)",
+            "linear-gradient(180deg, rgba(4,4,7,0) 0%, rgba(4,4,7,0.05) 42%, rgba(4,4,7,0.20) 76%, rgba(4,4,7,0.58) 92%, #040407 100%)",
         }}
       />
       <div
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(135% 90% at 50% 42%, transparent 62%, rgba(4,4,7,0.40) 100%)",
+            "radial-gradient(140% 95% at 50% 45%, transparent 68%, rgba(4,4,7,0.32) 100%)",
         }}
       />
     </div>
