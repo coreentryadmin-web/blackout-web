@@ -216,3 +216,77 @@ existing summary shape, so **call sites stay unchanged**.
 | `src/lib/nighthawk/positioning.ts` → adapter over `getGexPositioning` | **OTHER-SESSION-OWNED — Night Hawk action** |
 | `src/lib/nighthawk/dossier.ts` / `index-dossier.ts` call sites | **OTHER-SESSION-OWNED — unchanged once adapter lands** |
 | `src/lib/largo/run-tool.ts` `get_positioning` | **OTHER-SESSION-OWNED — Largo action (inherits the adapter)** |
+
+---
+
+## Alerts
+
+Heat Maps surface gamma-regime alerts at two layers. The heatmap side (the `events[]`
+contract + the cron evaluator) is **complete**; making web-push actually *deliver* is a
+set of platform/other-session follow-ups, all gated so nothing ships hot.
+
+### In-tool alerts — `events[]` (DONE)
+
+`fetchGexHeatmap(ticker)` emits a server-computed `events: GexEvent[]` on the matrix payload
+(see the `GexEvent` type in `src/lib/providers/polygon-options-gex.ts`). Each event is a PURE
+diff of the current sample vs the prior positioning-history snapshot — **no extra upstream
+calls**, and only emitted once ≥2 snapshots exist (never fabricated on the first sample). Types:
+`flip_crossed`, `wall_broken`, `regime_flipped`, `net_gex_sign_flipped`, each with `severity`
+(`info`/`warn`), a ready-to-display `message`, optional `level`/`direction`, and the sample `at`.
+The Heat Maps UI renders these as the alerts strip. Cached WITH the matrix, so every user reads
+the same shared event list.
+
+### `gex-alerts` cron — web-push evaluator (READY, INERT until activated)
+
+- **Route:** `src/app/api/cron/gex-alerts/route.ts` (Bearer `CRON_SECRET`, `runtime="nodejs"`,
+  `dynamic="force-dynamic"`, `maxDuration=120`).
+- **Helper:** `src/lib/push/send-web-push.ts` — `sendWebPush({ title, body, url }, { userId? })`.
+  Self-contained mirror of the inert push scaffold (`src/app/api/push/send/route.ts`): same VAPID
+  gate, same runtime-only optional `web-push` import, same `push_subscriptions` query + 404/410
+  prune. Returns `{ configured: false, sent: 0, pruned: 0 }` and sends nothing when VAPID / the
+  `web-push` package / the DB is absent. **Never throws.** This is now the single place the send
+  logic lives; the scaffold route could later delegate to it (the route is shared-scaffold and was
+  intentionally NOT edited here).
+- **INERT-by-default gate:** the cron returns `{ ok: true, inert: true }` and does nothing unless
+  BOTH `GEX_ALERTS_PUSH` is `"1"`/`"true"` AND `vapidConfigured()`. Ships safe.
+- **Watchlist:** MAJOR market-regime tickers only — `SPY`, `SPX`, `QQQ` (broadcast-worthy "market
+  gamma regime" alerts, not single-name noise).
+- **Cache-reader:** for each ticker it reads the SHARED cached matrix via `fetchGexHeatmap(ticker)`
+  and consumes its `events[]` — no new upstream chain fetch, events not recomputed.
+- **Which events alert:** regime-level only — `flip_crossed`, `regime_flipped`,
+  `net_gex_sign_flipped` for all three; `wall_broken` additionally for `SPY`/`SPX`.
+- **Dedup:** keyed `gex-alert-sent:{ticker}:{type}:{ET-date}` (with a rounded `level` bucket where
+  the event carries one), TTL ~1 day → a given cross alerts ONCE per ET-date, not every 5-min tick.
+  Dedup is a cheap Redis read/write via `sharedCacheGet`/`sharedCacheSet`.
+- **Send:** each NEW (non-deduped) regime event → `sendWebPush({ title:`${ticker} ${label}`,
+  body: event.message, url:`/heatmap?ticker=${ticker}` }, {})` — broadcast to all push subscribers.
+  Best-effort per ticker (one failure never aborts the rest); never throws.
+- **Schedule:** ~every 5 min during market hours — infra-owned railway registration (per-service
+  `railway.gex-alerts.toml` + a `scripts/hit-cron.mjs` entry), like the EOD cron. Also works
+  on-demand via a Bearer call.
+
+### Platform follow-ups to make web-push LIVE (ALL platform/other-session-owned)
+
+The heatmap side (the `events[]` contract + this evaluator) is complete. Going live requires:
+
+1. **Set VAPID keys + install the package** — set `NEXT_PUBLIC_VAPID_PUBLIC_KEY` +
+   `VAPID_PRIVATE_KEY` (and optionally `VAPID_SUBJECT`) and run `npm i web-push`. Until then both
+   the scaffold and `sendWebPush` stay inert.
+2. **Activate the cron** — set `GEX_ALERTS_PUSH=1`. With VAPID also set, the cron leaves inert mode.
+3. **Register the cron schedule (railway)** — add `railway.gex-alerts.toml` + the `scripts/hit-cron.mjs`
+   entry hitting `/api/cron/gex-alerts` with `Authorization: Bearer ${CRON_SECRET}`, ~every 5 min
+   during market hours.
+4. **Per-ticker per-user subscription model + a 🔔 opt-in toggle** in the heatmap UI, so alerts
+   become per-user-per-ticker (via `sendWebPush(payload, { userId })`) instead of the current
+   broadcast. Today alerts broadcast to ALL subscribers; the helper already accepts `{ userId }`
+   for when the subscription model lands.
+
+| Item | Status |
+| --- | --- |
+| `events[]` contract + evaluator (`fetchGexHeatmap` → `GexEvent[]`) | **HEATMAP-OWNED — done** |
+| `src/lib/push/send-web-push.ts` (shared send helper, inert) | **HEATMAP-OWNED — done** |
+| `src/app/api/cron/gex-alerts/route.ts` (evaluator cron, inert-by-default) | **HEATMAP-OWNED — done** |
+| VAPID keys + `npm i web-push` | **PLATFORM-OWNED — activation** |
+| `GEX_ALERTS_PUSH=1` | **PLATFORM-OWNED — activation** |
+| `railway.gex-alerts.toml` + `scripts/hit-cron.mjs` schedule | **INFRA-OWNED — registration** |
+| Per-ticker per-user push subscription model + 🔔 opt-in toggle | **OTHER-SESSION-OWNED — follow-up** |
