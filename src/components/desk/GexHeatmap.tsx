@@ -110,6 +110,19 @@ type GexHeatmapResponse = {
 
 type TickerSearchResult = { ticker: string; name: string; type?: string };
 
+/**
+ * Largo desk-read narrative from /api/market/gex-heatmap/explain. The route is a
+ * cache-reader (one Claude call per ticker per ~3 min) and never fabricates: when AI
+ * is unconfigured or the read fails it returns { available:false, reason }.
+ */
+type LargoExplainResponse = {
+  available: boolean;
+  narrative?: string;
+  asof?: string;
+  ticker?: string;
+  reason?: "ai-unconfigured" | "no-data" | "failed";
+};
+
 async function fetchGexHeatmap(url: string): Promise<GexHeatmapResponse> {
   const res = await fetch(url, {
     cache: "no-store",
@@ -737,6 +750,116 @@ function TickerSwitcher({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Largo read — AI desk-read narrative of the current dealer positioning
+// ---------------------------------------------------------------------------
+
+/** Format an ISO timestamp as a compact ET clock label, e.g. "3:42 PM". */
+function fmtAsof(iso: string | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+  });
+}
+
+/**
+ * "Ask Largo" panel. Lazy on click: the narrative is fetched only when the user opens it,
+ * keyed by ticker so it clears/refetches when the ticker changes. The route itself caches
+ * (one Claude call per ticker per ~3 min) so re-opens are cheap. Browser-safe: it only
+ * fetches the explain route + renders JSON — no server/node imports.
+ */
+function LargoRead({ ticker }: { ticker: string }) {
+  // `open` is keyed by ticker via the parent's `key` prop, so it resets on ticker change.
+  const [open, setOpen] = useState(false);
+
+  const { data, isLoading, error } = useSWR<LargoExplainResponse>(
+    open ? `/api/market/gex-heatmap/explain?ticker=${encodeURIComponent(ticker)}` : null,
+    (url: string) =>
+      fetch(url, { credentials: "same-origin", cache: "no-store" }).then((r) => {
+        if (!r.ok) throw new Error(`Largo read → ${r.status}`);
+        return r.json();
+      }),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  );
+
+  const narrative = data?.available ? data.narrative ?? null : null;
+  const unavailable = data != null && !data.available;
+  const asof = fmtAsof(data?.asof);
+  const failed = Boolean(error) && !isLoading;
+
+  return (
+    <div className="mt-3 rounded-xl border border-sky-400/25 bg-[rgba(8,12,20,0.55)] px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <span className="flex items-center gap-2">
+          <Badge tone="sky" dot>
+            Largo · AI
+          </Badge>
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-sky-300/70">
+            Desk read
+          </span>
+          {open && asof && (
+            <span className="font-mono text-[10px] tabular-nums text-sky-300/50">
+              as of {asof} ET
+            </span>
+          )}
+        </span>
+
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className={clsx(
+            "rounded-md px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-wider outline-none transition-colors",
+            "focus-visible:ring-2 focus-visible:ring-sky-400",
+            open
+              ? "bg-sky-400/15 text-sky-300 outline outline-1 outline-sky-400/50"
+              : "bg-sky-400/10 text-sky-300 outline outline-1 outline-sky-400/30 hover:bg-sky-400/15 hover:text-white"
+          )}
+        >
+          {open ? "Hide read" : "Ask Largo"}
+        </button>
+      </div>
+
+      {open && (
+        <div className="mt-3">
+          {isLoading && !data ? (
+            <div className="space-y-2" aria-hidden>
+              <Skeleton height={14} rounded="md" />
+              <Skeleton height={14} rounded="md" />
+              <Skeleton height={14} rounded="md" />
+            </div>
+          ) : failed || unavailable ? (
+            <p className="text-[12px] leading-snug text-sky-300/70" role="status">
+              {data?.reason === "ai-unconfigured"
+                ? "Largo read unavailable — AI is not configured."
+                : data?.reason === "no-data"
+                  ? "Largo read unavailable — no dealer positioning to read for this ticker yet."
+                  : "Largo read unavailable — try again in a moment."}
+            </p>
+          ) : narrative ? (
+            <p className="text-[13px] leading-relaxed text-sky-100 whitespace-pre-line">
+              {narrative}
+            </p>
+          ) : (
+            <p className="text-[12px] leading-snug text-sky-300/70" role="status">
+              Largo read unavailable — try again in a moment.
+            </p>
+          )}
+
+          <p className="mt-2 text-[10px] leading-snug text-sky-300/50">
+            Largo reads dealer positioning from the data above. Market-structure analysis,
+            not financial advice.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string }) {
   const [ticker, setTicker] = useState(initialTicker.toUpperCase());
   const [lens, setLens] = useState<Lens>("gex");
@@ -1048,6 +1171,9 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
             <p className="min-w-0 flex-1 text-[13px] leading-snug text-sky-100">{regimeRead}</p>
           </div>
 
+          {/* ── Largo read — AI desk-read narrative (lazy, keyed by ticker) ── */}
+          <LargoRead key={ticker} ticker={ticker} />
+
           {/* ── Profile | Shift | Matrix toggle ───────────────────────────
               Keyed on lens so switching GEX↔VEX resets to Profile — the Shift
               tab is GEX-only (VEX migration is future work), so it can't be
@@ -1274,6 +1400,14 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
               </TabPanel>
             </TabPanels>
           </Tabs>
+
+          {/* ── Methodology disclosure — honest about the dealer-sign assumption ── */}
+          <p className="mt-4 border-t border-white/8 pt-3 text-[10px] leading-snug text-sky-300/55">
+            <span aria-hidden className="mr-1 text-sky-300/70">ⓘ</span>
+            Net dealer gamma uses the standard convention (dealers long calls / short
+            puts); vanna is computed closed-form from implied volatility. Levels are model
+            estimates from option open interest — market-structure analysis, not advice.
+          </p>
         </>
       )}
     </Panel>

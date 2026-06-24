@@ -42,6 +42,9 @@ function FeatureCards({ path, onNavigate }: { path: string; onNavigate?: () => v
           key={it.href}
           role="menuitem"
           href={it.href}
+          // Protected route: don't prefetch (the RSC prefetch runs auth().protect() and at the
+          // ~60s token boundary gets 307'd to /sign-in, surfacing as a bounce on the next click).
+          prefetch={false}
           onClick={onNavigate}
           className={clsx("nav-card", `nav-accent-${it.accent}`, path.startsWith(it.href) && "nav-card-active")}
         >
@@ -271,7 +274,7 @@ export function Nav() {
 
           {showAdmin && (
             <li className="nav-pill-li">
-              <Link href="/admin" className={clsx("nav-pill-item nav-pill-admin", path.startsWith("/admin") && "nav-pill-item-active")}>
+              <Link href="/admin" prefetch={false} className={clsx("nav-pill-item nav-pill-admin", path.startsWith("/admin") && "nav-pill-item-active")}>
                 Admin
               </Link>
             </li>
@@ -354,7 +357,7 @@ export function Nav() {
               ))}
               <OnboardingTrigger className="nav-sheet-link font-syne onboarding-nav-trigger" />
               {showAdmin && (
-                <Link href="/admin" onClick={() => setMobileOpen(false)} className="nav-sheet-link font-syne nav-pill-admin">
+                <Link href="/admin" prefetch={false} onClick={() => setMobileOpen(false)} className="nav-sheet-link font-syne nav-pill-admin">
                   Admin
                 </Link>
               )}

@@ -10,11 +10,19 @@ const isProtectedRoute = createRouteMatcher([
   "/docs(.*)",
 ]);
 
-export default clerkMiddleware((auth, req) => {
-  if (isProtectedRoute(req)) {
-    auth().protect();
+export default clerkMiddleware(
+  (auth, req) => {
+    if (isProtectedRoute(req)) {
+      auth().protect();
+    }
+  },
+  {
+    // Tolerate small server/client clock drift so a still-valid ~60s session JWT isn't
+    // treated as expired on a soft (RSC) navigation → false /sign-in bounce. Belt-and-
+    // suspenders alongside NTP-synced replicas (Clerk default tolerance is 5000ms).
+    clockSkewInMs: 10_000,
   }
-});
+);
 
 // ---------------------------------------------------------------------------
 // SECURITY MODEL — READ THIS BEFORE ADDING ANY API ROUTE
