@@ -20,14 +20,16 @@ export const SECTOR_WATCH = [
   { key: "consumer", label: "Consumer" },
 ] as const;
 
-export const MAX_CANDIDATES = 60;
+// Lowered 60 → 40 to cut the dossier-stage UW fan-out: 60 candidates × multiple UW calls
+// each was tripping the rate-limit circuit breaker. Only the top 12 reach synthesis anyway.
+export const MAX_CANDIDATES = 40;
 /** Candidate pool: weighted-premium leaders + unusual-flow movers. */
-export const CANDIDATE_PREMIUM_SLOTS = 40;
-export const CANDIDATE_UNUSUAL_SLOTS = 20;
+export const CANDIDATE_PREMIUM_SLOTS = 28;
+export const CANDIDATE_UNUSUAL_SLOTS = 12;
 export const CANDIDATE_UNUSUALNESS_LOOKBACK_DAYS = 30;
 /** Floor for 30d avg premium — avoids divide-by-zero on thin history. */
 export const CANDIDATE_MIN_BASELINE_PREMIUM = 75_000;
-export const MAX_DOSSIER_STOCKS = 60;
+export const MAX_DOSSIER_STOCKS = 40;
 /** Top dossiers sent to Claude for play synthesis (not the full ranked pool). */
 export const EDITION_SYNTHESIS_POOL = 12;
 /** Stock tickers to prefetch option chains for (buffer above 5 final plays). */
@@ -41,7 +43,7 @@ export const DOSSIER_BATCH_SIZE = Math.max(
   Math.floor(Number(process.env.NH_DOSSIER_BATCH_SIZE ?? 3))
 );
 export const DOSSIER_FETCH_TIMEOUT_MS = 8000;
-export const DOSSIER_INTER_BATCH_MS = 500;
+export const DOSSIER_INTER_BATCH_MS = 800;
 
 /** Max option entry premium per share — 1 standard contract (100 shares) ≤ $2,000. */
 export const MAX_OPTION_PREMIUM_PER_SHARE = 20;

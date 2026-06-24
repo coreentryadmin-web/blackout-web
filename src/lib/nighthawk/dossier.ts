@@ -301,7 +301,11 @@ export async function fetchTickerDossier(
   const ivTerm = ivTermRaw ?? [];
   const realizedVol = parseLatestRealizedVol((realizedVolRaw ?? []) as Record<string, unknown>[]);
   const riskReversalSkew = parseLatestRiskReversalSkew((skewRaw ?? []) as Record<string, unknown>[]);
-  const tradingHalt = shouldBlockForTradingHalt([sym]).block;
+  // Only exclude on a GENUINE active halt — NOT the live-desk "fail closed when the halt
+  // feed is stale" safeguard. The edition builds after-hours/overnight for the NEXT session,
+  // when the UW trading_halts channel is naturally quiet (= "stale"); fail-closing there
+  // wrongly marks every ticker halted and zeroes the entire edition.
+  const tradingHalt = shouldBlockForTradingHalt([sym], { failClosedOnStale: false }).block;
 
   const dossier: TickerDossier = {
     ticker: sym,
