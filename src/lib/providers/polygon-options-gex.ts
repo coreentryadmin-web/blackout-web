@@ -1,5 +1,5 @@
 import { polygonConfigured } from "./config";
-import { fetchStockSnapshot } from "./polygon";
+import { fetchStockSnapshot, fetchIndexSnapshot } from "./polygon";
 import { todayEtYmd } from "./spx-session";
 import { polygonTrackedFetch } from "./polygon-rate-limiter";
 
@@ -53,7 +53,9 @@ export async function fetchNwOptionChain(
   const root = underlying.toUpperCase();
   const underlyingRoot = root === "SPX" ? "I:SPX" : root;
 
-  const snap = await fetchStockSnapshot(underlyingRoot).catch(() => null);
+  // Index roots (I:*) need the indices snapshot — the stocks snapshot returns no row for them
+  // (spot 0 → permanently null chain). resolveSpotSnapshot picks the right endpoint.
+  const snap = await resolveSpotSnapshot(underlyingRoot);
   const spot = snap?.price ?? 0;
   if (!(spot > 0)) return null; // no spot → can't center a band; report unavailable
 
@@ -521,6 +523,29 @@ export function resolveOptionsRoot(ticker: string): { root: string; optionsRoot:
   return { root, optionsRoot };
 }
 
+/**
+ * Resolve the underlying SPOT for an options root, choosing the correct snapshot endpoint.
+ *
+ * CRITICAL: index roots (`I:SPX`, `I:NDX`, …) are NOT on the stocks-snapshot endpoint —
+ * `fetchStockSnapshot("I:SPX")` returns no row → spot 0 → an empty matrix for SPX/NDX/RUT/VIX
+ * (the flagship "live header price, dead matrix" break). Index roots must go through the
+ * indices snapshot (`fetchIndexSnapshot`), exactly as the quote route does. Equities/ETFs
+ * use the stocks snapshot. Both snapshots share the `{ price, change_pct }` shape, so this
+ * normalizes to that single shape every caller in this file expects. Null when unavailable —
+ * never fabricated.
+ */
+async function resolveSpotSnapshot(
+  optionsRoot: string
+): Promise<{ price: number; change_pct: number } | null> {
+  const root = optionsRoot.toUpperCase();
+  const isIndex = root.startsWith("I:") || Object.values(INDEX_ROOTS).includes(root);
+  const snap = isIndex
+    ? await fetchIndexSnapshot(root).catch(() => null)
+    : await fetchStockSnapshot(root).catch(() => null);
+  if (!snap || !(snap.price > 0)) return null;
+  return { price: snap.price, change_pct: snap.change_pct ?? 0 };
+}
+
 const GEX_HEATMAP_CACHE_PREFIX = "gex-heatmap";
 /** In-memory mirror of the Redis matrix so co-located requests skip Redis too. */
 const cachedHeatmaps = new Map<string, { at: number; data: GexHeatmap }>();
@@ -598,21 +623,24 @@ function computeZeroGammaFlip(strikeTotals: Record<string, number>, spot = 0): n
   }
 
   // Fallback: cumulative-sum crossing (legacy) — for unusual profiles with no clean flip.
-  let cumulative = 0;
-  let prevStrike = rows[0].strike;
-  let prevCum = 0;
-  for (let i = 0; i < rows.length; i++) {
-    const nextCum = cumulative + rows[i].gamma;
-    if (i > 0 && prevCum !== 0 && Math.sign(nextCum) !== Math.sign(prevCum) && nextCum !== 0) {
-      const span = rows[i].strike - prevStrike;
-      const frac = prevCum / (prevCum - nextCum); // 0..1
-      return Number((prevStrike + span * frac).toFixed(2));
+  // Build the running cumulative sum per strike, then scan strictly ADJACENT pairs (cum[i-1],
+  // cum[i]) for a sign change and interpolate across that SAME i-1..i strike segment. (The
+  // prior version updated prevCum after the check, so it compared cum[i] vs cum[i-2] while
+  // interpolating i-1..i — the first segment could never flip.)
+  const cum: number[] = [];
+  let running = 0;
+  for (const r of rows) {
+    running += r.gamma;
+    cum.push(running);
+  }
+  for (let i = 1; i < cum.length; i++) {
+    const prevCum = cum[i - 1];
+    const nextCum = cum[i];
+    if (prevCum !== 0 && nextCum !== 0 && Math.sign(nextCum) !== Math.sign(prevCum)) {
+      const span = rows[i].strike - rows[i - 1].strike;
+      const frac = prevCum / (prevCum - nextCum); // 0..1 along the i-1..i segment
+      return Number((rows[i - 1].strike + span * frac).toFixed(2));
     }
-    if (i > 0) {
-      prevStrike = rows[i - 1].strike;
-      prevCum = cumulative;
-    }
-    cumulative = nextCum;
   }
   return null;
 }
@@ -862,6 +890,7 @@ export async function fetchGexHeatmap(
       const { sharedCacheGet } = await import("../shared-cache");
       const hit = await sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey);
       if (hit && now - hit.at < ttlMs) {
+        if (cachedHeatmaps.size > 200) cachedHeatmaps.clear();
         cachedHeatmaps.set(cacheKey, hit);
         return hit.data;
       }
@@ -870,8 +899,9 @@ export async function fetchGexHeatmap(
     }
   }
 
-  // Resolve spot + day change% from the same root (index quote for I:* roots).
-  const snap = await fetchStockSnapshot(optionsRoot).catch(() => null);
+  // Resolve spot + day change% from the same root. INDEX roots (I:SPX/NDX/RUT/VIX) must use
+  // the indices snapshot — the stocks snapshot returns no row for I:* and yields spot 0.
+  const snap = await resolveSpotSnapshot(optionsRoot);
   const spot = snap?.price ?? 0;
   // Graceful empty: no spot (thin / unknown name) → valid empty payload, NOT a throw.
   if (!(spot > 0)) return emptyHeatmap(root);
@@ -922,6 +952,8 @@ export async function fetchGexHeatmap(
 
     // ── VEX: closed-form vanna × oi × 100 × spot, call +/put − ───────────────
     // Skip contracts with missing IV, T<=0, or σ<=0 (vannaPerShare returns 0 → skipped).
+    // dollar_vanna is per 1.00 change in sigma (= 100 vol-points; IV is decimal here),
+    // mirroring the dollar-gamma `× spot` scaling so GEX and VEX magnitudes are comparable.
     const t = yearsToExpiry(expiry, today);
     const vps = vannaPerShare(spot, strike, t, iv);
     if (vps !== 0) {
@@ -998,6 +1030,8 @@ export async function fetchGexHeatmap(
   );
 
   // VEX levels + regime (zero-vanna flip reuses the generic cumulative-cross helper).
+  // NOTE: this intentionally reuses the gamma-style neg→pos crossing on cumulative vanna; it
+  // marks where net dealer vanna flips sign, NOT a hard vanna support/resistance level.
   const vexFlip = computeZeroGammaFlip(vexBuilt.strikeTotals, spot);
   const { posWall, negWall, regime: vexRegime } = computeVexRegime(
     vexBuilt.strikeTotals,
@@ -1061,6 +1095,8 @@ export async function fetchGexHeatmap(
 
   // Cache once for everyone: in-memory + Redis. 500 users → one matrix, zero per-user fetch.
   const entry = { at: now, data: heatmap };
+  // Bound the in-memory map so an unusual spread of (garbage) tickers can't leak memory.
+  if (cachedHeatmaps.size > 200) cachedHeatmaps.clear();
   cachedHeatmaps.set(cacheKey, entry);
   void import("../shared-cache").then(({ sharedCacheSet }) =>
     sharedCacheSet(cacheKey, entry, Math.ceil(ttlMs / 1000))
@@ -1119,6 +1155,8 @@ function emptyHeatmap(
   };
   if (ctx?.cacheKey && ctx.now != null && ctx.ttlMs != null) {
     const entry = { at: ctx.now, data: heatmap };
+    // Bound: empty heatmaps are cached too, so garbage tickers must not grow the map unbounded.
+    if (cachedHeatmaps.size > 200) cachedHeatmaps.clear();
     cachedHeatmaps.set(ctx.cacheKey, entry);
     void import("../shared-cache").then(({ sharedCacheSet }) =>
       sharedCacheSet(ctx.cacheKey!, entry, Math.ceil(ctx.ttlMs! / 1000))
@@ -1370,7 +1408,10 @@ export async function fetchPolygonPositioningBundle(
 
   let spot = opts?.spot ?? 0;
   if (spot <= 0) {
-    const snap = await fetchStockSnapshot(sym).catch(() => null);
+    // Resolve via the OPTIONS root so index names (SPX→I:SPX, etc.) hit the indices snapshot;
+    // fetchStockSnapshot(sym) returns no row for an index and would leave spot 0.
+    const { optionsRoot } = resolveOptionsRoot(sym);
+    const snap = await resolveSpotSnapshot(optionsRoot);
     spot = snap?.price ?? 0;
   }
   if (spot <= 0) {
@@ -1381,7 +1422,11 @@ export async function fetchPolygonPositioningBundle(
   const rows = aggregateGexRows(contracts, spot);
   const maxPain = computeMaxPainFromChain(contracts);
   const bundle: PolygonPositioningBundle = { rows, maxPain, spot, source: "polygon", expiry };
-  if (rows.length) positioningCache.set(cacheKey, { at: now, bundle });
+  if (rows.length) {
+    // Bound: keyed by user-supplied ticker → cap so garbage symbols can't leak memory.
+    if (positioningCache.size > 200) positioningCache.clear();
+    positioningCache.set(cacheKey, { at: now, bundle });
+  }
   return bundle;
 }
 
@@ -1541,7 +1586,11 @@ export async function fetchPolygonIvTermStructure(
     .filter((p) => p.avg_iv > 0)
     .sort((a, b) => a.expiry.localeCompare(b.expiry));
 
-  if (data.length) ivTermCache.set(root, { at: now, data });
+  if (data.length) {
+    // Bound: keyed by user-supplied ticker → cap so garbage symbols can't leak memory.
+    if (ivTermCache.size > 200) ivTermCache.clear();
+    ivTermCache.set(root, { at: now, data });
+  }
   return data;
 }
 
@@ -1610,6 +1659,8 @@ export async function fetchPolygonRealizedVol(
   };
 
   if (data.realized_vol_30d > 0 || data.realized_vol_10d > 0) {
+    // Bound: keyed by user-supplied ticker → cap so garbage symbols can't leak memory.
+    if (realizedVolCache.size > 200) realizedVolCache.clear();
     realizedVolCache.set(root, { at: now, data });
   }
   return data;

@@ -24,6 +24,16 @@ const OVERLAY_TTL_MS = 30_000;
 const overlayMem = new Map<string, { at: number; overlays: GexHeatmapOverlays }>();
 
 /**
+ * Server-side force-refresh gate. `?force=1` bypasses BOTH the in-memory and Redis matrix cache,
+ * so a crafted/buggy client (or many users force-ing different tickers) could hammer the Polygon
+ * chain — shared at 40 RPS with the desk / Night Hawk / Largo. We mirror the client's 8s throttle
+ * server-side, PER TICKER: a force is honored only when ≥8s have elapsed since the last honored
+ * force for that ticker; otherwise it's dropped and the request serves the normal cached read.
+ */
+const FORCE_THROTTLE_MS = 8_000;
+const lastForceAt = new Map<string, number>();
+
+/**
  * HELIX flow-per-strike overlay — net call/put premium hitting each gamma strike today.
  *
  * Reads the SHARED, server-side flow-per-strike accessor (request-coalesced upstream, so
@@ -166,7 +176,16 @@ export async function GET(req: NextRequest) {
   // immediately (then re-writes the cache fresh). The client only fires this on a >0.5%
   // spot divergence, throttled to ≤1/8s, so it can't pressure the chain API — a normal
   // request (no force) still reads the in-memory + Redis cache via fetchGexHeatmap.
-  const forceRefresh = req.nextUrl.searchParams.get("force") === "1";
+  const forceRequested = req.nextUrl.searchParams.get("force") === "1";
+  // Enforce the 8s throttle SERVER-SIDE per ticker — a buggy/crafted client can't bypass the
+  // matrix cache faster than once per 8s, so force can't pressure the shared 40-RPS chain API.
+  const now0 = Date.now();
+  const lastForce = lastForceAt.get(ticker) ?? 0;
+  const forceRefresh = forceRequested && now0 - lastForce >= FORCE_THROTTLE_MS;
+  if (forceRefresh) {
+    if (lastForceAt.size > 200) lastForceAt.clear();
+    lastForceAt.set(ticker, now0);
+  }
 
   try {
     const heatmap = await fetchGexHeatmap(ticker, { forceRefresh });
@@ -195,9 +214,15 @@ export async function GET(req: NextRequest) {
     );
   } catch (error) {
     console.error("[market/gex-heatmap]", error);
+    // Unify the "no data" contract: a build throw returns 200 { available:false } (same as a
+    // null chain above and the quote/explain routes) so the client renders its graceful empty
+    // state instead of a 502 red banner. The error is still logged server-side.
     return NextResponse.json(
-      { available: false, error: "GEX heatmap build failed" },
-      { status: 502 }
+      { available: false, underlying: ticker, error: "GEX heatmap build failed" },
+      {
+        status: 200,
+        headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" },
+      }
     );
   }
 }
