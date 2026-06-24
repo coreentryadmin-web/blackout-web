@@ -19,12 +19,12 @@ export function NightHawkBackdrop() {
         className="absolute inset-0"
         animate={
           reduced
-            ? { filter: "brightness(1.08) contrast(1.05)" }
+            ? { filter: "brightness(1.24) contrast(1.08) saturate(1.14)" }
             : {
                 filter: [
-                  "brightness(0.95) contrast(1.05)",
-                  "brightness(1.18) contrast(1.05)",
-                  "brightness(0.95) contrast(1.05)",
+                  "brightness(1.12) contrast(1.08) saturate(1.14)",
+                  "brightness(1.42) contrast(1.08) saturate(1.14)",
+                  "brightness(1.12) contrast(1.08) saturate(1.14)",
                 ],
               }
         }
