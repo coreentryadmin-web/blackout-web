@@ -2397,7 +2397,12 @@ body {
 
   .nighthawk-play-row-empty {
     border-left: 3px solid rgba(255, 255, 255, 0.06);
-    background: rgba(0, 0, 0, 0.06);
+    /* Scrim: the playbook panel renders a bright hero image behind these rows, and a near-
+       transparent fill let the nebula bleed through and washed out the "Slot open" copy. A solid
+       dark backing (+ blur) keeps the empty-state text legible regardless of the art behind it. */
+    background: rgba(4, 4, 7, 0.58);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
     border-color: rgba(255, 255, 255, 0.06);
   }
 

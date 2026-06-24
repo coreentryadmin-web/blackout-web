@@ -39,6 +39,15 @@ No route was found that serves per-user or premium data without a server-side ga
 
 ## Findings
 
+### H-0 · [LIVE FINDING 2026-06-24] Test mode is ENABLED on the PRODUCTION Clerk instance → open account creation + email-verification bypass
+**Severity:** Critical — **config, not code.** Verified live in the Clerk dashboard (Production instance), not derivable from the repo; this updates the executive summary's "no Critical access-control defect" to "none *in code* — one Critical *config* hole found live."
+**Where:** Clerk Dashboard → Blackout Trading → **Production** instance → User & authentication → **"Test mode"** toggle = **ON**.
+**What:** With test mode on a production instance, anyone can sign in / sign up using the **public** Clerk test fixtures — any `…+clerk_test@…` email + the fixed verification code **`424242`** (and test phone `+1 555 555 010x`) — with **no real email/SMS verification**. These are documented, public Clerk conventions, so this is effectively a self-service path to a real session on the live app with a throwaway identity.
+**Impact:** Account-creation abuse / spam signups; email-verification bypass; polluted user table + signup metrics; a free surface to probe premium gates. The Whop entitlement gate still applies (so it is not *direct* premium access), but it is an open hole on the identity boundary.
+**Not app-detectable:** Clerk does **not** expose "test mode on" to the application — the `pk_live` publishable key does not reflect it — so there is **no runtime guard the code can add.** This is dashboard-only by nature.
+**Fix (USER ACTION — dashboard, ~30s):** Clerk Dashboard → **Production** instance → toggle **Test mode OFF** before launch; keep test mode only on the **Development** instance. After disabling, confirm a real sign-up requires a real emailed code (not `424242`).
+**Status:** **OPEN — must-fix-before-launch.** Surfaced during live UI verification on 2026-06-24 (test mode had been enabled to grant screenshot-based access).
+
 ### H-1 · Per-replica 60s tier cache + fire-and-forget webhook → up to 60s of post-churn premium access per replica
 **Severity:** Medium
 **File:** `src/lib/tier-cache.ts`

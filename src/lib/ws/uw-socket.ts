@@ -501,10 +501,27 @@ const TRADING_HALT_CHANNEL_MAX_AGE_MS = 120_000;
  */
 const TRADING_HALT_MAX_AGE_MS = 30 * 60_000;
 
-/** True when the UW trading_halts channel has not delivered data recently. */
+/**
+ * True when the UW trading_halts feed can NOT be trusted (so live entries should fail closed).
+ *
+ * trading_halts is an EVENT-ONLY channel: it delivers a message ONLY when a symbol actually
+ * halts, so a perfectly healthy subscription is silent for entire no-halt sessions. Keying
+ * staleness off its OWN last message (the old behavior) therefore flagged virtually EVERY normal
+ * session "stale" and blocked all desk entries. The channel is genuinely untrustworthy only when
+ * (a) there's no API key, (b) its subscription was rejected (auth_failed → we'd never SEE a halt),
+ * or (c) the whole socket is dead — proxied by the freshest delivery across ALL channels, since
+ * flow_alerts / market_tide / gex stream constantly during RTH. A recent halt OR a live socket
+ * with an accepted subscription ⇒ fresh.
+ */
 export function isTradingHaltChannelStale(maxAgeMs = TRADING_HALT_CHANNEL_MAX_AGE_MS): boolean {
   if (!UW_API_KEY) return true;
-  return !isUwChannelFresh("trading_halts", maxAgeMs);
+  // A real halt event refreshes the channel directly → definitively live.
+  if (isUwChannelFresh("trading_halts", maxAgeMs)) return false;
+  // Subscription rejected → we are blind to halts even on a live socket → fail closed.
+  if (uwSocket.getChannelHealth()?.trading_halts?.auth_failed) return true;
+  // Otherwise the channel is just QUIET (no halts). Trust it as long as the socket is alive.
+  const freshest = freshestUwMessageAt();
+  return freshest == null || Date.now() - freshest > maxAgeMs;
 }
 
 /** Check if any watched symbol has an active trading halt. */
