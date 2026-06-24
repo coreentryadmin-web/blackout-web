@@ -279,6 +279,18 @@ export type GexHistorySnapshot = {
   flip: number | null;
   /** per-strike NET dealer dollar-gamma totals at capture (sparse, keyed by strike string). */
   strike_totals: Record<string, number>;
+  /**
+   * Per-strike NET dealer dollar-VANNA totals at capture (sparse), for the VEX shift view.
+   * OPTIONAL + additive: older snapshots written before this field simply omit it, so the
+   * VEX shift is unavailable ('collecting') until ≥2 snapshots that DO carry vex totals exist.
+   */
+  vex_strike_totals?: Record<string, number>;
+  /** zero-vanna flip strike at capture, or null. Paired with `vex_strike_totals`. */
+  vex_flip?: number | null;
+  /** Per-strike NET dealer dollar-DELTA totals at capture (sparse). Additive — cheap to carry. */
+  dex_strike_totals?: Record<string, number>;
+  /** Per-strike NET dealer dollar-CHARM totals at capture (sparse). Additive — cheap to carry. */
+  charm_strike_totals?: Record<string, number>;
 };
 
 /** Gamma flip migration over the shift window — earlier flip → current flip. */
@@ -348,11 +360,32 @@ export type GexHeatmap = {
   /** Net dealer dollar-VANNA block. */
   vex: VexMetricBlock;
   /**
+   * Net dealer dollar-DELTA block (DEX lens). OPTIONAL + additive — older cached payloads and
+   * the empty heatmap omit it. Computed in the SAME contract pass as gex/vex (no extra fetch).
+   */
+  dex?: DexMetricBlock;
+  /**
+   * Net dealer dollar-CHARM block (delta-decay / pinning lens). OPTIONAL + additive — computed
+   * in the SAME contract pass as gex/vex (no extra fetch).
+   */
+  charm?: CharmMetricBlock;
+  /**
    * Intraday GEX migration (build/melt + flip drift) vs positioning history. GEX-only.
    * Always present; `available:false` (status 'collecting') until ≥2 snapshots accumulate.
-   * VEX shift is future work.
    */
   shift: GexShift;
+  /**
+   * Intraday VEX (vanna) migration vs positioning history — same GexShift shape as `shift`.
+   * OPTIONAL + additive: `available:false` (status 'collecting') until ≥2 snapshots carrying
+   * `vex_strike_totals` exist. Never fabricated on cold/legacy history.
+   */
+  vex_shift?: GexShift;
+  /**
+   * Server-computed alert events for THIS sample vs the prior history snapshot. OPTIONAL +
+   * additive. Empty array when nothing crossed (≥2 snapshots exist); omitted on cold history
+   * (<2 snapshots) so the client can tell "nothing crossed" from "no prior to diff".
+   */
+  events?: GexEvent[];
   source: "polygon";
   data_delay: string;
 };
@@ -371,6 +404,104 @@ export type VexRegime = {
   posture: "positive" | "negative" | null;
   /** Computed one-liner describing the vanna regime — neutral string when data is missing. */
   read: string;
+};
+
+/**
+ * DEX regime read — derived from the net dealer dollar-DELTA sign.
+ *
+ * Directional convention: net dealer delta POSITIVE means dealers are net LONG delta, so to
+ * stay hedged they SELL into rallies / BUY dips → mean-reverting → STABILIZING. NEGATIVE means
+ * dealers are net SHORT delta, so they BUY rallies / SELL dips → trend-amplifying → DESTABILIZING.
+ */
+export type DexRegime = {
+  /** Net dealer dollar-delta sign: 'long' (net long → stabilizing) | 'short' (net short → destabilizing) | null. */
+  posture: "long" | "short" | null;
+  /** Computed one-liner describing the delta regime — neutral string when data is missing. */
+  read: string;
+};
+
+/**
+ * DEX metric block — net dealer dollar-DELTA matrix + delta-specific levels.
+ * Lives under `heatmap.dex`. Mirrors the gex block shape but with a `zero_level`
+ * (per-strike net-delta sign-crossing nearest spot) in place of call/put walls.
+ *
+ * Net dealer dollar-delta per (strike, expiry) = dealerSign · delta · OI · 100 · spot, where
+ * dealerSign is the SAME call(+)/put(−) convention used for gamma (delta already carries its
+ * own +/− by option type; the dealer sign flips the put leg so the book nets correctly).
+ */
+export type DexMetricBlock = {
+  /** Net dealer dollar-delta per (strike, expiry). Sparse — absent = no data. */
+  cells: Record<string, Record<string, number>>;
+  /** Net dealer dollar-delta summed across all expiries, per strike. */
+  strike_totals: Record<string, number>;
+  /** Total net dealer dollar-delta across the whole matrix. */
+  total: number;
+  /** Per-strike delta sign-crossing nearest spot (zero-delta level), or null. */
+  zero_level: number | null;
+  /** Regime read derived from the net dealer delta sign. */
+  regime: DexRegime;
+};
+
+/**
+ * CHARM regime read — derived from the net dealer dollar-CHARM sign. Charm (delta decay,
+ * ∂Δ/∂time-to-expiry) drives the passive hedging flow that builds as time passes — the
+ * mechanism behind pre-OPEX and end-of-day pinning toward heavy-OI strikes.
+ */
+export type CharmRegime = {
+  /** Net dealer dollar-charm sign: 'positive' | 'negative' | null when undetermined. */
+  posture: "positive" | "negative" | null;
+  /** Computed one-liner describing the charm regime / pinning read — neutral string when data is missing. */
+  read: string;
+};
+
+/**
+ * CHARM metric block — net dealer dollar-CHARM matrix + charm-specific levels.
+ * Lives under `heatmap.charm`. Mirrors the dex block shape.
+ *
+ * dollar-charm per (strike, expiry) = dealerSign · charmPerShare · OI · 100 · spot, where
+ * charmPerShare is the closed-form per-share delta decay (∂Δ/∂time-to-expiry, per YEAR of
+ * time-to-expiry, r=q=0). Scaling mirrors dollar-vanna (the `× spot` notional convention) so
+ * CHARM magnitudes are broadly comparable to GEX/VEX; the per-unit-time is years (ACT/365).
+ * Charm is type-independent (put charm = call charm at r=q=0, like gamma); the dealer call(+)/
+ * put(−) sign is applied at accumulation, identical to the gamma/vanna pattern.
+ */
+export type CharmMetricBlock = {
+  /** Net dealer dollar-charm per (strike, expiry). Sparse — absent = no data. */
+  cells: Record<string, Record<string, number>>;
+  /** Net dealer dollar-charm summed across all expiries, per strike. */
+  strike_totals: Record<string, number>;
+  /** Total net dealer dollar-charm across the whole matrix. */
+  total: number;
+  /** Per-strike charm sign-crossing nearest spot (zero-charm level), or null. */
+  zero_level: number | null;
+  /** Regime read derived from the net dealer charm sign + pinning context. */
+  regime: CharmRegime;
+};
+
+/**
+ * A server-computed alert event — emitted by `fetchGexHeatmap` when it diffs the PRIOR history
+ * snapshot against the CURRENT freshly-computed values. PURE diff of values already computed /
+ * stored — no extra upstream calls. Only emitted when ≥2 snapshots exist (a real prior to diff);
+ * NEVER fabricated on the first sample. Cached WITH the matrix (it describes this sample vs the
+ * last one), so all users read the same shared event list.
+ */
+export type GexEvent = {
+  /** What crossed. */
+  type:
+    | "flip_crossed"
+    | "wall_broken"
+    | "regime_flipped"
+    | "net_gex_sign_flipped";
+  /** Display severity — 'warn' for destabilizing crosses, 'info' otherwise. */
+  severity: "info" | "warn";
+  /** Plain, ready-to-display one-liner with real numbers. */
+  message: string;
+  /** The level that was crossed (flip strike / wall strike), when applicable. */
+  level?: number;
+  /** Direction of the cross, e.g. 'into long gamma' / 'above call wall' / 'short → long'. */
+  direction?: string;
+  /** ISO timestamp of THIS sample (when the cross was detected). */
+  at: string;
 };
 
 // ── Standard-normal pdf (for closed-form vanna) ────────────────────────────────
@@ -401,6 +532,34 @@ function vannaPerShare(spot: number, strike: number, t: number, sigma: number): 
   const d2 = d1 - sigma * sqrtT;
   const v = (-normPdf(d1) * d2) / sigma;
   return Number.isFinite(v) ? v : 0;
+}
+
+/**
+ * Closed-form Black-Scholes CHARM per share (delta decay) for r=q=0: φ(d1)·d2 / (2T).
+ *
+ * Derivation (verified against the textbook form): the standard charm for a CALL is
+ *   charm_call = −φ(d1)·(2(r−q)T − d2·σ√T) / (2T·σ√T).
+ * With r=q=0 the numerator collapses to −d2·σ√T, so
+ *   charm_call = −φ(d1)·(−d2·σ√T)/(2T·σ√T) = φ(d1)·d2 / (2T).
+ * This is "charm" in the standard sense: the change in delta per unit of CALENDAR time passing
+ * (delta DECAY), i.e. −∂Δ/∂(time-to-expiry). NUMERICALLY VERIFIED: φ(d1)·d2/(2T) matches the
+ * central finite-difference −∂Δ/∂T to ~1e-7 across S/K/T/σ test points (and equals +∂Δ/∂T's
+ * negative — the same magnitude with the decay sign). Because Δ_put = Δ_call − 1, the two share
+ * the same time-derivative → put charm EQUALS call charm at r=q=0, so charm is type-independent
+ * exactly like gamma; the caller applies the dealer call(+)/put(−) sign at accumulation, identical
+ * to the gamma/vanna pattern.
+ *
+ * Units: per-share charm per UNIT of time in YEARS (ACT/365), matching the year-fraction `t`
+ * from yearsToExpiry → reads as delta decay per year. Returns 0 (skip) on non-finite inputs,
+ * T<=0, or σ<=0 — SAME guard as vannaPerShare — never fabricated.
+ */
+function charmPerShare(spot: number, strike: number, t: number, sigma: number): number {
+  if (!(spot > 0) || !(strike > 0) || !(t > 0) || !(sigma > 0)) return 0;
+  const sqrtT = Math.sqrt(t);
+  const d1 = (Math.log(spot / strike) + 0.5 * sigma * sigma * t) / (sigma * sqrtT);
+  const d2 = d1 - sigma * sqrtT;
+  const c = (normPdf(d1) * d2) / (2 * t);
+  return Number.isFinite(c) ? c : 0;
 }
 
 /**
@@ -503,6 +662,49 @@ function computeVexRegime(
   }
 
   return { posWall, negWall, regime: { posture, read } };
+}
+
+/**
+ * Derive the dealer-DELTA regime (posture + plain read) from the net dealer dollar-delta total.
+ * Never fabricates: a ~flat / undeterminable total → posture null + neutral read.
+ *
+ * Directional convention (get this right): net dealer delta POSITIVE → dealers net LONG delta →
+ * to stay hedged they SELL rallies / BUY dips → mean-reverting → STABILIZING. NEGATIVE → dealers
+ * net SHORT delta → BUY rallies / SELL dips → trend-amplifying → DESTABILIZING.
+ */
+function computeDexRegime(total: number): DexRegime {
+  const posture: "long" | "short" | null =
+    Number.isFinite(total) && total !== 0 ? (total > 0 ? "long" : "short") : null;
+
+  let read: string;
+  if (posture == null) {
+    read = "Net dealer delta ~flat — little directional hedging pressure; neither stabilizing nor amplifying.";
+  } else if (posture === "long") {
+    read = "Net dealer delta positive (dealers net LONG delta) — they SELL rallies and BUY dips to stay hedged → mean-reverting, STABILIZING.";
+  } else {
+    read = "Net dealer delta negative (dealers net SHORT delta) — they BUY rallies and SELL dips to stay hedged → trend-amplifying, DESTABILIZING.";
+  }
+  return { posture, read };
+}
+
+/**
+ * Derive the dealer-CHARM regime (posture + plain pinning read) from the net dealer dollar-charm
+ * total. Charm is the passive delta-decay flow that GROWS as expiry nears — the engine of
+ * pre-OPEX and end-of-day pinning toward heavy-OI strikes. Never fabricates: ~flat → null + neutral.
+ */
+function computeCharmRegime(total: number): CharmRegime {
+  const posture: "positive" | "negative" | null =
+    Number.isFinite(total) && total !== 0 ? (total > 0 ? "positive" : "negative") : null;
+
+  let read: string;
+  if (posture == null) {
+    read = "Net charm ~flat — minimal delta-decay flow; little time-driven pinning pressure expected.";
+  } else if (posture === "positive") {
+    read = "Net charm positive — as expiry nears, delta decay pushes dealer hedging that PINS price upward toward heavy strikes; strongest pre-OPEX and into the close.";
+  } else {
+    read = "Net charm negative — delta decay pushes dealer hedging that DRAGS price downward toward heavy strikes as expiry nears; strongest pre-OPEX and into the close.";
+  }
+  return { posture, read };
 }
 
 /**
@@ -757,23 +959,67 @@ function wallChange(
 }
 
 /**
- * Diff the current GEX state against the EARLIEST snapshot still in the window to produce the
- * shift payload. `ring` is the full positioning-history ring (ascending by ts) INCLUDING the
- * just-appended current snapshot. With <2 usable snapshots → { available:false, status:'collecting' }
- * (never fabricated).
+ * Per-metric phrasing for the (generic) shift summary — keeps GEX wording byte-identical while
+ * letting VEX/DEX/CHARM describe their own walls + net-flow read.
  */
-function computeGexShift(
+type ShiftMetricSpec = {
+  /** Noun for the level whose drift is reported, e.g. "gamma flip" / "vanna flip". */
+  flipLabel: string;
+  /** Noun for the largest-positive wall, e.g. "call wall" / "pos wall". */
+  wallLabel: string;
+  /** Net-flow read for positive / negative / ~flat net Δ over the window. */
+  netRead: (netDelta: number) => string;
+  /** Phrase used in the no-walls/no-flip fallback, e.g. "net dealer gamma". */
+  netNoun: string;
+};
+
+const GEX_SHIFT_SPEC: ShiftMetricSpec = {
+  flipLabel: "gamma flip",
+  wallLabel: "call wall",
+  netRead: (n) =>
+    n > 0
+      ? "dealers getting longer → vol compressing"
+      : n < 0
+      ? "dealers getting shorter → vol expansion risk"
+      : "net dealer gamma roughly flat",
+  netNoun: "net dealer gamma",
+};
+
+const VEX_SHIFT_SPEC: ShiftMetricSpec = {
+  flipLabel: "vanna flip",
+  wallLabel: "pos-vanna wall",
+  netRead: (n) =>
+    n > 0
+      ? "net dealer vanna rising → hedging more additive into IV moves"
+      : n < 0
+      ? "net dealer vanna falling → hedging more cushioning into IV moves"
+      : "net dealer vanna roughly flat",
+  netNoun: "net dealer vanna",
+};
+
+/**
+ * GENERIC shift diff over ANY metric's per-strike totals + flip — produces the GexShift shape.
+ * `pick` extracts (strike_totals, flip) from a snapshot for THIS metric; a snapshot is only a
+ * usable baseline when `pick` returns non-null totals (so VEX/legacy snapshots without vex totals
+ * are skipped → 'collecting', never fabricated). `spec` controls only the summary wording.
+ *
+ * `computeGexShift` delegates here with the GEX spec, so GEX output is unchanged.
+ */
+function computeMetricShift(
   ring: GexHistorySnapshot[],
-  current: { ts: number; spot: number; flip: number | null; strike_totals: Record<string, number> }
+  current: { ts: number; flip: number | null; strike_totals: Record<string, number> },
+  pick: (s: GexHistorySnapshot) => { strike_totals: Record<string, number>; flip: number | null } | null,
+  spec: ShiftMetricSpec
 ): GexShift {
   const usable = ring
-    .filter((s) => s && typeof s.ts === "number" && s.strike_totals)
+    .filter((s) => s && typeof s.ts === "number" && pick(s) != null)
     .sort((a, b) => a.ts - b.ts);
-  // Earliest snapshot strictly before "now" — need ≥2 distinct points to diff.
-  const baseline = usable.find((s) => s.ts < current.ts) ?? null;
-  if (!baseline || usable.length < 2) {
+  // Earliest snapshot strictly before "now" carrying THIS metric's totals — need ≥2 to diff.
+  const baselineSnap = usable.find((s) => s.ts < current.ts) ?? null;
+  if (!baselineSnap || usable.length < 2) {
     return { available: false, status: "collecting" };
   }
+  const baseline = pick(baselineSnap)!;
 
   const earlier = baseline.strike_totals;
   const now = current.strike_totals;
@@ -804,11 +1050,10 @@ function computeGexShift(
     put_wall: wallChange(curWalls.putWall, earWalls.putWall, now, earlier),
   };
 
-  const since_ms = current.ts - baseline.ts;
+  const since_ms = current.ts - baselineSnap.ts;
   const elapsed = fmtElapsed(since_ms);
 
-  // ── Summary: real numbers + a directional read on dealer length / vol. ──
-  // Net Δ gamma over the window → dealers getting longer (vol compressing) or shorter (vol expanding).
+  // ── Summary: real numbers + a directional net-flow read. ──
   let netDelta = 0;
   for (const d of Object.values(delta_by_strike)) netDelta += d;
   const fmtK = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -817,32 +1062,22 @@ function computeGexShift(
   const cw = wall_changes.call_wall;
   if (cw.to != null && cw.grew_pct != null) {
     const verb = cw.grew_pct >= 0 ? "built" : "melted";
-    parts.push(`the ${fmtK(cw.to)} call wall ${verb} ${cw.grew_pct >= 0 ? "+" : ""}${cw.grew_pct}%`);
+    parts.push(`the ${fmtK(cw.to)} ${spec.wallLabel} ${verb} ${cw.grew_pct >= 0 ? "+" : ""}${cw.grew_pct}%`);
   } else if (cw.to != null && cw.moved_pts != null && cw.moved_pts !== 0) {
-    parts.push(`the call wall slid ${cw.moved_pts > 0 ? "up" : "down"} to ${fmtK(cw.to)}`);
+    parts.push(`the ${spec.wallLabel} slid ${cw.moved_pts > 0 ? "up" : "down"} to ${fmtK(cw.to)}`);
   }
   if (flip_migration.delta_pts != null && flip_migration.delta_pts !== 0) {
     const dir = flip_migration.delta_pts > 0 ? "up" : "down";
-    parts.push(
-      `gamma flip migrated ${dir} ${Math.abs(flip_migration.delta_pts)} pts`
-    );
+    parts.push(`${spec.flipLabel} migrated ${dir} ${Math.abs(flip_migration.delta_pts)} pts`);
   } else if (flip_migration.to != null && flip_migration.from == null) {
-    parts.push(`a gamma flip formed at ${fmtK(flip_migration.to)}`);
+    parts.push(`a ${spec.flipLabel} formed at ${fmtK(flip_migration.to)}`);
   }
 
-  let lengthRead: string;
-  if (netDelta > 0) {
-    lengthRead = "dealers getting longer → vol compressing";
-  } else if (netDelta < 0) {
-    lengthRead = "dealers getting shorter → vol expansion risk";
-  } else {
-    lengthRead = "net dealer gamma roughly flat";
-  }
-
+  const lengthRead = spec.netRead(netDelta);
   const body =
     parts.length > 0
       ? `${parts.join(", ")} (${lengthRead}).`
-      : `net dealer gamma moved ${fmtShiftMoney(netDelta)} (${lengthRead}).`;
+      : `${spec.netNoun} moved ${fmtShiftMoney(netDelta)} (${lengthRead}).`;
   const summary = `Over the last ${elapsed}: ${body}`;
 
   return {
@@ -852,8 +1087,176 @@ function computeGexShift(
     wall_changes,
     summary,
     since_ms,
-    baseline_ts: baseline.ts,
+    baseline_ts: baselineSnap.ts,
   };
+}
+
+/**
+ * Diff the current GEX state against the EARLIEST snapshot still in the window to produce the
+ * shift payload. `ring` is the full positioning-history ring (ascending by ts) INCLUDING the
+ * just-appended current snapshot. With <2 usable snapshots → { available:false, status:'collecting' }
+ * (never fabricated). Thin delegate over computeMetricShift with the GEX spec.
+ */
+function computeGexShift(
+  ring: GexHistorySnapshot[],
+  current: { ts: number; spot: number; flip: number | null; strike_totals: Record<string, number> }
+): GexShift {
+  return computeMetricShift(
+    ring,
+    current,
+    (s) => (s.strike_totals ? { strike_totals: s.strike_totals, flip: s.flip } : null),
+    GEX_SHIFT_SPEC
+  );
+}
+
+/**
+ * VEX shift — same diff over each snapshot's `vex_strike_totals` / `vex_flip`. A snapshot is only
+ * a usable baseline when it carries vex totals (legacy snapshots without them are skipped), so the
+ * VEX shift stays 'collecting' until ≥2 snapshots written WITH vex totals exist. Never fabricated.
+ */
+function computeVexShift(
+  ring: GexHistorySnapshot[],
+  current: { ts: number; flip: number | null; strike_totals: Record<string, number> }
+): GexShift {
+  return computeMetricShift(
+    ring,
+    current,
+    (s) =>
+      s.vex_strike_totals
+        ? { strike_totals: s.vex_strike_totals, flip: s.vex_flip ?? null }
+        : null,
+    VEX_SHIFT_SPEC
+  );
+}
+
+/**
+ * Server-computed alert events — a PURE diff of the PRIOR history snapshot (the most recent one
+ * BEFORE this sample) vs the CURRENT freshly-computed values. No new upstream calls/passes: every
+ * input is already computed (current) or already stored (prior).
+ *
+ * Emits ONLY when ≥2 usable snapshots exist (so `ring` contains a real prior to diff) — NEVER
+ * fabricated on the first sample. Returns:
+ *   • undefined → cold history (<2 snapshots): client can't tell direction yet → omit the field.
+ *   • []        → a prior exists but nothing crossed this sample.
+ *
+ * `ring` is the full positioning-history ring INCLUDING the just-appended current snapshot; the
+ * prior is the latest snapshot strictly before `current.ts`.
+ */
+function computeGexEvents(
+  ring: GexHistorySnapshot[],
+  current: {
+    ts: number;
+    spot: number;
+    flip: number | null;
+    call_wall: number | null;
+    put_wall: number | null;
+    total: number;
+  }
+): GexEvent[] | undefined {
+  const usable = ring
+    .filter((s) => s && typeof s.ts === "number" && s.strike_totals)
+    .sort((a, b) => a.ts - b.ts);
+  // Prior = the most recent snapshot strictly before this sample. Need ≥2 to have a real prior.
+  const prior = [...usable].reverse().find((s) => s.ts < current.ts) ?? null;
+  if (!prior || usable.length < 2) return undefined; // cold → omit, never fabricate
+
+  const events: GexEvent[] = [];
+  const at = new Date(current.ts).toISOString();
+  const fmt = (n: number) =>
+    n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+
+  // Recompute the prior's walls + net total from its stored per-strike totals (no extra calls).
+  const priorWalls = wallsOf(prior.strike_totals);
+  let priorTotal = 0;
+  for (const v of Object.values(prior.strike_totals)) {
+    const n = Number(v);
+    if (Number.isFinite(n)) priorTotal += n;
+  }
+  const priorSpot = prior.spot;
+  const curSpot = current.spot;
+
+  // ── flip_crossed — spot moved across the gamma flip since the prior snapshot. ──
+  // Use the prior flip as the shared reference level both ends are measured against, so a side
+  // change is an unambiguous crossing of one stable level (not an artifact of the flip drifting).
+  if (prior.flip != null && priorSpot > 0 && curSpot > 0) {
+    const wasAbove = priorSpot >= prior.flip;
+    const isAbove = curSpot >= prior.flip;
+    if (wasAbove !== isAbove) {
+      const intoLong = isAbove; // above flip = long-gamma regime
+      events.push({
+        type: "flip_crossed",
+        severity: intoLong ? "info" : "warn",
+        message: `Spot crossed the gamma flip (${fmt(prior.flip)}) ${intoLong ? "into LONG gamma — range-bound, fade extremes" : "into SHORT gamma — momentum / vol expansion, moves accelerate"}.`,
+        level: prior.flip,
+        direction: intoLong ? "into long gamma" : "into short gamma",
+        at,
+      });
+    }
+  }
+
+  // ── wall_broken — spot crossed ABOVE the call wall or BELOW the put wall. ──
+  // Reference the PRIOR snapshot's walls (the level that was in place when the move started).
+  if (priorWalls.callWall != null && priorSpot > 0 && curSpot > 0) {
+    if (priorSpot <= priorWalls.callWall && curSpot > priorWalls.callWall) {
+      events.push({
+        type: "wall_broken",
+        severity: "warn",
+        message: `Spot broke ABOVE the call wall (${fmt(priorWalls.callWall)}) — gamma resistance gave way; room higher opens up.`,
+        level: priorWalls.callWall,
+        direction: "above call wall",
+        at,
+      });
+    }
+  }
+  if (priorWalls.putWall != null && priorSpot > 0 && curSpot > 0) {
+    if (priorSpot >= priorWalls.putWall && curSpot < priorWalls.putWall) {
+      events.push({
+        type: "wall_broken",
+        severity: "warn",
+        message: `Spot broke BELOW the put wall (${fmt(priorWalls.putWall)}) — gamma support gave way; downside opens up.`,
+        level: priorWalls.putWall,
+        direction: "below put wall",
+        at,
+      });
+    }
+  }
+
+  // ── regime_flipped — gex posture (long↔short) changed since the prior snapshot. ──
+  // Posture is spot-vs-flip measured at EACH end with that end's own flip (the live regime read).
+  const priorPosture =
+    prior.flip != null && priorSpot > 0 ? (priorSpot >= prior.flip ? "long" : "short") : null;
+  const curPosture =
+    current.flip != null && curSpot > 0 ? (curSpot >= current.flip ? "long" : "short") : null;
+  if (priorPosture != null && curPosture != null && priorPosture !== curPosture) {
+    const intoLong = curPosture === "long";
+    events.push({
+      type: "regime_flipped",
+      severity: intoLong ? "info" : "warn",
+      message: `Gamma regime flipped ${priorPosture} → ${curPosture}${current.flip != null ? ` (flip ${fmt(current.flip)})` : ""} — ${intoLong ? "dealers now long gamma, expect mean-reversion" : "dealers now short gamma, expect trend / vol expansion"}.`,
+      direction: `${priorPosture} → ${curPosture}`,
+      at,
+    });
+  }
+
+  // ── net_gex_sign_flipped — total net GEX changed sign (market-wide regime shift). ──
+  if (
+    Number.isFinite(priorTotal) &&
+    Number.isFinite(current.total) &&
+    priorTotal !== 0 &&
+    current.total !== 0 &&
+    Math.sign(priorTotal) !== Math.sign(current.total)
+  ) {
+    const toPos = current.total > 0;
+    events.push({
+      type: "net_gex_sign_flipped",
+      severity: toPos ? "info" : "warn",
+      message: `Net dealer GEX flipped ${toPos ? "NEGATIVE → POSITIVE — book now net long gamma (stabilizing)" : "POSITIVE → NEGATIVE — book now net short gamma (destabilizing)"}.`,
+      direction: toPos ? "negative → positive" : "positive → negative",
+      at,
+    });
+  }
+
+  return events; // [] when a prior exists but nothing crossed
 }
 
 /**
@@ -918,18 +1321,23 @@ export async function fetchGexHeatmap(
   }
 
   const today = todayEtYmd();
-  // Net dealer GAMMA + VANNA per (strike, expiry) in ONE chain pass. Both use the SAME
-  // call(+)/put(−) dealer-sign convention as aggregateGexRows.
+  // Net dealer GAMMA + VANNA + DELTA + CHARM per (strike, expiry) in ONE chain pass. ALL four use
+  // the SAME call(+)/put(−) dealer-sign convention as aggregateGexRows — NO extra fetch/pass.
   const gammaCellMap = new Map<number, Map<string, number>>();
   const vannaCellMap = new Map<number, Map<string, number>>();
+  const deltaCellMap = new Map<number, Map<string, number>>();
+  const charmCellMap = new Map<number, Map<string, number>>();
   const expirySet = new Set<string>();
   let totalGamma = 0;
   let totalVanna = 0;
+  let totalDelta = 0;
+  let totalCharm = 0;
 
   for (const c of contracts) {
     const strike = Number(c.details?.strike_price);
     const expiry = String(c.details?.expiration_date ?? "").slice(0, 10);
     const gamma = Number(c.greeks?.gamma ?? 0);
+    const delta = Number(c.greeks?.delta ?? 0);
     const oi = Number(c.open_interest ?? 0);
     const iv = Number(c.implied_volatility ?? 0);
     const type = String(c.details?.contract_type ?? "").toLowerCase();
@@ -950,11 +1358,27 @@ export async function fetchGexHeatmap(
       }
     }
 
-    // ── VEX: closed-form vanna × oi × 100 × spot, call +/put − ───────────────
+    // ── DEX: dealer delta × oi × 100 × spot, call +/put − ────────────────────
+    // delta already carries its own +/− by option type (calls 0..1, puts −1..0); the dealer
+    // sign flips the PUT leg so the book nets correctly, identical to the gamma sign pattern.
+    if (Number.isFinite(delta) && delta !== 0) {
+      const signedDelta = sign * delta * oi * 100 * spot;
+      if (signedDelta !== 0 && Number.isFinite(signedDelta)) {
+        expirySet.add(expiry);
+        const byExpiry = deltaCellMap.get(strike) ?? new Map<string, number>();
+        byExpiry.set(expiry, (byExpiry.get(expiry) ?? 0) + signedDelta);
+        deltaCellMap.set(strike, byExpiry);
+        totalDelta += signedDelta;
+      }
+    }
+
+    // ── VEX + CHARM: closed-form greeks needing T + σ. Compute the year-fraction ONCE. ──
+    const t = yearsToExpiry(expiry, today);
+
+    // VEX: closed-form vanna × oi × 100 × spot, call +/put −.
     // Skip contracts with missing IV, T<=0, or σ<=0 (vannaPerShare returns 0 → skipped).
     // dollar_vanna is per 1.00 change in sigma (= 100 vol-points; IV is decimal here),
     // mirroring the dollar-gamma `× spot` scaling so GEX and VEX magnitudes are comparable.
-    const t = yearsToExpiry(expiry, today);
     const vps = vannaPerShare(spot, strike, t, iv);
     if (vps !== 0) {
       const signedVanna = sign * vps * oi * 100 * spot;
@@ -966,19 +1390,38 @@ export async function fetchGexHeatmap(
         totalVanna += signedVanna;
       }
     }
+
+    // CHARM: closed-form charm × oi × 100 × spot, call +/put −. SAME guard as vanna (skip when
+    // T<=0 or σ<=0 → charmPerShare returns 0). dollar-charm scaling MIRRORS dollar-vanna (the
+    // `× spot` notional convention); the per-unit-time is YEARS of time-to-expiry (ACT/365), so
+    // it reads as net dealer delta decay per year. Charm is type-independent (put charm = call
+    // charm at r=q=0, like gamma); the dealer call(+)/put(−) sign is applied here at accumulation.
+    const cps = charmPerShare(spot, strike, t, iv);
+    if (cps !== 0) {
+      const signedCharm = sign * cps * oi * 100 * spot;
+      if (signedCharm !== 0 && Number.isFinite(signedCharm)) {
+        expirySet.add(expiry);
+        const byExpiry = charmCellMap.get(strike) ?? new Map<string, number>();
+        byExpiry.set(expiry, (byExpiry.get(expiry) ?? 0) + signedCharm);
+        charmCellMap.set(strike, byExpiry);
+        totalCharm += signedCharm;
+      }
+    }
   }
 
   if (expirySet.size === 0) {
     return emptyHeatmap(root, { spot, changePct, now, cacheKey, ttlMs });
   }
 
-  // Keep the nearest ~8 expiries (ascending) — SHARED axis for both metrics.
+  // Keep the nearest ~8 expiries (ascending) — SHARED axis for all metrics.
   const expiries = Array.from(expirySet).sort().slice(0, 8);
   const expirySetKeep = new Set(expiries);
-  // SHARED strike axis = union of strikes touched by EITHER metric, descending.
+  // SHARED strike axis = union of strikes touched by ANY metric, descending.
   const allStrikes = new Set<number>([
     ...Array.from(gammaCellMap.keys()),
     ...Array.from(vannaCellMap.keys()),
+    ...Array.from(deltaCellMap.keys()),
+    ...Array.from(charmCellMap.keys()),
   ]);
   const strikes = Array.from(allStrikes).sort((a, b) => b - a);
 
@@ -1011,10 +1454,16 @@ export async function fetchGexHeatmap(
 
   const gexBuilt = buildMetric(gammaCellMap);
   const vexBuilt = buildMetric(vannaCellMap);
+  const dexBuilt = buildMetric(deltaCellMap);
+  const charmBuilt = buildMetric(charmCellMap);
 
-  // Final shared strike axis = strikes present in EITHER metric's pruned cells.
+  // Final shared strike axis = strikes present in ANY metric's pruned cells.
   const finalStrikes = strikes.filter(
-    (s) => gexBuilt.cells[String(s)] != null || vexBuilt.cells[String(s)] != null
+    (s) =>
+      gexBuilt.cells[String(s)] != null ||
+      vexBuilt.cells[String(s)] != null ||
+      dexBuilt.cells[String(s)] != null ||
+      charmBuilt.cells[String(s)] != null
   );
 
   // Max pain (GEX-only, shared at top) from the same banded chain.
@@ -1038,19 +1487,50 @@ export async function fetchGexHeatmap(
     vexBuilt.total || totalVanna
   );
 
-  // ── SHIFT (intraday gamma migration) — fresh compute ONLY, GEX-only ──────────
-  // Append a throttled GEX snapshot to the positioning-history ring, then diff current vs the
-  // earliest snapshot still in the window. Entirely best-effort: any failure → 'collecting' so
-  // the matrix is never blocked. Computed once here and cached with the matrix (all users read
-  // the cached shift — never per user). VEX migration is future work.
+  // DEX zero_level = per-strike net-delta sign-crossing nearest spot (reuse the gamma cross
+  // helper on the delta totals) + posture/read from the net dollar-delta sign.
+  const dexZeroLevel = computeZeroGammaFlip(dexBuilt.strikeTotals, spot);
+  const dexRegime = computeDexRegime(dexBuilt.total || totalDelta);
+  const dexBlock: DexMetricBlock = {
+    cells: dexBuilt.cells,
+    strike_totals: dexBuilt.strikeTotals,
+    total: dexBuilt.total || totalDelta,
+    zero_level: dexZeroLevel,
+    regime: dexRegime,
+  };
+
+  // CHARM zero_level = per-strike charm sign-crossing nearest spot + posture/read (pinning).
+  const charmZeroLevel = computeZeroGammaFlip(charmBuilt.strikeTotals, spot);
+  const charmRegime = computeCharmRegime(charmBuilt.total || totalCharm);
+  const charmBlock: CharmMetricBlock = {
+    cells: charmBuilt.cells,
+    strike_totals: charmBuilt.strikeTotals,
+    total: charmBuilt.total || totalCharm,
+    zero_level: charmZeroLevel,
+    regime: charmRegime,
+  };
+
+  // ── SHIFT (intraday migration) — fresh compute ONLY ──────────────────────────
+  // Append a throttled snapshot (now carrying gex + vex [+ dex/charm] totals) to the
+  // positioning-history ring, then diff current vs the earliest snapshot in the window for BOTH
+  // gex and vex. Entirely best-effort: any failure → 'collecting' so the matrix is never blocked.
+  // Computed once here and cached with the matrix (all users read the cached shift — never per user).
   let shift: GexShift = { available: false, status: "collecting" };
+  let vexShift: GexShift = { available: false, status: "collecting" };
+  let events: GexEvent[] | undefined;
   try {
     const snapshot: GexHistorySnapshot = {
       ts: now,
       spot,
       flip: gexFlip,
       strike_totals: gexBuilt.strikeTotals,
+      vex_strike_totals: vexBuilt.strikeTotals,
+      vex_flip: vexFlip,
+      dex_strike_totals: dexBuilt.strikeTotals,
+      charm_strike_totals: charmBuilt.strikeTotals,
     };
+    // Events diff the PRIOR snapshot (before append) vs current — compute on the ring INCLUDING
+    // the fresh snapshot (the prior is then the latest entry strictly before `now`).
     const ring = await appendGexHistory(cacheKey, snapshot);
     shift = computeGexShift(ring, {
       ts: now,
@@ -1058,8 +1538,23 @@ export async function fetchGexHeatmap(
       flip: gexFlip,
       strike_totals: gexBuilt.strikeTotals,
     });
+    vexShift = computeVexShift(ring, {
+      ts: now,
+      flip: vexFlip,
+      strike_totals: vexBuilt.strikeTotals,
+    });
+    events = computeGexEvents(ring, {
+      ts: now,
+      spot,
+      flip: gexFlip,
+      call_wall: callWall,
+      put_wall: putWall,
+      total: gexBuilt.total || totalGamma,
+    });
   } catch {
     shift = { available: false, status: "collecting" };
+    vexShift = { available: false, status: "collecting" };
+    events = undefined;
   }
 
   const heatmap: GexHeatmap = {
@@ -1088,7 +1583,13 @@ export async function fetchGexHeatmap(
       flip: vexFlip,
       regime: vexRegime,
     },
+    dex: dexBlock,
+    charm: charmBlock,
     shift,
+    vex_shift: vexShift,
+    // Omit `events` on cold history (undefined) so the client distinguishes "nothing crossed" ([])
+    // from "no prior to diff yet".
+    ...(events !== undefined ? { events } : {}),
     source: "polygon",
     data_delay: POLYGON_OPTIONS_DATA_DELAY,
   };
@@ -1148,8 +1649,30 @@ function emptyHeatmap(
         read: "No options-chain data for this ticker — dealer vanna profile unavailable.",
       },
     },
-    // No matrix → no positioning to migrate; the shift view stays in its collecting state.
+    dex: {
+      cells: {},
+      strike_totals: {},
+      total: 0,
+      zero_level: null,
+      regime: {
+        posture: null,
+        read: "No options-chain data for this ticker — dealer delta profile unavailable.",
+      },
+    },
+    charm: {
+      cells: {},
+      strike_totals: {},
+      total: 0,
+      zero_level: null,
+      regime: {
+        posture: null,
+        read: "No options-chain data for this ticker — dealer charm profile unavailable.",
+      },
+    },
+    // No matrix → no positioning to migrate; the shift views stay in their collecting state.
     shift: { available: false, status: "collecting" },
+    vex_shift: { available: false, status: "collecting" },
+    // No prior history to diff → no events (omitted, never fabricated).
     source: "polygon",
     data_delay: POLYGON_OPTIONS_DATA_DELAY,
   };
