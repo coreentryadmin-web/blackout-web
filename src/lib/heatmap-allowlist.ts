@@ -1,4 +1,8 @@
-import "server-only";
+// NOTE: intentionally NOT `import "server-only"`. This is a pure data + predicate module (preset
+// ticker list + allowlist checks, no secrets / no server APIs), imported by polygon-options-gex which
+// the valuation test suite pulls in under tsx/node — where `server-only` throws ("cannot be imported
+// from a Client Component"). It's test- and client-safe like tool-access.ts; the UW-budget gating it
+// supports is enforced in the server route, not by this leaf's import guard.
 
 // ---------------------------------------------------------------------------
 // Heat Maps server-side allowlist.
