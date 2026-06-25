@@ -630,22 +630,38 @@ function ExposureProfile({
 
   // ── Auto-center on the SPOT row (the anchoring) ──────────────────────────────
   // The ladder lists strikes high→low, so it opens at the top (highest strikes) and the
-  // spot/flip zone — the actionable part — sits below the fold. On mount and whenever the
-  // spot row changes (ticker / lens / data shift) we scroll the spot row into the CENTER of
-  // its nearest scroll container (the page when there's no bounded scroller). Keyed on the
-  // spot STRIKE (not every 20s refresh) so a quiet refresh never re-yanks the view.
+  // spot/flip zone — the actionable part — sits below the fold. The rows live inside a
+  // BOUNDED internal scroller (scrollBoxRef) so we center the spot row WITHIN that box —
+  // we never touch the page scroll, so the header + key-level cards stay put on load.
+  // Keyed on the spot STRIKE (not every 20s refresh) so a quiet refresh never re-yanks it.
+  const scrollBoxRef = useRef<HTMLDivElement | null>(null);
   const spotRowRef = useRef<HTMLDivElement | null>(null);
   const spotRowStrike = useMemo(() => {
     const r = rows.find((row) => row.isSpot);
     return r ? r.strike : null;
   }, [rows]);
   useEffect(() => {
-    // Client-only, after layout. Guard the ref so it never throws when the spot row isn't
-    // rendered (e.g. spot off the strike band, or too few strikes to have a spot row).
+    // Client-only, after layout. Guard both refs so it never throws when the spot row isn't
+    // rendered (spot off the strike band, or too few strikes) or the box hasn't mounted.
     if (spotRowStrike == null) return;
-    const el = spotRowRef.current;
-    if (el == null || typeof el.scrollIntoView !== "function") return;
-    el.scrollIntoView({ block: "center", inline: "nearest" });
+    // Double rAF: wait for the rows to be laid out at their FINAL positions before we
+    // measure offsetTop — a single frame can fire before the bars have their final heights,
+    // landing us short of spot. Two frames is the safe "layout settled" point.
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        const box = scrollBoxRef.current;
+        const row = spotRowRef.current;
+        if (box == null || row == null) return;
+        // Center the spot row inside the bounded box ONLY — never scrollIntoView (which
+        // would walk up to the page). Clamp is implicit: the browser caps scrollTop.
+        box.scrollTop = row.offsetTop - box.clientHeight / 2 + row.clientHeight / 2;
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
   }, [spotRowStrike]);
 
   // Index of the divider: drawn ABOVE the first row (strikes desc) whose strike < flip.
@@ -710,7 +726,15 @@ function ExposureProfile({
   const profileLabel = `Net dealer ${v.noun.toLowerCase()} profile by strike — positive bars right of center, negative left`;
 
   return (
-    <div role="img" aria-label={profileLabel} className="space-y-px">
+    <div role="img" aria-label={profileLabel}>
+      {/* Bounded internal scroller — the strike rows scroll INSIDE this box (centered on
+          spot via scrollBoxRef) so the page never moves on load. Height shows ~the spot±walls
+          band (≈18-26 strikes) comfortably; overscroll-contain stops the scroll chaining back
+          to the page at the band edges. Only the rows scroll — the legends below stay fixed. */}
+      <div
+        ref={scrollBoxRef}
+        className="max-h-[clamp(380px,60vh,640px)] space-y-px overflow-y-auto overscroll-contain pr-1"
+      >
       {rows.map((r, i) => {
         const mag = peak > 0 ? Math.min(1, Math.abs(r.value) / peak) : 0;
         // Fill the FULL available track on each side: each half is 50% of the bar
@@ -885,6 +909,7 @@ function ExposureProfile({
           </div>
         );
       })}
+      </div>
 
       {/* axis legend */}
       <div className="mt-3 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/70">
@@ -2450,14 +2475,24 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
 
   // ── Matrix auto-center on the SPOT row (the anchoring) ───────────────────────
   // The matrix lists strikes high→low and mounts fresh each time its tab is opened (the
-  // TabPanel unmounts when inactive). A CALLBACK ref on the spot <tr> scrolls it to the
-  // center of its scroll container the moment that row attaches — so opening the Matrix
-  // tab lands on price, not on the top (highest) strikes. Guards null/SSR so it never
-  // throws when there's no spot row (spot off-band, or too few strikes). Centered
-  // vertically; horizontal scroll is left to the user (the matrix scrolls sideways too).
+  // TabPanel unmounts when inactive). Its rows live in a BOUNDED scroll box (matrixScrollRef)
+  // that scrolls BOTH ways — sideways for expiry columns, vertically for strikes. A CALLBACK
+  // ref on the spot <tr> fires the moment that row attaches (i.e. when the Matrix tab opens),
+  // so it naturally re-centers on every tab remount without watching a key. It centers the
+  // spot row WITHIN the box only — the page never moves. Double rAF waits for layout to settle
+  // (sticky header + colored cells reach final heights) before measuring offsetTop. Guards
+  // null/SSR so it never throws when there's no spot row (spot off-band or too few strikes).
+  const matrixScrollRef = useRef<HTMLDivElement | null>(null);
   const matrixSpotRowRef = useCallback((node: HTMLTableRowElement | null) => {
-    if (node == null || typeof node.scrollIntoView !== "function") return;
-    node.scrollIntoView({ block: "center", inline: "nearest" });
+    if (node == null) return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const box = matrixScrollRef.current;
+        if (box == null) return;
+        // VERTICAL only — leave scrollLeft alone so the user's column position is kept.
+        box.scrollTop = node.offsetTop - box.clientHeight / 2 + node.clientHeight / 2;
+      });
+    });
   }, []);
 
   // Profile rows: strikes desc, each carrying its FILTERED net value + role flags + flow
@@ -3136,8 +3171,14 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                     phones the mono values scroll instead of colliding. The table gets
                     a min-width so columns keep their breathing room below the fold. */}
                 <div className="relative">
+                  {/* Bounded scroll box: scrolls horizontally for expiry columns AND
+                      vertically for strikes (the spot row is centered inside this box via
+                      matrixScrollRef — the page never moves). overscroll-contain stops the
+                      scroll chaining back to the page at the band edges; the sticky header
+                      row + sticky Strike column stay visible while the rows scroll. */}
                   <div
-                    className="overflow-x-auto"
+                    ref={matrixScrollRef}
+                    className="max-h-[clamp(380px,60vh,640px)] overflow-auto overscroll-contain"
                     role="region"
                     tabIndex={0}
                     aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} exposure matrix, strikes by expiration`}
@@ -3145,18 +3186,20 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                     <table className="w-full min-w-[34rem] border-separate border-spacing-0 font-mono text-[11px]">
                     <thead>
                       <tr>
-                        <th className="sticky left-0 z-10 bg-[rgba(8,9,14,0.92)] px-2 py-2 text-left text-[10px] uppercase tracking-widest text-cyan-400 backdrop-blur">
+                        {/* Top-left corner: sticky on BOTH axes (z-20 so it sits above the
+                            body's sticky strike column and the rest of the sticky header). */}
+                        <th className="sticky left-0 top-0 z-20 bg-[rgba(8,9,14,0.92)] px-2 py-2 text-left text-[10px] uppercase tracking-widest text-cyan-400 backdrop-blur">
                           Strike
                         </th>
                         {expiries.map((e) => (
                           <th
                             key={e}
-                            className="whitespace-nowrap px-2 py-2 text-center text-[10px] uppercase tracking-wide text-sky-300"
+                            className="sticky top-0 z-10 whitespace-nowrap bg-[rgba(8,9,14,0.92)] px-2 py-2 text-center text-[10px] uppercase tracking-wide text-sky-300 backdrop-blur"
                           >
                             {fmtExpiry(e)}
                           </th>
                         ))}
-                        <th className="whitespace-nowrap px-2 py-2 text-right text-[10px] uppercase tracking-wide text-cyan-400">
+                        <th className="sticky top-0 z-10 whitespace-nowrap bg-[rgba(8,9,14,0.92)] px-2 py-2 text-right text-[10px] uppercase tracking-wide text-cyan-400 backdrop-blur">
                           Net
                         </th>
                       </tr>
