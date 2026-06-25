@@ -303,18 +303,20 @@ function fmtExpiry(ymd: string): string {
 type Lens = "gex" | "vex" | "dex" | "charm";
 
 /**
- * Per-lens color identity (brand tokens only, never grey) — each lens gets a distinct
- * positive identity so the four lenses never read alike:
- *  - GEX:   positive = bull green #00e676, negative = violet #bf5fff (matches the v1 scale)
- *  - VEX:   positive = sky    #7dd3fc,     negative = violet #bf5fff
- *  - DEX:   positive = cyan   #22d3ee,     negative = violet #bf5fff (net dealer delta)
- *  - CHARM: positive = gold   #ffd23f,     negative = violet #bf5fff (delta-decay / pinning)
+ * Per-lens color identity (brand tokens only, never grey) — each lens keeps a distinct
+ * POSITIVE identity, while the NEGATIVE side is the shared bear-red #ff2d55 across all
+ * four lenses (negative exposure is the bearish / short side — semantically red, never
+ * the off-brand violet, which is HELIX's identity not Heatmaps'):
+ *  - GEX:   positive = bull green #00e676, negative = bear red #ff2d55
+ *  - VEX:   positive = sky    #7dd3fc,     negative = bear red #ff2d55
+ *  - DEX:   positive = cyan   #22d3ee,     negative = bear red #ff2d55 (net dealer delta)
+ *  - CHARM: positive = gold   #ffd23f,     negative = bear red #ff2d55 (delta-decay / pinning)
  */
 const LENS_COLORS: Record<Lens, { posRgb: string; negRgb: string; posHex: string; negHex: string }> = {
-  gex: { posRgb: "0,230,118", negRgb: "191,95,255", posHex: "#00e676", negHex: "#bf5fff" },
-  vex: { posRgb: "125,211,252", negRgb: "191,95,255", posHex: "#7dd3fc", negHex: "#bf5fff" },
-  dex: { posRgb: "34,211,238", negRgb: "191,95,255", posHex: "#22d3ee", negHex: "#bf5fff" },
-  charm: { posRgb: "255,210,63", negRgb: "191,95,255", posHex: "#ffd23f", negHex: "#bf5fff" },
+  gex: { posRgb: "0,230,118", negRgb: "255,45,85", posHex: "#00e676", negHex: "#ff2d55" },
+  vex: { posRgb: "125,211,252", negRgb: "255,45,85", posHex: "#7dd3fc", negHex: "#ff2d55" },
+  dex: { posRgb: "34,211,238", negRgb: "255,45,85", posHex: "#22d3ee", negHex: "#ff2d55" },
+  charm: { posRgb: "255,210,63", negRgb: "255,45,85", posHex: "#ffd23f", negHex: "#ff2d55" },
 };
 
 /** Convenience: lenses that carry walls/flip/max-pain (GEX/VEX) vs zero_level lenses (DEX/CHARM). */
@@ -957,9 +959,9 @@ function CumulativeCurve({
           strokeWidth={1}
         />
 
-        {/* long-gamma fill (above zero) — bull/sky identity */}
+        {/* long-gamma fill (above zero) — the lens's positive identity */}
         <path d={geom.areaPath} fill={c.posHex} fillOpacity={0.16} clipPath={`url(#${clipBullId})`} />
-        {/* short-gamma fill (below zero) — violet/bear identity */}
+        {/* short-gamma fill (below zero) — bear-red identity */}
         <path d={geom.areaPath} fill={c.negHex} fillOpacity={0.16} clipPath={`url(#${clipBearId})`} />
 
         {/* the cumulative line itself */}
