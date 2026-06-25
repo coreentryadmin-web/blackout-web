@@ -6,6 +6,10 @@
 // This file describes value framing ONLY. It creates no tiers and touches no
 // billing — the real entitlement check stays in src/lib/auth-access.ts.
 
+// Type-only import: MarkProduct is erased at compile time, so this pure,
+// server-safe module pulls no client/runtime code from ProductMark.
+import type { MarkProduct } from "@/components/marks/ProductMark";
+
 export type FeatureRow = {
   /** Short feature name shown in the left column. */
   label: string;
@@ -15,6 +19,12 @@ export type FeatureRow = {
   free: boolean;
   /** Whether Premium includes this (all current premium gates => true). */
   premium: boolean;
+  /**
+   * Optional product sigil for the row. Keyed off a STABLE product id, not the
+   * display copy — a label edit can no longer silently break the sigil lookup
+   * (the old LABEL_TO_MARK maps drifted from these labels and rendered nothing).
+   */
+  mark?: MarkProduct;
 };
 
 /**
@@ -27,30 +37,35 @@ export const FEATURE_MATRIX: FeatureRow[] = [
     detail: "Real-time options-flow tape, sorted and tagged",
     free: false,
     premium: true,
+    mark: "helix",
   },
   {
     label: "SPX Slayer desk",
     detail: "Confluence, GEX walls, dealer gamma — live",
     free: false,
     premium: true,
+    mark: "spx",
   },
   {
     label: "Largo AI desk analyst",
     detail: "Plain-English answers grounded in every tool's live data",
     free: false,
     premium: true,
+    mark: "largo",
   },
   {
     label: "Night Hawk evening playbook",
     detail: "Overnight scan of the session, ranked setups",
     free: false,
     premium: true,
+    mark: "nighthawk",
   },
   {
     label: "Strike-level heatmaps",
     detail: "Dealer positioning mapped across the full chain",
     free: false,
     premium: true,
+    mark: "heatmap",
   },
   {
     label: "SPX AI commentary",

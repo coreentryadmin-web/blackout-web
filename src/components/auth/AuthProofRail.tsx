@@ -1,14 +1,10 @@
 import { FEATURE_MATRIX } from "@/lib/upsell-features";
-import { ProductMark, type MarkProduct } from "@/components/marks/ProductMark";
+import { ProductMark } from "@/components/marks/ProductMark";
 
-// Map the ledger rows to their product sigil. Rows without a single product keep the ✓.
-const LABEL_TO_MARK: Record<string, MarkProduct> = {
-  "Live HELIX flow feed": "helix",
-  "SPX live dashboard": "spx",
-  "Largo AI terminal": "largo",
-  "Night Hawk scanner": "nighthawk",
-  "Full heatmaps": "heatmap",
-};
+// Sigils come from row.mark (a stable product id on the matrix); rows without a
+// single product fall back to the ✓. The old LABEL_TO_MARK map was keyed on
+// stale display strings that no longer matched FEATURE_MATRIX, so it rendered
+// no sigils at all.
 
 /**
  * Proof rail for the auth / upgrade screens.
@@ -34,7 +30,7 @@ export function AuthProofRail({ variant }: { variant: "auth" | "upgrade" }) {
     return (
       <ul className="flex flex-col gap-3">
         {FEATURE_MATRIX.slice(0, 4).map((f) => {
-          const mark = LABEL_TO_MARK[f.label];
+          const mark = f.mark;
           return (
           <li key={f.label} className="flex items-start gap-3">
             {mark ? (
