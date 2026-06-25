@@ -199,15 +199,28 @@ export function SpxGexLadder({ desk, live, refreshing }: DeskProps) {
             const dist =
               w.distance_pts ??
               (spot != null ? Math.round((w.strike - spot) * 100) / 100 : null);
+            // Role from net_gex SIGN (put wall = support = green; call wall =
+            // resistance = red), NOT strike-vs-spot geometry — so the SPX desk agrees
+            // with the canonical Heatmap + Night's Watch (#80). When spot has broken
+            // through the wall (geometry disagrees), note the acting-as role.
+            const hasSign = Number.isFinite(w.net_gex) && w.net_gex !== 0;
+            const isPut = w.net_gex < 0; // negative net-gamma => put wall (support)
+            const nativeRole = isPut ? "support" : "resistance";
+            const roleLabel = !hasSign
+              ? w.kind
+              : w.kind === nativeRole
+                ? `${isPut ? "put" : "call"} wall`
+                : `${isPut ? "put" : "call"} wall · ${w.kind}`;
+            const supportTone = hasSign ? isPut : w.kind === "support";
             return (
               <li
                 key={`${w.kind}-${w.strike}`}
                 className={clsx(
                   "spx-desk-list-row border-l-2",
-                  w.kind === "support" ? "border-l-emerald-500/50" : "border-l-rose-500/50"
+                  supportTone ? "border-l-emerald-500/50" : "border-l-rose-500/50"
                 )}
               >
-                <span className="font-mono text-[10px] uppercase text-cyan-400 w-16">{w.kind}</span>
+                <span className="font-mono text-[10px] uppercase text-cyan-400 w-16">{roleLabel}</span>
                 <span className="font-mono text-sm text-white tabular-nums">{fmtPrice(w.strike)}</span>
                 {dist != null && (
                   // Distance is geometry, not direction — it must stay NEUTRAL so it
