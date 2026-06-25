@@ -12,6 +12,14 @@ const railwayHostname = (() => {
   return null;
 })();
 
+// Base CSP for the whole app. `frame-ancestors 'self'` (plus X-Frame-Options
+// SAMEORIGIN below) denies cross-origin framing everywhere — which is correct
+// for every route EXCEPT the public /embed/* social-proof cards, which are
+// handed to users as an <iframe> snippet to drop on their own sites (see
+// /track-record). Those get a scoped override below.
+const baseCsp =
+  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://s.tradingview.com https://*.tradingview.com https://clerk.blackouttrades.com https://*.clerk.accounts.dev; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https://s.tradingview.com https://*.tradingview.com; frame-ancestors 'self'";
+
 const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
@@ -23,10 +31,29 @@ const securityHeaders = [
   },
   {
     key: "Content-Security-Policy",
-    value:
-      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://s.tradingview.com https://*.tradingview.com https://clerk.blackouttrades.com https://*.clerk.accounts.dev; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https://s.tradingview.com https://*.tradingview.com; frame-ancestors 'self'",
+    value: baseCsp,
   },
 ];
+
+// Scoped header set for /embed/* ONLY. These routes are public, unauthenticated,
+// read-only social-proof cards meant to be framed cross-origin on arbitrary
+// customer sites (the /track-record page hands users the <iframe> snippet), so
+// the global frame-deny would otherwise block their entire purpose. We:
+//   - OMIT X-Frame-Options entirely (it's a single-value legacy header that can't
+//     express an allowlist; leaving it set to SAMEORIGIN would override CSP in
+//     older browsers and keep blocking the embed).
+//   - Relax CSP frame-ancestors to `*` so any host may frame these cards. There is
+//     no clickjacking surface here: no auth, no interactive/state-changing UI, no
+//     sensitive data — only an aggregate stat card.
+// All other security headers are kept identical to the rest of the app, and this
+// override is scoped to /embed/* so framing for every other route stays locked down.
+const embedSecurityHeaders = securityHeaders
+  .filter((h) => h.key !== "X-Frame-Options")
+  .map((h) =>
+    h.key === "Content-Security-Policy"
+      ? { ...h, value: baseCsp.replace("frame-ancestors 'self'", "frame-ancestors *") }
+      : h,
+  );
 
 const remotePatterns = [
   { protocol: "https", hostname: "images.unsplash.com" },
@@ -58,7 +85,23 @@ const nextConfig = {
   // blocks a deploy. Build correctness is covered by tsc + next build itself.
   eslint: { ignoreDuringBuilds: true },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    // These two rules are MUTUALLY EXCLUSIVE by construction. Next.js does not
+    // dedupe headers across matching `source` entries — if both a catch-all and an
+    // /embed rule matched, the response would carry duplicated X-Frame-Options /
+    // CSP values (undefined precedence). To avoid that, the catch-all uses a
+    // negative-lookahead so it matches every path EXCEPT /embed/*, and the embed
+    // rule owns /embed/* exclusively. Net effect: framing stays denied app-wide and
+    // is relaxed only for the public embed cards.
+    return [
+      {
+        source: "/((?!embed/).*)",
+        headers: securityHeaders,
+      },
+      {
+        source: "/embed/:path*",
+        headers: embedSecurityHeaders,
+      },
+    ];
   },
   images: {
     remotePatterns,

@@ -2,8 +2,12 @@ import { TrackRecordEmbed } from "@/components/embeds/TrackRecordEmbed";
 import { buildPublicTrackRecord } from "@/lib/track-record-public";
 
 // Iframe-embeddable, chrome-less social-proof card. Public (not protected).
-// Next does not set X-Frame-Options by default, so this is framable. If a global
-// frame-deny header is later added, this route must be excepted (see manualUserSteps).
+// Cross-origin framing for this route is enabled in next.config.mjs: the global
+// X-Frame-Options: SAMEORIGIN + CSP `frame-ancestors 'self'` deny framing app-wide,
+// but a scoped `/embed/:path*` header rule drops X-Frame-Options and relaxes
+// `frame-ancestors *` so users can embed this card on their own sites. Framing for
+// every non-/embed route stays locked down. Keep this route free of any auth or
+// state-changing UI so relaxed framing carries no clickjacking risk.
 export const dynamic = "force-dynamic";
 
 export default async function EmbedTrackRecordPage() {
