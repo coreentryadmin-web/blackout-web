@@ -473,18 +473,33 @@ export async function fetchUwIvRank(ticker = "SPX") {
   return ivRank != null ? Number(ivRank) : null;
 }
 
+/**
+ * Aggregate flow-per-strike rows → the 0DTE flow tilt `{ call_premium, put_premium, net }`.
+ * SHARED by `fetchUwFlow0dte` (the live read) and the `uw-cache-refresh` cron (the warm) so both
+ * produce the IDENTICAL aggregate and the warm can never write a shape the live read doesn't expect.
+ * SHAPE/KEY CONTRACT: this AGGREGATE lives under `UW_KEYS.flowPerStrike` (`flow_per_strike:`); the
+ * RAW rows live under the DISTINCT `flow_per_strike_rows:` key (`fetchUwFlowPerStrikeRows`). Never
+ * cross-write the two — doing so poisons the SPX desk + Largo 0DTE-flow reads (array vs aggregate).
+ */
+export function aggregateFlowPerStrikeRows(rows: ReadonlyArray<Record<string, unknown>>): {
+  call_premium: number;
+  put_premium: number;
+  net: number;
+} {
+  let calls = 0;
+  let puts = 0;
+  for (const row of rows) {
+    calls += Number(row.call_premium ?? 0);
+    puts += Number(row.put_premium ?? 0);
+  }
+  return { call_premium: calls, put_premium: puts, net: calls - puts };
+}
+
 export async function fetchUwFlow0dte(ticker = "SPX") {
   const redis = await getUwCacheRedis();
   return uwCacheGet(redis, UW_KEYS.flowPerStrike(ticker), UW_CACHE_TTL.flowPerStrike, async () => {
     const data = await uwGetSafe<unknown>(`/api/stock/${ticker}/flow-per-strike-intraday`, {});
-    const rows = extractRows(data);
-    let calls = 0;
-    let puts = 0;
-    for (const row of rows) {
-      calls += Number(row.call_premium ?? 0);
-      puts += Number(row.put_premium ?? 0);
-    }
-    return { call_premium: calls, put_premium: puts, net: calls - puts };
+    return aggregateFlowPerStrikeRows(extractRows(data));
   });
 }
 

@@ -17,6 +17,7 @@ import {
   fetchUwNope,
   fetchUwDarkPool,
   fetchUwFlowPerStrikeRows,
+  aggregateFlowPerStrikeRows,
 } from "@/lib/providers/unusual-whales";
 import { fetchMarketMovers } from "@/lib/providers/polygon";
 
@@ -92,10 +93,21 @@ export async function GET(req: NextRequest) {
       },
     ]),
 
-    // Flow Per Strike — SPX and SPY only (high-call-cost endpoint)
+    // Flow Per Strike — SPX and SPY only (high-call-cost UW endpoint). ONE fetch warms BOTH
+    // flow-per-strike caches in their CORRECT shapes: fetchUwFlowPerStrikeRows caches the RAW rows
+    // (flow_per_strike_rows:), and we derive + cache the {call_premium,put_premium,net} AGGREGATE
+    // under fetchUwFlow0dte's key (UW_KEYS.flowPerStrike) via the SHARED reducer. Previously this
+    // wrote the raw ROWS under the aggregate key, poisoning the SPX desk + Largo 0DTE-flow reads for
+    // SPX/SPY (an array where {call_premium,...} was expected). The unbounded limit makes the
+    // aggregate span ALL rows, matching fetchUwFlow0dte's live computation exactly.
     ...FLOW_STRIKE_TICKERS.map((ticker) => async () => {
-      const data = await fetchUwFlowPerStrikeRows(ticker);
-      await uwCacheSet(redis, UW_KEYS.flowPerStrike(ticker), UW_CACHE_TTL.flowPerStrike, data);
+      const rows = await fetchUwFlowPerStrikeRows(ticker, Number.MAX_SAFE_INTEGER);
+      await uwCacheSet(
+        redis,
+        UW_KEYS.flowPerStrike(ticker),
+        UW_CACHE_TTL.flowPerStrike,
+        aggregateFlowPerStrikeRows(rows)
+      );
     }),
   ];
 
