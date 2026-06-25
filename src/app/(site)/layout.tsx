@@ -1,5 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { Nav } from "@/components/Nav";
+import { MarketSessionProvider } from "@/components/platform/MarketSessionProvider";
+import { MarketPulseLayer } from "@/components/platform/MarketPulseLayer";
 import { isAdminUser } from "@/lib/admin-access";
 import { lockedToolKeys, type ToolKey } from "@/lib/tool-access";
 
@@ -25,6 +27,15 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
 
   return (
     <>
+      {/* VITALS Phase 1 — one shared market-cadence heartbeat behind all in-app
+          content. Mounted ONCE here in the real shared (site) layout that wraps
+          every product page. MarketPulseLayer is a fixed, pointer-events-none,
+          z-index:0 backdrop (behind page content, which sits at z-10), and
+          MarketSessionProvider is a client side-effect that publishes the
+          --pulse-* cadence vars onto <html>. Both sit before <Nav> so they
+          render behind the fixed nav banner and all page chrome. */}
+      <MarketSessionProvider />
+      <MarketPulseLayer />
       <Nav lockedTools={lockedTools} />
       {children}
     </>
