@@ -66,6 +66,15 @@
      emerald. */
   --bull: #00e676;
   --bear: #ff2d55;
+
+  /* ── Readable secondary text ────────────────────────────────────────────
+     Secondary copy (feature-card descriptions, sublabels, notes, microcopy)
+     was consistently set near the readability floor (white/45–/55, which on
+     the void bg reads AS the banned grey). --text-secondary is a brighter,
+     blue-tinted neutral that clears WCAG AA on #040407 (~9:1) without being
+     grey. Authors: use text-secondary for muted-but-readable body/sublabels;
+     reserve text-mute (#9fb4d4) for the very quietest non-trust labels. */
+  --text-secondary: #b9c7d6;
 }
 
 /* Page-padding ramp: nudge the gutter up at the sm tier, then lock to the

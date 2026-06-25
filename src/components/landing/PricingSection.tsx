@@ -175,9 +175,9 @@ export function PricingSection() {
             <p className="font-mono text-[10px] tracking-[0.35em] uppercase text-sky-300/80 mb-3">Free</p>
             <div className="flex items-end gap-2">
               <span className="font-anton text-6xl text-white leading-none">$0</span>
-              <span className="font-mono text-[11px] text-white/45 uppercase tracking-widest mb-1.5">forever</span>
+              <span className="font-mono text-[11px] text-secondary uppercase tracking-widest mb-1.5">forever</span>
             </div>
-            <p className="mt-4 text-[13px] text-white/55 leading-relaxed">
+            <p className="mt-4 text-[13px] text-secondary leading-relaxed">
               Step onto the floor — open an account and walk the desk before you go live.
             </p>
             <ul className="flex flex-col gap-3 my-8 flex-1">
@@ -252,10 +252,10 @@ export function PricingSection() {
               >
                 <div className="flex items-end gap-2">
                   <span className="font-anton text-6xl md:text-7xl text-white leading-none">{plan.price}</span>
-                  <span className="font-mono text-[12px] text-white/55 uppercase tracking-widest mb-2">{plan.per}</span>
+                  <span className="font-mono text-[12px] text-secondary uppercase tracking-widest mb-2">{plan.per}</span>
                 </div>
                 <div className="mt-2 flex items-center gap-3 flex-wrap">
-                  <span className="font-mono text-[11px] text-white/55">{plan.note}</span>
+                  <span className="font-mono text-[11px] text-secondary">{plan.note}</span>
                   {plan.save && (
                     <span
                       className="font-mono text-[10px] rounded-md px-2 py-0.5"
@@ -291,7 +291,7 @@ export function PricingSection() {
             >
               {hasCheckout ? "Unlock Premium →" : "Open account first →"}
             </LandingCta>
-            <p className="mt-4 text-center font-mono text-[10px] tracking-[0.12em] text-white/45 uppercase">
+            <p className="mt-4 text-center font-mono text-[10px] tracking-[0.12em] text-secondary uppercase">
               Secure checkout · Whop · stand down anytime
             </p>
           </motion.div>

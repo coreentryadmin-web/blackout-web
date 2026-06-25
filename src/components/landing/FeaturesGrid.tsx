@@ -125,7 +125,7 @@ export function FeaturesGrid() {
               ARSENAL.
             </span>
           </h2>
-          <p className="mt-5 text-[15px] leading-relaxed text-white/65 max-w-2xl mx-auto">
+          <p className="mt-5 text-[15px] leading-relaxed text-secondary max-w-2xl mx-auto">
             One membership. The whole desk — every instrument the floor runs on, in one screen.
           </p>
         </motion.div>

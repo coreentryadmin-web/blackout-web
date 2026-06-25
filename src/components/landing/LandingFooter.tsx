@@ -186,7 +186,7 @@ export function LandingFooter() {
           {/* disclaimer column */}
           <motion.div custom={3} variants={colReveal} initial="hidden" whileInView="show" viewport={{ once: true }}>
             <p className="font-mono text-[10px] tracking-[0.3em] uppercase text-bull/80 mb-4">The Fine Print</p>
-            <p className="text-[12px] leading-relaxed text-white/55">
+            <p className="text-[12px] leading-relaxed text-secondary">
               BlackOut provides market data, analytics and educational tools only. Nothing here is financial
               advice or a recommendation to buy or sell. Every trade is your own decision.
             </p>
@@ -195,7 +195,7 @@ export function LandingFooter() {
 
         {/* bottom bar */}
         <div className="flex flex-col items-center justify-between gap-3 border-t border-white/10 py-6 text-center md:flex-row md:text-left">
-          <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/45">
+          <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-secondary">
             © {YEAR} {SITE.legalName} · {SITE.domain}
           </p>
           <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-bull/70">Not financial advice</p>

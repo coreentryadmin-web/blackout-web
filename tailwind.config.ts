@@ -34,6 +34,10 @@ const config: Config = {
         // Non-grey neutral for secondary copy (authors must NOT reach for zinc/neutral).
         // Matches the existing secondary-text value on the marketing/auth surface.
         mute: "#9fb4d4",
+        // Readable secondary text — brighter than mute, clears WCAG AA on the void
+        // bg (~9:1). Use `text-secondary` for muted-but-readable body / sublabels /
+        // microcopy instead of dim white/45–55. Backed by the --text-secondary var.
+        secondary: "var(--text-secondary)",
         cyan: {
           DEFAULT: "#22d3ee",
           50: "#ecfeff",
@@ -75,8 +79,11 @@ const config: Config = {
         },
         text: {
           primary: "#f0f0f8",
-          secondary: "#8888a0",
-          muted: "#4a4a60",
+          // Defused: these were banned-grey "loaded guns" (#8888a0 / #4a4a60) per the
+          // UI audit — unused, but repointed off grey so they can't introduce it.
+          // Use `text-secondary` (readable) or `text-mute` (quiet, non-grey) instead.
+          secondary: "var(--text-secondary)",
+          muted: "#9fb4d4",
           dim: "#22222c",
         },
         warning: "#ffd23f",
