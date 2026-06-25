@@ -33,19 +33,28 @@ function Panel({
   accent,
   children,
   className,
+  live,
 }: {
   title: string;
   subtitle?: string;
   accent: string;
   children: React.ReactNode;
   className?: string;
+  live?: boolean;
 }) {
   return (
     <UiPanel
       accent={ACCENT_MAP[accent] ?? "bull"}
       kicker={subtitle}
       title={title}
-      actions={<span className="badge-live-dot animate-pulse" aria-hidden />}
+      // Pulse only when the feed is live; dim static dot otherwise. A pulsing
+      // "live" dot on a dead/standby feed is a trust violation.
+      actions={
+        <span
+          className={clsx("badge-live-dot", live ? "animate-pulse" : "opacity-40")}
+          aria-hidden
+        />
+      }
       className={clsx("flex flex-col", className)}
       bodyClassName="spx-desk-panel-body !px-4 !py-3.5"
     >
@@ -97,7 +106,7 @@ export function SpxDarkPoolCard({ desk, live }: DeskProps) {
   const prints = dp?.prints ?? [];
 
   return (
-    <Panel title="Dark Pool" subtitle="SPX · institutional prints" accent="spx-panel-amber">
+    <Panel title="Dark Pool" subtitle="SPX · institutional prints" accent="spx-panel-amber" live={live}>
       {!live || !prints.length ? (
         <p className="font-mono text-[11px] text-cyan-400 py-2">{dp?.detail ?? "No prints on the tape"}</p>
       ) : (
@@ -148,7 +157,7 @@ function tapeSideClass(t: { kind: string; side: string }) {
   return { tag: "CALL", tagClass: "text-bull", labelClass: "text-bull" };
 }
 
-export function SpxGexLadder({ desk, refreshing }: DeskProps) {
+export function SpxGexLadder({ desk, live, refreshing }: DeskProps) {
   const walls = useStableArray(desk?.gex_walls ?? []);
   const isValidGammaFlip = useCallback((v: number | null | undefined) => v != null, []);
   const isValidGammaRegime = useCallback(
@@ -171,6 +180,7 @@ export function SpxGexLadder({ desk, refreshing }: DeskProps) {
       title="GEX Walls"
       subtitle={spot != null ? `0DTE nodes · spot ${fmtPrice(spot)}` : "0DTE gamma nodes"}
       accent="spx-panel-gold"
+      live={live && !gexStale}
       className={clsx(refreshing && hasWalls && "spx-desk-panel-refreshing")}
     >
       {gexStale && hasWalls && (
@@ -235,7 +245,7 @@ export function SpxGexLadder({ desk, refreshing }: DeskProps) {
   );
 }
 
-export function SpxUnifiedTape({ desk, refreshing }: DeskProps) {
+export function SpxUnifiedTape({ desk, live, refreshing }: DeskProps) {
   const tape = useLiveSpxTape(desk?.unified_tape);
   const hasTape = tape.length > 0;
 
@@ -244,6 +254,7 @@ export function SpxUnifiedTape({ desk, refreshing }: DeskProps) {
       title="Live Tape"
       subtitle="Flow + dark pool"
       accent="spx-panel-cyan"
+      live={live}
       className={clsx(
         "spx-tape-panel spx-left-tape-panel",
         refreshing && hasTape && "spx-desk-panel-refreshing"

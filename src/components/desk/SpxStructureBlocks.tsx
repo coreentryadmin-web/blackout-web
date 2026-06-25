@@ -39,7 +39,7 @@ export function SpxStructureBlocks({
 
   return (
     <div className={clsx("spx-structure-grid", isLeftRail && "spx-structure-left-rail")}>
-      <StructureCard theme="session" title="Price Structure" subtitle="Session · MAs" large={isLeftRail}>
+      <StructureCard theme="session" title="Price Structure" subtitle="Session · MAs" large={isLeftRail} live={live}>
         <Row label="LOD" value={live ? fmtPrice(desk?.lod ?? null) : "—"} tone="support" />
         <Row label="HOD" value={live ? fmtPrice(desk?.hod ?? null) : "—"} tone="resistance" />
         <Row
@@ -58,7 +58,7 @@ export function SpxStructureBlocks({
         <Row label="SMA 200" value={live ? fmtPrice(desk?.sma200 ?? null) : "—"} tone="blue" />
       </StructureCard>
 
-      <StructureCard theme="dealer" title="Dealer Desk" subtitle="GEX · Flow" large={isLeftRail}>
+      <StructureCard theme="dealer" title="Dealer Desk" subtitle="GEX · Flow" large={isLeftRail} live={live}>
         {live && desk?.gex_stale && (
           <p className="font-mono text-[10px] tracking-wider text-gold mb-1.5 flex items-center gap-1.5">
             <span className="badge-live-dot" style={{ background: "var(--gold, #ffd23f)" }} aria-hidden />
@@ -112,7 +112,7 @@ export function SpxStructureBlocks({
         />
       </StructureCard>
 
-      <StructureCard theme="levels" title="Levels · Tape" subtitle="Internals · Ladder" large={isLeftRail}>
+      <StructureCard theme="levels" title="Levels · Tape" subtitle="Internals · Ladder" large={isLeftRail} live={live}>
         <Row
           label="TICK"
           value={live && desk?.tick != null ? String(Math.round(desk.tick)) : "—"}
@@ -152,12 +152,14 @@ function StructureCard({
   subtitle,
   children,
   large,
+  live,
 }: {
   theme: keyof typeof CARD_THEMES;
   title: string;
   subtitle: string;
   children: React.ReactNode;
   large?: boolean;
+  live?: boolean;
 }) {
   const t = CARD_THEMES[theme];
   return (
@@ -166,7 +168,9 @@ function StructureCard({
       style={{ boxShadow: `inset 0 0 40px ${t.glow}` }}
     >
       <div className={clsx("spx-structure-card-header", t.accent)}>
-        <span className="badge-live-dot animate-pulse" />
+        {/* Pulse only when the feed is actually live; dim static dot otherwise.
+            A pulsing "live" dot on a dead feed is a trust violation. */}
+        <span className={clsx("badge-live-dot", live ? "animate-pulse" : "opacity-40")} />
         <div>
           <p
             className={clsx(
