@@ -11,6 +11,7 @@
 // of user/position count — never a per-position or per-user upstream call.
 
 import { listUserPositions, listRecentClosedUserPositions, type UserPositionRow } from "@/lib/db";
+import { withServerCache } from "@/lib/server-cache";
 import {
   enrichPosition,
   valuationFromContract,
@@ -27,17 +28,57 @@ import { buildPositionContextMap } from "@/lib/nights-watch/position-context";
 import { computeVerdict, type Verdict } from "@/lib/nights-watch/verdict";
 
 /**
+ * SCALING (cache-reader rule): the Night's Watch panel polls this every ~5s, PER USER.
+ * Uncached that is one Postgres SELECT (plus a per-position cache-read fan-out for WS
+ * marks + snapshots) on EVERY poll — ~400 q/s at 1000 users, multiplied by every open
+ * tab and every rapid re-poll. We wrap the WHOLE enrich pass (DB load + valuation) in a
+ * SHORT per-user single-flight cache so a user's concurrent tabs / back-to-back polls
+ * collapse to ONE DB read + ONE valuation pass per window.
+ *
+ * Why this TTL: 3s is comfortably BELOW the 5s poll cadence, so each genuine poll still
+ * gets a fresh build — the cache only ever absorbs the DUPLICATE load (multi-tab, rapid
+ * re-fire, the React-StrictMode double-mount). P&L therefore stays at most ~3s old, never
+ * minutes-stale. staleWhileRevalidate is DISABLED so an expired entry forces a blocking
+ * refresh (concurrent callers during that refresh still dedup via the inflight map) rather
+ * than handing back an older snapshot — we never serve stale P&L to keep the figure honest.
+ *
+ * Correctness on mutation: POST/PATCH/DELETE return the mutated row to the client
+ * immediately (optimistic), and this 3s window self-heals on the next poll, so a just
+ * created/closed/edited position is reflected within one cadence — no explicit bust needed.
+ *
+ * Keyed by (userId, view) so the panel's default (open+recent-closed) view and any explicit
+ * status filter never share an entry. userId is the TRUSTED Clerk scope — it never derives
+ * ownership from anything else, so one user can never read another's cache entry.
+ */
+const ENRICHED_POSITIONS_TTL_MS = 3_000;
+
+/**
  * Load a user's saved positions and enrich each with a live valuation + the
  * deterministic Hold/Trim/Sell verdict. userId is the TRUSTED owner scope — the
  * caller (route auth() or the Largo dispatcher) is responsible for supplying the
  * authenticated user; this function never derives ownership from any other source.
+ *
+ * Wrapped in the short per-user single-flight cache (see ENRICHED_POSITIONS_TTL_MS) so
+ * concurrent/duplicate polls collapse to one DB read + valuation pass.
  */
 export async function getEnrichedPositionsForUser(
   userId: string,
   status?: "open" | "closed"
 ): Promise<Array<EnrichedPosition & { verdict: Verdict }>> {
-  const positions = await listUserPositions(userId, status);
-  return enrichPositionRows(positions);
+  const view = status ?? "all";
+  return withServerCache(
+    `nw:enriched:${userId}:${view}`,
+    ENRICHED_POSITIONS_TTL_MS,
+    async () => {
+      const positions = await listUserPositions(userId, status);
+      return enrichPositionRows(positions);
+    },
+    // localOnly: this per-user payload is built from THIS replica's in-memory WS marks and
+    // expires in 3s — pushing thousands of ephemeral per-user blobs to shared Redis would only
+    // pollute it. The in-flight single-flight dedup (the actual scaling win) is replica-local
+    // anyway, which is exactly where a user's concurrent tabs / rapid polls land.
+    { staleWhileRevalidate: false, localOnly: true }
+  );
 }
 
 /**
@@ -54,11 +95,23 @@ export async function getEnrichedOpenAndRecentClosedForUser(
   userId: string,
   { withinDays = 7, limit = 20 }: { withinDays?: number; limit?: number } = {}
 ): Promise<Array<EnrichedPosition & { verdict: Verdict }>> {
-  const [open, closed] = await Promise.all([
-    listUserPositions(userId, "open"),
-    listRecentClosedUserPositions(userId, { withinDays, limit }),
-  ]);
-  return enrichPositionRows([...open, ...closed]);
+  // Short per-user single-flight cache (see ENRICHED_POSITIONS_TTL_MS): this is the panel's
+  // DEFAULT poll path, so it is the hottest. Concurrent tabs / rapid re-polls collapse to one
+  // DB read (both queries) + one valuation pass; SWR off so we never serve stale P&L. The
+  // (withinDays, limit) shape is folded into the key so a non-default bound can't alias.
+  return withServerCache(
+    `nw:enriched:${userId}:default:${withinDays}:${limit}`,
+    ENRICHED_POSITIONS_TTL_MS,
+    async () => {
+      const [open, closed] = await Promise.all([
+        listUserPositions(userId, "open"),
+        listRecentClosedUserPositions(userId, { withinDays, limit }),
+      ]);
+      return enrichPositionRows([...open, ...closed]);
+    },
+    // localOnly: same rationale as getEnrichedPositionsForUser — replica-local, ephemeral.
+    { staleWhileRevalidate: false, localOnly: true }
+  );
 }
 
 /**

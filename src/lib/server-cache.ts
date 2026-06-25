@@ -72,6 +72,17 @@ type CacheOpts = {
   staleWhileRevalidate?: boolean;
   /** If true, callers can detect upstream degradation via isDegraded(). */
   trackDegradation?: boolean;
+  /**
+   * When true, this entry lives ONLY in the in-process store (the Redis L1/L2 layer is
+   * skipped on both read and write). Use for HIGH-CARDINALITY, replica-LOCAL, short-TTL
+   * keys — e.g. a per-user poll-collapse cache — where the value is specific to this
+   * replica's in-memory state (live WS marks) and pushing it to shared Redis would only
+   * pollute it with thousands of ephemeral per-user payloads for no cross-replica benefit.
+   * The in-flight single-flight dedup STILL applies, which is the whole point for collapsing
+   * a user's concurrent tabs / rapid re-polls into one loader run. Defaults to false
+   * (Redis-backed) so every existing caller is unchanged.
+   */
+  localOnly?: boolean;
 };
 
 /**
@@ -111,6 +122,7 @@ export async function withServerCache<T>(
   opts: CacheOpts = {}
 ): Promise<T> {
   const swr = opts.staleWhileRevalidate !== false;
+  const localOnly = opts.localOnly === true;
   if (ttlMs <= 0) return loader();
 
   const now = Date.now();
@@ -120,7 +132,8 @@ export async function withServerCache<T>(
     return hit.value;
   }
 
-  if (!hit) {
+  // localOnly keys never touch the Redis layer — high-cardinality, replica-local, ephemeral.
+  if (!hit && !localOnly) {
     const redisHit = await readRedisCache<T>(key);
     if (redisHit != null) {
       // Use the remaining TTL from Redis, not the full configured TTL, so the
@@ -134,7 +147,7 @@ export async function withServerCache<T>(
   // Fast lanes: always await a fresh build once TTL expires (no stale handoff).
   if (hit && hit.expiresAt <= now && !swr) {
     if (inflight.has(key)) return inflight.get(key) as Promise<T>;
-    return refreshCache(key, ttlMs, loader);
+    return refreshCache(key, ttlMs, loader, localOnly);
   }
 
   // Cache expired but we have data — return stale immediately, refresh in background.
@@ -145,16 +158,16 @@ export async function withServerCache<T>(
     const staleAge = now - hit.refreshedAt;
     if (staleAge > MAX_STALE_AGE_MS) {
       // Entry is too old — do a blocking refresh (or throw if upstream is down).
-      return refreshCache(key, ttlMs, loader);
+      return refreshCache(key, ttlMs, loader, localOnly);
     }
-    void refreshCache(key, ttlMs, loader);
+    void refreshCache(key, ttlMs, loader, localOnly);
     return hit.value;
   }
 
   const pending = inflight.get(key) as Promise<T> | undefined;
   if (pending) return pending;
 
-  return refreshCache(key, ttlMs, loader);
+  return refreshCache(key, ttlMs, loader, localOnly);
 }
 
 // ---------------------------------------------------------------------------
@@ -190,13 +203,15 @@ export async function serverCache<T>(
 async function refreshCache<T>(
   key: string,
   ttlMs: number,
-  loader: () => Promise<T>
+  loader: () => Promise<T>,
+  localOnly = false
 ): Promise<T> {
   const promise = loader()
     .then((value) => {
       const refreshedAt = Date.now();
       setStoreEntry(key, { value, expiresAt: refreshedAt + ttlMs, refreshedAt });
-      void writeRedisCache(key, value, ttlMs);
+      // localOnly keys never propagate to Redis (replica-local, ephemeral, high-cardinality).
+      if (!localOnly) void writeRedisCache(key, value, ttlMs);
       // FIX 5b: Successful refresh — reset failure tracking for this key.
       failureCount.delete(key);
       degradedKeys.delete(key);
