@@ -825,6 +825,54 @@ export function resolveOptionsRoot(ticker: string): { root: string; optionsRoot:
 }
 
 /**
+ * How long a live Polygon WS index tick (I:SPX, I:VIX) stays preferred over the DELAYED REST
+ * indices snapshot when resolving the GEX/positioning spot. Mirrors spx-desk's INDEX_STORE_STALE_MS
+ * intent: the index aggregate ticks are naturally sparse on quiet tape, and the REST `/v3/snapshot/
+ * indices` is a delayed snapshot — so a 30-120s-old REAL WS print is far fresher than the REST one.
+ * Env-tunable (shares the desk's knob so they stay aligned); defaults to 120s.
+ */
+const GEX_INDEX_WS_STALE_MS = (() => {
+  const raw = process.env.SPX_INDEX_WS_STALE_SEC?.trim();
+  const sec = raw ? Number(raw) : 120;
+  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 120_000;
+})();
+
+/**
+ * Best-effort live WS spot for an index options root (only I:SPX / I:VIX are on the indices socket).
+ *
+ * FRESHNESS FIX: the GEX matrix + positioning spot otherwise came from the DELAYED REST indices
+ * snapshot, so the SPX "spot" the Heat Maps / gex-positioning surface lagged the live underlying
+ * (and the desk header, which already prefers the WS price via mergeWsIndexSnapshots) by a couple
+ * of points even right after a warm. Reading the same in-process `indexStore` the desk reads aligns
+ * the GEX spot with the live desk price from ONE shared source — no extra upstream call.
+ *
+ * Returns null (→ caller falls back to REST) unless the WS tick is present, fresh (within
+ * GEX_INDEX_WS_STALE_MS), and > 0. The change% is taken from the WS entry ONLY when its session
+ * anchor is REST-seeded/authoritative (open_source === "rest"); on a mid-session cold start where
+ * the anchor is still a raw boot-time bar open ("ws-bar") the WS change% is wrong, so we report
+ * null there and let the caller keep the authoritative REST change% — identical to the desk's
+ * mergeWsIndexSnapshots guard. Entirely best-effort: any import/read error → null (REST path).
+ */
+async function liveWsIndexSpot(
+  root: string,
+  now = Date.now()
+): Promise<{ price: number; change_pct: number | null } | null> {
+  try {
+    const { indexStore } = await import("../ws/polygon-socket");
+    const ws = indexStore[root];
+    if (!ws || !(ws.price > 0) || !ws.updatedAt) return null;
+    if (now - ws.updatedAt >= GEX_INDEX_WS_STALE_MS) return null;
+    const changeAuthoritative = ws.open_source === "rest";
+    return {
+      price: ws.price,
+      change_pct: changeAuthoritative && Number.isFinite(ws.change_pct) ? ws.change_pct : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Resolve the underlying SPOT for an options root, choosing the correct snapshot endpoint.
  *
  * CRITICAL: index roots (`I:SPX`, `I:NDX`, …) are NOT on the stocks-snapshot endpoint —
@@ -834,6 +882,12 @@ export function resolveOptionsRoot(ticker: string): { root: string; optionsRoot:
  * use the stocks snapshot. Both snapshots share the `{ price, change_pct }` shape, so this
  * normalizes to that single shape every caller in this file expects. Null when unavailable —
  * never fabricated.
+ *
+ * FRESHNESS: for index roots on the live indices WS (I:SPX / I:VIX) we PREFER the in-process
+ * `indexStore` tick when it's fresh — the SAME live price the SPX desk header shows — so the GEX
+ * spot no longer lags the underlying by the REST-snapshot delay. The REST snapshot is still fetched
+ * (it provides the authoritative day change% and is the fallback when the WS tick is stale/absent);
+ * we only overlay the fresher WS PRICE on top of it.
  */
 async function resolveSpotSnapshot(
   optionsRoot: string
@@ -843,8 +897,20 @@ async function resolveSpotSnapshot(
   const snap = isIndex
     ? await fetchIndexSnapshot(root).catch(() => null)
     : await fetchStockSnapshot(root).catch(() => null);
-  if (!snap || !(snap.price > 0)) return null;
-  return { price: snap.price, change_pct: snap.change_pct ?? 0 };
+  const restPrice = snap && snap.price > 0 ? snap.price : 0;
+  const restChange = snap?.change_pct ?? 0;
+
+  // Index roots: overlay the fresher live WS price (and its change% when authoritative) on top of
+  // the REST snapshot. Falls back to REST when no fresh WS tick exists.
+  if (isIndex) {
+    const ws = await liveWsIndexSpot(root);
+    if (ws) {
+      return { price: ws.price, change_pct: ws.change_pct ?? restChange };
+    }
+  }
+
+  if (!(restPrice > 0)) return null;
+  return { price: restPrice, change_pct: restChange };
 }
 
 const GEX_HEATMAP_CACHE_PREFIX = "gex-heatmap";
