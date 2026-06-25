@@ -292,7 +292,11 @@ export async function GET(req: NextRequest) {
       `Dealer positioning snapshot for ${ticker}:\n\n${context}\n\n` +
       `Give the desk read now (3-5 sentences, market-structure analysis only).`;
 
-    const narrative = await anthropicText(prompt, 600, SYSTEM);
+    // Bound the worst-case wall-clock: this runs inside a request handler. The client default
+    // (maxRetries 3 × 20s timeout) stacks to ~80s on an upstream slowdown before the caught null
+    // fallback — a recurring prod p1 (anthropic "Request timed out", 82,961ms). Mirror the
+    // position-narrative bound (one retry, 20s) so it fails fast to null instead of hanging ~80s.
+    const narrative = await anthropicText(prompt, 600, SYSTEM, { maxRetries: 1, timeoutMs: 20_000 });
     if (!narrative || !narrative.trim()) {
       // Model returned nothing usable — graceful, never fabricated.
       return NextResponse.json(

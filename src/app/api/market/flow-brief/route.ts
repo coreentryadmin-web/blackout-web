@@ -158,7 +158,13 @@ export async function GET(req: NextRequest) {
       const brief = await anthropicText(
         prompt,
         180,
-        "You are a terse trading desk analyst. 2-3 sentences only. Highlight $15M+ signals by ticker name."
+        "You are a terse trading desk analyst. 2-3 sentences only. Highlight $15M+ signals by ticker name.",
+        // Bound the worst-case wall-clock: this runs inside a request handler (the cache-miss
+        // user blocks on it). The client default (maxRetries 3 × 20s timeout) stacks to ~80s on
+        // an upstream slowdown before the caught null fallback — a recurring prod p1 (anthropic
+        // "Request timed out", 82,961ms). Mirror the position-narrative bound (one retry, 20s)
+        // so a degraded upstream fails fast to null instead of hanging the request ~80s.
+        { maxRetries: 1, timeoutMs: 20_000 }
       );
 
       return { brief: brief?.trim() ?? null, massive_signals: massiveCount };
