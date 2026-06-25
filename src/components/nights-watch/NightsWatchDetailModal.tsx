@@ -37,6 +37,7 @@ import type {
   DataSource,
 } from "@/lib/nights-watch/position-detail";
 import type { VerdictAction, VerdictConfidence } from "@/lib/nights-watch/verdict";
+import type { ValuationUnavailableReason } from "@/lib/nights-watch/valuation";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -51,6 +52,26 @@ export type NightsWatchDetailModalProps = {
 // Formatting helpers (mirror the panel's — honest "—" for null).
 // ---------------------------------------------------------------------------
 const EM_DASH = "—";
+
+/**
+ * Plain-language label for WHY a valuation is unavailable — so the modal says something true
+ * ("unlisted contract") instead of a bare "unavailable". Returns null when there is nothing
+ * useful to add (live, just-created, or unknown reason).
+ */
+function unavailableReasonLabel(
+  reason: ValuationUnavailableReason | null | undefined
+): string | null {
+  switch (reason) {
+    case "contract-not-found":
+      return "unlisted contract · no live chain";
+    case "no-quote":
+      return "no quote available right now";
+    case "market-closed":
+      return "market closed · resumes at the open";
+    default:
+      return null;
+  }
+}
 
 function money(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return EM_DASH;
@@ -319,6 +340,13 @@ function DetailHeader({ position }: { position: PositionDetail["position"] }) {
         {live && position.mark_is_day_close && (
           <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-amber-300/90">
             prior close · not live
+          </span>
+        )}
+        {/* When not live, say WHY in plain language instead of a bare "unavailable" — e.g. an
+            unlisted contract reads differently from one that's merely quote-less right now. */}
+        {!live && unavailableReasonLabel(position.valuation_unavailable_reason) && (
+          <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-sky-300/80">
+            {unavailableReasonLabel(position.valuation_unavailable_reason)}
           </span>
         )}
       </div>

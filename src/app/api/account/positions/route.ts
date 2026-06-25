@@ -9,6 +9,7 @@ import { NextResponse } from "next/server";
 import { requireDatabaseInProduction, createUserPosition } from "@/lib/db";
 import { enrichPosition } from "@/lib/nights-watch/valuation";
 import { getEnrichedPositionsForUser } from "@/lib/nights-watch/enrichment";
+import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { requireTierApi } from "@/lib/market-api-auth";
 
@@ -30,6 +31,14 @@ export async function GET(req: Request) {
   // Launch gate — locked to non-admins until this tool ships.
   const locked = await requireToolApi("nighthawk");
   if (locked) return locked;
+
+  // Boot the shared data sockets (idempotent, env-gated). Night's Watch is the PRIMARY consumer
+  // of the options WS live-mark engine, so a user who only ever visits Night's Watch (never the
+  // SPX desk/flows routes that also call this) must still kick the engine awake — otherwise the
+  // WS would never boot in this replica even with OPTIONS_WS_ENABLED set, leaving the fastest
+  // mark path (live WS) silently inert and valuation stuck on the slower snapshot/chain path.
+  // A strict no-op when the flag is off, so it can never destabilize the REST fallback.
+  ensureDataSockets();
 
   const url = new URL(req.url);
   const statusParam = url.searchParams.get("status");

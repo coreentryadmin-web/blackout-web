@@ -229,8 +229,36 @@ export function valuationFromSnapshot(
 
 export type ValuationStatus = "live" | "unavailable" | "pending";
 
+/**
+ * WHY a valuation is unavailable, so the surface can say something true instead of a bare
+ * "unavailable". The caller (enrichment.ts) supplies the hint it learned while resolving:
+ *  - 'contract-not-found' — neither the per-OCC snapshot nor the chain had the contract. The
+ *    usual cause is an UNLISTED / non-existent contract (e.g. a strike/expiry that doesn't
+ *    trade) — NOT a system fault. Matches the standing note that unlisted ≠ bug.
+ *  - 'no-quote'           — the contract WAS found but carried no usable price on any tier
+ *    (no two-sided quote, no last trade, no prior close) — e.g. an illiquid contract.
+ *  - 'market-closed'      — resolved off-hours with nothing cached yet; values resume at the open.
+ *  - 'pending'            — just created; the live value lands on the next GET (paired with the
+ *    'pending' status, not 'unavailable').
+ *  - 'unknown'            — no hint was supplied (back-compat default).
+ */
+export type ValuationUnavailableReason =
+  | "contract-not-found"
+  | "no-quote"
+  | "market-closed"
+  | "pending"
+  | "unknown";
+
 export type EnrichedPosition = UserPositionRow & {
   valuation_status: ValuationStatus;
+  /**
+   * When valuation_status is NOT 'live', a machine-readable reason WHY (see
+   * ValuationUnavailableReason) so the surface can label it truthfully — e.g. distinguish an
+   * UNLISTED contract ('contract-not-found') from an illiquid one with no quote ('no-quote') or
+   * an off-hours read ('market-closed'). Null when the valuation IS live. OPTIONAL so existing
+   * literal constructors stay compile-valid; enrichPosition always sets it.
+   */
+  valuation_unavailable_reason?: ValuationUnavailableReason | null;
   valuation: ContractValuation | null;
   current_value: number | null;
   unrealized_pnl: number | null;
@@ -275,7 +303,14 @@ export function enrichPosition(
   position: UserPositionRow,
   valuation: ContractValuation | null,
   now: Date = new Date(),
-  pending = false
+  pending = false,
+  /**
+   * Hint for WHY the valuation is unavailable, supplied by the caller (enrichment.ts) from
+   * what it learned while resolving (e.g. contract not found in snapshot OR chain → likely
+   * unlisted; found but no usable price → no-quote). Only meaningful when valuation is null and
+   * pending is false; ignored otherwise. Defaults to 'unknown' for back-compat callers.
+   */
+  unavailableReason: ValuationUnavailableReason = "unknown"
 ): EnrichedPosition {
   const dte = daysToExpiry(position.expiry, now);
 
@@ -328,9 +363,20 @@ export function enrichPosition(
       : null;
   const mark_is_day_close = valuation?.mark_is_day_close ?? false;
 
+  const valuation_status: ValuationStatus = valuation ? "live" : pending ? "pending" : "unavailable";
+  // Reason is only carried off-live: 'pending' for a just-created leg, the caller's hint for an
+  // 'unavailable' one, and null when the valuation IS live (nothing to explain).
+  const valuation_unavailable_reason: ValuationUnavailableReason | null =
+    valuation_status === "live"
+      ? null
+      : valuation_status === "pending"
+        ? "pending"
+        : unavailableReason;
+
   return {
     ...position,
-    valuation_status: valuation ? "live" : pending ? "pending" : "unavailable",
+    valuation_status,
+    valuation_unavailable_reason,
     valuation,
     current_value,
     unrealized_pnl,

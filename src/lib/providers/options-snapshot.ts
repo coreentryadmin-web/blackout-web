@@ -194,6 +194,33 @@ export function chunkOccs<T>(arr: T[], size: number): T[][] {
 }
 
 /**
+ * Per-OCC outcome diagnostics for ONE snapshot fetch — so a caller (the warm cron) can log
+ * exactly which requested contracts did NOT come back priced and why, instead of only a bare
+ * "warmed N/M" count. Purely observational: it NEVER changes the returned snapshot map.
+ */
+export type SnapshotFetchDiagnostics = {
+  /** Distinct OCCs requested (after dedupe). */
+  requested: number;
+  /** OCCs that mapped to a usable snapshot (in the returned map). */
+  found: number;
+  /**
+   * OCCs the provider explicitly reported as unfound/error (row carried `error`), with the
+   * provider's reason string — almost always an UNLISTED / non-existent contract.
+   */
+  unfound: Array<{ occ: string; reason: string }>;
+  /**
+   * OCCs that were requested but the provider returned NO row for at all (neither data nor an
+   * error row) — e.g. a chunk fetch that threw/timed out, or a contract the endpoint omitted.
+   */
+  missing: string[];
+  /**
+   * OCCs that came back as a row but with NO usable price (mark null) — a real but quote-less
+   * contract (e.g. market closed with no prior session / no two-sided quote).
+   */
+  noQuote: string[];
+};
+
+/**
  * Fetch real-time unified snapshots for a set of OCC option tickers, keyed by OCC.
  *
  * - DEDUPES the input, CHUNKS into ≤250 (the doc cap), and issues one
@@ -202,13 +229,25 @@ export function chunkOccs<T>(arr: T[], size: number): T[][] {
  * - Maps each non-error result via mapUnifiedSnapshotResult; SKIPS error/unfound rows.
  * - BEST-EFFORT: a failed chunk contributes nothing (the partial map from other chunks is
  *   still returned); a total failure returns an empty map. Never throws.
+ *
+ * When `diag` is passed it is POPULATED with per-OCC outcomes (found / unfound+reason /
+ * missing / no-quote) so the caller can log exactly WHICH requested contracts didn't price and
+ * why — turning a silent "warmed N/M" into an actionable line. Diagnostics never change the map.
  */
 export async function fetchOptionsUnifiedSnapshot(
-  occs: string[]
+  occs: string[],
+  diag?: SnapshotFetchDiagnostics
 ): Promise<Map<string, OptionSnapshot>> {
   const out = new Map<string, OptionSnapshot>();
   const unique = Array.from(new Set((occs ?? []).filter((o): o is string => Boolean(o))));
+  if (diag) diag.requested = unique.length;
   if (unique.length === 0) return out;
+
+  // Track which requested OCCs we saw a row for (any row), so we can derive `missing` (no row
+  // at all) afterward. The provider echoes the OCC in `ticker` even on an error/unfound row.
+  const seen = new Set<string>();
+  const noQuote: string[] = [];
+  const unfound: Array<{ occ: string; reason: string }> = [];
 
   const chunks = chunkOccs(unique, UNIFIED_SNAPSHOT_MAX_PER_CALL);
   await Promise.all(
@@ -223,14 +262,34 @@ export async function fetchOptionsUnifiedSnapshot(
           "/v3/snapshot"
         );
         for (const r of json?.results ?? []) {
+          const occ = typeof r?.ticker === "string" ? r.ticker : "";
+          if (occ) seen.add(occ);
+          // Unfound/error row: provider returned the OCC with an `error`/`message` (almost always
+          // an UNLISTED / non-existent contract). Record the reason so warming can explain the gap.
+          if (r?.error) {
+            if (diag && occ) unfound.push({ occ, reason: String(r.message ?? r.error) });
+            continue;
+          }
           const snap = mapUnifiedSnapshotResult(r);
-          if (snap) out.set(snap.ticker, snap);
+          if (snap) {
+            out.set(snap.ticker, snap);
+            // A row that mapped but has no usable price is a real-but-quote-less contract.
+            if (diag && snap.mark == null) noQuote.push(snap.ticker);
+          }
         }
       } catch {
         // Best-effort: a failing chunk degrades to the chain fallback for those OCCs.
       }
     })
   );
+
+  if (diag) {
+    diag.found = out.size;
+    diag.unfound = unfound;
+    diag.noQuote = noQuote;
+    // Requested OCCs the provider returned NO row for at all (chunk threw / endpoint omitted it).
+    diag.missing = unique.filter((occ) => !seen.has(occ));
+  }
 
   return out;
 }

@@ -19,6 +19,7 @@ import { buildOcc } from "@/lib/ws/options-socket";
 import {
   fetchOptionsUnifiedSnapshot,
   setOptionSnapshots,
+  type SnapshotFetchDiagnostics,
 } from "@/lib/providers/options-snapshot";
 import { isSpxTicker } from "@/lib/spx-desk-live";
 import { etMinutes, etClock } from "@/lib/spx-play-session-time";
@@ -119,6 +120,12 @@ export async function GET(req: NextRequest) {
   // affects the chain-warm result or status above — the chain stays the valuation fallback.
   let snapWarmed = 0;
   let snapContracts = 0;
+  // Per-OCC outcome diagnostics so a partial warm ("snapshot_warmed 1/4") reveals WHICH
+  // contracts didn't price and why (unlisted/unfound vs no-quote vs missing-row), instead of a
+  // silent count. Surfaced in both the cron-run log and a host-level warn line.
+  let snapUnfound = 0;
+  let snapNoQuote = 0;
+  let snapMissing = 0;
   try {
     const contracts = await listDistinctOpenPositionContracts();
     const occs = Array.from(
@@ -130,9 +137,34 @@ export async function GET(req: NextRequest) {
     );
     snapContracts = occs.length;
     if (occs.length > 0) {
-      const snaps = await fetchOptionsUnifiedSnapshot(occs);
+      const diag: SnapshotFetchDiagnostics = {
+        requested: 0,
+        found: 0,
+        unfound: [],
+        missing: [],
+        noQuote: [],
+      };
+      const snaps = await fetchOptionsUnifiedSnapshot(occs, diag);
       await setOptionSnapshots(Array.from(snaps.values()));
       snapWarmed = snaps.size;
+      snapUnfound = diag.unfound.length;
+      snapNoQuote = diag.noQuote.length;
+      snapMissing = diag.missing.length;
+      // Log WHICH contracts didn't come back priced + the provider reason, so a "1/4" warm is
+      // self-explaining. Unfound is almost always an UNLISTED contract (provider reason carried).
+      if (diag.unfound.length || diag.missing.length || diag.noQuote.length) {
+        const unfoundStr = diag.unfound
+          .slice(0, 20)
+          .map((u) => `${u.occ}(${u.reason})`)
+          .join(", ");
+        console.warn(
+          `[cron/nights-watch-warm] snapshot warmed ${snapWarmed}/${snapContracts} — ` +
+            `unfound=${diag.unfound.length} no_quote=${diag.noQuote.length} missing=${diag.missing.length}` +
+            (unfoundStr ? ` | unfound: ${unfoundStr}` : "") +
+            (diag.noQuote.length ? ` | no_quote: ${diag.noQuote.slice(0, 20).join(", ")}` : "") +
+            (diag.missing.length ? ` | missing: ${diag.missing.slice(0, 20).join(", ")}` : "")
+        );
+      }
     }
   } catch (error) {
     // Never fails the chain warm — log host-level and move on (chain fallback unaffected).
@@ -156,6 +188,9 @@ export async function GET(req: NextRequest) {
     gex_total: gexTickers.length,
     snapshot_warmed: snapWarmed,
     snapshot_contracts: snapContracts,
+    snapshot_unfound: snapUnfound,
+    snapshot_no_quote: snapNoQuote,
+    snapshot_missing: snapMissing,
     capped: chains.length > capped.length,
     ...(failed > 0 ? { error: `${failed}/${capped.length} chain warm(s) failed` } : {}),
   });
@@ -169,5 +204,8 @@ export async function GET(req: NextRequest) {
     gex_total: gexTickers.length,
     snapshot_warmed: snapWarmed,
     snapshot_contracts: snapContracts,
+    snapshot_unfound: snapUnfound,
+    snapshot_no_quote: snapNoQuote,
+    snapshot_missing: snapMissing,
   });
 }

@@ -18,6 +18,7 @@ import {
   type ContractValuation,
   type EnrichedPosition,
   type LiveMark,
+  type ValuationUnavailableReason,
 } from "@/lib/nights-watch/valuation";
 import { getNwChain, matchContract, nwChainKey, type NwChain } from "@/lib/nights-watch/chain-cache";
 import { getOptionSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
@@ -119,7 +120,11 @@ export async function getEnrichedPositionsForUser(
       snap.strike != null &&
       Math.abs(snap.strike - p.strike) <= 0.005 &&
       snap.expiry === String(p.expiry).slice(0, 10);
+    // Track whether the CONTRACT was located at all (in either source) so a null valuation can be
+    // explained as 'no-quote' (found, no price) vs 'contract-not-found' (the unlisted case).
+    let contractFound = false;
     if (snap && snapMatches) {
+      contractFound = true;
       valuation = valuationFromSnapshot(snap, liveMark);
     }
     if (!valuation) {
@@ -127,12 +132,21 @@ export async function getEnrichedPositionsForUser(
       if (chain) {
         const contract = matchContract(chain.contracts, p.strike, p.option_type);
         if (contract) {
+          contractFound = true;
           valuation = valuationFromContract(contract, chain.spot, liveMark);
         }
       }
     }
 
-    const enrichedPosition = enrichPosition(p, valuation);
+    // Reason hint for an unavailable valuation (ignored when live): the contract was located but
+    // carried no usable price → 'no-quote'; never located in snapshot or chain → 'contract-not-found'
+    // (the expected outcome for an UNLISTED / non-existent contract — not a system fault).
+    const unavailableReason: ValuationUnavailableReason = valuation
+      ? "unknown"
+      : contractFound
+        ? "no-quote"
+        : "contract-not-found";
+    const enrichedPosition = enrichPosition(p, valuation, new Date(), false, unavailableReason);
     const ctx = contextMap.get(p.ticker.trim().toUpperCase());
     // Deterministic, pure, free verdict — every action traces to named signals.
     const verdict = computeVerdict(enrichedPosition, ctx);
