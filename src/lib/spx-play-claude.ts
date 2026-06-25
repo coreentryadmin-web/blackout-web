@@ -29,6 +29,35 @@ const CACHE_KEY = "spx_claude_play_cache";
 const BUDGET_KEY = "spx_claude_play_daily_budget";
 const memoryCache = new Map<string, { at: number; verdict: ClaudePlayVerdict }>();
 
+/**
+ * Stable preamble for the SPX play gate — the fixed rubric + the output schema, IDENTICAL on every
+ * call. Hoisted out of the per-tick `prompt` (which now carries only the volatile desk JSON) so this
+ * half can be prompt-cached. Contains NO live/volatile value — moving any number/desk field in here
+ * would poison the cache and stale the verdict. The two halves are the SAME total content the model
+ * saw before, just reorganized: system = instructions/schema, user = data.
+ */
+const PLAY_GATE_SYSTEM =
+  `You are the SPX 0DTE quality arbiter for BlackOut Ops. We want FEW, HIGH-QUALITY plays — veto aggressively.
+
+APPROVE_BUY only if ALL are true:
+- Grade A or A+ confluence
+- 3m AND 5m timeframe align with direction
+- Clear support/resistance or breakout context
+- Flow, tide, and news do NOT oppose the trade
+- Risk/reward to stop and target is sensible for 0DTE
+
+Default to VETO when anything is mixed.
+
+The user message contains the live desk snapshot in labeled JSON blocks (PRICE & STRUCTURE, DEALER / GEX, FLOW & TAPE, MULTI-TIMEFRAME, NEWS & MACRO, CONFLUENCE, CONFIRMATION CHECKLIST).
+
+Respond ONLY valid JSON (verdict must be exactly "APPROVE_BUY" or "VETO"):
+{
+  "verdict": "APPROVE_BUY" | "VETO",
+  "direction": "long" | "short" | null,
+  "headline": "max 12 words — specific level or catalyst",
+  "thesis": "2 sentences — cite MTF + S/R + flow + news"
+}`;
+
 type ClaudeDailyBudget = { date: string; calls: number };
 let memoryBudget: ClaudeDailyBudget | null = null;
 
@@ -218,18 +247,13 @@ export async function evaluateClaudePlayApproval(
   const supports = (desk.levels ?? []).filter((l) => l.kind === "support").slice(0, 4);
   const resistances = (desk.levels ?? []).filter((l) => l.kind === "resistance").slice(0, 4);
 
-  const prompt = `You are the SPX 0DTE quality arbiter for BlackOut Ops. We want FEW, HIGH-QUALITY plays — veto aggressively.
-
-APPROVE_BUY only if ALL are true:
-- Grade A or A+ confluence
-- 3m AND 5m timeframe align with direction
-- Clear support/resistance or breakout context
-- Flow, tide, and news do NOT oppose the trade
-- Risk/reward to stop and target is sensible for 0DTE
-
-Default to VETO when anything is mixed.
-
-PRICE & STRUCTURE:
+  // The volatile per-tick desk JSON stays in the user `prompt`; the fixed rubric + output schema
+  // are hoisted into PLAY_GATE_SYSTEM (a stable, cacheable preamble). Same total content the model
+  // sees, just reorganized so the stable half can be cached via cacheSystem. NOTE: as written this
+  // system is < ~2,048 tok (the sonnet-4.6 minimum cacheable prefix), so cache_read stays 0 until it
+  // grows — the split is correct architecture; the cost win lands once the stable preamble is large
+  // enough or the gate moves to a larger system. No live/volatile value may leak into the system.
+  const prompt = `PRICE & STRUCTURE:
 ${JSON.stringify({
   price: desk.price,
   vwap: desk.vwap,
@@ -293,19 +317,15 @@ ${JSON.stringify({
 })}
 
 CONFIRMATION CHECKLIST (${confirmations.passed_count}/${confirmations.total}):
-${JSON.stringify(confirmations.checks)}
-
-Respond ONLY valid JSON (verdict must be exactly "APPROVE_BUY" or "VETO"):
-{
-  "verdict": "APPROVE_BUY" | "VETO",
-  "direction": "long" | "short" | null,
-  "headline": "max 12 words — specific level or catalyst",
-  "thesis": "2 sentences — cite MTF + S/R + flow + news"
-}`;
+${JSON.stringify(confirmations.checks)}`;
 
   // temperature:0 — schema-constrained JSON extraction (verdict/direction/headline/thesis),
   // not prose; deterministic output avoids wasted retries on malformed JSON.
-  const raw = await anthropicText(prompt, 500, undefined, { temperature: 0 });
+  // cacheSystem:true wires the stable rubric+schema preamble for prompt caching (see PLAY_GATE_SYSTEM).
+  const raw = await anthropicText(prompt, 500, PLAY_GATE_SYSTEM, {
+    temperature: 0,
+    cacheSystem: true,
+  });
   if (!raw) {
     if (playClaudeGateEnabled() || forceClaude) {
       return {
