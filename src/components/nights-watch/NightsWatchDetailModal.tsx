@@ -82,13 +82,15 @@ function money(n: number | null | undefined): string {
   })}`;
 }
 
-/** Compact dollar magnitude for premium ($1.2m / $340k / $920). No sign. */
+/** Compact dollar magnitude for premium (-$1.2m / $340k / $920). Sign OUTSIDE the
+ *  glyph so a negative reads "-$1.2m", never "$-1.2m". */
 function moneyCompact(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return EM_DASH;
+  const sign = n < 0 ? "-" : "";
   const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}m`;
-  if (abs >= 1_000) return `$${(n / 1_000).toFixed(0)}k`;
-  return `$${n.toFixed(0)}`;
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}m`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}k`;
+  return `${sign}$${abs.toFixed(0)}`;
 }
 
 function pct(n: number | null | undefined): string {

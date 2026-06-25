@@ -17,9 +17,11 @@ function FeedBadge({ live }: { live?: boolean }) {
 }
 
 export function GexDealerPanel({ data, live }: { data?: SpxState; live?: boolean }) {
-  const gex = data?.gex_net ?? 0;
-  const gexBull = gex > 0;
-  const pct = live && data?.gex_net != null ? Math.min(100, Math.abs(gex) / 5e9 * 100) : 12;
+  // Gate direction on ACTUAL data presence — a null/offline GEX must read neutral,
+  // never a fabricated bearish (gex ?? 0 > 0 === false) value/meter.
+  const hasGex = live && data?.gex_net != null;
+  const gexBull = hasGex && (data!.gex_net as number) > 0;
+  const pct = hasGex ? Math.min(100, (Math.abs(data!.gex_net as number) / 5e9) * 100) : 12;
 
   return (
     <Panel
@@ -33,13 +35,20 @@ export function GexDealerPanel({ data, live }: { data?: SpxState; live?: boolean
         <div>
           <div className="flex justify-between text-[10px] font-mono uppercase tracking-widest text-sky-300 mb-2">
             <span>Net GEX</span>
-            <span className={gexBull ? "text-bull" : "text-bear"}>
-              {live ? fmtPremium(data?.gex_net ?? null) : "—"}
+            <span className={!hasGex ? "text-sky-300" : gexBull ? "text-bull" : "text-bear"}>
+              {hasGex ? fmtPremium(data?.gex_net ?? null) : "—"}
             </span>
           </div>
           <div className="desk-meter">
             <div
-              className={clsx("desk-meter-fill", gexBull ? "desk-meter-bull" : "desk-meter-bear")}
+              className={clsx(
+                "desk-meter-fill",
+                !hasGex
+                  ? "bg-gradient-to-r from-sky-400/20 to-sky-400/40"
+                  : gexBull
+                    ? "desk-meter-bull"
+                    : "desk-meter-bear"
+              )}
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -60,6 +69,10 @@ export function Flow0dtePanel({ data, live }: { data?: SpxState; live?: boolean 
   const puts = data?.flow_0dte_put_premium ?? 0;
   const total = calls + puts || 1;
   const callPct = (calls / total) * 100;
+  // Gate Net color on actual data — a null net must read neutral, not a
+  // fabricated bullish (null ?? 0 >= 0 === true) tint next to a "—" value.
+  const hasNet = live && data?.flow_0dte_net != null;
+  const netBull = hasNet && (data!.flow_0dte_net as number) >= 0;
 
   return (
     <Panel
@@ -77,8 +90,8 @@ export function Flow0dtePanel({ data, live }: { data?: SpxState; live?: boolean 
           <span className="text-bear">Puts {live ? fmtPremium(data?.flow_0dte_put_premium ?? null) : "—"}</span>
         </div>
         <div className="text-center font-mono text-lg font-bold">
-          <span className={(data?.flow_0dte_net ?? 0) >= 0 ? "num-bull" : "num-bear"}>
-            Net {live ? fmtPremium(data?.flow_0dte_net ?? null) : "—"}
+          <span className={!hasNet ? "text-sky-300" : netBull ? "num-bull" : "num-bear"}>
+            Net {hasNet ? fmtPremium(data?.flow_0dte_net ?? null) : "—"}
           </span>
         </div>
       </div>
