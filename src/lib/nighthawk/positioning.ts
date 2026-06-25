@@ -39,7 +39,21 @@ function buildSummary(
   const walls = spot > 0 ? topGexWalls(gex.ranked_levels, spot, 4) : [];
   const wallSummary = walls.length
     ? walls
-        .map((w) => `${w.kind} $${w.strike} (${w.distance_pts >= 0 ? "+" : ""}${w.distance_pts}pts)`)
+        .map((w) => {
+          // Name the wall by net_gex SIGN (put wall = support, call wall = resistance),
+          // matching the Heatmap / Night's Watch / SPX-desk convention (#80) instead of
+          // the geometric w.kind — so Largo's positioning read agrees with the Heatmap.
+          // When spot has broken through (geometry disagrees), note the acting-as role.
+          const hasSign = Number.isFinite(w.net_gex) && w.net_gex !== 0;
+          const isPut = w.net_gex < 0;
+          const nativeRole = isPut ? "support" : "resistance";
+          const role = !hasSign
+            ? w.kind
+            : w.kind === nativeRole
+              ? `${isPut ? "put" : "call"} wall`
+              : `${isPut ? "put" : "call"} wall (acting as ${w.kind})`;
+          return `${role} $${w.strike} (${w.distance_pts >= 0 ? "+" : ""}${w.distance_pts}pts)`;
+        })
         .join(" · ")
     : "n/a";
 
