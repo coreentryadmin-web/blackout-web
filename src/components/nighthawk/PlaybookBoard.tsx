@@ -14,6 +14,7 @@ const SLOT_COUNT = 5;
 
 export function PlaybookBoard({ edition, loading, onPlaySelect }: PlaybookBoardProps) {
   const plays = edition?.plays ?? [];
+  const hasPlays = plays.length > 0;
   const editionLabel = edition?.edition_for
     ? new Date(`${edition.edition_for}T12:00:00`).toLocaleDateString("en-US", {
         weekday: "short",
@@ -68,22 +69,37 @@ export function PlaybookBoard({ edition, loading, onPlaySelect }: PlaybookBoardP
         <p className="nighthawk-playbook-recap">{edition.recap_summary}</p>
       )}
 
-      <p className="nighthawk-playbook-hint">Click any play for full Hawk Intel briefing</p>
+      {hasPlays && (
+        <p className="nighthawk-playbook-hint">Click any play for full Hawk Intel briefing</p>
+      )}
 
-      <div className="nighthawk-playbook-rows">
-        {Array.from({ length: SLOT_COUNT }, (_, i) => {
-          const play = plays[i];
-          return (
-            <PlaybookPlayRow
-              key={play ? `${play.ticker}-${play.rank}` : `slot-${i + 1}`}
-              rank={i + 1}
-              play={play}
-              empty={!play}
-              onSelect={play && onPlaySelect ? () => onPlaySelect(play) : undefined}
-            />
-          );
-        })}
-      </div>
+      {hasPlays ? (
+        <div className="nighthawk-playbook-rows">
+          {Array.from({ length: SLOT_COUNT }, (_, i) => {
+            const play = plays[i];
+            return (
+              <PlaybookPlayRow
+                key={play ? `${play.ticker}-${play.rank}` : `slot-${i + 1}`}
+                rank={i + 1}
+                play={play}
+                empty={!play}
+                onSelect={play && onPlaySelect ? () => onPlaySelect(play) : undefined}
+              />
+            );
+          })}
+        </div>
+      ) : (
+        <div className="nighthawk-playbook-pending" role="status">
+          <div className="nighthawk-playbook-pending-inner">
+            <p className="nighthawk-playbook-pending-kicker">◆ Overnight recon</p>
+            <h3 className="nighthawk-playbook-pending-title">Playbook pending</h3>
+            <p className="nighthawk-playbook-pending-sub">
+              Five ranked swing + leap setups publish after the cash close —{" "}
+              <span className="nighthawk-playbook-pending-time">~5:30 PM ET</span>.
+            </p>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -2591,6 +2591,51 @@ body {
     padding: 2px;
   }
 
+  /* Pre-publish state: before tonight's edition runs there are no plays. Rather than
+     five empty "Slot open" rows (which read as broken), the playbook column shows one
+     deliberate "Playbook pending" block. The left-to-right dark scrim keeps the copy
+     legible over the bright cinematic hero backdrop behind the panel. */
+  .nighthawk-playbook-pending {
+    @apply flex-1 min-h-0 flex items-center justify-center;
+    padding: clamp(1rem, 4vh, 2.5rem) clamp(1rem, 4vw, 2rem);
+    background: linear-gradient(
+      90deg,
+      rgba(4, 4, 7, 0.74) 0%,
+      rgba(4, 4, 7, 0.58) 55%,
+      rgba(4, 4, 7, 0.34) 100%
+    );
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .nighthawk-playbook-pending-inner {
+    @apply flex flex-col items-center text-center;
+    max-width: 30rem;
+  }
+
+  .nighthawk-playbook-pending-kicker {
+    @apply font-mono uppercase mb-2;
+    font-size: clamp(0.625rem, 0.85vh, 0.625rem);
+    letter-spacing: 0.42em;
+    color: rgba(110, 231, 183, 0.9); /* emerald-300 */
+  }
+
+  .nighthawk-playbook-pending-title {
+    @apply font-anton uppercase tracking-wide mb-2.5;
+    font-size: clamp(1.85rem, 4.2vh, 2.6rem);
+    color: #fff;
+    text-shadow: 0 0 24px rgba(110, 231, 183, 0.22);
+  }
+
+  .nighthawk-playbook-pending-sub {
+    @apply font-mono leading-relaxed text-sky-300;
+    font-size: clamp(0.72rem, 1.15vh, 0.82rem);
+  }
+
+  .nighthawk-playbook-pending-time {
+    @apply text-emerald-300;
+  }
+
   .nighthawk-play-row {
     @apply flex gap-0 min-h-0 overflow-hidden;
     border: 1px solid rgba(255, 45, 85, 0.2);
