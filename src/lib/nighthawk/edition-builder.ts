@@ -52,6 +52,27 @@ function stagedToDossierMap(
   return out;
 }
 
+/** Serialize a thrown value to a USEFUL message. A non-Error throw (a provider/SDK error object, a
+ *  Promise.reject(obj), a fetch-response-shaped reject) otherwise becomes the useless "[object Object]"
+ *  in job.error — which is exactly what hid the real edition-build failure from admin/#77. Prefer a
+ *  .message/.error/.detail field, else a bounded JSON dump, so the next failure is diagnosable. */
+function serializeBuildError(error: unknown): string {
+  if (error instanceof Error) return error.message || error.name || "Error";
+  if (error && typeof error === "object") {
+    const o = error as Record<string, unknown>;
+    for (const k of ["message", "error", "detail", "reason"] as const) {
+      if (typeof o[k] === "string" && o[k]) return String(o[k]);
+    }
+    try {
+      const json = JSON.stringify(error);
+      if (json && json !== "{}") return json.slice(0, 500);
+    } catch {
+      /* circular — fall through to String() */
+    }
+  }
+  return String(error);
+}
+
 export async function buildEveningEdition(opts?: {
   force?: boolean;
 }): Promise<EditionBuildResult> {
