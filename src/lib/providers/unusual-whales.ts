@@ -838,56 +838,6 @@ export function normalizeDarkPoolWsPayload(raw: unknown): DarkPoolSnapshot | nul
   };
 }
 
-/** Normalize UW `gex` WS payload into strike rows (spot-exposures shape). */
-export function normalizeGexWsPayload(raw: unknown): Record<string, unknown>[] {
-  const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
-  const list = Array.isArray(rows) ? rows : typeof raw === "object" && raw !== null ? [raw] : [];
-  const out: Record<string, unknown>[] = [];
-  for (const row of list) {
-    if (!row || typeof row !== "object") continue;
-    const r = row as Record<string, unknown>;
-    const strike = Number(r.strike ?? r.price ?? 0);
-    if (!Number.isFinite(strike)) continue;
-    out.push({
-      strike,
-      call_gamma_oi: r.call_gamma_oi ?? r.call_gex ?? r.call_gamma ?? 0,
-      put_gamma_oi: r.put_gamma_oi ?? r.put_gex ?? r.put_gamma ?? 0,
-      call_gex: r.call_gex ?? r.call_gamma_oi ?? 0,
-      put_gex: r.put_gex ?? r.put_gamma_oi ?? 0,
-      net_gex: r.net_gex ?? r.gamma_oi ?? r.gex ?? 0,
-    });
-  }
-  return out;
-}
-
-/** Normalize UW `net_flow` WS payload into 0DTE flow totals. */
-export function normalizeNetFlowWsPayload(
-  raw: unknown,
-  ticker = "SPX"
-): { call_premium: number; put_premium: number; net: number; ticker: string } | null {
-  const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
-  const list = Array.isArray(rows) ? rows : typeof raw === "object" && raw !== null ? [raw] : [];
-  if (!list.length) return null;
-
-  const sym = ticker.toUpperCase();
-  let calls = 0;
-  let puts = 0;
-  for (const row of list) {
-    if (!row || typeof row !== "object") continue;
-    const r = row as Record<string, unknown>;
-    const rowTicker = String(r.ticker ?? r.symbol ?? sym).toUpperCase();
-    if (rowTicker !== sym && rowTicker !== "SPXW") continue;
-    calls += Number(r.call_premium ?? r.net_call_premium ?? r.calls ?? 0);
-    puts += Number(r.put_premium ?? r.net_put_premium ?? r.puts ?? 0);
-  }
-  if (calls === 0 && puts === 0) {
-    const r = list[list.length - 1] as Record<string, unknown>;
-    calls = Number(r.call_premium ?? r.net_call_premium ?? 0);
-    puts = Number(r.put_premium ?? r.net_put_premium ?? 0);
-  }
-  return { call_premium: calls, put_premium: puts, net: calls - puts, ticker: sym };
-}
-
 /** Normalize UW `interval_flow` WS payload into strike-level intraday flow rows. */
 export function normalizeIntervalFlowWsPayload(raw: unknown): Record<string, unknown>[] {
   const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
