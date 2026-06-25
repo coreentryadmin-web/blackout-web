@@ -381,6 +381,37 @@ function filterStrikeTotals(
 }
 
 /**
+ * The KING NODE strike = argmax over strikes of |aggregate net exposure| — the single
+ * dominant dealer-gamma concentration in the current view (the strongest pin/magnet).
+ * Computed from the SAME per-strike totals the caller is rendering (server `strike_totals`
+ * for the all-expiry matrix, the client-filtered totals for a scoped profile) so the marker
+ * always lands on the bar/row it's looking at.
+ *
+ * Null-safe + tie-stable: empty input → null; on an exact |value| tie the FIRST strike
+ * (lowest, ascending) wins deterministically so the king never flickers between equals.
+ * Zero-only input (every total 0) → null (no magnet to mark). No Math.random/Date — pure
+ * over the passed totals, so it's safe in render (#418).
+ */
+function kingNodeStrike(totals: Record<string, number>): number | null {
+  let king: number | null = null;
+  let best = 0;
+  // Ascending strike order makes the tie-break deterministic (first/lowest strike wins).
+  const entries = Object.entries(totals)
+    .map(([s, v]) => ({ strike: Number(s), value: v }))
+    .filter((e) => Number.isFinite(e.strike))
+    .sort((a, b) => a.strike - b.strike);
+  for (const e of entries) {
+    const mag = Math.abs(e.value);
+    // Strict `>` keeps the first strike on a tie; `mag > 0` skips zero-only totals.
+    if (mag > best) {
+      best = mag;
+      king = e.strike;
+    }
+  }
+  return king;
+}
+
+/**
  * Recompute walls + flip from FILTERED per-strike totals so the levels track the
  * selected expiry scope. Mirrors the server's primary method (we don't have its fn):
  *  - call/pos wall = strike of the max positive total
@@ -610,6 +641,7 @@ function ExposureProfile({
   peak,
   spot,
   flip,
+  kingStrike,
   lens,
   showFlow,
   flowPeak,
@@ -620,6 +652,13 @@ function ExposureProfile({
   peak: number;
   spot: number;
   flip: number | null;
+  /**
+   * The KING NODE strike — the dominant dealer-gamma concentration (max |net| in this
+   * scope). The row on this strike gets a gold ♔ marker + "KING NODE" label + gold ring,
+   * marking the strongest pin/magnet on top of its emerald/bear magnitude bar. Null when
+   * there's nothing to mark (empty / all-zero scope).
+   */
+  kingStrike: number | null;
   lens: Lens;
   showFlow: boolean;
   flowPeak: number;
@@ -745,6 +784,9 @@ function ExposureProfile({
         const positive = r.value > 0;
         const barColor = positive ? c.posHex : c.negHex;
         const wall = r.isPosWall || r.isNegWall;
+        // KING NODE — the dominant net-exposure strike in this scope. Gold marker + ring
+        // sit ON TOP of the bar's own emerald/bear magnitude color (gold ≠ magnitude).
+        const isKing = kingStrike != null && r.strike === kingStrike;
 
         // ── Flow overlay: net premium hitting this strike, colored bull/bear. ──
         const flow = showFlow ? r.flow : null;
@@ -791,25 +833,42 @@ function ExposureProfile({
             <div
               className={clsx(
                 "group relative flex items-center gap-2 rounded-sm py-0.5 pr-1",
-                r.isSpot
-                  ? "outline outline-1 outline-cyan-400/70 bg-cyan-400/[0.06]"
-                  : i === flipRowIdx && "bg-gold/[0.06]"
+                // KING NODE ring wins the row treatment (the dominant node should pop hardest):
+                // a gold 2px outline + gold wash, distinct from the spot row's cyan outline.
+                isKing
+                  ? "outline outline-2 outline-gold/80 bg-gold/[0.10]"
+                  : r.isSpot
+                    ? "outline outline-1 outline-cyan-400/70 bg-cyan-400/[0.06]"
+                    : i === flipRowIdx && "bg-gold/[0.06]"
               )}
-              title={`${fmtStrike(r.strike)} · ${fmtMoney(r.value)}`}
+              style={isKing ? { boxShadow: "inset 0 0 18px rgba(255,210,63,0.10)" } : undefined}
+              title={
+                isKing
+                  ? `KING NODE · ${fmtStrike(r.strike)} · ${fmtMoney(r.value)} — dominant dealer gamma node`
+                  : `${fmtStrike(r.strike)} · ${fmtMoney(r.value)}`
+              }
             >
               {/* strike label (left gutter) */}
               <span
                 className={clsx(
                   "w-14 shrink-0 text-right font-mono text-[11px] tabular-nums",
-                  r.isSpot
-                    ? "font-bold text-white"
-                    : wall
-                      ? "font-semibold text-gold"
-                      : "text-sky-300"
+                  isKing
+                    ? "font-bold text-gold"
+                    : r.isSpot
+                      ? "font-bold text-white"
+                      : wall
+                        ? "font-semibold text-gold"
+                        : "text-sky-300"
                 )}
               >
                 <span className="inline-flex items-center justify-end gap-1">
-                  {r.isSpot && <span className="text-cyan-400">●</span>}
+                  {/* KING NODE crown — gold ♔, the unmistakable dominant-node marker. */}
+                  {isKing && (
+                    <span className="text-gold" title="KING NODE — dominant dealer gamma node" aria-hidden>
+                      ♔
+                    </span>
+                  )}
+                  {r.isSpot && !isKing && <span className="text-cyan-400">●</span>}
                   {fmtStrike(r.strike)}
                 </span>
               </span>
@@ -842,11 +901,17 @@ function ExposureProfile({
                     left: positive ? "50%" : undefined,
                     right: positive ? undefined : "50%",
                     backgroundColor: barColor,
-                    boxShadow: wall
-                      ? `0 0 10px ${barColor}`
-                      : mag > 0.55
-                        ? `0 0 8px ${barColor}88`
-                        : undefined,
+                    // KING NODE bar keeps its emerald/bear magnitude fill, but gets a gold
+                    // ring + glow on TOP so the dominant node is unmistakable. The ring is an
+                    // outline (static, opacity-only glow) — reduced-motion safe.
+                    outline: isKing ? "1.5px solid #ffd23f" : undefined,
+                    boxShadow: isKing
+                      ? "0 0 12px rgba(255,210,63,0.85)"
+                      : wall
+                        ? `0 0 10px ${barColor}`
+                        : mag > 0.55
+                          ? `0 0 8px ${barColor}88`
+                          : undefined,
                     opacity: 0.35 + mag * 0.6,
                   }}
                 />
@@ -883,19 +948,25 @@ function ExposureProfile({
               >
                 {fmtMoneySigned(r.value)}
               </span>
-              <span className="ml-auto w-10 shrink-0 text-left">
+              <span className="ml-auto w-16 shrink-0 text-left">
+                {/* KING NODE tag — leads the row's tag slot when this is the dominant node. */}
+                {isKing && (
+                  <span className="font-mono text-[8px] font-bold uppercase tracking-wider text-gold">
+                    ♔ King
+                  </span>
+                )}
                 {/* Wall tags only exist on GEX/VEX (DEX/CHARM have no walls → these never fire). */}
-                {r.isPosWall && (
+                {!isKing && r.isPosWall && (
                   <span className="font-mono text-[8px] uppercase tracking-wider text-gold">
                     {lens === "gex" ? "call" : "+vex"}
                   </span>
                 )}
-                {r.isNegWall && (
+                {!isKing && r.isNegWall && (
                   <span className="font-mono text-[8px] uppercase tracking-wider text-gold">
                     {lens === "gex" ? "put" : "−vex"}
                   </span>
                 )}
-                {flow != null && netFlow !== 0 && !r.isPosWall && !r.isNegWall && (
+                {!isKing && flow != null && netFlow !== 0 && !r.isPosWall && !r.isNegWall && (
                   <span
                     className="font-mono text-[8px] uppercase tracking-wider"
                     style={{ color: flowHex }}
@@ -926,6 +997,15 @@ function ExposureProfile({
           {v.pos} (+) ▶
         </span>
       </div>
+
+      {/* KING NODE legend — explains the gold ♔ marker (the dominant node). Only when one
+          is marked in the rendered scope. */}
+      {kingStrike != null && (
+        <div className="mt-2 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-gold">
+          <span aria-hidden>♔</span>
+          KING NODE · {fmtStrike(kingStrike)} — dominant dealer {v.noun.toLowerCase()} node (strongest pin/magnet)
+        </div>
+      )}
 
       {/* overlay legend — only the active overlays appear */}
       {((showFlow && flowPeak > 0) || (showDarkPool && darkPoolByRow.size > 0)) && (
@@ -2406,6 +2486,15 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
   const profileNegWall = filteredLevels.negWall;
   const profileFlip = filteredLevels.flip;
 
+  // KING NODE for the PROFILE — argmax |net| over the FILTERED totals so the gold marker
+  // tracks the active expiry scope (it lands on the bar the profile is rendering). Null
+  // when the scope is empty / all-zero. The matrix + card recompute their own king from
+  // the data they render (all-expiry strikeTotals) so each marker matches its own view.
+  const profileKingStrike = useMemo(
+    () => kingNodeStrike(filteredTotals),
+    [filteredTotals]
+  );
+
   // The active block is empty when it has no strike totals (e.g. VEX skipped all IVs).
   const blockEmpty = Object.keys(strikeTotals).length === 0;
   const empty = !isLoading && data != null && (!data.available || strikes.length === 0);
@@ -3081,6 +3170,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                   peak={filteredPeak}
                   spot={spot}
                   flip={profileFlip}
+                  kingStrike={profileKingStrike}
                   lens={lens}
                   showFlow={showFlow && hasFlowOverlay}
                   flowPeak={flowPeak}
