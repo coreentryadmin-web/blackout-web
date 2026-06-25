@@ -1,5 +1,5 @@
 import { requireTier } from "@/lib/auth-access";
-import { PageShell, PageHeader, Badge } from "@/components/ui";
+import { PageShell, PageHeader } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { FlowFeed } from "@/components/FlowFeed";
 import { DnaHelixBackgroundLazy as DnaHelixBackground } from "@/components/DnaHelixBackgroundLazy";
@@ -15,16 +15,14 @@ export default async function FlowsPage() {
       {/* DnaHelix paints the canvas, so suppress PageShell's own ambient backdrop. */}
       <PageShell backdrop={false} fullBleed>
         <div className="content-rail">
+          {/* No static "Live" badge here — it was always green regardless of
+              feed state and contradicted the freshness-aware toolbar tri-state.
+              FlowFeed's toolbar (live/Stale/Offline) is the single source. */}
           <PageHeader
             kicker="◆ INSTITUTIONAL FLOW"
             title="HELIX"
             subtitle="Whale & dark pool alerts · Real-time tape"
             badge={<ProductMark product="helix" size={44} />}
-            actions={
-              <Badge tone="neutral" dot>
-                Live
-              </Badge>
-            }
           />
         </div>
         <div className="mt-6 max-w-none px-2 md:px-3">

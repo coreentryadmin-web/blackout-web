@@ -119,8 +119,6 @@ export function FlowAlertStream({
   const scrollRef  = useRef<HTMLDivElement>(null);
   const prevLenRef = useRef(0);
 
-  const feedStatus = loading ? undefined : live ? "live" : "reconnecting";
-
   // Parser-truth (gap #6): typeless UW prints carry option_type='UNKNOWN'. They must NOT
   // render as red PUT cards (the else-branch in cardCls / premium color), so DROP them from
   // the tape entirely — mirroring the SPX-tape drop. Only real CALL/PUT prints reach a card.
@@ -167,7 +165,10 @@ export function FlowAlertStream({
       title={replayMode ? "HELIX · REPLAY" : "HELIX"}
       subtitle={undefined}
       variant="purple"
-      feedStatus={replayMode ? undefined : feedStatus}
+      /* Connection-only LIVE/RECONNECTING badge suppressed here: it can read
+         green while data is stale. The freshness-aware toolbar tri-state in
+         FlowFeed (live + dataStale) is the single source of truth on HELIX. */
+      feedStatus={undefined}
       glow
       className="h-full"
     >
