@@ -91,7 +91,9 @@ export async function critiquePlays(params: {
     promptParts.push("");
   }
 
-  const raw = await anthropicText(promptParts.join("\n"), 3000, SYSTEM);
+  // temperature:0 — structured JSON-array extraction (per-play keep/downgrade/cut verdicts),
+  // not prose; deterministic output avoids nondeterminism + wasted retries on schema-constrained output.
+  const raw = await anthropicText(promptParts.join("\n"), 3000, SYSTEM, { temperature: 0 });
   if (!raw) {
     return { plays, notes: [] };
   }

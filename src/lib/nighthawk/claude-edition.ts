@@ -124,7 +124,9 @@ export async function generateEditionPlays(params: {
     flowTape: params.flowTape ?? null,
     playOutcomes: params.playOutcomes ?? null,
   });
-  const raw = await anthropicText(prompt, 4500, SYSTEM);
+  // temperature:0 — structured JSON-array extraction (ranked plays), not prose;
+  // deterministic output avoids nondeterminism + wasted retries on schema-constrained output.
+  const raw = await anthropicText(prompt, 4500, SYSTEM, { temperature: 0 });
   if (!raw) {
     return { plays: [], recap, raw: null };
   }

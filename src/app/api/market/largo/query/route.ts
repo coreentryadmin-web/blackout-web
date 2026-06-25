@@ -316,7 +316,7 @@ export async function POST(req: NextRequest) {
         } catch (error) {
           if (isSseClientDisconnect(error)) return;
           console.error("[market/largo/query stream]", error);
-          send({ type: "error", message: error instanceof Error ? error.message : "Largo query failed" });
+          send({ type: "error", message: "Largo query failed" });
         } finally {
           closed = true;
           // Record one consumed query against the daily budget (best-effort, fail-open)
@@ -356,8 +356,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("[market/largo/query]", error);
-    const message = error instanceof Error ? error.message : "Largo query failed";
-    return NextResponse.json({ error: message }, { status: 502 });
+    return NextResponse.json({ error: "Largo query failed" }, { status: 502 });
   } finally {
     // Record one consumed query against the daily budget (best-effort, fail-open), then release
     // both concurrency slots (global then per-user) whether the non-streaming query succeeded or

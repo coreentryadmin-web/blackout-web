@@ -577,6 +577,9 @@ Hard rules:
 
   const raw = await anthropicText(prompt, 1550, undefined, {
     model: COMMENTARY_MODEL,
+    // temperature:0 — output_config json_schema extraction; deterministic output avoids
+    // nondeterminism + wasted retries on schema-constrained output (was silently default 0.3).
+    temperature: 0,
     output_config: {
       format: {
         type: "json_schema",

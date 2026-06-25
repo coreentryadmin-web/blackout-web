@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("[nighthawk/hunt] error", { mode: body.mode, userId, error });
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Hunt scan failed" },
+      { error: "Hunt scan failed" },
       { status: 502, headers: { "Cache-Control": "no-store" } }
     );
   } finally {

@@ -303,7 +303,9 @@ Respond ONLY valid JSON (verdict must be exactly "APPROVE_BUY" or "VETO"):
   "thesis": "2 sentences — cite MTF + S/R + flow + news"
 }`;
 
-  const raw = await anthropicText(prompt, 500);
+  // temperature:0 — schema-constrained JSON extraction (verdict/direction/headline/thesis),
+  // not prose; deterministic output avoids wasted retries on malformed JSON.
+  const raw = await anthropicText(prompt, 500, undefined, { temperature: 0 });
   if (!raw) {
     if (playClaudeGateEnabled() || forceClaude) {
       return {

@@ -2248,26 +2248,14 @@ export async function upsertNighthawkPlayOutcomes(
   if (!rows.length) return;
   await ensureSchema();
   const pool = await getPool();
-  for (const row of rows) {
-    await pool.query(
-      `
-      INSERT INTO nighthawk_play_outcomes (
-        edition_for, ticker, direction, conviction,
-        entry_range_low, entry_range_high, target, stop, score, sector, outcome
-      ) VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending')
-      ON CONFLICT (edition_for, ticker) DO UPDATE SET
-        direction = EXCLUDED.direction,
-        conviction = EXCLUDED.conviction,
-        entry_range_low = EXCLUDED.entry_range_low,
-        entry_range_high = EXCLUDED.entry_range_high,
-        target = EXCLUDED.target,
-        stop = EXCLUDED.stop,
-        score = EXCLUDED.score,
-        sector = EXCLUDED.sector,
-        updated_at = NOW()
-      WHERE nighthawk_play_outcomes.outcome = 'pending'
-      `,
-      [
+
+  // Single multi-row INSERT (one round-trip) instead of an awaited per-row loop (N round-trips).
+  // Each row contributes 10 bound params; outcome is the 'pending' literal as before.
+  const params: Array<string | number | null> = [];
+  const tuples = rows
+    .map((row, i) => {
+      const b = i * 10;
+      params.push(
         row.edition_for,
         row.ticker,
         row.direction,
@@ -2277,10 +2265,32 @@ export async function upsertNighthawkPlayOutcomes(
         row.target,
         row.stop,
         row.score,
-        row.sector,
-      ]
-    );
-  }
+        row.sector
+      );
+      return `($${b + 1}::date, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9}, $${b + 10}, 'pending')`;
+    })
+    .join(", ");
+
+  await pool.query(
+    `
+    INSERT INTO nighthawk_play_outcomes (
+      edition_for, ticker, direction, conviction,
+      entry_range_low, entry_range_high, target, stop, score, sector, outcome
+    ) VALUES ${tuples}
+    ON CONFLICT (edition_for, ticker) DO UPDATE SET
+      direction = EXCLUDED.direction,
+      conviction = EXCLUDED.conviction,
+      entry_range_low = EXCLUDED.entry_range_low,
+      entry_range_high = EXCLUDED.entry_range_high,
+      target = EXCLUDED.target,
+      stop = EXCLUDED.stop,
+      score = EXCLUDED.score,
+      sector = EXCLUDED.sector,
+      updated_at = NOW()
+    WHERE nighthawk_play_outcomes.outcome = 'pending'
+    `,
+    params
+  );
 }
 
 export async function fetchPendingNighthawkOutcomes(lookbackDays = 7): Promise<NighthawkPlayOutcomeRow[]> {
