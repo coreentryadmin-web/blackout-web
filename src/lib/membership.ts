@@ -61,34 +61,47 @@ async function findWhopUserIdsByEmail(
   return Array.from(userIds);
 }
 
-export async function syncWhopMembershipForEmail(email: string): Promise<{
-  tier: Tier;
-  updatedUserIds: string[];
-}> {
-  const whop = getWhopClient();
-  const companyId = process.env.WHOP_COMPANY_ID?.trim();
-  if (!companyId) {
-    throw new Error("WHOP_COMPANY_ID is required for membership sync");
-  }
-  const normalized = email.trim().toLowerCase();
+// Deterministic membership ordering: ACTIVE/TRIALING first, then most-recently-created, so [0] is
+// always the "best" membership. (created_at is an ISO string — Date.parse, not a numeric cast.)
+const STATUS_PRIORITY: Record<string, number> = {
+  active: 0,
+  trialing: 1,
+  completed: 2,
+  past_due: 3,
+  canceling: 4,
+};
+function sortMemberships(memberships: MembershipListResponse[]): MembershipListResponse[] {
+  return [...memberships].sort((a, b) => {
+    const aPriority = STATUS_PRIORITY[a.status] ?? 99;
+    const bPriority = STATUS_PRIORITY[b.status] ?? 99;
+    if (aPriority !== bPriority) return aPriority - bPriority;
+    const aTs = Date.parse((a as unknown as { created_at?: string }).created_at ?? "") || 0;
+    const bTs = Date.parse((b as unknown as { created_at?: string }).created_at ?? "") || 0;
+    return bTs - aTs;
+  });
+}
 
+/**
+ * Resolve premium/free for ONE email's Whop memberships (no Clerk write). Fail-CLOSED on a
+ * member:email:read outage (throws, so the caller leaves the existing tier intact). Extracted so a
+ * Clerk user can be resolved across ALL their emails (audit launch-path #2 + #7).
+ */
+async function resolveMembershipTierForEmail(
+  normalized: string,
+  companyId: string
+): Promise<{ tier: Tier; activeMembership?: MembershipListResponse }> {
+  const whop = getWhopClient();
   const userIds = await findWhopUserIdsByEmail(normalized, companyId);
 
   const memberships: MembershipListResponse[] = [];
-  // Do NOT pass a server-side product_ids/plan_ids filter. resolveTierFromMembership already
-  // classifies by product OR plan id; a server-side product_ids-only filter silently DROPS
-  // plan-identified premium memberships, so a plan-config paying customer would resolve to 'free'
-  // and be locked out (audit launch-path #1). user_ids is the real narrowing key; classification
-  // happens in resolveTierFromMemberships below.
+  // No server-side product_ids/plan_ids filter — resolveTierFromMembership classifies by product OR
+  // plan; a product_ids-only filter silently drops plan-identified premium memberships (launch-path #1).
   const membershipParams = {
     company_id: companyId,
     ...(userIds.length ? { user_ids: userIds } : {}),
     statuses: PREMIUM_MEMBERSHIP_STATUSES,
   };
 
-  // In the no-userIds fallback we email-match in code, which depends on Whop's member:email:read.
-  // Track whether ANY row was actually email-readable so we can distinguish "no membership" from
-  // "couldn't read emails" and never mass-downgrade the paying base on a permission outage.
   let sawAnyMembershipRow = false;
   let sawReadableEmail = false;
   for await (const membership of whop.memberships.list(membershipParams)) {
@@ -101,10 +114,6 @@ export async function syncWhopMembershipForEmail(email: string): Promise<{
     memberships.push(membership);
   }
 
-  // Fail CLOSED: rows existed but NONE had a readable email (Whop app likely lacks member:email:read,
-  // or a transient null-email page) — we couldn't actually check this user, so refuse rather than
-  // silently write 'free' fleet-wide. The caller (webhook/manual-sync 500s; reconcile per-email
-  // catch records an error) leaves the existing tier intact (audit launch-path #2).
   if (!userIds.length && memberships.length === 0 && sawAnyMembershipRow && !sawReadableEmail) {
     throw new Error(
       `Cannot resolve membership for ${normalized}: rows returned but every user.email was null ` +
@@ -112,43 +121,68 @@ export async function syncWhopMembershipForEmail(email: string): Promise<{
     );
   }
 
-  // Sort memberships deterministically: prefer ACTIVE/TRIALING status first,
-  // then fall back to most-recently-created so [0] is always the "best" membership.
-  const STATUS_PRIORITY: Record<string, number> = {
-    active: 0,
-    trialing: 1,
-    completed: 2,
-    past_due: 3,
-    canceling: 4,
-  };
-  const sortedMemberships = [...memberships].sort((a, b) => {
-    const aPriority = STATUS_PRIORITY[a.status] ?? 99;
-    const bPriority = STATUS_PRIORITY[b.status] ?? 99;
-    if (aPriority !== bPriority) return aPriority - bPriority;
-    // Within the same priority bucket, prefer the most recently created.
-    // created_at is an ISO datetime STRING — parse to epoch ms; the prior numeric
-    // cast made string subtraction yield NaN, so the tiebreak never reordered.
-    const aTs = Date.parse((a as unknown as { created_at?: string }).created_at ?? "") || 0;
-    const bTs = Date.parse((b as unknown as { created_at?: string }).created_at ?? "") || 0;
-    return bTs - aTs;
-  });
+  const sorted = sortMemberships(memberships);
+  return { tier: resolveTierFromMemberships(sorted), activeMembership: sorted[0] };
+}
 
-  const tier = resolveTierFromMemberships(sortedMemberships);
-  const activeMembership = sortedMemberships[0];
+export async function syncWhopMembershipForEmail(email: string): Promise<{
+  tier: Tier;
+  updatedUserIds: string[];
+}> {
+  const companyId = process.env.WHOP_COMPANY_ID?.trim();
+  if (!companyId) {
+    throw new Error("WHOP_COMPANY_ID is required for membership sync");
+  }
+  const normalized = email.trim().toLowerCase();
 
   const clerkUsers = await findClerkUsersByEmail(normalized);
-  const updatedUserIds: string[] = [];
 
+  // No Clerk account yet (e.g. paid before signing up): resolve the triggering email so the caller
+  // still gets a tier, but there's nothing to write.
+  if (clerkUsers.length === 0) {
+    const { tier } = await resolveMembershipTierForEmail(normalized, companyId);
+    return { tier, updatedUserIds: [] };
+  }
+
+  // Resolve EACH matched Clerk user across ALL their verified emails — premium if ANY of them has a
+  // premium membership — and write once. Making the result independent of WHICH email triggered the
+  // sync is what stops a single non-purchase address from downgrading a multi-email payer
+  // (audit launch-path #7). A member:email:read outage throws out of the inner resolve, aborting the
+  // whole sync (caller keeps prior tiers) rather than writing 'free'.
+  let bestTier: Tier = "free";
+  const updatedUserIds: string[] = [];
   for (const user of clerkUsers) {
+    const emails = new Set<string>([normalized]);
+    const primaryId = user.primaryEmailAddressId;
+    for (const addr of user.emailAddresses ?? []) {
+      if (addr.id === primaryId || addr.verification?.status === "verified") {
+        const e = addr.emailAddress?.toLowerCase();
+        if (e) emails.add(e);
+      }
+    }
+
+    let userTier: Tier = "free";
+    let activeMembership: MembershipListResponse | undefined;
+    for (const e of emails) {
+      const r = await resolveMembershipTierForEmail(e, companyId);
+      if (!activeMembership) activeMembership = r.activeMembership;
+      if (r.tier === "premium") {
+        userTier = "premium";
+        activeMembership = r.activeMembership;
+        break; // premium wins — no need to check the rest
+      }
+    }
+
     await updateClerkMembershipMetadata(user.id, {
-      tier,
+      tier: userTier,
       whop_user_id: activeMembership?.user?.id,
       whop_membership_id: activeMembership?.id,
     });
     updatedUserIds.push(user.id);
+    if (userTier === "premium") bestTier = "premium";
   }
 
-  return { tier, updatedUserIds };
+  return { tier: bestTier, updatedUserIds };
 }
 
 /**
