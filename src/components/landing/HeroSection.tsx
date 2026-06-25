@@ -6,8 +6,10 @@ import { motion, useMotionValue, useSpring, useReducedMotion } from "framer-moti
 import { LandingCta } from "@/components/landing/LandingCta";
 import { IMAGES } from "@/lib/images";
 
-const HEAD_A = "READ THE TAPE.".split(" ");
-const HEAD_B = "TRADE THE EDGE.".split(" ");
+// H1 is the brand tagline (also the page <title>): "See the structure. Make the call."
+// Split across two lines — the first reads white, the second in the emerald→sky gradient.
+const HEAD_A = "See the structure.".split(" ");
+const HEAD_B = "Make the call.".split(" ");
 
 const wordV = {
   hidden: { opacity: 0, y: 40 },
@@ -77,22 +79,34 @@ export function HeroSection() {
       </motion.div>
 
       {/* legibility scrims — darken the headline band + top/bottom, keep the mid-frame
-          (the operator + the storm) readable, and fade the base into the void so the
-          next section seams cleanly. */}
+          (the operator + the storm) readable, and fully resolve the base into the void so
+          the next section seams cleanly (and no bright/green edge reads as a bar). */}
       <div
         aria-hidden
         className="absolute inset-0 z-[1]"
         style={{
           background:
-            "linear-gradient(180deg, rgba(4,4,7,0.90) 0%, rgba(4,4,7,0.46) 30%, rgba(4,4,7,0.30) 54%, rgba(4,4,7,0.80) 90%, #040407 100%)",
+            "linear-gradient(180deg, rgba(4,4,7,0.92) 0%, rgba(4,4,7,0.55) 28%, rgba(4,4,7,0.42) 52%, rgba(4,4,7,0.86) 88%, #040407 100%)",
         }}
       />
+      {/* side scrim — pulls the baked-in data panels back from the edges so they stop
+          bleeding distractingly and the message owns the centre. */}
       <div
         aria-hidden
         className="absolute inset-0 z-[1]"
         style={{
           background:
-            "radial-gradient(72% 56% at 50% 38%, rgba(4,4,7,0.58), rgba(4,4,7,0) 72%)",
+            "linear-gradient(90deg, rgba(4,4,7,0.80) 0%, rgba(4,4,7,0) 22%, rgba(4,4,7,0) 78%, rgba(4,4,7,0.80) 100%)",
+        }}
+      />
+      {/* focal vignette — a deeper pool of dark directly behind the H1/subhead/CTA so the
+          message is unmistakably the focal point and the image recedes behind it. */}
+      <div
+        aria-hidden
+        className="absolute inset-0 z-[1]"
+        style={{
+          background:
+            "radial-gradient(70% 54% at 50% 42%, rgba(4,4,7,0.72), rgba(4,4,7,0) 70%)",
         }}
       />
 
@@ -170,8 +184,8 @@ export function HeroSection() {
           transition={{ delay: 0.4 }}
           className="max-w-2xl text-white/80 text-base md:text-lg leading-relaxed font-light drop-shadow-[0_1px_12px_rgba(0,0,0,0.7)]"
         >
-          The institutional data spine — live options flow, dealer gamma, an SPX 0DTE command desk,
-          and an AI analyst — fused into one decision terminal. No chatroom. No signal-seller.
+          The institutional 0DTE command desk — live GEX walls, dealer positioning, and options
+          flow, read for you in real time. No chatroom. No signal-seller.
         </motion.p>
 
         {/* CTAS */}
@@ -181,11 +195,12 @@ export function HeroSection() {
           transition={{ delay: 0.5 }}
           className="flex flex-col sm:flex-row gap-4 mt-1"
         >
+          {/* Primary action — reuses the site-wide /sign-up target (nav "Join" + pricing). */}
           <LandingCta href="/sign-up" className="btn-cta-primary">
-            Start Trading →
+            Get access →
           </LandingCta>
-          <LandingCta href="#features" variant="ghost">
-            Tour the desk
+          <LandingCta href="#pricing" variant="ghost">
+            See pricing
           </LandingCta>
         </motion.div>
 
