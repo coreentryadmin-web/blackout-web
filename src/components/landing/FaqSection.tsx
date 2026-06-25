@@ -72,7 +72,7 @@ const RAW: Record<CatKey, { q: string; a: string }[]> = {
     },
     {
       q: "Is there a market overview / heatmap?",
-      a: "Yes. A market-intelligence layer reads the regime at a glance: sector heatmaps, leaders and laggards, internals (TICK / TRIN / ADD), market tide, and the macro catalysts on the calendar — the environment mapped before the first trade goes on.",
+      a: "Yes — a dealer-positioning heatmap. It maps GEX, VEX, DEX and charm by strike: the gamma walls that pin or repel price, the flip level where the regime turns, and where dealer flow concentrates. You read market structure before the first trade goes on, not a stale sector grid.",
     },
   ],
   signals: [

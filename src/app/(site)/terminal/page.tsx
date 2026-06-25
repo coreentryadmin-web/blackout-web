@@ -40,6 +40,10 @@ export default async function TerminalPage() {
           }
         />
         <LargoTerminal fullPage />
+        {/* Persistent compliance disclaimer (matches SPX / GEX desk wording) */}
+        <p className="font-mono text-[10px] text-sky-300/60 text-center pt-1">
+          Educational. Not advice. You decide.
+        </p>
       </main>
       <div className="platform-ambient platform-ambient-largo" aria-hidden />
       <div className="platform-dot-grid" aria-hidden />
