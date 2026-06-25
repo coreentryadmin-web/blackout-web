@@ -309,6 +309,13 @@ function DetailHeader({ position }: { position: PositionDetail["position"] }) {
             {position.valuation_status}
           </Badge>
         </div>
+        {/* #7b truth: a day-old session-close mark (illiquid/overnight) must not present as a live
+            valuation — the P&L above is driven off it, so label it honestly. */}
+        {live && position.mark_is_day_close && (
+          <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-amber-300/90">
+            prior close · not live
+          </span>
+        )}
       </div>
     </div>
   );

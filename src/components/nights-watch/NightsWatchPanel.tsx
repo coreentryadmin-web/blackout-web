@@ -576,6 +576,13 @@ function PositionCard({
               {EM_DASH}
             </span>
           )}
+          {/* #7b truth: P&L driven off yesterday's session close (illiquid/overnight) must NOT read as
+              a live mark. Surface it so the figure is honest rather than fabricated-fresh. */}
+          {live && position.mark_is_day_close && (
+            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-amber-300/90">
+              prior close · not live
+            </span>
+          )}
         </div>
         <StatusTag status={position.valuation_status} />
       </div>

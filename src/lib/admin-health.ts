@@ -5,6 +5,7 @@ import { getAdminRouteErrors } from "@/lib/admin-route-errors";
 import { loadMergedSpxDesk } from "@/lib/spx-desk-loader";
 import { getIndexStoreStatus } from "@/lib/ws/polygon-socket";
 import { getUwSocketHealth } from "@/lib/ws/uw-socket";
+import { getOptionsSocketStatus } from "@/lib/ws/options-socket";
 import { uwRateLimiterStats } from "@/lib/providers/uw-rate-limiter";
 import { polygonRateLimiterStats } from "@/lib/providers/polygon-rate-limiter";
 
@@ -22,6 +23,10 @@ export type AdminHealthPayload = {
   websockets: {
     polygon_indices: ReturnType<typeof getIndexStoreStatus>;
     unusual_whales: ReturnType<typeof getUwSocketHealth>;
+    // Massive options WS (Night's Watch live marks). enabled:true + authenticated shards>0 during RTH
+    // confirms OPTIONS_WS_ENABLED + the key are live; enabled-but-no-shards = the "enabled != working"
+    // trap (gap #5) where valuation silently falls back to the 60-120s snapshot path.
+    options: ReturnType<typeof getOptionsSocketStatus>;
   };
   // Cluster rate-limiter posture — `degraded:true` means the Redis ceiling is down AND we are
   // multi-replica, so each limiter is on the per-replica DEGRADED_LOCAL_RPS budget (gap #1). If
@@ -60,6 +65,7 @@ export async function buildAdminHealthSnapshot(): Promise<AdminHealthPayload> {
     websockets: {
       polygon_indices: getIndexStoreStatus(),
       unusual_whales: getUwSocketHealth(),
+      options: getOptionsSocketStatus(),
     },
     rate_limiters: {
       uw: uwRateLimiterStats(),
