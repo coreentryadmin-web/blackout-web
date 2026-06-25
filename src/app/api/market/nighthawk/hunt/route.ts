@@ -14,6 +14,7 @@ import {
   shouldRejectHunt,
 } from "@/lib/nighthawk/hunt-concurrency";
 import { requireToolApi } from "@/lib/tool-access-server";
+import { runWithUwHuntBudget } from "@/lib/providers/uw-hunt-budget";
 
 // ---------------------------------------------------------------------------
 // Per-user hunt concurrency gate — Redis-backed, mirrors market/largo/query's
@@ -112,8 +113,14 @@ export async function POST(req: NextRequest) {
     spx_bias: "bull" | "bear" | "neutral" | null;
   };
   let platform_context: Awaited<ReturnType<typeof huntPlatformContext>>;
-  try {
-    [scanResult, platform_context] = await Promise.all([
+
+  // The whole per-user hunt scan runs inside a live-UW budget so it READS warmed
+  // caches and can make at most a small handful of genuine live UW calls — it can
+  // never drain the shared 2-RPS limiter or trip the breaker for the live SPX desk
+  // (cache-reader rule). Cron callers (userId === null) run UNCAPPED: they are the
+  // trusted off-peak warmers and the nightly edition needs full data fidelity.
+  const runScan = (): Promise<readonly [typeof scanResult, typeof platform_context]> =>
+    Promise.all([
       body.mode === "day"
         ? runDayTradeAgent({ mode: "day", filters }).then((run) => ({
             ok: run.ok,
@@ -127,6 +134,11 @@ export async function POST(req: NextRequest) {
         : runHuntScan(body).then((scan) => ({ ...scan, spx_bias: null })),
       huntPlatformContext(),
     ]);
+
+  try {
+    [scanResult, platform_context] = userId
+      ? await runWithUwHuntBudget(runScan)
+      : await runScan();
   } catch (error) {
     console.error("[nighthawk/hunt] error", { mode: body.mode, userId, error });
     return NextResponse.json(

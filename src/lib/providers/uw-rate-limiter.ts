@@ -1,5 +1,7 @@
 /** UW API throttle — token bucket, min spacing, in-flight dedup, circuit breaker. */
 
+import { tryClaimHuntUwCall, UwHuntBudgetExhaustedError } from "./uw-hunt-budget";
+
 function envNumber(name: string, fallback: number): number {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
@@ -407,6 +409,15 @@ export function resetUwCircuitForTest(): void {
 
 /** Pace a single UW HTTP call through local + optional Redis-global buckets. */
 export async function throttleUw<T>(fn: () => Promise<T>): Promise<T> {
+  // Hunt-budget gate (cache-reader rule): when a Night Hawk hunt is running, a GENUINE
+  // live UW call must first claim a token from the per-hunt budget. Once spent, throw
+  // BEFORE touching acquireSlot() so an exhausted hunt never queues on — let alone
+  // monopolizes — the shared 2-RPS limiter that the live SPX desk depends on. Inert
+  // outside a hunt context (tryClaimHuntUwCall returns true), so the desk/crons are
+  // unaffected. The hunt's fetch wrappers catch this sentinel and serve cached/empty.
+  if (!tryClaimHuntUwCall()) {
+    throw new UwHuntBudgetExhaustedError();
+  }
   await acquireSlot();
   try {
     return await fn();
