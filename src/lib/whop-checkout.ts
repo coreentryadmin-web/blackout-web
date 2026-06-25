@@ -40,5 +40,7 @@ export const WHOP_CHECKOUT_UNAVAILABLE_MESSAGE =
 export const WHOP_PREMIUM_CHECKOUT_OPTIONS = [
   { label: "Monthly — $199", href: WHOP_CHECKOUT.monthly },
   { label: "Yearly — $1,999", href: WHOP_CHECKOUT.yearly },
-  { label: "Lifetime — $4,999", href: WHOP_CHECKOUT.lifetime },
+  // Lifetime DISABLED at launch — Whop caps this account at $2,500/purchase, so a $3,999 lifetime
+  // can't be charged yet. Re-enable this line once Whop lifts the cap (account verification / support):
+  // { label: "Lifetime — $3,999", href: WHOP_CHECKOUT.lifetime },
 ].filter((option) => option.href);

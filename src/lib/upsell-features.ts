@@ -95,8 +95,8 @@ export type PlanValueProp = {
  * renders with just its label/href — framing is purely additive and optional.
  *
  * Numbers below are presentation copy derived from the list prices
- * ($199/mo, $1,999/yr, $4,999 lifetime). If you change Whop prices, update the
- * labels in whop-checkout.ts AND these strings together.
+ * ($199/mo, $1,999/yr; lifetime $3,999 is DISABLED until Whop lifts this account's $2,500 cap). If you
+ * change Whop prices, update the labels in whop-checkout.ts AND these strings together.
  */
 export const PLAN_VALUE_PROPS: Record<string, PlanValueProp> = {
   "Monthly — $199": {
@@ -108,9 +108,9 @@ export const PLAN_VALUE_PROPS: Record<string, PlanValueProp> = {
     savings: "Save $389 vs monthly",
     featured: true,
   },
-  "Lifetime — $4,999": {
+  "Lifetime — $3,999": {
     subline: "One payment · permanent access",
-    savings: "≈ 25 months of monthly",
+    savings: "≈ 20 months of monthly",
   },
 };
 

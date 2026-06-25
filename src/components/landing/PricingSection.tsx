@@ -28,8 +28,9 @@ const PLANS: Record<
     badge: "Standard issue",
     href: WHOP_CHECKOUT.yearly,
   },
+  // Kept (unreachable while lifetime is out of TERMS) so re-enabling is one uncomment. Price matches Whop.
   lifetime: {
-    price: "$4,999",
+    price: "$3,999",
     per: "once",
     note: "One payment · permanent access",
     save: "No renewals",
@@ -41,7 +42,8 @@ const PLANS: Record<
 const TERMS: { key: Term; label: string; tag?: string }[] = [
   { key: "monthly", label: "Monthly" },
   { key: "yearly", label: "Yearly", tag: "−16%" },
-  { key: "lifetime", label: "Lifetime" },
+  // Lifetime hidden at launch — Whop's $2,500 account cap blocks a $3,999 charge. Re-add when lifted:
+  // { key: "lifetime", label: "Lifetime" },
 ];
 
 const PREMIUM_FEATURES = [
