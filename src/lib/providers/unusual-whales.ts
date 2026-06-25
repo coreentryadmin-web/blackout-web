@@ -1,5 +1,6 @@
 import { trackedFetch } from "@/lib/api-tracked-fetch";
 import { isUwUpstream5xx } from "@/lib/uw-upstream-5xx";
+import { isUwTransientNetwork } from "@/lib/uw-transient-network";
 import {
   buildUwRequestKey,
   isUwCircuitOpen,
@@ -289,6 +290,26 @@ async function uwGetSafe<T>(
         const stale = cacheable ? readUwCache<T>(cacheKey, true) : undefined;
         if (stale !== undefined) return stale;
         console.warn(`[uw] UPSTREAM_5XX ${path} — exhausted retries`);
+        return null;
+      }
+      // Transient connect/network blip (UND_ERR_CONNECT_TIMEOUT, EHOSTUNREACH, `fetch
+      // failed`, ECONNRESET, a DNS hiccup — the RT-2 class in 00-RUNTIME-FINDINGS.md).
+      // NOT an HTTP status error, so it must NOT feed the 429 breaker. Mirror the 5xx
+      // branch: bounded-backoff retry, then fall to stale cache so a momentary
+      // api.unusualwhales.com blip can't blank the desk (previously this fell straight
+      // through to `return null` with no retry and no stale fallback).
+      if (isUwTransientNetwork(msg)) {
+        if (attempt < retries) {
+          const delay = 1000 * Math.pow(2, attempt) + Math.random() * 500;
+          if (process.env.UW_DEBUG_RETRIES === "1") {
+            console.debug(`[uw] NETWORK_BLIP ${path} — retry ${attempt + 1} in ${delay.toFixed(0)}ms`);
+          }
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+        const stale = cacheable ? readUwCache<T>(cacheKey, true) : undefined;
+        if (stale !== undefined) return stale;
+        console.warn(`[uw] NETWORK_BLIP ${path} — exhausted retries`);
         return null;
       }
       return null;
