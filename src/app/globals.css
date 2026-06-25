@@ -47,6 +47,18 @@
   --pulse-peak: 1;
   --pulse-dim: 0.7;
   --pulse-period-slow: 80s;
+
+  /* ── Semantic AA-safe text tokens ───────────────────────────────────────
+     Display bear #ff2d55 measures ~4.0:1 on the void bg — below the 4.5:1 AA
+     floor for normal text. Most bearish numbers (header % change, structure
+     values, GEX dist/net, level distances, P&L) are SMALL text, so the
+     downside half of the desk was sub-AA while bull green (#00e676, ~11:1)
+     was fine. --bear-text lifts the small-number red to ~5.0:1; --bull-text
+     mirrors it (green already clears AA). Keep #ff2d55 / --bear ONLY for
+     large display text (score/headline, which clears the 3:1 large bar) and
+     glows/borders. */
+  --bear-text: #ff5c78;
+  --bull-text: #00e676;
 }
 
 /* Page-padding ramp: nudge the gutter up at the sm tier, then lock to the
@@ -1982,7 +1994,10 @@ body {
   .auth-logo { @apply mb-8 text-center relative z-10; }
 
   .num-bull { @apply text-bull; text-shadow: 0 0 14px rgba(0,230,118,0.4); }
-  .num-bear { @apply text-bear; text-shadow: 0 0 14px rgba(255,45,85,0.4); }
+  /* num-bear is the canonical SMALL bearish-number class (header % change,
+     structure values, GEX dist/net, P&L). Fill uses the AA-safe --bear-text;
+     the glow keeps the #ff2d55 hue so the bearish "feel" is preserved. */
+  .num-bear { color: var(--bear-text); text-shadow: 0 0 14px rgba(255,45,85,0.4); }
   .num-neutral { @apply text-sky-200; }
 
   .data-table { @apply w-full border-collapse; }

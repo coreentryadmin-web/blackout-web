@@ -26,6 +26,11 @@ const config: Config = {
         // Canonical semantic tokens.
         bull: "#00e676",
         bear: "#ff2d55",
+        // AA-safe bear for SMALL/inline bearish numbers (#ff2d55 is ~4.0:1 on
+        // the void bg — sub-AA). Use text-bear-text for header % change,
+        // structure values, GEX dist/net, level distances and P&L; reserve
+        // bear (#ff2d55) for LARGE display text, glows and borders.
+        "bear-text": "#ff5c78",
         // Non-grey neutral for secondary copy (authors must NOT reach for zinc/neutral).
         // Matches the existing secondary-text value on the marketing/auth surface.
         mute: "#9fb4d4",

@@ -153,7 +153,7 @@ export function SpxDarkPoolCard({ desk, live }: DeskProps) {
 
 function tapeSideClass(t: { kind: string; side: string }) {
   if (t.kind === "darkpool") return { tag: "DP", tagClass: "text-gold", labelClass: "text-sky-100" };
-  if (t.side === "put") return { tag: "PUT", tagClass: "text-bear", labelClass: "text-bear" };
+  if (t.side === "put") return { tag: "PUT", tagClass: "text-bear-text", labelClass: "text-bear-text" };
   return { tag: "CALL", tagClass: "text-bull", labelClass: "text-bull" };
 }
 
@@ -290,7 +290,7 @@ export function SpxUnifiedTape({ desk, live, refreshing }: DeskProps) {
                 <span
                   className={clsx(
                     "font-mono text-sm tabular-nums ml-auto shrink-0 font-bold",
-                    t.side === "put" ? "text-bear" : t.side === "call" ? "text-bull" : "text-sky-100"
+                    t.side === "put" ? "text-bear-text" : t.side === "call" ? "text-bull" : "text-sky-100"
                   )}
                 >
                   {fmtPremium(t.premium)}
@@ -316,7 +316,7 @@ export function OdteFlowBar({ desk, live }: { desk?: SpxDeskPayload; live?: bool
     <div className="spx-odte-bar-wrap">
       <div className="flex justify-between font-mono text-[10px] mb-1">
         <span className="text-bull">0DTE Calls {fmtPremium(calls)}</span>
-        <span className="text-bear">Puts {fmtPremium(puts)}</span>
+        <span className="text-bear-text">Puts {fmtPremium(puts)}</span>
       </div>
       <div className="spx-odte-bar">
         <div className="spx-odte-bar-call" style={{ width: `${callPct}%` }} />
