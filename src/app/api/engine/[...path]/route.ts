@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { engineConfigured, fetchEngine } from "@/lib/engine";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
+import { requireToolApi } from "@/lib/tool-access-server";
 
 type RouteContext = { params: Promise<{ path: string[] }> };
 
@@ -24,14 +25,25 @@ async function proxyGet(req: NextRequest, context: RouteContext) {
   const gate = await authorizeCronOrTierApi(req, "premium");
   if (gate instanceof Response) return gate;
 
-  if (!engineConfigured()) {
-    return NextResponse.json({ error: "Engine not configured", available: false }, { status: 503 });
-  }
-
   const { path } = await context.params;
   const safePath = normalizeEnginePath(path);
   if (!safePath) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // Launch gate — the allowlisted engine paths serve LOCKED-tool data ("heatmap" → Heatmaps,
+  // "nighthawk/plays" → Night Hawk). The premium tier gate alone would let a non-admin read those
+  // through this proxy once the engine is configured (ENGINE_API_URL) — a launch-gate bypass, the
+  // same class as the gex-positioning fix. Gate on the mapped tool; admins bypass, unlock via
+  // LAUNCHED_TOOLS. (Dormant today since the engine is unconfigured, but closed for defense in depth.)
+  const toolKey = safePath === "heatmap" ? "heatmap" : safePath.startsWith("nighthawk") ? "nighthawk" : null;
+  if (toolKey) {
+    const locked = await requireToolApi(toolKey);
+    if (locked) return locked;
+  }
+
+  if (!engineConfigured()) {
+    return NextResponse.json({ error: "Engine not configured", available: false }, { status: 503 });
   }
 
   const query = req.nextUrl.searchParams.toString();
