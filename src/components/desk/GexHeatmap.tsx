@@ -2562,6 +2562,35 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
     );
   }, [strikes, flip]);
 
+  // ── KING NODE for the MATRIX (and the card) ──────────────────────────────────
+  // The matrix renders the SERVER all-expiry `strikeTotals` (one row total per strike),
+  // so its king = argmax |strikeTotals| — the dominant net-exposure STRIKE (the card uses
+  // this same all-expiry king so it agrees with the server-authoritative top tiles). Within
+  // that king row we also find the single PEAK CELL: the expiry with the max |cells| at the
+  // king strike, which gets the in-cell ♔ marker. Both null-safe (empty/all-zero → null).
+  const matrixKingStrike = useMemo(
+    () => kingNodeStrike(strikeTotals),
+    [strikeTotals]
+  );
+  const matrixKingExpiry = useMemo<string | null>(() => {
+    if (matrixKingStrike == null) return null;
+    const row = cells[String(matrixKingStrike)];
+    if (row == null) return null;
+    let bestExp: string | null = null;
+    let bestMag = 0;
+    // expiries order is the canonical axis — iterate it so a tie picks the earliest expiry.
+    for (const e of expiries) {
+      const v = row[e];
+      if (typeof v !== "number") continue;
+      const mag = Math.abs(v);
+      if (mag > bestMag) {
+        bestMag = mag;
+        bestExp = e;
+      }
+    }
+    return bestExp;
+  }, [matrixKingStrike, cells, expiries]);
+
   // ── Matrix auto-center on the SPOT row (the anchoring) ───────────────────────
   // The matrix lists strikes high→low and mounts fresh each time its tab is opened (the
   // TabPanel unmounts when inactive). Its rows live in a BOUNDED scroll box (matrixScrollRef)
@@ -3255,6 +3284,12 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                       <span aria-hidden>● spot</span>
                     </span>
                   )}
+                  {matrixKingStrike != null && (
+                    <span className="flex items-center gap-1.5 text-gold">
+                      <span aria-hidden>♔ king node</span>
+                      <span className="text-white">{fmtStrike(matrixKingStrike)}</span>
+                    </span>
+                  )}
                 </div>
 
                 {/* Horizontal-scroll container with a subtle right-edge fade so on
@@ -3299,6 +3334,9 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                         const row = cells[String(strike)] ?? {};
                         const isSpot = strike === spotStrike;
                         const isFlip = strike === flipStrike;
+                        // KING NODE row — the dominant net-exposure strike (all-expiry). Gets a
+                        // gold band/left-border (like the spot/flip row treatment, but gold).
+                        const isKing = matrixKingStrike != null && strike === matrixKingStrike;
                         const rowTotal = strikeTotals[String(strike)] ?? 0;
                         return (
                           <tr
@@ -3309,32 +3347,46 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                             className={clsx(
                               // Bold-highlight the SPOT and FLIP rows so price is findable in
                               // the grid: a faint cyan/gold band across the whole row + a clear
-                              // left border (carried on the sticky strike cell below).
+                              // left border (carried on the sticky strike cell below). The KING
+                              // row wins a stronger gold band so the dominant node pops hardest.
+                              isKing && "bg-gold/[0.08]",
                               isSpot && "outline outline-1 outline-cyan-400/70 bg-cyan-400/[0.05]",
-                              isFlip && !isSpot && "bg-gold/[0.05]"
+                              isFlip && !isSpot && !isKing && "bg-gold/[0.05]"
                             )}
                           >
                             <th
                               scope="row"
                               className={clsx(
                                 "sticky left-0 z-10 whitespace-nowrap py-1.5 pr-2 text-left font-semibold tabular-nums backdrop-blur",
+                                // The spot row keeps its cyan border (primary anchor). The KING
+                                // row gets a 2px gold left-border + gold wash so the dominant node
+                                // is unmistakable; it outranks the flip row's lighter gold band.
                                 isSpot
                                   ? "border-l-2 border-cyan-400 bg-cyan-400/[0.12] pl-1.5 text-white"
-                                  : isFlip
-                                    ? "border-l-2 border-gold bg-gold/[0.10] pl-1.5 text-gold"
-                                    : "bg-[rgba(8,9,14,0.92)] pl-2 text-white"
+                                  : isKing
+                                    ? "border-l-2 border-gold bg-gold/[0.16] pl-1.5 text-gold"
+                                    : isFlip
+                                      ? "border-l-2 border-gold bg-gold/[0.10] pl-1.5 text-gold"
+                                      : "bg-[rgba(8,9,14,0.92)] pl-2 text-white"
                               )}
                             >
                               <span className="inline-flex items-center gap-1">
+                                {/* KING crown leads even on the spot row (king can coincide with spot). */}
+                                {isKing && <span aria-hidden className="text-gold">♔</span>}
                                 {isSpot && <span aria-hidden className="text-cyan-400">●</span>}
-                                {isFlip && !isSpot && <span aria-hidden className="text-gold">◀</span>}
+                                {isFlip && !isSpot && !isKing && <span aria-hidden className="text-gold">◀</span>}
                                 {fmtStrike(strike)}
-                                {isSpot && (
+                                {isKing && (
+                                  <span className="ml-1 font-mono text-[8px] font-bold uppercase tracking-wider text-gold">
+                                    king
+                                  </span>
+                                )}
+                                {isSpot && !isKing && (
                                   <span className="ml-1 font-mono text-[8px] uppercase tracking-wider text-cyan-400">
                                     spot
                                   </span>
                                 )}
-                                {isFlip && !isSpot && (
+                                {isFlip && !isSpot && !isKing && (
                                   <span className="ml-1 font-mono text-[8px] uppercase tracking-wider text-gold">
                                     flip
                                   </span>
@@ -3344,6 +3396,10 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                             {expiries.map((e) => {
                               const v = row[e];
                               const has = typeof v === "number";
+                              // The single PEAK CELL of the king row — the dominant expiry at the
+                              // king strike. Keeps its diverging magnitude color; a gold ♔ + gold
+                              // ring sit ON TOP so the king cell pops exactly like a starred cell.
+                              const isKingCell = isKing && matrixKingExpiry != null && e === matrixKingExpiry;
                               return (
                                 <td
                                   key={e}
@@ -3351,16 +3407,43 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                                     // Numbers are SECONDARY now — the cell color carries the
                                     // magnitude. Smaller + slightly dimmed so the heatmap reads
                                     // at a glance; white kicks in on deep cells (cellTextStyle).
-                                    "whitespace-nowrap px-2 py-1.5 text-center text-[10px] tabular-nums",
+                                    "relative whitespace-nowrap px-2 py-1.5 text-center text-[10px] tabular-nums",
                                     has
                                       ? v > 0
                                         ? posColorClass
                                         : "text-bear-text"
                                       : "text-sky-300/25"
                                   )}
-                                  style={has ? { ...cellStyle(v, peak, lens), ...cellTextStyle(v, peak) } : undefined}
-                                  title={has ? `${strike} · ${fmtExpiry(e)} · ${fmtMoneySigned(v)}` : undefined}
+                                  style={{
+                                    ...(has ? { ...cellStyle(v, peak, lens), ...cellTextStyle(v, peak) } : {}),
+                                    // Gold inset ring + glow on the king peak cell (static, opacity-only
+                                    // glow → reduced-motion safe). The magnitude bg color is preserved.
+                                    ...(isKingCell
+                                      ? {
+                                          outline: "2px solid #ffd23f",
+                                          outlineOffset: "-2px",
+                                          boxShadow: "inset 0 0 14px rgba(255,210,63,0.55)",
+                                        }
+                                      : {}),
+                                  }}
+                                  title={
+                                    isKingCell
+                                      ? `KING NODE · ${strike} · ${fmtExpiry(e)} · ${fmtMoneySigned(v as number)} — dominant dealer gamma cell`
+                                      : has
+                                        ? `${strike} · ${fmtExpiry(e)} · ${fmtMoneySigned(v)}`
+                                        : undefined
+                                  }
                                 >
+                                  {/* gold crown pinned to the king cell's corner — the ★/♔ marker */}
+                                  {isKingCell && (
+                                    <span
+                                      aria-hidden
+                                      className="pointer-events-none absolute right-0.5 top-0 text-[9px] leading-none text-gold"
+                                      style={{ textShadow: "0 0 4px rgba(255,210,63,0.9)" }}
+                                    >
+                                      ♔
+                                    </span>
+                                  )}
                                   {has ? fmtMoneySigned(v) : "·"}
                                 </td>
                               );
