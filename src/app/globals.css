@@ -25,6 +25,28 @@
   --content-max: 80rem;      /* desktop rail max-width (== Tailwind max-w-7xl) */
   --page-pad-x: 1rem;        /* mobile gutter (base) */
   --nav-offset: 60px;        /* scrolled nav height */
+
+  /* ── VITALS motion tokens — "The One Clock" ─────────────────────────────
+     Canonical, globally-available motion vocabulary for the VITALS motion
+     system. Additive token plumbing only — no animation is wired here.
+     The four signature easings mirror the sigil-block definitions
+     (globals.css ~10925) verbatim so authors can reach for them anywhere. */
+  --ease-snap: cubic-bezier(.34,1.56,.64,1);
+  --ease-draw: cubic-bezier(.22,1,.36,1);
+  --ease-breath: cubic-bezier(.4,0,.6,1);
+  --ease-sweep: cubic-bezier(.65,0,.35,1);
+
+  /* Tempo scale. */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --dur-ambient: 6s;
+
+  /* Market-pulse cadence defaults (consumed by Phase 1). */
+  --pulse-period: 6s;
+  --pulse-peak: 1;
+  --pulse-dim: 0.7;
+  --pulse-period-slow: 80s;
 }
 
 /* Page-padding ramp: nudge the gutter up at the sm tier, then lock to the
@@ -67,6 +89,13 @@ html { scroll-behavior: smooth; }
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+  /* Collapse the tempo tokens too, so JS reads of the duration vars also see
+     the reduced value (the !important rules above only tame CSS-driven motion). */
+  :root {
+    --dur-fast: 0.001ms;
+    --dur-base: 0.001ms;
+    --dur-slow: 0.001ms;
   }
 }
 :focus-visible {

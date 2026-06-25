@@ -77,6 +77,20 @@ const config: Config = {
         warning: "#ffd23f",
         elite: "#bf5fff",
       },
+      // VITALS motion system — "The One Clock". Maps the canonical CSS motion
+      // tokens (defined in globals.css :root) onto Tailwind utilities so authors
+      // can write e.g. ease-snap / duration-base. Additive; no defaults changed.
+      transitionTimingFunction: {
+        snap: "var(--ease-snap)",
+        draw: "var(--ease-draw)",
+        breath: "var(--ease-breath)",
+        sweep: "var(--ease-sweep)",
+      },
+      transitionDuration: {
+        fast: "var(--dur-fast)",
+        base: "var(--dur-base)",
+        slow: "var(--dur-slow)",
+      },
       fontFamily: {
         display: ["var(--font-anton)", "sans-serif"],
         anton: ["var(--font-anton)", "sans-serif"],
