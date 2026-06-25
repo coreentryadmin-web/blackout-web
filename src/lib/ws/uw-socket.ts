@@ -108,7 +108,7 @@ class UwSocketManager {
       // Detach handlers BEFORE closing: the ws close handshake can DEFER the 'close' event up to ~30s
       // on a half-open peer (exactly when reconnectIfStalled tears down), so a still-attached onclose
       // could fire AFTER a new socket is live and null/clobber it + double-schedule a reconnect. The
-      // onclose identity guard below is the second line of defence. (Mirrors shutdown() + spx-broadcaster.)
+      // onclose identity guard below is the second line of defence. (Mirrors shutdown().)
       try {
         ws.onopen = null;
         ws.onmessage = null;
