@@ -1640,99 +1640,49 @@ function RegimeTile({
 // (spot, flip, walls, max pain) + dark-pool levels. Always-useful rail content.
 // ---------------------------------------------------------------------------
 
-type KeyLevel = {
-  label: string;
-  value: number | null;
-  tone: "cyan" | "gold" | "bull" | "bear" | "sky";
-  note?: string;
-  /** Plain-language explainer surfaced via an accessible info affordance (Rank 8). */
-  help?: string;
-};
-
-const LEVEL_HEX: Record<KeyLevel["tone"], string> = {
-  cyan: "#22d3ee",
-  gold: "#ffd23f",
-  bull: "#00e676",
-  bear: "#ff2d55",
-  sky: "#7dd3fc",
-};
-
-function KeyLevels({
-  levels,
-  darkPoolLevels,
-}: {
-  levels: KeyLevel[];
-  darkPoolLevels: DarkPoolLevel[] | null;
-}) {
-  const shown = levels.filter((l) => l.value != null);
+/**
+ * Dark-pool levels rail card. The structural key levels (spot / flip / call wall / put
+ * wall / max pain) live ONLY in the prominent top RegimeTile cards now — the old rail
+ * "KEY LEVELS" list duplicated them, so it was dropped. Dark-pool price levels, however,
+ * appear NOWHERE in the top cards, so they keep their own focused card here (the top-N by
+ * notional). Renders nothing when there's no dark-pool data, letting the rail breathe.
+ */
+function DarkPoolRail({ darkPoolLevels }: { darkPoolLevels: DarkPoolLevel[] | null }) {
   const dp = (darkPoolLevels ?? [])
     .slice()
     .sort((a, b) => b.notional - a.notional)
     .slice(0, 4);
+  if (dp.length === 0) return null;
 
   return (
     <div className="rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] px-4 py-3">
       <div className="mb-2.5 flex items-center justify-between">
         <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-mute">
-          Key levels
+          Dark-pool levels
         </span>
         <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/75">
-          price
+          notional
         </span>
       </div>
       <ul className="space-y-1">
-        {shown.map((l) => (
-          <li
-            key={l.label}
-            className="flex items-center justify-between gap-3 border-b border-white/[0.04] py-1 last:border-0"
-          >
+        {dp.map((d, i) => (
+          <li key={`${d.price}-${i}`} className="flex items-center justify-between gap-3 py-0.5">
             <span className="flex items-center gap-2 min-w-0">
               <span
                 aria-hidden
-                className="h-1.5 w-1.5 shrink-0 rounded-full"
-                style={{ backgroundColor: LEVEL_HEX[l.tone], boxShadow: `0 0 6px ${LEVEL_HEX[l.tone]}` }}
+                className="h-px w-3 shrink-0"
+                style={{ backgroundColor: DARK_POOL_HEX, boxShadow: `0 0 6px ${DARK_POOL_HEX}` }}
               />
-              <span className="truncate font-mono text-[11px] uppercase tracking-wide text-sky-300">
-                {l.label}
+              <span className="font-mono text-[11px] tabular-nums text-white">
+                {fmtStrike(d.price)}
               </span>
-              {l.help && <InfoTip label={l.label} text={l.help} />}
             </span>
-            <span
-              className="shrink-0 font-mono text-[12px] font-bold tabular-nums"
-              style={{ color: LEVEL_HEX[l.tone] }}
-            >
-              {l.value != null ? fmtStrike(l.value) : "—"}
+            <span className="font-mono text-[11px] tabular-nums text-sky-300/80">
+              {fmtMoney(d.notional)}
             </span>
           </li>
         ))}
       </ul>
-
-      {dp.length > 0 && (
-        <div className="mt-3 border-t border-white/[0.06] pt-2.5">
-          <span className="mb-1.5 block font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/75">
-            Dark-pool levels
-          </span>
-          <ul className="space-y-1">
-            {dp.map((d, i) => (
-              <li key={`${d.price}-${i}`} className="flex items-center justify-between gap-3 py-0.5">
-                <span className="flex items-center gap-2 min-w-0">
-                  <span
-                    aria-hidden
-                    className="h-px w-3 shrink-0"
-                    style={{ backgroundColor: DARK_POOL_HEX, boxShadow: `0 0 6px ${DARK_POOL_HEX}` }}
-                  />
-                  <span className="font-mono text-[11px] tabular-nums text-white">
-                    {fmtStrike(d.price)}
-                  </span>
-                </span>
-                <span className="font-mono text-[11px] tabular-nums text-sky-300/80">
-                  {fmtMoney(d.notional)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
@@ -3277,51 +3227,19 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
           </Tabs>
             </div>
 
-            {/* RIGHT (~35–38%): Largo desk read · key levels · flow summary.
-                At xl the rail fans KeyLevels + FlowSummary into 2 internal
-                columns (Largo spans both) so the rail fills its width with
-                substantial content instead of a thin stack. */}
-            <aside className="min-w-0 grid content-start gap-4 xl:grid-cols-2">
+            {/* RIGHT (~35–38%): Largo desk read · dark-pool · flow summary.
+                The redundant "KEY LEVELS" list was dropped — spot / flip / call wall /
+                put wall / max pain already lead the page in the prominent top RegimeTile
+                cards, so repeating them here was pure duplication. ASK LARGO now gets the
+                full rail width (single-column stack) and the rail breathes; the two small
+                optional cards (dark-pool, flow) stack beneath and each self-hide when empty. */}
+            <aside className="min-w-0 grid content-start gap-4">
               {/* ── Largo read — AI desk-read narrative (lazy, keyed by ticker) ── */}
-              <div className="xl:col-span-2">
-                <LargoRead key={ticker} ticker={ticker} />
-              </div>
+              <LargoRead key={ticker} ticker={ticker} />
 
-              {/* Key levels are adapted per lens — DEX/CHARM have no walls, so their rail
-                  shows the delta-/charm-zero pivot (anchored to `flip`) + spot + max pain
-                  instead of stale wall numbers under the wrong header. */}
-              <KeyLevels
-                levels={
-                  lens === "gex"
-                    ? [
-                        { label: "Spot", value: spot > 0 ? spot : null, tone: "cyan", help: METRIC_HELP.spot },
-                        { label: "Gamma flip", value: flip, tone: "sky", help: METRIC_HELP.gammaFlip },
-                        { label: "Call wall", value: posWall, tone: "bull", help: METRIC_HELP.callWall },
-                        { label: "Put wall", value: negWall, tone: "bear", help: METRIC_HELP.putWall },
-                        { label: "Max pain", value: maxPain, tone: "sky", help: METRIC_HELP.maxPain },
-                      ]
-                    : lens === "vex"
-                      ? [
-                          { label: "Spot", value: spot > 0 ? spot : null, tone: "cyan", help: METRIC_HELP.spot },
-                          { label: "Vanna flip", value: flip, tone: "gold", help: METRIC_HELP.vannaFlip },
-                          { label: "+Vanna wall", value: posWall, tone: "sky", help: METRIC_HELP.posVannaWall },
-                          { label: "−Vanna wall", value: negWall, tone: "bear", help: METRIC_HELP.negVannaWall },
-                          { label: "Max pain", value: maxPain, tone: "sky", help: METRIC_HELP.maxPain },
-                        ]
-                      : lens === "dex"
-                        ? [
-                            { label: "Spot", value: spot > 0 ? spot : null, tone: "cyan", help: METRIC_HELP.spot },
-                            { label: "Delta-zero", value: flip, tone: "gold", help: METRIC_HELP.deltaZero },
-                            { label: "Max pain", value: maxPain, tone: "sky", help: METRIC_HELP.maxPain },
-                          ]
-                        : [
-                            { label: "Spot", value: spot > 0 ? spot : null, tone: "cyan", help: METRIC_HELP.spot },
-                            { label: "Charm-zero", value: flip, tone: "gold", help: METRIC_HELP.charmZero },
-                            { label: "Max pain", value: maxPain, tone: "sky", help: METRIC_HELP.maxPain },
-                          ]
-                }
-                darkPoolLevels={darkPoolLevels}
-              />
+              {/* Dark-pool levels are NOT shown in the top cards, so they keep a focused
+                  rail card (self-hides when there's no dark-pool data). */}
+              <DarkPoolRail darkPoolLevels={darkPoolLevels} />
 
               <FlowSummary flowByStrike={flowByStrike} />
             </aside>
