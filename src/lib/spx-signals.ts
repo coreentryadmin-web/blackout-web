@@ -206,9 +206,9 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
     if (Math.abs(dist) <= 25) {
       score += w;
       factors.push({
-        label: "GEX king",
+        label: "GEX magnet",
         weight: w,
-        detail: `${dist >= 0 ? "Above" : "Below"} king strike ${desk.gex_king.toFixed(0)}`,
+        detail: `${dist >= 0 ? "Above" : "Below"} magnet strike ${desk.gex_king.toFixed(0)}`,
       });
     }
   }
