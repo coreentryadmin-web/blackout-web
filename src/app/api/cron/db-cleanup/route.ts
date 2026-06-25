@@ -21,9 +21,16 @@ export async function GET(req: NextRequest) {
   if (dbDenied) return dbDenied;
 
   try {
-    const results = await runCleanup();
-    const totalDeleted = Object.values(results).reduce((s, n) => s + n, 0);
-    const payload = { ok: true, total_deleted: totalDeleted, tables: results };
+    const { counts, errors } = await runCleanup();
+    const totalDeleted = Object.values(counts).reduce((s, n) => s + n, 0);
+    // ok is keyed off whether any table FAILED, not the deletion count: a quiet night with
+    // genuinely nothing to prune (totalDeleted === 0, no errors) is a success, while a partial
+    // failure (some tables pruned, one errored) is surfaced as ok:false with per-table detail
+    // so the cron-staleness watchdog + admin dashboard flag it for attention.
+    const ok = errors.length === 0;
+    const payload = ok
+      ? { ok, total_deleted: totalDeleted, tables: counts }
+      : { ok, total_deleted: totalDeleted, tables: counts, errors };
     await logCronRun("db-cleanup", started, payload);
     return NextResponse.json(payload);
   } catch (error) {
@@ -75,7 +82,12 @@ async function deleteOlderThan(table: string, column: string, days: number): Pro
   return total;
 }
 
-async function runCleanup(): Promise<Record<string, number>> {
+type CleanupOutcome = {
+  counts: Record<string, number>;
+  errors: Array<{ table: string; error: string }>;
+};
+
+async function runCleanup(): Promise<CleanupOutcome> {
   // Generous, env-configurable retention for high-write outcome tables. Default 365d keeps a
   // full year of resolved history for admin rollups / Largo analytics; hard floor is 90d.
   const spxOutcomeDays = cleanupRetentionDays(process.env.SPX_OUTCOMES_RETENTION_DAYS, 365);
@@ -84,59 +96,56 @@ async function runCleanup(): Promise<Record<string, number>> {
     365,
   );
 
-  const [
-    apiTelemetry,
-    flowAlerts,
-    cronRuns,
-    spxSignalLog,
-    nighthawkDossiersStaging,
-    nighthawkJobLog,
-    adminAuditLog,
-    spxPlayOutcomes,
-    nighthawkPlayOutcomes,
-  ] = await Promise.all([
+  // One row per table: (key, the actual prune call). Order is irrelevant — they run concurrently.
+  const tasks: Array<{ table: string; run: () => Promise<number> }> = [
     // api_telemetry_events: very high volume (~30k rows/day) — keep 7 days
     // NOTE: this table's timestamp column is "at", not "created_at"
-    deleteOlderThan("api_telemetry_events", "at", 7),
+    { table: "api_telemetry_events", run: () => deleteOlderThan("api_telemetry_events", "at", 7) },
 
     // flow_alerts: keep 60 days
     // Hard floor is 30d (Night Hawk avg-premium scorer uses 30-day rolling window).
     // 60d gives safety margin + covers user lookback and Largo historical queries.
-    deleteOlderThan("flow_alerts", "inserted_at", 60),
+    { table: "flow_alerts", run: () => deleteOlderThan("flow_alerts", "inserted_at", 60) },
 
     // cron_job_runs: keep 30 days of run history
-    deleteOlderThan("cron_job_runs", "started_at", 30),
+    { table: "cron_job_runs", run: () => deleteOlderThan("cron_job_runs", "started_at", 30) },
 
     // spx_signal_log: evaluator fires every 30-60s during RTH — keep 90 days
-    deleteOlderThan("spx_signal_log", "created_at", 90),
+    { table: "spx_signal_log", run: () => deleteOlderThan("spx_signal_log", "created_at", 90) },
 
     // nighthawk_dossiers_staging: temp staging — never queried after nightly build completes
-    deleteOlderThan("nighthawk_dossiers_staging", "created_at", 2),
+    { table: "nighthawk_dossiers_staging", run: () => deleteOlderThan("nighthawk_dossiers_staging", "created_at", 2) },
 
     // nighthawk_job_log: nightly runs — keep 60 days
-    deleteOlderThan("nighthawk_job_log", "created_at", 60),
+    { table: "nighthawk_job_log", run: () => deleteOlderThan("nighthawk_job_log", "created_at", 60) },
 
     // admin_audit_log: compliance — keep 90 days
-    deleteOlderThan("admin_audit_log", "created_at", 90),
+    { table: "admin_audit_log", run: () => deleteOlderThan("admin_audit_log", "created_at", 90) },
 
     // spx_play_outcomes: high-write trade-outcome ledger. Prune CLOSED rows only
     // (open rows have closed_at IS NULL + 'outcome <> open' guard). Default 365d, >=90d floor.
-    deleteOlderThan("spx_play_outcomes", "closed_at", spxOutcomeDays),
+    { table: "spx_play_outcomes", run: () => deleteOlderThan("spx_play_outcomes", "closed_at", spxOutcomeDays) },
 
     // nighthawk_play_outcomes: high-write outcome ledger. Prune RESOLVED rows only
     // (pending/open excluded by status guard). Default 365d, >=90d floor.
-    deleteOlderThan("nighthawk_play_outcomes", "created_at", nighthawkOutcomeDays),
-  ]);
+    { table: "nighthawk_play_outcomes", run: () => deleteOlderThan("nighthawk_play_outcomes", "created_at", nighthawkOutcomeDays) },
+  ];
 
-  return {
-    api_telemetry_events: apiTelemetry,
-    flow_alerts: flowAlerts,
-    cron_job_runs: cronRuns,
-    spx_signal_log: spxSignalLog,
-    nighthawk_dossiers_staging: nighthawkDossiersStaging,
-    nighthawk_job_log: nighthawkJobLog,
-    admin_audit_log: adminAuditLog,
-    spx_play_outcomes: spxPlayOutcomes,
-    nighthawk_play_outcomes: nighthawkPlayOutcomes,
-  };
+  // allSettled, NOT all: a single table's transient failure (deadlock 40P01, lock/statement
+  // timeout, brief connection drop) must NOT abort the rest — every other table still gets
+  // pruned this run instead of being skipped until the next night. deleteOlderThan commits each
+  // 5000-row batch as its own statement, so already-deleted rows stay deleted regardless.
+  const settled = await Promise.allSettled(tasks.map((t) => t.run()));
+  const counts: Record<string, number> = {};
+  const errors: Array<{ table: string; error: string }> = [];
+  settled.forEach((r, i) => {
+    const { table } = tasks[i];
+    if (r.status === "fulfilled") {
+      counts[table] = r.value;
+    } else {
+      counts[table] = 0;
+      errors.push({ table, error: r.reason instanceof Error ? r.reason.message : String(r.reason) });
+    }
+  });
+  return { counts, errors };
 }

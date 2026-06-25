@@ -561,6 +561,11 @@ class OptionsSocketPool {
       if (idx === undefined) continue;
       this.shards[idx]?.remove(occ);
       this.owner.delete(occ);
+      // Evict the in-memory mark too — without this, optionMarks grows unbounded for the
+      // process lifetime (one entry per distinct OCC ever quoted) since nothing else prunes
+      // it. Tying eviction to unsubscribe keeps the map bounded by currently-held contracts.
+      // A later re-subscribe repopulates it from the next Q frame (Redis covers the interim).
+      optionMarks.delete(occ);
     }
     // Reset overflow latch once we drop below capacity so a later spike re-warns.
     if (this.overflowLogged && this.owner.size < this.capacity()) {
