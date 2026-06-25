@@ -576,9 +576,10 @@ type ProfileRow = {
   flow: FlowByStrike | null;
 };
 
-/** Dark-pool overlay colors (sky / violet) — brand tokens, never grey. */
+/** Dark-pool overlay colors — two on-brand NEUTRAL tones (sky / cyan) so alternating
+ *  levels stay distinguishable without the off-brand violet. Brand tokens, never grey. */
 const DARK_POOL_HEX = "#7dd3fc";
-const DARK_POOL_ALT_HEX = "#bf5fff";
+const DARK_POOL_ALT_HEX = "#22d3ee";
 
 function ExposureProfile({
   rows,
@@ -964,15 +965,18 @@ function CumulativeCurve({
         {/* short-gamma fill (below zero) — bear-red identity */}
         <path d={geom.areaPath} fill={c.negHex} fillOpacity={0.16} clipPath={`url(#${clipBearId})`} />
 
-        {/* the cumulative line itself */}
+        {/* the cumulative line itself — NEUTRAL sky so it reads as the running-sum
+            trace, not the call-wall gold. The colored area fill (emerald above the
+            flip, bear-red below) already carries the directional meaning; the line
+            stays a calm anchor that doesn't clash with the gold flip marker. */}
         <path
           d={geom.linePath}
           fill="none"
-          stroke="#ffd23f"
+          stroke="#7dd3fc"
           strokeWidth={1.6}
           strokeLinejoin="round"
           strokeLinecap="round"
-          style={{ filter: "drop-shadow(0 0 3px rgba(255,210,63,0.5))" }}
+          style={{ filter: "drop-shadow(0 0 3px rgba(125,211,252,0.5))" }}
         />
 
         {/* flip marker — vertical gold line at the zero-crossing */}
@@ -1571,7 +1575,7 @@ function RegimeTile({
 type KeyLevel = {
   label: string;
   value: number | null;
-  tone: "cyan" | "gold" | "bull" | "bear" | "sky" | "violet";
+  tone: "cyan" | "gold" | "bull" | "bear" | "sky";
   note?: string;
   /** Plain-language explainer surfaced via an accessible info affordance (Rank 8). */
   help?: string;
@@ -1583,7 +1587,6 @@ const LEVEL_HEX: Record<KeyLevel["tone"], string> = {
   bull: "#00e676",
   bear: "#ff2d55",
   sky: "#7dd3fc",
-  violet: "#bf5fff",
 };
 
 function KeyLevels({
@@ -2893,7 +2896,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
             </summary>
             <div className="mt-3 space-y-2 text-[12px] leading-relaxed text-sky-100">
               <p>
-                <span className="font-semibold text-purple-light">Short gamma</span> (spot below the{" "}
+                <span className="font-semibold text-bear-text">Short gamma</span> (spot below the{" "}
                 <span className="font-semibold text-gold">flip</span>): dealers hedge WITH the move, so
                 they amplify it — expect vol expansion and trend. <span className="font-semibold text-bull">Long gamma</span>{" "}
                 (spot above the flip): dealers hedge AGAINST the move, dampening it — expect range-bound,
@@ -2999,7 +3002,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                 <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-sky-300/75">
                   {`Net dealer ${vocab.unit} per strike · ${vocab.pos} / ${vocab.neg} · `}
                   {scopeLabel} total{" "}
-                  <span className={clsx(filteredTotal >= 0 ? posColorClass : "text-purple-light")}>
+                  <span className={clsx(filteredTotal >= 0 ? posColorClass : "text-bear-text")}>
                     {fmtMoney(filteredTotal)}
                   </span>
                 </p>
@@ -3018,7 +3021,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                 <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-sky-300/75">
                   {`Cumulative net dealer ${vocab.unit} across strikes · zero-crossing = ${vocab.pivot} · `}
                   {scopeLabel} total{" "}
-                  <span className={clsx(filteredTotal >= 0 ? posColorClass : "text-purple-light")}>
+                  <span className={clsx(filteredTotal >= 0 ? posColorClass : "text-bear-text")}>
                     {fmtMoney(filteredTotal)}
                   </span>
                 </p>
@@ -3144,7 +3147,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                                     has
                                       ? v > 0
                                         ? posColorClass
-                                        : "text-purple-light"
+                                        : "text-bear-text"
                                       : "text-sky-300/30"
                                   )}
                                   style={has ? cellStyle(v, peak, lens) : undefined}
@@ -3157,7 +3160,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                             <td
                               className={clsx(
                                 "whitespace-nowrap px-2 py-1.5 text-right font-semibold tabular-nums",
-                                rowTotal > 0 ? posColorClass : rowTotal < 0 ? "text-purple-light" : "text-sky-300/40"
+                                rowTotal > 0 ? posColorClass : rowTotal < 0 ? "text-bear-text" : "text-sky-300/40"
                               )}
                               style={rowTotal ? cellStyle(rowTotal, totalPeak, lens) : undefined}
                             >
@@ -3178,7 +3181,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
 
                 <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-sky-300/75">
                   {`Net dealer ${vocab.unit} per strike × expiry · ${vocab.pos} / ${vocab.neg} · total `}
-                  <span className={clsx(total >= 0 ? posColorClass : "text-purple-light")}>
+                  <span className={clsx(total >= 0 ? posColorClass : "text-bear-text")}>
                     {fmtMoney(total)}
                   </span>
                 </p>
@@ -3215,7 +3218,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                           { label: "Spot", value: spot > 0 ? spot : null, tone: "cyan", help: METRIC_HELP.spot },
                           { label: "Vanna flip", value: flip, tone: "gold", help: METRIC_HELP.vannaFlip },
                           { label: "+Vanna wall", value: posWall, tone: "sky", help: METRIC_HELP.posVannaWall },
-                          { label: "−Vanna wall", value: negWall, tone: "violet", help: METRIC_HELP.negVannaWall },
+                          { label: "−Vanna wall", value: negWall, tone: "bear", help: METRIC_HELP.negVannaWall },
                           { label: "Max pain", value: maxPain, tone: "sky", help: METRIC_HELP.maxPain },
                         ]
                       : lens === "dex"
