@@ -580,7 +580,11 @@ function buildUnifiedTape(
   const items: SpxTapeItem[] = [];
 
   for (const f of flows) {
-    const isPut = f.option_type.toUpperCase().startsWith("P");
+    const type = f.option_type.toUpperCase();
+    // Gap #6 residual: skip typeless ('UNKNOWN') alerts rather than fabricate a CALL side/label. The
+    // tape is a directional read, and parseUwFlowAlert now emits UNKNOWN for malformed UW prints.
+    if (!type.startsWith("C") && !type.startsWith("P")) continue;
+    const isPut = type.startsWith("P");
     items.push({
       kind: "flow",
       side: isPut ? "put" : "call",
