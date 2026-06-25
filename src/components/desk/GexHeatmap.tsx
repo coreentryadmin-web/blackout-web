@@ -2687,14 +2687,13 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
   // Per-lens walls — GEX/VEX only; DEX/CHARM have NO walls (null → wall tiles/tags hide).
   const posWall = lens === "gex" ? (data?.gex?.call_wall ?? null) : lens === "vex" ? (data?.vex?.pos_wall ?? null) : null;
   const negWall = lens === "gex" ? (data?.gex?.put_wall ?? null) : lens === "vex" ? (data?.vex?.neg_wall ?? null) : null;
-  // Per-lens regime posture + read, pulled from whichever block is active.
-  // Defensive `?.regime?.` — the engine always writes `regime` today, but an older CACHED payload
-  // could lack it; non-optional `.regime` access would white-screen the whole component.
-  const gexPosture = data?.gex?.regime?.posture ?? null;
-  const vexPosture = data?.vex?.regime?.posture ?? null;
+  // Per-lens regime posture — DEX/CHARM only; these still drive their posture cells in the
+  // KEY LEVELS box. (The GEX/VEX posture pills, the regime-read blurb, and the how-to-read
+  // explainer were removed in the declutter pass — those are gone, so their derived strings
+  // are too.) Defensive `?.regime?.` — the engine always writes `regime` today, but an older
+  // CACHED payload could lack it; non-optional `.regime` access would white-screen the component.
   const dexPosture = data?.dex?.regime?.posture ?? null;
   const charmPosture = data?.charm?.regime?.posture ?? null;
-  const regimeRead = block?.regime?.read ?? "Regime read unavailable.";
 
   // ── Per-expiry / 0DTE scope (Rank 5) ─────────────────────────────────────────
   // "0dte" resolves to today's date if it's on the axis, else the earliest expiry.
@@ -3606,52 +3605,17 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
   );
 
   return (
-    <Panel
-      accent={panelAccent}
-      kicker={`Dealer ${vocab.noun.toLowerCase()} exposure · Polygon options`}
-      title={
-        <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span>
-            {/* While stale (old ticker's payload still in hand), show the SELECTED
-                ticker so the title never reads the previous underlying. (Rank 10) */}
-            {stale ? ticker : data?.underlying ?? ticker} {lensUpper} Positioning
-          </span>
-        </span>
-      }
-      actions={
-        <span className="flex items-center gap-2">
-          {/* Fast-move refresh flash — fires when a >0.5% spot divergence forces an
-              immediate matrix recompute. Reduced-motion users get a static chip. */}
-          {fastFlash && (
-            <span
-              role="status"
-              className="inline-flex items-center gap-1 rounded-md bg-cyan-400/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-cyan-400 outline outline-1 outline-cyan-400/40 motion-safe:animate-pulse"
-              title="Fast move detected — gamma profile refreshed immediately"
-            >
-              <span aria-hidden>⚡</span> fast-move refresh
-            </span>
-          )}
-          {/* Live (green pulse) only when a fresh, current-ticker chain has strikes.
-              A spot-only snapshot (chain empty) shows a quieter "Quote only" pill
-              instead of a pulsing green Live over a "NO OPTIONS CHAIN" body. (Rank 14) */}
-          {live ? (
-            <Badge tone="bull" dot>
-              Live
-            </Badge>
-          ) : quoteOnly ? (
-            <Badge tone="sky">Quote only</Badge>
-          ) : (
-            <Badge tone="neutral">Offline</Badge>
-          )}
-        </span>
-      }
-    >
+    <Panel accent={panelAccent}>
       {/* ── ONE compact control row (UI refactor) ──────────────────────────────
-          [🔍 ticker + spot]  [ Profile+Matrix | Curve+Shift ]  …spacer…  [GEX VEX DEX CHARM]
+          [🔍 ticker + spot]  [ Profile+Matrix | Curve+Shift ]  …spacer…  [live · GEX VEX DEX CHARM]
           The old full-width ticker-chip row, the big central spot readout, and the
           separate lens box are gone — collapsed into this single row. The view tabs
           (Profile+Matrix | Curve+Shift) ride here too via a controlled mirror of the
           body's TabPanels (`pairView`); they only show once a real block is in hand.
+          The redundant secondary header band (eyebrow + "<TICKER> GEX Positioning"
+          title) was removed — the HEATMAPS hero + ticker selector already name the
+          page. The freshness indicator that lived on that header's actions slot is
+          preserved as the minimal Live/Quote-only dot at the far right of this row.
           Wraps gracefully on narrow widths (flex-wrap). */}
       <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-white/10 bg-[rgba(8,9,14,0.45)] px-3 py-2.5 backdrop-blur">
         {/* Compact searchable ticker + the ONE kept clean spot reference. */}
@@ -3674,8 +3638,34 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
           </Tabs>
         )}
 
-        {/* Spacer pushes the lens toggles to the far right of the row. */}
+        {/* Spacer pushes the freshness dot + lens toggles to the far right of the row. */}
         <span className="ml-auto" aria-hidden />
+
+        {/* Freshness indicator — the single minimal data-freshness signal kept after the
+            redundant secondary header (which carried the old Live/Quote-only badge) was
+            removed. A pulsing green dot = a fresh current-ticker chain; sky = spot-only
+            (chain empty); bear = offline. The fast-move flash rides here too — it fires
+            when a >0.5% spot divergence forces an immediate matrix recompute. */}
+        <span className="flex items-center gap-2">
+          {fastFlash && (
+            <span
+              role="status"
+              className="inline-flex items-center gap-1 rounded-md bg-cyan-400/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-cyan-400 outline outline-1 outline-cyan-400/40 motion-safe:animate-pulse"
+              title="Fast move detected — gamma profile refreshed immediately"
+            >
+              <span aria-hidden>⚡</span> fast-move refresh
+            </span>
+          )}
+          {live ? (
+            <Badge tone="bull" dot>
+              Live
+            </Badge>
+          ) : quoteOnly ? (
+            <Badge tone="sky">Quote only</Badge>
+          ) : (
+            <Badge tone="neutral">Offline</Badge>
+          )}
+        </span>
 
         {/* Lens switcher — FOUR lenses on the shared Tabs primitive (controlled by `lens`)
             for consistent ARIA wiring + keyboard nav (Arrow/Home/End, roving tabindex).
@@ -3790,49 +3780,6 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
               MAGNET cell so the dominant node still pops. Frees the chart space below. ── */}
           <KeyLevelBox cells={levelCells} kicker={`${lensUpper} structure`} />
 
-          {/* regime read strip — clean full-width band below the box (the thin context strip) */}
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] px-4 py-3">
-            {lens === "gex" ? (
-              gexPosture != null &&
-              (gexPosture === "long" ? (
-                // Long gamma = the calm, mean-reverting regime → emerald.
-                <Badge tone="bull" dot>
-                  Long Gamma
-                </Badge>
-              ) : (
-                // Short gamma is a REGIME, not an alarm — amber caution, never alarm-red.
-                // (The Badge primitive carries no amber tone, so this mirrors its markup
-                // with the gold/amber token to keep the color-only scope.)
-                <span className="inline-flex items-center gap-1.5 rounded-full border font-mono font-semibold uppercase tracking-[0.14em] tabular-nums px-2 py-0.5 text-[10px] border-gold/35 bg-gold/12 text-gold">
-                  <span
-                    aria-hidden
-                    className="h-1.5 w-1.5 rounded-full bg-gold animate-pulse motion-reduce:animate-none"
-                  />
-                  Short Gamma
-                </span>
-              ))
-            ) : lens === "vex" ? (
-              vexPosture != null && (
-                <Badge tone={vexPosture === "positive" ? "sky" : "accent"} dot>
-                  {vexPosture === "positive" ? "Vanna Positive" : "Vanna Negative"}
-                </Badge>
-              )
-            ) : lens === "dex" ? (
-              dexPosture != null && (
-                <Badge tone={dexPosture === "long" ? "bull" : "bear"} dot>
-                  {dexPosture === "long" ? "Long Delta · Stabilizing" : "Short Delta · Destabilizing"}
-                </Badge>
-              )
-            ) : (
-              charmPosture != null && (
-                <Badge tone={charmPosture === "positive" ? "accent" : "bear"} dot>
-                  {charmPosture === "positive" ? "Charm Positive · Pins Up" : "Charm Negative · Drags Down"}
-                </Badge>
-              )
-            )}
-            <p className="min-w-0 flex-1 text-[13px] leading-snug text-sky-100">{regimeRead}</p>
-          </div>
-
           {/* ── Recent-range strip (HISTORY context) — where the live spot sits within the
               last-N-session range (+ the flip within its range under GEX). Renders nothing
               when EOD history is cold (the norm until the cron runs a few sessions). The
@@ -3845,42 +3792,6 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
               showFlipTrack={lens === "gex"}
             />
           )}
-
-          {/* ── "How to read dealer positioning" — collapsible explainer (Rank 8).
-              Native <details>/<summary> disclosure: keyboard-operable, no JS state,
-              brand colors only. Closed by default so it never crowds the desk. */}
-          <details className="group mt-3 rounded-xl border border-sky-400/20 bg-[rgba(8,12,20,0.45)] px-4 py-2.5">
-            <summary
-              className={clsx(
-                "flex cursor-pointer list-none items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-sky-300 outline-none",
-                "focus-visible:ring-2 focus-visible:ring-sky-400 [&::-webkit-details-marker]:hidden"
-              )}
-            >
-              <span aria-hidden className="text-[11px] transition-transform group-open:rotate-90">▸</span>
-              How to read dealer positioning
-            </summary>
-            <div className="mt-3 space-y-2 text-[12px] leading-relaxed text-sky-100">
-              <p>
-                <span className="font-semibold text-bear-text">Short gamma</span> (spot below the{" "}
-                <span className="font-semibold text-gold">flip</span>): dealers hedge WITH the move, so
-                they amplify it — expect vol expansion and trend. <span className="font-semibold text-bull">Long gamma</span>{" "}
-                (spot above the flip): dealers hedge AGAINST the move, dampening it — expect range-bound,
-                mean-reverting tape. The flip is the regime pivot.
-              </p>
-              <p>
-                The <span className="font-semibold text-gold">call wall</span> (most positive gamma) acts as an
-                upside magnet / resistance and a likely pin; the{" "}
-                <span className="font-semibold text-bear">put wall</span> (most negative gamma) acts as downside
-                support. <span className="font-semibold text-sky-300">Max pain</span> is the OI-gravity strike price
-                tends to drift toward into expiration.
-              </p>
-              <p className="text-sky-300/80">
-                Toggle the expiry chips to compare 0DTE positioning (which behaves very differently) against the
-                full options stack — the walls and flip recompute for the scope you pick. Market-structure
-                analysis, not financial advice.
-              </p>
-            </div>
-          </details>
 
           {/* ── Main area — 2 PAIRED views (Step 3). The four single views collapse into
               two paired tabs so two complementary panels share the viewport at once:
