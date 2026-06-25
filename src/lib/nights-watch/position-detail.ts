@@ -733,6 +733,32 @@ function buildVerdictContext(args: {
 }
 
 /**
+ * GEX-consistent wall label (cross-tool fix #80). The platform-wide GexWall
+ * contract sets `kind` GEOMETRICALLY (strike vs spot), but the Heatmap and the
+ * canonical positioning deriver (gex-positioning.ts) name walls by GEX SIGN:
+ * positive net-gamma = CALL WALL (resistance/pin), negative = PUT WALL (support).
+ * Labeling a put-wall-signature strike (negative net_gex, e.g. 735 @ -$154M) as
+ * a plain "resistance wall" just because it sits above spot contradicts the
+ * Heatmap, which correctly shows it as a PUT WALL / support.
+ *
+ * So we name the wall by its net_gex sign, and when spot has broken THROUGH it
+ * (geometric kind disagrees with the GEX-native role) we say it is "acting as
+ * support/resistance" rather than silently relabeling the wall itself.
+ */
+function gexWallLabel(w: GexWall): string {
+  // net_gex === 0 carries no put/call signature — fall back to geometry.
+  if (!Number.isFinite(w.net_gex) || w.net_gex === 0) {
+    return w.kind === "support" ? "GEX support wall" : "GEX resistance wall";
+  }
+  const isPutWall = w.net_gex < 0; // negative net-gamma => put wall (support)
+  const base = isPutWall ? "Put wall" : "Call wall";
+  // A put wall natively acts as support; a call wall natively acts as resistance.
+  const nativeRole = isPutWall ? "support" : "resistance";
+  // If spot has broken past the wall, its geometric role flips.
+  return w.kind === nativeRole ? `${base} (${nativeRole})` : `${base} (acting as ${w.kind})`;
+}
+
+/**
  * Plain-English "what to do" from the authoritative verdict + the strongest reasons,
  * plus the levels to watch. levelsToWatch = SPX confluence entry/stop/target when present,
  * else nearest support/resistance (technicals) + GEX walls + the position's breakeven.
@@ -788,9 +814,10 @@ function composeWhatToDo(args: {
     for (const lvl of technicals?.keyLevels ?? []) {
       pushLevel(lvl.kind === "support" ? "Support" : "Resistance", lvl.price);
     }
-    // GEX walls.
+    // GEX walls — label by GEX sign (put/call wall), consistent with the
+    // Heatmap, not by raw strike-vs-spot geometry (cross-tool fix #80).
     for (const w of positioning?.walls ?? []) {
-      pushLevel(w.kind === "support" ? "GEX support wall" : "GEX resistance wall", w.strike);
+      pushLevel(gexWallLabel(w), w.strike);
     }
     // Gamma flip + max pain as structural context.
     pushLevel("Gamma flip", positioning?.gammaFlip);
