@@ -1,9 +1,15 @@
+import type { Metadata } from "next";
 import { requireTier } from "@/lib/auth-access";
 import { canAccessTool } from "@/lib/tool-access-server";
 import { ComingSoon } from "@/components/ComingSoon";
 import { PageShell, PageHeader } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { Heatmap } from "@/components/Heatmap";
+
+export const metadata: Metadata = {
+  title: "Heatmaps · BlackOut",
+  description: "Dealer gamma & vanna exposure mapped across the full options chain.",
+};
 
 export default async function HeatmapPage() {
   await requireTier("premium");

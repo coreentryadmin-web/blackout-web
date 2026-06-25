@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import { requireTier } from "@/lib/auth-access";
 import { PageShell, PageHeader } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { FlowFeed } from "@/components/FlowFeed";
 import { DnaHelixBackgroundLazy as DnaHelixBackground } from "@/components/DnaHelixBackgroundLazy";
+
+export const metadata: Metadata = {
+  title: "HELIX · BlackOut",
+  description: "Whale & dark-pool options flow — real-time institutional tape.",
+};
 
 export default async function FlowsPage() {
   await requireTier("premium");

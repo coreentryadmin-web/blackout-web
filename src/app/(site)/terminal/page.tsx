@@ -1,9 +1,15 @@
+import type { Metadata } from "next";
 import { requireTier } from "@/lib/auth-access";
 import { canAccessTool } from "@/lib/tool-access-server";
 import { ComingSoon } from "@/components/ComingSoon";
 import { LargoTerminal } from "@/components/desk/LargoTerminal";
 import { PageHeader, Badge } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
+
+export const metadata: Metadata = {
+  title: "Largo · BlackOut",
+  description: "Your AI desk officer — live desk intel grounded in BlackOut's tools.",
+};
 
 export default async function TerminalPage() {
   await requireTier("premium");

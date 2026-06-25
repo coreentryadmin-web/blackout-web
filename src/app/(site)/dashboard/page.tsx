@@ -1,9 +1,15 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import { requireTier } from "@/lib/auth-access";
 import { SpxDashboard } from "@/components/SpxDashboard";
 import { IMAGES } from "@/lib/images";
 
 export const revalidate = 0;
+
+export const metadata: Metadata = {
+  title: "SPX Slayer · BlackOut",
+  description: "The 0DTE command desk — live GEX walls, dealer positioning and options flow.",
+};
 
 export default async function DashboardPage() {
   await requireTier("premium");

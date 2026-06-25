@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { requireTier } from "@/lib/auth-access";
 import { canAccessTool } from "@/lib/tool-access-server";
 import { ComingSoon } from "@/components/ComingSoon";
@@ -9,6 +10,11 @@ import { NightHawkFeed } from "@/components/NightHawkFeed";
 
 import { NightHawkRadarBackdrop } from "@/components/nighthawk/NightHawkRadarBackdrop";
 import { NightHawkBackdrop } from "@/components/nighthawk/NightHawkBackdrop";
+
+export const metadata: Metadata = {
+  title: "Night Hawk · BlackOut",
+  description: "Tomorrow's playbook — after-hours overnight recon and ranked setups.",
+};
 
 export default async function NightHawkPage() {
   await requireTier("premium");
