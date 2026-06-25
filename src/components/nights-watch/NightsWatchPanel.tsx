@@ -588,17 +588,27 @@ function PositionCard({
       </div>
 
       {/* Greeks / risk micro-grid — labeled, mono, tidy. 2-col on narrow (mobile / the card at
-          ≤sm), 4-col once there's room so 8 cells never cram or overflow. */}
-      <div className="grid grid-cols-2 gap-x-2.5 gap-y-2.5 sm:grid-cols-4">
-        <Metric label="Mark" value={live ? num(position.valuation?.mark) : EM_DASH} />
-        <Metric label="Δ" value={live ? num(position.valuation?.delta) : EM_DASH} />
-        <Metric label="Θ/day" value={live ? num(position.valuation?.theta) : EM_DASH} />
-        <Metric label="IV" value={live ? ivPct(position.valuation?.iv) : EM_DASH} />
-        <Metric label="DTE" value={num(position.dte, 0)} />
-        <Metric label="B/E" value={num(position.breakeven)} />
-        <Metric label="Dist→K" value={live ? pct(position.distance_to_strike_pct) : EM_DASH} />
-        <Metric label="OI" value={live ? num(position.valuation?.openInterest, 0) : EM_DASH} />
-      </div>
+          ≤sm), 4-col once there's room so 8 cells never cram or overflow.
+          Off-live (unavailable / pending) the live-gated cells would all read "—", which looks
+          broken. So instead of a grid of dashes we collapse to one honest "resumes at the open"
+          line — the card reads as deliberately idle, waiting for the bell, not failed. */}
+      {live ? (
+        <div className="grid grid-cols-2 gap-x-2.5 gap-y-2.5 sm:grid-cols-4">
+          <Metric label="Mark" value={num(position.valuation?.mark)} />
+          <Metric label="Δ" value={num(position.valuation?.delta)} />
+          <Metric label="Θ/day" value={num(position.valuation?.theta)} />
+          <Metric label="IV" value={ivPct(position.valuation?.iv)} />
+          <Metric label="DTE" value={num(position.dte, 0)} />
+          <Metric label="B/E" value={num(position.breakeven)} />
+          <Metric label="Dist→K" value={pct(position.distance_to_strike_pct)} />
+          <Metric label="OI" value={num(position.valuation?.openInterest, 0)} />
+        </div>
+      ) : (
+        <p className="font-mono text-[11px] leading-snug text-sky-300">
+          Valuation resumes at market open ·{" "}
+          <span className="text-emerald-300">9:30&nbsp;AM ET</span>
+        </p>
+      )}
 
       {/* One-line "what to do" — first verdict reason, clamped. */}
       {reason && (
