@@ -37,6 +37,11 @@ export type AdminHealthPayload = {
   };
   route_errors: ReturnType<typeof getAdminRouteErrors>;
   market_health_ok: boolean;
+  // True when the cluster-wide UW Redis ceiling is down AND we are multi-replica (uw.degraded). In
+  // that state each limiter is on the per-replica budget and the cluster can overshoot the upstream
+  // UW cap if REPLICA_COUNT is stale — so it is folded into health_ok and the critical-issues path
+  // below (audit #8/#78), not just buried in the rate_limiters JSON.
+  redis_degraded: boolean;
 };
 
 export async function buildAdminHealthSnapshot(): Promise<AdminHealthPayload> {
@@ -51,16 +56,38 @@ export async function buildAdminHealthSnapshot(): Promise<AdminHealthPayload> {
     marketOpen: merged.market_open === true,
   });
 
+  const uwStats = uwRateLimiterStats();
+  // Redis-degraded = UW Redis ceiling down AND multi-replica (uwStats.degraded already encodes both;
+  // a single replica on local pacing is NOT degraded). buildSpxAdminIssues lives outside this cluster
+  // and does not yet know about the limiter, so we surface the signal HERE: synthesize a critical
+  // issue, bump the critical count, and fold it into health_ok so the admin console flags it (#8/#78).
+  const redisDegraded = uwStats.degraded === true;
+  const issues = redisDegraded
+    ? [
+        {
+          id: "rate_limit:redis_degraded",
+          severity: "critical" as const,
+          category: "rate_limit",
+          title: "UW rate-limiter degraded — Redis ceiling down",
+          detail:
+            `Cluster-wide UW Redis ceiling unavailable; each replica is on per-replica pacing ` +
+            `${uwStats.degradedLocalRps.toFixed(2)} rps (REPLICA_COUNT=${uwStats.replicaCount}). ` +
+            `If REPLICA_COUNT is stale the cluster can overshoot the upstream UW cap.`,
+        },
+        ...issuesPayload.issues,
+      ]
+    : issuesPayload.issues;
+
   return {
     generated_at: new Date().toISOString(),
-    health_ok: issuesPayload.health_ok && marketHealth.ok,
+    health_ok: issuesPayload.health_ok && marketHealth.ok && !redisDegraded,
     counts: {
-      critical: issuesPayload.counts.critical,
+      critical: issuesPayload.counts.critical + (redisDegraded ? 1 : 0),
       warning: issuesPayload.counts.warning,
       info: issuesPayload.counts.info,
       api_errors: issuesPayload.api_errors.length,
     },
-    issues: issuesPayload.issues,
+    issues,
     provider_health: getProviderHealthSummary(),
     websockets: {
       polygon_indices: getIndexStoreStatus(),
@@ -68,10 +95,11 @@ export async function buildAdminHealthSnapshot(): Promise<AdminHealthPayload> {
       options: getOptionsSocketStatus(),
     },
     rate_limiters: {
-      uw: uwRateLimiterStats(),
+      uw: uwStats,
       polygon: polygonRateLimiterStats(),
     },
     route_errors: getAdminRouteErrors(),
     market_health_ok: marketHealth.ok,
+    redis_degraded: redisDegraded,
   };
 }

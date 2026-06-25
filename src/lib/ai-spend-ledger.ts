@@ -75,6 +75,42 @@ export function isOverAiSpendCeiling(currentTotal: number, ceiling: number | nul
   return ceiling != null && currentTotal >= ceiling;
 }
 
+/**
+ * Conservative PER-PROCESS fraction of the org ceiling used as a fail-CLOSED backstop when the
+ * shared cross-replica ledger is unreachable (Redis down). The kill-switch exists precisely to bound
+ * a runaway Claude loop, and an infra blip is exactly when an unbounded loop is most dangerous — so a
+ * Redis loss must NOT silently lift the ceiling. When Redis is down we can no longer see org-wide
+ * spend, so each process self-limits to this slice of the ceiling: enough headroom that healthy
+ * single-call traffic is never blocked, but low enough that a single looping process is stopped long
+ * before it can burn the whole org budget. Override via DAILY_AI_SPEND_LOCAL_BACKSTOP_FRAC.
+ */
+export const DEFAULT_AI_SPEND_LOCAL_BACKSTOP_FRAC = 0.5;
+
+/** Read the local-backstop fraction (0..1); falls back to the default for unset/invalid/out-of-range. */
+export function aiSpendLocalBackstopFrac(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = Number(env.DAILY_AI_SPEND_LOCAL_BACKSTOP_FRAC);
+  return Number.isFinite(raw) && raw > 0 && raw <= 1 ? raw : DEFAULT_AI_SPEND_LOCAL_BACKSTOP_FRAC;
+}
+
+/**
+ * FAIL-CLOSED local backstop for the cost gate when the shared ledger can't be read.
+ *
+ * Returns true (→ reject new spend) when the kill-switch is ARMED (ceiling != null) AND this
+ * process's own daily spend has already reached its conservative slice (frac × ceiling) of the
+ * ceiling. With the kill-switch disarmed (ceiling == null) it always returns false, so this is a
+ * no-op unless the operator has opted in — same OPT-IN contract as the live Redis ceiling. This is
+ * the deliberate fail-CLOSED replacement for the old "Redis down → allow" no-op (audit S-5/#5/#6).
+ */
+export function isOverAiSpendLocalBackstop(
+  localProcessTotal: number,
+  ceiling: number | null,
+  frac: number = DEFAULT_AI_SPEND_LOCAL_BACKSTOP_FRAC
+): boolean {
+  if (ceiling == null) return false; // kill-switch disarmed → never blocks (OPT-IN)
+  const budget = ceiling * (frac > 0 && frac <= 1 ? frac : DEFAULT_AI_SPEND_LOCAL_BACKSTOP_FRAC);
+  return localProcessTotal >= budget;
+}
+
 // Re-exported so the provider layer can import the TTL helper from this one cohesive module
 // alongside the key/Lua/threshold helpers, rather than reaching into largo-budget directly.
 export { secondsUntilEtMidnight };

@@ -113,6 +113,47 @@ let sharedRedis: RedisClient | null = null;
 let sharedRedisFailedAt = 0;
 const SHARED_REDIS_RETRY_BACKOFF_MS = 30_000;
 
+/**
+ * Fire-ONCE latch for the "Redis ceiling degraded" ops alert. The cluster-wide UW limiter loses its
+ * authoritative Redis ceiling when sharedRedisFailedAt is armed; previously that degraded flag lived
+ * ONLY in /api/admin/health JSON and never alerted (audit #8/#78). We page ops exactly once on the
+ * transition INTO the degraded state (not per hot-path call) and re-arm the latch on recovery so a
+ * later re-degrade alerts again. Multi-replica only matters here: REPLICA_COUNT must be set or the
+ * cluster can overshoot the upstream UW ceiling while degraded.
+ */
+let redisDegradedAlerted = false;
+
+/** Page ops once when the limiter enters the degraded (no-Redis-ceiling) state. Fire-and-forget via a
+ *  lazy dynamic import (keeps this module's alias-free unit-test purity, mirrors the breaker pub/sub).
+ *  No-ops while already latched; re-armed by clearAlertOnRedisRecovery() on the next healthy slot. */
+function alertRedisDegradedOnce(): void {
+  if (redisDegradedAlerted) return;
+  redisDegradedAlerted = true;
+  // Only meaningful as a hard overshoot risk when we actually divide the budget (N>1). A single
+  // replica on local pacing IS the whole cluster, so full MAX_RPS is correct and not an alert.
+  if (REPLICA_COUNT <= 1) return;
+  void import("@/lib/spx-play-notify")
+    .then(({ notifyOpsDiscord }) =>
+      notifyOpsDiscord({
+        title: "UW rate-limiter DEGRADED — Redis ceiling unavailable",
+        body:
+          `The cluster-wide UW Redis ceiling is unreachable, so each replica fell back to per-replica ` +
+          `pacing (${DEGRADED_LOCAL_RPS.toFixed(2)} rps, REPLICA_COUNT=${REPLICA_COUNT}). If REPLICA_COUNT ` +
+          `is unset/stale the cluster can overshoot the upstream UW cap. Auto-retries every ` +
+          `${Math.round(SHARED_REDIS_RETRY_BACKOFF_MS / 1000)}s; this alerts once until Redis recovers.`,
+        severity: "warning",
+      })
+    )
+    .catch(() => {
+      redisDegradedAlerted = false; // alert never delivered — allow a later retry
+    });
+}
+
+/** Re-arm the once-latch when the Redis ceiling comes back, so a future re-degrade alerts again. */
+function clearAlertOnRedisRecovery(): void {
+  redisDegradedAlerted = false;
+}
+
 async function getSharedRedis(): Promise<RedisClient | null> {
   // Backoff, not a permanent kill-switch: after a Redis blip the cluster-wide UW limiter
   // retries once the window elapses instead of degrading to local-only pacing forever.
@@ -128,9 +169,11 @@ async function getSharedRedis(): Promise<RedisClient | null> {
     const client = await makeRedis("uw-rate-limiter", url, { maxRetriesPerRequest: 1 });
     sharedRedis = client as unknown as RedisClient;
     sharedRedisFailedAt = 0; // clear failure on success
+    clearAlertOnRedisRecovery(); // Redis ceiling restored → re-arm the degraded once-latch
     return sharedRedis;
   } catch {
     sharedRedisFailedAt = Date.now();
+    alertRedisDegradedOnce(); // page ops once on the transition into the degraded state
     return null;
   }
 }
@@ -234,6 +277,7 @@ async function acquireGlobalRedisSlot(): Promise<boolean> {
     // dead client on every hot-path call. Tear down the old client (ioredis would
     // otherwise keep auto-reconnecting in the background).
     sharedRedisFailedAt = Date.now();
+    alertRedisDegradedOnce(); // page ops once on the transition into the degraded state
     const dead = sharedRedis;
     sharedRedis = null;
     try { dead?.disconnect(); } catch { /* ignore */ }

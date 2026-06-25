@@ -30,32 +30,48 @@ if (!process.env.WHOP_WEBHOOK_SECRET?.trim()) {
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
   if (!process.env.WHOP_WEBHOOK_SECRET?.trim()) {
-    // Return 200 so Whop does not retry-loop or blacklist this endpoint.
-    // The startup warning above already alerts the operator.
+    // In PRODUCTION a dropped delivery is unrecoverable (a refund/dispute that never replays
+    // leaks premium or strands a lockout), so we must NOT 200-ACK and discard. Return a 5xx
+    // instead: Whop treats it as a transient failure and RETRIES with backoff until the secret
+    // is configured, so no billing event is permanently lost. Outside production (local/preview)
+    // keep the old 200-ACK so a missing secret never blocks dev work.
+    const isProd = process.env.NODE_ENV === "production";
     console.error(
-      "[whop webhook] CRITICAL: REQUEST DROPPED — WHOP_WEBHOOK_SECRET is missing. " +
-      "Returning 200 to prevent Whop retry storms. Fix the env var to restore processing."
+      "[whop webhook] CRITICAL: WHOP_WEBHOOK_SECRET is missing. " +
+      (isProd
+        ? "Returning 503 so Whop RETRIES (no billing event is dropped) until the secret is set."
+        : "Non-production: acknowledging with 200 (dev convenience). Fix the env var to enable processing.")
     );
-    // Emit a LOUD, alertable signal so this does not stay silent at 200. Fire-and-forget
+    // Emit a LOUD, alertable signal so this does not stay silent. Fire-and-forget
     // (matches cron-run.ts) so we still return fast and never block/throw on the webhook
     // path; notifyOpsDiscord self-guards on a missing URL.
     void notifyOpsDiscord({
-      title: "Whop webhook DROPPED — WHOP_WEBHOOK_SECRET unset",
-      body: "Incoming Whop webhooks are being acknowledged (HTTP 200) but NOT verified or processed. Membership changes are being silently lost. Set WHOP_WEBHOOK_SECRET to restore processing.",
+      title: "Whop webhook UNVERIFIED — WHOP_WEBHOOK_SECRET unset",
+      body: isProd
+        ? "Incoming Whop webhooks cannot be verified (WHOP_WEBHOOK_SECRET unset). Returning 503 so Whop RETRIES until the secret is configured — no membership/refund event is dropped, but processing is stalled. Set WHOP_WEBHOOK_SECRET now."
+        : "Non-production: Whop webhooks are being acknowledged (HTTP 200) but NOT verified or processed. Set WHOP_WEBHOOK_SECRET to enable handling.",
       severity: "critical",
     }).catch(() => undefined);
     // Telemetry only (the critical Discord alert above is intentionally NOT duplicated).
-    // Record as a failure even though we return HTTP 200: the delivery is dropped/lost.
+    // Record as a failure — in prod the delivery is deferred (retryable), in dev it is dropped.
     recordApiCall({
       provider: "blackout_engine",
       endpoint: WHOP_WEBHOOK_ENDPOINT,
       method: "POST",
-      status: 200,
+      status: isProd ? 503 : 200,
       ok: false,
       latency_ms: Date.now() - startedAt,
       error: "webhook_secret_not_configured",
       phase: "failure",
     });
+    if (isProd) {
+      // 503 (not 4xx): Whop only retries on 5xx; a 4xx would be treated as a permanent reject
+      // and the event would be dropped — exactly what we are fixing.
+      return NextResponse.json(
+        { error: "webhook_secret_not_configured", retryable: true },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ ok: true, warning: "webhook_secret_not_configured" }, { status: 200 });
   }
 

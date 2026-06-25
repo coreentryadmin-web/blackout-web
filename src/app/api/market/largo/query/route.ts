@@ -4,7 +4,14 @@ import { requireTierApi } from "@/lib/market-api-auth";
 import { largoConfigured, runLargoQuery, runLargoQueryStream, isSseClientDisconnect, SseClientDisconnected } from "@/lib/largo-terminal";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { largoBudgetKey, secondsUntilEtMidnight, largoDailyQueryBudget, isOverLargoBudget } from "@/lib/largo-budget";
-import { aiSpendKey, aiSpendKillSwitchUsd, isOverAiSpendCeiling } from "@/lib/ai-spend-ledger";
+import {
+  aiSpendKey,
+  aiSpendKillSwitchUsd,
+  aiSpendLocalBackstopFrac,
+  isOverAiSpendCeiling,
+  isOverAiSpendLocalBackstop,
+} from "@/lib/ai-spend-ledger";
+import { currentProcessAiSpendUsd } from "@/lib/providers/anthropic";
 import { LocalConcurrencyBackstop, largoLocalMaxConcurrent } from "@/lib/largo-local-gate";
 import { requireToolApi } from "@/lib/tool-access-server";
 import {
@@ -174,22 +181,29 @@ async function recordLargoBudgetUsage(userId: string, redis: GateRedis): Promise
 // ORG-WIDE hard kill-switch — bounds total daily Anthropic spend across ALL users and
 // replicas. Reads the cross-replica spend ledger (anthropic.ts writes it) and rejects new
 // Largo queries once the org total is AT/over the absolute DAILY_AI_SPEND_KILL_USD ceiling.
-// OPT-IN: disabled unless the env ceiling is set (see aiSpendKillSwitchUsd). Fails OPEN on
-// Redis loss — the process-local concurrency backstop above bounds the outage blast radius.
+// OPT-IN: disabled unless the env ceiling is set (see aiSpendKillSwitchUsd).
+//
+// FAILS CLOSED on Redis loss (audit #5/#6): a Redis blip is exactly when an unbounded Claude loop
+// is most dangerous, so instead of no-op'ing to "allow" we fall back to the SAME per-process
+// AI-spend backstop the provider layer uses (currentProcessAiSpendUsd vs frac × ceiling). With
+// Redis UP the authoritative cross-replica total is used unchanged.
 // ---------------------------------------------------------------------------
 
-/** True when the org-wide daily spend is AT/over the hard ceiling and new queries must be
- *  rejected. Returns false (allow) when the kill-switch is disabled or Redis is unreachable. */
+/** True when daily Anthropic spend is AT/over the hard ceiling and new queries must be rejected.
+ *  Kill-switch disarmed → always false (allow). Redis up → cross-replica ledger. Redis down → the
+ *  conservative per-process backstop (fail CLOSED), NOT a blanket allow. */
 async function isLargoKillSwitchTripped(): Promise<boolean> {
   const ceiling = aiSpendKillSwitchUsd();
   if (ceiling == null) return false; // kill-switch not armed → never blocks
+  const localBackstopTripped = () =>
+    isOverAiSpendLocalBackstop(currentProcessAiSpendUsd(), ceiling, aiSpendLocalBackstopFrac());
   const redis = (await getUwCacheRedis()) as GateRedis;
-  if (!redis) return false; // fail-open: no Redis → can't read the ledger (backstop bounds blast radius)
+  if (!redis) return localBackstopTripped(); // Redis down → fail CLOSED to the local backstop
   try {
     const raw = await redis.get(aiSpendKey());
     return isOverAiSpendCeiling(Number(raw ?? 0), ceiling);
   } catch {
-    return false; // Redis error → fail-open, never block on infra issues
+    return localBackstopTripped(); // Redis error → fail CLOSED to the local backstop
   }
 }
 

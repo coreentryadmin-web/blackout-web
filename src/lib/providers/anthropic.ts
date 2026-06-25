@@ -14,7 +14,9 @@ import {
   aiSpendKey,
   aiSpendAlertThresholdUsd,
   aiSpendKillSwitchUsd,
+  aiSpendLocalBackstopFrac,
   isOverAiSpendCeiling,
+  isOverAiSpendLocalBackstop,
   spendThresholdJustCrossed,
   AI_SPEND_INCR_LUA,
   secondsUntilEtMidnight,
@@ -28,6 +30,16 @@ import { notifyOpsDiscord } from "@/lib/spx-play-notify";
 const spendTracker = new SpendTracker({
   thresholdUsd: aiSpendAlertThresholdUsd(),
 });
+
+/**
+ * This process's own Anthropic spend (USD) for the active ET day. Exported so OTHER spend gates
+ * (e.g. the Largo route kill-switch) can share ONE per-process accumulator instead of starting a
+ * second, divergent one. Used as the FAIL-CLOSED local backstop when the shared Redis ledger is
+ * unreachable. Resets automatically on the ET day rollover (see SpendTracker).
+ */
+export function currentProcessAiSpendUsd(): number {
+  return spendTracker.currentTotal;
+}
 
 // Minimal Redis surface needed for the org-wide ledger. getUwCacheRedis returns a narrower
 // type; cast to this so we can call eval/get, which ioredis supports at runtime (same cast
@@ -242,20 +254,25 @@ function extractTextFromLastAssistant(messages: AnthropicMessage[]): string | nu
 /**
  * Org-wide hard AI-spend kill-switch, shared by EVERY Anthropic surface — not just Largo (audit S-5;
  * previously only largo/query checked it, so SPX commentary, GEX explain, NW narrative, NH critic etc.
- * spent ungated). OPT-IN: a fast no-op when DAILY_AI_SPEND_KILL_USD is unset. Fails OPEN on Redis loss
- * so an infra blip never blocks AI. When org daily spend is at/over the ceiling, callers degrade
- * (skip the request) instead of adding more spend.
+ * spent ungated). OPT-IN: a fast no-op when DAILY_AI_SPEND_KILL_USD is unset.
+ *
+ * FAILS CLOSED on Redis loss (audit #5/#6): a Redis blip is exactly when a runaway Claude loop is most
+ * dangerous, so we must NOT lift the ceiling. When the shared ledger is unreachable we fall back to a
+ * conservative per-process backstop (this replica's own daily spend vs frac × ceiling) instead of
+ * no-op'ing to "allow". When Redis is UP the authoritative cross-replica total is used unchanged.
  */
 async function isAiSpendCeilingTripped(): Promise<boolean> {
   const ceiling = aiSpendKillSwitchUsd();
-  if (ceiling == null) return false; // kill-switch not armed
+  if (ceiling == null) return false; // kill-switch not armed (OPT-IN)
+  const localBackstopTripped = () =>
+    isOverAiSpendLocalBackstop(spendTracker.currentTotal, ceiling, aiSpendLocalBackstopFrac());
   try {
     const redis = await getUwCacheRedis();
-    if (!redis) return false; // fail-open on Redis loss
+    if (!redis) return localBackstopTripped(); // Redis down → fail CLOSED to the local backstop
     const raw = await redis.get(aiSpendKey());
     return isOverAiSpendCeiling(Number(raw ?? 0), ceiling);
   } catch {
-    return false; // fail-open on any Redis error
+    return localBackstopTripped(); // Redis error → fail CLOSED to the local backstop
   }
 }
 
