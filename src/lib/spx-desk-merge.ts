@@ -284,6 +284,10 @@ export function mergeFlowIntoDesk(base: SpxDeskPayload, flow: SpxDeskFlow): SpxD
     flow_0dte_put_premium: flow.flow_0dte_put_premium ?? base.flow_0dte_put_premium,
     flow_0dte_net: flow.flow_0dte_net ?? base.flow_0dte_net,
     flow_data_age_ms: flow.flow_data_age_ms ?? base.flow_data_age_ms ?? null,
+    // Reflect the ~4s flow lane's GEX freshness on the merged desk (not the 10s full-desk base) so
+    // the 'last-good GEX · not live' staleness badge (#7a) fires promptly instead of lagging a cycle.
+    gex_age_ms: flow.gex_age_ms ?? base.gex_age_ms ?? null,
+    gex_stale: flow.gex_stale ?? base.gex_stale ?? false,
     net_prem_ticks: flow.net_prem_ticks?.length ? flow.net_prem_ticks : base.net_prem_ticks,
     flow_by_expiry: flow.flow_by_expiry?.length ? flow.flow_by_expiry : base.flow_by_expiry,
     net_flow_by_expiry: flow.net_flow_by_expiry?.length ? flow.net_flow_by_expiry : base.net_flow_by_expiry,
@@ -355,6 +359,10 @@ export function mergePulseIntoDesk(
     market_label: pulse.market_label ?? base.market_label,
     as_of: pulse.polled_at,
     polled_at: pulse.polled_at,
+    // Reflect the ~1s pulse lane's price freshness on the merged desk (not the 10s base) so the
+    // 'feed stalled · price not live' indicator (#11) catches a half-open freeze within seconds.
+    price_age_ms: pulse.price_age_ms ?? base.price_age_ms ?? null,
+    feed_stalled: pulse.feed_stalled ?? base.feed_stalled ?? false,
     // ISSUE-18+20: Recompute above_gamma_flip with current price so price crossings
     // of the gamma flip level are reflected after each pulse — base value would be stale.
     above_gamma_flip: base.gamma_flip != null ? price > base.gamma_flip : base.above_gamma_flip,
