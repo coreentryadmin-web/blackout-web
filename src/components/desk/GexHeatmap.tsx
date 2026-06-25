@@ -1681,8 +1681,9 @@ function LargoRead({ ticker }: { ticker: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Regime tile — a polished, full-width stat card with accent border + glow by
-// meaning (walls gold, flip cyan, net bull/bear, max-pain sky). Big tabular value.
+// Key-level tone palette — semantic color identity by meaning (walls gold, flip
+// cyan, support/net bear-or-bull, max-pain sky). Consumed by the consolidated
+// CompactLevel cells below. Brand tokens only, never grey.
 // ---------------------------------------------------------------------------
 
 type TileTone = "flip" | "wall" | "support" | "sky" | "bull" | "bear";
@@ -1700,10 +1701,10 @@ const TILE_TONE: Record<
 };
 
 /**
- * Optional "vs prior close" delta chip on a RegimeTile. `text` is the already-formatted
+ * Optional "vs prior close" delta chip on a key-level cell. `text` is the already-formatted
  * change (e.g. "+5.0", "held", "+$1.2M"); `tone` colors it bull/bear/neutral. "held"
- * (no change) reads neutral sky. Rendered as a tiny one-line sub-note below the sublabel —
- * never fabricated (callers pass `delta` only when a real prior value exists).
+ * (no change) reads neutral sky. Rendered as a tiny chip on the CompactLevel cell — never
+ * fabricated (callers pass `delta` only when a real prior value exists).
  */
 type TileDelta = { text: string; tone: "bull" | "bear" | "neutral"; note?: string };
 
@@ -1713,171 +1714,6 @@ const TILE_DELTA_HEX: Record<TileDelta["tone"], string> = {
   neutral: "#7dd3fc",
 };
 
-function RegimeTile({
-  label,
-  value,
-  sublabel,
-  tone,
-  active = true,
-  className,
-  help,
-  delta,
-}: {
-  label: string;
-  value: string;
-  sublabel: string;
-  tone: TileTone;
-  active?: boolean;
-  /** Grid-placement utilities applied to the tile root (e.g. col-span overrides). */
-  className?: string;
-  /** Plain-language explainer surfaced via an accessible info affordance (Rank 8). */
-  help?: string;
-  /**
-   * Optional day-over-day change vs prior close (GEX HISTORY context). When present a tiny
-   * delta chip + label renders below the sublabel. Absent → the tile is exactly as today.
-   */
-  delta?: TileDelta | null;
-}) {
-  const t = TILE_TONE[tone];
-  return (
-    <div
-      className={clsx(
-        "relative flex flex-col justify-between overflow-hidden rounded-xl border bg-[rgba(8,9,14,0.55)] px-4 py-3 backdrop-blur",
-        active ? t.border : "border-white/10",
-        className
-      )}
-      style={
-        active
-          ? { boxShadow: `inset 0 0 24px rgba(${t.rgb},0.05), 0 0 0 1px rgba(${t.rgb},0.04)` }
-          : undefined
-      }
-    >
-      {/* accent hairline strip */}
-      {active && (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-px"
-          style={{ background: `linear-gradient(90deg, transparent, ${t.glow}, transparent)` }}
-        />
-      )}
-      <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-mute">
-        {label}
-        {help && <InfoTip label={label} text={help} />}
-      </span>
-      <span
-        className={clsx(
-          "mt-1.5 font-anton text-3xl leading-none tabular-nums",
-          active ? t.value : "text-white/40"
-        )}
-      >
-        {value}
-      </span>
-      <span className="mt-1.5 text-[11px] leading-snug text-sky-300/70">{sublabel}</span>
-      {/* day-over-day "vs prior close" delta chip — only when HISTORY context shipped a
-          real prior value for this tile (never fabricated). "held" reads neutral sky. */}
-      {delta && (
-        <span className="mt-1.5 flex items-center gap-1.5">
-          <span
-            className="inline-flex items-center rounded-md px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums"
-            style={{
-              color: TILE_DELTA_HEX[delta.tone],
-              backgroundColor: `${TILE_DELTA_HEX[delta.tone]}1f`,
-            }}
-          >
-            {delta.text}
-          </span>
-          {delta.note && (
-            <span className="truncate font-mono text-[9px] uppercase tracking-[0.14em] text-sky-300/55">
-              {delta.note}
-            </span>
-          )}
-        </span>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// MAGNET card — the lead key-level cell. The single dominant dealer-gamma node
-// (max |net GEX| strike, all-expiry) — the strongest pin/magnet into expiry. Gold-
-// accented + visually distinct from the structural metrics so it reads as THE
-// node to navigate to. Renders nothing when there's no magnet (empty / all-zero scope).
-// ---------------------------------------------------------------------------
-
-function MagnetCard({
-  strike,
-  netGex,
-  spot,
-  className,
-}: {
-  /** The MAGNET strike (argmax |net GEX|). */
-  strike: number;
-  /** Signed net dealer dollar-gamma at the magnet strike (sign drives the side + color). */
-  netGex: number;
-  /** Live/snapshot spot — drives the "+X pts above/below spot" distance line. */
-  spot: number;
-  className?: string;
-}) {
-  const positive = netGex >= 0;
-  // Sign of the dominant node names the side: net-positive gamma = a call-side / dealer-sell
-  // magnet (resistance); net-negative = a put-side support magnet. Colors follow the same
-  // emerald/bear convention as the other cards (gold is reserved for the MAGNET marker chrome).
-  const valueHex = positive ? "#00e676" : "#ff2d55";
-  const sideLabel = positive ? "Call-side · dealer-sell magnet / resistance" : "Put-side · support magnet";
-  // Distance from spot in points — null when there's no spot to compare against.
-  const dist = spot > 0 ? strike - spot : null;
-  const distLabel =
-    dist == null
-      ? null
-      : dist === 0
-        ? "at spot"
-        : `${dist > 0 ? "+" : ""}${
-            Number.isInteger(dist) ? String(dist) : dist.toFixed(1)
-          } pts ${dist > 0 ? "above" : "below"} spot`;
-
-  return (
-    <div
-      className={clsx(
-        "relative flex flex-col justify-between overflow-hidden rounded-xl border border-gold/45 bg-[rgba(14,11,4,0.55)] px-4 py-3 backdrop-blur",
-        className
-      )}
-      style={{ boxShadow: "inset 0 0 28px rgba(255,210,63,0.08), 0 0 0 1px rgba(255,210,63,0.06)" }}
-    >
-      {/* gold accent hairline — the MAGNET marker chrome (static, opacity-only) */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-px"
-        style={{ background: "linear-gradient(90deg, transparent, #ffd23f, transparent)" }}
-      />
-      <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-gold">
-        <MagnetGlyph size={11} />
-        Magnet
-        <InfoTip
-          label="Magnet"
-          text="The single strike with the largest absolute net dealer gamma — the dominant dealer-gamma concentration, i.e. the strongest pin/magnet price tends to gravitate toward into expiration."
-        />
-      </span>
-      <span className="mt-1.5 flex items-baseline gap-2">
-        <span className="font-anton text-3xl leading-none tabular-nums text-gold">{fmtStrike(strike)}</span>
-        <span className="font-mono text-sm font-bold tabular-nums" style={{ color: valueHex }}>
-          {fmtMoneySigned(netGex)}
-        </span>
-      </span>
-      <span className="mt-1.5 text-[11px] font-semibold leading-snug" style={{ color: valueHex }}>
-        {sideLabel}
-      </span>
-      {distLabel && (
-        <span className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-cyan-400">
-          {distLabel}
-        </span>
-      )}
-      <span className="mt-1.5 text-[11px] leading-snug text-sky-300/80">
-        Dominant dealer gamma node — the strongest pin/magnet into expiry.
-      </span>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Key levels — a compact, right-aligned list of the structural price lines
 // (spot, flip, walls, max pain) + dark-pool levels. Always-useful rail content.
@@ -1885,9 +1721,9 @@ function MagnetCard({
 
 /**
  * Dark-pool levels rail card. The structural key levels (spot / flip / call wall / put
- * wall / max pain) live ONLY in the prominent top RegimeTile cards now — the old rail
+ * wall / max pain) live ONLY in the consolidated top key-level box now — the old rail
  * "KEY LEVELS" list duplicated them, so it was dropped. Dark-pool price levels, however,
- * appear NOWHERE in the top cards, so they keep their own focused card here (the top-N by
+ * appear NOWHERE in the top box, so they keep their own focused card here (the top-N by
  * notional). Renders nothing when there's no dark-pool data, letting the rail breathe.
  */
 function DarkPoolRail({ darkPoolLevels }: { darkPoolLevels: DarkPoolLevel[] | null }) {
@@ -2332,6 +2168,110 @@ function RecentRangeStrip({
             valueLabel={fmtStrike(flip)}
           />
         )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Key-level box (consolidated) — ONE compact bordered panel of small label-over-
+// value cells, replacing the old ~6 big RegimeTile cards that ate vertical space.
+// Mirrors the SpxSniperHeader metric-block pattern: a tight grid of tiny cells in
+// a single grouped box. Values stay semantically colored (call=emerald, put=bear,
+// flip/max-pain=sky, net by sign). The MAGNET cell is visually DISTINCT (gold-
+// accented, full magnet glyph) so the dominant node still pops inside the box.
+// Brand tokens only, never grey; reduced-motion safe (static, opacity-only chrome).
+// ---------------------------------------------------------------------------
+
+/** One compact key-level cell — label over value, tinted by tone. The magnet cell
+ *  carries a gold accent + pin glyph so it reads distinctly inside the grouped box. */
+type LevelCell = {
+  /** Stable key for the cell (also drives React keys). */
+  key: string;
+  label: string;
+  value: string;
+  /** Color identity — reuses the RegimeTile tone palette (flip/wall/support/sky/bull/bear). */
+  tone: TileTone;
+  /** Dim the cell when its level is absent (value "—") so empty levels recede. */
+  active?: boolean;
+  /** Plain-language explainer surfaced via the accessible InfoTip. */
+  help?: string;
+  /** Day-over-day "vs prior close" delta chip (GEX history) — never fabricated. */
+  delta?: TileDelta | null;
+  /** The MAGNET cell — gold-accented, distinct, leads with the pin glyph. */
+  magnet?: boolean;
+};
+
+function CompactLevel({ cell }: { cell: LevelCell }) {
+  const t = TILE_TONE[cell.tone];
+  const active = cell.active ?? true;
+  return (
+    <div
+      className={clsx(
+        "relative flex min-w-0 flex-col gap-0.5 rounded-lg border px-2.5 py-1.5",
+        cell.magnet
+          ? "border-gold/45 bg-[rgba(14,11,4,0.55)]"
+          : active
+            ? clsx(t.border, "bg-[rgba(8,9,14,0.55)]")
+            : "border-white/10 bg-[rgba(8,9,14,0.4)]"
+      )}
+      style={
+        cell.magnet
+          ? { boxShadow: "inset 0 0 18px rgba(255,210,63,0.08)" }
+          : undefined
+      }
+    >
+      <span
+        className={clsx(
+          "flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.16em]",
+          cell.magnet ? "text-gold" : "text-mute"
+        )}
+      >
+        {cell.magnet && <MagnetGlyph size={9} />}
+        <span className="truncate">{cell.label}</span>
+        {cell.help && <InfoTip label={cell.label} text={cell.help} />}
+      </span>
+      <span
+        className={clsx(
+          "font-mono text-[15px] font-bold leading-none tabular-nums",
+          cell.magnet ? "text-gold" : active ? t.value : "text-white/40"
+        )}
+      >
+        {cell.value}
+      </span>
+      {cell.delta && (
+        <span
+          className="mt-0.5 inline-flex w-fit items-center rounded px-1 py-px font-mono text-[8px] font-bold tabular-nums"
+          style={{
+            color: TILE_DELTA_HEX[cell.delta.tone],
+            backgroundColor: `${TILE_DELTA_HEX[cell.delta.tone]}1f`,
+          }}
+          title={cell.delta.note}
+        >
+          {cell.delta.text}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function KeyLevelBox({ cells, kicker }: { cells: LevelCell[]; kicker: string }) {
+  return (
+    <div className="rounded-xl border border-white/12 bg-[rgba(8,9,14,0.55)] px-3 py-2.5 backdrop-blur">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-mute">
+          Key levels
+        </span>
+        <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/70">
+          {kicker}
+        </span>
+      </div>
+      {/* Tight responsive grid of small cells — 2 cols on phones, fans out to 6 at lg.
+          One grouped box, much smaller footprint than the old big-card row. */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        {cells.map((cell) => (
+          <CompactLevel key={cell.key} cell={cell} />
+        ))}
       </div>
     </div>
   );
@@ -2800,6 +2740,183 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
     };
   }, [lens, historyContext]);
 
+  // ── Consolidated key-level cells (Step 2) ────────────────────────────────────
+  // The old ~6 big cards (flip / call wall / put wall / max pain / net / magnet) collapse
+  // into ONE compact box of small label-over-value cells. Per-lens cell sets mirror the
+  // prior RegimeTile sets exactly (same values, tones, help, "vs prior close" deltas):
+  // GEX/VEX carry flip + two walls + max-pain + net; DEX/CHARM are zero-level + net + posture.
+  // The MAGNET cell (GEX only, when a dominant node exists) is gold-accented + distinct so it
+  // still pops inside the grouped box — same all-expiry magnet the card used (matrixMagnetStrike).
+  const levelCells = useMemo<LevelCell[]>(() => {
+    if (lens === "gex") {
+      const cellsOut: LevelCell[] = [
+        {
+          key: "flip",
+          label: "Gamma Flip",
+          value: flip != null ? fmtStrike(flip) : "—",
+          tone: "flip",
+          active: flip != null,
+          help: METRIC_HELP.gammaFlip,
+          delta: gexTileDeltas?.flip ?? null,
+        },
+        {
+          key: "callWall",
+          label: "Call Wall",
+          value: posWall != null ? fmtStrike(posWall) : "—",
+          tone: "bull",
+          active: posWall != null,
+          help: METRIC_HELP.callWall,
+          delta: gexTileDeltas?.callWall ?? null,
+        },
+        {
+          key: "putWall",
+          label: "Put Wall",
+          value: negWall != null ? fmtStrike(negWall) : "—",
+          tone: "support",
+          active: negWall != null,
+          help: METRIC_HELP.putWall,
+          delta: gexTileDeltas?.putWall ?? null,
+        },
+        {
+          key: "maxPain",
+          label: "Max Pain",
+          value: maxPain != null ? fmtStrike(maxPain) : "—",
+          tone: "sky",
+          active: maxPain != null,
+          help: METRIC_HELP.maxPain,
+        },
+        {
+          key: "netGex",
+          label: "Net GEX",
+          value: fmtMoneySigned(total),
+          tone: total >= 0 ? "bull" : "bear",
+          help: METRIC_HELP.netGex,
+          delta: gexTileDeltas?.netGex ?? null,
+        },
+      ];
+      // MAGNET cell — gold-distinct, the dominant all-expiry node (GEX only). Slots last so
+      // the structural levels read left→right; the gold accent makes it pop regardless.
+      if (matrixMagnetStrike != null) {
+        cellsOut.push({
+          key: "magnet",
+          label: "Magnet",
+          value: fmtStrike(matrixMagnetStrike),
+          tone: "wall",
+          magnet: true,
+          help: "The single strike with the largest absolute net dealer gamma — the dominant dealer-gamma concentration, i.e. the strongest pin/magnet price tends to gravitate toward into expiration.",
+        });
+      }
+      return cellsOut;
+    }
+    if (lens === "vex") {
+      return [
+        {
+          key: "flip",
+          label: "Vanna Flip",
+          value: flip != null ? fmtStrike(flip) : "—",
+          tone: "flip",
+          active: flip != null,
+          help: METRIC_HELP.vannaFlip,
+        },
+        {
+          key: "posWall",
+          label: "+Vanna Wall",
+          value: posWall != null ? fmtStrike(posWall) : "—",
+          tone: "sky",
+          active: posWall != null,
+          help: METRIC_HELP.posVannaWall,
+        },
+        {
+          key: "negWall",
+          label: "−Vanna Wall",
+          value: negWall != null ? fmtStrike(negWall) : "—",
+          tone: "wall",
+          active: negWall != null,
+          help: METRIC_HELP.negVannaWall,
+        },
+        {
+          key: "maxPain",
+          label: "Max Pain",
+          value: maxPain != null ? fmtStrike(maxPain) : "—",
+          tone: "sky",
+          active: maxPain != null,
+          help: METRIC_HELP.maxPain,
+        },
+        {
+          key: "netVex",
+          label: "Net VEX",
+          value: fmtMoneySigned(total),
+          tone: total >= 0 ? "sky" : "bear",
+          help: METRIC_HELP.netVex,
+        },
+      ];
+    }
+    if (lens === "dex") {
+      return [
+        {
+          key: "zero",
+          label: "Delta-Zero",
+          value: flip != null ? fmtStrike(flip) : "—",
+          tone: "flip",
+          active: flip != null,
+          help: METRIC_HELP.deltaZero,
+        },
+        {
+          key: "netDex",
+          label: "Net DEX",
+          value: fmtMoneySigned(total),
+          tone: total >= 0 ? "flip" : "bear",
+          help: METRIC_HELP.netDex,
+        },
+        {
+          key: "posture",
+          label: "Posture",
+          value: dexPosture === "long" ? "Long δ" : dexPosture === "short" ? "Short δ" : "—",
+          tone: dexPosture === "long" ? "bull" : "bear",
+          active: dexPosture != null,
+          help: METRIC_HELP.dexPosture,
+        },
+      ];
+    }
+    // charm
+    return [
+      {
+        key: "zero",
+        label: "Charm-Zero",
+        value: flip != null ? fmtStrike(flip) : "—",
+        tone: "wall",
+        active: flip != null,
+        help: METRIC_HELP.charmZero,
+      },
+      {
+        key: "netCharm",
+        label: "Net CHARM",
+        value: fmtMoneySigned(total),
+        tone: total >= 0 ? "wall" : "bear",
+        help: METRIC_HELP.netCharm,
+      },
+      {
+        key: "posture",
+        label: "Posture",
+        value: charmPosture === "positive" ? "Positive" : charmPosture === "negative" ? "Negative" : "—",
+        tone: charmPosture === "positive" ? "wall" : "bear",
+        active: charmPosture != null,
+        help: METRIC_HELP.charmPosture,
+      },
+    ];
+  }, [
+    lens,
+    flip,
+    posWall,
+    negWall,
+    maxPain,
+    total,
+    matrixMagnetStrike,
+    gexTileDeltas,
+    dexPosture,
+    charmPosture,
+  ]);
+
   return (
     <Panel
       accent={panelAccent}
@@ -3000,172 +3117,13 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
               renders nothing when empty/absent. Sits above the regime header. ── */}
           <AlertsStrip events={events} />
 
-          {/* ── MAGNET lead card (GEX only) — the dominant dealer-gamma node, the
-              strongest pin/magnet. Leads the key-level cells as a prominent gold-accented
-              card so the heatmap is instantly navigable. Uses the all-expiry strikeTotals
-              magnet (matrixMagnetStrike) so it agrees with the server-authoritative tiles
-              below; renders nothing when there's no magnet (empty / all-zero). The flip/walls
-              are GAMMA concepts, so the card shows under GEX only — same scope as the
-              "vs prior close" deltas. ── */}
-          {lens === "gex" && matrixMagnetStrike != null && (
-            <div className="mb-3">
-              <MagnetCard
-                strike={matrixMagnetStrike}
-                netGex={strikeTotals[String(matrixMagnetStrike)] ?? 0}
-                spot={headerSpot > 0 ? headerSpot : spot}
-              />
-            </div>
-          )}
+          {/* ── Key levels (consolidated, Step 2) — ONE compact box of small label-over-
+              value cells replacing the old ~6 big cards. Per-lens cell sets (built in
+              levelCells) carry the same values/tones/help/deltas; GEX adds a gold-distinct
+              MAGNET cell so the dominant node still pops. Frees the chart space below. ── */}
+          <KeyLevelBox cells={levelCells} kicker={`${lensUpper} structure`} />
 
-          {/* ── Regime tiles (full-width row) — evenly spread polished stat cards.
-              GEX/VEX carry flip + two walls + max-pain + net; DEX/CHARM have NO
-              walls/flip/max-pain → their tiles are zero-level + net + posture only
-              (we never render empty wall tiles under those lenses). ── */}
-          {lens === "gex" ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-              <RegimeTile
-                label="Gamma Flip"
-                value={flip != null ? fmtStrike(flip) : "—"}
-                sublabel="Posture pivot"
-                tone="flip"
-                active={flip != null}
-                help={METRIC_HELP.gammaFlip}
-                delta={gexTileDeltas?.flip ?? null}
-              />
-              <RegimeTile
-                label="Call Wall"
-                value={posWall != null ? fmtStrike(posWall) : "—"}
-                sublabel="Resistance / pin"
-                tone="bull"
-                active={posWall != null}
-                help={METRIC_HELP.callWall}
-                delta={gexTileDeltas?.callWall ?? null}
-              />
-              <RegimeTile
-                label="Put Wall"
-                value={negWall != null ? fmtStrike(negWall) : "—"}
-                sublabel="Support"
-                tone="support"
-                active={negWall != null}
-                help={METRIC_HELP.putWall}
-                delta={gexTileDeltas?.putWall ?? null}
-              />
-              <RegimeTile
-                label="Max Pain"
-                value={maxPain != null ? fmtStrike(maxPain) : "—"}
-                sublabel="OI value floor"
-                tone="sky"
-                active={maxPain != null}
-                help={METRIC_HELP.maxPain}
-              />
-              <RegimeTile
-                label="Net GEX"
-                value={fmtMoneySigned(total)}
-                sublabel="$-gamma total"
-                tone={total >= 0 ? "bull" : "bear"}
-                className="col-span-2 lg:col-span-1"
-                help={METRIC_HELP.netGex}
-                delta={gexTileDeltas?.netGex ?? null}
-              />
-            </div>
-          ) : lens === "vex" ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-              <RegimeTile
-                label="Vanna Flip"
-                value={flip != null ? fmtStrike(flip) : "—"}
-                sublabel="Sign pivot"
-                tone="flip"
-                active={flip != null}
-                help={METRIC_HELP.vannaFlip}
-              />
-              <RegimeTile
-                label="+Vanna Wall"
-                value={posWall != null ? fmtStrike(posWall) : "—"}
-                sublabel="Adds to moves"
-                tone="sky"
-                active={posWall != null}
-                help={METRIC_HELP.posVannaWall}
-              />
-              <RegimeTile
-                label="−Vanna Wall"
-                value={negWall != null ? fmtStrike(negWall) : "—"}
-                sublabel="Fades moves"
-                tone="wall"
-                active={negWall != null}
-                help={METRIC_HELP.negVannaWall}
-              />
-              <RegimeTile
-                label="Max Pain"
-                value={maxPain != null ? fmtStrike(maxPain) : "—"}
-                sublabel="OI value floor"
-                tone="sky"
-                active={maxPain != null}
-                help={METRIC_HELP.maxPain}
-              />
-              <RegimeTile
-                label="Net VEX"
-                value={fmtMoneySigned(total)}
-                sublabel="$-vanna total"
-                tone={total >= 0 ? "sky" : "bear"}
-                className="col-span-2 lg:col-span-1"
-                help={METRIC_HELP.netVex}
-              />
-            </div>
-          ) : lens === "dex" ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <RegimeTile
-                label="Delta-Zero Level"
-                value={flip != null ? fmtStrike(flip) : "—"}
-                sublabel="Delta sign pivot"
-                tone="flip"
-                active={flip != null}
-                help={METRIC_HELP.deltaZero}
-              />
-              <RegimeTile
-                label="Net DEX"
-                value={fmtMoneySigned(total)}
-                sublabel="$-delta total"
-                tone={total >= 0 ? "flip" : "bear"}
-                help={METRIC_HELP.netDex}
-              />
-              <RegimeTile
-                label="Posture"
-                value={dexPosture === "long" ? "Long δ" : dexPosture === "short" ? "Short δ" : "—"}
-                sublabel={dexPosture === "long" ? "Stabilizing" : dexPosture === "short" ? "Destabilizing" : "Undetermined"}
-                tone={dexPosture === "long" ? "bull" : "bear"}
-                active={dexPosture != null}
-                help={METRIC_HELP.dexPosture}
-              />
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <RegimeTile
-                label="Charm-Zero Level"
-                value={flip != null ? fmtStrike(flip) : "—"}
-                sublabel="Charm sign pivot"
-                tone="wall"
-                active={flip != null}
-                help={METRIC_HELP.charmZero}
-              />
-              <RegimeTile
-                label="Net CHARM"
-                value={fmtMoneySigned(total)}
-                sublabel="$-charm total"
-                tone={total >= 0 ? "wall" : "bear"}
-                help={METRIC_HELP.netCharm}
-              />
-              <RegimeTile
-                label="Posture"
-                value={charmPosture === "positive" ? "Positive" : charmPosture === "negative" ? "Negative" : "—"}
-                sublabel={charmPosture === "positive" ? "Pins up into OPEX" : charmPosture === "negative" ? "Drags down into OPEX" : "Undetermined"}
-                tone={charmPosture === "positive" ? "wall" : "bear"}
-                active={charmPosture != null}
-                help={METRIC_HELP.charmPosture}
-              />
-            </div>
-          )}
-
-          {/* regime read strip — clean full-width band below the tiles */}
+          {/* regime read strip — clean full-width band below the box (the thin context strip) */}
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] px-4 py-3">
             {lens === "gex" ? (
               gexPosture != null &&
