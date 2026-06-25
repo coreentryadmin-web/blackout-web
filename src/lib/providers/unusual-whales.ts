@@ -398,7 +398,11 @@ export async function fetchUwOdteGexLadder(
         .map((r) => normalizeUwStrikeGexRow(r))
         .filter((r): r is Record<string, unknown> => r !== null);
       if (rows.length) {
-        console.warn(`[uw-gex-fallback] ${ticker} ladder from ${name}: ${rows.length} strikes`);
+        // Success → info, NOT warn: for SPX (an index not carried in the Polygon/Massive options feed)
+        // this UW spot-exposures ladder is the DE-FACTO GEX source, not a degradation — logging it as
+        // warn made a healthy per-cycle build read as a red error in Railway (finding #76). The
+        // source-failure paths below still warn (those are genuine fallback-chain degradations).
+        console.info(`[uw-gex] ${ticker} ladder from ${name}: ${rows.length} strikes`);
         return { rows, source: name };
       }
       console.warn(`[uw-gex-fallback] ${ticker} ${name} returned 0 usable strikes`);
