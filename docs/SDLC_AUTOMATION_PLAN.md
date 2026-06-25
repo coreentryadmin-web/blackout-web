@@ -24,7 +24,7 @@ The jobs run FREQUENTLY (multiple deep passes daily, see schedule), so depth × 
 ## JOBS
 
 ### 1. green-build-test-gate — nightly weeknights
-Catch regressions on `main` overnight. Run `npx tsc --noEmit`, `node --test` (valuation/verdict tests), `npm run build`. All green → log "green". Red → diagnose; fix if high-confidence+small (re-validate → main), else branch+flag. Report which check broke + the fix.
+Catch regressions on `main` overnight. Run `npx tsc --noEmit`, `npm test` (the repo's `tsx --test` runner — NOT bare `node --test`, which has no TS loader and false-reds on the extensionless `.test.ts` imports), `npm run build`. All green → log "green". Red → diagnose; fix if high-confidence+small (re-validate → main), else branch+flag. Report which check broke + the fix.
 
 ### 2. visual-render-sweep — nightly weeknights
 Catch UI render bugs. Via the Chrome bridge load each page (`/`, `/dashboard`, `/flows`, `/heatmap`, `/nighthawk`, `/terminal`, `/upgrade`, `/embed/track-record`, `/admin`): screenshot + read console (errors, React #418 hydration, failed fetches) + check broken layout / overlap / all-"—" / broken images / grey-color violations / empty-state correctness. NOTE after-hours = market CLOSED, so "market closed" empty states are EXPECTED, not bugs. Fix high-confidence render bugs (→ main); flag layout/design issues.
