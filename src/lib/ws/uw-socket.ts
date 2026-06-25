@@ -13,9 +13,7 @@ import { UW_SOCKET_STALL_MS, freshestMessageAt as freshestFromMap } from "./uw-s
 import { isUwErrorFrame } from "@/lib/ws/uw-frame";
 import {
   normalizeDarkPoolWsPayload,
-  normalizeGexWsPayload,
   normalizeIntervalFlowWsPayload,
-  normalizeNetFlowWsPayload,
   normalizeTradingHaltsWsPayload,
   parseUwFlowAlert,
   type DarkPoolSnapshot,
@@ -487,19 +485,6 @@ export const darkPoolStore: {
   updatedAt: number;
 } = { data: null, updatedAt: 0 };
 
-export const gexStore: {
-  rows: Record<string, unknown>[];
-  updatedAt: number;
-} = { rows: [], updatedAt: 0 };
-
-export const netFlowStore: {
-  call_premium: number;
-  put_premium: number;
-  net: number;
-  ticker: string;
-  updatedAt: number;
-} = { call_premium: 0, put_premium: 0, net: 0, ticker: "SPX", updatedAt: 0 };
-
 export const intervalFlowStore: {
   rows: Record<string, unknown>[];
   updatedAt: number;
@@ -530,7 +515,7 @@ const TRADING_HALT_MAX_AGE_MS = 30 * 60_000;
  * session "stale" and blocked all desk entries. The channel is genuinely untrustworthy only when
  * (a) there's no API key, (b) its subscription was rejected (auth_failed → we'd never SEE a halt),
  * or (c) the whole socket is dead — proxied by the freshest delivery across ALL channels, since
- * flow_alerts / market_tide / gex stream constantly during RTH. A recent halt OR a live socket
+ * flow_alerts / market_tide stream constantly during RTH. A recent halt OR a live socket
  * with an accepted subscription ⇒ fresh.
  */
 export function isTradingHaltChannelStale(maxAgeMs = TRADING_HALT_CHANNEL_MAX_AGE_MS): boolean {
@@ -662,29 +647,6 @@ export function initUwSocket() {
     }
   });
 
-  uwSocket.subscribe("gex", (payload) => {
-    if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
-      return;
-    }
-    const rows = normalizeGexWsPayload(payload);
-    if (rows.length) {
-      lastMessageAt.gex = Date.now();
-      gexStore.rows = rows;
-      gexStore.updatedAt = Date.now();
-    }
-  });
-
-  uwSocket.subscribe("net_flow", (payload) => {
-    if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
-      return;
-    }
-    const flow = normalizeNetFlowWsPayload(payload, "SPX");
-    if (flow) {
-      lastMessageAt.net_flow = Date.now();
-      Object.assign(netFlowStore, { ...flow, updatedAt: Date.now() });
-    }
-  });
-
   uwSocket.subscribe("interval_flow", (payload) => {
     if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
       return;
@@ -778,8 +740,6 @@ export function getUwSocketHealth() {
     stores: {
       tide_updated_at: tideStore.updatedAt || null,
       dark_pool_updated_at: darkPoolStore.updatedAt || null,
-      gex_updated_at: gexStore.updatedAt || null,
-      net_flow_updated_at: netFlowStore.updatedAt || null,
       interval_flow_updated_at: intervalFlowStore.updatedAt || null,
       trading_halts_updated_at: tradingHaltsStore.updatedAt || null,
       active_halts: Array.from(tradingHaltsStore.halts.values())

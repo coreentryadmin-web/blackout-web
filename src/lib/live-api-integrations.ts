@@ -8,8 +8,6 @@ export const UW_WS_CHANNELS = [
   "flow_alerts",
   "market_tide",
   "off_lit_trades",
-  "gex",
-  "net_flow",
   "interval_flow",
   "trading_halts",
 ] as const;

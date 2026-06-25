@@ -107,7 +107,6 @@ const GEX_STALE_MS = (() => {
 const DARK_POOL_CACHE_MS = 10_000;
 const TIDE_STALE_MS = 10_000;
 const DARK_POOL_WS_STALE_MS = 15_000;
-const NET_FLOW_WS_STALE_MS = 10_000;
 const INTERVAL_FLOW_WS_STALE_MS = 10_000;
 // How long a Polygon WS index tick (I:SPX, VIX, internals) stays preferred over the
 // REST snapshot in mergeWsIndexSnapshots. SPX *index* aggregate ticks are naturally
@@ -147,18 +146,6 @@ async function resolveFlow0dte(ticker = "SPX"): Promise<{
   put_premium: number;
   net: number;
 } | null> {
-  try {
-    const { netFlowStore } = await import("../ws/uw-socket");
-    if (Date.now() - netFlowStore.updatedAt < NET_FLOW_WS_STALE_MS) {
-      return {
-        call_premium: netFlowStore.call_premium,
-        put_premium: netFlowStore.put_premium,
-        net: netFlowStore.net,
-      };
-    }
-  } catch {
-    /* WS optional */
-  }
   try {
     const { intervalFlowStore } = await import("../ws/uw-socket");
     if (Date.now() - intervalFlowStore.updatedAt < INTERVAL_FLOW_WS_STALE_MS && intervalFlowStore.rows.length) {
