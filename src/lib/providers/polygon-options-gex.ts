@@ -1755,9 +1755,13 @@ async function buildGexHeatmapUncached(
     const sign = type === "call" ? 1 : type === "put" ? -1 : 0;
     if (sign === 0) continue;
 
-    // ── GEX: gamma × oi × 100 × spot, call +/put − ──────────────────────────
+    // ── GEX: gamma × oi × 100 × spot² × 0.01 (SpotGamma per-1%-move $-gamma), call +/put − ──
+    // The extra `× spot × 0.01` converts raw dollar-gamma (per $1 underlying move) into the
+    // industry-standard dealer $-gamma per 1% move (SpotGamma/Barchart convention), so our GEX
+    // magnitudes match competitor scale. NOTE: VEX (~below) and CHARM use the distinct notional
+    // `× 100 × spot` convention (per-1-unit-σ / per-year) — they are NOT on this per-1%-move scale.
     if (gamma) {
-      const signedGamma = sign * gamma * oi * 100 * spot;
+      const signedGamma = sign * gamma * oi * 100 * spot * spot * 0.01;
       if (signedGamma !== 0) {
         expirySet.add(expiry);
         const byExpiry = gammaCellMap.get(strike) ?? new Map<string, number>();
@@ -1795,8 +1799,9 @@ async function buildGexHeatmapUncached(
 
     // VEX: closed-form vanna × oi × 100 × spot, call +/put −.
     // Skip contracts with missing IV, T<=0, or σ<=0 (vannaPerShare returns 0 → skipped).
-    // dollar_vanna is per 1.00 change in sigma (= 100 vol-points; IV is decimal here),
-    // mirroring the dollar-gamma `× spot` scaling so GEX and VEX magnitudes are comparable.
+    // dollar_vanna is per 1.00 change in sigma (= 100 vol-points; IV is decimal here).
+    // CONVENTION: VEX keeps the notional `× 100 × spot` scaling (its own per-1-unit-σ standard) —
+    // DISTINCT from GEX's per-1%-move scale (× spot² × 0.01) above. Do not align the two.
     const vps = vannaPerShare(spot, strike, t, iv);
     if (vps !== 0) {
       const signedVanna = sign * vps * oi * 100 * spot;
@@ -1811,7 +1816,8 @@ async function buildGexHeatmapUncached(
 
     // CHARM: closed-form charm × oi × 100 × spot, call +/put −. SAME guard as vanna (skip when
     // T<=0 or σ<=0 → charmPerShare returns 0). dollar-charm scaling MIRRORS dollar-vanna (the
-    // `× spot` notional convention); the per-unit-time is YEARS of time-to-expiry (ACT/365), so
+    // notional `× 100 × spot` convention, per-year — DISTINCT from GEX's per-1%-move × spot² × 0.01
+    // scale above); the per-unit-time is YEARS of time-to-expiry (ACT/365), so
     // it reads as net dealer delta decay per year. Charm is type-independent (put charm = call
     // charm at r=q=0, like gamma); the dealer call(+)/put(−) sign is applied here at accumulation.
     const cps = charmPerShare(spot, strike, t, iv);
@@ -2229,7 +2235,10 @@ function aggregateGexRows(contracts: ChainContract[], spot: number): Record<stri
     const type = String(c.details?.contract_type ?? "").toLowerCase();
     if (!Number.isFinite(strike) || strike <= 0 || !oi || !gamma) continue;
 
-    const contrib = gamma * oi * 100 * spot;
+    // gamma × oi × 100 × spot² × 0.01 — SpotGamma per-1%-move dealer $-gamma (matches competitor
+    // scale). The extra `× spot × 0.01` over raw dollar-gamma is the per-1%-move normalization;
+    // mirrors the heatmap GEX cell convention above. (VEX/CHARM use a distinct × 100 × spot scale.)
+    const contrib = gamma * oi * 100 * spot * spot * 0.01;
     const row = byStrike.get(strike) ?? { call: 0, put: 0 };
     if (type === "call") row.call += contrib;
     else if (type === "put") row.put -= contrib;
