@@ -4,6 +4,8 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { clsx } from "clsx";
 import type { ReactNode } from "react";
+import { MarketSessionProvider } from "./MarketSessionProvider";
+import { MarketPulseLayer } from "./MarketPulseLayer";
 
 export type PlatformVariant = "dashboard" | "flows" | "heatmap" | "largo" | "nighthawk";
 
@@ -149,6 +151,11 @@ export function PlatformShell({
 
   return (
     <>
+      {/* VITALS Phase 1 — one shared market-cadence heartbeat behind content.
+          Additive: rendered alongside (behind) the existing per-variant ambient
+          and dot grid; nothing existing is removed. */}
+      <MarketSessionProvider />
+      <MarketPulseLayer />
       <div className={clsx("platform-ambient", theme.ambient)} aria-hidden />
       <div className="platform-dot-grid" aria-hidden />
       <main

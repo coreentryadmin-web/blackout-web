@@ -444,6 +444,139 @@ body {
   }
 }
 
+/* ── VITALS Phase 1 — Market Pulse Layer ("the room breathes") ─────────────
+   One fixed full-viewport pointer-events-none layer behind content. Every
+   piece subscribes to the --pulse-* cadence vars published by
+   <MarketSessionProvider>; transform + opacity only; blur() set once.
+   Each piece ships an explicit reduced-motion still state at the end of this
+   block (the global @media block ~line 105 is the additional safety net). */
+.market-pulse {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+
+/* a. The pulse wash — emerald breath at the market's cadence. Reuses the
+   existing @keyframes ambient-breathe (opacity .7→1 / scale 1→1.05); the peak
+   opacity is gated by --pulse-peak and the whole wash is dimmed by --pulse-dim
+   so the session reads before any label does. */
+.market-pulse-wash {
+  position: absolute;
+  inset: 0;
+  opacity: var(--pulse-dim, 0.7);
+  background: radial-gradient(
+    ellipse 70% 50% at 50% -15%,
+    rgba(0, 230, 118, calc(0.07 * var(--pulse-peak, 1))),
+    transparent 70%
+  );
+  animation: ambient-breathe var(--pulse-period, 6s) var(--ease-breath) infinite;
+  will-change: opacity, transform;
+}
+
+/* b. The EKG hairline — a thin lit top edge with one ~120px emerald pip that
+   travels left→right once per beat then waits (long transparent tail). The
+   travelling pip is the single most "alive" micro-detail; transform-only. */
+.market-pulse-ekg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  opacity: var(--pulse-dim, 0.7);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 230, 118, 0.18) 50%,
+    transparent
+  );
+}
+
+.market-pulse-ekg::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 120px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 230, 118, 0.9) 80%,
+    rgba(0, 230, 118, 1)
+  );
+  box-shadow: 0 0 6px rgba(0, 230, 118, 0.7);
+  transform: translateX(-120px);
+  animation: ekg-trace var(--pulse-period, 6s) var(--ease-sweep) infinite;
+  will-change: transform;
+}
+
+@keyframes ekg-trace {
+  from { transform: translateX(-120px); }
+  to { transform: translateX(100vw); }
+}
+
+/* c. Aurora mesh — two soft brand-light pools drifting like slow weather.
+   filter: blur() is set ONCE and never animated; only translate3d() moves.
+   Opacity scales with --pulse-dim so the mesh dims after hours. Kept subtle so
+   it coexists with the existing per-variant .platform-ambient glow. */
+.market-pulse-aurora {
+  position: absolute;
+  width: 60vmax;
+  height: 60vmax;
+  border-radius: 50%;
+  filter: blur(150px);
+  will-change: transform;
+}
+
+.market-pulse-aurora-a {
+  top: -20vmax;
+  left: -10vmax;
+  background: radial-gradient(circle, rgba(0, 230, 118, 1) 0%, transparent 70%);
+  opacity: calc(0.09 * var(--pulse-dim, 0.7));
+  animation: aurora-drift-a 42s var(--ease-breath) infinite;
+}
+
+.market-pulse-aurora-b {
+  bottom: -22vmax;
+  right: -12vmax;
+  background: radial-gradient(circle, rgba(34, 211, 238, 1) 0%, transparent 70%);
+  opacity: calc(0.08 * var(--pulse-dim, 0.7));
+  animation: aurora-drift-b 50s var(--ease-breath) infinite;
+}
+
+@keyframes aurora-drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(8vmax, 6vmax, 0); }
+}
+
+@keyframes aurora-drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(-7vmax, -5vmax, 0); }
+}
+
+/* Reduced-motion: every piece holds its NAMED still state (the global block is
+   the safety net, but these make the intended static frame explicit and keep
+   the session-correct dim). No motion — just a calm, correctly-dimmed wash and
+   a static lit hairline. */
+@media (prefers-reduced-motion: reduce) {
+  .market-pulse-wash {
+    animation: none;
+    opacity: var(--pulse-dim, 0.7);
+    transform: none;
+  }
+  .market-pulse-ekg::after {
+    animation: none;
+    opacity: 0;
+  }
+  .market-pulse-aurora {
+    animation: none;
+    transform: none;
+  }
+}
+
 @keyframes landing-hero-scan {
   0% { transform: translateY(-100%); opacity: 0; }
   10% { opacity: 0.3; }
