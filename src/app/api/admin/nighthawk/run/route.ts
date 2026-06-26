@@ -4,12 +4,13 @@ import { recordAdminRouteError } from "@/lib/admin-route-errors";
 import { buildEveningEdition } from "@/lib/nighthawk/edition-builder";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 /**
  * Admin-triggered manual run of the Night Hawk edition pipeline. Same builder the
  * Railway cron hits — force-runs (bypasses the time window) and resumes the checkpointed
- * job. Admin-auth only (no CRON_SECRET needed). The pipeline is capped at 300s/call, so a
+ * job. Admin-auth only (no CRON_SECRET needed). Capped at 800s/call to match the cron route
+ * (was 300, which killed the build before its internal checkpoint budget could fire); a
  * long Claude build returns 202 mid-stage; click again to resume until job_status=published.
  */
 export async function POST() {
