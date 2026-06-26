@@ -140,6 +140,19 @@ function pct(n: number | null | undefined): string {
   return `${sign}${n.toFixed(2)}%`;
 }
 
+// Distance-to-strike with a moneyness qualifier. distance_to_strike_pct = (K − spot)/spot,
+// so the SAME positive number means OTM for a call but ITM for a put (and vice-versa) —
+// ambiguous on its own. Append OTM/ITM (derived from sign × option_type) so the reader can't
+// misread it; |dist| < 0.05% reads ATM.
+function distToStrike(n: number | null | undefined, optionType: "call" | "put"): string {
+  if (n == null || !Number.isFinite(n)) return EM_DASH;
+  if (Math.abs(n) < 0.05) return "ATM";
+  // Call: K above spot (n > 0) → OTM. Put: K above spot (n > 0) → ITM.
+  const otm = optionType === "call" ? n > 0 : n < 0;
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(2)}% ${otm ? "OTM" : "ITM"}`;
+}
+
 function num(n: number | null | undefined, digits = 2): string {
   if (n == null || !Number.isFinite(n)) return EM_DASH;
   return n.toFixed(digits);
@@ -660,7 +673,7 @@ function PositionCard({
           <Metric label="IV" value={ivPct(position.valuation?.iv)} />
           <Metric label="DTE" value={num(position.dte, 0)} />
           <Metric label="B/E" value={num(position.breakeven)} />
-          <Metric label="Dist→K" value={pct(position.distance_to_strike_pct)} />
+          <Metric label="Dist→K" value={distToStrike(position.distance_to_strike_pct, position.option_type)} />
           <Metric label="OI" value={num(position.valuation?.openInterest, 0)} />
         </div>
       ) : position.valuation_unavailable_reason === "contract-not-found" ? (
