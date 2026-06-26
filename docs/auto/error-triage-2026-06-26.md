@@ -320,3 +320,94 @@ holding (no new publish-preview events since 07:57 UTC).
 - Prior carry-forwards stand: publish-preview external caller (Task #1, RUN 3); Night Hawk Edition
   synthesis funnel + stale-`running` reaper (#70); off-hours WS-staleness RTH gate; SLA-latency-as-error
   display class; open `auto/*` branches awaiting human review.
+
+---
+
+## RUN 5 — 2026-06-26 ~16:40 UTC (daily slot, market OPEN ~12:40 PM ET Fri)
+
+Fifth pass today (RUN 1 04:42 @ `cc35f9e`, RUN 2 05:41 @ `c476793`, RUN 3 13:54 @ `cc17d83`, RUN 4 15:48
+@ `48d30b0`). Repo `C:/Users/raidu/blackout-cron`, `git pull` clean → base **`011121b`**,
+**tsc-green (exit 0)**. Re-checked all live error surfaces on `blackouttrades.com` (logged-in admin,
+Chrome bridge) for NEW/spiking signatures since RUN 4. **One NEW signature (a per-replica false-CRITICAL)
+→ root-caused + observability FIXED → main (`994e2bd`).** Confirmed RUN 3/4 fixes (`cc17d83`, `48d30b0`)
+are in history and holding (no recurrence).
+
+### A. NEW signature: admin-health false `flow:Flow data stale` CRITICAL → FIXED → main (`994e2bd`)
+
+**Signature:** `/api/admin/health` raised `issues:[{severity:"critical", category:"flow", title:"Flow
+data stale", detail:"Last flow update 1549s ago"}]` during RTH on the first poll of this run. It did
+**not** hit the durable sink, incidents, or the API dashboard — it surfaced only as an admin-health
+issue (and the critical path pages ops via `notifyOpsDiscord` + opens an `admin_incidents` row).
+
+**Verified it is a per-replica artifact, NOT a cluster flow stall (live ground truth):**
+- 5/5 subsequent `/api/admin/health` polls returned flow **`none`** (flow age ≤120s) — value varies by
+  replica, the hallmark of per-replica state.
+- Providers healthy: polygon **162 calls / 0 err** (200), UW **59 / 0 err** (200, last `/api/stock/SPY/net-prem-ticks`).
+- WS healthy: `polygon_indices` OPEN (I:SPX 7370.27 ageMs 609), UW `flow_alerts` OPEN + authenticated.
+- The replicas reporting **fresh** flow read it from the **shared DB** (`fetchRecentFlows` →
+  `markFlowDataFromBriefs`), so the DB has recent flow rows — flow ingest is healthy cluster-wide.
+
+**Root cause (full code trace):** admin health builds its desk via `loadMergedSpxDesk` → per-replica
+`withServerCache` flow lane (`buildSpxDeskFlow`), whose `flow_data_age_ms` = `flowDataAgeMs()` =
+`now - lastFlowDataAt`. `lastFlowDataAt` (`src/lib/flow-data-freshness.ts`) is a **module-level
+in-memory** max-timestamp set by `markFlowDataFromBriefs`/`markFlowDataFresh`. On a replica whose recent
+desk-flow builds returned **empty** `freshFlowsRaw` (quiet SPX tape → DB query returns no qualifying
+rows) AND whose UW flow WS isn't the one bearing frames, `lastFlowDataAt` ages → `flow_data_age_ms`
+crosses the 120 s critical threshold (`admin-spx-issues.ts:101`) → false CRITICAL, even while other
+replicas + the shared DB are fresh. Same per-replica-vs-cluster-truth class as the empty-`websockets:{}`
+seen on some health replicas.
+
+**Fix (`994e2bd`, 2 files — high-confidence, isolated, build-gated, fail-open → main):**
+- `flow-liveness.ts` — new `isFlowFrameFreshAnywhere(maxAgeMs)`: the observability twin of the existing
+  `isFlowFrameFreshFromCluster`, **without** the anti-self-skip instance guard (that guard is only
+  meaningful for the cron's REST-skip decision, never for a freshness probe). Reads the shared Redis
+  heartbeat `blackout:flow_alerts:last_delivered_at` (90 s TTL, written by whichever replica delivers a
+  live UW flow frame).
+- `admin-spx-issues.ts` — before escalating the `flowAge > 120_000` branch to CRITICAL, corroborate
+  against the cluster heartbeat. If **any** replica delivered a frame within 120 s → downgrade to a
+  visible **WARNING** (`"Flow data stale on this replica"`); else the real CRITICAL fires.
+- **Fail-safe / no real stall masked:** a genuine cluster-wide flow stall lapses the heartbeat (90 s TTL)
+  → `isFlowFrameFreshAnywhere` false → CRITICAL fires. Redis-down → `sharedCacheGet` in-memory/empty →
+  false → CRITICAL fires. Single-process → in-memory heartbeat fresh only when this process is actually
+  delivering frames → correct in both directions.
+- **Scope:** observability only. The trade-gate primitive (`spx-play-gates.ts:236` reads the same
+  `desk.flow_data_age_ms`) is **untouched** — that path re-marks freshness from the DB on every fresh
+  desk build, so it is far less exposed; corroborating it too is a live-trade-path change → carry-forward
+  flag, not auto-main (per FIX-vs-FLAG).
+- `npx tsc --noEmit` exit 0 · `npm run build` exit 0 → pushed `main` (rebased onto concurrent
+  `a97f3e4`; `git merge-base --is-ancestor 994e2bd origin/main` → YES; Railway deploys origin/main).
+
+### B. Rest of the live surface — clean / known-benign (no other action — anti-theater)
+
+| Source | Endpoint | Result |
+|---|---|---|
+| Durable error sink | `/api/admin/errors?limit=200` | ✅ **maxId 70 — ZERO new since RUN 4.** Only 2 signatures: id 70 `::int` (RUN 4, fixed `48d30b0`) + id 1–69 `::date` (RUN 3, fixed `cc17d83`). Publish-preview spike **stopped at 07:57 UTC** (no event since) and `::int` (id 70) has not recurred since 13:50 UTC → both fixes holding. |
+| Open incidents | `/api/admin/incidents` | ✅ `incidents:[]` — 0 |
+| Admin health | `/api/admin/health` | ⚠️ `health_ok:false` — driven solely by the 3 benign breadth-ticker warnings (`I:TICK`/`I:TRIN`/`I:ADD` `price=0`, age=epoch — never feed; carry-forward cosmetic). After `994e2bd` the per-replica flow reading becomes a WARNING not a false CRITICAL. `route_errors:[]`, `redis_degraded:false`, `market_health_ok:true`, critical 0 (the flow critical was the §A artifact). |
+| Providers (5m) | `/api/admin/health` | ✅ polygon 162/0err, UW 59/0err, all 200; anthropic idle |
+| WebSockets | `/api/admin/health` | ✅ polygon_indices OPEN, UW flow_alerts OPEN+auth (per-replica; some replicas show `websockets:{}` = WS not init on that replica, expected) |
+| API dashboard (24h) | `/api/admin/apis/dashboard` | ⏳ endpoint >45 s during RTH (couldn't read this pass); 24h window still carries the already-fixed `::date`/`::int` spikes bleeding in (RUN 3/4), self-clearing as the window rolls. |
+| Cron health | `/api/admin/cron-health` | ⏳ endpoint >45 s during RTH (couldn't read this pass). Known carry-forward: `failed:1` Night Hawk Edition (RUN 1 §A, fix `cc35f9e` live, flagged) — unchanged, next fire Fri **5:30 PM ET today**. |
+
+`cron-health` + `apis/dashboard` are heavy aggregations that exceeded the 45 s CDP eval timeout during
+market hours (local `npm run build` was also competing for CPU). The durable sink (primary, read OK) is
+the ground truth and is clean. The slowness is an admin-only endpoint perf note, not a production error.
+
+### Result
+
+**✅ ONE new signature (admin-health per-replica false `flow:Flow data stale` CRITICAL) → root-caused +
+observability FIXED → main (`994e2bd`).** The health detector now corroborates a per-replica flow-stale
+reading against the shared cluster heartbeat before paging ops, eliminating false critical → false ops
+Discord page → false incident, while still firing the real critical on a genuine cluster stall
+(fail-open). Durable sink / incidents / providers / WS all clean; RUN 3 (`cc17d83`) + RUN 4 (`48d30b0`)
+fixes confirmed holding (no recurrence). All other `health_ok:false` is the benign breadth-ticker class.
+
+### Carry-forward (toward 0-open-issues)
+- **NEW flag (this run):** apply the same cluster-heartbeat corroboration to the **trade-entry** flow-stale
+  gate (`spx-play-gates.ts:236-238`, blocks at >5 min) so a user landing on a stale replica can't be
+  falsely blocked from a valid SPX entry while the cluster tape is live. Live-trade-path change → branch +
+  human review, not auto-main. (TaskCreate filed.)
+- Prior carry-forwards stand: publish-preview external caller (RUN 3); `::int` `days_of_data` source-round
+  (RUN 4, `spx-play-outcomes.ts:227`, use `Math.floor`); Night Hawk Edition synthesis funnel + stale-
+  `running` reaper (#70); off-hours WS-staleness/breadth-ticker RTH gate (cosmetic); cron-health +
+  apis/dashboard RTH latency (admin-only); open `auto/*` branches awaiting human review.
