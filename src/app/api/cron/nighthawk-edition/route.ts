@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { requireDatabaseInProduction, fetchNighthawkJob } from "@/lib/db";
 import { buildEveningEdition, serializeBuildError } from "@/lib/nighthawk/edition-builder";
 import { isWeekdayEt, etNowParts, nextTradingDayEt, todayEt } from "@/lib/nighthawk/session";
@@ -18,22 +18,6 @@ export const dynamic = "force-dynamic";
 // ALWAYS checkpoints + returns a resume status BEFORE the host can kill us, so partial progress is
 // never lost regardless of the host's true limit.
 export const maxDuration = 800;
-
-/**
- * Internal soft deadline for one invocation. The edition builder checkpoints to Postgres after every
- * stage and is resumable, so when we approach this budget we stop awaiting, persist a `resume` status
- * into the cron-run meta, and return 202 — a follow-up invocation (cron re-fire or `?force=1`)
- * continues from the last checkpoint. Kept a margin under maxDuration so we checkpoint gracefully
- * instead of being hard-killed mid-write (which is exactly how #77 went dark). Override via
- * NIGHTHAWK_EDITION_BUDGET_MS for hosts with a different real ceiling.
- */
-const BUILD_TIME_BUDGET_MS = (() => {
-  const raw = Number(process.env.NIGHTHAWK_EDITION_BUDGET_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 270_000; // ~4.5 min default
-})();
-
-/** Sentinel a time-budget race resolves with when the build outlived this invocation's budget. */
-const BUILD_TIMED_OUT = Symbol("nighthawk-edition-build-timed-out");
 
 function editionEnabled(): boolean {
   const flag = process.env.NIGHTHAWK_EDITION_ENABLED?.trim();
@@ -99,121 +83,76 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  try {
-    // Race the build against this invocation's soft deadline. The builder checkpoints to Postgres
-    // after every stage, so if we hit the budget we stop awaiting and report a `resume` status — the
-    // partial work is durable and a follow-up invocation continues from the last checkpoint. This is
-    // the fix for #77: previously a build that overran the function timeout was hard-killed by the
-    // host, so nothing published AND the failure never surfaced in /api/admin/errors.
-    let budgetTimer: ReturnType<typeof setTimeout> | undefined;
-    const budget = new Promise<typeof BUILD_TIMED_OUT>((resolve) => {
-      budgetTimer = setTimeout(() => resolve(BUILD_TIMED_OUT), BUILD_TIME_BUDGET_MS);
-    });
-    const buildPromise = buildEveningEdition({ force });
-    // If the budget wins the race, buildPromise keeps running in the background (its stage
-    // checkpoints are still useful for the next invocation). Swallow any LATE rejection so it never
-    // becomes an unhandledRejection after we have already returned the resume response.
-    buildPromise.catch(() => undefined);
-    const raced = await Promise.race([buildPromise, budget]);
-    if (budgetTimer) clearTimeout(budgetTimer);
-
-    if (raced === BUILD_TIMED_OUT) {
-      // Time budget hit. Re-read the job so admin sees exactly which stage we reached; the builder
-      // already persisted progress, so the next fire resumes. NOT a failure → 202 + skipped:true so
-      // it does not page ops, but the REASON is recorded in the cron-run meta (visible in admin).
-      const partial = await fetchNighthawkJob(editionFor).catch(() => null);
-      const stage = partial?.current_stage ?? job?.current_stage ?? null;
-      const reason = `timeout_budget:${Math.round(BUILD_TIME_BUDGET_MS / 1000)}s — checkpointed at ${stage ?? "unknown"}; re-fire to resume`;
-      console.warn("[cron/nighthawk-edition]", reason);
-      await logCronRun(CRON_KEY, started, {
-        ok: false,
-        skipped: true,
-        reason,
-        status_detail: "resume",
-        error: reason,
-        edition_for: editionFor,
-        job_status: partial?.status ?? job?.status ?? "running",
-        current_stage: stage,
+  // FIRE-AND-FORGET (#77 hardening D). Previously this route AWAITED the multi-minute build and
+  // raced it against an internal budget, so the cron HTTP handshake routinely outlived hit-cron's
+  // 60s timeout — every nightly run logged as FAILED even when the edition published fine (the
+  // "every nightly run logs as failed" lie). Now we dispatch the build in the background via
+  // next/server `after()` (runs after the response is flushed, on the long-lived Railway worker) and
+  // return 202 in well under 60s. The builder checkpoints + publishes on its own; its background
+  // `.catch` serializes + ops-alerts so an unhandled rejection can NEVER crash the replica. A re-fire
+  // (cron schedule or ?force=1) resumes from the last checkpoint exactly as before.
+  const dispatchBuild = () => {
+    void buildEveningEdition({ force })
+      .then((result) => {
+        if (result.ok) {
+          console.info(
+            `[cron/nighthawk-edition] background build done — ${result.edition_for} ` +
+              `status=${result.job_status ?? "?"} stage=${result.current_stage ?? "?"} plays=${result.plays_count}`
+          );
+        } else {
+          // The builder itself already ops-alerts on a hard failure; this is the route-side log so the
+          // background outcome is visible in worker logs even if Discord is unset.
+          console.error(
+            `[cron/nighthawk-edition] background build returned not-ok — ${result.edition_for} ` +
+              `status=${result.job_status ?? "?"} stage=${result.current_stage ?? "?"} error=${result.error ?? "?"}`
+          );
+        }
+      })
+      .catch(async (error) => {
+        // Defensive: buildEveningEdition has its own try/catch and shouldn't reject, but if anything
+        // slips through, serialize + ops-alert HERE so it can never become an unhandledRejection that
+        // takes down the replica.
+        const detail = serializeBuildError(error);
+        console.error("[cron/nighthawk-edition] background build REJECTED:", error);
+        const failedJob = await fetchNighthawkJob(editionFor).catch(() => null);
+        const stage = failedJob?.current_stage ?? job?.current_stage ?? null;
+        await notifyOpsDiscord({
+          severity: "critical",
+          title: `Night Hawk background edition build REJECTED — ${editionFor}`,
+          body:
+            `stage=${stage ?? "unknown"}\n` +
+            `error: ${detail}\n` +
+            `[nighthawk-funnel] ${editionFor}: background rejection (see edition-builder funnel log for stage counts)`,
+        }).catch(() => undefined);
       });
-      return NextResponse.json(
-        {
-          ok: false,
-          status: "resume",
-          reason,
-          edition_for: editionFor,
-          job_status: partial?.status ?? job?.status ?? "running",
-          current_stage: stage,
-          note: "Invocation hit its time budget after checkpointing — re-hit this endpoint or run nighthawk:run to resume.",
-        },
-        { status: 202 }
-      );
-    }
+  };
 
-    const result = raced;
-    const status = result.ok ? 200 : result.job_status === "failed" ? 500 : 202;
-    // Map run health precisely (verifier note): ok:true -> ok; explicit 'failed' -> failed;
-    // ok:false with a non-failed job_status is a healthy mid-pipeline checkpoint (202) -> skipped,
-    // NOT a failure (avoids false Discord alerts). undefined job_status with ok:false
-    // (e.g. no API keys) keeps ok:false -> failed.
-    const inProgress = !result.ok && result.job_status != null && result.job_status !== "failed";
-    await logCronRun(CRON_KEY, started, {
-      ok: result.ok,
-      skipped: inProgress ? true : undefined,
-      reason: inProgress ? `checkpoint:${result.current_stage ?? result.job_status}` : undefined,
-      error: result.error,
-      edition_for: result.edition_for,
-      job_status: result.job_status ?? null,
-      current_stage: result.current_stage ?? null,
-      plays_count: result.plays_count,
-      candidates: result.candidates,
-      resumed: result.resumed,
-    });
-    return NextResponse.json(
-      {
-        ...result,
-        note:
-          result.job_status === "published"
-            ? "Edition complete."
-            : "Checkpointed pipeline — re-hit this endpoint or run nighthawk:run to resume.",
-      },
-      { status }
-    );
-  } catch (error) {
-    const detail = serializeBuildError(error);
-    console.error("[cron/nighthawk-edition]", error);
-    // Record the REAL failure reason + the stage we died at into the cron-run meta so it is visible in
-    // /api/admin/errors (#77: the build was failing but the cause was invisible there). Re-read the job
-    // for the freshest stage; fall back to the pre-build snapshot if that read also fails.
-    const failedJob = await fetchNighthawkJob(editionFor).catch(() => null);
-    const stage = failedJob?.current_stage ?? job?.current_stage ?? null;
-    await logCronRun(CRON_KEY, started, {
-      ok: false,
-      error: detail,
-      reason: `edition_build_failed${stage ? `:${stage}` : ""}`,
-      edition_for: editionFor,
-      job_status: failedJob?.status ?? job?.status ?? "unknown",
-      current_stage: stage,
-    });
-    // Ops alert on the route-level 500 (#77 was invisible to ops). No-op until DISCORD_OPS_WEBHOOK_URL
-    // is set; never throws.
-    await notifyOpsDiscord({
-      severity: "critical",
-      title: `Night Hawk cron edition build FAILED — ${editionFor}`,
-      body:
-        `stage=${stage ?? "unknown"}\n` +
-        `error: ${detail}\n` +
-        `[nighthawk-funnel] ${editionFor}: route-level exception (see edition-builder funnel log for stage counts)`,
-    }).catch(() => undefined);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Edition build failed",
-        detail,
-        edition_for: editionFor,
-        job_status: failedJob?.status ?? job?.status ?? "unknown",
-        current_stage: stage,
-      },
-      { status: 500 }
-    );
+  // Prefer next/server after() (platform-managed background work bound to the server, not the HTTP
+  // response). It is a no-op fallback to a detached promise if after() ever throws (e.g. called
+  // outside a request scope), so the build always gets dispatched.
+  try {
+    after(dispatchBuild);
+  } catch {
+    dispatchBuild();
   }
+
+  const accepted = {
+    ok: true,
+    status: "accepted",
+    reason: "build dispatched in background (fire-and-forget)",
+    edition_for: editionFor,
+    job_status: job?.status ?? "running",
+    current_stage: job?.current_stage ?? "stage_context",
+  };
+  // Log SUCCESS for the handshake: the build was accepted + dispatched. This is the honest signal —
+  // the cron trigger's job is to KICK the build, and it succeeded. The build's own outcome
+  // (published / failed) is tracked separately via the nighthawk_job row + the watchdog.
+  await logCronRun(CRON_KEY, started, accepted);
+  return NextResponse.json(
+    {
+      ...accepted,
+      note: "Edition build dispatched in background — poll ?status=1 or the admin cron dashboard for completion.",
+    },
+    { status: 202 }
+  );
 }

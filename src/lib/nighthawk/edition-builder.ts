@@ -66,6 +66,29 @@ function logFunnel(editionFor: string, f: Partial<FunnelCounts>): string {
   return line;
 }
 
+/**
+ * Recap-only collapses come in two flavors (#77 hardening D, item 9):
+ *  - BENIGN: no flow candidates at all (thin tape / UW returned nothing) — `funnel.candidates === 0`.
+ *    Expected on a quiet evening, NOT worth paging ops.
+ *  - ANOMALOUS: candidates EXISTED but the funnel zeroed downstream (no scored dossiers, Claude
+ *    synthesized=0, critic dropped everything, empty finalPlays). This points at a real pipeline
+ *    problem (data/scoring/Claude/critic) hiding behind an ok:true recap-only — alert ops (warning).
+ * No-op until DISCORD_OPS_WEBHOOK_URL is set; never throws.
+ */
+async function alertRecapOnlyIfAnomalous(
+  editionFor: string,
+  funnel: Partial<FunnelCounts>,
+  reason: string
+): Promise<void> {
+  const benign = (funnel.candidates ?? 0) === 0;
+  if (benign) return;
+  await notifyOpsDiscord({
+    severity: "warning",
+    title: `Night Hawk recap-only (anomalous collapse) — ${editionFor}`,
+    body: `reason: ${reason}\n${formatFunnelLine(editionFor, funnel)}`,
+  }).catch(() => undefined);
+}
+
 export type EditionBuildResult = {
   ok: boolean;
   edition_for: string;
@@ -312,6 +335,7 @@ export async function buildEveningEdition(opts?: {
         funnel.candidates = 0;
         funnel.published = 0;
         logFunnel(editionFor, funnel);
+        await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
         await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: 0, checkpointing, force: Boolean(opts?.force) });
         return {
           ok: true,
@@ -389,6 +413,7 @@ export async function buildEveningEdition(opts?: {
       funnel.dossiers = 0;
       funnel.published = 0;
       logFunnel(editionFor, funnel);
+      await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
       await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: candidates.length, checkpointing, force: Boolean(opts?.force) });
       return {
         ok: true,
@@ -454,6 +479,7 @@ export async function buildEveningEdition(opts?: {
       funnel.synthesized = 0;
       funnel.published = 0;
       logFunnel(editionFor, funnel);
+      await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
       await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: candidates.length, checkpointing, force: Boolean(opts?.force) });
       return {
         ok: true,
@@ -542,6 +568,7 @@ export async function buildEveningEdition(opts?: {
         funnel.critic_passed = 0;
         funnel.published = 0;
         logFunnel(editionFor, funnel);
+        await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
         await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: candidates.length, checkpointing, force: Boolean(opts?.force) });
         return {
           ok: true,
@@ -573,6 +600,7 @@ export async function buildEveningEdition(opts?: {
         console.warn(`[nighthawk/edition] stage_critic zeroed — recap-only fallback: ${reason}`);
         funnel.published = 0;
         logFunnel(editionFor, funnel);
+        await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
         await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: candidates.length, checkpointing, force: Boolean(opts?.force) });
         return {
           ok: true,
@@ -608,6 +636,7 @@ export async function buildEveningEdition(opts?: {
       console.warn(`[nighthawk/edition] publish guard — empty finalPlays, recap-only fallback: ${reason}`);
       funnel.published = 0;
       logFunnel(editionFor, funnel);
+      await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
       await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: candidates.length, checkpointing, force: Boolean(opts?.force) });
       return {
         ok: true,

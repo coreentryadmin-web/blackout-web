@@ -243,12 +243,24 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       let status = health.status;
       let statusLabel = health.status_label;
 
+      // A non-terminal job (anything not published/failed) whose updated_at is older than this is
+      // STUCK — with the fire-and-forget builder a healthy build checkpoints every stage within
+      // minutes, so >60m without progress and without publishing means the background build died
+      // silently (host kill, OOM, hung Claude call). Escalate to `stale` so the watchdog alerts the
+      // same night instead of waiting out the 4h registry ceiling. (#77 hardening D, item 10)
+      const STUCK_JOB_MIN = 60;
+      const nonTerminal = latestNhJob.status !== "published" && latestNhJob.status !== "failed";
+      const stuck = nonTerminal && ageMin != null && ageMin > STUCK_JOB_MIN;
+
       if (latestNhJob.status === "failed") {
         status = "failed";
         statusLabel = `Job failed: ${latestNhJob.error ?? latestNhJob.current_stage ?? "unknown"}`;
       } else if (latestNhJob.status === "published") {
         status = health.status === "unknown" || health.status === "stale" ? "healthy" : health.status;
         statusLabel = `Published ${latestNhJob.edition_for}`;
+      } else if (stuck) {
+        status = "stale";
+        statusLabel = `Stuck ${ageMin}m at ${latestNhJob.current_stage ?? latestNhJob.status} (no publish, no progress)`;
       } else if (health.status === "unknown") {
         status = "warning";
         statusLabel = `${latestNhJob.status}${latestNhJob.current_stage ? ` · ${latestNhJob.current_stage}` : ""}`;

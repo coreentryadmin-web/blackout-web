@@ -59,7 +59,11 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "Night Hawk Edition",
     kind: "worker",
     schedule_label: "5:30 PM ET weekdays",
-    stale_after_min: 36 * 60,
+    // Lowered 36h → 4h (#77 hardening D): the edition fires every 15 min across the evening window
+    // and now dispatches fire-and-forget, so a published edition should land within a couple hours of
+    // 5:30 PM ET. A 36h ceiling meant a fully dark night went unflagged until the NEXT evening; 4h
+    // catches a missed/stuck build the same night.
+    stale_after_min: 240,
     weekdays_only: true,
     description: "Full dossier pipeline → Claude plays → publish",
   },

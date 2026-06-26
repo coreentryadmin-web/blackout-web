@@ -6,15 +6,21 @@
 # The tsx worker crashed with "Cannot find module 'server-only'": the
 # edition-builder -> platform -> spx-service -> spx-evaluator chain imports
 # `server-only`, which only resolves inside Next's bundler, not under raw tsx.
-# The HTTP route runs INSIDE the Next server (server-only resolves) and is
-# checkpoint-resumable, so firing every 15 min across the 5:30-7:55 PM ET evening
-# window lets a long Claude build resume to completion across calls.
+# The HTTP route runs INSIDE the Next server (server-only resolves). As of the #77
+# hardening it is FIRE-AND-FORGET: the route dispatches the build in the background
+# (next/server after()) and returns 202 in <60s, so the trigger logs SUCCESS while the
+# build checkpoints + publishes asynchronously. Firing every 15 min across the
+# 5:30-7:55 PM ET evening window lets a long Claude build resume to completion across calls.
+#
+# CRON_HTTP_TIMEOUT_MS (read by scripts/hit-cron.mjs) is set to 180000 (3 min) as a safety
+# margin: the route now returns 202 fast so 60s is moot, but a slow background dispatch /
+# cold start should never abort the trigger before the 202 lands.
 [build]
 builder = "nixpacks"
 buildCommand = "echo 'cron trigger service: no app build needed'"
 
 [deploy]
-startCommand = "node scripts/hit-cron.mjs /api/cron/nighthawk-edition"
+startCommand = "CRON_HTTP_TIMEOUT_MS=180000 node scripts/hit-cron.mjs /api/cron/nighthawk-edition"
 cronSchedule = "*/15 21-23 * * 1-5"
 restartPolicyType = "never"
 numReplicas = 1
