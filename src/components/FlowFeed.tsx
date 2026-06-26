@@ -133,6 +133,7 @@ export function FlowFeed() {
   const [nighthawkEdition, setNighthawkEdition] = useState<NightHawkEdition | null>(null);
 
   const seenRef         = useRef(new Set<string>());
+  const loadGenRef      = useRef(0); // newest loadFlows() wins; stale (superseded) results are dropped
   const replaySourceRef = useRef<FlowAlert[]>([]);
   const replayIdxRef    = useRef(0);
   const replayTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -372,24 +373,41 @@ export function FlowFeed() {
 
   // ── Data loading ──────────────────────────────────────────────────────────
   const loadFlows = useCallback(async () => {
-    try {
-      const d = await fetchFlows({ min_premium: Math.max(FLOOR_PREMIUM, minPremium), ticker: tickerFilter || undefined });
-      // Bug 1 + gap #13: rebuild seenRef from REST so SSE can't re-add duplicates after a
-      // reconnect. Seed BOTH the canonical alert_id (when the row carries one) and the
-      // composite fallback, so an incoming SSE echo matches on whichever key it shares.
-      const seeded = new Set<string>();
-      for (const a of d.flows as Array<FlowAlert & { alert_id?: string }>) {
-        const id = flowAlertId(a);
-        if (id) seeded.add(id);
-        seeded.add(flowCompositeKey(a));
+    // Bounded retry w/ backoff: a single transient REST blip (e.g. a 401/503 during a
+    // replica restart or deploy roll) used to leave the tape stale until a manual reload,
+    // because the poll-based retry only runs while the SSE is CLOSED — an open SSE + a
+    // failed filter-triggered load had no recovery path. Retry up to 3x before going offline.
+    // A generation guard ensures only the LATEST load commits state, so an in-flight load
+    // (or its retry) can't overwrite the result of a newer filter change (stale-write race).
+    const gen = ++loadGenRef.current;
+    const ATTEMPTS = 3;
+    for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+      try {
+        const d = await fetchFlows({ min_premium: Math.max(FLOOR_PREMIUM, minPremium), ticker: tickerFilter || undefined });
+        if (gen !== loadGenRef.current) return; // superseded by a newer load — drop this result
+        // Bug 1 + gap #13: rebuild seenRef from REST so SSE can't re-add duplicates after a
+        // reconnect. Seed BOTH the canonical alert_id (when the row carries one) and the
+        // composite fallback, so an incoming SSE echo matches on whichever key it shares.
+        const seeded = new Set<string>();
+        for (const a of d.flows as Array<FlowAlert & { alert_id?: string }>) {
+          const id = flowAlertId(a);
+          if (id) seeded.add(id);
+          seeded.add(flowCompositeKey(a));
+        }
+        seenRef.current = seeded;
+        setAlerts(d.flows);
+        setLive(true);
+        setLoading(false);
+        return;
+      } catch {
+        if (gen !== loadGenRef.current) return; // superseded — leave state to the newer load
+        if (attempt < ATTEMPTS) {
+          await new Promise((r) => setTimeout(r, attempt * 500)); // 0.5s, 1s backoff
+          continue;
+        }
+        setLive(false);
+        setLoading(false);
       }
-      seenRef.current = seeded;
-      setAlerts(d.flows);
-      setLive(true);
-    } catch {
-      setLive(false);
-    } finally {
-      setLoading(false);
     }
   }, [minPremium, tickerFilter]);
 
