@@ -30,9 +30,9 @@ export const clerkAppearance: Appearance = {
     // labels read as PRIMARY structure (near-white), distinct from the sky subtitle
     formFieldLabel: "font-mono text-[11px] tracking-[0.14em] uppercase text-white/85",
     // "Optional" + hints clearly tertiary
-    formFieldHintText: "font-mono text-[10px] text-white/40 normal-case tracking-normal",
+    formFieldHintText: "font-mono text-[10px] text-white/55 normal-case tracking-normal",
     formFieldInput:
-      "bg-[#040407]/70 border border-white/12 rounded-xl py-2.5 text-white placeholder:text-white/30 focus:border-bull/60 focus:ring-2 focus:ring-bull/30 transition-colors",
+      "bg-[#040407]/70 border border-white/12 rounded-xl py-2.5 text-white placeholder:text-white/55 focus:border-bull/60 focus:ring-2 focus:ring-bull/30 transition-colors",
     formFieldInputShowPasswordButton: "text-sky-300 hover:text-bull",
     formFieldSuccessText: "text-bull",
     formFieldErrorText: "text-bear font-mono text-xs",
@@ -45,7 +45,7 @@ export const clerkAppearance: Appearance = {
       "bg-white/[0.04] border border-white/12 rounded-xl text-white hover:border-bull/40 hover:bg-bull/[0.06] transition-colors py-2.5",
     socialButtonsBlockButtonText: "font-syne text-white font-semibold",
     dividerLine: "bg-white/10",
-    dividerText: "font-mono text-[10px] tracking-[0.3em] text-white/40 uppercase",
+    dividerText: "font-mono text-[10px] tracking-[0.3em] text-white/55 uppercase",
     formResendCodeLink: "text-bull hover:brightness-125",
     otpCodeFieldInput: "border border-white/12 rounded-lg text-white focus:border-bull/60 focus:ring-2 focus:ring-bull/30",
     footer: "bg-transparent",

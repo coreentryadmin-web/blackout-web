@@ -302,6 +302,8 @@ function AddPositionForm({ onCreated }: { onCreated: () => void }) {
         <input
           id="nw-ticker"
           aria-label="Ticker symbol"
+          aria-required="true"
+          aria-describedby={error ? "nw-form-error" : undefined}
           className={clsx(FIELD_CLASS, "uppercase tracking-[0.08em]")}
           placeholder="SPX"
           value={form.ticker}
@@ -346,6 +348,8 @@ function AddPositionForm({ onCreated }: { onCreated: () => void }) {
           <input
             id="nw-strike"
             aria-label="Strike price"
+            aria-required="true"
+            aria-describedby={error ? "nw-form-error" : undefined}
             type="number"
             inputMode="decimal"
             step="any"
@@ -363,6 +367,8 @@ function AddPositionForm({ onCreated }: { onCreated: () => void }) {
           <input
             id="nw-expiry"
             aria-label="Expiry date"
+            aria-required="true"
+            aria-describedby={error ? "nw-form-error" : undefined}
             type="date"
             className={FIELD_CLASS}
             value={form.expiry}
@@ -379,6 +385,8 @@ function AddPositionForm({ onCreated }: { onCreated: () => void }) {
           <input
             id="nw-contracts"
             aria-label="Number of contracts"
+            aria-required="true"
+            aria-describedby={error ? "nw-form-error" : undefined}
             type="number"
             inputMode="numeric"
             step="1"
@@ -396,6 +404,8 @@ function AddPositionForm({ onCreated }: { onCreated: () => void }) {
           <input
             id="nw-premium"
             aria-label="Entry premium per contract"
+            aria-required="true"
+            aria-describedby={error ? "nw-form-error" : undefined}
             type="number"
             inputMode="decimal"
             step="any"
@@ -409,7 +419,7 @@ function AddPositionForm({ onCreated }: { onCreated: () => void }) {
       </div>
 
       {error && (
-        <p role="alert" className="font-mono text-[11px] leading-relaxed text-bear">
+        <p id="nw-form-error" role="alert" className="font-mono text-[11px] leading-relaxed text-bear">
           {error}
         </p>
       )}

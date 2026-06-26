@@ -15,7 +15,7 @@ type PageShellOwnProps = {
 };
 
 export type PageShellProps = PageShellOwnProps &
-  Omit<React.HTMLAttributes<HTMLDivElement>, keyof PageShellOwnProps>;
+  Omit<React.HTMLAttributes<HTMLElement>, keyof PageShellOwnProps>;
 
 /**
  * Standard in-app page frame — the canonical replacement for the hand-rolled
@@ -25,12 +25,12 @@ export type PageShellProps = PageShellOwnProps &
  * Set `backdrop={false}` for tools that paint their own canvas, or pass
  * `backdropSlot` to supply a custom one.
  */
-export const PageShell = forwardRef<HTMLDivElement, PageShellProps>(function PageShell(
+export const PageShell = forwardRef<HTMLElement, PageShellProps>(function PageShell(
   { backdrop = true, backdropSlot, fullBleed = false, contentClassName, className, children, ...rest },
   ref
 ) {
   return (
-    <div
+    <main
       ref={ref}
       id="main"
       className={clsx("relative min-h-[100svh] bg-void", className)}
@@ -60,6 +60,6 @@ export const PageShell = forwardRef<HTMLDivElement, PageShellProps>(function Pag
       >
         {children}
       </div>
-    </div>
+    </main>
   );
 });

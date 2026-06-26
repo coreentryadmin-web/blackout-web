@@ -98,7 +98,7 @@ export function AdminApiEventDetail({
                 <p className="admin-cmd-drawer-kicker">Incident deep dive</p>
                 <h3 className="admin-cmd-drawer-title">API call forensics</h3>
               </div>
-              <button type="button" className="admin-cmd-drawer-close" onClick={onClose}>
+              <button type="button" aria-label="Close" className="admin-cmd-drawer-close" onClick={onClose}>
                 ✕
               </button>
             </div>

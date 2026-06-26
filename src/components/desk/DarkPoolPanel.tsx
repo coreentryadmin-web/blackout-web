@@ -221,7 +221,7 @@ export function DarkPoolPanel() {
               placeholder="NVDA, TSLA…"
               aria-label="Filter dark pool blocks by ticker"
               maxLength={6}
-              className="font-mono text-[11px] font-bold uppercase px-3 py-1 rounded-lg border bg-[rgba(8,9,14,0.85)] outline-none w-28 tracking-widest transition-all"
+              className="font-mono text-[11px] font-bold uppercase px-3 py-1 rounded-lg border bg-[rgba(8,9,14,0.85)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#bf5fff] w-28 tracking-widest transition-all"
               style={{
                 borderColor: search ? "rgba(191,95,255,0.65)" : "rgba(191,95,255,0.22)",
                 color:       search ? "#d580ff" : "#7dd3fc",
@@ -236,7 +236,7 @@ export function DarkPoolPanel() {
                   exit={{ opacity: 0, scale: 0.8 }}
                   type="button"
                   onClick={() => setSearch("")}
-                  aria-label="Close"
+                  aria-label="Clear ticker filter"
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-cyan-400 hover:text-sky-200 font-mono text-sm font-bold"
                 >
                   ×

@@ -157,14 +157,14 @@ export function TickerDrawer({
                   {displayFlows.length > 0 && (
                     <div className="grid grid-cols-2 gap-3">
                       <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/15 p-3">
-                        <p className="font-mono text-[10px] tracking-widest text-emerald-800 uppercase mb-1.5">Call Premium</p>
+                        <p className="font-mono text-[10px] tracking-widest text-emerald-400 uppercase mb-1.5">Call Premium</p>
                         <p className="font-mono text-lg font-bold text-emerald-400 tabular-nums">{fmtPremium(callPrem)}</p>
-                        <p className="font-mono text-[10px] text-emerald-800 mt-0.5">{callPct}% of flow</p>
+                        <p className="font-mono text-[10px] text-emerald-400 mt-0.5">{callPct}% of flow</p>
                       </div>
                       <div className="rounded-lg border border-rose-900/40 bg-rose-950/15 p-3">
-                        <p className="font-mono text-[10px] tracking-widest text-rose-800 uppercase mb-1.5">Put Premium</p>
+                        <p className="font-mono text-[10px] tracking-widest text-rose-400 uppercase mb-1.5">Put Premium</p>
                         <p className="font-mono text-lg font-bold text-rose-400 tabular-nums">{fmtPremium(putPrem)}</p>
-                        <p className="font-mono text-[10px] text-rose-800 mt-0.5">{100 - callPct}% of flow</p>
+                        <p className="font-mono text-[10px] text-rose-400 mt-0.5">{100 - callPct}% of flow</p>
                       </div>
                     </div>
                   )}

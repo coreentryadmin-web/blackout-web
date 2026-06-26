@@ -53,7 +53,7 @@ export function NightHawkFlowPanel({
           <span className="flow-panel-title">Hawk Conviction</span>
         </div>
         {editionFor && (
-          <span className="font-mono text-[10px] text-indigo-600/60">
+          <span className="font-mono text-[10px] text-indigo-400">
             {editionFor}
           </span>
         )}
@@ -79,6 +79,19 @@ export function NightHawkFlowPanel({
                 exit={{ opacity: 0, scale: 0.97 }}
                 transition={{ delay: i * 0.05, type: "spring", damping: 22, stiffness: 300 }}
                 onClick={() => onTickerClick?.(play.ticker)}
+                role={onTickerClick ? "button" : undefined}
+                tabIndex={onTickerClick ? 0 : undefined}
+                aria-label={onTickerClick ? `Open ${play.ticker} detail` : undefined}
+                onKeyDown={
+                  onTickerClick
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onTickerClick(play.ticker);
+                        }
+                      }
+                    : undefined
+                }
                 className="rounded-xl border border-indigo-900/25 bg-gradient-to-br from-indigo-950/10 to-[#08080e]/40 px-3 py-2.5 cursor-pointer hover:border-indigo-700/35 transition-colors"
                 style={{ boxShadow: "inset 0 0 16px rgba(99,102,241,0.04)" }}
               >

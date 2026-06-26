@@ -64,6 +64,19 @@ export function SplitFlowRadar({
                 exit={{ opacity: 0, scale: 0.97 }}
                 transition={{ delay: i * 0.04, type: "spring", damping: 22, stiffness: 300 }}
                 onClick={() => onTickerClick?.(e.ticker)}
+                role={onTickerClick ? "button" : undefined}
+                tabIndex={onTickerClick ? 0 : undefined}
+                aria-label={onTickerClick ? `Open ${e.ticker} detail` : undefined}
+                onKeyDown={
+                  onTickerClick
+                    ? (ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+                          onTickerClick(e.ticker);
+                        }
+                      }
+                    : undefined
+                }
                 className={clsx(
                   "rounded-xl border px-3 py-2.5 transition-colors",
                   onTickerClick && "cursor-pointer hover:border-gold/50",

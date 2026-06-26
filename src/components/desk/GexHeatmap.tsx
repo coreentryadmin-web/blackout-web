@@ -1647,6 +1647,7 @@ function TickerSwitcher({
             role="combobox"
             aria-expanded={open}
             aria-controls="ticker-listbox"
+            aria-activedescendant={open && options.length ? `ticker-opt-${active}` : undefined}
             spellCheck={false}
             autoComplete="off"
             className={clsx(
@@ -1669,7 +1670,7 @@ function TickerSwitcher({
                 const isActive = i === active;
                 const isCurrent = o.ticker === ticker;
                 return (
-                  <li key={o.ticker} role="option" aria-selected={isCurrent}>
+                  <li key={o.ticker} id={`ticker-opt-${i}`} role="option" aria-selected={isCurrent}>
                     <button
                       type="button"
                       onMouseEnter={() => setActive(i)}
@@ -1967,7 +1968,7 @@ function FlowSummary({ flowByStrike }: { flowByStrike: Record<string, FlowByStri
           </span>
         </div>
         <div className="flex flex-col text-right">
-          <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-bear/80">Puts</span>
+          <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-bear-text">Puts</span>
           <span className="font-mono text-[13px] font-bold tabular-nums text-bear">
             {fmtMoney(totals.put)}
           </span>
@@ -2396,7 +2397,7 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
       <span
         className={clsx(
           "font-mono text-[15px] font-bold leading-none tabular-nums",
-          cell.magnet ? "text-white" : active ? t.value : "text-white/40"
+          cell.magnet ? "text-white" : active ? t.value : "text-white/55"
         )}
       >
         {cell.value}

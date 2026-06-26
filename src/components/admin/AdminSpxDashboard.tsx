@@ -588,7 +588,19 @@ function OutcomesSection({ rows, journal, journalUserId }: { rows: PlayOutcomeRo
           <tbody>
             {filtered.map((r) => (
               <Fragment key={r.id}>
-                <tr className="admin-spx-row-click" onClick={() => setExpanded(expanded === r.id ? null : r.id)}>
+                <tr
+                  className="admin-spx-row-click"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={expanded === r.id}
+                  onClick={() => setExpanded(expanded === r.id ? null : r.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setExpanded(expanded === r.id ? null : r.id);
+                    }
+                  }}
+                >
                   <td>{expanded === r.id ? "▾" : "▸"}</td>
                   <td className="whitespace-nowrap">{fmtTime(r.closed_at)}</td>
                   <td>{r.entry_path === "watch_promote" ? "promote" : "cold"}</td>

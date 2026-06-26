@@ -6178,7 +6178,7 @@ body {
 
   .spx-alert-sell .spx-trade-alert-score-label,
   .spx-alert-sell .spx-trade-alert-conf-pct {
-    @apply text-rose-400/70;
+    @apply text-rose-400;
   }
 
   .spx-alert-sell .spx-trade-alert-score {

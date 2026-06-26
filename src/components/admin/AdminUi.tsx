@@ -29,7 +29,7 @@ export function WinRateRing({
 
   return (
     <div className={clsx("admin-ring", `admin-ring-${tone}`)}>
-      <svg width={size} height={size} className="admin-ring-svg">
+      <svg aria-hidden="true" width={size} height={size} className="admin-ring-svg">
         <circle
           cx={size / 2}
           cy={size / 2}

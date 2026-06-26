@@ -277,7 +277,7 @@ export function SpxCommentaryRail({
             <p className="spx-commentary-offline-tagline">{offlineCopy.tagline}</p>
           </div>
         ) : error && entries.length === 0 ? (
-          <p className="font-mono text-[10px] text-bear/80 p-4 text-center">
+          <p className="font-mono text-[10px] text-bear-text p-4 text-center">
             {error.includes("ANTHROPIC") ? "Intel feed offline — reconnecting" : error}
           </p>
         ) : entries.length === 0 ? (

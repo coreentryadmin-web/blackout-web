@@ -60,6 +60,19 @@ export function VelocityRadar({
                 exit={{ opacity: 0, scale: 0.97 }}
                 transition={{ delay: i * 0.04, type: "spring", damping: 22, stiffness: 300 }}
                 onClick={() => onTickerClick?.(e.ticker)}
+                role={onTickerClick ? "button" : undefined}
+                tabIndex={onTickerClick ? 0 : undefined}
+                aria-label={onTickerClick ? `Open ${e.ticker} detail` : undefined}
+                onKeyDown={
+                  onTickerClick
+                    ? (ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+                          onTickerClick(e.ticker);
+                        }
+                      }
+                    : undefined
+                }
                 className="rounded-xl border border-orange-900/30 bg-gradient-to-br from-orange-950/15 to-[#08080e]/50 px-3 py-2.5 cursor-pointer hover:border-orange-700/40 transition-colors"
                 style={{ boxShadow: "inset 0 0 18px rgba(251,146,60,0.04)" }}
               >
