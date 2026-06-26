@@ -111,3 +111,34 @@ The `396a3a8` merges added mostly server-side correctness verifiers, but touched
 - ✅ **No site render bug found.** Public surfaces healthy + content-correct (server-verified); changed render code safe (source-verified). No commit to main this run (no high-confidence render fix to make — forcing one would be theater).
 - ⚠️ **FLAGGED (Task #1):** logged-out users clicking the homepage's publicly-linked instrument CTAs (`/dashboard` etc.) land on a **bare 404** (Clerk protect-rewrite) instead of a `/sign-in` or `/upgrade` redirect. Gating works (authed renders fine); this is a logged-out UX paper-cut — product/auth-flow call (use `auth.protect({ unauthenticatedUrl })` or repoint the CTAs). Pre-existing, low severity.
 - ⚠️ **Bridge note:** live screenshot/layout/overlap/grey-render checks deferred — Chrome CDP session unrecoverable autonomously. The 09:43-ET morning run (Run 1, same RTH window) already swept the authed desks live & clean; no render-code regression since. Recommend re-running the visual sweep once the Chrome bridge is restarted (user-side) to capture screenshots.
+
+---
+
+## Run 3 — scheduled visual-render-sweep (fired ~21:13 PT / ~00:13 ET, **after-hours / market CLOSED**)
+
+Repo `blackout-cron` synced to `46e913d` (BlackOut Grid panels merged). Chrome bridge **healthy this run** (CDP screenshots working again — the Run 2 wedge cleared). Signed in as admin. Market **CLOSED** → "market closed / session wrapped / standby" empty states are **EXPECTED, not bugs**.
+
+### Page sweep (live screenshot + console + network per page)
+| Page | Render | Console | Network | Notes |
+|---|---|---|---|---|
+| `/` | ✅ clean | clean | all origin 200 | Hero "See the structure. Make the call.", emerald/sky gradient, GET ACCESS / SEE PRICING CTAs, feed-strip. Hero image 200. |
+| `/dashboard` (SPX Slayer) | ✅ clean | clean | 8/8 `/api/market/spx/*`+lotto+flows 200 | ~3-5s first paint (perf, not render) → full desk: **real GEX walls** (7,375/7,370/7,365… spot 7,354.02 w/ $ notionals), **real LIVE TAPE** prints, "MARKET CLOSED — re-arms 6:30 AM PT" radar + "0DTE STANDBY" gold banner + LARGO "SESSION WRAPPED" — all correct closed states. EMA/SMA/SESSION/VIX/REGIME "—" = expected (closed). |
+| `/flows` (HELIX) | ✅ clean | clean | 14 `/api/market/*` 200 | Real whale tape (TLT, QQQ, SPXW $2.6M, SOXX), STACKING/WHALE/REPEAT badges, NET PREMIUM $186.8M (per-ticker), HAWK CONVICTION (AMAT/OKTA/HIMS/MRK/AAPL). After-hours banner correct. Bull/bear coloring correct. |
+| `/heatmap` | ✅ clean | clean | 17 incl `gex-heatmap?ticker=SPY` 200 | SPY 738.60, full strike×expiry $-gamma matrix (emerald/pink), KEY LEVELS (gamma flip 731 / call wall 733 / put wall 738 / max pain 738 / net GEX -$7.7B / anchor 730), positioning alert, GEX/VEX/DEX/CHARM lenses, LARGO desk read, dark-pool levels. |
+| `/nighthawk` | ✅ clean | clean | `nighthawk/edition` 200, operator img 200 | **"FOR MON, JUN 29"** playbook = **correct** (today Fri Jun 26 → next session Mon Jun 29), Edition LIVE. Full plays (AMAT/OKTA/HIMS/MRK, scores/entry/target/stop). NIGHT'S WATCH: kept test pos **SPY 735C +$550 (+110%)** w/ full Greeks, "lock partial profit", TRIM verdict, LIVE updating. |
+| `/terminal` (Largo) | ✅ clean | clean | — | "AI ONLINE", greeting, "Ask The Desk" input + DEPLOY, disclaimer. Empty chat state correct. |
+| `/upgrade` | ✅ clean | clean | — | "One pass. The whole floor.", Monthly $199 / Yearly $1,999 ($167/mo, save $389 — **math verified** $199×12=$2,388−$1,999=$389 ✓), Whop refresh, FREE-vs-PREMIUM table ("—" = intentional not-in-free markers, emerald ✓). |
+| `/embed/track-record` | ✅ clean | clean | 20 incl positions+largo session 200 | Compact card: "STANDBY", HIT RATE bar, WINS/LOSSES/SCRATCH "—", "Play log warming up…". Empty data = known SPX-plays-never-opened **engine** issue (separate, not a render bug); empty state itself renders correctly. |
+| `/admin` | ✅ clean | clean | — | Operations center, tabs (Operations/API Command/Crons/SPX Slayer/Night Hawk), CRITICAL/WARNING/OPEN 0, AUDIT 51,773 entries, "All Clear", SYSTEM VITALS (DB Connected · Polygon WS Live · UW Socket Live · Options WS Live · Route Errors 0 · Health OK). AVG MTTA "—" correct (no incidents). |
+
+**No** broken layouts, overlaps, all-"—" data bugs (the "—" are all expected closed-state / intentional-marker), broken images, or grey violations. **DOM grey-class scan** (`text/border/bg-(gray|grey|zinc|neutral|slate|stone)-*`) across the app shell returned **`[]`** — zero violations; muted labels use brand colors at opacity.
+
+### Cross-cutting
+- **Clerk "renderer did not mount" — did NOT recur.** The Run 1 preconnect/dns-prefetch fix (src/app/layout.tsx) held; no Clerk console errors on any page this run.
+- **`_rsc` prefetch 503s — did NOT recur** for authed admin (logged-out prefetch is the Run-1 case; authed prefetches return 200). No `_rsc` 503 observed.
+- **`cloudflareinsights` beacon 503** — third-party analytics beacon, transient, ignored (unchanged).
+- **admin "4 API ERR" badge** — telemetry counter (last-5-min window), system status OK; info metric, not a render bug.
+
+### Actions
+- ✅ **No site render bug found.** All 9 pages render clean live; all after-hours empty states correct; zero grey violations (DOM-verified); all origin APIs 200. **No commit to main this run** (no high-confidence render fix to make — forcing one would be theater). Log-only.
+- ℹ️ Carry-overs unchanged (not render bugs): SPX-plays-never-open engine issue (embed track-record empty), Run-2 logged-out 404 UX paper-cut.
