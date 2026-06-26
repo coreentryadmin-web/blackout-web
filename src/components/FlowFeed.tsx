@@ -156,12 +156,19 @@ export function FlowFeed() {
     return () => clearInterval(id);
   }, []);
 
-  // Feature 12: Night Hawk latest edition
+  // Feature 12: Night Hawk latest edition.
+  // Auto-refresh every 120s (mirrors NightHawkFeed's SWR refreshInterval) so the
+  // edition is picked up across the ~4:30/5:30pm ET cron boundary — the prior
+  // bare mount-only fetch left /flows frozen on a stale (often empty) edition.
   useEffect(() => {
-    fetch("/api/market/nighthawk/edition", { credentials: "same-origin", cache: "no-store" })
-      .then((r) => r.ok ? r.json() : null)
-      .then((d: NightHawkEdition | null) => { if (d?.plays) setNighthawkEdition(d); })
-      .catch((e) => console.warn("[FlowFeed] nighthawk edition fetch:", e));
+    const load = () =>
+      fetch("/api/market/nighthawk/edition", { credentials: "same-origin", cache: "no-store" })
+        .then((r) => r.ok ? r.json() : null)
+        .then((d: NightHawkEdition | null) => { if (d?.plays) setNighthawkEdition(d); })
+        .catch((e) => console.warn("[FlowFeed] nighthawk edition fetch:", e));
+    load();
+    const id = setInterval(load, 120_000);
+    return () => clearInterval(id);
   }, []);
 
   // Derived counts for filter pills — single pass over alerts instead of two
