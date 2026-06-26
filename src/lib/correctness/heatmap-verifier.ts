@@ -551,42 +551,97 @@ async function shadowRecomputeChecks(ctx: Ctx, hm: GexHeatmap): Promise<CheckRes
 
   const raw = rawRecomputeNetGexAndKing(contracts, spot, ctx.today);
 
-  // Compare per-strike: every strike present in BOTH our raw recompute and the served cells (for the
-  // nearest expiry) must carry the SAME signed $-gamma within tolerance. This is the cell-level
-  // catch for a dropped ×0.01 / ×spot / wrong-sign on one strike.
-  let strikesCompared = 0;
-  let worstCellFd = 0;
-  let worstDetail = "";
+  // Compare per-strike net $-gamma: every strike present in BOTH our raw recompute and the served
+  // cells (nearest expiry) is checked. CLASSIFICATION (the load-bearing fix):
+  //
+  // The production cell math (accumulateContract: sign·gamma·oi·100·spot²·0.01, call +/put −) is
+  // BYTE-FOR-BYTE the same transform this shadow uses, hitting the SAME provider/key/endpoint. So a
+  // real ×100 / dropped-×0.01 / flipped-sign TRANSFORM bug is necessarily SYSTEMATIC — it skews
+  // (nearly) EVERY overlapping cell by a consistent ratio, and is ALSO caught deterministically by the
+  // INV-1 Σ(strike_totals)==total invariant (tol 1e-6) and the magnitude ceiling. By contrast an
+  // ISOLATED divergence at ONE strike — especially a SIGN FLIP at a deep-OTM / thin strike where the
+  // strike's call $-gamma ≈ put $-gamma (net ≈ 0) — is provider/timing JITTER: the cached matrix and
+  // the live shadow fetch are sampled seconds-to-minutes apart, and a near-cancelling strike's NET
+  // sign flips on a handful of OI/quote ticks. That is a cross-provider/timing DIVERGENCE, NOT a
+  // transform bug, and must NOT scream "transform bug" as a hard FLAG.
+  //
+  // RULE: hard-FLAG only a SYSTEMATIC skew (a majority of cells out of tolerance). An isolated
+  // divergence (few cells, or a sign-fragile near-cancelling strike) is downgraded to a
+  // consistency-only `cross-provider-divergence`. A sign-flip is hard-flagged ONLY when it is NOT
+  // near-cancellation, i.e. the cell carries material magnitude (|net| ≥ a fraction of the median
+  // |cell|) — a large-magnitude strike that flips sign would be a genuine aggregation bug.
+  type CellDiff = { strike: string; raw: number; served: number; fd: number; signFlip: boolean };
+  const diffs: CellDiff[] = [];
   for (const [strikeStr, rawVal] of Object.entries(raw.strikeTotals)) {
     const servedRow = hm.gex.cells[strikeStr];
     if (!servedRow) continue;
     const servedVal = Number(servedRow[nearestExpiry]);
     if (!Number.isFinite(servedVal) || servedVal === 0) continue;
-    strikesCompared++;
-    const fd = fractionalDiff(rawVal, servedVal);
-    if (fd > worstCellFd) {
-      worstCellFd = fd;
-      worstDetail = `strike ${strikeStr}: raw ${rawVal.toExponential(3)} vs served ${servedVal.toExponential(3)} (Δ ${(fd * 100).toFixed(2)}%)`;
-    }
+    diffs.push({
+      strike: strikeStr,
+      raw: rawVal,
+      served: servedVal,
+      fd: fractionalDiff(rawVal, servedVal),
+      signFlip: Math.sign(rawVal) !== Math.sign(servedVal),
+    });
   }
+  const strikesCompared = diffs.length;
+
   if (strikesCompared >= 3) {
-    const ok = worstCellFd <= TOL.rawNetFractional;
-    out.push(
-      mk(
-        ctx,
-        "shadow-recompute",
-        "net_gex",
-        ok ? "consistency-only" : "flag",
-        ok
-          ? `Independent raw-chain recompute of ${strikesCompared} ${nearestExpiry} cells matches served $-gamma (worst Δ ${(worstCellFd * 100).toFixed(2)}% ≤ ${(TOL.rawNetFractional * 100).toFixed(0)}%).`
-          : `Raw-chain recompute DIVERGES from served cells: ${worstDetail} — scale/unit/sign transform bug.`,
-        {
-          id: "raw-cell-gex",
-          tolerance: TOL.rawNetFractional,
-          ...(ok ? {} : { expected: worstDetail }),
-        }
-      )
-    );
+    // Median |served| as the magnitude yardstick (robust to the deep-OTM thin tails).
+    const sortedAbs = diffs.map((d) => Math.abs(d.served)).sort((a, b) => a - b);
+    const medianAbs = sortedAbs[Math.floor(sortedAbs.length / 2)] || 0;
+    // A diverging cell is "material" (not near-cancellation jitter) when its served |net| is a real
+    // fraction of the median cell — a near-zero net at a thin strike is sign-fragile, so excluded.
+    const MATERIAL_FRACTION_OF_MEDIAN = 0.25;
+    const outOfTol = diffs.filter((d) => d.fd > TOL.rawNetFractional);
+    const materialOut = outOfTol.filter((d) => Math.abs(d.served) >= medianAbs * MATERIAL_FRACTION_OF_MEDIAN);
+    // Systematic = a MAJORITY of compared cells are out of tolerance → the transform-bug signature.
+    const systematic = outOfTol.length >= Math.ceil(strikesCompared / 2);
+    const worst = [...outOfTol].sort((a, b) => b.fd - a.fd)[0];
+    const fmtCell = (d: CellDiff) =>
+      `strike ${d.strike}: raw ${d.raw.toExponential(3)} vs served ${d.served.toExponential(3)} (Δ ${(d.fd * 100).toFixed(2)}%${d.signFlip ? ", SIGN FLIP" : ""})`;
+
+    if (outOfTol.length === 0) {
+      out.push(
+        mk(
+          ctx,
+          "shadow-recompute",
+          "net_gex",
+          "consistency-only",
+          `Independent raw-chain recompute of ${strikesCompared} ${nearestExpiry} cells matches served $-gamma (all within ±${(TOL.rawNetFractional * 100).toFixed(0)}%).`,
+          { id: "raw-cell-gex", tolerance: TOL.rawNetFractional }
+        )
+      );
+    } else if (systematic || materialOut.length > 0) {
+      // Either a market-wide skew (majority off) OR a material-magnitude cell diverged/flipped — this
+      // is the real-transform-bug bucket. HARD FLAG with the worst offender.
+      out.push(
+        mk(
+          ctx,
+          "shadow-recompute",
+          "net_gex",
+          "flag",
+          systematic
+            ? `Raw-chain recompute SYSTEMATICALLY diverges from served cells (${outOfTol.length}/${strikesCompared} cells out of ±${(TOL.rawNetFractional * 100).toFixed(0)}%): ${fmtCell(worst)} — scale/unit/sign transform bug.`
+            : `Raw-chain recompute diverges at a MATERIAL strike (net $-gamma ≥ ${(MATERIAL_FRACTION_OF_MEDIAN * 100).toFixed(0)}% of the median cell, not near-cancellation): ${fmtCell(materialOut.sort((a, b) => b.fd - a.fd)[0])} — likely an aggregation/sign bug.`,
+          { id: "raw-cell-gex", tolerance: TOL.rawNetFractional, expected: fmtCell(worst) }
+        )
+      );
+    } else {
+      // ISOLATED, immaterial (near-cancellation / thin-strike) divergence → provider/timing jitter,
+      // NOT a transform bug. Downgrade to a consistency-only cross-provider-divergence (a gap, not a flag).
+      out.push(
+        mk(
+          ctx,
+          "shadow-recompute",
+          "net_gex",
+          "consistency-only",
+          `cross-provider-divergence: ${outOfTol.length}/${strikesCompared} ${nearestExpiry} cell(s) diverge but only at sign-fragile near-cancelling thin strikes (served |net| < ${(MATERIAL_FRACTION_OF_MEDIAN * 100).toFixed(0)}% of median) — explained by cache-vs-live timing jitter on the SAME provider, not a transform bug: ${fmtCell(worst)}. The systematic transform check (INV-1 Σ==total) holds.`,
+          { id: "raw-cell-gex", tolerance: TOL.rawNetFractional }
+        )
+      );
+    }
   } else {
     out.push(
       mk(

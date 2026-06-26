@@ -44,7 +44,11 @@ export function extractNumericTokens(answer: string): number[] {
   if (!answer) return [];
   const out: number[] = [];
   // $1,234.50 | 4500 | 12.5% | 0.45Δ | $2.3M | 1.2B — capture the numeric core.
-  const re = /(-?\$?\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?|-?\d+(?:\.\d+)?)\s?(%|k|m|b|bn)?/gi;
+  // NOTE the comma-grouped alternative uses (?:,\d{3})+ (one-OR-MORE) so it only wins when a thousands
+  // separator is actually present. With (?:,\d{3})* (zero-or-more) it greedily matched just the first
+  // 1–3 digits of a plain integer (5900 → "590", leaving a stray "0"), truncating every comma-less
+  // number; plain integers MUST fall through to the |-?\d+(?:\.\d+)? alternative to be captured whole.
+  const re = /(-?\$?\s?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\$?\s?\d+(?:\.\d+)?)\s?(%|k|m|b|bn)?/gi;
   let match: RegExpExecArray | null;
   while ((match = re.exec(answer)) !== null) {
     const rawNum = match[1].replace(/[$,\s]/g, "");

@@ -86,24 +86,6 @@ function groupMetrics(ticker: string, checks: CheckResult[]): MetricScore[] {
   return scores;
 }
 
-/** Prior-session ET date (the grouped daily summary settles on the prior close intraday). */
-function priorSessionYmd(now: number): string {
-  const d = new Date(now);
-  // Walk back to the most recent weekday (crude but fine for a sanity grouped-summary pull).
-  let probe = new Date(d.getTime() - 86_400_000);
-  for (let i = 0; i < 5; i++) {
-    const dow = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short" }).format(probe);
-    if (dow !== "Sat" && dow !== "Sun") break;
-    probe = new Date(probe.getTime() - 86_400_000);
-  }
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(probe);
-}
-
 /**
  * Verify the market-context numbers. SPX-context only; returns a TickerScore under "MARKET". Never throws.
  */
@@ -247,16 +229,31 @@ export async function verifyMarketContext(marketOpen: boolean): Promise<TickerSc
         )
       );
 
-      // L1 recompute from the grouped daily summary (the same source the desk's breadth path uses).
+      // L1 recompute from the grouped daily summary — MIRRORING the desk's breadth path EXACTLY.
+      // The desk (spx-desk.ts: computeMarketBreadthFromSummary(dailyMarket(TODAY), fetchPriorDayCloses(TODAY)))
+      // measures advance/decline as close-vs-PRIOR-CLOSE on the CURRENT session. A faithful shadow
+      // recompute must use the SAME (session, reference) basis or it isn't comparing like-for-like:
+      //   • prior version pulled the PRIOR session's grouped summary (wrong session), AND
+      //   • called computeMarketBreadthFromSummary(results) with NO prior-close map, so it fell back to
+      //     close-vs-OPEN (wrong reference). Either alone shifts %advancing; together they near-INVERT it
+      //     (the 36.9-vs-62.9 false flag). Fixed: TODAY's summary + the prior-close map → identical basis.
       if (process.env.CORRECTNESS_SHADOW_RAW !== "0" && mb.sample_size > 0) {
         try {
-          const { fetchDailyMarketSummary, computeMarketBreadthFromSummary } = await import("@/lib/providers/polygon");
-          const date = priorSessionYmd(ctx.now);
-          const summary = await fetchDailyMarketSummary(date);
+          const { fetchDailyMarketSummary, fetchPriorDayCloses, computeMarketBreadthFromSummary } = await import(
+            "@/lib/providers/polygon"
+          );
+          const date = ctx.today; // CURRENT session — same as the desk's fetchDailyMarketSummary(today)
+          const [summary, priorCloses] = await Promise.all([
+            fetchDailyMarketSummary(date),
+            fetchPriorDayCloses(date).catch(() => ({} as Record<string, number>)),
+          ]);
           const results = summary?.results ?? [];
           if (results.length > 50) {
-            const recomputed = computeMarketBreadthFromSummary(results);
+            // Pass the prior-close map so advance/decline is close-vs-PRIOR-CLOSE (the desk's basis),
+            // NOT the close-vs-open fallback. With it, this is a true like-for-like shadow recompute.
+            const recomputed = computeMarketBreadthFromSummary(results, priorCloses);
             const myPct = recomputed.pct_advancing;
+            const basis = Object.keys(priorCloses).length > 0 ? "close-vs-prior-close" : "close-vs-open (no prior-close map)";
             if (myPct != null && pctAdv != null) {
               const diff = Math.abs(myPct - pctAdv);
               const ok = diff <= TOL.breadthPctAbs;
@@ -266,8 +263,8 @@ export async function verifyMarketContext(marketOpen: boolean): Promise<TickerSc
                   "breadth",
                   ok ? "consistency-only" : "flag",
                   ok
-                    ? `Recomputed %advancing ${fmt(myPct)} reconciles with served ${fmt(pctAdv)} (Δ ${diff.toFixed(1)}pp over ${results.length} constituents).`
-                    : `Recomputed %advancing ${fmt(myPct)} DIVERGES from served ${fmt(pctAdv)} — Δ ${diff.toFixed(1)}pp > ${TOL.breadthPctAbs}pp (breadth aggregation drift).`,
+                    ? `Recomputed %advancing ${fmt(myPct)} reconciles with served ${fmt(pctAdv)} (Δ ${diff.toFixed(1)}pp over ${results.length} constituents, ${basis}, same session basis as the desk).`
+                    : `Recomputed %advancing ${fmt(myPct)} DIVERGES from served ${fmt(pctAdv)} — Δ ${diff.toFixed(1)}pp > ${TOL.breadthPctAbs}pp (breadth aggregation drift; recompute basis ${basis}).`,
                   { id: "breadth-recompute", expected: Number(myPct.toFixed(1)), actual: pctAdv, tolerance: TOL.breadthPctAbs }
                 )
               );
