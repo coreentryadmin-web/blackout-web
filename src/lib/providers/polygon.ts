@@ -425,6 +425,118 @@ export async function fetchBenzingaAnalystRatings(ticker: string, limit = 15) {
   return fetchBenzingaNews(limit, { ticker, channels: "analyst-ratings" });
 }
 
+/**
+ * The most-recent analyst price target for a ticker, parsed from the Benzinga
+ * analyst-ratings channel (unlimited on the Massive Benzinga plan). Returns null
+ * when no numeric PT can be parsed — NEVER invents one.
+ *
+ * EXTRACTION (in priority order, first hit wins):
+ *   1. STRUCTURED — some Benzinga analyst-ratings payloads carry a typed field
+ *      (`pt_current`/`price_target`/`pt`). When present and a finite positive
+ *      number, we trust it directly. (Field shape is provider-dependent; the
+ *      text fallback below covers payloads that omit it.)
+ *   2. TEXT — otherwise parse the title/teaser/body for an explicit price-target
+ *      phrase ("price target to $250", "PT raised to $250", "Target: $250"). We
+ *      only accept a number that is adjacent to a target/PT phrase so we never
+ *      mistake an unrelated dollar figure (e.g. a quarterly revenue print) for a PT.
+ *
+ * Results are ordered newest-first by the API (`published.desc`), so the first
+ * article we can parse a PT out of IS the most recent target.
+ */
+export type BenzingaPriceTarget = {
+  /** Numeric price target (per share). */
+  price_target: number;
+  /** Rating firm / analyst, when present. */
+  firm: string | null;
+  /** Rating action when present ("Maintains", "Raises", "Initiates", …). */
+  action: string | null;
+  /** ISO publish date of the source article. */
+  asof: string | null;
+};
+
+/** Pull a numeric PT from a Benzinga analyst-ratings phrase. Requires a target/PT
+ *  word adjacent to the dollar figure so an arbitrary dollar number is never read
+ *  as a price target. Returns null when no target-anchored number is found. */
+function parsePriceTargetFromText(text: string): number | null {
+  if (!text) return null;
+  // "price target ... $250", "PT raised to $250", "target of $250", "raises ... target ... 250"
+  // The dollar sign is optional (some headlines write "target to 250"); the anchor word is not.
+  const re =
+    /(?:price\s*target|\bpt\b|\btarget\b)[^$\d]{0,24}?\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const v = Number(m[1]!.replace(/,/g, ""));
+    // Sanity bound: a real per-share PT is > 0 and < $100k (filters stray years / huge ids).
+    if (Number.isFinite(v) && v > 0 && v < 100_000) return v;
+  }
+  return null;
+}
+
+export async function fetchBenzingaPriceTarget(
+  ticker: string,
+  limit = 15
+): Promise<BenzingaPriceTarget | null> {
+  const sym = ticker.toUpperCase();
+  const params: Record<string, string> = {
+    limit: String(Math.min(limit, 50)),
+    sort: "published.desc",
+    "tickers.any_of": sym,
+    "channels.any_of": "analyst-ratings",
+  };
+
+  const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
+    "/benzinga/v2/news",
+    params
+  );
+  const results = data.results ?? [];
+
+  for (const a of results) {
+    // 1. Structured PT field, if the payload carries one.
+    let pt: number | null = null;
+    for (const key of ["pt_current", "price_target", "pt", "target_price"]) {
+      const raw = a[key];
+      if (raw == null) continue;
+      const n = Number(String(raw).replace(/[$,]/g, ""));
+      if (Number.isFinite(n) && n > 0 && n < 100_000) {
+        pt = n;
+        break;
+      }
+    }
+
+    // 2. Text fallback — parse the title/teaser/body for a target-anchored number.
+    if (pt == null) {
+      const title = String(a.title ?? "");
+      const teaser = String(a.teaser ?? "");
+      const body = String(a.body ?? "").slice(0, 2000);
+      pt =
+        parsePriceTargetFromText(title) ??
+        parsePriceTargetFromText(teaser) ??
+        parsePriceTargetFromText(body);
+    }
+
+    if (pt == null) continue; // no parsable PT in this article — try the next (older) one.
+
+    const firm =
+      (a.action_company != null && String(a.action_company)) ||
+      (a.firm != null && String(a.firm)) ||
+      (a.author != null && String(a.author)) ||
+      null;
+    const action =
+      (a.action_pt != null && String(a.action_pt)) ||
+      (a.action_company_rating != null && String(a.action_company_rating)) ||
+      (a.rating_current != null && String(a.rating_current)) ||
+      null;
+    const asof =
+      (a.published != null && String(a.published)) ||
+      (a.created_at != null && String(a.created_at)) ||
+      null;
+
+    return { price_target: pt, firm: firm || null, action: action || null, asof };
+  }
+
+  return null; // Benzinga returned no analyst-ratings article with a parsable PT.
+}
+
 // ── SPX structure (indices) ───────────────────────────────────────────────────
 
 type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };

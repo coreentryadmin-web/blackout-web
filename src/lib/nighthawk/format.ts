@@ -396,7 +396,15 @@ export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCa
     lines.push(`Polygon sentiment: ${dossier.polygon_sentiment.slice(0, 2).join(" | ")}`);
   }
   if (dossier.analyst_summary) lines.push(`Analyst: ${dossier.analyst_summary}`);
-  if (dossier.price_target) lines.push(dossier.price_target);
+  if (dossier.price_target) {
+    const pt = dossier.price_target;
+    const bits = [
+      `Analyst price target: $${pt.price_target}`,
+      pt.firm ? `(${pt.firm}${pt.action ? `, ${pt.action}` : ""})` : null,
+      pt.asof ? `as of ${pt.asof.slice(0, 10)}` : null,
+    ].filter(Boolean);
+    lines.push(`${bits.join(" ")} — Benzinga analyst-ratings`);
+  }
   if (dossier.congress_trades.length) {
     lines.push(`Congress trades (30d): ${dossier.congress_trades.length} recent filing(s)`);
   }
@@ -496,7 +504,7 @@ RULES — CRITICAL:
 - You MUST select a strike from the provided chain that has OI > 500 on the chosen side (call or put).
 - entry_premium must match the chain's ask price for that strike and side (C_ASK for calls, P_ASK for puts).
 - Do not invent strikes — use only strikes listed in the chain table.
-- NEVER cite an analyst price target, Street target, or "PT" — no analyst price-target data is provided, so any such number would be fabricated. The "target" field is a TECHNICAL level from the dossier S/R, not an analyst PT.
+- ANALYST PRICE TARGET: You MAY cite an analyst price target / Street target / "PT" ONLY when the ticker's dossier provides an "Analyst price target: $X" line (sourced from Benzinga analyst-ratings) — and then only the value on that line. If a ticker's dossier has NO such line, NEVER cite a price target for it (any such number would be fabricated). The "target" field is ALWAYS a TECHNICAL level from the dossier S/R, never the analyst PT.
 - The "target" price and "stop" price MUST be an actual support/resistance level from the ticker's dossier (Support:/Resistance: lines). Do not invent price levels.
 - Any total-flow $ figure you cite in key_signal must equal the dossier's "Flow today:" figure — do not invent or round it beyond recognition.
 

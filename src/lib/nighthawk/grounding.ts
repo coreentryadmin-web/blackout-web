@@ -22,7 +22,9 @@
  *     - flow $ divergence vs the dossier flow figure,
  *     - entry/target/stop level that doesn't trace to a real S/R or chain-derived level,
  *     - prose number (in thesis/key_signal) that diverges from the grounded structured field,
- *     - any PT-like ("price target $X") claim in prose — always stripped (no real PT source).
+ *     - a PT-like ("price target $X") claim in prose is RECONCILED against the dossier's real Benzinga
+ *       analyst PT: kept if within ±PRICE_TARGET_TOLERANCE_PCT, else (or if the ticker has no Benzinga
+ *       PT source) stripped + flagged.
  *
  * UNVERIFIABLE ≠ CONTRADICTED. The prefetched chain only covers ATM ±5% on the front two expiries.
  * A legitimately longer-dated / slightly-OTM contract is simply absent — that is NOT a contradiction
@@ -50,6 +52,12 @@ export const FLOW_TOLERANCE_PCT = 0.35;
 /** A price level (entry/target/stop) must sit within ±2% of a real S/R level (or a chain strike) to
  *  count as "traced to real structure". Loose because S/R are zones, not exact ticks. */
 export const LEVEL_TOLERANCE_PCT = 0.02;
+
+/** A price target cited in prose must land within ±20% of the dossier's real Benzinga analyst PT to
+ *  be KEPT. Wide because Street targets are forward-looking and the play prose may paraphrase/round a
+ *  different-but-recent analyst's number; tight enough that a fabricated PT (50%+ off, or for a ticker
+ *  with no PT source) is still stripped. */
+export const PRICE_TARGET_TOLERANCE_PCT = 0.2;
 
 export type GroundingSeverity = "ok" | "flag" | "drop";
 
@@ -148,27 +156,53 @@ function firstPriceInText(text: string): number | null {
   return Number.isFinite(v) && v > 0 ? v : null;
 }
 
-/** Strip any analyst price-target claim from prose. dossier.price_target is hardcoded null, so a PT
- *  in prose is ALWAYS fabricated. We neutralize the phrase rather than delete the sentence so the
- *  surrounding thesis stays readable. */
+/** The set of regexes that recognise an analyst price-target claim in prose.
+ *  Shared by the strip path and the value-extraction path so they stay in lockstep. */
+const PRICE_TARGET_PATTERNS: RegExp[] = [
+  /\b(?:analyst|street|consensus)?\s*price\s*target[s]?\s*(?:of|:|is|at|=)?\s*\$?\s*\d[\d,]*(?:\.\d+)?/gi,
+  /\bPT\s*(?:of|:|at|=)?\s*\$?\s*\d[\d,]*(?:\.\d+)?/g,
+  /\$\s*\d[\d,]*(?:\.\d+)?\s*PT\b/g,
+  /\banalyst[s]?\s*(?:see|target|expect)[a-z]*\s*\$?\s*\d[\d,]*(?:\.\d+)?/gi,
+];
+
+/** Strip any analyst price-target claim from prose, neutralizing the phrase rather than deleting the
+ *  sentence so the surrounding thesis stays readable. Used when a PT cannot be reconciled against a
+ *  real dossier PT (no source, or out of tolerance). */
 export function stripPriceTargetClaims(text: string): { text: string; stripped: boolean } {
   if (!text) return { text, stripped: false };
   let stripped = false;
-  // "analyst price target of $X", "PT $X", "price target: $123", "$123 PT", "Street target $X"
-  const patterns: RegExp[] = [
-    /\b(?:analyst|street|consensus)?\s*price\s*target[s]?\s*(?:of|:|is|at|=)?\s*\$?\s*\d[\d,]*(?:\.\d+)?/gi,
-    /\bPT\s*(?:of|:|at|=)?\s*\$?\s*\d[\d,]*(?:\.\d+)?/g,
-    /\$\s*\d[\d,]*(?:\.\d+)?\s*PT\b/g,
-    /\banalyst[s]?\s*(?:see|target|expect)[a-z]*\s*\$?\s*\d[\d,]*(?:\.\d+)?/gi,
-  ];
   let out = text;
-  for (const re of patterns) {
+  for (const re of PRICE_TARGET_PATTERNS) {
+    // Reset lastIndex: these are module-level /g regexes reused across calls.
+    re.lastIndex = 0;
     if (re.test(out)) {
       stripped = true;
+      re.lastIndex = 0;
       out = out.replace(re, "[price target unavailable]");
     }
   }
   return { text: out, stripped };
+}
+
+/** Extract the numeric dollar value(s) from any analyst price-target claim in prose. Returns the set
+ *  of distinct PT numbers cited (e.g. "PT raised to $250" → [250]). Empty when no PT claim is present.
+ *  Used to RECONCILE a cited PT against the dossier's real Benzinga analyst PT. */
+export function extractPriceTargetValues(text: string): number[] {
+  if (!text) return [];
+  const values: number[] = [];
+  for (const re of PRICE_TARGET_PATTERNS) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      // The number is the last $-prefixed run of digits inside the matched phrase.
+      const num = m[0].match(/\$?\s*(\d[\d,]*(?:\.\d+)?)\s*PT?$|\$?\s*(\d[\d,]*(?:\.\d+)?)/);
+      const rawNum = num?.[1] ?? num?.[2];
+      if (!rawNum) continue;
+      const v = Number(rawNum.replace(/,/g, ""));
+      if (Number.isFinite(v) && v > 0 && !values.includes(v)) values.push(v);
+    }
+  }
+  return values;
 }
 
 /**
@@ -276,20 +310,40 @@ export function groundPlay(
     }
   }
 
-  // ── CHECK 5: KILL fabricated analyst price target (SOFT — strip from prose) ───────────────────
-  // dossier.price_target is hardcoded null, so any PT claim is fabricated. Strip it from every prose
-  // field. Done as a mutation so the published prose never carries a made-up target.
+  // ── CHECK 5: RECONCILE analyst price target against the dossier's real Benzinga PT (SOFT) ──────
+  // dossier.price_target now carries a REAL Benzinga analyst-ratings PT (or null). Policy:
+  //   • dossier has a PT  → a PT cited in prose is KEPT iff it lands within ±PRICE_TARGET_TOLERANCE_PCT
+  //     of the real PT; otherwise the prose PT is stripped + flagged (divergent → not the real target).
+  //   • dossier has no PT → preserve the old behavior: any PT claim is unsourced → stripped + flagged.
+  // Stripping is a mutation so the published prose never carries an unverifiable/divergent target.
   {
-    const t1 = stripPriceTargetClaims(mutated.thesis);
-    const t2 = stripPriceTargetClaims(mutated.key_signal);
-    const t3 = stripPriceTargetClaims(mutated.target);
-    if (t1.stripped || t2.stripped || t3.stripped) {
-      mutated = { ...mutated, thesis: t1.text, key_signal: t2.text, target: t3.text };
-      issues.push({
-        check: "price_target",
-        severity: "flag",
-        detail: `${play.ticker} fabricated analyst price target stripped from prose (no PT source — dossier.price_target is null).`,
-      });
+    const realPt = dossier?.price_target?.price_target ?? null;
+    const proseFields = [mutated.thesis, mutated.key_signal, mutated.target];
+    const citedPts = proseFields.flatMap((f) => extractPriceTargetValues(f));
+    const hasPtClaim = citedPts.length > 0;
+
+    if (hasPtClaim) {
+      const reconciles =
+        realPt != null && citedPts.every((v) => approxEq(v, realPt, PRICE_TARGET_TOLERANCE_PCT));
+
+      if (!reconciles) {
+        // No real PT source, OR at least one cited PT diverges → strip every PT claim from prose.
+        const t1 = stripPriceTargetClaims(mutated.thesis);
+        const t2 = stripPriceTargetClaims(mutated.key_signal);
+        const t3 = stripPriceTargetClaims(mutated.target);
+        if (t1.stripped || t2.stripped || t3.stripped) {
+          mutated = { ...mutated, thesis: t1.text, key_signal: t2.text, target: t3.text };
+        }
+        issues.push({
+          check: "price_target",
+          severity: "flag",
+          detail:
+            realPt == null
+              ? `${play.ticker} analyst price target stripped from prose (no Benzinga PT source for this ticker).`
+              : `${play.ticker} cited PT ${citedPts.map((v) => `$${v}`).join("/")} diverges from Benzinga PT $${realPt} (>±${Math.round(PRICE_TARGET_TOLERANCE_PCT * 100)}%) — stripped.`,
+        });
+      }
+      // else: cited PT(s) all reconcile with the real Benzinga PT → KEEP the prose untouched.
     }
   }
 

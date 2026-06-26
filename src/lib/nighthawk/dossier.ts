@@ -1,7 +1,8 @@
-import { fetchBenzingaNews, fetchPolygonFinancialRatios, fetchShortInterest, fetchVixIvRankPercentile, type PolygonFinancialRatios } from "@/lib/providers/polygon";
+import { fetchBenzingaNews, fetchBenzingaPriceTarget, fetchPolygonFinancialRatios, fetchShortInterest, fetchVixIvRankPercentile, type BenzingaPriceTarget, type PolygonFinancialRatios } from "@/lib/providers/polygon";
+import { serverCache, TTL } from "@/lib/server-cache";
 import { fetchPolygonRealizedVol } from "@/lib/providers/polygon-options-gex";
 import { fetchPolygonNews, fetchPolygonTickerDetails } from "@/lib/providers/polygon-largo";
-import { uwConfigured } from "@/lib/providers/config";
+import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
 import {
   fetchMarketFlowAlertRows,
   fetchUwCongressUnusualTrades,
@@ -52,7 +53,9 @@ export type TickerDossier = {
   news_headlines: string[];
   polygon_sentiment: string[];
   analyst_summary: string | null;
-  price_target: string | null;
+  /** Most-recent REAL analyst price target from the Benzinga analyst-ratings channel,
+   *  or null when Benzinga has no parsable PT for the ticker. Never fabricated. */
+  price_target: BenzingaPriceTarget | null;
   insider_buys: number;
   sector: string | null;
   short_days_to_cover: number | null;
@@ -193,6 +196,19 @@ async function resolveTickerNews(
   ].filter(Boolean);
 }
 
+/**
+ * Most-recent REAL analyst price target for `sym` from the Benzinga analyst-ratings
+ * channel. Cache-reader rule: cached cross-replica (Redis-backed serverCache) at the
+ * ANALYST TTL (5m) so the ~12 dossier tickers share one upstream call per window even
+ * though Benzinga is unlimited. Returns null (never invents a PT) on no-PT / error.
+ */
+async function resolveAnalystPriceTarget(sym: string): Promise<BenzingaPriceTarget | null> {
+  if (!polygonConfigured()) return null;
+  return serverCache(`nighthawk:pt:${sym}`, TTL.ANALYST, () =>
+    fetchBenzingaPriceTarget(sym).catch(() => null)
+  );
+}
+
 export async function fetchTickerDossier(
   ticker: string,
   regime?: NightHawkRegimeContext | null,
@@ -220,6 +236,7 @@ export async function fetchTickerDossier(
     predictionsSignal,
     screenerConfirmed,
     fundamentalRatios,
+    analystPriceTarget,
   ] = await Promise.all([
     dossierFetch(() => fetchMarketFlowAlertRows({ ticker: sym, limit: 80, min_premium: 50_000 }), [], t),
     dossierFetch(() => resolveIvRank(sym), null, t),
@@ -247,6 +264,7 @@ export async function fetchTickerDossier(
     dossierFetch(() => getEditionPredictionsSignal(sym, cache), null, t),
     dossierFetch(() => isScreenerConfirmed(sym, cache), false, t),
     dossierFetch(() => fetchPolygonFinancialRatios(sym), null, t),
+    dossierFetch(() => resolveAnalystPriceTarget(sym), null, t),
   ]);
 
   const [
@@ -329,7 +347,7 @@ export async function fetchTickerDossier(
     news_headlines: headlines,
     polygon_sentiment: polygonSentiment,
     analyst_summary: null,
-    price_target: null,
+    price_target: analystPriceTarget,
     insider_buys: insiderBuys,
     sector: sectorFromPolygonDetails(profile),
     short_days_to_cover: shortSi?.days_to_cover ?? null,
