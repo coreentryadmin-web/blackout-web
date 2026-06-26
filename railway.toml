@@ -2,11 +2,23 @@
 builder = "nixpacks"
 buildCommand = "DATABASE_URL=$DATABASE_PUBLIC_URL npm run build"
 # Only redeploy prod when build-affecting files change — NOT on docs/log-only commits.
-# The autonomous SDLC crons commit docs/auto/* + audit/log .md files frequently; without this
-# every such commit auto-redeployed prod, restarting the live server (churning the WS feeds and
-# killing long Night Hawk edition builds mid-run). "/**" watches everything; "!/docs/**" excludes
-# pure documentation, which never affects the build or runtime.
-watchPatterns = ["/**", "!/docs/**"]
+# The autonomous SDLC crons commit docs/auto/* + audit/log .md frequently; without this every
+# such commit auto-redeployed prod, restarting the live server (WS churn) and killing long Night
+# Hawk edition builds mid-run. Explicit code/config/deps/public watch list; docs/** is excluded
+# (it never affects the build). NOTE: a leading-slash "/**" matched NOTHING on Railway and skipped
+# the whole deploy — repo-relative globs like "src/**" are the working form.
+watchPatterns = [
+  "src/**",
+  "public/**",
+  "package.json",
+  "package-lock.json",
+  "tsconfig.json",
+  "next.config.*",
+  "tailwind.config.*",
+  "postcss.config.*",
+  "nixpacks.toml",
+  "railway.toml",
+]
 
 [deploy]
 startCommand = "next start -H 0.0.0.0 -p $PORT"
