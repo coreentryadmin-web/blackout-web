@@ -28,8 +28,11 @@ is fresher than 1-day-lagged OI); FMV WS/REST channel (synthetic mid for quotele
 `/v3/reference/conditions` (decode trade-condition codes to exclude odd-lot/multileg from flow volume).
 
 **🔴 GAPS:**
-- Pagination guards (`fetchHeatmapBand` <16, `fetchChainBand` <8, IV-term <20, OI <12) can silently
-  truncate the chain when `next_url` is still set → understated walls/OI with no signal. *(observability)*
+- Pagination guards (`fetchHeatmapBand` <16, `fetchChainBand` <8, IV-term <20, OI <12) truncate the
+  chain when `next_url` is still set → understated walls/OI/IV. **Observability signal SHIPPED**
+  (`9b51d88`, `warnChainTruncated` after all four loops — no longer silent). REMAINING value-changing
+  follow-up: raise caps / fully follow `next_url` so the chain is *complete* (changes GEX magnitudes +
+  upstream cost → flagged, human call).
 - `×100` contract multiplier hardcoded in all GEX terms — no `shares_per_contract` guard (adjusted
   contracts corrupt notional). **→ Task #9.**
 - `POLYGON_GLOBAL_MAX_RPS` default 40 is unverified vs the real plan cap; with Redis down + N replicas,
