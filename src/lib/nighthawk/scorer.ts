@@ -457,37 +457,49 @@ export type RankCandidatesResult = {
   exclusionReason?: string;
 };
 
+/**
+ * Rank candidates for synthesis. ONLY `trading_halt` is a hard exclusion — you genuinely cannot trade
+ * a halted name. `fundamental_block` (extreme P/E, negative ROE, elevated D/E) is a SOFT demotion, not
+ * a hard cut: a high-flow momentum name with a stretched P/E is exactly the kind of forward-looking
+ * setup Night Hawk exists to surface, and the critic + Claude still vet every play downstream. The old
+ * behaviour hard-cut every fundamental_block candidate, which on a momentum-heavy session could zero
+ * the entire pool (or strip out the strongest-flow names, leaving a thin feed that the critic then
+ * emptied). Demoting instead keeps the feed populated while still preferring clean fundamentals. (#77)
+ */
 export function rankCandidates(
   scored: ScoredCandidate[],
   max = 5
 ): RankCandidatesResult {
-  const passed = [...scored]
-    .filter((c) => !c.trading_halt && !c.fundamental_block)
-    .sort((a, b) => b.score - a.score)
+  const tradable = scored.filter((c) => !c.trading_halt);
+
+  // Sort: clean fundamentals first, then by score. fundamental_block names sink below their clean
+  // peers but remain eligible — they only get used when there aren't enough clean candidates to fill.
+  const ranked = [...tradable]
+    .sort((a, b) => {
+      const blockA = a.fundamental_block ? 1 : 0;
+      const blockB = b.fundamental_block ? 1 : 0;
+      if (blockA !== blockB) return blockA - blockB; // clean (0) before blocked (1)
+      return b.score - a.score;
+    })
     .slice(0, max);
 
-  if (passed.length === 0 && scored.length > 0) {
-    const haltedTickers = scored
-      .filter((c) => c.trading_halt)
-      .map((c) => c.ticker);
-    const blockedDetails = scored
-      .filter((c) => c.fundamental_block && !c.trading_halt)
-      .map((c) => `${c.ticker}: ${(c.fundamental_flags ?? []).join(", ") || "fundamental block"}`);
-
-    const parts: string[] = [];
-    if (haltedTickers.length) {
-      parts.push(`trading halt: ${haltedTickers.join(", ")}`);
-    }
-    if (blockedDetails.length) {
-      parts.push(`fundamental block — ${blockedDetails.join(" | ")}`);
-    }
-    const exclusionReason = parts.length
-      ? `All ${scored.length} candidate(s) excluded. Reasons: ${parts.join("; ")}.`
-      : `All ${scored.length} candidate(s) excluded by fundamental or halt filter.`;
-
+  if (ranked.length === 0 && scored.length > 0) {
+    // Only reachable when EVERY candidate is halted (the sole hard exclusion).
+    const haltedTickers = scored.filter((c) => c.trading_halt).map((c) => c.ticker);
+    const exclusionReason = haltedTickers.length
+      ? `All ${scored.length} candidate(s) excluded — trading halt: ${haltedTickers.join(", ")}.`
+      : `All ${scored.length} candidate(s) excluded.`;
     console.warn("[nighthawk/scorer] rankCandidates returning empty.", exclusionReason);
     return { ranked: [], exclusionReason };
   }
 
-  return { ranked: passed };
+  // Surface that we leaned on fundamentally-flagged names so the edition meta is self-explaining.
+  const usedBlocked = ranked.filter((c) => c.fundamental_block);
+  const exclusionReason = usedBlocked.length
+    ? `Included ${usedBlocked.length} fundamentally-flagged name(s) (soft-demoted, critic-vetted): ${usedBlocked
+        .map((c) => `${c.ticker} [${(c.fundamental_flags ?? []).join(", ") || "flagged"}]`)
+        .join(" | ")}.`
+    : undefined;
+
+  return { ranked, exclusionReason };
 }

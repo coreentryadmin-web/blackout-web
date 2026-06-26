@@ -345,17 +345,17 @@ export async function buildEveningEdition(opts?: {
     } else {
       const { ranked: freshRanked, exclusionReason: rankExclusionReason } = rankCandidates(scoredList, MAX_DOSSIER_STOCKS);
       ranked = freshRanked;
-      // Over-strict-filter rescue: rankCandidates drops EVERY candidate flagged fundamental_block.
-      // If that zeroes the pool while non-halted candidates exist, fall back to ranking those
-      // (halts stay excluded — you cannot trade a halted name). This keeps a genuine flow feed from
-      // silently collapsing to 0 plays just because mega-cap P/E etc. tripped the fundamental sanity
-      // gate. Claude + the critic still vet each play downstream.
+      // Defense-in-depth backstop. rankCandidates now soft-demotes (never hard-cuts) fundamental_block
+      // names, so it only returns empty when EVERY candidate is halted — in which case this rescue
+      // can't help either. Kept as a belt-and-suspenders guard against a future regression in the
+      // ranker: if ranking is somehow empty while non-halted candidates exist, rank those by score.
+      // (Halts stay excluded — you cannot trade a halted name. Claude + critic still vet downstream.)
       if (!ranked.length) {
         const tradable = scoredList.filter((c) => !c.trading_halt);
         if (tradable.length) {
           ranked = [...tradable].sort((a, b) => b.score - a.score).slice(0, MAX_DOSSIER_STOCKS);
           console.warn(
-            `[nighthawk/edition] stage_scoring rescue — fundamental filter zeroed ranking; ranking ${ranked.length} non-halted candidate(s) instead.${rankExclusionReason ? ` (${rankExclusionReason})` : ""}`
+            `[nighthawk/edition] stage_scoring rescue — ranking zeroed; ranking ${ranked.length} non-halted candidate(s) instead.${rankExclusionReason ? ` (${rankExclusionReason})` : ""}`
           );
         }
       }
@@ -509,6 +509,27 @@ export async function buildEveningEdition(opts?: {
     }
 
     // STAGE 6 — Publish
+    // WRITE-SIDE INVARIANT (#77): never persist a "normal" edition with zero plays. The five funnel
+    // exits above already route an empty funnel to publishRecapOnlyEdition (recap_only:true in meta).
+    // This last-resort guard catches any way finalPlays could arrive empty here — a stale/old
+    // checkpoint, a future regression — and routes it to the SAME recap-only publish so the row is
+    // never written with plays=0 + recap_only:false. Guarantees: published && plays==0 ⟹ recap_only.
+    if (!finalPlays.length) {
+      const reason = "Synthesis reached publish with zero plays (checkpoint/guard slip) — recap-only.";
+      console.warn(`[nighthawk/edition] publish guard — empty finalPlays, recap-only fallback: ${reason}`);
+      await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: candidates.length, checkpointing, force: Boolean(opts?.force) });
+      return {
+        ok: true,
+        edition_for: editionFor,
+        plays_count: 0,
+        candidates: candidates.length,
+        recap_only: true,
+        duration_ms: Date.now() - started,
+        job_status: "published",
+        current_stage: "published",
+      };
+    }
+
     console.info("[nighthawk/edition] publish edition");
     await upsertNighthawkEdition({
       edition_for: editionFor,
@@ -601,6 +622,35 @@ export async function buildEveningEdition(opts?: {
   }
 }
 
+/** A published edition has SOMETHING to show when it carries a recap headline, a recap summary, or a
+ *  market_recap payload — even with zero plays. buildMarketRecap always emits a non-empty headline +
+ *  summary, so any recap-only row written by publishRecapOnlyEdition satisfies this. */
+function hasRecapContent(row: {
+  recap_headline: string | null;
+  recap_summary: string | null;
+  market_recap: Record<string, unknown> | null | undefined;
+}): boolean {
+  if (row.recap_headline && row.recap_headline.trim()) return true;
+  if (row.recap_summary && row.recap_summary.trim()) return true;
+  if (row.market_recap && Object.keys(row.market_recap).length > 0) return true;
+  return false;
+}
+
+/**
+ * AIRTIGHT `available` GATE (#77). This is the single chokepoint both the edition GET route and the
+ * platform service read through, so the invariant lives here once:
+ *
+ *   published row with plays.length > 0      → available (full playbook)
+ *   published row with plays.length === 0    → available IFF it carries recap content (recap-only)
+ *
+ * The old gate was `available: plays.length > 0`, which wrongly marked EVERY recap-only edition
+ * (all five funnel-collapse fallbacks) unavailable — the UI then showed "awaiting close" forever even
+ * though a real recap was published. By gating on recap content instead, a zero-play row that was
+ * published with a recap (the guaranteed `publishRecapOnlyEdition` output) now computes available=true,
+ * and the UI renders the recap. It also self-heals the one rogue row that published plays=0 with
+ * recap_only unset in meta: as long as it has a recap (it does — recap fields are always written on
+ * publish), it is now available. A truly empty row (no plays AND no recap) stays unavailable.
+ */
 export function rowToNightHawkEdition(row: {
   edition_for: string;
   published_at: string;
@@ -608,15 +658,20 @@ export function rowToNightHawkEdition(row: {
   recap_summary: string | null;
   market_recap: Record<string, unknown>;
   plays: unknown[];
+  meta?: Record<string, unknown> | null;
 }): NightHawkEdition {
   const plays = (row.plays as PlaybookPlay[]) ?? [];
+  const recapPresent = hasRecapContent(row);
+  const recapOnly = plays.length === 0 && recapPresent;
   return {
-    available: plays.length > 0,
+    // available when there are plays, OR when a recap was published (recap-only edition).
+    available: plays.length > 0 || recapPresent,
     edition_for: row.edition_for,
     published_at: row.published_at,
     recap_headline: row.recap_headline,
     recap_summary: row.recap_summary,
     market_recap: row.market_recap,
     plays: plays.map((p, i) => ({ ...p, rank: p.rank ?? i + 1 })),
+    recap_only: recapOnly,
   };
 }

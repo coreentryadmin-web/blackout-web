@@ -36,6 +36,9 @@ export type PlayExplainResponse = {
 };
 
 export type NightHawkEdition = {
+  /** True when there is real published content to show — either ranked plays OR a market recap.
+   *  A recap-only edition (plays:[] but a published recap) is `available: true` so the UI renders
+   *  the recap instead of the "awaiting close" empty state. */
   available: boolean;
   edition_for: string | null;
   published_at: string | null;
@@ -43,6 +46,9 @@ export type NightHawkEdition = {
   recap_summary: string | null;
   market_recap?: Record<string, unknown> | null;
   plays: PlaybookPlay[];
+  /** True when this edition published a market recap but no ranked plays survived the funnel.
+   *  Lets the UI show a recap-only state distinct from both "5 plays" and "awaiting close". */
+  recap_only?: boolean;
 };
 
 export type AgentFilterValues = Record<string, string | number | boolean>;

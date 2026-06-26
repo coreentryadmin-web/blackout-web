@@ -55,9 +55,13 @@ export function PlaybookBoard({ edition, loading, onPlaySelect }: PlaybookBoardP
           )}
           {loading ? (
             <Badge tone="sky">Syncing…</Badge>
-          ) : edition?.available ? (
+          ) : edition?.available && hasPlays ? (
             <Badge tone="bull" dot>
               Edition live
+            </Badge>
+          ) : edition?.available ? (
+            <Badge tone="sky" dot>
+              Recap live
             </Badge>
           ) : (
             <Badge tone="bear">Awaiting close</Badge>
@@ -87,6 +91,20 @@ export function PlaybookBoard({ edition, loading, onPlaySelect }: PlaybookBoardP
               />
             );
           })}
+        </div>
+      ) : edition?.available ? (
+        // Recap-only edition: a real market read published, but no ranked plays survived the funnel
+        // tonight. Show a recap-only note instead of the "awaiting close" pending state — the recap
+        // itself renders above via recap_headline / market_recap / recap_summary.
+        <div className="nighthawk-playbook-pending" role="status">
+          <div className="nighthawk-playbook-pending-inner">
+            <p className="nighthawk-playbook-pending-kicker">◆ Overnight recon</p>
+            <h3 className="nighthawk-playbook-pending-title">Market recap published</h3>
+            <p className="nighthawk-playbook-pending-sub">
+              No ranked plays cleared tonight&apos;s screen — the market read above is your
+              overnight brief. Ranked setups return when the flow lines up.
+            </p>
+          </div>
         </div>
       ) : (
         <div className="nighthawk-playbook-pending" role="status">
