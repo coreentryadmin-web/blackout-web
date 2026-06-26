@@ -465,7 +465,7 @@ export function buildClaudePrompt(params: {
     .join(", ");
 
   const vixContext = [
-    ctx.vix_iv_rank != null ? `VIX IV rank ${ctx.vix_iv_rank}%` : null,
+    ctx.vix_iv_rank != null ? `VIX IV rank ${ctx.vix_iv_rank}` : null,
     ctx.vix_term.length
       ? `VIX term: ${ctx.vix_term
           .slice(0, 3)
