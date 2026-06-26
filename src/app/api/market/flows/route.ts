@@ -35,7 +35,13 @@ export async function GET(req: NextRequest) {
     try {
       const payload = await serverCache(cacheKey, TTL.DARK_POOL, async () => {
         const [flows, platform] = await Promise.all([
-          fetchRecentFlows({ limit, ticker, min_premium, since_hours }),
+          // HELIX REAL-TIME TAPE → recency-ordered (P0): the LIMIT must keep the NEWEST
+          // prints, not the top-N-by-premium that the client then reshuffles by time (which
+          // made a "REAL-TIME TAPE" show old whale prints pinned to row 0). The premium
+          // ordering still serves every other caller via the "premium" default. The tape
+          // page's right-column rollups (Net Premium leaderboard, momentum, sector split)
+          // aggregate this same recent-window set and re-rank by premium internally.
+          fetchRecentFlows({ limit, ticker, min_premium, since_hours, order: "recent" }),
           Promise.all([
             marketPlatform.spx.getSpxDeskSummary().catch(() => null),
             marketPlatform.nighthawk.getLatestNightHawkSummary().catch(() => null),

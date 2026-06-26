@@ -841,6 +841,16 @@ export async function fetchRecentFlows(params: {
   ticker?: string;
   min_premium?: number;
   since_hours?: number;
+  /**
+   * Row ordering (and thus which rows survive the LIMIT cap):
+   *  - "premium" (default): biggest prints first — for the net-premium leaderboard,
+   *    biggest-prints brief, and strike-stack consumers that must capture the largest
+   *    prints within the cap. This preserves the historical behavior of every existing
+   *    caller, so the split is non-breaking.
+   *  - "recent": newest first — for the REAL-TIME TAPE, which must show the newest prints,
+   *    not the top-N-by-premium reshuffled by the client (HELIX tape audit P0).
+   */
+  order?: "premium" | "recent";
 }): Promise<FlowRow[]> {
   await ensureSchema();
   const clauses: string[] = [];
@@ -864,6 +874,15 @@ export async function fetchRecentFlows(params: {
   const where = `WHERE ${clauses.join(" AND ")}`;
   const limit = params.limit ?? 5000;
   values.push(limit);
+
+  // Two hardcoded ORDER BY literals (no user input interpolated) — recency for the live
+  // tape, premium for everything else. "recent" sorts by the real alert time (created_at,
+  // inserted_at fallback) DESC so the tape shows the NEWEST prints; rows with no timestamp
+  // sort last (NULLS LAST) instead of pinning to the top.
+  const orderBy =
+    params.order === "recent"
+      ? `ORDER BY COALESCE(created_at, inserted_at) DESC NULLS LAST`
+      : `ORDER BY COALESCE(total_premium, 0) DESC NULLS LAST`;
 
   const res = await (await getPool()).query<QueryResultRow>(
     `
@@ -908,7 +927,7 @@ export async function fetchRecentFlows(params: {
            ) AS implied_volatility
     FROM flow_alerts
     ${where}
-    ORDER BY COALESCE(total_premium, 0) DESC NULLS LAST
+    ${orderBy}
     LIMIT $${i}
     `,
     values
