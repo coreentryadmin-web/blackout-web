@@ -304,7 +304,7 @@ export async function buildEveningEdition(opts?: {
       raw = checkpointedSynthesis.claude ? "checkpointed" : null;
       console.info(`[nighthawk/edition] stage_synthesis: loaded ${finalPlays.length} vetted plays from checkpoint`);
     } else {
-      const { plays: rawPlays, raw: synthRaw } = await generateEditionPlays({
+      const { plays: rawPlays, raw: synthRaw, funnel } = await generateEditionPlays({
         ctx,
         dossiers: synthesisDossiers,
         ranked: synthesisRanked,
@@ -316,8 +316,15 @@ export async function buildEveningEdition(opts?: {
       raw = synthRaw;
 
       if (!rawPlays.length) {
+        // Name the funnel stage that zeroed the plays so the failure is self-diagnosing in
+        // cron-health meta.error (no Railway-log dig needed). parsed→stock→within-cap→strike-valid.
+        const funnelMsg = funnel
+          ? funnel.parsed === 0
+            ? `Claude returned no parseable JSON plays (raw ${synthRaw?.length ?? 0} chars).`
+            : `All plays filtered out — funnel: ${funnel.parsed} parsed → ${funnel.stock} stock → ${funnel.premium_ok} within-cap → ${funnel.strike_ok} strike-valid.`
+          : "Claude returned no parseable plays.";
         const err = anthropicConfigured()
-          ? "Claude returned no parseable plays."
+          ? funnelMsg
           : "Claude not configured and mechanical fallback empty.";
         if (checkpointing) await upsertNighthawkJob(editionFor, { status: "failed", error: err });
         return {

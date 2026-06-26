@@ -80,7 +80,14 @@ export async function generateEditionPlays(params: {
   spxDesk?: SpxDeskSummary | null;
   flowTape?: FlowTapeSummary | null;
   playOutcomes?: PlayOutcomeStats | null;
-}): Promise<{ plays: PlaybookPlay[]; recap: ReturnType<typeof buildMarketRecap>; raw: string | null }> {
+}): Promise<{
+  plays: PlaybookPlay[];
+  recap: ReturnType<typeof buildMarketRecap>;
+  raw: string | null;
+  // Per-stage funnel counts so a 0-play outcome is self-diagnosing (which filter zeroed it)
+  // without needing Railway logs. parsed → stock-only → within-premium-cap → strike-valid.
+  funnel?: { parsed: number; stock: number; premium_ok: number; strike_ok: number };
+}> {
   const recap = buildMarketRecap(params.ctx);
   const dossierMap = Object.fromEntries(params.dossiers.map((d) => [d.ticker, d]));
 
@@ -128,7 +135,7 @@ export async function generateEditionPlays(params: {
   // deterministic output avoids nondeterminism + wasted retries on schema-constrained output.
   const raw = await anthropicText(prompt, 4500, SYSTEM, { temperature: 0 });
   if (!raw) {
-    return { plays: [], recap, raw: null };
+    return { plays: [], recap, raw: null, funnel: { parsed: 0, stock: 0, premium_ok: 0, strike_ok: 0 } };
   }
 
   const parsed = parsePlaysJson(raw).slice(0, 8);
@@ -161,5 +168,10 @@ export async function generateEditionPlays(params: {
     );
   }
 
-  return { plays: capped, recap, raw };
+  return {
+    plays: capped,
+    recap,
+    raw,
+    funnel: { parsed: parsed.length, stock: mapped.length, premium_ok: plays.length, strike_ok: capped.length },
+  };
 }
