@@ -55,19 +55,37 @@ function afterHoursLine(): string {
   return AFTER_HOURS_LINES[h % AFTER_HOURS_LINES.length];
 }
 
-async function fetchBrief(): Promise<string | null> {
+async function fetchBrief(): Promise<{ brief: string | null; generated_at: string | null }> {
   try {
     const res = await fetch("/api/market/flow-brief", { cache: "no-store" });
-    if (!res.ok) return null;
-    return (await res.json()).brief ?? null;
+    if (!res.ok) return { brief: null, generated_at: null };
+    const data = await res.json();
+    return { brief: data.brief ?? null, generated_at: data.generated_at ?? null };
   } catch {
-    return null;
+    return { brief: null, generated_at: null };
   }
+}
+
+// "as of HH:MM ET" — the brief is a 15-min shared memo, so the authoring time (real
+// sample time, threaded from the server) is what makes the freshness honest. Never the
+// wall clock at fetch.
+function fmtAsOf(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const t = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
+  return `as of ${t} ET`;
 }
 
 // No props needed — the server generates one shared brief for every user.
 export function FlowBrief() {
   const [brief, setBrief]     = useState<string | null>(null);
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   // Hydration safety (React #418): isRTH() / afterHoursLine() read the wall clock, so SSR and the
   // first client render can disagree (the RTH boundary or the ET hour can tick between them). Seed
@@ -84,9 +102,12 @@ export function FlowBrief() {
     }
     setMarketOpen(true);
     setLoading(true);
-    const text = await fetchBrief();
+    const { brief: text, generated_at } = await fetchBrief();
     setLoading(false);
-    if (text) setBrief(text);
+    if (text) {
+      setBrief(text);
+      setGeneratedAt(generated_at);
+    }
   }, []);
 
   // Resolve the real RTH state once on the client, after hydration — keeps SSR/first-paint stable.
@@ -166,6 +187,11 @@ export function FlowBrief() {
                 <span className="font-mono text-[10px] tracking-[0.2em] uppercase" style={{ color: "#00e676", textShadow: "0 0 6px rgba(0,230,118,0.6)" }}>
                   · LIVE
                 </span>
+                {brief && fmtAsOf(generatedAt) && (
+                  <span className="font-mono text-[10px] tracking-[0.15em] text-sky-300 normal-case">
+                    · {fmtAsOf(generatedAt)}
+                  </span>
+                )}
               </>
             )}
           </div>

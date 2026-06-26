@@ -162,7 +162,15 @@ export async function GET(req: NextRequest) {
         { maxRetries: 1 }
       );
 
-      return { brief: brief?.trim() ?? null, massive_signals: massiveCount };
+      // Stamp generated_at INSIDE the cached closure so it records when the brief was
+      // actually written by Claude — not serve time. The memo is shared across a 15-min
+      // window, so a user opening at 10:14 must see "as of 10:00", the real authoring
+      // time, rather than a fabricated "10:14" that reads as just-now.
+      return {
+        brief: brief?.trim() ?? null,
+        massive_signals: massiveCount,
+        generated_at: new Date().toISOString(),
+      };
     });
 
     return NextResponse.json({
@@ -170,7 +178,7 @@ export async function GET(req: NextRequest) {
       massive_signals: result?.massive_signals ?? 0,
       window_slot: windowSlot,
       next_refresh_ms: BRIEF_TTL_MS - (Date.now() % BRIEF_TTL_MS),
-      generated_at: new Date().toISOString(),
+      generated_at: result?.generated_at ?? null,
     });
   } catch (err) {
     console.error("[flow-brief]", err);

@@ -19,9 +19,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const snaps = await serverCache("indices:spx-vix", TTL.MARKET_SNAPSHOT, () => fetchIndexSnapshots([SPX, VIX]));
-    const spx = snaps[SPX];
-    const vix = snaps[VIX];
+    // Capture the sample time INSIDE the cached loader so `as_of` reflects when the
+    // upstream snapshot was actually fetched — not response-build time. serverCache is
+    // stale-while-revalidate (up to MAX_STALE_AGE_MS=10min), so stamping `new Date()` at
+    // serve time would label minutes-old cached data as real-time. Threading the fetch
+    // timestamp through the cache makes a consumer's `as_of` honest about freshness.
+    const cached = await serverCache("indices:spx-vix", TTL.MARKET_SNAPSHOT, async () => {
+      const data = await fetchIndexSnapshots([SPX, VIX]);
+      return { snaps: data, fetched_at: new Date().toISOString() };
+    });
+    const spx = cached.snaps[SPX];
+    const vix = cached.snaps[VIX];
 
     if (!spx && !vix) {
       return NextResponse.json(
@@ -32,7 +40,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       source: "polygon",
-      as_of: new Date().toISOString(),
+      as_of: cached.fetched_at,
       spx,
       vix,
     });
