@@ -704,3 +704,62 @@ breadth-internal warnings being emitted for an expected, proxy-handled condition
   stall recovered this run but the structural cause (15 trigger TOMLs lacked `watchPatterns`) is unmerged.
 - Prior carry-forwards stand: publish-preview external caller (RUN 3); `::int days_of_data` source-round (RUN 4);
   open `auto/*` branches awaiting human review.
+
+---
+
+## RUN 9 — 2026-06-26 ~20:42 UTC (daily slot, market CLOSED ~4:42 PM EDT Fri)
+
+Ninth pass today (RUN 1 04:42 @ `cc35f9e`, RUN 2 05:41 @ `c476793`, RUN 3 13:54 @ `cc17d83`, RUN 4 15:48
+@ `48d30b0`, RUN 5 16:40 @ `994e2bd`, RUN 6 17:50/18:20, RUN 7 18:48 @ `auto/...watchpatterns`, RUN 8 19:48
+@ `1fbef6e`). Repo `C:/Users/raidu/blackout-cron`, `git pull --ff-only` clean → base **`8e655dc`**,
+**tsc-green (exit 0)**. Re-checked ALL live error surfaces on `blackouttrades.com` (logged-in admin,
+Chrome bridge — **healthy this run** after one `chrome://newtab` non-commit on the first navigate, fixed by
+a re-navigate). **ZERO new or spiking signatures. No fix made (anti-theater).**
+
+### A. Full live surface — CLEAN (no new/spiking signature)
+
+| Source | Endpoint | Result |
+|---|---|---|
+| Durable error sink | `/api/admin/errors?limit=200` | ✅ `maxId 70` — **ZERO new since RUN 4/5**. Only the 2 known fixed signatures: `::date "Mon Jun 29"` ×69 (id 1–69, RUN 3 fix `cc17d83`, last event **07:57:50 UTC**) + `::int "87.29305922597204"` ×1 (id 70, RUN 4 fix `48d30b0`, only event **13:50:09 UTC**). Both **fixed-and-holding** — no recurrence in ~7h / ~13h respectively. |
+| Open incidents | `/api/admin/incidents` | ✅ `count:0` — 0 open |
+| Admin health | `/api/admin/health` | ✅ **`health_ok:true`** — `issues:[]`, critical 0, warning 0, `route_errors:0`, `redis_degraded:false`, `market_health_ok:true`. **RUN 8 fix `1fbef6e` holding** — the perpetual breadth-ticker cry-wolf is gone; `health_ok` is meaningful again (true at rest). No flow-stale CRITICAL (RUN 5 `994e2bd` holding). |
+| API dashboard (24h) | `/api/admin/apis/dashboard` | ✅ `error_rate:0`, `recent_errors:[]`, `active_retries:0` — the RUN 3/4 `::date`/`::int` spikes have fully aged out of the 24h window. Clean. |
+| Cron health | `/api/admin/cron-health` | ✅ summary **`failed:0`** (16 jobs: 11 healthy, 1 stale, 4 unknown, 0 warning). Data Correctness **`ok`** (`flags:0`); the 3 warm writers (UW Cache / Night's Watch / Heat Maps) correctly **`skipped`** "outside market hours" — the RUN 7 RTH-push warm-writer stall is moot off-hours. The lone `last_status:"failed"` job is the unchanged **Night Hawk Edition** (§B). |
+
+### B. The one non-green item is the UNCHANGED Night Hawk Edition carry-forward (no action)
+
+`Night Hawk Edition` (`nighthawk-playbook`) still shows `last_status:"failed"`, but it is **byte-identical**
+to every prior run: `last_run_at` **Thu 2026-06-25 23:32:14 UTC**, `last_message:"Claude returned no
+parseable plays."`, `meta {candidates:40, plays_count:0, edition_for:2026-06-26}`. The job has **not
+re-fired** (next fire **5:30 PM EDT ≈ 21:30 UTC, ~48 min out**), so this is NOT new and NOT spiking — it is
+the same case RUN 1 (a) fixed for observability → `cc35f9e` and (b) flagged as the operator's product
+decision (Task #1). The summary now buckets it as `stale:1` (last run >21h ago) rather than `failed:1`,
+which is purely the staleness re-categorization, not a state change. The `cc35f9e` self-diagnosing funnel
+error is git-confirmed live (§C), so **tonight's 21:30 UTC fire will write its own killing-stage breakdown**
+to `cron-health meta.error` automatically — exactly what Task #1 was waiting on. Nothing to fix here.
+
+### C. Fix-history corroboration (git) — every prior fix LIVE on origin/main
+
+`git merge-base --is-ancestor … origin/main` → **YES for all six**: `cc35f9e` (NH funnel observability),
+`cc17d83` (`::date` boundary guard), `48d30b0` (`::int` Largo `window_days` clamp + db backstop),
+`994e2bd` (per-replica flow-stale corroboration), `1fbef6e` (breadth-ticker health cry-wolf), `40fcc24`
+(sector-tide). Railway deploys `origin/main`, so all are deployed. `origin/main` tip = `8e655dc`.
+
+### Result
+
+**✅ ZERO new or spiking production-error signatures.** Durable sink (maxId 70, both signatures
+fixed-and-holding), incidents (0), admin health (`health_ok:true`, `issues:[]`), 24h dashboard
+(`error_rate:0`), and cron-health (`failed:0`) all clean. The only non-green item is the pre-existing,
+unchanged Night Hawk Edition `failed` (fix `cc35f9e` live, flagged Task #1, hasn't re-fired). All six prior
+fixes git-confirmed on `origin/main`. **No code fix made — with the entire surface clean, manufacturing a
+change would violate the no-theater guardrail.** Only main write is this log (safe: market closed, warm
+writers already skipping, so no RTH-push→writer-stall risk).
+
+### Carry-forward (toward 0-open-issues)
+- **Night Hawk Edition** synthesis funnel (self-diagnosing via `cc35f9e`; tonight's 21:30 UTC fire will emit
+  the funnel breakdown) + stale-`running` reaper (#70) — flag / operator Task #1.
+- `auto/error-triage-2026-06-26-cron-watchpatterns` (RUN 7, Task #1) — still unmerged; safe to merge now
+  (off-hours) after config-as-code verification per RUN 7 notes.
+- Prior carry-forwards stand: publish-preview external caller (RUN 3); `::int days_of_data` source-round
+  (RUN 4, `spx-play-outcomes.ts:227`, `Math.floor`); trade-entry flow-stale gate corroboration (RUN 5);
+  open `auto/*` branches awaiting human review.
