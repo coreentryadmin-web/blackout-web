@@ -960,16 +960,12 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     })
     .slice(0, 10);
 
-  const macroEventsResolved = await mergeMacroEventsToday({
-    headlines: newsHeadlines,
-  });
-
-  const gapSnap = await resolveDeskGap({
-    spx_price: price,
-    prior_close: prior.pdc,
-    premarket: isPremarketPlanningWindow(),
-  });
-
+  // PERF (auto/performance-2026-06-26): macro events, the desk gap snapshot and the
+  // daily-market/prior-closes pair are mutually independent reads — run them concurrently
+  // instead of three sequential awaits so the (blocking, SWR-off) desk rebuild spends
+  // max(t) not sum(t) on this stretch. The sync breadth/internals derivations don't depend
+  // on any of them, so they stay inline above the concurrent fetch. Semantics unchanged:
+  // identical results, and a throw from macro/gap still aborts the build exactly as before.
   const leaderStocks = leaderStocksFromBreadth(breadthAll ?? []);
   const sectorHeat = (breadthAll ?? []).filter((s) => !LEADER_TICKERS.has(s.ticker));
   const internals = resolveMarketInternals(
@@ -981,9 +977,17 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     breadthAll ?? []
   );
 
-  const [dailyMarket, priorCloses] = await Promise.all([
-    fetchDailyMarketSummary(today).catch(() => null),
-    fetchPriorDayCloses(today).catch(() => ({})),
+  const [macroEventsResolved, gapSnap, [dailyMarket, priorCloses]] = await Promise.all([
+    mergeMacroEventsToday({ headlines: newsHeadlines }),
+    resolveDeskGap({
+      spx_price: price,
+      prior_close: prior.pdc,
+      premarket: isPremarketPlanningWindow(),
+    }),
+    Promise.all([
+      fetchDailyMarketSummary(today).catch(() => null),
+      fetchPriorDayCloses(today).catch(() => ({})),
+    ]),
   ]);
 
   const [greekExpRows, flowByExpiry, netFlowByExpiry, netPremTicks, mag7Rows, macroIndicators] = uwConfigured()
@@ -1359,10 +1363,15 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
   const flowNow = new Date();
   if (!isSpxRthActive(flowNow, flowMarketNow) && !isPremarketPlanningWindow(flowNow)) return empty;
 
-  const spxSnapRaw = polygonConfigured()
-    ? await fetchIndexSnapshots([SPX]).then((m) => mergeWsIndexSnapshots(m)[SPX])
-    : null;
-  const spxFlowsRaw = uwConfigured() ? await fetchSpxDeskFlowAlertsWithDb(32) : [];
+  // PERF (auto/performance-2026-06-26): the Polygon index snapshot and the UW flow-alerts
+  // pull are independent providers — fetch them concurrently rather than one-then-the-other
+  // so the ~4s live flow lane doesn't serialize a Polygon round-trip in front of the UW one.
+  const [spxSnapRaw, spxFlowsRaw] = await Promise.all([
+    polygonConfigured()
+      ? fetchIndexSnapshots([SPX]).then((m) => mergeWsIndexSnapshots(m)[SPX])
+      : Promise.resolve(null),
+    uwConfigured() ? fetchSpxDeskFlowAlertsWithDb(32) : Promise.resolve([] as SpxFlowBrief[]),
+  ]);
 
   const [darkPool, uwFlow, greekExpRows, flowByExpiry, netFlowByExpiry, netPremTicks] = uwConfigured()
     ? await runUwSequential([
