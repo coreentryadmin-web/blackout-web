@@ -550,3 +550,85 @@ dashboard error_rate 0 (spikes aged out), health = benign breadth-ticker class o
 signal (3 stale writers @ 18:03) was **transient deploy-restart fallout, fully self-healed** (all 3 `ok`,
 <4m old by 18:20) with no value-correctness impact and no incident — **no fix made**; the RTH-push→writer-
 stall pattern is flagged as an ops carry-forward. Sink/fixes from RUNs 1–5 all still holding.
+
+---
+
+## RUN 7 — 2026-06-26 ~18:48 UTC (daily slot, market OPEN ~2:48 PM EDT Fri)
+
+Seventh pass today. Repo `C:/Users/raidu/blackout-cron`, tsc-green (exit 0) @ base `be21109`. Re-checked
+all live error surfaces on `blackouttrades.com` (logged-in admin, Chrome bridge — **healthy this run**,
+unlike RUN 6's degraded bridge). **The PRIMARY durable sink stayed CLEAN; the actionable finding is that
+RUN 6's addendum UNDER-CALLED the warm-writer staleness — live re-check proves it RECURS on every RTH
+push, not a one-off "transient, self-healed."** → root-caused + **branch + flag** (deploy-config).
+
+### A. PRIMARY error surfaces — CLEAN (no new/spiking signature)
+
+| Source | Endpoint | Result |
+|---|---|---|
+| Durable error sink | `/api/admin/errors?limit=200` | ✅ `maxId 70` — **ZERO new since RUN 4/5**. Only the 2 known signatures: id 1–69 `::date "Mon Jun 29"` (RUN 3, fixed `cc17d83`, last event 07:57 UTC) + id 70 `::int "87.29…"` (RUN 4, fixed `48d30b0`, last/only 13:50 UTC). Both **fixed-and-holding** (no recurrence). |
+| Open incidents | `/api/admin/incidents` | ✅ `incidents:[]` — 0 open |
+| Admin health | `/api/admin/health` | ⚠️ `health_ok:false` driven **solely** by the 3 benign breadth-ticker warnings (`I:TICK`/`I:TRIN`/`I:ADD` `price=0`, age=epoch — never feed; cosmetic carry-forward). `route_errors:0`, `redis_degraded:false`, `market_health_ok:true`, critical 0. No flow-stale CRITICAL (RUN 5 fix `994e2bd` holding). |
+| API dashboard (24h) | `/api/admin/apis/dashboard` | ⚠️ `error_rate:0.16`, 1 `recent_error` = `/benzinga/v2/news` **status:200** — the known SLA-latency-as-error display class, NOT a real failure. The RUN 3/4 `::date`/`::int` spikes have aged out of the window. |
+| Cron health | `/api/admin/cron-health` | ⚠️ 2 failed: **Night Hawk Edition** (unchanged carry-forward, last run Thu 23:32, fix `cc35f9e` live, next fire 5:30 PM EDT today) + **Data Correctness** (§B). |
+
+### B. THE FINDING — recurring RTH-push → warm-writer stall (RUN 6 mis-classified) → branch+flag
+
+`cron-health` → **Data Correctness** `last_status:failed` @ **18:34:14 UTC**, "3 correctness flag(s)" — all
+**freshness-layer**: critical writers **UW Cache Refresh**, **Night's Watch Warm**, **Heat Maps Warm**
+"STALE during RTH (no run in 11m, limit 10m)". RUN 6's addendum (18:20) saw these recover and called it a
+one-off "transient deploy-restart, self-healed." **This run proves otherwise** — the live writer heartbeats:
+
+| check (UTC) | UW Cache | Night's Watch | Heat Maps | reading |
+|---|---|---|---|---|
+| 18:42:45 | last 18:23 (19m) | last 18:23 (20m) | last 18:23 (20m) | **all ~20 min stale** |
+| 18:47:48 | 3.0m | 2.2m | 2.9m | **resumed ~18:44** |
+
+So a **~21-minute stall (18:23 → 18:44)** during open market, bracketing the **18:22 push (`be21109`,** my own
+RUN 6-addendum doc commit). Combined with RUN 6's 18:03 stall (bracketing the 17:39–17:55 push cluster), the
+pattern is **confirmed recurring**, not transient.
+
+**Root cause (confirmed at the config level):** the every-minute warm writers are Railway **cron trigger
+services** (`cronSchedule = "* 11-21 * * 1-5"`, each running `node scripts/hit-cron.mjs /api/cron/<x>`). The
+main `railway.toml` **already** carries `watchPatterns` excluding `docs/**` (its comment documents that
+autonomous-SDLC doc commits were redeploying prod). The **15 per-service trigger TOMLs had NO
+`watchPatterns`** → **every** commit, including the frequent `docs/auto/*` log pushes, redeployed all 15
+trigger services, bouncing the every-minute cron and stalling the warm writers until each rebuild finished.
+
+**Impact = reliability/latency, NOT correctness.** The data-correctness **VALUE** layers were clean
+(`totals: pass 7, independentlyConfirmed 7, flags 3 (all freshness), 0 wrong-number flags`). Warm caches
+backfill on organic traffic (the heatmap TOML itself notes the cron "exists to KILL cold-build bursts… not
+to be the sole refresh path"), so the stall = cold-build latency + extra provider load for users hitting
+Heat Maps / Night's Watch in the window, **not stale/wrong numbers**. `incidents:[]` — never paged ops.
+
+**FIX vs FLAG → BRANCH `auto/error-triage-2026-06-26-cron-watchpatterns` + Task #1 (NOT main).** Added the
+proven repo-relative-glob `watchPatterns` to all 15 trigger TOMLs, scoped to
+`[scripts/hit-cron.mjs, <own>.toml, nixpacks.toml]` (each service runs only `hit-cron.mjs`; all logic lives
+in the pinged main app → that is its complete dependency set). Fails safe (a non-match keeps the service
+running its current deployment — the goal). `npx tsc --noEmit` exit 0 · `npm run build` exit 0. **Branch,
+not main, because:** (1) deploy-config change (guardrail); (2) needs human verification that each cron
+service reads its TOML as config-as-code — a dashboard-set `cronSchedule` would override it (the TOMLs warn
+of this); (3) **pushing it to main during RTH would itself trigger one final all-15 redeploy = the exact
+~20-min stall being fixed** — merge off-hours.
+
+### Result
+
+**✅ Primary durable sink CLEAN (maxId 70, both prior signatures fixed-and-holding); incidents 0; value
+layers 0 wrong-number flags.** The one actionable item is the warm-writer RTH-push stall, which RUN 6's
+addendum mis-called transient — RUN 7 confirms it RECURS on every push, root-causes it to the missing
+`watchPatterns` on the 15 cron trigger TOMLs, and ships the complete fix on a **branch + Task #1** (deploy-
+config + needs human config-as-code verification + main-push-during-RTH would self-trigger the stall). No
+main push of code this run; the only main write is this log.
+
+### Carry-forward (toward 0-open-issues)
+- **Task #1 (this run):** merge `auto/error-triage-2026-06-26-cron-watchpatterns` OFF-HOURS; verify each cron
+  service's config-as-code wiring (dashboard may override the TOML); after merge confirm the data-correctness
+  freshness flags stop recurring around autonomous doc pushes. Open Q for human: why a no-build (echo) cron
+  redeploy takes ~20 min to resume — if it persists post-fix, decouple cron services from the app repo or use
+  Railway native cron on the main service.
+- ⚠️ **This very log push to main will, until the branch is merged, trigger one more ~20-min warm-writer
+  stall** (it's a `docs/**` commit and the trigger TOMLs aren't yet protected) — bounded, value-safe, ~70 min
+  RTH left; documented here as live evidence of the bug the branch closes.
+- Prior carry-forwards stand: Night Hawk Edition synthesis funnel + stale-`running` reaper (#70); publish-
+  preview external caller (RUN 3); `::int` `days_of_data` source-round (RUN 4, `Math.floor`); trade-entry
+  flow-stale gate corroboration (RUN 5); off-hours WS-staleness/breadth-ticker RTH gate + SLA-latency-as-error
+  display class (cosmetic); open `auto/*` branches awaiting human review.
