@@ -1218,7 +1218,15 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return { ticker: sym, ...(await fetchPositioningSummary(sym)) };
     }
     case "get_nighthawk_outcomes": {
-      const windowDays = Number(input.window_days ?? 30);
+      // Clamp to a valid INTEGER window (mirrors the admin /nighthawk/analytics parseWindow:
+      // 7–180). The model can emit a non-integer here — including echoing a raw fractional
+      // value (e.g. days_of_data) it saw in the desk context — which would otherwise bind to
+      // the fetchNighthawkOutcomeAnalytics $1::int day-param and crash Postgres with
+      // "invalid input syntax for type integer". Number.isInteger never trusts LLM input.
+      const rawWindow = Number(input.window_days ?? 30);
+      const windowDays = Number.isFinite(rawWindow)
+        ? Math.min(180, Math.max(7, Math.trunc(rawWindow)))
+        : 30;
       const [analytics, pending] = await Promise.all([
         fetchNighthawkOutcomeAnalytics(windowDays),
         fetchPendingNighthawkOutcomes(7),

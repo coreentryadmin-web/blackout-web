@@ -2451,6 +2451,11 @@ export async function upsertNighthawkPlayOutcomes(
 
 export async function fetchPendingNighthawkOutcomes(lookbackDays = 7): Promise<NighthawkPlayOutcomeRow[]> {
   await ensureSchema();
+  // Backstop: the $1::int cast below throws "invalid input syntax for type integer" for any
+  // non-integer arg. Coerce to a safe positive integer so no caller (incl. LLM-driven tools)
+  // can crash pg through this day-param.
+  const safeLookbackDays =
+    Number.isFinite(lookbackDays) && lookbackDays > 0 ? Math.trunc(lookbackDays) : 7;
   const res = await (await getPool()).query(
     `
     SELECT id, edition_for, ticker, direction, conviction,
@@ -2462,7 +2467,7 @@ export async function fetchPendingNighthawkOutcomes(lookbackDays = 7): Promise<N
       AND edition_for >= ((NOW() AT TIME ZONE 'America/New_York')::date - ($1::int || ' days')::interval)
     ORDER BY edition_for ASC, ticker ASC
     `,
-    [lookbackDays]
+    [safeLookbackDays]
   );
   return res.rows.map(mapNighthawkPlayOutcomeRow);
 }
@@ -2511,6 +2516,11 @@ export async function fetchNighthawkOutcomeAnalytics(windowDays = 30): Promise<{
   pending_count: number;
 }> {
   await ensureSchema();
+  // Backstop: the $1::int cast below throws "invalid input syntax for type integer" for any
+  // non-integer arg. Coerce to a safe positive integer so no caller (incl. LLM-driven tools)
+  // can crash pg through this day-param.
+  const safeWindowDays =
+    Number.isFinite(windowDays) && windowDays > 0 ? Math.trunc(windowDays) : 30;
   const pool = await getPool();
   const [resolvedRes, pendingRes] = await Promise.all([
     pool.query(
@@ -2525,7 +2535,7 @@ export async function fetchNighthawkOutcomeAnalytics(windowDays = 30): Promise<{
         AND o.edition_for >= (CURRENT_DATE - ($1::int || ' days')::interval)
       ORDER BY o.edition_for DESC, o.ticker ASC
       `,
-      [windowDays]
+      [safeWindowDays]
     ),
     pool.query<{ count: string }>(
       `SELECT COUNT(*)::int AS count FROM nighthawk_play_outcomes WHERE outcome = 'pending'`
