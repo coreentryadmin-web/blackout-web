@@ -78,3 +78,36 @@ LIVE CALIBRATION (market open ~14:25 UTC): SPX heatmap available (spot 7362.54, 
 ⚠️ TWO follow-ups:
 1. **Commit-message mixup (concurrency collision):** a concurrent **api-integration-audit** job sharing the cron clone ran `git add -A` mid-edit and swept my 6 uncommitted data-integrity files into ITS commit **`49cb17d` "fix(api): cross-provider reliability hardening"** + pushed. Files are all correct on main and the COMBINED HEAD was re-validated green (tsc + build), but the feature is mislabeled in history. Root cause = the known shared-clone residual risk. → reinforces the need to serialize cron-clone git ops (Task: see #4 notes).
 2. **Railway service still needs wiring:** the cron won't fire on schedule until a Railway cron service is created with config-as-code path `railway.data-integrity.toml` (+ CRON_SECRET). Until wired, admin will show "Data Integrity" as never-fired and the staleness watchdog may flag it (accurate). MANUAL Railway step.
+
+---
+
+## Run 2 — scheduled visual-render-sweep (fired ~09:00 PT / ~12:00 ET, RTH market OPEN)
+
+Repo `blackout-cron` synced to `396a3a8` (merges of auto/nighthawk-grounding + correctness verifiers). Scheduled job; fired mid-morning on next launch (not the 21:13 PT slot). Market **OPEN** → live data expected.
+
+### ⚠️ Chrome bridge degraded this session — live screenshot sweep could NOT be completed
+The Chrome bridge's CDP session was wedged for the whole run and **this is an environment failure, NOT a site bug** — proven by isolating it:
+- `Page.captureScreenshot` timed out (30s) on **every** tab and even on **example.com** → CDP screenshot capability globally dead, not page-specific.
+- Client `ChunkLoadError: Loading chunk 13 failed (timeout: …/(site)/page-4568923ac5bd32d5.js)` fired on homepage + left `/dashboard` stuck at the "SECURING THE FEED…" gate — **yet that exact chunk serves HTTP 200 in 0.25s server-side with the current live hash** (curl verified). So the browser failed to fetch a chunk the origin serves fine = browser/renderer wedge, the classic browser-induced false-alarm class. I did **not** flag it as a site bug.
+- Navigation intermittently hung / lagged; fresh tabs did not clear the CDP wedge (can't restart Chrome autonomously).
+
+Per the grounding rule, I refused to (a) report browser-artifact ChunkLoadErrors as site bugs or (b) fabricate a "clean render" I couldn't visually see. Instead I substituted **server-side ground truth + source verification**:
+
+### Server-side route health (curl ground truth) — all correct
+| Route | HTTP | Verdict |
+|---|---|---|
+| `/` | 200, TTFB 0.52s | ✅ healthy; full page text extracted clean (ARSENAL 5 instruments + Pre-Market Brief, How-it-works, Why, Briefing FAQ, pricing Free $0 / Premium $1,999, footer). No all-"—", no data bug. |
+| `/upgrade` | 200 | ✅ full text clean — pricing $199/mo · $1,999/yr, Free-vs-Premium table ("—" = intentional not-included markers), Whop refresh flow, edu disclaimer. |
+| `/embed/track-record` | 200 | ✅ responds. |
+| `/dashboard` `/flows` `/heatmap` `/nighthawk` `/terminal` `/admin` | 404 | ✅ **by-design gating** — Clerk `auth.protect()` rewrites logged-out requests to 404 (`X-Clerk-Auth-Reason: protect-rewrite, session-token-and-uat-missing`). Authed admin renders them live (prior run + active session confirm). |
+
+### Source verification of the only render code that changed since the last clean authed sweep
+The `396a3a8` merges added mostly server-side correctness verifiers, but touched 3 render-path files — all reviewed, all render-safe & brand-compliant (sky, no grey):
+- **`FlowFeed.tsx`** — Night Hawk edition fetch gains a 120s `setInterval` refresh (mirrors NightHawkFeed) + cleanup; same setState, render-safe. Good fix (prevents `/flows` freezing on a stale edition across the 4:30/5:30pm cron boundary).
+- **`desk/GexHeatmap.tsx`** — adds `overlays_at` + a null-guarded `as of … ET` overlay-freshness label (`text-sky-300/60`). Won't render an empty/"—" (guarded by `fmtAsofSeconds` truthiness).
+- **`usePulseStream.ts`** — `vix_change_pct` fallback `0 → null`. Render-safe: `number | null` is the already-declared type and existing paths (spx-desk.ts:739/1194, api.ts:91) already emit null, so the consumer always handled it; this only stops fabricating a `0%` (aligns with never-fabricate-values). No new null case.
+
+### Actions
+- ✅ **No site render bug found.** Public surfaces healthy + content-correct (server-verified); changed render code safe (source-verified). No commit to main this run (no high-confidence render fix to make — forcing one would be theater).
+- ⚠️ **FLAGGED (Task #1):** logged-out users clicking the homepage's publicly-linked instrument CTAs (`/dashboard` etc.) land on a **bare 404** (Clerk protect-rewrite) instead of a `/sign-in` or `/upgrade` redirect. Gating works (authed renders fine); this is a logged-out UX paper-cut — product/auth-flow call (use `auth.protect({ unauthenticatedUrl })` or repoint the CTAs). Pre-existing, low severity.
+- ⚠️ **Bridge note:** live screenshot/layout/overlap/grey-render checks deferred — Chrome CDP session unrecoverable autonomously. The 09:43-ET morning run (Run 1, same RTH window) already swept the authed desks live & clean; no render-code regression since. Recommend re-running the visual sweep once the Chrome bridge is restarted (user-side) to capture screenshots.
