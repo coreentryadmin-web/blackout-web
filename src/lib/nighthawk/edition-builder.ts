@@ -557,6 +557,10 @@ export async function buildEveningEdition(opts?: {
         candidates: candidates.length,
         ranked_tickers: ranked.map((r) => r.ticker),
         claude: Boolean(raw),
+        // Write-site invariant (#77): a normal publish always has plays (the guard above returns
+        // early on empty), so this is always false here — but stamp it explicitly so meta.recap_only
+        // is authoritative and never absent on a published row. The empty-funnel path stamps `true`.
+        recap_only: finalPlays.length === 0,
         built_at: new Date().toISOString(),
         force: Boolean(opts?.force),
         dossier_context: Object.fromEntries(

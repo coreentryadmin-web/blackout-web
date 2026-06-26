@@ -10,6 +10,18 @@ import type { NightHawkEdition } from "@/lib/nighthawk/types";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+// Airtight no-store across the whole CDN chain (#77). The edition's `available` flag flips the
+// user page between the recap and the "awaiting close" pending state, so a stale CDN copy serving
+// available:false would re-show "Playbook pending" after a real edition published. `Cache-Control`
+// covers browsers + most CDNs; `CDN-Cache-Control` is honored specifically by Cloudflare/Fastly even
+// if they were configured to ignore the standard header. A direct no-store fetch already shows the
+// fresh value — these headers stop any intermediary from caching the response.
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+  "CDN-Cache-Control": "no-store",
+  "Cloudflare-CDN-Cache-Control": "no-store",
+} as const;
+
 const ENGINE_BASE = process.env.BLACKOUT_INTEL_URL?.replace(/\/$/, "") ?? "";
 
 function emptyEdition(editionFor: string): NightHawkEdition {
@@ -84,19 +96,13 @@ export async function GET(req: NextRequest) {
 
   const row = (await fetchNighthawkEditionByDate(editionFor)) ?? (await fetchLatestNighthawkEdition());
   if (row) {
-    return NextResponse.json(rowToNightHawkEdition(row), {
-      headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" },
-    });
+    return NextResponse.json(rowToNightHawkEdition(row), { headers: NO_STORE_HEADERS });
   }
 
   const legacy = await fetchLegacyPlays();
   if (legacy) {
-    return NextResponse.json(legacy, {
-      headers: { "Cache-Control": "no-store" },
-    });
+    return NextResponse.json(legacy, { headers: NO_STORE_HEADERS });
   }
 
-  return NextResponse.json(emptyEdition(editionFor), {
-    headers: { "Cache-Control": "no-store" },
-  });
+  return NextResponse.json(emptyEdition(editionFor), { headers: NO_STORE_HEADERS });
 }

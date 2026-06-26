@@ -7,7 +7,7 @@ import type { PlayOutcomeStats } from "@/lib/spx-play-outcomes";
 import {
   fetchEditionChains,
   formatEditionChainTables,
-  validatePlayAgainstChain,
+  evaluatePlayAgainstChain,
 } from "./option-chain-prompt";
 import {
   applyPremiumCapToPlay,
@@ -147,7 +147,12 @@ export async function generateEditionPlays(params: {
   const strikeRejected: PlaybookPlay[] = [];
   for (const play of plays) {
     const rows = chainRows[play.ticker];
-    if (!rows?.length || validatePlayAgainstChain(play.options_play, rows)) {
+    // SOFT strike gate (#77). Only drop a play when the prefetched chain POSITIVELY contradicts it
+    // (strike+expiry present in the ATM±5% front-two-expiry window but below the OI floor). A play
+    // whose contract simply isn't in that narrow window — a longer-dated swing/leap, a slightly-OTM
+    // strike, or a "weekly"/"0DTE" with no ISO date — is unverifiable, NOT contradicted, so it passes.
+    // The old hard gate dropped every unverifiable play and zeroed whole editions (17 cands → 0 plays).
+    if (!rows?.length || evaluatePlayAgainstChain(play.options_play, rows).ok) {
       strikeOk.push(play);
     } else {
       strikeRejected.push(play);
@@ -155,7 +160,7 @@ export async function generateEditionPlays(params: {
   }
   if (strikeRejected.length) {
     console.warn(
-      "[nighthawk/edition] strike validation rejected:",
+      "[nighthawk/edition] strike validation rejected (chain-contradicted — illiquid strike):",
       strikeRejected.map((p) => `${p.ticker}: ${p.options_play.slice(0, 80)}`)
     );
   }

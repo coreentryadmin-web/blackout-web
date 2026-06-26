@@ -12,9 +12,27 @@ type PlaybookBoardProps = {
 
 const SLOT_COUNT = 5;
 
+/** A published edition has something to show (a recap) even with zero plays. Mirror the server-side
+ *  gate (rowToNightHawkEdition / hasRecapContent) on the client so the recap state renders whenever
+ *  ANY recap content is present — independent of the `recap_only` flag, which a stale/older row may
+ *  not carry. This is the invariant for #77: never show "Playbook pending" once a recap exists. */
+function editionHasRecapContent(edition: NightHawkEdition | undefined): boolean {
+  if (!edition) return false;
+  if (edition.recap_headline && edition.recap_headline.trim()) return true;
+  if (edition.recap_summary && edition.recap_summary.trim()) return true;
+  if (edition.market_recap && Object.keys(edition.market_recap).length > 0) return true;
+  return false;
+}
+
 export function PlaybookBoard({ edition, loading, onPlaySelect }: PlaybookBoardProps) {
   const plays = edition?.plays ?? [];
   const hasPlays = plays.length > 0;
+  const hasRecap = editionHasRecapContent(edition);
+  // Render the recap (not "pending") whenever the edition is available OR carries recap content.
+  // INVARIANT (#77): when the API marks the edition available=true the page must NEVER show
+  // "Playbook pending" — and we additionally self-heal any row where `available` lagged but a real
+  // recap is present. recap_only is intentionally NOT consulted here.
+  const showRecapState = (Boolean(edition?.available) || hasRecap) && !hasPlays;
   const editionLabel = edition?.edition_for
     ? new Date(`${edition.edition_for}T12:00:00`).toLocaleDateString("en-US", {
         weekday: "short",
@@ -55,11 +73,11 @@ export function PlaybookBoard({ edition, loading, onPlaySelect }: PlaybookBoardP
           )}
           {loading ? (
             <Badge tone="sky">Syncing…</Badge>
-          ) : edition?.available && hasPlays ? (
+          ) : hasPlays ? (
             <Badge tone="bull" dot>
               Edition live
             </Badge>
-          ) : edition?.available ? (
+          ) : showRecapState ? (
             <Badge tone="sky" dot>
               Recap live
             </Badge>
@@ -92,10 +110,11 @@ export function PlaybookBoard({ edition, loading, onPlaySelect }: PlaybookBoardP
             );
           })}
         </div>
-      ) : edition?.available ? (
+      ) : showRecapState ? (
         // Recap-only edition: a real market read published, but no ranked plays survived the funnel
         // tonight. Show a recap-only note instead of the "awaiting close" pending state — the recap
-        // itself renders above via recap_headline / market_recap / recap_summary.
+        // itself renders above via recap_headline / market_recap / recap_summary. Gated on
+        // available||recap-content (NOT recap_only) so a stale row missing the flag still renders here.
         <div className="nighthawk-playbook-pending" role="status">
           <div className="nighthawk-playbook-pending-inner">
             <p className="nighthawk-playbook-pending-kicker">◆ Overnight recon</p>

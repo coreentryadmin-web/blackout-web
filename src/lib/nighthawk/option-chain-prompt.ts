@@ -300,25 +300,77 @@ export function parseOptionsContract(optionsPlay: string): ParsedOptionsContract
   return { strike, side, expiryYmd };
 }
 
+/**
+ * Strike-validation outcome. `ok` is whether the play may proceed to publish. We deliberately
+ * distinguish "verified against the chain" from "could not be disproven by the chain" so the
+ * caller can SOFT-gate: only a positive contradiction (the contract IS in the chain but fails the
+ * OI floor) should drop a play. A non-match is NOT a contradiction — the prefetched chain only
+ * covers ATM ±5% on the front TWO expiries, so any legitimately longer-dated (swing/leap) or
+ * slightly-OTM contract Claude picks will simply be absent. Hard-rejecting on absence was the #77
+ * over-filter that zeroed every edition: 17 candidates → 0 plays because none of Claude's chosen
+ * expiries/strikes happened to land inside that narrow front-expiry ATM window.
+ */
+export type StrikeValidation = {
+  /** May the play proceed? True unless the chain positively contradicts it (present but illiquid). */
+  ok: boolean;
+  /** True only when we matched the strike+expiry in the chain and confirmed the OI floor. */
+  verified: boolean;
+  /** True only when the strike+expiry IS in the chain but OI is below the floor — a real contradiction. */
+  contradicted: boolean;
+};
+
+/**
+ * SOFT strike validation (#77). Returns `ok:false` ONLY when the chain positively contradicts the
+ * play — i.e. the exact strike+expiry exists in the prefetched ATM window but its OI is below the
+ * liquidity floor. When the contract is simply not present in the (narrow, front-two-expiry, ATM±5%)
+ * window — including unparseable/longer-dated swing/leap expiries — we return `ok:true, verified:false`:
+ * the chain can't confirm it, but it also can't disprove it, so we do not drop the play.
+ */
+export function evaluatePlayAgainstChain(
+  optionsPlay: string,
+  rows: ChainStrikeRow[],
+  minOi = 500
+): StrikeValidation {
+  const parsed = parseOptionsContract(optionsPlay);
+  // No parseable strike at all → we can't verify, but we also can't contradict. Let it through;
+  // premium-cap + critic remain the other guards. (Hard-dropping here was part of the over-filter.)
+  if (!parsed) return { ok: true, verified: false, contradicted: false };
+
+  const oiForSide = (row: ChainStrikeRow): number => {
+    if (parsed.side === "call") return row.call_oi;
+    if (parsed.side === "put") return row.put_oi;
+    return Math.max(row.call_oi, row.put_oi);
+  };
+
+  // Find a chain row at this strike. If we have an expiry, require it to match; otherwise match on
+  // strike alone (Claude wrote "weekly"/"0DTE" with no ISO date — common, and not a reason to drop).
+  const strikeRows = rows.filter((row) => {
+    if (Math.abs(row.strike - parsed.strike) > 0.05) return false;
+    if (parsed.expiryYmd && row.expiry !== parsed.expiryYmd) return false;
+    return true;
+  });
+
+  // Strike+expiry not present in the front-two-expiry ATM window → unverifiable, NOT contradicted.
+  // This is the common case for swing/leap plays; pass it through rather than zeroing the edition.
+  if (!strikeRows.length) return { ok: true, verified: false, contradicted: false };
+
+  // Present in the chain: now the OI floor is meaningful. Verified if any matching row clears it.
+  const verified = strikeRows.some((row) => oiForSide(row) >= minOi);
+  return { ok: verified, verified, contradicted: !verified };
+}
+
+/**
+ * Back-compat boolean wrapper. NOTE: this returns `true` only for a VERIFIED contract (present in the
+ * chain and clearing the OI floor). It is NOT suitable as a hard pass/fail gate for publishing —
+ * callers in the edition funnel must use {@link evaluatePlayAgainstChain} and gate on `ok` (which is
+ * also true for unverifiable-but-not-contradicted plays). Retained for any external/legacy caller.
+ */
 export function validatePlayAgainstChain(
   optionsPlay: string,
   rows: ChainStrikeRow[],
   minOi = 500
 ): boolean {
-  const parsed = parseOptionsContract(optionsPlay);
-  if (!parsed) return false;
-  if (!parsed.expiryYmd) return false;
-
-  const match = rows.find((row) => {
-    if (Math.abs(row.strike - parsed.strike) > 0.05) return false;
-    if (!parsed.expiryYmd) return false;
-    if (row.expiry !== parsed.expiryYmd) return false;
-    if (parsed.side === "call") return row.call_oi >= minOi;
-    if (parsed.side === "put") return row.put_oi >= minOi;
-    return row.call_oi >= minOi || row.put_oi >= minOi;
-  });
-
-  return Boolean(match);
+  return evaluatePlayAgainstChain(optionsPlay, rows, minOi).verified;
 }
 
 export async function fetchTickerChainTable(

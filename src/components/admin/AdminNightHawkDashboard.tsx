@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import type { NighthawkMetrics } from "@/lib/nighthawk/analytics";
 import type { NighthawkPublishPreview } from "@/lib/nighthawk/publish-preview";
+import type { NightHawkEdition } from "@/lib/nighthawk/types";
 import {
   ActionButton,
   DataTable,
@@ -172,6 +173,46 @@ function OptionsWsStrip({ status }: { status: OptionsWsStatus }) {
   );
 }
 
+/**
+ * Build a publish-preview view from the PUBLISHED edition when /api/admin/nighthawk/publish-preview
+ * is unavailable (404 / route error). The public edition endpoint reads the same row the user page
+ * sees, so this keeps the admin "Latest edition" panel in sync with reality (#77). Returns null only
+ * when there is genuinely no published edition to show. Job/build-time/critic fields the preview API
+ * carries are not on the public payload, so they degrade to null — the core (edition_for, plays,
+ * recap headline, play count) is faithful.
+ */
+async function loadPreviewFromEdition(): Promise<NighthawkPublishPreview | null> {
+  try {
+    const res = await fetch("/api/market/nighthawk/edition", { cache: "no-store" });
+    if (!res.ok) return null;
+    const edition = (await res.json()) as NightHawkEdition;
+    if (!edition.available) return null;
+    const plays = Array.isArray(edition.plays) ? edition.plays : [];
+    return {
+      edition_for: edition.edition_for ?? "—",
+      published_at: edition.published_at,
+      build_duration_ms: null,
+      job: edition.published_at
+        ? { status: "published", stage: edition.recap_only ? "recap-only" : "published", error: null }
+        : null,
+      recap_headline: edition.recap_headline,
+      play_count: plays.length,
+      plays: plays.map((play) => ({
+        ticker: String(play.ticker ?? "").toUpperCase(),
+        score: Number(play.score ?? 0),
+        conviction: String(play.conviction ?? ""),
+        direction: String(play.direction ?? ""),
+        unvetted_fallback: false,
+      })),
+      critic_notes: [],
+      unvetted_fallback: false,
+      error: null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function AdminNightHawkDashboard() {
   const [windowDays, setWindowDays] = useState<(typeof WINDOW_OPTIONS)[number]>(30);
   const [data, setData] = useState<NighthawkMetrics | null>(null);
@@ -195,8 +236,12 @@ export function AdminNightHawkDashboard() {
       setData((await metricsRes.json()) as NighthawkMetrics);
       if (previewRes.ok) {
         setPreview((await previewRes.json()) as NighthawkPublishPreview);
-      } else if (previewRes.status !== 404) {
-        setPreview(null);
+      } else {
+        // publish-preview unavailable (404 / route error). Fall back to the PUBLISHED edition so the
+        // "Latest edition" panel still reflects reality (#77) instead of showing "no edition yet" while
+        // the user-facing page already serves a recap. The public edition endpoint reads the same row.
+        const fallback = await loadPreviewFromEdition();
+        setPreview(fallback);
       }
       // Live Options-WS status (secondary — never fails the dashboard load).
       setWsStatus(wsRes.ok ? ((await wsRes.json().catch(() => null)) as OptionsWsStatus | null) : null);
