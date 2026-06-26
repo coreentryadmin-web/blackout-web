@@ -38,7 +38,7 @@ export interface SpxState {
   lod: number;
   hod: number;
   vix: number | null;
-  vix_change_pct: number;
+  vix_change_pct: number | null;
   spx_change_pct: number;
   above_vwap: boolean;
   uw_iv_rank: number | null;
@@ -88,7 +88,7 @@ function emptySpxState(): SpxState {
     lod: 0,
     hod: 0,
     vix: null,
-    vix_change_pct: 0,
+    vix_change_pct: null,
     spx_change_pct: 0,
     above_vwap: false,
     uw_iv_rank: null,

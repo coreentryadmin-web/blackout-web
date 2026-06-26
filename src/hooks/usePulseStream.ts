@@ -35,7 +35,7 @@ function overlayFromStream(
     price,
     spx_change_pct: snap.spx?.change_pct ?? base?.spx_change_pct ?? 0,
     vix: vix ?? base?.vix ?? null,
-    vix_change_pct: snap.vix?.change_pct ?? base?.vix_change_pct ?? 0,
+    vix_change_pct: snap.vix?.change_pct ?? base?.vix_change_pct ?? null,
     tick: tick ?? base?.tick ?? null,
     trin: trin ?? base?.trin ?? null,
     add: add ?? base?.add ?? null,

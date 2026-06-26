@@ -360,7 +360,7 @@ export type SpxDeskPayload = {
   price: number;
   spx_change_pct: number;
   vix: number | null;
-  vix_change_pct: number;
+  vix_change_pct: number | null;
   above_vwap: boolean;
   lod: number | null;
   hod: number | null;
@@ -736,7 +736,7 @@ function emptyPayload(asOf: string): SpxDeskPayload {
     price: 0,
     spx_change_pct: 0,
     vix: null,
-    vix_change_pct: 0,
+    vix_change_pct: null,
     above_vwap: false,
     lod: null,
     hod: null,
@@ -1037,7 +1037,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     price,
     spx_change_pct: spxSnap.change_pct,
     vix: vixSnap?.price ?? (intel?.vix as number | null) ?? null,
-    vix_change_pct: vixSnap?.change_pct ?? (intel?.vix_change_pct as number) ?? 0,
+    vix_change_pct: vixSnap?.change_pct ?? (intel?.vix_change_pct as number | null) ?? null,
     above_vwap: vwap != null ? price >= vwap : false,
     lod,
     hod,
@@ -1191,7 +1191,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     price: 0,
     spx_change_pct: 0,
     vix: null,
-    vix_change_pct: 0,
+    vix_change_pct: null,
     above_vwap: false,
     lod: null,
     hod: null,
@@ -1291,7 +1291,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     price,
     spx_change_pct: spxSnap.change_pct,
     vix: vixSnap?.price ?? null,
-    vix_change_pct: vixSnap?.change_pct ?? 0,
+    vix_change_pct: vixSnap?.change_pct ?? null,
     above_vwap: vwap != null ? price >= vwap : false,
     lod,
     hod,

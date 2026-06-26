@@ -419,7 +419,7 @@ const signalDeskStub = (): SpxDeskPayload => ({
   price: 0,
   spx_change_pct: 0,
   vix: null,
-  vix_change_pct: 0,
+  vix_change_pct: null,
   above_vwap: false,
   lod: null,
   hod: null,
