@@ -148,3 +148,86 @@ case (fix `cc35f9e` confirmed on `origin/main`, root cause flagged Task #1, hasn
 new to fix or flag — manufacturing a change here would violate the no-theater guardrail. Carry-forward
 items from RUN 1 stand unchanged (Task #1 operator-run; #70 reaper; open `auto/*` branches awaiting
 review).
+
+---
+
+## RUN 3 — 2026-06-26 ~13:54 UTC (daily slot)
+
+Third pass today (RUN 1 04:42 @ `cc35f9e`, RUN 2 05:41 @ `c476793`). Repo `C:/Users/raidu/blackout-cron`,
+`git pull` clean → base **`34a8736`**, **tsc-green (exit 0)**. Market CLOSED (~6:54 AM PT, Fri).
+Re-checked all live error surfaces on `blackouttrades.com` (logged-in admin, Chrome bridge). **Unlike
+RUNS 1–2 (sink empty), the durable sink now holds a NEW, spiking signature.**
+
+### A. NEW spiking signature found + FIXED → main (`cc17d83`)
+
+**Signature:** `admin/nighthawk/publish-preview :: invalid input syntax for type date: "Mon Jun 29"`
+— **69 occurrences**, all today **07:09:50 → 07:57:50 UTC** (~1.4/min, id 1–69), `source: admin_route`.
+This is the **ONLY** distinct signature in the sink (69/69). It was absent in RUN 1 & RUN 2 (both
+`events:[]`), so it is unambiguously **new + spiking** within the window.
+
+| field | value |
+|---|---|
+| route | `GET /api/admin/nighthawk/publish-preview` |
+| message | `invalid input syntax for type date: "Mon Jun 29"` |
+| origin | `pg-pool/index.js:45` → `fetchNighthawkEditionByDate` → `WHERE edition_for = $1::date` |
+| HTTP result | 502 (route.ts:24 catch) + recorded admin-route error, ×69 |
+
+**Root cause — the INBOUND twin of #77 Bug 1.** #77 Bug 1 fixed the DB *read* path (`isoDateString`,
+db.ts:965) so the client stops *receiving* the year-stripped `String(Date).slice(0,10)` label
+`"Mon Jun 29"`. But the *query* path stayed unguarded: `route.ts:12` took the raw `edition_for` query
+param and `publish-preview.ts:50` → `fetchNighthawkEditionByDate` fed it straight into `$1::date`. A
+caller is still sending the legacy `"Mon Jun 29"` label, so Postgres threw `invalid input syntax for
+type date` → caught → 502 + sink record, 69× in 48 min. The admin dashboard calls publish-preview
+WITHOUT `edition_for` (AdminNightHawkDashboard.tsx:232), so the bad param is external/manual/scripted
+(likely Task-#1 "Run now" recovery tooling or a poller holding a pre-#77 label).
+
+**Fix (`cc17d83`, 2 files — high-confidence, isolated, build-gated → main):**
+- **db.ts** — new exported `normalizeIsoDateInput(raw)`: accepts an already-ISO value (round-trip
+  validated through `Date`, so structurally-ISO-but-invalid inputs like `2026-13-45` / `2026-02-30`
+  are also rejected, not just `"Mon Jun 29"`); recovers a stringified Date that still carries a 4-digit
+  year (`"Mon Jun 29 2026"` → `2026-06-29`); rejects yearless/garbage. The inverse of `isoDateString`.
+  Unit-tested 11/11 edge cases before commit.
+- **db.ts** — `fetchNighthawkEditionByDate` now normalizes its arg and **returns null** for non-ISO
+  input instead of crashing the `$1::date` cast — protects ANY caller, including the **public**
+  `/api/market/nighthawk/edition` route (`route.ts:97`, `?date=` param), which had the **same latent
+  crash** (a 500 there, no try/catch) and now degrades gracefully to latest/empty.
+- **publish-preview route** — validates `edition_for` at the boundary via the shared helper and returns
+  a clean **400** (not a recorded 5xx) for bad input. No more sink spam for client-supplied garbage.
+- `npx tsc --noEmit` exit 0 · `npm run build` exit 0 → pushed `main` (`34a8736..cc17d83`,
+  confirmed `git merge-base --is-ancestor cc17d83 origin/main` → YES; Railway deploys from origin/main).
+
+**FIX vs FLAG:** the server hardening is the high-confidence, isolated, build-gated half → FIXED → main.
+The *source* of the malformed `"Mon Jun 29"` param (now defanged to 400s, no longer a production error)
+is an external/scripted caller I can't fix with confidence from here → **FLAGGED (Task #1)**: trace via
+Railway access logs; if it's an in-repo surface, make it send ISO or omit the param.
+
+### B. Rest of the live surface — clean / known-benign (no other action — anti-theater)
+
+| Source | Endpoint | Result |
+|---|---|---|
+| Durable error sink | `/api/admin/errors` | ⚠️ 69 events — single signature §A (NEW, fixed). No other signature. |
+| Open incidents | `/api/admin/incidents` | ✅ `incidents:[]` — 0 |
+| Admin health | `/api/admin/health` | ⚠️ `health_ok:false` — but the only `issues` are 3 websocket warnings (`I:TICK`/`I:TRIN`/`I:ADD` "stale or zero", `price=0`): **market-internals breadth tickers off-hours = EXPECTED** (market closed, Fri 6:54 AM PT). `route_errors:[]`, `redis_degraded:false`, critical/api_errors 0. Benign off-hours, not a production error. |
+| API dashboard (24h) | `/api/admin/apis/dashboard` | ⚠️ `error_rate:0.625`, 5 `recent_errors` — these are the **same** publish-preview spike (§A) bleeding into the 24h telemetry window; not a separate signature. Will clear as `cc17d83` deploys + the window rolls. |
+| Cron health | `/api/admin/cron-health` | ⚠️ `failed:1` — the **same** Night Hawk Edition case (RUN 1 §A, fix `cc35f9e` live, flagged Task-#1-prior). Unchanged, not new, not spiking. 9 healthy / 1 warning / 2 unknown otherwise. |
+| Live route probe | `/`, `/api/admin/cron-health` | ✅ 200 |
+
+The `health_ok:false` is driven solely by off-hours TICK/TRIN/ADD staleness — gating those breadth
+warnings behind an RTH check is the low-value cosmetic flag already carried from RUN 1
+(`play_engine.critical_stale` class). No change here (anti-theater).
+
+### Result
+
+**✅ ONE new spiking signature (publish-preview `::date` crash, 69×) → root-caused + FIXED → main
+(`cc17d83`), source FLAGGED (Task #1).** Server now rejects malformed `edition_for` with a 400 (admin)
+and degrades gracefully (public edition route), eliminating both the 69× sink spam and a latent public
+500 of the same class. All other surfaces are either the known Night Hawk Edition `failed:1`
+(carry-forward) or benign off-hours WS staleness. The 24h dashboard `error_rate:0.625` is the same
+spike and self-clears post-deploy.
+
+### Carry-forward (toward 0-open-issues)
+- **Task #1 (this run):** trace the external caller sending `edition_for="Mon Jun 29"` (Railway access
+  logs / referrer); fix it to send ISO or omit the param if it's an in-repo surface.
+- Prior carry-forwards stand: Night Hawk Edition synthesis funnel (operator "Run now" — prior Task #1);
+  stale-`running` job reaper / advisory lock (#70); off-hours WS-staleness RTH gate (cosmetic);
+  open `auto/*` branches awaiting human review.
