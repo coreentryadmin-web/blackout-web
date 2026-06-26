@@ -114,6 +114,47 @@ function barDateET(): string {
   }).format(new Date());
 }
 
+// ── Cross-replica leader election ──────────────────────────────────────────────────────────────
+// Massive allows at most 1 live WebSocket per API key. When the cluster scales to N replicas each
+// would otherwise open its own connection; the 2nd–Nth get rejected with code 1008 and churn
+// reconnect loops. We use a Redis SETNX lock (polygon:indices:leader, 25s TTL) so only ONE
+// replica opens the WS. Non-leaders skip connectIndices() and read `spx:pulse:snapshot` from
+// Redis instead — the pulse SSE already has that Redis fallback (stream/route.ts lines 34-47).
+// If the leader dies (SIGTERM → code 1000 → slot released), the lock expires in 25s and the
+// next replica that calls connectIndices() wins the lock and opens the WS.
+const INDICES_LEADER_KEY = "polygon:indices:leader";
+const INDICES_LEADER_TTL_SEC = 25;
+let indicesIsLeader = false;
+let indicesLeaderRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+// Minimal ioredis methods we need beyond the narrow RedisClient type in uw-shared-cache.
+type IoredisExtra = { set(k: string, v: string, ex: string, ttl: number, nx: string): Promise<string | null>; expire(k: string, ttl: number): Promise<number>; del(k: string): Promise<number> };
+
+async function tryAcquireIndicesLead(): Promise<boolean> {
+  try {
+    const redis = await getUwCacheRedis();
+    if (!redis) return true; // Redis unavailable — allow WS (single-replica safe)
+    const r = redis as unknown as IoredisExtra;
+    const result = await r.set(INDICES_LEADER_KEY, "1", "EX", INDICES_LEADER_TTL_SEC, "NX");
+    return result === "OK";
+  } catch {
+    return true; // Redis error — fail-open so the socket still starts
+  }
+}
+
+function startIndicesLeaderRefresh(): void {
+  if (indicesLeaderRefreshTimer) return;
+  // Refresh every 10s — well within the 25s TTL — to keep leadership alive as long as
+  // this replica is the WS holder. Cleared in shutdownPolygonSocket.
+  indicesLeaderRefreshTimer = setInterval(() => {
+    if (indicesShuttingDown || !indicesIsLeader) return;
+    getUwCacheRedis()
+      .then((redis) => redis && (redis as unknown as IoredisExtra).expire(INDICES_LEADER_KEY, INDICES_LEADER_TTL_SEC))
+      .catch(() => undefined);
+  }, 10_000);
+  (indicesLeaderRefreshTimer as unknown as { unref?: () => void }).unref?.();
+}
+
 let indicesWs: WebSocket | null = null;
 let indicesReconnectDelay = 1000;
 let indicesAuthenticated = false;
@@ -142,7 +183,7 @@ function scheduleIndicesReconnect(reason: string) {
   );
   indicesReconnectTimer = setTimeout(() => {
     indicesReconnectTimer = null;
-    connectIndices();
+    void connectIndices();
   }, delay);
   indicesReconnectDelay = Math.min(indicesReconnectDelay * 2, 60_000);
 }
@@ -213,7 +254,7 @@ function startIndicesWatchdog() {
   (indicesWatchdog as unknown as { unref?: () => void }).unref?.();
 }
 
-function connectIndices() {
+async function connectIndices() {
   if (indicesShuttingDown) return; // shutting down — do not open a new socket
   if (!POLYGON_API_KEY) {
     console.warn("[polygon-socket] POLYGON_API_KEY not set — WebSocket disabled");
@@ -224,6 +265,18 @@ function connectIndices() {
     (indicesWs.readyState === WebSocket.OPEN || indicesWs.readyState === WebSocket.CONNECTING)
   ) {
     return;
+  }
+
+  // Leader election: only ONE replica in the cluster opens the WS (see comment above).
+  // On reconnect attempts we must already be the leader (indicesIsLeader) or win the lock.
+  if (!indicesIsLeader) {
+    const won = await tryAcquireIndicesLead();
+    if (!won) {
+      console.log("[polygon-socket] not leader — skipping WS (reading Redis snapshot)");
+      return;
+    }
+    indicesIsLeader = true;
+    startIndicesLeaderRefresh();
   }
 
   try {
@@ -359,7 +412,7 @@ function connectIndices() {
 export function initPolygonSocket() {
   if (polygonSocketInitialized) return;
   polygonSocketInitialized = true;
-  connectIndices();
+  void connectIndices();
   startIndicesWatchdog();
   console.log("[polygon-socket] initialized");
 }
@@ -380,6 +433,18 @@ export function shutdownPolygonSocket(): void {
   if (indicesWatchdog) {
     clearInterval(indicesWatchdog);
     indicesWatchdog = null;
+  }
+  if (indicesLeaderRefreshTimer) {
+    clearInterval(indicesLeaderRefreshTimer);
+    indicesLeaderRefreshTimer = null;
+  }
+  // Release the leader slot immediately so a newly booting replica can win it
+  // without waiting out the 25s TTL. Best-effort — the TTL handles it if this throws.
+  if (indicesIsLeader) {
+    indicesIsLeader = false;
+    getUwCacheRedis()
+      .then((redis) => redis && (redis as unknown as IoredisExtra).del(INDICES_LEADER_KEY))
+      .catch(() => undefined);
   }
   const ws = indicesWs;
   indicesWs = null;
