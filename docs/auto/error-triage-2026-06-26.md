@@ -231,3 +231,92 @@ spike and self-clears post-deploy.
 - Prior carry-forwards stand: Night Hawk Edition synthesis funnel (operator "Run now" — prior Task #1);
   stale-`running` job reaper / advisory lock (#70); off-hours WS-staleness RTH gate (cosmetic);
   open `auto/*` branches awaiting human review.
+
+---
+
+## RUN 4 — 2026-06-26 ~15:48 UTC (daily slot)
+
+Fourth pass today (RUN 1 04:42 @ `cc35f9e`, RUN 2 05:41 @ `c476793`, RUN 3 13:54 @ `cc17d83`). Repo
+`C:/Users/raidu/blackout-cron`, `git pull` clean → base **`396a3a8`**, **tsc-green (exit 0)**. Market
+**OPEN** (~11:48 AM ET, Fri). Re-checked all live error surfaces on `blackouttrades.com` (logged-in
+admin, Chrome bridge) for NEW/spiking signatures since RUN 3. **One NEW signature found + FIXED → main.**
+
+### A. NEW signature found + FIXED → main (`48d30b0`)
+
+**Signature:** `unhandled_rejection :: invalid input syntax for type integer: "87.29305922597204"`
+— **1 occurrence**, `2026-06-26 13:50:09.602 UTC` (id 70 in the durable sink). New since RUN 3 (RUN 3's
+sink held only the 69× publish-preview spike). Single-shot (not yet spiking) but a hard server-side
+crash class, so triaged + fixed.
+
+| field | value |
+|---|---|
+| source | `unhandled_rejection` (caught by `instrumentation.ts`; server stayed up) |
+| message | `invalid input syntax for type integer: "87.29305922597204"` |
+| origin | `pg-pool/index.js:45` → `async ad` (db query) → `async j` (caller) |
+| HTTP result | none (escaped to the process-level rejection handler, not a route 5xx) |
+
+**Root cause — an unvalidated LLM-supplied day-param bound to a Postgres `$1::int` cast.** Exhaustive
+trace of every `integer`-typed bind site in the app:
+- The only `integer` columns are `user_positions.contracts` (both routes guard with `Number.isInteger`
+  + try/catch; Largo never writes positions) and the `($N::int || ' days')::interval` day-params.
+- Of the five `$N::int` day-params, three (`fetchTickerFlow*`) have **literal** callers only, and one
+  (`fetchPendingNighthawkOutcomes`) is called with `7`. The **one** path where untrusted input reaches
+  a `$N::int` is the Largo tool **`get_nighthawk_outcomes`** (`run-tool.ts:1221`):
+  `const windowDays = Number(input.window_days ?? 30)` — bare `Number()`, **no integer guard, no clamp**
+  — fed straight to `fetchNighthawkOutcomeAnalytics` → `$1::int` (`db.ts:2530`).
+- `window_days` is LLM-controlled. The value `87.29305922597204` is a JS double (14 sig figs — not
+  hand-typed): the model emitted/echoed a fractional value (matches the raw, unrounded
+  `days_of_data = (Date.now() - oldest_closed)/86_400_000 ≈ 87.29` that leaks into the SPX desk context
+  Largo reads, `spx-commentary.ts:509`). `Number("87.29…")` stays a float → Postgres rejects the
+  `::int` cast. The admin route guards this **exact** param (`parseWindow`: `parseInt` + clamp 7–180,
+  `analytics/route.ts:8`); the Largo tool did not.
+- `getSpxTradeHistory`'s `days` (the other unclamped Largo numeric) is **safe** — it computes the cutoff
+  in JS (`spx-service.ts:96`), never binds to SQL. The `$2 || ' days'` site at `db.ts:1613` is **safe**
+  too — no `::int`, and Postgres intervals accept fractional days.
+
+**Fix (`48d30b0`, 2 files — high-confidence, isolated, build-gated → main):**
+- **run-tool.ts** — `get_nighthawk_outcomes` now clamps `window_days` to a valid integer
+  (`Number.isFinite(raw) ? min(180, max(7, trunc(raw))) : 30`), mirroring the admin `parseWindow` and
+  the existing run-tool clamp (`:1177`). This is the actual untrusted entry point → fixes the crash.
+- **db.ts** — defense-in-depth: both Largo-reachable `$N::int` functions
+  (`fetchNighthawkOutcomeAnalytics`, `fetchPendingNighthawkOutcomes`) now coerce their day-param to a
+  safe positive integer (`Math.trunc` + finite guard) before binding, so **no** caller — current or
+  future — can crash pg through the cast.
+- Behavior-identical for every valid integer input. `npx tsc --noEmit` exit 0 · `npm run build` exit 0
+  → pushed `main` (rebased onto `396a3a8`, tip of `origin/main` = `48d30b0`; Railway deploys origin/main).
+
+**FIX vs FLAG:** the input-validation + db backstop is the high-confidence, isolated, build-gated fix →
+FIXED → main. I deliberately did **not** also round `days_of_data` at its source
+(`spx-play-outcomes.ts:227`) on main: that function feeds the SPX desk, public track record, embeds, OG
+image, admin + Largo context (broad blast radius for a cosmetic change), and `Math.round` there could
+flip the `>= minDays` adaptive gate (must use `Math.floor`). → **FLAGGED** as a separate hardening item.
+
+### B. Rest of the live surface — clean / known-benign (no other action — anti-theater)
+
+| Source | Endpoint | Result |
+|---|---|---|
+| Durable error sink | `/api/admin/errors?limit=200` | ⚠️ 70 events: 69× publish-preview `::date` (RUN 3, fixed `cc17d83`) + the 1 new §A. No third signature. |
+| Open incidents | `/api/admin/incidents` | ✅ `incidents:[]` — 0 |
+| Admin health | `/api/admin/health` | ⚠️ `health_ok:false` — driven solely by 3 WS warnings (`I:TICK`/`I:TRIN`/`I:ADD` `price=0`): market-internals breadth tickers, benign off-hours/early-session class (RUN 1/3 carry-forward). `route_errors:[]`, `redis_degraded:false`, critical 0. |
+| API dashboard (24h) | `/api/admin/apis/dashboard` | ⚠️ 12 `recent_errors`, **all `status:200`** (polygon `/v3/snapshot/indices`, `anthropic-text`) — SLA-latency breaches counted as "errors", the known low-value class (OVERNIGHT-4 carry-forward), NOT real upstream failures. |
+| Cron health | `/api/admin/cron-health` | ⚠️ `failed:1` — same Night Hawk Edition case (RUN 1 §A, fix `cc35f9e` live, flagged Task #1). Unchanged, not new. |
+
+### Result
+
+**✅ ONE new signature (`::int` crash from unvalidated Largo `window_days`, 1×) → root-caused + FIXED →
+main (`48d30b0`).** The only path where untrusted (LLM) input could reach a Postgres `$N::int` day-cast
+is now clamped at the tool boundary AND backstopped at the db layer — the `invalid input syntax for type
+integer` class is closed for this param. All other surfaces are the already-fixed publish-preview spike,
+benign early-session WS staleness, or the SLA-latency-as-error display class. RUN 3's `cc17d83` confirmed
+holding (no new publish-preview events since 07:57 UTC).
+
+### Carry-forward (toward 0-open-issues)
+- **NEW flag (this run):** round/floor the raw `days_of_data` at source (`spx-play-outcomes.ts:227`,
+  use `Math.floor` not `Math.round` to preserve the `>= minDays` gate) so the unrounded fractional value
+  stops leaking into API output + LLM desk context (it's the value the model echoed into `window_days`).
+  Broad blast radius → human-review, not auto-main.
+- Optional: extend the same `Math.trunc` day-param backstop to the three `fetchTickerFlow*` `$2::int`
+  functions (`db.ts:2253/2289/2321`) for symmetry — currently literal-callered, so not at risk today.
+- Prior carry-forwards stand: publish-preview external caller (Task #1, RUN 3); Night Hawk Edition
+  synthesis funnel + stale-`running` reaper (#70); off-hours WS-staleness RTH gate; SLA-latency-as-error
+  display class; open `auto/*` branches awaiting human review.
