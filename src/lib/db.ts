@@ -1,4 +1,13 @@
-import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import { Pool, types as pgTypes, type PoolClient, type QueryResultRow } from "pg";
+
+// ROOT-CAUSE FIX for the FOR-INVALID-DATE class (#77 phase 2, audit #11). node-postgres parses a
+// DATE column (OID 1082) into a JS Date in the SERVER's local timezone by default. Stringifying that
+// Date ("Mon Jun 29 2026 …") was the original source of garbage dates. We now parse OID 1082 as the
+// raw wire value — a clean "YYYY-MM-DD" string — process-wide, so every DATE read is already ISO at
+// the source. This is the upstream fix the per-mapper isoDateString() guards (phase 1) work AROUND;
+// with both in place the mappers' ISO-string branch handles this value directly. Registered once at
+// module load, before any pool/client is created.
+pgTypes.setTypeParser(1082, (v) => v);
 
 let pool: Pool | null = null;
 let poolInit: Promise<Pool> | null = null;
