@@ -21,7 +21,8 @@ function fmtValue(ind: UwMacroIndicatorSnapshot): string {
     return `${v.toFixed(2)}%`;
   if (id === "CPI" || id === "INFLATION" || id === "UNEMPLOYMENT" || id.includes("PAYROLLS"))
     return v < 100 ? `${v.toFixed(1)}%` : v.toLocaleString();
-  if (id === "GDP" || id.includes("GDP")) return `${v.toFixed(1)}%`;
+  // UW latest_value for GDP is the nominal level in billions — show as $xT
+  if (id === "GDP" || id.includes("GDP")) return v >= 1000 ? `$${(v / 1000).toFixed(1)}T` : `${v.toFixed(1)}B`;
   return v.toLocaleString();
 }
 

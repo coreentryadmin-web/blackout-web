@@ -31,7 +31,7 @@ export const GRID_KEYS = {
   analysts: "grid:analysts",
   darkPool: "grid:dark-pool",
   earnings: "grid:earnings",
-  congress: "grid:congress:v4",
+  congress: "grid:congress:v5",
   economy: "grid:economy:v2",
   sectors: "grid:sectors",
   movers: "grid:movers",
@@ -275,16 +275,17 @@ export async function fetchTickerEarnings(ticker: string): Promise<GridEarningsT
   } catch { /* ignore */ }
 
   const history: GridEarningsHistoryItem[] = rows.map((r) => {
-    const epsAct = r.eps_actual ?? r.actual ?? r.reported_eps ?? null;
-    const epsEst = r.eps_estimate ?? r.estimate ?? r.estimated_eps ?? null;
+    // UW /api/earnings/{ticker} returns actual_eps + street_mean_est + report_date + report_time
+    const epsAct = r.actual_eps ?? r.eps_actual ?? r.actual ?? r.reported_eps ?? null;
+    const epsEst = r.street_mean_est ?? r.eps_estimate ?? r.estimate ?? r.estimated_eps ?? null;
     const act = epsAct != null ? Number(epsAct) : null;
     const est = epsEst != null ? Number(epsEst) : null;
     const surprise = act != null && est != null && est !== 0 ? ((act - est) / Math.abs(est)) * 100 : null;
-    const dateStr = String(r.earnings_date ?? r.date ?? r.report_date ?? r.period_end_date ?? "").slice(0, 10);
+    const dateStr = String(r.report_date ?? r.earnings_date ?? r.date ?? r.period_end_date ?? "").slice(0, 10);
     const rev = r.revenue ?? r.total_revenue ?? r.net_revenue ?? null;
     const rawQuarter = String(r.fiscal_quarter ?? r.quarter ?? r.period ?? "");
     const quarter = rawQuarter || dateToQuarter(dateStr);
-    const whenRaw = String(r.when ?? r.time ?? "").toLowerCase();
+    const whenRaw = String(r.report_time ?? r.when ?? r.time ?? "").toLowerCase();
     const when: "premarket" | "afterhours" | null = whenRaw.includes("pre") ? "premarket" : whenRaw.includes("after") || whenRaw.includes("ah") ? "afterhours" : null;
     return {
       quarter,
@@ -302,8 +303,8 @@ export async function fetchTickerEarnings(ticker: string): Promise<GridEarningsT
   try {
     const nextRow = await fetchUwTickerNextEarnings(sym);
     if (nextRow) {
-      next_date = String(nextRow.earnings_date ?? nextRow.date ?? nextRow.report_date ?? "").slice(0, 10) || null;
-      const wh = String(nextRow.when ?? nextRow.time ?? "").toLowerCase();
+      next_date = String(nextRow.report_date ?? nextRow.earnings_date ?? nextRow.date ?? "").slice(0, 10) || null;
+      const wh = String(nextRow.report_time ?? nextRow.when ?? nextRow.time ?? "").toLowerCase();
       next_when = wh.includes("pre") ? "premarket" : wh.includes("after") || wh.includes("ah") ? "afterhours" : null;
     }
   } catch { /* ignore */ }
@@ -335,7 +336,7 @@ export type GridCongressSnapshot = {
 };
 
 async function fetchCongressTrades(): Promise<GridCongressSnapshot> {
-  const data = await fetchUwCongressTrades(undefined, 25);
+  const data = await fetchUwCongressTrades(undefined, 100);
   const obj = data as Record<string, unknown> | null;
   // UW returns {"data": [{...},...]} — unwrap the data array
   const rows: Record<string, unknown>[] = Array.isArray(obj)
