@@ -3,6 +3,7 @@ import "server-only";
 import { fetchGexHeatmap, type GexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { getGexIntradayAdjusted } from "@/lib/providers/gex-intraday-adjust";
 import type { GexIntradayAdjusted } from "@/lib/providers/gex-intraday-adjust-core";
+import { validateGexAgainstUW, type GexCrossValidationResult } from "@/lib/providers/gex-cross-validation";
 
 // ---------------------------------------------------------------------------
 // Canonical cross-tool GEX/VEX positioning contract.
@@ -100,6 +101,17 @@ export type GexPositioning = {
    * undefined (it has no flow input), so existing matrix-vs-positioning checks are unaffected.
    */
   gex_intraday_adjusted?: GexIntradayAdjusted | null;
+  /**
+   * Cross-validation of the primary GEX key levels (call wall / put wall / gamma flip) against
+   * the UW REST strike ladder (`/api/stock/{ticker}/spot-exposures/strike`, cached 60s).
+   * Populated only by `getGexPositioning` when UW data is available. `null` when UW is
+   * unavailable or the primary matrix was cold — never blocks the primary data path.
+   *
+   * NOTE: The UW `gex_strike_expiry:SPX` WebSocket channel is NOT a supported UW WS channel
+   * (valid channels: flow_alerts / market_tide / off_lit_trades / interval_flow / trading_halts).
+   * This uses the REST endpoint as the RPS-friendly alternative (one call per 60s per ticker).
+   */
+  gex_cross_validation?: GexCrossValidationResult | null;
   /** Provenance — always the shared Polygon/Massive GEX matrix. */
   source: "polygon";
 };
@@ -152,9 +164,28 @@ export async function getGexPositioning(
   // caller explicitly asks does it spend the bounded Trades tape + one front-expiry gamma band.
   // Best-effort + bounded: a failure leaves the field null; the canonical OI fields are never
   // affected. The pure mapper has no flow input, so matrix-vs-positioning checks stay like-for-like.
-  if (!opts.includeIntradayAdjusted) return base;
+  // Cross-validate primary key levels against UW REST strike ladder (best-effort, non-blocking).
+  // Cached 60s — safe on every call without touching the 2 RPS UW REST budget.
+  const crossValidation = await validateGexAgainstUW(root, {
+    callWall: base.call_wall,
+    putWall: base.put_wall,
+    gammaFlip: base.flip,
+  }).catch(() => null);
+
+  if (crossValidation) {
+    const div = crossValidation.divergence;
+    if (div != null && div > 5) {
+      console.warn(
+        `[gex-positioning] cross-validation divergence for ${root}: ` +
+          `callWallMatch=${crossValidation.callWallMatch} putWallMatch=${crossValidation.putWallMatch} ` +
+          `flipMatch=${crossValidation.flipMatch} divergence=${div}pt vs UW strike ladder`
+      );
+    }
+  }
+
+  if (!opts.includeIntradayAdjusted) return { ...base, gex_cross_validation: crossValidation };
   const intraday = await getGexIntradayAdjusted(root).catch(() => null);
-  return { ...base, gex_intraday_adjusted: intraday };
+  return { ...base, gex_cross_validation: crossValidation, gex_intraday_adjusted: intraday };
 }
 
 /**
