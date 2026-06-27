@@ -1,15 +1,15 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-27 07:10 ET
+Last updated: 2026-06-27 07:15 ET
 
 > Master running list of unfixed findings from the deep-platform-audit cron (every 4h).
 > P0 = user-facing breakage/data integrity · P1 = feature broken/degraded · P2 = wrong but not visible · P3 = tech debt / tooling.
 
 ## 🔴 P0 — none open
 
-## 🟠 P1 — open
-- [ ] **P1-A** SPX play ledger empty all-time → Track Record / P&L panels render empty on the LIVE SPX Slayer product. `spx_open_play` = 0 rows, `spx_play_outcomes` = 0 rows (verified live in prod Postgres). The option-chain veto is correctly disabled (`SPX_OPTION_CHAIN_REQUIRED` unset, `playOptionChainRequired()` defaults false at `spx-play-config.ts:404`) so the veto is NOT the cause. The cron `SPX-Engine-Evaluation` (`*/5 11-20 * * 1-5`, Online) calls `evaluateSpxPlay({mutate:true})` (`spx-evaluator.ts:41`) + records heartbeats every tick, but the "ALL GATES PASSED → openPlay" branch (`spx-play-engine.ts:833` → `openPlay()` → INSERT `db.ts:1242`) is never reached. **Root cause is an upstream entry gate (confluence grade / Claude approval / `entryGatesRaw.passed`) above `spx-play-engine.ts:775` rejecting every candidate.** `db.ts:1462` already documents this "empty-ledger bug" condition. NEXT: instrument the entry-gate decision in the cron path for one RTH session to name the rejecting gate. Do NOT re-touch the veto. _(found 2026-06-27 07:10 — supersedes the "veto fixed" note; opens still broken, cause moved upstream)_
+## 🟠 P1 — none active
 
 ## 🟡 P2 — open
+- [ ] **P2-C ⏳ WATCH** SPX play ledger empty all-time (`spx_open_play`=0, `spx_play_outcomes`=0, verified live in prod). **Most likely EXPECTED, not a bug:** the fetch-bug fix `6f00a5e` ("query SPX chain root + don't let chain gate veto entry") merged **2026-06-26 16:20 ET, ~20 min AFTER Friday's RTH close** — so Friday ran the OLD code and NO trading session has run with the fix. Veto confirmed disabled (`spx-play-config.ts:404`); diagnostic tracing already committed (`63567cb`); cron path correctly wired (`spx-evaluator.ts:41` → `evaluateSpxPlay({mutate:true})`). **VERIFY Mon 2026-06-29 after RTH:** re-query prod `spx_open_play` (should get rows) + `spx_play_outcomes` (populates on close). IF still 0 after Monday's full session → escalate to P1 and read the `63567cb` diagnostic logs for the rejecting entry gate. Do NOT re-touch the veto. _(found 2026-06-27 07:10; corrected down from a too-strong P1 after git-timing check)_
 - [ ] **P2-A** `/api/market/anomalies` (→200 `{"anomalies":[]}`) and `/api/market/regime` (→200 `{"available":false}`) serve unauthenticated, while sibling market routes 401. `middleware.ts` documents that API routes must self-authorize — these two lack a guard. No paid-data leak today (both empty) but they'd leak once they return real payloads. Add the sibling `requireToolApi`/entitlement guard or annotate as intentionally public. Files: `src/app/api/market/anomalies/route.ts`, `src/app/api/market/regime/route.ts`. _(found 2026-06-27 07:10)_
 - [ ] **P2-B** `spx_signal_log` last wrote 2026-06-17 (stale 10 days). If any admin/analytics surface still reads it, it serves stale signals. Confirm superseded by the play engine; resume writes or retire table + readers. _(found 2026-06-27 07:10)_
 
