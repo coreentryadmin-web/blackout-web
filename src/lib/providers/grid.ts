@@ -356,7 +356,7 @@ async function fetchCongressTrades(): Promise<GridCongressSnapshot> {
         type: txType,
         amount,
         filed_at: txDate,
-        party: String(r.party ?? ""),
+        party: String(r.party ?? r.member_type ?? ""),
       };
     })
     .filter((t) => t.politician && t.ticker);
