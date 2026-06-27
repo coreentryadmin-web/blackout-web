@@ -37,7 +37,7 @@ export function GridCongressPanel() {
   const url = `/api/grid/congress${ticker ? `?ticker=${ticker}` : ""}`;
   const { data, error } = useSWR<Res>(url, fetcher, { refreshInterval: isFiltered ? 30_000 : 300_000 });
   const trades: GridCongresstrade[] = data?.trades ?? [];
-  const live = !error && (data?.available ?? false) && trades.length > 0;
+  const live = !error && (data?.available ?? false);
 
   return (
     <GridCard
@@ -63,7 +63,7 @@ export function GridCongressPanel() {
       ) : (
         <ul className="grid-congress-list">
           {trades.slice(0, 18).map((t, i) => (
-            <li key={i} className="grid-congress-row">
+            <li key={`${t.politician}${t.ticker}${t.filed_at ?? i}`} className="grid-congress-row">
               <span className={clsx("grid-congress-dot", partyDot(t.party))}>●</span>
               <span className="grid-congress-name">{shortName(t.politician)}</span>
               <span className="grid-congress-ticker">{t.ticker}</span>

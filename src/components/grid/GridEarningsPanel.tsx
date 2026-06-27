@@ -48,7 +48,7 @@ export function GridEarningsPanel() {
   const url = `/api/grid/earnings${ticker ? `?ticker=${ticker}` : ""}`;
   const { data, error } = useSWR<Res>(url, fetcher, { refreshInterval: isFiltered ? 30_000 : 300_000 });
   const items: GridEarningsItem[] = data?.items ?? [];
-  const live = !error && (data?.available ?? false) && items.length > 0;
+  const live = !error && (data?.available ?? false);
 
   return (
     <GridCard

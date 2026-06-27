@@ -430,6 +430,10 @@ export type GridCatalystItem = {
   title: string;
   /** ISO timestamp of publication. */
   published: string;
+  /** Primary ticker from the Benzinga article tickers array (first symbol), if present. */
+  ticker?: string;
+  /** All tickers mentioned in the article. */
+  tickers?: string[];
 };
 
 export type GridCatalystsSnapshot = {
@@ -463,6 +467,8 @@ async function fetchCatalysts(): Promise<GridCatalystsSnapshot> {
         type: catalystTypeFromChannel(a.channels),
         title: (a.title || a.teaser || "").slice(0, 200),
         published: a.published,
+        ticker: a.tickers?.[0] ?? undefined,
+        tickers: a.tickers?.length ? a.tickers : undefined,
       }))
       .filter((c) => c.title)
       .sort((a, b) => (b.published > a.published ? 1 : b.published < a.published ? -1 : 0))

@@ -19,9 +19,9 @@ export async function GET(req: NextRequest) {
     if (!snapshot) return NextResponse.json({ available: false }, { status: 200, headers: NO_STORE });
     if (ticker && Array.isArray(snapshot.items)) {
       const filtered = snapshot.items.filter(
-        (item: { ticker?: string; title?: string }) =>
+        (item: { ticker?: string; tickers?: string[]; title?: string }) =>
           (item.ticker && item.ticker.toUpperCase() === ticker) ||
-          (item.title && item.title.toUpperCase().includes(ticker)),
+          (item.tickers && item.tickers.some((t) => t.toUpperCase() === ticker)),
       );
       return NextResponse.json({ available: true, ...snapshot, items: filtered, ticker }, { status: 200, headers: NO_STORE });
     }

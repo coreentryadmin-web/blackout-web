@@ -99,14 +99,18 @@ export function GridGexPanel() {
       live={live}
       footer={
         <span className="grid-foot-note">
-          Polygon/Massive matrix · {gexTicker} · {data?.available ? "live" : "unavailable"}
+          Polygon/Massive matrix · {gexTicker} · {!data ? "loading…" : data.available ? "live" : "unavailable"}
         </span>
       }
     >
       {isFiltered && ticker && (
         <p className="grid-ticker-badge">GEX regime for {ticker}</p>
       )}
-      {!data && !error ? (
+      {isFiltered && !data?.available && data ? (
+        <p className="grid-empty text-sky-400/60">
+          GEX regime data is available for index symbols only (SPX, NDX, QQQ). Select a market-wide view to see GEX.
+        </p>
+      ) : !data && !error ? (
         <p className="grid-empty">Loading GEX regime…</p>
       ) : error || !available ? (
         <p className="grid-empty">GEX data unavailable</p>
@@ -143,7 +147,7 @@ export function GridGexPanel() {
           <RegimeRow label="Call Wall" value={fmtLevel(data?.call_wall)} />
           <RegimeRow label="Put Wall" value={fmtLevel(data?.put_wall)} />
           {data?.spot != null && (
-            <RegimeRow label="SPX Spot" value={fmtLevel(data.spot)} />
+            <RegimeRow label={gexTicker === "SPX" ? "SPX Spot" : `${gexTicker} Spot`} value={fmtLevel(data.spot)} />
           )}
 
           {/* Nearest wall */}

@@ -4,7 +4,6 @@ import { PulseStrip } from "./PulseStrip";
 import { GridNewsPanel } from "./GridNewsPanel";
 import { GridFlowPanel } from "./GridFlowPanel";
 import { AnalystActions } from "./AnalystActions";
-import { GridSectorsPanel } from "./GridSectorsPanel";
 import { GridMoversPanel } from "./GridMoversPanel";
 import { GridEarningsPanel } from "./GridEarningsPanel";
 import { GridDarkPoolPanel } from "./GridDarkPoolPanel";
@@ -79,8 +78,7 @@ export function GridBoard() {
         <GridFlowPanel />
         <AnalystActions />
 
-        {/* Row 2 — sectors + movers */}
-        <GridSectorsPanel />
+        {/* Row 2 — movers */}
         <GridMoversPanel />
 
         {/* Row 3 — earnings + dark pool */}

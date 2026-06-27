@@ -64,8 +64,6 @@ export function GridFlowPanel() {
 
     const conn = createFlowEventSource(
       (alert) => {
-        // When filtering by ticker, drop SSE events that don't match
-        if (ticker && alert.ticker?.toUpperCase() !== ticker) return;
         const key = rowKey(alert as FlowAlert & { alert_id?: string });
         if (seenRef.current.has(key)) return;
         seenRef.current.add(key);
@@ -75,7 +73,8 @@ export function GridFlowPanel() {
         setAlerts((prev) => [alert, ...prev].slice(0, 120));
         setLive(true);
       },
-      { onOpen: () => { setLive(true); stop(); }, onClose: () => { setLive(false); go(); loadFlows(); } }
+      { onOpen: () => { setLive(true); stop(); }, onClose: () => { setLive(false); go(); loadFlows(); } },
+      ticker ?? undefined
     );
     if (conn) return () => { conn.close(); stop(); };
     go();

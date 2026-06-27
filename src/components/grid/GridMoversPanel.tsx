@@ -3,12 +3,13 @@
 import useSWR from "swr";
 import { clsx } from "clsx";
 import { GridCard } from "./GridCard";
+import { useGridTicker } from "@/lib/grid/grid-ticker-context";
 import type { GridMover, GridMoversSnapshot } from "@/lib/providers/grid";
 
 type Res = { available: boolean } & Partial<GridMoversSnapshot>;
 
-const fetcher = () =>
-  fetch("/api/grid/movers", { cache: "no-store", credentials: "same-origin" })
+const fetcher = (url: string) =>
+  fetch(url, { cache: "no-store", credentials: "same-origin" })
     .then((r) => r.json()) as Promise<Res>;
 
 function MoverRow({ m, side }: { m: GridMover; side: "up" | "down" }) {
@@ -24,10 +25,11 @@ function MoverRow({ m, side }: { m: GridMover; side: "up" | "down" }) {
 }
 
 export function GridMoversPanel() {
-  const { data, error } = useSWR<Res>("grid-movers", fetcher, { refreshInterval: 90_000 });
+  const { isFiltered } = useGridTicker();
+  const { data, error } = useSWR<Res>("/api/grid/movers", fetcher, { refreshInterval: 90_000 });
   const gainers: GridMover[] = data?.gainers ?? [];
   const losers: GridMover[] = data?.losers ?? [];
-  const live = !error && (data?.available ?? false) && (gainers.length > 0 || losers.length > 0);
+  const live = !error && (data?.available ?? false);
 
   return (
     <GridCard
@@ -37,6 +39,9 @@ export function GridMoversPanel() {
       live={live}
       footer={<span className="grid-foot-note">Polygon · intraday gainers + losers</span>}
     >
+      {isFiltered && (
+        <p className="grid-empty text-sky-400/60 text-[10px]">Market-wide · ticker filter not applicable</p>
+      )}
       {gainers.length === 0 && losers.length === 0 ? (
         <p className="grid-empty">
           {data ? "No movers" : error ? "Movers offline" : "Loading movers…"}
@@ -46,13 +51,13 @@ export function GridMoversPanel() {
           <div>
             <p className="grid-movers-header text-emerald-400">GAINERS</p>
             <ul className="grid-mover-list">
-              {gainers.slice(0, 8).map((m, i) => <MoverRow key={i} m={m} side="up" />)}
+              {gainers.slice(0, 8).map((m) => <MoverRow key={m.ticker} m={m} side="up" />)}
             </ul>
           </div>
           <div>
             <p className="grid-movers-header text-[#ff5c78]">LOSERS</p>
             <ul className="grid-mover-list">
-              {losers.slice(0, 8).map((m, i) => <MoverRow key={i} m={m} side="down" />)}
+              {losers.slice(0, 8).map((m) => <MoverRow key={m.ticker} m={m} side="down" />)}
             </ul>
           </div>
         </div>

@@ -4,6 +4,7 @@ import useSWR from "swr";
 import { clsx } from "clsx";
 import { GridCard } from "./GridCard";
 import { useGridTicker } from "@/lib/grid/grid-ticker-context";
+import { fmtPremium } from "@/lib/api";
 import type { GridDarkPoolPrint, GridDarkPoolSnapshot } from "@/lib/providers/grid";
 
 type Res = { available: boolean; ticker?: string } & Partial<GridDarkPoolSnapshot>;
@@ -11,12 +12,6 @@ type Res = { available: boolean; ticker?: string } & Partial<GridDarkPoolSnapsho
 const fetcher = (url: string) =>
   fetch(url, { cache: "no-store", credentials: "same-origin" })
     .then((r) => r.json()) as Promise<Res>;
-
-function fmtPremium(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
-}
 
 function SideTag({ side }: { side: string }) {
   const s = side.toLowerCase();
@@ -39,7 +34,7 @@ export function GridDarkPoolPanel() {
   const url = `/api/grid/dark-pool${ticker ? `?ticker=${ticker}` : ""}`;
   const { data, error } = useSWR<Res>(url, fetcher, { refreshInterval: isFiltered ? 30_000 : 90_000 });
   const prints: GridDarkPoolPrint[] = data?.prints ?? [];
-  const live = !error && (data?.available ?? false) && prints.length > 0;
+  const live = !error && (data?.available ?? false);
 
   return (
     <GridCard
@@ -65,7 +60,7 @@ export function GridDarkPoolPanel() {
       ) : (
         <ul className="grid-dp-list">
           {prints.slice(0, 18).map((p, i) => (
-            <li key={i} className="grid-dp-row">
+            <li key={`${p.ticker}${p.executed_at ?? i}`} className="grid-dp-row">
               <span className="grid-dp-ticker">{p.ticker}</span>
               <SideTag side={p.side} />
               <span className="grid-dp-premium">{fmtPremium(p.premium)}</span>

@@ -66,17 +66,28 @@ export function GridSearchBar() {
   )
 
   function onChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const v = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5)
+    const v = e.target.value.toUpperCase().replace(/[^A-Z]/g, '')
     setRaw(v)
+    // Show over-length error but don't truncate — user can fix before committing
+    if (v.length > 5) {
+      setInvalid(true)
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      return
+    }
     setInvalid(false)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => commit(v), 300)
   }
 
+  function onBlur() {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    commit(raw.slice(0, 5))
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') {
       if (debounceRef.current) clearTimeout(debounceRef.current)
-      commit(raw)
+      commit(raw.slice(0, 5))
     }
     if (e.key === 'Escape') {
       handleClear()
@@ -124,8 +135,9 @@ export function GridSearchBar() {
           value={raw}
           onChange={onChange}
           onKeyDown={onKeyDown}
+          onBlur={onBlur}
           placeholder="Search ticker — TSLA, AAPL…"
-          maxLength={5}
+          maxLength={10}
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="characters"
@@ -156,26 +168,9 @@ export function GridSearchBar() {
         )}
       </div>
 
-      {/* Active filter pill */}
-      {isFiltered && ticker && (
-        <div className="flex items-center gap-1 rounded border border-cyan-400/40 bg-cyan-400/10 px-2 py-1">
-          <span className="font-mono text-[11px] font-bold text-cyan-400 tracking-wide">
-            Filtered: {ticker}
-          </span>
-          <button
-            type="button"
-            onClick={handleClear}
-            className="text-cyan-400/60 hover:text-cyan-400 transition-colors leading-none ml-0.5"
-            aria-label={`Clear ${ticker} filter`}
-          >
-            ×
-          </button>
-        </div>
-      )}
-
       {invalid && (
         <span className="font-mono text-[10px] text-[#ff5c78]">
-          Invalid ticker — 1–5 letters
+          {raw.length > 5 ? "Max 5 characters" : "Invalid ticker — 1–5 letters"}
         </span>
       )}
     </div>

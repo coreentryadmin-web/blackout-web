@@ -664,11 +664,15 @@ function createReconnectingEventSource(
 
 export function createFlowEventSource(
   onMessage: (alert: FlowAlert) => void,
-  hooks?: { onOpen?: () => void; onClose?: () => void }
+  hooks?: { onOpen?: () => void; onClose?: () => void },
+  ticker?: string
 ): ReconnectingEventSource | null {
   if (typeof window === "undefined") return null;
+  const url = ticker
+    ? `/api/market/flows/stream?ticker=${encodeURIComponent(ticker)}`
+    : "/api/market/flows/stream";
   return createReconnectingEventSource(
-    "/api/market/flows/stream",
+    url,
     (raw) => {
       try {
         const data = JSON.parse(raw) as { type?: string } & Partial<FlowAlert>;

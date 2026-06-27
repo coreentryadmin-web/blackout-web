@@ -17,6 +17,8 @@ export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
   if (auth instanceof Response) return auth;
 
+  const tickerFilter = req.nextUrl.searchParams.get("ticker")?.toUpperCase().trim() || undefined;
+
   // Boot the UW WebSocket (idempotent) so a replica serving ONLY /flows traffic still
   // initializes uwSocket — without this the live tape's SSE bridge never receives WS
   // frames and silently goes empty unless the REST cron happens to run here (audit
@@ -72,6 +74,7 @@ export async function GET(req: NextRequest) {
       send({ type: "connected", ts: Date.now() });
 
       unsubscribe = subscribeFlowEvents((flow) => {
+        if (tickerFilter && flow.ticker?.toUpperCase() !== tickerFilter) return;
         send({ type: "flow", ...flow });
       });
 

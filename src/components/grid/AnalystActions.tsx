@@ -56,7 +56,7 @@ export function AnalystActions() {
   });
 
   const actions = data?.actions ?? [];
-  const live = !error && (data?.available ?? false) && actions.length > 0;
+  const live = !error && (data?.available ?? false);
 
   return (
     <GridCard

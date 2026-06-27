@@ -3,13 +3,14 @@
 import useSWR from "swr";
 import { clsx } from "clsx";
 import { GridCard } from "./GridCard";
+import { useGridTicker } from "@/lib/grid/grid-ticker-context";
 import type { GridEconomySnapshot } from "@/lib/providers/grid";
 import type { UwMacroIndicatorSnapshot } from "@/lib/providers/unusual-whales";
 
 type Res = { available: boolean } & Partial<GridEconomySnapshot>;
 
-const fetcher = () =>
-  fetch("/api/grid/economy", { cache: "no-store", credentials: "same-origin" })
+const fetcher = (url: string) =>
+  fetch(url, { cache: "no-store", credentials: "same-origin" })
     .then((r) => r.json()) as Promise<Res>;
 
 function fmtValue(ind: UwMacroIndicatorSnapshot): string {
@@ -35,9 +36,10 @@ function ChangeBadge({ pct }: { pct: number | null }) {
 }
 
 export function GridEconomyPanel() {
-  const { data, error } = useSWR<Res>("grid-economy", fetcher, { refreshInterval: 3_600_000 });
+  const { isFiltered } = useGridTicker();
+  const { data, error } = useSWR<Res>("/api/grid/economy", fetcher, { refreshInterval: 3_600_000 });
   const indicators: UwMacroIndicatorSnapshot[] = data?.indicators ?? [];
-  const live = !error && (data?.available ?? false) && indicators.length > 0;
+  const live = !error && (data?.available ?? false);
 
   return (
     <GridCard
@@ -48,6 +50,9 @@ export function GridEconomyPanel() {
       span={2}
       footer={<span className="grid-foot-note">Unusual Whales · CPI · Fed Funds · GDP · Payrolls · Unemployment</span>}
     >
+      {isFiltered && (
+        <p className="grid-empty text-sky-400/60 text-[10px]">Market-wide · ticker filter not applicable</p>
+      )}
       {indicators.length === 0 ? (
         <p className="grid-empty">
           {data ? "No macro data" : error ? "Macro feed offline" : "Loading macro…"}

@@ -3,12 +3,13 @@
 import useSWR from "swr";
 import { clsx } from "clsx";
 import { GridCard } from "./GridCard";
+import { useGridTicker } from "@/lib/grid/grid-ticker-context";
 import type { GridSectorRow, GridSectorsSnapshot } from "@/lib/providers/grid";
 
 type Res = { available: boolean } & Partial<GridSectorsSnapshot>;
 
-const fetcher = () =>
-  fetch("/api/grid/sectors", { cache: "no-store", credentials: "same-origin" })
+const fetcher = (url: string) =>
+  fetch(url, { cache: "no-store", credentials: "same-origin" })
     .then((r) => r.json()) as Promise<Res>;
 
 function heatColor(pct: number): string {
@@ -33,9 +34,10 @@ function SectorCell({ sector }: { sector: GridSectorRow }) {
 }
 
 export function GridSectorsPanel() {
-  const { data, error } = useSWR<Res>("grid-sectors", fetcher, { refreshInterval: 90_000 });
+  const { isFiltered } = useGridTicker();
+  const { data, error } = useSWR<Res>("/api/grid/sectors", fetcher, { refreshInterval: 90_000 });
   const sectors: GridSectorRow[] = data?.sectors ?? [];
-  const live = !error && (data?.available ?? false) && sectors.length > 0;
+  const live = !error && (data?.available ?? false);
 
   return (
     <GridCard
@@ -46,6 +48,9 @@ export function GridSectorsPanel() {
       span={2}
       footer={<span className="grid-foot-note">Polygon · 11 SPDR sector ETFs · intraday % change</span>}
     >
+      {isFiltered && (
+        <p className="grid-empty text-sky-400/60 text-[10px]">Market-wide · ticker filter not applicable</p>
+      )}
       {sectors.length === 0 ? (
         <p className="grid-empty">
           {data ? "No sector data" : error ? "Sector feed offline" : "Loading sectors…"}
