@@ -21,17 +21,13 @@ export async function GET(req: NextRequest) {
 
   try {
     const ticker = req.nextUrl.searchParams.get("ticker")?.toUpperCase().trim() || undefined;
-    // When a ticker is requested, fetch a larger batch and filter by tickers array.
-    // The Benzinga news API doesn't support per-ticker filtering natively, so we over-fetch
-    // a fresh batch (no cache key collision with the market-wide key) and client-filter.
     if (ticker) {
+      // Use Benzinga's native tickers.any_of filter — returns all market coverage for this
+      // stock: earnings, analyst calls, news mentions, sector commentary that names the ticker.
+      // This is far broader than a post-fetch client-side filter on the tickers[] array.
       const cacheKey = `news:benzinga:ticker:${ticker}`;
-      const all = await serverCache(cacheKey, 60, () => fetchBenzingaNews(50));
-      const filtered = all.filter(
-        (a: { tickers?: string[] }) =>
-          Array.isArray(a.tickers) && a.tickers.some((t: string) => t.toUpperCase() === ticker),
-      );
-      return NextResponse.json({ source: "benzinga", ticker, articles: filtered }, { headers: CDN_CACHE });
+      const articles = await serverCache(cacheKey, 60, () => fetchBenzingaNews(50, { ticker }));
+      return NextResponse.json({ source: "benzinga", ticker, articles }, { headers: CDN_CACHE });
     }
     const articles = await serverCache("news:benzinga:15", TTL.NEWS, () => fetchBenzingaNews(15));
     return NextResponse.json({ source: "benzinga", articles }, { headers: CDN_CACHE });
