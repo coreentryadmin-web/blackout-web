@@ -66,8 +66,26 @@ export function SpxDashboard() {
     );
   }
 
+  const activeHalts = desk?.active_halts ?? [];
+  const haltChannelStale = desk?.halt_channel_stale ?? false;
+
   return (
     <div className="spx-sniper-desk">
+      {activeHalts.length > 0 && (
+        <div className="flex items-center gap-2 rounded border border-bear/40 bg-bear/10 px-4 py-2 text-xs font-mono text-bear" role="alert">
+          <span className="font-bold">TRADING HALT</span>
+          {activeHalts.map((h) => (
+            <span key={h.symbol}>
+              {h.symbol}{h.halt_type ? ` · ${h.halt_type}` : ""}{h.reason ? ` — ${h.reason}` : ""}
+            </span>
+          ))}
+        </div>
+      )}
+      {haltChannelStale && activeHalts.length === 0 && (
+        <div className="flex items-center gap-2 rounded border border-amber-400/40 bg-amber-400/10 px-4 py-2 text-xs font-mono text-amber-400" role="alert">
+          <span>Halt feed offline — entries blocked until reconnect</span>
+        </div>
+      )}
       <SpxPanelErrorBoundary>
         <SpxSniperHeader desk={desk} live={live} />
       </SpxPanelErrorBoundary>

@@ -8,6 +8,7 @@ import {
 } from "@/lib/largo/flow-strike-stacks";
 import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
+import { getActiveTradingHalts, isTradingHaltChannelStale } from "@/lib/ws/uw-socket";
 
 type FeedKey =
   | "market"
@@ -26,7 +27,8 @@ type FeedKey =
   | "breadth"
   | "group_greek_flow"
   | "macro_indicators"
-  | "gex_regime";
+  | "gex_regime"
+  | "halts";
 
 export type LargoLiveFeed = Partial<Record<FeedKey, unknown>>;
 
@@ -118,6 +120,13 @@ export async function captureLargoLiveFeed(
   const settled = await Promise.all(jobs.map(async (j) => ({ key: j.key, data: await j.promise })));
   const feed: LargoLiveFeed = {};
   for (const row of settled) feed[row.key] = row.data;
+  // Trading halt state is synchronous (in-process store) — no async job needed.
+  const activeHalts = getActiveTradingHalts();
+  feed.halts = {
+    active_halts: activeHalts.map((h) => ({ symbol: h.symbol, halt_type: h.halt_type, reason: h.reason })),
+    channel_stale: isTradingHaltChannelStale(),
+    has_active: activeHalts.length > 0,
+  };
   return feed;
 }
 
@@ -179,6 +188,28 @@ export function formatLargoLiveFeed(feed: LargoLiveFeed, ticker: string): string
     "Use ONLY figures from this block or tools you call now. Do not invent stacks, premiums, levels, or trader intent. Strike stacks below are UW-verified.",
     "",
   ];
+
+  // Trading halts — rendered first so Claude sees halt context before any level discussion.
+  const halts = asObj(feed.halts);
+  if (halts) {
+    const haltList = asArr(halts.active_halts);
+    if (halts.has_active && haltList.length > 0) {
+      lines.push("### TRADING HALTS ACTIVE");
+      for (const h of haltList) {
+        const o = asObj(h);
+        if (!o) continue;
+        lines.push(
+          `- ${o.symbol} halted (${o.halt_type ?? "unknown type"})${o.reason ? ` — ${o.reason}` : ""}`
+        );
+      }
+      lines.push("NOTE: Entries are blocked on all halted symbols. Do not suggest trades on these tickers.");
+      lines.push("");
+    } else if (halts.channel_stale) {
+      lines.push("### Halt feed status");
+      lines.push("WARNING: The trading-halt monitoring channel is offline. Entry signals are blocked fail-closed until reconnection. Inform the user if they ask about entering a position.");
+      lines.push("");
+    }
+  }
 
   const spx = asObj(feed.spx_structure);
   if (spx && !spx.error) {

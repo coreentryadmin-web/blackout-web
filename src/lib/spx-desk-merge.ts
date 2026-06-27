@@ -366,6 +366,10 @@ export function mergePulseIntoDesk(
     // 'feed stalled · price not live' indicator (#11) catches a half-open freeze within seconds.
     price_age_ms: pulse.price_age_ms ?? base.price_age_ms ?? null,
     feed_stalled: pulse.feed_stalled ?? base.feed_stalled ?? false,
+    // Carry halt state from the pulse (updated every ~1s) so the desk always reflects the
+    // current in-process halt store without waiting for the 10s full desk refresh.
+    active_halts: pulse.active_halts ?? base.active_halts,
+    halt_channel_stale: pulse.halt_channel_stale ?? base.halt_channel_stale,
     // ISSUE-18+20: Recompute above_gamma_flip with current price so price crossings
     // of the gamma flip level are reflected after each pulse — base value would be stale.
     above_gamma_flip: base.gamma_flip != null ? price > base.gamma_flip : base.above_gamma_flip,

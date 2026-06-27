@@ -75,6 +75,7 @@ import {
 import { runUwSequential } from "./uw-rate-limiter";
 import { fetchEngine } from "@/lib/engine";
 import { indexStore, getIndexFeedFreshness } from "@/lib/ws/polygon-socket";
+import { getActiveTradingHalts, isTradingHaltChannelStale } from "@/lib/ws/uw-socket";
 
 /** GEX-wall ladder size — a balanced ~5-per-side two-sided ladder (call wall above spot,
  *  put wall below). 10 fits the scrollable panel without crushing the Live Tape (bug #93). */
@@ -453,6 +454,14 @@ export type SpxDeskPayload = {
    */
   gex_age_ms?: number | null;
   gex_stale?: boolean;
+  /**
+   * Active trading halts on watched symbols (SPX/SPY/QQQ) — read from the
+   * UW WebSocket halt store. Empty array = no active halts. Populated on every
+   * pulse tick so the desk and Largo both see halt state without extra RPS.
+   */
+  active_halts?: Array<{ symbol: string; halt_type: string; reason: string | null }>;
+  /** True when the UW trading_halts WS channel is stale (auth failure or disconnected). */
+  halt_channel_stale?: boolean;
   /** Dealer gamma concentration by expiry (UW greek-exposure/expiry). */
   greek_exposure: GreekExposureSummary | null;
   /** SPX premium flow by expiry bucket. */
@@ -513,6 +522,10 @@ export type SpxDeskPulse = Pick<
   tide_bias?: string | null;
   tide_call_premium?: number | null;
   tide_put_premium?: number | null;
+  /** Active trading halts on watched symbols from the UW WS halt store. */
+  active_halts?: Array<{ symbol: string; halt_type: string; reason: string | null }>;
+  /** True when the UW trading_halts channel is stale (auth failure / WS down). */
+  halt_channel_stale?: boolean;
 };
 
 /** UW fast lane — live tape, dark pool, 0DTE GEX walls (refreshed every ~4s). */
@@ -1337,6 +1350,13 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     market_open: rthOpen,
     market_status: premarketPlan && !rthOpen ? "premarket" : marketNow?.market ?? "open",
     market_label: premarketPlan && !rthOpen ? "PRE-MARKET" : label,
+    // Trading halt store — in-process cache read, zero extra RPS.
+    active_halts: getActiveTradingHalts().map((h) => ({
+      symbol: h.symbol,
+      halt_type: h.halt_type,
+      reason: h.reason,
+    })),
+    halt_channel_stale: isTradingHaltChannelStale(),
   };
   lastPulseForSignals = result;
   return result;
