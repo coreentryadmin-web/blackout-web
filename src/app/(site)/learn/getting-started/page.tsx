@@ -208,7 +208,7 @@ export default function GettingStartedPage() {
                   The platform routes all of this into specialized surfaces: a
                   real-time trading desk (SPX Slayer), a visual positioning map
                   (Heat Maps), an evening scanner (Night Hawk), a position
-                  tracker (Night's Watch), and a macro intelligence feed
+                  tracker (Night&apos;s Watch), and a macro intelligence feed
                   (BlackOut Grid). These are not siloed. A GEX wall identified
                   in Heat Maps is the same wall displayed in SPX Slayer and
                   referenced in Largo analysis.

@@ -495,6 +495,23 @@ export const tradingHaltsStore: {
   updatedAt: number;
 } = { halts: new Map(), updatedAt: 0 };
 
+/**
+ * Per-ticker net-flow store — populated by the UW `net_flow` WS channel.
+ * The channel delivers messages keyed by ticker (e.g. "SPX") with
+ * call_premium / put_premium / net fields. We hold only the latest
+ * SPX snapshot since that's the only ticker the desk currently needs.
+ */
+export const netFlowStore: {
+  call_premium: number;
+  put_premium: number;
+  net: number;
+  updatedAt: number;
+} = { call_premium: 0, put_premium: 0, net: 0, updatedAt: 0 };
+
+export function getNetFlow(): typeof netFlowStore {
+  return netFlowStore;
+}
+
 const TRADING_HALT_CHANNEL_MAX_AGE_MS = 120_000;
 
 /**
@@ -677,6 +694,31 @@ export function initUwSocket() {
     tradingHaltsStore.updatedAt = now;
   });
 
+  uwSocket.subscribe("net_flow", (payload) => {
+    if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
+      return;
+    }
+    // UW net_flow channel delivers messages for each ticker. We extract the SPX row.
+    // Payload may be a single row or an array; each row has ticker, call_premium, put_premium, net.
+    const rows = Array.isArray(payload) ? payload : [payload];
+    for (const raw of rows) {
+      if (!raw || typeof raw !== "object") continue;
+      const r = raw as Record<string, unknown>;
+      // Accept rows that explicitly reference SPX, or rows without a ticker field (single-ticker stream).
+      const ticker = String(r.ticker ?? r.symbol ?? "SPX").toUpperCase();
+      if (ticker !== "SPX" && r.ticker != null) continue;
+      lastMessageAt.net_flow = Date.now();
+      const call = Number(r.call_premium ?? r.calls ?? 0);
+      const put = Number(r.put_premium ?? r.puts ?? 0);
+      Object.assign(netFlowStore, {
+        call_premium: call,
+        put_premium: put,
+        net: Number(r.net ?? (call - put)),
+        updatedAt: Date.now(),
+      });
+    }
+  });
+
   if (!heartbeatTimer) {
     heartbeatTimer = setInterval(() => {
       uwSocket.heartbeat();
@@ -742,6 +784,7 @@ export function getUwSocketHealth() {
       dark_pool_updated_at: darkPoolStore.updatedAt || null,
       interval_flow_updated_at: intervalFlowStore.updatedAt || null,
       trading_halts_updated_at: tradingHaltsStore.updatedAt || null,
+      net_flow_updated_at: netFlowStore.updatedAt || null,
       active_halts: Array.from(tradingHaltsStore.halts.values())
         .filter((h) => h.active)
         .map((h) => h.symbol),

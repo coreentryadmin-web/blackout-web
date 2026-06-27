@@ -1,6 +1,6 @@
 {
   "extends": "next/core-web-vitals",
-  "plugins": ["jsx-a11y", "tailwindcss"],
+  "plugins": ["jsx-a11y", "tailwindcss", "@typescript-eslint"],
   "rules": {
     "tailwindcss/enforces-shorthand": "warn",
     "tailwindcss/no-contradicting-classname": "warn",

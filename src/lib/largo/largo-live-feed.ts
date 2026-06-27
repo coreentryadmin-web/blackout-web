@@ -166,9 +166,11 @@ export async function captureLargoLiveFeed(
   // Pre-populate spx_confluence — same logic as get_spx_confluence tool but without the
   // tool-call round-trip. Cache-reader: getLargoSpxLiveDesk is already called for spx_structure
   // above; calling it again hits the in-process per-user bundle cache (0 upstream cost).
-  if ((intent.needsSpxDesk || scopeTicker === "SPX") && userId) {
+  // Falls back to a shared "_anon" cache slot when no userId — ensures confluence is ALWAYS
+  // pre-populated for SPX desk questions regardless of auth state.
+  if (intent.needsSpxDesk || scopeTicker === "SPX") {
     try {
-      const desk = await getLargoSpxLiveDesk(userId);
+      const desk = await getLargoSpxLiveDesk(userId ?? "_anon");
       const confluence = computeSpxConfluence(desk);
       feed.spx_confluence = confluence ?? { error: "No confluence — SPX desk not live yet." };
     } catch {

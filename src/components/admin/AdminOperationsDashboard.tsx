@@ -537,6 +537,9 @@ export function AdminOperationsDashboard() {
         </div>
       </div>
 
+      {/* ── Data Pipeline Health ── */}
+      <DataPipelineHealthTile health={h} />
+
       {/* ── Audit Trail ── */}
       <GlassPanel title="Audit Trail" accent="violet" kicker={`${audit.total} total actions logged`}>
         {/* Filters */}

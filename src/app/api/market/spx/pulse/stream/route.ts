@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { indexStore } from "@/lib/ws/polygon-socket";
-import { tideStore, darkPoolStore, intervalFlowStore } from "@/lib/ws/uw-socket";
+import { tideStore, darkPoolStore, intervalFlowStore, netFlowStore } from "@/lib/ws/uw-socket";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
@@ -136,6 +136,9 @@ export async function GET(req: NextRequest) {
               : undefined,
             darkPool: darkPoolFresh ? darkPoolStore.data : undefined,
             intervalFlow: intervalFlowStore.updatedAt > 0 ? { rows: intervalFlowStore.rows, updatedAt: intervalFlowStore.updatedAt } : undefined,
+            net_flow: netFlowStore.updatedAt > 0
+              ? { call_premium: netFlowStore.call_premium, put_premium: netFlowStore.put_premium, net: netFlowStore.net, updatedAt: netFlowStore.updatedAt }
+              : undefined,
             t: Date.now(),
           });
           controller.enqueue(encoder.encode(`data: ${data}\n\n`));

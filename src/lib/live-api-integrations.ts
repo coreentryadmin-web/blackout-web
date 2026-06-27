@@ -10,6 +10,7 @@ export const UW_WS_CHANNELS = [
   "off_lit_trades",
   "interval_flow",
   "trading_halts",
+  "net_flow",
 ] as const;
 
 export type UwWsChannel = (typeof UW_WS_CHANNELS)[number];

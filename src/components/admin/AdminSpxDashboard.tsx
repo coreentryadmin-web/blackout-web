@@ -287,8 +287,8 @@ function LiveEngineSection({
                 Claude and the confluence model disagree. Choose one of the following actions:
               </p>
               <ul style={{ fontSize: "0.77rem", paddingLeft: "1.2rem", lineHeight: 1.7, opacity: 0.9 }}>
-                <li><strong>Defer Claude</strong> — trust the quant confluence score; Claude's thesis may lag recent price action.</li>
-                <li><strong>Defer Confluence</strong> — trust Claude's macro/narrative read; useful in news-driven regimes.</li>
+                <li><strong>Defer Claude</strong> — trust the quant confluence score; Claude&apos;s thesis may lag recent price action.</li>
+                <li><strong>Defer Confluence</strong> — trust Claude&apos;s macro/narrative read; useful in news-driven regimes.</li>
                 <li><strong>Abort play</strong> — disagreement at the model layer is a valid gate block; skip this setup entirely.</li>
                 <li><strong>Re-run engine</strong> — if data is stale (&gt;90s), refresh and check whether the mismatch resolves.</li>
               </ul>
