@@ -47,3 +47,18 @@ Automated TLS, availability, security-header, redirect, and CDN health checks fo
 ### Redirects: **PASS** — http→https 301 → https://www.blackouttrades.com/ ; /pricing 307 → /#pricing
 ### CDN: **PASS** — Cloudflare edge (CF-Ray a12411551a60c643-SEA), Railway request ID present, root Cache-Control `private, no-cache, no-store, max-age=0, must-revalidate`. The Step-5 "API may be cached" WARN is a false positive: the unauthenticated SPX-pulse probe 401s with no Cache-Control header, so the check has nothing to read — not a real caching exposure.
 ---
+
+## 2026-06-27 09:22 ET
+### TLS: cert expires 2026-09-14 — 79 days remaining — **PASS** (CN=blackouttrades.com, issuer Google Trust Services WE1; handshake valid for both www and apex)
+### Availability: 12/12 routes healthy — **PASS**
+- Pages 200 (probe hits www, follows www→apex 301 to a 200): Landing 748ms, Sign In 201ms, Sign Up 231ms, /dashboard 224ms, /flows 213ms, /heatmap 236ms, /grid 164ms, /nighthawk 213ms; /api/health 200 (100ms)
+- Auth-gated APIs 401 as intended (~96–104ms): /api/market/spx/pulse, /api/market/gex-positioning, /api/market/flows
+- **No 5xx. No P0. No slow routes (all <750ms).**
+### Security Headers: 6/6 present on rendered page — **PASS** (HSTS max-age + preload, X-Content-Type-Options nosniff, X-Frame-Options SAMEORIGIN, Referrer-Policy strict-origin, CSP default-src 'self', Permissions-Policy camera=())
+- Reading note: CSP & friends appear only on the final 200 page, NOT on the www→apex 301 hop — must follow redirects before checking headers (an unfollowed read falsely reports "CSP MISSING").
+- WARN (unchanged, low priority): `X-Powered-By: Next.js` leaking → harden with `poweredByHeader: false` in next.config. `Server: cloudflare` expected (CF edge).
+### Redirects: **PASS — but canonical host CHANGED since the 07:21 run**
+- **CHANGE: canonical host is now the APEX, not www.** `https://www/` → **301 → https://blackouttrades.com/** ; `http://www/` → 301 → https://blackouttrades.com/ (single hop to https+apex); `https://blackouttrades.com/` → 200 (final). Prior runs reported the reverse (apex→www, www canonical, e.g. "http→https 301 → https://www…/"). Both directions are valid SEO choices and every hop is a clean 301 ending at 200 — **not a defect**, but flagging the infra/Cloudflare/DNS canonicalization flip in case it was unintended (verify OG/canonical tags + Clerk allowed origins still match).
+- /pricing: apex `307 → /#pricing` (unchanged); www `/pricing 301 → apex /pricing` (→ then 307 → /#pricing).
+### CDN: **PASS** — Cloudflare edge (CF-Ray a124c21b98491639-SEA), Railway request ID present, root Cache-Control `private, no-cache, no-store, max-age=0, must-revalidate`. Step-5 "API may be cached" WARN is a known false positive (unauth SPX-pulse 401 carries no Cache-Control header to read).
+---
