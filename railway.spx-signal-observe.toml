@@ -9,6 +9,6 @@ buildCommand = "echo 'cron trigger service: no app build needed'"
 startCommand = "node scripts/hit-cron.mjs /api/cron/spx-signal-observe"
 # Every minute during the UTC band covering RTH in EDT and EST (11–21 UTC = 7AM–5PM ET).
 # Route self-skips outside isSpxEngineCronWindow to avoid off-hours DB writes.
-cronSchedule = "* 11-21 * * 1-5"
+cronSchedule = "*/5 11-21 * * 1-5"
 restartPolicyType = "never"
 numReplicas = 1
