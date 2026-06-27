@@ -1,5 +1,6 @@
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import { notifyPlayDiscord } from "@/lib/spx-play-notify";
+import { dbConfigured, fetchLatestNighthawkEdition } from "@/lib/db";
 
 function firePlayTelemetry(label: string, work: () => Promise<unknown>) {
   void work().catch((err) => {
@@ -85,6 +86,59 @@ import {
 } from "@/lib/spx-play-payload";
 
 export type EvaluateSpxPlayOptions = { mutate?: boolean };
+
+/**
+ * Read the most recent Night Hawk edition and extract a signed confluence bonus
+ * for the SPX morning direction. The NH edition is an evening signal; it provides
+ * a prior for the next-day open before the desk has enough RTH flow to self-resolve.
+ *
+ * Returns: +3 for bullish NH bias with 3+ A-grade longs, −3 for bearish bias, 0 otherwise.
+ * Always resolves (catches all errors) — the SPX engine must not fail due to a missing edition.
+ */
+async function getNhConfluenceBonus(): Promise<{ bonus: number; label: string } | null> {
+  if (!dbConfigured()) return null;
+  try {
+    const edition = await fetchLatestNighthawkEdition();
+    if (!edition) return null;
+
+    // Require the edition to be from today or yesterday (not stale).
+    const publishedAt = new Date(edition.published_at);
+    const ageHours = (Date.now() - publishedAt.getTime()) / 3_600_000;
+    if (ageHours > 20) return null; // Edition older than 20h — too stale to use as a morning prior.
+
+    const plays = Array.isArray(edition.plays) ? edition.plays : [];
+    // Infer market_bias from the market_recap field or from plays.
+    const recap = edition.market_recap as Record<string, unknown> | null | undefined;
+    const explicitBias = recap?.market_bias ?? recap?.bias;
+    const recapBias =
+      typeof explicitBias === "string" ? explicitBias.toLowerCase() : null;
+
+    // Count A-grade directional plays.
+    let aGradeLongs = 0;
+    let aGradeShorts = 0;
+    for (const p of plays) {
+      const play = p as Record<string, unknown>;
+      const conviction = String(play.conviction ?? play.grade ?? "").toUpperCase();
+      const direction = String(play.direction ?? "").toLowerCase();
+      if (conviction === "A+" || conviction === "A") {
+        if (direction === "long" || direction === "bullish") aGradeLongs++;
+        else if (direction === "short" || direction === "bearish") aGradeShorts++;
+      }
+    }
+
+    // Bullish prior: explicit bullish bias OR 3+ A-grade longs with more longs than shorts.
+    if ((recapBias === "bullish" || aGradeLongs >= 3) && aGradeLongs > aGradeShorts) {
+      return { bonus: 3, label: `NH bias bullish (${aGradeLongs} A-grade longs)` };
+    }
+    // Bearish prior: explicit bearish bias OR 3+ A-grade shorts with more shorts than longs.
+    if ((recapBias === "bearish" || aGradeShorts >= 3) && aGradeShorts > aGradeLongs) {
+      return { bonus: -3, label: `NH bias bearish (${aGradeShorts} A-grade shorts)` };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 /** Read-only play snapshot for member routes — no DB/Discord side effects. */
 export async function getSpxPlaySnapshot(
@@ -1080,9 +1134,25 @@ export async function evaluateSpxPlay(
       lod: desk.lod,
     }));
 
-  const confluence = computeSpxConfluence(desk);
+  const [rawConfluence, nhBonus] = await Promise.all([
+    Promise.resolve(computeSpxConfluence(desk)),
+    getNhConfluenceBonus(),
+  ]);
+  const confluence = rawConfluence;
   if (!confluence) {
     return scanningPayload(desk, null, pickIdleMessage());
+  }
+
+  // NH morning prior: inject the Night Hawk evening signal as a signed confluence factor.
+  // Bounded at ±3 — a soft prior, not an override. Only applies when the edition is fresh
+  // (< 20h old) and shows a clear directional A-grade cluster.
+  if (nhBonus && nhBonus.bonus !== 0) {
+    confluence.score += nhBonus.bonus;
+    confluence.factors.push({
+      label: "Night Hawk prior",
+      weight: nhBonus.bonus,
+      detail: nhBonus.label,
+    });
   }
 
   const confirmations = evaluatePlayConfirmations(desk, confluence, technicals);

@@ -30,7 +30,8 @@ type FeedKey =
   | "gex_regime"
   | "halts"
   | "tide"
-  | "net_flow";
+  | "net_flow"
+  | "my_positions";
 
 export type LargoLiveFeed = Partial<Record<FeedKey, unknown>>;
 
@@ -115,8 +116,17 @@ export async function captureLargoLiveFeed(
     );
   }
 
-  if (intent.needsFlow || intent.needsNews) {
-    jobs.push({ key: "nighthawk", promise: tool("get_nighthawk_edition") });
+  // Always include the Night Hawk edition when one exists — one Redis/Postgres read, marginal cost.
+  // Previously only injected on needsFlow || needsNews intent; now always present so Largo always
+  // has the evening playbook context (play count, top tickers, recap) without an explicit tool call.
+  // get_nighthawk_edition reads the shared Postgres cache and returns { available: false, plays: [] }
+  // when no edition exists — safe to call unconditionally.
+  jobs.push({ key: "nighthawk", promise: tool("get_nighthawk_edition") });
+
+  // Always pre-fetch open positions so Largo knows what the user holds without needing
+  // an explicit tool call (P0 cross-tool access — my_positions always injected).
+  if (userId) {
+    jobs.push({ key: "my_positions", promise: tool("get_my_positions", { status: "open" }) });
   }
 
   const settled = await Promise.all(jobs.map(async (j) => ({ key: j.key, data: await j.promise })));
@@ -672,6 +682,29 @@ export function formatLargoLiveFeed(feed: LargoLiveFeed, ticker: string): string
         .join(" · ")
     );
     lines.push("");
+  }
+
+  // Open positions — always pre-fetched and injected so Largo knows what the user holds
+  // without requiring an explicit tool call (P0 cross-tool access requirement).
+  const myPos = asObj(feed.my_positions);
+  if (myPos && !myPos.error) {
+    const posArr = asArr(myPos.positions ?? myPos.data).filter((p): p is Record<string, unknown> => !!p && typeof p === "object");
+    const openPos = posArr.filter((p) => (p.status ?? "open") === "open");
+    if (openPos.length > 0) {
+      lines.push("### My open positions (auto-injected)");
+      for (const p of openPos.slice(0, 10)) {
+        const ticker = p.ticker ?? p.symbol ?? "?";
+        const side = p.side ?? p.direction ?? "";
+        const strike = p.strike ?? "";
+        const expiry = p.expiry ? String(p.expiry).slice(0, 10) : "";
+        const plPct = p.pnl_pct != null ? `P&L ${Number(p.pnl_pct).toFixed(1)}%` : "";
+        const nwVerdict = p.nw_verdict ?? p.verdict ?? "";
+        lines.push(
+          `- ${ticker} ${side}${strike ? ` $${strike}` : ""}${expiry ? ` exp ${expiry}` : ""}${plPct ? ` · ${plPct}` : ""}${nwVerdict ? ` · verdict: ${nwVerdict}` : ""}`
+        );
+      }
+      lines.push("");
+    }
   }
 
   // Net-flow by expiry — top-level key reused from desk snapshot; shows 0DTE vs weekly splits.

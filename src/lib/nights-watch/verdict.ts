@@ -650,6 +650,51 @@ export function computeVerdict(
     }
   }
 
+  // -------------------- IV rank signals (fire ONLY when ivRank is present on ctx) --------------------
+  // Three granular IV rank signals — all honor the data-absent honesty rule:
+  //   1. High IV rank (>75) on a long → elevated risk of IV crush collapsing premium (TRIM).
+  //      Distinct from the existing highIvCrushRisk (dossier-sourced boolean): this fires on the
+  //      raw rank value with a tighter threshold so it can trigger even when no catalyst is known.
+  //   2. Low IV rank (<25) on a short premium position → collected premium is thin; risk/reward
+  //      of holding a short with depressed IV is poor (TRIM).
+  //   3. IV rank has dropped >15 points from entry → IV crush already in progress, TRIM regardless
+  //      of current level. Fires only when entryIv is also present (honesty rule: no entry baseline
+  //      → signal never fires). TRIM for longs (P&L damage from vega bleed); HOLD note for shorts
+  //      (IV crush is their income engine working as intended, not a risk).
+
+  const ivRank = ctx?.ivRank;
+  const ivRankPresent = ivRank != null && Number.isFinite(ivRank);
+
+  if (ivRankPresent && ivRank > 75 && !isShort) {
+    trimSignals.push({
+      id: "iv_elevated_long_risk",
+      reason: `IV rank ${ivRank.toFixed(0)} is elevated (>75) — high risk of IV crush collapsing option premium on this long position.`,
+    });
+  }
+
+  if (ivRankPresent && ivRank < 25 && isShort) {
+    trimSignals.push({
+      id: "iv_low_short_risk",
+      reason: `IV rank ${ivRank.toFixed(0)} is depressed (<25) — premium collected on this short is thin; risk/reward of holding is poor.`,
+    });
+  }
+
+  const entryIv = ctx?.entryIv;
+  const entryIvPresent = entryIv != null && Number.isFinite(entryIv);
+  if (ivRankPresent && entryIvPresent && entryIv - ivRank > 15) {
+    if (!isShort) {
+      trimSignals.push({
+        id: "iv_crush_in_progress",
+        reason: `IV rank dropped ${(entryIv - ivRank).toFixed(0)} points since entry (${entryIv.toFixed(0)} → ${ivRank.toFixed(0)}) — IV crush is eroding this long's vega value.`,
+      });
+    } else {
+      holdSignals.push({
+        id: "iv_crush_tailwind",
+        reason: `IV rank dropped ${(entryIv - ivRank).toFixed(0)} points since entry (${entryIv.toFixed(0)} → ${ivRank.toFixed(0)}) — IV crush is working for this short (premium decaying faster).`,
+      });
+    }
+  }
+
   // -------------------- Resolve action by precedence --------------------
 
   let action: VerdictAction;

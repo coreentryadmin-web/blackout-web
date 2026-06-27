@@ -868,6 +868,7 @@ function buildVerdictContext(args: {
   if (enrichment.darkPoolBias != null) base.darkPoolBias = enrichment.darkPoolBias;
   if (enrichment.insiderNetSell != null) base.insiderNetSell = enrichment.insiderNetSell;
   if (enrichment.shortSqueezeRisk != null) base.shortSqueezeRisk = enrichment.shortSqueezeRisk;
+  // highIvCrushRisk (ivRank >= 70) is carried via enrichment.highIvCrushRisk above.
 
   return base;
 }

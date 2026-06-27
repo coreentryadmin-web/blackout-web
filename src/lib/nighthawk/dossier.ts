@@ -458,6 +458,7 @@ export async function fetchTickerDossier(
       fundamental_signals: fundamentalSignals,
       trading_halt: tradingHalt,
       risk_reversal_skew: riskReversalSkew,
+      short_days_to_cover: shortSi?.days_to_cover ?? null,
     },
     flowStreak,
     regime

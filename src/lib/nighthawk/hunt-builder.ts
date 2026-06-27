@@ -13,8 +13,9 @@ import {
 import { parseEntryPremiumPerShare } from "./play-constraints";
 import { optionsPlayWithinMaxDte } from "./agents/day-trade-filters";
 import { fetchMarketWideContext } from "./market-wide";
-import { rankCandidates, regimeContextFromMarket, scoreCandidate } from "./scorer";
+import { rankCandidates, regimeContextFromMarket, scoreCandidate, scoreFlowQuality } from "./scorer";
 import type { HuntMode, HuntPlay, HuntRequest, PlaybookPlay } from "./types";
+import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 
 export type HuntBuildResult = {
   ok: boolean;
@@ -130,11 +131,26 @@ function dossierPassesPrefilters(dossier: TickerDossier, filters: ReturnType<typ
   return true;
 }
 
+/** Returns tomorrow's date (YYYY-MM-DD) if the ticker appears in tomorrow_earnings, else null. */
+function earningsDateForTicker(
+  ticker: string,
+  tomorrowEarnings: Record<string, unknown>[],
+  tomorrow: string
+): string | null {
+  const sym = ticker.toUpperCase();
+  const hit = tomorrowEarnings.some(
+    (r) => String(r.ticker ?? r.symbol ?? "").toUpperCase() === sym
+  );
+  return hit ? tomorrow : null;
+}
+
 function rescoreDossier(
   dossier: TickerDossier,
   regime: ReturnType<typeof regimeContextFromMarket>,
-  streakWeight: number
+  streakWeight: number,
+  ctx: { today: string; tomorrow: string; tomorrow_earnings: Record<string, unknown>[] }
 ) {
+  const earningsDate = earningsDateForTicker(dossier.ticker, ctx.tomorrow_earnings, ctx.tomorrow);
   dossier.scored = scoreCandidate(
     dossier.ticker,
     dossier.flows,
@@ -154,6 +170,10 @@ function rescoreDossier(
       fundamental_ratios: dossier.fundamental_ratios,
       trading_halt: dossier.trading_halt,
       risk_reversal_skew: dossier.risk_reversal_skew,
+      short_days_to_cover: dossier.short_days_to_cover,
+      earnings_date: earningsDate,
+      today_ymd: ctx.today,
+      tomorrow_ymd: ctx.tomorrow,
     },
     dossier.flow_streak,
     regime,
@@ -213,7 +233,52 @@ export async function runHuntScan(request: HuntRequest): Promise<HuntBuildResult
     );
 
     for (const dossier of dossierList) {
-      rescoreDossier(dossier, regime, weights.streakWeight);
+      rescoreDossier(dossier, regime, weights.streakWeight, ctx);
+    }
+
+    // HELIX Postgres flow score: query flow_alerts for the last 4h per ticker and run
+    // the same scoreFlowQuality logic so the numeric flow signal from the HELIX tape
+    // contributes to the scored total (not just as injected text for Claude).
+    if (dbConfigured()) {
+      const helixFlowMap: Record<string, number> = {};
+      await Promise.all(
+        dossierList.map(async (dossier) => {
+          try {
+            const pgRows = await fetchRecentFlows({
+              ticker: dossier.ticker,
+              since_hours: 4,
+              min_premium: 50_000,
+              order: "premium",
+            });
+            if (pgRows.length > 0) {
+              // Map PG FlowRow shape to the generic Record<string, unknown>[] scoreFlowQuality expects.
+              const mapped = pgRows.map((r) => ({
+                total_premium: r.premium,
+                option_type: r.option_type,
+                expiry: r.expiry,
+                strike: r.strike,
+                ask_side_pct: r.ask_pct ?? null,
+                is_sweep: r.alert_rule?.toLowerCase().includes("sweep") ?? false,
+                is_opening: false, // PG rows lack explicit opening-trade flag
+              }));
+              const { score: helixScore } = scoreFlowQuality(mapped);
+              helixFlowMap[dossier.ticker] = helixScore;
+            }
+          } catch {
+            // Non-fatal: Postgres may be unavailable during overnight cron; skip gracefully.
+          }
+        })
+      );
+      // Apply HELIX flow bonus to each scored candidate (additive, capped within total 0–100).
+      for (const dossier of dossierList) {
+        const scored = dossier.scored;
+        if (!scored) continue;
+        const helixBonus = helixFlowMap[dossier.ticker] ?? 0;
+        if (helixBonus > 0) {
+          scored.flow_score = Math.min(38, scored.flow_score + helixBonus);
+          scored.score = Math.min(100, Math.max(0, scored.score + helixBonus));
+        }
+      }
     }
 
     const scoredList = dossierList.map((d) => d.scored!).filter(Boolean);

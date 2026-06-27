@@ -1,0 +1,3 @@
+﻿[hit-cron] /api/cron/cron-staleness-watchdog -> 200
+2026-06-27T14:01:06.429708161Z [INFO]  ok=true checked=16 problems=1 problem_keys=["nighthawk-playbook"] rth_stale=0 rth_stale_keys=[] alert_delivered=false self_heal_enabled=false self_healed=[]
+Starting Container

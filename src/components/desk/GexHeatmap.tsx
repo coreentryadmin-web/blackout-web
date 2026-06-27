@@ -1955,7 +1955,14 @@ function DarkPoolRail({ darkPoolLevels }: { darkPoolLevels: DarkPoolLevel[] | nu
 // derived from the per-strike HELIX overlay. Compact rail card.
 // ---------------------------------------------------------------------------
 
-function FlowSummary({ flowByStrike }: { flowByStrike: Record<string, FlowByStrike> | null }) {
+function FlowSummary({
+  flowByStrike,
+  overlaysLoaded,
+}: {
+  flowByStrike: Record<string, FlowByStrike> | null;
+  /** True once the heatmap response has arrived (distinguishes "loading" from "unavailable"). */
+  overlaysLoaded?: boolean;
+}) {
   const totals = useMemo(() => {
     let call = 0;
     let put = 0;
@@ -1968,7 +1975,22 @@ function FlowSummary({ flowByStrike }: { flowByStrike: Record<string, FlowByStri
     return { call, put, net: call - put };
   }, [flowByStrike]);
 
-  if (!flowByStrike || Object.keys(flowByStrike).length === 0) return null;
+  // When overlays have been loaded but this ticker has no flow overlay data, show a muted
+  // indicator instead of silently hiding the card — so the user knows the HELIX card area
+  // is working and this ticker simply isn't in the flow overlay allowlist.
+  if (!flowByStrike || Object.keys(flowByStrike).length === 0) {
+    if (!overlaysLoaded) return null; // still loading — stay quiet
+    return (
+      <div className="rounded-xl border border-white/5 bg-[rgba(8,9,14,0.35)] px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Badge tone="muted" size="sm">HELIX</Badge>
+          <span className="font-mono text-[11px] text-sky-300/50">
+            Flow overlay unavailable for this ticker
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   const bullish = totals.net >= 0;
   const gross = Math.abs(totals.call) + Math.abs(totals.put);

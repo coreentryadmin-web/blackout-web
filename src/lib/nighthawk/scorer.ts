@@ -10,6 +10,8 @@ import type { TechnicalCard } from "./technicals";
 export type NightHawkRegimeContext = {
   vix_iv_rank: number | null;
   tide_bias: TideBias;
+  /** Percentage of advancing issues (0–100). Used in breadth-regime multiplier. */
+  advance_pct?: number | null;
 };
 
 export type ScoredCandidate = {
@@ -27,6 +29,10 @@ export type ScoredCandidate = {
   catalyst_score?: number;
   /** Human-readable catalyst notes surfaced into the dossier/edition meta (e.g. "binary FDA event ahead"). */
   catalyst_flags?: string[];
+  /** Short-interest squeeze bonus (longs only, capped +5). */
+  short_interest_score?: number;
+  /** Earnings proximity penalty applied to catalyst_score. Set when earnings are tomorrow with matching expiry. */
+  earnings_risk?: boolean;
   conviction: string;
   regime_multiplier?: number;
   fundamental_block?: boolean;
@@ -38,18 +44,28 @@ export function regimeContextFromMarket(ctx: MarketWideContext): NightHawkRegime
   return {
     vix_iv_rank: ctx.vix_iv_rank,
     tide_bias: tideBias(ctx.tide),
+    advance_pct: ctx.market_breadth?.pct_advancing ?? null,
   };
 }
 
-/** Scale total score by VIX IV rank + market tide regime. */
+/** Scale total score by VIX IV rank + market tide regime + market breadth. Cap at 1.20. */
 export function computeRegimeMultiplier(regime?: NightHawkRegimeContext | null): number {
   if (!regime) return 1;
-  const { vix_iv_rank: vix, tide_bias: tide } = regime;
-  if (vix != null && vix > 70 && tide === "BEARISH") return 0.7;
-  if (vix != null && vix > 55 && tide === "BEARISH") return 0.85;
-  if (vix != null && vix < 25 && tide === "BULLISH") return 1.15;
-  if (vix != null && vix < 40 && tide === "BULLISH") return 1.1;
-  return 1;
+  const { vix_iv_rank: vix, tide_bias: tide, advance_pct: adv } = regime;
+  let m: number;
+  if (vix != null && vix > 70 && tide === "BEARISH") m = 0.7;
+  else if (vix != null && vix > 55 && tide === "BEARISH") m = 0.85;
+  else if (vix != null && vix < 25 && tide === "BULLISH") m = 1.15;
+  else if (vix != null && vix < 40 && tide === "BULLISH") m = 1.1;
+  else m = 1;
+
+  // Market breadth nudge: bullish breadth thrust (>75% advancing) or breadth collapse (<30%).
+  if (adv != null) {
+    if (adv > 75) m += 0.05;
+    else if (adv < 30) m -= 0.05;
+  }
+
+  return Math.min(1.20, m);
 }
 
 function normalizeRatioPct(v: number | null): number | null {
@@ -504,6 +520,23 @@ export function scoreSmartMoney(
   return Math.min(8, score);
 }
 
+/**
+ * Short-interest squeeze bonus for LONG plays only.
+ * Uses days_to_cover as the proxy for short float size (no short_float available from Polygon).
+ * days_to_cover > 5 ≈ moderate short (>20% float); > 10 ≈ heavy short (>30% float).
+ * Cap at +5 for longs; 0 for shorts (high short interest headwinds a short thesis less reliably).
+ */
+export function scoreShortInterest(
+  short_days_to_cover: number | null | undefined,
+  direction: "long" | "short"
+): number {
+  if (direction !== "long") return 0;
+  if (short_days_to_cover == null || !Number.isFinite(short_days_to_cover) || short_days_to_cover <= 0) return 0;
+  if (short_days_to_cover > 10) return 5;
+  if (short_days_to_cover > 5) return 3;
+  return 0;
+}
+
 export function scoreNewsCatalyst(dossier: {
   news_headlines?: string[];
   insider_buys?: number;
@@ -559,6 +592,14 @@ export function scoreCandidate(
     catalysts?: BenzingaCatalyst[] | null;
     trading_halt?: boolean;
     risk_reversal_skew?: number | null;
+    /** Short interest days-to-cover from Polygon. Used for squeeze bonus on long plays. */
+    short_days_to_cover?: number | null;
+    /** Nearest earnings date (YYYY-MM-DD). Used for binary-event penalty when play expiry is same day. */
+    earnings_date?: string | null;
+    /** Today's date (YYYY-MM-DD ET). Used for earnings proximity calculation. */
+    today_ymd?: string | null;
+    /** Tomorrow's date (YYYY-MM-DD ET). Used for earnings proximity calculation. */
+    tomorrow_ymd?: string | null;
   },
   flowStreak?: FlowStreak,
   regime?: NightHawkRegimeContext | null,
@@ -598,9 +639,32 @@ export function scoreCandidate(
     dossierExtras.fundamental_signals,
     flow.direction
   );
+  // Short-interest squeeze bonus (longs only, proxy via days_to_cover).
+  const shortInterestScore = scoreShortInterest(dossierExtras.short_days_to_cover, flow.direction);
+
   // Catalyst awareness — a SMALL, conservative nudge (binary-event penalty + positive-catalyst note).
   // Like the fundamental modifier, it layers on the base and never overrides flow direction.
   const catalyst = scoreCatalystAwareness(dossierExtras.catalysts, flow.direction);
+
+  // Earnings proximity penalty: if earnings are today or tomorrow-premarket and the nearest
+  // flow expiry is tomorrow, apply −6 to the catalyst score (floor behavior) and flag earnings_risk.
+  let earningsRisk = false;
+  let earningsPenalty = 0;
+  const earningsDate = dossierExtras.earnings_date;
+  const todayYmd = dossierExtras.today_ymd;
+  const tomorrowYmd = dossierExtras.tomorrow_ymd;
+  if (earningsDate && (earningsDate === todayYmd || earningsDate === tomorrowYmd)) {
+    // Check if any flow expires tomorrow (within 1 day).
+    const flowExpiries = flows.map((f) => String(f.expiry ?? f.expiration ?? "").slice(0, 10)).filter(Boolean);
+    const expiresNearEarnings = flowExpiries.some((exp) => exp === tomorrowYmd || exp === todayYmd);
+    if (expiresNearEarnings) {
+      earningsRisk = true;
+      earningsPenalty = -6;
+    }
+  }
+
+  const totalCatalystScore = Math.max(-CATALYST_CAP, Math.min(CATALYST_CAP, catalyst.score + earningsPenalty));
+
   const regimeMultiplier = computeRegimeMultiplier(regime);
   const total = Math.min(
     100,
@@ -614,7 +678,8 @@ export function scoreCandidate(
           smartMoneyScore +
           skewAdj +
           fundamentalScore +
-          catalyst.score) *
+          shortInterestScore +
+          totalCatalystScore) *
           regimeMultiplier
       )
     )
@@ -624,6 +689,10 @@ export function scoreCandidate(
     dossierExtras.fundamental_ratios ?? null,
     dossierExtras.fundamental_signals ?? null
   );
+
+  const catalystFlags = earningsRisk
+    ? [...catalyst.flags, "earnings tomorrow — binary risk, expiry into event"]
+    : catalyst.flags;
 
   return {
     ticker,
@@ -635,8 +704,10 @@ export function scoreCandidate(
     news_score: newsScore,
     smart_money_score: smartMoneyScore,
     fundamental_score: fundamentalScore,
-    catalyst_score: catalyst.score,
-    catalyst_flags: catalyst.flags,
+    short_interest_score: shortInterestScore,
+    catalyst_score: totalCatalystScore,
+    catalyst_flags: catalystFlags,
+    earnings_risk: earningsRisk,
     conviction: convictionFromScore(total),
     regime_multiplier: regimeMultiplier,
     fundamental_block: !fundCheck.ok,

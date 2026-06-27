@@ -12,7 +12,7 @@ import {
   uwCacheGet,
   uwCacheSet,
 } from "@/lib/providers/uw-shared-cache";
-import { fetchBenzingaNews } from "@/lib/providers/polygon";
+import { fetchBenzingaNews, type BenzingaCatalyst } from "@/lib/providers/polygon";
 import {
   fetchUwDarkPoolRecent,
   fetchUwEarningsPremarket,
@@ -33,6 +33,7 @@ export const GRID_KEYS = {
   economy: "grid:economy",
   sectors: "grid:sectors",
   movers: "grid:movers",
+  catalysts: "grid:catalysts",
 } as const;
 
 export const GRID_TTL = {
@@ -43,6 +44,7 @@ export const GRID_TTL = {
   economy: 3600,   // 1 hr — macro indicators update rarely
   sectors: 120,    // 2 min — sector performance during RTH
   movers: 90,      // 90s — movers change quickly during RTH
+  catalysts: 300,  // 5 min — corporate catalysts trickle in slowly
 } as const;
 
 // ── PANEL 4 — Analyst Actions ─────────────────────────────────────────────────
@@ -414,4 +416,79 @@ export async function readGridMovers(): Promise<GridMoversSnapshot | null> {
   );
   const s = snapshot as GridMoversSnapshot;
   return s.gainers != null ? s : null;
+}
+
+// ── PANEL 11 — Catalysts ──────────────────────────────────────────────────────
+
+/** A single market-wide corporate catalyst event for the Grid panel. */
+export type GridCatalystItem = {
+  /** Source channel (e.g. "fda", "guidance", "m&a"). */
+  channel: string;
+  /** Coarse catalyst type — same taxonomy as BenzingaCatalyst["type"]. */
+  type: BenzingaCatalyst["type"];
+  /** Article title / brief description. */
+  title: string;
+  /** ISO timestamp of publication. */
+  published: string;
+};
+
+export type GridCatalystsSnapshot = {
+  as_of: string;
+  items: GridCatalystItem[];
+};
+
+const GRID_CATALYST_CHANNELS =
+  "m&a,guidance,short sellers,insider trades,fda,buybacks,offerings,ipos";
+
+function catalystTypeFromChannel(channels: string[]): BenzingaCatalyst["type"] {
+  const set = channels.map((c) => c.toLowerCase());
+  const has = (needle: string) => set.some((c) => c.includes(needle));
+  if (has("fda")) return "binary";
+  if (has("guidance")) return "guidance";
+  if (has("m&a")) return "m&a";
+  if (has("insider")) return "insider";
+  if (has("buyback")) return "buyback";
+  if (has("offering")) return "offering";
+  if (has("short")) return "short";
+  if (has("ipo")) return "ipo";
+  return "other";
+}
+
+async function fetchCatalysts(): Promise<GridCatalystsSnapshot> {
+  try {
+    const articles = await fetchBenzingaNews(20, { channels: GRID_CATALYST_CHANNELS });
+    const items: GridCatalystItem[] = articles
+      .map((a) => ({
+        channel: a.channels[0] ?? "",
+        type: catalystTypeFromChannel(a.channels),
+        title: (a.title || a.teaser || "").slice(0, 200),
+        published: a.published,
+      }))
+      .filter((c) => c.title)
+      .sort((a, b) => (b.published > a.published ? 1 : b.published < a.published ? -1 : 0))
+      .slice(0, 20);
+    return { as_of: new Date().toISOString(), items };
+  } catch {
+    return { as_of: new Date().toISOString(), items: [] };
+  }
+}
+
+export async function warmGridCatalysts(): Promise<GridCatalystsSnapshot | null> {
+  const snapshot = await fetchCatalysts();
+  if (!snapshot.items.length) return null;
+  const redis = await getUwCacheRedis();
+  await uwCacheSet(redis, GRID_KEYS.catalysts, GRID_TTL.catalysts, snapshot);
+  return snapshot;
+}
+
+export async function readGridCatalysts(): Promise<GridCatalystsSnapshot | null> {
+  const redis = await getUwCacheRedis();
+  const snapshot = await uwCacheGet(
+    redis,
+    GRID_KEYS.catalysts,
+    GRID_TTL.catalysts,
+    () => fetchCatalysts(),
+  );
+  const s = snapshot as GridCatalystsSnapshot;
+  return s.items?.length ? s : null;
 }

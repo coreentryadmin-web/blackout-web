@@ -1,0 +1,49 @@
+﻿Starting Container
+ ✓ Ready in 192ms
+   ▲ Next.js 15.5.19
+   - Local:        http://localhost:8080
+   - Network:      http://0.0.0.0:8080
+
+ ✓ Starting...
+Starting Container
+   ▲ Next.js 15.5.19
+   - Local:        http://localhost:8080
+   - Network:      http://0.0.0.0:8080
+
+ ✓ Starting...
+ ✓ Ready in 184ms
+Starting Container
+   ▲ Next.js 15.5.19
+   - Local:        http://localhost:8080
+   - Network:      http://0.0.0.0:8080
+
+ ✓ Starting...
+ ✓ Ready in 325ms
+   ▲ Next.js 15.5.19
+   - Local:        http://localhost:8080
+   - Network:      http://0.0.0.0:8080
+
+ ✓ Starting...
+ ✓ Ready in 240ms
+Starting Container
+ ✓ Ready in 397ms
+   - Network:      http://0.0.0.0:8080
+
+ ✓ Starting...
+   ▲ Next.js 15.5.19
+   - Local:        http://localhost:8080
+Starting Container
+[uw-socket] initialized — multiplex flow_alerts, market_tide, off_lit_trades, interval_flow, trading_halts
+[polygon-socket] initialized
+[options-socket] initialized — reconcile every 30s, cap 1x1000 contracts
+[uw-socket] multiplex connected — joining channels
+[polygon-socket] indices connected
+[polygon-socket] indices authenticated — subscribing
+[polygon-gex] 0 I:SPX contracts for 2026-06-27 @ 7354.02 via api.massive.com — GEX walls will be empty. Verify POLYGON_API_KEY is a valid api.massive.com key with options-chain access (set POLYGON_API_BASE if your key is from a different provider, e.g. https://api.polygon.io).
+[uw-gex-fallback] SPX spot-exposures/expiry-strike (0DTE) returned 0 usable strikes
+[uw-gex] SPX ladder from greek-exposure/strike (cumulative): 805 strikes
+[polygon-gex] fetchHeatmapBand(I:SPX) truncated: hit 16-page guard with next_url still set — chain incomplete, walls/OI/IV understated. Raise the page guard or paginate fully if this recurs.
+[market/flows] postgres ok — 60 rows (min_premium=200000, since_hours=168)
+[notify] DISCORD_OPS_WEBHOOK_URL not set — ops alerts will post to play channel
+[notify] ops alert DROPPED — neither DISCORD_OPS_WEBHOOK_URL nor DISCORD_PLAY_WEBHOOK_URL is set. Lost alert: ⚠️ Cron health: 1 job(s) need attention
+[cron/cron-staleness-watchdog] ALERT NOT DELIVERED for 1 stale/failed cron(s) (nighthawk-playbook) — Discord webhook unset or unreachable. Set DISCORD_OPS_WEBHOOK_URL.

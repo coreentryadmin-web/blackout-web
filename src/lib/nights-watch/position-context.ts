@@ -129,6 +129,19 @@ export type PositionContext = {
    * sharp move up could trigger a short squeeze — supportive of a long call / short put.
    */
   shortSqueezeRisk?: boolean | null;
+
+  /**
+   * Current IV rank (0–100) for this ticker, from the dossier. Optional.
+   * Used by the iv_elevated_long_risk, iv_low_short_risk, and iv_crush_in_progress signals.
+   */
+  ivRank?: number | null;
+
+  /**
+   * IV rank recorded when the position was entered (if available from the dossier/stored data).
+   * When present, used to detect a meaningful drop in IV rank since entry (iv_crush_in_progress).
+   * Optional — signal skipped when absent (honesty rule).
+   */
+  entryIv?: number | null;
 };
 
 const EMPTY_CONTEXT: PositionContext = {
