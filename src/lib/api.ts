@@ -590,6 +590,8 @@ export type PulseStreamSnapshot = {
   tide?: { call_premium: number; put_premium: number; net: number; bias: string };
   /** UW dark-pool snapshot — pushed from the server-side darkPoolStore when fresh. */
   darkPool?: Record<string, unknown>;
+  /** UW interval-flow snapshot — pushed from the server-side intervalFlowStore when fresh. */
+  intervalFlow?: { rows: Record<string, unknown>[]; updatedAt: number };
   t?: number;
 };
 

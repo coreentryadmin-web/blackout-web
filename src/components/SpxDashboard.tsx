@@ -11,6 +11,7 @@ import {
   SpxIntelStrip,
   SpxUnifiedTape,
   SpxDarkPoolCard,
+  SpxIntervalFlowPanel,
 } from "@/components/desk/SpxDeskPanels";
 import { SpxDayPerformancePanel } from "@/components/desk/SpxDayPerformancePanel";
 import { SpxTrackRecordPanel } from "@/components/desk/SpxTrackRecordPanel";
@@ -38,7 +39,7 @@ class SpxPanelErrorBoundary extends React.Component<
 export function SpxDashboard() {
   const { isLoaded, user } = useUser();
   const tier = (user?.publicMetadata as { tier?: string } | undefined)?.tier;
-  const { desk, live, refreshing, deskLoading, sessionActive } = useMergedDesk();
+  const { desk, live, refreshing, deskLoading, sessionActive, intervalFlow } = useMergedDesk();
 
   if (isLoaded && tier && tier !== "premium" && tier !== "admin") {
     return (
@@ -102,6 +103,7 @@ export function SpxDashboard() {
             <SpxGexLadder desk={desk} live={live} refreshing={refreshing} />
             <SpxUnifiedTape desk={desk} live={live} refreshing={refreshing} />
             <SpxDarkPoolCard desk={desk} live={live} />
+            <SpxIntervalFlowPanel intervalFlow={intervalFlow} live={live} />
           </aside>
         </SpxPanelErrorBoundary>
 

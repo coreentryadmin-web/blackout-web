@@ -363,6 +363,50 @@ export function SpxUnifiedTape({ desk, live, refreshing }: DeskProps) {
   );
 }
 
+type IntervalFlowRow = { strike: number; call_premium: number; put_premium: number };
+
+/** Mini-table showing the latest interval-flow WS data (strike-level call/put premium). */
+export function SpxIntervalFlowPanel({
+  intervalFlow,
+  live,
+}: {
+  intervalFlow?: { rows: Record<string, unknown>[]; updatedAt: number } | null;
+  live?: boolean;
+}) {
+  const rows = (intervalFlow?.rows ?? []) as IntervalFlowRow[];
+  const sorted = [...rows].sort((a, b) => b.call_premium + b.put_premium - (a.call_premium + a.put_premium));
+  return (
+    <Panel title="Interval Flow" subtitle="strike-level · live" accent="spx-panel-cyan" live={live}>
+      {!live || !sorted.length ? (
+        <p className="font-mono text-[11px] text-cyan-400 py-2">No interval flow data</p>
+      ) : (
+        <ul className="spx-desk-list">
+          {sorted.slice(0, 8).map((r, i) => {
+            const total = r.call_premium + r.put_premium;
+            const bias = r.call_premium >= r.put_premium ? "call" : "put";
+            return (
+              <li key={`${r.strike}-${i}`} className="spx-desk-list-row">
+                <span className="font-mono text-xs text-sky-300 tabular-nums w-14 shrink-0">
+                  {r.strike.toFixed(0)}
+                </span>
+                <span className={clsx("font-mono text-[11px] tabular-nums", bias === "call" ? "text-bull" : "text-bear-text")}>
+                  C {fmtPremium(r.call_premium)}
+                </span>
+                <span className="font-mono text-[11px] text-cyan-400 tabular-nums ml-auto">
+                  P {fmtPremium(r.put_premium)}
+                </span>
+                <span className="font-mono text-[10px] text-white/40 tabular-nums ml-2 hidden sm:inline">
+                  {fmtPremium(total)}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
 export function OdteFlowBar({ desk, live }: { desk?: SpxDeskPayload; live?: boolean }) {
   const calls = desk?.flow_0dte_call_premium ?? 0;
   const puts = desk?.flow_0dte_put_premium ?? 0;
