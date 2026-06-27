@@ -62,8 +62,9 @@ function nearestWall(
 
 /**
  * Score HELIX 0DTE institutional sweep alignment from desk.spx_flows.
- * Filters for SPX/SPY sweeps expiring today, alerted within the last 30 minutes,
- * then scores net call vs put premium: ±4 (mild skew ≥1.5:1) or ±8 (strong ≥3:1).
+ * Filters for SPX/SPY sweeps expiring today, alerted within the last 30 minutes.
+ * Tiered by size + ratio: ±10 (mild: ≥$500K + 1.5:1) or ±15 (strong: ≥$1M + 3:1).
+ * Institutional 0DTE sweeps are the highest-conviction same-day signal in the engine.
  * Returns 0 if there is insufficient flow data.
  */
 function scoreHelixFlowAlignment(
@@ -103,10 +104,12 @@ function scoreHelixFlowAlignment(
 
   const bullish = callPrem > putPrem;
   let w = 0;
-  if (ratio >= 3) {
-    w = bullish ? 8 : -8;
+  // Strong: ≥$1M total + 3:1 ratio — large institutional sweep conviction
+  // Mild: ≥$500K total + 1.5:1 ratio — directional but less conclusive
+  if (total >= 1_000_000 && ratio >= 3) {
+    w = bullish ? 15 : -15;
   } else if (ratio >= 1.5) {
-    w = bullish ? 4 : -4;
+    w = bullish ? 10 : -10;
   }
 
   if (w !== 0) {
@@ -159,13 +162,16 @@ function buildLevels(
   const targetPts = playDynamicTargetPts(desk.vix);
 
   if (action === "BUY_CALL" || (action === "HOLD" && bias === "bullish")) {
-    stop = support?.strike ?? desk.lod ?? desk.vwap ?? null;
+    // 3-pt buffer below GEX support wall — price wicks through walls before bouncing;
+    // at-the-wall stops get hit by head-fakes then resume. LOD/VWAP fallback has no buffer.
+    stop = support != null ? support.strike - 3 : (desk.lod ?? desk.vwap ?? null);
     target = price + targetPts;
-    if (stop != null) invalidation = `Below ${stop.toFixed(0)} (GEX support / LOD)`;
+    if (stop != null) invalidation = `Below ${stop.toFixed(0)} (GEX support wall − 3pt)`;
   } else if (action === "BUY_PUT" || (action === "HOLD" && bias === "bearish")) {
-    stop = resistance?.strike ?? desk.hod ?? desk.vwap ?? null;
+    // 3-pt buffer above GEX resistance wall for same reason.
+    stop = resistance != null ? resistance.strike + 3 : (desk.hod ?? desk.vwap ?? null);
     target = price - targetPts;
-    if (stop != null) invalidation = `Above ${stop.toFixed(0)} (GEX resistance / HOD)`;
+    if (stop != null) invalidation = `Above ${stop.toFixed(0)} (GEX resistance wall + 3pt)`;
   }
 
   return { entry, stop, target, invalidation, support, resistance };
@@ -361,7 +367,8 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
   }
 
   const flowNet = desk.flow_0dte_net;
-  if (flowNet != null && Math.abs(flowNet) > 50_000) {
+  // Raise threshold to $150K — $50K is one mid-size retail order and is noise for SPX.
+  if (flowNet != null && Math.abs(flowNet) > 150_000) {
     const w = flowNet > 0 ? 14 : -14;
     score += w;
     factors.push({
@@ -372,8 +379,10 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
   }
 
   const dpBias = desk.dark_pool?.bias;
+  // Dark pool is a multi-day signal (block trades negotiated days ago) — not same-day alpha.
+  // Reduced from ±8 to ±3 so it can't tip borderline setups on its own.
   if (dpBias && dpBias !== "neutral" && dpBias !== "mixed") {
-    const w = dpBias === "bullish" ? 8 : -8;
+    const w = dpBias === "bullish" ? 3 : -3;
     score += w;
     factors.push({
       label: "Dark pool",
@@ -427,7 +436,8 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
   // ISSUE-05: The `if (Math.abs(w) >= 4)` guard was always true (smallest w is ±4).
   // Removed the dead conditional; just apply the weight directly.
   if (desk.tick != null && Number.isFinite(desk.tick)) {
-    const w = desk.tick > 200 ? 8 : desk.tick < -200 ? -8 : desk.tick > 0 ? 4 : -4;
+    // Extreme TICK (>600/< -600) = broad NYSE sweep — strong 0DTE confirmation.
+    const w = desk.tick > 600 ? 10 : desk.tick > 200 ? 8 : desk.tick < -600 ? -10 : desk.tick < -200 ? -8 : desk.tick > 0 ? 4 : -4;
     score += w;
     factors.push({
       label: "TICK",
@@ -450,8 +460,9 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
   }
 
   // C8: NaN guard for add.
+  // Raised threshold from ±100 to ±500 — ADD fluctuates ±200 routinely without directional implication.
   if (desk.add != null && Number.isFinite(desk.add)) {
-    const w = desk.add > 100 ? 5 : desk.add < -100 ? -5 : 0;
+    const w = desk.add > 500 ? 5 : desk.add < -500 ? -5 : 0;
     if (w) {
       score += w;
       factors.push({
@@ -465,7 +476,9 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
   const leaders = desk.leader_stocks ?? [];
   if (leaders.length) {
     const avg = leaders.reduce((s, l) => s + l.change_pct, 0) / leaders.length;
-    const w = avg > 0.35 ? 8 : avg < -0.35 ? -8 : avg > 0 ? 3 : -3;
+    // Raised threshold from 0.35% to 0.6% — 0.35% move across mega-caps is routine drift.
+    // Removed weak ±3 tier (avg near 0) since near-flat leadership is noise for 0DTE.
+    const w = avg > 0.6 ? 6 : avg < -0.6 ? -6 : 0;
     score += w;
     factors.push({
       label: "Mega-caps",
@@ -475,7 +488,8 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
   }
 
   const { bull, bear } = tapeSkew(desk);
-  if (bull + bear > 100_000) {
+  // Raised minimum notional from $100K to $250K to filter retail noise in SPX tape.
+  if (bull + bear > 250_000) {
     const w = bull > bear * 1.25 ? 12 : bear > bull * 1.25 ? -12 : 0;
     if (w) {
       score += w;
@@ -540,6 +554,31 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
         detail: `VIX contango: 9d ${vt.vix9d.toFixed(1)} < 3m ${vt.vix3m.toFixed(1)} — calm near-term structure`,
       });
     }
+  }
+
+  // Session time-of-day: 0DTE win rate varies sharply by session window.
+  // Morning ORB window (9:50-11:30) and power hour (3:00-3:30) are highest quality.
+  // Lunch chop (11:30-13:00) is lowest quality — raise the effective bar by penalizing score.
+  const nowEtMins = (() => {
+    const fmt = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "numeric", hour12: false });
+    const parts = fmt.formatToParts(new Date());
+    const h = parseInt(parts.find(p => p.type === "hour")?.value ?? "0", 10);
+    const m = parseInt(parts.find(p => p.type === "minute")?.value ?? "0", 10);
+    return h * 60 + m;
+  })();
+  const etCk = (h: number, m: number) => h * 60 + m;
+  let sessionW = 0;
+  let sessionLabel = "";
+  if (nowEtMins >= etCk(9, 50) && nowEtMins < etCk(11, 30)) {
+    sessionW = 6; sessionLabel = "Morning ORB window";
+  } else if (nowEtMins >= etCk(11, 30) && nowEtMins < etCk(13, 0)) {
+    sessionW = -8; sessionLabel = "Lunch chop — low quality window";
+  } else if (nowEtMins >= etCk(15, 0) && nowEtMins < etCk(15, 30)) {
+    sessionW = 6; sessionLabel = "Power hour prime window";
+  }
+  if (sessionW !== 0) {
+    score += sessionW;
+    factors.push({ label: "Session window", weight: sessionW, detail: sessionLabel });
   }
 
   score += scoreHelixFlowAlignment(desk, factors);

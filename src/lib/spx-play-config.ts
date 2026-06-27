@@ -111,7 +111,8 @@ export function playForceExitEtHour(): number {
 }
 
 export function playForceExitEtMin(): number {
-  return num(process.env.SPX_PLAY_FORCE_EXIT_ET_MIN, 50);
+  // 3:45 PM — moved from 3:50: the last 15 min has extreme theta/spread collapse on 0DTE.
+  return num(process.env.SPX_PLAY_FORCE_EXIT_ET_MIN, 45);
 }
 
 /**
@@ -136,10 +137,11 @@ export function warnIfPlayTimingMisconfigured(): void {
  * blocked during this window (WATCH is still ok). Default 12 min → no BUY until 9:42.
  * At 9:40 only 2 completed 3m bars exist so MTF is thin; 12 minutes captures real
  * continuation breakouts while still filtering the loudest 9:30–9:42 false moves.
+ * 20 min (→ 9:50 earliest entry) gives the true ORB time to be confirmed; 12 was too early.
  * Set to 30 for a full opening-range bar strategy, or 0 to disable the guard.
  */
 export function playOpeningRangeMinutes(): number {
-  return num(process.env.SPX_PLAY_OPENING_RANGE_MINUTES, 12);
+  return num(process.env.SPX_PLAY_OPENING_RANGE_MINUTES, 20);
 }
 
 /**
