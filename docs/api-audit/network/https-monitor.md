@@ -34,3 +34,16 @@ Automated TLS, availability, security-header, redirect, and CDN health checks fo
 ### Monitor calibration note
 - The Step 2 availability probe should send `Accept: text/html` for page routes so protected routes report their true **307→/sign-in** instead of a misleading 404. APIs correctly return 401 (already not counted as failures — only 5xx is). No code/app defect found this run.
 ---
+
+## 2026-06-27 07:21 ET
+### TLS: cert expires 2026-09-14 — 79 days remaining — **PASS** (CN=blackouttrades.com, issuer Google Trust Services WE1)
+### Availability: 12/12 routes healthy — **PASS**
+- Landing 200 (554ms), Sign In 200 (258ms), Sign Up 200 (301ms), /api/health 200 (139ms)
+- Protected page routes followed to **200 sign-in** (task file now sends `Accept: text/html` → true 307→/sign-in chain): /dashboard 200 (344ms), /flows 200 (330ms), /heatmap 200 (405ms), /grid 200 (159ms), /nighthawk 200 (334ms)
+- Auth-gated APIs 401 as intended (~134–159ms): /api/market/spx/pulse, /api/market/gex-positioning, /api/market/flows
+- **No 5xx. No P0. No slow routes (all <600ms).**
+### Security Headers: 6/6 present — **PASS** (HSTS max-age=63072000 +preload, X-Content-Type-Options nosniff, X-Frame-Options SAMEORIGIN, Referrer-Policy strict-origin-when-cross-origin, CSP default-src 'self', Permissions-Policy camera=())
+- WARN (unchanged, low priority): `X-Powered-By: Next.js` leaking → harden with `poweredByHeader: false` in next.config. `Server: cloudflare` expected (CF edge).
+### Redirects: **PASS** — http→https 301 → https://www.blackouttrades.com/ ; /pricing 307 → /#pricing
+### CDN: **PASS** — Cloudflare edge (CF-Ray a12411551a60c643-SEA), Railway request ID present, root Cache-Control `private, no-cache, no-store, max-age=0, must-revalidate`. The Step-5 "API may be cached" WARN is a false positive: the unauthenticated SPX-pulse probe 401s with no Cache-Control header, so the check has nothing to read — not a real caching exposure.
+---
