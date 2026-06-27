@@ -284,9 +284,12 @@ export async function fetchTickerEarnings(ticker: string): Promise<GridEarningsT
     const dateStr = String(r.report_date ?? r.earnings_date ?? r.date ?? r.period_end_date ?? "").slice(0, 10);
     const rev = r.revenue ?? r.total_revenue ?? r.net_revenue ?? null;
     const rawQuarter = String(r.fiscal_quarter ?? r.quarter ?? r.period ?? "");
-    const quarter = rawQuarter || dateToQuarter(dateStr);
+    // UW provides ending_fiscal_quarter (period end date) — use for quarter label, not report_date
+    const periodDateStr = String(r.ending_fiscal_quarter ?? r.fiscal_quarter_end ?? "").slice(0, 10);
+    const quarter = rawQuarter || (periodDateStr ? dateToQuarter(periodDateStr) : dateToQuarter(dateStr));
     const whenRaw = String(r.report_time ?? r.when ?? r.time ?? "").toLowerCase();
-    const when: "premarket" | "afterhours" | null = whenRaw.includes("pre") ? "premarket" : whenRaw.includes("after") || whenRaw.includes("ah") ? "afterhours" : null;
+    // UW uses "postmarket" for after-hours
+    const when: "premarket" | "afterhours" | null = whenRaw.includes("pre") ? "premarket" : whenRaw.includes("after") || whenRaw.includes("ah") || whenRaw.includes("post") ? "afterhours" : null;
     return {
       quarter,
       date: dateStr,
