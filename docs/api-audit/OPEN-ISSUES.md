@@ -1,5 +1,13 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-27 08:20 ET
+Last updated: 2026-06-27 12:13 ET
+
+> 12:13 run (Saturday, market closed): **1 NET-NEW P1 (P1-A)** — regime + flow-anomaly features
+> are dead end-to-end (no writer cron exists; the "market-regime-detector cron" named in code
+> doesn't exist) yet have LIVE consumers: FlowAnomalyBanner on the paid /flows page +
+> nighthawk-morning-confirm via /api/platform/intel. Prior runs only caught the auth-gap angle
+> (P2-A); this run traced the missing writers + live consumers. Carried items re-verified:
+> tsc 0 errors, db/redis safety intact, veto neutered, #97/#100/#101/#102 fixed, all Railway
+> services Online. P2-C SPX ledger stays WATCH pending Monday 2026-06-29 post-RTH re-query.
 
 > 08:20 run: full re-audit from scratch — NO new issues, NO regressions. Every item below
 > re-verified live this run (SPX ledger still 0/0 & veto confirmed neutered + `SPX_OPTION_CHAIN_REQUIRED`
@@ -11,7 +19,22 @@ Last updated: 2026-06-27 08:20 ET
 
 ## 🔴 P0 — none open
 
-## 🟠 P1 — none active
+## 🟠 P1 — open
+- [ ] **P1-A** Regime + flow-anomaly features dead end-to-end, but with LIVE consumers.
+  `market_regime` and `flow_anomalies` have **no writer anywhere** — only INSERTs are the
+  cron-gated POST handlers of their own routes (`market/regime/route.ts:53`,
+  `market/anomalies/route.ts:46`), and nothing calls those POSTs. The "market-regime-detector
+  cron" named in `regime/route.ts:2` does **not exist** (no `src/app/api/cron/` route, no Railway
+  cron job — confirmed in `railway status`). Tables created only in `migrations/004_god_tier_features.sql`.
+  **Live consumers that silently degrade:** (1) `FlowAnomalyBanner` is mounted on the paid
+  `/flows` page (`src/app/(site)/flows/page.tsx:41`; fetch at `FlowAnomalyBanner.tsx:59`) → banner
+  can never render; (2) `nighthawk-morning-confirm` cron reads regime+anomalies via
+  `/api/platform/intel` (`cron/nighthawk-morning-confirm/route.ts:110`), which defaults
+  `currentRegime="UNKNOWN"`/0 anomalies forever (`platform/intel/route.ts:72,89`) → NH morning
+  confirm runs with blank regime context. Violates "values live/correct/grounded, never blank".
+  **Fix:** build the detector cron writers (or POST callers), OR remove the dead consumers if the
+  features are abandoned. _(found 2026-06-27 12:13 — supersedes the auth-only framing of P2-A for
+  these two tables; P2-A remains for the anomalies auth-boundary specifically)_
 
 ## 🟡 P2 — open
 - [ ] **P2-C ⏳ WATCH** SPX play ledger empty all-time (`spx_open_play`=0, `spx_play_outcomes`=0, verified live in prod). **Most likely EXPECTED, not a bug:** the fetch-bug fix `6f00a5e` ("query SPX chain root + don't let chain gate veto entry") merged **2026-06-26 16:20 ET, ~20 min AFTER Friday's RTH close** — so Friday ran the OLD code and NO trading session has run with the fix. Veto confirmed disabled (`spx-play-config.ts:404`); diagnostic tracing already committed (`63567cb`); cron path correctly wired (`spx-evaluator.ts:41` → `evaluateSpxPlay({mutate:true})`). **VERIFY Mon 2026-06-29 after RTH:** re-query prod `spx_open_play` (should get rows) + `spx_play_outcomes` (populates on close). IF still 0 after Monday's full session → escalate to P1 and read the `63567cb` diagnostic logs for the rejecting entry gate. Do NOT re-touch the veto. _(found 2026-06-27 07:10; corrected down from a too-strong P1 after git-timing check)_
