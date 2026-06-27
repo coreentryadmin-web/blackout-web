@@ -461,7 +461,6 @@ const BENZINGA_CATALYST_CHANNELS =
 function catalystTypeFromChannels(channels: string[]): BenzingaCatalyst["type"] {
   const set = channels.map((c) => c.toLowerCase());
   const has = (needle: string) => set.some((c) => c.includes(needle));
-  // FDA decisions are the canonical binary event — surface first so the scorer can flag it.
   if (has("fda")) return "binary";
   if (has("guidance")) return "guidance";
   if (has("m&a") || has("m&amp;a") || has("merger") || has("acquisition")) return "m&a";
@@ -474,35 +473,59 @@ function catalystTypeFromChannels(channels: string[]): BenzingaCatalyst["type"] 
 }
 
 /**
- * Recent corporate catalysts for a ticker via the free Benzinga catalyst channels — ONE call,
- * sorted most-recent-first. Cached per-ticker (NEWS TTL) so concurrent consumers share one pull.
- * Returns [] on any failure so the dossier degrades gracefully (never throws into the batch).
+ * Classify catalyst type from article title text — used as fallback when the Massive/Benzinga
+ * API returns articles with empty channels[] (the tickers.any_of filter strips channel metadata).
+ */
+function catalystTypeFromTitle(title: string): BenzingaCatalyst["type"] {
+  const t = title.toLowerCase();
+  if (t.includes("fda") || t.includes("approval") || t.includes("pdufa") || t.includes("clearance")) return "binary";
+  if (t.includes("guidance") || t.includes("outlook") || t.includes("forecast") || t.includes("raises") || t.includes("lowers") || t.includes("cuts")) return "guidance";
+  if (t.includes("merger") || t.includes("acqui") || t.includes("takeover") || t.includes("buyout") || t.includes(" deal")) return "m&a";
+  if (t.includes("insider") || t.includes("ceo buy") || t.includes("cfo buy") || t.includes("director buy") || t.includes("10-k") || t.includes("form 4")) return "insider";
+  if (t.includes("buyback") || t.includes("repurchase") || t.includes("share repurch")) return "buyback";
+  if (t.includes("offering") || t.includes("secondary") || t.includes("dilut") || t.includes("public offering")) return "offering";
+  if (t.includes("short") && (t.includes("seller") || t.includes("report") || t.includes("position"))) return "short";
+  if (t.includes("ipo") || t.includes("initial public")) return "ipo";
+  return "other";
+}
+
+/**
+ * Recent corporate catalysts for a ticker.
+ * Fetches all Benzinga news for the ticker (no channel filter — combining ticker+channel on the
+ * Massive API returns 0), then classifies each article by title text. Filters out "other" type
+ * articles to surface only actionable catalyst events.
  */
 export async function fetchBenzingaCatalysts(
   ticker: string,
   limit = 8
 ): Promise<BenzingaCatalyst[]> {
   const sym = ticker.toUpperCase();
-  return serverCache(`benzinga:catalysts:${sym}`, TTL.NEWS, async () => {
+  return serverCache(`benzinga:catalysts:v2:${sym}`, TTL.NEWS, async () => {
     try {
-      const articles = await fetchBenzingaNews(limit, {
-        ticker: sym,
-        channels: BENZINGA_CATALYST_CHANNELS,
-      });
+      const articles = await fetchBenzingaNews(Math.min(limit * 4, 50), { ticker: sym });
       return articles
-        .map((a) => ({
-          channel: a.channels[0] ?? "",
-          type: catalystTypeFromChannels(a.channels),
-          title: a.title,
-          published: a.published,
-        }))
-        .filter((c) => c.title)
+        .map((a) => {
+          const channelType = catalystTypeFromChannels(a.channels);
+          const type = channelType !== "other" ? channelType : catalystTypeFromTitle(a.title);
+          return {
+            channel: a.channels[0] ?? catalystTypeLabel(type),
+            type,
+            title: a.title,
+            published: a.published,
+          };
+        })
+        .filter((c) => c.title && c.type !== "other")
         .sort((a, b) => (b.published > a.published ? 1 : b.published < a.published ? -1 : 0))
         .slice(0, limit);
     } catch {
       return [];
     }
   });
+}
+
+function catalystTypeLabel(type: BenzingaCatalyst["type"]): string {
+  const map: Record<string, string> = { binary: "FDA", guidance: "Guidance", "m&a": "M&A", insider: "Insider", buyback: "Buyback", offering: "Offering", short: "Short Sellers", ipo: "IPO" };
+  return map[type] ?? "";
 }
 
 /**

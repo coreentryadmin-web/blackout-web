@@ -3,7 +3,7 @@ import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { polygonConfigured } from "@/lib/providers/config";
 import { readGridAnalysts, classifyAnalystAction } from "@/lib/providers/grid";
-import { fetchBenzingaAnalystRatings } from "@/lib/providers/polygon";
+import { fetchBenzingaNews } from "@/lib/providers/polygon";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,18 +37,22 @@ export async function GET(req: NextRequest) {
   try {
     const ticker = req.nextUrl.searchParams.get("ticker")?.toUpperCase().trim() || undefined;
 
-    // Per-ticker: direct Benzinga fetch (market-wide cache only covers the last 200 articles and
-    // filters by tickers[] field which may miss the stock). Direct call is authoritative.
+    // Per-ticker: fetch all Benzinga articles for the ticker (tickers.any_of=TICKER), then
+    // filter locally for analyst-type actions. Using the combined tickers+channels filter on
+    // the Massive API backend returns 0 results — the channel filter breaks the ticker filter.
+    // Fetching broadly and filtering on action type locally is more reliable.
     if (ticker) {
-      const articles = await fetchBenzingaAnalystRatings(ticker, 20);
-      const actions = articles.map((a) => ({
-        id: a.id,
-        title: a.title,
-        action: classifyAnalystAction(a.title, a.channels),
-        tickers: a.tickers.slice(0, 6),
-        published: a.published,
-        url: a.url,
-      }));
+      const articles = await fetchBenzingaNews(50, { ticker });
+      const actions = articles
+        .map((a) => ({
+          id: a.id,
+          title: a.title,
+          action: classifyAnalystAction(a.title, a.channels),
+          tickers: a.tickers.slice(0, 6),
+          published: a.published,
+          url: a.url,
+        }))
+        .filter((a) => a.action !== "other");
       return NextResponse.json(
         { available: true, as_of: new Date().toISOString(), actions, ticker },
         { status: 200, headers: noStore },
