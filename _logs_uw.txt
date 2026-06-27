@@ -1,3 +1,0 @@
-﻿Starting Container
-[hit-cron] /api/cron/uw-cache-refresh -> 200
-2026-06-27T14:00:53.914695052Z [INFO]  ok=true refreshed=24 total=24

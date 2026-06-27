@@ -8,4 +8,5 @@ out/
 build/
 .DS_Store
 *.log
+_logs_*.txt
 tsconfig.tsbuildinfo
