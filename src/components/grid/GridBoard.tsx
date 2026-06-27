@@ -12,6 +12,7 @@ import { GridCongressPanel } from "./GridCongressPanel";
 import { GridEconomyPanel } from "./GridEconomyPanel";
 import { GridCatalystsPanel } from "./GridCatalystsPanel";
 import { GridGexPanel } from "./GridGexPanel";
+import { GridSectorHeatmapPanel } from "./GridSectorHeatmapPanel";
 
 /**
  * GridBoard — the BlackOut Grid masonry (Phases 0-4). Client board that owns layout: a full-width
@@ -56,6 +57,9 @@ export function GridBoard() {
       {/* Row 5 — corporate catalysts + GEX dealer regime */}
       <GridCatalystsPanel />
       <GridGexPanel />
+
+      {/* Row 6 — sector heatmap from /api/market/heatmap (Polygon sector ETFs) */}
+      <GridSectorHeatmapPanel />
     </div>
   );
 }

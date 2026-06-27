@@ -196,6 +196,14 @@ type GexHeatmapResponse = {
    *  Surfaced so the overlay legend can show its own "as of …" instead of implying matrix
    *  freshness. null when no overlays were served. */
   overlays_at?: string | null;
+  /** Night Hawk active-play context — present when a NH edition from the last 24h has a play
+   *  for this ticker. null when no current play exists. Never fabricated. */
+  nighthawk_context?: {
+    play_direction: string;
+    target_strike: string | number | null;
+    grade: string;
+    summary: string;
+  } | null;
   error?: string;
 };
 
@@ -3926,6 +3934,42 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
           </TabList>
         </Tabs>
       </div>
+
+      {/* Night Hawk active-play badge — renders only when a NH edition from the last 24h
+          has a play for this ticker. Compact inline badge with a tooltip showing the play
+          summary and grade. Never fabricated: driven by the server's nighthawk_context field. */}
+      {data?.nighthawk_context && !stale && (
+        <div
+          className="mb-4 flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-400/[0.07] px-4 py-2.5"
+          title={[
+            data.nighthawk_context.summary,
+            data.nighthawk_context.grade ? `Grade: ${data.nighthawk_context.grade}` : null,
+          ].filter(Boolean).join(" · ")}
+          style={{ boxShadow: "inset 0 0 14px rgba(34,211,238,0.06)" }}
+        >
+          <span className="text-cyan-400 text-sm" aria-hidden>🦅</span>
+          <span className="font-mono text-[11px] font-bold text-cyan-400 uppercase tracking-widest">
+            NH Play Active
+          </span>
+          <span className="mx-1.5 text-white/20 text-xs">·</span>
+          <span className="font-mono text-[11px] text-sky-300 uppercase tracking-wide">
+            {String(data.nighthawk_context.play_direction || "").toUpperCase()}
+          </span>
+          {data.nighthawk_context.grade && (
+            <>
+              <span className="mx-1.5 text-white/20 text-xs">·</span>
+              <span className="font-mono text-[11px] text-cyan-400 font-bold">
+                Grade {data.nighthawk_context.grade}
+              </span>
+            </>
+          )}
+          {data.nighthawk_context.summary && (
+            <span className="ml-2 hidden sm:block truncate max-w-[40ch] text-[11px] text-sky-300/80 leading-none">
+              {data.nighthawk_context.summary}
+            </span>
+          )}
+        </div>
+      )}
 
       {fetchFailed && (
         <div

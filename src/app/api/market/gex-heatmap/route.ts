@@ -11,6 +11,7 @@ import { isUwCircuitOpen } from "@/lib/providers/uw-rate-limiter";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
+import { dbConfigured, fetchLatestNighthawkEdition } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -128,6 +129,45 @@ async function buildDarkPoolLevels(ticker: string): Promise<GexDarkPoolLevel[] |
 /** The overlay-free (matrix-only) contract — both overlays unavailable, never fabricated. */
 const NO_OVERLAYS: GexHeatmapOverlays = { flow_by_strike: null, dark_pool_levels: null };
 
+type NightHawkContext = {
+  play_direction: string;
+  target_strike: string | number | null;
+  grade: string;
+  summary: string;
+} | null;
+
+/**
+ * Fetch the current Night Hawk play context for a ticker from the latest edition.
+ * "Current" = most recent edition created within the last 24 hours.
+ * Best-effort: any failure returns null (never throws, never fabricates).
+ */
+async function getNightHawkContext(ticker: string): Promise<NightHawkContext> {
+  if (!dbConfigured()) return null;
+  try {
+    const edition = await fetchLatestNighthawkEdition();
+    if (!edition) return null;
+    // Only surface editions from the last 24 hours.
+    const age = Date.now() - new Date(edition.published_at).getTime();
+    if (age > 24 * 60 * 60 * 1000) return null;
+    const plays = Array.isArray(edition.plays) ? edition.plays : [];
+    const play = plays.find(
+      (p) =>
+        p &&
+        typeof p === "object" &&
+        String((p as Record<string, unknown>).ticker ?? "").toUpperCase() === ticker
+    ) as Record<string, unknown> | undefined;
+    if (!play) return null;
+    return {
+      play_direction: String(play.direction ?? ""),
+      target_strike: (play.target ?? play.options_play ?? null) as string | number | null,
+      grade: String(play.conviction ?? play.grade ?? ""),
+      summary: String(play.thesis ?? play.key_signal ?? "").slice(0, 200),
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Cached overlay enrichment — one upstream fetch per ticker per TTL, shared across all users.
  * In-memory first, then Redis (cross-replica), else compute + write both. Best-effort: a
@@ -241,6 +281,9 @@ export async function GET(req: NextRequest) {
     // route never pressures UW's 2-RPS cluster-wide budget regardless of user count.
     const { overlays, at: overlaysAt } = await getOverlays(ticker, heatmap.strikes);
 
+    // Night Hawk active-play context — best-effort Postgres read, never throws.
+    const nighthawkContext = await getNightHawkContext(ticker);
+
     return NextResponse.json(
       {
         available: true,
@@ -250,6 +293,8 @@ export async function GET(req: NextRequest) {
         // ~30s–2min stale on the same matrix; surface its real fetch time so the legend can
         // show "dark pool as of …" instead of implying it's as fresh as the matrix.
         overlays_at: overlaysAt != null ? new Date(overlaysAt).toISOString() : null,
+        // Night Hawk context — null when no current play exists for this ticker.
+        nighthawk_context: nighthawkContext,
       },
       {
         headers: {

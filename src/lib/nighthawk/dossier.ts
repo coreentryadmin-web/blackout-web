@@ -23,6 +23,7 @@ import {
   fetchMarketFlowAlertRows,
   fetchUwCongressUnusualTrades,
   fetchUwDarkPool,
+  fetchUwFdaCalendar,
   fetchUwFlowPerExpiry,
   fetchUwInsiderTransactions,
   fetchUwInstitutionOwnership,
@@ -81,6 +82,12 @@ export type TickerDossier = {
   /** Parsed Benzinga analyst price target (price target news channel). */
   benzinga_price_target: BenzingaPriceTarget | null;
   trading_halt: boolean;
+  /**
+   * UW FDA calendar events for this ticker — only fetched when a binary/FDA Benzinga
+   * catalyst is detected. Provides structured drug name, date, indication for the prompt.
+   * Empty array when no FDA catalyst is flagged or UW is unconfigured.
+   */
+  fda_events: Record<string, unknown>[];
   scored?: ScoredCandidate;
 };
 
@@ -347,6 +354,21 @@ export async function fetchTickerDossier(
   const fundamentalSignals = financials.signals;
   const benzingaPriceTarget = financials.priceTarget;
 
+  // UW FDA calendar — only fetch when Benzinga flags a binary/FDA catalyst for this ticker.
+  // fetchUwFdaCalendar uses a shared Redis cache key so concurrent builds share one pull.
+  const hasFdaCatalyst = catalysts.some((c) => {
+    const type = String((c as Record<string, unknown>).type ?? "").toLowerCase();
+    const title = String((c as Record<string, unknown>).title ?? (c as Record<string, unknown>).headline ?? "").toLowerCase();
+    return type === "binary" || title.includes("fda") || title.includes("pdufa") || title.includes("nda");
+  });
+  const fdaEvents: Record<string, unknown>[] = hasFdaCatalyst && uw
+    ? await dossierFetch(() => fetchUwFdaCalendar(sym, 5), [], t).then(
+        (rows) => (rows as Record<string, unknown>[]).filter(
+          (r) => String(r.ticker ?? r.symbol ?? "").toUpperCase() === sym
+        )
+      )
+    : [];
+
   const [
     darkPool,
     oiChange,
@@ -436,6 +458,7 @@ export async function fetchTickerDossier(
     fundamental_signals: fundamentalSignals,
     benzinga_price_target: benzingaPriceTarget,
     trading_halt: tradingHalt,
+    fda_events: fdaEvents,
   };
 
   dossier.scored = scoreCandidate(

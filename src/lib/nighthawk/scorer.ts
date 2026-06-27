@@ -503,6 +503,28 @@ function institutionalShowsNetBuying(rows: Record<string, unknown>[]): boolean {
   return net > 0;
 }
 
+/**
+ * Recency decay for congressional trades — more recent disclosures carry more signal.
+ * 0-7 days: 1.0x, 8-14 days: 0.7x, 15-30 days: 0.4x.
+ */
+function congressTradeDecayMultiplier(row: Record<string, unknown>): number {
+  const raw =
+    row.filed_at ??
+    row.filed_date ??
+    row.transaction_date ??
+    row.transactionDate ??
+    row.disclosure_date ??
+    row.date ??
+    row.created_at;
+  if (raw == null || raw === "") return 0.4;
+  const d = new Date(String(raw));
+  if (Number.isNaN(d.getTime())) return 0.4;
+  const ageDays = (Date.now() - d.getTime()) / 86_400_000;
+  if (ageDays <= 7) return 1.0;
+  if (ageDays <= 14) return 0.7;
+  return 0.4;
+}
+
 export function scoreSmartMoney(
   dossier: {
     predictions_signal?: PredictionConsensusSignal | null;
@@ -514,8 +536,22 @@ export function scoreSmartMoney(
 ): number {
   let score = 0;
   if (predictionAlignsWithDirection(dossier.predictions_signal, direction)) score += 4;
-  if ((dossier.congress_unusual?.length ?? 0) > 0) score += 3;
-  if ((dossier.congress_trades?.length ?? 0) > 0) score += 2;
+  // congress_unusual: sum recency-weighted contributions (max 3 pts for fresh trades, less for stale)
+  if ((dossier.congress_unusual?.length ?? 0) > 0) {
+    const unusualScore = (dossier.congress_unusual ?? []).reduce(
+      (sum, row) => sum + congressTradeDecayMultiplier(row),
+      0
+    );
+    score += Math.min(3, unusualScore);
+  }
+  // congress_trades: sum recency-weighted contributions (max 2 pts)
+  if ((dossier.congress_trades?.length ?? 0) > 0) {
+    const tradeScore = (dossier.congress_trades ?? []).reduce(
+      (sum, row) => sum + congressTradeDecayMultiplier(row),
+      0
+    );
+    score += Math.min(2, tradeScore);
+  }
   if (institutionalShowsNetBuying(dossier.institutional_activity ?? [])) score += 3;
   return Math.min(8, score);
 }

@@ -9,8 +9,10 @@ import {
   fetchUwEtfTide,
   fetchUwGroupGreekFlow,
   fetchUwMacroIndicators,
+  fetchUwMarketOiChange,
   fetchUwMarketTide,
   fetchUwMarketTopNetImpact,
+  fetchUwMarketTotalOptionsVolume,
   fetchUwPredictionsConsensus,
   fetchUwSectorTide,
   fetchUwTickerFlowAlerts,
@@ -57,6 +59,10 @@ export type MarketWideContext = {
   macro_indicators: UwMacroIndicatorSnapshot[];
   /** Market-wide after-hours / movers headlines (free Benzinga channels) — the night's AH context. */
   after_hours_catalysts: BenzingaCatalyst[];
+  /** UW market-wide total options volume (all strikes/expiries across the tape). */
+  total_options_volume: unknown | null;
+  /** UW market-wide open-interest change — stocks with the biggest OI shifts today. */
+  market_oi_change: Record<string, unknown>[];
 };
 
 function flowRowToDict(row: { raw: Record<string, unknown>; flow: { ticker: string; premium: number } }) {
@@ -217,6 +223,8 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     mag7Rows,
     macroIndicators,
     afterHoursCatalysts,
+    totalOptionsVolume,
+    marketOiChange,
   ] = await Promise.all([
     uwConfigured() ? fetchUwMarketTide().catch(() => null) : Promise.resolve(null),
     uwConfigured()
@@ -239,6 +247,10 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     // Free Benzinga after-hours / movers context for the evening recap (the edition is after-hours
     // recon). Cached on a shared key inside the provider, so every concurrent build shares one pull.
     polygonConfigured() ? fetchBenzingaAfterHoursMovers(15).catch(() => []) : Promise.resolve([]),
+    // UW market-wide total options volume (Redis-cached, negligible UW budget cost).
+    uwConfigured() ? fetchUwMarketTotalOptionsVolume().catch(() => null) : Promise.resolve(null),
+    // UW market-wide OI change — top movers by open-interest shift (Redis-cached).
+    uwConfigured() ? fetchUwMarketOiChange(20).catch(() => []) : Promise.resolve([]),
   ]);
 
   const stockFlows = flowRows
@@ -315,5 +327,7 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     mag7_greek_flow: summarizeGroupGreekFlow("mag7", mag7Rows as Record<string, unknown>[]),
     macro_indicators: macroIndicators,
     after_hours_catalysts: afterHoursCatalysts,
+    total_options_volume: totalOptionsVolume ?? null,
+    market_oi_change: (marketOiChange as Record<string, unknown>[]) ?? [],
   };
 }

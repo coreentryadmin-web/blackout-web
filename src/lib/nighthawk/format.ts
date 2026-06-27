@@ -548,7 +548,7 @@ function catalystLabel(type: string): string {
  */
 function formatCatalysts(dossier: TickerDossier): string {
   const cats = dossier.catalysts ?? [];
-  if (!cats.length) return "";
+  if (!cats.length && !dossier.fda_events?.length) return "";
   // De-dupe by type so three FDA headlines collapse to one "FDA/binary" tag; keep the newest title.
   const seen = new Set<string>();
   const parts: string[] = [];
@@ -558,6 +558,17 @@ function formatCatalysts(dossier: TickerDossier): string {
     const title = c.title ? `: ${c.title.slice(0, 90)}` : "";
     parts.push(`${catalystLabel(c.type)}${title}`);
     if (parts.length >= 3) break;
+  }
+  // Append UW FDA structured events (drug name, date, indication) for richer context.
+  if (dossier.fda_events?.length) {
+    const fdaParts = dossier.fda_events.slice(0, 2).map((e) => {
+      const r = e as Record<string, unknown>;
+      const drug = String(r.drug_name ?? r.drug ?? r.name ?? "").trim();
+      const date = String(r.date ?? r.event_date ?? r.pdufa_date ?? "").slice(0, 10);
+      const indication = String(r.indication ?? r.disease ?? r.drug_indication ?? "").slice(0, 60);
+      return [drug, date, indication].filter(Boolean).join(" / ");
+    }).filter(Boolean);
+    if (fdaParts.length) parts.push(`UW FDA: ${fdaParts.join(" | ")}`);
   }
   return parts.join(" · ");
 }

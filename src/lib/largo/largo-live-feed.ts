@@ -9,6 +9,9 @@ import {
 import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { getActiveTradingHalts, isTradingHaltChannelStale, tideStore } from "@/lib/ws/uw-socket";
+import { getLargoSpxLiveDesk } from "@/lib/largo/spx-desk-cache";
+import { computeSpxConfluence } from "@/lib/spx-signals";
+import { loadLottoRecord } from "@/lib/spx-lotto-store";
 
 type FeedKey =
   | "market"
@@ -31,7 +34,10 @@ type FeedKey =
   | "halts"
   | "tide"
   | "net_flow"
-  | "my_positions";
+  | "my_positions"
+  | "spx_confluence"
+  | "lotto_live"
+  | "power_hour";
 
 export type LargoLiveFeed = Partial<Record<FeedKey, unknown>>;
 
@@ -155,6 +161,47 @@ export async function captureLargoLiveFeed(
   const spxSnap = feed.spx_structure as Record<string, unknown> | null | undefined;
   if (spxSnap && Array.isArray(spxSnap.net_flow_by_expiry)) {
     feed.net_flow = spxSnap.net_flow_by_expiry;
+  }
+
+  // Pre-populate spx_confluence — same logic as get_spx_confluence tool but without the
+  // tool-call round-trip. Cache-reader: getLargoSpxLiveDesk is already called for spx_structure
+  // above; calling it again hits the in-process per-user bundle cache (0 upstream cost).
+  if ((intent.needsSpxDesk || scopeTicker === "SPX") && userId) {
+    try {
+      const desk = await getLargoSpxLiveDesk(userId);
+      const confluence = computeSpxConfluence(desk);
+      feed.spx_confluence = confluence ?? { error: "No confluence — SPX desk not live yet." };
+    } catch {
+      feed.spx_confluence = { error: "spx_confluence unavailable" };
+    }
+  }
+
+  // Pre-populate lotto_live — synchronous Postgres/Redis read, negligible cost.
+  // Always inject when the SPX desk is in scope so Largo has lotto context for desk questions.
+  if (intent.needsSpxDesk || scopeTicker === "SPX") {
+    try {
+      const rec = await loadLottoRecord();
+      feed.lotto_live = rec ?? { available: false, note: "No live lotto record for today yet." };
+    } catch {
+      feed.lotto_live = { available: false, note: "lotto unavailable" };
+    }
+  }
+
+  // Power hour — inject when within the last 60 minutes of RTH (3:00–4:00pm ET).
+  // Pure clock computation — zero upstream cost.
+  {
+    const nowEt = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const hours = nowEt.getHours();
+    const minutes = nowEt.getMinutes();
+    const minuteOfDay = hours * 60 + minutes;
+    const POWER_HOUR_START = 15 * 60; // 15:00 ET = 900
+    const POWER_HOUR_END = 16 * 60;   // 16:00 ET = 960
+    if (minuteOfDay >= POWER_HOUR_START && minuteOfDay < POWER_HOUR_END) {
+      feed.power_hour = {
+        active: true,
+        minutes_remaining: POWER_HOUR_END - minuteOfDay,
+      };
+    }
   }
 
   return feed;
