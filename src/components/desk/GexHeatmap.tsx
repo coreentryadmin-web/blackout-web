@@ -413,8 +413,8 @@ function filterStrikeTotals(
  * Zero-only input (every total 0) → null (no anchor to mark). No Math.random/Date — pure
  * over the passed totals, so it's safe in render (#418).
  */
-function magnetStrike(totals: Record<string, number>): number | null {
-  let magnet: number | null = null;
+function anchorStrike(totals: Record<string, number>): number | null {
+  let anchor: number | null = null;
   let best = 0;
   // Ascending strike order makes the tie-break deterministic (first/lowest strike wins).
   const entries = Object.entries(totals)
@@ -426,10 +426,10 @@ function magnetStrike(totals: Record<string, number>): number | null {
     // Strict `>` keeps the first strike on a tie; `mag > 0` skips zero-only totals.
     if (mag > best) {
       best = mag;
-      magnet = e.strike;
+      anchor = e.strike;
     }
   }
-  return magnet;
+  return anchor;
 }
 
 /**
@@ -694,7 +694,7 @@ function ExposureProfile({
   peak,
   spot,
   flip,
-  magnetStrike: magnet,
+  anchorStrike: anchor,
   lens,
   showFlow,
   flowPeak,
@@ -711,7 +711,7 @@ function ExposureProfile({
    * ring, marking the strongest pin/anchor on top of its emerald/bear magnitude bar. Null
    * when there's nothing to mark (empty / all-zero scope).
    */
-  magnetStrike: number | null;
+  anchorStrike: number | null;
   lens: Lens;
   showFlow: boolean;
   flowPeak: number;
@@ -842,7 +842,7 @@ function ExposureProfile({
         // ANCHOR — the dominant net-exposure strike in this scope. Bright-white marker +
         // ring sit ON TOP of the bar's own emerald/bear magnitude color (white ≠ magnitude;
         // gold is freed for the +GEX peak in the matrix).
-        const isMagnet = magnet != null && r.strike === magnet;
+        const isAnchor = anchor != null && r.strike === anchor;
 
         // ── Flow overlay: net premium hitting this strike, colored bull/bear. ──
         const flow = showFlow ? r.flow : null;
@@ -892,15 +892,15 @@ function ExposureProfile({
                 // ANCHOR ring wins the row treatment (the dominant node should pop hardest):
                 // a bright-white 2px outline + white wash, distinct from the spot row's cyan
                 // outline (and from the gold now reserved for the +GEX peak).
-                isMagnet
+                isAnchor
                   ? "outline outline-2 outline-white/85 bg-white/[0.10]"
                   : r.isSpot
                     ? "outline outline-1 outline-cyan-400/70 bg-cyan-400/[0.06]"
                     : i === flipRowIdx && "bg-gold/[0.06]"
               )}
-              style={isMagnet ? { boxShadow: "inset 0 0 18px rgba(255,255,255,0.12)" } : undefined}
+              style={isAnchor ? { boxShadow: "inset 0 0 18px rgba(255,255,255,0.12)" } : undefined}
               title={
-                isMagnet
+                isAnchor
                   ? `ANCHOR · ${fmtStrike(r.strike)} · ${fmtMoney(r.value)} — dominant dealer gamma node`
                   : `${fmtStrike(r.strike)} · ${fmtMoney(r.value)}`
               }
@@ -910,7 +910,7 @@ function ExposureProfile({
               <span
                 className={clsx(
                   "w-12 shrink-0 text-right font-mono text-[11px] tabular-nums",
-                  isMagnet
+                  isAnchor
                     ? "font-bold text-white"
                     : r.isSpot
                       ? "font-bold text-white"
@@ -921,12 +921,12 @@ function ExposureProfile({
               >
                 <span className="inline-flex items-center justify-end gap-1">
                   {/* ANCHOR pin — bright-white ◆ diamond glyph, the unmistakable dominant-node marker. */}
-                  {isMagnet && (
+                  {isAnchor && (
                     <span className="text-white" title="ANCHOR — dominant dealer gamma node">
                       <AnchorGlyph size={11} />
                     </span>
                   )}
-                  {r.isSpot && !isMagnet && <span className="text-cyan-400">●</span>}
+                  {r.isSpot && !isAnchor && <span className="text-cyan-400">●</span>}
                   {fmtStrike(r.strike)}
                 </span>
               </span>
@@ -962,8 +962,8 @@ function ExposureProfile({
                     // ANCHOR bar keeps its emerald/bear magnitude fill, but gets a bright-white
                     // ring + glow on TOP so the dominant node is unmistakable. The ring is an
                     // outline (static, opacity-only glow) — reduced-motion safe.
-                    outline: isMagnet ? "1.5px solid #ffffff" : undefined,
-                    boxShadow: isMagnet
+                    outline: isAnchor ? "1.5px solid #ffffff" : undefined,
+                    boxShadow: isAnchor
                       ? "0 0 12px rgba(255,255,255,0.85)"
                       : wall
                         ? `0 0 10px ${barColor}`
@@ -1008,23 +1008,23 @@ function ExposureProfile({
               </span>
               <span className="ml-auto w-16 shrink-0 text-left">
                 {/* ANCHOR tag — leads the row's tag slot when this is the dominant node. */}
-                {isMagnet && (
+                {isAnchor && (
                   <span className="inline-flex items-center gap-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-white">
                     <AnchorGlyph size={9} /> Anchor
                   </span>
                 )}
                 {/* Wall tags only exist on GEX/VEX (DEX/CHARM have no walls → these never fire). */}
-                {!isMagnet && r.isPosWall && (
+                {!isAnchor && r.isPosWall && (
                   <span className="font-mono text-[8px] uppercase tracking-wider text-gold">
                     {lens === "gex" ? "call" : "+vex"}
                   </span>
                 )}
-                {!isMagnet && r.isNegWall && (
+                {!isAnchor && r.isNegWall && (
                   <span className="font-mono text-[8px] uppercase tracking-wider text-gold">
                     {lens === "gex" ? "put" : "−vex"}
                   </span>
                 )}
-                {!isMagnet && flow != null && netFlow !== 0 && !r.isPosWall && !r.isNegWall && (
+                {!isAnchor && flow != null && netFlow !== 0 && !r.isPosWall && !r.isNegWall && (
                   <span
                     className="font-mono text-[8px] uppercase tracking-wider"
                     style={{ color: flowHex }}
@@ -1058,10 +1058,10 @@ function ExposureProfile({
 
       {/* ANCHOR legend — explains the white ◆ marker (the dominant node). Only when one
           is marked in the rendered scope. */}
-      {magnet != null && (
+      {anchor != null && (
         <div className="mt-2 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-white">
           <AnchorGlyph size={10} />
-          ANCHOR · {fmtStrike(magnet)} — dominant dealer {v.noun.toLowerCase()} node (strongest pin/anchor)
+          ANCHOR · {fmtStrike(anchor)} — dominant dealer {v.noun.toLowerCase()} node (strongest pin/anchor)
         </div>
       )}
 
@@ -2406,7 +2406,7 @@ type LevelCell = {
   /** Day-over-day "vs prior close" delta chip (GEX history) — never fabricated. */
   delta?: TileDelta | null;
   /** The ANCHOR cell — bright-white-accented, distinct, leads with the ◆ glyph. */
-  magnet?: boolean;
+  anchor?: boolean;
 };
 
 function CompactLevel({ cell }: { cell: LevelCell }) {
@@ -2416,14 +2416,14 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
     <div
       className={clsx(
         "relative flex min-w-0 flex-col gap-0.5 rounded-lg border px-2.5 py-1.5",
-        cell.magnet
+        cell.anchor
           ? "border-white/45 bg-[rgba(12,13,16,0.6)]"
           : active
             ? clsx(t.border, "bg-[rgba(8,9,14,0.55)]")
             : "border-white/10 bg-[rgba(8,9,14,0.4)]"
       )}
       style={
-        cell.magnet
+        cell.anchor
           ? { boxShadow: "inset 0 0 18px rgba(255,255,255,0.08)" }
           : undefined
       }
@@ -2431,17 +2431,17 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
       <span
         className={clsx(
           "flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.16em]",
-          cell.magnet ? "text-white" : "text-mute"
+          cell.anchor ? "text-white" : "text-mute"
         )}
       >
-        {cell.magnet && <AnchorGlyph size={9} />}
+        {cell.anchor && <AnchorGlyph size={9} />}
         <span className="truncate">{cell.label}</span>
         {cell.help && <InfoTip label={cell.label} text={cell.help} />}
       </span>
       <span
         className={clsx(
           "font-mono text-[15px] font-bold leading-none tabular-nums",
-          cell.magnet ? "text-white" : active ? t.value : "text-white/55"
+          cell.anchor ? "text-white" : active ? t.value : "text-white/55"
         )}
       >
         {cell.value}
@@ -2803,8 +2803,8 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
   // tracks the active expiry scope (it lands on the bar the profile is rendering). Null
   // when the scope is empty / all-zero. The matrix + card recompute their own anchor from
   // the data they render (all-expiry strikeTotals) so each marker matches its own view.
-  const profileMagnetStrike = useMemo(
-    () => magnetStrike(filteredTotals),
+  const profileAnchorStrike = useMemo(
+    () => anchorStrike(filteredTotals),
     [filteredTotals]
   );
 
@@ -2889,13 +2889,13 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
   // tiles). Within that anchor row we also find the single PEAK CELL: the expiry with the
   // max |cells| at the anchor strike, which gets the prominent in-cell white ◆ marker. Both
   // null-safe (empty/all-zero → null).
-  const matrixMagnetStrike = useMemo(
-    () => magnetStrike(strikeTotals),
+  const matrixAnchorStrike = useMemo(
+    () => anchorStrike(strikeTotals),
     [strikeTotals]
   );
-  const matrixMagnetExpiry = useMemo<string | null>(() => {
-    if (matrixMagnetStrike == null) return null;
-    const row = cells[String(matrixMagnetStrike)];
+  const matrixAnchorExpiry = useMemo<string | null>(() => {
+    if (matrixAnchorStrike == null) return null;
+    const row = cells[String(matrixAnchorStrike)];
     if (row == null) return null;
     let bestExp: string | null = null;
     let bestMag = 0;
@@ -2910,7 +2910,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
       }
     }
     return bestExp;
-  }, [matrixMagnetStrike, cells, expiries]);
+  }, [matrixAnchorStrike, cells, expiries]);
 
   // ── +GEX / −GEX PEAK CELLS across the WHOLE matrix (recolor: gold / bear walls) ──
   // The two DOMINANT WALLS: the single highest POSITIVE cell (the dominant call wall →
@@ -2952,13 +2952,13 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
   // ── PER-DAY anchors across the Matrix columns (Step 4) ───────────────────────
   // For EACH expiry column, the per-day anchor = the strike with argmax|cell net GEX| in
   // that column — a SUBTLE white marker on that cell. This complements the ONE prominent
-  // OVERALL anchor (max across all columns, matrixMagnetStrike/Expiry). Map keyed by expiry
+  // OVERALL anchor (max across all columns, matrixAnchorStrike/Expiry). Map keyed by expiry
   // → owning strike; null-safe (a column with no finite/non-zero cells contributes nothing).
   // Pure over `cells`/`expiries`/`strikes` (no Math.random/Date) → render-safe (#418).
   // Tie-stable: strikes are scanned ASCENDING so an exact |value| tie keeps the lowest strike,
-  // matching the magnetStrike() tie-break convention. The Gamma Profile stays ONE anchor (it
+  // matching the anchorStrike() tie-break convention. The Gamma Profile stays ONE anchor (it
   // renders a single aggregated series, not per-expiry columns) — this only affects the matrix.
-  const perDayMagnetByExpiry = useMemo<Record<string, number>>(() => {
+  const perDayAnchorByExpiry = useMemo<Record<string, number>>(() => {
     const out: Record<string, number> = {};
     // Ascending strike order for deterministic tie-breaks (lowest strike wins a tie).
     const strikesAsc = [...strikes].sort((a, b) => a - b);
@@ -3102,7 +3102,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
   // prior RegimeTile sets exactly (same values, tones, help, "vs prior close" deltas):
   // GEX/VEX carry flip + two walls + max-pain + net; DEX/CHARM are zero-level + net + posture.
   // The ANCHOR cell (GEX only, when a dominant node exists) is bright-white-accented + distinct so
-  // it still pops inside the grouped box — same all-expiry anchor the card used (matrixMagnetStrike).
+  // it still pops inside the grouped box — same all-expiry anchor the card used (matrixAnchorStrike).
   const levelCells = useMemo<LevelCell[]>(() => {
     if (lens === "gex") {
       const cellsOut: LevelCell[] = [
@@ -3152,13 +3152,13 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
       ];
       // ANCHOR cell — bright-white-distinct, the dominant all-expiry node (GEX only). Slots last
       // so the structural levels read left→right; the white accent makes it pop regardless.
-      if (matrixMagnetStrike != null) {
+      if (matrixAnchorStrike != null) {
         cellsOut.push({
-          key: "magnet",
+          key: "anchor",
           label: "Anchor",
-          value: fmtStrike(matrixMagnetStrike),
+          value: fmtStrike(matrixAnchorStrike),
           tone: "wall",
-          magnet: true,
+          anchor: true,
           help: "The single strike with the largest absolute net dealer gamma — the dominant dealer-gamma concentration, i.e. the strongest pin/anchor price tends to gravitate toward into expiration.",
         });
       }
@@ -3267,7 +3267,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
     negWall,
     maxPain,
     total,
-    matrixMagnetStrike,
+    matrixAnchorStrike,
     gexTileDeltas,
     dexPosture,
     charmPosture,
@@ -3349,7 +3349,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
         peak={filteredPeak}
         spot={spot}
         flip={profileFlip}
-        magnetStrike={profileMagnetStrike}
+        anchorStrike={profileAnchorStrike}
         lens={lens}
         showFlow={showFlow && hasFlowOverlay}
         flowPeak={flowPeak}
@@ -3449,11 +3449,11 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
           </span>
         )}
         {/* ANCHOR legend — the dominant dealer-gamma node (max |net|), now a BRIGHT-WHITE ◆. */}
-        {matrixMagnetStrike != null && (
+        {matrixAnchorStrike != null && (
           <span className="flex items-center gap-1.5 text-white">
             <AnchorGlyph size={11} />
             <span aria-hidden>anchor</span>
-            <span className="text-white">{fmtStrike(matrixMagnetStrike)}</span>
+            <span className="text-white">{fmtStrike(matrixAnchorStrike)}</span>
           </span>
         )}
         {/* +GEX PEAK legend — the dominant call wall (single highest positive cell), GOLD. */}
@@ -3482,7 +3482,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
         )}
         {/* Per-day anchor legend (Step 4) — the subtle white ring/dot marking each expiry
             column's own dominant strike. Only shown when ≥1 column has a per-day anchor. */}
-        {Object.keys(perDayMagnetByExpiry).length > 0 && (
+        {Object.keys(perDayAnchorByExpiry).length > 0 && (
           <span className="flex items-center gap-1.5 text-white/70">
             <span
               aria-hidden
@@ -3558,7 +3558,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                 // OVERALL ANCHOR row — the dominant net-exposure strike (all-expiry). Gets a
                 // bright-white band/left-border (like the spot/flip row treatment, but white;
                 // gold is now reserved for the +GEX peak cell).
-                const isMagnet = matrixMagnetStrike != null && strike === matrixMagnetStrike;
+                const isAnchor = matrixAnchorStrike != null && strike === matrixAnchorStrike;
                 const rowTotal = strikeTotals[String(strike)] ?? 0;
                 // PER-DAY anchor (Step 4) — argmax|cell| in EACH expiry column. Computed
                 // for every row but only marked when this row owns a column's peak (see cell).
@@ -3573,9 +3573,9 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                       // the grid: a faint cyan/gold band across the whole row + a clear
                       // left border (carried on the sticky strike cell below). The ANCHOR
                       // row wins a stronger WHITE band so the dominant node pops hardest.
-                      isMagnet && "bg-white/[0.08]",
+                      isAnchor && "bg-white/[0.08]",
                       isSpot && "outline outline-1 outline-cyan-400/70 bg-cyan-400/[0.05]",
-                      isFlip && !isSpot && !isMagnet && "bg-gold/[0.05]"
+                      isFlip && !isSpot && !isAnchor && "bg-gold/[0.05]"
                     )}
                   >
                     <th
@@ -3587,7 +3587,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                         // is unmistakable; it outranks the flip row's lighter gold band.
                         isSpot
                           ? "border-l-2 border-cyan-400 bg-cyan-400/[0.12] pl-1.5 text-white"
-                          : isMagnet
+                          : isAnchor
                             ? "border-l-2 border-white bg-white/[0.16] pl-1.5 text-white"
                             : isFlip
                               ? "border-l-2 border-gold bg-gold/[0.10] pl-1.5 text-gold"
@@ -3596,21 +3596,21 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                     >
                       <span className="inline-flex items-center gap-1">
                         {/* ANCHOR pin leads even on the spot row (anchor can coincide with spot). */}
-                        {isMagnet && <span className="text-white"><AnchorGlyph size={10} /></span>}
+                        {isAnchor && <span className="text-white"><AnchorGlyph size={10} /></span>}
                         {isSpot && <span aria-hidden className="text-cyan-400">●</span>}
-                        {isFlip && !isSpot && !isMagnet && <span aria-hidden className="text-gold">◀</span>}
+                        {isFlip && !isSpot && !isAnchor && <span aria-hidden className="text-gold">◀</span>}
                         {fmtStrike(strike)}
-                        {isMagnet && (
+                        {isAnchor && (
                           <span className="ml-1 font-mono text-[8px] font-bold uppercase tracking-wider text-white">
                             anchor
                           </span>
                         )}
-                        {isSpot && !isMagnet && (
+                        {isSpot && !isAnchor && (
                           <span className="ml-1 font-mono text-[8px] uppercase tracking-wider text-cyan-400">
                             spot
                           </span>
                         )}
-                        {isFlip && !isSpot && !isMagnet && (
+                        {isFlip && !isSpot && !isAnchor && (
                           <span className="ml-1 font-mono text-[8px] uppercase tracking-wider text-gold">
                             flip
                           </span>
@@ -3623,7 +3623,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                       // The single OVERALL-ANCHOR PEAK CELL — the dominant expiry at the
                       // overall anchor strike. Keeps its diverging magnitude color; a white ◆
                       // pin + white ring sit ON TOP so it pops as the prominent anchor cell.
-                      const isMagnetCell = isMagnet && matrixMagnetExpiry != null && e === matrixMagnetExpiry;
+                      const isAnchorCell = isAnchor && matrixAnchorExpiry != null && e === matrixAnchorExpiry;
                       // ── +GEX / −GEX PEAK cells (recolor): the two DOMINANT WALLS across the
                       // whole matrix. The single highest +cell → GOLD border/glow (dominant call
                       // wall); the single lowest −cell → BRIGHT BEAR (#ff5c78) border/glow
@@ -3638,9 +3638,9 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                       // expiry column `e`. Subtle white ring (no pin) so per-day anchors read as a
                       // quiet secondary layer beneath the one prominent overall anchor. The overall
                       // anchor cell + the +/−GEX peaks outrank it (we suppress the subtle ring there).
-                      const isDayMagnetCell =
-                        !isMagnetCell && !isPosPeakCell && !isNegPeakCell &&
-                        perDayMagnetByExpiry[e] === strike && has && v !== 0;
+                      const isDayAnchorCell =
+                        !isAnchorCell && !isPosPeakCell && !isNegPeakCell &&
+                        perDayAnchorByExpiry[e] === strike && has && v !== 0;
 
                       // Compose the highlight style so overlapping markers layer cleanly:
                       //  • the +/−GEX PEAK draws an INSET ring + glow (gold or bear) INSIDE the cell;
@@ -3653,18 +3653,18 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                           ? "inset 0 0 0 2px #ff5c78, inset 0 0 14px rgba(255,92,120,0.55)"
                           : null;
                       const anchorInset =
-                        isMagnetCell && !peakInset ? "inset 0 0 14px rgba(255,255,255,0.5)" : null;
+                        isAnchorCell && !peakInset ? "inset 0 0 14px rgba(255,255,255,0.5)" : null;
                       const boxShadow =
                         [peakInset, anchorInset].filter(Boolean).join(", ") || undefined;
                       // The ANCHOR's outer white frame wins the `outline` slot; otherwise the peak
                       // takes a thin matching outline; otherwise a per-day anchor's subtle white ring.
-                      const highlightStyle: React.CSSProperties = isMagnetCell
+                      const highlightStyle: React.CSSProperties = isAnchorCell
                         ? { outline: "2px solid #ffffff", outlineOffset: "1px", boxShadow }
                         : isPosPeakCell
                           ? { outline: "2px solid #ffd23f", outlineOffset: "-2px", boxShadow }
                           : isNegPeakCell
                             ? { outline: "2px solid #ff5c78", outlineOffset: "-2px", boxShadow }
-                            : isDayMagnetCell
+                            : isDayAnchorCell
                               ? {
                                   // PER-DAY anchor — a SUBTLE thin white ring, no glow/pin, so the
                                   // column's own anchor is hinted without competing with the one
@@ -3688,7 +3688,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                             // header row + sticky strike column (both z-10) so it never bleeds over
                             // them when scrolled underneath.
                             "relative whitespace-nowrap px-2 py-1.5 text-center text-[11px] font-semibold tabular-nums",
-                            (isMagnetCell || isPosPeakCell || isNegPeakCell) && "z-[5]",
+                            (isAnchorCell || isPosPeakCell || isNegPeakCell) && "z-[5]",
                             has
                               ? v > 0
                                 ? posColorClass
@@ -3700,13 +3700,13 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                             ...highlightStyle,
                           }}
                           title={
-                            isMagnetCell
+                            isAnchorCell
                               ? `ANCHOR · ${strike} · ${fmtExpiry(e)} · ${fmtMoneySigned(v as number)} — dominant dealer gamma node (overall)${isPosPeakCell ? " · also +GEX peak (call wall)" : isNegPeakCell ? " · also −GEX peak (put wall)" : ""}`
                               : isPosPeakCell
                                 ? `+${lensUpper} PEAK · ${strike} · ${fmtExpiry(e)} · ${fmtMoneySigned(v as number)} — dominant call wall`
                                 : isNegPeakCell
                                   ? `−${lensUpper} PEAK · ${strike} · ${fmtExpiry(e)} · ${fmtMoneySigned(v as number)} — dominant put wall`
-                                  : isDayMagnetCell
+                                  : isDayAnchorCell
                                     ? `${fmtExpiry(e)} anchor · ${strike} · ${fmtMoneySigned(v as number)} — this expiry's dominant strike`
                                     : has
                                       ? `${strike} · ${fmtExpiry(e)} · ${fmtMoneySigned(v)}`
@@ -3714,7 +3714,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                           }
                         >
                           {/* white ◆ pin pinned to the overall anchor cell's corner — the ANCHOR marker */}
-                          {isMagnetCell && (
+                          {isAnchorCell && (
                             <span
                               className="pointer-events-none absolute right-0.5 top-0 leading-none text-white"
                               style={{ filter: "drop-shadow(0 0 4px rgba(255,255,255,0.9))" }}
@@ -3723,7 +3723,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
                             </span>
                           )}
                           {/* per-day anchor — a tiny white dot in the corner (subtle, no pin glyph) */}
-                          {isDayMagnetCell && (
+                          {isDayAnchorCell && (
                             <span
                               aria-hidden
                               className="pointer-events-none absolute right-0.5 top-0.5 h-1 w-1 rounded-full"

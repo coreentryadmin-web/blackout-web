@@ -1713,7 +1713,7 @@ function computeGexEvents(
  * SPX, so SPY here gives a liquid, broadly-comparable dealer gamma surface.
  */
 export async function fetchGexHeatmap(
-  underlying = "SPY",
+  underlying = "SPX",
   { forceRefresh = false }: { forceRefresh?: boolean } = {}
 ): Promise<GexHeatmap | null> {
   if (!polygonConfigured()) return null;
