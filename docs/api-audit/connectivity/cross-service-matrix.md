@@ -243,3 +243,46 @@ source-level re-audit this run reproduced every wiring conclusion from cited imp
 
 **No commit this run:** conclusions identical to committed 4d5be18 (41 min prior, overlapping trigger on a 2h-cadence task); re-committing an unchanged matrix would be deploy churn. Next substantive capture ~06:14 ET or on the next deploy.
 ---
+
+---
+
+## Run — 2026-06-27 06:58 ET
+
+**Verified by SOURCE (live HTTP phases auth-gated — see Limitation).**
+**PASS: 19 | WARN: 1 | FAIL: 0 | SKIP(live): 4**
+
+### Connectivity Matrix (Source → Consumer)
+
+| Channel | Status | Evidence |
+|---|---|---|
+| SPX Desk → HEATMAP (shared GEX walls) | PASS | both via gamma-desk compute on Polygon chain; desk \gex_walls\ vs \etchGexHeatmap\ (W1) |
+| HEATMAP → SPX Desk | PASS | same gamma-desk/Polygon source |
+| HELIX → SPX Desk (flow signals) | PASS | desk carries \spx_flows\/\unified_tape\/\low_0dte_net\/\
+ope\ (run-tool get_options_flow) |
+| SPX Desk → HELIX | PASS | shared flow store (flow_alerts / unified tape) |
+| HEATMAP → LARGO (GEX tool) | PASS | get_gex → desk walls (SPX, "same as dashboard"); get_positioning → Polygon bundle (W1) |
+| HELIX → LARGO | PASS | get_options_flow, get_postgres_flows, get_flow_tape, get_global_flow |
+| SPX Desk → LARGO | PASS | get_spx_structure / get_spx_play / get_spx_confluence / get_market_context (getLargoSpxLiveDesk = same desk) |
+| Night's Watch → LARGO | PASS | get_my_positions (auth-scoped userId) |
+| Night Hawk → LARGO | PASS | get_nighthawk_edition / _outcomes / _dossier |
+| GRID(news) → LARGO | PASS | get_news, get_catalysts, get_price_targets |
+| GRID(earnings) → LARGO | PASS | get_earnings / _history / _market |
+| GRID(dark-pool) → LARGO | PASS | get_dark_pool |
+| HELIX → NIGHT HAWK (candidate flows) | PASS | candidates.ts ranks by flow premium + sweep bonus + flow_alerts streaks; data-sources.ts cites postgres flow_alerts + UW tide |
+| SPX Desk → NIGHT'S WATCH (underlying price) | PASS | verdict reads underlyingPrice from loadMergedSpxDesk (SPX positions) |
+| HEATMAP → NIGHT'S WATCH (GEX walls) | PASS | gexWalls from desk (SPX) / fetchGexHeatmap (non-SPX) — SAME source as Heatmap |
+| HELIX → NIGHT'S WATCH (flows) | PASS | buildPositionContextMap.getNwTickerFlows → fetchRecentFlows (list+detail paths) |
+| NIGHT HAWK → NIGHT'S WATCH (dossier enrichment) | PASS | verdict consumes analystDowngrade/highIvCrushRisk/darkPoolBias/insiderNetSell/shortSqueezeRisk from staged dossier (detail path) |
+| GRID(econ) → SPX Desk/Engine | PASS | desk macro_events/news_headlines feed spx-play-gates, spx-signals(scoreNewsRisk), conflicts, confirmations, lotto-catalyst |
+| GRID(news) → SPX Engine | PASS | news_headlines sentiment in spx-play-conflicts/confirmations/claude |
+
+### WARN
+- **W1 — dual GEX fetch path (unchanged from prior runs).** Largo \get_positioning\ → \etchPolygonPositioningBundle\; Heatmap + Night's Watch(non-SPX) → \etchGexHeatmap\. BOTH are Polygon-options-chain derived (same provider, no UW), and wall LABELING is reconciled to net_gex sign (#80) so Largo's positioning read agrees with the Heatmap. Residual risk: two code paths with separate caches/expiry handling (bundle pins \	odayEtYmd\ expiry; heatmap uses full chain) can drift on edge cases. Not a silo — both honest, same source. Converging onto one path remains the cleanup. Note: Largo \get_gex\ for SPX correctly routes through the SAME merged desk as the dashboard, so the SPX path is already converged.
+
+### Resolved since prior matrix
+- **W2 (prior) — NW panel verdict omitting HELIX flows.** verdict.ts now consumes \ctx.flows\ and \ctx.trend\ on BOTH the list and detail paths (buildPositionContextMap populates flows+trend for every underlying, SPX included). The dossier-only signals (analyst/IV/dark-pool/insider/squeeze) remain detail-path by design (honesty rule: list path leaves them undefined → never fired). Flow connectivity to the verdict is intact.
+
+### Limitation — live cross-tool VALUE consistency NOT verified this run
+All entitled data endpoints return **401 (Clerk auth)** unauthenticated; only \/api/health\ is public. The spec's Phase 1 paths were also stale (corrected: spx/pulse, market/flows, market/nighthawk/edition). So Phases 2/3/9 (live wall/price/flow VALUE comparison + timestamp desync) could **not** run from this machine. Structural wiring is verified (every consumer reads the canonical shared source), but a numeric "do the values match RIGHT NOW" check needs an authenticated canary. **Recommendation:** add a server-side cron (Bearer CRON_SECRET) that pulls each surface in-process and diffs callWall/putWall/spot/asOf — that is the only way to catch a runtime value desync, which source inspection cannot.
+
+---
