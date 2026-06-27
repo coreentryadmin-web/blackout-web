@@ -1,5 +1,14 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-27 12:13 ET
+Last updated: 2026-06-27 16:10 ET
+
+> 16:10 run (Saturday, market closed): **NO net-new issues, NO regressions.** Sharpened P2-C
+> with prod ground truth — the SPX engine didn't just fail to *open*, it logged **0 BUY/APPROVE
+> over the last 3 active days** (198 SCANNING · 24 WATCHING · 0 BUY in `cron_job_runs`), and two
+> fresh gate fixes (`5eee3ff` 6-bug gate audit + `cee2ebf` 0DTE calibration) shipped TODAY while
+> market closed → unvalidated until Monday. New positive: **VAPID keys now SET in prod → push
+> alerts no longer inert.** Re-verified GREEN: tsc 0, db/redis safety, veto disabled (env-confirmed),
+> all required env vars present, #97/#100/#101/#102 fixed, all Railway services Online, only benign
+> weekend `skipped` cron rows (no real failures). P1-A, P2-A, P2-B, P3-1, P3-2 all carried unchanged.
 
 > 12:13 run (Saturday, market closed): **1 NET-NEW P1 (P1-A)** — regime + flow-anomaly features
 > are dead end-to-end (no writer cron exists; the "market-regime-detector cron" named in code
@@ -37,7 +46,7 @@ Last updated: 2026-06-27 12:13 ET
   these two tables; P2-A remains for the anomalies auth-boundary specifically)_
 
 ## 🟡 P2 — open
-- [ ] **P2-C ⏳ WATCH** SPX play ledger empty all-time (`spx_open_play`=0, `spx_play_outcomes`=0, verified live in prod). **Most likely EXPECTED, not a bug:** the fetch-bug fix `6f00a5e` ("query SPX chain root + don't let chain gate veto entry") merged **2026-06-26 16:20 ET, ~20 min AFTER Friday's RTH close** — so Friday ran the OLD code and NO trading session has run with the fix. Veto confirmed disabled (`spx-play-config.ts:404`); diagnostic tracing already committed (`63567cb`); cron path correctly wired (`spx-evaluator.ts:41` → `evaluateSpxPlay({mutate:true})`). **VERIFY Mon 2026-06-29 after RTH:** re-query prod `spx_open_play` (should get rows) + `spx_play_outcomes` (populates on close). IF still 0 after Monday's full session → escalate to P1 and read the `63567cb` diagnostic logs for the rejecting entry gate. Do NOT re-touch the veto. _(found 2026-06-27 07:10; corrected down from a too-strong P1 after git-timing check)_
+- [ ] **P2-C ⏳ WATCH** SPX play ledger empty all-time (`spx_open_play`=0, `spx_play_outcomes`=0, re-verified live in prod 16:10). **Refined 16:10:** the engine never reached a BUY — `cron_job_runs` for `spx-evaluate` over the last 3 active days = **198 SCANNING · 24 WATCHING · 0 BUY/APPROVE · 42 skipped**. Cause is the confluence/Claude gates not approving, NOT the option-chain veto (confirmed disabled: `SPX_OPTION_CHAIN_REQUIRED` unset in env + `playOptionChainRequired()` defaults false at `spx-play-config.ts:417`). Two fresh gate fixes shipped **today while market closed** and are unvalidated: `5eee3ff` "unblock play entries — 6-bug gate audit" (12:35 PT) + `cee2ebf` "0DTE calibration" (12:47 PT). Cron path correct (`spx-evaluator.ts:41` → `evaluateSpxPlay({mutate:true})` → `openPlay` → `insertOpenSpxPlay`). **VERIFY Mon 2026-06-29 after RTH:** re-query `spx_open_play` (expect rows) + `cron_job_runs` for `play_action=BUY`. IF still 0 BUY after Monday's full session → escalate to P1 and read the `63567cb` diagnostic logs for the rejecting gate. Do NOT re-touch the veto. _(found 2026-06-27 07:10; refined 12:13 + 16:10)_
 - [ ] **P2-A** `/api/market/anomalies` (→200 `{"anomalies":[]}`) and `/api/market/regime` (→200 `{"available":false}`) serve unauthenticated, while sibling market routes 401. `middleware.ts` documents that API routes must self-authorize — these two lack a guard. No paid-data leak today (both empty) but they'd leak once they return real payloads. Add the sibling `requireToolApi`/entitlement guard or annotate as intentionally public. Files: `src/app/api/market/anomalies/route.ts`, `src/app/api/market/regime/route.ts`. _(found 2026-06-27 07:10)_
 - [ ] **P2-B** `spx_signal_log` last wrote 2026-06-17 (stale 10 days). If any admin/analytics surface still reads it, it serves stale signals. Confirm superseded by the play engine; resume writes or retire table + readers. _(found 2026-06-27 07:10)_
 
@@ -46,6 +55,7 @@ Last updated: 2026-06-27 12:13 ET
 - [ ] **P3-2** `spx_pulse_snapshots` and `spx_watch_setups` exist in prod with 0 rows all-time and **zero INSERT code references** in `src/` → dead/legacy tables. Drop them or wire the intended writers. _(found 2026-06-27 07:10)_
 
 ## ✅ Recently confirmed FIXED
+- **VAPID push (was inert)** — RESOLVED 16:10: `NEXT_PUBLIC_VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` + `VAPID_SUBJECT` all set in prod env → push alerts no longer inert
 - **P2-1 (was open 00:12)** 7 TS errors in WIP `platform/intel` + sibling routes — RESOLVED: real `tsc --noEmit` now 0 errors, files committed, `git status` clean (verified 07:10)
 - **P2-2 / #97 (was open 00:12)** `SpxDarkPoolCard` — RESOLVED: now imported + mounted at `SpxDashboard.tsx:13,86` (verified 07:10)
 - **#100** pg Pool idle-error handler — `db.ts:113`
