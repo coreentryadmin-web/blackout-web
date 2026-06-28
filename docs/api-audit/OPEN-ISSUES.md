@@ -1,5 +1,21 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-27 20:15 ET
+Last updated: 2026-06-28 00:14 PT
+
+> 00:14 run (2026-06-28, Saturday night, market closed): **1 NET-NEW P1 (P1-B)** —
+> `/api/signals/open` serves **200 unauthenticated** and returns up to 500 `signal_events`
+> rows incl. `grade`/`ticker`/`strike`/`expiry`/`option_type`/`entry_mark`/`confluence_score`
+> — i.e. the paid SPX_SLAYER + NIGHT_HAWK signal output. Currently empty live
+> (`{"ok":true,"signals":[]}`, market closed/all scored to EOD) but **leaks live signals to
+> anyone during RTH**. Distinct from P2-A (those are market-wide/no-paid-data); this one IS
+> paid data. No in-repo consumer fetches it and the `signal-outcome-tracker` cron its comment
+> cites does not exist → orphaned. Fix: add `isCronAuthorized` (sibling write routes already
+> have it) or delete. `signals/open/route.ts:8`. **P3-3 gets a 3rd instance:**
+> `track-record/publish/route.ts:9` uses the same fail-open `if (CRON_SECRET && …)` guard.
+> Re-verified GREEN: site 200s + correct 401s, tsc 0, db Pool error handler present, redis
+> family:0 + retry, SPX veto+open logic both present, #97/#100/#101/#102 confirmed fixed,
+> VAPID/GEX-alerts now fully armed (`NEXT_PUBLIC_VAPID_PUBLIC_KEY`+`VAPID_PRIVATE_KEY`+
+> `VAPID_SUBJECT`+`GEX_ALERTS_PUSH` all set). Carried unchanged (not re-queryable this run —
+> `railway status`/`logs` need `--service` with project token): P1-A, P2-C, P2-B.
 
 > 20:15 run (Saturday, market closed): **P1-A REFINED — effort dropped from "build the writer" to
 > "create one Railway service."** The regime/anomaly writer is now fully built in code
@@ -57,6 +73,16 @@ Last updated: 2026-06-27 20:15 ET
   **Fix is now a single deploy action (no code):** create the Railway cron service from
   `railway.market-regime-detector.toml` via Config-as-code, set `CRON_SECRET` on it, confirm first run
   writes `market_regime`. _(found 12:13; refined 20:15 — writer confirmed built, only Railway trigger missing)_
+- [ ] **P1-B (NEW 2026-06-28 00:14)** Entitlement leak — `/api/signals/open` is unauthenticated.
+  `src/app/api/signals/open/route.ts:8` `GET` runs an unguarded query returning up to 500
+  `signal_events` rows with `grade`, `ticker`, `strike`, `expiry`, `option_type`, `entry_mark`,
+  `confluence_score` — the paid SPX_SLAYER + NIGHT_HAWK signal output. **Verified live:
+  `GET https://www.blackouttrades.com/api/signals/open` → HTTP 200** (empty now — market closed,
+  all scored to EOD — but exposes the day's live signals to anyone during RTH). Distinct from
+  P2-A (market-wide/no-paid-data); this is paid data. **Orphaned**: no in-repo consumer fetches
+  it, and the `signal-outcome-tracker` cron its comment cites does not exist anywhere in `src/`.
+  **Fix:** add `isCronAuthorized` (sibling write routes `signals/record`+`signals/outcome` already
+  have it) or delete the route. _(found 2026-06-28 00:14)_
 
 ## 🟡 P2 — open
 - [ ] **P2-C ⏳ WATCH** SPX play ledger empty all-time (`spx_open_play`=0, `spx_play_outcomes`=0, re-verified live in prod 16:10). **Refined 16:10:** the engine never reached a BUY — `cron_job_runs` for `spx-evaluate` over the last 3 active days = **198 SCANNING · 24 WATCHING · 0 BUY/APPROVE · 42 skipped**. Cause is the confluence/Claude gates not approving, NOT the option-chain veto (confirmed disabled: `SPX_OPTION_CHAIN_REQUIRED` unset in env + `playOptionChainRequired()` defaults false at `spx-play-config.ts:417`). Two fresh gate fixes shipped **today while market closed** and are unvalidated: `5eee3ff` "unblock play entries — 6-bug gate audit" (12:35 PT) + `cee2ebf` "0DTE calibration" (12:47 PT). Cron path correct (`spx-evaluator.ts:41` → `evaluateSpxPlay({mutate:true})` → `openPlay` → `insertOpenSpxPlay`). **VERIFY Mon 2026-06-29 after RTH:** re-query `spx_open_play` (expect rows) + `cron_job_runs` for `play_action=BUY`. IF still 0 BUY after Monday's full session → escalate to P1 and read the `63567cb` diagnostic logs for the rejecting gate. Do NOT re-touch the veto. _(found 2026-06-27 07:10; refined 12:13 + 16:10)_
@@ -66,7 +92,7 @@ Last updated: 2026-06-27 20:15 ET
 ## 🔵 P3 — open (tech debt / tooling)
 - [ ] **P3-1** deep-platform-audit `SKILL.md` produces false P0/P1 every run: stale probe paths (`/api/market/spx-pulse`→`/api/market/spx/pulse`, `/api/flows`→`/api/market/flows`, `/api/nighthawk/latest-edition`→`/api/market/nighthawk/edition`, `/api/grid/news`→none), wrong env-var names (`UNUSUAL_WHALES_API_KEY`→`UW_API_KEY`), and a db-handler regex (`pool\.on`) that misses the real `livePool.on("error")` (`db.ts:113`). Fix the SKILL's probe lists. _(found 2026-06-27 00:12, reconfirmed 07:10)_
 - [ ] **P3-2** `spx_pulse_snapshots` and `spx_watch_setups` exist in prod with 0 rows all-time and **zero INSERT code references** in `src/` → dead/legacy tables. Drop them or wire the intended writers. _(found 2026-06-27 07:10)_
-- [ ] **P3-3 (NEW 20:15)** Fail-open cron-write guard. `market/anomalies/route.ts:38` and `market/regime/route.ts` POST handlers use `if (cronSecret && auth !== ` + "`Bearer ${cronSecret}`" + `)` — when `CRON_SECRET` is unset the guard short-circuits and the POST is accepted unauthenticated. `CRON_SECRET` is set in prod (no live exposure); defense-in-depth only. Prefer failing closed: `if (!cronSecret || auth !== …)`. _(found 2026-06-27 20:15)_
+- [ ] **P3-3 (NEW 20:15)** Fail-open cron-write guard. `market/anomalies/route.ts:38` and `market/regime/route.ts` POST handlers use `if (cronSecret && auth !== ` + "`Bearer ${cronSecret}`" + `)` — when `CRON_SECRET` is unset the guard short-circuits and the POST is accepted unauthenticated. `CRON_SECRET` is set in prod (no live exposure); defense-in-depth only. Prefer failing closed: `if (!cronSecret || auth !== …)`. **3rd instance found 2026-06-28 00:14:** `track-record/publish/route.ts:9` uses the identical fail-open pattern. _(found 2026-06-27 20:15; +instance 2026-06-28)_
 
 ## ✅ Recently confirmed FIXED
 - **VAPID push (was inert)** — RESOLVED 16:10: `NEXT_PUBLIC_VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` + `VAPID_SUBJECT` all set in prod env → push alerts no longer inert
