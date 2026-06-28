@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
            updated_at = NOW(),
            notes      = COALESCE(notes || E'\n', '') || 'Auto-closed: option expired'
        WHERE status = 'open'
-         AND expiry < (NOW() AT TIME ZONE 'America/New_York')::date
+         AND expiry <= (NOW() AT TIME ZONE 'America/New_York')::date
        RETURNING id, user_id, ticker, expiry::text`,
       []
     );

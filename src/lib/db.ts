@@ -1254,10 +1254,22 @@ export async function insertOpenSpxPlay(row: {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query(
-      `UPDATE spx_open_play SET status = 'closed', closed_at = NOW() WHERE session_date = $1::date AND status = 'open'`,
+    // Close any prior open play and record a 'superseded' outcome row so it appears
+    // in the track record (without this, the force-closed play would be silently dropped).
+    const closed = await client.query<{ id: string }>(
+      `UPDATE spx_open_play SET status = 'closed', closed_at = NOW()
+       WHERE session_date = $1::date AND status = 'open'
+       RETURNING id`,
       [row.session_date]
     );
+    for (const prev of closed.rows) {
+      await client.query(
+        `UPDATE spx_play_outcomes
+         SET outcome = 'superseded', exit_action = 'force_close', closed_at = NOW()
+         WHERE open_play_id = $1 AND outcome = 'open'`,
+        [prev.id]
+      );
+    }
     try {
       const res = await client.query<{ id: string }>(
         `

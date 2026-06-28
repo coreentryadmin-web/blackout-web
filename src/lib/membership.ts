@@ -271,14 +271,27 @@ export async function reconcileAllMemberships(opts?: { maxEmails?: number }): Pr
   let free = 0;
   let errors = 0;
   for (const email of slice) {
-    try {
-      const { tier } = await syncWhopMembershipForEmail(email);
-      if (tier === "premium") premium++;
-      else free++;
-    } catch (err) {
-      errors++;
-      console.warn(`[membership-reconcile] ${email}:`, err);
+    let synced = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const { tier } = await syncWhopMembershipForEmail(email);
+        if (tier === "premium") premium++;
+        else free++;
+        synced = true;
+        break;
+      } catch (err) {
+        const status = (err as { status?: number })?.status ?? (err as { statusCode?: number })?.statusCode;
+        if (status === 429 && attempt < 3) {
+          // Back off on rate-limit: 2s, 6s
+          await new Promise((r) => setTimeout(r, attempt * 2000));
+          continue;
+        }
+        errors++;
+        console.warn(`[membership-reconcile] ${email} attempt ${attempt}:`, err);
+        break;
+      }
     }
+    void synced; // suppress unused-var lint
   }
 
   if (capped) {
