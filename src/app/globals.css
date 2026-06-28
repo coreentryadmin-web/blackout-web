@@ -2842,9 +2842,9 @@ body::before {
   .nighthawk-play-row {
     @apply flex gap-0 min-h-0 overflow-hidden;
     border: 1px solid rgba(255, 45, 85, 0.2);
-    background: rgba(4, 4, 7, 0.55);
-    backdrop-filter: blur(1px);
-    -webkit-backdrop-filter: blur(1px);
+    background: rgba(4, 4, 7, 0.18);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     box-shadow: inset 0 0 50px rgba(255, 45, 85, 0.03);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
@@ -2987,7 +2987,7 @@ body::before {
     font-size: 0.7rem;
     letter-spacing: 0.08em;
     color: #7dd3fc;
-    text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+    text-shadow: 0 0 8px rgba(0,0,0,1), 0 1px 3px rgba(0,0,0,1);
   }
 
   .nighthawk-play-stat em {
@@ -3009,7 +3009,7 @@ body::before {
     @apply font-mono leading-snug;
     font-size: 0.82rem;
     color: #bae6fd;
-    text-shadow: 0 1px 6px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.8);
+    text-shadow: 0 0 8px rgba(0,0,0,1), 0 1px 3px rgba(0,0,0,1), 0 0 20px rgba(0,0,0,0.95);
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
@@ -3020,7 +3020,7 @@ body::before {
     @apply font-mono leading-snug;
     font-size: 0.72rem;
     color: #7dd3fc;
-    text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+    text-shadow: 0 0 8px rgba(0,0,0,1), 0 1px 3px rgba(0,0,0,1);
   }
 
   .nighthawk-play-signal em {
@@ -3058,7 +3058,7 @@ body::before {
     @apply block font-mono leading-tight;
     font-size: 0.8rem;
     color: #e0f2fe;
-    text-shadow: 0 1px 6px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.8);
+    text-shadow: 0 0 8px rgba(0,0,0,1), 0 1px 3px rgba(0,0,0,1), 0 0 20px rgba(0,0,0,0.95);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
