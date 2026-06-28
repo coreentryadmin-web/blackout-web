@@ -2756,9 +2756,9 @@ body::before {
 
   .nighthawk-playbook-recap-grid {
     @apply flex flex-wrap gap-x-3 gap-y-0.5 font-mono uppercase;
-    font-size: clamp(0.625rem, 0.8vh, 0.6rem);
+    font-size: 0.65rem;
     letter-spacing: 0.06em;
-    color: rgba(255, 200, 180, 0.65);
+    color: rgba(255, 200, 180, 0.9);
     max-width: 36rem;
   }
 
@@ -2938,7 +2938,7 @@ body::before {
 
   .nighthawk-play-direction {
     @apply font-mono uppercase border;
-    font-size: clamp(0.625rem, 0.7vh, 0.5625rem);
+    font-size: 0.625rem;
     letter-spacing: 0.18em;
     padding: 0.15rem 0.45rem;
   }
@@ -2982,19 +2982,19 @@ body::before {
 
   .nighthawk-play-stat {
     @apply font-mono uppercase;
-    font-size: clamp(0.625rem, 0.68vh, 0.5625rem);
+    font-size: 0.6875rem;
     letter-spacing: 0.08em;
-    color: rgba(255, 220, 180, 0.55);
+    color: rgba(255, 220, 180, 0.9);
   }
 
   .nighthawk-play-stat em {
     @apply not-italic mr-1;
-    color: rgba(255, 210, 63, 0.5);
+    color: rgba(255, 210, 63, 0.85);
   }
 
   .nighthawk-play-prem-cap {
     @apply font-mono uppercase border;
-    font-size: clamp(0.625rem, 0.68vh, 0.5625rem);
+    font-size: 0.625rem;
     letter-spacing: 0.06em;
     color: rgba(255, 210, 63, 0.95);
     border-color: rgba(255, 210, 63, 0.3);
@@ -3004,8 +3004,8 @@ body::before {
 
   .nighthawk-play-thesis {
     @apply font-mono leading-snug;
-    font-size: clamp(0.625rem, 1.05vh, 0.78rem);
-    color: rgba(255, 248, 235, 0.88);
+    font-size: 0.8rem;
+    color: rgba(255, 248, 235, 0.96);
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
@@ -3014,15 +3014,15 @@ body::before {
 
   .nighthawk-play-signal {
     @apply font-mono leading-snug;
-    font-size: clamp(0.625rem, 0.9vh, 0.68rem);
-    color: rgba(255, 200, 160, 0.7);
+    font-size: 0.7rem;
+    color: rgba(255, 200, 160, 0.9);
   }
 
   .nighthawk-play-signal em {
     @apply not-italic uppercase mr-1;
     font-size: 0.9em;
     letter-spacing: 0.12em;
-    color: rgba(255, 45, 85, 0.65);
+    color: rgba(255, 45, 85, 0.85);
   }
 
   .nighthawk-play-levels {
@@ -3042,16 +3042,16 @@ body::before {
 
   .nighthawk-play-level-label {
     @apply block font-mono uppercase;
-    font-size: clamp(0.625rem, 0.62vh, 0.52rem);
+    font-size: 0.625rem;
     letter-spacing: 0.18em;
-    color: rgba(255, 210, 63, 0.45);
+    color: rgba(255, 210, 63, 0.8);
     margin-bottom: 0.1rem;
   }
 
   .nighthawk-play-level-value {
     @apply block font-mono leading-tight;
-    font-size: clamp(0.625rem, 0.88vh, 0.68rem);
-    color: rgba(255, 235, 210, 0.78);
+    font-size: 0.78rem;
+    color: rgba(255, 235, 210, 0.96);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -3074,18 +3074,33 @@ body::before {
 
   .nighthawk-play-risk {
     @apply font-mono leading-snug mt-auto;
-    font-size: clamp(0.625rem, 0.8vh, 0.62rem);
-    color: rgba(255, 120, 140, 0.75);
+    font-size: 0.65rem;
+    color: rgba(255, 120, 140, 0.92);
   }
 
   .nighthawk-play-risk em {
     @apply not-italic uppercase mr-1;
     letter-spacing: 0.1em;
-    color: rgba(255, 45, 85, 0.6);
+    color: rgba(255, 45, 85, 0.85);
   }
 
   .nighthawk-play-row-clickable {
     cursor: pointer;
+  }
+
+  .nighthawk-playbook-hint {
+    @apply font-mono shrink-0;
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
+    color: rgba(255, 210, 63, 0.65);
+    padding: 0.25rem clamp(0.65rem, 1.4vw, 1rem);
+  }
+
+  .nighthawk-play-open-hint {
+    @apply font-mono uppercase self-end mt-auto;
+    font-size: 0.625rem;
+    letter-spacing: 0.2em;
+    color: rgba(255, 210, 63, 0.7);
   }
 
   .nighthawk-play-row-clickable:hover {
