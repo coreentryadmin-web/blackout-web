@@ -1,5 +1,25 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-28 08:13 ET
+Last updated: 2026-06-28 12:23 ET
+
+
+> 12:23 ET run (Sunday, market closed): **No net-new issues. Platform GREEN on everything
+> sampleable.** **P1-B re-verified STILL CLOSED:** `GET /api/signals/open` → **401**. **P1-A
+> STILL OPEN (re-confirmed `railway status`):** no `Market-Regime-Detector` among the 13 live cron
+> services → `market_regime`/`flow_anomalies` writers never run; needs manual Railway "add service
+> (Config-as-code)" step (deploy-risky, operator-only). **P2-D STILL OPEN (re-confirmed live
+> logs):** `options-socket` shard 0 in `code=1006` reconnect loop, `failures=77` (was 531 @04:08 —
+> redeploy reset the counter, loop pattern unchanged: `connected (2 contracts)`→`1006 reconnect`
+> every 60s). Benign off-hours; **re-check after 09:30 ET Mon 06-29** — climbing `failures` →
+> promote to P1 (Night's Watch valuations degrade); fix = gate reconnect/heartbeat on options-RTH
+> (`src/lib/ws/options-socket.ts:453-457`). **P2-C** SPX play opens carries to Mon RTH. **P3-META
+> (re-confirmed):** audit SKILL.md still has stale paths (`spx-pulse`→`spx/pulse`,
+> `flows`→`market/flows`, `nighthawk/latest-edition`→`market/nighthawk/edition`,
+> `grid/news`→`market/news`) + bad regexes (`livePool.on`, plural `webhooks/clerk`,
+> `Select-String -Recurse` invalid) → systematic false positives; correct it. Re-verified GREEN:
+> tsc=0, db Pool error handler+max:5, redis family:0+reconnect, 0 real TODO/FIXME, #73/#97/#100/
+> #101/#102 all resolved, blackout-web Online 5/5 + Postgres/Redis Online + 13 crons Online/
+> Completed + 0 deploy-log errors. Full report: `docs/api-audit/deep-audit-20260628-12.md`.
+
 
 > 08:13 ET run (Sunday, market closed): **P1-B FIXED IN THIS RUN.** The unauthenticated
 > paid-signal leak `/api/signals/open` (200 → up to 500 `signal_events` rows incl.
