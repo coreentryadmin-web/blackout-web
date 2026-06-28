@@ -6,6 +6,56 @@
 
 ---
 
+## 2026-06-28 (Sun) Daily Error Triage
+
+### Summary
+- **New errors found:** 2 (options-socket reconnect storm · db-cleanup tipped stale)
+- **Recurring errors:** 2 (Discord alerting unset — Day 2 · nighthawk-playbook weekend staleness — Day 2)
+- **Auto-fixed:** 0 (no finding met the safe / <10-line / clear-code-bug / non-breaking bar — every item is env-config, watchdog calibration, or needs-verification)
+- **Requires human attention:** 3 (HIGH: options WS reconnect storm + observability blackout · HIGH: alerting blind spot Day 2 · MEDIUM: db-cleanup possible missed run)
+- **False alarms identified:** 1 (nighthawk-playbook weekend staleness — expected on a Sunday)
+
+No runtime exceptions, stack traces, `TypeError`/`ReferenceError`, OOM/heap, connection-pool exhaustion, or unhandled rejections appeared in any service log. The RTH crons that ran (flow-ingest, uw-cache-refresh, cron-staleness-watchdog) all returned **200 OK** with healthy payloads. Today is a **Sunday** — markets closed — so weekday-only/evening crons are legitimately idle.
+
+> ⚠️ **Observability caveat:** **496 of 500** lines in the `blackout-web` log tail are `[options-socket] shard 0 reconnect` warnings (~4/min). The reconnect storm has **saturated the log buffer** — any other `blackout-web` error older than ~2 minutes is pushed out of the 500-line tail and is invisible to this triage. The clean-looking web log below is therefore a *floor*, not a guarantee. Yesterday's heatmap-pagination / 0-contracts market-data warnings could not be re-confirmed for this reason (buffer drowned, not necessarily resolved).
+
+### New Errors (first occurrence)
+| Service | Error | Count | Root Cause | Status |
+|---|---|---|---|---|
+| blackout-web | `[options-socket] shard 0 connected (1 contracts)` → `reconnect in 60000ms (code=1006, failures=822…883)` | 496 lines (~4/min, **~14h+ continuous**; counter climbed 822→883 in this window) | The shared Massive **options** WebSocket (Night's Watch live marks, `OPTIONS_WS_ENABLED`) connects with 1 held contract, sends `auth`, then the server drops it with **code 1006 (abnormal close, no frame)** before `auth_success`. The `consecutiveFailures` counter **never resets** (reset only fires on `auth_success`, `options-socket.ts:405-406`) → auth is **never** completing. Pattern matches an entitlement/endpoint/key-class problem, not transport flakiness: most likely the key lacks an **options** WS entitlement (cf. the GEX note that `POLYGON_API_KEY` must be a *Massive* key), or `OPTIONS_WS_URL` is wrong. **Fails safe** — `getLiveOptionMark` ages out to the REST snapshot, so valuation is unaffected; the harm is (a) log saturation killing observability and (b) a 60s reconnect hammer for 14h+. | ⚠️ HUMAN — config/entitlement |
+| Cron-Staleness-Watchdog / blackout-web | `problems=2 problem_keys=["nighthawk-playbook","db-cleanup"]` — **db-cleanup** is newly stale (only nighthawk was flagged yesterday) | 4 (every watchdog tick 13:01–14:00 UTC) | `db-cleanup` runs **nightly ~3 AM ET**, `stale_after_min: 36h`, **no** `weekdays_only`. For it to tip stale by Sun ~10 AM ET, the last logged success is >36h ago → the **Saturday ~3 AM ET run appears missing/unlogged** (Fri 3 AM was ~31h old on Sat morning, so it only crossed the 36h line today). Could be a genuine missed run **or** an SDLC-redeploy churning the `cron_job_runs` heartbeat (see `reference_railway_cron_health_reading`). `rth_stale=0` — not a market-hours outage. | ⚠️ HUMAN — verify last run |
+
+### Recurring Errors (seen before, not yet fixed)
+| Service | Error | Days Recurring | Escalation |
+|---|---|---|---|
+| blackout-web | `[notify] ops alert DROPPED — neither DISCORD_OPS_WEBHOOK_URL nor DISCORD_PLAY_WEBHOOK_URL is set` → `ALERT NOT DELIVERED for 2 stale/failed cron(s)` | **2 days** (since 2026-06-27) | **HIGH** — alerting has now been blind for 2 consecutive days. Every cron problem (incl. any real RTH outage Monday) will be silently dropped. One day short of the 3-day auto-escalation threshold; treat as HIGH now given it is the safety net itself. |
+| Cron-Staleness-Watchdog | `problem_keys` includes `nighthawk-playbook` (weekday-evening worker flagged stale off-window) | **2 days** | **LOW / FALSE ALARM** — expected. `nighthawk-playbook` is `weekdays_only`, 5:30 PM ET; the 2.5× weekend multiplier (→10h) cannot cover a 2-day weekend gap, so it false-positives every Sat/Sun morning. Not a generation failure. Calibration item, not an outage. |
+
+### Auto-Fixed This Run
+| Error | File | Fix Applied | Commit |
+|---|---|---|---|
+| _none — no finding met all safe-auto-fix criteria (clear code root-cause, <10 lines, non-breaking, reversible, tsc-clean). The options-socket root cause is config/entitlement (not a code bug), the watchdog weekend calibration is a deliberate-threshold behavior change that risks masking a real Friday-night miss, db-cleanup needs ground-truth verification, and Discord/OPTIONS_WS are env vars I don't hold._ | | | |
+
+### Requires Human Attention
+| Error | Severity | Why It Needs Human | Suggested Fix |
+|---|---|---|---|
+| **options-socket reconnect storm** (code=1006 × 883, auth never completes) + it has **blacked out blackout-web observability** | **HIGH** | Not a code bug — the reconnect/backoff logic is behaving correctly in response to an upstream rejection. Root cause is an options **WS entitlement / endpoint / key-class** question I can't resolve from logs, and the mitigation is an env decision. Per `project_nights_watch`, Night's Watch valuation is to be rebuilt as a cache-reader, so the live-WS-marks path may be premature in prod. | **Fastest:** set `OPTIONS_WS_ENABLED=0` on `blackout-web` until the Massive **options** WS entitlement is confirmed — stops the storm and restores log visibility immediately (REST snapshot already covers valuation). **Then:** confirm `POLYGON_API_KEY`/`MASSIVE_API_KEY` is entitled for the options Q feed and that `OPTIONS_WS_URL` (`wss://socket.massive.com/options`) is correct. If kept on, throttle the reconnect `console.warn` after N failures so it can't saturate the buffer (`options-socket.ts:299-301`). |
+| **Discord alerting unconfigured** → all cron alerts silently dropped (**Day 2**) | **HIGH** | Cannot be fixed in code and I don't hold the webhook URL. With both `DISCORD_OPS_WEBHOOK_URL` and `DISCORD_PLAY_WEBHOOK_URL` unset, **any real cron failure or RTH staleness goes completely unnoticed** — and Monday is the next RTH session (per pending-items, SPX-play-open / signal-panel verification is due then). | Set `DISCORD_OPS_WEBHOOK_URL` (and/or `DISCORD_PLAY_WEBHOOK_URL`) on the `blackout-web` Railway service before Monday open. Until then the watchdog is detect-only. |
+| **db-cleanup** stale — possible missed Saturday ~3 AM ET run | **MEDIUM** | Needs ground-truth: query `cron_job_runs` for the last `db-cleanup` success. If genuinely missed, it's an unattended-table-growth risk; if it ran but the heartbeat wasn't written, it's a recording artifact from SDLC redeploy churn (known false-#90 source). Either way it's a verify-before-fix, not a blind code change. | Check `SELECT * FROM cron_job_runs WHERE job_key='db-cleanup' ORDER BY ran_at DESC LIMIT 5` on prod Postgres. If last success >36h: trigger `/api/cron/db-cleanup` manually and confirm the nightly trigger fired. If it ran but didn't log: the heartbeat write in the db-cleanup route needs hardening. |
+
+### Services With No Errors
+- **Flow-Ingest-Cron** — `/api/cron/flow-ingest → 200`, `ok=true ingested=0 polled=100` (clean; 0 ingested expected on a Sunday off-session)
+- **UW-Cache-Refresh-New** — `/api/cron/uw-cache-refresh → 200`, `ok=true refreshed=24 total=24` (all 24 refreshed)
+- **Cron-Staleness-Watchdog** — `/api/cron/cron-staleness-watchdog → 200`, `checked=21 rth_stale=0` every tick (the 2 `problems` are the weekend nighthawk false-positive + the db-cleanup verify item above; **no** market-hours outage)
+- **NightHawk-Playbook** — no log output (evening-only `weekdays_only` worker; idle Sat/Sun, as expected — last edition was Friday evening)
+
+### Triage Notes
+- **Diff vs 2026-06-27:** options-socket storm is **net-new** in today's tail (yesterday's web log was not dominated by it); db-cleanup **newly** tipped stale (crossed 36h overnight). Discord-unset and nighthawk weekend-staleness **carried over** (Day 2). Yesterday's heatmap-pagination + 0-contracts market-data warnings were **not re-observed** — but the options-socket buffer saturation means *absence is not confirmation of resolution*; re-check on Monday RTH.
+- **Top priority before Monday open:** (1) silence the options-socket storm to restore observability, (2) set the Discord webhook so Monday's RTH verification (SPX-play opens / signal panel) is actually alertable.
+- No secrets were printed; no log line contained a credential value requiring redaction. `RAILWAY_TOKEN` was loaded into env only, never echoed.
+
+---
+
 ## 2026-06-27 (Sat) Daily Error Triage
 
 ### Summary
