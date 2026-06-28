@@ -2,6 +2,20 @@
 
 Automated TLS, availability, security-header, redirect, and CDN health checks for `www.blackouttrades.com`.
 
+## 2026-06-28 05:23 ET
+### TLS: cert expires 2026-09-14 — 78 days remaining — **PASS** (CN=blackouttrades.com, issuer Google Trust Services WE1; handshake valid)
+### Availability: 12/12 routes healthy — **PASS**
+- Pages 200 (Accept:text/html, follows redirects): Landing 520ms, Sign In 221ms, Sign Up 150ms, /dashboard 250ms, /flows 234ms, /heatmap 239ms, /grid 117ms, /nighthawk 227ms; /api/health 200 (110ms)
+- Auth-gated APIs 401 as intended (~85–97ms): /api/market/spx/pulse, /api/market/gex-positioning, /api/market/flows
+- **No 5xx. No P0. No slow routes (all <550ms).**
+### Security Headers: 6/6 present on rendered apex page — **PASS** (HSTS max-age=31536000 includeSubDomains preload, X-Content-Type-Options nosniff, X-Frame-Options SAMEORIGIN, Referrer-Policy strict-origin-when-cross-origin, CSP `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://s.tradingview…` (522 chars), Permissions-Policy camera=())
+- Reading note (recurring false alarm, confirmed again): Step-3's probe omits `Accept: text/html` and uses `MaximumRedirection 0`, so it hits Clerk's protect-rewrite path (which strips CSP) and falsely reports "CSP MISSING". Re-probed apex with `Accept: text/html` → CSP present (522 chars, CF-Cache-Status HIT). Step 3 should send the Accept header like Step 2 does. No app defect.
+- Config-vs-live deltas (both benign, no action — confirmed again): HSTS live `max-age=31536000` (1yr) vs next.config `63072000` (2yr); Permissions-Policy live omits the `payment=()` config sets. Edge normalization at Cloudflare; the three sensitive directives (camera/microphone/geolocation) are all locked and preload requirements still met.
+- `X-Powered-By` not leaking (poweredByHeader:false applied). `Server: cloudflare` expected (CF edge header, not an app leak).
+### Redirects: **PASS** — `http://www/` → 301 → https://blackouttrades.com/ ; www `/pricing` → 301 → https://blackouttrades.com/pricing (canonical = apex).
+### CDN: **PASS** — Cloudflare edge (CF-Ray a12ba0394ba4ddb8-SEA), X-Railway-Request-Id present. Landing served from edge cache (CF-Cache-Status HIT, `Cache-Control: s-maxage=31536000`) — consistent with marketing force-static + CF edge-cache design; all security headers (incl. CSP) intact on the cached response. /api/health carries no Cache-Control (dynamic, not CDN-cached).
+---
+
 ## 2026-06-27 03:23 ET
 ### TLS: cert expires 2026-09-14 — 79 days remaining — **PASS** (CN=blackouttrades.com, issuer Google Trust Services WE1)
 ### Availability: all live routes healthy — **PASS**
@@ -131,6 +145,19 @@ Automated TLS, availability, security-header, redirect, and CDN health checks fo
 - WARN (low priority, unchanged): `X-Powered-By: Next.js` leaking on apex → harden with `poweredByHeader: false` in next.config. `Server: cloudflare` expected (CF edge header, not an app leak).
 ### Redirects: **PASS** — `http://www/` → 301 → https://blackouttrades.com/ ; www `/pricing` → 301 → https://blackouttrades.com/pricing (canonical = apex; apex then applies in-app 307→/#pricing).
 ### CDN: **PASS** — Cloudflare edge (CF-Ray a12831275c447627-SEA), X-Railway-Request-Id present, root Cache-Control `private, no-cache, no-store, max-age=0, must-revalidate`. /api/health carries no Cache-Control (dynamic, not CDN-cached).
+---
+
+## 2026-06-28 03:22 ET
+### TLS: cert expires 2026-09-14 — 78 days remaining — **PASS** (CN=blackouttrades.com, issuer Google Trust Services WE1; handshake valid)
+### Availability: 12/12 routes healthy — **PASS**
+- Pages 200 (Accept:text/html, follows redirects): Landing 493ms, Sign In 205ms, Sign Up 197ms, /dashboard 198ms, /flows 231ms, /heatmap 201ms, /grid 131ms, /nighthawk 200ms; /api/health 200 (94ms)
+- Auth-gated APIs 401 as intended (~84–99ms): /api/market/spx/pulse, /api/market/gex-positioning, /api/market/flows
+- **No 5xx. No P0. No slow routes (all <500ms).**
+### Security Headers: 6/6 present on rendered apex page — **PASS** (HSTS, X-Content-Type-Options nosniff, X-Frame-Options SAMEORIGIN, Referrer-Policy strict-origin-when-cross-origin, CSP `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://s.tradingview.com …` (522 chars), Permissions-Policy camera=())
+- Reading note (recurring false alarm, confirmed again): Step-3's probe omits the `Accept: text/html` header **and** uses `MaximumRedirection 0`, so it hits Clerk's protect-rewrite path (which strips CSP) and falsely reports "CSP MISSING". Re-probed with `Accept: text/html` → 6/6 present. Same calibration Step 2 already applies — Step 3 should send the Accept header too. No app defect.
+- `X-Powered-By` not leaking (poweredByHeader:false still applied). `Server: cloudflare` expected (CF edge header).
+### Redirects: **PASS** — `http://www/` → 301 → https://blackouttrades.com/ ; www `/pricing` → 301 → https://blackouttrades.com/pricing (canonical = apex).
+### CDN: **PASS** — Cloudflare edge (CF-Ray a12af06a5fd87208-SEA), X-Railway-Request-Id present. **New this run:** landing now served from **edge cache** (CF-Cache-Status HIT, Age ~1900s, `Cache-Control: s-maxage=31536000`) vs the 01:22 entry's origin `private, no-cache` — consistent with the marketing-pages force-static + CF edge-cache design. All security headers (incl. CSP) intact on the cached response. /api/health carries no Cache-Control (dynamic, not CDN-cached).
 ---
 
 ## 2026-06-28 01:22 ET
