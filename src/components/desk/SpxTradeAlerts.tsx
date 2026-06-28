@@ -299,7 +299,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
       {!show ? (
         sessionActive && live ? (
           <p className="spx-desk-offline-line font-mono py-8 text-center">
-            Arming play engine…
+            Scanning — no open play
           </p>
         ) : (
           <div className="spx-desk-closed">
