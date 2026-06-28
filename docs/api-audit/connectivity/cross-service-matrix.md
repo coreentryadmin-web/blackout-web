@@ -538,3 +538,29 @@ shared data-source code paths instead — the durable signal.
 - Live-value divergence (the only thing source review can't catch — e.g. a stale cache serving different numbers to two consumers) requires an authenticated RTH run; re-verify Monday market-open.
 
 ---
+
+## Connectivity Matrix — 2026-06-28 00:55 ET (automated)
+**PASS: 13 | FAIL: 0 | WARN: 0** — source-grounded (live value-equality BLOCKED: endpoints 401 auth-gated, market closed Sat)
+
+| Channel | Status | Evidence |
+|---|---|---|
+| SPX Desk ↔ Heatmaps (GEX) | PASS | `mergeFlowIntoDesk` overlays `gex_walls`/`gex_net`/`gex_king`/`gamma_flip` (spx-desk-merge.ts:262-283) — one gamma source |
+| HELIX → SPX Desk | PASS | desk carries `spx_flows`/`flow_0dte_net`/`recent_flows`/`unified_tape`/`dark_pool` (spx-desk-live.ts:30-41, merge.ts:277) |
+| Heatmaps → Largo | PASS | `get_gex` → `getLargoSpxLiveDesk`; largo-live-feed.ts:10,84 imports `getGexPositioning` — *"same cache as Heatmaps, zero extra API calls"* |
+| Heatmaps → Night Hawk | PASS | positioning.ts:8-10 `fetchPolygonPositioningBundle` + `getGexPositioning` |
+| Heatmaps → Night's Watch | PASS | position-context.ts:19 `fetchGexHeatmap`; verdict reads shared `gexWalls` (verdict.ts:14-17,99-101) |
+| HELIX → Night Hawk | PASS | hunt-builder.ts:18,247 `fetchRecentFlows`; candidates/dossier `flow-streak`; data-sources `flow_alerts` |
+| HELIX → Night's Watch | PASS | position-context.ts:22 `fetchRecentFlows`; verdict `FLOW_MIN_PREMIUM 250k` / `FLOW_SKEW_RATIO 1.5` signals |
+| SPX Desk → Night's Watch | PASS | position-context.ts:16 `loadMergedSpxDesk` (shared cache); verdict uses spot + walls |
+| GEX → Night Hawk | PASS | positioning.ts `analyzeStrikeGexRows`/`topGexWalls`/`computeGammaFlip` |
+| Largo → ALL | PASS | 60 cases in run-tool.ts: get_gex, get_spx_structure/play, get_flow_tape/postgres_flows, get_nighthawk_edition, get_open_plays/trade_history, get_platform_snapshot |
+| Grid → SPX Desk | PASS | desk `macro_events`/`macro_indicators` (merge.ts:474,481); spx-lotto-catalyst.ts:1,35 consumes `MacroEvent` (CPI/FOMC/PCE/NFP/PPI/...) |
+| Grid → Largo | PASS | get_economic_calendar/news/congress_trades/dark_pool/earnings/analyst_ratings |
+| Grid → Night Hawk | PASS | catalyst-awareness `scoreCatalystAwareness(BenzingaCatalyst)`; market-wide macro-events |
+
+### This run
+- Re-verified every data-source-sharing channel from source after the SKILL's hardcoded routes 404'd. Real routes: `/api/market/spx`, `/api/market/gex-positioning`, `/api/market/flows`, `/api/market/nighthawk`, `/api/grid/*` — all **401 auth-gated** (correct posture), so live numeric value-equality could not be compared from this unauthenticated context.
+- SKILL Phases 3/6/8 predict DISCONNECTED (SPX blind to flows, Night's Watch ignores walls/flows, SPX ignores econ). **All three are FALSE per source** — those channels are wired. Heuristics keyed on field names (`flowBias`/`netFlow`) false-FAIL; real fields are `flow_0dte_net`/`spx_flows`.
+- **Only residual gap = live-value drift** (two consumers served different numbers by a stale cache) — invisible to source review. Re-confirm with an authenticated RTH run Monday 2026-06-29.
+
+---
