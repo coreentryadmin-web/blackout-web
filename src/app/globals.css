@@ -675,13 +675,18 @@ body::before {
 }
 
 .vitals-cursor-blink {
+  /* Draw a tidy block caret sized in em so it scales with the headline instead of
+     rendering the raw "|" glyph at full 8xl (which floated like a stray line). */
   display: inline-block;
-  width: 3px;
-  margin-left: 4px;
+  width: 0.06em;
+  height: 0.74em;
+  margin-left: 0.1em;
+  transform: translateY(0.06em);
   vertical-align: baseline;
+  background: rgba(34, 211, 238, 0.9);
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.55);
+  color: transparent;
   animation: vitals-cursor-blink 1.1s step-end infinite;
-  color: rgba(34,211,238,0.85);
-  font-weight: 300;
 }
 
 .vitals-hero-grid {
@@ -864,6 +869,13 @@ body::before {
 
 .landing-marquee-dot {
   text-shadow: 0 0 8px #00e676;
+}
+
+/* Edge-fade the ticker so items dissolve into the void at both ends instead of a hard
+   cut at the viewport edge — a small detail that reads premium. */
+.landing-marquee-strip {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
 }
 
 .landing-section-cut {

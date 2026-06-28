@@ -19,7 +19,9 @@ type MarqueeStripProps = {
 };
 
 const variantStyles = {
-  green: "bg-bull text-black border-y border-bull",
+  // Refined "ticker tape": deep void bar with glowing green mono text + hairline borders.
+  // Reads institutional vs the old solid-neon highlighter bar.
+  green: "bg-[#05070b] text-bull border-y border-bull/25",
   dark: "bg-black text-bull border-y border-bull/30",
   red: "bg-bear/10 text-bear border-y border-bear/30",
 };
