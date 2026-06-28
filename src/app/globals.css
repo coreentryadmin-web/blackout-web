@@ -1082,6 +1082,16 @@ body::before {
 .bento-accent-cyan { border-top-color: #22d3ee; }
 .bento-accent-red { border-top-color: #ff2d55; }
 .bento-accent-yellow { border-top-color: #ffd23f; }
+
+/* Flagship tile — distinct accent wash in the corner + a resting hint of the rotating
+   accent border, so the hero instrument reads as special rather than just larger. */
+.bento-flagship .bento-card-inner {
+  background: #08080e;
+  background:
+    radial-gradient(85% 75% at 100% 0%, color-mix(in srgb, var(--card-accent-color) 14%, transparent), transparent 62%),
+    #08080e;
+}
+.bento-flagship::before { opacity: 0.4; }
 .bento-accent-gold { border-top-color: #ffcc4d; }
 
 .bento-card-watermark {

@@ -2,6 +2,18 @@
 
 Automated TLS, availability, security-header, redirect, and CDN health checks for `www.blackouttrades.com`.
 
+## 2026-06-28 13:21 ET
+### TLS: cert expires 2026-09-14 — 78 days remaining — **PASS** (CN=blackouttrades.com, issuer Google Trust Services WE1; handshake valid)
+### Availability: 12/12 routes healthy — **PASS**
+- Pages 200 (Accept:text/html, follows redirects): Landing 756ms, Sign In 228ms, Sign Up 183ms, /dashboard 252ms, /flows 296ms, /heatmap 267ms, /grid 155ms, /nighthawk 260ms; /api/health 200 (106ms)
+- Auth-gated APIs 401 as intended (~94–127ms): /api/market/spx/pulse, /api/market/gex-positioning, /api/market/flows
+- **No 5xx. No P0. No slow routes (all <800ms).**
+### Security Headers: 6/6 present on canonical apex page — **PASS** (HSTS max-age, X-Content-Type-Options nosniff, X-Frame-Options SAMEORIGIN, Referrer-Policy strict-origin, CSP default-src, Permissions-Policy camera=()). Step-3 apex-probe fix holding — no CSP false alarm.
+- `X-Powered-By` not leaking. `Server: cloudflare` expected (CF edge header, not an app leak).
+### Redirects: **PASS** — `http://www/` → 301 → https://blackouttrades.com/ ; www `/pricing` → 301 → https://blackouttrades.com/pricing (canonical = apex).
+### CDN: **PASS** — Cloudflare edge (CF-Ray a12e5df42984297d-SEA), X-Railway-Request-Id present. Landing `Cache-Control: s-maxage=31536000` (Age 16s, marketing force-static + CF edge cache). Auth-gated API 401 carries no Cache-Control (not CDN-cached).
+---
+
 ## 2026-06-28 11:22 ET
 ### TLS: cert expires 2026-09-14 — 78 days remaining — **PASS** (CN=blackouttrades.com, issuer Google Trust Services WE1; handshake valid)
 ### Availability: 12/12 routes healthy — **PASS**
