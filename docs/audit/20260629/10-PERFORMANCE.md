@@ -77,6 +77,34 @@ subsequent.
   (shared matrix cache), not a per-user upstream call; the cost is *cold-build fan-out*, not a
   cache-reader violation.
 
+## WHY IT FEELS "ALWAYS SLOW" — browser-measured (live /dashboard, premium, DevTools)
+Resources are idle (Railway CPU **~0% / 24 vCPU**, mem **3.5%**) and server p50 is **168 ms**, so it's
+**not** the server/DB for typical requests. The persistent slowness is on the client + a few real bugs:
+
+- **PF-1 [P1] CSP blocks `blob:` Web Workers (and CF Insights) → Clerk degraded → auth churn.**
+  `next.config.mjs:21` CSP has **no `worker-src`**, so it inherits `default-src 'self'` and blocks
+  `blob:` workers. Console: *"Creating a worker from 'blob:…' violates CSP"*. Clerk/Turnstile use a
+  blob worker; blocked → Clerk falls back to a slower **main-thread token-refresh polling** path
+  (observed `tokens?_clerk_api_version` polling at **100–968 ms** spikes). Also blocks
+  `static.cloudflareinsights.com`. Likely contributor to the **38% 4xx** (Railway HTTP metrics:
+  `4xx=964/2514`, error_rate ~12%) from auth retries. **Fix:** add `worker-src 'self' blob:;` and
+  allow `https://static.cloudflareinsights.com` in `script-src`/`connect-src`. Low-risk (only widens
+  to legit sources). **Confidence:** High (CSP source + live console).
+- **PF-2 [P1] React hydration error #418 on dashboard** → React discards server HTML and re-renders
+  client-side = slower first paint + content flash on every load. Almost certainly the documented
+  `FlowBrief.tsx` `new Date().getHours()` server/client mismatch (master-audit bug list). **Fix:**
+  derive time from ET on the server / gate first paint behind `mounted`. **Confidence:** Med-High.
+- **PF-3 [P2] Page never "settles" — continuous polling.** Multiple endpoints poll indefinitely
+  (Clerk token + `outcomes` + `indices`), each 100–900 ms. Network never idles → "always loading"
+  feel. **Fix:** prefer SSE over polling, widen poll intervals to match cache TTLs, exponential
+  backoff, `revalidateOnFocus:false`. (Matches master-audit §K8.)
+- **PF-4 [P2] Heavy payload:** /dashboard = **1.4 MB transferred / 88+ requests** (+ the ~305 KB
+  `globals.css`). **Fix:** split CSS route-scoped; reduce request count; code-split the desk widgets.
+- **PF-5 [P2] Cold-build tail:** server **p90/p95/p99 ≈ 901 ms** = the GEX/desk cold matrix builds
+  (P-2). **Fix:** warm-ahead crons so users rarely hit cold.
+- **VERIFIED CLEAN:** scroll/animation render is smooth (no GPU jank); CPU/mem hugely
+  under-utilized (not a scaling/resource problem at current load).
+
 ## Still to measure (continuation)
 - Live LCP/CLS/INP + JS bundle/hydration per page (authed) via a measured browser pass at RTH.
 - Cold-build counts in prod logs (how often users actually hit cold vs warm) to size P-1/P-2 impact.
