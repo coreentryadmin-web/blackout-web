@@ -107,7 +107,14 @@ async function fetchPlatformIntel(baseUrl: string): Promise<{
   prior_close: number | null;
 }> {
   try {
-    const res = await fetch(`${baseUrl}/api/platform/intel`, { cache: "no-store" });
+    // /api/platform/intel is premium-or-cron gated — authenticate this internal call with the
+    // cron secret so the morning-confirm job keeps getting the regime/anomaly/brief context.
+    const res = await fetch(`${baseUrl}/api/platform/intel`, {
+      cache: "no-store",
+      headers: process.env.CRON_SECRET
+        ? { Authorization: `Bearer ${process.env.CRON_SECRET}` }
+        : undefined,
+    });
     if (!res.ok) return { regime: null, anomalies: [], gex_bias: null, call_wall: null, put_wall: null, prior_close: null };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = await res.json() as any;
