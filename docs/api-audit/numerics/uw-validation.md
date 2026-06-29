@@ -18,3 +18,10 @@ Automated cross-validation of Unusual Whales–sourced numerics: our served valu
 - Verdict: **NO P0 / NO WARN.** All UW-sourced flow numerics match the live source.
 - Surfaces validated: HELIX flow premiums, tape lag, dedup integrity. Not yet covered this run: SPX desk IV, Grid dark-pool/congress (SKILL provides no scripted check for these — flow-only).
 ---
+
+## 2026-06-29 11:40 ET
+- Premium check: 4 matched | 0 mismatches
+- Tape lag: 0.8 min (DB newest age 0.9 min; RTH=True)
+- Missing from tape (UW >=200000, settled): 0 of 3 eligible
+- Verdict: **PASS**
+---
