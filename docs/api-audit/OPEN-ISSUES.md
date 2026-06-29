@@ -1,5 +1,26 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-28 16:12 ET
+Last updated: 2026-06-28 20:09 ET
+
+
+> 20:09 ET run (Sunday, market closed): **No net-new user-facing breakage. Platform GREEN on
+> everything sampleable.** All findings are RE-CONFIRMATIONS of carried opens — no regressions
+> since 16:12. **Carried opens (unchanged):** **P1-A** `Market-Regime-Detector` cron service still
+> not provisioned → `market_regime`/`flow_anomalies` writers never run (operator-only Railway
+> "add service" step; not re-enumerated this run, market closed). **P2 regime-fail-open**
+> re-confirmed in code (`market/regime/route.ts:48` `if (cronSecret && …)` skips the guard when
+> `CRON_SECRET` unset → public INSERT into `market_regime`; dormant, secret present; should fail
+> CLOSED). **P2 grid-overpromise** re-confirmed (`(site)/grid/page.tsx:35` subtitle "News, flow,
+> analyst actions…" but no News/Flow panel exists; grid fetches analysts/catalysts/congress/
+> dark-pool/earnings/economy/movers/sectors only). **P2-C** SPX play opens + **P2-D** options-socket
+> 1006 loop both carry to **Mon 06-29 RTH** (not sampleable). **P3-META** audit SKILL.md still emits
+> systematic false positives (stale paths `spx-pulse`/`flows`/`nighthawk-latest-edition`/`grid/news`;
+> wrong env name `UNUSUAL_WHALES_API_KEY` vs real `UW_API_KEY` which IS present; stale greps miss
+> `livePool.on`, mounted `SpxDarkPoolCard`, plural `webhooks/clerk`, Polygon WS SETNX leader) —
+> correct it. **Re-verified GREEN:** tsc=0, db Pool error handler(`db.ts:113`)+max:5, redis
+> family:0+reconnectOnError, plays-veto opt-in (`SPX_OPTION_CHAIN_REQUIRED` NOT set in prod →
+> plays open w/ fallback), #97/#100/#101/#102 all resolved, blackout-web Online 5/5, all secrets
+> present (incl VAPID_PRIVATE_KEY → gex-alerts no longer inert), 19 TODOs no real stubs. Full
+> report: `docs/api-audit/deep-audit-20260628-20.md`.
 
 
 > 16:12 ET run (Sunday, market closed): **No net-new user-facing breakage. Platform GREEN on
