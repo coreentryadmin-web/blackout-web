@@ -35,6 +35,9 @@ const JOB_KEYS = [
   "positions-expiry",
 ];
 
+/** Registered in code + TOML but Railway trigger service not yet provisioned — warn, don't fail CI. */
+const PROVISION_PENDING = new Set(["provider-health-reconcile"]);
+
 const dbUrl = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
 if (!dbUrl) {
   console.error("[cron-audit] DATABASE_PUBLIC_URL not set");
