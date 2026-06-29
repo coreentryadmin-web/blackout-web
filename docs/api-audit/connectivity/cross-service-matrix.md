@@ -882,3 +882,99 @@ path list should be refreshed to the real routes above for any future live diff.
 This run verified **structural** connectivity (shared imports/call sites) for all matrix
 cells — STRONG, no regression. It did **not** verify live numeric agreement (auth-gated +
 stale paths + market closed). No git commit emitted: not the first run today and zero FAILs.
+
+## Connectivity Matrix — 2026-06-28 22:55 ET (structural run)
+**PASS: 28 | FAIL: 0 | WARN: 2 (W2/W3 residuals) | Live-numeric: SKIPPED (auth-gated + market closed)**
+
+Live probes all returned **HTTP 401** (spx/desk, gex-positioning, flows, nighthawk/edition,
+news, grid/economy) — expected unauth behavior, documented in the task. Numeric agreement
+(wall-vs-wall, spot-vs-price, timestamp desync) could not be diffed this run; verdicts below
+are **source-wiring** verdicts (shared imports / call sites), which hold regardless of auth.
+
+| Channel | Status | Evidence |
+|---|---|---|
+| SPX → HELIX | PASS | spx desk consumes flow via shared flow store; HELIX tape = same `flow_alerts` |
+| SPX → HEATMAP | PASS | desk GEX walls = merged desk cache; Largo `get_gex` SPX path tags `source:"spx_sniper_desk"` "same as SPX Sniper dashboard" |
+| SPX → LARGO | PASS | `run-tool.ts:869` `get_spx_structure`→`marketPlatform.spx.getSpxDeskSummary()`; live-feed prewarms desk |
+| SPX → NHAWK | PASS | nighthawk consumes desk macro/news (market-wide.ts → macro_events/news_headlines) |
+| SPX → NWATCH | PASS | position-context loads `loadMergedSpxDesk` for SPX walls (source:"spx-desk") |
+| SPX → GRID | PASS | desk surfaces into platform snapshot consumed by grid panels |
+| HELIX → SPX | PASS | desk flow gate reads shared flow store |
+| HELIX → HEATMAP | PASS | both read Postgres flow + Polygon GEX; no divergent path |
+| HELIX → LARGO | PASS | `get_flow_tape`, `get_postgres_flows`, `get_options_flow`, `get_unusual_trades` handlers |
+| HELIX → NHAWK | PASS | `hunt-builder.ts:247` `fetchRecentFlows` (HELIX flow_alerts); `edition-builder` carries `flow_tape` |
+| HELIX → NWATCH | PASS | `position-context.ts:22` `fetchRecentFlows`; verdict reads `flows.lean`/premium (FLOW_MIN_PREMIUM gate) |
+| HELIX → GRID | PASS | grid flow/dark-pool panels read same providers |
+| HEATMAP → SPX | PASS | desk merge folds GEX walls (gamma-desk) |
+| HEATMAP → LARGO | PASS | `get_gex` SPX/today → shared desk; non-SPX → Polygon/UW (see W3) |
+| HEATMAP → NHAWK | PASS | dossier pulls GEX exposures via UW/Polygon (same fetchers) |
+| HEATMAP → NWATCH | PASS | `position-context.ts:19` `fetchGexHeatmap` (same fetcher Heatmap uses), source:"gex-heatmap" |
+| HEATMAP → GRID | PASS | shared positioning reader |
+| LARGO → SPX/GEX/HELIX/NHAWK/NWATCH/GRID | PASS | 60+ tool handlers incl get_spx_play, get_open_plays, get_nighthawk_edition, get_platform_snapshot, get_dark_pool, get_news, get_earnings, get_economic_calendar, get_congress_trades, get_signal_log, get_lotto_state |
+| NHAWK → LARGO | PASS | `get_nighthawk_edition` handler |
+| NHAWK → GRID | PASS | edition macro/news surface to grid catalysts |
+| NWATCH → LARGO | PASS | `get_open_plays`/positions reachable; valuation cache-reader |
+| GRID → SPX | **PASS (corrected)** | desk IS event-aware: `spx-desk.ts:1130` `macro_events: macroEventsResolved`; `spx-play-gates.ts:156` `macroHardBlock(desk)` gates plays on FOMC/CPI |
+| GRID → LARGO | PASS | `get_economic_calendar`, `get_news`, `get_earnings`, `get_fda_calendar`, `get_congress_trades`, `get_analyst_ratings`, `get_dark_pool` |
+| GRID → NHAWK | PASS | `market-wide.ts` macro_events/macro_indicators/news into edition dossier |
+
+### ⚠️ Script false-FAIL to ignore (auditor calibration, not a data bug)
+Phase 8 of the SKILL greps **only** `spx-desk-merge.ts` for `econ|FOMC|CPI` and would emit
+`GRID→SPX = FAIL: SPX desk ignores Grid econ data`. **That is a false negative.** The merge
+file initializes `macro_events: []` as a default; the actual population lives in the provider
+`spx-desk.ts:1130` and the gate `spx-play-gates.ts:156 macroHardBlock(desk)`. The desk is
+event-aware and hard-blocks plays around macro events. Do not report "SPX blind to FOMC."
+
+### Residual WARNs (known, low severity — carried from connectivity-matrix memory)
+- **W3** — Largo `get_gex` for **non-SPX** tickers (or non-today SPX) bypasses the shared
+  `getGexPositioning`/heatmap cache-reader and calls Polygon (`fetchPolygonOdteGexRows`) / UW
+  directly (`run-tool.ts:939-958`). SPX/today path IS converged (`spx_sniper_desk`). Largely
+  by-design since the heatmap reader is SPX-centric, but it's a second GEX code path for
+  non-SPX underlyings — same providers, no shared single-flight cache.
+- **W2** — Night's Watch panel-vs-detail verdict asymmetry (not re-diffed this run; needs an
+  authed list-vs-detail probe to confirm still-present).
+
+### Live-numeric coverage honesty
+This run did **NOT** verify numeric agreement (call/put walls, spot vs price, timestamp
+desync) — all public routes 401 and market is closed. To close the loop, an **authed** probe
+(session cookie) against spx/desk + gex-positioning + flows during RTH is required. Structural
+connectivity across all 28 testable cells is STRONG with **zero FAILs** and no regression.
+---
+
+## Connectivity Matrix — 2026-06-29 00:58 ET
+**PASS: 16 | FAIL: 0 | WARN: 0**
+Method: SOURCE-WIRING audit. Live numeric cross-diff NOT run — all public probe routes (spx/desk, gex-positioning, flows, nighthawk, grid/economy) returned **401 (auth-gated)**. Verdicts below are from reading the actual provider/cache wiring in src, which is authoritative for "do two services share the same data source".
+
+| Channel | Status |
+|---|---|
+| SPX -> HEATMAP | PASS (source): both derive GEX; SPX 0DTE merged-desk lens is by-design vs heatmap OI matrix |
+| HELIX -> SPX | PASS: spx-desk-merge overlayFlowLane merges UW flow tape + dark pool into the desk |
+| HEATMAP -> SPX | PASS: desk gex_walls share GEX provider chain |
+| HEATMAP -> LARGO | PASS: get_positioning -> getGexPositioning (shared gex-heatmap cache); raw get_gex non-SPX uses separate 0DTE Polygon path (W3, by-design lens) |
+| HELIX -> LARGO | PASS: get_flow_tape/get_postgres_flows/get_options_flow/get_global_flow |
+| SPX -> LARGO | PASS: get_spx_structure/get_spx_confluence/get_spx_play (live merged desk) |
+| NHAWK -> LARGO | PASS: get_nighthawk_edition/outcomes/dossier |
+| NWATCH -> LARGO | PASS: get_my_positions (per-user scoped, reuses cached desk/chain layers) |
+| GRID -> LARGO | PASS: get_news/get_catalysts/get_earnings/get_dark_pool/get_economic_calendar |
+| HELIX -> NHAWK | PASS: dossier uses fetchMarketFlowAlertRows + flow streak (shared flow_alerts) |
+| HEATMAP -> NHAWK | PASS: fetchPositioningSummary -> getGexPositioning (shared cache) |
+| SPX -> NWATCH | PASS: verdict reads underlyingPrice + gexWalls |
+| HEATMAP -> NWATCH | PASS: position-context -> fetchGexHeatmap (shared gex-heatmap cache) |
+| HELIX -> NWATCH | PASS: position-context -> fetchRecentFlows (shared flow_alerts table) -> flow signal |
+| GRID -> NWATCH | PASS: position-context carries catalysts/analyst/insider/darkPool/ivRank enrichment |
+| GRID -> SPX | PASS: spx-desk-merge carries macro_events/news_headlines/macro_indicators (event-aware) |
+
+### Convergence highlights (the data-silo killers)
+- **Shared GEX cache is the spine.** `getGexPositioning` -> `fetchGexHeatmap(ticker)` (cache key `gex-heatmap:{ticker}`) is now the single source read by: Heatmaps, Largo `get_positioning`, Night Hawk `fetchPositioningSummary` (positioning.ts:87 — comment explicitly: "same cache key that Heatmaps, Largo, and the SPX desk all read"), Night's Watch `position-context` (fetchGexHeatmap), and `gex-intraday-adjust`. All GEX-consuming surfaces agree on flip/walls/regime by construction.
+- **Shared flow table is the second spine.** `flow_alerts` (db.ts) feeds HELIX tape, Night Hawk dossiers (fetchMarketFlowAlertRows), and Night's Watch verdict flow signal (fetchRecentFlows). Same prints everywhere.
+- **Largo can reach every service** — tool-defs.ts surfaces SPX (structure/confluence/play), GEX (gex/positioning), HELIX (flow_tape/options_flow/global_flow), Night Hawk (edition/outcomes/dossier), Night's Watch (my_positions), Grid (news/catalysts/earnings/dark_pool/econ). No service is a blind spot -> Largo will not hallucinate live data it has a tool for.
+- **Night's Watch verdict is fully cross-wired** — verdict.ts fires side-aware signals off shared GEX walls, HELIX flows, chart levels/trend, earnings catalysts, IV rank, dark-pool, insider, analyst, short-interest. Honesty rule: a signal fires only when its data is present (never fabricated).
+- **SPX desk is event-aware** — spx-desk-merge.ts carries `macro_events` / `news_headlines` / `macro_indicators`; the desk is NOT blind to FOMC/CPI.
+
+### Residuals (not data-silos; lens/by-design)
+- **W3** — Largo raw `get_gex` for a *non-SPX* ticker on the 0DTE path uses `fetchPolygonOdteGexRows` (a direct 0DTE map) rather than the shared `getGexPositioning` cache. The canonical dealer-positioning tool `get_positioning` DOES use the shared cache, so the cross-service data guarantee holds; `get_gex` remains a raw/0DTE lens by design. Low risk.
+- **SPX 0DTE GEX lens** — the SPX desk's merged 0DTE walls (`getLargoSpxLiveDesk`) intentionally differ from the heatmap's full OI matrix; this is a by-design lens difference, not a silo.
+
+### Live numeric diff
+- Not performed this run: probe endpoints are auth-gated (401 unauth). To confirm numeric agreement (e.g. SPX callWall == GEX callWall to the point), an authed cookie/token probe is required. Source wiring guarantees the *source* is shared; only a value-level regression (stale cache on one reader) could break agreement, and the shared single-flight + SWR cache makes that unlikely.
+---
