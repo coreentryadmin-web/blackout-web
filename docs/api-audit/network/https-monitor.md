@@ -261,3 +261,11 @@ Automated TLS, availability, security-header, redirect, and CDN health checks fo
 ### Redirects: **PASS** — `http://www/` → 301 → https://blackouttrades.com/ ; www `/pricing` → 301 → https://blackouttrades.com/pricing (canonical = apex).
 ### CDN: **PASS** — Cloudflare edge (CF-Ray a131cd9318f0ebee-SEA), X-Railway-Request-Id present, root Cache-Control `s-maxage=31536000` (static marketing page, Age 1160s = CDN-served as intended). /api/health carries no Cache-Control (dynamic, not CDN-cached).
 ---
+
+## 2026-06-29 01:21 ET
+### TLS: cert expires 2026-09-14 - 78 days remaining - PASS
+### Availability: 9/9 page+health routes 200 OK | 3 APIs 401 (auth-gated, expected) | Failed: none | Slow: none
+### Security Headers: 6/6 present (HSTS, X-CTO, XFO, Referrer-Policy, CSP, Permissions-Policy) | Missing: none | Note: Server=cloudflare (CF edge, benign)
+### Redirects: HTTP->HTTPS 301 OK | www->apex 301 OK
+### CDN: Cloudflare (CF-Ray a1327d51...-SEA) + Railway (X-Railway-Request-Id present); landing Age=18s cached
+---
