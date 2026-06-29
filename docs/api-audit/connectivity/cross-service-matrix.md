@@ -1050,3 +1050,44 @@ All public routes returned **401** (auth-gated: spx/desk, gex-positioning, flows
 ### Bottom line
 No data silos. Every consumer that needs GEX walls reads the SHARED `gexWalls` field (SPX desk for index, `fetchGexHeatmap` for others); every flow consumer reads the SHARED `flow_alerts` table; SPX desk is econ/event-aware. Largo — the highest-risk surface for hallucination — has **181 tools spanning all six services** and is blind to nothing.
 ---
+## Connectivity Matrix — 2026-06-29 06:58 ET
+**PASS/CONVERGED: 16 | FAIL: 0 | RESIDUAL: 1**
+
+> Live endpoints all returned **401 (auth-gated)** and run was **pre-market (06:55 ET)** — exactly as the SKILL note anticipated. Numeric cross-service diffs require an authed probe; verdicts below are **source-wiring**, which is auth-independent and is the durable deliverable.
+
+| Channel | Verdict |
+|---|---|
+| SPX -> HELIX | PASS (src): SPX desk shares merged flow tape (mergeFlowIntoDesk: spx_flows, unified_tape, 0DTE premiums) |
+| SPX -> HEATMAP | PASS (src): walls flow through shared GexWall type + recalcGexWallDistances; numeric diff SKIPPED (endpoints 401, pre-market) |
+| SPX -> LARGO | PASS (src): get_spx_structure/get_spx_confluence/get_spx_play read live merged desk |
+| SPX -> NWATCH | PASS (src): verdict.ts reads ctx.underlyingPrice (spot) + wall signals |
+| HELIX -> SPX | PASS (src): flowAlertToTapeItem + mergeFlowIntoDesk inject flow/dark-pool/0DTE premium into desk (task heuristic field-names flowBias/netFlow are stale; real fields are spx_flows/flow_0dte_net) |
+| HELIX -> NHAWK | PASS (src): candidates.ts + flow-streak.ts read shared flow_alerts table (fetchTickersAvgDailyPremium / fetchTickerFlowDailyNet, db.ts FROM flow_alerts) |
+| HELIX -> NWATCH | PASS (src): verdict.ts FLOW_MIN_PREMIUM/FLOW_SKEW_RATIO evaluate flow premium skew |
+| HELIX -> LARGO | PASS (src): get_flow_tape/get_options_flow/get_postgres_flows/get_global_flow/get_unusual_trades |
+| HEATMAP -> SPX | PASS (src): gex_walls/gex_net/gex_king merged into desk payload |
+| HEATMAP -> LARGO | CONVERGED for SPX-0DTE (get_gex -> getLargoSpxLiveDesk = same dashboard desk). RESIDUAL W3: non-SPX or non-0DTE get_gex goes direct Polygon->UW, bypassing shared getGexPositioning cache-reader |
+| HEATMAP -> NWATCH | PASS (src): verdict.ts reads shared ctx.gexWalls (source 'spx-desk' OR 'gex-heatmap'); nearestWallSignal/hasWalls |
+| LARGO -> ALL | PASS (src): ~85 tools spanning SPX/GEX/HELIX/NHAWK/NWATCH/Grid — Largo is the connectivity hub, not blind |
+| NHAWK -> LARGO | PASS (src): get_nighthawk_edition/get_nighthawk_dossier/get_nighthawk_outcomes |
+| NWATCH -> LARGO | PASS (src): get_my_positions/get_open_plays/get_trade_history |
+| GRID -> SPX | PASS (src): spx-desk-merge macro/event-aware (matches macro_events/macroHardBlock); earnings field not in merge (by-design, SPX is index) |
+| GRID -> LARGO | PASS (src): get_catalysts/get_economic_calendar/get_earnings/get_dark_pool/get_congress_trades/get_analyst_ratings/get_insider_flow |
+
+### Key findings
+- **Index convergence is strong.** SPX desk, HELIX tape, and GEX walls all merge into one `getLargoSpxLiveDesk` payload (`mergeFlowIntoDesk` / `recalcGexWallDistances`). SPX Slayer, Largo (`get_spx_structure`/`get_gex` SPX-0DTE), and Night's Watch all read the same merged desk for the index.
+- **HELIX -> Night Hawk is real shared-table wiring,** not just thesis prose: `candidates.ts` + `flow-streak.ts` query the same `flow_alerts` Postgres table HELIX's WS/cron writers populate.
+- **Night's Watch verdict** reads the shared `gexWalls` field (source `spx-desk` OR `gex-heatmap`), spot price, and flow premium skew — generalizes to any underlying.
+- **Largo is the hub:** ~85 tools cover every service. No silo where Largo would hallucinate.
+
+### Residual (carry-over W3, not a new break)
+- ⚠️ **HEATMAP -> LARGO (non-SPX / non-0DTE):** `run-tool.ts get_gex` only routes through the shared desk for `isSpxTicker && expiry==today`. Other tickers/expiries call `fetchPolygonOdteGexRows` then UW directly, bypassing the `getGexPositioning` cache-reader the Heatmap tool uses. Low impact (Heatmap GEX is itself index-focused) but it's a divergent code path — converge by having non-SPX `get_gex` read `getGexPositioning` too.
+
+### Stale SKILL references (fix in task file next edit)
+- `lib/run-tool.ts` -> actual: `lib/largo/run-tool.ts`
+- `lib/tools/` dir does not exist; Largo tools are defined in `lib/largo/tool-defs.ts` + dispatched in `run-tool.ts`
+- Phase-3 heuristic looks for `flowBias/netFlow/flowSignal` on the desk payload — real fields are `spx_flows`/`flow_0dte_net`/`unified_tape` (would false-FAIL).
+
+### Not evaluable this run
+- Numeric wall/price/timestamp consistency (Phases 2/9): all endpoints 401 + pre-market. Re-run with an authed cookie during RTH for live numeric diffs.
+---
