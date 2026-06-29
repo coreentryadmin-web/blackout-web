@@ -255,7 +255,7 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
                   <div className="largo-tools-used">
                     {msg.tools.map((t) => (
                       <span key={t} className="largo-tool-chip">
-                        {t}
+                        {toolLabel(t)}
                       </span>
                     ))}
                   </div>
