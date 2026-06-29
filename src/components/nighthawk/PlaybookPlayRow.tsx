@@ -53,18 +53,16 @@ export function PlaybookPlayRow({ rank, play, empty, morningConfirm, onSelect }:
       }
       role={onSelect ? "button" : undefined}
       tabIndex={onSelect ? 0 : undefined}
-      aria-label={onSelect ? `Open briefing for ${play?.ticker} rank ${rank}` : undefined}
+      aria-label={onSelect ? `Open Hawk Intel briefing for ${play?.ticker}, rank ${rank}` : undefined}
     >
-      <div className="nighthawk-play-rank" aria-label={`Rank ${rank}`}>
+      <div className="nighthawk-play-rank" aria-hidden="true">
         <span className="nighthawk-play-rank-num">{rank}</span>
       </div>
 
       {empty || !play ? (
         <div className="nighthawk-play-body nighthawk-play-body-empty">
-          <p className="nighthawk-play-empty-title">Slot open</p>
-          <p className="nighthawk-play-empty-copy">
-            Playbook auto-fills after the evening scan · post-close ET
-          </p>
+          <p className="nighthawk-play-empty-title">Open slot</p>
+          <p className="nighthawk-play-empty-copy">Fills after the evening scan · ~5:30 PM ET</p>
         </div>
       ) : (
         <div className="nighthawk-play-body">
@@ -92,42 +90,29 @@ export function PlaybookPlayRow({ rank, play, empty, morningConfirm, onSelect }:
                   {morningBadgeLabel(morningConfirm.status)}
                 </span>
               )}
-              {play.play_type !== "stock" && (
-                <span className="nighthawk-play-type">{play.play_type}</span>
-              )}
             </div>
 
             <div className="nighthawk-play-stats">
-              <span className="nighthawk-play-stat">
-                <em>Score</em> {play.score != null ? play.score : "—"}
+              <span className="nighthawk-play-stat-pill">
+                Score <strong>{play.score != null ? play.score : "—"}</strong>
               </span>
               {play.flow_streak_days != null && (
-                <span className="nighthawk-play-stat">
-                  <em>Streak</em> {play.flow_streak_days}d
+                <span className="nighthawk-play-stat-pill">
+                  Streak <strong>{play.flow_streak_days}d</strong>
                 </span>
               )}
               {play.iv_rank != null && (
-                <span className="nighthawk-play-stat">
-                  <em>IV</em> {play.iv_rank}
+                <span className="nighthawk-play-stat-pill">
+                  IV <strong>{play.iv_rank}</strong>
                 </span>
               )}
-              <span
-                className="nighthawk-play-prem-cap"
-                title={`Max $${MAX_OPTION_PREMIUM_PER_SHARE}/share`}
-              >
-                {formatPremiumCapLabel(play.entry_premium ?? null) ??
-                  `≤$${MAX_OPTION_PREMIUM_PER_SHARE} prem`}
+              <span className="nighthawk-play-prem-cap" title={`Max $${MAX_OPTION_PREMIUM_PER_SHARE}/share`}>
+                {formatPremiumCapLabel(play.entry_premium ?? null) ?? `≤$${MAX_OPTION_PREMIUM_PER_SHARE}`}
               </span>
             </div>
           </div>
 
           <p className="nighthawk-play-thesis">{play.thesis || play.key_signal}</p>
-
-          {play.key_signal && play.thesis && play.key_signal !== play.thesis && (
-            <p className="nighthawk-play-signal">
-              <em>Signal</em> {play.key_signal}
-            </p>
-          )}
 
           <div className="nighthawk-play-levels">
             <div className="nighthawk-play-level">
@@ -151,13 +136,9 @@ export function PlaybookPlayRow({ rank, play, empty, morningConfirm, onSelect }:
 
           {play.risk_note && (
             <p className="nighthawk-play-risk">
-              <em>Risk</em> {play.risk_note}
+              <span className="nighthawk-play-risk-label">Risk</span> {play.risk_note}
             </p>
           )}
-
-          <p className="font-mono text-[10px] text-sky-300/60 mt-2">
-            Educational. Not advice. Every trade is your own decision.
-          </p>
 
           {onSelect && <span className="nighthawk-play-open-hint">Hawk Intel →</span>}
         </div>
