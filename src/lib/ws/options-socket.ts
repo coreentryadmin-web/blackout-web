@@ -36,7 +36,7 @@ import { getEarlyCloseMinutes } from "@/lib/spx-play-session-guards";
  * closed we simply do NOT treat silence as a stall, so the socket stays put instead of churning.
  * (Full market holidays are not modeled — a holiday reconnect is rare and harmless: market closed.)
  */
-function inOptionsMarketHours(now = new Date()): boolean {
+export function inOptionsMarketHours(now = new Date()): boolean {
   const weekday = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     weekday: "short",
@@ -59,6 +59,23 @@ export function optionsWsEnabled(): boolean {
   const flag = (process.env.OPTIONS_WS_ENABLED ?? "").trim().toLowerCase();
   const on = flag === "1" || flag === "true" || flag === "yes" || flag === "on";
   return on && Boolean(POLYGON_API_KEY);
+}
+
+/**
+ * P2-D escape hatch. By DEFAULT (returns false) we let the socket rest off-hours instead of
+ * churning a code=1006 reconnect loop — Massive drops idle option sockets off-hours and no quotes
+ * flow anyway, so the loop is pure noise. The RTH-gated watchdog reopens within one tick of the
+ * open. Set OPTIONS_WS_OFFHOURS_RECONNECT=1 to restore the pre-fix always-reconnect behavior as an
+ * operator rollback (no code revert) if Monday RTH validation ever shows the RTH gate misbehaving.
+ */
+function offHoursReconnectForced(): boolean {
+  const f = (process.env.OPTIONS_WS_OFFHOURS_RECONNECT ?? "").trim().toLowerCase();
+  return f === "1" || f === "true" || f === "yes" || f === "on";
+}
+
+/** Should this shard (re)open right now? Always yes during options RTH; off-hours only if forced. */
+export function shouldMaintainSocket(now = new Date()): boolean {
+  return offHoursReconnectForced() || inOptionsMarketHours(now);
 }
 
 /** Max option contracts per connection on the Q feed (Massive hard cap is 1,000). */
@@ -292,6 +309,15 @@ class OptionsShard {
     if (this.shuttingDown) return; // shutting down — do not resurrect the socket
     if (this.reconnectTimer) return;
     if (this.symbols.size === 0) return; // nothing to stream — stay idle
+    // P2-D: off-hours, defer reconnect to RTH instead of looping every 60s on server-initiated
+    // 1006 closes. The RTH-gated watchdog (ensureConnected on each tick) reopens at the open.
+    // RTH behavior is unchanged — this branch is a no-op during market hours.
+    if (!shouldMaintainSocket()) {
+      console.log(
+        `[options-socket] shard ${this.id} closed off-hours (${reason}) — deferring reconnect to RTH`
+      );
+      return;
+    }
     this.consecutiveFailures += 1;
     const base = Math.min(this.reconnectDelay, 60_000);
     const jitter = Math.floor(Math.random() * 400);
@@ -313,6 +339,10 @@ class OptionsShard {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
+    // P2-D: don't proactively open off-hours (Massive drops idle option sockets → 1006 churn, and
+    // no quotes flow anyway — marks fall back to the REST snapshot). The watchdog calls this every
+    // tick, so the socket comes up within ~one reconcile interval of the RTH open. No-op during RTH.
+    if (!shouldMaintainSocket()) return;
     this.connect();
   }
 
@@ -333,6 +363,10 @@ class OptionsShard {
     if (this.shuttingDown) return; // shutting down — do not open a new socket
     if (!POLYGON_API_KEY) return;
     if (this.symbols.size === 0) return;
+    // P2-D: belt-and-suspenders for the close-boundary case (a reconnect timer armed at ~15:59 that
+    // fires just after 16:00). No-op during RTH; off-hours we stay closed and let the watchdog
+    // reopen at the next open.
+    if (!shouldMaintainSocket()) return;
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
