@@ -11,8 +11,37 @@
  * Usage:
  *   node scripts/gha-rth-audit.mjs
  *   node scripts/gha-rth-audit.mjs --smoke-only
+ *   node scripts/gha-rth-audit.mjs --force   # Postgres RTH checks even off-hours
  */
 import { spawnSync } from "node:child_process";
+
+const ET = "America/New_York";
+const force = process.argv.includes("--force");
+
+function etParts(now = new Date()) {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: ET,
+    weekday: "short",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(now).map((p) => [p.type, p.value]));
+  const hour = Number(parts.hour);
+  const minute = Number(parts.minute);
+  return {
+    weekday: parts.weekday,
+    mins: hour * 60 + minute,
+    label: `${parts.weekday} ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ET`,
+  };
+}
+
+/** Weekday 09:00–16:15 ET — mirrors rth-open-check.mjs / market-hours cron gates. */
+function inRthOpenWindow(now = new Date()) {
+  const { weekday, mins } = etParts(now);
+  if (weekday === "Sat" || weekday === "Sun") return false;
+  return mins >= 9 * 60 && mins <= 16 * 60 + 15;
+}
 
 const smokeOnly = process.argv.includes("--smoke-only");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -43,7 +72,12 @@ async function postgresRthChecks() {
     return;
   }
 
-  console.log("\n── Postgres RTH checks ──");
+  const et = etParts();
+  console.log(`\n── Postgres RTH checks (${et.label}) ──`);
+  if (!force && !inRthOpenWindow()) {
+    console.log("  ⚠ Off-hours / weekend — skipping market-hours Postgres checks (use --force to override)");
+    return;
+  }
   try {
     const pg = await import("pg");
     const c = new pg.default.Client({

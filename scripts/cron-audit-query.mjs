@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
- * One-off prod audit: latest cron_job_runs per registered job + zero-run detection.
- * Env: DATABASE_PUBLIC_URL (required)
+ * Prod audit: latest cron_job_runs per registered job + zero-run detection.
+ * Env: DATABASE_PUBLIC_URL or DATABASE_URL (required)
+ *
+ * Usage: npm run validate:cron
  */
 import { createRequire } from "module";
 
@@ -34,7 +36,7 @@ const JOB_KEYS = [
 
 const dbUrl = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
 if (!dbUrl) {
-  console.error("DATABASE_PUBLIC_URL not set");
+  console.error("[cron-audit] DATABASE_PUBLIC_URL not set");
   process.exit(1);
 }
 
@@ -56,9 +58,7 @@ const latest = await q(
    ORDER BY job_key`
 );
 for (const r of latest) {
-  console.log(
-    `${r.job_key}\t${r.status}\t${String(r.started_at).slice(0, 19)}\t${r.msg ?? ""}`
-  );
+  console.log(`${r.job_key}\t${r.status}\t${String(r.started_at).slice(0, 19)}\t${r.msg ?? ""}`);
 }
 
 const valuesClause = JOB_KEYS.map((_, i) => `($${i + 1})`).join(", ");
@@ -80,12 +80,7 @@ const badLatest = latest.filter((r) => r.status !== "ok" && r.status !== "skippe
 
 console.log("\n=== CRON AUDIT: summary ===\n");
 console.log(`Jobs with zero runs ever: ${zeroRuns.length ? zeroRuns.join(", ") : "(none)"}`);
-console.log(
-  `Jobs with latest status != ok/skipped: ${
-    badLatest.length
-      ? badLatest.map((r) => `${r.job_key}(${r.status})`).join(", ")
-      : "(none)"
-  }`
-);
+console.log(`Jobs with latest status != ok/skipped: ${badLatest.length ? badLatest.map((r) => r.job_key).join(", ") : "(none)"}`);
 
 await client.end();
+process.exit(zeroRuns.length || badLatest.length ? 1 : 0);
