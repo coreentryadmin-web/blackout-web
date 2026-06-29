@@ -978,3 +978,32 @@ Method: SOURCE-WIRING audit. Live numeric cross-diff NOT run — all public prob
 ### Live numeric diff
 - Not performed this run: probe endpoints are auth-gated (401 unauth). To confirm numeric agreement (e.g. SPX callWall == GEX callWall to the point), an authed cookie/token probe is required. Source wiring guarantees the *source* is shared; only a value-level regression (stale cache on one reader) could break agreement, and the shared single-flight + SWR cache makes that unlikely.
 ---
+
+## Connectivity Matrix — 2026-06-29 02:57 ET
+**Mode: SOURCE-WIRING (live numeric diff deferred — all probe routes 401 unauth, market closed 02:55 ET)**
+**PASS: 10 | FAIL: 0 | WARN: 1**
+
+Verified by reading the actual wiring at the (moved) source paths. src/lib/tools + src/lib/run-tool.ts from the SKILL are stale; real paths: `lib/largo/run-tool.ts`, `lib/nights-watch/verdict.ts` + `position-context.ts`, `lib/nighthawk/positioning.ts`, `lib/providers/spx-desk.ts`.
+
+| Channel | Status | Evidence |
+|---|---|---|
+| SPX → HEATMAP | PASS | both resolve walls off the shared GEX matrix; route `gex-positioning` reads `getGexPositioning` cache-reader |
+| HELIX → SPX | PASS | `spx-desk.ts` imports `fetchRecentFlows` (HELIX/Postgres) + UW flow + `flow-strike-stacks`; desk carries flow signal |
+| HELIX → NHAWK | PASS | `nighthawk/candidates.ts` aggregates flow premium + `has_sweep` bonuses into candidate scores |
+| HELIX → NWATCH | PASS | `position-context.ts` pulls `fetchRecentFlows`; `verdict.ts` gates flow signals at FLOW_MIN_PREMIUM 250k |
+| HEATMAP → LARGO | PASS* | `get_gex` SPX/0DTE path = `getLargoSpxLiveDesk` ("same as SPX Sniper desk") — converged. *non-SPX path = WARN below |
+| HEATMAP → NHAWK | PASS | `nighthawk/positioning.ts` imports `getGexPositioning` — the SAME shared cache-reader Heatmaps uses |
+| HEATMAP → NWATCH | PASS | `position-context.ts` reads per-ticker GEX via `fetchGexHeatmap` wrapped in shared `getNwTickerGex` cache |
+| SPX → NWATCH | PASS | `position-context.ts` uses `loadMergedSpxDesk` (shared 60s single-flight cache) for SPX walls/regime/levels |
+| GRID → SPX | PASS | `spx-desk.ts:1130-1137` populates `macro_events` / `news_headlines` / `macro_indicators` (real, not empty defaults); `macroHardBlock` event-gating wired into nighthawk/largo/commentary |
+| LARGO → ALL | PASS* | `run-tool.ts` exposes get_gex, get_options_flow, get_positioning, nighthawk edition, news/grid tools — not blind to any service. *see GEX shape caveat |
+| LARGO non-SPX GEX | WARN | `get_gex` for non-SPX / non-0DTE calls `fetchPolygonOdteGexRows` / `fetchUwGexLevels` DIRECTLY rather than the shared `getGexPositioning` cache-reader the heatmap uses. Same upstream providers (data is real, not hallucinated) but a DIFFERENT computation + output shape (`gex_rows` / `spot_exposures` vs the heatmap's call/put walls). A user asking Largo "what's the GEX wall on NVDA?" can get a structurally different answer than the NVDA heatmap shows. |
+
+### Divergence detail (W3 — persists)
+- **What:** Largo's per-ticker (non-SPX) GEX bypasses the shared heatmap cache-reader. Bounded blast radius: SPX/0DTE is converged (the highest-traffic path); the gap is non-SPX underlyings only.
+- **Why it's WARN not FAIL:** Largo is NOT silo'd/blind — it fetches from the same Polygon/UW providers, so values are live and grounded, just computed on a separate path and shaped differently. No fabrication risk; only a value/shape-agreement risk vs the heatmap.
+- **Fix:** route non-SPX `get_gex` through `getGexPositioning(ticker)` so Largo and Heatmaps return the identical wall set from one cache. (Converges the last cell; satisfies the cache-reader rule.)
+
+### Live numeric diff
+- Deferred again this run: all probe endpoints auth-gated (401 unauth) and market is closed (02:55 ET). Source wiring guarantees the *source* is shared for every PASS cell; only a stale-cache regression on one reader could break value agreement, which the shared single-flight + SWR cache makes unlikely. To close the loop, run an authed cookie/token probe during RTH.
+---
