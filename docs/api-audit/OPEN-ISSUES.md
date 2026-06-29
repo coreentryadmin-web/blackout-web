@@ -1,5 +1,29 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-29 15:09 ET
+Last updated: 2026-06-29 16:46 PT (23:46 UTC)
+
+> **16:46 PT / 23:46 UTC run (Mon, post-close; live data sampled via prod PG + apex+Bearer). 0 P0 · 2 P1 · 3 P2.**
+> - **[OPEN · 🟠 P1 · NEW · DATA INTEGRITY]** **Play outcomes mislabel profitable exits as losses.**
+>   `spx-play-outcomes.ts:177-178` returns `"loss"` for any `STOP`/`THESIS` exit (or `was_loss`) **without checking
+>   `pnl_pts` sign** — unlike the THETA/SESSION (`:173-175`) and TRAIL (`:183-186`) branches. **Live proof:** today's
+>   play #3 (long, exit_action=THESIS, entry 7432.13 → exit **7439.43**, `pnl_pts=+7.30`) is stored `outcome='loss'`.
+>   Today's three A/A+ plays read **0/3 wins; actual is 1/3**. Understates win-rate; shows a winning trade as a loss on
+>   track-record/P&L surfaces. **Fix:** treat `pnl_pts > 0` STOP/THESIS exits as wins (mirror the TRAIL branch).
+> - **[OPEN · 🟠 P1 · still dormant]** **Signal pipeline empty** — prod `signal_events=0`, `signal_outcomes=0` (verified).
+>   Schema present, recorder still inert (pending entry/exit schema decision). Learning loop dormant; "signal panel
+>   populates" verification NOT met. Decide schema + wire recorder, or de-scope the panel.
+> - **[OPEN · 🟠 P1 · carried]** `DISCORD_OPS_WEBHOOK_URL` unset (escalation gap) + unpushed-commits-on-`main` backlog
+>   — carried from 15:09/11:19 runs, not re-sampled this run; operator action still pending.
+> - **[P2]** (a) today's 3 plays all-long/all-stopped/2-never-green — watch entry-timing next RTH; (b) SPX pulse blank
+>   post-close (`available:false`, price 0) — confirm desk UI shows "market closed" not zeros; (c) GEX TTFB ~1.7s on a
+>   Cloudflare HIT — minor perf.
+> - **[✅ CONFIRMED RESOLVED]** SPX plays open+close (3 today, full lifecycle) · #97/#100/#101/#102 · Redis family:0 ·
+>   db Pool handler `:113` max:5 · GEX live+correct (short-gamma read right) · HELIX tape fresh (1,987/24h).
+> - **[P3-META — fix the SKILL]** Phase-1 paths stale (`spx-pulse`→`market/spx/pulse`, `flows`→`market/flows`,
+>   `grid/news`=nonexistent, `nighthawk/latest-edition`→`nighthawk`); uses `www` (strips auth→401) not apex+Bearer;
+>   `Invoke-WebRequest` latency bogus (44-59s vs <2s curl on CF HIT); Clerk check reads alias stub; #73 greps wrong
+>   `src/lib/tools` (real: `src/lib/largo/`). Full report: `docs/api-audit/deep-audit-20260629-16.md`.
+
+---
 
 > **15:09 ET run (Mon, mid-RTH, market open; live data sampled via prod PG). ✅ BOTH prior P0s RESOLVED this run.**
 > - **[✅ RESOLVED · was 🔴 P0]** **Five RTH writer crons recovered.** `flow-ingest` (13.9m, status `skipped`=no-new-data),
