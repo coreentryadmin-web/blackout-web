@@ -38,6 +38,7 @@ import type {
 } from "@/lib/nights-watch/position-detail";
 import type { VerdictAction, VerdictConfidence } from "@/lib/nights-watch/verdict";
 import type { ValuationUnavailableReason } from "@/lib/nights-watch/valuation";
+import { CollapsibleTile } from "@/components/nighthawk/CollapsibleTile";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -164,12 +165,6 @@ const ACTION_BG: Record<VerdictAction, string> = {
   hold: "bg-bull/[0.07]",
   watch: "bg-sky-400/[0.06]",
 };
-const ACTION_GLOW: Record<VerdictAction, string> = {
-  sell: "shadow-[0_0_60px_-30px_rgba(255,45,85,0.7)]",
-  trim: "shadow-[0_0_60px_-30px_rgba(255,210,63,0.7)]",
-  hold: "shadow-[0_0_60px_-30px_rgba(0,230,118,0.7)]",
-  watch: "shadow-[0_0_60px_-30px_rgba(56,189,248,0.6)]",
-};
 const ACTION_LABEL: Record<VerdictAction, string> = {
   sell: "SELL",
   trim: "TRIM",
@@ -186,35 +181,33 @@ const CONFIDENCE_LABEL: Record<VerdictConfidence, string> = {
 // Small shared section primitives
 // ---------------------------------------------------------------------------
 
-/** Section wrapper: a kicker header + body, in the house glass card style. */
+/** Section wrapper: collapsible tile with kicker header + body. */
 function Section({
   kicker,
   right,
   children,
+  defaultOpen = true,
 }: {
   kicker: string;
   right?: React.ReactNode;
   children: React.ReactNode;
+  defaultOpen?: boolean;
 }) {
   return (
-    <section className="rounded-2xl border border-white/10 bg-[rgba(8,9,14,0.6)] p-4 backdrop-blur">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-sky-300">
-          {kicker}
-        </p>
-        {right}
-      </div>
+    <CollapsibleTile title={kicker} badge={right} defaultOpen={defaultOpen}>
       {children}
-    </section>
+    </CollapsibleTile>
   );
 }
 
 /** Honest "no data" line for a null section. Quiet, never a fabricated value. */
 function NoData({ what }: { what: string }) {
   return (
-    <section className="rounded-2xl border border-dashed border-white/10 bg-[rgba(8,9,14,0.4)] px-4 py-3">
-      <p className="font-mono text-[11px] tracking-[0.04em] text-mute">No {what} data</p>
-    </section>
+    <CollapsibleTile title={`No ${what} data`} defaultOpen={false}>
+      <p className="font-mono text-[11px] tracking-[0.04em] text-sky-300">
+        Nothing verified yet for this section — check back after the next refresh.
+      </p>
+    </CollapsibleTile>
   );
 }
 
@@ -230,7 +223,7 @@ function Metric({
 }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-mute">{label}</span>
+      <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-cyan-400">{label}</span>
       <span className={clsx("font-mono text-[13px] tabular-nums", tone ?? "text-white")}>
         {value}
       </span>
@@ -303,7 +296,7 @@ function DetailHeader({ position }: { position: PositionDetail["position"] }) {
             {position.option_type === "call" ? "C" : "P"}
           </span>
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-mute">
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-sky-300">
           <span>{shortDate(position.expiry)}</span>
           <span aria-hidden>·</span>
           <span className={position.side === "long" ? "text-sky-300" : "text-bear"}>
@@ -317,7 +310,7 @@ function DetailHeader({ position }: { position: PositionDetail["position"] }) {
       </div>
 
       <div className="flex flex-col items-end gap-1">
-        <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-mute">
+        <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-cyan-400">
           Unrealized P&amp;L
         </span>
         {live ? (
@@ -325,7 +318,7 @@ function DetailHeader({ position }: { position: PositionDetail["position"] }) {
             {money(pnl)}
           </span>
         ) : (
-          <span className="font-mono text-[22px] font-bold tabular-nums text-mute">{EM_DASH}</span>
+          <span className="font-mono text-[22px] font-bold tabular-nums text-sky-300">{EM_DASH}</span>
         )}
         <div className="flex items-center gap-2">
           {live && (
@@ -390,19 +383,18 @@ function WhatToDo({
   return (
     <div
       className={clsx(
-        "rounded-2xl border p-5",
+        "nighthawk-watch-detail-hero rounded-sm border p-5",
         ACTION_BORDER[action],
-        ACTION_BG[action],
-        ACTION_GLOW[action]
+        ACTION_BG[action]
       )}
     >
-      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-mute">Recommended action</p>
+      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-400">Recommended action</p>
 
       {/* Big action + confidence */}
       <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <span
           className={clsx(
-            "font-anton text-[42px] leading-none tracking-tight md:text-[52px]",
+            "font-syne text-[36px] font-bold leading-none tracking-tight md:text-[44px]",
             ACTION_TEXT[action]
           )}
         >
@@ -462,12 +454,9 @@ function WhatToDo({
 // ---------------------------------------------------------------------------
 function DeskNarrative({ text }: { text: string }) {
   return (
-    <div className="rounded-lg border border-gold/25 bg-gradient-to-br from-gold/[0.06] to-bull/[0.04] p-3.5">
-      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-gold/80">
-        Desk read · grounded in verified signals
-      </p>
-      <p className="mt-2 whitespace-pre-line text-[13px] leading-relaxed text-sky-100/90">{text}</p>
-    </div>
+    <CollapsibleTile kicker="Desk read" title="Grounded synthesis" defaultOpen variant="gold">
+      <p className="whitespace-pre-line text-[13px] leading-relaxed text-sky-300">{text}</p>
+    </CollapsibleTile>
   );
 }
 
@@ -496,7 +485,7 @@ function PositioningView({ data }: { data: PositioningSection }) {
 
       {data.walls.length > 0 && (
         <div className="mt-3">
-          <p className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-mute">
+          <p className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-cyan-400">
             GEX walls
           </p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -553,7 +542,7 @@ function FlowsView({ data }: { data: FlowsSection }) {
 
       {data.topStrikes.length > 0 && (
         <div className="mt-3">
-          <p className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-mute">
+          <p className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-cyan-400">
             Top strikes by premium
           </p>
           <ul className="flex flex-col gap-1">
@@ -569,11 +558,11 @@ function FlowsView({ data }: { data: FlowsSection }) {
                       {price(s.strike)}
                       {isCall ? "C" : "P"}
                     </span>
-                    <span className="text-mute">{shortDate(s.expiry)}</span>
+                    <span className="text-cyan-400">{shortDate(s.expiry)}</span>
                   </span>
                   <span className="font-mono text-[12px] tabular-nums text-white/80">
                     {moneyCompact(s.premium)}
-                    <span className="text-mute"> · {s.count}×</span>
+                    <span className="text-cyan-400"> · {s.count}×</span>
                   </span>
                 </li>
               );
@@ -609,16 +598,16 @@ function TimeframeRow({
   if (tf.support == null && tf.resistance == null && tf.vwap == null) return null;
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 font-mono text-[11px] tabular-nums">
-      <span className="uppercase tracking-[0.12em] text-mute">{label}</span>
+      <span className="uppercase tracking-[0.12em] text-cyan-400">{label}</span>
       <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-0.5 text-white/80">
         <span>
-          <span className="text-mute">S</span> {price(tf.support)}
+          <span className="text-cyan-400">S</span> {price(tf.support)}
         </span>
         <span>
-          <span className="text-mute">R</span> {price(tf.resistance)}
+          <span className="text-cyan-400">R</span> {price(tf.resistance)}
         </span>
         <span>
-          <span className="text-mute">VWAP</span> {price(tf.vwap)}
+          <span className="text-cyan-400">VWAP</span> {price(tf.vwap)}
         </span>
       </span>
     </div>
@@ -668,7 +657,7 @@ function TechnicalsView({ data }: { data: TechnicalsSection }) {
 
       {data.keyLevels.length > 0 && (
         <div className="mt-3">
-          <p className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-mute">
+          <p className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-cyan-400">
             Key levels in path
           </p>
           <div className="grid grid-cols-2 gap-2">
@@ -717,7 +706,7 @@ function NewsView({ items }: { items: NewsItem[] }) {
               >
                 {n.title}
               </a>
-              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] uppercase tracking-[0.1em] text-mute">
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] uppercase tracking-[0.1em] text-cyan-400">
                 {n.publisher && <span>{n.publisher}</span>}
                 {n.publisher && n.published && <span aria-hidden>·</span>}
                 {n.published && <span>{shortDate(n.published)}</span>}
@@ -793,7 +782,7 @@ function ConfluenceView({ data }: { data: ConfluenceSection }) {
       </div>
 
       {data.invalidation && (
-        <p className="mt-3 font-mono text-[11px] leading-relaxed text-mute">
+        <p className="mt-3 font-mono text-[11px] leading-relaxed text-cyan-400">
           <span className="text-bear">Invalidation:</span> {data.invalidation}
         </p>
       )}
@@ -828,7 +817,7 @@ function DossierView({ data }: { data: DossierSection }) {
       {summary ? (
         <p className="text-[13px] leading-relaxed text-white/85">{summary}</p>
       ) : (
-        <p className="font-mono text-[11px] text-mute">
+        <p className="font-mono text-[11px] text-cyan-400">
           Dossier staged for {data.ticker} — open Night Hawk for the full write-up.
         </p>
       )}
@@ -841,49 +830,45 @@ function DossierView({ data }: { data: DossierSection }) {
 // ---------------------------------------------------------------------------
 function DataSourcesLedger({ sources, asOf }: { sources: DataSource[]; asOf: string }) {
   return (
-    <section className="rounded-2xl border border-bull/20 bg-bull/[0.03] p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-bull">
-          Data sources
-        </p>
-        <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-mute">
-          as of {stamp(asOf)}
-        </span>
-      </div>
-
+    <CollapsibleTile
+      kicker="Provenance"
+      title="Verified data sources"
+      meta={`as of ${stamp(asOf)}`}
+      defaultOpen={false}
+      variant="accent"
+    >
       <ul className="flex flex-col divide-y divide-white/[0.06]">
         {sources.map((s) => (
           <li key={s.key} className="flex items-center gap-3 py-2">
-            {/* ok indicator: green check / muted dash */}
             <span
               aria-hidden
               className={clsx(
                 "grid h-5 w-5 shrink-0 place-items-center rounded-full border font-mono text-[11px]",
                 s.ok
                   ? "border-bull/40 bg-bull/10 text-bull"
-                  : "border-white/10 bg-white/[0.03] text-mute"
+                  : "border-white/10 bg-white/[0.03] text-sky-300"
               )}
             >
               {s.ok ? "✓" : "–"}
             </span>
             <div className="min-w-0 flex-1">
               <p className="font-mono text-[12px] text-white">{s.label}</p>
-              <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-mute">
+              <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-cyan-400">
                 {s.provider}
               </p>
             </div>
-            <span className="shrink-0 font-mono text-[10px] tabular-nums text-sky-300/80">
+            <span className="shrink-0 font-mono text-[10px] tabular-nums text-sky-300">
               {s.ok ? (
                 <span className="sr-only">verified</span>
               ) : (
                 <span className="sr-only">no data</span>
               )}
-              {s.asOf ? stamp(s.asOf) : <span className="text-mute">{EM_DASH}</span>}
+              {s.asOf ? stamp(s.asOf) : <span className="text-sky-300">{EM_DASH}</span>}
             </span>
           </li>
         ))}
       </ul>
-    </section>
+    </CollapsibleTile>
   );
 }
 
@@ -975,7 +960,13 @@ export function NightsWatchDetailModal({
   );
 
   return (
-    <Modal open={open} onClose={onClose} title={title} size="lg">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      size="lg"
+      className="nighthawk-modal nighthawk-watch-detail-modal"
+    >
       {/* Action row: Refresh (manual re-fetch — NOT a poll) */}
       <div className="mb-4 flex justify-end">
         <Button
@@ -1082,7 +1073,7 @@ export function NightsWatchDetailModal({
           <DataSourcesLedger sources={ready.dataSources} asOf={ready.as_of} />
 
           {/* 11) Persistent disclaimer */}
-          <p className="font-mono text-[10px] leading-relaxed text-mute">
+          <p className="font-mono text-[10px] leading-relaxed text-sky-300">
             Analysis from BlackOut&apos;s tools — not financial advice. You decide.
           </p>
         </div>

@@ -3456,15 +3456,14 @@ body::before {
      Reduced-motion safe (see the prefers-reduced-motion block at the end).
      ===================================================================== */
 
-  /* Panel shell — fills the column, scrolls its body, keeps header pinned. */
+  /* Panel shell — institutional match to .nighthawk-playbook */
   .nighthawk-watch {
-    @apply relative flex flex-col min-h-0 h-full overflow-hidden;
-    border: 1px solid rgba(56, 189, 248, 0.18);
-    background:
-      radial-gradient(120% 80% at 100% 0%, rgba(56, 189, 248, 0.06), transparent 55%),
-      linear-gradient(195deg, rgba(8, 9, 14, 0.55), rgba(4, 4, 7, 0.35));
-    backdrop-filter: blur(4px);
-    box-shadow: inset 0 0 90px rgba(56, 189, 248, 0.04), 0 0 40px rgba(0, 0, 0, 0.35);
+    @apply relative flex flex-col min-h-0 h-full rounded-sm overflow-hidden;
+    border: 1px solid rgba(56, 189, 248, 0.14);
+    background: rgba(4, 4, 7, 0.94);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.04) inset,
+      0 12px 40px rgba(0, 0, 0, 0.45);
   }
 
   /* --- Tier 1: header ------------------------------------------------- */
@@ -3477,22 +3476,20 @@ body::before {
 
   .nighthawk-watch-kicker {
     @apply font-mono uppercase mb-0.5;
-    font-size: clamp(0.625rem, 0.72vh, 0.625rem);
-    letter-spacing: 0.4em;
-    color: rgba(56, 189, 248, 0.85);
+    font-size: 0.625rem;
+    letter-spacing: 0.28em;
+    color: rgba(255, 210, 63, 0.85);
   }
 
   .nighthawk-watch-title {
-    @apply font-anton uppercase tracking-wide;
-    font-size: clamp(1.6rem, 2.6vh, 1.9rem);
-    color: #fff8e8;
-    text-shadow: 0 0 20px rgba(56, 189, 248, 0.22);
+    @apply font-syne font-bold tracking-tight text-white;
+    font-size: clamp(1.25rem, 2vh, 1.5rem);
+    line-height: 1.15;
   }
 
   .nighthawk-watch-sub {
-    @apply font-mono leading-snug mt-1;
+    @apply font-mono leading-snug mt-1 text-sky-300;
     font-size: clamp(0.625rem, 0.95vh, 0.72rem);
-    color: #9fb4d4;
     max-width: 34rem;
   }
 
@@ -3554,21 +3551,19 @@ body::before {
   }
 
   .nighthawk-watch-stat-label {
-    @apply font-mono uppercase;
+    @apply font-mono uppercase text-cyan-400;
     font-size: 0.5625rem;
     letter-spacing: 0.18em;
-    color: #9fb4d4;
   }
 
   .nighthawk-watch-stat-value {
-    @apply font-mono font-bold tabular-nums leading-none;
+    @apply font-mono font-bold tabular-nums leading-none text-white;
     font-size: clamp(1.1rem, 2vh, 1.4rem);
-    color: #fff8e8;
   }
 
   .nighthawk-watch-stat-value-bull { color: #00e676; }
   .nighthawk-watch-stat-value-bear { color: #ff2d55; }
-  .nighthawk-watch-stat-value-mute { color: #9fb4d4; }
+  .nighthawk-watch-stat-value-mute { color: rgba(125, 211, 252, 0.85); }
 
   /* Verdict-breakdown chips inside the 4th stat tile. */
   .nighthawk-watch-verdict-row {
@@ -3641,21 +3636,132 @@ body::before {
   }
 
   .nighthawk-watch-footer {
-    @apply shrink-0 font-mono leading-relaxed;
+    @apply shrink-0 font-mono leading-relaxed text-sky-300;
     font-size: 0.5625rem;
-    color: #9fb4d4;
     padding: 0.5rem clamp(0.85rem, 1.5vw, 1.35rem) clamp(0.6rem, 1.1vh, 0.85rem);
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid rgba(56, 189, 248, 0.1);
+  }
+
+  /* Collapsible institutional tiles (Night Hawk suite) */
+  .nighthawk-tile {
+    @apply shrink-0 rounded-sm border overflow-hidden;
+    border-color: rgba(56, 189, 248, 0.12);
+    background: rgba(4, 4, 7, 0.55);
+  }
+
+  .nighthawk-tile-accent {
+    border-color: rgba(56, 189, 248, 0.18);
+    background: rgba(56, 189, 248, 0.04);
+  }
+
+  .nighthawk-tile-gold {
+    border-color: rgba(255, 210, 63, 0.15);
+    background: rgba(255, 210, 63, 0.03);
+  }
+
+  .nighthawk-tile-header {
+    @apply w-full flex items-center gap-2 text-left transition-colors duration-150;
+    padding: 0.55rem 0.75rem;
+  }
+
+  .nighthawk-tile-header:hover {
+    background: rgba(56, 189, 248, 0.05);
+  }
+
+  .nighthawk-tile-header-static {
+    cursor: default;
+  }
+
+  .nighthawk-tile-header-text {
+    @apply flex flex-col gap-0.5 min-w-0;
+  }
+
+  .nighthawk-tile-kicker {
+    @apply font-mono uppercase text-[9px] tracking-[0.22em] text-cyan-400;
+  }
+
+  .nighthawk-tile-title {
+    @apply font-mono uppercase text-[10px] font-semibold tracking-[0.16em] text-sky-300;
+  }
+
+  .nighthawk-tile-meta {
+    @apply font-mono text-[10px] tabular-nums text-cyan-400/80;
+  }
+
+  .nighthawk-tile-badge {
+    @apply shrink-0 font-mono text-[10px] tabular-nums uppercase tracking-wide text-cyan-400;
+    padding: 0.15rem 0.45rem;
+    border-radius: 9999px;
+    border: 1px solid rgba(56, 189, 248, 0.22);
+    background: rgba(56, 189, 248, 0.06);
+  }
+
+  .nighthawk-tile-badge-slot {
+    @apply shrink-0;
+  }
+
+  .nighthawk-tile-chevron {
+    @apply ml-auto shrink-0 font-mono text-cyan-400 leading-none;
+    font-size: 11px;
+    transition: transform 0.2s ease;
+  }
+
+  .nighthawk-tile-header[aria-expanded="true"] .nighthawk-tile-chevron {
+    transform: rotate(180deg);
+  }
+
+  .nighthawk-tile-body {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.22s ease;
+  }
+
+  .nighthawk-tile-body-open {
+    grid-template-rows: 1fr;
+  }
+
+  .nighthawk-tile-inner {
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .nighthawk-tile-content {
+    @apply flex flex-col gap-3;
+    padding: 0 0.75rem 0.75rem;
+    border-top: 1px solid rgba(56, 189, 248, 0.08);
+    padding-top: 0.65rem;
+  }
+
+  .nighthawk-watch-exposure {
+    @apply flex flex-col gap-2.5 rounded-sm border px-3 py-2.5;
+    border-color: rgba(56, 189, 248, 0.14);
+    background: rgba(56, 189, 248, 0.04);
+  }
+
+  .nighthawk-watch-exposure-grid {
+    @apply grid grid-cols-2 gap-x-3 gap-y-2.5 sm:grid-cols-4;
+  }
+
+  .nighthawk-watch-exposure-footer {
+    @apply flex items-center justify-between gap-2 border-t pt-2;
+    border-color: rgba(56, 189, 248, 0.1);
+  }
+
+  .nighthawk-watch-detail-hero {
+    background: rgba(4, 4, 7, 0.72);
+  }
+
+  .nighthawk-watch-detail-modal .nighthawk-tile {
+    border-color: rgba(56, 189, 248, 0.14);
   }
 
   /* --- Position card: verdict-colored accent stripe + hover lift ------ */
   .nighthawk-position-card {
-    @apply relative flex flex-col gap-3 cursor-pointer rounded-2xl border text-left overflow-hidden;
+    @apply relative flex flex-col gap-3 cursor-pointer rounded-sm border text-left overflow-hidden;
     padding: clamp(0.85rem, 1.4vh, 1.1rem);
     padding-left: calc(clamp(0.85rem, 1.4vh, 1.1rem) + 4px);
-    border-color: rgba(255, 255, 255, 0.1);
-    background: rgba(8, 9, 14, 0.6);
-    backdrop-filter: blur(4px);
+    border-color: rgba(56, 189, 248, 0.12);
+    background: rgba(4, 4, 7, 0.72);
     transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   }
 
@@ -3701,7 +3807,9 @@ body::before {
   @media (prefers-reduced-motion: reduce) {
     .nighthawk-position-card,
     .nighthawk-watch-addtoggle,
-    .nighthawk-watch-addtoggle-icon {
+    .nighthawk-watch-addtoggle-icon,
+    .nighthawk-tile-body,
+    .nighthawk-tile-chevron {
       transition: none;
     }
     .nighthawk-position-card:hover {
