@@ -194,10 +194,10 @@ export async function GET(req: NextRequest) {
         g->>'gate'   AS gate,
         COUNT(*)     AS block_count
       FROM spx_signal_observations o,
-           jsonb_array_elements(o.gates_blocked) AS g
+           jsonb_array_elements(o.gates_blocked_json) AS g
       WHERE o.observed_at >= NOW() - ($1 || ' days')::interval
-        AND o.gates_blocked IS NOT NULL
-        AND jsonb_array_length(o.gates_blocked) > 0
+        AND o.gates_blocked_json IS NOT NULL
+        AND jsonb_array_length(o.gates_blocked_json) > 0
       GROUP BY g->>'gate'
       ORDER BY block_count DESC
     `, [days]);
@@ -260,7 +260,7 @@ export async function GET(req: NextRequest) {
         engine_action,
         session_window,
         factors_json,
-        gates_blocked,
+        gates_blocked_json AS gates_blocked,
         outcome_move,
         direction_correct
       FROM spx_signal_observations
