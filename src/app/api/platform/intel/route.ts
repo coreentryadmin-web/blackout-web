@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
+import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +14,11 @@ const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-ag
  * Returns: regime, recent anomalies, active coaching alerts, latest brief,
  * signal accuracy by regime, and cross-cron health.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Premium session OR cron secret — this snapshot aggregates paid SPX content (brief levels,
+  // coaching, win-rate stats). Must not be world-readable. Cron callers pass Bearer CRON_SECRET.
+  const auth = await authorizeMarketDeskApi(req);
+  if (auth instanceof Response) return auth;
   try {
     const [regime, anomalies, coaching, brief, signalStats, regimeAccuracy] = await Promise.allSettled([
       // 1. Current market regime

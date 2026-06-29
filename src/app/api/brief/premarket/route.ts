@@ -1,12 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
+import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Premium premarket brief (SPX levels, kingStrike, netGex, gexBias) — premium session or cron only.
+  const auth = await authorizeMarketDeskApi(req);
+  if (auth instanceof Response) return auth;
   try {
     const result = await dbQuery(
       "SELECT * FROM platform_briefs WHERE brief_type = 'premarket' ORDER BY brief_date DESC LIMIT 1",

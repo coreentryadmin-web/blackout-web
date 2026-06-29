@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
+import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Paid SPX coaching (live walls/VWAP + long/short calls) — premium session or cron only.
+  const auth = await authorizeMarketDeskApi(req);
+  if (auth instanceof Response) return auth;
   try {
     const result = await dbQuery(
       "SELECT * FROM coaching_alerts ORDER BY generated_at DESC LIMIT 10",
