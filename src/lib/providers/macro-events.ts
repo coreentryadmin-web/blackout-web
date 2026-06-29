@@ -336,7 +336,11 @@ function checkLiveVsLiteralFomc(live: MacroEvent[]): void {
   const missing = expected.filter((d) => !liveSet.has(d));
   const extra = liveFomc.filter((d) => !expSet.has(d));
   if (missing.length || extra.length) {
-    console.error(
+    // Observe-only canary (never feeds a gate). The live UW feed often tags non-decision items
+    // (e.g. the FOMC *minutes* release ~3 weeks after a meeting) as "FOMC Decision", which shows
+    // up here as a benign `extra` date vs our decision-only literal. So this is WARN, not ERROR —
+    // a real drift (a `missing` decision) is still surfaced, without spamming the error stream.
+    console.warn(
       `[macro-events] LIVE_VS_LITERAL FOMC drift in-window: live=[${liveFomc.join(", ")}] expected=[${expected.join(", ")}] missing=[${missing.join(", ")}] extra=[${extra.join(", ")}]`
     );
   }

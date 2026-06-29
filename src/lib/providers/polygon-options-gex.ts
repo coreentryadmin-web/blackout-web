@@ -1069,6 +1069,10 @@ function warnChainTruncated(label: string, underlying: string, pages: number): v
  * (NO expiration_date filter — the snapshot returns every expiry inside the strike
  * window). Reuses polygonFetchUrl + the next_url pagination exactly like fetchChainBand.
  */
+// Page cap for the banded heatmap chain pull. Raised from 16 → 40 so SPX's full banded chain
+// isn't truncated (truncation understated walls/OI/IV). Env-tunable; floored at 16.
+const HEATMAP_PAGE_GUARD = Math.max(16, Number(process.env.OPTIONS_HEATMAP_PAGE_GUARD) || 40);
+
 async function fetchHeatmapBand(
   underlying: string,
   spot: number,
@@ -1088,8 +1092,12 @@ async function fetchHeatmapBand(
   const out: ChainContract[] = [];
   let page = await polygonFetchUrl(`/v3/snapshot/options/${underlying}?${params}`);
   // ~8 expiries × banded strikes × calls+puts can exceed one page; allow generous paging.
+  // SPX's full banded chain exceeded the old 16-page cap → truncated, understating walls/OI/IV
+  // (live: "fetchHeatmapBand(I:SPX) truncated"). Raise the cap so the chain is complete; the build
+  // is a cached warm path (heatmap-warm cron) paced by the cluster rate-limiter, so the extra
+  // pages don't pressure per-user reads. Env-tunable in case a venue ever needs more/less.
   let guard = 0;
-  while (page && guard < 16) {
+  while (page && guard < HEATMAP_PAGE_GUARD) {
     out.push(...(page.results ?? []));
     if (!page.next_url) break;
     page = await polygonFetchUrl(page.next_url);
