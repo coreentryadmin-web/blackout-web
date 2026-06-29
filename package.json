@@ -17,6 +17,7 @@
     "validate:deploy": "node scripts/validate-deploy.mjs",
     "validate:rth-open": "node scripts/rth-open-check.mjs",
     "validate:gha-rth": "node scripts/gha-rth-audit.mjs",
+    "validate:cron": "node scripts/cron-audit-query.mjs",
     "docs:playbook": "node scripts/generate-spx-playbook-docx.mjs",
     "probe:docs": "node scripts/analyze-api-usage.mjs && node scripts/probe-docs-endpoints.mjs",
     "probe:docs:uw": "node scripts/analyze-api-usage.mjs && node scripts/probe-docs-endpoints.mjs --uw-only",
