@@ -117,19 +117,19 @@ export async function GET(req: NextRequest) {
         });
 
         console.log(`[market/flows] postgres ok — ${flows.length} rows (min_premium=${min_premium}, since_hours=${since_hours})`);
-        return { source: "postgres" as const, flows: enrichedFlows, count: enrichedFlows.length, platform_refs: platform };
+        return { source: "cache" as const, flows: enrichedFlows, count: enrichedFlows.length, platform_refs: platform };
       });
       return NextResponse.json(payload);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       console.error("[market/flows] postgres ERROR:", detail);
-      return NextResponse.json({ source: "postgres_error", flows: [], count: 0, error: "Flow fetch failed" }, { status: 503 });
+      return NextResponse.json({ source: "cache", flows: [], count: 0, error: "Flow fetch failed" }, { status: 503 });
     }
   }
 
   if (!uwConfigured()) {
     return NextResponse.json(
-      { error: "No flow source configured — set DATABASE_URL or UW_API_KEY", flows: [], count: 0 },
+      { error: "Flow data unavailable", flows: [], count: 0 },
       { status: 503 }
     );
   }
@@ -139,7 +139,7 @@ export async function GET(req: NextRequest) {
     const flows = await serverCache(cacheKey, TTL.DARK_POOL, () =>
       fetchMarketFlowAlerts({ limit, ticker, min_premium })
     );
-    return NextResponse.json({ source: "unusual_whales", flows, count: flows.length });
+    return NextResponse.json({ source: "live", flows, count: flows.length });
   } catch (error) {
     console.error("[market/flows]", error);
     return NextResponse.json({ error: "Flow fetch failed" }, { status: 503 });

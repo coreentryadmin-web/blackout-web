@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   if (authResult instanceof Response) return authResult;
 
   if (!anthropicConfigured()) {
-    return NextResponse.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 503 });
+    return NextResponse.json({ error: "Commentary unavailable" }, { status: 503 });
   }
 
   let body: { desk?: SpxDeskPayload };

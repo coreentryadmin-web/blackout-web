@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   if (!polygonConfigured()) {
     return NextResponse.json(
-      { error: "POLYGON_API_KEY not configured", sectors: [], movers: [], as_of: new Date().toISOString() },
+      { error: "Market data unavailable", sectors: [], movers: [], as_of: new Date().toISOString() },
       { status: 503 }
     );
   }
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
       serverCache("heatmap:movers:20", TTL.MARKET_SNAPSHOT, () => fetchMarketMovers(20)),
     ]);
     return NextResponse.json({
-      source: "polygon",
+      source: "market",
       sectors,
       movers,
       as_of: new Date().toISOString(),

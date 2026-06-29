@@ -11,14 +11,16 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { redactWebhook } from "@/lib/discord-post";
 import { getPersonalWebhook, setPersonalWebhook } from "@/lib/personal-alert-store";
+import { requireTierApi } from "@/lib/market-api-auth";
 import { parseTier, tierAtLeast } from "@/lib/tiers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authResult = await requireTierApi("premium");
+  if (authResult instanceof Response) return authResult;
+  const { userId } = authResult;
   // getPersonalWebhook hits the Clerk Backend API (users.getUser), which can reject on a
   // Clerk outage / rate limit. Guard it so a transient upstream blip returns a clean 502
   // instead of an opaque unhandled 500 (mirrors the PUT/DELETE handlers below).

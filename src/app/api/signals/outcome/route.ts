@@ -68,8 +68,7 @@ export async function POST(req: NextRequest) {
       closed: checkpoint === "EOD",
     });
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
     console.error("[api/signals/outcome]", error);
-    return NextResponse.json({ ok: false, error: "Failed to record outcome", detail });
+    return NextResponse.json({ ok: false, error: "Failed to record outcome" });
   }
 }

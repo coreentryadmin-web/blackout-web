@@ -62,8 +62,7 @@ export async function POST(req: NextRequest) {
     const row = result.rows[0];
     return NextResponse.json({ ok: true, id: row.id, fired_at: row.fired_at });
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
     console.error("[api/signals/record]", error);
-    return NextResponse.json({ ok: false, error: "Failed to record signal", detail });
+    return NextResponse.json({ ok: false, error: "Failed to record signal" });
   }
 }

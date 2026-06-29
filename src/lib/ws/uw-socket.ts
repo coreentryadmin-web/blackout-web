@@ -24,6 +24,7 @@ import {
   pruneExpiredHalts,
 } from "./trading-halts-expiry";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
+import { inOptionsMarketHours } from "./options-socket";
 
 type Handler = (data: unknown) => void;
 
@@ -36,6 +37,22 @@ const CHANNEL_JOIN_NAME: Record<UwWsChannel, string> = Object.fromEntries(
 ) as Record<UwWsChannel, string>;
 
 const AUTH_FAILED_BACKOFF_MS = 5 * 60_000;
+
+/** Escape hatch: keep UW socket alive off-hours when set (operator rollback). */
+function uwOffHoursReconnectForced(): boolean {
+  const f = (process.env.UW_WS_OFFHOURS_RECONNECT ?? "").trim().toLowerCase();
+  return f === "1" || f === "true" || f === "yes" || f === "on";
+}
+
+/** May the cluster leader hold / (re)open the UW multiplex socket right now? */
+export function uwSocketGateOpen(isLeader: boolean, forced: boolean, now: Date): boolean {
+  if (!isLeader) return false;
+  return forced || inOptionsMarketHours(now);
+}
+
+function shouldMaintainUwSocket(now = new Date()): boolean {
+  return uwSocketGateOpen(uwIsLeader, uwOffHoursReconnectForced(), now);
+}
 
 const UW_API_KEY = (process.env.UW_API_KEY ?? "").trim();
 const UW_CLIENT_ID = process.env.UW_CLIENT_API_ID ?? "100001";
@@ -195,6 +212,7 @@ class UwSocketManager {
 
   private scheduleReconnect() {
     if (this.shuttingDown) return; // shutting down — do not resurrect the socket
+    if (!shouldMaintainUwSocket()) return; // off-hours / non-leader — defer reconnect
     if (!uwIsLeader) return; // only the cluster leader holds the UW socket; standbys stay closed
     if (this.channelsWithHandlers().length === 0) return;
     this.clearReconnect();
@@ -447,6 +465,7 @@ class UwSocketManager {
    */
   reconnectIfStalled(freshestMessageAt: number | null, stallMs: number, now = Date.now()): boolean {
     if (!this.isOpen()) return false;
+    if (!inOptionsMarketHours(new Date(now)) && !uwOffHoursReconnectForced()) return false;
     if (this.channelsWithHandlers().length === 0) return false;
     if (freshestMessageAt == null) return false;
     if (now - freshestMessageAt <= stallMs) return false;
@@ -834,6 +853,10 @@ export function initUwSocket() {
 async function runUwReconcileTick(): Promise<void> {
   const leader = await ensureUwLeadership();
   if (!leader) {
+    uwSocket.standDown();
+    return;
+  }
+  if (!shouldMaintainUwSocket()) {
     uwSocket.standDown();
     return;
   }

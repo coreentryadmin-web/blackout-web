@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   if (auth instanceof Response) return auth;
 
   if (!polygonConfigured()) {
-    return NextResponse.json({ error: "POLYGON_API_KEY not configured" }, { status: 503 });
+    return NextResponse.json({ error: "Market data unavailable" }, { status: 503 });
   }
 
   try {
@@ -33,13 +33,13 @@ export async function GET(req: NextRequest) {
 
     if (!spx && !vix) {
       return NextResponse.json(
-        { error: "No index data returned — check Indices Advanced plan on Massive" },
+        { error: "Index data temporarily unavailable" },
         { status: 502 }
       );
     }
 
     return NextResponse.json({
-      source: "polygon",
+      source: "market",
       as_of: cached.fetched_at,
       spx,
       vix,

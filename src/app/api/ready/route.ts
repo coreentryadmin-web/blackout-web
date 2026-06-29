@@ -10,7 +10,8 @@ export async function GET() {
   }
   const { ok, error, mode } = await pingDatabase();
   if (!ok) {
-    return NextResponse.json({ ok: false, db: "unreachable", error }, { status: 503 });
+    console.error("[ready] database ping failed:", error);
+    return NextResponse.json({ ok: false, db: "unreachable" }, { status: 503 });
   }
   return NextResponse.json({ ok: true, db: "connected", mode });
 }

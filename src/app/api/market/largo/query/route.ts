@@ -226,7 +226,7 @@ export async function POST(req: NextRequest) {
 
   if (!largoConfigured()) {
     return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY not configured on server" },
+      { error: "AI assistant unavailable" },
       { status: 503 }
     );
   }
