@@ -225,6 +225,9 @@ node scripts/hit-cron.mjs /api/cron/cron-staleness-watchdog
 
 # Public site sweep
 node scripts/site-audit.mjs --base=https://blackouttrades.com
+
+# Heat Maps matrix invariants (full cell-level)
+node scripts/heatmap-matrix-audit.mjs
 ```
 
 ---
@@ -254,6 +257,38 @@ SPY×10 vs SPX tracking: **−0.47%** (normal ≈ −0.4%) ✅
 ### Batch 2 (10 tickers × 3 passes = 30 probe sets) — ✅ 0 issues
 
 `JPM, BAC, XOM, CVX, UNH, LLY, CRM, ORCL, QCOM, PLTR` — all spots matched Polygon oracle at **Δ 0.000%** across 3 passes.
+
+### Heat Maps MATRIX deep audit (25 tickers × 32 checks each) — ✅ 0 issues
+
+Prior passes only compared **top-level spot** across quote / positioning / heatmap APIs. This pass
+re-derives every aggregate from the **served matrix payload** — the same invariant layers as
+`src/lib/correctness/heatmap-verifier.ts`:
+
+| Check | What it catches |
+|---|---|
+| INV-1 Σ `strike_totals` == `total` | Scale bug (×100, B-vs-M) on GEX/VEX/DEX/CHARM |
+| INV-2 cells re-sum == `strike_totals` | Matrix grid ≠ headline levels the UI shows |
+| INV-2b per-strike sign integrity | Flipped call(+)/put(−) in cells vs totals |
+| INV-3 call/put walls | Reported walls ≠ argmax(+)/argmin(−) of strike totals |
+| INV-4 gamma flip | Reported flip ≠ neg→pos crossing nearest spot |
+| Cell finiteness scan | NaN/Inf anywhere in the matrix |
+| Mapper cross-tool | `gexPositioningFromHeatmap(hm)` vs `hm.gex.*` on **same snapshot** (no TTL race) |
+| Sanity | max_pain within ±50% of spot |
+
+**25 tickers:** `SPX, SPY, QQQ, IWM, NVDA, AAPL, TSLA, AMD, MSFT, META, AMZN, MU, SMH, GLD, AVGO,
+JPM, BAC, XOM, CVX, UNH, LLY, CRM, ORCL, QCOM, PLTR` — **800 checks, 0 FLAGS**.
+
+Sample matrix headline numbers (live prod): SPX net GEX **29.05B**, flip **7435**, call wall **7440**,
+put wall **7350**; SPY net GEX **2.98B**; QQQ net GEX **807.7M** — all internally reconciled.
+
+> **Lesson:** comparing `/api/market/gex-positioning` to `/api/market/gex-heatmap` in **parallel**
+> can false-flag during cache refresh (5–20s TTL). Production verifier uses temporal-immune mapping
+> from one held snapshot; the audit script now does the same.
+
+```bash
+node scripts/heatmap-matrix-audit.mjs
+node scripts/heatmap-matrix-audit.mjs --tickers=SPX,NVDA,QQQ
+```
 
 ### Notes
 
