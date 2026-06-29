@@ -44,7 +44,7 @@ These were open at audit time; **do not treat as still open** when reading older
 - `00-METHOD-SAFETY.md` — safety rules, phase tracker ✅
 - `01-NUMBERS-VERIFICATION-MATRIX.md` — Phase 1 partial ✅
 - `10-PERFORMANCE.md` — Phase 10 partial ✅
-- `99-RTH-CONTINUATION-PLAN.md` — **what to run next at 09:30 ET** ✅
+- `11-RTH-VERIFICATION.md` — **RTH live pass (~12:52 ET): F-1 closed, F-2 gates blocking, flow stale 23m** ✅
 - `02-per-tool/` … `12`, full remediation roadmap — **not started**
 
 ## Approvals still needed before write/spend tests
