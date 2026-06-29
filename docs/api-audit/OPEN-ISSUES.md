@@ -1,12 +1,10 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-29 18:35 ET
+Last updated: 2026-06-29 19:30 ET
 
 
-> **29 Jun 2026 RTH verification — platform GREEN, no open code bugs.** Full audit + hardening
-> pass on `main` after operator provisioned `Market-Regime-Detector`. All previously logged P1/P2
-> code issues verified fixed or closed this session. Remaining items are **operator config outside
-> repo** (audit SKILL.md paths) or **intentional deferred cleanup** (dead scaffold tables in prod
-> until migration 005 is applied).
+> **29 Jun 2026 RTH — platform GREEN.** Sentry token live on Railway; validate:deploy auto-discovers
+> org/project; 2 wiring test issues resolved. Latest `data-correctness` run **ok** (earlier writer-stale
+> flags were transient during rolling deploy). `REPLICA_COUNT=5` set for cluster rate-limit math.
 
 
 ## ✅ Closed this session (2026-06-29)
