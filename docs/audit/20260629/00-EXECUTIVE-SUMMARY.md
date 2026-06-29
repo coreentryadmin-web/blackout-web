@@ -1,10 +1,7 @@
 # CTO Full-Platform Audit — Executive Summary (2026-06-29)
 
-> **Status (updated 2026-06-29 ~17:00 UTC): PAUSED — partial off-hours pass.** Not actively running.
-> Branch `cursor/cto-full-audit-20260629-7635` · PR [#14](https://github.com/coreentryadmin-web/blackout-web/pull/14) (draft).
-> Audit + verify + document only. **Several findings documented here were remediated on `main` the
-> same day** — see "Fixes landed since this pass" below. Remaining phases deferred to RTH; see
-> `99-RTH-CONTINUATION-PLAN.md`.
+> **Status (updated 2026-06-29 ~17:00 UTC): RTH verification pass complete.** Partial audit;
+> F-1 closed in prod. F-2 root-caused to stale flow + gates. See `11-RTH-VERIFICATION.md`.
 
 ## One-screen health verdict (preliminary — through Phase 1 partial + Phase 10 partial)
 **Grade at time of pause: B−** (sound architecture; one real cross-tool data-correctness MISMATCH on
@@ -22,12 +19,11 @@ These were open at audit time; **do not treat as still open** when reading older
 | PF-1 | CSP blocks `blob:` workers (Clerk degraded) | `worker-src 'self' blob:` + CF Insights | [#16](https://github.com/coreentryadmin-web/blackout-web/pull/16) `5e9cf94` |
 | PF-2 | React #418 hydration (FreshnessChip) | Defer time/title to post-mount | [#17](https://github.com/coreentryadmin-web/blackout-web/pull/17) `7baa1f1` |
 
-**Re-verify F-1 post-deploy:** `GET /api/market/spx/desk` vs `GET /api/market/gex-positioning?ticker=SPX`
-— `net_gex`, `gamma_flip`, `max_pain` should match.
+**Re-verify F-1 post-deploy:** ✅ **DONE RTH** — desk and GEX API aligned (net_gex, flip, max_pain match).
 
 ## Worst findings at pause (live-verified off-hours; evidence in `01-NUMBERS`)
 - **[P1] F-1 — SPX desk ≠ Heat Maps GEX** — **REMEDIATED #18** (was: desk 0DTE recompute vs canonical matrix).
-- **[P1] F-2 — SPX Slayer ledger empty all-time** — **STILL OPEN** (`spx_open_play=0`; needs RTH sample + play-engine trace).
+- **[P1] F-2 — SPX Slayer ledger empty all-time** — **RTH UPDATE:** engine SCANNING but gates block (`flow data stale 23m`, mixed tape, grade D). Track-record still 0. See `11-RTH-VERIFICATION.md`.
 - **[P1] F-3 — Signal pipeline empty** — **STILL OPEN** (`signal_events=0`; honestly empty, not fabricated).
 
 ## Crown-jewel questions — status at pause
