@@ -10,9 +10,10 @@ Last updated: 2026-06-29 00:14 ET
 > - **[OPEN]** **P1** `DISCORD_OPS_WEBHOOK_URL` **unset** in Railway → Cron-Staleness-Watchdog
 >   "ALERT NOT DELIVERED" — ops blind to cron failures. Operator must set the webhook. (Watchdog
 >   flagged "3 stale crons" at 07:14 UTC but that's pre-RTH off-hours; verify at next RTH window.)
-> - **[OPEN, corrects 06-28 run]** **P2** VAPID pair asymmetric — `VAPID_PRIVATE_KEY` set but
->   `VAPID_PUBLIC_KEY` **NOT set** → web push / gex-alerts **still inert** (prior run wrongly said "no longer inert").
->   Set the matching public key.
+> - **[RETRACTED — false positive]** ~~VAPID public key unset~~. The code reads
+>   `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (not `VAPID_PUBLIC_KEY`) and it IS set (with
+>   `VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`/`GEX_ALERTS_PUSH`). Push is LIVE; the 06-28 run was correct.
+>   Auditor hit the same env-name trap as P3-META — always grep `process.env.*NAME*` before asserting "unset."
 >
 > **Carried opens re-confirmed:** **P1-A** `Market-Regime-Detector` cron service still absent from
 > Railway service list. **P2 grid-overpromise** (subtitle promises News/flow; no such panel).
