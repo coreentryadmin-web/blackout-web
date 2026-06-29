@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/admin-access";
 import { dbQuery } from "@/lib/db";
 import { recordAdminRouteError } from "@/lib/admin-route-errors";
+import { initSpxSignalTables } from "@/lib/spx-signal-db";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,10 @@ export async function GET(req: NextRequest) {
   const minOutcomes = Math.max(1, parseInt(sp.get("minOutcomes") ?? "20", 10));
 
   try {
+    // The writer cron (spx-signal-observe) creates spx_signal_observations on first run; this
+    // read route used to assume it existed and 42P01'd on every admin load until the cron had run.
+    // Ensure it exists first (idempotent) so the analytics show an honest empty state, not an error.
+    await initSpxSignalTables();
     // ── date range ─────────────────────────────────────────────────────────────
     const rangeRow = await dbQuery<{ from_dt: string; to_dt: string }>(`
       SELECT
