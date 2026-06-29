@@ -1,12 +1,20 @@
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
+import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Premium content: SPX price + call/put wall + king strike + net GEX + bias. Was served
+  // 200 to any anonymous caller (pentest P1-1 / synthesis P0-2). Gate behind cron-secret OR
+  // a premium Clerk session, mirroring market/lotto/today. Crons pass via the cron path.
+  const authResult = await authorizeCronOrTierApi(req, "premium");
+  if (authResult instanceof Response) return authResult;
+
   try {
     const result = await dbQuery(
       "SELECT * FROM platform_briefs WHERE brief_type = 'premarket' ORDER BY brief_date DESC LIMIT 1",

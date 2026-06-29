@@ -1,5 +1,7 @@
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
+import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,8 +14,16 @@ const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-ag
  * Every cron reads this at startup to understand current state before acting.
  * Returns: regime, recent anomalies, active coaching alerts, latest brief,
  * signal accuracy by regime, and cross-cron health.
+ *
+ * AUTH: cron-secret OR premium Clerk session (authorizeCronOrTierApi). Was previously
+ * unauthenticated and leaked live regime / anomalies / signal win-rates by source to any
+ * caller (pentest P1-1 / synthesis P0-2). Internal cron consumers must send
+ * `Authorization: Bearer ${CRON_SECRET}`.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const authResult = await authorizeCronOrTierApi(req, "premium");
+  if (authResult instanceof Response) return authResult;
+
   try {
     const [regime, anomalies, coaching, brief, signalStats, regimeAccuracy] = await Promise.allSettled([
       // 1. Current market regime
