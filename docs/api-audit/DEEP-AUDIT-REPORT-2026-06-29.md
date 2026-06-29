@@ -6,21 +6,56 @@
 
 ---
 
-## Secrets to add (operator action)
+## Railway env access (confirmed working)
 
-These are **missing or invalid** in the Cloud Agent environment. Adding them unlocks DB/Redis/Railway
-layer audits the cron verifiers cannot fully substitute.
+Production env is pullable via Railway CLI — **no manual secret paste needed** for QA:
 
-| Secret | Why needed | Priority |
+```bash
+railway variable list --service blackout-web --json   # app secrets
+railway variable list --service Postgres --json       # DATABASE_PUBLIC_URL
+railway variable list --service Redis --json          # REDIS_PUBLIC_URL (external proxy)
+railway service list                                  # all 22 services + health
+```
+
+**Note:** Use `REDIS_PUBLIC_URL` from the **Redis** service for external audits — `REDIS_URL` on
+`blackout-web` points at `redis.railway.internal` (only reachable inside Railway).
+
+`ADMIN_EMAILS` on prod: `raiduvinay@gmail.com`, `benjaminfisherman2400@gmail.com`,
+`coreentryadmin@gmail.com` ✅
+
+---
+
+## Postgres proof (Railway `DATABASE_PUBLIC_URL`, live query)
+
+| Table / query | Count | Used by |
 |---|---|---|
-| `DATABASE_URL` or `DATABASE_PUBLIC_URL` | Direct Postgres row counts, `signal_outcomes` vs `spx_play_outcomes` split-brain proof, cron_job_runs, Night Hawk edition rows | **P0** |
-| `REDIS_URL` | Verify hot keys (`gex-heatmap:*`, `spx-desk:*`, flow cache TTLs) — data-layer verifier reads via app cache only | **P0** |
-| `RAILWAY_TOKEN` (project-scoped, valid) | Current token returns `Unauthorized`. Needed for service list, deploy logs, cron trigger health | **P1** |
-| `ADMIN_EMAILS` | Confirm `coreentryadmin@gmail.com` is on allowlist (Clerk user has `tier:premium`, role not set) | **P2** |
-| Fix typo `CLOUDFLARE_API_TOKE` → use `CF_API_TOKEN` (already works) | Housekeeping | **P3** |
+| `spx_play_outcomes` WHERE outcome ≠ open | **3** | `/api/public/track-record`, embed, desk ledger |
+| `signal_outcomes` SPX_SLAYER @ T+30 | **0** | `/api/track-record` page API |
 
-Already present and used this session: `CRON_SECRET`, `CLERK_SECRET_KEY`, `POLYGON_API_KEY`,
-`UW_API_KEY`, `WHOP_*`, `CF_API_TOKEN`, `CF_ZONE_ID`, `ANTHROPIC_API_KEY`, `SENTRY_AUTH_TOKEN`.
+**Split-brain confirmed at the database layer** — not a UI/cache artifact.
+
+### Night Hawk cron history (`cron_job_runs`)
+
+| job_key | Latest status | When |
+|---|---|---|
+| `nighthawk-outcomes` | **ok** | Mon 2026-06-29 ~20:00 UTC |
+| `nighthawk-playbook` | **skipped** (outside edition window) | Fri 2026-06-26 — **no Mon run** |
+| `market-regime-detector` | ok (RTH) / skipped (post-RTH) | Mon 2026-06-29 |
+
+Watchdog flags `nighthawk-playbook` stale because the edition window hasn't fired since Fri — verify
+Mon 5:30 PM ET edition trigger on Railway (`NightHawk-Playbook` service shows **0/1 replicas**).
+
+---
+
+## Redis spot check (Railway `REDIS_PUBLIC_URL`, post-RTH)
+
+| Namespace | Keys found | Notes |
+|---|---|---|
+| `gex-heatmap:*` | **0** | Expected off-hours — warmers stopped; app still serves via cold build |
+| `grid:*` | **0** | Expected off-hours |
+| `largo:*` | **4** | Session keys present |
+
+Re-audit Redis key TTLs during **RTH** — empty warm-cache off-hours is normal, not a bug by itself.
 
 ---
 
@@ -57,6 +92,8 @@ Already present and used this session: `CRON_SECRET`, `CLERK_SECRET_KEY`, `POLYG
 **Root cause:** Two aggregation paths. Page uses `src/app/api/track-record/route.ts` (signal_outcomes).
 Embed/public uses `src/lib/track-record-public.ts` (play outcomes ledger). The data-correctness verifier
 (`track-record-verifier.ts`) validates ledger ↔ public but **does not check `/api/track-record`**.
+
+**Postgres proof (Railway):** `spx_play_outcomes` closed = **3**, `signal_outcomes` SPX T+30 = **0**.
 
 **Fix direction:** Unify on one ledger OR wire `TrackRecordView` to `/api/public/track-record` and
 retire the signal_outcomes path for SPX Slayer social proof. File: `src/components/track-record/TrackRecordView.tsx:46`.
