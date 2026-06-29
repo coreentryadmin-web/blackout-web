@@ -12,9 +12,9 @@ startCommand = "node scripts/hit-cron.mjs /api/cron/heatmap-warm"
 # ET weekdays, DST-aware) self-skips the pre-open / off-band minutes, so warms only fire while
 # the chains actually move. Mirrors railway.nights-watch-warm.toml's market-hours band convention.
 # NOTE: Railway cron granularity is per-MINUTE (standard 5-field cron), so this fires once/min.
-# The matrix's own ~20s TTL + the in-process single-flight guard + organic traffic cover the
-# sub-minute gap (the cron exists to KILL cold-build bursts at TTL boundaries, not to be the sole
-# refresh path). To warm more often than 1/min, run a second trigger service on this same TOML.
+# The matrix's own ~20s fresh TTL + stale-while-revalidate (up to ~90s) + single-flight guard
+# cover the sub-minute gap — the cron kills cold-build bursts at TTL boundaries, not the sole
+# refresh path. To warm more often than 1/min, run a second trigger service on this same TOML.
 # NOTE: Railway must wire this — if cronSchedule was set in the dashboard UI, the dashboard
 # value overrides this TOML, so update it there too.
 cronSchedule = "* 11-21 * * 1-5"

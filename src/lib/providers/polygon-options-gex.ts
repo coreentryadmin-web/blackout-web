@@ -1032,6 +1032,55 @@ function gexHeatmapCacheMs(): number {
 }
 
 /**
+ * Max age of a matrix entry we'll still SERVE while refreshing in the background.
+ * Covers the heatmap-warm cron gap (Railway fires once/min; matrix fresh TTL ~20s) so a
+ * cold replica or TTL-boundary miss returns the last good matrix instantly instead of
+ * blocking 20–35s on a chain rebuild. Disabled during preset fast-move (price ran >0.5%).
+ */
+function gexHeatmapMaxStaleMs(): number {
+  const sec = Number(process.env.GEX_HEATMAP_MAX_STALE_SEC ?? 90);
+  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 90_000;
+}
+
+/** Serve an expired matrix immediately and kick off a background rebuild (single-flight). */
+function tryStaleWhileRevalidateHeatmap(
+  cacheKey: string,
+  root: string,
+  optionsRoot: string,
+  now: number,
+  ttlMs: number,
+  baseTtlMs: number,
+  mem: { at: number; data: GexHeatmap } | undefined,
+  redisHit: { at: number; data: GexHeatmap } | null
+): GexHeatmap | null {
+  const maxStaleMs = gexHeatmapMaxStaleMs();
+  let best: { at: number; data: GexHeatmap } | null = null;
+  for (const entry of [mem, redisHit]) {
+    if (!entry) continue;
+    const age = now - entry.at;
+    if (age >= ttlMs && age < maxStaleMs && (!best || entry.at > best.at)) {
+      best = entry;
+    }
+  }
+  if (!best) return null;
+
+  if (!heatmapInflight.has(cacheKey)) {
+    const build = buildGexHeatmapUncached(root, optionsRoot, cacheKey, now, baseTtlMs).finally(() => {
+      heatmapInflight.delete(cacheKey);
+    });
+    heatmapInflight.set(cacheKey, build);
+    void build.catch(() => {
+      /* stale already returned — background refresh failure is non-fatal */
+    });
+  }
+
+  if (redisHit && (!mem || redisHit.at >= mem.at)) {
+    setCachedHeatmap(cacheKey, redisHit);
+  }
+  return best.data;
+}
+
+/**
  * Negative-cache window for a NO-SPOT result (dead/unknown/transiently-quoteless ticker). Short
  * by design: long enough to absorb a client's poll storm (so we don't re-fetch the spot snapshot
  * every poll for a name with no quote), short enough that a name which momentarily had no spot
@@ -1759,15 +1808,33 @@ export async function fetchGexHeatmap(
   if (!forceRefresh) {
     const mem = cachedHeatmaps.get(cacheKey);
     if (mem && now - mem.at < ttlMs) return mem.data;
+
+    let redisHit: { at: number; data: GexHeatmap } | null = null;
     try {
       const { sharedCacheGet } = await import("../shared-cache");
-      const hit = await sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey);
-      if (hit && now - hit.at < ttlMs) {
-        setCachedHeatmap(cacheKey, hit);
-        return hit.data;
+      redisHit = await sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey);
+      if (redisHit && now - redisHit.at < ttlMs) {
+        setCachedHeatmap(cacheKey, redisHit);
+        return redisHit.data;
       }
     } catch {
       /* redis optional */
+    }
+
+    // Stale-while-revalidate: cron warms once/min but fresh TTL is ~20s — without this,
+    // every TTL-boundary miss blocks callers on a full chain rebuild (cold desk 20–35s).
+    if (!fastMove) {
+      const stale = tryStaleWhileRevalidateHeatmap(
+        cacheKey,
+        root,
+        optionsRoot,
+        now,
+        ttlMs,
+        baseTtlMs,
+        mem,
+        redisHit
+      );
+      if (stale) return stale;
     }
   }
 
