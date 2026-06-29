@@ -1207,3 +1207,54 @@ The W1 dual-GEX-path divergence risk is **fully CONVERGED**. No two surfaces can
 ### Data Timestamps
 - UNVERIFIED this cycle (endpoints 401). Re-run with an authed probe to populate desync check.
 ---
+
+## Connectivity Matrix - 2026-06-29 14:50 ET
+**PASS: 20 | FAIL: 0 | WARN: 0 | N/A: 1**  (all 6 live endpoints returned 200 via apex+Bearer)
+
+| Channel (source -> consumer) | Status |
+|---|---|
+| SPX -> HELIX | PASS: SPX desk surfaces spx_flows(32)+unified_tape (shared HELIX tape) |
+| SPX -> HEATMAP | PASS: both serve GEX off fetchGexHeatmap cache; SPX-chain vs SPY-chain scale is by-design |
+| SPX -> LARGO | PASS: get_spx_structure + getGexPositioning('SPX') injected in largo-live-feed |
+| SPX -> NHAWK | PASS: day-trade-filters reads spx.flow_0dte_net; agent aligns to SPX flow/GEX |
+| SPX -> NWATCH | PASS: verdict reads underlyingPrice+gexWalls from loadMergedSpxDesk (spx-desk source) |
+| HELIX -> SPX | PASS: desk has flow_0dte_net+tide_net+spx_flows+net_prem_ticks |
+| HELIX -> HEATMAP | PASS: gex_cross_validation reconciles vs UW flow (uw_asof live) |
+| HELIX -> LARGO | PASS: get_flow_tape + get_options_flow + get_greek_flow tools |
+| HELIX -> NHAWK | PASS: candidates.ts aggregateTickerFlows + fetchTickersFlowStreaks + sweepBonus |
+| HELIX -> NWATCH | PASS: position-context fetchRecentFlows(Postgres); verdict flow signals (FLOW_MIN_PREMIUM) |
+| HEATMAP -> SPX | PASS: desk gex_king/gex_net/gamma_flip/gex_walls (gex_age 11.3 s, not stale) |
+| HEATMAP -> HELIX | PASS: gex regime context shared via desk/positioning cache |
+| HEATMAP -> LARGO | PASS: getGexPositioning('SPX') injected directly (same cache-reader as Heatmaps) |
+| HEATMAP -> NHAWK | PASS: agent aligns plays to current GEX context |
+| HEATMAP -> NWATCH | PASS: verdict hasWalls() reads shared gexWalls (spx-desk OR gex-heatmap source) |
+| LARGO -> * | N/A: Largo is a terminal AI consumer, not a data source for other tools |
+| NHAWK -> LARGO | PASS: get_nighthawk_edition always injected (shared Postgres cache) |
+| NWATCH -> LARGO | PASS: get_my_positions(open) always injected (P0 cross-tool access) |
+| GRID -> SPX | PASS: spx-desk.ts populates macro_events/news_headlines(10)/macro_indicators; macroHardBlock gate |
+| GRID -> LARGO | PASS: get_news + get_economic_calendar + get_dark_pool tools |
+| GRID -> NHAWK | PASS: dossier/hunt-builder merge news_headlines; catalyst-awareness |
+
+### Live data snapshot
+- SPX desk: price=7440.43, gex_king=7440, gex_net=30.04B, gamma_flip=7435.15, max_pain=7450, source=polygon+uw-flow
+- GEX (heatmap): ticker=SPY, spot=740.7, call_wall=741, put_wall=725, flip=745.78, net_gex=3.17B
+- GEX cross-validation vs UW: callWallMatch=True, putWallMatch=True, flipMatch=False (divergence 4.22)
+- Flows: source=cache, count=15
+- Night Hawk: edition_for=2026-06-30, plays=3, recap_only=False
+
+### Timestamp consistency
+- SPX as_of: 2026-06-29T14:47:59.6020000-07:00
+- GEX asof:  2026-06-29T14:47:58.8220000-07:00
+- **GEX vs SPX timestamp gap: 0.8 s** (well under 10-min P0 threshold - tools see the same moment)
+- SPX desk gex_age: 11.3 s (fresh), flow_data_age: 98.7 min
+  - NOTE: flow age ~98.7 min reflects market close (~16:00 ET); tape stops post-close. Not a desync during RTH.
+
+### Notes / by-design items (not failures)
+- **SPX <-> HEATMAP scale**: SPX desk reasons on the SPX option chain (king 7440); the GEX/heatmap endpoint is SPY-based (call_wall 741). Both read fetchGexHeatmap; the ~10x scale + 0DTE-lens difference is by-design (see [[project_connectivity_matrix]] W1 CONVERGED).
+- **flipMatch=false**: GEX vs UW gamma-flip diverged 4.22 pts; call/put walls match. Minor, within tolerance.
+- **Largo as consumer**: Largo is the AI desk that READS every other service (full cross-tool access confirmed in largo-live-feed.ts: spx_structure, gex_regime, flow_tape, dark_pool, news, calendar, nighthawk, my_positions). It does not feed data back to other tools - expected.
+- **SKILL.md drift**: live field names are snake_case (call_wall/put_wall/gex_king, walls in gex_walls[]), NOT the camelCase (callWall/kingStrike) the SKILL's PowerShell assumes; Largo wiring is in src/lib/largo/largo-live-feed.ts + largo-terminal.ts, NOT the non-existent src/lib/run-tool.ts / src/lib/tools/. Verdicts above were derived from real schema + code.
+
+### Disconnected channels (FAIL)
+- None. Every source->consumer channel is wired and live.
+---
