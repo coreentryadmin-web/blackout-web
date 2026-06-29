@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
+import { isCronAuthorized } from "@/lib/market-api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Fail CLOSED on cron writes — see coaching/alerts (synthesis P0-3). The old
+  // `process.env.CRON_SECRET && auth !== ...` fell open on an unset secret.
+  if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {

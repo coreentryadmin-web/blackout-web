@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
+import { isCronAuthorized } from "@/lib/market-api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,9 +34,10 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && auth !== `Bearer ${cronSecret}`) {
+  // Fail CLOSED: isCronAuthorized returns false when CRON_SECRET is unset and uses a
+  // constant-time compare. The old `cronSecret && auth !== ...` fell OPEN on an unset
+  // secret = an unauthenticated public write endpoint (synthesis P0-3).
+  if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
