@@ -175,6 +175,49 @@ export type ErrorEventRow = {
   created_at: string;
 };
 
+/**
+ * Pure severity classifier for a recent error count (exported for tests).
+ * none < warn ≤ warning < crit ≤ critical.
+ */
+export function classifyErrorSpike(
+  total: number,
+  warnThreshold: number,
+  critThreshold: number
+): "none" | "warning" | "critical" {
+  if (total >= critThreshold) return "critical";
+  if (total >= warnThreshold) return "warning";
+  return "none";
+}
+
+/**
+ * Count error_events in the last `sinceMinutes`, with a small top-groups breakdown for alerts.
+ * Cache-reader-safe: a single bounded aggregate read, never a row dump. Returns zeros on any miss.
+ */
+export async function countRecentErrorEvents(
+  sinceMinutes = 15
+): Promise<{ total: number; groups: Array<{ source: string; scope: string | null; count: number }> }> {
+  const { dbConfigured, ensureSchema, dbQuery } = await import("@/lib/db");
+  if (!dbConfigured()) return { total: 0, groups: [] };
+  const mins = Math.min(Math.max(1, Math.round(sinceMinutes)), 1440);
+  try {
+    await ensureSchema();
+    const { rows } = await dbQuery<{ source: string; scope: string | null; count: string }>(
+      `SELECT source, scope, COUNT(*)::text AS count
+         FROM error_events
+        WHERE created_at > NOW() - ($1 || ' minutes')::interval
+        GROUP BY source, scope
+        ORDER BY COUNT(*) DESC
+        LIMIT 8`,
+      [String(mins)]
+    );
+    const groups = rows.map((r) => ({ source: r.source, scope: r.scope, count: Number(r.count) }));
+    const total = groups.reduce((sum, g) => sum + g.count, 0);
+    return { total, groups };
+  } catch {
+    return { total: 0, groups: [] };
+  }
+}
+
 export async function fetchRecentErrorEvents(limit = 100): Promise<ErrorEventRow[]> {
   // Lazy import keeps node-only `pg` out of this module's static (edge-traced) graph.
   const { dbConfigured, ensureSchema, dbQuery } = await import("@/lib/db");

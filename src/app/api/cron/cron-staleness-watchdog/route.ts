@@ -4,6 +4,12 @@ import { buildCronHealthSnapshot } from "@/lib/admin-cron-health";
 import { notifyOpsDiscord } from "@/lib/spx-play-notify";
 import { logCronRun } from "@/lib/cron-run";
 import { dispatchCronWarm, isDispatchableCron } from "@/lib/cron-dispatch";
+import { countRecentErrorEvents, classifyErrorSpike } from "@/lib/error-sink";
+
+function envNum(name: string, fallback: number): number {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -75,10 +81,28 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Error-rate spike: read the web app's durable error sink (error_events) over a short window.
+    // A burst of persisted errors is a prod-health signal the per-cron alerts can't see. Tunable.
+    const errWindowMin = envNum("CRON_WATCHDOG_ERROR_WINDOW_MIN", 15);
+    const errWarn = envNum("CRON_WATCHDOG_ERROR_WARN", 25);
+    const errCrit = envNum("CRON_WATCHDOG_ERROR_CRIT", 75);
+    const recentErrors = await countRecentErrorEvents(errWindowMin);
+    const errorSpike = classifyErrorSpike(recentErrors.total, errWarn, errCrit);
+
     let alertDelivered = true;
-    if (problems.length > 0) {
+    if (problems.length > 0 || errorSpike !== "none") {
       // Lead with the RTH-stale block (the live-data emergency), then the rest.
       const sections: string[] = [];
+      if (errorSpike !== "none") {
+        const top = recentErrors.groups
+          .slice(0, 5)
+          .map((g) => `• \`${g.source}${g.scope ? `/${g.scope}` : ""}\` ×${g.count}`)
+          .join("\n");
+        sections.push(
+          `${errorSpike === "critical" ? "🔴" : "⚠️"} **ERROR SPIKE** — ${recentErrors.total} error(s) ` +
+            `in the last ${errWindowMin}m (warn ${errWarn} / crit ${errCrit}):\n${top}`
+        );
+      }
       if (rthStale.length > 0) {
         sections.push(
           `🔴 **MARKET-HOURS CRON STALE (RTH)** — live data is breaking:\n` +
@@ -107,21 +131,26 @@ export async function GET(req: NextRequest) {
       const title =
         rthStale.length > 0
           ? `🔴 Cron health: ${rthStale.length} market-hours job(s) STALE during RTH`
-          : `⚠️ Cron health: ${problems.length} job(s) need attention`;
+          : problems.length > 0
+            ? `⚠️ Cron health: ${problems.length} job(s) need attention`
+            : `${errorSpike === "critical" ? "🔴" : "⚠️"} Prod error spike: ${recentErrors.total} in ${errWindowMin}m`;
+
+      const severity: "critical" | "warning" =
+        rthStale.length > 0 || problems.length > 0 || errorSpike === "critical" ? "critical" : "warning";
 
       alertDelivered = await notifyOpsDiscord({
         title,
         body: sections.join("\n\n"),
-        severity: "critical",
+        severity,
       }).catch(() => false);
 
       // If the alert went nowhere (no webhook configured / delivery failed), DON'T fail silently —
       // this is exactly how #90 stayed invisible. Log loud; it also surfaces in the result below.
       if (!alertDelivered) {
         console.error(
-          `[cron/cron-staleness-watchdog] ALERT NOT DELIVERED for ${problems.length} stale/failed cron(s) ` +
-            `(${problems.map((j) => j.key).join(", ")}) — Discord webhook unset or unreachable. ` +
-            `Set DISCORD_OPS_WEBHOOK_URL.`
+          `[cron/cron-staleness-watchdog] ALERT NOT DELIVERED ` +
+            `(${problems.length} stale/failed cron(s); error-spike=${errorSpike}, ${recentErrors.total} in ${errWindowMin}m) ` +
+            `— Discord webhook unset or unreachable. Set DISCORD_OPS_WEBHOOK_URL.`
         );
       }
     }
@@ -133,7 +162,10 @@ export async function GET(req: NextRequest) {
       problem_keys: problems.map((j) => j.key),
       rth_stale: rthStale.length,
       rth_stale_keys: rthStale.map((j) => j.key),
-      alert_delivered: problems.length > 0 ? alertDelivered : null,
+      error_window_min: errWindowMin,
+      error_count: recentErrors.total,
+      error_spike: errorSpike,
+      alert_delivered: problems.length > 0 || errorSpike !== "none" ? alertDelivered : null,
       self_heal_enabled: selfHealEnabled,
       self_healed: healed,
     };
