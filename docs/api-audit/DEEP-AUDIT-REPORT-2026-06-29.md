@@ -229,4 +229,38 @@ node scripts/site-audit.mjs --base=https://blackouttrades.com
 
 ---
 
-Last run: 2026-06-29 ~20:35 UTC · QA agent session
+## Multi-ticker deep audit (30 names × 3 passes each)
+
+Automated via `scripts/multi-ticker-audit.mjs` — for **each ticker, each pass**:
+
+| Probe | What it validates |
+|---|---|
+| `GET /api/market/gex-positioning?ticker=X` | spot, net_gex, flip, call/put walls — all finite |
+| `GET /api/market/quote?ticker=X` | quote spot vs GEX spot (≤1.5%) |
+| `GET /api/market/gex-heatmap?ticker=X&lens=gex` | matrix spot vs GEX spot (≤0.5%) |
+| `GET /api/market/flows?ticker=X` | premium values finite, non-negative |
+| Polygon oracle | independent spot (≤1% stocks, ≤0.15% indices) |
+| 3-pass stability | spot drift between passes ≤3% |
+| SPY×10 vs SPX | tracking band (last pass) |
+
+### Batch 1 (20 tickers × 3 passes = 60 probe sets) — ✅ 0 issues
+
+`SPX, SPY, QQQ, IWM, VIX, NVDA, AAPL, TSLA, AMD, MSFT, META, AMZN, GOOGL, NFLX, AVGO, MU, SMH, GLD, SLV, COIN`
+
+Sample verified spots (pass 3): SPX **7440.43**, SPY **740.56**, NVDA **194.97**, MU **1138.26**, QQQ **723.02** — all **Δ 0.00%** vs Polygon oracle.
+
+SPY×10 vs SPX tracking: **−0.47%** (normal ≈ −0.4%) ✅
+
+### Batch 2 (10 tickers × 3 passes = 30 probe sets) — ✅ 0 issues
+
+`JPM, BAC, XOM, CVX, UNH, LLY, CRM, ORCL, QCOM, PLTR` — all spots matched Polygon oracle at **Δ 0.000%** across 3 passes.
+
+### Notes
+
+- **TSLA** sometimes reports **7/7** checks (vs 9/9) — thinner GEX wall data, not a numeric error.
+- **VIX** has **7/7** — index-specific (no equity options chain walls); spot still oracle-confirmed.
+- Re-run during **RTH** for freshness/TTL assertions on warm-cache keys.
+
+```bash
+node scripts/multi-ticker-audit.mjs --passes=3
+```
