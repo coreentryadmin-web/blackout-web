@@ -10,6 +10,7 @@ import {
 import { fetchClosedPlayOutcomes, fetchPlayLifecycleCounts } from "@/lib/db";
 import { fetchPlayOutcomeStats, readPlayWriteFailures } from "@/lib/spx-play-outcomes";
 import { buildPublicTrackRecord } from "@/lib/track-record-public";
+import { buildTrackRecordPagePayload, pageSpxMatchesPublic } from "@/lib/track-record-page";
 
 // ---------------------------------------------------------------------------
 // TRACK RECORD data-correctness verifier — priority surface #6.
@@ -263,6 +264,49 @@ export async function verifyTrackRecord(_marketOpen: boolean): Promise<TickerSco
             : `Public track record (W/L/S=${pub.wins}/${pub.losses}/${pub.breakeven}, ${pub.win_rate_pct}% over ${pub.total_closed}) DISAGREES with the ledger (${myWins}/${myLosses}/${myScratch}, ${expectedPct}% over ${myClosed}) — the social-proof number is not the real ledger.`,
           { id: "ledger-vs-public", expected: `${myWins}/${myLosses}/${myScratch}@${expectedPct}%`, actual: `${pub.wins}/${pub.losses}/${pub.breakeven}@${pub.win_rate_pct}%` }
         )
+      );
+    }
+  }
+
+  // ── L5 CROSS-SURFACE: /track-record page API == public ledger (SPX block) ──
+  {
+    try {
+      const page = await buildTrackRecordPagePayload();
+      let pub: Awaited<ReturnType<typeof buildPublicTrackRecord>> | null = null;
+      try {
+        pub = await buildPublicTrackRecord();
+      } catch {
+        pub = null;
+      }
+      if (!pub) {
+        checks.push(
+          mk("cross-tool", "hit_rate", "skipped", "Public track record unavailable — page-vs-public cross-check skipped.", {
+            id: "page-vs-public",
+          })
+        );
+      } else {
+        const match = pageSpxMatchesPublic(page, pub);
+        checks.push(
+          mk(
+            "cross-tool",
+            "hit_rate",
+            match ? "consistency-only" : "flag",
+            match
+              ? `/track-record page API SPX block (W/L/closed = ${page.spxSlayer.wins}/${page.spxSlayer.losses}/${page.spxSlayer.total}) matches the public ledger.`
+              : `/track-record page API SPX block (W/L/closed = ${page.spxSlayer.wins}/${page.spxSlayer.losses}/${page.spxSlayer.total}) DISAGREES with public ledger (W/L/closed = ${pub.wins}/${pub.losses}/${pub.total_closed}) — split-brain (#80 class).`,
+            {
+              id: "page-vs-public",
+              expected: `${pub.wins}/${pub.losses}/${pub.total_closed}`,
+              actual: `${page.spxSlayer.wins}/${page.spxSlayer.losses}/${page.spxSlayer.total}`,
+            }
+          )
+        );
+      }
+    } catch {
+      checks.push(
+        mk("cross-tool", "hit_rate", "skipped", "buildTrackRecordPagePayload unavailable — page-vs-public cross-check skipped.", {
+          id: "page-vs-public",
+        })
       );
     }
   }
