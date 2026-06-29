@@ -26,6 +26,7 @@
 import { MASSIVE_WS_OPTIONS } from "@/lib/polygon-docs-nav";
 import { etMinutes, etClock } from "@/lib/spx-play-session-time";
 import { getEarlyCloseMinutes } from "@/lib/spx-play-session-guards";
+import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 
 /**
  * RTH gate for the OPTIONS feed (live finding #75). Off-hours, no option quotes flow, so the
@@ -36,7 +37,7 @@ import { getEarlyCloseMinutes } from "@/lib/spx-play-session-guards";
  * closed we simply do NOT treat silence as a stall, so the socket stays put instead of churning.
  * (Full market holidays are not modeled — a holiday reconnect is rare and harmless: market closed.)
  */
-function inOptionsMarketHours(now = new Date()): boolean {
+export function inOptionsMarketHours(now = new Date()): boolean {
   const weekday = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     weekday: "short",
@@ -59,6 +60,95 @@ export function optionsWsEnabled(): boolean {
   const flag = (process.env.OPTIONS_WS_ENABLED ?? "").trim().toLowerCase();
   const on = flag === "1" || flag === "true" || flag === "yes" || flag === "on";
   return on && Boolean(POLYGON_API_KEY);
+}
+
+// ── Cross-replica leader election (P2-D root cause) ──────────────────────────────────────────────
+// Massive allows at most ONE live WebSocket per API key per asset class. With N web replicas each
+// opening its own options socket, the 2nd–Nth get booted (server close 1006) → a cluster-wide
+// reconnect storm (observed: multiple shard-0 failure counters climbing in parallel). Mirror the
+// proven indices pattern (polygon-socket.ts): a Redis SETNX lock so only ONE replica holds the
+// options WS. Non-leaders open NOTHING and serve live marks from the leader's `nw:optmark:` Redis
+// write-through (getLiveOptionMark already reads Redis cross-instance), so per-user valuation is
+// unaffected. If the leader dies (SIGTERM releases the lock, or the 25s TTL lapses), the next
+// reconcile tick on another replica wins the lock and takes over.
+const OPTIONS_LEADER_KEY = "options:ws:leader";
+const OPTIONS_LEADER_TTL_SEC = 25;
+let optionsIsLeader = false;
+let optionsLeaderRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+type IoredisLockExtra = {
+  set(k: string, v: string, ex: string, ttl: number, nx: string): Promise<string | null>;
+  expire(k: string, ttl: number): Promise<number>;
+  del(k: string): Promise<number>;
+};
+
+async function tryAcquireOptionsLead(): Promise<boolean> {
+  try {
+    const redis = await getUwCacheRedis();
+    if (!redis) return true; // Redis unavailable — allow the WS (single-replica safe / fail-open)
+    const r = redis as unknown as IoredisLockExtra;
+    const result = await r.set(OPTIONS_LEADER_KEY, "1", "EX", OPTIONS_LEADER_TTL_SEC, "NX");
+    return result === "OK";
+  } catch {
+    return true; // Redis error — fail open so a Redis blip can't silently kill live marks cluster-wide
+  }
+}
+
+/** Acquire leadership if we don't already hold it. The refresh timer keeps the lease alive. */
+async function ensureOptionsLeadership(): Promise<boolean> {
+  if (optionsIsLeader) return true;
+  optionsIsLeader = await tryAcquireOptionsLead();
+  if (optionsIsLeader) {
+    console.log("[options-socket] acquired cluster lead — this replica holds the options WS");
+  }
+  return optionsIsLeader;
+}
+
+function startOptionsLeaderRefresh(): void {
+  if (optionsLeaderRefreshTimer) return;
+  // Renew every 10s, well within the 25s TTL, so leadership persists while this replica lives.
+  optionsLeaderRefreshTimer = setInterval(() => {
+    if (!optionsIsLeader) return;
+    getUwCacheRedis()
+      .then((redis) => redis && (redis as unknown as IoredisLockExtra).expire(OPTIONS_LEADER_KEY, OPTIONS_LEADER_TTL_SEC))
+      .catch(() => undefined);
+  }, 10_000);
+  (optionsLeaderRefreshTimer as unknown as { unref?: () => void }).unref?.();
+}
+
+function releaseOptionsLead(): void {
+  optionsIsLeader = false;
+  if (optionsLeaderRefreshTimer) {
+    clearInterval(optionsLeaderRefreshTimer);
+    optionsLeaderRefreshTimer = null;
+  }
+  // Best-effort: drop the lock so a newly-booting replica can take over immediately on SIGTERM.
+  getUwCacheRedis()
+    .then((redis) => redis && (redis as unknown as IoredisLockExtra).del(OPTIONS_LEADER_KEY))
+    .catch(() => undefined);
+}
+
+/**
+ * P2-D escape hatch: by default the socket rests off-hours (no 1006 churn while no quotes flow).
+ * Set OPTIONS_WS_OFFHOURS_RECONNECT=1 to keep it connected off-hours (operator rollback knob).
+ */
+function offHoursReconnectForced(): boolean {
+  const f = (process.env.OPTIONS_WS_OFFHOURS_RECONNECT ?? "").trim().toLowerCase();
+  return f === "1" || f === "true" || f === "yes" || f === "on";
+}
+
+/**
+ * Pure gate (exported for tests): may THIS replica hold an options socket right now?
+ * Only the cluster leader, and only during options RTH (unless the off-hours hatch is forced).
+ */
+export function optionsSocketGateOpen(isLeader: boolean, forced: boolean, now: Date): boolean {
+  if (!isLeader) return false; // non-leaders never open a socket — they read the leader's Redis marks
+  return forced || inOptionsMarketHours(now);
+}
+
+/** Should this replica (re)open / maintain the options socket right now? */
+function shouldMaintainSocket(now = new Date()): boolean {
+  return optionsSocketGateOpen(optionsIsLeader, offHoursReconnectForced(), now);
 }
 
 /** Max option contracts per connection on the Q feed (Massive hard cap is 1,000). */
@@ -292,6 +382,15 @@ class OptionsShard {
     if (this.shuttingDown) return; // shutting down — do not resurrect the socket
     if (this.reconnectTimer) return;
     if (this.symbols.size === 0) return; // nothing to stream — stay idle
+    // P2-D: only the cluster leader, and only during options RTH, (re)opens. A non-leader or
+    // off-hours close is left closed instead of looping 1006 every 60s; leadership/RTH is
+    // re-checked on the next reconcile tick and the socket comes back up then.
+    if (!shouldMaintainSocket()) {
+      console.log(
+        `[options-socket] shard ${this.id} closed (${reason}) — not leader/off-hours, deferring reconnect`
+      );
+      return;
+    }
     this.consecutiveFailures += 1;
     const base = Math.min(this.reconnectDelay, 60_000);
     const jitter = Math.floor(Math.random() * 400);
@@ -313,6 +412,10 @@ class OptionsShard {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
+    // P2-D: don't open unless this replica is the leader and it's options RTH (or forced). The
+    // watchdog calls this every tick, so the socket comes up within one reconcile of becoming
+    // eligible. Non-leaders/off-hours read marks from the leader's Redis write-through.
+    if (!shouldMaintainSocket()) return;
     this.connect();
   }
 
@@ -333,6 +436,9 @@ class OptionsShard {
     if (this.shuttingDown) return; // shutting down — do not open a new socket
     if (!POLYGON_API_KEY) return;
     if (this.symbols.size === 0) return;
+    // P2-D belt-and-suspenders: never open unless leader + RTH (covers a reconnect timer that
+    // fires just after leadership loss or the RTH close boundary). No-op when eligible.
+    if (!shouldMaintainSocket()) return;
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -751,14 +857,14 @@ export function initOptionsSocket(): void {
     return;
   }
   optionsSocketInitialized = true;
+  startOptionsLeaderRefresh();
 
-  // First reconcile immediately so marks start flowing without a 30s wait.
-  void reconcileOptionSubscriptions();
+  // First tick immediately so the leader starts streaming without a 30s wait.
+  void runReconcileTick();
 
   if (!reconcileTimer) {
     reconcileTimer = setInterval(() => {
-      void reconcileOptionSubscriptions();
-      pool.watchdog(WATCHDOG_STALL_MS);
+      void runReconcileTick();
     }, RECONCILE_INTERVAL_MS);
   }
 
@@ -766,6 +872,18 @@ export function initOptionsSocket(): void {
     `[options-socket] initialized — reconcile every ${Math.round(RECONCILE_INTERVAL_MS / 1000)}s, ` +
       `cap ${MAX_CONNECTIONS}x${MAX_CONTRACTS_PER_CONN} contracts`
   );
+}
+
+/**
+ * One reconcile tick, leadership-gated. Only the cluster leader subscribes contracts + runs the
+ * watchdog (i.e. opens/maintains sockets). A standby replica acquires the lock here the moment the
+ * current leader releases/expires it, then takes over on the following tick.
+ */
+async function runReconcileTick(): Promise<void> {
+  const leader = await ensureOptionsLeadership();
+  if (!leader) return; // standby — serve marks from the leader's Redis write-through
+  await reconcileOptionSubscriptions();
+  pool.watchdog(WATCHDOG_STALL_MS);
 }
 
 /**
@@ -780,5 +898,7 @@ export function shutdownOptionsSocket(): void {
     clearInterval(reconcileTimer);
     reconcileTimer = null;
   }
+  // Release the cluster lead so a newly-booting replica can take over the options WS immediately.
+  releaseOptionsLead();
   pool.shutdown();
 }
