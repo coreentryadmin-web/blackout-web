@@ -1,5 +1,29 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-29 11:19 ET
+Last updated: 2026-06-29 15:09 ET
+
+> **15:09 ET run (Mon, mid-RTH, market open; live data sampled via prod PG). ✅ BOTH prior P0s RESOLVED this run.**
+> - **[✅ RESOLVED · was 🔴 P0]** **Five RTH writer crons recovered.** `flow-ingest` (13.9m, status `skipped`=no-new-data),
+>   `uw-cache-refresh` (13.0m), `nights-watch-warm` (12.0m), `heatmap-warm` (12.7m), `grid-warm` (13.7m) — all back on
+>   schedule (≤14m ages) vs ~455m dead at 11:19. `data-correctness` 11.1m, `spx-evaluate` 6.9m. Whatever stalled them
+>   after the ~07:41 UTC restart has cleared. **`market-regime-detector` now RUNNING (6.9m)** — was "absent" at 04:xx. Resolved.
+> - **[✅ RESOLVED · was 🔴 P0 (longstanding)]** **SPX plays are OPENING — first time ever.** Prod: `spx_open_play=3`,
+>   `spx_play_outcomes=3`, `spx_signal_log=2`; `flow_alerts` last 30m = **113**. Exactly the 11:19 prediction once
+>   flow-ingest restored on a clean-tape window. `project_spx_plays_never_open` closed.
+> - **[OPEN · 🟠 P1 · operational]** **`DISCORD_OPS_WEBHOOK_URL` still UNSET** — this is WHY the 7.6h writer outage went
+>   un-paged. Watchdog detects but `alert_delivered:false`; failure-Discord can't fire. Operator: set webhook / enable self-heal.
+> - **[OPEN · 🟠 P1 · deploy gap]** **27 unpushed commits on `main`** (was 11 @04:xx) — fixes incl. signal-analytics 500 fix
+>   are LOCAL only, NOT in prod. By-design (cron-no-push) but widening; operator must review + `git push origin main`.
+> - **[OPEN · P2 · copy]** Grid overpromise: `(site)/grid/page.tsx:13`+`:35` advertise "News, flow" panels not in the real
+>   set (analysts/catalysts/congress/dark-pool/earnings/economy/movers/sectors). Wire the panels or fix the copy.
+> - **[GREEN]** tsc=0 · #97/#100/#101/#102 + veto FIXED · db Pool handler (`db.ts:113`,max:5) · redis family:0+reconnect ·
+>   blackout-web Online 5/5 · logs clean · all secrets set (incl. **VAPID + CF_API_TOKEN now SET** — re-verify push alerts live) ·
+>   Landing/auth/health 200, data endpoints correctly 401.
+> - **[P3-META — STILL UNFIXED]** audit SKILL.md false positives (stale paths `spx-pulse`/`flows`/`nighthawk-latest-edition`/
+>   `grid-news`; wrong env `UNUSUAL_WHALES_API_KEY` vs real `UW_API_KEY`; singular `webhook/clerk` vs real plural `webhooks/clerk`;
+>   auth-grep misses `requireTierApi`/`authorizeCronOrTierApi`; SpxDarkPoolCard IS mounted). Fix the script.
+>   Full report: `docs/api-audit/deep-audit-20260629-12.md`.
+
+---
 
 > **11:19 ET run (Mon, mid-morning RTH — first RTH-window run today; live data now sampleable via prod PG).**
 > **This is the RTH verification the 04:xx run queued — and it found a live, ongoing P0 outage.**
