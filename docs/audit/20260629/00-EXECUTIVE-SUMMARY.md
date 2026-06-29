@@ -1,30 +1,51 @@
 # CTO Full-Platform Audit — Executive Summary (2026-06-29)
 
-> **Living document** — updated as phases complete. Status: **Phase 0 done, Phase 1 in progress.**
-> Branch `cursor/cto-full-audit-20260629-7635`. Audit + verify + document only (no source/prod changes).
+> **Status (updated 2026-06-29 ~17:00 UTC): PAUSED — partial off-hours pass.** Not actively running.
+> Branch `cursor/cto-full-audit-20260629-7635` · PR [#14](https://github.com/coreentryadmin-web/blackout-web/pull/14) (draft).
+> Audit + verify + document only. **Several findings documented here were remediated on `main` the
+> same day** — see "Fixes landed since this pass" below. Remaining phases deferred to RTH; see
+> `99-RTH-CONTINUATION-PLAN.md`.
 
-## One-screen health verdict (preliminary — through Phase 1 partial)
-**Grade so far: B− (sound architecture; one real cross-tool data-correctness MISMATCH on the flagship, plus several flagship features running empty/dark).** No data-leak or fabrication found yet (track-record is honestly empty). Market closed at audit time, so live-update and real-number checks continue at RTH.
+## One-screen health verdict (preliminary — through Phase 1 partial + Phase 10 partial)
+**Grade at time of pause: B−** (sound architecture; one real cross-tool data-correctness MISMATCH on
+the flagship at audit time, plus several flagship features running empty/dark). No data-leak or
+fabrication found (track-record is honestly empty). Market was closed at audit time; RTH-dependent
+checks were intentionally deferred.
 
-## Worst findings so far (live-verified, redacted evidence in 01-NUMBERS)
-- **[P1] F-1 — SPX desk ≠ Heat Maps GEX (same instant, same ticker):** desk `net GEX -2.25B / king 7400 / max_pain 7400 / gamma_flip null` vs canonical GEX endpoint `-21.8B / 7450 / 7425 / flip 7364.88`. The desk computes its own GEX instead of reading `getGexPositioning()` (a third dual-path the `HEATMAP_DATA_CONTRACT` warns about) and shows **no gamma flip / "unknown" regime** the canonical source has. Flagship money surface shows contradictory dealer positioning. (Caveat: net-GEX magnitude gap is partly band/scale.)
-- **[P1] F-2 — SPX Slayer ledger empty all-time:** `spx_open_play=0`, `spx_play_outcomes=0`. The flagship has never recorded a play (matches OPEN-ISSUES P2-C; live-confirmed).
-- **[P1] F-3 — Signal pipeline empty:** `signal_events=0`, `signal_outcomes=0` → track-record + platform-intel accuracy are dark (handled honestly, not fabricated).
+## Fixes landed on `main` since this audit paused (same day)
+These were open at audit time; **do not treat as still open** when reading older sections:
 
-## Crown-jewel questions — preliminary answers (will firm up by phase)
-1. **Wrong/stale/fabricated numbers now?** One **MISMATCH** confirmed (F-1, SPX desk vs Heat Maps GEX). **No fabrication** found (track-record is honestly null when empty). Several **expected-stale** (flows/edition — weekend); UI freshness-honesty pending RTH.
-2. **Top money/data-leak risks now?** (a) F-1 contradictory SPX positioning on the desk; (b) the audit-PR #5/#6 class — *re-verify the gating holds* in Phase 11; (c) options-socket leader-election just shipped (PR #12) — RTH-unvalidated; (d)/(e) pending Phase 6/11. *Full list after Phase 11.*
-3. **Silently dead features?** SPX Slayer plays (F-2) + signal pipeline (F-3) produce nothing; `market-regime-detector` cron unprovisioned (prior audit P1-A). *Full sweep in Phase 5/8.*
-4. **Where does live data not update without refresh?** Pending RTH (Phase 9).
-5. **Top perf fixes?** Pending Phase 10 (live measurement).
-6. **What breaks first at scale?** Pending Phase 5 (carried risks: PG pool, Redis fail-open, provider 2-RPS).
-7. **Biggest legal/compliance exposure?** Pending Phase 6 (track-record claims look honest so far; disclaimer coverage to verify).
-8. **If a dependency dies now?** Pending Phase 5 chaos reasoning.
+| ID | Finding | Fix | Merged |
+|---|---|---|---|
+| F-1 | SPX desk ≠ canonical GEX | Single-source via `getGexPositioning()` | [#18](https://github.com/coreentryadmin-web/blackout-web/pull/18) `f2f3d52` |
+| P-1 | `/api/market/flows` cold 17.8s | Warm-cache-only GEX enrichment cap/timeout | [#15](https://github.com/coreentryadmin-web/blackout-web/pull/15) `338d7dd` |
+| PF-1 | CSP blocks `blob:` workers (Clerk degraded) | `worker-src 'self' blob:` + CF Insights | [#16](https://github.com/coreentryadmin-web/blackout-web/pull/16) `5e9cf94` |
+| PF-2 | React #418 hydration (FreshnessChip) | Defer time/title to post-mount | [#17](https://github.com/coreentryadmin-web/blackout-web/pull/17) `7baa1f1` |
+
+**Re-verify F-1 post-deploy:** `GET /api/market/spx/desk` vs `GET /api/market/gex-positioning?ticker=SPX`
+— `net_gex`, `gamma_flip`, `max_pain` should match.
+
+## Worst findings at pause (live-verified off-hours; evidence in `01-NUMBERS`)
+- **[P1] F-1 — SPX desk ≠ Heat Maps GEX** — **REMEDIATED #18** (was: desk 0DTE recompute vs canonical matrix).
+- **[P1] F-2 — SPX Slayer ledger empty all-time** — **STILL OPEN** (`spx_open_play=0`; needs RTH sample + play-engine trace).
+- **[P1] F-3 — Signal pipeline empty** — **STILL OPEN** (`signal_events=0`; honestly empty, not fabricated).
+
+## Crown-jewel questions — status at pause
+1. **Wrong/stale/fabricated numbers?** F-1 fixed on `main`; F-2/F-3 still dark. RTH freshness matrix pending.
+2. **Top money/data-leak risks?** Phase 11 security pass not run. Prior P0 gating fixes (#6) not re-verified in this pass.
+3. **Silently dead features?** F-2/F-3 + unprovisioned `market-regime-detector` cron (P1-A) — Phase 5/8 sweep pending.
+4. **Live data without refresh?** Phase 9 — **needs RTH**.
+5. **Top perf fixes?** P-1/PF-1/PF-2 fixed; PF-3 polling + PF-4 CSS payload still open.
+6. **Scale failure modes?** Phase 5 pending.
+7. **Legal/compliance?** Phase 6 pending.
+8. **Dependency death?** Phase 5 chaos reasoning pending.
 
 ## Document index (`docs/audit/20260629/`)
-- `00-METHOD-SAFETY.md` — safety rules, orientation, phase tracker, approvals needed ✅
-- `01-NUMBERS-VERIFICATION-MATRIX.md` — Phase 1 matrix + F-1/F-2/F-3 + VERIFIED CLEAN ✅
-- `02-per-tool/`, `03`–`12`, `99-REMEDIATION-ROADMAP.md` — pending per phase.
+- `00-METHOD-SAFETY.md` — safety rules, phase tracker ✅
+- `01-NUMBERS-VERIFICATION-MATRIX.md` — Phase 1 partial ✅
+- `10-PERFORMANCE.md` — Phase 10 partial ✅
+- `99-RTH-CONTINUATION-PLAN.md` — **what to run next at 09:30 ET** ✅
+- `02-per-tool/` … `12`, full remediation roadmap — **not started**
 
-## Approvals requested
-Night's Watch synthetic-position test and Largo adversarial test (both need a TEST account / cost AI spend) — see `00-METHOD-SAFETY.md`. All read-only phases proceed without approval.
+## Approvals still needed before write/spend tests
+Night's Watch synthetic-position test and Largo adversarial test — see `00-METHOD-SAFETY.md`.

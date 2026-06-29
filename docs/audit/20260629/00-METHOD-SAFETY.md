@@ -32,22 +32,24 @@ Every finding cites file:line / endpoint / query. **Adversarially verified** (th
 has a false-positive history). Unprovable → labeled `UNVERIFIED HYPOTHESIS`. Severity P0→P3 by blast
 radius. Each area gets a **VERIFIED CLEAN** list so coverage is trustable, not just noise.
 
-## Phase progress tracker
+## Phase progress tracker (updated 2026-06-29 ~17:00 UTC — **PAUSED**, not actively running)
 | Phase | Status |
 |---|---|
 | 0 — Safety/Orientation | ✅ done |
-| 1 — Numerical ground truth | 🟡 in progress (DB integrity + SPX desk/GEX/track-record done; full per-screen matrix + RTH freshness pending) |
-| 2 — Per-tool deep audits | ⬜ pending |
-| 3 — Data layer (PG/Redis) | 🟡 partial (PG counts/freshness done; Redis pending operator/URL) |
-| 4 — Realtime/concurrency/idempotency | ⬜ |
-| 5 — Infra/ops/resilience/scale/cost | ⬜ |
-| 6 — Auth/billing/compliance | ⬜ |
-| 7 — External edge (CF/providers/notify) | ⬜ |
-| 8 — Cross-service wiring | ⬜ |
-| 9 — Frontend/UX/a11y/mobile/SEO | ⬜ (needs RTH + computerUse pass) |
-| 10 — Performance | ⬜ |
-| 11 — Security | ⬜ |
-| 12 — Code quality/tests/docs | ⬜ |
+| 1 — Numerical ground truth | 🟡 partial (off-hours DB + SPX/GEX/track-record; **RTH matrix pending**) |
+| 2 — Per-tool deep audits | ⬜ pending → see `99-RTH-CONTINUATION-PLAN.md` |
+| 3 — Data layer (PG/Redis) | 🟡 partial (PG counts done; Redis pending operator URL) |
+| 4 — Realtime/concurrency/idempotency | ⬜ pending |
+| 5 — Infra/ops/resilience/scale/cost | ⬜ pending |
+| 6 — Auth/billing/compliance | ⬜ pending |
+| 7 — External edge (CF/providers/notify) | ⬜ pending |
+| 8 — Cross-service wiring | ⬜ pending |
+| 9 — Frontend/UX/a11y/mobile/SEO | ⬜ pending (**needs RTH + browser pass**) |
+| 10 — Performance | 🟡 partial (P-1 root-caused; PF-1/2/4 noted — **#15–#17 merged since**) |
+| 11 — Security | ⬜ pending |
+| 12 — Code quality/tests/docs | ⬜ pending |
+
+**Remediation since pause (on `main`, not reflected in Phase 1/10 raw notes):** F-1 → #18, P-1 → #15, PF-1 → #16, PF-2 → #17.
 
 ## Approvals I need before proceeding (write/test actions)
 1. **Night's Watch (Phase 2):** open a **synthetic position on a TEST account** to verify live
