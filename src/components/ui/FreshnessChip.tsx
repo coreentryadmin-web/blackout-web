@@ -51,9 +51,15 @@ function formatAge(from: Date, nowMs: number): string {
  * Replaces misleading always-green "Live" badges on marketing/desk surfaces.
  */
 export function FreshnessChip({ status, asOf, label, className }: FreshnessChipProps) {
-  const [now, setNow] = useState(() => Date.now());
+  // SSR-safe: `now` stays null on the server and the first client render, so the markup is
+  // byte-identical across hydration. The relative age (Date.now()-derived) and the locale-formatted
+  // title only appear after mount. This avoids React #418: the chip renders on every live value, so
+  // a Date.now()/toLocaleString() server-vs-client mismatch here forced a full-page client re-render
+  // (and content flash) on every load.
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
+    setNow(Date.now());
     if (status === "syncing" || !asOf) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
@@ -61,7 +67,7 @@ export function FreshnessChip({ status, asOf, label, className }: FreshnessChipP
 
   const word = label ?? STATUS_LABEL[status];
   const age =
-    asOf && status !== "syncing" && status !== "offline"
+    now != null && asOf && status !== "syncing" && status !== "offline"
       ? formatAge(asOf, now)
       : null;
 
@@ -72,7 +78,7 @@ export function FreshnessChip({ status, asOf, label, className }: FreshnessChipP
         STATUS_TONE[status],
         className
       )}
-      title={asOf ? `Last updated ${asOf.toLocaleString()}` : undefined}
+      title={now != null && asOf ? `Last updated ${asOf.toLocaleString()}` : undefined}
     >
       <span
         aria-hidden
