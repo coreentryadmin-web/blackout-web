@@ -44,3 +44,36 @@ The scheduled-task SKILL.md has several stale assumptions. The real, working met
 **Verdict:** No P0. All price-level numerics confirmed live & correct vs source. Walls confirmed via the served-side UW cross-validation; raw-chain wall reproduction deferred to a SPY-chain method (runbook STEP 4 uses the wrong underlying).
 
 ---
+## 2026-06-29 14:10 ET
+**Auth note:** served endpoints reached via apex `blackouttrades.com` + Bearer CRON_SECRET. `www.` host issues a 301 that strips the Authorization header in PowerShell (SKILL.md `spx-pulse` path is dead — used `/api/market/indices`, `/api/market/gex-positioning`, `/api/market/spx/desk`). Raw source = Polygon `v3/snapshot/indices` + `v3/snapshot/options/I:SPX` (POLYGON_API_BASE unset → api.polygon.io; key is a live Polygon key). RTH session, data live.
+
+### SPX Price: Ours 7434.95 (desk) / 7435.66 (indices) / 7435.54 (gex spot) | Polygon raw 7434.86 | Diff <1 pt | **PASS**
+Fetched seconds apart during RTH; sub-point spread is intra-second tick noise. as_of 2026-06-29T18:07Z (14:07 ET) — live, not stale.
+
+### Call Wall: Ours 7450 | Raw 7450 (max gamma×OI, near-money 0DTE) | Diff 0 strikes | **PASS (exact)**
+
+### Put Wall: Ours 7400 | Naive-raw 7450 | Diff 50 strikes | **WARN (methodology, not data error)**
+Root-caused: our put_wall = strike with largest put OI / net-GEX support = 7400 (OI 5,674 — the genuine support wall). The SKILL's naive gamma×OI proxy is gamma-dominated near ATM, so it picks the 7450 put (OI 3,151, higher gamma) which sits *above* spot — not a real downside support. No fabrication; our 7400 is the correct support wall. NOT a P0.
+
+### Internal cross-validation (served gex_cross_validation, our UW-vs-Massive check):
+- SPX: callWallMatch=true, putWallMatch=false (divergence 25), flipMatch=false — UW and Massive disagree on the SPX put wall / flip by ~25 strikes. Consistent with the 0DTE put-wall ambiguity above.
+- SPY: callWallMatch=true, putWallMatch=true, flipMatch=true, divergence 0.47 — fully converged.
+
+### Other served numerics (sanity, not cross-validated against a second source this run):
+net_gex 1.699e10 (long gamma), flip 7404.27, max_pain 7450, vwap 7410.12, vix 17.67. spot above flip → mean-revert posture; internally consistent.
+
+**Verdict: no P0. SPX price and call wall match Polygon raw exactly/within tolerance. Put-wall gap is a known methodology difference (net-GEX support vs naive gamma×OI), already surfaced by our own internal validator.**
+---
+
+## 2026-06-29 15:13 ET (Monday, RTH OPEN)
+**Auth/method:** served via apex `blackouttrades.com` + `Bearer CRON_SECRET` (local secret confirmed == prod via Railway). `www` host 301-drops the auth header → 401. Raw source = Massive (`POLYGON_API_BASE` set; key present). `/v2/last/indice/I:SPX` is dead on this base (404) → used `/v3/snapshot/indices?ticker=I:SPX`. Data live.
+**SPX Price:** Ours **7436.15** (`/api/market/spx/pulse`, polled 19:10:08Z) | Polygon raw **7436.97** (snapshot value; session.close 7436.31, chg +82.95) | Diff **0.82 pts (0.011%)** | **PASS**
+&nbsp;&nbsp;↳ corroboration: HOD 7440.64, LOD 7348.88, vwap 7414.73, vix 17.59 — all internally consistent; intra-second tick noise only.
+**GEX basis = SPY** (`ticker:"SPY"`, spot **740.71**, change +1.61%, asof 19:10:28Z, source polygon).
+**Call Wall:** Ours **750** (SPY) | naive full-0DTE-chain gamma×OI directional top **741** | Δ ~9 strikes — *methodology (full-surface/UW-aligned vs naive 0DTE gamma×OI, which peaks ATM)*; served self-check `callWallMatch:true` | **PASS**
+**Put Wall:** Ours **735** (SPY) | naive directional top **740** (ATM artifact) | Δ ~5 strikes — *same methodology note*; served self-check `putWallMatch:true` | **PASS**
+**Served internal cross-validation (gex_cross_validation vs UW):** callWallMatch=true, putWallMatch=true, flipMatch=true, divergence **1.8** — fully converged.
+**Other served numerics (sanity):** net_gex 1.945e9 (long gamma), flip 736.8, max_pain 740, net_vex 5.26e10 (+vanna), net_dex −9.57e9 (short, trend-amplifying), nearest_wall 735 support (−5.71 pts). Internally consistent with spot 740.71 above flip.
+**Raw-chain note:** 0DTE SPY chain truncated at the 250 `limit`; full chain (paginated) = 346 contracts, strikes 500–950. Naive gamma×OI walls land ATM (741/740) regardless — confirms the runbook's STEP 4 naive method cannot reproduce structural walls and is not a fabrication signal.
+**Verdict:** No P0. SPX price confirmed live & correct vs Massive raw (<1 pt). SPY walls confirmed via the served-side UW cross-validation (all-match, divergence 1.8); independent raw reproduction blocked only by methodology (naive gamma×OI ≠ full-surface walls), not by any data discrepancy.
+---
