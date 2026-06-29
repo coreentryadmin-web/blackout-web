@@ -43,6 +43,14 @@ export async function register(): Promise<void> {
   // The shutdown signal handler is installed there on first nodejs request — exactly
   // when the sockets first exist, so there is nothing to close before then.
 
+  // Eagerly initialize the error sink's Sentry client at boot (nodejs only) so the
+  // first captured error doesn't pay the init cost and Sentry is ready immediately.
+  // No-op unless SENTRY_DSN is set AND @sentry/nextjs is installed; lazy import keeps
+  // server-only deps out of the edge-traced graph.
+  void import("@/lib/error-sink")
+    .then(({ initErrorSinkSentry }) => initErrorSinkSentry?.())
+    .catch(() => undefined);
+
   process.on("unhandledRejection", (reason: unknown) => {
     // The handler itself must never throw. Everything below is wrapped so a failure
     // in logging/alerting can't crash the process.
@@ -80,4 +88,36 @@ export async function register(): Promise<void> {
       console.error("[instrumentation] handler error (swallowed):", e);
     }
   });
+}
+
+/**
+ * Next.js instrumentation hook: invoked for errors thrown while rendering/handling
+ * a request (App Router server components + route handlers), including UNCAUGHT
+ * errors that never reach an explicit captureError call site. Routes them through
+ * the durable error sink (Postgres + Sentry when configured).
+ *
+ * Gated to the nodejs runtime: the sink lazily pulls `pg`/@sentry/nextjs, which are
+ * server-only; edge errors are skipped rather than dragging node deps onto edge.
+ * Must never throw (it runs inside Next's error path).
+ */
+export async function onRequestError(
+  error: unknown,
+  request: { path?: string; method?: string },
+  context?: { routerKind?: string; routePath?: string; routeType?: string }
+): Promise<void> {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  try {
+    const { captureError } = await import("@/lib/error-sink");
+    await captureError(error, {
+      source: "request_error",
+      scope: context?.routePath || request?.path || "unknown",
+      meta: {
+        method: request?.method,
+        route_type: context?.routeType,
+        router_kind: context?.routerKind,
+      },
+    });
+  } catch (e) {
+    console.error("[instrumentation] onRequestError capture failed (swallowed):", e);
+  }
 }

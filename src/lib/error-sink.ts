@@ -29,6 +29,7 @@ export type ErrorSource =
   | "admin_route"
   | "unhandled_rejection"
   | "uncaught_exception"
+  | "request_error"
   | "manual";
 
 export type ErrorContext = {
@@ -75,14 +76,24 @@ async function getSentry(): Promise<MinimalSentry | null> {
       // and we fall back to DB-only. Variable specifier keeps bundlers from
       // hard-requiring the module at build time.
       const spec = "@sentry/nextjs";
-      const mod = (await import(/* webpackIgnore: true */ spec)) as unknown as MinimalSentry;
-      if (typeof mod?.init === "function") {
+      const imported = (await import(/* webpackIgnore: true */ spec)) as
+        Partial<MinimalSentry> & { default?: Partial<MinimalSentry> };
+      // A native runtime import (webpackIgnore) can expose the SDK API either as
+      // named exports (ESM/bundled) OR only under `.default` (CJS interop) — and
+      // @sentry/nextjs's `captureException` lands on `.default` in the latter shape.
+      // Normalize so capture is reliably callable either way (otherwise errors would
+      // silently persist to DB only and never reach Sentry).
+      const mod: Partial<MinimalSentry> =
+        typeof imported?.captureException === "function"
+          ? imported
+          : (imported?.default ?? {});
+      if (typeof mod.init === "function" && typeof mod.captureException === "function") {
         mod.init({
           dsn: process.env.SENTRY_DSN,
           tracesSampleRate: 0,
           environment: process.env.NODE_ENV,
         });
-        return mod;
+        return mod as MinimalSentry;
       }
       return null;
     } catch {
@@ -144,6 +155,20 @@ async function persistErrorEvent(
  * promise that resolves once best-effort delivery completes; callers in hot
  * paths should NOT await it (use `void captureError(...)`).
  */
+/**
+ * Eagerly initialize the optional Sentry client (no-op unless SENTRY_DSN is set
+ * AND @sentry/nextjs is installed). Safe to call repeatedly — getSentry() memoizes.
+ * Called once at server boot from instrumentation.register() so the first captured
+ * error doesn't pay the init latency.
+ */
+export async function initErrorSinkSentry(): Promise<void> {
+  try {
+    await getSentry();
+  } catch {
+    /* never throw from boot path */
+  }
+}
+
 export async function captureError(reason: unknown, ctx: ErrorContext): Promise<void> {
   const e = toErr(reason);
   try {
