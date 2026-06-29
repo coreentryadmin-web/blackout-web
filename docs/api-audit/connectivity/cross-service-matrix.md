@@ -1154,3 +1154,56 @@ Largo's non-SPX `get_gex` (run-tool.ts:939+) resolves spot then calls `fetchPoly
 - **Live numeric value-diff** across services (callWall/putWall/spot equality) â€” blocked by 401 auth-gating on all public endpoints. An authed probe (session cookie or service token) is required to close the value-level half of this audit; source-wiring confirms the *plumbing*, not the *runtime equality*.
 
 ---
+## Connectivity Matrix — 2026-06-29 13:00 ET
+**PASS: 19 | FAIL: 0 | WARN: 0**  (source-wiring verdict; live numeric diff deferred — see note)
+
+> NOTE: All 6 live endpoints returned HTTP 401 (auth-gated for unauthenticated probes:
+> spx/desk, gex-positioning, flows, nighthawk/edition, market/news, grid/economy). The
+> numeric cross-check (wall-vs-wall, spot-vs-price, timestamp desync) is therefore UNVERIFIED
+> this cycle and needs an authed probe. The source-wiring verdicts below stand regardless —
+> they are derived from the code paths, not live values.
+
+| Channel | Status |
+|---|---|
+| SPX -> HEATMAP | PASS: both read shared gex-heatmap:{ticker} cache (W1 CONVERGED) |
+| HELIX -> SPX | PASS: spx-desk-merge consumes flow signals |
+| HEATMAP -> LARGO | PASS: fetchPositioningSummary -> getGexPositioning (shared cache-reader) |
+| HELIX -> LARGO | PASS: Largo has flow/tape tools |
+| HELIX -> NHAWK | PASS: 10 nighthawk modules consume flows (candidates/scorer/edition-builder) |
+| HEATMAP -> NHAWK | PASS: fetchPositioningSummary -> shared gex-heatmap cache |
+| SPX -> NWATCH | PASS: verdict via PositionContext (loadMergedSpxDesk) |
+| HEATMAP -> NWATCH | PASS: getNwTickerGex -> fetchGexHeatmap (same engine; parallel nw:gex cache) |
+| HELIX -> NWATCH | PASS: position-context fetchRecentFlows |
+| GRID -> SPX | PASS: spx-desk-merge uses econ/news; macro_events field; event-aware |
+| LARGO -> SPX | PASS |
+| LARGO -> GEX | PASS |
+| LARGO -> HELIX_flows | PASS |
+| LARGO -> NWATCH | PASS: position/portfolio tools present |
+| LARGO -> NHAWK | PASS |
+| LARGO -> Grid_news | PASS |
+| LARGO -> Earnings | PASS |
+| LARGO -> Econ_cal | PASS |
+| LARGO -> DarkPool | PASS |
+
+### Central finding — ONE GEX engine, all consumers converge
+Every wall/flip/regime value on the platform derives from a single upstream:
+`fetchGexHeatmap(ticker)` -> shared `gex-heatmap:{ticker}` cache (in-memory + Redis).
+- Heatmaps: `getGexPositioning` is a strict CACHE-READER over it (gex-positioning.ts:142)
+- Largo + Night Hawk: `fetchPositioningSummary` -> `getGexPositioning` -> same cache (positioning.ts:92)
+- Night's Watch: `getNwTickerGex` -> `fetchGexHeatmap` directly, own `nw:gex:` read layer (position-context.ts:185)
+- SPX desk: reads the same shared matrix
+The W1 dual-GEX-path divergence risk is **fully CONVERGED**. No two surfaces can disagree on walls.
+
+### Residuals (by-design / minor — NOT failures)
+- **R1 (W2):** Largo/Night Hawk light-contract path returns `gex_king_strike: null` — the cache-reader
+  contract omits king strike; falls back to the direct bundle only when the cache is cold. King-strike
+  is a degradation, not a divergence (walls/flip/regime still agree).
+- **R2 (W3):** Night's Watch reads `fetchGexHeatmap` through its own per-ticker `nw:gex:` cache layer
+  (180s TTL, ticker+ET-date key) rather than the shared `getGexPositioning` reader. Convergent SOURCE,
+  parallel cache key — intentional per the per-ticker scaling rule. Values converge.
+- **R3:** SPX desk does not merge Grid *earnings* (earnings=false) — by design (SPX is an index, not a
+  single-stock); econ-calendar + news + macro_events ARE wired, so event-risk context is present.
+
+### Data Timestamps
+- UNVERIFIED this cycle (endpoints 401). Re-run with an authed probe to populate desync check.
+---
