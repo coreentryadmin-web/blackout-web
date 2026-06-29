@@ -6,15 +6,19 @@
  *   CRON_SECRET          — required (premium API + cron routes)
  *   POLYGON_API_KEY      — optional (SPX oracle in full-site audit)
  *   DATABASE_PUBLIC_URL  — optional (Postgres writer/cron freshness checks)
+ *   SENTRY_AUTH_TOKEN    — optional (Sentry token smoke)
  *   CRON_TARGET_BASE_URL — optional (default https://blackouttrades.com)
  *
  * Usage:
  *   node scripts/gha-rth-audit.mjs
  *   node scripts/gha-rth-audit.mjs --smoke-only
+ *   node scripts/gha-rth-audit.mjs --force   # run Postgres writer checks off-hours
  */
 import { spawnSync } from "node:child_process";
+import { etParts, inRthOpenWindow } from "./gha-et-window.mjs";
 
 const smokeOnly = process.argv.includes("--smoke-only");
+const force = process.argv.includes("--force");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET?.trim() ?? "";
 
@@ -24,6 +28,8 @@ if (!CRON) {
 }
 
 const failures = [];
+const { label: etLabel } = etParts();
+const rthOpen = inRthOpenWindow();
 
 function run(label, cmd, args, extraEnv = {}) {
   console.log(`\n── ${label} ──`);
@@ -40,6 +46,12 @@ async function postgresRthChecks() {
   if (!dbUrl) {
     console.log("\n── Postgres RTH checks ──");
     console.log("  ⚠ DATABASE_PUBLIC_URL not set — skipping");
+    return;
+  }
+
+  if (!rthOpen && !force) {
+    console.log("\n── Postgres RTH checks ──");
+    console.log(`  ⚠ Off RTH (${etLabel}) — skipping writer freshness checks (use --force to run anyway)`);
     return;
   }
 
@@ -135,10 +147,14 @@ async function cronHttpChecks() {
 
 console.log(`\n=== GitHub Actions RTH audit ===`);
 console.log(`Target: ${BASE}`);
-console.log(`Time:   ${new Date().toISOString()}\n`);
+console.log(`Time:   ${new Date().toISOString()} (${etLabel})`);
+console.log(`RTH:    ${rthOpen ? "open" : "closed/off-hours"}${force ? " (--force)" : ""}\n`);
 
 // Public HTTP smoke (always)
 run("Public HTTP smoke", "node", ["scripts/gha-http-smoke.mjs"]);
+
+// Optional Sentry token smoke (never fails the run when token absent)
+run("Sentry smoke", "node", ["scripts/gha-sentry-smoke.mjs"]);
 
 if (!smokeOnly) {
   run("Full-site deep audit", "node", ["scripts/full-site-deep-audit.mjs"]);
