@@ -12,7 +12,7 @@
  * Usage:
  *   node scripts/gha-rth-audit.mjs
  *   node scripts/gha-rth-audit.mjs --smoke-only
- *   node scripts/gha-rth-audit.mjs --force   # run Postgres writer checks off-hours
+ *   node scripts/gha-rth-audit.mjs --force   # Postgres RTH checks even off-hours
  */
 import { spawnSync } from "node:child_process";
 import { etParts, inRthOpenWindow } from "./gha-et-window.mjs";
@@ -49,13 +49,12 @@ async function postgresRthChecks() {
     return;
   }
 
-  if (!rthOpen && !force) {
-    console.log("\n── Postgres RTH checks ──");
-    console.log(`  ⚠ Off RTH (${etLabel}) — skipping writer freshness checks (use --force to run anyway)`);
+  console.log(`\n── Postgres RTH checks (${etLabel}) ──`);
+  if (!force && !inRthOpenWindow()) {
+    console.log("  ⚠ Off-hours / weekend — skipping market-hours Postgres checks (use --force to override)");
     return;
   }
 
-  console.log("\n── Postgres RTH checks ──");
   try {
     const pg = await import("pg");
     const c = new pg.default.Client({

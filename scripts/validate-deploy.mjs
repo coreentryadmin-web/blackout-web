@@ -236,6 +236,27 @@ if (dbUrl) {
     if (cronBad.length === 0) ok("All cron jobs latest run ok/skipped");
     else cronBad.forEach((r) => warn(`cron ${r.job_key} latest: ${r.status} — ${r.msg}`));
 
+    const cronKeys = [
+      "flow-ingest", "spx-evaluate", "largo-cleanup", "nighthawk-outcomes", "nighthawk-playbook",
+      "uw-cache-refresh", "nights-watch-warm", "heatmap-warm", "grid-warm", "gex-eod-snapshot",
+      "gex-alerts", "db-cleanup", "membership-reconcile", "data-integrity", "data-correctness",
+      "cron-staleness-watchdog", "spx-signal-observe", "spx-signal-weight-optimize",
+      "nighthawk-morning-confirm", "market-regime-detector", "positions-expiry",
+    ];
+    const valuesClause = cronKeys.map((_, i) => `($${i + 1})`).join(", ");
+    const zeroRuns = (
+      await q(
+        `SELECT j.key AS job_key FROM (VALUES ${valuesClause}) AS j(key)
+         LEFT JOIN (SELECT job_key, COUNT(*)::int AS cnt FROM cron_job_runs GROUP BY job_key) c
+           ON c.job_key = j.key
+         WHERE COALESCE(c.cnt, 0) = 0
+         ORDER BY j.key`,
+        cronKeys
+      )
+    ).map((r) => r.job_key);
+    if (zeroRuns.length === 0) ok("All 21 registered crons have run history");
+    else warn(`Cron jobs with zero runs ever (Railway service may be missing): ${zeroRuns.join(", ")}`);
+
     await client.end();
   } catch (e) {
     fail(`Postgres query failed: ${e.message}`);

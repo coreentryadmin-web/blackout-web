@@ -499,7 +499,9 @@ export const queryLargo = (question: string, sessionId: string) =>
 export async function queryLargoStream(
   question: string,
   sessionId: string,
-  onToken: (text: string) => void
+  onToken: (text: string) => void,
+  /** Fires for each live tool Largo pulls (tool_start), enabling a real-time data-trace UI. */
+  onTool?: (name: string) => void
 ): Promise<{ answer: string; session_id: string; source?: string; tools_used?: string[]; followups?: string[] }> {
   const res = await fetch(`${MARKET_BASE}/largo/query?stream=1`, {
     method: "POST",
@@ -542,6 +544,7 @@ export async function queryLargoStream(
       const event = JSON.parse(payload) as {
         type: string;
         text?: string;
+        name?: string;
         message?: string;
         answer?: string;
         session_id?: string;
@@ -551,6 +554,7 @@ export async function queryLargoStream(
       };
 
       if (event.type === "token" && event.text) onToken(event.text);
+      if (event.type === "tool_start" && event.name) onTool?.(event.name);
       if (event.type === "done" && event.answer && event.session_id) {
         result = {
           answer: event.answer,
