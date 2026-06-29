@@ -1,5 +1,27 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-28 20:09 ET
+Last updated: 2026-06-29 00:14 ET
+
+> **00:14 ET run (Mon, pre-RTH, markets closed).** Live data endpoints all 401-gated +
+> markets closed → freshness/consistency not sampleable; value came from Railway logs + code + infra.
+> **TWO net-new findings prior runs missed + one correction:**
+> - **[FIXED this run, local]** **P1** `/api/admin/signal-analytics` 500 — `column o.gates_blocked does not exist`.
+>   Column is `gates_blocked_json` (`spx-signal-db.ts:28`) but both queries used `o.gates_blocked`
+>   (`route.ts:197,199,200` and `:263`). Renamed to `gates_blocked_json` (+`AS gates_blocked` alias on :263). Caught via live Railway log.
+> - **[OPEN]** **P1** `DISCORD_OPS_WEBHOOK_URL` **unset** in Railway → Cron-Staleness-Watchdog
+>   "ALERT NOT DELIVERED" — ops blind to cron failures. Operator must set the webhook. (Watchdog
+>   flagged "3 stale crons" at 07:14 UTC but that's pre-RTH off-hours; verify at next RTH window.)
+> - **[OPEN, corrects 06-28 run]** **P2** VAPID pair asymmetric — `VAPID_PRIVATE_KEY` set but
+>   `VAPID_PUBLIC_KEY` **NOT set** → web push / gex-alerts **still inert** (prior run wrongly said "no longer inert").
+>   Set the matching public key.
+>
+> **Carried opens re-confirmed:** **P1-A** `Market-Regime-Detector` cron service still absent from
+> Railway service list. **P2 grid-overpromise** (subtitle promises News/flow; no such panel).
+> **P2-C** SPX play opens + **P2-D** options-socket 1006 → verify at **Mon 06-29 RTH**.
+> **P3-META** audit SKILL.md still emits false positives (stale paths, wrong UW env name, narrow greps) — fix it.
+> **Possibly RESOLVED:** P2 regime-fail-open — `regime/route.ts:45-49` now fails CLOSED on bad cron auth (re-confirm).
+> **Re-verified GREEN:** tsc=0, db Pool error handler+max:1, redis family+reconnect, plays-veto opt-in,
+> #73/#97/#100/#101/#102 resolved, blackout-web Online 5/5, Postgres+Redis Online, UW_API_KEY +
+> CF_API_TOKEN/ZONE_ID + all core secrets present. Full report: `docs/api-audit/deep-audit-20260629-00.md`.
 
 
 > 20:09 ET run (Sunday, market closed): **No net-new user-facing breakage. Platform GREEN on
