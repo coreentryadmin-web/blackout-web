@@ -77,3 +77,19 @@ net_gex 1.699e10 (long gamma), flip 7404.27, max_pain 7450, vwap 7410.12, vix 17
 **Raw-chain note:** 0DTE SPY chain truncated at the 250 `limit`; full chain (paginated) = 346 contracts, strikes 500–950. Naive gamma×OI walls land ATM (741/740) regardless — confirms the runbook's STEP 4 naive method cannot reproduce structural walls and is not a fabrication signal.
 **Verdict:** No P0. SPX price confirmed live & correct vs Massive raw (<1 pt). SPY walls confirmed via the served-side UW cross-validation (all-match, divergence 1.8); independent raw reproduction blocked only by methodology (naive gamma×OI ≠ full-surface walls), not by any data discrepancy.
 ---
+
+## 2026-06-29 16:18 ET
+
+**Context:** market_status = `extended-hours` (RTH closed, post-close). Source base = `https://api.massive.com` (prod POLYGON_API_BASE; key is a Massive key). Served values pulled via `https://blackouttrades.com` (apex host + Bearer CRON_SECRET; the `www` host 301-redirects and drops the Authorization header → 401).
+
+### SPY spot (gex-positioning, ticker=SPY): Ours 740.92 | Raw Massive 740.95 (lastTrade) | Diff 0.03 (<0.005%) | **PASS**
+### SPX index price (spx/pulse): Ours 0 (`available:false`, extended-hours — unavailable BY DESIGN) | Raw Massive I:SPX 7440.43 | **N/A this cycle** (post-close, not a fabrication)
+### Call Wall: Ours 741 | Raw dominant call gamma*OI 740 (741 is #2, tied) | Diff 1 strike | **PASS** — internal UW cross-val callWallMatch=true
+### Put Wall: Ours 735 | Raw #1 below-spot put gamma*OI peak 735 | Diff 0 strikes | **PASS** — internal UW cross-val putWallMatch=true
+### Net GEX 2.117B | flip 739.1 (just below spot 740.92 → long-gamma posture, consistent) | max_pain 740 (= ATM gamma concentration, consistent)
+### Internal gex_cross_validation (vs Unusual Whales): callWallMatch=true, putWallMatch=true, flipMatch=true, divergence=1.9 — independent second confirmation.
+
+**Verdict:** No P0. All Polygon/Massive-sourced numbers match upstream within tolerance. Walls are methodology-aligned (tool uses directional dollar-gamma γ·spot²·OI across banded near + monthly-OpEx expiries; naive single-peak aggregation lands 740 ATM for both, our tool correctly splits call=above / put=below spot).
+
+**SKILL.md staleness noted (for next run):** (1) served path is `/api/market/spx/pulse` not `/api/market/spx-pulse`; (2) MUST use apex `https://blackouttrades.com` + `Authorization: Bearer \` (www drops auth, routes are premium-gated); (3) raw base = `https://api.massive.com`, NOT the api.polygon.io default; SPX index = `/v3/snapshot/indices?ticker=I:SPX` (`/v2/last/indice` 404s); (4) gex-positioning is SPY-based, not SPX.
+---
