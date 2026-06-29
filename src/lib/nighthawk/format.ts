@@ -11,6 +11,7 @@ import { huntDteGuidance } from "./hunt-mode";
 import type { MarketWideContext } from "./market-wide";
 import type { ScoredCandidate } from "./scorer";
 import { formatSpxGapContext } from "./spx-gap";
+import { formatPlatformIntelForPrompt } from "./platform-intel-snapshot";
 import type { SpxDeskSummary, FlowTapeSummary } from "@/lib/platform/types";
 import type { PlayOutcomeStats } from "@/lib/spx-play-outcomes";
 import type { marketPlatform } from "@/lib/platform";
@@ -663,6 +664,8 @@ ${formatEngineState(engineState)}${trackRecordLine ? `\n${trackRecordLine}` : ""
 Hot chains: ${hotChains || "n/a"}
 ${vixContext ? `Vol regime: ${vixContext}` : ""}
 ${liveSpxSection ? `\nLIVE SPX / 0DTE + HELIX TAPE (real-time desk snapshot - anchor index-level bias and confirm/contradict single-name flow):\n${liveSpxSection}\n` : ""}
+PLATFORM INTEL (cross-service — regime detector, flow anomalies, desk brief):
+${formatPlatformIntelForPrompt(ctx.platform_intel)}
 TOP STOCK DOSSIERS (ranked):
 ${stockBlocks || "No stock dossiers available."}
 

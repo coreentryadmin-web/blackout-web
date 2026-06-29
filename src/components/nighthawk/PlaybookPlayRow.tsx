@@ -1,7 +1,7 @@
 "use client";
 
 import { clsx } from "clsx";
-import type { PlaybookPlay } from "@/lib/nighthawk/types";
+import type { PlaybookPlay, PlayMorningStatus } from "@/lib/nighthawk/types";
 import { formatPremiumCapLabel } from "@/lib/nighthawk/play-constraints";
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/lib/nighthawk/constants";
 
@@ -9,10 +9,23 @@ type PlaybookPlayRowProps = {
   rank: number;
   play?: PlaybookPlay;
   empty?: boolean;
+  morningConfirm?: PlayMorningStatus;
   onSelect?: () => void;
 };
 
-export function PlaybookPlayRow({ rank, play, empty, onSelect }: PlaybookPlayRowProps) {
+function morningBadgeLabel(status: PlayMorningStatus["status"]): string {
+  if (status === "CONFIRMED") return "Confirmed";
+  if (status === "DEGRADED") return "Degraded";
+  return "Invalidated";
+}
+
+function morningBadgeClass(status: PlayMorningStatus["status"]): string {
+  if (status === "CONFIRMED") return "nighthawk-play-morning-confirmed";
+  if (status === "DEGRADED") return "nighthawk-play-morning-degraded";
+  return "nighthawk-play-morning-invalidated";
+}
+
+export function PlaybookPlayRow({ rank, play, empty, morningConfirm, onSelect }: PlaybookPlayRowProps) {
   const dir = play?.direction?.toUpperCase() ?? "";
   const isBull = dir.includes("BULL") || dir === "LONG" || dir.includes("CALL");
   const isBear = dir.includes("BEAR") || dir === "SHORT" || dir.includes("PUT");
@@ -70,6 +83,14 @@ export function PlaybookPlayRow({ rank, play, empty, onSelect }: PlaybookPlayRow
               </span>
               {play.conviction && (
                 <span className="nighthawk-play-conviction">{play.conviction}</span>
+              )}
+              {morningConfirm && (
+                <span
+                  className={clsx("nighthawk-play-morning-badge", morningBadgeClass(morningConfirm.status))}
+                  title={morningConfirm.reason}
+                >
+                  {morningBadgeLabel(morningConfirm.status)}
+                </span>
               )}
               {play.play_type !== "stock" && (
                 <span className="nighthawk-play-type">{play.play_type}</span>

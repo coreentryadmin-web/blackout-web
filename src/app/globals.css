@@ -2850,6 +2850,48 @@ body::before {
     @apply flex flex-col sm:flex-row sm:items-center gap-2 shrink-0;
   }
 
+  .nighthawk-record-strip {
+    @apply flex flex-wrap items-baseline gap-x-3 gap-y-1 shrink-0 font-mono text-[11px];
+    padding: 0.35rem clamp(0.65rem, 1.4vw, 1rem);
+    border-bottom: 1px solid rgba(56, 189, 248, 0.12);
+    background: rgba(56, 189, 248, 0.04);
+  }
+
+  .nighthawk-record-label {
+    @apply uppercase tracking-wider text-cyan-400;
+  }
+
+  .nighthawk-record-value {
+    @apply text-white;
+  }
+
+  .nighthawk-morning-summary {
+    @apply font-mono text-[11px] text-sky-300 shrink-0;
+    padding: 0.25rem clamp(0.65rem, 1.4vw, 1rem) 0;
+  }
+
+  .nighthawk-play-morning-badge {
+    @apply font-mono text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded;
+  }
+
+  .nighthawk-play-morning-confirmed {
+    color: rgb(74 222 128);
+    background: rgba(74, 222, 128, 0.12);
+    border: 1px solid rgba(74, 222, 128, 0.35);
+  }
+
+  .nighthawk-play-morning-degraded {
+    color: rgb(250 204 21);
+    background: rgba(250, 204, 21, 0.1);
+    border: 1px solid rgba(250, 204, 21, 0.3);
+  }
+
+  .nighthawk-play-morning-invalidated {
+    color: rgb(248 113 113);
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid rgba(248, 113, 113, 0.35);
+  }
+
   .nighthawk-playbook-kicker {
     @apply font-mono uppercase mb-0.5;
     font-size: clamp(0.625rem, 0.75vh, 0.625rem);

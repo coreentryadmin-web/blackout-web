@@ -726,6 +726,8 @@ export async function buildEveningEdition(opts?: {
           spx_price: spxDesk?.price ?? null,
           spx_regime: spxDesk?.gamma_regime ?? null,
           flow_alert_count: flowTape?.count ?? null,
+          composite_regime: ctx.platform_intel?.composite_regime ?? null,
+          critical_anomalies: ctx.platform_intel?.critical_anomaly_count ?? 0,
         },
       },
     });

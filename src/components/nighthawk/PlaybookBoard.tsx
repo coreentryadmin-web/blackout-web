@@ -2,12 +2,22 @@
 
 import { Badge } from "@/components/ui";
 import { PlaybookPlayRow } from "./PlaybookPlayRow";
-import type { NightHawkEdition, PlaybookPlay } from "@/lib/nighthawk/types";
+import { HawkRecordStrip } from "./HawkRecordStrip";
+import type {
+  NightHawkEdition,
+  NightHawkRecordResponse,
+  PlaybookPlay,
+  PlayMorningStatus,
+} from "@/lib/nighthawk/types";
 
 type PlaybookBoardProps = {
   edition: NightHawkEdition | undefined;
   loading?: boolean;
   onPlaySelect?: (play: PlaybookPlay) => void;
+  confirmByTicker?: Map<string, PlayMorningStatus>;
+  playStatusAvailable?: boolean;
+  record?: NightHawkRecordResponse;
+  recordLoading?: boolean;
 };
 
 const SLOT_COUNT = 5;
@@ -39,7 +49,15 @@ function editionHasRecapContent(edition: NightHawkEdition | undefined): boolean 
   return false;
 }
 
-export function PlaybookBoard({ edition, loading, onPlaySelect }: PlaybookBoardProps) {
+export function PlaybookBoard({
+  edition,
+  loading,
+  onPlaySelect,
+  confirmByTicker,
+  playStatusAvailable,
+  record,
+  recordLoading,
+}: PlaybookBoardProps) {
   const plays = edition?.plays ?? [];
   const hasPlays = plays.length > 0;
   const hasRecap = editionHasRecapContent(edition);
@@ -56,6 +74,17 @@ export function PlaybookBoard({ edition, loading, onPlaySelect }: PlaybookBoardP
   const isDegraded = Boolean(edition?.degraded);
   const servedForLabel = formatEditionDate(edition?.served_for ?? edition?.edition_for);
   const showFreshBadge = hasPlays && !isStale && !isDegraded;
+  const morningSummary = playStatusAvailable
+    ? Array.from(confirmByTicker?.values() ?? []).reduce(
+        (acc, p) => {
+          if (p.status === "CONFIRMED") acc.confirmed += 1;
+          else if (p.status === "DEGRADED") acc.degraded += 1;
+          else if (p.status === "INVALIDATED") acc.invalidated += 1;
+          return acc;
+        },
+        { confirmed: 0, degraded: 0, invalidated: 0 }
+      )
+    : null;
 
   return (
     // VITALS Phase 4: border-pulse fires once when a fresh edition with plays lands.
@@ -113,6 +142,16 @@ export function PlaybookBoard({ edition, loading, onPlaySelect }: PlaybookBoardP
         </div>
       </header>
 
+      <HawkRecordStrip record={record} loading={recordLoading} />
+
+      {morningSummary && hasPlays && (
+        <p className="nighthawk-morning-summary" role="status">
+          Pre-market check · {morningSummary.confirmed} confirmed
+          {morningSummary.degraded ? ` · ${morningSummary.degraded} degraded` : ""}
+          {morningSummary.invalidated ? ` · ${morningSummary.invalidated} invalidated` : ""}
+        </p>
+      )}
+
       {isStale && (
         <p className="nighthawk-playbook-recap" role="status">
           Showing {servedForLabel ?? "the last published"} edition — tonight&apos;s playbook isn&apos;t
@@ -144,6 +183,7 @@ export function PlaybookBoard({ edition, loading, onPlaySelect }: PlaybookBoardP
                 rank={i + 1}
                 play={play}
                 empty={!play}
+                morningConfirm={play ? confirmByTicker?.get(play.ticker.toUpperCase()) : undefined}
                 onSelect={play && onPlaySelect ? () => onPlaySelect(play) : undefined}
               />
             );
