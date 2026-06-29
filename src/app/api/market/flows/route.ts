@@ -86,16 +86,24 @@ export async function GET(req: NextRequest) {
           ]).then(([spx, nighthawk]) => ({ spx, nighthawk })),
         ]);
 
-        // GEX proximity enrichment — cache-reader, no upstream pressure.
-        // Fetch positioning for each distinct ticker in parallel (best-effort: a failure
-        // leaves the flow row unannotated, never throws). Cap at 30 unique tickers to
-        // bound latency on large result sets with many single names.
-        const uniqueTickers = [...new Set(flows.map((f: { ticker: string }) => f.ticker))].slice(0, 30) as string[];
+        // GEX proximity enrichment — best-effort annotation, MUST NOT block the tape.
+        // `getGexPositioning` is a cache-reader, but on a COLD matrix cache it builds the
+        // options chain through the rate-limited Polygon funnel (~1.8s each). Enriching up to 30
+        // tickers on a cold cache serialized ~17s of cold builds and blocked the whole HELIX tape
+        // (measured prod cold TTFB 17.8s). Bound it: cap to a few tickers and race each read against
+        // a short timeout so a cold ticker is simply left unannotated (the tape is never delayed).
+        // A timed-out build still warms the shared matrix cache in the background for next time.
+        const GEX_ENRICH_MAX = 8;
+        const GEX_ENRICH_TIMEOUT_MS = 300;
+        const uniqueTickers = [...new Set(flows.map((f: { ticker: string }) => f.ticker))].slice(0, GEX_ENRICH_MAX) as string[];
         const gexMap = new Map<string, { flip: number | null; call_wall: number | null; put_wall: number | null }>();
         await Promise.all(
           uniqueTickers.map(async (t) => {
             try {
-              const pos = await getGexPositioning(t);
+              const pos = await Promise.race([
+                getGexPositioning(t),
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), GEX_ENRICH_TIMEOUT_MS)),
+              ]);
               if (pos) gexMap.set(t, { flip: pos.flip, call_wall: pos.call_wall, put_wall: pos.put_wall });
             } catch { /* best-effort */ }
           })
