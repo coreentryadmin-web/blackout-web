@@ -47,6 +47,9 @@ export async function initSpxSignalTables(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS spx_signal_wt_computed_at
       ON spx_signal_weight_reports (computed_at DESC);
+
+    ALTER TABLE spx_signal_observations
+      ADD COLUMN IF NOT EXISTS gates_blocked_json JSONB NOT NULL DEFAULT '[]';
   `);
   tableInitialized = true;
 }
