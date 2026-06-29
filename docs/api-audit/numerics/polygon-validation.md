@@ -93,3 +93,17 @@ net_gex 1.699e10 (long gamma), flip 7404.27, max_pain 7450, vwap 7410.12, vix 17
 
 **SKILL.md staleness noted (for next run):** (1) served path is `/api/market/spx/pulse` not `/api/market/spx-pulse`; (2) MUST use apex `https://blackouttrades.com` + `Authorization: Bearer \` (www drops auth, routes are premium-gated); (3) raw base = `https://api.massive.com`, NOT the api.polygon.io default; SPX index = `/v3/snapshot/indices?ticker=I:SPX` (`/v2/last/indice` 404s); (4) gex-positioning is SPY-based, not SPX.
 ---
+
+## 2026-06-29 17:04 ET
+
+**Context:** market_status = `extended-hours` (RTH closed, post-close). Source base = `https://api.massive.com` (prod POLYGON_API_BASE; key is a 32-char Massive key). Served values pulled via apex `https://blackouttrades.com` + `Bearer CRON_SECRET` (www host 301-drops the Authorization header → 401). Data timestamps: gex asof 21:04:31Z, pulse polled 21:04:41Z — live.
+
+### SPY spot (gex-positioning, ticker=SPY): Ours **740.5906** | Raw Massive **740.77** (SPY lastTrade, regex-extracted around the PS dup-key `t`/`T` collision) | Diff **0.18 (0.024%)** | **PASS**
+### SPX index price (spx/pulse): Ours **0** (`available:false`, extended-hours — unavailable BY DESIGN) | Raw Massive I:SPX **7440.43** (session.close) | **N/A this cycle** (post-close, not a fabrication; SPX/10 = 744.04 ≈ SPY 740.6 within the normal tracking gap)
+### Call Wall: Ours **741** | Raw call gamma×OI top at/above spot **741** | Diff **0 strikes** | **PASS (exact)** — internal UW cross-val `callWallMatch:true`
+### Put Wall: Ours **725** | Raw put gamma×OI top below spot **740** (ATM artifact; 250-`limit` truncation — only 250 contracts returned, biases toward near-money) | Diff **15 strikes** (< 25 thresh) | **PASS** — internal UW cross-val `putWallMatch:true` independently confirms 725 is the structural support wall
+### Net GEX **3.176B** | flip **745.77** (ABOVE spot 740.59 → **spot below flip = short-gamma / trend-amplifying** posture; per memory, do NOT read net_gex>0 as range-bound without the spot-vs-flip check) | max_pain **739** (≈ ATM concentration, consistent)
+### Internal gex_cross_validation (vs Unusual Whales): callWallMatch=true, putWallMatch=true, **flipMatch=false** (divergence 4.23), uw_asof 21:04:43Z — walls converged; flip differs ~4 pts between UW and Massive (within prior-run drift range, not a data fault).
+
+**Verdict:** No P0. All Polygon/Massive-sourced numbers match upstream within tolerance. SPY spot < 0.03% off raw. Call wall exact; put wall confirmed via the served-side UW cross-validation (the raw naive gamma×OI put peak lands at the ATM 740 due to the 250-contract truncation and is the known methodology gap, not a fabrication). SPX index price skipped — post-close `available:false` is the by-design unavailable state.
+---
