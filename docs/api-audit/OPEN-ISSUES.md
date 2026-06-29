@@ -1,5 +1,35 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-29 04:xx ET
+Last updated: 2026-06-29 11:19 ET
+
+> **11:19 ET run (Mon, mid-morning RTH — first RTH-window run today; live data now sampleable via prod PG).**
+> **This is the RTH verification the 04:xx run queued — and it found a live, ongoing P0 outage.**
+> - **[OPEN · 🔴 P0 · NEW]** **Five RTH data-writer crons DEAD ~7.6 h during the session** — `flow-ingest`,
+>   `uw-cache-refresh`, `nights-watch-warm`, `heatmap-warm`, `grid-warm` last ran 07:41 UTC (deploy/boot run,
+>   outside their `*/2`/`*` 11-21 schedule); ZERO runs in today's RTH window. Confirmed by `cron_job_runs`
+>   ages (~455 min) AND the platform's own `data-correctness` cron @14:37 ("Critical writer … STALE during RTH").
+>   All five tomls have `restartPolicyType="never"` → dead = stays dead. **Mitigate now (no push):**
+>   `node scripts/hit-cron.mjs /api/cron/flow-ingest` (+ the other four). Durable: investigate why those
+>   Railway trigger services stopped scheduling after the ~07:41 UTC restart.
+> - **[OPEN · 🔴 P0 · escalation gap]** Staleness watchdog DETECTS all five (`rth_stale_keys`, 8 problems @15:00 UTC)
+>   but `alert_delivered:false` + `self_heal_enabled:false`, and logs status `"ok"` so `cron-run.ts:38`'s
+>   failure-Discord never fires either. **Same root as the 00:14/04:xx finding: `DISCORD_OPS_WEBHOOK_URL` unset.**
+>   Net: multi-hour live-data outage with ZERO human notification. Operator: set webhook AND/OR enable self-heal.
+> - **[RESOLVED the "VERIFY Mon RTH" item — but NOT how expected]** SPX plays STILL never open
+>   (`spx_open_play`/`spx_play_outcomes`/`spx_signal_log` = 0 rows ever). The veto is NOT the cause — it's
+>   correctly disabled (`spx-play-config.ts:417` default false; `SPX_OPTION_CHAIN_REQUIRED` unset). Engine is
+>   healthy (52 evals/24h, 0 fail) but stuck `SCANNING` grade C/D on "mixed tape" + **"Flow data stale (11m)"** —
+>   i.e. **downstream of the P0 dead-writer outage.** Re-verify play opens AFTER flow-ingest is restored on a clean-tape window.
+> - **[OPEN · P1 · likely downstream]** Cross-provider GEX divergence (`data-correctness`): SPX net-GEX sign vs
+>   UW; SPX King 7,300 vs UW King 7,425 (Δ1.69%). Consistent with stale `heatmap-warm` cache; re-check after P0-1 fix.
+> - **[GREEN re-verified this RTH run]** tsc=0 · #97/#100/#101/#102 + veto all FIXED · db Pool handler (`db.ts:113`) ·
+>   redis family:0+reconnect · blackout-web Online 5/5 · Postgres/Redis Online · all core secrets set ·
+>   Landing/auth/health 200, data endpoints correctly 401.
+> - **[P3-META — STILL UNFIXED]** audit SKILL.md emits false positives (stale paths `spx-pulse`/`flows`/
+>   `nighthawk-latest-edition`/`grid-news`; wrong env `UNUSUAL_WHALES_API_KEY`; auth-grep misses
+>   `requireTierApi`/`authorizeCronOrTierApi`/`isCronAuthorized`). Fix the script. Full report:
+>   `docs/api-audit/deep-audit-20260629-08.md`.
+
+---
 
 > **04:xx ET run (Mon, pre-RTH, markets closed).** Live data 401-gated + closed → not sampleable;
 > value from code + Railway + git deploy-state. **Platform code/runtime is GREEN; open risk is OPERATIONAL.**
