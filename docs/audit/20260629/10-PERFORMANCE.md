@@ -36,6 +36,9 @@ subsequent.
   2. Optionally return the tape first and enrich asynchronously (annotations arrive on the next poll).
 - **Expected impact:** cold HELIX tape **17.8 s → <1 s**; eliminates the worst user-visible lag.
 - **Confidence:** High (measured + code-traced).
+- **✅ FIXED & VERIFIED IN PROD (PR #15, commit `338d7dd`):** applied the timeout (300ms) + cap (8)
+  bound. Re-measured live post-deploy: cold `/api/market/flows` TTFB **0.64 s** (was 17.8 s — **~28×
+  faster**), warm 79 ms. Tape no longer blocks on cold GEX matrices.
 
 ### P-2 — [P2] Cold GEX matrix (1.8 s) / SPX desk (0.94 s) builds; cold build got heavier after PR #11
 - **Root cause:** `fetchGexHeatmap` / `buildSpxDesk` fetch + compute the banded options chain on a
