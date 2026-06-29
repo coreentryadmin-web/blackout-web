@@ -6,6 +6,66 @@
 
 ---
 
+## 2026-06-29 (Mon) Daily Error Triage
+
+### Summary
+- **New errors found:** 1 (UW **data** WebSocket stall — OPEN but no data for ~5h, market-hours outage)
+- **Recurring errors:** 1 (Discord alerting blind — Day 3; this run the blind spot actually bit during RTH)
+- **Auto-fixed:** 0 (the one critical finding is an upstream WS auth/subscription issue, not a safe <10-line code bug; the reconnect path is heavily guarded — see reasoning below)
+- **Requires human attention:** 2 (HIGH: UW data-WS stall blocking SPX plays during RTH · HIGH: alerting blind spot let a real RTH staleness go undelivered)
+- **Resolved / not re-observed:** 1 (the 06-28 options-socket reconnect storm — **0 hits** today; observability restored)
+- **False alarms / known baseline:** 1 (nighthawk-outcomes + nighthawk-playbook daytime staleness — evening-only crons, expected at 10 AM ET)
+
+First weekday run with markets open (Mon ~10 AM ET / 14:00 UTC). The headline is the item the 06-28 report told us to "re-check on Monday RTH" — and it is real and biting. No runtime exceptions, stack traces, `TypeError`/`ReferenceError`, OOM/heap, pool exhaustion, or unhandled rejections appeared in any service log. The REST crons returned **200 OK** with healthy payloads (uw-cache-refresh `refreshed=24/24`, flow-ingest `polled=100`), which is a key diagnostic — see below.
+
+### New Errors (first occurrence)
+| Service | Error | Count | Root Cause | Status |
+|---|---|---|---|---|
+| blackout-web | `[uw-socket] stall watchdog — OPEN but no data for 17937s … 18327s, reconnecting` | 27 distinct stall lines + **65** `multiplex connected — joining channels` reconnects in the 500-line tail | The **Unusual Whales data WebSocket** (`src/lib/ws/uw-socket.ts`, feeds `flow_alerts` / `market_tide` / `net_flow` / `interval_flow` / `off_lit_trades` / `trading_halts`) connected at container boot (deploy `5e9cf94` @ **07:40:53 UTC**), delivered data briefly, then went **completely silent** — `freshestUwMessageAt()` is frozen and the no-data counter climbs monotonically (17937→18327s ≈ **5.09h**) **straight through the 13:30 UTC market open**. The stall watchdog (`uw-socket.ts:361` `reconnectIfStalled`) fires every 30s, tears down and rejoins ("multiplex connected — joining channels", `uw-socket.ts:283`), but UW delivers **zero** messages after the rejoin, so the counter never resets. The reconnect logic is working **as designed**; the failure is upstream. **Key narrowing:** the UW **REST** crons succeed (`refreshed=24/24`, `polled=100`) → the UW API **key is valid**; the fault is isolated to **WS data delivery**, pointing at a WS subscription/keepalive/auth-frame that `joinActiveChannels` is not re-establishing after reconnect (UW silently dropping the channel sub server-side), **not** a UW-wide outage. No `401/403/auth/token` lines — socket reports OPEN and joins cleanly, just receives nothing. **Cascade:** `flow_data_age_ms: 584538` (~9.7 min stale) → `[spx-play-gates] halt channel stale — failing OPEN` + `[spx-play-engine] entry gates blocked: "Flow data stale (10m) — tape and 0DTE signals unreliable"` → **SPX plays cannot open during RTH** (this is the [[project_spx_plays_never_open]] / [[project_pending_items]] Monday-RTH verification item, now failing for a *data* reason). | ⚠️ HIGH — HUMAN, upstream WS auth/subscription |
+
+### Recurring Errors (seen before, not yet fixed)
+| Service | Error | Days Recurring | Escalation |
+|---|---|---|---|
+| blackout-web / Cron-Staleness-Watchdog | Discord alerting blind (`DISCORD_OPS_WEBHOOK_URL` unset) — this run the watchdog logged `problems=8 rth_stale=5 … alert_delivered=false` during market hours | **3** (06-27 → 06-29) | **HIGH (escalated).** Per triage policy a 3+ day recurrence is HIGH, and today it stopped being theoretical: at 13:41 + 14:00 UTC the watchdog detected **5 RTH-stale crons** (flow-ingest, uw-cache-refresh, nights-watch-warm, heatmap-warm, grid-warm) — a genuine market-hours data event correlated with the UW-WS stall — and `alert_delivered=false`. The safety net was off at the exact moment it was needed. Set `DISCORD_OPS_WEBHOOK_URL` in the blackout-web Railway env. |
+
+### Auto-Fixed This Run
+| Error | File | Fix Applied | Commit |
+|---|---|---|---|
+| _none_ — the UW-WS stall is an upstream auth/subscription failure (REST works, WS delivers nothing after a clean rejoin); not a mechanical <10-line code bug. `uw-socket.ts` reconnect/teardown carries deliberate identity-guards (lines 296-327, 101-128) — blindly editing it risks clobbering the live socket. Correct fix is config/upstream investigation, not an autonomous code change. | — | — | — |
+
+### Requires Human Attention
+| Error | Severity | Why It Needs Human | Suggested Fix |
+|---|---|---|---|
+| UW **data** WebSocket OPEN but delivering no data for ~5h through market open → flow/halt/tide/net-flow all stale → SPX play gates block all entries | **HIGH** | Live market-hours data outage on the primary tape feed; blocks the product's headline feature (SPX plays) and corrupts any flow-derived signal. REST works so it's not a key revocation — needs eyes on the WS handshake. Not safely auto-fixable. | (1) Confirm whether `joinActiveChannels` re-sends UW's expected **auth + channel-subscribe** frames after a reconnect, or assumes the prior auth persists — UW typically requires (re)subscribe per connection. (2) Check whether UW rate-limited/closed the data WS for this container (5 replicas may each hold a WS; cf. [[reference_blackout_api_scaling]] 2 RPS cluster-wide). (3) Verify the UW **WS** token/entitlement vs the REST key. (4) Consider a "no-data-since-connect after N reconnects" escalation (alert + optional process-level resubscribe) so a silent-but-OPEN socket self-reports instead of looping for 5h. A `railway redeploy --service blackout-web` is the fast operational mitigation to re-establish the feed. |
+| Watchdog `alert_delivered=false` on a real RTH staleness (5 stale crons) — Discord webhook still unset (Day 3) | **HIGH** | The detect-and-alert pipeline is detect-only; a genuine market-hours outage today produced no notification. Cannot be fixed in code (I don't hold the webhook URL). | Set `DISCORD_OPS_WEBHOOK_URL` (and/or `DISCORD_PLAY_WEBHOOK_URL`) in the blackout-web Railway service env. Until then every cron failure / RTH staleness is silent. |
+
+### Needs Verification (medium — could be downstream of the WS stall)
+| Item | Note |
+|---|---|
+| Watchdog `rth_stale=5` keys: `flow-ingest, uw-cache-refresh, nights-watch-warm, heatmap-warm, grid-warm` first flagged 13:41 UTC (post-open) | These crons return 200 OK when they run, so the staleness is most likely **downstream** of the UW-WS stall (their warmed caches depend on the silent feed) rather than 5 independent missed runs. Verify each executed since 13:30 UTC (`railway logs` per service) and whether their freshness key is fed by the WS. If they ran but data is stale → confirms the WS is the single root cause. |
+
+### False Alarms / Known Baseline
+| Item | Why it is benign |
+|---|---|
+| Watchdog `problems` includes `nighthawk-outcomes` + `nighthawk-playbook` on **every** daytime tick | Both are **evening-only** crons (publish 21-23 UTC weekdays). At 14:00 UTC their last run was last evening, so daytime "staleness" is the expected baseline, **not** a generation failure. Re-confirm tonight's run actually publishes; only escalate if it misses the evening window. |
+
+### Resolved / Not Re-Observed
+- **options-socket reconnect storm** (06-28 HIGH, code 1006 auth-never-completing, was 496/500 lines): **0 hits** today. Either resolved or quiet — buffer is no longer saturated, so `blackout-web` observability is restored this run. Re-watch; it was an entitlement/endpoint hypothesis that may recur.
+
+### Services With No Errors
+- **Flow-Ingest-Cron** — `/api/cron/flow-ingest -> 200`, `ok=true ingested=0 polled=100` (REST path healthy; 0 ingested is the WS-vs-REST split, not a fault)
+- **UW-Cache-Refresh-New** — `/api/cron/uw-cache-refresh -> 200`, `ok=true refreshed=24 total=24`
+- **Cron-Staleness-Watchdog** — running every ~20m, `200 OK`, `error_count=0 error_spike="none"` (it is *detecting* correctly; the failure is delivery, see above)
+- **NightHawk-Playbook** — no log output (evening-only worker; idle mid-morning, as expected)
+
+### Triage Notes
+- **Diff vs 2026-06-28:** options-socket storm **gone** (observability restored). UW **data**-WS stall is **net-new** and is the first *market-hours* data outage this log has captured — it is the realization of the 06-28 "re-check Monday RTH" flag. Discord-unset carried over to **Day 3** and escalated from theoretical to actually-bit. db-cleanup staleness (06-28) not re-checked this run (RTH buffer dominated by uw-socket).
+- **Top priority before user is active:** (1) restore the UW data feed (operational: redeploy blackout-web to re-handshake; root-cause: WS resubscribe/auth path) — it is blocking SPX plays *right now*; (2) set the Discord webhook so the next outage actually pages.
+- The "5 hours" duration is authoritative (computed in-message as `now - freshestMessageAt` at log time, 18327s); the "~09:00 UTC start" is inferred from the 07:40 deploy + buffer position.
+- No secrets were printed; no log line contained a credential value requiring redaction. `RAILWAY_TOKEN` was loaded into env only, never echoed.
+
+---
+
 ## 2026-06-28 (Sun) Daily Error Triage
 
 ### Summary
