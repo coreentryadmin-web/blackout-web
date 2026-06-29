@@ -452,6 +452,12 @@ class OptionsShard {
       ws.onopen = () => {
         this.authenticated = false;
         console.log(`[options-socket] shard ${this.id} connected (${this.symbols.size} contracts)`);
+        // Auth immediately on open — do not wait for a status frame. During rolling deploys the
+        // server can drop a slow socket with 1006 before the first message arrives; early auth
+        // reduces the window where we look "connected" but unauthenticated.
+        if (POLYGON_API_KEY && this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ action: "auth", params: POLYGON_API_KEY }));
+        }
       };
 
       ws.onmessage = (event) => {
@@ -580,6 +586,36 @@ class OptionsShard {
   }
 
   /**
+   * Standby / lost-leadership: release the live socket without marking the shard shut down
+   * permanently (unlike shutdown(), which is for SIGTERM). Mirrors uw-socket.standDown().
+   */
+  standDown(): void {
+    this.clearReconnect();
+    this.consecutiveFailures = 0;
+    const ws = this.ws;
+    this.ws = null;
+    this.authenticated = false;
+    this.subscribed.clear();
+    if (ws) {
+      try {
+        ws.onclose = null;
+        ws.onerror = null;
+        ws.onmessage = null;
+        ws.onopen = null;
+      } catch {
+        /* ignore */
+      }
+      try {
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close(1000, "stand down");
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+
+  /**
    * Graceful shutdown of this shard. Sets the shutdown flag (so scheduleReconnect
    * / ensureConnected / connect bail and cannot reopen), clears the reconnect
    * timer, and closes the live WS with a normal close (1000). Best-effort,
@@ -701,6 +737,17 @@ class OptionsSocketPool {
     for (const s of this.shards) {
       s.ensureConnected();
       s.reconnectIfStalled(stallMs, now);
+    }
+  }
+
+  /** Stand down every shard without permanent shutdown (non-leader / off-hours). */
+  standDown(): void {
+    for (const s of this.shards) {
+      try {
+        s.standDown();
+      } catch {
+        /* one shard failing must not block the others */
+      }
     }
   }
 
@@ -881,7 +928,14 @@ export function initOptionsSocket(): void {
  */
 async function runReconcileTick(): Promise<void> {
   const leader = await ensureOptionsLeadership();
-  if (!leader) return; // standby — serve marks from the leader's Redis write-through
+  if (!leader) {
+    pool.standDown();
+    return;
+  }
+  if (!shouldMaintainSocket()) {
+    pool.standDown();
+    return;
+  }
   await reconcileOptionSubscriptions();
   pool.watchdog(WATCHDOG_STALL_MS);
 }
