@@ -1,0 +1,41 @@
+name: Auto-merge agent PRs
+
+# Hands-off merging for Cursor agent PRs.
+#
+# When a NON-DRAFT pull request from a `cursor/*` branch is opened or updated, this
+# enables GitHub's native auto-merge so the PR merges ITSELF the moment the required
+# `verify` check (see ci.yml) goes green — no human click required.
+#
+# Gating still applies: the `cursor-merge` branch ruleset on `main` requires the
+# `verify` status check, so nothing merges until CI passes. Auto-merge simply removes
+# the manual "Enable auto-merge" click.
+#
+# Scope: only `cursor/*` branches (the agent's). Human PRs from other branches are
+# untouched and still merge manually.
+#
+# Token: the built-in GITHUB_TOKEN is sufficient for the current ruleset (0 required
+# approvals). If approvals are ever required, swap in a PAT/app token that can approve.
+#
+# Prerequisites (one-time): repo Settings → General → Pull Requests → "Allow auto-merge"
+# must be ON, and the `cursor-merge` ruleset must require the `verify` check.
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable-automerge:
+    if: ${{ !github.event.pull_request.draft && startsWith(github.head_ref, 'cursor/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge (squash) — merges once `verify` passes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge --auto --squash \
+            "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}"
