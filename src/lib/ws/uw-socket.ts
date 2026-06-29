@@ -23,6 +23,7 @@ import {
   type StoredTradingHalt,
   pruneExpiredHalts,
 } from "./trading-halts-expiry";
+import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 
 type Handler = (data: unknown) => void;
 
@@ -57,6 +58,73 @@ function buildSocketUrl(): string {
 function channelFromWireName(name: string): UwWsChannel | null {
   const n = name.replace(/-/g, "_");
   return ALL_CHANNELS.includes(n as UwWsChannel) ? (n as UwWsChannel) : null;
+}
+
+// ── Cross-replica leader election ────────────────────────────────────────────────────────────────
+// UW streams to only ONE WebSocket per API key: with N web replicas each opening their own multiplex
+// socket, UW silently delivers data to none of the contenders (no boot/close frame — just silence),
+// so every replica's stall watchdog tears down and reconnects forever and the whole cluster goes
+// dark during RTH (verified live: a single direct connection with the same key streams full data
+// instantly). Mirror the proven options-socket pattern: a Redis SETNX lock so only ONE replica holds
+// the UW socket. Non-leaders open NOTHING — flow_alerts are read cross-replica from Postgres (the
+// leader persists them) and tide/dark-pool/interval-flow fall back to the REST path in spx-desk, so
+// no replica serves empty live data. If the leader dies (SIGTERM drops the lock, or the 25s TTL
+// lapses), the next reconcile tick on a standby wins the lock and takes over.
+const UW_LEADER_KEY = "uw:ws:leader";
+const UW_LEADER_TTL_SEC = 25;
+let uwIsLeader = false;
+let uwLeaderRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+type IoredisLockExtra = {
+  set(k: string, v: string, ex: string, ttl: number, nx: string): Promise<string | null>;
+  expire(k: string, ttl: number): Promise<number>;
+  del(k: string): Promise<number>;
+};
+
+async function tryAcquireUwLead(): Promise<boolean> {
+  try {
+    const redis = await getUwCacheRedis();
+    if (!redis) return true; // Redis unavailable — allow the WS (single-replica safe / fail-open)
+    const r = redis as unknown as IoredisLockExtra;
+    const result = await r.set(UW_LEADER_KEY, "1", "EX", UW_LEADER_TTL_SEC, "NX");
+    return result === "OK";
+  } catch {
+    return true; // Redis error — fail open so a Redis blip can't silently kill the feed cluster-wide
+  }
+}
+
+/** Acquire leadership if we don't already hold it. The refresh timer keeps the lease alive. */
+async function ensureUwLeadership(): Promise<boolean> {
+  if (uwIsLeader) return true;
+  uwIsLeader = await tryAcquireUwLead();
+  if (uwIsLeader) {
+    console.log("[uw-socket] acquired cluster lead — this replica holds the UW multiplex socket");
+  }
+  return uwIsLeader;
+}
+
+function startUwLeaderRefresh(): void {
+  if (uwLeaderRefreshTimer) return;
+  // Renew every 10s, well within the 25s TTL, so leadership persists while this replica lives.
+  uwLeaderRefreshTimer = setInterval(() => {
+    if (!uwIsLeader) return;
+    getUwCacheRedis()
+      .then((redis) => redis && (redis as unknown as IoredisLockExtra).expire(UW_LEADER_KEY, UW_LEADER_TTL_SEC))
+      .catch(() => undefined);
+  }, 10_000);
+  (uwLeaderRefreshTimer as unknown as { unref?: () => void }).unref?.();
+}
+
+function releaseUwLead(): void {
+  uwIsLeader = false;
+  if (uwLeaderRefreshTimer) {
+    clearInterval(uwLeaderRefreshTimer);
+    uwLeaderRefreshTimer = null;
+  }
+  // Best-effort: drop the lock so a newly-booting replica can take over immediately on SIGTERM.
+  getUwCacheRedis()
+    .then((redis) => redis && (redis as unknown as IoredisLockExtra).del(UW_LEADER_KEY))
+    .catch(() => undefined);
 }
 
 class UwSocketManager {
@@ -127,6 +195,7 @@ class UwSocketManager {
 
   private scheduleReconnect() {
     if (this.shuttingDown) return; // shutting down — do not resurrect the socket
+    if (!uwIsLeader) return; // only the cluster leader holds the UW socket; standbys stay closed
     if (this.channelsWithHandlers().length === 0) return;
     this.clearReconnect();
     const delay =
@@ -243,6 +312,7 @@ class UwSocketManager {
 
   private connect() {
     if (this.shuttingDown) return; // shutting down — do not open a new socket
+    if (!uwIsLeader) return; // only the cluster leader holds the UW socket (reconcile tick re-checks)
     if (!UW_API_KEY) {
       this.markAuthFailed("UW_API_KEY not set");
       return;
@@ -349,6 +419,23 @@ class UwSocketManager {
   /** True only while the multiplex socket reports OPEN (readyState 1). */
   isOpen(): boolean {
     return this.ws?.readyState === 1;
+  }
+
+  /** Leader-side: open the multiplex socket if it isn't already connecting/open. Idempotent. */
+  ensureConnected(): void {
+    if (this.shuttingDown) return;
+    if (this.ws && this.ws.readyState <= 1) return; // already connecting/open
+    this.connect();
+  }
+
+  /**
+   * Standby-side: release any socket this replica holds without scheduling a reconnect, so it stops
+   * contending for the single UW streaming slot. Called from the reconcile tick when this replica is
+   * not (or no longer) the cluster leader.
+   */
+  standDown(): void {
+    this.clearReconnect();
+    if (this.ws) this.teardownSocket();
   }
 
   /**
@@ -587,6 +674,9 @@ export function getActiveTradingHalts(symbols: readonly string[] = PLAY_HALT_WAT
 const flowAlertDedup = makeFlowDedup();
 let uwSocketInitialized = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+// Reconcile cadence: pings + leadership re-check + stall watchdog. Must be < UW_LEADER_TTL_SEC so a
+// standby acquires the lock within one tick of the leader dying.
+const UW_RECONCILE_INTERVAL_MS = 15_000;
 const lastMessageAt: Partial<Record<UwWsChannel, number>> = {};
 
 /**
@@ -719,16 +809,37 @@ export function initUwSocket() {
     }
   });
 
+  startUwLeaderRefresh();
+
+  // Leadership reconcile: only the cluster leader holds the UW socket. Run once immediately so the
+  // leader starts streaming without waiting a full interval, then every UW_RECONCILE_INTERVAL_MS
+  // (well within the 25s lock TTL, so a standby fails over within one tick if the leader dies).
+  void runUwReconcileTick();
   if (!heartbeatTimer) {
     heartbeatTimer = setInterval(() => {
-      uwSocket.heartbeat();
-      uwSocket.reconnectIfStalled(freshestUwMessageAt(), UW_SOCKET_STALL_MS);
-    }, 30_000);
+      void runUwReconcileTick();
+    }, UW_RECONCILE_INTERVAL_MS);
   }
 
   console.log(
     `[uw-socket] initialized — multiplex ${ALL_CHANNELS.join(", ")}`
   );
+}
+
+/**
+ * One leadership-gated reconcile tick. The leader opens/maintains the multiplex socket, pings it,
+ * and runs the stall watchdog. A standby stands down (releases any socket) and serves flow from
+ * Postgres + the REST fallback until it wins the lock.
+ */
+async function runUwReconcileTick(): Promise<void> {
+  const leader = await ensureUwLeadership();
+  if (!leader) {
+    uwSocket.standDown();
+    return;
+  }
+  uwSocket.ensureConnected();
+  uwSocket.heartbeat();
+  uwSocket.reconnectIfStalled(freshestUwMessageAt(), UW_SOCKET_STALL_MS);
 }
 
 /**
@@ -742,6 +853,8 @@ export function shutdownUwSocket(): void {
     clearInterval(heartbeatTimer);
     heartbeatTimer = null;
   }
+  // Drop the cluster lead so a newly-booting replica can take over the UW socket immediately.
+  releaseUwLead();
   uwSocket.shutdown();
 }
 
