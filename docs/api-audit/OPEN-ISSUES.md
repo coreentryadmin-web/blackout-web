@@ -1,5 +1,28 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-29 00:14 ET
+Last updated: 2026-06-29 04:xx ET
+
+> **04:xx ET run (Mon, pre-RTH, markets closed).** Live data 401-gated + closed → not sampleable;
+> value from code + Railway + git deploy-state. **Platform code/runtime is GREEN; open risk is OPERATIONAL.**
+> - **[OPEN · P1 · DEPLOY GAP]** `git rev-list origin/main..HEAD = 11` — real fixes committed LOCAL but
+>   UNPUSHED, incl. `ffbed27` signal-analytics 500 fix → **that 500 is STILL live in prod** until pushed.
+>   By-design under cron-no-push, but operator must review + `git push origin main` to actually deploy.
+> - **[OPEN · P1]** `DISCORD_OPS_WEBHOOK_URL` still **unset** → Cron-Staleness-Watchdog "ALERT NOT
+>   DELIVERED", ops blind to cron failures. Operator sets webhook.
+> - **[OPEN · P1-A]** `Market-Regime-Detector` cron service still **absent** from Railway → `market_regime`/
+>   `flow_anomalies` writers never run. Operator adds the service.
+> - **[OPEN · P2]** Grid overpromise: `(site)/grid/page.tsx:35` (+`:13` metadata) advertise "News, flow"
+>   panels that don't exist (real set: analysts/catalysts/congress/dark-pool/earnings/economy/movers/sectors).
+> - **[RESOLVED in code]** regime now fails CLOSED (`market/regime/route.ts:47`); signal-analytics column
+>   fixed (`gates_blocked_json`, awaiting push per deploy gap above).
+> - **[VERIFY Mon 06-29 RTH]** P2-C SPX play opens (veto now conditional, openPlay reachable) · P2-D
+>   options-socket 1006 · cross-tool GEX/pulse consistency.
+> - **[GREEN re-verified]** tsc=0 · #73/#97/#100/#101/#102 resolved · db Pool error handler (`db.ts:113`,max:5) ·
+>   redis family:0+reconnect · blackout-web Online 5/5 · all core secrets SET (UW_API_KEY, not the
+>   audit's mythical UNUSUAL_WHALES_API_KEY).
+> - **[P3-META]** audit SKILL.md STILL emits false positives (stale paths spx-pulse/flows/nighthawk-latest-edition/
+>   grid-news; wrong env name; `src/lib/tools` vs `src/lib/largo`). Fix the script. Full report:
+>   `docs/api-audit/deep-audit-20260629-04.md`.
+
 
 > **00:14 ET run (Mon, pre-RTH, markets closed).** Live data endpoints all 401-gated +
 > markets closed → freshness/consistency not sampleable; value came from Railway logs + code + infra.
