@@ -64,8 +64,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ ok: true, signals: result.rows });
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
     console.error("[api/signals/open]", error);
-    return NextResponse.json({ ok: false, error: "Failed to fetch open signals", detail, signals: [] });
+    return NextResponse.json({ ok: false, error: "Failed to fetch open signals", signals: [] });
   }
 }

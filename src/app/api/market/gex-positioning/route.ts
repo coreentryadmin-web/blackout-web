@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
                 ? Number((((bundle.spot - flip) / bundle.spot) * 100).toFixed(2))
                 : null,
               shift_summary: null,
-              source: "polygon" as const,
+              source: "cache" as const,
               _fallback: true,
             },
             { status: 200, headers: noStore }

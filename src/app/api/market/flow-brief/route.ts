@@ -139,7 +139,7 @@ export async function GET(req: NextRequest) {
   if (auth instanceof Response) return auth;
 
   if (!anthropicConfigured()) {
-    return NextResponse.json({ brief: null, reason: "ANTHROPIC_API_KEY not set" });
+    return NextResponse.json({ brief: null, reason: "Brief unavailable" });
   }
 
   // Time-window cache key — same for every user in the same 15-min slot

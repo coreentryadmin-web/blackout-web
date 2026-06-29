@@ -197,7 +197,6 @@ export async function GET(req: NextRequest) {
         urgentCoachingCount: 0,
         signalRecommendation: "Platform intel unavailable — proceed with standard sizing.",
       },
-      error: String(err),
       timestamp: new Date().toISOString(),
     }, { status: 200, headers: NO_STORE });
   }

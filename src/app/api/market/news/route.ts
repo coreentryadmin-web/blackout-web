@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   if (auth instanceof Response) return auth;
 
   if (!polygonConfigured()) {
-    return NextResponse.json({ error: "POLYGON_API_KEY not configured", articles: [] }, { status: 503 });
+    return NextResponse.json({ error: "Market data unavailable", articles: [] }, { status: 503 });
   }
 
   // News is market-wide (not user-personalized). 120s CDN cache reduces
@@ -27,10 +27,10 @@ export async function GET(req: NextRequest) {
       // This is far broader than a post-fetch client-side filter on the tickers[] array.
       const cacheKey = `news:benzinga:ticker:${ticker}`;
       const articles = await serverCache(cacheKey, 60, () => fetchBenzingaNews(50, { ticker }));
-      return NextResponse.json({ source: "benzinga", ticker, articles }, { headers: CDN_CACHE });
+      return NextResponse.json({ source: "news", ticker, articles }, { headers: CDN_CACHE });
     }
     const articles = await serverCache("news:benzinga:15", TTL.NEWS, () => fetchBenzingaNews(15));
-    return NextResponse.json({ source: "benzinga", articles }, { headers: CDN_CACHE });
+    return NextResponse.json({ source: "news", articles }, { headers: CDN_CACHE });
   } catch (error) {
     console.error("[market/news]", error);
     return NextResponse.json({ error: "News fetch failed" }, { status: 502 });
