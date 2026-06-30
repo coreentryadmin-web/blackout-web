@@ -1,5 +1,25 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-29 16:46 PT (23:46 UTC)
+Last updated: 2026-06-29 20:38 ET (2026-06-30 03:38 UTC)
+
+> **20:38 ET / 03:38 UTC run (Mon, after-hours, RTH closed; live data via apex+Bearer + code read). 0 P0 · 1 P1 · 1 P2.**
+> - **[OPEN · 🟠 P1 · DATA INTEGRITY · re-confirmed in code]** **Play outcomes mislabel profitable exits as losses.**
+>   `src/lib/spx-play-outcomes.ts:177-178` returns `"loss"` for ANY `STOP`/`THESIS`/`was_loss` exit **without checking
+>   `pnl_pts` sign** — the THETA/SESSION (`:170-175`) and TRAIL (`:183-186`) branches both check it correctly. A profitable
+>   THESIS exit is stored `outcome='loss'`; understates win-rate on the track-record/P&L surfaces. **Fix:** for STOP/THESIS,
+>   `pnl_pts > 0` → win (mirror TRAIL). One-liner. *(Carried from 16:46 run; still present.)*
+> - **[OPEN · P2 · cosmetic]** `/api/market/spx/pulse` returns `available:false`/`price:0` after-hours while `spx/desk`
+>   has full live data. Likely the RTH-only indices-WS poller idling by design — verify `pulse` populates during next RTH
+>   (13:30–20:00 UTC); confirm desk UI shows "market closed" not zeros.
+> - **[✅ CONFIRMED HEALTHY this run]** All core data live+fresh (gex SPY 741 ~2min · spx/desk SPX 7440.43 · flows · dark-pool ·
+>   nighthawk edition published 02:31 BULLISH · all 8 grid panels `available:true`) · TSC 0 errors · all 7 prod env vars SET ·
+>   #97/#100/#101/#102 fixed (verified in code) · Redis family:0 · SPX plays opening (3 last RTH).
+> - **[P3-META — fix the SKILL]** Audit script's own paths are stale and manufacture false P0s every run: `/api/flows`→
+>   `market/flows`, `spx-pulse`→`market/spx/pulse`, `grid/news`=nonexistent (→`market/news`), `nighthawk/latest-edition`→
+>   `market/nighthawk/edition`; Phase-1 hits `www` (301→apex strips Bearer→401/404) not apex+Bearer; GEX-vs-desk wall check
+>   compares SPY walls (740/750) to SPX walls (~7440) w/o the ~10.04x normalisation; clerk path is `webhooks/clerk` (plural);
+>   `UNUSUAL_WHALES_API_KEY` check stale (platform on Massive). Full report: `docs/api-audit/deep-audit-20260629-20.md`.
+
+---
 
 > **16:46 PT / 23:46 UTC run (Mon, post-close; live data sampled via prod PG + apex+Bearer). 0 P0 · 2 P1 · 3 P2.**
 > - **[OPEN · 🟠 P1 · NEW · DATA INTEGRITY]** **Play outcomes mislabel profitable exits as losses.**
