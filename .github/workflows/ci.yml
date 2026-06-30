@@ -17,6 +17,8 @@ jobs:
       - run: npm ci
       - name: Type check
         run: npx tsc --noEmit
+      - name: Unit tests
+        run: npm test
       - name: Brand guard (no grey)
         run: npm run lint:brand
       - name: Vendor surface guard (no provider names in UI)
