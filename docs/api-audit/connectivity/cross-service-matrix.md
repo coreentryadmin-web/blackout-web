@@ -1526,3 +1526,31 @@ Run context: pre-market (~06:00 ET). Live probes via apex `blackouttrades.com` +
 - SKILL paths stale: Largo tools live at `lib/largo/run-tool.ts` + `tool-defs.ts` (not `lib/tools/` / root `run-tool.ts`).
 - The single WARN (flow staleness) is gated off-hours and is **not** a P0 � the >10min desync P0 rule applies during RTH only.
 ---
+
+## Connectivity Matrix — 2026-06-30 04:56 ET (reconfirm)
+**PASS: 16 | FAIL: 0 | WARN: 1 (off-hours flow staleness, gated)**
+
+Independent re-run against fresh live data (apex host + Bearer; all 6 endpoints HTTP 200). Reconfirms the full PASS matrix from the prior 06-30 run — no regressions across the deploy window. Highlights from this pull:
+
+| Channel | Status | Live evidence (2026-06-30 04:56 ET) |
+|---|---|---|
+| SPX → HEATMAP | PASS | ratio-adjusted: SPY call_wall 743 ×(SPX/SPY=10.0197)=7444.6 ≈ SPX gex_king 7450; SPY flip 741.03×ratio=7424.9 ≈ SPX gamma_flip 7426.4; provider gex_cross_validation callWallMatch/putWallMatch/flipMatch all **true**, divergence=2 |
+| HELIX → SPX | PASS | SPX desk embeds spx_flows=32, unified_tape=29, flow_0dte_net=434.7M, tide_bias=bullish, tide_net=430.3M |
+| SPX → HELIX | PASS | flows.platform_refs.spx carries full desk snapshot (price/gex_king/walls/levels/dark_pool/nighthawk ref) |
+| HEATMAP → LARGO | PASS | largo-live-feed.ts getGexPositioning("SPX") — "same cache as Heatmaps, zero extra API calls" (line 380) |
+| HELIX/SPX/GRID/NHAWK → LARGO | PASS | live-feed jobs: get_economic_calendar, get_dark_pool, get_news, get_nighthawk_edition (shared PG cache) + spx-desk-cache |
+| HEATMAP → NHAWK | PASS | nighthawk/positioning.ts getGexPositioning (PRIMARY, "all surfaces agree on flip/walls/regime"); live edition has 3 plays (ANET/AVGO/ORCL) |
+| SPX/HEATMAP/HELIX → NWATCH | PASS | verdict.ts reads shared gexWalls+gammaFlip+spot+flows; SPX positions via loadMergedSpxDesk; kingStrike from strike_totals (all tools name same king) |
+| GRID → SPX | PASS | live desk carries macro_events=4 (Job openings, Consumer confidence, Chicago PMI, Case-Shiller), news_headlines=10, macro_indicators=3 (GDP/CPI/UNRATE) |
+
+### Timestamps (UTC) — all consistent
+- SPX desk as_of 2026-06-30T11:56:08Z (fresh) · GEX asof 2026-06-30T11:55:28Z (gex_age_ms ~39s, gex_stale=false) → ~40s gap, PASS
+- HELIX flows latest event_at 2026-06-29T20:12Z (flow_data_age_ms ~15.8h) — **expected**: pre-market (market_open=false, PRE-MARKET label), no overnight RTH flows; feed_stalled=false
+- Night Hawk published_at 2026-06-30T03:38:13Z (overnight), carry_until_close=true
+
+### Calibration notes (carried forward — still apply)
+- **0 real FAILs.** SKILL Phase 2 naive diff (SPX gex_king 7450 vs GEX call_wall 743) false-FAILs by ~6700 because SPX desk is index-scaled and the gex-positioning endpoint is **SPY-scaled** (÷~10.02). Use the price ratio before diffing.
+- SKILL camelCase field names (callWall/kingStrike/netGex/flowBias) do not exist — real fields are snake_case (call_wall/gex_king/net_gex/flow_0dte_net/tide_bias).
+- SKILL Phase 4/7 paths stale: src/lib/run-tool.ts and src/lib/tools/ do not exist; Largo data assembly is src/lib/largo/largo-live-feed.ts + largo-terminal.ts.
+- The lone WARN (flow staleness) is off-hours and **not** a P0 — the >10min desync P0 rule applies during RTH only.
+---
