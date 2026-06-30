@@ -371,7 +371,9 @@ async function connectIndices() {
             // ~1s cross-replica snapshot, so V can't hammer Redis at tick rate.
             const sym = typeof msg.T === "string" ? (msg.T as string) : "";
             const val = Number(msg.val);
-            if (sym && indexStore[sym] && Number.isFinite(val) && val > 0) {
+            // Allow negative values — I:TICK and I:ADD can be negative (net upticks/downticks).
+            // The original val > 0 guard silently dropped all negative breadth readings.
+            if (sym && indexStore[sym] && Number.isFinite(val)) {
               const prev = indexStore[sym];
               indexStore[sym] = {
                 ...prev,
