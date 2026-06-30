@@ -1,6 +1,7 @@
 # BlackOut Open Issues Log
 Last updated: 2026-06-30 19:30 ET
 
+> **30 Jun 2026 — RTH pass 4 GREEN** after public track-record live-sync (#131). Halt-feed (#126), socket-health (#116).
 > **Shipping log:** Audit backlog batch 1 → **PR #132** (merged): cron timing-safe auth, dead code,
 > Track Record nav, db-cleanup, Grid bootstrap. Closed duplicate PRs **#127–#130** — ignore those.
 > Canonical audit probe list: `docs/api-audit/AUDIT-SKILL-REFERENCE.md` (in-repo SKILL:
@@ -19,11 +20,11 @@ Last updated: 2026-06-30 19:30 ET
 | `npm run validate:rth-open` (post-pull + cron warm) | ✅ GREEN — options-socket authenticated (1 shard, 6 contracts) |
 | `GET /api/cron/data-correctness?force=1` | ⚠️ transient 2–5 writer-stale flags → watchdog self-heal + manual `?force=1` → ✅ 0 flags |
 | `npm run ops:collect` | ✅ 0 action items |
-| `node scripts/full-site-deep-audit.mjs` | ⚠️ **P0** `OUTCOMES-VS-PUBLIC`: spx/outcomes closed=8 vs public=7 |
+| `node scripts/full-site-deep-audit.mjs` | ✅ **49 pass / 0 issues** (post #131 deploy) |
 | `node scripts/gha-rth-audit.mjs` | ✅ GREEN (49 pass) |
 | `node scripts/heatmap-matrix-audit.mjs` | ✅ 15 tickers × 32 checks, 0 matrix flags |
 
-### Fix shipped (branch `fix/public-track-record-live-sync`)
+### Fix shipped (#131 — merged)
 
 | ID | Issue | Fix |
 |---|---|---|
