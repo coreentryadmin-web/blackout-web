@@ -12,6 +12,7 @@ import {
 import type { FreshnessStatus } from "@/components/ui/FreshnessChip";
 import { TrackRecordSkeleton } from "./TrackRecordSkeleton";
 import { TrackRecordProductCard } from "./TrackRecordProductCard";
+import { PlayHistoryTable } from "./PlayHistoryTable";
 import {
   TRACK_RECORD_EMBED_SNIPPET,
   TRACK_RECORD_POLL_MS,
@@ -154,6 +155,8 @@ export function TrackRecordView() {
               stats={state.data.nightHawk}
               variant="nighthawk"
             />
+
+            <PlayHistoryTable />
 
             <Card padding="sm" accent="none">
               <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-secondary">
