@@ -7624,9 +7624,18 @@ body::before {
   .grid-dp-premium { @apply font-mono text-[11px] ml-auto text-sky-300; }
 
   /* Earnings Radar */
-  .grid-earn-list { @apply grid grid-cols-1 sm:grid-cols-2 gap-px content-start overflow-y-auto max-h-[440px]; }
+  .grid-earn-list { @apply flex flex-col content-start overflow-y-auto max-h-[440px]; }
   .grid-earn-row { @apply flex items-center gap-2 px-4 py-2 text-[11px] border-b border-white/[0.06]; }
-  .grid-earn-ticker { @apply font-syne font-bold text-white w-14 shrink-0; }
+  .grid-earn-ticker { @apply font-syne font-bold text-white shrink-0; }
+  .grid-earn-name { @apply font-mono text-[10px] text-sky-300/45 truncate min-w-0; }
+  .grid-earn-spacer { @apply ml-auto shrink-0; }
+  .grid-earn-date { @apply font-mono text-[10px] text-sky-300/60 shrink-0 tabular-nums; }
+  .grid-earn-em {
+    @apply font-mono text-[10px] font-bold shrink-0 tabular-nums rounded px-1.5 py-0.5;
+    color: #ffcc4d;
+    background: rgba(255, 204, 77, 0.12);
+    border: 1px solid rgba(255, 204, 77, 0.25);
+  }
   .grid-earn-est { @apply font-mono text-[10px] shrink-0; }
   .grid-earn-act { @apply font-mono text-[10px] text-white shrink-0; }
 
