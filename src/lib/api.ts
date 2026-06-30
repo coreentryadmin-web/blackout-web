@@ -440,6 +440,30 @@ export const fetchNightHawkPlays = () =>
 export const fetchNightHawkEdition = () =>
   marketFetch<import("@/lib/nighthawk/types").NightHawkEdition>("/nighthawk/edition");
 
+export const fetchNightHawkPlayStatus = (date?: string) =>
+  fetch(
+    `/api/nighthawk/play-status${date ? `?date=${encodeURIComponent(date)}` : ""}`,
+    { cache: "no-store", credentials: "same-origin" }
+  )
+    .then((res) => (res.ok ? res.json() : { available: false }))
+    .catch(() => ({ available: false })) as Promise<
+    import("@/lib/nighthawk/types").NightHawkPlayStatusResponse
+  >;
+
+export const fetchNightHawkRecord = (days = 30) =>
+  marketFetch<import("@/lib/nighthawk/types").NightHawkRecordResponse>(
+    `/nighthawk/record?days=${days}`
+  ).catch(() => ({
+    available: false,
+    window_days: days,
+    total_resolved: 0,
+    pending_count: 0,
+    win_rate_pct: 0,
+    profitable_rate_pct: 0,
+    avg_return_pct: 0,
+    by_conviction: [],
+  }));
+
 export const postNightHawkHunt = (body: import("@/lib/nighthawk/types").HuntRequest) =>
   marketFetch<import("@/lib/nighthawk/types").HuntResponse>("/nighthawk/hunt", {
     method: "POST",
@@ -499,8 +523,10 @@ export const queryLargo = (question: string, sessionId: string) =>
 export async function queryLargoStream(
   question: string,
   sessionId: string,
-  onToken: (text: string) => void
-): Promise<{ answer: string; session_id: string; source?: string; tools_used?: string[] }> {
+  onToken: (text: string) => void,
+  /** Fires for each live tool Largo pulls (tool_start), enabling a real-time data-trace UI. */
+  onTool?: (name: string) => void
+): Promise<{ answer: string; session_id: string; source?: string; tools_used?: string[]; followups?: string[] }> {
   const res = await fetch(`${MARKET_BASE}/largo/query?stream=1`, {
     method: "POST",
     cache: "no-store",
@@ -521,8 +547,9 @@ export async function queryLargoStream(
 
   const decoder = new TextDecoder();
   let buffer = "";
-  let result: { answer: string; session_id: string; source?: string; tools_used?: string[] } | null =
-    null;
+  let result:
+    | { answer: string; session_id: string; source?: string; tools_used?: string[]; followups?: string[] }
+    | null = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -541,20 +568,24 @@ export async function queryLargoStream(
       const event = JSON.parse(payload) as {
         type: string;
         text?: string;
+        name?: string;
         message?: string;
         answer?: string;
         session_id?: string;
         source?: string;
         tools_used?: string[];
+        followups?: string[];
       };
 
       if (event.type === "token" && event.text) onToken(event.text);
+      if (event.type === "tool_start" && event.name) onTool?.(event.name);
       if (event.type === "done" && event.answer && event.session_id) {
         result = {
           answer: event.answer,
           session_id: event.session_id,
           source: event.source,
           tools_used: event.tools_used,
+          followups: event.followups,
         };
       }
       if (event.type === "error") {

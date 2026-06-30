@@ -3,6 +3,10 @@
 > **Audience:** the two code-fix agents working in parallel. This is the QA agent’s live
 > production audit — every finding is verified against `blackouttrades.com` with admin/cron
 > credentials, Polygon oracle, and browser cross-service reads.
+>
+> **Full-site coverage:** see also `docs/api-audit/FULL-SITE-AUDIT-2026-06-29.md` — every tool
+> surface (desk, flows, heatmap, grid, nighthawk, track record, crons, pages) audited, not just
+> Heat Maps matrix data.
 
 ---
 
@@ -228,6 +232,9 @@ node scripts/site-audit.mjs --base=https://blackouttrades.com
 
 # Heat Maps matrix invariants (full cell-level)
 node scripts/heatmap-matrix-audit.mjs
+
+# Full-site deep audit (all tools)
+node scripts/full-site-deep-audit.mjs
 ```
 
 ---

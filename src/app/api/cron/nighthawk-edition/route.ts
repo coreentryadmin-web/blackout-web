@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse, after } from "next/server";
-import { requireDatabaseInProduction, fetchNighthawkJob } from "@/lib/db";
+import { requireDatabaseInProduction, fetchNighthawkJob, failStaleNighthawkJobs } from "@/lib/db";
 import { buildEveningEdition, serializeBuildError } from "@/lib/nighthawk/edition-builder";
 import { isWeekdayEt, etNowParts, nextTradingDayEt, todayEt } from "@/lib/nighthawk/session";
 import { isCronAuthorized } from "@/lib/market-api-auth";
@@ -69,6 +69,10 @@ export async function GET(req: NextRequest) {
       note: "Long runs execute via `npm run nighthawk:run` (Railway cron worker). This route nudges/resumes within 300s.",
     });
   }
+
+  await failStaleNighthawkJobs().catch((err) =>
+    console.warn("[cron/nighthawk-edition] stale-job cleanup failed:", err)
+  );
 
   if (!inEditionWindow(force) && !(job && job.status !== "published")) {
     const payload = {

@@ -8,14 +8,18 @@ import { round5 } from "@/lib/round5";
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
 const KEY = process.env.POLYGON_API_KEY ?? "";
 
-// Underlying ROOT used to query the options snapshot. On Massive (and Polygon),
-// the SPX-complex options chain — including the SPXW weekly 0DTE contracts whose
-// OCC ticker is "O:SPXW...EXP..." — is indexed under underlying_ticker "SPX", NOT
-// "SPXW". Querying /v3/snapshot/options/SPXW returns 0 results, which silently
-// blocked every play open (empty ledger). Query "SPX" to retrieve the real chain;
+// Underlying ROOT used to query the options snapshot. The SPX-complex options chain
+// — including the SPXW weekly 0DTE contracts whose OCC ticker is "O:SPXW...EXP..." —
+// must be queried under the INDEX ticker "I:SPX". Verified live against the provider:
+//   - "SPXW"  → 0 results (blocked every play open historically; empty ledger).
+//   - "SPX"   → returns contracts but with NO greeks (delta = undefined), so the
+//               delta-band filter in the chain matcher rejects EVERY contract →
+//               "No liquid chain match — index plan only" → tickets show premium "—".
+//   - "I:SPX" → returns the same contracts WITH greeks + quotes + OI/volume, so the
+//               matcher resolves a real liquid 0DTE strike and a live premium range.
 // per-contract details.ticker still resolves to the correct O:SPXW... symbol.
 // Overridable in case the provider's indexing changes.
-const CHAIN_UNDERLYING = (process.env.SPX_CHAIN_UNDERLYING ?? "SPX").trim();
+const CHAIN_UNDERLYING = (process.env.SPX_CHAIN_UNDERLYING ?? "I:SPX").trim();
 
 type ChainContract = {
   details?: {
@@ -145,6 +149,9 @@ export async function buildOptionTicket(
 
   type Scored = { c: ChainContract; score: number };
   const scored: Scored[] = [];
+  // All contracts that clear the LIQUIDITY/structure filters (radius, OTM, quoted, spread, OI/vol)
+  // regardless of the delta band — used for the closest-to-target fallback below.
+  const eligible: { c: ChainContract; delta: number }[] = [];
 
   for (const c of contracts) {
     const strike = Number(c.details?.strike_price);
@@ -167,6 +174,9 @@ export async function buildOptionTicket(
     if (oi < minOi && vol < minOi) continue;
 
     const delta = Math.abs(Number(c.greeks?.delta ?? 0));
+    if (delta <= 0) continue; // need real greeks to assess (provided by the I:SPX snapshot root)
+    eligible.push({ c, delta });
+
     if (delta < band.min || delta > band.max) continue;
 
     const deltaScore = 1 - Math.abs(delta - band.target) / band.target;
@@ -176,7 +186,18 @@ export async function buildOptionTicket(
   }
 
   scored.sort((a, b) => b.score - a.score);
-  const best = scored[0]?.c;
+  // Prefer an in-band contract. But at 0DTE near expiry, gamma makes delta jump sharply across the
+  // 5-pt SPX strike grid, so the ideal band can fall BETWEEN two strikes (no in-band match) even
+  // though liquid contracts exist on either side. Rather than degrade to an index-only ticket (no
+  // premium), fall back to the liquid OTM contract whose delta is CLOSEST to the band target — a
+  // real, tradeable strike near the intended delta.
+  const best =
+    scored[0]?.c ??
+    (eligible.length
+      ? eligible.reduce((a, b) =>
+          Math.abs(a.delta - band.target) <= Math.abs(b.delta - band.target) ? a : b
+        ).c
+      : undefined);
 
   if (!best) {
     const strike = fallbackStrike(spot, option_type, gradeRank(grade) >= 3 ? 0 : 1);

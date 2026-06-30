@@ -28,6 +28,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { fetchGexHeatmap, type GexEvent } from "@/lib/providers/polygon-options-gex";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { sendWebPush, vapidConfigured } from "@/lib/push/send-web-push";
+import { logCronRun } from "@/lib/cron-run";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,6 +100,7 @@ function dedupKey(ticker: string, ev: GexEvent, day: string): string {
 }
 
 export async function GET(req: NextRequest) {
+  const started = Date.now();
   if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -108,6 +110,7 @@ export async function GET(req: NextRequest) {
     (process.env.GEX_ALERTS_PUSH === "1" || process.env.GEX_ALERTS_PUSH === "true") &&
     vapidConfigured();
   if (!activated) {
+    await logCronRun("gex-alerts", started, { ok: true, skipped: true, reason: "inert (GEX_ALERTS_PUSH + VAPID)" });
     return NextResponse.json({ ok: true, inert: true });
   }
 
@@ -156,5 +159,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  await logCronRun("gex-alerts", started, {
+    ok: true,
+    evaluated_count: evaluated.length,
+    alerted_count: alerted.length,
+    alerted,
+  });
   return NextResponse.json({ ok: true, evaluated, alerted, inert: false });
 }

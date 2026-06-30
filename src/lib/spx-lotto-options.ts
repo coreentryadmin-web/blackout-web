@@ -8,6 +8,9 @@ import type { OptionTicket } from "@/lib/spx-play-options";
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
 const KEY = process.env.POLYGON_API_KEY ?? "";
 
+// Same index root as main SPX plays — SPXW snapshot path returns 0 rows / no greeks.
+const CHAIN_UNDERLYING = (process.env.SPX_CHAIN_UNDERLYING ?? "I:SPX").trim();
+
 type ChainContract = {
   details?: {
     strike_price?: number;
@@ -53,7 +56,9 @@ async function fetchChainUrl(url: string): Promise<{ results?: ChainContract[]; 
   if (!polygonConfigured()) return null;
   const sep = url.includes("?") ? "&" : "?";
   const full = url.startsWith("http") ? `${url}${sep}apiKey=${KEY}` : `${BASE}${url}${sep}apiKey=${KEY}`;
-  const label = url.startsWith("http") ? "/v3/snapshot/options/SPXW" : url.split("?")[0];
+  const label = url.startsWith("http")
+    ? `/v3/snapshot/options/${CHAIN_UNDERLYING}`
+    : url.split("?")[0];
   try {
     const res = await polygonTrackedFetch(label, full, { headers: { Accept: "application/json" }, cache: "no-store" });
     if (!res.ok) return null;
@@ -76,7 +81,7 @@ async function fetchOdteContracts(spot: number, expiry: string): Promise<ChainCo
   });
 
   const out: ChainContract[] = [];
-  let page = await fetchChainUrl(`/v3/snapshot/options/SPXW?${params}`);
+  let page = await fetchChainUrl(`/v3/snapshot/options/${CHAIN_UNDERLYING}?${params}`);
   let guard = 0;
   while (page && guard < 6) {
     out.push(...(page.results ?? []));
@@ -171,6 +176,7 @@ export async function buildLottoOptionTicket(
     if (oi < minOi && vol < minOi) continue;
 
     const delta = Math.abs(Number(c.greeks?.delta ?? 0));
+    if (delta <= 0) continue;
     const otmScore = Math.min(otmPts / (minOtmPts + 10), 1.5);
     const premScore = 1 - Math.abs(mid - 0.45) / 0.45;
     const spreadScore = 1 - spreadPct / maxSpread;

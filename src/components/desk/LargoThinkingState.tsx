@@ -7,7 +7,7 @@ export const LARGO_THINKING_PHRASES = [
   "Pulling the live tape…",
   "Reading dealer gamma…",
   "Cross-referencing flow against GEX…",
-  "Pulling Polygon feeds…",
+  "Pulling market feeds…",
   "Scanning the 0DTE chain…",
   "Syncing the SPX Slayer desk…",
   "Running confluence on your ask…",
@@ -22,17 +22,19 @@ export const LARGO_THINKING_PHRASES = [
 ] as const;
 
 const PIPELINE_NODES = [
-  { label: "POLYGON", color: "cyan" },
+  { label: "TAPE", color: "cyan" },
   { label: "DESK", color: "green" },
   { label: "FLOW", color: "purple" },
-  { label: "CLAUDE", color: "magenta" },
+  { label: "ENGINE", color: "magenta" },
 ] as const;
 
 type LargoThinkingStateProps = {
   active?: boolean;
+  /** Live tool-trace — friendly labels of the data sources Largo is pulling this turn. */
+  tools?: string[];
 };
 
-export function LargoThinkingState({ active = true }: LargoThinkingStateProps) {
+export function LargoThinkingState({ active = true, tools = [] }: LargoThinkingStateProps) {
   const [phraseIdx, setPhraseIdx] = useState(0);
   const [tick, setTick] = useState(0);
 
@@ -103,6 +105,33 @@ export function LargoThinkingState({ active = true }: LargoThinkingStateProps) {
             </span>
           ))}
         </div>
+
+        {tools.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5" aria-label="Live data sources">
+            {tools.map((t, i) => {
+              const isPulling = i === tools.length - 1;
+              return (
+                <span
+                  key={t}
+                  className={
+                    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] " +
+                    (isPulling
+                      ? "border-cyan-400/45 bg-cyan-400/10 text-cyan-200"
+                      : "border-bull/30 bg-bull/[0.07] text-bull")
+                  }
+                >
+                  <span
+                    className={
+                      "h-1.5 w-1.5 rounded-full bg-current " +
+                      (isPulling ? "animate-pulse motion-reduce:animate-none" : "")
+                    }
+                  />
+                  {t}
+                </span>
+              );
+            })}
+          </div>
+        )}
 
         <div className="largo-thinking-dots-row" aria-hidden>
           {Array.from({ length: 7 }).map((_, i) => (

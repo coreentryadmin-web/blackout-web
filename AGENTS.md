@@ -15,6 +15,11 @@ The ~20 `railway.*.toml` files at the repo root are production cron *trigger* se
   and `npm run lint:css` (stylelint) are **non-blocking** in CI (they emit warnings, `continue-on-error`).
 - Tests: `npm test` (`node --test` via `tsx`, files `src/**/*.test.ts`). No DB/env needed for tests.
 
+### Ops auto-fix (cron/errors → agent)
+- **`npm run ops:collect`** — scan prod Postgres + live watchdog; JSON action items (exit 1 if any).
+- **`.github/workflows/ops-auto-fix.yml`** — every 20 min + on audit failures → GitHub issue (`ops-auto-fix` label) + Cursor Cloud Agent.
+- Runbook: `docs/ops/OPS-AUTO-FIX.md`. Cloud agents: fix action items before other work; do not ask the user.
+
 ### Local environment / secrets
 - The app **degrades gracefully** with no env vars: the landing page, `/sign-in`, `/sign-up`,
   `/track-record`, and `/api/health` all work, and every external integration (Postgres, Redis,
@@ -58,3 +63,18 @@ The ~20 `railway.*.toml` files at the repo root are production cron *trigger* se
   - In `.env.local`: `DATABASE_URL=postgres://postgres:postgres@localhost:5432/blackout` and
     `DATABASE_SSL=0` (SSL auto-disables for localhost anyway). The `blackout` DB and `postgres`
     password were created during setup.
+
+### Autonomous RTH resume (Cloud Agent — do NOT wait for user)
+
+**User preference:** continue at market open without being asked. Never prompt for permission.
+
+On **every weekday** Cloud Agent session when **America/New_York ≥ 09:00**:
+
+1. Read and execute `docs/ops/RTH-OPEN-RUNBOOK.md` **before** other work.
+2. Run `npm run validate:rth-open` (wraps `validate:deploy` + RTH session checks).
+3. If anything fails → fix → commit → push → poll Railway deploy → re-run until GREEN.
+4. After **09:35 ET**, confirm `spx-evaluate` cron + options-socket `authenticated` in Railway logs.
+
+**Cursor scheduled task (recommended):** Mon–Fri **09:32 AM ET** — prompt: *Run RTH-OPEN-RUNBOOK autonomously; npm run validate:rth-open; fix failures; do not ask me.*
+
+Off-hours / weekends: RTH script skips automatically; still run `npm run validate:deploy` after pushes to `main`.
