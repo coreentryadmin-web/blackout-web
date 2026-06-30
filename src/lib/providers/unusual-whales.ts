@@ -1064,6 +1064,43 @@ export function normalizeLitTradesWsPayload(raw: unknown): UwLitTradePrint[] {
   return out;
 }
 
+/** Convert a WS `option_trades` print into `parseUwFlowAlert`-compatible raw fields. */
+export function optionTradePrintToFlowRaw(print: UwOptionTradePrint): Record<string, unknown> {
+  return {
+    id: print.id,
+    ticker: print.underlying,
+    option_chain: print.option_symbol,
+    option_symbol: print.option_symbol,
+    premium: print.premium,
+    total_premium: print.premium,
+    created_at: print.executed_at,
+    executed_at: print.executed_at,
+    tags: print.tags,
+  };
+}
+
+/** Build flow-per-strike row shape from the WS option tape (cron warm / desk overlay). */
+export function aggregateOptionTradesToStrikeRows(
+  prints: readonly UwOptionTradePrint[],
+  ticker: string
+): Record<string, unknown>[] {
+  const sym = ticker.toUpperCase();
+  const byStrike = new Map<number, { call_premium: number; put_premium: number }>();
+  for (const p of prints) {
+    if (p.underlying !== sym) continue;
+    const occ = p.option_symbol ? parseOccSymbol(p.option_symbol) : null;
+    const strike = occ?.strike ?? 0;
+    if (!strike) continue;
+    const bucket = byStrike.get(strike) ?? { call_premium: 0, put_premium: 0 };
+    if (occ?.option_type === "PUT") bucket.put_premium += p.premium;
+    else bucket.call_premium += p.premium;
+    byStrike.set(strike, bucket);
+  }
+  return [...byStrike.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([strike, prem]) => ({ strike, ...prem }));
+}
+
 /** Normalize UW `trading_halts` WS payload into halt events. */
 export function normalizeTradingHaltsWsPayload(raw: unknown): TradingHaltEvent[] {
   const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;

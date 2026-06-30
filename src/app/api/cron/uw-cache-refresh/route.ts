@@ -1,7 +1,7 @@
 // Cron: pre-warm Unusual Whales Redis cache for top tickers and market-wide signals.
 // Schedule: every 2 minutes (registered in cron-registry.ts as "uw-cache-refresh").
-// Keeps the most-requested data hot so API routes read from Redis rather than hitting UW directly,
-// reducing live UW call rate well below the 120/min plan cap.
+// When UW WS channels are fresh, seeds Redis from in-process stores first and skips
+// the matching REST warm tasks (see uw-ws-cache-bridge.ts).
 
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
@@ -20,12 +20,10 @@ import {
   aggregateFlowPerStrikeRows,
 } from "@/lib/providers/unusual-whales";
 import { fetchMarketMovers } from "@/lib/providers/polygon";
+import { seedUwCacheFromWsStores, shouldSkipUwCacheRefreshTask } from "@/lib/uw-ws-cache-bridge";
 
 const INDEX_TICKERS = ["SPX", "SPY", "QQQ", "IWM"] as const;
 const FLOW_STRIKE_TICKERS = ["SPX", "SPY"] as const;
-// UW Sector Tide enum names (GICS/Yahoo-style; matched case-insensitively). NOT the classic
-// GICS "financials"/"consumer discretionary" labels — UW 400s ("Invalid sector") on those.
-// fetchUwSectorTide also normalizes aliases, but keep these canonical so cache keys are clean.
 const SECTORS = [
   "technology",
   "financial services",
@@ -42,47 +40,48 @@ export async function GET(req: NextRequest) {
 
   const redis = await getUwCacheRedis();
   let refreshed = 0;
+  let ws_seeded = 0;
+  let ws_skipped: string[] = [];
+
+  const seed = await seedUwCacheFromWsStores(redis);
+  ws_seeded = seed.seeded;
+  ws_skipped = seed.skipped_ws;
 
   const tasks: Array<() => Promise<void>> = [
-    // Market Tide
     async () => {
+      if (shouldSkipUwCacheRefreshTask("market_tide")) return;
       const data = await fetchUwMarketTide();
       await uwCacheSet(redis, UW_KEYS.marketTide(), UW_CACHE_TTL.marketTide, data);
     },
 
-    // Sector Tide — five sectors
     ...SECTORS.map((sector) => async () => {
       const data = await fetchUwSectorTide(sector);
       await uwCacheSet(redis, UW_KEYS.sectorTide(sector), UW_CACHE_TTL.sectorTide, data);
     }),
 
-    // Dark Pool Recent (market-wide)
     async () => {
       const data = await fetchUwDarkPoolRecent();
       await uwCacheSet(redis, UW_KEYS.darkPoolRecent(), UW_CACHE_TTL.darkPoolRecent, data);
     },
 
-    // Market Movers — price-ranked, use Polygon (direct equivalent; frees UW quota)
     async () => {
       const data = await fetchMarketMovers(20);
       await uwCacheSet(redis, UW_KEYS.marketMovers(), UW_CACHE_TTL.marketMovers, data);
     },
 
-    // Top Net Impact
     async () => {
       const data = await fetchUwMarketTopNetImpact();
       await uwCacheSet(redis, UW_KEYS.topNetImpact(), UW_CACHE_TTL.topNetImpact, data);
     },
 
-    // Congress Recent
     async () => {
       const data = await fetchUwCongressTrades();
       await uwCacheSet(redis, UW_KEYS.congress(), UW_CACHE_TTL.congress, data);
     },
 
-    // Per-index-ticker: Net Prem Ticks, NOPE, Dark Pool
     ...INDEX_TICKERS.flatMap((ticker) => [
       async () => {
+        if (shouldSkipUwCacheRefreshTask("net_prem_ticks", ticker)) return;
         const data = await fetchUwNetPremTicks(ticker);
         await uwCacheSet(redis, UW_KEYS.netPremTicks(ticker), UW_CACHE_TTL.netPremTicks, data);
       },
@@ -96,14 +95,8 @@ export async function GET(req: NextRequest) {
       },
     ]),
 
-    // Flow Per Strike — SPX and SPY only (high-call-cost UW endpoint). ONE fetch warms BOTH
-    // flow-per-strike caches in their CORRECT shapes: fetchUwFlowPerStrikeRows caches the RAW rows
-    // (flow_per_strike_rows:), and we derive + cache the {call_premium,put_premium,net} AGGREGATE
-    // under fetchUwFlow0dte's key (UW_KEYS.flowPerStrike) via the SHARED reducer. Previously this
-    // wrote the raw ROWS under the aggregate key, poisoning the SPX desk + Largo 0DTE-flow reads for
-    // SPX/SPY (an array where {call_premium,...} was expected). The unbounded limit makes the
-    // aggregate span ALL rows, matching fetchUwFlow0dte's live computation exactly.
     ...FLOW_STRIKE_TICKERS.map((ticker) => async () => {
+      if (shouldSkipUwCacheRefreshTask("flow_per_strike", ticker)) return;
       const rows = await fetchUwFlowPerStrikeRows(ticker, Number.MAX_SAFE_INTEGER);
       await uwCacheSet(
         redis,
@@ -125,18 +118,16 @@ export async function GET(req: NextRequest) {
     console.warn(`[cron/uw-cache-refresh] ${failed} task(s) failed`);
   }
 
-  // Log the run so the watchdog/dashboard can see it. ok:false (=> status 'failed' +
-  // critical alert) only when the WHOLE batch fails; partial failures log ok with the
-  // count so one flaky UW task doesn't page ops every 2 min. Failure text goes under
-  // `error` so logCronRun surfaces it in the message column + Discord body.
   const allFailed = tasks.length > 0 && failed === tasks.length;
   await logCronRun("uw-cache-refresh", started, {
     ok: !allFailed,
     refreshed,
     failed,
     total: tasks.length,
+    ws_seeded,
+    ws_skipped,
     ...(failed > 0 ? { error: `${failed}/${tasks.length} refresh task(s) failed` } : {}),
   });
 
-  return NextResponse.json({ ok: true, refreshed, total: tasks.length });
+  return NextResponse.json({ ok: true, refreshed, total: tasks.length, ws_seeded, ws_skipped });
 }

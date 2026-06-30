@@ -21,8 +21,10 @@ import {
   normalizeLitTradesWsPayload,
   normalizeOptionTradesWsPayload,
   normalizeTradingHaltsWsPayload,
+  optionTradePrintToFlowRaw,
   parseUwFlowAlert,
   type DarkPoolSnapshot,
+  type NetPremTick,
   type TradingHaltEvent,
   type UwLitTradePrint,
   type UwOptionTradePrint,
@@ -95,6 +97,11 @@ function parseWsTickerCsv(raw: string | undefined, fallback: string): string[] {
 
 /** Wire channel names sent on join — ticker-scoped channels use `name:TICKER`. */
 function joinWiresForChannel(channel: UwWsChannel): string[] {
+  if (channel === "net_flow") {
+    return parseWsTickerCsv(process.env.UW_WS_NET_FLOW_TICKERS, "SPX,SPY,QQQ,IWM").map(
+      (t) => `net_flow:${t}`
+    );
+  }
   if (channel === "option_trades") {
     return parseWsTickerCsv(process.env.UW_WS_OPTION_TRADES_TICKERS, "SPX,SPY").map(
       (t) => `option_trades:${t}`
@@ -651,6 +658,49 @@ export const netFlowStore: {
   updatedAt: number;
 } = { call_premium: 0, put_premium: 0, net: 0, updatedAt: 0 };
 
+type NetFlowTickerSnapshot = {
+  call_premium: number;
+  put_premium: number;
+  net: number;
+  updatedAt: number;
+  ticks: NetPremTick[];
+};
+
+const NET_FLOW_TICKERS = new Set(["SPX", "SPY", "QQQ", "IWM"]);
+const NET_PREM_TICKS_MAX = 40;
+
+const netFlowByTicker = new Map<string, NetFlowTickerSnapshot>();
+
+function recordNetFlowForTicker(
+  ticker: string,
+  call: number,
+  put: number,
+  net: number,
+  at = Date.now()
+) {
+  const sym = ticker.toUpperCase();
+  const prev = netFlowByTicker.get(sym);
+  const tick: NetPremTick = { time: new Date(at).toISOString(), net };
+  const ticks = [...(prev?.ticks ?? []), tick].slice(-NET_PREM_TICKS_MAX);
+  netFlowByTicker.set(sym, {
+    call_premium: call,
+    put_premium: put,
+    net,
+    updatedAt: at,
+    ticks,
+  });
+  if (sym === "SPX") {
+    Object.assign(netFlowStore, { call_premium: call, put_premium: put, net, updatedAt: at });
+  }
+}
+
+/** Net-premium tick history derived from the UW `net_flow` WS channel. */
+export function getNetPremTicksForTicker(ticker: string): NetPremTick[] {
+  const snap = netFlowByTicker.get(ticker.toUpperCase());
+  if (!snap?.ticks.length) return [];
+  return snap.ticks;
+}
+
 export function getNetFlow(): typeof netFlowStore {
   return netFlowStore;
 }
@@ -757,6 +807,7 @@ export function getActiveTradingHalts(symbols: readonly string[] = PLAY_HALT_WAT
 }
 
 const flowAlertDedup = makeFlowDedup();
+const optionTradeDedup = makeFlowDedup();
 let uwSocketInitialized = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 // Reconcile cadence: pings + leadership re-check + stall watchdog. Must be < UW_LEADER_TTL_SEC so a
@@ -914,24 +965,17 @@ export function initUwSocket() {
     if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
       return;
     }
-    // UW net_flow channel delivers messages for each ticker. We extract the SPX row.
-    // Payload may be a single row or an array; each row has ticker, call_premium, put_premium, net.
     const rows = Array.isArray(payload) ? payload : [payload];
     for (const raw of rows) {
       if (!raw || typeof raw !== "object") continue;
       const r = raw as Record<string, unknown>;
-      // Accept rows that explicitly reference SPX, or rows without a ticker field (single-ticker stream).
       const ticker = String(r.ticker ?? r.symbol ?? "SPX").toUpperCase();
-      if (ticker !== "SPX" && r.ticker != null) continue;
+      if (!NET_FLOW_TICKERS.has(ticker)) continue;
       recordUwDelivery("net_flow");
-      const call = Number(r.call_premium ?? r.calls ?? 0);
-      const put = Number(r.put_premium ?? r.puts ?? 0);
-      Object.assign(netFlowStore, {
-        call_premium: call,
-        put_premium: put,
-        net: Number(r.net ?? (call - put)),
-        updatedAt: Date.now(),
-      });
+      const call = Number(r.call_premium ?? r.calls ?? r.net_call_premium ?? 0);
+      const put = Number(r.put_premium ?? r.puts ?? r.net_put_premium ?? 0);
+      const net = Number(r.net ?? call - put);
+      recordNetFlowForTicker(ticker, call, put, net);
     }
   });
 
@@ -942,7 +986,15 @@ export function initUwSocket() {
     const prints = normalizeOptionTradesWsPayload(payload).filter((p) => p.premium >= FLOW_MIN_PREMIUM);
     if (!prints.length) return;
     recordUwDelivery("option_trades");
+    const now = Date.now();
     pushOptionTradeRows(prints);
+    for (const print of prints) {
+      const raw = optionTradePrintToFlowRaw(print);
+      const flow = parseUwFlowAlert(raw);
+      const id = computeFlowAlertId(raw, flow);
+      if (optionTradeDedup.seen(id, now)) continue;
+      void persistAndPublishFlowAlert(raw, flow);
+    }
   });
 
   uwSocket.subscribe("lit_trades", (payload) => {

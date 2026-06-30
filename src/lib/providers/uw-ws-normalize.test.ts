@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  aggregateOptionTradesToStrikeRows,
   normalizeLitTradesWsPayload,
   normalizeOptionTradesWsPayload,
 } from "./unusual-whales";
@@ -38,4 +39,37 @@ test("normalizeLitTradesWsPayload maps lit equity prints", () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0]?.symbol, "SPY");
   assert.equal(rows[0]?.premium, 600.12 * 500);
+});
+
+test("aggregateOptionTradesToStrikeRows buckets call/put premium by strike", () => {
+  const rows = aggregateOptionTradesToStrikeRows(
+    [
+      {
+        id: "1",
+        underlying: "SPX",
+        option_symbol: "SPXW260630C06000000",
+        price: 12,
+        size: 10,
+        premium: 12000,
+        executed_at: "2026-06-30T15:04:00Z",
+        tags: [],
+      },
+      {
+        id: "2",
+        underlying: "SPX",
+        option_symbol: "SPXW260630P05900000",
+        price: 8,
+        size: 5,
+        premium: 4000,
+        executed_at: "2026-06-30T15:05:00Z",
+        tags: [],
+      },
+    ],
+    "SPX"
+  );
+  assert.equal(rows.length, 2);
+  const callRow = rows.find((r) => Number(r.strike) === 6000);
+  assert.equal(callRow?.call_premium, 12000);
+  const putRow = rows.find((r) => Number(r.strike) === 5900);
+  assert.equal(putRow?.put_premium, 4000);
 });

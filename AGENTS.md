@@ -58,6 +58,15 @@ The ~20 `railway.*.toml` files at the repo root are production cron *trigger* se
 - **Check without Railway:** `/admin` → **Tool launch status** panel, or `GET /api/admin/launch-status`
   (admin-gated). Same snapshot is on `GET /api/admin/health` as `launch_status`.
 
+### UW WebSocket → cache / HELIX (2 RPS budget)
+- Multiplex channels in `src/lib/live-api-integrations.ts` (`UW_WS_CHANNELS`). Ticker-scoped joins:
+  `option_trades:SPX,SPY`, `lit_trades:SPY`, `net_flow:SPX,SPY,QQQ,IWM` (override via
+  `UW_WS_*_TICKERS` env vars).
+- High-premium `option_trades` prints persist to HELIX via `persistAndPublishFlowAlert` (same path as
+  `flow_alerts`).
+- `uw-ws-cache-bridge.ts` seeds Redis from WS stores; `uw-cache-refresh` cron skips REST tasks when the
+  matching channel is fresh (`market_tide`, `net_flow`, `option_trades`).
+
 ### Production edge (Cloudflare) — security headers / CSP are NOT served from `next.config.mjs`
 - Production is fronted by **Cloudflare**, and the security **response headers are delivered by a
   Cloudflare Transform Rule** ("Add security headers to all responses") in the
