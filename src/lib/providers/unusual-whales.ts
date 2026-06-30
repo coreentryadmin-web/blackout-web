@@ -1731,9 +1731,7 @@ export async function fetchUwEconomyIndicator(indicator: string): Promise<UwMacr
   const slug = resolveUwEconomySlug(indicator);
   const label = resolveMacroLabel(indicator, slug);
   const data = await uwGetSafe<unknown>(`/api/economy/${slug}`, {});
-  console.log(`[UW-ECONOMY] slug=${slug} raw=`, JSON.stringify(data).slice(0, 500));
   const rows = extractRows(data as Record<string, unknown>);
-  console.log(`[UW-ECONOMY] slug=${slug} rows.length=`, rows.length, rows[0] ? JSON.stringify(rows[0]).slice(0,200) : 'EMPTY');
   return parseEconomyIndicatorRows(id, label, rows);
 }
 

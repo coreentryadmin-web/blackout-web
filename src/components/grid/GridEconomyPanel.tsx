@@ -13,8 +13,7 @@ const fetcher = (url: string) =>
   fetch(url, { cache: "no-store", credentials: "same-origin" })
     .then((r) => r.json()) as Promise<Res>;
 
-function fmtValue(ind: UwMacroIndicatorSnapshot): string {
-  const v = ind.latest_value;
+function fmtIndicatorValue(ind: UwMacroIndicatorSnapshot, v: number | null | undefined): string {
   if (v == null) return "—";
   const id = ind.indicator.toUpperCase();
   if (id === "FED-FUNDS" || id === "FED_FUNDS" || id.includes("YIELD") || id.includes("RATE"))
@@ -44,12 +43,12 @@ export function GridEconomyPanel() {
 
   return (
     <GridCard
-      title="Economic Calendar"
+      title="Macro Indicators"
       kicker="MACRO"
       accent="emerald"
       live={live}
       span={2}
-      footer={<span className="grid-foot-note">Macro calendar · CPI · Fed Funds · GDP · Payrolls · Unemployment</span>}
+      footer={<span className="grid-foot-note">Latest readings · CPI · Fed Funds · GDP · Payrolls · Unemployment · Treasury · Retail</span>}
     >
       {isFiltered && (
         <p className="grid-empty text-sky-400/60 text-[10px]">Market-wide · ticker filter not applicable</p>
@@ -63,10 +62,10 @@ export function GridEconomyPanel() {
           {indicators.map((ind) => (
             <div key={ind.indicator} className="grid-econ-tile">
               <span className="grid-econ-label">{ind.label}</span>
-              <span className="grid-econ-value">{fmtValue(ind)}</span>
+              <span className="grid-econ-value">{fmtIndicatorValue(ind, ind.latest_value)}</span>
               <div className="grid-econ-sub">
                 {ind.prior_value != null && (
-                  <span className="text-sky-300/60 text-[10px]">prior {ind.prior_value.toFixed(1)}</span>
+                  <span className="text-sky-300/60 text-[10px]">prior {fmtIndicatorValue(ind, ind.prior_value)}</span>
                 )}
                 <ChangeBadge pct={ind.change_pct} />
               </div>

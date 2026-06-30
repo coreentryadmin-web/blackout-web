@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
-import { requireToolApi } from "@/lib/tool-access-server";
+import { requireAnyToolApi } from "@/lib/tool-access-server";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { fetchPolygonPositioningBundle } from "@/lib/providers/polygon-options-gex";
 import { analyzeStrikeGexRows, computeGammaFlip, gammaRegime } from "@/lib/providers/gamma-desk";
@@ -24,10 +24,11 @@ export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
   if (auth instanceof Response) return auth;
 
-  // Launch gate — this route returns the SAME dealer-positioning the locked Heatmaps tool shows, so
-  // gate it to non-admins until Heatmaps ships (parity with gex-heatmap + explain). Verified: no
-  // in-repo HTTP caller — internal consumers call getGexPositioning() directly, so nothing breaks.
-  const locked = await requireToolApi("heatmap");
+  // Launch gate — this route returns the SAME dealer-positioning the Heat Maps tool shows AND feeds
+  // the Grid's GEX Regime panel + Pulse chip. Allow either tool's launch (or admin), so a Grid user
+  // isn't blocked when only Heat Maps' flag is off. Internal consumers call getGexPositioning()
+  // directly, so nothing else is affected.
+  const locked = await requireAnyToolApi(["heatmap", "grid"]);
   if (locked) return locked;
 
   const ticker = (req.nextUrl.searchParams.get("ticker") || "SPY").toUpperCase();

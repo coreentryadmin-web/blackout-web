@@ -23,6 +23,7 @@ import {
   warmGridEconomy,
   warmGridSectors,
   warmGridMovers,
+  warmGridCatalysts,
 } from "@/lib/providers/grid";
 import { etMinutes, etClock } from "@/lib/spx-play-session-time";
 
@@ -71,6 +72,7 @@ export async function GET(req: NextRequest) {
     warmGridEconomy(),
     warmGridSectors(),
     warmGridMovers(),
+    warmGridCatalysts(),
   ]);
 
   let warmed = 0;

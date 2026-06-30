@@ -55,9 +55,13 @@ export function PulseStrip() {
     () => fetch(`/api/market/gex-positioning?ticker=${gexTicker}`, { credentials: "same-origin" }).then((r) => r.json()),
     { refreshInterval: 60_000 }
   );
-  const gexLabel = gex?.net_gex != null ? (gex.net_gex < 0 ? "NEG γ" : "POS γ") : "—";
-  const gexTone: "emerald" | "bear" | "sky" = gex?.net_gex != null ? (gex.net_gex < 0 ? "bear" : "emerald") : "sky";
-  const gexSub = gex?.gamma_posture != null ? `${gexTicker} flip ${gex?.flip ?? "—"}` : undefined;
+  // Use gamma_posture (spot-vs-flip) for the chip so it matches the GEX Regime panel
+  // exactly — previously this read net_gex sign, so the two panels could disagree
+  // while both labelled "γ". short => negative gamma (bear), long => positive (emerald).
+  const gexPosture = (gex?.gamma_posture ?? "").toLowerCase();
+  const gexLabel = gexPosture === "short" ? "NEG γ" : gexPosture === "long" ? "POS γ" : "—";
+  const gexTone: "emerald" | "bear" | "sky" = gexPosture === "short" ? "bear" : gexPosture === "long" ? "emerald" : "sky";
+  const gexSub = gex?.flip != null ? `${gexTicker} flip ${fmt(gex.flip, 0)}` : undefined;
 
   const s = data;
   const live = !error && !!s?.available && (s?.price ?? 0) > 0;
