@@ -18,7 +18,7 @@ const FEATURE_LINKS: FeatureLink[] = [
   { href: "/flows", label: "HELIX", sub: "Institutional options flow", accent: "purple" },
   { href: "/heatmap", label: "BlackOut Thermal", sub: "Dealer gamma & vanna map", accent: "orange" },
   { href: "/terminal", label: "Largo", sub: "BlackOut Intelligence desk analyst", accent: "blue" },
-  { href: "/nighthawk", label: "Night Hawk", sub: "Overnight playbook", accent: "red" },
+  { href: "/nighthawk", label: "Night Hawk", sub: "Playbook + Night's Watch positions", accent: "red" },
   { href: "/grid", label: "BlackOut Grid", sub: "Cross-market intelligence", accent: "gold" },
 ];
 
