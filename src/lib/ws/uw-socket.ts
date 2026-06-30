@@ -18,10 +18,16 @@ import { isUwErrorFrame } from "@/lib/ws/uw-frame";
 import {
   normalizeDarkPoolWsPayload,
   normalizeIntervalFlowWsPayload,
+  normalizeLitTradesWsPayload,
+  normalizeOptionTradesWsPayload,
   normalizeTradingHaltsWsPayload,
+  optionTradePrintToFlowRaw,
   parseUwFlowAlert,
   type DarkPoolSnapshot,
+  type NetPremTick,
   type TradingHaltEvent,
+  type UwLitTradePrint,
+  type UwOptionTradePrint,
 } from "@/lib/providers/unusual-whales";
 import {
   type StoredTradingHalt,
@@ -77,8 +83,34 @@ function buildSocketUrl(): string {
 }
 
 function channelFromWireName(name: string): UwWsChannel | null {
-  const n = name.replace(/-/g, "_");
-  return ALL_CHANNELS.includes(n as UwWsChannel) ? (n as UwWsChannel) : null;
+  const base = name.split(":")[0].replace(/-/g, "_");
+  return ALL_CHANNELS.includes(base as UwWsChannel) ? (base as UwWsChannel) : null;
+}
+
+function parseWsTickerCsv(raw: string | undefined, fallback: string): string[] {
+  const src = (raw ?? fallback)
+    .split(",")
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean);
+  return [...new Set(src)];
+}
+
+/** Wire channel names sent on join — ticker-scoped channels use `name:TICKER`. */
+function joinWiresForChannel(channel: UwWsChannel): string[] {
+  if (channel === "net_flow") {
+    return parseWsTickerCsv(process.env.UW_WS_NET_FLOW_TICKERS, "SPX,SPY,QQQ,IWM").map(
+      (t) => `net_flow:${t}`
+    );
+  }
+  if (channel === "option_trades") {
+    return parseWsTickerCsv(process.env.UW_WS_OPTION_TRADES_TICKERS, "SPX,SPY").map(
+      (t) => `option_trades:${t}`
+    );
+  }
+  if (channel === "lit_trades") {
+    return parseWsTickerCsv(process.env.UW_WS_LIT_TRADES_TICKERS, "SPY").map((t) => `lit_trades:${t}`);
+  }
+  return [CHANNEL_JOIN_NAME[channel]];
 }
 
 // ── Cross-replica leader election ────────────────────────────────────────────────────────────────
@@ -239,12 +271,14 @@ class UwSocketManager {
   private sendJoin(channel: UwWsChannel) {
     const ws = this.ws;
     if (!ws || ws.readyState !== 1) return;
-    ws.send(
-      JSON.stringify({
-        channel: CHANNEL_JOIN_NAME[channel],
-        msg_type: "join",
-      })
-    );
+    for (const wire of joinWiresForChannel(channel)) {
+      ws.send(
+        JSON.stringify({
+          channel: wire,
+          msg_type: "join",
+        })
+      );
+    }
   }
 
   private joinActiveChannels() {
@@ -624,8 +658,80 @@ export const netFlowStore: {
   updatedAt: number;
 } = { call_premium: 0, put_premium: 0, net: 0, updatedAt: 0 };
 
+type NetFlowTickerSnapshot = {
+  call_premium: number;
+  put_premium: number;
+  net: number;
+  updatedAt: number;
+  ticks: NetPremTick[];
+};
+
+const NET_FLOW_TICKERS = new Set(["SPX", "SPY", "QQQ", "IWM"]);
+const NET_PREM_TICKS_MAX = 40;
+
+const netFlowByTicker = new Map<string, NetFlowTickerSnapshot>();
+
+function recordNetFlowForTicker(
+  ticker: string,
+  call: number,
+  put: number,
+  net: number,
+  at = Date.now()
+) {
+  const sym = ticker.toUpperCase();
+  const prev = netFlowByTicker.get(sym);
+  const tick: NetPremTick = { time: new Date(at).toISOString(), net };
+  const ticks = [...(prev?.ticks ?? []), tick].slice(-NET_PREM_TICKS_MAX);
+  netFlowByTicker.set(sym, {
+    call_premium: call,
+    put_premium: put,
+    net,
+    updatedAt: at,
+    ticks,
+  });
+  if (sym === "SPX") {
+    Object.assign(netFlowStore, { call_premium: call, put_premium: put, net, updatedAt: at });
+  }
+}
+
+/** Net-premium tick history derived from the UW `net_flow` WS channel. */
+export function getNetPremTicksForTicker(ticker: string): NetPremTick[] {
+  const snap = netFlowByTicker.get(ticker.toUpperCase());
+  if (!snap?.ticks.length) return [];
+  return snap.ticks;
+}
+
 export function getNetFlow(): typeof netFlowStore {
   return netFlowStore;
+}
+
+const OPTION_TRADES_RING_MAX = 250;
+const LIT_TRADES_RING_MAX = 120;
+
+export const optionTradesStore: {
+  rows: UwOptionTradePrint[];
+  updatedAt: number;
+  total_received: number;
+} = { rows: [], updatedAt: 0, total_received: 0 };
+
+export const litTradesStore: {
+  rows: UwLitTradePrint[];
+  updatedAt: number;
+  total_received: number;
+} = { rows: [], updatedAt: 0, total_received: 0 };
+
+function pushOptionTradeRows(prints: UwOptionTradePrint[]) {
+  if (!prints.length) return;
+  optionTradesStore.rows = [...prints, ...optionTradesStore.rows].slice(0, OPTION_TRADES_RING_MAX);
+  optionTradesStore.updatedAt = Date.now();
+  optionTradesStore.total_received += prints.length;
+}
+
+function pushLitTradeRows(prints: UwLitTradePrint[]) {
+  if (!prints.length) return;
+  litTradesStore.rows = [...prints, ...litTradesStore.rows].slice(0, LIT_TRADES_RING_MAX);
+  litTradesStore.updatedAt = Date.now();
+  litTradesStore.total_received += prints.length;
 }
 
 const TRADING_HALT_CHANNEL_MAX_AGE_MS = 120_000;
@@ -701,6 +807,7 @@ export function getActiveTradingHalts(symbols: readonly string[] = PLAY_HALT_WAT
 }
 
 const flowAlertDedup = makeFlowDedup();
+const optionTradeDedup = makeFlowDedup();
 let uwSocketInitialized = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 // Reconcile cadence: pings + leadership re-check + stall watchdog. Must be < UW_LEADER_TTL_SEC so a
@@ -858,25 +965,46 @@ export function initUwSocket() {
     if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
       return;
     }
-    // UW net_flow channel delivers messages for each ticker. We extract the SPX row.
-    // Payload may be a single row or an array; each row has ticker, call_premium, put_premium, net.
     const rows = Array.isArray(payload) ? payload : [payload];
     for (const raw of rows) {
       if (!raw || typeof raw !== "object") continue;
       const r = raw as Record<string, unknown>;
-      // Accept rows that explicitly reference SPX, or rows without a ticker field (single-ticker stream).
       const ticker = String(r.ticker ?? r.symbol ?? "SPX").toUpperCase();
-      if (ticker !== "SPX" && r.ticker != null) continue;
+      if (!NET_FLOW_TICKERS.has(ticker)) continue;
       recordUwDelivery("net_flow");
-      const call = Number(r.call_premium ?? r.calls ?? 0);
-      const put = Number(r.put_premium ?? r.puts ?? 0);
-      Object.assign(netFlowStore, {
-        call_premium: call,
-        put_premium: put,
-        net: Number(r.net ?? (call - put)),
-        updatedAt: Date.now(),
-      });
+      const call = Number(r.call_premium ?? r.calls ?? r.net_call_premium ?? 0);
+      const put = Number(r.put_premium ?? r.puts ?? r.net_put_premium ?? 0);
+      const net = Number(r.net ?? call - put);
+      recordNetFlowForTicker(ticker, call, put, net);
     }
+  });
+
+  uwSocket.subscribe("option_trades", (payload) => {
+    if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
+      return;
+    }
+    const prints = normalizeOptionTradesWsPayload(payload).filter((p) => p.premium >= FLOW_MIN_PREMIUM);
+    if (!prints.length) return;
+    recordUwDelivery("option_trades");
+    const now = Date.now();
+    pushOptionTradeRows(prints);
+    for (const print of prints) {
+      const raw = optionTradePrintToFlowRaw(print);
+      const flow = parseUwFlowAlert(raw);
+      const id = computeFlowAlertId(raw, flow);
+      if (optionTradeDedup.seen(id, now)) continue;
+      void persistAndPublishFlowAlert(raw, flow);
+    }
+  });
+
+  uwSocket.subscribe("lit_trades", (payload) => {
+    if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
+      return;
+    }
+    const prints = normalizeLitTradesWsPayload(payload);
+    if (!prints.length) return;
+    recordUwDelivery("lit_trades");
+    pushLitTradeRows(prints);
   });
 
   startUwLeaderRefresh();
@@ -972,6 +1100,12 @@ export function getUwSocketHealth() {
       interval_flow_updated_at: intervalFlowStore.updatedAt || null,
       trading_halts_updated_at: tradingHaltsStore.updatedAt || null,
       net_flow_updated_at: netFlowStore.updatedAt || null,
+      option_trades_updated_at: optionTradesStore.updatedAt || null,
+      option_trades_buffered: optionTradesStore.rows.length,
+      option_trades_total_received: optionTradesStore.total_received,
+      lit_trades_updated_at: litTradesStore.updatedAt || null,
+      lit_trades_buffered: litTradesStore.rows.length,
+      lit_trades_total_received: litTradesStore.total_received,
       active_halts: Array.from(tradingHaltsStore.halts.values())
         .filter((h) => h.active)
         .map((h) => h.symbol),

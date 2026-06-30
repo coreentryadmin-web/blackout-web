@@ -982,6 +982,125 @@ export type TradingHaltEvent = {
   active: boolean;
 };
 
+export type UwOptionTradePrint = {
+  id: string;
+  underlying: string;
+  option_symbol: string;
+  price: number;
+  size: number;
+  premium: number;
+  executed_at: string;
+  tags: string[];
+};
+
+/** Normalize UW `option_trades` / `option_trades:TICKER` WS payloads into tape rows. */
+export function normalizeOptionTradesWsPayload(raw: unknown): UwOptionTradePrint[] {
+  const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
+  const list = Array.isArray(rows) ? rows : typeof raw === "object" && raw !== null ? [raw] : [];
+  const out: UwOptionTradePrint[] = [];
+  for (const row of list) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const underlying = String(r.underlying_symbol ?? r.underlying ?? r.ticker ?? "").toUpperCase();
+    if (!underlying) continue;
+    const price = Number(r.price ?? 0);
+    const size = Number(r.size ?? r.qty ?? 0);
+    const premium = Number(r.premium ?? price * size * 100);
+    if (!Number.isFinite(premium) || premium <= 0) continue;
+    const executedAt = String(r.executed_at ?? r.timestamp ?? "");
+    if (!executedAt) continue;
+    const tagsRaw = r.tags ?? r.trade_code;
+    const tags = Array.isArray(tagsRaw)
+      ? tagsRaw.map(String)
+      : tagsRaw
+        ? [String(tagsRaw)]
+        : [];
+    out.push({
+      id: String(r.id ?? `${underlying}-${executedAt}-${price}-${size}`),
+      underlying,
+      option_symbol: String(r.option_symbol ?? r.option_chain ?? ""),
+      price,
+      size,
+      premium,
+      executed_at: executedAt.slice(0, 19),
+      tags,
+    });
+  }
+  return out;
+}
+
+export type UwLitTradePrint = {
+  symbol: string;
+  price: number;
+  size: number;
+  executed_at: string;
+  premium: number;
+};
+
+/** Normalize UW `lit_trades` / `lit_trades:TICKER` WS payloads. */
+export function normalizeLitTradesWsPayload(raw: unknown): UwLitTradePrint[] {
+  const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
+  const list = Array.isArray(rows) ? rows : typeof raw === "object" && raw !== null ? [raw] : [];
+  const out: UwLitTradePrint[] = [];
+  for (const row of list) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const symbol = String(r.symbol ?? r.ticker ?? "").toUpperCase();
+    if (!symbol) continue;
+    const price = Number(r.price ?? 0);
+    const size = Number(r.size ?? r.volume ?? 0);
+    const premium = Number(r.premium ?? price * size);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const executedAt = String(r.executed_at ?? r.timestamp ?? "");
+    if (!executedAt) continue;
+    out.push({
+      symbol,
+      price,
+      size,
+      premium: Number.isFinite(premium) ? premium : price * size,
+      executed_at: executedAt.slice(0, 19),
+    });
+  }
+  return out;
+}
+
+/** Convert a WS `option_trades` print into `parseUwFlowAlert`-compatible raw fields. */
+export function optionTradePrintToFlowRaw(print: UwOptionTradePrint): Record<string, unknown> {
+  return {
+    id: print.id,
+    ticker: print.underlying,
+    option_chain: print.option_symbol,
+    option_symbol: print.option_symbol,
+    premium: print.premium,
+    total_premium: print.premium,
+    created_at: print.executed_at,
+    executed_at: print.executed_at,
+    tags: print.tags,
+  };
+}
+
+/** Build flow-per-strike row shape from the WS option tape (cron warm / desk overlay). */
+export function aggregateOptionTradesToStrikeRows(
+  prints: readonly UwOptionTradePrint[],
+  ticker: string
+): Record<string, unknown>[] {
+  const sym = ticker.toUpperCase();
+  const byStrike = new Map<number, { call_premium: number; put_premium: number }>();
+  for (const p of prints) {
+    if (p.underlying !== sym) continue;
+    const occ = p.option_symbol ? parseOccSymbol(p.option_symbol) : null;
+    const strike = occ?.strike ?? 0;
+    if (!strike) continue;
+    const bucket = byStrike.get(strike) ?? { call_premium: 0, put_premium: 0 };
+    if (occ?.option_type === "PUT") bucket.put_premium += p.premium;
+    else bucket.call_premium += p.premium;
+    byStrike.set(strike, bucket);
+  }
+  return [...byStrike.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([strike, prem]) => ({ strike, ...prem }));
+}
+
 /** Normalize UW `trading_halts` WS payload into halt events. */
 export function normalizeTradingHaltsWsPayload(raw: unknown): TradingHaltEvent[] {
   const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
