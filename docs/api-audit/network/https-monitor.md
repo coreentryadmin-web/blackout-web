@@ -2,6 +2,30 @@
 
 Automated TLS, availability, security-header, redirect, and CDN health checks for `www.blackouttrades.com`.
 
+## 2026-06-29 13:22 ET
+### TLS: cert expires 2026-09-14 — 77 days remaining — **PASS** (CN=blackouttrades.com, issuer Google Trust Services WE1; handshake valid)
+### Availability: 12/12 routes healthy — **PASS** (1 transient slow landing, see below)
+- Pages 200 (Accept:text/html, follows redirects): Landing 7986ms ⚠️, Sign In 283ms, Sign Up 903ms, /dashboard 307ms, /flows 504ms, /heatmap 303ms, /grid 282ms, /nighthawk 274ms; /api/health 200 (114ms)
+- Auth-gated APIs 401 as intended (~90–115ms): /api/market/spx/pulse, /api/market/gex-positioning, /api/market/flows
+- **No 5xx. No P0.** WARN: Landing first-hit 7986ms (>3s). Read as a one-off CF cache-miss/origin cold-start, NOT systemic: the Step-5 landing refetch this same run returned cached (`Age: 1493s`) and fast, and prior runs were ~440ms. Watch next cycle — escalate only if it recurs.
+### Security Headers: 6/6 present on canonical apex page — **PASS** (HSTS max-age=, X-Content-Type-Options nosniff, X-Frame-Options SAMEORIGIN, Referrer-Policy strict-origin, CSP default-src, Permissions-Policy camera=()). Step-3 apex-probe fix holding — no CSP false alarm.
+- `X-Powered-By` not leaking. `Server: cloudflare` expected (CF edge header, not an app leak).
+### Redirects: **PASS** — `http://www/` → 301 → https://blackouttrades.com/ ; www `/pricing` → 301 → https://blackouttrades.com/pricing (canonical = apex).
+### CDN: **PASS** — Cloudflare edge (CF-Ray a1369cb87c3775f1-SEA), X-Railway-Request-Id present. Landing `Cache-Control: s-maxage=31536000` (Age 1493s, marketing force-static + CF edge cache). /api/health carries no Cache-Control (dynamic, not CDN-cached — correct).
+---
+
+## 2026-06-29 11:22 ET
+### TLS: cert expires 2026-09-14 — 77 days remaining — **PASS** (CN=blackouttrades.com, issuer Google Trust Services WE1; handshake valid)
+### Availability: 12/12 routes healthy — **PASS**
+- Pages 200 (Accept:text/html, follows redirects): Landing 467ms, Sign In 184ms, Sign Up 293ms, /dashboard 200ms, /flows 269ms, /heatmap 245ms, /grid 135ms, /nighthawk 238ms; /api/health 200 (116ms)
+- Auth-gated APIs 401 as intended (~90–95ms): /api/market/spx/pulse, /api/market/gex-positioning, /api/market/flows
+- **No 5xx. No slow routes (>3s). No P0.**
+### Security Headers: 6/6 present on canonical apex page — **PASS** (HSTS max-age=31536000, X-Content-Type-Options nosniff, X-Frame-Options SAMEORIGIN, Referrer-Policy strict-origin, CSP default-src, Permissions-Policy camera=()). Step-3 apex-probe fix holding — no CSP false alarm.
+- `X-Powered-By` not leaking. `Server: cloudflare` expected (CF edge header, not an app leak).
+### Redirects: **PASS** — `http://www/` → 301 → https://blackouttrades.com/ ; www `/pricing` → 301 → https://blackouttrades.com/pricing (canonical = apex).
+### CDN: **PASS** — Cloudflare edge (CF-Ray a135ec9ca9d40239-SEA), X-Railway-Request-Id present. Landing `Cache-Control: s-maxage=31536000` (Age 5557s, marketing force-static + CF edge cache). /api/health carries no Cache-Control (dynamic, not CDN-cached — correct).
+---
+
 ## 2026-06-29 07:22 ET
 ### TLS: cert expires 2026-09-14 — 77 days remaining — **PASS** (CN=blackouttrades.com, issuer Google Trust Services WE1; handshake valid)
 ### Availability: 12/12 routes healthy — **PASS**
@@ -307,4 +331,30 @@ Automated TLS, availability, security-header, redirect, and CDN health checks fo
 ### Security Headers: 6/6 present | Missing: none (Server:cloudflare is CF edge header, not app leak)
 ### Redirects: HTTP→HTTPS 301→apex OK | /pricing 301→apex OK
 ### CDN: Cloudflare (CF-Ray SEA) + Railway edge present; landing s-maxage=31536000 (Age ~94m, by-design marketing cache); auth APIs 401 no-cache
+---
+
+## 2026-06-29 15:23 ET
+### TLS: cert expires 2026-09-14 — 77 days remaining — PASS (Google Trust Services WE1)
+### Availability: 12/12 routes OK | Failed: none (3 APIs 401 = expected unauth) | Slow: none (max 1007ms Landing)
+### Security Headers: 6/6 present (HSTS, X-CTO, XFO, Referrer-Policy, CSP, Permissions-Policy) | Missing: none | Note: Server=cloudflare is CF edge identity (benign, not origin leak)
+### Redirects: HTTP→HTTPS 301→apex OK | www/pricing 301→apex OK
+### CDN: Cloudflare (CF-Ray a1374d25...-SEA) + Railway (X-Railway-Request-Id present); landing s-maxage=31536000 Age=118s (by-design marketing cache); auth APIs 401 no-cache
+---
+
+## 2026-06-29 17:26 ET
+### TLS: cert expires 2026-09-14 -- 77 days remaining -- PASS (Google Trust Services WE1, CN=blackouttrades.com)
+### Availability: 12/12 reachable, 0 failed (3 APIs 401 = expected unauth, /api/health 200 in 383ms) | Slow (>3s): Landing 41446ms->12871ms re-test, Sign In 4532ms, Sign Up 9363ms, SPX Desk 10156ms, HELIX 5772ms, Heatmaps 8052ms, Grid 20816ms, Night Hawk 29604ms
+### WARN: PAGE/SSR routes degraded vs today's 09:22 & 15:23 baselines (both <1s). API routes stayed fast (health 383ms; gex/pulse/flows 251-1037ms), so origin is up and edge/network healthy. Pattern (cached landing + light /api/health fast, SSR page renders 3-41s, Landing warming 41s->12.8s) points to an SSR cold-start, most likely a Railway deploy/restart in the last ~2h. NOT P0 (no 5xx). Recommend re-check next cycle; if page latency persists when no deploy is active, investigate SSR/middleware (Clerk redirect chain) latency.
+### Security Headers: 6/6 present (HSTS, X-Content-Type-Options, X-Frame-Options SAMEORIGIN, Referrer-Policy, CSP default-src, Permissions-Policy camera=()) | Missing: none | Server=cloudflare is CF edge identity (benign, not origin/app-stack leak)
+### Redirects: HTTP->HTTPS 301->apex OK | www/pricing 301->apex/pricing OK
+### CDN: Cloudflare (CF-Ray a138020d...-SEA) + Railway (X-Railway-Request-Id present); landing Cache-Control s-maxage=31536000 Age=1459s (by-design marketing edge cache); auth APIs no-cache 401
+---
+
+## 2026-06-30 12:05 AM ET
+### TLS: cert expires 2026-09-14 -- 77 days remaining -- PASS (Google Trust Services WE1, CN=blackouttrades.com)
+### Availability: 12/12 reachable, 0 failed, 0 5xx (3 APIs 401 = expected unauth). Apex landing served by curl in 0.33s/119KB; warm page routes /api/health 652ms, /flows 386ms, /heatmap 703ms, /dashboard 661ms (all <1s).
+### NOTE (not WARN): First-pass Invoke-WebRequest timings were inflated (Landing 14.9-69s, HELIX 22s, Health 18s) but were CLIENT-SIDE artifacts -- cold TLS handshake to the www redirect host (curl measured connect=2.0s, tls=3.4s on www; apex direct = 0.33s) plus intermittent IWR stalls (one apex IWR call hung past 2min while curl fetched it in 0.33s same moment). Warm re-probes were all sub-second, confirming origin + edge healthy. Unlike the 17:26 ET cycle, page routes did NOT stay slow on re-test -- no SSR cold-start this cycle.
+### Security Headers: 6/6 present (HSTS max-age=31536000 incl preload, X-Content-Type-Options nosniff, X-Frame-Options SAMEORIGIN, Referrer-Policy strict-origin-when-cross-origin, CSP default-src 'self', Permissions-Policy camera=()) | Missing: none | No X-Powered-By/stack leak; Server=cloudflare is CF edge identity (benign)
+### Redirects: HTTP->HTTPS 301->apex OK | www->apex 301 OK | www/pricing 301->apex/pricing OK
+### CDN: Cloudflare (CF-Ray a138e805...-SEA) edge HIT on landing (Cache-Control s-maxage=31536000, Age=1153s, by-design marketing cache); dynamic /api/market/spx/pulse CF-Cache-Status=DYNAMIC no-cache 401 (correct -- not edge-cached)
 ---
