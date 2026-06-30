@@ -1,5 +1,18 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-30 04:1x ET (≈11:1x UTC)
+Last updated: 2026-06-30 ~11:1x ET (≈15:1x UTC)
+
+> **~11:1x ET / 15:1x UTC run (Tue, RTH OPEN — live market; apex+Bearer + Railway prod env + code read + TSC). 0 P0 · 1 P1 · 4 P2 · 1 P3-meta. Report: `deep-audit-20260630-08.md`.**
+> - **[OPEN · 🟠 P1 · DATA INTEGRITY · carried ≥5 runs · re-confirmed in code + LIVE]** **Play outcomes mislabel profitable STOP/THESIS exits as losses.**
+>   `src/lib/spx-play-outcomes.ts:177-178` returns `"loss"` for any `STOP`/`THESIS`/`was_loss` exit **without checking `pnl_pts` sign** (THETA/SESSION :173-174 and TRAIL :184-185 both check it).
+>   **Live proof this run:** `/api/market/spx/outcomes` = `total_closed:4, wins:0, losses:4, win_rate:0`; today's id 4 (long 7475.64→7462.02, STOP) is a true loss but carried id 3 (+7.30 THESIS) is the mislabel → public 0% understates true ~25%. **Fix:** STOP/THESIS `pnl_pts > 0` → win (mirror TRAIL). One-liner. NOT auto-fixed (reviewed commit).
+> - **[OPEN · 🟡 P2 · learning loop dormant · carried]** `signal_events` / `signal_outcomes` still unwired (SPX *play* signals `/api/market/spx/signals`=4 rows is a separate, live store). Recorder deferred — tracked.
+> - **[NEW · 🟡 P2 · infra headroom]** **Postgres connection ceiling has no buffer.** `PG_POOL_MAX=15` × 5 replicas = **75 backend conns** vs ~97 hard ceiling, **no PgBouncer** (db.ts:92 comment aspirational). Code default is 5 (db.ts:102), prod overrides to 15. A 6th replica / deploy overlap / manual psql can exhaust it. Lower toward 10 (→50) or add PgBouncer before scaling.
+> - **[NEW · 🟡 P2 · perf]** **`/api/market/spx/desk` heavy, intermittently times out >15 s** (~80-field aggregation). Returned full fresh data twice, timed out twice this run. Consider cached snapshot read / split sub-bundles.
+> - **[NEW · 🟡 P2 · safety opt-in unset]** `DAILY_AI_SPEND_KILL_USD` unset in prod → AI spend hard-cap disarmed (by design opt-in; no ceiling). Arm with a dollar value if a backstop is wanted.
+> - **[✅ CONFIRMED HEALTHY this run — RTH live]** All real endpoints 200 via apex+Bearer (market/flows 26KB fresh · spx/desk `as_of` age ≈0.8 min full payload · gex-positioning 200 · all 8 grid panels available) · landing/sign-in/sign-up 200 · TSC 0 errors · `blackout-web` Online **5/5 replicas** · all required env SET · **VAPID NOW FULLY CONFIGURED** (both keys → push/alerts no longer inert) · `LAUNCHED_TOOLS=heatmap,nighthawk,largo,grid` · SPX plays opening+closing (outcomes=4, pipeline LIVE) · #97/#100/#101/#102 + SPX-plays-never-open all RESOLVED.
+> - **[P3-META — fix the SKILL]** Audit SKILL.md generates ≥3 phantom P0s/run: `www` host strips Bearer (→apex); dead paths (`spx-pulse`→`market/spx/desk`, `/api/flows`→`market/flows`, `grid/news`=nonexistent); **freshness math parses `…Z`→Local then subtracts UtcNow → false +7h "stale" P0 every run** (use `[DateTimeOffset]::Parse().UtcDateTime`); wrong env names (`UNUSUAL_WHALES_API_KEY`→`UW_API_KEY`, `VAPID_PUBLIC_KEY`→`NEXT_PUBLIC_VAPID_PUBLIC_KEY`); `src/lib/tools`→`src/lib/largo`; `pool.on`→`livePool.on`; clerk grep hits singular alias.
+
+---
 
 > **04:1x ET / 11:1x UTC run (Tue, pre-market, RTH closed; live data via apex+Bearer + prod Postgres + code read + TSC). 0 P0 · 1 P1 · 2 P2 · 1 P3-meta.**
 > - **[OPEN · 🟠 P1 · DATA INTEGRITY · carried ≥4 runs · re-confirmed in code]** **Play outcomes mislabel profitable STOP/THESIS exits as losses.**
