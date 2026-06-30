@@ -1,0 +1,101 @@
+{
+  "runAt": "2026-06-30T23:40:06.132Z",
+  "scenarios": [
+    {
+      "id": "gex-explain",
+      "label": "GEX heatmap explain (NVDA, live Polygon data)",
+      "surface": "GEX heatmap Largo read — highest-frequency shared AI call",
+      "productionModel": "claude-sonnet-4-6",
+      "responses": {
+        "claude-sonnet-4-6": {
+          "model": "Sonnet 4.6",
+          "latencyMs": 8111,
+          "inputTokens": 328,
+          "outputTokens": 255,
+          "estCostUsd": 0.00481,
+          "text": "NVDA is sitting in long-gamma territory at 199.39, with dealers hedging in a way that naturally dampens moves — they're buying dips and selling rips, so the tape should stay sticky and mean-reverting near current levels. The 200 call wall is the immediate ceiling and it's right on top of max pain, which means that's a double layer of gravitational resistance — any push through 200 that doesn't hold will likely get faded hard by dealer delta unwind. The 192.50 put wall is the floor of the range; as long as spot stays between those two strikes, expect chop and compression rather than trend. The gamma flip at 195.08 is the level that changes the entire read — a close back below there flips dealers short gamma, which removes the dampening effect and opens the door to accelerated, self-reinforcing moves in either direction. Watch for the call wall at 200 to either melt (open interest rolls or gets lifted aggressively) or hold firm — if it melts, the next resistance cluster becomes the key, but right now the structure says 192.50–200 is the box."
+        },
+        "claude-haiku-4-5": {
+          "model": "Haiku 4.5",
+          "latencyMs": 2869,
+          "inputTokens": 327,
+          "outputTokens": 185,
+          "estCostUsd": 0.00125,
+          "text": "We're in a long-gamma regime with spot at 199.39, just 61 bips below the 200 call wall—dealers are short calls and long puts, so they're pinning and defending that level hard. The gamma flip sits at 195.08, meaning if we drop through there, the regime flips to short gamma and dealers flip to selling dips instead of fading them. Max pain at 200 aligns with the call wall, which is the natural magnet; the 192.5 put wall is your structural floor if we roll lower. The intraday shift to \"collecting\" suggests dealers are net long vega and long gamma right now, so they're happy to see chop and theta bleed—watch for a cross below 195.08 or a melt through 200 to signal a regime change."
+        }
+      }
+    },
+    {
+      "id": "nw-narrative",
+      "label": "Night's Watch position narrative (NVDA 145C TRIM)",
+      "surface": "Per-position hold/trim/sell prose — multi-signal synthesis",
+      "productionModel": "claude-sonnet-4-6",
+      "responses": {
+        "claude-sonnet-4-6": {
+          "model": "Sonnet 4.6",
+          "latencyMs": 11451,
+          "inputTokens": 749,
+          "outputTokens": 298,
+          "estCostUsd": 0.00672,
+          "text": "With only 18 DTE, theta is running at -$0.38/day across four contracts — roughly $1.52 in daily decay on a position already down 18.5% and sitting $11.35 below breakeven at 153.40. The dealer gamma regime flipped short below 142.50, meaning spot at 142.05 is in a zone where dealers are selling into weakness, amplifying downside moves and making a clean recovery to the 145 strike — itself a resistance level — mechanically harder without a sharp catalyst. The earnings event that could reprice these calls materially falls on 2026-08-20, which is after this expiry, so the position captures none of that vol event. Flow over the last 24 hours is decisively bearish at $31.4M puts versus $18.2M calls, and the call-skew lean has faded over the last four hours, removing the near-term demand tailwind that would support the 145C specifically. The engine's trim call is sound: negative gamma regime, accelerating theta bleed, no in-window catalyst, and a breakeven that requires a 7.8% rally from current spot — trimming into this setup reduces exposure to further decay while the deterministic directive leaves a re-entry path if spot reclaims 145 with confirmed bullish flow."
+        },
+        "claude-haiku-4-5": {
+          "model": "Haiku 4.5",
+          "latencyMs": 5142,
+          "inputTokens": 748,
+          "outputTokens": 254,
+          "estCostUsd": 0.00202,
+          "text": "Your long 145 calls are bleeding theta at -0.38/day with only 18 DTE remaining, and spot at 142.05 sits 2.1% below strike in a downtrend—delta of 0.42 means you're capturing less upside per dollar risked. The dealer-gamma flip below 142.50 has turned the structure short-gamma, pinning you into accelerating decay as price compresses; max-pain sits at 140.00, directly below current support. Flow over the last 4 hours has faded call conviction ($18.2M calls vs $31.4M puts), and your position is now -18.5% underwater with breakeven at 153.40—a move that requires spot to clear resistance at 145 and push 8.4 points higher into a deteriorating theta environment. The engine's trim call reflects the collision of negative gamma, time bleed, and dealer positioning that favors mean reversion toward 140; hold only if you're willing to absorb further decay or have conviction spot reclaims 145 with fresh bullish flow confirmation before earnings in 51 days."
+        }
+      }
+    },
+    {
+      "id": "spx-play-gate",
+      "label": "SPX 0DTE play gate (A- short, mixed flow checklist)",
+      "surface": "Trade approve/veto — real-money quality arbiter",
+      "productionModel": "claude-sonnet-4-6",
+      "responses": {
+        "claude-sonnet-4-6": {
+          "model": "Sonnet 4.6",
+          "latencyMs": 4476,
+          "inputTokens": 924,
+          "outputTokens": 184,
+          "estCostUsd": 0.00553,
+          "text": "```json\n{\n  \"verdict\": \"APPROVE_BUY\",\n  \"direction\": \"short\",\n  \"headline\": \"SPX below VWAP/gamma flip, put flow dominant, targeting 5998\",\n  \"thesis\": \"3m and 5m both bearish with price below VWAP at 6016.80 and gamma flip at 6018, confirming downside structure toward GEX king at 6005 and max pain at 6000. Massive put flow ($6M+ sweeps/blocks), dark pool sell bias, negative dealer gamma, and a data-dependent Fed with FOMC minutes at 14:00 all reinforce the short — stop above 6019.50 offers clean 1:1.3 R/R.\"\n}\n```"
+        },
+        "claude-haiku-4-5": {
+          "model": "Haiku 4.5",
+          "latencyMs": 2557,
+          "inputTokens": 924,
+          "outputTokens": 182,
+          "estCostUsd": 0.00183,
+          "text": "```json\n{\n  \"verdict\": \"APPROVE_BUY\",\n  \"direction\": \"short\",\n  \"headline\": \"Short 6010 into gamma flip; dark pool + M5 bearish align\",\n  \"thesis\": \"M3 and M5 both bearish with price below VWAP (6016.80) and gamma flip (6018.00) acting as resistance; 0DTE put flow ($6M block+sweep) + dark pool sell bias + negative dealer gamma all reinforce downside to 5998 PDL support. FOMC minutes at 14:00 ET present tail risk but current structure is clean—stop at 6019.50 (above gamma flip) caps risk to 9.5pts for 12pt target.\"\n}\n```"
+        }
+      }
+    },
+    {
+      "id": "largo-desk-qa",
+      "label": "Largo desk Q&A (pre-gathered SPX context, no tools)",
+      "surface": "Largo-style reasoning users ask most on the desk",
+      "productionModel": "claude-sonnet-4-6",
+      "responses": {
+        "claude-sonnet-4-6": {
+          "model": "Sonnet 4.6",
+          "latencyMs": 10160,
+          "inputTokens": 362,
+          "outputTokens": 378,
+          "estCostUsd": 0.00676,
+          "text": "**Don't fade the 6018 call wall here — let the flush come to you.** Spot at 6012.25 is already 4.5 handles below VWAP at 6016.80, and in short gamma regime the dealer hedging flow is working *against* any sustained lift, so that 6018 flip level is more of a ceiling confirmation than a fade entry. The $900k 6020C blocks look like hedging activity, not conviction buying — compare that to $4.2M sweeping the 6010 puts and $68M total put premium versus $42M calls, and the flow is clearly leaning one direction.\n\n**The 6004 put wall at +$5.6M GEX is your magnet.** With TICK at -420, ADD at -890, and TRIN 1.18 all confirming bearish internals, the path of least resistance in negative gamma is a grind toward that support level where dealer long gamma starts to absorb. NOPE at -0.42 tells you net options premium expansion is skewing negative, which reinforces the directional bias rather than contradicting it.\n\n**The one thing I'd respect is FOMC minutes at 14:00 ET.** VIX is flagging low which is your B+ grade's single conflict — vol expansion risk into the print is real, and a hawkish surprise could spike through 6018 and trigger a short squeeze against that gamma flip hard. Structure says short bias with entry around 6010, stop 6019.50, target 5998, but size accordingly and don't be a hero into the 14:00 window without a hedge on."
+        },
+        "claude-haiku-4-5": {
+          "model": "Haiku 4.5",
+          "latencyMs": 4109,
+          "inputTokens": 362,
+          "outputTokens": 266,
+          "estCostUsd": 0.00169,
+          "text": "Flow's screaming down—put skew at 1.62 with $68M in put premium versus $42M calls, and that net velocity is accelerating lower, which tells me institutional conviction is building on the short side. The 6018 gamma flip is your real inflection point; you're sitting 6.55 points below VWAP in a short gamma regime, so fading that call wall into resistance is higher probability than waiting for a flush to 6004—the 6004 put wall at +$5.6M is actually a magnet that'll pull price down *through* 6018 if momentum breaks. That said, FOMC minutes at 14:00 ET are a wildcard; VIX is still compressed, which creates expansion risk on any surprise hawkish language. I'd lean into the short bias (B+ confluence, dark pool selling) and clip the 6018 call wall on any bounce, but keep your stop tight at 6019.50 because a vol spike could flip this fast. The tape action—those 6010P sweeps at $4.2M versus weak 6020C blocks—confirms the institutional bid is on puts, not calls."
+        }
+      }
+    }
+  ]
+}

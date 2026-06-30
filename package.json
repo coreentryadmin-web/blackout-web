@@ -27,7 +27,8 @@
     "probe:docs": "node scripts/analyze-api-usage.mjs && node scripts/probe-docs-endpoints.mjs",
     "probe:docs:uw": "node scripts/analyze-api-usage.mjs && node scripts/probe-docs-endpoints.mjs --uw-only",
     "analyze:api": "node scripts/analyze-api-usage.mjs",
-    "nighthawk:run": "npx tsx scripts/nighthawk-worker.ts"
+    "nighthawk:run": "npx tsx scripts/nighthawk-worker.ts",
+    "eval:ai-tiers": "npx tsx scripts/ai-model-tier-eval.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.107.0",
