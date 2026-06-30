@@ -337,7 +337,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
               </Link>
             </>
           )}
-          {isLoaded && isSignedIn && <UserButton appearance={CLERK_APPEARANCE} />}
+          {isLoaded && isSignedIn && <UserButton appearance={CLERK_APPEARANCE} userProfileUrl="/account" />}
         </div>
       </div>
 
@@ -421,7 +421,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
                     </Link>
                   </>
                 )}
-                {isLoaded && isSignedIn && <UserButton appearance={CLERK_APPEARANCE} />}
+                {isLoaded && isSignedIn && <UserButton appearance={CLERK_APPEARANCE} userProfileUrl="/account" />}
               </div>
             </motion.div>
           </>
