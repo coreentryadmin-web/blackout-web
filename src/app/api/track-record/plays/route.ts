@@ -5,10 +5,13 @@ import {
   fetchNighthawkOutcomeAnalytics,
 } from "@/lib/db";
 import { serverCache, TTL } from "@/lib/server-cache";
+import { isNighthawkOutcomeScoreable } from "@/lib/track-record-page";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Public per-play audit trail for /track-record (intentional transparency).
+// Aggregate embed API (/api/public/track-record) stays counts-only — see track-record-public.ts.
 const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" };
 const SPX_LIMIT = 200;
 const NH_WINDOW_DAYS = 90;
@@ -35,24 +38,21 @@ export async function GET() {
           pnl_pts: r.pnl_pts,
           outcome: r.outcome,
           exit_action: r.exit_action,
-          headline: r.headline,
           closed_at: r.closed_at,
         })),
-        nighthawk: nhResult.rows
-          .filter((r) => r.outcome !== "pending")
-          .map((r) => ({
-            id: r.id,
-            edition_for: r.edition_for,
-            ticker: r.ticker,
-            direction: r.direction,
-            conviction: r.conviction,
-            outcome: r.outcome,
-            entry_range_low: r.entry_range_low,
-            entry_range_high: r.entry_range_high,
-            target: r.target,
-            stop: r.stop,
-            next_day_close: r.next_day_close,
-          })),
+        nighthawk: nhResult.rows.filter(isNighthawkOutcomeScoreable).map((r) => ({
+          id: r.id,
+          edition_for: r.edition_for,
+          ticker: r.ticker,
+          direction: r.direction,
+          conviction: r.conviction,
+          outcome: r.outcome,
+          entry_range_low: r.entry_range_low,
+          entry_range_high: r.entry_range_high,
+          target: r.target,
+          stop: r.stop,
+          next_day_close: r.next_day_close,
+        })),
       };
     });
     return NextResponse.json(payload, { headers: NO_STORE });
