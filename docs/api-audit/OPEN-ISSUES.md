@@ -1,5 +1,25 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-29 20:38 ET (2026-06-30 03:38 UTC)
+Last updated: 2026-06-30 00:13 ET (07:13 UTC)
+
+> **00:13 ET / 07:13 UTC run (Tue, after-hours, RTH closed; live data via apex+Bearer + code read). 0 P0 · 1 P1 · 1 P2 · 1 P3.**
+> - **[OPEN · 🟠 P1 · DATA INTEGRITY · carried ≥3 runs · still in code]** **Play outcomes mislabel profitable STOP/THESIS exits as losses.**
+>   `src/lib/spx-play-outcomes.ts:177-178` returns `"loss"` for any `STOP`/`THESIS`/`was_loss` exit **without checking `pnl_pts` sign**
+>   — THETA/SESSION (:170-175) and TRAIL (:183-186) both check it. A profitable THESIS exit (thesis-target hit on a winner) is stored
+>   `outcome='loss'`. **Root cause of the live 0-for-3 reading** (`/api/market/spx/outcomes` → `overall {wins:0,losses:3,win_rate:0}`).
+>   **Fix:** STOP/THESIS with `pnl_pts > 0` → win (mirror TRAIL). One-liner. NOT auto-fixed (data-integrity + behavior change → wants a
+>   reviewed commit, not a cron commit).
+> - **[P2 · partly downstream of the P1]** SPX track record 0/3 win-rate; ≥1 likely reclassifies to a win once the P1 lands. Independently
+>   watch MFE/MAE (cold_buy avg_mae 7.15, watch_promote avg_mae 1.69) over next several RTH sessions for entry-timing sanity.
+> - **[✅ CONFIRMED HEALTHY this run]** All real endpoints 200 via apex+Bearer (spx/pulse · spx/desk 99KB · gex-positioning SPY 741 ·
+>   market/flows 23KB · nighthawk/edition 44KB · market/news · all 8 grid panels) · TSC 0 errors · db pool handler `:113` max:5 ·
+>   Redis family:0 · Polygon WS leader-election · Clerk user.created (webhooks/clerk plural) · SpxDarkPoolCard mounted · SPX plays
+>   opening+closing (3 closed). #97/#100/#101/#102 + SPX-plays-never-open all RESOLVED.
+> - **[P3-META — fix the SKILL]** Audit SKILL.md still probes dead paths/symbols → manufactures phantom P0s: `spx-pulse`→`market/spx/pulse`,
+>   `/api/flows`→`market/flows`, `nighthawk/latest-edition`→`market/nighthawk/edition`, `grid/news`=nonexistent (→`market/news`);
+>   Phase-1 uses `www` (strips Bearer→401/404) not apex+Bearer; `pool.on`→`livePool.on`; clerk grep on singular alias not `webhooks/clerk`;
+>   `import.*SpxDarkPoolCard` misses multiline import; GEX-vs-desk wall diff compares SPY(÷10) to SPX. Report: `deep-audit-20260630-00.md`.
+
+---
 
 > **20:38 ET / 03:38 UTC run (Mon, after-hours, RTH closed; live data via apex+Bearer + code read). 0 P0 · 1 P1 · 1 P2.**
 > - **[OPEN · 🟠 P1 · DATA INTEGRITY · re-confirmed in code]** **Play outcomes mislabel profitable exits as losses.**
