@@ -341,7 +341,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
           {isLoaded && isSignedIn && (
             <div className="flex items-center gap-2">
               <PushNotificationToggle compact />
-              <UserButton appearance={CLERK_APPEARANCE} />
+              <UserButton appearance={CLERK_APPEARANCE} userProfileUrl="/account" />
             </div>
           )}
         </div>
@@ -430,7 +430,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
                 {isLoaded && isSignedIn && (
                   <div className="flex items-center gap-2">
                     <PushNotificationToggle compact />
-                    <UserButton appearance={CLERK_APPEARANCE} />
+                    <UserButton appearance={CLERK_APPEARANCE} userProfileUrl="/account" />
                   </div>
                 )}
               </div>

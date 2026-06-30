@@ -8,6 +8,7 @@ const isProtectedRoute = createRouteMatcher([
   "/nighthawk(.*)",
   "/admin(.*)",
   "/grid(.*)",
+  "/account(.*)",
 ]);
 
 export default clerkMiddleware(
