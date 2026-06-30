@@ -9,11 +9,58 @@ and `GET /api/market/spx/outcomes` (opened/closed plays). Use host `https://blac
 Eval response fields are `available / action / direction / grade / score / confidence / gates / option_ticket`
 (not `signal / canOpen / blocked`). Outcomes returns `{ stats, adaptive, rows[] }`.
 
-## 2026-06-29 ~21:13 ET (overnight re-check)
-- Market: **CLOSED** — eval action=SCANNING, available=false, grade=C, session_phase=closed, option_ticket.blocked=(empty/post-close). Expected idle state.
-- Plays opened (last RTH session 2026-06-29): **3** (outcomes 200 OK; stats.total_closed=3, win_rate=0). Unchanged from prior entries.
-- Bug pattern: **NO** — engine opened 3 plays during RTH; market closed now so 0-opens would be normal regardless. Verdict: **GREEN**.
-- Note: machine clock reports UTC==ET (ET-labeled-as-UTC), so calendar-day math is skewed; substance (Monday 06-29 session, 3 opens) is unaffected.
+## 2026-06-30 00:00 ET (first run of new day, overnight)
+- Market: **CLOSED** (Tuesday 00:00 ET, pre-RTH; RTH opens 09:30). Both endpoints HTTP 200 (apex + Bearer, local .env.local secret). Eval: action=SCANNING, available=false, session_phase=closed, grade=C, score=53, confidence=96, direction=long; open_play=null; gates.passed=false ("Session closed"); `option_ticket.blocked` absent (no veto) — expected idle state.
+- Plays opened (ET today 2026-06-30): **0** — expected, market closed/pre-open, NOT an alert. Prior session 2026-06-29 (Mon) RTH opened **3** plays (outcomes 200; rows=3, total_closed=3, win_rate=0) — engine IS opening plays; open-veto P0 confirmed not regressed.
+- Bug pattern (A-grade eval + 0 opens + 30min into RTH): **NO** — outside RTH. Verdict: **GREEN**. Committing as first run of 2026-06-30.
+
+## 2026-06-29 23:55 ET (overnight re-check)
+- Market: **CLOSED** (RTH ended 16:00 ET; Monday, ~866 min since 09:30 open). Both endpoints HTTP 200 (apex + Bearer, local .env.local secret). Eval: action=SCANNING, available=false, session_phase=closed, grade=C, score=65, direction=long; open_play=null; `option_ticket.blocked` empty (no veto) — expected idle state.
+- Plays opened (RTH 2026-06-29): **3** (outcomes 200; rows=3, total_closed=3, win_rate=0). Unchanged.
+- Bug pattern (A-grade eval + 0 opens + 30min into RTH): **NO** — engine opened 3 plays during RTH; 0 post-close opens is expected. Verdict: **GREEN** — open-veto P0 not regressed. No commit (today already logged, no P0).
+
+## 2026-06-29 23:50 ET (overnight re-check)
+- Market: **CLOSED** (RTH ended 16:00 ET; Monday, ~860 min since 09:30 open). Both endpoints HTTP 200 (apex + Bearer, local .env.local 44-char secret). Eval: action=SCANNING, available=false, session_phase=closed, grade=C, score=65, direction=long; open_play=null; gates.passed=false; `option_ticket.blocked` empty (no veto) — expected idle state.
+- Plays opened (RTH 2026-06-29): **3** (outcomes 200; rows=3, total_closed=3, win_rate=0). Rows unchanged: A+ long 7430.90→7423.75 STOP (−7.15); A long 7435.05→7432.58 THESIS (−2.47); A+ long 7432.13→7439.43 THESIS (**+7.30, still mislabeled loss**).
+- Bug pattern (A-grade eval + 0 opens + 30min into RTH): **NO** — engine opened 3 plays during RTH; 0 post-close opens is expected. Verdict: **GREEN** — open-veto P0 not regressed. id=3 win/loss mislabel anomaly still present (tracked separately, out of scope). No commit (today already logged, no P0).
+
+## 2026-06-29 23:47 ET (overnight re-check)
+- Market: **CLOSED** (RTH ended 16:00 ET; Monday, ~857 min since 09:30 open). Both endpoints HTTP 200 (apex + Bearer, local .env.local secret authed; Railway CLI unavailable this run). Eval: action=SCANNING, available=false, session_phase=closed, grade=C, score=65, direction=long; open_play=null; gates.passed=false ("Session closed"); `option_ticket.blocked` empty (no veto) — expected idle state.
+- Plays opened (RTH 2026-06-29): **3** (outcomes 200; rows=3, total_closed=3, win_rate=0). Re-pulled row detail: A+ long 7430.90→7423.75 STOP (−7.15); A long 7435.05→7432.58 THESIS (−2.47); A+ long 7432.13→7439.43 THESIS (**+7.30, still mislabeled loss**). Unchanged since 23:41.
+- Bug pattern (A-grade eval + 0 opens + 30min into RTH): **NO** — engine opened 3 plays during RTH; 0 post-close opens is expected. Verdict: **GREEN** — open-veto P0 not regressed. No commit (today already logged, no P0).
+
+## 2026-06-29 23:26–23:41 ET (3 overnight re-checks, consolidated)
+- Market **CLOSED** throughout — every run: eval action=SCANNING, available=false, session_phase=closed/SCANNING, grade=C (score 63), confidence=96, direction=long; open_play=null; gates.passed=false ("Session closed"); `option_ticket.blocked` empty (no veto). Plays opened (RTH 2026-06-29): **3** (outcomes 200; total_closed=3, win_rate=0) — unchanged. id=3 (18:25Z) +7.30pt long still mislabeled `loss` (out of scope, flagged). Bug pattern: **NO**. Verdict: **GREEN** throughout. No commits (not first run, no P0).
+
+## 2026-06-29 23:15 ET (overnight re-check)
+- Market: **CLOSED** (RTH ended 16:00 ET; Monday). Both endpoints HTTP 200 (apex + Bearer). Eval: action=SCANNING, available=false, session_phase=closed, grade=C, score=63, confidence=96, direction=long; open_play=null; option_ticket=null (no veto); gates.passed=false (block "Session closed"). Expected idle state.
+- Plays opened (RTH 2026-06-29): **3** (outcomes 200; rows=3, total_closed=3, win_rate=0). Unchanged. Rows: A+ cold_buy 7430.90→7423.75 STOP (−7.15); A watch_promote 7435.05→7432.58 THESIS (−2.47); A+ watch_promote 7432.13→7439.43 THESIS (**+7.30, still mislabeled loss**).
+- Bug pattern (A-grade eval + 0 opens + 30min into RTH): **NO** — engine opened 3 plays during RTH; 0 post-close opens is expected. Verdict: **GREEN** — open-veto P0 not regressed. No commit (not first run of day, no P0).
+
+## 2026-06-29 23:09 ET (overnight re-check)
+- Market: **CLOSED** (RTH ended 16:00 ET; Monday). Both endpoints HTTP 200 (apex + Bearer). Eval: action=SCANNING, available=false, session_phase=closed, grade=C, score=63, direction=long; open_play=null; `option_ticket.blocked` empty (no veto); gates.passed=false. Expected idle state.
+- Plays opened (RTH 2026-06-29): **3** (outcomes 200; rows=3, total_closed=3, win_rate=0). Unchanged.
+- Bug pattern (A-grade eval + 0 opens + 30min into RTH): **NO** — engine opened 3 plays during RTH. Verdict: **GREEN** — open-veto P0 not regressed. (Eval timed out once at 15s, cleared on 30s retry — cold-start, not a fault.) No commit (not first run of day, no P0).
+
+## 2026-06-29 23:03 ET (overnight re-check)
+- Market: **CLOSED** (RTH ended 16:00 ET; ~813 min since 09:30 open; Monday). Both endpoints HTTP 200 (apex + Bearer, local .env.local secret authed).
+- Eval: action=SCANNING, available=false, session_phase=closed, grade=C, score=63, direction (long); open_play=null; `option_ticket.blocked` empty (no veto); gates.passed=false. Expected idle state.
+- Plays opened (RTH 2026-06-29): **3** (outcomes 200; rows=3, total_closed=3, win_rate=0). Unchanged.
+- Bug pattern (A-grade eval + 0 opens + 30min into RTH): **NO** — engine opened 3 plays during RTH; 0 new post-close opens is expected. Verdict: **GREEN** — open-veto P0 not regressed.
+- Out-of-scope: the +7.30pt winning long still labeled `outcome=loss` (win_rate=0) — outcome-labeling anomaly already spawned earlier, not re-spawned. No commit (not first run of day, no P0).
+
+## 2026-06-29 22:13–22:58 ET (8 overnight re-checks, consolidated)
+- Market **CLOSED** throughout — every run: eval action=SCANNING, available=false, session_phase=closed, grade=C (score 63–65, confidence 96), direction=long; open_play=null; `option_ticket.blocked` empty/null (no veto); gates.passed=false (block "Session closed"). Expected idle state.
+- Plays opened (RTH 2026-06-29): **3** (outcomes 200; rows=3, total_closed=3, win_rate=0) — unchanged every run. Rows: A+ long 7430.90→7423.75 STOP (−7.15); A long 7435.05→7432.58 THESIS (−2.47); A+ long 7432.13→7439.43 THESIS (**+7.30, mislabeled loss**). Entry paths: 1× cold_buy, 2× watch_promote.
+- Bug pattern: **NO** every run. Verdict: **GREEN** throughout — open-veto P0 not regressed. The +7.30pt winning-long-as-loss labeling anomaly remains out of monitor scope (follow-up already spawned, not re-spawned). No commits (not first run of day, no P0).
+
+## 2026-06-29 21:57 ET (overnight re-check)
+- Market: **CLOSED** (RTH ended 16:00 ET ~357 min ago). Outcomes endpoint 200 OK; eval endpoint hung on this run (cold-start, >2m) — not retried since post-close state is known-idle and non-diagnostic for the P0.
+- Plays opened (RTH session 2026-06-29): **3** (outcomes 200; total rows=3, stats.total_closed=3). Unchanged.
+- Bug pattern (A-grade eval + 0 opens + 30min into RTH): **NO** — engine opened 3 plays during today's RTH; 0 new opens post-close is expected. Verdict: **GREEN** — open-veto P0 not regressed.
+
+## 2026-06-29 21:13–21:43 ET (4 overnight re-checks, consolidated)
+- Market **CLOSED** throughout — eval action=SCANNING, available=false, grade=C, session_phase=closed, open_play=null, option_ticket.blocked=(empty/post-close), gates.passed=false. Plays opened (RTH 2026-06-29): **3** (outcomes 200; total_closed=3, win_rate=0). Bug pattern: **NO**. Verdict: **GREEN** throughout. (One cold-start eval timeout cleared on retry; clock reports ET-as-UTC but substance unaffected.)
 
 ## 2026-06-29 20:49 ET (post-close re-check)
 - Market: **CLOSED** — eval action=SCANNING, available=false, grade=C, session_phase=closed, option_ticket.blocked=(empty/post-close). Expected idle state.
@@ -40,74 +87,9 @@ Eval response fields are `available / action / direction / grade / score / confi
 - Two transient curl HTTP 000/timeout blips, each cleared on immediate retry (endpoint healthy).
 - Verdict: GREEN throughout. No commits (not first run, no P0).
 
-## 2026-06-29 18:31 ET (re-check, post-close)
-- `GET /api/market/spx/play` + `/api/market/spx/outcomes` (apex + Bearer). Market CLOSED (~151 min past 16:00 ET close). State unchanged since 17:01 ET first run.
-- Eval: action=SCANNING, available=false, session_phase=closed, grade=A, score=81, direction=long; `open_play`=null; `option_ticket.blocked`=null (no veto). Plays opened today: **3** (all closed, 0W/3L). Bug pattern: **NO** (post-close, 0 new opens expected).
-- id=3 win/loss-label anomaly unchanged (out of scope, follow-up spawned). Verdict: GREEN. No commit (not first run, no P0). Post-close runs are no-ops until tomorrow's 09:30 ET open.
-
-## 2026-06-29 18:40 ET (re-check, post-close)
-- `GET /api/market/spx/play` + `/api/market/spx/outcomes` (apex + Bearer, both HTTP 200). Market CLOSED (~160 min past 16:00 ET close). State frozen since 17:01 ET first run.
-- Eval: action=SCANNING, available=false, session_phase=closed, grade=A, score=81, direction=long; `open_play`=null; `option_ticket`=null (no veto). Plays opened today: **3** (all closed, 0W/3L). Bug pattern: **NO** (post-close, 0 new opens expected).
-- id=3 win/loss-label anomaly unchanged (out of scope, follow-up spawned). Verdict: GREEN. No commit (not first run, no P0). Post-close runs are no-ops until tomorrow's 09:30 ET open.
-
-## 2026-06-29 18:49 ET (re-check, post-close)
-- `GET /api/market/spx/play` + `/api/market/spx/outcomes` (apex + Bearer, both HTTP 200). Market CLOSED (~169 min past 16:00 ET close). State frozen since 17:01 ET first run.
-- Eval: action=SCANNING, available=false, session_phase=closed, grade=A, score=81, confidence=96, direction=long; gates.passed=false (block "Session closed"); `open_play`=null; `option_ticket.blocked`=null (no veto). Plays opened today: **3** (all closed, 0W/3L). Bug pattern (A-grade + 0 opens 30min+ into RTH): **NO** — post-close, 0 new opens expected.
-- id=3 +7.30pt long still labeled `outcome=loss` (win_rate=0) — unchanged, out of monitor scope, follow-up already spawned. Verdict: GREEN. No commit (not first run, no P0). Post-close runs are no-ops until tomorrow's 09:30 ET open.
-
-## 2026-06-29 20:39 ET (re-check, post-close)
-- `GET /api/market/spx/play` + `/api/market/spx/outcomes` (apex + Bearer, both HTTP 200). Market CLOSED (~279 min past 16:00 ET close).
-- Eval: action=SCANNING, available=false, session_phase=closed, grade=**C** score=**65** direction=long; gates.passed=false; `open_play`=null; `option_ticket.blocked`=null (no veto). (Grade/score drift from the A/81 of earlier post-close scans is normal post-close scanning noise — engine idle, no opens possible.) Plays opened today: **3** (all closed, 0W/3L). Bug pattern (A-grade + 0 opens 30min+ into RTH): **NO** — post-close, 0 new opens expected.
-- id=3 +7.30pt long still mislabeled `outcome=loss` (win_rate=0) — unchanged, out of monitor scope, follow-up already spawned. Verdict: GREEN. No commit (not first run, no P0). Post-close no-op until tomorrow's 09:30 ET open.
-
-## 2026-06-29 19:06 ET (re-check, post-close)
-- `GET /api/market/spx/play` + `/api/market/spx/outcomes` (apex + Bearer, both HTTP 200; eval cold ~10s, cleared on retry). Market CLOSED (~186 min past 16:00 ET close). State frozen since 17:01 ET first run.
-- Eval: action=SCANNING, available=false, session_phase=closed, grade=A, score=81, confidence=96, direction=long; gates.passed=false (block "Session closed"); `open_play`=null; `option_ticket.blocked`=null (no veto). Plays opened today: **3** (all closed, 0W/3L). Bug pattern (A-grade + 0 opens 30min+ into RTH): **NO** — post-close, 0 new opens expected.
-- id=3 win/loss-label anomaly unchanged (out of scope, follow-up spawned). Verdict: GREEN. No commit (not first run, no P0). Post-close runs remain no-ops until tomorrow's 09:30 ET open.
-
-## 2026-06-29 19:11 ET (re-check, post-close)
-- `GET /api/market/spx/play` + `/api/market/spx/outcomes` (apex + Bearer, both HTTP 200). Market CLOSED (~192 min past 16:00 ET close, ~582 min past open). State frozen since 17:01 ET first run.
-- Eval: action=SCANNING, available=false, session_phase=closed, grade=A, score=81, direction=long; gates.passed=false (block "Session closed"); `open_play`=null; `option_ticket.blocked`=null (no veto). Plays opened today: **3** (all closed, 0W/3L). Bug pattern (A-grade + 0 opens 30min+ into RTH): **NO** — post-close, 0 new opens expected.
-- id=3 win/loss-label anomaly unchanged (out of scope, follow-up spawned). Verdict: GREEN. No commit (not first run, no P0). Post-close runs remain no-ops until tomorrow's 09:30 ET open.
-
-## 2026-06-29 19:17 ET (re-check, post-close)
-- Re-ran `GET /api/market/spx/play` + `/api/market/spx/outcomes` (apex + Bearer). Market CLOSED (RTH ended 16:00 ET, ~197 min ago). State frozen since 17:01 ET first run.
-- Eval: action=SCANNING, available=false, session_phase=closed, grade=A, score=81; `open_play`=null; `option_ticket.blocked`=null (no veto). Plays opened today: **3** (all closed, 0W/3L). Bug pattern (A-grade + 0 opens 30min+ into RTH): **NO** — post-close, 0 new opens is expected.
-- Verdict: GREEN — open-veto P0 remains resolved/not regressed. Remaining 5-min RTH runs are no-ops until tomorrow's open. No commit (not first run of day, no P0).
-
-## 2026-06-29 19:28 ET (re-check, post-close)
-- `GET /api/market/spx/play` + `/api/market/spx/outcomes` (apex + Bearer, HTTP 200; eval ~14s cold-start cleared on retry). Market CLOSED (~208 min past 16:00 ET close, ~599 min past open). State frozen since 17:01 ET first run.
-- Eval: action=SCANNING, available=false, session_phase=closed, grade=A, score=81, direction=long; `open_play`=null; `option_ticket.blocked`=null (no veto). Plays opened today: **3** (all closed, 0W/3L). Bug pattern (A-grade + 0 opens 30min+ into RTH): **NO** — post-close, 0 new opens is expected.
-- Verdict: GREEN — open-veto P0 remains resolved/not regressed (engine opened 3 plays this RTH). id=3 win/loss-label anomaly unchanged (out of scope, follow-up spawned). Remaining 5-min runs are no-ops until tomorrow's 09:30 ET open. No commit (not first run of day, no P0).
-
-## 2026-06-29 19:43 ET (re-check, post-close)
-- `GET /api/market/spx/play` + `/api/market/spx/outcomes` (apex + Bearer, both HTTP 200). Market CLOSED (~223 min past 16:00 ET close). State frozen since 17:01 ET first run.
-- Eval: action=SCANNING, available=false, session_phase=closed, grade=A, score=81, confidence=96, direction=long; gates.passed=false (block "Session closed"); `open_play`=null; `option_ticket.blocked`=null (no veto). Plays opened today: **3** (all closed, 0W/3L). Bug pattern (A-grade + 0 opens 30min+ into RTH): **NO** — post-close, 0 new opens is expected.
-- id=3 +7.30pt long still labeled `outcome=loss` (win_rate=0) — unchanged, out of monitor scope, follow-up already spawned. Verdict: GREEN. No commit (not first run, no P0). Post-close runs remain no-ops until tomorrow's 09:30 ET open.
-
-## 2026-06-29 19:48 ET (re-check, post-close)
-- `GET /api/market/spx/outcomes` (apex + Bearer, HTTP 200); `GET /api/market/spx/play` returned empty body this run (post-close cold-start, non-fatal). Market CLOSED (~228 min past 16:00 ET close). State frozen since 17:01 ET first run.
-- Outcomes: Plays opened today: **3** (all closed, 0W/3L; entry_paths watch_promote×2 + cold_buy×1; grades A+/A/—). `option_ticket.blocked` not surfaced (eval empty) but outcomes prove engine opened plays → open-veto P0 NOT regressed. Bug pattern (A-grade + 0 opens 30min+ into RTH): **NO** — post-close, 0 new opens is expected.
-- id=3 +7.30pt long still labeled `outcome=loss` (win_rate=0) — unchanged, out of monitor scope, follow-up already spawned. Verdict: GREEN. No commit (not first run, no P0). Post-close runs remain no-ops until tomorrow's 09:30 ET open.
-
-## 2026-06-29 19:53 ET (re-check, post-close)
-- `GET /api/market/spx/play` (HTTP 000 first try → HTTP 200 on retry, time=11.6s; transient post-close cold-start) + `/api/market/spx/outcomes` (HTTP 200). Market CLOSED (~233 min past 16:00 ET close). State frozen since 17:01 ET first run.
-- Eval: action=SCANNING, available=false, session_phase=closed, grade=B, score=77, confidence=96, direction=long; gates.passed=false (block "Session closed"); `open_play`=null; `option_ticket`=null (no veto). Plays opened today: **3** (all closed, 0W/3L). Bug pattern (A-grade + 0 opens 30min+ into RTH): **NO** — post-close, 0 new opens is expected.
-- id=3 +7.30pt long still labeled `outcome=loss` (win_rate=0) — unchanged, out of monitor scope, follow-up already spawned. Verdict: GREEN — open-veto P0 not regressed. No commit (not first run, no P0). Post-close runs remain no-ops until tomorrow's 09:30 ET open.
-
-## 2026-06-29 19:56 ET (re-check, post-close)
-- `GET /api/market/spx/play` + `/api/market/spx/outcomes` (apex + Bearer, both HTTP 200). Market CLOSED (~236 min past 16:00 ET close, ~627 min past open). State frozen since 17:01 ET first run.
-- Eval: action=SCANNING, available=false, session_phase=closed, grade=B, score=77, confidence=96, direction=long; gates.passed=false (block "Session closed"); `open_play`=null; `option_ticket.blocked`=null (no veto). Plays opened today: **3** (all closed, 0W/3L). Bug pattern (A-grade + 0 opens 30min+ into RTH): **NO** — post-close, 0 new opens is expected.
-- id=3 +7.30pt long still labeled `outcome=loss` (win_rate=0) — unchanged, out of monitor scope, follow-up already spawned. Verdict: GREEN — open-veto P0 remains resolved/not regressed. No commit (not first run, no P0). Post-close runs remain no-ops until tomorrow's 09:30 ET open.
-
-## 2026-06-29 20:29 ET (post-close re-check)
-- Eval (apex + Bearer): action=SCANNING, available=false, session_phase=closed, grade=C, score=65, confidence=96, direction=long; gates.passed=false (block "Session closed"); `open_play`=null; `option_ticket.blocked`=null (no veto). Grade wobble (A→C) is post-close scan noise; engine is idle.
-- Plays opened today: **3** (all closed, 0W/3L per `stats.total_closed`). State frozen since 17:01 first run — no new opens (expected, market closed 4h+).
-- Bug pattern (APPROVE_BUY + 0 opens 30min+ into RTH): **NO**. Endpoints healthy.
-- Verdict: **GREEN**. No commit (not first run, no P0). id=3 win/loss mislabel anomaly already logged + follow-up spawned — not re-raised.
-
-## 2026-06-29 21:03 ET (post-close re-check)
-- Eval (apex + Bearer, HTTP 200): action=SCANNING, available=false, session_phase=closed, grade=C, score=65, direction=long; `open_play`=null; `option_ticket.blocked`=null/empty (no veto). Engine idle.
-- Outcomes (HTTP 200): Plays opened today: **3** (all closed, 0W/3L; grades A+/A/A+). State frozen since 17:01 ET first run — no new opens (expected, market closed ~5h).
-- Bug pattern (APPROVE_BUY/A-grade + 0 opens 30min+ into RTH): **NO** — post-close, 0 new opens is normal.
-- Verdict: **GREEN** — open-veto P0 not regressed (engine opened 3 plays this RTH). id=3 +7.30pt long still labeled `outcome=loss`/win_rate=0 — unchanged, out of scope, follow-up already spawned. No commit (not first run, no P0). Runs remain no-ops until tomorrow's 09:30 ET open.
+## 2026-06-29 23:22 ET (late post-close check)
+- `GET /api/market/spx/play` + `/api/market/spx/outcomes` (apex + Bearer) both HTTP 200.
+- Eval: action=SCANNING, available=false, session_phase=closed, grade=C, score=63, confidence=96, direction=long; gates.passed=false (block "Session closed"); `open_play`=null; `option_ticket`=null (no veto). thesis="Desk offline · resumes 6:30 AM PT".
+- Plays opened today: **3** (session_date 2026-06-29, all closed, 0W/3L). Bug pattern (APPROVE_BUY + 0 opens 30min+ into RTH): **NO** — market closed, 0 new opens is expected; open-veto bug remains resolved.
+- ⚠️ id=3 win/loss mislabel anomaly still present (+7.30pt long, exit 7439.43 > entry 7432.13, labeled `loss`; win_rate=0). Tracked separately — strategy/data-correctness concern, not this monitor's open-veto guard.
+- Verdict: GREEN. No P0. Not first run of the day, no alert → no commit.
