@@ -141,9 +141,14 @@ export function FlowFeed() {
   // Bug 14: keep ref in sync so SSE closure always reads current value
   useEffect(() => { audioEnabledRef.current = audioEnabled; }, [audioEnabled]);
 
-  // Feature 7: earnings calendar (cached 12h server-side)
+  // Feature 7: earnings calendar (cached 12h server-side). Refresh on an interval so a
+  // long-open session picks up calendar changes without a manual reload (was mount-only).
   useEffect(() => {
-    fetchEarningsCalendar().then(setEarningsMap).catch((e) => console.warn("[FlowFeed] earnings fetch:", e));
+    const load = () =>
+      fetchEarningsCalendar().then(setEarningsMap).catch((e) => console.warn("[FlowFeed] earnings fetch:", e));
+    load();
+    const id = setInterval(load, 30 * 60_000);
+    return () => clearInterval(id);
   }, []);
 
   // Feature 2: dark pool prints for coordination detection (refresh every 60s)

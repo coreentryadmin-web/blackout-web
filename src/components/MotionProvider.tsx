@@ -8,20 +8,22 @@ import { SWRConfig } from "swr";
  *
  * MotionConfig: every framer-motion animation respects OS prefers-reduced-motion.
  *
- * SWRConfig: global data-fetch defaults that cut background network churn (a big
- * contributor to the post-navigation "settle" lag). `revalidateOnFocus:false` stops
- * the thundering-herd refetch where EVERY mounted poller re-hits the network the
- * instant you alt-tab back — each poller keeps its own refreshInterval, so data still
- * stays fresh, and the few surfaces that truly want focus-revalidation set it
- * explicitly per-hook (e.g. IndexRibbon, GexHeatmap). `dedupingInterval` collapses
- * duplicate in-flight requests for the same key across panels.
+ * SWRConfig: global data-fetch defaults tuned for ALWAYS-LIVE data.
+ *  - `revalidateOnFocus: true` — the instant you return to the tab, every surface
+ *    refreshes (SWR pauses refreshInterval while a tab is hidden, so this is what
+ *    makes data feel live again immediately on return — no manual refresh, ever).
+ *  - `dedupingInterval: 3000` — collapses duplicate in-flight requests for the same
+ *    key across panels, so the on-focus refresh can't become a thundering herd.
+ *  - `errorRetryCount: 2` — bounded retries.
+ * Per-component `refreshInterval`s drive continuous live updates while viewing; this
+ * config guarantees freshness on tab re-entry too.
  */
 export function MotionProvider({ children }: { children: React.ReactNode }) {
   return (
     <MotionConfig reducedMotion="user">
       <SWRConfig
         value={{
-          revalidateOnFocus: false,
+          revalidateOnFocus: true,
           dedupingInterval: 3000,
           errorRetryCount: 2,
         }}
