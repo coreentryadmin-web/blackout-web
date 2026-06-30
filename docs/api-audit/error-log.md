@@ -6,6 +6,60 @@
 
 ---
 
+## 2026-06-30 (Tue) Daily Error Triage
+
+### Summary
+- **New errors found:** 0 net-new (no runtime exceptions, stack traces, `TypeError`/`ReferenceError`, OOM/heap, pool exhaustion, unhandled rejections, or 4xx/5xx in any service log)
+- **Recurring errors:** 2 — (1) **UW WS flow-data stall** carrying over from 06-29 (HIGH, **Day 2** of the WS stall, ~Day 4 of the broader flow-staleness pattern); (2) **Discord alerting blind** (HIGH, **Day 4**)
+- **Auto-fixed:** 0 — no finding met the safe-auto-fix bar (clear code root-cause · <10 lines · non-breaking · reversible · tsc-clean). The WS stall is upstream + the gate behavior is by-design fail-open; the rest are env-config / log-verbosity judgment calls.
+- **Requires human attention:** 2 (HIGH: UW WS flow data steadily aging toward the 10-min hard block during RTH · HIGH: Discord webhook still unset → RTH staleness alert dropped again today)
+- **Known baseline / benign:** 2 (macro-events FOMC `LIVE_VS_LITERAL` drift = INFO reconciliation noise, 33× · gex-positioning 50pt cross-validation divergence vs UW ladder, 1×, by-design)
+
+Second weekday RTH run (Tue ~07:13 PT / 10:13 ET / 14:13 UTC). The headline is the **same UW WebSocket data-delivery problem the 06-29 report flagged HIGH — it has NOT recovered.** The smoking gun this run is `flow_data_age_ms` climbing **monotonically** across the 500-line tail: `224892 → 445655` ms (**~3.7 min → ~7.4 min, never resetting**). A healthy feed would reset the counter on every fresh message; a counter that only climbs means **zero fresh flow messages are arriving** — the exact frozen-WS signature from yesterday, just caught *earlier in the climb* (before it crosses the 10-min block that fully halts SPX plays). Because `flow_data_age` is read from the shared cache (replica-independent), this is platform-wide, not a single-replica artifact — even though this run's `railway logs` replica sample contained **0** `[uw-socket]` stall/reconnect lines (yesterday's tail had 27 stall + 65 reconnect; the WS owner replica was simply not in today's sample).
+
+### New Errors (first occurrence)
+| Service | Error | Count | Root Cause | Status |
+|---|---|---|---|---|
+| _none — no net-new error class this run. All observed conditions are either recurring (table below), by-design fail-open behavior, or benign INFO reconciliation._ | | | | |
+
+### Recurring Errors (seen before, not yet fixed)
+| Service | Error | Days Recurring | Escalation |
+|---|---|---|---|
+| blackout-web | **UW WS flow-data stall** — `flow_data_age_ms` climbs monotonically `224892→445655` (3.7→7.4 min, never resets) → `[spx-play-gates] halt channel stale — failing OPEN` ×56 | **Day 2** of the frozen-WS data stall (06-29→06-30); Day 4 of flow-staleness symptoms overall | **HIGH** — same upstream UW WS subscription/keepalive fault as 06-29 (`src/lib/ws/uw-socket.ts`). REST crons still 200 (`uw-cache-refresh refreshed=24/24`, `flow-ingest skipped="ws_active_cluster"`) → UW API key valid, fault isolated to **WS data delivery**. Not yet blocking (peak 7.4 min < 10-min hard gate) but trending toward it. Per [[project_spx_plays_never_open]] / [[project_pending_items]] this is the deferred #98/#104 WS-streams item. |
+| blackout-web | **Discord alerting blind** — `[notify] ops alert DROPPED` + `[cron/cron-staleness-watchdog] ALERT NOT DELIVERED` (×2) for a real RTH staleness (watchdog 14:01 found 6 problems / 5 rth_stale, **self-healed 4**: flow-ingest, uw-cache-refresh, nights-watch-warm, heatmap-warm) | **Day 4** (06-27, 06-28, 06-29, 06-30) | **HIGH (escalated — 3+ days)** — `DISCORD_OPS_WEBHOOK_URL` / `DISCORD_PLAY_WEBHOOK_URL` both unset → every real cron alert is silently dropped. Self-heal masked it today, but the safety net is still off. |
+
+### Auto-Fixed This Run
+| Error | File | Fix Applied | Commit |
+|---|---|---|---|
+| _none — no finding qualified. WS stall is upstream (reconnect path heavily guarded, fail-open is deliberate per `spx-play-gates.ts:120-130`); Discord is an env-var I don't hold the value for; FOMC-drift / GEX-divergence are benign INFO. None are safe <10-line code bugs._ | | | |
+
+### Requires Human Attention
+| Error | Severity | Why It Needs Human | Suggested Fix |
+|---|---|---|---|
+| UW WS flow data steadily aging during RTH (3.7→7.4 min and climbing) | **HIGH** | Upstream WS subscription/keepalive issue, not a code bug — the reconnect/stall watchdog in `uw-socket.ts` is working as designed; UW delivers nothing after rejoin. Fixing it means investigating the UW WS auth-frame / channel re-subscription (`joinActiveChannels`) or contacting the UW data feed, not editing guarded reconnect logic. | Verify the UW WS subscription frames (`flow_alerts`/`net_flow`/`trading_halts`) are actually re-ACKed after reconnect; add a hard "stale > N min → force full socket teardown + fresh auth" escalation if not already present; consider a REST-poll fallback to keep `flow_data_age` fresh when WS is silent (REST crons prove the key works). Same item as 06-29 — **2 days unresolved.** |
+| Discord alerting unconfigured → RTH staleness alerts silently dropped (Day 4) | **HIGH** | Cannot be fixed in code; I don't hold the webhook URL. With both webhooks unset, the self-heal worked **silently** today — but a failure self-heal *can't* recover would go completely unnoticed. | Set `DISCORD_OPS_WEBHOOK_URL` (and/or `DISCORD_PLAY_WEBHOOK_URL`) in the blackout-web Railway env. 4 days outstanding. |
+
+### Benign / Known Baseline (no action required)
+| Service | Observation | Count | Verdict |
+|---|---|---|---|
+| blackout-web | `[macro-events] LIVE_VS_LITERAL FOMC drift in-window: live=[2026-07-08] expected=[] extra=[2026-07-08]` | 33 | **INFO reconciliation noise.** The literal/hardcoded FOMC list is empty in-window while the live feed correctly carries the **2026-07-08 FOMC**; the desk favors live data (correct per [[feedback_values_live_correct_grounded]]). Not a gating bug — desk remains event-aware via live `macro_events`. *Optional cleanup:* throttle/downgrade this log or seed the literal list to cut ~6.6% log spam (deferred — touches event-gating, not a blind auto-fix). |
+| blackout-web | `[gex-positioning] cross-validation divergence for SPX: callWallMatch=true putWallMatch=false flipMatch=false divergence=50pt vs UW strike ladder` | 1 | **By-design.** GEX walls are sourced 100% from the Massive options chain ([[project_gex_source]]); a 50pt put-wall/flip divergence vs the UW ladder is the data-correctness auditor noting cross-source variance, not a fault. Monitor only. |
+| blackout-web | `[spx-play-engine] entry gates blocked: grade C/D, mixed tape, 0DTE flow opposes direction` | 28 | **Correct trading logic.** Engine declining sub-B setups as designed (not an error). |
+
+### Services With No Errors
+- **Flow-Ingest-Cron** — `/api/cron/flow-ingest → 200`, `ok=true ingested=0 polled=0 skipped="ws_active_cluster"` (REST defers to WS cluster — see WS-stall note above; cron itself healthy)
+- **UW-Cache-Refresh-New** — `/api/cron/uw-cache-refresh → 200`, `ok=true refreshed=24 total=24` (all 24 refreshed — **proves UW API key is valid**, isolating the fault to WS)
+- **Cron-Staleness-Watchdog** — `/api/cron/cron-staleness-watchdog → 200`; 13:40 tick clean (`problems=0`), 14:01 tick caught 6 problems / 5 rth_stale and **self-healed 4** (flow-ingest, uw-cache-refresh, nights-watch-warm, heatmap-warm) — watchdog working as designed
+- **NightHawk-Playbook** — no log output (evening-only cron, `30/15 21-23 * * 1-5`; next run ~7h; idle at mid-morning, as expected — **not** a generation failure)
+- All other services (Market-Regime-Detector, Membership-Reconcile, GEX-Alerts, SPX-Engine-Evaluation, Grid-Warm, provider-health-reconcile, etc.) — **● Completed** with no error output in window
+
+### Triage Notes
+- **Diff vs 06-29:** The UW WS flow-data stall is **NOT resolved** — `flow_data_age` is climbing monotonically again (3.7→7.4 min), same frozen-feed signature, caught before the 10-min hard block this time so SPX plays are *not yet* fully blocked. The 06-28 options-socket reconnect storm remains absent (0 hits — stays resolved). Discord-blind is now **Day 4** and escalated.
+- **Why no auto-fix:** Both HIGH items are non-code (upstream WS feed + a missing env secret I don't hold). The fail-open halt behavior and the guarded reconnect path are deliberate; editing them would risk the [[project_nighthawk_edition]] empty-editions regression. Producing a flagged diagnosis is the correct output here.
+- No secrets were printed; no log line contained a credential value requiring redaction. `RAILWAY_TOKEN` was loaded into env only, never echoed.
+
+---
+
 ## 2026-06-29 (Mon) Daily Error Triage
 
 ### Summary
