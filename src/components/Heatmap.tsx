@@ -1,6 +1,21 @@
 "use client";
 
-import { GexHeatmap } from "@/components/desk/GexHeatmap";
+import dynamic from "next/dynamic";
+
+// Code-split the ~4k-line GexHeatmap so it doesn't sit in the shared bundle or block
+// hydration. ssr:false → the page shell + skeleton paint immediately on navigation,
+// then the heavy chart chunk loads and hydrates. (/heatmap also has a route loading.tsx.)
+const GexHeatmap = dynamic(
+  () => import("@/components/desk/GexHeatmap").then((m) => ({ default: m.GexHeatmap })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="desk-layout space-y-5">
+        <div className="h-[520px] rounded-2xl border border-white/10 bg-black/40 animate-pulse" />
+      </div>
+    ),
+  }
+);
 
 /**
  * /heatmap is the GEX positioning tool: regime header + gamma profile (with a
