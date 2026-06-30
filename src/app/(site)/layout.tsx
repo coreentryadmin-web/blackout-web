@@ -1,6 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
 import { Nav } from "@/components/Nav";
-import { IndexRibbon } from "@/components/IndexRibbon";
 import { MarketSessionProvider } from "@/components/platform/MarketSessionProvider";
 import { MarketPulseLayer } from "@/components/platform/MarketPulseLayer";
 import { isAdminUser } from "@/lib/admin-access";
@@ -38,9 +37,6 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       <MarketSessionProvider />
       <MarketPulseLayer />
       <Nav lockedTools={lockedTools} />
-      {/* IndexRibbon: live SPX + VIX quotes below the nav bar. Renders only when data is
-          available (null-renders when market closed / indices feed unconfigured). */}
-      <IndexRibbon />
       {children}
     </>
   );
