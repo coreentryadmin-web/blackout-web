@@ -12,7 +12,6 @@ type SpxPlayRow = {
   pnl_pts: number | null;
   outcome: "win" | "loss" | "breakeven" | "open";
   exit_action: string | null;
-  headline: string;
   closed_at: string | null;
 };
 
