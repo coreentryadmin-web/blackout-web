@@ -1362,3 +1362,48 @@ SPX desk is an SPX-0DTE lens; the heatmap endpoint is the full SPY composite cha
 ### Disconnected channels (FAIL)
 - None. The 2 WARNs are documented by-design boundaries (W3 non-SPX GEX path; Largo positioning = market-intel). Recommend closing W3 by routing Largo non-SPX get_gex through fetchGexHeatmap to guarantee Largo and the Heatmap quote identical non-SPX walls.
 ---
+
+## Connectivity Matrix — 2026-06-29 20:53 (local) | data asof 2026-06-29 ~20:53Z
+**PASS: 18 | FAIL: 0 | WARN: 1**  ·  Run context: **after-hours / post-close** (RTH-only checks relaxed)
+
+Probed via apex `blackouttrades.com` + Bearer CRON_SECRET (www strips auth → 401). All 6 service
+endpoints returned **200**. The SKILL's camelCase field assumptions (callWall/kingStrike/flowBias) are
+stale — real payloads are snake_case (gex_walls/gex_king/flow_0dte_net); verdicts below use live fields.
+
+| Channel | Status | Evidence |
+|---|---|---|
+| SPX → HEATMAP (GEX) | PASS | Shared options-chain source. GEX internal cross_validation callWallMatch/putWallMatch/flipMatch = **true**, divergence=1. SPX-scaled desk vs SPY-scaled gex-positioning by design; SPY×10.04 walls map onto desk walls within ~2pts (SPY flip 740.87→7438 vs desk gamma_flip 7436.11). |
+| HELIX → SPX | PASS | SPX desk carries live HELIX flow: spx_flows=32, flow_0dte_net=434.7M, tide_net=430.3M, unified_tape present. (SKILL's flowBias/netFlow check is a false-negative — wrong field names.) |
+| HEATMAP → LARGO | PASS | largo/run-tool.ts: 35 gex/wall refs (Gex/gamma/king/wall). |
+| HELIX → NHAWK | PASS | Night Hawk plays expose flow_streak_days + key_signal; nighthawk-verifier.ts has 41 flow refs. |
+| GRID → SPX | PASS | SPX desk live payload carries macro_events=1, news_headlines=10; spx-desk-merge.ts wires econ+news. |
+| SPX → NWATCH | PASS | nights-watch/verdict.ts: 32 spx/price/vwap refs. |
+| HEATMAP → NWATCH | PASS | verdict.ts: 66 gex/wall/gamma refs; position-context.ts imports getGexPositioning (shared cache-reader). |
+| HELIX → NWATCH | PASS | verdict.ts: 55 flow/premium refs. |
+| LARGO → SPX | PASS | run-tool.ts getSpx/SpxDesk handlers. |
+| LARGO → HELIX flows | PASS | 54 flow refs. |
+| LARGO → Night Hawk | PASS | nighthawk/edition handlers (15 refs). |
+| LARGO → Night's Watch | PASS | Position handlers (12 refs). |
+| LARGO → Grid news | PASS | News handlers (8) + tool-defs news categories (upgrades/downgrades/fda/ipos/...). |
+| LARGO → Earnings | PASS | Earnings handlers (12 refs). |
+| LARGO → Dark pool | PASS | DarkPool handlers (4 refs). |
+| LARGO → Economy | PASS | Economy handlers (2 refs). |
+| NHAWK → HELIX | PASS | Edition theses reference flow streaks; verifier consumes flow tape. |
+| Timestamp sync (data layer) | PASS | SPX as_of vs GEX asof gap = **0.2 min** (12s); both fresh, gex_stale=false. |
+
+### Data timestamps (data asof)
+- SPX desk as_of: 2026-06-29 20:53:07Z — 0.2 min ago, gex_stale=**false**
+- GEX positioning asof: 2026-06-29 20:52:58Z — 0.2 min ago (12s behind SPX; converged)
+- Latest HELIX flow event_at: 2026-06-29 13:12Z (~16:12 ET, just post-close) — last unusual print of the session
+- SPX/SPY scale ratio: 10.0411 (≈10 expected)
+
+### WARN (not a FAIL)
+- ⚠️ **SPX desk 0DTE flow snapshot is 7.7h stale; feed_stalled=true.** This is the expected post-close
+  state — 0DTE/options flow stops at the cash close, so the rolling 0dte aggregate freezes after-hours.
+  **During RTH this same condition would be P0** (desk blind to live flow). The live GEX/price layer is
+  NOT stale (gex_stale=false, 12s sync), so this is isolated to the intraday flow aggregate, by design at
+  this hour. Re-confirm on the next RTH run that flow_data_age_ms drops back under ~2 min.
+
+### Disconnected Channels
+- None. Every source→consumer cell is wired; no service is blind to another's data this cycle.
+---
