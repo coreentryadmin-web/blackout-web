@@ -61,13 +61,11 @@ html.ios-app .show-in-ios-app { display: revert; }
      the desktop step (1.5rem == px-6) preserves the existing look at ≥768px. */
   --content-max: 80rem;      /* desktop rail max-width (== Tailwind max-w-7xl) */
   --page-pad-x: 1rem;        /* mobile gutter (base) */
-  /* Top offset for in-app page content (PageShell paddingTop). Must clear the TWO
-     fixed bars stacked at the top: the nav (76px at rest) + the IndexRibbon
-     (26px, sits at top:76px, renders only when SPX/VIX data is live). 60px (the old
-     "scrolled nav height") left the ribbon overlapping every page's kicker/header —
-     the "can't see the header" bug. 104px clears both with a hair of breathing room;
-     the ~26px slack when the ribbon is hidden is negligible. */
-  --nav-offset: 104px;
+  /* Top offset for in-app page content (PageShell paddingTop). Must clear the fixed
+     nav banner (76px at rest). 88px clears it with ~12px of breathing room so a page's
+     kicker/header never tucks under the nav. (Was 104px when a 26px SPX/VIX index ribbon
+     stacked below the nav; the ribbon was removed.) */
+  --nav-offset: 88px;
 
   /* ── VITALS motion tokens — "The One Clock" ─────────────────────────────
      Canonical, globally-available motion vocabulary for the VITALS motion
@@ -1851,26 +1849,6 @@ body::before {
   .page-header { @apply flex items-baseline gap-4 mb-8; }
   .page-title { @apply font-display text-4xl tracking-[3px] text-white; }
   .page-subtitle { @apply text-[10px] tracking-[2px] text-sky-200 uppercase; }
-
-  /* ===== Index Ribbon — compact SPX/VIX quote bar below the nav ===== */
-  .index-ribbon {
-    @apply fixed inset-x-0 z-[99] flex items-center justify-between gap-3 px-4;
-    top: 76px;
-    height: 26px;
-    background: rgba(4, 4, 7, 0.92);
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    backdrop-filter: blur(8px);
-    font-family: var(--font-mono, monospace);
-    font-size: 11px;
-    pointer-events: none;
-    transition: top 0.32s var(--ease-draw);
-  }
-  .index-ribbon-quotes { @apply flex items-center justify-center gap-4 flex-1; }
-  .index-ribbon-freshness { @apply shrink-0 scale-[0.92]; transform-origin: right center; }
-  .index-ribbon-chip { @apply flex items-center gap-1.5; }
-  .index-ribbon-label { @apply text-sky-400 font-bold tracking-wider uppercase; font-size: 10px; }
-  .index-ribbon-price { @apply text-white tabular-nums; }
-  .index-ribbon-chg { @apply tabular-nums font-medium; }
 
   /* ===== Floating Glass Pill nav (scroll-aware) ===== */
   .nav-bar {
