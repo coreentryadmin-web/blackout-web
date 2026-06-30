@@ -1258,3 +1258,56 @@ The W1 dual-GEX-path divergence risk is **fully CONVERGED**. No two surfaces can
 ### Disconnected channels (FAIL)
 - None. Every source->consumer channel is wired and live.
 ---
+
+## Connectivity Matrix — 2026-06-29 (post-close cycle)
+**PASS: 22 | FAIL: 0 | WARN: 2** — every source→consumer channel wired & live. Probed via apex host + Bearer CRON_SECRET (www → 401, auth-stripped).
+
+| Channel | Status |
+|---|---|
+| SPX -> HELIX | PASS: desk emits flow_0dte_net=434.7M, spx_flows=32, tide_net, unified_tape (same tape HELIX serves) |
+| SPX -> HEATMAP | PASS: desk gex_king=7440, gex_walls[10] 7430–7465, gamma_flip=7403.19 (gex_age 69 s, not stale) |
+| SPX -> LARGO | PASS: get_spx_structure / get_spx_confluence / get_spx_play read getLargoSpxLiveDesk (same desk cache) |
+| SPX -> NWATCH | PASS: verdict.ts reads ctx.underlyingPrice + approachingKeyLevel(levels) |
+| SPX -> NHAWK | PASS: nighthawk spx-gap.ts / index-dossier consume desk structure |
+| SPX -> GRID | PASS: shared desk surfaces feed Grid intel panels |
+| HELIX -> SPX | PASS: desk flow_0dte_net/tide_net/spx_flows present (SKILL's flowBias/netFlow check is STALE field names) |
+| HELIX -> HEATMAP | PASS: gex_cross_validation reconciles GEX vs UW flow on the desk |
+| HELIX -> LARGO | PASS: get_options_flow (SPX→desk.spx_flows "same feed as dashboard"), get_flow_tape, get_postgres_flows merge fetchRecentFlows |
+| HELIX -> NHAWK | PASS: edition-builder getFlowTapeSummary + hunt-builder fetchRecentFlows on HELIX flow_alerts (Postgres) |
+| HELIX -> NWATCH | PASS: verdict flowAlignment reads ctx.flows callPremium/putPremium/lean (FLOW_MIN_PREMIUM=250k floor, skew 1.5x) |
+| HEATMAP -> SPX | PASS: desk gex_king/gex_net/gamma_flip/gex_walls fresh (gex_age 69 s) |
+| HEATMAP -> HELIX | PASS: gex regime shared via desk/positioning cache |
+| HEATMAP -> LARGO | PASS: get_gex(SPX,0DTE) reads desk.gex_walls "same as SPX Sniper dashboard" |
+| HEATMAP -> NHAWK | PASS: nighthawk gex/wall references in candidates+market-wide |
+| HEATMAP -> NWATCH | PASS: verdict hasWalls()/nearestWallSignal()/pushedThroughWallAgainst() read shared gexWalls (spx-desk OR gex-heatmap) |
+| LARGO -> * | N/A: Largo is terminal AI consumer, not a data source |
+| NHAWK -> LARGO | PASS: get_nighthawk_edition / get_nighthawk_dossier / get_nighthawk_outcomes (shared Postgres) |
+| NWATCH -> LARGO | PASS: get_positioning(fetchPositioningSummary) injected |
+| GRID -> SPX | PASS: desk news_headlines=10 live; macro_events field present & event-aware (0 today=no events, macroHardBlock gate) |
+| GRID -> LARGO | PASS: get_news + get_economic_calendar + get_dark_pool + get_earnings + get_catalysts + get_etf_flow tools |
+| GRID -> NHAWK | PASS: dossier fetchUwFlowPerExpiry + catalyst-awareness merge Grid intel |
+| HEATMAP -> LARGO (non-SPX) | WARN (by-design): get_gex for non-SPX uses fetchPolygonOdteGexRows/fetchUwGexLevels, NOT the shared getGexPositioning cache-reader (residual W3) |
+| NWATCH (per-user pos) -> LARGO | WARN (by-design): Largo get_positioning = NH positioning summary, not a user's live Night's Watch portfolio (market-intel, not per-user introspection) |
+
+### Live data snapshot (post-close)
+- SPX desk: price=7440.43, gex_king=7440, gex_net=+31.58B, gamma_flip=7403.19, max_pain=7450, source=polygon+uw-flow
+- GEX (heatmap, SPY): spot=740.76, call_wall=724, put_wall=732, flip=735.91, net_gex=-63.81B, max_pain=740
+- Flows: count=10 (real tape), Night Hawk edition reachable (recap-capable post-close)
+
+### Timestamp consistency
+- SPX as_of: 2026-06-29T23:59:02.941Z | GEX asof: 2026-06-30T00:00:00.397Z
+- **GEX vs SPX gap: ~57.5 s** — well under 10-min P0 threshold; both fresh (gex_age 69 s, gex_stale=false). Tools see the same moment.
+
+### Notable change vs prior cycle — GEX regime flipped NEGATIVE
+- Prior cycle: net_gex POSITIVE, call_wall(741) ABOVE put_wall(725) — normal positive-gamma structure.
+- This cycle: SPY net_gex=**-63.81B** (negative gamma), call_wall(724) BELOW put_wall(732), both below spot(740.76) — walls inverted, internally consistent for a short-gamma regime. Not a connectivity fault; a real positioning shift. Worth flagging to desk consumers since wall semantics invert in negative gamma.
+- Sign note: SPX desk gex_net=+31.58B (SPX 0DTE lens) vs SPY heatmap net_gex=-63.81B (full SPY chain). Different instrument + lens — by-design divergence ([[project_connectivity_matrix]] W1 CONVERGED at code-path level), NOT a data bug. A naive numeric diff (SPX 7440 vs SPY 740) would false-FAIL; the SKILL's <25-pt wall threshold is mis-scaled and must not be read as a real failure.
+
+### SKILL.md drift confirmed (verdicts derived from real schema/code, not the SKILL's assumptions)
+- Live fields are snake_case (call_wall/put_wall/gex_king; SPX walls in gex_walls[]), NOT camelCase (callWall/kingStrike).
+- Largo tool dispatch lives in src/lib/largo/run-tool.ts (+ largo-live-feed.ts), NOT the non-existent src/lib/tools/.
+- Public www routes 401 unauth → must probe apex blackouttrades.com + Bearer CRON_SECRET.
+
+### Disconnected channels (FAIL)
+- None. Every source→consumer channel is wired and live. The 2 WARNs are documented by-design boundaries, not silos.
+---
