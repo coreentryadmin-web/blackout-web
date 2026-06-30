@@ -141,7 +141,8 @@ async function main() {
              WHERE job_key = 'nights-watch-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
           )
         ).rows[0].n;
-        nw15 = nw15Row;
+        if (nw15Row > 0) ok(`nights-watch-warm ran in last 20m (${nw15Row} ok run(s))`);
+        else fail("nights-watch-warm: no ok run in last 20m during RTH");
 
         await c.end();
       } catch (e) {
