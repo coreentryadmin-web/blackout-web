@@ -1629,3 +1629,37 @@ All live feeds within **~35s** (SPX 15:57:49Z, GEX 15:57:17Z, latest flow 15:57:
 
 **Verdict: full mesh — every service can read every other service's data via shared cache-readers; no silos, no desync, no hallucination surface.**
 ---
+## Connectivity Matrix — 2026-06-30 11:00 ET
+**Method:** live authed probes (apex host + Bearer) + source-wiring grep. All 6 service endpoints returned HTTP 200.
+**Verdict: PASS=10 | WARN=1 | FAIL=0** — every required channel carries live shared data. One known asymmetry (Largo non-SPX GEX path) flagged WARN, not a user-facing data break.
+
+### Live snapshot (ground truth this run)
+- SPX desk: price=7492.82 gex_king=7500 gamma_flip=7460.09 max_pain=7450 source=polygon+uw-flow; spx_flows=32 unified_tape=32 macro_events=4 news_headlines=10 tide_bias=bearish
+- GEX (Heatmap reader): ticker=SPY spot=746.44 call_wall=750 put_wall=735 flip=745.28 source=polygon; self-validation callWallMatch=True flipMatch=True divergence=1.28
+- HELIX flows: count=15 latest=COIN $604342
+- Night Hawk: plays=3 edition_for=2026-06-30 (thesis cites live flow streak)
+- Grid: news articles=15 econ indicators=7
+
+### Matrix (Source → Consumer)
+| Channel | Status | Evidence |
+|---|---|---|
+| SPX → HEATMAP | PASS | SPX gex_king 7500 = SPY call_wall 750 ×10. Different INSTRUMENTS by design (SPX index 0DTE lens vs SPY-based heatmap cache-reader). flip ×10=7452.8 vs 7460.09 (-7.3pt, within tol). spot basis -28.4pt = normal SPY-ETF vs SPX-index tracking basis, NOT a bug. |
+| HELIX → SPX | PASS | SPX desk carries spx_flows(32), unified_tape(32), tide_bias=bearish, flow_0dte_*. Not blind to flow. |
+| HEATMAP → LARGO | PASS (SPX) / WARN (non-SPX) | Largo get_gex SPX-0DTE path = getLargoSpxLiveDesk ("spx_sniper_desk") — SAME as SPX dashboard. **Non-SPX/non-0DTE path uses fetchPolygonOdteGexRows directly, NOT the shared fetchGexHeatmap cache-reader** that Night's Watch + Heatmap use → can diverge for non-SPX tickers (residual W3). |
+| HELIX → NHAWK | PASS | Live play thesis cites "$.4M across 80 alerts, 4-day streak, RepeatedHits"; flow_streak_days field; flow-streak.ts reads shared flow_alerts (Postgres/HELIX). |
+| HELIX → NWATCH | PASS | verdict.ts flow signals (FLOW_MIN_PREMIUM, FLOW_SKEW_RATIO) fed by fetchRecentFlows from Postgres (same HELIX table). |
+| SPX → NWATCH | PASS | position-context loadMergedSpxDesk → gexWalls(source spx-desk) + underlyingPrice; verdict reads nearestWallSignal/price. |
+| HEATMAP → NWATCH | PASS | non-SPX positions: gexWalls from fetchGexHeatmap (shared cache-reader). Night's Watch uses the SAME reader Largo's non-SPX path bypasses. |
+| GRID → SPX | PASS | Live SPX desk macro_events=4 (Job openings/Consumer confidence/Chicago PMI/Case-Shiller today), news_headlines=10, macro_indicators present. SPX desk IS event-aware. |
+| LARGO → ALL (tool reach) | PASS | run-tool.ts exposes get_gex, get_options_flow/get_flow_tape/get_postgres_flows, get_spx_structure/get_spx_confluence/get_spx_play, get_nighthawk_edition, get_dark_pool, get_news, get_economic_calendar, get_congress_trades, get_earnings, get_platform_snapshot, get_open_plays/get_trade_history. Not blind to any market service. |
+| LARGO → NWATCH (per-user positions) | N/A by design | No per-user Night's Watch position tool in Largo — B2C per-user data is intentionally NOT a shared cache-reader surface. Not a connectivity gap. |
+| Timestamps | PASS | SPX as_of=2026-06-30T17:56:41.131Z, GEX asof=2026-06-30T17:56:50.574Z, latest flow=2026-06-30T17:56:12.000Z, econ=2026-06-30T17:43:32.296Z. Price/GEX/flow trio within ~40s. Econ calendar ~13min (slow-moving warm cache, expected). NH edition 03:38Z = overnight publish, by design. No P0 desync. |
+
+### Residual to converge (carry-forward)
+- **W3 — Largo non-SPX get_gex bypasses shared cache-reader.** For SPX-0DTE Largo is fully converged (spx_sniper_desk); for any other ticker/expiry it computes its own Polygon GEX rows (fetchPolygonOdteGexRows) instead of fetchGexHeatmap. A user asking Largo about e.g. NVDA GEX could get walls that differ from the Heatmap tool. Low blast radius (separate fetch of the same provider, not a fabrication), but it is the one place two services don't share the same cache. Fix = route Largo's non-SPX get_gex through fetchGexHeatmap / getGexPositioning.
+
+### No regressions vs prior runs
+- SPX desk remains flow-aware (spx_flows/tide) and event-aware (macro_events) — NOT "blind to FOMC".
+- GEX dual path converged: getGexPositioning is the SPY cache-reader; SPX desk 0DTE lens is by-design; the two agree at king-strike (7500=7500).
+- GEX endpoint self-validates Polygon vs UW each call (divergence 1.28 this run).
+---
