@@ -32,3 +32,19 @@ export async function requireToolApi(key: ToolKey): Promise<Response | null> {
     { status: 403, headers: { "Content-Type": "application/json" } }
   );
 }
+
+/**
+ * API gate for a shared surface reachable from MULTIPLE tools. Allowed if ANY of the
+ * keys is launched (or the caller is an admin). Used by the canonical GEX positioning
+ * route, which both Heat Maps and the Grid read — so a Grid user isn't blocked just
+ * because the Heat Maps launch flag is off.
+ */
+export async function requireAnyToolApi(keys: ToolKey[]): Promise<Response | null> {
+  if (keys.some((k) => isToolLaunched(k))) return null;
+  const { actor } = await resolveAdminApi();
+  if (actor) return null;
+  return new Response(
+    JSON.stringify({ error: "coming_soon", message: "This tool is launching soon." }),
+    { status: 403, headers: { "Content-Type": "application/json" } }
+  );
+}

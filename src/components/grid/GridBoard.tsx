@@ -12,7 +12,7 @@ import { GridCongressPanel } from "./GridCongressPanel";
 import { GridEconomyPanel } from "./GridEconomyPanel";
 import { GridCatalystsPanel } from "./GridCatalystsPanel";
 import { GridGexPanel } from "./GridGexPanel";
-import { GridSectorHeatmapPanel } from "./GridSectorHeatmapPanel";
+import { GridSectorsPanel } from "./GridSectorsPanel";
 import { GridPanelsMenu, type GridPanelMeta } from "./GridPanelsMenu";
 import {
   GridLayoutProvider,
@@ -38,7 +38,7 @@ const PANELS: { id: string; title: string; node: ReactNode }[] = [
   { id: "congress", title: "Congress Trades", node: <GridCongressPanel /> },
   { id: "economy", title: "Macro Indicators", node: <GridEconomyPanel /> },
   { id: "catalysts", title: "Corporate Catalysts", node: <GridCatalystsPanel /> },
-  { id: "sectors", title: "Sector Heat", node: <GridSectorHeatmapPanel /> },
+  { id: "sectors", title: "Sector Heat", node: <GridSectorsPanel /> },
 ];
 
 const PANEL_META: GridPanelMeta[] = PANELS.map(({ id, title }) => ({ id, title }));

@@ -21,14 +21,9 @@ export async function GET(req: NextRequest) {
       const snapshot = await fetchTickerEarnings(ticker);
       return NextResponse.json({ available: true, mode: "ticker", ...snapshot }, { status: 200, headers: NO_STORE });
     }
+    // Market-wide snapshot. (Ticker mode returned above; the snapshot has no ticker filter here.)
     const snapshot = await readGridEarnings();
     if (!snapshot) return NextResponse.json({ available: false }, { status: 200, headers: NO_STORE });
-    if (ticker && Array.isArray(snapshot.items)) {
-      const filtered = snapshot.items.filter(
-        (item: { ticker?: string }) => item.ticker?.toUpperCase() === ticker,
-      );
-      return NextResponse.json({ available: true, ...snapshot, items: filtered, ticker }, { status: 200, headers: NO_STORE });
-    }
     return NextResponse.json({ available: true, ...snapshot }, { status: 200, headers: NO_STORE });
   } catch {
     return NextResponse.json({ available: false }, { status: 200, headers: NO_STORE });
