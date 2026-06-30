@@ -95,3 +95,10 @@ Automated cross-validation of Unusual Whales–sourced numerics: our served valu
 - Missing from tape (UW >=200000, settled): 0 of 34 eligible
 - Verdict: **PASS**
 ---
+
+## 2026-06-30 10:40 ET
+- Premium check: 7 matched | 0 mismatches
+- Tape lag: 0.2 min (DB newest age 0.3 min; RTH=True)
+- Missing from tape (UW >=200000, settled): 0 of 4 eligible
+- Verdict: **PASS**
+---
