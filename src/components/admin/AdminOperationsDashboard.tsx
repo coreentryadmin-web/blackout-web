@@ -299,6 +299,10 @@ type UwStores = {
   interval_flow_updated_at: number | null;
   trading_halts_updated_at: number | null;
   net_flow_updated_at: number | null;
+  option_trades_updated_at: number | null;
+  option_trades_buffered?: number;
+  lit_trades_updated_at: number | null;
+  lit_trades_buffered?: number;
   active_halts: string[];
 };
 
@@ -360,17 +364,16 @@ function DataPipelineHealthTile({ health }: { health: AdminHealthPayload | null 
   const stores = uw?.stores as UwStores | undefined;
   const channels = uw?.channels as Record<string, { ws_state: string; handlers: number; authenticated: boolean }> | undefined;
 
-  // GEX cross-validation: check if the UW socket health includes gex channel state (task #104).
-  // Since gex_strike_expiry channel is not yet wired, we surface the overall UW auth status as proxy.
+  // UW GEX cross-check deferred until gex_strike_expiry channel ships (native dealer walls).
   const uwAuthOk = uw != null && uw.initialized && !uw.auth_failed;
-  const gexStatus = uwAuthOk ? "match" : uw == null ? null : "divergence";
-  const gexOk = gexStatus === "match" ? true : gexStatus === "divergence" ? false : null;
 
   const STORE_DEFS: Array<{ key: keyof UwStores & `${string}_updated_at`; label: string; channel: string }> = [
     { key: "tide_updated_at",         label: "Market Tide",    channel: "market_tide"   },
     { key: "dark_pool_updated_at",    label: "Dark Pool",      channel: "off_lit_trades" },
     { key: "interval_flow_updated_at", label: "Interval Flow", channel: "interval_flow"  },
     { key: "net_flow_updated_at",     label: "Net Flow (SPX)", channel: "net_flow"       },
+    { key: "option_trades_updated_at", label: "Option Tape",   channel: "option_trades"  },
+    { key: "lit_trades_updated_at",   label: "Lit Trades",     channel: "lit_trades"     },
   ];
 
   return (
@@ -400,24 +403,24 @@ function DataPipelineHealthTile({ health }: { health: AdminHealthPayload | null 
             })}
           </div>
           <div>
-            {/* GEX cross-validation status */}
+            {/* UW multiplex auth (all channels share one socket) */}
             <div className="flex items-center justify-between py-2 border-b border-white/10">
               <div>
-                <p className="font-mono text-[11px] text-sky-200 font-semibold">GEX Cross-Validation</p>
-                <p className="font-mono text-[10px] text-cyan">UW socket auth · feed status</p>
+                <p className="font-mono text-[11px] text-sky-200 font-semibold">UW Multiplex</p>
+                <p className="font-mono text-[10px] text-cyan">socket auth · leader election</p>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-mono text-[11px] font-bold text-sky-200">
-                  {gexStatus ?? "—"}
+                  {uw == null ? "—" : uwAuthOk ? "Live" : "Degraded"}
                 </span>
                 <span
                   className={clsx(
                     "w-2 h-2 rounded-full flex-shrink-0",
-                    gexOk === true
-                      ? "bg-bull shadow-[0_0_6px_rgba(0,230,118,0.7)]"
-                      : gexOk === false
-                        ? "bg-bear shadow-[0_0_6px_rgba(255,45,85,0.7)] animate-pulse"
-                        : "bg-white/20"
+                    uw == null
+                      ? "bg-white/20"
+                      : uwAuthOk
+                        ? "bg-bull shadow-[0_0_6px_rgba(0,230,118,0.7)]"
+                        : "bg-bear shadow-[0_0_6px_rgba(255,45,85,0.7)] animate-pulse"
                   )}
                 />
               </div>
@@ -776,6 +779,26 @@ export function AdminOperationsDashboard() {
                   value={String(h?.route_errors?.length ?? 0)}
                   ok={h != null ? (h.route_errors?.length === 0) : null}
                   sub="recent 40 slots"
+                />
+                <VitalRow
+                  label="Premium launch gate"
+                  value={
+                    h?.launch_status
+                      ? `${h.launch_status.open_count}/${h.launch_status.total_count} open`
+                      : "—"
+                  }
+                  ok={
+                    h?.launch_status
+                      ? h.launch_status.open_count === h.launch_status.total_count
+                      : null
+                  }
+                  sub={
+                    h?.launch_status?.launched_tools_env
+                      ? `LAUNCHED_TOOLS=${h.launch_status.launched_tools_env}`
+                      : h?.launch_status
+                        ? "LAUNCHED_TOOLS unset (SPX + HELIX only)"
+                        : undefined
+                  }
                 />
                 <VitalRow
                   label="Health Status"

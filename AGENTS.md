@@ -52,6 +52,12 @@ The ~20 `railway.*.toml` files at the repo root are production cron *trigger* se
   `https://blackouttrades.com/sign-in?__clerk_ticket=<token>`, then **DELETE the test user afterward**
   (`DELETE /v1/users/{id}`) — it is a real user on the prod Clerk instance.
 
+### Premium tool launch gate (LAUNCHED_TOOLS)
+- Non-admin premium users only see tools where `isToolLaunched()` is true (SPX Slayer + HELIX by default;
+  others need `LAUNCHED_TOOLS=heatmap,nighthawk,largo,grid` on Railway `blackout-web`).
+- **Check without Railway:** `/admin` → **Tool launch status** panel, or `GET /api/admin/launch-status`
+  (admin-gated). Same snapshot is on `GET /api/admin/health` as `launch_status`.
+
 ### Production edge (Cloudflare) — security headers / CSP are NOT served from `next.config.mjs`
 - Production is fronted by **Cloudflare**, and the security **response headers are delivered by a
   Cloudflare Transform Rule** ("Add security headers to all responses") in the

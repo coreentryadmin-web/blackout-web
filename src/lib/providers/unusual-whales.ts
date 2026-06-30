@@ -982,6 +982,88 @@ export type TradingHaltEvent = {
   active: boolean;
 };
 
+export type UwOptionTradePrint = {
+  id: string;
+  underlying: string;
+  option_symbol: string;
+  price: number;
+  size: number;
+  premium: number;
+  executed_at: string;
+  tags: string[];
+};
+
+/** Normalize UW `option_trades` / `option_trades:TICKER` WS payloads into tape rows. */
+export function normalizeOptionTradesWsPayload(raw: unknown): UwOptionTradePrint[] {
+  const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
+  const list = Array.isArray(rows) ? rows : typeof raw === "object" && raw !== null ? [raw] : [];
+  const out: UwOptionTradePrint[] = [];
+  for (const row of list) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const underlying = String(r.underlying_symbol ?? r.underlying ?? r.ticker ?? "").toUpperCase();
+    if (!underlying) continue;
+    const price = Number(r.price ?? 0);
+    const size = Number(r.size ?? r.qty ?? 0);
+    const premium = Number(r.premium ?? price * size * 100);
+    if (!Number.isFinite(premium) || premium <= 0) continue;
+    const executedAt = String(r.executed_at ?? r.timestamp ?? "");
+    if (!executedAt) continue;
+    const tagsRaw = r.tags ?? r.trade_code;
+    const tags = Array.isArray(tagsRaw)
+      ? tagsRaw.map(String)
+      : tagsRaw
+        ? [String(tagsRaw)]
+        : [];
+    out.push({
+      id: String(r.id ?? `${underlying}-${executedAt}-${price}-${size}`),
+      underlying,
+      option_symbol: String(r.option_symbol ?? r.option_chain ?? ""),
+      price,
+      size,
+      premium,
+      executed_at: executedAt.slice(0, 19),
+      tags,
+    });
+  }
+  return out;
+}
+
+export type UwLitTradePrint = {
+  symbol: string;
+  price: number;
+  size: number;
+  executed_at: string;
+  premium: number;
+};
+
+/** Normalize UW `lit_trades` / `lit_trades:TICKER` WS payloads. */
+export function normalizeLitTradesWsPayload(raw: unknown): UwLitTradePrint[] {
+  const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
+  const list = Array.isArray(rows) ? rows : typeof raw === "object" && raw !== null ? [raw] : [];
+  const out: UwLitTradePrint[] = [];
+  for (const row of list) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const symbol = String(r.symbol ?? r.ticker ?? "").toUpperCase();
+    if (!symbol) continue;
+    const price = Number(r.price ?? 0);
+    const size = Number(r.size ?? r.volume ?? 0);
+    const premium = Number(r.premium ?? price * size);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const executedAt = String(r.executed_at ?? r.timestamp ?? "");
+    if (!executedAt) continue;
+    out.push({
+      symbol,
+      price,
+      size,
+      premium: Number.isFinite(premium) ? premium : price * size,
+      executed_at: executedAt.slice(0, 19),
+    });
+  }
+  return out;
+}
+
 /** Normalize UW `trading_halts` WS payload into halt events. */
 export function normalizeTradingHaltsWsPayload(raw: unknown): TradingHaltEvent[] {
   const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;

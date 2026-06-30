@@ -18,10 +18,14 @@ import { isUwErrorFrame } from "@/lib/ws/uw-frame";
 import {
   normalizeDarkPoolWsPayload,
   normalizeIntervalFlowWsPayload,
+  normalizeLitTradesWsPayload,
+  normalizeOptionTradesWsPayload,
   normalizeTradingHaltsWsPayload,
   parseUwFlowAlert,
   type DarkPoolSnapshot,
   type TradingHaltEvent,
+  type UwLitTradePrint,
+  type UwOptionTradePrint,
 } from "@/lib/providers/unusual-whales";
 import {
   type StoredTradingHalt,
@@ -77,8 +81,29 @@ function buildSocketUrl(): string {
 }
 
 function channelFromWireName(name: string): UwWsChannel | null {
-  const n = name.replace(/-/g, "_");
-  return ALL_CHANNELS.includes(n as UwWsChannel) ? (n as UwWsChannel) : null;
+  const base = name.split(":")[0].replace(/-/g, "_");
+  return ALL_CHANNELS.includes(base as UwWsChannel) ? (base as UwWsChannel) : null;
+}
+
+function parseWsTickerCsv(raw: string | undefined, fallback: string): string[] {
+  const src = (raw ?? fallback)
+    .split(",")
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean);
+  return [...new Set(src)];
+}
+
+/** Wire channel names sent on join — ticker-scoped channels use `name:TICKER`. */
+function joinWiresForChannel(channel: UwWsChannel): string[] {
+  if (channel === "option_trades") {
+    return parseWsTickerCsv(process.env.UW_WS_OPTION_TRADES_TICKERS, "SPX,SPY").map(
+      (t) => `option_trades:${t}`
+    );
+  }
+  if (channel === "lit_trades") {
+    return parseWsTickerCsv(process.env.UW_WS_LIT_TRADES_TICKERS, "SPY").map((t) => `lit_trades:${t}`);
+  }
+  return [CHANNEL_JOIN_NAME[channel]];
 }
 
 // ── Cross-replica leader election ────────────────────────────────────────────────────────────────
@@ -239,12 +264,14 @@ class UwSocketManager {
   private sendJoin(channel: UwWsChannel) {
     const ws = this.ws;
     if (!ws || ws.readyState !== 1) return;
-    ws.send(
-      JSON.stringify({
-        channel: CHANNEL_JOIN_NAME[channel],
-        msg_type: "join",
-      })
-    );
+    for (const wire of joinWiresForChannel(channel)) {
+      ws.send(
+        JSON.stringify({
+          channel: wire,
+          msg_type: "join",
+        })
+      );
+    }
   }
 
   private joinActiveChannels() {
@@ -628,6 +655,35 @@ export function getNetFlow(): typeof netFlowStore {
   return netFlowStore;
 }
 
+const OPTION_TRADES_RING_MAX = 250;
+const LIT_TRADES_RING_MAX = 120;
+
+export const optionTradesStore: {
+  rows: UwOptionTradePrint[];
+  updatedAt: number;
+  total_received: number;
+} = { rows: [], updatedAt: 0, total_received: 0 };
+
+export const litTradesStore: {
+  rows: UwLitTradePrint[];
+  updatedAt: number;
+  total_received: number;
+} = { rows: [], updatedAt: 0, total_received: 0 };
+
+function pushOptionTradeRows(prints: UwOptionTradePrint[]) {
+  if (!prints.length) return;
+  optionTradesStore.rows = [...prints, ...optionTradesStore.rows].slice(0, OPTION_TRADES_RING_MAX);
+  optionTradesStore.updatedAt = Date.now();
+  optionTradesStore.total_received += prints.length;
+}
+
+function pushLitTradeRows(prints: UwLitTradePrint[]) {
+  if (!prints.length) return;
+  litTradesStore.rows = [...prints, ...litTradesStore.rows].slice(0, LIT_TRADES_RING_MAX);
+  litTradesStore.updatedAt = Date.now();
+  litTradesStore.total_received += prints.length;
+}
+
 const TRADING_HALT_CHANNEL_MAX_AGE_MS = 120_000;
 
 /**
@@ -879,6 +935,26 @@ export function initUwSocket() {
     }
   });
 
+  uwSocket.subscribe("option_trades", (payload) => {
+    if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
+      return;
+    }
+    const prints = normalizeOptionTradesWsPayload(payload).filter((p) => p.premium >= FLOW_MIN_PREMIUM);
+    if (!prints.length) return;
+    recordUwDelivery("option_trades");
+    pushOptionTradeRows(prints);
+  });
+
+  uwSocket.subscribe("lit_trades", (payload) => {
+    if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
+      return;
+    }
+    const prints = normalizeLitTradesWsPayload(payload);
+    if (!prints.length) return;
+    recordUwDelivery("lit_trades");
+    pushLitTradeRows(prints);
+  });
+
   startUwLeaderRefresh();
 
   // Leadership reconcile: only the cluster leader holds the UW socket. Run once immediately so the
@@ -972,6 +1048,12 @@ export function getUwSocketHealth() {
       interval_flow_updated_at: intervalFlowStore.updatedAt || null,
       trading_halts_updated_at: tradingHaltsStore.updatedAt || null,
       net_flow_updated_at: netFlowStore.updatedAt || null,
+      option_trades_updated_at: optionTradesStore.updatedAt || null,
+      option_trades_buffered: optionTradesStore.rows.length,
+      option_trades_total_received: optionTradesStore.total_received,
+      lit_trades_updated_at: litTradesStore.updatedAt || null,
+      lit_trades_buffered: litTradesStore.rows.length,
+      lit_trades_total_received: litTradesStore.total_received,
       active_halts: Array.from(tradingHaltsStore.halts.values())
         .filter((h) => h.active)
         .map((h) => h.symbol),
