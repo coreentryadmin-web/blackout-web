@@ -63,10 +63,18 @@ async function postgresItems() {
   }
 
   const failedRecent = await q(
-    `SELECT DISTINCT ON (job_key) job_key, status, message, started_at
-     FROM cron_job_runs
-     WHERE status = 'failed' AND started_at > NOW() - INTERVAL '4 hours'
-     ORDER BY job_key, started_at DESC`
+    `SELECT DISTINCT ON (f.job_key) f.job_key, f.status, f.message, f.started_at
+     FROM cron_job_runs f
+     WHERE f.status = 'failed'
+       AND f.started_at > NOW() - INTERVAL '4 hours'
+       AND NOT EXISTS (
+         SELECT 1
+         FROM cron_job_runs newer
+         WHERE newer.job_key = f.job_key
+           AND newer.started_at > f.started_at
+           AND newer.status IN ('ok', 'skipped')
+       )
+     ORDER BY f.job_key, f.started_at DESC`
   );
   for (const r of failedRecent) {
     add("P0", "cron", `cron:${r.job_key}:failed`, `Cron failed: ${r.job_key}`, `${r.message ?? "failed"} @ ${String(r.started_at).slice(0, 19)}Z`);
@@ -97,6 +105,50 @@ async function postgresItems() {
   if (err15 >= 25 && topErr.length) {
     const detail = topErr.map((g) => `${g.source}${g.scope ? `/${g.scope}` : ""} ×${g.n}`).join("; ");
     items[items.length - 1].detail += ` Top: ${detail}`;
+  }
+
+  // Night Hawk: after the edition window, tomorrow's row should be published (plays or recap-only).
+  // Older stuck/failed rows are superseded once a later edition publishes; don't keep paging on them.
+  const staleJobs = await q(
+    `SELECT edition_for::text, status, current_stage, updated_at
+     FROM nighthawk_jobs j
+     WHERE j.status NOT IN ('published', 'failed')
+       AND j.updated_at < NOW() - INTERVAL '4 hours'
+       AND NOT EXISTS (
+         SELECT 1 FROM nighthawk_jobs newer
+         WHERE newer.edition_for > j.edition_for
+           AND newer.status = 'published'
+       )`
+  );
+  for (const r of staleJobs) {
+    add(
+      "P1",
+      "nighthawk",
+      `nighthawk:stale-job:${r.edition_for}`,
+      `Night Hawk job stuck: ${r.edition_for}`,
+      `status=${r.status} stage=${r.current_stage ?? "?"} updated=${String(r.updated_at).slice(0, 19)}Z`
+    );
+  }
+
+  const failedJobs = await q(
+    `SELECT j.edition_for::text, j.error, j.updated_at FROM nighthawk_jobs j
+     WHERE j.status = 'failed'
+       AND j.updated_at > NOW() - INTERVAL '36 hours'
+       AND NOT EXISTS (
+         SELECT 1 FROM nighthawk_jobs newer
+         WHERE newer.edition_for > j.edition_for
+           AND newer.status = 'published'
+       )
+     ORDER BY j.updated_at DESC LIMIT 3`
+  );
+  for (const r of failedJobs) {
+    add(
+      "P1",
+      "nighthawk",
+      `nighthawk:failed-job:${r.edition_for}`,
+      `Night Hawk build failed: ${r.edition_for}`,
+      String(r.error ?? "failed").slice(0, 200)
+    );
   }
 
   await c.end();
@@ -139,6 +191,61 @@ async function httpItems() {
   } catch {
     /* optional probe */
   }
+
+  try {
+    const nh = await fetch(`${BASE}/api/cron/nighthawk-edition?status=1`, { headers: H });
+    const nj = await nh.json().catch(() => ({}));
+    if (nh.status === 200 && nj.edition_for) {
+      const ed = await fetch(`${BASE}/api/market/nighthawk/edition?date=${nj.edition_for}`, { headers: H });
+      const ej = await ed.json().catch(() => ({}));
+      const playCount = Array.isArray(ej.plays) ? ej.plays.length : 0;
+      const inWindow = inEtEditionCatchup();
+      if (inWindow && nj.job_status !== "published") {
+        add(
+          "P0",
+          "nighthawk",
+          `nighthawk:unpublished:${nj.edition_for}`,
+          `Night Hawk edition not published: ${nj.edition_for}`,
+          `job_status=${nj.job_status ?? "?"} stage=${nj.current_stage ?? "?"} error=${nj.error ?? "none"}`
+        );
+      } else if (inWindow && nj.job_status === "published" && playCount === 0 && !ej.recap_only) {
+        add(
+          "P1",
+          "nighthawk",
+          `nighthawk:zero-plays:${nj.edition_for}`,
+          `Night Hawk published with zero plays: ${nj.edition_for}`,
+          "Edition row exists but plays=[] without recap_only — investigate funnel collapse."
+        );
+      } else if (inWindow && nj.job_status === "published" && playCount > 0 && playCount < 3) {
+        add(
+          "P2",
+          "nighthawk",
+          `nighthawk:thin-edition:${nj.edition_for}`,
+          `Night Hawk thin edition (${playCount} plays): ${nj.edition_for}`,
+          "Critic/grounding may be over-pruning — review funnel logs."
+        );
+      }
+    }
+  } catch (e) {
+    add("P2", "nighthawk", "nighthawk:probe", "Night Hawk health probe failed", e.message);
+  }
+}
+
+/** True during 5:30–7:30 PM ET catchup on weekdays (edition should land). */
+function inEtEditionCatchup(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "numeric",
+    weekday: "short",
+    hour12: false,
+  }).formatToParts(now);
+  const get = (t) => parts.find((p) => p.type === t)?.value ?? "";
+  const wd = get("weekday");
+  if (wd === "Sat" || wd === "Sun") return false;
+  const mins = (Number(get("hour")) % 24) * 60 + Number(get("minute"));
+  const target = 17 * 60 + 30;
+  return mins >= target + 60 && mins <= target + 120;
 }
 
 await postgresItems();
