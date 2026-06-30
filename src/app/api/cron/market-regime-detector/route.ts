@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
-import { isSpxEngineCronWindow } from "@/lib/spx-play-session-guards";
+import { isRthEt, RTH_SKIP_REASON } from "@/lib/spx-play-session-guards";
 import { logCronRun } from "@/lib/cron-run";
 import { requireDatabaseInProduction } from "@/lib/db";
 import { loadMergedSpxDesk } from "@/lib/spx-desk-loader";
@@ -172,8 +172,8 @@ export async function GET(req: NextRequest) {
   if (dbDenied) return dbDenied;
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!force && !isSpxEngineCronWindow()) {
-    const payload = { ok: true, skipped: true, reason: "Outside RTH window" };
+  if (!force && !isRthEt()) {
+    const payload = { ok: true, skipped: true, reason: RTH_SKIP_REASON };
     await logCronRun("market-regime-detector", started, payload);
     return NextResponse.json(payload);
   }

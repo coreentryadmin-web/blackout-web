@@ -12,7 +12,7 @@ import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { sharedCacheGetWithTtl } from "@/lib/shared-cache";
 import { buildCronHealthSnapshot } from "@/lib/admin-cron-health";
 import { isWeekdayEt } from "@/lib/nighthawk/session";
-import { etMinutes, etClock } from "@/lib/spx-play-session-time";
+import { isRthEt } from "@/lib/spx-play-session-guards";
 
 // ---------------------------------------------------------------------------
 // DATA-LAYER + PIPELINE-INTEGRITY verifier — the "are the numbers actually being
@@ -67,15 +67,8 @@ function redisLayerEnabled(): boolean {
 }
 
 /**
- * RTH gate (DST-aware ET, weekdays) mirroring admin-cron-health.inMarketHoursEt: 9:30 AM–4:00 PM ET
- * Mon–Fri. Used to gate Postgres-writer freshness FLAGs — a market-hours writer (flow-ingest, the
- * warmers) legitimately stops off-window, so an old latest-row off-window is NOT a flag.
+ * RTH gate — 9:30 AM–4:00 PM ET (see isRthEt). Gates Postgres-writer freshness FLAGs.
  */
-function inMarketHoursEt(now = new Date()): boolean {
-  if (!isWeekdayEt()) return false;
-  const mins = etMinutes(now);
-  return mins >= etClock(9, 30) && mins <= etClock(16, 0);
-}
 
 type Ctx = { now: number; marketOpen: boolean; rth: boolean };
 
@@ -755,7 +748,7 @@ export async function verifyDataIntegrity(marketOpen: boolean): Promise<TickerSc
     return { ticker: TICKER, status: "skipped", metrics: groupMetrics([skip]) };
   }
 
-  const ctx: Ctx = { now: Date.now(), marketOpen, rth: inMarketHoursEt() };
+  const ctx: Ctx = { now: Date.now(), marketOpen, rth: isRthEt() };
 
   const checks: CheckResult[] = [];
   // Each layer is independently defensive; collect all so one layer can't abort the others.

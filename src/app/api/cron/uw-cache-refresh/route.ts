@@ -20,6 +20,7 @@ import {
   aggregateFlowPerStrikeRows,
 } from "@/lib/providers/unusual-whales";
 import { fetchMarketMovers } from "@/lib/providers/polygon";
+import { isRthEt, RTH_SKIP_REASON } from "@/lib/spx-play-session-guards";
 
 const INDEX_TICKERS = ["SPX", "SPY", "QQQ", "IWM"] as const;
 const FLOW_STRIKE_TICKERS = ["SPX", "SPY"] as const;
@@ -38,6 +39,13 @@ export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  if (!force && !isRthEt()) {
+    const payload = { ok: true, skipped: true, reason: RTH_SKIP_REASON };
+    await logCronRun("uw-cache-refresh", started, payload);
+    return NextResponse.json(payload);
   }
 
   const redis = await getUwCacheRedis();

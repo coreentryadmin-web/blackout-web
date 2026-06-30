@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { getEarlyCloseMinutes } from "@/lib/spx-play-session-guards";
+import { getEarlyCloseMinutes, isRthEt, CASH_OPEN_ET_MINS, RTH_CLOSE_ET_MINS } from "@/lib/spx-play-session-guards";
+import { etClock } from "@/lib/spx-play-session-time";
 
 const ENV_KEY = "SPX_EARLY_CLOSE_ET_MINS";
 
@@ -53,4 +54,25 @@ test("no override on a calendar early-close day returns the close minutes", () =
   withEnv(undefined, () => {
     assert.equal(getEarlyCloseMinutes(EARLY_CLOSE_DAY), 780);
   });
+});
+
+test("isRthEt: inside normal RTH", () => {
+  assert.equal(isRthEt(new Date("2026-06-23T15:00:00Z")), true); // Tue 11:00 ET
+});
+
+test("isRthEt: before 9:30 open", () => {
+  assert.equal(isRthEt(new Date("2026-06-23T13:00:00Z")), false); // Tue 9:00 ET
+});
+
+test("isRthEt: after 4:00 close", () => {
+  assert.equal(isRthEt(new Date("2026-06-23T20:05:00Z")), false); // Tue 16:05 ET
+});
+
+test("isRthEt: weekend", () => {
+  assert.equal(isRthEt(new Date("2026-06-27T15:00:00Z")), false); // Sat
+});
+
+test("RTH constants match 9:30 and 16:00 ET", () => {
+  assert.equal(CASH_OPEN_ET_MINS, etClock(9, 30));
+  assert.equal(RTH_CLOSE_ET_MINS, etClock(16, 0));
 });

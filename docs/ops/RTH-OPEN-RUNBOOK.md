@@ -8,7 +8,7 @@ commit, push, re-validate until GREEN.
 
 | Condition | Action |
 |---|---|
-| Weekday, ET ≥ 09:00 | Run `npm run validate:rth-open` first thing |
+| Weekday, ET ≥ 09:00 | Run `npm run validate:rth-open` first thing (full RTH checks apply **9:30 AM–4:00 PM ET** only) |
 | User message is empty / "continue" / "keep going" on a weekday | Same — treat as RTH resume |
 | Weekend or ET < 09:00 | Skip RTH checks unless `--force`; routine work only |
 | After every push to `main` | `deploy-smoke.yml` auto-runs; locally: `npm run validate:deploy-wait && npm run validate:gha-smoke` |

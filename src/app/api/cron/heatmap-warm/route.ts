@@ -16,28 +16,15 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { heatmapPresetTickers } from "@/lib/heatmap-allowlist";
-import { etMinutes, etClock } from "@/lib/spx-play-session-time";
+import { isRthEt, RTH_SKIP_REASON } from "@/lib/spx-play-session-guards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 /**
- * Regular-trading-hours gate (DST-aware ET via etMinutes), weekdays only. Mirrors
- * nights-watch-warm — warm only while the chains actually move. `?force=1` overrides for
- * manual warms / off-hours testing.
+ * RTH gate — 9:30 AM–4:00 PM ET (isRthEt). `?force=1` overrides.
  */
-function inMarketHours(now = new Date()): boolean {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-  }).formatToParts(now);
-  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
-  if (weekday === "Sat" || weekday === "Sun") return false;
-  const mins = etMinutes(now);
-  return mins >= etClock(9, 30) && mins <= etClock(16, 0);
-}
-
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -45,11 +32,11 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!force && !inMarketHours()) {
+  if (!force && !isRthEt()) {
     const payload = {
       ok: true,
       skipped: true,
-      reason: "Outside market hours (9:30 AM–4:00 PM ET weekdays) — use ?force=1 to override",
+      reason: RTH_SKIP_REASON,
     };
     await logCronRun("heatmap-warm", started, payload);
     return NextResponse.json(payload);

@@ -2,12 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { runFlowIngest, ingestInFlight } from "@/lib/providers/flow-ingest";
 import { logCronRun } from "@/lib/cron-run";
 import { isCronAuthorized } from "@/lib/market-api-auth";
+import { isRthEt, RTH_SKIP_REASON } from "@/lib/spx-play-session-guards";
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
 
   if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  if (!force && !isRthEt()) {
+    const payload = { ok: true, skipped: true, reason: RTH_SKIP_REASON };
+    await logCronRun("flow-ingest", started, payload);
+    return NextResponse.json(payload);
   }
 
   if (ingestInFlight) {

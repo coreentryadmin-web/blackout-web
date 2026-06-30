@@ -25,7 +25,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
 import { isCronAuthorized } from "@/lib/market-api-auth";
-import { isSpxEngineCronWindow } from "@/lib/spx-play-session-guards";
+import { isRthEt, RTH_SKIP_REASON } from "@/lib/spx-play-session-guards";
 import { logCronRun } from "@/lib/cron-run";
 import { notifyOpsDiscord } from "@/lib/spx-play-notify";
 import {
@@ -46,8 +46,8 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!force && !isSpxEngineCronWindow()) {
-    const payload = { ok: true, skipped: true, reason: "Outside RTH window (7:00–16:15 ET weekdays)" };
+  if (!force && !isRthEt()) {
+    const payload = { ok: true, skipped: true, reason: RTH_SKIP_REASON };
     await logCronRun("data-correctness", started, payload);
     return NextResponse.json(payload);
   }

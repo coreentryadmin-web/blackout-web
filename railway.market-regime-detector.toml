@@ -20,8 +20,7 @@ watchPatterns = [
 [deploy]
 startCommand = "node scripts/hit-cron.mjs /api/cron/market-regime-detector"
 # Every 5 minutes across the UTC band that covers RTH in BOTH EDT (UTC-4) and EST (UTC-5):
-# 11-21 UTC spans ~7AM-5PM ET. The route self-skips outside isSpxEngineCronWindow and when the
-# market is closed, so the extra ticks are cheap no-ops.
+# 11-21 UTC is a wide band (EST/EDT); route self-skips outside RTH (9:30 AM–4:00 PM ET).
 cronSchedule = "*/5 11-21 * * 1-5"
 restartPolicyType = "never"
 numReplicas = 1

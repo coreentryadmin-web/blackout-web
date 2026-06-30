@@ -14,19 +14,7 @@ import {
   isWeekdayEt,
   nextTradingDayEt,
 } from "@/lib/nighthawk/session";
-import { etMinutes, etClock } from "@/lib/spx-play-session-time";
-
-/**
- * RTH gate (DST-aware ET, weekdays only) mirroring the market-hours cron routes
- * (e.g. nights-watch-warm / heatmap-warm): 9:30 AM–4:00 PM ET, Mon–Fri. Used to
- * decide whether a `market_hours_only` cron that correctly skipped off-window
- * should be treated as healthy rather than stale.
- */
-function inMarketHoursEt(now = new Date()): boolean {
-  if (!isWeekdayEt()) return false;
-  const mins = etMinutes(now);
-  return mins >= etClock(9, 30) && mins <= etClock(16, 0);
-}
+import { isRthEt } from "@/lib/spx-play-session-guards";
 
 function positiveEnvInt(name: string, fallback: number): number {
   const n = Number(process.env[name]);
@@ -198,7 +186,7 @@ function evaluateJob(
   // so age inevitably exceeds the threshold — flagging them STALE is a false alarm. While
   // off-window, suppress the stale flag as long as the last logged run was a legitimate skip
   // or success (a "failed" last run is still surfaced below regardless of window).
-  const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt();
+  const offWindow = Boolean(job.market_hours_only) && !isRthEt();
   const suppressStaleOffWindow =
     offWindow && (last.status === "skipped" || last.status === "ok");
 
@@ -275,7 +263,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       const { effective: staleThreshold } = effectiveStaleMinutes(job);
       // Off-window the engine correctly idles, so a high cron age is expected — don't let
       // the heartbeat block re-flag a healthy off-hours skip (FIX-1) as stale/warning.
-      const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt();
+      const offWindow = Boolean(job.market_hours_only) && !isRthEt();
       const cronStale = !offWindow && health.age_min != null && health.age_min > staleThreshold;
 
       if (cronStale && hbAgeMin != null) {

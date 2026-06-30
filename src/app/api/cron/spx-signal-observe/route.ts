@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireDatabaseInProduction } from "@/lib/db";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
-import { isSpxEngineCronWindow } from "@/lib/spx-play-session-guards";
+import { isRthEt, RTH_SKIP_REASON } from "@/lib/spx-play-session-guards";
 import { loadMergedSpxDesk } from "@/lib/spx-desk-loader";
 import { computeSpxConfluence } from "@/lib/spx-signals";
 import { etMinutes, etClock } from "@/lib/spx-play-session-time";
@@ -49,8 +49,8 @@ export async function GET(req: NextRequest) {
   if (dbDenied) return dbDenied;
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!force && !isSpxEngineCronWindow()) {
-    const payload = { ok: true, skipped: true, reason: "Outside RTH cron window" };
+  if (!force && !isRthEt()) {
+    const payload = { ok: true, skipped: true, reason: RTH_SKIP_REASON };
     await logCronRun("spx-signal-observe", started, payload);
     return NextResponse.json(payload);
   }

@@ -47,6 +47,23 @@ export function getEarlyCloseMinutes(now: Date): number | null {
 
 export const CASH_OPEN_ET_MINS = etClock(9, 30);
 export const PREMARKET_START_ET_MINS = etClock(7, 0);
+/** US equity regular trading hours close (4:00 PM ET on normal sessions). */
+export const RTH_CLOSE_ET_MINS = etClock(16, 0);
+
+/** Shared skip reason for market-hours crons gated on RTH. */
+export const RTH_SKIP_REASON =
+  "Outside RTH (9:30 AM–4:00 PM ET weekdays) — use ?force=1 to override";
+
+/**
+ * US equity regular trading hours: 9:30 AM–4:00 PM ET weekdays (early-close aware).
+ * Use for market-data warmers, correctness audits, and `market_hours_only` crons.
+ */
+export function isRthEt(now = new Date()): boolean {
+  if (!isEtWeekday(now)) return false;
+  const etMins = etMinutes(now);
+  const close = getEarlyCloseMinutes(now) ?? RTH_CLOSE_ET_MINS;
+  return etMins >= CASH_OPEN_ET_MINS && etMins <= close;
+}
 
 function etWeekday(now: Date): number {
   const wd = new Intl.DateTimeFormat("en-US", {
@@ -69,12 +86,10 @@ export function isLottoWindow(now = new Date()): boolean {
   return etMins >= PREMARKET_START_ET_MINS && etMins < etClock(10, 30);
 }
 
-/** 7:00 AM–4:15 PM ET weekdays — server cron evaluation window for play + lotto.
- *  End extends 15 min past the 4:00 PM cash close so post-close ticks can reach the
- *  SESSION-close branch (market_open=false) and force-flatten/settle any still-open
- *  0DTE play. New entries are already blocked by isPastNoEntryCutoff (3:30 PM), so the
- *  extra window only closes positions, never opens them. Paired with the spx-evaluate
- *  cron schedule (every 5 min, 11-21 UTC) which covers the close in both EST and EDT. */
+/** 7:00 AM–4:15 PM ET weekdays — SPX play-engine cron window (premarket lotto + post-close settlement).
+ *  NOT the same as US equity RTH (9:30 AM–4:00 PM — see isRthEt). End extends 15 min past the
+ *  4:00 PM cash close so post-close ticks can reach the SESSION-close branch and force-flatten
+ *  any still-open 0DTE play. New entries are blocked by isPastNoEntryCutoff (3:30 PM). */
 export function isSpxEngineCronWindow(now = new Date()): boolean {
   if (!isEtWeekday(now)) return false;
   const etMins = etMinutes(now);

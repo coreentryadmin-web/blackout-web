@@ -20,9 +20,7 @@ watchPatterns = [
 [deploy]
 startCommand = "node scripts/hit-cron.mjs /api/cron/nights-watch-warm"
 # Every minute during the UTC band that covers RTH in BOTH EDT (UTC-4) and EST (UTC-5):
-# 11-21 UTC spans ~7AM-5PM ET. The route's in-process ET gate (inMarketHours, 9:30AM-4:00PM
-# ET weekdays, DST-aware) self-skips the pre-open / off-band minutes, so warms only fire while
-# chains actually move. Mirrors railway.uw-cache-refresh.toml's market-hours band convention.
+# 11-21 UTC is a wide band (EST/EDT); route self-skips outside RTH (9:30 AM–4:00 PM ET).
 # NOTE: Railway must wire this — if cronSchedule was set in the dashboard UI, the dashboard
 # value overrides this TOML, so update it there too.
 cronSchedule = "* 11-21 * * 1-5"

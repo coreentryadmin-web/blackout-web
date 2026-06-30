@@ -20,8 +20,7 @@ watchPatterns = [
 [deploy]
 startCommand = "node scripts/hit-cron.mjs /api/cron/data-correctness"
 # Every 30 minutes across the UTC band that covers RTH in BOTH EDT (UTC-4) and EST (UTC-5):
-# :00 and :30 within 11-21 UTC spans ~7AM-5PM ET. The route self-skips outside isSpxEngineCronWindow,
-# so the edge ticks are cheap no-ops. Mirrors the market-hours pattern used by railway.data-integrity.toml.
+# :00 and :30 within 11-21 UTC (wide EST/EDT band); route self-skips outside RTH (9:30 AM–4:00 PM ET).
 # This is a heavier sweep (independent raw-chain recompute + UW oracle), so it runs at 30-min cadence
 # rather than every 5 min — frequent enough to catch a deploy that broke a transform within ~30 min,
 # light enough to stay well inside the rate budget (one near-money chain per ticker + SPX UW oracle).

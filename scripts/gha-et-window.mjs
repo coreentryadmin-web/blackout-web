@@ -19,7 +19,14 @@ export function etParts(now = new Date()) {
   };
 }
 
-/** Mon–Fri 09:00–16:15 ET (RTH + 15m post-close grace for crons). */
+/** Mon–Fri 9:30 AM–4:00 PM ET — US equity RTH. */
+export function isRthEt(now = new Date()) {
+  const { weekday, mins } = etParts(now);
+  if (weekday === "Sat" || weekday === "Sun") return false;
+  return mins >= 9 * 60 + 30 && mins <= 16 * 60;
+}
+
+/** Mon–Fri 09:00–16:15 ET — agent validation window (pre-open + post-close cron grace). NOT RTH. */
 export function inRthOpenWindow(now = new Date()) {
   const { weekday, mins } = etParts(now);
   if (weekday === "Sat" || weekday === "Sun") return false;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireDatabaseInProduction } from "@/lib/db";
 import { isCronAuthorized } from "@/lib/market-api-auth";
-import { isSpxEngineCronWindow } from "@/lib/spx-play-session-guards";
+import { isRthEt, RTH_SKIP_REASON } from "@/lib/spx-play-session-guards";
 import { logCronRun } from "@/lib/cron-run";
 import { syncAdminIncidents } from "@/lib/admin-incidents";
 import {
@@ -26,11 +26,11 @@ export async function GET(req: NextRequest) {
   if (dbDenied) return dbDenied;
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!force && !isSpxEngineCronWindow()) {
+  if (!force && !isRthEt()) {
     const payload = {
       ok: true,
       skipped: true,
-      reason: "Outside RTH window (7:00–16:15 ET weekdays)",
+      reason: RTH_SKIP_REASON,
     };
     await logCronRun("provider-health-reconcile", started, payload);
     return NextResponse.json(payload);

@@ -20,9 +20,8 @@ watchPatterns = [
 [deploy]
 startCommand = "node scripts/hit-cron.mjs /api/cron/gex-alerts"
 # Every 5 minutes during the UTC band that covers RTH in BOTH EDT (UTC-4) and EST (UTC-5):
-# 11-21 UTC spans ~7AM-5PM ET. The route is INERT by default (no-ops unless GEX_ALERTS_PUSH=1 AND
-# VAPID is configured) and dedups each regime cross ONCE per ET-date, so an extra off-band tick is a
-# cheap cache read. Mirrors railway.heatmap-warm.toml's market-hours band convention.
+# 11-21 UTC is a wide band (EST/EDT); route self-skips outside RTH (9:30 AM–4:00 PM ET).
+# INERT unless GEX_ALERTS_PUSH + VAPID are set; dedups each regime cross once per ET-date.
 # NOTE: Railway must wire this — if cronSchedule was set in the dashboard UI, the dashboard value
 # overrides this TOML, so update it there too.
 cronSchedule = "*/5 11-21 * * 1-5"

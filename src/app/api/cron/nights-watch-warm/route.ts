@@ -23,7 +23,7 @@ import {
   type SnapshotFetchDiagnostics,
 } from "@/lib/providers/options-snapshot";
 import { isSpxTicker } from "@/lib/spx-desk-live";
-import { etMinutes, etClock } from "@/lib/spx-play-session-time";
+import { isRthEt, RTH_SKIP_REASON } from "@/lib/spx-play-session-guards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,22 +32,6 @@ export const maxDuration = 120;
 /** Hard ceiling on chains warmed per run — protects the upstream + this function's budget. */
 const MAX_CHAINS = Math.max(1, Number(process.env.NIGHTS_WATCH_WARM_MAX ?? "300"));
 
-/**
- * Regular-trading-hours gate (DST-aware ET via etMinutes), weekdays only. Mirrors the
- * uw-cache-refresh intent of warming only while the chains actually move. `?force=1`
- * overrides for manual warms / off-hours testing.
- */
-function inMarketHours(now = new Date()): boolean {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-  }).formatToParts(now);
-  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
-  if (weekday === "Sat" || weekday === "Sun") return false;
-  const mins = etMinutes(now);
-  return mins >= etClock(9, 30) && mins <= etClock(16, 0);
-}
-
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -55,11 +39,11 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!force && !inMarketHours()) {
+  if (!force && !isRthEt()) {
     const payload = {
       ok: true,
       skipped: true,
-      reason: "Outside market hours (9:30 AM–4:00 PM ET weekdays) — use ?force=1 to override",
+      reason: RTH_SKIP_REASON,
     };
     await logCronRun("nights-watch-warm", started, payload);
     return NextResponse.json(payload);

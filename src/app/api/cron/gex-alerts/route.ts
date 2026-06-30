@@ -29,6 +29,7 @@ import { fetchGexHeatmap, type GexEvent } from "@/lib/providers/polygon-options-
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { sendWebPush, vapidConfigured } from "@/lib/push/send-web-push";
 import { logCronRun } from "@/lib/cron-run";
+import { isRthEt, RTH_SKIP_REASON } from "@/lib/spx-play-session-guards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -103,6 +104,13 @@ export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  if (!force && !isRthEt()) {
+    const payload = { ok: true, skipped: true, reason: RTH_SKIP_REASON };
+    await logCronRun("gex-alerts", started, payload);
+    return NextResponse.json(payload);
   }
 
   // INERT-by-default gate: ship safe. Do nothing unless explicitly activated AND VAPID is set.

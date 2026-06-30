@@ -33,11 +33,18 @@ function etParts(now = new Date()) {
   };
 }
 
-/** Weekday 09:00–16:15 ET — agent validation window (pre-open warm-up + 15m post-close cron grace). NOT the same as US equity RTH (9:30 AM–4:00 PM ET). */
+/** Weekday 09:00–16:15 ET — agent validation window (pre-open warm-up + 15m post-close cron grace). NOT RTH (9:30 AM–4:00 PM ET). */
 function inRthOpenWindow(now = new Date()) {
   const { weekday, mins } = etParts(now);
   if (weekday === "Sat" || weekday === "Sun") return false;
   return mins >= 9 * 60 && mins <= 16 * 60 + 15;
+}
+
+/** US equity RTH: 9:30 AM–4:00 PM ET weekdays. */
+function isRthEt(now = new Date()) {
+  const { weekday, mins } = etParts(now);
+  if (weekday === "Sat" || weekday === "Sun") return false;
+  return mins >= 9 * 60 + 30 && mins <= 16 * 60;
 }
 
 /** Weekday 09:00+ (agent should resume work — includes pre-open warm-up). */
@@ -116,8 +123,12 @@ async function main() {
             `SELECT COUNT(*)::int AS n FROM market_regime WHERE captured_at > NOW() - INTERVAL '20 minutes'`
           )
         ).rows[0].n;
-        if (regime15 > 0) ok(`market_regime fresh (writes last 20m: ${regime15})`);
-        else fail("market_regime: no writes in last 20m during RTH");
+        if (isRthEt(now)) {
+          if (regime15 > 0) ok(`market_regime fresh (writes last 20m: ${regime15})`);
+          else fail("market_regime: no writes in last 20m during RTH");
+        } else {
+          ok("market_regime: skipped (outside RTH 9:30 AM–4:00 PM ET)");
+        }
 
         const dc = await c.query(
           `SELECT status, message FROM cron_job_runs WHERE job_key = 'data-correctness' ORDER BY started_at DESC LIMIT 1`
@@ -126,23 +137,28 @@ async function main() {
         if (latest?.status === "ok") ok("data-correctness latest run ok");
         else fail(`data-correctness latest: ${latest?.status ?? "?"} — ${latest?.message ?? ""}`);
 
-        const grid15 = (
-          await c.query(
-            `SELECT COUNT(*)::int AS n FROM cron_job_runs
-             WHERE job_key = 'grid-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
-          )
-        ).rows[0].n;
-        if (grid15 > 0) ok(`grid-warm ran in last 20m (${grid15} ok run(s))`);
-        else fail("grid-warm: no ok run in last 20m during RTH");
+        if (isRthEt(now)) {
+          const grid15 = (
+            await c.query(
+              `SELECT COUNT(*)::int AS n FROM cron_job_runs
+               WHERE job_key = 'grid-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
+            )
+          ).rows[0].n;
+          if (grid15 > 0) ok(`grid-warm ran in last 20m (${grid15} ok run(s))`);
+          else fail("grid-warm: no ok run in last 20m during RTH");
 
-        const nw15 = (
-          await c.query(
-            `SELECT COUNT(*)::int AS n FROM cron_job_runs
-             WHERE job_key = 'nights-watch-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
-          )
-        ).rows[0].n;
-        if (nw15 > 0) ok(`nights-watch-warm ran in last 20m (${nw15} ok run(s))`);
-        else fail("nights-watch-warm: no ok run in last 20m during RTH");
+          const nw15 = (
+            await c.query(
+              `SELECT COUNT(*)::int AS n FROM cron_job_runs
+               WHERE job_key = 'nights-watch-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
+            )
+          ).rows[0].n;
+          if (nw15 > 0) ok(`nights-watch-warm ran in last 20m (${nw15} ok run(s))`);
+          else fail("nights-watch-warm: no ok run in last 20m during RTH");
+        } else {
+          ok("grid-warm: skipped (outside RTH 9:30 AM–4:00 PM ET)");
+          ok("nights-watch-warm: skipped (outside RTH 9:30 AM–4:00 PM ET)");
+        }
 
         await c.end();
       } catch (e) {

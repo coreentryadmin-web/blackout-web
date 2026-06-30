@@ -20,9 +20,7 @@ watchPatterns = [
 [deploy]
 startCommand = "node scripts/hit-cron.mjs /api/cron/heatmap-warm"
 # Every minute during the UTC band that covers RTH in BOTH EDT (UTC-4) and EST (UTC-5):
-# 11-21 UTC spans ~7AM-5PM ET. The route's in-process ET gate (inMarketHours, 9:30AM-4:00PM
-# ET weekdays, DST-aware) self-skips the pre-open / off-band minutes, so warms only fire while
-# the chains actually move. Mirrors railway.nights-watch-warm.toml's market-hours band convention.
+# 11-21 UTC is a wide band (EST/EDT); route self-skips outside RTH (9:30 AM–4:00 PM ET).
 # NOTE: Railway cron granularity is per-MINUTE (standard 5-field cron), so this fires once/min.
 # The matrix's own ~20s fresh TTL + stale-while-revalidate (up to ~90s) + single-flight guard
 # cover the sub-minute gap — the cron kills cold-build bursts at TTL boundaries, not the sole

@@ -19,6 +19,7 @@ watchPatterns = [
 
 [deploy]
 startCommand = "node scripts/hit-cron.mjs /api/cron/flow-ingest"
+# Every 2 min, UTC band 11-21 (wide EST/EDT band); route self-skips outside RTH (9:30 AM–4:00 PM ET).
 cronSchedule = "*/2 11-21 * * 1-5"
 restartPolicyType = "never"
 numReplicas = 1
