@@ -1,128 +1,132 @@
 # Night Hawk — Deep End-to-End Audit
-
-- **Last audit:** 2026-06-27 ~18:05 ET (Sat, automated)
-- **Last edition date:** 2026-06-29 (Mon) — next trading day
-- **Auditor:** autonomous scheduled task `audit-night-hawk`
+Last audit: 2026-06-30 ~08:00 ET (Tue, automated)
+Last edition date: 2026-06-30 (session built evening of 2026-06-29)
 
 ## Overall Health: WARN
 
-A valid, high-quality, Claude-generated, critic-vetted edition **is currently published and
-serving** for Mon 2026-06-29 — a genuine recovery from the #77 synthesis bug. But the rating is
-**WARN, not PASS**, for three reasons:
+The flagship deliverable is intact: **last night's edition exists, is published, and carries 3
+valid, Claude-generated, real-data-grounded plays.** Outcome recording and morning-confirmation
+both work end-to-end. The WARN is driven by a newly-discovered operational defect: **an external
+authenticated caller force-rebuilt the already-published edition 6× overnight** (00:12–03:38 UTC),
+producing wildly non-deterministic output (3→5→0→1→3→1→3 plays) and, at 01:18 UTC, briefly
+publishing a **zero-play recap-only edition**. The current served edition is fine, but the churn is
+wasteful (6× Anthropic + UW spend) and risks replacing a good edition with a worse/empty one.
 
-1. The editions table holds **exactly one row.** Night Hawk published **no edition for the prior
-   four trading days** (Tue 6/23 → Fri 6/26): 22 failed cron runs over 6/24–6/25 with
-   `"Claude returned no parseable plays."` This was a live P0 for most of the week and is only
-   just resolved.
-2. The one edition that exists was **built off-window at ~04:05 ET Friday on Thursday's session
-   data**, not during the Friday-evening window on Friday's close. The Friday-evening cron fired
-   correctly but no-op'd (idempotency, no `force`), so the canonical Monday edition never picked up
-   Friday's data.
-3. The recovery is **one-edition deep and circumstantial** — not yet proven across a clean
-   evening-cron cycle.
+---
 
-It is **not FAIL** because the served edition is real and well-grounded, the cron is now firing on
-schedule, and the failures stopped after 6/25. **Mitigating context:** the tool is launch-gated
-(`LAUNCHED_TOOLS` unset → "Coming Soon"), so the empty-week was visible only to admins, not paying
-users.
-
-## Last Edition Status (2026-06-29)
-- **Generated:** yes — `status=published`, `current_stage=published`, no error.
-- **Plays count:** 5 (full playbook, `recap_only=false`, `claude=true`).
-- **All plays valid:** yes (see table).
-- **Edition age at audit:** built `2026-06-26T08:05:28Z` (~04:05 ET Fri) → ~38h old at audit; for a
-  Mon edition it is grounded in **Thursday 6/25's** session.
-- **Build duration:** job `started 07:04:27Z → published 08:05:28Z` ≈ **61 min** (Claude synthesis +
-  40-candidate dossier fan-out).
-- **Candidates:** 40 · **Flow alerts:** 30 · **SPX (recap):** 7357.49.
+## Last Edition Status
+- **Generated:** YES — `edition_for=2026-06-30`, published, `available:true`, `recap_only:false`.
+- **Plays count:** 3 (ANET LONG/A, AVGO LONG/B, ORCL SHORT/B).
+- **All plays valid:** YES — real tickers, real strikes, future expiries, grounded premiums.
+- **On-time build:** ✅ First publish at **21:37:51 UTC (5:37 PM EDT)** — squarely in the 5:30 PM ET
+  window. Full build (context → 40 dossiers → rank → synthesis → critic → publish) took **~7.5 min**.
+  The #77 Claude-synthesis timeout fix (90s/maxRetries:1) is clearly working — synthesis returned
+  parseable plays, unlike the 4 consecutive `stage_synthesis` failures 2026-06-22 → 2026-06-26.
+- **Served `published_at`:** 03:38:13 UTC — **NOT the on-time build**; this timestamp is from the
+  last of 6 overnight force-rebuilds (see Known Issues #1). The 21:37 edition was the correct one.
 
 ## Play Quality Verification
 | Check | Result | Notes |
 |---|---|---|
-| Tickers are real | ✅ PASS | AMAT, OKTA, HIMS, MRK, AAPL |
-| Strikes are real numbers | ✅ PASS | 620, 120, 33, 125, 270 — no 0/9999 placeholders |
-| Expiries are future dates | ✅ PASS | 2026-07-17, -07-17, -08-21, -07-17, -07-02 (all future) |
-| Thesis references real data | ✅ PASS | flow $, UW fill counts (65/155/35/75), GEX walls, sector %, analyst PTs |
-| Direction is clear | ✅ PASS | LONG×4, SHORT×1 (AAPL) |
-| GEX levels grounded | ✅ PASS | call/put walls + GEX king/flip cited per play |
-| Flow data included | ✅ PASS | per-play flow stacks w/ strike, expiry, $ and fill counts |
-| Premium within affordability cap | ✅ PASS | entry prem 4.50/3.50/1.85/1.20/3.20 → ≤ $450/contract |
-| IV ranks are real (non-round) | ✅ PASS | 100 / 52.24 / 64.42 / 38.71 / 66.35 — precise, not fabricated |
-
-**Critic is doing real adversarial work** (this is the strongest signal of grounding). It
-**downgraded** #1 AMAT (thesis contradicted by $2.86M in put stacks @605/@500; IV-rank-100 = expensive,
-not bullish; ~1:1 R/R), #2 OKTA (1-day streak, net 3/5d flow only ~$59K), and #3 HIMS (technical 11/28,
-put wall @32 is *resistance* not support, negative Polygon sentiment) — and **kept** #4 MRK (A, hard
-FDA/M&A catalysts, 155 UW fills) and #5 AAPL (B short, confirmed put walls @280/277.50). Published
-convictions (B/B/B/A/B) reflect those verdicts.
+| Tickers are real | ✅ PASS | ANET, AVGO, ORCL — all liquid single-names |
+| Strikes are real numbers | ✅ PASS | ANET $170C, AVGO $400C, ORCL $160P — no 0/9999 placeholders |
+| Expiries are future dates | ✅ PASS | 2026-07-17, 2026-07-17, 2026-08-21 (all > 2026-06-30) |
+| Thesis references real data | ✅ PASS | cites flow $/strike stacks, streak days, MA stack, max-pain, FCF — not generic |
+| Direction is clear | ✅ PASS | LONG/LONG/SHORT |
+| Premium cap enforced | ✅ PASS | entry prem $5.53 / $6.32 / $19.83 per-share — all ≤ $20/sh cap ($2k/contract) |
+| Numeric grounding enforced | ✅ PASS | `NIGHTHAWK_GROUNDING_ENFORCE` defaults ON; plays grounded vs prefetched ATM±5% chain |
 
 ## Data Grounding
-What live data feeds generation (verified from `market_recap` + `meta`):
-- **GEX data:** present — per-play call/put walls, GEX king/flip, gamma regime; recap `spx_desk` populated.
-- **Flow alerts:** 30 in recap; per-play flow stacks with strikes/expiries/$/fill-counts.
-- **SPX close:** `SPX 7357.49 (-0.01%) · H 7419 L 7324 · VIX 17.28 (+3.0%)` — real, not hardcoded.
-  (This is **Thursday 6/25's** close, since the edition built 4am Fri — see WARN #2.)
-- **Tide:** `BEARISH — calls 17% ($40.1M) vs puts $192.4M` · hot_chains: 10 · index_dossiers: 6.
-- **UW scanner:** used (candidate extraction + dossier flows; 40 candidates).
-- **Anthropic:** `ANTHROPIC_API_KEY` configured; `claude=true`; synthesis temp 0, 90s timeout,
-  maxRetries 1 (the #77 fix in `claude-edition.ts`).
-- ⚠️ **Grounding counts not persisted:** `meta.grounded / dropped_ungrounded / flagged` are **null**
-  on the row — these counts are emitted only to the funnel log, never written to edition meta. The
-  grounding pipeline (`grounding.ts`) DID run, but its summary isn't observable from the DB. Minor
-  observability gap (see Recommendations).
+What live data feeds into generation (all fetched fresh at build, no hardcoding):
+- **GEX / SPX desk:** `marketPlatform.spx.getSpxDeskSummary()` — recap shows SPX 7440.43 (+1.18%),
+  VIX 18.89. Cache-reader path (no extra fan-out).
+- **Flow alerts:** `getFlowTapeSummary({limit:30})` + market-wide flow (limit 450) → 40 candidates
+  extracted from real stock_flows + hot_chains. Per-play theses cite real $ flow (e.g. AVGO $147.5M,
+  $72.89M block into $410C).
+- **Option chains:** `fetchEditionChains` prefetches ATM±5% front-two-expiry rows for the top 12;
+  used for both the Claude prompt AND deterministic post-grounding (strike/premium validation).
+- **SPX close:** 7440.43 — sourced live from desk, not hardcoded.
+- **Fundamentals/technicals:** dossiers carry IV-rank, flow-streak, MA-stack, max-pain, FCF/margin.
+- **Play-outcome feedback:** prior `fetchPlayOutcomeStats()` is fed into the prompt (learning loop).
+
+⚠️ **Data discrepancy to verify (P2):** the edition recap recorded the 2026-06-29 SPX reading as
+**7440.43**, but the 06-30 morning-confirm reports **prior_close = 7354.02** (and premarket 7440.43,
+gap +86.4). The prior close on the 06-30 open should equal the 06-29 close. One of the two figures is
+off by ~86 pts — likely the recap captured a live/after-hours last rather than the official close, or
+morning-confirm's prior_close is a stale session. Worth confirming which surface is authoritative.
 
 ## Cron Health
-- **Playbook schedule:** `*/15 21-23 * * 1-5` UTC = every 15 min, 17:00–19:00 ET Mon-Fri.
-- **Fri 6/26 evening run:** ✅ fired correctly — skipped 17:00/17:16 (pre-17:30 target), `ok`
-  (build dispatched, 202 fire-and-forget) at 17:30–19:16 ET, skipped 19:31/19:45 (past
-  target+120m catchup). Window logic + #77 fire-and-forget pattern working (21–30 ms dispatches).
-- **BUT it no-op'd:** edition 6/29 was already `published` from the 04:05 ET build, so the evening
-  re-fires returned `resumed:true` without rebuilding (no `force`). → the edition never got Friday's
-  data.
-- **22 FAILED runs** 6/24–6/25 evenings: `"Claude returned no parseable plays"`, durations 87–119 s
-  (= 90s timeout + retry). The synthesis zeroing persisted on 6/24–6/25 even after the 90s timeout
-  landed; it cleared by the 6/26 04:05 build. Net: **3 consecutive evenings produced no edition.**
-- **Outcomes cron:** ✅ healthy — `nighthawk-outcomes` fired dual-band (20:32 + 21:33 UTC), `status=ok`.
-- **Stuck job:** `edition_for=2026-06-26` is `status=running / stage_synthesis`, untouched since
-  6/25 04:00 → 6/26 00:45. Orphaned; never published, never reaped (no watchdog). Doesn't serve
-  (6/29 is latest) but is stale state.
+- **NightHawk-Playbook** (`railway.nighthawk-playbook.toml`): schedule `*/15 21-23 * * 1-5` UTC,
+  fire-and-forget HTTP trigger (`hit-cron.mjs /api/cron/nighthawk-edition`, no `force`). In-window
+  fires 22:31–23:30 UTC behaved correctly (resumed the already-published job, no rebuild). ✅
+- **NightHawk-Outcomes** (`railway.nighthawk-outcomes.toml`): dual-band `30 20,21 * * 1-5` UTC.
+  Ran 20:32 + 21:32 UTC 2026-06-29 (`ok`); off-band fire self-skips. ✅
+- **NightHawk Morning-Confirm** (`railway.nighthawk-morning-confirm.toml`): `15 13 * * 1-5` UTC.
+  Ran 13:19 UTC 2026-06-30 (`ok`) — produced per-play CONFIRMED/DEGRADED status. ✅
+- **Generation window:** correctly configured (default 17:30 ET, 120-min catchup; env hour/min unset
+  → defaults). `NIGHTHAWK_EDITION_ENABLED=1`. `?force=1` override available. ✅
+- ⚠️ **DISCORD_OPS_WEBHOOK_URL is UNSET** — every ops alert in the builder (hard-fail, anomalous
+  recap-only, rescue, watchdog) is a silent no-op. A future dark-fail would not page anyone. The code
+  logs LOUD as a fallback, but there is no active alerting channel. (P2)
 
 ## Outcomes Recording
-- **Yesterday's outcomes recorded:** N/A — the only edition (6/29) is for a **future** Monday; its 5
-  plays are `pending`. Prior editions never published rows, so there is nothing to resolve.
-- **Win rate this week:** 0/0 (no resolved plays). Outcome machinery is healthy but **unexercised** —
-  it has never resolved a real Night Hawk play because no edition survived to its next session until now.
-- `syncNighthawkPlayOutcomes` correctly seeded 5 `pending` rows for 6/29.
-
-## Serving
-- `/api/market/nighthawk/edition` → **401** (auth + launch gated) — route is live and enforcing.
-- Homepage → **200**. Serving logic (code-reviewed) is sound: no-store/CDN headers, recap-only
-  `available` gate, stale-fallback flagging, legacy-engine fallback. The 6/29 row computes
-  `available:true` with 5 plays.
+- **Yesterday's outcomes recorded:** ✅ YES — all 5 plays of the 2026-06-29 edition resolved with
+  real next-day OHLC: AAPL `stop`, AMAT `stop` (both target & stop hit intraday → conservative stop),
+  HIMS `target`, MRK `target`, OKTA `target`.
+- **This week's resolved win rate:** **3 target / 2 stop = 60%** (5 resolved). Pending: today's 3.
+- **Today's plays:** ANET/AVGO/ORCL all `pending` (correct — 06-30 session not yet closed at 8am).
+- The `nighthawk_play_outcomes` table upserts on each edition rebuild, so it reflects the final
+  (03:38) 3-play set; intermediate overnight rebuilds churned this table too.
 
 ## Known Issues
-- **Task #77 (cron failed / empty editions):** the synthesis-zeroing root cause is **resolved** (90s
-  timeout + fire-and-forget + recap-only fallback all present and the 6/29 build succeeded Claude-true).
-  But the **empty-edition consequence recurred through 6/26** and the recovery is one-deep — keep #77
-  open until ≥2 clean evening-cron cycles publish on schedule.
+
+### 1. (P1 — NEW) Overnight `?force=1` rebuild storm churns a good edition
+- The edition published correctly at **21:37 UTC with 3 plays**, then was **force-reset and fully
+  rebuilt 6 times** between 00:12–03:38 UTC. Job-log evidence (`nighthawk_job_log`, edition 06-30):
+  `00:12 Force rebuild` → 5 plays, `01:13 Force rebuild` → **recap-only 0 plays**, `01:50` → 1 play,
+  `02:08` → 3, `02:25` → 1, `03:27` → 3 (current). 323 log rows for one edition.
+- **Source:** the calls hit the **cron route** (`/api/cron/nighthawk-edition?force=1`; the
+  "build dispatched in background" message is route-only) with a valid Bearer secret. It is **NOT**
+  the documented Railway cron: `hit-cron.mjs` never appends `force`, the Railway schedule is 21-23
+  UTC only, and **no code in the repo constructs that URL with `force`** (grep-confirmed). nighthawk
+  is deliberately excluded from `cron-dispatch.ts`, so it is not the watchdog self-heal or admin
+  "Run now" either. The caller is external/undocumented — candidates: a Railway dashboard schedule
+  override, an autonomous task holding `CRON_SECRET`, or a manual/loop caller. **Needs identification.**
+- **Impact:** 6× redundant 40-dossier UW fan-out + 6× Claude synthesis/critic spend per night for
+  zero user benefit; non-deterministic output means a good 5-play edition can be overwritten by a
+  1-play or empty one; `published_at` is pushed to the small hours.
+- **Defensive fix (independent of finding the caller):** make `force` refuse to reset an
+  already-`published` edition once outside the edition window (or require an explicit second flag like
+  `&allow_late=1`). Today `force=1` blindly resets any published row at any hour.
+
+### 2. (P2) Synthesis/critic non-determinism
+- Same inputs across the night yielded 0–5 plays. The critic occasionally rejects **everything**
+  (01:18 recap-only). Recommend: never downgrade a published edition — if a rebuild yields fewer or
+  zero plays than the currently-published row, keep the existing edition.
+
+### 3. (P2) Ops alerting disarmed — `DISCORD_OPS_WEBHOOK_URL` unset (see Cron Health).
+
+### 4. (P2) SPX close vs morning-confirm prior_close ~86-pt mismatch (see Data Grounding).
+
+### Task #77 (cron failed / edition zeroing): **RESOLVED & holding.**
+The synthesis-timeout root cause is fixed; the last 2 editions published with plays. The four
+`stage_synthesis` failures (2026-06-22 → 06-26) predate the fix. No recurrence on 06-29/06-30.
 
 ## Recommendations
-1. **P1 — Make the evening cron authoritative for the day's edition.** Today an off-window early build
-   wins the idempotency race and the evening cron no-op's, leaving the edition grounded in the *prior*
-   session. Either (a) have the evening run `force`-rebuild when the published edition's `session_date`
-   is older than the most recent completed RTH session, or (b) suppress ad-hoc pre-window builds so the
-   17:30 ET run produces the canonical edition off the current close.
-2. **P2 — Reap orphaned jobs.** Add a watchdog that flips a `running` `nighthawk_job` older than ~2 h
-   to `failed` (or resumes it) so rows like 6/26 don't sit `running` indefinitely.
-3. **P2 — Persist grounding counts to `meta`.** Stamp `grounded/dropped_ungrounded/flagged` (already
-   computed in `generateEditionPlays`) into edition `meta` at publish, so grounding is auditable from
-   the row, not just the funnel log.
-4. **P3 — Verify across a full cycle next run.** This audit caught a single recovered edition; confirm
-   the 6/29 (Sun-eve) and subsequent evening crons publish fresh editions on schedule and that the
-   6/29 plays resolve to outcomes after Monday's close.
+1. **(P1)** Identify and stop the overnight `?force=1` caller — check the Railway NightHawk-Playbook
+   **dashboard** cronSchedule (may override the TOML's 21-23 window) and any service/task holding
+   `CRON_SECRET`. Then add the window-guard so a published edition cannot be force-reset post-window.
+2. **(P2)** Add a "no-downgrade" rule in `buildEveningEdition`: on a force rebuild, only overwrite if
+   the new edition has ≥ the published play count (never replace plays with a recap-only).
+3. **(P2)** Set `DISCORD_OPS_WEBHOOK_URL` so build failures, anomalous recap-only collapses, and
+   watchdog escalations actually page.
+4. **(P2)** Reconcile the SPX close figure between the edition recap and morning-confirm prior_close;
+   ensure the recap stores the official session close, not a live/after-hours last.
+5. **(P3)** Investigate the double-publish at 00:22 + 00:23 UTC (two `published` log entries 89s
+   apart) — likely two overlapping background dispatches racing on the same job.
 
 ---
-*Method: full source read (cron route, edition-builder, claude-edition, grounding, morning-confirm,
-outcomes, serving route, page); live production Postgres queries (editions / jobs / outcomes /
-cron_job_runs via Railway public proxy); live HTTP liveness. No secrets printed. Temp query scripts
-removed after use.*
+_Verification basis: read full pipeline source (cron route, edition-builder, claude-edition,
+grounding, constants, worker, 3 TOMLs, serving + play-status routes, page); live-queried prod
+Postgres (`nighthawk_editions`, `_jobs`, `_job_log`, `_play_outcomes`, `cron_job_runs`); live-hit
+the edition + play-status APIs via apex host + Bearer. No secrets printed._
