@@ -1453,3 +1453,37 @@ stale — real payloads are snake_case (gex_walls/gex_king/flow_0dte_net); verdi
 - SPX desk strongest resistance 7450 (0DTE lens) vs GEX endpoint call_wall 750→7531 SPX (full SPY chain). Known by-design lens difference (project_connectivity_matrix W-residual); each internally cross-validates.
 - GEX endpoint is SPY-scaled: any NEW consumer must scale ×~10 or read SPX desk's native gex_* fields. Internal consumers (Largo/NHawk via getGexPositioning, SPX desk via own engine) already correct.
 ---
+
+## Connectivity Matrix — 2026-06-30 03:58 ET (overnight)
+**Session: RTH CLOSED (3:58am ET). Live probe via apex `blackouttrades.com` + Bearer CRON_SECRET — all 6 endpoints 200 (www would 401).**
+**PASS: 14 wiring channels | FAIL: 0 | WARN/INFO: 2 (off-hours numeric gap + Largo non-SPX GEX path)**
+
+| Channel | Status | Evidence (this run) |
+|---|---|---|
+| SPX → HEATMAP | PASS (wiring) | Both terminate at polygon-options-gex cache-reader (getGexPositioning). Numeric equality UNVERIFIABLE off-hours — see WARN. |
+| SPX → HELIX | PASS | desk spx_flows=32, unified_tape, flow_0dte_net=434.7M |
+| SPX → LARGO | PASS | run-tool imports getLargoSpxLiveDesk + computeSpxConfluence (get_spx_confluence/get_spx_structure/get_spx_play) |
+| SPX → NWATCH | PASS | position-context loadMergedSpxDesk → underlyingPrice=7440.43; verdict reads spx price |
+| SPX → NHAWK | PASS | nighthawk SPX desk alignment (agent-config "SPX desk alignment"); thesis cites net VEX +$40M |
+| HELIX → SPX | PASS | desk flow_0dte_net + tide_net=430.3M + spx_flows=32 |
+| HELIX → LARGO | PASS | get_flow_tape/get_postgres_flows/get_global_flow/get_lit_flow; get_options_flow(SPX)→spx_sniper_desk |
+| HELIX → NHAWK | PASS | candidates.ts flow streaks/sweeps; thesis "$16.4M across 80 alerts, 4-day streak, RepeatedHits fills" |
+| HELIX → NWATCH | PASS | verdict.ts fetchRecentFlows (HELIX/Postgres); FLOW_MIN_PREMIUM gate 250k |
+| HEATMAP → LARGO | PASS (SPX) / WARN (non-SPX) | SPX GEX via shared desk; non-SPX get_gex computes from chain (summarizeGexFromChain / fetchUwGreekExposureStrike), NOT getGexPositioning cache-reader — see WARN |
+| HEATMAP → NWATCH | PASS | position-context: SPX→loadMergedSpxDesk, non-SPX→fetchGexHeatmap (same cache-reader); verdict reads shared gexWalls field |
+| GRID → SPX | PASS | desk macro_events=4 (Job openings/Consumer confidence/PMI/Case-Shiller, 06-30) + news_headlines=10 → SPX desk IS event-aware |
+| GRID → LARGO | PASS | get_economic_calendar/get_news/get_earnings/get_dark_pool tools |
+| LARGO → ALL | PASS | 40+ tool catalog: get_gex,get_spx_confluence,get_flow_tape,get_my_positions(NW),get_nighthawk_edition/dossier/outcomes,get_news,get_earnings,get_dark_pool,get_economic_calendar,get_positioning |
+
+### Timestamp consistency (overnight — gaps are EXPECTED, not desync)
+- SPX desk as_of: 2.2 min ago (gex_age_ms=3, gex_stale=False, feed_stalled=False) — continuously live.
+- Grid econ as_of: 49 min ago — fresh.
+- Night Hawk published: 260 min (4.3h) ago — overnight publish, carry_until_close (point-in-time artifact).
+- Latest flow event_at: 706 min (11.8h) ago — yesterday's 20:12Z close; market closed overnight. NOT a P0 (no RTH desync; feed correctly not stalled).
+
+### WARN / INFO (no FAIL this run)
+- **Off-hours numeric gap**: `/api/market/gex-positioning?ticker=SPY` returned `{available:false}` (cold matrix overnight = documented empty contract per route doc). SPX desk meanwhile carries fresh gex_king=7450 / full gex_walls from its own engine. SPX↔HEATMAP numeric equality therefore cannot be machine-verified off-hours — re-run during RTH to confirm convergence. Source wiring is converged (both read the polygon-options-gex cache-reader).
+- **Largo non-SPX GEX path (residual W3)**: get_gex/get_oi_per_strike/get_max_pain for non-SPX tickers compute GEX directly from the options chain (summarizeGexFromChain), bypassing the shared getGexPositioning cache-reader the Heatmaps tool uses. Same underlying provider (Polygon/UW) so not a data silo, but a convergence gap — non-SPX GEX numbers could differ slightly from the Heatmap for the same ticker. Track toward converging onto getGexPositioning.
+
+**Verdict: STRONG cross-service connectivity. No data silos. SPX desk is the hub — it ingests HELIX flows, GEX walls, Grid macro_events + news. Largo reaches every service. Night's Watch verdict consumes SPX price + GEX walls + HELIX flows. No P0/P1.**
+---
