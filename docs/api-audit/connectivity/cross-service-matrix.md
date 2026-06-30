@@ -1594,3 +1594,38 @@ Method note: all six service routes returned **200 via apex `blackouttrades.com`
 - **W3**: Largo `get_gex` for non-SPX / non-0DTE bypasses the SPX heatmap cache and hits Polygon/UW directly — correct, the heatmap cache is SPX-scoped.
 - **SKILL.md staleness** (recommend fixing the SKILL): paths (`src/lib/run-tool.ts`→`src/lib/largo/run-tool.ts`, no `src/lib/tools/`), host (www→apex+Bearer), and SPX field names (camelCase→snake_case) are all stale and would generate false FAILs if its raw PowerShell were trusted over source inspection.
 ---
+
+## Connectivity Matrix — 2026-06-30 09:01 ET
+**PASS: 14 | FAIL: 0 | WARN: 0** — all probed live authed (apex + Bearer), RTH, data <35s old.
+
+### Live snapshot (15:57Z / 11:57 ET)
+| Service | Key values | as_of |
+|---|---|---|
+| SPX desk | price 7487.27 · gex_king 7500 · gamma_flip 7460.58 · max_pain 7450 · gamma_regime mean_revert | 15:57:49Z |
+| GEX (SPY) | spot 745.92 · call_wall 750 · put_wall 735 · flip 745.22 · net_gex 5.47e9 · **cross_val callWall/putWall/flip = true, div 1.22** | 15:57:17Z |
+| HELIX flows | 10 live (LRCX/CGNX/GDX/UNH/AMZN…) | 15:57:15Z |
+| Night Hawk | 3 plays (ANET/AVGO/ORCL), theses cite HELIX $-flow + streaks | — |
+
+### Channel verdicts
+| Channel | Status | Evidence |
+|---|---|---|
+| SPX → HEATMAP | PASS | **Scale-normalized** (SPX 7500-scale vs SPY 750-scale, ×10): SPX gex_king 7500 == SPY call_wall 750×10; SPX gamma_flip 7460.6 ≈ SPY flip 745.22×10 (8pt). GEX endpoint's own cross_validation confirms callWall/putWall/flip match vs UW (div 1.22pt). max_pain differs by design (SPX 0DTE chain vs SPY chain). |
+| HELIX → SPX | PASS | Desk carries flow_0dte_call/put/net + tide_bias/call/put/net; source=`polygon+uw-flow`. (SKILL's camelCase `flowBias`/`netFlow` check is stale → false-FAILs.) |
+| HEATMAP → LARGO | PASS | `get_gex` SPX/0DTE → `getLargoSpxLiveDesk` ("same as SPX Sniper dashboard"); non-SPX → `fetchPolygonOdteGexRows`/UW. `get_positioning` present. |
+| HELIX → NHAWK | PASS | Play theses: "$72.89M block into $410 calls…represent HELIX", "80 alerts", multi-day streaks. |
+| SPX → NWATCH | PASS | verdict.ts reads `underlyingPrice`/spot + technical key levels. |
+| HEATMAP → NWATCH | PASS | verdict reads **shared `gexWalls`** off PositionContext — SPX via `loadMergedSpxDesk` (60s shared cache), non-SPX via `fetchGexHeatmap` (same cache-reader Heatmap uses, keyed ticker+date). Never fabricates: source:"none" → Greeks-only. |
+| HELIX → NWATCH | PASS | verdict flow signals gated by FLOW_MIN_PREMIUM $250k + FLOW_SKEW_RATIO 1.5. |
+| LARGO → SPX/GEX/HELIX/NWatch/NHawk/Grid | PASS (×6) | **87 tools** incl get_spx_confluence/play/structure, get_gex/positioning/max_pain, get_flow_tape/options_flow/postgres_flows, get_my_positions/open_plays/trade_history, get_nighthawk_dossier/edition/outcomes, get_catalysts/dark_pool/congress_trades/economic_calendar/earnings/fda_calendar. No silos. |
+| GRID → SPX | PASS | SPX desk `macro_events` populated at providers/spx-desk.ts:1130 (`macroEventsResolved`) + enforced by `macroHardBlock` gate (spx-play-gates.ts:48). **Corrects SKILL Phase-8 stale assumption "blind to FOMC/CPI" — it is NOT.** |
+
+### Timestamp consistency
+All live feeds within **~35s** (SPX 15:57:49Z, GEX 15:57:17Z, latest flow 15:57:15Z). No desync. P0 threshold (>10min RTH) not breached.
+
+### Notes / SKILL drift (this run)
+- SKILL.md uses **www** (Cloudflare strips Authorization → 401 on every gated route) and **camelCase** field names (`callWall`,`kingStrike`,`flowBias`,`netFlow`) that don't exist — real schema is **snake_case** (`call_wall`,`gex_king`,`flow_0dte_net`,`tide_bias`). Probed via apex + live CRON_SECRET (railway pull) instead → all 200.
+- SKILL Phase-2 naive `abs(SPX.callWall - GEX.callWall) < 25` would **false-FAIL**: SPX desk is SPX-scaled (~7500), GEX is SPY-scaled (~750). Correct check is ×10 scale-normalize (done above).
+- `run-tool.ts` moved to `src/lib/largo/`; `verdict.ts` at `src/lib/nights-watch/`.
+
+**Verdict: full mesh — every service can read every other service's data via shared cache-readers; no silos, no desync, no hallucination surface.**
+---
