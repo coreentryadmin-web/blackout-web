@@ -1,5 +1,28 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-30 00:13 ET (07:13 UTC)
+Last updated: 2026-06-30 04:1x ET (≈11:1x UTC)
+
+> **04:1x ET / 11:1x UTC run (Tue, pre-market, RTH closed; live data via apex+Bearer + prod Postgres + code read + TSC). 0 P0 · 1 P1 · 2 P2 · 1 P3-meta.**
+> - **[OPEN · 🟠 P1 · DATA INTEGRITY · carried ≥4 runs · re-confirmed in code]** **Play outcomes mislabel profitable STOP/THESIS exits as losses.**
+>   `src/lib/spx-play-outcomes.ts:177-178` returns `"loss"` for any `STOP`/`THESIS`/`was_loss` exit **without checking `pnl_pts` sign**
+>   — THETA/SESSION (:170-176) and TRAIL (:183-186) both check it. **Live proof:** prod `spx_play_outcomes` id 3 is a long entry 7432.13 →
+>   exit 7439.43 (**+7.30 pts, MFE 7.3 — a winner**) yet the public surface reads **0-for-3**. **Fix:** STOP/THESIS with `pnl_pts > 0` → win
+>   (mirror TRAIL). One-liner. NOT auto-fixed (data-integrity + behavior change → wants a reviewed commit, not a cron commit).
+> - **[OPEN · 🟡 P2 · learning loop dormant]** `signal_events` (0 rows) / `signal_outcomes` (0 rows) in prod despite full schema present —
+>   no recorder writes on signal fire/checkpoint, so signal-accuracy tracking produces nothing. Schema decision resolved; remaining work is
+>   wiring the recorder. Deliberately deferred — tracked so it doesn't fall off.
+> - **[WATCH · downstream of the P1]** SPX track record 0/3; ≥1 reclassifies to a win once the P1 lands. Entry-timing: `cold_buy` MAE 7.15
+>   pts vs `watch_promote` MAE ~0.9–2.5 — cold_buy takes more heat; watch over next RTH sessions.
+> - **[✅ CONFIRMED HEALTHY this run]** All real endpoints 200 via apex+Bearer (gex SPY 742.9 asof 11:10 cross-validated · market/flows ·
+>   nighthawk/edition 3 plays · all 8 grid panels · congress/economy) · landing/sign-in/sign-up 200 · TSC 0 errors · all 7 prod env vars SET ·
+>   logs clean · db pool handler `:113` max:5 · Redis family:0+reconnectOnError · Polygon WS leader-election (`polygon:indices:leader` 25s) ·
+>   Clerk user.created/updated (webhooks/clerk :50/:66) · SpxDarkPoolCard mounted (SpxDashboard :13/:104) · **SPX plays opening+closing
+>   (spx_open_play=3, spx_play_outcomes=3 — pipeline LIVE)**. #97/#100/#101/#102 + SPX-plays-never-open all RESOLVED.
+> - **[P3-META — fix the SKILL]** Audit SKILL.md still probes dead paths/symbols → phantom 404/P0s: Phase-1 uses `www` (strips Bearer→401/404)
+>   not apex+Bearer; `spx-pulse`→`market/spx/pulse`, `/api/flows`→`market/flows`, `nighthawk/latest-edition`→`market/nighthawk/edition`,
+>   `grid/news`=nonexistent (→`market/news`); GEX-vs-desk compares SPY(snake_case call_wall)÷10 to SPX camelCase; `pool.on`→`livePool.on`;
+>   clerk grep hits singular alias not `webhooks/clerk`; `import.*SpxDarkPoolCard` misses multiline import. Report: `deep-audit-20260630-04.md`.
+
+---
 
 > **00:13 ET / 07:13 UTC run (Tue, after-hours, RTH closed; live data via apex+Bearer + code read). 0 P0 · 1 P1 · 1 P2 · 1 P3.**
 > - **[OPEN · 🟠 P1 · DATA INTEGRITY · carried ≥3 runs · still in code]** **Play outcomes mislabel profitable STOP/THESIS exits as losses.**
