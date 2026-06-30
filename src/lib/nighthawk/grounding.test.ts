@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { groundPlay } from "./grounding";
-import type { ChainStrikeRow } from "./option-chain-prompt";
+import { parseOptionsContract, type ChainStrikeRow } from "./option-chain-prompt";
 import type { PlaybookPlay } from "./types";
 
 function play(entryPremium: number): PlaybookPlay {
@@ -88,4 +88,17 @@ test("groundPlay accepts a confirmed contract when entry premium reconciles to l
 
   assert.equal(result.severity, "ok");
   assert.equal(result.issues.length, 0);
+});
+
+test("parseOptionsContract handles CALL $strike wording from generated plays", () => {
+  assert.deepEqual(parseOptionsContract("ANET CALL $175 2026-07-17, 2 contracts, entry prem ~$3.50"), {
+    strike: 175,
+    side: "call",
+    expiryYmd: "2026-07-17",
+  });
+  assert.deepEqual(parseOptionsContract("ORCL PUT $150 2026-08-21, 2 contracts, entry prem ~$4.20"), {
+    strike: 150,
+    side: "put",
+    expiryYmd: "2026-08-21",
+  });
 });

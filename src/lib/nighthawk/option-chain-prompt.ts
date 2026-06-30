@@ -316,6 +316,7 @@ export function parseOptionsContract(optionsPlay: string): ParsedOptionsContract
 
   const strikeMatch =
     text.match(/\$\s*(\d+(?:\.\d+)?)\s*(?:C|P|call|put)\b/i) ??
+    text.match(/\b(?:call|put|calls|puts)\s*@?\s*\$?\s*(\d+(?:\.\d+)?)/i) ??
     text.match(/(?:strike|@)\s*\$?\s*(\d+(?:\.\d+)?)/i) ??
     text.match(/\b(\d+(?:\.\d+)?)\s*(?:C|P)\b/i);
   const strike = strikeMatch?.[1] ? Number(strikeMatch[1]) : NaN;
