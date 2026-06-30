@@ -7,6 +7,7 @@ const isProtectedRoute = createRouteMatcher([
   "/heatmap(.*)",
   "/nighthawk(.*)",
   "/admin(.*)",
+  "/grid(.*)",
 ]);
 
 export default clerkMiddleware(
