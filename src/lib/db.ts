@@ -187,7 +187,8 @@ async function runMigrations(): Promise<void> {
     ON flow_alerts(ticker, created_at DESC NULLS LAST);
   `);
   // Supports fetchRecentFlows ORDER BY COALESCE(total_premium, 0) DESC NULLS LAST.
-  // Two-column compound: recency predicate resolves on col-1 cardinality, premium sorts col-2.
+  // Recreate when NULLS LAST was missing on an older deploy (IF NOT EXISTS is a no-op otherwise).
+  await p.query(`DROP INDEX IF EXISTS idx_flow_alerts_recency_premium`);
   await p.query(`
     CREATE INDEX IF NOT EXISTS idx_flow_alerts_recency_premium
     ON flow_alerts(
