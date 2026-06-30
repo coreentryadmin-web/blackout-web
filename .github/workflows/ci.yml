@@ -24,7 +24,15 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
       - name: Unit tests
-        run: npm test
+        # `npm test` uses `tsx --test "src/**/*.test.ts"`, whose ** glob relies on
+        # Node's test-runner glob support (Node 21+). CI pins Node 20 (prod parity),
+        # so expand the glob in bash and pass explicit files — version-agnostic.
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          files=(src/**/*.test.ts)
+          echo "Running ${#files[@]} test files"
+          npx tsx --test "${files[@]}"
       - name: Build (next build — catches deploy-breakers before merge)
         run: npm run build
       - name: Brand guard (no grey)
