@@ -4,7 +4,7 @@
  */
 import type { SpxDeskLevel, SpxDeskPayload, SpxDeskPulse, SpxDeskFlow, SpxTapeItem } from "@/lib/providers/spx-desk";
 import type { GexWall } from "@/lib/providers/gamma-desk";
-import { todayEtYmd, distancePct } from "@/lib/providers/spx-session";
+import { todayEtYmd, distancePct, widenSessionExtremesWithSpot } from "@/lib/providers/spx-session";
 import { computeFlowStrikeStacks } from "@/lib/largo/flow-strike-stacks";
 import { safeTime } from "@/lib/safe-time";
 import { tapeDedupKey } from "@/lib/tape-dedup-key";
@@ -203,10 +203,21 @@ function seedStructureCacheFromBase(base: {
 function stickyStructureLevel(
   key: keyof typeof lastGoodStructure,
   pulseVal: number | null | undefined,
-  baseVal: number | null | undefined
+  baseVal: number | null | undefined,
+  livePrice?: number
 ): number | null {
   ensureStructureCacheFresh();
-  const next = pulseVal ?? baseVal ?? lastGoodStructure[key];
+  let next: number | null;
+  if (key === "hod" || key === "lod") {
+    const candidates: number[] = [];
+    for (const v of [pulseVal, baseVal, lastGoodStructure[key], livePrice]) {
+      if (v != null && Number.isFinite(v) && v > 0) candidates.push(v);
+    }
+    if (!candidates.length) return null;
+    next = key === "hod" ? Math.max(...candidates) : Math.min(...candidates);
+  } else {
+    next = pulseVal ?? baseVal ?? lastGoodStructure[key] ?? null;
+  }
   if (next != null) {
     const changed = lastGoodStructure[key] !== next;
     lastGoodStructure[key] = next;
@@ -323,8 +334,11 @@ export function mergePulseIntoDesk(
 ): SpxDeskPayload {
   seedStructureCacheFromBase(base);
   const price = pulse.price > 0 ? pulse.price : base.price;
-  const lod = stickyStructureLevel("lod", pulse.lod, base.lod);
-  const hod = stickyStructureLevel("hod", pulse.hod, base.hod);
+  const rthOpen = pulse.market_open ?? base.market_open ?? false;
+  const liveSpot = rthOpen && price > 0 ? price : undefined;
+  let lod = stickyStructureLevel("lod", pulse.lod, base.lod, liveSpot);
+  let hod = stickyStructureLevel("hod", pulse.hod, base.hod, liveSpot);
+  ({ hod, lod } = widenSessionExtremesWithSpot(price, hod, lod, rthOpen));
   const vwap = stickyStructureLevel("vwap", pulse.vwap, base.vwap);
   const pdh = stickyStructureLevel("pdh", pulse.pdh, base.pdh);
   const pdl = stickyStructureLevel("pdl", pulse.pdl, base.pdl);
