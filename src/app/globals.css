@@ -61,13 +61,11 @@ html.ios-app .show-in-ios-app { display: revert; }
      the desktop step (1.5rem == px-6) preserves the existing look at ≥768px. */
   --content-max: 80rem;      /* desktop rail max-width (== Tailwind max-w-7xl) */
   --page-pad-x: 1rem;        /* mobile gutter (base) */
-  /* Top offset for in-app page content (PageShell paddingTop). Must clear the TWO
-     fixed bars stacked at the top: the nav (76px at rest) + the IndexRibbon
-     (26px, sits at top:76px, renders only when SPX/VIX data is live). 60px (the old
-     "scrolled nav height") left the ribbon overlapping every page's kicker/header —
-     the "can't see the header" bug. 104px clears both with a hair of breathing room;
-     the ~26px slack when the ribbon is hidden is negligible. */
-  --nav-offset: 104px;
+  /* Top offset for in-app page content (PageShell paddingTop). Must clear the fixed
+     nav banner (76px at rest). 88px clears it with ~12px of breathing room so a page's
+     kicker/header never tucks under the nav. (Was 104px when a 26px SPX/VIX index ribbon
+     stacked below the nav; the ribbon was removed.) */
+  --nav-offset: 88px;
 
   /* ── VITALS motion tokens — "The One Clock" ─────────────────────────────
      Canonical, globally-available motion vocabulary for the VITALS motion
@@ -990,20 +988,6 @@ body::before {
   50% { opacity: 0.65; transform: scale(1.06); }
 }
 
-/* ── Pricing cinematic backdrop animations ── */
-@keyframes pricing-grid-scroll { from { background-position: 0 0; } to { background-position: 0 56px; } }
-@keyframes pricing-beam { 0% { transform: translateY(-30%); } 100% { transform: translateY(960%); } }
-@keyframes pricing-vortex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-@keyframes pricing-ember-float {
-  0% { transform: translateY(10px); opacity: 0; }
-  14% { opacity: 0.7; }
-  86% { opacity: 0.7; }
-  100% { transform: translateY(-240px); opacity: 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .pricing-anim { animation: none !important; }
-}
-
 /* ── FAQ "Briefing Board" — no-scroll bento (desktop) ── */
 .faq-tile {
   border-radius: 1rem;
@@ -1851,26 +1835,6 @@ body::before {
   .page-header { @apply flex items-baseline gap-4 mb-8; }
   .page-title { @apply font-display text-4xl tracking-[3px] text-white; }
   .page-subtitle { @apply text-[10px] tracking-[2px] text-sky-200 uppercase; }
-
-  /* ===== Index Ribbon — compact SPX/VIX quote bar below the nav ===== */
-  .index-ribbon {
-    @apply fixed inset-x-0 z-[99] flex items-center justify-between gap-3 px-4;
-    top: 76px;
-    height: 26px;
-    background: rgba(4, 4, 7, 0.92);
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    backdrop-filter: blur(8px);
-    font-family: var(--font-mono, monospace);
-    font-size: 11px;
-    pointer-events: none;
-    transition: top 0.32s var(--ease-draw);
-  }
-  .index-ribbon-quotes { @apply flex items-center justify-center gap-4 flex-1; }
-  .index-ribbon-freshness { @apply shrink-0 scale-[0.92]; transform-origin: right center; }
-  .index-ribbon-chip { @apply flex items-center gap-1.5; }
-  .index-ribbon-label { @apply text-sky-400 font-bold tracking-wider uppercase; font-size: 10px; }
-  .index-ribbon-price { @apply text-white tabular-nums; }
-  .index-ribbon-chg { @apply tabular-nums font-medium; }
 
   /* ===== Floating Glass Pill nav (scroll-aware) ===== */
   .nav-bar {
@@ -7502,21 +7466,13 @@ body::before {
     /* Additive neon glow + punchier colour so the lattice reads as crazy multicolour. */
     mix-blend-mode: screen;
     filter: saturate(1.7) brightness(1.35);
-    animation: grid-flow 12s ease-in-out infinite, grid-drift 9s linear infinite;
-    will-change: background-position, transform;
+    /* STATIC: the lattice is painted once (no per-frame colour-flow repaint or transform
+       drift). The full multicolour spectrum already spans the viewport at rest, so the look
+       is preserved while the continuous GPU/paint cost is eliminated for a faster page. */
   }
-  /* Far layer drifts via transform only (GPU-composited) — no per-frame colour-flow repaint. */
-  .grid-live-lattice--far { --cell: 132px; opacity: 0.34; filter: blur(0.6px) saturate(1.7) brightness(1.3); animation: grid-drift 22s linear infinite; }
+  /* Two parallax depths, both static — the smaller cell on top reads as a denser lattice. */
+  .grid-live-lattice--far { --cell: 132px; opacity: 0.34; filter: blur(0.6px) saturate(1.7) brightness(1.3); }
   .grid-live-lattice--near { --cell: 66px; opacity: 0.6; }
-  @keyframes grid-flow {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-  }
-  @keyframes grid-drift {
-    from { transform: translate3d(0, 0, 0); }
-    to { transform: translate3d(-66px, -66px, 0); }
-  }
   /* Static colour blooms — painted once (no per-frame background-position pan). The drifting
      lattice above keeps the scene alive; a full-screen animated blur was the heaviest GPU cost. */
   .grid-live-blooms {
@@ -7532,9 +7488,6 @@ body::before {
   .grid-live-vignette {
     position: absolute; inset: 0;
     background: radial-gradient(130% 95% at 50% 0%, transparent 62%, rgba(4, 4, 7, 0.72) 100%);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .grid-live-lattice, .grid-live-blooms, .grid-live-scan { animation: none; }
   }
 
   .grid-empty {

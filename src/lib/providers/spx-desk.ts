@@ -50,6 +50,7 @@ import {
   priorEtYmd,
   sessionStatsFromMinuteBars,
   todayEtYmd,
+  widenSessionExtremesWithSpot,
 } from "./spx-session";
 import {
   fetchUwDarkPool,
@@ -1383,6 +1384,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
   // both fall to null (→ UI shows 'unavailable') rather than the current price.
   const lod = premarketPlan && !rthOpen ? prior.pdl ?? null : structure.lod ?? null;
   const hod = premarketPlan && !rthOpen ? prior.pdh ?? null : structure.hod ?? null;
+  const sessionExtremes = widenSessionExtremesWithSpot(price, hod, lod, rthOpen);
   const ema20 = structure.ema20;
   const ema50 = structure.ema50;
   const vixTerm = computeVixTermStructure(
@@ -1415,8 +1417,8 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     vix: vixSnap?.price ?? null,
     vix_change_pct: vixSnap?.change_pct ?? null,
     above_vwap: vwap != null ? price >= vwap : false,
-    lod,
-    hod,
+    lod: sessionExtremes.lod,
+    hod: sessionExtremes.hod,
     vwap,
     pdh: prior.pdh,
     pdl: prior.pdl,

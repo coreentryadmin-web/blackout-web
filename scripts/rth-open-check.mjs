@@ -93,7 +93,6 @@ async function main() {
       failures.push(m);
       console.log(`  ✗ ${m}`);
     };
-
     if (dbUrl) {
       try {
         const pg = await import("pg");
@@ -127,6 +126,24 @@ async function main() {
         if (latest?.status === "ok") ok("data-correctness latest run ok");
         else fail(`data-correctness latest: ${latest?.status ?? "?"} — ${latest?.message ?? ""}`);
 
+        const grid15 = (
+          await c.query(
+            `SELECT COUNT(*)::int AS n FROM cron_job_runs
+             WHERE job_key = 'grid-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
+          )
+        ).rows[0].n;
+        if (grid15 > 0) ok(`grid-warm ran in last 20m (${grid15} ok run(s))`);
+        else fail("grid-warm: no ok run in last 20m during RTH");
+
+        const nw15 = (
+          await c.query(
+            `SELECT COUNT(*)::int AS n FROM cron_job_runs
+             WHERE job_key = 'nights-watch-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
+          )
+        ).rows[0].n;
+        if (nw15 > 0) ok(`nights-watch-warm ran in last 20m (${nw15} ok run(s))`);
+        else fail("nights-watch-warm: no ok run in last 20m during RTH");
+
         await c.end();
       } catch (e) {
         fail(`Postgres RTH checks: ${e.message}`);
@@ -135,22 +152,42 @@ async function main() {
       console.log("  ⚠ DATABASE_URL not set — skipping Postgres RTH checks");
     }
 
+    // Options socket — HTTP probe (reliable across multi-replica clusters; log grep misses the leader).
+    const cron = process.env.CRON_SECRET?.trim() ?? "";
+    if (cron) {
+      try {
+        const base = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
+        const res = await fetch(`${base}/api/cron/socket-health`, {
+          headers: { Authorization: `Bearer ${cron}` },
+        });
+        const body = await res.json();
+        const opt = body.websockets?.options;
+        if (res.status === 200 && opt) {
+          if (opt.ok) ok(`options-socket: ${opt.detail}`);
+          else if (et.mins >= 9 * 60 + 30) fail(`options-socket: ${opt.detail}`);
+          else console.log(`  ⚠ options-socket: pre-09:30 — ${opt.detail}`);
+        } else {
+          fail(`options-socket probe HTTP ${res.status}`);
+        }
+      } catch (e) {
+        fail(`options-socket probe failed: ${e.message}`);
+      }
+    } else {
+      console.log("  ⚠ CRON_SECRET unset — skipping options-socket HTTP probe");
+    }
+
     try {
       const logs = execSync(
-        "railway logs --service blackout-web 2>/dev/null | rg 'options-socket|uw-socket' | tail -20",
+        "railway logs --service blackout-web 2>/dev/null | rg 'uw-socket' | tail -20",
         { encoding: "utf8" }
       );
-      if (/options-socket.*authenticated/.test(logs)) ok("options-socket authenticated (RTH)");
-      else if (et.mins >= 9 * 60 + 30)
-        fail("options-socket: no authenticated line in recent logs during RTH");
-      else console.log("  ⚠ options-socket: pre-09:30 — auth line not required yet");
       if (/uw-socket.*stall watchdog/i.test(logs)) fail("uw-socket stall reconnects in recent logs");
       else ok("No uw-socket stall storms");
     } catch {
       if (process.env.GITHUB_ACTIONS === "true") {
-        console.log("  ⚠ Railway logs skipped in GitHub Actions");
+        console.log("  ⚠ Railway uw-socket log check skipped in GitHub Actions");
       } else {
-        console.log("  ⚠ Could not read Railway logs");
+        console.log("  ⚠ Could not read Railway logs for uw-socket");
       }
     }
 
