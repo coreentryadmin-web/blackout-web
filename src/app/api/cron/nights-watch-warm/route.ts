@@ -1,13 +1,12 @@
-// Cron: pre-warm the Night's Watch shared options-chain cache.
+// Cron: pre-warm the Night's Watch shared options snapshot + chain caches.
 // Schedule: ~every 60s during market hours (registered in cron-registry.ts as
 // "nights-watch-warm"; Railway wires the actual fire via railway.nights-watch-warm.toml).
 //
-// THE POINT: Night's Watch GET reads a chain via getNwChain(ticker, expiry), which dedups
-// per (ticker, expiry) through withServerCache. This cron walks the DISTINCT (ticker,
-// expiry) of every user's OPEN positions and warms each one ONCE, so user-facing GETs
-// become pure cache hits and never trigger a per-user upstream Polygon chain fetch.
-// All upstream calls here flow through the permissive Polygon rate-limiter, so a warm
-// burst can't trip the 429 breaker on the live desk/GEX path.
+// THE POINT: Night's Watch GET reads per-OCC unified snapshots first (fetchOptionsUnifiedSnapshot
+// batched ≤250/call), then falls back to getNwChain(ticker, expiry) only when a leg is not
+// snapshot-covered. This cron warms snapshots for every distinct held OCC, then warms chain bands
+// ONLY for chains that still have unfound / missing / no-quote legs — avoiding redundant double
+// Polygon fan-out when the unified snapshot already priced every contract.
 
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
@@ -79,8 +78,10 @@ export async function GET(req: NextRequest) {
 
   // Strike hints per (ticker, expiry) so getNwChain widens the band to include deep OTM/ITM legs.
   const strikesByChain = new Map<string, number[]>();
+  let contracts: Awaited<ReturnType<typeof listDistinctOpenPositionContracts>> = [];
   try {
-    for (const c of await listDistinctOpenPositionContracts()) {
+    contracts = await listDistinctOpenPositionContracts();
+    for (const c of contracts) {
       const key = `${c.ticker.trim().toUpperCase()}|${c.expiry.slice(0, 10)}`;
       const arr = strikesByChain.get(key) ?? [];
       arr.push(c.strike);
@@ -90,12 +91,91 @@ export async function GET(req: NextRequest) {
     /* best-effort — default band still warms ATM */
   }
 
-  // getNwChain dedups per (ticker, expiry) via withServerCache, so warming each once is
-  // enough. Settle-all so one failing underlying can't abort the rest. A null result
-  // (unconfigured / no spot) is still a successful warm — the empty result is cached and
-  // shields that underlying from per-user re-hammering for the TTL window.
+  // PRIMARY: batch-warm DISTINCT held CONTRACTS via Massive unified snapshot (≤250/call).
+  let snapWarmed = 0;
+  let snapContracts = 0;
+  let snapUnfound = 0;
+  let snapNoQuote = 0;
+  let snapMissing = 0;
+  let snapshotWarmOk = false;
+  const occsNeedingChain = new Set<string>();
+  const chainKeysNeedingWarm = new Set<string>();
+  try {
+    const occs = Array.from(
+      new Set(
+        contracts
+          .map((c) => buildOcc(c.ticker, c.expiry, c.option_type, c.strike))
+          .filter((o): o is string => Boolean(o))
+      )
+    );
+    snapContracts = occs.length;
+    if (occs.length > 0) {
+      const diag: SnapshotFetchDiagnostics = {
+        requested: 0,
+        found: 0,
+        unfound: [],
+        missing: [],
+        noQuote: [],
+      };
+      const snaps = await fetchOptionsUnifiedSnapshot(occs, diag);
+      await setOptionSnapshots(Array.from(snaps.values()));
+      snapWarmed = snaps.size;
+      snapUnfound = diag.unfound.length;
+      snapNoQuote = diag.noQuote.length;
+      snapMissing = diag.missing.length;
+      snapshotWarmOk = true;
+      for (const u of diag.unfound) occsNeedingChain.add(u.occ);
+      for (const occ of diag.missing) occsNeedingChain.add(occ);
+      for (const occ of diag.noQuote) occsNeedingChain.add(occ);
+      for (const c of contracts) {
+        const occ = buildOcc(c.ticker, c.expiry, c.option_type, c.strike);
+        if (occ && occsNeedingChain.has(occ)) {
+          chainKeysNeedingWarm.add(`${c.ticker.trim().toUpperCase()}|${c.expiry.slice(0, 10)}`);
+        }
+      }
+      if (diag.unfound.length || diag.missing.length || diag.noQuote.length) {
+        const unfoundStr = diag.unfound
+          .slice(0, 20)
+          .map((u) => `${u.occ}(${u.reason})`)
+          .join(", ");
+        console.warn(
+          `[cron/nights-watch-warm] snapshot warmed ${snapWarmed}/${snapContracts} — ` +
+            `unfound=${diag.unfound.length} no_quote=${diag.noQuote.length} missing=${diag.missing.length}` +
+            (unfoundStr ? ` | unfound: ${unfoundStr}` : "") +
+            (diag.noQuote.length ? ` | no_quote: ${diag.noQuote.slice(0, 20).join(", ")}` : "") +
+            (diag.missing.length ? ` | missing: ${diag.missing.slice(0, 20).join(", ")}` : "")
+        );
+      }
+      if (diag.unfound.length > 0) {
+        const closedUnlisted = await autoCloseUnlistedOpenPositions(diag.unfound);
+        if (closedUnlisted > 0) {
+          console.log(`[cron/nights-watch-warm] auto-closed ${closedUnlisted} unlisted open position(s)`);
+        }
+      }
+    } else {
+      snapshotWarmOk = true;
+    }
+  } catch (error) {
+    console.warn(
+      `[cron/nights-watch-warm] snapshot warm failed (non-fatal): ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+
+  // FALLBACK: warm chain bands only for legs the snapshot did not cover — or all chains when
+  // the snapshot pass failed entirely (preserves prior safety).
+  const chainsToWarm =
+    snapshotWarmOk && chainKeysNeedingWarm.size > 0
+      ? capped.filter((c) =>
+          chainKeysNeedingWarm.has(`${c.ticker.trim().toUpperCase()}|${c.expiry.slice(0, 10)}`)
+        )
+      : snapshotWarmOk
+        ? []
+        : capped;
+
   const results = await Promise.allSettled(
-    capped.map(({ ticker, expiry }) => {
+    chainsToWarm.map(({ ticker, expiry }) => {
       const key = `${ticker.trim().toUpperCase()}|${expiry.slice(0, 10)}`;
       return getNwChain(ticker, expiry, strikesByChain.get(key) ?? []);
     })
@@ -129,83 +209,15 @@ export async function GET(req: NextRequest) {
     console.warn(`[cron/nights-watch-warm] ${gexFailed} GEX warm(s) failed`);
   }
 
-  // Also batch-warm the DISTINCT held CONTRACTS via the Massive unified snapshot: build each
-  // contract's OCC, fetch in ≤250 chunks through the rate-limited Polygon funnel, and write
-  // each into the per-OCC cache so the user-facing GET reads a warm cache hit (the per-OCC
-  // valuation source ABOVE the chain). Upstream cost is O(distinct contracts / 250), not
-  // O(positions). FULLY best-effort + isolated in its own try/catch: a snapshot failure NEVER
-  // affects the chain-warm result or status above — the chain stays the valuation fallback.
-  let snapWarmed = 0;
-  let snapContracts = 0;
-  // Per-OCC outcome diagnostics so a partial warm ("snapshot_warmed 1/4") reveals WHICH
-  // contracts didn't price and why (unlisted/unfound vs no-quote vs missing-row), instead of a
-  // silent count. Surfaced in both the cron-run log and a host-level warn line.
-  let snapUnfound = 0;
-  let snapNoQuote = 0;
-  let snapMissing = 0;
-  try {
-    const contracts = await listDistinctOpenPositionContracts();
-    const occs = Array.from(
-      new Set(
-        contracts
-          .map((c) => buildOcc(c.ticker, c.expiry, c.option_type, c.strike))
-          .filter((o): o is string => Boolean(o))
-      )
-    );
-    snapContracts = occs.length;
-    if (occs.length > 0) {
-      const diag: SnapshotFetchDiagnostics = {
-        requested: 0,
-        found: 0,
-        unfound: [],
-        missing: [],
-        noQuote: [],
-      };
-      const snaps = await fetchOptionsUnifiedSnapshot(occs, diag);
-      await setOptionSnapshots(Array.from(snaps.values()));
-      snapWarmed = snaps.size;
-      snapUnfound = diag.unfound.length;
-      snapNoQuote = diag.noQuote.length;
-      snapMissing = diag.missing.length;
-      // Log WHICH contracts didn't come back priced + the provider reason, so a "1/4" warm is
-      // self-explaining. Unfound is almost always an UNLISTED contract (provider reason carried).
-      if (diag.unfound.length || diag.missing.length || diag.noQuote.length) {
-        const unfoundStr = diag.unfound
-          .slice(0, 20)
-          .map((u) => `${u.occ}(${u.reason})`)
-          .join(", ");
-        console.warn(
-          `[cron/nights-watch-warm] snapshot warmed ${snapWarmed}/${snapContracts} — ` +
-            `unfound=${diag.unfound.length} no_quote=${diag.noQuote.length} missing=${diag.missing.length}` +
-            (unfoundStr ? ` | unfound: ${unfoundStr}` : "") +
-            (diag.noQuote.length ? ` | no_quote: ${diag.noQuote.slice(0, 20).join(", ")}` : "") +
-            (diag.missing.length ? ` | missing: ${diag.missing.slice(0, 20).join(", ")}` : "")
-        );
-      }
-      if (diag.unfound.length > 0) {
-        const closedUnlisted = await autoCloseUnlistedOpenPositions(diag.unfound);
-        if (closedUnlisted > 0) {
-          console.log(`[cron/nights-watch-warm] auto-closed ${closedUnlisted} unlisted open position(s)`);
-        }
-      }
-    }
-  } catch (error) {
-    // Never fails the chain warm — log host-level and move on (chain fallback unaffected).
-    console.warn(
-      `[cron/nights-watch-warm] snapshot warm failed (non-fatal): ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-  }
-
   // ok:false (=> failed status + critical alert) only when the WHOLE batch fails; a
   // partial failure logs ok with the count so one flaky underlying doesn't page ops.
-  const allFailed = capped.length > 0 && failed === capped.length;
+  const allFailed = chainsToWarm.length > 0 && failed === chainsToWarm.length;
   await logCronRun("nights-watch-warm", started, {
     ok: !allFailed,
     warmed,
     failed,
-    total: capped.length,
+    total: chainsToWarm.length,
+    chain_fallback_total: capped.length,
     distinct_chains: chains.length,
     gex_warmed: gexWarmed,
     gex_total: gexTickers.length,
@@ -214,14 +226,16 @@ export async function GET(req: NextRequest) {
     snapshot_unfound: snapUnfound,
     snapshot_no_quote: snapNoQuote,
     snapshot_missing: snapMissing,
+    chains_skipped_snapshot_hit: Math.max(0, capped.length - chainsToWarm.length),
     capped: chains.length > capped.length,
-    ...(failed > 0 ? { error: `${failed}/${capped.length} chain warm(s) failed` } : {}),
+    ...(failed > 0 ? { error: `${failed}/${chainsToWarm.length} chain warm(s) failed` } : {}),
   });
 
   return NextResponse.json({
     ok: true,
     warmed,
-    total: capped.length,
+    total: chainsToWarm.length,
+    chain_fallback_total: capped.length,
     distinct_chains: chains.length,
     gex_warmed: gexWarmed,
     gex_total: gexTickers.length,
@@ -230,5 +244,6 @@ export async function GET(req: NextRequest) {
     snapshot_unfound: snapUnfound,
     snapshot_no_quote: snapNoQuote,
     snapshot_missing: snapMissing,
+    chains_skipped_snapshot_hit: Math.max(0, capped.length - chainsToWarm.length),
   });
 }

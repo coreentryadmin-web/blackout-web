@@ -5,10 +5,11 @@
 // this so they can never drift apart.
 //
 // THE SCALING RULE (preserved verbatim): this is a cache READER. For a request it
-// fetches each DISTINCT (underlying, expiry) chain exactly ONCE through the shared
-// single-flight cache (getNwChain), resolves the SPX desk context ONCE per request,
-// and matches every strike in-memory. Upstream cost is O(distinct chains) regardless
-// of user/position count — never a per-position or per-user upstream call.
+// fetches each DISTINCT (underlying, expiry) chain at most ONCE through the shared
+// single-flight cache (getNwChain) — and ONLY when the per-OCC unified snapshot
+// does not already cover every open leg in that chain group. Resolves the SPX desk
+// context ONCE per request, and matches every strike in-memory. Upstream cost is
+// O(distinct chains needing fallback) regardless of user/position count.
 
 import { listUserPositions, listRecentClosedUserPositions, type UserPositionRow } from "@/lib/db";
 import { withServerCache } from "@/lib/server-cache";
@@ -25,6 +26,10 @@ import { getNwChain, matchContract, nwChainKey, type NwChain } from "@/lib/night
 import { getOptionSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
 import { buildOcc, getLiveOptionMark } from "@/lib/ws/options-socket";
 import { buildPositionContextMap } from "@/lib/nights-watch/position-context";
+import {
+  positionNeedsChainFallback,
+  snapshotMatchesPosition,
+} from "@/lib/nights-watch/snapshot-coverage";
 import { computeVerdict, type Verdict } from "@/lib/nights-watch/verdict";
 
 /**
@@ -122,9 +127,6 @@ export async function getEnrichedOpenAndRecentClosedForUser(
 async function enrichPositionRows(
   positions: UserPositionRow[]
 ): Promise<Array<EnrichedPosition & { verdict: Verdict }>> {
-  // Batch by (underlying, expiry): each distinct chain is fetched ONCE via the shared
-  // single-flight cache, then every strike is matched in-memory. Upstream cost is
-  // O(distinct chains) regardless of user/position count — never a per-position call.
   const strikesByKey = new Map<string, number[]>();
   for (const p of positions) {
     const key = nwChainKey(p.ticker, p.expiry);
@@ -132,14 +134,7 @@ async function enrichPositionRows(
     arr.push(p.strike);
     strikesByKey.set(key, arr);
   }
-  const groupKeys = Array.from(new Set(positions.map((p) => nwChainKey(p.ticker, p.expiry))));
-  const chains = new Map<string, NwChain | null>();
-  await Promise.all(
-    groupKeys.map(async (key) => {
-      const [root, exp] = key.split("|");
-      chains.set(key, await getNwChain(root, exp, strikesByKey.get(key) ?? []).catch(() => null));
-    })
-  );
+
   // Build each position's OCC ONCE and reuse it for both the live WS mark and the
   // per-OCC unified-snapshot read (a malformed OCC simply yields null on both → chain path).
   const occByPosition = new Map<number, string | null>();
@@ -153,9 +148,8 @@ async function enrichPositionRows(
     occByPosition.set(p.id, occ);
   }
 
-  // Resolve a fresh live WS mark per position (in-memory store first, Redis
-  // fallback). Best-effort: any miss yields null and the valuation cleanly
-  // falls back to the cached snapshot/chain mark, so a WS outage never degrades this.
+  // Resolve live WS marks + warmed unified snapshots BEFORE any chain fetch so we can
+  // skip chain bands entirely when every open leg in a group is snapshot-covered.
   const liveMarks = new Map<number, LiveMark | null>();
   await Promise.all(
     positions.map(async (p) => {
@@ -169,9 +163,6 @@ async function enrichPositionRows(
     })
   );
 
-  // Read the warmed per-OCC unified snapshot per position (cache READER — in-mem first,
-  // Redis fallback; never an upstream call on this read path). A miss yields null and the
-  // valuation cleanly falls back to the EXISTING chain path, so this is purely additive.
   const snapshots = new Map<number, OptionSnapshot | null>();
   await Promise.all(
     positions.map(async (p) => {
@@ -182,6 +173,22 @@ async function enrichPositionRows(
       } catch {
         /* snapshot optional — chain fallback covers it */
       }
+    })
+  );
+
+  const groupKeys = Array.from(new Set(positions.map((p) => nwChainKey(p.ticker, p.expiry))));
+  const chainKeysNeedingFetch = groupKeys.filter((key) =>
+    positions.some((p) => {
+      if (nwChainKey(p.ticker, p.expiry) !== key) return false;
+      return positionNeedsChainFallback(p, snapshots.get(p.id) ?? null, liveMarks.get(p.id) ?? null);
+    })
+  );
+
+  const chains = new Map<string, NwChain | null>();
+  await Promise.all(
+    chainKeysNeedingFetch.map(async (key) => {
+      const [root, exp] = key.split("|");
+      chains.set(key, await getNwChain(root, exp, strikesByKey.get(key) ?? []).catch(() => null));
     })
   );
 
@@ -202,16 +209,7 @@ async function enrichPositionRows(
     // yields the identical valuation. When ABSENT (cache miss / warm not run / parse skip), we
     // fall through to the EXISTING chain path UNCHANGED — the chain stays the fallback.
     const snap = snapshots.get(p.id) ?? null;
-    // Identity guard (cheap money-safety): only trust a snapshot whose contract identity
-    // (strike / type / expiry) matches the position. If buildOcc and Massive's OCC normalization
-    // ever disagree (adjusted / non-standard strikes), a mismatched snapshot is ignored → clean
-    // fall-through to the chain path, which re-matches strike+type in matchContract.
-    const snapMatches =
-      snap != null &&
-      snap.optionType === p.option_type &&
-      snap.strike != null &&
-      Math.abs(snap.strike - p.strike) <= 0.005 &&
-      snap.expiry === String(p.expiry).slice(0, 10);
+    const snapMatches = snapshotMatchesPosition(p, snap);
     // Track whether the CONTRACT was located at all (in either source) so a null valuation can be
     // explained as 'no-quote' (found, no price) vs 'contract-not-found' (the unlisted case).
     let contractFound = false;

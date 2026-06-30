@@ -22,6 +22,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
+import { fetchIndexSnapshots } from "@/lib/providers/polygon";
 import { notifyOpsDiscord } from "@/lib/spx-play-notify";
 import { makeRedis } from "@/lib/make-redis";
 import { requireDatabaseInProduction, fetchLatestNighthawkEdition, fetchNighthawkEditionByDate } from "@/lib/db";
@@ -74,24 +75,12 @@ function inMorningWindow(force: boolean): boolean {
   return inEtWindow({ targetHour: 9, targetMinute: 10, catchupMin: 35 });
 }
 
-// Fetch pre-market SPX snapshot from Polygon.
-// Uses the /v3/snapshot endpoint for the I:SPX index.
+// Fetch pre-market SPX snapshot from Polygon (rate-limited indices batch).
 async function fetchSpxPremarket(): Promise<number | null> {
-  const apiKey = process.env.POLYGON_API_KEY;
-  const base = process.env.POLYGON_API_BASE?.replace(/\/$/, "") ?? "https://api.polygon.io";
-  if (!apiKey) return null;
   try {
-    const res = await fetch(
-      `${base}/v3/snapshot?ticker.any_of=I:SPX&apiKey=${apiKey}`,
-      { cache: "no-store" }
-    );
-    if (!res.ok) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = await res.json() as any;
-    const results = data?.results ?? [];
-    const spx = results.find((r: { ticker?: string }) => r.ticker === "I:SPX");
-    const price = spx?.session?.close ?? spx?.session?.open ?? spx?.value ?? null;
-    return typeof price === "number" ? price : null;
+    const snaps = await fetchIndexSnapshots(["I:SPX"]);
+    const spx = snaps["I:SPX"];
+    return spx?.price ?? null;
   } catch {
     return null;
   }

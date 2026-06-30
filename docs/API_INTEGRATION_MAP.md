@@ -16,7 +16,8 @@ circuit breaker (`POLYGON_CIRCUIT_*`). polygon.io now 301-redirects to massive.c
 
 **✅ USED:** stock snapshots/movers (`/v2/snapshot/.../{gainers,losers}`), index snapshot
 (`/v3/snapshot/indices`), options chain snapshot (`/v3/snapshot/options/{u}`, GEX/VEX/DEX/CHARM
-backbone), unified per-contract snapshot (`/v3/snapshot?ticker.any_of=`, NW valuation, ≤250/call),
+backbone), unified per-contract snapshot (`/v3/snapshot?ticker.any_of=`, NW valuation primary,
+≤250/call; chain band is fallback-only when snapshot misses),
 contracts reference (`/v3/reference/options/contracts`), aggregates/prev/grouped, indicators
 (`/v1/indicators/{ema,sma,rsi,macd}`), market-status, last NBBO/trade, reference
 (tickers/dividends/splits/ipos/news), Benzinga news, short-interest/volume/float, financial ratios.
