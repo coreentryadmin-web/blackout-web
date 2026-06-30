@@ -64,7 +64,6 @@ function FeatureCards({
             key={it.href}
             role="menuitem"
             href={it.href}
-            prefetch={false}
             onClick={onNavigate}
             className={clsx(
               "nav-card",
@@ -298,7 +297,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
 
           {showAdmin && (
             <li className="nav-pill-li">
-              <Link href="/admin" prefetch={false} className={clsx("nav-pill-item nav-pill-admin", path.startsWith("/admin") && "nav-pill-item-active")}>
+              <Link href="/admin" className={clsx("nav-pill-item nav-pill-admin", path.startsWith("/admin") && "nav-pill-item-active")}>
                 Admin
               </Link>
             </li>
@@ -389,7 +388,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
                 Learn
               </Link>
               {showAdmin && (
-                <Link href="/admin" prefetch={false} onClick={() => setMobileOpen(false)} className="nav-sheet-link font-syne nav-pill-admin">
+                <Link href="/admin" onClick={() => setMobileOpen(false)} className="nav-sheet-link font-syne nav-pill-admin">
                   Admin
                 </Link>
               )}

@@ -38,10 +38,15 @@ export async function requireAdmin(): Promise<{ userId: string; email: string | 
 export async function getAdminStatus(): Promise<{ admin: boolean; email: string | null }> {
   const { userId } = await auth();
   if (!userId) return { admin: false, email: null };
+  // Single getUser: compute the admin flag from the user we already fetched instead of
+  // calling isAdminUser() (which would fetch the SAME user a second time). Logic mirrors
+  // isAdminUser() exactly. Halves the Clerk Backend round-trips behind /admin + /api/admin/me.
   const user = await (await clerkClient()).users.getUser(userId);
   const email =
     user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ?? null;
-  return { admin: await isAdminUser(userId), email };
+  const role = String(user.publicMetadata?.role ?? "").toLowerCase();
+  const admin = role === "admin" || isAdminEmail(email);
+  return { admin, email };
 }
 
 /** Single source of truth for admin-API gating. Performs at most ONE
