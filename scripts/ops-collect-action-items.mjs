@@ -63,10 +63,18 @@ async function postgresItems() {
   }
 
   const failedRecent = await q(
-    `SELECT DISTINCT ON (job_key) job_key, status, message, started_at
-     FROM cron_job_runs
-     WHERE status = 'failed' AND started_at > NOW() - INTERVAL '4 hours'
-     ORDER BY job_key, started_at DESC`
+    `SELECT DISTINCT ON (f.job_key) f.job_key, f.status, f.message, f.started_at
+     FROM cron_job_runs f
+     WHERE f.status = 'failed'
+       AND f.started_at > NOW() - INTERVAL '4 hours'
+       AND NOT EXISTS (
+         SELECT 1
+         FROM cron_job_runs newer
+         WHERE newer.job_key = f.job_key
+           AND newer.started_at > f.started_at
+           AND newer.status IN ('ok', 'skipped')
+       )
+     ORDER BY f.job_key, f.started_at DESC`
   );
   for (const r of failedRecent) {
     add("P0", "cron", `cron:${r.job_key}:failed`, `Cron failed: ${r.job_key}`, `${r.message ?? "failed"} @ ${String(r.started_at).slice(0, 19)}Z`);
@@ -100,11 +108,17 @@ async function postgresItems() {
   }
 
   // Night Hawk: after the edition window, tomorrow's row should be published (plays or recap-only).
+  // Older stuck/failed rows are superseded once a later edition publishes; don't keep paging on them.
   const staleJobs = await q(
     `SELECT edition_for::text, status, current_stage, updated_at
-     FROM nighthawk_jobs
-     WHERE status NOT IN ('published', 'failed')
-       AND updated_at < NOW() - INTERVAL '4 hours'`
+     FROM nighthawk_jobs j
+     WHERE j.status NOT IN ('published', 'failed')
+       AND j.updated_at < NOW() - INTERVAL '4 hours'
+       AND NOT EXISTS (
+         SELECT 1 FROM nighthawk_jobs newer
+         WHERE newer.edition_for > j.edition_for
+           AND newer.status = 'published'
+       )`
   );
   for (const r of staleJobs) {
     add(
@@ -117,9 +131,15 @@ async function postgresItems() {
   }
 
   const failedJobs = await q(
-    `SELECT edition_for::text, error, updated_at FROM nighthawk_jobs
-     WHERE status = 'failed' AND updated_at > NOW() - INTERVAL '36 hours'
-     ORDER BY updated_at DESC LIMIT 3`
+    `SELECT j.edition_for::text, j.error, j.updated_at FROM nighthawk_jobs j
+     WHERE j.status = 'failed'
+       AND j.updated_at > NOW() - INTERVAL '36 hours'
+       AND NOT EXISTS (
+         SELECT 1 FROM nighthawk_jobs newer
+         WHERE newer.edition_for > j.edition_for
+           AND newer.status = 'published'
+       )
+     ORDER BY j.updated_at DESC LIMIT 3`
   );
   for (const r of failedJobs) {
     add(
