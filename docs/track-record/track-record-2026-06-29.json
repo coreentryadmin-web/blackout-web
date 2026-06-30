@@ -1,0 +1,31 @@
+﻿{
+    "as_of":  "2026-06-29",
+    "status":  "AWAITING_VERIFIED_OUTCOMES",
+    "status_detail":  "Signal-outcome pipeline is dormant (recorder inert pending entry/exit schema decision); 0 verified outcomes recorded to date. No win/loss figures are published until real outcomes exist — none are fabricated.",
+    "spx_slayer":  {
+                       "total":  0,
+                       "wins":  0,
+                       "losses":  0,
+                       "win_rate_pct":  null
+                   },
+    "night_hawk":  {
+                       "total":  0,
+                       "wins":  0,
+                       "losses":  0,
+                       "win_rate_pct":  null,
+                       "avg_winner_pct":  null,
+                       "avg_loser_pct":  null,
+                       "profit_factor":  null
+                   },
+    "regime_analysis":  {
+                            "best_regime":  null,
+                            "worst_regime":  null,
+                            "breakdown":  [
+
+                                          ],
+                            "current_regime":  "RANGE_BOUND",
+                            "note":  "Regime detector is live (composite RANGE_BOUND as of 2026-06-30T04:10Z), but regime-conditional accuracy requires verified outcomes tagged at fire time. None exist yet."
+                        },
+    "methodology":  "All signals are tagged with the market regime at generation time; win rate is computed per regime to show which conditions favor each signal type. No cherry-picking - all signals included. When zero verified outcomes exist, win rates are reported as null (not 0%) to avoid implying losses.",
+    "last_updated":  "2026-06-29T21:40:24Z"
+}
