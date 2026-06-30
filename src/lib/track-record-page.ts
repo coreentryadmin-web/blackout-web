@@ -47,6 +47,11 @@ function nhStopDataUnavailable(r: NighthawkPlayOutcomeRow): boolean {
   return r.stop != null && r.session_high == null && r.session_low == null;
 }
 
+/** Same filter as aggregate Night Hawk stats on the track-record page. */
+export function isNighthawkOutcomeScoreable(r: NighthawkPlayOutcomeRow): boolean {
+  return r.outcome !== "pending" && !nhStopDataUnavailable(r);
+}
+
 function nhEntryMid(row: NighthawkPlayOutcomeRow): number | null {
   if (row.entry_range_low != null && row.entry_range_high != null) {
     return (row.entry_range_low + row.entry_range_high) / 2;
@@ -63,7 +68,7 @@ function nhReturnPct(row: NighthawkPlayOutcomeRow): number | null {
 }
 
 function nhFromRows(rows: NighthawkPlayOutcomeRow[]): TrackRecordPagePayload["nightHawk"] {
-  const scoreable = rows.filter((r) => !nhStopDataUnavailable(r));
+  const scoreable = rows.filter(isNighthawkOutcomeScoreable);
   const winners = scoreable.filter((r) => r.outcome === "target");
   const losers = scoreable.filter((r) => r.outcome === "stop");
   const total = scoreable.length;
