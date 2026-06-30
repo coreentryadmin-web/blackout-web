@@ -59,6 +59,11 @@ export interface ProductMarkProps {
 // The draw-on intro settles by ~1.5s (longest entrance: the focal/core boPop at a 1s
 // delay + a follow-on breath). Freeze just after so the sigil animates ONCE.
 const SETTLE_MS = 1700;
+// Fallback freeze for sigils that NEVER scroll into view (e.g. closed nav-dropdown
+// marks, far-below-the-fold marks). Without this they'd loop their ambient animations
+// forever while off-screen/hidden — pure wasted GPU. Generous enough that on-screen
+// sigils still play their draw-on (which resets to the shorter SETTLE_MS) first.
+const SETTLE_FALLBACK_MS = 4000;
 
 /**
  * IntersectionObserver hook — adds `.is-live` once when the mark scrolls into view to
@@ -79,23 +84,31 @@ function useDrawOn(animated: boolean) {
     const el = ref.current;
     if (!el) return;
     let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    const settle = () => {
+      el.classList.remove("is-live"); // revert draw-on start-state overrides to the drawn base
+      el.classList.add("bo-static"); // kill every sigil animation (clean composed frame)
+    };
     const io = new IntersectionObserver(
       ([e]) => {
         if (e.isIntersecting) {
           el.classList.add("is-live");
           io.disconnect();
-          settleTimer = setTimeout(() => {
-            el.classList.remove("is-live");
-            el.classList.add("bo-static");
-          }, SETTLE_MS);
+          clearTimeout(settleTimer);
+          settleTimer = setTimeout(settle, SETTLE_MS);
         }
       },
       { threshold: 0.35 }
     );
     io.observe(el);
+    // Fallback: settle even if the sigil is never seen, so off-screen/hidden marks
+    // don't loop forever. The IO path above clears + reschedules this to SETTLE_MS.
+    settleTimer = setTimeout(() => {
+      io.disconnect();
+      settle();
+    }, SETTLE_FALLBACK_MS);
     return () => {
       io.disconnect();
-      if (settleTimer) clearTimeout(settleTimer);
+      clearTimeout(settleTimer);
     };
   }, [animated]);
   return ref;
