@@ -615,7 +615,9 @@ export async function readGridCatalysts(): Promise<GridCatalystsSnapshot | null>
 
 // ── Bootstrap (single round-trip for all cache-reader panels) ─────────────────
 
-type GridPanelEnvelope<T extends object> = { available: boolean } & Partial<T>;
+type GridPanelEnvelope<T extends object> =
+  | { available: false }
+  | ({ available: true } & T);
 
 function gridPanelEnvelope<T extends object>(snapshot: T | null): GridPanelEnvelope<T> {
   if (!snapshot) return { available: false };
