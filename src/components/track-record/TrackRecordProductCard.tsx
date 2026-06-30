@@ -47,16 +47,33 @@ export function TrackRecordProductCard({
   );
 }
 
+const SPX_MIN_SAMPLE = 30;
+
 function SpxStatsGrid({ stats }: { stats: SpxStats }) {
+  const earlyData = stats.total < SPX_MIN_SAMPLE;
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <Stat
-        label="Win rate"
-        value={fmtPct(stats.winRatePct)}
-        tone="accent"
-        display
-        className="col-span-2 sm:col-span-1"
-      />
+      {earlyData ? (
+        <div className="col-span-2 flex flex-col justify-center gap-1 rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] p-4 sm:col-span-1">
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-mute">
+            Win rate
+          </span>
+          <span className="font-mono text-sm text-sky-300">
+            Collecting data
+          </span>
+          <span className="font-mono text-[10px] text-sky-300/60">
+            {stats.total}/{SPX_MIN_SAMPLE} trades
+          </span>
+        </div>
+      ) : (
+        <Stat
+          label="Win rate"
+          value={fmtPct(stats.winRatePct)}
+          tone="accent"
+          display
+          className="col-span-2 sm:col-span-1"
+        />
+      )}
       <Stat label="Total signals" value={stats.total} tone="neutral" />
       <Stat label="Wins" value={stats.wins} tone="bull" />
       <Stat label="Losses" value={stats.losses} tone="bear" />
