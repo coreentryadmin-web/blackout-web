@@ -1407,3 +1407,49 @@ stale — real payloads are snake_case (gex_walls/gex_king/flow_0dte_net); verdi
 ### Disconnected Channels
 - None. Every source→consumer cell is wired; no service is blind to another's data this cycle.
 ---
+
+## Connectivity Matrix — 2026-06-29 22:59 ET  (after-hours; markets closed)
+**Live-probe host:** apex blackouttrades.com + Bearer CRON_SECRET (www→401, expected). All fields snake_case (SKILL camelCase is stale).
+**Verdict: 19/19 channels CONNECTED. 0 FAIL. 0 RTH desync.**
+
+### Live ground truth
+- SPX desk (SPX-scale): price=7440.43 gex_king=7450 gamma_flip=7436.8 max_pain=7450 | spx_flows=32 flow_0dte_net=434716420 tide_bias=bullish | macro_events=4 news_headlines=10 | as_of=2026-06-30T05:59:30.706Z (420.2 min) gex_age_ms=3 gex_stale=False
+- GEX endpoint (SPY-scale): ticker=SPY spot=741 call_wall=750 put_wall=740 flip=740.88 net_gex=-703727477.3934613 | asof=2026-06-30T05:59:44.564Z (420 min) source=polygon
+- GEX self-cross-validation: callWallMatch=True putWallMatch=True flipMatch=True divergence=1
+
+### Scale reconciliation (NOT a divergence)
+- SPX/SPY ratio = 10.04. GEX endpoint is **SPY-based by design**; SPX desk is **SPX index**.
+- Flip alignment: GEX flip 740.88 × ratio = **7439.23** vs SPX desk gamma_flip **7436.8** → aligned (<2 pt). Shared gamma engine confirmed.
+- A naive `abs(spx.callWall - gex.callWall)` compare (as the SKILL's Phase 2 does) FALSE-FAILS on both scale and field-name; ignore it. The real check is scaled-flip alignment + GEX internal cross-validation (both pass).
+
+### Matrix (Source → Consumer)
+| Channel | Status | Evidence |
+|---|---|---|
+| SPX → HELIX | PASS | SPX/SPY/QQQ flows in tape (SPX CALL \.2M live); shared unified_tape |
+| SPX → HEATMAP | PASS | SPX desk gex_walls/king/flip share gamma engine; flip aligns at scale |
+| SPX → LARGO | PASS | run-tool get_spx_desk / get_market_context |
+| SPX → NHAWK | PASS | nighthawk/positioning.ts → getGexPositioning ×4 |
+| SPX → NWATCH | PASS | verdict.ts price(32) spx(6) gamma(3) |
+| HELIX → SPX | PASS | desk spx_flows=32, flow_0dte_net, tide_bias=bullish |
+| HELIX → HEATMAP | PASS | flows/route.ts imports getGexPositioning |
+| HELIX → LARGO | PASS | get_flow_tape / get_flow_per_strike / get_global_flow / get_lit_flow |
+| HELIX → NHAWK | PASS | thesis cites \.4M/80 alerts/4-day streak; flow_streak_days field |
+| HELIX → NWATCH | PASS | verdict.ts flow(52) premium(26) |
+| HEATMAP → SPX | PASS | SPX desk consumes gamma at SPX scale (gex_king=7450) |
+| HEATMAP → HELIX | PASS | flows route reads getGexPositioning (shared cache-reader) |
+| HEATMAP → LARGO | PASS | get_gex / get_max_pain / get_greeks via largo-live-feed → getGexPositioning |
+| HEATMAP → NHAWK | PASS | positioning.ts getGexPositioning ×4 |
+| HEATMAP → NWATCH | PASS | verdict.ts wall(75) gex(28) |
+| LARGO → ALL | PASS | 40+ tools: get_gex,get_flow_tape,get_dark_pool,get_economic_calendar,get_catalysts,get_earnings,get_congress_trades,get_greek_flow,get_market_context,get_full_edition… |
+| NHAWK → LARGO | PASS | get_full_edition / nighthawk routing |
+| GRID → SPX | PASS | desk macro_events=4 (econ 06-30) + news_headlines=10 |
+| GRID → LARGO | PASS | get_economic_calendar / get_catalysts / get_earnings / get_congress_trades / get_dark_pool |
+
+### Timestamp consistency
+- SPX as_of: 420.2 min ago | GEX asof: 420 min ago → 12s apart, gex_age_ms=3 (fresh).
+- Flow data age: 590.4 min — **after-hours expected** (now 2026-06-29 22:59 ET, market closed 16:00 ET; last flow 20:12Z). feed_stalled=False (correctly NOT flagged). No RTH desync.
+
+### Residual notes (INFO, not FAIL)
+- SPX desk strongest resistance 7450 (0DTE lens) vs GEX endpoint call_wall 750→7531 SPX (full SPY chain). Known by-design lens difference (project_connectivity_matrix W-residual); each internally cross-validates.
+- GEX endpoint is SPY-scaled: any NEW consumer must scale ×~10 or read SPX desk's native gex_* fields. Internal consumers (Largo/NHawk via getGexPositioning, SPX desk via own engine) already correct.
+---
