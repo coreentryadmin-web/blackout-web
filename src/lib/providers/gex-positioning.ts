@@ -103,13 +103,10 @@ export type GexPositioning = {
   gex_intraday_adjusted?: GexIntradayAdjusted | null;
   /**
    * Cross-validation of the primary GEX key levels (call wall / put wall / gamma flip) against
-   * the UW REST strike ladder (`/api/stock/{ticker}/spot-exposures/strike`, cached 60s).
+   * the UW per-strike dealer gamma ladder (`gex_strike_expiry` WS when fresh, else REST
+   * `/api/stock/{ticker}/spot-exposures/strike` cached 60s).
    * Populated only by `getGexPositioning` when UW data is available. `null` when UW is
    * unavailable or the primary matrix was cold — never blocks the primary data path.
-   *
-   * NOTE: The UW `gex_strike_expiry:SPX` WebSocket channel is NOT a supported UW WS channel
-   * (valid channels: flow_alerts / market_tide / off_lit_trades / interval_flow / trading_halts).
-   * This uses the REST endpoint as the RPS-friendly alternative (one call per 60s per ticker).
    */
   gex_cross_validation?: GexCrossValidationResult | null;
   /** Provenance — always the shared Polygon/Massive GEX matrix. */
