@@ -84,9 +84,13 @@ function nhFromRows(rows: NighthawkPlayOutcomeRow[]): TrackRecordPagePayload["ni
     winnerReturns.length > 0
       ? Math.round((winnerReturns.reduce((a, b) => a + b, 0) / winnerReturns.length) * 10) / 10
       : null;
+  // Clamp to ≤ 0: stop-hit plays should always produce a negative return. A positive
+  // average here signals bad outcome grading (next_day_close above entry_mid on a
+  // stop row) — we surface the magnitude as a loss rather than showing a positive number
+  // in a "bear" red tile that reads as a gain to the user.
   const avgLoserPct =
     loserReturns.length > 0
-      ? Math.round((loserReturns.reduce((a, b) => a + b, 0) / loserReturns.length) * 10) / 10
+      ? Math.min(0, Math.round((loserReturns.reduce((a, b) => a + b, 0) / loserReturns.length) * 10) / 10)
       : null;
 
   const grossWins = winnerReturns.reduce((a, b) => a + b, 0);
