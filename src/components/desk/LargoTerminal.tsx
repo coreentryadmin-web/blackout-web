@@ -14,6 +14,46 @@ type Message = { id: string; role: "user" | "assistant"; content: string; tools?
 const INPUT_PLACEHOLDER = "Ask the desk — SPX levels, a ticker, flow, news ...";
 const INPUT_PLACEHOLDER_BUSY = "Pulling live data ...";
 
+// Friendly labels for the live tool-trace — what data Largo is pulling, in real time.
+// Falls back to a humanized name (get_flow_tape → "flow tape") for anything unmapped.
+const TOOL_LABEL: Record<string, string> = {
+  live_feed_capture: "live desk feed",
+  get_spx_structure: "SPX desk",
+  get_spx_confluence: "confluence engine",
+  get_spx_play: "SPX play",
+  get_gex: "GEX map",
+  get_positioning: "dealer positioning",
+  get_greek_flow: "dealer greek flow",
+  get_options_flow: "options flow",
+  get_global_flow: "market flow",
+  get_flow_tape: "HELIX flow tape",
+  get_dark_pool: "dark pool",
+  get_market_context: "market context",
+  get_market_breadth: "market breadth",
+  get_technicals: "technicals",
+  get_quote: "live quote",
+  get_nbbo: "NBBO",
+  get_news: "news",
+  get_web_search: "web search",
+  get_nighthawk_edition: "Night Hawk",
+  get_my_positions: "your positions",
+  get_greeks: "greeks",
+  get_max_pain: "max pain",
+  get_iv_stats: "IV rank",
+  get_options_chain: "options chain",
+  get_open_plays: "open plays",
+  get_lotto_live: "lotto play",
+  get_earnings: "earnings",
+  get_analyst_ratings: "analyst ratings",
+  get_catalysts: "catalysts",
+  get_congress_trades: "congress trades",
+  get_predictions_consensus: "predictions",
+};
+
+function toolLabel(name: string): string {
+  return TOOL_LABEL[name] ?? name.replace(/^get_/, "").replace(/_/g, " ");
+}
+
 const WELCOME: Message = {
   id: "welcome",
   role: "assistant",
@@ -35,6 +75,11 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  // Dynamic, conversation-aware follow-up prompts returned with each answer (replaces the
+  // fixed starter chips once the conversation is underway).
+  const [followups, setFollowups] = useState<string[]>([]);
+  // Live tool-trace — the real data sources Largo pulls this turn (streamed via tool_start).
+  const [activeTools, setActiveTools] = useState<string[]>([]);
   const sessionId = useRef("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const msgId = useRef(1);
@@ -74,6 +119,8 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
     if (!q || loading || !hydrated) return;
 
     setInput("");
+    setFollowups([]); // clear stale follow-ups while the new turn runs
+    setActiveTools([]); // reset the live tool-trace for the new turn
     const userId = `u-${++msgId.current}`;
     setMessages((m) => [...m.filter((x) => x.id !== "welcome"), { id: userId, role: "user", content: q }]);
     setLoading(true);
@@ -83,14 +130,22 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
     setMessages((m) => [...m, { id: assistantId, role: "assistant", content: "" }]);
 
     try {
-      const res = await queryLargoStream(q, sessionId.current, (token) => {
-        setStreaming(true);
-        setMessages((m) =>
-          m.map((msg) =>
-            msg.id === assistantId ? { ...msg, content: msg.content + token } : msg
-          )
-        );
-      });
+      const res = await queryLargoStream(
+        q,
+        sessionId.current,
+        (token) => {
+          setStreaming(true);
+          setMessages((m) =>
+            m.map((msg) =>
+              msg.id === assistantId ? { ...msg, content: msg.content + token } : msg
+            )
+          );
+        },
+        (toolName) => {
+          const label = toolLabel(toolName);
+          setActiveTools((prev) => (prev.includes(label) ? prev : [...prev, label]));
+        }
+      );
       sessionId.current = res.session_id;
       sessionStorage.setItem(LARGO_SESSION_KEY, sessionId.current);
       setMessages((m) =>
@@ -100,6 +155,7 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
             : msg
         )
       );
+      setFollowups(Array.isArray(res.followups) ? res.followups.slice(0, 3) : []);
     } catch (err) {
       const raw = err instanceof Error ? err.message : "";
       let content =
@@ -199,7 +255,7 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
                   <div className="largo-tools-used">
                     {msg.tools.map((t) => (
                       <span key={t} className="largo-tool-chip">
-                        {t}
+                        {toolLabel(t)}
                       </span>
                     ))}
                   </div>
@@ -233,10 +289,36 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
             </motion.div>
           )}
 
+          {/* Dynamic, conversation-aware follow-ups — generated from the last exchange,
+              shown after each answer. One tap continues the thread. */}
+          {!isFresh && !loading && followups.length > 0 && (
+            <motion.div
+              className="largo-suggestions largo-followups"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <p className="largo-suggestions-label">Ask next</p>
+              <div className="largo-suggestions-grid">
+                {followups.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="largo-suggestion-chip"
+                    onClick={() => void runQuery(s)}
+                  >
+                    <span aria-hidden className="largo-suggestion-arrow">▸</span>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
           <AnimatePresence mode="wait">
             {loading && !streaming && (
               <div className="largo-msg-bubble largo-thinking-wrap">
-                <LargoThinkingState key="largo-thinking" />
+                <LargoThinkingState key="largo-thinking" tools={activeTools} />
               </div>
             )}
           </AnimatePresence>

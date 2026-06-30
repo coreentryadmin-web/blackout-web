@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { NightsWatchDetailModal } from "@/components/nights-watch/NightsWatchDetailModal";
+import { CollapsibleTile } from "@/components/nighthawk/CollapsibleTile";
 import type { EnrichedPosition, ValuationStatus } from "@/lib/nights-watch/valuation";
 import type { Verdict, VerdictAction } from "@/lib/nights-watch/verdict";
 
@@ -180,7 +181,7 @@ function ivPct(n: number | null | undefined): string {
 function Metric({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-mute">{label}</span>
+      <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-cyan-400">{label}</span>
       <span className="font-mono text-[12px] tabular-nums text-white">{value}</span>
     </div>
   );
@@ -254,7 +255,7 @@ function Toggle<T extends string>({
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400",
               active
                 ? TONE_ACTIVE[opt.tone]
-                : "border-white/10 bg-white/[0.03] text-mute hover:border-white/20 hover:text-white"
+                : "border-white/10 bg-white/[0.03] text-sky-300 hover:border-white/20 hover:text-white"
             )}
           >
             {opt.label}
@@ -267,7 +268,7 @@ function Toggle<T extends string>({
 
 const FIELD_CLASS =
   "h-9 w-full rounded-lg border border-white/12 bg-white/[0.04] px-3 font-mono text-[13px] text-white " +
-  "placeholder:text-mute/60 tabular-nums " +
+  "placeholder:text-sky-300/50 tabular-nums " +
   "focus-visible:outline-none focus-visible:border-sky-400/60 focus-visible:ring-1 focus-visible:ring-sky-400/40";
 
 const LABEL_CLASS = "font-mono text-[10px] uppercase tracking-[0.16em] text-sky-300";
@@ -568,7 +569,7 @@ function PositionCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-baseline gap-2">
-            <span className="font-anton text-[24px] leading-none tracking-tight text-white">
+            <span className="font-syne text-[22px] font-bold leading-none tracking-tight text-white">
               {position.ticker}
             </span>
             {/* Direction recognition: CALL strike/type in emerald, PUT in bear. This
@@ -586,7 +587,7 @@ function PositionCard({
               {position.option_type === "call" ? "C" : "P"}
             </span>
           </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-mute">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-sky-300">
             <span>{position.expiry}</span>
             <span aria-hidden>·</span>
             <span className={position.side === "long" ? "text-sky-300" : "text-bear"}>
@@ -614,7 +615,7 @@ function PositionCard({
           treatment) in place of the live unrealized figure. */}
       <div className="flex items-end justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3.5 py-3">
         <div className="flex flex-col gap-1">
-          <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-mute">
+          <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-cyan-400">
             {closed ? "Realized P&L" : "Unrealized P&L"}
           </span>
           {closed ? (
@@ -628,7 +629,7 @@ function PositionCard({
                 </span>
               </div>
             ) : (
-              <span className="font-mono text-[26px] font-bold leading-none tabular-nums text-mute">
+              <span className="font-mono text-[26px] font-bold leading-none tabular-nums text-sky-300">
                 {EM_DASH}
               </span>
             )
@@ -642,7 +643,7 @@ function PositionCard({
               </span>
             </div>
           ) : (
-            <span className="font-mono text-[26px] font-bold leading-none tabular-nums text-mute">
+            <span className="font-mono text-[26px] font-bold leading-none tabular-nums text-sky-300">
               {EM_DASH}
             </span>
           )}
@@ -1033,23 +1034,8 @@ function PortfolioExposure({ positions }: { positions: ApiPosition[] }) {
     : `$${premRisk.toFixed(0)}`;
 
   return (
-    <div
-      className="rounded-xl border border-cyan-400/20 bg-cyan-400/[0.04] px-3.5 py-3"
-      aria-label="Portfolio exposure"
-    >
-      {/* Header */}
-      <div className="mb-2.5 flex items-center gap-2">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-400">
-          Portfolio Exposure
-        </span>
-        <span className="font-mono text-[10px] tabular-nums text-sky-300/60">
-          {g.liveLegs} live leg{g.liveLegs !== 1 ? "s" : ""}
-        </span>
-        <span aria-hidden className="h-px flex-1 bg-white/[0.08]" />
-      </div>
-
-      {/* Greek cells */}
-      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 sm:grid-cols-4">
+    <div className="nighthawk-watch-exposure" aria-label="Portfolio exposure">
+      <div className="nighthawk-watch-exposure-grid">
         {/* Net Delta + dollar delta */}
         <div className="flex flex-col gap-0.5">
           <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/70">Net Delta</span>
@@ -1089,16 +1075,13 @@ function PortfolioExposure({ positions }: { positions: ApiPosition[] }) {
         </div>
       </div>
 
-      {/* Premium at risk */}
-      <div className="mt-2.5 border-t border-white/[0.06] pt-2">
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-sky-300/70">
-            Total premium at risk
-          </span>
-          <span className="font-mono text-[12px] font-semibold tabular-nums text-white">
-            {premStr}
-          </span>
-        </div>
+      <div className="nighthawk-watch-exposure-footer">
+        <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-cyan-400">
+          Total premium at risk
+        </span>
+        <span className="font-mono text-[12px] font-semibold tabular-nums text-white">
+          {premStr}
+        </span>
       </div>
     </div>
   );
@@ -1168,7 +1151,13 @@ type CoachState =
 
 const COACH_POLL_MS = 30_000;
 
-function CoachingAlertsPanel() {
+function CoachingAlertsPanel({
+  embedded = false,
+  onCount,
+}: {
+  embedded?: boolean;
+  onCount?: (count: number) => void;
+}) {
   const [state, setState] = useState<CoachState>({ kind: "loading" });
   const loadedOnce = useRef(false);
   const inFlight = useRef(false);
@@ -1225,18 +1214,23 @@ function CoachingAlertsPanel() {
 
   const alerts = state.kind === "ready" ? state.alerts : [];
 
+  useEffect(() => {
+    if (state.kind === "ready") onCount?.(state.alerts.length);
+  }, [state, onCount]);
+
   return (
     <section aria-label="Position Coach" className="flex flex-col gap-3">
-      {/* Section header */}
-      <header className="flex items-center gap-2.5">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
-          🛡 Position Coach
-        </span>
-        {state.kind === "ready" && alerts.length > 0 && (
-          <span className="font-mono text-[10px] tabular-nums text-mute">{alerts.length}</span>
-        )}
-        <span aria-hidden className="h-px flex-1 bg-white/[0.08]" />
-      </header>
+      {!embedded && (
+        <header className="flex items-center gap-2.5">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
+            Position Coach
+          </span>
+          {state.kind === "ready" && alerts.length > 0 && (
+            <span className="font-mono text-[10px] tabular-nums text-cyan-400">{alerts.length}</span>
+          )}
+          <span aria-hidden className="h-px flex-1 bg-white/[0.08]" />
+        </header>
+      )}
 
       {/* States */}
       {state.kind === "loading" && !loadedOnce.current ? (
@@ -1280,10 +1274,10 @@ function CoachingAlertsPanel() {
                     <span className={clsx("h-1.5 w-1.5 rounded-full", styles.dot)} aria-hidden />
                     {a.urgency}
                   </span>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-mute">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-sky-300">
                     {a.trigger}
                   </span>
-                  <span className="ml-auto font-mono text-[10px] tabular-nums text-mute">
+                  <span className="ml-auto font-mono text-[10px] tabular-nums text-cyan-400">
                     {relativeTime(a.generatedAt)}
                   </span>
                 </div>
@@ -1296,7 +1290,7 @@ function CoachingAlertsPanel() {
                   <div className="grid grid-cols-2 gap-2">
                     {a.forLongs && (
                       <div className="flex flex-col gap-0.5">
-                        <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-mute">
+                        <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-cyan-400">
                           For longs
                         </span>
                         <span className="font-mono text-[11px] leading-snug text-bull">{a.forLongs}</span>
@@ -1304,7 +1298,7 @@ function CoachingAlertsPanel() {
                     )}
                     {a.forShorts && (
                       <div className="flex flex-col gap-0.5">
-                        <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-mute">
+                        <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-cyan-400">
                           For shorts
                         </span>
                         <span className="font-mono text-[11px] leading-snug text-bear-text">
@@ -1339,6 +1333,8 @@ export function NightsWatchPanel() {
   // Collapsible add-position form. null = follow default (collapsed when positions
   // exist, expanded when empty); a boolean = the user's explicit choice.
   const [formOpen, setFormOpen] = useState<boolean | null>(null);
+  const [coachAlertCount, setCoachAlertCount] = useState<number | null>(null);
+  const [closedOpen, setClosedOpen] = useState<boolean | null>(null);
   // Keep a ref so the poll loop never shows a flash of skeleton on refetch.
   const loadedOnce = useRef(false);
   // In-flight mutex: poll + focus + initial + add/delete can all fire load(). We don't stack
@@ -1427,7 +1423,12 @@ export function NightsWatchPanel() {
   const summary = ready ? summarize(openPositions) : null;
   // Resolve the collapsible default: collapsed when positions already exist.
   const isFormOpen = formOpen ?? !hasPositions;
+  const isClosedOpen = closedOpen ?? !hasOpen;
   const showLive = state.kind === "ready";
+  const exposureLegs =
+    ready && hasOpen
+      ? computePortfolioGreeks(openPositions).liveLegs
+      : 0;
 
   return (
     <section className="nighthawk-watch" aria-label="Night's Watch positions">
@@ -1452,48 +1453,38 @@ export function NightsWatchPanel() {
         </span>
       </header>
 
-      {/* ---- Scrollable body: summary · add-form · grid ---- */}
+      {/* ---- Scrollable body ---- */}
       <div className="nighthawk-watch-body">
-        {/* Tier 2a: portfolio Greeks exposure — OPEN live legs only, rendered above the
-            position list so the user sees net delta/gamma/theta/vega/premium at a glance
-            before scrolling into individual cards. Hidden when no live leg exists yet. */}
-        {ready && hasOpen && <PortfolioExposure positions={openPositions} />}
-
-        {/* Tier 2b: portfolio summary strip — OPEN-only (count + unrealized + return cover the
-            live book only; settled legs are summarized separately by their realized P&L cards). */}
-        {summary && hasOpen && <PortfolioSummary summary={summary} />}
-
-        {/* Tier 3a: collapsible add-position form */}
-        {(state.kind === "ready" || state.kind === "loading") && (
-          <div className="flex flex-col gap-2">
-            <button
-              type="button"
-              className="nighthawk-watch-addtoggle"
-              aria-expanded={isFormOpen}
-              aria-controls="nw-add-form"
-              onClick={() => setFormOpen(!isFormOpen)}
-            >
-              <span>{isFormOpen ? "Add a position — hide form" : "Add a position"}</span>
-              <span className="nighthawk-watch-addtoggle-icon" aria-hidden>
-                ＋
-              </span>
-            </button>
-            {isFormOpen && (
-              <div id="nw-add-form">
-                <Card padding="sm">
-                  <AddPositionForm
-                    onCreated={() => {
-                      void load();
-                      setFormOpen(false);
-                    }}
-                  />
-                </Card>
-              </div>
-            )}
-          </div>
+        {summary && hasOpen && (
+          <CollapsibleTile
+            kicker="Portfolio"
+            title="Overview"
+            badge={String(summary.count)}
+            defaultOpen
+            variant="accent"
+          >
+            {exposureLegs > 0 ? <PortfolioExposure positions={openPositions} /> : null}
+            <PortfolioSummary summary={summary} />
+          </CollapsibleTile>
         )}
 
-        {/* Tier 3b: positions grid / states */}
+        {(state.kind === "ready" || state.kind === "loading") && (
+          <CollapsibleTile
+            kicker="Track"
+            title="Add position"
+            open={isFormOpen}
+            onOpenChange={(v) => setFormOpen(v)}
+            variant="gold"
+          >
+            <AddPositionForm
+              onCreated={() => {
+                void load();
+                setFormOpen(false);
+              }}
+            />
+          </CollapsibleTile>
+        )}
+
         {state.kind === "loading" && !loadedOnce.current ? (
           <div className="nighthawk-watch-grid" aria-busy>
             {[0, 1, 2, 3].map((i) => (
@@ -1533,40 +1524,38 @@ export function NightsWatchPanel() {
           />
         ) : state.kind === "ready" ? (
           <>
-            {/* Live book — OPEN positions. When every position is settled (only a closed tail
-                remains), show an honest "no open positions" line above the settled group rather
-                than the full empty state (which would hide the closed cards entirely). */}
             {hasOpen ? (
-              <div className="nighthawk-watch-grid">
-                {openPositions.map((p) => (
-                  <PositionCard
-                    key={p.id}
-                    position={p}
-                    onChanged={load}
-                    onOpenDetail={setDetailId}
-                  />
-                ))}
-              </div>
+              <CollapsibleTile
+                kicker="Live book"
+                title="Open positions"
+                badge={String(openPositions.length)}
+                defaultOpen
+              >
+                <div className="nighthawk-watch-grid">
+                  {openPositions.map((p) => (
+                    <PositionCard
+                      key={p.id}
+                      position={p}
+                      onChanged={load}
+                      onOpenDetail={setDetailId}
+                    />
+                  ))}
+                </div>
+              </CollapsibleTile>
             ) : (
-              <p className="font-mono text-[11px] leading-relaxed text-sky-300/90">
+              <p className="font-mono text-[11px] leading-relaxed text-sky-300">
                 No open positions — add your first above.
               </p>
             )}
 
-            {/* Settled book — recently-CLOSED positions, in their own clearly-labeled group.
-                Each card renders its REALIZED P&L (already wired in PositionCard's closed branch).
-                Bounded server-side to the recent tail so this never grows without limit. */}
             {hasClosed && (
-              <section aria-label="Closed positions" className="flex flex-col gap-2.5">
-                <header className="flex items-center gap-2.5">
-                  <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
-                    Closed · Settled
-                  </span>
-                  <span className="font-mono text-[10px] tabular-nums text-mute">
-                    {closedPositions.length}
-                  </span>
-                  <span aria-hidden className="h-px flex-1 bg-white/[0.08]" />
-                </header>
+              <CollapsibleTile
+                kicker="Settled"
+                title="Closed positions"
+                badge={String(closedPositions.length)}
+                open={isClosedOpen}
+                onOpenChange={(v) => setClosedOpen(v)}
+              >
                 <div className="nighthawk-watch-grid">
                   {closedPositions.map((p) => (
                     <PositionCard
@@ -1577,15 +1566,21 @@ export function NightsWatchPanel() {
                     />
                   ))}
                 </div>
-              </section>
+              </CollapsibleTile>
             )}
           </>
         ) : null}
-      </div>
 
-      {/* ---- Position Coach: coaching alerts below the positions list ---- */}
-      <div className="nighthawk-watch-body">
-        <CoachingAlertsPanel />
+        <CollapsibleTile
+          kicker="Alerts"
+          title="Position coach"
+          badge={
+            coachAlertCount != null && coachAlertCount > 0 ? String(coachAlertCount) : undefined
+          }
+          defaultOpen={coachAlertCount == null || coachAlertCount > 0}
+        >
+          <CoachingAlertsPanel embedded onCount={setCoachAlertCount} />
+        </CollapsibleTile>
       </div>
 
       {/* Persistent disclaimer */}
