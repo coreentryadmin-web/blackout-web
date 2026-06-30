@@ -85,6 +85,20 @@ function filterRthBars(bars: AggBar[]): AggBar[] {
   });
 }
 
+/** During RTH the live index tick can run ahead of Polygon minute bars. Widen extremes so spot ∈ [LOD,HOD] without seeding nulls from price (gap #14). */
+export function widenSessionExtremesWithSpot(
+  price: number,
+  hod: number | null,
+  lod: number | null,
+  rthOpen: boolean
+): { hod: number | null; lod: number | null } {
+  if (!rthOpen || !(price > 0)) return { hod, lod };
+  return {
+    hod: hod != null && Number.isFinite(hod) ? Math.max(hod, price) : hod,
+    lod: lod != null && Number.isFinite(lod) ? Math.min(lod, price) : lod,
+  };
+}
+
 export function distancePct(price: number, level: number | null): number | null {
   // ISSUE-37: level=0 produces -100% distance instead of null; guard against it.
   if (level == null || level <= 0 || price <= 0) return null;
