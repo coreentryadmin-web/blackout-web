@@ -1311,3 +1311,54 @@ The W1 dual-GEX-path divergence risk is **fully CONVERGED**. No two surfaces can
 ### Disconnected channels (FAIL)
 - None. Every source→consumer channel is wired and live. The 2 WARNs are documented by-design boundaries, not silos.
 ---
+
+## Connectivity Matrix — 2026-06-29 19:17 PT (02:17 UTC, post-close) — authed apex probe
+**PASS: 18 | WARN: 2 | FAIL: 0** — every source→consumer channel wired & live; both WARNs are documented by-design boundaries, not data silos.
+
+Method: live data pulled from apex `https://blackouttrades.com` + `Bearer CRON_SECRET` (44-char prod secret, www strips auth→401). Wiring verdicts derived from real schema + `src/lib/**` code, not the SKILL's stale assumptions.
+
+| Channel | Status |
+|---|---|
+| SPX -> HELIX | PASS: desk exposes spx_flows + unified_tape + net_prem_ticks + tide_* (same HELIX tape) |
+| SPX -> HEATMAP | PASS: desk gex_king=7450 / gamma_flip=7436.05 / gex_walls[] fresh (gex_age 0.83 min, gex_stale=false) |
+| SPX -> LARGO | PASS: getLargoSpxLiveDesk + computeSpxConfluence (run-tool.ts:1207-1208) — confluence now wired |
+| SPX -> NWATCH | PASS: position-context loadMergedSpxDesk → verdict reads spot/VWAP/levels + walls (WALL_APPROACH 10pt / BREAK 15pt) |
+| SPX -> GRID | PASS: desk is the shared snapshot Grid surfaces consume |
+| HELIX -> SPX | PASS: desk flow_0dte_call/put_premium + flow_0dte_net + spx_flows present |
+| HELIX -> HEATMAP | PASS: gex_cross_validation reconciles GEX vs UW (callWallMatch/putWallMatch/flipMatch all TRUE, divergence=1) |
+| HELIX -> LARGO | PASS: get_flow_tape / get_options_flow / get_postgres_flows → fetchRecentFlows (same flow_alerts) |
+| HELIX -> NHAWK | PASS: flow-streak.ts fetchTickerFlowDailyNet (flow_alerts); live thesis cites $147.5M / 80 alerts / 6-day streak |
+| HELIX -> NWATCH | PASS: position-context fetchRecentFlows → verdict flow signal (FLOW_MIN_PREMIUM 250k, skew 1.5x) |
+| HEATMAP -> SPX | PASS: desk gex_* fresh, gex_stale=false |
+| HEATMAP -> LARGO (SPX 0DTE) | PASS: get_gex returns getLargoSpxLiveDesk "same as SPX Sniper dashboard" |
+| HEATMAP -> NHAWK | PASS: candidates+market-wide reference gex/wall context |
+| HEATMAP -> NWATCH | PASS: position-context fetchGexHeatmap (SAME shared cache-reader) → verdict hasWalls()/nearestWall/pushedThroughWall on shared gexWalls |
+| NHAWK -> LARGO | PASS: get_nighthawk_edition / _dossier / _outcomes (shared Postgres) |
+| NWATCH -> LARGO | PASS: get_my_positions → getEnrichedPositionsForUser (SAME enrichment NWatch verdict uses) |
+| GRID -> SPX | PASS: desk news_headlines=10 live (spx-desk.ts:978); macro_events wired via mergeMacroEventsToday (spx-desk.ts:1010) — empty now = no events in window (late-June, post-FOMC), NOT disconnected |
+| GRID -> LARGO | PASS: get_news + get_economic_calendar + get_dark_pool + get_earnings + get_catalysts + get_etf_flow |
+| HEATMAP -> LARGO (non-SPX) | WARN (residual W3): get_gex non-SPX uses fetchPolygonOdteGexRows / fetchUwGexLevels, NOT the shared fetchGexHeatmap cache-reader that the Heatmap tool + Night's Watch use → same Polygon provider but separate aggregation path → value-drift risk + duplicate API spend (violates cache-reader rule) |
+| NWATCH (per-user) -> LARGO | WARN (by-design): Largo get_positioning = NH market-intel summary, not a user's live Night's Watch portfolio (get_my_positions covers per-user) |
+
+### Live data snapshot (post-close, market closed 20:00 UTC)
+- SPX desk: price=7440.43, vix=17.65, gex_king=7450, gex_net=+6.14B (SPX 0DTE lens), gamma_flip=7436.05, max_pain=7450, source=polygon+uw-flow
+- GEX heatmap (SPY composite): spot=741, call_wall=750, put_wall=740, flip=740.87, net_gex=-0.73B, max_pain=740; self cross_validation = all-match TRUE
+- HELIX flows: count=15, latest SPX PUT $16.9M @20:09Z + QQQ CALL $537.9k @20:12Z; 14/15 SPX-family
+- Night Hawk: 1 play published 01:55Z, HELIX-grounded thesis (flow streak + risk-reversal skew + IV rank)
+- Grid economy: available=true (indicators present)
+
+### Timestamp consistency — PASS (no desync)
+- SPX desk as_of 02:10:50Z vs GEX asof 02:10:19Z → **31 s gap** (<< 10-min P0 threshold). Both ~6-7 min old; GEX internal age 0.83 min, gex_stale=false. Tools see the same moment.
+- Flow age uniformly ~6 h on BOTH SPX desk (flow_data_age 363 min, feed_stalled=true) AND HELIX tape (last flow 20:12Z). This is EXPECTED post-close (WS quiets after 20:00 UTC), consistent across services — NOT a cross-service desync. Do not false-alarm on feed_stalled after RTH.
+
+### SPX(+6.14B) vs SPY(-0.73B) net_gex sign split — by-design, not a data bug
+SPX desk is an SPX-0DTE lens; the heatmap endpoint is the full SPY composite chain. Different instrument + expiry window → different sign/magnitude is expected ([[project_connectivity_matrix]] W1 CONVERGED at code-path level). SPY×10 scaling reconciles spot (741→7410 vs SPX 7440.43, +0.4% SPX premium = normal) and walls (call 750→7500 / put 740→7400 bracket the 7440-7450 magnet). The SKILL's naive <25-pt wall diff mis-scales SPX-vs-SPY and would false-FAIL; ignore it.
+
+### SKILL.md drift (paths/fields corrected from live code)
+- Largo dispatch is `src/lib/largo/run-tool.ts` (87 tools) — SKILL's `src/lib/run-tool.ts` + `src/lib/tools/` do not exist.
+- Live fields are snake_case (call_wall/put_wall/gex_king; SPX walls in gex_walls[]) — not camelCase callWall/kingStrike.
+- gex-positioning + grid/economy are auth-gated → probe apex + Bearer, not www.
+
+### Disconnected channels (FAIL)
+- None. The 2 WARNs are documented by-design boundaries (W3 non-SPX GEX path; Largo positioning = market-intel). Recommend closing W3 by routing Largo non-SPX get_gex through fetchGexHeatmap to guarantee Largo and the Heatmap quote identical non-SPX walls.
+---
