@@ -8,6 +8,7 @@ import { getUwSocketHealth } from "@/lib/ws/uw-socket";
 import { getOptionsSocketStatus } from "@/lib/ws/options-socket";
 import { uwRateLimiterStats } from "@/lib/providers/uw-rate-limiter";
 import { polygonRateLimiterStats } from "@/lib/providers/polygon-rate-limiter";
+import { getLaunchStatusSnapshot, type LaunchStatusSnapshot } from "@/lib/tool-access";
 
 export type AdminHealthPayload = {
   generated_at: string;
@@ -42,6 +43,8 @@ export type AdminHealthPayload = {
   // UW cap if REPLICA_COUNT is stale — so it is folded into health_ok and the critical-issues path
   // below (audit #8/#78), not just buried in the rate_limiters JSON.
   redis_degraded: boolean;
+  /** Premium launch gate — derived from LAUNCHED_TOOLS on this replica. */
+  launch_status: LaunchStatusSnapshot;
 };
 
 export async function buildAdminHealthSnapshot(): Promise<AdminHealthPayload> {
@@ -101,5 +104,6 @@ export async function buildAdminHealthSnapshot(): Promise<AdminHealthPayload> {
     route_errors: getAdminRouteErrors(),
     market_health_ok: marketHealth.ok,
     redis_degraded: redisDegraded,
+    launch_status: getLaunchStatusSnapshot(),
   };
 }

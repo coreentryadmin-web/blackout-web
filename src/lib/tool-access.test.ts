@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isToolLaunched, lockedToolKeys, toolKeyForHref, TOOLS } from "./tool-access";
+import { getLaunchStatusSnapshot, isToolLaunched, lockedToolKeys, toolKeyForHref, TOOLS } from "./tool-access";
 
 // Pure unit tests for launch gating. Alias-free, runnable via `tsx --test` — no Clerk, no Next.
 
@@ -59,4 +59,20 @@ test("toolKeyForHref maps in-app routes to keys, null for non-tools", () => {
 test("every tool has a unique key + href", () => {
   assert.equal(new Set(TOOLS.map((t) => t.key)).size, TOOLS.length);
   assert.equal(new Set(TOOLS.map((t) => t.href)).size, TOOLS.length);
+});
+
+test("getLaunchStatusSnapshot reflects env and default-live tools", () => {
+  const unset = getLaunchStatusSnapshot({} as NodeJS.ProcessEnv);
+  assert.equal(unset.launched_tools_env, null);
+  assert.equal(unset.open_count, 2);
+  assert.equal(unset.total_count, 6);
+  assert.deepEqual(unset.locked_keys.sort(), ["grid", "heatmap", "largo", "nighthawk"]);
+  assert.equal(unset.tools.find((t) => t.key === "spx")?.launch_source, "default");
+  assert.equal(unset.tools.find((t) => t.key === "heatmap")?.launch_source, "locked");
+
+  const all = getLaunchStatusSnapshot(E("heatmap,nighthawk,largo,grid"));
+  assert.equal(all.open_count, 6);
+  assert.deepEqual(all.locked_keys, []);
+  assert.equal(all.launched_tools_env, "heatmap,nighthawk,largo,grid");
+  assert.equal(all.tools.find((t) => t.key === "grid")?.launch_source, "env");
 });

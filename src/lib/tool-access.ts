@@ -70,3 +70,50 @@ export function isToolLaunched(key: ToolKey, env: NodeJS.ProcessEnv = process.en
 export function lockedToolKeys(env: NodeJS.ProcessEnv = process.env): ToolKey[] {
   return TOOLS.filter((t) => !isToolLaunched(t.key, env)).map((t) => t.key);
 }
+
+export type LaunchSource = "default" | "env" | "locked";
+
+export type LaunchStatusToolRow = {
+  key: ToolKey;
+  label: string;
+  href: string;
+  /** Open to paying non-admin users (Whop premium + launch gate). */
+  launched: boolean;
+  launch_source: LaunchSource;
+};
+
+/** Admin/ops snapshot — what premium (non-admin) users see vs Coming Soon. */
+export type LaunchStatusSnapshot = {
+  /** Raw `LAUNCHED_TOOLS` env (trimmed), or null when unset/empty. */
+  launched_tools_env: string | null;
+  /** Parsed keys from LAUNCHED_TOOLS (additive to default-launched tools). */
+  env_launched_keys: ToolKey[];
+  tools: LaunchStatusToolRow[];
+  locked_keys: ToolKey[];
+  open_count: number;
+  total_count: number;
+};
+
+export function getLaunchStatusSnapshot(env: NodeJS.ProcessEnv = process.env): LaunchStatusSnapshot {
+  const raw = (env.LAUNCHED_TOOLS ?? "").trim();
+  const envKeys = [...envLaunchedKeys(env)];
+  const tools: LaunchStatusToolRow[] = TOOLS.map((t) => {
+    const launched = isToolLaunched(t.key, env);
+    const launch_source: LaunchSource = t.defaultLaunched
+      ? "default"
+      : envKeys.includes(t.key)
+        ? "env"
+        : "locked";
+    return { key: t.key, label: t.label, href: t.href, launched, launch_source };
+  });
+  const locked_keys = lockedToolKeys(env);
+  const open_count = tools.filter((t) => t.launched).length;
+  return {
+    launched_tools_env: raw || null,
+    env_launched_keys: envKeys,
+    tools,
+    locked_keys,
+    open_count,
+    total_count: tools.length,
+  };
+}
