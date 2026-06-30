@@ -303,6 +303,8 @@ type UwStores = {
   option_trades_buffered?: number;
   lit_trades_updated_at: number | null;
   lit_trades_buffered?: number;
+  gex_strike_expiry_updated_at?: number | null;
+  gex_strike_expiry_strikes?: number;
   active_halts: string[];
 };
 
@@ -364,7 +366,7 @@ function DataPipelineHealthTile({ health }: { health: AdminHealthPayload | null 
   const stores = uw?.stores as UwStores | undefined;
   const channels = uw?.channels as Record<string, { ws_state: string; handlers: number; authenticated: boolean }> | undefined;
 
-  // UW GEX cross-check deferred until gex_strike_expiry channel ships (native dealer walls).
+  // UW GEX cross-check uses gex_strike_expiry WS when fresh (REST fallback in gex-cross-validation).
   const uwAuthOk = uw != null && uw.initialized && !uw.auth_failed;
 
   const STORE_DEFS: Array<{ key: keyof UwStores & `${string}_updated_at`; label: string; channel: string }> = [
@@ -374,6 +376,7 @@ function DataPipelineHealthTile({ health }: { health: AdminHealthPayload | null 
     { key: "net_flow_updated_at",     label: "Net Flow (SPX)", channel: "net_flow"       },
     { key: "option_trades_updated_at", label: "Option Tape",   channel: "option_trades"  },
     { key: "lit_trades_updated_at",   label: "Lit Trades",     channel: "lit_trades"     },
+    { key: "gex_strike_expiry_updated_at", label: "GEX Strike Expiry", channel: "gex_strike_expiry" },
   ];
 
   return (

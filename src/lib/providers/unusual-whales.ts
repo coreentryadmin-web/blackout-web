@@ -1064,6 +1064,60 @@ export function normalizeLitTradesWsPayload(raw: unknown): UwLitTradePrint[] {
   return out;
 }
 
+export type UwGexStrikeExpiryRow = {
+  ticker: string;
+  strike: number;
+  expiry: string;
+  call_gamma_oi: number;
+  put_gamma_oi: number;
+  net_gex: number;
+  price: number | null;
+};
+
+/** Normalize UW `gex_strike_expiry:TICKER` WS payloads into per-strike/expiry GEX rows. */
+export function normalizeGexStrikeExpiryWsPayload(raw: unknown): UwGexStrikeExpiryRow[] {
+  const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
+  const list = Array.isArray(rows) ? rows : typeof raw === "object" && raw !== null ? [raw] : [];
+  const out: UwGexStrikeExpiryRow[] = [];
+  for (const row of list) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const ticker = String(r.ticker ?? r.symbol ?? r.underlying ?? "").toUpperCase();
+    const strike = Number(r.strike ?? r.strike_price ?? 0);
+    const expiryRaw = String(r.expiry ?? r.expiration ?? r.expiry_date ?? "").slice(0, 10);
+    if (!ticker || !Number.isFinite(strike) || strike <= 0 || !expiryRaw) continue;
+    const callG = Number(r.call_gamma_oi ?? r.call_gex ?? r.call_gamma ?? 0);
+    const putG = Number(r.put_gamma_oi ?? r.put_gex ?? r.put_gamma ?? 0);
+    const call = Number.isFinite(callG) ? callG : 0;
+    const put = Number.isFinite(putG) ? putG : 0;
+    const priceRaw = Number(r.price ?? r.underlying_price ?? NaN);
+    out.push({
+      ticker,
+      strike,
+      expiry: expiryRaw,
+      call_gamma_oi: call,
+      put_gamma_oi: put,
+      net_gex: call + put,
+      price: Number.isFinite(priceRaw) ? priceRaw : null,
+    });
+  }
+  return out;
+}
+
+/** Sum net GEX across expiries for each strike (matches REST strike-ladder semantics). */
+export function aggregateGexStrikeExpiryToLadder(
+  rows: readonly UwGexStrikeExpiryRow[],
+  ticker: string
+): Map<number, number> {
+  const sym = ticker.toUpperCase();
+  const ladder = new Map<number, number>();
+  for (const row of rows) {
+    if (row.ticker !== sym) continue;
+    ladder.set(row.strike, (ladder.get(row.strike) ?? 0) + row.net_gex);
+  }
+  return ladder;
+}
+
 /** Convert a WS `option_trades` print into `parseUwFlowAlert`-compatible raw fields. */
 export function optionTradePrintToFlowRaw(print: UwOptionTradePrint): Record<string, unknown> {
   return {

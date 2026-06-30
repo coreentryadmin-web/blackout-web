@@ -1,19 +1,18 @@
 import "server-only";
 
 /**
- * GEX cross-validation via UW REST strike-ladder.
+ * GEX cross-validation via UW per-strike dealer gamma.
  *
- * Background: The UW `gex_strike_expiry:SPX` channel is NOT a supported UW WebSocket
- * channel (valid WS channels are flow_alerts / market_tide / off_lit_trades /
- * interval_flow / trading_halts). As the alternative path, we use the UW REST endpoint
- * `/api/stock/{ticker}/spot-exposures/strike` cached for 60s so the call is RPS-friendly
- * (one request per minute regardless of how many concurrent fetches hit this module).
+ * Prefers the UW `gex_strike_expiry:TICKER` WebSocket ladder when the channel is
+ * fresh (zero REST RPS). Falls back to `/api/stock/{ticker}/spot-exposures/strike`
+ * cached for 60s when WS data is unavailable.
  *
  * Usage: call `validateGexAgainstUW(ticker, primaryGexWalls)` after getGexPositioning()
  * returns — it does NOT block the primary data path and only logs divergences.
  */
 
 import { fetchUwSpotExposuresByStrike } from "@/lib/providers/unusual-whales";
+import { getGexStrikeExpiryLadder, isUwChannelFresh } from "@/lib/ws/uw-socket";
 
 // ---------------------------------------------------------------------------
 // In-process 60-second cache (avoids hammering the UW 2 RPS budget).
@@ -36,7 +35,7 @@ function topNStrikes(ladder: Map<number, number>, n: number): number[] {
 }
 
 /**
- * Build (or return cached) per-strike GEX map from UW REST.
+ * Build (or return cached) per-strike GEX map from UW WS (preferred) or REST fallback.
  * Each entry: strike → net_gex (call_gamma_oi + put_gamma_oi in the UW normalized shape).
  */
 async function getUwStrikeLadder(ticker: string): Promise<Map<number, number> | null> {
@@ -44,6 +43,14 @@ async function getUwStrikeLadder(ticker: string): Promise<Map<number, number> | 
   const entry = cache.get(key);
   if (entry && Date.now() - entry.cachedAt < CACHE_TTL_MS) {
     return entry.strikeLadder;
+  }
+
+  if (isUwChannelFresh("gex_strike_expiry", 120_000)) {
+    const ws = getGexStrikeExpiryLadder(key);
+    if (ws && ws.ladder.size > 0) {
+      cache.set(key, { strikeLadder: ws.ladder, cachedAt: ws.updatedAt });
+      return ws.ladder;
+    }
   }
 
   let rows: Record<string, unknown>[];
@@ -92,8 +99,8 @@ export type GexCrossValidationResult = {
 };
 
 /**
- * Cross-validate primary GEX walls against the UW REST strike ladder.
- * Cached 60s — safe to call on every getGexPositioning() without RPS pressure.
+ * Cross-validate primary GEX walls against the UW per-strike dealer gamma ladder.
+ * WS-first when `gex_strike_expiry` is fresh; REST cached 60s otherwise.
  * Returns null when UW data is not available (never blocks the primary path).
  */
 export async function validateGexAgainstUW(

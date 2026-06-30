@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  aggregateGexStrikeExpiryToLadder,
   aggregateOptionTradesToStrikeRows,
+  normalizeGexStrikeExpiryWsPayload,
   normalizeLitTradesWsPayload,
   normalizeOptionTradesWsPayload,
 } from "./unusual-whales";
@@ -72,4 +74,45 @@ test("aggregateOptionTradesToStrikeRows buckets call/put premium by strike", () 
   assert.equal(callRow?.call_premium, 12000);
   const putRow = rows.find((r) => Number(r.strike) === 5900);
   assert.equal(putRow?.put_premium, 4000);
+});
+
+test("normalizeGexStrikeExpiryWsPayload maps per-strike/expiry GEX rows", () => {
+  const rows = normalizeGexStrikeExpiryWsPayload({
+    ticker: "SPX",
+    strike: 6000,
+    expiry: "2026-06-30",
+    call_gamma_oi: 1_000_000,
+    put_gamma_oi: -500_000,
+    price: 5998.5,
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.ticker, "SPX");
+  assert.equal(rows[0]?.net_gex, 500_000);
+});
+
+test("aggregateGexStrikeExpiryToLadder sums net GEX across expiries per strike", () => {
+  const ladder = aggregateGexStrikeExpiryToLadder(
+    [
+      {
+        ticker: "SPX",
+        strike: 6000,
+        expiry: "2026-06-30",
+        call_gamma_oi: 1_000_000,
+        put_gamma_oi: 0,
+        net_gex: 1_000_000,
+        price: null,
+      },
+      {
+        ticker: "SPX",
+        strike: 6000,
+        expiry: "2026-07-04",
+        call_gamma_oi: 200_000,
+        put_gamma_oi: -100_000,
+        net_gex: 100_000,
+        price: null,
+      },
+    ],
+    "SPX"
+  );
+  assert.equal(ladder.get(6000), 1_100_000);
 });

@@ -17,6 +17,7 @@ import {
 import { isUwErrorFrame } from "@/lib/ws/uw-frame";
 import {
   normalizeDarkPoolWsPayload,
+  normalizeGexStrikeExpiryWsPayload,
   normalizeIntervalFlowWsPayload,
   normalizeLitTradesWsPayload,
   normalizeOptionTradesWsPayload,
@@ -26,6 +27,7 @@ import {
   type DarkPoolSnapshot,
   type NetPremTick,
   type TradingHaltEvent,
+  type UwGexStrikeExpiryRow,
   type UwLitTradePrint,
   type UwOptionTradePrint,
 } from "@/lib/providers/unusual-whales";
@@ -109,6 +111,11 @@ function joinWiresForChannel(channel: UwWsChannel): string[] {
   }
   if (channel === "lit_trades") {
     return parseWsTickerCsv(process.env.UW_WS_LIT_TRADES_TICKERS, "SPY").map((t) => `lit_trades:${t}`);
+  }
+  if (channel === "gex_strike_expiry") {
+    return parseWsTickerCsv(process.env.UW_WS_GEX_STRIKE_EXPIRY_TICKERS, "SPX").map(
+      (t) => `gex_strike_expiry:${t}`
+    );
   }
   return [CHANNEL_JOIN_NAME[channel]];
 }
@@ -720,6 +727,55 @@ export const litTradesStore: {
   total_received: number;
 } = { rows: [], updatedAt: 0, total_received: 0 };
 
+const GEX_STRIKE_EXPIRY_CELL_MAX = 2500;
+
+type GexStrikeExpiryTickerState = {
+  cells: Map<string, UwGexStrikeExpiryRow>;
+  updatedAt: number;
+  total_received: number;
+};
+
+const gexStrikeExpiryByTicker = new Map<string, GexStrikeExpiryTickerState>();
+
+function gexStrikeExpiryCellKey(expiry: string, strike: number): string {
+  return `${expiry}|${strike}`;
+}
+
+function upsertGexStrikeExpiryRows(rows: UwGexStrikeExpiryRow[]) {
+  if (!rows.length) return;
+  const now = Date.now();
+  for (const row of rows) {
+    const sym = row.ticker.toUpperCase();
+    let state = gexStrikeExpiryByTicker.get(sym);
+    if (!state) {
+      state = { cells: new Map(), updatedAt: 0, total_received: 0 };
+      gexStrikeExpiryByTicker.set(sym, state);
+    }
+    state.cells.set(gexStrikeExpiryCellKey(row.expiry, row.strike), row);
+    state.updatedAt = now;
+    state.total_received += 1;
+    if (state.cells.size > GEX_STRIKE_EXPIRY_CELL_MAX) {
+      const drop = state.cells.size - GEX_STRIKE_EXPIRY_CELL_MAX;
+      const keys = Array.from(state.cells.keys()).slice(0, drop);
+      for (const k of keys) state.cells.delete(k);
+    }
+  }
+}
+
+/** Per-strike net GEX ladder aggregated from the UW `gex_strike_expiry` WS feed. */
+export function getGexStrikeExpiryLadder(
+  ticker: string
+): { ladder: Map<number, number>; updatedAt: number; cell_count: number } | null {
+  const sym = ticker.toUpperCase();
+  const state = gexStrikeExpiryByTicker.get(sym);
+  if (!state || state.cells.size === 0) return null;
+  const ladder = new Map<number, number>();
+  for (const row of state.cells.values()) {
+    ladder.set(row.strike, (ladder.get(row.strike) ?? 0) + row.net_gex);
+  }
+  return { ladder, updatedAt: state.updatedAt, cell_count: state.cells.size };
+}
+
 function pushOptionTradeRows(prints: UwOptionTradePrint[]) {
   if (!prints.length) return;
   optionTradesStore.rows = [...prints, ...optionTradesStore.rows].slice(0, OPTION_TRADES_RING_MAX);
@@ -1007,6 +1063,16 @@ export function initUwSocket() {
     pushLitTradeRows(prints);
   });
 
+  uwSocket.subscribe("gex_strike_expiry", (payload) => {
+    if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
+      return;
+    }
+    const rows = normalizeGexStrikeExpiryWsPayload(payload);
+    if (!rows.length) return;
+    recordUwDelivery("gex_strike_expiry");
+    upsertGexStrikeExpiryRows(rows);
+  });
+
   startUwLeaderRefresh();
 
   // Leadership reconcile: only the cluster leader holds the UW socket. Run once immediately so the
@@ -1106,6 +1172,9 @@ export function getUwSocketHealth() {
       lit_trades_updated_at: litTradesStore.updatedAt || null,
       lit_trades_buffered: litTradesStore.rows.length,
       lit_trades_total_received: litTradesStore.total_received,
+      gex_strike_expiry_updated_at: gexStrikeExpiryByTicker.get("SPX")?.updatedAt || null,
+      gex_strike_expiry_cells: gexStrikeExpiryByTicker.get("SPX")?.cells.size ?? 0,
+      gex_strike_expiry_strikes: getGexStrikeExpiryLadder("SPX")?.ladder.size ?? 0,
       active_halts: Array.from(tradingHaltsStore.halts.values())
         .filter((h) => h.active)
         .map((h) => h.symbol),

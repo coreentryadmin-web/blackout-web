@@ -13,6 +13,7 @@ export const UW_WS_CHANNELS = [
   "net_flow",
   "option_trades",
   "lit_trades",
+  "gex_strike_expiry",
 ] as const;
 
 export type UwWsChannel = (typeof UW_WS_CHANNELS)[number];
