@@ -48,22 +48,33 @@ function SurpriseTag({ pct }: { pct: number | null }) {
   );
 }
 
+function shortDate(d: string | null): string {
+  if (!d) return "";
+  const dt = new Date(`${d}T12:00:00`);
+  if (Number.isNaN(dt.getTime())) return "";
+  return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function EarningsRow({ item }: { item: GridEarningsItem }) {
   const whenLabel = item.when === "premarket" ? "PRE" : "AH";
   return (
     <li className="grid-earn-row">
-      <span className={clsx("grid-tag text-[9px]", item.when === "premarket" ? "pulse-tone-sky" : "pulse-tone-gold")}>
+      <span className={clsx("grid-tag text-[9px] shrink-0", item.when === "premarket" ? "pulse-tone-sky" : "pulse-tone-gold")}>
         {whenLabel}
       </span>
       <span className="grid-earn-ticker">{item.ticker}</span>
-      {item.eps_estimate != null && (
-        <span className="grid-earn-est text-sky-300/70">
-          est {item.eps_estimate >= 0 ? "" : ""}{item.eps_estimate.toFixed(2)}
+      {item.name && <span className="grid-earn-name">{item.name}</span>}
+      <span className="grid-earn-spacer" />
+      {item.report_date && <span className="grid-earn-date">{shortDate(item.report_date)}</span>}
+      {item.expected_move_pct != null && (
+        <span className="grid-earn-em" title="Options-implied expected move around the print">
+          ±{item.expected_move_pct.toFixed(1)}%
         </span>
       )}
-      {item.eps_actual != null && (
-        <span className="grid-earn-act">act {item.eps_actual.toFixed(2)}</span>
+      {item.eps_estimate != null && (
+        <span className="grid-earn-est text-sky-300/70">est {item.eps_estimate.toFixed(2)}</span>
       )}
+      {item.eps_actual != null && <span className="grid-earn-act">act {item.eps_actual.toFixed(2)}</span>}
       <SurpriseTag pct={item.surprise_pct} />
     </li>
   );
@@ -149,7 +160,7 @@ export function GridEarningsPanel() {
       accent="sky"
       live={live}
       span={2}
-      footer={<span className="grid-foot-note">Live feed · {isTickerMode ? "per-ticker history + next date" : "pre-market + after-hours reporters"}</span>}
+      footer={<span className="grid-foot-note">{isTickerMode ? "Per-ticker history + next date" : "Reporters · EPS est + options-implied expected move (±%)"}</span>}
     >
       {isTickerMode ? (
         <TickerEarningsView data={data as TickerRes} />

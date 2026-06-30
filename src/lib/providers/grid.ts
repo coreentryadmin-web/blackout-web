@@ -177,6 +177,10 @@ export type GridEarningsItem = {
   eps_estimate: number | null;
   eps_actual: number | null;
   surprise_pct: number | null;
+  /** Report (earnings) date, ISO yyyy-mm-dd. */
+  report_date: string | null;
+  /** Options-implied expected move around the print, as a percent (e.g. 11.5). */
+  expected_move_pct: number | null;
   when: "premarket" | "afterhours";
 };
 
@@ -190,20 +194,27 @@ function shapeEarningsRows(
   when: "premarket" | "afterhours"
 ): GridEarningsItem[] {
   return rows.map((r) => {
-    const epsEst = r.eps_estimate ?? r.estimate ?? r.estimated_eps ?? null;
-    const epsAct = r.eps_actual ?? r.actual ?? r.reported_eps ?? null;
+    // UW /api/earnings/{premarket,afterhours} field names: street_mean_est, actual_eps,
+    // full_name, report_date, expected_move_perc (fraction). Older fallbacks kept for safety.
+    const epsEst = r.street_mean_est ?? r.eps_estimate ?? r.estimate ?? r.estimated_eps ?? null;
+    const epsAct = r.actual_eps ?? r.eps_actual ?? r.actual ?? r.reported_eps ?? null;
     const est = epsEst != null ? Number(epsEst) : null;
     const act = epsAct != null ? Number(epsAct) : null;
     const surprise =
       est != null && act != null && est !== 0
         ? Number((((act - est) / Math.abs(est)) * 100).toFixed(1))
         : null;
+    const emRaw = r.expected_move_perc ?? r.expected_move_pct ?? null;
+    // UW returns expected_move_perc as a fraction (e.g. "0.1148"); render as a percent.
+    const emPct = emRaw != null && Number.isFinite(Number(emRaw)) ? Number(emRaw) * 100 : null;
     return {
       ticker: String(r.ticker ?? r.symbol ?? "").toUpperCase(),
-      name: String(r.name ?? r.company ?? ""),
+      name: String(r.full_name ?? r.name ?? r.company ?? ""),
       eps_estimate: est != null && Number.isFinite(est) ? est : null,
       eps_actual: act != null && Number.isFinite(act) ? act : null,
       surprise_pct: surprise != null && Number.isFinite(surprise) ? surprise : null,
+      report_date: String(r.report_date ?? r.earnings_date ?? r.date ?? "").slice(0, 10) || null,
+      expected_move_pct: emPct != null ? Number(emPct.toFixed(1)) : null,
       when,
     };
   }).filter((x) => x.ticker);
