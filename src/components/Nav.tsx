@@ -427,16 +427,12 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
                     </Link>
                   </>
                 )}
-<<<<<<< HEAD
                 {isLoaded && isSignedIn && (
                   <div className="flex items-center gap-2">
                     <PushNotificationToggle compact />
-                    <UserButton appearance={CLERK_APPEARANCE} />
+                    <UserButton appearance={CLERK_APPEARANCE} userProfileUrl="/account" />
                   </div>
                 )}
-=======
-                {isLoaded && isSignedIn && <UserButton appearance={CLERK_APPEARANCE} userProfileUrl="/account" />}
->>>>>>> 6fa99f4 (feat: /account page, middleware guards, HTML entity decoding)
               </div>
             </motion.div>
           </>
