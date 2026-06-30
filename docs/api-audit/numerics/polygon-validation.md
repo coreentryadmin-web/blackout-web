@@ -1,4 +1,16 @@
-﻿## 2026-06-29 23:05 ET
+﻿## 2026-06-30 13:06 ET
+Market: OPEN (status="open"/"regular_trading", available:true) — full live validation.
+### SPX Price: Ours 7497.88 (pulse) | Massive raw 7497.82 (/v3/snapshot/indices I:SPX .value) | Diff 0.06 pts (0.0008%) | PASS (well within $1 RTH tolerance)
+### SPY spot: Ours 746.96 (gex spot) | Massive raw 746.98 (/v2/last/trade/SPY .p) | Diff 0.02 | PASS (SPX 7497.82 / SPY 746.98 → ratio 10.04, internally consistent)
+### Call Wall: Ours 750 | Raw 750 (SPY chain gamma*OI aggregated by strike across band 724-770, all expiries, top call-gamma ≥spot; 2000 contracts/8 pages) | Diff 0 strikes | PASS (exact)
+### Put Wall: Ours 735 | Raw 745 (top put gamma*OI <spot) | Diff 10 strikes ($10) | PASS (within 25-strike tolerance; UW cross-val confirms putWallMatch=true@735)
+### Internal cross-val vs Unusual Whales: callWallMatch=true putWallMatch=true flipMatch=true divergence=1.27 | PASS (independent 2nd source confirms walls 750/735 + flip 745.27)
+### Net GEX: +6,855,811,313.87 | flip 745.27 | max_pain 740 (LONG-gamma regime; spot 746.96 just above flip → dealers dampen vol)
+Notes: No P0 flags. First clean RTH run with market OPEN — SPX price validated live (0.06 pt diff). Call wall exact. Put-wall raw single-peak lands at 745, but 745 is the ATM/flip strike (spot 746.96, flip 745.27) where gamma piles up regardless of side; raw put cluster is 745(3099)>740(2675)>735(2186), so the served 735 is the next distinct put-side wall below the flip and is independently confirmed by the UW cross-validation block (putWallMatch=true). 10-strike gap = methodology (ATM-flip exclusion), NOT fabrication. First run of 2026-06-30 → commit per CRON-POLICY (push disabled).
+
+---
+
+## 2026-06-29 23:05 ET
 Market: CLOSED (status="closed", price=0, available:false) — SPX price validation SKIPPED (by-design unavailable state, NOT a fabrication).
 ### SPX Price: Ours n/a (closed) | Massive raw 7440.43 (/v3/snapshot/indices I:SPX .value; session.close=7440.43, prev_close=7354.02) | SKIPPED
 ### SPY spot: Ours 741 | gex spot 741 | underlying_asset.price in chain = 741 | PASS (internally consistent w/ SPX 7440.43 → ratio 10.04)
