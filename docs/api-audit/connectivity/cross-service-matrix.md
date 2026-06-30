@@ -1554,3 +1554,43 @@ Independent re-run against fresh live data (apex host + Bearer; all 6 endpoints 
 - SKILL Phase 4/7 paths stale: src/lib/run-tool.ts and src/lib/tools/ do not exist; Largo data assembly is src/lib/largo/largo-live-feed.ts + largo-terminal.ts.
 - The lone WARN (flow staleness) is off-hours and **not** a P0 — the >10min desync P0 rule applies during RTH only.
 ---
+
+## Connectivity Matrix — 2026-06-30 09:57 ET (RTH)
+**PASS: 18 | FAIL: 0 | WARN: 1 | (auth-gated route noise: 1)**
+
+Method note: all six service routes returned **200 via apex `blackouttrades.com` + Bearer CRON_SECRET** (www strips auth → 401; gex-positioning route is launch-gated so a *direct* numeric diff is unavailable, but internal consumers read the shared `getGexPositioning`/`fetchGexHeatmap` cache, so wiring is verified at source). SKILL.md's field names are stale — SPX desk is **snake_case** (`gex_king`, `gamma_flip`, `gex_walls`, `spx_flows`, `tide_bias`, `flow_0dte_net`), not `callWall/flowBias/kingStrike`. Largo dispatch lives at `src/lib/largo/run-tool.ts` (not `src/lib/run-tool.ts`); there is no `src/lib/tools/` dir.
+
+| Channel | Status | Evidence |
+|---|---|---|
+| SPX→HEATMAP | PASS (converged) | SPX desk `gex_king=7500`, top wall 7500 resistance — both off shared `getGexPositioning`/`fetchGexHeatmap` cache-reader. No second GEX path. |
+| HELIX→SPX | PASS | SPX desk carries live `spx_flows[]` (SPXW 7465C/7470P @09:54Z), `flow_0dte_net=-44.8M`, `tide_bias=bullish`, `tide_net=+38.3M`. SKILL's `flowBias/netFlow` check is stale → would false-FAIL. |
+| HEATMAP→LARGO | PASS | `run-tool.ts` `get_gex` (SPX/0DTE) reads `getLargoSpxLiveDesk` walls = same desk cache; non-SPX/non-0DTE falls to Polygon/UW (W3: by-design, heatmap cache is SPX-scoped). |
+| HELIX→LARGO | PASS | `get_options_flow` returns `spx_sniper_desk` tape "same feed as dashboard" (`flow_alerts`, `unified_tape`, `flow_0dte_*`). |
+| HELIX→NHAWK | PASS | `nighthawk/candidates.ts` builds candidates from flow: `aggregateTickerFlows`, `fetchTickersFlowStreaks`, `sweepBonus`, `CANDIDATE_UNUSUAL_SLOTS`, premium scoring. |
+| SPX→NWATCH | PASS | `position-context.ts` → `loadMergedSpxDesk` (shared cache, `source:"spx-desk"`); verdict reads `underlyingPrice`/spot. |
+| HEATMAP→NWATCH | PASS | `verdict.ts` `hasWalls`/`nearestWallSignal` read shared `gexWalls` (`spx-desk` OR `gex-heatmap` via `getNwTickerGex`); `WALL_APPROACH_PTS`/`WALL_BREAK_PTS` evaluated, never fabricated. |
+| HELIX→NWATCH | PASS | `position-context.ts` flow lean (`FLOW_MIN_PREMIUM=250k`, `FLOW_SKEW_RATIO=1.5`) + dark-pool bias, cached via `withServerCache`. |
+| GRID→SPX | PASS | `spx-service.ts:54-64` merges `news_headlines`, `macro_events`, `macro_indicators` into desk; live response carried `macro_indicators` (GDP 2.11%). Desk is event-aware (`macroHardBlock`/`macro-events.ts`). |
+| LARGO→SPX price | PASS | `get_spx_structure`/`get_market_context` → `getLargoSpxLiveDesk`. |
+| LARGO→GEX walls | PASS | `get_gex` (see above). |
+| LARGO→HELIX flows | PASS | `get_options_flow`, `get_flow_tape`, `get_flow_per_strike`, `get_nope`. |
+| LARGO→Night's Watch | PASS | `get_my_positions` (1259), `get_positioning` (1213) → `getEnrichedPositionsForUser`/`fetchPositioningSummary`. |
+| LARGO→Night Hawk | PASS | `get_nighthawk_edition`, `get_nighthawk_outcomes`, `get_nighthawk_dossier`. |
+| LARGO→Grid news | PASS | `get_news` (783), `get_catalysts` (1325). |
+| LARGO→Earnings | PASS | `get_earnings` (740), `get_earnings_history`, `get_earnings_market`. |
+| LARGO→Dark pool | PASS | `get_dark_pool` (592). |
+| LARGO→Macro/Congress | PASS | `get_macro_indicator` (990), `get_congress_trades` (851), `get_congress_unusual`. |
+| gex-positioning route (direct) | WARN | Returns 401 on unauth/non-entitled even with cron Bearer (heatmap launch-gating) — flaky 200 via edge cache. Not a connectivity break; internal callers use the `getGexPositioning()` function. |
+
+### Data Timestamps (RTH, fresh)
+- SPX desk `as_of`: 2026-06-30T13:56:29Z (~0–2 min)
+- Latest HELIX flow `alerted_at`: 2026-06-30T13:54:07Z (~2 min)
+- Gap: ~2 min — **no desync** (threshold 10 min). All services on the same moment.
+
+### Disconnected Channels
+- None. Zero FAILs. Largo reaches every service; Night's Watch verdict consumes GEX walls + flows + spot; SPX desk carries HELIX flows + Grid macro/news; Night Hawk candidates are flow-built.
+
+### Residual Notes (unchanged, by-design)
+- **W3**: Largo `get_gex` for non-SPX / non-0DTE bypasses the SPX heatmap cache and hits Polygon/UW directly — correct, the heatmap cache is SPX-scoped.
+- **SKILL.md staleness** (recommend fixing the SKILL): paths (`src/lib/run-tool.ts`→`src/lib/largo/run-tool.ts`, no `src/lib/tools/`), host (www→apex+Bearer), and SPX field names (camelCase→snake_case) are all stale and would generate false FAILs if its raw PowerShell were trusted over source inspection.
+---
