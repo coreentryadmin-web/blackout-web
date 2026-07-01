@@ -44,6 +44,22 @@ export type LearnNavItem = {
   badge?: string;
 };
 
+export type LearnPanel = {
+  name: string;
+  /** Where it lives on screen, e.g. "Left rail" */
+  location?: string;
+  purpose: string;
+  /** What fields, metrics, or rows appear */
+  shows: string[];
+  /** Buttons, toggles, filters the user can operate */
+  actions?: string[];
+  /** Refresh cadence: polling interval, SSE, or on-demand */
+  cadence?: string;
+  /** How to read and act on this panel in practice */
+  consume: string;
+  tip?: string;
+};
+
 export type LearnSection =
   | { type: "prose"; id: string; title: string; paragraphs: string[] }
   | { type: "stats"; id: string; title?: string; items: LearnStat[] }
@@ -51,6 +67,7 @@ export type LearnSection =
   | { type: "steps"; id: string; title: string; intro?: string; steps: LearnStep[] }
   | { type: "timeline"; id: string; title: string; intro?: string; items: LearnTimelineItem[] }
   | { type: "features"; id: string; title: string; intro?: string; items: LearnFeature[] }
+  | { type: "panels"; id: string; title: string; intro?: string; panels: LearnPanel[] }
   | { type: "tool-map"; id: string; title: string; intro?: string; slugs: LearnSlug[] }
   | { type: "dos-donts"; id: string; title: string; dos: string[]; donts: string[] }
   | { type: "cross-links"; id: string; title: string; intro?: string; links: LearnCrossLink[] }

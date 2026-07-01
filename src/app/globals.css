@@ -562,6 +562,52 @@ body {
   .learn-feature-body {
     @apply mt-1 text-sm leading-relaxed text-secondary;
   }
+
+  .learn-panel-card {
+    @apply rounded-2xl border border-white/10 bg-white/[0.02] p-5 sm:p-6;
+  }
+  .learn-panel-header {
+    @apply flex flex-wrap items-start justify-between gap-3 border-b border-white/10 pb-4;
+  }
+  .learn-panel-name {
+    @apply font-syne text-lg font-bold text-white;
+  }
+  .learn-panel-location {
+    @apply mt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-400/90;
+  }
+  .learn-panel-cadence {
+    @apply shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-mute;
+  }
+  .learn-panel-purpose {
+    @apply mt-4 text-sm leading-relaxed text-secondary;
+  }
+  .learn-panel-grid {
+    @apply mt-5 grid gap-4 md:grid-cols-2;
+  }
+  .learn-panel-block {
+    @apply rounded-xl border border-white/10 bg-black/20 p-4;
+  }
+  .learn-panel-block-label {
+    @apply font-mono text-[10px] uppercase tracking-[0.2em] text-sky-300/90;
+  }
+  .learn-panel-list {
+    @apply mt-3 space-y-2 text-sm leading-relaxed text-secondary;
+  }
+  .learn-panel-list li {
+    @apply relative pl-4 before:absolute before:left-0 before:top-[0.55em] before:size-1 before:rounded-full before:bg-cyan-400/60;
+  }
+  .learn-panel-consume {
+    @apply mt-5 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.04] p-4;
+  }
+  .learn-panel-consume-body {
+    @apply mt-2 text-sm leading-relaxed text-white/85;
+  }
+  .learn-panel-tip {
+    @apply mt-4 border-t border-white/10 pt-4 text-sm leading-relaxed text-secondary;
+  }
+  .learn-panel-tip-label {
+    @apply mr-2 rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-amber-200;
+  }
 }
 
 /* UI primitive: Skeleton shimmer sweep (src/components/ui/Skeleton.tsx).
