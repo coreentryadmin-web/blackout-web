@@ -96,8 +96,7 @@ function GridDeck() {
 }
 
 /**
- * GridBoard — the BlackOut Grid masonry. Full-bleed, immersive board with a
- * living grid backdrop (mounted by the page), collapsible/hideable panels (the
+ * GridBoard — the BlackOut Grid masonry. Full-bleed board with collapsible/hideable panels (the
  * Panels menu + per-card controls, persisted), and staggered entrance motion.
  */
 export function GridBoard() {
