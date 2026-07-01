@@ -157,6 +157,9 @@ async function main() {
     if (uGreekRow && g != null) { const uwNet = num(uGreekRow.call_gamma) + num(uGreekRow.put_gamma); rec('net_gex SIGN app vs UW greek-exposure', (g >= 0) === (uwNet >= 0) ? 'PASS' : 'WARN', `app=${g} uw_call+put_gamma=${uwNet.toFixed(0)} (units differ; sign only)`); }
   }
 
+  // --- flow (UW market-tide ground truth) ---
+  if (uTideRow) rec('flow: UW market-tide latest (ground truth)', 'INFO', `date=${uTideRow.date} netCallPrem=${uTideRow.net_call_premium} netPutPrem=${uTideRow.net_put_premium} netVol=${uTideRow.net_volume}`);
+
   // --- track record arithmetic ---
   if (P.track) {
     const tc = num(P.track.total_closed), w = num(P.track.wins), l = num(P.track.losses), be = num(P.track.breakeven), wr = num(P.track.win_rate_pct);
@@ -180,7 +183,7 @@ main().catch((e) => { rec('script error', 'FAIL', String(e.message || e)); }).fi
   const summary = { generated_at: stamp, app: APP, totals, checks };
   const base = join(OUT, `validation-${stamp.replace(/[:.]/g, '-')}`);
   writeFileSync(`${base}.json`, JSON.stringify(summary, null, 2));
-  writeFileSync(`${base}.md`, [`# Data Validation — ${stamp}`, `App: ${APP} | totals: ${JSON.stringify(totals)}`, '', '| status | check | detail |', '|---|---|---|', ...checks.map((c) => `| ${c.status} | ${c.name} | ${(c.detail || '').replace(/\|/g, '\\|').slice(0, 180)} |`)].join('\n'));
+  writeFileSync(`${base}.md`, [`# Data Validation — ${stamp}`, `App: ${APP} | totals: ${JSON.stringify(totals)}`, '', '| status | check | detail |', '|---|---|---|', ...checks.map((c) => `| ${c.status} | ${c.name} | ${(c.detail || '').slice(0, 180).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')} |`)].join('\n'));
   console.log('\nTOTALS', JSON.stringify(totals), '\nreport:', `${base}.md`);
   exitCode = (totals.FAIL || 0) > 0 ? 1 : 0;
   process.exit(exitCode);
