@@ -2659,7 +2659,7 @@ export async function updateNighthawkPlayOutcome(
         hit_stop = $7,
         outcome = $8,
         updated_at = NOW()
-    WHERE id = $1
+    WHERE id = $1 AND outcome = 'pending'
     `,
     [
       id,

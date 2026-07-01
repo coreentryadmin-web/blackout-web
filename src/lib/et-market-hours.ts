@@ -1,23 +1,25 @@
 /**
- * US equity regular trading hours in America/New_York (weekdays 9:30 AM–4:00 PM).
- * Safe on server and client — uses Intl only (no window).
+ * US equity regular trading hours in America/New_York (weekdays 9:30 AM–4:00 PM ET,
+ * honoring NYSE early-close half-days). Safe on server and client.
  */
-export function isEtMarketHours(now = new Date()): boolean {
-  const parts = new Intl.DateTimeFormat("en-US", {
+import { getEarlyCloseMinutes } from "@/lib/spx-play-session-guards";
+import { etClock, etMinutes } from "@/lib/spx-play-session-time";
+
+/** Canonical cash RTH gate — used by UI polling, options WS, and indices WS. */
+export function isEtCashRth(now = new Date()): boolean {
+  const weekday = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     weekday: "short",
-    hour: "numeric",
-    minute: "numeric",
-    hour12: false,
-  }).formatToParts(now);
-
-  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
+  }).format(now);
   if (weekday === "Sat" || weekday === "Sun") return false;
+  const mins = etMinutes(now);
+  const close = getEarlyCloseMinutes(now) ?? etClock(16, 0);
+  return mins >= etClock(9, 30) && mins <= close;
+}
 
-  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? 0);
-  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
-  const mins = hour * 60 + minute;
-  return mins >= 570 && mins < 960;
+/** @deprecated Alias — prefer isEtCashRth for early-close correctness. */
+export function isEtMarketHours(now = new Date()): boolean {
+  return isEtCashRth(now);
 }
 
 /** Stable hash for sharding tickers across cron ticks (0 … mod-1). */

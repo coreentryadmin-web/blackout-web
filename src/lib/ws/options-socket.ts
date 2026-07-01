@@ -24,8 +24,7 @@
  * store null and never fabricate a mark.
  */
 import { MASSIVE_WS_OPTIONS } from "@/lib/polygon-docs-nav";
-import { etMinutes, etClock } from "@/lib/spx-play-session-time";
-import { getEarlyCloseMinutes } from "@/lib/spx-play-session-guards";
+import { isEtCashRth } from "@/lib/et-market-hours";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 
 /**
@@ -38,14 +37,7 @@ import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
  * (Full market holidays are not modeled — a holiday reconnect is rare and harmless: market closed.)
  */
 export function inOptionsMarketHours(now = new Date()): boolean {
-  const weekday = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-  }).format(now);
-  if (weekday === "Sat" || weekday === "Sun") return false;
-  const mins = etMinutes(now);
-  const close = getEarlyCloseMinutes(now) ?? etClock(16, 0); // 13:00 ET on half-days, else 16:00
-  return mins >= etClock(9, 30) && mins <= close;
+  return isEtCashRth(now);
 }
 
 // ---------------------------------------------------------------------------

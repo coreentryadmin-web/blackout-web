@@ -85,8 +85,8 @@ function ensureBreakerSubscription(): void {
   if (breakerSubscribed) return;
   breakerSubscribed = true; // set before await: prevents duplicate subscribe races
   void import("@/lib/redis-pubsub")
-    .then(({ redisSubscribe }) =>
-      redisSubscribe(BREAKER_CHANNEL, (msg) => {
+    .then(async ({ redisSubscribe }) => {
+      const { subscribed } = await redisSubscribe(BREAKER_CHANNEL, (msg) => {
         try {
           const parsed = JSON.parse(msg) as { openUntil?: unknown };
           const peer = typeof parsed.openUntil === "number" ? parsed.openUntil : NaN;
@@ -94,8 +94,9 @@ function ensureBreakerSubscription(): void {
         } catch {
           /* ignore malformed peer message */
         }
-      })
-    )
+      });
+      if (!subscribed) breakerSubscribed = false;
+    })
     .catch(() => {
       breakerSubscribed = false; // allow a later retry if the import/subscribe failed
     });

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import { clsx } from "clsx";
 import { Drawer, Skeleton, EmptyState } from "@/components/ui";
@@ -78,21 +78,28 @@ export function TickerDrawer({
   onToggleStar?: (ticker: string) => void;
 }) {
   const [state, setState] = useState<State>({ flows: [], dp: [], loading: false });
+  const loadGenerationRef = useRef(0);
 
-  const load = useCallback(async (t: string) => {
+  const load = useCallback(async (t: string, generation: number) => {
     setState({ flows: [], dp: [], loading: true });
     const [fr, dr] = await Promise.allSettled([
       fetchFlows({ limit: 40, ticker: t }),
       fetchDarkPoolPrints({ limit: 20 }),
     ]);
+    if (generation !== loadGenerationRef.current) return;
     const flows = fr.status === "fulfilled" ? fr.value.flows : [];
     const dp    = dr.status === "fulfilled" ? dr.value.prints.filter((p) => p.ticker === t) : [];
     setState({ flows, dp, loading: false });
   }, []);
 
   useEffect(() => {
-    if (ticker) load(ticker);
-    else setState({ flows: [], dp: [], loading: false });
+    if (ticker) {
+      const gen = ++loadGenerationRef.current;
+      void load(ticker, gen);
+    } else {
+      loadGenerationRef.current += 1;
+      setState({ flows: [], dp: [], loading: false });
+    }
   }, [ticker, load]);
 
   // Apply same typeFilter as the tape so drawer matches what the user is looking at

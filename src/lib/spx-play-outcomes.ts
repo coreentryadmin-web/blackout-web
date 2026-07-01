@@ -313,12 +313,12 @@ export async function recordPlayClose(
 
 export async function fetchPlayOutcomeStats(): Promise<PlayOutcomeStats> {
   if (!dbConfigured()) {
-    return aggregateStats(memoryOutcomes.filter((r) => r.outcome !== "open"));
+    return computePlayOutcomeStats(memoryOutcomes.filter((r) => r.outcome !== "open"));
   }
   await ensureSchema();
   const { fetchClosedPlayOutcomes } = await import("@/lib/db");
   const rows = await fetchClosedPlayOutcomes(500);
-  return aggregateStats(rows);
+  return computePlayOutcomeStats(rows);
 }
 
 function bucket(rows: PlayOutcomeRow[], path: PlayEntryPath) {
@@ -340,7 +340,8 @@ function bucket(rows: PlayOutcomeRow[], path: PlayEntryPath) {
   };
 }
 
-function aggregateStats(rows: PlayOutcomeRow[]): PlayOutcomeStats {
+/** Pure stats aggregation — exported for unit tests. */
+export function computePlayOutcomeStats(rows: PlayOutcomeRow[]): PlayOutcomeStats {
   const closed = rows.filter((r) => r.outcome !== "open");
   const wins = closed.filter((r) => r.outcome === "win").length;
   const losses = closed.filter((r) => r.outcome === "loss").length;

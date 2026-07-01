@@ -8,6 +8,9 @@ import {
 } from "@/lib/whop";
 import { isMembershipRevoked } from "@/lib/whop-revocation";
 import { publishTierChanged } from "@/lib/tier-cache";
+import { sortMemberships } from "@/lib/membership-sort";
+
+export { sortMemberships } from "@/lib/membership-sort";
 
 type MembershipMetadata = {
   tier?: Tier;
@@ -61,26 +64,6 @@ async function findWhopUserIdsByEmail(
   }
 
   return Array.from(userIds);
-}
-
-// Deterministic membership ordering: ACTIVE/TRIALING first, then most-recently-created, so [0] is
-// always the "best" membership. (created_at is an ISO string — Date.parse, not a numeric cast.)
-const STATUS_PRIORITY: Record<string, number> = {
-  active: 0,
-  trialing: 1,
-  completed: 2,
-  past_due: 3,
-  canceling: 4,
-};
-function sortMemberships(memberships: MembershipListResponse[]): MembershipListResponse[] {
-  return [...memberships].sort((a, b) => {
-    const aPriority = STATUS_PRIORITY[a.status] ?? 99;
-    const bPriority = STATUS_PRIORITY[b.status] ?? 99;
-    if (aPriority !== bPriority) return aPriority - bPriority;
-    const aTs = Date.parse((a as unknown as { created_at?: string }).created_at ?? "") || 0;
-    const bTs = Date.parse((b as unknown as { created_at?: string }).created_at ?? "") || 0;
-    return bTs - aTs;
-  });
 }
 
 /**

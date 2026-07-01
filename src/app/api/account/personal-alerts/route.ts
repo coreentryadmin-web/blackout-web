@@ -7,12 +7,10 @@
 // Delivery to personal webhooks is still gated by SPX_PERSONAL_ALERTS at fan-out time,
 // so configuring a webhook here is harmless until an operator enables the feature.
 
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { redactWebhook } from "@/lib/discord-post";
 import { getPersonalWebhook, setPersonalWebhook } from "@/lib/personal-alert-store";
 import { requireTierApi } from "@/lib/market-api-auth";
-import { parseTier, tierAtLeast } from "@/lib/tiers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,14 +36,9 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await currentUser();
-  const tier = parseTier(user?.publicMetadata?.tier);
-  if (!tierAtLeast(tier, "premium")) {
-    return NextResponse.json({ error: "Premium required" }, { status: 403 });
-  }
+  const authResult = await requireTierApi("premium");
+  if (authResult instanceof Response) return authResult;
+  const { userId } = authResult;
 
   let body: { url?: unknown };
   try {
@@ -73,8 +66,9 @@ export async function PUT(req: Request) {
 }
 
 export async function DELETE() {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authResult = await requireTierApi("premium");
+  if (authResult instanceof Response) return authResult;
+  const { userId } = authResult;
   try {
     await setPersonalWebhook(userId, null);
     return NextResponse.json({ ok: true, configured: false });
