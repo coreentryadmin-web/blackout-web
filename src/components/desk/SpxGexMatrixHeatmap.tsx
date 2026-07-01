@@ -387,7 +387,14 @@ export function SpxGexMatrixHeatmap({
                           title={isColumnKing ? `King node for ${fmtHeatmapExpiry(e)}` : undefined}
                         >
                           {fmtHeatmapMoneySigned(val, { showZero: true })}
-                          {isColumnKing && <span aria-hidden>*</span>}
+                          {isColumnKing && (
+                            <span
+                              aria-hidden
+                              className="ml-0.5 text-[13px] leading-none text-amber-400 [text-shadow:0_0_6px_rgba(251,191,36,0.9)]"
+                            >
+                              ★
+                            </span>
+                          )}
                         </td>
                       );
                     })}
@@ -419,7 +426,11 @@ export function SpxGexMatrixHeatmap({
 
       <div className="mt-2 shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 font-mono text-[9px] text-white/45">
         <span>{strikesAxis.length} strikes · ±6% SPX band · {displayExpiries.length} expiries</span>
-        {columnKings.size > 0 && <span>· * = that day&apos;s King node</span>}
+        {columnKings.size > 0 && (
+          <span>
+            · <span className="text-amber-400">★</span> = that day&apos;s King node
+          </span>
+        )}
         <span>· refresh {Math.round(pollMs / 1000)}s</span>
         <Link href="/heatmap" className="text-sky-400/90 hover:text-sky-300 underline-offset-2 hover:underline">
           Full Thermal →
