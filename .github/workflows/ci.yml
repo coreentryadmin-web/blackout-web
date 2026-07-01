@@ -26,7 +26,13 @@ jobs:
       - name: API auth guard (default-deny)
         run: node scripts/verify-api-auth-guards.mjs
       - name: Unit tests
-        run: npm test
+        # Node 20 does not expand globs in --test; expand in bash but keep module mocks.
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          files=(src/**/*.test.ts)
+          echo "Running ${#files[@]} test files"
+          node --import tsx --experimental-test-module-mocks --test "${files[@]}"
       - name: Build (next build — catches deploy-breakers before merge)
         run: npm run build
       - name: Brand guard (no grey)
