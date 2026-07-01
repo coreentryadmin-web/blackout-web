@@ -43,6 +43,13 @@ type GexHeatmapResponse = {
   strikes?: number[];
   gex?: MetricBlock;
   vex?: MetricBlock;
+  cross_validation?: {
+    callWallMatch: boolean;
+    putWallMatch: boolean;
+    flipMatch: boolean;
+    divergence: number | null;
+    uw_asof: string | null;
+  } | null;
 };
 
 async function fetchGexHeatmap(url: string): Promise<GexHeatmapResponse> {
@@ -191,6 +198,12 @@ export function SpxGexMatrixHeatmap({
     deskGammaFlip != null &&
     Math.abs(odteLevels.flip - deskGammaFlip) > 1;
 
+  const uwCross = data?.cross_validation;
+  const uwDiverged =
+    uwCross?.divergence != null &&
+    uwCross.divergence > 5 &&
+    !(uwCross.callWallMatch && uwCross.putWallMatch && uwCross.flipMatch);
+
   return (
     <Panel
       accent={panelAccent}
@@ -263,6 +276,12 @@ export function SpxGexMatrixHeatmap({
         {!isTrueZeroDte && columnExpiry && (
           <p className="font-mono text-[9px] text-amber-200/80">
             No 0DTE column today — levels use front expiry {columnExpiry}.
+          </p>
+        )}
+        {uwDiverged && (
+          <p className="font-mono text-[9px] leading-snug text-amber-300/90">
+            UW oracle diverges {uwCross?.divergence?.toFixed(0)}pt from Polygon walls — treat
+            levels as provisional until channels agree.
           </p>
         )}
       </div>
@@ -380,7 +399,7 @@ export function SpxGexMatrixHeatmap({
       )}
 
       <div className="mt-2 shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 font-mono text-[9px] text-white/45">
-        <span>{strikesAxis.length} strikes · ±4% band · {displayExpiries.length} expiries</span>
+        <span>{strikesAxis.length} strikes · ±6% SPX band · {displayExpiries.length} expiries</span>
         <span>· refresh {Math.round(pollMs / 1000)}s</span>
         <Link href="/heatmap" className="text-sky-400/90 hover:text-sky-300 underline-offset-2 hover:underline">
           Full Thermal →

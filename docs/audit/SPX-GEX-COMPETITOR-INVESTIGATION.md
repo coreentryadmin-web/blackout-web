@@ -92,7 +92,9 @@ Verifier: `src/lib/correctness/heatmap-verifier.ts` — Σ strike_totals, sign i
 
 ## Recommendations (ops / product)
 
-1. **Widen band for production** if wings feel missing: `GEX_HEATMAP_BAND_PCT=0.08` (watch Polygon page budget).
+See also **`docs/audit/DATA-API-PROCUREMENT.md`** — buy/don't-buy for APIs vs wiring existing Massive + UW.
+
+1. **Widen band for production** if wings still feel missing: `SPX_GEX_HEATMAP_BAND_PCT=0.08` (SPX default is now **0.06**).
 2. **Use Thermal** for monthly OpEx columns, shift/history, explain route, flow overlays.
 3. **Monitor** `[gex-heatmap] fetchHeatmapBand truncated` logs — truncation understates walls.
 4. **Optional:** SPX desk header 0DTE-only mode (product decision) so header ≡ matrix scope.

@@ -1133,11 +1133,16 @@ function warnChainTruncated(label: string, underlying: string, pages: number): v
 // isn't truncated (truncation understated walls/OI/IV). Env-tunable; floored at 16.
 const HEATMAP_PAGE_GUARD = Math.max(16, Number(process.env.OPTIONS_HEATMAP_PAGE_GUARD) || 40);
 
-/** Strike band around spot for the shared heatmap chain pull (default ±4%). Env: GEX_HEATMAP_BAND_PCT. */
-function heatmapBandPct(): number {
-  const raw = Number(process.env.GEX_HEATMAP_BAND_PCT);
-  if (Number.isFinite(raw) && raw > 0 && raw <= 0.25) return raw;
-  return 0.04;
+/** Strike band around spot for the shared heatmap chain pull. SPX defaults ±6%; others ±4%. */
+function heatmapBandPct(root: string): number {
+  const clamp = (n: number) => (Number.isFinite(n) && n > 0 && n <= 0.25 ? n : null);
+  if (root === "SPX") {
+    const spx = clamp(Number(process.env.SPX_GEX_HEATMAP_BAND_PCT));
+    if (spx != null) return spx;
+  }
+  const global = clamp(Number(process.env.GEX_HEATMAP_BAND_PCT));
+  if (global != null) return global;
+  return root === "SPX" ? 0.06 : 0.04;
 }
 
 async function fetchHeatmapBand(
@@ -1915,7 +1920,7 @@ async function buildGexHeatmapUncached(
   if (isHeatmapPreset(root)) recordHeatmapPriceObservation(root, spot);
 
   // Band sizing stays RELATIVE (% of spot) so it works for $5 and $900 names.
-  const contracts = await fetchHeatmapBand(optionsRoot, spot, heatmapBandPct());
+  const contracts = await fetchHeatmapBand(optionsRoot, spot, heatmapBandPct(root));
   if (!contracts.length) {
     console.warn(
       `[gex-heatmap] 0 contracts for ${optionsRoot} @ ${spot} via ${hostOf(BASE)} — heatmap empty (no/thin options chain).`
