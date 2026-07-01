@@ -55,7 +55,7 @@ function GridBanner() {
       <span className="grid-banner-text">
         Showing all data for <span className="grid-banner-ticker">{ticker}</span>
         <span className="grid-banner-sep"> · </span>
-        <span className="grid-banner-live">Updated live</span>
+        <span className="grid-banner-live">Ticker-scoped panels refresh on their own cadence</span>
       </span>
       <button type="button" onClick={() => setTicker(null)} className="grid-banner-clear" aria-label="Clear ticker filter">
         ×&nbsp;Clear

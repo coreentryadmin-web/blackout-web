@@ -7,6 +7,8 @@ import { useGridTicker } from "@/lib/grid/grid-ticker-context";
 
 type GexRegimeData = {
   available: boolean;
+  degraded?: boolean;
+  _fallback?: boolean;
   ticker?: string;
   spot?: number;
   flip?: number | null;
@@ -77,7 +79,8 @@ export function GridGexPanel() {
   const { data, error } = useSWR<GexRegimeData>(url, fetcher, { refreshInterval: 30_000 });
 
   const available = !error && (data?.available ?? false);
-  const live = available && data?.spot != null;
+  const degraded = Boolean(data?.degraded || data?._fallback);
+  const live = available && data?.spot != null && !degraded;
 
   const regimeLabel = (() => {
     if (!data?.gamma_posture) return "—";
@@ -99,7 +102,8 @@ export function GridGexPanel() {
       live={live}
       footer={
         <span className="grid-foot-note">
-          Live GEX matrix · {gexTicker} · {!data ? "loading…" : data.available ? "live" : "unavailable"}
+          Live GEX matrix · {gexTicker} ·{" "}
+          {!data ? "loading…" : degraded ? "partial (fallback)" : data.available ? "live" : "unavailable"}
         </span>
       }
     >

@@ -101,7 +101,7 @@ async function fetchSharedData(): Promise<{ alerts: FlowAlert[]; darkPrints: Nor
       alerts = await serverCache(
         "flow-brief:flows:pg:168:200000",
         TTL.DARK_POOL,
-        () => fetchRecentFlows({ limit: 500, min_premium: 200_000, since_hours: 168 })
+        () => fetchRecentFlows({ limit: 500, min_premium: 200_000, since_hours: 168, order: "recent" })
       ) as FlowAlert[];
     } else if (uwConfigured()) {
       alerts = await serverCache(
