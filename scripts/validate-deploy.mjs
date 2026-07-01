@@ -15,6 +15,8 @@
 
 import { execSync } from "node:child_process";
 import { spawnSync } from "node:child_process";
+import { ALL_CRON_KEYS } from "./railway-cron-services.mjs";
+import { createAuditClient, resolveAuditDbUrl } from "./pg-audit.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const failures = [];
@@ -194,24 +196,11 @@ for (const c of checks) {
 
 // ── 3. Postgres (errors, cron, rate limits) ─────────────────────────────────
 console.log("\n3. Postgres / error sink / API telemetry");
-let dbUrl = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
-if (!dbUrl) {
-  try {
-    const raw = sh("railway variables --service blackout-web --json 2>/dev/null");
-    const vars = JSON.parse(raw);
-    dbUrl = vars.DATABASE_PUBLIC_URL || vars.DATABASE_URL;
-  } catch {
-    /* optional */
-  }
-}
+const dbUrl = resolveAuditDbUrl();
 
 if (dbUrl) {
   try {
-    const pg = await import("pg");
-    const client = new pg.default.Client({
-      connectionString: dbUrl,
-      ssl: dbUrl.includes("localhost") ? false : { rejectUnauthorized: false },
-    });
+    const client = createAuditClient(dbUrl);
     await client.connect();
 
     const q = async (sql, params) => (await client.query(sql, params)).rows;
@@ -249,13 +238,7 @@ if (dbUrl) {
     if (cronBad.length === 0) ok("All cron jobs latest run ok/skipped");
     else cronBad.forEach((r) => warn(`cron ${r.job_key} latest: ${r.status} — ${r.msg}`));
 
-    const cronKeys = [
-      "flow-ingest", "spx-evaluate", "largo-cleanup", "nighthawk-outcomes", "nighthawk-playbook",
-      "uw-cache-refresh", "nights-watch-warm", "heatmap-warm", "grid-warm", "gex-eod-snapshot",
-      "gex-alerts", "db-cleanup", "membership-reconcile", "data-integrity", "provider-health-reconcile", "data-correctness",
-      "cron-staleness-watchdog", "spx-signal-observe", "spx-signal-weight-optimize",
-      "nighthawk-morning-confirm", "market-regime-detector", "positions-expiry",
-    ];
+    const cronKeys = [...ALL_CRON_KEYS];
     const valuesClause = cronKeys.map((_, i) => `($${i + 1})`).join(", ");
     const zeroRuns = (
       await q(
@@ -267,7 +250,7 @@ if (dbUrl) {
         cronKeys
       )
     ).map((r) => r.job_key);
-    if (zeroRuns.length === 0) ok("All 21 registered crons have run history");
+    if (zeroRuns.length === 0) ok(`All ${cronKeys.length} registered crons have run history`);
     else warn(`Cron jobs with zero runs ever (Railway service may be missing): ${zeroRuns.join(", ")}`);
 
     await client.end();
