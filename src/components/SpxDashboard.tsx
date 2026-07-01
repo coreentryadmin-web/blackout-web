@@ -90,6 +90,10 @@ export function SpxDashboard() {
               pdh={desk?.pdh ?? null}
               pdl={desk?.pdl ?? null}
               priorClose={desk?.prior_close ?? null}
+              liveSpot={desk?.price ?? null}
+              deskGammaFlip={desk?.gamma_flip ?? null}
+              deskGexKing={desk?.gex_king ?? null}
+              gexStale={desk?.gex_stale}
             />
           </aside>
         </SpxPanelErrorBoundary>
