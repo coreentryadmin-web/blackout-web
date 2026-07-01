@@ -6,13 +6,13 @@ import {
 } from "@/lib/db";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { isNighthawkOutcomeScoreable } from "@/lib/track-record-page";
+import { requireAdminApi } from "@/lib/admin-access";
 import { getClientIp, checkIpRateLimit, rateLimitHeaders } from "@/lib/ip-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Public per-play audit trail for /track-record (intentional transparency).
-// Aggregate embed API (/api/public/track-record) stays counts-only — see track-record-public.ts.
+// Admin-only per-play audit trail for /admin/track-record.
 const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" };
 const SPX_LIMIT = 200;
 const NH_WINDOW_DAYS = 90;
@@ -21,6 +21,9 @@ const RATE_LIMIT = 10;
 const RATE_WINDOW_SECS = 60;
 
 export async function GET(req: NextRequest) {
+  const denied = await requireAdminApi();
+  if (denied) return denied;
+
   const ip = getClientIp(req);
   const rl = await checkIpRateLimit(ip, "track-record:plays", RATE_LIMIT, RATE_WINDOW_SECS);
   const rlHeaders = rateLimitHeaders(rl);

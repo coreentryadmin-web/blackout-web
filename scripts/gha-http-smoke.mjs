@@ -7,12 +7,12 @@ const publicChecks = [
   { path: "/api/health", expect: 200, test: (b) => b.ok === true },
   { path: "/api/ready", expect: 200, test: (b) => b.ok === true },
   { path: "/api/market/regime", expect: 200, test: (b) => b.available === true },
-  { path: "/api/public/track-record", expect: 200, test: (b) => b.available === true },
+  { path: "/api/public/track-record", expect: 401 },
+  { path: "/api/track-record", expect: 401 },
   { path: "/api/signals/open", expect: 401 },
   { path: "/api/admin/debug-uw", expect: 401 },
   { path: "/api/engine/health", expect: 401 },
   { path: "/", expect: 200 },
-  { path: "/track-record", expect: 200 },
 ];
 
 const failures = [];
@@ -29,15 +29,6 @@ async function fetchJson(path, headers = {}) {
   return { status: res.status, body };
 }
 
-function trackRecordConsistent(page, pub) {
-  if (!pub.available) return page.spxSlayer?.total === 0;
-  return (
-    page.spxSlayer?.total === pub.total_closed &&
-    page.spxSlayer?.wins === pub.wins &&
-    page.spxSlayer?.losses === pub.losses
-  );
-}
-
 for (const c of publicChecks) {
   const { status, body } = await fetchJson(c.path);
   const pass = status === c.expect && (c.test ? c.test(body) : true);
@@ -46,29 +37,6 @@ for (const c of publicChecks) {
     failures.push(`${c.path} → ${status}`);
     console.log(`  ✗ ${c.path} → ${status}`);
   }
-}
-
-// Split-brain guard: /api/track-record SPX block must match public ledger (#47)
-const [{ body: pageTr }, { body: pubTr }] = await Promise.all([
-  fetchJson("/api/track-record"),
-  fetchJson("/api/public/track-record"),
-]);
-if (pageTr?.spxSlayer && pubTr?.available !== undefined) {
-  if (trackRecordConsistent(pageTr, pubTr)) {
-    console.log(
-      `  ✓ track-record ledger match → page ${pageTr.spxSlayer.total} closed = public ${pubTr.total_closed ?? 0}`
-    );
-  } else {
-    failures.push(
-      `track-record split-brain: page ${pageTr.spxSlayer.wins}/${pageTr.spxSlayer.losses}/${pageTr.spxSlayer.total} vs public ${pubTr.wins}/${pubTr.losses}/${pubTr.total_closed}`
-    );
-    console.log(
-      `  ✗ track-record split-brain → page ${pageTr.spxSlayer.wins}/${pageTr.spxSlayer.losses}/${pageTr.spxSlayer.total} vs public ${pubTr.wins}/${pubTr.losses}/${pubTr.total_closed}`
-    );
-  }
-} else {
-  failures.push("track-record consistency check: missing payload fields");
-  console.log("  ✗ track-record consistency check → missing payload fields");
 }
 
 if (CRON) {

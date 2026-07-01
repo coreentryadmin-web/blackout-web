@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildPublicTrackRecord } from "@/lib/track-record-public";
+import { requireAdminApi } from "@/lib/admin-access";
 import { getClientIp, checkIpRateLimit, rateLimitHeaders } from "@/lib/ip-rate-limit";
 
-// PUBLIC route by design: it intentionally calls NONE of the self-guard helpers
-// (requireTierApi / authorizeMarketDeskApi / isCronAuthorized). See the security
-// contract in src/middleware.ts — public-ness is an explicit per-handler choice.
-// Output is the sanitized, PII-free aggregate from buildPublicTrackRecord().
+// Admin-only aggregate ledger (formerly public embed API).
 export const runtime = "nodejs";
 // Must stay live with /api/market/spx/outcomes + /api/track-record — a 5m ISR cache
 // caused split-brain when a play closed mid-RTH (public=7 vs outcomes=8).
@@ -19,6 +17,9 @@ const RATE_LIMIT = 30;
 const RATE_WINDOW_SECS = 60;
 
 export async function GET(req: NextRequest) {
+  const denied = await requireAdminApi();
+  if (denied) return denied;
+
   const ip = getClientIp(req);
   const rl = await checkIpRateLimit(ip, "public:track-record", RATE_LIMIT, RATE_WINDOW_SECS);
   const rlHeaders = rateLimitHeaders(rl);

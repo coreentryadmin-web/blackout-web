@@ -174,12 +174,11 @@ const checks = [
   { path: "/api/health", expect: 200, field: (b) => b.ok === true },
   { path: "/api/ready", expect: 200, field: (b) => b.ok === true && b.db !== "unreachable" },
   { path: "/api/market/regime", expect: 200, field: (b) => b.available === true },
-  { path: "/api/public/track-record", expect: 200, field: (b) => b.available === true },
+  { path: "/api/public/track-record", expect: 401 },
   { path: "/api/signals/open", expect: 401 },
   { path: "/api/admin/debug-uw", expect: 401 },
   { path: "/api/engine/health", expect: 401 },
   { path: "/", expect: 200 },
-  { path: "/track-record", expect: 200 },
   { path: "/sign-in", expect: 200 },
 ];
 
