@@ -133,7 +133,8 @@ export const gettingStartedGuide: LearnGuide = {
       type: "tool-map",
       id: "tools",
       title: "Tool map",
-      intro: "Every chapter below includes live desk links, cross-references, and glossary terms.",
+      intro:
+        "Every chapter below includes a Panel reference section — a field guide to each live UI region, its refresh cadence, and how to consume it during RTH. Read overview and layout first, then panels, then workflow.",
       slugs: [
         "spx-slayer",
         "helix-flows",

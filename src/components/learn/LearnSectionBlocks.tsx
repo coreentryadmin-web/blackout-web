@@ -157,6 +157,62 @@ export function LearnSectionBlock({ section }: { section: LearnSection }) {
         </LearnReveal>
       );
 
+    case "panels":
+      return (
+        <LearnReveal>
+          <section id={section.id} className="learn-chapter-section">
+            <h2 className="learn-chapter-heading">{section.title}</h2>
+            {section.intro && <p className="learn-prose-body mb-8 max-w-3xl">{section.intro}</p>}
+            <LearnStagger className="space-y-6">
+              {section.panels.map((panel) => (
+                <LearnStaggerItem key={panel.name}>
+                  <article className="learn-panel-card">
+                    <header className="learn-panel-header">
+                      <div>
+                        <h3 className="learn-panel-name">{panel.name}</h3>
+                        {panel.location && <p className="learn-panel-location">{panel.location}</p>}
+                      </div>
+                      {panel.cadence && <span className="learn-panel-cadence">{panel.cadence}</span>}
+                    </header>
+                    <p className="learn-panel-purpose">{panel.purpose}</p>
+                    <div className="learn-panel-grid">
+                      <div className="learn-panel-block">
+                        <p className="learn-panel-block-label">What it shows</p>
+                        <ul className="learn-panel-list">
+                          {panel.shows.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      {panel.actions && panel.actions.length > 0 && (
+                        <div className="learn-panel-block">
+                          <p className="learn-panel-block-label">What you can do</p>
+                          <ul className="learn-panel-list">
+                            {panel.actions.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                    <div className="learn-panel-consume">
+                      <p className="learn-panel-block-label">How to consume</p>
+                      <p className="learn-panel-consume-body">{panel.consume}</p>
+                    </div>
+                    {panel.tip && (
+                      <p className="learn-panel-tip">
+                        <span className="learn-panel-tip-label">Tip</span>
+                        {panel.tip}
+                      </p>
+                    )}
+                  </article>
+                </LearnStaggerItem>
+              ))}
+            </LearnStagger>
+          </section>
+        </LearnReveal>
+      );
+
     case "tool-map":
       return (
         <LearnReveal>
