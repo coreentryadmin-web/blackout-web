@@ -14,21 +14,14 @@ import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { CRON_SERVICE_NAMES, PRODUCTION_ENV } from "./railway-cron-services.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 
 const PROJECT = process.env.RAILWAY_PROJECT_ID ?? "9282f541-a288-4c8b-a174-ee22016f4b1a";
-const ENV = process.env.RAILWAY_ENVIRONMENT ?? "production";
-
-/** Registry key → Railway service display name (when they differ) */
-const SERVICE_NAMES = {
-  "gex-alerts": "GEX-Alerts",
-  "gex-eod-snapshot": "GEX-EOD-Snapshot",
-  "grid-warm": "Grid-Warm-Cron",
-  "spx-signal-weight-optimize": "SPX-Signal-Weight-Optimize",
-  "socket-health": "Socket-Health-Cron",
-};
+const ENV = PRODUCTION_ENV;
+const SERVICE_NAMES = CRON_SERVICE_NAMES;
 
 const keys = process.argv.slice(2);
 if (!keys.length) {

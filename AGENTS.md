@@ -65,6 +65,10 @@ The ~20 `railway.*.toml` files at the repo root are production cron *trigger* se
 ### Railway (Cursor Cloud agents)
 - **Tokens:** Account-wide token → `RAILWAY_API_TOKEN` (buckets, `environment edit`, multi-region).
   Project token → `RAILWAY_TOKEN` + `RAILWAY_PROJECT_ID` for variables/redeploy/logs.
+  If both are set and `RAILWAY_API_TOKEN` is invalid, the CLI fails — **`unset RAILWAY_API_TOKEN`**
+  before project-scoped ops, or fix the account token in Cursor secrets.
+- **One-shot audit setup:** `npm run railway:audit-apply` (`scripts/railway-audit-apply.mjs`) — regions,
+  all cron TOMLs, internal `CRON_TARGET_BASE_URL`, `CRON_WATCHDOG_SELF_HEAL`, CRON_SECRET sync.
 - Production: `blackout-web` **iad=3, us-west2=2**; **PgBouncer iad=2, us-west2=1** (colocated with Postgres/web);
   healthcheck **`/api/ready`** (90s); crons → `CRON_TARGET_BASE_URL=http://blackout-web.railway.internal:8080`.
 - **Postgres PITR:** bucket `Postgres-PITR`; restore drill runbook `docs/ops/PITR-RESTORE-DRILL.md`.
