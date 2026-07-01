@@ -13,15 +13,13 @@
  *   node scripts/ops-collect-action-items.mjs --pretty
  */
 import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
-const { Client } = require("pg");
+import { ALL_CRON_KEYS } from "./railway-cron-services.mjs";
+import { createAuditClient, resolveAuditDbUrl } from "./pg-audit.mjs";
 
 const pretty = process.argv.includes("--pretty");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET?.trim() ?? "";
-const dbUrl = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
+const dbUrl = resolveAuditDbUrl();
 
 /** @typedef {{ id: string, priority: 'P0'|'P1'|'P2', source: string, title: string, detail: string }} ActionItem */
 
@@ -34,21 +32,11 @@ function add(priority, source, id, title, detail) {
 
 async function postgresItems() {
   if (!dbUrl) return;
-  const c = new Client({
-    connectionString: dbUrl,
-    ssl: dbUrl.includes("localhost") ? false : { rejectUnauthorized: false },
-  });
+  const c = createAuditClient(dbUrl);
   await c.connect();
   const q = async (sql, params) => (await c.query(sql, params)).rows;
 
-  const JOB_KEYS = [
-    "flow-ingest", "spx-evaluate", "largo-cleanup", "nighthawk-outcomes", "nighthawk-playbook",
-    "uw-cache-refresh", "nights-watch-warm", "heatmap-warm", "grid-warm", "gex-eod-snapshot",
-    "gex-alerts", "db-cleanup", "membership-reconcile", "data-integrity", "data-correctness",
-    "cron-staleness-watchdog", "spx-signal-observe", "spx-signal-weight-optimize",
-    "nighthawk-morning-confirm", "market-regime-detector", "positions-expiry",
-    "provider-health-reconcile", "socket-health",
-  ];
+  const JOB_KEYS = [...ALL_CRON_KEYS];
 
   const valuesClause = JOB_KEYS.map((_, i) => `($${i + 1})`).join(", ");
   const zeroRuns = (

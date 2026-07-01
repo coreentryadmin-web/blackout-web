@@ -5,49 +5,21 @@
  *
  * Usage: npm run validate:cron
  */
-import { createRequire } from "module";
+import { ALL_CRON_KEYS } from "./railway-cron-services.mjs";
+import { createAuditClient, resolveAuditDbUrl } from "./pg-audit.mjs";
 
-const require = createRequire(import.meta.url);
-const { Client } = require("pg");
-
-const JOB_KEYS = [
-  "flow-ingest",
-  "spx-evaluate",
-  "largo-cleanup",
-  "nighthawk-outcomes",
-  "nighthawk-playbook",
-  "uw-cache-refresh",
-  "nights-watch-warm",
-  "heatmap-warm",
-  "grid-warm",
-  "gex-eod-snapshot",
-  "gex-alerts",
-  "db-cleanup",
-  "membership-reconcile",
-  "data-integrity",
-  "provider-health-reconcile",
-  "data-correctness",
-  "cron-staleness-watchdog",
-  "spx-signal-observe",
-  "spx-signal-weight-optimize",
-  "nighthawk-morning-confirm",
-  "market-regime-detector",
-  "positions-expiry",
-];
+const JOB_KEYS = [...ALL_CRON_KEYS];
 
 /** Registered in code + TOML but Railway trigger service not yet provisioned — warn, don't fail CI. */
 const PROVISION_PENDING = new Set([]);
 
-const dbUrl = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
+const dbUrl = resolveAuditDbUrl();
 if (!dbUrl) {
   console.error("[cron-audit] DATABASE_PUBLIC_URL not set");
   process.exit(1);
 }
 
-const client = new Client({
-  connectionString: dbUrl,
-  ssl: dbUrl.includes("localhost") ? false : { rejectUnauthorized: false },
-});
+const client = createAuditClient(dbUrl);
 await client.connect();
 
 const q = async (sql, params) => (await client.query(sql, params)).rows;
@@ -66,7 +38,7 @@ for (const r of latest) {
 }
 
 const valuesClause = JOB_KEYS.map((_, i) => `($${i + 1})`).join(", ");
-console.log("\n=== CRON AUDIT: total runs (all 21 keys) ===\n");
+console.log(`\n=== CRON AUDIT: total runs (all ${JOB_KEYS.length} keys) ===\n`);
 const totals = await q(
   `SELECT j.key AS job_key, COALESCE(c.cnt,0)::int AS total_runs
    FROM (VALUES ${valuesClause}) AS j(key)
