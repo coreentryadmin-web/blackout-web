@@ -1,12 +1,97 @@
 # BlackOut Open Issues Log
-Last updated: 2026-06-30 17:45 ET
+Last updated: 2026-07-01 13:36 ET
 
 > **Shipping log:** Audit backlog batch 1 → **PR #132** (merged): cron timing-safe auth, dead code,
 > Track Record nav, db-cleanup, Grid bootstrap. Closed duplicate PRs **#127–#130** — ignore those.
 > Canonical audit probe list: `docs/api-audit/AUDIT-SKILL-REFERENCE.md` (in-repo SKILL:
 > `.cursor/skills/platform-audit/SKILL.md`).
 
-## RTH comprehensive sweep — 2026-06-30 ~17:21–17:45 ET (pass 7 — after-hours)
+## RTH comprehensive sweep — 2026-07-01 ~13:04–13:36 ET (pass 1 — mid-RTH)
+
+**Session:** Wed 1 Jul 2026, 13:04–13:36 ET (**RTH open** — US equity session 9:30 AM–4:00 PM ET). Agent: autonomous cloud session. Premium Clerk admin via `sign_in_token` (browser) + API session probes (Largo, grid bootstrap). Temp audit users deleted post-pass.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` (initial) | ❌ `pg` missing locally → `npm install` |
+| `npm run validate:rth-open` (mid-deploy) | ❌ Railway BUILDING |
+| `npm run validate:rth-open` (pre-SSL fix) | ❌ Postgres SSL (`proxy.rlwy.net` needs plain TCP) |
+| `npm run validate:rth-open` (final) | ✅ GREEN — deploy + all RTH session checks |
+| `GET /api/cron/data-correctness?force=1` | ✅ 0 flags (after `nights-watch-warm?force=1`; transient 1-flag stale writer at 13:33) |
+| `node scripts/gha-rth-audit.mjs` | ✅ GREEN (46 pass; track-record 401 false-positive on CRON bearer) |
+| `node scripts/full-site-deep-audit.mjs` | ✅ GREEN (46 pass, 1 false-positive) |
+| `node scripts/heatmap-matrix-audit.mjs` | ✅ 15 tickers × 32 checks, 0 matrix flags |
+| `node scripts/audit/data-validator.mjs` | ✅ 16 PASS (VIX sign transient FAIL at 13:09 cleared by 13:35) |
+
+### Fix shipped this pass
+
+| ID | Severity | Issue | Fix |
+|---|---|---|---|
+| **OPS-16** | P1 | `rth-open-check.mjs` + `gha-rth-audit.mjs` forced SSL on Railway `proxy.rlwy.net` → "server does not support SSL" blocked all Cloud Agent Postgres RTH checks | Use shared `auditPgSsl()` from `pg-audit.mjs` (plain TCP for `proxy.rlwy`) — PR on `fix/rth-audit-pg-ssl` |
+
+### API sweep (premium session + CRON bearer — ~13:10–13:35 ET)
+
+| Endpoint | HTTP | Notes |
+|---|---|---|
+| `/api/market/spx/desk` | 200 | SPX ~7505, VIX ~16.23, `available=true` |
+| `/api/market/spx/pulse` | 200 | live RTH pulse |
+| `/api/market/gex-positioning?ticker=SPX` | 200 | flip ~7479, call 7550, put 7400 |
+| `/api/market/gex-positioning?ticker=SPY` | 200 | flip ~746, call 750, put 745, spot ~748 |
+| `/api/grid/bootstrap` | 200 | pulse + flows + gexSpx (13.9s cold) |
+| `/api/grid/*` (8 live routes) | 200 | sectors 11, dark-pool 20 prints, catalysts 20, congress 63 |
+| `/api/market/nighthawk/edition` | 200 | 2 plays for 2026-07-01 |
+| `/api/public/track-record` | 200 | **11 closed** (3W/8L) — auth session |
+| `POST /api/market/largo/query` (NVDA) | 200 | ~45s — DP $3.91M, options flow grounded |
+
+**SPX oracle:** desk ~7505 vs Polygon ~7505.37 (Δ <0.1%).
+
+**Phantom grid paths (404 — expected):** `/api/grid/pulse`, `/news`, `/flow`, `/gex-regime` — data via `bootstrap` or `/api/market/*`.
+
+### Browser sweep (Playwright premium admin — 6/7 pages)
+
+| Page | Hard load | Live update | Console | Notes |
+|---|---|---|---|---|
+| `/dashboard` | ~3s | ✅ ~8–10s (SPX 7504→7510) | React #418, AudioContext ×4 | LIVE desk; 0DTE matrix + GEX walls |
+| `/flows` | ~2–3s | SSE tape | forced reflow | 10+ live anomalies (NVDA $2.1M, TSLA $4.9M+$7.3M) |
+| `/heatmap` Matrix+Profile | ~2–3s | LIVE badge | preload ×6 | SPY ~748; flip 746, call 750, put 745 |
+| `/grid` | ~2s | panels poll | preload ×2 | **10 of 12 panels** visible in viewport; APIs 200 |
+| `/nighthawk` | ~2–3s | EDITION LIVE | clean | 2 plays 2026-07-01; track 62.5% target hit |
+| `/terminal` (Largo) | — | API ~45s | — | Browser pass skipped; API test ✅ grounded |
+| `/track-record` | ~2s | LIVE ~60s | clean | ODTE 3W/8L (11 signals); Night Hawk EOD checkpoint |
+
+### Missing-field audit (pass 1 — RTH)
+
+| Field | Page | Backing API | Cause | Action |
+|---|---|---|---|---|
+| TSLA/META flip `—` | Thermal matrix | sparse far-dated chain | **Upstream gap** | Expected |
+| Grid "10 of 12" | `/grid` | bootstrap 200 | **Viewport/layout** — scroll reveals more | P2 watch |
+| `flow_0dte_net` 0 | grid bootstrap pulse | `/api/market/spx/pulse` | **Data** — verify if 0 is real off tape | P2 watch |
+| VIX change sign +0.12% | `/api/market/indices` | Polygon -0.24% at 13:09 | **Transient cache** — cleared by 13:35 | Resolved |
+
+### Cross-tool agreement (verified)
+
+| Metric | Dashboard | Thermal/Grid | Largo | API canonical |
+|---|---|---|---|---|
+| SPX spot | ~7508 | — | — | ~7505 (`spx/desk`) |
+| SPY spot | — | ~748 | — | ~748 (`gex-positioning`) |
+| SPX GEX flip/walls | desk | bootstrap ~7495/7500/7400 | — | ~7479/7550/7400 (`gex-positioning`) — **call_wall Δ50pt cache skew** |
+| GEX net magnitude | pulse ~40B | bootstrap ~26B vs gex ~37B | — | **P2 watch** — posture `long` agrees |
+| Track record closed | 11 | nighthawk 8 resolved | — | 11 (`public/track-record`) |
+
+### Ops watch
+
+| ID | Item | Status |
+|---|---|---|
+| **OPS-7** | Sentry `Not Found` + `fetch failed` + `Query read timeout` | Watch |
+| **OPS-13** | React #418 on `/dashboard` | **P2** — known hydration class |
+| **OPS-14** | CSS preload warnings (all pages) | **P2** — non-blocking perf |
+| **OPS-15** | Grid panel skeleton / "10 of 12" viewport | **P2 watch** — APIs healthy |
+| **OPS-16** | RTH Postgres SSL on `proxy.rlwy` | **P1 fix** — PR this pass |
+| **OPS-17** | `nights-watch-warm` stale 19m (limit 10m) at 13:33 | **Resolved** — manual `?force=1`; cron resumed (3 ok/20m) |
+
+**No new P0.** OPS-16 fix PR opened. No GitHub issue — self-healed writer + infra fix in-flight.
+
 
 **Session:** Tue 30 Jun 2026, 17:21–17:45 ET (**after-hours**). Agent: autonomous cloud session. Premium Clerk admin via Playwright `sign_in_token` (audit user deleted post-pass). Confirms pass 6 with Playwright automation + Largo API session test.
 
