@@ -110,7 +110,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
   const isFeatureActive = FEATURE_LINKS.some((l) => path.startsWith(l.href));
   const solid = scrolled || !isHome;
   const isLearnActive = path.startsWith("/learn");
-  const isTrackActive = path.startsWith("/track-record");
+  const isAdminTrackActive = path.startsWith("/admin/track-record");
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -297,18 +297,20 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
             </Link>
           </li>
 
-          <li className="nav-pill-li">
-            <Link
-              href="/track-record"
-              className={clsx("nav-pill-item", isTrackActive && "nav-pill-item-active")}
-            >
-              Track Record
-            </Link>
-          </li>
+          {showAdmin && (
+            <li className="nav-pill-li">
+              <Link
+                href="/admin/track-record"
+                className={clsx("nav-pill-item nav-pill-admin", isAdminTrackActive && "nav-pill-item-active")}
+              >
+                Track Record
+              </Link>
+            </li>
+          )}
 
           {showAdmin && (
             <li className="nav-pill-li">
-              <Link href="/admin" className={clsx("nav-pill-item nav-pill-admin", path.startsWith("/admin") && "nav-pill-item-active")}>
+              <Link href="/admin" className={clsx("nav-pill-item nav-pill-admin", path.startsWith("/admin") && !isAdminTrackActive && "nav-pill-item-active")}>
                 Admin
               </Link>
             </li>
@@ -403,13 +405,15 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
               >
                 Learn
               </Link>
-              <Link
-                href="/track-record"
-                onClick={() => setMobileOpen(false)}
-                className={clsx("nav-sheet-link font-syne", isTrackActive && "nav-pill-item-active")}
-              >
-                Track Record
-              </Link>
+              {showAdmin && (
+                <Link
+                  href="/admin/track-record"
+                  onClick={() => setMobileOpen(false)}
+                  className={clsx("nav-sheet-link font-syne nav-pill-admin", isAdminTrackActive && "nav-pill-item-active")}
+                >
+                  Track Record
+                </Link>
+              )}
               {showAdmin && (
                 <Link href="/admin" onClick={() => setMobileOpen(false)} className="nav-sheet-link font-syne nav-pill-admin">
                   Admin
