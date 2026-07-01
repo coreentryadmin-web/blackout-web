@@ -324,8 +324,36 @@ if (replicaCount >= 1 && runningReplicas != null && replicaCount === runningRepl
   ok("REPLICA_COUNT check skipped (single replica or unknown)");
 }
 
-// ── 5. Railway logs — options-socket / uw-socket churn ───────────────────────
-console.log("\n5. Railway logs (socket churn)");
+// ── 5. Options / UW socket health (HTTP probe first; log grep supplementary) ─
+console.log("\n5. Socket health (options + UW)");
+const cronSecret = (process.env.CRON_SECRET ?? rwVars.CRON_SECRET ?? "").trim();
+let optionsHttpOk = false;
+let optionsHttpDetail = "";
+
+if (cronSecret) {
+  try {
+    const res = await fetch(`${BASE}/api/cron/socket-health`, {
+      headers: { Authorization: `Bearer ${cronSecret}` },
+    });
+    const body = await res.json();
+    const opt = body.websockets?.options;
+    if (res.status === 200 && opt?.ok) {
+      optionsHttpOk = true;
+      optionsHttpDetail = opt.detail ?? "ok";
+      ok(`options-socket (HTTP probe): ${optionsHttpDetail}`);
+    } else if (opt) {
+      optionsHttpDetail = opt.detail ?? `HTTP ${res.status}`;
+      warn(`options-socket (HTTP probe): ${optionsHttpDetail}`);
+    } else {
+      warn(`options-socket HTTP probe: unexpected response HTTP ${res.status}`);
+    }
+  } catch (e) {
+    warn(`options-socket HTTP probe failed: ${e.message}`);
+  }
+} else {
+  warn("CRON_SECRET unset — skipping options-socket HTTP probe (log grep only)");
+}
+
 if (skipRailway) {
   warn("Railway log checks skipped (GITHUB_ACTIONS or SKIP_RAILWAY=1)");
 } else {
@@ -334,10 +362,16 @@ if (skipRailway) {
     const opt1006 = (logs.match(/options-socket.*1006.*failures=(\d+)/g) || []);
     const lastFail = opt1006.length ? Number(opt1006[opt1006.length - 1].match(/failures=(\d+)/)?.[1] ?? 0) : 0;
     const optAuth = /options-socket.*authenticated/.test(logs);
-    if (lastFail >= 10) fail(`options-socket 1006 loop — failures=${lastFail} (Night's Watch marks may degrade)`);
-    else if (lastFail > 0) warn(`options-socket recent 1006 failures=${lastFail}`);
+    // Log grep is brittle across multi-replica clusters (misses the leader, retains end-of-RTH
+    // 1006 history off-hours). Prefer the live HTTP probe; only fail on log churn when the probe
+    // also reports unhealthy (issue #116).
+    if (lastFail >= 10 && !optionsHttpOk) {
+      fail(`options-socket 1006 loop — failures=${lastFail} (Night's Watch marks may degrade)`);
+    } else if (lastFail >= 10 && optionsHttpOk) {
+      warn(`options-socket historical 1006 churn in logs (failures=${lastFail}) — HTTP probe ok now`);
+    } else if (lastFail > 0) warn(`options-socket recent 1006 failures=${lastFail}`);
     else if (optAuth) ok("options-socket authenticated in recent logs");
-    else warn("options-socket: no recent authenticated line (may be off-hours or disabled)");
+    else if (!optionsHttpOk) warn("options-socket: no recent authenticated line (may be off-hours or disabled)");
 
     if (/uw-socket.*stall watchdog/i.test(logs)) warn("uw-socket stall reconnects in recent logs");
     else ok("No uw-socket stall storms in recent logs");
