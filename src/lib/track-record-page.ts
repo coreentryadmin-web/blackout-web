@@ -54,9 +54,20 @@ export function isNighthawkOutcomeScoreable(r: NighthawkPlayOutcomeRow): boolean
   return r.outcome !== "pending" && !nhStopDataUnavailable(r);
 }
 
+// A legitimate published entry range is a tight intraday band. If either side is
+// non-positive, or the range width exceeds 20% of the average, one side is almost
+// certainly corrupt (e.g. a stray "17" against a stock trading near $450) — treat
+// the entry as unusable rather than let a garbage value skew the midpoint.
+const MAX_ENTRY_RANGE_WIDTH_PCT = 0.2;
+
 function nhEntryMid(row: NighthawkPlayOutcomeRow): number | null {
   if (row.entry_range_low != null && row.entry_range_high != null) {
-    return (row.entry_range_low + row.entry_range_high) / 2;
+    const { entry_range_low: low, entry_range_high: high } = row;
+    if (low <= 0 || high <= 0) return null;
+    const avg = (low + high) / 2;
+    const width = Math.abs(high - low);
+    if (width > avg * MAX_ENTRY_RANGE_WIDTH_PCT) return null;
+    return avg;
   }
   return row.next_day_open;
 }
@@ -69,7 +80,7 @@ function nhReturnPct(row: NighthawkPlayOutcomeRow): number | null {
   return raw * 100;
 }
 
-function nhFromRows(rows: NighthawkPlayOutcomeRow[]): TrackRecordPagePayload["nightHawk"] {
+export function nhFromRows(rows: NighthawkPlayOutcomeRow[]): TrackRecordPagePayload["nightHawk"] {
   const scoreable = rows.filter(isNighthawkOutcomeScoreable);
   const winners = scoreable.filter((r) => r.outcome === "target");
   const losers = scoreable.filter((r) => r.outcome === "stop");
