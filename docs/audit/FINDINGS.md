@@ -7,6 +7,19 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🔴 HIGH — SPX GEX heatmap chain still truncating at the (already-raised) 40-page guard — walls/OI/IV understated, likely driving oversized cross-validation divergence
+**Status:** CONFIRMED live, currently recurring. **Not fixed by me — `polygon-options-gex.ts` is Cursor's file per this session's coordination boundary; flagging for Cursor.**
+
+**Where:** `fetchHeatmapBand()` in `src/lib/providers/polygon-options-gex.ts:1168-1200`. `HEATMAP_PAGE_GUARD` (line 1154) was already raised **16 → 40** in an earlier fix this session specifically because SPX's full ±6%-band chain across ~8 expiries was overflowing the old 16-page cap (250 contracts/page). Live production logs (captured 2026-07-01 ~17:11-17:14 UTC, post-#217 deploy) show it now overflowing 40 pages too:
+```
+[polygon-gex] fetchHeatmapBand(I:SPX) truncated: hit 40-page guard with next_url still set — chain incomplete, walls/OI/IV understated. Raise the page guard or paginate fully if this recurs.
+```
+Firing repeatedly (multiple times per minute) — not a one-off. `fetchPolygonOiByExpiry` hit its 12-page guard too, for at least AMD.
+
+**Why it matters:** the function's own comment says the build is a cached warm path (heatmap-warm cron, paced by the cluster rate-limiter) — extra pages don't pressure the per-user read budget, so there's no cost reason to keep the cap low. An incomplete chain directly understates the computed walls/OI/IV, which is a plausible root cause (not just the already-documented sign-blind self-check) for the unusually large `gex_cross_validation` divergences observed in the same log window — **400-600pt divergence for SPX**, an order of magnitude bigger than the 51.1pt example already on file in the "sign-blind self-check" finding below. A wall/flip computed from a truncated chain is wrong, not just mislabeled.
+
+**Suggested fix (for Cursor, not applied here):** raise `HEATMAP_PAGE_GUARD` again (env-tunable via `OPTIONS_HEATMAP_PAGE_GUARD`, currently defaults to 40) or drop the cap entirely and fully follow `next_url` on this specific warm-cache path, per the function's own comment.
+
 ## 🟢 FIXED — Two follow-up gaps found after PR #205 and #207 merged (spotted by Cursor's post-merge review)
 **Status:** FIXED in PR `fix/platform-intel-brief-staleness` and PR `fix/nighthawk-entry-range-dedup`.
 
