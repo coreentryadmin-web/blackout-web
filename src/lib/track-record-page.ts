@@ -1,6 +1,7 @@
 import { fetchNighthawkOutcomeAnalytics, type NighthawkPlayOutcomeRow } from "@/lib/db";
 import { fetchPlayOutcomeStats, type PlayOutcomeStats } from "@/lib/spx-play-outcomes";
 import { buildPublicTrackRecord } from "@/lib/track-record-public";
+import { entryRangeMid } from "@/lib/nighthawk/entry-range";
 
 /** Shape returned by GET /api/track-record — shared with TrackRecordView. */
 export type TrackRecordPagePayload = {
@@ -55,9 +56,9 @@ export function isNighthawkOutcomeScoreable(r: NighthawkPlayOutcomeRow): boolean
 }
 
 function nhEntryMid(row: NighthawkPlayOutcomeRow): number | null {
-  if (row.entry_range_low != null && row.entry_range_high != null) {
-    return (row.entry_range_low + row.entry_range_high) / 2;
-  }
+  const mid = entryRangeMid(row.entry_range_low, row.entry_range_high);
+  if (mid != null) return mid;
+  if (row.entry_range_low != null && row.entry_range_high != null) return null; // corrupt range, no fallback
   return row.next_day_open;
 }
 
@@ -69,7 +70,7 @@ function nhReturnPct(row: NighthawkPlayOutcomeRow): number | null {
   return raw * 100;
 }
 
-function nhFromRows(rows: NighthawkPlayOutcomeRow[]): TrackRecordPagePayload["nightHawk"] {
+export function nhFromRows(rows: NighthawkPlayOutcomeRow[]): TrackRecordPagePayload["nightHawk"] {
   const scoreable = rows.filter(isNighthawkOutcomeScoreable);
   const winners = scoreable.filter((r) => r.outcome === "target");
   const losers = scoreable.filter((r) => r.outcome === "stop");
