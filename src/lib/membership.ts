@@ -6,8 +6,12 @@ import {
   PREMIUM_MEMBERSHIP_STATUSES,
   resolveTierFromMemberships,
 } from "@/lib/whop";
+import { isMembershipInDunningGrace } from "@/lib/whop-dunning";
 import { isMembershipRevoked } from "@/lib/whop-revocation";
 import { publishTierChanged } from "@/lib/tier-cache";
+import { sortMemberships } from "@/lib/membership-sort";
+
+export { sortMemberships } from "@/lib/membership-sort";
 
 type MembershipMetadata = {
   tier?: Tier;
@@ -63,26 +67,6 @@ async function findWhopUserIdsByEmail(
   return Array.from(userIds);
 }
 
-// Deterministic membership ordering: ACTIVE/TRIALING first, then most-recently-created, so [0] is
-// always the "best" membership. (created_at is an ISO string — Date.parse, not a numeric cast.)
-const STATUS_PRIORITY: Record<string, number> = {
-  active: 0,
-  trialing: 1,
-  completed: 2,
-  past_due: 3,
-  canceling: 4,
-};
-function sortMemberships(memberships: MembershipListResponse[]): MembershipListResponse[] {
-  return [...memberships].sort((a, b) => {
-    const aPriority = STATUS_PRIORITY[a.status] ?? 99;
-    const bPriority = STATUS_PRIORITY[b.status] ?? 99;
-    if (aPriority !== bPriority) return aPriority - bPriority;
-    const aTs = Date.parse((a as unknown as { created_at?: string }).created_at ?? "") || 0;
-    const bTs = Date.parse((b as unknown as { created_at?: string }).created_at ?? "") || 0;
-    return bTs - aTs;
-  });
-}
-
 /**
  * Resolve premium/free for ONE email's Whop memberships (no Clerk write). Fail-CLOSED on a
  * member:email:read outage (throws, so the caller leaves the existing tier intact). Extracted so a
@@ -128,10 +112,14 @@ async function resolveMembershipTierForEmail(
   // the membership id to the revocation denylist, so a still-'completed' refunded purchase no longer
   // grants premium.
   const revoked = new Set<string>();
+  const dunningGrace = new Set<string>();
   for (const m of sorted) {
     if (m.id && (await isMembershipRevoked(m.id))) revoked.add(m.id);
+    if (m.id && m.status === "past_due" && (await isMembershipInDunningGrace(m.id))) {
+      dunningGrace.add(m.id);
+    }
   }
-  const tier = resolveTierFromMemberships(sorted, revoked);
+  const tier = resolveTierFromMemberships(sorted, revoked, dunningGrace);
   const activeMembership = sorted.find((m) => !revoked.has(m.id)) ?? sorted[0];
   return { tier, activeMembership };
 }

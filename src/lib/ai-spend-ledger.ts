@@ -49,6 +49,14 @@ export function aiSpendKillSwitchUsd(env: NodeJS.ProcessEnv = process.env): numb
  * never leave the daily key without a TTL (a TTL-less key would carry spend across ET days
  * forever). Returns the post-incr running total as INCRBYFLOAT's native bulk-string reply.
  */
+export const AI_SPEND_HEADROOM_LUA = `
+local ceiling = tonumber(ARGV[1])
+if ceiling == nil then return 1 end
+local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+if current >= ceiling then return 0 end
+return 1
+`;
+
 export const AI_SPEND_INCR_LUA =
   "local v = redis.call('INCRBYFLOAT', KEYS[1], ARGV[1]); redis.call('EXPIRE', KEYS[1], ARGV[2]); return v";
 

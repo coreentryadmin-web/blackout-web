@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { requireAdmin } from "@/lib/admin-access";
 import { PageHeader } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
@@ -20,6 +21,14 @@ export default async function AdminPage() {
           title="Admin"
           subtitle="Engine health, incidents, API telemetry, and desk analytics."
           badge={<ProductMark product="spx" size={44} />}
+          actions={
+            <Link
+              href="/admin/track-record"
+              className="font-mono text-[11px] uppercase tracking-widest text-bull/80 transition-colors hover:text-bull"
+            >
+              Track record →
+            </Link>
+          }
         />
         <AdminLaunchStatusPanel />
         <Suspense fallback={<p className="admin-api-muted p-6">Loading admin…</p>}>

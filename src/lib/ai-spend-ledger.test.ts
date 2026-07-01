@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   aiSpendKey,
   AI_SPEND_KEY_PREFIX,
+  AI_SPEND_HEADROOM_LUA,
   aiSpendAlertThresholdUsd,
   DEFAULT_AI_SPEND_ALERT_USD,
   aiSpendKillSwitchUsd,
@@ -70,6 +71,14 @@ test("crossing is false for non-positive added or threshold", () => {
   assert.equal(spendThresholdJustCrossed(100, 0, 50), false);
   assert.equal(spendThresholdJustCrossed(100, -5, 50), false);
   assert.equal(spendThresholdJustCrossed(100, 10, 0), false);
+});
+
+// ---- AI_SPEND_HEADROOM_LUA (atomic reserve predicate) ----
+test("headroom Lua: rejects when current >= ceiling, allows when below", () => {
+  assert.match(AI_SPEND_HEADROOM_LUA, /redis\.call\('GET'/);
+  assert.match(AI_SPEND_HEADROOM_LUA, /current >= ceiling/);
+  assert.match(AI_SPEND_HEADROOM_LUA, /return 0/);
+  assert.match(AI_SPEND_HEADROOM_LUA, /return 1/);
 });
 
 // ---- isOverAiSpendCeiling ----

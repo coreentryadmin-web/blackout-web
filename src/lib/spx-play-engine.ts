@@ -62,7 +62,6 @@ import {
   watchSetupKey,
 } from "@/lib/spx-play-watch";
 import { buildOptionTicket, type OptionTicket } from "@/lib/spx-play-options";
-import { recordPlayEntry } from "@/lib/spx-play-outcomes";
 import type { PlayExitAction } from "@/lib/spx-play-outcomes";
 import {
   effectiveFullMinScore,
@@ -906,21 +905,41 @@ async function evaluateFlatPlay(
   });
 
   const openedAt = new Date().toISOString();
-  const { row: opened, created } = await openPlay({
-    session_date: sessionDate,
-    direction: dir,
-    entry_price: desk.price,
-    entry_score: confluence.score,
-    stop: confluence.levels.stop,
-    target: confluence.levels.target,
-    grade: confluence.grade,
-    headline: contractHeadline,
-    opened_at: openedAt,
-    option_strike: optionTicket.strike,
-    option_type: optionTicket.option_type,
-    option_label: optionTicket.contract_label,
-    option_premium: optionTicket.premium_range,
-  });
+  const { row: opened, created } = await openPlay(
+    {
+      session_date: sessionDate,
+      direction: dir,
+      entry_price: desk.price,
+      entry_score: confluence.score,
+      stop: confluence.levels.stop,
+      target: confluence.levels.target,
+      grade: confluence.grade,
+      headline: contractHeadline,
+      opened_at: openedAt,
+      option_strike: optionTicket.strike,
+      option_type: optionTicket.option_type,
+      option_label: optionTicket.contract_label,
+      option_premium: optionTicket.premium_range,
+    },
+    {
+      session_date: sessionDate,
+      direction: dir,
+      entry_path: entryPath,
+      grade: confluence.grade,
+      score: confluence.score,
+      confidence: confluence.confidence,
+      entry_price: desk.price,
+      stop: confluence.levels.stop,
+      target: confluence.levels.target,
+      headline: contractHeadline,
+      factors: confluence.factors,
+      confirmations,
+      mtf,
+      claude,
+      option_ticket: optionTicket,
+      opened_at: openedAt,
+    }
+  );
 
   if (!created) {
     const existing = await loadOpenPlay();
@@ -955,40 +974,6 @@ async function evaluateFlatPlay(
   }
 
   if (mutate) {
-    try {
-      await recordPlayEntry({
-        open_play_id: opened.id,
-        session_date: sessionDate,
-        direction: dir,
-        entry_path: entryPath,
-        grade: confluence.grade,
-        score: confluence.score,
-        confidence: confluence.confidence,
-        entry_price: desk.price,
-        stop: confluence.levels.stop,
-        target: confluence.levels.target,
-        headline: contractHeadline,
-        factors: confluence.factors,
-        confirmations,
-        mtf,
-        claude,
-        option_ticket: optionTicket,
-        opened_at: openedAt,
-      });
-    } catch (err) {
-      // The play HAS opened in spx_open_play (openPlay above succeeded) but the
-      // matching spx_play_outcomes entry failed to write. We intentionally do NOT
-      // crash the engine on a record failure — the live position must keep being
-      // managed — but this leaves an orphaned open whose eventual close will grade
-      // 0 rows. recordPlayEntry already bumped the durable write-failure counter
-      // (read by the track-record data-correctness verifier); log loudly here too.
-      console.error(
-        `[spx-play-engine] recordPlayEntry FAILED for open_play_id=${opened.id} ` +
-          `(play opened but NOT recorded — track record will not grade it):`,
-        err instanceof Error ? err.message : err
-      );
-    }
-
     void notifyPlayDiscord({
       action: "BUY",
       direction: dir,

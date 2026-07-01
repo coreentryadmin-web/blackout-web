@@ -76,15 +76,8 @@ export type PlayOutcomeStats = {
 const memoryOutcomes: PlayOutcomeRow[] = [];
 
 // ---------------------------------------------------------------------------
-// Write-failure observability. recordPlayEntry runs behind a swallow-and-log
-// try/catch in the engine (a record failure must NEVER crash the live trading
-// engine mid-tick). But a swallowed failure here is exactly the class of bug
-// that leaves spx_play_outcomes permanently empty — the engine opens a play in
-// spx_open_play, the matching outcome INSERT throws, and the later close UPDATE
-// (WHERE outcome='open') silently affects 0 rows. To make that diagnosable in
-// production we keep a durable, cross-replica counter in platform_meta that the
-// data-correctness track-record verifier reads. In-memory fallback keeps it
-// working (per-replica) when DATABASE_URL is unset.
+// Write-failure observability. Open-path entry writes are transactional in insertOpenSpxPlay;
+// this counter mainly tracks close-path failures and legacy entry failures.
 // ---------------------------------------------------------------------------
 const PLAY_WRITE_FAILURE_META_KEY = "spx_play_outcome_write_failures";
 
@@ -313,12 +306,12 @@ export async function recordPlayClose(
 
 export async function fetchPlayOutcomeStats(): Promise<PlayOutcomeStats> {
   if (!dbConfigured()) {
-    return aggregateStats(memoryOutcomes.filter((r) => r.outcome !== "open"));
+    return computePlayOutcomeStats(memoryOutcomes.filter((r) => r.outcome !== "open"));
   }
   await ensureSchema();
   const { fetchClosedPlayOutcomes } = await import("@/lib/db");
   const rows = await fetchClosedPlayOutcomes(500);
-  return aggregateStats(rows);
+  return computePlayOutcomeStats(rows);
 }
 
 function bucket(rows: PlayOutcomeRow[], path: PlayEntryPath) {
@@ -340,7 +333,8 @@ function bucket(rows: PlayOutcomeRow[], path: PlayEntryPath) {
   };
 }
 
-function aggregateStats(rows: PlayOutcomeRow[]): PlayOutcomeStats {
+/** Pure stats aggregation — exported for unit tests. */
+export function computePlayOutcomeStats(rows: PlayOutcomeRow[]): PlayOutcomeStats {
   const closed = rows.filter((r) => r.outcome !== "open");
   const wins = closed.filter((r) => r.outcome === "win").length;
   const losses = closed.filter((r) => r.outcome === "loss").length;

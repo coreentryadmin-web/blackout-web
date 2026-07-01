@@ -2,8 +2,6 @@ import { fetchRecentFlows } from "@/lib/db";
 import { subscribeFlowEvents, publishFlowEvent } from "@/lib/flow-events";
 import {
   computeFlowStrikeStacks,
-  withStrikeStacks,
-  type FlowStrikeStack,
 } from "@/lib/largo/flow-strike-stacks";
 import type { FlowTapeSummary } from "./types";
 
@@ -14,20 +12,6 @@ export async function getFlowTape(opts?: { ticker?: string; limit?: number }) {
     limit: opts?.limit ?? 25,
     ticker: opts?.ticker ? opts.ticker.toUpperCase() : undefined,
   });
-}
-
-export function getFlowStrikeStacks(
-  alerts: Parameters<typeof computeFlowStrikeStacks>[0]
-): FlowStrikeStack[] {
-  return computeFlowStrikeStacks(alerts);
-}
-
-export async function getFlowTapeWithStacks(opts?: { ticker?: string; limit?: number }) {
-  const rows = await getFlowTape(opts);
-  return {
-    rows,
-    strike_stacks: computeFlowStrikeStacks(rows),
-  };
 }
 
 export async function getFlowTapeSummary(opts?: { ticker?: string; limit?: number }): Promise<FlowTapeSummary> {

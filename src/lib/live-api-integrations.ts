@@ -30,7 +30,6 @@ export const UW_FETCH_FUNCTION_PATHS: Record<string, string> = {
   fetchUwSpotExposuresByExpiry: "/api/stock/{ticker}/spot-exposures/expiry-strike",
   fetchUwSpotExposuresExpiryStrike: "/api/stock/{ticker}/spot-exposures/expiry-strike",
   fetchUwOdteSpotExposuresByStrike: "/api/stock/{ticker}/spot-exposures/expiry-strike",
-  fetchUwOdteGex: "/api/stock/{ticker}/spot-exposures/expiry-strike",
   fetchUwFlow0dte: "/api/stock/{ticker}/flow-per-strike-intraday",
   fetchUwFlowPerExpiry: "/api/stock/{ticker}/flow-per-expiry",
   fetchUwNetFlowExpiry: "/api/net-flow/expiry",

@@ -8,6 +8,7 @@ import {
   aiSpendKey,
   aiSpendKillSwitchUsd,
   aiSpendLocalBackstopFrac,
+  AI_SPEND_HEADROOM_LUA,
   isOverAiSpendCeiling,
   isOverAiSpendLocalBackstop,
 } from "@/lib/ai-spend-ledger";
@@ -201,6 +202,8 @@ async function isLargoKillSwitchTripped(): Promise<boolean> {
   const redis = (await getUwCacheRedis()) as GateRedis;
   if (!redis) return localBackstopTripped(); // Redis down → fail CLOSED to the local backstop
   try {
+    const headroom = await redis.eval(AI_SPEND_HEADROOM_LUA, 1, aiSpendKey(), String(ceiling));
+    if (Number(headroom) === 0) return true;
     const raw = await redis.get(aiSpendKey());
     return isOverAiSpendCeiling(Number(raw ?? 0), ceiling);
   } catch {

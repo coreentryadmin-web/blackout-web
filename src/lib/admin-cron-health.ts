@@ -14,18 +14,11 @@ import {
   isWeekdayEt,
   nextTradingDayEt,
 } from "@/lib/nighthawk/session";
-import { etMinutes, etClock } from "@/lib/spx-play-session-time";
+import { isEtCashRth } from "@/lib/et-market-hours";
 
-/**
- * RTH gate (DST-aware ET, weekdays only) mirroring the market-hours cron routes
- * (e.g. nights-watch-warm / heatmap-warm): 9:30 AM–4:00 PM ET, Mon–Fri. Used to
- * decide whether a `market_hours_only` cron that correctly skipped off-window
- * should be treated as healthy rather than stale.
- */
+/** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
-  if (!isWeekdayEt()) return false;
-  const mins = etMinutes(now);
-  return mins >= etClock(9, 30) && mins <= etClock(16, 0);
+  return isEtCashRth(now);
 }
 
 function positiveEnvInt(name: string, fallback: number): number {

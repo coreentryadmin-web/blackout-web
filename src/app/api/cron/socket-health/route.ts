@@ -20,74 +20,101 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  ensureDataSockets();
+  let payload: {
+    ok: boolean;
+    as_of: string;
+    market_hours: boolean;
+    websockets: Record<string, unknown>;
+    error?: string;
+  } | null = null;
 
-  const options = getOptionsSocketStatus();
-  const luld = getStocksSocketStatus();
-  const authenticatedShards = options.shards.filter((s) => s.authenticated).length;
-  const authFailedShards = options.shards.filter((s) => s.auth_failed).length;
-  const rth = inOptionsMarketHours();
+  try {
+    ensureDataSockets();
 
-  let options_ok = true;
-  let options_detail = "disabled — REST snapshot fallback";
+    const options = getOptionsSocketStatus();
+    const luld = getStocksSocketStatus();
+    const authenticatedShards = options.shards.filter((s) => s.authenticated).length;
+    const authFailedShards = options.shards.filter((s) => s.auth_failed).length;
+    const rth = inOptionsMarketHours();
 
-  if (options.enabled) {
-    if (!rth) {
-      options_detail = "enabled, off-hours — auth not required";
-    } else if (options.total_contracts === 0) {
-      options_detail = "enabled, no held contracts — auth not required";
-    } else if (authenticatedShards > 0) {
-      options_detail = `authenticated (${authenticatedShards} shard(s), ${options.total_contracts} contracts)`;
-    } else if (authFailedShards > 0) {
-      options_ok = false;
-      options_detail = `auth failed on ${authFailedShards} shard(s) — check POLYGON_API_KEY / options WS entitlement`;
-    } else {
-      options_ok = false;
-      options_detail = "enabled with held contracts but no authenticated shard yet";
+    let options_ok = true;
+    let options_detail = "disabled — REST snapshot fallback";
+
+    if (options.enabled) {
+      if (!rth) {
+        options_detail = "enabled, off-hours — auth not required";
+      } else if (options.total_contracts === 0) {
+        options_detail = "enabled, no held contracts — auth not required";
+      } else if (authenticatedShards > 0) {
+        options_detail = `authenticated (${authenticatedShards} shard(s), ${options.total_contracts} contracts)`;
+      } else if (authFailedShards > 0) {
+        options_ok = false;
+        options_detail = `auth failed on ${authFailedShards} shard(s) — check POLYGON_API_KEY / options WS entitlement`;
+      } else {
+        options_ok = false;
+        options_detail = "enabled with held contracts but no authenticated shard yet";
+      }
     }
+
+    let luld_ok = true;
+    let luld_detail = "disabled — UW trading_halts only";
+    if (luld.enabled) {
+      if (!rth) {
+        luld_detail = "enabled, off-hours — auth not required";
+      } else if (luld.authenticated && luld.ws_state === "open") {
+        luld_detail = `live (${luld.tickers.join(", ")})`;
+      } else {
+        luld_ok = false;
+        luld_detail = `enabled but not authenticated (${luld.ws_state})`;
+      }
+    }
+
+    payload = {
+      ok: options_ok && luld_ok,
+      as_of: new Date().toISOString(),
+      market_hours: rth,
+      websockets: {
+        polygon_indices: getIndexStoreStatus(),
+        unusual_whales: getUwSocketHealth(),
+        options: {
+          ...options,
+          authenticated_shards: authenticatedShards,
+          auth_failed_shards: authFailedShards,
+          ok: options_ok,
+          detail: options_detail,
+        },
+        stocks_luld: {
+          ...luld,
+          ok: luld_ok,
+          detail: luld_detail,
+        },
+      },
+    };
+  } catch (err) {
+    console.error("[cron/socket-health]", err instanceof Error ? err.message : err);
+    payload = {
+      ok: false,
+      as_of: new Date().toISOString(),
+      market_hours: false,
+      websockets: {},
+      error: err instanceof Error ? err.message : "socket-health probe failed",
+    };
+  } finally {
+    await logCronRun("socket-health", started, {
+      ok: payload?.ok ?? false,
+      market_hours: payload?.market_hours ?? false,
+      error: payload && "error" in payload ? payload.error : undefined,
+    }).catch((err) => {
+      console.error("[cron/socket-health] logCronRun failed:", err instanceof Error ? err.message : err);
+    });
   }
 
-  let luld_ok = true;
-  let luld_detail = "disabled — UW trading_halts only";
-  if (luld.enabled) {
-    if (!rth) {
-      luld_detail = "enabled, off-hours — auth not required";
-    } else if (luld.authenticated && luld.ws_state === "open") {
-      luld_detail = `live (${luld.tickers.join(", ")})`;
-    } else {
-      luld_ok = false;
-      luld_detail = `enabled but not authenticated (${luld.ws_state})`;
-    }
+  if (payload == null) {
+    return NextResponse.json({ ok: false, error: "probe failed" }, { status: 500 });
   }
 
-  const payload = {
-    ok: options_ok && luld_ok,
-    as_of: new Date().toISOString(),
-    market_hours: rth,
-    websockets: {
-      polygon_indices: getIndexStoreStatus(),
-      unusual_whales: getUwSocketHealth(),
-      options: {
-        ...options,
-        authenticated_shards: authenticatedShards,
-        auth_failed_shards: authFailedShards,
-        ok: options_ok,
-        detail: options_detail,
-      },
-      stocks_luld: {
-        ...luld,
-        ok: luld_ok,
-        detail: luld_detail,
-      },
-    },
-  };
-
-  await logCronRun("socket-health", started, {
-    ok: payload.ok,
-    market_hours: rth,
-    options_ok,
-    luld_ok,
+  return NextResponse.json(payload, {
+    status: payload.ok ? 200 : 503,
+    headers: { "Cache-Control": "no-store" },
   });
-
-  return NextResponse.json(payload, { headers: { "Cache-Control": "no-store" } });
 }

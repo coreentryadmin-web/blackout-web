@@ -32,7 +32,7 @@ async function ensureRedisBridge(): Promise<void> {
   if (bridgeInit) return bridgeInit;
 
   bridgeInit = (async () => {
-    redisUnsubscribe = await redisSubscribe(FLOW_REDIS_CHANNEL, (message) => {
+    const { unsubscribe, subscribed } = await redisSubscribe(FLOW_REDIS_CHANNEL, (message) => {
       // Skips our OWN looped-back messages (already fanned locally) and strips the
       // origin tag; only genuine cross-instance flows are fanned + counted here.
       const flow = decodeFlowMessage(message, INSTANCE_ID);
@@ -41,7 +41,11 @@ async function ensureRedisBridge(): Promise<void> {
         fanOutLocal(flow);
       }
     });
-    bridgeReady = true;
+    redisUnsubscribe = unsubscribe;
+    bridgeReady = subscribed;
+    if (!subscribed) {
+      bridgeInit = null;
+    }
   })();
 
   return bridgeInit;

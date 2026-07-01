@@ -134,6 +134,7 @@ export function FlowFeed() {
   const [nighthawkEdition, setNighthawkEdition] = useState<NightHawkEdition | null>(null);
 
   const seenRef         = useRef(new Set<string>());
+  const loadGenerationRef = useRef(0);
   const replaySourceRef = useRef<FlowAlert[]>([]);
   const replayIdxRef    = useRef(0);
   const replayTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -389,8 +390,10 @@ export function FlowFeed() {
 
   // ── Data loading ──────────────────────────────────────────────────────────
   const loadFlows = useCallback(async () => {
+    const generation = ++loadGenerationRef.current;
     try {
       const d = await fetchFlows({ min_premium: Math.max(FLOOR_PREMIUM, minPremium), ticker: tickerFilter || undefined });
+      if (generation !== loadGenerationRef.current) return;
       // Bug 1 + gap #13: rebuild seenRef from REST so SSE can't re-add duplicates after a
       // reconnect. Seed BOTH the canonical alert_id (when the row carries one) and the
       // composite fallback, so an incoming SSE echo matches on whichever key it shares.

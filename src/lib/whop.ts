@@ -67,8 +67,18 @@ if (
   );
 }
 
-export function resolveTierFromMembership(membership: WhopMembershipLike): Tier | null {
+export function resolveTierFromMembership(
+  membership: WhopMembershipLike,
+  opts?: { dunningGraceIds?: ReadonlySet<string> }
+): Tier | null {
   if (!ACTIVE_STATUSES.has(membership.status)) return null;
+  // past_due only grants premium during webhook-granted dunning grace (whop-dunning.ts).
+  if (
+    membership.status === "past_due" &&
+    !opts?.dunningGraceIds?.has(membership.id)
+  ) {
+    return null;
+  }
 
   const planId = membership.plan.id;
   const productId = membership.product.id;
@@ -99,11 +109,14 @@ export function resolveTierFromMembership(membership: WhopMembershipLike): Tier 
  */
 export function resolveTierFromMemberships(
   memberships: WhopMembershipLike[],
-  revokedIds?: ReadonlySet<string>
+  revokedIds?: ReadonlySet<string>,
+  dunningGraceIds?: ReadonlySet<string>
 ): Tier {
   for (const membership of memberships) {
     if (revokedIds?.has(membership.id)) continue;
-    if (resolveTierFromMembership(membership) === "premium") return "premium";
+    if (resolveTierFromMembership(membership, { dunningGraceIds }) === "premium") {
+      return "premium";
+    }
   }
   return "free";
 }
