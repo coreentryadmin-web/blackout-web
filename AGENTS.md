@@ -63,13 +63,17 @@ The ~20 `railway.*.toml` files at the repo root are production cron *trigger* se
   PgBouncer remain manual Railway steps — the dashboard only reports posture.
 
 ### Railway (Cursor Cloud agents)
-- **`RAILWAY_TOKEN` is a project token** — `railway whoami` returns Unauthorized (expected). Pass
-  `--project 9282f541-a288-4c8b-a174-ee22016f4b1a` on mutating CLI calls, or export
-  `RAILWAY_PROJECT_ID=9282f541-a288-4c8b-a174-ee22016f4b1a` before `railway environment config` /
-  `railway environment edit` (those subcommands do not accept `--project`).
+- **Tokens:** Project tokens work for most ops (`variable set`, `redeploy`, `logs`, `environment edit`)
+  when `RAILWAY_PROJECT_ID=9282f541-a288-4c8b-a174-ee22016f4b1a` is set — `railway whoami` returns
+  Unauthorized on project tokens (expected). **Account-wide tokens** go in `RAILWAY_API_TOKEN` (unset
+  `RAILWAY_TOKEN`); required for `railway bucket create` / PITR enable (`Bad Access` on project token).
 - Production: `blackout-web` uses **5 replicas** (`iad=3`, `us-west2=2`), healthcheck **`/api/ready`**
   (90s), PgBouncer refs on `DATABASE_*`. Cron triggers use
   `CRON_TARGET_BASE_URL=http://blackout-web.railway.internal:8080` (private VPC).
+- **Postgres PITR (enabled 2026-07-01):** bucket **`Postgres-PITR`** (`iad`); Postgres service
+  `2ca6f7bc-c06b-4de2-ad10-f12807c37d84` has `WAL_ARCHIVE_*` vars; pgBackRest archives to bucket.
+  Restore via Postgres → Backups tab (datetime picker appears after first base backup). Do **not** use
+  `railway deploy -t postgres-pitr` on the existing DB (creates duplicate Postgres services).
 - `railway scale` may return Unauthorized on project tokens — patch replicas via `environment edit`
   `deploy.multiRegionConfig` instead.
 
