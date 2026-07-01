@@ -326,6 +326,29 @@ if (replicaCount >= 1 && runningReplicas != null && replicaCount === runningRepl
 
 // ── 5. Railway logs — options-socket / uw-socket churn ───────────────────────
 console.log("\n5. Railway logs (socket churn)");
+const cronSecret = process.env.CRON_SECRET?.trim() ?? "";
+let socketHealthOk = false;
+if (cronSecret) {
+  try {
+    const res = await fetch(`${BASE}/api/cron/socket-health`, {
+      headers: { Authorization: `Bearer ${cronSecret}` },
+    });
+    const body = await res.json();
+    const opt = body.websockets?.options;
+    if (res.status === 200 && opt) {
+      socketHealthOk = Boolean(opt.ok);
+      if (opt.ok) ok(`options-socket (HTTP): ${opt.detail}`);
+      else fail(`options-socket (HTTP): ${opt.detail}`);
+    } else {
+      warn(`options-socket HTTP probe returned ${res.status}`);
+    }
+  } catch (e) {
+    warn(`options-socket HTTP probe failed: ${e.message}`);
+  }
+} else {
+  warn("CRON_SECRET unset — skipping options-socket HTTP probe");
+}
+
 if (skipRailway) {
   warn("Railway log checks skipped (GITHUB_ACTIONS or SKIP_RAILWAY=1)");
 } else {
@@ -334,10 +357,14 @@ if (skipRailway) {
     const opt1006 = (logs.match(/options-socket.*1006.*failures=(\d+)/g) || []);
     const lastFail = opt1006.length ? Number(opt1006[opt1006.length - 1].match(/failures=(\d+)/)?.[1] ?? 0) : 0;
     const optAuth = /options-socket.*authenticated/.test(logs);
-    if (lastFail >= 10) fail(`options-socket 1006 loop — failures=${lastFail} (Night's Watch marks may degrade)`);
-    else if (lastFail > 0) warn(`options-socket recent 1006 failures=${lastFail}`);
+    // Log grep is unreliable on multi-replica clusters (#116) — HTTP socket-health is canonical.
+    if (lastFail >= 10 && !socketHealthOk) {
+      fail(`options-socket 1006 loop — failures=${lastFail} (Night's Watch marks may degrade)`);
+    } else if (lastFail >= 10) {
+      warn(`options-socket recent 1006 failures=${lastFail} (socket-health OK — likely leader churn)`);
+    } else if (lastFail > 0) warn(`options-socket recent 1006 failures=${lastFail}`);
     else if (optAuth) ok("options-socket authenticated in recent logs");
-    else warn("options-socket: no recent authenticated line (may be off-hours or disabled)");
+    else if (!socketHealthOk) warn("options-socket: no recent authenticated line (may be off-hours or disabled)");
 
     if (/uw-socket.*stall watchdog/i.test(logs)) warn("uw-socket stall reconnects in recent logs");
     else ok("No uw-socket stall storms in recent logs");

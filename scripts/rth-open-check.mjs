@@ -11,6 +11,7 @@
  */
 
 import { execSync, spawnSync } from "node:child_process";
+import { createAuditClient, resolveAuditDbUrl } from "./pg-audit.mjs";
 
 const ET = "America/New_York";
 const force = process.argv.includes("--force");
@@ -75,17 +76,7 @@ async function main() {
 
   if (force || inRthOpenWindow(now)) {
     console.log("\n2. RTH session checks");
-    let dbUrl = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
-    if (!dbUrl) {
-      try {
-        const vars = JSON.parse(
-          execSync("railway variables --service blackout-web --json 2>/dev/null", { encoding: "utf8" })
-        );
-        dbUrl = vars.DATABASE_PUBLIC_URL || vars.DATABASE_URL;
-      } catch {
-        /* optional */
-      }
-    }
+    const dbUrl = resolveAuditDbUrl();
 
     const failures = [];
     const ok = (m) => console.log(`  ✓ ${m}`);
@@ -95,11 +86,7 @@ async function main() {
     };
     if (dbUrl) {
       try {
-        const pg = await import("pg");
-        const c = new pg.default.Client({
-          connectionString: dbUrl,
-          ssl: dbUrl.includes("localhost") ? false : { rejectUnauthorized: false },
-        });
+        const c = createAuditClient(dbUrl);
         await c.connect();
 
         const eval15 = (
