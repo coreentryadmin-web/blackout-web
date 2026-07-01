@@ -57,15 +57,48 @@ export function sessionStatsFromMinuteBars(bars: AggBar[]): {
   };
 }
 
-export function priorDayFromDailyBars(bars: AggBar[]): {
+/** Calendar date (YYYY-MM-DD) of a bar timestamp in US Eastern (exchange) time. */
+function etYmdFromMs(ms: number): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: ET,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(ms));
+}
+
+export function priorDayFromDailyBars(
+  bars: AggBar[],
+  todayYmd: string = todayEtYmd()
+): {
   pdh: number | null;
   pdl: number | null;
   pdc: number | null;
 } {
-  // ISSUE-34: When fewer than 2 bars are returned, bars[0] is TODAY's bar, not the prior day.
-  // Returning today's bar as PDH/PDL/PDC produces wrong prior-day data — null is safer.
+  // The prior session = the most recent COMPLETED trading day: the last bar whose
+  // Eastern-time date is before today. Off-hours (pre-market / overnight / weekend) the
+  // last daily bar IS that session; during RTH the last bar is today's in-progress
+  // partial bar and must be skipped. Gaps (weekends/holidays) are handled naturally.
+  //
+  // Previously this blindly used bars[length-2], which is correct only while a partial
+  // "today" bar is present. Off-hours it skipped the true last session and returned data
+  // one full session stale — corrupting PDH/PDL/PDC and every derived level (the R1/R2/
+  // S1/S2 pivots, PDH/PDL breakouts). This supersedes the old ISSUE-34 length<2 guard.
+  if (bars.length === 0) return { pdh: null, pdl: null, pdc: null };
+  if (bars.every((b) => b.t != null)) {
+    for (let i = bars.length - 1; i >= 0; i -= 1) {
+      const b = bars[i];
+      if (b.t != null && etYmdFromMs(b.t) < todayYmd) {
+        return { pdh: b.h, pdl: b.l, pdc: b.c };
+      }
+    }
+    // Every bar is dated today (only a partial bar so far) — no completed prior session.
+    return { pdh: null, pdl: null, pdc: null };
+  }
+  // Timestamps unavailable: fall back to the conservative assumption that the last bar
+  // is today's partial and the prior completed session is the one before it.
   if (bars.length < 2) return { pdh: null, pdl: null, pdc: null };
-  const prior = bars[bars.length - 2] ?? bars[bars.length - 1];
+  const prior = bars[bars.length - 2];
   return { pdh: prior.h, pdl: prior.l, pdc: prior.c };
 }
 
