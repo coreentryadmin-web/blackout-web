@@ -187,11 +187,37 @@ function zeroDteExpiryFrom(expiries: string[]): string | null {
   return expiries.includes(today) ? today : expiries[0];
 }
 
+function peakStrikes(totals: Record<string, number>): {
+  maxPos: number | null;
+  maxNeg: number | null;
+} {
+  let maxPos: number | null = null;
+  let maxNeg: number | null = null;
+  let bestPos = -Infinity;
+  let bestNeg = Infinity;
+  for (const [s, v] of Object.entries(totals)) {
+    const strike = Number(s);
+    if (!Number.isFinite(strike)) continue;
+    if (v > bestPos) {
+      bestPos = v;
+      maxPos = strike;
+    }
+    if (v < bestNeg) {
+      bestNeg = v;
+      maxNeg = strike;
+    }
+  }
+  if (bestPos <= 0) maxPos = null;
+  if (bestNeg >= 0) maxNeg = null;
+  return { maxPos, maxNeg };
+}
+
 function rowHighlightClass(highlight: RowHighlight, isAnchor: boolean): string {
-  if (highlight === "max-pos") return "spx-odte-matrix-row--max-pos";
-  if (highlight === "max-neg") return "spx-odte-matrix-row--max-neg";
-  if (isAnchor) return "spx-odte-matrix-row--anchor";
-  return "";
+  const parts: string[] = [];
+  if (highlight === "max-pos") parts.push("spx-odte-matrix-row--max-pos");
+  if (highlight === "max-neg") parts.push("spx-odte-matrix-row--max-neg");
+  if (isAnchor) parts.push("spx-odte-matrix-row--anchor");
+  return parts.join(" ");
 }
 
 type DeskProps = { live?: boolean };
@@ -241,7 +267,11 @@ export function SpxOdteMatrixPanel({ live: deskLive }: DeskProps) {
   const levelTotals = useMemo(() => nonzeroTotals(filteredTotals), [filteredTotals]);
 
   const levels = useMemo(() => recomputeLevels(levelTotals, spot), [levelTotals, spot]);
+  const peaks = useMemo(() => peakStrikes(levelTotals), [levelTotals]);
   const anchor = useMemo(() => anchorStrike(levelTotals), [levelTotals]);
+
+  const maxPosStrike = peaks.maxPos ?? levels.posWall;
+  const maxNegStrike = peaks.maxNeg ?? levels.negWall;
 
   const spotStrike = useMemo(() => {
     const strikes = Object.keys(filteredTotals)
@@ -254,8 +284,8 @@ export function SpxOdteMatrixPanel({ live: deskLive }: DeskProps) {
   const rows = useMemo<MatrixRow[]>(() => {
     return strikesAxis.map((strike) => {
       const isAnchor = anchor != null && strike === anchor;
-      const isMaxPos = levels.posWall != null && strike === levels.posWall;
-      const isMaxNeg = levels.negWall != null && strike === levels.negWall;
+      const isMaxPos = maxPosStrike != null && strike === maxPosStrike;
+      const isMaxNeg = maxNegStrike != null && strike === maxNegStrike;
 
       let highlight: RowHighlight = null;
       if (isMaxPos) highlight = "max-pos";
@@ -268,7 +298,7 @@ export function SpxOdteMatrixPanel({ live: deskLive }: DeskProps) {
         isAnchor,
       };
     });
-  }, [strikesAxis, filteredTotals, levels.posWall, levels.negWall, anchor]);
+  }, [strikesAxis, filteredTotals, maxPosStrike, maxNegStrike, anchor]);
 
   const scrollBoxRef = useRef<HTMLDivElement | null>(null);
   const spotRowRef = useRef<HTMLTableRowElement | null>(null);
@@ -343,7 +373,7 @@ export function SpxOdteMatrixPanel({ live: deskLive }: DeskProps) {
           className="spx-odte-matrix-scroll flex-1 min-h-0 overflow-y-auto overscroll-contain"
           aria-label="SPX 0DTE net dealer gamma by strike"
         >
-          <table className="spx-odte-matrix-table w-full border-collapse font-mono text-[11px] tabular-nums">
+          <table className="spx-odte-matrix-table w-full border-collapse font-mono text-[12px] tabular-nums">
             <thead className="sticky top-0 z-10 bg-[#08080e]">
               <tr className="border-b border-white/10 text-[10px] uppercase tracking-wider text-white/55">
                 <th className="py-2 pl-1 pr-2 text-left font-semibold">Strike</th>
@@ -361,11 +391,10 @@ export function SpxOdteMatrixPanel({ live: deskLive }: DeskProps) {
                     ref={isSpot ? spotRowRef : undefined}
                     className={clsx(
                       "spx-odte-matrix-row border-b border-white/[0.04]",
-                      hlClass,
-                      r.isAnchor && r.highlight != null && "spx-odte-matrix-row--anchor-on-peak"
+                      hlClass
                     )}
                   >
-                    <td className="py-1 pl-1 pr-2 text-left text-white/90">
+                    <td className="spx-odte-matrix-strike py-1 pl-1 pr-2 text-left">
                       {fmtStrike(r.strike)}
                       {isSpot && (
                         <span className="ml-1 text-[8px] text-white/45" title="Nearest spot">
@@ -373,7 +402,7 @@ export function SpxOdteMatrixPanel({ live: deskLive }: DeskProps) {
                         </span>
                       )}
                     </td>
-                    <td className="relative py-1 px-2 text-right font-semibold text-white">
+                    <td className="spx-odte-matrix-value relative py-1 px-2 text-right">
                       {r.value !== 0 ? fmtMoneySigned(r.value) : "·"}
                       {r.isAnchor && (
                         <span className="ml-1 inline-flex align-middle" title="Anchor — max |GEX|">
@@ -394,7 +423,7 @@ export function SpxOdteMatrixPanel({ live: deskLive }: DeskProps) {
           <AnchorGlyph size={8} className="text-white" /> Anchor
         </span>
         <span className="inline-flex items-center gap-1">
-          <span className="inline-block h-2 w-3 rounded-sm bg-[#ffd23f]/80" aria-hidden /> Max +GEX
+          <span className="inline-block h-2 w-3 rounded-sm bg-[#00e676]/90" aria-hidden /> Max +GEX
         </span>
         <span className="inline-flex items-center gap-1">
           <span className="inline-block h-2 w-3 rounded-sm bg-[#6d28d9]/80" aria-hidden /> Max −GEX
