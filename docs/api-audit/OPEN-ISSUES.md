@@ -1,5 +1,79 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-01 13:20 ET
+Last updated: 2026-07-01 14:15 ET
+
+## RTH comprehensive sweep — 2026-07-01 ~13:52–14:15 ET (pass 2 — mid-RTH)
+
+**Session:** Wed 1 Jul 2026, 13:52–14:15 ET (**RTH open**). Agent: autonomous cloud session (`cursor/rth-comprehensive-test-sweep-c892`). Premium Clerk admin via `sign_in_token` (temp user created/deleted). Pass at ~14:00 ET mid-session.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ GREEN — deploy + all RTH session checks (options-socket authenticated, crons fresh) |
+| `GET /api/cron/data-correctness?force=1` | ✅ 0 flags, 7 oracle-confirmed, 74 consistency-only |
+| `npm run ops:collect` | ✅ 0 action items |
+| `node scripts/gha-rth-audit.mjs` | ✅ GREEN (45 pass; transient watchdog stale flags during parallel run — recheck 0 problems) |
+| `node scripts/full-site-deep-audit.mjs` | ✅ GREEN (45 pass; track-record 401 without session = expected) |
+| `node scripts/heatmap-matrix-audit.mjs` | ✅ 15 tickers × 32 checks, 0 flags |
+| `node scripts/audit/data-validator.mjs` | ✅ 16 PASS, 8 WARN (unrounded floats — P2) |
+| `node scripts/rth-comprehensive-sweep.mjs` | ✅ 0 P0/P1 (new browser+API sweep script committed this pass) |
+
+### API sweep (premium session — ~14:00 ET)
+
+| Endpoint | HTTP | Latency | Notes |
+|---|---|---|---|
+| `/api/market/spx/desk` | 200 | 202ms | SPX ~7500, flip 7479.41 |
+| `/api/market/spx/pulse` | 200 | 271ms | live RTH |
+| `/api/market/gex-positioning?ticker=SPX` | 200 | 85ms | flip 7479.38 |
+| `/api/market/gex-heatmap?ticker=SPX` | 200 | 117ms | cross-tool flip aligned |
+| `/api/market/flows?limit=20` | 200 | 398ms | |
+| `/api/grid/*` (8 panels + bootstrap) | 200 | 81–5334ms | earnings/catalysts slowest; analysts/congress `as_of` ~302s (5m cadence — P2) |
+| `/api/market/nighthawk/edition` | 200 | 551ms | 2 plays for 2026-07-01 |
+| `/api/market/largo/query` (NVDA) | 200 | 40s | grounded: DP + options flow; tools: `get_dark_pool`, `get_options_flow`, `get_flow_tape` |
+| SPX oracle | — | — | desk 7504.12 vs Polygon 7503.36 (Δ 0.76) |
+
+**Cross-tool GEX:** desk flip 7479.41 = gex-positioning flip 7479.38 = heatmap SPX flip (Δ < 1pt).
+
+### Browser sweep (Playwright premium — all 7 pages)
+
+| Page | Hard/soft load | Live update | Console | Notes |
+|---|---|---|---|---|
+| `/dashboard` | hard 2.0s | static spot heuristic | 1× 400 on `POST /api/market/spx/commentary` (empty body — expected client guard) | SPX desk live; 0DTE matrix populated |
+| `/flows` | soft 1.7s | SSE tape | clean | flow anomalies present |
+| `/heatmap` Matrix | soft 2.0s | LIVE badge | clean | SPY flip/call/put walls populated |
+| `/grid` | soft 1.7s | 90s panels | clean | 12/12 panels render (no skeleton hang) |
+| `/nighthawk` | soft 1.7s | edition static | clean | Jul 1 playbook; 2 plays |
+| `/terminal` (Largo) | soft 1.6s | AI ~40s | clean | NVDA grounded multi-tool answer |
+| `/track-record` | soft 1.6s | checkpoint | clean | 3W/8L ODTE matches API |
+
+Soft-nav across premium tools: **1.6–2.0s** — within institutional bar (<1.5s target on some pages is P2 perf watch only).
+
+### Missing-field audit (pass 2)
+
+| Field | Page | Backing API | Cause | Action |
+|---|---|---|---|---|
+| META flip `—` | heatmap matrix | far-dated chain sparse | **Upstream gap** | Expected |
+| META put wall `—` | heatmap matrix | sparse OI at far strikes | **Upstream gap** | Expected |
+| Commentary rail 400 | `/dashboard` | `POST /api/market/spx/commentary` without desk body | **Expected** — route returns 400 when desk snapshot missing; UI shows standby |
+| Grid analysts/congress `as_of` ~302s | `/grid` panels | 5m writer cadence | **Expected** at boundary | P2 watch only |
+
+**No new P0/P1 data correctness defects.** No code fix required this pass.
+
+### Tooling shipped this pass
+
+| Item | Branch | Detail |
+|---|---|---|
+| `scripts/rth-comprehensive-sweep.mjs` | `cursor/rth-comprehensive-test-sweep-c892` | Playwright + Clerk session browser sweep, API latency/freshness, Largo probe, missing-field scan |
+| `npm run validate:rth-sweep` | same | npm script alias |
+
+### Open watches (P2 — no GitHub issue)
+
+- Unrounded floats in desk/gex/platform payloads — data-validator WARN
+- `putWallMatch:false` in gex_cross_validation self-report (5pt divergence) — consistency-only
+- Grid analysts/congress panel freshness at 5m cadence boundary (~300s `as_of`)
+- Dashboard commentary POST 400 on cold start before desk hydrates — graceful standby UI exists
+
+---
 
 ## RTH comprehensive sweep — 2026-07-01 ~12:57–13:20 ET (pass 1 — mid-RTH)
 
