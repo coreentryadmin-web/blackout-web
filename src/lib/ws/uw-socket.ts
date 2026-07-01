@@ -15,6 +15,7 @@ import {
   mergeFreshestTimestamps,
 } from "./uw-socket-stall";
 import { isUwErrorFrame } from "@/lib/ws/uw-frame";
+import { ladderFromGexStrikeExpiryCells } from "@/lib/providers/gex-strike-expiry-ladder";
 import {
   normalizeDarkPoolWsPayload,
   normalizeGexStrikeExpiryWsPayload,
@@ -799,18 +800,22 @@ function upsertGexStrikeExpiryRows(rows: UwGexStrikeExpiryRow[]) {
   }
 }
 
-/** Per-strike net GEX ladder aggregated from the UW `gex_strike_expiry` WS feed. */
+/**
+ * Per-strike net GEX ladder aggregated from the UW `gex_strike_expiry` WS feed.
+ * Pass `allowedExpiries` to restrict the sum to a matching expiry set — needed
+ * so cross-validation compares this ladder against Polygon's near-term-only
+ * walls on the SAME scope (see gex-strike-expiry-ladder.ts for why).
+ */
 export function getGexStrikeExpiryLadder(
-  ticker: string
+  ticker: string,
+  allowedExpiries?: readonly string[]
 ): { ladder: Map<number, number>; updatedAt: number; cell_count: number } | null {
   const sym = ticker.toUpperCase();
   const state = gexStrikeExpiryByTicker.get(sym);
   if (!state || state.cells.size === 0) return null;
-  const ladder = new Map<number, number>();
-  for (const row of state.cells.values()) {
-    ladder.set(row.strike, (ladder.get(row.strike) ?? 0) + row.net_gex);
-  }
-  return { ladder, updatedAt: state.updatedAt, cell_count: state.cells.size };
+  const { ladder, cell_count } = ladderFromGexStrikeExpiryCells(state.cells, allowedExpiries);
+  if (ladder.size === 0) return null;
+  return { ladder, updatedAt: state.updatedAt, cell_count };
 }
 
 function pushOptionTradeRows(prints: UwOptionTradePrint[]) {
