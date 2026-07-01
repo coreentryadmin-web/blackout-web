@@ -374,18 +374,6 @@ function analyzeStrikeGex(rows: Record<string, unknown>[]) {
   };
 }
 
-export async function fetchUwOdteGex(ticker = "SPX") {
-  const expiry = todayIso();
-  const data = await uwGetSafe<unknown>(`/api/stock/${ticker}/spot-exposures/expiry-strike`, {
-    "expirations[]": expiry,
-    limit: 500,
-  });
-  const rows = extractRows(data);
-  if (!rows.length) return { net_gex: null, gex_king: null, expiry };
-  const gex = analyzeStrikeGex(rows);
-  return { net_gex: gex.net_gex, gex_king: gex.gex_king_strike, expiry };
-}
-
 /** 0DTE strike GEX ladder — same expiry-strike feed, strike-level rows for gamma walls. */
 export async function fetchUwOdteSpotExposuresByStrike(ticker = "SPX", limit = 500) {
   const expiry = todayIso();

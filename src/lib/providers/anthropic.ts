@@ -19,6 +19,7 @@ import {
   isOverAiSpendLocalBackstop,
   spendThresholdJustCrossed,
   AI_SPEND_INCR_LUA,
+  AI_SPEND_HEADROOM_LUA,
   secondsUntilEtMidnight,
 } from "@/lib/ai-spend-ledger";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
@@ -322,8 +323,10 @@ async function isAiSpendCeilingTripped(): Promise<boolean> {
   const localBackstopTripped = () =>
     isOverAiSpendLocalBackstop(spendTracker.currentTotal, ceiling, aiSpendLocalBackstopFrac());
   try {
-    const redis = await getUwCacheRedis();
+    const redis = (await getUwCacheRedis()) as SpendRedis;
     if (!redis) return localBackstopTripped(); // Redis down → fail CLOSED to the local backstop
+    const headroom = await redis.eval(AI_SPEND_HEADROOM_LUA, 1, aiSpendKey(), String(ceiling));
+    if (Number(headroom) === 0) return true;
     const raw = await redis.get(aiSpendKey());
     return isOverAiSpendCeiling(Number(raw ?? 0), ceiling);
   } catch {
@@ -485,6 +488,11 @@ export async function anthropicToolLoop(params: {
   );
 
   for (let round = 0; round < maxRounds; round++) {
+    if (await isAiSpendCeilingTripped()) {
+      console.warn("[anthropic] daily AI spend ceiling reached mid tool-loop — stopping");
+      return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
+    }
+
     const createParams: MessageCreateParams = {
       model,
       max_tokens: maxTokens,

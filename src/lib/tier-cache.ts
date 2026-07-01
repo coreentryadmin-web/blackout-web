@@ -21,6 +21,8 @@ import { parseTier, type Tier } from "@/lib/tiers";
  */
 const tierCache = new Map<string, { tier: Tier; at: number }>();
 const TIER_CACHE_TTL_MS = 60_000;
+/** Max age for stale tier used when Clerk is down (never grant premium beyond this). */
+const TIER_STALE_MAX_MS = 24 * 60 * 60 * 1000;
 
 // Bound the per-replica Map (audit §3.3): it's keyed by userId with a 60s TTL but entries were never
 // deleted — only overwritten on refresh — so over months of signups (incl. churned/trial userIds) it
@@ -31,6 +33,17 @@ const MAX_TIER_CACHE = 5_000;
 const TIER_CHANGED_CHANNEL = "blackout:tier:changed";
 
 let tierSubReady = false;
+let tierSubRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleTierCacheSubscriptionRetry(): void {
+  if (tierSubRetryTimer != null) return;
+  tierSubRetryTimer = setTimeout(() => {
+    tierSubRetryTimer = null;
+    tierSubReady = false;
+    ensureTierCacheSubscription();
+  }, 30_000);
+  (tierSubRetryTimer as unknown as { unref?: () => void }).unref?.();
+}
 
 function setTierCache(userId: string, tier: Tier): void {
   tierCache.delete(userId); // re-insert → most-recently-used position
@@ -60,15 +73,19 @@ export function invalidateTierCache(userId: string): void {
  */
 function ensureTierCacheSubscription(): void {
   if (tierSubReady) return;
-  tierSubReady = true;
   void import("@/lib/redis-pubsub")
-    .then(({ redisSubscribe }) =>
-      redisSubscribe(TIER_CHANGED_CHANNEL, (userId) => {
+    .then(async ({ redisSubscribe }) => {
+      const { subscribed } = await redisSubscribe(TIER_CHANGED_CHANNEL, (userId) => {
         invalidateTierCache(userId);
-      })
-    )
+      });
+      if (subscribed) {
+        tierSubReady = true;
+      } else {
+        scheduleTierCacheSubscriptionRetry();
+      }
+    })
     .catch(() => {
-      tierSubReady = false; // allow a later retry
+      scheduleTierCacheSubscriptionRetry();
     });
 }
 
@@ -115,11 +132,15 @@ export async function resolveUserTier(userId: string): Promise<Tier> {
     setTierCache(userId, tier);
     return tier;
   } catch (err) {
-    if (cached) {
+    if (cached && Date.now() - cached.at < TIER_STALE_MAX_MS) {
       console.warn("[tier-cache] Clerk getUser failed; using last-known tier:", err);
       return cached.tier;
     }
-    console.warn("[tier-cache] Clerk getUser failed and no cached tier:", err);
+    if (cached) {
+      console.warn("[tier-cache] Clerk getUser failed; stale tier too old — refusing:", err);
+    } else {
+      console.warn("[tier-cache] Clerk getUser failed and no cached tier:", err);
+    }
     throw new TierUnavailableError();
   }
 }

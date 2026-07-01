@@ -77,8 +77,9 @@ export async function POST(req: Request) {
       console.log(`[clerk-webhook] Updated user: ${data.id}`);
     }
   } catch (err) {
-    // Fail-open on DB errors — log but return 200 so Clerk doesn't retry endlessly
+    // Fail-closed on DB errors — return 500 so Clerk retries provisioning.
     console.error(`[clerk-webhook] DB error on ${type}:`, err);
+    return new Response("Database error", { status: 500 });
   }
 
   return new Response('OK', { status: 200 });
