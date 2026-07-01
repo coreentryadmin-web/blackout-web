@@ -11,6 +11,7 @@
  */
 
 import { execSync, spawnSync } from "node:child_process";
+import { auditPgSsl } from "./pg-audit.mjs";
 
 const ET = "America/New_York";
 const force = process.argv.includes("--force");
@@ -98,7 +99,7 @@ async function main() {
         const pg = await import("pg");
         const c = new pg.default.Client({
           connectionString: dbUrl,
-          ssl: dbUrl.includes("localhost") ? false : { rejectUnauthorized: false },
+          ssl: auditPgSsl(dbUrl),
         });
         await c.connect();
 
