@@ -6,7 +6,7 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 ---
 
 ## 🔴 HIGH — SPX support/resistance R1/R2/S1/S2 computed from a STALE (off-by-one) session
-**Status:** CONFIRMED against Polygon ground truth. (User-reported: "R1/R2/S1/S2 are absolutely wrong… made up.")
+**Status:** CONFIRMED against Polygon ground truth → **FIXED in PR #189** (`fix/spx-prior-session-staleness`; date-based prior-session selection + 6 regression tests, 9/9 pass). (User-reported: "R1/R2/S1/S2 are absolutely wrong… made up.")
 
 **Where:** pivots are computed in `src/components/desk/SpxOdteMatrixPanel.tsx` (`floorPivots` — classic `pivot=(H+L+C)/3; R1=2P−L; R2=P+(H−L); S1=2P−H; S2=P−(H−L)`; the math is **correct**). The bug is the **inputs**: prior-session `pdh/pdl/prior_close` come from `src/lib/providers/spx-session.ts` → `priorDayFromDailyBars()`:
 
@@ -50,6 +50,14 @@ Arithmetic is correct; determine whether it's a genuine 2-day sample or an outco
 - **Benzinga:** used by `src/components/desk/BenzingaNewsTicker.tsx` / `BenzingaNewsRail.tsx` but **no `BENZINGA_API_KEY` in env** — news won't fetch live in this environment.
 - **Unresolved `${{shared.*}}` env** (this environment): `UW_API_KEY` (fixed manually), `DATABASE_URL`, `REDIS_URL`, `POLYGON_API_BASE` — set literals for scheduled runs.
 - `/api/signals/open` → 401 even with an admin session; `/api/nighthawk/play-status` → 404; `/api/market/largo/session` → 400. Under investigation.
+
+## 🟡 UX — a few panels don't auto-refresh (static until remount/manual refresh)
+Most data updates dynamically without a manual refresh: **28 SWR hooks** with `refreshInterval` (15s–5min, plus SWR revalidate-on-focus) and **4 SSE streams** (`/api/market/flows/stream`, `/api/market/spx/pulse/stream`, `/api/account/positions/stream`, `/api/admin/apis/stream`) push the live tape / pulse / heatmap / SPX matrix / positions. The browser uses **SSE + SWR polling, not WebSockets directly** (UW/Polygon WS are server-side only).
+
+Exceptions that fetch once via `useEffect`/`fetch` and stay static until an action or navigation (candidates to add polling/SSE where live freshness matters):
+- `src/components/nights-watch/NightsWatchPanel.tsx` — positions/alerts fetched once (no timer/stream). **Night's Watch data does not auto-update.**
+- `src/components/spx/SignalAnalyticsPanel.tsx`, `src/components/track-record/PlayHistoryTable.tsx` — one-shot loads.
+- (Modals/editors/nav one-shots — `PlayDetailModal`, `JournalEditor`, `Nav`, settings — one-shot is appropriate, no action needed.)
 
 ---
 
