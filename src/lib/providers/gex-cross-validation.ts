@@ -21,14 +21,29 @@ import "server-only";
  * near-term expiry set the caller used) is required for an apples-to-apples
  * comparison — without it, this ladder sums in far-dated OpEx OI that Polygon's
  * side never includes, producing hundreds of points of spurious divergence for
- * SPX (confirmed live 2026-07-01). The REST fallback below is NOT yet expiry-
- * scoped — a known remaining gap, since UW's per-expiry REST endpoints have an
- * unverified response shape and documented 503 flakiness in production.
+ * SPX (confirmed live 2026-07-01).
+ *
+ * REST fallback: verified live (2026-07-01) that it CANNOT be scoped the same way, so when
+ * scoping is required it is skipped entirely rather than run unscoped:
+ *  - `/spot-exposures/strike` (used below) returns ONE row per strike already summed across
+ *    EVERY expiry server-side — there is no per-expiry field to filter on after the fact.
+ *  - `/spot-exposures/expiry-strike` (used elsewhere in unusual-whales.ts for 0DTE) DOES carry a
+ *    per-row `expiry` field, but its `expirations[]` filter only honors ONE value even when
+ *    several are passed (verified: passing 3 values returned only the last one's rows), and
+ *    without a filter it caps at 50 rows that don't reliably cover the needed strike band
+ *    (verified: 50 unfiltered rows for the 0DTE expiry covered strikes 7620-9800 only — the
+ *    entire near-the-money/put-wall region below spot was missing). Neither endpoint can
+ *    produce a properly-scoped ladder without N sequential per-expiry calls against a
+ *    documented-flaky, rate-limited API, for a path that's supposed to be a rare, cheap
+ *    fallback. A guaranteed-mismatched comparison is worse than no comparison — it would
+ *    reintroduce the exact scope-mismatch false-positive this module exists to prevent, just
+ *    intermittently (whenever the WS channel goes stale) instead of always.
  */
 
 import { fetchUwSpotExposuresByStrike } from "@/lib/providers/unusual-whales";
 import {
   crossValidateGexLevels,
+  restFallbackAllowed,
   type GexCrossValidationCoreResult,
 } from "@/lib/providers/gex-cross-validation-core";
 import { getGexStrikeExpiryLadder, isUwChannelFresh } from "@/lib/ws/uw-socket";
@@ -79,8 +94,10 @@ async function getUwStrikeLadder(
     }
   }
 
-  // REST fallback — NOT yet expiry-scoped (sums all expiries UW returns). A known
-  // remaining gap: see the module-level SCOPE doc for why this wasn't closed here too.
+  if (!restFallbackAllowed(nearTermExpiries)) {
+    return null;
+  }
+
   let rows: Record<string, unknown>[];
   try {
     rows = await fetchUwSpotExposuresByStrike(key, 500);

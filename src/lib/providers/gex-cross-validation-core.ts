@@ -1,5 +1,20 @@
 import { zeroGammaFlip } from "@/lib/providers/gex-intraday-adjust-core";
 
+/**
+ * The UW REST fallback (`/spot-exposures/strike`) sums every expiry server-side with no
+ * per-expiry field to filter on — it structurally cannot be scoped to match Polygon's
+ * near-term-only walls (verified live 2026-07-01 against the real UW API: the sibling
+ * `/spot-exposures/expiry-strike` endpoint DOES carry a per-row expiry, but its
+ * `expirations[]` filter only honors one value even when several are passed, and
+ * unfiltered it caps at 50 rows that don't reliably cover the needed strike band). When
+ * the caller requires scoping, running the REST fallback anyway would compare mismatched
+ * universes and produce a guaranteed false-positive divergence — worse than skipping the
+ * check. See `gex-cross-validation.ts`'s module-level SCOPE doc for the full write-up.
+ */
+export function restFallbackAllowed(nearTermExpiries: readonly string[] | undefined): boolean {
+  return !(nearTermExpiries && nearTermExpiries.length > 0);
+}
+
 /** Largest-positive (call) and largest-negative (put) wall strikes from per-strike totals. */
 export function wallsFromStrikeTotals(strikeTotals: Record<string, number>): {
   callWall: number | null;

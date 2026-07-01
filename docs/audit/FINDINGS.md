@@ -7,6 +7,28 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🔴 CRITICAL — FIXED — `/api/market/gex-heatmap`'s cross-validation call site never got the near-term expiry scope fix from PR #223 — the SPX matrix's "UW oracle diverges Npt" banner has been showing scope-mismatch-inflated divergence this whole time
+**Status:** FIXED (`fix/gex-heatmap-cross-validation-scope`). Found while investigating a live user report of the banner reading "diverges 600pt" on the SPX matrix.
+
+**Where:** `src/app/api/market/gex-heatmap/route.ts:292-300`. PR #223 (earlier today) fixed the scope-mismatch bug by threading `nearTermExpiries` through `gex-positioning.ts`'s call to `validateGexAgainstUW()` — but there is a SECOND call site, in this route, that feeds `cross_validation` directly into the `/api/market/gex-heatmap` response. **This second call site was never touched** — it called `validateGexAgainstUW(ticker, {...}, { spot: heatmap.spot })` with no `nearTermExpiries` at all, so it kept comparing Polygon's near-term-only walls (`NEAR_TERM_EXPIRY_COUNT=8`) against UW's all-expiries-summed ladder, reproducing the exact original bug on every single poll.
+
+**This is the call site that actually feeds the visible banner.** `SpxGexMatrixHeatmap.tsx` reads `data.cross_validation` from `/api/market/gex-heatmap` (the unscoped one), NOT from `gex-positioning.ts`'s properly-scoped result. So the "PR #223 fix" that FINDINGS.md previously marked FIXED never reached the actual UI banner users see — it only fixed a sibling numeric field on a different endpoint (`/api/market/gex-positioning`) that isn't what renders the warning.
+
+**Evidence:** live-probed both endpoints within the same minute (2026-07-01 ~19:18 UTC, spot ~7502): `gex-positioning` (scoped) → `callWallMatch: true, putWallMatch: false, flipMatch: true, divergence: 200`. `gex-heatmap` (unscoped, THIS bug) → `callWallMatch: false, putWallMatch: false, flipMatch: false, divergence: 200` — every level mismatching on the unscoped path vs. only one on the scoped path, for the identical moment. The user's screenshot moments earlier showed 600pt on the matrix banner — consistent with this same unscoped comparison spiking higher as the UW ladder's far-dated OI shifts.
+
+**Fix:** added `const nearTermExpiries = heatmap.expiries?.slice(0, 8);` and threaded it into the `validateGexAgainstUW()` call in `gex-heatmap/route.ts`, mirroring `gex-positioning.ts` exactly (`heatmap.expiries` is the same ascending near-term-then-far-dated axis both call sites share).
+
+**Second, related gap closed in the same PR:** while re-reading `gex-cross-validation.ts`'s own code comments, found the REST fallback path (used when UW's WebSocket channel goes stale) was flagged as "not yet expiry-scoped, unverified response shape" — verified live against the real UW API today:
+- `/spot-exposures/strike` (currently used) returns ONE row per strike **already summed across every expiry server-side** — there is no per-expiry field to filter on after the fact. Structurally unscoped, not just "not yet" scoped.
+- `/spot-exposures/expiry-strike` (UW's other endpoint, used elsewhere for 0DTE) DOES carry a per-row `expiry` field, but its `expirations[]` filter only honors ONE value even when several are passed (tested: 3 values → only the last one's rows came back), and unfiltered it caps at 50 rows that don't reliably cover the needed strike band (tested: 50 unfiltered rows for the 0DTE expiry covered strikes 7620-9800 only — the entire near-the-money/put-wall region below spot was missing).
+- Neither endpoint can produce a properly-scoped ladder without N sequential per-expiry calls against a documented-flaky, rate-limited API, for a fallback path that's supposed to be rare and cheap. Running it unscoped when scoping is required would reintroduce the exact same false-positive bug intermittently (whenever WS goes stale) instead of always — worse than skipping the check that one time. `getUwStrikeLadder()` now returns `null` (skip the check) instead of an unscoped ladder whenever the caller requires scoping — extracted as `restFallbackAllowed()` in `gex-cross-validation-core.ts` for direct unit testing.
+
+**Blast radius:** only these two call sites exist for `validateGexAgainstUW()` in the whole codebase (verified via grep) — both are now scoped.
+
+**What was deliberately left unchanged:** `crossValidateGexLevels()`'s comparison logic itself (sign-aware extrema matching, ±2 strike tolerance) — untouched, it was never the problem.
+
+**Verification:** `npx tsc --noEmit` clean; full suite passing (3 new tests for `restFallbackAllowed` in `gex-cross-validation-core.test.ts`); `next build` clean; live-reproduced the bug on both endpoints before fixing, per the Evidence section above.
+
 ## 🟢 FIXED — Redundant `ensureSchema()` calls duplicated across 11 files (20 call sites) ahead of `db.ts` helpers that already self-guard
 **Status:** FIXED (`fix/api-telemetry-redundant-schema-check`).
 
