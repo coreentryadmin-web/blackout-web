@@ -289,11 +289,15 @@ export async function GET(req: NextRequest) {
     // UW cross-validation (WS-first, REST cached) — preset tickers only; never blocks response.
     let cross_validation = null;
     if (isHeatmapPreset(ticker) && heatmap.gex) {
-      cross_validation = await validateGexAgainstUW(ticker, {
-        callWall: heatmap.gex.call_wall,
-        putWall: heatmap.gex.put_wall,
-        gammaFlip: heatmap.gex.flip,
-      }).catch(() => null);
+      cross_validation = await validateGexAgainstUW(
+        ticker,
+        {
+          callWall: heatmap.gex.call_wall,
+          putWall: heatmap.gex.put_wall,
+          gammaFlip: heatmap.gex.flip,
+        },
+        { spot: heatmap.spot }
+      ).catch(() => null);
     }
 
     return NextResponse.json(

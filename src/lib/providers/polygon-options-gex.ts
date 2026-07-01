@@ -1133,7 +1133,7 @@ function warnChainTruncated(label: string, underlying: string, pages: number): v
 // isn't truncated (truncation understated walls/OI/IV). Env-tunable; floored at 16.
 const HEATMAP_PAGE_GUARD = Math.max(16, Number(process.env.OPTIONS_HEATMAP_PAGE_GUARD) || 40);
 
-/** Strike band around spot for the shared heatmap chain pull. SPX defaults ±6%; others ±4%. */
+/** Strike band around spot for the shared heatmap chain pull. Default ±6% for all presets. */
 function heatmapBandPct(root: string): number {
   const clamp = (n: number) => (Number.isFinite(n) && n > 0 && n <= 0.25 ? n : null);
   if (root === "SPX") {
@@ -1142,7 +1142,7 @@ function heatmapBandPct(root: string): number {
   }
   const global = clamp(Number(process.env.GEX_HEATMAP_BAND_PCT));
   if (global != null) return global;
-  return root === "SPX" ? 0.06 : 0.04;
+  return 0.06;
 }
 
 async function fetchHeatmapBand(
