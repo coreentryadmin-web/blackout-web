@@ -2,7 +2,7 @@
 /**
  * One-shot Railway ops bootstrap:
  *   1. CRON_WATCHDOG_SELF_HEAL=1 on blackout-web
- *   2. Ensure provider-health-reconcile cron service exists + wired to TOML + CRON_SECRET
+ *   2. Ensure provider-health-reconcile + Market-Regime-Detector cron services exist + wired to TOMLs + CRON_SECRET
  *
  * Requires: railway CLI + valid RAILWAY_TOKEN (account or project token with write access)
  *
@@ -81,10 +81,9 @@ if (existing === "1") {
   console.log("  ✓ set CRON_WATCHDOG_SELF_HEAL=1");
 }
 
-// 2) provider-health-reconcile cron service
-console.log("\n── provider-health-reconcile cron ──");
+// 2) Cron services that may be missing from production (bootstrap + wire TOML)
+console.log("\n── Cron service bootstrap ──");
 const names = serviceMap();
-const cronKey = "provider-health-reconcile";
 const cronSecret = getVar("blackout-web", "CRON_SECRET");
 
 if (!cronSecret) {
@@ -92,54 +91,63 @@ if (!cronSecret) {
   process.exit(1);
 }
 
-if (!names[cronKey]) {
-  console.log(`  Creating service "${cronKey}" from ${REPO}@${BRANCH}…`);
-  const r = run("railway", [
-    "add",
-    "--service", cronKey,
-    "--repo", REPO,
-    "--branch", BRANCH,
-    "--variables", `CRON_SECRET=${cronSecret}`,
-    "--variables", "CRON_TARGET_BASE_URL=https://blackouttrades.com",
-    "--json",
-  ]);
-  if (r.status !== 0) {
-    console.error("  ✗ railway add failed:", r.stderr || r.stdout);
-    process.exit(1);
-  }
-  console.log("  ✓ service created");
-} else {
-  console.log(`  ✓ service exists (${names[cronKey]})`);
-  if (!getVar(cronKey, "CRON_SECRET")) {
+const CRON_BOOTSTRAP = [
+  { key: "provider-health-reconcile", serviceName: "provider-health-reconcile" },
+  { key: "market-regime-detector", serviceName: "Market-Regime-Detector" },
+];
+
+function ensureCronService(serviceName, cronKey) {
+  if (!names[serviceName]) {
+    console.log(`  Creating service "${serviceName}" from ${REPO}@${BRANCH}…`);
     const r = run("railway", [
-      "variable", "set", `CRON_SECRET=${cronSecret}`,
-      "--service", cronKey,
-      "--environment", ENV,
+      "add",
+      "--service", serviceName,
+      "--repo", REPO,
+      "--branch", BRANCH,
+      "--variables", `CRON_SECRET=${cronSecret}`,
+      "--variables", "CRON_TARGET_BASE_URL=https://blackouttrades.com",
+      "--json",
     ]);
     if (r.status !== 0) {
-      console.error("  ✗ CRON_SECRET copy failed:", r.stderr || r.stdout);
+      console.error(`  ✗ railway add failed for ${serviceName}:`, r.stderr || r.stdout);
       process.exit(1);
     }
-    console.log("  ✓ CRON_SECRET synced from blackout-web");
+    console.log(`  ✓ service created (${serviceName})`);
   } else {
-    console.log("  ✓ CRON_SECRET already set");
+    console.log(`  ✓ service exists (${serviceName})`);
+    if (!getVar(serviceName, "CRON_SECRET")) {
+      const r = run("railway", [
+        "variable", "set", `CRON_SECRET=${cronSecret}`,
+        "--service", serviceName,
+        "--environment", ENV,
+      ]);
+      if (r.status !== 0) {
+        console.error(`  ✗ CRON_SECRET copy failed for ${serviceName}:`, r.stderr || r.stdout);
+        process.exit(1);
+      }
+      console.log(`  ✓ CRON_SECRET synced (${serviceName})`);
+    }
+  }
+
+  console.log(`\n── Wire config-as-code (${cronKey}) ──`);
+  const apply = run("node", [join(ROOT, "scripts/railway-apply-cron-config.mjs"), cronKey], {
+    cwd: ROOT,
+    env: { ...process.env, RAILWAY_PROJECT_ID: PROJECT, RAILWAY_ENVIRONMENT: ENV },
+  });
+  process.stdout.write(apply.stdout ?? "");
+  process.stderr.write(apply.stderr ?? "");
+  if (apply.status !== 0) {
+    console.error(`  ✗ railway-apply-cron-config failed for ${cronKey}`);
+    process.exit(apply.status ?? 1);
   }
 }
 
-// 3) Wire config-as-code TOML
-console.log("\n── Wire config-as-code ──");
-const apply = run("node", [join(ROOT, "scripts/railway-apply-cron-config.mjs"), cronKey], {
-  cwd: ROOT,
-  env: { ...process.env, RAILWAY_PROJECT_ID: PROJECT, RAILWAY_ENVIRONMENT: ENV },
-});
-process.stdout.write(apply.stdout ?? "");
-process.stderr.write(apply.stderr ?? "");
-if (apply.status !== 0) {
-  console.error("  ✗ railway-apply-cron-config failed");
-  process.exit(apply.status ?? 1);
+for (const { key, serviceName } of CRON_BOOTSTRAP) {
+  ensureCronService(serviceName, key);
 }
 
 console.log("\nGREEN — Railway ops provision complete.\n");
 console.log("Verify after deploy:");
 console.log("  npm run validate:cron");
-console.log("  node scripts/hit-cron.mjs /api/cron/provider-health-reconcile\n");
+console.log("  node scripts/hit-cron.mjs /api/cron/provider-health-reconcile");
+console.log("  node scripts/hit-cron.mjs /api/cron/market-regime-detector\n");

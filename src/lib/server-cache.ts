@@ -157,8 +157,16 @@ export async function withServerCache<T>(
   if (hit && hit.expiresAt <= now && !inflight.has(key)) {
     const staleAge = now - hit.refreshedAt;
     if (staleAge > MAX_STALE_AGE_MS) {
-      // Entry is too old — do a blocking refresh (or throw if upstream is down).
       return refreshCache(key, ttlMs, loader, localOnly);
+    }
+    if (!localOnly) {
+      const redisHit = await readRedisCache<T>(key);
+      if (redisHit != null) {
+        const remainingMs = redisHit.remainingTtlSec * 1000;
+        setStoreEntry(key, { value: redisHit.value, expiresAt: now + remainingMs, refreshedAt: now });
+        void refreshCache(key, ttlMs, loader, localOnly);
+        return redisHit.value;
+      }
     }
     void refreshCache(key, ttlMs, loader, localOnly);
     return hit.value;

@@ -87,14 +87,16 @@ export async function GET(req: Request) {
         if (p.valuation_status !== "live" || p.valuation == null) return acc;
         const sideSign = p.side === "short" ? -1 : 1;
         const size = (p.contracts ?? 1) * sideSign;
-        const mult = 100;
+        const mult = p.valuation.sharesPerContract ?? 100;
         acc.delta += (p.valuation.delta ?? 0) * size * mult;
         acc.gamma += (p.valuation.gamma ?? 0) * size * mult;
         acc.theta += (p.valuation.theta ?? 0) * size * mult;
         acc.vega += (p.valuation.vega ?? 0) * size * mult;
         acc.totalPremiumAtRisk += (p.valuation.mark ?? p.entry_premium ?? 0) * Math.abs(size) * mult;
-        const spot = p.valuation.underlyingPrice ?? 5500;
-        acc.totalDeltaDollars += (p.valuation.delta ?? 0) * size * mult * spot;
+        const spot = p.valuation.underlyingPrice;
+        if (spot != null && Number.isFinite(spot) && spot > 0) {
+          acc.totalDeltaDollars += (p.valuation.delta ?? 0) * size * mult * spot;
+        }
         acc.liveLegs += 1;
         return acc;
       },

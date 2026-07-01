@@ -55,7 +55,7 @@ function GridBanner() {
       <span className="grid-banner-text">
         Showing all data for <span className="grid-banner-ticker">{ticker}</span>
         <span className="grid-banner-sep"> · </span>
-        <span className="grid-banner-live">Updated live</span>
+        <span className="grid-banner-live">Ticker-scoped panels refresh on their own cadence</span>
       </span>
       <button type="button" onClick={() => setTicker(null)} className="grid-banner-clear" aria-label="Clear ticker filter">
         ×&nbsp;Clear
@@ -96,8 +96,7 @@ function GridDeck() {
 }
 
 /**
- * GridBoard — the BlackOut Grid masonry. Full-bleed, immersive board with a
- * living grid backdrop (mounted by the page), collapsible/hideable panels (the
+ * GridBoard — the BlackOut Grid masonry. Full-bleed board with collapsible/hideable panels (the
  * Panels menu + per-card controls, persisted), and staggered entrance motion.
  */
 export function GridBoard() {

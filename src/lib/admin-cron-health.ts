@@ -14,18 +14,14 @@ import {
   isWeekdayEt,
   nextTradingDayEt,
 } from "@/lib/nighthawk/session";
-import { etMinutes, etClock } from "@/lib/spx-play-session-time";
+import { isEtCashRth } from "@/lib/et-market-hours";
+import {
+  isFlowIngestAlternateWriterSkip,
+} from "@/lib/cron-writer-target-fresh";
 
-/**
- * RTH gate (DST-aware ET, weekdays only) mirroring the market-hours cron routes
- * (e.g. nights-watch-warm / heatmap-warm): 9:30 AM–4:00 PM ET, Mon–Fri. Used to
- * decide whether a `market_hours_only` cron that correctly skipped off-window
- * should be treated as healthy rather than stale.
- */
+/** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
-  if (!isWeekdayEt()) return false;
-  const mins = etMinutes(now);
-  return mins >= etClock(9, 30) && mins <= etClock(16, 0);
+  return isEtCashRth(now);
 }
 
 function positiveEnvInt(name: string, fallback: number): number {
@@ -211,6 +207,14 @@ function evaluateJob(
   } else if (suppressStaleOffWindow) {
     status = "healthy";
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";
+  } else if (
+    job.key === "flow-ingest" &&
+    last.status === "skipped" &&
+    isFlowIngestAlternateWriterSkip(last.message)
+  ) {
+    // REST cron intentionally idle while the UW WS (local or cluster) is the live writer.
+    status = "healthy";
+    statusLabel = `REST skipped (${last.message}) — alternate writer path active`;
   } else if (ageMin > staleThreshold) {
     status = "stale";
     statusLabel = `No run in ${Math.round(ageMin)}m (limit ${Math.round(staleThreshold)}m${staleMultiplier > 1 ? ` · ${staleMultiplier}× weekend` : ""})`;
@@ -368,6 +372,31 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
 
     return health;
   });
+
+  // Handshake lag during Railway redeploy gaps can mark warmers/flow-ingest stale even when
+  // their PG/Redis targets are still fresh (organic traffic + TTL + WS paths keep data live).
+  const TARGET_FRESH_OVERRIDE_KEYS = new Set([
+    "flow-ingest",
+    "heatmap-warm",
+    "grid-warm",
+    "uw-cache-refresh",
+  ]);
+  await Promise.all(
+    jobs.map(async (health, index) => {
+      if (!health.market_hours_stale && health.status !== "stale") return;
+      if (!TARGET_FRESH_OVERRIDE_KEYS.has(health.key)) return;
+      const { probeWriterTargetFresh } = await import("@/lib/cron-writer-target-fresh");
+      const probe = await probeWriterTargetFresh(health.key);
+      if (!probe?.fresh) return;
+      jobs[index] = {
+        ...health,
+        status: "healthy",
+        status_label: `Target fresh (${probe.detail}) — cron handshake lag is benign`,
+        market_hours_stale: false,
+        meta: { ...(health.meta ?? {}), writer_target_probe: probe },
+      };
+    })
+  );
 
   const summary = {
     total: jobs.length,

@@ -27,6 +27,12 @@ function morningBadgeClass(status: PlayMorningStatus["status"]): string {
   return "nighthawk-play-morning-invalidated";
 }
 
+function fmtIvRank(raw: number): string {
+  const n = raw <= 1 && raw >= 0 ? raw * 100 : raw;
+  const clamped = Math.min(100, Math.max(0, n));
+  return `${Math.round(clamped)}%`;
+}
+
 export function PlaybookPlayRow({
   rank,
   play,
@@ -115,7 +121,7 @@ export function PlaybookPlayRow({
               )}
               {play.iv_rank != null && (
                 <span className="nighthawk-play-stat-pill">
-                  IV <strong>{play.iv_rank}</strong>
+                  IV Rank <strong>{fmtIvRank(play.iv_rank)}</strong>
                 </span>
               )}
               <span className="nighthawk-play-prem-cap" title={`Max $${MAX_OPTION_PREMIUM_PER_SHARE}/share`}>

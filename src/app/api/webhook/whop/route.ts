@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import Whop from "@whop/sdk";
 import { syncWhopMembershipForEmail } from "@/lib/membership";
 import { markMembershipRevoked } from "@/lib/whop-revocation";
+import {
+  clearMembershipDunningGrace,
+  markMembershipDunningGrace,
+} from "@/lib/whop-dunning";
 import { notifyOpsDiscord } from "@/lib/spx-play-notify";
 import { recordApiCall } from "@/lib/api-telemetry";
 import { makeRedis } from "@/lib/make-redis";
@@ -34,6 +38,28 @@ function getWhopWebhookClient() {
     apiKey: process.env.WHOP_API_KEY,
     webhookKey: process.env.WHOP_WEBHOOK_SECRET ?? null,
   });
+}
+
+function extractMembershipAndEmail(data: unknown): {
+  membershipId: string | null;
+  email: string | null;
+} {
+  const d = data as {
+    membership?: { id?: string } | string;
+    payment?: { membership?: { id?: string } | string; member?: { email?: string | null } };
+    user?: { email?: string | null };
+    member?: { email?: string | null };
+  };
+  const mRaw = d?.membership ?? d?.payment?.membership;
+  const membershipId = typeof mRaw === "string" ? mRaw : (mRaw?.id ?? null);
+  const email = d?.user?.email ?? d?.member?.email ?? d?.payment?.member?.email ?? null;
+  return { membershipId, email };
+}
+
+async function syncEmailTier(email: string | null): Promise<void> {
+  if (!email) return;
+  const { updatedUserIds } = await syncWhopMembershipForEmail(email);
+  for (const uid of updatedUserIds) publishTierChanged(uid);
 }
 
 // Warn once at module load time so the missing var surfaces in startup logs
@@ -173,6 +199,9 @@ export async function POST(req: NextRequest) {
         // Evict tier cache on all replicas immediately so premium/downgrade is visible
         // within the next request rather than waiting up to 60s for TTL expiry.
         for (const uid of updatedUserIds) publishTierChanged(uid);
+        if (event.type === "membership.deactivated" && event.data.id) {
+          await clearMembershipDunningGrace(event.data.id);
+        }
       } else {
         // Whop returns user.email === null when this app lacks the `member:email:read`
         // permission (or the user was deleted). syncWhopMembershipForEmail AND the
@@ -233,6 +262,49 @@ export async function POST(req: NextRequest) {
           ". Verify in Whop.",
         severity: "warning",
       }).catch(() => undefined);
+    } else if (
+      event.type === "payment.failed" ||
+      event.type === "invoice.past_due"
+    ) {
+      const { membershipId, email } = extractMembershipAndEmail(event.data);
+      if (membershipId) await markMembershipDunningGrace(membershipId);
+      await syncEmailTier(email);
+      void notifyOpsDiscord({
+        title: "Whop payment failed — dunning grace started",
+        body:
+          event.type +
+          ": membership=" +
+          (membershipId ?? "unknown") +
+          " entered billing-retry grace. Owner " +
+          (email ? "re-synced now" : "will be reconciled on the hourly cron") +
+          ".",
+        severity: "warning",
+      }).catch(() => undefined);
+    } else if (
+      event.type === "invoice.marked_uncollectible" ||
+      event.type === "invoice.voided"
+    ) {
+      const { membershipId, email } = extractMembershipAndEmail(event.data);
+      if (membershipId) {
+        await markMembershipRevoked(membershipId);
+        await clearMembershipDunningGrace(membershipId);
+      }
+      await syncEmailTier(email);
+      void notifyOpsDiscord({
+        title: "Whop invoice uncollectible/voided — premium revoked",
+        body:
+          event.type +
+          ": membership=" +
+          (membershipId ?? "unknown") +
+          " revoked. Owner " +
+          (email ? "re-synced now" : "will be downgraded by the reconcile cron") +
+          ".",
+        severity: "warning",
+      }).catch(() => undefined);
+    } else if (event.type === "invoice.paid" || event.type === "payment.succeeded") {
+      const { membershipId, email } = extractMembershipAndEmail(event.data);
+      if (membershipId) await clearMembershipDunningGrace(membershipId);
+      await syncEmailTier(email);
     }
   } catch (error) {
     console.error("[whop webhook]", event.type, error);

@@ -38,6 +38,9 @@ function shouldRefresh(desk: SpxDeskPayload, prev: Partial<SpxDeskPayload> | nul
   if (prev.above_vwap !== desk.above_vwap) return true;
   if (prev.tide_bias !== desk.tide_bias) return true;
   if (prev.gex_king !== desk.gex_king) return true;
+  if (prev.gamma_flip !== desk.gamma_flip) return true;
+  if (prev.gex_stale !== desk.gex_stale) return true;
+  if (prev.feed_stalled !== desk.feed_stalled) return true;
 
   const prevStacks = flowStackSignature(prev.strike_stacks);
   const nextStacks = flowStackSignature(desk.strike_stacks);
@@ -166,10 +169,11 @@ export function SpxCommentaryRail({
         // reconciliation and let duplicates render).
         id: commentary.as_of || `c-${Date.now()}`,
       };
-      setEntries((e) => [entry, ...e].slice(0, 24));
-      hydratedRef.current = true;
-      // Write to sessionStorage only when a new entry arrives, not on every render
-      if (live) writeSessionCache(COMMENTARY_CACHE_KEY, [entry]);
+      setEntries((e) => {
+        const next = [entry, ...e].slice(0, 24);
+        if (live) writeSessionCache(COMMENTARY_CACHE_KEY, next);
+        return next;
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Commentary unavailable";
       nextRefreshMsRef.current = null;
@@ -201,7 +205,7 @@ export function SpxCommentaryRail({
       return;
     }
     pullCommentary(true);
-  }, [live, desk?.available, desk?.price]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [live, desk?.available, desk?.price, desk?.gamma_flip, desk?.gex_king, desk?.regime]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!desk?.available || !live) return;

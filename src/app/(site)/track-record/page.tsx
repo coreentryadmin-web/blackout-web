@@ -1,12 +1,6 @@
-import type { Metadata } from "next";
-import { TrackRecordView } from "@/components/track-record";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Track Record · BlackOut",
-  description:
-    "Verified SPX Slayer and Night Hawk signal results — recorded at generation time and scored automatically.",
-};
-
-export default function TrackRecordPage() {
-  return <TrackRecordView />;
+/** Legacy public URL — track record is admin-only at /admin/track-record. */
+export default function TrackRecordLegacyRedirect() {
+  redirect("/admin/track-record");
 }

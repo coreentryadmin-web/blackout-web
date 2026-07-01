@@ -1,13 +1,18 @@
 /** UW API throttle — token bucket, min spacing, in-flight dedup, circuit breaker. */
 
 import { tryClaimHuntUwCall, UwHuntBudgetExhaustedError } from "./uw-hunt-budget";
+import {
+  rateLimiterEnvNumber,
+  computeDegradedLocalRps,
+  type RateLimiterRedisClient,
+  acquireSlidingWindowRedisSlot,
+  ensureProviderBreakerSubscription,
+  type BreakerSubscriptionState,
+} from "./provider-rate-limiter-shared";
 
-function envNumber(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim();
-  if (!raw) return fallback;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
+export { computeDegradedLocalRps } from "./provider-rate-limiter-shared";
+
+const envNumber = rateLimiterEnvNumber;
 
 /** Per-process pacing; default 2 rps. Override via UW_MAX_RPS (e.g. lower on the worker
  *  than on web when no Redis-global ceiling is in play). */
@@ -27,9 +32,6 @@ const REPLICA_COUNT = Math.max(1, Math.floor(envNumber("REPLICA_COUNT", 1)));
  * at N>2, and a true floor(2/3)=0 would starve. The 0.1 guard only protects a misconfigured-high
  * REPLICA_COUNT from total starvation; for realistic N (≤~20) the cluster cap stays exact.
  */
-export function computeDegradedLocalRps(globalMaxRps: number, replicaCount: number): number {
-  return Math.max(0.1, globalMaxRps / Math.max(1, Math.floor(replicaCount)));
-}
 const DEGRADED_LOCAL_RPS = computeDegradedLocalRps(GLOBAL_MAX_RPS, REPLICA_COUNT);
 const MAX_CONCURRENCY = Math.max(1, Math.floor(envNumber("UW_MAX_CONCURRENCY", 3)));
 const MIN_SPACING_MS = Math.max(0, Math.floor(envNumber("UW_MIN_SPACING_MS", 300)));
@@ -56,7 +58,7 @@ const BREAKER_CHANNEL = "blackout:uw:breaker";
  * clamp to a few normal pause windows ahead of local now.
  */
 const BREAKER_MAX_FUTURE_MS = CIRCUIT_PAUSE_MS * 3;
-let breakerSubscribed = false;
+const breakerSubState: BreakerSubscriptionState = { subscribed: false };
 
 /**
  * Pure merge: given the current breaker deadline, a peer-published openUntil, the
@@ -82,34 +84,14 @@ export function mergeBreakerOpenUntil(
  * tests alias-free, mirrors getSharedRedis) and no-ops with no Redis (local-only breaker).
  */
 function ensureBreakerSubscription(): void {
-  if (breakerSubscribed) return;
-  breakerSubscribed = true; // set before await: prevents duplicate subscribe races
-  void import("@/lib/redis-pubsub")
-    .then(({ redisSubscribe }) =>
-      redisSubscribe(BREAKER_CHANNEL, (msg) => {
-        try {
-          const parsed = JSON.parse(msg) as { openUntil?: unknown };
-          const peer = typeof parsed.openUntil === "number" ? parsed.openUntil : NaN;
-          circuitOpenUntil = mergeBreakerOpenUntil(circuitOpenUntil, peer, Date.now());
-        } catch {
-          /* ignore malformed peer message */
-        }
-      })
-    )
-    .catch(() => {
-      breakerSubscribed = false; // allow a later retry if the import/subscribe failed
-    });
+  ensureProviderBreakerSubscription(breakerSubState, BREAKER_CHANNEL, (peer) => {
+    circuitOpenUntil = mergeBreakerOpenUntil(circuitOpenUntil, peer, Date.now());
+  });
 }
 
 const coalescedInflight = new Map<string, Promise<unknown>>();
 
-type RedisClient = {
-  incr(key: string): Promise<number>;
-  expire(key: string, seconds: number): Promise<number>;
-  get(key: string): Promise<string | null>;
-  eval(script: string, numkeys: number, ...args: (string | number)[]): Promise<unknown>;
-  disconnect(): void;
-};
+type RedisClient = RateLimiterRedisClient;
 
 let sharedRedis: RedisClient | null = null;
 let sharedRedisFailedAt = 0;
@@ -217,62 +199,12 @@ function waitMsForToken(): number {
   return Math.max(25, Math.ceil((deficit / rate) * 1000));
 }
 
-/**
- * Lua script for atomic sliding-window rate-limit check-and-increment.
- *
- * Keys:  KEYS[1] = currKey, KEYS[2] = prevKey
- * Args:  ARGV[1] = elapsedFrac (0..1, fraction of current second elapsed)
- *        ARGV[2] = limit       (GLOBAL_MAX_RPS)
- *        ARGV[3] = ttl         (seconds to keep the counter key alive)
- *
- * Returns 1 if the request is allowed (counter incremented), 0 if denied.
- *
- * The script reads prevKey and currKey, computes the weighted sliding-window
- * estimate, and only increments currKey when the result would be within the
- * limit.  Because Lua scripts run atomically in Redis, no concurrent caller
- * can interleave between the read and the write.
- */
-const RATE_LIMIT_LUA = `
-local curr = tonumber(redis.call('GET', KEYS[1])) or 0
-local prev = tonumber(redis.call('GET', KEYS[2])) or 0
-local elapsed_frac = tonumber(ARGV[1])
-local limit = tonumber(ARGV[2])
-local ttl = tonumber(ARGV[3])
-local estimated = curr + prev * (1 - elapsed_frac)
-if estimated >= limit then
-  return 0
-end
-local new_count = redis.call('INCR', KEYS[1])
-if new_count == 1 then
-  redis.call('EXPIRE', KEYS[1], ttl)
-end
-return 1
-`;
-
 async function acquireGlobalRedisSlot(): Promise<boolean> {
   const client = await getSharedRedis();
   if (!client) return true;
 
-  const nowMs = Date.now();
-  const sec = Math.floor(nowMs / 1000);
-  const elapsedFrac = (nowMs % 1000) / 1000;
-  const currKey = `blackout:uw:rps:${sec}`;
-  const prevKey = `blackout:uw:rps:${sec - 1}`;
-
   try {
-    // Atomically check the sliding-window estimate and increment in one
-    // Redis round-trip.  Replaces the previous GET+INCR two-step that had
-    // a race window where concurrent callers could both pass the gate.
-    const allowed = await client.eval(
-      RATE_LIMIT_LUA,
-      2,           // numkeys
-      currKey,
-      prevKey,
-      elapsedFrac.toFixed(6),
-      GLOBAL_MAX_RPS,
-      3,           // TTL seconds
-    );
-    return allowed === 1;
+    return await acquireSlidingWindowRedisSlot(client, "blackout:uw:rps", GLOBAL_MAX_RPS);
   } catch {
     // Redis died mid-session: arm the backoff so getSharedRedis() falls back to
     // local-only pacing for SHARED_REDIS_RETRY_BACKOFF_MS instead of awaiting a
@@ -404,7 +336,7 @@ export function resetUwCircuitForTest(): void {
   circuitOpenUntil = 0;
   recent429Timestamps = [];
   rateLimitSummaryCount = 0;
-  breakerSubscribed = false;
+  breakerSubState.subscribed = false;
 }
 
 /** Pace a single UW HTTP call through local + optional Redis-global buckets. */

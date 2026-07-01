@@ -76,15 +76,8 @@ export type PlayOutcomeStats = {
 const memoryOutcomes: PlayOutcomeRow[] = [];
 
 // ---------------------------------------------------------------------------
-// Write-failure observability. recordPlayEntry runs behind a swallow-and-log
-// try/catch in the engine (a record failure must NEVER crash the live trading
-// engine mid-tick). But a swallowed failure here is exactly the class of bug
-// that leaves spx_play_outcomes permanently empty — the engine opens a play in
-// spx_open_play, the matching outcome INSERT throws, and the later close UPDATE
-// (WHERE outcome='open') silently affects 0 rows. To make that diagnosable in
-// production we keep a durable, cross-replica counter in platform_meta that the
-// data-correctness track-record verifier reads. In-memory fallback keeps it
-// working (per-replica) when DATABASE_URL is unset.
+// Write-failure observability. Open-path entry writes are transactional in insertOpenSpxPlay;
+// this counter mainly tracks close-path failures and legacy entry failures.
 // ---------------------------------------------------------------------------
 const PLAY_WRITE_FAILURE_META_KEY = "spx_play_outcome_write_failures";
 
@@ -166,15 +159,25 @@ export async function readPlayWriteFailures(): Promise<PlayWriteFailureState> {
   return memoryWriteFailures;
 }
 
-function classifyOutcome(close: PlayCloseSnapshot): "win" | "loss" | "breakeven" {
-  if (close.exit_action === "THETA" || close.exit_action === "SESSION") {
+export function classifyOutcome(close: PlayCloseSnapshot): "win" | "loss" | "breakeven" {
+  // Time/thesis/session exits are graded by REALIZED P&L, not by the reason for exiting.
+  // A green close is a win even when the trigger was a thesis break or the cash session
+  // ending. (Bug fix: THESIS was previously hard-coded to "loss" alongside was_loss, which
+  // mislabeled profitable exits — e.g. +2.84 / +7.30 pt closes — as losses and zeroed the
+  // public win rate. THETA/SESSION already graded by P&L sign; THESIS now matches them.)
+  if (
+    close.exit_action === "THETA" ||
+    close.exit_action === "SESSION" ||
+    close.exit_action === "THESIS"
+  ) {
     // Any negative PnL is a loss — the old -1 floor was classifying -0.5 pt exits
     // (−$50/contract) as "breakeven," inflating win-rate statistics.
     if (close.pnl_pts < 0) return "loss";
     if (close.pnl_pts > 0) return "win";
     return "breakeven";
   }
-  if (close.was_loss || close.exit_action === "STOP" || close.exit_action === "THESIS") {
+  // A STOP is by construction below entry (long) / above (short) → always a realized loss.
+  if (close.exit_action === "STOP") {
     return "loss";
   }
   // TRAIL = protected exit (breakeven lock or price-trail). A scratch or better is a
@@ -185,8 +188,11 @@ function classifyOutcome(close: PlayCloseSnapshot): "win" | "loss" | "breakeven"
     if (close.pnl_pts <= -1) return "loss";
     return "breakeven";
   }
+  // TARGET, or an UNKNOWN exit: grade by P&L. was_loss stays as the catch-all loss signal
+  // for an UNKNOWN action whose small negative PnL wouldn't trip the -1 floor (it is NOT
+  // consulted for THESIS/THETA/SESSION above, so a green thesis break is no longer a loss).
   if (close.exit_action === "TARGET" || close.pnl_pts >= 2) return "win";
-  if (close.pnl_pts <= -1) return "loss";
+  if (close.was_loss || close.pnl_pts <= -1) return "loss";
   return "breakeven";
 }
 
@@ -313,12 +319,12 @@ export async function recordPlayClose(
 
 export async function fetchPlayOutcomeStats(): Promise<PlayOutcomeStats> {
   if (!dbConfigured()) {
-    return aggregateStats(memoryOutcomes.filter((r) => r.outcome !== "open"));
+    return computePlayOutcomeStats(memoryOutcomes.filter((r) => r.outcome !== "open"));
   }
   await ensureSchema();
   const { fetchClosedPlayOutcomes } = await import("@/lib/db");
   const rows = await fetchClosedPlayOutcomes(500);
-  return aggregateStats(rows);
+  return computePlayOutcomeStats(rows);
 }
 
 function bucket(rows: PlayOutcomeRow[], path: PlayEntryPath) {
@@ -340,7 +346,8 @@ function bucket(rows: PlayOutcomeRow[], path: PlayEntryPath) {
   };
 }
 
-function aggregateStats(rows: PlayOutcomeRow[]): PlayOutcomeStats {
+/** Pure stats aggregation — exported for unit tests. */
+export function computePlayOutcomeStats(rows: PlayOutcomeRow[]): PlayOutcomeStats {
   const closed = rows.filter((r) => r.outcome !== "open");
   const wins = closed.filter((r) => r.outcome === "win").length;
   const losses = closed.filter((r) => r.outcome === "loss").length;

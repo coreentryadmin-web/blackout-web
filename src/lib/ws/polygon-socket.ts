@@ -3,7 +3,7 @@
  */
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { etMinutes, etClock } from "@/lib/spx-play-session-time";
-import { getEarlyCloseMinutes } from "@/lib/spx-play-session-guards";
+import { isEtCashRth } from "@/lib/et-market-hours";
 export type PolygonAgg = {
   ev: "A" | "AM";
   sym: string;
@@ -218,14 +218,7 @@ let indicesWatchdog: ReturnType<typeof setInterval> | null = null;
  * closed and no one is trading.)
  */
 function inIndicesMarketHours(now = new Date()): boolean {
-  const weekday = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-  }).format(now);
-  if (weekday === "Sat" || weekday === "Sun") return false;
-  const mins = etMinutes(now);
-  const close = getEarlyCloseMinutes(now) ?? etClock(16, 0); // 13:00 ET on half-days, else 16:00
-  return mins >= etClock(9, 30) && mins <= close;
+  return isEtCashRth(now);
 }
 
 function startIndicesWatchdog() {

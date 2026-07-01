@@ -27,6 +27,7 @@ function setMemoryEntry(key: string, entry: MemoryEntry): void {
 type RedisClient = {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, mode: string, ttlSec: number): Promise<unknown>;
+  del(key: string): Promise<unknown>;
   ttl(key: string): Promise<number>;
 };
 
@@ -124,6 +125,17 @@ export async function sharedCacheSet(key: string, value: unknown, ttlSec: number
     await redis.set(`blackout:${key}`, payload, "EX", ttlSec);
   } catch {
     // memory copy already stored
+  }
+}
+
+export async function sharedCacheDel(key: string): Promise<void> {
+  memory.delete(key);
+  const redis = await getRedis();
+  if (!redis) return;
+  try {
+    await redis.del(`blackout:${key}`);
+  } catch {
+    // memory copy already cleared
   }
 }
 

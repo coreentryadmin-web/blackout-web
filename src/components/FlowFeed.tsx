@@ -134,6 +134,7 @@ export function FlowFeed() {
   const [nighthawkEdition, setNighthawkEdition] = useState<NightHawkEdition | null>(null);
 
   const seenRef         = useRef(new Set<string>());
+  const loadGenerationRef = useRef(0);
   const replaySourceRef = useRef<FlowAlert[]>([]);
   const replayIdxRef    = useRef(0);
   const replayTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -181,17 +182,24 @@ export function FlowFeed() {
   // full filter() scans, and one memo recompute per SSE message instead of two.
   // (Both still depend on `alerts`; a new alert legitimately changes the counts,
   // so they must recompute — but we do it once, in O(n), not twice.)
+  // Filter-scoped counts for CALL/PUT/ALL pills — match the active tape filters.
+  const countSource = useMemo(() => {
+    let base = alerts;
+    if (tickerFilter) base = base.filter((a) => a.ticker === tickerFilter.toUpperCase());
+    if (watchlistOnly && watchlist.watchlistSet.size > 0) {
+      base = base.filter((a) => watchlist.watchlistSet.has(a.ticker));
+    }
+    return base;
+  }, [alerts, tickerFilter, watchlistOnly, watchlist.watchlistSet]);
+
   const { callCount, putCount, allCount } = useMemo(() => {
     let call = 0, put = 0;
-    for (const a of alerts) {
+    for (const a of countSource) {
       if (a.option_type === "CALL") call++;
       else if (a.option_type === "PUT") put++;
     }
-    // Gap #6: ALL must reconcile to CALL + PUT. Typeless UNKNOWN prints are dropped from the
-    // tape (FlowAlertStream), so counting them in ALL made the pill overstate the tape and
-    // ALL ≠ CALL + PUT. Sum the two typed buckets instead of using raw alerts.length.
     return { callCount: call, putCount: put, allCount: call + put };
-  }, [alerts]);
+  }, [countSource]);
 
   // Bug 9: limit input to recent 500 alerts for strike-stack computation performance
   const compoundTickers = useMemo<Set<string>>(() => {
@@ -389,8 +397,10 @@ export function FlowFeed() {
 
   // ── Data loading ──────────────────────────────────────────────────────────
   const loadFlows = useCallback(async () => {
+    const generation = ++loadGenerationRef.current;
     try {
       const d = await fetchFlows({ min_premium: Math.max(FLOOR_PREMIUM, minPremium), ticker: tickerFilter || undefined });
+      if (generation !== loadGenerationRef.current) return;
       // Bug 1 + gap #13: rebuild seenRef from REST so SSE can't re-add duplicates after a
       // reconnect. Seed BOTH the canonical alert_id (when the row carries one) and the
       // composite fallback, so an incoming SSE echo matches on whichever key it shares.

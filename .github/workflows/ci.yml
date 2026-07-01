@@ -23,16 +23,16 @@ jobs:
       - run: npm ci
       - name: Type check
         run: npx tsc --noEmit
+      - name: API auth guard (default-deny)
+        run: node scripts/verify-api-auth-guards.mjs
       - name: Unit tests
-        # `npm test` uses `tsx --test "src/**/*.test.ts"`, whose ** glob relies on
-        # Node's test-runner glob support (Node 21+). CI pins Node 20 (prod parity),
-        # so expand the glob in bash and pass explicit files — version-agnostic.
+        # Node 20 does not expand globs in --test; expand in bash but keep module mocks.
         shell: bash
         run: |
           shopt -s globstar nullglob
           files=(src/**/*.test.ts)
           echo "Running ${#files[@]} test files"
-          npx tsx --test "${files[@]}"
+          node --import tsx --experimental-test-module-mocks --test "${files[@]}"
       - name: Build (next build — catches deploy-breakers before merge)
         run: npm run build
       - name: Brand guard (no grey)

@@ -112,11 +112,11 @@ function VerdictChip({ verdict }: { verdict: Verdict }) {
 // Valuation-status tag (honesty signal next to the P&L).
 // ---------------------------------------------------------------------------
 function StatusTag({ status }: { status: ValuationStatus }) {
-  const tone: "bull" | "sky" | "bear" =
-    status === "live" ? "bull" : status === "pending" ? "sky" : "bear";
+  const tone: "bull" | "sky" | "bear" | "neutral" =
+    status === "live" ? "bull" : status === "pending" ? "sky" : status === "stale" ? "neutral" : "bear";
   return (
     <Badge tone={tone} size="sm" dot={status === "live"}>
-      {status}
+      {status === "stale" ? "prior close" : status}
     </Badge>
   );
 }
@@ -875,8 +875,9 @@ function summarize(positions: ApiPosition[]): Summary {
     if (live && p.unrealized_pnl != null && Number.isFinite(p.unrealized_pnl)) {
       pnlSum += p.unrealized_pnl;
       livePnlLegs += 1;
-      // Cost basis for this leg = entry premium × contracts × 100 (option multiplier).
-      const basis = p.entry_premium * p.contracts * 100;
+      // Cost basis for this leg = entry premium × contracts × multiplier (100 or corp-action adjusted).
+      const spc = p.valuation?.sharesPerContract ?? 100;
+      const basis = p.entry_premium * p.contracts * spc;
       // The return % numerator and denominator MUST cover the same leg set, else a zero-basis
       // leg's P&L would inflate the ratio. So a leg counts toward returnNum only when it also
       // contributes a basis. Its $ P&L still counts in pnlSum (the aggregate $ is honest).
@@ -980,14 +981,16 @@ function computePortfolioGreeks(positions: ApiPosition[]): PortfolioGreeks {
       (acc, p) => {
         const sideSign = p.side === "short" ? -1 : 1;
         const size = (p.contracts ?? 1) * sideSign;
-        const mult = 100;
+        const mult = p.valuation!.sharesPerContract ?? 100;
         acc.delta += (p.valuation!.delta ?? 0) * size * mult;
         acc.gamma += (p.valuation!.gamma ?? 0) * size * mult;
         acc.theta += (p.valuation!.theta ?? 0) * size * mult;
         acc.vega += (p.valuation!.vega ?? 0) * size * mult;
         acc.totalPremiumAtRisk += (p.valuation!.mark ?? p.entry_premium ?? 0) * Math.abs(size) * mult;
-        const spot = p.valuation!.underlyingPrice ?? 5500;
-        acc.totalDeltaDollars += (p.valuation!.delta ?? 0) * size * mult * spot;
+        const spot = p.valuation!.underlyingPrice;
+        if (spot != null && Number.isFinite(spot) && spot > 0) {
+          acc.totalDeltaDollars += (p.valuation!.delta ?? 0) * size * mult * spot;
+        }
         acc.liveLegs += 1;
         return acc;
       },

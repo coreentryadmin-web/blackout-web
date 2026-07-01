@@ -66,10 +66,6 @@ export function summarizeSpxDesk(merged: SpxDeskPayload): SpxDeskSummary {
   };
 }
 
-export async function getMergedSpxDesk() {
-  return loadMergedSpxDesk();
-}
-
 export async function getSpxDeskSummary(): Promise<SpxDeskSummary> {
   const { merged } = await loadMergedSpxDesk();
   return summarizeSpxDesk(merged);
