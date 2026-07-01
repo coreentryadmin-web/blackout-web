@@ -96,6 +96,10 @@ async function auditTrackRecord() {
     getJson("/api/track-record"),
     CRON ? getJson("/api/market/spx/outcomes") : { status: 0, json: {} },
   ]);
+  if (pub.status === 401 && page.status === 401) {
+    ok("track-record", "admin-gated", "HTTP 401 without admin session — expected (requireAdminApi)");
+    return;
+  }
   if (pub.status !== 200 || page.status !== 200) {
     fail("track-record", "HTTP", `public=${pub.status} page=${page.status}`);
     return;
