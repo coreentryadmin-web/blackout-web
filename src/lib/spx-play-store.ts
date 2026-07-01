@@ -6,7 +6,7 @@ import {
 } from "@/lib/db";
 import { nextMemoryPlayId } from "@/lib/spx-play-memory-id";
 import type { SpxPlayDirection } from "@/lib/spx-signals";
-import type { PlayCloseSnapshot } from "@/lib/spx-play-outcomes";
+import type { PlayCloseSnapshot, PlayEntrySnapshot } from "@/lib/spx-play-outcomes";
 import { todayEt } from "@/lib/et-date";
 
 export type OpenPlayRow = {
@@ -253,7 +253,8 @@ export async function loadOpenPlay(): Promise<OpenPlayRow | null> {
 }
 
 export async function openPlay(
-  row: Omit<OpenPlayRow, "id" | "status" | "trim_done" | "mfe_pts" | "mae_pts">
+  row: Omit<OpenPlayRow, "id" | "status" | "trim_done" | "mfe_pts" | "mae_pts">,
+  outcome?: Omit<PlayEntrySnapshot, "open_play_id">
 ): Promise<{ row: OpenPlayRow; created: boolean }> {
   const full: OpenPlayRow = {
     ...row,
@@ -274,6 +275,10 @@ export async function openPlay(
     memoryOpenInProgress = true;
     try {
       MEMORY_OPEN.row = full;
+      if (outcome) {
+        const { recordPlayEntry } = await import("@/lib/spx-play-outcomes");
+        await recordPlayEntry({ ...outcome, open_play_id: full.id });
+      }
       return { row: full, created: true };
     } finally {
       memoryOpenInProgress = false;
@@ -281,7 +286,19 @@ export async function openPlay(
   }
 
   const { insertOpenSpxPlay } = await import("@/lib/db");
-  const { id, created } = await insertOpenSpxPlay(full);
+  const outcomePayload = outcome
+    ? {
+        entry_path: outcome.entry_path,
+        score: outcome.score,
+        confidence: outcome.confidence,
+        factors: outcome.factors,
+        confirmations: outcome.confirmations,
+        mtf: outcome.mtf,
+        claude: outcome.claude,
+        option_ticket: outcome.option_ticket,
+      }
+    : undefined;
+  const { id, created } = await insertOpenSpxPlay(full, outcomePayload);
   const persisted = { ...full, id };
   MEMORY_OPEN.row = persisted;
   return { row: persisted, created };

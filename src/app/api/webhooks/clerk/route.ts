@@ -1,7 +1,8 @@
 import { headers } from 'next/headers';
 import { Webhook } from 'svix';
 import { WebhookEvent } from '@clerk/nextjs/server';
-import { dbQuery } from '@/lib/db';
+import { dbQuery, deleteUserDataForClerkId } from '@/lib/db';
+import { publishTierChanged } from '@/lib/tier-cache';
 
 const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
@@ -75,9 +76,18 @@ export async function POST(req: Request) {
         [data.id, email, firstName, lastName]
       );
       console.log(`[clerk-webhook] Updated user: ${data.id}`);
+    } else if (type === 'user.deleted') {
+      const clerkId = data.id;
+      if (!clerkId) {
+        console.warn('[clerk-webhook] user.deleted missing data.id — skipping');
+      } else {
+        const deleted = await deleteUserDataForClerkId(clerkId);
+        publishTierChanged(clerkId);
+        console.log(`[clerk-webhook] Deleted user data for ${clerkId}:`, deleted);
+      }
     }
   } catch (err) {
-    // Fail-closed on DB errors — return 500 so Clerk retries provisioning.
+    // Fail-closed on DB errors — return 500 so Clerk retries (incl. user.deleted GDPR cleanup).
     console.error(`[clerk-webhook] DB error on ${type}:`, err);
     return new Response("Database error", { status: 500 });
   }

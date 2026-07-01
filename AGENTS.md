@@ -75,7 +75,7 @@ The ~20 `railway.*.toml` files at the repo root are production cron *trigger* se
 - Production: `blackout-web` **iad=3, us-west2=2**; **PgBouncer iad=2, us-west2=1** (colocated with Postgres/web);
   healthcheck **`/api/ready`** (90s); crons → `CRON_TARGET_BASE_URL=http://blackout-web.railway.internal:8080`.
 - **Postgres PITR:** bucket `Postgres-PITR`; restore drill runbook `docs/ops/PITR-RESTORE-DRILL.md`.
-- **23 crons** incl. `Socket-Health-Cron` → `/api/cron/socket-health` (`railway.socket-health.toml`).
+- **23 crons** incl. `Socket-Health-Cron` → `/api/cron/socket-health` (`railway.socket-health.toml`) and `Market-Regime-Detector` → `/api/cron/market-regime-detector` (`railway.market-regime-detector.toml`). If the regime detector service is missing in Railway, run `node scripts/railway-ops-provision.mjs` (also bootstraps `provider-health-reconcile`).
 - PgBouncer: **session mode** (not transaction) — see `docs/PGBOUNCER-SETUP.md`.
 - **Still manual:** set `DISCORD_OPS_WEBHOOK_URL` / `DISCORD_PLAY_WEBHOOK_URL` on `blackout-web` for ops alerts.
 - `railway scale` may return Unauthorized on project tokens — patch via `environment edit` `deploy.multiRegionConfig`.

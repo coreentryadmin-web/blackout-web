@@ -6,6 +6,7 @@ import {
   PREMIUM_MEMBERSHIP_STATUSES,
   resolveTierFromMemberships,
 } from "@/lib/whop";
+import { isMembershipInDunningGrace } from "@/lib/whop-dunning";
 import { isMembershipRevoked } from "@/lib/whop-revocation";
 import { publishTierChanged } from "@/lib/tier-cache";
 import { sortMemberships } from "@/lib/membership-sort";
@@ -111,10 +112,14 @@ async function resolveMembershipTierForEmail(
   // the membership id to the revocation denylist, so a still-'completed' refunded purchase no longer
   // grants premium.
   const revoked = new Set<string>();
+  const dunningGrace = new Set<string>();
   for (const m of sorted) {
     if (m.id && (await isMembershipRevoked(m.id))) revoked.add(m.id);
+    if (m.id && m.status === "past_due" && (await isMembershipInDunningGrace(m.id))) {
+      dunningGrace.add(m.id);
+    }
   }
-  const tier = resolveTierFromMemberships(sorted, revoked);
+  const tier = resolveTierFromMemberships(sorted, revoked, dunningGrace);
   const activeMembership = sorted.find((m) => !revoked.has(m.id)) ?? sorted[0];
   return { tier, activeMembership };
 }

@@ -33,3 +33,13 @@ test("revocation of a non-premium membership is a no-op (already free)", () => {
   assert.equal(resolveTierFromMemberships([m]), "free");
   assert.equal(resolveTierFromMemberships([m], new Set(["mem_2"])), "free");
 });
+
+test("past_due does NOT grant premium without dunning grace", () => {
+  const m = mem("mem_pd", "past_due", "prod_premium");
+  assert.equal(resolveTierFromMemberships([m]), "free");
+});
+
+test("past_due grants premium only during webhook-granted dunning grace", () => {
+  const m = mem("mem_pd", "past_due", "prod_premium");
+  assert.equal(resolveTierFromMemberships([m], undefined, new Set(["mem_pd"])), "premium");
+});
