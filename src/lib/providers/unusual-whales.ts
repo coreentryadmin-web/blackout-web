@@ -1458,33 +1458,6 @@ export async function fetchUwUnusualTrades(ticker?: string, limit = 20) {
   });
 }
 
-/** @deprecated Use fetchBenzingaNews from polygon.ts as primary (unlimited via Polygon/Massive plan). UW news quota reserved for flow/tide/dark pool. */
-export async function fetchUwNewsHeadlines(ticker: string, limit = 12) {
-  const data = await uwGetSafe<unknown>("/api/news/headlines", {
-    ticker: ticker.toUpperCase(),
-    limit: Math.min(limit, 50),
-  });
-  return extractRows(data).slice(0, limit);
-}
-
-/** @deprecated Use fetchBenzingaNews from polygon.ts as primary (no ticker filter variant). UW news quota reserved for flow/tide/dark pool. */
-/** Market-wide headlines — no ticker filter. */
-export async function fetchUwMarketNewsHeadlines(limit = 20) {
-  const data = await uwGetSafe<unknown>("/api/news/headlines", {
-    limit: Math.min(limit, 50),
-  });
-  return extractRows(data).slice(0, limit);
-}
-
-/** @deprecated Use fetchMarketMovers from polygon.ts instead (gainers/losers via Polygon batch snapshot — no rate limit). */
-export async function fetchUwMarketMovers(limit = 15) {
-  const redis = await getUwCacheRedis();
-  return uwCacheGet(redis, UW_KEYS.marketMovers(), UW_CACHE_TTL.marketMovers, async () => {
-    const data = await uwGetSafe<unknown>("/api/market/movers", { limit: Math.min(limit, 50) });
-    return extractRows(data).slice(0, limit);
-  });
-}
-
 export async function fetchUwMarketTopNetImpact(limit = 15) {
   const redis = await getUwCacheRedis();
   return uwCacheGet(redis, UW_KEYS.topNetImpact(), UW_CACHE_TTL.topNetImpact, async () => {
@@ -2053,11 +2026,6 @@ export async function fetchUwStockState(ticker: string) {
   return uwGetSafe<unknown>(`/api/stock/${sym(ticker)}/stock-state`, {});
 }
 
-export async function fetchUwFlowPerStrike(ticker: string, limit = 40) {
-  const data = await uwGetSafe<unknown>(`/api/stock/${sym(ticker)}/flow-per-strike`, { limit });
-  return extractRows(data).slice(0, limit);
-}
-
 export async function fetchUwLitFlowRecent(limit = 25) {
   const data = await uwGetSafe<unknown>("/api/lit-flow/recent", { limit: Math.min(limit, 100) });
   return extractRows(data).slice(0, limit);
@@ -2079,10 +2047,6 @@ export async function fetchUwMarketEconomicCalendar(limit = 20) {
 
 export async function fetchUwSpotExposures(ticker = "SPX") {
   return uwGetSafe<unknown>(`/api/stock/${ticker.toUpperCase()}/spot-exposures`, {});
-}
-
-export async function fetchUwOptionPriceLevels(ticker = "SPX") {
-  return uwGetSafe<unknown>(`/api/stock/${ticker.toUpperCase()}/option/stock-price-levels`, {});
 }
 
 export async function fetchUwEarningsPremarket(limit = 25) {
@@ -2148,13 +2112,6 @@ export async function fetchUwOptionContractVolumeProfile(contractId: string) {
 
 export async function fetchUwInsiderTicker(ticker: string, limit = 25) {
   const data = await uwGetSafe<unknown>(`/api/insider/${sym(ticker)}`, { limit: Math.min(limit, 100) });
-  return extractRows(data).slice(0, limit);
-}
-
-export async function fetchUwInsiderSectorFlow(sector: string, limit = 25) {
-  const data = await uwGetSafe<unknown>(`/api/insider/${sector.toLowerCase()}/sector-flow`, {
-    limit: Math.min(limit, 100),
-  });
   return extractRows(data).slice(0, limit);
 }
 

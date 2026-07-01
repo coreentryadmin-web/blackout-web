@@ -20,13 +20,18 @@
 
 import { trackedFetch, type TrackedFetchOptions } from "@/lib/api-tracked-fetch";
 import { mergePolyBreakerOpenUntil } from "./polygon-breaker-merge";
+import {
+  rateLimiterEnvNumber,
+  computeDegradedLocalRps,
+  type RateLimiterRedisClient,
+  acquireSlidingWindowRedisSlot,
+  ensureProviderBreakerSubscription,
+  type BreakerSubscriptionState,
+} from "./provider-rate-limiter-shared";
 
-function envNumber(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim();
-  if (!raw) return fallback;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
+export { computeDegradedLocalRps } from "./provider-rate-limiter-shared";
+
+const envNumber = rateLimiterEnvNumber;
 
 /** Per-process pacing — PERMISSIVE. Default 40 rps; Polygon Advanced is high-throughput. */
 const MAX_RPS = envNumber("POLYGON_MAX_RPS", 40);
@@ -44,9 +49,6 @@ const REPLICA_COUNT = Math.max(1, Math.floor(envNumber("REPLICA_COUNT", 1)));
  * stays exact at N>2. The 0.1 guard only protects a misconfigured-high REPLICA_COUNT from
  * starvation; for realistic N the cluster cap stays exact.
  */
-export function computeDegradedLocalRps(globalMaxRps: number, replicaCount: number): number {
-  return Math.max(0.1, globalMaxRps / Math.max(1, Math.floor(replicaCount)));
-}
 const DEGRADED_LOCAL_RPS = computeDegradedLocalRps(GLOBAL_MAX_RPS, REPLICA_COUNT);
 const MAX_CONCURRENCY = Math.max(1, Math.floor(envNumber("POLYGON_MAX_CONCURRENCY", 24)));
 /** Default 0 — no inter-call spacing on the permissive Polygon path. */
@@ -76,46 +78,20 @@ const BREAKER_CHANNEL = "blackout:polygon:breaker";
  * clamp to a few normal pause windows ahead of local now.
  */
 const BREAKER_MAX_FUTURE_MS = CIRCUIT_PAUSE_MS * 3;
-let breakerSubscribed = false;
+const breakerSubState: BreakerSubscriptionState = { subscribed: false };
 
-/**
- * Lazy, once-per-process passive subscriber: a peer's trip extends our pause.
- * redis-pubsub is DYNAMICALLY imported (no static @/ on the hot path; mirrors UW) and
- * no-ops with no Redis (local-only breaker, exactly as before).
- */
 function ensureBreakerSubscription(): void {
-  if (breakerSubscribed) return;
-  breakerSubscribed = true; // set before await: prevents duplicate subscribe races
-  void import("@/lib/redis-pubsub")
-    .then(async ({ redisSubscribe }) => {
-      const { subscribed } = await redisSubscribe(BREAKER_CHANNEL, (msg) => {
-        try {
-          const parsed = JSON.parse(msg) as { openUntil?: unknown };
-          const peer = typeof parsed.openUntil === "number" ? parsed.openUntil : NaN;
-          circuitOpenUntil = mergePolyBreakerOpenUntil(
-            circuitOpenUntil,
-            peer,
-            Date.now(),
-            BREAKER_MAX_FUTURE_MS
-          );
-        } catch {
-          /* ignore malformed peer message */
-        }
-      });
-      if (!subscribed) breakerSubscribed = false;
-    })
-    .catch(() => {
-      breakerSubscribed = false; // allow a later retry if the import/subscribe failed
-    });
+  ensureProviderBreakerSubscription(breakerSubState, BREAKER_CHANNEL, (peer) => {
+    circuitOpenUntil = mergePolyBreakerOpenUntil(
+      circuitOpenUntil,
+      peer,
+      Date.now(),
+      BREAKER_MAX_FUTURE_MS
+    );
+  });
 }
 
-type RedisClient = {
-  incr(key: string): Promise<number>;
-  expire(key: string, seconds: number): Promise<number>;
-  get(key: string): Promise<string | null>;
-  eval(script: string, numkeys: number, ...args: (string | number)[]): Promise<unknown>;
-  disconnect(): void;
-};
+type RedisClient = RateLimiterRedisClient;
 
 let sharedRedis: RedisClient | null = null;
 let sharedRedisFailedAt = 0;
@@ -180,55 +156,12 @@ function waitMsForToken(): number {
   return Math.max(25, Math.ceil((deficit / rate) * 1000));
 }
 
-/**
- * Lua script for atomic sliding-window rate-limit check-and-increment.
- *
- * Keys:  KEYS[1] = currKey, KEYS[2] = prevKey
- * Args:  ARGV[1] = elapsedFrac (0..1, fraction of current second elapsed)
- *        ARGV[2] = limit       (GLOBAL_MAX_RPS)
- *        ARGV[3] = ttl         (seconds to keep the counter key alive)
- *
- * Returns 1 if the request is allowed (counter incremented), 0 if denied. Runs
- * atomically in Redis so no concurrent caller can interleave read and write.
- */
-const RATE_LIMIT_LUA = `
-local curr = tonumber(redis.call('GET', KEYS[1])) or 0
-local prev = tonumber(redis.call('GET', KEYS[2])) or 0
-local elapsed_frac = tonumber(ARGV[1])
-local limit = tonumber(ARGV[2])
-local ttl = tonumber(ARGV[3])
-local estimated = curr + prev * (1 - elapsed_frac)
-if estimated >= limit then
-  return 0
-end
-local new_count = redis.call('INCR', KEYS[1])
-if new_count == 1 then
-  redis.call('EXPIRE', KEYS[1], ttl)
-end
-return 1
-`;
-
 async function acquireGlobalRedisSlot(): Promise<boolean> {
   const client = await getSharedRedis();
   if (!client) return true; // FAIL-OPEN: no Redis → no global ceiling.
 
-  const nowMs = Date.now();
-  const sec = Math.floor(nowMs / 1000);
-  const elapsedFrac = (nowMs % 1000) / 1000;
-  const currKey = `blackout:polygon:rps:${sec}`;
-  const prevKey = `blackout:polygon:rps:${sec - 1}`;
-
   try {
-    const allowed = await client.eval(
-      RATE_LIMIT_LUA,
-      2, // numkeys
-      currKey,
-      prevKey,
-      elapsedFrac.toFixed(6),
-      GLOBAL_MAX_RPS,
-      3 // TTL seconds
-    );
-    return allowed === 1;
+    return await acquireSlidingWindowRedisSlot(client, "blackout:polygon:rps", GLOBAL_MAX_RPS);
   } catch {
     // Redis died mid-session: arm the backoff so getSharedRedis() falls back to
     // local-only pacing for SHARED_REDIS_RETRY_BACKOFF_MS instead of awaiting a
@@ -371,7 +304,7 @@ export function resetPolygonCircuitForTest(): void {
   circuitOpenUntil = 0;
   consecutive429 = 0;
   rateLimitSummaryCount = 0;
-  breakerSubscribed = false;
+  breakerSubState.subscribed = false;
 }
 
 /**
