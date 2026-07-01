@@ -730,6 +730,63 @@ export async function dbQuery<T extends QueryResultRow = QueryResultRow>(
   return (await getPool()).query<T>(text, values);
 }
 
+/** GDPR cleanup when Clerk sends user.deleted — removes all rows keyed by clerk_user_id. */
+export async function deleteUserDataForClerkId(clerkUserId: string): Promise<{
+  users: number;
+  largo_sessions: number;
+  user_journal: number;
+  user_positions: number;
+  push_subscriptions: number;
+}> {
+  if (!clerkUserId) {
+    return { users: 0, largo_sessions: 0, user_journal: 0, user_positions: 0, push_subscriptions: 0 };
+  }
+  await ensureSchema();
+  const client = await (await getPool()).connect();
+  try {
+    await client.query("BEGIN");
+    const largo = await client.query(
+      `DELETE FROM largo_sessions WHERE user_id = $1`,
+      [clerkUserId]
+    );
+    const journal = await client.query(
+      `DELETE FROM user_journal WHERE user_id = $1`,
+      [clerkUserId]
+    );
+    const positions = await client.query(
+      `DELETE FROM user_positions WHERE user_id = $1`,
+      [clerkUserId]
+    );
+    let pushDeleted = 0;
+    try {
+      const push = await client.query(
+        `DELETE FROM push_subscriptions WHERE user_id = $1`,
+        [clerkUserId]
+      );
+      pushDeleted = push.rowCount ?? 0;
+    } catch {
+      // push_subscriptions is lazily created — table may not exist yet.
+    }
+    const users = await client.query(
+      `DELETE FROM users WHERE clerk_user_id = $1`,
+      [clerkUserId]
+    );
+    await client.query("COMMIT");
+    return {
+      users: users.rowCount ?? 0,
+      largo_sessions: largo.rowCount ?? 0,
+      user_journal: journal.rowCount ?? 0,
+      user_positions: positions.rowCount ?? 0,
+      push_subscriptions: pushDeleted,
+    };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 /** Acquire a pool client for manual transaction management (caller must release). */
 export async function dbClient() {
   await ensureSchema();
@@ -1261,21 +1318,33 @@ export async function fetchOpenSpxPlay(sessionDate: string): Promise<{
   };
 }
 
-export async function insertOpenSpxPlay(row: {
-  session_date: string;
-  direction: string;
-  entry_price: number;
-  entry_score: number;
-  stop: number | null;
-  target: number | null;
-  grade: string;
-  headline: string;
-  opened_at: string;
-  option_strike?: number | null;
-  option_type?: string | null;
-  option_label?: string | null;
-  option_premium?: string | null;
-}): Promise<{ id: number; created: boolean }> {
+export async function insertOpenSpxPlay(
+  row: {
+    session_date: string;
+    direction: string;
+    entry_price: number;
+    entry_score: number;
+    stop: number | null;
+    target: number | null;
+    grade: string;
+    headline: string;
+    opened_at: string;
+    option_strike?: number | null;
+    option_type?: string | null;
+    option_label?: string | null;
+    option_premium?: string | null;
+  },
+  outcome?: {
+    entry_path: string;
+    score: number;
+    confidence: number;
+    factors: unknown;
+    confirmations: unknown;
+    mtf: unknown;
+    claude: unknown;
+    option_ticket: unknown;
+  }
+): Promise<{ id: number; created: boolean }> {
   await ensureSchema();
   const pool = await getPool();
   const client = await pool.connect();
@@ -1323,8 +1392,47 @@ export async function insertOpenSpxPlay(row: {
           row.option_premium ?? null,
         ]
       );
+      const openId = Number(res.rows[0]?.id ?? 0);
+      if (outcome && openId > 0) {
+        const outcomeRes = await client.query<{ id: string }>(
+          `
+    INSERT INTO spx_play_outcomes (
+      open_play_id, session_date, direction, entry_path, grade, score, confidence,
+      entry_price, stop, target, headline, factors, confirmations, mtf, claude,
+      option_ticket, opened_at, outcome
+    )
+    VALUES ($1,$2::date,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16::jsonb,$17,'open')
+    ON CONFLICT (open_play_id) WHERE outcome = 'open' DO NOTHING
+    RETURNING id
+    `,
+          [
+            openId,
+            row.session_date,
+            row.direction,
+            outcome.entry_path,
+            row.grade,
+            outcome.score,
+            outcome.confidence,
+            row.entry_price,
+            row.stop,
+            row.target,
+            row.headline,
+            JSON.stringify(outcome.factors ?? []),
+            JSON.stringify(outcome.confirmations ?? null),
+            JSON.stringify(outcome.mtf ?? null),
+            JSON.stringify(outcome.claude ?? null),
+            JSON.stringify(outcome.option_ticket ?? null),
+            row.opened_at,
+          ]
+        );
+        if (!outcomeRes.rows[0]?.id) {
+          throw new Error(
+            `spx_play_outcomes entry missing after open for open_play_id=${openId}`
+          );
+        }
+      }
       await client.query("COMMIT");
-      return { id: Number(res.rows[0]?.id ?? 0), created: true };
+      return { id: openId, created: true };
     } catch (err) {
       await client.query("ROLLBACK");
       const code = (err as { code?: string })?.code;

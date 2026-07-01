@@ -23,6 +23,8 @@ jobs:
       - run: npm ci
       - name: Type check
         run: npx tsc --noEmit
+      - name: API auth guard (default-deny)
+        run: node scripts/verify-api-auth-guards.mjs
       - name: Unit tests
         # `npm test` uses `tsx --test "src/**/*.test.ts"`, whose ** glob relies on
         # Node's test-runner glob support (Node 21+). CI pins Node 20 (prod parity),
