@@ -255,9 +255,24 @@ function StatPill({
   return (
     <div className={clsx("spx-hero-stat-pill", PILL_BORDER[tone] ?? PILL_BORDER.neutral)}>
       <p className="spx-hero-stat-label">{label}</p>
-      <p className={clsx("spx-hero-stat-value t-num", cap && "capitalize", VALUE_TONE[tone] ?? VALUE_TONE.neutral)}>
-        {value}
-      </p>
+      {/* Same flash-on-update recipe as the hero price (key change -> fresh initial->animate
+          pop), scaled down for pill size. No `exit` prop — the old value unmounts instantly,
+          the new one flashes in, matching the hero price's established pattern exactly. */}
+      <AnimatePresence mode="popLayout">
+        <motion.p
+          key={value}
+          initial={{ opacity: 0.4, scale: 1.08 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className={clsx(
+            "spx-hero-stat-value t-num drop-shadow-[0_0_6px_currentColor]",
+            cap && "capitalize",
+            VALUE_TONE[tone] ?? VALUE_TONE.neutral
+          )}
+        >
+          {value}
+        </motion.p>
+      </AnimatePresence>
     </div>
   );
 }
