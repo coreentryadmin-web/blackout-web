@@ -1,4 +1,93 @@
 # BlackOut Open Issues Log
+Last updated: 2026-07-01 13:20 ET
+
+## RTH comprehensive sweep — 2026-07-01 ~12:57–13:20 ET (pass 1 — mid-RTH)
+
+**Session:** Wed 1 Jul 2026, 12:57–13:20 ET (**RTH open**). Agent: autonomous cloud session. Premium Clerk admin via `sign_in_token` (two temp users created/deleted). Pass at ~13:00 ET mid-session.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` (initial) | ❌ `pg` missing locally → `npm install` |
+| `npm run validate:rth-open` (post-deploy fail) | ❌ Railway deploy FAILED (DB healthcheck timeout) + Postgres SSL bug in `rth-open-check.mjs` |
+| `npm run validate:rth-open` (final) | ✅ GREEN — after deploy SUCCESS + SSL fix + cron warm |
+| `GET /api/cron/data-correctness?force=1` | ✅ 0 flags (after manual `uw-cache-refresh` + `nights-watch-warm`; initial run had 2 freshness flags) |
+| `npm run ops:collect` | ✅ 0 action items (after `npm install`) |
+| `node scripts/gha-rth-audit.mjs` | ✅ GREEN (46 pass, 1 P2 issue) |
+| `node scripts/full-site-deep-audit.mjs` | ✅ GREEN |
+| `node scripts/heatmap-matrix-audit.mjs` | ✅ 15 tickers × 32 checks, 0 flags |
+| `node scripts/audit/data-validator.mjs` | ✅ 16 PASS, 8 WARN (unrounded floats — P2) |
+
+### Infra events (resolved this pass)
+
+| Event | Detail | Resolution |
+|---|---|---|
+| Railway deploy FAILED ×3 | `[ready] database ping failed: Query read timeout` during rolling deploy (~16:52 UTC); 5/5 replicas stayed on prior SUCCESS | Deploy `ecda463c` SUCCESS at 17:08 UTC; `/api/ready` 200 |
+| `uw-cache-refresh` stale 129m | data-correctness freshness flag | Manual `hit-cron` → 24/24 refreshed; cron service `UW-Cache-Refresh-New` provisioned with `*/2 11-21 * * 1-5` UTC |
+| `nights-watch-warm` stale 12m | data-correctness freshness flag | Manual `hit-cron` → ok; `Night's Watch-Warm-New` service exists |
+| `rth-open-check` Postgres SSL | `The server does not support SSL connections` on Railway `proxy.rlwy.net` URL | **FIX** branch `fix/rth-open-pg-ssl-v2` — use shared `auditPgSsl()` from `pg-audit.mjs` |
+
+### API sweep (CRON bearer — ~13:13 ET)
+
+| Endpoint | HTTP | Latency | Notes |
+|---|---|---|---|
+| `/api/market/spx/desk` | 200 | 176ms | SPX 7507.16, flip 7479.44 |
+| `/api/market/spx/pulse` | 200 | 342ms | live RTH |
+| `/api/market/spx/merged` | 200 | 424ms | |
+| `/api/market/gex-positioning?ticker=SPX` | 200 | 753ms | call 7550, put 7400 |
+| `/api/market/gex-heatmap?ticker=SPX` | 200 | 431ms | |
+| `/api/market/flows?limit=20` | 200 | 8518ms | slow but ok |
+| `/api/grid/*` (8 panels) | 200 | 46–13687ms | earnings slowest; all `as_of` fresh |
+| `/api/grid/bootstrap` | 200 | — | warms all panel snapshots |
+| `/api/market/nighthawk/edition` | 200 | 416ms | 2 plays for 2026-07-01 |
+| `/api/public/track-record` | 401 | — | **expected** without session cookie |
+| `/api/market/platform/snapshot` | 200 | 131ms | |
+| SPX oracle | — | — | desk 7506.42 vs Polygon 7506.43 (Δ 0.01) |
+
+**Cross-tool GEX:** desk flip 7479.44 = heatmap SPX flip 7479.44; grid GEX Regime panel reads same `/api/market/gex-positioning?ticker=SPX` cache.
+
+### Browser sweep (premium admin — all 7 pages)
+
+| Page | Hard load | Soft-nav | Live update | Console | Notes |
+|---|---|---|---|---|---|
+| `/dashboard` | ~2–3s | — | ✅ 8–10s tick | commentary POST errors (see below) | SPX 7495–7507 live; 0DTE matrix populated; all header metrics present |
+| `/flows` | ~2s | <1s | ✅ REALTIME tape | 3 preload warnings | 12 flow anomalies (COIN, HOOD, AMD, NVDA, etc.) |
+| `/heatmap` Matrix | ~2s | instant tab | ✅ LIVE badge | 2 warnings | SPY ~748.10; flip 746, call 750, put 745 |
+| `/heatmap` Profile | ~2s | tab switch | ✅ gamma profile | same | Expiry filters + HELIX/DARK POOL overlays |
+| `/grid` | ~2s | <1s | 90s panels | 5 warnings | 10+ panels populated (Pulse, News, Regime, Earnings, etc.) — no skeleton hang |
+| `/nighthawk` | ~2s | <1s | static edition | clean | Jul 1 playbook; AMD score 77; track 62.5% target hit |
+| `/terminal` (Largo) | ~1s | <1s | ~60s AI | 1 issue | NVDA grounded answer; sources TAPE/DESK/FLOW/ENGINE |
+| `/track-record` | ~2s | <1s | LIVE checkpoint | clean | 3W/8L ODTE (11 total); Night Hawk checkpoint |
+
+### Missing-field audit (pass 1)
+
+| Field | Page | Backing API | Cause | Action |
+|---|---|---|---|---|
+| META flip `—` | heatmap matrix | far-dated chain sparse | **Upstream gap** | Expected (pass 6) |
+| TSLA/AMD flip `—` | heatmap matrix | far-dated chain sparse | **Upstream gap** | Expected |
+| Track-record auth view | `/track-record` | session required | **Expected** | Public embed uses `/api/public/track-record` |
+| Commentary rail errors | `/dashboard` | `POST /api/market/spx/commentary` | Transient 503/retry loop during first session; route returns 503 only when `anthropicConfigured()` false | **P2 watch** — monitor; UI shows standby copy on failure |
+| VIX/VWAP `—` on dashboard | off-hours prior passes | `spx/pulse` gated | N/A this pass — all fields live during RTH | none |
+
+**No new P0/P1 data correctness defects.** Transient writer staleness cleared by manual warm + deploy recovery.
+
+### Code fix shipped this pass
+
+| Fix | Branch | Detail |
+|---|---|---|
+| `rth-open-check` Postgres SSL | `fix/rth-open-pg-ssl-v2` | Align with `auditPgSsl()` — Railway `proxy.rlwy.net` is plain TCP, not TLS |
+
+### Open watches (P2 — no GitHub issue)
+
+- Unrounded floats in desk/gex/platform payloads (6dp–13dp noise) — data-validator WARN
+- `putWallMatch:false` in gex_cross_validation self-report (5pt divergence) — consistency-only
+- Commentary rail retry spam on Anthropic miss — graceful standby UI exists
+- Deploy healthcheck DB timeout during concurrent replica rollout — infra resilience watch
+
+---
+
+# BlackOut Open Issues Log (prior)
 Last updated: 2026-06-30 17:45 ET
 
 > **Shipping log:** Audit backlog batch 1 → **PR #132** (merged): cron timing-safe auth, dead code,
