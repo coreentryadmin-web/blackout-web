@@ -1133,6 +1133,13 @@ function warnChainTruncated(label: string, underlying: string, pages: number): v
 // isn't truncated (truncation understated walls/OI/IV). Env-tunable; floored at 16.
 const HEATMAP_PAGE_GUARD = Math.max(16, Number(process.env.OPTIONS_HEATMAP_PAGE_GUARD) || 40);
 
+/** Strike band around spot for the shared heatmap chain pull (default ±4%). Env: GEX_HEATMAP_BAND_PCT. */
+function heatmapBandPct(): number {
+  const raw = Number(process.env.GEX_HEATMAP_BAND_PCT);
+  if (Number.isFinite(raw) && raw > 0 && raw <= 0.25) return raw;
+  return 0.04;
+}
+
 async function fetchHeatmapBand(
   underlying: string,
   spot: number,
@@ -1908,7 +1915,7 @@ async function buildGexHeatmapUncached(
   if (isHeatmapPreset(root)) recordHeatmapPriceObservation(root, spot);
 
   // Band sizing stays RELATIVE (% of spot) so it works for $5 and $900 names.
-  const contracts = await fetchHeatmapBand(optionsRoot, spot, 0.04);
+  const contracts = await fetchHeatmapBand(optionsRoot, spot, heatmapBandPct());
   if (!contracts.length) {
     console.warn(
       `[gex-heatmap] 0 contracts for ${optionsRoot} @ ${spot} via ${hostOf(BASE)} — heatmap empty (no/thin options chain).`
