@@ -7,11 +7,23 @@ import "server-only";
  * fresh (zero REST RPS). Falls back to `/api/stock/{ticker}/spot-exposures/strike`
  * cached for 60s when WS data is unavailable.
  *
- * Usage: call `validateGexAgainstUW(ticker, primaryGexWalls)` after getGexPositioning()
- * returns — it does NOT block the primary data path and only logs divergences.
+ * Usage: call `validateGexAgainstUW(ticker, primaryGexWalls, { nearTermExpiries })`
+ * after getGexPositioning() returns — it does NOT block the primary data path and
+ * only logs divergences.
  *
  * Matching is sign-aware: call wall ↔ max positive UW net GEX, put wall ↔ max negative,
  * flip ↔ zero-crossing on the UW ladder (same semantics as Polygon computeGexRegime).
+ *
+ * SCOPE: `primary` is computed by the caller from Polygon's near-term-only walls
+ * (polygon-options-gex.ts deliberately excludes far-dated monthly/quarterly OI —
+ * it would otherwise swamp the actionable near-term walls). The WS ladder here
+ * stores every expiry ever received, so passing `opts.nearTermExpiries` (the SAME
+ * near-term expiry set the caller used) is required for an apples-to-apples
+ * comparison — without it, this ladder sums in far-dated OpEx OI that Polygon's
+ * side never includes, producing hundreds of points of spurious divergence for
+ * SPX (confirmed live 2026-07-01). The REST fallback below is NOT yet expiry-
+ * scoped — a known remaining gap, since UW's per-expiry REST endpoints have an
+ * unverified response shape and documented 503 flakiness in production.
  */
 
 import { fetchUwSpotExposuresByStrike } from "@/lib/providers/unusual-whales";
@@ -33,25 +45,42 @@ type CacheEntry = {
 const CACHE_TTL_MS = 60_000;
 const cache = new Map<string, CacheEntry>();
 
+/** A scoped and an unscoped call for the same ticker must never share a cache entry. */
+function ladderCacheKey(ticker: string, nearTermExpiries?: readonly string[]): string {
+  const key = ticker.toUpperCase();
+  return nearTermExpiries && nearTermExpiries.length > 0 ? `${key}:${nearTermExpiries.join(",")}` : key;
+}
+
 /**
  * Build (or return cached) per-strike GEX map from UW WS (preferred) or REST fallback.
  * Each entry: strike → net_gex (call_gamma_oi + put_gamma_oi in the UW normalized shape).
+ *
+ * `nearTermExpiries`, when given, scopes the WS ladder to only those expiries so it
+ * matches the same scope as the Polygon-side `primary` walls being validated (see
+ * the module-level SCOPE doc above). Included in the cache key so a scoped and an
+ * unscoped call for the same ticker never collide.
  */
-async function getUwStrikeLadder(ticker: string): Promise<Map<number, number> | null> {
+async function getUwStrikeLadder(
+  ticker: string,
+  nearTermExpiries?: readonly string[]
+): Promise<Map<number, number> | null> {
   const key = ticker.toUpperCase();
-  const entry = cache.get(key);
+  const cacheKey = ladderCacheKey(ticker, nearTermExpiries);
+  const entry = cache.get(cacheKey);
   if (entry && Date.now() - entry.cachedAt < CACHE_TTL_MS) {
     return entry.strikeLadder;
   }
 
   if (isUwChannelFresh("gex_strike_expiry", 120_000)) {
-    const ws = getGexStrikeExpiryLadder(key);
+    const ws = getGexStrikeExpiryLadder(key, nearTermExpiries);
     if (ws && ws.ladder.size > 0) {
-      cache.set(key, { strikeLadder: ws.ladder, cachedAt: ws.updatedAt });
+      cache.set(cacheKey, { strikeLadder: ws.ladder, cachedAt: ws.updatedAt });
       return ws.ladder;
     }
   }
 
+  // REST fallback — NOT yet expiry-scoped (sums all expiries UW returns). A known
+  // remaining gap: see the module-level SCOPE doc for why this wasn't closed here too.
   let rows: Record<string, unknown>[];
   try {
     rows = await fetchUwSpotExposuresByStrike(key, 500);
@@ -73,7 +102,7 @@ async function getUwStrikeLadder(ticker: string): Promise<Map<number, number> | 
 
   if (ladder.size === 0) return null;
 
-  cache.set(key, { strikeLadder: ladder, cachedAt: Date.now() });
+  cache.set(cacheKey, { strikeLadder: ladder, cachedAt: Date.now() });
   return ladder;
 }
 
@@ -94,15 +123,15 @@ export type GexCrossValidationResult = Omit<GexCrossValidationCoreResult, "uw"> 
 export async function validateGexAgainstUW(
   ticker: string,
   primary: { callWall: number | null; putWall: number | null; gammaFlip: number | null },
-  opts?: { spot?: number }
+  opts?: { spot?: number; nearTermExpiries?: readonly string[] }
 ): Promise<GexCrossValidationResult | null> {
-  const ladder = await getUwStrikeLadder(ticker).catch(() => null);
+  const ladder = await getUwStrikeLadder(ticker, opts?.nearTermExpiries).catch(() => null);
   if (!ladder || ladder.size === 0) return null;
 
   const core = crossValidateGexLevels(primary, ladder, { spot: opts?.spot });
   if (!core) return null;
 
-  const entry = cache.get(ticker.toUpperCase());
+  const entry = cache.get(ladderCacheKey(ticker, opts?.nearTermExpiries));
   const uw_asof = entry ? new Date(entry.cachedAt).toISOString() : null;
 
   const { uw: _uw, ...rest } = core;
