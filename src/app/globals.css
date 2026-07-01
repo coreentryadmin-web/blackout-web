@@ -7904,6 +7904,64 @@ body::before {
     background: rgba(255, 255, 255, 0.08);
   }
 
+  @keyframes spx-matrix-spot-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow:
+        inset 0 0 0 1px rgba(34, 211, 238, 0.95),
+        0 0 14px rgba(34, 211, 238, 0.45);
+    }
+    50% {
+      opacity: 0.88;
+      box-shadow:
+        inset 0 0 0 1px rgba(34, 211, 238, 0.35),
+        0 0 4px rgba(34, 211, 238, 0.12);
+    }
+  }
+
+  .spx-odte-matrix-spot-blink.spx-odte-matrix-spot-row .spx-odte-matrix-spot-cell {
+    background: rgba(34, 211, 238, 0.14);
+    animation: spx-matrix-spot-pulse 1.25s ease-in-out infinite;
+  }
+
+  .spx-odte-matrix-spot-blink.spx-odte-matrix-row--spot-on-strike td {
+    animation: spx-matrix-spot-pulse 1.25s ease-in-out infinite;
+    background: rgba(34, 211, 238, 0.12);
+  }
+
+  .spx-odte-matrix-spot-blink.spx-odte-matrix-live-spot {
+    animation: spx-matrix-spot-text-pulse 1.25s ease-in-out infinite;
+  }
+
+  @keyframes spx-matrix-spot-text-pulse {
+    0%,
+    100% {
+      text-shadow: 0 0 12px rgba(34, 211, 238, 0.55);
+    }
+    50% {
+      text-shadow: 0 0 4px rgba(34, 211, 238, 0.15);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spx-odte-matrix-spot-blink.spx-odte-matrix-spot-row .spx-odte-matrix-spot-cell,
+    .spx-odte-matrix-spot-blink.spx-odte-matrix-row--spot-on-strike td,
+    .spx-odte-matrix-spot-blink.spx-odte-matrix-live-spot {
+      animation: none;
+    }
+
+    .spx-odte-matrix-spot-blink.spx-odte-matrix-live-spot {
+      text-shadow: 0 0 8px rgba(34, 211, 238, 0.45);
+    }
+
+    .spx-odte-matrix-spot-row .spx-odte-matrix-spot-cell,
+    .spx-odte-matrix-row--spot-on-strike td {
+      box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.85);
+      background: rgba(34, 211, 238, 0.14);
+    }
+  }
+
   .spx-left-stack .spx-left-tape-panel {
     @apply flex-1 min-h-[12rem] flex flex-col;
   }
