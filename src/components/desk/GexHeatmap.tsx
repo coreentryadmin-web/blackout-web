@@ -15,6 +15,7 @@ import {
   TabPanel,
 } from "@/components/ui";
 import { AnchorGlyph, PanelLabel } from "@/components/desk/gex-heatmap/primitives";
+import { shiftPercentForStrike } from "@/components/desk/gex-heatmap/shift-math";
 import { createPulseEventSource, type PulseStreamSnapshot } from "@/lib/api";
 import { usePollIntervalMs } from "@/hooks/use-et-market-open";
 
@@ -682,6 +683,7 @@ function ExposureProfile({
   flowPeak,
   darkPoolLevels,
   showDarkPool,
+  shift,
 }: {
   rows: ProfileRow[];
   peak: number;
@@ -699,6 +701,14 @@ function ExposureProfile({
   flowPeak: number;
   darkPoolLevels: DarkPoolLevel[] | null;
   showDarkPool: boolean;
+  /**
+   * Intraday migration for THIS lens (GEX reads data.shift, VEX reads data.vex_shift; DEX/CHARM
+   * have none). Drives the inline %-built/melted badge next to each strike's value — same
+   * `delta_by_strike` the Shift tab renders, just surfaced inline so the momentum a trader would
+   * otherwise open a second tab for is visible at a glance. Null/unavailable → no badge (never
+   * fabricate a shift).
+   */
+  shift?: GexShift | null;
 }) {
   const c = LENS_COLORS[lens];
 
@@ -840,6 +850,13 @@ function ExposureProfile({
         // ── Dark-pool overlay: a level line drawn across this row's band. ──
         const dpLevel = darkPoolByRow.get(i) ?? null;
         const dpHex = dpLevel && i % 2 === 0 ? DARK_POOL_HEX : DARK_POOL_ALT_HEX;
+
+        // ── Shift badge: intraday %-built/melted for this strike, inline (mirrors the
+        // Shift tab's build=green/melt=red convention: built = delta > 0). ──
+        const shiftDelta = shift?.available ? shift.delta_by_strike?.[String(r.strike)] : null;
+        const shiftPct = shiftPercentForStrike(r.value, shiftDelta);
+        const shiftBuilt = shiftDelta != null && shiftDelta > 0;
+        const shiftHex = shiftBuilt ? SHIFT_BUILD_HEX : SHIFT_MELT_HEX;
 
         return (
           // Tag the spot strike row's wrapper with the ref so the auto-center effect can
@@ -988,6 +1005,19 @@ function ExposureProfile({
               >
                 {fmtMoneySigned(r.value)}
               </span>
+              {/* Intraday shift badge — small colored pill, same build(green)/melt(red)
+                  convention as the Shift tab. Omitted (not zeroed) when unavailable so a
+                  quiet/collecting shift window never renders a fabricated "0%". */}
+              {shiftPct != null && (
+                <span
+                  className="shrink-0 rounded px-1 py-0.5 font-mono text-[9px] font-bold tabular-nums"
+                  style={{ color: shiftHex, backgroundColor: `${shiftHex}22` }}
+                  title={`${fmtStrike(r.strike)} · ${shiftBuilt ? "built" : "melted"} ${fmtMoney(shiftDelta ?? 0)} vs ${fmtElapsed(shift?.since_ms ?? 0)} ago`}
+                >
+                  {shiftPct >= 0 ? "+" : ""}
+                  {shiftPct.toFixed(0)}%
+                </span>
+              )}
               <span className="ml-auto w-16 shrink-0 text-left">
                 {/* ANCHOR tag — leads the row's tag slot when this is the dominant node. */}
                 {isAnchor && (
@@ -3387,6 +3417,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
         flowPeak={flowPeak}
         darkPoolLevels={darkPoolLevels}
         showDarkPool={showDarkPool && hasDarkPoolOverlay}
+        shift={shift}
       />
       <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-sky-300/75">
         {`Net dealer ${vocab.unit} per strike · ${vocab.pos} / ${vocab.neg} · `}
