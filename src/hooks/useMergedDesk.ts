@@ -212,6 +212,7 @@ export function useMergedDesk() {
     sessionActive &&
       merged?.available &&
       (merged?.price ?? 0) > 0 &&
+      !merged?.feed_stalled &&
       (merged?.market_open === true ||
         merged?.market_label === "PRE-MARKET" ||
         merged?.market_status === "premarket")

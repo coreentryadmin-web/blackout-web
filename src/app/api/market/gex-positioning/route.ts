@@ -78,6 +78,7 @@ export async function GET(req: NextRequest) {
           return NextResponse.json(
             {
               available: true,
+              degraded: true,
               ticker,
               spot: bundle.spot,
               change_pct: 0,
@@ -91,7 +92,7 @@ export async function GET(req: NextRequest) {
               gamma_regime_read: regime,
               net_vex: 0,
               vanna_posture: null,
-              vanna_regime_read: "unavailable (fallback path)",
+              vanna_regime_read: "partial — walls unavailable (fallback path)",
               net_dex: null,
               dex_posture: null,
               dex_regime_read: null,
@@ -103,7 +104,7 @@ export async function GET(req: NextRequest) {
                 ? Number((((bundle.spot - flip) / bundle.spot) * 100).toFixed(2))
                 : null,
               shift_summary: null,
-              source: "cache" as const,
+              source: "polygon-fallback" as const,
               _fallback: true,
             },
             { status: 200, headers: noStore }

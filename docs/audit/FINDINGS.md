@@ -38,7 +38,13 @@ Also taints anything else keyed off `desk.pdh/pdl/prior_close`: PDH/PDL breakout
 ---
 
 ## 🟠 MEDIUM — Systemic unrounded float noise served to clients
-16+ payloads serve values like `7499.360000000001`, `ema20=7428.6691886260705` (13 dp), `net_gex=3062180849.185327`, heatmap cell `-465096.837671076`. Values ~correct but malformed for display/consumers. Round once at the shared serialization/format layer (prices 2dp; EMAs/levels a fixed precision). Affected: indices, gex-positioning, gex-heatmap, spx/desk|merged|signals|play|outcomes, platform/snapshot, flows, nighthawk/edition, grid/bootstrap, admin analytics/spx/signal-analytics, track-record/plays. See `validation-report`.
+16+ payloads serve values like `7499.360000000001`, `ema20=7428.6691886260705` (13 dp), `net_gex=3062180849.185327`, heatmap cell `-465096.837671076`. Values ~correct but malformed for display/consumers. Round once at the shared serialization/format layer (prices 2dp; EMAs/levels a fixed precision). Affected: indices, gex-positioning, gex-heatmap, spx/desk|merged|signals|play|outcomes, platform/snapshot, flows, nighthawk/edition, grid/bootstrap, admin analytics/spx/signal-analytics, track-record/plays. **Live example (2026-07-01):** public `/api/market/regime` returns `netGex: "23476032635.866753"`. See `docs/audit/CEO-CTO-AUDIT-20260701.md`.
+
+## 🟠 FIXED 2026-07-01 — Night's Watch delta-$ used hardcoded SPX 5500
+**Status:** FIXED — `positions/route.ts` + `NightsWatchPanel.tsx` omit delta-dollar aggregation when `underlyingPrice` is unknown; portfolio basis uses `sharesPerContract`.
+
+## 🟠 FIXED 2026-07-01 — Misleading live states
+**Status:** FIXED — `feed_stalled` gates desk `live`; GEX positioning fallback returns `degraded: true`; Grid GEX live dot off on fallback; flow `timeAgo` guards invalid timestamps; earnings calendar fails closed in prod without AV key; flow-brief uses recent-ordered tape.
 
 ## 🟠 MEDIUM — VIX source/freshness inconsistency
 App `indices.vix.price = 17.18` vs Polygon prior-close `16.45` (4.4%), while SPX/SPY match prior-close exactly — the app's VIX uses a different source/timestamp than SPX/SPY. Confirm with same-timestamp live compare at open.

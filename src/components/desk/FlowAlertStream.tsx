@@ -11,7 +11,11 @@ const WHALE_PREMIUM = 1_000_000;
 const RENDER_LIMIT = 150; // Bug 8: cap per-render to prevent browser freeze on large datasets
 
 function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "—";
+  const diff = Date.now() - t;
+  if (diff < 0) return "0s";
   const s = Math.floor(diff / 1000);
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
