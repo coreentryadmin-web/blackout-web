@@ -96,6 +96,11 @@ async function auditTrackRecord() {
     getJson("/api/track-record"),
     CRON ? getJson("/api/market/spx/outcomes") : { status: 0, json: {} },
   ]);
+  // Both ledger APIs are admin-gated (requireAdminApi) — CRON bearer alone returns 401 by design.
+  if (pub.status === 401 && page.status === 401) {
+    ok("track-record", "admin-gated", "public + page APIs require admin session (401 without Clerk cookie)");
+    return;
+  }
   if (pub.status !== 200 || page.status !== 200) {
     fail("track-record", "HTTP", `public=${pub.status} page=${page.status}`);
     return;

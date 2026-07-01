@@ -1,7 +1,89 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-01 13:20 ET
+Last updated: 2026-07-01 15:15 ET
 
-## RTH comprehensive sweep — 2026-07-01 ~12:57–13:20 ET (pass 1 — mid-RTH)
+## RTH comprehensive sweep — 2026-07-01 ~14:52–15:15 ET (pass 2 — mid-RTH close approach)
+
+**Session:** Wed 1 Jul 2026, 14:52–15:15 ET (**RTH open**). Agent: autonomous cloud session. Premium Clerk admin via `sign_in_token` (temp users created/deleted). Browser GUI blocked in cloud sandbox — full sweep via authenticated API proxy (`scripts/audit/rth-browser-test.mjs`) + production validators.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm install` (initial) | ✅ restored `pg` dep for local validators |
+| `npm run validate:rth-open` | ✅ GREEN (deploy + all RTH session checks) |
+| `GET /api/cron/data-correctness?force=1` | ✅ 0 flags, 7 oracle-confirmed, 73 consistency-only |
+| `npm run ops:collect` | ✅ 0 action items (after npm install) |
+| `node scripts/gha-rth-audit.mjs` | ✅ GREEN (46 pass; track-record 401 = admin-gated, not a defect) |
+| `node scripts/full-site-deep-audit.mjs` | ✅ GREEN (after audit script fix for admin-gated ledger) |
+| `node scripts/heatmap-matrix-audit.mjs` | ✅ 15 tickers × 32 checks, 0 flags |
+| `node scripts/audit/data-validator.mjs` | ✅ 16 PASS, 8 WARN (unrounded floats — P2) |
+| `node scripts/audit/rth-browser-test.mjs` | ✅ PASS after fixing Largo `answer` / Nighthawk `plays` field checks |
+
+### Infra events (resolved this pass)
+
+| Event | Detail | Resolution |
+|---|---|---|
+| `grid-warm` / `nights-watch-warm` stale (watchdog) | Transient staleness at ~14:53 ET | Manual `GET /api/cron/grid-warm` + `nights-watch-warm` → 200 ok; crons re-ticked before re-audit |
+
+### API sweep (CRON bearer + Clerk session — ~15:10 ET)
+
+| Endpoint | HTTP | Latency | Notes |
+|---|---|---|---|
+| `/api/market/spx/desk` | 200 | ~350ms | SPX 7503.71, flip 7485.12, VIX 16.26 |
+| `/api/market/spx/pulse` | 200 | — | live RTH |
+| `/api/market/spx/merged` | 200 | ~24s cold | warms on first read |
+| `/api/market/gex-positioning?ticker=SPX` | 200 | — | call 7550, put 7400 |
+| `/api/market/gex-heatmap?ticker=SPX` | 200 | ~572ms | 174 strikes, spot 7504.09 |
+| `/api/market/flows?limit=20` | 200 | ~750ms | 500 rows |
+| `/api/grid/bootstrap` + 8 panel routes | 200 | 82ms–20s | all panels finite |
+| `/api/market/nighthawk/edition` | 200 | ~122ms | 2 plays for 2026-07-01 |
+| `/api/public/track-record` (admin session) | 200 | ~335ms | 12 closed (3W/9L) |
+| SPX oracle | — | — | desk 7493.7 vs Polygon 7493.56 (Δ 0.14) |
+
+**Cross-tool GEX:** desk flip 7485.12 = heatmap SPX flip; grid GEX Regime reads same `/api/market/gex-positioning?ticker=SPX` cache. SPY put-wall cross_validation divergence 5pt (consistency-only).
+
+### Page sweep (premium admin — API proxy for all 7 pages)
+
+| Page | Load | Live update | Notes |
+|---|---|---|---|
+| `/dashboard` | ~572ms heatmap / ~24s merged cold | ✅ 15s poll changed | 174 strikes; spot live |
+| `/flows` | ~749ms | ✅ 15s poll changed | 500 flow rows |
+| `/heatmap` Matrix | ~117ms SPY | ✅ cross_validation fresh | flip 746, call 748, put 745 |
+| `/heatmap` Profile | (same endpoint) | ✅ | gamma profile via heatmap API |
+| `/grid` | bootstrap + 8 routes 200 | 90s cadence | 12 panels via bootstrap + individual routes |
+| `/nighthawk` | ~122ms | static edition | 2 plays Jul 1; AMD score 77 |
+| `/terminal` (Largo) | ~60s | — | **grounded** NVDA answer (`answer` key); tools_used populated |
+| `/track-record` | ~335ms | LIVE | 12 closed; admin session required for ledger API |
+
+### Missing-field audit (pass 2)
+
+| Field | Page | Backing API | Cause | Action |
+|---|---|---|---|---|
+| `dark_pool.pcr` | desk/merged/grid/nighthawk | `spx/desk`, `platform/snapshot` | **Upstream gap** — prints have no call/put split (`pcr: null`) | Expected; do not fabricate |
+| `macro_events[].actual` | desk/merged | Benzinga calendar | **Expected** — events not yet released (ISM, ADP, etc.) | none |
+| `net_prem_ticks[]`, `oi_changes[]`, `iv_term_structure[]` | merged | UW REST/cache | **Cold/optional enrichments** — empty arrays, not shown as fake values | none |
+| `flows[].alerted_at` / `event_at` | HELIX | `option_trades` WS path | **Upstream shape** — WS prints lack alert timestamps vs `flow_alerts` REST | Expected for tape rows |
+| `events[empty]`, `nighthawk_context` | heatmap | gex-heatmap overlays | **Optional overlays** — no active macro events / no nighthawk link today | Expected |
+| META/TSLA far-dated flip `—` | heatmap matrix | sparse chain | **Upstream gap** | Expected (pass 1) |
+| `/api/public/track-record` 401 unauthenticated | public | admin-gated since #132 | **Expected** — ledger requires admin Clerk session | none |
+
+**No new P0/P1 data correctness defects.**
+
+### Audit tooling fixes (this pass)
+
+| Fix | Branch | Detail |
+|---|---|---|
+| `rth-browser-test.mjs` | `fix/rth-audit-script-fields` | Largo checks `answer` not `response`; Nighthawk checks `plays`/`recap_summary`; grid uses `/api/grid/bootstrap` + 8 panel routes |
+| `full-site-deep-audit.mjs` | same | Track-record 401 with CRON-only bearer treated as admin-gated (not P1) |
+
+### Open watches (P2 — no GitHub issue)
+
+- Unrounded floats in desk/gex/platform payloads — data-validator WARN
+- `putWallMatch:false` in gex_cross_validation (5pt divergence) — consistency-only
+- Commentary rail retry on Anthropic miss — graceful standby UI exists
+- `spx/merged` cold-start ~20–24s on first read after deploy — watch latency
+
+---
 
 **Session:** Wed 1 Jul 2026, 12:57–13:20 ET (**RTH open**). Agent: autonomous cloud session. Premium Clerk admin via `sign_in_token` (two temp users created/deleted). Pass at ~13:00 ET mid-session.
 
