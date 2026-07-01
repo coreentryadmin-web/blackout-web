@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import useSWR from "swr";
 import { clsx } from "clsx";
 import {
@@ -1477,7 +1478,22 @@ function TickerSwitcher({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(
+    null
+  );
+
+  const updateMenuPos = useCallback(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setMenuPos({
+      top: rect.bottom + 6,
+      left: rect.left,
+      width: Math.max(rect.width, 256),
+    });
+  }, []);
 
   // Debounce the query feeding the SWR key (~250ms) so typing "GOOGL" mints ONE
   // fetch instead of five. The input stays fully responsive (`query`); only the
@@ -1523,15 +1539,36 @@ function TickerSwitcher({
     return opts;
   }, [presetMatches, searchResults]);
 
-  // Close the dropdown on outside click.
+  // Close the dropdown on outside click (trigger + portaled menu).
   useEffect(() => {
     if (!open) return;
     function onDoc(e: MouseEvent) {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (boxRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPos(null);
+      return;
+    }
+    updateMenuPos();
+  }, [open, updateMenuPos]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onReflow = () => updateMenuPos();
+    window.addEventListener("resize", onReflow);
+    window.addEventListener("scroll", onReflow, true);
+    return () => {
+      window.removeEventListener("resize", onReflow);
+      window.removeEventListener("scroll", onReflow, true);
+    };
+  }, [open, updateMenuPos]);
 
   // Reset the keyboard cursor to the top whenever the option set changes.
   useEffect(() => {
@@ -1555,8 +1592,105 @@ function TickerSwitcher({
 
   const changeBull = (changePct ?? 0) >= 0;
 
+  const dropdown =
+    open && menuPos ? (
+      <div
+        ref={menuRef}
+        className="fixed z-[200] rounded-lg border border-white/12 bg-[rgba(8,9,14,0.97)] p-1.5 shadow-xl backdrop-blur"
+        style={{ top: menuPos.top, left: menuPos.left, width: menuPos.width }}
+      >
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              const opt = options[active] ?? options[0];
+              if (opt) pick(opt.ticker);
+              else if (query.trim()) pick(query);
+            } else if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setActive((i) => Math.min(i + 1, Math.max(0, options.length - 1)));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setActive((i) => Math.max(i - 1, 0));
+            } else if (e.key === "Escape") {
+              setOpen(false);
+            }
+          }}
+          placeholder="Search any ticker…"
+          aria-label="Search any ticker"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls="ticker-listbox"
+          aria-activedescendant={open && options.length ? `ticker-opt-${active}` : undefined}
+          spellCheck={false}
+          autoComplete="off"
+          className={clsx(
+            "w-full rounded-md border border-white/12 bg-[rgba(4,6,10,0.7)] px-2.5 py-1.5 font-mono text-[12px] text-white",
+            "placeholder:text-sky-300/40 outline-none focus-visible:border-sky-400/60 focus-visible:ring-1 focus-visible:ring-sky-400/50"
+          )}
+        />
+        <ul
+          id="ticker-listbox"
+          role="listbox"
+          aria-label="Tickers"
+          className="mt-1 max-h-60 overflow-y-auto overscroll-contain"
+        >
+          {options.length === 0 ? (
+            <li className="px-2 py-2 text-center font-mono text-[10px] uppercase tracking-widest text-sky-300/60">
+              No matches
+            </li>
+          ) : (
+            options.map((o, i) => {
+              const isActive = i === active;
+              const isCurrent = o.ticker === ticker;
+              return (
+                <li key={o.ticker} id={`ticker-opt-${i}`} role="option" aria-selected={isCurrent}>
+                  <button
+                    type="button"
+                    onMouseEnter={() => setActive(i)}
+                    onClick={() => pick(o.ticker)}
+                    className={clsx(
+                      "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left outline-none transition-colors",
+                      isActive ? "bg-cyan-400/12" : "hover:bg-cyan-400/10"
+                    )}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className={clsx(
+                          "font-mono text-[12px] font-semibold",
+                          isCurrent ? "text-cyan-400" : "text-white"
+                        )}
+                      >
+                        {o.ticker}
+                      </span>
+                      {o.preset && (
+                        <span className="font-mono text-[8px] uppercase tracking-wider text-sky-300/50">
+                          preset
+                        </span>
+                      )}
+                    </span>
+                    {o.name && (
+                      <span className="truncate text-[10px] text-sky-300/70">{o.name}</span>
+                    )}
+                  </button>
+                </li>
+              );
+            })
+          )}
+        </ul>
+      </div>
+    ) : null;
+
   return (
-    <div ref={boxRef} className="relative flex items-center gap-2">
+    <>
+      <div ref={boxRef} className="relative z-[1] flex items-center gap-2">
       {/* Compact trigger — active ticker + caret. Opens the search dropdown. */}
       <button
         type="button"
@@ -1603,97 +1737,9 @@ function TickerSwitcher({
         </span>
       )}
 
-      {open && (
-        <div className="absolute left-0 top-full z-30 mt-1.5 w-64 rounded-lg border border-white/12 bg-[rgba(8,9,14,0.97)] p-1.5 shadow-xl backdrop-blur">
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setOpen(true);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                const opt = options[active] ?? options[0];
-                if (opt) pick(opt.ticker);
-                else if (query.trim()) pick(query);
-              } else if (e.key === "ArrowDown") {
-                e.preventDefault();
-                setActive((i) => Math.min(i + 1, Math.max(0, options.length - 1)));
-              } else if (e.key === "ArrowUp") {
-                e.preventDefault();
-                setActive((i) => Math.max(i - 1, 0));
-              } else if (e.key === "Escape") {
-                setOpen(false);
-              }
-            }}
-            placeholder="Search any ticker…"
-            aria-label="Search any ticker"
-            role="combobox"
-            aria-expanded={open}
-            aria-controls="ticker-listbox"
-            aria-activedescendant={open && options.length ? `ticker-opt-${active}` : undefined}
-            spellCheck={false}
-            autoComplete="off"
-            className={clsx(
-              "w-full rounded-md border border-white/12 bg-[rgba(4,6,10,0.7)] px-2.5 py-1.5 font-mono text-[12px] text-white",
-              "placeholder:text-sky-300/40 outline-none focus-visible:border-sky-400/60 focus-visible:ring-1 focus-visible:ring-sky-400/50"
-            )}
-          />
-          <ul
-            id="ticker-listbox"
-            role="listbox"
-            aria-label="Tickers"
-            className="mt-1 max-h-60 overflow-y-auto overscroll-contain"
-          >
-            {options.length === 0 ? (
-              <li className="px-2 py-2 text-center font-mono text-[10px] uppercase tracking-widest text-sky-300/60">
-                No matches
-              </li>
-            ) : (
-              options.map((o, i) => {
-                const isActive = i === active;
-                const isCurrent = o.ticker === ticker;
-                return (
-                  <li key={o.ticker} id={`ticker-opt-${i}`} role="option" aria-selected={isCurrent}>
-                    <button
-                      type="button"
-                      onMouseEnter={() => setActive(i)}
-                      onClick={() => pick(o.ticker)}
-                      className={clsx(
-                        "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left outline-none transition-colors",
-                        isActive ? "bg-cyan-400/12" : "hover:bg-cyan-400/10"
-                      )}
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <span
-                          className={clsx(
-                            "font-mono text-[12px] font-semibold",
-                            isCurrent ? "text-cyan-400" : "text-white"
-                          )}
-                        >
-                          {o.ticker}
-                        </span>
-                        {o.preset && (
-                          <span className="font-mono text-[8px] uppercase tracking-wider text-sky-300/50">
-                            preset
-                          </span>
-                        )}
-                      </span>
-                      {o.name && (
-                        <span className="truncate text-[10px] text-sky-300/70">{o.name}</span>
-                      )}
-                    </button>
-                  </li>
-                );
-              })
-            )}
-          </ul>
-        </div>
-      )}
-    </div>
+      </div>
+      {typeof document !== "undefined" && dropdown ? createPortal(dropdown, document.body) : null}
+    </>
   );
 }
 
@@ -3837,7 +3883,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
   );
 
   return (
-    <Panel accent={panelAccent}>
+    <Panel accent={panelAccent} className="overflow-visible">
       {/* ── ONE compact control row (UI refactor) ──────────────────────────────
           [🔍 ticker + spot]  [ Profile+Matrix | Curve+Shift ]  …spacer…  [live · GEX VEX DEX CHARM]
           The old full-width ticker-chip row, the big central spot readout, and the
@@ -3849,7 +3895,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
           page. The freshness indicator that lived on that header's actions slot is
           preserved as the minimal Live/Quote-only dot at the far right of this row.
           Wraps gracefully on narrow widths (flex-wrap). */}
-      <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-white/10 bg-[rgba(8,9,14,0.45)] px-3 py-2.5 backdrop-blur">
+      <div className="relative z-[40] mb-5 flex flex-wrap items-center gap-x-4 gap-y-3 overflow-visible rounded-xl border border-white/10 bg-[rgba(8,9,14,0.45)] px-3 py-2.5 backdrop-blur">
         {/* Compact searchable ticker + the ONE kept clean spot reference. */}
         <TickerSwitcher
           ticker={ticker}
