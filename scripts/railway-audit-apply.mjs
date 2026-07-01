@@ -65,9 +65,15 @@ function serviceMap() {
   return Object.fromEntries(JSON.parse(sh("railway service list --json")).map((s) => [s.name, s.id]));
 }
 
+function railwayJson(args) {
+  const r = spawnSync("railway", args, { encoding: "utf8" });
+  if (r.status !== 0) throw new Error(r.stderr || r.stdout || "railway failed");
+  return JSON.parse(r.stdout);
+}
+
 function getVars(service) {
   try {
-    return JSON.parse(sh(`railway variables --service ${service} --json 2>/dev/null`));
+    return railwayJson(["variables", "--service", service, "--json"]);
   } catch {
     return {};
   }
@@ -77,7 +83,7 @@ function setVar(service, key, value) {
   const existing = getVars(service)[key];
   if (existing === value) {
     console.log(`  ✓ ${service}.${key} already set`);
-    return;
+    return false;
   }
   const r = run("railway", [
     "variable",
@@ -93,6 +99,7 @@ function setVar(service, key, value) {
     process.exit(1);
   }
   console.log(`  ✓ set ${service}.${key}`);
+  return true;
 }
 
 function parseTomlCron(key) {
@@ -129,6 +136,20 @@ function patchCronService(envJson, key, sid) {
   const svc = envJson.services[sid] ?? {};
   envJson.services[sid] = svc;
 
+  const before = JSON.stringify({
+    configFile: svc.configFile,
+    deploy: {
+      startCommand: svc.deploy?.startCommand,
+      cronSchedule: svc.deploy?.cronSchedule,
+      restartPolicyType: svc.deploy?.restartPolicyType,
+    },
+    build: {
+      buildCommand: svc.build?.buildCommand,
+      builder: svc.build?.builder,
+    },
+    cronTarget: svc.variables?.CRON_TARGET_BASE_URL?.value,
+  });
+
   svc.configFile = toml.configFile;
   svc.deploy = svc.deploy ?? {};
   svc.deploy.startCommand = toml.startCommand;
@@ -143,7 +164,26 @@ function patchCronService(envJson, key, sid) {
   svc.variables = svc.variables ?? {};
   svc.variables.CRON_TARGET_BASE_URL = { value: INTERNAL_CRON_BASE };
 
+  const after = JSON.stringify({
+    configFile: svc.configFile,
+    deploy: {
+      startCommand: svc.deploy.startCommand,
+      cronSchedule: svc.deploy.cronSchedule,
+      restartPolicyType: svc.deploy.restartPolicyType,
+    },
+    build: {
+      buildCommand: svc.build.buildCommand,
+      builder: svc.build.builder,
+    },
+    cronTarget: svc.variables.CRON_TARGET_BASE_URL?.value,
+  });
+
+  if (before === after) {
+    console.log(`  ✓ ${serviceName}: unchanged`);
+    return false;
+  }
   console.log(`  → ${serviceName}: ${toml.configFile} cron=${toml.cronSchedule}`);
+  return true;
 }
 
 console.log("\n=== Railway audit apply (production) ===\n");
@@ -180,8 +220,9 @@ if (!skipCrons) {
       console.warn(`  [skip] no service "${serviceName}" for ${key}`);
       continue;
     }
-    patchCronService(envJson, key, sid);
-    envChanged = true;
+    if (patchCronService(envJson, key, sid)) {
+      envChanged = true;
+    }
   }
 }
 
@@ -224,17 +265,23 @@ if (!cronSecret) {
   process.exit(1);
 }
 
+let syncedCount = 0;
 for (const key of ALL_CRON_KEYS) {
   const serviceName = CRON_SERVICE_NAMES[key];
   if (!names[serviceName]) continue;
   const vars = getVars(serviceName);
+  let synced = true;
   if (vars.CRON_SECRET !== cronSecret) {
     setVar(serviceName, "CRON_SECRET", cronSecret);
+    synced = false;
   }
   if (vars.CRON_TARGET_BASE_URL !== INTERNAL_CRON_BASE) {
     setVar(serviceName, "CRON_TARGET_BASE_URL", INTERNAL_CRON_BASE);
+    synced = false;
   }
+  if (synced) syncedCount += 1;
 }
+console.log(`  ✓ ${syncedCount}/${ALL_CRON_KEYS.length} cron triggers in sync`);
 
 // ── 5. PITR bucket posture ──
 console.log("\n── PITR bucket ──");

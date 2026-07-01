@@ -10,7 +10,7 @@
  *   node scripts/railway-ops-provision.mjs
  *   node scripts/railway-ops-provision.mjs --dry-run
  */
-import { execSync, spawnSync } from "node:child_process";
+import { execSync, spawnSync, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -51,7 +51,9 @@ function serviceMap() {
 
 function getVar(service, key) {
   try {
-    const vars = JSON.parse(sh(`railway variables --service ${service} --json 2>/dev/null`));
+    const vars = JSON.parse(
+      execFileSync("railway", ["variables", "--service", service, "--json"], { encoding: "utf8" })
+    );
     return vars[key] ?? null;
   } catch {
     return null;
