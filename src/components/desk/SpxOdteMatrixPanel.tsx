@@ -41,6 +41,43 @@ type MatrixRow = {
   isAnchor: boolean;
 };
 
+type DisplayItem =
+  | { kind: "strike"; row: MatrixRow; spotOnStrike: boolean }
+  | { kind: "spot"; price: number };
+
+/** Insert a live SPOT row between bracketing strikes (desc axis), or mark on-strike. */
+function buildDisplayRows(rows: MatrixRow[], spot: number, spotStrike: number | null): DisplayItem[] {
+  if (!(spot > 0) || rows.length === 0) {
+    return rows.map((row) => ({ kind: "strike", row, spotOnStrike: false }));
+  }
+
+  const onStrike =
+    spotStrike != null && Math.abs(spot - spotStrike) < 0.05;
+
+  if (onStrike) {
+    return rows.map((row) => ({
+      kind: "strike" as const,
+      row,
+      spotOnStrike: row.strike === spotStrike,
+    }));
+  }
+
+  const out: DisplayItem[] = [];
+  let spotInserted = false;
+  for (const row of rows) {
+    if (!spotInserted && spot > row.strike) {
+      out.push({ kind: "spot", price: spot });
+      spotInserted = true;
+    }
+    out.push({ kind: "strike", row, spotOnStrike: false });
+  }
+  if (!spotInserted) {
+    if (spot > rows[0]!.strike) out.unshift({ kind: "spot", price: spot });
+    else out.push({ kind: "spot", price: spot });
+  }
+  return out;
+}
+
 async function fetchGexHeatmap(url: string): Promise<GexHeatmapResponse> {
   const res = await fetch(url, {
     cache: "no-store",
@@ -300,10 +337,21 @@ export function SpxOdteMatrixPanel({ live: deskLive }: DeskProps) {
     });
   }, [strikesAxis, filteredTotals, maxPosStrike, maxNegStrike, anchor]);
 
+  const displayRows = useMemo(
+    () => buildDisplayRows(rows, spot, spotStrike),
+    [rows, spot, spotStrike]
+  );
+
+  const scrollSpotKey = useMemo(() => {
+    if (!(spot > 0)) return null;
+    if (spotStrike != null && Math.abs(spot - spotStrike) < 0.05) return `strike-${spotStrike}`;
+    return `spot-${spot.toFixed(2)}`;
+  }, [spot, spotStrike]);
+
   const scrollBoxRef = useRef<HTMLDivElement | null>(null);
   const spotRowRef = useRef<HTMLTableRowElement | null>(null);
   useEffect(() => {
-    if (spotStrike == null) return;
+    if (scrollSpotKey == null) return;
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => {
@@ -317,7 +365,7 @@ export function SpxOdteMatrixPanel({ live: deskLive }: DeskProps) {
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
-  }, [spotStrike]);
+  }, [scrollSpotKey]);
 
   const hasData = Boolean(data?.available) && strikesAxis.length > 0;
   const feedLive = Boolean(deskLive) && hasData && !error;
@@ -349,7 +397,12 @@ export function SpxOdteMatrixPanel({ live: deskLive }: DeskProps) {
       <div className="spx-odte-matrix-levels mb-3 shrink-0 grid grid-cols-2 gap-x-3 gap-y-1.5 font-mono text-[10px]">
         <div>
           <span className="text-white/50 uppercase tracking-wider">Spot</span>
-          <div className="text-sm font-semibold tabular-nums text-white">
+          <div
+            className={clsx(
+              "text-sm font-bold tabular-nums text-white spx-odte-matrix-live-spot",
+              spot > 0 && feedLive && "spx-odte-matrix-spot-blink"
+            )}
+          >
             {spot > 0 ? fmtPrice(spot) : "—"}
           </div>
         </div>
@@ -381,24 +434,47 @@ export function SpxOdteMatrixPanel({ live: deskLive }: DeskProps) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
-                const isSpot = spotStrike != null && r.strike === spotStrike;
+              {displayRows.map((item) => {
+                if (item.kind === "spot") {
+                  return (
+                    <tr
+                      key={`spot-${item.price.toFixed(2)}`}
+                      ref={spotRowRef}
+                      className="spx-odte-matrix-spot-row spx-odte-matrix-spot-blink"
+                      aria-label={`Live spot ${fmtPrice(item.price)}`}
+                    >
+                      <td colSpan={2} className="spx-odte-matrix-spot-cell py-1.5 px-2">
+                        <span className="flex items-center justify-between gap-2 font-bold text-cyan-300">
+                          <span className="text-[10px] uppercase tracking-[0.2em] text-cyan-400/90">
+                            ◂ spot ▸
+                          </span>
+                          <span className="text-[13px] tabular-nums text-white spx-odte-matrix-live-spot">
+                            {fmtPrice(item.price)}
+                          </span>
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                }
+
+                const r = item.row;
                 const hlClass = rowHighlightClass(r.highlight, r.isAnchor);
 
                 return (
                   <tr
                     key={r.strike}
-                    ref={isSpot ? spotRowRef : undefined}
+                    ref={item.spotOnStrike ? spotRowRef : undefined}
                     className={clsx(
                       "spx-odte-matrix-row border-b border-white/[0.04]",
-                      hlClass
+                      hlClass,
+                      item.spotOnStrike && "spx-odte-matrix-row--spot-on-strike spx-odte-matrix-spot-blink"
                     )}
                   >
                     <td className="spx-odte-matrix-strike py-1 pl-1 pr-2 text-left">
                       {fmtStrike(r.strike)}
-                      {isSpot && (
-                        <span className="ml-1 text-[8px] text-white/45" title="Nearest spot">
-                          ●
+                      {item.spotOnStrike && (
+                        <span className="ml-1 text-[9px] uppercase tracking-wider text-cyan-400">
+                          spot
                         </span>
                       )}
                     </td>
@@ -427,6 +503,9 @@ export function SpxOdteMatrixPanel({ live: deskLive }: DeskProps) {
         </span>
         <span className="inline-flex items-center gap-1">
           <span className="inline-block h-2 w-3 rounded-sm bg-[#6d28d9]/80" aria-hidden /> Max −GEX
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block h-2 w-3 rounded-sm bg-cyan-400/90 spx-odte-matrix-spot-blink" aria-hidden /> Live spot
         </span>
         <span className="text-white/35">
           · {rows.length} strikes · refresh {Math.round(pollMs / 1000)}s
