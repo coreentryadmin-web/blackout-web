@@ -2,9 +2,22 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   crossValidateGexLevels,
+  restFallbackAllowed,
   uwLevelsFromLadder,
   wallsFromStrikeTotals,
 } from "./gex-cross-validation-core";
+
+test("REST fallback is disallowed when the caller requires expiry scoping", () => {
+  assert.equal(restFallbackAllowed(["2026-07-01", "2026-07-02"]), false);
+});
+
+test("REST fallback is allowed when no scoping is requested (back-compat, no current caller)", () => {
+  assert.equal(restFallbackAllowed(undefined), true);
+});
+
+test("an empty nearTermExpiries array is treated as unscoped (REST allowed)", () => {
+  assert.equal(restFallbackAllowed([]), true);
+});
 
 test("wallsFromStrikeTotals picks max positive call and max negative put", () => {
   const { callWall, putWall } = wallsFromStrikeTotals({
