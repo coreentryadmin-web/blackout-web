@@ -12,6 +12,8 @@ import {
   resolveOdteExpiry,
   resolveZeroDteExpiry,
   odteStrikeTotalsFromCells,
+  columnTotalsForAxis,
+  kingFromStrikeTotals,
 } from "@/lib/correctness/gex-odte-scope";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import {
@@ -123,6 +125,20 @@ export function SpxGexMatrixHeatmap({
       .filter(Number.isFinite)
       .sort((a, b) => b - a);
   }, [data?.strikes, cells]);
+
+  // Each expiry column has its OWN King node (argmax |net GEX| for that single
+  // expiry) — distinct from odteLevels.king below (front-expiry only) and the
+  // desk header's 8-expiry-aggregate King shown in the disclaimer text. SPX
+  // daily expiries settle independently, so a column's King can legitimately
+  // differ day to day.
+  const columnKings = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const expiry of displayExpiries) {
+      const king = kingFromStrikeTotals(columnTotalsForAxis(cells, strikesAxis, expiry));
+      if (king != null) map.set(expiry, king);
+    }
+    return map;
+  }, [displayExpiries, cells, strikesAxis]);
 
   const strictZeroDte = useMemo(
     () => resolveZeroDteExpiry(expiriesAll, todayEt),
@@ -354,6 +370,7 @@ export function SpxGexMatrixHeatmap({
                       const v = rowCells[e];
                       const has = typeof v === "number" && Number.isFinite(v);
                       const val = has ? v : 0;
+                      const isColumnKing = columnKings.get(e) === strike;
                       return (
                         <td
                           key={e}
@@ -367,8 +384,10 @@ export function SpxGexMatrixHeatmap({
                             ...(has ? heatmapCellStyle(val, peak, lens) : {}),
                             ...(has ? heatmapCellTextStyle(val, peak) : {}),
                           }}
+                          title={isColumnKing ? `King node for ${fmtHeatmapExpiry(e)}` : undefined}
                         >
                           {fmtHeatmapMoneySigned(val, { showZero: true })}
+                          {isColumnKing && <span aria-hidden>*</span>}
                         </td>
                       );
                     })}
@@ -400,6 +419,7 @@ export function SpxGexMatrixHeatmap({
 
       <div className="mt-2 shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 font-mono text-[9px] text-white/45">
         <span>{strikesAxis.length} strikes · ±6% SPX band · {displayExpiries.length} expiries</span>
+        {columnKings.size > 0 && <span>· * = that day&apos;s King node</span>}
         <span>· refresh {Math.round(pollMs / 1000)}s</span>
         <Link href="/heatmap" className="text-sky-400/90 hover:text-sky-300 underline-offset-2 hover:underline">
           Full Thermal →
