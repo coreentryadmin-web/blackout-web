@@ -17,23 +17,27 @@ import assert from "node:assert/strict";
 //
 // Run: npx tsx --test src/app/api/cron/market-regime-detector/deriveComposite.test.ts
 
-mock.module("@/lib/market-api-auth", {
+// mock.module() resolves bare specifiers relative to this file, not through the
+// "@/" tsconfig alias (that rewrite only applies to statically-analyzed import
+// statements) — so these must be relative paths, mirroring
+// src/lib/__tests__/critical-api-routes.test.ts.
+mock.module("../../../../lib/market-api-auth", {
   namedExports: { isCronAuthorized: () => true },
 });
-mock.module("@/lib/spx-play-session-guards", {
+mock.module("../../../../lib/spx-play-session-guards", {
   namedExports: { isSpxEngineCronWindow: () => true },
 });
-mock.module("@/lib/cron-run", {
+mock.module("../../../../lib/cron-run", {
   namedExports: { logCronRun: async () => {} },
 });
-mock.module("@/lib/db", {
+mock.module("../../../../lib/db", {
   namedExports: {
     requireDatabaseInProduction: () => null,
     fetchRecentFlows: async () => [],
     dbQuery: async () => ({ rowCount: 0, rows: [] }),
   },
 });
-mock.module("@/lib/spx-desk-loader", {
+mock.module("../../../../lib/spx-desk-loader", {
   namedExports: {
     loadMergedSpxDesk: async () => ({ merged: { available: false } }),
   },
