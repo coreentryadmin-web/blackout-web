@@ -133,7 +133,9 @@ export async function GET(req: NextRequest) {
           WHEN score >= 70             THEN '70+'
           WHEN score >= 60             THEN '60-70'
           WHEN score >= 52             THEN '52-60'
-          ELSE                              '45-52'
+          -- Catch-all for EVERYTHING below 52 (including negatives) — labeling it
+          -- '45-52' was a lie: the band's live average score was 27.3.
+          ELSE                              '<52'
         END                                                       AS band,
         COUNT(*)                                                   AS count,
         ROUND(

@@ -286,12 +286,32 @@ export async function fetchApiDashboard(options?: {
     );
   }
 
+  // Read the cluster-wide rollup BEFORE building provider rows so the health/summary
+  // numbers below can be based on what the whole cluster did, not just this replica.
+  // The serving replica is often idle (it only handles admin traffic), so its local
+  // telemetry legitimately reads 0 calls while other replicas are doing all the work —
+  // basing the headline summary on local-only numbers produced the self-contradicting
+  // "calls_window: 0 / providers_healthy: 0/4" right above a cluster block reporting
+  // 61 live calls. Flush this replica's own rollup first so it is counted in the read.
+  await flushTelemetryToRedis();
+  const crossTelemetry = await readCrossInstanceTelemetry();
+
   const providers: ProviderDashboardRow[] = API_PROVIDER_CATALOG.map((catalog) => {
     const configured = isConfigured(catalog.id);
     const tel = telemetry.by_provider[catalog.id];
+    const cross = crossTelemetry?.providers[catalog.id];
     const probe = probeResults.get(catalog.id);
+    // Health inference without an explicit probe: local calls first, then the cluster's
+    // per-provider 5m rollup — an idle serving replica must not report a provider as
+    // unknown/unhealthy when the rest of the cluster is calling it successfully.
+    const inferredOk =
+      tel && tel.calls > 0
+        ? tel.errors === 0
+        : cross && cross.calls_5m > 0
+          ? cross.errors_5m === 0
+          : null;
     const probeFallback = probe ?? {
-      ok: options?.probe ? false : tel && tel.calls > 0 ? tel.errors === 0 : null,
+      ok: options?.probe ? false : inferredOk,
       latency_ms: null as number | null,
       error: options?.probe ? "Probe skipped" : null,
       at: null as string | null,
@@ -330,14 +350,9 @@ export async function fetchApiDashboard(options?: {
   const configuredCount = providers.filter((p) => p.configured).length;
   const healthyCount = providers.filter((p) => p.configured && p.probe.ok === true).length;
 
-  // Flush this replica's own rollup first so it is counted in the cross-instance
-  // read (matches market-health.ts ordering). Both are best-effort and no-op
-  // without REDIS_URL, so the local-only path is unchanged.
-  await flushTelemetryToRedis();
-  const [dbPool, playEngine, crossTelemetry] = await Promise.all([
+  const [dbPool, playEngine] = await Promise.all([
     getDatabasePoolStats(),
     getPlayEngineHealth(),
-    readCrossInstanceTelemetry(),
   ]);
 
   const cluster: ApiDashboardPayload["cluster"] = crossTelemetry
@@ -354,24 +369,48 @@ export async function fetchApiDashboard(options?: {
     : null;
   const rateHeadroom = buildRateQuotaHeadroom(getCallsByProvider1m());
 
+  // Headline totals: prefer the cluster-wide 5m rollup over this replica's local
+  // snapshot — but ONLY when the requested window IS 5m (the cluster rollup's fixed
+  // window). For a custom window_min the local snapshot is the only source with that
+  // window, so it stays authoritative rather than silently mislabeling 5m data.
+  const clusterTotals =
+    crossTelemetry && windowMs === 5 * 60_000
+      ? Object.values(crossTelemetry.providers).reduce(
+          (acc, s) => ({
+            calls: acc.calls + (s?.calls_5m ?? 0),
+            errors: acc.errors + (s?.errors_5m ?? 0),
+          }),
+          { calls: 0, errors: 0 }
+        )
+      : null;
+  const callsWindow = clusterTotals?.calls ?? telemetry.totals.calls;
+  const errorsWindow = clusterTotals?.errors ?? telemetry.totals.errors;
+
+  // The registry carries its own runtime counters (rendered as the "Calls (5m)"
+  // stat) — align them with the same cluster rollup so the two summaries the admin
+  // sees on one screen can never disagree with each other.
+  const registry = buildEndpointRegistry(windowMs);
+  if (clusterTotals) {
+    registry.summary.runtime_calls_window = clusterTotals.calls;
+    registry.summary.runtime_errors_window = clusterTotals.errors;
+  }
+
   return {
     generated_at: new Date().toISOString(),
     summary: {
       providers_total: providers.length,
       providers_configured: configuredCount,
       providers_healthy: healthyCount,
-      calls_window: telemetry.totals.calls,
-      errors_window: telemetry.totals.errors,
-      error_rate: telemetry.totals.calls
-        ? (telemetry.totals.errors / telemetry.totals.calls) * 100
-        : 0,
+      calls_window: callsWindow,
+      errors_window: errorsWindow,
+      error_rate: callsWindow ? (errorsWindow / callsWindow) * 100 : 0,
       window_label: `${Math.round(windowMs / 60_000)}m`,
     },
     providers,
     recent_errors: telemetry.recent_errors,
     recent_events: telemetry.recent_events,
     active_retries: telemetry.active_retries,
-    registry: buildEndpointRegistry(windowMs),
+    registry,
     websockets: {
       polygon_indices: getIndexStoreStatus(),
       unusual_whales: getUwSocketHealth(),

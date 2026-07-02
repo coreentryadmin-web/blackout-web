@@ -507,7 +507,10 @@ export function getIndexStoreStatus() {
     symbols: Object.keys(indexStore).map((sym) => ({
       sym,
       price: indexStore[sym].price,
-      ageMs: Date.now() - indexStore[sym].updatedAt,
+      // null when the symbol has never ticked — Date.now() - 0 would report the epoch
+      // (~56 years) as an "age" in the admin/health status endpoints. Mirrors the
+      // never-ticked guard in getIndexFeedFreshness above.
+      ageMs: indexStore[sym].updatedAt > 0 ? Date.now() - indexStore[sym].updatedAt : null,
     })),
   };
 }
