@@ -4,22 +4,23 @@ import { canAccessTool } from "@/lib/tool-access-server";
 import { ComingSoon } from "@/components/ComingSoon";
 import { PageShell, PageHeader } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
-import { GridBoard } from "@/components/grid/GridBoard";
-import { GridSearchBar } from "@/components/grid/GridSearchBar";
+import { GridPageTabs } from "@/components/zerodte/GridPageTabs";
 import { GridTickerProvider } from "@/lib/grid/grid-ticker-context";
 
 export const metadata: Metadata = {
-  title: "BlackOut Grid · BlackOut",
-  description: "Cross-market intelligence — news, flow, analyst actions, and market pulse on one board.",
+  title: "0DTE Command · BlackOut",
+  description:
+    "The intraday command board — SPX engines, dossier-enriched 0DTE setups from the live tape, news, earnings and dealer positioning on one surface.",
 };
 
 /**
- * /grid — BlackOut Grid. Server Component: tier gate + launch gate + metadata; the client GridBoard
- * owns layout/polling/SSE. Gated to `grid` (LAUNCHED_TOOLS=grid to flip live; admins bypass), so
- * non-admins see the ComingSoon padlock until it ships.
+ * /grid — 0DTE Command (default tab) + the classic Market Grid (second tab).
+ * Server Component: tier gate + launch gate + metadata; the client tabs own
+ * layout/polling. Gated to `grid` (admins bypass), so non-admins see the
+ * ComingSoon padlock until it ships.
  *
- * The GridTickerProvider wraps both the search bar (in PageHeader) and GridBoard so they share state.
- * GridSearchBar mounts in the page header right of the title; the "/" key focuses it.
+ * The GridTickerProvider still wraps everything so the classic tab's search bar
+ * and panels share ticker state exactly as before.
  */
 export default async function GridPage() {
   await requireTier("premium");
@@ -30,14 +31,13 @@ export default async function GridPage() {
       <div className="px-2 sm:px-4 xl:px-6">
         <GridTickerProvider>
           <PageHeader
-            kicker="Market intelligence"
-            title="BlackOut Grid"
-            subtitle="News, flow, analyst actions, and market pulse on one board."
+            kicker="Intraday command"
+            title="0DTE Command"
+            subtitle="The system heats up with the session — engines, tape-derived setups, news, earnings and dealer positioning on one board."
             badge={<ProductMark product="grid" size={44} />}
-            actions={<GridSearchBar />}
           />
           <div className="mt-5">
-            <GridBoard />
+            <GridPageTabs />
           </div>
         </GridTickerProvider>
       </div>
