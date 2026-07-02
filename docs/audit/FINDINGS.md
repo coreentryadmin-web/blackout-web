@@ -176,8 +176,9 @@ App `indices.vix.price = 17.18` vs Polygon prior-close `16.45` (4.4%), while SPX
 Most data updates dynamically without a manual refresh: **28 SWR hooks** with `refreshInterval` (15s–5min, plus SWR revalidate-on-focus) and **4 SSE streams** (`/api/market/flows/stream`, `/api/market/spx/pulse/stream`, `/api/account/positions/stream`, `/api/admin/apis/stream`) push the live tape / pulse / heatmap / SPX matrix / positions. The browser uses **SSE + SWR polling, not WebSockets directly** (UW/Polygon WS are server-side only).
 
 Exceptions that fetch once via `useEffect`/`fetch` and stay static until an action or navigation (candidates to add polling/SSE where live freshness matters):
-- `src/components/nights-watch/NightsWatchPanel.tsx` — positions/alerts fetched once (no timer/stream). **Night's Watch data does not auto-update.**
-- `src/components/spx/SignalAnalyticsPanel.tsx`, `src/components/track-record/PlayHistoryTable.tsx` — one-shot loads.
+- `src/components/nights-watch/NightsWatchPanel.tsx` — **re-checked 2026-07-02: already fixed.** Has SSE (`usePositionStream`, 3s server push) + an adaptive poll loop (`getPollMs()`, 5s RTH / 30s off-hours, self-adjusting at the open/close boundary) + focus refetch. This finding was stale.
+- `src/components/spx/SignalAnalyticsPanel.tsx` (admin-only) — **FIXED 2026-07-02** — was a genuine one-shot load with only a manual "↻ Refresh" button; added a 60s poll + focus refetch (rolling N-day aggregate, not tick data, so 60s is the right cadence — no need to match the live-desk 5-30s tier).
+- `src/components/track-record/PlayHistoryTable.tsx` (admin-only) — **re-checked 2026-07-02: one-shot-on-expand is correct, not a bug.** It's an audit trail of CLOSED/settled plays — immutable once written, so there is nothing to auto-refresh. Belongs with the modals/one-shots carve-out below.
 - (Modals/editors/nav one-shots — `PlayDetailModal`, `JournalEditor`, `Nav`, settings — one-shot is appropriate, no action needed.)
 
 ---
