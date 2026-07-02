@@ -14,6 +14,8 @@ import {
   applyPremiumCapToPlay,
   filterPlaysWithinPremiumCap,
   type ClaudePlayRaw,
+  validatePlayGeometry,
+  capSectorConcentration,
 } from "./play-constraints";
 import {
   EDITION_CHAIN_PREFETCH,
@@ -25,6 +27,7 @@ import {
 } from "./constants";
 import { groundPlays, type GroundingSummary } from "./grounding";
 import type { ScoredCandidate } from "./scorer";
+import { convictionFromScore, convictionRank } from "./scorer";
 import type { PlaybookPlay } from "./types";
 import type { HuntMode } from "./types";
 
@@ -54,11 +57,37 @@ export function mapClaudePlayToEdition(play: ClaudePlayRaw, rank: number, dossie
   const ticker = String(play.ticker ?? "?").toUpperCase();
   const dossier = dossiers[ticker];
   const playType = String(play.type ?? "stock").toLowerCase();
+  // SCORE PINNING (audit HIGH): the member-visible score is the DETERMINISTIC dossier
+  // score, not the model's self-grade — Claude previously overrode it with play.score,
+  // so a model that inflated its own number published it (and could disagree with the
+  // critic-adjusted conviction on the same card). The model's number is only used when
+  // no dossier score exists (mechanical fallback path, where it IS the deterministic
+  // score passed through).
+  const pinnedScore = dossier?.scored?.score ?? Number(play.score ?? 0);
+  // Conviction: the more CONSERVATIVE of the model's letter and the deterministic
+  // score→letter mapping. The model may legitimately grade below the math on
+  // qualitative red flags (the critic's whole job); it may not grade above it.
+  const modelConviction = String(play.conviction ?? "B");
+  const deterministicConviction = convictionFromScore(pinnedScore);
+  const conviction =
+    convictionRank(modelConviction) < convictionRank(deterministicConviction)
+      ? modelConviction
+      : deterministicConviction;
+  const scoredDirection = dossier?.scored?.direction;
+  const modelDirection = String(play.direction ?? "LONG");
+  if (
+    scoredDirection &&
+    (scoredDirection === "short") !== modelDirection.toUpperCase().includes("SHORT")
+  ) {
+    console.warn(
+      `[nighthawk/edition] ${ticker}: model direction ${modelDirection} diverges from scored flow direction ${scoredDirection}`
+    );
+  }
   const base: PlaybookPlay = {
     rank,
     ticker,
-    direction: String(play.direction ?? "LONG"),
-    conviction: String(play.conviction ?? "B"),
+    direction: modelDirection,
+    conviction,
     play_type: playType === "index" ? "index" : playType === "etf" ? "etf" : "stock",
     thesis: String(play.key_signal ?? play.bias ?? ""),
     key_signal: String(play.key_signal ?? ""),
@@ -67,7 +96,7 @@ export function mapClaudePlayToEdition(play: ClaudePlayRaw, rank: number, dossie
     stop: [play.stop, play.stop_note].filter(Boolean).join(" - ") || "-",
     options_play: String(play.options_play ?? "-"),
     risk_note: String(play.risk_note ?? ""),
-    score: Number(play.score ?? dossier?.scored?.score ?? 0),
+    score: pinnedScore,
     flow_streak_days: dossier?.flow_streak.streak_days || undefined,
     iv_rank: dossier?.iv_rank ?? undefined,
   };
@@ -93,6 +122,8 @@ export async function generateEditionPlays(params: {
   funnel?: {
     parsed: number;
     stock: number;
+    /** Plays surviving the deterministic trade-geometry gate (entry/target/stop sanity). */
+    geometry_ok: number;
     premium_ok: number;
     strike_ok: number;
     grounded: number;
@@ -167,14 +198,38 @@ export async function generateEditionPlays(params: {
       plays: [],
       recap,
       raw: null,
-      funnel: { parsed: 0, stock: 0, premium_ok: 0, strike_ok: 0, grounded: 0, dropped_ungrounded: 0, flagged: 0 },
+      funnel: { parsed: 0, stock: 0, geometry_ok: 0, premium_ok: 0, strike_ok: 0, grounded: 0, dropped_ungrounded: 0, flagged: 0 },
     };
   }
 
   const parsed = parsePlaysJson(raw).slice(0, EDITION_SYNTHESIS_OVERSHOOT + 1);
-  const mapped = parsed
+  const mappedAll = parsed
     .map((p, i) => mapClaudePlayToEdition(p, i + 1, dossierMap))
     .filter((p) => p.play_type === "stock");
+  // TRADE-GEOMETRY GATE (audit HIGH): entry/target/stop are the numbers members act
+  // on, and nothing in the publish path validated them — a target and stop on the
+  // same side of entry, or the corrupt entry-range class (#207), published intact.
+  // Validated with the SAME parser the outcome grader uses, so publish-time truth
+  // and grading truth cannot diverge.
+  const mapped: typeof mappedAll = [];
+  const geometryRejected: Array<{ ticker: string; drops: string[] }> = [];
+  for (const play of mappedAll) {
+    const verdict = validatePlayGeometry(play);
+    if (verdict.ok) {
+      mapped.push(play);
+      if (verdict.flags.length) {
+        console.warn(`[nighthawk/geometry] ${play.ticker} flagged: ${verdict.flags.join("; ")}`);
+      }
+    } else {
+      geometryRejected.push({ ticker: play.ticker, drops: verdict.drops });
+    }
+  }
+  if (geometryRejected.length) {
+    console.warn(
+      "[nighthawk/geometry] rejected (untradeable risk plan):",
+      geometryRejected.map((r) => `${r.ticker}: ${r.drops.join("; ")}`)
+    );
+  }
   const { plays, rejected } = filterPlaysWithinPremiumCap(mapped);
   chainData = await augmentChainsWithExactContracts({ plays, chains: chainData });
   const chainRows = Object.fromEntries(Object.entries(chainData).map(([ticker, data]) => [ticker, data.rows]));
@@ -219,7 +274,20 @@ export async function generateEditionPlays(params: {
     );
   }
 
-  const capped = postGrounding.slice(0, EDITION_SYNTHESIS_OVERSHOOT).map((p, i) => ({ ...p, rank: i + 1 }));
+  // SECTOR CONCENTRATION CAP (audit MEDIUM): nothing stopped the whole book being
+  // five correlated same-sector longs. Applied BEFORE the overshoot slice so a
+  // lower-ranked play from another sector backfills the freed slot.
+  const sectorByTicker = Object.fromEntries(
+    params.dossiers.map((d) => [d.ticker.toUpperCase(), d.sector ?? null])
+  );
+  const sectorCap = capSectorConcentration(postGrounding, sectorByTicker);
+  if (sectorCap.dropped.length) {
+    console.warn(
+      "[nighthawk/edition] sector-concentration cap dropped:",
+      sectorCap.dropped.map((d) => `${d.ticker} (${d.sector})`)
+    );
+  }
+  const capped = sectorCap.plays.slice(0, EDITION_SYNTHESIS_OVERSHOOT).map((p, i) => ({ ...p, rank: i + 1 }));
 
   if (rejected.length) {
     console.warn(
@@ -234,7 +302,8 @@ export async function generateEditionPlays(params: {
     raw,
     funnel: {
       parsed: parsed.length,
-      stock: mapped.length,
+      stock: mappedAll.length,
+      geometry_ok: mapped.length,
       premium_ok: plays.length,
       strike_ok: strikeOk.length,
       grounded: grounding.grounded,

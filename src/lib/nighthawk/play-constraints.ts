@@ -2,6 +2,8 @@ import {
   MAX_OPTION_COST_PER_CONTRACT,
   MAX_OPTION_PREMIUM_PER_SHARE,
 } from "./constants";
+import { entryRangeMid } from "./entry-range";
+import { parsePlayLevels } from "./play-levels";
 import type { PlaybookPlay } from "./types";
 
 export type ClaudePlayRaw = {
@@ -99,4 +101,95 @@ export function filterPlaysWithinPremiumCap(plays: PlaybookPlay[]): {
     }
   }
   return { plays: ok, rejected };
+}
+
+export type PlayGeometryVerdict = {
+  ok: boolean;
+  /** Hard failures — the play must not publish (untradeable/self-contradicting risk plan). */
+  drops: string[];
+  /** Soft notes — kept, but logged (e.g. conditional prose entry with no numeric range). */
+  flags: string[];
+};
+
+/**
+ * Deterministic trade-geometry validation of the levels members act on (audit HIGH:
+ * entry/target/stop reached members with no numeric check anywhere in the publish
+ * path — target and stop on the SAME side of entry would publish, and the corrupt
+ * entry-range class was only caught retrospectively by the track-record math).
+ *
+ * Uses the SAME parser the outcome grader uses (parsePlayLevels), so what we validate
+ * here is exactly what resolveOutcome will grade against — one source of truth.
+ *
+ * Direction convention mirrors play-outcomes.ts: anything containing "SHORT" is a
+ * short; everything else grades long.
+ */
+export function validatePlayGeometry(play: PlaybookPlay): PlayGeometryVerdict {
+  const drops: string[] = [];
+  const flags: string[] = [];
+  const { entry_range_low: lo, entry_range_high: hi, target, stop } = parsePlayLevels(play);
+
+  // Target/stop must parse — a play whose risk plan cannot be read cannot be traded
+  // (and the grader would mark it unresolvable anyway).
+  if (target == null) drops.push("target has no parseable price");
+  if (stop == null) drops.push("stop has no parseable price");
+
+  let mid: number | null = null;
+  if (lo == null || hi == null) {
+    // Conditional prose entry ("Break above X | ...") with no numeric band — keep,
+    // but note it; the grader will fall back the same way.
+    flags.push("entry range has no parseable numeric band");
+  } else {
+    mid = entryRangeMid(lo, hi);
+    if (mid == null) {
+      // entryRangeMid rejects non-positive bounds and width > 20% of the average —
+      // the exact corrupt-range class (e.g. "$17–$452") PR #207 could only null out
+      // AFTER publication. Now it never publishes.
+      drops.push(`entry range ${lo}-${hi} corrupt (non-positive bound or width > 20% of mid)`);
+    }
+  }
+
+  if (mid != null && target != null && stop != null) {
+    const isShort = String(play.direction ?? "LONG").toUpperCase().includes("SHORT");
+    if (isShort) {
+      if (target >= mid) drops.push(`SHORT target ${target} is not below entry mid ${mid.toFixed(2)}`);
+      if (stop <= mid) drops.push(`SHORT stop ${stop} is not above entry mid ${mid.toFixed(2)}`);
+    } else {
+      if (target <= mid) drops.push(`LONG target ${target} is not above entry mid ${mid.toFixed(2)}`);
+      if (stop >= mid) drops.push(`LONG stop ${stop} is not below entry mid ${mid.toFixed(2)}`);
+    }
+  }
+
+  return { ok: drops.length === 0, drops, flags };
+}
+
+/**
+ * Cap same-sector concentration in the final selection (audit MEDIUM: nothing stopped
+ * five correlated semis longs from filling the whole book). Keeps ranked order; a play
+ * beyond the cap is dropped and a lower-ranked play from another sector backfills via
+ * the caller's overshoot buffer. Plays with no known sector are exempt (null ≠ a
+ * sector; treating unknowns as one bucket would randomly cap them).
+ */
+export function capSectorConcentration(
+  plays: PlaybookPlay[],
+  sectorByTicker: Record<string, string | null | undefined>,
+  maxPerSector = 2
+): { plays: PlaybookPlay[]; dropped: Array<{ ticker: string; sector: string }> } {
+  const counts = new Map<string, number>();
+  const kept: PlaybookPlay[] = [];
+  const dropped: Array<{ ticker: string; sector: string }> = [];
+  for (const p of plays) {
+    const sector = (sectorByTicker[p.ticker.toUpperCase()] ?? "").trim().toLowerCase();
+    if (!sector) {
+      kept.push(p);
+      continue;
+    }
+    const n = counts.get(sector) ?? 0;
+    if (n >= maxPerSector) {
+      dropped.push({ ticker: p.ticker, sector });
+      continue;
+    }
+    counts.set(sector, n + 1);
+    kept.push(p);
+  }
+  return { plays: kept, dropped };
 }

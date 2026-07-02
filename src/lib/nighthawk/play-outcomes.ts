@@ -14,46 +14,11 @@ const _syncLocks = new Map<string, Promise<void>>();
 import { fetchStockDailyBars } from "@/lib/providers/polygon";
 import { polygonConfigured } from "@/lib/providers/config";
 
-export type ParsedPlayLevels = {
-  entry_range_low: number | null;
-  entry_range_high: number | null;
-  target: number | null;
-  stop: number | null;
-};
-
-function parseDecimal(text: unknown): number | null {
-  if (text == null) return null;
-  const m = String(text).replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
-  if (!m) return null;
-  const n = Number(m[0]);
-  return Number.isFinite(n) ? n : null;
-}
-
-export function parsePlayLevels(play: PlaybookPlay): ParsedPlayLevels {
-  const entryText = String(play.entry_range ?? "");
-  const normalized = entryText.replace(/[–—]/g, "-");
-  const entryParts = normalized
-    .split("-")
-    .map((p) => parseDecimal(p))
-    .filter((n): n is number => n != null);
-
-  let entry_range_low: number | null = null;
-  let entry_range_high: number | null = null;
-  if (entryParts.length >= 2) {
-    entry_range_low = Math.min(entryParts[0]!, entryParts[1]!);
-    entry_range_high = Math.max(entryParts[0]!, entryParts[1]!);
-  } else if (entryParts.length === 1) {
-    entry_range_low = entryParts[0]!;
-    entry_range_high = entryParts[0]!;
-  }
-
-  return {
-    entry_range_low,
-    entry_range_high,
-    target: parseDecimal(play.target),
-    stop: parseDecimal(play.stop),
-  };
-}
+// Level parsing lives in the dependency-free ./play-levels leaf so the publish-time
+// geometry gate (client-bundled via play-constraints) shares the exact parser without
+// dragging this module's Polygon/db imports into a client bundle.
+export { parsePlayLevels, type ParsedPlayLevels } from "./play-levels";
+import { parsePlayLevels } from "./play-levels";
 
 export async function syncNighthawkPlayOutcomes(
   editionFor: string,
