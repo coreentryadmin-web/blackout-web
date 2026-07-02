@@ -69,19 +69,21 @@ test("TTL table carries no sub-second (misread-as-seconds) entries", async () =>
 });
 
 test("no route passes a raw sub-second TTL literal to serverCache", async () => {
-  const { readdirSync, readFileSync, statSync } = await import("node:fs");
+  const { readdirSync, readFileSync } = await import("node:fs");
   const { join } = await import("node:path");
   const roots: string[] = [join(process.cwd(), "src", "app", "api")];
   const offenders: string[] = [];
   while (roots.length) {
     const dir = roots.pop()!;
-    for (const name of readdirSync(dir)) {
-      const p = join(dir, name);
-      if (statSync(p).isDirectory()) {
+    // withFileTypes: type comes from the directory listing itself — no separate
+    // stat-then-read (CodeQL js/file-system-race).
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, entry.name);
+      if (entry.isDirectory()) {
         roots.push(p);
         continue;
       }
-      if (!/\.tsx?$/.test(name)) continue;
+      if (!entry.isFile() || !/\.tsx?$/.test(entry.name)) continue;
       const src = readFileSync(p, "utf8");
       // serverCache("key", <raw number < 1000>, …) — TTL constants and *_MS names pass.
       const m = src.match(/(?:serverCache|withServerCache)\s*\(\s*[^,]+,\s*(\d{1,3})\s*,/);
