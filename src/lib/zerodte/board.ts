@@ -122,6 +122,10 @@ export type ZeroDteSetup = {
   underlying_price: number | null;
   /** 0-100 deterministic evidence score (premium tiers + sweeps + dominance + breadth). */
   score: number;
+  /** Premium that landed in the last 30 minutes of the observed tape. */
+  recent_premium_30m: number;
+  /** Sudden-flow-spike flag: ≥half the ticker's whole tape arrived in the last 30m. */
+  spike: boolean;
   first_seen: string | null;
   last_seen: string | null;
 };
@@ -136,7 +140,7 @@ const SETUP_MAX_DTE = 1; // 0DTE board: today + tomorrow expiries only
  */
 export function deriveZeroDteSetups(
   rows: FlowSetupInput[],
-  opts?: { maxSetups?: number; excludeTickers?: Set<string> }
+  opts?: { maxSetups?: number; excludeTickers?: Set<string>; nowMs?: number }
 ): ZeroDteSetup[] {
   const maxSetups = opts?.maxSetups ?? 8;
   type Agg = {
@@ -150,6 +154,8 @@ export function deriveZeroDteSetups(
     firstSeen: string | null;
     lastSeen: string | null;
     minDte: number;
+    /** (epoch-ms, premium) per print — for the sudden-spike read. */
+    stamps: Array<[number, number]>;
   };
   const byTicker = new Map<string, Agg>();
 
@@ -174,6 +180,7 @@ export function deriveZeroDteSetups(
         firstSeen: null,
         lastSeen: null,
         minDte: SETUP_MAX_DTE,
+        stamps: [],
       } as Agg);
 
     const isCall = (r.option_type ?? "").toLowerCase().startsWith("c");
@@ -191,9 +198,19 @@ export function deriveZeroDteSetups(
     if (r.alerted_at) {
       if (!agg.firstSeen || r.alerted_at < agg.firstSeen) agg.firstSeen = r.alerted_at;
       if (!agg.lastSeen || r.alerted_at > agg.lastSeen) agg.lastSeen = r.alerted_at;
+      const ts = Date.parse(r.alerted_at);
+      if (Number.isFinite(ts)) agg.stamps.push([ts, prem]);
     }
     byTicker.set(ticker, agg);
   }
+
+  // "Now" for the spike window: caller-supplied, else the newest print observed —
+  // keeps the function pure/deterministic and naturally cools spikes off as the
+  // tape ages past the window.
+  const nowMs =
+    opts?.nowMs ??
+    Math.max(0, ...Array.from(byTicker.values()).flatMap((a) => a.stamps.map(([ts]) => ts)));
+  const SPIKE_WINDOW_MS = 30 * 60 * 1000;
 
   const setups: ZeroDteSetup[] = [];
   for (const [ticker, agg] of Array.from(byTicker.entries())) {
@@ -216,7 +233,16 @@ export function deriveZeroDteSetups(
     if (!top) continue;
 
     const sweepPct = agg.gross > 0 ? agg.sweep / agg.gross : 0;
-    // Evidence score: premium tiers (0-40) + dominance (0-25) + sweeps (0-20) + prints (0-15).
+    // Sudden flow spike: at least half the ticker's tape (and 4+ prints total)
+    // landed inside the last 30 minutes — someone is loading NOW, not drip-buying.
+    const recent30 = agg.stamps.reduce(
+      (sum, [ts, prem]) => (nowMs - ts <= SPIKE_WINDOW_MS ? sum + prem : sum),
+      0
+    );
+    const spike = agg.prints >= 4 && agg.gross > 0 && recent30 / agg.gross >= 0.5;
+
+    // Evidence score: premium tiers (0-40) + dominance (0-25) + sweeps (0-20) + prints (0-15)
+    // + spike urgency (0-5).
     let score = 0;
     if (agg.gross >= 10_000_000) score += 40;
     else if (agg.gross >= 5_000_000) score += 32;
@@ -226,6 +252,7 @@ export function deriveZeroDteSetups(
     score += Math.round(((dominance - 0.5) / 0.5) * 25);
     score += Math.round(sweepPct * 20);
     score += Math.min(15, agg.prints);
+    if (spike) score += 5;
 
     setups.push({
       ticker,
@@ -240,6 +267,8 @@ export function deriveZeroDteSetups(
       side_dominance: Math.round(dominance * 100) / 100,
       underlying_price: agg.underlying,
       score: Math.max(0, Math.min(100, score)),
+      recent_premium_30m: recent30,
+      spike,
       first_seen: agg.firstSeen,
       last_seen: agg.lastSeen,
     });
@@ -301,11 +330,14 @@ export type SetupDossierView = {
     trend: string;
     setup_tags: string[];
     breakout_zones: string[];
+    support_levels: number[];
+    resistance_levels: number[];
     weekly: { high: number | null; low: number | null };
     prior_day: { high: number | null; low: number | null; close: number | null };
     rsi14: number | null;
     rel_volume: number | null;
     atr14: number | null;
+    vwap: number | null;
   } | null;
   dark_pool?: { total_premium?: number; bias?: string } | null;
   flow_streak?: { streak_days: number; direction: "long" | "short" | "mixed" } | null;
@@ -320,7 +352,22 @@ export type SetupDossierView = {
     smart_money_score: number;
     catalyst_flags?: string[];
   } | null;
+  /** Benzinga analyst price-target one-liner (e.g. "PT raised to $210 at MS"). */
+  price_target?: string | null;
   trading_halt?: boolean;
+};
+
+export type EarningsFlag = {
+  when: "premarket" | "afterhours";
+  report_date: string | null;
+  expected_move_pct: number | null;
+};
+
+export type NewsHeat = {
+  title: string;
+  published: string | null;
+  url: string | null;
+  minutes_ago: number;
 };
 
 export type EnrichedZeroDteSetup = ZeroDteSetup & {
@@ -339,17 +386,85 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
   trend: string | null;
   tech_tags: string[];
   breakout_zones: string[];
+  /** Nearest chart levels around price: up to 2 supports below, 2 resistances above. */
+  key_supports: number[];
+  key_resistances: number[];
+  vwap: number | null;
+  atr14: number | null;
   rsi14: number | null;
   rel_volume: number | null;
   streak_days: number | null;
   dark_pool_bias: string | null;
   catalyst_flags: string[];
+  analyst_note: string | null;
   /** Fib annotation vs the weekly swing, when price sits at a level. */
   fib_note: FibNote | null;
   halted: boolean;
+  /** Reports today/next session — a 0DTE into an earnings print is a different trade. */
+  earnings: EarningsFlag | null;
+  /** Fresh headline (<2h) naming this ticker. */
+  news_hot: NewsHeat | null;
 };
 
-export function enrichSetup(setup: ZeroDteSetup, dossier: SetupDossierView | null): EnrichedZeroDteSetup {
+/** Tickers reporting on `today` or `nextDay` → earnings flag (per-ticker, first match). */
+export function matchEarnings(
+  items: Array<{
+    ticker: string;
+    when: "premarket" | "afterhours";
+    report_date: string | null;
+    expected_move_pct: number | null;
+  }>,
+  dates: { today: string; nextDay: string }
+): Map<string, EarningsFlag> {
+  const out = new Map<string, EarningsFlag>();
+  for (const it of items) {
+    const ticker = it.ticker?.toUpperCase();
+    if (!ticker || out.has(ticker)) continue;
+    if (it.report_date !== dates.today && it.report_date !== dates.nextDay) continue;
+    out.set(ticker, {
+      when: it.when,
+      report_date: it.report_date,
+      expected_move_pct: it.expected_move_pct,
+    });
+  }
+  return out;
+}
+
+/** Freshest headline (within `windowMinutes`) per mentioned ticker. */
+export function matchHotNews(
+  articles: Array<{ title?: string; published?: string; tickers?: string[]; url?: string }>,
+  nowMs: number,
+  windowMinutes = 120
+): Map<string, NewsHeat> {
+  const out = new Map<string, NewsHeat>();
+  for (const a of articles) {
+    if (!a.title || !a.published || !Array.isArray(a.tickers)) continue;
+    const ts = Date.parse(a.published);
+    if (!Number.isFinite(ts)) continue;
+    const ageMin = (nowMs - ts) / 60_000;
+    if (ageMin < 0 || ageMin > windowMinutes) continue;
+    for (const t of a.tickers) {
+      const ticker = String(t).toUpperCase();
+      if (!ticker) continue;
+      const prev = out.get(ticker);
+      if (!prev || ageMin < prev.minutes_ago) {
+        out.set(ticker, {
+          title: a.title,
+          published: a.published,
+          url: a.url ?? null,
+          minutes_ago: Math.round(ageMin),
+        });
+      }
+    }
+  }
+  return out;
+}
+
+export function enrichSetup(
+  setup: ZeroDteSetup,
+  dossier: SetupDossierView | null,
+  extras?: { earnings?: EarningsFlag | null; news_hot?: NewsHeat | null }
+): EnrichedZeroDteSetup {
   const scored = dossier?.scored ?? null;
   const tech = dossier?.tech ?? null;
 
@@ -365,6 +480,17 @@ export function enrichSetup(setup: ZeroDteSetup, dossier: SetupDossierView | nul
     );
     fibNote = nearestFibNote(price, levels);
   }
+
+  // Nearest structure around price: the 2 highest supports below, 2 lowest
+  // resistances above — the levels that actually matter for a same-day trade.
+  const keySupports =
+    price != null
+      ? (tech?.support_levels ?? []).filter((l) => l > 0 && l < price).sort((a, b) => b - a).slice(0, 2)
+      : [];
+  const keyResistances =
+    price != null
+      ? (tech?.resistance_levels ?? []).filter((l) => l > price).sort((a, b) => a - b).slice(0, 2)
+      : [];
 
   return {
     ...setup,
@@ -383,12 +509,19 @@ export function enrichSetup(setup: ZeroDteSetup, dossier: SetupDossierView | nul
     trend: tech?.trend ?? null,
     tech_tags: tech?.setup_tags ?? [],
     breakout_zones: tech?.breakout_zones ?? [],
+    key_supports: keySupports,
+    key_resistances: keyResistances,
+    vwap: tech?.vwap ?? null,
+    atr14: tech?.atr14 ?? null,
     rsi14: tech?.rsi14 ?? null,
     rel_volume: tech?.rel_volume ?? null,
     streak_days: dossier?.flow_streak?.streak_days ?? null,
     dark_pool_bias: dossier?.dark_pool?.bias ?? null,
     catalyst_flags: scored?.catalyst_flags ?? [],
+    analyst_note: dossier?.price_target ?? null,
     fib_note: fibNote,
     halted: dossier?.trading_halt === true,
+    earnings: extras?.earnings ?? null,
+    news_hot: extras?.news_hot ?? null,
   };
 }

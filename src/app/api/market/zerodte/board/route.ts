@@ -14,19 +14,26 @@ import { readSpxPowerHourSnapshot } from "@/lib/spx-power-hour-engine";
 import { buildPlayTechnicals } from "@/lib/spx-play-technicals";
 import { fetchRecentPlayOutcomes } from "@/lib/spx-play-outcomes";
 import { computeSpxConfluence } from "@/lib/spx-signals";
-import { etNowParts, isTradingDayEt, todayEt } from "@/lib/nighthawk/session";
+import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "@/lib/nighthawk/session";
 import { INDEX_SET, LEVERAGED_ETP_SET } from "@/lib/nighthawk/constants";
 import { createDossierBuildCache, fetchTickerDossier } from "@/lib/nighthawk/dossier";
+import { fetchBenzingaNews } from "@/lib/providers/polygon";
+import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import { readGridEarnings } from "@/lib/providers/grid";
 import {
   deriveZeroDteSetups,
   enrichSetup,
+  matchEarnings,
+  matchHotNews,
   rankEngineCards,
   sessionHeat,
+  type EarningsFlag,
   type EngineCard,
+  type NewsHeat,
   type SetupDossierView,
   type ZeroDteSetup,
 } from "@/lib/zerodte/board";
-import { withServerCache } from "@/lib/server-cache";
+import { withServerCache, serverCache, TTL } from "@/lib/server-cache";
 import { roundFloats } from "@/lib/round-floats";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 
@@ -67,12 +74,19 @@ function within<T>(p: Promise<T>, ms: number): Promise<T | null> {
  *  scorer — flow streaks, Polygon technicals/breakouts, dark pool, news/catalysts,
  *  analyst PT, congress/institutional. Regime context is intentionally null here:
  *  the intraday board wants the raw factor read, not the evening regime multiplier. */
-async function enrichSetups(setups: ZeroDteSetup[]) {
+async function enrichSetups(
+  setups: ZeroDteSetup[],
+  flags: { earnings: Map<string, EarningsFlag>; news: Map<string, NewsHeat> }
+) {
   const buildCache = createDossierBuildCache();
   const today = todayEt();
   return Promise.all(
     setups.map(async (setup, i) => {
-      if (i >= ENRICH_TOP_N) return enrichSetup(setup, null);
+      const extras = {
+        earnings: flags.earnings.get(setup.ticker) ?? null,
+        news_hot: flags.news.get(setup.ticker) ?? null,
+      };
+      if (i >= ENRICH_TOP_N) return enrichSetup(setup, null, extras);
       // Single-flight per ticker per 10-min window across all pollers (Redis-backed),
       // so member polling never multiplies dossier builds.
       const dossier = await within(
@@ -83,7 +97,7 @@ async function enrichSetups(setups: ZeroDteSetup[]) {
         ),
         ENRICH_WAIT_MS
       );
-      return enrichSetup(setup, dossier);
+      return enrichSetup(setup, dossier, extras);
     })
   );
 }
@@ -111,9 +125,14 @@ export async function GET(req: NextRequest) {
       lod: merged.lod,
     });
 
-    // Read-only engine snapshots + tape + today's closed plays, in parallel. Each is
-    // individually best-effort — one degraded engine must not blank the board.
-    const [play, lotto, powerHour, flows, outcomes] = await Promise.all([
+    // Read-only engine snapshots + tape + today's closed plays + context lanes
+    // (news / earnings / THERMAL dealer shift), in parallel. Each is individually
+    // best-effort — one degraded lane must not blank the board. News reuses the
+    // market-news cache key (shared with /api/market/news → zero extra upstream);
+    // earnings reads the grid's Redis-warmed snapshot; the THERMAL matrix is
+    // cron-pre-warmed with a ~20s TTL, soft-deadlined so a cold rebuild can't
+    // stall a member poll.
+    const [play, lotto, powerHour, flows, outcomes, news, earningsSnap, thermal] = await Promise.all([
       readSpxPlaySnapshot(merged, technicals).catch(() => null),
       readSpxLottoSnapshot().catch(() => null),
       readSpxPowerHourSnapshot(merged).catch(() => null),
@@ -121,6 +140,9 @@ export async function GET(req: NextRequest) {
         () => []
       ),
       fetchRecentPlayOutcomes(30).catch(() => []),
+      serverCache("news:benzinga:15", TTL.NEWS, () => fetchBenzingaNews(15)).catch(() => []),
+      readGridEarnings().catch(() => null),
+      within(fetchGexHeatmap("SPX").catch(() => null), 2_500),
     ]);
 
     const rawSetups = deriveZeroDteSetups(
@@ -136,9 +158,12 @@ export async function GET(req: NextRequest) {
         underlying_price: f.underlying_price,
         alerted_at: f.alerted_at,
       })),
-      { maxSetups: 8, excludeTickers: SETUP_EXCLUDES }
+      { maxSetups: 8, excludeTickers: SETUP_EXCLUDES, nowMs: Date.now() }
     );
-    const setups = await enrichSetups(rawSetups);
+    const nextDay = nextTradingDayEt(today);
+    const earningsFlags = matchEarnings(earningsSnap?.items ?? [], { today, nextDay });
+    const newsFlags = matchHotNews(news, Date.now());
+    const setups = await enrichSetups(rawSetups, { earnings: earningsFlags, news: newsFlags });
 
     // Engine card states — deterministic mapping from each payload's own phase.
     const playState: EngineCard["state"] =
@@ -184,6 +209,25 @@ export async function GET(req: NextRequest) {
 
     const confluence = computeSpxConfluence(merged);
 
+    // Context lanes, trimmed to board-size payloads.
+    const newsLane = news.slice(0, 8).map((a) => ({
+      title: a.title,
+      published: a.published ?? null,
+      tickers: (a.tickers ?? []).slice(0, 4),
+      url: a.url ?? null,
+    }));
+    const earningsLane = (earningsSnap?.items ?? [])
+      .filter((it) => it.report_date === today || it.report_date === nextDay)
+      .slice(0, 10)
+      .map((it) => ({
+        ticker: it.ticker,
+        name: it.name,
+        when: it.when,
+        report_date: it.report_date,
+        expected_move_pct: it.expected_move_pct,
+        eps_estimate: it.eps_estimate,
+      }));
+
     return NextResponse.json(
       roundFloats({
         available: true,
@@ -209,6 +253,10 @@ export async function GET(req: NextRequest) {
           confluence: confluence
             ? { score: confluence.score ?? null, grade: confluence.grade ?? null, bias: confluence.bias ?? null }
             : null,
+          // THERMAL dealer-positioning migration (flip/wall drift with real numbers),
+          // when the heatmap history window has enough snapshots to diff.
+          thermal_shift:
+            thermal?.shift?.available && thermal.shift.summary ? thermal.shift.summary : null,
         },
         engines: {
           order: ranked,
@@ -217,6 +265,8 @@ export async function GET(req: NextRequest) {
           power_hour: powerHour,
         },
         setups,
+        news: newsLane,
+        earnings: earningsLane,
         day_log: dayLog,
       }),
       {

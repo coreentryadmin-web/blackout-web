@@ -5,6 +5,8 @@ import {
   deriveZeroDteSetups,
   rankEngineCards,
   enrichSetup,
+  matchEarnings,
+  matchHotNews,
   type FlowSetupInput,
   type SetupDossierView,
   type ZeroDteSetup,
@@ -97,6 +99,50 @@ test("setups: excluded tickers (SPX handled by its own engines) are skipped", ()
   assert.equal(deriveZeroDteSetups(rows, { excludeTickers: new Set(["SPY"]) }).length, 0);
 });
 
+test("setups: sudden flow spike flagged when ≥half the tape lands in the last 30m", () => {
+  const now = Date.parse("2026-07-06T15:00:00Z");
+  const spiky = [
+    row({ premium: 300_000, alerted_at: "2026-07-06T09:40:00Z" }),
+    row({ premium: 200_000, alerted_at: "2026-07-06T14:40:00Z" }),
+    row({ premium: 400_000, alerted_at: "2026-07-06T14:50:00Z" }),
+    row({ premium: 300_000, alerted_at: "2026-07-06T14:55:00Z" }),
+  ];
+  const out = deriveZeroDteSetups(spiky, { nowMs: now });
+  assert.equal(out[0]!.spike, true);
+  assert.equal(out[0]!.recent_premium_30m, 900_000);
+
+  // Same premium spread across the morning — no spike.
+  const drip = spiky.map((r, i) => ({ ...r, alerted_at: `2026-07-06T1${i}:00:00Z` }));
+  assert.equal(deriveZeroDteSetups(drip, { nowMs: now })[0]!.spike, false);
+});
+
+// ── earnings + hot-news flags ────────────────────────────────────────────────────
+
+test("earnings: only tickers reporting today/next session are flagged", () => {
+  const flags = matchEarnings(
+    [
+      { ticker: "NVDA", when: "afterhours", report_date: "2026-07-06", expected_move_pct: 8.2 },
+      { ticker: "KO", when: "premarket", report_date: "2026-07-14", expected_move_pct: 2.1 },
+    ],
+    { today: "2026-07-06", nextDay: "2026-07-07" }
+  );
+  assert.equal(flags.get("NVDA")?.expected_move_pct, 8.2);
+  assert.equal(flags.has("KO"), false);
+});
+
+test("hot news: freshest headline within the window wins; stale ignored", () => {
+  const now = Date.parse("2026-07-06T15:00:00Z");
+  const flags = matchHotNews(
+    [
+      { title: "Old story", published: "2026-07-06T09:00:00Z", tickers: ["NVDA"] },
+      { title: "Fresh upgrade", published: "2026-07-06T14:30:00Z", tickers: ["NVDA"], url: "https://x" },
+    ],
+    now
+  );
+  assert.equal(flags.get("NVDA")?.title, "Fresh upgrade");
+  assert.equal(flags.get("NVDA")?.minutes_ago, 30);
+});
+
 // ── fib levels ───────────────────────────────────────────────────────────────────
 
 test("fib: up-swing retracements sit below the high; golden is 61.8%", () => {
@@ -148,6 +194,8 @@ function baseSetup(overrides?: Partial<ZeroDteSetup>): ZeroDteSetup {
     side_dominance: 0.85,
     underlying_price: 188.2,
     score: 72,
+    recent_premium_30m: 0,
+    spike: false,
     first_seen: "2026-07-06T13:45:00Z",
     last_seen: "2026-07-06T15:02:00Z",
     ...overrides,
@@ -161,14 +209,18 @@ function fakeDossier(overrides?: Partial<SetupDossierView>): SetupDossierView {
       trend: "uptrend",
       setup_tags: ["breakout", "ma-stack-bullish"],
       breakout_zones: ["190.00 (weekly high)"],
+      support_levels: [186.5, 184.1, 179.9],
+      resistance_levels: [190.2, 193.5, 175.0],
       weekly: { high: 195, low: 178 },
       prior_day: { high: 189, low: 184, close: 187.5 },
       rsi14: 61.2,
       rel_volume: 1.8,
       atr14: 4.2,
+      vwap: 187.9,
     },
     dark_pool: { total_premium: 42_000_000, bias: "bullish" },
     flow_streak: { streak_days: 3, direction: "long" },
+    price_target: "PT raised to $210 at Morgan Stanley",
     scored: {
       score: 78,
       direction: "long",
@@ -193,10 +245,29 @@ test("enrich: full dossier merges score, factors, technicals, streak, dark pool"
   assert.deepEqual(e.factor_breakdown, { flow: 30, tech: 18, positioning: 10, news: 8, smart_money: 12 });
   assert.equal(e.trend, "uptrend");
   assert.deepEqual(e.breakout_zones, ["190.00 (weekly high)"]);
+  // Nearest structure around 188.2: two highest supports below, lowest resistances above
+  // (the 175.0 "resistance" below price is filtered out).
+  assert.deepEqual(e.key_supports, [186.5, 184.1]);
+  assert.deepEqual(e.key_resistances, [190.2, 193.5]);
+  assert.equal(e.vwap, 187.9);
+  assert.equal(e.atr14, 4.2);
   assert.equal(e.streak_days, 3);
   assert.equal(e.dark_pool_bias, "bullish");
   assert.deepEqual(e.catalyst_flags, ["analyst PT raise"]);
+  assert.equal(e.analyst_note, "PT raised to $210 at Morgan Stanley");
   assert.equal(e.halted, false);
+  // No extras supplied → flags null.
+  assert.equal(e.earnings, null);
+  assert.equal(e.news_hot, null);
+});
+
+test("enrich: earnings + hot-news extras pass through", () => {
+  const e = enrichSetup(baseSetup(), null, {
+    earnings: { when: "afterhours", report_date: "2026-07-06", expected_move_pct: 8.2 },
+    news_hot: { title: "Fresh upgrade", published: "2026-07-06T14:30:00Z", url: null, minutes_ago: 30 },
+  });
+  assert.equal(e.earnings?.when, "afterhours");
+  assert.equal(e.news_hot?.title, "Fresh upgrade");
 });
 
 test("enrich: dossier direction disagreeing with the tape is flagged, not hidden", () => {

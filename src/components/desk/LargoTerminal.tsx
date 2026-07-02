@@ -116,6 +116,15 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
       .finally(() => setHydrated(true));
   }, []);
 
+  // Deep-link prefill (?q=…) from other desk surfaces (e.g. the 0DTE board's
+  // "Ask LARGO" buttons). Prefill ONLY — never auto-submit, so the send still
+  // goes through the user's hands and every budget/concurrency gate as usual.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q?.trim()) setInput(q.trim().slice(0, 500));
+  }, []);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
