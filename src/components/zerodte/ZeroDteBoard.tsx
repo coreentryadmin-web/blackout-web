@@ -7,8 +7,6 @@ import type { EnrichedZeroDteSetup, SessionHeat } from "@/lib/zerodte/board";
 
 // ── Response shape (structural mirror of /api/market/zerodte/board) ──────────────
 
-type EngineStripItem = { kind: "spx_play" | "lotto" | "power_hour"; state: string };
-
 type LedgerRow = {
   ticker: string;
   direction: "long" | "short";
@@ -27,32 +25,10 @@ type BoardResponse = {
   available: boolean;
   degraded?: boolean;
   as_of?: string;
-  session?: { date: string; trading_day: boolean; market_label: string | null; heat: SessionHeat };
-  spx?: {
-    price: number | null;
-    change_pct: number | null;
-    vwap: number | null;
-    gamma_flip: number | null;
-    call_wall: number | null;
-    put_wall: number | null;
-    max_pain: number | null;
-    regime: string | null;
-    confluence: { score: number | null; grade: string | null; bias: string | null } | null;
-    thermal_shift: string | null;
-  };
-  engine_strip?: EngineStripItem[];
+  session?: { date: string; trading_day: boolean; heat: SessionHeat };
   setups?: EnrichedZeroDteSetup[];
   ledger?: LedgerRow[];
-  nighthawk_covered?: string[];
-  news?: Array<{ title: string; published: string | null; tickers: string[]; url: string | null }>;
-  earnings?: Array<{
-    ticker: string;
-    name: string;
-    when: "premarket" | "afterhours";
-    report_date: string | null;
-    expected_move_pct: number | null;
-    eps_estimate: number | null;
-  }>;
+  covered_elsewhere?: string[];
 };
 
 const fetcher = (url: string) =>
@@ -86,13 +62,6 @@ function fmtTime(iso: string | null | undefined): string {
   }
 }
 
-function stateTone(state: string): "bull" | "sky" | "neutral" | "bear" {
-  if (state === "ACTIVE") return "bull";
-  if (state === "ARMED") return "sky";
-  if (state === "DONE") return "bear";
-  return "neutral";
-}
-
 function largoHref(s: EnrichedZeroDteSetup): string {
   const q =
     `Analyze the ${s.ticker} 0DTE ${s.direction} setup: ${fmtMoney(s.gross_premium)} gross premium, ` +
@@ -101,7 +70,7 @@ function largoHref(s: EnrichedZeroDteSetup): string {
   return `/terminal?q=${encodeURIComponent(q)}`;
 }
 
-// ── heat header ───────────────────────────────────────────────────────────────────
+// ── heat header (the product's own pulse — no other desk data here) ──────────────
 
 function HeatHeader({ data }: { data: BoardResponse }) {
   const heat = data.session?.heat;
@@ -130,72 +99,7 @@ function HeatHeader({ data }: { data: BoardResponse }) {
           style={{ width: `${Math.max(2, Math.min(100, heat.heat_pct))}%` }}
         />
       </div>
-      {/* Market context strip (SPX structure + THERMAL) — context, not plays. */}
-      {data.spx && (
-        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 font-mono text-[11px] tabular-nums">
-          <StructStat label="SPX" value={fmtNum(data.spx.price)} delta={data.spx.change_pct} />
-          <StructStat label="VWAP" value={fmtNum(data.spx.vwap)} />
-          <StructStat label="Gamma flip" value={fmtNum(data.spx.gamma_flip, 0)} />
-          <StructStat label="Call wall" value={fmtNum(data.spx.call_wall, 0)} />
-          <StructStat label="Put wall" value={fmtNum(data.spx.put_wall, 0)} />
-          <StructStat label="Max pain" value={fmtNum(data.spx.max_pain, 0)} />
-          {data.spx.confluence?.grade && (
-            <StructStat
-              label="Confluence"
-              value={`${data.spx.confluence.grade}${data.spx.confluence.bias ? ` · ${data.spx.confluence.bias}` : ""}`}
-            />
-          )}
-        </div>
-      )}
-      {data.spx?.thermal_shift && (
-        <p className="mt-2 text-[11px] text-cyan-300/90">
-          <span className="font-mono uppercase tracking-widest text-cyan-400">Thermal</span>{" "}
-          {data.spx.thermal_shift}
-        </p>
-      )}
     </Panel>
-  );
-}
-
-function StructStat({ label, value, delta }: { label: string; value: string; delta?: number | null }) {
-  return (
-    <span className="inline-flex items-baseline gap-1.5">
-      <span className="uppercase tracking-widest text-sky-300/70">{label}</span>
-      <span className="text-white">{value}</span>
-      {delta != null && Number.isFinite(delta) && (
-        <span className={delta >= 0 ? "text-bull" : "text-bear"}>
-          {delta >= 0 ? "+" : ""}
-          {delta.toFixed(2)}%
-        </span>
-      )}
-    </span>
-  );
-}
-
-// ── thin engine strip (context only — plays live on their own pages) ─────────────
-
-const ENGINE_LABEL: Record<EngineStripItem["kind"], { name: string; href: string }> = {
-  spx_play: { name: "SPX Play", href: "/dashboard" },
-  lotto: { name: "SPX Lotto", href: "/dashboard" },
-  power_hour: { name: "Power Hour", href: "/dashboard" },
-};
-
-function EngineStrip({ items }: { items: EngineStripItem[] }) {
-  if (!items.length) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-white/[0.08] bg-[rgba(8,9,14,0.35)] px-4 py-2.5">
-      <span className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">
-        SPX engines (own pages — not duplicated here)
-      </span>
-      {items.map((e) => (
-        <a key={e.kind} href={ENGINE_LABEL[e.kind].href} className="inline-flex items-center gap-1.5 hover:opacity-80">
-          <span className="text-[11px] text-sky-200/80">{ENGINE_LABEL[e.kind].name}</span>
-          <Badge tone={stateTone(e.state)} size="sm" dot={e.state === "ACTIVE"}>
-            {e.state}
-          </Badge>
-        </a>
-      ))}
-    </div>
   );
 }
 
@@ -436,69 +340,14 @@ function LedgerLane({ rows }: { rows: LedgerRow[] }) {
   );
 }
 
-// ── context lanes ─────────────────────────────────────────────────────────────────
-
-function NewsLane({ items }: { items: NonNullable<BoardResponse["news"]> }) {
-  return (
-    <Panel accent="sky" kicker="Context" title="Live news" bodyClassName="px-5 py-3">
-      {items.length === 0 ? (
-        <p className="py-3 text-sm text-sky-300/70">No fresh headlines.</p>
-      ) : (
-        <ul className="divide-y divide-white/[0.06]">
-          {items.map((a, i) => (
-            <li key={`${a.title}-${i}`} className="py-2">
-              <p className="text-sm leading-snug text-white/90 line-clamp-2">
-                {a.url ? (
-                  <a href={a.url} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-200">
-                    {a.title}
-                  </a>
-                ) : (
-                  a.title
-                )}
-              </p>
-              <p className="mt-0.5 font-mono text-[10px] text-sky-300/60">
-                {fmtTime(a.published)} ET{a.tickers.length ? ` · ${a.tickers.join(" · ")}` : ""}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Panel>
-  );
-}
-
-function EarningsLane({ items }: { items: NonNullable<BoardResponse["earnings"]> }) {
-  return (
-    <Panel accent="accent" kicker="Context" title="Earnings — today & next session" bodyClassName="px-5 py-3">
-      {items.length === 0 ? (
-        <p className="py-3 text-sm text-sky-300/70">No reporters in the window.</p>
-      ) : (
-        <ul className="divide-y divide-white/[0.06]">
-          {items.map((e) => (
-            <li key={`${e.ticker}-${e.when}`} className="flex items-center gap-3 py-2">
-              <span className="font-mono text-sm font-bold text-white">{e.ticker}</span>
-              <Badge tone={e.when === "premarket" ? "sky" : "accent"} size="sm">
-                {e.when === "premarket" ? "Pre-mkt" : "After hrs"}
-              </Badge>
-              <span className="truncate text-[11px] text-sky-300/70">{e.name}</span>
-              <span className="ml-auto font-mono text-[11px] tabular-nums text-sky-200/85">
-                {e.expected_move_pct != null ? `±${e.expected_move_pct}% EM` : ""}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Panel>
-  );
-}
-
 // ── board ─────────────────────────────────────────────────────────────────────────
 
 /**
- * 0DTE Command — the always-on hunt for NEW single-name 0DTE plays. The server-side
- * scanner runs every ~2 min through the session (grid-warm cron) and keeps a graded
- * ledger; this component is the live window onto it. SPX/Night Hawk plays are
- * deliberately NOT reproduced here — engine states appear only as a context strip.
+ * 0DTE Command — a standalone product: the always-on hunt for NEW single-name 0DTE
+ * plays. The server-side scanner runs every ~2 min through the session (grid-warm
+ * cron) and keeps a graded ledger; this component is the live window onto it.
+ * Nothing from other desk products is rendered here — names they already cover are
+ * excluded server-side so every card is a play members don't already have.
  */
 export function ZeroDteBoard() {
   const { data, error } = useSWR<BoardResponse>("/api/market/zerodte/board", fetcher, {
@@ -518,7 +367,7 @@ export function ZeroDteBoard() {
   if (!data) {
     return (
       <div className="space-y-4">
-        <Skeleton className="h-28 w-full rounded-2xl" />
+        <Skeleton className="h-24 w-full rounded-2xl" />
         <Skeleton className="h-72 w-full rounded-2xl" />
         <Skeleton className="h-40 w-full rounded-2xl" />
       </div>
@@ -526,7 +375,7 @@ export function ZeroDteBoard() {
   }
 
   const setups = data.setups ?? [];
-  const covered = data.nighthawk_covered ?? [];
+  const covered = data.covered_elsewhere ?? [];
 
   return (
     <div className="space-y-4">
@@ -534,7 +383,7 @@ export function ZeroDteBoard() {
 
       <Panel
         accent="bull"
-        kicker="Always-on scanner · HELIX tape · Night Hawk dossiers"
+        kicker="Always-on scanner"
         title="Fresh 0DTE finds — new plays only"
         actions={
           <Badge tone={setups.length > 0 ? "bull" : "neutral"} size="sm" dot={setups.length > 0}>
@@ -556,20 +405,13 @@ export function ZeroDteBoard() {
           </div>
         )}
         <p className="mt-3 text-[10px] leading-relaxed text-sky-300/50">
-          New names only: SPX index plays and anything Night Hawk already published are excluded by
-          design{covered.length > 0 ? ` (withheld today: ${covered.join(", ")} — see Night Hawk)` : ""}.
-          Finds are directional evidence reads (tape + dossier), not managed plays with entries/stops.
+          New names only: index products and plays already published elsewhere on the desk are
+          excluded{covered.length > 0 ? ` (withheld today: ${covered.join(", ")})` : ""}. Finds are
+          directional evidence reads, not managed plays with entries/stops.
         </p>
       </Panel>
 
       <LedgerLane rows={data.ledger ?? []} />
-
-      <EngineStrip items={data.engine_strip ?? []} />
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <NewsLane items={data.news ?? []} />
-        <EarningsLane items={data.earnings ?? []} />
-      </div>
     </div>
   );
 }
