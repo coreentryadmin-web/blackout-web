@@ -39,6 +39,8 @@ export type MarketWideContext = {
   tomorrow: string;
   tide: Record<string, unknown> | null;
   stock_flows: Record<string, unknown>[];
+  /** True when the flow-alerts fetch itself failed (vs legitimately returning few rows). */
+  flow_fetch_failed?: boolean;
   hot_chains: Record<string, unknown>[];
   index_flows: Record<string, unknown>;
   spx_bars: Array<{ o: number; h: number; l: number; c: number; t?: number }>;
@@ -204,6 +206,11 @@ async function fetchIndexFlowsPooled(): Promise<Record<string, unknown>> {
 }
 
 export async function fetchMarketWideContext(): Promise<MarketWideContext> {
+  // Set when the flow-alerts pull (the SOLE candidate source) actually errored —
+  // lets the edition builder distinguish "quiet tape, zero candidates" (benign)
+  // from "UW outage, zero candidates" (anomalous, must alert). Audit finding:
+  // the two were indistinguishable and neither alerted.
+  let flowFetchFailed = false;
   const today = todayEt();
   const tomorrow = nextTradingDayEt(today);
   const from = priorEtYmd(45);
@@ -232,7 +239,10 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
   ] = await Promise.all([
     uwConfigured() ? fetchUwMarketTide().catch(() => null) : Promise.resolve(null),
     uwConfigured()
-      ? fetchMarketFlowAlertRows({ limit: MARKET_FLOW_ALERT_LIMIT, min_premium: MIN_STOCK_FLOW_PREMIUM }).catch(() => [])
+      ? fetchMarketFlowAlertRows({ limit: MARKET_FLOW_ALERT_LIMIT, min_premium: MIN_STOCK_FLOW_PREMIUM }).catch(() => {
+          flowFetchFailed = true;
+          return [] as Awaited<ReturnType<typeof fetchMarketFlowAlertRows>>;
+        })
       : Promise.resolve([]),
     fetchIndexDailyBars("I:SPX", from, today, "30").catch(() => []),
     polygonConfigured() ? fetchIndex5MinBars("I:SPX", today, today).catch(() => []) : Promise.resolve([]),
@@ -312,6 +322,7 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     tomorrow,
     tide: tide as Record<string, unknown> | null,
     stock_flows: stockFlows,
+    flow_fetch_failed: flowFetchFailed,
     hot_chains: hotChains,
     index_flows: indexFlows,
     spx_bars: spxBars,

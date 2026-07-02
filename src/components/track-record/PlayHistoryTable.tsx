@@ -22,7 +22,7 @@ type NHPlayRow = {
   ticker: string;
   direction: "LONG" | "SHORT";
   conviction: string;
-  outcome: "target" | "stop" | "open" | "ambiguous";
+  outcome: "target" | "stop" | "open" | "ambiguous" | "unfilled";
   entry_range_low: number | null;
   entry_range_high: number | null;
   target: number | null;
@@ -46,6 +46,8 @@ function outcomeLabel(o: string): { text: string; cls: string } {
     case "stop":   return { text: "L", cls: "text-bear" };
     case "ambiguous": return { text: "—", cls: "text-sky-300/50" };
     case "breakeven": return { text: "BE", cls: "text-sky-300" };
+    // Session never traded back into the entry band — no fill existed, so no W/L.
+    case "unfilled": return { text: "UNF", cls: "text-sky-300/50" };
     default: return { text: "—", cls: "text-sky-300/50" };
   }
 }

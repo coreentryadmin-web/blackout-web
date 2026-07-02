@@ -20,6 +20,8 @@ export type NighthawkMetrics = {
    * Effective sample size for win_rate = total_resolved - stop_data_unavailable_count.
    */
   stop_data_unavailable_count: number;
+  /** Plays whose session never traded back into the entry band (gap-away) — no fill existed. */
+  unfilled_count: number;
   by_conviction: Array<{ conviction: string; n: number; win_rate: number; avg_return_pct: number }>;
   by_direction: Array<{ direction: "LONG" | "SHORT"; n: number; win_rate: number; avg_return_pct: number }>;
   by_sector: Array<{ sector: string; n: number; win_rate: number; avg_return_pct: number }>;
@@ -121,6 +123,7 @@ function emptyMetrics(windowDays: number): NighthawkMetrics {
     by_score_bucket: SCORE_BUCKETS.map((bucket) => ({ bucket, n: 0, win_rate: 0 })),
     by_edition: [],
     stop_data_unavailable_count: 0,
+    unfilled_count: 0,
   };
 }
 
@@ -146,7 +149,11 @@ export async function getNighthawkMetrics(windowDays = 30): Promise<NighthawkMet
   // them would silently count unevaluable stops as wins/opens and inflate
   // the reported win rate.
   const stopDataUnavailable = rows.filter(isStopDataUnavailable);
-  const scoreable = rows.filter((r) => !isStopDataUnavailable(r));
+  // 'unfilled' = the session never traded back into the entry band (gap-away) —
+  // there was no fill to win or lose. Excluded from ratio denominators exactly
+  // like stop_data_unavailable; surfaced via unfilled_count.
+  const unfilled = rows.filter((r) => r.outcome === "unfilled");
+  const scoreable = rows.filter((r) => !isStopDataUnavailable(r) && r.outcome !== "unfilled");
 
   const winners = scoreable.filter((r) => r.outcome === "target");
   const losers = scoreable.filter((r) => r.outcome === "stop");
@@ -196,6 +203,7 @@ export async function getNighthawkMetrics(windowDays = 30): Promise<NighthawkMet
     total_resolved: total,
     pending_count,
     stop_data_unavailable_count: stopDataUnavailable.length,
+    unfilled_count: unfilled.length,
     win_rate: scoreableTotal > 0 ? winners.length / scoreableTotal : 0,
     profitable_rate: profitableRate(scoreable),
     loss_rate: scoreableTotal > 0 ? losers.length / scoreableTotal : 0,

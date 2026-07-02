@@ -72,7 +72,7 @@ export function outcomeSessionDate(row: Pick<NighthawkPlayOutcomeRow, "edition_f
 export function resolveOutcome(row: NighthawkPlayOutcomeRow): {
   hit_target: boolean;
   hit_stop: boolean;
-  outcome: "target" | "stop" | "open" | "ambiguous" | "pending";
+  outcome: "target" | "stop" | "open" | "ambiguous" | "pending" | "unfilled";
   // True when a stop level is defined but intraday high/low data is unavailable,
   // making it impossible to determine whether the stop was hit. These plays must
   // be excluded from win/loss tallies and reported separately so operators know
@@ -92,6 +92,21 @@ export function resolveOutcome(row: NighthawkPlayOutcomeRow): {
 
   const isLong = row.direction === "LONG";
   const hasIntraday = high != null && low != null;
+
+  // FILLABILITY (grading-honesty, audit MEDIUM): the entry range is part of the
+  // published play — a LONG that gaps ABOVE its band at the open and runs to target
+  // was never fillable at the published entry, yet it graded "target" and its
+  // return was computed FROM that unfillable entry (phantom win inflating the
+  // public win rate; the mirror books phantom losses). If the session never
+  // traded back into reach of the band — long: session low stayed above the top
+  // of the band; short: session high stayed below the bottom — grade 'unfilled'
+  // and exclude from win/loss tallies (same treatment as stop_data_unavailable).
+  if (hasIntraday && row.entry_range_low != null && row.entry_range_high != null) {
+    const fillable = isLong ? low! <= row.entry_range_high : high! >= row.entry_range_low;
+    if (!fillable) {
+      return { hit_target: false, hit_stop: false, outcome: "unfilled", stop_data_unavailable: false };
+    }
+  }
   // When a stop is defined but only close data is available we cannot determine
   // whether the stop was hit intraday. Flag the play so callers can exclude it
   // from win-rate calculations rather than counting it as a non-stop outcome.
@@ -112,7 +127,7 @@ export function resolveOutcome(row: NighthawkPlayOutcomeRow): {
     hit_stop = isLong ? low! <= stop : high! >= stop;
   }
 
-  let outcome: "target" | "stop" | "open" | "ambiguous" | "pending" = "open";
+  let outcome: "target" | "stop" | "open" | "ambiguous" | "pending" | "unfilled" = "open";
   if (hit_target && hit_stop) {
     if (open != null && target != null && (isLong ? open >= target : open <= target)) {
       outcome = "target";

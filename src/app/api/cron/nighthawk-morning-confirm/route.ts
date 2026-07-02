@@ -253,6 +253,34 @@ export async function GET(req: NextRequest) {
     }
 
     if (!plays.length) {
+      // Write an honest empty blob so the member-facing play-status route can say
+      // "this session's edition published no plays" instead of the misleading
+      // "Morning confirmation not yet run" it served all day (audit finding from
+      // the live 2026-07-02 zero-play edition). Best-effort — skip result stands
+      // regardless.
+      try {
+        const redisUrl = process.env.REDIS_URL ?? "";
+        if (redisUrl) {
+          const redis = await makeRedis("nh-morning-confirm", redisUrl, { maxRetriesPerRequest: 1 });
+          const emptyResult: MorningConfirmResult = {
+            edition_for: editionFor,
+            checked_at: new Date().toISOString(),
+            spx_premarket: null,
+            prior_close: null,
+            overnight_gap_pts: null,
+            regime: null,
+            gex_bias: null,
+            call_wall: null,
+            put_wall: null,
+            plays: [],
+            summary: { confirmed: 0, degraded: 0, invalidated: 0, unverified: 0 },
+          };
+          await redis.set(REDIS_KEY(editionFor), JSON.stringify(emptyResult), "EX", REDIS_TTL_S);
+          redis.disconnect();
+        }
+      } catch {
+        /* best-effort */
+      }
       const payload = { ok: false, skipped: true, reason: `Edition ${editionFor} has no plays to validate` };
       await logCronRun(CRON_KEY, started, payload);
       return NextResponse.json(payload);

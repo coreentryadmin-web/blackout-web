@@ -52,7 +52,10 @@ function nhStopDataUnavailable(r: NighthawkPlayOutcomeRow): boolean {
 
 /** Same filter as aggregate Night Hawk stats on the track-record page. */
 export function isNighthawkOutcomeScoreable(r: NighthawkPlayOutcomeRow): boolean {
-  return r.outcome !== "pending" && !nhStopDataUnavailable(r);
+  // 'unfilled' (session never traded back into the entry band) has no fill to
+  // win or lose — excluded like stop_data_unavailable so gap-away plays can't
+  // book phantom wins/losses from an unfillable entry.
+  return r.outcome !== "pending" && r.outcome !== "unfilled" && !nhStopDataUnavailable(r);
 }
 
 function nhEntryMid(row: NighthawkPlayOutcomeRow): number | null {

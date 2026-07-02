@@ -88,9 +88,13 @@ function logFunnel(editionFor: string, f: Partial<FunnelCounts>): string {
 async function alertRecapOnlyIfAnomalous(
   editionFor: string,
   funnel: Partial<FunnelCounts>,
-  reason: string
+  reason: string,
+  opts?: { flowFetchFailed?: boolean }
 ): Promise<void> {
-  const benign = (funnel.candidates ?? 0) === 0;
+  // Zero candidates is benign ONLY when the flow feed genuinely returned a thin
+  // tape. When the fetch itself errored, zero candidates IS the incident — the
+  // audit found a UW outage and a quiet evening were indistinguishable here.
+  const benign = (funnel.candidates ?? 0) === 0 && !opts?.flowFetchFailed;
   if (benign) return;
   await notifyOpsDiscord({
     severity: "warning",
@@ -381,7 +385,9 @@ export async function buildEveningEdition(opts?: {
         funnel.candidates = 0;
         funnel.published = 0;
         logFunnel(editionFor, funnel);
-        await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
+        await alertRecapOnlyIfAnomalous(editionFor, funnel, reason, {
+          flowFetchFailed: ctx.flow_fetch_failed,
+        });
         await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: 0, checkpointing, force: Boolean(opts?.force) });
         return {
           ok: true,
