@@ -12713,7 +12713,6 @@ body::before {
   .flow-badge-whale   { color: #c4b5fd; border-color: rgba(139,92,246,0.4);  background: rgba(139,92,246,0.1);  }
   .flow-badge-0dte    { color: #fca5a5; border-color: rgba(239,68,68,0.5);   background: rgba(239,68,68,0.12); }
   .flow-badge-stack   { color: #fde68a; border-color: rgba(245,158,11,0.5);  background: rgba(245,158,11,0.12); box-shadow: 0 0 6px rgba(245,158,11,0.2); }
-  .flow-badge-diverge { color: #fef08a; border-color: rgba(234,179,8,0.4);   background: rgba(234,179,8,0.08);  }
 
   /* Right panel (stacked panels) */
   .flow-panel {
