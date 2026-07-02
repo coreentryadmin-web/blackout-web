@@ -1,9 +1,11 @@
 import {
   CANDIDATE_MIN_BASELINE_PREMIUM,
+  CANDIDATE_MIN_UNDERLYING_PRICE,
   CANDIDATE_PREMIUM_SLOTS,
   CANDIDATE_UNUSUAL_SLOTS,
   CANDIDATE_UNUSUALNESS_LOOKBACK_DAYS,
   INDEX_SET,
+  LEVERAGED_ETP_SET,
 } from "./constants";
 import { dbConfigured, fetchTickersAvgDailyPremium } from "@/lib/db";
 import { fetchTickersFlowStreaks } from "./flow-streak";
@@ -39,11 +41,29 @@ function unusualnessMultiplier(ratio: number): number {
   return clamp(ratio, 0.5, 3);
 }
 
+/**
+ * Structural instrument filter (audit MEDIUM: none existed — a 3x leveraged ETF,
+ * SPAC warrant, or unit with one unusual print became a full "stock" candidate and
+ * was scored by machinery built for single names). Excludes:
+ *  - index products (INDEX_SET) and leveraged/inverse ETPs + VIX wrappers,
+ *  - SPAC-suffix instruments: 5-char tickers ending W/U/R (warrant/unit/right
+ *    convention) and explicit ".WS"/"-WT"-style suffixes.
+ */
+export function isExcludedInstrument(ticker: string): boolean {
+  const t = ticker.toUpperCase();
+  if (INDEX_SET.has(t) || LEVERAGED_ETP_SET.has(t)) return true;
+  if (/[.\-+](WS|WT|W|U|R|RT)$/.test(t)) return true;
+  if (/^[A-Z]{4}[WUR]$/.test(t)) return true;
+  return false;
+}
+
 type TickerAggregate = {
   ticker: string;
   rawPremium: number;
   baseScore: number;
   distinctPrints: Set<string>;
+  /** Highest underlying price observed on this ticker's rows (0 = never carried). */
+  maxUnderlying: number;
 };
 
 function aggregateTickerFlows(
@@ -53,22 +73,24 @@ function aggregateTickerFlows(
     sweepBonus: number;
     minLiquidity: number;
     watchSet: Set<string> | null;
+    /** Cross-source corroboration rows (UW top-net-impact) — audit: fetched but never used. */
+    topNetImpact?: Record<string, unknown>[];
   }
 ): Map<string, TickerAggregate> {
-  const { sweepBonus, minLiquidity, watchSet } = opts;
+  const { sweepBonus, minLiquidity, watchSet, topNetImpact } = opts;
   const byTicker = new Map<string, TickerAggregate>();
 
   const touch = (ticker: string): TickerAggregate => {
     const cur = byTicker.get(ticker);
     if (cur) return cur;
-    const next: TickerAggregate = { ticker, rawPremium: 0, baseScore: 0, distinctPrints: new Set() };
+    const next: TickerAggregate = { ticker, rawPremium: 0, baseScore: 0, distinctPrints: new Set(), maxUnderlying: 0 };
     byTicker.set(ticker, next);
     return next;
   };
 
   for (const r of stockFlows) {
     const ticker = String(r.ticker ?? "").toUpperCase();
-    if (!ticker || INDEX_SET.has(ticker)) continue;
+    if (!ticker || isExcludedInstrument(ticker)) continue;
     if (watchSet && !watchSet.has(ticker)) continue;
 
     const prem = safeFloat(r.total_premium ?? r.premium);
@@ -80,13 +102,14 @@ function aggregateTickerFlows(
     const agg = touch(ticker);
     agg.rawPremium += prem;
     agg.baseScore += prem * bonus;
+    agg.maxUnderlying = Math.max(agg.maxUnderlying, safeFloat(r.underlying_price ?? r.stock_price));
     const key = flowPrintKey(r);
     if (key !== "0|") agg.distinctPrints.add(key);
   }
 
   for (const r of hotChains) {
     const ticker = String(r.ticker ?? r.symbol ?? "").toUpperCase();
-    if (!ticker || INDEX_SET.has(ticker)) continue;
+    if (!ticker || isExcludedInstrument(ticker)) continue;
     if (watchSet && !watchSet.has(ticker)) continue;
 
     const prem = safeFloat(r.total_premium ?? r.premium);
@@ -97,11 +120,36 @@ function aggregateTickerFlows(
     agg.baseScore += prem * 0.5;
   }
 
+  // Cross-source corroboration (audit HIGH: mono-source discovery): UW's top-net-impact
+  // screen ("names driving net premium") was fetched by market-wide but never reached
+  // discovery. Weighted 0.75 — independent-screen corroboration, below first-class flow
+  // rows but above the hot-chains re-aggregation of the same tape.
+  for (const r of topNetImpact ?? []) {
+    const ticker = String(r.ticker ?? r.symbol ?? "").toUpperCase();
+    if (!ticker || isExcludedInstrument(ticker)) continue;
+    if (watchSet && !watchSet.has(ticker)) continue;
+
+    const prem = Math.abs(safeFloat(r.net_premium ?? r.total_premium ?? r.premium));
+    if (prem < minLiquidity) continue;
+
+    const agg = touch(ticker);
+    agg.rawPremium += prem;
+    agg.baseScore += prem * 0.75;
+  }
+
   if (watchSet && byTicker.size === 0) {
     for (const ticker of Array.from(watchSet)) {
-      if (!INDEX_SET.has(ticker)) {
-        byTicker.set(ticker, { ticker, rawPremium: 0, baseScore: 1, distinctPrints: new Set() });
+      if (!isExcludedInstrument(ticker)) {
+        byTicker.set(ticker, { ticker, rawPremium: 0, baseScore: 1, distinctPrints: new Set(), maxUnderlying: 0 });
       }
+    }
+  }
+
+  // Penny/garbage-runner floor: only applied when a row actually carried the
+  // underlying price — absence of the field must not evict legitimate names.
+  for (const [ticker, agg] of Array.from(byTicker.entries())) {
+    if (agg.maxUnderlying > 0 && agg.maxUnderlying < CANDIDATE_MIN_UNDERLYING_PRICE) {
+      byTicker.delete(ticker);
     }
   }
 
@@ -162,6 +210,8 @@ export async function extractCandidateTickers(
     sweepBonus?: number;
     minLiquidity?: number;
     watchlist?: string[];
+    /** UW top-net-impact rows for cross-source corroboration (see aggregateTickerFlows). */
+    topNetImpact?: Record<string, unknown>[];
   }
 ): Promise<string[]> {
   const sweepBonus = opts?.sweepBonus ?? 1.5;
@@ -171,7 +221,12 @@ export async function extractCandidateTickers(
       ? new Set(opts.watchlist.map((t) => t.toUpperCase()))
       : null;
 
-  const aggregates = aggregateTickerFlows(stockFlows, hotChains, { sweepBonus, minLiquidity, watchSet });
+  const aggregates = aggregateTickerFlows(stockFlows, hotChains, {
+    sweepBonus,
+    minLiquidity,
+    watchSet,
+    topNetImpact: opts?.topNetImpact,
+  });
   if (!aggregates.size) return [];
 
   const tickers = Array.from(aggregates.keys());

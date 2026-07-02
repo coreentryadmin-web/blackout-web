@@ -12,6 +12,25 @@ export const INDEX_SET = new Set<string>([
 
 export const INDEX_ETF_PLAYS = ["SPY", "QQQ", "IWM", "XLF", "XLE", "XLK"] as const;
 
+/**
+ * Leveraged / inverse ETFs and VIX ETPs — excluded from single-name candidate
+ * discovery (audit MEDIUM: no security-type filter existed, so a 3× semi ETF with
+ * unusual option premium became a full "stock" candidate and was scored by machinery
+ * built for single names — fundamentals/insider/congress all N/A). Index products
+ * proper live in INDEX_SET; this set covers the geared/derivative wrappers.
+ */
+export const LEVERAGED_ETP_SET = new Set<string>([
+  "TQQQ", "SQQQ", "SOXL", "SOXS", "SPXL", "SPXS", "SPXU", "UPRO", "SDS", "SSO",
+  "QLD", "QID", "TNA", "TZA", "FAS", "FAZ", "LABU", "LABD", "TECL", "TECS",
+  "NUGT", "DUST", "JNUG", "JDST", "YINN", "YANG", "ERX", "ERY", "DRN", "DRV",
+  "TMF", "TMV", "BOIL", "KOLD", "UCO", "SCO", "DPST", "WEBL", "WEBS", "BULZ", "BERZ",
+  "UVXY", "SVXY", "VXX", "UVIX", "SVIX", "VIXY", "VIXM",
+  "TSLL", "TSLQ", "TSLS", "NVDL", "NVDD", "NVDS", "MSTU", "MSTZ", "MSTX", "CONL", "AMDL", "AMZU", "GGLL", "METU", "FBL",
+]);
+
+/** Minimum underlying price for a single-name candidate (penny/garbage-runner floor). */
+export const CANDIDATE_MIN_UNDERLYING_PRICE = 2;
+
 export const SECTOR_WATCH = [
   { key: "technology", label: "Technology" },
   { key: "financial", label: "Financials" },

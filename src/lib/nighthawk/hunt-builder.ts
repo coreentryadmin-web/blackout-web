@@ -210,6 +210,7 @@ export async function runHuntScan(request: HuntRequest): Promise<HuntBuildResult
 
     console.info("[nighthawk/hunt] phase 2: candidate selection");
     const candidates = await extractCandidateTickers(ctx.stock_flows, ctx.hot_chains, MAX_CANDIDATES, {
+      topNetImpact: ctx.top_net_impact,
       sweepBonus: weights.sweepBonus,
       minLiquidity: filters.min_premium ?? weights.minLiquidity,
       watchlist: filters.watchlist,
@@ -264,23 +265,35 @@ export async function runHuntScan(request: HuntRequest): Promise<HuntBuildResult
                 is_sweep: r.alert_rule?.toLowerCase().includes("sweep") ?? false,
                 is_opening: false, // PG rows lack explicit opening-trade flag
               }));
-              const { score: helixScore } = scoreFlowQuality(mapped);
-              helixFlowMap[dossier.ticker] = helixScore;
+              const helix = scoreFlowQuality(mapped);
+              helixFlowMap[dossier.ticker] = helix.direction === dossier.scored?.direction
+                ? helix.score
+                : -helix.score; // negative marker: live tape CONTRADICTS the thesis
             }
           } catch {
             // Non-fatal: Postgres may be unavailable during overnight cron; skip gracefully.
           }
         })
       );
-      // Apply HELIX flow bonus to each scored candidate (additive, capped within total 0–100).
+      // HELIX CONFIRMATION bonus (audit HIGH — the old version was the pipeline's most
+      // plausible false-strong source). Three fixes vs the raw "+= helixScore":
+      //  1. The Postgres tape is the SAME UW flow-alerts feed the dossier's flow_score
+      //     already scored — adding a second full 0–38 read double-counted one signal.
+      //     Treated as CONFIRMATION now: capped at +8 (score/4).
+      //  2. Direction-gated: a put-dominant live tape no longer boosts a LONG. A
+      //     contradicting tape applies a small penalty (−4 max) instead of a bonus.
+      //  3. Regime-scaled: the base score already carries regimeMultiplier; the raw
+      //     add-on bypassed it. Scale the bonus by the candidate's own multiplier.
       for (const dossier of dossierList) {
         const scored = dossier.scored;
         if (!scored) continue;
-        const helixBonus = helixFlowMap[dossier.ticker] ?? 0;
-        if (helixBonus > 0) {
-          scored.flow_score = Math.min(38, scored.flow_score + helixBonus);
-          scored.score = Math.min(100, Math.max(0, scored.score + helixBonus));
-        }
+        const helixRead = helixFlowMap[dossier.ticker] ?? 0;
+        if (helixRead === 0) continue;
+        const mult = scored.regime_multiplier ?? 1;
+        const bonus = helixRead > 0
+          ? Math.min(8, Math.round((helixRead / 4) * mult))
+          : -Math.min(4, Math.round((-helixRead / 8) * mult));
+        scored.score = Math.min(100, Math.max(0, scored.score + bonus));
       }
     }
 

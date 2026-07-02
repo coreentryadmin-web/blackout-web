@@ -370,7 +370,9 @@ export async function buildEveningEdition(opts?: {
     if (!candidates?.length) {
       if (checkpointing) await upsertNighthawkJob(editionFor, { status: "running", current_stage: "stage_candidates" });
       console.info("[nighthawk/edition] stage_candidates: selection");
-      candidates = await extractCandidateTickers(ctx.stock_flows, ctx.hot_chains, MAX_CANDIDATES);
+      candidates = await extractCandidateTickers(ctx.stock_flows, ctx.hot_chains, MAX_CANDIDATES, {
+        topNetImpact: ctx.top_net_impact,
+      });
       if (!candidates.length) {
         // Funnel collapsed at stage_candidates — the flow feed was genuinely empty (thin tape, or UW
         // returned nothing). Do NOT leave the UI "being built": publish a recap-only edition.
