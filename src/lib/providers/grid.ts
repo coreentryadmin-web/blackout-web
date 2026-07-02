@@ -18,6 +18,7 @@ import {
   fetchUwEarningsPremarket,
   fetchUwEarningsAfterhours,
   fetchUwCongressTrades,
+  fetchUwCongressPoliticians,
   fetchUwMacroIndicators,
   fetchUwTickerEarningsHistory,
   fetchUwTickerNextEarnings,
@@ -353,7 +354,22 @@ export type GridCongressSnapshot = {
 };
 
 async function fetchCongressTrades(): Promise<GridCongressSnapshot> {
-  const data = await fetchUwCongressTrades(undefined, 100);
+  // UW's /congress/recent-trades carries NO party field — only member_type
+  // ("house"/"senate", a chamber). Party lives on /congress/politicians, keyed by
+  // politician_id. Join the two so the panel's D/R dots actually light up (they
+  // rendered permanently neutral when member_type was passed off as a "party").
+  // The politicians pull is best-effort: on failure, rows keep a neutral dot —
+  // exactly the previous behavior, never a blocked panel.
+  const [data, politicians] = await Promise.all([
+    fetchUwCongressTrades(undefined, 100),
+    fetchUwCongressPoliticians(100).catch(() => [] as Record<string, unknown>[]),
+  ]);
+  const partyById = new Map<string, string>();
+  for (const p of politicians as Record<string, unknown>[]) {
+    const id = String(p.politician_id ?? "");
+    const party = String(p.party ?? "");
+    if (id && party) partyById.set(id, party);
+  }
   const obj = data as Record<string, unknown> | null;
   // UW returns {"data": [{...},...]} — unwrap the data array
   const rows: Record<string, unknown>[] = Array.isArray(obj)
@@ -377,7 +393,11 @@ async function fetchCongressTrades(): Promise<GridCongressSnapshot> {
         type: txType,
         amount,
         filed_at: txDate,
-        party: String(r.party_affiliation ?? r.affiliation ?? r.party ?? r.member_type ?? ""),
+        // member_type deliberately NOT in this chain — it is a chamber, not a party,
+        // and letting it fill the field is what kept the dots dead.
+        party:
+          partyById.get(String(r.politician_id ?? "")) ??
+          String(r.party_affiliation ?? r.affiliation ?? r.party ?? ""),
       };
     })
     .filter((t) => t.politician && t.ticker);

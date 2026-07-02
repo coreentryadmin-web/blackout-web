@@ -255,8 +255,11 @@ export function FlowAlertStream({
                   const dte        = flow.dte ?? calcDte(flow.expiry);
                   const is0dte     = dte === 0;
                   const isCompound   = compoundTickers?.has(flow.ticker) ?? false;
-                  const isDiverge    = (isCall && flow.direction === "bearish") ||
-                                       (!isCall && flow.direction === "bullish");
+                  // (DIVERGE badge removed: `direction` is DERIVED from option_type in both the
+                  // SQL and parseUwFlowAlert — call→bullish / put→bearish, always — so the
+                  // "call-but-bearish" condition was structurally impossible (0/500 live rows).
+                  // A real divergence read needs ask/bid-side data, which UW's WS flow_alerts
+                  // payload does not carry; reinstate only if that signal becomes available.)
                   const hasSplit     = splitFlowTickers?.has(flow.ticker) ?? false;
                   const earnIn       = earningsDays?.[flow.ticker] ?? null;
                   const hasVelocity  = velocitySpikeTickers?.has(flow.ticker) ?? false;
@@ -331,7 +334,6 @@ export function FlowAlertStream({
                           )}
                           {isWhale && <span className="flow-badge flow-badge-whale">WHALE</span>}
                           {is0dte && <span className="flow-badge flow-badge-0dte">0DTE</span>}
-                          {isDiverge && <span className="flow-badge flow-badge-diverge">DIVERGE</span>}
                           {hasSplit && (
                             <span
                               className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border"

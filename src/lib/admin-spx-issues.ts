@@ -165,15 +165,20 @@ export async function buildSpxAdminIssues(input: {
     // index feed (SPX/VIX/VIX9D/VIX3M) at price<=0 during RTH stays a `warning`.
     const PROXY_BACKED_INTERNALS = new Set(["I:TICK", "I:TRIN", "I:ADD"]);
     for (const sym of polygonWs.symbols) {
-      if (marketOpen && sym.price <= 0 && sym.ageMs > 30_000) {
+      // ageMs === null means the symbol has NEVER ticked this process — at least as
+      // stale as any timed age, so it must still trip the check (previously it
+      // "worked" only via the bogus Date.now()-0 ≈ 56-year age, now fixed at source).
+      const neverTicked = sym.ageMs == null;
+      if (marketOpen && sym.price <= 0 && (neverTicked || sym.ageMs! > 30_000)) {
         const proxyBacked = PROXY_BACKED_INTERNALS.has(sym.sym);
+        const ageLabel = neverTicked ? "never ticked" : `${Math.round(sym.ageMs! / 1000)}s`;
         push(issues, {
           severity: proxyBacked ? "info" : "warning",
           category: "websocket",
           title: `${sym.sym} stale or zero`,
           detail: proxyBacked
-            ? `price=${sym.price} age=${Math.round(sym.ageMs / 1000)}s — expected; breadth proxy supplies this reading`
-            : `price=${sym.price} age=${Math.round(sym.ageMs / 1000)}s`,
+            ? `price=${sym.price} age=${ageLabel} — expected; breadth proxy supplies this reading`
+            : `price=${sym.price} age=${ageLabel}`,
         });
       }
     }
