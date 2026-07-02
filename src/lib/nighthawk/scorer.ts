@@ -687,6 +687,16 @@ export function convictionFromScore(score: number): string {
   return "C";
 }
 
+/** Ordinal rank for conviction letters (higher = stronger). Unknown letters read as B. */
+export function convictionRank(conviction: string): number {
+  const c = conviction.trim().toUpperCase();
+  if (c === "A+") return 4;
+  if (c === "A") return 3;
+  if (c === "B") return 2;
+  if (c === "C") return 1;
+  return 2;
+}
+
 /** Positive RR skew (calls bid over puts) = bullish; negative = bearish. */
 export function scoreSkewConfirmation(
   skew: number | null | undefined,
