@@ -899,10 +899,18 @@ export function AdminSpxDashboard() {
     else setLoading(true);
     setError(null);
     try {
-      let qs = live ? "?live=1" : "";
-      // EDGE-10: always pass dryRun flag when running live engine.
-      if (live && !dryRun) qs += "&dryRun=false";
-      const res = await fetch(`/api/admin/spx/dashboard${qs}`, { cache: "no-store" });
+      // The mutating live run (real engine writes + Discord alerts) is POST-only with an
+      // explicit confirmation body — GET is strictly read-only/dry-run (CSRF-shaped
+      // otherwise; the server rejects GET dryRun=false with 405).
+      const res =
+        live && !dryRun
+          ? await fetch("/api/admin/spx/dashboard", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ confirm: "live-run" }),
+              cache: "no-store",
+            })
+          : await fetch(`/api/admin/spx/dashboard${live ? "?live=1" : ""}`, { cache: "no-store" });
       if (!res.ok) throw new Error(res.status === 403 ? "Not authorized" : `HTTP ${res.status}`);
       setData(await res.json());
     } catch (e) {
