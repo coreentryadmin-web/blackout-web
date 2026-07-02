@@ -222,8 +222,12 @@ function pivotUwRows(rows: Record<string, unknown>[], spot: number, expiries: st
 }
 
 export function formatChainTableText(ticker: string, price: number, rows: ChainStrikeRow[]): string {
+  // As-of stamp (audit MEDIUM: no timestamps anywhere in the prompt — the edition
+  // builds after-hours, so every quote is a last print, and the model had no way to
+  // know how fresh its numbers were).
+  const asOf = new Date().toISOString().slice(0, 16) + "Z";
   if (!rows.length) {
-    return `${ticker} chain (price $${price.toFixed(2)}): no ATM ±5% contracts for front expiries.`;
+    return `${ticker} chain (price $${price.toFixed(2)}, as of ${asOf}, after-hours last prints): no ATM ±5% contracts for front expiries.`;
   }
 
   const header =
@@ -242,7 +246,7 @@ export function formatChainTableText(ticker: string, price: number, rows: ChainS
     return `${exp}${strike}${cBid}  ${cAsk}  ${cDelta}  ${cOi}  ${pBid}  ${pAsk}  ${pDelta}  ${pOi}`;
   });
 
-  return [`${ticker} chain (price $${price.toFixed(2)}):`, header, ...lines].join("\n");
+  return [`${ticker} chain (price $${price.toFixed(2)}, as of ${asOf}, after-hours last prints):`, header, ...lines].join("\n");
 }
 
 async function resolveSpot(ticker: string, dossier?: TickerDossier): Promise<number> {

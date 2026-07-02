@@ -463,6 +463,15 @@ async function runMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_nighthawk_play_outcomes_pending
     ON nighthawk_play_outcomes(edition_for DESC) WHERE outcome = 'pending';
   `);
+  // 'unfilled' outcome (grading-honesty fix): re-issue the CHECK so pre-existing prod
+  // tables accept it. DROP+ADD as a pair is idempotent across boots.
+  await p.query(`
+    ALTER TABLE nighthawk_play_outcomes DROP CONSTRAINT IF EXISTS nighthawk_play_outcomes_outcome_check;
+  `);
+  await p.query(`
+    ALTER TABLE nighthawk_play_outcomes ADD CONSTRAINT nighthawk_play_outcomes_outcome_check
+    CHECK (outcome IN ('target', 'stop', 'open', 'ambiguous', 'pending', 'unfilled'));
+  `);
   await p.query(`
     CREATE INDEX IF NOT EXISTS idx_nighthawk_play_outcomes_resolved
     ON nighthawk_play_outcomes(edition_for DESC) WHERE outcome <> 'pending';
@@ -2692,7 +2701,7 @@ export type NighthawkPlayOutcomeRow = {
   session_low: number | null;
   hit_target: boolean;
   hit_stop: boolean;
-  outcome: "target" | "stop" | "open" | "ambiguous" | "pending";
+  outcome: "target" | "stop" | "open" | "ambiguous" | "pending" | "unfilled";
   created_at: string;
 };
 
@@ -2833,7 +2842,7 @@ export async function updateNighthawkPlayOutcome(
     session_low: number;
     hit_target: boolean;
     hit_stop: boolean;
-    outcome: "target" | "stop" | "open" | "ambiguous" | "pending";
+    outcome: "target" | "stop" | "open" | "ambiguous" | "pending" | "unfilled";
   }
 ): Promise<void> {
   await ensureSchema();
