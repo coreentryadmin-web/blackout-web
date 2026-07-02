@@ -227,6 +227,7 @@ Two multi-agent workflows completed (12-unit data-validation + 25-unit CTO audit
 - Copy-paste iframe snippet `height="200"` clipped the >300px rendered card — bumped to 420.
 - Footer "Instruments" list omitted BlackOut Grid — added `/grid`.
 - Re-checked as STALE (already fixed since the 2026-07-01 report, no action needed): Night Hawk mobile TOC "Key Features" dead anchor (current `defineToolGuide` builder emits a matching rendered section for every TOC id); inconsistent guide prev/next nav (all guides share `curriculumFor` + `LEARN_NAV`); `/learn/*` client pages falling back to generic titles (learn hub/glossary/getting-started all export metadata now).
+- Night Hawk raw tiny-sample stats while SPX gated behind "Collecting data" — **FIXED 2026-07-02**: one shared `TRACK_RECORD_MIN_SAMPLE = 30` (in `track-record/format.ts`, replacing the SPX-only constant). `NightHawkStatsGrid` now hides win rate / avg winner / avg loser / profit factor behind the same "Collecting data · N/30 plays resolved" treatment SPX uses, and the member-visible `HawkRecordStrip` on `/nighthawk` gates its percentages at the same threshold (was gating only at zero — "Target hit 0%" off 3 plays read as a confident record). Counts (total/wins/losses/resolved/pending) stay visible at any sample — raw facts are honest; ratios lie at small N.
 
 **Still needs a live RTH + real-browser pass:** intraday flow ingest, VWAP/SPX RTH signals, VIX intraday sign, the WS GEX ladder, and all rendered-UI/visual/console checks (browser was blocked).
 
