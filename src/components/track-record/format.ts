@@ -1,6 +1,7 @@
 export const TRACK_RECORD_POLL_MS = 60_000;
 
-export const TRACK_RECORD_EMBED_SNIPPET = `<iframe src="https://blackouttrades.com/embed/track-record" width="400" height="200" frameborder="0" style="border-radius:12px;overflow:hidden;" />`;
+// height must clear the rendered card (>300px tall — audit caught the old 200 clipping it).
+export const TRACK_RECORD_EMBED_SNIPPET = `<iframe src="https://blackouttrades.com/embed/track-record" width="400" height="420" frameborder="0" style="border-radius:12px;overflow:hidden;" />`;
 
 export function fmtPct(n: number | null | undefined, suffix = "%"): string {
   if (n == null) return "—";
