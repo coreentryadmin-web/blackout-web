@@ -55,3 +55,38 @@ test("repeated throws mark the key degraded after the failure threshold", async 
   }
   assert.equal(isDegraded(key), true);
 });
+
+// Regression guard for the ticker-news 60ms bug: `serverCache(key, 60, …)` read as
+// "60 seconds" but the parameter is MILLISECONDS, so per-ticker news was effectively
+// uncached and every member poll hit Benzinga upstream. Two tripwires: the shared TTL
+// table must never carry a sub-second entry, and no route file may pass a raw
+// sub-second numeric TTL to serverCache/withServerCache again.
+test("TTL table carries no sub-second (misread-as-seconds) entries", async () => {
+  const { TTL: table } = await import("./server-cache");
+  for (const [name, ms] of Object.entries(table)) {
+    assert.ok(ms >= 1_000, `TTL.${name} = ${ms}ms — sub-second TTL is almost certainly a seconds/ms mixup`);
+  }
+});
+
+test("no route passes a raw sub-second TTL literal to serverCache", async () => {
+  const { readdirSync, readFileSync, statSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const roots: string[] = [join(process.cwd(), "src", "app", "api")];
+  const offenders: string[] = [];
+  while (roots.length) {
+    const dir = roots.pop()!;
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) {
+        roots.push(p);
+        continue;
+      }
+      if (!/\.tsx?$/.test(name)) continue;
+      const src = readFileSync(p, "utf8");
+      // serverCache("key", <raw number < 1000>, …) — TTL constants and *_MS names pass.
+      const m = src.match(/(?:serverCache|withServerCache)\s*\(\s*[^,]+,\s*(\d{1,3})\s*,/);
+      if (m) offenders.push(`${p} (ttl=${m[1]}ms)`);
+    }
+  }
+  assert.deepEqual(offenders, [], `raw sub-second serverCache TTLs found:\n${offenders.join("\n")}`);
+});
