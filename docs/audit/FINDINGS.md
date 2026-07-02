@@ -215,6 +215,13 @@ Two multi-agent workflows completed (12-unit data-validation + 25-unit CTO audit
 - Congress party dots dead — UW's `/congress/recent-trades` carries NO party field (only `member_type` = chamber), so `partyDot()` always fell through to neutral. Now joins `/congress/politicians` (has `party` keyed by `politician_id`) in the grid-warm fetch; live-verified 63/63 panel-eligible rows matched (34 R / 29 D). `member_type` removed from the party fallback chain (it's a chamber, not a party). Politicians pull is best-effort — on failure, dots degrade to neutral exactly as before.
 - DIVERGE flow badge permanently dead (0/500 rows) — structurally impossible, not just rare: `isDiverge` tested `call && direction==="bearish"`, but `direction` is DERIVED from `option_type` in both the SQL (`fetchRecentFlows`) and `parseUwFlowAlert` (call→bullish/put→bearish, always), so the condition could never be true. A real divergence read needs ask/bid-side data, which UW's WS flow_alerts payload doesn't carry (live-verified: `ask_pct` null on all WS rows). **Removed the dead badge + its CSS** rather than shipping a badge that can't fire; reinstate only if side-of-tape data becomes available.
 
+**UI/embed/nav polish batch FIXED 2026-07-02:**
+- Hero "See pricing" dead anchor inside the iOS app shell — the `#pricing` target section is `display:none` in-app (App Store guideline 3.1.1), and the CTA itself re-introduced a pricing entry point the gating exists to remove. CTA now carries `hide-in-ios-app`; web unchanged.
+- `/embed/track-record` had no metadata export (generic `<title>`) — added title/description + `robots: noindex` (it's an admin-only iframe preview).
+- Copy-paste iframe snippet `height="200"` clipped the >300px rendered card — bumped to 420.
+- Footer "Instruments" list omitted BlackOut Grid — added `/grid`.
+- Re-checked as STALE (already fixed since the 2026-07-01 report, no action needed): Night Hawk mobile TOC "Key Features" dead anchor (current `defineToolGuide` builder emits a matching rendered section for every TOC id); inconsistent guide prev/next nav (all guides share `curriculumFor` + `LEARN_NAV`); `/learn/*` client pages falling back to generic titles (learn hub/glossary/getting-started all export metadata now).
+
 **Still needs a live RTH + real-browser pass:** intraday flow ingest, VWAP/SPX RTH signals, VIX intraday sign, the WS GEX ladder, and all rendered-UI/visual/console checks (browser was blocked).
 
 ## Copy/content audit — Learn pages + FAQ/Pricing (2026-07-02)
