@@ -23,9 +23,17 @@ export function SyncMembershipButton() {
         return;
       }
 
-      setMessage(`Access granted — ${String(data.tier).toUpperCase()}. Floor is open.`);
-      await session?.reload();
-      router.refresh();
+      // The endpoint returns 200/ok:true whenever the sync itself completed without error —
+      // that includes the legitimate case where no active membership was found and the
+      // resolved tier is "free". Branching on res.ok alone (the old bug) showed a green
+      // "Access granted" success state to non-paying users. Branch on the actual tier instead.
+      if (data.tier === "premium") {
+        setMessage(`Access granted — ${String(data.tier).toUpperCase()}. Floor is open.`);
+        await session?.reload();
+        router.refresh();
+      } else {
+        setMessage("No active Premium membership found. If you already paid, allow a minute for Whop to sync, then try again — or contact support.");
+      }
     } catch {
       setMessage("Sync failed. Check your connection and try again.");
     } finally {
