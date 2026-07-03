@@ -634,9 +634,12 @@ export async function evaluateSpxLotto(
 
 /**
  * Read-only lotto projection — NO saves, clears, lotto_plays writes, or Discord.
- * Mirrors evaluateSpxLotto's RENDER classification only; advancing state is the cron's
- * job (spx-evaluate is the single writer). Public/admin read paths call this so a user
- * poll can never mutate shared state or fire duplicate subscriber alerts (audit P1).
+ * Mirrors evaluateSpxLotto's RENDER classification only; advancing state happens only
+ * via the spx-evaluate cron or the admin dashboard's explicit-confirm mutate path
+ * (admin-spx-dashboard.ts), both funneled through the same runLottoPowerHourLocked
+ * advisory lock so they can't double-mutate. Every other read path (public/admin poll)
+ * calls this so it can never mutate shared state or fire duplicate subscriber alerts
+ * (audit P1).
  */
 export async function readSpxLottoSnapshot(): Promise<LottoPlayPayload> {
   const now = new Date();

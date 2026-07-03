@@ -532,8 +532,11 @@ export async function evaluateSpxPowerHour(
 /**
  * Read-only power-hour projection — NO saves, clears, scans, or Discord. Mirrors
  * evaluateSpxPowerHour's RENDER branches only; advancing state (entry/exit/force-exit)
- * is the spx-evaluate cron's job (single writer). Read paths (admin dry-run, cron
- * skip-branch) call this so they can't mutate state or fire subscriber alerts (audit P1).
+ * happens only via the spx-evaluate cron or the admin dashboard's explicit-confirm
+ * mutate path (admin-spx-dashboard.ts), both funneled through the same
+ * runLottoPowerHourLocked advisory lock so they can't double-mutate. Every other read
+ * path (admin dry-run, cron skip-branch) calls this so it can't mutate state or fire
+ * subscriber alerts (audit P1).
  */
 export async function readSpxPowerHourSnapshot(desk: SpxDeskPayload): Promise<PowerHourPlayPayload> {
   const now = new Date();
