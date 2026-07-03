@@ -7,6 +7,17 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🟡 FIXED 2026-07-03 — `[uw-gex-fallback] ... 0 usable strikes` logged as Railway "error" for an expected off-hours/holiday condition
+**Status:** FIXED. User-reported (live Railway log screenshot) the same message already investigated and confirmed non-actionable earlier tonight (market holiday, no fresh 0DTE contracts, fallback chain succeeds via tier 2) — but seeing it tagged `level: "error"` in Railway's UI again meant the underlying noise problem itself was still worth fixing, even though the condition it reports is benign.
+
+**Root cause:** `console.warn()` writes to stderr in Node.js, and Railway's log pipeline classifies anything on stderr as `"error"` severity — it doesn't distinguish `warn` from `error` at the platform level. This exact class of bug already has a fixed precedent one tier earlier in the same function (`finding #76`: the SUCCESS path was downgraded from warn to info because a healthy per-cycle build was reading as a red Railway error). The FAILURE-then-fallback path (tier 1 returns 0 rows, tier 2 picks it up) had the same problem, just never fixed.
+
+**Fix:** `fetchUwOdteGexLadder()` (`unusual-whales.ts`) now only warns on "0 usable strikes" when it happens during a real trading session (`isLiveOdteSession()`, new exported pure function: `isTradingDayEt` + `isSpxEngineCronWindow`, both already-established helpers) — off-hours/weekend/holiday occurrences log at `info` instead. Deliberately NOT a blanket downgrade to info: if UW's response shape changes or a parsing bug starts filtering every row, "0 usable strikes" during a genuine trading session is still a real signal worth surfacing at warn — only the known-benign off-hours case is quieted. The `catch` block for actual thrown errors (network failures, 503s) is untouched — those are genuine degradations regardless of time of day.
+
+**Note on process, not just the fix:** caught and corrected my own mistake while shipping this — ran `git reset --hard origin/main` to start a fresh branch without checking `git status` first, which discarded this exact uncommitted fix. Recovered immediately from recent context (had just written and tested it) and reapplied it exactly; the lesson (always check status before a hard reset, no exceptions for "just switching branches") is now something to actually hold to, not just state as policy.
+
+**Verification:** new `unusual-whales.test.ts` — 4 tests covering holiday, weekend, off-hours-on-a-trading-day, and during-the-window cases for the extracted `isLiveOdteSession()`. 780/780 total tests, `tsc --noEmit` + build clean.
+
 ## 🧠 Database query failures now captured at the source — every dbQuery() call site, not N audits
 **Status:** SHIPPED. Follow-through on the item flagged earlier tonight as "needs a proper audit before implementing" — did the audit, it came back clean, shipped the fix.
 

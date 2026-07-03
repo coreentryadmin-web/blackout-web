@@ -1,6 +1,8 @@
 import { trackedFetch } from "@/lib/api-tracked-fetch";
 import { isUwUpstream5xx } from "@/lib/uw-upstream-5xx";
 import { isUwTransientNetwork } from "@/lib/uw-transient-network";
+import { isSpxEngineCronWindow } from "@/lib/spx-play-session-guards";
+import { isTradingDayEt, formatEtDate } from "@/lib/nighthawk/session";
 import {
   buildUwRequestKey,
   isUwCircuitOpen,
@@ -416,6 +418,14 @@ function normalizeUwStrikeGexRow(r: Record<string, unknown>): Record<string, unk
  * Returns normalized rows + which source produced them. Logs each attempt so the live
  * source (and any 503/empty) is visible without exposing the UW key.
  */
+/** True only during a real trading session (not weekend/holiday/off-hours) — the one window
+ *  where "0DTE ladder returned 0 usable strikes" is actually unexpected and worth a warn
+ *  instead of routine off-hours noise. Pure/exported so the condition is testable without
+ *  the surrounding network calls. */
+export function isLiveOdteSession(now = new Date()): boolean {
+  return isTradingDayEt(formatEtDate(now)) && isSpxEngineCronWindow(now);
+}
+
 export async function fetchUwOdteGexLadder(
   ticker = "SPX"
 ): Promise<{ rows: Record<string, unknown>[]; source: string }> {
@@ -437,7 +447,17 @@ export async function fetchUwOdteGexLadder(
         console.info(`[uw-gex] ${ticker} ladder from ${name}: ${rows.length} strikes`);
         return { rows, source: name };
       }
-      console.warn(`[uw-gex-fallback] ${ticker} ${name} returned 0 usable strikes`);
+      // Same finding-#76 pattern as the success-path comment above, one tier earlier: 0DTE
+      // contracts genuinely have no fresh data outside a real trading session (holidays,
+      // weekends, off-hours) — that's expected and self-recovers via the next tier, not a
+      // fallback-chain degradation. Only warn when it happens DURING a session where 0DTE
+      // data should exist, so a real regression (UW response shape change, parsing bug)
+      // still surfaces instead of being drowned out by routine off-hours noise.
+      if (isLiveOdteSession()) {
+        console.warn(`[uw-gex-fallback] ${ticker} ${name} returned 0 usable strikes`);
+      } else {
+        console.info(`[uw-gex-fallback] ${ticker} ${name} returned 0 usable strikes (off-hours/holiday, expected)`);
+      }
     } catch (err) {
       console.warn(`[uw-gex-fallback] ${ticker} ${name} threw: ${err instanceof Error ? err.message : String(err)}`);
     }
