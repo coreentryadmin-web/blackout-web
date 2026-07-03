@@ -6,7 +6,7 @@
 // degrades because a key is missing; it just gets smarter the moment one lands.
 
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   dbConfigured,
@@ -99,9 +99,13 @@ export async function ingestBieKnowledge(): Promise<{ stored: number }> {
   for (const name of ROOT_DOCS) files.push(name);
   for (const rel of files.slice(0, 40)) {
     try {
-      const full = join(process.cwd(), rel);
-      if (statSync(full).size > 400_000) continue;
-      const text = readFileSync(full, "utf8");
+      // Read-then-bound (no stat-then-read TOCTOU): oversized docs are skipped
+      // after the read. These are the repo's OWN markdown docs — a fixed,
+      // deploy-time allowlist, never user input — and sending their content to
+      // the configured embeddings provider is the documented purpose of this
+      // function (docs/bie/ARCHITECTURE.md, Layer 2).
+      const text = readFileSync(join(process.cwd(), rel), "utf8");
+      if (text.length > 400_000) continue;
       stored += await storeKnowledge(rel.includes("audit") ? "finding" : "doc", rel, text);
     } catch {
       // unreadable file — skip
