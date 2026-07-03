@@ -76,10 +76,10 @@ inventing a number would:
 
 | Item | Blocker | What it would take |
 |---|---|---|
-| Railway logs (raw container stdout/stderr) | No Railway API token configured | A Railway API token (project-scoped, read-only for logs is enough) — user decision, like the Voyage key was |
-| Railway deployment status/errors | Same | Same token; Railway's GraphQL API exposes deploy status |
-| Railway resource usage (CPU/memory) | Same | Same token; Railway exposes per-service metrics via GraphQL |
-| Railway environment variables (listing/auditing) | Same, PLUS this is sensitive — should be read-only and never surfaced verbatim (secrets) | Same token; BIE would report *presence/absence* and *staleness*, never values |
+| Railway logs (raw container stdout/stderr) | **ACCESS CONFIRMED LIVE 2026-07-03** (see below) — not yet wired into BIE's automated discovery, that's the remaining work | Manually queried `deploymentLogs`/`buildLogs` this session via a project-scoped Railway API token (`Project-Access-Token` header, `backboard.railway.com/graphql/v2`) — used it to root-cause a real deploy failure and, in the process, found and fixed a live P0 secret leak (`docs/audit/FINDINGS.md`) |
+| Railway deployment status/errors | Same — access confirmed, automation pending | Same token; `deployments(input:{projectId,environmentId,serviceId})` returns status/commit/timestamps per deploy — exactly what was needed to determine which of two back-to-back merges was actually live |
+| Railway resource usage (CPU/memory) | Access confirmed (token works), specific metrics query not yet tried | Same token; Railway exposes per-service metrics via GraphQL — untested this session, next to try |
+| Railway environment variables (listing/auditing) | Access confirmed (token works), not yet queried — still must stay read-only and never surface values verbatim | Same token; BIE would report *presence/absence* and *staleness*, never values |
 | Redis usage / connection pool internals | No Redis `INFO`/`CLIENT LIST` introspection wired | Buildable with zero new access (Redis is already connected) — genuinely just not built yet, unlike the Railway items |
 | Postgres connection pool saturation | **SHIPPED** (live snapshot, `/api/admin/bie-report` `db_pool`) | `getDatabasePoolStats()` (already existed in `db.ts`, used by `admin-api-dashboard.ts`/`market-health.ts`) — now surfaced in the BIE panel too, with a visual flag when `waiting > 0` (queueing pressure) |
 | Postgres slow-query log (`pg_stat_statements`) | NOT YET | Not confirmed enabled on the Railway instance; a genuinely separate piece from pool stats |
@@ -87,10 +87,23 @@ inventing a number would:
 | Clerk/UW/Polygon spend dashboards | Those are billing dashboards on the vendor's side, not an API we call | Would need each vendor's usage/billing API if they expose one — separate research per vendor, not assumed to exist |
 | Security warnings / auth failure monitoring | Clerk logs auth events on Clerk's side; we don't currently mirror failures into our own telemetry | Buildable: hook Clerk webhook events (already have webhook infra) into `error_events` or a new table |
 
-**The honest line:** Redis internals, Postgres pool stats, and Clerk
-auth-failure mirroring are Stage 2-equivalent (buildable now, just not done).
-Railway logs/deploys/resources/env vars are Stage 3-blocked on a credential
-only the user can provide — same pattern as the Voyage key.
+**The honest line, updated 2026-07-03:** Redis internals, Postgres pool
+stats, and Clerk auth-failure mirroring are Stage 2-equivalent (buildable
+now, just not done). Railway logs/deploys/resources/env vars **are no
+longer credential-blocked** — a project-scoped token was provided and
+confirmed working this session (the earlier account-level token attempts
+failed because `me`/`projects` are account-scoped queries a *project*
+token can't answer; `projectToken { projectId environmentId }` is the
+correct project-token query and returned real IDs immediately). What
+remains is **integration, not access**: the token currently lives only in
+this Claude Code session's own scratchpad (used manually, ad hoc, this
+session) — it is not yet wired into `runBieDiscovery()` or any scheduled
+job the deployed app itself runs, so BIE's automated daily reports do not
+yet include Railway signal. Turning "I can query this by hand" into
+"BIE's discovery report includes this automatically" is real follow-up
+work: decide where the token should live for automated use (a Railway
+service env var the app reads, vs. a separate ops-only process), then add
+a `railway-status.ts` provider analogous to `redis-health.ts`.
 
 ## Stage 4 — Unified audit trail per alert (design work, not yet started)
 
