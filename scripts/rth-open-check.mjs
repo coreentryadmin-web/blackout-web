@@ -12,6 +12,7 @@
 
 import { execSync, spawnSync } from "node:child_process";
 import { createAuditClient, resolveAuditDbUrl } from "./pg-audit.mjs";
+import { expectLiveMarketWriters, formatEtDate, isTradingDayEt } from "./lib/trading-calendar.mjs";
 
 const ET = "America/New_York";
 const force = process.argv.includes("--force");
@@ -76,6 +77,10 @@ async function main() {
 
   if (force || inRthOpenWindow(now)) {
     console.log("\n2. RTH session checks");
+    const tradingDay = isTradingDayEt(now);
+    if (!tradingDay) {
+      console.log(`  ⚠ ${formatEtDate(now)} is not a trading day (weekend/holiday) — skipping writer-cron freshness checks`);
+    }
     const dbUrl = resolveAuditDbUrl();
 
     const failures = [];
@@ -84,7 +89,7 @@ async function main() {
       failures.push(m);
       console.log(`  ✗ ${m}`);
     };
-    if (dbUrl) {
+    if (dbUrl && (tradingDay || force)) {
       try {
         const c = createAuditClient(dbUrl);
         await c.connect();
@@ -147,8 +152,10 @@ async function main() {
       } catch (e) {
         fail(`Postgres RTH checks: ${e.message}`);
       }
-    } else {
+    } else if (!dbUrl) {
       console.log("  ⚠ DATABASE_URL not set — skipping Postgres RTH checks");
+    } else if (!tradingDay && !force) {
+      ok("Postgres writer checks skipped (market closed)");
     }
 
     // Options socket — HTTP probe (reliable across multi-replica clusters; log grep misses the leader).

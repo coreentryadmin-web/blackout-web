@@ -5,6 +5,8 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
+import { expectLiveMarketWriters } from "./lib/trading-calendar.mjs";
+
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET ?? "";
@@ -276,12 +278,17 @@ function deriveWalls(st) {
 async function auditHeatmapMatrix() {
   if (!CRON) return;
   const tickers = ["SPX", "SPY", "QQQ", "NVDA", "AAPL", "TSLA", "AMD", "MSFT", "META", "IWM"];
+  const liveWriters = expectLiveMarketWriters();
   let flags = 0;
   for (const ticker of tickers) {
     const { status, json: hm } = await getJson(`/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`);
     if (status !== 200 || !(hm?.spot > 0)) {
-      fail("heatmap", ticker, "unavailable or empty");
-      flags++;
+      if (!liveWriters && ticker !== "SPX") {
+        ok("heatmap", ticker, "empty on market closure (expected)");
+      } else {
+        fail("heatmap", ticker, "unavailable or empty");
+        flags++;
+      }
       continue;
     }
     for (const [name, block] of [

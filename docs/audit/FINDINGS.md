@@ -7,7 +7,17 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
-## 🟡 INVESTIGATED 2026-07-03 15:4x UTC — "Query read timeout" storm across admin endpoints is real and ongoing, most likely caused by concurrent dual-agent audit load hitting a deliberately small per-replica connection pool, not a code defect
+## 🟡 P2 FIXED 2026-07-03 — RTH audit scripts false-failed on NYSE holiday (Jul 3 observed closure)
+
+**Status:** FIXED in `fix/holiday-audit-gate`.
+
+**Root cause:** `rth-open-check.mjs`, `gha-rth-audit.mjs`, `full-site-deep-audit.mjs`, `heatmap-matrix-audit.mjs`, and `data-validator.mjs` gated writer-cron freshness and heatmap matrix checks on weekday+clock only. On 2026-07-03 (Independence Day observed), Polygon still reports `market=open`, but NYSE is fully closed — `spx-evaluate`, `market_regime`, and `nights-watch-warm` correctly idle, causing false RTH-open FAILs. Non-SPX heatmap matrices empty (heatmap-warm idle) were flagged P1.
+
+**Fix:** Added `scripts/lib/trading-calendar.mjs` (synced with `session.ts` `US_MARKET_HOLIDAYS`) and wired `isTradingDayEt()` / `expectLiveMarketWriters()` into all five audit scripts. Writer-cron Postgres checks skip on non-trading days; non-SPX empty heatmaps downgrade to expected on closure; data-validator wall-ordering skips FAIL when walls null on holiday.
+
+**Evidence:** Before fix: `validate:rth-open` FAILED (3), `gha-rth-audit` FAILED (3), `full-site-deep-audit` 9 P1 heatmap issues, `data-validator` 1 FAIL. After fix: all GREEN, 0 flags from data-correctness cron.
+
+--- — "Query read timeout" storm across admin endpoints is real and ongoing, most likely caused by concurrent dual-agent audit load hitting a deliberately small per-replica connection pool, not a code defect
 **Status:** INVESTIGATED, root cause understood, no speculative code change made. Pulled Railway `deploymentLogs` directly for the currently-live deployment (`c69b6c93`, live since 14:36 UTC) at the user's request to check build/deploy logs for issues — found **301 of the last 501 log lines were `error` severity**, dominated by `Query read timeout` across `admin/incidents`, `admin/health`, `admin-audit`, `admin/cron-health`, `admin/audit-log`, `admin/signal-analytics`, `api-telemetry-persist`, `cron/db-cleanup`, and the `[db] query failed while already reporting a failure` recursion-guard message (from PR #321). Timestamps span continuously from 15:24 to 15:43 UTC (essentially "now" at investigation time) — **this supersedes the earlier conclusion that the ~11:29-11:44 UTC burst was a resolved one-off blip: it is not resolved, it is ongoing.**
 
 **What it is NOT:** not caused by the holiday-gate bug (PR #331) — that bug produced a false correctness *flag*, not a query failure, and the timeout pattern predates and postdates that fix. Not a "DB fully down" scenario — `/api/ready` (the member-facing critical-path health check) has responded in 0.2-0.6s on every check tonight, including during these bursts. The failures are concentrated entirely in **admin-panel/telemetry/cron-housekeeping endpoints**, never in member-facing `/api/market/*` reads.

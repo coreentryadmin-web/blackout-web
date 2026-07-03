@@ -5,6 +5,8 @@
  *
  * Usage: node scripts/heatmap-matrix-audit.mjs [--tickers=SPY,SPX,NVDA,...]
  */
+import { expectLiveMarketWriters } from "./lib/trading-calendar.mjs";
+
 const CRON = process.env.CRON_SECRET;
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const tickersArg = process.argv.find((a) => a.startsWith("--tickers="));
@@ -195,6 +197,7 @@ function auditMetricBlock(ticker, metricName, block, spot, nearExpiries) {
 async function auditTicker(ticker) {
   const hm = await fetchHeatmap(ticker);
   if (!hm?.available && !(hm?.spot > 0)) {
+    if (!expectLiveMarketWriters() && ticker !== "SPX") return null;
     fail(ticker, "available", "heatmap unavailable or empty");
     return null;
   }
@@ -249,8 +252,12 @@ async function auditTicker(ticker) {
   const strikeCount = Object.keys(hm.gex?.strike_totals ?? {}).length;
   const cellStrikes = Object.keys(hm.gex?.cells ?? {}).length;
   if (strikeCount === 0) {
-    fail(ticker, "matrix-empty", "zero strike_totals");
-    totalFlags++;
+    if (!expectLiveMarketWriters() && ticker !== "SPX") {
+      /* non-SPX matrices are not warmed on full market closures */
+    } else {
+      fail(ticker, "matrix-empty", "zero strike_totals");
+      totalFlags++;
+    }
   }
 
   return {

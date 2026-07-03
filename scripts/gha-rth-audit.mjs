@@ -16,6 +16,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { etParts, inRthOpenWindow } from "./gha-et-window.mjs";
+import { expectLiveMarketWriters, formatEtDate, isTradingDayEt } from "./lib/trading-calendar.mjs";
 import { auditPgSsl, resolveAuditDbUrl } from "./pg-audit.mjs";
 
 const smokeOnly = process.argv.includes("--smoke-only");
@@ -53,6 +54,10 @@ async function postgresRthChecks() {
   console.log(`\n── Postgres RTH checks (${etLabel}) ──`);
   if (!force && !inRthOpenWindow()) {
     console.log("  ⚠ Off-hours / weekend — skipping market-hours Postgres checks (use --force to override)");
+    return;
+  }
+  if (!force && !isTradingDayEt()) {
+    console.log(`  ⚠ ${formatEtDate()} is not a trading day (holiday/weekend) — skipping writer-cron freshness checks`);
     return;
   }
 

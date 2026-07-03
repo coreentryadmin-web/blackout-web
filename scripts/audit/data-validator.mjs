@@ -34,6 +34,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isAuthFailureStatus } from './lib/auth-status.mjs';
+import { isTradingDayEt } from '../lib/trading-calendar.mjs';
 
 const SECRET = req('CLERK_SECRET_KEY');
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
@@ -146,7 +147,8 @@ async function main() {
   // (Intraday, the numbers members see must match the LIVE feed, not yesterday's close;
   //  comparing live-vs-prev-close would false-fail every RTH run.)
   const pStatus = poly('/v1/marketstatus/now');
-  const rth = pStatus?.market === 'open';
+  const tradingDay = isTradingDayEt();
+  const rth = pStatus?.market === 'open' && tradingDay;
   const pSPYprev = poly('/v2/aggs/ticker/SPY/prev')?.results?.[0];
   const pSPXprev = poly('/v2/aggs/ticker/I:SPX/prev')?.results?.[0];
   const pVIXprev = poly('/v2/aggs/ticker/I:VIX/prev')?.results?.[0];
@@ -162,7 +164,7 @@ async function main() {
   const gtSPXchg = rth ? num(gSPX?.session?.change_percent) : null;
   const uTide = uw('/api/market/market-tide'); const uTideRow = Array.isArray(uTide?.data) ? uTide.data.at(-1) : null;
   const uGreekRow = (() => { const g = uw('/api/stock/SPY/greek-exposure'); return Array.isArray(g?.data) ? g.data.at(-1) : null; })();
-  rec('market status', 'INFO', `Polygon market=${pStatus?.market} (RTH=${rth}); ground truth=${gtLabel}`);
+  rec('market status', 'INFO', `Polygon market=${pStatus?.market} (RTH=${rth}, tradingDay=${tradingDay}); ground truth=${gtLabel}`);
 
   // --- price / index cross-validation (live-vs-live during RTH) ---
   const aSPY = num(P.quote?.price ?? P.quote?.spot), aGexSpot = num(P.gex?.spot);
@@ -183,7 +185,13 @@ async function main() {
   // --- GEX / greeks consistency ---
   if (P.gex) {
     const pw = num(P.gex.put_wall), cw = num(P.gex.call_wall), g = num(P.gex.net_gex), dx = num(P.gex.net_dex), vx = num(P.gex.net_vex);
-    rec('wall ordering put_wall < call_wall', (pw != null && cw != null && pw < cw) ? 'PASS' : 'FAIL', `put_wall=${pw} flip=${P.gex.flip} max_pain=${P.gex.max_pain} call_wall=${cw} spot=${aGexSpot}`);
+    if (pw != null && cw != null) {
+      rec('wall ordering put_wall < call_wall', pw < cw ? 'PASS' : 'FAIL', `put_wall=${pw} flip=${P.gex.flip} max_pain=${P.gex.max_pain} call_wall=${cw} spot=${aGexSpot}`);
+    } else if (!tradingDay) {
+      rec('wall ordering put_wall < call_wall', 'INFO', `walls unavailable on market closure (expected) put_wall=${pw} call_wall=${cw} spot=${aGexSpot}`);
+    } else {
+      rec('wall ordering put_wall < call_wall', 'FAIL', `put_wall=${pw} flip=${P.gex.flip} max_pain=${P.gex.max_pain} call_wall=${cw} spot=${aGexSpot}`);
+    }
     // gamma_posture is documented as spot-vs-flip ('long' at/above flip, 'short' below —
     // gex-positioning.ts:55), NOT sign(net_gex). The two are related but distinct measures
     // and legitimately diverge near the flip (spot barely above flip while the summed book
