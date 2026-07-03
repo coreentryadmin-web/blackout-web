@@ -42,6 +42,15 @@ function evidenceClause(s: EnrichedZeroDteSetup | null): string {
 function confirmClause(s: EnrichedZeroDteSetup | null): string | null {
   if (!s) return null;
   const bits: string[] = [];
+  // Live intraday read first — it's what a scalper actually trades from.
+  const id = s.intraday;
+  if (id?.last != null && id.vwap != null) {
+    const above = id.last > id.vwap;
+    if ((s.direction === "long") === above) bits.push(`${above ? "holding above" : "pressing below"} session VWAP ${id.vwap}`);
+  }
+  if (id?.or_break === "above" && s.direction === "long") bits.push("opening-range breakout north");
+  if (id?.or_break === "below" && s.direction === "short") bits.push("opening-range breakdown south");
+  if (s.market_aligned === true) bits.push("with the market tape");
   if (s.gex_king_strike != null && s.underlying_price != null) {
     const above = s.underlying_price > s.gex_king_strike;
     if (s.direction === "long" && above) bits.push(`price riding above the ${s.gex_king_strike} king node`);
@@ -94,11 +103,17 @@ export function buildIntelNote(input: {
 
   if (status === "OPEN") {
     const reload = setup?.spike === true;
+    const caution =
+      setup?.market_aligned === false
+        ? " Fighting the market tape — half size."
+        : setup?.tod_label?.includes("chop")
+          ? ` ${setup.tod_label.charAt(0).toUpperCase()}${setup.tod_label.slice(1)}.`
+          : "";
     return {
       action: "ADD",
       reason:
         `${evidenceClause(setup)}${confirm ? `; ${confirm}` : ""}. ` +
-        `${reload ? "Flow is reloading now — " : ""}Enter ≤ ${prem(plan?.entry_max ?? entryPremium)}, stop ${prem(stop)}, out by 3:30 ET.`,
+        `${reload ? "Flow is reloading now — " : ""}Enter ≤ ${prem(plan?.entry_max ?? entryPremium)}, stop ${prem(stop)}, out by 3:30 ET.${caution}`,
     };
   }
 

@@ -590,3 +590,79 @@ test("intel: TRIM and stop-out SELL read like a desk, with the numbers", () => {
   assert.equal(stopped.action, "SELL");
   assert.match(stopped.reason, /Stopped at −50%/);
 });
+
+// ── intraday edge layer ──────────────────────────────────────────────────────────
+
+import {
+  computeIntradayRead,
+  intradayScoreAdjust,
+  marketAlignAdjust,
+  marketBias,
+  timeOfDayFactor,
+  type IntradayBar,
+} from "./intraday";
+
+// 2026-07-06 is EDT: 13:30 UTC = 9:30 ET.
+const OPEN_MS = Date.parse("2026-07-06T13:30:00Z");
+const M = 60_000;
+const ibar = (minAfterOpen: number, px: number, v = 100): IntradayBar => ({
+  t: OPEN_MS + minAfterOpen * M,
+  h: px + 0.5,
+  l: px - 0.5,
+  c: px,
+  v,
+});
+
+test("intraday: VWAP, opening range and 5m trend from minute bars", () => {
+  const bars = [
+    ...Array.from({ length: 30 }, (_, i) => ibar(i, 100)), // OR: ~99.5-100.5
+    ...Array.from({ length: 60 }, (_, i) => ibar(30 + i, 100 + i * 0.05)), // grind up to ~103
+  ];
+  const read = computeIntradayRead(bars);
+  assert.ok(read.vwap != null && read.vwap > 100 && read.vwap < 103);
+  assert.equal(read.or_high, 100.5);
+  assert.equal(read.or_break, "above"); // last ~102.95 > OR high
+  assert.equal(read.trend_5m, "up");
+  assert.ok(read.vwap_dist_pct! > 0);
+});
+
+test("intraday: pre-market-only bars produce nulls, never a guess", () => {
+  const pre = [{ t: OPEN_MS - 60 * M, h: 101, l: 99, c: 100, v: 50 }];
+  const read = computeIntradayRead(pre);
+  assert.equal(read.vwap, null);
+  assert.equal(read.or_break, null);
+});
+
+test("intraday adjust: confirmation adds, hard conflict flags", () => {
+  const up = computeIntradayRead([
+    ...Array.from({ length: 30 }, (_, i) => ibar(i, 100)),
+    ...Array.from({ length: 60 }, (_, i) => ibar(30 + i, 100 + i * 0.05)),
+  ]);
+  const confirmLong = intradayScoreAdjust("long", up);
+  assert.ok(confirmLong.delta > 0);
+  assert.equal(confirmLong.conflict, false);
+  // A short against price above VWAP with an up trend = hard conflict.
+  const fightShort = intradayScoreAdjust("short", up);
+  assert.ok(fightShort.delta < 0);
+  assert.equal(fightShort.conflict, true);
+});
+
+test("market alignment: with SPY +4, against −6; flat/unknown 0", () => {
+  const up = computeIntradayRead([
+    ...Array.from({ length: 30 }, (_, i) => ibar(i, 100)),
+    ...Array.from({ length: 60 }, (_, i) => ibar(30 + i, 100 + i * 0.05)),
+  ]);
+  const bias = marketBias(up);
+  assert.equal(bias, "up");
+  assert.equal(marketAlignAdjust("long", bias), 4);
+  assert.equal(marketAlignAdjust("short", bias), -6);
+  assert.equal(marketAlignAdjust("long", null), 0);
+});
+
+test("time of day: prime windows reward, lunch chop penalizes", () => {
+  assert.ok(timeOfDayFactor(9 * 60 + 40).delta < 0); // opening chop
+  assert.ok(timeOfDayFactor(10 * 60 + 15).delta > 0); // prime morning
+  assert.ok(timeOfDayFactor(12 * 60).delta < 0); // lunch chop
+  assert.match(timeOfDayFactor(12 * 60).label ?? "", /lunch chop/);
+  assert.ok(timeOfDayFactor(14 * 60 + 30).delta > 0); // afternoon trend window
+});

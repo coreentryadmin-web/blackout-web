@@ -525,7 +525,11 @@ export function ZeroDteBoard() {
   // disagreeing, tradeable. Everything else (including PASSes) lives on the radar —
   // visible and still measured, but never presented as a play to take.
   const aTier = rows.filter(
-    (r) => r.status !== "SKIP" && r.score >= 55 && r.setup?.direction_confirmed !== false
+    (r) =>
+      r.status !== "SKIP" &&
+      r.score >= 55 &&
+      r.setup?.direction_confirmed !== false &&
+      r.setup?.intraday_conflict !== true
   );
   const radar = rows.filter((r) => !aTier.includes(r));
   const graded = rows.filter((r) => r.plan_outcome && r.plan_outcome !== "ungradeable");

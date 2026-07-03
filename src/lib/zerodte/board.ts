@@ -413,6 +413,7 @@ export function rankEngineCards(
 
 import { computeFibLevels, nearestFibNote, type FibNote } from "./fib";
 import type { ContractPlan } from "./plan";
+import type { IntradayRead } from "./intraday";
 
 /** Structural subset of TickerDossier the enrichment reads (keeps this module
  *  provider-import-free and the merge testable with plain objects). */
@@ -492,6 +493,14 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
   /** Dealer gamma king node + regime for the name (from the dossier's positioning). */
   gex_king_strike: number | null;
   gamma_regime: string | null;
+  /** Today's minute-bar read (session VWAP, opening range, 5m trend) — scan-attached. */
+  intraday: IntradayRead | null;
+  /** Hard intraday conflict: wrong side of VWAP AND short-term trend against — A-tier disqualifier. */
+  intraday_conflict: boolean;
+  /** Play direction vs the SPY tape right now (null = unknown/flat market). */
+  market_aligned: boolean | null;
+  /** Time-of-day window note (prime window / lunch chop), when one applies. */
+  tod_label: string | null;
   catalyst_flags: string[];
   analyst_note: string | null;
   /** Fib annotation vs the weekly swing, when price sits at a level. */
@@ -619,6 +628,10 @@ export function enrichSetup(
     dark_pool_bias: dossier?.dark_pool?.bias ?? null,
     gex_king_strike: dossier?.positioning?.gex_king_strike ?? null,
     gamma_regime: dossier?.positioning?.gamma_regime ?? null,
+    intraday: null,
+    intraday_conflict: false,
+    market_aligned: null,
+    tod_label: null,
     catalyst_flags: scored?.catalyst_flags ?? [],
     analyst_note: dossier?.price_target ?? null,
     fib_note: fibNote,
