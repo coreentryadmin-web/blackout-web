@@ -7,6 +7,11 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## ✅ VERIFIED 2026-07-03 — PR #366 (`feat/bie-ecosystem-context`) deploy confirmed SUCCESS
+Merge commit `0247146`. Railway deployment `3993508e-551e-4afc-b232-806d862969eb` confirmed **SUCCESS** via the GraphQL API (`commitHash: 024714631714b2e05f2555003a31e4309b45298a` matches the merge commit exactly) — before touching any other `src/**` work, per standing pipeline discipline. Live `GET /api/ready` → `{"ok":true,"db":"connected"}`.
+
+---
+
 ## 🧠 BIE ecosystem-context query layer, v1 SHIPPED 2026-07-03 — "what does the rest of BlackOut already know about this ticker"
 **Status:** SHIPPED (`feat/bie-ecosystem-context`). User's framing: BIE should work like a shared hub every instrument can query, not just a monitoring layer that reads everything after the fact. Closest real analogy is a shared-state/feature-store pattern, not network routing — the design goal was additive, never a hard dependency: every consumer must work exactly as before if this is unreachable.
 
