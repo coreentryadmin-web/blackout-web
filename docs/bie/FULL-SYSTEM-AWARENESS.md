@@ -154,7 +154,13 @@ either SHIPPED or explicitly, verifiably blocked. Nothing in this stage is
 "not tried yet" anymore. Clerk auth-failure mirroring is confirmed
 impossible via any Clerk API today (see above) — the only remaining path is
 a client-side sign-in-flow rewrite, which is a real product-risk decision,
-not a research gap.
+not a research gap. **User decision, 2026-07-03: don't build it** — offered
+the choice explicitly (rewrite the sign-in flow vs. leave the gap
+documented vs. scope it first) and the user chose to leave Clerk
+auth-failure monitoring as a **permanent, accepted gap** rather than touch
+the live sign-in flow for it. Stage 3 is now fully closed — every item is
+either shipped or a deliberate, user-confirmed non-goal, not an open
+question.
 
 ## Stage 4 — Unified audit trail per alert (SHIPPED — schema, all three write-paths, and the query surface; see the P0 correction in step 6 below — the write-paths only started actually writing rows same-night)
 
