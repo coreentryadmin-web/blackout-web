@@ -8,11 +8,12 @@ import { AdminCronDashboard } from "@/components/admin/AdminCronDashboard";
 import { AdminNightHawkDashboard } from "@/components/admin/AdminNightHawkDashboard";
 import { AdminSpxDashboard } from "@/components/admin/AdminSpxDashboard";
 import { AdminOperationsDashboard } from "@/components/admin/AdminOperationsDashboard";
+import { AdminBieDashboard } from "@/components/admin/AdminBieDashboard";
 import { AdminHealthBanner } from "@/components/admin/AdminHealthBanner";
 import { TabCanvas } from "@/components/admin/AdminUi";
 import { Tabs, TabList, Tab, TabPanel } from "@/components/ui";
 
-type ToolTab = "spx" | "nighthawk" | "ops" | "apis" | "crons";
+type ToolTab = "spx" | "nighthawk" | "ops" | "apis" | "crons" | "bie";
 
 const TABS: Array<{ id: ToolTab; label: string; icon: string; blurb: string }> = [
   { id: "ops",       label: "Operations",  icon: "◉", blurb: "Incidents · audit trail · system vitals" },
@@ -20,10 +21,18 @@ const TABS: Array<{ id: ToolTab; label: string; icon: string; blurb: string }> =
   { id: "crons",     label: "Crons",       icon: "⏱", blurb: "Job health · schedules · last run" },
   { id: "spx",       label: "SPX Slayer",  icon: "◎", blurb: "Live engine · outcomes · desk" },
   { id: "nighthawk", label: "Night Hawk",  icon: "◈", blurb: "Target-hit · signal quality" },
+  { id: "bie",       label: "BIE",         icon: "✦", blurb: "Findings · roadmap · self-reports" },
 ];
 
 function parseTab(value: string | null): ToolTab {
-  if (value === "spx" || value === "nighthawk" || value === "ops" || value === "apis" || value === "crons")
+  if (
+    value === "spx" ||
+    value === "nighthawk" ||
+    value === "ops" ||
+    value === "apis" ||
+    value === "crons" ||
+    value === "bie"
+  )
     return value;
   return "ops";
 }
@@ -110,6 +119,11 @@ export function AdminAnalyticsDashboard() {
           {tab === "nighthawk" && (
             <TabCanvas theme="neutral">
               <AdminNightHawkDashboard />
+            </TabCanvas>
+          )}
+          {tab === "bie" && (
+            <TabCanvas theme="neutral">
+              <AdminBieDashboard />
             </TabCanvas>
           )}
         </TabPanel>

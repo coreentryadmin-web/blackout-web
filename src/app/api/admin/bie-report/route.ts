@@ -16,7 +16,7 @@ import {
 } from "@/lib/db";
 import { runBieCalibration, formatCalibration } from "@/lib/bie/calibration";
 import { runBieDailySelfEval, formatBieReport } from "@/lib/bie/report";
-import { runBieDiscovery } from "@/lib/bie/discovery";
+import { runBieDiscovery, fetchDiscoveryIncidents, fetchDataCorrectnessSummary } from "@/lib/bie/discovery";
 import { bieEmbeddingsConfigured, embedTexts } from "@/lib/bie/embeddings";
 import { searchKnowledge } from "@/lib/bie/knowledge";
 import { probeRedisHealth } from "@/lib/redis-health";
@@ -45,20 +45,25 @@ export async function GET() {
     return NextResponse.json({ available: false, reason: "database not configured" });
   }
 
-  const [selfEval, calibration, discovery, stats, knowledge, probe, trail, dbPool, redis] = await Promise.all([
-    runBieDailySelfEval().catch(() => null),
-    runBieCalibration(14).catch(() => null),
-    runBieDiscovery().catch(() => null),
-    fetchBieInteractionStats(24).catch(() => null),
-    fetchBieKnowledgeStats().catch(() => null),
-    probeEmbeddings(),
-    fetchBieKnowledge({ kind: "self_eval", limit: 30 }).catch(() => []),
-    // Live point-in-time snapshots — pool/cache pressure right now, not a 24h
-    // aggregate, so they belong here alongside the embeddings probe rather
-    // than in the historical discovery report text.
-    getDatabasePoolStats().catch(() => null),
-    probeRedisHealth().catch(() => ({ configured: false as const })),
-  ]);
+  const [selfEval, calibration, discovery, stats, knowledge, probe, trail, dbPool, redis, incidents, correctness] =
+    await Promise.all([
+      runBieDailySelfEval().catch(() => null),
+      runBieCalibration(14).catch(() => null),
+      runBieDiscovery().catch(() => null),
+      fetchBieInteractionStats(24).catch(() => null),
+      fetchBieKnowledgeStats().catch(() => null),
+      probeEmbeddings(),
+      fetchBieKnowledge({ kind: "self_eval", limit: 30 }).catch(() => []),
+      // Live point-in-time snapshots — pool/cache pressure right now, not a 24h
+      // aggregate, so they belong here alongside the embeddings probe rather
+      // than in the historical discovery report text.
+      getDatabasePoolStats().catch(() => null),
+      probeRedisHealth().catch(() => ({ configured: false as const })),
+      // Structured (not just baked into discovery.text) so the admin UI can render
+      // real ack/resolve buttons and colored status badges, not just prose.
+      fetchDiscoveryIncidents().catch(() => []),
+      fetchDataCorrectnessSummary().catch(() => null),
+    ]);
 
   // Retrieval probe: only meaningful once the key works. Multiple representative
   // questions spanning different corpus areas — floor 0 ON PURPOSE (diagnostic):
@@ -104,6 +109,10 @@ export async function GET() {
       calibration: calibration ? { data: calibration, text: formatCalibration(calibration) } : null,
       discovery: discovery ? { data: { patterns: discovery.patterns }, text: discovery.text } : null,
       interactions_24h: stats,
+      // Structured findings — the same data discovery.text already narrates, exposed
+      // as real fields so the admin UI can render status badges + clickable actions.
+      open_incidents: incidents,
+      correctness,
       // Every previously persisted report — the improvement trail, newest first.
       report_trail: trail.map((r) => ({ source: r.source, at: r.created_at, preview: r.chunk.slice(0, 200) })),
     },

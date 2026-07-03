@@ -12546,6 +12546,56 @@ body::before {
     @apply text-cyan-400 text-right tabular-nums hidden md:block;
   }
 
+  /* ── BIE admin tab ────────────────────────────────────────────────────────── */
+
+  .admin-bie-dashboard {
+    @apply flex flex-col gap-4;
+  }
+
+  .admin-bie-stat-row {
+    @apply grid gap-3 sm:grid-cols-2 lg:grid-cols-4;
+  }
+
+  .admin-bie-error-text {
+    @apply font-mono text-[11px] text-bear;
+  }
+
+  .admin-bie-empty-text {
+    @apply font-mono text-[11px] text-white/40;
+  }
+
+  .admin-bie-issue-title {
+    @apply font-mono text-[12px] font-semibold text-white/90;
+  }
+
+  .admin-bie-issue-detail {
+    @apply font-mono text-[11px] text-white/60 leading-relaxed;
+  }
+
+  .admin-bie-issue-meta {
+    @apply font-mono text-[10px] uppercase tracking-widest text-white/35 mt-1;
+  }
+
+  .admin-bie-issue-actions {
+    @apply flex flex-wrap gap-1.5;
+  }
+
+  .admin-bie-coverage-note {
+    @apply mt-3 font-mono text-[10px] text-white/35 border-t border-white/10 pt-2;
+  }
+
+  .admin-bie-roadmap-blurb {
+    @apply font-mono text-[11px] leading-relaxed text-white/70;
+  }
+
+  .admin-bie-report-text {
+    @apply max-h-72 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-white/75;
+  }
+
+  .admin-bie-footer-note {
+    @apply font-mono text-[10px] text-white/35 text-center;
+  }
+
   /* ── HELIX UI System ─────────────────────────────────────────────────────── */
 
   /* Thin custom scrollbar for flow tape */
