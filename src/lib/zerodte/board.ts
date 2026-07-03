@@ -105,6 +105,8 @@ export type FlowSetupInput = {
   underlying_price?: number;
   /** Per-contract fill price the print actually paid (UW alert `price`). */
   fill_price?: number;
+  /** Open interest on the contract at alert time — sizes "new money" vs closing. */
+  open_interest?: number;
   alerted_at: string;
 };
 
@@ -126,6 +128,12 @@ export type ZeroDteSetup = {
   score: number;
   /** Premium-weighted avg per-contract fill on the top strike — what flow PAID. */
   top_strike_avg_fill: number | null;
+  /** Premium-weighted share of the tape that traded AT THE ASK (0-1; aggressive buying). */
+  aggression: number | null;
+  /** Top strike's distance from spot, % — positive = OTM, negative = ITM. */
+  otm_pct: number | null;
+  /** Share of top-strike flow that exceeds existing OI — opening positioning, not closing. */
+  new_money: boolean;
   /** Premium that landed in the last 30 minutes of the observed tape. */
   recent_premium_30m: number;
   /** Sudden-flow-spike flag: ≥half the ticker's whole tape arrived in the last 30m. */
@@ -137,6 +145,22 @@ export type ZeroDteSetup = {
 const SETUP_MIN_GROSS = 750_000; // ignore thin names — this is a "best of the tape" board
 const SETUP_MIN_DOMINANCE = 0.65; // two-sided tape is a fade signal, not a setup
 const SETUP_MAX_DTE = 1; // 0DTE board: today + tomorrow expiries only
+/** Aggressive (at-the-ask) share of the tape must be meaningful — a tape of SOLD
+ *  premium (bid-side prints) is income harvesting, not directional conviction. */
+const SETUP_MIN_AGGR_SHARE = 0.3;
+/** Top strike more than this % IN the money = stock replacement, not a directional
+ *  0DTE bet — the SNDK 1880p-at-1723 class of fake-out. */
+const SETUP_MAX_ITM_PCT = 2;
+
+/** How much of a print's premium counts DIRECTIONALLY, by aggressor side.
+ *  At/near the ask = conviction buying; bid-side = sold premium (opposite intent);
+ *  unknown = partial credit so thin metadata doesn't zero the board. */
+function aggressionWeight(askPct: number | null | undefined): number {
+  if (askPct == null || !Number.isFinite(askPct)) return 0.7;
+  if (askPct >= 60) return 1;
+  if (askPct >= 45) return 0.6;
+  return 0.15;
+}
 
 /**
  * Derive ranked single-name setups from HELIX tape rows. Index products should be
@@ -150,10 +174,14 @@ export function deriveZeroDteSetups(
   type Agg = {
     call: number;
     put: number;
+    /** Aggression-weighted (at-the-ask) sums — what the DIRECTIONAL read uses. */
+    callAggr: number;
+    putAggr: number;
+    aggrWeighted: number;
     sweep: number;
     gross: number;
     prints: number;
-    strikes: Map<string, { prem: number; strike: number; expiry: number; isCall: boolean; fillPrem: number; fillW: number }>;
+    strikes: Map<string, { prem: number; strike: number; expiry: number; isCall: boolean; fillPrem: number; fillW: number; contracts: number; oi: number }>;
     underlying: number | null;
     /** alerted_at of the print that supplied `underlying` — keep only the freshest. */
     underlyingSeen: string | null;
@@ -182,6 +210,9 @@ export function deriveZeroDteSetups(
       ({
         call: 0,
         put: 0,
+        callAggr: 0,
+        putAggr: 0,
+        aggrWeighted: 0,
         sweep: 0,
         gross: 0,
         prints: 0,
@@ -195,8 +226,15 @@ export function deriveZeroDteSetups(
       } as Agg);
 
     const isCall = (r.option_type ?? "").toLowerCase().startsWith("c");
-    if (isCall) agg.call += prem;
-    else agg.put += prem;
+    const w = aggressionWeight(r.ask_pct);
+    if (isCall) {
+      agg.call += prem;
+      agg.callAggr += prem * w;
+    } else {
+      agg.put += prem;
+      agg.putAggr += prem * w;
+    }
+    agg.aggrWeighted += prem * w;
     agg.gross += prem;
     agg.prints += 1;
     if ((r.alert_rule ?? "").toLowerCase().includes("sweep")) agg.sweep += prem;
@@ -211,13 +249,17 @@ export function deriveZeroDteSetups(
     }
     agg.minDte = Math.min(agg.minDte, dte);
     const key = `${r.strike}|${r.expiry}|${isCall ? "c" : "p"}`;
-    const cur = agg.strikes.get(key) ?? { prem: 0, strike: r.strike, expiry: Date.parse(r.expiry) || 0, isCall, fillPrem: 0, fillW: 0 };
+    const cur = agg.strikes.get(key) ?? { prem: 0, strike: r.strike, expiry: Date.parse(r.expiry) || 0, isCall, fillPrem: 0, fillW: 0, contracts: 0, oi: 0 };
     cur.prem += prem;
     // Premium-weighted per-contract fill — "what did the flow actually pay here".
     if (r.fill_price && r.fill_price > 0) {
       cur.fillPrem += r.fill_price * prem;
       cur.fillW += prem;
+      // Implied contracts traded (premium / (fill × 100)) vs the strike's OI —
+      // flow bigger than existing OI is OPENING positioning, not closing.
+      cur.contracts += prem / (r.fill_price * 100);
     }
+    if (r.open_interest && r.open_interest > 0) cur.oi = Math.max(cur.oi, r.open_interest);
     agg.strikes.set(key, cur);
     if (r.alerted_at) {
       if (!agg.firstSeen || r.alerted_at < agg.firstSeen) agg.firstSeen = r.alerted_at;
@@ -239,13 +281,18 @@ export function deriveZeroDteSetups(
   const setups: ZeroDteSetup[] = [];
   for (const [ticker, agg] of Array.from(byTicker.entries())) {
     if (agg.gross < SETUP_MIN_GROSS) continue;
-    const dominantCall = agg.call >= agg.put;
-    const winning = dominantCall ? agg.call : agg.put;
-    const dominance = agg.gross > 0 ? winning / agg.gross : 0;
+    // Aggressor filter: direction is read from AT-THE-ASK premium only. A tape of
+    // sold premium (low aggressive share) is harvesting, not conviction — skip it.
+    const aggrTotal = agg.callAggr + agg.putAggr;
+    const aggression = agg.gross > 0 ? agg.aggrWeighted / agg.gross : 0;
+    if (aggrTotal <= 0 || aggression < SETUP_MIN_AGGR_SHARE) continue;
+    const dominantCall = agg.callAggr >= agg.putAggr;
+    const winning = dominantCall ? agg.callAggr : agg.putAggr;
+    const dominance = winning / aggrTotal;
     if (dominance < SETUP_MIN_DOMINANCE) continue;
 
     // Dominant strike on the winning side.
-    let top: { prem: number; strike: number; expiry: number; fillPrem: number; fillW: number } | null = null;
+    let top: { prem: number; strike: number; expiry: number; fillPrem: number; fillW: number; contracts: number; oi: number } | null = null;
     let topExpiry = "";
     for (const [key, s] of Array.from(agg.strikes.entries())) {
       if (s.isCall !== dominantCall) continue;
@@ -257,7 +304,19 @@ export function deriveZeroDteSetups(
     if (!top) continue;
     const avgFill = top.fillW > 0 ? Math.round((top.fillPrem / top.fillW) * 100) / 100 : null;
 
+    // Moneyness: deep-ITM top strike = stock replacement, not a directional 0DTE
+    // bet — excluded outright (the fake-out class live-caught on day one).
+    let otmPct: number | null = null;
+    if (agg.underlying && agg.underlying > 0) {
+      const raw = ((top.strike - agg.underlying) / agg.underlying) * 100;
+      otmPct = Math.round((dominantCall ? raw : -raw) * 100) / 100;
+      if (otmPct < -SETUP_MAX_ITM_PCT) continue;
+    }
+    // New money: implied contracts traded on the top strike exceed its OI.
+    const newMoney = top.contracts > 0 && top.oi > 0 && top.contracts > top.oi;
+
     const sweepPct = agg.gross > 0 ? agg.sweep / agg.gross : 0;
+
     // Sudden flow spike: at least half the ticker's tape (and 4+ prints total)
     // landed inside the last 30 minutes — someone is loading NOW, not drip-buying.
     const recent30 = agg.stamps.reduce(
@@ -278,6 +337,9 @@ export function deriveZeroDteSetups(
     score += Math.round(sweepPct * 20);
     score += Math.min(15, agg.prints);
     if (spike) score += 5;
+    // Conviction quality: heavy at-the-ask share and opening (new-money) flow.
+    score += Math.round(Math.max(0, aggression - 0.5) * 20); // 0-10
+    if (newMoney) score += 5;
 
     setups.push({
       ticker,
@@ -286,13 +348,16 @@ export function deriveZeroDteSetups(
       top_strike_avg_fill: avgFill,
       expiry: topExpiry,
       dte: agg.minDte,
-      net_premium: agg.call - agg.put,
+      net_premium: Math.round(agg.callAggr - agg.putAggr),
       gross_premium: agg.gross,
       prints: agg.prints,
       sweep_pct: Math.round(sweepPct * 100) / 100,
       side_dominance: Math.round(dominance * 100) / 100,
       underlying_price: agg.underlying,
       score: Math.max(0, Math.min(100, score)),
+      aggression: Math.round(aggression * 100) / 100,
+      otm_pct: otmPct,
+      new_money: newMoney,
       recent_premium_30m: recent30,
       spike,
       first_seen: agg.firstSeen,
@@ -367,6 +432,8 @@ export type SetupDossierView = {
     vwap: number | null;
   } | null;
   dark_pool?: { total_premium?: number; bias?: string } | null;
+  /** Dealer positioning on the name (Thermal-class data via the dossier). */
+  positioning?: { gex_king_strike?: number | null; gamma_regime?: string; gamma_flip?: number | null } | null;
   flow_streak?: { streak_days: number; direction: "long" | "short" | "mixed" } | null;
   scored?: {
     score: number;
@@ -422,6 +489,9 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
   rel_volume: number | null;
   streak_days: number | null;
   dark_pool_bias: string | null;
+  /** Dealer gamma king node + regime for the name (from the dossier's positioning). */
+  gex_king_strike: number | null;
+  gamma_regime: string | null;
   catalyst_flags: string[];
   analyst_note: string | null;
   /** Fib annotation vs the weekly swing, when price sits at a level. */
@@ -547,6 +617,8 @@ export function enrichSetup(
     rel_volume: tech?.rel_volume ?? null,
     streak_days: dossier?.flow_streak?.streak_days ?? null,
     dark_pool_bias: dossier?.dark_pool?.bias ?? null,
+    gex_king_strike: dossier?.positioning?.gex_king_strike ?? null,
+    gamma_regime: dossier?.positioning?.gamma_regime ?? null,
     catalyst_flags: scored?.catalyst_flags ?? [],
     analyst_note: dossier?.price_target ?? null,
     fib_note: fibNote,
