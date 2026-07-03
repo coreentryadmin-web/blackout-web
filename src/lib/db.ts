@@ -2897,16 +2897,36 @@ export async function insertBieKnowledge(
   return inserted;
 }
 
-/** Which of these chunk hashes already exist — lets ingestion embed ONLY new
- *  content (embedding before dedup would re-pay for unchanged docs every day). */
-export async function fetchExistingBieHashes(hashes: string[]): Promise<Set<string>> {
-  if (hashes.length === 0) return new Set();
+/** Which of these chunk hashes already exist, and whether each already carries
+ *  an embedding — lets ingestion embed ONLY new content (dedup) while still
+ *  BACKFILLING chunks that were stored cold before the embeddings key existed. */
+export async function fetchExistingBieHashes(hashes: string[]): Promise<Map<string, boolean>> {
+  if (hashes.length === 0) return new Map();
   await ensureSchema();
   const res = await (await getPool()).query<QueryResultRow>(
-    `SELECT chunk_hash FROM bie_knowledge WHERE chunk_hash = ANY($1)`,
+    `SELECT chunk_hash, (embedding IS NOT NULL) AS embedded FROM bie_knowledge WHERE chunk_hash = ANY($1)`,
     [hashes]
   );
-  return new Set(res.rows.map((r) => String(r.chunk_hash)));
+  return new Map(res.rows.map((r) => [String(r.chunk_hash), Boolean(r.embedded)]));
+}
+
+/** Backfill embeddings onto chunks stored cold. The `embedding IS NULL` guard
+ *  makes this idempotent and race-safe — a chunk embedded elsewhere wins. */
+export async function updateBieKnowledgeEmbeddings(
+  rows: Array<{ chunk_hash: string; embedding: number[] }>
+): Promise<number> {
+  if (rows.length === 0) return 0;
+  await ensureSchema();
+  const pool = await getPool();
+  let updated = 0;
+  for (const r of rows) {
+    const res = await pool.query(
+      `UPDATE bie_knowledge SET embedding = $2 WHERE chunk_hash = $1 AND embedding IS NULL`,
+      [r.chunk_hash, JSON.stringify(r.embedding)]
+    );
+    updated += res.rowCount ?? 0;
+  }
+  return updated;
 }
 
 /** Recent knowledge rows (optionally by kind) — ranking happens in the caller. */

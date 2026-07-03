@@ -184,6 +184,15 @@ Also taints anything else keyed off `desk.pdh/pdl/prior_close`: PDH/PDL breakout
 
 **Blast radius:** the param is opt-in; all existing `fetchRecentFlows` callers (leaderboard, flow-brief, strike stacks, regime detector, hunt) are byte-identical without it.
 
+## 🟡 FIXED 2026-07-03 — BIE knowledge chunks stored cold could NEVER be embedded later (backfill was impossible)
+**Status:** FIXED (`fix/bie-embedding-backfill`). Found re-auditing the ingestion path the moment the user provisioned `VOYAGE_API_KEY` on Railway — the exact scenario the "env-gated, gets smarter when a key lands" design promises, and the one scenario the dedup logic broke.
+
+**Root cause:** `storeKnowledge` (src/lib/bie/knowledge.ts) deduped by asking `fetchExistingBieHashes` for hashes that exist AT ALL, then embedded only never-seen chunks; `insertBieKnowledge` is `ON CONFLICT (chunk_hash) DO NOTHING`. So any chunk ingested while the key was missing (stored cold, `embedding NULL`) was permanently invisible to later ingests: hash exists → filtered out before embedding → never updated. The in-code comment "a later ingest can backfill" described behavior that had no implementation. With the daily db-cleanup cron ingesting the full doc corpus before the key landed, retrieval would have stayed empty forever while looking configured — a silent, total knowledge-layer outage.
+
+**Fix:** `fetchExistingBieHashes` now returns hash → has-embedding (`Map<string, boolean>`); new pure `partitionForEmbedding` splits chunks into `fresh` (insert) vs `cold` (existing, un-embedded, key now present → backfill); one batched provider call embeds both sets; new `updateBieKnowledgeEmbeddings` writes backfills with an `embedding IS NULL` guard (idempotent, race-safe). Embed failure still degrades to cold storage and the next ingest retries. 3 regression tests on the partition (never-seen vs cold vs embedded; no key → no backfill).
+
+**Blast radius:** `fetchExistingBieHashes` has exactly one caller (`storeKnowledge`), so the signature change is contained. Every `storeKnowledge` caller (doc/edition ingest, self-eval, calibration, discovery persistence) heals automatically on its next run.
+
 ## 🟠 MEDIUM — VIX source/freshness inconsistency
 App `indices.vix.price = 17.18` vs Polygon prior-close `16.45` (4.4%), while SPX/SPY match prior-close exactly — the app's VIX uses a different source/timestamp than SPX/SPY. Confirm with same-timestamp live compare at open.
 
