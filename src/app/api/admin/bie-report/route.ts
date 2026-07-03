@@ -20,6 +20,7 @@ import { runBieDiscovery, fetchDiscoveryIncidents, fetchDataCorrectnessSummary }
 import { bieEmbeddingsConfigured, embedTexts } from "@/lib/bie/embeddings";
 import { searchKnowledge } from "@/lib/bie/knowledge";
 import { probeRedisHealth } from "@/lib/redis-health";
+import { probeRailwayStatus } from "@/lib/railway-status";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -45,7 +46,7 @@ export async function GET() {
     return NextResponse.json({ available: false, reason: "database not configured" });
   }
 
-  const [selfEval, calibration, discovery, stats, knowledge, probe, trail, dbPool, redis, incidents, correctness] =
+  const [selfEval, calibration, discovery, stats, knowledge, probe, trail, dbPool, redis, railway, incidents, correctness] =
     await Promise.all([
       runBieDailySelfEval().catch(() => null),
       runBieCalibration(14).catch(() => null),
@@ -59,6 +60,9 @@ export async function GET() {
       // than in the historical discovery report text.
       getDatabasePoolStats().catch(() => null),
       probeRedisHealth().catch(() => ({ configured: false as const })),
+      // Same shape: read-only Railway deploy status, first automated (not manual,
+      // sandbox-only) use of the Railway API — Stage 3 of the roadmap.
+      probeRailwayStatus().catch(() => ({ configured: false as const })),
       // Structured (not just baked into discovery.text) so the admin UI can render
       // real ack/resolve buttons and colored status badges, not just prose.
       fetchDiscoveryIncidents().catch(() => []),
@@ -104,6 +108,7 @@ export async function GET() {
       knowledge,
       db_pool: dbPool,
       redis,
+      railway,
       // The three live reports, both structured and human-readable.
       self_eval: selfEval ? { data: selfEval, text: formatBieReport(selfEval) } : null,
       calibration: calibration ? { data: calibration, text: formatCalibration(calibration) } : null,
