@@ -17,6 +17,11 @@ import { execSync } from "node:child_process";
 import { spawnSync } from "node:child_process";
 import { ALL_CRON_KEYS } from "./railway-cron-services.mjs";
 import { createAuditClient, resolveAuditDbUrl } from "./pg-audit.mjs";
+import {
+  parseRailwayDeploymentRows,
+  partitionRailwayDeployments,
+  assessStaleBuildingDeploy,
+} from "./lib/railway-deploy-parse.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const failures = [];
@@ -39,13 +44,13 @@ function sh(cmd) {
 }
 
 function actionableRailwayDeployment(output) {
-  const rows = output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => /^[0-9a-f-]+\s+\|/i.test(line));
-  const ignored = rows.filter((line) => /\|\s*(SKIPPED|REMOVED)\s*\|/i.test(line));
-  const actionable = rows.find((line) => !/\|\s*(SKIPPED|REMOVED)\s*\|/i.test(line));
-  return { actionable, ignored };
+  const rows = parseRailwayDeploymentRows(output);
+  const { latest, ignored } = partitionRailwayDeployments(rows);
+  return {
+    actionable: latest?.raw ?? null,
+    ignored: ignored.map((r) => r.raw),
+    parsed: rows,
+  };
 }
 
 function loadRailwayVars() {
@@ -151,15 +156,28 @@ if (skipRailway) {
 } else {
 try {
   const deployments = sh("railway deployment list --service blackout-web 2>/dev/null");
-  const { actionable: latest, ignored } = actionableRailwayDeployment(deployments);
+  const { actionable: latest, ignored, parsed } = actionableRailwayDeployment(deployments);
+  const { latest: latestRow, lastSuccess } = partitionRailwayDeployments(parsed);
   if (ignored.length) warn(`Ignored ${ignored.length} skipped/removed Railway deployment row(s)`);
   if (latest) console.log(`     ${latest}`);
   else warn("No actionable Railway deployment row found");
-  if (/SUCCESS/i.test(latest)) ok("Latest deployment SUCCESS");
-  else if (/BUILDING|DEPLOYING|QUEUED/i.test(latest)) fail(`Deploy not finished: ${latest}`);
-  else if (latest) fail(`Deploy unhealthy: ${latest}`);
 
   const status = sh("railway status 2>/dev/null | rg 'blackout-web' || true");
+  const staleBuilding = assessStaleBuildingDeploy({
+    latest: latestRow,
+    lastSuccess,
+    serviceStatus: status,
+  });
+
+  if (/SUCCESS/i.test(latest)) ok("Latest deployment SUCCESS");
+  else if (staleBuilding.stale) {
+    warn(
+      `Stale BUILDING deploy ${staleBuilding.buildingId} (${Math.round(staleBuilding.ageMin)}m) — prior SUCCESS ${staleBuilding.lastSuccessId} still serving ${status.trim()}`,
+    );
+    ok("Serving on prior SUCCESS deploy (Railway state stuck)");
+  } else if (/BUILDING|DEPLOYING|QUEUED/i.test(latest)) fail(`Deploy not finished: ${latest}`);
+  else if (latest) fail(`Deploy unhealthy: ${latest}`);
+
   if (/Online/i.test(status) && !/Building|Queued|Failed/i.test(status)) ok("Service Online");
   else if (/Building|Queued/i.test(status)) warn(`Service still rolling: ${status.trim()}`);
   else warn(status.trim() || "Could not read service status");
