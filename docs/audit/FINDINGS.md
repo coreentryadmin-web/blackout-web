@@ -7,7 +7,14 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
-## ✅ Post-deploy verification 2026-07-03 13:16 UTC — Railway status probe (PR #327) live, no regression
+## P1 — db-cleanup `total_deleted` string concat + `Promise.all` abort on single-table timeout (2026-07-03 RTH holiday sweep)
+**Severity:** P0/P1 (nightly prune reliability + corrupt cron payload)  
+**Root cause:** `src/app/api/cron/db-cleanup/route.ts:48` summed `Object.values(results)` after BIE string metadata (`bie_self_eval`, `bie_calibration`, …) was merged into `results`, producing `total_deleted` like `"1277ok0 graded / 0 recs40 call patterns analyzed"`. Separately, `Promise.all` over 14 table prunes meant one `Query read timeout` (observed 15:33 UTC) aborted the entire nightly run — ops P0 `cron:db-cleanup:failed`.  
+**Evidence:** Manual `GET /api/cron/db-cleanup` returned malformed `total_deleted`; `ops:collect` fingerprint `2944bf954d6c` (4 items) cleared to 2 after manual run (`975becbc2389`).  
+**Fix:** `sumCleanupDeletes()` on numeric prune map only; `Promise.allSettled` with per-table `errors[]`; `maxDuration=300`. Branch `fix/db-cleanup-allsettled-total-deleted`.  
+**Status:** FIX PR open
+
+---
 **Status:** VERIFIED clean. `feat/bie-railway-status-probe` squash-merged as `dbf591b`, Railway deploy confirmed **SUCCESS** via the API before touching any other `src/**` work.
 
 - `/api/ready`: HTTP 200.

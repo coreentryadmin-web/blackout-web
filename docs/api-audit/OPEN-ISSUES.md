@@ -1,7 +1,85 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-02 16:52 ET
+Last updated: 2026-07-03 11:40 ET
 
-## RTH comprehensive sweep — 2026-07-02 ~16:48–16:52 ET (pass 7 — post-close)
+## RTH comprehensive sweep — 2026-07-03 ~11:33–11:40 ET (pass 1 — Jul 3 holiday)
+
+**Session:** Fri 3 Jul 2026, 11:33–11:40 ET (**NYSE full-day holiday** — Independence Day observed; `isEtCashRth()` false, `market_open: false` in data-correctness). Agent: autonomous cloud session. Premium Clerk admin via `sign_in_token` (temp user created/deleted). Browser GUI blocked in cloud sandbox — full sweep via authenticated API proxy (`scripts/audit/rth-browser-test.mjs`) + production validators.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm install` | ✅ restored deps (`pg` missing on fresh checkout) |
+| `npm run validate:rth-open` | ✅ GREEN — deploy SUCCESS; RTH session checks pass (writers still tick on holiday) |
+| `GET /api/cron/data-correctness?force=1` | ✅ 0 flags, 7 oracle-confirmed, 42 consistency-only (`market_open: false`) |
+| `node scripts/audit/rth-browser-test.mjs` | ✅ 35 PASS, 10 WARN (expected holiday/off-hours gaps) |
+| `node scripts/gha-rth-audit.mjs` | ⚠️ 43 pass, 11 issues — SPY+tickers empty heatmap + db-cleanup stale (pre-manual-run) |
+| `node scripts/full-site-deep-audit.mjs` | ⚠️ same 11 issues (audit scripts lack Jul-3 holiday gate) |
+| `node scripts/heatmap-matrix-audit.mjs` | ⚠️ 14 tickers empty matrix (expected holiday — no fresh UW chains) |
+| `node scripts/audit/data-validator.mjs` | ✅ 9 PASS, 1 FAIL (SPY walls undefined — holiday), 2 INFO |
+| `npm run ops:collect` | ⚠️ P0 db-cleanup timeout → **cleared** after manual `GET /api/cron/db-cleanup` (16.9s, 1238 telemetry rows); P1 error spike remains (admin route query timeouts) |
+
+### API sweep (premium session — ~11:34–11:36 ET)
+
+| Endpoint | HTTP | Latency | Notes |
+|---|---|---|---|
+| `/api/market/gex-heatmap?ticker=SPX` | 200 | ~512ms | 176 strikes, spot 7483.24 |
+| `/api/market/spx/merged` | 200 | ~488ms | warm |
+| `/api/market/flows` | 200 | ~4418ms | 500 rows |
+| `/api/market/flow-brief` | 200 | ~5422ms | ok |
+| `/api/market/gex-heatmap?ticker=SPY` | 200 | ~552ms | **empty strikes** (holiday) |
+| `/api/grid/bootstrap` + 8 panel routes | 200 | 65–207ms | all panels finite; movers empty |
+| `/api/market/nighthawk/edition` | 200 | ~537ms | 3 plays, recap=true |
+| `/api/public/track-record` | 200 | ~311ms | 12 closed |
+| Largo `/api/market/largo/query` | 200 | ~43.7s | NVDA grounded; tools=[live_feed_capture, get_dark_pool, get_options_flow] |
+| SPX oracle | — | — | desk 7483.24 vs Polygon 7483.24 (Δ 0.00) |
+
+**Cross-tool GEX:** SPX spot aligned desk/heatmap/oracle; SPY/non-SPX heatmaps empty on holiday (expected).
+
+### Page sweep (premium admin — API proxy, holiday)
+
+| Page | Load | Live update | Notes |
+|---|---|---|---|
+| `/dashboard` | ~512ms heatmap / ~488ms merged | ✅ 15s poll changed | 176 strikes; spot live (cached) |
+| `/flows` (HELIX) | ~4418ms | ⚠️ 15s poll no change | 500 flows; holiday stale cache expected |
+| `/heatmap` Matrix | ~552ms SPY | — | empty matrix (holiday) |
+| `/heatmap` Profile | (same endpoint) | — | gamma profile via heatmap API |
+| `/grid` | bootstrap + 8 routes 200 | 20–90s cadence | movers gainers/losers empty (holiday) |
+| `/nighthawk` | ~537ms | static edition | 3 plays, recap |
+| `/terminal` (Largo) | ~43.7s | — | grounded NVDA multi-tool answer |
+| `/track-record` | ~311ms | LIVE | 12 closed |
+
+**Speed flags:** Flows ~4.4s and flow-brief ~5.4s acceptable for heavy paths. Grid warm routes 65–207ms.
+
+### Missing-field audit (pass 1 — holiday/upstream expected)
+
+| Field | Page | Backing API | Cause | Action |
+|---|---|---|---|---|
+| `strikes[empty]`, `expiries[empty]`, GEX walls | heatmap SPY+tickers | gex-heatmap | **Holiday** — no fresh UW option chains | Expected Jul 3 |
+| `gainers[empty]`, `losers[empty]` | grid movers | `/api/grid/movers` | **Holiday** — no session movers | Expected |
+| `merged.vwap`, `dark_pool.pcr`, `prints[empty]` | desk/merged/nighthawk | `spx/merged` | **Upstream gap** — prints lack call/put split | Expected; do not fabricate |
+| `flows[].alerted_at` / `alert_rule` | HELIX | `option_trades` WS path | **Upstream shape** | Expected |
+| `earnings.items[].eps_actual` | grid | `/api/grid/earnings` | **Pre-report** dates | Expected |
+| `economy indicators rows[7].value` | grid | `/api/grid/economy` | **Upstream gap** — sparse FRED row | Expected |
+| `events[empty]`, `cross_validation` | heatmap/dashboard | gex-heatmap overlays | **Optional overlays** | Expected |
+
+### Fixes applied this session
+
+| Issue | Severity | Fix | Status |
+|---|---|---|---|
+| `db-cleanup` `Promise.all` — one table timeout aborts entire nightly prune | P0 | `Promise.allSettled` + per-table errors; `maxDuration=300` | PR `fix/db-cleanup-allsettled-total-deleted` |
+| `total_deleted` string concat when BIE metadata mixed into reduce | P1 | `sumCleanupDeletes()` on numeric prune counts only | same PR |
+| Manual `GET /api/cron/db-cleanup` cleared stale P0 | P0 | ops transient — 1238 telemetry rows pruned | ✅ cleared |
+
+### Open watches (P1/P2)
+
+- **P1 error spike** (40–47 errors/15m): admin `/health`, `/incidents`, `/cron-health` query read timeouts — likely Postgres pool pressure during failed parallel db-cleanup; monitor post-fix deploy
+- Audit scripts flag SPY heatmap empty "while market open" — scripts use Polygon `market=open` but platform correctly gates Jul 3 via `isTradingDayEt`
+- `validate:rth-open` warnings: API telemetry failures (15m), Sentry unresolved query-timeout noise
+- Largo query ~43s — within expected AI multi-tool latency
+
+---
+
 
 **Session:** Thu 2 Jul 2026, 16:48–16:52 ET (**post-close**; RTH ended 16:00 ET, session-check grace ended 16:15 ET). Agent: autonomous cloud session. Premium Clerk admin via `sign_in_token` (temp user created/deleted). Browser GUI blocked in cloud sandbox — full sweep via authenticated API proxy (`scripts/audit/rth-browser-test.mjs`) + production validators.
 
