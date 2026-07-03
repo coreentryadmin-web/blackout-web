@@ -2820,13 +2820,20 @@ export type ZeroDteSetupLogUpsert = {
 
 /** Upsert scanner finds — one row per (session, ticker). First sighting pins
  *  underlying_at_flag/first_flagged_at forever (that's what gets graded); later
- *  scans refresh the live fields and ratchet score_max. */
-export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Promise<void> {
-  if (!rows.length) return;
+ *  scans refresh the live fields and ratchet score_max.
+ *
+ *  Returns the tickers that were a FRESH INSERT this call (first flag of the
+ *  session), detected via the `xmax = 0` Postgres idiom (xmax is unset on a
+ *  brand-new row; ON CONFLICT DO UPDATE sets it) — so callers can write a
+ *  Stage 4 audit-trail row exactly once per alert, never on a refresh tick. */
+export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Promise<Set<string>> {
+  if (!rows.length) return new Set();
   await ensureSchema();
   const p = await getPool();
+  const freshlyFlagged = new Set<string>();
   for (const r of rows) {
-    await p.query(
+    const ticker = r.ticker.toUpperCase();
+    const res = await p.query<{ inserted: boolean }>(
       `
       INSERT INTO zerodte_setup_log (
         session_date, ticker, direction, top_strike, expiry, score, score_max,
@@ -2852,10 +2859,11 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
         flow_avg_fill = COALESCE(zerodte_setup_log.flow_avg_fill, EXCLUDED.flow_avg_fill),
         plan_json = COALESCE(zerodte_setup_log.plan_json, EXCLUDED.plan_json),
         last_seen_at = NOW()
+      RETURNING (xmax = 0) AS inserted
       `,
       [
         r.session_date,
-        r.ticker.toUpperCase(),
+        ticker,
         r.direction,
         r.top_strike,
         r.expiry,
@@ -2871,7 +2879,48 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
         r.plan_json,
       ]
     );
+    if (res.rows[0]?.inserted === true) freshlyFlagged.add(ticker);
   }
+  return freshlyFlagged;
+}
+
+/** Stage 4 audit trail — one row per alert, written once at first flag (never on a
+ *  refresh tick; see upsertZeroDteSetupLog's freshlyFlagged return). Best-effort:
+ *  callers fire-and-forget this so an audit-log failure never breaks a scan. */
+export async function insertAlertAuditLog(row: {
+  alert_type: string;
+  source_table: string;
+  source_key: Record<string, unknown>;
+  ticker: string;
+  direction: string | null;
+  confidence_score: number | null;
+  confidence_label: string | null;
+  trigger_reason: string | null;
+  decision_trace: unknown;
+  input_snapshot: Record<string, unknown> | null;
+  final_output: Record<string, unknown> | null;
+}): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `INSERT INTO alert_audit_log (
+      alert_type, source_table, source_key, ticker, direction,
+      confidence_score, confidence_label, trigger_reason, decision_trace,
+      input_snapshot, final_output
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [
+      row.alert_type,
+      row.source_table,
+      row.source_key,
+      row.ticker.toUpperCase(),
+      row.direction,
+      row.confidence_score,
+      row.confidence_label,
+      row.trigger_reason,
+      row.decision_trace,
+      row.input_snapshot,
+      row.final_output,
+    ]
+  );
 }
 
 function mapZeroDteLogRow(r: QueryResultRow): ZeroDteSetupLogRow {

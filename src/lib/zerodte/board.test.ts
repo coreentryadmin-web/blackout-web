@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildZeroDteAuditRow,
   computeLedgerGrade,
   sessionHeat,
   deriveZeroDteSetups,
@@ -688,4 +689,63 @@ test("intel: ADD shows the entry-window countdown when inside 90 minutes", () =>
     nowEtMinutes: 14 * 60 + 20, lastMark: 4.0,
   });
   assert.match(note.reason, /40m left in the entry window/);
+});
+
+// ── Stage 4 audit trail (buildZeroDteAuditRow) ────────────────────────────────────
+// Fixture-driven, no database required — the same pattern the rest of this file
+// uses for board.ts's other pure functions.
+
+test("audit row: cites the real gate values/thresholds, all passed (setup already cleared them)", () => {
+  const rows = [
+    row({ premium: 900_000, strike: 190 }),
+    row({ premium: 700_000, strike: 190, alert_rule: "SweepsFollowedByFloor" }),
+    row({ premium: 400_000, strike: 195 }),
+  ];
+  const setup = deriveZeroDteSetups(rows)[0]!;
+  const enriched = enrichSetup(setup, null);
+  const audit = buildZeroDteAuditRow(enriched, "2026-07-06");
+
+  assert.equal(audit.alert_type, "zerodte");
+  assert.equal(audit.source_table, "zerodte_setup_log");
+  assert.deepEqual(audit.source_key, { session_date: "2026-07-06", ticker: "NVDA" });
+  assert.equal(audit.ticker, "NVDA");
+  assert.equal(audit.direction, "long");
+  assert.equal(audit.trigger_reason, "dominant aggressor flow");
+  assert.equal(audit.decision_trace.length, 4);
+  for (const check of audit.decision_trace) {
+    assert.equal(check.passed, true, `expected ${check.check} to have passed`);
+  }
+  // No dossier / no live quote in this fixture → no plan yet.
+  assert.equal(audit.final_output, null);
+});
+
+test("audit row: trigger_reason reflects an actual flow spike", () => {
+  const now = Date.parse("2026-07-06T15:00:00Z");
+  const spiky = [
+    row({ premium: 300_000, alerted_at: "2026-07-06T09:40:00Z" }),
+    row({ premium: 200_000, alerted_at: "2026-07-06T14:40:00Z" }),
+    row({ premium: 400_000, alerted_at: "2026-07-06T14:50:00Z" }),
+    row({ premium: 300_000, alerted_at: "2026-07-06T14:55:00Z" }),
+  ];
+  const setup = deriveZeroDteSetups(spiky, { nowMs: now })[0]!;
+  const enriched = enrichSetup(setup, null);
+  const audit = buildZeroDteAuditRow(enriched, "2026-07-06");
+  assert.equal(audit.trigger_reason, "flow spike (30m surge)");
+});
+
+test("audit row: confidence_score prefers the full dossier score over the raw evidence score", () => {
+  const rows = [row({ premium: 900_000, strike: 190 }), row({ premium: 700_000, strike: 190 })];
+  const setup = deriveZeroDteSetups(rows)[0]!;
+  const noDossier = buildZeroDteAuditRow(enrichSetup(setup, null), "2026-07-06");
+  assert.equal(noDossier.confidence_score, setup.score);
+
+  const dossier: SetupDossierView = {
+    scored: {
+      score: 88, direction: "long", conviction: "very strong",
+      flow_score: 30, tech_score: 20, pos_score: 15, news_score: 10, smart_money_score: 13,
+    },
+  };
+  const withDossier = buildZeroDteAuditRow(enrichSetup(setup, dossier), "2026-07-06");
+  assert.equal(withDossier.confidence_score, 88);
+  assert.equal(withDossier.confidence_label, "very strong");
 });
