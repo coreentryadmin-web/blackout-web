@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { LandingChrome } from "@/components/LandingChrome";
 import { SharedSigilDefs } from "@/components/marks/SharedSigilDefs";
 import { SessionCacheGuard } from "@/components/SessionCacheGuard";
+import { ClientErrorReporter } from "@/components/ClientErrorReporter";
 import { OnboardingGuide } from "@/components/OnboardingGuide";
 import { MotionProvider } from "@/components/MotionProvider";
 import { IMAGES } from "@/lib/images";
@@ -119,6 +120,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ClerkProvider dynamic>
           <MotionProvider>
             <SessionCacheGuard />
+            <ClientErrorReporter />
             <PwaRegister />
             <LandingChrome />
             <OnboardingGuide />

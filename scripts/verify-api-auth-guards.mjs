@@ -19,6 +19,11 @@ const PUBLIC_ROUTE_ALLOWLIST = new Set([
   "src/app/api/webhooks/clerk/route.ts",
   "src/app/api/webhook/clerk/route.ts",
   "src/app/api/market/regime/route.ts",
+  // Deliberately public write endpoint — browsers can't carry admin auth, and
+  // a logged-out visitor's JS erroring is exactly the coverage it exists for.
+  // Secured by per-IP rate limit + hard body-size cap, not a guard helper —
+  // see src/middleware.ts's isPublicTelemetryRoute exemption + the route file.
+  "src/app/api/telemetry/client-error/route.ts",
 ]);
 
 const GUARD_PATTERNS = [
