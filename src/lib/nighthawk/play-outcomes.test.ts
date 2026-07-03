@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { outcomeSessionDate, parsePlayLevels, resolveOutcome } from "./play-outcomes";
+import { buildNighthawkAuditRow, outcomeSessionDate, parsePlayLevels, resolveOutcome } from "./play-outcomes";
 import type { NighthawkPlayOutcomeRow } from "@/lib/db";
 import type { PlaybookPlay } from "./types";
 
@@ -109,4 +109,54 @@ test("rows without an entry band skip the fillability gate", () => {
   } as NighthawkPlayOutcomeRow;
 
   assert.equal(resolveOutcome(row).outcome, "target");
+});
+
+// ── Stage 4 audit trail (buildNighthawkAuditRow) ─────────────────────────────────
+// Fixture-driven, no database required — same pattern as zerodte/board.test.ts's
+// buildZeroDteAuditRow coverage.
+
+test("audit row: a normal play with parseable levels passes the geometry check", () => {
+  const play = {
+    ticker: "nvda",
+    direction: "LONG",
+    conviction: "a",
+    score: 91,
+    thesis: "Breakout continuation over prior-day high.",
+    key_signal: "Call sweep + dark pool print",
+    entry_range: "$198 - $202",
+    target: "$215",
+    stop: "$190",
+    options_play: "NVDA 220C 7/10, entry prem ~$4.20",
+  } as PlaybookPlay;
+
+  const audit = buildNighthawkAuditRow(play, "2026-07-06", "Technology");
+
+  assert.equal(audit.alert_type, "nighthawk");
+  assert.equal(audit.source_table, "nighthawk_play_outcomes");
+  assert.deepEqual(audit.source_key, { edition_for: "2026-07-06", ticker: "NVDA" });
+  assert.equal(audit.ticker, "NVDA");
+  assert.equal(audit.direction, "LONG");
+  assert.equal(audit.confidence_score, 91);
+  assert.equal(audit.confidence_label, "A");
+  assert.equal(audit.decision_trace.length, 1);
+  assert.equal(audit.decision_trace[0]!.passed, true);
+  assert.deepEqual((audit.input_snapshot as { target: number | null }).target, 215);
+  assert.equal(audit.final_output.options_play, "NVDA 220C 7/10, entry prem ~$4.20");
+});
+
+test("audit row: SHORT direction and an unparseable target/stop are recorded honestly, not guessed", () => {
+  const play = {
+    ticker: "TSLA",
+    direction: "SHORT",
+    conviction: "b",
+    entry_range: "Break below 240",
+    target: "see levels",
+    stop: "-",
+    options_play: "-",
+  } as PlaybookPlay;
+
+  const audit = buildNighthawkAuditRow(play, "2026-07-06", null);
+  assert.equal(audit.direction, "SHORT");
+  assert.equal(audit.decision_trace[0]!.passed, false);
+  assert.equal((audit.input_snapshot as { target: number | null }).target, null);
 });

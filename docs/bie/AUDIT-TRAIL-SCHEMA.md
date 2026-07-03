@@ -138,9 +138,21 @@ seeing real data.
    `board.ts`: `SETUP_MIN_GROSS`, `SETUP_MIN_AGGR_SHARE`, `SETUP_MIN_DOMINANCE`,
    `SETUP_MAX_ITM_PCT`) instead of only their pass/fail residue in
    `flags_json`. See `docs/audit/FINDINGS.md` for the full write-up.
-4. **Night Hawk write-path PR (next):** dossier build writes one row per
-   published play (survivors) AND one per `validatePlayGeometry()` rejection
-   (so "why didn't X publish" becomes queryable, not just "why did Y publish").
+4. **Night Hawk write-path PR — PUBLISHED half SHIPPED 2026-07-03, REJECTED
+   half still pending.** `syncNighthawkPlayOutcomes` writes one
+   `alert_audit_log` row per published (survivor) play, gated to fire only at
+   FIRST PUBLISH via the same `xmax = 0` idiom on `upsertNighthawkPlayOutcomes`
+   (which now returns the freshly-inserted tickers, same shape as the 0DTE
+   change). Deliberately split from this PR's original one-shot scope: the
+   rejected half ("one row per `validatePlayGeometry()` rejection") needs
+   `generateEditionPlays()` to return its `geometryRejected` list (currently
+   only logged) and that list threaded through `edition-builder.ts`'s
+   fresh-generation AND checkpoint-restore paths — the latter bypasses
+   geometry validation entirely (it resumes from a prior run's already-vetted
+   checkpoint), so there is no rejection data on that path by construction.
+   That's real design work on a ~800-line function with retry/backfill/Slack
+   side effects — not a same-night addition. Still **NOT YET**. See
+   `docs/audit/FINDINGS.md` for the full write-up.
 5. **Query surface PR:** extend `/api/admin/bie-report` with an
    `audit_trail` block (recent rows, source-API attribution coverage %) —
    only after there's real data to show.
