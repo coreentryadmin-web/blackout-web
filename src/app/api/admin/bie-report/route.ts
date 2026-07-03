@@ -38,7 +38,7 @@ export async function GET() {
       // The three live reports, both structured and human-readable.
       self_eval: selfEval ? { data: selfEval, text: formatBieReport(selfEval) } : null,
       calibration: calibration ? { data: calibration, text: formatCalibration(calibration) } : null,
-      discovery,
+      discovery: discovery ? { data: { patterns: discovery.patterns }, text: discovery.text } : null,
       interactions_24h: stats,
       // Every previously persisted report — the improvement trail, newest first.
       report_trail: trail.map((r) => ({ source: r.source, at: r.created_at, preview: r.chunk.slice(0, 200) })),

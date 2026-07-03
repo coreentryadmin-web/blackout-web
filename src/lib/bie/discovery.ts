@@ -57,7 +57,7 @@ export function formatDiscovery(date: string, rows: DiscoveryRow[]): string {
 }
 
 /** Aggregate yesterday's API telemetry, persist the discovery report. */
-export async function runBieDiscovery(): Promise<{ patterns: number } | null> {
+export async function runBieDiscovery(): Promise<{ patterns: number; text: string } | null> {
   if (!dbConfigured()) return null;
   try {
     const res = await dbQuery<Record<string, unknown>>(
@@ -86,8 +86,9 @@ export async function runBieDiscovery(): Promise<{ patterns: number } | null> {
       rate_limited: Number(r.rate_limited) || 0,
     }));
     const date = todayEt();
-    await storeKnowledge("self_eval", `bie:discovery:${date}`, formatDiscovery(date, rows)).catch(() => 0);
-    return { patterns: rows.length };
+    const text = formatDiscovery(date, rows);
+    await storeKnowledge("self_eval", `bie:discovery:${date}`, text).catch(() => 0);
+    return { patterns: rows.length, text };
   } catch {
     return null;
   }
