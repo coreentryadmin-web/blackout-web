@@ -1,5 +1,7 @@
 /** SPX 0DTE desk session — RTH only (stops after 1:00 PM PT / 4:00 PM ET). */
 
+import { formatEtDate, isTradingDayEt } from "@/lib/nighthawk/session";
+
 export type MarketStatusLabel = "RTH OPEN" | "PRE-MARKET" | "EXTENDED" | "CLOSED";
 
 export type PolygonMarketNow = {
@@ -32,6 +34,13 @@ function ptParts(now: Date) {
 export function isSpxRthActive(now = new Date(), status?: PolygonMarketNow | null): boolean {
   const pt = ptParts(now);
   if (pt.day === 0 || pt.day === 6) return false;
+  // Full NYSE closures (e.g. Jul 3 when Jul 4 is Saturday) are weekdays on the clock but not
+  // trading sessions. Without this gate, a failed/unavailable Polygon status call falls through
+  // to the naive weekday+time window below and incorrectly reports RTH active on a holiday —
+  // confirmed live 2026-07-03: data-integrity's cross-tool GEX check ran on a holiday and false-
+  // flagged "GEX SPY cold during RTH" because merged.market_open (built from this function) was
+  // true. Same fix pattern as isEtCashRth() in et-market-hours.ts.
+  if (!isTradingDayEt(formatEtDate(now))) return false;
 
   if (status) {
     if (status.market === "closed") return false;
