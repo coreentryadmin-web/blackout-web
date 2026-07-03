@@ -24,6 +24,7 @@ import { searchKnowledge } from "@/lib/bie/knowledge";
 import { detectMissedAlertWindows } from "@/lib/bie/missed-alerts";
 import { buildCronHealthSnapshot } from "@/lib/admin-cron-health";
 import { probePgStatStatements } from "@/lib/pg-stat-statements-health";
+import { findStage5Proposals } from "@/lib/bie/stage5-proposals";
 import { probeRedisHealth } from "@/lib/redis-health";
 import {
   probeRailwayEnvVars,
@@ -76,6 +77,7 @@ export async function GET() {
     missedAlerts,
     pgStatStatements,
     duplicateAlerts,
+    stage5Proposals,
   ] =
     await Promise.all([
       runBieDailySelfEval().catch(() => null),
@@ -118,6 +120,9 @@ export async function GET() {
       // dedup invariant (xmax=0 / partial unique index write-paths) actually
       // holds in production. Zero invented ground truth.
       fetchDuplicateAlertGroups(20).catch(() => []),
+      // Stage 5, step 1: DRY-RUN ONLY. Read-only fs scan, never writes/git — see
+      // stage5-proposals.ts's module comment for exactly what this does and does not do.
+      findStage5Proposals().catch(() => []),
     ]);
 
   // Retrieval probe: only meaningful once the key works. Multiple representative
@@ -184,6 +189,9 @@ export async function GET() {
       // by design there should be zero; any group here means a dedup write-path has
       // a bug. Empty array is a real, verified "no duplicates found," not silence.
       duplicate_alerts: duplicateAlerts,
+      // Stage 5, step 1: dry-run text proposals only — see stage5-proposals.ts.
+      // Never a diff, never a git action; just "here's an ambiguity for a human."
+      stage5_proposals: stage5Proposals,
       // Every previously persisted report — the improvement trail, newest first.
       report_trail: trail.map((r) => ({ source: r.source, at: r.created_at, preview: r.chunk.slice(0, 200) })),
     },

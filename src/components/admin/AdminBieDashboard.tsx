@@ -118,6 +118,7 @@ type BieReportPayload = {
     source_api_attribution_pct: number;
   } | null;
   duplicate_alerts?: Array<{ alert_type: string; source_key: Record<string, unknown>; count: number }>;
+  stage5_proposals?: Array<{ kind: string; component: string; file: string; detail: string }>;
   report_trail?: Array<{ source: string; at: string; preview: string }>;
 };
 
@@ -136,7 +137,8 @@ const ROADMAP: Stage[] = [
   { n: 2, name: "Logs, errors, cron/worker health", status: "SHIPPED", blurb: "Backend + frontend error capture, cron health, Postgres pool, Redis internals, data-integrity/data-correctness validators, missed-alert detection (cron-outage ground truth), and duplicate-alert detection (verifies alert_audit_log's own xmax=0 / unique-index dedup actually holds) all wired into discovery. Fixed a real double-counting bug found in the process: an admin-route catch-all was independently re-capturing every dbQuery failure the dbQuery layer had already recorded, inflating this dashboard's own error count. Every item from the original ask is now shipped." },
   { n: 3, name: "Infra access (Railway)", status: "IN PROGRESS", blurb: "Deploy status, resource usage (CPU/memory), env-var presence audit, and recent runtime error counts are all now wired live (see the Railway chips above) — first automated use, not just manual queries. Postgres slow-query log (pg_stat_statements) is checked, not enabled, per explicit instruction — reports honestly whether the extension is present. Clerk auth-failure monitoring stays blocked: needs the user to check their own Clerk dashboard's Event Catalog, not something this sandbox can confirm." },
   { n: 4, name: "Unified per-alert audit trail", status: "SHIPPED", blurb: "alert_audit_log schema, all three write-paths (0DTE, Night Hawk published, Night Hawk rejected — all fixture-tested), and the query surface (Audit trail panel below) are all live. Source-API attribution (source_apis column) is still unpopulated by any write-path — reported honestly as 0% until a future PR threads it through." },
-  { n: 5, name: "Outcome-driven calibration for plays", status: "NOT YET", blurb: "Outcome grading exists (0DTE, Night Hawk); nothing yet closes the loop by adjusting scoring logic from it. Explicitly secondary to data integrity per the charter." },
+  { n: 5, name: "BIE opens PRs autonomously", status: "IN PROGRESS", blurb: "The end-state goal — explicitly NOT started as \"BIE writes code\" yet. Step 1 shipped 2026-07-03, dry-run only: for one narrow, 100% mechanical finding (an exported component with zero references anywhere else in src/), BIE drafts a plain-text proposal in the report below — never a diff, never a git action, never an LLM judgment call. A human decides what (if anything) to do about each one. Going further (real draft PRs, broader/LLM-judged finding types) needs its own explicit go-ahead, not assumed from this." },
+  { n: 6, name: "Outcome-driven calibration for plays", status: "NOT YET", blurb: "Outcome grading exists (0DTE, Night Hawk); nothing yet closes the loop by adjusting scoring logic from it. Explicitly secondary to data integrity per the charter. (Renumbered from a stale \"Stage 5\" label that collided with the real Stage 5 above — found via the same doc-drift pattern this session kept fixing elsewhere.)" },
 ];
 
 function fmtEt(iso: string | null | undefined): string {
@@ -215,6 +217,7 @@ export function AdminBieDashboard() {
   const openIssueCount = incidents.length + (correctness?.flags.length ?? 0);
   const auditTrail = data?.audit_trail ?? null;
   const duplicateAlerts = data?.duplicate_alerts ?? [];
+  const stage5Proposals = data?.stage5_proposals ?? [];
 
   return (
     <div className="admin-bie-dashboard">
@@ -483,6 +486,42 @@ export function AdminBieDashboard() {
             data.railway_env_vars.missing_critical.length > 0 &&
             ` · Missing critical vars: ${data.railway_env_vars.missing_critical.join(", ")}`}
         </p>
+      </GlassPanel>
+
+      {/* Stage 5, step 1 — DRY-RUN proposals only. BIE never writes a file, never
+          runs git, never opens a PR here; this only reads src/ (read-only) and
+          reports a text finding a human decides what to do with. */}
+      <GlassPanel kicker="Stage 5, step 1 — dry-run only, never touches git" title="Proposals" accent="cyan">
+        {stage5Proposals.length === 0 ? (
+          <p className="admin-bie-empty-text">No orphaned-component candidates found on this scan.</p>
+        ) : (
+          <>
+            <DataTable>
+              <thead>
+                <tr>
+                  <th>Component</th>
+                  <th>File</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stage5Proposals.slice(0, 20).map((p, i) => (
+                  <tr key={`${p.file}-${p.component}-${i}`}>
+                    <td>{p.component}</td>
+                    <td className="admin-bie-issue-meta">{p.file}</td>
+                    <td className="admin-bie-issue-detail">{p.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </DataTable>
+            <p className="admin-bie-coverage-note">
+              {stage5Proposals.length} candidate{stage5Proposals.length === 1 ? "" : "s"} found
+              {stage5Proposals.length > 20 ? ` (showing first 20)` : ""} — each is a plain-text
+              flag, not a proposed deletion. BIE cannot tell dead code from an unfinished
+              feature without design intent, so every one of these is a human decision.
+            </p>
+          </>
+        )}
       </GlassPanel>
 
       {/* Roadmap — legible view of docs/bie/FULL-SYSTEM-AWARENESS.md's stage table. */}
