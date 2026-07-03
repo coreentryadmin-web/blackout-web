@@ -63,6 +63,31 @@ type BieReportPayload = {
     | { configured: false }
     | { configured: true; ok: false; error: string }
     | { configured: true; ok: true; deployments: Array<{ status: string; createdAt: string; commitHash: string | null; commitMessage: string | null }> };
+  railway_resource_usage?:
+    | { configured: false }
+    | { configured: true; ok: false; error: string }
+    | {
+        configured: true;
+        ok: true;
+        window_minutes: number;
+        cpu_avg_vcpu: number | null;
+        cpu_latest_vcpu: number | null;
+        memory_avg_gb: number | null;
+        memory_latest_gb: number | null;
+      };
+  railway_env_vars?:
+    | { configured: false }
+    | { configured: true; ok: false; error: string }
+    | { configured: true; ok: true; total_count: number; missing_critical: string[] };
+  railway_runtime_errors?:
+    | { configured: false }
+    | { configured: true; ok: false; error: string }
+    | { configured: true; ok: true; window_minutes: number; error_count: number; error_count_capped: boolean; sample_messages: string[] };
+  missed_alerts?: { outage_count: number; windows: Array<{ job_key: string; status: string; status_label: string }> };
+  pg_stat_statements?:
+    | { configured: false }
+    | { configured: true; enabled: false }
+    | { configured: true; enabled: true; tracked_statement_count: number };
   self_eval?: { text: string } | null;
   calibration?: { text: string } | null;
   discovery?: { text: string } | null;
@@ -107,8 +132,8 @@ type Stage = {
 // not a second source. Update alongside that doc when a stage's status changes.
 const ROADMAP: Stage[] = [
   { n: 1, name: "Repo, docs, API usage, schemas", status: "SHIPPED", blurb: "Knowledge corpus ingested + embedded (Voyage); platform telemetry monitoring is real, not aspirational." },
-  { n: 2, name: "Logs, errors, cron/worker health", status: "SHIPPED", blurb: "Backend + frontend error capture, cron health, Postgres pool, Redis internals, data-integrity/data-correctness validators all wired into discovery." },
-  { n: 3, name: "Infra access (Railway)", status: "IN PROGRESS", blurb: "Deploy status now wired into this report live (see the Railway chip above) — first automated use, not just manual queries. Deploy/build logs, resource usage, and env-var auditing are still manual-only." },
+  { n: 2, name: "Logs, errors, cron/worker health", status: "SHIPPED", blurb: "Backend + frontend error capture, cron health, Postgres pool, Redis internals, data-integrity/data-correctness validators all wired into discovery. Missed-alert detection now live too (cron-outage ground truth: alert-producing crons down during RTH — never a claim a real setup existed). Fixed a real double-counting bug found in the process: an admin-route catch-all was independently re-capturing every dbQuery failure the dbQuery layer had already recorded, inflating this dashboard's own error count." },
+  { n: 3, name: "Infra access (Railway)", status: "IN PROGRESS", blurb: "Deploy status, resource usage (CPU/memory), env-var presence audit, and recent runtime error counts are all now wired live (see the Railway chips above) — first automated use, not just manual queries. Postgres slow-query log (pg_stat_statements) is checked, not enabled, per explicit instruction — reports honestly whether the extension is present. Clerk auth-failure monitoring stays blocked: needs the user to check their own Clerk dashboard's Event Catalog, not something this sandbox can confirm." },
   { n: 4, name: "Unified per-alert audit trail", status: "SHIPPED", blurb: "alert_audit_log schema, all three write-paths (0DTE, Night Hawk published, Night Hawk rejected — all fixture-tested), and the query surface (Audit trail panel below) are all live. Source-API attribution (source_apis column) is still unpopulated by any write-path — reported honestly as 0% until a future PR threads it through." },
   { n: 5, name: "Outcome-driven calibration for plays", status: "NOT YET", blurb: "Outcome grading exists (0DTE, Night Hawk); nothing yet closes the loop by adjusting scoring logic from it. Explicitly secondary to data integrity per the charter." },
 ];
@@ -234,6 +259,11 @@ export function AdminBieDashboard() {
                   ? "amber"
                   : "bull"
               }
+            />
+            <MetricChip
+              label="Missed alerts"
+              value={data?.missed_alerts ? String(data.missed_alerts.outage_count) : "—"}
+              tone={data?.missed_alerts && data.missed_alerts.outage_count > 0 ? "amber" : "bull"}
             />
             <LivePill label={loading ? "SYNC" : "LIVE"} active={!loading} />
           </>
@@ -377,6 +407,72 @@ export function AdminBieDashboard() {
             </p>
           </>
         )}
+      </GlassPanel>
+
+      {/* Stage 3 infra probes — Railway resource usage / env-var presence audit /
+          runtime error count, plus a Postgres pg_stat_statements presence check
+          (never enables it). All read-only, all fail-open (a probe failure shows
+          as "—", never breaks the rest of this panel). */}
+      <GlassPanel kicker="Stage 3 — infra access" title="Infra" accent="violet">
+        <div className="admin-bie-stat-row">
+          <MegaStat
+            label={`CPU (${data?.railway_resource_usage?.configured && data.railway_resource_usage.ok ? data.railway_resource_usage.window_minutes : 60}m avg)`}
+            value={
+              data?.railway_resource_usage?.configured && data.railway_resource_usage.ok && data.railway_resource_usage.cpu_avg_vcpu != null
+                ? `${data.railway_resource_usage.cpu_avg_vcpu} vCPU`
+                : "—"
+            }
+            tone="cyan"
+          />
+          <MegaStat
+            label="Memory (avg)"
+            value={
+              data?.railway_resource_usage?.configured && data.railway_resource_usage.ok && data.railway_resource_usage.memory_avg_gb != null
+                ? `${data.railway_resource_usage.memory_avg_gb} GB`
+                : "—"
+            }
+            tone="violet"
+          />
+          <MegaStat
+            label="Runtime errors (30m)"
+            value={
+              data?.railway_runtime_errors?.configured && data.railway_runtime_errors.ok
+                ? `${data.railway_runtime_errors.error_count}${data.railway_runtime_errors.error_count_capped ? "+" : ""}`
+                : "—"
+            }
+            tone={
+              data?.railway_runtime_errors?.configured && data.railway_runtime_errors.ok && data.railway_runtime_errors.error_count > 0
+                ? "bear"
+                : "bull"
+            }
+          />
+          <MegaStat
+            label="Env vars set"
+            value={data?.railway_env_vars?.configured && data.railway_env_vars.ok ? String(data.railway_env_vars.total_count) : "—"}
+            sub={
+              data?.railway_env_vars?.configured && data.railway_env_vars.ok && data.railway_env_vars.missing_critical.length > 0
+                ? `${data.railway_env_vars.missing_critical.length} critical missing`
+                : undefined
+            }
+            tone={
+              data?.railway_env_vars?.configured && data.railway_env_vars.ok && data.railway_env_vars.missing_critical.length > 0
+                ? "bear"
+                : "bull"
+            }
+          />
+        </div>
+        <p className="admin-bie-coverage-note">
+          pg_stat_statements:{" "}
+          {!data?.pg_stat_statements?.configured
+            ? "DB not configured"
+            : data.pg_stat_statements.enabled
+              ? `enabled (${data.pg_stat_statements.tracked_statement_count} tracked statements)`
+              : "not enabled (checked, not attempted — server-level config change needs explicit go-ahead)"}
+          {data?.railway_env_vars?.configured &&
+            data.railway_env_vars.ok &&
+            data.railway_env_vars.missing_critical.length > 0 &&
+            ` · Missing critical vars: ${data.railway_env_vars.missing_critical.join(", ")}`}
+        </p>
       </GlassPanel>
 
       {/* Roadmap — legible view of docs/bie/FULL-SYSTEM-AWARENESS.md's stage table. */}

@@ -949,10 +949,17 @@ let capturingQueryFailure = false;
 
 /** Fire-and-forget capture for a final (non-retryable or retries-exhausted) query failure —
  *  never awaited by the caller, so a fully-down DB can't compound latency on the failing
- *  path. Covers EVERY dbQuery call site in one place instead of auditing each one; checked
- *  2026-07-03 that none of the 19 direct call sites already wrap failures in their own
- *  captureError, so this can't double-count error_events. Lazy import mirrors error-sink.ts's
- *  own lazy import of db.ts (reverse direction) — avoids a static circular module graph. */
+ *  path. Covers EVERY dbQuery call site in one place instead of auditing each one.
+ *
+ *  Correction 2026-07-03: this function's own original comment claimed a call-site audit
+ *  found zero pre-existing captures, so this couldn't double-count — that audit undercounted
+ *  dbQuery call sites (~74 across 32 files, not 19) and missed indirect/route-level wrapping
+ *  entirely. Several admin routes' catch-all handlers (recordAdminRouteError,
+ *  admin-route-errors.ts) DO independently capture the same failure when it propagates up
+ *  uncaught. Marks the error via error-sink.ts's markDbQueryCaptured() so that second capture
+ *  site can detect and skip the duplicate — see error-sink.ts and admin-route-errors.ts.
+ *  Lazy import mirrors error-sink.ts's own lazy import of db.ts (reverse direction) — avoids
+ *  a static circular module graph. */
 function reportQueryFailure(text: string, err: unknown): void {
   if (capturingQueryFailure) {
     console.warn("[db] query failed while already reporting a failure — DB likely fully down:", err);
@@ -960,7 +967,8 @@ function reportQueryFailure(text: string, err: unknown): void {
   }
   capturingQueryFailure = true;
   void import("@/lib/error-sink")
-    .then(({ captureError }) => {
+    .then(({ captureError, markDbQueryCaptured }) => {
+      markDbQueryCaptured(err);
       const scope = text.replace(/\s+/g, " ").trim().slice(0, 80);
       return captureError(err, { source: "db_query", scope });
     })

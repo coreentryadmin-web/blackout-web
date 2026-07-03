@@ -20,8 +20,16 @@ import { runBieDailySelfEval, formatBieReport } from "@/lib/bie/report";
 import { runBieDiscovery, fetchDiscoveryIncidents, fetchDataCorrectnessSummary } from "@/lib/bie/discovery";
 import { bieEmbeddingsConfigured, embedTexts } from "@/lib/bie/embeddings";
 import { searchKnowledge } from "@/lib/bie/knowledge";
+import { detectMissedAlertWindows } from "@/lib/bie/missed-alerts";
+import { buildCronHealthSnapshot } from "@/lib/admin-cron-health";
+import { probePgStatStatements } from "@/lib/pg-stat-statements-health";
 import { probeRedisHealth } from "@/lib/redis-health";
-import { probeRailwayStatus } from "@/lib/railway-status";
+import {
+  probeRailwayEnvVars,
+  probeRailwayResourceUsage,
+  probeRailwayRuntimeErrors,
+  probeRailwayStatus,
+} from "@/lib/railway-status";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -47,7 +55,26 @@ export async function GET() {
     return NextResponse.json({ available: false, reason: "database not configured" });
   }
 
-  const [selfEval, calibration, discovery, stats, knowledge, probe, trail, dbPool, redis, railway, incidents, correctness, auditTrail] =
+  const [
+    selfEval,
+    calibration,
+    discovery,
+    stats,
+    knowledge,
+    probe,
+    trail,
+    dbPool,
+    redis,
+    railway,
+    incidents,
+    correctness,
+    auditTrail,
+    railwayResourceUsage,
+    railwayEnvVars,
+    railwayRuntimeErrors,
+    missedAlerts,
+    pgStatStatements,
+  ] =
     await Promise.all([
       runBieDailySelfEval().catch(() => null),
       runBieCalibration(14).catch(() => null),
@@ -72,6 +99,19 @@ export async function GET() {
       // published, Night Hawk rejected). Read-only, same fail-open pattern as every
       // other probe here: a query failure shows as null, never breaks the report.
       fetchAlertAuditTrail(20).catch(() => null),
+      // Stage 3: Railway resource usage / env-var presence / runtime error count —
+      // the three items the roadmap doc flagged as "access confirmed, not yet
+      // queried/wired." Same fail-open pattern; a query failure never breaks the report.
+      probeRailwayResourceUsage().catch(() => ({ configured: false as const })),
+      probeRailwayEnvVars().catch(() => ({ configured: false as const })),
+      probeRailwayRuntimeErrors().catch(() => ({ configured: false as const })),
+      // Stage 2: missed-alerts (cron-outage ground truth) — structured, not just
+      // baked into discovery.text, so the admin UI can render it as its own signal.
+      buildCronHealthSnapshot()
+        .then((s) => detectMissedAlertWindows(s.jobs))
+        .catch(() => ({ outage_count: 0, windows: [] })),
+      // Stage 3: pg_stat_statements presence check ONLY — never attempts to enable it.
+      probePgStatStatements().catch(() => ({ configured: false as const })),
     ]);
 
   // Retrieval probe: only meaningful once the key works. Multiple representative
@@ -114,6 +154,9 @@ export async function GET() {
       db_pool: dbPool,
       redis,
       railway,
+      railway_resource_usage: railwayResourceUsage,
+      railway_env_vars: railwayEnvVars,
+      railway_runtime_errors: railwayRuntimeErrors,
       // The three live reports, both structured and human-readable.
       self_eval: selfEval ? { data: selfEval, text: formatBieReport(selfEval) } : null,
       calibration: calibration ? { data: calibration, text: formatCalibration(calibration) } : null,
@@ -125,6 +168,12 @@ export async function GET() {
       correctness,
       // Stage 4: unified per-alert audit trail across all three write-paths.
       audit_trail: auditTrail,
+      // Stage 2: alert-producing crons (not cache warmers, not validators) down
+      // during their live window right now — "we know we didn't evaluate."
+      missed_alerts: missedAlerts,
+      // Stage 3: presence check only, never enables it. { enabled: false } is an
+      // honest, final answer here, not a placeholder — see pg-stat-statements-health.ts.
+      pg_stat_statements: pgStatStatements,
       // Every previously persisted report — the improvement trail, newest first.
       report_trail: trail.map((r) => ({ source: r.source, at: r.created_at, preview: r.chunk.slice(0, 200) })),
     },

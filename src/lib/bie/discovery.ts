@@ -16,6 +16,7 @@ import { buildCronHealthSnapshot } from "@/lib/admin-cron-health";
 import { countRecentErrorEvents } from "@/lib/error-sink";
 import { listOpenAdminIncidents } from "@/lib/admin-incidents";
 import { todayEt } from "@/lib/nighthawk/session";
+import { detectMissedAlertWindows } from "./missed-alerts";
 import { storeKnowledge } from "./knowledge";
 
 export type DiscoveryRow = {
@@ -148,6 +149,23 @@ export function formatDiscovery(
     for (const c of stale)
       findings.push(
         `Cron job "${c.key}" is stale: ${c.status_label}${c.market_hours_stale ? " — LIVE-DATA WARMER SILENT DURING MARKET HOURS, high priority" : ""}.`
+      );
+  }
+
+  // Missed-alert risk (Stage 2, cron-outage ground truth — see missed-alerts.ts):
+  // narrower than the general cron-health block above — only the crons that
+  // themselves PRODUCE a member-visible alert (flow-ingest, spx-evaluate,
+  // gex-alerts), not cache warmers or validators. "We know we didn't evaluate,"
+  // never a claim that a real setup existed and was missed.
+  const missedAlerts = detectMissedAlertWindows(cronJobs);
+  if (missedAlerts.outage_count > 0) {
+    sections.push(
+      ``,
+      `Missed-alert risk: ${missedAlerts.outage_count} alert-producing cron(s) down during their live window right now.`
+    );
+    for (const w of missedAlerts.windows)
+      findings.push(
+        `Missed-alert risk: "${w.job_key}" is down (${w.status_label}) — any real setup during this window was never evaluated.`
       );
   }
 
