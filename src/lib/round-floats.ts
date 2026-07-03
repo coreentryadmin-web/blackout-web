@@ -32,3 +32,26 @@ export function roundFloats<T>(value: T, dp = 2): T {
   };
   return walk(value) as T;
 }
+
+/**
+ * Reconcile a `{ strike_totals, total }` block AFTER roundFloats: rounding
+ * each field independently means Σ(round(strike_i)) can drift from
+ * round(Σstrike_i)) by a cent or two (10 strikes × up to 0.005 each) — not a
+ * wrong number (the pre-rounding totals are byte-identical, built in the
+ * same accumulation loop; regime/wall math uses the unrounded values), but a
+ * cosmetic inconsistency between what's displayed as the total and what the
+ * displayed rows actually sum to. Recomputing `total` from the (already
+ * member-visible) rounded strike_totals makes the two numbers a member could
+ * manually add up always agree — self-consistent by construction. Call this
+ * AFTER roundFloats() so the strike values it sums are the exact ones served.
+ */
+export function reconcileStrikeTotal<
+  B extends { strike_totals?: Record<string, number>; total?: number },
+>(block: B | undefined, dp = 2): B | undefined {
+  if (!block?.strike_totals) return block;
+  const factor = 10 ** dp;
+  const sum = Object.values(block.strike_totals).reduce((s, v) => s + (Number.isFinite(v) ? v : 0), 0);
+  // Overriding one already-optional field of a constrained generic and returning it as B is safe
+  // here (we never touch any other property) — TS can't infer that through a spread, hence the cast.
+  return { ...block, total: Math.round(sum * factor) / factor } as B;
+}

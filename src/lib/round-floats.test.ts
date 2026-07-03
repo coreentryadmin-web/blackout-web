@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { roundFloats } from "./round-floats";
+import { roundFloats, reconcileStrikeTotal } from "./round-floats";
 
 test("rounds spurious float noise to 2dp by default", () => {
   assert.equal(roundFloats(7499.360000000001), 7499.36);
@@ -43,4 +43,38 @@ test("passes through non-numeric leaves unchanged", () => {
     c: null,
     d: undefined,
   });
+});
+
+// ── reconcileStrikeTotal — live-caught P0: NVDA GEX Σstrike_totals != total ────────
+
+test("reconcileStrikeTotal: reproduces the live NVDA bug — independently-rounded total drifts from the sum of rounded strike_totals, and gets fixed", () => {
+  // Same shape as production: total rounded on its own (-3032.31), strike_totals
+  // rounded on their own and summing to -3032.30 — a $0.01 drift from rounding
+  // composition, not a wrong number (both derive from the same raw accumulation).
+  const block = { total: -3032.31, strike_totals: { "100": -1000.1, "105": -2032.2 } };
+  const fixed = reconcileStrikeTotal(block)!;
+  assert.equal(fixed.total, -3032.3);
+  const sum = Object.values(fixed.strike_totals!).reduce((a, b) => a + b, 0);
+  assert.equal(fixed.total, Math.round(sum * 100) / 100);
+});
+
+test("reconcileStrikeTotal: total exactly equals the sum whenever they already agree", () => {
+  const block = { total: 100, strike_totals: { "50": 40, "55": 60 } };
+  assert.equal(reconcileStrikeTotal(block)!.total, 100);
+});
+
+test("reconcileStrikeTotal: passes through blocks without strike_totals (e.g. undefined dex/charm) unchanged", () => {
+  assert.equal(reconcileStrikeTotal(undefined), undefined);
+  const noStrikes = { total: 5 };
+  assert.equal(reconcileStrikeTotal(noStrikes), noStrikes);
+});
+
+test("reconcileStrikeTotal: an empty strike_totals map reconciles to a zero total", () => {
+  const block = { total: 999, strike_totals: {} };
+  assert.equal(reconcileStrikeTotal(block)!.total, 0);
+});
+
+test("reconcileStrikeTotal: ignores non-finite strike values rather than propagating NaN", () => {
+  const block = { total: 5, strike_totals: { "1": 10, "2": NaN } };
+  assert.equal(reconcileStrikeTotal(block)!.total, 10);
 });

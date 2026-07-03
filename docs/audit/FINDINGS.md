@@ -214,6 +214,15 @@ Also taints anything else keyed off `desk.pdh/pdl/prior_close`: PDH/PDL breakout
 
 **Blast radius:** consumers — Largo `get_congress_unusual` + `get_unusual_trades` tools, NH dossier congress lane, grid congress panel — all pass rows through generically; no shape change. Plan probes: `recent-trades`/`congress-trader`/`late-reports`/`politicians` all 200 on our key; only `unusual-trades` is gated. If the true "unusual" curation matters, it is a UW plan upgrade (contact dev@unusualwhales.com) — buy decision, documented, not assumed.
 
+## 🔴 FIXED 2026-07-03 — GEX heatmap: displayed total didn't match the sum of displayed strike_totals (P0, full-site-deep-audit)
+**Status:** FIXED (`fix/spx-signal-tables-concurrent-ddl-deadlock` — same PR as the deadlock fix above; both found in the same audit sweep). `scripts/full-site-deep-audit.mjs`'s heatmap check flagged `NVDA.gex.sum: Σ != total` as P0. Live reproduction: 3 consecutive polls of `/api/market/gex-heatmap?ticker=NVDA` all showed `total: -3032.31` vs `Σ(strike_totals) = -3032.30` — a stable $0.01 drift, not transient noise.
+
+**Root cause:** `total` and `strike_totals` are built together in the SAME accumulation loop (`buildMetric` in `polygon-options-gex.ts`) — mathematically identical before serialization. The route then applies `roundFloats()` to the whole response, which rounds every number **independently**: `total` gets rounded on its own, and each `strike_totals[strike]` gets rounded on its own. Summing N independently-rounded values can differ from independently rounding their true sum by up to `N × 0.005` — classic rounding-composition drift (not a wrong number; the pre-rounding values were exact, and internal regime/wall math uses the unrounded values, so nothing computational was affected — only the two *displayed* numbers could disagree with each other).
+
+**Fix:** new `reconcileStrikeTotal()` (`round-floats.ts`) — called AFTER `roundFloats()`, for each of gex/vex/dex/charm in `src/app/api/market/gex-heatmap/route.ts` — recomputes `total` as the sum of the already-rounded (and thus already member-visible) `strike_totals`. The displayed total now always equals what a member would get by manually adding up the displayed rows. Scoped to the one route that serves this shape to members (checked: `fetchGexHeatmap` has 5 other callers, all internal cron/warm/snapshot jobs that don't return this JSON shape to a browser).
+
+**Verification:** 5 new unit tests reproducing the exact live drift and confirming the fix (768/768 total pass), `tsc --noEmit` + build clean.
+
 ## 🔴 FIXED 2026-07-03 — live Postgres deadlock: concurrent replicas racing an unprotected schema-init path
 **Status:** FIXED (`fix/spx-signal-tables-concurrent-ddl-deadlock`). **Found by BIE's own tooling** — the newly-shipped `validate-deploy.mjs` Sentry check surfaced `error: deadlock detected` as a live production issue; the newly-shipped frontend/backend error capture is exactly what made this visible instead of silently failing one admin page load.
 
