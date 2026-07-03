@@ -7,6 +7,21 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## ✅ Post-deploy live verification 2026-07-03 — Stage 5 dry-run proposals + BIE brain banner (PRs #354, #356, #357) confirmed healthy in production
+**Status:** VERIFIED. One authenticated GET to `/api/admin/bie-report` (temp Clerk admin user, created and deleted per the documented `AGENTS.md`/`data-validator.mjs` flow, single auth cycle) confirmed the Stage 5 field is live and correctly populated:
+
+- `stage5_proposals`: 25 candidates returned, each a plain-text `orphaned_component` flag (component/file/detail) — no diff, no git action, matching the dry-run design. Spot-checked the first several against the earlier manual `grep -rln` verification (`AuthBackground`, `Flow0dtePanel`, `BreadthPanel` in `GexDealerPanel.tsx`, `SpxChart` all reappear as expected) — production output matches the pre-ship manual check.
+- `BieCoreVisual` (deleted in #357 once the grid-tile approach was replaced by the brain-banner redesign) does **not** appear in the flagged list — expected, since a deleted file can't be an "orphaned component," it just doesn't exist; confirms the deletion left no dangling references anywhere in `src/`.
+- Sanity-checked the other Stage 2/3 fields stayed healthy through this deploy: `duplicate_alerts: []`, `missed_alerts.outage_count: 0`, `railway_env_vars.missing_critical: []`.
+
+**Also confirmed via direct HTTP fetch of the live landing page** (`curl https://blackouttrades.com/`, no auth needed — public page): all 6 `bie-spoke-N` paths, all 5 `bie-mesh-N` paths, and all 6 `bie-brain-node` links (correct hrefs: `/dashboard`, `/flows`, `/heatmap`, `/terminal`, `/nighthawk`, `/grid`) render server-side; zero leftover references to the old `bento-bie`/`bento-accent-bie`/"See the track record" grid-tile markup from #355; the instruments grid is back to exactly 6 real instruments. CSS bundle fetch confirmed every new `.bie-brain-*` class and keyframe (`bie-brain-core-pulse`, `bie-brain-ring-ping`, `bie-title-shimmer`, etc.) shipped.
+
+**Note on PR #355:** shipped a first version of the BIE visual as a 7th tile inside the instruments grid. User feedback after seeing it (**"BIE should not be in instrument section... above the full desk deck... like a helix connecting all tools... the whole brain of BlackOut connecting every dot every second"**) led directly to #357, which reverted the grid-tile approach and replaced it with the brain-banner design described above. #355's code is superseded, not broken — logged here so the PR history reads as an intentional design iteration, not a bug.
+
+**Verification method:** same authenticated-admin pattern used by `scripts/audit/data-validator.mjs`, run as a one-off scratch script (not committed — mirrors the existing script's mint→ticket→session→fetch→delete flow with a different placeholder phone number to avoid a collision with a leftover temp user from an unrelated concurrent audit run). Temp user confirmed deleted (`204`) in the script's `finally` block.
+
+---
+
 ## 🟢 LOW FIXED 2026-07-03 — stale "single writer" doc comments (3 files) + stale cron-writer count (1 file)
 **Status:** SHIPPED (`fix/stale-single-writer-comments`). Found by a background sweep agent applying the same "comment claims X, code does Y" pattern that caught the halt-banner P1 earlier this session. Both findings are documentation drift, not live bugs — confirmed the actual runtime behavior is correct in both cases before touching anything.
 
