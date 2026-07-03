@@ -129,6 +129,7 @@ export async function scanZeroDteBoard(flags?: {
       ask_pct: f.ask_pct,
       underlying_price: f.underlying_price,
       fill_price: f.fill_price,
+      open_interest: f.open_interest,
       alerted_at: f.alerted_at,
     })),
     { maxSetups: 10, excludeTickers: excludes, nowMs: Date.now(), todayYmd: today }

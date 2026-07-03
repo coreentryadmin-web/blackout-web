@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { clsx } from "clsx";
 import { Badge, EmptyState, FreshnessChip, Panel, Skeleton, Table, THead, TBody, TR, TH, TD } from "@/components/ui";
 import type { EnrichedZeroDteSetup, SessionHeat } from "@/lib/zerodte/board";
+import { buildIntelNote, type IntelAction } from "@/lib/zerodte/intel";
 
 // ── Response shape (structural mirror of /api/market/zerodte/board) ──────────────
 
@@ -143,8 +144,9 @@ function mergePlays(
       ticker: s.ticker,
       direction: s.direction,
       strike: s.top_strike,
-      // Past the entry cutoff a fresh find is watch-only, never OPEN.
-      status: moved || pastCutoff ? "SKIP" : "OPEN",
+      // Past the entry cutoff — or an untradeably wide market — a fresh find is
+      // watch-only, never OPEN.
+      status: moved || pastCutoff || s.plan?.illiquid ? "SKIP" : "OPEN",
       entry_premium: s.plan?.entry_max ?? s.top_strike_avg_fill,
       flow_avg_fill: s.top_strike_avg_fill,
       last_mark: s.plan?.mark ?? null,
@@ -255,19 +257,25 @@ function StatsCell({ row }: { row: PlayRow }) {
   return <span className="font-mono text-[11px] text-sky-300/50">—</span>;
 }
 
-/** One-line BlackOut Intel: the technical read behind the play. */
-function intelLine(row: PlayRow): string {
-  const s = row.setup;
-  if (!s) return row.spike ? "Sudden flow spike on the tape" : "Stacked one-sided 0DTE flow";
-  const bits: string[] = [];
-  if (s.trend) bits.push(s.trend);
-  if (s.rsi14 != null) bits.push(`RSI ${Math.round(s.rsi14)}`);
-  if (s.rel_volume != null) bits.push(`${s.rel_volume.toFixed(1)}x vol`);
-  if (s.fib_note) bits.push(`${s.fib_note.golden ? "★ golden" : s.fib_note.label} fib`);
-  if (s.dark_pool_bias) bits.push(`DP ${s.dark_pool_bias}`);
-  if (s.spike) bits.push("flow spike");
-  if (s.earnings) bits.push(`earnings ${s.earnings.when === "premarket" ? "pre" : "AH"}`);
-  return bits.slice(0, 4).join(" · ") || "Stacked one-sided 0DTE flow";
+const ACTION_TONE: Record<IntelAction, "bull" | "sky" | "accent" | "bear" | "neutral"> = {
+  ADD: "bull",
+  HOLD: "sky",
+  TRIM: "accent",
+  SELL: "neutral",
+  PASS: "bear",
+};
+
+/** BlackOut Intel: one actionable verb + a reason built only from observed numbers. */
+function intelFor(row: PlayRow) {
+  return buildIntelNote({
+    status: row.status,
+    setup: row.setup,
+    plan: row.setup?.plan ?? null,
+    entryPremium: row.entry_premium,
+    livePnlPct: row.live_pnl_pct,
+    planOutcome: row.plan_outcome,
+    planPnlPct: row.plan_pnl_pct,
+  });
 }
 
 // ── expanded detail (why picked · what to watch) ─────────────────────────────────
@@ -411,13 +419,13 @@ function PlaysTable({ rows }: { rows: PlayRow[] }) {
   const [open, setOpen] = useState<string | null>(null);
   return (
     <div className="overflow-x-auto">
-      <Table className="min-w-[640px]">
+      <Table className="min-w-[680px]">
         <THead>
           <TR>
-            <TH>Status</TH>
-            <TH>Play</TH>
+            <TH className="w-[90px]">Status</TH>
+            <TH className="w-[190px]">Play</TH>
             <TH>BlackOut Intel</TH>
-            <TH className="text-right">Stats</TH>
+            <TH className="w-[110px] text-right">Stats</TH>
           </TR>
         </THead>
         <TBody>
@@ -434,22 +442,25 @@ function PlaysTable({ rows }: { rows: PlayRow[] }) {
                   <TD>
                     <StatusBadge row={row} />
                   </TD>
-                  <TD>
-                    <span className="font-mono text-[13px] font-bold text-white">{contract}</span>{" "}
-                    <span className="font-mono text-[12px] tabular-nums text-sky-200/85">
+                  <TD className="whitespace-nowrap">
+                    <div className="font-mono text-[13px] font-bold text-white">{contract}</div>
+                    <div className="font-mono text-[11px] tabular-nums text-sky-200/85">
                       {row.entry_premium != null ? `@ ${row.entry_premium.toFixed(2)}` : ""}
                       {row.last_mark != null && row.status !== "CLOSED" ? ` → ${row.last_mark.toFixed(2)}` : ""}
-                    </span>
-                    {row.spike && (
-                      <span className="ml-1.5 align-middle">
-                        <Badge tone="accent" size="sm">
-                          spike
-                        </Badge>
-                      </span>
-                    )}
+                    </div>
                   </TD>
                   <TD>
-                    <span className="text-[12px] text-sky-200/80">{intelLine(row)}</span>
+                    {(() => {
+                      const note = intelFor(row);
+                      return (
+                        <div className="flex items-start gap-2">
+                          <Badge tone={ACTION_TONE[note.action]} size="sm" className="mt-0.5 shrink-0">
+                            {note.action}
+                          </Badge>
+                          <span className="text-[12px] leading-snug text-sky-200/85">{note.reason}</span>
+                        </div>
+                      );
+                    })()}
                   </TD>
                   <TD className="text-right">
                     <StatsCell row={row} />
@@ -510,6 +521,13 @@ export function ZeroDteBoard() {
 
   const rows = mergePlays(data.setups ?? [], data.ledger ?? [], data.session?.heat?.state);
   const covered = data.covered_elsewhere ?? [];
+  // Only the strongest get top billing: A-tier = conviction score ≥ 55, dossier not
+  // disagreeing, tradeable. Everything else (including PASSes) lives on the radar —
+  // visible and still measured, but never presented as a play to take.
+  const aTier = rows.filter(
+    (r) => r.status !== "SKIP" && r.score >= 55 && r.setup?.direction_confirmed !== false
+  );
+  const radar = rows.filter((r) => !aTier.includes(r));
   const graded = rows.filter((r) => r.plan_outcome && r.plan_outcome !== "ungradeable");
   const wins = graded.filter((r) => (r.plan_pnl_pct ?? 0) > 0).length;
 
@@ -534,13 +552,14 @@ export function ZeroDteBoard() {
         }
         bodyClassName="px-0 py-0"
       >
-        {rows.length === 0 ? (
+        {aTier.length === 0 ? (
           <p className="px-5 py-6 text-sm text-sky-300/70">
-            Nothing clears the evidence gates yet — the scanner hunts every 2 minutes and plays print
-            here the moment the tape concentrates.
+            No A-tier play right now — and that&apos;s the discipline: the scanner hunts every 2
+            minutes, and only conviction-grade tape prints here. Lower-grade activity sits on the
+            radar below.
           </p>
         ) : (
-          <PlaysTable rows={rows} />
+          <PlaysTable rows={aTier} />
         )}
         <p className="px-5 py-3 text-[10px] leading-relaxed text-sky-300/50">
           Click a play for why it was picked and what to watch. Statuses update automatically: OPEN
@@ -550,6 +569,27 @@ export function ZeroDteBoard() {
           contract&apos;s own prices, not opinion.
         </p>
       </Panel>
+
+      {radar.length > 0 && (
+        <Panel
+          accent="sky"
+          kicker="Radar"
+          title="Watching — not plays"
+          actions={
+            <Badge tone="neutral" size="sm">
+              {radar.length}
+            </Badge>
+          }
+          bodyClassName="px-0 py-0"
+        >
+          <PlaysTable rows={radar} />
+          <p className="px-5 py-3 text-[10px] leading-relaxed text-sky-300/50">
+            Real tape that failed a conviction gate — score below 55, dossier disagreement, already
+            ran, too late, or an untradeable spread. Tracked and graded like everything else, but not
+            presented as money plays.
+          </p>
+        </Panel>
+      )}
     </div>
   );
 }

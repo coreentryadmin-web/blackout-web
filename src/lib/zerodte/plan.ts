@@ -44,6 +44,9 @@ export type ContractPlan = {
   /** mark vs flow fill, % — positive = paying up vs the smart money. */
   vs_flow_pct: number | null;
   entry_status: EntryStatus;
+  /** Bid/ask spread as % of mark — exit tax. >15% flags the market as too thin. */
+  spread_pct: number | null;
+  illiquid: boolean;
   /** Premium exits from PLAN_RULES applied to entry_max. */
   stop_premium: number | null;
   target_premium: number | null;
@@ -81,6 +84,14 @@ export function buildContractPlan(input: {
       ? round2(((mark - flowAvgFill) / flowAvgFill) * 100)
       : null;
 
+  const spreadPct =
+    bid != null && ask != null && ask > 0 && mark != null && mark > 0
+      ? round2(((ask - bid) / mark) * 100)
+      : null;
+  // Wide markets tax every exit twice — a strong tape on an untradeable contract
+  // is still a pass for a 0DTE scalp.
+  const illiquid = spreadPct != null && spreadPct > 15;
+
   let status: EntryStatus;
   if (mark == null) status = "NO_QUOTE";
   else if (vsFlow != null && vsFlow >= CHASE_PCT) status = "MOVED";
@@ -112,6 +123,8 @@ export function buildContractPlan(input: {
     entry_max: entryMax != null ? round2(entryMax) : null,
     vs_flow_pct: vsFlow,
     entry_status: status,
+    spread_pct: spreadPct,
+    illiquid,
     stop_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.stop_pct / 100)) : null,
     target_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.target_pct / 100)) : null,
     time_stop_et: "15:30",

@@ -234,6 +234,9 @@ function baseSetup(overrides?: Partial<ZeroDteSetup>): ZeroDteSetup {
     underlying_price: 188.2,
     score: 72,
     top_strike_avg_fill: 4.2,
+    aggression: 0.8,
+    otm_pct: 1.0,
+    new_money: false,
     recent_premium_30m: 0,
     spike: false,
     first_seen: "2026-07-06T13:45:00Z",
@@ -503,4 +506,87 @@ test("lifecycle: the hard exit closes rows with NO entry premium too (data quali
   // Same row during the session: HOLD (nothing to price against yet).
   const intraday = derivePlayStatus({ entryPremium: null, mark: null, peak: null, trough: null, nowEtMinutes: 12 * 60 });
   assert.equal(intraday.status, "HOLD");
+});
+
+// ── conviction gates (money-printing filter) ─────────────────────────────────────
+
+test("gates: SOLD premium (bid-side prints) does not create a directional setup", () => {
+  // $2M of puts sold at the bid — income harvesting, not a short signal.
+  const rows = [
+    row({ premium: 1_200_000, option_type: "put", strike: 185, ask_pct: 10 }),
+    row({ premium: 800_000, option_type: "put", strike: 180, ask_pct: 15 }),
+  ];
+  assert.equal(deriveZeroDteSetups(rows).length, 0);
+  // The same tape bought AT THE ASK is a real short setup.
+  const bought = rows.map((r) => ({ ...r, ask_pct: 80 }));
+  const out = deriveZeroDteSetups(bought);
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.direction, "short");
+  assert.ok(out[0]!.aggression! >= 0.9);
+});
+
+test("gates: aggressive side wins the direction even when raw premium says otherwise", () => {
+  // $1.5M calls SOLD at the bid vs $900k puts BOUGHT at the ask → short, not long.
+  const rows = [
+    row({ premium: 1_500_000, option_type: "call", strike: 190, ask_pct: 10 }),
+    row({ premium: 900_000, option_type: "put", strike: 185, ask_pct: 85 }),
+  ];
+  const out = deriveZeroDteSetups(rows);
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.direction, "short");
+});
+
+test("gates: deep-ITM top strike (stock replacement) is excluded", () => {
+  // 1880 put with the stock at 1723 — 9% ITM. Not a directional 0DTE bet.
+  const rows = [row({ premium: 3_000_000, option_type: "put", strike: 1880, underlying_price: 1723 })];
+  assert.equal(deriveZeroDteSetups(rows).length, 0);
+  // Same size slightly OTM passes.
+  const otm = [row({ premium: 3_000_000, option_type: "put", strike: 1700, underlying_price: 1723 })];
+  assert.equal(deriveZeroDteSetups(otm).length, 1);
+  assert.ok(deriveZeroDteSetups(otm)[0]!.otm_pct! > 0);
+});
+
+test("gates: new-money flag when implied contracts exceed the strike's OI", () => {
+  const rows = [
+    row({ premium: 2_000_000, fill_price: 2.0, open_interest: 5_000 }), // 10k contracts vs 5k OI
+  ];
+  const out = deriveZeroDteSetups(rows);
+  assert.equal(out[0]!.new_money, true);
+});
+
+// ── intel notes ──────────────────────────────────────────────────────────────────
+
+import { buildIntelNote } from "./intel";
+
+test("intel: OPEN play says ADD with entry/stop numbers from the plan", () => {
+  const s = enrichSetup(baseSetup(), fakeDossier());
+  s.plan = {
+    occ: "O:NVDA260706C00190000", flow_avg_fill: 4.2, bid: 4.0, ask: 4.4, mark: 4.2,
+    entry_max: 4.2, vs_flow_pct: 0, entry_status: "IN_RANGE", spread_pct: 9.5, illiquid: false,
+    stop_premium: 2.1, target_premium: 8.4, time_stop_et: "15:30",
+    underlying_target: 190.2, underlying_invalid: 186.5,
+  };
+  const note = buildIntelNote({ status: "OPEN", setup: s, plan: s.plan, entryPremium: 4.2, livePnlPct: null, planOutcome: null, planPnlPct: null });
+  assert.equal(note.action, "ADD");
+  assert.match(note.reason, /Enter ≤ \$4\.20/);
+  assert.match(note.reason, /stop \$2\.10/);
+});
+
+test("intel: illiquid market is a PASS with the spread named", () => {
+  const note = buildIntelNote({
+    status: "SKIP", setup: null,
+    plan: { occ: "O:X", flow_avg_fill: 2, bid: 1.5, ask: 2.5, mark: 2, entry_max: 2, vs_flow_pct: 0, entry_status: "IN_RANGE", spread_pct: 50, illiquid: true, stop_premium: 1, target_premium: 4, time_stop_et: "15:30", underlying_target: null, underlying_invalid: null },
+    entryPremium: 2, livePnlPct: null, planOutcome: null, planPnlPct: null,
+  });
+  assert.equal(note.action, "PASS");
+  assert.match(note.reason, /spread is 50%/);
+});
+
+test("intel: TRIM and stop-out SELL read like a desk, with the numbers", () => {
+  const trim = buildIntelNote({ status: "TRIM", setup: null, plan: null, entryPremium: 4.2, livePnlPct: 105, planOutcome: null, planPnlPct: null });
+  assert.equal(trim.action, "TRIM");
+  assert.match(trim.reason, /\+100%/);
+  const stopped = buildIntelNote({ status: "CLOSED", setup: null, plan: null, entryPremium: 4.2, livePnlPct: -50, planOutcome: "stopped", planPnlPct: -50 });
+  assert.equal(stopped.action, "SELL");
+  assert.match(stopped.reason, /Stopped at −50%/);
 });
