@@ -7,6 +7,19 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## ✅ Post-deploy verification 2026-07-03 12:57 UTC — Night Hawk write-path (PR #326) live, no regression
+**Status:** VERIFIED clean. `feat/bie-stage4-nighthawk-writepath` squash-merged as `706b85f`, Railway deploy confirmed **SUCCESS** via the API before touching any other `src/**` work.
+
+- `/api/ready`: HTTP 200.
+- `scripts/full-site-deep-audit.mjs`: 45 pass, same 9 known off-hours heatmap-unavailable P1s as every check tonight — no new issues.
+
+## 🧠 BIE Stage 3: Railway deploy status wired into `runBieDiscovery`'s report — first automated use of the API
+**Status:** SHIPPED. Task tracked since the token was first confirmed working manually earlier tonight: "decide where the token should live for automated use... add a `railway-status.ts` provider analogous to `redis-health.ts`." **Unblocked this session** — the user added `RAILWAY_TOKEN` as a real Railway service environment variable for `blackout-web` (confirmed via a key-existence-only check against the Railway variables API; the classifier correctly blocked a second, broader attempt to bulk-read all variable keys, which was unnecessary anyway — Railway auto-injects `RAILWAY_PROJECT_ID`/`RAILWAY_ENVIRONMENT_ID`/`RAILWAY_SERVICE_ID` into every deployment's own runtime, so no further configuration was needed).
+
+**Fix:** new `src/lib/railway-status.ts` — `probeRailwayStatus()`, a one-shot read-only GraphQL query for the last 5 deployments (status/commit/timestamp), gated behind all four required env vars being present (mirrors `probeRedisHealth()`'s `configured: false` fallback exactly). Never mutates anything — no redeploy, no env var reads/writes, no log access (explicitly a separate, larger surface left for later per the existing Stage 3 table in `docs/bie/FULL-SYSTEM-AWARENESS.md`). Wired into `/api/admin/bie-report` as a sibling live snapshot alongside `redis`/`db_pool` (the established pattern — live infra probes are point-in-time snapshots computed at request time, not baked into `runBieDiscovery()`'s persisted narrative text). Surfaced in `AdminBieDashboard.tsx` as a new "Railway deploy" status chip (amber only on a real `FAILED`/`CRASHED`/probe-error state, same tone logic as the existing Redis chip).
+
+**Verification:** 4 new fixture tests in `railway-status.test.ts` — the pure `mapDeploymentEdges()` mapper (real fields extracted, missing fields become `null` not fabricated, `undefined` input never throws) plus one live-behavior test confirming `probeRailwayStatus()` returns `{ configured: false }` immediately (no network attempt) when `RAILWAY_TOKEN` is unset. 789/789 tests, `tsc --noEmit` clean, `npm run build` clean. Frontend chip is code/type-verified only — sandbox browser is blocked, so it has not been visually rendered or clicked through; needs a real browser pass.
+
 ## 🧠 BIE Stage 4: Night Hawk write-path (published half) shipped — scoped narrower than the design doc on purpose
 **Status:** SHIPPED. Fourth step of the 5-step Stage 4 rollout. Deliberately split from the design doc's original single-PR scope ("published plays AND `validatePlayGeometry()` rejections") into two: this PR ships only the **published** half; the **rejected** half is explicit follow-up, not silently dropped.
 
