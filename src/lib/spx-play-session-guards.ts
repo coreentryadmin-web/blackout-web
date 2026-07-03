@@ -10,6 +10,7 @@ import {
   playNoEntryAfterEtMin,
 } from "@/lib/spx-play-config";
 import { etClock, etMinutes, formatEtTime } from "@/lib/spx-play-session-time";
+import { formatEtDate, isTradingDayEt } from "@/lib/nighthawk/session";
 
 /**
  * NYSE/CBOE standard early-close days (market closes at 1:00 PM ET).
@@ -77,6 +78,15 @@ export function isLottoWindow(now = new Date()): boolean {
  *  cron schedule (every 5 min, 11-21 UTC) which covers the close in both EST and EDT. */
 export function isSpxEngineCronWindow(now = new Date()): boolean {
   if (!isEtWeekday(now)) return false;
+  // Full NYSE closures (e.g. Jul 3 when Jul 4 is Saturday) are weekdays on the clock but not
+  // trading sessions — this gate previously only checked weekday+time, so every cron gated by
+  // this function (spx-evaluate, data-integrity, data-correctness, spx-signal-observe,
+  // market-regime-detector, provider-health-reconcile) ran for real on a holiday. Confirmed
+  // live 2026-07-03: data-integrity's ?force=1 run false-flagged a P0 ("GEX SPY cold during
+  // RTH") because the underlying market_open signal (isSpxRthActive, same missing gate) said
+  // RTH was active on a holiday. No open 0DTE play can exist from a non-trading day, so gating
+  // the whole window (including the post-close force-flatten tail) is safe.
+  if (!isTradingDayEt(formatEtDate(now))) return false;
   const etMins = etMinutes(now);
   return etMins >= PREMARKET_START_ET_MINS && etMins < etClock(16, 15);
 }

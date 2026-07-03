@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { getEarlyCloseMinutes } from "@/lib/spx-play-session-guards";
+import { getEarlyCloseMinutes, isSpxEngineCronWindow } from "@/lib/spx-play-session-guards";
 
 const ENV_KEY = "SPX_EARLY_CLOSE_ET_MINS";
 
@@ -53,4 +53,21 @@ test("no override on a calendar early-close day returns the close minutes", () =
   withEnv(undefined, () => {
     assert.equal(getEarlyCloseMinutes(EARLY_CLOSE_DAY), 780);
   });
+});
+
+// ── isSpxEngineCronWindow: holiday gate ───────────────────────────────────────────
+// 2026-07-03 (Fri) is Independence Day observed (2026-07-04 falls on a Saturday) —
+// a weekday on the clock but not a trading session. Confirmed live: this gate was
+// missing a holiday check, so every cron it gates ran for real on the holiday.
+
+test("isSpxEngineCronWindow: false on a full-day holiday even during normal cron hours", () => {
+  assert.equal(isSpxEngineCronWindow(new Date("2026-07-03T15:00:00.000Z")), false); // 11:00 ET
+});
+
+test("isSpxEngineCronWindow: true on a real trading day at the same clock time", () => {
+  assert.equal(isSpxEngineCronWindow(new Date("2026-07-06T15:00:00.000Z")), true); // Mon 11:00 ET
+});
+
+test("isSpxEngineCronWindow: still false outside the window on a real trading day", () => {
+  assert.equal(isSpxEngineCronWindow(new Date("2026-07-06T09:00:00.000Z")), false); // Mon 05:00 ET — before the 7am window
 });
