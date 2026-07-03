@@ -43,6 +43,14 @@ import {
   type SetupDossierView,
 } from "./board";
 import {
+  computeIntradayRead,
+  intradayScoreAdjust,
+  marketAlignAdjust,
+  marketBias,
+  timeOfDayFactor,
+  type IntradayRead,
+} from "./intraday";
+import {
   buildContractPlan,
   derivePlayStatus,
   gradePlanFromBars,
@@ -158,8 +166,54 @@ export async function scanZeroDteBoard(flags?: {
   );
 
   await attachContractPlans(setups);
+  await attachIntradayEdge(setups);
 
   return { setups, nighthawk_covered: nighthawkCovered };
+}
+
+/** Cached (3-min) intraday read from a name's own minute bars. */
+async function intradayReadFor(ticker: string, today: string): Promise<IntradayRead | null> {
+  return within(
+    withServerCache<IntradayRead>(`zerodte:intraday:${ticker}:${today}`, 3 * 60 * 1000, async () => {
+      const bars = await fetchAggBars(ticker, 1, "minute", today, today, "1000");
+      return computeIntradayRead(
+        bars
+          .filter((b) => b.t != null && Number.isFinite(b.t))
+          .map((b) => ({ t: b.t as number, h: b.h, l: b.l, c: b.c, v: b.v }))
+      );
+    }),
+    2_500
+  );
+}
+
+/** The "is it working RIGHT NOW" layer: each top play's own minute-bar read
+ *  (session VWAP / opening range / 5m trend), SPY as the market tape, and the
+ *  time-of-day edge window — all folded into the score, with hard intraday
+ *  conflicts flagged for the A-tier gate. Best-effort: missing bars = no adjust. */
+async function attachIntradayEdge(setups: EnrichedZeroDteSetup[]): Promise<void> {
+  if (setups.length === 0) return;
+  const today = todayEt();
+  const { hour, minute } = etNowParts();
+  const nowEt = hour * 60 + minute;
+  const tod = timeOfDayFactor(nowEt);
+
+  const top = setups.slice(0, ENRICH_TOP_N);
+  const [spyRead, ...reads] = await Promise.all([
+    intradayReadFor("SPY", today),
+    ...top.map((s) => intradayReadFor(s.ticker, today)),
+  ]);
+  const bias = marketBias(spyRead ?? null);
+
+  top.forEach((s, i) => {
+    const read = reads[i] ?? null;
+    const adj = intradayScoreAdjust(s.direction, read);
+    const align = marketAlignAdjust(s.direction, bias);
+    s.intraday = read;
+    s.intraday_conflict = adj.conflict;
+    s.market_aligned = bias == null || bias === "flat" ? null : (bias === "up") === (s.direction === "long");
+    s.tod_label = tod.label;
+    s.score = Math.max(0, Math.min(100, s.score + adj.delta + align + tod.delta));
+  });
 }
 
 /** One batched quote snapshot for every find's top-strike contract, then a pure
