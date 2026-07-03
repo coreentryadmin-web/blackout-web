@@ -148,6 +148,29 @@ async function persistErrorEvent(
 }
 
 // ---------------------------------------------------------------------------
+// Cross-capture-site dedup for dbQuery() failures
+// ---------------------------------------------------------------------------
+
+// dbQuery() (db.ts) captures every one of its own final failures internally
+// (source: "db_query"). Several admin routes ALSO wrap their whole handler in a
+// catch-all that independently calls captureError (source: "admin_route") when
+// a dbQuery failure propagates up uncaught -- without this, the exact same
+// failure lands in error_events twice, inflating the count BIE's discovery
+// report uses for "N errors in 24h - elevated". WeakSet keyed on the error
+// object itself (never wrapped/re-thrown between dbQuery and these routes'
+// catch blocks, confirmed 2026-07-03) -- entries are GC'd once the error is
+// unreachable, no manual cleanup needed.
+const dbQueryCapturedErrors = new WeakSet<object>();
+
+export function markDbQueryCaptured(err: unknown): void {
+  if (err !== null && typeof err === "object") dbQueryCapturedErrors.add(err);
+}
+
+export function wasDbQueryCaptured(err: unknown): boolean {
+  return err !== null && typeof err === "object" && dbQueryCapturedErrors.has(err);
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
