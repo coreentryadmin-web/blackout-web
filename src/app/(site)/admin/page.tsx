@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/admin-access";
 import { PageHeader } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { AdminAnalyticsDashboard } from "@/components/admin/AdminAnalyticsDashboard";
+import { AdminBiePanel } from "@/components/admin/AdminBiePanel";
 import { AdminLaunchStatusPanel } from "@/components/admin/AdminLaunchStatusPanel";
 import { SignalAnalyticsPanel } from "@/components/spx/SignalAnalyticsPanel";
 
@@ -31,6 +32,7 @@ export default async function AdminPage() {
           }
         />
         <AdminLaunchStatusPanel />
+        <AdminBiePanel />
         <Suspense fallback={<p className="admin-api-muted p-6">Loading admin…</p>}>
           <AdminAnalyticsDashboard />
         </Suspense>
