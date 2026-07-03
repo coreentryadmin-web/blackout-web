@@ -275,7 +275,7 @@ test("discovery: market-hours-only staleness during RTH is flagged high-priority
 
 test("discovery: every open admin incident is a finding, no threshold — it's already confirmed by the validator", () => {
   const incidents: import("./discovery").DiscoveryIncident[] = [
-    { severity: "critical", category: "data-integrity", title: "SPY quote vs GEX spot mismatch", detail: "quote=602.10 gex.spot=601.40", opened_at: "2026-07-06T14:00:00Z" },
+    { id: "inc-1", severity: "critical", category: "data-integrity", title: "SPY quote vs GEX spot mismatch", detail: "quote=602.10 gex.spot=601.40", opened_at: "2026-07-06T14:00:00Z" },
   ];
   const text = formatDiscovery("2026-07-06", [], { total: 0, groups: [] }, [], incidents);
   assert.match(text, /Open data-integrity incidents: 1\./);

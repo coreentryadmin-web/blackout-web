@@ -7,6 +7,19 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🧠 BIE admin tab — findings/roadmap/self-reports as a dedicated dashboard, not an always-on chip strip
+**Status:** SHIPPED. First slice of the admin-dashboard remodel ask (`docs/bie/DESIGN-NOTES.md`) — the most clearly-scoped piece (charter-backed content model) built first, ahead of the open-ended full-admin redesign.
+
+**What changed:**
+- New 6th admin tab (`AdminAnalyticsDashboard.tsx`'s `TABS`/`ToolTab`) — BIE now lives at `/admin?tab=bie` instead of being permanently rendered above the other 5 tabs regardless of what an admin is looking at.
+- `AdminBieDashboard.tsx` (new) replaces `AdminBiePanel.tsx` (deleted, zero remaining references): a `TabCommandHero` header with live status chips + coverage/verification rings, a `MegaStat` row (router coverage, verification rate, open-issue count, latency), an **Open Issues** table listing every open `admin_incidents` row and every `data-correctness` FLAG with real **Ack/Resolve buttons wired to the existing `/api/admin/incidents` POST endpoint** (found already built, never exposed in any UI before this), a roadmap section (Stage 1-5, status-badged, collapsible) giving `FULL-SYSTEM-AWARENESS.md`'s table a legible dashboard view, and the three self-improvement reports as collapsible sections instead of always-open `<pre>` blocks.
+- Backend: `/api/admin/bie-report` now also returns `open_incidents`/`correctness` as structured JSON fields (not just baked into `discovery.text`), via two new exported helpers in `discovery.ts` (`fetchDiscoveryIncidents`, `fetchDataCorrectnessSummary`) that `runBieDiscovery()` itself now calls too — no duplicate queries, one source feeding both the text report and the new structured UI fields.
+- All new component classes reuse the existing `AdminUi.tsx` design system (`GlassPanel`, `MegaStat`, `DeckPanel`, `DataTable`, `TabCommandHero`, `WinRateRing`) — no new visual language invented, consistent with every other admin tab.
+
+**Known limitation, stated honestly:** this sandbox's browser is blocked (documented environment constraint) — this is verified at the code/build level (`tsc --noEmit`, 776/776 tests, `npm run build` all clean) but has **not** been visually rendered or clicked through. Needs a real browser pass before being called done.
+
+**Deliberately out of scope for this PR** (tracked in `DESIGN-NOTES.md` as follow-ups): the admin-wide dedup pass (`/api/admin/health` fetched 3×, `/api/admin/cron-health` 2×, `/api/admin/incidents` 2×, an orphaned `launch-status` endpoint with zero callers — all found by research, none touched here), and the broader nav/font/color/landing-page design ask.
+
 ## ✅ Post-deploy live verification 2026-07-03 07:44 UTC — PR #308/#309/#311/#312 all confirmed live; the new wiring immediately surfaced a real finding
 **Status:** VERIFIED + one new OPEN item found (below), not by luck — this is the BIE discovery wiring (PR #312) working exactly as designed on its first live run.
 

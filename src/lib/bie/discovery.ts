@@ -36,6 +36,7 @@ export type ErrorGroup = { source: string; scope: string | null; count: number }
  *  own cross-tool validation (see data-integrity/route.ts), not something BIE
  *  decides on its own — BIE only surfaces what the validation layer already found. */
 export type DiscoveryIncident = {
+  id: string;
   severity: string;
   category: string;
   title: string;
@@ -199,11 +200,49 @@ export function formatDiscovery(
   return sections.join("\n");
 }
 
+/** Open admin incidents, narrowed to what formatDiscovery/the admin UI need.
+ *  Exported so /api/admin/bie-report can expose these as structured JSON
+ *  (for clickable ack/resolve UI) without a second, duplicate query. */
+export async function fetchDiscoveryIncidents(): Promise<DiscoveryIncident[]> {
+  const rows = await listOpenAdminIncidents(10).catch(() => []);
+  return rows.map((i) => ({
+    id: i.id,
+    severity: i.severity,
+    category: i.category,
+    title: i.title,
+    detail: i.detail,
+    opened_at: i.opened_at,
+  }));
+}
+
+/** Latest logged data-correctness run, parsed. READS the already-decided result —
+ *  never re-runs the sweep (BIE reports validated findings, it doesn't validate).
+ *  Exported for the same reason as fetchDiscoveryIncidents above. */
+export async function fetchDataCorrectnessSummary(): Promise<DataCorrectnessSummary | null> {
+  const res = await dbQuery<Record<string, unknown>>(
+    `SELECT started_at, meta_json FROM cron_job_runs
+     WHERE job_key = 'data-correctness' AND status <> 'skipped'
+     ORDER BY started_at DESC LIMIT 1`
+  ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+  const row = res.rows?.[0];
+  if (!row) return null;
+  const meta = (row.meta_json ?? {}) as Record<string, unknown>;
+  const totals = (meta.totals ?? {}) as Record<string, unknown>;
+  return {
+    ran_at: String(row.started_at),
+    overall_status: String(meta.overall_status ?? "unknown"),
+    market_open: Boolean(meta.market_open),
+    flags: Array.isArray(meta.flags) ? (meta.flags as DataCorrectnessFlag[]) : [],
+    independently_confirmed: Number(totals.independentlyConfirmed) || 0,
+    consistency_only: Number(totals.consistencyOnly) || 0,
+  };
+}
+
 /** Aggregate yesterday's API telemetry + application errors + cron health, persist the discovery report. */
 export async function runBieDiscovery(): Promise<{ patterns: number; text: string } | null> {
   if (!dbConfigured()) return null;
   try {
-    const [apiRes, errors, cronHealth, incidentRows, correctnessRes] = await Promise.all([
+    const [apiRes, errors, cronHealth, incidents, correctness] = await Promise.all([
       dbQuery<Record<string, unknown>>(
         `SELECT provider, endpoint,
                 COUNT(*)::int AS calls,
@@ -223,14 +262,8 @@ export async function runBieDiscovery(): Promise<{ patterns: number; text: strin
       buildCronHealthSnapshot()
         .then((s) => s.jobs)
         .catch(() => []),
-      listOpenAdminIncidents(10).catch(() => []),
-      // Latest logged data-correctness run — READ the already-decided result, never
-      // re-run the sweep here (BIE reports validated findings, it doesn't validate).
-      dbQuery<Record<string, unknown>>(
-        `SELECT started_at, meta_json FROM cron_job_runs
-         WHERE job_key = 'data-correctness' AND status <> 'skipped'
-         ORDER BY started_at DESC LIMIT 1`
-      ).catch(() => ({ rows: [] })),
+      fetchDiscoveryIncidents(),
+      fetchDataCorrectnessSummary(),
     ]);
     const rows: DiscoveryRow[] = (apiRes.rows ?? []).map((r) => ({
       provider: String(r.provider),
@@ -242,27 +275,6 @@ export async function runBieDiscovery(): Promise<{ patterns: number; text: strin
       total_time_s: Number(r.total_time_s) || 0,
       rate_limited: Number(r.rate_limited) || 0,
     }));
-    const incidents: DiscoveryIncident[] = incidentRows.map((i) => ({
-      severity: i.severity,
-      category: i.category,
-      title: i.title,
-      detail: i.detail,
-      opened_at: i.opened_at,
-    }));
-    const correctnessRow = correctnessRes.rows?.[0];
-    let correctness: DataCorrectnessSummary | null = null;
-    if (correctnessRow) {
-      const meta = (correctnessRow.meta_json ?? {}) as Record<string, unknown>;
-      const totals = (meta.totals ?? {}) as Record<string, unknown>;
-      correctness = {
-        ran_at: String(correctnessRow.started_at),
-        overall_status: String(meta.overall_status ?? "unknown"),
-        market_open: Boolean(meta.market_open),
-        flags: Array.isArray(meta.flags) ? (meta.flags as DataCorrectnessFlag[]) : [],
-        independently_confirmed: Number(totals.independentlyConfirmed) || 0,
-        consistency_only: Number(totals.consistencyOnly) || 0,
-      };
-    }
     const date = todayEt();
     const text = formatDiscovery(date, rows, errors, cronHealth, incidents, correctness);
     await storeKnowledge("self_eval", `bie:discovery:${date}`, text).catch(() => 0);
