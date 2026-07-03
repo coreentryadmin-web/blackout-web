@@ -495,3 +495,12 @@ test("lifecycle: everything is CLOSED after the 15:30 ET hard exit", () => {
   assert.equal(s.status, "CLOSED");
   assert.equal(s.closed_reason, "time_stop");
 });
+
+test("lifecycle: the hard exit closes rows with NO entry premium too (data quality never exempts the clock)", () => {
+  const afterClose = derivePlayStatus({ entryPremium: null, mark: null, peak: null, trough: null, nowEtMinutes: 20 * 60 });
+  assert.equal(afterClose.status, "CLOSED");
+  assert.equal(afterClose.closed_reason, "time_stop");
+  // Same row during the session: HOLD (nothing to price against yet).
+  const intraday = derivePlayStatus({ entryPremium: null, mark: null, peak: null, trough: null, nowEtMinutes: 12 * 60 });
+  assert.equal(intraday.status, "HOLD");
+});

@@ -200,23 +200,31 @@ export type LivePlayState = {
  * OPEN means "still enterable": mark within 10% of entry and before the cutoff.
  */
 export function derivePlayStatus(input: {
-  entryPremium: number;
+  entryPremium: number | null;
   mark: number | null;
   peak: number | null;
   trough: number | null;
   nowEtMinutes: number;
 }): LivePlayState {
   const { entryPremium, mark, peak, trough, nowEtMinutes } = input;
-  if (!(entryPremium > 0)) return { status: "HOLD", live_pnl_pct: null, closed_reason: null };
+  const pnl =
+    entryPremium != null && entryPremium > 0 && mark != null && mark > 0
+      ? Math.round(((mark - entryPremium) / entryPremium) * 10000) / 100
+      : null;
+
+  // The hard exit closes EVERYTHING — including rows with no entry premium or no
+  // quote. 0DTE has no tomorrow; data quality never exempts a play from the clock.
+  if (nowEtMinutes > PLAN_RULES.time_stop_et_minutes) {
+    return { status: "CLOSED", live_pnl_pct: pnl, closed_reason: "time_stop" };
+  }
+  if (!(entryPremium != null && entryPremium > 0)) {
+    return { status: "HOLD", live_pnl_pct: null, closed_reason: null };
+  }
   const stop = entryPremium * (1 + PLAN_RULES.stop_pct / 100);
   const target = entryPremium * (1 + PLAN_RULES.target_pct / 100);
-  const pnl = mark != null && mark > 0 ? Math.round(((mark - entryPremium) / entryPremium) * 10000) / 100 : null;
 
   if (trough != null && trough <= stop) {
     return { status: "CLOSED", live_pnl_pct: PLAN_RULES.stop_pct, closed_reason: "stopped" };
-  }
-  if (nowEtMinutes > PLAN_RULES.time_stop_et_minutes) {
-    return { status: "CLOSED", live_pnl_pct: pnl, closed_reason: "time_stop" };
   }
   if (peak != null && peak >= target) {
     return { status: "TRIM", live_pnl_pct: pnl, closed_reason: null };
