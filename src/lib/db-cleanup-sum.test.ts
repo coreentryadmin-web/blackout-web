@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sumCleanupDeletes } from "./route";
+import { sumCleanupDeletes } from "./db-cleanup-sum";
 
 test("sumCleanupDeletes sums numeric prune counts only", () => {
   assert.equal(

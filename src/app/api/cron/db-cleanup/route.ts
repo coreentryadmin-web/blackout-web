@@ -3,14 +3,10 @@ import { dbQuery, requireDatabaseInProduction } from "@/lib/db";
 import { logCronRun } from "@/lib/cron-run";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { isAllowedCleanupTarget, cleanupRetentionDays } from "@/lib/db-cleanup-targets";
+import { sumCleanupDeletes } from "@/lib/db-cleanup-sum";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
-
-/** Sum numeric prune counts only — BIE metadata is stored separately in `tables`. */
-export function sumCleanupDeletes(tables: Record<string, number>): number {
-  return Object.values(tables).reduce((sum, n) => sum + n, 0);
-}
 
 /**
  * Nightly DB cleanup — prunes high-volume tables to prevent unbounded growth.
