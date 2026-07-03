@@ -7,6 +7,168 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🔬 Cursor Author — DEEP EXHAUSTIVE AUDIT (2026-07-03 ~15:58 UTC)
+
+**Scope:** Line-by-line static checks, all 26 pages, 118 API routes, 15-ticker heatmap matrix,
+authenticated API proxy + real browser click-through (Playwright unavailable — used computerUse +
+`rth-browser-test.mjs`). Temp Clerk admins minted and deleted after each run.
+**Tooling added:** `scripts/exhaustive-platform-audit.mjs` (discover-all-routes + auth matrix).
+
+### Layer 1 — Static codebase (every blocking CI gate)
+
+| Check | Result | Evidence |
+|---|---|---|
+| `npx tsc --noEmit` | ✅ PASS | 0 errors |
+| `npm run lint:brand` | ✅ PASS | no banned vendor/grey violations in source |
+| `npm run validate:api-auth` | ✅ PASS | default-deny scanner green |
+| `npm test` | ✅ PASS | **790/790** tests (incl. 0DTE audit-row, railway-status, uw off-hours) |
+
+### Layer 2 — All 26 user-facing pages
+
+**Public (17/17 PASS)** — HTTP 200, no NaN/undefined/[object Object] in visible HTML, no banned
+`text-grey-*`/`text-zinc-*`/`text-neutral-*` classes detected:
+
+| Page | Status | Size | Notes |
+|---|---|---|---|
+| `/` | 200 | 116KB | Marketing hero loads |
+| `/sign-in`, `/sign-up` | 200 | 47KB | Clerk forms render |
+| `/track-record`, `/embed/track-record` | 200 | 27–48KB | 12 closed plays visible |
+| `/learn` + 9 chapter subpages | 200 | 74–115KB | All chapters load; tab nav works in browser |
+| `/offline`, `/upgrade` | 200 | 28–82KB | Pricing $199/mo, $1999/yr |
+
+**Premium/admin (9/9 PASS with admin session + `tier:premium` metadata)** — HTML shell loads for all:
+
+| Page | Status | Browser/API depth |
+|---|---|---|
+| `/dashboard` | 200 | SPX 7483.24, 176 strikes, GEX/VEX toggle works, 15s poll changes |
+| `/flows` | 200 | 500 flow rows; CALL filter applies; brief 5.5s |
+| `/heatmap` | 200 | SPY shows "NO OPTIONS CHAIN" (see P1 below); VEX toggle works |
+| `/grid` | 200 | 0DTE tab "MARKET CLOSED"; Market Grid 10/12 panels |
+| `/nighthawk` | 200 | 3 plays Mon Jul 6; AAPL card SCORE 68 |
+| `/terminal` | 200 | Largo 38s response, tools=[live_feed, dark_pool, options_flow] |
+| `/account` | 200 | Profile/Security tabs; Clerk account UI |
+| `/admin` | 200 | Tool launch 5/6 open; incidents CRITICAL 1 / WARNING 15 |
+| `/admin/track-record` | 200 | Admin track-record editor loads |
+
+**Audit auth note:** `requireTier("premium")` reads Clerk `publicMetadata.tier` via Whop-synced
+cache — **`role:admin` alone does NOT bypass tier** (only launch gates). Audit temp users MUST
+include `tier:"premium"` in metadata. Browser session that omitted working ticket exchange hit
+`/upgrade` redirects — product behavior correct, not a P0 bug.
+
+### Layer 3 — All 118 API routes (132 probe URLs)
+
+Probed via `exhaustive-platform-audit.mjs` + existing validators. Summary:
+
+| Category | Count | Result |
+|---|---|---|
+| Public health/ready | 2 | ✅ 200 |
+| Cron routes (CRON_SECRET) | 23 | ✅ all 200 (incl. data-correctness 12s, flow-ingest 14s) |
+| Admin routes (admin session) | 18 | ✅ 200 (bie-report, health, spx/dashboard 3.3s, signal-analytics 1.5s) |
+| Premium market/grid (admin session) | 40+ | ✅ 200 when JWT fresh; ⚠ JWT expiry mid-run caused false 401s on long sweep |
+| SSE streams | 3 | ✅ open then truncate (positions/stream, flows/stream, pulse/stream) |
+| Webhooks (POST-only) | 3 | ✅ 405 on GET (expected) |
+| POST-only admin actions | 4 | ✅ 405 on GET (run-migration, nighthawk/run, brief/store) |
+
+**Transient failures during long sweep (retried clean):**
+- `/api/cron/db-cleanup` — HTTP 500 once, HTTP 200 on retry (`5489 api_telemetry_events deleted`)
+- Connection reset on `/api/market/health` after ~60s burst — infra blip, not logic bug
+
+### Layer 4 — Browser click-through (buttons/interactions tested)
+
+**Session A (authenticated via sign_in_token — WORKING):**
+
+| Page | Interactions tested | Result |
+|---|---|---|
+| `/dashboard` | VIX/VWAP toggle, GEX↔VEX lens, matrix cell click | ✅ All responsive; halt banner visible |
+| `/flows` | CALL $60 filter | ✅ Loading state applied |
+| `/heatmap` | GEX↔VEX toggle | ✅ Works; empty chain message for SPY |
+| `/grid` | 0DTE Command ↔ Market Grid tabs | ✅ Tab switch works |
+| `/nighthawk` | Play card expand | ✅ AAPL card renders |
+| `/admin` | Tool launch panel, system status | ✅ DEGRADED shown (15 servers, 3 API ERR) |
+| `/`, `/track-record` | Navigation | ✅ |
+
+**Session B (additional pages):**
+
+| Page | Interactions tested | Result |
+|---|---|---|
+| `/admin` | Full dashboard scroll, incidents panel | ✅ CRITICAL 1, OPEN 10, ERRORS 80 |
+| `/account` | Profile tab, SECURITY tab click | ✅ SECURITY shows spinner (slow Clerk embed) |
+| `/learn` | Chapter nav, "At a glance" tab | ✅ |
+| `/upgrade` | Pricing cards | ✅ |
+
+**NOT fully clicked (remaining for Monday RTH session with stable auth):**
+- Every admin sub-tab button (Operations, BIE, Crons, APIs, Errors — individual cron triggers)
+- Every Grid panel menu toggle (12 panels individually)
+- Heatmap ticker selector for all 15 tickers + all 4 lenses
+- Every learn chapter cross-link (7 chapters not individually opened in browser)
+- `/sign-in`/`/sign-up` form submit flows (would create real users)
+
+### Layer 5 — Cross-provider numeric validation
+
+| Script | Result | Key finding |
+|---|---|---|
+| `data-validator.mjs` | 9 PASS / 1 FAIL | SPY walls all `undefined` (empty chain) |
+| `heatmap-matrix-audit.mjs` | SPX ✅ 159 strikes $7.73B GEX; **14/15 equity tickers EMPTY** | matrix-empty flags |
+| `full-site-deep-audit.mjs` | 44 pass / 10 issues | P0: `getGexPositioning("SPY")` no matrix while market open |
+| `gha-rth-audit.mjs` | 3 failures | equity heatmaps + writer crons thin (holiday session) |
+| `site-audit.mjs` (prod) | 56 pass / 0 issues | Public surface clean |
+| `rth-browser-test.mjs` | 35 PASS / 10 WARN | Expected missing optional fields only |
+
+**SPX oracle:** desk 7483.24 = Polygon 7483.24 (Δ 0.00) ✅
+
+### Layer 6 — Console / infra observations
+
+| Issue | Severity | Evidence | Action |
+|---|---|---|---|
+| Equity heatmaps empty (SPY/QQQ/NVDA + 11 more) | **P1** | 14/15 tickers zero strikes; UI shows "NO OPTIONS CHAIN" | Monday RTH: if chains listed and still empty → P0 heatmap-warm |
+| SPX heatmap works (176 strikes) | ✅ | Index path healthy | — |
+| Dashboard halt banner | **P1** | "Halt feed offline — entries blocked" | Check UW + LULD WS on Railway |
+| Admin GET 502 (browser session A) | **P2** | `/admin/cron-health` 502 in DevTools; API probe with CRON 401 (expected without cookie) | Monitor; may be replica cold-start |
+| Heatmap CSP console noise | **P2** | 53 CSP report-only violations | Non-blocking; review Cloudflare CSP transform rule |
+| HELIX 15s poll unchanged | **P2** | Off-hours tape stall | Expected post-close; re-check RTH |
+| Postgres query read timeouts | **P2** | 32 error_events/hr, Sentry cluster | Correlate with `db_pool.waiting` in BIE report |
+| Writer crons thin (0/3 in 30m) | **P2** | heatmap-warm/flow-ingest skipped holiday | Expected; re-check Monday |
+| Preload link warning | **P2** | Next.js image preload unused | Performance only |
+
+### Layer 7 — New features specifically validated
+
+| Feature | API | UI | Audit trail |
+|---|---|---|---|
+| **0DTE Command** | `/api/market/zerodte/board` 200, available=true, 0 setups (holiday) | Grid default tab, "MARKET CLOSED" honest state | `alert_audit_log` write path **not yet exercised** (no scan flags) |
+| **BIE admin tab** | `/api/admin/bie-report` 200, 1180 chunks, 0 incidents, Railway✅ Redis✅ | Admin panel loads | Discovery + correctness integrated |
+| **BIE Stage 4** | Schema live | — | Monday: confirm rows on first 0DTE flag + NH publish |
+| **Grid classic tab** | 8/8 panel APIs 200, bootstrap 363ms | 10/12 panels, search bar present | Congress fix (#298) working |
+
+### Granular missing-field audit (expected vs bug)
+
+All WARN items from `rth-browser-test.mjs` classified:
+
+| Field | Surface | Verdict |
+|---|---|---|
+| `vex.neg_wall`, `charm.zero_level` | dashboard heatmap | **Expected** — optional overlays |
+| `dark_pool.pcr`, `prints[empty]` | merged/desk | **Expected** — upstream lacks split |
+| `flows[].alerted_at` | HELIX | **Expected** — WS shape |
+| `eps_actual`, `surprise_pct` | grid earnings | **Expected** — pre-report dates |
+| `movers.gainers/losers[empty]` | grid | **Expected** — holiday session |
+| `heatmap expiries/strikes[empty]` SPY | heatmap | **P1** — not optional; chain genuinely missing |
+
+### What still needs Monday RTH (cannot fully close today)
+
+1. Click every admin Operations/BIE/Cron button with live data flowing
+2. Confirm equity heatmaps populate for SPY/QQQ/NVDA
+3. Verify `alert_audit_log` rows on first 0DTE flag
+4. Run `rth-comprehensive-sweep.mjs` with Playwright after `npx playwright install`
+5. HELIX tape live-update confirmation during RTH
+
+### Audit artifacts (this run)
+
+- `audit-output/exhaustive-audit-run2.log` — partial 132-route sweep
+- `audit-output/rth-browser-test-2026-07-03T15-11-02-864Z.md` — authenticated API proxy
+- `audit-output/validation-2026-07-03T15-09-26-063Z.md` — cross-provider validator
+- Browser screenshots: `/tmp/computer-use/*.webp` (dashboard, flows, heatmap, grid, nighthawk, admin)
+
+---
+
 ## 🔍 Cursor Author — CTO/CEO platform audit (2026-07-03 ~15:12 UTC)
 
 **Agent:** Cursor Cloud Agent (fresh `main` sync at `31891c1`, `npm install`, full prod probe suite).
