@@ -2952,6 +2952,37 @@ export async function fetchBieKnowledge(opts?: { kind?: string; limit?: number }
   }));
 }
 
+/** Corpus size + embedded coverage by kind — the admin panel's readout of how
+ *  much the engine knows and how much of it is retrievable (embedded). */
+export async function fetchBieKnowledgeStats(): Promise<{
+  total: number;
+  embedded: number;
+  by_kind: Array<{ kind: string; total: number; embedded: number }>;
+  newest_at: string | null;
+}> {
+  await ensureSchema();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT kind, COUNT(*)::int AS total, COUNT(embedding)::int AS embedded, MAX(created_at) AS newest_at
+     FROM bie_knowledge GROUP BY kind ORDER BY kind`
+  );
+  const byKind = res.rows.map((r) => ({
+    kind: String(r.kind),
+    total: Number(r.total) || 0,
+    embedded: Number(r.embedded) || 0,
+  }));
+  const newest = res.rows
+    .map((r) => (r.newest_at ? new Date(String(r.newest_at)).toISOString() : null))
+    .filter((s): s is string => s != null)
+    .sort()
+    .at(-1);
+  return {
+    total: byKind.reduce((s, k) => s + k.total, 0),
+    embedded: byKind.reduce((s, k) => s + k.embedded, 0),
+    by_kind: byKind,
+    newest_at: newest ?? null,
+  };
+}
+
 /** Aggregates for the daily BIE self-eval report. */
 export async function fetchBieInteractionStats(sinceHours = 24): Promise<{
   total: number;

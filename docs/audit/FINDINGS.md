@@ -193,6 +193,18 @@ Also taints anything else keyed off `desk.pdh/pdl/prior_close`: PDH/PDL breakout
 
 **Blast radius:** `fetchExistingBieHashes` has exactly one caller (`storeKnowledge`), so the signature change is contained. Every `storeKnowledge` caller (doc/edition ingest, self-eval, calibration, discovery persistence) heals automatically on its next run.
 
+## 🧠 EPIC SHIPPED 2026-07-02/03 — BLACKOUT Intelligence Engine (BIE): all five layers live
+**Status:** SHIPPED across PRs #291–#295 + the admin panel PR (`feat/bie-admin-report`). Design doc: `docs/bie/ARCHITECTURE.md` (includes the honest-realism section: no frontier-LLM training; "learning" = auditable knowledge/calibration updates; trust = traceability).
+
+- **L1 Deterministic** — platform law since the audits: no LLM ever computes a number.
+- **L3 Router** (#291, `src/lib/bie/router.ts` + `composers.ts`) — conservative intent classifier answers plays/ticker-state/SPX-structure/market-context questions straight from source-of-truth readers, wired ahead of Claude in BOTH Largo paths (query + stream); reasoning-shaped questions never route; any router failure falls through — Claude is never blocked.
+- **L4 Verifier** (#291, `verifier.ts`) — every numeric claim in a Claude answer matched against the tool results actually served that turn (0.5% tolerance + desk derivations); unverifiable-heavy answers carry an explicit caution trailer.
+- **L1.5 Ledger** (#292, `bie_interactions`) — every turn logged: intent, answer source, claim counts, latency. Router coverage and Claude-calls-avoided are queryable, not vibes.
+- **L2 Knowledge** (#293, `knowledge.ts` + `embeddings.ts`) — chunked/hash-deduped corpus (docs, FINDINGS, platform map, NH editions, self-evals) with Voyage embeddings (env-gated) and cosine retrieval grounding the Claude fallback; **backfill bug found + fixed the moment the key landed** (#295, see entry above).
+- **L5 Learning** (#293/#294, `report.ts`/`calibration.ts`/`discovery.ts`) — daily self-eval (coverage/verification/cost avoided/session W/L), 14-day gate calibration (evidence-cited recommendations at n≥10 per bucket, report-first, never tunes on noise), and platform discovery (the engine mines its OWN api telemetry for slow/failing/expensive patterns) — all persisted into the knowledge store each daily tick.
+- **Visibility** (`feat/bie-admin-report`) — `/api/admin/bie-report` recomputes all three reports on demand + live embeddings/retrieval probes + corpus census; `AdminBiePanel` on `/admin` renders it (the user's "how do we know what it is fixing?" is now a dashboard, not a question).
+- **Data-gated remainder (documented, deliberate):** knowledge-Q&A router intents (needs corpus + key warm), small-model distillation (needs months of graded interactions + a buy decision).
+
 ## 🟠 MEDIUM — VIX source/freshness inconsistency
 App `indices.vix.price = 17.18` vs Polygon prior-close `16.45` (4.4%), while SPX/SPY match prior-close exactly — the app's VIX uses a different source/timestamp than SPX/SPY. Confirm with same-timestamp live compare at open.
 
