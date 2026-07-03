@@ -48,13 +48,29 @@ export async function GET() {
     fetchBieKnowledge({ kind: "self_eval", limit: 30 }).catch(() => []),
   ]);
 
-  // Retrieval probe: only meaningful once the key works — asks the corpus a
-  // question the platform docs answer, returns what surfaced and how similar.
-  // Floor 0 ON PURPOSE (diagnostic): production retrieval keeps searchKnowledge's
-  // default floor; this probe shows the RAW top-3 so the floor can be tuned on
-  // evidence — first live run returned empty at 0.55, so we need the distribution.
-  const retrieval = probe.ok
-    ? await searchKnowledge("How are 0DTE Command plays graded and when do they exit?", 3, 0).catch(() => [])
+  // Retrieval probe: only meaningful once the key works. Multiple representative
+  // questions spanning different corpus areas — floor 0 ON PURPOSE (diagnostic):
+  // production retrieval keeps searchKnowledge's default floor; this shows the
+  // RAW top-3 per question so the floor is set from an evidence distribution,
+  // not a single anecdote (same report-first standard as the calibration harness
+  // in src/lib/bie/calibration.ts — never tune on noise).
+  const PROBE_QUESTIONS = [
+    "How are 0DTE Command plays graded and when do they exit?",
+    "What is the BLACKOUT Intelligence Engine and what are its five layers?",
+    "How does the Night Hawk scoring system work?",
+    "What gates does the 0DTE scanner use to admit a setup?",
+  ];
+  const retrievalProbes = probe.ok
+    ? await Promise.all(
+        PROBE_QUESTIONS.map(async (q) => ({
+          question: q,
+          hits: (await searchKnowledge(q, 3, 0).catch(() => [])).map((r) => ({
+            source: r.source,
+            kind: r.kind,
+            similarity: Math.round(r.similarity * 1000) / 1000,
+          })),
+        }))
+      )
     : [];
 
   return NextResponse.json(
@@ -64,11 +80,9 @@ export async function GET() {
       embeddings: {
         configured: bieEmbeddingsConfigured(),
         probe,
-        retrieval_probe: retrieval.map((r) => ({
-          source: r.source,
-          kind: r.kind,
-          similarity: Math.round(r.similarity * 1000) / 1000,
-        })),
+        // Back-compat single-question view (first probe) + the full evidence set.
+        retrieval_probe: retrievalProbes[0]?.hits ?? [],
+        retrieval_probes: retrievalProbes,
       },
       knowledge,
       // The three live reports, both structured and human-readable.
