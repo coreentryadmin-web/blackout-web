@@ -30,7 +30,8 @@ export type ErrorSource =
   | "unhandled_rejection"
   | "uncaught_exception"
   | "request_error"
-  | "manual";
+  | "manual"
+  | "frontend";
 
 export type ErrorContext = {
   source: ErrorSource;

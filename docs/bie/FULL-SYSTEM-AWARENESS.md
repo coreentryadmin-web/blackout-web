@@ -64,7 +64,7 @@ credentials, no new vendor, ships today:
 | API rate limits (UW, Polygon, Claude) | **SHIPPED** (Phase 4) | `api_telemetry_events.rate_limited` — per-provider, per-endpoint, already in discovery |
 | database query failures | **PARTIAL** | Failed queries that throw ARE captured by `error_events` if the caller uses the error sink; not every `dbQuery` call site does yet — auditing that coverage is next |
 | duplicate/incorrect alerts | **PARTIAL** | 0DTE ledger + Night Hawk outcome grading already measure "was this alert later correct" (win/loss); "duplicate" detection is not built |
-| frontend errors | **NOT YET** | No browser-side error capture wired to `error_events` today — would need a client-side reporter (e.g. `window.onerror` → a lightweight beacon endpoint). Buildable with zero new vendor, not yet built |
+| frontend errors | **SHIPPED** | `ClientErrorReporter` (mounted in root layout) captures `window.onerror`/`unhandledrejection`, sends via `navigator.sendBeacon` to the public `POST /api/telemetry/client-error` beacon → `error_events` (`source: "frontend"`), grouped by page path. Deliberately narrow: per-IP rate limit (20/min), hard body-size cap, server-side path-only stripping of the URL field (never trusts the client not to leak a query-string secret), capped at 8 reports per page load with dedup. Required a new middleware exemption — `/api/telemetry/client-error` is the first genuinely public (unauthenticated) mutation route; the existing "mutation backstop" would have 401'd every logged-out visitor's error report |
 | missed alerts | **NOT YET** | Requires defining "should have fired but didn't" — needs a ground-truth definition first, not just more logging |
 
 ## Stage 3 — NEEDS INFRASTRUCTURE ACCESS THIS CODEBASE DOES NOT HAVE

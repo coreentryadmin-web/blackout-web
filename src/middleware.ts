@@ -21,6 +21,14 @@ const isWebhookRoute = createRouteMatcher([
   "/api/webhooks/(.*)",
 ]);
 
+// Deliberately public, unauthenticated POST routes: browsers can't carry admin
+// auth, and a LOGGED-OUT visitor's JS throwing is exactly the coverage this
+// route exists for (landing/pricing/sign-up pages need no session). Its
+// security is per-IP rate limiting + a hard body-size cap + write-only to a
+// low-sensitivity diagnostic table (see route file) — not session/bearer auth,
+// same bypass reasoning as isWebhookRoute above, different mechanism.
+const isPublicTelemetryRoute = createRouteMatcher(["/api/telemetry/client-error"]);
+
 // Methods that mutate server state (i.e., not safe reads).
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -50,7 +58,8 @@ export default clerkMiddleware(
     if (
       MUTATION_METHODS.has(req.method) &&
       req.nextUrl.pathname.startsWith("/api/") &&
-      !isWebhookRoute(req)
+      !isWebhookRoute(req) &&
+      !isPublicTelemetryRoute(req)
     ) {
       const bearer = req.headers.get("authorization") ?? "";
       // A bearer token is present if the header starts with "Bearer " and has a
@@ -93,6 +102,9 @@ export default clerkMiddleware(
 //   BACKSTOP (mutation 401 if no auth signal):
 //     • POST/PUT/PATCH/DELETE on /api/* without a Clerk cookie or Bearer header
 //     • Excludes /api/webhook/* and /api/webhooks/* (own HMAC verification)
+//     • Excludes /api/telemetry/client-error (deliberately public — see
+//       isPublicTelemetryRoute above; secured by per-IP rate limit + body cap,
+//       not session/bearer auth)
 //
 //   NOT protected by this middleware (callback is a no-op for them):
 //     • GET/HEAD/OPTIONS on /api/* — they pass through unguarded here
