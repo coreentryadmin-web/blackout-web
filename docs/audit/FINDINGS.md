@@ -7,7 +7,10 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
----
+## ✅ Post-deploy verification 2026-07-03 16:2x UTC — Night Hawk rejected-play dedup index (PR #336) live, no regression
+**Status:** VERIFIED. `feat/bie-nighthawk-rejected-schema` squash-merged as `b784c51`, Railway deploy confirmed **SUCCESS** via the API (took noticeably longer than usual tonight — single deployment, no concurrent-build race detected, just a slow build). `/api/ready`: HTTP 200, 0.25s. Spot-check only this time (not the full `full-site-deep-audit.mjs` suite) per the connection-pool-contention finding logged earlier — avoiding adding more concurrent load to admin endpoints tonight.
+
+**Cross-agent note:** Cursor independently found and fixed a real, complementary gap in the same area (PR #337: `grid-warm`/`heatmap-warm`/`nights-watch-warm` used a separate copy-pasted `inMarketHours()` helper with no holiday check — missed by this session's PR #331 sweep because it greps for `isSpxEngineCronWindow` consumers specifically, and these three routes used a different, disconnected helper). Live-verified by Cursor before fixing (`grid-warm` really was running `warmZeroDteBoard()` on today's holiday). Also includes a real `_syncLocks` Promise-identity bug fix in `play-outcomes.ts` (cleanup comparison never matched, since `.then()` creates a new object each call — memory leak, doesn't touch this session's Night Hawk write-path additions) and extends this session's `buildZeroDteAuditRow()` with an `intraday_conflict` decision_trace entry that was a legitimate gap in the original. Reviewed the diff before it merged; did not duplicate Cursor's own merge of their PR.
 
 ## 🧠 BIE Stage 4: Night Hawk rejected-play dedup index shipped — schema prerequisite for the still-pending write-path
 **Status:** SHIPPED (schema only). Unblocks the Night Hawk rejected-play half of Stage 4 write-path work, precisely scoped in an earlier finding tonight: `idx_alert_audit_log_nighthawk_rejected_dedup`, a partial unique index on `alert_audit_log (alert_type, ticker, source_key->>'edition_for') WHERE alert_type = 'nighthawk_rejected'`, added to `db.ts`'s existing advisory-locked migration block.
