@@ -7,6 +7,159 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🔍 Cursor Author — CTO/CEO platform audit (2026-07-03 ~15:12 UTC)
+
+**Agent:** Cursor Cloud Agent (fresh `main` sync at `31891c1`, `npm install`, full prod probe suite).
+**Scope:** orient on all recent Claude changes (0DTE Command, BIE, admin refactor), mint Clerk admin
+via `sign_in_token`, run end-to-end production validators — API-level (browser GUI blocked in cloud
+sandbox, same constraint as prior audits).
+**Verdict:** Platform is **operationally GREEN** (deploy SUCCESS, 790/790 tests, 0 ops action items)
+with **one real data-surface gap** (equity heatmaps empty while SPX works) and **Monday-open
+verification gates** for newly shipped BIE Stage 4 write paths. No P0 regressions from the recent
+feature wave; the highest-leverage next work is **truth verification at live session**, not new
+features.
+
+### What changed recently (last ~2 weeks — the Claude wave)
+
+| Area | Shipped | Code home |
+|---|---|---|
+| **0DTE Command** | `/grid` repurposed — default tab is always-on 0DTE hunter (setups + graded ledger); classic Market Grid is second tab | `src/lib/zerodte/*`, `src/app/api/market/zerodte/board`, `grid-warm` cron |
+| **BIE Phase 1–4** | Router + claim verifier + knowledge embeddings + daily self-eval + calibration + telemetry discovery | `src/lib/bie/*`, wired into Largo |
+| **BIE Stage 2 infra** | Redis/Postgres pool live in admin; discovery reads data-correctness + data-integrity; Railway deploy status probe | `redis-health.ts`, `railway-status.ts`, `/api/admin/bie-report` |
+| **BIE Stage 4 audit trail** | `alert_audit_log` schema + 0DTE first-flag write + Night Hawk published-play write | `db.ts`, `zerodte/scan.ts`, `nighthawk/play-outcomes.ts` |
+| **Admin** | Dedicated BIE tab (`AdminBieDashboard.tsx`); shared SWR hooks; dead `launch-status` route removed | `src/hooks/use-admin-data.ts` |
+| **Ops hardening** | Holiday-aware RTH gate, PG-grounded flow-ingest skip, log-severity sweep (UW/Polygon off-hours noise), `dbQuery` failure capture at source | `et-market-hours.ts`, `unusual-whales.ts`, `db.ts` |
+
+**~1,002 commits since 2026-06-20**; the BIE arc alone is ~40 PRs (#291→#327). Test suite grew to **790 tests** (was ~752 before 0DTE audit-row tests).
+
+### System map (30-second orient)
+
+```
+Providers (UW + Polygon WS/REST, rate-limited, Redis leader election)
+  → Writers (ws/*-socket.ts, api/cron/*)
+  → Store (Redis hot snapshots + Postgres durable rows)
+  → Cache-reader APIs (api/market/*, api/grid/*, api/market/zerodte/board)
+  → UI (desk/, grid/, zerodte/, admin/)
+```
+
+**Prime directive unchanged:** Truth > Reliability > Security > Correct-logic. BIE's charter
+(formalized 2026-07-03 in `docs/bie/FULL-SYSTEM-AWARENESS.md`) extends this: BIE explains and
+ranks issues the **deterministic validators** already found — it never invents correctness.
+
+### Production audit results (2026-07-03 ~15:08–15:12 UTC)
+
+| Check | Result | Notes |
+|---|---|---|
+| `npm run validate:deploy` | ✅ GREEN | Latest deploy SUCCESS (`31891c1` lineage); 4 warnings (see below) |
+| `npm run ops:collect` | ✅ 0 action items | |
+| `node scripts/full-site-deep-audit.mjs` | ⚠ 44 pass / **10 issues** | P0: SPY GEX matrix empty while market "open"; P1: 9 equity heatmaps unavailable |
+| `node scripts/audit/data-validator.mjs` | ⚠ 9 PASS / **1 FAIL** | Wall ordering FAIL — all walls `undefined` on `gex-positioning?ticker=SPY` |
+| `node scripts/validate-live-prod.mjs` | ⚠ track-record PASS / **QQQ heatmap FAIL** | QQQ returns `available` but empty matrix |
+| `node scripts/audit/rth-browser-test.mjs` | ✅ 35 PASS / 10 WARN | Admin session via Clerk `sign_in_token`; temp user deleted after |
+| `npm test` | ✅ 790/790 | |
+
+**Authenticated admin probes (Clerk temp user, deleted after):**
+
+| Endpoint | HTTP | Key fields |
+|---|---|---|
+| `/api/market/zerodte/board` | 200 | `available: true`, 0 setups / 0 ledger (no flags this session yet) |
+| `/api/admin/bie-report` | 200 | 0 open incidents; correctness `consistency-only`; Railway ✅; Redis ✅; **1,180 knowledge chunks**; 1 interaction/24h |
+| `/api/market/gex-heatmap?ticker=SPX` | 200 | **176 strikes**, spot 7483.24 ✅ |
+| `/api/market/gex-heatmap?ticker=SPY` | 200 | `available: true` but **0 strikes, spot 0** ❌ |
+| `/api/market/gex-heatmap?ticker=QQQ` | 200 | same empty matrix ❌ |
+
+**Cross-check:** SPX Slayer dashboard heatmap (SPX ticker) loads 176 strikes and live spot; `/heatmap`
+(SPY matrix) returns empty expiries/strikes — **index GEX works, equity GEX does not** on this
+session. Polygon `marketstatus/now` at probe time: exchanges `open`, but **`indicesGroups.s_and_p:
+closed`** — consistent with a holiday-adjacent / index-closed session where SPX index options may
+still serve from cache while equity 0DTE chains are genuinely absent. **Needs Monday RTH re-check**
+before calling this a bug vs expected holiday behavior; if equity chains are listed and heatmaps stay
+empty, that's a P0 for `heatmap-warm` / `getGexPositioning`.
+
+**Warnings worth watching (not blockers tonight):**
+
+- `error_events` last 1h: **32**; Sentry sample shows repeated **"Query read timeout"** (Postgres pressure?)
+- API telemetry failures last 15m: **9** (non-rate-limit)
+- HELIX 15s poll showed no change (may be off-hours tape stall — WARN only)
+- Grid `/movers` gainers/losers empty (holiday session — expected)
+
+### What's working well
+
+1. **SPX desk stack** — spot 7483.24 matches Polygon oracle (Δ 0.00); SPX heatmap 176 strikes; SPX
+   Slayer live poll changes every 15s.
+2. **BIE admin panel** — live infra snapshots (Redis, DB pool, Railway deploy history), correctness
+   scorecard integration, 1,180 embedded knowledge chunks, 0 open incidents.
+3. **Night Hawk** — edition loads (3 plays for 2026-07-06, recap mode).
+4. **Classic Grid panels** — all 8 `/api/grid/*` routes return finite numbers; bootstrap 225ms warm.
+5. **Largo** — grounded NVDA answer (~41s, tools: live_feed, dark_pool, options_flow).
+6. **Track record** — math checks out (3W/9L/12 closed, 25% win rate).
+
+### Open gaps (prioritized — where to start)
+
+**Tier 0 — Monday 2026-07-07 RTH open (do first, no new features until green):**
+
+1. **Verify BIE Stage 4 write paths live** — confirm `alert_audit_log` gets exactly **one row per new
+   0DTE flag** (not per refresh tick) and **one row per newly published Night Hawk play** after the
+   next edition. Was shipped on a holiday; zero live exercise yet.
+2. **Re-run full audit suite at 09:35 ET** — `validate:rth-open`, `full-site-deep-audit.mjs`,
+   `data-validator.mjs`, `heatmap-matrix-audit.mjs`. Decide whether equity heatmap emptiness is
+   holiday artifact or real P0.
+3. **Ship Night Hawk rejected-play audit trail** — Stage 4 step 4b still open (`geometryRejected`
+   list not threaded through `edition-builder.ts` checkpoint-restore path). Documented, not dropped.
+
+**Tier 1 — Data integrity (BIE charter priority #1):**
+
+4. **Equity GEX / heatmap-warm** — if SPY/QQQ stay empty on a normal RTH day, trace
+   `getGexPositioning` → `heatmap-warm` cron → Polygon chain fetch; fix before any Grid/0DTE scoring
+   that depends on equity gamma context.
+5. **Postgres query read timeouts** — 32 `error_events`/hr + Sentry cluster; correlate with PgBouncer
+   pool stats (already in BIE report `db_pool.waiting`).
+6. **BIE Stage 4 query surface** — `/api/admin/bie-report` `audit_trail` block after write paths
+   have real Monday data.
+
+**Tier 2 — Product / ops polish:**
+
+7. **`LAUNCHED_TOOLS=grid`** — 0DTE Command is code-complete but **launch-gated** for non-admins;
+   flip when ready for premium members (admins already see it).
+8. **Admin dashboard remodel** — requirement captured in `docs/bie/DESIGN-NOTES.md` (#317); BIE tab
+   shipped but full Operations remodel still backlog.
+9. **Grid bootstrap cold latency** — was ~5.6s on prior audit; warm routes 74–80ms (acceptable).
+
+**Tier 3 — Deferred / data-gated (do not rush):**
+
+- BIE autonomous PR opening (Stage 5 — explicitly not now)
+- Small-model distillation (needs months of graded interactions)
+- Clerk auth-failure webhook mirroring (event existence unconfirmed)
+
+### Recommended starting sequence (CEO/CTO view)
+
+```
+Mon AM  → RTH validation green + audit_trail rows appearing
+Mon PM  → Equity heatmap P0 resolved OR documented as upstream holiday gap
+Tue–Wed → Night Hawk rejected-play write-path + BIE audit_trail query UI
+Thu     → LAUNCHED_TOOLS=grid decision (member-facing 0DTE Command)
+Ongoing → Sentry/Postgres timeout investigation; admin remodel slices
+```
+
+**Do NOT start:** new Largo intents, new Grid panels, or BIE Phase 5 autonomy until Tier 0 is green
+and equity GEX truth is settled.
+
+### Artifacts from this audit
+
+- `audit-output/validation-2026-07-03T15-09-26-063Z.md` — data-validator
+- `audit-output/rth-browser-test-2026-07-03T15-11-02-864Z.md` — authenticated page/API sweep
+- `audit-output/live-prod-validation.json` — track-record + QQQ heatmap check
+
+### Environment notes for future Cursor sessions
+
+- Fresh checkout requires `npm install` (`pg` missing otherwise — breaks `validate:deploy`).
+- Browser/Playwright **blocked** in cloud sandbox — use `scripts/audit/rth-browser-test.mjs` for
+  authenticated API proxy sweeps; visual QA needs local browser or prod ticket login.
+- Clerk admin: mint temp user with `{ role: "admin", tier: "premium" }` → `sign_in_token` → FAPI
+  ticket exchange → `__session` cookie → **DELETE user after** (real prod Clerk instance).
+
+---
+
 ## ✅ Post-deploy verification 2026-07-03 13:16 UTC — Railway status probe (PR #327) live, no regression
 **Status:** VERIFIED clean. `feat/bie-railway-status-probe` squash-merged as `dbf591b`, Railway deploy confirmed **SUCCESS** via the API before touching any other `src/**` work.
 
