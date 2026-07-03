@@ -11,7 +11,7 @@ import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import pg from "pg";
+import { createAuditClient } from "./pg-audit.mjs";
 
 const APP = process.env.AUDIT_APP_URL || "https://blackouttrades.com";
 const OUT = process.env.AUDIT_OUT || join(process.cwd(), "audit-output");
@@ -343,10 +343,8 @@ function checkDeskCacheCoherence(deskRawA, deskRawB, mergedRaw, playRaw) {
 async function dbTrackStats() {
   const url = await resolveDbUrl();
   if (!url) return { ok: false, error: "no db url" };
-  const client = new pg.Client({
-    connectionString: url,
-    ssl: url.includes("rlwy.net") || url.includes("localhost") ? false : { rejectUnauthorized: false },
-  });
+  // Shared audit SSL posture (pg-audit.mjs) — never inline rejectUnauthorized.
+  const client = createAuditClient(url);
   await client.connect();
   try {
     const { rows } = await client.query(`

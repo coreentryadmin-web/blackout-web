@@ -11,25 +11,12 @@
  *
  * Requires DATABASE_URL or DATABASE_PUBLIC_URL (or Railway CLI for blackout-web service).
  */
-import { execSync } from "node:child_process";
-import pg from "pg";
+import { createAuditClient, resolveAuditDbUrl } from "./pg-audit.mjs";
 
 const apply = process.argv.includes("--apply");
 
 async function resolveDbUrl() {
-  let url = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
-  if (!url) {
-    try {
-      const vars = JSON.parse(
-        execSync("railway variables --service blackout-web --json 2>/dev/null", {
-          encoding: "utf8",
-        })
-      );
-      url = vars.DATABASE_PUBLIC_URL || vars.DATABASE_URL;
-    } catch {
-      /* optional */
-    }
-  }
+  const url = resolveAuditDbUrl();
   if (!url) {
     console.error("FATAL: no DATABASE_URL — set env or run with Railway CLI linked.");
     process.exit(2);
@@ -49,13 +36,8 @@ async function main() {
   );
 
   const dbUrl = await resolveDbUrl();
-  const client = new pg.Client({
-    connectionString: dbUrl,
-    ssl:
-      dbUrl.includes("localhost") || dbUrl.includes("rlwy.net")
-        ? false
-        : { rejectUnauthorized: false },
-  });
+  // Shared audit SSL posture (pg-audit.mjs) — never inline rejectUnauthorized.
+  const client = createAuditClient(dbUrl);
   await client.connect();
 
   const { rows } = await client.query(`
