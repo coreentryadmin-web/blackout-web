@@ -26,26 +26,11 @@ import {
   warmGridCatalysts,
 } from "@/lib/providers/grid";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
-import { etMinutes, etClock } from "@/lib/spx-play-session-time";
+import { isEtCashRth } from "@/lib/et-market-hours";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
-
-/**
- * Regular-trading-hours gate (DST-aware ET via etMinutes), weekdays only. Mirrors heatmap-warm /
- * nights-watch-warm — warm only while the desks are live. `?force=1` overrides for manual warms.
- */
-function inMarketHours(now = new Date()): boolean {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-  }).formatToParts(now);
-  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
-  if (weekday === "Sat" || weekday === "Sun") return false;
-  const mins = etMinutes(now);
-  return mins >= etClock(9, 30) && mins <= etClock(16, 0);
-}
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -54,11 +39,11 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!force && !inMarketHours()) {
+  if (!force && !isEtCashRth()) {
     const payload = {
       ok: true,
       skipped: true,
-      reason: "Outside market hours (9:30 AM–4:00 PM ET weekdays) — use ?force=1 to override",
+      reason: "Outside cash RTH (weekday 9:30 AM–4:00 PM ET, excluding holidays/early-close) — use ?force=1 to override",
     };
     await logCronRun("grid-warm", started, payload);
     return NextResponse.json(payload);

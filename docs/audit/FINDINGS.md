@@ -7,6 +7,8 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+---
+
 ## 🧠 BIE Stage 4: Night Hawk rejected-play dedup index shipped — schema prerequisite for the still-pending write-path
 **Status:** SHIPPED (schema only). Unblocks the Night Hawk rejected-play half of Stage 4 write-path work, precisely scoped in an earlier finding tonight: `idx_alert_audit_log_nighthawk_rejected_dedup`, a partial unique index on `alert_audit_log (alert_type, ticker, source_key->>'edition_for') WHERE alert_type = 'nighthawk_rejected'`, added to `db.ts`'s existing advisory-locked migration block.
 
@@ -15,6 +17,32 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 **What's still not shipped:** the actual write-path. `generateEditionPlays()` (`claude-edition.ts`) still only `console.warn`s its `geometryRejected` list instead of returning it, and that list still needs threading through `edition-builder.ts`'s fresh-generation path (the checkpoint-restore path has no rejection data by construction — it resumes from an already-vetted checkpoint). This PR only removes the schema blocker; the write-path itself is unchanged scope from the last write-up.
 
 **Verification:** schema-only change, no new application logic — 797/797 tests (unchanged), `tsc --noEmit` + build clean. Not exercised against a live Postgres from this sandbox (same limitation as the original table — schema correctness reviewed by inspection, confirmed live post-deploy via `\d alert_audit_log`-equivalent once merged).
+
+## 🟡 FIXED 2026-07-03 — Cursor Author: warm crons (`grid-warm`, `heatmap-warm`, `nights-watch-warm`) still used weekday-only `inMarketHours()` after PR #330/#331 fixed `isEtCashRth` elsewhere
+**Status:** FIXED (PR #337). Claude's holiday-gate arc fixed `isEtCashRth()`, `isSpxEngineCronWindow()`, and `isSpxRthActive()` (PR #330/#331) but **left three duplicate `inMarketHours()` helpers** in the warm cron routes that check weekday+clock only — no `isTradingDayEt()`. Confirmed live on 2026-07-03 (Independence Day observed): `grid-warm` returned `{ warmed: 8, total: 9 }` instead of `skipped: true`.
+
+**Root cause:** copy-pasted RTH gate predating the centralized `et-market-hours.ts` holiday calendar. Partial fix shipped without grep-sweeping all cron call sites.
+
+**Fix:** replace local `inMarketHours()` in `grid-warm/route.ts`, `heatmap-warm/route.ts`, `nights-watch-warm/route.ts` with canonical `isEtCashRth()` from `@/lib/et-market-hours` (same gate PR #330 used). `?force=1` override preserved.
+
+**Also fixed (P2, same PR):**
+- `play-outcomes.ts:160` — `_syncLocks` cleanup compared `prior.then(() => next)` (always a new Promise object) → lock entries never deleted. Fixed by storing `chain` reference.
+- `board.ts:553` — `buildZeroDteAuditRow` omitted `intraday_conflict` from `decision_trace` while UI treats it as A-tier disqualifier. Added fifth gate entry + test.
+- `db.ts:3024` — `updateZeroDteLiveState` pinned `peak_premium=0` when mark was null. Fixed — skip peak/trough latch until mark is non-null.
+
+**Verification:** 798/798 tests, `tsc --noEmit` clean. Post-deploy: confirm `grid-warm`/`heatmap-warm` log `skipped: true` on holidays.
+
+## 🟡 OPEN — Cursor Author bug hunt 2026-07-03 (remaining, not yet fixed)
+
+| Sev | Bug | Location | Notes |
+|---|---|---|---|
+| P2 | `insertAlertAuditLog` fire-and-forget, no retry if INSERT fails after upsert | `scan.ts:315`, `db.ts:2904` | Permanent audit gap possible |
+| P2 | BIE router path skips Layer 4 claim verification | `largo-terminal.ts:271` | Composers should run `verifyClaims()` |
+| P2 | Postgres query read timeouts under audit load | `db.ts` pool max=5/replica | Not a logic bug — pool contention |
+| P1 watch | Equity heatmaps empty (14/15 tickers) | Polygon chain | SPX OK; re-check Monday RTH |
+| P2 | Admin cron-health 502 in browser (transient) | `/api/admin/cron-health` | During timeout storm |
+
+---
 
 ## 🟡 INVESTIGATED 2026-07-03 15:4x UTC — "Query read timeout" storm across admin endpoints is real and ongoing, most likely caused by concurrent dual-agent audit load hitting a deliberately small per-replica connection pool, not a code defect
 **Status:** INVESTIGATED, root cause understood, no speculative code change made. Pulled Railway `deploymentLogs` directly for the currently-live deployment (`c69b6c93`, live since 14:36 UTC) at the user's request to check build/deploy logs for issues — found **301 of the last 501 log lines were `error` severity**, dominated by `Query read timeout` across `admin/incidents`, `admin/health`, `admin-audit`, `admin/cron-health`, `admin/audit-log`, `admin/signal-analytics`, `api-telemetry-persist`, `cron/db-cleanup`, and the `[db] query failed while already reporting a failure` recursion-guard message (from PR #321). Timestamps span continuously from 15:24 to 15:43 UTC (essentially "now" at investigation time) — **this supersedes the earlier conclusion that the ~11:29-11:44 UTC burst was a resolved one-off blip: it is not resolved, it is ongoing.**

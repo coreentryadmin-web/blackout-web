@@ -3034,8 +3034,14 @@ export async function updateZeroDteLiveState(
     `UPDATE zerodte_setup_log SET
        status = $3,
        last_mark = COALESCE($4, last_mark),
-       peak_premium = GREATEST(COALESCE(peak_premium, 0), COALESCE($4, peak_premium, 0)),
-       trough_premium = LEAST(COALESCE(trough_premium, 1e12), COALESCE($4, trough_premium, 1e12))
+       peak_premium = CASE
+         WHEN $4 IS NOT NULL THEN GREATEST(COALESCE(peak_premium, $4), $4)
+         ELSE peak_premium
+       END,
+       trough_premium = CASE
+         WHEN $4 IS NOT NULL THEN LEAST(COALESCE(trough_premium, $4), $4)
+         ELSE trough_premium
+       END
      WHERE session_date = $1::date AND ticker = $2`,
     [sessionDate, ticker.toUpperCase(), s.status, s.mark]
   );

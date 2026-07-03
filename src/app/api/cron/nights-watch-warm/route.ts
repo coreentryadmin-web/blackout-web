@@ -22,8 +22,7 @@ import {
   type SnapshotFetchDiagnostics,
 } from "@/lib/providers/options-snapshot";
 import { isSpxTicker } from "@/lib/spx-desk-live";
-import { etMinutes, etClock } from "@/lib/spx-play-session-time";
-import { tickerShard } from "@/lib/et-market-hours";
+import { isEtCashRth, tickerShard } from "@/lib/et-market-hours";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,22 +30,6 @@ export const maxDuration = 120;
 
 /** Hard ceiling on chains warmed per run — protects the upstream + this function's budget. */
 const MAX_CHAINS = Math.max(1, Number(process.env.NIGHTS_WATCH_WARM_MAX ?? "300"));
-
-/**
- * Regular-trading-hours gate (DST-aware ET via etMinutes), weekdays only. Mirrors the
- * uw-cache-refresh intent of warming only while the chains actually move. `?force=1`
- * overrides for manual warms / off-hours testing.
- */
-function inMarketHours(now = new Date()): boolean {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-  }).formatToParts(now);
-  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
-  if (weekday === "Sat" || weekday === "Sun") return false;
-  const mins = etMinutes(now);
-  return mins >= etClock(9, 30) && mins <= etClock(16, 0);
-}
 
 /** Spread chain/GEX warms across N minute-rotating shards (audit R-20). */
 const WARM_SHARDS = Math.max(1, Number(process.env.NIGHTS_WATCH_WARM_SHARDS ?? "6"));
@@ -58,11 +41,11 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!force && !inMarketHours()) {
+  if (!force && !isEtCashRth()) {
     const payload = {
       ok: true,
       skipped: true,
-      reason: "Outside market hours (9:30 AM–4:00 PM ET weekdays) — use ?force=1 to override",
+      reason: "Outside cash RTH (weekday 9:30 AM–4:00 PM ET, excluding holidays/early-close) — use ?force=1 to override",
     };
     await logCronRun("nights-watch-warm", started, payload);
     return NextResponse.json(payload);
