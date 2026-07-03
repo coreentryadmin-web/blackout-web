@@ -3417,6 +3417,15 @@ function mapNighthawkPlayOutcomeRow(r: QueryResultRow): NighthawkPlayOutcomeRow 
   };
 }
 
+/** Upsert a Night Hawk edition's published plays into the outcomes ledger.
+ *
+ *  Returns the tickers that were a FRESH INSERT this call (first publish of that
+ *  ticker for this edition), via the same `xmax = 0` idiom used by
+ *  upsertZeroDteSetupLog — callers use this to write a Stage 4 audit-trail row
+ *  exactly once per alert, never on a force-rebuild refresh. The DO UPDATE's
+ *  `WHERE outcome = 'pending'` guard means an already-graded row (rare, but
+ *  possible on a stale force-rebuild) is neither updated nor returned here — it
+ *  correctly does not count as a fresh publish either. */
 export async function upsertNighthawkPlayOutcomes(
   rows: Array<{
     edition_for: string;
@@ -3430,8 +3439,8 @@ export async function upsertNighthawkPlayOutcomes(
     score: number;
     sector: string | null;
   }>
-): Promise<void> {
-  if (!rows.length) return;
+): Promise<Set<string>> {
+  if (!rows.length) return new Set();
   await ensureSchema();
   const pool = await getPool();
 
@@ -3457,7 +3466,7 @@ export async function upsertNighthawkPlayOutcomes(
     })
     .join(", ");
 
-  await pool.query(
+  const res = await pool.query<{ ticker: string; inserted: boolean }>(
     `
     INSERT INTO nighthawk_play_outcomes (
       edition_for, ticker, direction, conviction,
@@ -3474,9 +3483,15 @@ export async function upsertNighthawkPlayOutcomes(
       sector = EXCLUDED.sector,
       updated_at = NOW()
     WHERE nighthawk_play_outcomes.outcome = 'pending'
+    RETURNING ticker, (xmax = 0) AS inserted
     `,
     params
   );
+  const freshlyPublished = new Set<string>();
+  for (const r of res.rows) {
+    if (r.inserted === true) freshlyPublished.add(r.ticker.toUpperCase());
+  }
+  return freshlyPublished;
 }
 
 export async function pruneNighthawkPlayOutcomesForEdition(

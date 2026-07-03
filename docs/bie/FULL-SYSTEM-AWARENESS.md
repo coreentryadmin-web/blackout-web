@@ -166,7 +166,7 @@ work: decide where the token should live for automated use (a Railway
 service env var the app reads, vs. a separate ops-only process), then add
 a `railway-status.ts` provider analogous to `redis-health.ts`.
 
-## Stage 4 — Unified audit trail per alert (IN PROGRESS — schema + 0DTE write-path shipped)
+## Stage 4 — Unified audit trail per alert (IN PROGRESS — schema + both write-paths' published halves shipped)
 
 The ask specifies a full audit trail per alert: input data, calculation
 logic, decision logic, confidence score, timestamp, source API, rate-limit
@@ -180,10 +180,16 @@ writes to. Full design in `docs/bie/AUDIT-TRAIL-SCHEMA.md`; rollout status:
 3. 0DTE write-path (`persistZeroDteScan` writes one row per setup at first
    flag only, via `xmax = 0` insert-detection so refresh ticks never
    duplicate) — **shipped 2026-07-03**.
-4. Night Hawk write-path (published plays + `validatePlayGeometry()`
-   rejections) — next.
-5. Query-surface PR (`/api/admin/bie-report` audit_trail block) — after #4,
-   once there's real data across both alert types to show.
+4. Night Hawk write-path — **published half shipped 2026-07-03**
+   (`syncNighthawkPlayOutcomes` writes one row per play at first publish,
+   same `xmax = 0` pattern). The **rejected half** (one row per
+   `validatePlayGeometry()` rejection) is **NOT YET** — needs
+   `generateEditionPlays()`'s rejection list threaded through
+   `edition-builder.ts`'s two divergent code paths (fresh-generation vs.
+   checkpoint-restore, the latter has no rejection data by construction),
+   deliberately not rushed same-night.
+5. Query-surface PR (`/api/admin/bie-report` audit_trail block) — after #4
+   is fully done (published + rejected), once there's real data to show.
 
 ## Stage 5 — BIE opens PRs autonomously
 
