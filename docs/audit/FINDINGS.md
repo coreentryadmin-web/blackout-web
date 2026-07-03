@@ -7,6 +7,19 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🟡 P2 FIXED 2026-07-03 — `validate:rth-open` false-failed on Railway BUILDING state stuck after healthcheck succeeded
+**Status:** FIXED (`fix/stale-railway-building-deploy`).
+
+**Root cause:** Railway deployment `aecb3c44` remained `BUILDING` for 28+ minutes after build healthcheck succeeded (`5/5` replicas online on prior SUCCESS `928d265f`). `scripts/validate-deploy.mjs` treated any non-SUCCESS latest row as a hard fail, blocking `validate:rth-open` even though all HTTP smoke, Postgres, and cron checks passed.
+
+**Evidence:** RTH pass 3 (14:06 ET): `railway deployment list` showed BUILDING 28m; `railway status` showed `Online · 5/5 running`; `/api/health` + `/api/ready` 200; `data-correctness` 0 flags.
+
+**Fix:** `scripts/lib/railway-deploy-parse.mjs` — if latest deploy is BUILDING/DEPLOYING/QUEUED for >15m, a recent SUCCESS row exists, and service status shows Online with N/N running, downgrade to warning + pass ("Serving on prior SUCCESS deploy"). 4 unit tests.
+
+**Blast radius:** `validate:deploy`, `validate:rth-open`, GHA deploy-smoke workflows that call them.
+
+---
+
 ## 🔴 P1 FIXED 2026-07-03 — Halt-feed-degraded banner (and Largo's prompt context) claimed entries are "blocked" when the engine has always failed OPEN, never closed
 **Status:** FIXED (`fix/halt-feed-banner-false-claim`). Prompted by PR #332 (Cursor's audit) flagging "Halt feed offline" as a live observation — investigated whether that reflected a real current block, not just a cosmetic banner.
 
