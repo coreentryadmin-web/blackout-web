@@ -214,3 +214,45 @@ test("discovery: findings cite numbers and only fire past thresholds", () => {
 test("discovery: empty telemetry degrades to an honest no-data report", () => {
   assert.match(formatDiscovery("2026-07-06", []), /No API telemetry recorded/);
 });
+
+// ── knowledge: embed-vs-backfill partition ───────────────────────────────────────
+
+import { partitionForEmbedding } from "./knowledge";
+
+test("knowledge: never-seen chunks are fresh; embedded ones are skipped entirely", () => {
+  const all = [
+    { chunk: "a", chunk_hash: "h-a" },
+    { chunk: "b", chunk_hash: "h-b" },
+  ];
+  const existing = new Map([["h-b", true]]); // b already stored WITH embedding
+  const { fresh, cold } = partitionForEmbedding(all, existing, true);
+  assert.deepEqual(fresh.map((c) => c.chunk_hash), ["h-a"]);
+  assert.deepEqual(cold, []);
+});
+
+test("knowledge: chunks stored cold before the key existed are backfilled once a key lands", () => {
+  const all = [
+    { chunk: "a", chunk_hash: "h-a" },
+    { chunk: "b", chunk_hash: "h-b" },
+    { chunk: "c", chunk_hash: "h-c" },
+  ];
+  // a: never seen; b: stored cold (no embedding); c: already embedded.
+  const existing = new Map([
+    ["h-b", false],
+    ["h-c", true],
+  ]);
+  const { fresh, cold } = partitionForEmbedding(all, existing, true);
+  assert.deepEqual(fresh.map((c) => c.chunk_hash), ["h-a"]);
+  assert.deepEqual(cold.map((c) => c.chunk_hash), ["h-b"]);
+});
+
+test("knowledge: without a key nothing backfills — cold chunks wait, dedup still holds", () => {
+  const all = [
+    { chunk: "a", chunk_hash: "h-a" },
+    { chunk: "b", chunk_hash: "h-b" },
+  ];
+  const existing = new Map([["h-b", false]]);
+  const { fresh, cold } = partitionForEmbedding(all, existing, false);
+  assert.deepEqual(fresh.map((c) => c.chunk_hash), ["h-a"]);
+  assert.deepEqual(cold, []);
+});

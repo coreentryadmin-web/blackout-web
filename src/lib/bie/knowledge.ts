@@ -14,6 +14,7 @@ import {
   fetchExistingBieHashes,
   fetchLatestNighthawkEdition,
   insertBieKnowledge,
+  updateBieKnowledgeEmbeddings,
   type BieKnowledgeRow,
 } from "@/lib/db";
 import { bieEmbeddingsConfigured, chunkDocument, cosine, embedTexts } from "./embeddings";
@@ -22,7 +23,25 @@ const hashOf = (s: string): string => createHash("sha256").update(s).digest("hex
 
 export type KnowledgeKind = "doc" | "finding" | "edition" | "zerodte_recap" | "self_eval";
 
-/** Store chunks (hash-deduped); embed when configured, store cold otherwise. */
+type ChunkRef = { chunk: string; chunk_hash: string };
+
+/** Split chunks into what needs INSERTING (never seen) vs what needs its
+ *  embedding BACKFILLED (stored cold before the key existed). Pure + tested —
+ *  this partition is what makes "add the key later" actually work: without the
+ *  cold set, hash-dedup would skip un-embedded chunks forever. */
+export function partitionForEmbedding(
+  all: ChunkRef[],
+  existing: Map<string, boolean>,
+  embeddingsOn: boolean
+): { fresh: ChunkRef[]; cold: ChunkRef[] } {
+  return {
+    fresh: all.filter((c) => !existing.has(c.chunk_hash)),
+    cold: embeddingsOn ? all.filter((c) => existing.get(c.chunk_hash) === false) : [],
+  };
+}
+
+/** Store chunks (hash-deduped); embed when configured, store cold otherwise.
+ *  Chunks stored cold in a previous run are backfilled once a key lands. */
 export async function storeKnowledge(
   kind: KnowledgeKind,
   source: string,
@@ -35,29 +54,46 @@ export async function storeKnowledge(
   }));
   if (all.length === 0) return 0;
   // Dedup BEFORE embedding: unchanged content re-ingests for free — the daily
-  // cron never re-pays the embeddings provider for the same chunk twice.
-  const existing = await fetchExistingBieHashes(all.map((c) => c.chunk_hash)).catch(() => new Set<string>());
-  const fresh = all.filter((c) => !existing.has(c.chunk_hash));
-  if (fresh.length === 0) return 0;
+  // cron never re-pays the embeddings provider for the same EMBEDDED chunk
+  // twice. Cold chunks are the exception: they get one embed to backfill.
+  const existing = await fetchExistingBieHashes(all.map((c) => c.chunk_hash)).catch(
+    () => new Map<string, boolean>()
+  );
+  const { fresh, cold } = partitionForEmbedding(all, existing, bieEmbeddingsConfigured());
+  if (fresh.length === 0 && cold.length === 0) return 0;
   let embeddings: (number[] | null)[] = fresh.map(() => null);
+  let coldEmbeddings: number[][] = [];
   if (bieEmbeddingsConfigured()) {
     try {
-      embeddings = await embedTexts(fresh.map((c) => c.chunk), "document");
+      // One provider call for both sets — fresh first, then backfills.
+      const embedded = await embedTexts([...fresh, ...cold].map((c) => c.chunk), "document");
+      embeddings = embedded.slice(0, fresh.length);
+      coldEmbeddings = embedded.slice(fresh.length);
     } catch {
-      // Store cold — a later ingest can backfill; never lose knowledge over an
-      // embed hiccup.
+      // Store cold — the next ingest retries the backfill; never lose
+      // knowledge over an embed hiccup.
       embeddings = fresh.map(() => null);
+      coldEmbeddings = [];
     }
   }
-  return insertBieKnowledge(
-    fresh.map((c, i) => ({
-      kind,
-      source,
-      chunk: c.chunk,
-      chunk_hash: c.chunk_hash,
-      embedding: embeddings[i] ?? null,
-    }))
-  );
+  let written = 0;
+  if (fresh.length > 0) {
+    written += await insertBieKnowledge(
+      fresh.map((c, i) => ({
+        kind,
+        source,
+        chunk: c.chunk,
+        chunk_hash: c.chunk_hash,
+        embedding: embeddings[i] ?? null,
+      }))
+    );
+  }
+  if (coldEmbeddings.length > 0) {
+    written += await updateBieKnowledgeEmbeddings(
+      cold.map((c, i) => ({ chunk_hash: c.chunk_hash, embedding: coldEmbeddings[i]! }))
+    );
+  }
+  return written;
 }
 
 export type RetrievedChunk = { source: string; kind: string; chunk: string; similarity: number };
