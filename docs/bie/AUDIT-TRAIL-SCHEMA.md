@@ -201,8 +201,11 @@ seeing real data.
    breaks the report). This closes Stage 4 — schema, all three write-paths,
    and the query surface are now all shipped.
 
-Explicitly out of scope for Stage 4: **missed-alert detection** (needs a
-ground-truth "should have fired" definition first — logging more about
-alerts that DID fire doesn't help find ones that should have but didn't)
-and **duplicate-alert detection** (a distinct dedup-key design problem).
-Both stay `NOT YET` in `FULL-SYSTEM-AWARENESS.md`.
+Was explicitly out of scope for Stage 4 itself, both now shipped as Stage 2
+items (2026-07-03, see `FULL-SYSTEM-AWARENESS.md`): **missed-alert
+detection** (`src/lib/bie/missed-alerts.ts` — cron-outage ground truth, not
+a full backtest) and **duplicate-alert detection**
+(`fetchDuplicateAlertGroups()` in `db.ts` — checks this table's own
+`(alert_type, source_key)` uniqueness invariant against reality, using the
+dedup infrastructure above as the thing being verified, not a new
+dedup-key design).

@@ -7,6 +7,19 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🧠 BIE Stage 2 fully closed 2026-07-03 — duplicate-alert detection shipped, zero invented ground truth
+**Status:** SHIPPED (`feat/bie-duplicate-alert-detection`). Last open item from Stage 2's original ask ("duplicate/incorrect alerts" — "incorrect" was already covered by outcome grading). User said "keep pushing" after Stage 2/3 completion, so this picked the highest-value next target instead of waiting to be told what to build next.
+
+**Approach:** rather than inventing a new dedup-key definition (the exact reason this was deferred as "a distinct dedup-key design problem" in the original Stage 4 scoping), this verifies `alert_audit_log`'s OWN already-documented design invariant against production reality — the table's whole point (`docs/bie/AUDIT-TRAIL-SCHEMA.md`) is exactly one row per `(alert_type, source_key)`, enforced by three different mechanisms built earlier tonight (0DTE `xmax = 0`, Night Hawk published `xmax = 0`, Night Hawk rejected partial unique index). `fetchDuplicateAlertGroups()` (`db.ts`) is a `GROUP BY (alert_type, source_key) HAVING COUNT(*) > 1` — if it ever returns a row, one of those three dedup mechanisms has a bug. Zero new definition invented; it's a correctness check on work already shipped this session.
+
+**Also checked, not built:** GEX regime-alert push notifications (`gex-alerts` cron) already have their own per-day Redis dedup (`gex-alert-sent:{ticker}:{type}:{date}`) — reviewed the route and found this already well-designed, so no duplicate work needed there. (Noted, not fixed: the check-then-act pattern between the Redis dedup read and the push send isn't atomic, a narrow theoretical race under concurrent cron overlap — no evidence this has ever happened, not chased without a real signal.)
+
+**Wired into:** `/api/admin/bie-report`'s new `duplicate_alerts` field, surfaced in the existing "Audit trail" admin panel (reads the same table the audit-trail rows come from, so it lives right next to them).
+
+**Verification:** 827/827 tests (unchanged — `fetchDuplicateAlertGroups` is a thin DB-read wrapper, same no-unit-test precedent as `fetchAlertAuditTrail`/`getDatabasePoolStats`), `tsc --noEmit` + build clean. Not exercised against live Postgres from this sandbox; the honest expected result is zero duplicate groups, which itself would be a positive confirmation that all three Stage 4 dedup mechanisms are holding — will read the live `/api/admin/bie-report` response once deployed.
+
+---
+
 ## 🔴 P1 FIXED + 🧠 BIE Stage 2 & 3 completed 2026-07-03 — dbQuery double-counting bug found and fixed, missed-alerts detection shipped, all Railway/Postgres Stage 3 items closed
 **Status:** SHIPPED (`feat/bie-railway-resource-envvar-log-discovery`). User asked to complete BIE Stage 2 and Stage 3 today; per explicit direction, missed-alerts detection uses a cron-outage-only ground truth (not a full historical backtest), and the Postgres slow-query check is check-only (never attempts to enable the extension).
 

@@ -13,6 +13,7 @@ import {
   fetchBieInteractionStats,
   fetchBieKnowledge,
   fetchBieKnowledgeStats,
+  fetchDuplicateAlertGroups,
   getDatabasePoolStats,
 } from "@/lib/db";
 import { runBieCalibration, formatCalibration } from "@/lib/bie/calibration";
@@ -74,6 +75,7 @@ export async function GET() {
     railwayRuntimeErrors,
     missedAlerts,
     pgStatStatements,
+    duplicateAlerts,
   ] =
     await Promise.all([
       runBieDailySelfEval().catch(() => null),
@@ -112,6 +114,10 @@ export async function GET() {
         .catch(() => ({ outage_count: 0, windows: [] })),
       // Stage 3: pg_stat_statements presence check ONLY — never attempts to enable it.
       probePgStatStatements().catch(() => ({ configured: false as const })),
+      // Stage 2: duplicate-alert detection — verifies alert_audit_log's own
+      // dedup invariant (xmax=0 / partial unique index write-paths) actually
+      // holds in production. Zero invented ground truth.
+      fetchDuplicateAlertGroups(20).catch(() => []),
     ]);
 
   // Retrieval probe: only meaningful once the key works. Multiple representative
@@ -174,6 +180,10 @@ export async function GET() {
       // Stage 3: presence check only, never enables it. { enabled: false } is an
       // honest, final answer here, not a placeholder — see pg-stat-statements-health.ts.
       pg_stat_statements: pgStatStatements,
+      // Stage 2: rows in alert_audit_log sharing the same (alert_type, source_key) —
+      // by design there should be zero; any group here means a dedup write-path has
+      // a bug. Empty array is a real, verified "no duplicates found," not silence.
+      duplicate_alerts: duplicateAlerts,
       // Every previously persisted report — the improvement trail, newest first.
       report_trail: trail.map((r) => ({ source: r.source, at: r.created_at, preview: r.chunk.slice(0, 200) })),
     },
