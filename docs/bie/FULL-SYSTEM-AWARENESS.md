@@ -1,12 +1,72 @@
 # BIE Full System Awareness — roadmap and honest status
 
-**The ask (verbatim intent, 2026-07-03):** BIE should have complete operational
-awareness of BLACKOUT — logs, infra, APIs, database, alerts, business logic —
-and become the platform's operating brain: it should not just answer questions,
-it should actively find what's wrong, why, how serious, and what to fix first.
-Every number traceable, every calculation reproducible, every rule versioned,
-every alert carrying a full audit trail. The model should never invent a fact;
-when it lacks validated access to something, it must say so.
+## Primary objective (formal charter, 2026-07-03 — supersedes the earlier informal ask below)
+
+The primary goal of BIE is to make the entire platform **trustworthy**. Every
+number, value, flow, heatmap, matrix, SPX Slayer signal, alert, dashboard
+metric, chart, ranking, and generated play shown to users must be accurate,
+validated, traceable, and explainable.
+
+**Explicit priority order, stated by the user directly: data integrity is
+BIE's first responsibility, ahead of improving trade recommendations.**
+Everything in this doc's rollout should be sequenced accordingly — the
+validation/traceability work below outranks scoring/calibration work.
+
+No user-facing value should appear on the site unless it can be traced back
+to its source, validated against expected logic, and checked for freshness.
+BIE must continuously compare source API data → backend-transformed data →
+database-stored data → cached data → frontend-displayed data, and flag any
+mismatch, stale value, missing field, calculation error, duplicate, bad
+timestamp, bad transformation, or suspicious output immediately.
+
+Every important value needs an audit trail: source, timestamp, raw input,
+transformation logic, calculation version, validation result, confidence
+level, display location, final user-facing value. Every generated play
+needs: why it was generated, what data was used, what market context
+existed, what confidence score was assigned, how it performed, whether the
+thesis was correct, what failed, what should improve next time. The system
+must learn from both data errors and trade-outcome errors — bad data, wrong
+calculations, stale data, weak signals, false positives, missed
+opportunities, bad rankings, bad confidence scoring, broken UI logic, API
+issues, rate limits, infra failures, backend/frontend bugs, logic gaps.
+
+**The one architectural constraint that governs everything above: BIE (the
+LLM layer) must never be the source of truth for correctness.** Accuracy
+comes from validation systems, audit trails, deterministic calculations,
+and source-of-truth checks — all plain code, independently verifiable, none
+of it "trust the model." BIE's job is to detect, explain, rank, and help fix
+issues that a validation layer already found — never to decide on its own
+that something is correct. This is not a new principle — it's the same rule
+L1 Deterministic already holds (no LLM computes a trading number) — this
+charter extends it to say BIE can't "invent" a correctness verdict either.
+
+**Where this already exists, not just aspirational:** `data-correctness`
+(every 30min RTH) and `data-integrity` (every 5min RTH) crons already run
+exactly this validation layer in production — shadow-recompute/invariant/
+sanity/cross-provider/cross-tool/freshness checks across heat maps, SPX
+desk, HELIX flows, Night's Watch, Night Hawk, track record — and already
+distinguish "independently confirmed" from "consistency-only" (never a
+false green when there's no real second source). `data-integrity` auto-opens
+real incidents (`admin_incidents`) on any discrepancy. **The gap is that BIE
+doesn't read either system's output yet** — discovery only sees generic cron
+pass/fail today, not the substance of what these validators already found.
+Closing that gap is the immediate next step (see Stage 2 addendum below).
+
+The Stage 4 audit-trail design (`docs/bie/AUDIT-TRAIL-SCHEMA.md`) already
+maps closely onto the per-value audit-trail requirement above (source,
+timestamp, decision logic, confidence, output) — written before this formal
+charter existed, but scoped consistently with it.
+
+---
+
+**The informal ask (verbatim intent, 2026-07-03, kept for history):** BIE
+should have complete operational awareness of BLACKOUT — logs, infra, APIs,
+database, alerts, business logic — and become the platform's operating
+brain: it should not just answer questions, it should actively find what's
+wrong, why, how serious, and what to fix first. Every number traceable,
+every calculation reproducible, every rule versioned, every alert carrying
+a full audit trail. The model should never invent a fact; when it lacks
+validated access to something, it must say so.
 
 This doc is the honest map: what's true today, what ships next with zero new
 access, and what genuinely needs a decision or credential from the user. It
