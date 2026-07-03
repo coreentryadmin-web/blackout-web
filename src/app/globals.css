@@ -1451,104 +1451,32 @@ body::before {
 }
 .bento-flagship::before { opacity: 0.4; }
 .bento-accent-gold { border-top-color: #ffcc4d; }
-.bento-accent-bie { border-top-color: #22d3ee; }
 
-/* ── BIE Core visual — the "living intelligence" tile ────────────────────
-   BIE isn't another instrument, it's the layer watching all of them, so its
-   card gets a distinct always-on treatment instead of the per-product sigil:
-   a slow shifting multi-hue wash (spans every product's accent color) behind
-   a pulsing core with expanding radar rings and a cycling terminal readout. */
-.bento-bie .bento-card-inner {
-  background:
-    radial-gradient(70% 60% at 15% 0%, rgba(0, 230, 118, 0.10), transparent 60%),
-    radial-gradient(65% 60% at 85% 100%, rgba(191, 95, 255, 0.10), transparent 60%),
-    #08080e;
-  background-size: 200% 200%;
-  animation: bie-wash-drift 14s ease-in-out infinite;
-}
-.bento-bie::before { opacity: 0.35; }
-
-@keyframes bie-wash-drift {
-  0%, 100% { background-position: 0% 0%, 100% 100%; }
-  50% { background-position: 40% 30%, 60% 70%; }
+/* ── BIE brain banner — the title-card reveal above "The full desk" grid.
+   A pulsing core wired to all six instruments, plus a thin mesh between
+   neighbors, animated continuously (only while on screen) so it reads as one
+   living network, not a static diagram. */
+.bie-brain-banner {
+  margin-bottom: 3.5rem;
 }
 
-.bie-core-wrap {
-  display: flex;
+.bie-brain-heading {
+  text-align: center;
+  margin-bottom: 1.25rem;
+}
+
+.bie-brain-eyebrow {
+  display: inline-flex;
   align-items: center;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.bie-core-visual {
-  position: relative;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-}
-
-.bie-core-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 1px solid rgba(34, 211, 238, 0.55);
-  opacity: 0;
-  animation: bie-ring-ping 3.3s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
-}
-
-@keyframes bie-ring-ping {
-  0% { transform: scale(0.35); opacity: 0.85; }
-  75% { opacity: 0; }
-  100% { transform: scale(1.05); opacity: 0; }
-}
-
-.bie-core-orbit {
-  position: absolute;
-  inset: 12%;
-  border-radius: 50%;
-  border: 1px dashed rgba(191, 95, 255, 0.4);
-  animation: bie-orbit-spin 9s linear infinite;
-}
-
-@keyframes bie-orbit-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.bie-core-nucleus {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 46%;
-  height: 46%;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #5df7ff, #00e5ff 45%, #0a3b45 100%);
-  box-shadow:
-    0 0 24px 4px rgba(0, 229, 255, 0.55),
-    0 0 60px 12px rgba(191, 95, 255, 0.25);
-}
-
-.bie-core-nucleus-glyph {
+  gap: 0.45rem;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  color: #04191c;
-}
-
-.bie-core-readout {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  min-width: 0;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11.5px;
-  line-height: 1.5;
+  font-size: 10px;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
   color: rgba(148, 226, 255, 0.85);
 }
 
-.bie-core-readout-dot {
-  flex-shrink: 0;
+.bie-brain-eyebrow-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -1557,21 +1485,164 @@ body::before {
   animation: pulse-dot 1.6s ease-in-out infinite;
 }
 
-.bie-core-readout-text {
-  min-width: 0;
+.bie-brain-title {
+  margin-top: 0.6rem;
+  font-family: var(--font-syne, inherit);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  font-size: clamp(1.9rem, 4vw, 2.75rem);
+  background: linear-gradient(100deg, #ffffff 20%, #5df7ff 45%, #bf5fff 60%, #ffffff 80%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: bie-title-shimmer 6s linear infinite;
 }
 
-.bie-core-readout-cursor {
-  color: rgba(34, 211, 238, 0.9);
-  animation: vitals-cursor-blink 1.1s step-end infinite;
+@keyframes bie-title-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -50% 0; }
+}
+
+.bie-brain-sub {
+  margin-top: 0.6rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  min-height: 1.4em;
+}
+
+.bie-brain-diagram {
+  position: relative;
+  max-width: 60rem;
+  margin: 0 auto;
+}
+
+.bie-brain-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.bie-wire {
+  fill: none;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.bie-mesh-wire {
+  stroke: rgba(93, 247, 255, 0.24);
+  stroke-width: 1.1;
+}
+
+.bie-spoke-wire {
+  stroke-width: 1.6;
+  opacity: 0.8;
+}
+
+.is-drawn .bie-wire {
+  animation: bie-draw-on 1.1s cubic-bezier(0.16, 0.8, 0.3, 1) forwards;
+}
+
+@keyframes bie-draw-on {
+  to { stroke-dashoffset: 0; }
+}
+
+.bie-spoke-pulse {
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.9));
+}
+
+.bie-mesh-pulse {
+  opacity: 0.6;
+  filter: drop-shadow(0 0 2px rgba(93, 247, 255, 0.8));
+}
+
+.bie-brain-node-dot {
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+.bie-brain-ring {
+  fill: none;
+  stroke: rgba(0, 229, 255, 0.55);
+  stroke-width: 1.5;
+  opacity: 0;
+  transform-origin: 600px 54px;
+  animation: bie-brain-ring-ping 3.4s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+}
+
+@keyframes bie-brain-ring-ping {
+  0% { transform: scale(0.55); opacity: 0.8; }
+  75% { opacity: 0; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
+.bie-brain-core {
+  fill: url(#bie-core-grad);
+  transform-origin: 600px 54px;
+  animation: bie-brain-core-pulse 2.4s ease-in-out infinite;
+  filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.65)) drop-shadow(0 0 26px rgba(191, 95, 255, 0.3));
+}
+
+@keyframes bie-brain-core-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+.bie-brain-core-label {
+  position: absolute;
+  left: 50%;
+  top: 20.8%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #04191c;
+  pointer-events: none;
+}
+
+.bie-brain-nodes {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 1.75rem;
+  margin-top: 1.5rem;
+}
+
+.bie-brain-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.75);
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.bie-brain-node:hover {
+  color: var(--node-accent, #fff);
+  transform: translateY(-1px);
+}
+
+.bie-brain-node-swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--node-accent, #fff);
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--node-accent, #fff) 70%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bento-bie .bento-card-inner { animation: none; }
-  .bie-core-ring { animation: none; opacity: 0; }
-  .bie-core-orbit { animation: none; }
-  .bie-core-readout-dot { animation: none; }
-  .bie-core-readout-cursor { animation: none; opacity: 1; }
+  .bie-brain-eyebrow-dot { animation: none; }
+  .bie-brain-title { animation: none; background-position: 0 0; }
+  .bie-wire { stroke-dashoffset: 0; }
+  .is-drawn .bie-wire { animation: none; }
+  .bie-brain-ring { animation: none; opacity: 0; }
+  .bie-brain-core { animation: none; }
+  .bie-spoke-pulse, .bie-mesh-pulse { display: none; }
 }
 
 .bento-card-watermark {
