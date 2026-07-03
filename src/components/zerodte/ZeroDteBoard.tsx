@@ -100,13 +100,26 @@ type PlayRow = {
   setup: EnrichedZeroDteSetup | null;
 };
 
-function mergePlays(setups: EnrichedZeroDteSetup[], ledger: LedgerRow[]): PlayRow[] {
+function mergePlays(
+  setups: EnrichedZeroDteSetup[],
+  ledger: LedgerRow[],
+  heatState: SessionHeat["state"] | undefined
+): PlayRow[] {
+  // Past the 15:00 ET cutoff no NEW play can open; after the close nothing is live.
+  const pastCutoff = heatState === "POWER_HOUR" || heatState === "LATE_SESSION" || heatState === "CLOSED";
+  const sessionClosed = heatState === "CLOSED" || heatState === undefined;
   const byTicker = new Map(setups.map((s) => [s.ticker, s]));
   const rows: PlayRow[] = ledger.map((r) => ({
     ticker: r.ticker,
     direction: r.direction,
     strike: r.top_strike,
-    status: (["OPEN", "HOLD", "TRIM", "CLOSED"].includes(r.status ?? "") ? r.status : "HOLD") as PlayRow["status"],
+    // Unknown/null status (e.g. a row the sync couldn't price) falls back by clock:
+    // CLOSED once the session is over, HOLD while it's live — never a stale badge.
+    status: (["OPEN", "HOLD", "TRIM", "CLOSED"].includes(r.status ?? "")
+      ? r.status
+      : sessionClosed
+        ? "CLOSED"
+        : "HOLD") as PlayRow["status"],
     entry_premium: r.entry_premium,
     flow_avg_fill: r.flow_avg_fill,
     last_mark: r.last_mark,
@@ -120,15 +133,18 @@ function mergePlays(setups: EnrichedZeroDteSetup[], ledger: LedgerRow[]): PlayRo
   }));
   const seen = new Set(ledger.map((r) => r.ticker));
   // Fresh finds the cron hasn't persisted yet (≤2 min window) — or MOVED ones we
-  // deliberately never open: show them so members see the full picture.
+  // deliberately never open: show them so members see the full picture. After the
+  // close they are NOT plays (the scanner refused them past the cutoff) — drop them.
   for (const s of setups) {
     if (seen.has(s.ticker)) continue;
+    if (sessionClosed) continue;
     const moved = s.plan?.entry_status === "MOVED";
     rows.push({
       ticker: s.ticker,
       direction: s.direction,
       strike: s.top_strike,
-      status: moved ? "SKIP" : "OPEN",
+      // Past the entry cutoff a fresh find is watch-only, never OPEN.
+      status: moved || pastCutoff ? "SKIP" : "OPEN",
       entry_premium: s.plan?.entry_max ?? s.top_strike_avg_fill,
       flow_avg_fill: s.top_strike_avg_fill,
       last_mark: s.plan?.mark ?? null,
@@ -201,12 +217,14 @@ function StatusBadge({ row }: { row: PlayRow }) {
         HOLD
       </Badge>
     );
-  if (row.status === "SKIP")
+  if (row.status === "SKIP") {
+    const ran = row.setup?.plan?.entry_status === "MOVED";
     return (
       <Badge tone="bear" size="sm">
-        SKIP — RAN
+        {ran ? "SKIP — RAN" : "SKIP — LATE"}
       </Badge>
     );
+  }
   return (
     <Badge tone="neutral" size="sm">
       CLOSED
@@ -358,12 +376,17 @@ function PlayDetail({ row }: { row: PlayRow }) {
             Premium tagged +100% — take at least half off; manage the rest to the 3:30 ET exit.
           </p>
         )}
-        {row.status === "SKIP" && (
-          <p className="mt-1 text-[11px] font-semibold text-bear">
-            Premium already ran {s?.plan?.vs_flow_pct != null ? `+${s.plan.vs_flow_pct}% ` : ""}past the flow&apos;s
-            fill — the move happened. No entry.
-          </p>
-        )}
+        {row.status === "SKIP" &&
+          (s?.plan?.entry_status === "MOVED" ? (
+            <p className="mt-1 text-[11px] font-semibold text-bear">
+              Premium already ran {s?.plan?.vs_flow_pct != null ? `+${s.plan.vs_flow_pct}% ` : ""}past the
+              flow&apos;s fill — the move happened. No entry.
+            </p>
+          ) : (
+            <p className="mt-1 text-[11px] font-semibold text-bear">
+              Flagged after the 3:00 ET cutoff — 0DTE discipline: no fresh entries this late. Watch-only.
+            </p>
+          ))}
       </div>
 
       <div className="flex items-center justify-between">
@@ -485,7 +508,7 @@ export function ZeroDteBoard() {
     );
   }
 
-  const rows = mergePlays(data.setups ?? [], data.ledger ?? []);
+  const rows = mergePlays(data.setups ?? [], data.ledger ?? [], data.session?.heat?.state);
   const covered = data.covered_elsewhere ?? [];
   const graded = rows.filter((r) => r.plan_outcome && r.plan_outcome !== "ungradeable");
   const wins = graded.filter((r) => (r.plan_pnl_pct ?? 0) > 0).length;

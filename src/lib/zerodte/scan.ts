@@ -317,26 +317,33 @@ export async function readZeroDteLedger(): Promise<ZeroDteSetupLogRow[]> {
  * Already-CLOSED rows are left untouched. Best-effort throughout.
  */
 export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<ZeroDteSetupLogRow[]> {
-  const live = rows.filter(
-    (r) => r.status !== "CLOSED" && r.entry_premium != null && typeof r.plan_json?.occ === "string"
-  );
+  const live = rows.filter((r) => r.status !== "CLOSED");
   if (live.length === 0) return rows;
-  const snaps = await within(
-    fetchOptionsUnifiedSnapshot(live.map((r) => r.plan_json!.occ as string)).catch(
-      () => new Map<string, import("@/lib/providers/options-snapshot").OptionSnapshot>()
-    ),
-    2_500
-  );
+  const occs = live
+    .map((r) => (typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null))
+    .filter((o): o is string => Boolean(o));
+  const snaps = occs.length
+    ? await within(
+        fetchOptionsUnifiedSnapshot(occs).catch(
+          () => new Map<string, import("@/lib/providers/options-snapshot").OptionSnapshot>()
+        ),
+        2_500
+      )
+    : new Map<string, import("@/lib/providers/options-snapshot").OptionSnapshot>();
   if (!snaps) return rows;
   const { hour, minute } = etNowParts();
   const nowEtMinutes = hour * 60 + minute;
 
   const updated = await Promise.all(
     rows.map(async (r) => {
-      if (r.status === "CLOSED" || r.entry_premium == null || typeof r.plan_json?.occ !== "string") return r;
-      const mark = snaps.get(r.plan_json.occ as string)?.mark ?? null;
-      const peak = Math.max(r.peak_premium ?? r.entry_premium, mark ?? 0);
-      const trough = Math.min(r.trough_premium ?? r.entry_premium, mark ?? Number.MAX_VALUE);
+      // CLOSED is terminal; every other row gets a state pass — rows with no plan/
+      // entry still time-stop at 15:30 (data quality never exempts the clock).
+      if (r.status === "CLOSED") return r;
+      const occ = typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null;
+      const mark = occ ? (snaps.get(occ)?.mark ?? null) : null;
+      const entryRef = r.entry_premium ?? 0;
+      const peak = Math.max(r.peak_premium ?? entryRef, mark ?? 0);
+      const trough = Math.min(r.trough_premium ?? (r.entry_premium ?? Number.MAX_VALUE), mark ?? Number.MAX_VALUE);
       const state = derivePlayStatus({
         entryPremium: r.entry_premium,
         mark: mark ?? r.last_mark,
