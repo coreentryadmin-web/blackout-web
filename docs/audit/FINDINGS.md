@@ -7,7 +7,15 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
-<<<<<<< HEAD
+## 🔴 P1 FIXED 2026-07-03 — Unresolved git conflict markers committed straight to `main` in this doc (PR #339's merge)
+**Status:** FIXED (`fix/findings-md-conflict-markers`). `main`'s `docs/audit/FINDINGS.md` contained literal `<<<<<<< HEAD` / `=======` / `>>>>>>> d338be2 (fix(ops): skip RTH audit checks on NYSE market holidays)` markers from commit `a39ff66` (PR #339) onward — confirmed via `git show a39ff66:docs/audit/FINDINGS.md`, not just a local working-tree artifact. The markers split the "BIE Stage 4 dedup index" entry's header from its body (header stranded on the `HEAD` side, body stranded after the `>>>>>>>` line) and buried PR #339's own "RTH audit scripts false-failed" entry inside the conflict block instead of as a normal top-level entry.
+
+**Root cause:** whoever merged PR #339 (`d338be2`) resolved a real conflict against a concurrently-merged entry (this doc is appended to by both agents on nearly every PR) but pushed the result without removing the marker lines — a manual-resolution slip, not a tooling bug. GitHub's merge UI/API does not itself detect stray marker text as an error since it's syntactically valid Markdown.
+
+**Fix:** reconstructed newest-first order by hand: kept PR #339's full entry intact as its own section, reattached the orphaned "BIE Stage 4 dedup index" header to its orphaned body, left the already-correctly-positioned PR #337 entry below unchanged. Verified with `grep -n "^<<<<<<<\|^=======\|^>>>>>>>" docs/audit/FINDINGS.md` (no matches).
+
+**Verification:** docs-only change, no code touched — `tsc --noEmit` / `npm test` / `npm run build` unaffected (798/798 tests, all clean). Caught while resuming the in-progress Night Hawk rejected-play write-path branch, whose own `git stash pop` surfaced the corruption already present on `origin/main` rather than something the stash introduced.
+
 ---
 
 ## 🟡 P2 FIXED 2026-07-03 — BIE router (`bie-router` answer path) skipped Layer 4 `verifyClaims()` — `claims_total`/`claims_verified` always null in telemetry
@@ -21,8 +29,6 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
-## 🧠 BIE Stage 4: Night Hawk rejected-play dedup index shipped — schema prerequisite for the still-pending write-path
-=======
 ## 🟡 P2 FIXED 2026-07-03 — RTH audit scripts false-failed on Independence Day observed (2026-07-03)
 
 **Status:** FIXED (`fix/rth-holiday-audit-skip`). `validate:rth-open` and `gha-rth-audit` flagged `spx-evaluate` / `market_regime` / `nights-watch-warm` as missing during RTH on a weekday, and `heatmap-matrix-audit` / `full-site-deep-audit` flagged 14 empty equity heatmap presets as P1 — all expected on NYSE holiday when crons correctly skip and equity chains don't refresh.
@@ -35,7 +41,7 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
->>>>>>> d338be2 (fix(ops): skip RTH audit checks on NYSE market holidays)
+## 🧠 BIE Stage 4: Night Hawk rejected-play dedup index shipped — schema prerequisite for the still-pending write-path
 **Status:** SHIPPED (schema only). Unblocks the Night Hawk rejected-play half of Stage 4 write-path work, precisely scoped in an earlier finding tonight: `idx_alert_audit_log_nighthawk_rejected_dedup`, a partial unique index on `alert_audit_log (alert_type, ticker, source_key->>'edition_for') WHERE alert_type = 'nighthawk_rejected'`, added to `db.ts`'s existing advisory-locked migration block.
 
 **Why its own PR:** same standard the original `alert_audit_log` `CREATE TABLE` was held to — a schema change to a table already carrying real 0DTE and Night Hawk published-play rows gets reviewed on its own, not folded into a write-path change that also has application logic to review. Zero consumers today (nothing writes `alert_type = 'nighthawk_rejected'` rows yet) — purely additive, cannot regress anything by construction.
