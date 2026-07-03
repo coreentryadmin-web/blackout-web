@@ -8,8 +8,9 @@ export function isCronAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET?.trim();
   if (!secret) return false;
   const authHeader = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  // Constant-time compare — this is the single auth gate for all 9 cron writers, so the
-  // `===` early-exit shouldn't leak the secret byte-by-byte via response timing.
+  // Constant-time compare — this is the single auth gate for all 23 cron writers (every
+  // route under api/cron/*), so the `===` early-exit shouldn't leak the secret
+  // byte-by-byte via response timing.
   const a = Buffer.from(authHeader);
   const b = Buffer.from(secret);
   return a.length === b.length && timingSafeEqual(a, b);

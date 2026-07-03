@@ -7,6 +7,17 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🟢 LOW FIXED 2026-07-03 — stale "single writer" doc comments (3 files) + stale cron-writer count (1 file)
+**Status:** SHIPPED (`fix/stale-single-writer-comments`). Found by a background sweep agent applying the same "comment claims X, code does Y" pattern that caught the halt-banner P1 earlier this session. Both findings are documentation drift, not live bugs — confirmed the actual runtime behavior is correct in both cases before touching anything.
+
+**Stale "single writer" claim (`spx-lotto-engine.ts:638`, `spx-power-hour-engine.ts:535`, `src/app/api/market/lotto/today/route.ts:23`):** all three comments claimed the `spx-evaluate` cron is the sole/single writer that advances SPX lotto and power-hour state. A second real writer exists: `admin-spx-dashboard.ts`'s explicit-confirm manual mutate path (reached only after double-confirmation in the admin UI) calls `runLottoPowerHourLocked()` directly. **Not a live concurrency bug** — that path correctly routes through the same advisory lock (`runLottoPowerHourLocked`) the cron uses, so the two writers can't double-mutate the shared record or double-fire Discord. The comments were just wrong about the writer count, which matters because a future reader trusting "single writer" could skip the lock when adding a third write path. Comments now name both writers and the shared lock that makes it safe.
+
+**Stale cron-writer count (`market-api-auth.ts:11`):** comment claimed `isCronAuthorized()` is "the single auth gate for all 9 cron writers." Actual count of routes under `src/app/api/cron/*` using this gate (or the mixed `authorizeCronOrTierApi`) is 23, confirmed via `grep -rl` — the file count grew as new crons shipped this session (missed-alerts, duplicate-alert checks, etc. didn't add new cron routes, but earlier growth had already outpaced the comment). Cosmetic only — the gate itself was never wrong, just the number in its own comment.
+
+**Verification:** 827/827 tests unchanged (comment-only diff, no logic touched), `tsc --noEmit` clean.
+
+---
+
 ## 🧠 BIE Stage 5, step 1 shipped 2026-07-03 — dry-run text proposals only, zero write/git/PR action
 **Status:** SHIPPED (`feat/bie-stage5-dryrun-proposals`). User explicitly picked Stage 5 ("BIE opens PRs autonomously") as the next target, then via `AskUserQuestion` chose the most conservative possible first step: dry-run plain-text proposals only — never a diff, never a git action, never an actual PR. This is step 1 of an explicitly multi-step end-state goal, not the end-state itself.
 

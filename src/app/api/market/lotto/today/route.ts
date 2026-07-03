@@ -20,8 +20,9 @@ export async function GET(req: NextRequest) {
     const { merged } = await loadMergedSpxDesk();
 
     // Read-only: render the cron-maintained lotto record. The mutating evaluateSpxLotto
-    // runs only in the spx-evaluate cron (single writer) — a user poll must never advance
-    // lotto state or fire Discord (audit P1: per-request mutation + duplicate alerts).
+    // runs only via the spx-evaluate cron or the admin dashboard's explicit-confirm mutate
+    // path (both share the runLottoPowerHourLocked advisory lock) — a user poll must never
+    // advance lotto state or fire Discord (audit P1: per-request mutation + duplicate alerts).
     const lotto = await readSpxLottoSnapshot();
     const history = await fetchLottoPlaysForDate(todayEtYmd());
 
