@@ -142,15 +142,17 @@ export type ZeroDteSetup = {
   last_seen: string | null;
 };
 
-const SETUP_MIN_GROSS = 750_000; // ignore thin names — this is a "best of the tape" board
-const SETUP_MIN_DOMINANCE = 0.65; // two-sided tape is a fade signal, not a setup
+// Exported so the audit trail (buildZeroDteAuditRow below) can cite the actual
+// live gate thresholds instead of a second, driftable copy of these numbers.
+export const SETUP_MIN_GROSS = 750_000; // ignore thin names — this is a "best of the tape" board
+export const SETUP_MIN_DOMINANCE = 0.65; // two-sided tape is a fade signal, not a setup
 const SETUP_MAX_DTE = 1; // 0DTE board: today + tomorrow expiries only
 /** Aggressive (at-the-ask) share of the tape must be meaningful — a tape of SOLD
  *  premium (bid-side prints) is income harvesting, not directional conviction. */
-const SETUP_MIN_AGGR_SHARE = 0.3;
+export const SETUP_MIN_AGGR_SHARE = 0.3;
 /** Top strike more than this % IN the money = stock replacement, not a directional
  *  0DTE bet — the SNDK 1880p-at-1723 class of fake-out. */
-const SETUP_MAX_ITM_PCT = 2;
+export const SETUP_MAX_ITM_PCT = 2;
 
 /** How much of a print's premium counts DIRECTIONALLY, by aggressor side.
  *  At/near the ask = conviction buying; bid-side = sold premium (opposite intent);
@@ -514,6 +516,64 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
   /** Fresh headline (<2h) naming this ticker. */
   news_hot: NewsHeat | null;
 };
+
+// ── Stage 4 audit trail (alert_audit_log) ─────────────────────────────────────────
+// Shape matches the alert_audit_log columns in src/lib/db.ts. Defined here (not in
+// db.ts) so the row-building logic is a pure function of a setup + session date —
+// unit-testable with fixture setups, no database required.
+
+export type ZeroDteAuditRow = {
+  alert_type: "zerodte";
+  source_table: "zerodte_setup_log";
+  source_key: { session_date: string; ticker: string };
+  ticker: string;
+  direction: "long" | "short";
+  confidence_score: number | null;
+  confidence_label: string | null;
+  trigger_reason: string;
+  decision_trace: Array<{ check: string; passed: boolean; value: unknown; threshold: unknown }>;
+  input_snapshot: Record<string, unknown>;
+  final_output: Record<string, unknown> | null;
+};
+
+/** Build the audit-trail row for a setup's FIRST flag. Every setup reaching this
+ *  function already cleared the four gates in deriveZeroDteSetups — this only
+ *  records that fact (real gate values vs their real thresholds), it never
+ *  invents a check that wasn't actually applied. */
+export function buildZeroDteAuditRow(setup: EnrichedZeroDteSetup, sessionDate: string): ZeroDteAuditRow {
+  return {
+    alert_type: "zerodte",
+    source_table: "zerodte_setup_log",
+    source_key: { session_date: sessionDate, ticker: setup.ticker },
+    ticker: setup.ticker,
+    direction: setup.direction,
+    confidence_score: setup.dossier_score ?? setup.score,
+    confidence_label: setup.conviction,
+    trigger_reason: setup.spike ? "flow spike (30m surge)" : "dominant aggressor flow",
+    decision_trace: [
+      { check: "gross_premium_min", passed: setup.gross_premium >= SETUP_MIN_GROSS, value: setup.gross_premium, threshold: SETUP_MIN_GROSS },
+      { check: "aggression_share_min", passed: (setup.aggression ?? 0) >= SETUP_MIN_AGGR_SHARE, value: setup.aggression, threshold: SETUP_MIN_AGGR_SHARE },
+      { check: "side_dominance_min", passed: setup.side_dominance >= SETUP_MIN_DOMINANCE, value: setup.side_dominance, threshold: SETUP_MIN_DOMINANCE },
+      { check: "max_itm_pct", passed: setup.otm_pct == null || setup.otm_pct >= -SETUP_MAX_ITM_PCT, value: setup.otm_pct, threshold: -SETUP_MAX_ITM_PCT },
+    ],
+    input_snapshot: {
+      score: setup.score,
+      dossier_score: setup.dossier_score,
+      gross_premium: setup.gross_premium,
+      net_premium: setup.net_premium,
+      sweep_pct: setup.sweep_pct,
+      prints: setup.prints,
+      new_money: setup.new_money,
+      spike: setup.spike,
+      underlying_price: setup.underlying_price,
+      top_strike: setup.top_strike,
+      expiry: setup.expiry,
+      intraday_conflict: setup.intraday_conflict,
+      direction_confirmed: setup.direction_confirmed,
+    },
+    final_output: setup.plan ? ({ ...setup.plan } as unknown as Record<string, unknown>) : null,
+  };
+}
 
 /** Tickers reporting on `today` or `nextDay` → earnings flag (per-ticker, first match). */
 export function matchEarnings(

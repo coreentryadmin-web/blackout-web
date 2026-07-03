@@ -166,17 +166,24 @@ work: decide where the token should live for automated use (a Railway
 service env var the app reads, vs. a separate ops-only process), then add
 a `railway-status.ts` provider analogous to `redis-health.ts`.
 
-## Stage 4 — Unified audit trail per alert (design work, not yet started)
+## Stage 4 — Unified audit trail per alert (IN PROGRESS — schema + 0DTE write-path shipped)
 
 The ask specifies a full audit trail per alert: input data, calculation
 logic, decision logic, confidence score, timestamp, source API, rate-limit
 status, final output, why it fired, and whether it was later correct. Today
 this exists in *pieces* (0DTE `flags_json` + outcome grading, Night Hawk
 dossier + outcome grading) but not as one **unified schema** every alert type
-writes to. Building that unified schema, migrating existing alert types onto
-it, and exposing it as queryable evidence is real design work — not a bug fix,
-a new cross-cutting data model. Scoping this properly is the next planning
-task, not a same-night patch.
+writes to. Full design in `docs/bie/AUDIT-TRAIL-SCHEMA.md`; rollout status:
+
+1. Design doc — done.
+2. `alert_audit_log` schema (additive, zero consumers) — **shipped**.
+3. 0DTE write-path (`persistZeroDteScan` writes one row per setup at first
+   flag only, via `xmax = 0` insert-detection so refresh ticks never
+   duplicate) — **shipped 2026-07-03**.
+4. Night Hawk write-path (published plays + `validatePlayGeometry()`
+   rejections) — next.
+5. Query-surface PR (`/api/admin/bie-report` audit_trail block) — after #4,
+   once there's real data across both alert types to show.
 
 ## Stage 5 — BIE opens PRs autonomously
 

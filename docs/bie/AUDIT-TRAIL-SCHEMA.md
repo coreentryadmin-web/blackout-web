@@ -130,14 +130,17 @@ seeing real data.
 2. **Schema PR:** `CREATE TABLE alert_audit_log` + indexes in `db.ts`'s
    existing advisory-locked migration block. Zero consumers yet — purely
    additive, cannot regress anything by construction.
-3. **0DTE write-path PR:** `persistZeroDteScan` writes one `alert_audit_log`
-   row alongside its existing `zerodte_setup_log` upsert, populating
-   `decision_trace` from the same gate checks the scanner already computes
-   (`SETUP_MIN_AGGR_SHARE` etc.) instead of only their pass/fail residue in
-   `flags_json`.
-4. **Night Hawk write-path PR:** dossier build writes one row per published
-   play (survivors) AND one per `validatePlayGeometry()` rejection (so
-   "why didn't X publish" becomes queryable, not just "why did Y publish").
+3. **0DTE write-path PR — SHIPPED 2026-07-03.** `persistZeroDteScan` writes
+   one `alert_audit_log` row per setup, gated to fire only at FIRST FLAG
+   (`upsertZeroDteSetupLog` now returns the freshly-inserted tickers via the
+   Postgres `xmax = 0` idiom — a refresh tick never writes a duplicate row).
+   `decision_trace` cites the real gate checks/thresholds (now exported from
+   `board.ts`: `SETUP_MIN_GROSS`, `SETUP_MIN_AGGR_SHARE`, `SETUP_MIN_DOMINANCE`,
+   `SETUP_MAX_ITM_PCT`) instead of only their pass/fail residue in
+   `flags_json`. See `docs/audit/FINDINGS.md` for the full write-up.
+4. **Night Hawk write-path PR (next):** dossier build writes one row per
+   published play (survivors) AND one per `validatePlayGeometry()` rejection
+   (so "why didn't X publish" becomes queryable, not just "why did Y publish").
 5. **Query surface PR:** extend `/api/admin/bie-report` with an
    `audit_trail` block (recent rows, source-API attribution coverage %) —
    only after there's real data to show.

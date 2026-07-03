@@ -20,6 +20,7 @@ import {
   fetchUngradedZeroDteRows,
   fetchZeroDteSetupLog,
   gradeZeroDteSetupRow,
+  insertAlertAuditLog,
   updateZeroDteLiveState,
   updateZeroDtePlanOutcome,
   upsertZeroDteSetupLog,
@@ -34,6 +35,7 @@ import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
 import { buildOcc } from "@/lib/ws/options-socket";
 import { withServerCache } from "@/lib/server-cache";
 import {
+  buildZeroDteAuditRow,
   computeLedgerGrade,
   deriveZeroDteSetups,
   enrichSetup,
@@ -293,8 +295,27 @@ export async function persistZeroDteScan(setups: EnrichedZeroDteSetup[]): Promis
       ...(s.direction_confirmed != null ? { dossier_agrees: s.direction_confirmed } : {}),
     },
   }));
-  await upsertZeroDteSetupLog(rows);
+  const freshlyFlagged = await upsertZeroDteSetupLog(rows);
+  if (freshlyFlagged.size > 0) {
+    recordZeroDteAuditTrail(
+      eligible.filter((s) => freshlyFlagged.has(s.ticker.toUpperCase())),
+      today
+    );
+  }
   return rows.length;
+}
+
+/** Stage 4 audit trail: fire-and-forget, one row per setup, ONLY for setups that
+ *  were a fresh insert this cycle (see upsertZeroDteSetupLog) — a later refresh of
+ *  the same session/ticker never writes a second audit row. Failures are logged,
+ *  never thrown — the audit trail must not be able to break the scanner. */
+function recordZeroDteAuditTrail(freshSetups: EnrichedZeroDteSetup[], sessionDate: string): void {
+  for (const setup of freshSetups) {
+    const row = buildZeroDteAuditRow(setup, sessionDate);
+    void insertAlertAuditLog(row).catch((err) => {
+      console.warn(`[zerodte-audit] failed to write alert_audit_log for ${setup.ticker}:`, err);
+    });
+  }
 }
 
 // Lazy grading throttle — grading is idempotent and cheap (≤12 rows × 1 daily-bar
