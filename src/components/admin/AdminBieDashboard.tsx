@@ -117,6 +117,7 @@ type BieReportPayload = {
     counts_by_type: Record<string, number>;
     source_api_attribution_pct: number;
   } | null;
+  duplicate_alerts?: Array<{ alert_type: string; source_key: Record<string, unknown>; count: number }>;
   report_trail?: Array<{ source: string; at: string; preview: string }>;
 };
 
@@ -132,7 +133,7 @@ type Stage = {
 // not a second source. Update alongside that doc when a stage's status changes.
 const ROADMAP: Stage[] = [
   { n: 1, name: "Repo, docs, API usage, schemas", status: "SHIPPED", blurb: "Knowledge corpus ingested + embedded (Voyage); platform telemetry monitoring is real, not aspirational." },
-  { n: 2, name: "Logs, errors, cron/worker health", status: "SHIPPED", blurb: "Backend + frontend error capture, cron health, Postgres pool, Redis internals, data-integrity/data-correctness validators all wired into discovery. Missed-alert detection now live too (cron-outage ground truth: alert-producing crons down during RTH — never a claim a real setup existed). Fixed a real double-counting bug found in the process: an admin-route catch-all was independently re-capturing every dbQuery failure the dbQuery layer had already recorded, inflating this dashboard's own error count." },
+  { n: 2, name: "Logs, errors, cron/worker health", status: "SHIPPED", blurb: "Backend + frontend error capture, cron health, Postgres pool, Redis internals, data-integrity/data-correctness validators, missed-alert detection (cron-outage ground truth), and duplicate-alert detection (verifies alert_audit_log's own xmax=0 / unique-index dedup actually holds) all wired into discovery. Fixed a real double-counting bug found in the process: an admin-route catch-all was independently re-capturing every dbQuery failure the dbQuery layer had already recorded, inflating this dashboard's own error count. Every item from the original ask is now shipped." },
   { n: 3, name: "Infra access (Railway)", status: "IN PROGRESS", blurb: "Deploy status, resource usage (CPU/memory), env-var presence audit, and recent runtime error counts are all now wired live (see the Railway chips above) — first automated use, not just manual queries. Postgres slow-query log (pg_stat_statements) is checked, not enabled, per explicit instruction — reports honestly whether the extension is present. Clerk auth-failure monitoring stays blocked: needs the user to check their own Clerk dashboard's Event Catalog, not something this sandbox can confirm." },
   { n: 4, name: "Unified per-alert audit trail", status: "SHIPPED", blurb: "alert_audit_log schema, all three write-paths (0DTE, Night Hawk published, Night Hawk rejected — all fixture-tested), and the query surface (Audit trail panel below) are all live. Source-API attribution (source_apis column) is still unpopulated by any write-path — reported honestly as 0% until a future PR threads it through." },
   { n: 5, name: "Outcome-driven calibration for plays", status: "NOT YET", blurb: "Outcome grading exists (0DTE, Night Hawk); nothing yet closes the loop by adjusting scoring logic from it. Explicitly secondary to data integrity per the charter." },
@@ -213,6 +214,7 @@ export function AdminBieDashboard() {
   const correctness = data?.correctness ?? null;
   const openIssueCount = incidents.length + (correctness?.flags.length ?? 0);
   const auditTrail = data?.audit_trail ?? null;
+  const duplicateAlerts = data?.duplicate_alerts ?? [];
 
   return (
     <div className="admin-bie-dashboard">
@@ -404,6 +406,14 @@ export function AdminBieDashboard() {
                 .join(" · ")}{" "}
               total · source-API attribution: {auditTrail.source_api_attribution_pct}%{" "}
               (unpopulated by any write-path yet — honest 0, not a guess).
+            </p>
+            <p className={clsx("admin-bie-coverage-note", duplicateAlerts.length > 0 && "admin-bie-error-text")}>
+              Duplicate check: {duplicateAlerts.length === 0
+                ? "0 duplicate rows found — the xmax=0 / unique-index dedup on all three write-paths is holding."
+                : `${duplicateAlerts.length} duplicate group(s) found — a dedup write-path has a bug: ${duplicateAlerts
+                    .slice(0, 3)
+                    .map((d) => `${d.alert_type} ×${d.count}`)
+                    .join(", ")}.`}
             </p>
           </>
         )}

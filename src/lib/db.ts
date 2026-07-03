@@ -3053,6 +3053,39 @@ export async function fetchAlertAuditTrail(limit = 20): Promise<AlertAuditTrailS
   };
 }
 
+export type DuplicateAlertGroup = {
+  alert_type: string;
+  source_key: Record<string, unknown>;
+  count: number;
+};
+
+/** BIE Stage 2 "duplicate alerts" — ground truth is `alert_audit_log`'s OWN
+ *  documented design invariant (docs/bie/AUDIT-TRAIL-SCHEMA.md): exactly one
+ *  row per real alert, keyed by (alert_type, source_key). All three write-paths
+ *  (0DTE via `xmax = 0`, Night Hawk published via `xmax = 0`, Night Hawk
+ *  rejected via a partial unique index) were built specifically to enforce
+ *  this. This checks whether that invariant actually holds in production —
+ *  zero invented definition, it verifies the system's own stated design
+ *  against reality instead of guessing at a new one. */
+export async function fetchDuplicateAlertGroups(limit = 20): Promise<DuplicateAlertGroup[]> {
+  await ensureSchema();
+  const cappedLimit = Math.min(Math.max(limit, 1), 100);
+  const { rows } = await dbQuery<QueryResultRow>(
+    `SELECT alert_type, source_key, COUNT(*)::int AS n
+     FROM alert_audit_log
+     GROUP BY alert_type, source_key
+     HAVING COUNT(*) > 1
+     ORDER BY n DESC
+     LIMIT $1`,
+    [cappedLimit]
+  );
+  return rows.map((r) => ({
+    alert_type: String(r.alert_type),
+    source_key: (r.source_key as Record<string, unknown>) ?? {},
+    count: Number(r.n) || 0,
+  }));
+}
+
 function mapZeroDteLogRow(r: QueryResultRow): ZeroDteSetupLogRow {
   return {
     session_date: isoDateString(r.session_date),
