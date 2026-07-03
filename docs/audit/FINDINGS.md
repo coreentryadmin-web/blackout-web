@@ -7,6 +7,21 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🧠 BIE Stage 5, step 1 shipped 2026-07-03 — dry-run text proposals only, zero write/git/PR action
+**Status:** SHIPPED (`feat/bie-stage5-dryrun-proposals`). User explicitly picked Stage 5 ("BIE opens PRs autonomously") as the next target, then via `AskUserQuestion` chose the most conservative possible first step: dry-run plain-text proposals only — never a diff, never a git action, never an actual PR. This is step 1 of an explicitly multi-step end-state goal, not the end-state itself.
+
+**What it does:** `src/lib/bie/stage5-proposals.ts`'s `findStage5Proposals()` does a read-only `fs` scan of `src/components/**` (confirmed feasible in production: Railway's Nixpacks build does `COPY . /app`, so the full source tree is present in the runtime container — verified from build logs before committing to this design), extracts exported PascalCase component names (`export function`/`export default function`/`export const =`), and flags any component whose name appears nowhere else in the codebase — not in any other file, and not more than once within its own defining file (the second check exists because a component can be genuinely alive via an internal sub-component reference within the same file; without it, the first version of this detector produced false positives on components that ARE used, just only internally). Each flag becomes a plain-text proposal ("orphaned_component" kind, component/file/detail) — no proposed action, no deletion, no confidence score. The module's header comment states explicitly it "NEVER writes a file, NEVER runs git, NEVER calls the GitHub API, and NEVER drafts an actual code diff."
+
+**Manual verification against the real repo (not just unit tests):** ran the detector against the actual `src/` tree via `npx tsx -e` before shipping. Found 25 candidates after the false-positive fix; spot-checked several independently via `grep -rln <name> src/` (not trusting the detector's own logic to validate itself) — `AuthBackground`, `Flow0dtePanel`, `BreadthPanel` (both in `GexDealerPanel.tsx`), `SpxChart`, `RouteErrorBoundary`, and `DashboardTrackRecordEmbed` all confirmed genuinely zero-referenced anywhere in the repo. None of these were deleted — Stage 5 step 1 only surfaces the finding, a human decides what to do with it.
+
+**Wired into:** `/api/admin/bie-report`'s new `stage5_proposals` field, a new "Proposals" panel in `AdminBieDashboard.tsx` (capped at 20 shown, with the count if more exist), and the roadmap. Also fixed a doc-drift bug found while updating the roadmap: `AdminBieDashboard.tsx`'s `ROADMAP` array had `n: 5` labeled "Outcome-driven calibration for plays," which collided with `docs/bie/FULL-SYSTEM-AWARENESS.md`'s actual Stage 5 ("BIE opens PRs autonomously") — the two docs had drifted from each other's numbering. Renumbered the calibration item to `n: 6` and added the correct Stage 5 entry.
+
+**Deliberately biased toward under-reporting:** any mention of the component name anywhere (including in a comment, a string, or an unrelated context) suppresses the flag — this is a plain substring search, not a real TypeScript import-graph resolver, so it will miss some genuinely-dead code (e.g. renamed-on-import) but will never falsely flag something that's actually wired up. Going further than this step (real draft PRs, broader or LLM-judged finding types) needs its own explicit go-ahead — not assumed from this.
+
+**Verification:** 833/833 tests (6 new, including a dedicated regression test for the internal-sub-component false-positive fix), `tsc --noEmit` + build clean.
+
+---
+
 ## ✅ Post-deploy live verification 2026-07-03 — BIE Stage 2 + 3 completion (PRs #345, #350, #351) confirmed healthy in production
 **Status:** VERIFIED. One authenticated GET to `/api/admin/bie-report` (temp Clerk admin user, created and deleted per the documented `AGENTS.md` flow, single auth cycle) confirmed all six new fields shipped across today's three PRs are present, correctly shaped, and reporting clean/healthy values:
 
