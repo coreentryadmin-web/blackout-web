@@ -711,7 +711,7 @@ test("audit row: cites the real gate values/thresholds, all passed (setup alread
   assert.equal(audit.ticker, "NVDA");
   assert.equal(audit.direction, "long");
   assert.equal(audit.trigger_reason, "dominant aggressor flow");
-  assert.equal(audit.decision_trace.length, 4);
+  assert.equal(audit.decision_trace.length, 5);
   for (const check of audit.decision_trace) {
     assert.equal(check.passed, true, `expected ${check.check} to have passed`);
   }
@@ -748,4 +748,16 @@ test("audit row: confidence_score prefers the full dossier score over the raw ev
   const withDossier = buildZeroDteAuditRow(enrichSetup(setup, dossier), "2026-07-06");
   assert.equal(withDossier.confidence_score, 88);
   assert.equal(withDossier.confidence_label, "very strong");
+});
+
+test("audit row: intraday_conflict gate recorded and fails when conflict is true", () => {
+  const rows = [row({ premium: 900_000, strike: 190 }), row({ premium: 700_000, strike: 190 })];
+  const setup = deriveZeroDteSetups(rows)[0]!;
+  const enriched = enrichSetup(setup, null);
+  enriched.intraday_conflict = true;
+  const audit = buildZeroDteAuditRow(enriched, "2026-07-06");
+  const conflict = audit.decision_trace.find((c) => c.check === "intraday_conflict");
+  assert.ok(conflict);
+  assert.equal(conflict!.passed, false);
+  assert.equal(conflict!.value, true);
 });

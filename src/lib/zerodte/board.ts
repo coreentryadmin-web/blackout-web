@@ -555,6 +555,7 @@ export function buildZeroDteAuditRow(setup: EnrichedZeroDteSetup, sessionDate: s
       { check: "aggression_share_min", passed: (setup.aggression ?? 0) >= SETUP_MIN_AGGR_SHARE, value: setup.aggression, threshold: SETUP_MIN_AGGR_SHARE },
       { check: "side_dominance_min", passed: setup.side_dominance >= SETUP_MIN_DOMINANCE, value: setup.side_dominance, threshold: SETUP_MIN_DOMINANCE },
       { check: "max_itm_pct", passed: setup.otm_pct == null || setup.otm_pct >= -SETUP_MAX_ITM_PCT, value: setup.otm_pct, threshold: -SETUP_MAX_ITM_PCT },
+      { check: "intraday_conflict", passed: !setup.intraday_conflict, value: setup.intraday_conflict, threshold: false },
     ],
     input_snapshot: {
       score: setup.score,

@@ -143,7 +143,8 @@ export async function syncNighthawkPlayOutcomes(
   const prior = _syncLocks.get(editionFor) ?? Promise.resolve();
   let release!: () => void;
   const next = new Promise<void>((resolve) => { release = resolve; });
-  _syncLocks.set(editionFor, prior.then(() => next));
+  const chain = prior.then(() => next);
+  _syncLocks.set(editionFor, chain);
 
   try {
     await prior;
@@ -157,7 +158,7 @@ export async function syncNighthawkPlayOutcomes(
   } finally {
     release();
     // Clean up the lock entry once all chains for this edition have resolved.
-    if (_syncLocks.get(editionFor) === prior.then(() => next)) {
+    if (_syncLocks.get(editionFor) === chain) {
       _syncLocks.delete(editionFor);
     }
   }
