@@ -14,7 +14,7 @@ import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 import { dbConfigured, fetchLatestNighthawkEdition } from "@/lib/db";
-import { roundFloats } from "@/lib/round-floats";
+import { roundFloats, reconcileStrikeTotal } from "@/lib/round-floats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -313,26 +313,38 @@ export async function GET(req: NextRequest) {
       ).catch(() => null);
     }
 
-    return NextResponse.json(
-      roundFloats({
-        available: true,
-        ...heatmap,
-        cross_validation,
-        overlays,
-        // The overlay sample time (#9) — a painted dark-pool / flow-by-strike level can be
-        // ~30s–2min stale on the same matrix; surface its real fetch time so the legend can
-        // show "dark pool as of …" instead of implying it's as fresh as the matrix.
-        overlays_at: overlaysAt != null ? new Date(overlaysAt).toISOString() : null,
-        // Night Hawk context — null when no current play exists for this ticker.
-        nighthawk_context: nighthawkContext,
-      }),
-      {
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-          Pragma: "no-cache",
-        },
-      }
-    );
+    const rounded = roundFloats({
+      available: true,
+      ...heatmap,
+      cross_validation,
+      overlays,
+      // The overlay sample time (#9) — a painted dark-pool / flow-by-strike level can be
+      // ~30s–2min stale on the same matrix; surface its real fetch time so the legend can
+      // show "dark pool as of …" instead of implying it's as fresh as the matrix.
+      overlays_at: overlaysAt != null ? new Date(overlaysAt).toISOString() : null,
+      // Night Hawk context — null when no current play exists for this ticker.
+      nighthawk_context: nighthawkContext,
+    });
+    // Reconcile each metric's total AFTER rounding: independently rounding total and
+    // each strike_totals entry can drift by a cent or two (live-caught P0: NVDA GEX
+    // Σstrike_totals != total, docs/audit/FINDINGS.md 2026-07-03). The pre-rounding
+    // totals were always mathematically identical (built in the same accumulation
+    // loop); this makes the DISPLAYED total match what a member would get by manually
+    // summing the displayed rows.
+    // gex/vex are always present on a non-empty heatmap; dex/charm are optional
+    // (older cached payloads, empty heatmap) — reconcileStrikeTotal is a no-op
+    // passthrough on undefined, so the dex/charm assignments stay type-correct.
+    rounded.gex = reconcileStrikeTotal(rounded.gex)!;
+    rounded.vex = reconcileStrikeTotal(rounded.vex)!;
+    rounded.dex = reconcileStrikeTotal(rounded.dex);
+    rounded.charm = reconcileStrikeTotal(rounded.charm);
+
+    return NextResponse.json(rounded, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        Pragma: "no-cache",
+      },
+    });
   } catch (error) {
     console.error("[market/gex-heatmap]", error);
     // Unify the "no data" contract: a build throw returns 200 { available:false } (same as a
