@@ -61,6 +61,96 @@ export function buildIntelligenceRings(cx: number, cy: number, maxRx: number, ma
   });
 }
 
+/** Organic field-line distortion — planet/atom magnetosphere feel, not perfect ellipses. */
+function fieldLineWarp(ringIndex: number, angleRad: number): number {
+  const n1 = 3 + (ringIndex % 3);
+  const n2 = 5 + ringIndex;
+  const phase = ringIndex * 1.65;
+  return (
+    1 +
+    0.058 * Math.sin(n1 * angleRad + phase) +
+    0.038 * Math.sin(n2 * angleRad + phase * 0.55) +
+    0.022 * Math.cos((n1 + n2) * 0.45 * angleRad + phase * 0.3)
+  );
+}
+
+export type FieldLineRing = {
+  ring: 1 | 2 | 3 | 4;
+  layer: "inner" | "outer";
+  scale: number;
+  d: string;
+  periodSec: number;
+  reverse: boolean;
+};
+
+const FIELD_LINE_CONFIG: Record<
+  1 | 2 | 3 | 4,
+  { scale: number; layer: "inner" | "outer"; periodSec: number; reverse: boolean }
+> = {
+  1: { scale: 0.26, layer: "inner", periodSec: 148, reverse: true },
+  2: { scale: 0.38, layer: "inner", periodSec: 172, reverse: false },
+  3: { scale: 0.64, layer: "outer", periodSec: 204, reverse: true },
+  4: { scale: 0.9, layer: "outer", periodSec: 236, reverse: false },
+};
+
+export function buildFieldLinePath(
+  cx: number,
+  cy: number,
+  maxRx: number,
+  maxRy: number,
+  scale: number,
+  ringIndex: number,
+  steps = 128
+): string {
+  const rx = maxRx * scale;
+  const ry = maxRy * scale;
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const rad = ((i / steps) * 360 - 90) * (Math.PI / 180);
+    const w = fieldLineWarp(ringIndex, rad);
+    pts.push({
+      x: cx + rx * w * Math.cos(rad),
+      y: cy + ry * w * Math.sin(rad),
+    });
+  }
+  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for (let i = 1; i < pts.length; i++) {
+    d += ` L ${pts[i].x.toFixed(1)} ${pts[i].y.toFixed(1)}`;
+  }
+  return `${d} Z`;
+}
+
+export function pointOnFieldLine(
+  cx: number,
+  cy: number,
+  maxRx: number,
+  maxRy: number,
+  scale: number,
+  ringIndex: number,
+  angleDeg: number
+): { x: number; y: number } {
+  const rad = ((angleDeg - 90) * Math.PI) / 180;
+  const w = fieldLineWarp(ringIndex, rad);
+  return {
+    x: cx + maxRx * scale * w * Math.cos(rad),
+    y: cy + maxRy * scale * w * Math.sin(rad),
+  };
+}
+
+export function buildFieldLineRings(cx: number, cy: number, maxRx: number, maxRy: number): FieldLineRing[] {
+  return ([1, 2, 3, 4] as const).map((ring) => {
+    const cfg = FIELD_LINE_CONFIG[ring];
+    return {
+      ring,
+      layer: cfg.layer,
+      scale: cfg.scale,
+      d: buildFieldLinePath(cx, cy, maxRx, maxRy, cfg.scale, ring),
+      periodSec: cfg.periodSec,
+      reverse: cfg.reverse,
+    };
+  });
+}
+
 export function placeCapability(
   cx: number,
   cy: number,
@@ -128,9 +218,9 @@ export function buildImpulsePath(
   maxRx: number,
   maxRy: number
 ): string {
-  const outer = pointOnEllipse(cx, cy, maxRx * RING_SCALE[4], maxRy * RING_SCALE[4], entryAngle);
-  const mid = pointOnEllipse(cx, cy, maxRx * RING_SCALE[2], maxRy * RING_SCALE[2], entryAngle + 28);
-  const exit = pointOnEllipse(cx, cy, maxRx * RING_SCALE[3], maxRy * RING_SCALE[3], entryAngle + 140);
+  const outer = pointOnFieldLine(cx, cy, maxRx, maxRy, FIELD_LINE_CONFIG[4].scale, 4, entryAngle);
+  const mid = pointOnFieldLine(cx, cy, maxRx, maxRy, FIELD_LINE_CONFIG[2].scale, 2, entryAngle + 28);
+  const exit = pointOnFieldLine(cx, cy, maxRx, maxRy, FIELD_LINE_CONFIG[3].scale, 3, entryAngle + 140);
   return `M ${outer.x.toFixed(1)} ${outer.y.toFixed(1)} Q ${mid.x.toFixed(1)} ${mid.y.toFixed(1)} ${cx} ${cy} Q ${(mid.x + cx) / 2} ${(mid.y + cy) / 2} ${exit.x.toFixed(1)} ${exit.y.toFixed(1)}`;
 }
 
@@ -296,15 +386,36 @@ export function fieldGlowRadii(viewW: number, viewH: number): { rx: number; ry: 
   return { rx: viewW * 0.46, ry: viewH * 0.44 };
 }
 
-/** Glowing nodes placed evenly on intelligence rings. */
+/** Glowing nodes on inner field lines (25% zone). */
 export type RingFieldNode = {
   id: string;
-  ring: 1 | 2 | 3 | 4;
+  ring: 1 | 2;
   x: number;
   y: number;
   index: number;
 };
 
+export function buildInnerFieldNodes(
+  cx: number,
+  cy: number,
+  maxRx: number,
+  maxRy: number,
+  rings: readonly (1 | 2)[],
+  nodesPerRing: number
+): RingFieldNode[] {
+  const nodes: RingFieldNode[] = [];
+  for (const ring of rings) {
+    const scale = FIELD_LINE_CONFIG[ring].scale;
+    for (let i = 0; i < nodesPerRing; i++) {
+      const angleDeg = (360 / nodesPerRing) * i + ring * 17;
+      const p = pointOnFieldLine(cx, cy, maxRx, maxRy, scale, ring, angleDeg);
+      nodes.push({ id: `r${ring}-n${i}`, ring, x: p.x, y: p.y, index: i });
+    }
+  }
+  return nodes;
+}
+
+/** @deprecated Use buildInnerFieldNodes — kept for tests. */
 export function buildRingFieldNodes(
   cx: number,
   cy: number,
@@ -313,16 +424,8 @@ export function buildRingFieldNodes(
   rings: readonly (1 | 2 | 3 | 4)[],
   nodesPerRing: number
 ): RingFieldNode[] {
-  const nodes: RingFieldNode[] = [];
-  for (const ring of rings) {
-    for (let i = 0; i < nodesPerRing; i++) {
-      const angleDeg = (360 / nodesPerRing) * i + ring * 13;
-      const { rx, ry } = ringRadii(ring, maxRx, maxRy);
-      const p = pointOnEllipse(cx, cy, rx, ry, angleDeg);
-      nodes.push({ id: `r${ring}-n${i}`, ring, x: p.x, y: p.y, index: i });
-    }
-  }
-  return nodes;
+  const inner = rings.filter((r): r is 1 | 2 => r === 1 || r === 2);
+  return buildInnerFieldNodes(cx, cy, maxRx, maxRy, inner.length ? inner : [1, 2], nodesPerRing);
 }
 
 /** Bowed segment between adjacent ring nodes — slow pulse travels along this path. */

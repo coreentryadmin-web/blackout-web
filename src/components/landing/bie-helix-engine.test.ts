@@ -2,10 +2,13 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildCenterHelix,
+  buildFieldLinePath,
+  buildFieldLineRings,
   buildFieldParticles,
   buildHeroSweepPath,
   buildImpulsePath,
   buildInboundPulsePath,
+  buildInnerFieldNodes,
   buildIntelligenceRings,
   buildFlowParticles,
   buildNeuralNodes,
@@ -16,6 +19,7 @@ import {
   flowParticlePosition,
   ellipsePath,
   placeCapability,
+  pointOnFieldLine,
   ringRadii,
   type Capability,
 } from "./bie-helix-engine";
@@ -145,10 +149,48 @@ describe("fieldGlowRadii", () => {
   });
 });
 
+describe("buildFieldLinePath", () => {
+  it("closes an organic loop distinct from a perfect ellipse", () => {
+    const organic = buildFieldLinePath(CX, CY, MAX_RX, MAX_RY, 0.64, 3);
+    const perfect = ellipsePath(CX, CY, MAX_RX * 0.64, MAX_RY * 0.64);
+    assert.match(organic, /^M \d/);
+    assert.match(organic, / Z$/);
+    assert.notEqual(organic, perfect);
+  });
+});
+
+describe("buildFieldLineRings", () => {
+  it("returns four layered rings with inner and outer zones", () => {
+    const rings = buildFieldLineRings(CX, CY, MAX_RX, MAX_RY);
+    assert.equal(rings.length, 4);
+    assert.deepEqual(
+      rings.map((r) => r.layer),
+      ["inner", "inner", "outer", "outer"]
+    );
+    assert.ok(rings.every((r) => r.d.length > 40));
+  });
+});
+
+describe("pointOnFieldLine", () => {
+  it("places coordinates on the distorted path", () => {
+    const p = pointOnFieldLine(CX, CY, MAX_RX, MAX_RY, 0.38, 2, 0);
+    assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y));
+    assert.ok(Math.hypot(p.x - CX, p.y - CY) > 20);
+  });
+});
+
+describe("buildInnerFieldNodes", () => {
+  it("places nodes only on inner field rings", () => {
+    const nodes = buildInnerFieldNodes(CX, CY, MAX_RX, MAX_RY, [1, 2], 6);
+    assert.equal(nodes.length, 12);
+    assert.ok(nodes.every((n) => n.ring === 1 || n.ring === 2));
+  });
+});
+
 describe("buildRingFieldNodes", () => {
-  it("places nodes on each intelligence ring", () => {
+  it("delegates to inner rings only", () => {
     const nodes = buildRingFieldNodes(CX, CY, MAX_RX, MAX_RY, [1, 2, 3, 4], 5);
-    assert.equal(nodes.length, 20);
+    assert.equal(nodes.length, 10);
     assert.ok(nodes.every((n) => Number.isFinite(n.x)));
   });
 });
