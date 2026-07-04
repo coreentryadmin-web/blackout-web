@@ -1452,17 +1452,17 @@ body::before {
 .bento-flagship::before { opacity: 0.4; }
 .bento-accent-gold { border-top-color: #ffcc4d; }
 
-/* ── BIE brain banner — the title-card reveal above "The full desk" grid.
-   A pulsing core wired to all six instruments, plus a thin mesh between
-   neighbors, animated continuously (only while on screen) so it reads as one
-   living network, not a static diagram. */
+/* ── BIE brain banner — story-driven pipeline above "The full desk" grid.
+   Market intelligence flows inward through validation into the engine,
+   then reasoned output flows outward to the platform — not a generic AI orb. */
 .bie-brain-banner {
-  margin-bottom: 3.5rem;
+  width: 100%;
 }
 
 .bie-brain-heading {
   text-align: center;
   margin-bottom: 1.25rem;
+  padding-inline: clamp(1rem, 4vw, 2.5rem);
 }
 
 .bie-brain-eyebrow {
@@ -1471,7 +1471,7 @@ body::before {
   gap: 0.45rem;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10px;
-  letter-spacing: 0.35em;
+  letter-spacing: 0.28em;
   text-transform: uppercase;
   color: rgba(148, 226, 255, 0.85);
 }
@@ -1514,8 +1514,36 @@ body::before {
 
 .bie-brain-diagram {
   position: relative;
-  max-width: 60rem;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 1.75rem clamp(0.5rem, 1.5vw, 1rem) 0;
+  overflow: visible;
+}
+
+.bie-brain-layer-labels {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1.5rem;
+  pointer-events: none;
+}
+
+.bie-brain-layer-title {
+  position: absolute;
+  transform: translateX(-50%);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0.92;
+}
+
+.bie-brain-layer-title-core {
+  left: 50% !important;
+  color: #5df7ff;
+  font-weight: 700;
+  letter-spacing: 0.18em;
 }
 
 .bie-brain-svg {
@@ -1525,83 +1553,90 @@ body::before {
   overflow: visible;
 }
 
-.bie-wire {
+.bie-brain-rail {
+  stroke-width: 1;
+  opacity: 0.14;
+  vector-effect: non-scaling-stroke;
+}
+
+.bie-flow-wire {
   fill: none;
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
   vector-effect: non-scaling-stroke;
+  stroke-width: 1.2;
+  opacity: 0.55;
 }
 
-.bie-ring-wire {
-  stroke: rgba(93, 247, 255, 0.24);
-  stroke-width: 1.1;
+.bie-flow-inbound {
+  opacity: 0.62;
 }
 
-.bie-cross-wire {
-  stroke: rgba(191, 95, 255, 0.16);
-  stroke-width: 0.9;
+.bie-flow-core {
+  stroke-width: 1.4;
+  opacity: 0.72;
 }
 
-.bie-spoke-wire {
-  stroke-width: 1.6;
-  opacity: 0.8;
+.bie-flow-outbound {
+  opacity: 0.68;
 }
 
-.is-drawn .bie-wire {
-  animation: bie-draw-on 1.1s cubic-bezier(0.16, 0.8, 0.3, 1) forwards;
+.is-drawn .bie-flow-wire {
+  animation: bie-draw-on 1.2s cubic-bezier(0.16, 0.8, 0.3, 1) forwards;
+}
+
+.bie-brain-axis {
+  fill: none;
+  stroke: rgba(93, 247, 255, 0.12);
+  stroke-width: 1;
+  stroke-dasharray: 0.04 0.06;
+  vector-effect: non-scaling-stroke;
+}
+
+.bie-brain-axis-in {
+  stroke: rgba(93, 247, 255, 0.18);
+}
+
+.bie-brain-axis-out {
+  stroke: rgba(255, 204, 77, 0.2);
 }
 
 @keyframes bie-draw-on {
   to { stroke-dashoffset: 0; }
 }
 
-.bie-spoke-pulse {
-  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.9));
+.bie-flow-pulse {
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.85));
 }
 
-.bie-ring-pulse {
-  opacity: 0.6;
-  filter: drop-shadow(0 0 2px rgba(93, 247, 255, 0.8));
-}
-
-.bie-cross-pulse {
-  opacity: 0.5;
-  filter: drop-shadow(0 0 2px rgba(191, 95, 255, 0.7));
-}
-
-.bie-brain-node-dot {
+.bie-brain-cap-dot {
   filter: drop-shadow(0 0 4px currentColor);
 }
 
-.bie-brain-dust-dot {
-  fill: rgba(148, 226, 255, 0.28);
+.bie-brain-cap-ring {
+  stroke-width: 1;
+  opacity: 0.22;
+  vector-effect: non-scaling-stroke;
+  animation: bie-cap-ring-pulse 3.6s ease-in-out infinite;
 }
 
-/* CORE below must match the JS `CORE` constant in BieBrainBanner.tsx (viewBox
-   center) — kept as a literal, same pattern the SVG rotate-on-scroll code
-   already relies on for pixel-unit transform-origin. */
-.bie-brain-orbit-main,
-.bie-brain-orbit-dust {
-  transform-origin: 320px 190px;
-  animation-play-state: paused;
+@keyframes bie-cap-ring-pulse {
+  0%, 100% { opacity: 0.12; }
+  50% { opacity: 0.55; }
 }
 
-.is-drawn .bie-brain-orbit-main {
-  animation: bie-orbit-spin 70s linear infinite;
-  animation-play-state: running;
+.bie-brain-core-shell {
+  fill: none;
+  stroke: url(#bie-core-halo);
+  stroke-width: 1.5;
+  opacity: 0.35;
+  transform-origin: 50% 52%;
+  animation: bie-core-shell-breathe 4s ease-in-out infinite;
 }
 
-.is-drawn .bie-brain-orbit-dust {
-  animation: bie-orbit-spin-reverse 100s linear infinite;
-  animation-play-state: running;
-}
-
-@keyframes bie-orbit-spin {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes bie-orbit-spin-reverse {
-  to { transform: rotate(-360deg); }
+@keyframes bie-core-shell-breathe {
+  0%, 100% { opacity: 0.28; }
+  50% { opacity: 0.48; }
 }
 
 .bie-brain-ring {
@@ -1609,7 +1644,7 @@ body::before {
   stroke: rgba(0, 229, 255, 0.55);
   stroke-width: 1.5;
   opacity: 0;
-  transform-origin: 320px 190px;
+  transform-origin: 50% 52%;
   animation: bie-brain-ring-ping 3.4s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
 }
 
@@ -1621,35 +1656,132 @@ body::before {
 
 .bie-brain-core {
   fill: url(#bie-core-grad);
-  transform-origin: 320px 190px;
+  transform-origin: 50% 52%;
   animation: bie-brain-core-pulse 2.4s ease-in-out infinite;
   filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.65)) drop-shadow(0 0 26px rgba(191, 95, 255, 0.3));
 }
 
 @keyframes bie-brain-core-pulse {
   0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.08); }
+  50% { transform: scale(1.06); }
 }
 
-.bie-brain-core-label {
+.bie-brain-label-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.bie-brain-cap-label {
+  position: absolute;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: clamp(7px, 1.05vw, 9.5px);
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.82);
+  white-space: nowrap;
+  padding: 0.1rem 0.35rem;
+  border-radius: 2px;
+  background: rgba(4, 4, 7, 0.72);
+  border: 1px solid color-mix(in srgb, var(--cap-accent, #5df7ff) 35%, transparent);
+}
+
+.bie-brain-cap-label-market {
+  transform: translate(calc(-100% - 10px), -50%);
+  text-align: right;
+}
+
+.bie-brain-cap-label-validation {
+  transform: translate(calc(-100% - 6px), -50%);
+  text-align: right;
+}
+
+.bie-brain-cap-label-reasoning {
+  transform: translate(14px, -50%);
+  text-align: left;
+}
+
+.bie-brain-cap-label-output {
+  transform: translate(14px, -50%);
+  text-align: left;
+}
+
+.bie-brain-core-zone {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: #04191c;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
   pointer-events: none;
+  margin-top: 0.15rem;
+}
+
+.bie-brain-core-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #04191c;
+}
+
+.bie-brain-core-caption {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 7.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(4, 25, 28, 0.85);
+  white-space: nowrap;
+}
+
+.bie-brain-story-rail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.35rem clamp(0.35rem, 2vw, 1.25rem);
+  margin-top: 0.85rem;
+  padding-inline: clamp(1rem, 4vw, 3rem);
+}
+
+.bie-brain-story-step {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(148, 226, 255, 0.75);
+}
+
+.bie-brain-story-step-core {
+  color: #5df7ff;
+  font-weight: 700;
+}
+
+.bie-brain-story-arrow {
+  width: 1.25rem;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(93, 247, 255, 0.15), rgba(93, 247, 255, 0.65));
+  position: relative;
+}
+
+.bie-brain-story-arrow::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 4px solid transparent;
+  border-left: 5px solid rgba(93, 247, 255, 0.65);
 }
 
 .bie-brain-nodes {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.5rem 1.75rem;
+  gap: 0.5rem clamp(1rem, 3vw, 2.5rem);
   margin-top: 1.5rem;
+  padding-inline: clamp(1rem, 4vw, 2.5rem);
 }
 
 .bie-brain-node {
@@ -1681,10 +1813,10 @@ body::before {
   text-align: center;
   font-family: var(--font-syne, inherit);
   font-weight: 700;
-  font-style: italic;
   letter-spacing: -0.005em;
   font-size: clamp(1.1rem, 2.4vw, 1.5rem);
   color: rgba(255, 255, 255, 0.55);
+  padding-inline: clamp(1rem, 4vw, 2.5rem);
 }
 
 .bie-brain-tagline-accent {
@@ -1692,18 +1824,35 @@ body::before {
   text-shadow: 0 0 18px rgba(93, 247, 255, 0.45);
 }
 
+@media (max-width: 640px) {
+  .bie-brain-cap-label {
+    font-size: 6px;
+    letter-spacing: 0.02em;
+    max-width: 4.5rem;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.15;
+  }
+
+  .bie-brain-layer-title {
+    font-size: 7px;
+    letter-spacing: 0.12em;
+  }
+
+  .bie-brain-core-caption {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .bie-brain-eyebrow-dot { animation: none; }
   .bie-brain-title { animation: none; background-position: 0 0; }
-  .bie-wire { stroke-dashoffset: 0; }
-  .is-drawn .bie-wire { animation: none; }
+  .bie-flow-wire, .bie-brain-axis { stroke-dashoffset: 0; }
+  .is-drawn .bie-flow-wire { animation: none; }
   .bie-brain-ring { animation: none; opacity: 0; }
-  .bie-brain-core { animation: none; }
-  .bie-spoke-pulse, .bie-ring-pulse, .bie-cross-pulse { display: none; }
-  .bie-brain-orbit-main, .bie-brain-orbit-dust,
-  .is-drawn .bie-brain-orbit-main, .is-drawn .bie-brain-orbit-dust {
-    animation: none;
-  }
+  .bie-brain-core, .bie-brain-core-shell { animation: none; }
+  .bie-flow-pulse { display: none; }
+  .bie-brain-cap-ring { animation: none; opacity: 0.25; }
 }
 
 .bento-card-watermark {

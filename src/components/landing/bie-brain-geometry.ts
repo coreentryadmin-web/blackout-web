@@ -53,3 +53,24 @@ export function goldenSpiralPoint(
   const t = Math.sqrt((i + 0.5) / count);
   return pointOnEllipse(cx, cy, maxRx * t, maxRy * t, i * GOLDEN_ANGLE_DEG);
 }
+
+/**
+ * Evenly stack `count` nodes in a vertical column centered on (cx, cy).
+ * Used for the BIE pipeline's capability layers — each column reads as a
+ * deliberate intelligence stage, not random orbiting particles.
+ */
+export function columnNodes(
+  cx: number,
+  cy: number,
+  count: number,
+  spacing: number
+): { x: number; y: number }[] {
+  if (count <= 0) return [];
+  const startY = cy - ((count - 1) * spacing) / 2;
+  return Array.from({ length: count }, (_, i) => ({ x: cx, y: startY + i * spacing }));
+}
+
+/** Horizontal flow path between two points — slight bow toward centerY for organic feel. */
+export function flowPath(x0: number, y0: number, x1: number, y1: number, centerY: number, bow: number): string {
+  return chordPath(x0, y0, x1, y1, (x0 + x1) / 2, centerY, bow);
+}

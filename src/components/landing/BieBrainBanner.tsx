@@ -1,40 +1,79 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { chordPath, goldenSpiralPoint, pointOnEllipse } from "./bie-brain-geometry";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { chordPath, columnNodes, flowPath } from "./bie-brain-geometry";
 
-// "Introducing BlackOut Intelligence Engine" — sits above "The full desk" grid
-// as a title-card-style reveal, not another tile in it. BIE sits dead-center as
-// a core, the six instruments orbit it on an ELLIPSE (not a true circle) — that
-// asymmetry is what fakes a disc viewed at an angle, a "tilted sphere/globe"
-// look, using plain 2D math instead of a CSS 3D `rotateX` (which would leave
-// the layout box reserving full square space while the paint gets foreshortened
-// — a gap this sidesteps entirely). A hexagram of ring + diagonal "cross"
-// connections weaves the instruments into one mesh (not a plain hub-and-spoke),
-// and a field of ambient dust dots fills the rest of the disc. Two
-// independently-rotating layers (nodes one way, dust the other, different
-// speeds) sell the depth without any WebGL/3D library — plain SVG + CSS.
-//
-// Content note: never name BlackOut's own LLM/model here or in READOUT_LINES —
-// the honest-realism stance (docs/bie/ARCHITECTURE.md) is that Claude is the
-// general-reasoning fallback, not a proprietary model BlackOut trained.
+// Title-card reveal above "The full desk" — tells one story in ~5–10 seconds:
+// Raw Market Intelligence → Validation → Reasoning → Continuous Learning → Trusted Output.
+// No vendor/stack names; capabilities only. SVG flow lines + HTML labels for legibility.
 
-const VIEW_W = 640;
-const VIEW_H = 380;
-const CORE = { x: VIEW_W / 2, y: VIEW_H / 2 };
-const RING_RX = 230;
-const RING_RY = 118;
-const DUST_COUNT = 26;
-const DUST_MAX_RX = 305;
-const DUST_MAX_RY = 160;
+// Wide viewBox — diagram stretches edge-to-edge; layer X positions are fractions of VIEW_W.
+const VIEW_W = 1280;
+const VIEW_H = 400;
+const CORE = { x: VIEW_W / 2, y: VIEW_H / 2 + 8 };
+const layerX = (pct: number) => VIEW_W * pct;
 
-type BrainNode = { name: string; href: string; accent: string };
+type CapabilityLayer = {
+  id: string;
+  title: string;
+  x: number;
+  accent: string;
+  items: string[];
+};
 
-// Left-to-right order matches FeaturesGrid's INSTRUMENTS below, so the node
-// list under the diagram reads as a preview of exactly what's in the grid —
-// order also fixes where each node lands going clockwise from the top.
-const NODES: BrainNode[] = [
+const MARKET_LAYER: CapabilityLayer = {
+  id: "market",
+  title: "Market Intelligence",
+  x: layerX(0.07),
+  accent: "#5df7ff",
+  items: ["Live Market Data", "Options Intelligence", "Dealer Positioning", "Market Structure", "Volatility"],
+};
+
+const VALIDATION_LAYER: CapabilityLayer = {
+  id: "validation",
+  title: "Validation",
+  x: layerX(0.19),
+  accent: "#00e676",
+  items: ["Data Integrity", "Signal Verification", "Consistency Checks", "Confidence Analysis", "Real-Time Validation"],
+};
+
+const REASONING_LAYER: CapabilityLayer = {
+  id: "reasoning",
+  title: "Reasoning",
+  x: layerX(0.81),
+  accent: "#bf5fff",
+  items: ["Pattern Recognition", "Market Reasoning", "Learning Engine", "Risk Analysis", "Continuous Improvement"],
+};
+
+const OUTPUT_LAYER: CapabilityLayer = {
+  id: "output",
+  title: "Trusted Output",
+  x: layerX(0.93),
+  accent: "#ffcc4d",
+  items: ["Trade Intelligence", "SPX Slayer", "Heat Maps", "Alerts", "Market Bias"],
+};
+
+const SIDE_LAYERS = [MARKET_LAYER, VALIDATION_LAYER, REASONING_LAYER, OUTPUT_LAYER];
+const NODE_SPACING = 52;
+
+type FlowNode = { id: string; label: string; x: number; y: number; layerId: string; accent: string };
+
+function buildLayerNodes(layer: CapabilityLayer): FlowNode[] {
+  const positions = columnNodes(layer.x, CORE.y, layer.items.length, NODE_SPACING);
+  return layer.items.map((label, i) => ({
+    id: `${layer.id}-${i}`,
+    label,
+    x: positions[i].x,
+    y: positions[i].y,
+    layerId: layer.id,
+    accent: layer.accent,
+  }));
+}
+
+type OutputProduct = { name: string; href: string; accent: string };
+
+const PRODUCTS: OutputProduct[] = [
   { name: "SPX Slayer", href: "/dashboard", accent: "#00e676" },
   { name: "HELIX", href: "/flows", accent: "#bf5fff" },
   { name: "BlackOut Thermal", href: "/heatmap", accent: "#ff6b2b" },
@@ -43,73 +82,83 @@ const NODES: BrainNode[] = [
   { name: "BlackOut Grid", href: "/grid", accent: "#ffcc4d" },
 ];
 
-const RING_NODES = NODES.map((n, i) => ({
-  ...n,
-  ...pointOnEllipse(CORE.x, CORE.y, RING_RX, RING_RY, (360 / NODES.length) * i),
-}));
+type FlowWire = {
+  id: string;
+  d: string;
+  accent: string;
+  stage: "inbound" | "outbound" | "core";
+  dur: number;
+  delay: number;
+};
 
-const DUST = Array.from({ length: DUST_COUNT }, (_, i) =>
-  goldenSpiralPoint(CORE.x, CORE.y, DUST_MAX_RX, DUST_MAX_RY, i, DUST_COUNT)
-);
+function buildFlowWires(nodes: {
+  market: FlowNode[];
+  validation: FlowNode[];
+  reasoning: FlowNode[];
+  output: FlowNode[];
+}): FlowWire[] {
+  const wires: FlowWire[] = [];
 
-type WireCategory = "spoke" | "ring" | "cross";
-type Wire = { id: string; d: string; category: WireCategory; accent: string };
+  const linkColumns = (
+    from: FlowNode[],
+    to: FlowNode[],
+    stage: FlowWire["stage"],
+    accent: string,
+    bow: number,
+    xPadFrom = 14,
+    xPadTo = -14
+  ) => {
+    const n = Math.min(from.length, to.length);
+    for (let i = 0; i < n; i++) {
+      wires.push({
+        id: `bie-flow-${from[i].id}-${to[i].id}`,
+        d: flowPath(from[i].x + xPadFrom, from[i].y, to[i].x + xPadTo, to[i].y, CORE.y, bow),
+        accent,
+        stage,
+        dur: 2.4 + (i % 4) * 0.35,
+        delay: -(i * 0.55),
+      });
+    }
+  };
 
-const WIRES: Wire[] = [
-  // spokes — straight lines, BIE's own connection to each instrument, colored
-  // by the destination's accent via a gradient (defined in <defs> below).
-  ...RING_NODES.map((n, i) => ({
-    id: `bie-spoke-${i}`,
-    d: chordPath(CORE.x, CORE.y, n.x, n.y, CORE.x, CORE.y, 0),
-    category: "spoke" as const,
-    accent: n.accent,
-  })),
-  // ring — perimeter arcs between neighboring instruments, bowed outward.
-  ...RING_NODES.map((n, i) => {
-    const next = RING_NODES[(i + 1) % RING_NODES.length];
-    return {
-      id: `bie-ring-${i}`,
-      d: chordPath(n.x, n.y, next.x, next.y, CORE.x, CORE.y, 26),
-      category: "ring" as const,
-      accent: "#5df7ff",
-    };
-  }),
-  // cross — long diagonals (node i to node i+2), which for 6 evenly-spaced
-  // nodes traces two overlapping triangles — a hexagram, the densest-reading
-  // "sphere mesh" pattern for the least visual clutter.
-  ...RING_NODES.map((n, i) => {
-    const opposite = RING_NODES[(i + 2) % RING_NODES.length];
-    return {
-      id: `bie-cross-${i}`,
-      d: chordPath(n.x, n.y, opposite.x, opposite.y, CORE.x, CORE.y, 54),
-      category: "cross" as const,
+  linkColumns(nodes.market, nodes.validation, "inbound", "#5df7ff", 8);
+
+  nodes.validation.forEach((n, i) => {
+    const targetY = CORE.y - 36 + i * 18;
+    wires.push({
+      id: `bie-flow-val-core-${i}`,
+      d: flowPath(n.x + 14, n.y, CORE.x - 42, targetY, CORE.y, 12),
+      accent: "#00e676",
+      stage: "inbound",
+      dur: 2.6 + (i % 3) * 0.3,
+      delay: -(i * 0.62),
+    });
+  });
+
+  nodes.reasoning.forEach((n, i) => {
+    wires.push({
+      id: `bie-flow-core-reason-${i}`,
+      d: flowPath(CORE.x + 42, CORE.y - 20 + (i % 3) * 20, n.x - 14, n.y, CORE.y, -10),
       accent: "#bf5fff",
-    };
-  }),
-];
+      stage: "core",
+      dur: 2.8 + (i % 3) * 0.4,
+      delay: -(i * 0.48),
+    });
+  });
 
-/** Per-category base pace (spokes fastest — energy flowing INTO the core;
- *  cross-diagonals slowest — the "deep" long-haul connections) with a small
- *  per-wire offset so pulses on the same category don't move in lockstep. */
-function pulseTiming(category: WireCategory, i: number): { dur: number; delay: number } {
-  const base = category === "spoke" ? 2.0 : category === "ring" ? 3.2 : 4.6;
-  return { dur: base + (i % 5) * 0.22, delay: -((i * 0.61) % base) };
+  linkColumns(nodes.reasoning, nodes.output, "outbound", "#ffcc4d", -8);
+
+  return wires;
 }
 
-// Deliberately vendor/stack-free — this is a member-facing marketing surface,
-// not a status page. No infra provider names, no ops jargon (cron/CPU/env-vars/
-// deploy); see scripts/check-vendor-surfaces.mjs, which scans this directory.
 const READOUT_LINES = [
-  "verifying every heat map, GEX read, and play against source data",
-  "the desk never sleeps — every system checked, every minute of the day",
-  "one audit trail for every 0DTE and Night Hawk alert",
-  "uptime, speed, stability — watched live, so you never have to ask",
-  "the model never invents a number — every claim is checked",
+  "continuous market intelligence — ingested, verified, never assumed",
+  "every heat map, GEX read, and play checked before it reaches your screen",
+  "signals are reasoned and confidence-scored — not guessed",
+  "the engine never stops learning from every session, every market day",
+  "trust the output because validation happened first",
 ];
 
-/** Live while on screen: draws the wires on once, keeps the traveling pulses
- *  running only while visible (pauses the SMIL timeline off-screen — no point
- *  animating a network nobody can see). */
 function useLiveOnView<T extends SVGSVGElement>() {
   const ref = useRef<T>(null);
   const [drawn, setDrawn] = useState(false);
@@ -126,7 +175,7 @@ function useLiveOnView<T extends SVGSVGElement>() {
           el.pauseAnimations();
         }
       },
-      { threshold: 0.2 }
+      { threshold: 0.15 }
     );
     io.observe(el);
     return () => io.disconnect();
@@ -140,8 +189,24 @@ export function BieBrainBanner() {
   const [lineIndex, setLineIndex] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
 
+  const nodes = useMemo(
+    () => ({
+      market: buildLayerNodes(MARKET_LAYER),
+      validation: buildLayerNodes(VALIDATION_LAYER),
+      reasoning: buildLayerNodes(REASONING_LAYER),
+      output: buildLayerNodes(OUTPUT_LAYER),
+    }),
+    []
+  );
+
+  const wires = useMemo(() => buildFlowWires(nodes), [nodes]);
+  const allNodes = useMemo(
+    () => [...nodes.market, ...nodes.validation, ...nodes.reasoning, ...nodes.output],
+    [nodes]
+  );
+
   useEffect(() => {
-    const id = setInterval(() => setLineIndex((i) => (i + 1) % READOUT_LINES.length), 2800);
+    const id = setInterval(() => setLineIndex((i) => (i + 1) % READOUT_LINES.length), 3200);
     return () => clearInterval(id);
   }, []);
 
@@ -158,94 +223,141 @@ export function BieBrainBanner() {
       <div className="bie-brain-heading">
         <span className="bie-brain-eyebrow">
           <span className="bie-brain-eyebrow-dot" aria-hidden />
-          Introducing
+          The operating brain of BlackOut
         </span>
         <h2 className="bie-brain-title">BlackOut Intelligence Engine</h2>
         <p className="bie-brain-sub">{READOUT_LINES[lineIndex]}</p>
       </div>
 
-      <div className="bie-brain-diagram">
+      <div className="bie-brain-diagram" aria-hidden>
+        <div className="bie-brain-layer-labels">
+          {SIDE_LAYERS.map((layer) => (
+            <span
+              key={layer.id}
+              className="bie-brain-layer-title"
+              style={{ left: `${(layer.x / VIEW_W) * 100}%`, color: layer.accent }}
+            >
+              {layer.title}
+            </span>
+          ))}
+          <span className="bie-brain-layer-title bie-brain-layer-title-core">Intelligence Engine</span>
+        </div>
+
         <svg
           ref={ref}
           className={drawn ? "bie-brain-svg is-drawn" : "bie-brain-svg"}
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
           preserveAspectRatio="xMidYMid meet"
-          aria-hidden
         >
           <defs>
-            <radialGradient id="bie-core-grad" cx="35%" cy="30%" r="75%">
+            <radialGradient id="bie-core-grad" cx="38%" cy="32%" r="72%">
               <stop offset="0%" stopColor="#5df7ff" />
-              <stop offset="45%" stopColor="#00e5ff" />
+              <stop offset="42%" stopColor="#00e5ff" />
               <stop offset="100%" stopColor="#0a3b45" />
             </radialGradient>
-            {RING_NODES.map((n, i) => (
-              <linearGradient
-                key={n.name}
-                id={`bie-spoke-grad-${i}`}
-                gradientUnits="userSpaceOnUse"
-                x1={CORE.x}
-                y1={CORE.y}
-                x2={n.x}
-                y2={n.y}
-              >
-                <stop offset="0%" stopColor="#00e5ff" />
-                <stop offset="100%" stopColor={n.accent} />
-              </linearGradient>
-            ))}
+            <linearGradient id="bie-core-halo" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="rgba(0,229,255,0.55)" />
+              <stop offset="100%" stopColor="rgba(191,95,255,0.35)" />
+            </linearGradient>
           </defs>
 
-          {/* ambient dust — fills the disc so it reads as a dense sphere of
-              points, not 6 isolated dots on empty space. Counter-rotates
-              slower than the main ring for a layered-depth feel. */}
-          <g className="bie-brain-orbit bie-brain-orbit-dust">
-            {DUST.map((p, i) => (
-              <circle key={i} cx={p.x} cy={p.y} r={1.6} className="bie-brain-dust-dot" />
-            ))}
-          </g>
+          {/* Stage brackets — subtle vertical rails anchoring each column */}
+          {SIDE_LAYERS.map((layer) => (
+            <line
+              key={`rail-${layer.id}`}
+              x1={layer.x}
+              y1={CORE.y - (layer.items.length * NODE_SPACING) / 2 - 18}
+              x2={layer.x}
+              y2={CORE.y + (layer.items.length * NODE_SPACING) / 2 + 18}
+              className="bie-brain-rail"
+              stroke={layer.accent}
+            />
+          ))}
 
-          {/* the main ring — wires + instrument nodes, rotating together as
-              one rigid network around the fixed core. */}
-          <g className="bie-brain-orbit bie-brain-orbit-main">
-            {WIRES.map((w, i) => {
-              const { dur, delay } = pulseTiming(w.category, i);
-              return (
-                <g key={w.id}>
-                  <path
-                    id={w.id}
-                    d={w.d}
-                    pathLength={1}
-                    className={`bie-wire bie-${w.category}-wire`}
-                    stroke={w.category === "spoke" ? `url(#bie-spoke-grad-${i})` : w.accent}
-                    style={{ animationDelay: `${i * 0.07}s` }}
-                  />
-                  {!reduceMotion && (
-                    <circle r={w.category === "spoke" ? 3.2 : 2} className={`bie-${w.category}-pulse`} fill={w.accent}>
-                      <animateMotion dur={`${dur}s`} begin={`${delay}s`} repeatCount="indefinite">
-                        <mpath href={`#${w.id}`} />
-                      </animateMotion>
-                    </circle>
-                  )}
-                </g>
-              );
-            })}
-            {RING_NODES.map((n) => (
-              <circle key={n.name} cx={n.x} cy={n.y} r={7} className="bie-brain-node-dot" fill={n.accent} />
-            ))}
-          </g>
+          {/* Flow connections — intelligence travels inward, validated output travels outward */}
+          {wires.map((w, i) => (
+            <g key={w.id}>
+              <path
+                id={w.id}
+                d={w.d}
+                pathLength={1}
+                className={`bie-flow-wire bie-flow-${w.stage}`}
+                stroke={w.accent}
+                style={{ animationDelay: `${i * 0.06}s` }}
+              />
+              {!reduceMotion && (
+                <circle r={w.stage === "core" ? 3 : 2.4} className="bie-flow-pulse" fill={w.accent}>
+                  <animateMotion dur={`${w.dur}s`} begin={`${w.delay}s`} repeatCount="indefinite">
+                    <mpath href={`#${w.id}`} />
+                  </animateMotion>
+                </circle>
+              )}
+            </g>
+          ))}
 
-          {/* the core, brainwave rings — fixed at the rotation axis, never orbits */}
-          <circle cx={CORE.x} cy={CORE.y} r={38} className="bie-brain-ring" style={{ animationDelay: "0s" }} />
-          <circle cx={CORE.x} cy={CORE.y} r={38} className="bie-brain-ring" style={{ animationDelay: "1.1s" }} />
-          <circle cx={CORE.x} cy={CORE.y} r={24} className="bie-brain-core" />
+          {/* Capability nodes */}
+          {allNodes.map((n) => (
+            <g key={n.id} className="bie-brain-cap-node">
+              <circle cx={n.x} cy={n.y} r={5} fill={n.accent} className="bie-brain-cap-dot" />
+              <circle cx={n.x} cy={n.y} r={9} fill="none" stroke={n.accent} className="bie-brain-cap-ring" />
+            </g>
+          ))}
+
+          {/* Command core — reactor at the center of the pipeline */}
+          <circle cx={CORE.x} cy={CORE.y} r={56} className="bie-brain-core-shell" />
+          <circle cx={CORE.x} cy={CORE.y} r={48} className="bie-brain-ring" style={{ animationDelay: "0s" }} />
+          <circle cx={CORE.x} cy={CORE.y} r={48} className="bie-brain-ring" style={{ animationDelay: "1.15s" }} />
+          <circle cx={CORE.x} cy={CORE.y} r={48} className="bie-brain-ring" style={{ animationDelay: "2.3s" }} />
+          <circle cx={CORE.x} cy={CORE.y} r={32} className="bie-brain-core" />
+          {/* Inbound / outbound axis */}
+          <path
+            d={chordPath(layerX(0.03), CORE.y, CORE.x - 34, CORE.y, CORE.x, CORE.y, 0)}
+            className="bie-brain-axis bie-brain-axis-in"
+            pathLength={1}
+          />
+          <path
+            d={chordPath(CORE.x + 34, CORE.y, layerX(0.97), CORE.y, CORE.x, CORE.y, 0)}
+            className="bie-brain-axis bie-brain-axis-out"
+            pathLength={1}
+          />
         </svg>
 
-        <span className="bie-brain-core-label" aria-hidden>
-          BIE
-        </span>
+        <div className="bie-brain-label-overlay">
+          {allNodes.map((n) => (
+            <span
+              key={`lbl-${n.id}`}
+              className={`bie-brain-cap-label bie-brain-cap-label-${n.layerId}`}
+              style={{
+                left: `${(n.x / VIEW_W) * 100}%`,
+                top: `${(n.y / VIEW_H) * 100}%`,
+                ["--cap-accent" as string]: n.accent,
+              }}
+            >
+              {n.label}
+            </span>
+          ))}
+        </div>
+
+        <div className="bie-brain-core-zone">
+          <span className="bie-brain-core-label">BIE</span>
+          <span className="bie-brain-core-caption">Validate · Reason · Improve</span>
+        </div>
+
+        <div className="bie-brain-story-rail" aria-hidden>
+          <span className="bie-brain-story-step">Ingest</span>
+          <span className="bie-brain-story-arrow" />
+          <span className="bie-brain-story-step">Validate</span>
+          <span className="bie-brain-story-arrow" />
+          <span className="bie-brain-story-step bie-brain-story-step-core">Engine</span>
+          <span className="bie-brain-story-arrow" />
+          <span className="bie-brain-story-step">Reason</span>
+          <span className="bie-brain-story-arrow" />
+          <span className="bie-brain-story-step">Deliver</span>
+        </div>
       </div>
 
       <div className="bie-brain-nodes">
-        {NODES.map((n) => (
+        {PRODUCTS.map((n) => (
           <Link key={n.name} href={n.href} className="bie-brain-node" style={{ ["--node-accent" as string]: n.accent }}>
             <span className="bie-brain-node-swatch" />
             {n.name}
@@ -254,7 +366,7 @@ export function BieBrainBanner() {
       </div>
 
       <p className="bie-brain-tagline">
-        It&rsquo;s not a mess. <span className="bie-brain-tagline-accent">It&rsquo;s a Mesh.</span>
+        Every number validated <span className="bie-brain-tagline-accent">before you see it.</span>
       </p>
     </div>
   );

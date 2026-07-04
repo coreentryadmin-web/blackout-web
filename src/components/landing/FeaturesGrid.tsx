@@ -108,12 +108,15 @@ const card = {
 
 export function FeaturesGrid() {
   return (
-    <section id="features" className="relative py-28 md:py-32 px-4 md:px-8 overflow-hidden">
+    <section id="features" className="relative py-28 md:py-32 overflow-hidden">
       <LandingBackdrop />
 
-      <div className="relative z-10 max-w-7xl mx-auto">
+      {/* Full-bleed — BIE pipeline uses the entire viewport width, not the bento column. */}
+      <div className="relative z-10 w-full mb-16 md:mb-20">
         <BieBrainBanner />
+      </div>
 
+      <div className="relative z-10 max-w-7xl mx-auto px-4 md:px-8">
         {/* header — mirrors Pricing/Faq */}
         <motion.div
           initial={{ opacity: 0, y: 26 }}
