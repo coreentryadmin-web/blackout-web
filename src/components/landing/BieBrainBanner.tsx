@@ -300,7 +300,7 @@ export function BieBrainBanner() {
           <svg
             className="bie-brain-svg bie-reactor-svg bie-field-svg"
             viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-            preserveAspectRatio="xMidYMid slice"
+            preserveAspectRatio="xMidYMid meet"
           >
             <defs>
               <radialGradient id="bie-field-base" cx="50%" cy="50%" r="72%">

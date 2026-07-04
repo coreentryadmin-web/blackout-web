@@ -1286,6 +1286,21 @@ body::before {
   margin-top: -1rem;
 }
 
+/* Preserve desktop grid layouts on narrow viewports — horizontal pan instead of reflow. */
+.landing-scroll-rail {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 230, 118, 0.35) transparent;
+}
+
+@media (min-width: 920px) {
+  .landing-scroll-rail {
+    overflow-x: visible;
+  }
+}
+
 .landing-dot-grid {
   position: absolute;
   inset: 0;
@@ -1313,7 +1328,7 @@ body::before {
   50% { opacity: 0.65; transform: scale(1.06); }
 }
 
-/* ── FAQ "Briefing Board" — no-scroll bento (desktop) ── */
+/* ── FAQ "Briefing Board" — same bento grid at all widths (pan on narrow viewports) ── */
 .faq-tile {
   border-radius: 1rem;
   border: 1px solid rgba(125, 211, 252, 0.10);
@@ -1322,30 +1337,47 @@ body::before {
   padding: 0.95rem 1.05rem;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
-.faq-board { display: grid; grid-template-columns: 1fr; gap: 0.7rem; }
+
+.faq-board-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 230, 118, 0.35) transparent;
+}
+
 @media (min-width: 1024px) {
-  .faq-tile { min-height: 0; overflow: hidden; }
-  .faq-board {
-    grid-template-columns: repeat(6, minmax(0, 1fr)) minmax(0, 3.3fr);
-    grid-template-rows: auto minmax(0, 1.3fr) minmax(0, 0.7fr) auto;
-    grid-template-areas:
-      "brand brand brand brand brand brand reader"
-      "platform platform arsenal arsenal signals signals reader"
-      "member member member start start start reader"
-      "support support support support support support reader";
+  .faq-board-scroll {
+    overflow-x: visible;
   }
-  .fa-brand { grid-area: brand; }
-  .fa-search { grid-area: search; }
-  .fa-platform { grid-area: platform; }
-  .fa-arsenal { grid-area: arsenal; }
-  .fa-signals { grid-area: signals; }
-  .fa-member { grid-area: member; }
-  .fa-start { grid-area: start; }
-  .fa-support { grid-area: support; }
-  .fa-reader { grid-area: reader; }
-  .fa-results { grid-column: 1 / 7; grid-row: 2 / 4; overflow-y: auto; }
 }
+
+.faq-board {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) minmax(0, 3.3fr);
+  grid-template-rows: auto minmax(0, 1.3fr) minmax(0, 0.7fr) auto;
+  grid-template-areas:
+    "brand brand brand brand brand brand reader"
+    "platform platform arsenal arsenal signals signals reader"
+    "member member member start start start reader"
+    "support support support support support support reader";
+  gap: 0.7rem;
+  min-width: 1024px;
+}
+
+.fa-brand { grid-area: brand; }
+.fa-search { grid-area: search; }
+.fa-platform { grid-area: platform; }
+.fa-arsenal { grid-area: arsenal; }
+.fa-signals { grid-area: signals; }
+.fa-member { grid-area: member; }
+.fa-start { grid-area: start; }
+.fa-support { grid-area: support; }
+.fa-reader { grid-area: reader; }
+.fa-results { grid-column: 1 / 7; grid-row: 2 / 4; overflow-y: auto; }
 /* thin emerald scrollbar for the single scroll owner (reader body / results) */
 .faq-scroll { scrollbar-width: thin; scrollbar-color: #00e676 transparent; }
 .faq-scroll::-webkit-scrollbar { width: 6px; }
@@ -1564,7 +1596,7 @@ body::before {
 }
 
 .bie-reactor-stage {
-  min-height: clamp(680px, 92vh, 1120px);
+  min-height: auto;
   flex: 1 1 auto;
   display: flex;
   align-items: stretch;
@@ -1578,7 +1610,7 @@ body::before {
 }
 
 .bie-field-canvas {
-  min-height: clamp(680px, 92vh, 1120px);
+  min-height: auto;
   max-height: none;
   aspect-ratio: auto;
   display: flex;
@@ -1587,9 +1619,11 @@ body::before {
 
 .bie-field-visual {
   position: relative;
-  flex: 1 1 auto;
-  min-height: clamp(560px, 78vh, 980px);
+  flex: 0 0 auto;
   width: 100%;
+  aspect-ratio: 1280 / 720;
+  max-height: min(92vh, calc(100vw * 720 / 1280));
+  min-height: unset;
   isolation: isolate;
   contain: paint;
   background: #040407;
@@ -1783,29 +1817,6 @@ body::before {
   text-align: center;
   color: #fff;
   max-width: 96px;
-}
-
-@media (max-width: 720px) {
-  .bie-orbit-tool {
-    max-width: 72px;
-    gap: 0.28rem;
-  }
-
-  .bie-orbit-tool-mark {
-    width: 44px;
-    height: 44px;
-  }
-
-  .bie-orbit-tool-mark svg,
-  .bie-orbit-tool-mark img {
-    width: 26px !important;
-    height: 26px !important;
-  }
-
-  .bie-orbit-tool-name {
-    font-size: 0.58rem;
-    max-width: 72px;
-  }
 }
 
 .bie-field-ring-stroke {
