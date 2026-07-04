@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ProductMark, MARK_ACCENT, type MarkProduct } from "@/components/marks/ProductMark";
 import {
   buildAmbientFieldMesh,
   buildAtmosphereGlows,
@@ -23,10 +25,10 @@ import {
  */
 
 export const VIEW_W = 1280;
-export const VIEW_H = 680;
-const CORE = { x: VIEW_W / 2, y: VIEW_H * 0.5 };
-const MAX_RX = 618;
-const MAX_RY = 318;
+export const VIEW_H = 820;
+const CORE = { x: VIEW_W / 2, y: VIEW_H * 0.48 };
+const MAX_RX = 572;
+const MAX_RY = 292;
 const FIELD_COUNT = 120;
 const INNER_RINGS = [1, 2] as const;
 const INNER_NODES = 6;
@@ -35,6 +37,23 @@ const READOUT_LINES = [
   "continuous market intelligence — ingested, verified, never assumed",
   "trust the output because validation happened first",
   "the engine never stops learning from every session, every market day",
+];
+
+type FieldToolSlot = "tl" | "tr" | "ml" | "mr" | "bl" | "br";
+
+const FIELD_TOOLS: {
+  slot: FieldToolSlot;
+  name: string;
+  href: string;
+  mark: MarkProduct;
+  accent: string;
+}[] = [
+  { slot: "tl", name: "SPX Slayer", href: "/dashboard", mark: "spx", accent: MARK_ACCENT.spx },
+  { slot: "bl", name: "HELIX", href: "/flows", mark: "helix", accent: MARK_ACCENT.helix },
+  { slot: "tr", name: "BlackOut Thermal", href: "/heatmap", mark: "heatmap", accent: MARK_ACCENT.heatmap },
+  { slot: "br", name: "BlackOut Grid", href: "/grid", mark: "grid", accent: MARK_ACCENT.grid },
+  { slot: "ml", name: "Largo", href: "/terminal", mark: "largo", accent: MARK_ACCENT.largo },
+  { slot: "mr", name: "Night Hawk", href: "/nighthawk", mark: "nighthawk", accent: MARK_ACCENT.nighthawk },
 ];
 
 type ReactorPhase = "idle" | "inbound" | "absorb" | "ripple";
@@ -304,7 +323,7 @@ export function BieBrainBanner() {
           <svg
             className="bie-brain-svg bie-reactor-svg bie-field-svg"
             viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-            preserveAspectRatio="xMidYMid slice"
+            preserveAspectRatio="xMidYMid meet"
           >
             <defs>
               <radialGradient id="bie-field-base" cx="50%" cy="50%" r="72%">
@@ -414,6 +433,25 @@ export function BieBrainBanner() {
               </text>
             </g>
           </svg>
+
+          <div className="bie-field-tools" aria-label="Platform instruments">
+            {FIELD_TOOLS.map((tool) => (
+              <Link
+                key={tool.slot}
+                href={tool.href}
+                className={`bie-field-tool bie-field-tool-${tool.slot}`}
+                style={{ ["--tool-accent" as string]: tool.accent }}
+              >
+                <span className="bie-field-tool-mark" aria-hidden>
+                  <ProductMark product={tool.mark} size={36} />
+                </span>
+                <span className="bie-field-tool-copy">
+                  <span className="bie-field-tool-name">{tool.name}</span>
+                  <span className="bie-field-tool-open">Open →</span>
+                </span>
+              </Link>
+            ))}
+          </div>
           </div>
 
           <div className="bie-field-caption">
