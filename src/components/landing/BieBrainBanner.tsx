@@ -12,22 +12,44 @@ import { chordPath, goldenSpiralPoint, pointOnEllipse } from "./bie-brain-geomet
 // the layout box reserving full square space while the paint gets foreshortened
 // — a gap this sidesteps entirely). A hexagram of ring + diagonal "cross"
 // connections weaves the instruments into one mesh (not a plain hub-and-spoke),
-// and a field of ambient dust dots fills the rest of the disc. Two
-// independently-rotating layers (nodes one way, dust the other, different
-// speeds) sell the depth without any WebGL/3D library — plain SVG + CSS.
+// and a field of ambient dust dots fills the rest of the disc.
 //
-// Content note: never name BlackOut's own LLM/model here or in READOUT_LINES —
-// the honest-realism stance (docs/bie/ARCHITECTURE.md) is that Claude is the
-// general-reasoning fallback, not a proprietary model BlackOut trained.
+// Rotation note (read before touching RING_RX/RY/DUST_MAX or the rock angle):
+// a CSS `rotate()` on a whole group is a RIGID rotation — every point's
+// distance from the transform-origin is preserved, only its angle changes. A
+// full 360° spin of an ANISOTROPIC ellipse (rx≠ry) therefore periodically
+// swings every point's full radius (up to rx, here 230, or the dust field's
+// wider 305) onto the vertical axis — which blew straight through this
+// diagram's ~190px of reserved vertical clearance and collided with the
+// heading/node-label text in production (see docs/audit/FINDINGS.md). Fix:
+// the dust field no longer rotates at all (it's static texture, doesn't need
+// to move), and the main ring only ROCKS within a small bounded angle
+// (BIE_ROCK_MAX_DEG below) instead of spinning freely — chosen so the
+// farthest node (the 60/120/240/300° ones, ~208px from center) never swings
+// past ~150px of vertical offset, comfortably inside CORE.y's 210px of
+// reserved clearance. Traveling pulses (which move along fixed wire paths,
+// not via group rotation) still deliver the "continuous flow" feel with zero
+// collision risk. If you widen RING_RX/RY or VIEW_H again, re-derive
+// BIE_ROCK_MAX_DEG by hand (rotate() preserves radius — recompute the
+// worst-case node's vertical offset at the new angle) — don't just bump it.
 
 const VIEW_W = 640;
-const VIEW_H = 380;
+const VIEW_H = 420;
 const CORE = { x: VIEW_W / 2, y: VIEW_H / 2 };
 const RING_RX = 230;
 const RING_RY = 118;
 const DUST_COUNT = 26;
-const DUST_MAX_RX = 305;
-const DUST_MAX_RY = 160;
+// Kept inside the ring's own radius (RING_RX/RY above) rather than wider —
+// at the original 305/160 a few golden-spiral points landed far enough out
+// to read as stray, disconnected dots off in empty space instead of texture
+// filling the visible disc.
+const DUST_MAX_RX = 250;
+const DUST_MAX_RY = 128;
+// Bounded oscillation, not a full spin — see the rotation note above. At
+// ±18°, the worst-case ring node (native angle 120°/240°, ~208px from
+// center) reaches at most ~150px of vertical offset, safely inside CORE.y's
+// 210px of reserved clearance above/below.
+const BIE_ROCK_MAX_DEG = 18;
 
 type BrainNode = { name: string; href: string; accent: string };
 
@@ -195,17 +217,24 @@ export function BieBrainBanner() {
           </defs>
 
           {/* ambient dust — fills the disc so it reads as a dense sphere of
-              points, not 6 isolated dots on empty space. Counter-rotates
-              slower than the main ring for a layered-depth feel. */}
-          <g className="bie-brain-orbit bie-brain-orbit-dust">
+              points, not 6 isolated dots on empty space. Static, not
+              rotating: its radius reaches wider than the main ring's, so
+              spinning it would swing points straight into the text above/
+              below (see the rotation note up top) for no real visual gain —
+              it's texture, not something that needs to visibly move. */}
+          <g className="bie-brain-dust">
             {DUST.map((p, i) => (
               <circle key={i} cx={p.x} cy={p.y} r={1.6} className="bie-brain-dust-dot" />
             ))}
           </g>
 
-          {/* the main ring — wires + instrument nodes, rotating together as
-              one rigid network around the fixed core. */}
-          <g className="bie-brain-orbit bie-brain-orbit-main">
+          {/* the main ring — wires + instrument nodes, rocking together as
+              one rigid network around the fixed core (bounded oscillation,
+              not a full spin — see the rotation note up top for why). */}
+          <g
+            className="bie-brain-orbit-main"
+            style={{ ["--bie-rock-max" as string]: `${BIE_ROCK_MAX_DEG}deg` }}
+          >
             {WIRES.map((w, i) => {
               const { dur, delay } = pulseTiming(w.category, i);
               return (

@@ -7,6 +7,22 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🔴 FIXED 2026-07-04 — BIE sphere banner: rotating orbs collided with the heading/label text in production
+**Root cause:** user sent a screenshot from the live site with arrows showing ring nodes and dust dots overlapping the subtitle line and the node-label row. `PR #383`'s sphere redesign rotated the whole node+wire ring and the dust field via a plain CSS `rotate()` on their `<g>` — a **rigid** rotation, which preserves every point's distance from the transform-origin and only changes its angle. The diagram's ellipse is anisotropic (`RING_RX=230` vs `RING_RY=118`; dust went out to `DUST_MAX_RX=305`), so a full 360° spin periodically swings a point that natively sits at its widest radius onto the vertical axis — up to ~305px above/below the core, versus the ~190px of vertical clearance the layout actually reserved. The math holds regardless of spin speed; the bug was inevitable at every rotation phase, not an edge case.
+
+**Fix (`src/components/landing/BieBrainBanner.tsx`, `src/app/globals.css`):**
+1. The dust field no longer rotates at all — it's static texture, doesn't need to move, and its wider radius made it the worse offender.
+2. The main node+wire ring no longer does a full 360° spin — it **rocks** within a bounded ±18° oscillation (`BIE_ROCK_MAX_DEG`), computed so the farthest ring node (~208px from center) never swings past ~150px of vertical offset, comfortably inside the reserved clearance. The angle is threaded through as a CSS custom property (`--bie-rock-max`) set from the same JS constant, so there's one source of truth instead of a number to keep in sync between the component and the stylesheet.
+3. Bumped `VIEW_H` (380→420) for additional vertical margin as a safety buffer on top of the angle math.
+4. While in the same constants, also tightened `DUST_MAX_RX/RY` (305/160 → 250/128) — even before rotation, a few golden-spiral dust points landed far enough out to read as stray, disconnected dots rather than ambient texture; not the reported bug, but cheap to fix in the same pass.
+5. Traveling pulses (motion along fixed wire paths, unaffected by group rotation) still deliver "continuous flow" with zero collision risk — they were never the problem.
+
+**Verified live**, not just built: ran the dev server + Playwright, sampled 5 screenshots spanning a full rock cycle (0s/1.5s/3s/4.5s/6s) — every ring node stayed clear of both the heading text above and the node-label row below at every sampled phase. Also re-verified mobile width (390px) and `prefers-reduced-motion: reduce` (fully static, no rock, no pulses) both still render correctly.
+
+**Verification:** `npx tsc --noEmit` clean, `npm test` 896/896 passing (no test changes — geometry functions untouched, only the component's layout constants and CSS), `npm run build` clean, `lint:brand`/`lint:vendor`/`verify-api-auth-guards.mjs` all green.
+
+---
+
 ## 🧠 BIE landing banner redesign SHIPPED 2026-07-04 — flat hub-and-row → orbiting sphere-mesh, on explicit user request
 **Ask:** user reviewed the live home page and asked for a real visual upgrade to the "Introducing BlackOut Intelligence Engine" banner — the connections between BIE and the six instruments "looked not so great," suggested something sphere-like with connected dots and continuous flow, better live animation, and an explicit standing instruction to never name BlackOut's own LLM/model in this copy (consistent with the existing honest-realism stance in `docs/bie/ARCHITECTURE.md`: Claude is the general-reasoning fallback, not a proprietary model BlackOut trained).
 
