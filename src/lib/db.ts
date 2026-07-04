@@ -1004,6 +1004,42 @@ async function runMigrations(): Promise<void> {
       ON spx_confluence_shadow_observations (observed_at DESC);
     CREATE INDEX IF NOT EXISTS idx_spx_confluence_shadow_obs_factor
       ON spx_confluence_shadow_observations (factor_name, observed_at DESC);
+
+    -- spx_engine_snapshots (task #108): throttled, state-transition-only log of EVERY
+    -- evaluateSpxPlay tick's phase/action/gate outcome (src/lib/spx-play-engine.ts) —
+    -- not just committed BUY/SELL/TRIM signals, which is all spx_signal_log above ever
+    -- captures. Before this table existed, a gate-blocked entry, a Claude veto, or a
+    -- WATCHING/near-miss setup left NO trace anywhere once the next poll tick
+    -- overwrote it in memory — "why was the last signal rejected" or "what was the
+    -- engine doing at 10:15" was unanswerable after the fact. Deliberately a NEW,
+    -- separate table rather than widening spx_signal_log's schema: a rejection/scan
+    -- has no committed direction/entry/premium the way a real signal does, so forcing
+    -- it into that row shape would mean a wall of nullable signal-only columns here.
+    -- Written by maybeLogSpxEngineSnapshot (src/lib/providers/spx-signal-log.ts),
+    -- throttled via the SAME platform_meta cursor idiom maybeLogSpxPlay uses above —
+    -- one row per distinct phase/action/direction/gates.blocks state, not one row per
+    -- poll tick (evaluateSpxPlay runs on every mutate:true poll, effectively every RTH
+    -- minute — see spx-evaluator.ts's runSpxEvaluator — so unthrottled writes here
+    -- would flood Postgres with near-duplicate rows while the engine idles unchanged).
+    CREATE TABLE IF NOT EXISTS spx_engine_snapshots (
+      id           BIGSERIAL PRIMARY KEY,
+      observed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      session_date DATE NOT NULL,
+      phase        TEXT NOT NULL,
+      action       TEXT NOT NULL,
+      direction    TEXT,
+      score        INTEGER NOT NULL,
+      gates_passed BOOLEAN NOT NULL,
+      gates_blocks JSONB NOT NULL DEFAULT '[]',
+      thesis       TEXT NOT NULL,
+      -- The engine's own as_of (desk.polled_at/desk.as_of at evaluation time) —
+      -- kept separate from observed_at (this row's insert time, which lags as_of by
+      -- however long the tick took to evaluate) so a caller can tell staleness apart
+      -- from write latency.
+      as_of        TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_spx_engine_snapshots_observed_at
+      ON spx_engine_snapshots (observed_at DESC);
   `);
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
@@ -1693,6 +1729,89 @@ export async function insertShadowFactorObservation(row: {
       row.actual_grade,
     ]
   );
+}
+
+/**
+ * Persists one retrospective engine-state snapshot (task #108,
+ * src/lib/providers/spx-signal-log.ts's maybeLogSpxEngineSnapshot). Same
+ * "always insert, caller already decided whether to call" idiom as
+ * insertShadowFactorObservation above — the throttle (only write on a real
+ * phase/action/gates.blocks state transition) lives in the caller, not here,
+ * so this function itself has no ON CONFLICT / dedup logic.
+ */
+export async function insertSpxEngineSnapshot(row: {
+  session_date: string;
+  phase: string;
+  action: string;
+  direction: string | null;
+  score: number;
+  gates_passed: boolean;
+  gates_blocks: string[];
+  thesis: string;
+  as_of: string | null;
+}): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `
+    INSERT INTO spx_engine_snapshots (
+      session_date, phase, action, direction, score,
+      gates_passed, gates_blocks, thesis, as_of
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)
+    `,
+    [
+      row.session_date,
+      row.phase,
+      row.action,
+      row.direction,
+      row.score,
+      row.gates_passed,
+      JSON.stringify(row.gates_blocks ?? []),
+      row.thesis,
+      row.as_of,
+    ]
+  );
+}
+
+export async function fetchRecentSpxEngineSnapshots(limit = 50): Promise<
+  Array<{
+    id: number;
+    observed_at: string;
+    session_date: string;
+    phase: string;
+    action: string;
+    direction: string | null;
+    score: number;
+    gates_passed: boolean;
+    gates_blocks: unknown;
+    thesis: string;
+    as_of: string | null;
+  }>
+> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    SELECT id, observed_at, session_date, phase, action, direction, score,
+           gates_passed, gates_blocks, thesis, as_of
+    FROM spx_engine_snapshots
+    ORDER BY observed_at DESC
+    LIMIT $1
+    `,
+    [limit]
+  );
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    observed_at: String(r.observed_at),
+    session_date: String(r.session_date),
+    phase: String(r.phase),
+    action: String(r.action),
+    direction: r.direction != null ? String(r.direction) : null,
+    score: Number(r.score),
+    gates_passed: Boolean(r.gates_passed),
+    gates_blocks: r.gates_blocks,
+    thesis: String(r.thesis),
+    as_of: r.as_of != null ? String(r.as_of) : null,
+  }));
 }
 
 export async function fetchRecentSpxSignalLogs(limit = 50): Promise<
