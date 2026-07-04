@@ -26,6 +26,11 @@
 import { MASSIVE_WS_OPTIONS } from "@/lib/polygon-docs-nav";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
+import {
+  alertWsLeaderFailClosedOnce,
+  clearWsLeaderFailClosedAlert,
+  wsLeaderShouldFailOpenWithoutRedis,
+} from "./leader-lock-shared";
 
 /**
  * RTH gate for the OPTIONS feed (live finding #75). Off-hours, no option quotes flow, so the
@@ -77,12 +82,23 @@ type IoredisLockExtra = {
 async function tryAcquireOptionsLead(): Promise<boolean> {
   try {
     const redis = await getUwCacheRedis();
-    if (!redis) return true; // Redis unavailable — allow the WS (single-replica safe / fail-open)
+    if (!redis) {
+      if (!wsLeaderShouldFailOpenWithoutRedis()) {
+        alertWsLeaderFailClosedOnce("options-socket");
+        return false; // multi-replica, Redis down — fail closed to avoid N-way WS contention
+      }
+      return true; // single replica — safe to fail open, no contention possible
+    }
+    clearWsLeaderFailClosedAlert("options-socket");
     const r = redis as unknown as IoredisLockExtra;
     const result = await r.set(OPTIONS_LEADER_KEY, "1", "EX", OPTIONS_LEADER_TTL_SEC, "NX");
     return result === "OK";
   } catch {
-    return true; // Redis error — fail open so a Redis blip can't silently kill live marks cluster-wide
+    if (!wsLeaderShouldFailOpenWithoutRedis()) {
+      alertWsLeaderFailClosedOnce("options-socket");
+      return false;
+    }
+    return true; // single replica — safe to fail open even on a Redis error
   }
 }
 

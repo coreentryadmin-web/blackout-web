@@ -4,6 +4,11 @@
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { etMinutes, etClock } from "@/lib/spx-play-session-time";
 import { isEtCashRth } from "@/lib/et-market-hours";
+import {
+  alertWsLeaderFailClosedOnce,
+  clearWsLeaderFailClosedAlert,
+  wsLeaderShouldFailOpenWithoutRedis,
+} from "./leader-lock-shared";
 export type PolygonAgg = {
   ev: "A" | "AM";
   sym: string;
@@ -133,12 +138,23 @@ type IoredisExtra = { set(k: string, v: string, ex: string, ttl: number, nx: str
 async function tryAcquireIndicesLead(): Promise<boolean> {
   try {
     const redis = await getUwCacheRedis();
-    if (!redis) return true; // Redis unavailable — allow WS (single-replica safe)
+    if (!redis) {
+      if (!wsLeaderShouldFailOpenWithoutRedis()) {
+        alertWsLeaderFailClosedOnce("polygon-socket");
+        return false; // multi-replica, Redis down — fail closed to avoid N-way WS contention
+      }
+      return true; // single replica — safe to fail open, no contention possible
+    }
+    clearWsLeaderFailClosedAlert("polygon-socket");
     const r = redis as unknown as IoredisExtra;
     const result = await r.set(INDICES_LEADER_KEY, "1", "EX", INDICES_LEADER_TTL_SEC, "NX");
     return result === "OK";
   } catch {
-    return true; // Redis error — fail-open so the socket still starts
+    if (!wsLeaderShouldFailOpenWithoutRedis()) {
+      alertWsLeaderFailClosedOnce("polygon-socket");
+      return false;
+    }
+    return true; // single replica — safe to fail open even on a Redis error
   }
 }
 
