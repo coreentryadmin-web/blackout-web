@@ -1541,8 +1541,8 @@ body::before {
 }
 
 .bie-field-line-outer.bie-field-line-6 .bie-field-line-stroke {
-  stroke: rgba(148, 226, 255, 0.016);
-  stroke-width: 0.55;
+  stroke: rgba(148, 226, 255, 0.055);
+  stroke-width: 0.85;
 }
 
 .bie-reactor-live .bie-field-line-mid .bie-field-line-stroke {
@@ -1716,154 +1716,90 @@ body::before {
   font-size: clamp(1.15rem, 2.4vw, 1.65rem);
 }
 
-/* Clickable instrument nodes — six corners of the intelligence field. */
-.bie-field-tools {
+/* Planetary instrument nodes — orbit the outermost field ring. */
+.bie-orbit-tools {
   position: absolute;
   inset: 0;
   z-index: 8;
   pointer-events: none;
+  overflow: hidden;
 }
 
-.bie-field-tool {
+.bie-orbit-tool {
   position: absolute;
   pointer-events: auto;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.65rem;
-  max-width: min(220px, 34vw);
-  padding: 0.55rem 0.85rem 0.55rem 0.55rem;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--tool-accent, #5df7ff) 28%, transparent);
-  background: linear-gradient(
-    135deg,
-    rgba(4, 4, 7, 0.88) 0%,
-    rgba(8, 12, 18, 0.72) 100%
-  );
-  backdrop-filter: blur(10px);
+  gap: 0.35rem;
+  width: max-content;
+  max-width: 120px;
+  padding: 0.45rem 0.55rem 0.5rem;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--tool-accent, #5df7ff) 32%, transparent);
+  background: linear-gradient(180deg, rgba(4, 6, 10, 0.92) 0%, rgba(6, 10, 16, 0.78) 100%);
+  backdrop-filter: blur(12px);
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 12px 40px -18px rgba(0, 0, 0, 0.85),
-    0 0 24px -12px color-mix(in srgb, var(--tool-accent, #5df7ff) 45%, transparent);
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+    0 10px 36px -14px rgba(0, 0, 0, 0.88),
+    0 0 28px -10px color-mix(in srgb, var(--tool-accent, #5df7ff) 50%, transparent);
+  transform: translate(-50%, -50%);
   transition:
-    transform 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease,
-    background 0.18s ease;
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+  text-decoration: none;
 }
 
-.bie-field-tool:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--tool-accent, #5df7ff) 55%, transparent);
-  background: linear-gradient(
-    135deg,
-    rgba(4, 8, 12, 0.94) 0%,
-    rgba(10, 18, 24, 0.82) 100%
-  );
+.bie-orbit-tool:hover {
+  border-color: color-mix(in srgb, var(--tool-accent, #5df7ff) 62%, transparent);
+  background: linear-gradient(180deg, rgba(6, 10, 16, 0.96) 0%, rgba(10, 16, 22, 0.88) 100%);
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.06) inset,
-    0 16px 48px -16px rgba(0, 0, 0, 0.9),
-    0 0 32px -8px color-mix(in srgb, var(--tool-accent, #5df7ff) 60%, transparent);
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+    0 14px 44px -12px rgba(0, 0, 0, 0.92),
+    0 0 36px -6px color-mix(in srgb, var(--tool-accent, #5df7ff) 65%, transparent);
 }
 
-.bie-field-tool-mark {
-  flex-shrink: 0;
+.bie-orbit-tool-mark {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 18px -4px color-mix(in srgb, var(--tool-accent, #5df7ff) 55%, transparent);
 }
 
-.bie-field-tool-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-width: 0;
-}
-
-.bie-field-tool-name {
+.bie-orbit-tool-name {
   font-family: var(--font-syne, inherit);
-  font-size: clamp(0.78rem, 1.6vw, 0.92rem);
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: #fff;
   line-height: 1.15;
-}
-
-.bie-field-tool-open {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 9px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--tool-accent, #5df7ff);
-  opacity: 0.85;
-}
-
-.bie-field-tool-tl {
-  top: clamp(0.65rem, 3.5vh, 1.75rem);
-  left: clamp(0.65rem, 2.5vw, 1.75rem);
-}
-
-.bie-field-tool-tr {
-  top: clamp(0.65rem, 3.5vh, 1.75rem);
-  right: clamp(0.65rem, 2.5vw, 1.75rem);
-}
-
-.bie-field-tool-ml {
-  top: 50%;
-  left: clamp(0.5rem, 1.8vw, 1.25rem);
-  transform: translateY(-50%);
-}
-
-.bie-field-tool-ml:hover {
-  transform: translateY(calc(-50% - 2px));
-}
-
-.bie-field-tool-mr {
-  top: 50%;
-  right: clamp(0.5rem, 1.8vw, 1.25rem);
-  transform: translateY(-50%);
-}
-
-.bie-field-tool-mr:hover {
-  transform: translateY(calc(-50% - 2px));
-}
-
-.bie-field-tool-bl {
-  bottom: clamp(0.65rem, 3.5vh, 1.75rem);
-  left: clamp(0.65rem, 2.5vw, 1.75rem);
-}
-
-.bie-field-tool-br {
-  bottom: clamp(0.65rem, 3.5vh, 1.75rem);
-  right: clamp(0.65rem, 2.5vw, 1.75rem);
+  text-align: center;
+  color: #fff;
 }
 
 @media (max-width: 720px) {
-  .bie-field-tool {
-    max-width: min(168px, 42vw);
-    padding: 0.45rem 0.65rem 0.45rem 0.45rem;
-    gap: 0.45rem;
+  .bie-orbit-tool {
+    max-width: 88px;
+    padding: 0.35rem 0.4rem 0.4rem;
+    gap: 0.25rem;
   }
 
-  .bie-field-tool-mark {
-    width: 32px;
-    height: 32px;
+  .bie-orbit-tool-mark {
+    width: 30px;
+    height: 30px;
   }
 
-  .bie-field-tool-mark svg,
-  .bie-field-tool-mark img {
-    width: 28px !important;
-    height: 28px !important;
+  .bie-orbit-tool-mark svg,
+  .bie-orbit-tool-mark img {
+    width: 26px !important;
+    height: 26px !important;
   }
 
-  .bie-field-tool-name {
-    font-size: 0.72rem;
-  }
-
-  .bie-field-tool-open {
-    display: none;
+  .bie-orbit-tool-name {
+    font-size: 0.58rem;
   }
 }
 
