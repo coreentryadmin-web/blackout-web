@@ -1,5 +1,6 @@
 import { dbQuery, dbConfigured } from "@/lib/db";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { isFlowFrameFreshAnywhere } from "@/lib/flow-liveness";
 
 // BIE ecosystem-context query layer, v1 — "what does the rest of BlackOut
 // currently know about this ticker." Every instrument already writes its own
@@ -79,6 +80,17 @@ export type EcosystemContext = {
   recent_audit_entries: EcosystemAuditEntry[];
   recent_flow: EcosystemFlowSummary | null;
   recent_anomalies: EcosystemAnomaly[];
+  /**
+   * Is the live HELIX flow pipeline actually delivering frames right now,
+   * cluster-wide (isFlowFrameFreshAnywhere, src/lib/flow-liveness.ts — a
+   * Redis heartbeat, not a per-replica in-memory guess)? Exists to disambiguate
+   * `recent_flow: null`: that field means EITHER "genuinely no notable flow on
+   * this ticker" OR "the ingestion pipeline is down and we simply have no
+   * data" — two very different answers to give a member. When this is false,
+   * a null/empty recent_flow or recent_anomalies should be reported as
+   * "unknown," never as "quiet."
+   */
+  flow_feed_fresh: boolean;
 };
 
 function emptyContext(ticker: string): EcosystemContext {
@@ -89,6 +101,7 @@ function emptyContext(ticker: string): EcosystemContext {
     recent_audit_entries: [],
     recent_flow: null,
     recent_anomalies: [],
+    flow_feed_fresh: false,
   };
 }
 
@@ -106,9 +119,12 @@ const ANOMALY_WINDOW_HOURS = 24;
  * alert_audit_log entries (the unified Stage 4 trail, which already spans all
  * three write-paths), a same-day HELIX flow summary straight from
  * flow_alerts — not just the $1M+ whale tier that reaches alert_audit_log, the
- * full tape for this one ticker — and any pattern-detected flow anomalies
- * (flow_anomalies, written by the market-regime-detector cron). Fails open to
- * an all-empty context on any error — a lookup failure here must never block
+ * full tape for this one ticker — any pattern-detected flow anomalies
+ * (flow_anomalies, written by the market-regime-detector cron), and whether
+ * the live flow pipeline is actually up right now (flow_feed_fresh), so a
+ * caller can tell "genuinely quiet" apart from "we can't see, ingestion is
+ * down." Fails open to an all-empty context on any error — a lookup failure
+ * here must never block
  * the caller's own logic.
  */
 export async function fetchEcosystemContext(ticker: string): Promise<EcosystemContext> {
@@ -116,7 +132,7 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
   const upper = ticker.toUpperCase().trim();
 
   try {
-    const [zerodteRes, nighthawkRes, auditRes, flowRes, anomalyRes] = await Promise.all([
+    const [zerodteRes, nighthawkRes, auditRes, flowRes, anomalyRes, flowFeedFresh] = await Promise.all([
       dbQuery<{
         session_date: string;
         direction: string;
@@ -176,6 +192,7 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
          LIMIT 5`,
         [upper, ANOMALY_WINDOW_HOURS]
       ),
+      isFlowFrameFreshAnywhere(),
     ]);
 
     const z = zerodteRes.rows[0];
@@ -227,6 +244,7 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
         severity: a.severity,
         direction: a.direction,
       })),
+      flow_feed_fresh: flowFeedFresh,
     };
   } catch {
     return emptyContext(ticker);
