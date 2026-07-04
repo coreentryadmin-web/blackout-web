@@ -1456,7 +1456,11 @@ body::before {
    Market intelligence flows inward through validation into the engine,
    then reasoned output flows outward to the platform — not a generic AI orb. */
 .bie-brain-banner {
-  width: 100%;
+  width: 100vw;
+  max-width: 100vw;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .bie-brain-heading {
@@ -1517,14 +1521,60 @@ body::before {
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 1.75rem clamp(0.5rem, 1.5vw, 1rem) 0;
+  padding: 0.5rem 0 0;
   overflow: visible;
+}
+
+.bie-brain-diagram::before {
+  content: "";
+  position: absolute;
+  inset: 0 -5vw;
+  z-index: -1;
+  background: linear-gradient(
+    90deg,
+    rgba(93, 247, 255, 0.04) 0%,
+    rgba(0, 230, 118, 0.03) 22%,
+    rgba(93, 247, 255, 0.06) 50%,
+    rgba(191, 95, 255, 0.04) 78%,
+    rgba(255, 204, 77, 0.05) 100%
+  );
+  pointer-events: none;
+}
+
+.bie-brain-canvas {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1280 / 420;
+}
+
+.bie-brain-scroll-wrap {
+  width: 100%;
+}
+
+.bie-brain-scroll-hint {
+  display: none;
+}
+
+.bie-brain-layer-band {
+  opacity: 0.045;
+}
+
+.bie-brain-layer-band-validation {
+  opacity: 0.085;
+}
+
+.bie-brain-layer-band-core {
+  fill: #5df7ff;
+  opacity: 0.07;
 }
 
 .bie-brain-layer-labels {
   position: absolute;
-  inset: 0 0 auto 0;
-  height: 1.5rem;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1.25rem;
+  z-index: 2;
   pointer-events: none;
 }
 
@@ -1549,7 +1599,7 @@ body::before {
 .bie-brain-svg {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
   overflow: visible;
 }
 
@@ -1581,6 +1631,43 @@ body::before {
   opacity: 0.68;
 }
 
+.bie-flow-validate {
+  stroke-width: 1.5;
+  opacity: 0.82;
+}
+
+.bie-flow-pulse-validate {
+  filter: drop-shadow(0 0 4px rgba(0, 230, 118, 0.95));
+}
+
+.bie-brain-gate {
+  fill: none;
+  stroke: rgba(0, 230, 118, 0.45);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 0.08 0.06;
+  animation: bie-gate-pulse 2.8s ease-in-out infinite;
+}
+
+.bie-brain-gate-inner {
+  stroke: rgba(0, 230, 118, 0.28);
+  stroke-width: 1.2;
+  animation-delay: -1.4s;
+}
+
+.bie-brain-gate-out {
+  stroke: rgba(255, 204, 77, 0.42);
+}
+
+.bie-brain-gate-out.bie-brain-gate-inner {
+  stroke: rgba(255, 204, 77, 0.26);
+}
+
+@keyframes bie-gate-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
 .is-drawn .bie-flow-wire {
   animation: bie-draw-on 1.2s cubic-bezier(0.16, 0.8, 0.3, 1) forwards;
 }
@@ -1598,7 +1685,15 @@ body::before {
 }
 
 .bie-brain-axis-out {
-  stroke: rgba(255, 204, 77, 0.2);
+  stroke: rgba(255, 204, 77, 0.28);
+}
+
+.bie-spine-pulse {
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.8));
+}
+
+.bie-spine-pulse-out {
+  filter: drop-shadow(0 0 4px rgba(255, 204, 77, 0.85));
 }
 
 @keyframes bie-draw-on {
@@ -1630,7 +1725,7 @@ body::before {
   stroke: url(#bie-core-halo);
   stroke-width: 1.5;
   opacity: 0.35;
-  transform-origin: 50% 52%;
+  transform-origin: 50% 50%;
   animation: bie-core-shell-breathe 4s ease-in-out infinite;
 }
 
@@ -1644,7 +1739,7 @@ body::before {
   stroke: rgba(0, 229, 255, 0.55);
   stroke-width: 1.5;
   opacity: 0;
-  transform-origin: 50% 52%;
+  transform-origin: 50% 50%;
   animation: bie-brain-ring-ping 3.4s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
 }
 
@@ -1656,7 +1751,7 @@ body::before {
 
 .bie-brain-core {
   fill: url(#bie-core-grad);
-  transform-origin: 50% 52%;
+  transform-origin: 50% 50%;
   animation: bie-brain-core-pulse 2.4s ease-in-out infinite;
   filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.65)) drop-shadow(0 0 26px rgba(191, 95, 255, 0.3));
 }
@@ -1708,14 +1803,12 @@ body::before {
 .bie-brain-core-zone {
   position: absolute;
   left: 50%;
-  top: 50%;
   transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.15rem;
   pointer-events: none;
-  margin-top: 0.15rem;
 }
 
 .bie-brain-core-label {
@@ -1738,11 +1831,12 @@ body::before {
 .bie-brain-story-rail {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   flex-wrap: wrap;
-  gap: 0.35rem clamp(0.35rem, 2vw, 1.25rem);
+  gap: 0.35rem 0;
   margin-top: 0.85rem;
-  padding-inline: clamp(1rem, 4vw, 3rem);
+  padding-inline: clamp(1.25rem, 5vw, 4rem);
+  max-width: 100%;
 }
 
 .bie-brain-story-step {
@@ -1759,7 +1853,9 @@ body::before {
 }
 
 .bie-brain-story-arrow {
-  width: 1.25rem;
+  flex: 1 1 1.25rem;
+  min-width: 0.75rem;
+  max-width: 3.5rem;
   height: 1px;
   background: linear-gradient(90deg, rgba(93, 247, 255, 0.15), rgba(93, 247, 255, 0.65));
   position: relative;
@@ -1775,12 +1871,47 @@ body::before {
   border-left: 5px solid rgba(93, 247, 255, 0.65);
 }
 
+.bie-brain-products-eyebrow {
+  margin-top: 1.75rem;
+  text-align: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(148, 226, 255, 0.75);
+  padding-inline: clamp(1rem, 4vw, 2.5rem);
+}
+
+.bie-brain-product-rail {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0;
+  margin-top: 0.65rem;
+  padding-inline: clamp(0.5rem, 3vw, 2rem);
+  border-top: 1px solid rgba(93, 247, 255, 0.12);
+  border-bottom: 1px solid rgba(93, 247, 255, 0.12);
+  background: rgba(4, 4, 7, 0.45);
+}
+
+.bie-brain-product-rail .bie-brain-node {
+  flex: 1 1 auto;
+  justify-content: center;
+  padding: 0.85rem clamp(0.5rem, 1.5vw, 1.25rem);
+  border-inline-end: 1px solid rgba(93, 247, 255, 0.08);
+}
+
+.bie-brain-product-rail .bie-brain-node:last-child {
+  border-inline-end: none;
+}
+
 .bie-brain-nodes {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 0.5rem clamp(1rem, 3vw, 2.5rem);
-  margin-top: 1.5rem;
+  margin-top: 0.65rem;
   padding-inline: clamp(1rem, 4vw, 2.5rem);
 }
 
@@ -1824,6 +1955,47 @@ body::before {
   text-shadow: 0 0 18px rgba(93, 247, 255, 0.45);
 }
 
+@media (max-width: 900px) {
+  .bie-brain-scroll-wrap {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-inline: 0.5rem;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(93, 247, 255, 0.35) transparent;
+  }
+
+  .bie-brain-canvas {
+    min-width: 880px;
+  }
+
+  .bie-brain-scroll-hint {
+    display: block;
+    margin-top: 0.45rem;
+    text-align: center;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 8px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(148, 226, 255, 0.55);
+  }
+
+  .bie-brain-product-rail {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bie-brain-product-rail .bie-brain-node {
+    border-inline-end: none;
+    border-bottom: 1px solid rgba(93, 247, 255, 0.08);
+    justify-content: flex-start;
+  }
+
+  .bie-brain-product-rail .bie-brain-node:last-child {
+    border-bottom: none;
+  }
+}
+
 @media (max-width: 640px) {
   .bie-brain-cap-label {
     font-size: 6px;
@@ -1852,7 +2024,9 @@ body::before {
   .bie-brain-ring { animation: none; opacity: 0; }
   .bie-brain-core, .bie-brain-core-shell { animation: none; }
   .bie-flow-pulse { display: none; }
+  .bie-spine-pulse { display: none; }
   .bie-brain-cap-ring { animation: none; opacity: 0.25; }
+  .bie-brain-gate { animation: none; opacity: 0.7; }
 }
 
 .bento-card-watermark {
