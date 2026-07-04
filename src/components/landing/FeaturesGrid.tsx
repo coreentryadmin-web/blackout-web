@@ -108,7 +108,7 @@ const card = {
 
 export function FeaturesGrid() {
   return (
-    <section id="features" className="relative py-28 md:py-32 overflow-hidden">
+    <section id="features" className="relative py-28 md:py-32 overflow-x-hidden">
       <LandingBackdrop />
 
       {/* Full-bleed — BIE pipeline uses the entire viewport width, not the bento column. */}

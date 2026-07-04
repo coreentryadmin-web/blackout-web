@@ -10,8 +10,9 @@ import { chordPath, columnNodes, flowPath } from "./bie-brain-geometry";
 
 // Wide viewBox — diagram stretches edge-to-edge; layer X positions are fractions of VIEW_W.
 const VIEW_W = 1280;
-const VIEW_H = 400;
-const CORE = { x: VIEW_W / 2, y: VIEW_H / 2 + 8 };
+const VIEW_H = 420;
+const CORE = { x: VIEW_W / 2, y: VIEW_H / 2 };
+const CORE_Y_PCT = (CORE.y / VIEW_H) * 100;
 const layerX = (pct: number) => VIEW_W * pct;
 
 type CapabilityLayer = {
@@ -25,33 +26,33 @@ type CapabilityLayer = {
 const MARKET_LAYER: CapabilityLayer = {
   id: "market",
   title: "Market Intelligence",
-  x: layerX(0.07),
+  x: layerX(0.06),
   accent: "#5df7ff",
-  items: ["Live Market Data", "Options Intelligence", "Dealer Positioning", "Market Structure", "Volatility"],
+  items: ["Live Market Data", "Options Intelligence", "Dealer Positioning", "Liquidity", "Volatility"],
 };
 
 const VALIDATION_LAYER: CapabilityLayer = {
   id: "validation",
   title: "Validation",
-  x: layerX(0.19),
+  x: layerX(0.2),
   accent: "#00e676",
-  items: ["Data Integrity", "Signal Verification", "Consistency Checks", "Confidence Analysis", "Real-Time Validation"],
+  items: ["Data Integrity", "Signal Verification", "Consistency Checks", "Confidence Analysis", "Self Audit"],
 };
 
 const REASONING_LAYER: CapabilityLayer = {
   id: "reasoning",
-  title: "Reasoning",
-  x: layerX(0.81),
+  title: "Intelligence",
+  x: layerX(0.8),
   accent: "#bf5fff",
-  items: ["Pattern Recognition", "Market Reasoning", "Learning Engine", "Risk Analysis", "Continuous Improvement"],
+  items: ["Pattern Recognition", "Market Reasoning", "Memory", "Risk Analysis", "Continuous Improvement"],
 };
 
 const OUTPUT_LAYER: CapabilityLayer = {
   id: "output",
   title: "Trusted Output",
-  x: layerX(0.93),
+  x: layerX(0.94),
   accent: "#ffcc4d",
-  items: ["Trade Intelligence", "SPX Slayer", "Heat Maps", "Alerts", "Market Bias"],
+  items: ["Trade Intelligence", "SPX Slayer", "Heat Maps", "Rankings", "Market Bias"],
 };
 
 const SIDE_LAYERS = [MARKET_LAYER, VALIDATION_LAYER, REASONING_LAYER, OUTPUT_LAYER];
@@ -243,12 +244,13 @@ export function BieBrainBanner() {
           <span className="bie-brain-layer-title bie-brain-layer-title-core">Intelligence Engine</span>
         </div>
 
-        <svg
-          ref={ref}
-          className={drawn ? "bie-brain-svg is-drawn" : "bie-brain-svg"}
-          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-          preserveAspectRatio="xMidYMid meet"
-        >
+        <div className="bie-brain-canvas">
+          <svg
+            ref={ref}
+            className={drawn ? "bie-brain-svg is-drawn" : "bie-brain-svg"}
+            viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+            preserveAspectRatio="xMidYMid meet"
+          >
           <defs>
             <radialGradient id="bie-core-grad" cx="38%" cy="32%" r="72%">
               <stop offset="0%" stopColor="#5df7ff" />
@@ -260,6 +262,28 @@ export function BieBrainBanner() {
               <stop offset="100%" stopColor="rgba(191,95,255,0.35)" />
             </linearGradient>
           </defs>
+
+          {/* Layer bands — visual hierarchy, not random decoration */}
+          {SIDE_LAYERS.map((layer) => (
+            <rect
+              key={`band-${layer.id}`}
+              x={layer.x - 52}
+              y={CORE.y - (layer.items.length * NODE_SPACING) / 2 - 28}
+              width={104}
+              height={layer.items.length * NODE_SPACING + 56}
+              rx={4}
+              className="bie-brain-layer-band"
+              style={{ fill: layer.accent }}
+            />
+          ))}
+          <rect
+            x={CORE.x - 72}
+            y={CORE.y - 150}
+            width={144}
+            height={300}
+            rx={6}
+            className="bie-brain-layer-band bie-brain-layer-band-core"
+          />
 
           {/* Stage brackets — subtle vertical rails anchoring each column */}
           {SIDE_LAYERS.map((layer) => (
@@ -320,27 +344,28 @@ export function BieBrainBanner() {
             className="bie-brain-axis bie-brain-axis-out"
             pathLength={1}
           />
-        </svg>
+          </svg>
 
-        <div className="bie-brain-label-overlay">
-          {allNodes.map((n) => (
-            <span
-              key={`lbl-${n.id}`}
-              className={`bie-brain-cap-label bie-brain-cap-label-${n.layerId}`}
-              style={{
-                left: `${(n.x / VIEW_W) * 100}%`,
-                top: `${(n.y / VIEW_H) * 100}%`,
-                ["--cap-accent" as string]: n.accent,
-              }}
-            >
-              {n.label}
-            </span>
-          ))}
-        </div>
+          <div className="bie-brain-label-overlay">
+            {allNodes.map((n) => (
+              <span
+                key={`lbl-${n.id}`}
+                className={`bie-brain-cap-label bie-brain-cap-label-${n.layerId}`}
+                style={{
+                  left: `${(n.x / VIEW_W) * 100}%`,
+                  top: `${(n.y / VIEW_H) * 100}%`,
+                  ["--cap-accent" as string]: n.accent,
+                }}
+              >
+                {n.label}
+              </span>
+            ))}
+          </div>
 
-        <div className="bie-brain-core-zone">
-          <span className="bie-brain-core-label">BIE</span>
-          <span className="bie-brain-core-caption">Validate · Reason · Improve</span>
+          <div className="bie-brain-core-zone" style={{ top: `${CORE_Y_PCT}%` }}>
+            <span className="bie-brain-core-label">BIE</span>
+            <span className="bie-brain-core-caption">Validate · Reason · Improve</span>
+          </div>
         </div>
 
         <div className="bie-brain-story-rail" aria-hidden>
@@ -351,6 +376,8 @@ export function BieBrainBanner() {
           <span className="bie-brain-story-step bie-brain-story-step-core">Engine</span>
           <span className="bie-brain-story-arrow" />
           <span className="bie-brain-story-step">Reason</span>
+          <span className="bie-brain-story-arrow" />
+          <span className="bie-brain-story-step">Learn</span>
           <span className="bie-brain-story-arrow" />
           <span className="bie-brain-story-step">Deliver</span>
         </div>
