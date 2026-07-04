@@ -70,3 +70,21 @@ export function checkNumbersGrounded(text: string, known: number[]): GroundingCh
   }
   return { grounded: true, ungroundedValue: null };
 }
+
+/**
+ * Recursively collect every finite number in an arbitrary JSON-like value. For LLM surfaces
+ * whose "known good" source is a whole context object handed to the prompt (as opposed to a
+ * hand-picked list of specific fields, e.g. gex-heatmap/explain's knownPriceLevels), walking
+ * the object directly is more robust than enumerating fields by hand — a missed field would
+ * silently produce false-positive "ungrounded" flags on legitimate numbers.
+ */
+export function collectKnownNumbers(value: unknown, seen: Set<number> = new Set()): number[] {
+  if (typeof value === "number") {
+    if (Number.isFinite(value)) seen.add(value);
+  } else if (Array.isArray(value)) {
+    for (const item of value) collectKnownNumbers(item, seen);
+  } else if (value != null && typeof value === "object") {
+    for (const v of Object.values(value)) collectKnownNumbers(v, seen);
+  }
+  return Array.from(seen);
+}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { checkNumbersGrounded } from "./grounding-guard";
+import { checkNumbersGrounded, collectKnownNumbers } from "./grounding-guard";
 
 describe("grounding-guard", () => {
   it("passes when known is empty (nothing to check against)", () => {
@@ -58,5 +58,40 @@ describe("grounding-guard", () => {
     const result = checkNumbersGrounded("Levels at 745 (real) and 812 (fake).", [745]);
     assert.equal(result.grounded, false);
     assert.equal(result.ungroundedValue, 812);
+  });
+});
+
+describe("grounding-guard: collectKnownNumbers", () => {
+  it("walks nested objects and arrays for every finite number", () => {
+    const ctx = {
+      price_action: { price: 745, change_pct: 0.42, levels: [{ value: 760 }, { value: 730 }] },
+      tags: ["neutral", 12],
+      note: "not a number",
+    };
+    const known = collectKnownNumbers(ctx);
+    for (const expected of [745, 0.42, 760, 730, 12]) {
+      assert.ok(known.includes(expected), `expected ${expected} in collected numbers`);
+    }
+  });
+
+  it("skips null/undefined/NaN and non-numeric leaves", () => {
+    const ctx = { a: null, b: undefined, c: NaN, d: Infinity, e: "745", f: 745 };
+    const known = collectKnownNumbers(ctx);
+    assert.deepEqual(known, [745]);
+  });
+
+  it("returns an empty array for an empty context", () => {
+    assert.deepEqual(collectKnownNumbers({}), []);
+    assert.deepEqual(collectKnownNumbers(null), []);
+  });
+
+  it("combined: a commentary-style context grounds a narrative built only from its numbers", () => {
+    const ctx = { price_action: { price: 745, vwap: 743 }, dealer_gex: { gamma_flip: 740, max_pain: 750 } };
+    const known = collectKnownNumbers(ctx);
+    const grounded = checkNumbersGrounded("Holding above VWAP 743, gamma flip at 740, max pain 750.", known);
+    assert.equal(grounded.grounded, true);
+    const hallucinated = checkNumbersGrounded("Next resistance sits at 812.", known);
+    assert.equal(hallucinated.grounded, false);
+    assert.equal(hallucinated.ungroundedValue, 812);
   });
 });
