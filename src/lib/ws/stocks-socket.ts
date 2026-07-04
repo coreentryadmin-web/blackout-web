@@ -10,6 +10,11 @@ import { normalizeLuldWsMessages } from "@/lib/providers/polygon-luld";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { inOptionsMarketHours } from "@/lib/ws/options-socket";
 import { applyLuldHaltEvents, luldHaltsStore, touchLuldMessageAt } from "@/lib/ws/luld-halts-store";
+import {
+  alertWsLeaderFailClosedOnce,
+  clearWsLeaderFailClosedAlert,
+  wsLeaderShouldFailOpenWithoutRedis,
+} from "@/lib/ws/leader-lock-shared";
 
 const STOCKS_WS_URL = process.env.STOCKS_WS_URL ?? MASSIVE_WS_STOCKS;
 const POLYGON_API_KEY = process.env.POLYGON_API_KEY ?? process.env.MASSIVE_API_KEY ?? "";
@@ -39,12 +44,23 @@ type IoredisLockExtra = {
 async function tryAcquireStocksLead(): Promise<boolean> {
   try {
     const redis = await getUwCacheRedis();
-    if (!redis) return true;
+    if (!redis) {
+      if (!wsLeaderShouldFailOpenWithoutRedis()) {
+        alertWsLeaderFailClosedOnce("stocks-socket");
+        return false; // multi-replica, Redis down — fail closed to avoid N-way WS contention
+      }
+      return true; // single replica — safe to fail open, no contention possible
+    }
+    clearWsLeaderFailClosedAlert("stocks-socket");
     const r = redis as unknown as IoredisLockExtra;
     const result = await r.set(STOCKS_LEADER_KEY, "1", "EX", STOCKS_LEADER_TTL_SEC, "NX");
     return result === "OK";
   } catch {
-    return true;
+    if (!wsLeaderShouldFailOpenWithoutRedis()) {
+      alertWsLeaderFailClosedOnce("stocks-socket");
+      return false;
+    }
+    return true; // single replica — safe to fail open even on a Redis error
   }
 }
 
