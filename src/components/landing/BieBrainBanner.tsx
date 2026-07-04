@@ -139,7 +139,7 @@ function buildFlowWires(nodes: {
   nodes.reasoning.forEach((n, i) => {
     wires.push({
       id: `bie-flow-core-reason-${i}`,
-      d: flowPath(CORE.x + 42, CORE.y - 20 + (i % 3) * 20, n.x - 14, n.y, CORE.y, -10),
+      d: flowPath(CORE.x + 46, CORE.y - 48 + i * 16, n.x - 14, n.y, CORE.y, -12),
       accent: "#bf5fff",
       stage: "core",
       dur: 2.8 + (i % 3) * 0.4,
@@ -235,21 +235,21 @@ export function BieBrainBanner() {
         role="img"
         aria-label="Intelligence pipeline: market data flows through validation into the BlackOut Intelligence Engine, then reasoned output reaches every platform instrument."
       >
-        <div className="bie-brain-layer-labels">
-          {SIDE_LAYERS.map((layer) => (
-            <span
-              key={layer.id}
-              className="bie-brain-layer-title"
-              style={{ left: `${(layer.x / VIEW_W) * 100}%`, color: layer.accent }}
-            >
-              {layer.title}
-            </span>
-          ))}
-          <span className="bie-brain-layer-title bie-brain-layer-title-core">Intelligence Engine</span>
-        </div>
-
         <div className="bie-brain-scroll-wrap">
         <div className="bie-brain-canvas">
+          <div className="bie-brain-layer-labels">
+            {SIDE_LAYERS.map((layer) => (
+              <span
+                key={layer.id}
+                className="bie-brain-layer-title"
+                style={{ left: `${(layer.x / VIEW_W) * 100}%`, color: layer.accent }}
+              >
+                {layer.title}
+              </span>
+            ))}
+            <span className="bie-brain-layer-title bie-brain-layer-title-core">Intelligence Engine</span>
+          </div>
+
           <svg
             ref={ref}
             className={drawn ? "bie-brain-svg is-drawn" : "bie-brain-svg"}
@@ -314,6 +314,17 @@ export function BieBrainBanner() {
             className="bie-brain-gate bie-brain-gate-inner"
             pathLength={1}
           />
+          {/* Output gate — trusted signals exit only after processing */}
+          <path
+            d={`M ${CORE.x + 58} ${CORE.y - 72} Q ${CORE.x + 28} ${CORE.y} ${CORE.x + 58} ${CORE.y + 72}`}
+            className="bie-brain-gate bie-brain-gate-out"
+            pathLength={1}
+          />
+          <path
+            d={`M ${CORE.x + 52} ${CORE.y - 64} Q ${CORE.x + 30} ${CORE.y} ${CORE.x + 52} ${CORE.y + 64}`}
+            className="bie-brain-gate bie-brain-gate-out bie-brain-gate-inner"
+            pathLength={1}
+          />
 
           {/* Flow connections — intelligence travels inward, validated output travels outward */}
           {wires.map((w, i) => (
@@ -341,10 +352,18 @@ export function BieBrainBanner() {
           ))}
 
           {/* Capability nodes */}
-          {allNodes.map((n) => (
+          {allNodes.map((n, i) => (
             <g key={n.id} className="bie-brain-cap-node">
               <circle cx={n.x} cy={n.y} r={5} fill={n.accent} className="bie-brain-cap-dot" />
-              <circle cx={n.x} cy={n.y} r={9} fill="none" stroke={n.accent} className="bie-brain-cap-ring" />
+              <circle
+                cx={n.x}
+                cy={n.y}
+                r={9}
+                fill="none"
+                stroke={n.accent}
+                className="bie-brain-cap-ring"
+                style={{ animationDelay: `${-(i * 0.35)}s` }}
+              />
             </g>
           ))}
 
@@ -356,15 +375,31 @@ export function BieBrainBanner() {
           <circle cx={CORE.x} cy={CORE.y} r={32} className="bie-brain-core" />
           {/* Inbound / outbound axis */}
           <path
-            d={chordPath(layerX(0.03), CORE.y, CORE.x - 34, CORE.y, CORE.x, CORE.y, 0)}
+            id="bie-spine-in"
+            d={chordPath(layerX(0.03), CORE.y, CORE.x - 58, CORE.y, CORE.x, CORE.y, 0)}
             className="bie-brain-axis bie-brain-axis-in"
             pathLength={1}
           />
           <path
-            d={chordPath(CORE.x + 34, CORE.y, layerX(0.97), CORE.y, CORE.x, CORE.y, 0)}
+            id="bie-spine-out"
+            d={chordPath(CORE.x + 58, CORE.y, layerX(0.97), CORE.y, CORE.x, CORE.y, 0)}
             className="bie-brain-axis bie-brain-axis-out"
             pathLength={1}
           />
+          {!reduceMotion && (
+            <>
+              <circle r={2} className="bie-spine-pulse bie-spine-pulse-in" fill="#5df7ff">
+                <animateMotion dur="4.2s" begin="-1s" repeatCount="indefinite">
+                  <mpath href="#bie-spine-in" />
+                </animateMotion>
+              </circle>
+              <circle r={2} className="bie-spine-pulse bie-spine-pulse-out" fill="#ffcc4d">
+                <animateMotion dur="4.6s" begin="-2.4s" repeatCount="indefinite">
+                  <mpath href="#bie-spine-out" />
+                </animateMotion>
+              </circle>
+            </>
+          )}
           </svg>
 
           <div className="bie-brain-label-overlay">
@@ -409,7 +444,7 @@ export function BieBrainBanner() {
       </div>
 
       <p className="bie-brain-products-eyebrow">Platform instruments · powered by BIE</p>
-      <div className="bie-brain-nodes">
+      <div className="bie-brain-product-rail">
         {PRODUCTS.map((n) => (
           <Link key={n.name} href={n.href} className="bie-brain-node" style={{ ["--node-accent" as string]: n.accent }}>
             <span className="bie-brain-node-swatch" />
