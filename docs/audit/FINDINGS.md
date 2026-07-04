@@ -39,6 +39,17 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🟢 FIXED 2026-07-04 — Largo answer-grounding cron false-flagged every recent answer (ops-auto-fix #444, P0)
+**Where:** `src/lib/correctness/largo-verifier.ts` shipped a bespoke `extractNumericTokens` regex (separate from the runtime Layer-4 verifier in `src/lib/bie/verifier.ts`) that false-flagged prod Largo answers: list markers (`- 8 alerts` → `-8`), money-suffix bleed (`$80 max pain` → `$80M` = 80,000,000 via trailing `m` in "max"), EMA period refs (`50-EMA` → 50), date fragments (`Jul 10` → 10), and flagged ANY single ungrounded token instead of using the same coverage threshold `largo-terminal.ts` applies before appending the runtime caution footer. Result: `data-correctness` cron failed with `3/3 recent Largo answers cited a number absent from tool-call results`, cascading to cron-staleness-watchdog P1.
+
+**Fix:** new shared `auditLargoAnswerGrounding()` in `src/lib/bie/verifier.ts` — reuses `extractNumericClaims` + `verifyClaims` (identical to in-turn Layer 4) and flags only when `total >= 4 && coverage < 0.5` AND the answer lacks the `_BIE verification:` runtime caution footer (undisclosed low coverage). `largo-verifier.ts` now calls this instead of the bespoke regex path.
+
+**Blast radius:** cron audit path only — runtime Largo behavior unchanged; answers that already disclosed low coverage via the footer are not re-flagged by the cron.
+
+**Verification:** 4 new tests in `src/lib/bie/largo-grounding-fixture.test.ts` (invented-target fixture, footer skip, list-marker non-flag, `$80 max pain` non-flag); replay against prod rows #508/#510/#512 → 0/3 flagged (was 3/3).
+
+---
+
 ## 🟢 FIXED 2026-07-04 — `PG_POOL_MAX` × `REPLICA_COUNT` oversubscribes PgBouncer's documented backend budget 3.75x (audit finding, high)
 **Where:** `src/lib/db.ts:119` — `max: parseInt(process.env.PG_POOL_MAX ?? "5", 10)`. Production explicitly sets `PG_POOL_MAX=15` (Railway service env var) across 5 live replicas (`docs/PGBOUNCER-SETUP.md`), for **75** total client connections against PgBouncer's own documented `DEFAULT_POOL_SIZE=20` Postgres-backend budget — a real 3.75x oversubscription. The 2026-07-03 "Query read timeout" investigation into an admin-endpoint failure storm modeled the ceiling using the code DEFAULT (5×5=25) instead of the documented production override (15×5=75), understating the real ceiling by 3x and never cross-referencing `PGBOUNCER-SETUP.md`'s own numbers — see that entry's 2026-07-04 update below for the correction. There was also no runtime visibility into pool contention (`getDatabasePoolStats().waiting`, which already existed) anywhere in the admin health snapshot/alert path — a replica queuing queries behind a full pool had no signal short of the timeout itself firing.
 
