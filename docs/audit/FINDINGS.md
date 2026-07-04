@@ -9,6 +9,19 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🟢 FIXED 2026-07-04 — Night Hawk critic cut/downgraded plays on unverified self-reported reasons (audit finding, medium — last of the 7 LLM-surface grounding fixes)
+**Where:** `src/lib/nighthawk/play-critic.ts`'s `critiquePlays()` cuts or downgrades a play based solely on Claude's self-reported `reason` string, with no check that the cited contradiction is real against the play's own thesis/entry/target/stop/dossier data. A hallucinated "contradicts X" reason could silently zero a genuinely good play with no way to catch it.
+
+**Fix:** applied the shared guard, per-play rather than batch-wide. Captured each play's own prompt text block (`--- Play #N ---` / thesis / entry / target / stop / options / dossier) into a `knownTextByRank` map while building the prompt, so a verdict's reason is checked against exactly what THAT play's block showed Claude — not the whole batch's combined prompt (a reason for play #3 citing a number that only appears in play #7's block is still ungrounded for #3). `checkNumbersGrounded(verdict.reason, extractNumbersFromText(knownTextByRank.get(play.rank)))` now gates every `cut`/`downgrade` verdict (a `keep` verdict has no consequence, so it isn't gated); an ungrounded reason gets the verdict REJECTED — the play survives unchanged, with a note recording the rejection (`notes` is durably persisted into `nighthawk_editions.meta.critic_notes` per this audit's own earlier finding, so the rejection itself is part of the audit trail, not silently dropped).
+
+**Blast radius:** none to existing behavior — a grounded cut/downgrade (the expected case when the critic is actually right) is applied exactly as before; only a hallucinated verdict now gets rejected instead of silently executing.
+
+**Verification:** `npx tsc --noEmit` clean; full suite `985/985` passing (4 new in a new `play-critic.test.ts`, using `node:test`'s `mock.module()` on `../providers/anthropic` — an established pattern already used in `platform-intel-snapshot.test.ts` — to control the critic's mocked response and assert: a grounded cut applies, an ungrounded cut is rejected with conviction/rank unchanged, an ungrounded downgrade is rejected, and a `keep` verdict is never gated regardless of its reason's content); `npm run build` clean; `lint:brand`/`lint:vendor`/`verify-api-auth-guards.mjs` all green.
+
+**This completes the audit's numeric-grounding fabrication-guard work** across all 7 flagged LLM narrative surfaces (`gex-heatmap/explain` already had it; `spx-play-claude.ts`, `spx-commentary.ts`, `nighthawk/play-explainer.ts`, `flow-brief/route.ts`, `nights-watch/position-narrative.ts`, `nighthawk/play-critic.ts` fixed across tasks #76-82), sharing one `src/lib/grounding-guard.ts` module (`checkNumbersGrounded`, `collectKnownNumbers`, `extractNumbersFromText`) instead of 7 independent, potentially-drifting implementations.
+
+---
+
 ## 🟢 FIXED 2026-07-04 — Night's Watch per-position AI narrative had no fabrication check (audit finding, medium)
 **Where:** `src/lib/nights-watch/position-narrative.ts`'s `buildPositionNarrative()` caches and returns Claude's per-position desk narrative (Greeks, P&L, levels, dealer positioning) with grounding enforced only by prompt instruction ("NEVER invent or estimate a price, level, Greek, premium, percentage, or date"), never structurally verified.
 
