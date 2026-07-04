@@ -167,8 +167,12 @@ function narrativeLevelsAreGrounded(
   const known = knownPriceLevels(hm, overlays);
   const result = checkNumbersGrounded(narrative, known);
   if (!result.grounded) {
+    // hm.underlying traces back to the user-supplied `ticker` query param (only
+    // .toUpperCase()'d, no character filtering) — strip CR/LF before it reaches a log
+    // line so a crafted ticker can't forge extra log entries (CodeQL log-injection).
+    const safeTicker = hm.underlying.replace(/[\r\n]/g, "");
     console.warn(
-      `[market/gex-heatmap/explain] ungrounded level ${result.ungroundedValue} in narrative for ${hm.underlying} — falling back to deterministic read.`
+      `[market/gex-heatmap/explain] ungrounded level ${result.ungroundedValue} in narrative for ${safeTicker} — falling back to deterministic read.`
     );
   }
   return result.grounded;
