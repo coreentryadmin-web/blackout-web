@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { checkNumbersGrounded, collectKnownNumbers } from "./grounding-guard";
+import { checkNumbersGrounded, collectKnownNumbers, extractNumbersFromText } from "./grounding-guard";
 
 describe("grounding-guard", () => {
   it("passes when known is empty (nothing to check against)", () => {
@@ -93,5 +93,29 @@ describe("grounding-guard: collectKnownNumbers", () => {
     const hallucinated = checkNumbersGrounded("Next resistance sits at 812.", known);
     assert.equal(hallucinated.grounded, false);
     assert.equal(hallucinated.ungroundedValue, 812);
+  });
+});
+
+describe("grounding-guard: extractNumbersFromText", () => {
+  it("extracts numbers embedded in formatted strings, unfiltered", () => {
+    const text = "Entry: $182.50/share, range 6020-6030, IV rank 62%, 3-day streak.";
+    const known = extractNumbersFromText(text);
+    for (const expected of [182.5, 6020, 6030, 62, 3]) {
+      assert.ok(known.includes(expected), `expected ${expected} in extracted numbers`);
+    }
+  });
+
+  it("returns an empty array when the text has no numbers", () => {
+    assert.deepEqual(extractNumbersFromText("No levels here."), []);
+  });
+
+  it("combined: grounds a narrative against numbers pulled from a dossier-style text blob", () => {
+    const dossierText = "Support at 6020, resistance at 6050. Flow streak 3 days. Entry $182.50/share.";
+    const known = extractNumbersFromText(dossierText);
+    const grounded = checkNumbersGrounded("Support holds at 6020 with resistance at 6050 above.", known);
+    assert.equal(grounded.grounded, true);
+    const hallucinated = checkNumbersGrounded("A breakout level at 6200 is in play.", known);
+    assert.equal(hallucinated.grounded, false);
+    assert.equal(hallucinated.ungroundedValue, 6200);
   });
 });

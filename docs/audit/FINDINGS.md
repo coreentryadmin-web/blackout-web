@@ -9,6 +9,17 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🟢 FIXED 2026-07-04 — Night Hawk "Full Hawk Intel" briefing's success path shipped Claude prose unchecked (audit finding, medium)
+**Where:** `src/lib/nighthawk/play-explainer.ts`'s `generatePlayExplanation()` only fell back to the deterministic, grounded `buildGroundedPlayExplanationFallback()` when generation failed OUTRIGHT (empty response after 45s timeout) — a fluent but hallucinated NON-EMPTY briefing passed straight through to the member-visible "Full Hawk Intel" panel unchecked.
+
+**Fix:** the prompt's source data arrives as 3 already-formatted TEXT blocks (market recap, play card, ticker dossier) rather than a structured object — the dossier in particular is a free-text string from `formatTickerDossierText()`, where a real level can appear embedded in prose like `"$182.50/share"` or `"6020-6030"`. `collectKnownNumbers` (task #78, walks object/array leaves) can't see numbers embedded in strings, so added `extractNumbersFromText(text)` to the shared `grounding-guard.ts` module: unfiltered regex extraction of every bare numeric token from free text (as opposed to `checkNumbersGrounded`'s filtered extraction, which is judging the GENERATED text and deliberately skips %/money/small-ints). After a non-empty generation, `checkNumbersGrounded(briefing, extractNumbersFromText(marketRecapBlock + playBlock + dossierContext))` — the exact 3 blocks the prompt was built from — now runs before the briefing is returned; on failure it falls back to the same grounded card fallback already used for the failure path.
+
+**Blast radius:** `extractNumbersFromText` is a second new reusable primitive in the shared grounding module (alongside `collectKnownNumbers`) for the remaining LLM-surface tasks wherever the "known good" source is free text rather than a structured object.
+
+**Verification:** `npx tsc --noEmit` clean; full suite `979/979` passing (3 new in `grounding-guard.test.ts` for `extractNumbersFromText`, 2 new in `play-explainer.test.ts` exercising the exact grounding mechanism against a grounded vs. hallucinated briefing). `npm run build` clean; `lint:brand`/`lint:vendor`/`verify-api-auth-guards.mjs` all green. Note: `play-explainer.test.ts`'s new tests build the "known" text from `buildGroundedPlayExplanationFallback()` (same numeric content as the real play-card block) rather than importing `play-explainer.ts` directly — that module transitively imports `"server-only"` (via `fetchTickerDossier` → provider chain), which throws outside the Next.js server-component runtime and would crash the plain `node --test` runner.
+
+---
+
 ## 🟢 FIXED 2026-07-04 — SPX Claude play-gate thesis had no fabrication guard; zero durable audit trail (audit finding, high)
 **Where:** `src/lib/spx-play-claude.ts`'s `evaluateClaudePlayApproval()` splices Claude's free-text `thesis` verbatim into real-money 0DTE play cards (member-visible, via `spx-play-engine.ts`) with no check that any level it cites is real — grounding was prompt-instruction only ("cite MTF + S/R + flow + news"), never verified. The Claude-gated pipeline also had zero durable audit-log write path: the verdict that gates a live entry (APPROVE_BUY or VETO) was cached in-memory/Redis for reuse but never recorded anywhere queryable after the fact — a disputed trade could never be traced back to what Claude actually said and why.
 
