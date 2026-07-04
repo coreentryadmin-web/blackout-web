@@ -60,10 +60,17 @@ const OUTPUT_LAYER: CapabilityLayer = {
 const INTELLIGENCE_ITEMS = [
   "Pattern Recognition",
   "Market Reasoning",
-  "Decision Engine",
   "Memory",
   "Risk Analysis",
-  "Continuous Improvement",
+  "Continuous Learning",
+];
+
+const CORE_PHRASES = ["Validate", "Reason", "Learn", "Improve"];
+
+const STATUS_CHIPS = [
+  { label: "Auditing", accent: "#00e676" },
+  { label: "Learning", accent: "#bf5fff" },
+  { label: "Live", accent: "#5df7ff" },
 ];
 
 const SIDE_LAYERS = [MARKET_LAYER, VALIDATION_LAYER, OUTPUT_LAYER];
@@ -83,7 +90,7 @@ function buildLayerNodes(layer: CapabilityLayer): FlowNode[] {
   }));
 }
 
-/** Six intelligence capabilities on an arc around the reactor core. */
+/** Five intelligence capabilities on an arc around the reactor core. */
 function buildIntelligenceOrbit(): FlowNode[] {
   const startAngle = 215;
   const span = 290;
@@ -207,6 +214,7 @@ function useLiveOnView<T extends SVGSVGElement>() {
 export function BieBrainBanner() {
   const { ref, drawn } = useLiveOnView<SVGSVGElement>();
   const [lineIndex, setLineIndex] = useState(0);
+  const [phraseIndex, setPhraseIndex] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
 
   const intelligenceOrbit = useMemo(() => buildIntelligenceOrbit(), []);
@@ -228,6 +236,11 @@ export function BieBrainBanner() {
 
   useEffect(() => {
     const id = setInterval(() => setLineIndex((i) => (i + 1) % READOUT_LINES.length), 3200);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => setPhraseIndex((i) => (i + 1) % CORE_PHRASES.length), 2400);
     return () => clearInterval(id);
   }, []);
 
@@ -491,9 +504,23 @@ export function BieBrainBanner() {
               ))}
             </div>
 
+            <div className="bie-brain-status-chips" style={{ top: `${CORE_Y_PCT - 14}%` }} aria-hidden>
+              {STATUS_CHIPS.map((chip) => (
+                <span
+                  key={chip.label}
+                  className="bie-brain-status-chip"
+                  style={{ ["--chip-accent" as string]: chip.accent }}
+                >
+                  {chip.label}
+                </span>
+              ))}
+            </div>
+
             <div className="bie-brain-core-zone" style={{ top: `${CORE_Y_PCT}%` }}>
               <span className="bie-brain-core-label">BIE</span>
-              <span className="bie-brain-core-caption">Validate · Reason · Improve</span>
+              <span className="bie-brain-core-caption" key={phraseIndex}>
+                {CORE_PHRASES[phraseIndex]}
+              </span>
             </div>
           </div>
           <p className="bie-brain-scroll-hint" aria-hidden>
