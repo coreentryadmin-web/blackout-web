@@ -46,14 +46,44 @@ const WS_STALE_MS = 10_000;
 const QUOTE_CACHE_MS = 5_000;
 /** Redis TTL must be an integer ≥1s; 6s comfortably covers the 5s window. */
 const QUOTE_REDIS_TTL_SEC = 6;
+/**
+ * Negative-result cache window. Without this, a sustained upstream outage (vendor 404s,
+ * timeouts) meant every poll from every open tab, on every replica, re-hit the upstream with
+ * zero backoff — wasted vendor-call budget for the duration of the outage. Shorter than
+ * QUOTE_CACHE_MS since a failure is more time-sensitive to clear than a healthy quote is to
+ * refresh (a real recovery should be picked up quickly once the vendor is back).
+ */
+const QUOTE_FAILURE_CACHE_MS = 3_000;
 
 /** Per-process REST cache (in-memory L1), shared across all concurrent requests. */
 const quoteMem = new Map<string, { at: number; payload: QuotePayload }>();
 /** Coalesce concurrent REST fetches for the same ticker into one upstream call. */
 const inflight = new Map<string, Promise<QuotePayload | null>>();
+/** Per-ticker timestamp of the most recent REST quote failure — see QUOTE_FAILURE_CACHE_MS. */
+const quoteFailureMem = new Map<string, number>();
+/**
+ * Tickers currently mid-outage that have already logged a warning. Cleared on the next
+ * success, so a genuine break still surfaces exactly one log line per outage (not silenced
+ * forever), while a sustained vendor outage doesn't produce a wall of repeat warnings.
+ */
+const quoteFailureWarned = new Set<string>();
 
 function isIndexRoot(optionsRoot: string): boolean {
   return optionsRoot.startsWith("I:");
+}
+
+/**
+ * Records a REST quote failure for the negative cache and logs at most once per outage
+ * (see quoteFailureWarned) — a sustained vendor outage (e.g. a snapshot-cache blip over a
+ * long weekend) produces one warning at the start, not one per poll for the outage's duration.
+ */
+function recordQuoteFailure(ticker: string, detail: string): void {
+  quoteFailureMem.set(ticker, Date.now());
+  if (quoteFailureMem.size > 200) quoteFailureMem.clear();
+  if (!quoteFailureWarned.has(ticker)) {
+    quoteFailureWarned.add(ticker);
+    console.warn(`[market/quote] REST quote failing for ${ticker} (further repeats suppressed until it recovers): ${detail}`);
+  }
 }
 
 /**
@@ -67,6 +97,11 @@ async function getRestQuote(
   isIndex: boolean
 ): Promise<QuotePayload | null> {
   const now = Date.now();
+
+  // Negative cache — a recent failure for this ticker skips straight to { available:false }
+  // instead of re-hitting a possibly-still-down upstream on every poll.
+  const failedAt = quoteFailureMem.get(ticker);
+  if (failedAt != null && now - failedAt < QUOTE_FAILURE_CACHE_MS) return null;
 
   // L1 — in-memory, fresh within the ~1.5s window.
   const mem = quoteMem.get(ticker);
@@ -94,7 +129,10 @@ async function getRestQuote(
       const snap = isIndex
         ? await fetchIndexSnapshot(optionsRoot)
         : await fetchStockSnapshot(ticker);
-      if (!snap || !(snap.price > 0)) return null;
+      if (!snap || !(snap.price > 0)) {
+        recordQuoteFailure(ticker, "empty/zero-price snapshot");
+        return null;
+      }
 
       const payload: QuotePayload = {
         available: true,
@@ -109,12 +147,11 @@ async function getRestQuote(
       if (quoteMem.size > 200) quoteMem.clear();
       quoteMem.set(ticker, entry);
       void sharedCacheSet(`quote:${ticker}`, entry, QUOTE_REDIS_TTL_SEC).catch(() => {});
+      quoteFailureMem.delete(ticker);
+      quoteFailureWarned.delete(ticker);
       return payload;
     } catch (err) {
-      console.warn(
-        `[market/quote] REST quote failed for ${ticker}:`,
-        err instanceof Error ? err.message : String(err)
-      );
+      recordQuoteFailure(ticker, err instanceof Error ? err.message : String(err));
       return null;
     } finally {
       inflight.delete(ticker);
