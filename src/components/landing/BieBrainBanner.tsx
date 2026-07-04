@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ProductMark, MARK_ACCENT, type MarkProduct } from "@/components/marks/ProductMark";
+import { MARK_ACCENT } from "@/components/marks/ProductMark";
 import {
   buildAmbientFieldMesh,
   buildAtmosphereGlows,
@@ -17,6 +16,7 @@ import {
   type FieldParticle,
   type RingFieldNode,
 } from "./bie-helix-engine";
+import { BieOrbitTools, type OrbitTool } from "./BieOrbitTools";
 
 /**
  * Milestone 1 — Composition.
@@ -25,10 +25,13 @@ import {
  */
 
 export const VIEW_W = 1280;
-export const VIEW_H = 820;
-const CORE = { x: VIEW_W / 2, y: VIEW_H * 0.48 };
-const MAX_RX = 572;
-const MAX_RY = 292;
+export const VIEW_H = 740;
+const CORE = { x: VIEW_W / 2, y: VIEW_H * 0.5 };
+const MAX_RX = 628;
+const MAX_RY = 318;
+const ORBIT_RING = 6;
+const ORBIT_SCALE = 0.98;
+const ORBIT_PERIOD_SEC = 320;
 const FIELD_COUNT = 120;
 const INNER_RINGS = [1, 2] as const;
 const INNER_NODES = 6;
@@ -39,21 +42,14 @@ const READOUT_LINES = [
   "the engine never stops learning from every session, every market day",
 ];
 
-type FieldToolSlot = "tl" | "tr" | "ml" | "mr" | "bl" | "br";
-
-const FIELD_TOOLS: {
-  slot: FieldToolSlot;
-  name: string;
-  href: string;
-  mark: MarkProduct;
-  accent: string;
-}[] = [
-  { slot: "tl", name: "SPX Slayer", href: "/dashboard", mark: "spx", accent: MARK_ACCENT.spx },
-  { slot: "bl", name: "HELIX", href: "/flows", mark: "helix", accent: MARK_ACCENT.helix },
-  { slot: "tr", name: "BlackOut Thermal", href: "/heatmap", mark: "heatmap", accent: MARK_ACCENT.heatmap },
-  { slot: "br", name: "BlackOut Grid", href: "/grid", mark: "grid", accent: MARK_ACCENT.grid },
-  { slot: "ml", name: "Largo", href: "/terminal", mark: "largo", accent: MARK_ACCENT.largo },
-  { slot: "mr", name: "Night Hawk", href: "/nighthawk", mark: "nighthawk", accent: MARK_ACCENT.nighthawk },
+/** Evenly spaced on ring 6 — phase offsets so SPX starts top-left. */
+const FIELD_TOOLS: OrbitTool[] = [
+  { startAngleDeg: 218, name: "SPX Slayer", href: "/dashboard", mark: "spx", accent: MARK_ACCENT.spx },
+  { startAngleDeg: 278, name: "HELIX", href: "/flows", mark: "helix", accent: MARK_ACCENT.helix },
+  { startAngleDeg: 338, name: "BlackOut Thermal", href: "/heatmap", mark: "heatmap", accent: MARK_ACCENT.heatmap },
+  { startAngleDeg: 38, name: "BlackOut Grid", href: "/grid", mark: "grid", accent: MARK_ACCENT.grid },
+  { startAngleDeg: 98, name: "Largo", href: "/terminal", mark: "largo", accent: MARK_ACCENT.largo },
+  { startAngleDeg: 158, name: "Night Hawk", href: "/nighthawk", mark: "nighthawk", accent: MARK_ACCENT.nighthawk },
 ];
 
 type ReactorPhase = "idle" | "inbound" | "absorb" | "ripple";
@@ -323,7 +319,7 @@ export function BieBrainBanner() {
           <svg
             className="bie-brain-svg bie-reactor-svg bie-field-svg"
             viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-            preserveAspectRatio="xMidYMid meet"
+            preserveAspectRatio="xMidYMid slice"
           >
             <defs>
               <radialGradient id="bie-field-base" cx="50%" cy="50%" r="72%">
@@ -434,24 +430,19 @@ export function BieBrainBanner() {
             </g>
           </svg>
 
-          <div className="bie-field-tools" aria-label="Platform instruments">
-            {FIELD_TOOLS.map((tool) => (
-              <Link
-                key={tool.slot}
-                href={tool.href}
-                className={`bie-field-tool bie-field-tool-${tool.slot}`}
-                style={{ ["--tool-accent" as string]: tool.accent }}
-              >
-                <span className="bie-field-tool-mark" aria-hidden>
-                  <ProductMark product={tool.mark} size={36} />
-                </span>
-                <span className="bie-field-tool-copy">
-                  <span className="bie-field-tool-name">{tool.name}</span>
-                  <span className="bie-field-tool-open">Open →</span>
-                </span>
-              </Link>
-            ))}
-          </div>
+          <BieOrbitTools
+            tools={FIELD_TOOLS}
+            viewW={VIEW_W}
+            viewH={VIEW_H}
+            coreX={CORE.x}
+            coreY={CORE.y}
+            maxRx={MAX_RX}
+            maxRy={MAX_RY}
+            orbitRing={ORBIT_RING}
+            orbitScale={ORBIT_SCALE}
+            orbitPeriodSec={ORBIT_PERIOD_SEC}
+            reduceMotion={reduceMotion}
+          />
           </div>
 
           <div className="bie-field-caption">
