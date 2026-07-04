@@ -6,7 +6,6 @@ import {
   buildAtmosphereGlows,
   buildFieldLineRings,
   buildFieldParticles,
-  buildImpulsePath,
   buildInboundPulsePath,
   buildInnerFieldNodes,
   buildRingSegmentPath,
@@ -38,7 +37,29 @@ const READOUT_LINES = [
   "the engine never stops learning from every session, every market day",
 ];
 
-type ReactorPhase = "idle" | "inbound" | "core" | "ripple";
+type ReactorPhase = "idle" | "inbound" | "absorb" | "ripple";
+
+/** Which field rings brighten during each phase of the processing cycle. */
+function litRingsForPhase(phase: ReactorPhase): number[] {
+  switch (phase) {
+    case "inbound":
+      return [5, 6];
+    case "absorb":
+      return [1, 2];
+    case "ripple":
+      return [3, 4];
+    default:
+      return [];
+  }
+}
+
+function pickInboundOrigin(): { x: number; y: number } {
+  const useOuter = Math.random() < 0.65;
+  const ring = useOuter ? 6 : 5;
+  const scale = useOuter ? 0.98 : 0.88;
+  const angle = 8 + Math.random() * 344;
+  return pointOnFieldLine(CORE.x, CORE.y, MAX_RX, MAX_RY, scale, ring, angle);
+}
 
 function useFieldParticles(
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
@@ -178,51 +199,48 @@ export function BieBrainBanner() {
     }
 
     let cancelled = false;
-    let useRadial = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    const fire = () => {
-      if (cancelled) return;
-      useRadial = !useRadial;
-      if (useRadial) {
-        const angle = 20 + Math.random() * 300;
-        setPulsePath(buildImpulsePath(CORE.x, CORE.y, angle, MAX_RX, MAX_RY));
-      } else if (innerFieldNodes.length && Math.random() < 0.35) {
-        const node = innerFieldNodes[Math.floor(Math.random() * innerFieldNodes.length)];
-        setPulsePath(buildInboundPulsePath(node.x, node.y, CORE.x, CORE.y));
-      } else {
-        const angle = 12 + Math.random() * 336;
-        const outer = pointOnFieldLine(CORE.x, CORE.y, MAX_RX, MAX_RY, 0.98, 6, angle);
-        setPulsePath(buildInboundPulsePath(outer.x, outer.y, CORE.x, CORE.y));
-      }
-      setPulseKey((k) => k + 1);
-      setPhase("inbound");
-      timers.push(setTimeout(() => !cancelled && setPhase("core"), 900));
-      timers.push(setTimeout(() => {
-        if (cancelled) return;
-        setPhase("ripple");
-        setRippleKey((k) => k + 1);
-      }, 1400));
-      timers.push(setTimeout(() => !cancelled && setPhase("idle"), 2600));
-      timers.push(setTimeout(fire, 6400 + Math.random() * 2600));
+    const schedule = (fn: () => void, ms: number) => {
+      timers.push(setTimeout(() => !cancelled && fn(), ms));
     };
 
-    fire();
+    /** Signal enters → core absorbs → ripple outward. Repeats every ~5.5–7.5s. */
+    const fireCycle = () => {
+      if (cancelled) return;
+
+      const origin = pickInboundOrigin();
+      setPulsePath(buildInboundPulsePath(origin.x, origin.y, CORE.x, CORE.y));
+      setPulseKey((k) => k + 1);
+      setPhase("inbound");
+
+      schedule(() => setPhase("absorb"), 1180);
+      schedule(() => {
+        setPhase("ripple");
+        setRippleKey((k) => k + 1);
+      }, 1520);
+      schedule(() => setPhase("idle"), 3400);
+      schedule(fireCycle, 5600 + Math.floor(Math.random() * 1900));
+    };
+
+    fireCycle();
     return () => {
       cancelled = true;
       timers.forEach(clearTimeout);
     };
-  }, [reduceMotion, innerFieldNodes]);
+  }, [reduceMotion]);
 
-  const litRing =
-    phase === "inbound" ? 6 : phase === "core" || phase === "ripple" ? 2 : -1;
+  const litRings = litRingsForPhase(phase);
+  const coreActive = phase === "absorb" || phase === "ripple";
+  const coreAbsorbing = phase === "absorb";
 
   const renderFieldLine = (ring: FieldLineRing, opts: { showNodes: boolean; loopPulse: boolean }) => {
     const onRing = opts.showNodes ? innerNodes(innerFieldNodes, ring.ring as 1 | 2) : [];
+    const isLit = litRings.includes(ring.ring);
     return (
       <g
         key={`field-${ring.ring}`}
-        className={`bie-reactor-ring bie-field-line bie-field-line-${ring.layer} bie-field-line-${ring.ring}${litRing === ring.ring ? " is-lit" : ""}`}
+        className={`bie-reactor-ring bie-field-line bie-field-line-${ring.layer} bie-field-line-${ring.ring}${isLit ? " is-lit" : ""}`}
         style={
           {
             ["--ring-period" as string]: `${ring.periodSec}s`,
@@ -272,7 +290,7 @@ export function BieBrainBanner() {
   };
 
   return (
-    <div className={`bie-brain-banner bie-brain-hero bie-reactor-hero bie-intelligence-field${reduceMotion ? "" : " bie-reactor-live"}`}>
+    <div className={`bie-brain-banner bie-brain-hero bie-reactor-hero bie-intelligence-field bie-reactor-phase-${phase}${reduceMotion ? "" : " bie-reactor-live"}`}>
       <div
         className="bie-brain-diagram bie-reactor-diagram bie-reactor-stage bie-field-stage"
         role="img"
@@ -367,11 +385,11 @@ export function BieBrainBanner() {
                 );
               })}
 
-            {!reduceMotion && phase !== "idle" && pulsePath && (
+            {!reduceMotion && phase === "inbound" && pulsePath && (
               <g key={pulseKey} className="bie-reactor-pulse-wave bie-reactor-pulse-inbound">
                 <path id="bie-reactor-impulse" d={pulsePath} className="bie-reactor-impulse-track" pathLength={1} />
-                <circle r={2.2} className="bie-reactor-impulse-dot" fill="#5df7ff">
-                  <animateMotion dur="1.45s" repeatCount="1" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.4 0 0.2 1">
+                <circle r={2.6} className="bie-reactor-impulse-dot bie-reactor-signal-dot" fill="#5df7ff">
+                  <animateMotion dur="1.15s" repeatCount="1" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.35 0 0.2 1">
                     <mpath href="#bie-reactor-impulse" />
                   </animateMotion>
                 </circle>
@@ -379,11 +397,15 @@ export function BieBrainBanner() {
             )}
 
             <g
-              className={`bie-reactor-core bie-reactor-core-classic${phase === "core" || phase === "ripple" ? " is-active" : ""}`}
+              className={`bie-reactor-core bie-reactor-core-classic${coreActive ? " is-active" : ""}${coreAbsorbing ? " is-absorbing" : ""}${phase === "ripple" ? " is-emitting" : ""}`}
               transform={`translate(${CORE.x}, ${CORE.y})`}
             >
               {!reduceMotion && phase === "ripple" && (
-                <circle key={`rip-${rippleKey}`} cx={0} cy={0} r={36} className="bie-field-ripple bie-field-ripple-a" />
+                <>
+                  <circle key={`rip-a-${rippleKey}`} cx={0} cy={0} r={36} className="bie-field-ripple bie-field-ripple-a" />
+                  <circle key={`rip-b-${rippleKey}`} cx={0} cy={0} r={36} className="bie-field-ripple bie-field-ripple-b" />
+                  <circle key={`rip-c-${rippleKey}`} cx={0} cy={0} r={36} className="bie-field-ripple bie-field-ripple-c" />
+                </>
               )}
               <circle cx={0} cy={0} r={36} className="bie-reactor-core-halo" />
               <circle cx={0} cy={0} r={20} className="bie-brain-core bie-reactor-core-nucleus" />
