@@ -1452,9 +1452,8 @@ body::before {
 .bento-flagship::before { opacity: 0.4; }
 .bento-accent-gold { border-top-color: #ffcc4d; }
 
-/* ── BIE brain banner — story-driven pipeline above "The full desk" grid.
-   Market intelligence flows inward through validation into the engine,
-   then reasoned output flows outward to the platform — not a generic AI orb. */
+/* ── BIE brain banner — alive helix mesh above "The full desk" grid.
+   BIE is the engine; satellites light on hover; learning loops back. */
 .bie-brain-banner {
   width: 100vw;
   max-width: 100vw;
@@ -1544,7 +1543,223 @@ body::before {
 .bie-brain-canvas {
   position: relative;
   width: 100%;
-  aspect-ratio: 1280 / 480;
+  aspect-ratio: 960 / 420;
+}
+
+.bie-helix-canvas {
+  max-width: min(960px, 100%);
+  margin-inline: auto;
+}
+
+.bie-helix-particles {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.bie-helix-svg {
+  position: relative;
+  z-index: 2;
+}
+
+.bie-helix-atmosphere {
+  opacity: 0.85;
+  animation: bie-helix-atmosphere-breathe 4.6s ease-in-out infinite;
+}
+
+@keyframes bie-helix-atmosphere-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 0.95; transform: scale(1.04); }
+}
+
+.bie-helix-strand {
+  transform-origin: 480px 210px;
+  transform-box: view-box;
+}
+
+.bie-helix-strand-a {
+  animation: bie-helix-strand-a 52s linear infinite;
+}
+
+.bie-helix-strand-b {
+  animation: bie-helix-strand-b 68s linear infinite reverse;
+}
+
+@keyframes bie-helix-strand-a {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes bie-helix-strand-b {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes bie-helix-breathe-a {
+  0%, 100% { transform: rotate(var(--helix-rot, 0deg)) scale(1, 1); }
+  40% { transform: rotate(var(--helix-rot, 0deg)) scale(1.018, 0.985); }
+  70% { transform: rotate(var(--helix-rot, 0deg)) scale(0.992, 1.012); }
+}
+
+@keyframes bie-helix-breathe-b {
+  0%, 100% { transform: rotate(var(--helix-rot, 0deg)) scale(1, 1); }
+  35% { transform: rotate(var(--helix-rot, 0deg)) scale(0.988, 1.015); }
+  65% { transform: rotate(var(--helix-rot, 0deg)) scale(1.014, 0.982); }
+}
+
+.bie-helix-ring-guide {
+  fill: none;
+  stroke: rgba(93, 247, 255, 0.14);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.bie-helix-ring-0 { stroke: rgba(191, 95, 255, 0.22); }
+.bie-helix-ring-1 { stroke: rgba(0, 230, 118, 0.18); }
+.bie-helix-ring-2 { stroke: rgba(255, 204, 77, 0.2); }
+
+.bie-helix-rung {
+  stroke: url(#bie-core-halo);
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.bie-wire {
+  fill: none;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1;
+  opacity: 0.42;
+}
+
+.bie-spoke-wire { stroke-width: 1.15; opacity: 0.58; }
+.bie-ring-wire { stroke-width: 0.9; opacity: 0.38; }
+.bie-cross-wire { stroke-width: 0.75; opacity: 0.28; }
+
+.bie-feedback-wire {
+  stroke-width: 1.2;
+  opacity: 0.32;
+  stroke-dasharray: 0.06 0.08;
+  animation: bie-feedback-dash 6s linear infinite;
+}
+
+.bie-feedback-wire.is-feedback-active {
+  opacity: 0.85;
+  stroke-width: 1.6;
+  filter: drop-shadow(0 0 6px rgba(191, 95, 255, 0.75));
+}
+
+@keyframes bie-feedback-dash {
+  to { stroke-dashoffset: -1; }
+}
+
+.is-drawn .bie-wire {
+  animation: bie-draw-on 1.4s cubic-bezier(0.16, 0.8, 0.3, 1) forwards;
+}
+
+.bie-spoke-pulse,
+.bie-ring-pulse,
+.bie-cross-pulse,
+.bie-feedback-pulse {
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.75));
+}
+
+.bie-helix-satellite {
+  cursor: default;
+  outline: none;
+}
+
+.bie-helix-satellite-glow {
+  opacity: 0.22;
+  transition: opacity 0.2s ease, r 0.2s ease;
+}
+
+.bie-helix-satellite-core {
+  opacity: 0.72;
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.bie-helix-satellite.is-impulse-lit .bie-helix-satellite-glow {
+  opacity: 0.65;
+  animation: bie-satellite-flash 0.55s ease-out;
+}
+
+.bie-helix-satellite.is-hovered .bie-helix-satellite-glow,
+.bie-helix-satellite:focus-visible .bie-helix-satellite-glow {
+  opacity: 0.75;
+}
+
+.bie-helix-satellite.is-hovered .bie-helix-satellite-core,
+.bie-helix-satellite:focus-visible .bie-helix-satellite-core {
+  opacity: 1;
+  filter: drop-shadow(0 0 8px currentColor);
+}
+
+@keyframes bie-satellite-flash {
+  0% { opacity: 0.25; }
+  40% { opacity: 0.9; }
+  100% { opacity: 0.35; }
+}
+
+.bie-helix-core.is-impulse-core .bie-brain-core {
+  animation: bie-brain-core-impulse 0.65s ease-out;
+}
+
+@keyframes bie-brain-core-impulse {
+  0% { transform: scale(1); filter: drop-shadow(0 0 16px rgba(0, 229, 255, 0.75)); }
+  45% { transform: scale(1.14); filter: drop-shadow(0 0 28px rgba(191, 95, 255, 0.95)); }
+  100% { transform: scale(1); filter: drop-shadow(0 0 16px rgba(0, 229, 255, 0.75)); }
+}
+
+.bie-helix-core-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  pointer-events: none;
+}
+
+.bie-helix-tooltip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 14px));
+  z-index: 5;
+  min-width: 9rem;
+  max-width: 13rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 4px;
+  background: rgba(4, 4, 7, 0.92);
+  border: 1px solid color-mix(in srgb, var(--tip-accent, #5df7ff) 45%, transparent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 16px color-mix(in srgb, var(--tip-accent, #5df7ff) 20%, transparent);
+  pointer-events: none;
+  animation: bie-tooltip-in 0.18s ease-out;
+}
+
+@keyframes bie-tooltip-in {
+  from { opacity: 0; transform: translate(-50%, calc(-100% - 8px)); }
+  to { opacity: 1; transform: translate(-50%, calc(-100% - 14px)); }
+}
+
+.bie-helix-tooltip-title {
+  display: block;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tip-accent, #5df7ff);
+  margin-bottom: 0.25rem;
+}
+
+.bie-helix-tooltip-detail {
+  display: block;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .bie-brain-scroll-wrap {
@@ -2200,17 +2415,16 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   .bie-brain-eyebrow-dot { animation: none; }
   .bie-brain-title { animation: none; background-position: 0 0; }
-  .bie-flow-wire, .bie-brain-axis { stroke-dashoffset: 0; }
-  .is-drawn .bie-flow-wire { animation: none; }
+  .bie-flow-wire, .bie-brain-axis, .bie-wire { stroke-dashoffset: 0; }
+  .is-drawn .bie-flow-wire, .is-drawn .bie-wire { animation: none; }
   .bie-brain-ring { animation: none; opacity: 0; }
   .bie-brain-core, .bie-brain-core-shell { animation: none; }
-  .bie-flow-pulse { display: none; }
+  .bie-flow-pulse, .bie-spoke-pulse, .bie-ring-pulse, .bie-cross-pulse, .bie-feedback-pulse { display: none; }
   .bie-spine-pulse { display: none; }
-  .bie-brain-cap-ring { animation: none; opacity: 0.25; }
-  .bie-brain-gate { animation: none; opacity: 0.7; }
-  .bie-reactor-glow { animation: none; opacity: 0.7; }
-  .bie-brain-core-caption { animation: none; }
-  .bie-output-stack-pulse { display: none; }
+  .bie-helix-strand-a, .bie-helix-strand-b { animation: none; }
+  .bie-helix-atmosphere { animation: none; opacity: 0.65; }
+  .bie-feedback-wire { animation: none; }
+  .bie-helix-particles { display: none; }
 }
 
 .bento-card-watermark {
