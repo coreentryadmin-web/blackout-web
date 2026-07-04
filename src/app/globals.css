@@ -1564,7 +1564,7 @@ body::before {
 }
 
 .bie-reactor-stage {
-  min-height: clamp(580px, 82vh, 960px);
+  min-height: clamp(680px, 92vh, 1120px);
   flex: 1 1 auto;
   display: flex;
   align-items: stretch;
@@ -1578,8 +1578,8 @@ body::before {
 }
 
 .bie-field-canvas {
-  min-height: clamp(580px, 82vh, 960px);
-  max-height: min(960px, 88vh);
+  min-height: clamp(680px, 92vh, 1120px);
+  max-height: none;
   aspect-ratio: auto;
   display: flex;
   flex-direction: column;
@@ -1588,7 +1588,7 @@ body::before {
 .bie-field-visual {
   position: relative;
   flex: 1 1 auto;
-  min-height: clamp(420px, 58vh, 720px);
+  min-height: clamp(560px, 78vh, 980px);
   width: 100%;
   isolation: isolate;
   contain: paint;
@@ -1714,6 +1714,157 @@ body::before {
 .bie-field-caption .bie-brain-title {
   margin-top: 0.35rem;
   font-size: clamp(1.15rem, 2.4vw, 1.65rem);
+}
+
+/* Clickable instrument nodes — six corners of the intelligence field. */
+.bie-field-tools {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+}
+
+.bie-field-tool {
+  position: absolute;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  max-width: min(220px, 34vw);
+  padding: 0.55rem 0.85rem 0.55rem 0.55rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--tool-accent, #5df7ff) 28%, transparent);
+  background: linear-gradient(
+    135deg,
+    rgba(4, 4, 7, 0.88) 0%,
+    rgba(8, 12, 18, 0.72) 100%
+  );
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 12px 40px -18px rgba(0, 0, 0, 0.85),
+    0 0 24px -12px color-mix(in srgb, var(--tool-accent, #5df7ff) 45%, transparent);
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.bie-field-tool:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--tool-accent, #5df7ff) 55%, transparent);
+  background: linear-gradient(
+    135deg,
+    rgba(4, 8, 12, 0.94) 0%,
+    rgba(10, 18, 24, 0.82) 100%
+  );
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+    0 16px 48px -16px rgba(0, 0, 0, 0.9),
+    0 0 32px -8px color-mix(in srgb, var(--tool-accent, #5df7ff) 60%, transparent);
+}
+
+.bie-field-tool-mark {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.bie-field-tool-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.bie-field-tool-name {
+  font-family: var(--font-syne, inherit);
+  font-size: clamp(0.78rem, 1.6vw, 0.92rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #fff;
+  line-height: 1.15;
+}
+
+.bie-field-tool-open {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--tool-accent, #5df7ff);
+  opacity: 0.85;
+}
+
+.bie-field-tool-tl {
+  top: clamp(0.65rem, 3.5vh, 1.75rem);
+  left: clamp(0.65rem, 2.5vw, 1.75rem);
+}
+
+.bie-field-tool-tr {
+  top: clamp(0.65rem, 3.5vh, 1.75rem);
+  right: clamp(0.65rem, 2.5vw, 1.75rem);
+}
+
+.bie-field-tool-ml {
+  top: 50%;
+  left: clamp(0.5rem, 1.8vw, 1.25rem);
+  transform: translateY(-50%);
+}
+
+.bie-field-tool-ml:hover {
+  transform: translateY(calc(-50% - 2px));
+}
+
+.bie-field-tool-mr {
+  top: 50%;
+  right: clamp(0.5rem, 1.8vw, 1.25rem);
+  transform: translateY(-50%);
+}
+
+.bie-field-tool-mr:hover {
+  transform: translateY(calc(-50% - 2px));
+}
+
+.bie-field-tool-bl {
+  bottom: clamp(0.65rem, 3.5vh, 1.75rem);
+  left: clamp(0.65rem, 2.5vw, 1.75rem);
+}
+
+.bie-field-tool-br {
+  bottom: clamp(0.65rem, 3.5vh, 1.75rem);
+  right: clamp(0.65rem, 2.5vw, 1.75rem);
+}
+
+@media (max-width: 720px) {
+  .bie-field-tool {
+    max-width: min(168px, 42vw);
+    padding: 0.45rem 0.65rem 0.45rem 0.45rem;
+    gap: 0.45rem;
+  }
+
+  .bie-field-tool-mark {
+    width: 32px;
+    height: 32px;
+  }
+
+  .bie-field-tool-mark svg,
+  .bie-field-tool-mark img {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  .bie-field-tool-name {
+    font-size: 0.72rem;
+  }
+
+  .bie-field-tool-open {
+    display: none;
+  }
 }
 
 .bie-field-ring-stroke {
