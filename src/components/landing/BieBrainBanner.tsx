@@ -1,41 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  buildCenterHelix,
   buildFieldParticles,
   buildInboundPulsePath,
   buildIntelligenceRings,
   fieldGlowRadii,
-  placeCapabilities,
   type FieldParticle,
-  type PlacedCapability,
-  type Capability,
 } from "./bie-helix-engine";
 
-// Reactor-only hero — emotion and trust, not product catalog.
+// BIE at center — simple concentric rings, subtle field motion. No helix, no catalog.
 
 export const VIEW_W = 1280;
 export const VIEW_H = 720;
 const CORE = { x: VIEW_W / 2, y: VIEW_H / 2 };
 const MAX_RX = 590;
 const MAX_RY = 315;
-const HELIX_H = 520;
-const HELIX_W = 162;
 const FIELD_COUNT = 120;
-/** Three intelligence rings — inner, mid, outer. */
-const VISIBLE_RINGS = new Set([1, 2, 4]);
-
-const HELIX_TRAVELERS = [
-  { path: "a", dur: "4.2s", begin: "-1.4s", r: 2 },
-  { path: "b", dur: "5.6s", begin: "-2.8s", r: 1.6 },
-] as const;
-
-const CAPABILITIES: Capability[] = [
-  { id: "validation", label: "Validation", detail: "Integrity, consistency, and real-time self-audit", angleDeg: 128, ring: 2, accent: "#00e676" },
-  { id: "confidence", label: "Confidence", detail: "Every number grounded or withheld — never fabricated", angleDeg: 208, ring: 2, accent: "#00e676" },
-  { id: "memory", label: "Memory", detail: "Every alert, outcome, and precedent informs the next call", angleDeg: 48, ring: 1, accent: "#bf5fff" },
-];
+/** Four simple outer intelligence rings. */
+const OUTER_RINGS = new Set([1, 2, 3, 4]);
 
 const READOUT_LINES = [
   "continuous market intelligence — ingested, verified, never assumed",
@@ -132,18 +115,15 @@ export function BieBrainBanner() {
 
   const [lineIndex, setLineIndex] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
-  const [hovered, setHovered] = useState<PlacedCapability | null>(null);
   const [phase, setPhase] = useState<ReactorPhase>("idle");
   const [pulseKey, setPulseKey] = useState(0);
   const [pulsePath, setPulsePath] = useState("");
   const [rippleKey, setRippleKey] = useState(0);
 
-  const helix = useMemo(() => buildCenterHelix(CORE.x, CORE.y, HELIX_H, HELIX_W), []);
   const rings = useMemo(
-    () => buildIntelligenceRings(CORE.x, CORE.y, MAX_RX, MAX_RY).filter((r) => VISIBLE_RINGS.has(r.ring)),
+    () => buildIntelligenceRings(CORE.x, CORE.y, MAX_RX, MAX_RY).filter((r) => OUTER_RINGS.has(r.ring)),
     []
   );
-  const anchors = useMemo(() => placeCapabilities(CORE.x, CORE.y, CAPABILITIES, MAX_RX, MAX_RY), []);
   const fieldGlow = useMemo(() => fieldGlowRadii(VIEW_W, VIEW_H), []);
 
   useFieldParticles(canvasRef, reduceMotion);
@@ -193,18 +173,14 @@ export function BieBrainBanner() {
     };
   }, [reduceMotion]);
 
-  const litRing =
-    phase === "inbound" ? 4 : phase === "core" || phase === "ripple" ? 2 : -1;
-
-  const onAnchorEnter = useCallback((c: PlacedCapability) => setHovered(c), []);
-  const onAnchorLeave = useCallback(() => setHovered(null), []);
+  const litRing = phase === "inbound" ? 4 : phase === "core" || phase === "ripple" ? 2 : -1;
 
   return (
     <div className={`bie-brain-banner bie-brain-hero bie-reactor-hero${reduceMotion ? "" : " bie-reactor-live"}`}>
       <div
         className="bie-brain-diagram bie-reactor-diagram bie-reactor-stage bie-field-stage"
         role="img"
-        aria-label="BlackOut Intelligence Engine: a living reactor with helix core, subtle rings, and particle field."
+        aria-label="BlackOut Intelligence Engine: BIE core with four concentric rings and subtle particle activity."
         style={{ ["--reactor-cx" as string]: `${CORE.x}px`, ["--reactor-cy" as string]: `${CORE.y}px` }}
       >
         <div className="bie-brain-canvas bie-reactor-canvas bie-field-canvas">
@@ -217,8 +193,8 @@ export function BieBrainBanner() {
           >
             <defs>
               <radialGradient id="bie-field-glow" cx="50%" cy="48%" r="50%">
-                <stop offset="0%" stopColor="rgba(0,229,255,0.18)" />
-                <stop offset="40%" stopColor="rgba(0,229,255,0.07)" />
+                <stop offset="0%" stopColor="rgba(0,229,255,0.16)" />
+                <stop offset="42%" stopColor="rgba(0,229,255,0.06)" />
                 <stop offset="100%" stopColor="rgba(0,229,255,0)" />
               </radialGradient>
               <radialGradient id="bie-core-grad" cx="38%" cy="32%" r="72%">
@@ -226,18 +202,6 @@ export function BieBrainBanner() {
                 <stop offset="42%" stopColor="#00e5ff" />
                 <stop offset="100%" stopColor="#0a3b45" />
               </radialGradient>
-              <linearGradient id="bie-helix-strand-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#5df7ff" stopOpacity="0.95" />
-                <stop offset="50%" stopColor="#00e5ff" stopOpacity="1" />
-                <stop offset="100%" stopColor="#bf5fff" stopOpacity="0.85" />
-              </linearGradient>
-              <filter id="bie-helix-hero-bloom" x="-50%" y="-15%" width="200%" height="130%">
-                <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="b" />
-                <feMerge>
-                  <feMergeNode in="b" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
             </defs>
 
             <ellipse
@@ -264,34 +228,6 @@ export function BieBrainBanner() {
               </g>
             ))}
 
-            <g className="bie-reactor-helix" filter="url(#bie-helix-hero-bloom)">
-              <path id="bie-helix-path-a" d={helix.strandA} fill="none" stroke="none" />
-              <path id="bie-helix-path-b" d={helix.strandB} fill="none" stroke="none" />
-              <path d={helix.strandA} className="bie-reactor-helix-strand" fill="none" stroke="url(#bie-helix-strand-grad)" />
-              <path d={helix.strandB} className="bie-reactor-helix-strand bie-reactor-helix-strand-b" fill="none" stroke="url(#bie-helix-strand-grad)" />
-              {helix.rungs.map((r, i) => (
-                <line
-                  key={`hr-${i}`}
-                  x1={r.x1}
-                  y1={r.y1}
-                  x2={r.x2}
-                  y2={r.y2}
-                  className="bie-reactor-helix-rung"
-                  strokeOpacity={0.14 + 0.58 * r.depth}
-                  strokeWidth={0.45 + 1.35 * r.depth}
-                  style={{ animationDelay: `${-(i * 0.14)}s` }}
-                />
-              ))}
-              {!reduceMotion &&
-                HELIX_TRAVELERS.map((t, i) => (
-                  <circle key={`ht-${i}`} r={t.r} className="bie-reactor-helix-traveler" fill="#5df7ff">
-                    <animateMotion dur={t.dur} begin={t.begin} repeatCount="indefinite" rotate="auto">
-                      <mpath href={`#bie-helix-path-${t.path}`} />
-                    </animateMotion>
-                  </circle>
-                ))}
-            </g>
-
             {!reduceMotion && phase !== "idle" && pulsePath && (
               <g key={pulseKey} className="bie-reactor-pulse-wave bie-reactor-pulse-inbound">
                 <path id="bie-reactor-impulse" d={pulsePath} className="bie-reactor-impulse-track" pathLength={1} />
@@ -303,60 +239,29 @@ export function BieBrainBanner() {
               </g>
             )}
 
-            {anchors.map((c) => (
-              <g
-                key={c.id}
-                className={`bie-reactor-anchor${hovered?.id === c.id ? " is-active" : ""}${litRing === c.ring ? " is-lit" : ""}`}
-                transform={`translate(${c.x}, ${c.y})`}
-                onMouseEnter={() => onAnchorEnter(c)}
-                onMouseLeave={onAnchorLeave}
-                onFocus={() => onAnchorEnter(c)}
-                onBlur={onAnchorLeave}
-                tabIndex={0}
-                role="button"
-                aria-label={`${c.label}: ${c.detail}`}
-              >
-                <circle r={18} className="bie-reactor-anchor-hit" fill="transparent" />
-                <circle r={2.8} className="bie-reactor-anchor-dot" fill={c.accent} />
-              </g>
-            ))}
-
             <g
               className={`bie-reactor-core${phase === "core" || phase === "ripple" ? " is-active" : ""}`}
               transform={`translate(${CORE.x}, ${CORE.y})`}
             >
               {!reduceMotion && (
                 <>
-                  <circle cx={0} cy={0} r={MAX_RX * 0.2} className="bie-reactor-ambient-pulse bie-reactor-ambient-pulse-a" />
+                  <circle cx={0} cy={0} r={52} className="bie-brain-ring" style={{ animationDelay: "0s" }} />
+                  <circle cx={0} cy={0} r={52} className="bie-brain-ring" style={{ animationDelay: "1.4s" }} />
+                  <circle cx={0} cy={0} r={MAX_RX * 0.18} className="bie-reactor-ambient-pulse bie-reactor-ambient-pulse-a" />
                   {phase === "ripple" && (
-                    <circle key={`rip-${rippleKey}`} cx={0} cy={0} r={48} className="bie-field-ripple bie-field-ripple-a" />
+                    <circle key={`rip-${rippleKey}`} cx={0} cy={0} r={52} className="bie-field-ripple bie-field-ripple-a" />
                   )}
                 </>
               )}
-              <circle cx={0} cy={0} r={68} className="bie-reactor-core-halo" />
-              <circle cx={0} cy={0} r={48} className="bie-reactor-core-ring" />
-              <circle cx={0} cy={0} r={36} className="bie-brain-core bie-reactor-core-nucleus" />
+              <circle cx={0} cy={0} r={72} className="bie-reactor-core-halo" />
+              <circle cx={0} cy={0} r={54} className="bie-reactor-core-ring" />
+              <circle cx={0} cy={0} r={40} className="bie-brain-core bie-reactor-core-nucleus" />
             </g>
           </svg>
 
           <span className="bie-brain-core-label bie-reactor-core-label" aria-hidden>
             BIE
           </span>
-
-          {hovered && (
-            <div
-              className="bie-reactor-tooltip"
-              style={{
-                left: `${(hovered.x / VIEW_W) * 100}%`,
-                top: `${(hovered.y / VIEW_H) * 100}%`,
-                ["--tip-accent" as string]: hovered.accent,
-              }}
-              role="tooltip"
-            >
-              <span className="bie-reactor-tooltip-title">{hovered.label}</span>
-              <span className="bie-reactor-tooltip-detail">{hovered.detail}</span>
-            </div>
-          )}
 
           <div className="bie-field-caption">
             <span className="bie-brain-eyebrow">
