@@ -7,6 +7,15 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🟢 FIXED 2026-07-04 — `fetchNighthawkOutcomeAnalytics` regressed the bare-`CURRENT_DATE` bug a second time
+**Where:** `fetchNighthawkOutcomeAnalytics` (`src/lib/db.ts`), which feeds both Largo's `get_confluence_outcomes`-adjacent Night Hawk analytics tool and the `/track-record` page's Night Hawk stats. Its day-window filter used bare Postgres `CURRENT_DATE` — evaluated in the server's UTC session, not the codebase's mandatory ET-date convention — shifting the window a day early during the ~8pm–midnight ET UTC-rollover window. Surfaced by tonight's CEO/CTO production audit (`docs/audit/CEO-CTO-AUDIT-20260704.md`, launch-blocker-adjacent finding #7), which flagged this as a **regression of the identical bug class already found and fixed once in `confluence-outcomes.ts`'s 60-day window** — the fix was never mirrored here.
+
+**Fix:** swapped `CURRENT_DATE` for the established `(NOW() AT TIME ZONE 'America/New_York')::date` pattern already used elsewhere in the same file (`db.ts:1329`) and in `confluence-outcomes.ts:133`. Added a source-text regression test (`db.test.ts`) asserting the query text can't silently revert to bare `CURRENT_DATE` a third time — the function isn't otherwise unit-testable without a live Postgres connection.
+
+**Verification:** `npx tsc --noEmit` clean; full suite `922/922` passing (1 new); `npm run build` clean; `lint:brand`/`lint:vendor`/`verify-api-auth-guards.mjs` all green.
+
+---
+
 ## ✅ VERIFIED 2026-07-04 — PR #387 (`feat/bie-precedent-search`) deploy confirmed SUCCESS
 Merge commit `78c4d10`. Its own Railway deployment shows `REMOVED` in the GraphQL history — expected supersession, not a failure: three more landing-page commits (`#388`/`#389`/`#391`, all Cursor UI work) deployed in the same few minutes, each superseding the prior build before it finished. Confirmed via `git merge-base --is-ancestor 78c4d10 origin/main` that `78c4d10` is a direct ancestor of the current `main` HEAD, and the latest deployment (commit `2b0abff`, `#396`) is **SUCCESS** — so the precedent-search code has been live in every deploy since. Live `GET /api/ready` → `{"ok":true,"db":"connected","mode":"private"}`. Closes out the precedent-search shipping thread.
 

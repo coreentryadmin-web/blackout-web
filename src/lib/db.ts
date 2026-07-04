@@ -3906,7 +3906,7 @@ export async function fetchNighthawkOutcomeAnalytics(windowDays = 30): Promise<{
       FROM nighthawk_play_outcomes o
       INNER JOIN nighthawk_editions e ON e.edition_for = o.edition_for
       WHERE o.outcome <> 'pending'
-        AND o.edition_for >= (CURRENT_DATE - ($1::int || ' days')::interval)
+        AND o.edition_for >= ((NOW() AT TIME ZONE 'America/New_York')::date - ($1::int || ' days')::interval)
       ORDER BY o.edition_for DESC, o.ticker ASC
       `,
       [safeWindowDays]
