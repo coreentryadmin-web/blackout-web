@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { mapAlertAuditTrailRow } from "./db";
 
 test("mapAlertAuditTrailRow: converts NUMERIC confidence_score (a string from node-pg) to a real number", () => {
@@ -51,4 +53,18 @@ test("mapAlertAuditTrailRow: fired_at normalizes to an ISO string regardless of 
     outcome: "pending",
   });
   assert.equal(row.fired_at, "2026-07-01T14:30:00.000Z");
+});
+
+test("fetchNighthawkOutcomeAnalytics: day-window filter uses the ET-safe date, not bare Postgres CURRENT_DATE", () => {
+  // Regression guard for a bug that has now recurred twice: CURRENT_DATE evaluates in the
+  // server's UTC session, so it rolls over 5 (EDT) or 4 (EST) hours before ET midnight,
+  // shifting this window a day early for the whole 8pm-midnight ET stretch. The same class
+  // of bug was already found and fixed once in confluence-outcomes.ts; this asserts the
+  // nighthawk_play_outcomes query can't silently regress back to the bare form a third time.
+  const source = readFileSync(join(__dirname, "db.ts"), "utf8");
+  const fnStart = source.indexOf("export async function fetchNighthawkOutcomeAnalytics");
+  assert.ok(fnStart >= 0, "fetchNighthawkOutcomeAnalytics not found in db.ts");
+  const fnBody = source.slice(fnStart, fnStart + 2000);
+  assert.match(fnBody, /\(NOW\(\) AT TIME ZONE 'America\/New_York'\)::date/);
+  assert.doesNotMatch(fnBody, /\bCURRENT_DATE\b/);
 });
