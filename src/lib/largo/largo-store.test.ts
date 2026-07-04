@@ -10,7 +10,7 @@ let capturedSql = "";
 let capturedParams: unknown[] = [];
 let mockRows: Array<{ id: number; content: string; tool_results: unknown; created_at: Date }> = [];
 
-mock.module("@/lib/db", {
+mock.module("../db", {
   namedExports: {
     dbConfigured: () => true,
     dbQuery: async (sql: string, params: unknown[]) => {
