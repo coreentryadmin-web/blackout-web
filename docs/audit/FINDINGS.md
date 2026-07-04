@@ -7,6 +7,11 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## ✅ VERIFIED 2026-07-04 — PR #387 deploy confirmed SUCCESS (semantic precedent search live)
+Merge commit `78c4d10`. Its own build was superseded in Railway's deployment list by a same-minute UI push from Cursor (`94c9018`, PR #388) before it finished — a direct descendant commit, so `78c4d10`'s changes are included and confirmed live: deployment `94c9018` shows **SUCCESS** with `commitHash` matching, and live `GET /api/ready` → `{"ok":true,"db":"connected","mode":"private"}`. Also: PR #385 (banner rotation-collision fix) was closed **without merging** — PR #386 (Cursor) replaced the entire orbiting-sphere banner design it was patching with a different layout first, making the fix moot. No BIE-side work lost; correctly deferred to the team now owning UI.
+
+---
+
 ## 🧠 BIE semantic precedent search SHIPPED 2026-07-04 — "has this setup happened before, and what happened"
 **The gap:** BIE's L2 knowledge layer (embeddings + cosine search) has existed since Phase 2, but it only ever indexed prose — docs, findings, editions. It never touched the platform's own structured trading history in `alert_audit_log`, so a genuinely new kind of question — "find me past alerts that resemble this one, and what happened" — was unanswerable; a member or Largo could only filter by exact ticker/date, never by resemblance.
 
