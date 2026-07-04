@@ -350,8 +350,11 @@ export async function runLargoQuery(
 
     // Persist the completed turn now that the model produced an answer: user
     // first, then assistant, so role alternation is always intact (LARGO-3).
+    // capturedResults is the ground truth largo-verifier.ts's grounding engine needed but
+    // never had — persisted alongside the answer so a later audit can trace this turn's
+    // numeric claims back to real tool-call data instead of only a fixture self-test.
     await appendLargoMessage(sid, userId, "user", question);
-    await appendLargoMessage(sid, userId, "assistant", text, Array.from(new Set(toolsUsed)));
+    await appendLargoMessage(sid, userId, "assistant", text, Array.from(new Set(toolsUsed)), capturedResults);
 
     const followups = await generateLargoFollowups(question, text, tickerHint);
 
@@ -475,8 +478,11 @@ export async function runLargoQueryStream(
 
     // Persist the completed turn now that the model produced an answer: user
     // first, then assistant, so role alternation is always intact (LARGO-3).
+    // capturedResults is the ground truth largo-verifier.ts's grounding engine needed but
+    // never had — persisted alongside the answer so a later audit can trace this turn's
+    // numeric claims back to real tool-call data instead of only a fixture self-test.
     await appendLargoMessage(sid, userId, "user", question);
-    await appendLargoMessage(sid, userId, "assistant", text, Array.from(new Set(toolsUsed)));
+    await appendLargoMessage(sid, userId, "assistant", text, Array.from(new Set(toolsUsed)), capturedResults);
 
     // Dynamic, conversation-aware follow-up prompts (fail-open → []). Generated after the
     // answer is persisted so a follow-up hiccup can never lose the turn.

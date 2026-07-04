@@ -7,6 +7,7 @@ import {
   rollUpMetricStatus,
   worstStatus,
 } from "@/lib/correctness/types";
+import { fetchRecentLargoAnswersWithResults } from "@/lib/largo/largo-store";
 
 // ---------------------------------------------------------------------------
 // LARGO (AI terminal) data-correctness verifier — priority surface #7.
@@ -15,25 +16,27 @@ import {
 // tool-call RESULT that answer received — FLAGGING numbers that appear in the answer but in NONE of the
 // tool results (an ungrounded / hallucinated figure on a financial surface).
 //
-// THE HONEST REALITY (verified against the store): Largo persistence retains the assistant ANSWER TEXT
-// and the TOOL NAMES used (largo_messages.content + tools_used JSONB), but NOT the tool-call RESULTS —
-// those live only in-memory inside the anthropicToolLoop and are discarded after the turn. There is also
-// NO cross-user "list recent answers" reader (fetchLargoMessagesPublic requires BOTH sessionId AND the
-// owning userId). So the numeric-grounding trace CANNOT be performed today: the ground-truth side
-// (tool results) is not logged, and answers aren't enumerable for the cron without a user/session.
+// PREVIOUSLY a scaffold-only verifier: Largo persistence retained the assistant ANSWER TEXT and TOOL
+// NAMES only (largo_messages.content + tools_used JSONB) — the tool-call RESULTS lived only in-memory
+// inside anthropicToolLoop and were discarded after the turn, so the trace could not run against real
+// data. Fixed: largo_messages now has a nullable tool_results JSONB column, populated by
+// largo-terminal.ts's runLargoQuery/runLargoQueryStream on every assistant turn, and
+// fetchRecentLargoAnswersWithResults() is the bounded, cross-user, cron-readable reader over it.
 //
-// We do NOT fake a green. This verifier:
-//   • SHIPS the real grounding MACHINERY (extractNumericTokens + traceNumbersToResults) and SELF-TESTS
-//     it on a fixture each run, so the moment answer+tool-result logging lands the trace is wired and
-//     proven to work — not vaporware.
-//   • Records the surface as a COVERAGE GAP with the precise missing piece ("needs Largo answer +
-//     tool-result logging: persist each tool_call result JSON alongside the answer, + a cron-readable
-//     recent-answers reader"), so the scorecard shows Largo as un-audited honestly, never a false green.
+// This verifier now:
+//   • SELF-TESTS the grounding machinery on a fixture each run (independent of real data — proves the
+//     FLAG logic itself has no bug before trusting it against production answers).
+//   • Runs the SAME engine against real recent answers (assistant rows with a non-null tool_results),
+//     flagging any answer that cites a number absent from its own turn's tool results.
+//   • Gracefully reports a coverage note (never a false green) when zero qualifying rows exist yet —
+//     e.g. immediately after this migration deploys, before any new Largo turns have run.
 //
-// RATE DISCIPLINE: nothing to fetch (no logged data to read) ⇒ zero upstream, zero DB beyond the
-// self-test. When logging lands, the reader will be a bounded DB read of the answers table — a
-// cache/DB reader, never a per-answer provider fan-out.
+// RATE DISCIPLINE: one bounded DB read (LIMIT-capped) of already-logged rows — zero upstream provider
+// calls, zero per-answer fan-out.
 // ---------------------------------------------------------------------------
+
+/** How many recent logged answers to sample per verifier run. */
+const LARGO_ANSWER_SAMPLE_SIZE = 50;
 
 /**
  * Extract numeric tokens from an answer that are CLAIMS worth grounding — prices, premiums, strikes,
@@ -189,21 +192,72 @@ export async function verifyLargo(_marketOpen: boolean): Promise<TickerScore> {
     );
   }
 
-  // ── COVERAGE GAP — the data to run the engine on real answers does not exist yet ──
-  checks.push(
-    mk(
-      "cross-tool",
-      "answer_grounding",
-      "consistency-only",
-      "COVERAGE GAP — needs Largo answer + tool-result logging. Today largo_messages persists the answer " +
-        "TEXT and tool NAMES only; tool-call RESULTS are discarded after the turn, and there is no " +
-        "cron-readable cross-user recent-answers reader (fetchLargoMessagesPublic requires sessionId+userId). " +
-        "So real answers CANNOT be traced to their tool results yet. To close: persist each tool_call result " +
-        "JSON alongside the answer (e.g. largo_messages.tool_results JSONB), add a bounded recent-answers " +
-        "reader, then this verifier's engine flags every ungrounded number. NOT a false green — un-audited by design.",
-      { id: "largo-coverage-gap" }
-    )
-  );
+  // ── REAL-DATA CHECK — trace real recent answers to their captured tool results ──
+  let answers: Awaited<ReturnType<typeof fetchRecentLargoAnswersWithResults>> = [];
+  try {
+    answers = await fetchRecentLargoAnswersWithResults(LARGO_ANSWER_SAMPLE_SIZE);
+  } catch (err) {
+    checks.push(
+      mk(
+        "cross-tool",
+        "answer_grounding",
+        "skipped",
+        `Could not read recent Largo answers: ${err instanceof Error ? err.message : String(err)}.`,
+        { id: "largo-answers-read-failed" }
+      )
+    );
+  }
+
+  if (answers.length === 0) {
+    checks.push(
+      mk(
+        "cross-tool",
+        "answer_grounding",
+        "consistency-only",
+        "No recent Largo answers with logged tool_results yet. Tool-result persistence (largo_messages." +
+          "tool_results, populated by largo-terminal.ts on every assistant turn) landed this audit — the " +
+          "engine will start flagging real answers as traffic accumulates against the new column. Not a " +
+          "false green: un-audited by data availability right now, not by design.",
+        { id: "largo-no-data-yet" }
+      )
+    );
+  } else {
+    const flagged: { id: number; ungrounded: number[] }[] = [];
+    for (const a of answers) {
+      const answerNums = extractNumericTokens(a.content);
+      const resultNums = collectResultNumbers(a.tool_results);
+      const ungrounded = traceNumbersToResults(answerNums, resultNums);
+      if (ungrounded.length > 0) flagged.push({ id: a.id, ungrounded });
+    }
+
+    if (flagged.length > 0) {
+      const examples = flagged
+        .slice(0, 3)
+        .map((f) => `#${f.id}: ${f.ungrounded.slice(0, 3).join(", ")}`)
+        .join("; ");
+      checks.push(
+        mk(
+          "shadow-recompute",
+          "answer_grounding",
+          "flag",
+          `${flagged.length}/${answers.length} recent Largo answers cited a number absent from that turn's ` +
+            `own tool-call results (possible hallucination). Examples: ${examples}.`,
+          { id: "largo-ungrounded-answers", expected: "0 ungrounded", actual: String(flagged.length) }
+        )
+      );
+    } else {
+      checks.push(
+        mk(
+          "shadow-recompute",
+          "answer_grounding",
+          "pass",
+          `${answers.length} recent Largo answers checked — every numeric claim traced to a tool-call ` +
+            `result from the same turn.`,
+          { id: "largo-answers-grounded" }
+        )
+      );
+    }
+  }
 
   void _marketOpen;
   const metrics = groupMetrics(ticker, checks);
