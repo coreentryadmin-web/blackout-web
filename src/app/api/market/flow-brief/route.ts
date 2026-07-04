@@ -6,6 +6,7 @@ import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 import { fetchMarketFlowAlerts, fetchUwDarkPoolRecent } from "@/lib/providers/unusual-whales";
 import { uwConfigured } from "@/lib/providers/config";
 import type { FlowAlert } from "@/lib/api";
+import { checkNumbersGrounded, extractNumbersFromText } from "@/lib/grounding-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -161,13 +162,28 @@ export async function GET(req: NextRequest) {
         "You are a terse trading desk analyst. 2-3 sentences only. Highlight $15M+ signals by ticker name.",
         { maxRetries: 1 }
       );
+      const trimmed = brief?.trim() || null;
+
+      // FABRICATION GUARD: this shared 15-min memo was cached and served to every user with
+      // zero check that cited dollar figures/tickers match the actual alerts/dark-prints it
+      // was given. Ground against every number literally present in the SAME prompt text
+      // Claude was shown (the prompt is plain text, not a structured object, so extracting
+      // numbers from it directly is the simplest accurate "known good" source). On failure,
+      // cache brief:null for this window rather than a possibly-hallucinated line — a retry
+      // within the same 15-min window would see the same flow data and likely hallucinate
+      // again, so there's no point throwing to force an immediate re-generation.
+      const grounded =
+        trimmed == null || checkNumbersGrounded(trimmed, extractNumbersFromText(prompt)).grounded;
+      if (!grounded) {
+        console.warn("[flow-brief] ungrounded value in generated brief — caching null for this window.");
+      }
 
       // Stamp generated_at INSIDE the cached closure so it records when the brief was
       // actually written by Claude — not serve time. The memo is shared across a 15-min
       // window, so a user opening at 10:14 must see "as of 10:00", the real authoring
       // time, rather than a fabricated "10:14" that reads as just-now.
       return {
-        brief: brief?.trim() ?? null,
+        brief: grounded ? trimmed : null,
         massive_signals: massiveCount,
         generated_at: new Date().toISOString(),
       };

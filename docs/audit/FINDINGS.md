@@ -9,6 +9,17 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🟢 FIXED 2026-07-04 — Shared 15-minute flow-brief memo had no fabrication check (audit finding, medium)
+**Where:** `src/app/api/market/flow-brief/route.ts`'s `GET` handler cached Claude's flow-tape summary for a shared 15-minute window (served to every user) with zero check that cited dollar figures/tickers matched the actual alerts/dark-prints it was given.
+
+**Fix:** applied the shared guard. Unlike the two prior fixes, this route's prompt (`buildPrompt()`) is already a single plain-text string (not a structured object serialized via `JSON.stringify`), so the "known good" set is simply `extractNumbersFromText(prompt)` — every number literally present in the exact text Claude was shown. After generation, `checkNumbersGrounded(trimmed, extractNumbersFromText(prompt))` runs; on failure, the cached result explicitly stores `brief: null` for that window (not a thrown error). This deliberately differs from the `spx-commentary.ts` fix (#429), which throws to skip caching entirely and force an immediate retryable 502: `serverCache`'s `refreshCache()` caches whatever a factory *returns* (including a bare `null`) regardless of value — it's throwing that's the "don't cache" signal. A retry within the same 15-minute window would see identical flow data and likely hallucinate the same way again, so caching `brief: null` for the rest of the window (matching this route's existing "no flow data → cached null" behavior) is more useful than forcing a wasted immediate re-generation.
+
+**Blast radius:** none to existing behavior — grounded briefs (the overwhelming common case) are unaffected; only a hallucinated brief now degrades to `brief: null` for its window instead of shipping the fabricated line.
+
+**Verification:** `npx tsc --noEmit` clean; full suite `979/979` passing (no new tests — `buildPrompt`/`normalizeDark` are route-file-local functions and Next.js route modules only permit the fixed `GET`/`POST`/`dynamic`/etc. export set, confirmed earlier this audit on `/api/ready`'s `redisStatus` export attempt — so they can't be exported for direct testing without a larger refactor moving them to a separate lib file, which was out of scope here; coverage relies on the already-comprehensive `checkNumbersGrounded`/`extractNumbersFromText` tests in `grounding-guard.test.ts`, same precedent as `spx-play-claude.ts`/`spx-commentary.ts`); `npm run build` clean; `lint:brand`/`lint:vendor`/`verify-api-auth-guards.mjs` all green.
+
+---
+
 ## 🟢 FIXED 2026-07-04 — Night Hawk "Full Hawk Intel" briefing's success path shipped Claude prose unchecked (audit finding, medium)
 **Where:** `src/lib/nighthawk/play-explainer.ts`'s `generatePlayExplanation()` only fell back to the deterministic, grounded `buildGroundedPlayExplanationFallback()` when generation failed OUTRIGHT (empty response after 45s timeout) — a fluent but hallucinated NON-EMPTY briefing passed straight through to the member-visible "Full Hawk Intel" panel unchecked.
 
