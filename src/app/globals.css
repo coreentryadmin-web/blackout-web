@@ -1920,6 +1920,95 @@ body::before {
   max-width: 100%;
 }
 
+.bie-output-stack-line {
+  fill: none;
+  stroke: rgba(191, 95, 255, 0.42);
+  stroke-width: 1.6;
+  stroke-dasharray: 0.06 0.05;
+  vector-effect: non-scaling-stroke;
+}
+
+.bie-output-stack-bridge {
+  fill: none;
+  stroke: rgba(255, 204, 77, 0.35);
+  stroke-width: 1.2;
+  stroke-dasharray: 0.04 0.06;
+  vector-effect: non-scaling-stroke;
+}
+
+.bie-output-stack-chevron {
+  opacity: 0.75;
+  filter: drop-shadow(0 0 4px rgba(191, 95, 255, 0.65));
+}
+
+.bie-output-stack-chevron-out {
+  filter: drop-shadow(0 0 4px rgba(255, 204, 77, 0.65));
+}
+
+.bie-output-stack-pulse {
+  filter: drop-shadow(0 0 4px rgba(191, 95, 255, 0.9));
+}
+
+.bie-brain-output-stack-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.bie-brain-output-stack-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: clamp(7px, 0.9vw, 9px);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 0.12rem 0.4rem;
+  background: rgba(4, 4, 7, 0.78);
+  border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+}
+
+.bie-brain-output-stack-label-core {
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+
+.bie-brain-output-stack-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  margin-top: 0.85rem;
+  padding-inline: clamp(1.25rem, 5vw, 4rem);
+}
+
+.bie-brain-output-stack-rail-segment {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.bie-brain-output-stack-rail-step {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.bie-brain-output-stack-rail-step-core {
+  font-weight: 700;
+}
+
+.bie-brain-output-stack-rail-arrow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  line-height: 1;
+  color: rgba(148, 226, 255, 0.65);
+  letter-spacing: 0;
+}
+
 .bie-brain-story-step {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 9px;
@@ -2121,6 +2210,7 @@ body::before {
   .bie-brain-gate { animation: none; opacity: 0.7; }
   .bie-reactor-glow { animation: none; opacity: 0.7; }
   .bie-brain-core-caption { animation: none; }
+  .bie-output-stack-pulse { display: none; }
 }
 
 .bento-card-watermark {

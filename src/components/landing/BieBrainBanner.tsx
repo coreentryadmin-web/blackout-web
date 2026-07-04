@@ -69,9 +69,19 @@ const CORE_PHRASES = ["Validate", "Reason", "Learn", "Improve"];
 
 const STATUS_CHIPS = [
   { label: "Auditing", accent: "#00e676" },
-  { label: "Learning", accent: "#bf5fff" },
   { label: "Live", accent: "#5df7ff" },
 ];
+
+/** Vertical deliver spine: BIE → Learning → Outputs (rises toward Trusted Output). */
+const OUTPUT_STACK = [
+  { id: "outputs", label: "Outputs", accent: "#ffcc4d" },
+  { id: "learning", label: "Learning", accent: "#bf5fff" },
+  { id: "bie", label: "BIE", accent: "#5df7ff", core: true },
+] as const;
+
+const OUTPUT_STACK_X = layerX(0.62);
+const OUTPUT_STACK_TOP = CORE.y - 118;
+const OUTPUT_STACK_BOTTOM = CORE.y + 118;
 
 const SIDE_LAYERS = [MARKET_LAYER, VALIDATION_LAYER, OUTPUT_LAYER];
 const NODE_SPACING = 44;
@@ -460,6 +470,30 @@ export function BieBrainBanner() {
                 className="bie-brain-axis bie-brain-axis-out"
                 pathLength={1}
               />
+
+              {/* Vertical deliver stack: BIE → Learning → Outputs */}
+              <path
+                id="bie-output-stack"
+                d={`M ${OUTPUT_STACK_X} ${OUTPUT_STACK_BOTTOM} L ${OUTPUT_STACK_X} ${OUTPUT_STACK_TOP}`}
+                className="bie-output-stack-line"
+                pathLength={1}
+              />
+              <path
+                d={`M ${OUTPUT_STACK_X} ${OUTPUT_STACK_TOP} L ${OUTPUT_LAYER.x - 58} ${OUTPUT_STACK_TOP}`}
+                className="bie-output-stack-bridge"
+                pathLength={1}
+              />
+              <polygon
+                points={`${OUTPUT_STACK_X - 4},${CORE.y + 52} ${OUTPUT_STACK_X + 4},${CORE.y + 52} ${OUTPUT_STACK_X},${CORE.y + 44}`}
+                className="bie-output-stack-chevron"
+                fill="#bf5fff"
+              />
+              <polygon
+                points={`${OUTPUT_STACK_X - 4},${CORE.y - 52} ${OUTPUT_STACK_X + 4},${CORE.y - 52} ${OUTPUT_STACK_X},${CORE.y - 44}`}
+                className="bie-output-stack-chevron bie-output-stack-chevron-out"
+                fill="#ffcc4d"
+              />
+
               {!reduceMotion && (
                 <>
                   <circle r={2.2} className="bie-spine-pulse bie-spine-pulse-in" fill="#5df7ff">
@@ -470,6 +504,11 @@ export function BieBrainBanner() {
                   <circle r={2.2} className="bie-spine-pulse bie-spine-pulse-out" fill="#ffcc4d">
                     <animateMotion dur="4.6s" begin="-2.4s" repeatCount="indefinite">
                       <mpath href="#bie-spine-out" />
+                    </animateMotion>
+                  </circle>
+                  <circle r={2.4} className="bie-output-stack-pulse" fill="#bf5fff">
+                    <animateMotion dur="3.4s" begin="-0.8s" repeatCount="indefinite">
+                      <mpath href="#bie-output-stack" />
                     </animateMotion>
                   </circle>
                 </>
@@ -504,6 +543,30 @@ export function BieBrainBanner() {
               ))}
             </div>
 
+            <div className="bie-brain-output-stack-labels" aria-hidden>
+              {OUTPUT_STACK.map((step) => {
+                const y =
+                  step.id === "outputs"
+                    ? OUTPUT_STACK_TOP
+                    : step.id === "learning"
+                      ? CORE.y
+                      : OUTPUT_STACK_BOTTOM;
+                return (
+                  <span
+                    key={step.id}
+                    className={`bie-brain-output-stack-label${"core" in step && step.core ? " bie-brain-output-stack-label-core" : ""}`}
+                    style={{
+                      left: `${(OUTPUT_STACK_X / VIEW_W) * 100}%`,
+                      top: `${(y / VIEW_H) * 100}%`,
+                      color: step.accent,
+                    }}
+                  >
+                    {step.label}
+                  </span>
+                );
+              })}
+            </div>
+
             <div className="bie-brain-status-chips" style={{ top: `${CORE_Y_PCT - 14}%` }} aria-hidden>
               {STATUS_CHIPS.map((chip) => (
                 <span
@@ -528,16 +591,18 @@ export function BieBrainBanner() {
           </p>
         </div>
 
-        <div className="bie-brain-story-rail" aria-hidden>
-          <span className="bie-brain-story-step">Ingest</span>
-          <span className="bie-brain-story-arrow" />
-          <span className="bie-brain-story-step">Validate</span>
-          <span className="bie-brain-story-arrow" />
-          <span className="bie-brain-story-step bie-brain-story-step-core">Engine</span>
-          <span className="bie-brain-story-arrow" />
-          <span className="bie-brain-story-step">Learn</span>
-          <span className="bie-brain-story-arrow" />
-          <span className="bie-brain-story-step">Deliver</span>
+        <div className="bie-brain-output-stack-rail" aria-hidden>
+          {OUTPUT_STACK.map((step, i) => (
+            <span key={step.id} className="bie-brain-output-stack-rail-segment">
+              <span
+                className={`bie-brain-output-stack-rail-step${"core" in step && step.core ? " bie-brain-output-stack-rail-step-core" : ""}`}
+                style={{ color: step.accent }}
+              >
+                {step.label}
+              </span>
+              {i < OUTPUT_STACK.length - 1 && <span className="bie-brain-output-stack-rail-arrow">↑</span>}
+            </span>
+          ))}
         </div>
       </div>
 
