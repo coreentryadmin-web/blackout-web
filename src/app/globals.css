@@ -1669,17 +1669,23 @@ body::before {
 }
 
 .bie-field-ripple-a {
-  animation: bie-field-ripple-expand 2.4s ease-out forwards;
+  animation: bie-field-ripple-expand 2.6s ease-out forwards;
 }
 
 .bie-field-ripple-b {
-  animation: bie-field-ripple-expand 2.4s ease-out forwards;
-  animation-delay: 0.35s;
+  animation: bie-field-ripple-expand 2.6s ease-out forwards;
+  animation-delay: 0.28s;
+}
+
+.bie-field-ripple-c {
+  animation: bie-field-ripple-expand 2.6s ease-out forwards;
+  animation-delay: 0.55s;
+  stroke: rgba(191, 95, 255, 0.32);
 }
 
 @keyframes bie-field-ripple-expand {
-  0% { transform: scale(0.55); opacity: 0.65; }
-  100% { transform: scale(3.8); opacity: 0; }
+  0% { transform: scale(0.5); opacity: 0.72; stroke-width: 1.8; }
+  100% { transform: scale(4.2); opacity: 0; stroke-width: 0.6; }
 }
 
 .bie-field-caption {
@@ -1761,8 +1767,22 @@ body::before {
 }
 
 .bie-field-line.is-lit .bie-field-line-stroke {
-  stroke-width: 1.35;
-  filter: drop-shadow(0 0 12px rgba(93, 247, 255, 0.35));
+  stroke: rgba(93, 247, 255, 0.38);
+  stroke-width: 1.45;
+  filter: drop-shadow(0 0 10px rgba(93, 247, 255, 0.55));
+  transition: stroke 0.28s ease, stroke-width 0.28s ease, filter 0.28s ease;
+}
+
+.bie-field-line-outer.is-lit .bie-field-line-stroke {
+  stroke: rgba(148, 226, 255, 0.32);
+}
+
+.bie-field-line-inner.is-lit .bie-field-line-stroke {
+  stroke: rgba(93, 247, 255, 0.55);
+}
+
+.bie-field-line-mid.is-lit .bie-field-line-stroke {
+  stroke: rgba(0, 230, 118, 0.28);
 }
 
 .bie-reactor-live .bie-field-line-outer .bie-field-line-stroke,
@@ -1836,6 +1856,17 @@ body::before {
 .bie-reactor-core-classic .bie-reactor-core-halo {
   stroke-width: 1.5;
   opacity: 0.38;
+  transition: stroke 0.35s ease, opacity 0.35s ease;
+}
+
+.bie-reactor-live .bie-reactor-core-classic .bie-reactor-core-halo {
+  animation: bie-core-halo-heartbeat 6.5s ease-in-out infinite;
+}
+
+@keyframes bie-core-halo-heartbeat {
+  0%, 82%, 100% { stroke-opacity: 0.38; opacity: 0.38; }
+  88% { stroke-opacity: 0.72; opacity: 0.62; }
+  93% { stroke-opacity: 0.42; opacity: 0.4; }
 }
 
 .bie-core-label-svg {
@@ -2093,17 +2124,57 @@ body::before {
 }
 
 .bie-reactor-live .bie-reactor-core-nucleus {
-  animation: bie-reactor-nucleus-glow 4.8s ease-in-out infinite;
+  animation: bie-core-heartbeat 6.5s ease-in-out infinite;
 }
 
-@keyframes bie-reactor-nucleus-glow {
-  0%, 100% { filter: drop-shadow(0 0 18px rgba(0, 229, 255, 0.55)); }
-  50% { filter: drop-shadow(0 0 24px rgba(191, 95, 255, 0.72)); }
+@keyframes bie-core-heartbeat {
+  0%, 82%, 100% {
+    filter: drop-shadow(0 0 16px rgba(0, 229, 255, 0.52));
+  }
+  88% {
+    filter: drop-shadow(0 0 26px rgba(93, 247, 255, 0.92)) drop-shadow(0 0 40px rgba(191, 95, 255, 0.35));
+  }
+  93% {
+    filter: drop-shadow(0 0 18px rgba(0, 229, 255, 0.58));
+  }
 }
 
-@keyframes bie-reactor-nucleus-breathe {
-  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 18px rgba(0, 229, 255, 0.6)); }
-  50% { transform: scale(1.06); filter: drop-shadow(0 0 28px rgba(191, 95, 255, 0.75)); }
+.bie-reactor-core.is-absorbing .bie-brain-core {
+  animation: bie-core-absorb-flash 0.5s ease-out;
+}
+
+.bie-reactor-core.is-absorbing .bie-reactor-core-halo {
+  stroke: rgba(93, 247, 255, 0.82);
+  opacity: 0.78;
+}
+
+.bie-reactor-core.is-absorbing .bie-core-label-svg {
+  fill: #011318;
+}
+
+.bie-reactor-core.is-emitting .bie-reactor-core-halo {
+  stroke: rgba(0, 230, 118, 0.55);
+  opacity: 0.55;
+}
+
+@keyframes bie-core-absorb-flash {
+  0% { filter: drop-shadow(0 0 20px rgba(93, 247, 255, 0.7)); }
+  40% { filter: drop-shadow(0 0 36px rgba(93, 247, 255, 1)) drop-shadow(0 0 52px rgba(191, 95, 255, 0.55)); }
+  100% { filter: drop-shadow(0 0 18px rgba(0, 229, 255, 0.55)); }
+}
+
+.bie-reactor-signal-dot {
+  filter: drop-shadow(0 0 10px rgba(93, 247, 255, 0.95));
+}
+
+.bie-reactor-phase-inbound .bie-field-glow {
+  opacity: 0.94;
+  transition: opacity 0.4s ease;
+}
+
+.bie-reactor-phase-absorb .bie-field-glow {
+  opacity: 1;
+  transition: opacity 0.35s ease;
 }
 
 .bie-reactor-ambient-pulse {
@@ -2923,7 +2994,8 @@ body::before {
   .bie-reactor-ambient-pulse { display: none; }
   .bie-reactor-helix-traveler { display: none; }
   .bie-reactor-neural-link { display: none; }
-  .bie-field-ripple { display: none; }
+  .bie-field-ripple,
+  .bie-field-ripple-c { display: none; }
   .bie-field-glow { animation: none; opacity: 0.65; }
   .bie-reactor-ring-haze { animation: none; }
   .bie-field-line { animation: none; }
