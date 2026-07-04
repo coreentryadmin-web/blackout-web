@@ -142,6 +142,7 @@ export function BieOrbitTools({
           <Link
             href={tool.href}
             className="bie-orbit-tool"
+            title={tool.name}
             style={{ ["--tool-accent" as string]: tool.accent }}
           >
             <span className="bie-orbit-tool-mark" aria-hidden>
