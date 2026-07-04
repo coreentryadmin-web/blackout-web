@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chordPath, goldenSpiralPoint, pointOnEllipse } from "./bie-brain-geometry";
+import { chordPath, columnNodes, flowPath, goldenSpiralPoint, pointOnEllipse } from "./bie-brain-geometry";
 
 test("pointOnEllipse: angle 0 lands straight above the center, ry away", () => {
   const p = pointOnEllipse(100, 100, 50, 20, 0);
@@ -51,4 +51,19 @@ test("goldenSpiralPoint: successive points land at different radii (spreads acro
     return Math.hypot(p.x, p.y);
   });
   assert.equal(new Set(radii.map((r) => Math.round(r))).size > 1, true);
+});
+
+test("columnNodes: stacks count nodes evenly around cy", () => {
+  const nodes = columnNodes(50, 100, 3, 20);
+  assert.equal(nodes.length, 3);
+  assert.equal(nodes[1].y, 100);
+  assert.equal(nodes[0].y, 80);
+  assert.equal(nodes[2].y, 120);
+  nodes.forEach((n) => assert.equal(n.x, 50));
+});
+
+test("flowPath: delegates to chordPath with horizontal bow", () => {
+  const d = flowPath(0, 50, 100, 50, 80, 10);
+  assert.ok(d.startsWith("M0,50"));
+  assert.ok(d.includes("100,50"));
 });
