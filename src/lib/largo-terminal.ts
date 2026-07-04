@@ -14,7 +14,7 @@ import { LARGO_TOOL_DEFS, getToolsForIntent } from "@/lib/largo/tool-defs";
 import { runLargoTool } from "@/lib/largo/run-tool";
 import { bieFollowups, classifyBieIntent, type BieRoute } from "@/lib/bie/router";
 import { composeBieAnswer } from "@/lib/bie/composers";
-import { collectContextNumbers, verifyClaims } from "@/lib/bie/verifier";
+import { collectContextNumbers, verifyClaims, type ClaimVerification } from "@/lib/bie/verifier";
 import { resetLargoSpxDeskCache } from "@/lib/largo/spx-desk-cache";
 import {
   appendLargoMessage,
@@ -54,6 +54,12 @@ export type LargoStreamEvent =
       source: string;
       tools_used: string[];
       followups: string[];
+      // Always present (audit finding: previously the specific unverified numbers were never
+      // surfaced even when the in-text caveat fired, and never at all below its total>=4 &&
+      // coverage<0.5 threshold) — the raw ClaimVerification so any caller can inspect exactly
+      // which numeric claims traced to this turn's source data, independent of the in-text
+      // caveat's own display threshold.
+      verification: ClaimVerification;
     }
   | { type: "error"; message: string };
 
@@ -262,7 +268,14 @@ export async function runLargoQuery(
   question: string,
   sessionId: string,
   userId: string
-): Promise<{ answer: string; session_id: string; source: string; tools_used: string[]; followups: string[] }> {
+): Promise<{
+  answer: string;
+  session_id: string;
+  source: string;
+  tools_used: string[];
+  followups: string[];
+  verification: ClaimVerification;
+}> {
   if (!anthropicConfigured()) {
     throw new Error("ANTHROPIC_API_KEY not configured");
   }
@@ -292,6 +305,7 @@ export async function runLargoQuery(
       source: "blackout-intelligence",
       tools_used: ["blackout_intelligence"],
       followups: bieFollowups(routed.route.intent),
+      verification,
     };
   }
 
@@ -361,6 +375,7 @@ export async function runLargoQuery(
       source: dbConfigured() ? "blackout-web+postgres" : "blackout-web",
       tools_used: Array.from(new Set(toolsUsed)),
       followups,
+      verification,
     };
   } finally {
     resetLargoSpxDeskCache(userId);
@@ -406,6 +421,7 @@ export async function runLargoQueryStream(
         source: "blackout-intelligence",
         tools_used: ["blackout_intelligence"],
         followups: bieFollowups(routed.route.intent),
+        verification,
       } as LargoStreamEvent);
     } catch {
       // client disconnected — turn already persisted
@@ -489,6 +505,7 @@ export async function runLargoQueryStream(
       source: dbConfigured() ? "blackout-web+postgres" : "blackout-web",
       tools_used: Array.from(new Set(toolsUsed)),
       followups,
+      verification,
     });
   } catch (error) {
     if (isSseClientDisconnect(error)) return;
