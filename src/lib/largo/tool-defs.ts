@@ -191,7 +191,10 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t("get_spx_structure", "Full live SPX Sniper desk — price, GEX, flow tape, dark pool, news headlines, macro, tide (same as dashboard)."),
 
-  t("get_spx_play", "SPX play engine state."),
+  t(
+    "get_spx_play",
+    "SPX Slayer's OWN live play-engine snapshot (SPX/SPXW only) — NOT market-wide backdrop: phase (SCANNING/WATCHING/OPEN), action (SCANNING/WATCHING/BUY/HOLD/TRIM/SELL), direction, grade, score, confidence, headline/thesis, every confluence factor with its weight/detail, entry/stop/target levels, full gate state (gates.passed + humanized blocks/warnings + entry_mode + play_idea), the AI arbiter's verdict (claude), the currently open play if any (entry price, stop, target, MFE, trim status, option label/premium), the 10-item confirmation checklist, MTF/RSI/EMA technicals, the option ticket, watch-state (armed-but-not-yet-open, with promote_ready), adaptive-gate telemetry (cold/promote win rates, score boosts), lotto and power-hour sub-plays, session_phase, and signal_committed (true only once a play is actually committed to the DB this cycle — a BUY action alone does NOT mean a position is live; wait for signal_committed before treating it as opened). Use for 'what phase/setup/bias is SPX Slayer in right now,' 'why did the play get rejected/vetoed,' 'what gates or confluence factors are active,' or any question about THIS engine's own current or most recently closed play — for market-wide conditions that aren't specific to this play engine (regime, backdrop, is-this-a-good-environment), use get_market_regime instead. get_ecosystem_context returns this exact object as spx_full_state when ticker is SPX/SPXW — prefer that single call instead of this one if the turn also needs Night Hawk's take, HELIX flow, or anomaly context for the same ticker."
+  ),
 
   t("get_open_plays", "Open desk trades."),
 
@@ -202,6 +205,12 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   t("get_postgres_flows", "Ingested flow alerts from Postgres.", { ticker: { type: "string" }, limit: { type: "integer" } }),
 
   t("get_signal_log", "SPX signal log from Postgres.", { limit: { type: "integer" } }),
+
+  t(
+    "get_spx_engine_snapshots",
+    "Retrospective log of the SPX play engine's REJECTED/scanning history — answers 'why was the last signal rejected' or 'what was the engine doing at time Y', which get_signal_log CANNOT answer: get_signal_log's spx_signal_log table only ever records a COMMITTED BUY/SELL/TRIM signal, so a gate-blocked entry, a Claude veto, a WATCHING/near-miss setup, or a plain no-setup SCANNING tick leaves zero trace there — the evaluation happened, then vanished once the next poll tick overwrote it in memory. This tool reads spx_engine_snapshots instead: one row per DISTINCT phase/action/direction/gates state the engine has passed through (throttled to state transitions only, not one row per poll tick, so consecutive identical ticks collapse into a single row spanning that whole period) — phase (SCANNING/WATCHING/OPEN), action, direction, score, the exact gates.blocks list that kept a would-be entry from firing (e.g. 'MTF conflict', 'below full min score', 'Claude veto: ...'), a thesis/explanation string, and the engine's as_of timestamp for that state. Use for 'why didn't SPX Slayer take a trade earlier today', 'what was blocking entry at 10:15', or 'when did the engine's bias flip from bullish to bearish watching' — questions about the engine's rejected/scanning history. For the committed trade history itself, use get_signal_log (recent fired signals) or get_trade_history (closed, graded trades) instead.",
+    { limit: { type: "integer" } }
+  ),
 
   t("get_lotto_state", "Today's lotto state from Postgres."),
 
@@ -396,7 +405,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_market_regime",
-    "Market-wide backdrop, not ticker-specific: composite regime (BREAKOUT_BULL/BREAKDOWN_BEAR/RANGE_BOUND/MIXED), GEX regime, flow regime, the suggested playbook, net GEX, above/below VWAP, IV percentile, count of critical flow anomalies in the last hour (+ which tickers), and the premarket brief's call/put walls. This is the SAME data Night Hawk's own scoring already reads internally (src/lib/nighthawk/platform-intel-snapshot.ts) — use for 'what's the market regime / what's the backdrop / is this a good environment for X' questions."
+    "Market-wide backdrop, not ticker-specific and NOT SPX Slayer's own play-engine state: composite regime (BREAKOUT_BULL/BREAKDOWN_BEAR/RANGE_BOUND/MIXED), GEX regime, flow regime, the suggested playbook, net GEX, above/below VWAP, IV percentile, count of critical flow anomalies in the last hour (+ which tickers), and the premarket brief's call/put walls. This is the SAME data Night Hawk's own scoring already reads internally (src/lib/nighthawk/platform-intel-snapshot.ts) — use for 'what's the market regime / what's the backdrop / is this a good environment for X' questions. Does NOT cover SPX Slayer's own phase/gates/score/confluence for its current or most recent play — for that, use get_spx_play (or get_ecosystem_context's spx_full_state field)."
   ),
 
   t(
@@ -432,6 +441,7 @@ export const TOOL_GROUPS = {
     "get_open_plays",
     "get_flow_tape",
     "get_signal_log",
+    "get_spx_engine_snapshots",
     "get_lotto_state",
     "get_setup_stats",
     "get_trade_history",
@@ -586,6 +596,11 @@ export const SPX_ENGINE_TOOL_NAMES = [
   "get_spx_play",
   "get_open_plays",
   "get_signal_log",
+  // get_spx_engine_snapshots (task #108, merged alongside this cohort list) reads the
+  // exact same engine-state stream as get_signal_log — the throttled, gate-rejection-
+  // inclusive snapshot log rather than the committed-only one — so it belongs in this
+  // cohort for the same reason get_signal_log does.
+  "get_spx_engine_snapshots",
   "get_lotto_state",
   "get_lotto_live",
   "get_setup_stats",
