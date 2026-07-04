@@ -7,6 +7,15 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 📋 CEO/CTO Production Readiness Audit COMPLETE 2026-07-04 — full report in `docs/audit/CEO-CTO-AUDIT-20260704.md`
+**Ask:** an explicit CEO/CTO-level production readiness audit across all seven dimensions (data correctness, single source of truth, API/rate-limit safety, infra reliability, security, AI/BIE readiness, product/UX), run as a parallel multi-agent `Workflow` per the CEO's own suggestion — 7 dimension-finder agents piped into per-dimension adversarial verification, barrier-merged, then synthesized by 3 parallel synthesis agents and one assembly pass. 18 agents total, ~38 minutes wall-clock, 0 errors.
+
+**Verdict:** not ready for unrestricted launch, but the gap is narrow — 2 true launch blockers (Largo streams tokens before its own L4 verifier runs; 0DTE Command's freshness badge is a hardcoded `"live"` literal) plus 10 high-severity items, recommended as a focused 1–2 week sprint rather than a re-architecture. 21 findings total across 19 files (2 blocker, 9 high, 8 medium, 2 low), every one with file:line evidence, verified adversarially against live source before inclusion. Full findings, an 8-step data-integrity pipeline proposal (CP-1 vendor-shape guard → CP-5 frontend-never-fabricates), a BIE-as-data-auditor integration plan (explicit standing boundary: BIE validates, never decides, never writes to any scoring/gate/conviction code), and a 30/60/90-day roadmap are in the linked doc — not reproduced here to avoid this file becoming the audit's second copy.
+
+**Status:** report delivered (repo doc + interactive HTML artifact); no fix branches opened yet from its findings — each recommended `fix/<slug>` in the roadmap's Day 0–30 section will get its own branch/PR under the standing issue-handling policy as they're picked up individually. Two of the top-12 items touch `.tsx` files (`ZeroDteBoard.tsx`, `NetPremiumLeaderboard.tsx`) that now fall under Cursor's UI ownership per the standing "BIE-only, no UI" instruction — flagged here rather than silently started.
+
+---
+
 ## 🧠 BIE semantic precedent search SHIPPED 2026-07-04 — "has this setup happened before, and what happened"
 **The gap:** BIE's L2 knowledge layer (embeddings + cosine search) has existed since Phase 2, but it only ever indexed prose — docs, findings, editions. It never touched the platform's own structured trading history in `alert_audit_log`, so a genuinely new kind of question — "find me past alerts that resemble this one, and what happened" — was unanswerable; a member or Largo could only filter by exact ticker/date, never by resemblance.
 
