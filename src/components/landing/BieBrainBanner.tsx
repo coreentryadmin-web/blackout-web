@@ -60,11 +60,15 @@ function useFieldParticles(
     const dpr = Math.min(window.devicePixelRatio ?? 1, 2);
     const padX = VIEW_W * 0.01;
     const padY = VIEW_H * 0.01;
+    let viewW = VIEW_W;
+    let viewH = VIEW_H;
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
-      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      viewW = rect.width;
+      viewH = rect.height;
+      canvas.width = Math.max(1, Math.floor(viewW * dpr));
+      canvas.height = Math.max(1, Math.floor(viewH * dpr));
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     resize();
@@ -74,10 +78,10 @@ function useFieldParticles(
     let raf = 0;
 
     const draw = () => {
-      const rect = canvas.getBoundingClientRect();
-      const sx = rect.width / VIEW_W;
-      const sy = rect.height / VIEW_H;
-      ctx.clearRect(0, 0, rect.width, rect.height);
+      const sx = viewW / VIEW_W;
+      const sy = viewH / VIEW_H;
+      ctx.fillStyle = "#040407";
+      ctx.fillRect(0, 0, viewW, viewH);
       ctx.save();
       ctx.scale(sx, sy);
 
@@ -296,8 +300,8 @@ export function BieBrainBanner() {
                 <stop offset="100%" stopColor="rgba(0,229,255,0)" />
               </radialGradient>
               <radialGradient id="bie-field-vignette" cx="50%" cy="50%" r="68%">
-                <stop offset="55%" stopColor="rgba(4,4,7,0)" />
-                <stop offset="100%" stopColor="rgba(4,4,7,0.55)" />
+                <stop offset="62%" stopColor="rgba(4,4,7,0)" />
+                <stop offset="100%" stopColor="rgba(4,4,7,0.32)" />
               </radialGradient>
               <radialGradient id="bie-core-grad" cx="38%" cy="32%" r="72%">
                 <stop offset="0%" stopColor="#5df7ff" />
@@ -333,6 +337,8 @@ export function BieBrainBanner() {
                 <path key={line.id} d={line.d} className="bie-ambient-mesh-line" />
               ))}
             </g>
+
+            <rect width={VIEW_W} height={VIEW_H} fill="url(#bie-field-vignette)" className="bie-field-vignette" pointerEvents="none" />
 
             {outerLines.map((ring) => renderFieldLine(ring, { showNodes: false, loopPulse: true }))}
 
@@ -385,8 +391,6 @@ export function BieBrainBanner() {
                 BIE
               </text>
             </g>
-
-            <rect width={VIEW_W} height={VIEW_H} fill="url(#bie-field-vignette)" className="bie-field-vignette" pointerEvents="none" />
           </svg>
           </div>
 
