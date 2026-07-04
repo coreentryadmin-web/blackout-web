@@ -1,6 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildAmbientFieldMesh,
+  buildAtmosphereGlows,
   buildCenterHelix,
   buildFieldLinePath,
   buildFieldLineRings,
@@ -160,14 +162,30 @@ describe("buildFieldLinePath", () => {
 });
 
 describe("buildFieldLineRings", () => {
-  it("returns four layered rings with inner and outer zones", () => {
+  it("returns six layered rings from inner through outer field", () => {
     const rings = buildFieldLineRings(CX, CY, MAX_RX, MAX_RY);
-    assert.equal(rings.length, 4);
+    assert.equal(rings.length, 6);
     assert.deepEqual(
       rings.map((r) => r.layer),
-      ["inner", "inner", "outer", "outer"]
+      ["inner", "inner", "mid", "mid", "outer", "outer"]
     );
     assert.ok(rings.every((r) => r.d.length > 40));
+  });
+});
+
+describe("buildAtmosphereGlows", () => {
+  it("layers three volumetric glow tiers", () => {
+    const glows = buildAtmosphereGlows(CX, CY, MAX_RX, MAX_RY);
+    assert.equal(glows.length, 3);
+    assert.ok(glows[0].rx > glows[2].rx);
+  });
+});
+
+describe("buildAmbientFieldMesh", () => {
+  it("creates sparse depth lines across the field", () => {
+    const mesh = buildAmbientFieldMesh(CX, CY, MAX_RX, MAX_RY);
+    assert.equal(mesh.length, 14);
+    assert.ok(mesh.every((l) => l.d.startsWith("M")));
   });
 });
 

@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  buildAmbientFieldMesh,
+  buildAtmosphereGlows,
   buildCenterHelix,
   buildFieldLineRings,
   buildFieldParticles,
@@ -16,16 +18,20 @@ import {
   type RingFieldNode,
 } from "./bie-helix-engine";
 
-// Center: original helix + BIE. Inner field: orbiting nodes. Outer: organic field lines.
+/**
+ * Milestone 1 — Composition.
+ * The viewport IS the intelligence field. Core (~20–30%) sits inside atmosphere (~70–80%).
+ * See docs/design/BIE-HERO-VISION.md
+ */
 
 export const VIEW_W = 1280;
 export const VIEW_H = 720;
-const CORE = { x: VIEW_W / 2, y: VIEW_H / 2 };
-const MAX_RX = 580;
-const MAX_RY = 308;
+const CORE = { x: VIEW_W / 2, y: VIEW_H * 0.46 };
+const MAX_RX = 618;
+const MAX_RY = 338;
 const HELIX_H = 320;
 const HELIX_W = 92;
-const FIELD_COUNT = 85;
+const FIELD_COUNT = 120;
 const INNER_RINGS = [1, 2] as const;
 const INNER_NODES = 6;
 
@@ -55,8 +61,8 @@ function useFieldParticles(
     if (!ctx) return;
 
     const dpr = Math.min(window.devicePixelRatio ?? 1, 2);
-    const padX = VIEW_W * 0.04;
-    const padY = VIEW_H * 0.05;
+    const padX = VIEW_W * 0.01;
+    const padY = VIEW_H * 0.01;
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -95,7 +101,7 @@ function useFieldParticles(
         const fade = Math.min(1, p.life / 40, (p.maxLife - p.life) / 40);
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(148, 226, 255, ${p.opacity * fade * 0.7})`;
+        ctx.fillStyle = `rgba(148, 226, 255, ${p.opacity * fade * 0.65})`;
         ctx.fill();
       }
 
@@ -137,6 +143,8 @@ export function BieBrainBanner() {
 
   const helix = useMemo(() => buildCenterHelix(CORE.x, CORE.y, HELIX_H, HELIX_W), []);
   const fieldLines = useMemo(() => buildFieldLineRings(CORE.x, CORE.y, MAX_RX, MAX_RY), []);
+  const atmosphereGlows = useMemo(() => buildAtmosphereGlows(CORE.x, CORE.y, MAX_RX, MAX_RY), []);
+  const ambientMesh = useMemo(() => buildAmbientFieldMesh(CORE.x, CORE.y, MAX_RX, MAX_RY), []);
   const innerFieldNodes = useMemo(
     () => buildInnerFieldNodes(CORE.x, CORE.y, MAX_RX, MAX_RY, INNER_RINGS, INNER_NODES),
     []
@@ -145,6 +153,7 @@ export function BieBrainBanner() {
   const fieldGlow = useMemo(() => fieldGlowRadii(VIEW_W, VIEW_H), []);
 
   const outerLines = fieldLines.filter((r) => r.layer === "outer");
+  const midLines = fieldLines.filter((r) => r.layer === "mid");
   const innerLines = fieldLines.filter((r) => r.layer === "inner");
 
   useFieldParticles(canvasRef, reduceMotion);
@@ -183,7 +192,7 @@ export function BieBrainBanner() {
         setPulsePath(buildInboundPulsePath(node.x, node.y, CORE.x, CORE.y));
       } else {
         const angle = 12 + Math.random() * 336;
-        const outer = pointOnFieldLine(CORE.x, CORE.y, MAX_RX, MAX_RY, 0.9, 4, angle);
+        const outer = pointOnFieldLine(CORE.x, CORE.y, MAX_RX, MAX_RY, 0.98, 6, angle);
         setPulsePath(buildInboundPulsePath(outer.x, outer.y, CORE.x, CORE.y));
       }
       setPulseKey((k) => k + 1);
@@ -205,7 +214,8 @@ export function BieBrainBanner() {
     };
   }, [reduceMotion, innerFieldNodes]);
 
-  const litRing = phase === "inbound" ? 4 : phase === "core" || phase === "ripple" ? 2 : -1;
+  const litRing =
+    phase === "inbound" ? 6 : phase === "core" || phase === "ripple" ? 2 : -1;
 
   const renderFieldLine = (ring: FieldLineRing, opts: { showNodes: boolean; loopPulse: boolean }) => {
     const onRing = opts.showNodes ? innerNodes(innerFieldNodes, ring.ring as 1 | 2) : [];
@@ -222,10 +232,10 @@ export function BieBrainBanner() {
       >
         <path d={ring.d} className="bie-field-line-stroke" pathLength={1} />
         {opts.loopPulse && !reduceMotion && (
-          <circle r={1.4} className="bie-field-loop-pulse" fill="#5df7ff">
+          <circle r={1.2} className="bie-field-loop-pulse" fill="#5df7ff">
             <animateMotion
-              dur={`${14 + ring.ring * 2.5}s`}
-              begin={`-${ring.ring * 2.1}s`}
+              dur={`${16 + ring.ring * 2.8}s`}
+              begin={`-${ring.ring * 2.4}s`}
               repeatCount="indefinite"
               calcMode="linear"
             >
@@ -262,11 +272,11 @@ export function BieBrainBanner() {
   };
 
   return (
-    <div className={`bie-brain-banner bie-brain-hero bie-reactor-hero${reduceMotion ? "" : " bie-reactor-live"}`}>
+    <div className={`bie-brain-banner bie-brain-hero bie-reactor-hero bie-intelligence-field${reduceMotion ? "" : " bie-reactor-live"}`}>
       <div
         className="bie-brain-diagram bie-reactor-diagram bie-reactor-stage bie-field-stage"
         role="img"
-        aria-label="BlackOut Intelligence Engine: helix and BIE core at center, inner orbiting nodes, outer organic intelligence field lines."
+        aria-label="BlackOut Intelligence Engine: you are inside the living intelligence field that powers the platform."
         style={{ ["--reactor-cx" as string]: `${CORE.x}px`, ["--reactor-cy" as string]: `${CORE.y}px` }}
       >
         <div className="bie-brain-canvas bie-reactor-canvas bie-field-canvas">
@@ -278,10 +288,19 @@ export function BieBrainBanner() {
             preserveAspectRatio="xMidYMid slice"
           >
             <defs>
-              <radialGradient id="bie-field-glow" cx="50%" cy="48%" r="50%">
-                <stop offset="0%" stopColor="rgba(0,229,255,0.12)" />
-                <stop offset="45%" stopColor="rgba(0,229,255,0.04)" />
+              <radialGradient id="bie-field-base" cx="50%" cy="46%" r="72%">
+                <stop offset="0%" stopColor="rgba(4, 12, 18, 0.95)" />
+                <stop offset="55%" stopColor="rgba(4, 6, 10, 0.98)" />
+                <stop offset="100%" stopColor="rgba(4, 4, 7, 1)" />
+              </radialGradient>
+              <radialGradient id="bie-field-glow" cx="50%" cy="46%" r="52%">
+                <stop offset="0%" stopColor="rgba(0,229,255,0.14)" />
+                <stop offset="40%" stopColor="rgba(0,229,255,0.05)" />
                 <stop offset="100%" stopColor="rgba(0,229,255,0)" />
+              </radialGradient>
+              <radialGradient id="bie-field-vignette" cx="50%" cy="46%" r="68%">
+                <stop offset="55%" stopColor="rgba(4,4,7,0)" />
+                <stop offset="100%" stopColor="rgba(4,4,7,0.55)" />
               </radialGradient>
               <radialGradient id="bie-core-grad" cx="38%" cy="32%" r="72%">
                 <stop offset="0%" stopColor="#5df7ff" />
@@ -302,6 +321,19 @@ export function BieBrainBanner() {
               </filter>
             </defs>
 
+            <rect width={VIEW_W} height={VIEW_H} fill="url(#bie-field-base)" className="bie-field-base" />
+
+            {atmosphereGlows.map((g) => (
+              <ellipse
+                key={g.id}
+                cx={CORE.x}
+                cy={CORE.y}
+                rx={g.rx}
+                ry={g.ry}
+                className={`bie-atmosphere-glow bie-atmosphere-glow-${g.tier}`}
+              />
+            ))}
+
             <ellipse
               cx={CORE.x}
               cy={CORE.y}
@@ -311,7 +343,15 @@ export function BieBrainBanner() {
               className="bie-field-glow"
             />
 
+            <g className="bie-ambient-mesh" aria-hidden>
+              {ambientMesh.map((line) => (
+                <path key={line.id} d={line.d} className="bie-ambient-mesh-line" />
+              ))}
+            </g>
+
             {outerLines.map((ring) => renderFieldLine(ring, { showNodes: false, loopPulse: true }))}
+
+            {midLines.map((ring) => renderFieldLine(ring, { showNodes: false, loopPulse: ring.ring === 4 }))}
 
             {innerLines.map((ring) => renderFieldLine(ring, { showNodes: true, loopPulse: false }))}
 
@@ -374,6 +414,8 @@ export function BieBrainBanner() {
               <circle cx={0} cy={0} r={36} className="bie-reactor-core-halo" />
               <circle cx={0} cy={0} r={20} className="bie-brain-core bie-reactor-core-nucleus" />
             </g>
+
+            <rect width={VIEW_W} height={VIEW_H} fill="url(#bie-field-vignette)" className="bie-field-vignette" pointerEvents="none" />
           </svg>
 
           <span className="bie-brain-core-label bie-reactor-core-label bie-reactor-core-label-classic" aria-hidden>
