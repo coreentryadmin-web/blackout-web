@@ -88,3 +88,22 @@ export function collectKnownNumbers(value: unknown, seen: Set<number> = new Set(
   }
   return Array.from(seen);
 }
+
+/**
+ * Extract every bare numeric token from free text, with NO contextual filtering (unlike
+ * checkNumbersGrounded's extraction, which skips %/money/small-ints when judging the
+ * GENERATED text). Use this to build the "known good" set from already-formatted context
+ * TEXT rather than a structured object — e.g. a dossier string built by
+ * formatTickerDossierText(), where a real level can appear as "$182.50" or "6020-6030" and
+ * would be invisible to collectKnownNumbers (which only walks number-typed object leaves).
+ */
+export function extractNumbersFromText(text: string): number[] {
+  const found = new Set<number>();
+  const re = /(\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const value = Number(m[0].replace(/,/g, ""));
+    if (Number.isFinite(value)) found.add(value);
+  }
+  return Array.from(found);
+}

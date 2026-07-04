@@ -3,6 +3,7 @@ import { fetchTickerDossier } from "./dossier";
 import { formatTickerDossierText } from "./format";
 import type { PlaybookPlay } from "./types";
 import { buildGroundedPlayExplanationFallback } from "./play-explainer-fallback";
+import { checkNumbersGrounded, extractNumbersFromText } from "@/lib/grounding-guard";
 
 const SYSTEM = `You are Night Hawk — the evening playbook analyst for BlackOut Trading. A member clicked a ranked play and wants a thorough institutional-grade briefing on WHY it made tonight's top 5.
 
@@ -116,15 +117,18 @@ export async function generatePlayExplanation(params: {
     return buildGroundedPlayExplanationFallback({ play: params.play });
   }
 
+  const marketRecapBlock = formatMarketRecapBlock(params.marketRecap);
+  const playBlock = formatPlayBlock(params.play);
+
   const prompt = `Edition for session: ${params.editionFor}
 ${params.recapHeadline ? `Headline: ${params.recapHeadline}` : ""}
 ${params.recapSummary ? `Session summary: ${params.recapSummary}` : ""}
 
 === MARKET RECAP ===
-${formatMarketRecapBlock(params.marketRecap)}
+${marketRecapBlock}
 
 === PLAYBOOK CARD ===
-${formatPlayBlock(params.play)}
+${playBlock}
 
 === TICKER DOSSIER (evening scan) ===
 ${params.dossierContext}
@@ -132,8 +136,30 @@ ${params.dossierContext}
 Write the full detailed briefing for ${params.play.ticker} ranked #${params.play.rank}.`;
 
   const generated = await anthropicText(prompt, 3200, SYSTEM, { timeoutMs: 45_000, maxRetries: 1 });
-  return generated?.trim() || buildGroundedPlayExplanationFallback({
-    play: params.play,
-    reason: "Full Hawk Intel generation did not complete in time; this fallback uses only the grounded published play card.",
-  });
+  const trimmed = generated?.trim();
+  if (!trimmed) {
+    return buildGroundedPlayExplanationFallback({
+      play: params.play,
+      reason: "Full Hawk Intel generation did not complete in time; this fallback uses only the grounded published play card.",
+    });
+  }
+
+  // FABRICATION GUARD: the success path previously shipped Claude's briefing unchecked — only
+  // an empty/failed generation fell back to the grounded card. Ground every number the briefing
+  // cites against every number actually present in the SAME 3 text blocks fed into the prompt
+  // (market recap + play card + dossier), extracted as free text since the dossier arrives as
+  // an already-formatted string, not a structured object.
+  const known = extractNumbersFromText(`${marketRecapBlock}\n${playBlock}\n${params.dossierContext}`);
+  const grounding = checkNumbersGrounded(trimmed, known);
+  if (!grounding.grounded) {
+    console.warn(
+      `[nighthawk/play-explainer] ungrounded value ${grounding.ungroundedValue} in briefing for ${params.play.ticker} — falling back to grounded play card.`
+    );
+    return buildGroundedPlayExplanationFallback({
+      play: params.play,
+      reason: "Full Hawk Intel briefing cited an unverified number; this fallback uses only the grounded published play card.",
+    });
+  }
+
+  return trimmed;
 }
