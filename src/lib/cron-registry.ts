@@ -11,6 +11,12 @@ export type CronJobDefinition = {
   weekdays_only?: boolean;
   market_hours_only?: boolean;
   description: string;
+  /** True for crons that themselves produce a member-visible alert/signal/status badge when
+   *  they run — NOT cache warmers (grid-warm, heatmap-warm, nights-watch-warm) and NOT
+   *  validators (data-correctness, data-integrity, provider-health-reconcile). Drives
+   *  bie/missed-alerts.ts's outage detection — single source of truth so that list can't
+   *  silently drift from the registry (was a hand-maintained duplicate list before). */
+  produces_member_alert?: boolean;
 };
 
 export const CRON_JOBS: CronJobDefinition[] = [
@@ -23,6 +29,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 15,
     market_hours_only: true,
     description: "UW flow alerts → Postgres + live feed",
+    produces_member_alert: true,
   },
   {
     key: "spx-evaluate",
@@ -34,6 +41,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     weekdays_only: true,
     market_hours_only: true,
     description: "SPX play + lotto evaluation tick",
+    produces_member_alert: true,
   },
   {
     key: "largo-cleanup",
@@ -131,6 +139,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     weekdays_only: true,
     market_hours_only: true,
     description: "Evaluate Thermal for major market-regime gamma events and broadcast web-push alerts (inert until GEX_ALERTS_PUSH + VAPID are set)",
+    produces_member_alert: true,
   },
   {
     key: "db-cleanup",
@@ -237,6 +246,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 36 * 60,
     weekdays_only: true,
     description: "Validates overnight Night Hawk plays vs pre-market SPX; writes CONFIRMED/DEGRADED/INVALIDATED status to Redis for UI badges",
+    produces_member_alert: true,
   },
   {
     key: "market-regime-detector",

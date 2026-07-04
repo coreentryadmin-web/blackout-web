@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { detectMissedAlertWindows, type MissedAlertCronJob } from "./missed-alerts";
+import { detectMissedAlertWindows, ALERT_PRODUCING_CRON_KEYS, type MissedAlertCronJob } from "./missed-alerts";
+import { CRON_JOBS } from "@/lib/cron-registry";
 
 function job(overrides: Partial<MissedAlertCronJob>): MissedAlertCronJob {
   return { key: "flow-ingest", status: "healthy", status_label: "OK", market_hours_stale: false, ...overrides };
@@ -42,4 +43,15 @@ test("detectMissedAlertWindows: healthy alert-producing crons produce no windows
 
 test("detectMissedAlertWindows: empty job list is safe", () => {
   assert.deepEqual(detectMissedAlertWindows([]), { outage_count: 0, windows: [] });
+});
+
+test("ALERT_PRODUCING_CRON_KEYS: derived from the registry, includes every produces_member_alert cron", () => {
+  // Regression: this was a hand-maintained 3-entry list that omitted nighthawk-morning-confirm
+  // (writes a member-visible UI badge status exactly like the three originally listed crons)
+  // with no test cross-checking it against the registry. Deriving it means a future cron with
+  // produces_member_alert:true can never again go unmonitored by construction.
+  const expected = CRON_JOBS.filter((j) => j.produces_member_alert).map((j) => j.key);
+  assert.deepEqual([...ALERT_PRODUCING_CRON_KEYS].sort(), [...expected].sort());
+  assert.ok(ALERT_PRODUCING_CRON_KEYS.includes("nighthawk-morning-confirm"));
+  assert.ok(ALERT_PRODUCING_CRON_KEYS.length >= 4);
 });

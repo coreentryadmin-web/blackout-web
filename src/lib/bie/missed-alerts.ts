@@ -8,13 +8,14 @@
 // definition beyond "an alert-producing cron was down during the window it's
 // supposed to be live."
 
-/** Market-hours-only crons that themselves produce a member-visible alert or
- *  signal when they run — NOT cache warmers (grid-warm, heatmap-warm,
- *  nights-watch-warm all pre-warm a read cache; they don't fire an alert) and
- *  NOT validators (data-correctness, data-integrity, provider-health-reconcile
- *  confirm state, they don't alert on it). Kept in sync by hand against
- *  src/lib/cron-registry.ts's descriptions. */
-export const ALERT_PRODUCING_CRON_KEYS = ["flow-ingest", "spx-evaluate", "gex-alerts"] as const;
+import { CRON_JOBS } from "@/lib/cron-registry";
+
+/** Derived from cron-registry.ts's `produces_member_alert` flag — single source of truth,
+ *  so a new alert-producing cron can't silently go unmonitored the way `nighthawk-morning-
+ *  confirm` did when this was a hand-maintained 3-entry list. */
+export const ALERT_PRODUCING_CRON_KEYS: readonly string[] = CRON_JOBS.filter(
+  (j) => j.produces_member_alert
+).map((j) => j.key);
 
 /** The only fields this module reads from admin-cron-health's CronJobHealth —
  *  narrowed on purpose, same pattern as discovery.ts's DiscoveryCronJob, so
