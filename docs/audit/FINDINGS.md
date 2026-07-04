@@ -7,10 +7,21 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🧠 BIE ecosystem-context: recent_anomalies SHIPPED 2026-07-04 — a third real consumer of flow_anomalies
+**Status:** SHIPPED (`feat/bie-ecosystem-anomalies`). `flow_anomalies` (written every 30min by the `market-regime-detector` cron, which already dedups by `(anomaly_type, ticker)` within a 15-minute window at write time) already had two consumers before this: Night Hawk's own `platform-intel-snapshot.ts` and the member-facing `/api/market/anomalies` feed. `fetchEcosystemContext` had zero visibility into it — this adds the last 24h of pattern-detected anomalies (`CONCENTRATION`, `COORDINATED_SWEEP`, `PREMIUM_SPIKE`, `PUT_SURGE`) for the ticker as `recent_anomalies`.
+
+**Why this is distinct from `recent_flow` (previous entries), not redundant:** `recent_flow` is a raw premium aggregate from `flow_alerts` — count and call/put totals, no pattern judgment. `flow_anomalies` is the regime detector's own classification of a *pattern* in that flow (a coordinated sweep vs. a premium spike vs. simple concentration) — a different kind of signal computed by a different write-path, not a re-derivation of the same numbers.
+
+**Implementation:** one more query added to the existing `Promise.all` in `fetchEcosystemContext`, exact field names matched to the live `/api/market/anomalies` route (`anomaly_type`, `detected_at`, `detail`, `severity`, `direction`) rather than guessed. Updated the `get_ecosystem_context` Largo tool description to mention the new field.
+
+**Verification:** 882/882 tests pass (no new tests — a single additional aggregate query with no branching logic, same no-unit-test precedent as `recent_flow`), `tsc --noEmit` + build + `lint:brand` + `lint:vendor` + API auth-guard scan all clean.
+
+---
+
 ## ✅ VERIFIED 2026-07-04 — PR #375 (`feat/bie-largo-hot-tickers-tool`) deploy confirmed SUCCESS
 Merge commit `285c1e4`. Railway deployment `0898075f-f944-4139-b0c1-f4e306da163a` confirmed **SUCCESS** via the GraphQL API (`commitHash` matches the merge commit exactly). Live `GET /api/ready` → `{"ok":true,"db":"connected"}`.
 
-**Session pause point:** this closes out tonight's BIE ecosystem line (PRs #366–#375, all merged and deployed). See each entry above for detail; no more `src/**` work planned in this line until the next explicit ask.
+**Session pause point (superseded — resumed per explicit "keep pushing"):** this had closed out the night's BIE ecosystem line at PRs #366–#375; the user asked to continue, and `recent_anomalies` (above) is the next entry in that line.
 
 ---
 
