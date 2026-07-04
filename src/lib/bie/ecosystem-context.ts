@@ -54,12 +54,31 @@ export type EcosystemFlowSummary = {
   unknown_premium: number;
 };
 
+/**
+ * Pattern-detected flow anomalies on this ticker (CONCENTRATION,
+ * COORDINATED_SWEEP, PREMIUM_SPIKE, PUT_SURGE) from flow_anomalies — written
+ * every 30min by the market-regime-detector cron, which already dedups by
+ * (anomaly_type, ticker) within a 15-minute window at write time. Distinct
+ * signal from recent_flow: that's a raw premium aggregate, this is "the
+ * regime detector specifically flagged a pattern here." Already read by
+ * Night Hawk's own platform-intel snapshot and the member-facing
+ * /api/market/anomalies feed — this is a THIRD consumer, not a new writer.
+ */
+export type EcosystemAnomaly = {
+  anomaly_type: string;
+  detected_at: string;
+  detail: string;
+  severity: string;
+  direction: string | null;
+};
+
 export type EcosystemContext = {
   ticker: string;
   zerodte_today: EcosystemZeroDteTake | null;
   nighthawk_recent: EcosystemNightHawkTake | null;
   recent_audit_entries: EcosystemAuditEntry[];
   recent_flow: EcosystemFlowSummary | null;
+  recent_anomalies: EcosystemAnomaly[];
 };
 
 function emptyContext(ticker: string): EcosystemContext {
@@ -69,27 +88,31 @@ function emptyContext(ticker: string): EcosystemContext {
     nighthawk_recent: null,
     recent_audit_entries: [],
     recent_flow: null,
+    recent_anomalies: [],
   };
 }
 
 const FLOW_SUMMARY_WINDOW_HOURS = 6;
+const ANOMALY_WINDOW_HOURS = 24;
 
 /**
  * Assembles a single ticker's cross-instrument snapshot from tables that
  * already exist: today's 0DTE Command take (if any), the most recent Night
  * Hawk take (published or rejected outcome, whichever is newest), the last 10
  * alert_audit_log entries (the unified Stage 4 trail, which already spans all
- * three write-paths), and a same-day HELIX flow summary straight from
+ * three write-paths), a same-day HELIX flow summary straight from
  * flow_alerts — not just the $1M+ whale tier that reaches alert_audit_log, the
- * full tape for this one ticker. Fails open to an all-empty context on any
- * error — a lookup failure here must never block the caller's own logic.
+ * full tape for this one ticker — and any pattern-detected flow anomalies
+ * (flow_anomalies, written by the market-regime-detector cron). Fails open to
+ * an all-empty context on any error — a lookup failure here must never block
+ * the caller's own logic.
  */
 export async function fetchEcosystemContext(ticker: string): Promise<EcosystemContext> {
   if (!dbConfigured() || !ticker.trim()) return emptyContext(ticker);
   const upper = ticker.toUpperCase().trim();
 
   try {
-    const [zerodteRes, nighthawkRes, auditRes, flowRes] = await Promise.all([
+    const [zerodteRes, nighthawkRes, auditRes, flowRes, anomalyRes] = await Promise.all([
       dbQuery<{
         session_date: string;
         direction: string;
@@ -141,6 +164,14 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
          WHERE ticker = $1 AND created_at >= NOW() - ($2 || ' hours')::interval`,
         [upper, FLOW_SUMMARY_WINDOW_HOURS]
       ),
+      dbQuery<{ anomaly_type: string; detected_at: string; detail: string; severity: string; direction: string | null }>(
+        `SELECT anomaly_type, detected_at, detail, severity, direction
+         FROM flow_anomalies
+         WHERE ticker = $1 AND detected_at >= NOW() - ($2 || ' hours')::interval
+         ORDER BY detected_at DESC
+         LIMIT 5`,
+        [upper, ANOMALY_WINDOW_HOURS]
+      ),
     ]);
 
     const z = zerodteRes.rows[0];
@@ -185,6 +216,13 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
               unknown_premium: Number(f.unknown_premium),
             }
           : null,
+      recent_anomalies: anomalyRes.rows.map((a) => ({
+        anomaly_type: a.anomaly_type,
+        detected_at: String(a.detected_at),
+        detail: a.detail,
+        severity: a.severity,
+        direction: a.direction,
+      })),
     };
   } catch {
     return emptyContext(ticker);
