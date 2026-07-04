@@ -7,6 +7,20 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🔴 FIXED 2026-07-04 — Public landing page leaked internal infra (Railway, cron, CPU/memory/env-vars) in the BIE banner copy; vendor guard had a gap
+**Root cause:** `src/components/landing/BieBrainBanner.tsx`'s rotating subtitle under the "Introducing BlackOut Intelligence Engine" banner — a public, unauthenticated marketing surface on the home page — included two lines naming internal infrastructure by name: `"cron & worker health — 20+ jobs tracked, schedule-aware"` and `"Railway deploy, CPU, memory, and env-vars — watched live"`. This is a vendor/stack-leak issue the repo already has a dedicated guard for (`npm run lint:vendor` / `scripts/check-vendor-surfaces.mjs`, which explicitly scans `src/components/landing`), but the guard's `VENDORS` regex never included `Railway` — so a real, member-visible leak sat on the home page passing CI the whole time. "cron"/"CPU"/"env-vars" aren't vendor names so the regex-based guard was never going to catch those regardless; those are copy-quality issues, not something a name-matching guard can generically enforce.
+
+**Fix:**
+1. Rewrote both `READOUT_LINES` entries in `BieBrainBanner.tsx` to be stack-free and, per explicit request, catchier — `"the desk never sleeps — every system checked, every minute of the day"` and `"uptime, speed, stability — watched live, so you never have to ask"` — matching the existing lines' tone (`"one audit trail for every 0DTE and Night Hawk alert"`, `"the model never invents a number — every claim is checked"`) instead of naming internal implementation.
+2. Added `Railway|Voyage|Vercel` to `check-vendor-surfaces.mjs`'s `VENDORS` regex so this specific class of leak (a real vendor name, not generic ops jargon) can't silently reappear and pass CI again.
+3. Added a one-line comment above `READOUT_LINES` pointing future editors at the guard, since this is a marketing surface a copy-only edit could easily reintroduce the leak into.
+
+**Blast radius:** grepped `src/components/landing` and `src/app/(site)` for the same vendor/infra terms — this banner was the only hit; no other member-facing surface names Railway, cron, or infra internals.
+
+**Verification:** `npx tsc --noEmit` clean, `npm test` 888/888 passing, `npm run build` clean, `lint:brand`/`lint:vendor` (now genuinely exercising the fix)/`verify-api-auth-guards.mjs` all green.
+
+---
+
 ## 🔴 FIXED 2026-07-04 — 8-agent review of the whole BIE ecosystem line (PRs #366–#378) found 3 real correctness bugs + 5 quality issues, all fixed
 **Status:** FIXED (`fix/bie-ecosystem-review-findings`). After 13 PRs shipped in one thread, paused feature work to run a structured review (10 independent finder angles + verification + gap sweep) over the full cumulative diff (`0247146~1..60e96f9`) before anything else landed on top of it. Findings below, most severe first.
 

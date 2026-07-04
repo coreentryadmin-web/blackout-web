@@ -39,11 +39,14 @@ const SPOKE_DELAY = [0, -1.4, -0.6, -2.1, -0.3, -1.8];
 const MESH_DUR = [4.2, 3.8, 4.6, 4.0, 4.4];
 const MESH_DELAY = [-0.5, -2.6, -1.1, -3.3, -1.9];
 
+// Deliberately vendor/stack-free — this is a member-facing marketing surface,
+// not a status page. No infra provider names, no ops jargon (cron/CPU/env-vars/
+// deploy); see scripts/check-vendor-surfaces.mjs, which scans this directory.
 const READOUT_LINES = [
   "verifying every heat map, GEX read, and play against source data",
-  "cron & worker health — 20+ jobs tracked, schedule-aware",
+  "the desk never sleeps — every system checked, every minute of the day",
   "one audit trail for every 0DTE and Night Hawk alert",
-  "Railway deploy, CPU, memory, and env-vars — watched live",
+  "uptime, speed, stability — watched live, so you never have to ask",
   "the model never invents a number — every claim is checked",
 ];
 
