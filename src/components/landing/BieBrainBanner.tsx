@@ -28,7 +28,7 @@ const MARKET_LAYER: CapabilityLayer = {
   title: "Market Intelligence",
   x: layerX(0.06),
   accent: "#5df7ff",
-  items: ["Live Market Data", "Options Intelligence", "Dealer Positioning", "Liquidity", "Volatility"],
+  items: ["Live Market Data", "Options Intelligence", "Dealer Positioning", "Market Structure", "Liquidity", "Volatility"],
 };
 
 const VALIDATION_LAYER: CapabilityLayer = {
@@ -36,7 +36,7 @@ const VALIDATION_LAYER: CapabilityLayer = {
   title: "Validation",
   x: layerX(0.2),
   accent: "#00e676",
-  items: ["Data Integrity", "Signal Verification", "Consistency Checks", "Confidence Analysis", "Self Audit"],
+  items: ["Data Integrity", "Signal Verification", "Consistency Checks", "Confidence Analysis", "Real-Time Validation", "Self Audit"],
 };
 
 const REASONING_LAYER: CapabilityLayer = {
@@ -44,7 +44,7 @@ const REASONING_LAYER: CapabilityLayer = {
   title: "Intelligence",
   x: layerX(0.8),
   accent: "#bf5fff",
-  items: ["Pattern Recognition", "Market Reasoning", "Memory", "Risk Analysis", "Continuous Improvement"],
+  items: ["Pattern Recognition", "Market Reasoning", "Decision Engine", "Memory", "Risk Analysis", "Continuous Improvement"],
 };
 
 const OUTPUT_LAYER: CapabilityLayer = {
@@ -52,11 +52,11 @@ const OUTPUT_LAYER: CapabilityLayer = {
   title: "Trusted Output",
   x: layerX(0.94),
   accent: "#ffcc4d",
-  items: ["Trade Intelligence", "SPX Slayer", "Heat Maps", "Rankings", "Market Bias"],
+  items: ["Trade Intelligence", "SPX Slayer", "Heat Maps", "Alerts", "Rankings", "Market Bias"],
 };
 
 const SIDE_LAYERS = [MARKET_LAYER, VALIDATION_LAYER, REASONING_LAYER, OUTPUT_LAYER];
-const NODE_SPACING = 52;
+const NODE_SPACING = 44;
 
 type FlowNode = { id: string; label: string; x: number; y: number; layerId: string; accent: string };
 
@@ -87,7 +87,7 @@ type FlowWire = {
   id: string;
   d: string;
   accent: string;
-  stage: "inbound" | "outbound" | "core";
+  stage: "inbound" | "validate" | "outbound" | "core";
   dur: number;
   delay: number;
 };
@@ -125,12 +125,12 @@ function buildFlowWires(nodes: {
   linkColumns(nodes.market, nodes.validation, "inbound", "#5df7ff", 8);
 
   nodes.validation.forEach((n, i) => {
-    const targetY = CORE.y - 36 + i * 18;
+    const targetY = CORE.y - 48 + i * 16;
     wires.push({
       id: `bie-flow-val-core-${i}`,
-      d: flowPath(n.x + 14, n.y, CORE.x - 42, targetY, CORE.y, 12),
+      d: flowPath(n.x + 14, n.y, CORE.x - 46, targetY, CORE.y, 14),
       accent: "#00e676",
-      stage: "inbound",
+      stage: "validate",
       dur: 2.6 + (i % 3) * 0.3,
       delay: -(i * 0.62),
     });
@@ -230,7 +230,11 @@ export function BieBrainBanner() {
         <p className="bie-brain-sub">{READOUT_LINES[lineIndex]}</p>
       </div>
 
-      <div className="bie-brain-diagram" aria-hidden>
+      <div
+        className="bie-brain-diagram"
+        role="img"
+        aria-label="Intelligence pipeline: market data flows through validation into the BlackOut Intelligence Engine, then reasoned output reaches every platform instrument."
+      >
         <div className="bie-brain-layer-labels">
           {SIDE_LAYERS.map((layer) => (
             <span
@@ -244,6 +248,7 @@ export function BieBrainBanner() {
           <span className="bie-brain-layer-title bie-brain-layer-title-core">Intelligence Engine</span>
         </div>
 
+        <div className="bie-brain-scroll-wrap">
         <div className="bie-brain-canvas">
           <svg
             ref={ref}
@@ -272,7 +277,7 @@ export function BieBrainBanner() {
               width={104}
               height={layer.items.length * NODE_SPACING + 56}
               rx={4}
-              className="bie-brain-layer-band"
+              className={`bie-brain-layer-band bie-brain-layer-band-${layer.id}`}
               style={{ fill: layer.accent }}
             />
           ))}
@@ -298,6 +303,18 @@ export function BieBrainBanner() {
             />
           ))}
 
+          {/* Validation gate — every signal passes this inlet before the engine */}
+          <path
+            d={`M ${CORE.x - 58} ${CORE.y - 72} Q ${CORE.x - 28} ${CORE.y} ${CORE.x - 58} ${CORE.y + 72}`}
+            className="bie-brain-gate"
+            pathLength={1}
+          />
+          <path
+            d={`M ${CORE.x - 52} ${CORE.y - 64} Q ${CORE.x - 30} ${CORE.y} ${CORE.x - 52} ${CORE.y + 64}`}
+            className="bie-brain-gate bie-brain-gate-inner"
+            pathLength={1}
+          />
+
           {/* Flow connections — intelligence travels inward, validated output travels outward */}
           {wires.map((w, i) => (
             <g key={w.id}>
@@ -310,7 +327,11 @@ export function BieBrainBanner() {
                 style={{ animationDelay: `${i * 0.06}s` }}
               />
               {!reduceMotion && (
-                <circle r={w.stage === "core" ? 3 : 2.4} className="bie-flow-pulse" fill={w.accent}>
+                <circle
+                  r={w.stage === "validate" ? 3.2 : w.stage === "core" ? 3 : 2.4}
+                  className={`bie-flow-pulse bie-flow-pulse-${w.stage}`}
+                  fill={w.accent}
+                >
                   <animateMotion dur={`${w.dur}s`} begin={`${w.delay}s`} repeatCount="indefinite">
                     <mpath href={`#${w.id}`} />
                   </animateMotion>
@@ -367,6 +388,10 @@ export function BieBrainBanner() {
             <span className="bie-brain-core-caption">Validate · Reason · Improve</span>
           </div>
         </div>
+        <p className="bie-brain-scroll-hint" aria-hidden>
+          Scroll the pipeline →
+        </p>
+        </div>
 
         <div className="bie-brain-story-rail" aria-hidden>
           <span className="bie-brain-story-step">Ingest</span>
@@ -383,6 +408,7 @@ export function BieBrainBanner() {
         </div>
       </div>
 
+      <p className="bie-brain-products-eyebrow">Platform instruments · powered by BIE</p>
       <div className="bie-brain-nodes">
         {PRODUCTS.map((n) => (
           <Link key={n.name} href={n.href} className="bie-brain-node" style={{ ["--node-accent" as string]: n.accent }}>

@@ -1531,8 +1531,20 @@ body::before {
   aspect-ratio: 1280 / 420;
 }
 
+.bie-brain-scroll-wrap {
+  width: 100%;
+}
+
+.bie-brain-scroll-hint {
+  display: none;
+}
+
 .bie-brain-layer-band {
   opacity: 0.045;
+}
+
+.bie-brain-layer-band-validation {
+  opacity: 0.085;
 }
 
 .bie-brain-layer-band-core {
@@ -1598,6 +1610,35 @@ body::before {
 
 .bie-flow-outbound {
   opacity: 0.68;
+}
+
+.bie-flow-validate {
+  stroke-width: 1.5;
+  opacity: 0.82;
+}
+
+.bie-flow-pulse-validate {
+  filter: drop-shadow(0 0 4px rgba(0, 230, 118, 0.95));
+}
+
+.bie-brain-gate {
+  fill: none;
+  stroke: rgba(0, 230, 118, 0.45);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 0.08 0.06;
+  animation: bie-gate-pulse 2.8s ease-in-out infinite;
+}
+
+.bie-brain-gate-inner {
+  stroke: rgba(0, 230, 118, 0.28);
+  stroke-width: 1.2;
+  animation-delay: -1.4s;
+}
+
+@keyframes bie-gate-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }
 
 .is-drawn .bie-flow-wire {
@@ -1795,12 +1836,23 @@ body::before {
   border-left: 5px solid rgba(93, 247, 255, 0.65);
 }
 
+.bie-brain-products-eyebrow {
+  margin-top: 1.75rem;
+  text-align: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(148, 226, 255, 0.75);
+  padding-inline: clamp(1rem, 4vw, 2.5rem);
+}
+
 .bie-brain-nodes {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 0.5rem clamp(1rem, 3vw, 2.5rem);
-  margin-top: 1.5rem;
+  margin-top: 0.65rem;
   padding-inline: clamp(1rem, 4vw, 2.5rem);
 }
 
@@ -1844,6 +1896,32 @@ body::before {
   text-shadow: 0 0 18px rgba(93, 247, 255, 0.45);
 }
 
+@media (max-width: 900px) {
+  .bie-brain-scroll-wrap {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-inline: 0.5rem;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(93, 247, 255, 0.35) transparent;
+  }
+
+  .bie-brain-canvas {
+    min-width: 880px;
+  }
+
+  .bie-brain-scroll-hint {
+    display: block;
+    margin-top: 0.45rem;
+    text-align: center;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 8px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(148, 226, 255, 0.55);
+  }
+}
+
 @media (max-width: 640px) {
   .bie-brain-cap-label {
     font-size: 6px;
@@ -1873,6 +1951,7 @@ body::before {
   .bie-brain-core, .bie-brain-core-shell { animation: none; }
   .bie-flow-pulse { display: none; }
   .bie-brain-cap-ring { animation: none; opacity: 0.25; }
+  .bie-brain-gate { animation: none; opacity: 0.7; }
 }
 
 .bento-card-watermark {
