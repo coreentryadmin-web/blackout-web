@@ -6,6 +6,7 @@ import {
   flowStackSignature,
 } from "@/lib/largo/flow-strike-stacks";
 import { fmtPremium } from "@/lib/fmt-money";
+import { checkNumbersGrounded, collectKnownNumbers } from "@/lib/grounding-guard";
 
 export type SpxCommentaryResult = {
   headline: string;
@@ -582,7 +583,25 @@ Hard rules:
   const parsed = parseCommentaryJson(raw);
   // changed[] and watch[] stay empty by design — the Δ SINCE LAST line lives in body,
   // and SETUP + FLIPS IT replace the old watch list. Keeps the rail crisp.
-  if (parsed) return parsed;
+  if (parsed) {
+    // FABRICATION GUARD: this flagship "Live Desk AI" read is cluster-cached and served to
+    // every connected user with no prior check that its cited numbers are real, unlike the
+    // sibling gex-heatmap/explain route. Ground the headline + body against every number
+    // actually present in the SAME ctx JSON the prompt was built from (walked recursively —
+    // ctx is too large/nested to hand-enumerate every legitimate field without risking a
+    // missed one and a false-positive block). Returning null here (not a fallback narrative)
+    // means the route's serverCache treats this exactly like a generation failure: nothing is
+    // cached, the caller gets a retryable 502.
+    const known = collectKnownNumbers(ctx);
+    const grounding = checkNumbersGrounded(`${parsed.headline}\n${parsed.body}`, known);
+    if (!grounding.grounded) {
+      console.warn(
+        `[spx-commentary] ungrounded value ${grounding.ungroundedValue} in generated commentary — discarding (never cached).`
+      );
+      return null;
+    }
+    return parsed;
+  }
 
   return {
     headline: "Desk update",
