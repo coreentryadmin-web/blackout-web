@@ -9,6 +9,15 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🟢 FIXED 2026-07-04 — `ALERT_PRODUCING_CRON_KEYS` hand-maintained list already drifted (audit finding, low)
+**Where:** `src/lib/bie/missed-alerts.ts` — a 3-entry hand-maintained constant (`flow-ingest`, `spx-evaluate`, `gex-alerts`) already omitted `nighthawk-morning-confirm`, which writes a member-visible UI badge status (CONFIRMED/DEGRADED/INVALIDATED) exactly like the three listed crons, with no test cross-checking the list against `src/lib/cron-registry.ts`.
+
+**Fix:** added `produces_member_alert?: boolean` to `CronJobDefinition`, set it on the 4 qualifying crons (`flow-ingest`, `spx-evaluate`, `gex-alerts`, `nighthawk-morning-confirm`), and derived `ALERT_PRODUCING_CRON_KEYS` from `CRON_JOBS.filter(...)` instead of a hand-copied literal — single source of truth, so a future alert-producing cron can't silently go unmonitored the same way. Added a sync test asserting the derived list matches the registry filter and includes `nighthawk-morning-confirm`.
+
+**Verification:** `npx tsc --noEmit` clean; full suite `932/932` passing (1 new); `npm run build` clean; `lint:brand`/`lint:vendor`/`verify-api-auth-guards.mjs` all green.
+
+---
+
 ## 🟢 FIXED 2026-07-04 — `/api/ready` leaked raw DB driver error text publicly (audit finding, medium/security)
 **Where:** `src/app/api/ready/route.ts` — the public, unauthenticated healthcheck forwarded `pingDatabaseConnectivity()`'s raw `error.message` verbatim in its 503 body, which can embed internal hostnames (`.railway.internal`) or credential text (`password authentication failed for user "..."`).
 
