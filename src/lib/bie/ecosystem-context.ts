@@ -93,6 +93,33 @@ export type EcosystemContext = {
   flow_feed_fresh: boolean;
 };
 
+/**
+ * Machine-readable mirror of the field docs above — the single thing
+ * knowledge.ts's generated `platform:bie-capabilities` doc reads to describe
+ * fetchEcosystemContext()'s shape, so a future field addition here (like
+ * flow_feed_fresh was) shows up in BIE's own self-description automatically
+ * instead of requiring a second, easily-forgotten prose edit in
+ * docs/bie/ARCHITECTURE.md.
+ *
+ * Keyed by `Record<..., string>` rather than a plain array on purpose: adding a
+ * field to EcosystemContext without adding it here is a `tsc` compile error
+ * (missing key), and a typo'd key is also a compile error (excess property) —
+ * the exact class of drift this whole mechanism exists to prevent is caught at
+ * build time, not just hoped to be remembered.
+ */
+const ECOSYSTEM_CONTEXT_FIELD_DESCRIPTIONS: Record<Exclude<keyof EcosystemContext, "ticker">, string> = {
+  zerodte_today: "Today's 0DTE Command take for this ticker (direction, score, conviction, status), if any.",
+  nighthawk_recent: "Most recent PUBLISHED Night Hawk take — a rejected play never appears here, only as a nighthawk_rejected row in recent_audit_entries.",
+  recent_audit_entries: "Last 10 alert_audit_log rows for this ticker — the unified audit trail across all three write-paths (0DTE, Night Hawk published, Night Hawk rejected).",
+  recent_flow: "Same-day HELIX call/put/unknown-side premium totals (6h window), reported neutrally — never collapsed into a fabricated bullish/bearish label.",
+  recent_anomalies: "Pattern-detected flow anomalies (concentration, coordinated sweep, premium spike, put surge) from the last 24h.",
+  flow_feed_fresh: "Whether the live HELIX flow pipeline is actually delivering frames right now, cluster-wide — disambiguates a null/empty recent_flow or recent_anomalies as 'unknown' rather than 'genuinely quiet'.",
+};
+
+export const ECOSYSTEM_CONTEXT_FIELDS: { field: string; description: string }[] = Object.entries(
+  ECOSYSTEM_CONTEXT_FIELD_DESCRIPTIONS
+).map(([field, description]) => ({ field, description }));
+
 function emptyContext(ticker: string): EcosystemContext {
   return {
     ticker: ticker.toUpperCase(),

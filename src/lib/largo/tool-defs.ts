@@ -391,6 +391,12 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
 ];
 
+// The BIE-authored subset of Largo's tool surface — single source of truth so
+// TOOL_GROUPS.platform below and knowledge.ts's generated capabilities doc
+// (ingestBieKnowledge) both read the same list. Add a new BIE tool here once;
+// both consumers pick it up automatically instead of needing a second edit.
+export const BIE_TOOL_NAMES = ["get_ecosystem_context", "get_hot_tickers", "get_market_regime", "get_confluence_outcomes"];
+
 export const TOOL_GROUPS = {
   spx_desk: [
     "get_spx_structure",
@@ -496,14 +502,9 @@ export const TOOL_GROUPS = {
     // cross-tool Night Hawk objects newly surfaced to Largo
     "get_nighthawk_outcomes",
     "get_nighthawk_dossier",
-    // BIE ecosystem-context query layer — one ticker's cross-instrument snapshot
-    "get_ecosystem_context",
-    // BIE hot-tickers leaderboard — no ticker input, "what's hot" across the board
-    "get_hot_tickers",
-    // Market-wide regime backdrop — same data Night Hawk's scorer already reads internally
-    "get_market_regime",
-    // Does 0DTE/Night Hawk agreement actually correlate with a different hit rate?
-    "get_confluence_outcomes",
+    // The BIE-authored tools (ecosystem-context, hot-tickers, market-regime,
+    // confluence-outcomes) — see BIE_TOOL_NAMES above for the canonical list.
+    ...BIE_TOOL_NAMES,
   ],
   my_book: [
     // Night's Watch — the signed-in user's OWN saved positions (per-user scoped).
