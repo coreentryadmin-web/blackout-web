@@ -5,6 +5,19 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 **Merge policy for this doc's PRs:** left OPEN for end-of-day review — do not merge without explicit go-ahead, even when CI is green. **Superseded 2026-07-03 by explicit user standing instruction to run fully autonomously (branch→fix→test→PR→CI→merge→live-verify, repeat) through Monday 2026-07-06 market open — this doc's entries merge immediately alongside their fix PRs for the remainder of that window.**
 
+**Process note, 2026-07-04:** working through the full CEO/CTO audit's remaining ~21 findings back-to-back per explicit "fix everything, don't stop" instruction. Per-fix local verification (tsc/test/build/lint/auth-guards) and a FINDINGS.md entry stay mandatory for every fix; the separate docs-only "deploy confirmed SUCCESS" follow-up PR used earlier tonight is dropped for this batch to avoid serializing ~20 fixes behind ~20 extra PRs — Railway deploy health is spot-checked periodically instead of after every single merge.
+
+---
+
+## 🟢 FIXED 2026-07-04 — `/api/ready` leaked raw DB driver error text publicly (audit finding, medium/security)
+**Where:** `src/app/api/ready/route.ts` — the public, unauthenticated healthcheck forwarded `pingDatabaseConnectivity()`'s raw `error.message` verbatim in its 503 body, which can embed internal hostnames (`.railway.internal`) or credential text (`password authentication failed for user "..."`).
+
+**Fix:** log the real error server-side only (`console.error`, unchanged) and return a generic `error: "db_unreachable"` code to the caller. Confirmed no consumer (script or app code) depends on the old `error`/`mode` fields' exact content — `validate-deploy.mjs`/`site-audit.mjs`/`gha-http-smoke.mjs` all only check `ok`/`db`.
+
+**What was deliberately left unchanged:** `pingDatabase()`'s analogous `error.message` passthrough in `db.ts` — the audit only recommends the same treatment "if/when surfaced through any public route," and it currently isn't.
+
+**Verification:** `npx tsc --noEmit` clean; full suite `930/930` passing; `npm run build` clean; `lint:brand`/`lint:vendor`/`verify-api-auth-guards.mjs` all green.
+
 ---
 
 ## 🟢 FIXED 2026-07-04 — `/api/ready` never checked Redis (audit finding, medium)
