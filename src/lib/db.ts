@@ -3829,6 +3829,63 @@ export async function insertBieInteraction(row: {
   );
 }
 
+/** Task #112 — the raw rows BIE's calibration harness needs to score "how good are
+ *  Largo's answers specifically when SPX Slayer's own tools were involved"
+ *  (src/lib/bie/calibration.ts's computeSpxToolCallCalibration). Cohort membership
+ *  is a UNION of two conditions, filtered here at the SQL layer rather than
+ *  fetch-then-filter-in-JS like fetchZeroDteSetupLogRange/fetchClosedPlayOutcomes:
+ *  bie_interactions is one row per Largo QUESTION (much higher volume than the
+ *  admission-gated setup-log / closed-play-outcome tables those functions read),
+ *  so pulling the whole rolling window client-side just to throw most of it away
+ *  in JS would be wasteful.
+ *    1. `tools_used` overlaps `spxEngineToolNames` (jsonb `?|`) — the Claude
+ *       tool-calling path dispatched one of SPX Slayer's own engine-state tools.
+ *    2. `intent_bucket = 'spx_structure'` — the deterministic BIE router answered
+ *       via composeBieAnswer's composeSpxStructure(), which internally calls
+ *       runLargoTool("get_spx_structure", {}) — the SAME engine read condition 1
+ *       is trying to detect — but logBie() always records the router path's
+ *       tools_used as the single sentinel ["blackout_intelligence"], never the
+ *       real tool name (see largo-terminal.ts's tryBieRoute call sites). Without
+ *       this OR, the cohort could never contain a single router-matched row by
+ *       construction, which would make "how often do SPX-engine questions land on
+ *       the deterministic router vs. Claude fallback" — the very ratio task #112
+ *       asks this harness to track — read a permanent, meaningless 0%. */
+export async function fetchSpxToolCallingBieInteractions(
+  sinceDate: string,
+  spxEngineToolNames: string[],
+  limit = 3000
+): Promise<
+  Array<{
+    tools_used: string[];
+    intent_bucket: string | null;
+    answer_source: string;
+    claims_total: number | null;
+    claims_verified: number | null;
+    latency_ms: number | null;
+    created_at: string;
+  }>
+> {
+  await ensureSchema();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT tools_used, intent_bucket, answer_source, claims_total, claims_verified, latency_ms, created_at
+     FROM bie_interactions
+     WHERE created_at >= $1::date
+       AND (tools_used ?| $2::text[] OR intent_bucket = 'spx_structure')
+     ORDER BY created_at DESC
+     LIMIT $3`,
+    [sinceDate, spxEngineToolNames, limit]
+  );
+  return res.rows.map((r) => ({
+    tools_used: Array.isArray(r.tools_used) ? (r.tools_used as string[]) : [],
+    intent_bucket: r.intent_bucket != null ? String(r.intent_bucket) : null,
+    answer_source: String(r.answer_source),
+    claims_total: r.claims_total != null ? Number(r.claims_total) : null,
+    claims_verified: r.claims_verified != null ? Number(r.claims_verified) : null,
+    latency_ms: r.latency_ms != null ? Number(r.latency_ms) : null,
+    created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+  }));
+}
+
 export async function updateZeroDtePlanOutcome(
   sessionDate: string,
   ticker: string,
