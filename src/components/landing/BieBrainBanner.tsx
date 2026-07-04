@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildCenterHelix,
+  buildHeroSweepPath,
   buildImpulsePath,
   buildIntelligenceRings,
   buildStarField,
@@ -12,24 +13,23 @@ import {
   type Capability,
 } from "./bie-helix-engine";
 
-// Institutional AI reactor — helix hero, concentric intelligence rings, restrained motion.
+// Hero-scale institutional reactor — ~2× footprint; title supports the animation.
 
-const VIEW_W = 960;
-const VIEW_H = 440;
+export const VIEW_W = 1280;
+export const VIEW_H = 720;
 const CORE = { x: VIEW_W / 2, y: VIEW_H / 2 };
-const MAX_RX = 280;
-const MAX_RY = 130;
-const HELIX_H = 320;
-const HELIX_W = 92;
-const STAR_COUNT = 320;
+const MAX_RX = 420;
+const MAX_RY = 200;
+const HELIX_H = 600;
+const HELIX_W = 176;
+const STAR_COUNT = 480;
 
-/** Invisible capability anchors — revealed only on hover. */
 const CAPABILITIES: Capability[] = [
   { id: "pattern", label: "Pattern Recognition", detail: "Regime structure and repeat setups across sessions", angleDeg: 312, ring: 1, accent: "#bf5fff" },
   { id: "memory", label: "Memory", detail: "Every alert, outcome, and precedent informs the next call", angleDeg: 48, ring: 1, accent: "#bf5fff" },
   { id: "validation", label: "Validation", detail: "Integrity, consistency, and real-time self-audit", angleDeg: 128, ring: 2, accent: "#00e676" },
   { id: "confidence", label: "Confidence", detail: "Every number grounded or withheld — never fabricated", angleDeg: 208, ring: 2, accent: "#00e676" },
-  { id: "risk", label: "Risk Analysis", detail: "Confidence gates and invalidation before anything ships", angleDeg: 288, ring: 3, accent: "#5df7ff" },
+  { id: "risk", label: "Risk Analysis", detail: "Confidence gates and invalidation before anything ships", angleDeg: 288, ring: 4, accent: "#5df7ff" },
 ];
 
 type OutputProduct = { name: string; href: string; accent: string };
@@ -52,6 +52,7 @@ const READOUT_LINES = [
 ];
 
 type ReactorPhase = "idle" | "inbound" | "core" | "outbound";
+type PulseMode = "radial" | "sweep";
 
 function useLiveOnView<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -60,7 +61,7 @@ function useLiveOnView<T extends HTMLElement>() {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const io = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { threshold: 0.12 });
+    const io = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { threshold: 0.08 });
     io.observe(el);
     return () => io.disconnect();
   }, []);
@@ -81,7 +82,7 @@ function useReactorParticles(
     if (!ctx) return;
 
     const dpr = Math.min(window.devicePixelRatio ?? 1, 2);
-    const stars = buildStarField(CORE.x, CORE.y, MAX_RX, MAX_RY, STAR_COUNT);
+    const stars = buildStarField(CORE.x, CORE.y, MAX_RX * 1.08, MAX_RY * 1.08, STAR_COUNT);
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -105,7 +106,7 @@ function useReactorParticles(
       ctx.scale(sx, sy);
 
       for (const s of stars) {
-        const tw = 0.88 + 0.12 * Math.sin(frame * 0.008 + s.phase);
+        const tw = 0.9 + 0.1 * Math.sin(frame * 0.006 + s.phase);
         ctx.beginPath();
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(148, 226, 255, ${s.opacity * tw})`;
@@ -135,14 +136,21 @@ export function BieBrainBanner() {
   const [phase, setPhase] = useState<ReactorPhase>("idle");
   const [pulseKey, setPulseKey] = useState(0);
   const [pulseAngle, setPulseAngle] = useState(40);
+  const [pulseMode, setPulseMode] = useState<PulseMode>("sweep");
+  const [sweepLane, setSweepLane] = useState(0);
 
   const helix = useMemo(() => buildCenterHelix(CORE.x, CORE.y, HELIX_H, HELIX_W), []);
   const rings = useMemo(() => buildIntelligenceRings(CORE.x, CORE.y, MAX_RX, MAX_RY), []);
   const anchors = useMemo(() => placeCapabilities(CORE.x, CORE.y, CAPABILITIES, MAX_RX, MAX_RY), []);
-  const impulsePath = useMemo(
+  const radialPath = useMemo(
     () => buildImpulsePath(CORE.x, CORE.y, pulseAngle, MAX_RX, MAX_RY),
     [pulseAngle]
   );
+  const sweepPath = useMemo(
+    () => buildHeroSweepPath(VIEW_W, CORE.y, CORE.x, sweepLane),
+    [sweepLane]
+  );
+  const activePulsePath = pulseMode === "sweep" ? sweepPath : radialPath;
 
   useReactorParticles(canvasRef, visible, reduceMotion);
 
@@ -165,7 +173,6 @@ export function BieBrainBanner() {
     if (el && typeof el.unpauseAnimations === "function") el.unpauseAnimations();
   }, [visible]);
 
-  /** One elegant impulse every ~7s — not a constant fireworks show. */
   useEffect(() => {
     if (!visible || reduceMotion) {
       setPhase("idle");
@@ -173,20 +180,25 @@ export function BieBrainBanner() {
     }
 
     let cancelled = false;
+    let sweep = true;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     const fire = () => {
       if (cancelled) return;
+      const mode: PulseMode = sweep ? "sweep" : "radial";
+      sweep = !sweep;
+      setPulseMode(mode);
       setPulseAngle(20 + Math.random() * 300);
+      setSweepLane(-36 + Math.random() * 72);
       setPulseKey((k) => k + 1);
       setPhase("inbound");
-      timers.push(setTimeout(() => !cancelled && setPhase("core"), 900));
-      timers.push(setTimeout(() => !cancelled && setPhase("outbound"), 1500));
-      timers.push(setTimeout(() => !cancelled && setPhase("idle"), 2400));
-      timers.push(setTimeout(fire, 6800 + Math.random() * 3200));
+      timers.push(setTimeout(() => !cancelled && setPhase("core"), mode === "sweep" ? 1100 : 950));
+      timers.push(setTimeout(() => !cancelled && setPhase("outbound"), mode === "sweep" ? 1900 : 1650));
+      timers.push(setTimeout(() => !cancelled && setPhase("idle"), mode === "sweep" ? 2800 : 2500));
+      timers.push(setTimeout(fire, 7200 + Math.random() * 3600));
     };
 
-    timers.push(setTimeout(fire, 1200));
+    timers.push(setTimeout(fire, 800));
     return () => {
       cancelled = true;
       timers.forEach(clearTimeout);
@@ -194,27 +206,21 @@ export function BieBrainBanner() {
   }, [visible, reduceMotion]);
 
   const litRing =
-    phase === "inbound" ? 3 : phase === "outbound" ? 2 : phase === "core" ? 1 : -1;
+    phase === "inbound" ? 4 : phase === "outbound" ? 2 : phase === "core" ? 1 : -1;
 
   const onAnchorEnter = useCallback((c: PlacedCapability) => setHovered(c), []);
   const onAnchorLeave = useCallback(() => setHovered(null), []);
 
-  return (
-    <div className="bie-brain-banner">
-      <div className="bie-brain-heading">
-        <span className="bie-brain-eyebrow">
-          <span className="bie-brain-eyebrow-dot" aria-hidden />
-          The operating brain of BlackOut
-        </span>
-        <h2 className="bie-brain-title">BlackOut Intelligence Engine</h2>
-        <p className="bie-brain-sub">{READOUT_LINES[lineIndex]}</p>
-      </div>
+  const pulseDur = pulseMode === "sweep" ? "2.6s" : "2s";
 
+  return (
+    <div className="bie-brain-banner bie-brain-hero">
       <div
         ref={diagramRef}
-        className="bie-brain-diagram bie-reactor-diagram"
+        className="bie-brain-diagram bie-reactor-diagram bie-reactor-stage"
         role="img"
-        aria-label="BlackOut Intelligence Engine reactor: a helix core surrounded by intelligence rings. Hover ring nodes to explore capabilities."
+        aria-label="BlackOut Intelligence Engine reactor: a large helix core surrounded by intelligence rings. Hover ring nodes to explore capabilities."
+        style={{ ["--reactor-cx" as string]: `${CORE.x}px`, ["--reactor-cy" as string]: `${CORE.y}px` }}
       >
         <div className="bie-brain-canvas bie-reactor-canvas">
           <canvas ref={canvasRef} className="bie-reactor-particles" aria-hidden />
@@ -232,7 +238,8 @@ export function BieBrainBanner() {
                 <stop offset="100%" stopColor="#0a3b45" />
               </radialGradient>
               <radialGradient id="bie-reactor-vignette" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="rgba(0,229,255,0.14)" />
+                <stop offset="0%" stopColor="rgba(0,229,255,0.22)" />
+                <stop offset="55%" stopColor="rgba(191,95,255,0.08)" />
                 <stop offset="100%" stopColor="rgba(0,229,255,0)" />
               </radialGradient>
               <linearGradient id="bie-helix-strand-grad" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -240,8 +247,8 @@ export function BieBrainBanner() {
                 <stop offset="50%" stopColor="#00e5ff" stopOpacity="1" />
                 <stop offset="100%" stopColor="#bf5fff" stopOpacity="0.85" />
               </linearGradient>
-              <filter id="bie-helix-hero-bloom" x="-60%" y="-20%" width="220%" height="140%">
-                <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b" />
+              <filter id="bie-helix-hero-bloom" x="-50%" y="-15%" width="200%" height="130%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="b" />
                 <feMerge>
                   <feMergeNode in="b" />
                   <feMergeNode in="SourceGraphic" />
@@ -249,9 +256,8 @@ export function BieBrainBanner() {
               </filter>
             </defs>
 
-            <circle cx={CORE.x} cy={CORE.y} r={MAX_RX * 0.88} fill="url(#bie-reactor-vignette)" className="bie-reactor-vignette" />
+            <circle cx={CORE.x} cy={CORE.y} r={MAX_RX * 0.96} fill="url(#bie-reactor-vignette)" className="bie-reactor-vignette" />
 
-            {/* Concentric intelligence rings — slow, independent rotation */}
             {rings.map((ring) => (
               <g
                 key={`ring-${ring.ring}`}
@@ -267,7 +273,6 @@ export function BieBrainBanner() {
               </g>
             ))}
 
-            {/* Hero helix — centerpiece */}
             <g className="bie-reactor-helix" filter="url(#bie-helix-hero-bloom)">
               <path d={helix.strandA} className="bie-reactor-helix-strand" fill="none" stroke="url(#bie-helix-strand-grad)" />
               <path d={helix.strandB} className="bie-reactor-helix-strand bie-reactor-helix-strand-b" fill="none" stroke="url(#bie-helix-strand-grad)" />
@@ -279,25 +284,23 @@ export function BieBrainBanner() {
                   x2={r.x2}
                   y2={r.y2}
                   className="bie-reactor-helix-rung"
-                  strokeOpacity={0.12 + 0.55 * r.depth}
-                  strokeWidth={0.35 + 1.1 * r.depth}
+                  strokeOpacity={0.14 + 0.58 * r.depth}
+                  strokeWidth={0.45 + 1.35 * r.depth}
                 />
               ))}
             </g>
 
-            {/* Single neural impulse — occasional, not constant */}
             {!reduceMotion && phase !== "idle" && (
-              <g key={pulseKey}>
-                <path id="bie-reactor-impulse" d={impulsePath} className="bie-reactor-impulse-track" pathLength={1} />
-                <circle r={2.2} className="bie-reactor-impulse-dot" fill="#5df7ff">
-                  <animateMotion dur="1.35s" repeatCount="1" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.4 0 0.2 1">
+              <g key={pulseKey} className={`bie-reactor-pulse-wave bie-reactor-pulse-${pulseMode}`}>
+                <path id="bie-reactor-impulse" d={activePulsePath} className="bie-reactor-impulse-track" pathLength={1} />
+                <circle r={pulseMode === "sweep" ? 3.2 : 2.8} className="bie-reactor-impulse-dot" fill="#5df7ff">
+                  <animateMotion dur={pulseDur} repeatCount="1" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.35 0 0.2 1">
                     <mpath href="#bie-reactor-impulse" />
                   </animateMotion>
                 </circle>
               </g>
             )}
 
-            {/* Invisible capability anchors */}
             {anchors.map((c) => (
               <g
                 key={c.id}
@@ -311,8 +314,8 @@ export function BieBrainBanner() {
                 role="button"
                 aria-label={`${c.label}: ${c.detail}`}
               >
-                <circle r={14} className="bie-reactor-anchor-hit" fill="transparent" />
-                <circle r={2.2} className="bie-reactor-anchor-dot" fill={c.accent} />
+                <circle r={18} className="bie-reactor-anchor-hit" fill="transparent" />
+                <circle r={2.8} className="bie-reactor-anchor-dot" fill={c.accent} />
               </g>
             ))}
 
@@ -320,8 +323,9 @@ export function BieBrainBanner() {
               className={`bie-reactor-core${phase === "core" || phase === "outbound" ? " is-active" : ""}`}
               transform={`translate(${CORE.x}, ${CORE.y})`}
             >
-              <circle cx={0} cy={0} r={36} className="bie-reactor-core-halo" />
-              <circle cx={0} cy={0} r={20} className="bie-brain-core" />
+              <circle cx={0} cy={0} r={68} className="bie-reactor-core-halo" />
+              <circle cx={0} cy={0} r={48} className="bie-reactor-core-ring" />
+              <circle cx={0} cy={0} r={36} className="bie-brain-core" />
             </g>
           </svg>
 
@@ -344,6 +348,15 @@ export function BieBrainBanner() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="bie-brain-heading bie-brain-heading-caption">
+        <span className="bie-brain-eyebrow">
+          <span className="bie-brain-eyebrow-dot" aria-hidden />
+          The operating brain of BlackOut
+        </span>
+        <h2 className="bie-brain-title">BlackOut Intelligence Engine</h2>
+        <p className="bie-brain-sub">{READOUT_LINES[lineIndex]}</p>
       </div>
 
       <p className="bie-brain-products-eyebrow">Platform instruments · powered by BIE</p>
