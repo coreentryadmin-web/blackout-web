@@ -458,7 +458,15 @@ export async function runLargoQueryStream(
       maxRetries: 1,
       // Cache the stable Largo system prompt — saves ~50% on system-token cost for repeat calls.
       cacheSystem: true,
-      onEvent: (event) => emit(event),
+      // Forward tool_start live (deterministic tool names, safe to show as soon as Largo starts
+      // pulling data — feeds the "thinking" tool-trace UI). Deliberately DROP raw "token" text
+      // deltas here: audit finding — streaming the model's free text live meant a fabricated
+      // strike/premium could be read and acted on before the Layer-4 verifier below ever ran.
+      // anthropicToolLoop's own resolved return value still carries the full text regardless of
+      // which events are forwarded, so nothing here affects what `answer` receives below.
+      onEvent: (event) => {
+        if (event.type === "tool_start") emit(event);
+      },
       runTool: async (name, input) => {
         toolsUsed.push(name);
         const result = await runLargoTool(name, input, userId);
@@ -498,6 +506,11 @@ export async function runLargoQueryStream(
     // answer is persisted so a follow-up hiccup can never lose the turn.
     const followups = await generateLargoFollowups(question, text, tickerHint);
 
+    // Deliver the fully-verified text in one shot — mirrors the BIE-router fast path a few
+    // lines up (which also emits one token event with its whole answer before "done"), rather
+    // than the raw incremental stream this branch used to forward live. Verification has
+    // already run against the complete answer by this point (audit fix, see onEvent above).
+    emit({ type: "token", text } as LargoStreamEvent);
     emit({
       type: "done",
       answer: text,
