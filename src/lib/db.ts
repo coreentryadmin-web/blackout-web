@@ -416,6 +416,13 @@ async function runMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_largo_messages_session
     ON largo_messages(session_id, created_at ASC);
   `);
+  // Additive: the actual tool-call RESULTS an assistant answer was grounded in (largo-verifier.ts's
+  // numeric-grounding engine was previously self-test-only — the ground-truth side never existed).
+  // NULL for user-role rows and every pre-existing assistant row; only newly-appended assistant turns
+  // populate it. Nullable by design — no backfill possible for history.
+  await p.query(`
+    ALTER TABLE largo_messages ADD COLUMN IF NOT EXISTS tool_results JSONB;
+  `);
   await p.query(`
     CREATE TABLE IF NOT EXISTS nighthawk_editions (
       id BIGSERIAL PRIMARY KEY,

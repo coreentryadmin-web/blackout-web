@@ -132,12 +132,46 @@ export async function fetchLargoMessagesPublic(
   }));
 }
 
+export type RecentLargoAnswer = {
+  id: number;
+  content: string;
+  tool_results: unknown[];
+  created_at: string;
+};
+
+/**
+ * Cross-user, cron-readable recent Largo ANSWERS that carry tool_results — the piece
+ * largo-verifier.ts's numeric-grounding engine needed but didn't have (see that file's header
+ * comment). Unlike fetchLargoMessagesPublic (requires sessionId+userId, single-session), this
+ * is a bounded global read across all sessions — deliberately narrow: assistant rows only,
+ * only those with a non-null tool_results (rows from before this column existed, or BIE-router
+ * answers with no tool calls, are correctly excluded rather than treated as "zero tools used").
+ */
+export async function fetchRecentLargoAnswersWithResults(limit = 50): Promise<RecentLargoAnswer[]> {
+  if (!dbConfigured()) return [];
+  const res = await dbQuery<{ id: number; content: string; tool_results: unknown; created_at: Date }>(
+    `SELECT id, content, tool_results, created_at
+     FROM largo_messages
+     WHERE role = 'assistant' AND tool_results IS NOT NULL
+     ORDER BY created_at DESC, id DESC
+     LIMIT $1`,
+    [limit]
+  );
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    content: r.content,
+    tool_results: Array.isArray(r.tool_results) ? r.tool_results : [],
+    created_at: new Date(r.created_at).toISOString(),
+  }));
+}
+
 export async function appendLargoMessage(
   sessionId: string,
   userId: string,
   role: "user" | "assistant",
   content: string,
-  toolsUsed: string[] = []
+  toolsUsed: string[] = [],
+  toolResults?: unknown[]
 ): Promise<void> {
   const trimmed = content.trim();
   if (!trimmed) return;
@@ -157,10 +191,20 @@ export async function appendLargoMessage(
   try {
     await client.query("BEGIN");
 
+    // tool_results is the ground-truth data the answer was grounded in (largo-verifier.ts's
+    // numeric-grounding engine) — only ever populated for assistant turns that captured tool
+    // calls; NULL (not '[]') when absent so a reader can distinguish "no tools called" from
+    // "grounding not tracked for this row" (pre-migration history).
     await client.query(
-      `INSERT INTO largo_messages (session_id, role, content, tools_used)
-       VALUES ($1, $2, $3, $4::jsonb)`,
-      [sessionId, role, trimmed, JSON.stringify(toolsUsed)]
+      `INSERT INTO largo_messages (session_id, role, content, tools_used, tool_results)
+       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)`,
+      [
+        sessionId,
+        role,
+        trimmed,
+        JSON.stringify(toolsUsed),
+        toolResults && toolResults.length ? JSON.stringify(toolResults) : null,
+      ]
     );
 
     await client.query(
