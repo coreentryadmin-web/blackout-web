@@ -9,6 +9,7 @@ import {
   clearWsLeaderFailClosedAlert,
   wsLeaderShouldFailOpenWithoutRedis,
 } from "./leader-lock-shared";
+import { newLockToken, releaseFencedLock, renewFencedLock, type FencedRedis } from "./leader-lock-fencing";
 export type PolygonAgg = {
   ev: "A" | "AM";
   sym: string;
@@ -119,6 +120,16 @@ function barDateET(): string {
   }).format(new Date());
 }
 
+/**
+ * Session % change vs the anchor open, rounded to 2dp to match the REST sibling
+ * (polygon.ts uses `Number((...).toFixed(2))` throughout). Exported for direct unit
+ * testing — the WS message handlers below call this instead of computing inline, so a
+ * raw-float regression can't slip back in unrounded.
+ */
+export function computeSessionChangePct(current: number, sessionOpen: number): number {
+  return sessionOpen > 0 ? Number((((current - sessionOpen) / sessionOpen) * 100).toFixed(2)) : 0;
+}
+
 // ── Cross-replica leader election ──────────────────────────────────────────────────────────────
 // Massive allows at most 1 live WebSocket per API key. When the cluster scales to N replicas each
 // would otherwise open its own connection; the 2nd–Nth get rejected with code 1008 and churn
@@ -133,7 +144,11 @@ let indicesIsLeader = false;
 let indicesLeaderRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
 // Minimal ioredis methods we need beyond the narrow RedisClient type in uw-shared-cache.
-type IoredisExtra = { set(k: string, v: string, ex: string, ttl: number, nx: string): Promise<string | null>; expire(k: string, ttl: number): Promise<number>; del(k: string): Promise<number> };
+type IoredisExtra = FencedRedis & { set(k: string, v: string, ex: string, ttl: number, nx: string): Promise<string | null> };
+
+// Random per-process identity for this lock — see leader-lock-fencing.ts for why a plain SETNX
+// with unconditional EXPIRE/DEL renewal can split-brain across two replicas.
+const INDICES_LOCK_TOKEN = newLockToken();
 
 async function tryAcquireIndicesLead(): Promise<boolean> {
   try {
@@ -147,7 +162,7 @@ async function tryAcquireIndicesLead(): Promise<boolean> {
     }
     clearWsLeaderFailClosedAlert("polygon-socket");
     const r = redis as unknown as IoredisExtra;
-    const result = await r.set(INDICES_LEADER_KEY, "1", "EX", INDICES_LEADER_TTL_SEC, "NX");
+    const result = await r.set(INDICES_LEADER_KEY, INDICES_LOCK_TOKEN, "EX", INDICES_LEADER_TTL_SEC, "NX");
     return result === "OK";
   } catch {
     if (!wsLeaderShouldFailOpenWithoutRedis()) {
@@ -165,7 +180,22 @@ function startIndicesLeaderRefresh(): void {
   indicesLeaderRefreshTimer = setInterval(() => {
     if (indicesShuttingDown || !indicesIsLeader) return;
     getUwCacheRedis()
-      .then((redis) => redis && (redis as unknown as IoredisExtra).expire(INDICES_LEADER_KEY, INDICES_LEADER_TTL_SEC))
+      .then(async (redis) => {
+        if (!redis) return;
+        const stillMine = await renewFencedLock(redis as unknown as IoredisExtra, INDICES_LEADER_KEY, INDICES_LOCK_TOKEN, INDICES_LEADER_TTL_SEC);
+        if (!stillMine) {
+          // Lost the lock to another replica (stalled past the TTL) — close our now-illegitimate
+          // socket instead of continuing to hold two live connections cluster-wide. onclose's
+          // scheduleIndicesReconnect will re-check tryAcquireIndicesLead before opening anything.
+          console.warn("[polygon-socket] lost indices cluster lead to another replica (stalled past TTL) — standing down");
+          indicesIsLeader = false;
+          try {
+            indicesWs?.close();
+          } catch {
+            /* ignore — onclose will still fire */
+          }
+        }
+      })
       .catch(() => undefined);
   }, 10_000);
   (indicesLeaderRefreshTimer as unknown as { unref?: () => void }).unref?.();
@@ -355,7 +385,7 @@ async function connectIndices() {
                 : "ws-bar";
               indexStore[agg.sym] = {
                 price: agg.c,
-                change_pct: sessionOpen > 0 ? ((agg.c - sessionOpen) / sessionOpen) * 100 : 0,
+                change_pct: computeSessionChangePct(agg.c, sessionOpen),
                 session_open: sessionOpen,
                 session_date: todayET,
                 open_source: openSource,
@@ -395,7 +425,7 @@ async function connectIndices() {
                 price: val,
                 change_pct:
                   prev.session_open > 0
-                    ? ((val - prev.session_open) / prev.session_open) * 100
+                    ? computeSessionChangePct(val, prev.session_open)
                     : prev.change_pct,
                 updatedAt: Date.now(),
               };
@@ -460,7 +490,7 @@ export function shutdownPolygonSocket(): void {
   if (indicesIsLeader) {
     indicesIsLeader = false;
     getUwCacheRedis()
-      .then((redis) => redis && (redis as unknown as IoredisExtra).del(INDICES_LEADER_KEY))
+      .then((redis) => redis && releaseFencedLock(redis as unknown as IoredisExtra, INDICES_LEADER_KEY, INDICES_LOCK_TOKEN))
       .catch(() => undefined);
   }
   const ws = indicesWs;

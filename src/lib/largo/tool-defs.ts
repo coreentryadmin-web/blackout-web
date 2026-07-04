@@ -343,6 +343,21 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
     window_days: { type: "integer", default: 30 },
   }),
 
+  // Computed server-side (not left to the model) specifically because a comparison
+  // between two products is a DERIVED number — see run-tool.ts's dispatch case for
+  // why that matters for grounding correctness.
+  t(
+    "get_spx_vs_nighthawk_comparison",
+    "Head-to-head SPX Slayer (0DTE Command intraday plays) vs Night Hawk (evening swing picks) performance over the SAME rolling window: each product's own win rate + signal volume, PLUS a pre-computed win-rate delta and signal-count delta — computed once, server-side, so the model never subtracts two other tools' numbers itself. `days` is a rolling day-count window (not a calendar week), applied identically to both products — same honest-approximation framing as get_trade_history's `days` and get_nighthawk_outcomes' `window_days`. Use this instead of calling get_setup_stats and get_nighthawk_outcomes separately whenever a question directly compares the two products (e.g. 'how's SPX Slayer doing vs Night Hawk this week', 'which is hotter right now').",
+    {
+      days: {
+        type: "integer",
+        default: 7,
+        description: "Rolling day window applied identically to both products (not a calendar week).",
+      },
+    }
+  ),
+
   t("get_nighthawk_dossier", "Night Hawk per-ticker research dossier behind a pick (the full scored research). Omit ticker to list dossier tickers for the edition.", {
     date: { type: "string", description: "Edition date YYYY-MM-DD; defaults to latest." },
     ticker: { type: "string", description: "Ticker to fetch the full dossier for." },
@@ -369,7 +384,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_ecosystem_context",
-    "BIE cross-instrument snapshot for ONE ticker: today's 0DTE Command take (if any), the most recent PUBLISHED Night Hawk take (a rejected play never appears here — check recent_audit_entries for an 'nighthawk_rejected' alert_type instead), the last 10 alert_audit_log entries, a same-day HELIX flow summary (print count + call/put premium totals over the last 6h — reported neutrally, never as a single bullish/bearish label), any pattern-detected flow anomalies in the last 24h (coordinated sweeps, premium spikes, put surges, concentration), and flow_feed_fresh (is the live flow pipeline actually up right now). IMPORTANT: if flow_feed_fresh is false, a null/empty recent_flow or recent_anomalies means 'we can't currently see,' NOT 'genuinely quiet' — say so rather than reporting silence as a finding. Use when a question needs 'what does the rest of the desk already think about this name' rather than a single tool's isolated view — e.g. confirming whether today's 0DTE flag and last night's Night Hawk pick agree or conflict, or whether unusual options flow has been building on the name.",
+    "BIE cross-instrument snapshot for ONE ticker: today's 0DTE Command take (if any), the most recent PUBLISHED Night Hawk take (a rejected play never appears here — check recent_audit_entries for an 'nighthawk_rejected' alert_type instead), the last 10 alert_audit_log entries, a same-day HELIX flow summary (print count + call/put premium totals over the last 6h — reported neutrally, never as a single bullish/bearish label), any pattern-detected flow anomalies in the last 24h (coordinated sweeps, premium spikes, put surges, concentration), spx_play (SPX/SPXW only — SPX Slayer's own current open play and most recently closed play, null for every other ticker), spx_full_state (SPX/SPXW only — SPX Slayer's ENTIRE live play-engine snapshot, the exact same object get_spx_play returns: phase, every confluence factor with its weight/detail, full gate pass/fail state, the 10-item confirmation checklist, MTF/RSI/EMA technicals, adaptive-gate telemetry, watch state, the AI arbiter's verdict, the option ticket; null for every other ticker — use this instead of a separate get_spx_play call when you already need this ticker's other ecosystem context too), and flow_feed_fresh (is the live flow pipeline actually up right now). IMPORTANT: if flow_feed_fresh is false, a null/empty recent_flow or recent_anomalies means 'we can't currently see,' NOT 'genuinely quiet' — say so rather than reporting silence as a finding. Use when a question needs 'what does the rest of the desk already think about this name' rather than a single tool's isolated view — e.g. confirming whether today's 0DTE flag and last night's Night Hawk pick agree or conflict, whether unusual options flow has been building on the name, or (for SPX/SPXW) whether SPX Slayer already has a live play on and its full reasoning behind it.",
     T,
     ["ticker"]
   ),
@@ -386,7 +401,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_confluence_outcomes",
-    "Platform-wide, not ticker-specific: over the last 60 days of GRADED 0DTE Command flags, does agreeing or disagreeing with a ticker's prior Night Hawk take actually correlate with a different hit rate? Buckets: agree / disagree / no_echo (no prior Night Hawk take at all), each with sample size, hit rate %, and average move %. A bucket under 10 samples is flagged insufficient_sample — treat its numbers as noise, not signal, and say so if asked. Use for 'does it help when the instruments agree / is confluence real / how reliable is X' meta-questions about the platform's own track record, not for a single play's own grade (use get_zerodte_plays or get_nighthawk_outcomes for that)."
+    "Platform-wide, not ticker-specific: does agreeing across instruments/factors actually correlate with a different hit rate? Two sections, both evidence-gated (a bucket under 10 samples is flagged insufficient_sample — treat its numbers as noise, not signal, and say so if asked). `zerodte_nighthawk_echo`: over the last 60 days of GRADED 0DTE Command flags, buckets agree / disagree / no_echo (no prior Night Hawk take at all) by hit rate % and average move %. `spx_slayer_shadow_factors`: SPX Slayer's shadow-mode confluence factors (risk-reversal skew, realized-vs-implied vol, flow anomalies, mega-cap catalysts, ecosystem cross-instrument agreement, macro-prediction consensus — see spx_confluence_shadow_observations) correlated against SPX Slayer's own real graded trade outcomes, bucketed per factor_name by agree / disagree / neutral with win rate % and average P&L in points; a factor_name with no bucket yet reaching 10 samples has not earned a live-scoring opinion. Use for 'does it help when the instruments agree / is confluence real / how reliable is X / is [shadow factor] worth promoting' meta-questions about the platform's own track record, not for a single play's own grade (use get_zerodte_plays, get_nighthawk_outcomes, or get_spx_play for that)."
   ),
 
   t(
@@ -515,6 +530,9 @@ export const TOOL_GROUPS = {
     // cross-tool Night Hawk objects newly surfaced to Largo
     "get_nighthawk_outcomes",
     "get_nighthawk_dossier",
+    // Cross-product comparison — routed here (not spx_desk) so it's reachable
+    // whenever NIGHTHAWK_RE fires, same as the two tools above it.
+    "get_spx_vs_nighthawk_comparison",
     // The BIE-authored tools (ecosystem-context, hot-tickers, market-regime,
     // confluence-outcomes) — see BIE_TOOL_NAMES above for the canonical list.
     ...BIE_TOOL_NAMES,

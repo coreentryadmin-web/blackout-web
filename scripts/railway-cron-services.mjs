@@ -3,6 +3,7 @@
  * Used by railway-apply-cron-config.mjs and railway-audit-apply.mjs.
  */
 export const CRON_SERVICE_NAMES = {
+  "alert-outcome-sync": "Alert-Outcome-Sync",
   "cron-staleness-watchdog": "Cron-Staleness-Watchdog",
   "db-cleanup": "DB_CLEANUP",
   "data-correctness": "Data-Correctness-Cron",
@@ -23,6 +24,7 @@ export const CRON_SERVICE_NAMES = {
   "provider-health-reconcile": "provider-health-reconcile",
   "socket-health": "Socket-Health-Cron",
   "spx-evaluate": "SPX-Engine-Evaluation",
+  "spx-issues-sync": "SPX-Issues-Sync",
   "spx-signal-observe": "SPX-Signal-Observe",
   "spx-signal-weight-optimize": "SPX-Signal-Weight-Optimize",
   "uw-cache-refresh": "UW-Cache-Refresh-New",

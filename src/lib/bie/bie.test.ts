@@ -173,7 +173,14 @@ test("self-eval: coverage, verification and win-rate math", () => {
 
 // ── Layer 5: calibration harness (pure) ──────────────────────────────────────────
 
-import { computeCalibration, formatCalibration, type CalibrationInputRow } from "./calibration";
+import {
+  computeCalibration,
+  computeSpxCalibration,
+  formatCalibration,
+  formatSpxCalibration,
+  type CalibrationInputRow,
+  type SpxCalibrationInputRow,
+} from "./calibration";
 
 const calRow = (over: Partial<CalibrationInputRow>): CalibrationInputRow => ({
   session_date: "2026-07-06",
@@ -215,6 +222,62 @@ test("calibration: ungraded rows are excluded from every bucket", () => {
   const rows = [calRow({}), calRow({ plan_outcome: null, plan_pnl_pct: null }), calRow({ plan_outcome: "ungradeable" })];
   const r = computeCalibration(rows, { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
   assert.equal(r.graded_plays, 1);
+});
+
+// ── Layer 5: SPX Slayer calibration pass (additive, parallel to the 0DTE pass above) ─
+
+const spxRow = (over: Partial<SpxCalibrationInputRow>): SpxCalibrationInputRow => ({
+  session_date: "2026-07-06",
+  grade: "B",
+  outcome: "win",
+  pnl_pts: 5,
+  opened_at: "2026-07-06T14:15:00Z", // 10:15 ET — prime window
+  ...over,
+});
+
+test("spx calibration: buckets by grade band and time-of-day, cites evidence in recommendations", () => {
+  const rows: SpxCalibrationInputRow[] = [
+    // grade C/D: 2W/10L over 12 → underperformer (n≥10)
+    ...Array.from({ length: 10 }, () => spxRow({ grade: "C", outcome: "loss", pnl_pts: -3 })),
+    ...Array.from({ length: 2 }, () => spxRow({ grade: "C", outcome: "win", pnl_pts: 4 })),
+    // grade A/A+: 9W/2L over 11 → outperformer
+    ...Array.from({ length: 9 }, () => spxRow({ grade: "A", outcome: "win", pnl_pts: 6 })),
+    ...Array.from({ length: 2 }, () => spxRow({ grade: "A", outcome: "loss", pnl_pts: -2 })),
+  ];
+  const r = computeSpxCalibration(rows, { since: "2026-06-22", through: "2026-07-06", sessions: 10 });
+  assert.equal(r.closed_plays, 23);
+  const low = r.by_grade_band.find((b) => b.label === "C/D")!;
+  assert.equal(low.n, 12);
+  assert.equal(low.win_rate_pct, 16.7);
+  assert.ok(r.recommendations.some((x) => /SPX Slayer grade C\/D underperforms/.test(x)));
+  assert.ok(r.recommendations.some((x) => /SPX Slayer grade A\/A\+ outperforms/.test(x)));
+});
+
+test("spx calibration: refuses to recommend on thin evidence — waits for n≥10, same gate as 0DTE", () => {
+  const rows = Array.from({ length: 5 }, () => spxRow({ grade: "C", outcome: "loss", pnl_pts: -3 }));
+  const r = computeSpxCalibration(rows, { since: "2026-07-01", through: "2026-07-06", sessions: 3 });
+  assert.equal(r.recommendations.length, 0);
+  assert.match(formatSpxCalibration(r), /never tunes on noise/);
+});
+
+test("spx calibration: open (unclosed) plays are excluded from every bucket", () => {
+  const rows = [spxRow({}), spxRow({ outcome: "open", pnl_pts: null })];
+  const r = computeSpxCalibration(rows, { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  assert.equal(r.closed_plays, 1);
+});
+
+test("calibration: combined report clearly labels the 0DTE vs SPX Slayer sections", () => {
+  const zeroDte = computeCalibration([calRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  const spx = computeSpxCalibration([spxRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  const text = formatCalibration({ ...zeroDte, spx_slayer: spx });
+  assert.match(text, /0DTE Command calibration/);
+  assert.match(text, /SPX Slayer calibration/);
+});
+
+test("calibration: without an attached SPX pass the report stays 0DTE-only — no restructuring", () => {
+  const zeroDte = computeCalibration([calRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  assert.equal(zeroDte.spx_slayer, null);
+  assert.doesNotMatch(formatCalibration(zeroDte), /SPX Slayer/);
 });
 
 // ── Phase 4: telemetry discovery (pure formatting + thresholds) ──────────────────
@@ -392,4 +455,53 @@ test("knowledge: without a key nothing backfills — cold chunks wait, dedup sti
   const { fresh, cold } = partitionForEmbedding(all, existing, false);
   assert.deepEqual(fresh.map((c) => c.chunk_hash), ["h-a"]);
   assert.deepEqual(cold, []);
+});
+
+// ── knowledge: new SPX Slayer mechanics doc ingests cleanly ──────────────────────
+//
+// This is a content-only addition (docs/bie/spx-slayer-mechanics.md) — no ingestion
+// code changed, since `ingestBieKnowledge()` already directory-scans `docs/bie` (see
+// DOC_DIRS in ./knowledge.ts) rather than reading an explicit file list. What CAN
+// regress silently is the doc itself: a future edit could blow past the per-file size
+// cap, or pile content into one giant paragraph that only hard-splits instead of
+// chunking on natural boundaries. These tests pin both, using the exact same
+// `chunkDocument()` the real ingestion path calls.
+
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const SPX_MECHANICS_DOC_PATH = join("docs", "bie", "spx-slayer-mechanics.md");
+
+test("knowledge: spx-slayer-mechanics.md exists under docs/bie — a DOC_DIRS-scanned directory, so ingestBieKnowledge() picks it up with no code change", () => {
+  const text = readFileSync(join(process.cwd(), SPX_MECHANICS_DOC_PATH), "utf8");
+  assert.ok(text.length > 500, "doc should have real content, not a stub");
+  assert.ok(text.length < 400_000, "must stay under ingestBieKnowledge()'s per-file size cap");
+});
+
+test("knowledge: spx-slayer-mechanics.md chunks on paragraph boundaries — every paragraph fits the 1200-char cap so nothing needs a mid-sentence hard-split", () => {
+  const text = readFileSync(join(process.cwd(), SPX_MECHANICS_DOC_PATH), "utf8");
+  const paragraphs = text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  assert.ok(paragraphs.length >= 10, "doc should have multiple distinct sections/paragraphs");
+  for (const p of paragraphs) {
+    assert.ok(p.length <= 1200, `paragraph exceeds chunkDocument's cap and will hard-split: "${p.slice(0, 60)}..."`);
+  }
+  const chunks = chunkDocument(text);
+  assert.ok(chunks.length >= 5, "doc should produce several retrievable chunks, not collapse to one");
+  assert.ok(chunks.every((c) => c.length <= 1200));
+});
+
+test("knowledge: spx-slayer-mechanics.md actually documents the three-stage engine BIE is meant to ground answers in", () => {
+  const text = readFileSync(join(process.cwd(), SPX_MECHANICS_DOC_PATH), "utf8");
+  // Confluence scoring stage.
+  assert.match(text, /computeSpxConfluence/);
+  // Sequential gates stage.
+  assert.match(text, /evaluatePlayGates/);
+  // AI arbiter stage + its fail-closed behavior.
+  assert.match(text, /evaluateClaudePlayApproval/);
+  assert.match(text, /fail-closed/i);
+  // The numeric-grounding guard on the AI step.
+  assert.match(text, /checkNumbersGrounded/);
+  // Largo's live-state query surface.
+  assert.match(text, /get_spx_play/);
+  assert.match(text, /get_spx_confluence/);
 });

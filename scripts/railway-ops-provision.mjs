@@ -95,6 +95,7 @@ const CRON_BOOTSTRAP = [
   { key: "alert-outcome-sync", serviceName: "Alert-Outcome-Sync" },
   { key: "provider-health-reconcile", serviceName: "provider-health-reconcile" },
   { key: "market-regime-detector", serviceName: "Market-Regime-Detector" },
+  { key: "spx-issues-sync", serviceName: "SPX-Issues-Sync" },
 ];
 
 function ensureCronService(serviceName, cronKey) {
