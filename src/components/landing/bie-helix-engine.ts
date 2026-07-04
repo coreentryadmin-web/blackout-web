@@ -1,4 +1,4 @@
-// Geometry for the BIE institutional reactor — helix hero + concentric rings.
+// Geometry for the BIE institutional reactor — center core + concentric rings.
 
 import { goldenSpiralPoint, pointOnEllipse } from "./bie-brain-geometry";
 
@@ -273,7 +273,7 @@ export function buildNeuralNodes(
   });
 }
 
-/** Inbound signal: outer field particle arcs toward the helix core. */
+/** Inbound signal: outer field particle arcs toward the BIE core. */
 export function buildInboundPulsePath(
   fromX: number,
   fromY: number,
