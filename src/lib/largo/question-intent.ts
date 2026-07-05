@@ -1,6 +1,7 @@
 import type { AnthropicMessage } from "@/lib/providers/anthropic";
 import {
   FLOW_RE,
+  GEX_REGIME_HISTORY_RE,
   MARKET_REGIME_RE,
   matchesIntent,
   NEWS_RE,
@@ -33,6 +34,11 @@ export type LargoQuestionIntent = {
    *  from needsZeroDteCommand above (the committed-plays board) and from
    *  needsSpxEngineState (SPX Slayer's own rejected/scanning history). */
   needsZeroDteRejections: boolean;
+  /** BlackOut Thermal's GEX regime/flip/wall-crossing HISTORY wording ("when did the
+   *  flip last cross," "how many times has the wall moved today") — hints
+   *  get_gex_regime_events (task #136), distinct from needsSpxDesk/get_gex's
+   *  CURRENT-snapshot-only view. */
+  needsGexRegimeHistory: boolean;
   tickerHint: string | null;
   guidance: string;
 };
@@ -95,6 +101,7 @@ export function analyzeLargoQuestion(
   const needsMarketRegime = matchesIntent(ctx, MARKET_REGIME_RE);
   const needsZeroDteCommand = matchesIntent(ctx, ZERODTE_COMMAND_RE);
   const needsZeroDteRejections = matchesIntent(ctx, ZERODTE_REJECTION_RE);
+  const needsGexRegimeHistory = matchesIntent(ctx, GEX_REGIME_HISTORY_RE);
 
   const tickerHint = extractTicker(question, recentUserText(history));
   const scopeTicker = tickerHint ?? (needsSpxDesk ? "SPX" : null);
@@ -156,6 +163,12 @@ export function analyzeLargoQuestion(
   if (needsZeroDteRejections) {
     toolHints.push("get_zerodte_rejections");
   }
+  // GEX regime/flip/wall-crossing HISTORY wording ("when did the flip last cross,"
+  // "how many times has the wall moved today") — a DIFFERENT question from
+  // get_gex/get_positioning (current snapshot only, no memory of earlier crosses).
+  if (needsGexRegimeHistory) {
+    toolHints.push("get_gex_regime_events");
+  }
 
   const uniqueTools = Array.from(new Set(toolHints));
 
@@ -182,6 +195,7 @@ export function analyzeLargoQuestion(
     needsMarketRegime,
     needsZeroDteCommand,
     needsZeroDteRejections,
+    needsGexRegimeHistory,
     tickerHint,
     guidance,
   };
