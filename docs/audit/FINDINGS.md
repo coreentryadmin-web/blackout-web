@@ -9,6 +9,26 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🟡 ADDED 2026-07-05 — Admin dashboard's "SPX health" panel labeled itself "0DTE Command" (branch `fix/admin-spx-health-kicker-mislabel`)
+
+**Status:** SHIPPED (bug fix — cosmetic/labeling only, no data/logic touched). `git diff main -- src/lib/spx-signals.ts` empty.
+
+**Where:** `src/components/admin/AdminBieDashboard.tsx:601` — the `GlassPanel`'s `kicker` prop on the SPX Slayer health panel (`title="SPX health"`).
+
+**Root cause:** the panel's `kicker` read `"0DTE Command · read-only, never mutates the play engine"` — wrong product name entirely. Confirmed via `git show` across the file's history (`e012462`, task #111's original commit) that this string has been wrong since the panel's very first commit; it was never a merge artifact from this session's later 0DTE Command work (tasks #147/#148/#150), just a copy-paste mistake baked in from day one and carried forward unnoticed through every subsequent PR that touched this file. Everything else about the panel — the surrounding comment block, `admin-spx-health.ts`'s module doc, the metric chips (Phase/Action/Grade/Gates/Desk feed/Flow feed), the recent-signal-log table — is unambiguously about SPX Slayer's own play engine; nothing here is 0DTE-Command-related.
+
+**Evidence:** `git show origin/main:src/components/admin/AdminBieDashboard.tsx | grep -n "kicker=\"0DTE Command\|title=\"SPX health\""` on `main` confirms the bug ships in production today. Found this while reviewing task #138's Thermal-health-panel PR (which sits right next to this one in the file) and cross-checking every panel's kicker string for consistency — `grep -rn "0DTE Command · read-only, never mutates" src/` confirms this was the only occurrence (the genuinely-0DTE-Command panel from task #150 correctly reads `"0DTE Command · read-only, sourced entirely from already-persisted data"`).
+
+**Fix:** one-line string change — `"0DTE Command · read-only, never mutates the play engine"` → `"SPX Slayer · read-only, never mutates the play engine"`.
+
+**Blast radius:** single string, single panel, single file. No other panel, route, or test references this exact string. No behavior change — purely a mislabeled UI kicker that has been silently confusing anyone reading the admin dashboard about which product's health this panel actually reports.
+
+**Fix rationale:** kept the fix in its own branch/PR rather than folding it into task #138's Thermal-panel PR (where I happened to spot it) — unrelated root cause, unrelated file region, and CLAUDE.md's standing policy is one issue per branch/PR.
+
+**Verification:** `npx tsc --noEmit` clean. Full suite **1451/1451 passing** on both Node 22.22.2 and Node 20.20.2 (no test references the old string, so the count is unchanged from baseline). `npm run build` clean. `npm run lint:brand`/`lint:vendor` clean. `git diff main -- src/lib/spx-signals.ts` empty.
+
+---
+
 ## 🧠 ADDED 2026-07-05 — `flows-verifier.ts` validated HELIX's tape aggregates but had ZERO coverage of the flow-ANOMALY detector's own threshold math (task #132, branch `fix/helix-anomaly-detector-correctness-verifier`)
 
 **Status:** SHIPPED (coverage-gap closure in the audit tooling, not a live bug in the app — `detectFlowAnomalies`' actual production behavior was NOT found to be wrong; the *validator* simply had no way to catch it if it ever were). `git diff origin/main -- src/lib/spx-signals.ts` empty (verified before opening this PR — this task never touches SPX Slayer).
