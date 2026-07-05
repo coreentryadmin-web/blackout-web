@@ -188,21 +188,27 @@ test("self-eval: coverage, verification and win-rate math", () => {
 import {
   computeCalibration,
   computeHelixToolCallCalibration,
+  computeMarketContextToolCallCalibration,
   computeNighthawkToolCallCalibration,
+  computeNightsWatchToolCallCalibration,
   computeSpxCalibration,
   computeSpxToolCallCalibration,
   computeThermalToolCallCalibration,
   computeZeroDteToolCallCalibration,
   formatCalibration,
   formatHelixToolCallCalibration,
+  formatMarketContextToolCallCalibration,
   formatNighthawkToolCallCalibration,
+  formatNightsWatchToolCallCalibration,
   formatSpxCalibration,
   formatSpxToolCallCalibration,
   formatThermalToolCallCalibration,
   formatZeroDteToolCallCalibration,
   type CalibrationInputRow,
   type HelixToolCallInputRow,
+  type MarketContextToolCallInputRow,
   type NighthawkToolCallInputRow,
+  type NightsWatchToolCallInputRow,
   type SpxCalibrationInputRow,
   type SpxToolCallInputRow,
   type ThermalToolCallInputRow,
@@ -1034,6 +1040,306 @@ test("calibration: without an attached zerodte_tool_calls pass, the report doesn
   const zeroDte = computeCalibration([calRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
   assert.equal(zeroDte.zerodte_tool_calls, null);
   assert.doesNotMatch(formatCalibration(zeroDte), /0DTE Command tool-calling Largo turns/);
+});
+
+// ── Task #161: market-context-tool-calling cohort within bie_interactions ───────
+// market_context is the FOURTH of BIE's deterministic router intents
+// (zerodte_plays/ticker_play_state/spx_structure/market_context — see
+// src/lib/bie/router.ts's classifyBieIntent) and, until this task, the only one
+// of the four without its own tool-calling cohort. Largo's own answer-quality
+// cohort for turns where market_context's own composed state was involved,
+// either via a real tool dispatch (Claude path) or the router's
+// composeMarketContext composer (which reads the same get_market_context state
+// internally but never records a real tool name — see
+// isMarketContextToolCallingRow's doc comment). Same UNION-membership
+// architecture as task #112/#149's SPX/0DTE cohorts, since market_context — like
+// those two — IS a real router intent, unlike HELIX/Thermal/Night Hawk.
+
+const marketContextToolRow = (over: Partial<MarketContextToolCallInputRow>): MarketContextToolCallInputRow => ({
+  tools_used: ["live_feed_capture", "get_market_context"],
+  intent_bucket: "claude_fallback",
+  answer_source: "claude",
+  claims_total: 4,
+  claims_verified: 4,
+  latency_ms: 3000,
+  ...over,
+});
+
+test("market-context tool-call calibration: cohort includes tools_used intersecting MARKET_ENGINE_TOOL_NAMES, excludes generic-only turns", () => {
+  const rows: MarketContextToolCallInputRow[] = [
+    marketContextToolRow({ tools_used: ["live_feed_capture", "get_market_context"] }), // in cohort
+    marketContextToolRow({ tools_used: ["live_feed_capture", "get_quote", "get_gex"] }), // generic-only — NOT in cohort
+    marketContextToolRow({ tools_used: ["get_market_context"] }), // in cohort
+  ];
+  const r = computeMarketContextToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 2);
+});
+
+test("market-context tool-call calibration: a router-matched market_context row joins the cohort despite tools_used being the router's sentinel", () => {
+  const rows: MarketContextToolCallInputRow[] = [
+    marketContextToolRow({
+      tools_used: ["blackout_intelligence"],
+      intent_bucket: "market_context",
+      answer_source: "bie-router",
+      claims_total: 5,
+      claims_verified: 5,
+      latency_ms: 40,
+    }),
+    // A router match for a DIFFERENT product (SPX structure) never joins this cohort.
+    marketContextToolRow({ tools_used: ["blackout_intelligence"], intent_bucket: "spx_structure", answer_source: "bie-router" }),
+  ];
+  const r = computeMarketContextToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 1);
+  assert.equal(r.router_matched_n, 1);
+  assert.equal(r.claude_fallback_n, 0);
+  assert.equal(r.router_match_rate_pct, 100);
+});
+
+test("market-context tool-call calibration: aggregate grounding pass rate, router-match rate, and avg latency over a mixed cohort", () => {
+  const rows: MarketContextToolCallInputRow[] = [
+    marketContextToolRow({ tools_used: ["get_market_context"], answer_source: "claude", claims_total: 4, claims_verified: 4, latency_ms: 4000 }),
+    marketContextToolRow({ tools_used: ["get_market_context"], answer_source: "claude", claims_total: 6, claims_verified: 3, latency_ms: 6000 }),
+    marketContextToolRow({
+      tools_used: ["blackout_intelligence"],
+      intent_bucket: "market_context",
+      answer_source: "bie-router",
+      claims_total: 5,
+      claims_verified: 5,
+      latency_ms: 40,
+    }),
+  ];
+  const r = computeMarketContextToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 3);
+  assert.equal(r.claude_fallback_n, 2);
+  assert.equal(r.router_matched_n, 1);
+  assert.equal(r.router_match_rate_pct, 33.3);
+  // sum(verified)/sum(total) = (4+3+5)/(4+6+5) = 12/15 = 80% — weighted, not an
+  // unweighted average of each row's own ratio.
+  assert.equal(r.grounding_pass_rate_pct, 80);
+  // (4000 + 6000 + 40) / 3 = 3346.67 → rounds to 3347.
+  assert.equal(r.avg_latency_ms, 3347);
+});
+
+test("market-context tool-call calibration: turns with zero numeric claims are excluded from the grounding ratio but still counted in n", () => {
+  const rows: MarketContextToolCallInputRow[] = [
+    marketContextToolRow({ tools_used: ["get_market_context"], claims_total: 0, claims_verified: 0 }),
+    marketContextToolRow({ tools_used: ["get_market_context"], claims_total: 4, claims_verified: 2 }),
+  ];
+  const r = computeMarketContextToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 2);
+  assert.equal(r.grounding_pass_rate_pct, 50);
+});
+
+test("market-context tool-call calibration: refuses to recommend on thin evidence — waits for n≥10, same gate as the other passes", () => {
+  const rows = Array.from({ length: 5 }, () =>
+    marketContextToolRow({ tools_used: ["get_market_context"], claims_total: 4, claims_verified: 1 })
+  );
+  const r = computeMarketContextToolCallCalibration(rows, { since: "2026-07-01", through: "2026-07-06" });
+  assert.equal(r.recommendations.length, 0);
+  assert.match(formatMarketContextToolCallCalibration(r), /never tunes on noise/);
+});
+
+test("market-context tool-call calibration: cites low grounding and low router-match-rate once evidence clears n≥10", () => {
+  const rows: MarketContextToolCallInputRow[] = Array.from({ length: 10 }, () =>
+    marketContextToolRow({ tools_used: ["get_market_context"], answer_source: "claude", claims_total: 4, claims_verified: 1 })
+  );
+  const r = computeMarketContextToolCallCalibration(rows, { since: "2026-07-01", through: "2026-07-06" });
+  assert.equal(r.n, 10);
+  assert.equal(r.grounding_pass_rate_pct, 25);
+  assert.equal(r.router_match_rate_pct, 0);
+  assert.ok(r.recommendations.some((x) => /show only 25% claim grounding/.test(x)));
+  assert.ok(r.recommendations.some((x) => /Only 0% of market-context-tool-calling turns were answered by the deterministic router/.test(x)));
+});
+
+test("market-context tool-call calibration: empty cohort reports null rates, not zero/NaN", () => {
+  const r = computeMarketContextToolCallCalibration([], { since: "2026-07-06", through: "2026-07-06" });
+  assert.equal(r.n, 0);
+  assert.equal(r.router_match_rate_pct, null);
+  assert.equal(r.grounding_pass_rate_pct, null);
+  assert.equal(r.avg_latency_ms, null);
+  assert.match(formatMarketContextToolCallCalibration(r), /no graded claims yet/);
+});
+
+test("calibration: combined report can carry all five sections — 0DTE, SPX Slayer outcomes, SPX-tool-calling, 0DTE-Command-tool-calling, and market-context-tool-calling turns", () => {
+  const zeroDte = computeCalibration([calRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  const spx = computeSpxCalibration([spxRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  const toolCalls = computeSpxToolCallCalibration([spxToolRow({ tools_used: ["get_spx_play"] })], {
+    since: "2026-07-06",
+    through: "2026-07-06",
+  });
+  const zeroDteToolCalls = computeZeroDteToolCallCalibration([zeroDteToolRow({ tools_used: ["get_zerodte_plays"] })], {
+    since: "2026-07-06",
+    through: "2026-07-06",
+  });
+  const marketContextToolCalls = computeMarketContextToolCallCalibration(
+    [marketContextToolRow({ tools_used: ["get_market_context"] })],
+    { since: "2026-07-06", through: "2026-07-06" }
+  );
+  const text = formatCalibration({
+    ...zeroDte,
+    spx_slayer: spx,
+    spx_tool_calls: toolCalls,
+    zerodte_tool_calls: zeroDteToolCalls,
+    market_context_tool_calls: marketContextToolCalls,
+  });
+  assert.match(text, /0DTE Command calibration/);
+  assert.match(text, /SPX Slayer calibration/);
+  assert.match(text, /SPX-tool-calling Largo turns/);
+  assert.match(text, /0DTE Command tool-calling Largo turns/);
+  assert.match(text, /Market-context-tool-calling Largo turns/);
+});
+
+test("calibration: without an attached market_context_tool_calls pass, the report doesn't grow a fifth section", () => {
+  const zeroDte = computeCalibration([calRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  assert.equal(zeroDte.market_context_tool_calls, null);
+  assert.doesNotMatch(formatCalibration(zeroDte), /Market-context-tool-calling Largo turns/);
+});
+
+// ── Task #163: Night's-Watch-tool-calling cohort within bie_interactions ────────
+// Same idea as the task #112 SPX block and the task #144 Night Hawk block above,
+// applied to Night's Watch (the signed-in user's own per-position Hold/Trim/Sell
+// verdict engine, get_my_positions). Cohort membership is tools_used-ONLY (no
+// intent_bucket OR-clause) because there is no deterministic BIE router intent
+// for Night's-Watch/"my positions" questions at all — see
+// isNightsWatchToolCallingRow's doc comment in calibration.ts.
+
+const nightsWatchToolRow = (over: Partial<NightsWatchToolCallInputRow>): NightsWatchToolCallInputRow => ({
+  tools_used: ["live_feed_capture", "get_my_positions"],
+  intent_bucket: "claude_fallback",
+  answer_source: "claude",
+  claims_total: 4,
+  claims_verified: 4,
+  latency_ms: 3000,
+  ...over,
+});
+
+test("nights watch tool-call calibration: cohort includes tools_used intersecting NIGHTS_WATCH_ENGINE_TOOL_NAMES, excludes generic-only turns", () => {
+  const rows: NightsWatchToolCallInputRow[] = [
+    nightsWatchToolRow({ tools_used: ["live_feed_capture", "get_my_positions"] }), // in cohort
+    nightsWatchToolRow({ tools_used: ["live_feed_capture", "get_quote", "get_gex"] }), // generic-only — NOT in cohort
+    nightsWatchToolRow({ tools_used: ["get_my_positions"] }), // in cohort
+  ];
+  const r = computeNightsWatchToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 2);
+});
+
+test("nights watch tool-call calibration: an intent_bucket alone, WITHOUT a matching tool call, never joins the cohort", () => {
+  // Unlike the SPX cohort, there is no router path that can answer a Night's
+  // Watch question deterministically — so even a made-up "nights_watch"-flavored
+  // intent_bucket must NOT be enough on its own to admit a row (guards against a
+  // future edit reintroducing an OR-clause that isn't backed by a real router
+  // intent).
+  const rows: NightsWatchToolCallInputRow[] = [
+    nightsWatchToolRow({ tools_used: ["blackout_intelligence"], intent_bucket: "nights_watch", answer_source: "bie-router" }),
+  ];
+  const r = computeNightsWatchToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 0);
+});
+
+test("nights watch tool-call calibration: aggregate grounding pass rate and avg latency over a mixed cohort; router_matched_n is honestly 0", () => {
+  const rows: NightsWatchToolCallInputRow[] = [
+    nightsWatchToolRow({ tools_used: ["get_my_positions"], answer_source: "claude", claims_total: 4, claims_verified: 4, latency_ms: 4000 }),
+    nightsWatchToolRow({ tools_used: ["get_my_positions"], answer_source: "claude", claims_total: 6, claims_verified: 3, latency_ms: 6000 }),
+    nightsWatchToolRow({ tools_used: ["get_my_positions"], answer_source: "claude", claims_total: 5, claims_verified: 5, latency_ms: 40 }),
+  ];
+  const r = computeNightsWatchToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 3);
+  assert.equal(r.claude_fallback_n, 3);
+  // No deterministic router intent for Night's Watch exists — always 0, never fabricated.
+  assert.equal(r.router_matched_n, 0);
+  assert.equal(r.router_match_rate_pct, 0);
+  // sum(verified)/sum(total) = (4+3+5)/(4+6+5) = 12/15 = 80% — weighted, not an
+  // unweighted average of each row's own ratio.
+  assert.equal(r.grounding_pass_rate_pct, 80);
+  // (4000 + 6000 + 40) / 3 = 3346.67 → rounds to 3347.
+  assert.equal(r.avg_latency_ms, 3347);
+});
+
+test("nights watch tool-call calibration: turns with zero numeric claims are excluded from the grounding ratio but still counted in n", () => {
+  const rows: NightsWatchToolCallInputRow[] = [
+    nightsWatchToolRow({ tools_used: ["get_my_positions"], claims_total: 0, claims_verified: 0 }),
+    nightsWatchToolRow({ tools_used: ["get_my_positions"], claims_total: 4, claims_verified: 2 }),
+  ];
+  const r = computeNightsWatchToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 2);
+  assert.equal(r.grounding_pass_rate_pct, 50);
+});
+
+test("nights watch tool-call calibration: refuses to recommend on thin evidence — waits for n≥10, same gate as the other passes", () => {
+  const rows = Array.from({ length: 5 }, () =>
+    nightsWatchToolRow({ tools_used: ["get_my_positions"], claims_total: 4, claims_verified: 1 })
+  );
+  const r = computeNightsWatchToolCallCalibration(rows, { since: "2026-07-01", through: "2026-07-06" });
+  assert.equal(r.recommendations.length, 0);
+  assert.match(formatNightsWatchToolCallCalibration(r), /never tunes on noise/);
+});
+
+test("nights watch tool-call calibration: exactly n=10 clears the evidence gate and cites low grounding", () => {
+  const rows: NightsWatchToolCallInputRow[] = Array.from({ length: 10 }, () =>
+    nightsWatchToolRow({ tools_used: ["get_my_positions"], answer_source: "claude", claims_total: 4, claims_verified: 1 })
+  );
+  const r = computeNightsWatchToolCallCalibration(rows, { since: "2026-07-01", through: "2026-07-06" });
+  assert.equal(r.n, 10);
+  assert.equal(r.grounding_pass_rate_pct, 25);
+  assert.ok(r.recommendations.some((x) => /show only 25% claim grounding/.test(x)));
+  // Deliberately no "router coverage" recommendation for Night's Watch — see
+  // computeNightsWatchToolCallCalibration's comment: with router_matched_n
+  // structurally always 0, that recommendation would fire on every report
+  // forever and teach a reader to ignore this section.
+  assert.ok(!r.recommendations.some((x) => /router/i.test(x)));
+});
+
+test("nights watch tool-call calibration: n=11 (just above the gate) still cites low grounding", () => {
+  const rows: NightsWatchToolCallInputRow[] = Array.from({ length: 11 }, () =>
+    nightsWatchToolRow({ tools_used: ["get_my_positions"], answer_source: "claude", claims_total: 4, claims_verified: 1 })
+  );
+  const r = computeNightsWatchToolCallCalibration(rows, { since: "2026-07-01", through: "2026-07-06" });
+  assert.equal(r.n, 11);
+  assert.ok(r.recommendations.some((x) => /show only 25% claim grounding/.test(x)));
+});
+
+test("nights watch tool-call calibration: empty cohort reports null rates, not zero/NaN", () => {
+  const r = computeNightsWatchToolCallCalibration([], { since: "2026-07-06", through: "2026-07-06" });
+  assert.equal(r.n, 0);
+  assert.equal(r.router_match_rate_pct, null);
+  assert.equal(r.grounding_pass_rate_pct, null);
+  assert.equal(r.avg_latency_ms, null);
+  assert.match(formatNightsWatchToolCallCalibration(r), /no graded claims yet/);
+});
+
+test("calibration: combined report can carry all six sections — 0DTE, SPX Slayer outcomes, SPX-tool-calling, Night-Hawk-tool-calling, and Night's-Watch-tool-calling turns", () => {
+  const zeroDte = computeCalibration([calRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  const spx = computeSpxCalibration([spxRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  const spxToolCalls = computeSpxToolCallCalibration([spxToolRow({ tools_used: ["get_spx_play"] })], {
+    since: "2026-07-06",
+    through: "2026-07-06",
+  });
+  const nighthawkToolCalls = computeNighthawkToolCallCalibration(
+    [nighthawkToolRow({ tools_used: ["get_nighthawk_edition"] })],
+    { since: "2026-07-06", through: "2026-07-06" }
+  );
+  const nightsWatchToolCalls = computeNightsWatchToolCallCalibration(
+    [nightsWatchToolRow({ tools_used: ["get_my_positions"] })],
+    { since: "2026-07-06", through: "2026-07-06" }
+  );
+  const text = formatCalibration({
+    ...zeroDte,
+    spx_slayer: spx,
+    spx_tool_calls: spxToolCalls,
+    nighthawk_tool_calls: nighthawkToolCalls,
+    nights_watch_tool_calls: nightsWatchToolCalls,
+  });
+  assert.match(text, /0DTE Command calibration/);
+  assert.match(text, /SPX Slayer calibration/);
+  assert.match(text, /SPX-tool-calling Largo turns/);
+  assert.match(text, /Night-Hawk-tool-calling Largo turns/);
+  assert.match(text, /Night's-Watch-tool-calling Largo turns/);
+});
+
+test("calibration: without an attached nights_watch_tool_calls pass, the report doesn't grow an extra section", () => {
+  const zeroDte = computeCalibration([calRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  assert.equal(zeroDte.nights_watch_tool_calls, null);
+  assert.doesNotMatch(formatCalibration(zeroDte), /Night's-Watch-tool-calling/);
 });
 
 
