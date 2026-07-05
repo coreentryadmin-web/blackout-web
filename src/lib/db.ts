@@ -2280,6 +2280,51 @@ export async function fetchFlowAnomalyNearMisses(opts?: { ticker?: string; limit
   }));
 }
 
+/**
+ * Reads the flow_anomalies table (migration 004_god_tier_features.sql) — the
+ * COMMITTED half of HELIX's anomaly pipeline: every LARGE_PREMIUM_PRINT /
+ * DIRECTIONAL_FLOW_SKEW candidate that cleared detectFlowAnomalies' real
+ * threshold AND survived route.ts's 15-min same-type+ticker dedup window (see
+ * flow-anomaly-detection.ts's module doc). Plain SELECT, no new writer — the
+ * market-regime-detector cron (route.ts) is already the sole writer.
+ *
+ * Task #134's admin-helix-health.ts pairs this with fetchFlowAnomalyNearMisses
+ * (task #131, the REJECTED half) using the SAME committed/rejected-union
+ * pattern admin-zerodte-health.ts already established for
+ * zerodte_setup_log/zerodte_scan_rejections — this is that pattern's THIRD
+ * instance, after 0DTE Command and (implicitly) SPX Slayer's engine snapshots.
+ */
+export type FlowAnomalyRow = {
+  id: number;
+  detected_at: string;
+  anomaly_type: string;
+  ticker: string | null;
+  detail: string;
+  premium: number | null;
+  direction: string | null;
+  severity: string | null;
+};
+
+export async function fetchFlowAnomalies(opts?: { limit?: number }): Promise<FlowAnomalyRow[]> {
+  await ensureSchema();
+  const limit = opts?.limit ?? 500;
+  const res = await (await getPool()).query(
+    `SELECT id, detected_at, anomaly_type, ticker, detail, premium, direction, severity
+     FROM flow_anomalies ORDER BY detected_at DESC LIMIT $1`,
+    [limit]
+  );
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    detected_at: String(r.detected_at),
+    anomaly_type: String(r.anomaly_type),
+    ticker: r.ticker != null ? String(r.ticker) : null,
+    detail: String(r.detail),
+    premium: r.premium != null ? Number(r.premium) : null,
+    direction: r.direction != null ? String(r.direction) : null,
+    severity: r.severity != null ? String(r.severity) : null,
+  }));
+}
+
 export async function fetchRecentSpxSignalLogs(limit = 50): Promise<
   Array<{
     id: number;
