@@ -26,6 +26,7 @@ import { isSpxTicker } from "@/lib/spx-desk-live";
 import { getPlatformSnapshot, marketPlatform } from "@/lib/platform";
 import { summarizeSpxDesk } from "@/lib/platform/spx-service";
 import { zeroDteRejectionsForLargo } from "@/lib/zerodte/rejections";
+import { flowAnomalyNearMissesForLargo } from "@/lib/platform/flow-anomaly-near-misses";
 import {
   buildPeerRelativeStrength,
   buildQqqRelativeStrength,
@@ -904,6 +905,11 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
     case "get_zerodte_rejections":
       return zeroDteRejectionsForLargo(
+        input.ticker ? String(input.ticker) : undefined,
+        Number(input.limit ?? 20)
+      );
+    case "get_flow_anomaly_near_misses":
+      return flowAnomalyNearMissesForLargo(
         input.ticker ? String(input.ticker) : undefined,
         Number(input.limit ?? 20)
       );

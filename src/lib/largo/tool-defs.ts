@@ -410,7 +410,13 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_market_regime",
-    "Market-wide backdrop, not ticker-specific and NOT SPX Slayer's own play-engine state: composite regime (BREAKOUT_BULL/BREAKDOWN_BEAR/RANGE_BOUND/MIXED), GEX regime, flow regime, the suggested playbook, net GEX, above/below VWAP, IV percentile, count of critical flow anomalies in the last hour (+ which tickers), and the premarket brief's call/put walls. This is the SAME data Night Hawk's own scoring already reads internally (src/lib/nighthawk/platform-intel-snapshot.ts) — use for 'what's the market regime / what's the backdrop / is this a good environment for X' questions. Does NOT cover SPX Slayer's own phase/gates/score/confluence for its current or most recent play — for that, use get_spx_play (or get_ecosystem_context's spx_full_state field)."
+    "Market-wide backdrop, not ticker-specific and NOT SPX Slayer's own play-engine state: composite regime (BREAKOUT_BULL/BREAKDOWN_BEAR/RANGE_BOUND/MIXED), GEX regime, flow regime, the suggested playbook, net GEX, above/below VWAP, IV percentile, count of critical flow anomalies in the last hour (+ which tickers), and the premarket brief's call/put walls. This is the SAME data Night Hawk's own scoring already reads internally (src/lib/nighthawk/platform-intel-snapshot.ts) — use for 'what's the market regime / what's the backdrop / is this a good environment for X' questions. Does NOT cover SPX Slayer's own phase/gates/score/confluence for its current or most recent play — for that, use get_spx_play (or get_ecosystem_context's spx_full_state field). This anomaly count only ever includes anomalies that actually FIRED — for a candidate that didn't clear the anomaly threshold (or fired but got dedup-suppressed), use get_flow_anomaly_near_misses instead."
+  ),
+
+  t(
+    "get_flow_anomaly_near_misses",
+    "HELIX's near-miss/rejection log for its market-wide flow-anomaly detector (src/app/api/cron/market-regime-detector's 5-min RTH cron) — answers 'why didn't ticker X get flagged as an anomaly' or 'what has HELIX's anomaly scan been passing over today', which NEITHER of the two existing anomaly-reading surfaces can answer: get_ecosystem_context's `recent_anomalies` field and get_market_regime's critical-anomaly count BOTH only ever read the flow_anomalies table, which the live detector writes to ONLY once a candidate clears a hard threshold — a $2M+ single option print (LARGE_PREMIUM_PRINT) or a 10:1+ call/put premium skew on $500k+ total volume (DIRECTIONAL_FLOW_SKEW). A candidate that fell short — a $1.8M print, an 8:1 skew — is invisible in both of those and left no trace anywhere until this tool existed. Reads flow_anomaly_near_misses: one row per (ticker, anomaly_type) pair per DISTINCT near-miss state (throttled to state transitions, not one row per cron tick), each row naming the `anomaly_type`, the `reason` it never reached flow_anomalies — 'BELOW_THRESHOLD' (the metric itself never cleared the hard threshold; only genuinely close calls are captured, at least half-way to the real threshold, not every sub-threshold value) vs. 'DEDUP_SUPPRESSED' (the candidate DID clear its threshold this tick, but a matching anomaly was already logged for the same ticker+type within the last 15 minutes, so the write was skipped — a structurally different, later-pipeline-stage reason, never conflated with BELOW_THRESHOLD) — the live `metric_value` and `threshold` it was measured against (a dollar amount for LARGE_PREMIUM_PRINT, a ratio for DIRECTIONAL_FLOW_SKEW — do not confuse with `premium`, which is always a dollar total), `direction`, and (for DEDUP_SUPPRESSED only — a BELOW_THRESHOLD candidate never reaches the point where the live detector assigns one) `severity`. Pass `ticker` to scope to one name's near-miss history, or omit for the most recent near-misses across every candidate. IMPORTANT — this is a DIFFERENT question from get_ecosystem_context's `recent_anomalies` and get_market_regime's anomaly count (both committed-only, i.e. anomalies that DID fire) and from get_zerodte_rejections (0DTE Command's OWN separate multi-ticker scanner, a completely different engine and threshold set) — only reach for this tool when the question is specifically about why HELIX's flow-anomaly detector did NOT flag something.",
+    { ticker: { type: "string" }, limit: { type: "integer" } }
   ),
 
   t(
@@ -552,6 +558,11 @@ export const TOOL_GROUPS = {
     // The BIE-authored tools (ecosystem-context, hot-tickers, market-regime,
     // confluence-outcomes) — see BIE_TOOL_NAMES above for the canonical list.
     ...BIE_TOOL_NAMES,
+    // HELIX flow-anomaly near-miss/rejection log (task #131) — reads the same
+    // market-regime-detector cron's output as get_market_regime above, so it
+    // lives right alongside it here rather than in BIE_TOOL_NAMES (which is
+    // reserved for the BIE-authored cross-instrument snapshot family).
+    "get_flow_anomaly_near_misses",
   ],
   my_book: [
     // Night's Watch — the signed-in user's OWN saved positions (per-user scoped).

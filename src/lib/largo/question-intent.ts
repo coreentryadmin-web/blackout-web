@@ -1,5 +1,6 @@
 import type { AnthropicMessage } from "@/lib/providers/anthropic";
 import {
+  FLOW_ANOMALY_NEAR_MISS_RE,
   FLOW_RE,
   MARKET_REGIME_RE,
   matchesIntent,
@@ -33,6 +34,11 @@ export type LargoQuestionIntent = {
    *  from needsZeroDteCommand above (the committed-plays board) and from
    *  needsSpxEngineState (SPX Slayer's own rejected/scanning history). */
   needsZeroDteRejections: boolean;
+  /** HELIX flow-anomaly near-miss/rejection wording ("why didn't HELIX flag X," "near miss
+   *  on the anomaly scan") — hints get_flow_anomaly_near_misses (task #131), distinct from
+   *  needsMarketRegime above (get_market_regime's committed-anomaly COUNT only) and from
+   *  needsZeroDteRejections (0DTE Command's own separate scanner/threshold set). */
+  needsFlowAnomalyNearMisses: boolean;
   tickerHint: string | null;
   guidance: string;
 };
@@ -95,6 +101,7 @@ export function analyzeLargoQuestion(
   const needsMarketRegime = matchesIntent(ctx, MARKET_REGIME_RE);
   const needsZeroDteCommand = matchesIntent(ctx, ZERODTE_COMMAND_RE);
   const needsZeroDteRejections = matchesIntent(ctx, ZERODTE_REJECTION_RE);
+  const needsFlowAnomalyNearMisses = matchesIntent(ctx, FLOW_ANOMALY_NEAR_MISS_RE);
 
   const tickerHint = extractTicker(question, recentUserText(history));
   const scopeTicker = tickerHint ?? (needsSpxDesk ? "SPX" : null);
@@ -156,6 +163,14 @@ export function analyzeLargoQuestion(
   if (needsZeroDteRejections) {
     toolHints.push("get_zerodte_rejections");
   }
+  // HELIX flow-anomaly near-miss wording ("why didn't HELIX flag X," "near miss on
+  // the anomaly scan") — a DIFFERENT question from needsMarketRegime above (which
+  // only ever surfaces the COUNT of anomalies that already fired): this hints the
+  // near-miss log instead, so a candidate that never cleared the anomaly threshold
+  // (or fired but was dedup-suppressed) is still answerable.
+  if (needsFlowAnomalyNearMisses) {
+    toolHints.push("get_flow_anomaly_near_misses");
+  }
 
   const uniqueTools = Array.from(new Set(toolHints));
 
@@ -182,6 +197,7 @@ export function analyzeLargoQuestion(
     needsMarketRegime,
     needsZeroDteCommand,
     needsZeroDteRejections,
+    needsFlowAnomalyNearMisses,
     tickerHint,
     guidance,
   };
