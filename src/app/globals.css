@@ -1920,15 +1920,6 @@ body::before {
   filter: drop-shadow(0 0 8px rgba(255, 200, 60, 0.75));
 }
 
-.bie-galaxy-nodes {
-  pointer-events: none;
-}
-
-.bie-galaxy-node {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
 .bie-reactor-live .bie-star-node {
   animation: bie-star-twinkle 3.6s ease-in-out infinite;
 }
@@ -2270,22 +2261,51 @@ body::before {
   }
 }
 
-.bie-reactor-core.is-absorbing .bie-brain-core {
+/* Verifying — the gate is actively checking the inbound signal. */
+.bie-reactor-core.is-verifying .bie-brain-core {
   animation: bie-core-absorb-flash 0.5s ease-out;
 }
 
-.bie-reactor-core.is-absorbing .bie-reactor-core-halo {
+.bie-reactor-core.is-verifying .bie-reactor-core-halo {
   stroke: rgba(93, 247, 255, 0.82);
   opacity: 0.78;
 }
 
-.bie-reactor-core.is-absorbing .bie-core-label-svg {
+.bie-reactor-core.is-verifying .bie-core-label-svg {
   fill: #011318;
 }
 
-.bie-reactor-core.is-emitting .bie-reactor-core-halo {
+.bie-reactor-core.is-verifying .bie-gate-tick {
+  stroke: rgba(93, 247, 255, 0.85);
+  stroke-width: 1.4;
+}
+
+/* Verified — the claim checked out; the confirmed-signal color is a distinct
+   green from the cyan "checking" state, not a brighter version of it, so the
+   two outcomes read as different events, not different intensities of one event. */
+.bie-reactor-core.is-verified .bie-reactor-core-halo {
   stroke: rgba(0, 230, 118, 0.55);
   opacity: 0.55;
+}
+
+.bie-reactor-core.is-verified .bie-gate-tick {
+  stroke: rgba(0, 230, 118, 0.55);
+}
+
+/* Rejected — the claim did not check out and never passed the gate. Warm/red,
+   used nowhere else in this animation, so its rarity keeps its meaning. */
+.bie-reactor-core.is-rejected .bie-brain-core {
+  animation: bie-core-reject-flash 0.6s ease-out;
+}
+
+.bie-reactor-core.is-rejected .bie-reactor-core-halo {
+  stroke: rgba(255, 107, 74, 0.72);
+  opacity: 0.7;
+}
+
+.bie-reactor-core.is-rejected .bie-gate-tick {
+  stroke: rgba(255, 107, 74, 0.8);
+  stroke-width: 1.4;
 }
 
 @keyframes bie-core-absorb-flash {
@@ -2294,8 +2314,54 @@ body::before {
   100% { filter: drop-shadow(0 0 18px rgba(0, 229, 255, 0.55)); }
 }
 
+@keyframes bie-core-reject-flash {
+  0% { filter: drop-shadow(0 0 18px rgba(255, 107, 74, 0.65)); }
+  35% { filter: drop-shadow(0 0 30px rgba(255, 107, 74, 0.95)); }
+  100% { filter: drop-shadow(0 0 16px rgba(0, 229, 255, 0.55)); }
+}
+
+/* The gate — a ring of tick marks around the core, like an aperture/dial. Idle
+   state is a calm, slow-rotating instrument; it brightens per-outcome above. */
+.bie-gate-ring {
+  transform-origin: 0 0;
+}
+
+.bie-reactor-live .bie-gate-ring {
+  animation: bie-gate-rotate 120s linear infinite;
+}
+
+@keyframes bie-gate-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.bie-gate-tick {
+  stroke: rgba(148, 226, 255, 0.32);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  transition: stroke 0.35s ease, stroke-width 0.35s ease;
+}
+
+/* A small flare that contracts back rather than expanding outward — the visual
+   opposite of `.bie-field-ripple`, on purpose: this signal stopped here. */
+.bie-gate-reject-flash {
+  fill: none;
+  stroke: rgba(255, 107, 74, 0.65);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  transform-origin: 0 0;
+  transform-box: fill-box;
+  animation: bie-gate-reject-pulse 0.9s ease-out forwards;
+}
+
+@keyframes bie-gate-reject-pulse {
+  0% { transform: scale(0.82); opacity: 0.85; }
+  55% { transform: scale(1.18); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
 .bie-reactor-signal-dot {
-  filter: drop-shadow(0 0 10px rgba(93, 247, 255, 0.95));
+  filter: drop-shadow(0 0 10px rgba(169, 180, 196, 0.85));
 }
 
 .bie-reactor-phase-inbound .bie-field-glow {
@@ -2303,7 +2369,7 @@ body::before {
   transition: opacity 0.4s ease;
 }
 
-.bie-reactor-phase-absorb .bie-field-glow {
+.bie-reactor-phase-verifying .bie-field-glow {
   opacity: 1;
   transition: opacity 0.35s ease;
 }
@@ -3136,6 +3202,8 @@ body::before {
   .bie-field-loop-pulse,
   .bie-inner-link-pulse,
   .bie-ring-pulse-dot { display: none; }
+  .bie-gate-ring { animation: none; }
+  .bie-gate-reject-flash { display: none; }
 }
 
 .bento-card-watermark {
