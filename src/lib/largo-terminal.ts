@@ -415,6 +415,31 @@ export async function runLargoQuery(
       followups,
       verification,
     };
+  } catch (error) {
+    // Task #165 — this try block previously had ONLY a finally, no catch: any throw out of
+    // anthropicToolLoop (a tool-loop timeout, an Anthropic API error, a runTool throw, etc.)
+    // propagated straight past logBie() to the caller (route.ts's POST handler, which just
+    // 502s), so a failed turn left NO row in bie_interactions at all. Every calibration cohort
+    // in bie/calibration.ts computes grounding_pass_rate_pct/router_match_rate_pct only over
+    // rows that exist, so a spike in tool-loop failures — exactly when trust in the platform is
+    // most at risk — was completely invisible to every report. Log a minimal failure row here:
+    // claims are explicitly null (not 0) because a turn that never produced an answer has no
+    // claims to have verified — 0 would falsely read as "verified none of the claims," a
+    // different and wrong statement. Then RETHROW the original error unchanged so the caller's
+    // existing error handling (the 502 response) is completely untouched — this is a pure
+    // additive logging side effect, never a swallow.
+    logBie({
+      user_id: userId,
+      question,
+      intent: null,
+      answer_source: "error",
+      claims_total: null,
+      claims_verified: null,
+      latency_ms: Date.now() - startedAt,
+      tools_used: Array.from(new Set(toolsUsed)),
+      intent_bucket: bieIntentBucket(null),
+    });
+    throw error;
   } finally {
     resetLargoSpxDeskCache(userId);
   }
@@ -570,6 +595,24 @@ export async function runLargoQueryStream(
   } catch (error) {
     if (isSseClientDisconnect(error)) return;
     const message = error instanceof Error ? error.message : "Largo query failed";
+    // Task #165 — same gap as runLargoQuery's try block above, on the streaming path: this
+    // catch already existed (it emits an "error" SSE event), but it never called logBie either,
+    // so a failed streaming turn was equally invisible to every BIE calibration cohort. Log a
+    // minimal failure row — same null-claims rationale as the non-streaming path above — BEFORE
+    // emitting the error event, so the write is attempted even if the client has already gone
+    // away by the time emit() throws. Purely additive: the error event still fires exactly as
+    // before, nothing here changes what the client sees.
+    logBie({
+      user_id: userId,
+      question,
+      intent: null,
+      answer_source: "error",
+      claims_total: null,
+      claims_verified: null,
+      latency_ms: Date.now() - startedAt,
+      tools_used: Array.from(new Set(toolsUsed)),
+      intent_bucket: bieIntentBucket(null),
+    });
     try {
       onEvent({ type: "error", message });
     } catch (emitErr) {
