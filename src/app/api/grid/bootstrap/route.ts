@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
-import { requireToolApi } from "@/lib/tool-access-server";
+import { requireToolApiForDeskCaller } from "@/lib/tool-access-server";
 import { readGridBootstrapMarket } from "@/lib/grid/grid-market-bootstrap";
 import { readGridBootstrapPanels } from "@/lib/providers/grid";
 import { roundFloats } from "@/lib/round-floats";
@@ -21,7 +21,7 @@ const NO_STORE = {
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
   if (auth instanceof Response) return auth;
-  const locked = await requireToolApi("grid");
+  const locked = await requireToolApiForDeskCaller(auth, "grid");
   if (locked) return locked;
 
   try {

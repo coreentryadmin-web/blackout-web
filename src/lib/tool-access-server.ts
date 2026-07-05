@@ -17,6 +17,22 @@ export async function canAccessTool(key: ToolKey): Promise<boolean> {
   return admin;
 }
 
+/** Desk/cron auth result from authorizeMarketDeskApi / authorizeCronOrTierApi. */
+export type DeskApiAuth = { userId: string | null; via: "cron" | "user" };
+
+/**
+ * Launch gate for cache-reader desk routes. Cron bearer (ops audits, grid-warm probes) skips
+ * the per-tool launch flag — same contract as zerodte board's cron bypass. Premium members
+ * still hit requireToolApi when via === "user".
+ */
+export async function requireToolApiForDeskCaller(
+  auth: DeskApiAuth,
+  key: ToolKey
+): Promise<Response | null> {
+  if (auth.via === "cron") return null;
+  return requireToolApi(key);
+}
+
 /**
  * API gate. Returns a 403 "coming soon" Response when the tool is LOCKED and the caller is not an
  * admin, else null (allowed). Call AFTER the route's own auth (tier/desk), so the caller is already

@@ -9,6 +9,27 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🟢 P1 FIXED 2026-07-06 — Grid `/api/grid/*` cron probes returned 403 `coming_soon` while zerodte board cron worked (branch `cursor/grid-rth-all-day-agent-9d1e`)
+
+**Status:** FIXED on branch; pending merge.
+
+**Root cause:** All 9 Grid cache-reader routes called `requireToolApi("grid")` unconditionally after auth. Cron bearer auth (`via: "cron"`) is valid for ops audits and `grid-warm`, but still hit the member launch gate — `/api/market/zerodte/board` already bypassed via `authorizeCronOrTierApi` + separate path. Result: RTH audit scripts saw 403 on every grid panel while zerodte board returned 200.
+
+**Fix:**
+- Added `requireToolApiForDeskCaller(auth, key)` in `src/lib/tool-access-server.ts` — cron skips launch gate; premium users still gated.
+- Updated all `src/app/api/grid/*/route.ts` to use the desk-caller helper.
+
+**Audit additions (same branch):**
+- `scripts/zerodte-logic-audit.mjs` + `scripts/zerodte-logic-probes.ts` — gates, plans, lifecycle, mergePlays, live board invariants
+- `scripts/grid-rth-all-day-audit.mjs`, `scripts/grid-zerodte-e2e-audit.mjs`
+- `docs/ops/GRID-RTH-ALL-DAY-AGENT.md`, `.github/workflows/grid-rth-all-day-agent.yml`
+- Exported `mergePlays()` + tests in `ZeroDteBoard.test.ts`
+- `npm run validate:grid-rth`, `validate:grid-e2e`, `validate:zerodte-logic`
+
+**Verification:** `npm run validate:zerodte-logic` GREEN; unit tests 85+ pass including `tool-access-server.test.ts`.
+
+---
+
 ## 🟢 P1 FIXED 2026-07-05 — SPX desk pulse/flow dual cache keys + stale confirmations during SCANNING (branch `fix/spx-desk-cache-confirmations-9d1e`, deep re-audit follow-up to PR #535)
 
 **Status:** FIXED locally; draft PR pending merge.
