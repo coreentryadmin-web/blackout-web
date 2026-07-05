@@ -13,13 +13,16 @@ import {
   type FieldLineRing,
   type FieldParticle,
 } from "./bie-helix-engine";
-import { BieGalaxyNodes } from "./BieGalaxyNodes";
+import { buildGateTicks, resolveVerification, type VerificationOutcome } from "./bie-verification";
 import { BieOrbitTools, type OrbitTool } from "./BieOrbitTools";
 
 /**
- * Milestone 1 — Composition.
- * The viewport IS the intelligence field. Core (~20–30%) sits inside atmosphere (~70–80%).
- * See docs/design/BIE-HERO-VISION.md
+ * Milestone 2 — The Verification Gate.
+ * BIE isn't a generic "AI energy core" — its whole reason for existing is that it
+ * checks things before they reach you, and sometimes says no. Milestone 1's field
+ * (organic rings, ambient particles, six-product orbit) stays; the core is now a
+ * literal gate a signal must pass, and roughly 1 in 6 cycles is visibly rejected
+ * rather than always resolving to a clean success. See docs/design/BIE-HERO-VISION.md.
  */
 
 export const VIEW_W = 1280;
@@ -28,11 +31,18 @@ const CORE = { x: VIEW_W / 2, y: VIEW_H * 0.5 };
 /** Half viewBox width — ring 6 at scale 1.0 spans edge-to-edge horizontally. */
 const MAX_RX = VIEW_W / 2;
 const MAX_RY = 310;
-const FIELD_COUNT = 120;
+/** Trimmed from Milestone 1's 120 — a calmer, more deliberate field reads as more
+ *  premium than a dense scatter, and keeps focus on the one meaningful motion:
+ *  the verification cycle itself. */
+const FIELD_COUNT = 36;
+const GATE_TICK_COUNT = 28;
+const GATE_INNER_R = 24;
+const GATE_OUTER_R = 31;
 
 const READOUT_LINES = [
   "continuous market intelligence — ingested, verified, never assumed",
   "trust the output because validation happened first",
+  "unverified claims are rejected before they ever reach you",
   "the engine never stops learning from every session, every market day",
 ];
 
@@ -45,17 +55,23 @@ const FIELD_TOOLS: OrbitTool[] = [
   { name: "Night Hawk", href: "/nighthawk", mark: "nighthawk", accent: MARK_ACCENT.nighthawk },
 ];
 
-type ReactorPhase = "idle" | "inbound" | "absorb" | "ripple";
+type ReactorPhase = "idle" | "inbound" | "verifying" | "verified" | "rejected";
 
-/** Which field rings brighten during each phase of the processing cycle. */
+/**
+ * Which field rings brighten during each phase. `rejected` deliberately reuses
+ * `verifying`'s rings (1–2) instead of advancing to 3–4 — the signal never got
+ * further than the gate, and the lit rings say so.
+ */
 function litRingsForPhase(phase: ReactorPhase): number[] {
   switch (phase) {
     case "inbound":
       return [5, 6];
-    case "absorb":
+    case "verifying":
       return [1, 2];
-    case "ripple":
+    case "verified":
       return [3, 4];
+    case "rejected":
+      return [1, 2];
     default:
       return [];
   }
@@ -169,6 +185,7 @@ export function BieBrainBanner() {
   const atmosphereGlows = useMemo(() => buildAtmosphereGlows(CORE.x, CORE.y, MAX_RX, MAX_RY), []);
   const ambientMesh = useMemo(() => buildAmbientFieldMesh(CORE.x, CORE.y, MAX_RX, MAX_RY), []);
   const fieldGlow = useMemo(() => fieldGlowRadii(VIEW_W, VIEW_H), []);
+  const gateTicks = useMemo(() => buildGateTicks(GATE_TICK_COUNT, GATE_INNER_R, GATE_OUTER_R), []);
 
   const outerLines = fieldLines.filter((r) => r.layer === "outer");
   const midLines = fieldLines.filter((r) => r.layer === "mid");
@@ -202,19 +219,27 @@ export function BieBrainBanner() {
       timers.push(setTimeout(() => !cancelled && fn(), ms));
     };
 
-    /** Signal enters → core absorbs → ripple outward. Repeats every ~5.5–7.5s. */
+    /**
+     * Signal enters → gate evaluates it → verified passes through and ripples
+     * outward, OR rejected flares at the gate and goes no further. Repeats
+     * every ~5.5–7.5s. The outcome is decided up front (not at the moment the
+     * signal "arrives") so the whole cycle — including which rings light up —
+     * is consistent with a single decision, matching how BIE itself decides
+     * once per claim, not once per animation frame.
+     */
     const fireCycle = () => {
       if (cancelled) return;
 
+      const outcome: VerificationOutcome = resolveVerification();
       const origin = pickInboundOrigin();
       setPulsePath(buildInboundPulsePath(origin.x, origin.y, CORE.x, CORE.y));
       setPulseKey((k) => k + 1);
       setPhase("inbound");
 
-      schedule(() => setPhase("absorb"), 1180);
+      schedule(() => setPhase("verifying"), 1180);
       schedule(() => {
-        setPhase("ripple");
-        setRippleKey((k) => k + 1);
+        setPhase(outcome);
+        if (outcome === "verified") setRippleKey((k) => k + 1);
       }, 1520);
       schedule(() => setPhase("idle"), 3400);
       schedule(fireCycle, 5600 + Math.floor(Math.random() * 1900));
@@ -228,10 +253,12 @@ export function BieBrainBanner() {
   }, [reduceMotion]);
 
   const litRings = litRingsForPhase(phase);
-  const coreActive = phase === "absorb" || phase === "ripple";
-  const coreAbsorbing = phase === "absorb";
+  const coreActive = phase === "verifying" || phase === "verified" || phase === "rejected";
+  const coreVerifying = phase === "verifying";
+  const coreVerified = phase === "verified";
+  const coreRejected = phase === "rejected";
 
-  const renderFieldLine = (ring: FieldLineRing, opts: { loopPulse: boolean }) => {
+  const renderFieldLine = (ring: FieldLineRing) => {
     const isLit = litRings.includes(ring.ring);
     return (
       <g
@@ -245,19 +272,6 @@ export function BieBrainBanner() {
         }
       >
         <path d={ring.d} className="bie-field-line-stroke" pathLength={1} />
-        {opts.loopPulse && !reduceMotion && (
-          <circle r={2} className="bie-field-loop-pulse bie-star-pulse-dot" fill="#ffd966">
-            <animateMotion
-              dur={`${16 + ring.ring * 2.8}s`}
-              begin={`-${ring.ring * 2.4}s`}
-              repeatCount="indefinite"
-              calcMode="linear"
-            >
-              <mpath href={`#bie-field-loop-${ring.ring}`} />
-            </animateMotion>
-          </circle>
-        )}
-        <path id={`bie-field-loop-${ring.ring}`} d={ring.d} className="bie-reactor-impulse-track" pathLength={1} />
       </g>
     );
   };
@@ -267,7 +281,7 @@ export function BieBrainBanner() {
       <div
         className="bie-brain-diagram bie-reactor-diagram bie-reactor-stage bie-field-stage"
         role="img"
-        aria-label="BlackOut Intelligence Engine: you are inside the living intelligence field that powers the platform."
+        aria-label="BlackOut Intelligence Engine: every signal is checked against live data before it reaches you — unverified claims are rejected, not shown."
         style={{ ["--reactor-cx" as string]: `${CORE.x}px`, ["--reactor-cy" as string]: `${CORE.y}px` }}
       >
         <div className="bie-brain-canvas bie-reactor-canvas bie-field-canvas">
@@ -331,13 +345,16 @@ export function BieBrainBanner() {
 
             <rect width={VIEW_W} height={VIEW_H} fill="url(#bie-field-vignette)" className="bie-field-vignette" pointerEvents="none" />
 
-            {outerLines.map((ring) => renderFieldLine(ring, { loopPulse: true }))}
+            {outerLines.map((ring) => renderFieldLine(ring))}
 
-            {midLines.map((ring) => renderFieldLine(ring, { loopPulse: ring.ring === 4 }))}
+            {midLines.map((ring) => renderFieldLine(ring))}
 
-            {innerLines.map((ring) => renderFieldLine(ring, { loopPulse: false }))}
+            {innerLines.map((ring) => renderFieldLine(ring))}
 
-            <BieGalaxyNodes
+            <BieOrbitTools
+              tools={FIELD_TOOLS}
+              viewW={VIEW_W}
+              viewH={VIEW_H}
               coreX={CORE.x}
               coreY={CORE.y}
               maxRx={MAX_RX}
@@ -348,7 +365,7 @@ export function BieBrainBanner() {
             {!reduceMotion && phase === "inbound" && pulsePath && (
               <g key={pulseKey} className="bie-reactor-pulse-wave bie-reactor-pulse-inbound">
                 <path id="bie-reactor-impulse" d={pulsePath} className="bie-reactor-impulse-track" pathLength={1} />
-                <circle r={2.6} className="bie-reactor-impulse-dot bie-reactor-signal-dot" fill="#5df7ff">
+                <circle r={2.6} className="bie-reactor-impulse-dot bie-reactor-signal-dot" fill="#a9b4c4">
                   <animateMotion dur="1.15s" repeatCount="1" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.35 0 0.2 1">
                     <mpath href="#bie-reactor-impulse" />
                   </animateMotion>
@@ -357,16 +374,24 @@ export function BieBrainBanner() {
             )}
 
             <g
-              className={`bie-reactor-core bie-reactor-core-classic${coreActive ? " is-active" : ""}${coreAbsorbing ? " is-absorbing" : ""}${phase === "ripple" ? " is-emitting" : ""}`}
+              className={`bie-reactor-core bie-reactor-core-classic${coreActive ? " is-active" : ""}${coreVerifying ? " is-verifying" : ""}${coreVerified ? " is-verified" : ""}${coreRejected ? " is-rejected" : ""}`}
               transform={`translate(${CORE.x}, ${CORE.y})`}
             >
-              {!reduceMotion && phase === "ripple" && (
+              {!reduceMotion && phase === "verified" && (
                 <>
                   <circle key={`rip-a-${rippleKey}`} cx={0} cy={0} r={36} className="bie-field-ripple bie-field-ripple-a" />
                   <circle key={`rip-b-${rippleKey}`} cx={0} cy={0} r={36} className="bie-field-ripple bie-field-ripple-b" />
                   <circle key={`rip-c-${rippleKey}`} cx={0} cy={0} r={36} className="bie-field-ripple bie-field-ripple-c" />
                 </>
               )}
+              {!reduceMotion && phase === "rejected" && (
+                <circle key={`rej-${rippleKey}`} cx={0} cy={0} r={GATE_OUTER_R} className="bie-gate-reject-flash" />
+              )}
+              <g className="bie-gate-ring" aria-hidden>
+                {gateTicks.map((t) => (
+                  <line key={t.angleDeg} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} className="bie-gate-tick" />
+                ))}
+              </g>
               <circle cx={0} cy={0} r={36} className="bie-reactor-core-halo" />
               <circle cx={0} cy={0} r={20} className="bie-brain-core bie-reactor-core-nucleus" />
               <text x={0} y={0} className="bie-core-label-svg" textAnchor="middle" dominantBaseline="central">
@@ -375,16 +400,6 @@ export function BieBrainBanner() {
             </g>
           </svg>
 
-          <BieOrbitTools
-            tools={FIELD_TOOLS}
-            viewW={VIEW_W}
-            viewH={VIEW_H}
-            coreX={CORE.x}
-            coreY={CORE.y}
-            maxRx={MAX_RX}
-            maxRy={MAX_RY}
-            reduceMotion={reduceMotion}
-          />
           </div>
 
           <div className="bie-field-caption">
