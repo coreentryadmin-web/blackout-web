@@ -128,3 +128,55 @@ test("get_zerodte_plays description points forward to get_zerodte_rejections for
     "expected get_zerodte_plays to point to get_zerodte_rejections for candidates that failed a gate"
   );
 });
+
+// ── Task #131: get_flow_anomaly_near_misses — HELIX's flow-anomaly near-miss/
+// rejection log, distinct from BOTH get_market_regime's committed-anomaly COUNT
+// and get_ecosystem_context's per-ticker `recent_anomalies` (both read the
+// committed-only flow_anomalies table), and from get_zerodte_rejections (task
+// #147, a completely different engine/threshold set). Locks in the disambiguating
+// language so a future edit can't quietly drop it and reintroduce the exact
+// name-confusion risk task #127 fixed for the 0DTE-flavored tools.
+
+test("get_flow_anomaly_near_misses is a real tool, reachable via TOOL_GROUPS.platform alongside get_market_regime", () => {
+  const def = LARGO_TOOL_DEFS.find((t) => t.name === "get_flow_anomaly_near_misses");
+  assert.ok(def, "get_flow_anomaly_near_misses must be a registered Largo tool");
+  assert.ok(
+    TOOL_GROUPS.platform.includes("get_flow_anomaly_near_misses"),
+    "get_flow_anomaly_near_misses must be routed via TOOL_GROUPS.platform — Largo would never call it otherwise"
+  );
+});
+
+test("get_flow_anomaly_near_misses description disambiguates from get_market_regime, get_ecosystem_context, and get_zerodte_rejections", () => {
+  const def = LARGO_TOOL_DEFS.find((t) => t.name === "get_flow_anomaly_near_misses");
+  assert.ok(def);
+  assert.match(
+    def!.description,
+    /get_ecosystem_context/,
+    "expected get_flow_anomaly_near_misses description to reference get_ecosystem_context's committed-only recent_anomalies"
+  );
+  assert.match(
+    def!.description,
+    /get_zerodte_rejections/,
+    "expected get_flow_anomaly_near_misses description to point away from 0DTE Command's own separate near-miss log"
+  );
+  assert.match(
+    def!.description,
+    /BELOW_THRESHOLD/,
+    "expected get_flow_anomaly_near_misses description to name the below-threshold reason"
+  );
+  assert.match(
+    def!.description,
+    /DEDUP_SUPPRESSED/,
+    "expected get_flow_anomaly_near_misses description to name the dedup-suppressed reason, distinctly from BELOW_THRESHOLD"
+  );
+});
+
+test("get_market_regime description points forward to get_flow_anomaly_near_misses for a candidate that never fired", () => {
+  const def = LARGO_TOOL_DEFS.find((t) => t.name === "get_market_regime");
+  assert.ok(def);
+  assert.match(
+    def!.description,
+    /get_flow_anomaly_near_misses/,
+    "expected get_market_regime to point to get_flow_anomaly_near_misses for anomalies that never cleared the threshold"
+  );
+});

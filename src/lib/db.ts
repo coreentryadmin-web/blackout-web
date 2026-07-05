@@ -1121,6 +1121,55 @@ async function runMigrations(): Promise<void> {
       ON zerodte_scan_rejections (observed_at DESC);
     CREATE INDEX IF NOT EXISTS idx_zerodte_scan_rejections_ticker
       ON zerodte_scan_rejections (ticker, observed_at DESC);
+
+    -- flow_anomaly_near_misses (task #131): durable near-miss/rejection log for
+    -- HELIX's flow-anomaly detector (src/app/api/cron/market-regime-detector/
+    -- flow-anomaly-detection.ts's detectFlowAnomalies, route.ts's dedup loop) — the
+    -- HELIX analogue of spx_engine_snapshots/zerodte_scan_rejections above, for a
+    -- THIRD, separate engine (5-min market-wide flow-anomaly scan, not SPX Slayer's
+    -- single-instrument engine or 0DTE Command's multi-ticker setup scanner).
+    -- detectFlowAnomalies computes real per-ticker metrics (max single print,
+    -- call/put premium totals + skew ratio) for every ticker with recent HELIX
+    -- flow, but only ever surfaces an anomaly once it clears a hard threshold
+    -- (LARGE_PREMIUM_PRINT >= $2M single print, DIRECTIONAL_FLOW_SKEW >= 10:1 on
+    -- $500k+ total premium) — a candidate that falls short left NO trace anywhere.
+    -- Note table (NOT view, NOT column) note: this is a genuinely THIRD-different
+    -- discard path from the sibling tables' single "gate rejected, continue" shape
+    -- — reason distinguishes the TWO structurally different ways a computed
+    -- candidate never reaches flow_anomalies: 'BELOW_THRESHOLD' (the metric itself
+    -- never cleared the hard threshold; severity is null because the real detector
+    -- never assigns one to a candidate that doesn't fire) vs 'DEDUP_SUPPRESSED'
+    -- (the candidate DID clear its threshold — it's a fully-formed anomaly with a
+    -- real severity — but route.ts's own 15-minute same-type+ticker dedup window
+    -- already had a match, so the INSERT into flow_anomalies never ran). Conflating
+    -- these two into one reason would make "why didn't X fire" unanswerable in
+    -- exactly the two most common follow-up shapes members actually ask ("was it
+    -- just below the bar" vs. "did it already fire recently and get suppressed").
+    -- metric_value/threshold are cited in the SAME unit the real detector compares
+    -- (dollars for LARGE_PREMIUM_PRINT, a ratio for DIRECTIONAL_FLOW_SKEW — see
+    -- flow-anomaly-detection.ts's FlowAnomaly.metric_value doc for why the plain
+    -- premium column alone is the wrong unit for a skew row). Written by
+    -- persistFlowAnomalyNearMisses (src/lib/platform/flow-anomaly-near-misses.ts),
+    -- throttled via the SAME per-ticker platform_meta JSON-cursor idiom
+    -- persistZeroDteRejections uses (many simultaneous candidate tickers per tick,
+    -- not one instrument) — see that file's module doc for the full reasoning.
+    CREATE TABLE IF NOT EXISTS flow_anomaly_near_misses (
+      id            BIGSERIAL PRIMARY KEY,
+      observed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      anomaly_type  TEXT NOT NULL,
+      ticker        TEXT,
+      reason        TEXT NOT NULL,
+      metric_value  NUMERIC NOT NULL,
+      threshold     NUMERIC NOT NULL,
+      premium       NUMERIC,
+      direction     TEXT,
+      severity      TEXT,
+      detail        TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_flow_anomaly_near_misses_observed_at
+      ON flow_anomaly_near_misses (observed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_flow_anomaly_near_misses_ticker
+      ON flow_anomaly_near_misses (ticker, observed_at DESC);
   `);
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
@@ -1995,6 +2044,92 @@ export async function fetchZeroDteScanRejections(opts?: { ticker?: string; limit
     prints: r.prints != null ? Number(r.prints) : null,
     first_seen: r.first_seen != null ? String(r.first_seen) : null,
     last_seen: r.last_seen != null ? String(r.last_seen) : null,
+  }));
+}
+
+/**
+ * Persists one HELIX flow-anomaly near-miss/rejection row (task #131,
+ * src/lib/platform/flow-anomaly-near-misses.ts's persistFlowAnomalyNearMisses).
+ * Same "always insert, caller already decided whether/how to throttle" idiom as
+ * insertZeroDteScanRejection above — this function has no ON CONFLICT/dedup logic
+ * of its own. Singular (one row, not a batch) for the same reason: a single 5-min
+ * detector tick's near-miss count is bounded by the candidate universe.
+ */
+export async function insertFlowAnomalyNearMiss(row: {
+  anomaly_type: string;
+  ticker: string | null;
+  reason: string;
+  metric_value: number;
+  threshold: number;
+  premium: number | null;
+  direction: string | null;
+  severity: string | null;
+  detail: string;
+}): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `
+    INSERT INTO flow_anomaly_near_misses (
+      anomaly_type, ticker, reason, metric_value, threshold,
+      premium, direction, severity, detail
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    `,
+    [
+      row.anomaly_type,
+      row.ticker,
+      row.reason,
+      row.metric_value,
+      row.threshold,
+      row.premium,
+      row.direction,
+      row.severity,
+      row.detail,
+    ]
+  );
+}
+
+export async function fetchFlowAnomalyNearMisses(opts?: { ticker?: string; limit?: number }): Promise<
+  Array<{
+    id: number;
+    observed_at: string;
+    anomaly_type: string;
+    ticker: string | null;
+    reason: string;
+    metric_value: number;
+    threshold: number;
+    premium: number | null;
+    direction: string | null;
+    severity: string | null;
+    detail: string;
+  }>
+> {
+  await ensureSchema();
+  const limit = opts?.limit ?? 50;
+  const ticker = opts?.ticker?.toUpperCase();
+  const cols = `id, observed_at, anomaly_type, ticker, reason, metric_value,
+           threshold, premium, direction, severity, detail`;
+  const res = ticker
+    ? await (await getPool()).query(
+        `SELECT ${cols} FROM flow_anomaly_near_misses WHERE ticker = $1 ORDER BY observed_at DESC LIMIT $2`,
+        [ticker, limit]
+      )
+    : await (await getPool()).query(
+        `SELECT ${cols} FROM flow_anomaly_near_misses ORDER BY observed_at DESC LIMIT $1`,
+        [limit]
+      );
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    observed_at: String(r.observed_at),
+    anomaly_type: String(r.anomaly_type),
+    ticker: r.ticker != null ? String(r.ticker) : null,
+    reason: String(r.reason),
+    metric_value: Number(r.metric_value),
+    threshold: Number(r.threshold),
+    premium: r.premium != null ? Number(r.premium) : null,
+    direction: r.direction != null ? String(r.direction) : null,
+    severity: r.severity != null ? String(r.severity) : null,
+    detail: String(r.detail),
   }));
 }
 
