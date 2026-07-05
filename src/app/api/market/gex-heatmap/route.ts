@@ -313,8 +313,20 @@ export async function GET(req: NextRequest) {
       ).catch(() => null);
     }
 
+    // A non-null heatmap can still be UNUSABLE: fetchGexHeatmap's emptyHeatmap() fallback
+    // (polygon-options-gex.ts ~2422) returns a real GexHeatmap object — never null — whenever
+    // spot resolution fails (spot:0) and/or the options chain comes back with zero contracts
+    // (strikes:[]). The `!heatmap` guard above only catches the null case, so this branch was
+    // unconditionally stamping `available: true` on that unusable object too — a client (this
+    // route's own GexHeatmap.tsx UI, plus validate-live-prod/live-fixes-audit) would see
+    // available:true next to spot:0 and an empty strikes array, i.e. a "usable" flag on data
+    // that has nothing real to show. Confirmed live for SPY/QQQ — see docs/audit/FINDINGS.md
+    // (2026-07-05). Mirror the SAME "no usable data" contract as the `!heatmap` branch above:
+    // available is true only when a real spot resolved AND the matrix actually has strikes.
+    const heatmapUsable = heatmap.spot > 0 && heatmap.strikes.length > 0;
+
     const rounded = roundFloats({
-      available: true,
+      available: heatmapUsable,
       ...heatmap,
       cross_validation,
       overlays,
