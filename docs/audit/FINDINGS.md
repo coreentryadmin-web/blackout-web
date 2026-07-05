@@ -9,6 +9,28 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🟢 LOW FIXED 2026-07-05 — `DashboardTrackRecordEmbed.tsx` was dead code calling an API that would 401/403 for its own caller (task #176, branch `fix/delete-dead-track-record-embed`)
+
+**Status:** FIXED. Flagged by an external audit (a parallel Cursor session on this repo); independently re-verified this session before touching anything, per standing policy of not trusting an audit finding without re-confirming it against the live repo.
+
+**Root cause:** `src/components/embeds/DashboardTrackRecordEmbed.tsx` was a `"use client"` wrapper that SWR-polled `/api/public/track-record` every 5 minutes and rendered the result through the shared `TrackRecordEmbed` presentational card. Two product changes made it stale without anyone deleting it: (1) `src/app/api/public/track-record/route.ts` is now explicitly admin-only (`// Admin-only aggregate ledger (formerly public embed API).`) — a caller with only public/member auth gets 401/403, not data; (2) the public `/track-record` page (`src/app/(site)/track-record/page.tsx`) is now a deliberate `redirect("/admin/track-record")` (`/** Legacy public URL — track record is admin-only at /admin/track-record. */`). So the component's entire premise — a public, embeddable track-record widget — no longer exists in the product; it just never got removed when the gating changed.
+
+**Why it wasn't caught earlier:** this class of bug (an exported component with zero real importers) was already caught *once*, generically, by this repo's own tooling — `src/lib/bie/stage5-proposals.ts`'s `findStage5Proposals()` flagged `DashboardTrackRecordEmbed` as an `orphaned_component` on 2026-07-03 (see the "BIE Stage 5, step 1 shipped" and "Post-deploy live verification" entries below) and it's been sitting in the `/api/admin/bie-report` proposals list ever since. Stage 5 step 1 is dry-run-only by design ("a human decides what to do with it" — see below), so the flag alone never triggered a fix; it took a second, independent audit pass 2+ days later to actually act on it.
+
+**Evidence (independent re-verification, not just trusting the brief):**
+- `grep -rn "DashboardTrackRecordEmbed"` across the full repo (not just `src/`) returned exactly 3 hits besides the file's own two self-references: the `stage5-proposals.ts` doc-comment (documentation of this exact finding, not a real import), and two FINDINGS.md history entries (documentation, not code). Zero `import` statements anywhere.
+- Specifically checked `src/app/embed/track-record/page.tsx` (an `src/app/embed/*` route — exactly the kind of dynamic-embed surface a plain grep could miss) since its name is adjacent to this component's: it imports `TrackRecordEmbed` (`src/components/embeds/TrackRecordEmbed.tsx`, the shared presentational card, still very much alive) directly, server-side, with its own `requireAdmin()` gate — never `DashboardTrackRecordEmbed`.
+- Bonus finding: `DashboardTrackRecordEmbed.tsx`'s own header comment claimed "Referenced by DashboardEmbeds.tsx." Read `DashboardEmbeds.tsx` directly — it only imports `TradingViewWidget` and `LiveMarketPulse`. That comment was itself stale, i.e. even the dead file's internal documentation of its own callers was wrong, consistent with it having been unwired at some point and never cleaned up.
+- No co-located test file for the component existed.
+
+**Blast radius:** none — dead code removal. `TrackRecordEmbed.tsx` (the presentational component `DashboardTrackRecordEmbed` wrapped) is untouched and still used by `src/app/embed/track-record/page.tsx` and `src/app/(site)/admin/track-record`. `/api/public/track-record` is untouched (still admin-only, as intended). `DashboardEmbeds.tsx` is untouched (it never referenced this component in the first place). `src/lib/bie/stage5-proposals.ts`'s scanning logic (`findStage5Proposals`, `isReferencedElsewhere`, `extractExportedComponentNames`) needed **no code change**: it does a live, read-only `fs` scan of `src/components/**` on every run (1-hour cache) with no hardcoded component names anywhere in the actual logic — the `DashboardTrackRecordEmbed` mention is confined to the top-of-file historical "why this exists" comment. Once the file doesn't exist, the scanner simply won't see it and will stop flagging it — exactly the same outcome already observed and documented for `BieCoreVisual` (deleted in PR #357, confirmed in the "Post-deploy live verification" entry below to no longer appear in the flagged list). Left the historical comment and the two pre-existing FINDINGS.md mentions of this component below untouched — they're accurate records of what Stage 5 step 1 found and did (nothing, by design) at the time, not stale claims about current state.
+
+**Fix:** deleted `src/components/embeds/DashboardTrackRecordEmbed.tsx`. No other files needed changes.
+
+**Verification:** `npx tsc --noEmit` clean. `/opt/node22/bin/node --import tsx --experimental-test-module-mocks --test $(find src -name '*.test.ts')` passing, full suite, no regressions. `npm run build` clean. `git diff main -- src/lib/spx-signals.ts` empty (this fix never touches SPX Slayer).
+
+---
+
 ## 🔴 P1 FIXED 2026-07-05 — `/api/market/gex-heatmap` reported `available: true` on an empty/zero-spot heatmap — a "usable" flag on data with nothing real to show (task #172, branch `fix/gex-heatmap-false-available`)
 
 **Status:** FIXED. Surfaced by an external audit (a parallel Cursor session on this repo) and independently re-verified this session by reading the live source.
