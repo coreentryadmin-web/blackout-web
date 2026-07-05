@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 
 test("requireToolApiForDeskCaller: cron skips launch gate; user hits coming_soon when grid locked", async () => {
   mock.module("server-only", { namedExports: {} });
-  mock.module("@/lib/tool-access", {
+  mock.module("./tool-access", {
     namedExports: {
       isToolLaunched: () => false,
       isZeroDteCommandLaunched: () => false,
     },
   });
-  mock.module("@/lib/admin-access", {
+  mock.module("./admin-access", {
     namedExports: {
       getAdminStatus: async () => ({ admin: false }),
       resolveAdminApi: async () => ({ actor: null }),
