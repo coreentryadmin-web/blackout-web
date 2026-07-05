@@ -1,5 +1,6 @@
 import type { AnthropicMessage } from "@/lib/providers/anthropic";
 import {
+  FLOW_ANOMALY_NEAR_MISS_RE,
   FLOW_RE,
   GEX_REGIME_HISTORY_RE,
   MARKET_REGIME_RE,
@@ -39,6 +40,11 @@ export type LargoQuestionIntent = {
    *  get_gex_regime_events (task #136), distinct from needsSpxDesk/get_gex's
    *  CURRENT-snapshot-only view. */
   needsGexRegimeHistory: boolean;
+  /** HELIX flow-anomaly near-miss/rejection wording ("why didn't HELIX flag X," "near miss
+   *  on the anomaly scan") — hints get_flow_anomaly_near_misses (task #131), distinct from
+   *  needsMarketRegime above (get_market_regime's committed-anomaly COUNT only) and from
+   *  needsZeroDteRejections (0DTE Command's own separate scanner/threshold set). */
+  needsFlowAnomalyNearMisses: boolean;
   tickerHint: string | null;
   guidance: string;
 };
@@ -102,6 +108,7 @@ export function analyzeLargoQuestion(
   const needsZeroDteCommand = matchesIntent(ctx, ZERODTE_COMMAND_RE);
   const needsZeroDteRejections = matchesIntent(ctx, ZERODTE_REJECTION_RE);
   const needsGexRegimeHistory = matchesIntent(ctx, GEX_REGIME_HISTORY_RE);
+  const needsFlowAnomalyNearMisses = matchesIntent(ctx, FLOW_ANOMALY_NEAR_MISS_RE);
 
   const tickerHint = extractTicker(question, recentUserText(history));
   const scopeTicker = tickerHint ?? (needsSpxDesk ? "SPX" : null);
@@ -169,6 +176,14 @@ export function analyzeLargoQuestion(
   if (needsGexRegimeHistory) {
     toolHints.push("get_gex_regime_events");
   }
+  // HELIX flow-anomaly near-miss wording ("why didn't HELIX flag X," "near miss on
+  // the anomaly scan") — a DIFFERENT question from needsMarketRegime above (which
+  // only ever surfaces the COUNT of anomalies that already fired): this hints the
+  // near-miss log instead, so a candidate that never cleared the anomaly threshold
+  // (or fired but was dedup-suppressed) is still answerable.
+  if (needsFlowAnomalyNearMisses) {
+    toolHints.push("get_flow_anomaly_near_misses");
+  }
 
   const uniqueTools = Array.from(new Set(toolHints));
 
@@ -196,6 +211,7 @@ export function analyzeLargoQuestion(
     needsZeroDteCommand,
     needsZeroDteRejections,
     needsGexRegimeHistory,
+    needsFlowAnomalyNearMisses,
     tickerHint,
     guidance,
   };

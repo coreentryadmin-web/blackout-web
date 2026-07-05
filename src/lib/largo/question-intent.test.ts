@@ -222,3 +222,54 @@ test("bare retrospective/count wording with NO GEX-domain token does not falsely
     );
   }
 });
+
+// Task #131: detectFlowAnomalies' below-threshold/dedup-suppressed candidates now
+// have a durable log (flow_anomaly_near_misses) and a dedicated Largo tool
+// (get_flow_anomaly_near_misses) — "why didn't HELIX flag ticker X" is a genuinely
+// different question from needsMarketRegime above (get_market_regime's committed-
+// anomaly COUNT only) and from needsZeroDteRejections (0DTE Command's own separate
+// scanner/threshold set), so it gets its own hint.
+
+test("near-miss/anomaly wording paired with an anomaly/HELIX token hints get_flow_anomaly_near_misses", () => {
+  for (const question of [
+    "why didn't HELIX flag AAPL today",
+    "was TSLA a near miss on the anomaly scan",
+    "why wasn't SNDK flagged as a HELIX anomaly",
+    "did NVDA trigger a HELIX anomaly or was it a near miss",
+  ]) {
+    const intent = analyzeLargoQuestion(question, []);
+    assert.equal(intent.needsFlowAnomalyNearMisses, true, `expected needsFlowAnomalyNearMisses for: "${question}"`);
+    assert.match(
+      intent.guidance,
+      /get_flow_anomaly_near_misses/,
+      `expected get_flow_anomaly_near_misses hint for: "${question}"`
+    );
+  }
+});
+
+test("near-miss wording with NO anomaly/HELIX token stays unresolved, same documented gap as the 0dte-rejection case", () => {
+  // "why didn't AAPL fire today" has no explicit anomaly/helix token — same
+  // intentional, documented ambiguity ZERODTE_REJECTION_RE already leaves for a
+  // bare "why didn't X make the board" mention. This hint's job is to resolve the
+  // SPECIFIC-wording case, not manufacture signal that isn't present.
+  const intent = analyzeLargoQuestion("why didn't AAPL fire today", []);
+  assert.equal(intent.needsFlowAnomalyNearMisses, false);
+});
+
+test("bare 'near miss'/'below threshold' wording with NO anomaly/HELIX context does not falsely fire needsFlowAnomalyNearMisses", () => {
+  // Same false-positive discipline as ZERODTE_REJECTION_RE's own co-occurrence
+  // requirement — "near miss" or "wasn't flagged" alone is common phrasing for
+  // entirely unrelated questions and must require the explicit anomaly/HELIX token.
+  for (const question of [
+    "that trade was a near miss on my stop loss",
+    "was AAPL rejected from tonight's Night Hawk edition",
+    "why wasn't AAPL flagged for the 0dte board",
+  ]) {
+    const intent = analyzeLargoQuestion(question, []);
+    assert.equal(
+      intent.needsFlowAnomalyNearMisses,
+      false,
+      `expected !needsFlowAnomalyNearMisses for unrelated wording: "${question}"`
+    );
+  }
+});

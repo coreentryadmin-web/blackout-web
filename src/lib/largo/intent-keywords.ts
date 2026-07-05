@@ -109,6 +109,32 @@ export const ZERODTE_REJECTION_RE =
 export const GEX_REGIME_HISTORY_RE =
   /\b(flip|wall|regime|gex)\s+history\b|\b(gamma flip|call wall|put wall|gex regime|gamma regime|dealer gamma)\b.{0,25}\b(cross(?:ed|ing)?|broke|broken|flipped|moved|shifted)\b|\b(cross(?:ed|ing)?|broke|broken|flipped|moved|shifted)\b.{0,25}\b(gamma flip|call wall|put wall|gex regime|gamma regime|dealer gamma)\b|\b(when did|how many times|last cross(?:ed)?)\b.{0,30}\b(gamma flip|flip|gex|gamma|wall|call wall|put wall|regime)\b|\b(gamma flip|flip|gex|gamma|wall|call wall|put wall|regime)\b.{0,30}\b(when did|how many times|last cross(?:ed)?)\b/i;
 
+/**
+ * HELIX flow-anomaly near-miss/rejection wording ("why didn't HELIX flag X,"
+ * "near miss on the anomaly scan," "didn't trigger an anomaly," "below the
+ * anomaly threshold") — hints get_flow_anomaly_near_misses (task #131), the
+ * durable per-(ticker, anomaly_type) near-miss log for the market-regime-
+ * detector's flow-anomaly scan. Deliberately REQUIRES co-occurrence with an
+ * explicit "anomaly"/"anomalies"/"helix" token, same false-positive discipline
+ * ZERODTE_REJECTION_RE uses (co-occurrence with 0dte/grid) — a bare "near miss"
+ * or "didn't flag" alone is common phrasing for entirely unrelated questions (a
+ * Night Hawk exclusion, a 0DTE Command rejection, a stop-loss near-touch) and
+ * must not fire on its own. A bare "why didn't this fire" with no anomaly/HELIX
+ * token stays unresolved on purpose, same as ZERODTE_REJECTION_RE's own
+ * documented bare-token gap.
+ *
+ * Uses two independent lookaheads (order-agnostic), NOT the sequential
+ * "phraseA.*tokenB | tokenB.*phraseA" shape ZERODTE_REJECTION_RE uses — the
+ * natural phrasing here ("why didn't HELIX flag X") puts the product name
+ * INSIDE the near-miss phrase itself (between "didn't" and "flag"), which a
+ * sequential pattern can't match without letting one alternative's match
+ * consume the very token the other alternative needs to see afterward.
+ * Lookaheads sidestep that: each just needs to find its own pattern anywhere
+ * in the question, independent of where the other one matched.
+ */
+export const FLOW_ANOMALY_NEAR_MISS_RE =
+  /(?=.*\b(?:anomaly|anomalies|helix)\b)(?=.*\b(?:near.?miss(?:es)?|didn'?t.{0,25}\b(?:flag|catch|fire|trigger)\b|wasn'?t.{0,25}\b(?:flagged|caught|triggered)\b|below.{0,10}threshold|didn'?t.{0,15}(?:clear|hit).{0,10}threshold)\b)/i;
+
 export const SCREENER_RE = /\b(screener|squeeze|movers|breadth|sector)\b/;
 
 export const FUNDAMENTAL_RE = /\b(fundamental|financial|insider|congress|analyst|institutional|predictions|smart money|whales)\b/;
