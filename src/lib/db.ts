@@ -4529,6 +4529,62 @@ export async function fetchNighthawkToolCallingBieInteractions(
   }));
 }
 
+/** Task #149 — the analogous raw-rows fetch for BIE's calibration harness to score
+ *  "how good are Largo's answers specifically when 0DTE Command's own tools were
+ *  involved" (src/lib/bie/calibration.ts's computeZeroDteToolCallCalibration).
+ *  Direct copy of fetchSpxToolCallingBieInteractions's shape/SQL above — same
+ *  SQL-layer cohort filter for the same reason (bie_interactions is one row per
+ *  Largo QUESTION, much higher volume than the admission-gated setup-log table),
+ *  same UNION-of-two-conditions membership test:
+ *    1. `tools_used` overlaps `zeroDteEngineToolNames` (jsonb `?|`) — the Claude
+ *       tool-calling path dispatched get_zerodte_plays or get_zerodte_rejections.
+ *    2. `intent_bucket = 'zerodte_plays'` — the deterministic BIE router answered
+ *       via composeBieAnswer's 0DTE-plays composer, which internally reads the
+ *       SAME zerodte_setup_log state condition 1 is trying to detect — but
+ *       logBie() always records the router path's tools_used as the single
+ *       sentinel ["blackout_intelligence"], never the real tool name (see
+ *       largo-terminal.ts's tryBieRoute call sites, same as the SPX path above).
+ *       Without this OR, the cohort could never contain a single router-matched
+ *       row by construction, which would make "how often do 0DTE-board questions
+ *       land on the deterministic router vs. Claude fallback" read a permanent,
+ *       meaningless 0% — the exact same failure mode task #112 documented for
+ *       SPX Slayer's own spx_structure intent. */
+export async function fetchZeroDteToolCallingBieInteractions(
+  sinceDate: string,
+  zeroDteEngineToolNames: string[],
+  limit = 3000
+): Promise<
+  Array<{
+    tools_used: string[];
+    intent_bucket: string | null;
+    answer_source: string;
+    claims_total: number | null;
+    claims_verified: number | null;
+    latency_ms: number | null;
+    created_at: string;
+  }>
+> {
+  await ensureSchema();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT tools_used, intent_bucket, answer_source, claims_total, claims_verified, latency_ms, created_at
+     FROM bie_interactions
+     WHERE created_at >= $1::date
+       AND (tools_used ?| $2::text[] OR intent_bucket = 'zerodte_plays')
+     ORDER BY created_at DESC
+     LIMIT $3`,
+    [sinceDate, zeroDteEngineToolNames, limit]
+  );
+  return res.rows.map((r) => ({
+    tools_used: Array.isArray(r.tools_used) ? (r.tools_used as string[]) : [],
+    intent_bucket: r.intent_bucket != null ? String(r.intent_bucket) : null,
+    answer_source: String(r.answer_source),
+    claims_total: r.claims_total != null ? Number(r.claims_total) : null,
+    claims_verified: r.claims_verified != null ? Number(r.claims_verified) : null,
+    latency_ms: r.latency_ms != null ? Number(r.latency_ms) : null,
+    created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+  }));
+}
+
 export async function updateZeroDtePlanOutcome(
   sessionDate: string,
   ticker: string,

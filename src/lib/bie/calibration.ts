@@ -23,8 +23,9 @@ import {
   fetchNighthawkToolCallingBieInteractions,
   fetchSpxToolCallingBieInteractions,
   fetchZeroDteSetupLogRange,
+  fetchZeroDteToolCallingBieInteractions,
 } from "@/lib/db";
-import { NIGHTHAWK_ENGINE_TOOL_NAMES, SPX_ENGINE_TOOL_NAMES } from "@/lib/largo/tool-defs";
+import { NIGHTHAWK_ENGINE_TOOL_NAMES, SPX_ENGINE_TOOL_NAMES, ZERODTE_ENGINE_TOOL_NAMES } from "@/lib/largo/tool-defs";
 import { todayEt } from "@/lib/nighthawk/session";
 import { gradeRank } from "@/lib/spx-play-config";
 import type { PlayOutcomeRow } from "@/lib/spx-play-outcomes";
@@ -82,6 +83,17 @@ export type CalibrationReport = {
    *  metrics, and its doc comment for why router_matched_n is honestly 0 for
    *  now (there is no deterministic BIE router intent for Night Hawk). */
   nighthawk_tool_calls: NighthawkToolCallCalibrationReport | null;
+  /** Task #149 — the analogous answer-quality cohort for turns that touched
+   *  0DTE Command's own live-engine state (the SEPARATE multi-ticker `/grid`
+   *  scanner, per task #127's standing disambiguation from SPX Slayer — not to
+   *  be confused with the completely different zerodte_setup_log/board-outcome
+   *  pass at the top of this report, which measures the SCANNER'S OWN trade
+   *  P&L, not Largo's answer quality about it). Named distinctly from
+   *  spx_tool_calls so a reader never conflates the two products' cohorts.
+   *  Same attach-after-compute pattern: null until runBieCalibration's async
+   *  orchestrator fills it in. See computeZeroDteToolCallCalibration below for
+   *  the cohort definition and metrics. */
+  zerodte_tool_calls: ZeroDteToolCallCalibrationReport | null;
 };
 
 // ── SPX Slayer's own closed-play calibration (additive, parallel to the 0DTE pass) ──
@@ -202,12 +214,14 @@ export function computeCalibration(
     by_time_of_day: byTod,
     by_spike: bySpike,
     recommendations: recs,
-    // Attached by runBieCalibration once it has computed the SPX and Night Hawk
-    // passes too — this pure function only ever sees 0DTE rows, so it never has
-    // SPX/Night Hawk data to report for any additive slice below.
+    // Attached by runBieCalibration once it has computed the SPX/Night Hawk/
+    // 0DTE-tool-calling passes too — this pure function only ever sees
+    // 0DTE-setup-log rows, so it never has data to report for any of the
+    // additive slices below.
     spx_slayer: null,
     spx_tool_calls: null,
     nighthawk_tool_calls: null,
+    zerodte_tool_calls: null,
   };
 }
 
@@ -557,6 +571,133 @@ export function computeNighthawkToolCallCalibration(
   };
 }
 
+// ── Task #149: 0DTE-Command-tool-calling cohort within bie_interactions (a
+// fourth pass, alongside the 0DTE-setup-log, SPX-Slayer-outcomes, and
+// SPX-tool-calling passes above) ──
+//
+// Direct analogue of task #112 above, applied to the OTHER "0DTE"-branded
+// product: 0DTE Command, the always-on multi-ticker scanner behind `/grid`'s
+// default tab (per task #127's standing disambiguation — a completely
+// separate engine from SPX Slayer despite the shared "0DTE" branding). Before
+// this, calibration.ts could measure whether 0DTE Command's SETUPS made money
+// (computeCalibration at the top of this file, over zerodte_setup_log) but had
+// no way to measure whether Largo's ANSWERS about 0DTE Command's live board
+// state (today's plays, the near-miss/rejection log) were actually GOOD
+// answers — same gap task #112 closed for SPX Slayer, now closed here for
+// this product too.
+
+/** Slim projection of a bie_interactions row — only what this slice's cohort
+ *  test and metrics need. Same shape as SpxToolCallInputRow above (including
+ *  intent_bucket), kept as its own named type rather than reused so a caller
+ *  can never pass one product's rows to the other's compute function by an
+ *  accidental structural match. */
+export type ZeroDteToolCallInputRow = {
+  tools_used: string[];
+  /** "claude_fallback", a router intent name (e.g. "zerodte_plays"), or null if
+   *  a row predates task #103's intent_bucket column. */
+  intent_bucket: string | null;
+  answer_source: string;
+  claims_total: number | null;
+  claims_verified: number | null;
+  latency_ms: number | null;
+};
+
+export type ZeroDteToolCallCalibrationReport = {
+  window: { since: string; through: string };
+  /** Rows in the cohort — see isZeroDteToolCallingRow for the membership test. */
+  n: number;
+  /** Of the n cohort rows, how many were answered by Claude's tool-calling loop
+   *  vs. matched deterministically by the BIE router. Reported as raw counts
+   *  (not just a derived rate), same convention as the SPX-tool-calling report. */
+  claude_fallback_n: number;
+  router_matched_n: number;
+  /** router_matched_n / n — a properly-integrated 0DTE Command question should
+   *  ideally often be answerable by the deterministic router (the ZERODTE_RE
+   *  branch of classifyBieIntent, composed into an answer by composeBieAnswer's
+   *  0DTE-plays composer) rather than needing full Claude tool-calling every
+   *  time; tracked over time as a signal of whether router coverage for 0DTE
+   *  Command questions is keeping up. null when n = 0. */
+  router_match_rate_pct: number | null;
+  /** Aggregate sum(claims_verified)/sum(claims_total) across cohort rows that
+   *  actually carried numeric claims (claims_total > 0) — weights rows by how
+   *  many claims they made, unlike an unweighted average of each row's own
+   *  ratio. null when no cohort row had any graded claims yet. */
+  grounding_pass_rate_pct: number | null;
+  avg_latency_ms: number | null;
+  /** Same evidence-gating philosophy as the other passes — empty until n≥10. */
+  recommendations: string[];
+};
+
+/** Cohort membership: does this bie_interactions row represent a Largo turn
+ *  that touched 0DTE Command's own live-board state? A UNION of two
+ *  conditions, not just a tools_used check — see
+ *  fetchZeroDteToolCallingBieInteractions's doc comment (db.ts) for the full
+ *  reasoning, which mirrors task #112's SPX reasoning exactly: the
+ *  deterministic router's zerodte_plays answer reads the exact same board
+ *  state (zerodte_setup_log) internally, but logBie() always records that
+ *  path's tools_used as the ["blackout_intelligence"] sentinel rather than the
+ *  real tool name, so a pure tools_used check would silently exclude every
+ *  router-matched 0DTE-board turn. */
+function isZeroDteToolCallingRow(row: ZeroDteToolCallInputRow): boolean {
+  return (
+    row.tools_used.some((t) => (ZERODTE_ENGINE_TOOL_NAMES as readonly string[]).includes(t)) ||
+    row.intent_bucket === "zerodte_plays"
+  );
+}
+
+/** Pure assembly — feed it bie_interactions-shaped rows (any cohort mix), get
+ *  the 0DTE-Command-tool-calling slice's sample count, router-vs-Claude split,
+ *  grounding pass rate, and latency. Never touches zerodte_setup_log or any
+ *  live scanner gate/threshold — read-only reporting over already-logged
+ *  turns, same contract as computeSpxToolCallCalibration above. */
+export function computeZeroDteToolCallCalibration(
+  rows: ZeroDteToolCallInputRow[],
+  window: { since: string; through: string }
+): ZeroDteToolCallCalibrationReport {
+  const cohort = rows.filter(isZeroDteToolCallingRow);
+  const n = cohort.length;
+
+  const claudeFallbackN = cohort.filter((r) => r.answer_source === "claude").length;
+  const routerMatchedN = cohort.filter((r) => r.answer_source === "bie-router").length;
+  const routerMatchRatePct = n > 0 ? Math.round((routerMatchedN / n) * 1000) / 10 : null;
+
+  // Only rows that actually carried numeric claims count toward the grounding
+  // ratio — a turn with zero claims (claims_total = 0) has nothing to verify,
+  // and folding it in would dilute the ratio with a trivial non-signal.
+  const graded = cohort.filter((r) => (r.claims_total ?? 0) > 0);
+  const totalClaims = graded.reduce((s, r) => s + (r.claims_total ?? 0), 0);
+  const verifiedClaims = graded.reduce((s, r) => s + (r.claims_verified ?? 0), 0);
+  const groundingPassRatePct = totalClaims > 0 ? Math.round((verifiedClaims / totalClaims) * 1000) / 10 : null;
+
+  const latencies = cohort.map((r) => r.latency_ms).filter((l): l is number => l != null);
+  const avgLatencyMs = latencies.length
+    ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
+    : null;
+
+  const recs: string[] = [];
+  if (n >= MIN_EVIDENCE && groundingPassRatePct != null && groundingPassRatePct < 70) {
+    recs.push(
+      `0DTE-Command-tool-calling Largo turns show only ${groundingPassRatePct}% claim grounding over ${n} turns — since grounding checks numbers, not answer quality, this is worth a manual read of a few transcripts to see whether the scanner's outputs are being misread or just under-verified.`
+    );
+  }
+  if (n >= MIN_EVIDENCE && routerMatchRatePct != null && routerMatchRatePct < 30) {
+    recs.push(
+      `Only ${routerMatchRatePct}% of 0DTE-Command-tool-calling turns were answered by the deterministic router over ${n} turns — most 0DTE-board questions still fall through to full Claude tool-calling; consider widening the zerodte_plays composer's coverage.`
+    );
+  }
+
+  return {
+    window,
+    n,
+    claude_fallback_n: claudeFallbackN,
+    router_matched_n: routerMatchedN,
+    router_match_rate_pct: routerMatchRatePct,
+    grounding_pass_rate_pct: groundingPassRatePct,
+    avg_latency_ms: avgLatencyMs,
+    recommendations: recs,
+  };
+}
+
 export function formatCalibration(r: CalibrationReport): string {
   const bucket = (b: CalibrationBucket) =>
     `- ${b.label}: ${b.n} plays, ${b.wins}W/${b.losses}L${b.win_rate_pct != null ? ` (${b.win_rate_pct}%)` : ""}${b.avg_pnl_pct != null ? `, avg ${b.avg_pnl_pct >= 0 ? "+" : ""}${b.avg_pnl_pct}%` : ""}`;
@@ -585,6 +726,11 @@ export function formatCalibration(r: CalibrationReport): string {
   if (r.spx_slayer) sections.push(`---`, ``, formatSpxCalibration(r.spx_slayer));
   if (r.spx_tool_calls) sections.push(`---`, ``, formatSpxToolCallCalibration(r.spx_tool_calls));
   if (r.nighthawk_tool_calls) sections.push(`---`, ``, formatNighthawkToolCallCalibration(r.nighthawk_tool_calls));
+  // Task #149 — labeled "0DTE Command tool-calling" (not bare "0DTE") so it never
+  // reads as a duplicate of zeroDteSection above, which is about the SCANNER'S
+  // OWN trade P&L (zerodte_setup_log), a completely different axis from this
+  // section's Largo-answer-quality measurement over bie_interactions.
+  if (r.zerodte_tool_calls) sections.push(`---`, ``, formatZeroDteToolCallCalibration(r.zerodte_tool_calls));
   return sections.join("\n");
 }
 
@@ -635,6 +781,26 @@ export function formatNighthawkToolCallCalibration(r: NighthawkToolCallCalibrati
     r.recommendations.length
       ? `Recommendations (evidence-cited, report-first — a human ships the change):\n${r.recommendations.map((x) => `- ${x}`).join("\n")}`
       : `Recommendations: none yet — fewer than ${MIN_EVIDENCE} Night-Hawk-tool-calling turns in this window. The harness waits for evidence; it never tunes on noise.`,
+  ].join("\n");
+}
+
+/** Task #149 — direct analogue of formatSpxToolCallCalibration above, for 0DTE
+ *  Command's tool-calling cohort. Explicitly labeled "0DTE Command
+ *  tool-calling" (not bare "0DTE") so this never reads as a duplicate of
+ *  zeroDteSection's "0DTE Command calibration" header inside formatCalibration
+ *  — that section is the scanner's own trade P&L; this one is Largo's answer
+ *  quality on turns that touched the scanner's state. */
+export function formatZeroDteToolCallCalibration(r: ZeroDteToolCallCalibrationReport): string {
+  return [
+    `0DTE Command tool-calling Largo turns — ${r.window.since} → ${r.window.through} (${r.n} turns touched 0DTE Command's own board state)`,
+    ``,
+    `Grounding pass rate: ${r.grounding_pass_rate_pct != null ? `${r.grounding_pass_rate_pct}%` : "no graded claims yet"}`,
+    `Avg latency: ${r.avg_latency_ms != null ? `${r.avg_latency_ms}ms` : "—"}`,
+    `Answered by: ${r.claude_fallback_n} Claude tool-calling turn(s), ${r.router_matched_n} deterministic router match(es)${r.router_match_rate_pct != null ? ` (${r.router_match_rate_pct}% router-matched)` : ""}`,
+    ``,
+    r.recommendations.length
+      ? `Recommendations (evidence-cited, report-first — a human ships the change):\n${r.recommendations.map((x) => `- ${x}`).join("\n")}`
+      : `Recommendations: none yet — fewer than ${MIN_EVIDENCE} 0DTE-Command-tool-calling turns in this window. The harness waits for evidence; it never tunes on noise.`,
   ].join("\n");
 }
 
@@ -726,6 +892,34 @@ async function computeNighthawkToolCallCalibrationFromDb(
   }
 }
 
+/** Task #149's 0DTE-Command-tool-calling pass — direct analogue of
+ *  computeSpxToolCallCalibrationFromDb above, fed by
+ *  fetchZeroDteToolCallingBieInteractions (which does the cohort filtering at
+ *  the SQL layer — see its doc comment in db.ts). Same fail-open contract
+ *  (never throws) as every other *FromDb helper in this file, so a problem
+ *  here can never take down the rest of the report. */
+async function computeZeroDteToolCallCalibrationFromDb(
+  since: string,
+  through: string
+): Promise<ZeroDteToolCallCalibrationReport | null> {
+  try {
+    const rows = await fetchZeroDteToolCallingBieInteractions(since, ZERODTE_ENGINE_TOOL_NAMES);
+    return computeZeroDteToolCallCalibration(
+      rows.map((r) => ({
+        tools_used: r.tools_used,
+        intent_bucket: r.intent_bucket,
+        answer_source: r.answer_source,
+        claims_total: r.claims_total,
+        claims_verified: r.claims_verified,
+        latency_ms: r.latency_ms,
+      })),
+      { since, through }
+    );
+  } catch {
+    return null;
+  }
+}
+
 /** Build the rolling-window calibration report, persist it into the knowledge
  *  store, and return it. Runs on the daily cron tick; safe ad hoc. */
 export async function runBieCalibration(days = 14): Promise<CalibrationReport | null> {
@@ -762,6 +956,10 @@ export async function runBieCalibration(days = 14): Promise<CalibrationReport | 
     // FOURTH, independent read-only pass over bie_interactions, never touching
     // spx_signals.ts, nighthawk/* generation code, or any live gate/score/action.
     report.nighthawk_tool_calls = await computeNighthawkToolCallCalibrationFromDb(since, through);
+    // Task #149: attach the 0DTE-Command-tool-calling answer-quality cohort too — a
+    // FOURTH, independent read-only pass over bie_interactions, never touching
+    // zerodte_setup_log or any live scanner gate/threshold/action.
+    report.zerodte_tool_calls = await computeZeroDteToolCallCalibrationFromDb(since, through);
     await storeKnowledge("self_eval", `bie:calibration:${through}`, formatCalibration(report)).catch(() => 0);
     return report;
   } catch {

@@ -690,6 +690,31 @@ export const NIGHTHAWK_ENGINE_TOOL_NAMES = [
   "get_nighthawk_dossier",
 ];
 
+// Task #149 — the analogous cohort-membership list for 0DTE Command (the SEPARATE
+// multi-ticker scanner behind `/grid`'s default tab, per task #127's standing
+// disambiguation from SPX Slayer above — both are "0DTE"-branded but are two
+// independent engines). Same design philosophy as SPX_ENGINE_TOOL_NAMES: kept to
+// the tools whose run-tool.ts implementation reads 0DTE Command's OWN persisted/
+// computed engine state, verified against run-tool.ts's case statements, not
+// guessed from naming:
+//   - get_zerodte_plays → zeroDtePlaysForLargo() (zerodte/scan.ts) → readZeroDteLedger()
+//     joined with scanZeroDteBoard()'s live finds — reads zerodte_setup_log, the
+//     board's own committed-setup ledger.
+//   - get_zerodte_rejections → zeroDteRejectionsForLargo() (zerodte/rejections.ts) —
+//     reads zerodte_scan_rejections (task #147), the board's own near-miss/gate-
+//     rejection log. See admin-zerodte-health.ts's module doc for more background
+//     on both tables.
+// Unlike SPX_ENGINE_TOOL_NAMES, this is NOT a narrowing of a larger routing bundle —
+// TOOL_GROUPS.platform (where both tools live) has no generic, ticker-agnostic
+// tools bundled in alongside them the way spx_desk does, so there is nothing to
+// exclude; this list is simply the full pair. Kept as an explicit literal list
+// (not derived from TOOL_GROUPS.platform) for the same reason SPX_ENGINE_TOOL_NAMES
+// is: this cohort tracks "did Largo read 0DTE Command's own engine state" and must
+// not silently widen if TOOL_GROUPS.platform gains unrelated tools later — see
+// tool-defs.test.ts for the assertion that keeps this list a verified subset of
+// TOOL_GROUPS.platform.
+export const ZERODTE_ENGINE_TOOL_NAMES = ["get_zerodte_plays", "get_zerodte_rejections"];
+
 const CORE_TOOLS = [
   "get_market_context",
   ...TOOL_GROUPS.spx_desk,
