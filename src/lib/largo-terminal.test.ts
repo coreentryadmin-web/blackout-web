@@ -32,6 +32,11 @@ type InsertedRow = {
 
 let inserted: InsertedRow[] = [];
 let toolLoopToolNames: string[] = [];
+// Task #165 — when set, the mocked anthropicToolLoop below dispatches one tool (so the
+// failure row's tools_used can be proven to carry whatever partial progress happened before
+// the throw) and then throws this error, simulating a real tool-loop failure (timeout,
+// Anthropic API error, etc.) instead of resolving with an answer.
+let toolLoopError: Error | null = null;
 
 let runLargoQuery: typeof import("./largo-terminal").runLargoQuery;
 let runLargoQueryStream: typeof import("./largo-terminal").runLargoQueryStream;
@@ -75,6 +80,13 @@ before(async () => {
       anthropicToolLoop: async (params: {
         runTool: (name: string, input: Record<string, unknown>) => Promise<unknown>;
       }) => {
+        if (toolLoopError) {
+          // Partial progress before the failure — proves the logged failure row's
+          // tools_used carries whatever really happened, not an empty placeholder.
+          await params.runTool("get_quote", { ticker: "NVDA" });
+          toolLoopToolNames.push("get_quote");
+          throw toolLoopError;
+        }
         await params.runTool("get_quote", { ticker: "NVDA" });
         await params.runTool("get_technicals", { ticker: "NVDA" });
         toolLoopToolNames.push("get_quote", "get_technicals");
@@ -238,4 +250,71 @@ test("runLargoQueryStream: same persistence contract on the streaming path — C
   assert.equal(row.intent, null);
   assert.equal(row.intent_bucket, "claude_fallback");
   assert.deepEqual(row.tools_used, ["live_feed_capture", "get_quote", "get_technicals"]);
+});
+
+// Task #165 — root cause: runLargoQuery's try block wrapping anthropicToolLoop had ONLY a
+// finally, no catch, so a thrown error skipped logBie() entirely and propagated straight to
+// the API route (a bare 502) with no trace in bie_interactions. These two tests lock in the
+// fix: the error must still propagate/emit completely unchanged (never swallowed), AND a
+// minimal failure row must land so calibration reports can see the failure happened at all.
+test("runLargoQuery: a thrown tool-loop error still propagates AND writes a logBie row with answer_source 'error'", async () => {
+  inserted = [];
+  toolLoopToolNames = [];
+  toolLoopError = new Error("tool loop boom");
+  try {
+    await assert.rejects(
+      () => runLargoQuery("Why did NVDA reverse today?", "", "user-err-1"),
+      /tool loop boom/
+    );
+    await waitForInserts(1);
+
+    assert.equal(inserted.length, 1);
+    const row = inserted[0]!;
+    assert.equal(row.answer_source, "error");
+    // Claims are explicitly null (never 0) — a turn that never produced an answer has no
+    // claims that were "verified none of," which is what 0 would falsely imply.
+    assert.equal(row.claims_total, null);
+    assert.equal(row.claims_verified, null);
+    assert.equal(row.intent, null);
+    assert.equal(row.intent_bucket, "claude_fallback");
+    // Whatever tool progress happened before the throw is still captured — not an empty
+    // placeholder — same "real tool names dispatched this turn" contract as the success path.
+    assert.deepEqual(row.tools_used, ["live_feed_capture", "get_quote"]);
+    assert.equal(typeof row.latency_ms, "number");
+  } finally {
+    toolLoopError = null;
+  }
+});
+
+test("runLargoQueryStream: a thrown tool-loop error still emits an 'error' SSE event AND writes a logBie row with answer_source 'error'", async () => {
+  inserted = [];
+  toolLoopToolNames = [];
+  toolLoopError = new Error("stream tool loop boom");
+  try {
+    const events: unknown[] = [];
+    // runLargoQueryStream's own catch swallows the error (it emits an SSE event instead of
+    // rethrowing) — the call must resolve, not reject.
+    await runLargoQueryStream("Should I hold my TSLA play into the close?", "", "user-err-2", (e) =>
+      events.push(e)
+    );
+    await waitForInserts(1);
+
+    assert.equal(inserted.length, 1);
+    const row = inserted[0]!;
+    assert.equal(row.answer_source, "error");
+    assert.equal(row.claims_total, null);
+    assert.equal(row.claims_verified, null);
+    assert.equal(row.intent_bucket, "claude_fallback");
+    assert.deepEqual(row.tools_used, ["live_feed_capture", "get_quote"]);
+
+    // The pre-existing error-event behavior is completely unchanged by this fix — purely
+    // additive logging, never a swallow of the visible failure signal either.
+    const errorEvent = events.find((e) => (e as { type?: string }).type === "error") as
+      | { type: string; message: string }
+      | undefined;
+    assert.ok(errorEvent, "expected an 'error' SSE event");
+    assert.equal(errorEvent?.message, "stream tool loop boom");
+  } finally {
+    toolLoopError = null;
+  }
 });
