@@ -4471,6 +4471,62 @@ export async function fetchSpxToolCallingBieInteractions(
   }));
 }
 
+/** Task #133 — the HELIX analogue of fetchSpxToolCallingBieInteractions above: the
+ *  raw rows BIE's calibration harness needs to score "how good are Largo's answers
+ *  specifically when HELIX's own tape/anomaly-detector state was involved"
+ *  (src/lib/bie/calibration.ts's computeHelixToolCallCalibration). Same SQL-layer
+ *  filtering rationale (bie_interactions is one row per Largo QUESTION, much
+ *  higher volume than fetch-then-filter-in-JS tables like zerodte_setup_log), but
+ *  DELIBERATELY WITHOUT an `intent_bucket = '...'` OR-clause — unlike SPX Slayer's
+ *  fetcher above, this is not an oversight. Investigated src/lib/bie/router.ts's
+ *  classifyBieIntent() directly: it recognizes exactly four intents
+ *  (zerodte_plays, ticker_play_state, spx_structure, market_context) and NONE of
+ *  them route a HELIX/flow question deterministically — there is no
+ *  composeBieAnswer branch that reads the flow tape or the anomaly near-miss log
+ *  the way composeSpxStructure reads SPX Slayer's engine state. So there is no
+ *  intent_bucket value a router-matched HELIX turn could ever carry, and adding a
+ *  clause like `OR intent_bucket = 'flow_analysis'` would be fabricating a match
+ *  condition for a code path that does not exist. A pure tools_used check is the
+ *  complete and correct membership test for this cohort today; if a future task
+ *  adds a deterministic HELIX router intent, this fetcher (and
+ *  computeHelixToolCallCalibration's router_matched_n, which will legitimately
+ *  read 0 until then) should gain the analogous OR-clause at that time. */
+export async function fetchHelixToolCallingBieInteractions(
+  sinceDate: string,
+  helixEngineToolNames: string[],
+  limit = 3000
+): Promise<
+  Array<{
+    tools_used: string[];
+    intent_bucket: string | null;
+    answer_source: string;
+    claims_total: number | null;
+    claims_verified: number | null;
+    latency_ms: number | null;
+    created_at: string;
+  }>
+> {
+  await ensureSchema();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT tools_used, intent_bucket, answer_source, claims_total, claims_verified, latency_ms, created_at
+     FROM bie_interactions
+     WHERE created_at >= $1::date
+       AND tools_used ?| $2::text[]
+     ORDER BY created_at DESC
+     LIMIT $3`,
+    [sinceDate, helixEngineToolNames, limit]
+  );
+  return res.rows.map((r) => ({
+    tools_used: Array.isArray(r.tools_used) ? (r.tools_used as string[]) : [],
+    intent_bucket: r.intent_bucket != null ? String(r.intent_bucket) : null,
+    answer_source: String(r.answer_source),
+    claims_total: r.claims_total != null ? Number(r.claims_total) : null,
+    claims_verified: r.claims_verified != null ? Number(r.claims_verified) : null,
+    latency_ms: r.latency_ms != null ? Number(r.latency_ms) : null,
+    created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+  }));
+}
+
 export async function updateZeroDtePlanOutcome(
   sessionDate: string,
   ticker: string,
