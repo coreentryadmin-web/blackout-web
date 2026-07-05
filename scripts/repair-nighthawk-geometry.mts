@@ -9,6 +9,15 @@ import { validatePlayGeometry } from "../src/lib/nighthawk/play-constraints.ts";
 import { buildDirectionalStockLevels, parsePlayLevels } from "../src/lib/nighthawk/play-levels.ts";
 import type { PlaybookPlay } from "../src/lib/nighthawk/types.ts";
 
+function isoDateOnly(value: unknown): string {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  const s = String(value);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  throw new Error(`Cannot normalize edition_for date: ${s}`);
+}
+
 const dryRun = process.argv.includes("--dry-run");
 const editionArg = process.argv.find((a) => a.startsWith("--edition="))?.split("=")[1];
 
@@ -51,7 +60,7 @@ async function main() {
     process.exit(1);
   }
 
-  const editionFor = String(row.edition_for).slice(0, 10);
+  const editionFor = editionArg ?? isoDateOnly(row.edition_for);
   const plays = (Array.isArray(row.plays) ? row.plays : []) as PlaybookPlay[];
   let repaired = 0;
   const nextPlays = plays.map((p) => {
