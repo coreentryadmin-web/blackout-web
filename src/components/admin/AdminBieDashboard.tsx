@@ -276,6 +276,79 @@ type ZeroDteHealthPayload = {
   errors: string[];
 };
 
+// HELIX health panel (task #134) — payload shape of /api/admin/helix/health, the
+// HELIX flow-ingestion-pipeline analogue of the two panels above: cron liveness for
+// flow-ingest + market-regime-detector, a read-only cluster-wide live-tape heartbeat
+// peek (never triggers a reconnect/poll of its own), and today's committed-vs-
+// near-miss anomaly counts (the SAME committed/rejected union pattern 0DTE Command's
+// panel uses, applied to flow_anomalies/flow_anomaly_near_misses). See
+// src/lib/admin-helix-health.ts for the read-only data source and
+// src/app/api/admin/helix/health/route.ts for the route.
+type HelixHealthCronJob = {
+  key: string;
+  name: string;
+  status: string;
+  status_label: string;
+  last_run_at: string | null;
+  age_min: number | null;
+  runs_24h: { ok: number; failed: number; skipped: number };
+};
+
+type HelixHealthTapePeek = {
+  heartbeat_present: boolean;
+  last_frame_at: string | null;
+  age_sec: number | null;
+  fresh: boolean;
+};
+
+type HelixHealthAnomalyRow = {
+  id: number;
+  detected_at: string;
+  anomaly_type: string;
+  ticker: string | null;
+  detail: string;
+  premium: number | null;
+  direction: string | null;
+  severity: string | null;
+};
+
+type HelixHealthNearMissRow = {
+  id: number;
+  observed_at: string;
+  anomaly_type: string;
+  ticker: string | null;
+  reason: string;
+  metric_value: number;
+  threshold: number;
+  premium: number | null;
+  direction: string | null;
+  severity: string | null;
+  detail: string;
+};
+
+type HelixHealthRecentError = {
+  scope: string | null;
+  name: string;
+  message: string;
+  created_at: string;
+};
+
+type HelixHealthPayload = {
+  generated_at: string;
+  session_date: string;
+  db_configured: boolean;
+  cron: HelixHealthCronJob[];
+  tape: HelixHealthTapePeek;
+  candidates_scanned: number;
+  committed_count: number;
+  near_miss_only_count: number;
+  near_miss_rate: number | null;
+  recent_committed: HelixHealthAnomalyRow[];
+  recent_near_misses: HelixHealthNearMissRow[];
+  recent_errors: HelixHealthRecentError[];
+  errors: string[];
+};
+
 // Static, hand-kept-in-sync summary of docs/bie/FULL-SYSTEM-AWARENESS.md — the
 // roadmap doc is the source of truth; this is a legible dashboard view of it,
 // not a second source. Update alongside that doc when a stage's status changes.
@@ -416,6 +489,32 @@ export function AdminBieDashboard() {
     void loadZeroDteHealth();
   }, [loadZeroDteHealth]);
 
+  // HELIX health panel (task #134) — same independence contract as every other
+  // health fetch above: its own state/effect, so a failure here can never blank or
+  // block the rest of this dashboard (or any other panel), and vice versa. Wired
+  // into the SAME "Recompute" button below for one refresh affordance.
+  const [helixHealth, setHelixHealth] = useState<HelixHealthPayload | null>(null);
+  const [helixHealthLoading, setHelixHealthLoading] = useState(true);
+  const [helixHealthError, setHelixHealthError] = useState<string | null>(null);
+
+  const loadHelixHealth = useCallback(async () => {
+    setHelixHealthLoading(true);
+    setHelixHealthError(null);
+    try {
+      const res = await fetch("/api/admin/helix/health", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setHelixHealth((await res.json()) as HelixHealthPayload);
+    } catch (e) {
+      setHelixHealthError(e instanceof Error ? e.message : "failed to load");
+    } finally {
+      setHelixHealthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadHelixHealth();
+  }, [loadHelixHealth]);
+
   const act = useCallback(
     async (id: string, action: "ack" | "resolve") => {
       setActing(id);
@@ -471,6 +570,15 @@ export function AdminBieDashboard() {
     : gexHealth && (gexStaleTickerCount > 0 || gexCronUnhealthyCount > 0)
       ? "amber"
       : "bull";
+
+  const helixCronUnhealthyCount = helixHealth?.cron.filter((j) => j.status !== "healthy").length ?? 0;
+  const helixHealthAccent: "bull" | "bear" | "violet" | "cyan" | "amber" = helixHealthError
+    ? "amber"
+    : helixHealth && helixHealth.cron.some((j) => j.status === "failed" || j.status === "stale")
+      ? "bear"
+      : helixHealth && (helixCronUnhealthyCount > 0 || !helixHealth.tape.fresh)
+        ? "amber"
+        : "bull";
 
   return (
     <div className="admin-bie-dashboard">
@@ -539,6 +647,7 @@ export function AdminBieDashboard() {
               void loadSpxHealth();
               void loadGexHealth();
               void loadZeroDteHealth();
+              void loadHelixHealth();
             }}
             disabled={loading}
           >
@@ -1006,6 +1115,169 @@ export function AdminBieDashboard() {
         )}
         {zeroDteHealth && !zeroDteHealth.db_configured && (
           <p className="admin-warn">DATABASE_URL not set — candidates-scanned/rejection-rate will read as 0.</p>
+        )}
+      </GlassPanel>
+
+      {/* HELIX health (task #134) — read-only glance at HELIX's flow-ingestion
+          pipeline: cron liveness for the two crons that make up the pipeline
+          (flow-ingest, the raw UW flow tape writer; market-regime-detector, which
+          derives flow_regime and writes flow_anomalies/flow_anomaly_near_misses
+          from that tape), a cluster-wide live-tape heartbeat PEEK (never triggers
+          a reconnect/poll of its own — see peekFlowLivenessHeartbeat's doc), and
+          today's committed-vs-near-miss anomaly counts — the SAME committed/
+          rejected union pattern 0DTE Command's panel above uses, applied to
+          flow_anomalies (committed) / flow_anomaly_near_misses (task #131, the
+          rejected half). Own fetch/state (see loadHelixHealth above), same
+          resilience contract as every other panel on this page. */}
+      <GlassPanel
+        kicker="HELIX · read-only heartbeat peek, never triggers a reconnect/poll"
+        title="HELIX health"
+        accent={helixHealthAccent}
+      >
+        {helixHealthError && (
+          <p className="admin-bie-error-text">HELIX health fetch failed: {helixHealthError}</p>
+        )}
+        <div className="admin-metric-chip-row">
+          <MetricChip
+            label="Live tape heartbeat"
+            value={
+              !helixHealth
+                ? "—"
+                : !helixHealth.tape.heartbeat_present
+                  ? "cold"
+                  : helixHealth.tape.fresh
+                    ? "fresh"
+                    : `stale (${helixHealth.tape.age_sec}s)`
+            }
+            tone={
+              !helixHealth ? "neutral" : helixHealth.tape.fresh ? "bull" : "amber"
+            }
+          />
+          {helixHealth?.cron.map((j) => (
+            <MetricChip
+              key={j.key}
+              label={j.name}
+              value={j.status_label}
+              tone={
+                j.status === "healthy"
+                  ? "bull"
+                  : j.status === "failed" || j.status === "stale"
+                    ? "bear"
+                    : "amber"
+              }
+            />
+          ))}
+          <MetricChip
+            label="Candidates scanned"
+            value={helixHealth ? `${helixHealth.candidates_scanned} (${helixHealth.session_date})` : "—"}
+            tone="cyan"
+          />
+          <MetricChip
+            label="Near-miss rate"
+            value={
+              !helixHealth || helixHealth.near_miss_rate == null
+                ? "—"
+                : `${Math.round(helixHealth.near_miss_rate * 100)}% (${helixHealth.near_miss_only_count}/${helixHealth.candidates_scanned})`
+            }
+            tone={
+              !helixHealth || helixHealth.near_miss_rate == null
+                ? "neutral"
+                : helixHealth.near_miss_rate > 0.8
+                  ? "amber"
+                  : "violet"
+            }
+          />
+        </div>
+
+        <p className="admin-bie-coverage-note">
+          {helixHealth
+            ? `As of ${fmtEt(helixHealth.generated_at)} ET · heartbeat ${helixHealth.tape.last_frame_at ? `last frame ${fmtEt(helixHealth.tape.last_frame_at)} ET` : "never observed this session"}`
+            : helixHealthLoading
+              ? "Loading…"
+              : "—"}
+        </p>
+
+        {helixHealth && !helixHealth.db_configured && (
+          <p className="admin-warn">
+            DATABASE_URL not set — candidates-scanned/near-miss-rate/anomaly tables below will read as 0/empty.
+          </p>
+        )}
+
+        <p className="admin-bie-coverage-note">Committed anomalies today (flow_anomalies)</p>
+        {!helixHealth || helixHealth.recent_committed.length === 0 ? (
+          <p className="admin-bie-empty-text">No committed HELIX anomalies logged yet today.</p>
+        ) : (
+          <DataTable>
+            <thead>
+              <tr>
+                <th>Ticker</th>
+                <th>Type</th>
+                <th>Direction</th>
+                <th>Premium</th>
+                <th>Detail</th>
+                <th>Detected</th>
+              </tr>
+            </thead>
+            <tbody>
+              {helixHealth.recent_committed.map((r) => (
+                <tr key={r.id}>
+                  <td className="admin-td-strong">{r.ticker ?? "—"}</td>
+                  <td>{r.anomaly_type}</td>
+                  <td>{r.direction ?? "—"}</td>
+                  <td>{fmtPremium(r.premium)}</td>
+                  <td className="admin-bie-issue-detail">{r.detail}</td>
+                  <td className="admin-bie-issue-meta">{fmtEt(r.detected_at)} ET</td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
+        )}
+
+        <p className="admin-bie-coverage-note">Near-misses today (flow_anomaly_near_misses, task #131)</p>
+        {!helixHealth || helixHealth.recent_near_misses.length === 0 ? (
+          <p className="admin-bie-empty-text">
+            {helixHealth && !helixHealth.db_configured
+              ? "DB not configured — near-miss history unavailable."
+              : "No near-misses logged yet today."}
+          </p>
+        ) : (
+          <DataTable>
+            <thead>
+              <tr>
+                <th>Ticker</th>
+                <th>Type</th>
+                <th>Reason</th>
+                <th>Direction</th>
+                <th>Detail</th>
+                <th>Observed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {helixHealth.recent_near_misses.map((r) => (
+                <tr key={r.id}>
+                  <td className="admin-td-strong">{r.ticker ?? "—"}</td>
+                  <td>{r.anomaly_type}</td>
+                  <td>{r.reason}</td>
+                  <td>{r.direction ?? "—"}</td>
+                  <td className="admin-bie-issue-detail">{r.detail}</td>
+                  <td className="admin-bie-issue-meta">{fmtEt(r.observed_at)} ET</td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
+        )}
+
+        {helixHealth && helixHealth.recent_errors.length > 0 && (
+          <>
+            <p className="admin-bie-coverage-note admin-bie-error-text">
+              Recent HELIX-scoped errors (best-effort filter over the shared error_events sink)
+            </p>
+            {helixHealth.recent_errors.map((e, i) => (
+              <p key={i} className="admin-bie-issue-detail">
+                – [{e.scope ?? "—"}] {e.message} ({fmtEt(e.created_at)} ET)
+              </p>
+            ))}
+          </>
         )}
       </GlassPanel>
 
