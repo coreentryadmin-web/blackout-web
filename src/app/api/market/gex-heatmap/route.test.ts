@@ -31,7 +31,7 @@ mock.module("../../../../lib/market-api-auth", {
 });
 mock.module("../../../../lib/tool-access-server", {
   namedExports: {
-    requireToolApi: async () => null, // tool launched — never gate the test
+    requireAnyToolApi: async () => null, // tool launched — never gate the test
   },
 });
 mock.module("../../../../lib/providers/polygon-options-gex", {

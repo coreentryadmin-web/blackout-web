@@ -71,6 +71,16 @@ export function useMergedDesk() {
       if (data.pulse) void mutate("spx-desk-pulse", data.pulse, { revalidate: false });
       if (data.flow) void mutate("spx-desk-flow", data.flow, { revalidate: false });
       if (data.desk) void mutate("spx-desk-full", data.desk, { revalidate: false });
+      if (data.gexHeatmap && data.gexHeatmap.strikes?.length && data.gexHeatmap.spot > 0) {
+        void mutate(
+          "/api/market/gex-heatmap?ticker=SPX",
+          {
+            available: true,
+            ...data.gexHeatmap,
+          },
+          { revalidate: false }
+        );
+      }
     },
   });
 

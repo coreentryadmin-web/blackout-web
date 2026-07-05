@@ -41,7 +41,7 @@ export function SpxDashboard() {
   const tier = (user?.publicMetadata as { tier?: string } | undefined)?.tier;
   const { desk, live, refreshing, deskLoading, sessionActive } = useMergedDesk();
 
-  if (isLoaded && tier && tier !== "premium" && tier !== "admin") {
+  if (isLoaded && tier && tier !== "premium") {
     return (
       <div className="flex min-h-[60vh] items-center justify-center px-4">
         <EmptyState

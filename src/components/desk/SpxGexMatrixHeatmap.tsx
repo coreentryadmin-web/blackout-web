@@ -241,8 +241,8 @@ export function SpxGexMatrixHeatmap({
       kicker={`SPX · ${lensLabel} matrix · near-term`}
       title="Dealer gamma map"
       actions={
-        <span className="flex items-center gap-2 font-mono text-[10px] tabular-nums text-white/70">
-          {isValidating && !isLoading && <span className="text-white/50">↻</span>}
+        <span className="flex items-center gap-2 font-mono text-[10px] tabular-nums text-sky-300">
+          {isValidating && !isLoading && <span className="text-cyan-400">↻</span>}
           <span
             className={clsx("badge-live-dot", feedLive ? "animate-pulse" : "opacity-40")}
             aria-hidden
@@ -284,7 +284,7 @@ export function SpxGexMatrixHeatmap({
         </div>
         <div className="grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-[10px]">
           <div>
-            <span className="text-white/50 uppercase tracking-wider">
+            <span className="text-sky-300 uppercase tracking-wider">
               γ flip {isTrueZeroDte ? "(0DTE)" : "(col)"}
             </span>
             <div className="text-sm font-bold tabular-nums text-white">
@@ -292,14 +292,14 @@ export function SpxGexMatrixHeatmap({
             </div>
           </div>
           <div>
-            <span className="text-white/50 uppercase tracking-wider">Net {lensLabel}</span>
+            <span className="text-sky-300 uppercase tracking-wider">Net {lensLabel}</span>
             <div className="text-sm font-bold tabular-nums text-white">
               {hasData ? fmtHeatmapMoneySigned(odteLevels.netTotal) : "—"}
             </div>
           </div>
         </div>
         {flipDiffers && deskGammaFlip != null && (
-          <p className="font-mono text-[9px] leading-snug text-white/45">
+          <p className="font-mono text-[9px] leading-snug text-cyan-400">
             Header γ flip {fmtHeatmapStrike(deskGammaFlip)} uses 8-expiry aggregate.
             {deskGexKing != null ? ` King ${fmtHeatmapStrike(deskGexKing)}.` : ""}
           </p>
@@ -318,19 +318,23 @@ export function SpxGexMatrixHeatmap({
       </div>
 
       {isLoading && !data ? (
-        <p className="font-mono text-[11px] text-white/60 py-4 px-2">Loading gamma matrix…</p>
+        <p className="font-mono text-[11px] text-sky-300 py-4 px-2">Loading gamma matrix…</p>
       ) : error && !hasData ? (
-        <p className="font-mono text-[11px] text-white/60 py-4 px-2">Matrix unavailable — retrying…</p>
+        <p className="font-mono text-[11px] text-sky-300 py-4 px-2">Matrix unavailable — retrying…</p>
       ) : !hasData ? (
-        <p className="font-mono text-[11px] text-white/60 py-4 px-2">Mapping dealer nodes…</p>
+        <p className="font-mono text-[11px] text-sky-300 py-4 px-2">Mapping dealer nodes…</p>
       ) : (
         <div
           ref={scrollBoxRef}
           className="spx-gex-matrix-scroll flex-1 min-h-0 overflow-auto overscroll-contain"
         >
-          <table className="spx-gex-matrix-table w-max min-w-full border-collapse font-mono text-[12px] tabular-nums">
+          <table
+            className="spx-gex-matrix-table w-max min-w-full border-collapse font-mono text-[12px] tabular-nums"
+            role="grid"
+            aria-label="SPX dealer gamma matrix by strike and expiry"
+          >
             <thead className="sticky top-0 z-20 bg-[#08080e]">
-              <tr className="border-b border-white/10 text-[10px] uppercase tracking-wider text-white/55">
+              <tr className="border-b border-white/10 text-[10px] uppercase tracking-wider text-sky-300">
                 <th className="sticky left-0 z-30 bg-[#08080e] py-1.5 pl-1 pr-2 text-left font-semibold">
                   Strike
                 </th>
@@ -468,7 +472,7 @@ export function SpxGexMatrixHeatmap({
         </div>
       )}
 
-      <div className="mt-2 shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 font-mono text-[9px] text-white/45">
+      <div className="mt-2 shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 font-mono text-[9px] text-cyan-400">
         <span>{strikesAxis.length} strikes · ±6% SPX band · {displayExpiries.length} expiries</span>
         {columnKings.size > 0 && (
           <span>
