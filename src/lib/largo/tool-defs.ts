@@ -692,6 +692,141 @@ export const SPX_ENGINE_TOOL_NAMES = [
 // flow_analysis; get_flow_anomaly_near_misses lives in platform.)
 export const HELIX_ENGINE_TOOL_NAMES = ["get_flow_tape", "get_flow_anomaly_near_misses"];
 
+// Task #137 — the cohort-membership test for "did this Largo turn touch BlackOut
+// Thermal's OWN computed/cached dealer-positioning state" (BIE's self-eval loop,
+// calibration.ts), same purpose as SPX_ENGINE_TOOL_NAMES above but for Thermal
+// (the GEX/gamma/dealer-positioning product behind /heatmap) instead of SPX Slayer.
+//
+// Verified against run-tool.ts's case statements, not guessed from naming — and
+// the naming trap here is real, so read carefully before "fixing" this list:
+//   - get_positioning (case "get_positioning" → fetchPositioningSummary,
+//     src/lib/nighthawk/positioning.ts): PRIMARY path calls getGexPositioning(sym)
+//     (src/lib/providers/gex-positioning.ts), which is a strict CACHE-READER over
+//     fetchGexHeatmap's shared `gex-heatmap:{ticker}` matrix — that file's own doc
+//     comment calls it "the ONE source every other tool/service/AI surface consumes
+//     for the Heat Maps dealer-positioning data." This is exactly Thermal's own
+//     engine state (spot, gamma flip, call/put walls, max pain, GEX king strike,
+//     net GEX/VEX/DEX/CHARM). INCLUDED.
+//   - get_gex_regime_events (case "get_gex_regime_events" → gexRegimeEventsForLargo,
+//     src/lib/providers/gex-regime-events.ts): reads gex_regime_events, task #136's
+//     durable Postgres log of flip/wall/regime transitions — persisted directly off
+//     computeGexEvents()' diff of Thermal's own fetchGexHeatmap matrix (see that
+//     file's header comment: "ONE DERIVATION, NOT TWO... every call site passes in
+//     the EXACT GexEvent[] array computeGexEvents() already produced"). This is
+//     Thermal's own transition HISTORY, the durable analogue of the CURRENT-state
+//     snapshot get_positioning returns. INCLUDED. (Note: tool-defs.test.ts already
+//     asserts this name is NOT part of SPX_ENGINE_TOOL_NAMES, for the unrelated
+//     reason that it's ticker-generic rather than SPX-Slayer-engine-specific — that
+//     exclusion says nothing about Thermal-specificity, which is the only axis this
+//     list cares about.)
+//   - get_gex (case "get_gex"): despite the name — and despite this being "the GEX
+//     product" — this tool's implementation does NOT read fetchGexHeatmap or
+//     getGexPositioning at all. For SPX/I:SPX at today's expiry it reads
+//     getLargoSpxLiveDesk(userId), i.e. SPX SLAYER's own live desk (SPX_ENGINE_TOOL_
+//     NAMES' territory, not Thermal's). For every other case it calls
+//     fetchPolygonOdteGexRows → fetchPolygonOdteDeskBundle, a THIRD, separate,
+//     spot-keyed (no ticker parameter at all) cache — the 0DTE desk bundle, not the
+//     per-ticker Thermal heatmap matrix — or, failing that, raw ad hoc Unusual
+//     Whales spot-exposure/gex-level calls. None of get_gex's three branches ever
+//     touch Thermal's canonical cache. EXCLUDED — the same "too generic, verified
+//     via the case body" reasoning SPX_ENGINE_TOOL_NAMES's own comment gives for
+//     excluding get_gex from ITS list, just landing on the identical conclusion for
+//     a different, Thermal-specific reason: it doesn't read Thermal's state either.
+//   - get_options_chain / get_oi_per_strike / get_max_pain / get_greeks /
+//     get_atm_chains / get_options_volume (all TOOL_GROUPS.stock_analysis): each
+//     one independently fetches+computes over a raw polygonChainBundle() chain for
+//     whatever ticker/expiry was asked, with no read of the shared heatmap cache —
+//     generic per-ticker options-chain shape, not a Thermal-positioning-specific
+//     read. EXCLUDED.
+//   - get_ecosystem_context (BIE_TOOL_NAMES/TOOL_GROUPS.platform): its payload DOES
+//     embed gex_positioning (the same getGexPositioning() object get_positioning
+//     returns), but it's a cross-product, ANY-ticker tool, and bie_interactions.
+//     tools_used only records tool NAMES, never call inputs — there's no way to
+//     tell from a row alone whether a given call actually needed the GEX slice or
+//     was scoped to something unrelated (e.g. a 0DTE/Night Hawk question about a
+//     name with no Thermal angle at all). Same reasoning SPX_ENGINE_TOOL_NAMES's
+//     own comment gives for excluding it from that list. EXCLUDED.
+// Kept as an explicit literal list (not derived from TOOL_GROUPS.stock_analysis)
+// for the same reason SPX_ENGINE_TOOL_NAMES is: so this cohort tracks "did Largo
+// read Thermal's own computed state" and can't silently widen/narrow if
+// stock_analysis's bundle composition changes for unrelated routing reasons — see
+// tool-defs.test.ts for the assertion keeping this a verified subset of
+// TOOL_GROUPS.stock_analysis.
+export const THERMAL_ENGINE_TOOL_NAMES = ["get_positioning", "get_gex_regime_events"];
+
+// Task #144 — the cohort-membership test for "did this Largo turn touch Night
+// Hawk's OWN live-engine state" (BIE's self-eval loop, calibration.ts) — the
+// same-shaped analogue of SPX_ENGINE_TOOL_NAMES above, for Night Hawk instead
+// of SPX Slayer. Kept just as narrow, and for the same reason: only tools whose
+// run-tool.ts implementation reads Night Hawk's own persisted/computed state
+// belong here — verified against run-tool.ts's case statements, not guessed
+// from naming:
+//   - get_nighthawk_edition -> marketPlatform.nighthawk.getLatestNightHawkEdition()
+//     / getNightHawkEditionForDate(date) — the published edition object itself
+//     (recap, plays, scores) — see run-tool.ts's "get_nighthawk_edition" case.
+//   - get_nighthawk_outcomes -> fetchNighthawkOutcomeAnalytics(windowDays) +
+//     fetchPendingNighthawkOutcomes(7) — Night Hawk's own closed/pending
+//     outcome ledger — see run-tool.ts's "get_nighthawk_outcomes" case.
+//   - get_nighthawk_dossier -> fetchStagedDossiers(editionFor) falling back to
+//     fetchNighthawkScoringHistory(editionFor, ticker) — Night Hawk's own
+//     per-ticker research/scoring state (live staging while tonight's hunt is
+//     still running, the durable archive once it publishes) — see
+//     run-tool.ts's "get_nighthawk_dossier" case.
+//
+// Deliberately EXCLUDES two other Night-Hawk-adjacent TOOL_GROUPS.platform
+// tools, for the same "can't attribute scope from tools_used alone" reasoning
+// SPX_ENGINE_TOOL_NAMES gives above for excluding get_ecosystem_context:
+//   - get_spx_vs_nighthawk_comparison: its run-tool.ts case ALWAYS calls BOTH
+//     fetchPlayOutcomeStatsForWindow (SPX Slayer's own closed plays) AND
+//     fetchNighthawkOutcomeAnalytics (Night Hawk's), then returns a derived
+//     cross-product delta. A turn that called only this tool touched SPX
+//     Slayer's own engine state just as certainly as Night Hawk's — including
+//     it here wouldn't narrow this cohort, it would silently CONFLATE it with
+//     SPX-engine-state turns (the exact failure mode SPX_ENGINE_TOOL_NAMES's
+//     own comment warns against, just from the other direction).
+//   - get_platform_snapshot: a cross-service combo across up to 3 products
+//     (spx/flows/nighthawk) in a single call, gated by its own `include`/
+//     `full_edition` params — but bie_interactions.tools_used records only the
+//     tool NAME, never its call inputs, so a logged row gives no way to tell
+//     whether a given get_platform_snapshot call ever touched the nighthawk
+//     slice at all (it may have been called with `include: ["spx","flows"]`
+//     only). Including it would silently admit unrelated single-product
+//     lookups into a "Night Hawk engine state" cohort.
+// Kept as an explicit literal list (not derived from TOOL_GROUPS.platform), for
+// the same drift-resistance reason as SPX_ENGINE_TOOL_NAMES — see
+// tool-defs.test.ts for the assertion that keeps this list a verified subset of
+// TOOL_GROUPS.platform.
+export const NIGHTHAWK_ENGINE_TOOL_NAMES = [
+  "get_nighthawk_edition",
+  "get_nighthawk_outcomes",
+  "get_nighthawk_dossier",
+];
+
+// Task #149 — the analogous cohort-membership list for 0DTE Command (the SEPARATE
+// multi-ticker scanner behind `/grid`'s default tab, per task #127's standing
+// disambiguation from SPX Slayer above — both are "0DTE"-branded but are two
+// independent engines). Same design philosophy as SPX_ENGINE_TOOL_NAMES: kept to
+// the tools whose run-tool.ts implementation reads 0DTE Command's OWN persisted/
+// computed engine state, verified against run-tool.ts's case statements, not
+// guessed from naming:
+//   - get_zerodte_plays → zeroDtePlaysForLargo() (zerodte/scan.ts) → readZeroDteLedger()
+//     joined with scanZeroDteBoard()'s live finds — reads zerodte_setup_log, the
+//     board's own committed-setup ledger.
+//   - get_zerodte_rejections → zeroDteRejectionsForLargo() (zerodte/rejections.ts) —
+//     reads zerodte_scan_rejections (task #147), the board's own near-miss/gate-
+//     rejection log. See admin-zerodte-health.ts's module doc for more background
+//     on both tables.
+// Unlike SPX_ENGINE_TOOL_NAMES, this is NOT a narrowing of a larger routing bundle —
+// TOOL_GROUPS.platform (where both tools live) has no generic, ticker-agnostic
+// tools bundled in alongside them the way spx_desk does, so there is nothing to
+// exclude; this list is simply the full pair. Kept as an explicit literal list
+// (not derived from TOOL_GROUPS.platform) for the same reason SPX_ENGINE_TOOL_NAMES
+// is: this cohort tracks "did Largo read 0DTE Command's own engine state" and must
+// not silently widen if TOOL_GROUPS.platform gains unrelated tools later — see
+// tool-defs.test.ts for the assertion that keeps this list a verified subset of
+// TOOL_GROUPS.platform.
+export const ZERODTE_ENGINE_TOOL_NAMES = ["get_zerodte_plays", "get_zerodte_rejections"];
+
 const CORE_TOOLS = [
   "get_market_context",
   ...TOOL_GROUPS.spx_desk,

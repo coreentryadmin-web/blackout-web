@@ -5,8 +5,11 @@ import {
   getToolsForIntent,
   HELIX_ENGINE_TOOL_NAMES,
   LARGO_TOOL_DEFS,
+  NIGHTHAWK_ENGINE_TOOL_NAMES,
   SPX_ENGINE_TOOL_NAMES,
+  THERMAL_ENGINE_TOOL_NAMES,
   TOOL_GROUPS,
+  ZERODTE_ENGINE_TOOL_NAMES,
 } from "./tool-defs";
 
 test("BIE_TOOL_NAMES: every name is a real, callable Largo tool", () => {
@@ -128,6 +131,121 @@ test("HELIX_ENGINE_TOOL_NAMES: excludes the BIE-authored cross-product tools and
 
 test("HELIX_ENGINE_TOOL_NAMES: no duplicates", () => {
   assert.equal(new Set(HELIX_ENGINE_TOOL_NAMES).size, HELIX_ENGINE_TOOL_NAMES.length);
+});
+
+// ── Task #137: THERMAL_ENGINE_TOOL_NAMES (calibration.ts's Thermal-tool-calling cohort) ──
+
+test("THERMAL_ENGINE_TOOL_NAMES: every name is a real, callable Largo tool", () => {
+  const known = new Set(LARGO_TOOL_DEFS.map((t) => t.name));
+  for (const name of THERMAL_ENGINE_TOOL_NAMES) {
+    assert.ok(known.has(name), `${name} is in THERMAL_ENGINE_TOOL_NAMES but not in LARGO_TOOL_DEFS`);
+  }
+});
+
+test("THERMAL_ENGINE_TOOL_NAMES: every name is a subset of TOOL_GROUPS.stock_analysis", () => {
+  for (const name of THERMAL_ENGINE_TOOL_NAMES) {
+    assert.ok(
+      (TOOL_GROUPS.stock_analysis as readonly string[]).includes(name),
+      `${name} is in THERMAL_ENGINE_TOOL_NAMES but not in TOOL_GROUPS.stock_analysis — the cohort must stay a NARROWING of the bundle, never wander outside it`
+    );
+  }
+});
+
+test("THERMAL_ENGINE_TOOL_NAMES: excludes get_gex — verified via run-tool.ts that it never reads Thermal's own heatmap/positioning cache", () => {
+  // get_gex is the naming trap here: "the GEX tool" for "the GEX product," but its
+  // run-tool.ts implementation reads SPX Slayer's own live desk (SPX ticker, today's
+  // expiry) or a THIRD, separate spot-keyed 0DTE-desk bundle/raw UW fallback for
+  // every other case — never fetchGexHeatmap/getGexPositioning, Thermal's actual
+  // shared cache. See THERMAL_ENGINE_TOOL_NAMES's own doc comment for the full trace.
+  assert.ok(
+    !THERMAL_ENGINE_TOOL_NAMES.includes("get_gex"),
+    "get_gex never reads Thermal's own gex-heatmap cache and should not be in the Thermal-engine-state cohort"
+  );
+});
+
+test("THERMAL_ENGINE_TOOL_NAMES: excludes the generic per-ticker options-chain tools bundled into stock_analysis for convenience", () => {
+  // These independently fetch+compute over a raw options chain for whatever
+  // ticker/expiry was asked — generic chain/greeks shape, not a read of Thermal's
+  // own shared positioning cache.
+  for (const generic of ["get_options_chain", "get_oi_per_strike", "get_max_pain", "get_greeks", "get_atm_chains", "get_options_volume"]) {
+    assert.ok(
+      !THERMAL_ENGINE_TOOL_NAMES.includes(generic),
+      `${generic} is a generic per-ticker options-chain tool and should not be in the Thermal-engine-state cohort`
+    );
+  }
+});
+
+test("THERMAL_ENGINE_TOOL_NAMES: excludes get_ecosystem_context — cross-product, any-ticker, tools_used can't disambiguate scope", () => {
+  assert.ok(
+    !(THERMAL_ENGINE_TOOL_NAMES as readonly string[]).includes("get_ecosystem_context"),
+    "get_ecosystem_context is cross-product/any-ticker and should not be in the Thermal-engine-state cohort"
+  );
+});
+
+test("THERMAL_ENGINE_TOOL_NAMES: no duplicates", () => {
+  assert.equal(new Set(THERMAL_ENGINE_TOOL_NAMES).size, THERMAL_ENGINE_TOOL_NAMES.length);
+});
+
+// ── Task #144: NIGHTHAWK_ENGINE_TOOL_NAMES (calibration.ts's Night-Hawk-tool-calling
+// cohort) — same-shaped analogue of SPX_ENGINE_TOOL_NAMES above, for Night Hawk. ──
+
+test("NIGHTHAWK_ENGINE_TOOL_NAMES: every name is a real, callable Largo tool", () => {
+  const known = new Set(LARGO_TOOL_DEFS.map((t) => t.name));
+  for (const name of NIGHTHAWK_ENGINE_TOOL_NAMES) {
+    assert.ok(known.has(name), `${name} is in NIGHTHAWK_ENGINE_TOOL_NAMES but not in LARGO_TOOL_DEFS`);
+  }
+});
+
+test("NIGHTHAWK_ENGINE_TOOL_NAMES: every name is a subset of TOOL_GROUPS.platform", () => {
+  for (const name of NIGHTHAWK_ENGINE_TOOL_NAMES) {
+    assert.ok(
+      (TOOL_GROUPS.platform as readonly string[]).includes(name),
+      `${name} is in NIGHTHAWK_ENGINE_TOOL_NAMES but not in TOOL_GROUPS.platform — the cohort must stay a NARROWING of the platform bundle, never wander outside it`
+    );
+  }
+});
+
+test("NIGHTHAWK_ENGINE_TOOL_NAMES: excludes the two cross-product/ambiguous-scope Night-Hawk-adjacent tools", () => {
+  // get_spx_vs_nighthawk_comparison always reads BOTH products' state (conflates,
+  // doesn't narrow); get_platform_snapshot's tools_used entry can't reveal whether
+  // its `include` actually touched the nighthawk slice at all. See the doc comment
+  // on NIGHTHAWK_ENGINE_TOOL_NAMES in tool-defs.ts for the full reasoning.
+  for (const excluded of ["get_spx_vs_nighthawk_comparison", "get_platform_snapshot"]) {
+    assert.ok(
+      !NIGHTHAWK_ENGINE_TOOL_NAMES.includes(excluded),
+      `${excluded} should not be in the Night-Hawk-engine-state cohort`
+    );
+  }
+});
+
+test("NIGHTHAWK_ENGINE_TOOL_NAMES: no duplicates", () => {
+  assert.equal(new Set(NIGHTHAWK_ENGINE_TOOL_NAMES).size, NIGHTHAWK_ENGINE_TOOL_NAMES.length);
+});
+
+// ── Task #149: ZERODTE_ENGINE_TOOL_NAMES (calibration.ts's 0DTE-Command-tool-calling cohort) ──
+
+test("ZERODTE_ENGINE_TOOL_NAMES: every name is a real, callable Largo tool", () => {
+  const known = new Set(LARGO_TOOL_DEFS.map((t) => t.name));
+  for (const name of ZERODTE_ENGINE_TOOL_NAMES) {
+    assert.ok(known.has(name), `${name} is in ZERODTE_ENGINE_TOOL_NAMES but not in LARGO_TOOL_DEFS`);
+  }
+});
+
+test("ZERODTE_ENGINE_TOOL_NAMES: every name is a subset of TOOL_GROUPS.platform", () => {
+  for (const name of ZERODTE_ENGINE_TOOL_NAMES) {
+    assert.ok(
+      (TOOL_GROUPS.platform as readonly string[]).includes(name),
+      `${name} is in ZERODTE_ENGINE_TOOL_NAMES but not in TOOL_GROUPS.platform — the cohort must stay a NARROWING of the platform bundle, never wander outside it`
+    );
+  }
+});
+
+test("ZERODTE_ENGINE_TOOL_NAMES: is exactly the 0DTE Command pair — get_zerodte_plays and get_zerodte_rejections", () => {
+  assert.deepEqual(new Set(ZERODTE_ENGINE_TOOL_NAMES), new Set(["get_zerodte_plays", "get_zerodte_rejections"]));
+});
+
+test("ZERODTE_ENGINE_TOOL_NAMES: no duplicates", () => {
+  assert.equal(new Set(ZERODTE_ENGINE_TOOL_NAMES).size, ZERODTE_ENGINE_TOOL_NAMES.length);
 });
 
 // ── Task #127: get_zerodte_plays vs get_spx_play mis-routing risk ──
