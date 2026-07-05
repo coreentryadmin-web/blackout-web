@@ -1074,6 +1074,53 @@ async function runMigrations(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_nighthawk_scoring_history_edition
       ON nighthawk_scoring_history(edition_for);
+
+    -- zerodte_scan_rejections (task #147): durable near-miss/rejection log for 0DTE
+    -- Command's scanner (src/lib/zerodte/board.ts's deriveZeroDteSetups, src/lib/
+    -- zerodte/scan.ts's warmZeroDteBoard) — the 0DTE-Command analogue of
+    -- spx_engine_snapshots above, for the SEPARATE multi-ticker scanner (NOT SPX
+    -- Slayer). deriveZeroDteSetups computes real gate metrics (gross premium,
+    -- at-the-ask aggression share, side dominance, OTM%) for every candidate ticker
+    -- it aggregates from the HELIX tape and checks them against 4 thresholds
+    -- (SETUP_MIN_GROSS/SETUP_MIN_AGGR_SHARE/SETUP_MIN_DOMINANCE/SETUP_MAX_ITM_PCT),
+    -- but short-circuits (continue) past any candidate that fails one — before
+    -- this table existed nothing was written for a rejected candidate, so "why
+    -- didn't ticker X ever hit the Grid board" was unanswerable after the fact.
+    -- Committed setups already have a durable record via zerodte_setup_log/
+    -- persistZeroDteScan — this table is deliberately the REJECTED half only, never
+    -- a duplicate of that one. gate_failed records exactly which of the 4 gates (or
+    -- the structural no_dominant_strike guard) stopped the candidate; the numeric
+    -- columns are nullable because deriveZeroDteSetups short-circuits BEFORE
+    -- computing later-gate metrics — a gross-premium rejection genuinely never
+    -- computes aggression/dominance/otm_pct, so those stay null rather than being
+    -- fabricated. threshold cites the actual live gate constant at rejection time
+    -- (mirrors buildZeroDteAuditRow's same discipline) so a later threshold tune
+    -- can't retroactively relabel a historical row. Written by
+    -- persistZeroDteRejections (src/lib/zerodte/rejections.ts), throttled to one
+    -- row per ticker per DISTINCT (gate_failed, direction) state per session — see
+    -- that file's module doc for why this can't reuse spx_engine_snapshots' single-
+    -- cursor throttle idiom (many simultaneous candidate tickers, not one
+    -- instrument).
+    CREATE TABLE IF NOT EXISTS zerodte_scan_rejections (
+      id             BIGSERIAL PRIMARY KEY,
+      observed_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      session_date   DATE NOT NULL,
+      ticker         TEXT NOT NULL,
+      gate_failed    TEXT NOT NULL,
+      threshold      NUMERIC,
+      gross_premium  NUMERIC,
+      aggression     NUMERIC,
+      side_dominance NUMERIC,
+      otm_pct        NUMERIC,
+      direction      TEXT,
+      prints         INTEGER,
+      first_seen     TIMESTAMPTZ,
+      last_seen      TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_zerodte_scan_rejections_observed_at
+      ON zerodte_scan_rejections (observed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_zerodte_scan_rejections_ticker
+      ON zerodte_scan_rejections (ticker, observed_at DESC);
   `);
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
@@ -1845,6 +1892,109 @@ export async function fetchRecentSpxEngineSnapshots(limit = 50): Promise<
     gates_blocks: r.gates_blocks,
     thesis: String(r.thesis),
     as_of: r.as_of != null ? String(r.as_of) : null,
+  }));
+}
+
+/**
+ * Persists one 0DTE Command near-miss/rejection row (task #147,
+ * src/lib/zerodte/rejections.ts's persistZeroDteRejections). Same "always insert,
+ * caller already decided whether to call" idiom as insertSpxEngineSnapshot above —
+ * the throttle (only write on a real per-ticker gate_failed/direction state
+ * transition) lives in the caller, not here, so this function itself has no ON
+ * CONFLICT / dedup logic. Singular (one row, not a batch) because a scan cycle's
+ * rejection count is bounded by the candidate universe (single digits to low
+ * tens) — the caller loops this per changed ticker rather than needing a
+ * multi-row statement.
+ */
+export async function insertZeroDteScanRejection(row: {
+  session_date: string;
+  ticker: string;
+  gate_failed: string;
+  threshold: number | null;
+  gross_premium: number;
+  aggression: number | null;
+  side_dominance: number | null;
+  otm_pct: number | null;
+  direction: string | null;
+  prints: number;
+  first_seen: string | null;
+  last_seen: string | null;
+}): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `
+    INSERT INTO zerodte_scan_rejections (
+      session_date, ticker, gate_failed, threshold, gross_premium,
+      aggression, side_dominance, otm_pct, direction, prints,
+      first_seen, last_seen
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+    `,
+    [
+      row.session_date,
+      row.ticker,
+      row.gate_failed,
+      row.threshold,
+      row.gross_premium,
+      row.aggression,
+      row.side_dominance,
+      row.otm_pct,
+      row.direction,
+      row.prints,
+      row.first_seen,
+      row.last_seen,
+    ]
+  );
+}
+
+export async function fetchZeroDteScanRejections(opts?: { ticker?: string; limit?: number }): Promise<
+  Array<{
+    id: number;
+    observed_at: string;
+    session_date: string;
+    ticker: string;
+    gate_failed: string;
+    threshold: number | null;
+    gross_premium: number;
+    aggression: number | null;
+    side_dominance: number | null;
+    otm_pct: number | null;
+    direction: string | null;
+    prints: number | null;
+    first_seen: string | null;
+    last_seen: string | null;
+  }>
+> {
+  await ensureSchema();
+  const limit = opts?.limit ?? 50;
+  const ticker = opts?.ticker?.toUpperCase();
+  const cols = `id, observed_at, session_date, ticker, gate_failed, threshold,
+           gross_premium, aggression, side_dominance, otm_pct, direction, prints,
+           first_seen, last_seen`;
+  const res = ticker
+    ? await (await getPool()).query(
+        `SELECT ${cols} FROM zerodte_scan_rejections WHERE ticker = $1 ORDER BY observed_at DESC LIMIT $2`,
+        [ticker, limit]
+      )
+    : await (await getPool()).query(
+        `SELECT ${cols} FROM zerodte_scan_rejections ORDER BY observed_at DESC LIMIT $1`,
+        [limit]
+      );
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    observed_at: String(r.observed_at),
+    session_date: String(r.session_date),
+    ticker: String(r.ticker),
+    gate_failed: String(r.gate_failed),
+    threshold: r.threshold != null ? Number(r.threshold) : null,
+    gross_premium: r.gross_premium != null ? Number(r.gross_premium) : 0,
+    aggression: r.aggression != null ? Number(r.aggression) : null,
+    side_dominance: r.side_dominance != null ? Number(r.side_dominance) : null,
+    otm_pct: r.otm_pct != null ? Number(r.otm_pct) : null,
+    direction: r.direction != null ? String(r.direction) : null,
+    prints: r.prints != null ? Number(r.prints) : null,
+    first_seen: r.first_seen != null ? String(r.first_seen) : null,
+    last_seen: r.last_seen != null ? String(r.last_seen) : null,
   }));
 }
 

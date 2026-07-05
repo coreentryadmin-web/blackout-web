@@ -43,7 +43,9 @@ import {
   type EnrichedZeroDteSetup,
   type NewsHeat,
   type SetupDossierView,
+  type ZeroDteGateRejection,
 } from "./board";
+import { persistZeroDteRejections } from "./rejections";
 import {
   computeIntradayRead,
   intradayScoreAdjust,
@@ -101,6 +103,12 @@ export type ZeroDteScanResult = {
    *  tape at all" so the board's freshness badge can tell members apart instead of
    *  always reading "Live". Never gates scoring/output, purely a provenance signal. */
   upstream_ok: boolean;
+  /** Every candidate ticker this cycle that failed at least one of deriveZeroDteSetups'
+   *  4 gates (task #147) — the near-miss half of this scan's output. The board route
+   *  ignores this field entirely (member polls never persist); only warmZeroDteBoard
+   *  forwards it to persistZeroDteRejections, on the same cron cadence committed
+   *  setups already persist on. */
+  rejections: ZeroDteGateRejection[];
 };
 
 /**
@@ -137,6 +145,10 @@ export async function scanZeroDteBoard(flags?: {
   );
   const excludes = new Set<string>([...STATIC_EXCLUDES, ...nighthawkCovered]);
 
+  // Always collected (cheap — a handful of array pushes per candidate ticker);
+  // whether it's ever WRITTEN anywhere is a separate decision made by the caller
+  // (only warmZeroDteBoard forwards it to persistZeroDteRejections below).
+  const rejections: ZeroDteGateRejection[] = [];
   const rawSetups = deriveZeroDteSetups(
     flows.map((f) => ({
       ticker: f.ticker,
@@ -152,7 +164,7 @@ export async function scanZeroDteBoard(flags?: {
       open_interest: f.open_interest,
       alerted_at: f.alerted_at,
     })),
-    { maxSetups: 10, excludeTickers: excludes, nowMs: Date.now(), todayYmd: today }
+    { maxSetups: 10, excludeTickers: excludes, nowMs: Date.now(), todayYmd: today, rejections }
   );
 
   const buildCache = createDossierBuildCache();
@@ -180,7 +192,7 @@ export async function scanZeroDteBoard(flags?: {
   await attachContractPlans(setups);
   await attachIntradayEdge(setups);
 
-  return { setups, nighthawk_covered: nighthawkCovered, upstream_ok: upstreamOk };
+  return { setups, nighthawk_covered: nighthawkCovered, upstream_ok: upstreamOk, rejections };
 }
 
 /** Cached (3-min) intraday read from a name's own minute bars. */
@@ -381,8 +393,12 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
  * small summary object (grid-warm counts a non-null result as a successful warm).
  */
 export async function warmZeroDteBoard(): Promise<{ found: number; logged: number } | null> {
-  const { setups } = await scanZeroDteBoard();
+  const { setups, rejections } = await scanZeroDteBoard();
   const logged = await persistZeroDteScan(setups).catch(() => 0);
+  // Near-miss log (task #147) — same cron cadence persistZeroDteScan uses above,
+  // never the member-poll board route. Best-effort: a failure here must never
+  // affect the real board setups above.
+  void persistZeroDteRejections(rejections).catch(() => 0);
   // Keep every live play's OPEN/HOLD/TRIM/CLOSED state fresh even when nobody is
   // watching — the guidance runs on the cron, not on page views.
   await readZeroDteLedger().then(syncLedgerLiveState).catch(() => {});

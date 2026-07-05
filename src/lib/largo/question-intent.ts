@@ -10,6 +10,7 @@ import {
   SPX_ENGINE_STATE_RE,
   VOL_RE,
   ZERODTE_COMMAND_RE,
+  ZERODTE_REJECTION_RE,
 } from "@/lib/largo/intent-keywords";
 
 export type LargoQuestionIntent = {
@@ -27,6 +28,11 @@ export type LargoQuestionIntent = {
    *  which the bare "0dte" token in SPX_DESK_RE/PLAY_STATE_RE/SPX_ENGINE_STATE_RE already
    *  covers (task #127). */
   needsZeroDteCommand: boolean;
+  /** 0DTE Command near-miss/rejection wording ("why didn't X make the grid board," "near
+   *  miss," "what gate did X fail") — hints get_zerodte_rejections (task #147), distinct
+   *  from needsZeroDteCommand above (the committed-plays board) and from
+   *  needsSpxEngineState (SPX Slayer's own rejected/scanning history). */
+  needsZeroDteRejections: boolean;
   tickerHint: string | null;
   guidance: string;
 };
@@ -88,6 +94,7 @@ export function analyzeLargoQuestion(
   const needsSpxEngineState = matchesIntent(ctx, SPX_ENGINE_STATE_RE);
   const needsMarketRegime = matchesIntent(ctx, MARKET_REGIME_RE);
   const needsZeroDteCommand = matchesIntent(ctx, ZERODTE_COMMAND_RE);
+  const needsZeroDteRejections = matchesIntent(ctx, ZERODTE_REJECTION_RE);
 
   const tickerHint = extractTicker(question, recentUserText(history));
   const scopeTicker = tickerHint ?? (needsSpxDesk ? "SPX" : null);
@@ -142,6 +149,13 @@ export function analyzeLargoQuestion(
   if (needsZeroDteCommand) {
     toolHints.push("get_zerodte_plays");
   }
+  // Near-miss/rejection wording ("why didn't X make the board," "near miss," "what
+  // gate did X fail") — a DIFFERENT question from needsZeroDteCommand above (which
+  // asks about the committed-plays board): this hints the gate-rejection log
+  // instead, so a candidate that never cleared every gate is still answerable.
+  if (needsZeroDteRejections) {
+    toolHints.push("get_zerodte_rejections");
+  }
 
   const uniqueTools = Array.from(new Set(toolHints));
 
@@ -167,6 +181,7 @@ export function analyzeLargoQuestion(
     needsSpxEngineState,
     needsMarketRegime,
     needsZeroDteCommand,
+    needsZeroDteRejections,
     tickerHint,
     guidance,
   };
