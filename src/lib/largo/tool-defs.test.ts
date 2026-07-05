@@ -83,3 +83,48 @@ test("get_zerodte_plays description explicitly disambiguates from SPX Slayer's o
     "expected get_zerodte_plays description to state it scans across multiple tickers, not just SPX"
   );
 });
+
+// ── Task #147: get_zerodte_rejections — the 0DTE Command near-miss/gate-rejection
+// log, distinct from BOTH get_zerodte_plays (committed-only, same scanner) and
+// SPX Slayer's own get_spx_engine_snapshots (task #108, a different engine
+// entirely). Locks in the disambiguating language so a future edit can't quietly
+// drop it and reintroduce the exact name-confusion risk task #127 fixed.
+
+test("get_zerodte_rejections is a real tool, reachable via TOOL_GROUPS.platform alongside get_zerodte_plays", () => {
+  const def = LARGO_TOOL_DEFS.find((t) => t.name === "get_zerodte_rejections");
+  assert.ok(def, "get_zerodte_rejections must be a registered Largo tool");
+  assert.ok(
+    TOOL_GROUPS.platform.includes("get_zerodte_rejections"),
+    "get_zerodte_rejections must be routed via TOOL_GROUPS.platform — Largo would never call it otherwise"
+  );
+});
+
+test("get_zerodte_rejections description disambiguates from BOTH get_zerodte_plays and SPX Slayer's get_spx_engine_snapshots", () => {
+  const def = LARGO_TOOL_DEFS.find((t) => t.name === "get_zerodte_rejections");
+  assert.ok(def);
+  assert.match(
+    def!.description,
+    /get_zerodte_plays/,
+    "expected get_zerodte_rejections description to reference get_zerodte_plays (the committed-only sibling tool)"
+  );
+  assert.match(
+    def!.description,
+    /get_spx_engine_snapshots/,
+    "expected get_zerodte_rejections description to point away from SPX Slayer's own get_spx_engine_snapshots"
+  );
+  assert.match(
+    def!.description,
+    /DIFFERENT/,
+    "expected get_zerodte_rejections description to explicitly call out it is a different product from SPX Slayer"
+  );
+});
+
+test("get_zerodte_plays description points forward to get_zerodte_rejections for a candidate that didn't make the board", () => {
+  const def = LARGO_TOOL_DEFS.find((t) => t.name === "get_zerodte_plays");
+  assert.ok(def);
+  assert.match(
+    def!.description,
+    /get_zerodte_rejections/,
+    "expected get_zerodte_plays to point to get_zerodte_rejections for candidates that failed a gate"
+  );
+});

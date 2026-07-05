@@ -9,8 +9,13 @@ import {
   enrichSetup,
   matchEarnings,
   matchHotNews,
+  SETUP_MIN_GROSS,
+  SETUP_MIN_AGGR_SHARE,
+  SETUP_MIN_DOMINANCE,
+  SETUP_MAX_ITM_PCT,
   type FlowSetupInput,
   type SetupDossierView,
+  type ZeroDteGateRejection,
   type ZeroDteSetup,
 } from "./board";
 import { computeFibLevels, nearestFibNote } from "./fib";
@@ -553,6 +558,135 @@ test("gates: new-money flag when implied contracts exceed the strike's OI", () =
   ];
   const out = deriveZeroDteSetups(rows);
   assert.equal(out[0]!.new_money, true);
+});
+
+// ── gate-rejection / near-miss capture (task #147) ──────────────────────────────
+// opts.rejections is an optional accumulator deriveZeroDteSetups pushes into at the
+// exact point each of the 4 real gates (plus the structural no-top-strike guard)
+// `continue`s past a candidate — see board.ts's module doc above the type. These
+// tests assert the near-miss row carries only the metrics the real scan actually
+// computed before short-circuiting (later-gate fields stay null, never guessed).
+
+test("rejections: omitted opts.rejections — deriveZeroDteSetups behaves identically (no-op, no allocation)", () => {
+  // Every OTHER test in this file calls deriveZeroDteSetups without opts.rejections
+  // at all and already proves the return value is unaffected; this test just makes
+  // the "no rejections array supplied" no-op explicit for a rejecting candidate.
+  const rows = [row({ ticker: "TINY", premium: 200_000 })];
+  assert.equal(deriveZeroDteSetups(rows).length, 0);
+});
+
+test("rejections: gross-premium gate failure — only gross_premium/prints known, everything gate-B-onward is null", () => {
+  const rejections: ZeroDteGateRejection[] = [];
+  const rows = [row({ ticker: "TINY", premium: 200_000, alerted_at: "2026-07-06T14:00:00Z" })];
+  const out = deriveZeroDteSetups(rows, { rejections });
+
+  assert.equal(out.length, 0, "TINY must not appear in setups");
+  assert.equal(rejections.length, 1);
+  const r = rejections[0]!;
+  assert.equal(r.ticker, "TINY");
+  assert.equal(r.gate_failed, "min_gross");
+  assert.equal(r.threshold, SETUP_MIN_GROSS);
+  assert.equal(r.gross_premium, 200_000);
+  assert.equal(r.prints, 1);
+  // The scan never reaches the aggression/dominance/otm gates for this candidate —
+  // the real code never computes these values either, so they must be null, not 0
+  // or a guessed number.
+  assert.equal(r.aggression, null);
+  assert.equal(r.side_dominance, null);
+  assert.equal(r.otm_pct, null);
+  assert.equal(r.direction, null);
+});
+
+test("rejections: aggression-share gate failure — gross known, aggression known, dominance/otm/direction still null", () => {
+  const rejections: ZeroDteGateRejection[] = [];
+  // Single-sided bid-heavy tape: passes the gross floor but the whole tape traded
+  // well off the ask (aggressionWeight(10) = 0.15), well under SETUP_MIN_AGGR_SHARE.
+  const rows = [row({ premium: 900_000, ask_pct: 10 })];
+  const out = deriveZeroDteSetups(rows, { rejections });
+
+  assert.equal(out.length, 0);
+  assert.equal(rejections.length, 1);
+  const r = rejections[0]!;
+  assert.equal(r.gate_failed, "min_aggr_share");
+  assert.equal(r.threshold, SETUP_MIN_AGGR_SHARE);
+  assert.equal(r.gross_premium, 900_000);
+  assert.equal(r.aggression, 0.15);
+  // dominantCall is never computed for an aggression-gate rejection — the real
+  // scan doesn't know a direction at this point either.
+  assert.equal(r.side_dominance, null);
+  assert.equal(r.otm_pct, null);
+  assert.equal(r.direction, null);
+});
+
+test("rejections: dominance gate failure — direction/side_dominance now known, otm still null", () => {
+  const rejections: ZeroDteGateRejection[] = [];
+  // Both sides bought aggressively (ask_pct 70 -> full aggression weight) but close
+  // to even — dominance ~0.56, under SETUP_MIN_DOMINANCE (0.65).
+  const rows = [
+    row({ premium: 500_000, option_type: "call", strike: 190, ask_pct: 70 }),
+    row({ premium: 400_000, option_type: "put", strike: 185, ask_pct: 70 }),
+  ];
+  const out = deriveZeroDteSetups(rows, { rejections });
+
+  assert.equal(out.length, 0);
+  assert.equal(rejections.length, 1);
+  const r = rejections[0]!;
+  assert.equal(r.gate_failed, "min_dominance");
+  assert.equal(r.threshold, SETUP_MIN_DOMINANCE);
+  assert.equal(r.gross_premium, 900_000);
+  assert.equal(r.aggression, 1);
+  assert.equal(r.direction, "long"); // calls narrowly lead (500k vs 400k)
+  assert.ok(r.side_dominance! > 0.5 && r.side_dominance! < SETUP_MIN_DOMINANCE);
+  assert.equal(r.otm_pct, null, "the scan never reaches the moneyness gate for a dominance rejection");
+});
+
+test("rejections: moneyness (max_itm_pct) gate failure — every earlier-gate metric populated, otm_pct real and negative", () => {
+  const rejections: ZeroDteGateRejection[] = [];
+  // Same deep-ITM fixture as the "gates: deep-ITM top strike" test above — 1880 put
+  // with the stock at 1723 (~9.1% ITM), well past SETUP_MAX_ITM_PCT (2%).
+  const rows = [row({ premium: 3_000_000, option_type: "put", strike: 1880, underlying_price: 1723 })];
+  const out = deriveZeroDteSetups(rows, { rejections });
+
+  assert.equal(out.length, 0);
+  assert.equal(rejections.length, 1);
+  const r = rejections[0]!;
+  assert.equal(r.gate_failed, "max_itm_pct");
+  assert.equal(r.threshold, -SETUP_MAX_ITM_PCT);
+  assert.equal(r.gross_premium, 3_000_000);
+  assert.equal(r.direction, "short");
+  assert.ok(r.aggression! > 0);
+  assert.ok(r.side_dominance! >= SETUP_MIN_DOMINANCE);
+  assert.ok(r.otm_pct! < -SETUP_MAX_ITM_PCT, "otm_pct must be the real negative reading, not a guess");
+});
+
+test("rejections: a candidate that clears every gate does NOT also get a near-miss row (it already has its own committed-setup record)", () => {
+  const rejections: ZeroDteGateRejection[] = [];
+  const rows = [
+    row({ premium: 900_000, strike: 190 }),
+    row({ premium: 700_000, strike: 190, alert_rule: "SweepsFollowedByFloor" }),
+    row({ premium: 400_000, strike: 195 }),
+  ];
+  const out = deriveZeroDteSetups(rows, { rejections });
+
+  assert.equal(out.length, 1, "NVDA should clear every gate and appear in setups");
+  assert.equal(rejections.length, 0, "a fully-qualifying candidate must not ALSO log a near-miss row");
+});
+
+test("rejections: a mixed batch only logs the ticker that actually failed a gate", () => {
+  const rejections: ZeroDteGateRejection[] = [];
+  const rows = [
+    // NVDA clears every gate.
+    row({ ticker: "NVDA", premium: 900_000, strike: 190 }),
+    row({ ticker: "NVDA", premium: 700_000, strike: 190, alert_rule: "SweepsFollowedByFloor" }),
+    // TINY fails the gross-premium floor.
+    row({ ticker: "TINY", premium: 200_000 }),
+  ];
+  const out = deriveZeroDteSetups(rows, { rejections });
+
+  assert.deepEqual(out.map((s) => s.ticker), ["NVDA"]);
+  assert.equal(rejections.length, 1);
+  assert.equal(rejections[0]!.ticker, "TINY");
+  assert.equal(rejections[0]!.gate_failed, "min_gross");
 });
 
 // ── intel notes ──────────────────────────────────────────────────────────────────

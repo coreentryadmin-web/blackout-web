@@ -25,6 +25,7 @@ import {
 import { isSpxTicker } from "@/lib/spx-desk-live";
 import { getPlatformSnapshot, marketPlatform } from "@/lib/platform";
 import { summarizeSpxDesk } from "@/lib/platform/spx-service";
+import { zeroDteRejectionsForLargo } from "@/lib/zerodte/rejections";
 import {
   buildPeerRelativeStrength,
   buildQqqRelativeStrength,
@@ -901,6 +902,11 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const { zeroDtePlaysForLargo } = await import("@/lib/zerodte/scan");
       return zeroDtePlaysForLargo();
     }
+    case "get_zerodte_rejections":
+      return zeroDteRejectionsForLargo(
+        input.ticker ? String(input.ticker) : undefined,
+        Number(input.limit ?? 20)
+      );
 
     case "get_nighthawk_edition": {
       const date = input.date ? String(input.date) : undefined;

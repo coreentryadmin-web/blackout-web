@@ -128,3 +128,49 @@ test("bare 'hunt'/'scanner' wording with NO 0dte context does not falsely fire n
     );
   }
 });
+
+// Task #147: deriveZeroDteSetups' gate-rejection near-misses now have a durable log
+// (zerodte_scan_rejections) and a dedicated Largo tool (get_zerodte_rejections) —
+// "why didn't ticker X make the Grid board" is a genuinely different question from
+// needsZeroDteCommand above (the committed-plays board) and from needsSpxEngineState
+// (SPX Slayer's own rejected/scanning history), so it gets its own hint.
+
+test("near-miss/rejection wording paired with a 0dte/grid token hints get_zerodte_rejections", () => {
+  for (const question of [
+    "why didn't AAPL make the 0dte board",
+    "was NVDA a near miss on the grid scanner",
+    "what gate did TSLA fail on the grid",
+    "why wasn't SNDK flagged by the 0dte scan",
+  ]) {
+    const intent = analyzeLargoQuestion(question, []);
+    assert.equal(intent.needsZeroDteRejections, true, `expected needsZeroDteRejections for: "${question}"`);
+    assert.match(intent.guidance, /get_zerodte_rejections/, `expected get_zerodte_rejections hint for: "${question}"`);
+  }
+});
+
+test("near-miss wording with NO 0dte/grid token stays unresolved, same documented gap as the bare-0dte case", () => {
+  // "why didn't AAPL make the board" has no explicit 0dte/zero-dte/grid token — same
+  // intentional, documented ambiguity ZERODTE_COMMAND_RE already leaves for a bare
+  // "0dte play" mention (see the test above this block). This hint's job is to
+  // resolve the SPECIFIC-wording case, not manufacture signal that isn't present.
+  const intent = analyzeLargoQuestion("why didn't AAPL make the board today", []);
+  assert.equal(intent.needsZeroDteRejections, false);
+});
+
+test("bare 'near miss'/'rejected' wording with NO 0dte/grid context does not falsely fire needsZeroDteRejections", () => {
+  // Same false-positive discipline as ZERODTE_COMMAND_RE's own hunt/scan/find family
+  // (task #127's merge-time fix) — "near miss" or "didn't make it" alone is common
+  // phrasing for entirely unrelated questions and must require the explicit token.
+  for (const question of [
+    "that trade was a near miss on my stop loss",
+    "was AAPL rejected from tonight's Night Hawk edition",
+    "why didn't my order hit",
+  ]) {
+    const intent = analyzeLargoQuestion(question, []);
+    assert.equal(
+      intent.needsZeroDteRejections,
+      false,
+      `expected !needsZeroDteRejections for unrelated wording: "${question}"`
+    );
+  }
+});

@@ -216,8 +216,13 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_zerodte_plays",
-    "0DTE Command's OWN live scanner board (the default tab at /grid, formerly branded 'BlackOut Grid') — a DIFFERENT, MULTI-TICKER engine from SPX Slayer: an always-on scanner that hunts the broader tape all session for brand-new 0DTE setups across many tickers (index products like SPY/QQQ/NDX are eligible alongside single names), never SPX/SPXW's own single-instrument play engine. Returns: `plays` — today's ledger of setups the scanner has already flagged, each with lifecycle `status` (OPEN/HOLD/TRIM/CLOSED), `direction`, `strike`, `entry_premium`, `last_mark`, `live_pnl_pct`, `peak_score`, the current BlackOut Intelligence `action`/`intel` reasoning line, and (once closed) a `graded` outcome/pnl_pct; `fresh_finds` — the top 5 setups the scanner just surfaced this cycle that are NOT yet on the ledger (ticker/direction/strike/score/gross_premium/aggression/plan/intel); `excluded_covered_elsewhere` — tickers deliberately withheld from fresh_finds because last night's Night Hawk edition already covers them (a name members already have is a repeat, not a find, so it won't double-count here); and `rules`, the 0DTE discipline every play is managed to (no new entries after 15:00 ET, -50%/+100% stop/trim plan, hard exit by 15:30 ET). IMPORTANT — do not conflate this with SPX Slayer: this tool has no visibility into and never reflects SPX Slayer's own phase/gates/confluence/score for its current or most recent play. For SPX/SPXW's own single-instrument play-engine state, use get_spx_play (or get_spx_structure for the full desk view) instead — only reach for this tool when the question is actually about the multi-ticker 0DTE Command scanner/board itself.",
+    "0DTE Command's OWN live scanner board (the default tab at /grid, formerly branded 'BlackOut Grid') — a DIFFERENT, MULTI-TICKER engine from SPX Slayer: an always-on scanner that hunts the broader tape all session for brand-new 0DTE setups across many tickers (index products like SPY/QQQ/NDX are eligible alongside single names), never SPX/SPXW's own single-instrument play engine. Returns: `plays` — today's ledger of setups the scanner has already flagged, each with lifecycle `status` (OPEN/HOLD/TRIM/CLOSED), `direction`, `strike`, `entry_premium`, `last_mark`, `live_pnl_pct`, `peak_score`, the current BlackOut Intelligence `action`/`intel` reasoning line, and (once closed) a `graded` outcome/pnl_pct; `fresh_finds` — the top 5 setups the scanner just surfaced this cycle that are NOT yet on the ledger (ticker/direction/strike/score/gross_premium/aggression/plan/intel); `excluded_covered_elsewhere` — tickers deliberately withheld from fresh_finds because last night's Night Hawk edition already covers them (a name members already have is a repeat, not a find, so it won't double-count here); and `rules`, the 0DTE discipline every play is managed to (no new entries after 15:00 ET, -50%/+100% stop/trim plan, hard exit by 15:30 ET). IMPORTANT — do not conflate this with SPX Slayer: this tool has no visibility into and never reflects SPX Slayer's own phase/gates/confluence/score for its current or most recent play. For SPX/SPXW's own single-instrument play-engine state, use get_spx_play (or get_spx_structure for the full desk view) instead — only reach for this tool when the question is actually about the multi-ticker 0DTE Command scanner/board itself. This tool ONLY shows setups that already cleared every gate — for a candidate that DIDN'T make the board, use get_zerodte_rejections instead.",
     {}
+  ),
+  t(
+    "get_zerodte_rejections",
+    "0DTE Command's near-miss/gate-rejection log — answers 'why didn't ticker X make the Grid board' or 'what has the scanner been rejecting today', which get_zerodte_plays structurally CANNOT answer: that tool only ever shows candidates that already cleared every one of the scanner's 4 evidence gates (gross premium ≥ $750k, at-the-ask aggression share ≥ 30%, side dominance ≥ 65%, and not a deep-ITM stock-replacement strike) — a candidate that failed even ONE of those checks is invisible there and left no trace anywhere until this tool existed. Reads zerodte_scan_rejections: one row per ticker per DISTINCT rejection state (throttled to state transitions, not one row per scan cycle), naming exactly which `gate_failed` (min_gross/min_aggr_share/min_dominance/max_itm_pct/no_dominant_strike) stopped the candidate, the live `threshold` it was measured against, and whichever of gross_premium/aggression/side_dominance/otm_pct had actually been computed before the scan short-circuited past it — later-gate metrics are `null`, never guessed, when an earlier gate already rejected the ticker (e.g. a min_gross rejection never learns a direction or aggression share, because the live scan never computes those for it either). Pass `ticker` to scope to one name's rejection history, or omit for the most recent rejections across every candidate. IMPORTANT — this is 0DTE Command's OWN multi-ticker scanner (src/lib/zerodte/board.ts, the exact same engine get_zerodte_plays reads), a COMPLETELY DIFFERENT product from SPX Slayer: for SPX/SPXW's own single-instrument engine's rejected/scanning history, use get_spx_engine_snapshots instead — do not conflate the two just because both are 0DTE-flavored.",
+    { ticker: { type: "string" }, limit: { type: "integer" } }
   ),
   t("get_nighthawk_edition", "Night Hawk evening playbook — top plays, recap, market context. Same data as /nighthawk.", {
     date: { type: "string", description: "Edition date YYYY-MM-DD; defaults to latest published." },
@@ -536,6 +541,7 @@ export const TOOL_GROUPS = {
   platform: [
     "get_platform_snapshot",
     "get_zerodte_plays",
+    "get_zerodte_rejections",
     "get_nighthawk_edition",
     // cross-tool Night Hawk objects newly surfaced to Largo
     "get_nighthawk_outcomes",
@@ -631,6 +637,10 @@ export function getToolsForIntent(question: string): string[] {
   // 0DTE Command — "today's plays", the board, or anything zero-DTE flavored.
   if (/\b(0\s*dte|zero\s*dte|zerodte|command board|today'?s plays|the plays|scanner plays)\b/i.test(lower)) {
     names.add("get_zerodte_plays");
+    // Near-miss/rejection log (task #147) — added alongside get_zerodte_plays on the
+    // same bare-token match so a "why didn't X make the 0dte board" question always
+    // has both tools available, not just the committed-plays one.
+    names.add("get_zerodte_rejections");
     for (const n of TOOL_GROUPS.spx_desk) names.add(n);
   }
 

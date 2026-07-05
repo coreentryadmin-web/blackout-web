@@ -66,6 +66,24 @@ export const MARKET_REGIME_RE = /\b(market regime|regime|backdrop|environment|pl
 export const ZERODTE_COMMAND_RE =
   /\b(0dte command|zero.?dte command|command board|grid scanner|grid board|blackout grid|across tickers|multi.?ticker|fresh finds?)\b|\b(scan|scans|scanning|scanner|hunt|hunts|hunting|hunter|find|finds|finding)\b.*\b(0.?dte|zero.?dte)\b|\b(0.?dte|zero.?dte)\b.*\b(scan|scans|scanning|scanner|hunt|hunts|hunting|hunter|find|finds|finding)\b/i;
 
+/**
+ * 0DTE Command near-miss/rejection wording ("why didn't X make the grid board,"
+ * "near miss," "what gate did X fail on 0dte," "wasn't flagged by the scanner") —
+ * hints get_zerodte_rejections (task #147), the durable per-ticker gate-rejection
+ * log. Deliberately REQUIRES co-occurrence with an explicit 0dte/grid token (not a
+ * bare "board"/"scanner"/"scan," which are generic words used across many
+ * unrelated surfaces), same false-positive discipline ZERODTE_COMMAND_RE's own
+ * hunt/scan/find family uses after its task #127 merge-time fix — "near miss" or
+ * "didn't make the cut" alone is common phrasing for completely unrelated
+ * questions (a Night Hawk exclusion, a screener miss, a stop-loss near-touch) and
+ * must not fire on its own. A bare "why didn't X make the board" with no 0dte/grid
+ * token stays unresolved on purpose, same as ZERODTE_COMMAND_RE's own documented
+ * bare-token gap — this hint only fires when the wording actually points at THIS
+ * scanner.
+ */
+export const ZERODTE_REJECTION_RE =
+  /\b(near.?miss(es)?|gate.{0,15}reject(?:ed|ion)?|reject(?:ed|ion)?.{0,15}gate|gate.{0,15}fail(?:ed|s)?|fail(?:ed|s)?.{0,15}gate|didn'?t.{0,20}\b(?:make|hit)\b|wasn'?t.{0,20}\b(?:flagged|listed)\b|isn'?t.{0,20}\b(?:on|flagged)\b)\b.*\b(0.?dte|zero.?dte|grid)\b|\b(0.?dte|zero.?dte|grid)\b.*\b(near.?miss(es)?|gate.{0,15}reject(?:ed|ion)?|reject(?:ed|ion)?.{0,15}gate|gate.{0,15}fail(?:ed|s)?|fail(?:ed|s)?.{0,15}gate|didn'?t.{0,20}\b(?:make|hit)\b|wasn'?t.{0,20}\b(?:flagged|listed)\b|isn'?t.{0,20}\b(?:on|flagged)\b)\b/i;
+
 export const SCREENER_RE = /\b(screener|squeeze|movers|breadth|sector)\b/;
 
 export const FUNDAMENTAL_RE = /\b(fundamental|financial|insider|congress|analyst|institutional|predictions|smart money|whales)\b/;
