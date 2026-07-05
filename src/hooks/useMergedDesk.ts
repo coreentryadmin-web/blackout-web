@@ -98,7 +98,7 @@ export function useMergedDesk() {
     }
   );
 
-  const { pulse, intervalFlow } = usePulseStream(pulseRest, onPulseConnection);
+  const { pulse } = usePulseStream(pulseRest, onPulseConnection);
 
   // Midnight rollover: fires when pulse ticks AND every 60s as a safety net
   // (handles the case where pulse goes offline overnight).
@@ -255,6 +255,5 @@ export function useMergedDesk() {
     deskLoading: initialLoading,
     sessionActive,
     marketLabel: pulse?.market_label ?? merged?.market_label,
-    intervalFlow,
   };
 }

@@ -41,7 +41,7 @@ export function SpxDashboard() {
   const tier = (user?.publicMetadata as { tier?: string } | undefined)?.tier;
   const { desk, live, refreshing, deskLoading, sessionActive } = useMergedDesk();
 
-  if (isLoaded && tier && tier !== "premium") {
+  if (isLoaded && tier && tier !== "premium" && tier !== "admin") {
     return (
       <div className="flex min-h-[60vh] items-center justify-center px-4">
         <EmptyState
@@ -118,6 +118,7 @@ export function SpxDashboard() {
         <SpxSniperHeader desk={desk} live={live} />
       </SpxPanelErrorBoundary>
 
+      {/* Left rail: GEX matrix only — no Benzinga scroll, live tape, or interval-flow stack. */}
       <div className="spx-sniper-triple">
         <SpxPanelErrorBoundary>
           <aside className="spx-sniper-left-rail spx-left-matrix">
