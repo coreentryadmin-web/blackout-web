@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BIE_TOOL_NAMES, getToolsForIntent, LARGO_TOOL_DEFS, SPX_ENGINE_TOOL_NAMES, TOOL_GROUPS } from "./tool-defs";
+import {
+  BIE_TOOL_NAMES,
+  getToolsForIntent,
+  LARGO_TOOL_DEFS,
+  SPX_ENGINE_TOOL_NAMES,
+  TOOL_GROUPS,
+  ZERODTE_ENGINE_TOOL_NAMES,
+} from "./tool-defs";
 
 test("BIE_TOOL_NAMES: every name is a real, callable Largo tool", () => {
   const known = new Set(LARGO_TOOL_DEFS.map((t) => t.name));
@@ -54,6 +61,32 @@ test("SPX_ENGINE_TOOL_NAMES: excludes the generic ticker-scoped tools bundled in
 
 test("SPX_ENGINE_TOOL_NAMES: no duplicates", () => {
   assert.equal(new Set(SPX_ENGINE_TOOL_NAMES).size, SPX_ENGINE_TOOL_NAMES.length);
+});
+
+// ── Task #149: ZERODTE_ENGINE_TOOL_NAMES (calibration.ts's 0DTE-Command-tool-calling cohort) ──
+
+test("ZERODTE_ENGINE_TOOL_NAMES: every name is a real, callable Largo tool", () => {
+  const known = new Set(LARGO_TOOL_DEFS.map((t) => t.name));
+  for (const name of ZERODTE_ENGINE_TOOL_NAMES) {
+    assert.ok(known.has(name), `${name} is in ZERODTE_ENGINE_TOOL_NAMES but not in LARGO_TOOL_DEFS`);
+  }
+});
+
+test("ZERODTE_ENGINE_TOOL_NAMES: every name is a subset of TOOL_GROUPS.platform", () => {
+  for (const name of ZERODTE_ENGINE_TOOL_NAMES) {
+    assert.ok(
+      (TOOL_GROUPS.platform as readonly string[]).includes(name),
+      `${name} is in ZERODTE_ENGINE_TOOL_NAMES but not in TOOL_GROUPS.platform — the cohort must stay a NARROWING of the platform bundle, never wander outside it`
+    );
+  }
+});
+
+test("ZERODTE_ENGINE_TOOL_NAMES: is exactly the 0DTE Command pair — get_zerodte_plays and get_zerodte_rejections", () => {
+  assert.deepEqual(new Set(ZERODTE_ENGINE_TOOL_NAMES), new Set(["get_zerodte_plays", "get_zerodte_rejections"]));
+});
+
+test("ZERODTE_ENGINE_TOOL_NAMES: no duplicates", () => {
+  assert.equal(new Set(ZERODTE_ENGINE_TOOL_NAMES).size, ZERODTE_ENGINE_TOOL_NAMES.length);
 });
 
 // ── Task #127: get_zerodte_plays vs get_spx_play mis-routing risk ──
