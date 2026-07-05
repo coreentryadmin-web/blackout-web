@@ -838,6 +838,10 @@ export function AdminBieDashboard() {
           ))}
         </div>
 
+        <p className="admin-bie-coverage-note">
+          {gexHealth ? `As of ${fmtEt(gexHealth.generated_at)} ET` : gexHealthLoading ? "Loading…" : "—"}
+        </p>
+
         {gexHealth && !gexHealth.db_configured && (
           <p className="admin-bie-coverage-note">
             DB not configured — regime-transition history (gex_regime_events) is
