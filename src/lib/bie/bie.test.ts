@@ -189,12 +189,15 @@ import {
   computeCalibration,
   computeSpxCalibration,
   computeSpxToolCallCalibration,
+  computeZeroDteToolCallCalibration,
   formatCalibration,
   formatSpxCalibration,
   formatSpxToolCallCalibration,
+  formatZeroDteToolCallCalibration,
   type CalibrationInputRow,
   type SpxCalibrationInputRow,
   type SpxToolCallInputRow,
+  type ZeroDteToolCallInputRow,
 } from "./calibration";
 
 const calRow = (over: Partial<CalibrationInputRow>): CalibrationInputRow => ({
@@ -423,6 +426,149 @@ test("calibration: without an attached spx_tool_calls pass, the report doesn't g
   const zeroDte = computeCalibration([calRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
   assert.equal(zeroDte.spx_tool_calls, null);
   assert.doesNotMatch(formatCalibration(zeroDte), /SPX-tool-calling/);
+});
+
+// ── Task #149: 0DTE-Command-tool-calling cohort within bie_interactions ─────────
+// Direct analogue of the task #112 SPX-tool-calling cohort above, applied to 0DTE
+// Command (the SEPARATE multi-ticker `/grid` scanner, per task #127's standing
+// disambiguation — not SPX Slayer). Largo's own answer-quality cohort for turns
+// where 0DTE Command's live board state was involved, either via a real tool
+// dispatch (Claude path) or the router's zerodte_plays composer (which reads the
+// same board state internally but never records a real tool name — see
+// isZeroDteToolCallingRow's doc comment).
+
+const zeroDteToolRow = (over: Partial<ZeroDteToolCallInputRow>): ZeroDteToolCallInputRow => ({
+  tools_used: ["live_feed_capture", "get_zerodte_plays"],
+  intent_bucket: "claude_fallback",
+  answer_source: "claude",
+  claims_total: 4,
+  claims_verified: 4,
+  latency_ms: 3000,
+  ...over,
+});
+
+test("zerodte tool-call calibration: cohort includes tools_used intersecting ZERODTE_ENGINE_TOOL_NAMES, excludes generic-only turns", () => {
+  const rows: ZeroDteToolCallInputRow[] = [
+    zeroDteToolRow({ tools_used: ["live_feed_capture", "get_zerodte_plays"] }), // in cohort
+    zeroDteToolRow({ tools_used: ["live_feed_capture", "get_quote", "get_gex"] }), // generic-only — NOT in cohort
+    zeroDteToolRow({ tools_used: ["live_feed_capture", "get_zerodte_rejections"] }), // in cohort
+  ];
+  const r = computeZeroDteToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 2);
+});
+
+test("zerodte tool-call calibration: a router-matched zerodte_plays row joins the cohort despite tools_used being the router's sentinel", () => {
+  const rows: ZeroDteToolCallInputRow[] = [
+    zeroDteToolRow({
+      tools_used: ["blackout_intelligence"],
+      intent_bucket: "zerodte_plays",
+      answer_source: "bie-router",
+      claims_total: 5,
+      claims_verified: 5,
+      latency_ms: 40,
+    }),
+    // A router match for a DIFFERENT product (SPX structure) never joins this cohort.
+    zeroDteToolRow({ tools_used: ["blackout_intelligence"], intent_bucket: "spx_structure", answer_source: "bie-router" }),
+  ];
+  const r = computeZeroDteToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 1);
+  assert.equal(r.router_matched_n, 1);
+  assert.equal(r.claude_fallback_n, 0);
+  assert.equal(r.router_match_rate_pct, 100);
+});
+
+test("zerodte tool-call calibration: aggregate grounding pass rate, router-match rate, and avg latency over a mixed cohort", () => {
+  const rows: ZeroDteToolCallInputRow[] = [
+    zeroDteToolRow({ tools_used: ["get_zerodte_plays"], answer_source: "claude", claims_total: 4, claims_verified: 4, latency_ms: 4000 }),
+    zeroDteToolRow({ tools_used: ["get_zerodte_rejections"], answer_source: "claude", claims_total: 6, claims_verified: 3, latency_ms: 6000 }),
+    zeroDteToolRow({
+      tools_used: ["blackout_intelligence"],
+      intent_bucket: "zerodte_plays",
+      answer_source: "bie-router",
+      claims_total: 5,
+      claims_verified: 5,
+      latency_ms: 40,
+    }),
+  ];
+  const r = computeZeroDteToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 3);
+  assert.equal(r.claude_fallback_n, 2);
+  assert.equal(r.router_matched_n, 1);
+  assert.equal(r.router_match_rate_pct, 33.3);
+  // sum(verified)/sum(total) = (4+3+5)/(4+6+5) = 12/15 = 80% — weighted, not an
+  // unweighted average of each row's own ratio.
+  assert.equal(r.grounding_pass_rate_pct, 80);
+  // (4000 + 6000 + 40) / 3 = 3346.67 → rounds to 3347.
+  assert.equal(r.avg_latency_ms, 3347);
+});
+
+test("zerodte tool-call calibration: turns with zero numeric claims are excluded from the grounding ratio but still counted in n", () => {
+  const rows: ZeroDteToolCallInputRow[] = [
+    zeroDteToolRow({ tools_used: ["get_zerodte_plays"], claims_total: 0, claims_verified: 0 }),
+    zeroDteToolRow({ tools_used: ["get_zerodte_plays"], claims_total: 4, claims_verified: 2 }),
+  ];
+  const r = computeZeroDteToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 2);
+  assert.equal(r.grounding_pass_rate_pct, 50);
+});
+
+test("zerodte tool-call calibration: refuses to recommend on thin evidence — waits for n≥10, same gate as the other passes", () => {
+  const rows = Array.from({ length: 5 }, () =>
+    zeroDteToolRow({ tools_used: ["get_zerodte_plays"], claims_total: 4, claims_verified: 1 })
+  );
+  const r = computeZeroDteToolCallCalibration(rows, { since: "2026-07-01", through: "2026-07-06" });
+  assert.equal(r.recommendations.length, 0);
+  assert.match(formatZeroDteToolCallCalibration(r), /never tunes on noise/);
+});
+
+test("zerodte tool-call calibration: cites low grounding and low router-match-rate once evidence clears n≥10", () => {
+  const rows: ZeroDteToolCallInputRow[] = Array.from({ length: 10 }, () =>
+    zeroDteToolRow({ tools_used: ["get_zerodte_plays"], answer_source: "claude", claims_total: 4, claims_verified: 1 })
+  );
+  const r = computeZeroDteToolCallCalibration(rows, { since: "2026-07-01", through: "2026-07-06" });
+  assert.equal(r.n, 10);
+  assert.equal(r.grounding_pass_rate_pct, 25);
+  assert.equal(r.router_match_rate_pct, 0);
+  assert.ok(r.recommendations.some((x) => /show only 25% claim grounding/.test(x)));
+  assert.ok(r.recommendations.some((x) => /Only 0% of 0DTE-Command-tool-calling turns were answered by the deterministic router/.test(x)));
+});
+
+test("zerodte tool-call calibration: empty cohort reports null rates, not zero/NaN", () => {
+  const r = computeZeroDteToolCallCalibration([], { since: "2026-07-06", through: "2026-07-06" });
+  assert.equal(r.n, 0);
+  assert.equal(r.router_match_rate_pct, null);
+  assert.equal(r.grounding_pass_rate_pct, null);
+  assert.equal(r.avg_latency_ms, null);
+  assert.match(formatZeroDteToolCallCalibration(r), /no graded claims yet/);
+});
+
+test("calibration: combined report can carry all four sections — 0DTE, SPX Slayer outcomes, SPX-tool-calling, and 0DTE-Command-tool-calling turns", () => {
+  const zeroDte = computeCalibration([calRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  const spx = computeSpxCalibration([spxRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  const toolCalls = computeSpxToolCallCalibration([spxToolRow({ tools_used: ["get_spx_play"] })], {
+    since: "2026-07-06",
+    through: "2026-07-06",
+  });
+  const zeroDteToolCalls = computeZeroDteToolCallCalibration([zeroDteToolRow({ tools_used: ["get_zerodte_plays"] })], {
+    since: "2026-07-06",
+    through: "2026-07-06",
+  });
+  const text = formatCalibration({
+    ...zeroDte,
+    spx_slayer: spx,
+    spx_tool_calls: toolCalls,
+    zerodte_tool_calls: zeroDteToolCalls,
+  });
+  assert.match(text, /0DTE Command calibration/);
+  assert.match(text, /SPX Slayer calibration/);
+  assert.match(text, /SPX-tool-calling Largo turns/);
+  assert.match(text, /0DTE Command tool-calling Largo turns/);
+});
+
+test("calibration: without an attached zerodte_tool_calls pass, the report doesn't grow a fourth section", () => {
+  const zeroDte = computeCalibration([calRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  assert.equal(zeroDte.zerodte_tool_calls, null);
+  assert.doesNotMatch(formatCalibration(zeroDte), /0DTE Command tool-calling Largo turns/);
 });
 
 // ── Phase 4: telemetry discovery (pure formatting + thresholds) ──────────────────
