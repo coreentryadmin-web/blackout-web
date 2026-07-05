@@ -187,18 +187,21 @@ test("self-eval: coverage, verification and win-rate math", () => {
 
 import {
   computeCalibration,
+  computeHelixToolCallCalibration,
   computeNighthawkToolCallCalibration,
   computeSpxCalibration,
   computeSpxToolCallCalibration,
   computeThermalToolCallCalibration,
   computeZeroDteToolCallCalibration,
   formatCalibration,
+  formatHelixToolCallCalibration,
   formatNighthawkToolCallCalibration,
   formatSpxCalibration,
   formatSpxToolCallCalibration,
   formatThermalToolCallCalibration,
   formatZeroDteToolCallCalibration,
   type CalibrationInputRow,
+  type HelixToolCallInputRow,
   type NighthawkToolCallInputRow,
   type SpxCalibrationInputRow,
   type SpxToolCallInputRow,
@@ -432,6 +435,140 @@ test("calibration: without an attached spx_tool_calls pass, the report doesn't g
   const zeroDte = computeCalibration([calRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
   assert.equal(zeroDte.spx_tool_calls, null);
   assert.doesNotMatch(formatCalibration(zeroDte), /SPX-tool-calling/);
+});
+
+// ── Task #133: HELIX-tool-calling cohort within bie_interactions ────────────────
+// Largo's own answer-quality cohort — turns where HELIX's own tape/anomaly-
+// detector state was involved. Unlike the SPX cohort above, membership is a PURE
+// tools_used check — there is no deterministic HELIX router intent to OR in (see
+// isHelixToolCallingRow's doc comment in calibration.ts), so every row here uses
+// answer_source: "claude" by default and router_matched_n/router_match_rate_pct
+// are expected to read 0/0% throughout.
+
+const helixToolRow = (over: Partial<HelixToolCallInputRow>): HelixToolCallInputRow => ({
+  tools_used: ["live_feed_capture", "get_flow_tape"],
+  intent_bucket: "claude_fallback",
+  answer_source: "claude",
+  claims_total: 4,
+  claims_verified: 4,
+  latency_ms: 3000,
+  ...over,
+});
+
+test("helix tool-call calibration: cohort includes tools_used intersecting HELIX_ENGINE_TOOL_NAMES, excludes generic-only turns", () => {
+  const rows: HelixToolCallInputRow[] = [
+    helixToolRow({ tools_used: ["live_feed_capture", "get_flow_tape"] }), // in cohort
+    helixToolRow({ tools_used: ["live_feed_capture", "get_options_flow", "get_dark_pool"] }), // generic-only — NOT in cohort
+    helixToolRow({ tools_used: ["live_feed_capture", "get_flow_anomaly_near_misses"] }), // in cohort
+  ];
+  const r = computeHelixToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 2);
+});
+
+test("helix tool-call calibration: a router-matched row NEVER joins the cohort — no intent_bucket OR-clause exists for HELIX", () => {
+  const rows: HelixToolCallInputRow[] = [
+    // Even a bie-router answer_source with the router's sentinel tools_used does
+    // NOT join — isHelixToolCallingRow is tools_used-only, unlike SPX's UNION test.
+    helixToolRow({
+      tools_used: ["blackout_intelligence"],
+      intent_bucket: "spx_structure",
+      answer_source: "bie-router",
+    }),
+  ];
+  const r = computeHelixToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 0);
+  assert.equal(r.router_matched_n, 0);
+  assert.equal(r.router_match_rate_pct, null);
+});
+
+test("helix tool-call calibration: aggregate grounding pass rate and avg latency over a mixed cohort, router-match rate stays 0", () => {
+  const rows: HelixToolCallInputRow[] = [
+    helixToolRow({ tools_used: ["get_flow_tape"], claims_total: 4, claims_verified: 4, latency_ms: 4000 }),
+    helixToolRow({ tools_used: ["get_flow_anomaly_near_misses"], claims_total: 6, claims_verified: 3, latency_ms: 6000 }),
+    helixToolRow({ tools_used: ["get_flow_tape", "get_flow_anomaly_near_misses"], claims_total: 5, claims_verified: 5, latency_ms: 2000 }),
+  ];
+  const r = computeHelixToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 3);
+  assert.equal(r.claude_fallback_n, 3);
+  assert.equal(r.router_matched_n, 0);
+  assert.equal(r.router_match_rate_pct, 0);
+  // sum(verified)/sum(total) = (4+3+5)/(4+6+5) = 12/15 = 80% — weighted, not an
+  // unweighted average of each row's own ratio.
+  assert.equal(r.grounding_pass_rate_pct, 80);
+  // (4000 + 6000 + 2000) / 3 = 4000.
+  assert.equal(r.avg_latency_ms, 4000);
+});
+
+test("helix tool-call calibration: turns with zero numeric claims are excluded from the grounding ratio but still counted in n", () => {
+  const rows: HelixToolCallInputRow[] = [
+    helixToolRow({ tools_used: ["get_flow_tape"], claims_total: 0, claims_verified: 0 }),
+    helixToolRow({ tools_used: ["get_flow_tape"], claims_total: 4, claims_verified: 2 }),
+  ];
+  const r = computeHelixToolCallCalibration(rows, { since: "2026-06-22", through: "2026-07-06" });
+  assert.equal(r.n, 2);
+  assert.equal(r.grounding_pass_rate_pct, 50);
+});
+
+test("helix tool-call calibration: refuses to recommend on thin evidence — waits for n≥10, same gate as the other passes", () => {
+  const rows = Array.from({ length: 5 }, () =>
+    helixToolRow({ tools_used: ["get_flow_tape"], claims_total: 4, claims_verified: 1 })
+  );
+  const r = computeHelixToolCallCalibration(rows, { since: "2026-07-01", through: "2026-07-06" });
+  assert.equal(r.recommendations.length, 0);
+  assert.match(formatHelixToolCallCalibration(r), /never tunes on noise/);
+});
+
+test("helix tool-call calibration: at n=10 evidence clears and low grounding fires a recommendation (no router-match recommendation exists)", () => {
+  const rows: HelixToolCallInputRow[] = Array.from({ length: 10 }, () =>
+    helixToolRow({ tools_used: ["get_flow_tape"], claims_total: 4, claims_verified: 1 })
+  );
+  const r = computeHelixToolCallCalibration(rows, { since: "2026-07-01", through: "2026-07-06" });
+  assert.equal(r.n, 10);
+  assert.equal(r.grounding_pass_rate_pct, 25);
+  assert.equal(r.router_match_rate_pct, 0);
+  assert.ok(r.recommendations.some((x) => /show only 25% claim grounding/.test(x)));
+  // Unlike the SPX pass, there is no "Only X% ... answered by the deterministic
+  // router" recommendation for HELIX — a permanent, structural 0% would be noise,
+  // not evidence-cited signal (see isHelixToolCallingRow's doc comment).
+  assert.equal(r.recommendations.length, 1);
+});
+
+test("helix tool-call calibration: empty cohort reports null rates, not zero/NaN", () => {
+  const r = computeHelixToolCallCalibration([], { since: "2026-07-06", through: "2026-07-06" });
+  assert.equal(r.n, 0);
+  assert.equal(r.router_match_rate_pct, null);
+  assert.equal(r.grounding_pass_rate_pct, null);
+  assert.equal(r.avg_latency_ms, null);
+  assert.match(formatHelixToolCallCalibration(r), /no graded claims yet/);
+});
+
+test("calibration: combined report can carry all four sections — 0DTE, SPX Slayer outcomes, SPX-tool-calling, and HELIX-tool-calling turns", () => {
+  const zeroDte = computeCalibration([calRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  const spx = computeSpxCalibration([spxRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  const spxToolCalls = computeSpxToolCallCalibration([spxToolRow({ tools_used: ["get_spx_play"] })], {
+    since: "2026-07-06",
+    through: "2026-07-06",
+  });
+  const helixToolCalls = computeHelixToolCallCalibration([helixToolRow({ tools_used: ["get_flow_tape"] })], {
+    since: "2026-07-06",
+    through: "2026-07-06",
+  });
+  const text = formatCalibration({
+    ...zeroDte,
+    spx_slayer: spx,
+    spx_tool_calls: spxToolCalls,
+    helix_tool_calls: helixToolCalls,
+  });
+  assert.match(text, /0DTE Command calibration/);
+  assert.match(text, /SPX Slayer calibration/);
+  assert.match(text, /SPX-tool-calling Largo turns/);
+  assert.match(text, /HELIX-tool-calling Largo turns/);
+});
+
+test("calibration: without an attached helix_tool_calls pass, the report doesn't grow a fourth section", () => {
+  const zeroDte = computeCalibration([calRow({})], { since: "2026-07-06", through: "2026-07-06", sessions: 1 });
+  assert.equal(zeroDte.helix_tool_calls, null);
+  assert.doesNotMatch(formatCalibration(zeroDte), /HELIX-tool-calling/);
 });
 
 // ── Task #137: Thermal-tool-calling cohort within bie_interactions ──────────────
@@ -839,6 +976,7 @@ test("calibration: without an attached zerodte_tool_calls pass, the report doesn
   assert.equal(zeroDte.zerodte_tool_calls, null);
   assert.doesNotMatch(formatCalibration(zeroDte), /0DTE Command tool-calling Largo turns/);
 });
+
 
 // ── Phase 4: telemetry discovery (pure formatting + thresholds) ──────────────────
 

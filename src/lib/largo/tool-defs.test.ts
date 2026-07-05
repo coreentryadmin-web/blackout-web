@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   BIE_TOOL_NAMES,
   getToolsForIntent,
+  HELIX_ENGINE_TOOL_NAMES,
   LARGO_TOOL_DEFS,
   NIGHTHAWK_ENGINE_TOOL_NAMES,
   SPX_ENGINE_TOOL_NAMES,
@@ -63,6 +64,73 @@ test("SPX_ENGINE_TOOL_NAMES: excludes the generic ticker-scoped tools bundled in
 
 test("SPX_ENGINE_TOOL_NAMES: no duplicates", () => {
   assert.equal(new Set(SPX_ENGINE_TOOL_NAMES).size, SPX_ENGINE_TOOL_NAMES.length);
+});
+
+// ── Task #133: HELIX_ENGINE_TOOL_NAMES (calibration.ts's HELIX-tool-calling cohort) ──
+
+test("HELIX_ENGINE_TOOL_NAMES: every name is a real, callable Largo tool", () => {
+  const known = new Set(LARGO_TOOL_DEFS.map((t) => t.name));
+  for (const name of HELIX_ENGINE_TOOL_NAMES) {
+    assert.ok(known.has(name), `${name} is in HELIX_ENGINE_TOOL_NAMES but not in LARGO_TOOL_DEFS`);
+  }
+});
+
+test("HELIX_ENGINE_TOOL_NAMES: every name is a subset of TOOL_GROUPS.spx_desk, flow_analysis, or platform", () => {
+  // get_flow_tape lives in spx_desk (bundled there for SPX-flavored routing
+  // convenience, per SPX_ENGINE_TOOL_NAMES's own doc comment above) and
+  // get_flow_anomaly_near_misses lives in platform — neither lives in
+  // flow_analysis itself, so the subset check spans all three groups Largo
+  // actually routes tools through.
+  const bundle = new Set<string>([...TOOL_GROUPS.spx_desk, ...TOOL_GROUPS.flow_analysis, ...TOOL_GROUPS.platform]);
+  for (const name of HELIX_ENGINE_TOOL_NAMES) {
+    assert.ok(
+      bundle.has(name),
+      `${name} is in HELIX_ENGINE_TOOL_NAMES but not in TOOL_GROUPS.spx_desk/flow_analysis/platform — the cohort must stay a NARROWING of tools Largo can actually reach, never wander outside it`
+    );
+  }
+});
+
+test("HELIX_ENGINE_TOOL_NAMES: excludes the generic ticker-scoped flow_analysis tools that hit ANY-ticker UW providers", () => {
+  // These take a ticker input and hit the same generic UW providers used for ANY
+  // ticker (see run-tool.ts's fetchUw* case bodies) — a turn calling only these
+  // says nothing about HELIX-tape/anomaly-detector answer quality specifically.
+  for (const generic of [
+    "get_options_flow",
+    "get_global_flow",
+    "get_dark_pool",
+    "get_nope",
+    "get_flow_per_strike",
+    "get_flow_expiry_breakdown",
+    "get_net_prem_ticks",
+    "get_postgres_flows",
+    "get_lit_flow",
+    "get_unusual_trades",
+    "get_market_oi_change",
+    "get_etf_flow",
+    "get_market_stats",
+    "get_option_contract",
+  ]) {
+    assert.ok(
+      !HELIX_ENGINE_TOOL_NAMES.includes(generic),
+      `${generic} is generic/ticker-scoped (or, for get_postgres_flows, unbranded as HELIX's own object) and should not be in the HELIX-engine-state cohort`
+    );
+  }
+});
+
+test("HELIX_ENGINE_TOOL_NAMES: excludes the BIE-authored cross-product tools and get_platform_snapshot", () => {
+  // Same reasoning SPX_ENGINE_TOOL_NAMES gives for excluding get_ecosystem_context:
+  // these are callable for ANY ticker or span multiple products, and
+  // bie_interactions.tools_used records only tool NAMES, never call inputs.
+  for (const crossProduct of [...BIE_TOOL_NAMES, "get_platform_snapshot"]) {
+    assert.ok(
+      !HELIX_ENGINE_TOOL_NAMES.includes(crossProduct),
+      `${crossProduct} is a cross-product tool and should not be in the HELIX-engine-state cohort`
+    );
+  }
+});
+
+test("HELIX_ENGINE_TOOL_NAMES: no duplicates", () => {
+  assert.equal(new Set(HELIX_ENGINE_TOOL_NAMES).size, HELIX_ENGINE_TOOL_NAMES.length);
 });
 
 // ── Task #137: THERMAL_ENGINE_TOOL_NAMES (calibration.ts's Thermal-tool-calling cohort) ──

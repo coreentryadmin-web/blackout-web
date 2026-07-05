@@ -642,6 +642,56 @@ export const SPX_ENGINE_TOOL_NAMES = [
   "get_power_hour",
 ];
 
+// Task #133 — the cohort-membership test for "did this Largo turn touch HELIX's
+// OWN persisted/computed state" (BIE's self-eval loop, calibration.ts), the same
+// pattern SPX_ENGINE_TOOL_NAMES established above for SPX Slayer. HELIX is the
+// market-wide options-flow product behind `/flows` — its own engine state is (1)
+// the ingested flow tape itself (Postgres `flow_alerts`, what the /flows page
+// renders) and (2) the market-regime-detector cron's near-miss/rejection log
+// (`flow_anomaly_near_misses`, task #131). Verified against run-tool.ts's case
+// statements, not guessed from naming:
+//   - get_flow_tape → marketPlatform.flows.getFlowTapeSummary() → fetchRecentFlows()
+//     (src/lib/platform/flow-service.ts, src/lib/db.ts) — reads the ingested tape
+//     from Postgres and returns HELIX's own aggregate view (count, total_premium,
+//     top_tickers, recent prints). This exact return shape is independently
+//     branded "HELIX's ENTIRE flow-tape snapshot" in get_ecosystem_context's own
+//     description (its `flow_full_state` field documents "the exact same object
+//     get_flow_tape returns") — confirming this is treated elsewhere in the
+//     codebase as HELIX's canonical state object, not a generic per-ticker proxy.
+//   - get_flow_anomaly_near_misses → flowAnomalyNearMissesForLargo() →
+//     fetchFlowAnomalyNearMisses() (src/lib/platform/flow-anomaly-near-misses.ts,
+//     src/lib/db.ts) — reads flow_anomaly_near_misses, the anomaly detector's own
+//     throttled near-miss/rejection log. Nothing else reads this table.
+// Deliberately EXCLUDED, verified against the same case statements: every other
+// TOOL_GROUPS.flow_analysis tool (get_options_flow, get_global_flow, get_dark_pool,
+// get_nope, get_flow_per_strike, get_flow_expiry_breakdown, get_net_prem_ticks,
+// get_lit_flow, get_unusual_trades, get_market_oi_change, get_etf_flow,
+// get_market_stats, get_option_contract) hits generic ticker-scoped UW/Polygon
+// providers (fetchUw*) usable for ANY ticker — the same reasoning
+// SPX_ENGINE_TOOL_NAMES's own doc comment gives for excluding get_greek_flow/
+// get_gex from that list. get_postgres_flows is the one close call: it calls
+// marketPlatform.flows.getFlowTape() (the SAME fetchRecentFlows() table
+// get_flow_tape reads), but returns the raw ingested rows with no HELIX-specific
+// aggregation/branding — unlike get_flow_tape, nothing else in the codebase
+// treats get_postgres_flows's return shape as HELIX's canonical object, so it's
+// left out to keep this list to the two tools that are unambiguously "read
+// HELIX's own state," not "happen to touch the same table." Also excluded, same
+// reasoning SPX_ENGINE_TOOL_NAMES gives for excluding get_ecosystem_context: the
+// BIE-authored cross-product tools (get_hot_tickers, get_market_regime, and the
+// rest of BIE_TOOL_NAMES) and get_platform_snapshot are callable for ANY ticker
+// or span multiple products at once, and bie_interactions.tools_used records
+// only tool NAMES, never call inputs — a turn that called get_market_regime (an
+// explicitly "market-wide backdrop, not ticker-specific" tool per its own
+// description) tells you nothing about HELIX-tape/anomaly-detector answer
+// quality specifically. Kept as an explicit literal list (not derived from
+// TOOL_GROUPS.spx_desk/flow_analysis/platform) for the same drift-resistance
+// reason SPX_ENGINE_TOOL_NAMES is — see tool-defs.test.ts for the assertion
+// that keeps this list a verified subset of spx_desk ∪ flow_analysis ∪ platform.
+// (get_flow_tape itself lives in spx_desk, bundled there for SPX-flavored
+// routing convenience per SPX_ENGINE_TOOL_NAMES's own comment above, not in
+// flow_analysis; get_flow_anomaly_near_misses lives in platform.)
+export const HELIX_ENGINE_TOOL_NAMES = ["get_flow_tape", "get_flow_anomaly_near_misses"];
+
 // Task #137 — the cohort-membership test for "did this Largo turn touch BlackOut
 // Thermal's OWN computed/cached dealer-positioning state" (BIE's self-eval loop,
 // calibration.ts), same purpose as SPX_ENGINE_TOOL_NAMES above but for Thermal

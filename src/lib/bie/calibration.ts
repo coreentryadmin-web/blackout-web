@@ -20,6 +20,7 @@
 import {
   dbConfigured,
   fetchClosedPlayOutcomes,
+  fetchHelixToolCallingBieInteractions,
   fetchNighthawkToolCallingBieInteractions,
   fetchSpxToolCallingBieInteractions,
   fetchThermalToolCallingBieInteractions,
@@ -27,6 +28,7 @@ import {
   fetchZeroDteToolCallingBieInteractions,
 } from "@/lib/db";
 import {
+  HELIX_ENGINE_TOOL_NAMES,
   NIGHTHAWK_ENGINE_TOOL_NAMES,
   SPX_ENGINE_TOOL_NAMES,
   THERMAL_ENGINE_TOOL_NAMES,
@@ -80,6 +82,13 @@ export type CalibrationReport = {
    *  fills it in. See computeSpxToolCallCalibration below for the cohort
    *  definition and metrics. */
   spx_tool_calls: SpxToolCallCalibrationReport | null;
+  /** Task #133 — the HELIX (market-wide options-flow product behind `/flows`)
+   *  analogue of spx_tool_calls above: Largo's own answer-quality cohort for turns
+   *  that touched HELIX's own persisted state (the ingested flow tape, the
+   *  flow-anomaly detector's near-miss log). Same attach-after-compute pattern:
+   *  null until runBieCalibration's async orchestrator fills it in. See
+   *  computeHelixToolCallCalibration below for the cohort definition and metrics. */
+  helix_tool_calls: HelixToolCallCalibrationReport | null;
   /** Task #137 — the same answer-quality cohort as spx_tool_calls above, but for
    *  BlackOut Thermal (the GEX/dealer-positioning product behind /heatmap) instead
    *  of SPX Slayer. Additive field, same attach-after-compute pattern: null until
@@ -228,12 +237,13 @@ export function computeCalibration(
     by_time_of_day: byTod,
     by_spike: bySpike,
     recommendations: recs,
-    // Attached by runBieCalibration once it has computed the SPX/Thermal/Night
-    // Hawk/0DTE-tool-calling passes too — this pure function only ever sees
+    // Attached by runBieCalibration once it has computed the SPX/HELIX/Thermal/
+    // Night Hawk/0DTE-tool-calling passes too — this pure function only ever sees
     // 0DTE-setup-log rows, so it never has data to report for any of the
     // additive slices below.
     spx_slayer: null,
     spx_tool_calls: null,
+    helix_tool_calls: null,
     thermal_tool_calls: null,
     nighthawk_tool_calls: null,
     zerodte_tool_calls: null,
@@ -437,6 +447,127 @@ export function computeSpxToolCallCalibration(
       `Only ${routerMatchRatePct}% of SPX-tool-calling turns were answered by the deterministic router over ${n} turns — most SPX-engine-state questions still fall through to full Claude tool-calling; consider widening composeSpxStructure's coverage.`
     );
   }
+
+  return {
+    window,
+    n,
+    claude_fallback_n: claudeFallbackN,
+    router_matched_n: routerMatchedN,
+    router_match_rate_pct: routerMatchRatePct,
+    grounding_pass_rate_pct: groundingPassRatePct,
+    avg_latency_ms: avgLatencyMs,
+    recommendations: recs,
+  };
+}
+
+// ── Task #133: HELIX-tool-calling cohort within bie_interactions (additive, a
+// fourth pass alongside the 0DTE, SPX-Slayer-outcomes, and SPX-tool-calling
+// passes above) ──
+//
+// HELIX is the market-wide options-flow product behind `/flows` — before this,
+// calibration.ts had no way to measure whether Largo's ANSWERS about HELIX's own
+// state (the ingested flow tape, the flow-anomaly detector's near-miss log) were
+// actually GOOD answers, the identical gap task #112 closed for SPX Slayer.
+// Mirrors that cohort's shape/math exactly; see this file's task #112 section
+// above for the full reasoning behind the metrics themselves.
+
+/** Slim projection of a bie_interactions row — same shape as SpxToolCallInputRow.
+ *  intent_bucket is kept for shape-parity with the db row type (and so a future
+ *  router intent doesn't require a type change), but isHelixToolCallingRow below
+ *  deliberately never reads it — see that function's doc comment for why. */
+export type HelixToolCallInputRow = {
+  tools_used: string[];
+  intent_bucket: string | null;
+  answer_source: string;
+  claims_total: number | null;
+  claims_verified: number | null;
+  latency_ms: number | null;
+};
+
+export type HelixToolCallCalibrationReport = {
+  window: { since: string; through: string };
+  /** Rows in the cohort — see isHelixToolCallingRow for the membership test. */
+  n: number;
+  /** Of the n cohort rows, how many were answered by Claude's tool-calling loop
+   *  vs. matched deterministically by the BIE router. Always claude_fallback_n
+   *  === n / router_matched_n === 0 today — see isHelixToolCallingRow's doc
+   *  comment for why there is no deterministic HELIX router intent yet. Reported
+   *  as raw counts (not just a derived rate), same convention the SPX pass uses. */
+  claude_fallback_n: number;
+  router_matched_n: number;
+  /** router_matched_n / n. Will legitimately read 0 until a future task adds a
+   *  deterministic HELIX router intent to classifyBieIntent — an honest reflection
+   *  of today's router coverage, not a bug. null when n = 0. */
+  router_match_rate_pct: number | null;
+  /** Aggregate sum(claims_verified)/sum(claims_total) across cohort rows that
+   *  actually carried numeric claims (claims_total > 0) — same weighting as the
+   *  SPX pass. null when no cohort row had any graded claims yet. */
+  grounding_pass_rate_pct: number | null;
+  avg_latency_ms: number | null;
+  /** Same evidence-gating philosophy as the other passes — empty until n≥10. */
+  recommendations: string[];
+};
+
+/** Cohort membership: does this bie_interactions row represent a Largo turn that
+ *  touched HELIX's own persisted state (the ingested flow tape or the
+ *  flow-anomaly-detector's near-miss log)? Unlike isSpxToolCallingRow above, this
+ *  is a PURE tools_used check — no `intent_bucket === '...'` OR-clause. Verified
+ *  directly against src/lib/bie/router.ts: classifyBieIntent() recognizes exactly
+ *  four intents (zerodte_plays, ticker_play_state, spx_structure, market_context)
+ *  and none of them is a HELIX/flow intent — there is no composeBieAnswer branch
+ *  that reads the flow tape or the anomaly near-miss log the way
+ *  composeSpxStructure reads SPX Slayer's engine state. Adding an OR-clause here
+ *  (or in fetchHelixToolCallingBieInteractions, db.ts) would mean fabricating a
+ *  match condition for a router path that does not exist, which would make
+ *  router_matched_n silently non-zero for a reason that isn't real. So
+ *  router_matched_n legitimately reads 0 and router_match_rate_pct legitimately
+ *  reads 0% for every HELIX cohort today — that is an honest reflection of the
+ *  router's current coverage, not a bug to "fix" by inventing a fake match here.
+ *  If a future task adds a deterministic HELIX router intent, this function (and
+ *  its db.ts fetcher) should gain the analogous OR-clause at that time. */
+function isHelixToolCallingRow(row: HelixToolCallInputRow): boolean {
+  return row.tools_used.some((t) => (HELIX_ENGINE_TOOL_NAMES as readonly string[]).includes(t));
+}
+
+/** Pure assembly — feed it bie_interactions-shaped rows (any cohort mix), get the
+ *  HELIX-tool-calling slice's sample count, router-vs-Claude split, grounding pass
+ *  rate, and latency. Never touches the live flow-ingestion pipeline or the
+ *  anomaly detector's own thresholds — read-only reporting over already-logged
+ *  turns, same contract as computeSpxToolCallCalibration above. */
+export function computeHelixToolCallCalibration(
+  rows: HelixToolCallInputRow[],
+  window: { since: string; through: string }
+): HelixToolCallCalibrationReport {
+  const cohort = rows.filter(isHelixToolCallingRow);
+  const n = cohort.length;
+
+  const claudeFallbackN = cohort.filter((r) => r.answer_source === "claude").length;
+  const routerMatchedN = cohort.filter((r) => r.answer_source === "bie-router").length;
+  const routerMatchRatePct = n > 0 ? Math.round((routerMatchedN / n) * 1000) / 10 : null;
+
+  // Only rows that actually carried numeric claims count toward the grounding
+  // ratio — same reasoning as the SPX pass: a turn with zero claims has nothing
+  // to verify, and folding it in would dilute the ratio with a trivial non-signal.
+  const graded = cohort.filter((r) => (r.claims_total ?? 0) > 0);
+  const totalClaims = graded.reduce((s, r) => s + (r.claims_total ?? 0), 0);
+  const verifiedClaims = graded.reduce((s, r) => s + (r.claims_verified ?? 0), 0);
+  const groundingPassRatePct = totalClaims > 0 ? Math.round((verifiedClaims / totalClaims) * 1000) / 10 : null;
+
+  const latencies = cohort.map((r) => r.latency_ms).filter((l): l is number => l != null);
+  const avgLatencyMs = latencies.length
+    ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
+    : null;
+
+  const recs: string[] = [];
+  if (n >= MIN_EVIDENCE && groundingPassRatePct != null && groundingPassRatePct < 70) {
+    recs.push(
+      `HELIX-tool-calling Largo turns show only ${groundingPassRatePct}% claim grounding over ${n} turns — since grounding checks numbers, not answer quality, this is worth a manual read of a few transcripts to see whether the tape/anomaly-detector outputs are being misread or just under-verified.`
+    );
+  }
+  // No router-match-rate recommendation here (unlike the SPX pass) — there is no
+  // deterministic HELIX router intent to "widen coverage" of yet (see
+  // isHelixToolCallingRow's doc comment); a recommendation citing a permanent,
+  // structural 0% would be noise, not evidence-cited signal.
 
   return {
     window,
@@ -869,6 +1000,7 @@ export function formatCalibration(r: CalibrationReport): string {
   const sections = [zeroDteSection];
   if (r.spx_slayer) sections.push(`---`, ``, formatSpxCalibration(r.spx_slayer));
   if (r.spx_tool_calls) sections.push(`---`, ``, formatSpxToolCallCalibration(r.spx_tool_calls));
+  if (r.helix_tool_calls) sections.push(`---`, ``, formatHelixToolCallCalibration(r.helix_tool_calls));
   if (r.thermal_tool_calls) sections.push(`---`, ``, formatThermalToolCallCalibration(r.thermal_tool_calls));
   if (r.nighthawk_tool_calls) sections.push(`---`, ``, formatNighthawkToolCallCalibration(r.nighthawk_tool_calls));
   // Task #149 — labeled "0DTE Command tool-calling" (not bare "0DTE") so it never
@@ -908,6 +1040,20 @@ export function formatSpxToolCallCalibration(r: SpxToolCallCalibrationReport): s
     r.recommendations.length
       ? `Recommendations (evidence-cited, report-first — a human ships the change):\n${r.recommendations.map((x) => `- ${x}`).join("\n")}`
       : `Recommendations: none yet — fewer than ${MIN_EVIDENCE} SPX-tool-calling turns in this window. The harness waits for evidence; it never tunes on noise.`,
+  ].join("\n");
+}
+
+export function formatHelixToolCallCalibration(r: HelixToolCallCalibrationReport): string {
+  return [
+    `HELIX-tool-calling Largo turns — ${r.window.since} → ${r.window.through} (${r.n} turns touched HELIX's own tape/anomaly-detector state)`,
+    ``,
+    `Grounding pass rate: ${r.grounding_pass_rate_pct != null ? `${r.grounding_pass_rate_pct}%` : "no graded claims yet"}`,
+    `Avg latency: ${r.avg_latency_ms != null ? `${r.avg_latency_ms}ms` : "—"}`,
+    `Answered by: ${r.claude_fallback_n} Claude tool-calling turn(s), ${r.router_matched_n} deterministic router match(es)${r.router_match_rate_pct != null ? ` (${r.router_match_rate_pct}% router-matched)` : ""}`,
+    ``,
+    r.recommendations.length
+      ? `Recommendations (evidence-cited, report-first — a human ships the change):\n${r.recommendations.map((x) => `- ${x}`).join("\n")}`
+      : `Recommendations: none yet — fewer than ${MIN_EVIDENCE} HELIX-tool-calling turns in this window. The harness waits for evidence; it never tunes on noise.`,
   ].join("\n");
 }
 
@@ -1008,6 +1154,34 @@ async function computeSpxToolCallCalibrationFromDb(
   try {
     const rows = await fetchSpxToolCallingBieInteractions(since, SPX_ENGINE_TOOL_NAMES);
     return computeSpxToolCallCalibration(
+      rows.map((r) => ({
+        tools_used: r.tools_used,
+        intent_bucket: r.intent_bucket,
+        answer_source: r.answer_source,
+        claims_total: r.claims_total,
+        claims_verified: r.claims_verified,
+        latency_ms: r.latency_ms,
+      })),
+      { since, through }
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** Task #133's HELIX-tool-calling pass — same rolling window as the other
+ *  passes above, fed by fetchHelixToolCallingBieInteractions (a pure tools_used
+ *  filter at the SQL layer — see its doc comment in db.ts for why there's no
+ *  intent_bucket OR-clause, unlike the SPX fetcher). Same fail-open contract
+ *  (never throws) as computeSpxToolCallCalibrationFromDb above, so a problem
+ *  here can never take down the rest of the report. */
+async function computeHelixToolCallCalibrationFromDb(
+  since: string,
+  through: string
+): Promise<HelixToolCallCalibrationReport | null> {
+  try {
+    const rows = await fetchHelixToolCallingBieInteractions(since, HELIX_ENGINE_TOOL_NAMES);
+    return computeHelixToolCallCalibration(
       rows.map((r) => ({
         tools_used: r.tools_used,
         intent_bucket: r.intent_bucket,
@@ -1139,6 +1313,11 @@ export async function runBieCalibration(days = 14): Promise<CalibrationReport | 
     // independent read-only pass over bie_interactions (Largo's own turns), never
     // touching spx_signals.ts or any live play-engine gate/score/action.
     report.spx_tool_calls = await computeSpxToolCallCalibrationFromDb(since, through);
+    // Task #133: attach the HELIX-tool-calling answer-quality cohort too — a
+    // FOURTH, independent read-only pass over bie_interactions (Largo's own
+    // turns), never touching spx_signals.ts, any live play-engine gate/score/
+    // action, or HELIX's own flow-ingestion/anomaly-detection pipeline.
+    report.helix_tool_calls = await computeHelixToolCallCalibrationFromDb(since, through);
     // Task #137: attach the Thermal-tool-calling answer-quality cohort too — a
     // FOURTH, independent read-only pass over bie_interactions (Largo's own
     // turns), never touching spx_signals.ts, any live play-engine gate/score/
