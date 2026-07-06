@@ -1,7 +1,50 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 12:32 ET
+Last updated: 2026-07-06 13:55 ET
 
-## Member live UI validation — 2026-07-06 ~10:40 ET (post #571 OFFLINE fix)
+## SPX Slayer all-day RTH verify — `spx-rth-2026-07-06` (market open pass ~10:19 AM PT)
+
+**Session:** SPX-RTH-ALL-DAY-AGENT verify mode — `npm run validate:spx-rth` + `npm run validate:spx-e2e` against production.
+
+### Validation summary (pre-fix deploy)
+
+| Check | Result |
+|---|---|
+| `infra:validate:rth-open` | ✅ GREEN |
+| `spx:matrix-deep-audit` | ✅ 152–153 strikes, GEX/VEX/DEX/CHARM finite, INV-2 holds |
+| `spx:cross-endpoint` | ✅ spot merged/hm/play agree (Δ ≤ 1 pt); play=SCANNING, no stale confirmations |
+| `spx:desk-lanes` | ✅ pulse + flow live |
+| `validate:spx-bie` | ❌ **P0** — 35 field divergences member `/spx/play` vs `getSpxPlayState()` (grade A vs B, score 87 vs 53, levels/gates/confirmations differ) |
+| `matrix:every-cell-api` | ✅ 152–153 strikes when heatmap responds |
+| UI E2E (browser) | ✅ GEX/VEX tabs, 173 rows, LIVE badge, lotto dock, zero console errors |
+| `integration:thermal/helix/grid/zerodte/largo` | ✅ PASS |
+| `spx:data-correctness` | ❌ HTTP 524 on full `?force=1` sweep (CF gateway ~100s timeout) |
+| `ops:collect` | ✅ 0 action items |
+
+### Findings table (`spx-rth-2026-07-06`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P0** | `spx-rth-2026-07-06-01` | Member `/api/market/spx/play` duplicated play chain + separate `withServerCache` vs BIE/Largo `getSpxPlayState()` — 35-field divergence (grade/score/levels/gates/confirmations) | `validate:spx-bie` Layer B | **FIXED** branch `cursor/spx-rth-system-verification-55fa` — route delegates to `getSpxPlayState()`; cache+roundFloats moved into service |
+| P1 | `spx-rth-2026-07-06-02` | `data-correctness?force=1` returns HTTP 524 during RTH (full 8-surface sweep exceeds CF ~100s) | `/api/cron/data-correctness` | **FIXED** audit uses `?surface=heatmap`; route already documents fast path |
+| P1 | `spx-rth-2026-07-06-03` | Transient HTTP 524/502 on gex-heatmap + spx/flow during parallel audit burst | prod probes | WATCH — warm retries succeed in &lt;200ms |
+| P2 | `spx-rth-2026-07-06-04` | Commentary expand control not found (`ui:click-commentary-expand` SKIP) — rail may be full-height without collapse button | `/dashboard` Playwright | post-close — verify selector vs `SpxCommentaryRail` layout |
+| P2 | `spx-rth-2026-07-06-05` | E2E matrix fetch intermittent 90s curl timeout under load | `gex-heatmap?ticker=SPX` | **FIXED** retry + 90s matrix row wait in `spx-dashboard-e2e-audit.mjs` |
+
+**Live auto-update (60s sit):** Not instrumented in script this pass; matrix poll 8s RTH + pulse ~3s confirmed via separate warm probes (heatmap 122ms, play 91ms midday).
+
+**Cross-tool Step 3:** Thermal (same heatmap route), HELIX (30 prints), Grid bootstrap, 0DTE board (1 setup), Largo (`blackout_intelligence`), Night Hawk — PASS when heatmap fetch succeeds. BIE play-route consistency pending deploy of P0 fix.
+
+### Post-fix re-run (~13:57 ET)
+
+| Check | Result |
+|---|---|
+| `validate:spx-e2e` (standalone) | ✅ **GREEN** 19/19 — matrix every cell, GEX/VEX tabs, 173 rows, SCANNING hero (no stale ✓), all integrations |
+| `spx:data-correctness` | ✅ `?surface=heatmap` flags=0 (audit script fix) |
+| `validate:spx-bie` | ❌ still 35-field drift until P0 deploy lands on Railway |
+| `spx:desk-lanes` | ⚠️ merged vs pulse Δ=0.30 pt (parallel fetch timing; below 1 pt heatmap tolerance) |
+| `ops:collect` | ❌ P0 watchdog HTTP 524 (transient CF timeout on cron-health probe) |
+
+---
 
 **Session:** User requested validation of what **members see on the live website**, not API-only probes. Agent ran Playwright against `https://blackouttrades.com/dashboard` with Clerk cookie injection (same path as iOS E2E).
 
