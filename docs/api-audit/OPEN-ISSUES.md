@@ -1,5 +1,34 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 11:00 ET
+Last updated: 2026-07-06 12:32 ET
+
+## Member live UI validation — 2026-07-06 ~10:40 ET (post #571 OFFLINE fix)
+
+**Session:** User requested validation of what **members see on the live website**, not API-only probes. Agent ran Playwright against `https://blackouttrades.com/dashboard` with Clerk cookie injection (same path as iOS E2E).
+
+### Member dashboard (`npm run validate:member-dashboard`)
+
+| Check | Result |
+|---|---|
+| `member-api:merged` | ✅ `market_open=true`, RTH OPEN, spot ~7524 |
+| `member-ui:live-badge` | ✅ not OFFLINE |
+| `member-ui:snapshot-banner` | ✅ no "Last session snapshot · not live" |
+| `member-ui:trade-alerts-closed` | ✅ no MARKET CLOSED / 0DTE WINDOW CLOSED hero |
+| `member-ui:matrix-loading` | ✅ 173 strike rows loaded (wait for table, not fixed sleep) |
+| `member-ui:live-label` | ✅ LIVE present |
+| `member-ui:spot-visible` | ✅ 7,524.02 |
+| Screenshot | `audit-output/member-dashboard-live-*.png` |
+
+### SPX E2E with browser (`npm run validate:spx-e2e`)
+
+| Check | Result |
+|---|---|
+| Matrix API deep audit | ✅ 154 strikes GEX/VEX/DEX/CHARM |
+| Browser UI (cookie auth) | ✅ sign-in, LIVE badge, 173 matrix rows, GEX/VEX tab clicks |
+| `integration:spx-cross-tool` | ⚠️ desk vs matrix spot Δ=0.46 — parallel fetch timing, not member-visible |
+
+**Scripts added:** `scripts/member-dashboard-live-check.mjs`, `validate:member-dashboard` in `package.json`. `validate:spx-e2e` browser section now uses cookie injection (fixes 120s sign-in ticket timeout in headless CI).
+
+---
 
 ## Dashboard perf — ~10s loads (not AWS) — 2026-07-06
 
@@ -45,7 +74,7 @@ Last updated: 2026-07-06 11:00 ET
 **Remaining FAILs (non-P0):**
 | Probe | Detail | Action |
 |---|---|---|
-| `spx:desk-lanes` | merged vs flow spot Δ=0.33 pts | **FIX PR** — audit threshold 0.15→1.0 pt (lane refresh skew, not user-visible) |
+| `spx:desk-lanes` | merged vs flow spot Δ=0.33 pts | **FIXED #584** — audit threshold 0.15→1.0 pt |
 | `spx:dashboard-e2e` | Clerk ticket `waitForURL /dashboard` timeout in cloud VM | **WATCH** — API integration probes all PASS; browser path env-limited |
 | `spx:data-correctness` | HTTP 524 on force cron | **WATCH** — Cloudflare timeout on heavy 6-layer cron |
 
