@@ -1,5 +1,67 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 14:10 ET
+Last updated: 2026-07-06 15:05 ET
+
+## spx-rth-2026-07-06 — SPX Slayer all-day verify pass (market open ~14:36 ET)
+
+**Session:** `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` verify mode · branch `cursor/spx-rth-system-verification-6134` · target `https://blackouttrades.com` · RTH Mon 2026-07-06.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ⚠️ **6 PASS / 1 WARN / 2 FAIL** (2nd pass after `npm install`) |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 0 FAIL / 18 checks |
+| `npm run ops:collect` (post-heal) | ✅ **GREEN** — 0 action items |
+| 60s live auto-update (browser) | ✅ desk + matrix + hero all ticked without refresh |
+
+**First pass note:** fresh checkout lacked `node_modules` (`pg`, `tsx`, `playwright`) — infra false FAILs only; resolved before substantive re-run.
+
+### `validate:spx-rth` detail (2nd pass ~14:36 ET)
+
+| Probe | Result | Notes |
+|---|---|---|
+| `env:CRON_SECRET` | ✅ | |
+| `infra:validate:rth-open` | ✅ | deploy, crons, sockets |
+| `spx:matrix-deep-audit` | ✅ | 144 strikes, GEX/VEX finite, INV-2 resum |
+| `spx:cross-endpoint` | ✅ | spot merged=7539.55 hm=7539.39 play=SELL/SCANNING |
+| `spx:desk-lanes` | ✅ | pulse + flow live |
+| `spx:bie-consistency` | ✅ | BIE `spx_full_state` == `/spx/play` |
+| `spx:dashboard-e2e` (bundled) | ❌ | curl 90s timeout during Clerk auth (standalone E2E passed) |
+| `spx:data-correctness` | ⚠️ | edge CF timeout; `surface=heatmap` fallback ok; Railway cron authoritative |
+| `ops:collect` | ❌→✅ | P0 `gex-alerts` stale — force-triggered; watchdog GREEN after heal |
+
+### `validate:spx-e2e` — matrix + UI + cross-tool
+
+| Probe | Result | Notes |
+|---|---|---|
+| `matrix:every-cell-api` | ✅ | GEX+VEX+DEX+CHARM · **150 strikes** · spot 7544.53 — zero NaN/stale/wrong |
+| `ui:click-gex-tab` / `ui:click-vex-tab` | ✅ | both tabs activate; 171 matrix rows |
+| `ui:matrix-text-sanity` | ✅ | no NaN/undefined/`$—` |
+| `ui:trade-alert-hero` | ✅ | SELL — no stale ✓ during SCANNING |
+| `ui:live-badge-rth` | ✅ | not OFFLINE |
+| `ui:click-commentary-expand` | ⏭️ SKIP | no expand control in current shell |
+| `integration:thermal-cross-validation` | ✅ | SPY cross_validation clean |
+| `integration:helix-flows` | ✅ | 30 prints |
+| `integration:nighthawk-edition` | ✅ | |
+| `integration:bie-play-route` | ✅ | action=HOLD |
+| `integration:spx-cross-tool` | ✅ | desk=7544.97 play=HOLD |
+| `integration:largo-spx-query` | ✅ | tools=blackout_intelligence |
+| `integration:zerodte-board` | ⚠️ | board empty or gated (quiet tape / tier) |
+| `integration:grid-bootstrap` | ⚠️ | curl tail timeout during parallel probe — not recorded; grid panels verified in earlier RTH sweep |
+
+### Findings table (`spx-rth-2026-07-06`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P0 | `watchdog:rth-stale:gex-alerts` | `gex-alerts` cron `market_hours_stale` during RTH (~14:36 ET) — last run >20m | `GET /api/cron/cron-staleness-watchdog` | **Healed live** — `GET /api/cron/gex-alerts?force=1` → ok; ops GREEN |
+| P1 | `spx-rth:bundled-e2e-timeout` | `validate:spx-rth` bundled `spx:dashboard-e2e` curl 90s auth timeout; standalone `validate:spx-e2e` GREEN same session | audit-output | post-close — increase auth timeout or skip duplicate when standalone ran |
+| P1 | `spx-rth:data-integrity-stale` | `data-integrity` cron briefly stale alongside `gex-alerts` | watchdog | **Healed live** — `GET /api/cron/data-integrity?force=1` |
+| P2 | `spx-rth:commentary-expand-missing` | E2E SKIP — no `.spx-commentary-rail` expand button | UI | post-close |
+| P2 | `spx-rth:zerodte-empty` | 0DTE board empty/gated during pass | `/api/market/zerodte/board` | watch — may be quiet tape |
+
+**P0 action taken:** force-triggered `gex-alerts` + `data-integrity` crons; `ops:collect` fingerprint `e3b0c44298fc` (0 items). No member-visible matrix/play defect — SPX Slayer **GREEN** for trading surfaces.
+
+---
 
 ## RTH comprehensive sweep — 2026-07-06 ~13:22–13:56 ET (autonomous agent)
 
