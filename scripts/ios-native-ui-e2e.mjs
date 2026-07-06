@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { chromium } from "playwright";
 import {
   iosPlaywrightDevice,
+  iosPlaywrightDeviceProMax16,
   mintIosPlaywrightSession,
   onboardingInitScript,
   readShellProbe,
@@ -41,12 +42,12 @@ const fail = (name, detail = "") => {
 };
 
 const TABS = [
-  { href: "/dashboard", short: "SPX", route: "dashboard" },
-  { href: "/flows", short: "HELIX", route: "flows" },
-  { href: "/heatmap", short: "Thermal", route: "heatmap" },
-  { href: "/terminal", short: "Largo", route: "largo" },
-  { href: "/nighthawk", short: "Hawk", route: "nighthawk" },
-  { href: "/grid", short: "0DTE", route: "grid" },
+  { href: "/dashboard", label: "SPX Slayer", code: "SPX", route: "dashboard" },
+  { href: "/flows", label: "HELIX", code: "HLX", route: "flows" },
+  { href: "/heatmap", label: "BlackOut Thermal", code: "THM", route: "heatmap" },
+  { href: "/terminal", label: "Largo", code: "LRG", route: "largo" },
+  { href: "/nighthawk", label: "Night Hawk", code: "HWK", route: "nighthawk" },
+  { href: "/grid", label: "0DTE Command", code: "0DT", route: "grid" },
 ];
 
 async function shot(page, name) {
@@ -86,12 +87,17 @@ async function clickRoleTab(page, pattern) {
 }
 
 async function testToolPage(page, tab) {
-  const tabLink = page.locator(".ios-app-tab-link", { hasText: tab.short }).first();
+  const tabLink = page.getByRole("link", { name: tab.label }).first();
   if (!(await tabLink.isVisible().catch(() => false))) {
-    fail(`tab:${tab.short}`, "tab link not visible");
-    return;
+    const codeLink = page.locator(".ios-app-tab-link", { hasText: tab.code }).first();
+    if (!(await codeLink.isVisible().catch(() => false))) {
+      fail(`tab:${tab.code}`, "instrument rail link not visible");
+      return;
+    }
+    await codeLink.click();
+  } else {
+    await tabLink.click();
   }
-  await tabLink.click();
   await page.waitForURL((url) => url.pathname === tab.href || url.pathname.startsWith(`${tab.href}/`), {
     timeout: 45_000,
   });
@@ -99,17 +105,17 @@ async function testToolPage(page, tab) {
 
   const probe = await readShellProbe(page);
   if (probe.route === tab.route || tab.route === "dashboard" && probe.route === "dashboard") {
-    ok(`tab:${tab.short}`, probe.route ?? tab.href);
+    ok(`tab:${tab.code}`, probe.route ?? tab.href);
   } else if (probe.nativeShell && probe.route) {
-    ok(`tab:${tab.short}`, `route=${probe.route}`);
+    ok(`tab:${tab.code}`, `route=${probe.route}`);
   } else {
-    warn(`tab:${tab.short}`, `loaded ${page.url()} shell=${JSON.stringify(probe)}`);
+    warn(`tab:${tab.code}`, `loaded ${page.url()} shell=${JSON.stringify(probe)}`);
   }
 
   await shot(page, `tab-${tab.route}`);
 
   if (tab.route === "dashboard") {
-    if (await clickSegment(page, "Matrix")) {
+    if (await clickSegment(page, "MATX")) {
       ok("spx:segment-matrix");
       await shot(page, "spx-matrix");
       const gexTab = page.locator("#spx-matrix-tab-gex, [id*='matrix-tab-gex']").first();
@@ -123,11 +129,11 @@ async function testToolPage(page, tab) {
         ok("spx:matrix-vex-tab");
       }
     }
-    if (await clickSegment(page, "Plays")) {
+    if (await clickSegment(page, "PLAYS")) {
       ok("spx:segment-plays");
       await shot(page, "spx-plays");
     }
-    if (await clickSegment(page, "Intel")) {
+    if (await clickSegment(page, "INTEL")) {
       ok("spx:segment-intel");
       await shot(page, "spx-intel");
     }
@@ -140,11 +146,11 @@ async function testToolPage(page, tab) {
   }
 
   if (tab.route === "flows") {
-    if (await clickSegment(page, "Analytics")) {
+    if (await clickSegment(page, "ANLY")) {
       ok("helix:segment-analytics");
       await shot(page, "helix-analytics");
     }
-    if (await clickSegment(page, "Live tape")) {
+    if (await clickSegment(page, "TAPE")) {
       ok("helix:segment-tape");
       await shot(page, "helix-tape");
     }
@@ -194,11 +200,11 @@ async function testToolPage(page, tab) {
   }
 
   if (tab.route === "nighthawk") {
-    if (await clickSegment(page, "Night's Watch")) {
+    if (await clickSegment(page, "WATCH")) {
       ok("hawk:segment-watch");
       await shot(page, "hawk-watch");
     }
-    if (await clickSegment(page, "Playbook")) {
+    if (await clickSegment(page, "BOOK")) {
       ok("hawk:segment-playbook");
     }
   }
@@ -218,8 +224,80 @@ async function testToolPage(page, tab) {
   }
 }
 
-console.log("test:ios-ui-e2e — Playwright mobile interaction audit\n");
+console.log("test:ios-ui-e2e — Playwright iPhone 16 Pro / Pro Max audit\n");
 console.log(`  base: ${BASE}\n`);
+
+const consoleErrors = [];
+const pageErrors = [];
+
+async function runDevicePass(deviceFactory, session, prefix = "") {
+  const { contextOptions, deviceName, tierClass } = deviceFactory();
+  console.log(`  device: ${deviceName}\n`);
+
+  const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+  const context = await browser.newContext(contextOptions);
+  await context.addInitScript(onboardingInitScript());
+  await context.addCookies(session.cookies);
+
+  const page = await context.newPage();
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+  page.on("pageerror", (err) => pageErrors.push(err.message));
+
+  try {
+    await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded", timeout: 90_000 });
+    await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 60_000 });
+    ok(`${prefix}auth:clerk-session`);
+
+    const tierOk = await page.evaluate((expected) => document.documentElement.classList.contains(expected), tierClass);
+    if (tierOk) ok(`${prefix}device:tier-class`, tierClass);
+    else warn(`${prefix}device:tier-class`, `expected ${tierClass} on html`);
+
+    const shell0 = await readShellProbe(page);
+    if (shell0.nativeShell) {
+      ok(`${prefix}shell:native-active`, `route=${shell0.route}`);
+    } else {
+      warn(
+        `${prefix}shell:native-active`,
+        "ios-native-shell off — deploy main for full native chrome"
+      );
+    }
+
+    if (shell0.iosApp) ok(`${prefix}shell:ios-app`);
+    else fail(`${prefix}shell:ios-app`, "BlackOutiOSApp UA not detected");
+
+    if (await page.locator(".ios-app-tab-bar").isVisible().catch(() => false)) {
+      ok(`${prefix}shell:tab-bar`);
+    } else {
+      fail(`${prefix}shell:tab-bar`, "instrument rail missing");
+    }
+
+    const menuBtn = page.getByRole("button", { name: /command deck|open menu/i });
+    if (await menuBtn.isVisible().catch(() => false)) {
+      await menuBtn.click();
+      await page.waitForSelector(".ios-native-menu-sheet", { timeout: 10_000 });
+      ok(`${prefix}chrome:menu-open`);
+      await shot(page, `${prefix}menu-open`);
+      await page.getByRole("button", { name: /close command deck|close menu/i }).click();
+      ok(`${prefix}chrome:menu-close`);
+    } else {
+      warn(`${prefix}chrome:menu`, "command deck button not visible");
+    }
+
+    await shot(page, `${prefix}00-dashboard-entry`);
+
+    for (const tab of TABS) {
+      await testToolPage(page, tab);
+    }
+
+    await page.getByRole("link", { name: "SPX Slayer" }).first().click();
+    await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
+    ok(`${prefix}nav:return-spx`);
+  } finally {
+    await browser.close();
+  }
+}
 
 const session = await mintIosPlaywrightSession({ appUrl: BASE });
 if (session.skip) {
@@ -227,90 +305,26 @@ if (session.skip) {
   process.exit(0);
 }
 
-const consoleErrors = [];
-const pageErrors = [];
-const { contextOptions } = iosPlaywrightDevice();
-const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
-const context = await browser.newContext(contextOptions);
-await context.addInitScript(onboardingInitScript());
-await context.addCookies(session.cookies);
-
-const page = await context.newPage();
-page.on("console", (msg) => {
-  if (msg.type() === "error") consoleErrors.push(msg.text());
-});
-page.on("pageerror", (err) => pageErrors.push(err.message));
-
 try {
-  await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded", timeout: 90_000 });
-  await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 60_000 });
-  ok("auth:clerk-session");
-
-  const shell0 = await readShellProbe(page);
-  if (shell0.nativeShell) {
-    ok("shell:native-active", `route=${shell0.route}`);
-  } else {
-    warn(
-      "shell:native-active",
-      "ios-native-shell off — merge/deploy PR #557 for full native chrome; tab bar + ios-app still testable"
-    );
-  }
-
-  if (shell0.iosApp) ok("shell:ios-app");
-  else fail("shell:ios-app", "BlackOutiOSApp UA not detected");
-
-  if (await page.locator(".ios-app-tab-bar").isVisible().catch(() => false)) {
-    ok("shell:tab-bar");
-  } else {
-    fail("shell:tab-bar", "bottom tab dock missing");
-  }
-
-  const menuBtn = page.getByRole("button", { name: /open menu/i });
-  if (await menuBtn.isVisible().catch(() => false)) {
-    await menuBtn.click();
-    await page.waitForSelector(".ios-native-menu-sheet", { timeout: 10_000 });
-    ok("chrome:menu-open");
-    await shot(page, "menu-open");
-    for (const tool of ["HELIX", "Thermal", "Largo"]) {
-      const link = page.locator(".ios-native-menu-tool", { hasText: tool }).first();
-      if (await link.isVisible().catch(() => false)) {
-        ok(`menu:tool-${tool.toLowerCase()}-visible`);
-      }
-    }
-    await page.getByRole("button", { name: /close menu/i }).click();
-    ok("chrome:menu-close");
-  } else {
-    warn("chrome:menu", "native menu button not visible (pre-native-shell deploy)");
-  }
-
-  await shot(page, "00-dashboard-entry");
-
-  for (const tab of TABS) {
-    await testToolPage(page, tab);
-  }
-
-  // Round-trip back to SPX via tab bar
-  await page.locator(".ios-app-tab-link", { hasText: "SPX" }).first().click();
-  await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
-  ok("nav:return-spx");
-
-  if (pageErrors.length) {
-    fail("runtime:page-errors", pageErrors.slice(0, 3).join(" | "));
-  } else {
-    ok("runtime:page-errors");
-  }
-
-  const noisyConsole = consoleErrors.filter(
-    (e) => !/clerk|favicon|404|ResizeObserver|hydration/i.test(e)
-  );
-  if (noisyConsole.length) {
-    warn("runtime:console-errors", noisyConsole.slice(0, 3).join(" | "));
-  } else {
-    ok("runtime:console-errors");
-  }
+  await runDevicePass(iosPlaywrightDevice, session, "pro:");
+  await runDevicePass(iosPlaywrightDeviceProMax16, session, "max:");
 } finally {
-  await browser.close();
   await session.cleanup();
+}
+
+if (pageErrors.length) {
+  fail("runtime:page-errors", pageErrors.slice(0, 3).join(" | "));
+} else {
+  ok("runtime:page-errors");
+}
+
+const noisyConsole = consoleErrors.filter(
+  (e) => !/clerk|favicon|404|ResizeObserver|hydration/i.test(e)
+);
+if (noisyConsole.length) {
+  warn("runtime:console-errors", noisyConsole.slice(0, 3).join(" | "));
+} else {
+  ok("runtime:console-errors");
 }
 
 const failed = checks.filter((c) => !c.pass);

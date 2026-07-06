@@ -176,15 +176,37 @@ export async function mintIosPlaywrightSession({ appUrl }) {
   }
 }
 
-/** Capacitor iOS WKWebView user-agent + iPhone 14 Pro viewport. */
-export function iosPlaywrightDevice() {
-  const iPhone = devices["iPhone 14 Pro"];
+const IOS_UA_TOKEN = "BlackOutiOSApp";
+
+function withBlackOutUa(deviceKey) {
+  const base = devices[deviceKey];
   return {
-    contextOptions: {
-      ...iPhone,
-      userAgent: iPhone.userAgent.replace("Mobile/", "BlackOutiOSApp Mobile/"),
-    },
+    ...base,
+    userAgent: base.userAgent.replace("Mobile/", `${IOS_UA_TOKEN} Mobile/`),
   };
+}
+
+/** Capacitor WKWebView — iPhone 16 Pro (402×874, primary QA target). */
+export function iosPlaywrightDevicePro16() {
+  return {
+    deviceName: "iPhone 16 Pro",
+    tierClass: "ios-tier-pro",
+    contextOptions: withBlackOutUa("iPhone 16 Pro"),
+  };
+}
+
+/** Capacitor WKWebView — iPhone 16 Pro Max (440×956). */
+export function iosPlaywrightDeviceProMax16() {
+  return {
+    deviceName: "iPhone 16 Pro Max",
+    tierClass: "ios-tier-pro-max",
+    contextOptions: withBlackOutUa("iPhone 16 Pro Max"),
+  };
+}
+
+/** Default iOS E2E device — iPhone 16 Pro. */
+export function iosPlaywrightDevice() {
+  return iosPlaywrightDevicePro16();
 }
 
 /** Skip onboarding modal before first paint. */

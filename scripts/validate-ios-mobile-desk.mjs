@@ -269,6 +269,23 @@ if (rootLayout.includes("ios-native-motion.css")) ok("layout:ios-native-motion-i
 else fail("layout:ios-native-motion-imported", "expected ios-native-motion.css import");
 if (rootLayout.includes("ios-native-command.css")) ok("layout:ios-native-command-imported");
 else fail("layout:ios-native-command-imported", "expected ios-native-command.css import");
+if (rootLayout.includes("ios-native-iphone16.css")) ok("layout:ios-native-iphone16-imported");
+else fail("layout:ios-native-iphone16-imported", "expected ios-native-iphone16.css import");
+if (rootLayout.includes("ios-tier-pro-max")) ok("layout:iphone16-tier-detection");
+else fail("layout:iphone16-tier-detection", "expected ios-tier-pro in head script");
+
+const iphone16Css = readFileSync(join(root, "src/app/ios-native-iphone16.css"), "utf8");
+const iphone16Needles = [
+  ["ios-tier-pro", "Pro tier hook"],
+  ["ios-tier-pro-max", "Pro Max tier hook"],
+  ["min-width: 393px", "iPhone 16 Pro breakpoint"],
+  ["min-width: 430px", "iPhone 16 Pro Max breakpoint"],
+  ["grid-template-columns: repeat(3", "Pro Max 3-col metrics"],
+];
+for (const [needle, label] of iphone16Needles) {
+  if (iphone16Css.includes(needle)) ok(`iphone16-css:${label}`, needle);
+  else fail(`iphone16-css:${label}`, `missing ${needle}`);
+}
 
 const spxHeader = readFileSync(join(root, "src/components/desk/SpxSniperHeader.tsx"), "utf8");
 if (spxHeader.includes("nativeShell") && spxHeader.includes("spx-sniper-command-native")) {
