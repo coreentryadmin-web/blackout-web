@@ -81,6 +81,11 @@ export function isIosToolRoute(path: string): boolean {
   return IOS_TOOL_ROUTES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 }
 
+/** Tab order index for direction-aware iOS page transitions (-1 when not a tool route). */
+export function getIosToolRouteIndex(path: string): number {
+  return IOS_TOOL_ROUTES.findIndex((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}
+
 export function getIosToolMeta(path: string): IosToolMeta | null {
   return IOS_TOOLS.find((t) => path === t.href || path.startsWith(`${t.href}/`)) ?? null;
 }

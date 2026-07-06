@@ -83,8 +83,35 @@ for (const [needle, label] of nativeNeedles) {
 const sourceNeedles = [
   ["src/components/IosAppTabBar.tsx", "IosAppTabBar"],
   ["src/components/ios/IosAppChrome.tsx", "IosAppChrome"],
+  ["src/components/ios/IosNativePageTransition.tsx", "IosNativePageTransition"],
   ["src/lib/ios-tool-routes.ts", "ios-tool-routes"],
 ];
+const navCss = readFileSync(join(root, "src/app/ios-native-nav.css"), "utf8");
+const navNeedles = [
+  [".ios-native-page-stage", "page transition stage"],
+  [".ios-app-tab-indicator", "sliding tab indicator"],
+  [".ios-native-segment-indicator", "sliding segment indicator"],
+  ["ios-panel-enter", "internal panel crossfade"],
+  ["animation: none !important", "disable legacy page enter"],
+];
+for (const [needle, label] of navNeedles) {
+  if (navCss.includes(needle)) ok(`nav-css:${label}`, needle);
+  else fail(`nav-css:${label}`, `missing ${needle}`);
+}
+
+const tabBar = readFileSync(join(root, "src/components/IosAppTabBar.tsx"), "utf8");
+if (tabBar.includes("layoutId") && tabBar.includes("scroll={false}")) {
+  ok("nav:tab-bar-spring-indicator");
+} else {
+  fail("nav:tab-bar-spring-indicator", "expected layoutId + scroll={false}");
+}
+
+const pageTransition = readFileSync(join(root, "src/components/ios/IosNativePageTransition.tsx"), "utf8");
+if (pageTransition.includes("getIosToolRouteIndex") && pageTransition.includes("AnimatePresence")) {
+  ok("nav:direction-aware-page-transition");
+} else {
+  fail("nav:direction-aware-page-transition", "expected route-index transitions");
+}
 for (const [file, label] of sourceNeedles) {
   try {
     readFileSync(join(root, file), "utf8");

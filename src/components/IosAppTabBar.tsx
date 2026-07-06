@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { useAuth } from "@clerk/nextjs";
 import { clsx } from "clsx";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { isIosAppShell } from "@/lib/ios-app-shell";
 import { IOS_TOOLS, isIosToolRoute } from "@/lib/ios-tool-routes";
 import { toolKeyForHref, type ToolKey } from "@/lib/tool-access";
+
+const TAB_SPRING = { type: "spring" as const, stiffness: 480, damping: 34 };
 
 /** Native-style bottom tool switcher — iOS app shell only, signed-in tool routes. */
 export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
@@ -37,9 +40,19 @@ export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
           const locked = key != null && lockedTools.includes(key);
           return (
             <li key={tab.href} className="ios-app-tab-li">
+              {active && (
+                <motion.span
+                  layoutId="ios-native-tab-indicator"
+                  className="ios-app-tab-indicator"
+                  style={{ "--tab-accent": tab.accent } as React.CSSProperties}
+                  transition={TAB_SPRING}
+                  aria-hidden
+                />
+              )}
               <Link
                 href={tab.href}
                 prefetch={false}
+                scroll={false}
                 className={clsx(
                   "ios-app-tab-link",
                   active && "ios-app-tab-link-active",
@@ -48,7 +61,6 @@ export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
                 style={{ "--tab-accent": tab.accent } as React.CSSProperties}
                 aria-current={active ? "page" : undefined}
               >
-                {active && <span className="ios-app-tab-active-bar" aria-hidden />}
                 <ProductMark product={tab.mark} size={22} title={tab.label} className="ios-app-tab-icon" />
                 <span className="ios-app-tab-label font-mono">{tab.short}</span>
               </Link>

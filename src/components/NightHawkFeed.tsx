@@ -54,7 +54,13 @@ export function NightHawkFeed() {
         />
       )}
       <div className="nighthawk-layout">
-        <div className={clsx(nativeShell && iosView !== "playbook" && "ios-native-panel-hidden")}>
+        <div
+          key={nativeShell ? iosView : "playbook"}
+          className={clsx(
+            nativeShell && iosView !== "playbook" && "ios-native-panel-hidden",
+            nativeShell && iosView === "playbook" && "ios-native-panel-visible"
+          )}
+        >
           <PlaybookBoard
             edition={edition}
             loading={editionLoading}
@@ -70,7 +76,13 @@ export function NightHawkFeed() {
             recordLoading={recordLoading}
           />
         </div>
-        <div className={clsx(nativeShell && iosView !== "watch" && "ios-native-panel-hidden")}>
+        <div
+          key={nativeShell ? iosView : "watch"}
+          className={clsx(
+            nativeShell && iosView !== "watch" && "ios-native-panel-hidden",
+            nativeShell && iosView === "watch" && "ios-native-panel-visible"
+          )}
+        >
           <NightsWatchPanel />
         </div>
       </div>

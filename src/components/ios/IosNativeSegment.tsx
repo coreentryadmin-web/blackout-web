@@ -1,6 +1,7 @@
 "use client";
 
 import { clsx } from "clsx";
+import { motion } from "framer-motion";
 
 type Segment<T extends string> = {
   id: T;
@@ -16,7 +17,9 @@ type Props<T extends string> = {
   "aria-label"?: string;
 };
 
-/** Native-style pill segment control — iOS shell only (parent gates visibility). */
+const SEGMENT_SPRING = { type: "spring" as const, stiffness: 500, damping: 36 };
+
+/** Native-style pill segment control — sliding indicator + spring press. */
 export function IosNativeSegment<T extends string>({
   value,
   onChange,
@@ -43,6 +46,14 @@ export function IosNativeSegment<T extends string>({
             className={clsx("ios-native-segment-btn font-syne", active && "ios-native-segment-btn-active")}
             onClick={() => onChange(seg.id)}
           >
+            {active && (
+              <motion.span
+                layoutId="ios-native-segment-indicator"
+                className="ios-native-segment-indicator"
+                transition={SEGMENT_SPRING}
+                aria-hidden
+              />
+            )}
             {seg.label}
           </button>
         );

@@ -145,9 +145,11 @@ export function SpxDashboard() {
       >
         <SpxPanelErrorBoundary>
           <aside
+            key={nativeShell ? iosPanel : "matrix"}
             className={clsx(
               "spx-sniper-left-rail spx-left-matrix",
-              nativeShell && iosPanel !== "matrix" && "ios-native-panel-hidden"
+              nativeShell && iosPanel !== "matrix" && "ios-native-panel-hidden",
+              nativeShell && iosPanel === "matrix" && "ios-native-panel-visible"
             )}
           >
             <SpxGexMatrixHeatmap
@@ -163,9 +165,11 @@ export function SpxDashboard() {
 
         <SpxPanelErrorBoundary>
           <div
+            key={nativeShell ? iosPanel : "plays"}
             className={clsx(
               "spx-sniper-chart-col spx-center-stack",
-              nativeShell && iosPanel !== "plays" && "ios-native-panel-hidden"
+              nativeShell && iosPanel !== "plays" && "ios-native-panel-hidden",
+              nativeShell && iosPanel === "plays" && "ios-native-panel-visible"
             )}
           >
             <SpxTradeAlerts desk={desk} live={live} refreshing={refreshing} sessionActive={sessionActive} />
@@ -174,7 +178,13 @@ export function SpxDashboard() {
 
         <SpxPanelErrorBoundary>
           <Suspense fallback={<div className="spx-desk-skeleton min-h-[240px]" aria-busy="true" />}>
-            <div className={clsx(nativeShell && iosPanel !== "intel" && "ios-native-panel-hidden")}>
+            <div
+              key={nativeShell ? iosPanel : "intel"}
+              className={clsx(
+                nativeShell && iosPanel !== "intel" && "ios-native-panel-hidden",
+                nativeShell && iosPanel === "intel" && "ios-native-panel-visible"
+              )}
+            >
               <SpxCommentaryRail desk={desk} live={live} />
             </div>
           </Suspense>

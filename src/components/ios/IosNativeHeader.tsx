@@ -1,6 +1,7 @@
 "use client";
 
 import { UserButton } from "@clerk/nextjs";
+import { AnimatePresence, motion } from "framer-motion";
 import { getIosToolMeta } from "@/lib/ios-tool-routes";
 import { ProductMark } from "@/components/marks/ProductMark";
 
@@ -22,6 +23,8 @@ const CLERK_APPEARANCE = {
   },
 } as const;
 
+const TITLE_SPRING = { type: "spring" as const, stiffness: 500, damping: 38 };
+
 type Props = {
   path: string;
   onMenuOpen: () => void;
@@ -31,6 +34,7 @@ export function IosNativeHeader({ path, onMenuOpen }: Props) {
   const tool = getIosToolMeta(path);
   const title = tool?.label ?? "BlackOut";
   const accent = tool?.accent ?? "#00e676";
+  const titleKey = tool?.href ?? path;
 
   return (
     <header className="ios-native-header" role="banner">
@@ -49,27 +53,39 @@ export function IosNativeHeader({ path, onMenuOpen }: Props) {
         </button>
 
         <div className="ios-native-header-title">
-          {tool ? (
-            <ProductMark product={tool.mark} size={20} title={tool.label} className="shrink-0" />
-          ) : (
-            <span className="ios-native-brand-dot" aria-hidden style={{ background: accent }} />
-          )}
-          <span className="font-syne text-[15px] font-bold tracking-[0.02em] text-white truncate">
-            {title}
-          </span>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={titleKey}
+              className="ios-native-header-title-inner"
+              initial={{ opacity: 0, y: 8, filter: "blur(4px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              exit={{ opacity: 0, y: -6, filter: "blur(3px)" }}
+              transition={TITLE_SPRING}
+            >
+              {tool ? (
+                <ProductMark product={tool.mark} size={20} title={tool.label} className="shrink-0" />
+              ) : (
+                <span className="ios-native-brand-dot" aria-hidden style={{ background: accent }} />
+              )}
+              <span className="font-syne text-[15px] font-bold tracking-[0.02em] text-white truncate">
+                {title}
+              </span>
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         <div className="ios-native-header-actions">
           <UserButton appearance={CLERK_APPEARANCE} userProfileUrl="/account" />
         </div>
       </div>
-      {tool && (
-        <div
-          className="ios-native-header-accent"
-          aria-hidden
-          style={{ background: `linear-gradient(90deg, transparent, ${accent}, transparent)` }}
-        />
-      )}
+      <motion.div
+        className="ios-native-header-accent"
+        aria-hidden
+        animate={{
+          background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
+        }}
+        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      />
     </header>
   );
 }

@@ -790,9 +790,11 @@ export function FlowFeed() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Flow tape — 8 cols */}
         <div
+          key={nativeShell ? iosView : "tape"}
           className={clsx(
             "lg:col-span-8 xl:col-span-8 helix-ios-tape-col",
-            nativeShell && iosView !== "tape" && "ios-native-panel-hidden"
+            nativeShell && iosView !== "tape" && "ios-native-panel-hidden",
+            nativeShell && iosView === "tape" && "ios-native-panel-visible"
           )}
         >
           <FlowAlertStream
@@ -817,9 +819,11 @@ export function FlowFeed() {
 
         {/* Right column — primary analytics; expand for full desk */}
         <div
+          key={nativeShell ? iosView : "analytics"}
           className={clsx(
             "lg:col-span-4 xl:col-span-4 flex flex-col gap-3 helix-ios-analytics-col",
-            nativeShell && iosView !== "analytics" && "ios-native-panel-hidden"
+            nativeShell && iosView !== "analytics" && "ios-native-panel-hidden",
+            nativeShell && iosView === "analytics" && "ios-native-panel-visible"
           )}
         >
           <div className="flex items-center justify-between gap-2 px-1">

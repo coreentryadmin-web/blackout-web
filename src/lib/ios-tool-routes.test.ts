@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   getIosToolMeta,
   getIosToolNavLabel,
+  getIosToolRouteIndex,
   isIosNativeShellRoute,
   isIosToolRoute,
   IOS_TOOLS,
@@ -58,5 +59,12 @@ describe("IOS_TOOLS metadata", () => {
     assert.equal(getIosToolMeta("/flows")?.label, "HELIX");
     assert.equal(getIosToolMeta("/nighthawk/edition")?.short, "Hawk");
     assert.equal(getIosToolMeta("/pricing"), null);
+  });
+
+  it("returns tab order index for transitions", () => {
+    assert.equal(getIosToolRouteIndex("/dashboard"), 0);
+    assert.equal(getIosToolRouteIndex("/flows"), 1);
+    assert.equal(getIosToolRouteIndex("/grid"), 5);
+    assert.equal(getIosToolRouteIndex("/account"), -1);
   });
 });
