@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   resolveHeatmapPageGuard,
   computeGexEvents,
@@ -204,6 +207,28 @@ test("computeMaxPainFromChain: blending two DIFFERENT expiries' OI changes the a
 
 test("computeMaxPainFromChain: empty input returns null, never a fabricated strike", () => {
   assert.equal(computeMaxPainFromChain([]), null);
+});
+
+// ── fetchPolygonIvTermStructure must share HEATMAP_PAGE_GUARD, not its own smaller
+// hardcoded cap — live-caught truncating SPX's full chain every 5-min cache miss
+// ("chain incomplete, walls/OI/IV understated") because this loop had a bespoke
+// `guard < 20` that was never migrated when the same bug class was fixed for
+// fetchHeatmapBand/fetchPolygonOiByExpiry elsewhere in this file. Paginating a
+// live network fetch isn't practically unit-testable without heavy mocking, so —
+// same style as the scan.ts/zerodte-service.ts wiring tests this session — this
+// asserts the actual source, which fails against the pre-fix `guard < 20` literal
+// and passes once the loop bound is the shared constant. ────────────────────────
+
+test("fetchPolygonIvTermStructure's page-pagination loop shares HEATMAP_PAGE_GUARD, not a smaller bespoke cap", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  const fnStart = src.indexOf("export async function fetchPolygonIvTermStructure");
+  assert.ok(fnStart >= 0, "fetchPolygonIvTermStructure not found");
+  const fnBody = src.slice(fnStart, fnStart + 2000);
+  assert.match(fnBody, /while \(page && guard < HEATMAP_PAGE_GUARD\)/);
+  assert.doesNotMatch(fnBody, /while \(page && guard < \d+\)/, "must not regress to a bespoke numeric cap");
 });
 
 // ── resolveExpiryAxis: near-term/far-dated boundary must never blend across the merge ─────
