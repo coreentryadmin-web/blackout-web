@@ -165,10 +165,31 @@ async function authSession() {
     }
     return { status: 401, json: null, raw: "" };
   };
+  const refreshSessionJwt = () => {
+    tok = J(
+      curl({
+        method: "POST",
+        url: `${FAPI}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`,
+        headers: { Origin: BASE, Referer: `${BASE}/`, "Content-Type": "application/x-www-form-urlencoded" },
+        jar: true,
+        saveJar: true,
+      })
+    )?.jwt;
+    return tok;
+  };
+
   return {
     userId,
     signInUrl: `${BASE}/sign-in?__clerk_ticket=${ticket}`,
     app,
+    browserCookies: () => {
+      const jwt = refreshSessionJwt();
+      if (!jwt) throw new Error("session JWT missing for browser context");
+      return [
+        { name: "__session", value: jwt, domain: "blackouttrades.com", path: "/" },
+        { name: "__client_uat", value: String(clientUat), domain: "blackouttrades.com", path: "/" },
+      ];
+    },
     cleanup: () => backend("DELETE", `/users/${userId}`),
   };
 }
@@ -321,6 +342,26 @@ async function crossToolIntegration(app, hm) {
   else rec("integration:spx-cross-tool", "PASS", `desk=${deskSpot} play=${play?.action}`);
 }
 
+async function dismissBlockingOverlays(page) {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const scrim = page.locator(
+      ".fixed.inset-0.z-\\[100\\], .nighthawk-modal-overlay, [class*='modal-overlay']"
+    );
+    if ((await scrim.count()) === 0) return;
+    const closeBtn = page
+      .locator(
+        'button[aria-label="Close"], button[aria-label="Dismiss"], button:has-text("Close"), button:has-text("Dismiss"), button:has-text("Got it"), button:has-text("Continue")'
+      )
+      .first();
+    if (await closeBtn.count()) {
+      await closeBtn.click({ timeout: 3000 }).catch(() => {});
+    } else {
+      await page.keyboard.press("Escape");
+    }
+    await page.waitForTimeout(400);
+  }
+}
+
 async function browserDashboard(session, hm) {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ userAgent: UA });
@@ -332,10 +373,17 @@ async function browserDashboard(session, hm) {
   page.on("pageerror", (err) => consoleErrors.push(String(err.message)));
 
   try {
-    await page.goto(session.signInUrl, { waitUntil: "networkidle", timeout: 120_000 });
-    await page.waitForURL(/\/dashboard/, { timeout: 120_000 });
+    // Cookie injection avoids flaky single-use __clerk_ticket navigation in headless VMs.
+    await context.addCookies(session.browserCookies());
+    await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+    if (!/\/dashboard/.test(page.url())) {
+      await page.goto(session.signInUrl, { waitUntil: "domcontentloaded", timeout: 120_000 });
+      await page.waitForURL(/\/dashboard/, { timeout: 120_000 });
+    }
 
     rec("ui:sign-in-dashboard", "PASS");
+
+    await dismissBlockingOverlays(page);
 
     // --- Click every SPX dashboard control ---
     const gexTab = page.locator("#spx-matrix-tab-gex");

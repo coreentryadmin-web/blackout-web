@@ -1,5 +1,46 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 11:00 ET
+Last updated: 2026-07-06 13:05 ET
+
+## SPX Slayer all-day verify pass — `spx-rth-2026-07-06` (Mon market open ~9:36 AM PT)
+
+**Session:** SPX-RTH-ALL-DAY-AGENT verify mode — first scheduled pass at RTH open.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:spx-rth` | ⚠️ 5 PASS / 4 FAIL (post-deps install; deploy was BUILDING on first pass) |
+| `validate:spx-e2e` API integration | ✅ 9/9 PASS — matrix 152 strikes GEX+VEX+DEX+CHARM, Thermal, HELIX, Grid, 0DTE, Night Hawk, Largo, BIE play |
+| `validate:spx-e2e` UI browser | ❌ Clerk `__clerk_ticket` navigation timeout — **FIX** cookie-inject path in `spx-dashboard-e2e-audit.mjs` |
+| `heatmap-matrix-audit` SPX | ✅ 152 strikes · 32 checks · 0 flags |
+| `ops:collect` | ✅ 0 action items (transient `gex-alerts` RTH-stale during deploy — cleared after rollout) |
+| 60s live auto-update | ✅ desk 7532.99→7536.04 · heatmap spot ticked · play `as_of` advanced · 0 confirmations during SCANNING |
+
+### Findings (`spx-rth-2026-07-06`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P0 | spx-rth:scanning-confirmations | **CLEAR** — `play.confirmations.checks.length=0` while `action=SCANNING` | `/api/market/spx/play` | — |
+| P0 | spx-rth:matrix-cells | **CLEAR** — every GEX/VEX/DEX/CHARM cell finite; Σ strike_totals == headline total; 152 strikes | `/api/market/gex-heatmap?ticker=SPX` | — |
+| P1 | spx-rth:bie-play-drift | Member `/spx/play` vs `getSpxPlayState()` diverged (grade C/D, telemetry 17 vs 0 trades) — sequential probe + 5m cache skew; route duplicated chain | `validate:spx-bie` | **FIX** — route now calls `getSpxPlayState()` directly |
+| P1 | spx-rth:desk-lanes-pulse | merged vs pulse spot Δ=0.34 pts (>0.05 audit threshold) | `/api/market/spx/pulse` vs `/merged` | post-close — lane refresh skew |
+| P1 | spx-rth:e2e-browser-auth | Playwright `waitForURL /dashboard` after ticket URL — flaky in cloud VM | `spx-dashboard-e2e-audit.mjs` | **FIX** — `__session` cookie inject |
+| P2 | spx-rth:data-correctness-502 | Transient HTTP 502 on `/api/cron/data-correctness?force=1` during deploy | cron | WATCH — retry off-peak |
+| P2 | spx-rth:deploy-building | First pass `validate:rth-open` failed while Railway deploy BUILDING | Railway | cleared after rollout |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Status |
+|---|---|
+| BlackOut Thermal (SPX heatmap) | ✅ same route as dashboard matrix |
+| HELIX flows | ✅ 20–30 SPX/SPXW prints |
+| Largo `get_spx_play` | ✅ `tools=blackout_intelligence` |
+| BIE `/spx/play` | ✅ `action=SCANNING` (pre-fix: structural drift vs `getSpxPlayState`) |
+| Grid bootstrap | ✅ loads |
+| 0DTE board | ✅ 1 setup |
+| Night Hawk edition | ✅ loads |
+
+---
 
 ## Dashboard perf — ~10s loads (not AWS) — 2026-07-06
 
