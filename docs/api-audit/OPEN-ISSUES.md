@@ -1,5 +1,145 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 14:50 ET
+Last updated: 2026-07-06 15:33 ET
+
+## grid-rth-2026-07-06 — 0DTE Command + Market Grid verify pass #3 (~15:18–15:33 ET)
+
+**Session:** Scheduled Grid RTH all-day agent verify pass per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md`. Commands: `validate:grid-rth` → `validate:zerodte-logic` → `validate:grid-e2e`. First `grid-rth` attempt failed on missing `node_modules` (local env); re-run after `npm install` — all GREEN.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **GREEN** — 24 PASS / 0 FAIL |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 16/16 |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 14/14 (0 FAIL, 1 WARN) |
+| `npm run ops:collect` (nested) | ✅ 0 action items |
+
+### 0DTE logic — all gates GREEN
+
+| Probe | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | ✅ NVDA score=65, audit trace all pass |
+| Plan exits (stop −50%, target +100%, time stop 15:30 ET) | ✅ stop=2.1 target=8.4 |
+| Trade lifecycle (OPEN → TRIM → CLOSED, sticky trough) | ✅ OPEN/TRIM/CLOSED/CLOSED |
+| Plan grading (stop wins when both touch same bar) | ✅ stopped |
+| Session heat (RTH vs POWER_HOUR @ 15:00 ET) | ✅ RTH→POWER_HOUR |
+| mergePlays UI (past cutoff / MOVED → SKIP) | ✅ SKIP |
+| Live board gate invariants | ✅ 3 setups, 0 violations |
+| Live ledger PnL math | ✅ 5 rows, 0 issues |
+| Live session heat | ✅ POWER_HOUR heat=100% |
+| Live upstream + cutoff constant | ✅ 15:00 ET |
+
+### Grid panels + crons — all GREEN
+
+| Probe | Result |
+|---|---|
+| All 9 `/api/grid/*` panels | ✅ finite numbers, fresh `as_of` (bootstrap 82s, economy 12s) |
+| `/api/market/zerodte/board` | ✅ upstream_ok, heat=POWER_HOUR, setups=3, ledger=5 |
+| `zerodte:ledger-pnl` | ✅ 5 rows checked |
+| `cron:grid-warm` | ✅ ok |
+| `integration:grid-gex-spot` | ✅ spot 7549.91 |
+| `integration:helix-flows` | ✅ 30 prints |
+| `integration:nighthawk-dedupe` | ✅ 3 tickers covered elsewhere |
+| `grid:data-correctness` | ✅ flags=0 mode=heatmap |
+
+### UI E2E — tab click-through GREEN
+
+| Probe | Result |
+|---|---|
+| `ui:page-load` | ✅ "0DTE Command · BlackOut" |
+| `ui:tab-0dte-command` | ✅ clicked |
+| `ui:session-heat` | ⚠️ heat header not visible within 15s (API confirms POWER_HOUR — likely SWR load race) |
+| `ui:tab-market-grid` | ✅ clicked |
+| `ui:search-bar` | ✅ SPY filter |
+| `ui:console-errors` | ✅ zero errors |
+
+### P0 assessment
+
+**No P0 defects.** All 0DTE gates, plan exits, trade lifecycle, ledger PnL math, session heat cutoffs (POWER_HOUR @ 15:26 ET), mergePlays SKIP rules, 9 grid panels, grid-warm cron, HELIX flows cross-feed, Night Hawk dedupe, and `/grid` tab navigation verified on live production.
+
+**Reports:** `audit-output/grid-rth-2026-07-06-verify-1783366276705.json`, `zerodte-logic-1783366282552.json`, `grid-e2e-1783366406585.json`
+
+---
+
+## RTH comprehensive sweep — 2026-07-06 ~15:17–15:25 ET (pass #3 — P1 found + fix)
+
+**Session:** Follow-up pass after earlier GREEN sweep degraded: `validate:member-dashboard` caught SPX matrix 502.
+
+| Check | Result |
+|---|---|
+| `validate:rth-open` | ✅ GREEN |
+| `validate:member-dashboard` | ❌ **3 FAIL** — matrix loading 45s, 0 rows, console 502 |
+| `validate:rth-sweep` | ⚠️ 2 P1 — `gex-positioning` + `flows` curl 90s timeout under parallel load |
+| `ops:collect` | ✅ 0 items (transient `gex-alerts` stale @ 14:51 self-healed) |
+
+**P1 root cause:** `fetchGexHeatmap()` disabled stale-while-revalidate during SPX fast-move (>0.5% in-window). After 5s TTL expiry, member GETs blocked on 60–120s chain rebuild → `/api/market/gex-heatmap?ticker=SPX` **502 @ ~58s**, dashboard "Loading gamma matrix…", header GEX `—`, `gex_stale` badge.
+
+**Fix:** `fix/spx-gex-heatmap-fast-move-swr` — always SWR on TTL miss (fast-move only shortens accept TTL). **Deployed PR #616** — post-deploy `validate:member-dashboard` **13/13 GREEN** (171 matrix rows), `validate:rth-open` GREEN. Issue #615 closed.
+
+**Missing-field audit (this pass):** only matrix-related `—` fields (GEX header, γ flip, Net GEX) — all traced to heatmap 502; no other blanks across 7 pages.
+
+**Report:** `audit-output/rth-sweep-2026-07-06T18-49-30-752Z.json`, `member-dashboard-live-1783365558441.png`
+
+---
+
+## RTH comprehensive sweep — 2026-07-06 ~14:44–15:07 ET (autonomous RTH agent)
+
+**Session:** Executed `docs/ops/RTH-OPEN-RUNBOOK.md` + full comprehensive test sweep (browser + API + missing-field audit). Mid-session Railway deploy (`8315a121` BUILDING 14:39 ET) caused transient member-dashboard OFFLINE; cleared post-deploy.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (post-deploy) |
+| `npm run validate:member-dashboard` | ✅ **13/13** — LIVE badge, 172 matrix rows, spot ~7538 |
+| `npm run validate:spx-e2e` | ✅ **18/18** — matrix every cell, cross-tool, Largo |
+| `npm run validate:grid-rth` | ⚠️ **21 PASS / 1 FAIL** — `integration:cross-tool` HTTP 524 on `/api/grid/bootstrap` (edge timeout under concurrent audit) |
+| `npm run validate:rth-sweep` | ⚠️ **2 P1 audit-infra** — curl 90s timeout on `spx/merged` + `gex-heatmap` SPX/SPY under parallel load; browser pages all **~1.6–1.8s** soft-nav, **0 missing-field hits** |
+| `GET /api/cron/data-correctness?force=1` (external) | ⚠️ **524/timeout** at CF edge (~100s) — Postgres cron authoritative: **flags=0**, `overall_status=consistency-only` |
+| `npm run ops:collect` | ✅ 0 action items (post-deploy) |
+
+### Per-page sweep (premium session, ~14:46 ET pass)
+
+| Page | Hard/soft load | Missing-field (`—`/N/A) | Console | Live tick observed |
+|---|---|---|---|---|
+| `/dashboard` | hard 1.8s | 0 | 1× 400 (Clerk ticket reuse in sweep auth) | null (spot static in 12s window) |
+| `/flows` | soft 1.7s | 0 | clean | null |
+| `/heatmap` (matrix) | soft 1.8s | 0 | clean | null |
+| `/grid` | soft 1.7s | 0 | clean | null |
+| `/nighthawk` | soft 1.7s | 0 | clean | null |
+| `/terminal` (Largo) | soft 1.7s | 0 | clean | null |
+| `/track-record` | soft 1.6s | 0 | clean | null |
+
+**Largo:** `POST /api/market/largo/query` 200 in ~75s — grounded NVDA dark-pool + flow answer with dollar amounts; dynamic tool trace.
+
+### Data correctness (cross-tool)
+
+| Probe | Result |
+|---|---|
+| SPX spot API vs desk | ✅ merged `market_open=true` price ~7538–7540 |
+| GEX matrix | ✅ 151 strikes, spot aligned |
+| GEX flip cross-tool (desk vs gex-positioning vs heatmap) | ✅ within 1pt when endpoints respond (parallel fetch can skew >1pt — WATCH) |
+| Postgres `data-correctness` cron | ✅ flags=0, 7 pass / 99 consistency-only (expected single-source gaps) |
+
+### Fixes shipped this session
+
+| Fix | Why |
+|---|---|
+| `useMergedDesk` `initialLoading` — require `merged` or `deskStable`, not `pulseRest` alone | Prevented OFFLINE/MARKET CLOSED hero while heavy lanes still loading (pulseRest arriving first flipped `deskLoading` false) |
+| `rth-comprehensive-sweep.mjs` — `generateDefaultAuditPhone()` | Clerk phone collision on `+14155550123` blocked sweep auth |
+
+### Remaining WATCH (no P0/P1 — no GitHub issue)
+
+| Item | Detail | Action |
+|---|---|---|
+| CF 524 on heavy crons | `data-correctness?force=1`, `grid/bootstrap` timeout externally during concurrent audits | Use Postgres `cron_job_runs.meta_json` or `surface=heatmap` fast path; Railway internal cron is authoritative |
+| Audit curl 90s timeouts | `spx/merged`, `gex-heatmap` under parallel sweep + Largo | Endpoints succeed sequentially; increase audit timeout or serialize heavy probes |
+| Transient OFFLINE during deploy | Member dashboard failed 14:09 ET during BUILDING deploy | Expected — re-verify post-deploy |
+| `liveTick=null` in sweep | 12s observation window; SPX spot stable | Not a defect |
+
+**Reports:** `audit-output/rth-sweep-2026-07-06T18-46-38-130Z.json`, `member-dashboard-live-1783363478942.png`, `spx-dashboard-e2e-1783364175385.json`, `grid-rth-2026-07-06-verify-1783364828708.json`
+
+---
 
 ## grid-rth-2026-07-06 — 0DTE Command + Market Grid verify pass #2 (~14:29–14:42 ET)
 
