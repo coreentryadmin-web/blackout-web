@@ -25,7 +25,11 @@
  *   AUDIT_OUT   output dir for reports (default: <cwd>/audit-output, gitignored)
  *   AUDIT_APP_URL   app base (default https://blackouttrades.com)
  *   AUDIT_EMAIL     temp user email (default claude-audit-temp@blackouttrades.com)
- *   AUDIT_PHONE     temp user phone (default +14155550123; instance requires a phone)
+ *   AUDIT_PHONE     temp user phone (default: freshly generated each run — fixed fake
+ *                   415-555 prefix + a random 4-digit suffix, see lib/audit-phone.mjs;
+ *                   instance requires a phone). A hardcoded default here previously
+ *                   collided with an already-registered Clerk user and broke every
+ *                   subsequent unattended run — see docs/audit/FINDINGS.md (task #175).
  *
  * NOTE: WebSocket feeds are NOT validated here (agent/proxy environments block WS
  * upgrades). Members see WS data via these REST endpoints, which ARE validated.
@@ -37,6 +41,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isTradingDayEt, todayEtYmd } from '../gha-et-window.mjs';
 import { isAuthFailureStatus } from './lib/auth-status.mjs';
+import { generateDefaultAuditPhone } from './lib/audit-phone.mjs';
 
 const SECRET = req('CLERK_SECRET_KEY');
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
@@ -44,7 +49,11 @@ const UWK = req('UW_API_KEY');
 const POLY = req('POLYGON_API_KEY');
 const APP = process.env.AUDIT_APP_URL || 'https://blackouttrades.com';
 const EMAIL = process.env.AUDIT_EMAIL || 'claude-audit-temp@blackouttrades.com';
-const PHONE = process.env.AUDIT_PHONE || '+14155550123';
+// See lib/audit-phone.mjs for why the default is generated per-run instead of a fixed
+// constant (task #175: a hardcoded default eventually collided with an existing Clerk
+// user and broke every subsequent unattended run). AUDIT_PHONE, when set, is still used
+// verbatim — this fallback only fires when the operator hasn't overridden it.
+const PHONE = process.env.AUDIT_PHONE || generateDefaultAuditPhone();
 const OUT = process.env.AUDIT_OUT || join(process.cwd(), 'audit-output');
 const API = 'https://api.clerk.com/v1';
 const PB = 'https://api.polygon.io';
@@ -167,17 +176,30 @@ function polygonSpotNow(ticker, isRth) {
  *  symbol (src/lib/ws/options-socket.ts:buildOcc) and guessing whether it resolves.
  *  Cached per (ticker, direction, strike) since the same setup can appear in both `setups`
  *  and `ledger` in one run. Returns null when no matching contract exists (a real bug) OR
- *  when the inputs are unusable (never conflated with a substantive FAIL by the caller). */
+ *  when the inputs are unusable (never conflated with a substantive FAIL by the caller).
+ *
+ *  IMPORTANT: unlike buildOcc's SPX->SPXW swap (which builds an OCC *ticker symbol*, where
+ *  Polygon/Massive really do list SPX index options under an "O:SPXW..." prefix), this
+ *  endpoint's `underlying_ticker` *filter parameter* only recognizes the underlying's plain
+ *  ticker "SPX" — passing "SPXW" here returns zero results even for real, live contracts
+ *  (confirmed directly against Polygon: `underlying_ticker=SPX&strike_price=7505` resolves
+ *  `O:SPXW260706C07505000`; `underlying_ticker=SPXW` with identical other params returns
+ *  `results: []`, whether the caller passed "SPXW" as a literal or via buildOcc's swap).
+ *  The 0DTE board's own `ticker` field for this instrument is "SPXW" (matching how UW/the
+ *  flow feed label the weekly, per src/lib/ws/options-socket.ts), so BOTH "SPX" and "SPXW"
+ *  inputs must normalize to "SPX" for this query — this was a false-positive FAIL bug in
+ *  this validator, not a real 0DTE Command data issue. Do not reintroduce a swap TO "SPXW"
+ *  here. */
 const zerodteContractCache = new Map();
 function resolveZeroDteContract(ticker, direction, strike, todayYmd, nextDayYmd) {
   const key = `${ticker}|${direction}|${strike}`;
   if (zerodteContractCache.has(key)) return zerodteContractCache.get(key);
-  const root = ticker === 'SPX' ? 'SPXW' : ticker; // same root swap as buildOcc
+  const underlyingTicker = ticker === 'SPX' || ticker === 'SPXW' ? 'SPX' : ticker;
   const contractType = direction === 'long' ? 'call' : direction === 'short' ? 'put' : null;
   let resolved = null;
   if (contractType && Number.isFinite(strike) && strike > 0) {
     const qs = new URLSearchParams({
-      underlying_ticker: root, contract_type: contractType, strike_price: String(strike),
+      underlying_ticker: underlyingTicker, contract_type: contractType, strike_price: String(strike),
       expired: 'false', 'expiration_date.gte': todayYmd, 'expiration_date.lte': nextDayYmd,
       sort: 'expiration_date', order: 'asc', limit: '5',
     });
