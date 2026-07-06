@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { mapAlertAuditTrailRow, computeSafePgPoolMaxDefault } from "./db";
 
 test("mapAlertAuditTrailRow: converts NUMERIC confidence_score (a string from node-pg) to a real number", () => {
@@ -67,4 +69,40 @@ test("computeSafePgPoolMaxDefault: divides the documented PgBouncer budget acros
 test("computeSafePgPoolMaxDefault: clamps to a floor of 1 for absurd replica counts", () => {
   assert.equal(computeSafePgPoolMaxDefault(20, 1000), 1);
   assert.equal(computeSafePgPoolMaxDefault(20, 0), 20, "replicaCount<=1 must not divide by zero");
+});
+
+// ── upsertZeroDteSetupLog: direction/top_strike/expiry MUST be pinned at first flag,
+// same as entry_premium/flow_avg_fill/plan_json — plan_json.occ is built from exactly
+// these three fields in the same scan cycle that computes entry_premium
+// (attachContractPlans -> buildOcc, zerodte/scan.ts), so letting top_strike/expiry/
+// direction update on a later scan while entry_premium stays pinned lets a ledger row
+// pair a NEW contract's strike with an OLD contract's entry price. Asserted against the
+// source text (no live Postgres in this test env — see CLAUDE.md environment notes) the
+// same way polygon-options-gex.test.ts asserts fetchGexHeatmap's SWR behavior.
+test("upsertZeroDteSetupLog: direction/top_strike/expiry are pinned (COALESCE-guarded) in the ON CONFLICT UPDATE, not overwritten by EXCLUDED", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const upsertBody = src.slice(
+    src.indexOf("export async function upsertZeroDteSetupLog"),
+    src.indexOf("RETURNING (xmax = 0) AS inserted")
+  );
+  assert.match(
+    upsertBody,
+    /direction\s*=\s*COALESCE\(zerodte_setup_log\.direction,\s*EXCLUDED\.direction\)/,
+    "direction must be pinned via COALESCE, not `direction = EXCLUDED.direction`"
+  );
+  assert.match(
+    upsertBody,
+    /top_strike\s*=\s*COALESCE\(zerodte_setup_log\.top_strike,\s*EXCLUDED\.top_strike\)/,
+    "top_strike must be pinned via COALESCE, not `top_strike = EXCLUDED.top_strike`"
+  );
+  assert.match(
+    upsertBody,
+    /expiry\s*=\s*COALESCE\(zerodte_setup_log\.expiry,\s*EXCLUDED\.expiry\)/,
+    "expiry must be pinned via COALESCE, not `expiry = EXCLUDED.expiry`"
+  );
+  // entry_premium/flow_avg_fill/plan_json were already pinned pre-fix — guard against a
+  // future edit accidentally un-pinning them while "fixing" something else nearby.
+  assert.match(upsertBody, /entry_premium\s*=\s*COALESCE\(zerodte_setup_log\.entry_premium,\s*EXCLUDED\.entry_premium\)/);
+  assert.match(upsertBody, /flow_avg_fill\s*=\s*COALESCE\(zerodte_setup_log\.flow_avg_fill,\s*EXCLUDED\.flow_avg_fill\)/);
+  assert.match(upsertBody, /plan_json\s*=\s*COALESCE\(zerodte_setup_log\.plan_json,\s*EXCLUDED\.plan_json\)/);
 });
