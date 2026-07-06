@@ -247,7 +247,7 @@ export function deriveZeroDteSetups(
     sweep: number;
     gross: number;
     prints: number;
-    strikes: Map<string, { prem: number; strike: number; expiry: number; isCall: boolean; fillPrem: number; fillW: number; contracts: number; oi: number }>;
+    strikes: Map<string, { prem: number; premAggr: number; strike: number; expiry: number; isCall: boolean; fillPrem: number; fillW: number; contracts: number; oi: number }>;
     underlying: number | null;
     /** alerted_at of the print that supplied `underlying` — keep only the freshest. */
     underlyingSeen: string | null;
@@ -315,8 +315,13 @@ export function deriveZeroDteSetups(
     }
     agg.minDte = Math.min(agg.minDte, dte);
     const key = `${r.strike}|${r.expiry}|${isCall ? "c" : "p"}`;
-    const cur = agg.strikes.get(key) ?? { prem: 0, strike: r.strike, expiry: Date.parse(r.expiry) || 0, isCall, fillPrem: 0, fillW: 0, contracts: 0, oi: 0 };
+    const cur = agg.strikes.get(key) ?? { prem: 0, premAggr: 0, strike: r.strike, expiry: Date.parse(r.expiry) || 0, isCall, fillPrem: 0, fillW: 0, contracts: 0, oi: 0 };
     cur.prem += prem;
+    // Same at-the-ask aggression weight the ticker-level callAggr/putAggr use to decide
+    // direction — the top strike must be chosen by the SAME conviction measure that won
+    // the side, not by raw dollar premium (which can crown a mostly-SOLD/bid-side strike
+    // even though the buying pressure that actually determined "long" lived elsewhere).
+    cur.premAggr += prem * w;
     // Premium-weighted per-contract fill — "what did the flow actually pay here".
     if (r.fill_price && r.fill_price > 0) {
       cur.fillPrem += r.fill_price * prem;
@@ -402,12 +407,16 @@ export function deriveZeroDteSetups(
       continue;
     }
 
-    // Dominant strike on the winning side.
-    let top: { prem: number; strike: number; expiry: number; fillPrem: number; fillW: number; contracts: number; oi: number } | null = null;
+    // Dominant strike on the winning side — ranked by aggression-weighted premium
+    // (premAggr), the SAME measure that decided dominantCall/direction above. Raw
+    // premium (prem) can crown a strike that's mostly SOLD (bid-side) premium even
+    // when the buying conviction that actually made this side "dominant" concentrated
+    // at a different strike — see docs/audit/FINDINGS.md.
+    let top: { prem: number; premAggr: number; strike: number; expiry: number; fillPrem: number; fillW: number; contracts: number; oi: number } | null = null;
     let topExpiry = "";
     for (const [key, s] of Array.from(agg.strikes.entries())) {
       if (s.isCall !== dominantCall) continue;
-      if (!top || s.prem > top.prem) {
+      if (!top || s.premAggr > top.premAggr) {
         top = s;
         topExpiry = key.split("|")[1] ?? "";
       }
