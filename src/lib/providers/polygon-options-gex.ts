@@ -736,6 +736,28 @@ export function farDatedExpiriesToFetch(farTargets: readonly string[]): string[]
   return [...farTargets];
 }
 
+/**
+ * Splits the matrix's kept expiries into near-term (feeds strike_totals/total — the authoritative
+ * walls/flip/net every downstream consumer reads) vs far-dated (matrix cells only). `nearTermAxis`
+ * MUST be the near-term expiries captured BEFORE any far-dated contract was merged into the shared
+ * expiry set — passing the post-merge set here instead reproduces a real, previously-shipped bug:
+ * when a thin-chain ticker has fewer real near-term expiries than NEAR_TERM_EXPIRY_COUNT, an
+ * under-filled slice of the post-merge set silently back-fills with far-dated monthly/quarterly
+ * expiries (they sort after the real near dates but before nothing), so OI belonging to a wall
+ * months out gets summed into "today's" near-term walls/flip/net exposure — the same class of bug
+ * already fixed for max_pain (docs/audit/FINDINGS.md), recurring here for GEX/VEX/DEX/CHARM.
+ */
+export function resolveExpiryAxis(
+  nearTermAxis: readonly string[],
+  farTargets: readonly string[],
+  expirySetAfterFarFetch: ReadonlySet<string>
+): { nearKeep: string[]; farKeep: string[]; expiries: string[] } {
+  const nearKeep = [...nearTermAxis];
+  const farKeep = farTargets.filter((e) => expirySetAfterFarFetch.has(e));
+  const expiries = Array.from(new Set([...nearKeep, ...farKeep])).sort();
+  return { nearKeep, farKeep, expiries };
+}
+
 /** Stable dedupe key for heatmap contract accumulation (one row per listed contract). */
 export function gexContractDedupeKey(c: ChainContract, minExpiryYmd: string): string | null {
   const strike = Number(c.details?.strike_price);
@@ -2168,9 +2190,7 @@ async function buildGexHeatmapUncached(
   // far-dated columns appended after the near-term block. Bounded by construction (near cap + the
   // far-target cap), so the column count can never balloon.
   const sortedAll = Array.from(expirySet).sort();
-  const nearKeep = sortedAll.slice(0, NEAR_TERM_EXPIRY_COUNT);
-  const farKeep = farTargets.filter((e) => expirySet.has(e));
-  const expiries = Array.from(new Set([...nearKeep, ...farKeep])).sort();
+  const { nearKeep, expiries } = resolveExpiryAxis(nearTermAxis, farTargets, expirySet);
   const expirySetKeep = new Set(expiries);
   // The authoritative STRUCTURAL levels (walls / flip / net / posture) and ALL downstream
   // consumers (gex-positioning → desk / Largo / Night's Watch, the shift ring, EOD history) are
@@ -2267,28 +2287,28 @@ async function buildGexHeatmapUncached(
   const vexFlip = computeZeroGammaFlip(vexBuilt.strikeTotals, spot);
   const { posWall, negWall, regime: vexRegime } = computeVexRegime(
     vexBuilt.strikeTotals,
-    vexBuilt.total || totalVanna
+    vexBuilt.total ?? totalVanna
   );
 
   // DEX zero_level = per-strike net-delta sign-crossing nearest spot (reuse the gamma cross
   // helper on the delta totals) + posture/read from the net dollar-delta sign.
   const dexZeroLevel = computeZeroGammaFlip(dexBuilt.strikeTotals, spot);
-  const dexRegime = computeDexRegime(dexBuilt.total || totalDelta);
+  const dexRegime = computeDexRegime(dexBuilt.total ?? totalDelta);
   const dexBlock: DexMetricBlock = {
     cells: dexBuilt.cells,
     strike_totals: dexBuilt.strikeTotals,
-    total: dexBuilt.total || totalDelta,
+    total: dexBuilt.total ?? totalDelta,
     zero_level: dexZeroLevel,
     regime: dexRegime,
   };
 
   // CHARM zero_level = per-strike charm sign-crossing nearest spot + posture/read (pinning).
   const charmZeroLevel = computeZeroGammaFlip(charmBuilt.strikeTotals, spot);
-  const charmRegime = computeCharmRegime(charmBuilt.total || totalCharm);
+  const charmRegime = computeCharmRegime(charmBuilt.total ?? totalCharm);
   const charmBlock: CharmMetricBlock = {
     cells: charmBuilt.cells,
     strike_totals: charmBuilt.strikeTotals,
-    total: charmBuilt.total || totalCharm,
+    total: charmBuilt.total ?? totalCharm,
     zero_level: charmZeroLevel,
     regime: charmRegime,
   };
@@ -2332,7 +2352,7 @@ async function buildGexHeatmapUncached(
       flip: gexFlip,
       call_wall: callWall,
       put_wall: putWall,
-      total: gexBuilt.total || totalGamma,
+      total: gexBuilt.total ?? totalGamma,
     });
   } catch {
     shift = { available: false, status: "collecting" };
@@ -2369,7 +2389,7 @@ async function buildGexHeatmapUncached(
       flip: gexFlip,
       call_wall: callWall,
       put_wall: putWall,
-      net_gex: gexBuilt.total || totalGamma,
+      net_gex: gexBuilt.total ?? totalGamma,
       spot,
     });
   } catch {
@@ -2389,7 +2409,7 @@ async function buildGexHeatmapUncached(
       strike_totals: gexBuilt.strikeTotals,
       call_wall: callWall,
       put_wall: putWall,
-      total: gexBuilt.total || totalGamma,
+      total: gexBuilt.total ?? totalGamma,
       flip: gexFlip,
       regime: gexRegime,
     },
@@ -2398,7 +2418,7 @@ async function buildGexHeatmapUncached(
       strike_totals: vexBuilt.strikeTotals,
       pos_wall: posWall,
       neg_wall: negWall,
-      total: vexBuilt.total || totalVanna,
+      total: vexBuilt.total ?? totalVanna,
       flip: vexFlip,
       regime: vexRegime,
     },
