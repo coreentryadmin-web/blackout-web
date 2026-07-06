@@ -29,7 +29,7 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
-## 🔴 P0 FOUND+FIXED 2026-07-06 — 0DTE Command's moneyness gate FAILED OPEN when a ticker's tape carried no underlying price (branch `fix/zerodte-itm-gate-missing-underlying-price`)
+## 🔴 P0 FIXED 2026-07-06 — 0DTE Command's moneyness gate FAILED OPEN when a ticker's tape carried no underlying price (branch `fix/zerodte-itm-gate-missing-underlying-price`, merged #572)
 
 **Surface:** 0DTE Command / the Grid (`/grid`), `deriveZeroDteSetups()` — the entry-gate function that decides which candidates reach the live board. Found during a deep adversarial "hunt for a phantom pass" audit requested specifically because this product (unlike SPX Slayer's `desk-verifier.ts` or Heat Maps' `heatmap-verifier.ts`) has **no independent correctness verifier** — a fail-open bug here is invisible in production with nothing to catch it.
 
@@ -53,7 +53,27 @@ There was **no `else` branch**. `agg.underlying` is populated from the freshest 
 
 **Evidence:** new test `"gates: missing underlying price fails CLOSED, not open — P0 regression guard"` in `src/lib/zerodte/board.test.ts` reproduces the exact deep-ITM fixture from the existing ITM test (1880 put, stock effectively at 1723) but with `underlying_price: undefined` on every row — pre-fix this returned 1 setup (the bug); post-fix it returns 0 setups and one `no_underlying_price` rejection with `otm_pct: null` (never guessed). A second new test proves `buildZeroDteAuditRow`'s `max_itm_pct` check now fails closed on a null reading. Full suite: 1726/1726 passing, `tsc --noEmit` clean, `eslint` clean on all 3 changed files.
 
-**Status:** FIXED on branch; draft PR pending.
+**Status:** FIXED and merged (#572).
+
+---
+
+## 🟢 P1 FIXED 2026-07-06 — Thermal's "Max Pain" blended open interest across multiple unrelated expiries (branch `fix/gex-heatmap-max-pain-single-expiry`)
+
+**Status:** FIXED locally; PR pending. Found during the requested full CTO-level "every cell" audit of BlackOut Thermal's GEX heatmap, dispatched to an adversarial code-review agent instructed to hunt for a real bug rather than summarize the code.
+
+**Root cause:** `buildGexHeatmapUncached()` (`src/lib/providers/polygon-options-gex.ts`) fetches `contracts` via `fetchHeatmapBand()` — a strike-banded snapshot **across every expiry** inside the band, deliberately with no `expiration_date` filter (so the matrix can render far-dated monthly/quarterly columns). That same unfiltered `contracts` array was passed straight into `computeMaxPainFromChain(contracts)`, which sums call/put OI **per strike, across every expiry present**, and pain-minimizes over that blended set. Max pain is only a meaningful concept *within one expiry's contract set* — it answers "at what settlement price does this expiring cohort's holders collectively lose the most," a question tied to one settlement date. Summing OI from a Tuesday daily and a monthly OpEx that happens to share a strike band produces a number that looks like max pain (right shape, right formula) but isn't scoped to anything a trader can act on. This is provably inconsistent with how the rest of the codebase computes max pain: `fetchPolygonOdteDeskBundle` (SPX desk) and `fetchPolygonPositioningBundle` (positioning summary) both correctly fetch a **single-expiry** chain before calling the same `computeMaxPainFromChain` — only the Heat Maps / Thermal matrix build (the one path every preset ticker and every user-typed ticker goes through) had this bug.
+
+**Why the platform's own independent verifier (`heatmap-verifier.ts`) didn't catch it:** it only sanity-bounds `max_pain` (finite, within ±50% of spot) — it never independently re-derives max pain from a single-expiry-scoped chain and diffs it against the served value. A structurally-invalid-but-plausible-looking number passes untouched. Confirmed live today: running the platform's cross-provider `data-validator.mjs` and the deep `heatmap-verifier.ts` re-derivation (via the new `?surface=heatmap` cron fast-path, see below) both showed 0 flags across SPX/SPY/QQQ/NVDA — expected, since neither check was designed to catch this class of bug; it took direct code reading to find.
+
+**Blast radius:** `GexHeatmap.max_pain` (served on `/api/market/gex-heatmap`, displayed on Thermal's UI unqualified as "Max Pain"), `GexPositioning.max_pain` (served on `/api/market/gex-positioning`, consumed by SPX Slayer's dashboard), `gexContextLine`/`gexContextBlock` (fed into the Largo AI narrative prompt and allowed as a "grounded" number in the fabrication-guard's known-price-levels set), `GexEodSnapshot.max_pain` (persisted daily into EOD history), and `GexHistoryContext.prior_close.max_pain` (day-over-day diffs) — every one of these read the same corrupted top-level number.
+
+**Fix:** scope `computeMaxPainFromChain`'s input to the front/nearest expiry only (`sortedAll[0]`, already computed earlier in the same function for the near-term expiry-axis logic), filtering `contracts` by `expiration_date` before the call — mirroring exactly how the SPX desk bundle and positioning bundle already do it correctly. Left deliberately unchanged: GEX/VEX/DEX/CHARM's own near-term (multi-expiry) summation — that's a different, legitimate aggregate (dealer hedging flow from several coexisting near-term expiries really does sum), not the same bug.
+
+**Tests added:** `polygon-options-gex.test.ts` — `computeMaxPainFromChain` on a single expiry pain-minimizes to the expected strike; blending in a second, unrelated expiry's OI provably changes the answer (proving why the call-site filter matters); empty input still returns `null`, never a fabricated strike.
+
+**Verification:** `npx tsc --noEmit` clean. `npx tsx --test src/lib/providers/polygon-options-gex.test.ts` 13/13 passing. `npm run build` clean. `npx eslint` clean on both changed files. `git diff main -- src/lib/spx-signals.ts` empty. (Full-suite `npm test` run showed 4 unrelated failures in `src/lib/zerodte/scan.test.ts` caused by separate concurrent in-flight work on that file in this same session — confirmed unrelated by re-running that file with this fix's changes stashed, which fails identically.)
+
+**Also fixed this session (`?surface=heatmap`, PR #570, merged):** the platform's `/api/cron/data-correctness` full 8-surface sweep was 524-timing-out during RTH before it could ever report Heat Maps' results — added a fast-path so the deep per-cell GEX/VEX/DEX/CHARM verifier (Σ invariants, sign integrity, UW oracle) could actually run. Live result today: 60 metrics across SPX/SPY/QQQ/NVDA, 0 flags, 2 independently UW-confirmed, 58 consistency-only (every served cell's Σ-reconciliation and per-strike sign-integrity checks pass — internally consistent, though most metrics still lack a second independent source, an honest coverage gap, not a guarantee).
 
 ---
 
