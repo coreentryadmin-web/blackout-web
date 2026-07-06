@@ -982,8 +982,28 @@ const INDEX_ROOTS: Record<string, string> = {
   VIX: "I:VIX",
 };
 
+const OPTIONS_ROOT_CHARSET_RE = /^[A-Z0-9.]{1,20}$/;
+
+/**
+ * `ticker` is untrusted, user-supplied input on every /api/market/gex-* route (query param, at
+ * most uppercased before reaching here) and `optionsRoot` becomes a URL PATH segment in every
+ * downstream Polygon chain fetch (fetchHeatmapBand, fetchPolygonOiByExpiry,
+ * fetchPolygonIvTermStructure — all splice it into `/v3/.../${optionsRoot}?...` via template
+ * literal, not URL-encoded).
+ *
+ * Validates against an allowlist charset and REJECTS (returns "") anything that doesn't already
+ * conform, rather than stripping bad characters and passing the mangled remainder through. A
+ * strip-then-pass-through version of this function was flagged by CodeQL as a request-forgery
+ * sink and — critically — REMAINED flagged as a live critical alert after shipping, because
+ * CodeQL's taint tracking doesn't treat `String.replace()` as clearing taint (it's a value
+ * transform, not a validating guard). A `RegExp.test()` guard with a hardcoded fallback on the
+ * failing branch is the pattern its sanitizer-guard recognition is built for, and it's strictly
+ * safer besides: a malformed ticker now fails closed (empty path segment → clean 404/miss
+ * upstream) instead of reaching Polygon with attacker-influenced-but-mangled content.
+ */
 export function resolveOptionsRoot(ticker: string): { root: string; optionsRoot: string } {
-  const root = String(ticker ?? "").trim().toUpperCase();
+  const upper = String(ticker ?? "").trim().toUpperCase();
+  const root = OPTIONS_ROOT_CHARSET_RE.test(upper) ? upper : "";
   const optionsRoot = INDEX_ROOTS[root] ?? root;
   return { root, optionsRoot };
 }

@@ -13,6 +13,8 @@ export type TrackedFetchOptions = RequestInit & {
   maxRetries?: number;
   retryDelayMs?: number;
   correlationId?: string;
+  /** Overrides DEFAULT_FETCH_TIMEOUT_MS — mainly for tests exercising the timeout path fast. */
+  timeoutMs?: number;
 };
 
 function headerNames(init?: RequestInit): string[] {
@@ -56,13 +58,21 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// Bare `fetch()` has no default timeout — a stalled upstream TCP connection (seen live
+// against api.massive.com during Polygon GEX-heatmap slowness) hangs the calling request
+// indefinitely instead of failing. None of trackedFetch's callers pass their own `signal`,
+// so every one of them inherited that hang. 15s is generous versus the ~1-3s p99 for these
+// APIs but well under Vercel/Next's own route timeout, so it fails fast without clipping
+// legitimately slow-but-healthy responses.
+const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
+
 export async function trackedFetch(
   provider: ApiProviderId,
   endpointKey: string,
   url: string,
   init?: TrackedFetchOptions
 ): Promise<Response> {
-  const { maxRetries, retryDelayMs, correlationId, ...fetchInit } = init ?? {};
+  const { maxRetries, retryDelayMs, correlationId, timeoutMs, ...fetchInit } = init ?? {};
   const method = (fetchInit.method ?? "GET").toUpperCase();
   const maxAttempts = Math.max(1, (maxRetries ?? 0) + 1);
   const delayMs = retryDelayMs ?? 2000;
@@ -79,8 +89,15 @@ export async function trackedFetch(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const start = Date.now();
+    // Fresh per attempt — an AbortSignal.timeout() fires once and can't be reused across
+    // retries. Combine with any caller-supplied signal (via AbortSignal.any) so an explicit
+    // caller cancellation/timeout still takes effect; otherwise the default is the only bound.
+    const timeoutSignal = AbortSignal.timeout(timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS);
+    const signal = fetchInit.signal
+      ? AbortSignal.any([fetchInit.signal, timeoutSignal])
+      : timeoutSignal;
     try {
-      const res = await fetch(url, fetchInit);
+      const res = await fetch(url, { ...fetchInit, signal });
       const latency_ms = Date.now() - start;
       const snippet = res.ok ? null : await readSnippet(res);
       const rateLimited = res.status === 429;
