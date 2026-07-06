@@ -62,6 +62,7 @@ export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
                 )}
                 aria-current={active ? "page" : undefined}
               >
+                {active && <span className="ios-app-tab-active-bar" aria-hidden />}
                 <ProductMark product={tab.mark} size={22} title={tab.label} className="ios-app-tab-icon" />
                 <span className="ios-app-tab-label font-mono">{tab.label}</span>
               </Link>

@@ -11,6 +11,7 @@ import { toolKeyForHref, type ToolKey } from "@/lib/tool-access";
 import { useFocusTrap } from "@/components/ui";
 import { PushNotificationToggle } from "@/components/PushNotificationToggle";
 import { isIosAppShell } from "@/lib/ios-app-shell";
+import { getIosToolNavLabel } from "@/lib/ios-tool-routes";
 
 type Accent = "green" | "purple" | "orange" | "blue" | "red" | "gold";
 type FeatureLink = { href: string; label: string; sub: string; accent: Accent };
@@ -124,6 +125,8 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
     setIosApp(isIosAppShell());
   }, []);
   const brandHref = iosApp && isSignedIn ? "/dashboard" : "/";
+  const iosToolLabel = iosApp && isSignedIn ? getIosToolNavLabel(path) : null;
+  const iosToolChrome = Boolean(iosToolLabel);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -224,14 +227,21 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
       initial={isHome && !reduced ? { opacity: 0, y: -20 } : undefined}
       animate={isHome && !reduced ? { opacity: 1, y: 0 } : undefined}
       transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-      className="nav-bar"
+      className={clsx("nav-bar", iosToolChrome && "nav-bar-ios-tool")}
     >
       <div className="nav-surface" aria-hidden>
         <span className="nav-progress" />
       </div>
 
       <div className="nav-inner">
-        <Link href={brandHref} className="nav-brand group">
+        {iosToolLabel && (
+          <div className="ios-nav-context pointer-events-none absolute inset-x-0 top-1/2 z-[1] -translate-y-1/2 text-center">
+            <span className="font-syne text-[13px] font-bold tracking-[0.06em] text-white">
+              {iosToolLabel}
+            </span>
+          </div>
+        )}
+        <Link href={brandHref} className={clsx("nav-brand group", iosToolChrome && "nav-brand-ios-compact")}>
           <span className="nav-dot" aria-hidden />
           <span className="nav-brand-stack">
             <span className="nav-wordmark font-anton">BLACKOUT</span>
