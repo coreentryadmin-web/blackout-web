@@ -30,6 +30,7 @@
     "validate:spx-bie": "node --import tsx --experimental-test-module-mocks scripts/audit/spx-bie-consistency-validator.mjs",
     "validate:spx-rth": "node scripts/spx-rth-all-day-audit.mjs",
     "validate:spx-e2e": "node scripts/spx-dashboard-e2e-audit.mjs",
+    "validate:site-latency": "node scripts/site-latency-audit.mjs",
     "validate:grid-rth": "node scripts/grid-rth-all-day-audit.mjs",
     "validate:grid-e2e": "node scripts/grid-zerodte-e2e-audit.mjs",
     "validate:ios-config": "node apps/blackout-ios/scripts/validate-config.mjs",
@@ -52,10 +53,10 @@
     "nighthawk:run": "npx tsx scripts/nighthawk-worker.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.107.0",
-    "@clerk/nextjs": "^7.5.10",
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@clerk/nextjs": "^7.5.12",
     "@clerk/types": "^4.101.25",
-    "@sentry/nextjs": "^10.62.0",
+    "@sentry/nextjs": "^10.63.0",
     "@types/web-push": "^3.6.4",
     "@whop/sdk": "0.0.40",
     "clsx": "^2.1.1",
@@ -67,7 +68,7 @@
     "react": "^18",
     "react-dom": "^18",
     "recharts": "^2.12.7",
-    "sharp": "^0.35.2",
+    "sharp": "^0.35.3",
     "svix": "^1.45.1",
     "swr": "^2.4.2",
     "web-push": "^3.6.7",
@@ -93,7 +94,7 @@
     "stylelint-config-standard": "^40.0.0",
     "stylelint-config-tailwindcss": "^1.0.1",
     "tailwindcss": "^3.4.4",
-    "tsx": "^4.19.4",
+    "tsx": "^4.23.0",
     "typescript": "^5"
   }
 }

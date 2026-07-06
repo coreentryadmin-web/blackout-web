@@ -2237,8 +2237,20 @@ async function buildGexHeatmapUncached(
       charmBuilt.cells[String(s)] != null
   );
 
-  // Max pain (GEX-only, shared at top) from the same banded chain.
-  const maxPain = computeMaxPainFromChain(contracts);
+  // Max pain must be scoped to ONE expiry — unlike GEX/VEX/DEX/CHARM (which legitimately SUM
+  // dealer exposure across several coexisting near-term expiries), max pain asks "at what price
+  // does THIS expiry's holders collectively lose the most," a question tied to one settlement
+  // date. `contracts` here spans every expiry inside the strike band (fetchHeatmapBand has no
+  // expiration_date filter), so passing it straight to computeMaxPainFromChain blended OI across
+  // unrelated settlement dates into a number that looked like max pain but wasn't scoped to
+  // anything a trader could act on (docs/audit/FINDINGS.md). Scope to the front/nearest expiry,
+  // matching how fetchPolygonOdteDeskBundle and fetchPolygonPositioningBundle already correctly
+  // compute max pain from a single-expiry chain.
+  const frontExpiry = sortedAll[0];
+  const frontExpiryContracts = contracts.filter(
+    (c) => String(c.details?.expiration_date ?? "").slice(0, 10) === frontExpiry
+  );
+  const maxPain = computeMaxPainFromChain(frontExpiryContracts);
 
   // GEX levels + regime.
   const gexFlip = computeZeroGammaFlip(gexBuilt.strikeTotals, spot);

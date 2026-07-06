@@ -34,6 +34,114 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 **Not yet confirmed live:** same sandbox limitation as prior UI work — Playwright browser automation in this remote environment cannot reach the public internet through the agent proxy (`ERR_CONNECTION_RESET` even via curl-verified-working hosts, both direct and with explicit proxy launch options — Chromium's own network stack doesn't route through it the way `fetch`/curl do) or spoof an authenticated local-dev session without weakening the auth script's origin check (declined by the auto-mode safety classifier, correctly — origin spoofing is a real bypass pattern even for legitimate test infra). This is a pure dead-code deletion with zero behavior change per the cascade analysis above, so live visual risk is effectively nil, but a human TestFlight/simulator check is still worth doing before Phase 1's actual visual redesign work ships.
 
+
+## 🟡 P2 FOUND+FIXED 2026-07-06 — Audit validator false-positived on every live SPXW 0DTE play (branch `fix/zerodte-validator-spxw-underlying-ticker`)
+
+**Surface:** `scripts/audit/data-validator.mjs`'s `resolveZeroDteContract()` — the helper that proves a 0DTE Command ledger row's `top_strike` corresponds to a real, listed Polygon options contract. Found while manually re-running the validator mid-session (market open, RTH) per the user's ask to keep checking the SPX Grid/heatmaps through the day — a live SPXW play FAILed even though the platform's own play data was correct.
+
+**Root cause:** the function queries Polygon's `/v3/reference/options/contracts` with `underlying_ticker: root`, where `root` copied `src/lib/ws/options-socket.ts:buildOcc`'s SPX→SPXW swap verbatim. That swap is correct for building an OCC **ticker symbol** (Polygon really does list SPX index contracts as `O:SPXW260706C07505000`), but the reference-contracts endpoint's `underlying_ticker` **filter parameter** only recognizes the plain root "SPX" — passing "SPXW" silently returns `results: []` for every query, real contracts included. Confirmed directly against Polygon: `underlying_ticker=SPX&strike_price=7505&expiration_date.gte=2026-07-06` resolves `O:SPXW260706C07505000` (a live, real, tradeable 0DTE contract matching the exact ledger row that failed); `underlying_ticker=SPXW` with identical other params returns empty. Compounding factor: the 0DTE board's own `ticker` field for this instrument is already `"SPXW"` (not `"SPX"`) — so the pre-fix ternary (`ticker === 'SPX' ? 'SPXW' : ticker`) never even triggered a swap for this input; it was already "SPXW" going in, and stayed "SPXW" going out, still wrong.
+
+**Why it matters:** every SPXW/SPX 0DTE ledger row would FAIL this check on every future run — not a rare edge case, since SPX is one of 0DTE Command's core surfaced instruments. Left unfixed, this is exactly the kind of validator "crying wolf" that trains whoever reads the daily report to start ignoring real FAILs.
+
+**Fix:** normalize `underlying_ticker` to `"SPX"` for the query whenever the input ticker is either `"SPX"` or `"SPXW"`, while leaving the *resolved* OCC ticker in the function's return value untouched (Polygon's response already correctly returns `O:SPXW...`-prefixed tickers regardless of what was queried).
+
+**Evidence:** live re-run before the fix: `[FAIL] 0DTE ledger SPXW: top_strike 7505c exists in Polygon's real chain`. Live re-run after the fix, same market session, same ledger row: `[PASS] 0DTE ledger SPXW: top_strike 7505c exists in Polygon's real chain — resolved O:SPXW260706C07505000 (expiry 2026-07-06)`, plus two previously-`skipped`/blocked downstream checks (`underlying_at_flag`, `entry_premium` vs Polygon minute bars) now also run and PASS. Full run total went from `{"PASS":29,"INFO":5,"FAIL":1}` to `{"PASS":31,"INFO":4}` — zero FAILs, no other check's outcome changed.
+
+**Status:** FIXED and verified live; draft PR pending.
+
+---
+
+## 🔴 P0 FOUND+FIXED 2026-07-06 — SPX Slayer's open-play `signal_committed` was hardcoded `true`, even on read-only (mutate:false) polls (branch `fix/spx-signal-committed-mutate-gate`)
+
+**Surface:** SPX Slayer (`/dashboard`), `evaluateOpenPlay()` in `src/lib/spx-play-engine.ts` — the function that manages an already-open play every time it's evaluated (member-facing 3s poll via `useSpxPlay.ts` → `/api/market/spx/play` → `readSpxPlaySnapshot()` → `evaluateSpxPlay(desk, technicals, {mutate:false})`, AND the real 5-minute cron via `runSpxEvaluator()` → `evaluateSpxPlay(..., {mutate:true})`, Railway `railway.spx-evaluate.toml`). Found during the requested full CTO-level audit of SPX Slayer's entry gates and outcome grading. This was the single most severe unfixed finding from that audit.
+
+**Root cause:** every DB write inside `evaluateOpenPlay` (`updateOpenPlay` for mfe/mae peaks, `closeOpenPlay` on SELL) was already correctly gated on the `mutate` parameter — but the function's shared return tail set `signal_committed: true` as a bare literal, never consulting `mutate` at all. A `mutate:false` call (every 3-second member poll) still re-derives `stopHit`/`targetHit`/`trailingStopHit`/`thesisBreak` against the live desk price on every tick — so a member could see a full "SELL — TARGET" or "SELL — STOP" card, with `signal_committed:true` telling every consumer it had been graded/committed, when in fact **nothing was persisted**: the position was still open in the DB, and the real cron (running independently every 5 minutes) could contradict the card seconds later if price ticked back the other way before the cron tick landed.
+
+**Contrast with the already-correct sibling path:** `evaluateFlatPlay()`'s new-entry path (same file, ~line 870) already does this right — `if (!mutate) { return {..., signal_committed: false, ...}; }` before ever calling `openPlay()`. Only the open-play management tail lacked the equivalent gate.
+
+**Why it wasn't caught earlier:** no test exercised `evaluateSpxPlay`/`evaluateOpenPlay` end-to-end for `mutate:true` vs `mutate:false` at all — `signal_committed` only ever appeared as a hardcoded fixture value in `useSpxPlay.test.ts` and `admin-spx-health.test.ts`, never asserted against real engine output for the open-play path. `src/lib/spx-play-engine.ts` had zero dedicated test file before this fix.
+
+**Blast radius:** every consumer of the open-play payload's `signal_committed` field — `SpxTradeAlerts.tsx` (gates the BUY sound alert and the "Signal only — awaiting engine commit" caveat, though that caveat is currently only wired for the BUY/flat-path case, not SELL/open-path — noted as a follow-up, not folded into this fix to keep it to one root cause), the admin SPX health panel (`admin-spx-health.ts` → `AdminBieDashboard`), and any BIE/Largo consumer that reads the live play snapshot.
+
+**Fix:** `evaluateOpenPlay`'s return tail now sets `signal_committed: mutate` instead of the hardcoded `true` — matching `evaluateFlatPlay`'s existing pattern exactly. Since every write in the function is already `mutate`-gated, this makes the field mean exactly what its own doc comment (`spx-play-payload.ts`) already promised: "True only when the system has committed a play to the DB in this evaluation cycle."
+
+**Evidence:** New file `src/lib/spx-play-engine.test.ts` (previously nonexistent) drives the real `evaluateSpxPlay`/`evaluateOpenPlay` + the real `spx-play-store.ts` in its already-supported in-memory fallback mode (`dbConfigured()` forced false via unset `DATABASE_URL`/`DATABASE_PUBLIC_URL`, so persistence is observed directly with no real database needed). 4 tests: HOLD+mutate:false (signal_committed false, mfe peak NOT persisted) / HOLD+mutate:true (signal_committed true, mfe peak IS persisted) / TARGET-hit SELL+mutate:false (full SELL card renders, signal_committed false, play stays open — the exact reported bug) / TARGET-hit SELL+mutate:true (signal_committed true, play actually closes). Confirmed the regression tests fail against the pre-fix code (`git stash` the fix, 2/4 fail with `true !== false` on both `mutate:false` cases) and pass with it applied. Full suite: 1741/1741 passing, `tsc --noEmit` clean, `eslint` clean, `npm run build` clean, `git diff main -- src/lib/spx-signals.ts` empty.
+
+**Second, unrelated bug this test surfaced (also fixed here):** the required CI "verify" check (Node 20 — see `.github/workflows/ci.yml`) failed on this branch even though the identical suite passed locally on Node 22. Root cause: `spx-play-store.ts`'s `closeOpenPlay()`/`openPlay()` reach a DYNAMIC `await import("@/lib/spx-play-outcomes")` in their no-DB (memory-mode) branches — branches this PR's new mutate:true SELL/close test is the first caller ever to exercise. Under Node 20 + `--experimental-test-module-mocks`, tsx's `@/` path-alias resolution is not applied to dynamic import specifiers (it silently concatenates instead: `Cannot find module '.../src/lib/@/lib/spx-play-outcomes'`); Node 22 resolves the same specifier correctly, which is why this was invisible locally. Reproduced directly with `nvm use 20` + the exact CI command, confirmed `mock.module()` cannot work around it either (the specifier fails at the resolve step, before mock matching ever runs). **Fix:** changed both `await import("@/lib/spx-play-outcomes")` call sites in `spx-play-store.ts` to the relative `await import("./spx-play-outcomes")` (same directory) — relative resolution doesn't depend on tsx's alias-emulation and works identically on both Node versions. Verified: 1741/1741 passing on both Node 22 and Node 20 (`nvm use 20`, exact CI invocation). **Not fixed (out of scope, flagged for awareness):** ~57 other `await import("@/...")` dynamic imports exist elsewhere in the codebase; none are currently exercised by any test (this is why CI was green before this PR), so none are known to be broken today, but any future test that's the first to reach one of those branches on Node 20 with module mocks enabled could hit the same class of failure.
+
+**Status:** FIXED on branch (both bugs); draft PR pending.
+
+---
+
+## 🔴 P0 FIXED 2026-07-06 — 0DTE Command's moneyness gate FAILED OPEN when a ticker's tape carried no underlying price (branch `fix/zerodte-itm-gate-missing-underlying-price`, merged #572)
+
+**Surface:** 0DTE Command / the Grid (`/grid`), `deriveZeroDteSetups()` — the entry-gate function that decides which candidates reach the live board. Found during a deep adversarial "hunt for a phantom pass" audit requested specifically because this product (unlike SPX Slayer's `desk-verifier.ts` or Heat Maps' `heatmap-verifier.ts`) has **no independent correctness verifier** — a fail-open bug here is invisible in production with nothing to catch it.
+
+**Root cause (`src/lib/zerodte/board.ts`, pre-fix ~line 433-455):** the deep-ITM "stock replacement" exclusion — the exact gate added after the live SNDK 1880p-at-1723 fake-out (a stock-replacement play masquerading as a directional 0DTE bet) — was implemented as:
+```ts
+let otmPct: number | null = null;
+if (agg.underlying && agg.underlying > 0) {
+  const raw = ((top.strike - agg.underlying) / agg.underlying) * 100;
+  otmPct = Math.round((dominantCall ? raw : -raw) * 100) / 100;
+  if (otmPct < -SETUP_MAX_ITM_PCT) { /* push rejection; continue */ }
+}
+// falls through to setups.push(...) with otm_pct: null when agg.underlying was never set
+```
+There was **no `else` branch**. `agg.underlying` is populated from the freshest print's `underlying_price` field (itself a `COALESCE` over `underlying_last`/`underlying_price`/`stock_price` in the UW `raw_payload`, per `src/lib/db.ts`'s `fetchRecentFlows`). When **every** print for a candidate ticker's tape window came back missing all three of those keys — a real, not hypothetical, UW payload gap (this same file has a documented, live-verified instance of UW sending numeric fields as JSON strings on ~48% of rows) — `agg.underlying` stayed `null`, the entire moneyness check was **silently skipped**, and the candidate fell through to `setups.push(...)` with `otm_pct: null` — i.e., a genuinely deep-ITM, stock-replacement print (the class of setup this gate exists specifically to catch) could reach the live board and be shown to paying members as a validly-gated 0DTE setup, with `alert_audit_log`'s own decision trace recording the check as **`passed: true`** (`setup.otm_pct == null || ...` treated a null reading as a pass).
+
+**Why it wasn't caught earlier:** the 3 numeric gates immediately above this one (`SETUP_MIN_GROSS`, `SETUP_MIN_AGGR_SHARE`, `SETUP_MIN_DOMINANCE`) always evaluate — they operate on fields (premium, `ask_pct` via a documented default weight) that are never structurally skippable — so the codebase's "every gate always runs" pattern held for 3 of 4 checks and the 4th's asymmetry (an `if` with no corresponding `else`-reject) was easy to miss without adversarial review. `board.test.ts`'s existing ITM-gate test (`"gates: deep-ITM top strike (stock replacement) is excluded"`) only ever exercised the case where `underlying_price` IS present — there was no test for the "tape never carried one at all" path, so nothing would have failed even in CI. Compounding evidence this was a real gap, not theoretical: `scan.ts`'s `attachContractPlans()` fetches a **live** underlying price from the options snapshot (`snap?.underlyingPrice`) moments later while building the contract plan — the data needed to close this gap already exists downstream in the same request, but was never fed back to re-check the gate.
+
+**Blast radius:** one call site (`deriveZeroDteSetups` in `board.ts`) feeds all three downstream consumers of the board (member route, Largo `get_zerodte_plays`, BIE composers — all via `getZeroDteBoardPayload()`/`zeroDtePlaysForLargo()`), so the fix protects all of them at the source. Also touched: `buildZeroDteAuditRow()`'s `max_itm_pct` decision-trace check (same `== null` → pass logic, fixed to fail closed too, defense-in-depth) and the Largo tool description for `get_zerodte_rejections` in `src/lib/largo/tool-defs.ts` (enumerated the possible `gate_failed` values; now includes the new reason so Largo can correctly explain a rejection to a member who asks).
+
+**Fix:** the moneyness check in `deriveZeroDteSetups` now fails **closed**: when `agg.underlying` is missing/invalid, the candidate is rejected with a new `gate_failed: "no_underlying_price"` reason (added to the `ZeroDteGateFailure` union) instead of silently passing through ungated. This makes all 4 real gates + the 2 structural guards behave symmetrically — none of them can be silently bypassed by missing data. `otm_pct` is now guaranteed non-null for any setup that reaches `setups.push(...)`. Deliberately left unchanged: the `aggressionWeight()` default (0.7) for missing `ask_pct` — that path already fails **closed enough** in practice (it's a partial-credit blend across a real premium total, not an unconditional skip of a whole gate) and changing its calibration is a separate, non-bug design question flagged for human review, not folded into this fix to keep the PR to one issue.
+
+**Evidence:** new test `"gates: missing underlying price fails CLOSED, not open — P0 regression guard"` in `src/lib/zerodte/board.test.ts` reproduces the exact deep-ITM fixture from the existing ITM test (1880 put, stock effectively at 1723) but with `underlying_price: undefined` on every row — pre-fix this returned 1 setup (the bug); post-fix it returns 0 setups and one `no_underlying_price` rejection with `otm_pct: null` (never guessed). A second new test proves `buildZeroDteAuditRow`'s `max_itm_pct` check now fails closed on a null reading. Full suite: 1726/1726 passing, `tsc --noEmit` clean, `eslint` clean on all 3 changed files.
+
+**Status:** FIXED and merged (#572).
+
+---
+
+## 🟢 P1 FIXED 2026-07-06 — Thermal's "Max Pain" blended open interest across multiple unrelated expiries (branch `fix/gex-heatmap-max-pain-single-expiry`)
+
+**Status:** FIXED locally; PR pending. Found during the requested full CTO-level "every cell" audit of BlackOut Thermal's GEX heatmap, dispatched to an adversarial code-review agent instructed to hunt for a real bug rather than summarize the code.
+
+**Root cause:** `buildGexHeatmapUncached()` (`src/lib/providers/polygon-options-gex.ts`) fetches `contracts` via `fetchHeatmapBand()` — a strike-banded snapshot **across every expiry** inside the band, deliberately with no `expiration_date` filter (so the matrix can render far-dated monthly/quarterly columns). That same unfiltered `contracts` array was passed straight into `computeMaxPainFromChain(contracts)`, which sums call/put OI **per strike, across every expiry present**, and pain-minimizes over that blended set. Max pain is only a meaningful concept *within one expiry's contract set* — it answers "at what settlement price does this expiring cohort's holders collectively lose the most," a question tied to one settlement date. Summing OI from a Tuesday daily and a monthly OpEx that happens to share a strike band produces a number that looks like max pain (right shape, right formula) but isn't scoped to anything a trader can act on. This is provably inconsistent with how the rest of the codebase computes max pain: `fetchPolygonOdteDeskBundle` (SPX desk) and `fetchPolygonPositioningBundle` (positioning summary) both correctly fetch a **single-expiry** chain before calling the same `computeMaxPainFromChain` — only the Heat Maps / Thermal matrix build (the one path every preset ticker and every user-typed ticker goes through) had this bug.
+
+**Why the platform's own independent verifier (`heatmap-verifier.ts`) didn't catch it:** it only sanity-bounds `max_pain` (finite, within ±50% of spot) — it never independently re-derives max pain from a single-expiry-scoped chain and diffs it against the served value. A structurally-invalid-but-plausible-looking number passes untouched. Confirmed live today: running the platform's cross-provider `data-validator.mjs` and the deep `heatmap-verifier.ts` re-derivation (via the new `?surface=heatmap` cron fast-path, see below) both showed 0 flags across SPX/SPY/QQQ/NVDA — expected, since neither check was designed to catch this class of bug; it took direct code reading to find.
+
+**Blast radius:** `GexHeatmap.max_pain` (served on `/api/market/gex-heatmap`, displayed on Thermal's UI unqualified as "Max Pain"), `GexPositioning.max_pain` (served on `/api/market/gex-positioning`, consumed by SPX Slayer's dashboard), `gexContextLine`/`gexContextBlock` (fed into the Largo AI narrative prompt and allowed as a "grounded" number in the fabrication-guard's known-price-levels set), `GexEodSnapshot.max_pain` (persisted daily into EOD history), and `GexHistoryContext.prior_close.max_pain` (day-over-day diffs) — every one of these read the same corrupted top-level number.
+
+**Fix:** scope `computeMaxPainFromChain`'s input to the front/nearest expiry only (`sortedAll[0]`, already computed earlier in the same function for the near-term expiry-axis logic), filtering `contracts` by `expiration_date` before the call — mirroring exactly how the SPX desk bundle and positioning bundle already do it correctly. Left deliberately unchanged: GEX/VEX/DEX/CHARM's own near-term (multi-expiry) summation — that's a different, legitimate aggregate (dealer hedging flow from several coexisting near-term expiries really does sum), not the same bug.
+
+**Tests added:** `polygon-options-gex.test.ts` — `computeMaxPainFromChain` on a single expiry pain-minimizes to the expected strike; blending in a second, unrelated expiry's OI provably changes the answer (proving why the call-site filter matters); empty input still returns `null`, never a fabricated strike.
+
+**Verification:** `npx tsc --noEmit` clean. `npx tsx --test src/lib/providers/polygon-options-gex.test.ts` 13/13 passing. `npm run build` clean. `npx eslint` clean on both changed files. `git diff main -- src/lib/spx-signals.ts` empty. (Full-suite `npm test` run showed 4 unrelated failures in `src/lib/zerodte/scan.test.ts` caused by separate concurrent in-flight work on that file in this same session — confirmed unrelated by re-running that file with this fix's changes stashed, which fails identically.)
+
+**Also fixed this session (`?surface=heatmap`, PR #570, merged):** the platform's `/api/cron/data-correctness` full 8-surface sweep was 524-timing-out during RTH before it could ever report Heat Maps' results — added a fast-path so the deep per-cell GEX/VEX/DEX/CHARM verifier (Σ invariants, sign integrity, UW oracle) could actually run. Live result today: 60 metrics across SPX/SPY/QQQ/NVDA, 0 flags, 2 independently UW-confirmed, 58 consistency-only (every served cell's Σ-reconciliation and per-strike sign-integrity checks pass — internally consistent, though most metrics still lack a second independent source, an honest coverage gap, not a guarantee).
+
+---
+
+## 🟢 P1 FIXED 2026-07-06 — SPX play API leaked confirmations during SCANNING (branch `fix/spx-scanning-confirmations-rth-9d1e`, manual RTH agent run)
+
+**Status:** FIXED locally; PR pending merge + deploy.
+
+**Root cause:** Client-side stale-layer guards landed in PR #539 (`useSpxPlay`, `useStablePlayConfirmations`, `SpxTradeAlerts`), but `evaluateFlatPlay()` in `src/lib/spx-play-engine.ts` still spread the live `confirmations` object onto every `scanningPayload()` return — including paths where `action: "SCANNING"`. `/api/market/spx/play` therefore served 7/7 ✓ checks while the hero read SCANNING, failing `spx:cross-endpoint` and `spx:dashboard-e2e` audit probes.
+
+**Evidence:** Manual `npm run validate:spx-rth` (2026-07-06 ~09:37 ET): `play SCANNING still carries confirmations (stale layer bug)` with live payload showing `confirmations_passed: 7` and `gate_reasons: ["WAITING_FOR_STRUCTURE","REGIME_MISMATCH"]`.
+
+**Fix:**
+- Added `confirmationsForAction()` in `spx-play-payload.ts` — returns `null` when `action === "SCANNING"`.
+- Entry-gates-blocked path uses `confirmationsForAction(idleAction, confirmations)` so WATCHING keeps checks, SCANNING does not.
+- Claude-blocked, option-chain-blocked, and open-play race bail paths set `confirmations: null` explicitly.
+
+**Also fixed:** `spx-dashboard-e2e-audit.mjs` + `grid-zerodte-e2e-audit.mjs` adopt existing Clerk user on `form_identifier_exists` (same pattern as `prod-clerk-session.mjs`) so reruns don't fail on leftover audit emails.
+
+**Tests:** `src/lib/spx-play-payload.test.ts` — `confirmationsForAction` SCANNING vs WATCHING/BUY.
+
+**Blast radius:** Any consumer of `/api/market/spx/play` during SCANNING (BIE `spx_full_state`, Largo `get_spx_play`, dashboard hero). WATCHING/BUY/OPEN paths unchanged.
+
+**Verification:** `npx tsx --test src/lib/spx-play-payload.test.ts`, `npx tsc --noEmit`. Live `validate:spx-rth` cross-endpoint check requires deploy.
+
 ---
 
 ## 🟢 DESIGN SHIPPED 2026-07-06 — Thermal's GEX heatmap given SPX Slayer's per-day King star + peak-glow treatment (branch `feat/thermal-per-day-king-star-and-peak-glow`)
@@ -2232,6 +2340,17 @@ Merge commit `78c4d10`. Its own Railway deployment shows `REMOVED` in the GraphQ
 **Blast radius:** `largo-terminal.ts` (`LargoStreamEvent` type, the tool-loop `onEvent` filter, and both functions' return/emit sites) and `api.ts` (`queryLargoStream`'s wire-contract types). The BIE-router fast path (already single-shot) and the non-streaming `runLargoQuery` (never streamed live to begin with — already fully buffers before returning) are unchanged by part 2; only the Claude tool-loop path inside `runLargoQueryStream` had the live-token exposure. The API route (`api/market/largo/query/route.ts`) needed no change — it already `NextResponse.json(result, ...)`s the whole object.
 
 **Verification:** `npx tsc --noEmit` clean; full suite passing, no regressions (`largo-terminal.ts` itself has no direct test — confirmed by import: it throws "This module cannot be imported from a Client Component module" outside Next's server-component runtime, the same transitive `server-only` wall already documented for `src/lib/correctness/*` and `nighthawk/play-explainer.ts` elsewhere in this file). `npm run build` clean; `lint:brand`/`lint:vendor`/`verify-api-auth-guards.mjs` all green.
+
+---
+
+## 🧠 BIE router: new `ticker_ecosystem` intent SHIPPED 2026-07-04 — "what's going on with X" answered without a Claude call, for ANY known ticker
+**What shipped:** Largo's Layer 3 deterministic router (`src/lib/bie/router.ts`) gains a 5th intent. Previously `ticker_play_state` only routed for a ticker on TODAY'S 0DTE ledger — a general "what's going on with AAPL" (not on the ledger) fell through to Claude every time, even though `fetchEcosystemContext()` (built earlier tonight) can answer it deterministically for any ticker. The new `ticker_ecosystem` intent matches open-ended info-request phrasing ("what's going on with X", "any flow on X", "anything on X", "what's the latest on X") against the curated `KNOWN_TICKERS` whitelist (`src/lib/largo/question-intent.ts`) or an explicit `$`-prefixed symbol — never "any capitalized 1-5 letter token," which is the exact false-positive class (`LARGO-9`) that mis-pinned words like CALLS/HOLD/SETUP/BULL as tickers before that whitelist existed. `composeTickerEcosystem()` (`src/lib/bie/composers.ts`) formats the same `fetchEcosystemContext()` payload the `get_ecosystem_context` Largo tool already exposes — zero new data plumbing.
+
+**Deliberately conservative:** "what does the desk think about X" phrasing was considered and explicitly rejected — it already matches `REASONING_RE`'s `\bthink\b` and routes to Claude, and a branch built to override that would be dead code. The router's standing philosophy holds: a missed route costs one Claude call, a wrong route costs trust, so ambiguous-toward-reasoning phrasing stays with Claude.
+
+**Backend-only**, per standing instruction — no `.tsx` files touched.
+
+**Verification:** `npx tsc --noEmit` clean, `npm test` 917/917 passing (4 new router eval-set cases, matching the existing "no route change ships without the eval set passing" discipline), `npm run build` clean, `lint:brand`/`lint:vendor`/`verify-api-auth-guards.mjs` all green.
 
 ---
 
