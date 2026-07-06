@@ -142,8 +142,16 @@ const REPO_ROOT = join(__dirname, "..", "..");
 const APP = process.env.AUDIT_APP_URL || "https://blackouttrades.com";
 const OUT = process.env.AUDIT_OUT || join(process.cwd(), "audit-output");
 const CRON_SECRET = process.env.CRON_SECRET || "";
+const REDIS_URL = process.env.REDIS_URL || "";
+const DATABASE_URL = process.env.DATABASE_URL || "";
 const DIRECT_CALL_TIMEOUT_MS = Number(process.env.AUDIT_DIRECT_CALL_TIMEOUT_MS ?? 15000) || 15000;
 const INCLUDE_LARGO_LIVE_CHECK = process.env.AUDIT_INCLUDE_LARGO_LIVE_CHECK === "1";
+
+/** In-process getSpxPlayState() must share the prod `spx-play-read:*` Redis lane
+ *  with the member HTTP route — otherwise a fresh local eval diverges from prod. */
+function canShareProdPlayCacheLane() {
+  return Boolean(REDIS_URL && DATABASE_URL);
+}
 
 // Must match src/lib/round-floats.ts's default `dp` argument exactly — this
 // is NOT an arbitrary fudge factor, it's half of one rounding step at that
@@ -350,6 +358,13 @@ async function fetchMemberSpxPlay() {
  *  timeout so an unreachable DB (e.g. this sandbox — see SANDBOX LIMITATIONS)
  *  reports a clean SKIP instead of hanging the whole script. */
 async function callGetSpxPlayStateDirect() {
+  if (!canShareProdPlayCacheLane()) {
+    return {
+      skip: true,
+      reason:
+        "REDIS_URL and DATABASE_URL must both be set for in-process getSpxPlayState() to share the prod spx-play-read cache lane with /api/market/spx/play — without them, a fresh local eval will diverge from the deployed member route (grade/score/gates) even when the route correctly calls getSpxPlayState(). Cloud Agent sandboxes: rely on the prod double-fetch check below instead.",
+    };
+  }
   // Must run before the dynamic import below — see the module doc's "KNOWN
   // GOTCHA" section. mock.module() works outside `node --test` too (verified
   // for this task) as long as --experimental-test-module-mocks is passed.
@@ -409,6 +424,34 @@ function diffTree(a, b, path, tolerance, out) {
   if (a !== b) out.push({ path, a, b });
 }
 
+/** When the sandbox cannot share prod Redis, prove member-route self-consistency
+ *  by fetching the deployed endpoint twice in parallel (same cache window). */
+async function prodMemberPlayDoubleFetchCheck() {
+  if (!CRON_SECRET) {
+    rec("live: prod member play double-fetch consistency", "SKIP", "CRON_SECRET not set");
+    return;
+  }
+  const [a, b] = await Promise.all([fetchMemberSpxPlay(), fetchMemberSpxPlay()]);
+  if (a.skip || b.skip) {
+    rec("live: prod member play double-fetch consistency", "SKIP", a.reason || b.reason);
+    return;
+  }
+  const diffs = [];
+  diffTree(a.json, b.json, "", ROUND_TOLERANCE, diffs);
+  if (diffs.length === 0) {
+    rec(
+      "live: prod member play double-fetch consistency",
+      "PASS",
+      `parallel fetches matched — grade=${a.json.grade} score=${a.json.score} action=${a.json.action}`
+    );
+    return;
+  }
+  for (const d of diffs.slice(0, 10)) {
+    rec(`live: prod double-fetch FIELD MISMATCH ${d.path}`, "FAIL", JSON.stringify(d).slice(0, 200));
+  }
+  rec("live: prod member play double-fetch consistency", "FAIL", `${diffs.length} field(s) diverged between parallel prod fetches`);
+}
+
 async function liveCrossConsistencyCheck() {
   const [member, direct] = await Promise.all([fetchMemberSpxPlay(), callGetSpxPlayStateDirect()]);
 
@@ -427,8 +470,15 @@ async function liveCrossConsistencyCheck() {
     rec(
       "live: member vs BIE/Largo cross-consistency diff",
       "SKIP",
-      "both sides must be live to diff — see the two SKIPs above for exactly what's missing in this run"
+      member.skip && direct.skip
+        ? "both sides must be live to diff — see the two SKIPs above"
+        : direct.skip
+          ? `${direct.reason} — using prod double-fetch fallback`
+          : member.reason || "member fetch unavailable"
     );
+    if (!member.skip && direct.skip) {
+      await prodMemberPlayDoubleFetchCheck();
+    }
     return;
   }
 
