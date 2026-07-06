@@ -1,5 +1,22 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 13:45 ET
+Last updated: 2026-07-06 11:00 ET
+
+## Dashboard perf — ~10s loads (not AWS) — 2026-07-06
+
+**Symptom:** Pages feel slow (~10s until data appears). HTML shell is fast (~200ms TTFB via Cloudflare).
+
+**Measured root cause (production, RTH):**
+| Layer | Finding |
+|---|---|
+| Static shell | ✅ 468ms DOMContentLoaded |
+| `/api/market/spx/bootstrap` | ❌ **524 @ ~125s** when bundling desk + full GEX matrix on cold cache |
+| Client fallback | 4 parallel lane XHRs (pulse + desk + flow + matrix) when bootstrap fails |
+| `/api/market/spx/play` | Up to **38s** under load — full `evaluateSpxPlay()` every 3s poll, no shared read cache |
+| `/api/grid/bootstrap` | ~20s cold — includes `loadMergedSpxDesk()` |
+
+**Fix (PR):** Slim bootstrap to desk lanes only; gate lane SWR until bootstrap settles; `withServerCache` on play read (3s). **Moving to AWS would not fix this** — same app architecture on different metal.
+
+---
 
 ## Manual SPX + Grid RTH agent run — 2026-07-06 ~09:37 ET (Mon market open)
 
