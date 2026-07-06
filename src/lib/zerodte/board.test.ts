@@ -75,6 +75,26 @@ test("setups: one-sided 0DTE concentration produces a long setup with the domina
   assert.ok(out[0]!.score > 0);
 });
 
+test("setups: top strike is chosen by aggression-weighted premium, not raw dollar premium", () => {
+  // Strike A: bigger RAW premium ($1M) but mostly SOLD/bid-side (ask_pct=20 -> weight 0.15
+  // -> $150k weighted). Strike B: smaller raw premium ($900k) but almost entirely bought
+  // AT THE ASK (ask_pct=90 -> weight 1 -> $900k weighted) — this is where the actual
+  // buying conviction that makes "long" the winning direction lives. The old code picked
+  // A (raw prem wins); the fix must pick B (aggression-weighted prem wins).
+  const rows = [
+    row({ premium: 1_000_000, strike: 190, ask_pct: 20 }),
+    row({ premium: 900_000, strike: 195, ask_pct: 90 }),
+  ];
+  const out = deriveZeroDteSetups(rows);
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.direction, "long");
+  assert.equal(
+    out[0]!.top_strike,
+    195,
+    "top strike must be the one carrying the actual buying conviction, not the bigger raw print"
+  );
+});
+
 test("setups: two-sided tape (no dominance) is NOT a setup", () => {
   const rows = [
     row({ premium: 1_000_000, option_type: "call" }),
