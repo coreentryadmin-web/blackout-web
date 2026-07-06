@@ -111,10 +111,6 @@ html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-chart-col 
   overflow: hidden;
 }
 
-html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-chart-col {
-  min-height: min(58dvh, 480px);
-}
-
 html.ios-app.ios-native-shell .flow-scroll > div {
   animation: ios-content-rise 0.18s var(--ios-motion-spring) both;
 }

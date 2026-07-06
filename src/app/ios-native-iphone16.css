@@ -152,11 +152,6 @@ html.ios-app.ios-tier-pro-max.ios-native-shell {
 
 /* Pro Max vertical space — reduce dead zone above instrument rail */
 @media (min-width: 430px) and (min-height: 900px) {
-  html.ios-app.ios-native-shell .page-shell > .content-rail,
-  html.ios-app.ios-native-shell .ios-desk-shell > * {
-    padding-bottom: calc(var(--ios-tab-offset, 0px) + 0.5rem);
-  }
-
   html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-triple {
     gap: 0.75rem;
   }
