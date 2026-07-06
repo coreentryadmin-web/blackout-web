@@ -968,8 +968,20 @@ const INDEX_ROOTS: Record<string, string> = {
   VIX: "I:VIX",
 };
 
+/**
+ * `ticker` is untrusted, user-supplied input on every /api/market/gex-* route (query param, at
+ * most uppercased before reaching here) and `optionsRoot` becomes a URL PATH segment in every
+ * downstream Polygon chain fetch (fetchHeatmapBand, fetchPolygonOiByExpiry,
+ * fetchPolygonIvTermStructure — all splice it into `/v3/.../${optionsRoot}?...` via template
+ * literal, not URL-encoded). Stripping anything outside the real ticker charset here — the single
+ * choke point every one of those callers routes through — closes off a crafted ticker (`../`,
+ * `@`, `:`, etc.) reaching the outbound request URL, flagged by CodeQL as a request-forgery sink.
+ */
 export function resolveOptionsRoot(ticker: string): { root: string; optionsRoot: string } {
-  const root = String(ticker ?? "").trim().toUpperCase();
+  const root = String(ticker ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9.]/g, "");
   const optionsRoot = INDEX_ROOTS[root] ?? root;
   return { root, optionsRoot };
 }

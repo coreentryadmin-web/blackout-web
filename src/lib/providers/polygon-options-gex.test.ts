@@ -8,6 +8,7 @@ import {
   computeGexEvents,
   computeMaxPainFromChain,
   resolveExpiryAxis,
+  resolveOptionsRoot,
   type GexHistorySnapshot,
   type ChainContract,
 } from "./polygon-options-gex";
@@ -207,6 +208,40 @@ test("computeMaxPainFromChain: blending two DIFFERENT expiries' OI changes the a
 
 test("computeMaxPainFromChain: empty input returns null, never a fabricated strike", () => {
   assert.equal(computeMaxPainFromChain([]), null);
+});
+
+// ── resolveOptionsRoot: `ticker` is untrusted, user-supplied input (the query param on every
+// /api/market/gex-* route) that becomes a URL PATH segment in every downstream Polygon chain
+// fetch. CodeQL flagged this as a request-forgery sink — a crafted ticker must not be able to
+// inject path segments into the outbound request URL.
+
+test("resolveOptionsRoot: normal tickers pass through uppercased, unchanged", () => {
+  assert.deepEqual(resolveOptionsRoot("spy"), { root: "SPY", optionsRoot: "SPY" });
+  assert.deepEqual(resolveOptionsRoot("nvda"), { root: "NVDA", optionsRoot: "NVDA" });
+});
+
+test("resolveOptionsRoot: index tickers still resolve to their I: options root", () => {
+  assert.deepEqual(resolveOptionsRoot("spx"), { root: "SPX", optionsRoot: "I:SPX" });
+  assert.deepEqual(resolveOptionsRoot("vix"), { root: "VIX", optionsRoot: "I:VIX" });
+});
+
+test("resolveOptionsRoot: dotted share classes (BRK.A/BRK.B) are preserved", () => {
+  assert.deepEqual(resolveOptionsRoot("brk.b"), { root: "BRK.B", optionsRoot: "BRK.B" });
+});
+
+test("resolveOptionsRoot: strips path-injection characters instead of passing them into the Polygon URL", () => {
+  // Dots survive (BRK.A/BRK.B need them), but the `/` that would make ".." an actual path
+  // segment separator is stripped, so no traversal is possible — just literal dots.
+  assert.equal(resolveOptionsRoot("AAPL/../../evil.com").root, "AAPL....EVIL.COM");
+  assert.equal(resolveOptionsRoot("SPY?foo=bar").root, "SPYFOOBAR");
+  assert.equal(resolveOptionsRoot("SPY@evil.com").root, "SPYEVIL.COM");
+  assert.equal(resolveOptionsRoot("SPY:8080").root, "SPY8080");
+  assert.equal(resolveOptionsRoot("SPY\nHost: evil.com").root, "SPYHOSTEVIL.COM");
+});
+
+test("resolveOptionsRoot: null/undefined/empty ticker resolves to an empty root, never throws", () => {
+  assert.deepEqual(resolveOptionsRoot(""), { root: "", optionsRoot: "" });
+  assert.deepEqual(resolveOptionsRoot(undefined as unknown as string), { root: "", optionsRoot: "" });
 });
 
 // ── fetchPolygonIvTermStructure must share HEATMAP_PAGE_GUARD, not its own smaller
