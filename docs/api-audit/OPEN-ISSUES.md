@@ -1,5 +1,74 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 16:57 ET
+Last updated: 2026-07-06 17:02 ET
+
+## RTH comprehensive sweep — 2026-07-06 ~16:56–17:02 ET (post-close pass #5)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including full COMPREHENSIVE TEST SWEEP. Time: Mon 16:56–17:02 ET (post-close). Commands: `validate:rth-open` → `validate:rth-sweep` → `GET /api/cron/data-correctness?force=1` → `validate:member-dashboard` → `validate:site-latency` → `validate:spx-rth --force --phase=post-close` → `ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy SUCCESS (8381beb5); post-close deploy-only mode |
+| `GET /api/cron/data-correctness?force=1` | ✅ **GREEN** — `ok: true`, `flags: 0`, 107 metrics / 7 independently confirmed |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 P0/P1 (3 P2 stale grid panels, post-close) |
+| `npm run validate:member-dashboard` | ✅ **GREEN** — 8/8 (matrix 152 strikes, spot 7,537.43) |
+| `npm run validate:site-latency` | ⚠️ **35/36** — 1 transient FAIL (see P2 below) |
+| `npm run validate:spx-rth --force --phase=post-close` | ⚠️ **7 PASS / 1 FAIL** — `spx:bie-consistency` sandbox-only (known) |
+| `npm run ops:collect` | ✅ 0 action items |
+
+### Speed (soft-nav, premium session)
+
+| Page | Load | Notes |
+|---|---|---|
+| `/dashboard` | hard 1,771ms | Under 2s P1 threshold |
+| `/flows` | soft 1,869ms | Under 2s |
+| `/heatmap` | soft 1,935ms | Under 2s |
+| `/grid` | soft 1,643ms | Under 2s |
+| `/nighthawk` | soft 1,703ms | Under 2s |
+| `/terminal` | soft 1,761ms | Under 2s |
+| `/track-record` | soft 1,638ms | Under 2s |
+
+### Live auto-update (post-close)
+
+`liveTick=null` on all 7 pages — **expected off-hours** (market closed 16:00 ET; no RTH tape/SSE cadence). Session heat=CLOSED on 0DTE board; desk label=EXTENDED.
+
+### Data correctness + cross-tool
+
+| Probe | Result |
+|---|---|
+| GEX flip cross-tool | ✅ desk=7535.17 = gex=7535.17 (spot 7537.43) |
+| All 19 market+grid APIs | ✅ HTTP 200 |
+| Largo NVDA query (SSE) | ✅ 200 in 38s; tools: `live_feed_capture`, `get_dark_pool`, `get_options_flow`; grounded $345.24M dark-pool answer |
+| `data-correctness` cron | ✅ flags=0 |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages (no `—`, `$—`, `N/A`, or empty tables where data expected). Post-close CLOSED/SKIP states on 0DTE ledger are honest session gating.
+
+### Console / render health
+
+| Page | Console |
+|---|---|
+| `/dashboard` | ⚠️ 1× HTTP 400 (benign — `ticker-search` without `q`; page renders fully) |
+| All others | ✅ zero errors |
+
+### Findings
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P2** | `grid-economy-stale-post-close` | `/api/grid/economy` as_of 3128s old | sweep API probe @ 16:57 ET | post-close — economy panel refreshes on next grid-warm RTH |
+| **P2** | `grid-analysts-stale-post-close` | `/api/grid/analysts` as_of 412s old | sweep API probe | post-close |
+| **P2** | `grid-congress-stale-post-close` | `/api/grid/congress` as_of 418s old | sweep API probe | post-close |
+| **P2** | `site-latency-gex-heatmap-spy-cold` | SPY gex-heatmap cold pass 2001ms (1ms over P1 threshold) under concurrent audit burst | `site-latency-1783371683868.json` | transient — warm pass 457ms |
+| **P2** | `site-latency-grid-bootstrap-warm-spike` | `/api/grid/bootstrap` warm pass 5911ms during parallel audit load; isolated re-probe ~80ms | site-latency audit | transient audit contention |
+| **P2** | `spx-bie-consistency-sandbox` | `validate:spx-rth` compares prod HTTP vs local in-process `getSpxPlayState()` — structural fix merged PR #621 | post-close re-run | sandbox harness only |
+
+**No P0/P1 defects — no GitHub issue opened.**
+
+**Reports:** `audit-output/rth-sweep-2026-07-06T20-57-38-044Z.json`, `audit-output/site-latency-1783371683868.json`, `audit-output/member-dashboard-live-1783371665428.png`, `audit-output/spx-rth-2026-07-06-post-close-1783371773960.json`
+
+---
 
 ## grid-rth-2026-07-06 — 0DTE Command + Market Grid verify pass #5 (~16:50–16:53 ET, post-close)
 
