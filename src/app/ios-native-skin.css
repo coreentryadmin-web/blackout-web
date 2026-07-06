@@ -154,7 +154,7 @@ html.ios-app.ios-native-shell section[class*="Panel"],
 html.ios-app.ios-native-shell .nighthawk-playbook,
 html.ios-app.ios-native-shell .nighthawk-watch,
 html.ios-app.ios-native-shell .grid-card,
-html.ios-app.ios-native-shell .largo-terminal-fullpage,
+html.ios-app.ios-native-shell .largo-terminal-fullpage:not(.largo-terminal-native),
 html.ios-app.ios-native-shell .cl-card,
 html.ios-app.ios-native-shell .ios-tool-locked-screen > div {
   background: var(--ios-surface-1) !important;
@@ -389,11 +389,23 @@ html.ios-app.ios-native-shell .largo-tool-chip {
   padding: 2px 8px;
 }
 
-html.ios-app.ios-native-shell .largo-send-btn {
+html.ios-app.ios-native-shell .largo-send-btn,
+html.ios-app.ios-native-shell .largo-send-btn-native {
   min-width: var(--ios-touch);
   min-height: var(--ios-touch);
   border-radius: var(--ios-radius-md);
   box-shadow: 0 0 20px var(--ios-accent-glow);
+}
+
+html.ios-app.ios-native-shell[data-ios-route="largo"] .largo-input-fullpage {
+  min-height: var(--ios-touch);
+  border-radius: var(--ios-radius-md) !important;
+  background: var(--ios-surface-2) !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="largo"] .largo-msg-welcome .largo-message-body,
+html.ios-app.ios-native-shell[data-ios-route="largo"] .largo-msg-welcome .largo-msg-text {
+  color: #e0f2fe;
 }
 
 /* ═══ Night Hawk cards ═══ */

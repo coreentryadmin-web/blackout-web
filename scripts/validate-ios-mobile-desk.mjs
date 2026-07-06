@@ -67,6 +67,8 @@ const pagesNeedles = [
   ['data-ios-route="dashboard"', "SPX native page scope"],
   ['data-ios-route="flows"', "HELIX native page scope"],
   ['data-ios-route="largo"', "Largo native page scope"],
+  [".largo-page-main-native", "Largo full-bleed main hook"],
+  [".largo-terminal-native", "Largo edge-to-edge terminal hook"],
   [".account-page-title-block", "account title hide hook"],
   [".helix-ios-toolbar", "HELIX sticky filter bar"],
   [".grid-page-tabs", "grid page tabs hook"],
@@ -183,6 +185,13 @@ if (nhFeed.includes("iosView") && nhFeed.includes("playbook")) {
   ok("nighthawk:ios-view-switcher");
 } else {
   fail("nighthawk:ios-view-switcher", "expected playbook/watch switcher");
+}
+
+const largoShell = readFileSync(join(root, "src/components/desk/LargoPageShell.tsx"), "utf8");
+if (largoShell.includes("useIosNativeShell") && largoShell.includes("!nativeShell")) {
+  ok("largo:page-shell-native-gate");
+} else {
+  fail("largo:page-shell-native-gate", "expected LargoPageShell to hide web header on native");
 }
 
 if (siteLayout.includes("IosAppChrome")) {
