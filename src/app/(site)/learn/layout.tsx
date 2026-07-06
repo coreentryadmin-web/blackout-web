@@ -1,9 +1,11 @@
 import { PageShell } from "@/components/ui";
 import { LearnSidebar } from "@/components/learn/LearnSidebar";
+import { LearnMobileNav } from "@/components/learn/LearnMobileNav";
 
 export default function LearnLayout({ children }: { children: React.ReactNode }) {
   return (
     <PageShell contentClassName="py-0">
+      <LearnMobileNav />
       <div className="learn-shell">
         <div className="learn-shell-grid">
           <aside className="learn-shell-aside hidden lg:block">

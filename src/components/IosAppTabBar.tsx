@@ -3,29 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { useAuth } from "@clerk/nextjs";
 import { clsx } from "clsx";
-import { ProductMark, type MarkProduct } from "@/components/marks/ProductMark";
+import { ProductMark } from "@/components/marks/ProductMark";
 import { isIosAppShell } from "@/lib/ios-app-shell";
-import { isIosToolRoute } from "@/lib/ios-tool-routes";
+import { IOS_TOOLS, isIosToolRoute } from "@/lib/ios-tool-routes";
 import { toolKeyForHref, type ToolKey } from "@/lib/tool-access";
 
-type Tab = {
-  href: string;
-  label: string;
-  mark: MarkProduct;
-};
+const TAB_SPRING = { type: "spring" as const, stiffness: 520, damping: 42 };
 
-const TABS: Tab[] = [
-  { href: "/dashboard", label: "SPX", mark: "spx" },
-  { href: "/flows", label: "HELIX", mark: "helix" },
-  { href: "/heatmap", label: "Thermal", mark: "heatmap" },
-  { href: "/terminal", label: "Largo", mark: "largo" },
-  { href: "/nighthawk", label: "Hawk", mark: "nighthawk" },
-  { href: "/grid", label: "0DTE", mark: "grid" },
-];
-
-/** Native-style bottom tool switcher — iOS app shell only, signed-in tool routes. */
+/** Instrument rail — terminal-style bottom switcher (not a floating pill tab bar). */
 export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
   const path = usePathname();
   const { isSignedIn, isLoaded } = useAuth();
@@ -44,27 +32,38 @@ export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
   if (!visible) return null;
 
   return (
-    <nav className="ios-app-tab-bar" aria-label="Tools">
+    <nav className="ios-app-tab-bar" aria-label="Instrument rail">
       <ul className="ios-app-tab-list">
-        {TABS.map((tab) => {
+        {IOS_TOOLS.map((tab) => {
           const active = path === tab.href || path.startsWith(`${tab.href}/`);
           const key = toolKeyForHref(tab.href);
           const locked = key != null && lockedTools.includes(key);
           return (
             <li key={tab.href} className="ios-app-tab-li">
+              {active && (
+                <motion.span
+                  layoutId="ios-native-tab-indicator"
+                  className="ios-app-tab-indicator"
+                  style={{ "--tab-accent": tab.accent } as React.CSSProperties}
+                  transition={TAB_SPRING}
+                  aria-hidden
+                />
+              )}
               <Link
                 href={tab.href}
                 prefetch={false}
+                scroll={false}
                 className={clsx(
                   "ios-app-tab-link",
                   active && "ios-app-tab-link-active",
                   locked && "ios-app-tab-link-locked"
                 )}
+                style={{ "--tab-accent": tab.accent } as React.CSSProperties}
                 aria-current={active ? "page" : undefined}
+                aria-label={tab.label}
               >
-                {active && <span className="ios-app-tab-active-bar" aria-hidden />}
-                <ProductMark product={tab.mark} size={22} title={tab.label} className="ios-app-tab-icon" />
-                <span className="ios-app-tab-label font-mono">{tab.label}</span>
+                <ProductMark product={tab.mark} size={20} title={tab.label} className="ios-app-tab-icon" />
+                <span className="ios-app-tab-code">{tab.code}</span>
               </Link>
             </li>
           );

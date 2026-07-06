@@ -71,7 +71,14 @@ const LARGO_SUGGESTIONS = [
   "Give me today's market structure in 3 lines",
 ] as const;
 
-export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
+export function LargoTerminal({
+  fullPage = false,
+  nativeShell = false,
+}: {
+  fullPage?: boolean;
+  /** Passed from LargoPageShell when iOS native chrome is active. */
+  nativeShell?: boolean;
+}) {
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -237,6 +244,7 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
       className={clsx(
         "flex flex-col largo-chat-shell",
         fullPage ? "largo-terminal-fullpage" : "min-h-[560px]",
+        nativeShell && fullPage && "largo-terminal-native",
         loading && "largo-chat-shell-processing"
       )}
       bodyClassName="flex flex-1 flex-col min-h-0 !p-0 desk-panel-body-bare"
@@ -386,7 +394,7 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
               )}
               disabled={loading || !hydrated}
             />
-            {!input && !loading && hydrated && (
+            {!input && !loading && hydrated && !nativeShell && (
               <span className="largo-input-placeholder" aria-hidden>
                 <span className="largo-input-placeholder-marquee">{INPUT_PLACEHOLDER}</span>
               </span>
@@ -412,7 +420,8 @@ export function LargoTerminal({ fullPage = false }: { fullPage?: boolean }) {
               "rounded-none font-syne text-xs uppercase tracking-[0.2em]",
               "!bg-cyan-400/12 !border-cyan-400/40 !text-cyan-300",
               "hover:!bg-cyan-400/20 hover:!border-cyan-400/60",
-              "shadow-[0_0_20px_-6px_rgba(34,211,238,0.5)]"
+              "shadow-[0_0_20px_-6px_rgba(34,211,238,0.5)]",
+              nativeShell && "!rounded-xl !min-h-[2.75rem] !px-4 largo-send-btn-native"
             )}
           >
             {loading ? (

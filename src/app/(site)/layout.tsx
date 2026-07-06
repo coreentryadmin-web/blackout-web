@@ -1,5 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { Nav } from "@/components/Nav";
+import { IosAppChrome } from "@/components/ios/IosAppChrome";
+import { IosNativePageTransition } from "@/components/ios/IosNativePageTransition";
 import { IosAppTabBar } from "@/components/IosAppTabBar";
 import { MarketSessionProvider } from "@/components/platform/MarketSessionProvider";
 import { MarketPulseLayer } from "@/components/platform/MarketPulseLayer";
@@ -38,8 +40,9 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       <MarketSessionProvider />
       <MarketPulseLayer />
       <Nav lockedTools={lockedTools} />
+      <IosAppChrome lockedTools={lockedTools} />
       <IosAppTabBar lockedTools={lockedTools} />
-      {children}
+      <IosNativePageTransition>{children}</IosNativePageTransition>
     </>
   );
 }
