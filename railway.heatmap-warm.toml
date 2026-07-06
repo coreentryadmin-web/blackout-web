@@ -18,7 +18,9 @@ watchPatterns = [
 ]
 
 [deploy]
-startCommand = "node scripts/hit-cron.mjs /api/cron/heatmap-warm"
+# Warming ~11 presets can exceed 60s (each chain fetch paginates). Short timeouts
+# made hit-cron exit while blackout-web still built → 30m+ heatmap-warm gaps during RTH (#605).
+startCommand = "CRON_HTTP_TIMEOUT_MS=300000 node scripts/hit-cron.mjs /api/cron/heatmap-warm"
 # Every 5 min during the UTC band that covers RTH in BOTH EDT (UTC-4) and EST (UTC-5):
 # 11-21 UTC spans ~7AM-5PM ET. Railway's native cron floor is 5 minutes (not 1 minute).
 # Sub-5m gaps are filled by the in-app rth-warm-leader (2 min heal threshold). The route's

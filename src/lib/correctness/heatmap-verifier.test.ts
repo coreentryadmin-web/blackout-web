@@ -200,6 +200,27 @@ test("dexCharmInvariantChecks: DEX per-strike cell sign contradicts strike_total
   assert.match(check!.detail, /SIGN CONFLICT at 95/);
 });
 
+test("dexCharmInvariantChecks: near_term_expiries prevents false SIGN CONFLICT when far-dated cells would poison slice(0,8)", () => {
+  const near1 = "2026-07-06";
+  const near2 = "2026-07-07";
+  const far = "2026-09-19";
+  const strikeTotals = { "7450": -100_000_000 };
+  const cells = {
+    "7450": { [near1]: -60_000_000, [near2]: -40_000_000, [far]: 500_000_000 },
+  };
+  const dex = makeDexBlock(strikeTotals, { cells });
+  const hm = makeHeatmap({
+    expiries: [near1, near2, far],
+    near_term_expiries: [near1, near2],
+    dex,
+  });
+
+  const out = dexCharmInvariantChecks(makeCtx(), hm);
+  const check = findCheck(out, "net_dex", "cell-sign-eq-strike-total");
+  assert.ok(check);
+  assert.equal(check!.outcome, "consistency-only");
+});
+
 test("dexCharmInvariantChecks: DEX zero_level reported far from the real sign-change crossing — FLAGs", () => {
   const ctx = makeCtx();
   const strikeTotals = { "95": -50, "105": 150 }; // real crossing at 97.5
