@@ -18,6 +18,15 @@
 3. Integration **BlackOut ASC** (App Store Connect API `.p8`)
 4. Run workflow **ios-release** → TestFlight (~15 min)
 
+### Signing failures (checklist)
+
+| Symptom | Fix |
+|---------|-----|
+| Team `663D77E68E` or other ID (not `ZA32C782N5`) | Codemagic **app env vars** override `codemagic.yaml`. Delete wrong `APPLE_TEAM_ID` / `BUNDLE_ID` in Codemagic → your app → Environment variables. |
+| Bundle `com.blackout-trader.app` (typo) | Must be **`com.blackout-trades.app`** (with **s**). Same — remove bad Codemagic env override. |
+| No IOS_DISTRIBUTION certificate | API key **BlackOut ASC** must be **App Manager** on **BLACKOUT TRADE LLC** (`ZA32C782N5`). Regenerate `.p8` in ASC if needed. |
+| Manual cert (optional) | Codemagic → Team settings → Code signing identities → Generate **Apple Distribution** with **BlackOut ASC** key. |
+
 From repo root: `npm run validate:ios-config`
 
 ## GitHub Actions (alternative)

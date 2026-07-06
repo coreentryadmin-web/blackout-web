@@ -46,8 +46,8 @@ if (!cap.includes(`appId: "${CAPACITOR_APP_ID}"`)) {
 if (!cm.includes(`BUNDLE_ID: "${APPLE_BUNDLE_ID}"`)) {
   fail.push(`codemagic BUNDLE_ID must be Apple bundle ${APPLE_BUNDLE_ID}`);
 }
-if (!cm.includes("patch-ios-bundle-id.mjs")) {
-  fail.push("codemagic must run scripts/patch-ios-bundle-id.mjs after cap sync");
+if (!cm.includes("codemagic-signing.sh")) {
+  fail.push("codemagic must run scripts/codemagic-signing.sh for signing (includes env preflight)");
 }
 if (!cap.includes(`appendUserAgent: "${expected.ua}"`)) fail.push(`appendUserAgent must be ${expected.ua}`);
 if (!cap.includes(`url: "${expected.url}"`)) fail.push(`server.url must be ${expected.url}`);
