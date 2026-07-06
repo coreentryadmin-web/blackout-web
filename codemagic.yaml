@@ -37,23 +37,7 @@ workflows:
           npx cap sync ios
           node scripts/patch-ios-bundle-id.mjs
       - name: Set up code signing (auto via App Store Connect API key)
-        script: |
-          set -e
-          keychain initialize
-          echo "Team: $APPLE_TEAM_ID Bundle: $BUNDLE_ID"
-          # List existing certs (debug)
-          app-store-connect certificates list --type IOS_DISTRIBUTION || true
-          app-store-connect certificates list --type DISTRIBUTION || true
-          # Create distribution cert if none exists (API key must be App Manager)
-          if ! app-store-connect certificates list --type IOS_DISTRIBUTION 2>/dev/null | grep -q IOS_DISTRIBUTION; then
-            echo "Creating IOS_DISTRIBUTION certificate..."
-            app-store-connect certificates create --type IOS_DISTRIBUTION --save
-          fi
-          # Fetch or create App Store profile for com.blackout-trades.app
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE --platform IOS --create --verbose
-          keychain add-certificates
-          xcode-project use-profiles
+        script: bash scripts/codemagic-signing.sh
       - name: Install CocoaPods
         script: |
           cd ios/App && pod install
