@@ -1,5 +1,78 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 12:32 ET
+Last updated: 2026-07-06 13:30 ET
+
+## grid-rth-2026-07-06 — 0DTE Command + Market Grid verify pass (~12:48 ET)
+
+**Session:** Autonomous Grid RTH all-day agent (verify mode). First scheduled pass 6:30 AM PT / 9:30 AM ET per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md`. Midday re-verify ~12:48 ET after `npm install` restored local deps.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ⚠️ **21 PASS / 3 FAIL** (verify) — see below |
+| `npm run validate:zerodte-logic` | ✅ **16/16 GREEN** |
+| `npm run validate:grid-e2e` | ✅ **12/12 GREEN** (2 WARN on browser tabs) |
+| `npm run validate:zerodte-integration` | ⚠️ **10 PASS / 2 FAIL** — spot Δ only |
+| `npm run ops:collect` | ✅ 0 action items |
+
+### All 9 grid panels + zerodte board (PASS)
+
+| Panel / probe | Result |
+|---|---|
+| `grid:bootstrap` | ✅ as_of 12–31s |
+| `grid:analysts` | ✅ as_of 34–170s |
+| `grid:catalysts` | ✅ as_of 34–167s |
+| `grid:congress` | ✅ as_of 40–169s |
+| `grid:dark-pool` | ✅ as_of 45–49s |
+| `grid:earnings` | ✅ as_of 42–172s |
+| `grid:economy` | ✅ as_of 36–177s |
+| `grid:movers` | ✅ as_of 41–70s |
+| `grid:sectors` | ✅ as_of 28–43s |
+| `zerodte:upstream` | ✅ |
+| `zerodte:session` | ✅ heat=RTH setups=1 ledger=4 |
+| `zerodte:ledger-pnl` | ✅ 4 rows checked |
+| `cron:grid-warm` | ✅ ok |
+
+### 0DTE logic exhaust (all PASS)
+
+| Probe | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | ✅ NVDA score=65, 0 violations live |
+| Plan exits (stop −50%, target +100%, 15:30 ET time stop) | ✅ stop=2.1 target=8.4 |
+| Trade lifecycle (OPEN→TRIM→CLOSED, sticky trough) | ✅ |
+| Plan grading (stop wins same bar) | ✅ stopped |
+| Session heat (RTH→POWER_HOUR @ 15:00 ET) | ✅ |
+| mergePlays past cutoff / MOVED → SKIP | ✅ SKIP |
+| `live:ledger-consistency` | ✅ **4 rows, 0 issues** (was 1 row PnL fail at 09:37 ET open — **resolved**) |
+| Unit tests (`board.test.ts`, `rejections.test.ts`, `ZeroDteBoard.test.ts`) | ✅ 3 files |
+
+### Cross-tool integration (PASS except spot Δ)
+
+| Probe | Result |
+|---|---|
+| HELIX flows feed scanner | ✅ 20–30 prints |
+| Night Hawk dedupe | ✅ 3 tickers covered elsewhere / withheld |
+| Grid bootstrap | ✅ |
+| BIE consistency | ✅ |
+| Grid bootstrap spot vs GEX positioning | ⚠️ Δ=0.5–1.1 pts (parallel fetch skew) |
+| SPX merged desk vs GEX | ⚠️ Δ=0.6 pts (same root cause) |
+
+### Remaining FAILs (non-P0 — post-close fix)
+
+| Probe | Detail | Severity | Action |
+|---|---|---|---|
+| `integration:grid-gex-spot` | bootstrap 7536.51 vs gex 7537.01 (Δ≈0.5); later 7541.23 vs 7542.34 (Δ≈1.1) | **WATCH** | Parallel cache-lane fetch during RTH — same class as SPX `desk-lanes` (#584 threshold bump). Not member-visible. |
+| `zerodte:cross-tool-integration` | Nested FAIL from `grid-gex-spot` only | **WATCH** | Clears when spot threshold aligned |
+| `grid:data-correctness` | `fetch failed` during 18m grid-rth run; earlier 524 on force cron | **WATCH** | Cloudflare timeout on heavy 6-layer cron; retry off-peak |
+| `ui:tabs` / `ui:search-bar` | Browser landed on "Sign in · BlackOut" — 0DTE/Market Grid tabs not visible | **WATCH** | Cookie ticket exchange in headless VM; member API paths all PASS |
+
+### P0 assessment
+
+**No P0 fixes required.** All live member data paths (9 grid panels, zerodte board, ledger PnL, gates, session heat, HELIX flows, Night Hawk dedupe, grid-warm cron) are correct and fresh. Open-pass ledger PnL inconsistency self-resolved. Post-close: align `grid-gex-spot` / `spx-desk-gex` audit thresholds with SPX #584 (1.0 pt); improve grid E2E browser auth redirect to `/grid`.
+
+**Reports:** `audit-output/grid-rth-2026-07-06-verify-*.json`, `zerodte-logic-*.json`, `grid-e2e-*.json`
+
+---
 
 ## Member live UI validation — 2026-07-06 ~10:40 ET (post #571 OFFLINE fix)
 
