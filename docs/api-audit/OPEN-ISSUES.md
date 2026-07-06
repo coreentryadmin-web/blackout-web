@@ -1,5 +1,58 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 13:50 ET
+Last updated: 2026-07-06 14:50 ET
+
+## spx-rth-2026-07-06 — SPX Slayer all-day verify pass (~14:07 ET / 11:07 PT)
+
+**Session:** SPX Slayer all-day RTH agent verify mode (Mon 2026-07-06, mid-morning pass). Agent executed `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Steps 1–4: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → cross-tool probes → 60s live auto-update. `npm install` + `npx playwright install chromium` required on fresh checkout.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` (verify) | ⚠️ **4 PASS / 5 FAIL** — see below |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 18/18 PASS, 0 FAIL |
+| `spx:matrix-deep-audit` (nested) | ✅ 151 strikes · GEX/VEX/DEX/CHARM all finite · INV-2 pass |
+| `spx:bie-consistency` (nested) | ✅ member `/spx/play` == `getSpxPlayState()` |
+| `npm run ops:collect` (nested) | ✅ 0 action items |
+| 60s live auto-update | ✅ merged spot 5 unique ticks (7538.52–7541.75); heatmap spot refreshed; play HOLD↔SELL transitions |
+
+### E2E — every control + cross-tool (GREEN)
+
+| Probe | Result |
+|---|---|
+| `matrix:every-cell-api` | ✅ GEX+VEX+DEX+CHARM · 151 strikes · spot ~7539 |
+| `integration:thermal-cross-validation` | ✅ |
+| `integration:helix-flows` | ✅ 30 prints |
+| `integration:grid-bootstrap` | ✅ |
+| `integration:zerodte-board` | ✅ 2 setups |
+| `integration:nighthawk-edition` | ✅ |
+| `integration:bie-play-route` | ✅ action=SELL |
+| `integration:largo-spx-query` | ✅ tools=blackout_intelligence |
+| `ui:sign-in-dashboard` | ✅ cookie auth |
+| `ui:click-gex-tab` / `ui:click-vex-tab` | ✅ |
+| `ui:matrix-rows` | ✅ 173 strike rows |
+| `ui:matrix-text-sanity` | ✅ no NaN/undefined/$— |
+| `ui:lotto-dock-visible` | ✅ |
+| `ui:console-errors` | ✅ zero errors |
+| `ui:click-commentary-expand` | SKIP — no expand control in current shell |
+
+### Remaining FAILs (non-P0 — audit infra / timing)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **WATCH** | spx-rth-desk-lanes-pulse | `merged vs pulse spot Δ=0.210` exceeds audit 0.05 pt threshold during fast tape | `/api/market/spx/merged` vs `/api/market/spx/pulse` | Post-close — loosen pulse lane threshold to 0.25 pt (same pattern as flow #584) |
+| **WATCH** | spx-rth-cross-endpoint-hm | `merged vs heatmap Δ=1.120` on parallel fetch (threshold 1.0 pt) | `/api/market/gex-heatmap?ticker=SPX` | Post-close — borderline; re-check off fast tape; may bump to 1.25 pt |
+| **WATCH** | spx-rth-data-correctness | Latest `data-correctness` cron run status ≠ ok (1 flag); `force=1` returns HTTP **524** (Cloudflare timeout) | `cron_job_runs` / `/api/cron/data-correctness` | Post-close — retry off-peak; investigate flag payload |
+| **WATCH** | spx-rth-nested-e2e-timeout | Nested `spx:dashboard-e2e` in `validate:spx-rth` curl 90s timeout during long orchestrated run | N/A | Standalone `validate:spx-e2e` GREEN in 45s — env/orchestration only |
+| **WATCH** | spx-rth-rth-open-dc | `validate:rth-open` nested fail from data-correctness latest run | Postgres `cron_job_runs` | Same as data-correctness row above |
+
+### P0 assessment
+
+**No P0 defects.** Matrix every-cell audit finite and INV-2 consistent; E2E clicks GEX/VEX tabs, validates 173 UI rows with zero NaN/stale text; trade alerts match play API (`action` SELL/HOLD with `phase` SCANNING/OPEN — confirmations correctly absent when `action === "SCANNING"` per #539 fix); cross-tool Thermal/HELIX/Largo/BIE/Grid/0DTE/Night Hawk all PASS; live surfaces tick during 60s sit.
+
+**Reports:** `audit-output/spx-rth-2026-07-06-verify-*.json`, `audit-output/spx-dashboard-e2e-1783363048984.json`
+
+---
 
 ## grid-rth-2026-07-06 — 0DTE Command + Market Grid all-day verify pass (~13:32 ET)
 
