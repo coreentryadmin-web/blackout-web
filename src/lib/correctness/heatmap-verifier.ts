@@ -147,6 +147,15 @@ function deriveFlip(strikeTotals: Record<string, number>, spot: number): number 
  * raw matrix the client renders — if cells and strike_totals disagree, the matrix the user SEES does
  * not match the levels the platform reports (a transform/scale/aggregation bug).
  */
+/** Authoritative near-term axis for INV-2 / INV-2b — prefer engine-emitted `near_term_expiries`. */
+function resolveNearTermExpiries(hm: GexHeatmap): Set<string> {
+  if (hm.near_term_expiries?.length) {
+    return new Set(hm.near_term_expiries);
+  }
+  // Legacy cached payloads: first 8 ascending expiries (exact when the chain has ≥8 near dates).
+  return new Set([...hm.expiries].sort().slice(0, 8));
+}
+
 function reSumCellsToNearTermTotals(
   cells: Record<string, Record<string, number>>,
   nearTermExpiries: Set<string>
@@ -236,11 +245,7 @@ function hashStr(s: string): number {
 function invariantChecks(ctx: Ctx, hm: GexHeatmap): CheckResult[] {
   const out: CheckResult[] = [];
   const spot = hm.spot;
-  // The matrix's authoritative levels are computed on NEAR-TERM expiries only; reconstruct that set
-  // the same way the engine does (the first 8 ascending expiries that carry near-term cells). The
-  // engine keeps strike_totals near-term, so the near-term expiry set = the expiries present in any
-  // strike's cell row that also contribute to strike_totals. We approximate it as the 8 nearest.
-  const nearTermExpiries = new Set([...hm.expiries].sort().slice(0, 8));
+  const nearTermExpiries = resolveNearTermExpiries(hm);
 
   for (const [metricKey, block] of [
     ["net_gex", hm.gex],
@@ -459,7 +464,7 @@ function invariantChecks(ctx: Ctx, hm: GexHeatmap): CheckResult[] {
 export function dexCharmInvariantChecks(ctx: Ctx, hm: GexHeatmap): CheckResult[] {
   const out: CheckResult[] = [];
   const spot = hm.spot;
-  const nearTermExpiries = new Set([...hm.expiries].sort().slice(0, 8));
+  const nearTermExpiries = resolveNearTermExpiries(hm);
 
   // ── DEX ──────────────────────────────────────────────────────────────────
   if (!hm.dex) {

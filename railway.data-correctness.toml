@@ -18,7 +18,9 @@ watchPatterns = [
 ]
 
 [deploy]
-startCommand = "node scripts/hit-cron.mjs /api/cron/data-correctness"
+# Full-platform sweep can run 2–8 min during RTH; default 60s hit-cron timeout returned
+# before logCronRun fired → stale/failed rows + watchdog noise (#605).
+startCommand = "CRON_HTTP_TIMEOUT_MS=600000 node scripts/hit-cron.mjs /api/cron/data-correctness"
 # Every 30 minutes across the UTC band that covers RTH in BOTH EDT (UTC-4) and EST (UTC-5):
 # :00 and :30 within 11-21 UTC spans ~7AM-5PM ET. The route self-skips outside isSpxEngineCronWindow,
 # so the edge ticks are cheap no-ops. Mirrors the market-hours pattern used by railway.data-integrity.toml.
