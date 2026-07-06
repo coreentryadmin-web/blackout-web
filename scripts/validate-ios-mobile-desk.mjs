@@ -87,6 +87,7 @@ const sourceNeedles = [
   ["src/lib/ios-tool-routes.ts", "ios-tool-routes"],
 ];
 const navCss = readFileSync(join(root, "src/app/ios-native-nav.css"), "utf8");
+const skinCss = readFileSync(join(root, "src/app/ios-native-skin.css"), "utf8");
 const navNeedles = [
   [".ios-native-page-stage", "page transition stage"],
   [".ios-app-tab-indicator", "sliding tab indicator"],
@@ -97,6 +98,30 @@ const navNeedles = [
 for (const [needle, label] of navNeedles) {
   if (navCss.includes(needle)) ok(`nav-css:${label}`, needle);
   else fail(`nav-css:${label}`, `missing ${needle}`);
+}
+
+const skinNeedles = [
+  [".ios-native-ambient", "route ambient glow"],
+  ["--ios-accent:", "route accent token"],
+  ["--ios-surface-1", "glass surface token"],
+  ["--ios-shadow-card", "card shadow token"],
+  ["--ios-touch:", "touch target token"],
+  [".flow-seg-btn-active-all", "segment active skin"],
+  [".largo-suggestion-chip", "Largo chip skin"],
+  [".nighthawk-play-row", "Night Hawk card skin"],
+  [".ios-tool-locked-screen", "locked tool skin"],
+  ['data-ios-route="flows"', "HELIX accent route"],
+];
+for (const [needle, label] of skinNeedles) {
+  if (skinCss.includes(needle)) ok(`skin-css:${label}`, needle);
+  else fail(`skin-css:${label}`, `missing ${needle}`);
+}
+
+const chrome = readFileSync(join(root, "src/components/ios/IosAppChrome.tsx"), "utf8");
+if (chrome.includes("ios-native-ambient")) {
+  ok("skin:ambient-layer-mounted");
+} else {
+  fail("skin:ambient-layer-mounted", "expected ios-native-ambient in IosAppChrome");
 }
 
 const tabBar = readFileSync(join(root, "src/components/IosAppTabBar.tsx"), "utf8");

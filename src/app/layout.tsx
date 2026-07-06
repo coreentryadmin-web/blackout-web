@@ -14,6 +14,7 @@ import "./globals.css";
 import "./ios-native.css";
 import "./ios-native-pages.css";
 import "./ios-native-nav.css";
+import "./ios-native-skin.css";
 
 // Self-hosted via next/font (no render-blocking @import, no FOUT/CLS). Variable
 // names MUST match tailwind.config fontFamily tokens (--font-anton/-syne/

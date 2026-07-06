@@ -102,6 +102,7 @@ export function IosAppChrome({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
 
   return (
     <>
+      <div className="ios-native-ambient" aria-hidden />
       <IosNativeHeader path={path} onMenuOpen={() => setMenuOpen(true)} />
       <IosNativeMenu
         open={menuOpen}
