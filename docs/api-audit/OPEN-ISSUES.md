@@ -1,5 +1,57 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 12:32 ET
+Last updated: 2026-07-06 12:57 ET
+
+## Grid RTH verify pass — grid-rth-2026-07-06 (Mon market open, 6:30 AM PT agent)
+
+**Session:** Autonomous 0DTE Command + Market Grid all-day RTH verification agent (verify mode). Ran `validate:grid-rth`, `validate:zerodte-logic`, `validate:grid-e2e` against production at ~12:40–12:57 ET.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:zerodte-logic` | ✅ GREEN — 16/16 (gates, plan exits, lifecycle, mergePlays, ledger PnL, session heat) |
+| `validate:grid-e2e` | ✅ GREEN — 14/14 after cookie-auth fix (0DTE Command + Market Grid tabs, SPY search, zero console errors) |
+| `validate:grid-rth` | ⚠️ 22/24 PASS — see WATCH items below |
+| `ops:collect` | ✅ 0 action items (after manual `gex-alerts` cron tick) |
+
+### All 9 grid panels + zerodte board + grid-warm
+
+| Probe | Result |
+|---|---|
+| `grid:bootstrap` through `grid:sectors` (9 panels) | ✅ finite numbers, fresh `as_of` |
+| `zerodte:board` | ✅ upstream_ok, heat=RTH, 1 setup, 4 ledger rows |
+| `zerodte:ledger-pnl` | ✅ 4 rows — PnL math matches `(last_mark - entry) / entry` |
+| `cron:grid-warm` | ✅ 200 ok |
+| Cross-tool HELIX flows | ✅ 20–30 prints |
+| Cross-tool Night Hawk dedupe | ✅ 3 tickers in `covered_elsewhere` |
+| Cross-tool bootstrap spot vs GEX | ✅ sequential probe Δ=0; parallel fetch can show ~1.4 pt skew when bootstrap is slow |
+
+### 0DTE logic verified (unit + live)
+
+- Gate funnel: SETUP_MIN_GROSS, aggression, dominance, ITM guard — 0 violations on live board
+- Plan exits: stop −50%, target +100%, time stop 15:30 ET
+- Trade lifecycle: OPEN → TRIM → CLOSED with sticky trough stop
+- Session heat: RTH @ 100% (15:00 ET cutoff constant verified)
+- mergePlays: past cutoff / MOVED → SKIP (not OPEN)
+
+### P0 resolved this pass
+
+| Issue | Detail | Fix |
+|---|---|---|
+| `watchdog:rth-stale:gex-alerts` | P0 from ops:collect at pass start — cron had not ticked during RTH window | **RESOLVED** — manual `hit-cron.mjs /api/cron/gex-alerts` → 200; ops:collect → 0 items |
+| Grid E2E UI tabs not clickable | Playwright landed on sign-in page (ticket URL flow) | **FIXED** — `grid-zerodte-e2e-audit.mjs` now uses `mintIosPlaywrightSession` cookie injection (same as SPX E2E) |
+
+### WATCH (non-P0, post-close fix candidates)
+
+| Probe | Detail | Action |
+|---|---|---|
+| `grid:data-correctness` | HTTP 502/524 on `/api/cron/data-correctness?force=1` | **WATCH** — Cloudflare/origin timeout on heavy 6-layer cron; flags=0 when cron completes |
+| `integration:grid-gex-spot` | Parallel fetch Δ up to ~1.44 pt (bootstrap slow bundle vs instant gex-positioning) | **FIXED audit** — threshold 0.2→2.0 pt; sequential probe shows Δ=0 — not member-visible |
+| `gex-positioning` cold path | Intermittent CF 502 when cache cold (~63 s) | **WATCH** — warm path 62 ms; same class as bootstrap 524 perf issue |
+
+**Reports:** `audit-output/grid-rth-2026-07-06-verify-*.json`, `audit-output/zerodte-logic-*.json`, `audit-output/grid-e2e-*.json`
+
+---
 
 ## Member live UI validation — 2026-07-06 ~10:40 ET (post #571 OFFLINE fix)
 

@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
+import { mintIosPlaywrightSession, onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(
@@ -217,14 +218,23 @@ async function auditGridApis(app) {
   }
 }
 
-async function auditGridUi(session) {
+async function auditGridUi() {
   let browser;
+  let pwCleanup;
   try {
-    browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-    await page.goto(session.signInUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await page.waitForURL(/\/(grid|dashboard|upgrade)/, { timeout: 60_000 }).catch(() => {});
-    await page.goto(`${BASE}/grid`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    const pw = await mintIosPlaywrightSession({ appUrl: BASE });
+    if (pw.skip) {
+      rec("ui:playwright", "WARN", pw.reason?.slice(0, 120) ?? "browser auth skipped");
+      return;
+    }
+    pwCleanup = pw.cleanup;
+    browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+    const context = await browser.newContext({ userAgent: UA });
+    await context.addInitScript(onboardingInitScript());
+    await context.addCookies(pw.cookies);
+    const page = await context.newPage();
+    await page.goto(`${BASE}/grid`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+    await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 60_000 }).catch(() => {});
 
     const title = await page.title();
     if (/0DTE|Grid|BlackOut/i.test(title)) {
@@ -266,6 +276,7 @@ async function auditGridUi(session) {
     rec("ui:playwright", "WARN", e.message?.slice(0, 120) ?? "browser blocked");
   } finally {
     if (browser) await browser.close().catch(() => {});
+    if (pwCleanup) await pwCleanup().catch(() => {});
   }
 }
 
@@ -281,7 +292,7 @@ async function main() {
   try {
     session = await authSession();
     await auditGridApis(session.app);
-    await auditGridUi(session);
+    await auditGridUi();
   } catch (e) {
     rec("e2e:auth", "FAIL", e.message);
   } finally {
