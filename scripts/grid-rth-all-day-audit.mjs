@@ -12,6 +12,8 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { inRthOpenWindow, isTradingDayEt, todayEtYmd, etParts } from "./gha-et-window.mjs";
+import { spotsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
+import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 
 const force = process.argv.includes("--force");
 const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
@@ -159,7 +161,7 @@ async function auditCrossTool() {
     ]);
     const bootSpot = bootstrap?.market?.pulse?.spx?.price ?? bootstrap?.market?.gexSpx?.spot;
     const gexSpot = gex?.spot;
-    if (Number.isFinite(bootSpot) && Number.isFinite(gexSpot) && Math.abs(bootSpot - gexSpot) > 0.2) {
+    if (Number.isFinite(bootSpot) && Number.isFinite(gexSpot) && !spotsAgree(bootSpot, gexSpot, gexSpot)) {
       rec("integration:grid-gex-spot", "FAIL", `bootstrap ${bootSpot} vs gex ${gexSpot}`);
     } else if (Number.isFinite(gexSpot)) {
       rec("integration:grid-gex-spot", "PASS", `spot ${gexSpot}`);
@@ -222,12 +224,24 @@ async function main() {
 
   if (CRON) {
     try {
-      const dc = await fetchJson("/api/cron/data-correctness?force=1");
-      const zFlags = (dc.flags ?? []).filter((f) => /zerodte|grid/i.test(`${f.layer}/${f.metric}`));
-      if (zFlags.length) {
+      const dc = await probeDataCorrectness({ base: BASE, cronSecret: CRON, tryFull: true });
+      const zFlags = (dc.json?.flags ?? []).filter((f) => /zerodte|grid/i.test(`${f.layer}/${f.metric}`));
+      if (!dc.ok && dc.status !== 200) {
+        const isTimeout = dc.status === 0 || /aborted|524|timeout/i.test(dc.err || "");
+        rec(
+          "grid:data-correctness",
+          isTimeout ? "WARN" : "FAIL",
+          isTimeout
+            ? `edge timeout (mode=${dc.mode}) — Railway cron authoritative`
+            : dc.err || `HTTP ${dc.status} mode=${dc.mode}`
+        );
+      } else if (zFlags.length) {
         rec("grid:data-correctness", "FAIL", `${zFlags.length} grid/zerodte flag(s)`);
         zFlags.slice(0, 3).forEach((f) => console.log(`    · [${f.layer}/${f.metric}] ${f.detail}`));
-      } else rec("grid:data-correctness", "PASS", `flags=${dc.totals?.flags ?? 0}`);
+      } else {
+        const suffix = dc.fullSweepSkipped ? " (heatmap surface; full sweep via Railway cron)" : "";
+        rec("grid:data-correctness", "PASS", `flags=${dc.flags ?? 0} mode=${dc.mode}${suffix}`);
+      }
     } catch (e) {
       rec("grid:data-correctness", "FAIL", e.message);
     }

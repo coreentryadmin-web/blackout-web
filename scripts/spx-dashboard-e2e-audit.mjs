@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
+import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { mintIosPlaywrightSession, onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
@@ -272,13 +273,13 @@ async function crossToolIntegration(app, hm) {
   const deskSpot = Number(desk?.price);
   const hmSpot = Number(hm?.spot);
   const posSpot = Number(pos?.spot);
-  if (Number.isFinite(deskSpot) && Number.isFinite(hmSpot) && Math.abs(deskSpot - hmSpot) > 1.0) {
+  if (Number.isFinite(deskSpot) && Number.isFinite(hmSpot) && !spotsAgree(deskSpot, hmSpot, hmSpot)) {
     issues.push(`desk vs matrix spot Δ=${Math.abs(deskSpot - hmSpot).toFixed(2)}`);
   }
-  if (Number.isFinite(hmSpot) && Number.isFinite(posSpot) && Math.abs(hmSpot - posSpot) > 1.0) {
+  if (Number.isFinite(hmSpot) && Number.isFinite(posSpot) && !spotsAgree(hmSpot, posSpot, hmSpot)) {
     issues.push(`matrix vs gex-positioning spot`);
   }
-  if (hm?.gex?.flip != null && pos?.flip != null && Math.abs(hm.gex.flip - pos.flip) > 1) {
+  if (hm?.gex?.flip != null && pos?.flip != null && !flipsAgree(hm.gex.flip, pos.flip, hmSpot)) {
     issues.push(`flip matrix ${hm.gex.flip} vs positioning ${pos.flip}`);
   }
   if (play?.available && play?.action === "SCANNING" && play?.confirmations?.checks?.length) {

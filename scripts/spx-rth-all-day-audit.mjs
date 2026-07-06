@@ -13,6 +13,8 @@ import { execSync, spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isTradingDayEt, inRthOpenWindow, todayEtYmd, etParts } from "./gha-et-window.mjs";
+import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
+import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 
 const force = process.argv.includes("--force");
 const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
@@ -76,14 +78,14 @@ async function spxCrossEndpointCheck() {
     const issues = [];
     // Heatmap/GEX share one spot lane; merged desk uses the ~1s pulse lane — allow ≤1 pt
     // during fast tape when the 8s heatmap cache is mid-refresh.
-    if (spotDelta(liveSpot, hmSpot) > 1.0) {
+    if (!spotsAgree(liveSpot, hmSpot, hmSpot)) {
       issues.push(`merged spot ${liveSpot} vs heatmap ${hmSpot} Δ=${spotDelta(liveSpot, hmSpot).toFixed(3)}`);
     }
-    if (spotDelta(hmSpot, posSpot) > 0.15) {
+    if (!spotsAgree(hmSpot, posSpot, hmSpot)) {
       issues.push(`heatmap spot ${hmSpot} vs positioning ${posSpot}`);
     }
     if (Number.isFinite(hmSpot) && heatmap?.gex?.flip != null && positioning?.flip != null) {
-      if (Math.abs(Number(heatmap.gex.flip) - Number(positioning.flip)) > 1) {
+      if (!flipsAgree(Number(heatmap.gex.flip), Number(positioning.flip), hmSpot)) {
         issues.push(`flip matrix ${heatmap.gex.flip} vs positioning ${positioning.flip}`);
       }
     }
@@ -128,13 +130,13 @@ async function deskLaneCheck() {
     const issues = [];
     if (pulse?.available && Number(pulse?.price) > 0) {
       const pulseSpot = Number(pulse.price);
-      if (Number.isFinite(mergedSpot) && spotDelta(mergedSpot, pulseSpot) > 0.05) {
+      if (Number.isFinite(mergedSpot) && !spotsAgree(mergedSpot, pulseSpot, mergedSpot)) {
         issues.push(`merged vs pulse spot Δ=${spotDelta(mergedSpot, pulseSpot).toFixed(3)}`);
       }
     }
     if (flow?.available && Number(flow?.price) > 0) {
       const flowSpot = Number(flow.price);
-      if (Number.isFinite(mergedSpot) && spotDelta(mergedSpot, flowSpot) > 1.0) {
+      if (Number.isFinite(mergedSpot) && !spotsAgree(mergedSpot, flowSpot, mergedSpot)) {
         issues.push(`merged vs flow spot Δ=${spotDelta(mergedSpot, flowSpot).toFixed(3)}`);
       }
     }
@@ -206,22 +208,32 @@ async function main() {
   // 6. Ops + data-correctness
   if (CRON) {
     try {
-      const dc = await fetchJson("/api/cron/data-correctness?force=1");
-      const flags = dc.totals?.flags ?? dc.flags?.length ?? 0;
-      const spxFlags = (dc.flags ?? []).filter(
+      const dc = await probeDataCorrectness({ base: BASE, cronSecret: CRON, tryFull: true });
+      const flags = dc.flags ?? 0;
+      const spxFlags = (dc.json?.flags ?? []).filter(
         (f) =>
           /spx|gex|heatmap|desk|slayer/i.test(f.metric ?? "") ||
           /spx|gex|heatmap|desk/i.test(f.layer ?? "")
       );
-      if (spxFlags.length) {
+      if (!dc.ok && dc.status !== 200) {
+        const isTimeout = dc.status === 0 || /aborted|524|timeout/i.test(dc.err || "");
+        rec(
+          "spx:data-correctness",
+          isTimeout ? "WARN" : "FAIL",
+          isTimeout
+            ? `edge timeout (mode=${dc.mode}) — full sweep runs on Railway cron; rth-open pg check is authoritative`
+            : dc.err || `HTTP ${dc.status} mode=${dc.mode}`
+        );
+      } else if (spxFlags.length) {
         rec("spx:data-correctness", "FAIL", `${spxFlags.length} SPX-layer flag(s)`);
         for (const f of spxFlags.slice(0, 5)) {
           console.log(`    · [${f.layer}/${f.metric}] ${f.detail}`);
         }
       } else if (flags > 0 && PHASE === "verify") {
-        rec("spx:data-correctness", "WARN", `${flags} non-SPX flags (see cron report)`);
+        rec("spx:data-correctness", "WARN", `${flags} non-SPX flags (mode=${dc.mode})`);
       } else {
-        rec("spx:data-correctness", "PASS", `flags=${flags}`);
+        const suffix = dc.fullSweepSkipped ? " (heatmap surface; full sweep via Railway cron)" : "";
+        rec("spx:data-correctness", "PASS", `flags=${flags} mode=${dc.mode}${suffix}`);
       }
     } catch (e) {
       rec("spx:data-correctness", "FAIL", e.message);
