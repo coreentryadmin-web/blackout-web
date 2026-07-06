@@ -4,6 +4,7 @@ import {
   resolveHeatmapPageGuard,
   computeGexEvents,
   computeMaxPainFromChain,
+  resolveExpiryAxis,
   type GexHistorySnapshot,
   type ChainContract,
 } from "./polygon-options-gex";
@@ -203,4 +204,64 @@ test("computeMaxPainFromChain: blending two DIFFERENT expiries' OI changes the a
 
 test("computeMaxPainFromChain: empty input returns null, never a fabricated strike", () => {
   assert.equal(computeMaxPainFromChain([]), null);
+});
+
+// ── resolveExpiryAxis: near-term/far-dated boundary must never blend across the merge ─────
+// buildGexHeatmapUncached must pass the near-term expiries captured BEFORE any far-dated
+// contract is merged into the shared expiry set. These tests prove that passing the WRONG
+// (post-merge) set instead genuinely changes the answer — a real, previously-shipped bug for
+// thin-chain tickers with fewer real near-term expiries than NEAR_TERM_EXPIRY_COUNT (8).
+
+test("resolveExpiryAxis: a thin chain (fewer near expiries than the count) keeps ONLY the real near-term dates — far-dated targets never leak into nearKeep", () => {
+  const realNearTerm = ["2026-07-06", "2026-07-08", "2026-07-10", "2026-07-13"]; // only 4, thin chain
+  const farTargets = ["2026-09-18", "2026-12-18"]; // standard 3rd-Friday monthlies, printed real contracts
+  // expirySetAfterFarFetch = what expirySet looks like AFTER the far-dated fetch has merged in —
+  // this is the buggy source the old code sliced from.
+  const expirySetAfterFarFetch = new Set([...realNearTerm, ...farTargets]);
+
+  const { nearKeep, farKeep, expiries } = resolveExpiryAxis(
+    realNearTerm,
+    farTargets,
+    expirySetAfterFarFetch
+  );
+
+  assert.deepEqual(nearKeep, realNearTerm, "nearKeep must be exactly the pre-merge near-term axis");
+  assert.deepEqual(farKeep, farTargets, "both far targets printed real contracts, so both are kept");
+  assert.deepEqual(
+    expiries,
+    [...realNearTerm, ...farTargets].sort(),
+    "the combined column axis still includes far-dated columns for the matrix"
+  );
+});
+
+test("resolveExpiryAxis: the bug this replaces — slicing the POST-merge set instead of nearTermAxis lets far-dated expiries masquerade as near-term", () => {
+  const realNearTerm = ["2026-07-06", "2026-07-08", "2026-07-10", "2026-07-13"]; // 4 real dates
+  const farTargets = ["2026-09-18", "2026-12-18"];
+  const expirySetAfterFarFetch = new Set([...realNearTerm, ...farTargets]);
+  const NEAR_TERM_EXPIRY_COUNT = 8;
+
+  // What the OLD (buggy) code did: re-slice the post-merge set instead of reusing nearTermAxis.
+  const buggyNearKeep = Array.from(expirySetAfterFarFetch).sort().slice(0, NEAR_TERM_EXPIRY_COUNT);
+  assert.deepEqual(
+    buggyNearKeep,
+    [...realNearTerm, ...farTargets].sort(),
+    "reproduces the bug: with only 4 real near dates, the far-dated targets back-fill the rest of the slice"
+  );
+
+  // The fix: resolveExpiryAxis takes the pre-merge axis explicitly, so it can't reproduce this.
+  const { nearKeep } = resolveExpiryAxis(realNearTerm, farTargets, expirySetAfterFarFetch);
+  assert.notDeepEqual(nearKeep, buggyNearKeep, "the fixed nearKeep must differ from the buggy one in this exact scenario");
+  assert.deepEqual(nearKeep, realNearTerm);
+});
+
+test("resolveExpiryAxis: a far target that never printed a real contract is excluded from farKeep and expiries", () => {
+  const realNearTerm = ["2026-07-06", "2026-07-08"];
+  const farTargets = ["2026-09-18", "2026-12-18"];
+  // Only the September target actually returned contracts (December's fetch came back empty).
+  const expirySetAfterFarFetch = new Set([...realNearTerm, "2026-09-18"]);
+
+  const { farKeep, expiries } = resolveExpiryAxis(realNearTerm, farTargets, expirySetAfterFarFetch);
+
+  assert.deepEqual(farKeep, ["2026-09-18"], "December never printed a contract — must not be fabricated into farKeep");
+  assert.ok(!expiries.includes("2026-12-18"));
 });
