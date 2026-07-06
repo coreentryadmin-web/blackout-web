@@ -183,16 +183,25 @@ html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-command .g
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   HELIX — flows
+   HELIX — flows (native shell)
    ═══════════════════════════════════════════════════════════════════════════ */
-html.ios-app.ios-native-shell[data-ios-route="flows"] .page-shell .content-rail:first-of-type {
-  display: none;
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-page-shell-native.page-shell {
+  padding-top: 0 !important;
 }
 
-html.ios-app.ios-native-shell[data-ios-route="flows"] .page-shell > .content-rail {
-  padding-top: 0.25rem;
-  padding-left: 0;
-  padding-right: 0;
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-page-content-native {
+  padding-bottom: calc(var(--ios-tab-offset, 0px) + 0.35rem) !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-page-inner-native {
+  padding: calc(var(--ios-header-offset) + 0.35rem) 0.65rem 0;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-native-tide {
+  border-radius: var(--ios-panel-radius);
+  padding: 0.35rem 0.5rem;
+  background: var(--ios-surface-2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-desk {
@@ -200,16 +209,11 @@ html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-desk {
 }
 
 html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-ios-toolbar {
-  position: sticky;
-  top: calc(var(--ios-header-offset) + 3.25rem);
-  z-index: 15;
-  margin: 0 -0.15rem;
-  padding: 0.5rem 0.35rem;
-  border-radius: 12px;
-  background: rgba(4, 4, 7, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  position: static;
+  top: auto;
+  margin: 0.35rem 0;
+  padding: 0.5rem;
+  border-radius: var(--ios-panel-radius);
 }
 
 html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-ios-toolbar .font-mono.hidden.sm\:block {
@@ -483,8 +487,16 @@ html.ios-app.ios-native-shell[data-ios-route="largo"] .largo-msg-welcome {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NIGHT HAWK — nighthawk
+   NIGHT HAWK — nighthawk (native shell)
    ═══════════════════════════════════════════════════════════════════════════ */
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nighthawk-page-shell-native.page-shell {
+  padding-top: 0 !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nighthawk-page-inner-native {
+  padding: calc(var(--ios-header-offset) + 0.35rem) 0.65rem calc(var(--ios-tab-offset, 0px) + 0.35rem);
+}
+
 html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nighthawk-page-root {
   padding-top: 0.25rem;
   padding-left: 0;
@@ -555,8 +567,20 @@ html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nighthawk-market-cont
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   0DTE COMMAND — grid
+   0DTE COMMAND — grid (native shell)
    ═══════════════════════════════════════════════════════════════════════════ */
+html.ios-app.ios-native-shell[data-ios-route="grid"] .grid-page-shell-native.page-shell {
+  padding-top: 0 !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="grid"] .grid-page-content-native {
+  padding-bottom: calc(var(--ios-tab-offset, 0px) + 0.35rem) !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="grid"] .grid-page-inner-native {
+  padding: calc(var(--ios-header-offset) + 0.35rem) 0.65rem 0;
+}
+
 html.ios-app.ios-native-shell[data-ios-route="grid"] .page-shell > .px-2 {
   padding-left: 0;
   padding-right: 0;
@@ -567,11 +591,12 @@ html.ios-app.ios-native-shell[data-ios-route="grid"] .page-tool-header {
 }
 
 html.ios-app.ios-native-shell[data-ios-route="grid"] .grid-page-tabs [role="tablist"] {
-  position: sticky;
-  top: calc(var(--ios-header-offset) + 2px);
-  z-index: 15;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  position: static;
+  top: auto;
+  z-index: auto;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  margin-bottom: 0.5rem;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="grid"] .grid-board {

@@ -65,6 +65,26 @@ async function clickSegment(page, label) {
   return false;
 }
 
+async function clickFlowSeg(page, label) {
+  const btn = page.locator(".flow-seg-btn", { hasText: label }).first();
+  if (await btn.isVisible().catch(() => false)) {
+    await btn.click();
+    await page.waitForTimeout(400);
+    return true;
+  }
+  return false;
+}
+
+async function clickRoleTab(page, pattern) {
+  const tab = page.getByRole("tab", { name: pattern }).first();
+  if (await tab.isVisible().catch(() => false)) {
+    await tab.click();
+    await page.waitForTimeout(500);
+    return true;
+  }
+  return false;
+}
+
 async function testToolPage(page, tab) {
   const tabLink = page.locator(".ios-app-tab-link", { hasText: tab.short }).first();
   if (!(await tabLink.isVisible().catch(() => false))) {
@@ -92,6 +112,16 @@ async function testToolPage(page, tab) {
     if (await clickSegment(page, "Matrix")) {
       ok("spx:segment-matrix");
       await shot(page, "spx-matrix");
+      const gexTab = page.locator("#spx-matrix-tab-gex, [id*='matrix-tab-gex']").first();
+      if (await gexTab.isVisible().catch(() => false)) {
+        await gexTab.click();
+        ok("spx:matrix-gex-tab");
+      }
+      const vexTab = page.locator("#spx-matrix-tab-vex, [id*='matrix-tab-vex']").first();
+      if (await vexTab.isVisible().catch(() => false)) {
+        await vexTab.click();
+        ok("spx:matrix-vex-tab");
+      }
     }
     if (await clickSegment(page, "Plays")) {
       ok("spx:segment-plays");
@@ -116,20 +146,25 @@ async function testToolPage(page, tab) {
     }
     if (await clickSegment(page, "Live tape")) {
       ok("helix:segment-tape");
+      await shot(page, "helix-tape");
+    }
+    if (await clickFlowSeg(page, "CALL")) ok("helix:filter-call");
+    if (await clickFlowSeg(page, "PUT")) ok("helix:filter-put");
+    if (await clickFlowSeg(page, "ALL")) ok("helix:filter-all");
+    const tape = page.locator(".flow-scroll-max, .flow-scroll").first();
+    if (await tape.isVisible().catch(() => false)) {
+      await tape.evaluate((el) => {
+        el.scrollTop += 200;
+      });
+      ok("helix:tape-scroll");
     }
   }
 
   if (tab.route === "heatmap") {
-    const matrixTab = page.getByRole("tab", { name: /^Matrix$/i }).first();
-    if (await matrixTab.isVisible().catch(() => false)) {
-      await matrixTab.click();
-      ok("thermal:tab-matrix");
-    }
-    const gexTab = page.getByRole("tab", { name: /^gex$/i }).first();
-    if (await gexTab.isVisible().catch(() => false)) {
-      await gexTab.click();
-      ok("thermal:lens-gex");
-    }
+    if (await clickRoleTab(page, /^Matrix$/i)) ok("thermal:tab-matrix");
+    if (await clickRoleTab(page, /^gex$/i)) ok("thermal:lens-gex");
+    if (await clickRoleTab(page, /^vex$/i)) ok("thermal:lens-vex");
+    if (await clickRoleTab(page, /Profile/i)) ok("thermal:tab-profile");
     const scroll = page.locator(".gex-matrix-scroll, .max-h-\\[clamp\\(480px\\,74vh\\,880px\\)\\]").first();
     if (await scroll.isVisible().catch(() => false)) {
       await scroll.evaluate((el) => {
@@ -169,10 +204,15 @@ async function testToolPage(page, tab) {
   }
 
   if (tab.route === "grid") {
-    const cmd = page.getByRole("tab", { name: /0DTE Command/i }).first();
-    if (await cmd.isVisible().catch(() => false)) {
-      await cmd.click();
-      ok("grid:tab-command");
+    if (await clickRoleTab(page, /0DTE Command/i)) ok("grid:tab-command");
+    if (await clickRoleTab(page, /Market Grid/i)) {
+      ok("grid:tab-market");
+      await shot(page, "grid-market");
+    }
+    const search = page.locator('input[type="search"], input[placeholder*="Search" i]').first();
+    if (await search.isVisible().catch(() => false)) {
+      await search.fill("SPY");
+      ok("grid:search-fill");
     }
     await shot(page, "grid-command");
   }
@@ -231,6 +271,12 @@ try {
     await page.waitForSelector(".ios-native-menu-sheet", { timeout: 10_000 });
     ok("chrome:menu-open");
     await shot(page, "menu-open");
+    for (const tool of ["HELIX", "Thermal", "Largo"]) {
+      const link = page.locator(".ios-native-menu-tool", { hasText: tool }).first();
+      if (await link.isVisible().catch(() => false)) {
+        ok(`menu:tool-${tool.toLowerCase()}-visible`);
+      }
+    }
     await page.getByRole("button", { name: /close menu/i }).click();
     ok("chrome:menu-close");
   } else {

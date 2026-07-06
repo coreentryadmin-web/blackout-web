@@ -71,6 +71,9 @@ const pagesNeedles = [
   [".gex-matrix-scroll", "Thermal matrix scroll region hook"],
   [".gex-key-levels", "Thermal key levels hook"],
   [".spx-sniper-command-native", "SPX compact native hero hook"],
+  [".helix-page-inner-native", "HELIX native page hook"],
+  [".grid-page-inner-native", "Grid native page hook"],
+  [".nighthawk-page-inner-native", "Night Hawk native page hook"],
   [".largo-page-main-native", "Largo full-bleed main hook"],
   [".largo-terminal-native", "Largo edge-to-edge terminal hook"],
   [".account-page-title-block", "account title hide hook"],
@@ -93,6 +96,7 @@ const sourceNeedles = [
   ["src/lib/ios-tool-routes.ts", "ios-tool-routes"],
 ];
 const navCss = readFileSync(join(root, "src/app/ios-native-nav.css"), "utf8");
+const motionCss = readFileSync(join(root, "src/app/ios-native-motion.css"), "utf8");
 const skinCss = readFileSync(join(root, "src/app/ios-native-skin.css"), "utf8");
 const navNeedles = [
   [".ios-native-page-stage", "page transition stage"],
@@ -104,6 +108,17 @@ const navNeedles = [
 for (const [needle, label] of navNeedles) {
   if (navCss.includes(needle)) ok(`nav-css:${label}`, needle);
   else fail(`nav-css:${label}`, `missing ${needle}`);
+}
+
+const motionNeedles = [
+  ["ios-content-rise", "content enter animation"],
+  ["ios-card-rise", "card stagger animation"],
+  ["ios-ambient-breathe", "ambient pulse"],
+  ["ios-hero-pulse", "SPX hero glow"],
+];
+for (const [needle, label] of motionNeedles) {
+  if (motionCss.includes(needle)) ok(`motion-css:${label}`, needle);
+  else fail(`motion-css:${label}`, `missing ${needle}`);
 }
 
 const skinNeedles = [
@@ -199,11 +214,40 @@ if (largoShell.includes("useIosNativeShell") && largoShell.includes("!nativeShel
 }
 
 const thermalShell = readFileSync(join(root, "src/components/desk/ThermalPageShell.tsx"), "utf8");
+const helixShell = readFileSync(join(root, "src/components/desk/HelixPageShell.tsx"), "utf8");
+const gridShell = readFileSync(join(root, "src/components/desk/GridPageShell.tsx"), "utf8");
+const nhShell = readFileSync(join(root, "src/components/desk/NighthawkPageShell.tsx"), "utf8");
 if (thermalShell.includes("useIosNativeShell") && thermalShell.includes("!nativeShell")) {
   ok("thermal:page-shell-native-gate");
 } else {
   fail("thermal:page-shell-native-gate", "expected ThermalPageShell to hide web header on native");
 }
+for (const [file, label] of [
+  ["HelixPageShell", helixShell],
+  ["GridPageShell", gridShell],
+  ["NighthawkPageShell", nhShell],
+]) {
+  const slug = file.replace("PageShell", "").toLowerCase();
+  if (label.includes("useIosNativeShell") && label.includes("!nativeShell")) {
+    ok(`${slug}:page-shell-native-gate`);
+  } else {
+    fail(`${slug}:page-shell-native-gate`, `expected ${file} to hide web header on native`);
+  }
+}
+
+const flowsPage = readFileSync(join(root, "src/app/(site)/flows/page.tsx"), "utf8");
+const gridPage = readFileSync(join(root, "src/app/(site)/grid/page.tsx"), "utf8");
+const nhPage = readFileSync(join(root, "src/app/(site)/nighthawk/page.tsx"), "utf8");
+if (flowsPage.includes("HelixPageShell")) ok("flows:uses-helix-page-shell");
+else fail("flows:uses-helix-page-shell", "expected HelixPageShell");
+if (gridPage.includes("GridPageShell")) ok("grid:uses-grid-page-shell");
+else fail("grid:uses-grid-page-shell", "expected GridPageShell");
+if (nhPage.includes("NighthawkPageShell")) ok("nighthawk:uses-nighthawk-page-shell");
+else fail("nighthawk:uses-nighthawk-page-shell", "expected NighthawkPageShell");
+
+const rootLayout = readFileSync(join(root, "src/app/layout.tsx"), "utf8");
+if (rootLayout.includes("ios-native-motion.css")) ok("layout:ios-native-motion-imported");
+else fail("layout:ios-native-motion-imported", "expected ios-native-motion.css import");
 
 const spxHeader = readFileSync(join(root, "src/components/desk/SpxSniperHeader.tsx"), "utf8");
 if (spxHeader.includes("nativeShell") && spxHeader.includes("spx-sniper-command-native")) {

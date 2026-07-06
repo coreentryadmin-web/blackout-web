@@ -1,0 +1,162 @@
+/**
+ * Native iOS — premium motion layer (GPU-friendly, reduced-motion safe).
+ * Scoped to html.ios-app.ios-native-shell.
+ */
+
+html.ios-app.ios-native-shell {
+  --ios-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --ios-motion-duration: 0.34s;
+}
+
+/* Page stage — buttery tool switches */
+html.ios-app.ios-native-shell .ios-native-page-stage {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Content rails fade up on enter */
+@keyframes ios-content-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+html.ios-app.ios-native-shell .ios-desk-shell,
+html.ios-app.ios-native-shell .ios-native-content-rail,
+html.ios-app.ios-native-shell .thermal-page-inner-native,
+html.ios-app.ios-native-shell .helix-page-inner-native,
+html.ios-app.ios-native-shell .nighthawk-page-inner-native,
+html.ios-app.ios-native-shell .grid-page-inner-native,
+html.ios-app.ios-native-shell .largo-page-main-native {
+  animation: ios-content-rise var(--ios-motion-duration) var(--ios-motion-spring) both;
+}
+
+/* Staggered panel cards */
+@keyframes ios-card-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+html.ios-app.ios-native-shell .spx-sniper-panel,
+html.ios-app.ios-native-shell .spx-odte-matrix-panel,
+html.ios-app.ios-native-shell .flow-panel,
+html.ios-app.ios-native-shell .nighthawk-playbook,
+html.ios-app.ios-native-shell .nighthawk-watch,
+html.ios-app.ios-native-shell .grid-card,
+html.ios-app.ios-native-shell .gex-heatmap-panel-native {
+  animation: ios-card-rise 0.42s var(--ios-motion-spring) both;
+}
+
+html.ios-app.ios-native-shell .spx-sniper-triple > *:nth-child(1) {
+  animation-delay: 0.04s;
+}
+html.ios-app.ios-native-shell .spx-sniper-triple > *:nth-child(2) {
+  animation-delay: 0.08s;
+}
+html.ios-app.ios-native-shell .spx-sniper-triple > *:nth-child(3) {
+  animation-delay: 0.12s;
+}
+
+/* Segment + tab press feedback */
+html.ios-app.ios-native-shell .ios-native-segment-btn,
+html.ios-app.ios-native-shell .ios-app-tab-link,
+html.ios-app.ios-native-shell .ios-native-menu-tool {
+  will-change: transform;
+}
+
+html.ios-app.ios-native-shell .ios-app-tab-link:active {
+  transform: scale(0.92);
+  transition: transform 0.18s var(--ios-motion-spring);
+}
+
+/* Ambient pulse — subtle living desk */
+@keyframes ios-ambient-breathe {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+html.ios-app.ios-native-shell .ios-native-ambient {
+  animation: ios-ambient-breathe 8s ease-in-out infinite;
+}
+
+/* Hero price — live tick glow */
+@keyframes ios-hero-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 12px currentColor);
+  }
+  50% {
+    filter: drop-shadow(0 0 22px currentColor);
+  }
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-hero-price {
+  animation: ios-hero-pulse 3.5s ease-in-out infinite;
+}
+
+/* Trade alert hero — full-bleed cinematic */
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-trade-alert-hero,
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-chart-col {
+  border-radius: var(--ios-card-radius);
+  overflow: hidden;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-chart-col {
+  min-height: min(58dvh, 480px);
+}
+
+/* Flow tape rows — slide in */
+html.ios-app.ios-native-shell .flow-scroll > div {
+  animation: ios-content-rise 0.28s var(--ios-motion-spring) both;
+}
+
+/* Menu sheet tools — stagger handled by framer; reinforce tap */
+html.ios-app.ios-native-shell .ios-native-menu-tool {
+  transition:
+    transform 0.22s var(--ios-motion-spring),
+    border-color 0.2s ease,
+    box-shadow 0.25s ease,
+    background 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.ios-app.ios-native-shell .ios-desk-shell,
+  html.ios-app.ios-native-shell .ios-native-content-rail,
+  html.ios-app.ios-native-shell .thermal-page-inner-native,
+  html.ios-app.ios-native-shell .helix-page-inner-native,
+  html.ios-app.ios-native-shell .nighthawk-page-inner-native,
+  html.ios-app.ios-native-shell .grid-page-inner-native,
+  html.ios-app.ios-native-shell .largo-page-main-native,
+  html.ios-app.ios-native-shell .spx-sniper-panel,
+  html.ios-app.ios-native-shell .flow-panel,
+  html.ios-app.ios-native-shell .grid-card,
+  html.ios-app.ios-native-shell .flow-scroll > div {
+    animation: none;
+  }
+
+  html.ios-app.ios-native-shell .ios-native-ambient,
+  html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-hero-price {
+    animation: none;
+  }
+
+  html.ios-app.ios-native-shell .ios-app-tab-link:active {
+    transform: none;
+  }
+}

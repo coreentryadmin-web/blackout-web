@@ -6,7 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 import { getIosToolRouteIndex } from "@/lib/ios-tool-routes";
 
-const SPRING = { type: "spring" as const, stiffness: 520, damping: 42, mass: 0.82 };
+const SPRING = { type: "spring" as const, stiffness: 420, damping: 38, mass: 0.88 };
 
 type Props = {
   children: React.ReactNode;
