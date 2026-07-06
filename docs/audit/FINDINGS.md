@@ -9,6 +9,26 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🔴 P0 FOUND+FIXED 2026-07-06 — SPX Slayer's open-play `signal_committed` was hardcoded `true`, even on read-only (mutate:false) polls (branch `fix/spx-signal-committed-mutate-gate`)
+
+**Surface:** SPX Slayer (`/dashboard`), `evaluateOpenPlay()` in `src/lib/spx-play-engine.ts` — the function that manages an already-open play every time it's evaluated (member-facing 3s poll via `useSpxPlay.ts` → `/api/market/spx/play` → `readSpxPlaySnapshot()` → `evaluateSpxPlay(desk, technicals, {mutate:false})`, AND the real 5-minute cron via `runSpxEvaluator()` → `evaluateSpxPlay(..., {mutate:true})`, Railway `railway.spx-evaluate.toml`). Found during the requested full CTO-level audit of SPX Slayer's entry gates and outcome grading. This was the single most severe unfixed finding from that audit.
+
+**Root cause:** every DB write inside `evaluateOpenPlay` (`updateOpenPlay` for mfe/mae peaks, `closeOpenPlay` on SELL) was already correctly gated on the `mutate` parameter — but the function's shared return tail set `signal_committed: true` as a bare literal, never consulting `mutate` at all. A `mutate:false` call (every 3-second member poll) still re-derives `stopHit`/`targetHit`/`trailingStopHit`/`thesisBreak` against the live desk price on every tick — so a member could see a full "SELL — TARGET" or "SELL — STOP" card, with `signal_committed:true` telling every consumer it had been graded/committed, when in fact **nothing was persisted**: the position was still open in the DB, and the real cron (running independently every 5 minutes) could contradict the card seconds later if price ticked back the other way before the cron tick landed.
+
+**Contrast with the already-correct sibling path:** `evaluateFlatPlay()`'s new-entry path (same file, ~line 870) already does this right — `if (!mutate) { return {..., signal_committed: false, ...}; }` before ever calling `openPlay()`. Only the open-play management tail lacked the equivalent gate.
+
+**Why it wasn't caught earlier:** no test exercised `evaluateSpxPlay`/`evaluateOpenPlay` end-to-end for `mutate:true` vs `mutate:false` at all — `signal_committed` only ever appeared as a hardcoded fixture value in `useSpxPlay.test.ts` and `admin-spx-health.test.ts`, never asserted against real engine output for the open-play path. `src/lib/spx-play-engine.ts` had zero dedicated test file before this fix.
+
+**Blast radius:** every consumer of the open-play payload's `signal_committed` field — `SpxTradeAlerts.tsx` (gates the BUY sound alert and the "Signal only — awaiting engine commit" caveat, though that caveat is currently only wired for the BUY/flat-path case, not SELL/open-path — noted as a follow-up, not folded into this fix to keep it to one root cause), the admin SPX health panel (`admin-spx-health.ts` → `AdminBieDashboard`), and any BIE/Largo consumer that reads the live play snapshot.
+
+**Fix:** `evaluateOpenPlay`'s return tail now sets `signal_committed: mutate` instead of the hardcoded `true` — matching `evaluateFlatPlay`'s existing pattern exactly. Since every write in the function is already `mutate`-gated, this makes the field mean exactly what its own doc comment (`spx-play-payload.ts`) already promised: "True only when the system has committed a play to the DB in this evaluation cycle."
+
+**Evidence:** New file `src/lib/spx-play-engine.test.ts` (previously nonexistent) drives the real `evaluateSpxPlay`/`evaluateOpenPlay` + the real `spx-play-store.ts` in its already-supported in-memory fallback mode (`dbConfigured()` forced false via unset `DATABASE_URL`/`DATABASE_PUBLIC_URL`, so persistence is observed directly with no real database needed). 4 tests: HOLD+mutate:false (signal_committed false, mfe peak NOT persisted) / HOLD+mutate:true (signal_committed true, mfe peak IS persisted) / TARGET-hit SELL+mutate:false (full SELL card renders, signal_committed false, play stays open — the exact reported bug) / TARGET-hit SELL+mutate:true (signal_committed true, play actually closes). Confirmed the regression tests fail against the pre-fix code (`git stash` the fix, 2/4 fail with `true !== false` on both `mutate:false` cases) and pass with it applied. Full suite: 1736/1736 passing (1732 pre-existing + 4 new), `tsc --noEmit` clean, `eslint` clean on both changed files, `npm run build` clean, `git diff main -- src/lib/spx-signals.ts` empty.
+
+**Status:** FIXED on branch; draft PR pending.
+
+---
+
 ## 🔴 P0 FOUND+FIXED 2026-07-06 — 0DTE Command's moneyness gate FAILED OPEN when a ticker's tape carried no underlying price (branch `fix/zerodte-itm-gate-missing-underlying-price`)
 
 **Surface:** 0DTE Command / the Grid (`/grid`), `deriveZeroDteSetups()` — the entry-gate function that decides which candidates reach the live board. Found during a deep adversarial "hunt for a phantom pass" audit requested specifically because this product (unlike SPX Slayer's `desk-verifier.ts` or Heat Maps' `heatmap-verifier.ts`) has **no independent correctness verifier** — a fail-open bug here is invisible in production with nothing to catch it.
