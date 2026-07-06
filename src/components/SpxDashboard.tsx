@@ -120,7 +120,7 @@ export function SpxDashboard() {
         </div>
       )}
       <SpxPanelErrorBoundary>
-        <SpxSniperHeader desk={desk} live={live} />
+        <SpxSniperHeader desk={desk} live={live} nativeShell={nativeShell} />
       </SpxPanelErrorBoundary>
 
       {nativeShell && (

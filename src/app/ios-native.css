@@ -5,7 +5,7 @@
  */
 
 html.ios-app.ios-native-shell {
-  --ios-header-offset: calc(3.25rem + env(safe-area-inset-top, 0px));
+  --ios-header-offset: calc(2.875rem + env(safe-area-inset-top, 0px));
   --nav-offset: var(--ios-header-offset);
 }
 
@@ -32,8 +32,8 @@ html.ios-app.ios-native-shell .nav-bar {
   grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
   align-items: center;
   gap: 0.35rem;
-  min-height: 3.25rem;
-  padding: 0 0.5rem 0.35rem;
+  min-height: 2.875rem;
+  padding: 0 0.5rem 0.15rem;
 }
 
 .ios-native-header-title {

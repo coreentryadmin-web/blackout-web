@@ -91,16 +91,39 @@ html.ios-app.ios-native-shell .largo-terminal-fullpage {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SPX SLAYER — dashboard
+   SPX SLAYER — dashboard (compact top chrome on native)
    ═══════════════════════════════════════════════════════════════════════════ */
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .ios-desk-shell {
-  padding-top: calc(var(--ios-header-offset) + 0.25rem);
+  padding-top: var(--ios-header-offset) !important;
+  padding-bottom: calc(var(--ios-tab-offset, 0px) + 0.35rem) !important;
 }
 
-html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-command {
-  margin: 0 0 0.5rem;
-  padding: 0.85rem 0.75rem 0.75rem;
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .ios-native-desk-segment {
+  position: static;
+  top: auto;
+  margin: 0.25rem 0 0.45rem;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-command,
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-command-native {
+  margin: 0 0 0.35rem;
+  padding: 0.55rem 0.65rem 0.6rem !important;
   border-radius: var(--ios-card-radius);
+  border-bottom: 0;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-command-native .relative.z-10 {
+  gap: 0.45rem;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-command-native .spx-hero-price {
+  font-size: 2.35rem !important;
+  line-height: 1;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-native-meta .t-kicker {
+  font-size: 9px;
+  letter-spacing: 0.18em;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-command .spx-hero-price {

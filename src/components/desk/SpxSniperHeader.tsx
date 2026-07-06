@@ -12,6 +12,8 @@ import { FreshnessChip, Kicker, type FreshnessStatus } from "@/components/ui";
 type Props = {
   desk?: SpxDeskPayload;
   live?: boolean;
+  /** Native iOS shell — drop duplicate product title; compact hero layout. */
+  nativeShell?: boolean;
 };
 
 function resolveFreshness(
@@ -26,7 +28,7 @@ function resolveFreshness(
   return { status: "live", asOf };
 }
 
-export function SpxSniperHeader({ desk, live }: Props) {
+export function SpxSniperHeader({ desk, live, nativeShell = false }: Props) {
   const hasQuote = Boolean(desk?.available && (desk?.price ?? 0) > 0);
   /** Show grounded desk numbers whenever we have a quote — even when session is closed. */
   const showValues = Boolean(live || hasQuote);
@@ -50,7 +52,12 @@ export function SpxSniperHeader({ desk, live }: Props) {
   const freshness = resolveFreshness(live, feedStalled, isStale, asOf);
 
   return (
-    <header className="spx-sniper-command border-b border-white/[0.06] pb-6">
+    <header
+      className={clsx(
+        "spx-sniper-command border-b border-white/[0.06]",
+        nativeShell ? "spx-sniper-command-native pb-3" : "pb-6"
+      )}
+    >
       {/* Ambient background layers — fully authored/animated in globals.css (grid pattern,
           scan-line sweep, pulsing glow) but were never mounted anywhere in the component
           tree until now. All three are `position: absolute` with z-0/z-[1]; per CSS stacking
@@ -60,22 +67,46 @@ export function SpxSniperHeader({ desk, live }: Props) {
       <div className="spx-sniper-command-grid" aria-hidden />
       <div className="spx-sniper-command-scan" aria-hidden />
       <div className="spx-sniper-command-glow" aria-hidden />
-      <div className="relative z-10 flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6">
-        <div className="flex flex-col lg:flex-row lg:items-end gap-6 min-w-0 flex-1">
-          <div className="spx-sniper-identity shrink-0 flex items-start gap-3">
-            <ProductMark product="spx" size={44} title="SPX Slayer" className="mt-0.5 shrink-0" />
-            <div className="min-w-0">
-              <Kicker className="mb-1.5">SPX · 0DTE desk</Kicker>
-              <h1 className="font-syne text-2xl font-bold tracking-tight text-white md:text-3xl">
-                SPX Slayer
-              </h1>
-              <p className="spx-hero-tagline-sub mt-1 font-mono text-[11px] tracking-[0.08em] text-secondary">
-                GEX structure · dealer positioning · session levels
-              </p>
+      <div
+        className={clsx(
+          "relative z-10 flex flex-col gap-4",
+          !nativeShell && "xl:flex-row xl:items-start xl:justify-between xl:gap-6"
+        )}
+      >
+        <div
+          className={clsx(
+            "flex min-w-0 flex-1 flex-col gap-4",
+            !nativeShell && "lg:flex-row lg:items-end lg:gap-6"
+          )}
+        >
+          {!nativeShell && (
+            <div className="spx-sniper-identity shrink-0 flex items-start gap-3">
+              <ProductMark product="spx" size={44} title="SPX Slayer" className="mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <Kicker className="mb-1.5">SPX · 0DTE desk</Kicker>
+                <h1 className="font-syne text-2xl font-bold tracking-tight text-white md:text-3xl">
+                  SPX Slayer
+                </h1>
+                <p className="spx-hero-tagline-sub mt-1 font-mono text-[11px] tracking-[0.08em] text-secondary">
+                  GEX structure · dealer positioning · session levels
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
+            {nativeShell && (
+              <div className="spx-sniper-native-meta mb-2 flex flex-wrap items-center gap-2">
+                <Kicker className="!mb-0">SPX · 0DTE</Kicker>
+                <MarketStatusPill label={desk?.market_label} />
+                <FreshnessChip status={freshness.status} asOf={freshness.asOf} />
+                {live && desk?.gex_stale && (
+                  <span className="rounded border border-amber-400/35 bg-amber-400/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-amber-200">
+                    GEX stale
+                  </span>
+                )}
+              </div>
+            )}
             <AnimatePresence mode="popLayout">
               <motion.p
                 key={`${desk?.price ?? 0}-${asOfRaw ?? ""}`}
@@ -95,7 +126,7 @@ export function SpxSniperHeader({ desk, live }: Props) {
                 Last session snapshot · not live
               </p>
             )}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2 sm:mt-3">
               <span
                 className={clsx(
                   "t-num text-base font-semibold md:text-lg",
@@ -120,6 +151,27 @@ export function SpxSniperHeader({ desk, live }: Props) {
                 tone={(desk?.gex_net ?? 0) >= 0 ? "bull" : "bear"}
               />
             </div>
+            {nativeShell && (
+              <div className="spx-sniper-native-levels mt-2 grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
+                <StatPill
+                  label="Regime"
+                  value={showValues ? (desk?.regime ?? "—") : "—"}
+                  tone="violet"
+                  capitalize
+                />
+                <StatPill
+                  label="γ Flip"
+                  value={showValues && desk?.gamma_flip ? fmtPrice(desk.gamma_flip) : "—"}
+                  tone="magenta"
+                />
+                <StatPill label="Max Pain" value={showValues ? fmtPrice(desk?.max_pain ?? null) : "—"} tone="cyan" />
+                <StatPill
+                  label="IV Rank"
+                  value={showValues && desk?.uw_iv_rank != null ? String(desk.uw_iv_rank) : "—"}
+                  tone="gold"
+                />
+              </div>
+            )}
           </div>
 
           <div className="spx-hero-metric-blocks">
@@ -165,36 +217,38 @@ export function SpxSniperHeader({ desk, live }: Props) {
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-col items-start gap-3 xl:items-end">
-          <div className="flex flex-wrap items-center gap-2">
-            <MarketStatusPill label={desk?.market_label} />
-            <FreshnessChip status={freshness.status} asOf={freshness.asOf} />
-            {live && desk?.gex_stale && (
-              <span className="rounded border border-amber-400/35 bg-amber-400/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-amber-200">
-                GEX stale
-              </span>
-            )}
+        {!nativeShell && (
+          <div className="flex shrink-0 flex-col items-start gap-3 xl:items-end">
+            <div className="flex flex-wrap items-center gap-2">
+              <MarketStatusPill label={desk?.market_label} />
+              <FreshnessChip status={freshness.status} asOf={freshness.asOf} />
+              {live && desk?.gex_stale && (
+                <span className="rounded border border-amber-400/35 bg-amber-400/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-amber-200">
+                  GEX stale
+                </span>
+              )}
+            </div>
+            <div className="grid w-full min-w-[200px] grid-cols-2 gap-2 sm:grid-cols-4 xl:w-auto">
+              <StatPill
+                label="Regime"
+                value={showValues ? (desk?.regime ?? "—") : "—"}
+                tone="violet"
+                capitalize
+              />
+              <StatPill
+                label="γ Flip"
+                value={showValues && desk?.gamma_flip ? fmtPrice(desk.gamma_flip) : "—"}
+                tone="magenta"
+              />
+              <StatPill label="Max Pain" value={showValues ? fmtPrice(desk?.max_pain ?? null) : "—"} tone="cyan" />
+              <StatPill
+                label="IV Rank"
+                value={showValues && desk?.uw_iv_rank != null ? String(desk.uw_iv_rank) : "—"}
+                tone="gold"
+              />
+            </div>
           </div>
-          <div className="grid w-full min-w-[200px] grid-cols-2 gap-2 sm:grid-cols-4 xl:w-auto">
-            <StatPill
-              label="Regime"
-              value={showValues ? (desk?.regime ?? "—") : "—"}
-              tone="violet"
-              capitalize
-            />
-            <StatPill
-              label="γ Flip"
-              value={showValues && desk?.gamma_flip ? fmtPrice(desk.gamma_flip) : "—"}
-              tone="magenta"
-            />
-            <StatPill label="Max Pain" value={showValues ? fmtPrice(desk?.max_pain ?? null) : "—"} tone="cyan" />
-            <StatPill
-              label="IV Rank"
-              value={showValues && desk?.uw_iv_rank != null ? String(desk.uw_iv_rank) : "—"}
-              tone="gold"
-            />
-          </div>
-        </div>
+        )}
       </div>
     </header>
   );

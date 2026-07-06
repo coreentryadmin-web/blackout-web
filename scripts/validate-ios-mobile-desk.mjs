@@ -70,6 +70,7 @@ const pagesNeedles = [
   [".thermal-page-inner-native", "Thermal native page padding hook"],
   [".gex-matrix-scroll", "Thermal matrix scroll region hook"],
   [".gex-key-levels", "Thermal key levels hook"],
+  [".spx-sniper-command-native", "SPX compact native hero hook"],
   [".largo-page-main-native", "Largo full-bleed main hook"],
   [".largo-terminal-native", "Largo edge-to-edge terminal hook"],
   [".account-page-title-block", "account title hide hook"],
@@ -202,6 +203,13 @@ if (thermalShell.includes("useIosNativeShell") && thermalShell.includes("!native
   ok("thermal:page-shell-native-gate");
 } else {
   fail("thermal:page-shell-native-gate", "expected ThermalPageShell to hide web header on native");
+}
+
+const spxHeader = readFileSync(join(root, "src/components/desk/SpxSniperHeader.tsx"), "utf8");
+if (spxHeader.includes("nativeShell") && spxHeader.includes("spx-sniper-command-native")) {
+  ok("spx:compact-native-header");
+} else {
+  fail("spx:compact-native-header", "expected nativeShell compact SPX hero");
 }
 
 if (siteLayout.includes("IosAppChrome")) {
