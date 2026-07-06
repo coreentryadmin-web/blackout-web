@@ -8,6 +8,31 @@ and required CI (`verify`) are green — no per-PR approval, no end-of-day hold.
 here and merge the PR in the same session. Supersedes all earlier "leave OPEN for review" notes
 in this file.
 
+## 🔴 P0 FOUND+FIXED 2026-07-06 — `trackedFetch()` had no request timeout — a stalled Polygon connection hung GEX-heatmap/positioning requests indefinitely instead of failing (branch `fix/trackedfetch-default-timeout`)
+
+**Surface:** `trackedFetch()` in `src/lib/api-tracked-fetch.ts` — the single shared, telemetry-wrapped fetch utility every external API provider in this codebase funnels through: Polygon (`polygon-rate-limiter.ts`'s `polygonTrackedFetch`, the sole REST funnel for desk/GEX/Largo/chain/snapshot/play/lotto/power-hour calls), Unusual Whales (`unusual-whales.ts`'s `uwGet`), web search (`web-search.ts`, all three providers), the internal blackout_engine (`engine.ts`'s `fetchEngine`), and the admin API dashboard's health probes (`admin-api-dashboard.ts`). Found live, mid-session, while continuing the standing "check the SPX Grid/heatmaps through the day" audit: `/api/market/gex-heatmap` and `/api/market/gex-positioning` started timing out in production.
+
+**Root cause:** `trackedFetch`'s core call was bare `await fetch(url, fetchInit)` — no `AbortController`/`signal`, no timeout of any kind. Node's `fetch()` has no default timeout, so a stalled upstream TCP connection (confirmed live against `api.massive.com`, Polygon's REST host) hangs the `await` forever instead of rejecting. None of the ~9 call sites across the 5 files above ever passed their own `init.signal`, so every one of them inherited the same unbounded-hang exposure — it just happened to surface first on the GEX-heatmap/positioning path because that path was under the heaviest live chain-pagination load.
+
+**Live evidence (reproduced against production, not theorized):** authenticated (`CRON_SECRET` bearer) curl probes against `https://blackouttrades.com`, with a control endpoint to rule out sandbox network flakiness first:
+- `/api/market/quote?ticker=SPY` (control, no Polygon options-chain fan-out): 5/5 successes, all under 600ms.
+- `/api/market/gex-heatmap?ticker=SPY`: mixed timeouts across two batches (2/3, then 3/5 requests hit the client's 45s timeout with 0 bytes received).
+- `/api/market/gex-positioning?ticker=SPY`: 5/5 timeouts.
+- `/api/market/gex-heatmap?ticker=QQQ`: 2/2 timeouts before the probing script itself hit its own timeout.
+The same-session live validator run (`scripts/audit/data-validator.mjs`) independently corroborated this: three `curl: (28) Operation timed out after 45002ms with 0 bytes received` lines, and every GEX/heatmap-gated check (wall ordering, gamma/dex/vanna posture, net_gex sign — 7 checks total) silently vanished from that run's output because `P.gex`/`P.heatmap` came back null. A prior production log tail this same session had already shown `chain fetch threw from api.massive.com ... terminated` — consistent with a genuinely slow/stalling upstream, not a one-off blip.
+
+**Blast radius:** every `trackedFetch` consumer was exposed, not just GEX. A hung Polygon/UW/web-search/engine call previously had no bound at all — it would occupy the request for as long as the underlying socket stayed half-open, which for a member-facing route means the request hangs until the platform's own edge/proxy timeout kills it (worse UX than a fast, clean failure) and for a cron/background job means a stuck invocation instead of a bounded retry.
+
+**Fix:** `trackedFetch` now creates a fresh `AbortSignal.timeout(15_000)` per attempt (a new one each retry — a fired `AbortSignal.timeout` can't be reused) and passes it to `fetch()`. 15s is generous versus these APIs' ~1-3s p99 but comfortably bounded. If a caller already supplies its own `signal`, it's combined via `AbortSignal.any([callerSignal, timeoutSignal])` so an explicit caller cancellation still wins — nobody currently does this, but the combinator is what makes the change strictly additive rather than a breaking change for a future caller. A `timeoutMs` field was added to `TrackedFetchOptions` to override the default; this exists primarily so the new tests can exercise the timeout path in milliseconds instead of 15 real seconds. A fired timeout surfaces as a clean `TimeoutError` (confirmed via a live Node fetch test), which flows straight into the existing catch/retry/graceful-degradation logic unchanged — no new error-handling path was needed.
+
+**Why this and not a per-provider fix:** the hang is generic to `fetch()` itself, not specific to Polygon's client — patching only `polygon-rate-limiter.ts` would have left UW, web search, the engine, and the admin dashboard probes with the identical exposure. Fixing the shared funnel closes it for all nine call sites at once.
+
+**Evidence:** 3 new tests in `src/lib/api-tracked-fetch.test.ts` (new file) using a local `node:http` server: (1) a server that never responds — confirms `trackedFetch` aborts within ~2s instead of hanging, given `timeoutMs: 50`; (2) a normal server — confirms the healthy-response path is unaffected; (3) a caller-supplied `AbortController` — confirms it still takes effect alongside the default timeout. Full suite: 1777/1777 passing. `npx tsc --noEmit` clean. `npx eslint` clean. `npm run build` clean. `git diff main -- src/lib/spx-signals.ts` empty.
+
+**Status:** FIXED.
+
+---
+
 ## 🔴 P1 FOUND+FIXED 2026-07-06 — Largo/BIE's fresh 0DTE finds skipped the "no new plays after 15:00 ET" cutoff the board UI already applies — could recommend "ADD" during POWER_HOUR/LATE_SESSION/CLOSED (branch `fix/zerodte-largo-fresh-find-cutoff`)
 
 **Surface:** Largo/BIE's `get_zerodte_plays` tool, `zeroDtePlaysForLargo()` → its `fresh_finds` block in `src/lib/platform/zerodte-service.ts` — the same fresh-find surface `ZeroDteBoard.tsx`'s `mergePlays()` renders on `/grid`. Found continuing the deep 0DTE audit that surfaced PR #586 (target-before-stop) and PR #592 (top-strike aggression-weighting).
