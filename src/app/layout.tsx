@@ -18,6 +18,7 @@ import "./ios-native-skin.css";
 import "./ios-native-motion.css";
 import "./ios-native-command.css";
 import "./ios-native-iphone16.css";
+import "./ios-native-viewport.css";
 
 // Self-hosted via next/font (no render-blocking @import, no FOUT/CLS). Variable
 // names MUST match tailwind.config fontFamily tokens (--font-anton/-syne/

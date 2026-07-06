@@ -269,6 +269,22 @@ if (rootLayout.includes("ios-native-motion.css")) ok("layout:ios-native-motion-i
 else fail("layout:ios-native-motion-imported", "expected ios-native-motion.css import");
 if (rootLayout.includes("ios-native-command.css")) ok("layout:ios-native-command-imported");
 else fail("layout:ios-native-command-imported", "expected ios-native-command.css import");
+if (rootLayout.includes("ios-native-viewport.css")) ok("layout:ios-native-viewport-imported");
+else fail("layout:ios-native-viewport-imported", "expected ios-native-viewport.css import");
+
+const viewportCss = readFileSync(join(root, "src/app/ios-native-viewport.css"), "utf8");
+const viewportNeedles = [
+  ["--ios-viewport-h", "viewport height token"],
+  ["padding-bottom: 0 !important", "single bottom inset owner"],
+  ["spx-sniper-desk", "SPX desk flex fill"],
+  ["spx-desk-closed", "market closed fills panel"],
+  ["overflow-x: auto", "scrollable instrument rail"],
+];
+for (const [needle, label] of viewportNeedles) {
+  if (viewportCss.includes(needle)) ok(`viewport-css:${label}`, needle);
+  else fail(`viewport-css:${label}`, `missing ${needle}`);
+}
+
 if (rootLayout.includes("ios-native-iphone16.css")) ok("layout:ios-native-iphone16-imported");
 else fail("layout:ios-native-iphone16-imported", "expected ios-native-iphone16.css import");
 if (rootLayout.includes("ios-tier-pro-max")) ok("layout:iphone16-tier-detection");

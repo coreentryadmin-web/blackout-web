@@ -23,7 +23,6 @@ html.ios-app.ios-native-shell .ios-desk-shell {
 html.ios-app.ios-native-shell .page-shell > .content-rail,
 html.ios-app.ios-native-shell .ios-desk-shell > * {
   padding-top: 0.35rem;
-  padding-bottom: calc(var(--ios-tab-offset, 0px) + 0.35rem);
 }
 
 /* Segment control — tool view switcher */
@@ -95,7 +94,6 @@ html.ios-app.ios-native-shell .largo-terminal-fullpage {
    ═══════════════════════════════════════════════════════════════════════════ */
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .ios-desk-shell {
   padding-top: var(--ios-header-offset) !important;
-  padding-bottom: calc(var(--ios-tab-offset, 0px) + 0.35rem) !important;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .ios-native-desk-segment {
@@ -148,13 +146,12 @@ html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-triple {
 }
 
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-chart-col {
-  min-height: min(62dvh, 520px);
   order: unset;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-left-matrix,
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-odte-matrix-panel {
-  min-height: min(58dvh, 480px);
+  min-height: 0;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-gex-matrix-scroll {
