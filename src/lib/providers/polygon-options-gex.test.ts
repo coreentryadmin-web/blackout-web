@@ -242,14 +242,15 @@ test("resolveOptionsRoot: dotted share classes (BRK.A/BRK.B) are preserved", () 
   assert.deepEqual(resolveOptionsRoot("brk.b"), { root: "BRK.B", optionsRoot: "BRK.B" });
 });
 
-test("resolveOptionsRoot: strips path-injection characters instead of passing them into the Polygon URL", () => {
-  // Dots survive (BRK.A/BRK.B need them), but the `/` that would make ".." an actual path
-  // segment separator is stripped, so no traversal is possible — just literal dots.
-  assert.equal(resolveOptionsRoot("AAPL/../../evil.com").root, "AAPL....EVIL.COM");
-  assert.equal(resolveOptionsRoot("SPY?foo=bar").root, "SPYFOOBAR");
-  assert.equal(resolveOptionsRoot("SPY@evil.com").root, "SPYEVIL.COM");
-  assert.equal(resolveOptionsRoot("SPY:8080").root, "SPY8080");
-  assert.equal(resolveOptionsRoot("SPY\nHost: evil.com").root, "SPYHOSTEVIL.COM");
+test("resolveOptionsRoot: rejects (empty root) path-injection characters instead of stripping-and-passing-through", () => {
+  // A malformed ticker now fails closed rather than reaching the Polygon URL as a mangled
+  // remainder — validate-and-reject is the pattern CodeQL's sanitizer-guard recognition
+  // requires; a strip-then-pass-through version of this function was still flagged live.
+  assert.equal(resolveOptionsRoot("AAPL/../../evil.com").root, "");
+  assert.equal(resolveOptionsRoot("SPY?foo=bar").root, "");
+  assert.equal(resolveOptionsRoot("SPY@evil.com").root, "");
+  assert.equal(resolveOptionsRoot("SPY:8080").root, "");
+  assert.equal(resolveOptionsRoot("SPY\nHost: evil.com").root, "");
 });
 
 test("resolveOptionsRoot: null/undefined/empty ticker resolves to an empty root, never throws", () => {

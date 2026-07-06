@@ -33,11 +33,11 @@ test("safeTicker: dotted share classes (BRK.A/BRK.B) are preserved", () => {
   assert.equal(safeTicker("brk.b"), "BRK.B");
 });
 
-test("safeTicker: strips path-injection characters", () => {
-  assert.equal(safeTicker("AAPL/../../evil.com"), "AAPL....EVIL.COM");
-  assert.equal(safeTicker("SPY@evil.com"), "SPYEVIL.COM");
-  assert.equal(safeTicker("SPY:8080"), "SPY8080");
-  assert.equal(safeTicker("SPY\nHost: evil.com"), "SPYHOSTEVIL.COM");
+test("safeTicker: rejects (empty string) anything with path-injection characters, does not mangle-and-pass-through", () => {
+  assert.equal(safeTicker("AAPL/../../evil.com"), "");
+  assert.equal(safeTicker("SPY@evil.com"), "");
+  assert.equal(safeTicker("SPY:8080"), "");
+  assert.equal(safeTicker("SPY\nHost: evil.com"), "");
 });
 
 test("safeTicker: null/undefined/empty never throws", () => {
@@ -45,21 +45,21 @@ test("safeTicker: null/undefined/empty never throws", () => {
   assert.equal(safeTicker(undefined as unknown as string), "");
 });
 
-test("safePathSegment: lowercases and strips to [a-z0-9-]", () => {
+test("safePathSegment: lowercases legitimate [a-z0-9-] values, rejects anything else", () => {
   assert.equal(safePathSegment("SMA"), "sma");
   assert.equal(safePathSegment("technology"), "technology");
-  assert.equal(safePathSegment("../../etc/passwd"), "etcpasswd");
-  assert.equal(safePathSegment("foo bar@baz"), "foobarbaz");
+  assert.equal(safePathSegment("../../etc/passwd"), "");
+  assert.equal(safePathSegment("foo bar@baz"), "");
 });
 
-test("safeDateSegment: keeps only digits and hyphens", () => {
+test("safeDateSegment: passes through a clean digits-and-hyphens date, rejects anything else", () => {
   assert.equal(safeDateSegment("2026-07-06"), "2026-07-06");
-  assert.equal(safeDateSegment("2026-07-06/../evil"), "2026-07-06");
+  assert.equal(safeDateSegment("2026-07-06/../evil"), "");
 });
 
-test("sym: uppercases, strips the I: index prefix, then applies the same charset guard", () => {
+test("sym: uppercases, strips the I: index prefix, then applies the same allowlist-and-reject guard", () => {
   assert.equal(sym("spy"), "SPY");
   assert.equal(sym("I:SPX"), "SPX");
   assert.equal(sym("i:vix"), "VIX");
-  assert.equal(sym("AAPL/../evil"), "AAPL..EVIL");
+  assert.equal(sym("AAPL/../evil"), "");
 });

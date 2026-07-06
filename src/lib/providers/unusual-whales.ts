@@ -30,34 +30,46 @@ const CLIENT_ID = process.env.UW_CLIENT_API_ID ?? "100001";
 /** UW Advanced — live options chain, flow, GEX, lit/dark pool, vol analytics, WebSocket streaming. */
 export const UW_PLAN_TIER = "advanced" as const;
 
+const TICKER_CHARSET_RE = /^[A-Z0-9.]{1,20}$/;
+const PATH_SEGMENT_CHARSET_RE = /^[a-z0-9-]{1,40}$/;
+const DATE_SEGMENT_CHARSET_RE = /^[0-9-]{1,10}$/;
+
 /**
  * `ticker` (and technical-indicator function names) are untrusted, user-supplied input on
  * every ticker-taking route, and every one of this file's ~40 `uwGetSafe`/`uwGet` call sites
  * splices it directly into a URL PATH segment via template literal — `/api/stock/${ticker}/
  * ...` — with no URL-encoding and no charset check (same class of bug as
  * polygon-options-gex.ts's `resolveOptionsRoot`, flagged there by CodeQL as request-forgery).
- * Strips anything outside the real ticker/identifier charset before it reaches any path
- * template. `.` is kept for BRK.A/BRK.B-style share classes.
+ *
+ * Validates against an allowlist charset and REJECTS (returns "") anything that doesn't
+ * already conform, rather than stripping bad characters and passing the mangled remainder
+ * through. An earlier version of this function did strip-then-pass-through — CodeQL's
+ * request-forgery taint tracking does not recognize `String.replace()` as clearing taint (it's
+ * a value transform, not a validating guard), so that version still showed up as a live
+ * critical alert on the exact commit that shipped it. A `RegExp.test()` guard with a hardcoded
+ * fallback on the failing branch is the pattern CodeQL's sanitizer-guard recognition is built
+ * for, and it's strictly safer besides: a malformed ticker now fails closed (empty path segment
+ * → clean 404 upstream) instead of reaching UW with attacker-influenced-but-mangled content.
+ * `.` is kept for BRK.A/BRK.B-style share classes.
  */
 export function safeTicker(value: string): string {
-  return String(value ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9.]/g, "");
+  const upper = String(value ?? "").trim().toUpperCase();
+  return TICKER_CHARSET_RE.test(upper) ? upper : "";
 }
 
-/** Same charset guard as `safeTicker`, lowercased — for non-ticker path segments this file
- *  interpolates raw (indicator function names, group-flow sector slugs, OHLC candle sizes). */
+/** Same allowlist-and-reject guard as `safeTicker`, lowercased — for non-ticker path segments
+ *  this file interpolates raw (indicator function names, group-flow slugs, OHLC candle sizes).
+ *  Free-text values that can legitimately contain spaces (sector names, institution names) go
+ *  through `encodeURIComponent` at their own call sites instead — they're not routed here. */
 export function safePathSegment(value: string): string {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "");
+  const lower = String(value ?? "").trim().toLowerCase();
+  return PATH_SEGMENT_CHARSET_RE.test(lower) ? lower : "";
 }
 
-/** ISO-date-shaped path segments (option expiries) — digits and hyphens only. */
+/** ISO-date-shaped path segments (option expiries) — digits and hyphens only, allowlisted. */
 export function safeDateSegment(value: string): string {
-  return String(value ?? "").replace(/[^0-9-]/g, "");
+  const trimmed = String(value ?? "").trim();
+  return DATE_SEGMENT_CHARSET_RE.test(trimmed) ? trimmed : "";
 }
 
 function uwEnvSec(name: string, fallback: number): number {
