@@ -12,7 +12,11 @@ import { readSpxPlaySnapshot } from "@/lib/spx-evaluator";
 import { buildPlayTechnicals } from "@/lib/spx-play-technicals";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { loadPowerHourRecord } from "@/lib/spx-power-hour-store";
+import { playMemberReadCacheSec } from "@/lib/spx-play-config";
+import { withServerCache } from "@/lib/server-cache";
+import { roundFloats } from "@/lib/round-floats";
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
+import type { SpxPlayPayload } from "@/lib/spx-play-payload";
 import type { SpxDeskSummary } from "./types";
 
 export function summarizeSpxDesk(merged: SpxDeskPayload): SpxDeskSummary {
@@ -72,7 +76,7 @@ export async function getSpxDeskSummary(): Promise<SpxDeskSummary> {
   return summarizeSpxDesk(merged);
 }
 
-export async function getSpxPlayState() {
+async function computeSpxPlaySnapshot(): Promise<SpxPlayPayload> {
   const { merged } = await loadMergedSpxDesk();
   const technicals = await buildPlayTechnicals(merged.price, {
     vwap: merged.vwap,
@@ -82,6 +86,19 @@ export async function getSpxPlayState() {
     lod: merged.lod,
   });
   return readSpxPlaySnapshot(merged, technicals);
+}
+
+/** Single derivation for member /spx/play, BIE spx_full_state, and Largo get_spx_play. */
+export async function getSpxPlayState(): Promise<SpxPlayPayload> {
+  const date = todayEtYmd();
+  const ttlMs = playMemberReadCacheSec() * 1000;
+  const play = await withServerCache(
+    `spx-play-read:${date}`,
+    ttlMs,
+    computeSpxPlaySnapshot,
+    { staleWhileRevalidate: true }
+  );
+  return roundFloats(play);
 }
 
 export async function getSpxOpenPlay() {

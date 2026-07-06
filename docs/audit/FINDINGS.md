@@ -8,6 +8,20 @@ and required CI (`verify`) are green — no per-PR approval, no end-of-day hold.
 here and merge the PR in the same session. Supersedes all earlier "leave OPEN for review" notes
 in this file.
 
+## 🟢 FIXED 2026-07-06 — member `/api/market/spx/play` diverged from BIE/Largo `getSpxPlayState()` (branch `fix/spx-play-member-bie-consolidation`)
+
+**Surface:** `src/app/api/market/spx/play/route.ts` vs `src/lib/platform/spx-service.ts::getSpxPlayState()`. Found by SPX Slayer all-day RTH agent `validate:spx-bie` Layer B on 2026-07-06 ~16:07 ET.
+
+**Root cause:** The member route independently re-implemented `loadMergedSpxDesk → buildPlayTechnicals → readSpxPlaySnapshot` with its own `withServerCache('spx-play-read:${date}')` wrapper, while BIE (`spx_full_state`) and Largo (`get_spx_play`) called `getSpxPlayState()` without that cache. Under SWR the member endpoint could serve a stale snapshot while BIE/Largo evaluated fresh — grade A vs B, score 83 vs 74, different `gates.play_idea` text.
+
+**Fix:** Moved the shared `spx-play-read` cache and `roundFloats()` into `getSpxPlayState()` so member, BIE, and Largo share one derivation and one cache lane. Member route now delegates to `getSpxPlayState()` only.
+
+**Blast radius:** `/dashboard` trade alerts, BIE `spx_full_state`, Largo `get_spx_play`, Night Hawk edition builder (already called `getSpxPlayState()`).
+
+**Status:** FIXED (pending deploy).
+
+---
+
 ## 🔴 P1 FOUND+FIXED 2026-07-06 — Thermal's zero-gamma-flip detector was structurally blind to half of all real crossings; CHARM's pinning-direction narrative was backwards (branch `fix/gex-zero-flip-and-charm-direction`)
 
 **Surface:** `computeZeroGammaFlip()` and `computeCharmRegime()` in `src/lib/providers/polygon-options-gex.ts` — feed GEX `flip`, DEX `zero_level`, and CHARM `zero_level`/`regime.read` on every `/heatmap` (BlackOut Thermal) response, `GexPositioning.flip`/`distance_to_flip_pct`, the Shift/EOD history rings, `gex-regime-events.ts`, and Largo/BIE's live desk context (`largo-live-feed.ts:467`, "Charm/pinning read: ..."). Found by a background deep-audit agent tasked with independently re-verifying this file's regime math against live Polygon chains and finite-difference derivatives, continuing the standing "check Thermal's heatmap math, really deep" audit.

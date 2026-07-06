@@ -65,6 +65,62 @@ Last updated: 2026-07-06 16:14 ET
 
 ---
 
+## spx-rth-2026-07-06 — SPX Slayer all-day verify pass (market open + post-close, ~16:04–16:10 ET)
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` verify mode. Commands: `validate:spx-rth` → `validate:spx-e2e`. Market closed 16:00 ET; pass ran at 16:04–16:10 ET (post-close verify + fix).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` (pass 1) | ⚠️ 5 PASS / 3 FAIL — rth-open transient, Playwright missing, BIE consistency |
+| `npm run validate:spx-e2e` | ✅ **18/18 GREEN** (0 FAIL, 1 SKIP) |
+| `npm run validate:spx-rth` (pass 2, Playwright installed) | ⚠️ 7 PASS / 1 FAIL — `spx:bie-consistency` only |
+| Matrix deep audit | ✅ Every GEX/VEX/DEX/CHARM cell finite; Σ strike_totals == headline |
+| Cross-endpoint spot/GEX | ✅ merged=7537.43 hm=7537.43 play=SCANNING |
+| `spx:data-correctness` | ✅ flags=0 mode=full |
+| `ops:collect` | ✅ 0 action items |
+
+### UI E2E — dashboard click-through GREEN
+
+| Probe | Result |
+|---|---|
+| `ui:sign-in-dashboard` | ✅ |
+| `ui:live-badge-rth` | ✅ |
+| `ui:click-gex-tab` | ✅ |
+| `ui:click-vex-tab` | ✅ |
+| `ui:matrix-rows` | ✅ 173 strike rows |
+| `ui:matrix-text-sanity` | ✅ zero NaN/undefined |
+| `matrix:every-cell-api` | ✅ GEX+VEX+DEX+CHARM · 152 strikes |
+| `ui:click-commentary-expand` | ⚠️ SKIP — no expand control visible (off-hours / collapsed state) |
+| `ui:lotto-dock-visible` | ✅ |
+| `ui:console-errors` | ✅ zero errors |
+| Trade alerts vs `/api/market/spx/play` | ✅ action=SCANNING; no stale confirmations |
+
+### Cross-tool integration (Step 3) — all GREEN
+
+| Tool | Result |
+|---|---|
+| Thermal (`gex-heatmap?ticker=SPX`) | ✅ same payload as dashboard matrix |
+| HELIX (`/api/market/flows`) | ✅ 20 prints |
+| Grid (`/api/grid/bootstrap`) | ✅ |
+| 0DTE (`/api/market/zerodte/board`) | ✅ 3 setups |
+| Night Hawk (`/api/market/nighthawk/edition`) | ✅ |
+| Largo SPX query | ✅ tools=blackout_intelligence |
+| BIE play route | ✅ action=SCANNING |
+
+### Findings
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P1 | spx-play-member-bie-divergence | Member `/api/market/spx/play` diverged from `getSpxPlayState()` (BIE/Largo): grade A vs B, score 83 vs 74, factors 13 vs 15, `gates.play_idea` text mismatch. Root cause: route duplicated the 3-call chain with its own `spx-play-read` cache instead of calling `getSpxPlayState()`. | `validate:spx-bie` Layer B | **FIXED** — PR #620 |
+| P2 | spx-commentary-expand-skip | Commentary expand/collapse control not found in E2E (off-hours). | `validate:spx-e2e` ui:click-commentary-expand | post-close |
+| — | spx-desk-lanes-skip | pulse/flow desk lanes unavailable off-hours (expected SKIP). | `validate:spx-rth` | n/a |
+
+**Reports:** `audit-output/spx-rth-2026-07-06-verify-1783368517459.json`, `audit-output/spx-dashboard-e2e-1783368449772.json`, `audit-output/spx-bie-consistency-2026-07-06T20-07-47-233Z.md`
+
+---
+
 ## grid-rth-2026-07-06 — 0DTE Command + Market Grid verify pass #4 (~16:03–16:08 ET, post-close)
 
 **Session:** Scheduled Grid RTH all-day agent verify pass per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md`. Commands: `validate:grid-rth` → `validate:zerodte-logic` → `validate:grid-e2e`. First `grid-rth` attempt failed on missing `node_modules` (local env — `pg`, `react`, `playwright`); transient `grid:bootstrap` HTTP 524 on cold probe. Re-run after `npm install` + Playwright Chromium — all GREEN.
