@@ -1,5 +1,50 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 16:57 ET
+Last updated: 2026-07-06 17:11 ET
+
+## spx-rth-2026-07-06 — SPX Slayer all-day verify pass #6 (~17:08–17:11 ET, post-close)
+
+**Session:** Verify pass per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` (scheduled market-open agent; executed post-close with `--force`). Commands: `validate:spx-rth --force` → `validate:spx-e2e` → `validate:spx-bie` → 60s live auto-update probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --force` | ✅ **GREEN** — 8 PASS / 0 FAIL / 1 SKIP |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 16 PASS / 0 FAIL / 2 SKIP |
+| `npm run validate:spx-bie` | ✅ **GREEN** — 8 PASS / 1 WARN / 3 SKIP (prod double-fetch fallback) |
+| `heatmap-matrix-audit --tickers=SPX` | ✅ **152 strikes · 32 checks · 0 flags** |
+| 60s live auto-update | ⚠️ desk `as_of` ticked (21:09:56→21:11:00); spot static 7537.43 — **expected post-16:00 ET close** |
+
+### UI E2E — every control + cross-tool GREEN
+
+| Probe | Result |
+|---|---|
+| `matrix:every-cell-api` | ✅ GEX+VEX+DEX+CHARM · 152 strikes · finite |
+| `ui:click-gex-tab` / `ui:click-vex-tab` | ✅ clicked · 173 strike rows |
+| `ui:matrix-text-sanity` | ✅ zero NaN/undefined |
+| `integration:thermal-cross-validation` | ✅ same heatmap route |
+| `integration:helix-flows` | ✅ 30 prints |
+| `integration:grid-bootstrap` | ✅ |
+| `integration:zerodte-board` | ✅ 4 setups |
+| `integration:nighthawk-edition` | ✅ |
+| `integration:largo-spx-query` | ✅ `blackout_intelligence` |
+| `integration:bie-play-route` | ✅ action=SCANNING, no stale confirmations |
+| `ui:click-commentary-expand` | ⚠️ SKIP — no expand control on dashboard |
+| `ui:live-badge-rth` | ⚠️ SKIP — outside RTH window (OFFLINE expected post-close) |
+
+### Findings
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No new P0/P1 defects this pass** | — | — |
+| **P2** | `spx-commentary-expand-missing` | No commentary expand/collapse control on `/dashboard` | `validate:spx-e2e` SKIP | post-close UX |
+| **P1** | `spx-gex-heatmap-cold-latency` | Cold miss 83–120s under audit burst; warm ~14s (carried from prior passes) | prior passes | post-close — heatmap-warm cron |
+
+**P0 assessment:** No P0 defects. Matrix cells 100% finite vs API; trade alerts SCANNING with no stale confirmations; cross-tool integration (Thermal, HELIX, Largo, BIE, Grid, 0DTE, Night Hawk) all GREEN.
+
+**Reports:** `audit-output/spx-rth-2026-07-06-verify-1783372171211.json`, `spx-dashboard-e2e-1783372188087.json`, `spx-bie-consistency-2026-07-06T21-10-07-789Z.md`
+
+---
 
 ## grid-rth-2026-07-06 — 0DTE Command + Market Grid verify pass #5 (~16:50–16:53 ET, post-close)
 
