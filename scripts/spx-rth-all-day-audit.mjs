@@ -206,7 +206,9 @@ async function main() {
   // 6. Ops + data-correctness
   if (CRON) {
     try {
-      const dc = await fetchJson("/api/cron/data-correctness?force=1");
+      // Full 8-surface sweep can exceed Cloudflare ~100s gateway timeout (524).
+      // SPX RTH pass only needs heatmap/desk layer flags — use surface=heatmap.
+      const dc = await fetchJson("/api/cron/data-correctness?force=1&surface=heatmap");
       const flags = dc.totals?.flags ?? dc.flags?.length ?? 0;
       const spxFlags = (dc.flags ?? []).filter(
         (f) =>

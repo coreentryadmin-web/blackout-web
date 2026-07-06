@@ -10,7 +10,10 @@ import { fetchRecentSpxSnapshots } from "@/lib/providers/spx-signal-log";
 import { computeFlowStrikeStacks } from "@/lib/largo/flow-strike-stacks";
 import { readSpxPlaySnapshot } from "@/lib/spx-evaluator";
 import { buildPlayTechnicals } from "@/lib/spx-play-technicals";
+import { playMemberReadCacheSec } from "@/lib/spx-play-config";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { roundFloats } from "@/lib/round-floats";
+import { withServerCache } from "@/lib/server-cache";
 import { loadPowerHourRecord } from "@/lib/spx-power-hour-store";
 import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
 import type { SpxDeskSummary } from "./types";
@@ -72,16 +75,27 @@ export async function getSpxDeskSummary(): Promise<SpxDeskSummary> {
   return summarizeSpxDesk(merged);
 }
 
+/** Single play-state derivation for member dashboard, BIE spx_full_state, and Largo get_spx_play. */
 export async function getSpxPlayState() {
-  const { merged } = await loadMergedSpxDesk();
-  const technicals = await buildPlayTechnicals(merged.price, {
-    vwap: merged.vwap,
-    pdh: merged.pdh,
-    pdl: merged.pdl,
-    hod: merged.hod,
-    lod: merged.lod,
-  });
-  return readSpxPlaySnapshot(merged, technicals);
+  const date = todayEtYmd();
+  const ttlMs = playMemberReadCacheSec() * 1000;
+  const play = await withServerCache(
+    `spx-play-read:${date}`,
+    ttlMs,
+    async () => {
+      const { merged } = await loadMergedSpxDesk();
+      const technicals = await buildPlayTechnicals(merged.price, {
+        vwap: merged.vwap,
+        pdh: merged.pdh,
+        pdl: merged.pdl,
+        hod: merged.hod,
+        lod: merged.lod,
+      });
+      return readSpxPlaySnapshot(merged, technicals);
+    },
+    { staleWhileRevalidate: true }
+  );
+  return roundFloats(play);
 }
 
 export async function getSpxOpenPlay() {

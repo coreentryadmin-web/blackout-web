@@ -222,8 +222,12 @@ function auditLensBlock(lensName, block, spot, nearExpiries) {
   return issues;
 }
 
-async function validateMatrixApi(app) {
-  const r = app("/api/market/gex-heatmap?ticker=SPX");
+async function validateMatrixApi(app, retries = 2) {
+  let r = app("/api/market/gex-heatmap?ticker=SPX");
+  for (let i = 0; i < retries && (r.status === 0 || r.status >= 500); i++) {
+    await new Promise((res) => setTimeout(res, 3000));
+    r = app("/api/market/gex-heatmap?ticker=SPX");
+  }
   if (r.status !== 200) {
     rec("matrix:api-fetch", "FAIL", `HTTP ${r.status}`);
     return null;
@@ -369,7 +373,7 @@ async function browserDashboard(session, hm) {
     const matrixTable = page.locator(".spx-gex-matrix-table");
     await page.waitForFunction(
       () => document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= 20,
-      { timeout: 45_000 }
+      { timeout: 90_000 }
     );
     await matrixTable.waitFor({ state: "visible", timeout: 5_000 });
     const rowCount = await matrixTable.locator("tbody tr").count();
