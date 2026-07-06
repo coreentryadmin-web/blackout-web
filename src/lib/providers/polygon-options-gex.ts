@@ -414,6 +414,13 @@ export type GexHeatmap = {
    * unchanged; the far-dated columns are additive.
    */
   expiries: string[];
+  /**
+   * The exact near-term expiry subset that feeds strike_totals/total/walls/flip (the first
+   * NEAR_TERM_EXPIRY_COUNT expiries captured BEFORE far-dated columns are merged). Auditors
+   * and the client "All" scope must re-sum cells over THIS set — NOT `expiries.slice(0,8)`,
+   * which silently back-fills with far-dated monthlies when the chain has <8 near dates.
+   */
+  near_term_expiries?: string[];
   /** Descending, strike-banded around spot (SHARED by both metrics). */
   strikes: number[];
   /** Max-pain strike (option-holder value minimizer), or null — GEX-only, shared at top. */
@@ -2402,6 +2409,7 @@ async function buildGexHeatmapUncached(
     change_pct: changePct,
     asof: new Date().toISOString(),
     expiries,
+    near_term_expiries: nearKeep,
     strikes: finalStrikes,
     max_pain: maxPain,
     gex: {
