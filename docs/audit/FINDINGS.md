@@ -9,6 +9,26 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🔴 P0 FOUND+FIXED 2026-07-06 — 0DTE Command's live status could relabel an already-winning play as a stop-out (branch `fix/zerodte-live-status-target-before-stop`)
+
+**Surface:** 0DTE Command (`/grid`), `derivePlayStatus()` in `src/lib/zerodte/plan.ts` — the pure function that derives a live play's lifecycle status (`OPEN`/`HOLD`/`TRIM`/`CLOSED`) on every scan cycle (`syncLedgerLiveState`, `scan.ts:420-462`). Found by a dedicated deep-audit agent tasked with tracing every play/trade-management state transition end to end and verifying against live production data.
+
+**Root cause:** `peak`/`trough` are latched extremes of the contract's mark since the play was flagged (persisted every tick, never reset), with no timestamp attached to either. The function checked `trough <= stop` (→ `CLOSED`/`"stopped"`) *before* `peak >= target` (→ `TRIM`). Since both checks only see the current latched values — never *which threshold was crossed first* — a play that legitimately doubled (`peak >= target`, a win) and only later crashed back down through the stop level (routine for 0DTE theta collapse into the close) got permanently relabeled `CLOSED`/`"stopped"` — a loss — even though target was hit first. This directly contradicts the file's own doc comment ("peak ≥ target → TRIM until close") and the separate, chronologically-correct retrospective grader `gradePlanFromBars()` (same file, walks bars in time order, "first touch wins"), which would grade the identical price path `"doubled"`. The next day's retrospective grade and the live-session status would disagree about whether the same play won or lost.
+
+**Downstream damage:** `buildIntelNote`'s `CLOSED` branch (`intel.ts`) then fabricates a "the flow never followed through" narrative for a play that, in fact, did follow through — surfaced live on `/grid` and to Largo/BIE (`get_zerodte_plays`, `composeZeroDtePlays`/`composeTickerPlayState` — both share the same `zeroDtePlaysForLargo()` call). It also corrupts the published win/loss track record if the row is ever graded from its live-latched state rather than re-derived from bars.
+
+**Live corroboration:** at audit time, a real open TSLA play (flagged that morning) was sitting in `TRIM` at +210–245% across an 8-minute live poll — i.e. exactly the latched state this bug's precondition (`peak >= target` already true) depends on, live in production.
+
+**Why it wasn't caught earlier:** no test exercised `trough <= stop` and `peak >= target` both being true in the same call — the one existing TRIM test (`board.test.ts`, pre-fix) only set a `trough` comfortably above the stop level, and the one existing "touched stop stays CLOSED" test only set a `peak` that never reached target. No test proved which check should win when both are true.
+
+**Fix:** swapped the check order — `peak >= target` (TRIM) is now checked *before* `trough <= stop` (CLOSED/stopped). Since `peak` only ever grows once target is crossed, this makes a target-hit sticky/terminal in practice (every future tick keeps returning TRIM, matching "TRIM until close"), while a genuine stop-first case is untouched — `peak` can't yet have reached target when that row closes, so it still falls through to the stop check exactly as before.
+
+**Evidence:** new regression test `"lifecycle: a play that already doubled stays TRIM even after later crashing through the stop level"` (`board.test.ts`) — confirmed it fails against the pre-fix code (`CLOSED` instead of `TRIM`) and passes post-fix; a paired sanity test confirms the genuine stop-first case is unaffected. Full suite: 1748/1748 passing (1746 pre-existing + 2 new), `tsc --noEmit` clean, `eslint` clean, `npm run build` clean.
+
+**Status:** FIXED and merged.
+
+---
+
 ## 🟡 P2 FOUND+FIXED 2026-07-06 — Audit validator false-positived on every live SPXW 0DTE play (branch `fix/zerodte-validator-spxw-underlying-ticker`)
 
 **Surface:** `scripts/audit/data-validator.mjs`'s `resolveZeroDteContract()` — the helper that proves a 0DTE Command ledger row's `top_strike` corresponds to a real, listed Polygon options contract. Found while manually re-running the validator mid-session (market open, RTH) per the user's ask to keep checking the SPX Grid/heatmaps through the day — a live SPXW play FAILed even though the platform's own play data was correct.
