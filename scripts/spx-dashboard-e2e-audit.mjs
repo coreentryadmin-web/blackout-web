@@ -15,6 +15,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
+import { inRthOpenWindow } from "./gha-et-window.mjs";
 import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
 import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { mintIosPlaywrightSession, onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
@@ -347,7 +348,9 @@ async function browserDashboard(session, hm) {
     rec("ui:sign-in-dashboard", "PASS");
 
     const deskText = await page.locator(".spx-sniper-desk").innerText().catch(() => "");
-    if (/\bOFFLINE\b/.test(deskText)) {
+    if (!inRthOpenWindow()) {
+      rec("ui:live-badge-rth", "SKIP", "outside RTH window — OFFLINE/EXTENDED badge expected post-close");
+    } else if (/\bOFFLINE\b/.test(deskText)) {
       rec("ui:live-badge-rth", "FAIL", "shows OFFLINE during RTH");
     } else {
       rec("ui:live-badge-rth", "PASS");

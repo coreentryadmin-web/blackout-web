@@ -1,5 +1,5 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 16:53 ET
+Last updated: 2026-07-06 16:57 ET
 
 ## grid-rth-2026-07-06 — 0DTE Command + Market Grid verify pass #5 (~16:50–16:53 ET, post-close)
 
@@ -57,6 +57,49 @@ Last updated: 2026-07-06 16:53 ET
 **No P0 defects.** Post-close verify: all 0DTE gates, plan exits, trade lifecycle, ledger PnL math, session heat cutoffs (CLOSED @ 16:50 ET), mergePlays SKIP rules, 9 grid panels, HELIX flows cross-feed, Night Hawk dedupe, and `/grid` tab navigation verified on live production.
 
 **Reports:** `audit-output/grid-rth-2026-07-06-verify-1783371160755.json`, `zerodte-logic-1783371127079.json`, `grid-e2e-1783371199610.json`
+
+## spx-rth-2026-07-06 — SPX Slayer all-day verify pass (~16:50–16:57 ET, post-close)
+
+**Session:** Post-close verify pass per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md`. Commands: `validate:spx-rth --force` → `validate:spx-e2e` → `validate:spx-bie` → 60s live auto-update probe.
+
+### Validation summary (final pass)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --force` | ✅ **GREEN** — 8 PASS / 0 FAIL / 1 SKIP |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 16 PASS / 0 FAIL / 2 SKIP |
+| `npm run validate:spx-bie` | ✅ **GREEN** — 8 PASS / 1 WARN / 3 SKIP (prod double-fetch fallback) |
+| `heatmap-matrix-audit --tickers=SPX` | ✅ **152 strikes · 32 checks · 0 flags** |
+| 60s live auto-update | ⚠️ play `as_of` ticked; desk/hm spot static at 7537.43 — **expected post-16:00 ET close** |
+
+### UI E2E — every control + cross-tool GREEN
+
+| Probe | Result |
+|---|---|
+| `matrix:every-cell-api` | ✅ GEX+VEX+DEX+CHARM · 152 strikes · finite |
+| `ui:click-gex-tab` / `ui:click-vex-tab` | ✅ clicked · 173 strike rows |
+| `ui:matrix-text-sanity` | ✅ zero NaN/undefined |
+| `integration:thermal-cross-validation` | ✅ same heatmap route |
+| `integration:helix-flows` | ✅ 30 prints |
+| `integration:grid-bootstrap` | ✅ |
+| `integration:zerodte-board` | ✅ 4 setups |
+| `integration:nighthawk-edition` | ✅ |
+| `integration:largo-spx-query` | ✅ `blackout_intelligence` |
+| `integration:bie-play-route` | ✅ action=SCANNING, no stale confirmations |
+| `ui:click-commentary-expand` | ⚠️ SKIP — no expand control on dashboard |
+
+### Findings
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P2** | `spx-bie-validator-sandbox-false-positive` | Layer B compared prod HTTP vs local in-process `getSpxPlayState()` without shared `REDIS_URL` — grade A vs B false FAIL | `validate:spx-bie` @ 20:53 UTC | **FIXED** — PR (skip in-process diff without Redis; prod double-fetch fallback) |
+| **P2** | `spx-e2e-live-badge-post-close` | `ui:live-badge-rth` failed OFFLINE at 16:55 ET post-close | `validate:spx-e2e` | **FIXED** — PR (SKIP outside RTH window) |
+| **P2** | `spx-commentary-expand-missing` | No commentary expand/collapse control on `/dashboard` | `validate:spx-e2e` SKIP | post-close UX |
+| **P1** | `spx-gex-heatmap-cold-latency` | Cold miss 83–120s under audit burst; warm ~14s | prior passes | post-close — heatmap-warm cron |
+
+**Reports:** `audit-output/spx-rth-2026-07-06-verify-1783371505266.json`, `spx-dashboard-e2e-1783371461094.json`, `spx-bie-consistency-2026-07-06T20-55-59-442Z.md`
+
+---
 
 ---
 
