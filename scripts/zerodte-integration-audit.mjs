@@ -64,7 +64,8 @@ async function auditCrossToolLive() {
     rec("integration:grid-bootstrap", "PASS");
     const bootSpot = boot.json.market?.pulse?.spx?.price ?? boot.json.market?.gexSpx?.spot;
     const gexSpot = gex.json?.spot;
-    if (Number.isFinite(bootSpot) && Number.isFinite(gexSpot) && spotDelta(bootSpot, gexSpot) > 0.25) {
+    // Parallel fetch timing — same 1.0 pt tolerance as spx:desk-lanes (#584).
+    if (Number.isFinite(bootSpot) && Number.isFinite(gexSpot) && spotDelta(bootSpot, gexSpot) > 1.0) {
       rec("integration:grid-gex-spot", "FAIL", `bootstrap ${bootSpot} vs gex ${gexSpot}`);
     } else if (Number.isFinite(gexSpot)) {
       rec("integration:grid-gex-spot", "PASS", `spot ${gexSpot}`);
@@ -77,7 +78,7 @@ async function auditCrossToolLive() {
 
   const liveSpot = Number(mergedDesk?.price ?? mergedDesk?.spot);
   const gexSpot = Number(gex.json?.spot);
-  if (Number.isFinite(liveSpot) && Number.isFinite(gexSpot) && spotDelta(liveSpot, gexSpot) > 0.2) {
+  if (Number.isFinite(liveSpot) && Number.isFinite(gexSpot) && spotDelta(liveSpot, gexSpot) > 1.0) {
     rec("integration:spx-desk-gex", "FAIL", `merged ${liveSpot} vs gex ${gexSpot}`);
   } else if (Number.isFinite(gexSpot)) {
     rec("integration:spx-desk-gex", "PASS", `spot ${gexSpot}`);

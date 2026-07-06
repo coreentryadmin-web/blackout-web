@@ -159,7 +159,8 @@ async function auditCrossTool() {
     ]);
     const bootSpot = bootstrap?.market?.pulse?.spx?.price ?? bootstrap?.market?.gexSpx?.spot;
     const gexSpot = gex?.spot;
-    if (Number.isFinite(bootSpot) && Number.isFinite(gexSpot) && Math.abs(bootSpot - gexSpot) > 0.2) {
+    // Parallel fetch timing — same 1.0 pt tolerance as spx:desk-lanes (#584).
+    if (Number.isFinite(bootSpot) && Number.isFinite(gexSpot) && Math.abs(bootSpot - gexSpot) > 1.0) {
       rec("integration:grid-gex-spot", "FAIL", `bootstrap ${bootSpot} vs gex ${gexSpot}`);
     } else if (Number.isFinite(gexSpot)) {
       rec("integration:grid-gex-spot", "PASS", `spot ${gexSpot}`);

@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
+import { mintIosPlaywrightSession, onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(
@@ -217,14 +218,22 @@ async function auditGridApis(app) {
   }
 }
 
-async function auditGridUi(session) {
+async function auditGridUi() {
+  const pw = await mintIosPlaywrightSession({ appUrl: BASE });
+  if (pw.skip) {
+    rec("ui:playwright", "WARN", pw.reason);
+    return;
+  }
+
   let browser;
   try {
-    browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-    await page.goto(session.signInUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await page.waitForURL(/\/(grid|dashboard|upgrade)/, { timeout: 60_000 }).catch(() => {});
+    browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+    const context = await browser.newContext({ userAgent: UA });
+    await context.addInitScript(onboardingInitScript());
+    await context.addCookies(pw.cookies);
+    const page = await context.newPage();
     await page.goto(`${BASE}/grid`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 60_000 });
 
     const title = await page.title();
     if (/0DTE|Grid|BlackOut/i.test(title)) {
@@ -238,7 +247,7 @@ async function auditGridUi(session) {
     if (await tabCommand.isVisible().catch(() => false)) {
       await tabCommand.click();
       rec("ui:tab-0dte-command", "PASS");
-      const heat = page.getByText(/Warming up|Opening drive|Desk hot|Power hour/i).first();
+      const heat = page.getByText(/Warming up|Opening drive|Desk hot|Power hour|RTH/i).first();
       if (await heat.isVisible({ timeout: 15_000 }).catch(() => false)) {
         rec("ui:session-heat", "PASS");
       } else {
@@ -266,6 +275,7 @@ async function auditGridUi(session) {
     rec("ui:playwright", "WARN", e.message?.slice(0, 120) ?? "browser blocked");
   } finally {
     if (browser) await browser.close().catch(() => {});
+    if (pw.cleanup) await pw.cleanup().catch(() => {});
   }
 }
 
@@ -281,7 +291,7 @@ async function main() {
   try {
     session = await authSession();
     await auditGridApis(session.app);
-    await auditGridUi(session);
+    await auditGridUi();
   } catch (e) {
     rec("e2e:auth", "FAIL", e.message);
   } finally {

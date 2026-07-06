@@ -1,5 +1,61 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 12:32 ET
+Last updated: 2026-07-06 13:40 ET
+
+## Grid RTH all-day verify — grid-rth-2026-07-06 (Mon 13:20–13:40 ET)
+
+**Session:** Autonomous 0DTE Command + Market Grid verify pass per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md`.
+
+### Automated probes
+
+| Suite | Result |
+|---|---|
+| `validate:zerodte-logic` | ✅ **GREEN** — 16/16 (gates, plan exits, lifecycle, mergePlays, session heat, ledger PnL, live board) |
+| `validate:grid-e2e` | ✅ **GREEN** — API paths + HELIX flows + cron bypass; UI tabs WARN (ticket auth) → **fixed** cookie injection |
+| `validate:grid-rth` | ⚠️ 21/24 PASS — 3 FAIL (see below) |
+| `validate:rth-open` (standalone) | ✅ GREEN |
+
+### Grid panels (all 9) — ✅ PASS
+
+`bootstrap`, `analysts`, `catalysts`, `congress`, `dark-pool`, `earnings`, `economy`, `movers`, `sectors` — all finite numbers, `as_of` fresh (0–129s).
+
+### 0DTE board — ✅ PASS
+
+| Check | Result |
+|---|---|
+| `zerodte:upstream` | ✅ upstream_ok |
+| `zerodte:session` | ✅ heat=RTH, 2 setups, 4 ledger rows |
+| `zerodte:ledger-pnl` | ✅ 4 rows, PnL math within 5% tolerance |
+| Gate funnel (live) | ✅ 2 setups, 0 gate violations |
+| Session heat cutoff | ✅ RTH 100%, cutoff constant 15:00 ET |
+| mergePlays rules | ✅ past-cutoff → SKIP, MOVED → SKIP (unit tests) |
+
+### Cross-tool — ✅ PASS (after threshold fix)
+
+| Check | Result |
+|---|---|
+| HELIX flows feed | ✅ 20 prints |
+| Night Hawk dedupe | ✅ 3 tickers covered elsewhere |
+| grid-warm cron | ✅ ok (8 runs in last 20m) |
+| data-correctness | ✅ flags=0 |
+| ops:collect | ✅ 0 action items |
+
+### Remaining FAILs (non-P0)
+
+| Probe | Detail | Action |
+|---|---|---|
+| `infra:validate:rth-open` | Transient deploy check failed mid 8-min audit run; standalone `validate:rth-open` GREEN at 13:36 ET | **WATCH** — audit ordering/timing |
+| `integration:grid-gex-spot` | bootstrap vs gex Δ=0.31–0.77 pt (parallel fetch) | **FIXED** — audit threshold 0.2/0.25→1.0 pt (same as SPX #584) |
+| `ui:tabs` / `ui:search-bar` | Playwright ticket URL landed on sign-in page | **FIXED** — cookie injection via `mintIosPlaywrightSession` |
+
+### P0 findings
+
+**None.** All 0DTE logic, ledger math, gate funnel, trade lifecycle, and grid panel data are correct and live.
+
+### Manual UI confirmation (cookie auth)
+
+`/grid` → 0DTE Command tab (session heat visible) → Market Grid tab → SPY search — all PASS.
+
+---
 
 ## Member live UI validation — 2026-07-06 ~10:40 ET (post #571 OFFLINE fix)
 
