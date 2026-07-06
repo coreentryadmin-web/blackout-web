@@ -8,6 +8,87 @@ and required CI (`verify`) are green — no per-PR approval, no end-of-day hold.
 here and merge the PR in the same session. Supersedes all earlier "leave OPEN for review" notes
 in this file.
 
+## 🔴 CRITICAL FOUND+FIXED 2026-07-06 — the charset-*stripping* fix for the request-forgery alert below did NOT close it: CodeQL re-flagged the identical sink as a live critical alert on the exact commit that shipped the strip-based sanitizers (branch `fix/trackedfetch-default-timeout`)
+
+**Surface:** `safeTicker()`/`safePathSegment()`/`safeDateSegment()` (`unusual-whales.ts`) and `resolveOptionsRoot()` (`polygon-options-gex.ts`) — the same four choke-point sanitizers documented in the entry directly below this one.
+
+**Root cause:** those sanitizers used `String.replace(/[^allowed-charset]/g, "")` — strip the bad characters, pass the (now-mangled) remainder through. That's a value *transform*, not a validating *guard*, and CodeQL's `js/request-forgery` taint-tracking specifically does not treat a `.replace()` call as clearing taint: it has no way to statically prove the regex actually constrains the output to a safe set, so the returned string is still considered attacker-influenced no matter what the regex says. Proof this wasn't theoretical: the CodeQL check run on commit `1a9db35` (the exact push that shipped the strip-based `safeTicker`/`safePathSegment`/`safeDateSegment` sweep across all ~65 call sites) came back **failed, 1 new critical severity alert**, annotated at the identical sink (`api-tracked-fetch.ts:100`) this file's fix was supposed to have closed.
+
+**Fix:** rewrote all four sanitizers to validate-and-reject instead of strip-and-pass-through — `const upper = raw.trim().toUpperCase(); return CHARSET_RE.test(upper) ? upper : "";`. This is the idiomatic CodeQL-recognized sanitizer-guard shape (a `RegExp.test()` result gating what value the function returns, with a hardcoded, non-tainted fallback on the rejecting branch) used elsewhere in this repo already (`ALLOWED_ENGINE_PATHS.has(joined) ? joined : null` in `api/engine/[...path]/route.ts`). It is also strictly safer on the merits, independent of what CodeQL recognizes: a malformed ticker now fails closed (empty path segment → clean 404/miss upstream) instead of reaching Polygon/UW with attacker-influenced-but-mangled content that could still probe path structure on the same trusted host.
+
+**Why not `encodeURIComponent`:** the file already uses `encodeURIComponent` for the small number of genuinely free-text values (sector names, institution names) that can legitimately contain spaces — those aren't candidates for a strict allowlist charset. But swapping the strict-charset helpers to `encodeURIComponent`-wrap their already-clean output wouldn't have added anything (nothing in `[A-Z0-9.]`/`[a-z0-9-]`/`[0-9-]` needs escaping), and more importantly there's no direct evidence CodeQL's sanitizer set for this query treats `encodeURIComponent` as taint-clearing for SSRF either — escaping characters doesn't validate a destination, and GitHub's own remediation guidance for this query class is explicitly "validate against an allowlist," not "escape."
+
+**Blast radius:** identical to the entry below — every UW ticker/date/path-segment call site (~65) and every Polygon options-root caller (7 call sites) route through these 4 functions. Behavior for every legitimate input (real tickers, real ISO dates, real indicator/candle-size slugs) is byte-identical to before; only malformed/injected input now maps to `""` instead of a partially-stripped string.
+
+**Evidence:** updated the same test files' injection-payload assertions from expecting a stripped-but-nonempty string to expecting `""` (`unusual-whales.test.ts`: `safeTicker`/`safePathSegment`/`safeDateSegment`/`sym`; `polygon-options-gex.test.ts`: `resolveOptionsRoot`) — all still-passing legitimate-input assertions (normal tickers, dotted share classes, index roots, null/undefined-safety) required no changes. Full suite: 1791/1791 passing. `npx tsc --noEmit` clean. `npx eslint` clean. `npm run build` clean. `git diff main -- src/lib/spx-signals.ts` empty.
+
+**Status:** FIXED — pushed to `fix/trackedfetch-default-timeout`; awaiting the next CodeQL run on this branch to confirm the alert actually clears this time before merge.
+
+---
+
+## 🔴 P0 FOUND+FIXED 2026-07-06 — `unusual-whales.ts` had the SAME unvalidated-ticker-into-URL-path defect as Polygon's `resolveOptionsRoot`, across ~65 call sites — second flow in the same CodeQL request-forgery alert (branch `fix/trackedfetch-default-timeout`)
+
+**Surface:** `src/lib/providers/unusual-whales.ts` — every `uwGetSafe`/`uwGet` call site that builds a UW REST path (options GEX/flow/darkpool, earnings, financials, shorts, ETF, technical indicators, economy indicators, group-flow — effectively the entire UW integration surface). Found while investigating why PR #603's CodeQL alert (`js/request-forgery` at `api-tracked-fetch.ts:100`) cited **two** separate tainted-value flows even after the Polygon-side fix (`resolveOptionsRoot`, logged above) shipped — the alert's second footnote pointed here.
+
+**Root cause:** identical bug class to the Polygon finding, independently reinvented across this file: `ticker` (and related identifiers — ETF symbols, option contract IDs, technical-indicator names, economy/group-flow slugs, option expiries) arrives from user-supplied route params and gets spliced directly into a URL PATH segment via template literal — `/api/stock/${ticker}/...` — with at most a bare `.toUpperCase()`/`.toLowerCase()` applied, never a charset check. A pre-existing local helper, `sym(ticker)`, was already shared across ~17 call sites but only stripped a leading `I:` index prefix — it never guarded the charset either, so every one of its callers inherited the same gap. A second, subtler instance: `resolveUwEconomySlug()`'s fallback branch returned the raw (lowercased) indicator string, unvalidated, whenever the input didn't match its allowlist or alias table — so an unrecognized economy indicator also reached the URL unfiltered.
+
+**Blast radius:** effectively the entire UW provider surface — GEX/spot-exposures, flow-per-strike, dark pool, max-pain, NOPE, volatility, OI, greeks, insider trades, short interest, ETF flows/holdings, financials, earnings, seasonality, technical indicators, and economy/group-flow indicators. Every member-facing or Largo-facing feature that passes a ticker (or ETF symbol, option contract ID, or economy indicator) through to UW inherited the same unsanitized-input-into-outbound-URL defect CodeQL flagged on the Polygon side.
+
+**Fix:** added `safeTicker()` (uppercase + strip to `[A-Z0-9.]`, matching `resolveOptionsRoot`'s exact policy), `safePathSegment()` (lowercase + strip to `[a-z0-9-]`, for indicator/slug/candle-size segments), and `safeDateSegment()` (digits and hyphens only, for expiry segments). Applied at every one of the ~65 template-literal interpolations that build a URL path in this file, including the pre-existing shared `sym()` helper (now charset-guarded, fixing its ~17 callers in one place) and `resolveUwEconomySlug()`'s previously-unvalidated fallback branch.
+
+**Why fix here and not wait for a route-layer validator:** same rationale as the Polygon fix — these are provider internals with dozens of call sites already written against a `path: string` shape; a route-layer check would need to be duplicated per-route and wouldn't cover Largo tool calls that construct paths without going through a route handler at all. Sanitizing at the point of interpolation closes every path at once regardless of caller.
+
+**Evidence:** 8 new tests in `unusual-whales.test.ts` — `safeTicker` (normal tickers, dotted share classes, five injection payloads, null/undefined-safety), `safePathSegment` (case + charset), `safeDateSegment` (digits/hyphens only), and `sym` (uppercase + `I:`-prefix strip + charset guard, including a payload with a raw `I:` prefix and injection characters together). Full suite: 1791/1791 passing. `npx tsc --noEmit` clean. `npx eslint` clean. `npm run build` clean. `git diff main -- src/lib/spx-signals.ts` empty.
+
+**Status:** FIXED.
+
+---
+
+## 🔴 P0 FOUND+FIXED 2026-07-06 — `resolveOptionsRoot` spliced an unvalidated, user-supplied ticker straight into the Polygon chain-fetch URL path — CodeQL-flagged request forgery (branch `fix/trackedfetch-default-timeout`)
+
+**Surface:** `resolveOptionsRoot(ticker)` in `src/lib/providers/polygon-options-gex.ts` — the single choke point every Polygon options-chain fetch routes through (`fetchHeatmapBand`, `fetchPolygonOiByExpiry`, `fetchPolygonIvTermStructure`, all downstream of `/api/market/gex-heatmap`, `/api/market/gex-positioning`, and their `/explain` variants). Found via CodeQL: pushing the `trackedFetch` timeout fix (below) touched the `fetch()` sink at `api-tracked-fetch.ts:100`, and GitHub Advanced Security's "1 new alert including 1 critical severity" scan on PR #603 flagged `js/request-forgery` there — "the URL of this request depends on a user-provided value."
+
+**Root cause:** `ticker` arrives from an untrusted query param (`req.nextUrl.searchParams.get("ticker")` in the gex-heatmap/gex-positioning routes) and only ever had `.trim().toUpperCase()` applied before `resolveOptionsRoot` returned it as `optionsRoot`. Every one of the three chain-fetch functions above splices `optionsRoot` directly into a URL PATH segment via template literal — `/v3/snapshot/options/${underlying}?...` — with no URL-encoding and no charset check. A ticker value containing `/`, `..`, `@`, `:`, or CRLF characters would reach `fetch()` unmodified.
+
+**Live/concrete impact:** since the destination host is already fully specified (`BASE = https://api.massive.com`) before the ticker is appended as a path segment, a crafted ticker can't redirect the request to a different HOST (path traversal / `@`-authority tricks don't work once the host is already terminated by an earlier `/`) — so this is not a full host-takeover SSRF. It IS a genuine unsanitized-input-into-outbound-URL defect: malformed/injected paths reaching Polygon's API (potential for unexpected upstream routing behavior, log/cache pollution keyed on attacker-chosen strings, and it's exactly the shape CodeQL's `js/request-forgery` query exists to catch before someone finds a sharper primitive through it).
+
+**Blast radius:** every ticker-taking Heat Maps/positioning route (`gex-heatmap`, `gex-heatmap/explain`, `gex-positioning`) and any other caller of `resolveOptionsRoot` (`option-trades.ts`, `gex-intraday-adjust.ts`, `heatmap-verifier.ts`) — all inherited the same unvalidated pass-through since they all derive `optionsRoot` from this one function.
+
+**Fix:** `resolveOptionsRoot` now strips any character outside `[A-Z0-9.]` after uppercasing — letters, digits, and `.` (needed for `BRK.A`/`BRK.B`-style share classes) are the only characters a real ticker symbol uses. This closes the injection at the single shared choke point rather than patching each of the three chain-fetch call sites separately. Index tickers (`SPX`→`I:SPX` etc.) and normal tickers are unaffected; a fully-invalid ticker resolves to an empty string, which fails cleanly against Polygon (404) exactly like today's behavior for other malformed inputs — no new failure mode introduced.
+
+**Fix rationale — why here and not at each route:** the three vulnerable fetch functions are Polygon-provider internals, not route handlers, so validating at the route layer would need to be duplicated three times (once per route) and re-duplicated for any future ticker-taking route; `resolveOptionsRoot` is the one function all of them already call before building a URL, matching this file's own established pattern of fixing shared-bug-classes once at their common choke point (see the `HEATMAP_PAGE_GUARD` consolidation elsewhere in this same file).
+
+**Evidence:** 5 new tests in `polygon-options-gex.test.ts` — normal tickers pass through unchanged; index tickers still resolve to `I:SPX`/`I:VIX`; dotted share classes (`BRK.B`) are preserved; five different injection payloads (`/../`, `?`, `@`, `:`, CRLF) all have their special characters stripped; null/undefined/empty input never throws. Full suite: 1782/1782 passing. `npx tsc --noEmit` clean. `npx eslint` clean. `npm run build` clean. `git diff main -- src/lib/spx-signals.ts` empty.
+
+**Status:** FIXED.
+
+---
+
+## 🔴 P0 FOUND+FIXED 2026-07-06 — `trackedFetch()` had no request timeout — a stalled Polygon connection hung GEX-heatmap/positioning requests indefinitely instead of failing (branch `fix/trackedfetch-default-timeout`)
+
+**Surface:** `trackedFetch()` in `src/lib/api-tracked-fetch.ts` — the single shared, telemetry-wrapped fetch utility every external API provider in this codebase funnels through: Polygon (`polygon-rate-limiter.ts`'s `polygonTrackedFetch`, the sole REST funnel for desk/GEX/Largo/chain/snapshot/play/lotto/power-hour calls), Unusual Whales (`unusual-whales.ts`'s `uwGet`), web search (`web-search.ts`, all three providers), the internal blackout_engine (`engine.ts`'s `fetchEngine`), and the admin API dashboard's health probes (`admin-api-dashboard.ts`). Found live, mid-session, while continuing the standing "check the SPX Grid/heatmaps through the day" audit: `/api/market/gex-heatmap` and `/api/market/gex-positioning` started timing out in production.
+
+**Root cause:** `trackedFetch`'s core call was bare `await fetch(url, fetchInit)` — no `AbortController`/`signal`, no timeout of any kind. Node's `fetch()` has no default timeout, so a stalled upstream TCP connection (confirmed live against `api.massive.com`, Polygon's REST host) hangs the `await` forever instead of rejecting. None of the ~9 call sites across the 5 files above ever passed their own `init.signal`, so every one of them inherited the same unbounded-hang exposure — it just happened to surface first on the GEX-heatmap/positioning path because that path was under the heaviest live chain-pagination load.
+
+**Live evidence (reproduced against production, not theorized):** authenticated (`CRON_SECRET` bearer) curl probes against `https://blackouttrades.com`, with a control endpoint to rule out sandbox network flakiness first:
+- `/api/market/quote?ticker=SPY` (control, no Polygon options-chain fan-out): 5/5 successes, all under 600ms.
+- `/api/market/gex-heatmap?ticker=SPY`: mixed timeouts across two batches (2/3, then 3/5 requests hit the client's 45s timeout with 0 bytes received).
+- `/api/market/gex-positioning?ticker=SPY`: 5/5 timeouts.
+- `/api/market/gex-heatmap?ticker=QQQ`: 2/2 timeouts before the probing script itself hit its own timeout.
+The same-session live validator run (`scripts/audit/data-validator.mjs`) independently corroborated this: three `curl: (28) Operation timed out after 45002ms with 0 bytes received` lines, and every GEX/heatmap-gated check (wall ordering, gamma/dex/vanna posture, net_gex sign — 7 checks total) silently vanished from that run's output because `P.gex`/`P.heatmap` came back null. A prior production log tail this same session had already shown `chain fetch threw from api.massive.com ... terminated` — consistent with a genuinely slow/stalling upstream, not a one-off blip.
+
+**Blast radius:** every `trackedFetch` consumer was exposed, not just GEX. A hung Polygon/UW/web-search/engine call previously had no bound at all — it would occupy the request for as long as the underlying socket stayed half-open, which for a member-facing route means the request hangs until the platform's own edge/proxy timeout kills it (worse UX than a fast, clean failure) and for a cron/background job means a stuck invocation instead of a bounded retry.
+
+**Fix:** `trackedFetch` now creates a fresh `AbortSignal.timeout(15_000)` per attempt (a new one each retry — a fired `AbortSignal.timeout` can't be reused) and passes it to `fetch()`. 15s is generous versus these APIs' ~1-3s p99 but comfortably bounded. If a caller already supplies its own `signal`, it's combined via `AbortSignal.any([callerSignal, timeoutSignal])` so an explicit caller cancellation still wins — nobody currently does this, but the combinator is what makes the change strictly additive rather than a breaking change for a future caller. A `timeoutMs` field was added to `TrackedFetchOptions` to override the default; this exists primarily so the new tests can exercise the timeout path in milliseconds instead of 15 real seconds. A fired timeout surfaces as a clean `TimeoutError` (confirmed via a live Node fetch test), which flows straight into the existing catch/retry/graceful-degradation logic unchanged — no new error-handling path was needed.
+
+**Why this and not a per-provider fix:** the hang is generic to `fetch()` itself, not specific to Polygon's client — patching only `polygon-rate-limiter.ts` would have left UW, web search, the engine, and the admin dashboard probes with the identical exposure. Fixing the shared funnel closes it for all nine call sites at once.
+
+**Evidence:** 3 new tests in `src/lib/api-tracked-fetch.test.ts` (new file) using a local `node:http` server: (1) a server that never responds — confirms `trackedFetch` aborts within ~2s instead of hanging, given `timeoutMs: 50`; (2) a normal server — confirms the healthy-response path is unaffected; (3) a caller-supplied `AbortController` — confirms it still takes effect alongside the default timeout. Full suite: 1777/1777 passing. `npx tsc --noEmit` clean. `npx eslint` clean. `npm run build` clean. `git diff main -- src/lib/spx-signals.ts` empty.
+
+**Status:** FIXED.
+
+---
+
 ## 🔴 P0 FOUND+FIXED 2026-07-06 — member `/api/market/spx/play` diverged from BIE/Largo `getSpxPlayState()` (grade/score/gates) due to duplicate cache lane with SWR (branch `fix/spx-play-single-derivation`)
 
 **Surface:** SPX Slayer trade alerts (`/dashboard`), BIE `spx_full_state`, Largo `get_spx_play`.
@@ -24,6 +105,7 @@ in this file.
 
 ---
 
+## 🔴 P1 FOUND+FIXED 2026-07-06 — Thermal's zero-gamma-flip detector was structurally blind to half of all real crossings; CHARM's pinning-direction narrative was backwards (branch `fix/gex-zero-flip-and-charm-direction`)
 
 **Surface:** `computeZeroGammaFlip()` and `computeCharmRegime()` in `src/lib/providers/polygon-options-gex.ts` — feed GEX `flip`, DEX `zero_level`, and CHARM `zero_level`/`regime.read` on every `/heatmap` (BlackOut Thermal) response, `GexPositioning.flip`/`distance_to_flip_pct`, the Shift/EOD history rings, `gex-regime-events.ts`, and Largo/BIE's live desk context (`largo-live-feed.ts:467`, "Charm/pinning read: ..."). Found by a background deep-audit agent tasked with independently re-verifying this file's regime math against live Polygon chains and finite-difference derivatives, continuing the standing "check Thermal's heatmap math, really deep" audit.
 

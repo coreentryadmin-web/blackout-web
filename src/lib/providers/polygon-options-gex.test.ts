@@ -8,6 +8,7 @@ import {
   computeGexEvents,
   computeMaxPainFromChain,
   resolveExpiryAxis,
+  resolveOptionsRoot,
   computeZeroGammaFlip,
   computeCharmRegime,
   type GexHistorySnapshot,
@@ -222,6 +223,41 @@ test("computeMaxPainFromChain: blending two DIFFERENT expiries' OI changes the a
 
 test("computeMaxPainFromChain: empty input returns null, never a fabricated strike", () => {
   assert.equal(computeMaxPainFromChain([]), null);
+});
+
+// ── resolveOptionsRoot: `ticker` is untrusted, user-supplied input (the query param on every
+// /api/market/gex-* route) that becomes a URL PATH segment in every downstream Polygon chain
+// fetch. CodeQL flagged this as a request-forgery sink — a crafted ticker must not be able to
+// inject path segments into the outbound request URL.
+
+test("resolveOptionsRoot: normal tickers pass through uppercased, unchanged", () => {
+  assert.deepEqual(resolveOptionsRoot("spy"), { root: "SPY", optionsRoot: "SPY" });
+  assert.deepEqual(resolveOptionsRoot("nvda"), { root: "NVDA", optionsRoot: "NVDA" });
+});
+
+test("resolveOptionsRoot: index tickers still resolve to their I: options root", () => {
+  assert.deepEqual(resolveOptionsRoot("spx"), { root: "SPX", optionsRoot: "I:SPX" });
+  assert.deepEqual(resolveOptionsRoot("vix"), { root: "VIX", optionsRoot: "I:VIX" });
+});
+
+test("resolveOptionsRoot: dotted share classes (BRK.A/BRK.B) are preserved", () => {
+  assert.deepEqual(resolveOptionsRoot("brk.b"), { root: "BRK.B", optionsRoot: "BRK.B" });
+});
+
+test("resolveOptionsRoot: rejects (empty root) path-injection characters instead of stripping-and-passing-through", () => {
+  // A malformed ticker now fails closed rather than reaching the Polygon URL as a mangled
+  // remainder — validate-and-reject is the pattern CodeQL's sanitizer-guard recognition
+  // requires; a strip-then-pass-through version of this function was still flagged live.
+  assert.equal(resolveOptionsRoot("AAPL/../../evil.com").root, "");
+  assert.equal(resolveOptionsRoot("SPY?foo=bar").root, "");
+  assert.equal(resolveOptionsRoot("SPY@evil.com").root, "");
+  assert.equal(resolveOptionsRoot("SPY:8080").root, "");
+  assert.equal(resolveOptionsRoot("SPY\nHost: evil.com").root, "");
+});
+
+test("resolveOptionsRoot: null/undefined/empty ticker resolves to an empty root, never throws", () => {
+  assert.deepEqual(resolveOptionsRoot(""), { root: "", optionsRoot: "" });
+  assert.deepEqual(resolveOptionsRoot(undefined as unknown as string), { root: "", optionsRoot: "" });
 });
 
 // ── computeZeroGammaFlip: the primary per-strike crossing detector only matched
