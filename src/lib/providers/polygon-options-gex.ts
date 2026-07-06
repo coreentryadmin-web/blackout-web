@@ -3090,6 +3090,17 @@ const IV_TERM_CACHE_MS = 5 * 60_000; // 5 minutes
  * Fetch IV term structure for a ticker from Polygon options chain snapshot.
  * Groups all contracts by expiry date and averages call + put IV per expiry.
  * Results are sorted ascending by expiry date and cached for 5 minutes.
+ *
+ * Live-caught (docs/audit/FINDINGS.md): this loop had its OWN hardcoded 20-page
+ * guard — the exact "chasing the live chain size with a static number" bug class
+ * fetchHeatmapBand and fetchPolygonOiByExpiry already hit for SPX/AAPL (see the
+ * comments on HEATMAP_PAGE_GUARD and fetchPolygonOiByExpiry above) — except this
+ * instance was never migrated to the shared, already-fixed guard when those were
+ * raised, so it kept truncating SPX's full chain on every 5-min cache miss ("chain
+ * incomplete, walls/OI/IV understated" firing live in production). Unlike
+ * fetchPolygonOiByExpiry, there's no "N distinct expiries seen" early-exit here —
+ * this function needs the WHOLE term structure, not just the nearest few expiries —
+ * so it shares HEATMAP_PAGE_GUARD directly rather than inventing a third bound.
  */
 export async function fetchPolygonIvTermStructure(
   ticker: string
@@ -3118,7 +3129,7 @@ export async function fetchPolygonIvTermStructure(
   ) as SnapshotResponse | null;
   let guard = 0;
 
-  while (page && guard < 20) {
+  while (page && guard < HEATMAP_PAGE_GUARD) {
     for (const c of page.results ?? []) {
       const expiry = String(c.details?.expiration_date ?? "").slice(0, 10);
       if (!expiry || expiry < today) continue;
