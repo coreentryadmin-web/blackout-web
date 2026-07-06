@@ -212,6 +212,13 @@ if (spxHeader.includes("nativeShell") && spxHeader.includes("spx-sniper-command-
   fail("spx:compact-native-header", "expected nativeShell compact SPX hero");
 }
 
+const iosE2e = readFileSync(join(root, "scripts/ios-native-ui-e2e.mjs"), "utf8");
+if (iosE2e.includes("mintIosPlaywrightSession") && iosE2e.includes("testToolPage")) {
+  ok("ios:playwright-e2e-script");
+} else {
+  fail("ios:playwright-e2e-script", "expected ios-native-ui-e2e.mjs");
+}
+
 if (siteLayout.includes("IosAppChrome")) {
   ok("layout:IosAppChrome-mounted");
 } else {

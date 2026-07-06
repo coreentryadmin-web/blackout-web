@@ -24,6 +24,7 @@ The ~20 `railway.*.toml` files at the repo root are production cron *trigger* se
 - **Validate config:** `npm run validate:ios-config`
 - **Cloud build:** root `codemagic.yaml` → connect **`coreentryadmin-web/blackout-web`** in Codemagic, workflow **`ios-release`**.
 - **Setup:** `apps/blackout-ios/APP_STORE.md` (Apple ID `6787797476`, bundle `com.blackout-trades.app`).
+- **Mobile UI E2E (Playwright):** `npm run test:ios-ui-e2e` — iPhone viewport + `BlackOutiOSApp` UA, Clerk temp-user auth, clicks every bottom tab + primary segment/control, screenshots → `/opt/cursor/artifacts/ios-ui-e2e/`. Requires `CLERK_SECRET_KEY` + publishable key. Static guards: `npm run validate:ios-mobile-desk`. Full native chrome (`ios-native-shell`) is validated once PR #557 is deployed.
 
 ### Ops auto-fix (cron/errors → agent)
 - **`npm run ops:collect`** — scan prod Postgres + live watchdog; JSON action items (exit 1 if any).
