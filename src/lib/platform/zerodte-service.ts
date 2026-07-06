@@ -11,7 +11,13 @@ import { fetchBenzingaNews } from "@/lib/providers/polygon";
 import { readGridEarnings } from "@/lib/providers/grid";
 import { withServerCache, serverCache, TTL } from "@/lib/server-cache";
 import { roundFloats } from "@/lib/round-floats";
-import { matchEarnings, matchHotNews, sessionHeat, type EnrichedZeroDteSetup } from "@/lib/zerodte/board";
+import {
+  matchEarnings,
+  matchHotNews,
+  resolveFreshFindStatus,
+  sessionHeat,
+  type EnrichedZeroDteSetup,
+} from "@/lib/zerodte/board";
 import { buildIntelNote } from "@/lib/zerodte/intel";
 import { gradeZeroDteLedger, readZeroDteLedger, scanZeroDteBoard, syncLedgerLiveState } from "@/lib/zerodte/scan";
 
@@ -178,29 +184,43 @@ export async function zeroDtePlaysForLargo(): Promise<Record<string, unknown>> {
     };
   });
 
-  const fresh = board.setups
-    .filter((s) => !board.ledger.some((row) => row.ticker === s.ticker))
-    .slice(0, 5)
-    .map((s) => ({
-      ticker: s.ticker,
-      direction: s.direction,
-      strike: s.top_strike,
-      score: s.score,
-      gross_premium: s.gross_premium,
-      aggression: s.aggression,
-      plan: s.plan,
-      intel: buildIntelNote({
-        status: s.plan?.entry_status === "MOVED" ? "SKIP" : "OPEN",
-        setup: s,
-        plan: s.plan,
-        entryPremium: s.plan?.entry_max ?? s.top_strike_avg_fill,
-        livePnlPct: null,
-        planOutcome: null,
-        planPnlPct: null,
-        nowEtMinutes,
-        lastMark: s.plan?.mark ?? null,
-      }).reason,
-    }));
+  // Same time-of-day gate ZeroDteBoard.tsx's mergePlays() applies to fresh (not-
+  // yet-ledgered) finds — without it, a find surfacing during POWER_HOUR/LATE_SESSION
+  // (or after CLOSED, before the ledger sync catches up) got told to Largo as a plain
+  // "OPEN" → buildIntelNote returns action:"ADD", an active buy recommendation — even
+  // though the product rule (this function's own `rules` string below) is "no new
+  // plays after 15:00 ET" and the board itself would show it as SKIP/watch-only.
+  const heatState = board.session.heat.state;
+  const sessionClosed = heatState === "CLOSED";
+  const fresh = sessionClosed
+    ? []
+    : board.setups
+        .filter((s) => !board.ledger.some((row) => row.ticker === s.ticker))
+        .slice(0, 5)
+        .map((s) => {
+          const moved = s.plan?.entry_status === "MOVED";
+          const status = resolveFreshFindStatus(heatState, moved, Boolean(s.plan?.illiquid));
+          return {
+            ticker: s.ticker,
+            direction: s.direction,
+            strike: s.top_strike,
+            score: s.score,
+            gross_premium: s.gross_premium,
+            aggression: s.aggression,
+            plan: s.plan,
+            intel: buildIntelNote({
+              status,
+              setup: s,
+              plan: s.plan,
+              entryPremium: s.plan?.entry_max ?? s.top_strike_avg_fill,
+              livePnlPct: null,
+              planOutcome: null,
+              planPnlPct: null,
+              nowEtMinutes,
+              lastMark: s.plan?.mark ?? null,
+            }).reason,
+          };
+        });
 
   return {
     source: "0DTE Command (always-on scanner, /grid)",

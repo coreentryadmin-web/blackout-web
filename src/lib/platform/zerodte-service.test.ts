@@ -28,6 +28,21 @@ test("BIE composers read zeroDtePlaysForLargo from shared scan module", () => {
   assert.match(composers, /zeroDtePlaysForLargo/);
 });
 
+// P1 regression guard (FINDINGS.md): zeroDtePlaysForLargo()'s "fresh find" block
+// used to compute its own OPEN/SKIP status checking ONLY entry_status === "MOVED" —
+// missing the time-of-day cutoff (POWER_HOUR/LATE_SESSION/CLOSED) and illiquid gate
+// ZeroDteBoard.tsx's mergePlays() already applied, so Largo/BIE could tell a member
+// "ADD" (buy) for a fresh find the board itself showed as SKIP/watch-only. Fixed by
+// sharing resolveFreshFindStatus() (board.ts) between both consumers — this asserts
+// the shared call site, not just a string match, so a future edit that re-inlines
+// the old (wrong) check is caught immediately.
+test("zeroDtePlaysForLargo shares the fresh-find cutoff gate with ZeroDteBoard.tsx (resolveFreshFindStatus)", () => {
+  const service = readFileSync(join(ROOT, "lib/platform/zerodte-service.ts"), "utf8");
+  assert.match(service, /resolveFreshFindStatus/);
+  const boardComponent = readFileSync(join(ROOT, "components/zerodte/ZeroDteBoard.tsx"), "utf8");
+  assert.match(boardComponent, /resolveFreshFindStatus/);
+});
+
 test("livePnlPct: board ledger and Largo plays use identical rounding", async () => {
   mock.module("server-only", { namedExports: {} });
   mock.module("../bie/ecosystem-context", {
