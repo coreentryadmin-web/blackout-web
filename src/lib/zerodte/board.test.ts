@@ -4,6 +4,7 @@ import {
   buildZeroDteAuditRow,
   computeLedgerGrade,
   sessionHeat,
+  resolveFreshFindStatus,
   deriveZeroDteSetups,
   rankEngineCards,
   enrichSetup,
@@ -41,6 +42,30 @@ test("heat: pre-market meter warms toward the open", () => {
   const late = sessionHeat(9 * 60 + 15, true).heat_pct; // 9:15 ET — nearly open
   assert.equal(early, 0);
   assert.ok(late > 25 && late <= 40);
+});
+
+// resolveFreshFindStatus: the SAME "no new plays after 15:00 ET" cutoff every
+// consumer of a fresh (not-yet-ledgered) find must apply — shared by ZeroDteBoard.tsx's
+// mergePlays() (the UI) and zerodte-service.ts's zeroDtePlaysForLargo() (Largo/BIE),
+// which previously re-derived its own copy that skipped this cutoff entirely (FINDINGS.md).
+
+test("resolveFreshFindStatus: OPEN during RTH with no moved/illiquid flags", () => {
+  assert.equal(resolveFreshFindStatus("RTH", false, false), "OPEN");
+});
+
+test("resolveFreshFindStatus: SKIP once POWER_HOUR/LATE_SESSION/CLOSED starts — the entry cutoff", () => {
+  assert.equal(resolveFreshFindStatus("POWER_HOUR", false, false), "SKIP");
+  assert.equal(resolveFreshFindStatus("LATE_SESSION", false, false), "SKIP");
+  assert.equal(resolveFreshFindStatus("CLOSED", false, false), "SKIP");
+});
+
+test("resolveFreshFindStatus: undefined heat state is treated as closed, not open by default", () => {
+  assert.equal(resolveFreshFindStatus(undefined, false, false), "SKIP");
+});
+
+test("resolveFreshFindStatus: MOVED or illiquid always SKIP, even during RTH", () => {
+  assert.equal(resolveFreshFindStatus("RTH", true, false), "SKIP");
+  assert.equal(resolveFreshFindStatus("RTH", false, true), "SKIP");
 });
 
 // ── setup derivation ─────────────────────────────────────────────────────────────
@@ -392,7 +417,7 @@ test("ranking: ACTIVE play leads; power hour outranks lotto only inside its wind
 
 // ── contract plans ───────────────────────────────────────────────────────────────
 
-import { buildContractPlan, gradePlanFromBars } from "./plan";
+import { buildContractPlan, gradePlanFromBars, resolveLedgerEntryPremium } from "./plan";
 
 test("setups: top-strike avg fill is premium-weighted from real prints", () => {
   const rows = [
@@ -451,6 +476,29 @@ test("plan: no quote and no fill → NO plan is built by the scan (guard is upst
   });
   assert.equal(p.entry_status, "NO_QUOTE");
   assert.equal(p.entry_max, 2.0); // falls back to the flow's real fill
+});
+
+// resolveLedgerEntryPremium: the persisted entry_premium column MUST agree with
+// entry_max (the plan's own "enter at or below" instruction, which stop_premium/
+// target_premium are built from) — not the raw live mark. Otherwise the final
+// grade (gradePlanFromBars) and live TRIM/stop tracking (derivePlayStatus) score
+// a different trade than the one the member was actually told to make.
+
+test("resolveLedgerEntryPremium: prefers the plan's entry_max over the flow fill (entry_max already IS flowAvgFill-preferred-over-mark)", () => {
+  // A play flagged with a real flow fill of 2.00 but a live mark of 2.50 at flag
+  // time — entry_max is 2.00 (member's actual instruction). entry_premium must
+  // also be 2.00, not 2.50, or the persisted grade measures a trade nobody was
+  // told to make.
+  assert.equal(resolveLedgerEntryPremium(2.0, 2.0), 2.0);
+});
+
+test("resolveLedgerEntryPremium: falls back to the flow fill when there's no plan at all", () => {
+  assert.equal(resolveLedgerEntryPremium(undefined, 3.5), 3.5);
+  assert.equal(resolveLedgerEntryPremium(null, 3.5), 3.5);
+});
+
+test("resolveLedgerEntryPremium: null when neither a plan entry_max nor a flow fill exists — never fabricated", () => {
+  assert.equal(resolveLedgerEntryPremium(null, null), null);
 });
 
 // 14:30 UTC = 10:30 ET on 2026-07-06 (EDT) — helper for bar timestamps.
