@@ -1,5 +1,50 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 12:32 ET
+Last updated: 2026-07-06 14:08 ET
+
+## grid-rth-2026-07-06 — 0DTE Command + Market Grid verify pass (~14:00 ET)
+
+**Session:** Autonomous Grid RTH all-day agent, verify mode (Mon 2026-07-06, RTH). Agent read `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` and ran full probe suite after `npm install` (fresh checkout lacked `pg`/`playwright`).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ⚠️ **22 PASS / 2 FAIL** (verify) — see below |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 16/16 (gates, plans, lifecycle, mergePlays, ledger PnL, session heat) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 0 FAIL (API + Playwright) |
+| `npm run validate:zerodte-integration` | ⚠️ 11/12 — `integration:grid-gex-spot` parallel-fetch Δ |
+
+### Core 0DTE + Grid (all PASS)
+
+| Area | Evidence |
+|---|---|
+| All 9 `/api/grid/*` panels | ✅ bootstrap, analysts, catalysts, congress, dark-pool, earnings, economy, movers, sectors — finite numbers, `as_of` ≤ 213s |
+| `/api/market/zerodte/board` | ✅ `upstream_ok`, heat=RTH, 2 setups, 4 ledger rows |
+| Ledger PnL math | ✅ 4 rows checked, 0 issues (`live:ledger-consistency`) |
+| Gate funnel | ✅ 2 live setups, 0 gate violations (SETUP_MIN_GROSS, aggression, dominance, ITM) |
+| Plan exits | ✅ stop -50%, target +100%, time stop 15:30 ET |
+| Trade lifecycle | ✅ OPEN→TRIM→CLOSED, sticky trough stop, stop-first grading |
+| Session heat | ✅ RTH→POWER_HOUR at 15:00 ET cutoff |
+| mergePlays UI rules | ✅ past cutoff / MOVED → SKIP not OPEN |
+| `grid-warm` cron | ✅ ok — warms panels + `warmZeroDteBoard()` |
+| HELIX flows feed | ✅ 20–30 prints |
+| Night Hawk dedupe | ✅ 3 tickers in `covered_elsewhere` |
+| `ops:collect` | ✅ 0 action items |
+| `validate:rth-open` | ✅ GREEN (deploy, crons, sockets) |
+
+### Remaining FAILs (non-P0 — no live fix in verify mode)
+
+| Probe | Detail | Severity | Action |
+|---|---|---|---|
+| `integration:grid-gex-spot` | Grid bootstrap spot vs GEX positioning Δ=0.5–3.3 pts on parallel fetch (e.g. 7530.55 vs 7533.86) | **WATCH** | Same class as SPX `#584` desk-lanes fix — audit threshold 0.25 pt too tight for independent cache lanes; **post-close**: bump `grid-rth-all-day-audit.mjs` + `zerodte-integration-audit.mjs` to 1.0 pt |
+| `grid:data-correctness` | HTTP **524** @ ~125s on `/api/cron/data-correctness?force=1` | **WATCH** | Cloudflare origin timeout on heavy 6-layer cron (known; succeeded earlier today at 12:12 ET) |
+| `ui:tabs` / `ui:search-bar` | Playwright landed on sign-in page (title "Sign in · BlackOut") — Clerk ticket exchange incomplete in headless VM | **WATCH** | API paths all PASS; adopt cookie-injection pattern from `validate:spx-e2e` / `member-dashboard-live-check` for tab clicks |
+
+**P0 count: 0** — no user-visible 0DTE logic, ledger, or grid panel defects. Post-close fix pass (~1:05 PM PT) should address audit thresholds + E2E auth.
+
+Reports: `audit-output/grid-rth-2026-07-06-verify-*.json`, `zerodte-logic-*.json`, `grid-e2e-*.json`
+
+---
 
 ## Member live UI validation — 2026-07-06 ~10:40 ET (post #571 OFFLINE fix)
 
