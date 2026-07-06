@@ -1,6 +1,24 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveHeatmapPageGuard, computeGexEvents, type GexHistorySnapshot } from "./polygon-options-gex";
+import {
+  resolveHeatmapPageGuard,
+  computeGexEvents,
+  computeMaxPainFromChain,
+  type GexHistorySnapshot,
+  type ChainContract,
+} from "./polygon-options-gex";
+
+function contract(
+  strike: number,
+  type: "call" | "put",
+  openInterest: number,
+  expiration: string
+): ChainContract {
+  return {
+    details: { strike_price: strike, contract_type: type, expiration_date: expiration },
+    open_interest: openInterest,
+  };
+}
 
 test("defaults to 200 pages when OPTIONS_HEATMAP_PAGE_GUARD is unset", () => {
   assert.equal(resolveHeatmapPageGuard(undefined), 200);
@@ -137,4 +155,52 @@ test("computeGexEvents: net GEX flipping sign produces net_gex_sign_flipped with
   assert.equal(flipped.severity, "info");
   assert.equal(flipped.from_value, -50_000);
   assert.equal(flipped.to_value, 30_000);
+});
+
+// ── Max pain must be scoped to ONE expiry (docs/audit/FINDINGS.md) ──────────────────
+// Max pain answers "at what settlement price does THIS expiry's holders collectively
+// lose the most" — a question tied to one settlement date. Blending OI across two
+// unrelated expiries into one pain-minimization loop produces a number that looks
+// like max pain but isn't scoped to any real event. These tests prove the function is
+// scope-sensitive (blending genuinely changes the answer), which is exactly why the
+// buildGexHeatmapUncached call site must filter to one expiry before calling it.
+
+test("computeMaxPainFromChain: single-expiry OI pain-minimizes to the expected strike", () => {
+  // Heavy call OI at 100 (holders lose most if settlement lands above their strike as
+  // it moves further ITM/away from worthless) and heavy put OI at 100 too — 100 is the
+  // dominant strike, so max pain should land there.
+  const contracts = [
+    contract(90, "call", 500, "2026-07-10"),
+    contract(100, "call", 5000, "2026-07-10"),
+    contract(100, "put", 5000, "2026-07-10"),
+    contract(110, "put", 500, "2026-07-10"),
+  ];
+  assert.equal(computeMaxPainFromChain(contracts), 100);
+});
+
+test("computeMaxPainFromChain: blending two DIFFERENT expiries' OI changes the answer — the exact bug this fix targets", () => {
+  // Expiry A alone: dominant OI at 100 (unambiguous max pain = 100).
+  const expiryA = [
+    contract(100, "call", 5000, "2026-07-10"),
+    contract(100, "put", 5000, "2026-07-10"),
+  ];
+  // Expiry B: a completely different, unrelated settlement date with heavy OI at 200 —
+  // e.g. a monthly/quarterly expiry that happens to fall inside the same strike band
+  // fetchHeatmapBand pulls (no expiration_date filter on that fetch).
+  const expiryB = [
+    contract(200, "call", 50_000, "2026-08-21"),
+    contract(200, "put", 50_000, "2026-08-21"),
+  ];
+  const scopedToA = computeMaxPainFromChain(expiryA);
+  const blended = computeMaxPainFromChain([...expiryA, ...expiryB]);
+  assert.equal(scopedToA, 100, "scoped to its own expiry, A's max pain is unambiguous");
+  assert.notEqual(
+    blended,
+    scopedToA,
+    "blending in expiry B's much larger, unrelated OI drags the answer toward B's strike — proving the call site MUST filter by expiry before computing max pain"
+  );
+});
+
+test("computeMaxPainFromChain: empty input returns null, never a fabricated strike", () => {
+  assert.equal(computeMaxPainFromChain([]), null);
 });
