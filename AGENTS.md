@@ -2,7 +2,8 @@
 
 ## Cursor Cloud specific instructions
 
-BLACKOUT (`blackout-web`) is a single **Next.js 15 (App Router) / TypeScript** app — not a monorepo.
+BLACKOUT (`blackout-web`) is a single **Next.js 15 (App Router) / TypeScript** app with an iOS
+Capacitor shell at **`apps/blackout-ios/`** (one repo — no separate `blackout-ios` GitHub repo).
 The ~20 `railway.*.toml` files at the repo root are production cron *trigger* services that just call
 `/api/cron/*`; they are not separate apps and are not needed locally. Commands live in `package.json`
 (`dev`, `build`, `start`, `test`, `lint`, `lint:brand`, `lint:css`) and CI is `.github/workflows/ci.yml`.
@@ -16,6 +17,13 @@ The ~20 `railway.*.toml` files at the repo root are production cron *trigger* se
 - Blocking CI checks are `npx tsc --noEmit` and `npm run lint:brand`. `npm run lint` (ESLint/jsx-a11y)
   and `npm run lint:css` (stylelint) are **non-blocking** in CI (they emit warnings, `continue-on-error`).
 - Tests: `npm test` (`node --test` via `tsx`, files `src/**/*.test.ts`). No DB/env needed for tests.
+
+### iOS app (Capacitor shell)
+- **Location:** `apps/blackout-ios/` — loads `https://blackouttrades.com` in WKWebView; `appendUserAgent: BlackOutiOSApp`.
+- **Web detection:** `src/app/layout.tsx` adds `html.ios-app`; CSS hides in-app pricing (App Store 3.1.1).
+- **Validate config:** `npm run validate:ios-config`
+- **Cloud build:** root `codemagic.yaml` → connect **`coreentryadmin-web/blackout-web`** in Codemagic, workflow **`ios-release`**.
+- **Setup:** `apps/blackout-ios/APP_STORE.md` (Apple ID `6787797476`, bundle `com.blackout-trades.app`).
 
 ### Ops auto-fix (cron/errors → agent)
 - **`npm run ops:collect`** — scan prod Postgres + live watchdog; JSON action items (exit 1 if any).
