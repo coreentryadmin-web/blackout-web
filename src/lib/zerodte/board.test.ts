@@ -555,6 +555,34 @@ test("lifecycle: OPEN while enterable, HOLD past cutoff or above the band", () =
   assert.equal(ran.live_pnl_pct, 30.95);
 });
 
+// P0 regression guard: the "within 10% of entry" band this function's own doc comment
+// promises is symmetric, but the code only ever checked the UPPER bound (mark <= entry
+// * 1.1) — there was no lower bound at all. A play sliding toward the stop but not
+// there yet stayed labeled OPEN ("still enterable") the whole way down, and
+// buildIntelNote's OPEN branch unconditionally returns action: "ADD" — telling a
+// member to add to a losing position. Live-caught: a META play at entry=2.08,
+// mark=1.38 (-33.65%, well above the -50% stop) was served status "OPEN" in
+// production. This must be HOLD (manage, don't add).
+test("lifecycle: a mark BELOW the entry band (but above the stop) is HOLD, not OPEN — the ADD-to-a-loser bug", () => {
+  const base = { entryPremium: 4.2, peak: 4.2, trough: 4.2, nowEtMinutes: 11 * 60 };
+  // Just inside -10% → still OPEN.
+  const insideBand = derivePlayStatus({ ...base, mark: 3.8 });
+  assert.equal(insideBand.status, "OPEN");
+  // Past -10% → HOLD, not OPEN, even though it's nowhere near the -50% stop.
+  const belowBand = derivePlayStatus({ ...base, mark: 3.7, trough: 3.7 });
+  assert.equal(belowBand.status, "HOLD");
+  // The exact live production case: entry 2.08, mark 1.38 (-33.65%).
+  const liveCase = derivePlayStatus({
+    entryPremium: 2.08,
+    mark: 1.38,
+    peak: 2.08,
+    trough: 1.38,
+    nowEtMinutes: 11 * 60,
+  });
+  assert.equal(liveCase.status, "HOLD");
+  assert.equal(liveCase.live_pnl_pct, -33.65);
+});
+
 test("lifecycle: TRIM latches once the premium has doubled", () => {
   const s = derivePlayStatus({ entryPremium: 4.2, mark: 6.0, peak: 8.5, trough: 4.0, nowEtMinutes: 13 * 60 });
   assert.equal(s.status, "TRIM"); // peak tagged 2x even though mark pulled back

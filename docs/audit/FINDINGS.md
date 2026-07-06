@@ -8,6 +8,31 @@ and required CI (`verify`) are green — no per-PR approval, no end-of-day hold.
 here and merge the PR in the same session. Supersedes all earlier "leave OPEN for review" notes
 in this file.
 
+## 🔴 P0 FOUND+FIXED 2026-07-06 — 0DTE Command's live status check was a one-sided band where the function's own doc comment specifies a two-sided one — a play down 33.65% was badged OPEN with an active "ADD" recommendation (branch `fix/zerodte-open-status-lower-bound`)
+
+**Surface:** `derivePlayStatus()` in `src/lib/zerodte/plan.ts` — the single source of a 0DTE play's live lifecycle status (OPEN/HOLD/TRIM/CLOSED), consumed by `syncLedgerLiveState()` (`scan.ts`), which feeds `buildZeroDteBoardPayload()` (member route `/api/market/zerodte/board`, i.e. `/grid`'s live plays table), `zeroDtePlaysForLargo()` (Largo's `get_zerodte_plays` tool), `zeroDtePlaysFeed()` (Largo's ambient every-turn feed), and `warmZeroDteBoard()` (the ~2-min cron that persists `status` to Postgres). Found by a background deep-audit agent continuing the standing "check the Grid, really deep" audit, specifically hunting for the asymmetric/one-sided-condition bug class that had already turned up twice in Thermal's GEX math this same session.
+
+**Root cause:** the function's own doc comment states *"OPEN means 'still enterable': mark within 10% of entry and before the cutoff"* — a symmetric ±10% proximity band. The code only implemented the upper half: `mark <= entryPremium * 1.1`, with no lower bound at all. So any mark from 0% down to just shy of the −50% stop — as long as it hadn't literally touched the stop/target latches yet and it was before the 15:00 ET cutoff — was labeled `OPEN`.
+
+**Live evidence (production, 2026-07-06 ~15:00 ET, confirmed via the live board endpoint):**
+```json
+{"ticker":"META","direction":"long","entry_premium":2.08,"last_mark":1.38,
+ "live_pnl_pct":-33.65,"status":"OPEN"}
+```
+A META 0DTE play already down **−33.65%** on premium was live, badged `OPEN` (sorted ahead of `TRIM`/`HOLD` rows by the board's own sort order), and feeding `buildIntelNote()`'s `status === "OPEN"` branch (`intel.ts`), which unconditionally returns `action: "ADD"` with text like *"Enter ≤ $2.08, stop $1.04, out by 3:30 ET"* — an active buy recommendation for a contract that had already lost a third of its value. Direct function-level reproduction (same inputs, no network) confirmed the mislabeling holds all the way down to the stop (`pnl=-25%` → OPEN, `-33.65%` → OPEN, `-45%` → OPEN, `-49%` → OPEN; only `-49.9%`, once it actually crosses the stop, correctly flips to CLOSED) — proving this is the code, not a data artifact, and that the doc's own symmetric-band standard (`entryPremium * 0.9`) would have excluded every one of these except the smallest.
+
+**Why untested:** `board.test.ts`'s only pre-existing OPEN-lifecycle test used a mark 2.4% below entry (comfortably inside any reasonable band) and a mark 30.95% ABOVE entry (correctly asserting HOLD for the upper-bound case) — no test exercised a mark meaningfully below entry but above the stop, the exact gap the bug lived in.
+
+**Blast radius:** every consumer of `derivePlayStatus` listed above — the member-facing live plays table, Largo's `get_zerodte_plays` tool, Largo's ambient per-turn feed, and the cron-persisted `status` column all inherited the mislabeling identically, since they all read the same derived value.
+
+**Fix:** added the missing lower bound (`mark >= entryPremium * 0.9`) to the OPEN check, making the band symmetric as the doc comment already specified. A mark that falls outside the band but hasn't hit the stop/target latches now correctly falls through to the existing `HOLD` fallback ("position working," managed but not a fresh entry) — no new status or branch was needed since `HOLD` already exists precisely for this case.
+
+**Evidence:** 1 new regression test (`board.test.ts`) covering: just-inside-the-band (-9.5%) → still OPEN; just-past-the-band (-11.9%) → HOLD; and the exact live production case (entry 2.08, mark 1.38, −33.65%) → HOLD. Full suite: 1776/1776 passing. `npx tsc --noEmit` clean. `npx eslint` clean. `npm run build` clean. `git diff main -- src/lib/spx-signals.ts` empty.
+
+**Status:** FIXED.
+
+---
+
 ## 🔴 P0 FOUND+FIXED 2026-07-06 — Cron staleness watchdog HTTP 524 (ops-collect false P0) when self-heal blocked the response past Cloudflare's origin timeout (branch `cursor/cron-watchdog-http-error-d47f`)
 
 **Surface:** `GET /api/cron/cron-staleness-watchdog`, `scripts/ops-collect-action-items.mjs` (`watchdog:http`), GitHub issue #601.
