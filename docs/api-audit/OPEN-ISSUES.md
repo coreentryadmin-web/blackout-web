@@ -1,5 +1,36 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 13:50 ET
+Last updated: 2026-07-06 14:00 ET
+
+## spx-rth-2026-07-06 — SPX Slayer all-day verify pass (~1:45 PM ET)
+
+**Session:** SPX RTH all-day agent verify mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md`. Commands: `validate:spx-rth`, `validate:spx-e2e`, `validate:member-dashboard`, 60s live auto-update, sequential cross-tool probes.
+
+### Summary
+
+| Layer | Result |
+|---|---|
+| Matrix deep audit (every GEX/VEX/DEX/CHARM cell) | ✅ PASS — 153–174 strikes, finite, INV-2 resum |
+| Trade alerts vs `/api/market/spx/play` | ✅ SCANNING, 0 confirmations (no stale ✓) |
+| Member dashboard (matrix wait) | ✅ LIVE badge, 174 rows, spot ~7527 |
+| Cross-tool sequential (auth) | ✅ heatmap ↔ positioning spot+flip; HELIX, Grid, 0DTE, Night Hawk, BIE, Largo |
+| 60s live auto-update | ✅ hero price ticked without refresh |
+| UI (GEX/VEX tabs, lotto dock, matrix sanity) | ✅ PASS |
+
+### Findings (`spx-rth-2026-07-06`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P1 | `spx-rth-gex-stale-false-alarm` | Desk `gex_stale=true` while client heatmap SWR fresh — **GEX STALE** shown during RTH | `desk.gex_stale` vs `gex-heatmap?ticker=SPX` | **FIXED** `fix/spx-rth-gex-stale-e2e-wait` |
+| P2 | `spx-rth-header-flip-scope` | Header γ-flip (8-expiry ~7479) vs matrix 0DTE column (~7485) — by design; matrix shows disclaimer | `desk.gamma_flip` vs scoped 0DTE | post-close (docs) |
+| P2 | `spx-rth-e2e-offline-race` | E2E OFFLINE before bootstrap hydrated | Playwright timing | **FIXED** same PR |
+| P2 | `spx-rth-cross-tool-parallel` | Parallel E2E flip Δ~6 when positioning 524 | `gex-positioning` timeout | WATCH — sequential GREEN |
+| P2 | `spx-rth-desk-lanes-timing` | merged vs pulse spot Δ=1.33 (threshold 1.0) | lane timing | WATCH |
+| P2 | `spx-rth-data-correctness-524` | `data-correctness?force=1` HTTP 524 | cron | WATCH — infra |
+| P2 | `spx-rth-commentary-expand` | No expand control in DOM | UI | SKIP — rail expanded |
+
+**P0:** none.
+
+---
 
 ## grid-rth-2026-07-06 — 0DTE Command + Market Grid all-day verify pass (~13:32 ET)
 
