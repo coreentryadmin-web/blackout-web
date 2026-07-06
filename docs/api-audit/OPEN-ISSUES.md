@@ -1,5 +1,52 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 17:02 ET
+Last updated: 2026-07-06 17:20 ET
+
+## spx-rth-2026-07-06 — SPX Slayer all-day verify pass (~17:16–17:20 ET, post-close pass #6)
+
+**Session:** Verify mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md`. Commands: `npm install` + `npx playwright install chromium` (sandbox deps) → `validate:spx-rth --force` → `validate:spx-e2e` → 60s live auto-update probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --force` | ✅ **GREEN** — 8 PASS / 0 FAIL / 1 SKIP |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 16 PASS / 0 FAIL / 2 SKIP |
+| `heatmap-matrix-audit --tickers=SPX` (nested) | ✅ **152 strikes · 0 flags** |
+| `spx:bie-consistency` (nested) | ✅ PASS |
+| `spx:data-correctness` | ✅ flags=0 mode=full |
+| `ops:collect` | ✅ 0 action items |
+| 60s live auto-update | ⚠️ play `as_of` ticked (21:17→21:19 UTC); desk/hm spot static 7537.43 — **expected post-16:00 ET close** |
+
+### UI E2E — every control + cross-tool GREEN
+
+| Probe | Result |
+|---|---|
+| `matrix:every-cell-api` | ✅ GEX+VEX+DEX+CHARM · 152 strikes · spot 7537.43 · finite |
+| `ui:click-gex-tab` / `ui:click-vex-tab` | ✅ clicked · 173 strike rows |
+| `ui:matrix-text-sanity` | ✅ zero NaN/undefined/`$—` |
+| `integration:thermal-cross-validation` | ✅ same `/api/market/gex-heatmap?ticker=SPX` route |
+| `integration:helix-flows` | ✅ 20 prints |
+| `integration:grid-bootstrap` | ✅ |
+| `integration:zerodte-board` | ✅ 3 setups |
+| `integration:nighthawk-edition` | ✅ |
+| `integration:largo-spx-query` | ✅ `blackout_intelligence` |
+| `integration:bie-play-route` | ✅ action=SCANNING, no stale confirmations |
+| `spx:cross-endpoint` | ✅ merged=7537.43 hm=7537.43 play=SCANNING/SCANNING |
+| `ui:click-commentary-expand` | ⚠️ SKIP — no expand control on dashboard |
+| `ui:live-badge-rth` | ⚠️ SKIP — post-close OFFLINE/EXTENDED expected |
+
+### Findings
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P2** | `spx-commentary-expand-missing` | No commentary expand/collapse control on `/dashboard` | `validate:spx-e2e` SKIP | post-close UX |
+| **P2** | `spx-desk-lanes-off-hours` | `spx:desk-lanes` SKIP — pulse/flow unavailable post-close | `validate:spx-rth` | expected off-hours |
+
+**No P0/P1 defects — no GitHub issue opened.**
+
+**Reports:** `audit-output/spx-rth-2026-07-06-verify-1783372680535.json`, `audit-output/spx-dashboard-e2e-1783372697752.json`, `audit-output/spx-dashboard-e2e-1783372696535.png`, `audit-output/spx-bie-consistency-2026-07-06T21-17-28-296Z.json`
+
+---
 
 ## RTH comprehensive sweep — 2026-07-06 ~16:56–17:02 ET (post-close pass #5)
 
