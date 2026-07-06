@@ -11,9 +11,9 @@ import { isIosAppShell } from "@/lib/ios-app-shell";
 import { IOS_TOOLS, isIosToolRoute } from "@/lib/ios-tool-routes";
 import { toolKeyForHref, type ToolKey } from "@/lib/tool-access";
 
-const TAB_SPRING = { type: "spring" as const, stiffness: 480, damping: 34 };
+const TAB_SPRING = { type: "spring" as const, stiffness: 520, damping: 42 };
 
-/** Native-style bottom tool switcher — iOS app shell only, signed-in tool routes. */
+/** Instrument rail — terminal-style bottom switcher (not a floating pill tab bar). */
 export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
   const path = usePathname();
   const { isSignedIn, isLoaded } = useAuth();
@@ -32,7 +32,7 @@ export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
   if (!visible) return null;
 
   return (
-    <nav className="ios-app-tab-bar" aria-label="Tools">
+    <nav className="ios-app-tab-bar" aria-label="Instrument rail">
       <ul className="ios-app-tab-list">
         {IOS_TOOLS.map((tab) => {
           const active = path === tab.href || path.startsWith(`${tab.href}/`);
@@ -60,9 +60,10 @@ export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
                 )}
                 style={{ "--tab-accent": tab.accent } as React.CSSProperties}
                 aria-current={active ? "page" : undefined}
+                aria-label={tab.label}
               >
-                <ProductMark product={tab.mark} size={22} title={tab.label} className="ios-app-tab-icon" />
-                <span className="ios-app-tab-label font-mono">{tab.short}</span>
+                <ProductMark product={tab.mark} size={20} title={tab.label} className="ios-app-tab-icon" />
+                <span className="ios-app-tab-code">{tab.code}</span>
               </Link>
             </li>
           );

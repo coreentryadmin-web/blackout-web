@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { isIosAppShell } from "@/lib/ios-app-shell";
-import { isIosNativeShellRoute } from "@/lib/ios-tool-routes";
+import { getIosRouteKey, isIosNativeShellRoute } from "@/lib/ios-tool-routes";
 import type { ToolKey } from "@/lib/tool-access";
 import { IosNativeHeader } from "./IosNativeHeader";
 import { IosNativeMenu } from "./IosNativeMenu";
@@ -64,6 +64,17 @@ export function IosAppChrome({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
   const nativeActive =
     iosApp && isLoaded && isSignedIn && isIosNativeShellRoute(path);
 
+  /* Drop head-script pending flag once we know shell state (avoids Nav flash). */
+  useEffect(() => {
+    if (!iosApp) return;
+    if (isLoaded && !isSignedIn) {
+      document.documentElement.classList.remove("ios-app-pending-shell");
+    }
+    if (nativeActive) {
+      document.documentElement.classList.remove("ios-app-pending-shell");
+    }
+  }, [iosApp, isLoaded, isSignedIn, nativeActive]);
+
   useEffect(() => {
     document.documentElement.classList.toggle("ios-native-shell", nativeActive);
     return () => document.documentElement.classList.remove("ios-native-shell");
@@ -74,27 +85,7 @@ export function IosAppChrome({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
       document.documentElement.removeAttribute("data-ios-route");
       return;
     }
-    const route =
-      path === "/dashboard"
-        ? "dashboard"
-        : path.startsWith("/flows")
-          ? "flows"
-          : path.startsWith("/heatmap")
-            ? "heatmap"
-            : path.startsWith("/terminal")
-              ? "largo"
-              : path.startsWith("/nighthawk")
-                ? "nighthawk"
-                : path.startsWith("/grid")
-                  ? "grid"
-                  : path.startsWith("/account")
-                    ? "account"
-                    : path.startsWith("/upgrade")
-                      ? "upgrade"
-                      : path.startsWith("/admin")
-                        ? "admin"
-                        : "other";
-    document.documentElement.setAttribute("data-ios-route", route);
+    document.documentElement.setAttribute("data-ios-route", getIosRouteKey(path));
     return () => document.documentElement.removeAttribute("data-ios-route");
   }, [nativeActive, path]);
 

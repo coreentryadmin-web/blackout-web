@@ -582,13 +582,41 @@ export function FlowFeed() {
           value={iosView}
           onChange={setIosView}
           accent="#bf5fff"
-          aria-label="HELIX view"
+          aria-label="HELIX lens"
           className="ios-native-desk-segment"
           segments={[
-            { id: "tape", label: "Live tape" },
-            { id: "analytics", label: "Analytics" },
+            { id: "tape", label: "TAPE" },
+            { id: "analytics", label: "ANLY" },
           ]}
         />
+      )}
+
+      {nativeShell && watchlist.watchlist.length > 0 && (
+        <div className="helix-native-watchlist" role="list" aria-label="Watchlist">
+          <button
+            type="button"
+            className={clsx(
+              "helix-native-watch-chip",
+              !tickerFilter && "helix-native-watch-chip-active"
+            )}
+            onClick={() => setTickerFilter("")}
+          >
+            ALL
+          </button>
+          {watchlist.watchlist.map((t) => (
+            <button
+              key={t}
+              type="button"
+              className={clsx(
+                "helix-native-watch-chip",
+                tickerFilter === t && "helix-native-watch-chip-active"
+              )}
+              onClick={() => setTickerFilter(t)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
       )}
 
       {/* ── Filter bar ──────────────────────────────────────────────────── */}

@@ -16,6 +16,7 @@ import "./ios-native-pages.css";
 import "./ios-native-nav.css";
 import "./ios-native-skin.css";
 import "./ios-native-motion.css";
+import "./ios-native-command.css";
 
 // Self-hosted via next/font (no render-blocking @import, no FOUT/CLS). Variable
 // names MUST match tailwind.config fontFamily tokens (--font-anton/-syne/
@@ -106,7 +107,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{if(/BlackOutiOSApp/.test(navigator.userAgent)){document.documentElement.classList.add('ios-app')}}catch(e){}",
+              "try{if(/BlackOutiOSApp/.test(navigator.userAgent)){document.documentElement.classList.add('ios-app');var p=location.pathname;if(/^\\/(dashboard|flows|heatmap|terminal|nighthawk|grid|account|faq|learn|upgrade|admin)(\\/|$)/.test(p)){document.documentElement.classList.add('ios-app-pending-shell')}}}catch(e){}",
           }}
         />
       </head>

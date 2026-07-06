@@ -112,14 +112,33 @@ for (const [needle, label] of navNeedles) {
 
 const motionNeedles = [
   ["ios-content-rise", "content enter animation"],
-  ["ios-card-rise", "card stagger animation"],
-  ["ios-ambient-breathe", "ambient pulse"],
-  ["ios-hero-pulse", "SPX hero glow"],
+  ["ios-module-enter", "module enter animation"],
+  ["ios-scan-pulse", "ambient scan pulse"],
+  ["ios-hero-tick", "SPX hero tick glow"],
 ];
 for (const [needle, label] of motionNeedles) {
   if (motionCss.includes(needle)) ok(`motion-css:${label}`, needle);
   else fail(`motion-css:${label}`, `missing ${needle}`);
 }
+
+const commandCss = readFileSync(join(root, "src/app/ios-native-command.css"), "utf8");
+const commandNeedles = [
+  ["--cmd-panel", "command panel token"],
+  ["--cmd-radius-panel", "sharp panel radius"],
+  [".ios-app-tab-code", "instrument rail codes"],
+  [".ios-native-header-kicker", "command bar kicker"],
+  [".helix-native-watchlist", "HELIX watchlist strip"],
+  ["ios-app-pending-shell", "anti-flash pending shell"],
+  ["border-left: 2px solid var(--ios-accent)", "accent rail on data modules"],
+];
+for (const [needle, label] of commandNeedles) {
+  if (commandCss.includes(needle)) ok(`command-css:${label}`, needle);
+  else fail(`command-css:${label}`, `missing ${needle}`);
+}
+
+const menu = readFileSync(join(root, "src/components/ios/IosNativeMenu.tsx"), "utf8");
+if (menu.includes("CMD · INSTRUMENT SELECT")) ok("command:deck-menu-label");
+else fail("command:deck-menu-label", "expected command deck kicker in IosNativeMenu");
 
 const skinNeedles = [
   [".ios-native-ambient", "route ambient glow"],
@@ -146,10 +165,10 @@ if (chrome.includes("ios-native-ambient")) {
 }
 
 const tabBar = readFileSync(join(root, "src/components/IosAppTabBar.tsx"), "utf8");
-if (tabBar.includes("layoutId") && tabBar.includes("scroll={false}")) {
-  ok("nav:tab-bar-spring-indicator");
+if (tabBar.includes("ios-app-tab-code") && tabBar.includes("scroll={false}")) {
+  ok("nav:instrument-rail-codes");
 } else {
-  fail("nav:tab-bar-spring-indicator", "expected layoutId + scroll={false}");
+  fail("nav:instrument-rail-codes", "expected instrument codes + scroll={false}");
 }
 
 const pageTransition = readFileSync(join(root, "src/components/ios/IosNativePageTransition.tsx"), "utf8");
@@ -248,6 +267,8 @@ else fail("nighthawk:uses-nighthawk-page-shell", "expected NighthawkPageShell");
 const rootLayout = readFileSync(join(root, "src/app/layout.tsx"), "utf8");
 if (rootLayout.includes("ios-native-motion.css")) ok("layout:ios-native-motion-imported");
 else fail("layout:ios-native-motion-imported", "expected ios-native-motion.css import");
+if (rootLayout.includes("ios-native-command.css")) ok("layout:ios-native-command-imported");
+else fail("layout:ios-native-command-imported", "expected ios-native-command.css import");
 
 const spxHeader = readFileSync(join(root, "src/components/desk/SpxSniperHeader.tsx"), "utf8");
 if (spxHeader.includes("nativeShell") && spxHeader.includes("spx-sniper-command-native")) {
@@ -270,10 +291,15 @@ if (siteLayout.includes("IosAppChrome")) {
 }
 
 const toolRoutes = readFileSync(join(root, "src/lib/ios-tool-routes.ts"), "utf8");
-if (toolRoutes.includes("isIosNativeShellRoute") && toolRoutes.includes("IOS_TOOLS")) {
+if (
+  toolRoutes.includes("isIosNativeShellRoute") &&
+  toolRoutes.includes("IOS_TOOLS") &&
+  toolRoutes.includes("getIosRouteKey") &&
+  toolRoutes.includes("getIosHeaderMeta")
+) {
   ok("routes:native-shell-metadata");
 } else {
-  fail("routes:native-shell-metadata", "expected IOS_TOOLS + isIosNativeShellRoute");
+  fail("routes:native-shell-metadata", "expected IOS_TOOLS + route helpers");
 }
 
 if (!header.includes('"— — —"')) {

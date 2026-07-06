@@ -17,16 +17,16 @@ type Props<T extends string> = {
   "aria-label"?: string;
 };
 
-const SEGMENT_SPRING = { type: "spring" as const, stiffness: 500, damping: 36 };
+const SEGMENT_SPRING = { type: "spring" as const, stiffness: 520, damping: 42 };
 
-/** Native-style pill segment control — sliding indicator + spring press. */
+/** Lens rail — sharp institutional view switcher (not pill tabs). */
 export function IosNativeSegment<T extends string>({
   value,
   onChange,
   segments,
   accent = "#00e676",
   className,
-  "aria-label": ariaLabel = "View",
+  "aria-label": ariaLabel = "View lens",
 }: Props<T>) {
   return (
     <div
@@ -43,7 +43,7 @@ export function IosNativeSegment<T extends string>({
             type="button"
             role="tab"
             aria-selected={active}
-            className={clsx("ios-native-segment-btn font-syne", active && "ios-native-segment-btn-active")}
+            className={clsx("ios-native-segment-btn", active && "ios-native-segment-btn-active")}
             onClick={() => onChange(seg.id)}
           >
             {active && (

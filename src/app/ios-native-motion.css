@@ -1,25 +1,23 @@
 /**
- * Native iOS — premium motion layer (GPU-friendly, reduced-motion safe).
+ * Native iOS — command-center motion (fast, sharp, GPU-friendly).
  * Scoped to html.ios-app.ios-native-shell.
  */
 
 html.ios-app.ios-native-shell {
-  --ios-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
-  --ios-motion-duration: 0.34s;
+  --ios-motion-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ios-motion-duration: 0.22s;
 }
 
-/* Page stage — buttery tool switches */
 html.ios-app.ios-native-shell .ios-native-page-stage {
   transform: translateZ(0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
 
-/* Content rails fade up on enter */
 @keyframes ios-content-rise {
   from {
     opacity: 0;
-    transform: translate3d(0, 12px, 0);
+    transform: translate3d(0, 6px, 0);
   }
   to {
     opacity: 1;
@@ -37,15 +35,14 @@ html.ios-app.ios-native-shell .largo-page-main-native {
   animation: ios-content-rise var(--ios-motion-duration) var(--ios-motion-spring) both;
 }
 
-/* Staggered panel cards */
-@keyframes ios-card-rise {
+@keyframes ios-module-enter {
   from {
     opacity: 0;
-    transform: translate3d(0, 16px, 0) scale(0.985);
+    transform: translate3d(0, 8px, 0);
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: translate3d(0, 0, 0);
   }
 }
 
@@ -56,36 +53,34 @@ html.ios-app.ios-native-shell .nighthawk-playbook,
 html.ios-app.ios-native-shell .nighthawk-watch,
 html.ios-app.ios-native-shell .grid-card,
 html.ios-app.ios-native-shell .gex-heatmap-panel-native {
-  animation: ios-card-rise 0.42s var(--ios-motion-spring) both;
+  animation: ios-module-enter 0.26s var(--ios-motion-spring) both;
 }
 
 html.ios-app.ios-native-shell .spx-sniper-triple > *:nth-child(1) {
-  animation-delay: 0.04s;
+  animation-delay: 0.02s;
 }
 html.ios-app.ios-native-shell .spx-sniper-triple > *:nth-child(2) {
-  animation-delay: 0.08s;
+  animation-delay: 0.04s;
 }
 html.ios-app.ios-native-shell .spx-sniper-triple > *:nth-child(3) {
-  animation-delay: 0.12s;
+  animation-delay: 0.06s;
 }
 
-/* Segment + tab press feedback */
 html.ios-app.ios-native-shell .ios-native-segment-btn,
 html.ios-app.ios-native-shell .ios-app-tab-link,
 html.ios-app.ios-native-shell .ios-native-menu-tool {
-  will-change: transform;
+  will-change: transform, opacity;
 }
 
 html.ios-app.ios-native-shell .ios-app-tab-link:active {
-  transform: scale(0.92);
-  transition: transform 0.18s var(--ios-motion-spring);
+  transform: scale(0.97);
+  transition: transform 0.12s var(--ios-motion-spring);
 }
 
-/* Ambient pulse — subtle living desk */
-@keyframes ios-ambient-breathe {
+@keyframes ios-scan-pulse {
   0%,
   100% {
-    opacity: 0.85;
+    opacity: 0.6;
   }
   50% {
     opacity: 1;
@@ -93,28 +88,26 @@ html.ios-app.ios-native-shell .ios-app-tab-link:active {
 }
 
 html.ios-app.ios-native-shell .ios-native-ambient {
-  animation: ios-ambient-breathe 8s ease-in-out infinite;
+  animation: ios-scan-pulse 12s ease-in-out infinite;
 }
 
-/* Hero price — live tick glow */
-@keyframes ios-hero-pulse {
+@keyframes ios-hero-tick {
   0%,
   100% {
-    filter: drop-shadow(0 0 12px currentColor);
+    text-shadow: 0 0 8px color-mix(in srgb, var(--ios-accent) 40%, transparent);
   }
   50% {
-    filter: drop-shadow(0 0 22px currentColor);
+    text-shadow: 0 0 16px color-mix(in srgb, var(--ios-accent) 65%, transparent);
   }
 }
 
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-hero-price {
-  animation: ios-hero-pulse 3.5s ease-in-out infinite;
+  animation: ios-hero-tick 2.8s ease-in-out infinite;
 }
 
-/* Trade alert hero — full-bleed cinematic */
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-trade-alert-hero,
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-chart-col {
-  border-radius: var(--ios-card-radius);
+  border-radius: 6px;
   overflow: hidden;
 }
 
@@ -122,18 +115,15 @@ html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-chart-col 
   min-height: min(58dvh, 480px);
 }
 
-/* Flow tape rows — slide in */
 html.ios-app.ios-native-shell .flow-scroll > div {
-  animation: ios-content-rise 0.28s var(--ios-motion-spring) both;
+  animation: ios-content-rise 0.18s var(--ios-motion-spring) both;
 }
 
-/* Menu sheet tools — stagger handled by framer; reinforce tap */
 html.ios-app.ios-native-shell .ios-native-menu-tool {
   transition:
-    transform 0.22s var(--ios-motion-spring),
-    border-color 0.2s ease,
-    box-shadow 0.25s ease,
-    background 0.2s ease;
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {

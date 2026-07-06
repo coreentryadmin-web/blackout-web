@@ -16,19 +16,17 @@ type Props = {
   showAdmin?: boolean;
 };
 
-const SHEET_SPRING = { type: "spring" as const, stiffness: 440, damping: 38 };
-const GRID_STAGGER = {
+const SHEET_SPRING = { type: "spring" as const, stiffness: 480, damping: 42 };
+const LIST_STAGGER = {
   hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.04, delayChildren: 0.06 },
-  },
+  show: { opacity: 1, transition: { staggerChildren: 0.03, delayChildren: 0.04 } },
 };
-const GRID_ITEM = {
-  hidden: { opacity: 0, y: 14, scale: 0.96 },
-  show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring" as const, stiffness: 480, damping: 32 } },
+const LIST_ITEM = {
+  hidden: { opacity: 0, x: -8 },
+  show: { opacity: 1, x: 0, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } },
 };
 
+/** Command deck — vertical instrument list (not a 2×2 card grid). */
 export function IosNativeMenu({ open, onClose, lockedTools = [], showAdmin }: Props) {
   const path = usePathname();
 
@@ -39,17 +37,17 @@ export function IosNativeMenu({ open, onClose, lockedTools = [], showAdmin }: Pr
           <motion.button
             type="button"
             className="ios-native-menu-scrim"
-            aria-label="Close menu"
+            aria-label="Close command deck"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.18 }}
             onClick={onClose}
           />
           <motion.div
             role="dialog"
             aria-modal="true"
-            aria-label="BlackOut menu"
+            aria-label="Command deck"
             className="ios-native-menu-sheet outline-none"
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
@@ -57,11 +55,11 @@ export function IosNativeMenu({ open, onClose, lockedTools = [], showAdmin }: Pr
             transition={SHEET_SPRING}
           >
             <div className="ios-native-menu-handle" aria-hidden />
-            <p className="ios-native-menu-kicker font-mono">BlackOut · Mobile desk</p>
+            <p className="ios-native-menu-kicker">CMD · INSTRUMENT SELECT</p>
 
             <motion.div
               className="ios-native-menu-grid"
-              variants={GRID_STAGGER}
+              variants={LIST_STAGGER}
               initial="hidden"
               animate="show"
             >
@@ -70,7 +68,7 @@ export function IosNativeMenu({ open, onClose, lockedTools = [], showAdmin }: Pr
                 const locked = key != null && lockedTools.includes(key);
                 const active = path === tool.href || path.startsWith(`${tool.href}/`);
                 return (
-                  <motion.div key={tool.href} variants={GRID_ITEM}>
+                  <motion.div key={tool.href} variants={LIST_ITEM}>
                     <Link
                       href={tool.href}
                       prefetch={false}
@@ -83,9 +81,12 @@ export function IosNativeMenu({ open, onClose, lockedTools = [], showAdmin }: Pr
                       )}
                       style={{ "--tool-accent": tool.accent } as React.CSSProperties}
                     >
-                      <ProductMark product={tool.mark} size={32} title={tool.label} />
-                      <span className="ios-native-menu-tool-label font-syne">{tool.short}</span>
-                      <span className="ios-native-menu-tool-sub font-mono">{tool.tagline}</span>
+                      <ProductMark product={tool.mark} size={28} title={tool.label} />
+                      <div className="ios-native-menu-tool-body">
+                        <span className="ios-native-menu-tool-label">{tool.label}</span>
+                        <span className="ios-native-menu-tool-sub">{tool.tagline}</span>
+                      </div>
+                      <span className="ios-native-menu-tool-code">{tool.code}</span>
                     </Link>
                   </motion.div>
                 );
@@ -93,18 +94,21 @@ export function IosNativeMenu({ open, onClose, lockedTools = [], showAdmin }: Pr
             </motion.div>
 
             <div className="ios-native-menu-links">
-              <Link href="/account" scroll={false} onClick={onClose} className="ios-native-menu-link font-syne">
-                Account
+              <Link href="/account" scroll={false} onClick={onClose} className="ios-native-menu-link">
+                Account · SYS
               </Link>
-              <Link href="/faq" scroll={false} onClick={onClose} className="ios-native-menu-link font-syne">
-                FAQ
+              <Link href="/upgrade" scroll={false} onClick={onClose} className="ios-native-menu-link">
+                Membership · TIER
               </Link>
-              <Link href="/learn" scroll={false} onClick={onClose} className="ios-native-menu-link font-syne">
-                Learn
+              <Link href="/faq" scroll={false} onClick={onClose} className="ios-native-menu-link">
+                FAQ · HELP
+              </Link>
+              <Link href="/learn" scroll={false} onClick={onClose} className="ios-native-menu-link">
+                Learn · EDU
               </Link>
               {showAdmin && (
-                <Link href="/admin" scroll={false} onClick={onClose} className="ios-native-menu-link font-syne text-bear">
-                  Admin
+                <Link href="/admin" scroll={false} onClick={onClose} className="ios-native-menu-link text-bear">
+                  Admin · OPS
                 </Link>
               )}
             </div>
