@@ -2907,6 +2907,44 @@ export function GexHeatmap({
     return out;
   }, [cells, expiries, strikes]);
 
+  // ── PER-DAY call-wall / put-wall across the Matrix columns ───────────────────
+  // For EACH expiry column, its own highest POSITIVE cell (call wall) and highest
+  // NEGATIVE cell (put wall) — distinct from perDayAnchorByExpiry above (that's
+  // argmax|net|, i.e. whichever SIDE dominates the column; this tracks BOTH sides
+  // independently). When the column's dominant value is positive, its anchor and
+  // call-wall are the same strike (trivially — the largest-magnitude value can't
+  // be beaten in absolute terms by a same-sign value, so it's also that side's
+  // max); the OTHER side's wall, if the column has one, still gets its own
+  // separate marker. This mirrors SPX Slayer's per-column columnExtremeWalls
+  // (src/components/desk/SpxGexMatrixHeatmap.tsx) exactly, including the
+  // ascending-strike / strict `>`/`<` tie-break convention (lowest strike wins).
+  // Pure over `cells`/`expiries`/`strikes` (no Math.random/Date) → render-safe (#418).
+  const perDayExtremesByExpiry = useMemo<
+    Record<string, { callWall: number | null; putWall: number | null }>
+  >(() => {
+    const out: Record<string, { callWall: number | null; putWall: number | null }> = {};
+    const strikesAsc = [...strikes].sort((a, b) => a - b);
+    for (const e of expiries) {
+      let callWall: number | null = null;
+      let putWall: number | null = null;
+      let posMax = 0;
+      let negMin = 0;
+      for (const sNum of strikesAsc) {
+        const v = cells[String(sNum)]?.[e];
+        if (typeof v !== "number" || v === 0) continue;
+        if (v > posMax) {
+          posMax = v;
+          callWall = sNum;
+        } else if (v < negMin) {
+          negMin = v;
+          putWall = sNum;
+        }
+      }
+      out[e] = { callWall, putWall };
+    }
+    return out;
+  }, [cells, expiries, strikes]);
+
   // ── Matrix auto-center on the SPOT row (the anchoring) ───────────────────────
   // The matrix lists strikes high→low and mounts fresh each time its tab is opened (the
   // TabPanel unmounts when inactive). Its rows live in a BOUNDED scroll box (matrixScrollRef)
@@ -3421,39 +3459,40 @@ export function GexHeatmap({
             <span className="text-white">{fmtStrike(matrixAnchorStrike)}</span>
           </span>
         )}
-        {/* +GEX PEAK legend — the dominant call wall (single highest positive cell), GOLD. */}
+        {/* +GEX PEAK legend — the dominant call wall (single highest positive cell), matching
+            SPX Slayer's .spx-odte-matrix-row--max-pos BULL GREEN exactly. */}
         {posPeakCell != null && (
-          <span className="flex items-center gap-1.5 text-gold">
+          <span className="flex items-center gap-1.5" style={{ color: "#00e676" }}>
             <span
               aria-hidden
               className="h-2.5 w-2.5 rounded-sm"
-              style={{ outline: "2px solid #ffd23f", outlineOffset: "-2px", boxShadow: "inset 0 0 6px rgba(255,210,63,0.7)" }}
+              style={{ outline: "2px solid #00e676", outlineOffset: "-2px", boxShadow: "inset 0 0 6px rgba(0,230,118,0.7)" }}
             />
             <span aria-hidden>+{lensUpper} peak</span>
             <span className="text-white">{fmtStrike(posPeakCell.strike)}</span>
           </span>
         )}
-        {/* −GEX PEAK legend — the dominant put wall (single lowest negative cell), BRIGHT BEAR. */}
+        {/* −GEX PEAK legend — the dominant put wall (single lowest negative cell), matching
+            SPX Slayer's .spx-odte-matrix-row--max-neg VIOLET exactly. */}
         {negPeakCell != null && (
-          <span className="flex items-center gap-1.5" style={{ color: "#ff5c78" }}>
+          <span className="flex items-center gap-1.5" style={{ color: "#8b5cf6" }}>
             <span
               aria-hidden
               className="h-2.5 w-2.5 rounded-sm"
-              style={{ outline: "2px solid #ff5c78", outlineOffset: "-2px", boxShadow: "inset 0 0 6px rgba(255,92,120,0.7)" }}
+              style={{ outline: "2px solid #8b5cf6", outlineOffset: "-2px", boxShadow: "inset 0 0 6px rgba(109,40,217,0.7)" }}
             />
             <span aria-hidden>−{lensUpper} peak</span>
             <span className="text-white">{fmtStrike(negPeakCell.strike)}</span>
           </span>
         )}
-        {/* Per-day anchor legend (Step 4) — the subtle white ring/dot marking each expiry
-            column's own dominant strike. Only shown when ≥1 column has a per-day anchor. */}
+        {/* Per-day King legend (Step 4) — the amber ★ marking each expiry column's own
+            dominant strike, matching SPX Slayer's per-column King star exactly. Only shown
+            when ≥1 column has a per-day King. */}
         {Object.keys(perDayAnchorByExpiry).length > 0 && (
-          <span className="flex items-center gap-1.5 text-white/70">
-            <span
-              aria-hidden
-              className="h-2 w-2 rounded-sm"
-              style={{ outline: "1px solid rgba(255,255,255,0.7)", outlineOffset: "-1px" }}
-            />
+          <span className="flex items-center gap-1.5 text-amber-300/80">
+            <span aria-hidden className="text-[13px] leading-none text-amber-400 [text-shadow:0_0_6px_rgba(251,191,36,0.9)]">
+              ★
+            </span>
             <span aria-hidden>per-day King</span>
           </span>
         )}
@@ -3612,33 +3651,49 @@ export function GexHeatmap({
                       // overall anchor strike. Keeps its diverging magnitude color; a white ◆
                       // pin + white ring sit ON TOP so it pops as the prominent anchor cell.
                       const isAnchorCell = isAnchor && matrixAnchorExpiry != null && e === matrixAnchorExpiry;
-                      // ── +GEX / −GEX PEAK cells (recolor): the two DOMINANT WALLS across the
-                      // whole matrix. The single highest +cell → GOLD border/glow (dominant call
-                      // wall); the single lowest −cell → BRIGHT BEAR (#ff5c78) border/glow
-                      // (dominant put wall). When a peak coincides with the ANCHOR cell we LAYER
-                      // them: the peak's gold/bear glow sits INSIDE (inset), the white anchor ring
-                      // on the OUTER edge — neither is hidden.
+                      // ── +GEX / −GEX PEAK cells: the two DOMINANT WALLS across the whole
+                      // matrix. The single highest +cell → BULL GREEN border/glow (dominant call
+                      // wall); the single lowest −cell → VIOLET (#8b5cf6) border/glow (dominant
+                      // put wall) — matching SPX Slayer's row-level max-pos/max-neg palette
+                      // exactly (src/components/desk/SpxGexMatrixHeatmap.tsx /
+                      // .spx-odte-matrix-row--max-pos/--max-neg in globals.css) so the two
+                      // products read as one visual language, not two different conventions.
+                      // When a peak coincides with the ANCHOR cell we LAYER them: the peak's
+                      // glow sits INSIDE (inset), the white anchor ring on the OUTER edge —
+                      // neither is hidden.
                       const isPosPeakCell =
                         posPeakCell != null && posPeakCell.strike === strike && posPeakCell.expiry === e;
                       const isNegPeakCell =
                         negPeakCell != null && negPeakCell.strike === strike && negPeakCell.expiry === e;
                       // PER-DAY anchor cell (Step 4) — this strike owns the argmax|net GEX| in
-                      // expiry column `e`. Subtle white ring (no pin) so per-day anchors read as a
-                      // quiet secondary layer beneath the one prominent overall anchor. The overall
-                      // anchor cell + the +/−GEX peaks outrank it (we suppress the subtle ring there).
+                      // expiry column `e`. Marked with the same ★ amber King star SPX Slayer uses
+                      // for its own per-column King (SpxGexMatrixHeatmap.tsx) so "per-day King"
+                      // looks identical across both products. The overall anchor cell + the
+                      // +/−GEX peaks outrank it (we suppress the star there to avoid stacking three
+                      // markers in one corner).
                       const isDayAnchorCell =
                         !isAnchorCell && !isPosPeakCell && !isNegPeakCell &&
                         perDayAnchorByExpiry[e] === strike && has && v !== 0;
+                      // PER-DAY call-wall / put-wall — this column's own highest positive / most
+                      // negative cell (may be the SAME strike as isDayAnchorCell, or a distinct
+                      // second cell on the opposite side — see perDayExtremesByExpiry above).
+                      // Gets the same pulsing brightness/scale glow SPX Slayer applies to its
+                      // per-column extreme (.spx-gex-matrix-extreme-pop / bie-heatmap-extreme-pop
+                      // share one keyframe) — deliberately independent of isDayAnchorCell, exactly
+                      // like SPX Slayer never suppresses one for the other.
+                      const dayExtremes = perDayExtremesByExpiry[e];
+                      const isDayCallWallCell = has && dayExtremes?.callWall === strike;
+                      const isDayPutWallCell = has && dayExtremes?.putWall === strike;
 
                       // Compose the highlight style so overlapping markers layer cleanly:
-                      //  • the +/−GEX PEAK draws an INSET ring + glow (gold or bear) INSIDE the cell;
+                      //  • the +/−GEX PEAK draws an INSET ring + glow (green or violet) INSIDE the cell;
                       //  • the ANCHOR draws a WHITE outline on the OUTER edge (so it frames the cell)
                       //    + a white inset glow only when it ISN'T overlapping a peak (the peak owns
                       //    the inner glow in the overlap case so the two never clash).
                       const peakInset = isPosPeakCell
-                        ? "inset 0 0 0 2px #ffd23f, inset 0 0 14px rgba(255,210,63,0.55)"
+                        ? "inset 0 0 0 2px #00e676, inset 0 0 14px rgba(0,230,118,0.55)"
                         : isNegPeakCell
-                          ? "inset 0 0 0 2px #ff5c78, inset 0 0 14px rgba(255,92,120,0.55)"
+                          ? "inset 0 0 0 2px #8b5cf6, inset 0 0 14px rgba(109,40,217,0.55)"
                           : null;
                       const anchorInset =
                         isAnchorCell && !peakInset ? "inset 0 0 14px rgba(255,255,255,0.5)" : null;
@@ -3649,9 +3704,9 @@ export function GexHeatmap({
                       const highlightStyle: React.CSSProperties = isAnchorCell
                         ? { outline: "2px solid #ffffff", outlineOffset: "1px", boxShadow }
                         : isPosPeakCell
-                          ? { outline: "2px solid #ffd23f", outlineOffset: "-2px", boxShadow }
+                          ? { outline: "2px solid #00e676", outlineOffset: "-2px", boxShadow }
                           : isNegPeakCell
-                            ? { outline: "2px solid #ff5c78", outlineOffset: "-2px", boxShadow }
+                            ? { outline: "2px solid #8b5cf6", outlineOffset: "-2px", boxShadow }
                             : isDayAnchorCell
                               ? {
                                   // PER-DAY anchor — a SUBTLE thin white ring, no glow/pin, so the
@@ -3695,10 +3750,14 @@ export function GexHeatmap({
                                 : isNegPeakCell
                                   ? `−${lensUpper} PEAK · ${strike} · ${fmtExpiry(e)} · ${fmtHeatmapMoneySigned(val, { showZero: true })} — dominant put wall`
                                   : isDayAnchorCell
-                                    ? `${fmtExpiry(e)} anchor · ${strike} · ${fmtHeatmapMoneySigned(val, { showZero: true })} — this expiry's dominant strike`
-                                    : has
-                                      ? `${strike} · ${fmtExpiry(e)} · ${fmtHeatmapMoneySigned(val, { showZero: true })}`
-                                      : undefined
+                                    ? `${fmtExpiry(e)} King · ${strike} · ${fmtHeatmapMoneySigned(val, { showZero: true })} — this expiry's dominant strike${isDayCallWallCell ? " · also this expiry's call wall" : isDayPutWallCell ? " · also this expiry's put wall" : ""}`
+                                    : isDayCallWallCell
+                                      ? `${fmtExpiry(e)} call wall · ${strike} · ${fmtHeatmapMoneySigned(val, { showZero: true })} — this expiry's highest positive`
+                                      : isDayPutWallCell
+                                        ? `${fmtExpiry(e)} put wall · ${strike} · ${fmtHeatmapMoneySigned(val, { showZero: true })} — this expiry's highest negative`
+                                        : has
+                                          ? `${strike} · ${fmtExpiry(e)} · ${fmtHeatmapMoneySigned(val, { showZero: true })}`
+                                          : undefined
                           }
                         >
                           {/* white ◆ pin pinned to the overall anchor cell's corner — the ANCHOR marker */}
@@ -3710,15 +3769,20 @@ export function GexHeatmap({
                               <AnchorGlyph size={9} />
                             </span>
                           )}
-                          {/* per-day anchor — a tiny white dot in the corner (subtle, no pin glyph) */}
+                          {/* per-day King — the same amber ★ SPX Slayer uses for its own
+                              per-column King (SpxGexMatrixHeatmap.tsx), so the marker reads
+                              identically across both products. */}
                           {isDayAnchorCell && (
                             <span
                               aria-hidden
-                              className="pointer-events-none absolute right-0.5 top-0.5 h-1 w-1 rounded-full"
-                              style={{ backgroundColor: "rgba(255,255,255,0.8)" }}
-                            />
+                              className="pointer-events-none absolute right-0.5 top-0 text-[13px] leading-none text-amber-400 [text-shadow:0_0_6px_rgba(251,191,36,0.9)]"
+                            >
+                              ★
+                            </span>
                           )}
-                          {fmtHeatmapMoneySigned(val, { showZero: true })}
+                          <span className={clsx((isDayCallWallCell || isDayPutWallCell) && "gex-heatmap-extreme-pop")}>
+                            {fmtHeatmapMoneySigned(val, { showZero: true })}
+                          </span>
                         </td>
                       );
                     })}

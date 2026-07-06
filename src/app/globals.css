@@ -10429,6 +10429,14 @@ body::before {
     animation: spx-gex-matrix-pop 1.8s ease-in-out infinite;
   }
 
+  /* Thermal's GEX heatmap (GexHeatmap.tsx) per-day call-wall/put-wall pop —
+     shares SPX Slayer's keyframe so both products' extreme-cell glow reads
+     as one visual language. */
+  .gex-heatmap-extreme-pop {
+    display: inline-block;
+    animation: spx-gex-matrix-pop 1.8s ease-in-out infinite;
+  }
+
   .spx-gex-matrix-table td.sticky,
   .spx-gex-matrix-table th.sticky {
     box-shadow: 2px 0 6px rgba(0, 0, 0, 0.35);

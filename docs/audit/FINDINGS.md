@@ -9,6 +9,30 @@ Cross-provider ground truth: Polygon + Unusual Whales REST. Started 2026-07-01.
 
 ---
 
+## 🟢 DESIGN SHIPPED 2026-07-06 — Thermal's GEX heatmap given SPX Slayer's per-day King star + peak-glow treatment (branch `feat/thermal-per-day-king-star-and-peak-glow`)
+
+**Status:** SHIPPED on branch; pending merge. User request: *"can we do thr same for thermal too .. like colors and also king nodes star for each day and glowing the most highest positive and negative gex values .. Keep exact UI changes appearance for thermal please."*
+
+**Context:** SPX Slayer's GEX matrix (`SpxGexMatrixHeatmap.tsx`) marks two things per expiry column that Thermal's GEX heatmap (`GexHeatmap.tsx`) either lacked or rendered with weaker/mismatched visuals: (1) a per-column "King node" (argmax `|net GEX|` in that column) shown as an amber ★ via `kingFromStrikeTotals()` (`src/lib/correctness/gex-odte-scope.ts`), and (2) that column's own dominant call-wall (highest positive) / put-wall (highest negative) cells, pulsing via `.spx-gex-matrix-extreme-pop`. Thermal already had `perDayAnchorByExpiry` (per-day King by argmax|abs|) but rendered it as a subtle white dot, not a star — and had no per-day call-wall/put-wall concept at all (its existing `posPeakCell`/`negPeakCell` are matrix-WIDE overall extremes, a different, already-existing feature left untouched). Thermal's overall-matrix King marker (`AnchorGlyph`, a white diamond) is also untouched — the user asked for the star "for each day," i.e. the per-column marker only.
+
+**Changes (`GexHeatmap.tsx`):**
+- New `perDayExtremesByExpiry` useMemo — per-expiry-column call-wall/put-wall (highest positive / most negative cell in that column), computed with the same ascending-strike-order, strict `>`/`<` tie-break convention SPX Slayer's `columnExtremeWalls` uses (lowest strike wins a tie).
+- Per-day King marker: swapped the plain white dot for the exact amber ★ SPX Slayer uses (`text-amber-400`, `text-shadow` glow), positioned in the cell's top-right corner to match Thermal's existing corner-badge convention.
+- New `isDayCallWallCell` / `isDayPutWallCell` booleans wrap that cell's value text in a new pulsing-glow span (`gex-heatmap-extreme-pop`), independent of the King star — exactly like SPX Slayer never suppresses one marker for the other, so a column's dominant cell can show both simultaneously when its King and its wall land on the same strike.
+- Recolored Thermal's pre-existing OVERALL matrix-wide `posPeakCell`/`negPeakCell` treatment from its own gold `#ffd23f` / bright-pink `#ff5c78` to SPX Slayer's exact green `#00e676` / violet `#8b5cf6` (`.spx-odte-matrix-row--max-pos/--max-neg` palette) — both the `peakInset` box-shadow and the `highlightStyle` outline — so the two products read as one visual language instead of two conventions for the same concept.
+- Legend swatches updated to match: +/−GEX peak swatches recolored green/violet; the per-day King legend swap from a white ring to an amber ★ preview.
+- Tooltip `title` ternary extended with branches for the new call-wall/put-wall states (previously jumped straight from the per-day-King branch to the generic fallback).
+
+**CSS (`globals.css`):** added `.gex-heatmap-extreme-pop`, a product-agnostic alias that reuses SPX Slayer's existing `@keyframes spx-gex-matrix-pop` rather than duplicating it — one keyframe, two class names, guaranteeing the pulse timing/curve can't drift between products.
+
+**Fix rationale:** ported by reading SPX Slayer's actual source (`SpxGexMatrixHeatmap.tsx`, `gex-odte-scope.ts`, `globals.css`) rather than reconstructing from memory, per the user's "keep exact UI appearance" instruction — colors, glyph, glow radius, and tie-break order are copied verbatim, not reinterpreted with Thermal's own prior color choices. Left untouched: Thermal's overall-matrix `AnchorGlyph` diamond marker (a different, already-shipped feature the user didn't ask to change) and the shared `heatmapCellStyle`/`heatmapCellTextStyle` base color-scale (already identical between both products).
+
+**Verification:** `npx tsc --noEmit` clean. Full suite 1722/1722 passing (no new tests needed — `perDayExtremesByExpiry` is a direct structural port of the already-tested `columnExtremeWalls` pattern with no new branching logic). `npm run build` clean (`/heatmap` 4.56 kB). `npm run lint` clean (only pre-existing warnings, none newly introduced by this diff). `npm run lint:css` — same 5 pre-existing errors present on `main` before this change (`globals.css:1612-1615` `animation-delay`, `ios-native-command.css:204` deprecated keyword), none introduced by this diff. `git diff main -- src/lib/spx-signals.ts` empty.
+
+**Not yet confirmed live:** same sandbox limitation as every prior UI fix this window (Playwright/Chromium blocked) — needs the user to view `/heatmap` to confirm the star/glow render as intended.
+
+---
+
 ## 🟢 DESIGN FIXED 2026-07-05 — BIE orbit tools could visually collide/overlap with each other (branch `fix/bie-orbit-tool-collision`, follow-up to the "Verification Gate" hero series)
 
 **Status:** FIXED. User feedback on the live site: *"Sometimes the tools services collide with each other .. they run into each other .. does not look professional."*
