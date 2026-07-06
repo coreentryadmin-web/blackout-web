@@ -1,5 +1,69 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 16:08 ET
+Last updated: 2026-07-06 16:14 ET
+
+## RTH comprehensive sweep — 2026-07-06 ~16:04–16:14 ET (post-close pass #4)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including full COMPREHENSIVE TEST SWEEP. Time: Mon 16:04–16:14 ET (post-close grace window). Commands: `validate:rth-open` → `validate:rth-sweep` → `GET /api/cron/data-correctness?force=1` → `validate:member-dashboard` → `validate:site-latency` → `ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (deploy SUCCESS after 8381beb5 build; all RTH session checks pass) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **GREEN** — `ok: true`, `flags: 0` |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 issues (0 P0/P1) |
+| `npm run validate:member-dashboard` | ✅ **GREEN** — 8/8 (off-hours relaxed; matrix 152 strikes, spot 7,537.43) |
+| `npm run validate:site-latency` | ✅ **GREEN** after harness fix — 36/36 (was 35/36: grid ready false-positive) |
+| `npm run ops:collect` | ✅ 0 action items |
+
+### Speed (soft-nav, premium session)
+
+| Page | Load | Notes |
+|---|---|---|
+| `/dashboard` | hard 1,769ms | Under 2s P1 threshold |
+| `/flows` | soft 1,647ms | Under 2s |
+| `/heatmap` | soft 1,660ms | Under 2s |
+| `/grid` | soft 1,664ms | Under 2s |
+| `/nighthawk` | soft 1,654ms | Under 2s |
+| `/terminal` | soft 1,653ms | Under 2s |
+| `/track-record` | soft 1,591ms | Under 2s |
+
+### Live auto-update (post-close)
+
+`liveTick=null` on all pages — **expected off-hours** (no RTH tape/SSE cadence). Session heat=CLOSED on 0DTE board; desk label=EXTENDED.
+
+### Data correctness + cross-tool
+
+| Probe | Result |
+|---|---|
+| GEX flip cross-tool | ✅ desk=7535.15 = gex=7535.15 (spot 7537.43) |
+| All 19 market+grid APIs | ✅ HTTP 200, fresh `as_of` where applicable |
+| Largo NVDA query (SSE) | ✅ 200 in 37s; tools: `live_feed_capture`, `get_dark_pool`, `get_options_flow`; grounded $12.79M dark-pool answer |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages (no `—`, `$—`, `N/A`, or empty tables where data expected). Post-close CLOSED/SKIP states on 0DTE ledger are honest session gating, not data gaps.
+
+### Console / render health
+
+| Page | Console |
+|---|---|
+| `/dashboard` | ⚠️ 1× HTTP 400 on unknown resource (non-blocking; page renders fully) |
+| All others | ✅ zero errors |
+
+### P1 harness fix (merged this session)
+
+**Root cause:** `validate:site-latency` grid ready probe waited for `.grid-board`, but `/grid` defaults to **0DTE Command** tab (Market Grid lazy-mounts on tab switch). Case-sensitive `"Today's 0DTE plays"` also missed CSS-uppercased `TODAY'S 0DTE PLAYS`.
+
+**Fix:** `fix/site-latency-grid-default-tab` — accept `.grid-board` OR case-insensitive 0DTE plays header OR degraded empty-state. Post-fix: grid ready 555ms (was 30s timeout false FAIL).
+
+### P0 assessment
+
+**No P0/P1 product defects.** No GitHub issue opened. Post-close comprehensive sweep GREEN across deploy, crons, data-correctness, all premium pages, APIs, Largo grounding, and missing-field scan.
+
+**Reports:** `audit-output/rth-sweep-2026-07-06T20-07-35-264Z.json`, `audit-output/site-latency-1783368835344.json`, `audit-output/member-dashboard-live-1783368654284.png`
+
+---
 
 ## grid-rth-2026-07-06 — 0DTE Command + Market Grid verify pass #4 (~16:03–16:08 ET, post-close)
 

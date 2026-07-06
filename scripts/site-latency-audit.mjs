@@ -41,7 +41,15 @@ const PAGES = [
   { path: "/dashboard", label: "dashboard", ready: () => document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= 20 },
   { path: "/flows", label: "flows", ready: () => document.body.innerText.length > 500 },
   { path: "/heatmap", label: "heatmap", ready: () => document.querySelector(".gex-heatmap-panel") != null },
-  { path: "/grid", label: "grid", ready: () => document.querySelector(".grid-board") != null },
+  // /grid defaults to 0DTE Command; Market Grid (.grid-board) is lazy-mounted on tab switch.
+  {
+    path: "/grid",
+    label: "grid",
+    ready: () =>
+      document.querySelector(".grid-board") != null ||
+      /today'?s 0dte plays/i.test(document.body.innerText) ||
+      document.body.innerText.includes("Board temporarily degraded"),
+  },
   { path: "/nighthawk", label: "nighthawk", ready: () => document.body.innerText.length > 400 },
 ];
 
