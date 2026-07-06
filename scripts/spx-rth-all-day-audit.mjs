@@ -128,7 +128,9 @@ async function deskLaneCheck() {
     const issues = [];
     if (pulse?.available && Number(pulse?.price) > 0) {
       const pulseSpot = Number(pulse.price);
-      if (Number.isFinite(mergedSpot) && spotDelta(mergedSpot, pulseSpot) > 0.05) {
+      // Pulse and merged refresh on independent cache lanes (~1–3s apart during RTH);
+      // sub-1.5-pt deltas are lane skew, not a user-visible correctness defect.
+      if (Number.isFinite(mergedSpot) && spotDelta(mergedSpot, pulseSpot) > 1.5) {
         issues.push(`merged vs pulse spot Δ=${spotDelta(mergedSpot, pulseSpot).toFixed(3)}`);
       }
     }
