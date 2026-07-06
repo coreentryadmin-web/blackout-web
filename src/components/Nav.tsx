@@ -398,7 +398,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
                     className={clsx(
                       "nav-sheet-link font-syne",
                       iosHide && "hide-in-ios-app",
-                      active && "nav-pill-item-active"
+                      active && "nav-sheet-link-active"
                     )}
                   >
                     {label}
@@ -408,7 +408,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
               <Link
                 href="/learn"
                 onClick={() => setMobileOpen(false)}
-                className={clsx("nav-sheet-link font-syne", isLearnActive && "nav-pill-item-active")}
+                className={clsx("nav-sheet-link font-syne", isLearnActive && "nav-sheet-link-active")}
               >
                 Learn
               </Link>
@@ -416,7 +416,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
                 <Link
                   href="/admin/track-record"
                   onClick={() => setMobileOpen(false)}
-                  className={clsx("nav-sheet-link font-syne nav-pill-admin", isAdminTrackActive && "nav-pill-item-active")}
+                  className={clsx("nav-sheet-link font-syne nav-pill-admin", isAdminTrackActive && "nav-sheet-link-active")}
                 >
                   Track Record
                 </Link>
