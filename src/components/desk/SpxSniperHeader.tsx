@@ -62,7 +62,7 @@ export function SpxSniperHeader({ desk, live }: Props) {
       <div className="spx-sniper-command-glow" aria-hidden />
       <div className="relative z-10 flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6">
         <div className="flex flex-col lg:flex-row lg:items-end gap-6 min-w-0 flex-1">
-          <div className="shrink-0 flex items-start gap-3">
+          <div className="spx-sniper-identity shrink-0 flex items-start gap-3">
             <ProductMark product="spx" size={44} title="SPX Slayer" className="mt-0.5 shrink-0" />
             <div className="min-w-0">
               <Kicker className="mb-1.5">SPX · 0DTE desk</Kicker>

@@ -11,6 +11,7 @@ import { IMAGES } from "@/lib/images";
 import { SITE } from "@/lib/site";
 import { PwaRegister } from "@/components/PwaRegister";
 import "./globals.css";
+import "./ios-native.css";
 
 // Self-hosted via next/font (no render-blocking @import, no FOUT/CLS). Variable
 // names MUST match tailwind.config fontFamily tokens (--font-anton/-syne/

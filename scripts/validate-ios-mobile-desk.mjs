@@ -49,8 +49,25 @@ const cssNeedles = [
   ["html.ios-app.ios-tab-bar .ios-desk-shell", "single bottom inset owner for desk"],
 ];
 
+const nativeCss = readFileSync(join(root, "src/app/ios-native.css"), "utf8");
+const nativeNeedles = [
+  ["html.ios-app.ios-native-shell", "native shell scope"],
+  ["--ios-header-offset", "native header offset token"],
+  ["html.ios-app.ios-native-shell .nav-bar", "hide web nav in native shell"],
+  [".ios-native-header", "native top bar"],
+  [".ios-native-menu-sheet", "native bottom sheet menu"],
+  ["html.ios-app.ios-native-shell .spx-sniper-identity", "hide duplicate SPX title"],
+  ["html.ios-app.ios-native-shell.ios-tab-bar .page-tool-header", "hide duplicate page headers"],
+  ["html.ios-app.ios-native-shell .ios-app-tab-bar", "floating dock tab bar"],
+];
+for (const [needle, label] of nativeNeedles) {
+  if (nativeCss.includes(needle)) ok(`native-css:${label}`, needle);
+  else fail(`native-css:${label}`, `missing ${needle}`);
+}
+
 const sourceNeedles = [
   ["src/components/IosAppTabBar.tsx", "IosAppTabBar"],
+  ["src/components/ios/IosAppChrome.tsx", "IosAppChrome"],
   ["src/lib/ios-tool-routes.ts", "ios-tool-routes"],
 ];
 for (const [file, label] of sourceNeedles) {
@@ -77,6 +94,20 @@ if (nav.includes("iosToolLabel") && nav.includes("getIosToolNavLabel")) {
   ok("nav:ios-tool-context-title");
 } else {
   fail("nav:ios-tool-context-title", "expected centered tool title on iOS");
+}
+
+const siteLayout = readFileSync(join(root, "src/app/(site)/layout.tsx"), "utf8");
+if (siteLayout.includes("IosAppChrome")) {
+  ok("layout:IosAppChrome-mounted");
+} else {
+  fail("layout:IosAppChrome-mounted", "expected IosAppChrome in site layout");
+}
+
+const toolRoutes = readFileSync(join(root, "src/lib/ios-tool-routes.ts"), "utf8");
+if (toolRoutes.includes("isIosNativeShellRoute") && toolRoutes.includes("IOS_TOOLS")) {
+  ok("routes:native-shell-metadata");
+} else {
+  fail("routes:native-shell-metadata", "expected IOS_TOOLS + isIosNativeShellRoute");
 }
 
 if (!header.includes('"— — —"')) {

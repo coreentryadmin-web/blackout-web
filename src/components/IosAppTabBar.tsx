@@ -5,25 +5,10 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { clsx } from "clsx";
-import { ProductMark, type MarkProduct } from "@/components/marks/ProductMark";
+import { ProductMark } from "@/components/marks/ProductMark";
 import { isIosAppShell } from "@/lib/ios-app-shell";
-import { isIosToolRoute } from "@/lib/ios-tool-routes";
+import { IOS_TOOLS, isIosToolRoute } from "@/lib/ios-tool-routes";
 import { toolKeyForHref, type ToolKey } from "@/lib/tool-access";
-
-type Tab = {
-  href: string;
-  label: string;
-  mark: MarkProduct;
-};
-
-const TABS: Tab[] = [
-  { href: "/dashboard", label: "SPX", mark: "spx" },
-  { href: "/flows", label: "HELIX", mark: "helix" },
-  { href: "/heatmap", label: "Thermal", mark: "heatmap" },
-  { href: "/terminal", label: "Largo", mark: "largo" },
-  { href: "/nighthawk", label: "Hawk", mark: "nighthawk" },
-  { href: "/grid", label: "0DTE", mark: "grid" },
-];
 
 /** Native-style bottom tool switcher — iOS app shell only, signed-in tool routes. */
 export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
@@ -46,7 +31,7 @@ export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
   return (
     <nav className="ios-app-tab-bar" aria-label="Tools">
       <ul className="ios-app-tab-list">
-        {TABS.map((tab) => {
+        {IOS_TOOLS.map((tab) => {
           const active = path === tab.href || path.startsWith(`${tab.href}/`);
           const key = toolKeyForHref(tab.href);
           const locked = key != null && lockedTools.includes(key);
@@ -60,11 +45,12 @@ export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
                   active && "ios-app-tab-link-active",
                   locked && "ios-app-tab-link-locked"
                 )}
+                style={{ "--tab-accent": tab.accent } as React.CSSProperties}
                 aria-current={active ? "page" : undefined}
               >
                 {active && <span className="ios-app-tab-active-bar" aria-hidden />}
                 <ProductMark product={tab.mark} size={22} title={tab.label} className="ios-app-tab-icon" />
-                <span className="ios-app-tab-label font-mono">{tab.label}</span>
+                <span className="ios-app-tab-label font-mono">{tab.short}</span>
               </Link>
             </li>
           );
