@@ -36,6 +36,7 @@ if (!cm.includes(`BUNDLE_ID: "${expected.appId}"`)) fail.push(`codemagic BUNDLE_
 if (!cm.includes(`APPLE_TEAM_ID: "${expected.teamId}"`)) fail.push(`codemagic APPLE_TEAM_ID must be ${expected.teamId}`);
 if (!cm.includes(`working_directory: ${expected.workingDir}`)) fail.push(`codemagic working_directory must be ${expected.workingDir}`);
 if (!cm.includes("BlackOut ASC")) fail.push('Codemagic integration must be named "BlackOut ASC"');
+if (cm.includes("ios_signing:")) fail.push("remove ios_signing from environment — signing runs in script (avoids early profile fetch failure)");
 
 console.log("\n=== BlackOut iOS config validation ===\n");
 if (fail.length) {
