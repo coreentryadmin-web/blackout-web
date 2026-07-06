@@ -8,6 +8,24 @@ and required CI (`verify`) are green — no per-PR approval, no end-of-day hold.
 here and merge the PR in the same session. Supersedes all earlier "leave OPEN for review" notes
 in this file.
 
+## 🔴 P0 FOUND+FIXED 2026-07-06 — `unusual-whales.ts` had the SAME unvalidated-ticker-into-URL-path defect as Polygon's `resolveOptionsRoot`, across ~65 call sites — second flow in the same CodeQL request-forgery alert (branch `fix/trackedfetch-default-timeout`)
+
+**Surface:** `src/lib/providers/unusual-whales.ts` — every `uwGetSafe`/`uwGet` call site that builds a UW REST path (options GEX/flow/darkpool, earnings, financials, shorts, ETF, technical indicators, economy indicators, group-flow — effectively the entire UW integration surface). Found while investigating why PR #603's CodeQL alert (`js/request-forgery` at `api-tracked-fetch.ts:100`) cited **two** separate tainted-value flows even after the Polygon-side fix (`resolveOptionsRoot`, logged above) shipped — the alert's second footnote pointed here.
+
+**Root cause:** identical bug class to the Polygon finding, independently reinvented across this file: `ticker` (and related identifiers — ETF symbols, option contract IDs, technical-indicator names, economy/group-flow slugs, option expiries) arrives from user-supplied route params and gets spliced directly into a URL PATH segment via template literal — `/api/stock/${ticker}/...` — with at most a bare `.toUpperCase()`/`.toLowerCase()` applied, never a charset check. A pre-existing local helper, `sym(ticker)`, was already shared across ~17 call sites but only stripped a leading `I:` index prefix — it never guarded the charset either, so every one of its callers inherited the same gap. A second, subtler instance: `resolveUwEconomySlug()`'s fallback branch returned the raw (lowercased) indicator string, unvalidated, whenever the input didn't match its allowlist or alias table — so an unrecognized economy indicator also reached the URL unfiltered.
+
+**Blast radius:** effectively the entire UW provider surface — GEX/spot-exposures, flow-per-strike, dark pool, max-pain, NOPE, volatility, OI, greeks, insider trades, short interest, ETF flows/holdings, financials, earnings, seasonality, technical indicators, and economy/group-flow indicators. Every member-facing or Largo-facing feature that passes a ticker (or ETF symbol, option contract ID, or economy indicator) through to UW inherited the same unsanitized-input-into-outbound-URL defect CodeQL flagged on the Polygon side.
+
+**Fix:** added `safeTicker()` (uppercase + strip to `[A-Z0-9.]`, matching `resolveOptionsRoot`'s exact policy), `safePathSegment()` (lowercase + strip to `[a-z0-9-]`, for indicator/slug/candle-size segments), and `safeDateSegment()` (digits and hyphens only, for expiry segments). Applied at every one of the ~65 template-literal interpolations that build a URL path in this file, including the pre-existing shared `sym()` helper (now charset-guarded, fixing its ~17 callers in one place) and `resolveUwEconomySlug()`'s previously-unvalidated fallback branch.
+
+**Why fix here and not wait for a route-layer validator:** same rationale as the Polygon fix — these are provider internals with dozens of call sites already written against a `path: string` shape; a route-layer check would need to be duplicated per-route and wouldn't cover Largo tool calls that construct paths without going through a route handler at all. Sanitizing at the point of interpolation closes every path at once regardless of caller.
+
+**Evidence:** 8 new tests in `unusual-whales.test.ts` — `safeTicker` (normal tickers, dotted share classes, five injection payloads, null/undefined-safety), `safePathSegment` (case + charset), `safeDateSegment` (digits/hyphens only), and `sym` (uppercase + `I:`-prefix strip + charset guard, including a payload with a raw `I:` prefix and injection characters together). Full suite: 1791/1791 passing. `npx tsc --noEmit` clean. `npx eslint` clean. `npm run build` clean. `git diff main -- src/lib/spx-signals.ts` empty.
+
+**Status:** FIXED.
+
+---
+
 ## 🔴 P0 FOUND+FIXED 2026-07-06 — `resolveOptionsRoot` spliced an unvalidated, user-supplied ticker straight into the Polygon chain-fetch URL path — CodeQL-flagged request forgery (branch `fix/trackedfetch-default-timeout`)
 
 **Surface:** `resolveOptionsRoot(ticker)` in `src/lib/providers/polygon-options-gex.ts` — the single choke point every Polygon options-chain fetch routes through (`fetchHeatmapBand`, `fetchPolygonOiByExpiry`, `fetchPolygonIvTermStructure`, all downstream of `/api/market/gex-heatmap`, `/api/market/gex-positioning`, and their `/explain` variants). Found via CodeQL: pushing the `trackedFetch` timeout fix (below) touched the `fetch()` sink at `api-tracked-fetch.ts:100`, and GitHub Advanced Security's "1 new alert including 1 critical severity" scan on PR #603 flagged `js/request-forgery` there — "the URL of this request depends on a user-provided value."
@@ -69,6 +87,7 @@ The same-session live validator run (`scripts/audit/data-validator.mjs`) indepen
 
 ---
 
+## 🔴 P0 FOUND+FIXED 2026-07-06 — Cron staleness watchdog HTTP 524 (ops-collect false P0) when self-heal blocked the response past Cloudflare's origin timeout (branch `cursor/cron-watchdog-http-error-d47f`)
 
 **Surface:** `GET /api/cron/cron-staleness-watchdog`, `scripts/ops-collect-action-items.mjs` (`watchdog:http`), GitHub issue #601.
 
