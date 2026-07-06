@@ -236,7 +236,11 @@ export function SpxGexMatrixHeatmap({
   }, [spotStrike, data?.asof]);
 
   const hasData = Boolean(data?.available) && strikesAxis.length > 0 && displayExpiries.length > 0;
-  const feedLive = Boolean(deskLive) && hasData && !error && !gexStale;
+  // Desk flow lane can flag gex_stale when the server-side canonical GEX fetch times out,
+  // while this panel's direct heatmap SWR poll is fresh — don't alarm members twice.
+  const heatmapLive = hasData && Object.keys(data?.gex?.strike_totals ?? {}).length > 0;
+  const showGexStale = Boolean(gexStale && !heatmapLive);
+  const feedLive = Boolean(deskLive) && hasData && !error && !showGexStale;
   const asofLabel = fmtAsofSeconds(data?.asof);
   const lensLabel = lens === "gex" ? "GEX" : "VEX";
   const panelAccent = lens === "gex" ? "bull" : "sky";
@@ -265,7 +269,7 @@ export function SpxGexMatrixHeatmap({
             className={clsx("badge-live-dot", feedLive ? "animate-pulse" : "opacity-40")}
             aria-hidden
           />
-          {gexStale && (
+          {showGexStale && (
             <span className="text-amber-300/90 uppercase tracking-wider">GEX stale</span>
           )}
           {asofLabel ? <span>{asofLabel} ET</span> : null}

@@ -345,6 +345,15 @@ async function browserDashboard(session, hm) {
     await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 60_000 });
     rec("ui:sign-in-dashboard", "PASS");
 
+    // Wait for matrix rows before live-badge check — bootstrap can briefly show OFFLINE
+    // while desk lanes hydrate (same pattern as validate:member-dashboard).
+    await page
+      .waitForFunction(
+        () => document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= 20,
+        { timeout: 45_000 }
+      )
+      .catch(() => null);
+
     const deskText = await page.locator(".spx-sniper-desk").innerText().catch(() => "");
     if (/\bOFFLINE\b/.test(deskText)) {
       rec("ui:live-badge-rth", "FAIL", "shows OFFLINE during RTH");
