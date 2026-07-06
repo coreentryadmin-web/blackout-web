@@ -4454,6 +4454,216 @@ body::before {
     row-gap: 0.5rem;
   }
 
+  /* ── iOS premium polish — institutional motion, touch, and chrome ── */
+  @keyframes ios-page-enter {
+    from { opacity: 0.88; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  html.ios-app .nav-bar-ios-tool .nav-surface {
+    opacity: 1;
+  }
+
+  html.ios-app .nav-bar-ios-tool .nav-brand-ios-compact {
+    opacity: 0;
+    width: 0;
+    min-width: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  html.ios-app .ios-nav-context span {
+    text-shadow: 0 0 24px rgba(0, 230, 118, 0.35);
+  }
+
+  html.ios-app .page-shell,
+  html.ios-app .ios-desk-shell {
+    animation: ios-page-enter 0.38s var(--ease-draw) both;
+  }
+
+  html.ios-app .page-tool-header {
+    padding-bottom: 0.65rem;
+    margin-bottom: 0.35rem;
+    border-bottom: 1px solid rgba(0, 230, 118, 0.14);
+  }
+
+  html.ios-app .page-tool-header h1 {
+    font-size: 1.35rem;
+    letter-spacing: -0.01em;
+  }
+
+  html.ios-app .page-tool-header p {
+    margin-top: 0.35rem;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  /* Bottom tab bar — glow rail + active indicator + press feedback */
+  .ios-app-tab-bar::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0, 230, 118, 0.55), transparent);
+    pointer-events: none;
+  }
+
+  .ios-app-tab-link {
+    position: relative;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      transform var(--dur-fast) var(--ease-snap),
+      color 0.15s ease,
+      background 0.15s ease;
+  }
+
+  .ios-app-tab-link:active {
+    transform: scale(0.92);
+  }
+
+  .ios-app-tab-active-bar {
+    position: absolute;
+    top: 0;
+    left: 22%;
+    right: 22%;
+    height: 2px;
+    border-radius: 0 0 4px 4px;
+    background: #00e676;
+    box-shadow: 0 0 14px rgba(0, 230, 118, 0.85);
+  }
+
+  .ios-app-tab-link-active {
+    background: linear-gradient(180deg, rgba(0, 230, 118, 0.12) 0%, rgba(0, 230, 118, 0.04) 100%);
+  }
+
+  .ios-app-tab-link-active .ios-app-tab-label {
+    color: #00e676;
+    text-shadow: 0 0 10px rgba(0, 230, 118, 0.45);
+  }
+
+  /* Segmented controls + sub-buttons — touch-first sizing */
+  html.ios-app .flow-seg-group {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    padding: 3px;
+    border-radius: 10px;
+    box-shadow: 0 0 16px rgba(0, 230, 118, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  html.ios-app .flow-seg-btn {
+    flex: 1;
+    min-height: 2.625rem;
+    padding: 0.5rem 0.65rem;
+    font-size: 10px;
+    border-radius: 7px;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform var(--dur-fast) var(--ease-snap), background 0.15s ease, color 0.15s ease;
+  }
+
+  html.ios-app .flow-seg-btn:active {
+    transform: scale(0.96);
+  }
+
+  html.ios-app .grid-chip-btn,
+  html.ios-app .spx-odte-lens-toggle {
+    min-height: 2.5rem;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform var(--dur-fast) var(--ease-snap), border-color 0.15s ease, background 0.15s ease;
+  }
+
+  html.ios-app .grid-chip-btn:active,
+  html.ios-app .spx-odte-lens-toggle:active {
+    transform: scale(0.96);
+  }
+
+  /* Sub-page tabs — full-width segmented rail on phone */
+  html.ios-app [role="tablist"]:not([class*="unstyled"]) {
+    width: 100%;
+    max-width: none;
+    border-radius: 12px;
+    padding: 4px;
+    box-shadow: 0 0 20px rgba(0, 230, 118, 0.06);
+  }
+
+  html.ios-app [role="tab"] {
+    flex: 1;
+    justify-content: center;
+    min-height: 2.75rem;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html.ios-app [role="tab"]:active {
+    transform: scale(0.97);
+  }
+
+  /* Primary actions — 44px touch floor (Button + outline CTAs) */
+  html.ios-app a.rounded-xl.font-semibold,
+  html.ios-app button.rounded-xl.font-semibold {
+    min-height: 2.75rem;
+  }
+
+  html.ios-app .nav-sheet-toggle,
+  html.ios-app .nav-sheet-close {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    transition: transform var(--dur-fast) var(--ease-snap), background 0.15s ease;
+  }
+
+  html.ios-app .nav-sheet-toggle:active,
+  html.ios-app .nav-sheet-close:active {
+    transform: scale(0.92);
+  }
+
+  html.ios-app .nav-sheet-link {
+    border-radius: 10px;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    transition: color 0.15s ease, background 0.15s ease, transform var(--dur-fast) var(--ease-snap);
+  }
+
+  html.ios-app .nav-sheet-link:active {
+    transform: scale(0.98);
+    background: rgba(0, 230, 118, 0.06);
+  }
+
+  html.ios-app .nav-sheet-cards .nav-card {
+    border-radius: 14px;
+    transition: transform var(--dur-base) var(--ease-draw), border-color 0.15s ease;
+  }
+
+  html.ios-app .nav-sheet-cards .nav-card:active {
+    transform: scale(0.985);
+  }
+
+  html.ios-app .spx-hero-stat-pill,
+  html.ios-app .spx-hero-metric-block {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 4px 18px rgba(0, 0, 0, 0.35);
+  }
+
+  html.ios-app .spx-sniper-command {
+    box-shadow:
+      0 0 60px rgba(0, 230, 118, 0.12),
+      inset 0 0 48px rgba(0, 230, 118, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html.ios-app .page-shell,
+    html.ios-app .ios-desk-shell {
+      animation: none;
+    }
+    html.ios-app .ios-app-tab-link:active,
+    html.ios-app .flow-seg-btn:active,
+    html.ios-app [role="tab"]:active {
+      transform: none;
+    }
+  }
+
   @media (max-width: 1023px) {
     html.ios-app .nav-auth .nav-push-slot {
       display: none;

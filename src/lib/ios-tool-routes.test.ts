@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isIosToolRoute } from "@/lib/ios-tool-routes";
+import { getIosToolNavLabel, isIosToolRoute } from "@/lib/ios-tool-routes";
 
 describe("isIosToolRoute", () => {
   it("matches primary tool paths", () => {
@@ -17,5 +17,12 @@ describe("isIosToolRoute", () => {
     assert.equal(isIosToolRoute("/pricing"), false);
     assert.equal(isIosToolRoute("/sign-in"), false);
     assert.equal(isIosToolRoute("/faq"), false);
+  });
+
+  it("resolves nav labels for tool routes", () => {
+    assert.equal(getIosToolNavLabel("/dashboard"), "SPX Slayer");
+    assert.equal(getIosToolNavLabel("/flows"), "HELIX");
+    assert.equal(getIosToolNavLabel("/nighthawk/edition"), "Night Hawk");
+    assert.equal(getIosToolNavLabel("/account"), null);
   });
 });

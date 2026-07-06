@@ -41,6 +41,11 @@ const cssNeedles = [
   [".ios-tool-locked-screen", "ComingSoon nav clearance"],
   [".auth-mobile-pane", "sign-in safe-area padding"],
   [".ios-account-page", "account page nav offset"],
+  ["html.ios-app .page-tool-header", "iOS compact page headers"],
+  [".ios-app-tab-active-bar", "tab bar active glow indicator"],
+  ["html.ios-app .nav-bar-ios-tool", "iOS tool context nav mode"],
+  ["@keyframes ios-page-enter", "iOS page enter animation"],
+  ["html.ios-app .flow-seg-btn", "iOS touch-sized segment buttons"],
   ["html.ios-app.ios-tab-bar .ios-desk-shell", "single bottom inset owner for desk"],
 ];
 
@@ -68,10 +73,10 @@ if (header.includes("showValues") && header.includes("hasQuote")) {
 }
 
 const nav = readFileSync(join(root, "src/components/Nav.tsx"), "utf8");
-if (nav.includes("brandHref") && nav.includes('iosApp && isSignedIn ? "/dashboard"')) {
-  ok("nav:ios-brand-dashboard");
+if (nav.includes("iosToolLabel") && nav.includes("getIosToolNavLabel")) {
+  ok("nav:ios-tool-context-title");
 } else {
-  fail("nav:ios-brand-dashboard", "signed-in iOS brand should link to /dashboard");
+  fail("nav:ios-tool-context-title", "expected centered tool title on iOS");
 }
 
 if (!header.includes('"— — —"')) {

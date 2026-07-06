@@ -25,7 +25,7 @@ export function GridPageTabs({ showZeroDteCommand = false }: { showZeroDteComman
 
   return (
     <Tabs defaultValue="command">
-      <TabList aria-label="Grid boards" className="max-w-fit">
+      <TabList aria-label="Grid boards" className="w-full sm:max-w-fit">
         <Tab value="command">0DTE Command</Tab>
         <Tab value="classic">Market Grid</Tab>
       </TabList>
