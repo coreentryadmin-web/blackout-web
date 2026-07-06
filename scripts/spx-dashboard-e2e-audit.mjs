@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
+import { mintIosPlaywrightSession, onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(
@@ -322,8 +323,16 @@ async function crossToolIntegration(app, hm) {
 }
 
 async function browserDashboard(session, hm) {
-  const browser = await chromium.launch({ headless: true });
+  const pw = await mintIosPlaywrightSession({ appUrl: BASE });
+  if (pw.skip) {
+    rec("ui:browser-dashboard", "FAIL", pw.reason);
+    return;
+  }
+
+  const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
   const context = await browser.newContext({ userAgent: UA });
+  await context.addInitScript(onboardingInitScript());
+  await context.addCookies(pw.cookies);
   const page = await context.newPage();
   const consoleErrors = [];
   page.on("console", (msg) => {
@@ -332,10 +341,16 @@ async function browserDashboard(session, hm) {
   page.on("pageerror", (err) => consoleErrors.push(String(err.message)));
 
   try {
-    await page.goto(session.signInUrl, { waitUntil: "networkidle", timeout: 120_000 });
-    await page.waitForURL(/\/dashboard/, { timeout: 120_000 });
-
+    await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+    await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 60_000 });
     rec("ui:sign-in-dashboard", "PASS");
+
+    const deskText = await page.locator(".spx-sniper-desk").innerText().catch(() => "");
+    if (/\bOFFLINE\b/.test(deskText)) {
+      rec("ui:live-badge-rth", "FAIL", "shows OFFLINE during RTH");
+    } else {
+      rec("ui:live-badge-rth", "PASS");
+    }
 
     // --- Click every SPX dashboard control ---
     const gexTab = page.locator("#spx-matrix-tab-gex");
@@ -352,7 +367,11 @@ async function browserDashboard(session, hm) {
     }
 
     const matrixTable = page.locator(".spx-gex-matrix-table");
-    await matrixTable.waitFor({ state: "visible", timeout: 20_000 });
+    await page.waitForFunction(
+      () => document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= 20,
+      { timeout: 45_000 }
+    );
+    await matrixTable.waitFor({ state: "visible", timeout: 5_000 });
     const rowCount = await matrixTable.locator("tbody tr").count();
     if (rowCount < 20) {
       rec("ui:matrix-rows", "FAIL", `only ${rowCount} rows visible`);
@@ -409,6 +428,9 @@ async function browserDashboard(session, hm) {
   } catch (e) {
     rec("ui:browser-dashboard", "FAIL", e.message);
   } finally {
+    try {
+      await pw.cleanup?.();
+    } catch {}
     await browser.close();
   }
 }

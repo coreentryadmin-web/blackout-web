@@ -1,5 +1,34 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 13:45 ET
+Last updated: 2026-07-06 10:42 ET
+
+## Member live UI validation — 2026-07-06 ~10:40 ET (post #571 OFFLINE fix)
+
+**Session:** User requested validation of what **members see on the live website**, not API-only probes. Agent ran Playwright against `https://blackouttrades.com/dashboard` with Clerk cookie injection (same path as iOS E2E).
+
+### Member dashboard (`npm run validate:member-dashboard`)
+
+| Check | Result |
+|---|---|
+| `member-api:merged` | ✅ `market_open=true`, RTH OPEN, spot ~7524 |
+| `member-ui:live-badge` | ✅ not OFFLINE |
+| `member-ui:snapshot-banner` | ✅ no "Last session snapshot · not live" |
+| `member-ui:trade-alerts-closed` | ✅ no MARKET CLOSED / 0DTE WINDOW CLOSED hero |
+| `member-ui:matrix-loading` | ✅ 173 strike rows loaded (wait for table, not fixed sleep) |
+| `member-ui:live-label` | ✅ LIVE present |
+| `member-ui:spot-visible` | ✅ 7,524.02 |
+| Screenshot | `audit-output/member-dashboard-live-*.png` |
+
+### SPX E2E with browser (`npm run validate:spx-e2e`)
+
+| Check | Result |
+|---|---|
+| Matrix API deep audit | ✅ 154 strikes GEX/VEX/DEX/CHARM |
+| Browser UI (cookie auth) | ✅ sign-in, LIVE badge, 173 matrix rows, GEX/VEX tab clicks |
+| `integration:spx-cross-tool` | ⚠️ desk vs matrix spot Δ=0.46 — parallel fetch timing, not member-visible |
+
+**Scripts added:** `scripts/member-dashboard-live-check.mjs`, `validate:member-dashboard` in `package.json`. `validate:spx-e2e` browser section now uses cookie injection (fixes 120s sign-in ticket timeout in headless CI).
+
+---
 
 ## Manual SPX + Grid RTH agent run — 2026-07-06 ~09:37 ET (Mon market open)
 
