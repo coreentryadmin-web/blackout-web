@@ -79,6 +79,11 @@ const pagesNeedles = [
   [".account-page-title-block", "account title hide hook"],
   [".helix-ios-toolbar", "HELIX sticky filter bar"],
   [".grid-page-tabs", "grid page tabs hook"],
+  ['data-ios-route="faq"', "FAQ native page scope"],
+  ['data-ios-route="learn"', "Learn native page scope"],
+  [".faq-native-view", "FAQ native accordion layout"],
+  [".learn-page-shell-native", "Learn native page shell hook"],
+  [".gex-ticker-native-sheet", "Thermal native ticker bottom sheet"],
 ];
 for (const [needle, label] of pagesNeedles) {
   if (pagesCss.includes(needle)) ok(`pages-css:${label}`, needle);
@@ -93,6 +98,8 @@ const sourceNeedles = [
   ["src/components/IosAppTabBar.tsx", "IosAppTabBar"],
   ["src/components/ios/IosAppChrome.tsx", "IosAppChrome"],
   ["src/components/ios/IosNativePageTransition.tsx", "IosNativePageTransition"],
+  ["src/components/ios/IosSectionHeader.tsx", "IosSectionHeader"],
+  ["src/components/ios/IosNativeChipRail.tsx", "IosNativeChipRail"],
   ["src/lib/ios-tool-routes.ts", "ios-tool-routes"],
 ];
 const navCss = readFileSync(join(root, "src/app/ios-native-nav.css"), "utf8");
@@ -136,9 +143,39 @@ for (const [needle, label] of commandNeedles) {
   else fail(`command-css:${label}`, `missing ${needle}`);
 }
 
+const tabBar = readFileSync(join(root, "src/components/IosAppTabBar.tsx"), "utf8");
+if (tabBar.includes("ios-app-tab-underline") && tabBar.includes("iosHapticSelection")) {
+  ok("nav:tab-rail-active-hierarchy");
+} else {
+  fail("nav:tab-rail-active-hierarchy", "expected sliding underline + haptics on tab rail");
+}
+
+const tabRailCss = readFileSync(join(root, "src/app/ios-native-tab-rail.css"), "utf8");
+if (tabRailCss.includes("ios-app-tab-link-active") && tabRailCss.includes("ios-tab-glow-pulse")) {
+  ok("nav:tab-rail-css");
+} else {
+  fail("nav:tab-rail-css", "expected ios-native-tab-rail.css active/inactive styles");
+}
+
+const cardsCss = readFileSync(join(root, "src/app/ios-native-cards.css"), "utf8");
+if (cardsCss.includes("ios-card-alert-ring") && cardsCss.includes("largo-native-bubble-assistant")) {
+  ok("cards:semantic-variants");
+} else {
+  fail("cards:semantic-variants", "expected ios-native-cards.css semantic surfaces");
+}
+
+const haptics = readFileSync(join(root, "src/lib/ios-haptics.ts"), "utf8");
+if (haptics.includes("iosHapticSelection") && haptics.includes("Haptics")) ok("ios:haptics-bridge");
+else fail("ios:haptics-bridge", "expected ios-haptics.ts Capacitor bridge");
+
 const menu = readFileSync(join(root, "src/components/ios/IosNativeMenu.tsx"), "utf8");
-if (menu.includes("CMD · INSTRUMENT SELECT")) ok("command:deck-menu-label");
-else fail("command:deck-menu-label", "expected command deck kicker in IosNativeMenu");
+if (menu.includes("Instruments")) ok("command:deck-menu-label");
+else fail("command:deck-menu-label", "expected Instruments kicker in IosNativeMenu");
+if (menu.includes("drag=\"y\"") && menu.includes("iosHapticImpact")) {
+  ok("nav:menu-swipe-sheet");
+} else {
+  fail("nav:menu-swipe-sheet", "expected swipe-to-dismiss command deck sheet");
+}
 
 const skinNeedles = [
   [".ios-native-ambient", "route ambient glow"],
@@ -146,6 +183,7 @@ const skinNeedles = [
   ["--ios-surface-1", "glass surface token"],
   ["--ios-shadow-card", "card shadow token"],
   ["--ios-touch:", "touch target token"],
+  ["--ios-input:", "16px input token prevents iOS focus zoom"],
   [".flow-seg-btn-active-all", "segment active skin"],
   [".largo-suggestion-chip", "Largo chip skin"],
   [".nighthawk-play-row", "Night Hawk card skin"],
@@ -164,11 +202,34 @@ if (chrome.includes("ios-native-ambient")) {
   fail("skin:ambient-layer-mounted", "expected ios-native-ambient in IosAppChrome");
 }
 
-const tabBar = readFileSync(join(root, "src/components/IosAppTabBar.tsx"), "utf8");
+if (tabBar.includes("tab.short")) ok("nav:instrument-rail-short-labels");
+else fail("nav:instrument-rail-short-labels", "expected short labels on tab rail");
+if (tabBar.includes("path !== \"/terminal\"")) ok("nav:largo-hides-tab-rail");
+else fail("nav:largo-hides-tab-rail", "expected Largo to hide bottom rail");
 if (tabBar.includes("ios-app-tab-label") && tabBar.includes("scroll={false}")) {
   ok("nav:instrument-rail-labels");
 } else {
-  fail("nav:instrument-rail-labels", "expected full tool labels + scroll={false}");
+  fail("nav:instrument-rail-labels", "expected tab rail labels + scroll={false}");
+}
+
+const organizeCss = readFileSync(join(root, "src/app/ios-native-organize.css"), "utf8");
+if (organizeCss.includes("helix-native-toolbar") && organizeCss.includes("spx-native-stats-toggle")) {
+  ok("organize:compact-tool-chrome");
+} else {
+  fail("organize:compact-tool-chrome", "expected organize CSS for HELIX/SPX");
+}
+if (organizeCss.includes("ios-native-chip-rail")) ok("organize:unified-chip-rail");
+else fail("organize:unified-chip-rail", "expected shared chip rail styles");
+
+const chipRail = readFileSync(join(root, "src/components/ios/IosNativeChipRail.tsx"), "utf8");
+if (chipRail.includes("ios-native-chip-scroll")) ok("organize:IosNativeChipRail");
+else fail("organize:IosNativeChipRail", "expected IosNativeChipRail component");
+
+const gridTabs = readFileSync(join(root, "src/components/zerodte/GridPageTabs.tsx"), "utf8");
+if (gridTabs.includes("IosNativeSegment") && gridTabs.includes("grid-page-tabs-native")) {
+  ok("organize:grid-native-segment");
+} else {
+  fail("organize:grid-native-segment", "expected native segment on Grid");
 }
 
 const pageTransition = readFileSync(join(root, "src/components/ios/IosNativePageTransition.tsx"), "utf8");
@@ -264,7 +325,95 @@ else fail("grid:uses-grid-page-shell", "expected GridPageShell");
 if (nhPage.includes("NighthawkPageShell")) ok("nighthawk:uses-nighthawk-page-shell");
 else fail("nighthawk:uses-nighthawk-page-shell", "expected NighthawkPageShell");
 
+const faqPage = readFileSync(join(root, "src/app/(site)/faq/page.tsx"), "utf8");
+const learnLayout = readFileSync(join(root, "src/app/(site)/learn/layout.tsx"), "utf8");
+if (faqPage.includes("FaqPageShell")) ok("faq:uses-faq-page-shell");
+else fail("faq:uses-faq-page-shell", "expected FaqPageShell");
+if (learnLayout.includes("LearnPageShell")) ok("learn:uses-learn-page-shell");
+else fail("learn:uses-learn-page-shell", "expected LearnPageShell");
+
+const faqNative = readFileSync(join(root, "src/components/faq/FaqNativeView.tsx"), "utf8");
+if (faqNative.includes("faq-native-view") && faqNative.includes("IosNativeChipRail")) {
+  ok("faq:native-accordion-view");
+} else {
+  fail("faq:native-accordion-view", "expected FaqNativeView accordion layout");
+}
+
+const faqSection = readFileSync(join(root, "src/components/landing/FaqSection.tsx"), "utf8");
+if (faqSection.includes("FaqNativeView") && faqSection.includes("useIosNativeShell")) {
+  ok("faq:native-shell-gate");
+} else {
+  fail("faq:native-shell-gate", "expected FaqSection to gate native view");
+}
+
+const learnHub = readFileSync(join(root, "src/components/learn/LearnHub.tsx"), "utf8");
+if (learnHub.includes("useIosNativeShell") && learnHub.includes("learn-hub-native")) {
+  ok("learn:hub-native-gate");
+} else {
+  fail("learn:hub-native-gate", "expected LearnHub compact native mode");
+}
+
+const gexHeatmap = readFileSync(join(root, "src/components/desk/GexHeatmap.tsx"), "utf8");
+if (gexHeatmap.includes("nativeShell={nativeShell}") && gexHeatmap.includes("gex-ticker-native-sheet")) {
+  ok("thermal:native-ticker-sheet");
+} else {
+  fail("thermal:native-ticker-sheet", "expected TickerSwitcher native bottom sheet");
+}
+if (gexHeatmap.includes("resetIosViewport") && gexHeatmap.includes("gex-ticker-sheet-open")) {
+  ok("thermal:keyboard-viewport-reset");
+} else {
+  fail("thermal:keyboard-viewport-reset", "expected resetIosViewport on Thermal ticker sheet");
+}
+
+const largoTerm = readFileSync(join(root, "src/components/desk/LargoTerminal.tsx"), "utf8");
+if (largoTerm.includes("useIosKeyboardInset")) {
+  ok("largo:keyboard-inset-hook");
+} else {
+  fail("largo:keyboard-inset-hook", "expected useIosKeyboardInset in LargoTerminal");
+}
+
+const largoPage = readFileSync(join(root, "src/components/desk/LargoPageShell.tsx"), "utf8");
+if (largoPage.includes("LargoNativeTerminal")) ok("largo:native-terminal-component");
+else fail("largo:native-terminal-component", "expected LargoNativeTerminal in LargoPageShell");
+
+const largoNative = readFileSync(join(root, "src/components/desk/LargoNativeTerminal.tsx"), "utf8");
+if (largoNative.includes("largo-native-desk") && largoNative.includes("useLargoChat")) {
+  ok("largo:mobile-only-desk");
+} else {
+  fail("largo:mobile-only-desk", "expected dedicated LargoNativeTerminal");
+}
+if (largoNative.includes("resetIosViewport")) ok("largo:keyboard-viewport-reset");
+else fail("largo:keyboard-viewport-reset", "expected resetIosViewport on input blur");
+
+const keyboardHook = readFileSync(join(root, "src/hooks/useIosKeyboardInset.ts"), "utf8");
+if (keyboardHook.includes("resetIosViewport") && !keyboardHook.includes("position: fixed")) {
+  ok("ios:keyboard-no-body-fixed");
+} else {
+  fail("ios:keyboard-no-body-fixed", "expected keyboard sync without body position:fixed");
+}
+
+const viewportLock = readFileSync(join(root, "src/components/ios/IosViewportLock.tsx"), "utf8");
+if (viewportLock.includes("maximum-scale=1")) ok("ios:viewport-zoom-lock");
+else fail("ios:viewport-zoom-lock", "expected IosViewportLock");
+
+const inputLockCss = readFileSync(join(root, "src/app/ios-native-input-lock.css"), "utf8");
+if (inputLockCss.includes("font-size: 16px !important")) ok("ios:input-16px-lock");
+else fail("ios:input-16px-lock", "expected 16px input lock CSS");
+if (!inputLockCss.includes("position: fixed")) ok("ios:input-lock-no-body-fixed");
+else fail("ios:input-lock-no-body-fixed", "body position:fixed causes post-keyboard stuck layout");
+
+if (pagesCss.includes("largo-native-messages") && pagesCss.includes("justify-content: flex-end")) {
+  ok("largo:messages-pin-above-composer");
+} else {
+  fail("largo:messages-pin-above-composer", "expected flex-end pin on Largo messages");
+}
+
 const rootLayout = readFileSync(join(root, "src/app/layout.tsx"), "utf8");
+if (rootLayout.includes("IosViewportLock") && rootLayout.includes("ios-native-input-lock.css")) {
+  ok("layout:ios-viewport-lock-mounted");
+} else {
+  fail("layout:ios-viewport-lock-mounted", "expected IosViewportLock + input-lock CSS");
+}
 if (rootLayout.includes("ios-native-motion.css")) ok("layout:ios-native-motion-imported");
 else fail("layout:ios-native-motion-imported", "expected ios-native-motion.css import");
 if (rootLayout.includes("ios-native-command.css")) ok("layout:ios-native-command-imported");
