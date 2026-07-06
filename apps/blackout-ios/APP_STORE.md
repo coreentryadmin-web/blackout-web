@@ -18,14 +18,18 @@
 3. Integration **BlackOut ASC** (App Store Connect API `.p8`)
 4. Run workflow **ios-release** → TestFlight (~15 min)
 
+### Environment variables (app settings)
+
+**Leave this empty.** `codemagic.yaml` already sets `APPLE_TEAM_ID`, `BUNDLE_ID`, etc. Adding vars here overrides YAML and can break signing.
+
 ### Signing failures (checklist)
 
 | Symptom | Fix |
 |---------|-----|
-| Team `663D77E68E` or other ID (not `ZA32C782N5`) | Codemagic **app env vars** override `codemagic.yaml`. Delete wrong `APPLE_TEAM_ID` / `BUNDLE_ID` in Codemagic → your app → Environment variables. |
-| Bundle `com.blackout-trader.app` (typo) | Must be **`com.blackout-trades.app`** (with **s**). Same — remove bad Codemagic env override. |
-| No IOS_DISTRIBUTION certificate | API key **BlackOut ASC** must be **App Manager** on **BLACKOUT TRADE LLC** (`ZA32C782N5`). Regenerate `.p8` in ASC if needed. |
-| Manual cert (optional) | Codemagic → Team settings → Code signing identities → Generate **Apple Distribution** with **BlackOut ASC** key. |
+| Team `663D77E68E` or other ID (not `ZA32C782N5`) | **Team integration**, not app env vars. Codemagic → **Teams** → your team → **Team integrations** → **Developer Portal** → **BlackOut ASC** must use the API key from **BLACKOUT TRADE LLC** (Issuer ID from [App Store Connect → Users and Access → Keys](https://appstoreconnect.apple.com/access/integrations/api)). |
+| Bundle typo in logs | Repo uses **`com.blackout-trades.app`**. If logs show `blackout-trader`, rebuild from latest **`main`** (includes Xcode bundle patch). |
+| No IOS_DISTRIBUTION certificate | API key **BlackOut ASC** must be **App Manager** (not Developer). In ASC, key name is usually `Codemagic BlackOut`, key ID `45YGMDL3JS`. |
+| Manual cert (optional) | Codemagic → Team settings → **Code signing identities** → Generate **Apple Distribution** with **BlackOut ASC** key. |
 
 From repo root: `npm run validate:ios-config`
 
