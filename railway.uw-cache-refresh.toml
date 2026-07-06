@@ -18,7 +18,10 @@ watchPatterns = [
 ]
 
 [deploy]
-startCommand = "node scripts/hit-cron.mjs /api/cron/uw-cache-refresh"
+# UW cache refresh fans out ~24 parallel REST tasks; during RTH bursts or upstream
+# slowness a single tick can run several minutes. Default hit-cron 60s timeout caused
+# retry storms + 10–20m handshake gaps that tripped the cron-staleness watchdog (#605).
+startCommand = "CRON_HTTP_TIMEOUT_MS=300000 node scripts/hit-cron.mjs /api/cron/uw-cache-refresh"
 cronSchedule = "*/2 11-21 * * 1-5"
 restartPolicyType = "ON_FAILURE"
 numReplicas = 1
