@@ -33,6 +33,8 @@ function collectSetCookies(res) {
   return raw.map((c) => c.split(";")[0]).filter(Boolean);
 }
 
+import { generateDefaultAuditPhone } from "./audit-phone.mjs";
+
 /** Mints one temp admin/premium Clerk session against a live deployment.
  *  Returns `{ skip: true, reason }` if secrets aren't configured or any step
  *  fails (never throws) — callers should treat that as a SKIP, not a FAIL,
@@ -46,7 +48,7 @@ export async function mintClerkPremiumSession({ appUrl }) {
     return { skip: true, reason: "CLERK_SECRET_KEY / NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY not set" };
   }
   const email = process.env.AUDIT_EMAIL || "claude-audit-temp@blackouttrades.com";
-  const phone = process.env.AUDIT_PHONE || "+14155550123";
+  const phone = process.env.AUDIT_PHONE || generateDefaultAuditPhone();
   const fapi = fapiHost(publishableKey);
   const backend = (method, path, body) =>
     fetch(`${API}${path}`, {

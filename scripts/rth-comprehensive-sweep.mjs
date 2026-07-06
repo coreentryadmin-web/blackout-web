@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
+import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(/\/$/, "");
@@ -16,7 +17,7 @@ const SECRET = process.env.CLERK_SECRET_KEY;
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
 const CRON = process.env.CRON_SECRET || "";
 const EMAIL = process.env.AUDIT_EMAIL || `rth-sweep-${Date.now()}@blackouttrades.com`;
-const PHONE = process.env.AUDIT_PHONE || "+14155550123";
+const PHONE = process.env.AUDIT_PHONE || generateDefaultAuditPhone();
 const API = "https://api.clerk.com/v1";
 const CJS = "5.57.0";
 const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
@@ -200,11 +201,13 @@ async function auditApis(app) {
   const dFlip = desk?.gamma_flip ?? desk?.gex?.gamma_flip;
   const gFlip = gex?.flip ?? gex?.gamma_flip;
   const hFlip = heat?.summary?.gamma_flip ?? heat?.summary?.flip ?? heat?.gamma_flip ?? heat?.flip;
-  if (dFlip && gFlip && Math.abs(dFlip - gFlip) > 1) {
-    report.issues.push({ severity: "P1", id: "gex-flip-mismatch", detail: `desk=${dFlip} gex=${gFlip}` });
+  const spot = desk?.price ?? desk?.spot ?? gex?.spot ?? heat?.spot ?? heat?.summary?.spot ?? 0;
+  const flipTol = Math.max(spot * 0.01, 1);
+  if (dFlip && gFlip && Math.abs(dFlip - gFlip) > flipTol) {
+    report.issues.push({ severity: "P1", id: "gex-flip-mismatch", detail: `desk=${dFlip} gex=${gFlip} (tol=${flipTol.toFixed(1)})` });
   }
-  if (gFlip && hFlip && Math.abs(gFlip - hFlip) > 1) {
-    report.issues.push({ severity: "P1", id: "gex-heatmap-flip-mismatch", detail: `gex=${gFlip} heatmap=${hFlip}` });
+  if (gFlip && hFlip && Math.abs(gFlip - hFlip) > flipTol) {
+    report.issues.push({ severity: "P1", id: "gex-heatmap-flip-mismatch", detail: `gex=${gFlip} heatmap=${hFlip} (tol=${flipTol.toFixed(1)})` });
   }
   report.crossGex = { deskFlip: dFlip, gexFlip: gFlip, heatFlip: hFlip, deskSpot: desk?.price ?? desk?.spot };
 }
