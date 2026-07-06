@@ -65,33 +65,43 @@ export function useMergedDesk() {
     deskStable.current = undefined;
   }, [etSessionOpen]);
 
-  // Seed pulse/flow/desk SWR caches in one round-trip so first paint avoids 3 parallel cold XHRs.
-  useSWR("spx-desk-bootstrap", fetchSpxBootstrap, {
-    ...swrLiveOpts,
-    revalidateOnFocus: false,
-    dedupingInterval: 8_000,
-    onSuccess: (data) => {
-      if (data.pulse) void mutate("spx-desk-pulse", data.pulse, { revalidate: false });
-      if (data.flow) void mutate("spx-desk-flow", data.flow, { revalidate: false });
-      if (data.desk) void mutate("spx-desk-full", data.desk, { revalidate: false });
-      if (data.gexHeatmap && data.gexHeatmap.strikes?.length && data.gexHeatmap.spot > 0) {
-        void mutate(
-          "/api/market/gex-heatmap?ticker=SPX",
-          {
-            available: true,
-            ...data.gexHeatmap,
-          },
-          { revalidate: false }
-        );
-      }
-    },
-  });
+  // One bootstrap round-trip first — avoid 4 parallel cold lane XHRs on every dashboard load.
+  const { data: bootstrap, isLoading: bootstrapLoading } = useSWR(
+    "spx-desk-bootstrap",
+    fetchSpxBootstrap,
+    {
+      ...swrLiveOpts,
+      revalidateOnFocus: false,
+      dedupingInterval: 8_000,
+      onSuccess: (data) => {
+        if (data.pulse) void mutate("spx-desk-pulse", data.pulse, { revalidate: false });
+        if (data.flow) void mutate("spx-desk-flow", data.flow, { revalidate: false });
+        if (data.desk) void mutate("spx-desk-full", data.desk, { revalidate: false });
+        if (data.gexHeatmap && data.gexHeatmap.strikes?.length && data.gexHeatmap.spot > 0) {
+          void mutate(
+            "/api/market/gex-heatmap?ticker=SPX",
+            {
+              available: true,
+              ...data.gexHeatmap,
+            },
+            { revalidate: false }
+          );
+        }
+      },
+    }
+  );
+
+  const bootstrapSettled = !bootstrapLoading;
+  const bootstrapSeeded = Boolean(bootstrap);
+  // Pulse is the fast lane (~50–200ms) — never wait on bootstrap or desk rebuild.
+  const heavyLanesActive = bootstrapSettled;
 
   const { data: pulseRest, isValidating: pulseValidating } = useSWR(
     "spx-desk-pulse",
     fetchSpxDeskPulse,
     {
       ...swrLiveOpts,
+      revalidateOnMount: !bootstrapSeeded,
       refreshInterval: (latest) => {
         if (!isDeskSessionLiveFromPulse(latest) && !isClientDeskSessionOpen()) return 0;
         return pulseSseConnected ? PULSE_REST_SSE_MS : PULSE_REST_MS;
@@ -147,18 +157,20 @@ export function useMergedDesk() {
     data: desk,
     isLoading: deskLoading,
     isValidating: deskValidating,
-  } = useSWR("spx-desk-full", fetchSpxDesk, {
+  } = useSWR(heavyLanesActive ? "spx-desk-full" : null, fetchSpxDesk, {
     ...swrLiveOpts,
+    revalidateOnMount: !bootstrapSeeded,
     refreshInterval: sessionActive ? FULL_DESK_MS : 0,
     dedupingInterval: FULL_DESK_MS - 500,
     focusThrottleInterval: FULL_DESK_MS,
   });
 
   const { data: flow, isValidating: flowValidating } = useSWR(
-    "spx-desk-flow",
+    heavyLanesActive ? "spx-desk-flow" : null,
     fetchSpxDeskFlow,
     {
       ...swrLiveOpts,
+      revalidateOnMount: !bootstrapSeeded,
       refreshInterval: sessionActive ? FLOW_MS : 0,
       dedupingInterval: 1_500,
       focusThrottleInterval: FLOW_MS,
@@ -255,7 +267,7 @@ export function useMergedDesk() {
     Boolean(merged) &&
     ((deskValidating && Boolean(desk)) || flowValidating || pulseValidating);
 
-  const initialLoading = deskLoading && !merged;
+  const initialLoading = !merged && !pulseRest && !deskStable.current;
 
   return {
     desk: merged,

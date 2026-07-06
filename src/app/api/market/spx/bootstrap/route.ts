@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
-import { requireAnyToolApi } from "@/lib/tool-access-server";
-import { loadMergedSpxDesk } from "@/lib/spx-desk-loader";
-import { fetchGexHeatmap, type GexHeatmap } from "@/lib/providers/polygon-options-gex";
-import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
+import { loadBootstrapBundle, type MergedSpxDeskBundle } from "@/lib/spx-desk-loader";
 import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
@@ -14,38 +11,33 @@ const NO_STORE = {
 } as const;
 
 export type SpxBootstrapPayload = {
-  desk: Awaited<ReturnType<typeof loadMergedSpxDesk>>["desk"];
-  flow: Awaited<ReturnType<typeof loadMergedSpxDesk>>["flow"];
-  pulse: Awaited<ReturnType<typeof loadMergedSpxDesk>>["pulse"];
-  merged: Awaited<ReturnType<typeof loadMergedSpxDesk>>["merged"];
-  gexHeatmap: GexHeatmap | null;
+  desk: MergedSpxDeskBundle["desk"];
+  flow: MergedSpxDeskBundle["flow"];
+  pulse: MergedSpxDeskBundle["pulse"];
+  merged: MergedSpxDeskBundle["merged"];
+  /** Deprecated — matrix loads via /gex-heatmap (own cache lane). Kept for older clients. */
+  gexHeatmap: null;
 };
 
 /**
- * One round-trip for dashboard first paint: merged desk lanes + SPX matrix.
- * Individual /spx/pulse, /spx/flow, /spx/desk routes stay for incremental polls.
+ * One round-trip for dashboard first paint: merged desk lanes only.
+ * SPX matrix uses /gex-heatmap (desk-warm keeps both caches hot). Bundling the full
+ * matrix here caused Cloudflare 524 timeouts on cold cache (~125s) and forced the
+ * client to fall back to 4 parallel lane XHRs — the main source of ~10s dashboard loads.
  */
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
   if (auth instanceof Response) return auth;
 
-  ensureDataSockets();
-
-  const locked = await requireAnyToolApi(["spx", "heatmap"]);
-  const gexAllowed = !locked;
-
   try {
-    const [bundle, gexHeatmap] = await Promise.all([
-      loadMergedSpxDesk(),
-      gexAllowed ? fetchGexHeatmap("SPX").catch(() => null) : Promise.resolve(null),
-    ]);
+    const bundle = await loadBootstrapBundle();
 
     const payload: SpxBootstrapPayload = {
       desk: bundle.desk,
       flow: bundle.flow,
       pulse: bundle.pulse,
       merged: bundle.merged,
-      gexHeatmap,
+      gexHeatmap: null,
     };
 
     return NextResponse.json(roundFloats(payload), { headers: NO_STORE });
