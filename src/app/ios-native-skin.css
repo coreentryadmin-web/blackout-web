@@ -452,8 +452,29 @@ html.ios-app.ios-native-shell .overflow-x-auto {
 }
 
 /* ═══ Thermal matrix container ═══ */
-html.ios-app.ios-native-shell .gex-heatmap-desk > div {
+html.ios-app.ios-native-shell .gex-heatmap-desk > div:not(.gex-heatmap-panel-native) {
   border-radius: var(--ios-radius-lg);
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-panel-native {
+  background: var(--ios-surface-1) !important;
+  box-shadow: var(--ios-shadow-card);
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row [role="tablist"] {
+  background: var(--ios-surface-2);
+  border: 1px solid var(--ios-border);
+  border-radius: var(--ios-radius-md);
+  padding: 3px;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-key-levels {
+  background: var(--ios-surface-2) !important;
+  border-color: var(--ios-border) !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-matrix-scroll {
+  background: var(--ios-surface-2);
 }
 
 html.ios-app.ios-native-shell .desk-layout {

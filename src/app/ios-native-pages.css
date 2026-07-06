@@ -216,37 +216,143 @@ html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-ios-analytics-col .
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   THERMAL — heatmap
+   THERMAL — heatmap (native mobile desk)
    ═══════════════════════════════════════════════════════════════════════════ */
-html.ios-app.ios-native-shell[data-ios-route="heatmap"] .page-shell > .px-4 {
-  padding-left: 0;
-  padding-right: 0;
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .thermal-page-shell-native.page-shell {
+  min-height: 100dvh;
+  padding-top: 0 !important;
 }
 
-html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-desk {
-  gap: var(--ios-content-gap);
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .thermal-page-content-native {
+  min-height: calc(100dvh - var(--ios-header-offset));
+  padding-bottom: calc(var(--ios-tab-offset, 0px) + 0.5rem) !important;
 }
 
-html.ios-app.ios-native-shell[data-ios-route="heatmap"] .page-tool-header {
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .thermal-page-inner-native {
+  padding: calc(var(--ios-header-offset) + 0.35rem) 0.65rem 0;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .page-tool-header,
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .page-shell > .px-4 > .page-tool-header {
   display: none;
 }
 
-html.ios-app.ios-native-shell[data-ios-route="heatmap"] [role="tablist"] {
-  position: sticky;
-  top: calc(var(--ios-header-offset) + 2px);
-  z-index: 15;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-desk-native {
+  gap: 0.5rem;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-panel-native {
+  border-radius: var(--ios-panel-radius) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  overflow: hidden;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-panel-native > div:last-child {
+  padding: 0.65rem !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.55rem;
+  padding: 0.65rem;
+  border-radius: var(--ios-panel-radius);
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row > span.ml-auto {
+  display: none;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row [role="tablist"] {
+  position: static;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row [role="tab"] {
+  min-height: var(--ios-touch, 2.75rem);
+  font-size: 12px;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-key-levels {
+  margin-bottom: 0.5rem !important;
+  border-radius: var(--ios-panel-radius);
+  padding: 0.65rem 0.75rem;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-key-levels > div:last-child {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-key-levels .font-mono.text-\[8px\] {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-key-levels .font-mono.text-\[15px\] {
+  font-size: 17px;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-matrix-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 0.5rem;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-matrix-legend > span:first-child {
+  grid-column: 1 / -1;
+  font-size: 11px;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-matrix-scroll {
+  max-height: calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 15.5rem) !important;
+  min-height: min(46dvh, 380px) !important;
+  margin-bottom: 0.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--ios-panel-radius);
+  -webkit-overflow-scrolling: touch;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-matrix-scroll table {
+  min-width: 32rem;
+  font-size: 12px;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-matrix-scroll th,
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-matrix-scroll td {
+  padding: 0.45rem 0.4rem;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-matrix-scroll th:first-child,
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-matrix-scroll td:first-child {
+  min-width: 4.25rem;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="heatmap"] .max-h-\[clamp\(480px\,74vh\,880px\)\],
 html.ios-app.ios-native-shell[data-ios-route="heatmap"] .max-h-\[clamp\(360px\,56vh\,600px\)\] {
-  max-height: calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 10rem);
+  max-height: calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 12rem);
   -webkit-overflow-scrolling: touch;
 }
 
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-rail,
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-methodology {
+  display: none;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] [role="tablist"] {
+  position: static;
+  z-index: auto;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 html.ios-app.ios-native-shell[data-ios-route="heatmap"] .min-w-\[36rem\] {
-  min-width: 28rem;
+  min-width: 32rem;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

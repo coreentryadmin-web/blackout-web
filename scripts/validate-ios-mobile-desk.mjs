@@ -67,6 +67,9 @@ const pagesNeedles = [
   ['data-ios-route="dashboard"', "SPX native page scope"],
   ['data-ios-route="flows"', "HELIX native page scope"],
   ['data-ios-route="largo"', "Largo native page scope"],
+  [".thermal-page-inner-native", "Thermal native page padding hook"],
+  [".gex-matrix-scroll", "Thermal matrix scroll region hook"],
+  [".gex-key-levels", "Thermal key levels hook"],
   [".largo-page-main-native", "Largo full-bleed main hook"],
   [".largo-terminal-native", "Largo edge-to-edge terminal hook"],
   [".account-page-title-block", "account title hide hook"],
@@ -192,6 +195,13 @@ if (largoShell.includes("useIosNativeShell") && largoShell.includes("!nativeShel
   ok("largo:page-shell-native-gate");
 } else {
   fail("largo:page-shell-native-gate", "expected LargoPageShell to hide web header on native");
+}
+
+const thermalShell = readFileSync(join(root, "src/components/desk/ThermalPageShell.tsx"), "utf8");
+if (thermalShell.includes("useIosNativeShell") && thermalShell.includes("!nativeShell")) {
+  ok("thermal:page-shell-native-gate");
+} else {
+  fail("thermal:page-shell-native-gate", "expected ThermalPageShell to hide web header on native");
 }
 
 if (siteLayout.includes("IosAppChrome")) {

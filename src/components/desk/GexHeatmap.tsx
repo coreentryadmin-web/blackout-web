@@ -2404,7 +2404,13 @@ function KeyLevelBox({
   );
 }
 
-export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string }) {
+export function GexHeatmap({
+  ticker: initialTicker = "SPY",
+  nativeShell = false,
+}: {
+  ticker?: string;
+  nativeShell?: boolean;
+}) {
   const [ticker, setTicker] = useState(initialTicker.toUpperCase());
   const [lens, setLens] = useState<Lens>("gex");
   // View selection ("pair-a" = Matrix (full width); "pair-b" = Profile + Curve + Shift).
@@ -3374,7 +3380,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
 
   const matrixPanel = (
     <div className="min-w-0">
-      <div className="mb-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-[10px] font-mono uppercase tracking-widest">
+      <div className="mb-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-[10px] font-mono uppercase tracking-widest gex-matrix-legend">
         <span className="mr-1 shrink-0 font-bold tracking-[0.2em] text-sky-300">
           Strike × Expiry Matrix
         </span>
@@ -3488,7 +3494,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
             Recent Ranges was removed — matrix is the primary surface on this tab. */}
         <div
           ref={matrixScrollRef}
-          className="max-h-[clamp(480px,74vh,880px)] min-h-[clamp(360px,58vh,640px)] overflow-auto overscroll-contain"
+          className="max-h-[clamp(480px,74vh,880px)] min-h-[clamp(360px,58vh,640px)] overflow-auto overscroll-contain gex-matrix-scroll"
           role="region"
           tabIndex={0}
           aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} exposure matrix, strikes by expiration`}
@@ -3755,7 +3761,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
   );
 
   return (
-    <Panel accent={panelAccent} className="overflow-visible">
+    <Panel accent={panelAccent} className={clsx("overflow-visible gex-heatmap-panel", nativeShell && "gex-heatmap-panel-native")}>
       {/* ── ONE compact control row (UI refactor) ──────────────────────────────
           [🔍 ticker + spot]  [ Profile+Matrix | Curve+Shift ]  …spacer…  [live · GEX VEX DEX CHARM]
           The old full-width ticker-chip row, the big central spot readout, and the
@@ -3767,7 +3773,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
           page. The freshness indicator that lived on that header's actions slot is
           preserved as the minimal Live/Quote-only dot at the far right of this row.
           Wraps gracefully on narrow widths (flex-wrap). */}
-      <div className="relative z-[40] mb-3 flex flex-wrap items-center gap-x-4 gap-y-3 overflow-visible rounded-xl border border-white/10 bg-[rgba(8,9,14,0.45)] px-3 py-2.5 backdrop-blur">
+      <div className="relative z-[40] mb-3 flex flex-wrap items-center gap-x-4 gap-y-3 overflow-visible rounded-xl border border-white/10 bg-[rgba(8,9,14,0.45)] px-3 py-2.5 backdrop-blur gex-heatmap-control-row">
         {/* Compact searchable ticker + the ONE kept clean spot reference. */}
         <TickerSwitcher
           ticker={ticker}
@@ -3864,7 +3870,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
 
       {/* Key levels sit tight under the control row — matrix is the hero below. */}
       {showViewTabs && (
-        <KeyLevelBox cells={levelCells} kicker={`${lensUpper} structure`} className="mb-3" />
+        <KeyLevelBox cells={levelCells} kicker={`${lensUpper} structure`} className="mb-3 gex-key-levels" />
       )}
 
       {/* Night Hawk active-play badge — renders only when a NH edition from the last 24h
@@ -4004,7 +4010,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
               wall / put wall / max pain already lead the page in the consolidated key-level
               box. ASK LARGO leads; the two small optional cards (dark-pool, flow) sit beside
               it and each self-hides when empty. ── */}
-          <div className="mt-5 grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1.6fr_1fr] gex-heatmap-rail">
             {/* ── Largo read — AI desk-read narrative (lazy, keyed by ticker) ── */}
             <LargoRead key={ticker} ticker={ticker} />
             {/* Optional rail cards — dark-pool levels + flow summary (each self-hides when empty). */}
@@ -4015,7 +4021,7 @@ export function GexHeatmap({ ticker: initialTicker = "SPY" }: { ticker?: string 
           </div>
 
           {/* ── Methodology disclosure — honest about the dealer-sign assumption ── */}
-          <p className="mt-5 border-t border-white/8 pt-3 text-[10px] leading-snug text-sky-300/75">
+          <p className="mt-5 border-t border-white/8 pt-3 text-[10px] leading-snug text-sky-300/75 gex-heatmap-methodology">
             <span aria-hidden className="mr-1 text-sky-300/70">ⓘ</span>
             Net dealer gamma uses the standard convention (dealers long calls / short
             puts); vanna is computed closed-form from implied volatility. Levels are model
