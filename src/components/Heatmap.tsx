@@ -29,7 +29,7 @@ const GexHeatmap = dynamic(
  */
 export function Heatmap() {
   return (
-    <div className="desk-layout space-y-5">
+    <div className="desk-layout gex-heatmap-desk space-y-5">
       <GexHeatmap ticker="SPY" />
     </div>
   );

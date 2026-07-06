@@ -33,6 +33,8 @@ import { WatchlistBar } from "@/components/desk/WatchlistBar";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { Skeleton } from "@/components/ui";
 import type { NightHawkEdition } from "@/lib/nighthawk/types";
+import { useIosNativeShell } from "@/hooks/useIosNativeShell";
+import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
 
 const PREMIUM_PRESETS = [200_000, 500_000, 1_000_000, 20_000_000] as const;
 // Audit gap #16: the client floor MUST match the server ingest floor (flow-persist
@@ -106,6 +108,8 @@ function exportCSV(alerts: FlowAlert[]) {
 export function FlowFeed() {
   // Data
   const [alerts, setAlerts]               = useState<FlowAlert[]>([]);
+  const nativeShell = useIosNativeShell();
+  const [iosView, setIosView] = useState<"tape" | "analytics">("tape");
   const [loading, setLoading]             = useState(true);
   const [live, setLive]                   = useState(false);
   // Filters
@@ -558,21 +562,37 @@ export function FlowFeed() {
           : `${Math.round(dataAgeMs / 3_600_000)}h ago`;
 
   return (
-    <div className="desk-layout flex flex-col gap-4">
+    <div className="desk-layout helix-desk flex flex-col gap-4">
       {/* ── AI Brief ────────────────────────────────────────────────────── */}
-      <FlowBrief />
+      {!nativeShell && <FlowBrief />}
 
       {/* ── Watchlist rail (P2) ─────────────────────────────────────────── */}
-      <WatchlistBar
-        watchlist={watchlist.watchlist}
-        activeTicker={tickerFilter}
-        onSelect={(t) => setTickerFilter(t)}
-        onRemove={watchlist.remove}
-        onClear={() => { watchlist.clear(); setWatchlistOnly(false); }}
-      />
+      {!nativeShell && (
+        <WatchlistBar
+          watchlist={watchlist.watchlist}
+          activeTicker={tickerFilter}
+          onSelect={(t) => setTickerFilter(t)}
+          onRemove={watchlist.remove}
+          onClear={() => { watchlist.clear(); setWatchlistOnly(false); }}
+        />
+      )}
+
+      {nativeShell && (
+        <IosNativeSegment
+          value={iosView}
+          onChange={setIosView}
+          accent="#bf5fff"
+          aria-label="HELIX view"
+          className="ios-native-desk-segment"
+          segments={[
+            { id: "tape", label: "Live tape" },
+            { id: "analytics", label: "Analytics" },
+          ]}
+        />
+      )}
 
       {/* ── Filter bar ──────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className={clsx("helix-ios-toolbar flex flex-wrap items-center gap-2", nativeShell && iosView !== "tape" && "ios-native-panel-hidden")}>
         {/* Premium presets */}
         <span className="font-mono text-[10px] tracking-[0.3em] uppercase font-bold text-bull hidden sm:block">MIN</span>
         <div className="flow-seg-group">
@@ -769,7 +789,12 @@ export function FlowFeed() {
       {/* ── Main grid ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Flow tape — 8 cols */}
-        <div className="lg:col-span-8 xl:col-span-8">
+        <div
+          className={clsx(
+            "lg:col-span-8 xl:col-span-8 helix-ios-tape-col",
+            nativeShell && iosView !== "tape" && "ios-native-panel-hidden"
+          )}
+        >
           <FlowAlertStream
             flows={displayAlerts}
             live={live}
@@ -791,7 +816,12 @@ export function FlowFeed() {
         </div>
 
         {/* Right column — primary analytics; expand for full desk */}
-        <div className="lg:col-span-4 xl:col-span-4 flex flex-col gap-3">
+        <div
+          className={clsx(
+            "lg:col-span-4 xl:col-span-4 flex flex-col gap-3 helix-ios-analytics-col",
+            nativeShell && iosView !== "analytics" && "ios-native-panel-hidden"
+          )}
+        >
           <div className="flex items-center justify-between gap-2 px-1">
             <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-mute">Analytics</span>
             <button

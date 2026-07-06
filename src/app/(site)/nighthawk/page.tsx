@@ -16,7 +16,7 @@ export default async function NightHawkPage() {
   if (!(await canAccessTool("nighthawk"))) return <ComingSoon toolKey="nighthawk" />;
 
   return (
-    <PageShell fullBleed contentClassName="!py-0">
+    <PageShell fullBleed contentClassName="!py-0" className="ios-native-page ios-native-page-nighthawk">
       <div className="nighthawk-page-root flex min-h-[calc(100svh-var(--nav-offset)-var(--ios-tab-offset,0px))] max-w-none flex-col px-2 pb-4 pt-4 md:px-3">
         <PageHeader
           kicker="Overnight playbook"

@@ -69,6 +69,35 @@ export function IosAppChrome({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
     return () => document.documentElement.classList.remove("ios-native-shell");
   }, [nativeActive]);
 
+  useEffect(() => {
+    if (!nativeActive) {
+      document.documentElement.removeAttribute("data-ios-route");
+      return;
+    }
+    const route =
+      path === "/dashboard"
+        ? "dashboard"
+        : path.startsWith("/flows")
+          ? "flows"
+          : path.startsWith("/heatmap")
+            ? "heatmap"
+            : path.startsWith("/terminal")
+              ? "largo"
+              : path.startsWith("/nighthawk")
+                ? "nighthawk"
+                : path.startsWith("/grid")
+                  ? "grid"
+                  : path.startsWith("/account")
+                    ? "account"
+                    : path.startsWith("/upgrade")
+                      ? "upgrade"
+                      : path.startsWith("/admin")
+                        ? "admin"
+                        : "other";
+    document.documentElement.setAttribute("data-ios-route", route);
+    return () => document.documentElement.removeAttribute("data-ios-route");
+  }, [nativeActive, path]);
+
   if (!nativeActive) return null;
 
   return (

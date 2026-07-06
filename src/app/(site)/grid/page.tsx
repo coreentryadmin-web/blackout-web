@@ -32,7 +32,7 @@ export default async function GridPage() {
   const showZeroDteCommand = await canAccessZeroDteCommand();
 
   return (
-    <PageShell fullBleed>
+    <PageShell fullBleed className="ios-native-page ios-native-page-grid">
       <div className="px-2 sm:px-4 xl:px-6">
         <GridTickerProvider>
           <PageHeader

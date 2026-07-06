@@ -22,7 +22,7 @@ export default async function TerminalPage() {
   // scroll design. The header chrome is re-skinned onto the design-system
   // primitives below.
   return (
-    <div className="largo-page-shell">
+    <div className="largo-page-shell ios-native-page ios-native-page-largo">
       <main id="main" className="largo-page-main">
         <PageHeader
           className="largo-page-header"

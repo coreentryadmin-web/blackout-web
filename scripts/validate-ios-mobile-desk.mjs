@@ -60,6 +60,21 @@ const nativeNeedles = [
   ["html.ios-app.ios-native-shell.ios-tab-bar .page-tool-header", "hide duplicate page headers"],
   ["html.ios-app.ios-native-shell .ios-app-tab-bar", "floating dock tab bar"],
 ];
+const pagesCss = readFileSync(join(root, "src/app/ios-native-pages.css"), "utf8");
+const pagesNeedles = [
+  [".ios-native-segment", "native segment control"],
+  [".ios-native-panel-hidden", "panel switcher utility"],
+  ['data-ios-route="dashboard"', "SPX native page scope"],
+  ['data-ios-route="flows"', "HELIX native page scope"],
+  ['data-ios-route="largo"', "Largo native page scope"],
+  [".account-page-title-block", "account title hide hook"],
+  [".helix-ios-toolbar", "HELIX sticky filter bar"],
+  [".grid-page-tabs", "grid page tabs hook"],
+];
+for (const [needle, label] of pagesNeedles) {
+  if (pagesCss.includes(needle)) ok(`pages-css:${label}`, needle);
+  else fail(`pages-css:${label}`, `missing ${needle}`);
+}
 for (const [needle, label] of nativeNeedles) {
   if (nativeCss.includes(needle)) ok(`native-css:${label}`, needle);
   else fail(`native-css:${label}`, `missing ${needle}`);
@@ -97,6 +112,27 @@ if (nav.includes("iosToolLabel") && nav.includes("getIosToolNavLabel")) {
 }
 
 const siteLayout = readFileSync(join(root, "src/app/(site)/layout.tsx"), "utf8");
+const spxDash = readFileSync(join(root, "src/components/SpxDashboard.tsx"), "utf8");
+if (spxDash.includes("IosNativeSegment") && spxDash.includes("iosPanel")) {
+  ok("spx:ios-panel-switcher");
+} else {
+  fail("spx:ios-panel-switcher", "expected IosNativeSegment panel switcher");
+}
+
+const flowFeed = readFileSync(join(root, "src/components/FlowFeed.tsx"), "utf8");
+if (flowFeed.includes("iosView") && flowFeed.includes("helix-ios-toolbar")) {
+  ok("helix:ios-view-switcher");
+} else {
+  fail("helix:ios-view-switcher", "expected tape/analytics switcher");
+}
+
+const nhFeed = readFileSync(join(root, "src/components/NightHawkFeed.tsx"), "utf8");
+if (nhFeed.includes("iosView") && nhFeed.includes("playbook")) {
+  ok("nighthawk:ios-view-switcher");
+} else {
+  fail("nighthawk:ios-view-switcher", "expected playbook/watch switcher");
+}
+
 if (siteLayout.includes("IosAppChrome")) {
   ok("layout:IosAppChrome-mounted");
 } else {

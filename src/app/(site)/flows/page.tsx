@@ -15,7 +15,7 @@ export default async function FlowsPage() {
   await requireTier("premium");
 
   return (
-    <PageShell fullBleed>
+    <PageShell fullBleed className="ios-native-page ios-native-page-helix">
       <div className="content-rail">
         <PageHeader
           kicker="Institutional flow"

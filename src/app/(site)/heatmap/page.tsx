@@ -17,7 +17,7 @@ export default async function HeatmapPage() {
 
   return (
     <>
-      <PageShell fullBleed>
+      <PageShell fullBleed className="ios-native-page ios-native-page-thermal">
         <div className="px-4 md:px-6">
           {/* The "GEX · VEX" actions badge was removed — the lens toggles
               (GEX/VEX/DEX/CHARM) now live on the desk's compact control row and
