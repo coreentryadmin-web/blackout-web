@@ -1,5 +1,63 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 12:32 ET
+Last updated: 2026-07-06 13:25 ET
+
+## SPX Slayer all-day verify — spx-rth-2026-07-06 ~13:09 ET (post-open pass, 9:45 AM PT)
+
+**Session:** SPX-RTH-ALL-DAY-AGENT verify mode — market open pass (scheduled 6:30 AM PT / 9:30 AM ET; agent executed ~9:45 AM PT after deps install). Target: `https://blackouttrades.com`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ⚠️ **7 PASS / 2 FAIL** (final pass after deploy GREEN) |
+| `npm run validate:spx-e2e` | ⚠️ **18 PASS / 1 FAIL** (flip Δ=1.03); re-run inside `spx-rth` → **PASS** |
+| `validate:rth-open` | ✅ GREEN (deploy SUCCESS, crons, sockets) |
+| `ops:collect` | ✅ 0 action items |
+| `spx:data-correctness` | ✅ flags=0 (passes when not 524) |
+| Matrix deep audit | ✅ 151–152 strikes · GEX/VEX/DEX/CHARM every cell finite · Σ strike_totals == headline |
+| 60s live auto-update | ✅ pulse ticked (7538→7536.34); heatmap spot ticked — **but** heatmap fetch hit 80–125s spikes |
+
+### UI E2E (`/dashboard` — every control)
+
+| # | Check | Result |
+|---|---|---|
+| 1–4 | Sign-in, shell, LIVE badge, console | ✅ PASS — no OFFLINE during RTH; zero console errors |
+| 8–10 | GEX tab, VEX tab, GEX again | ✅ PASS (`#spx-matrix-tab-gex` / `#spx-matrix-tab-vex`) |
+| 11–12 | Matrix rows + cell sanity | ✅ **172 strike rows**; no NaN/undefined/`$—` |
+| 15 | Net GEX/VEX headline | ✅ matches API totals |
+| 18–21 | Trade alerts vs `/api/market/spx/play` | ✅ hero **BUY CALL**; **SCANNING carries 0 confirmations** (no stale ✓) |
+| 23 | Lotto dock | ✅ visible |
+| 26 | Commentary expand | ⏭️ SKIP — rail is always-expanded (no toggle in `SpxCommentaryRail`) |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ same payload as matrix (151 strikes, spot ~7538) |
+| Thermal SPY | `cross_validation` | ✅ no divergence flag |
+| GEX positioning | `GET /api/market/gex-positioning?ticker=SPX` | ✅ spot+flip aligned when 200 (flip 7484.29); intermittent **524** under load |
+| HELIX | `GET /api/market/flows?limit=30` | ✅ 20–30 SPX/SPXW prints |
+| Largo | `POST /api/market/largo/query` | ✅ `tools=blackout_intelligence` |
+| BIE | `GET /api/market/spx/play` (cron) | ✅ `action=BUY` matches member play |
+| Grid | `GET /api/grid/bootstrap` | ✅ loaded |
+| 0DTE Command | `GET /api/market/zerodte/board` | ✅ 1 setup |
+| Night Hawk | `GET /api/market/nighthawk/edition` | ✅ edition loads |
+
+### Tagged findings — spx-rth-2026-07-06
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P1 | spx-rth-2026-07-06-01 | `gex-heatmap` intermittent **80–125s** latency / Cloudflare HTML (524) — matrix spot row can stall mid-RTH | `GET /api/market/gex-heatmap?ticker=SPX` (31s cold, 125s timeout sample) | post-close — perf/cache (related to bootstrap 524 in § Dashboard perf) |
+| P1 | spx-rth-2026-07-06-02 | Flip matrix vs positioning Δ=**1.03** pts (7484.95 vs 7485.98) on parallel fetch — borderline audit threshold | heatmap `gex.flip` vs `gex-positioning.flip` | post-close — re-check single cache lane; not member-visible when aligned on sequential fetch |
+| P2 | spx-rth-2026-07-06-03 | `spx:cross-endpoint` / `gex-positioning` **HTTP 524** during Railway deploy roll | parallel probe during BUILDING/DEPLOYING | WATCH — transient; passed after deploy GREEN |
+| P2 | spx-rth-2026-07-06-04 | `spx:bie-consistency` FAIL when nested in 10min `validate:spx-rth` (local `getSpxPlayState()` polygon socket); standalone `npm run validate:spx-bie` → exit 0 | audit orchestrator `spawnSync` | post-close — audit harness only |
+| P2 | spx-rth-2026-07-06-05 | E2E `ui:click-commentary-expand` SKIP — no expand/collapse control on desk rail | `SpxCommentaryRail.tsx` always-expanded | none — update runbook selector or accept SKIP |
+
+**P0 count: 0** — matrix cells 100% correct vs API; no stale SCANNING confirmations; trade hero grounded in live play API.
+
+**Reports:** `audit-output/spx-rth-2026-07-06-verify-1783358343857.json`, `audit-output/spx-dashboard-e2e-1783357683422.json`
+
+---
 
 ## Member live UI validation — 2026-07-06 ~10:40 ET (post #571 OFFLINE fix)
 
