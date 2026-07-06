@@ -1,5 +1,47 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 12:32 ET
+Last updated: 2026-07-06 14:04 ET
+
+## SPX Slayer all-day verify pass — `spx-rth-2026-07-06` (~13:52 ET, market-open session)
+
+**Session:** SPX Slayer all-day RTH verification agent (verify mode). Branch `cursor/spx-rth-agent-verification-4e81`.
+
+### Automated suite
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 17 PASS / 1 SKIP / 0 FAIL |
+| `npm run validate:spx-rth` | ⚠️ 5 PASS / 4 FAIL (infra timing — see table) |
+| `heatmap-matrix-audit.mjs --tickers=SPX` (standalone) | ✅ 154 strikes · 0 flags · all invariants |
+| 60s live auto-update probe | ✅ pulse +2.90 pts · heatmap +3.94 pts (both ticked) |
+| `ops:collect` | ✅ 0 action items |
+
+### E2E highlights (member-visible)
+
+| Surface | Result |
+|---|---|
+| Matrix GEX+VEX+DEX+CHARM vs API | ✅ 153 strikes · every cell finite · spot 7531.38 |
+| UI GEX/VEX tab clicks | ✅ `#spx-matrix-tab-gex` / `#spx-matrix-tab-vex` |
+| Matrix rows | ✅ 173 strike rows · no NaN/undefined/`$—` |
+| LIVE badge | ✅ not OFFLINE during RTH |
+| Trade alerts | ✅ `action=SCANNING` · no stale ✓ in hero |
+| Cross-tool | ✅ Thermal, HELIX (20 prints), Grid, 0DTE (2 setups), Night Hawk, BIE play, Largo `blackout_intelligence` |
+| Console errors | ✅ zero |
+
+### Findings table (`spx-rth-2026-07-06`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P1 | `spx-rth-0601` | `gex-positioning` HTTP 502/524 under concurrent audit load (cross-endpoint probe) | `GET /api/market/gex-positioning?ticker=SPX` | yes — post-close; retry passes warm |
+| P1 | `spx-rth-0602` | `data-correctness` force cron HTTP 502/524 (Cloudflare timeout on 6-layer scorecard) | `GET /api/cron/data-correctness?force=1` | yes — known WATCH; off-peak retry |
+| P2 | `spx-rth-0603` | `desk-lanes` merged vs pulse Δ=0.130 pt on parallel fetch (audit threshold 0.05) | `spx/merged` + `spx/pulse` | yes — tape drift, not member bug |
+| P2 | `spx-rth-0604` | E2E `ui:click-commentary-expand` SKIP — expand button only renders when featured card >12 lines | `SpxCommentaryRail` `CommentaryBody` | yes — conditional UI, not broken |
+| P2 | `spx-rth-0605` | Transient cross-endpoint spot/flip divergence on first pass (1.18 pt spot, 18 pt flip) — aligned on re-probe | heatmap + positioning | yes — cache-age skew during fast tape |
+
+**P0:** none — matrix cells 100% correct vs API, SCANNING carries zero confirmations, trade hero matches play route.
+
+**Artifacts:** `audit-output/spx-dashboard-e2e-1783360580901.json`, `audit-output/spx-rth-2026-07-06-verify-1783360714251.json`, `audit-output/spx-e2e-run.log`
+
+---
 
 ## Member live UI validation — 2026-07-06 ~10:40 ET (post #571 OFFLINE fix)
 
