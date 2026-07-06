@@ -17,7 +17,7 @@ import {
   TD,
   type FreshnessStatus,
 } from "@/components/ui";
-import type { EnrichedZeroDteSetup, SessionHeat } from "@/lib/zerodte/board";
+import { resolveFreshFindStatus, type EnrichedZeroDteSetup, type SessionHeat } from "@/lib/zerodte/board";
 import { buildIntelNote, type IntelAction } from "@/lib/zerodte/intel";
 import { etMinutesOf } from "@/lib/zerodte/plan";
 
@@ -154,7 +154,6 @@ export function mergePlays(
   heatState: SessionHeat["state"] | undefined
 ): PlayRow[] {
   // Past the 15:00 ET cutoff no NEW play can open; after the close nothing is live.
-  const pastCutoff = heatState === "POWER_HOUR" || heatState === "LATE_SESSION" || heatState === "CLOSED";
   const sessionClosed = heatState === "CLOSED" || heatState === undefined;
   const byTicker = new Map(setups.map((s) => [s.ticker, s]));
   const rows: PlayRow[] = ledger.map((r) => ({
@@ -193,8 +192,9 @@ export function mergePlays(
       direction: s.direction,
       strike: s.top_strike,
       // Past the entry cutoff — or an untradeably wide market — a fresh find is
-      // watch-only, never OPEN.
-      status: moved || pastCutoff || s.plan?.illiquid ? "SKIP" : "OPEN",
+      // watch-only, never OPEN. Same gate zerodte-service.ts's zeroDtePlaysForLargo()
+      // applies to fresh finds for Largo/BIE — see resolveFreshFindStatus (board.ts).
+      status: resolveFreshFindStatus(heatState, moved, Boolean(s.plan?.illiquid)),
       entry_premium: s.plan?.entry_max ?? s.top_strike_avg_fill,
       flow_avg_fill: s.top_strike_avg_fill,
       last_mark: s.plan?.mark ?? null,

@@ -4,6 +4,7 @@ import {
   buildZeroDteAuditRow,
   computeLedgerGrade,
   sessionHeat,
+  resolveFreshFindStatus,
   deriveZeroDteSetups,
   rankEngineCards,
   enrichSetup,
@@ -41,6 +42,30 @@ test("heat: pre-market meter warms toward the open", () => {
   const late = sessionHeat(9 * 60 + 15, true).heat_pct; // 9:15 ET — nearly open
   assert.equal(early, 0);
   assert.ok(late > 25 && late <= 40);
+});
+
+// resolveFreshFindStatus: the SAME "no new plays after 15:00 ET" cutoff every
+// consumer of a fresh (not-yet-ledgered) find must apply — shared by ZeroDteBoard.tsx's
+// mergePlays() (the UI) and zerodte-service.ts's zeroDtePlaysForLargo() (Largo/BIE),
+// which previously re-derived its own copy that skipped this cutoff entirely (FINDINGS.md).
+
+test("resolveFreshFindStatus: OPEN during RTH with no moved/illiquid flags", () => {
+  assert.equal(resolveFreshFindStatus("RTH", false, false), "OPEN");
+});
+
+test("resolveFreshFindStatus: SKIP once POWER_HOUR/LATE_SESSION/CLOSED starts — the entry cutoff", () => {
+  assert.equal(resolveFreshFindStatus("POWER_HOUR", false, false), "SKIP");
+  assert.equal(resolveFreshFindStatus("LATE_SESSION", false, false), "SKIP");
+  assert.equal(resolveFreshFindStatus("CLOSED", false, false), "SKIP");
+});
+
+test("resolveFreshFindStatus: undefined heat state is treated as closed, not open by default", () => {
+  assert.equal(resolveFreshFindStatus(undefined, false, false), "SKIP");
+});
+
+test("resolveFreshFindStatus: MOVED or illiquid always SKIP, even during RTH", () => {
+  assert.equal(resolveFreshFindStatus("RTH", true, false), "SKIP");
+  assert.equal(resolveFreshFindStatus("RTH", false, true), "SKIP");
 });
 
 // ── setup derivation ─────────────────────────────────────────────────────────────

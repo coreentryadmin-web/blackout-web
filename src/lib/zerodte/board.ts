@@ -91,6 +91,25 @@ export function sessionHeat(etMinutes: number, isTradingDay: boolean): SessionHe
   };
 }
 
+/**
+ * Status for a FRESH (not-yet-ledgered) find, given the session clock and the
+ * find's own plan flags — the same "no new plays after 15:00 ET" cutoff every
+ * consumer of a fresh find must apply consistently. `heatState` undefined is
+ * treated as closed (matches sessionHeat()'s own "no session today" fallback).
+ */
+export function resolveFreshFindStatus(
+  heatState: SessionHeatState | undefined,
+  moved: boolean,
+  illiquid: boolean
+): "OPEN" | "SKIP" {
+  const pastCutoff =
+    heatState === "POWER_HOUR" ||
+    heatState === "LATE_SESSION" ||
+    heatState === "CLOSED" ||
+    heatState === undefined;
+  return moved || pastCutoff || illiquid ? "SKIP" : "OPEN";
+}
+
 // ── Single-name 0DTE flow setups (evidence, not fabricated plays) ────────────────
 
 export type FlowSetupInput = {
