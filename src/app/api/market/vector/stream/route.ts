@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
           return;
         }
         void buildVectorStreamPayload()
-          .then(({ candle, walls, vexWalls, gammaFlip, vexFlip, darkPoolLevels, t, wallHistory, sessionYmd }) => {
+          .then(({ candle, walls, vexWalls, gammaFlip, vexFlip, darkPoolLevels, t, gexAsOf, vexAsOf, wallHistory, sessionYmd }) => {
             if (closed) return;
             const data = JSON.stringify({
               candle,
@@ -69,6 +69,8 @@ export async function GET(req: NextRequest) {
               vexFlip,
               darkPoolLevels,
               t,
+              gexAsOf,
+              vexAsOf,
               wallHistory,
               sessionYmd,
             });

@@ -19,6 +19,7 @@ import { bucketWallSampleTime } from "@/lib/providers/vector-wall-sample";
 import { recordWallSample, type WallHistorySample } from "@/lib/providers/vector-wall-history";
 import { fetchUwDarkPool } from "@/lib/providers/unusual-whales";
 import { roundFloats } from "@/lib/round-floats";
+import { spyVolumeForMinuteBar } from "@/lib/vector-spy-volume";
 
 const WALL_SCOPE_REFRESH_MS = 15_000;
 const DARK_POOL_REFRESH_MS = 60_000;
@@ -216,8 +217,14 @@ export async function buildVectorStreamPayload(): Promise<VectorStreamPayload> {
     }
   }
 
+  let candle = current;
+  if (current) {
+    const volume = await spyVolumeForMinuteBar(current.time);
+    candle = volume != null ? { ...current, volume } : current;
+  }
+
   return roundVectorStreamPayload({
-    candle: current,
+    candle,
     walls,
     vexWalls,
     gammaFlip,

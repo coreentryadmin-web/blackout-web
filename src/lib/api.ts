@@ -658,7 +658,15 @@ export function createPulseEventSource(
 
 // ── Vector live SPX candle stream ──────────────────────────────────────────────
 
-export type VectorStreamCandle = { time: number; open: number; high: number; low: number; close: number };
+export type VectorStreamCandle = {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  /** SPY 1m share volume proxy for this SPX minute bar. */
+  volume?: number;
+};
 export type VectorWallLevel = { strike: number; pct: number };
 /** Ranked strongest-first per side, capped server-side (gex-wall-levels.ts's DEFAULT_WALL_NODES_PER_SIDE). */
 export type VectorWalls = { callWalls: VectorWallLevel[]; putWalls: VectorWallLevel[] };

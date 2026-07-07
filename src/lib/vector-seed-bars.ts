@@ -8,20 +8,36 @@ export type VectorSeedBar = {
   high: number;
   low: number;
   close: number;
+  /** SPY 1m share volume aligned to this bar (standard SPX proxy). */
+  volume?: number;
 };
 
-type AggBar = { t?: number; o: number; h: number; l: number; c: number };
+type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };
 
-function mapMinuteBars(bars: AggBar[]): VectorSeedBar[] {
+function mapMinuteBars(bars: AggBar[], volumeByTime?: Map<number, number>): VectorSeedBar[] {
   return bars
     .filter((b) => typeof b.t === "number" && b.o > 0)
-    .map((b) => ({
-      time: Math.floor((b.t as number) / 1000) as UTCTimestamp,
-      open: b.o,
-      high: b.h,
-      low: b.l,
-      close: b.c,
-    }));
+    .map((b) => {
+      const time = Math.floor((b.t as number) / 1000) as UTCTimestamp;
+      const volume = volumeByTime?.get(time);
+      return {
+        time,
+        open: b.o,
+        high: b.h,
+        low: b.l,
+        close: b.c,
+        ...(volume != null && volume > 0 ? { volume } : {}),
+      };
+    });
+}
+
+function volumeMapFromSpyBars(spyBars: AggBar[]): Map<number, number> {
+  const map = new Map<number, number>();
+  for (const b of spyBars) {
+    if (typeof b.t !== "number" || b.v == null || b.v <= 0) continue;
+    map.set(Math.floor(b.t / 1000), b.v);
+  }
+  return map;
 }
 
 /**
@@ -39,8 +55,11 @@ export async function fetchVectorSeedBars(
   const today = formatEtDate(now);
   let ymd = today;
   for (let i = 0; i < 12; i++) {
-    const bars = await fetchBars("I:SPX", ymd, ymd).catch(() => []);
-    const mapped = mapMinuteBars(bars);
+    const [spxBars, spyBars] = await Promise.all([
+      fetchBars("I:SPX", ymd, ymd).catch(() => []),
+      fetchBars("SPY", ymd, ymd).catch(() => []),
+    ]);
+    const mapped = mapMinuteBars(spxBars, volumeMapFromSpyBars(spyBars));
     if (mapped.length > 0) return { bars: mapped, sessionYmd: ymd };
     ymd = previousTradingDayEt(ymd);
   }
