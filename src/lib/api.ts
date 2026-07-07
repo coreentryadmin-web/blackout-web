@@ -681,6 +681,31 @@ export function createPositionEventSource(
   );
 }
 
+// ── Atlas live SPX candle stream ──────────────────────────────────────────────
+
+export type AtlasStreamCandle = { time: number; open: number; high: number; low: number; close: number };
+export type AtlasStreamSnapshot = { candle: AtlasStreamCandle | null; t?: number };
+
+export function createAtlasEventSource(
+  onMessage: (snap: AtlasStreamSnapshot) => void,
+  hooks?: { onOpen?: () => void; onClose?: () => void }
+): ReconnectingEventSource | null {
+  if (typeof window === "undefined") return null;
+  return createReconnectingEventSource(
+    "/api/market/atlas/stream",
+    (raw) => {
+      try {
+        const data = JSON.parse(raw) as AtlasStreamSnapshot;
+        if (!data.candle) return;
+        onMessage(data);
+      } catch {
+        /* ignore */
+      }
+    },
+    hooks
+  );
+}
+
 // Removed deprecated createFlowSocket() — it was never called and was the only
 // client reference to NEXT_PUBLIC_ENGINE_WS_KEY / NEXT_PUBLIC_ENGINE_WS_URL,
 // which inlined a static engine WS key into the browser bundle. The live feed
