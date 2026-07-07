@@ -4,6 +4,7 @@ import { clsx } from "clsx";
 import type { PlaybookPlay, PlayMorningStatus } from "@/lib/nighthawk/types";
 import { formatPremiumCapLabel } from "@/lib/nighthawk/play-constraints";
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/lib/nighthawk/constants";
+import { formatCheckedAtEt, isMorningConfirmStale } from "@/lib/nighthawk/morning-confirm-verdict";
 
 type PlaybookPlayRowProps = {
   rank: number;
@@ -12,6 +13,10 @@ type PlaybookPlayRowProps = {
   emptyTitle?: string;
   emptyCopy?: string;
   morningConfirm?: PlayMorningStatus;
+  /** ISO timestamp the morning-confirm cron computed `morningConfirm` — a one-time
+   *  pre-market snapshot (see morning-confirm-verdict.ts). Undefined on older cached
+   *  payloads; the badge just omits the "as of" qualifier in that case. */
+  morningConfirmCheckedAt?: string;
   onSelect?: () => void;
 };
 
@@ -44,11 +49,20 @@ export function PlaybookPlayRow({
   emptyTitle,
   emptyCopy,
   morningConfirm,
+  morningConfirmCheckedAt,
   onSelect,
 }: PlaybookPlayRowProps) {
   const dir = play?.direction?.toUpperCase() ?? "";
   const isBull = dir.includes("BULL") || dir === "LONG" || dir.includes("CALL");
   const isBear = dir.includes("BEAR") || dir === "SHORT" || dir.includes("PUT");
+  const morningConfirmStale = isMorningConfirmStale(morningConfirmCheckedAt, Date.now());
+  const morningConfirmTitle = morningConfirm
+    ? morningConfirmCheckedAt
+      ? `${morningConfirm.reason} — checked ${formatCheckedAtEt(morningConfirmCheckedAt)}${
+          morningConfirmStale ? " (pre-market snapshot, may be outdated)" : ""
+        }`
+      : morningConfirm.reason
+    : undefined;
 
   return (
     <article
@@ -106,8 +120,12 @@ export function PlaybookPlayRow({
               )}
               {morningConfirm && (
                 <span
-                  className={clsx("nighthawk-play-morning-badge", morningBadgeClass(morningConfirm.status))}
-                  title={morningConfirm.reason}
+                  className={clsx(
+                    "nighthawk-play-morning-badge",
+                    morningBadgeClass(morningConfirm.status),
+                    morningConfirmStale && "nighthawk-play-morning-stale"
+                  )}
+                  title={morningConfirmTitle}
                 >
                   {morningBadgeLabel(morningConfirm.status)}
                 </span>

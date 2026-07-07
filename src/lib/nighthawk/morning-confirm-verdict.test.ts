@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { computePlayVerdict } from "./morning-confirm-verdict";
+import {
+  computePlayVerdict,
+  formatCheckedAtEt,
+  isMorningConfirmStale,
+  MORNING_CONFIRM_STALE_MS,
+} from "./morning-confirm-verdict";
 import type { PlaybookPlay } from "./types";
 
 // Batch D regression suite (2026-07-02 audit): the confirm engine previously
@@ -87,4 +92,40 @@ test("bullish regime with no other data still evaluates (not UNVERIFIED)", () =>
 test("regime flip against a LONG invalidates", () => {
   const v = computePlayVerdict(play(), { ...NO_CONTEXT, regime: "bearish breakdown" });
   assert.equal(v.status, "INVALIDATED");
+});
+
+// Regression (audit P3): a TSLA DEGRADED badge computed at 9:16 ET was still shown
+// unchanged at 14:49 ET (5.5h later) with no indication it was a frozen pre-market
+// snapshot rather than a live status. isMorningConfirmStale() is the signal the UI
+// uses to mute the badge and add an "as of" qualifier once it's old enough to mislead.
+test("isMorningConfirmStale: false immediately after the check", () => {
+  const checkedAt = "2026-07-07T13:16:00.000Z"; // 9:16 ET
+  const now = Date.parse("2026-07-07T13:20:00.000Z"); // 4 min later
+  assert.equal(isMorningConfirmStale(checkedAt, now), false);
+});
+
+test("isMorningConfirmStale: true once the 4h threshold is exceeded (the live repro)", () => {
+  const checkedAt = "2026-07-07T13:16:00.000Z"; // 9:16 ET
+  const now = Date.parse("2026-07-07T18:49:00.000Z"); // 14:49 ET, 5.5h later
+  assert.equal(isMorningConfirmStale(checkedAt, now), true);
+});
+
+test("isMorningConfirmStale: exactly at the threshold is not yet stale (> not >=)", () => {
+  const checkedAt = "2026-07-07T13:16:00.000Z";
+  const now = Date.parse(checkedAt) + MORNING_CONFIRM_STALE_MS;
+  assert.equal(isMorningConfirmStale(checkedAt, now), false);
+});
+
+test("isMorningConfirmStale: missing/invalid timestamp never flags stale (older cached payloads)", () => {
+  assert.equal(isMorningConfirmStale(undefined, Date.now()), false);
+  assert.equal(isMorningConfirmStale("not-a-date", Date.now()), false);
+});
+
+test("formatCheckedAtEt: renders an Eastern clock time", () => {
+  // 13:16 UTC = 9:16 AM ET in July (EDT, UTC-4).
+  assert.equal(formatCheckedAtEt("2026-07-07T13:16:00.000Z"), "9:16 AM ET");
+});
+
+test("formatCheckedAtEt: invalid input degrades honestly instead of throwing/NaN", () => {
+  assert.equal(formatCheckedAtEt("garbage"), "unknown time");
 });

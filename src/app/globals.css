@@ -5526,6 +5526,15 @@ body::before {
     border: 1px solid rgba(148, 163, 184, 0.3);
   }
 
+  /* Verdict is a one-time pre-market snapshot (see MORNING_CONFIRM_STALE_MS) —
+     mute it once it's old enough that showing it at full confidence would read as
+     a live, current status rather than a frozen 9am judgment. Hover still shows
+     the exact "checked at" time via the badge's title attribute. */
+  .nighthawk-play-morning-stale {
+    opacity: 0.55;
+    border-style: dashed;
+  }
+
   .nighthawk-playbook-kicker {
     @apply font-mono uppercase;
     font-size: 0.625rem;
