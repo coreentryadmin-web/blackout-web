@@ -18,6 +18,9 @@ type PlaybookBoardProps = {
   onPlaySelect?: (play: PlaybookPlay) => void;
   confirmByTicker?: Map<string, PlayMorningStatus>;
   playStatusAvailable?: boolean;
+  /** ISO timestamp the morning-confirm cron computed these verdicts — a one-time
+   *  pre-market snapshot, not live. Passed through so the badge can show its age. */
+  morningConfirmCheckedAt?: string;
   record?: NightHawkRecordResponse;
   recordLoading?: boolean;
 };
@@ -69,6 +72,7 @@ export function PlaybookBoard({
   onPlaySelect,
   confirmByTicker,
   playStatusAvailable,
+  morningConfirmCheckedAt,
   record,
   recordLoading,
 }: PlaybookBoardProps) {
@@ -232,6 +236,7 @@ export function PlaybookBoard({
                 play={play}
                 empty={!play}
                 morningConfirm={play ? confirmByTicker?.get(play.ticker.toUpperCase()) : undefined}
+                morningConfirmCheckedAt={morningConfirmCheckedAt}
                 onSelect={play && onPlaySelect ? () => onPlaySelect(play) : undefined}
               />
             );

@@ -72,6 +72,7 @@ export function NightHawkFeed() {
             onPlaySelect={setSelectedPlay}
             confirmByTicker={confirmByTicker}
             playStatusAvailable={Boolean(playStatus?.available)}
+            morningConfirmCheckedAt={playStatus?.checked_at}
             record={record}
             recordLoading={recordLoading}
           />

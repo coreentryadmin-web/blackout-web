@@ -20,6 +20,36 @@ export const GAP_PTS_THRESHOLD = 20;
 const WALL_SHIFT_SOFT_PTS = 10;
 const WALL_SHIFT_HARD_PTS = 30;
 
+// The verdict is a ONE-TIME pre-market snapshot (cron fires 9:10-9:45 ET, then the
+// blob sits in Redis with a 24h TTL) — it is never re-evaluated against live price
+// action. Live repro: a TSLA DEGRADED badge computed at 9:16 ET was still displayed
+// unchanged at 14:49 ET, 5.5h later, with no indication it was stale (audit P3). The
+// badge itself can't be made live without re-architecting the cron into a poller, so
+// instead the UI must stop presenting a frozen 9am judgment as if it were current.
+export const MORNING_CONFIRM_STALE_MS = 4 * 60 * 60 * 1000; // 4h — flags by ~early afternoon
+
+/** True once a morning-confirm verdict is old enough that showing it without an
+ *  "as of" qualifier would mislead a member into treating a 9am snapshot as live. */
+export function isMorningConfirmStale(checkedAt: string | null | undefined, nowMs: number): boolean {
+  if (!checkedAt) return false;
+  const checkedMs = Date.parse(checkedAt);
+  if (Number.isNaN(checkedMs)) return false;
+  return nowMs - checkedMs > MORNING_CONFIRM_STALE_MS;
+}
+
+/** Format an ISO timestamp as Eastern clock time for the badge tooltip, e.g. "9:16 AM ET". */
+export function formatCheckedAtEt(checkedAt: string): string {
+  const d = new Date(checkedAt);
+  if (Number.isNaN(d.getTime())) return "unknown time";
+  const clock = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+  return `${clock} ET`;
+}
+
 export function computePlayVerdict(
   play: PlaybookPlay,
   context: {
