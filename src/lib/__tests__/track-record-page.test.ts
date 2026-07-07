@@ -174,4 +174,27 @@ describe("track-record-page", () => {
       "profitFactor should stay null (no loser rows), not an absurd value driven by the corrupt row"
     );
   });
+
+  it("nhFromRows: total reconciles with wins + losses + unresolved (matches the live QQQ/AAPL/SPY board shape)", () => {
+    // Regression: isNighthawkOutcomeScoreable() admits 'open' and 'ambiguous' outcomes
+    // alongside 'target'/'stop' into `total`, but only 'target'/'stop' were ever counted
+    // into wins/losses — so total could exceed wins + losses with no field explaining the
+    // gap. Confirmed live: an admin track-record pull showed total:10, wins:6, losses:3
+    // (6+3=9≠10) with nothing accounting for the 10th play.
+    const target = nhRow({ id: 1, outcome: "target" });
+    const stop = nhRow({ id: 2, outcome: "stop" });
+    const open = nhRow({ id: 3, outcome: "open", session_high: 100, session_low: 90 });
+    const ambiguous = nhRow({ id: 4, outcome: "ambiguous", session_high: 100, session_low: 90 });
+
+    const stats = nhFromRows([target, stop, open, ambiguous]);
+    assert.equal(stats.total, 4);
+    assert.equal(stats.wins, 1);
+    assert.equal(stats.losses, 1);
+    assert.equal(stats.unresolved, 2, "'open' + 'ambiguous' rows must be accounted for, not silently dropped");
+    assert.equal(
+      stats.total,
+      stats.wins + stats.losses + (stats.unresolved ?? 0),
+      "total must always reconcile with wins + losses + unresolved"
+    );
+  });
 });

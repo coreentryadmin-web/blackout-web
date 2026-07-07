@@ -14,6 +14,8 @@ export interface NhStats {
   avgWinnerPct: number | null;
   avgLoserPct: number | null;
   profitFactor: number | null;
+  /** total - wins - losses: 'open'/'ambiguous' outcomes. Undefined on older payloads. */
+  unresolved?: number;
 }
 
 export interface TrackRecordPayload {

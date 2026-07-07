@@ -19,6 +19,14 @@ export type TrackRecordPagePayload = {
     avgWinnerPct: number | null;
     avgLoserPct: number | null;
     profitFactor: number | null;
+    /**
+     * total - wins - losses: plays counted as "scoreable" (isNighthawkOutcomeScoreable)
+     * whose outcome was neither 'target' nor 'stop' — 'open' (session closed without
+     * ever triggering either level) or 'ambiguous' (both levels hit intraday, order
+     * unrecoverable from close-only data). Optional/additive: undefined on any older
+     * cached payload just means "not computed," not "zero" — do not assume 0 when absent.
+     */
+    unresolved?: number;
   };
   methodology: string;
   liveData: boolean;
@@ -80,6 +88,13 @@ export function nhFromRows(rows: NighthawkPlayOutcomeRow[]): TrackRecordPagePayl
   const total = scoreable.length;
   const wins = winners.length;
   const losses = losers.length;
+  // isNighthawkOutcomeScoreable() admits 'open' (session closed without ever hitting
+  // target or stop) and 'ambiguous' (both hit intraday, order unrecoverable) alongside
+  // 'target'/'stop' — so total can legitimately exceed wins + losses. Previously that gap
+  // was invisible: total and wins/losses were reported side by side with no field
+  // explaining the difference, reading as a miscount (confirmed live: a 10/6/3 board with
+  // no third bucket). Surface it explicitly rather than leaving admins to do the subtraction.
+  const unresolved = total - wins - losses;
   const winRatePct = total > 0 ? formatPercent(wins / total, 1) : null;
 
   const winnerReturns = winners.map(nhReturnPct).filter((v): v is number => v != null);
@@ -110,6 +125,7 @@ export function nhFromRows(rows: NighthawkPlayOutcomeRow[]): TrackRecordPagePayl
     avgWinnerPct,
     avgLoserPct,
     profitFactor,
+    unresolved,
   };
 }
 
