@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 const state = { sessionDate: "2026-07-06" };
 
-mock.module("@/lib/providers/spx-session", {
+mock.module("../providers/spx-session", {
   namedExports: {
     todayEtYmd: () => state.sessionDate,
   },

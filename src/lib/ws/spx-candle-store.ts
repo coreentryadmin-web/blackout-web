@@ -9,7 +9,11 @@
  * historical bars a client seeds from come from Polygon's own REST aggregates, see
  * src/app/(site)/atlas/page.tsx).
  */
-import { todayEtYmd } from "@/lib/providers/spx-session";
+// Relative import (not the usual @/ alias): its test mocks this module, and
+// node:test's mock.module() only reliably matches a specifier that's textually
+// identical to the one used here — an aliased specifier resolved to a broken path
+// in CI (see spx-candle-store.test.ts).
+import { todayEtYmd } from "../providers/spx-session";
 
 export type SpxCandle = {
   /** Bar start, epoch SECONDS (lightweight-charts' UTCTimestamp unit). */
