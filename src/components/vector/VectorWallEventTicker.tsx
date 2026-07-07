@@ -1,0 +1,78 @@
+"use client";
+
+import clsx from "clsx";
+import type { VectorWallEvent, VectorWallEventKind } from "@/lib/providers/vector-wall-events";
+import type { VectorWallLens } from "@/lib/providers/vector-wall-history";
+import { formatReplayClock } from "@/lib/vector-replay";
+
+type Props = {
+  events: VectorWallEvent[];
+  lens: VectorWallLens;
+};
+
+const KIND_LABEL: Record<VectorWallEventKind, string> = {
+  call_wall_shift: "SHIFT",
+  put_wall_shift: "SHIFT",
+  flip_shift: "FLIP",
+  spot_crossed_flip: "CROSS",
+  spot_broke_call: "BREAK",
+  spot_broke_put: "BREAK",
+};
+
+const KIND_TONE: Record<VectorWallEventKind, string> = {
+  call_wall_shift: "border-cyan-400/40 text-cyan-400",
+  put_wall_shift: "border-cyan-400/40 text-cyan-400",
+  flip_shift: "border-sky-400/40 text-sky-300",
+  spot_crossed_flip: "border-[#ffd60a]/40 text-[#ffd60a]",
+  spot_broke_call: "border-rose-400/40 text-rose-300",
+  spot_broke_put: "border-rose-400/40 text-rose-300",
+};
+
+/** Deterministic wall-structure event feed — no LLM, grounded in ladder diffs + spot crosses. */
+export function VectorWallEventTicker({ events, lens }: Props) {
+  const visible = events.filter((e) => e.lens === lens).slice(-6).reverse();
+
+  return (
+    <div
+      className="mb-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"
+      aria-label="Wall structure events"
+    >
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-400">
+          Structure feed
+        </div>
+        <span className="font-mono text-[10px] text-sky-300">
+          {lens.toUpperCase()} · {visible.length ? `${visible.length} recent` : "idle"}
+        </span>
+      </div>
+      {visible.length === 0 ? (
+        <p className="font-mono text-[11px] leading-snug text-sky-300">
+          No {lens.toUpperCase()} structure shifts yet — events appear when walls or flip migrate, or SPX crosses a level.
+        </p>
+      ) : (
+        <ul className="flex max-h-28 flex-col gap-1.5 overflow-y-auto pr-1">
+          {visible.map((event, i) => (
+            <li
+              key={`${event.time}-${event.kind}-${i}`}
+              className="flex items-start gap-2 font-mono text-[11px] leading-snug"
+            >
+              <span
+                className={clsx(
+                  "mt-px shrink-0 rounded border px-1 py-0.5 text-[9px] font-bold tracking-[0.12em]",
+                  KIND_TONE[event.kind]
+                )}
+              >
+                {KIND_LABEL[event.kind]}
+              </span>
+              <span className={event.severity === "warn" ? "text-rose-300" : "text-white"}>
+                <span className="text-sky-300">{formatReplayClock(event.time)}</span>
+                <span className="text-white/40"> · </span>
+                {event.message}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}

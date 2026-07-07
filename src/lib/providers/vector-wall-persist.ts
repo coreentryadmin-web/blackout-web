@@ -34,3 +34,27 @@ export async function appendSessionWallSample(
     /* supplementary visual — never block the live stream */
   }
 }
+
+/** Debounced Redis persist — one write per 15s bucket per replica (not per SSE connection). */
+let lastRedisPersistBucket = -1;
+let lastRedisPersistAt = 0;
+
+export function persistWallSampleDebounced(
+  sessionYmd: string,
+  sample: WallHistorySample,
+  ticker = "SPX"
+): void {
+  if (!sessionYmd) return;
+  const now = Date.now();
+  const bucket = sample.time;
+  if (bucket === lastRedisPersistBucket && now - lastRedisPersistAt < 2_000) return;
+  lastRedisPersistBucket = bucket;
+  lastRedisPersistAt = now;
+  void appendSessionWallSample(sessionYmd, sample, ticker);
+}
+
+/** Test-only reset. */
+export function _resetWallPersistDebounceForTest(): void {
+  lastRedisPersistBucket = -1;
+  lastRedisPersistAt = 0;
+}

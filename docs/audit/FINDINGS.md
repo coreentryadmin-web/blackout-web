@@ -32,6 +32,94 @@ QQQ and SPXW both fit this pattern exactly (both `TRIM`, both necessarily peaked
 
 **Verification:** `npx tsc --noEmit` clean. Full suite 1749/1749 passing (1 new). `npm run build` clean. `git diff main -- src/lib/spx-signals.ts` empty.
 
+## 🟢 P3 ENHANCEMENT 2026-07-07 — Vector timeframe-linked wall beads (branch `fix/vector-tf-linked-beads`)
+
+**User request:** wall bead trails should resample with the chart interval (1m/3m/5m/15m), not show the same 15s-density nodes on every timeframe.
+
+**Fix:** `bucketWallHistoryForInterval()` — last wall reading per candle bucket (same alignment as `aggregateVectorBars`). Wired into `applyWallBeadMarkers`; timeframe change re-renders beads. Live axis wall labels stay current (~1s GEX / ~8s VEX).
+
+## 🟢 P3 ENHANCEMENT 2026-07-07 — Vector wall bead magnitude glow (branch `fix/vector-bead-magnitude-glow`, PR #662)
+
+**Surface:** `/vector` wall bead trails.
+
+**User report:** reference apps (Skylit/Atlas) show brighter/larger nodes when a wall is strong; our beads looked uniformly flat.
+
+**Root cause:** magnitude scaling existed (`alphaForPct` per point) but lightweight-charts `LineSeries` + `pointMarkersRadius` only supports **one radius per series** and per-point color on line markers is buggy (LWC #1662) — so visual weight could not vary bead-by-bead.
+
+**Fix:** migrate beads to `createSeriesMarkers` with per-marker `size` + `color` from each sample's `pct` share of |gamma|; dual halo+core markers for glow; wider alpha curve (`PCT_SATURATION` 12%, sqrt scaling).
+
+**Files:** `vector-wall-visual.ts`, `VectorChart.tsx`, tests.
+
+## 🟢 P3 ENHANCEMENT 2026-07-07 — Vector TradingView-style timeframe filters (branch `feat/vector-timeframe-filters`, PR #661)
+
+**Surface:** `/vector` chart — candle interval selector.
+
+**User request:** add standard intervals **1m / 3m / 5m / 15m** like TradingView.
+
+**Approach:** keep canonical **1m** bars from Polygon seed + live SSE (`minuteBarsRef`); aggregate client-side via `aggregateVectorBars()` for display. Live ticks upsert the current 1m bar then update the active aggregated bar in place. Replay still scrubs 1m `sessionBars`; timeframe toggle disabled during replay.
+
+**Files:** `src/lib/vector-bar-timeframes.ts` (+ tests), `VectorTimeframeToggle.tsx`, `VectorChart.tsx`, `VectorPageShell.tsx`, `scripts/vector-e2e-audit.mjs` (clicks each TF).
+
+**Verification:** `vector-bar-timeframes.test.ts` (3 cases); tsc + full `npm test` green.
+
+## 🟡 P2 FOUND+FIXED 2026-07-07 — Vector stale wall lines + immortal bead trails (branch `fix/vector-trail-rolling-cleanup`, PR #660)
+
+**Surface:** `VectorChart.tsx` wall guides + strike-keyed bead trails.
+
+**User report:** horizontal wall lines persist across the full chart history; old beads at migrated strikes never disappear as time advances.
+
+**Root cause:** (1) call/put wall guides still used `lineVisible: true` (full-pane dashed lines) unlike flip/DP axis-only guides; (2) `refreshTrails` fed the entire session `wallHistory` into `trailsByStrike`, so every strike that ever ranked kept its horizontal bead row for the whole day.
+
+**Fix:** wall guides → axis labels only; live trails trimmed to `LIVE_TRAIL_LOOKBACK_SEC` (45m) anchored to the latest bar/sample so migrated strikes fall off dynamically. Replay still uses `sliceHistoryToTime` (unchanged).
+
+## 🟡 P2 FOUND+FIXED 2026-07-07 — Vector stream float artifacts + honesty UX (branch `fix/vector-proposed-polish`)
+
+**Surface:** `/vector` SSE payload, `FreshnessChip`, lens toggle, structure feed.
+
+**Gap:** Proposed follow-ups from the Vector RTH audit pass: SPX prices served as `7486.400000000001`; header chip stayed "Live" when candle was >10s stale; lens toggle had static cadence copy with no actual age; structure feed was plain text.
+
+**Fix:**
+- `roundVectorStreamPayload()` via shared `roundFloats()` at the SSE boundary (candle OHLC, flips, wall strikes).
+- `FreshnessChip` flips to `stale` when candle `t` is >10s old during live sessions.
+- Stream exposes `gexAsOf` / `vexAsOf`; lens buttons show live age + subtitle reflects last refresh.
+- Structure feed: kind pills (SHIFT/FLIP/CROSS/BREAK), scrollable 6-event tail, lens header count.
+
+**Verification:** `vector-snapshot.test.ts` rounding regression; tsc + npm test green.
+
+## 🟠 P1 FOUND+FIXED 2026-07-07 — Vector RTH monitor false "candle stale" + stale replica candle reads (branch `fix/vector-rth-auth-refresh`)
+
+**Surface:** `scripts/vector-rth-minute-audit.mjs`, `src/lib/ws/spx-candle-store.ts`, Vector wall guide cap.
+
+**How it was found:** RTH minute monitor logged ~33% pass rate with `candle stale 12–58s` on most ticks even when walls/flip math looked sane. Two independent bugs.
+
+**Root cause (monitor):** staleness used `last.t/1000 - candle.time` (seconds into the current minute bar) instead of receive-time minus SSE `t` (`updatedAt` from `getCurrentSpxCandle`). After :08 into any minute the check falsely failed on every tick.
+
+**Root cause (candle store):** `getCurrentSpxCandle()` always returned local state once any tick had landed, even when `updatedAt` was minutes old on a replica that lost the Polygon WS leader lock — ignoring fresher `vector:candle:snapshot` from the current leader.
+
+**Fix:**
+- Monitor: `candleFreshSec = (Date.now() - last.t) / 1000`; VEX-vs-heatmap mismatches downgraded to warns; per-read SSE timeout + hard cap to prevent hung probes.
+- Candle store: when local `updatedAt` > 5s, prefer Redis snapshot with higher `updatedAt`.
+- Wall guides: `MAX_WALL_GUIDES` / `DEFAULT_WALL_NODES_PER_SIDE` / monitor `GUIDE_CAP` raised 3 → 6 (session data showed 6–9 nodes ≥2% concentration).
+
+**Verification:** `spx-candle-store.test.ts` stale-local fallback test; `gex-wall-levels.test.ts` default cap 6; full `npm test` green.
+
+## 🔵 PRODUCT ENHANCEMENT 2026-07-07 — Vector GEX/VEX dual lens + structure feed (branch `cursor/vector-vex-audit-top-tier`)
+
+**Surface:** `/vector` — live SPX chart with wall beads, flip guides, dark-pool overlays.
+
+**Gap:** PR #654 shipped GEX-only overlays. VEX (dealer vanna) was available on the shared SPX heatmap cache (`fetchGexHeatmap → vex.strike_totals`) but never wired to Vector. Users asked "where is VEX live?"
+
+**Fix:**
+- **GEX | VEX lens toggle** — GEX from UW WS `gex_strike_expiry` (~1s) + heatmap fallback; VEX from shared Polygon heatmap cache (~8s). Same bead style, lens-specific colors (sky/rose vanna vs yellow/purple gamma).
+- **Dual-lens wall history** — `WallHistorySample` extended with `vexWalls` / `vexFlip`; Redis persist + replay scrub both lenses; `hasVexInHistory` gates VEX toggle off-hours when legacy rows lack vanna data.
+- **Deterministic structure feed** — `vector-wall-events.ts` diffs consecutive 15s samples (wall migration, flip shift) + ~1s spot crosses (flip break, wall break). No LLM; grounded in live ladder + candle only.
+- **FreshnessChip asOf** — header chip updates from SSE `t` during live sessions.
+- **VEX-only seed** — off-hours display seeds beads when only vanna ladder exists.
+
+**Verification:** 28 vector unit tests (wall history, replay, wall events). `npx tsc --noEmit` clean.
+
+**Follow-up (same overnight pass, PR pending):** `validate:vector-e2e` Playwright suite; Vector launch gate `defaultLaunched: true`; replay control `aria-label`s (fix /Play/i matching "Replay session"); `primeVectorWallScope()` SSR await so VEX toggle is not disabled on cold heatmap; live `setVexAvailable` when SSE delivers vanna walls.
+
 ## 🟠 P1 FOUND+FIXED 2026-07-07 — Vector's live candle never updates on ~4/5 of replicas (leader-only, no cross-replica fallback) (branch `fix/spx-candle-store-cross-replica-fallback`)
 
 **Surface:** `src/lib/ws/spx-candle-store.ts` — feeds the Vector chart's live current-bar update via `/api/market/vector/stream`.

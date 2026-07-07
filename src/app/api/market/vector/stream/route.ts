@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { requireToolApi } from "@/lib/tool-access-server";
 import { buildVectorStreamPayload } from "@/lib/vector-snapshot";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
@@ -15,6 +16,9 @@ const MAX_STREAMS = Number(process.env.SSE_MAX_STREAMS ?? 2000);
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
   if (auth instanceof Response) return auth;
+
+  const locked = await requireToolApi("vector");
+  if (locked) return locked;
 
   if (activeStreams >= MAX_STREAMS) {
     return new NextResponse("Too many active streams — try again shortly", { status: 503 });
@@ -54,18 +58,30 @@ export async function GET(req: NextRequest) {
           }
           return;
         }
-        try {
-          const { candle, walls, t, wallHistory } = buildVectorStreamPayload();
-          const data = JSON.stringify({ candle, walls, t, wallHistory });
-          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
-        } catch {
-          cleanup();
-          try {
-            controller.close();
-          } catch {
-            /* already closed */
-          }
-        }
+        void buildVectorStreamPayload()
+          .then(({ candle, walls, vexWalls, gammaFlip, vexFlip, darkPoolLevels, t, wallHistory, sessionYmd }) => {
+            if (closed) return;
+            const data = JSON.stringify({
+              candle,
+              walls,
+              vexWalls,
+              gammaFlip,
+              vexFlip,
+              darkPoolLevels,
+              t,
+              wallHistory,
+              sessionYmd,
+            });
+            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          })
+          .catch(() => {
+            cleanup();
+            try {
+              controller.close();
+            } catch {
+              /* already closed */
+            }
+          });
       };
 
       activeStreams++;

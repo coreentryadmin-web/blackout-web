@@ -8,12 +8,20 @@ import { todayEt } from "@/lib/nighthawk/session";
 import { mergeWallHistory, seedWallHistoryForDisplay } from "@/lib/providers/vector-wall-history";
 import { loadSessionWallHistory } from "@/lib/providers/vector-wall-persist";
 import { fetchVectorSeedBars } from "@/lib/vector-seed-bars";
-import { getVectorGexWalls, getVectorWallHistory } from "@/lib/vector-snapshot";
+import {
+  getVectorDarkPoolLevels,
+  getVectorGammaFlip,
+  getVectorGexWalls,
+  getVectorVexFlip,
+  getVectorVexWalls,
+  getVectorWallHistory,
+  primeVectorWallScope,
+} from "@/lib/vector-snapshot";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 
 export const metadata: Metadata = {
   title: "Vector · BlackOut",
-  description: "Live SPX price action with real-time dark-pool, flow, and GEX level overlays.",
+  description: "Live SPX price action with GEX/VEX wall beads, flip levels, and dark-pool overlays.",
 };
 
 export default async function VectorPage() {
@@ -21,10 +29,16 @@ export default async function VectorPage() {
   if (!(await canAccessTool("vector"))) return <ComingSoon toolKey="vector" />;
 
   ensureDataSockets();
-  const [{ bars, sessionYmd }, walls] = await Promise.all([
-    fetchVectorSeedBars(),
-    Promise.resolve(getVectorGexWalls()),
-  ]);
+  await primeVectorWallScope();
+  const [{ bars, sessionYmd }, walls, vexWalls, gammaFlip, vexFlip, darkPoolLevels] =
+    await Promise.all([
+      fetchVectorSeedBars(),
+      Promise.resolve(getVectorGexWalls()),
+      Promise.resolve(getVectorVexWalls()),
+      getVectorGammaFlip(),
+      Promise.resolve(getVectorVexFlip()),
+      Promise.resolve(getVectorDarkPoolLevels()),
+    ]);
   const persistedHistory = await loadSessionWallHistory(sessionYmd).catch(
     () => [] as import("@/lib/providers/vector-wall-history").WallHistorySample[]
   );
@@ -34,13 +48,20 @@ export default async function VectorPage() {
     mergeWallHistory(getVectorWallHistory(), persistedHistory),
     bars.map((b) => b.time),
     walls,
+    gammaFlip,
+    vexWalls,
+    vexFlip
   );
 
   return (
     <VectorPageShell
       initialBars={bars}
       initialWalls={walls}
+      initialVexWalls={vexWalls}
       initialWallHistory={initialWallHistory}
+      initialGammaFlip={gammaFlip}
+      initialVexFlip={vexFlip}
+      initialDarkPoolLevels={darkPoolLevels}
       sessionYmd={sessionYmd}
       liveSession={liveSession}
     />
