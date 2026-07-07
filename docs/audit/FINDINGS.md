@@ -40,7 +40,7 @@ QQQ and SPXW both fit this pattern exactly (both `TRIM`, both necessarily peaked
 
 **Root cause:** (1) SSR parallel SPX+SPY fetch — SPY failure swallowed by `.catch(() => [])` left seed bars without volume. (2) No client backfill. (3) Volume pane styling made bars nearly invisible even when data existed.
 
-**Fix:** sequential SPX then `fetchSpyVolumeByMinute` with retry; tier-gated `GET /api/market/vector/spy-volume` client backfill; brighter histogram colors + `scaleMargins` 0.2; "SPY vol" label.
+**Fix:** sequential SPX then `fetchSpyVolumeByMinute` with retry; tier-gated `GET /api/market/vector/spy-volume` client backfill; brighter histogram colors + `scaleMargins` 0.2; "SPY vol" label. **Follow-up (#668):** remove custom `priceScaleId: "volume"` on pane-1 histogram — bars were on a detached overlay scale and never painted.
 
 ## 🟠 P1 FOUND+FIXED 2026-07-07 — Vector honesty gaps + SPY volume pane (branch `fix/vector-honesty-volume`, PR #666)
 
