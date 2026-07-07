@@ -8,6 +8,20 @@ and required CI (`verify`) are green — no per-PR approval, no end-of-day hold.
 here and merge the PR in the same session. Supersedes all earlier "leave OPEN for review" notes
 in this file.
 
+## 🟠 P1 FOUND+FIXED 2026-07-07 — Vector's live candle never updates on ~4/5 of replicas (leader-only, no cross-replica fallback) (branch `fix/spx-candle-store-cross-replica-fallback`)
+
+**Surface:** `src/lib/ws/spx-candle-store.ts` — feeds the Vector chart's live current-bar update via `/api/market/vector/stream`.
+
+**How it was found:** live-verifying Phase C's gamma walls against production (the user asked "where are the yellow and purple you said shipped"). Held one SSE connection open against `blackouttrades.com/api/market/vector/stream` for 19s (20 ticks): every tick returned `candle: null`, while `/api/market/indices` (polled in parallel) showed a real, live price throughout — ruling out off-hours and deploy-lag as explanations before landing on the real cause.
+
+**Root cause:** `recordSpxTick()` only runs on whichever ONE replica currently holds the Polygon indices WS leader lock (`polygon-socket.ts`'s leader election). Every other replica's local module state never receives a tick. Unlike `indexStore`, which already writes a `spx:pulse:snapshot` Redis snapshot for exactly this reason, this store (added in Phase B) was pure in-process memory with zero cross-replica fallback — so on non-leader replicas (most of a 5-replica fleet), the "live" candle silently never updates; only the static REST-seeded historical bars ever show. A chart that only shows history still looks fine at a glance, which is almost certainly why this shipped unnoticed.
+
+**Blast radius:** same root-cause *shape* as a bug an adversarial review caught the same night in Phase C (`getGexStrikeExpiryLadder` is also leader-only) — but that one already had a REST-backed fallback (`fetchGexHeatmap`) to reuse. This store has no such alternative, so the fix mirrors `indexStore`'s own Redis-snapshot pattern instead via `src/lib/shared-cache.ts`'s `sharedCacheGet`/`sharedCacheSet`.
+
+**Fix:** `recordSpxTick()` throttle-writes `{current, updatedAt}` to Redis at most once/sec (mirrors `indexStore`'s own cadence). `getCurrentSpxCandle()` returns local state whenever this process has ever ticked; only falls back to a slow-refreshed (~1s) local cache of the Redis snapshot when local state has never been touched — same shared-cache-with-refresh shape as Phase C's wall fallback, so a burst of concurrent connections on one non-leader replica doesn't each hit Redis per-tick.
+
+**Verification:** 4 new tests (fallback populates after the async Redis fetch resolves — mirrors the exact null-then-populated sequence observed live; stays null when the fallback also has nothing; local state always wins once a real tick lands; the Redis write is throttled not per-tick). Full suite 1713/1713. tsc/eslint/build clean.
+
 ## 🔵 PRODUCT RESTRUCTURE 2026-07-07 — Night's Watch removed; 0DTE Command moved from Grid into Night Hawk (branch `feat/nighthawk-absorbs-0dte-remove-nights-watch`)
 
 **Not a bug fix** — a deliberate, site-owner-directed product change, logged here for the same reason
