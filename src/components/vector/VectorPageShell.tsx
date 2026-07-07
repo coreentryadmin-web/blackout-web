@@ -34,8 +34,8 @@ export function VectorPageShell({
 }: Props) {
   const sessionLabel = formatSessionLabel(sessionYmd);
   const subtitle = liveSession
-    ? "SPX price action with live GEX wall nodes — updates every second during the session."
-    : `Showing ${sessionLabel} session close — chart and gamma walls are static until the market reopens.`;
+    ? "SPX price action with live GEX wall nodes — beads every 15s, live levels ~1s."
+    : `Showing ${sessionLabel} session — scrub replay to watch gamma walls form through the day.`;
 
   return (
     <PageShell fullBleed className="vector-page-shell">
