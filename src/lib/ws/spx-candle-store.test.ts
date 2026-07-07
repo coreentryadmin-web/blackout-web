@@ -9,8 +9,22 @@ mock.module("../providers/spx-session", {
   },
 });
 
+// Controllable stand-ins for the cross-replica Redis fallback. Each fallback test resets
+// these before use; `sharedCacheSetCalls` counts invocations for the write-throttle test.
+const sharedCache = { getResult: null as unknown, setCalls: 0 };
+mock.module("../shared-cache", {
+  namedExports: {
+    sharedCacheGet: async () => sharedCache.getResult,
+    sharedCacheSet: async () => {
+      sharedCache.setCalls += 1;
+    },
+  },
+});
+
 // Lazy import so the todayEtYmd mock above is in place before the module under test resolves it.
 const mod = () => import("./spx-candle-store");
+
+const flushMicrotasks = () => new Promise((r) => setTimeout(r, 10));
 
 test("recordSpxTick: first tick opens a bar with open=high=low=close", async () => {
   const { recordSpxTick, getCurrentSpxCandle } = await mod();
@@ -86,4 +100,59 @@ test("recordSpxTick: a new ET session date resets the aggregator (no stale prior
 
   const { current } = getCurrentSpxCandle();
   assert.equal(current!.open, 6450);
+});
+
+test("getCurrentSpxCandle: falls back to the cross-replica Redis snapshot when local state has never ticked (non-leader replica)", async () => {
+  const { getCurrentSpxCandle, _resetSpxCandleStoreForTest } = await mod();
+  _resetSpxCandleStoreForTest();
+  const fallback = { current: { time: 1000, open: 1, high: 2, low: 1, close: 2 }, updatedAt: 12345 };
+  sharedCache.getResult = fallback;
+
+  // First read: local state is empty, so it returns null synchronously while the Redis
+  // fetch runs in the background — matches the observed live-production behavior (the first
+  // SSE tick on a freshly-touched replica is null; the fetch resolves on the next tick).
+  assert.deepEqual(getCurrentSpxCandle(), { current: null, updatedAt: 0 });
+
+  await flushMicrotasks();
+
+  assert.deepEqual(getCurrentSpxCandle(), fallback);
+});
+
+test("getCurrentSpxCandle: stays null when local state is empty and the Redis fallback has nothing either", async () => {
+  const { getCurrentSpxCandle, _resetSpxCandleStoreForTest } = await mod();
+  _resetSpxCandleStoreForTest();
+  sharedCache.getResult = null;
+
+  getCurrentSpxCandle();
+  await flushMicrotasks();
+
+  assert.deepEqual(getCurrentSpxCandle(), { current: null, updatedAt: 0 });
+});
+
+test("getCurrentSpxCandle: local state always wins over the Redis fallback once a tick has been recorded", async () => {
+  const { recordSpxTick, getCurrentSpxCandle, _resetSpxCandleStoreForTest } = await mod();
+  _resetSpxCandleStoreForTest();
+  sharedCache.getResult = { current: { time: 999, open: 9, high: 9, low: 9, close: 9 }, updatedAt: 1 };
+  state.sessionDate = "2026-07-08T1";
+
+  recordSpxTick(6500, Date.parse("2026-07-08T14:00:00.000Z"));
+  await flushMicrotasks();
+
+  const { current } = getCurrentSpxCandle();
+  assert.equal(current!.open, 6500); // the real local tick, never the stale fallback fixture
+});
+
+test("recordSpxTick: throttles the cross-replica Redis write instead of writing on every tick", async () => {
+  const { recordSpxTick, _resetSpxCandleStoreForTest } = await mod();
+  _resetSpxCandleStoreForTest();
+  sharedCache.setCalls = 0;
+  state.sessionDate = "2026-07-08T2";
+  const base = Date.parse("2026-07-08T14:05:00.000Z");
+
+  recordSpxTick(6500, base);
+  recordSpxTick(6501, base + 100);
+  recordSpxTick(6502, base + 200);
+  await flushMicrotasks();
+
+  assert.equal(sharedCache.setCalls, 1);
 });

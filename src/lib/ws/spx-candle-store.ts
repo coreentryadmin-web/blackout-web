@@ -5,15 +5,27 @@
  * src/app/api/market/vector/stream/route.ts.
  *
  * Same shape-of-thinking as indexStore/darkPoolStore: a plain module-level store, no
- * class, no persistence — this is a live view, not a source of truth (the initial
- * historical bars a client seeds from come from Polygon's own REST aggregates, see
- * src/app/(site)/vector/page.tsx).
+ * class — this is a live view, not a source of truth (the initial historical bars a
+ * client seeds from come from Polygon's own REST aggregates, see src/app/(site)/vector/page.tsx).
+ *
+ * Cross-replica fallback: recordSpxTick() only ever runs on whichever ONE replica
+ * currently holds the Polygon indices WS leader lock (see polygon-socket.ts's leader
+ * election) — every other replica's local `state` never receives a tick. Verified live
+ * in production: a held-open SSE connection against a non-leader replica returned
+ * `candle: null` for 20 consecutive ticks over 19s, while `/api/market/indices` (which
+ * already has its own Redis `spx:pulse:snapshot` cross-replica fallback) showed a real
+ * price throughout — confirming the gap is this store specifically, not a fleet-wide
+ * outage. Mirrors that same pattern: the leader throttle-writes a Redis snapshot on tick;
+ * every replica's read falls back to a slow-refreshed local copy of it when its own
+ * local state is empty, so non-leaders show a live-ish (up to ~1s stale) candle instead
+ * of permanently nothing.
  */
 // Relative import (not the usual @/ alias): its test mocks this module, and
 // node:test's mock.module() only reliably matches a specifier that's textually
 // identical to the one used here — an aliased specifier resolved to a broken path
 // in CI (see spx-candle-store.test.ts).
 import { todayEtYmd } from "../providers/spx-session";
+import { sharedCacheGet, sharedCacheSet } from "../shared-cache";
 
 export type SpxCandle = {
   /** Bar start, epoch SECONDS (lightweight-charts' UTCTimestamp unit). */
@@ -43,6 +55,53 @@ function resetForNewSession(sessionDate: string): void {
   state.sessionDate = sessionDate;
 }
 
+type CandleSnapshot = { current: SpxCandle | null; updatedAt: number };
+
+const REDIS_KEY = "vector:candle:snapshot";
+// Written on every tick on the leader, but throttled — the WS "V" channel can fire several
+// times a second and this must not turn into a per-tick Redis write (matches the ~1s cadence
+// polygon-socket.ts already uses for indexStore's own spx:pulse:snapshot).
+const REDIS_WRITE_THROTTLE_MS = 1_000;
+// How often a non-leader replica re-polls Redis for a fresher snapshot. Independent of
+// REDIS_WRITE_THROTTLE_MS on purpose: this is a read-side cache to stop every concurrent SSE
+// connection on the SAME non-leader replica from each hitting Redis on their own 1s tick.
+const REDIS_READ_REFRESH_MS = 1_000;
+const REDIS_TTL_SEC = 30;
+
+let lastRedisWriteAt = 0;
+let fallbackCandle: CandleSnapshot | null = null;
+let fallbackFetchedAt = 0;
+let fallbackInFlight: Promise<void> | null = null;
+
+function throttledRedisWrite(): void {
+  const now = Date.now();
+  if (now - lastRedisWriteAt < REDIS_WRITE_THROTTLE_MS) return;
+  lastRedisWriteAt = now;
+  void sharedCacheSet(
+    REDIS_KEY,
+    { current: state.current, updatedAt: state.updatedAt },
+    REDIS_TTL_SEC
+  ).catch(() => {
+    /* best-effort — the leader's own local state is still authoritative for its own reads */
+  });
+}
+
+function refreshFallbackFromRedis(): void {
+  const now = Date.now();
+  if (now - fallbackFetchedAt < REDIS_READ_REFRESH_MS || fallbackInFlight) return;
+  fallbackInFlight = sharedCacheGet<CandleSnapshot>(REDIS_KEY)
+    .then((snap) => {
+      if (snap) fallbackCandle = snap;
+      fallbackFetchedAt = Date.now();
+    })
+    .catch(() => {
+      fallbackFetchedAt = Date.now();
+    })
+    .finally(() => {
+      fallbackInFlight = null;
+    });
+}
+
 /** Feed one live SPX price tick into the aggregator. Called from polygon-socket.ts's "V" handler. */
 export function recordSpxTick(price: number, atMs: number = Date.now()): void {
   if (!Number.isFinite(price) || price <= 0) return;
@@ -64,9 +123,29 @@ export function recordSpxTick(price: number, atMs: number = Date.now()): void {
     state.current = { time: barTime, open: price, high: price, low: price, close: price };
   }
   state.updatedAt = Date.now();
+  throttledRedisWrite();
 }
 
-/** Read-only snapshot of the currently-forming bar, for the Vector SSE stream. */
-export function getCurrentSpxCandle(): { current: SpxCandle | null; updatedAt: number } {
-  return { current: state.current, updatedAt: state.updatedAt };
+/**
+ * Read-only snapshot of the currently-forming bar, for the Vector SSE stream. Local state
+ * wins whenever this process has ever recorded a tick (the leader, or a former leader that
+ * failed over — local state is never worse than the Redis snapshot it itself last wrote).
+ * Only falls back to the cross-replica Redis snapshot when local state has never been touched.
+ */
+export function getCurrentSpxCandle(): CandleSnapshot {
+  if (state.current) return { current: state.current, updatedAt: state.updatedAt };
+  refreshFallbackFromRedis();
+  return fallbackCandle ?? { current: null, updatedAt: 0 };
+}
+
+/** Test-only: reset all module state (local + fallback-cache bookkeeping). Not used in production. */
+export function _resetSpxCandleStoreForTest(): void {
+  state.bars = [];
+  state.current = null;
+  state.sessionDate = "";
+  state.updatedAt = 0;
+  lastRedisWriteAt = 0;
+  fallbackCandle = null;
+  fallbackFetchedAt = 0;
+  fallbackInFlight = null;
 }
