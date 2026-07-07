@@ -62,6 +62,17 @@ export function nextTradingDayEt(from?: string): string {
   return formatEtDate(cursor);
 }
 
+/** Walk backward to the prior NYSE trading day (mirrors nextTradingDayEt). */
+export function previousTradingDayEt(from: string): string {
+  let cursor = new Date(`${from}T12:00:00`);
+  for (let i = 0; i < 12; i++) {
+    cursor = new Date(cursor.getTime() - 86_400_000);
+    const ymd = formatEtDate(cursor);
+    if (isTradingDayEt(ymd)) return ymd;
+  }
+  return formatEtDate(cursor);
+}
+
 /**
  * The most recent trading day at or before `now` (ET calendar date) — walks
  * backward through weekends/holidays, mirroring nextTradingDayEt's forward walk.
