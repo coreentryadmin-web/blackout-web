@@ -7,6 +7,7 @@ import {
   seedWallHistoryForDisplay,
   strikeTrailWeight,
   trailsByStrike,
+  trailForGammaFlip,
   trailForRank,
   type WallHistorySample,
 } from "./vector-wall-history";
@@ -72,10 +73,11 @@ test("trailForRank: returns an empty trail for an empty history", () => {
 
 test("seedWallHistoryForDisplay: seeds one honest dot at the last bar when history is empty", () => {
   const w = walls([6800], [6700]);
-  const seeded = seedWallHistoryForDisplay([], [100, 160, 220], w);
+  const seeded = seedWallHistoryForDisplay([], [100, 160, 220], w, 6750);
   assert.equal(seeded.length, 1);
   assert.equal(seeded[0].time, 220);
   assert.deepEqual(seeded[0].walls, w);
+  assert.equal(seeded[0].gammaFlip, 6750);
 });
 
 test("seedWallHistoryForDisplay: leaves existing history untouched", () => {
@@ -131,4 +133,16 @@ test("mergeWallHistory: keeps local-only bars when remote is shorter", () => {
   ];
   const remote = [{ time: 100, walls: walls([6800], [6700]) }];
   assert.equal(mergeWallHistory(local, remote).length, 3);
+});
+
+test("trailForGammaFlip: horizontal bead row when flip is present", () => {
+  const history: WallHistorySample[] = [
+    { time: 100, walls: walls([6800], [6700]), gammaFlip: 6745 },
+    { time: 160, walls: walls([6810], [6700]), gammaFlip: 6750 },
+    { time: 220, walls: walls([6810], [6700]), gammaFlip: null },
+  ];
+  assert.deepEqual(trailForGammaFlip(history), [
+    { time: 100, strike: 6745 },
+    { time: 160, strike: 6750 },
+  ]);
 });

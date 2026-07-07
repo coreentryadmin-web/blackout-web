@@ -3,13 +3,15 @@
 import { PageShell, PageHeader, FreshnessChip } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { VectorChart, type VectorBar } from "@/components/vector/VectorChart";
-import type { VectorWalls } from "@/lib/api";
+import type { VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
 import type { WallHistorySample } from "@/lib/providers/vector-wall-history";
 
 type Props = {
   initialBars: VectorBar[];
   initialWalls: VectorWalls | null;
   initialWallHistory: WallHistorySample[];
+  initialGammaFlip: number | null;
+  initialDarkPoolLevels: VectorDarkPoolLevel[];
   sessionYmd: string;
   liveSession: boolean;
 };
@@ -29,12 +31,14 @@ export function VectorPageShell({
   initialBars,
   initialWalls,
   initialWallHistory,
+  initialGammaFlip,
+  initialDarkPoolLevels,
   sessionYmd,
   liveSession,
 }: Props) {
   const sessionLabel = formatSessionLabel(sessionYmd);
   const subtitle = liveSession
-    ? "SPX price action with live GEX wall nodes — beads every 15s, live levels ~1s."
+    ? "SPX candles ~1s on the axis; gamma wall beads every 15s; flip + dark-pool guides live."
     : `Showing ${sessionLabel} session — scrub replay to watch gamma walls form through the day.`;
 
   return (
@@ -57,6 +61,9 @@ export function VectorPageShell({
             initialBars={initialBars}
             initialWalls={initialWalls}
             initialWallHistory={initialWallHistory}
+            initialGammaFlip={initialGammaFlip}
+            initialDarkPoolLevels={initialDarkPoolLevels}
+            sessionYmd={sessionYmd}
             liveSession={liveSession}
           />
         </div>
