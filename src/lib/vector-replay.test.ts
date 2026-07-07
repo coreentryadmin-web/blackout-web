@@ -14,6 +14,13 @@ import {
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 import type { WallHistorySample } from "@/lib/providers/vector-wall-history";
 
+function walls(call: number, put: number): GexWalls {
+  return {
+    callWalls: [{ strike: call, pct: 12 }],
+    putWalls: [{ strike: put, pct: 10 }],
+  };
+}
+
 // 2026-07-07 EDT — 13:30 UTC = 9:30 ET, 20:00 UTC = 16:00 ET
 const OPEN = 1_783_431_000;
 const NOON = 1_783_434_600;
