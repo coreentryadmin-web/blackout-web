@@ -970,17 +970,31 @@ export function VectorChart({
     const series = seriesRef.current;
     const chart = chartRef.current;
     if (!series) return;
-    const display = displayBarsFromMinute(minuteBarsRef.current, timeframe);
-    displayBarTimeRef.current = display[display.length - 1]?.time ?? 0;
-    applyDisplayBars(series, volumeSeriesRef.current, display);
-    chart?.timeScale().applyOptions({ secondsVisible: timeframe === 1 });
-    if (!replayMode) {
+    if (replayMode) {
+      // This effect also re-fires on entering/exiting replay (replayMode is a dep) —
+      // e.g. right after enterReplay()'s own applyFrame(replayTimeline[0], ...) call.
+      // Re-deriving display bars from the FULL live minuteBarsRef.current (as the live
+      // branch below does) would immediately overwrite that correctly cursor-sliced
+      // frame with every bar through "now", including bars after the replay cursor —
+      // leaking live/future price action into a view whose clock label still reads the
+      // earlier cursor time. Route through applyFrame so the slice stays honest.
+      applyFrame(cursorTime, minuteBarsRef.current, wallHistoryRef.current, lensRef.current);
+    } else {
+      const display = displayBarsFromMinute(minuteBarsRef.current, timeframe);
+      displayBarTimeRef.current = display[display.length - 1]?.time ?? 0;
+      applyDisplayBars(series, volumeSeriesRef.current, display);
       refreshTrails(lensRef.current);
+      if (liveSession) {
+        maybeScrollToLive(chart);
+      }
     }
-    if (!replayMode && liveSession) {
-      maybeScrollToLive(chart);
-    }
-  }, [timeframe, replayMode, liveSession, refreshTrails]);
+    chart?.timeScale().applyOptions({ secondsVisible: timeframe === 1 });
+    // cursorTime intentionally omitted: scrubTo/stepReplay/the replay timer already call
+    // applyFrame imperatively on every cursor change, so re-running this effect for that
+    // too would just double the work; it only needs the CURRENT cursorTime on the renders
+    // where timeframe/replayMode/liveSession actually change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeframe, replayMode, liveSession, refreshTrails, applyFrame]);
 
   const handleLens = (next: VectorWallLens) => {
     if (next === "vex" && !vexAvailable) return;

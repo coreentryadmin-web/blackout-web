@@ -81,3 +81,27 @@ test("flipAtCrosshairTime: hovering at/after a recorded sample returns that hist
   const flip = flipAtCrosshairTime(HISTORY, 1500, "gex", 7777, null);
   assert.equal(flip, 7500);
 });
+
+// Regression: VectorChart's timeframe-resync effect re-fires on every replayMode
+// change (e.g. immediately after enterReplay()'s own cursor-sliced applyFrame call)
+// and, before this fix, redrew the candle series from the FULL live minuteBars array
+// with no cursorTime — leaking bars after the replay cursor onto a chart whose clock
+// label still read the earlier cursor time. The fix routes that redraw through
+// applyFrame (same as scrubTo/stepReplay/enterReplay), which slices via
+// sliceBarsToTime — this pins the exact invariant that slice must uphold: no bar
+// timestamped after the cursor may ever appear in a replay-mode display.
+test("sliceBarsToTime: bars after the replay cursor (the 'leaked live data' bug) are excluded", () => {
+  const cursorTime = OPEN + 300; // 5 minutes into the session
+  const bars = [
+    { time: OPEN, open: 1, high: 1, low: 1, close: 1 },
+    { time: cursorTime, open: 2, high: 2, low: 2, close: 2 },
+    { time: cursorTime + 60, open: 3, high: 3, low: 3, close: 3 }, // "live/future" bar
+    { time: NOON, open: 4, high: 4, low: 4, close: 4 }, // "live/future" bar
+  ];
+  const sliced = sliceBarsToTime(bars, cursorTime);
+  assert.deepEqual(
+    sliced.map((b) => b.time),
+    [OPEN, cursorTime],
+    "no bar after the cursor may leak into a replay-mode display"
+  );
+});
