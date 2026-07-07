@@ -477,6 +477,7 @@ export async function queryLargoStream(
         };
 
         if (event.type === "ping") continue;
+        if (event.type === "ping") continue;
         if (event.type === "token" && event.text) onToken(event.text);
         if (event.type === "tool_start" && event.name) onTool?.(event.name);
         if (event.type === "done" && event.answer && event.session_id) {
@@ -659,8 +660,15 @@ export function createPulseEventSource(
 
 export type VectorStreamCandle = { time: number; open: number; high: number; low: number; close: number };
 export type VectorWallLevel = { strike: number; pct: number };
-export type VectorWalls = { callWall: VectorWallLevel | null; putWall: VectorWallLevel | null };
-export type VectorStreamSnapshot = { candle: VectorStreamCandle | null; walls?: VectorWalls | null; t?: number };
+/** Ranked strongest-first per side, capped server-side (gex-wall-levels.ts's DEFAULT_WALL_NODES_PER_SIDE). */
+export type VectorWalls = { callWalls: VectorWallLevel[]; putWalls: VectorWallLevel[] };
+export type VectorStreamSnapshot = {
+  candle: VectorStreamCandle | null;
+  walls?: VectorWalls | null;
+  t?: number;
+  /** Replica-local trail tail from the serving replica (merged on connect). */
+  wallHistory?: import("@/lib/providers/vector-wall-history").WallHistorySample[];
+};
 
 export function createVectorEventSource(
   onMessage: (snap: VectorStreamSnapshot) => void,
@@ -672,7 +680,11 @@ export function createVectorEventSource(
     (raw) => {
       try {
         const data = JSON.parse(raw) as VectorStreamSnapshot;
-        if (!data.candle) return;
+        const hasCandle = Boolean(data.candle);
+        const hasWalls =
+          Boolean(data.walls?.callWalls?.length) || Boolean(data.walls?.putWalls?.length);
+        const hasWallHistory = Boolean(data.wallHistory?.length);
+        if (!hasCandle && !hasWalls && !hasWallHistory) return;
         onMessage(data);
       } catch {
         /* ignore */
