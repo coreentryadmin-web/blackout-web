@@ -115,7 +115,16 @@ function NightHawkStatsGrid({ stats }: { stats: NhStats }) {
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Total" value={stats.total} tone="neutral" />
+        <Stat
+          label="Total"
+          value={stats.total}
+          tone="neutral"
+          sublabel={
+            stats.unresolved && stats.unresolved > 0
+              ? `${stats.unresolved} no-trigger/ambiguous`
+              : undefined
+          }
+        />
         <Stat label="Wins" value={stats.wins} tone="bull" />
         <Stat label="Losses" value={stats.losses} tone="bear" />
         <div className="flex flex-col gap-1.5 rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] p-4 backdrop-blur">

@@ -8,6 +8,24 @@ and required CI (`verify`) are green — no per-PR approval, no end-of-day hold.
 here and merge the PR in the same session. Supersedes all earlier "leave OPEN for review" notes
 in this file.
 
+## 🟡 P2 FOUND+FIXED 2026-07-07 — Night Hawk track-record `total` didn't reconcile with `wins + losses`, admin panel only (branch `fix/nighthawk-trackrecord-total-reconcile`)
+
+**Surface:** `/admin/track-record`'s Night Hawk stat card (`total` / `wins` / `losses` tiles). Not public-facing — the public embed page only serves the SPX Slayer numbers, per the earlier admin-access audit finding.
+
+**How it was found:** parallel background audit sweep of live cross-tool data consistency, specifically pulling `/api/track-record` with an admin session and cross-checking the numbers against the source ledger.
+
+**Evidence:** live admin pull showed Night Hawk `total: 10, wins: 6, losses: 3` — 6 + 3 = 9 ≠ 10, with no field accounting for the 10th play. `winRatePct: 60` (6/10).
+
+**Root cause:** `isNighthawkOutcomeScoreable()` (`src/lib/track-record-page.ts`) admits rows whose `outcome` is `"open"` (session closed without ever hitting target or stop) or `"ambiguous"` (both hit intraday, order unrecoverable from close-only data) into the "scoreable" set — alongside the genuinely resolved `"target"`/`"stop"` rows. `nhFromRows()` counted ALL scoreable rows into `total`, but only `outcome === "target"`/`"stop"` rows into `wins`/`losses` — so any row that resolved as `"open"` or `"ambiguous"` inflated `total` with nothing in the payload explaining where it went.
+
+**Fix:** added an explicit `unresolved` field (`total - wins - losses`) to `nhFromRows()`'s return and the `TrackRecordPagePayload["nightHawk"]`/`NhStats` types (optional/additive — doesn't touch any existing required field, so no other call site needed updating). `TrackRecordProductCard.tsx`'s "Total" tile shows a sublabel ("N no-trigger/ambiguous") when `unresolved > 0`, so the count is explained rather than silently absorbed.
+
+**Deliberately NOT changed:** the `winRatePct` formula (`wins / total`, i.e. unresolved rows stay in the denominator). The page's own methodology text states results are "resolved target/stop outcomes," which could argue for excluding unresolved rows from the rate denominator too — but that's a real methodology decision (would shift the displayed win-rate percentage) that needs explicit product sign-off, not a silent formula change bundled into a transparency fix. Flagging the tradeoff as a follow-up, not deciding it here.
+
+**Tests added:** `track-record-page.test.ts` — new case using the exact 10/6/3 shape from the live pull, asserting `total === wins + losses + unresolved` always holds.
+
+**Verification:** `npx tsc --noEmit` clean. Full suite passing (1 new). `npm run build` clean. `git diff main -- src/lib/spx-signals.ts` empty.
+
 ## 🟡 P2 FOUND+FIXED 2026-07-07 — Vector's SPY volume histogram silently stops updating after page load (branch `fix/vector-spy-volume-stale-after-mount`)
 
 **Surface:** `/vector`'s SPY 1m volume histogram/overlay (the index has no native tape volume, so SPY volume is used as a proxy — see PR #666/#667/#671).
