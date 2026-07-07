@@ -48,10 +48,12 @@ For AWS: add `output: "standalone"` + `Dockerfile` (same Next app, containerized
 - [ ] GitHub Action: build image → push ECR (staging)
 - [ ] `docs/ops/AWS-MIGRATION-PLAN.md` cutover checklist
 
-### Phase 2 — Safe dead code (one PR per area)
-- [ ] Stale **grid** references (`ONBOARDING.md`, ios CSS `[data-ios-route="grid"]`, api/grid if orphaned)
-- [ ] Audit scripts: mark `scripts/audit/*` as non-runtime (keep; do not delete wholesale)
-- [ ] `scripts/nighthawk-worker.ts` — confirm dead vs cron HTTP path; delete or document
+### Phase 2 — Safe dead code (one PR per area) — **PR #1 in progress**
+- [x] Stale **grid** references (`ONBOARDING.md`, ios CSS `[data-ios-route="grid"]`, audit scripts)
+- [x] Delete orphan components (~40 files, ~9k LOC) — desk panels, dead embeds, landing chrome
+- [x] Archive June 2026 audit pile → `docs/archive/2026-06/`; delete `docs/auto/` SDLC logs
+- [x] `scripts/nighthawk-worker.ts` deleted (edition runs via `api/cron/nighthawk-edition`)
+- [x] `/vector` added to middleware protected routes
 - [ ] Duplicate fetch paths already flagged in `FINDINGS.md` — fix remaining only with tests
 
 ### Phase 3 — Client bundle diet (speed PRs)
