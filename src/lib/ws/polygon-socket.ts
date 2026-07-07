@@ -430,7 +430,7 @@ async function connectIndices() {
                     : prev.change_pct,
                 updatedAt: Date.now(),
               };
-              // Atlas live chart: feed the same SPX tick into the 1-minute candle aggregator.
+              // Vector live chart: feed the same SPX tick into the 1-minute candle aggregator.
               // Uses the message's own timestamp (falls back to receipt time) so bars bucket by
               // actual market time rather than however late this process got to handling it.
               if (sym === "I:SPX") {

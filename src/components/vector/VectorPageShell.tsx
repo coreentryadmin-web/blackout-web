@@ -2,25 +2,25 @@
 
 import { PageShell, PageHeader } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
-import { AtlasChart, type AtlasBar } from "@/components/atlas/AtlasChart";
+import { VectorChart, type VectorBar } from "@/components/vector/VectorChart";
 
 type Props = {
-  initialBars: AtlasBar[];
+  initialBars: VectorBar[];
 };
 
-/** /atlas page frame — mirrors GridPageShell's PageShell/PageHeader/ProductMark structure. */
-export function AtlasPageShell({ initialBars }: Props) {
+/** /vector page frame — mirrors GridPageShell's PageShell/PageHeader/ProductMark structure. */
+export function VectorPageShell({ initialBars }: Props) {
   return (
-    <PageShell fullBleed className="atlas-page-shell">
+    <PageShell fullBleed className="vector-page-shell">
       <div className="px-2 sm:px-4 xl:px-6">
         <PageHeader
           kicker="Live SPX chart"
-          title="Atlas"
+          title="Vector"
           subtitle="SPX price action with real-time dark-pool, flow, and GEX level overlays."
-          badge={<ProductMark product="atlas" size={44} animated={false} />}
+          badge={<ProductMark product="vector" size={44} animated={false} />}
         />
         <div className="mt-5">
-          <AtlasChart initialBars={initialBars} />
+          <VectorChart initialBars={initialBars} />
         </div>
       </div>
     </PageShell>

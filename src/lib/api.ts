@@ -681,21 +681,21 @@ export function createPositionEventSource(
   );
 }
 
-// ── Atlas live SPX candle stream ──────────────────────────────────────────────
+// ── Vector live SPX candle stream ──────────────────────────────────────────────
 
-export type AtlasStreamCandle = { time: number; open: number; high: number; low: number; close: number };
-export type AtlasStreamSnapshot = { candle: AtlasStreamCandle | null; t?: number };
+export type VectorStreamCandle = { time: number; open: number; high: number; low: number; close: number };
+export type VectorStreamSnapshot = { candle: VectorStreamCandle | null; t?: number };
 
-export function createAtlasEventSource(
-  onMessage: (snap: AtlasStreamSnapshot) => void,
+export function createVectorEventSource(
+  onMessage: (snap: VectorStreamSnapshot) => void,
   hooks?: { onOpen?: () => void; onClose?: () => void }
 ): ReconnectingEventSource | null {
   if (typeof window === "undefined") return null;
   return createReconnectingEventSource(
-    "/api/market/atlas/stream",
+    "/api/market/vector/stream",
     (raw) => {
       try {
-        const data = JSON.parse(raw) as AtlasStreamSnapshot;
+        const data = JSON.parse(raw) as VectorStreamSnapshot;
         if (!data.candle) return;
         onMessage(data);
       } catch {

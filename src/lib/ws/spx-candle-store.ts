@@ -1,13 +1,13 @@
 /**
  * In-memory 1-minute OHLC candle aggregator for SPX, fed tick-by-tick from the same
  * Polygon indices "V" channel that already updates `indexStore["I:SPX"].price` in
- * polygon-socket.ts. Powers the Atlas live chart's current-bar updates — see
- * src/app/api/market/atlas/stream/route.ts.
+ * polygon-socket.ts. Powers the Vector live chart's current-bar updates — see
+ * src/app/api/market/vector/stream/route.ts.
  *
  * Same shape-of-thinking as indexStore/darkPoolStore: a plain module-level store, no
  * class, no persistence — this is a live view, not a source of truth (the initial
  * historical bars a client seeds from come from Polygon's own REST aggregates, see
- * src/app/(site)/atlas/page.tsx).
+ * src/app/(site)/vector/page.tsx).
  */
 // Relative import (not the usual @/ alias): its test mocks this module, and
 // node:test's mock.module() only reliably matches a specifier that's textually
@@ -66,7 +66,7 @@ export function recordSpxTick(price: number, atMs: number = Date.now()): void {
   state.updatedAt = Date.now();
 }
 
-/** Read-only snapshot of the currently-forming bar, for the Atlas SSE stream. */
+/** Read-only snapshot of the currently-forming bar, for the Vector SSE stream. */
 export function getCurrentSpxCandle(): { current: SpxCandle | null; updatedAt: number } {
   return { current: state.current, updatedAt: state.updatedAt };
 }

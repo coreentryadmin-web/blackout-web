@@ -9,9 +9,9 @@ import {
   type ISeriesApi,
   type UTCTimestamp,
 } from "lightweight-charts";
-import { createAtlasEventSource } from "@/lib/api";
+import { createVectorEventSource } from "@/lib/api";
 
-export type AtlasBar = {
+export type VectorBar = {
   time: UTCTimestamp;
   open: number;
   high: number;
@@ -20,17 +20,17 @@ export type AtlasBar = {
 };
 
 type Props = {
-  initialBars: AtlasBar[];
+  initialBars: VectorBar[];
 };
 
 /**
  * Phase A seeded a static chart from `initialBars`. Phase B adds the live layer: an SSE
- * subscription (createAtlasEventSource) pushes the currently-forming 1-minute bar roughly
+ * subscription (createVectorEventSource) pushes the currently-forming 1-minute bar roughly
  * once a second, and `series.update()` either refreshes that bar in place or appends a new
  * one — lightweight-charts' own semantics for "same time as last bar => update, later time
  * => append" do the bar-rollover handling for us, so no client-side bar-boundary logic needed.
  */
-export function AtlasChart({ initialBars }: Props) {
+export function VectorChart({ initialBars }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -68,10 +68,10 @@ export function AtlasChart({ initialBars }: Props) {
     // lightweight-charts rejects an update() older than the series' last bar — guard against a
     // stale/duplicate SSE tick (or one racing the REST-seeded initialBars) ever throwing.
     let lastBarTime = initialBars.length ? initialBars[initialBars.length - 1].time : 0;
-    const conn = createAtlasEventSource((snap) => {
+    const conn = createVectorEventSource((snap) => {
       if (!snap.candle || snap.candle.time < lastBarTime) return;
       lastBarTime = snap.candle.time;
-      seriesRef.current?.update(snap.candle as AtlasBar);
+      seriesRef.current?.update(snap.candle as VectorBar);
     });
 
     return () => {
@@ -85,5 +85,5 @@ export function AtlasChart({ initialBars }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <div ref={containerRef} className="atlas-chart-canvas" style={{ height: "calc(100vh - 280px)", minHeight: 480 }} />;
+  return <div ref={containerRef} className="vector-chart-canvas" style={{ height: "calc(100vh - 280px)", minHeight: 480 }} />;
 }
