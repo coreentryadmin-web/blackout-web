@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { PageShell, PageHeader, FreshnessChip } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { VectorChart, type VectorBar } from "@/components/vector/VectorChart";
@@ -9,8 +10,10 @@ import type { WallHistorySample } from "@/lib/providers/vector-wall-history";
 type Props = {
   initialBars: VectorBar[];
   initialWalls: VectorWalls | null;
+  initialVexWalls: VectorWalls | null;
   initialWallHistory: WallHistorySample[];
   initialGammaFlip: number | null;
+  initialVexFlip: number | null;
   initialDarkPoolLevels: VectorDarkPoolLevel[];
   sessionYmd: string;
   liveSession: boolean;
@@ -30,16 +33,19 @@ function formatSessionLabel(ymd: string): string {
 export function VectorPageShell({
   initialBars,
   initialWalls,
+  initialVexWalls,
   initialWallHistory,
   initialGammaFlip,
+  initialVexFlip,
   initialDarkPoolLevels,
   sessionYmd,
   liveSession,
 }: Props) {
   const sessionLabel = formatSessionLabel(sessionYmd);
+  const [streamUpdatedAt, setStreamUpdatedAt] = useState<number | null>(null);
   const subtitle = liveSession
-    ? "SPX candles ~1s on the axis; gamma wall beads every 15s; flip + dark-pool guides live."
-    : `Showing ${sessionLabel} session — scrub replay to watch gamma walls form through the day.`;
+    ? "SPX ~1s on the axis · GEX/VEX wall beads · flip + dark-pool guides."
+    : `Showing ${sessionLabel} session — scrub replay to watch GEX and VEX walls form through the day.`;
 
   return (
     <PageShell fullBleed className="vector-page-shell">
@@ -52,6 +58,7 @@ export function VectorPageShell({
           actions={
             <FreshnessChip
               status={liveSession ? "live" : "cached"}
+              asOf={liveSession && streamUpdatedAt ? new Date(streamUpdatedAt) : null}
               label={liveSession ? "Live session" : "Session close"}
             />
           }
@@ -60,11 +67,14 @@ export function VectorPageShell({
           <VectorChart
             initialBars={initialBars}
             initialWalls={initialWalls}
+            initialVexWalls={initialVexWalls}
             initialWallHistory={initialWallHistory}
             initialGammaFlip={initialGammaFlip}
+            initialVexFlip={initialVexFlip}
             initialDarkPoolLevels={initialDarkPoolLevels}
             sessionYmd={sessionYmd}
             liveSession={liveSession}
+            onFreshness={liveSession ? setStreamUpdatedAt : undefined}
           />
         </div>
       </div>

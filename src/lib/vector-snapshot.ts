@@ -21,13 +21,20 @@ import { fetchUwDarkPool } from "@/lib/providers/unusual-whales";
 
 const WALL_SCOPE_REFRESH_MS = 15_000;
 const DARK_POOL_REFRESH_MS = 60_000;
+/** SPX heatmap cache cadence — honest VEX wall refresh (no UW vanna WS). */
+const VEX_WALLS_CACHE_MS = 8_000;
 let wallScope: WallScopeState = { expiries: undefined, fetchedAt: 0 };
 let wallScopeInFlight: Promise<void> | null = null;
 let fallbackStrikeTotals: Record<string, number> | null = null;
+let fallbackVexStrikeTotals: Record<string, number> | null = null;
+let cachedVexFlip: number | null = null;
 
 const WALLS_CACHE_MS = 900;
 let cachedWalls: GexWalls | null = null;
 let cachedWallsAt = 0;
+
+let cachedVexWalls: GexWalls | null = null;
+let cachedVexWallsAt = 0;
 
 let cachedFlip: number | null = null;
 let cachedFlipAt = 0;
@@ -45,6 +52,12 @@ function refreshWallScope(): void {
       wallScope = nextWallScope(wallScope, Date.now(), hm);
       if (hm?.gex?.strike_totals && Object.keys(hm.gex.strike_totals).length > 0) {
         fallbackStrikeTotals = hm.gex.strike_totals;
+      }
+      if (hm?.vex?.strike_totals && Object.keys(hm.vex.strike_totals).length > 0) {
+        fallbackVexStrikeTotals = hm.vex.strike_totals;
+        cachedVexFlip = hm.vex.flip ?? null;
+        cachedVexWalls = computeGexWalls(mapFromStrikeTotalsRecord(hm.vex.strike_totals));
+        cachedVexWallsAt = Date.now();
       }
     })
     .catch(() => {
@@ -76,7 +89,7 @@ function refreshDarkPoolLevels(): void {
     });
 }
 
-/** Shared gamma-wall read for Vector SSE + SSR seed (cache-backed, replica-safe fallback). */
+/** Shared gamma-wall read for Vector SSE + SSR seed (UW WS + heatmap fallback). */
 export function getVectorGexWalls(): GexWalls | null {
   refreshWallScope();
   const now = Date.now();
@@ -94,6 +107,20 @@ export function getVectorGexWalls(): GexWalls | null {
   return cachedWalls;
 }
 
+/** Vanna walls from the shared SPX heatmap cache (Polygon-derived, ~8s). */
+export function getVectorVexWalls(): GexWalls | null {
+  refreshWallScope();
+  const now = Date.now();
+  if (now - cachedVexWallsAt < VEX_WALLS_CACHE_MS) return cachedVexWalls;
+  if (fallbackVexStrikeTotals && Object.keys(fallbackVexStrikeTotals).length > 0) {
+    cachedVexWalls = computeGexWalls(mapFromStrikeTotalsRecord(fallbackVexStrikeTotals));
+  } else {
+    cachedVexWalls = null;
+  }
+  cachedVexWallsAt = now;
+  return cachedVexWalls;
+}
+
 /** Zero-gamma flip from the shared GEX positioning cache (same as Thermal / SPX desk). */
 export async function getVectorGammaFlip(): Promise<number | null> {
   const now = Date.now();
@@ -108,6 +135,12 @@ export async function getVectorGammaFlip(): Promise<number | null> {
   return cachedFlip;
 }
 
+/** Zero-vanna flip from the latest heatmap scope refresh. */
+export function getVectorVexFlip(): number | null {
+  refreshWallScope();
+  return cachedVexFlip;
+}
+
 export function getVectorDarkPoolLevels(): VectorDarkPoolLevel[] {
   refreshDarkPoolLevels();
   return cachedDarkPool;
@@ -116,7 +149,9 @@ export function getVectorDarkPoolLevels(): VectorDarkPoolLevel[] {
 export type VectorStreamPayload = {
   candle: ReturnType<typeof getCurrentSpxCandle>["current"];
   walls: GexWalls | null;
+  vexWalls: GexWalls | null;
   gammaFlip: number | null;
+  vexFlip: number | null;
   darkPoolLevels: VectorDarkPoolLevel[];
   t: number;
   wallHistory: WallHistorySample[];
@@ -132,21 +167,38 @@ export function getVectorWallHistory(): WallHistorySample[] {
 export async function buildVectorStreamPayload(): Promise<VectorStreamPayload> {
   const { current, updatedAt } = getCurrentSpxCandle();
   const walls = getVectorGexWalls();
+  const vexWalls = getVectorVexWalls();
   const gammaFlip = await getVectorGammaFlip();
+  const vexFlip = getVectorVexFlip();
   const darkPoolLevels = getVectorDarkPoolLevels();
   const sessionYmd = todayEtYmd();
 
-  if (walls) {
+  if (walls || vexWalls) {
     const sampleTime = bucketWallSampleTime(Math.floor(Date.now() / 1000));
-    const sample: WallHistorySample = { time: sampleTime, walls, gammaFlip };
-    wallHistory = recordWallSample(wallHistory, sample);
-    persistWallSampleDebounced(sessionYmd, sample);
+    const prev = wallHistory[wallHistory.length - 1];
+    const sample: WallHistorySample = {
+      time: sampleTime,
+      walls: walls ?? prev?.walls ?? { callWalls: [], putWalls: [] },
+      gammaFlip: gammaFlip ?? prev?.gammaFlip ?? null,
+      vexWalls: vexWalls ?? prev?.vexWalls ?? null,
+      vexFlip: vexFlip ?? prev?.vexFlip ?? null,
+    };
+    const hasGex =
+      sample.walls.callWalls.length > 0 || sample.walls.putWalls.length > 0;
+    const hasVex =
+      Boolean(sample.vexWalls?.callWalls?.length) || Boolean(sample.vexWalls?.putWalls?.length);
+    if (hasGex || hasVex) {
+      wallHistory = recordWallSample(wallHistory, sample);
+      persistWallSampleDebounced(sessionYmd, sample);
+    }
   }
 
   return {
     candle: current,
     walls,
+    vexWalls,
     gammaFlip,
+    vexFlip,
     darkPoolLevels,
     t: updatedAt,
     wallHistory,
@@ -159,8 +211,12 @@ export function _resetVectorSnapshotForTest(): void {
   wallScope = { expiries: undefined, fetchedAt: 0 };
   wallScopeInFlight = null;
   fallbackStrikeTotals = null;
+  fallbackVexStrikeTotals = null;
+  cachedVexFlip = null;
   cachedWalls = null;
   cachedWallsAt = 0;
+  cachedVexWalls = null;
+  cachedVexWallsAt = 0;
   cachedFlip = null;
   cachedFlipAt = 0;
   cachedDarkPool = [];

@@ -7,8 +7,10 @@ import {
   seedWallHistoryForDisplay,
   strikeTrailWeight,
   trailsByStrike,
+  trailForFlipLevel,
   trailForGammaFlip,
   trailForRank,
+  hasVexInHistory,
   type WallHistorySample,
 } from "./vector-wall-history";
 import type { GexWalls } from "./gex-wall-levels";
@@ -86,6 +88,15 @@ test("seedWallHistoryForDisplay: leaves existing history untouched", () => {
   assert.equal(seeded, existing);
 });
 
+test("seedWallHistoryForDisplay: vex-only seed when GEX ladder empty", () => {
+  const vex = walls([6820], [6680]);
+  const seeded = seedWallHistoryForDisplay([], [100, 160], null, null, vex, 6760);
+  assert.equal(seeded.length, 1);
+  assert.equal(seeded[0].time, 160);
+  assert.deepEqual(seeded[0].vexWalls, vex);
+  assert.equal(seeded[0].vexFlip, 6760);
+});
+
 test("seedWallHistoryForDisplay: no-op without walls or bars", () => {
   assert.deepEqual(seedWallHistoryForDisplay([], [], walls([6800], [6700])), []);
   assert.deepEqual(seedWallHistoryForDisplay([], [100], null), []);
@@ -145,4 +156,41 @@ test("trailForGammaFlip: horizontal bead row when flip is present", () => {
     { time: 100, strike: 6745 },
     { time: 160, strike: 6750 },
   ]);
+});
+
+test("trailForFlipLevel: vanna flip trail from vexFlip field", () => {
+  const history: WallHistorySample[] = [
+    {
+      time: 100,
+      walls: walls([6800], [6700]),
+      vexWalls: walls([6820], [6680]),
+      vexFlip: 6760,
+    },
+  ];
+  assert.deepEqual(trailForFlipLevel(history, "vex"), [{ time: 100, strike: 6760 }]);
+});
+
+test("hasVexInHistory: true when vex walls present", () => {
+  assert.equal(
+    hasVexInHistory([{ time: 1, walls: walls([6800], []), vexWalls: walls([6820], []) }]),
+    true
+  );
+});
+
+test("trailsByStrike: vex lens reads vexWalls rows", () => {
+  const history: WallHistorySample[] = [
+    {
+      time: 100,
+      walls: walls([6800], []),
+      vexWalls: walls([6820], []),
+    },
+    {
+      time: 160,
+      walls: walls([6810], []),
+      vexWalls: walls([6820], []),
+    },
+  ];
+  const vexTrails = trailsByStrike(history, "callWalls", "vex");
+  assert.equal(vexTrails.size, 1);
+  assert.deepEqual(vexTrails.get(6820)?.map((p) => p.time), [100, 160]);
 });

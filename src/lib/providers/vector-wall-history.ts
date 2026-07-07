@@ -1,6 +1,31 @@
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 
-export type WallHistorySample = { time: number; walls: GexWalls; gammaFlip?: number | null };
+/** Wall overlay lens — GEX from live dealer-gamma ladder; VEX from shared heatmap vanna totals. */
+export type VectorWallLens = "gex" | "vex";
+
+export type WallHistorySample = {
+  time: number;
+  /** GEX (dealer gamma) walls — live via UW WS with heatmap fallback. */
+  walls: GexWalls;
+  gammaFlip?: number | null;
+  /** VEX (dealer vanna) walls — heatmap cache (~8s SPX). Omitted on legacy Redis rows. */
+  vexWalls?: GexWalls | null;
+  vexFlip?: number | null;
+};
+
+export function wallsForLens(sample: WallHistorySample, lens: VectorWallLens): GexWalls | null {
+  if (lens === "vex") return sample.vexWalls ?? null;
+  return sample.walls;
+}
+
+export function flipForLens(sample: WallHistorySample, lens: VectorWallLens): number | null {
+  const flip = lens === "vex" ? sample.vexFlip : sample.gammaFlip;
+  return flip != null && Number.isFinite(flip) && flip > 0 ? flip : null;
+}
+
+export function hasVexInHistory(history: WallHistorySample[]): boolean {
+  return history.some((s) => Boolean(s.vexWalls?.callWalls?.length || s.vexWalls?.putWalls?.length));
+}
 
 export type StrikeTrailPoint = { time: number; pct: number };
 
@@ -47,11 +72,14 @@ export function trailForRank(
  */
 export function trailsByStrike(
   history: WallHistorySample[],
-  side: "callWalls" | "putWalls"
+  side: "callWalls" | "putWalls",
+  lens: VectorWallLens = "gex"
 ): Map<number, StrikeTrailPoint[]> {
   const map = new Map<number, StrikeTrailPoint[]>();
   for (const sample of history) {
-    for (const level of sample.walls[side]) {
+    const walls = wallsForLens(sample, lens);
+    if (!walls) continue;
+    for (const level of walls[side]) {
       const strike = Math.round(level.strike);
       if (!Number.isFinite(strike)) continue;
       let pts = map.get(strike);
@@ -96,12 +124,23 @@ export function seedWallHistoryForDisplay(
   history: WallHistorySample[],
   barTimes: number[],
   walls: GexWalls | null | undefined,
-  gammaFlip?: number | null
+  gammaFlip?: number | null,
+  vexWalls?: GexWalls | null,
+  vexFlip?: number | null
 ): WallHistorySample[] {
-  if (history.length > 0 || !walls || barTimes.length === 0) return history;
+  if (history.length > 0 || barTimes.length === 0) return history;
+  const hasGex = Boolean(walls?.callWalls?.length || walls?.putWalls?.length);
+  const hasVex = Boolean(vexWalls?.callWalls?.length || vexWalls?.putWalls?.length);
+  if (!hasGex && !hasVex) return history;
   const lastTime = barTimes[barTimes.length - 1]!;
   if (!Number.isFinite(lastTime)) return history;
-  return recordWallSample([], { time: lastTime, walls, gammaFlip: gammaFlip ?? null });
+  return recordWallSample([], {
+    time: lastTime,
+    walls: walls ?? { callWalls: [], putWalls: [] },
+    gammaFlip: gammaFlip ?? null,
+    vexWalls: hasVex ? vexWalls : null,
+    vexFlip: vexFlip ?? null,
+  });
 }
 
 /** Merge server-observed history into the client buffer — union by bar time, longer tail wins ties. */
@@ -118,16 +157,20 @@ export function mergeWallHistory(
   return merged.length > MAX_HISTORY ? merged.slice(merged.length - MAX_HISTORY) : merged;
 }
 
-/** Gamma-flip bead trail — horizontal row at the flip strike when present. */
-export function trailForGammaFlip(
-  history: WallHistorySample[]
+/** Flip bead trail for the active lens (gamma flip or zero-vanna flip). */
+export function trailForFlipLevel(
+  history: WallHistorySample[],
+  lens: VectorWallLens = "gex"
 ): Array<{ time: number; strike: number }> {
   const points: Array<{ time: number; strike: number }> = [];
   for (const sample of history) {
-    const flip = sample.gammaFlip;
-    if (flip != null && Number.isFinite(flip) && flip > 0) {
-      points.push({ time: sample.time, strike: Math.round(flip) });
-    }
+    const flip = flipForLens(sample, lens);
+    if (flip != null) points.push({ time: sample.time, strike: Math.round(flip) });
   }
   return points;
+}
+
+/** @deprecated Use trailForFlipLevel(history, "gex") */
+export function trailForGammaFlip(history: WallHistorySample[]): Array<{ time: number; strike: number }> {
+  return trailForFlipLevel(history, "gex");
 }

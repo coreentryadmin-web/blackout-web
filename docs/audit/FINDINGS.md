@@ -8,6 +8,21 @@ and required CI (`verify`) are green — no per-PR approval, no end-of-day hold.
 here and merge the PR in the same session. Supersedes all earlier "leave OPEN for review" notes
 in this file.
 
+## 🔵 PRODUCT ENHANCEMENT 2026-07-07 — Vector GEX/VEX dual lens + structure feed (branch `cursor/vector-vex-audit-top-tier`)
+
+**Surface:** `/vector` — live SPX chart with wall beads, flip guides, dark-pool overlays.
+
+**Gap:** PR #654 shipped GEX-only overlays. VEX (dealer vanna) was available on the shared SPX heatmap cache (`fetchGexHeatmap → vex.strike_totals`) but never wired to Vector. Users asked "where is VEX live?"
+
+**Fix:**
+- **GEX | VEX lens toggle** — GEX from UW WS `gex_strike_expiry` (~1s) + heatmap fallback; VEX from shared Polygon heatmap cache (~8s). Same bead style, lens-specific colors (sky/rose vanna vs yellow/purple gamma).
+- **Dual-lens wall history** — `WallHistorySample` extended with `vexWalls` / `vexFlip`; Redis persist + replay scrub both lenses; `hasVexInHistory` gates VEX toggle off-hours when legacy rows lack vanna data.
+- **Deterministic structure feed** — `vector-wall-events.ts` diffs consecutive 15s samples (wall migration, flip shift) + ~1s spot crosses (flip break, wall break). No LLM; grounded in live ladder + candle only.
+- **FreshnessChip asOf** — header chip updates from SSE `t` during live sessions.
+- **VEX-only seed** — off-hours display seeds beads when only vanna ladder exists.
+
+**Verification:** 28 vector unit tests (wall history, replay, wall events). `npx tsc --noEmit` clean.
+
 ## 🟠 P1 FOUND+FIXED 2026-07-07 — Vector's live candle never updates on ~4/5 of replicas (leader-only, no cross-replica fallback) (branch `fix/spx-candle-store-cross-replica-fallback`)
 
 **Surface:** `src/lib/ws/spx-candle-store.ts` — feeds the Vector chart's live current-bar update via `/api/market/vector/stream`.
