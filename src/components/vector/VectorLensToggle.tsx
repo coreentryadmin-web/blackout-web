@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import clsx from "clsx";
 import type { VectorWallLens } from "@/lib/providers/vector-wall-history";
 
@@ -7,10 +8,39 @@ type Props = {
   lens: VectorWallLens;
   vexAvailable: boolean;
   onLens: (lens: VectorWallLens) => void;
+  gexAsOf?: number | null;
+  vexAsOf?: number | null;
+  liveSession?: boolean;
 };
 
+function formatLensAge(asOf: number | null | undefined, now: number | null): string | null {
+  if (asOf == null || now == null || asOf <= 0) return null;
+  const s = Math.max(0, Math.floor((now - asOf) / 1000));
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m`;
+}
+
 /** GEX / VEX exposure lens — matches SPX Slayer matrix toggle styling. */
-export function VectorLensToggle({ lens, vexAvailable, onLens }: Props) {
+export function VectorLensToggle({
+  lens,
+  vexAvailable,
+  onLens,
+  gexAsOf,
+  vexAsOf,
+  liveSession = false,
+}: Props) {
+  const [now, setNow] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!liveSession) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [liveSession]);
+
+  const gexAge = formatLensAge(gexAsOf, now);
+  const vexAge = formatLensAge(vexAsOf, now);
+
   return (
     <div
       className="mb-3 flex flex-wrap items-center gap-2"
@@ -20,6 +50,7 @@ export function VectorLensToggle({ lens, vexAvailable, onLens }: Props) {
       {(["gex", "vex"] as const).map((key) => {
         const active = lens === key;
         const disabled = key === "vex" && !vexAvailable;
+        const age = key === "gex" ? gexAge : vexAge;
         return (
           <button
             key={key}
@@ -37,13 +68,16 @@ export function VectorLensToggle({ lens, vexAvailable, onLens }: Props) {
             )}
           >
             {key === "gex" ? "GEX" : "VEX"}
+            {liveSession && age != null ? (
+              <span className="ml-1.5 font-normal tracking-normal text-sky-300">· {age}</span>
+            ) : null}
           </button>
         );
       })}
       <span className="font-mono text-[10px] text-sky-300">
         {lens === "gex"
-          ? "Gamma walls ~1s · beads every 15s"
-          : "Vanna walls from heatmap ~8s · beads every 15s"}
+          ? `Gamma walls ~1s${gexAge != null ? ` (${gexAge} ago)` : ""} · beads every 15s`
+          : `Vanna walls ~8s${vexAge != null ? ` (${vexAge} ago)` : ""} · beads every 15s`}
       </span>
     </div>
   );

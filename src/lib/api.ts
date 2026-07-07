@@ -671,7 +671,12 @@ export type VectorStreamSnapshot = {
   gammaFlip?: number | null;
   vexFlip?: number | null;
   darkPoolLevels?: VectorDarkPoolLevel[];
+  /** Candle tick time (epoch ms). */
   t?: number;
+  /** GEX wall ladder as-of (epoch ms). */
+  gexAsOf?: number;
+  /** VEX wall ladder as-of (epoch ms). */
+  vexAsOf?: number;
   sessionYmd?: string;
   wallHistory?: import("@/lib/providers/vector-wall-history").WallHistorySample[];
 };
