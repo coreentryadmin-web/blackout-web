@@ -5,14 +5,18 @@ import {
   createChart,
   CandlestickSeries,
   ColorType,
+  LineSeries,
   LineStyle,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
+  type LineData,
   type UTCTimestamp,
 } from "lightweight-charts";
 import { createVectorEventSource, type VectorWallLevel, type VectorWalls } from "@/lib/api";
-import { alphaForPct, widthForPct } from "@/lib/providers/vector-wall-visual";
+import { DEFAULT_WALL_NODES_PER_SIDE } from "@/lib/providers/gex-wall-levels";
+import { alphaForPct, radiusForPct, widthForPct } from "@/lib/providers/vector-wall-visual";
+import { recordWallSample, trailForRank, type WallHistorySample } from "@/lib/providers/vector-wall-history";
 
 export type VectorBar = {
   time: UTCTimestamp;
@@ -30,6 +34,7 @@ const CALL_WALL_COLOR = "#ffd60a";
 type Props = {
   initialBars: VectorBar[];
   initialWalls: VectorWalls | null;
+  initialWallHistory: WallHistorySample[];
   liveSession: boolean;
 };
 
@@ -89,12 +94,60 @@ function applyWallsToSeries(
   applyWallLines(series, putWallLinesRef, walls.putWalls, PUT_WALL_COLOR, "Put wall");
 }
 
-export function VectorChart({ initialBars, initialWalls, liveSession }: Props) {
+/**
+ * The historical dot trail per wall rank/side — a record of where that rank actually sat over
+ * time (see vector-wall-history.ts), rendered as a dot-only LineSeries (no connecting stroke) so
+ * it reads as a beaded trail rather than a jagged diagonal line between price levels, matching
+ * the reference product's look. Each point's color carries its OWN pct-derived opacity (per-point
+ * `color` on LineData), so a historical dot's intensity reflects how big the wall was AT THAT
+ * TIME — the series-level `pointMarkersRadius` can only reflect the CURRENT rank's magnitude
+ * (lightweight-charts has no per-point radius), so thickness is a coarser, present-tense signal
+ * layered on top of the per-point color history.
+ */
+function applyWallTrail(
+  seriesRefs: (ISeriesApi<"Line"> | null)[],
+  history: WallHistorySample[],
+  side: "callWalls" | "putWalls",
+  baseColor: string
+): void {
+  for (let rank = 0; rank < seriesRefs.length; rank++) {
+    const trailSeries = seriesRefs[rank];
+    if (!trailSeries) continue;
+    const points = trailForRank(history, side, rank);
+    const data: LineData<UTCTimestamp>[] = points.map((p) => ({
+      time: p.time as UTCTimestamp,
+      value: p.strike,
+      color: withAlpha(baseColor, alphaForPct(p.pct)),
+    }));
+    trailSeries.setData(data);
+    const latestPct = points.length ? points[points.length - 1].pct : 0;
+    trailSeries.applyOptions({ pointMarkersRadius: radiusForPct(latestPct) });
+  }
+}
+
+function createWallTrailSeries(chart: IChartApi, baseColor: string): ISeriesApi<"Line">[] {
+  return Array.from({ length: DEFAULT_WALL_NODES_PER_SIDE }, () =>
+    chart.addSeries(LineSeries, {
+      color: baseColor,
+      lineVisible: false,
+      pointMarkersVisible: true,
+      pointMarkersRadius: radiusForPct(0),
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    })
+  );
+}
+
+export function VectorChart({ initialBars, initialWalls, initialWallHistory, liveSession }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const callWallLinesRef = useRef<(IPriceLine | null)[]>([]);
   const putWallLinesRef = useRef<(IPriceLine | null)[]>([]);
+  const callTrailSeriesRef = useRef<(ISeriesApi<"Line"> | null)[]>([]);
+  const putTrailSeriesRef = useRef<(ISeriesApi<"Line"> | null)[]>([]);
+  const wallHistoryRef = useRef<WallHistorySample[]>(initialWallHistory);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -124,6 +177,11 @@ export function VectorChart({ initialBars, initialWalls, liveSession }: Props) {
     if (initialBars.length) chart.timeScale().fitContent();
     applyWallsToSeries(series, callWallLinesRef, putWallLinesRef, initialWalls);
 
+    callTrailSeriesRef.current = createWallTrailSeries(chart, CALL_WALL_COLOR);
+    putTrailSeriesRef.current = createWallTrailSeries(chart, PUT_WALL_COLOR);
+    applyWallTrail(callTrailSeriesRef.current, wallHistoryRef.current, "callWalls", CALL_WALL_COLOR);
+    applyWallTrail(putTrailSeriesRef.current, wallHistoryRef.current, "putWalls", PUT_WALL_COLOR);
+
     chartRef.current = chart;
     seriesRef.current = series;
 
@@ -136,6 +194,17 @@ export function VectorChart({ initialBars, initialWalls, liveSession }: Props) {
       if (seriesRef.current && snap.walls) {
         applyWallsToSeries(seriesRef.current, callWallLinesRef, putWallLinesRef, snap.walls);
       }
+      // The trail is keyed by the candle's own bar time, so it only advances on a real price
+      // tick — off-hours (candle null) the wall can still update the current-level price lines
+      // above, but there's no bar to hang a new trail point on.
+      if (snap.candle && snap.walls) {
+        wallHistoryRef.current = recordWallSample(wallHistoryRef.current, {
+          time: snap.candle.time,
+          walls: snap.walls,
+        });
+        applyWallTrail(callTrailSeriesRef.current, wallHistoryRef.current, "callWalls", CALL_WALL_COLOR);
+        applyWallTrail(putTrailSeriesRef.current, wallHistoryRef.current, "putWalls", PUT_WALL_COLOR);
+      }
     });
 
     return () => {
@@ -145,6 +214,8 @@ export function VectorChart({ initialBars, initialWalls, liveSession }: Props) {
       seriesRef.current = null;
       callWallLinesRef.current = [];
       putWallLinesRef.current = [];
+      callTrailSeriesRef.current = [];
+      putTrailSeriesRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

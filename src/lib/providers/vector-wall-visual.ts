@@ -4,6 +4,8 @@ const ALPHA_MIN = 0.2;
 const ALPHA_MAX = 1;
 const WIDTH_MIN: LineWidth = 1;
 const WIDTH_MAX: LineWidth = 4;
+const RADIUS_MIN = 1.5;
+const RADIUS_MAX = 4;
 
 /** A wall at/above this share of total |gamma| renders at full visual weight (alpha 1, width 4).
  *  Picked from observed live ladders (screenshotted single-strike walls run ~3-10%, occasionally
@@ -29,4 +31,13 @@ export function alphaForPct(pct: number): number {
 export function widthForPct(pct: number): LineWidth {
   const raw = Math.round(WIDTH_MIN + magnitudeT(pct) * (WIDTH_MAX - WIDTH_MIN));
   return Math.max(WIDTH_MIN, Math.min(WIDTH_MAX, raw)) as LineWidth;
+}
+
+/** Historical trail dot radius, scaled the same way — unlike lineWidth/color this isn't
+ *  per-point in lightweight-charts (pointMarkersRadius is a series-level option), so it's
+ *  reapplied to the whole trail series each tick and reflects that rank's CURRENT magnitude,
+ *  not each individual historical point's own. Per-point color (see VectorChart.tsx) is what
+ *  actually varies point-by-point across the trail. */
+export function radiusForPct(pct: number): number {
+  return RADIUS_MIN + magnitudeT(pct) * (RADIUS_MAX - RADIUS_MIN);
 }

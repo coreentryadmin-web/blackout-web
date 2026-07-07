@@ -4,10 +4,12 @@ import { PageShell, PageHeader, FreshnessChip } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { VectorChart, type VectorBar } from "@/components/vector/VectorChart";
 import type { VectorWalls } from "@/lib/api";
+import type { WallHistorySample } from "@/lib/providers/vector-wall-history";
 
 type Props = {
   initialBars: VectorBar[];
   initialWalls: VectorWalls | null;
+  initialWallHistory: WallHistorySample[];
   sessionYmd: string;
   liveSession: boolean;
 };
@@ -23,7 +25,13 @@ function formatSessionLabel(ymd: string): string {
 }
 
 /** /vector page frame — mirrors GridPageShell's PageShell/PageHeader/ProductMark structure. */
-export function VectorPageShell({ initialBars, initialWalls, sessionYmd, liveSession }: Props) {
+export function VectorPageShell({
+  initialBars,
+  initialWalls,
+  initialWallHistory,
+  sessionYmd,
+  liveSession,
+}: Props) {
   const sessionLabel = formatSessionLabel(sessionYmd);
   const subtitle = liveSession
     ? "SPX price action with live GEX wall nodes — updates every second during the session."
@@ -45,7 +53,12 @@ export function VectorPageShell({ initialBars, initialWalls, sessionYmd, liveSes
           }
         />
         <div className="mt-5">
-          <VectorChart initialBars={initialBars} initialWalls={initialWalls} liveSession={liveSession} />
+          <VectorChart
+            initialBars={initialBars}
+            initialWalls={initialWalls}
+            initialWallHistory={initialWallHistory}
+            liveSession={liveSession}
+          />
         </div>
       </div>
     </PageShell>

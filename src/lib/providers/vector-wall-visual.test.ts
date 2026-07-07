@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { alphaForPct, widthForPct } from "./vector-wall-visual";
+import { alphaForPct, radiusForPct, widthForPct } from "./vector-wall-visual";
 
 test("alphaForPct: a 0% wall gets the visual floor, not fully invisible", () => {
   assert.equal(alphaForPct(0), 0.2);
@@ -45,4 +45,11 @@ test("widthForPct: a dominant wall (>= saturation) renders at max thickness", ()
 
 test("widthForPct: a near-zero wall renders at min thickness", () => {
   assert.equal(widthForPct(0), 1);
+});
+
+test("radiusForPct: stays within the 1.5-4px trail-dot range and scales monotonically", () => {
+  assert.equal(radiusForPct(0), 1.5);
+  assert.equal(radiusForPct(20), 4);
+  assert.ok(radiusForPct(5) < radiusForPct(10));
+  assert.ok(radiusForPct(10) < radiusForPct(15));
 });
