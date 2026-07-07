@@ -55,11 +55,15 @@ import {
 } from "@/lib/providers/vector-wall-history";
 import {
   buildReplayTimeline,
+  flipAtCrosshairTime,
   flipAtReplayTime,
+  flipForActiveLens,
   formatReplayClock,
   sliceBarsToTime,
   sliceHistoryToTime,
+  wallsAtCrosshairTime,
   wallsAtReplayTime,
+  wallsForActiveLens,
 } from "@/lib/vector-replay";
 import {
   aggregateVectorBars,
@@ -133,22 +137,6 @@ function lensVisuals(lens: VectorWallLens) {
       };
 }
 
-function wallsForActiveLens(
-  lens: VectorWallLens,
-  gex: VectorWalls | null,
-  vex: VectorWalls | null
-): VectorWalls | null {
-  return lens === "vex" ? vex : gex;
-}
-
-function flipForActiveLens(
-  lens: VectorWallLens,
-  gammaFlip: number | null,
-  vexFlip: number | null
-): number | null {
-  return lens === "vex" ? vexFlip : gammaFlip;
-}
-
 function withAlpha(hex: string, alpha: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -205,33 +193,6 @@ function applyDisplayBars(
 ): void {
   candleSeries.setData(bars);
   volumeSeries?.setData(volumeHistogramData(bars));
-}
-
-function wallsAtCrosshairTime(
-  history: WallHistorySample[],
-  hoverEpochSec: number | null,
-  activeLens: VectorWallLens,
-  gexLive: VectorWalls | null,
-  vexLive: VectorWalls | null
-): VectorWalls | null {
-  if (hoverEpochSec != null && history.length > 0) {
-    return wallsAtReplayTime(history, hoverEpochSec, activeLens) ?? wallsForActiveLens(activeLens, gexLive, vexLive);
-  }
-  return wallsForActiveLens(activeLens, gexLive, vexLive);
-}
-
-function flipAtCrosshairTime(
-  history: WallHistorySample[],
-  hoverEpochSec: number | null,
-  activeLens: VectorWallLens,
-  gammaLive: number | null,
-  vexLive: number | null
-): number | null {
-  if (hoverEpochSec != null && history.length > 0) {
-    const lensKey = activeLens === "vex" ? "vex" : "gex";
-    return flipAtReplayTime(history, hoverEpochSec, lensKey) ?? flipForActiveLens(activeLens, gammaLive, vexLive);
-  }
-  return flipForActiveLens(activeLens, gammaLive, vexLive);
 }
 
 function applyPriceGuides(
@@ -363,10 +324,15 @@ function applyWallsToSeries(
   walls: VectorWalls | null | undefined,
   lens: VectorWallLens
 ): void {
-  if (!walls) return;
+  // Must still call through (with empty levels) rather than early-return on null —
+  // applyWallGuides/applyPriceGuides clear stale price lines when passed [], but an
+  // early return here skips that entirely, leaving whatever was drawn on the PREVIOUS
+  // frame's walls stuck on the chart. That silently masked the replay pre-first-sample
+  // fix below: nulling out gexAt/vexAt during early-timeline scrubbing did nothing
+  // visually because the old wall lines never got cleared.
   const v = lensVisuals(lens);
-  applyWallGuides(series, callGuideRefs, walls.callWalls, v.callColor, v.callLabel);
-  applyWallGuides(series, putGuideRefs, walls.putWalls, v.putColor, v.putLabel);
+  applyWallGuides(series, callGuideRefs, walls?.callWalls ?? [], v.callColor, v.callLabel);
+  applyWallGuides(series, putGuideRefs, walls?.putWalls ?? [], v.putColor, v.putLabel);
 }
 
 function buildWallBeadMarkers(
@@ -577,10 +543,16 @@ export function VectorChart({
       applyWallBeadMarkers(putBeadsRef.current, visibleHistory, "putWalls", v.putColor, activeLens, timeframeRef.current);
       pinCandlesOnTop(series);
 
-      const gexAt = wallsAtReplayTime(history, cursorTime, "gex") ?? initialWalls;
-      const vexAt = wallsAtReplayTime(history, cursorTime, "vex") ?? initialVexWalls;
-      const gammaAt = flipAtReplayTime(history, cursorTime, "gex") ?? initialGammaFlip;
-      const vexFlipAt = flipAtReplayTime(history, cursorTime, "vex") ?? initialVexFlip;
+      // initialWalls/etc are the page-load seed — a reasonable fallback only when the
+      // session has genuinely recorded zero wall samples yet. Once history exists, a null
+      // return from wallsAtReplayTime/flipAtReplayTime means cursorTime predates the
+      // earliest sample; falling back to the seed would misattribute today's page-load-time
+      // walls to that earlier point on the replay timeline (same bug shape as
+      // wallsAtCrosshairTime above).
+      const gexAt = history.length > 0 ? wallsAtReplayTime(history, cursorTime, "gex") : initialWalls;
+      const vexAt = history.length > 0 ? wallsAtReplayTime(history, cursorTime, "vex") : initialVexWalls;
+      const gammaAt = history.length > 0 ? flipAtReplayTime(history, cursorTime, "gex") : initialGammaFlip;
+      const vexFlipAt = history.length > 0 ? flipAtReplayTime(history, cursorTime, "vex") : initialVexFlip;
       refreshOverlays(activeLens, gexAt, vexAt, gammaAt, vexFlipAt, darkPoolRef.current);
     },
     [initialWalls, initialVexWalls, initialGammaFlip, initialVexFlip, refreshOverlays]
