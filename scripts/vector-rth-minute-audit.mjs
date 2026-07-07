@@ -96,45 +96,59 @@ function wallDepthFromTotals(strikeTotals, maxPerSide = WALL_DEPTH_PROBE) {
 }
 
 async function probeStream(session, holdMs = 8000) {
+  session.refreshToken?.();
   const tok = session.sessionToken();
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), holdMs + 4000);
-  const snaps = [];
-  try {
-    const res = await fetch(`${BASE}/api/market/vector/stream`, {
-      headers: {
-        Cookie: `__session=${tok}; __client_uat=${session.clientUat}`,
-        Accept: "text/event-stream",
-      },
-      signal: ac.signal,
-    });
-    if (!res.ok) throw new Error(`stream HTTP ${res.status}`);
-    const reader = res.body?.getReader();
-    if (!reader) throw new Error("no stream body");
-    const dec = new TextDecoder();
-    let buf = "";
-    const deadline = Date.now() + holdMs;
-    while (Date.now() < deadline) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const parts = buf.split("\n\n");
-      buf = parts.pop() ?? "";
-      for (const part of parts) {
-        const line = part.split("\n").find((l) => l.startsWith("data: "));
-        if (!line) continue;
-        try {
-          snaps.push(JSON.parse(line.slice(6)));
-        } catch {
-          /* skip */
+  if (!tok) throw new Error("no session token");
+
+  const readStream = async (token) => {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), holdMs + 4000);
+    const snaps = [];
+    try {
+      const res = await fetch(`${BASE}/api/market/vector/stream`, {
+        headers: {
+          Cookie: `__session=${token}; __client_uat=${session.clientUat}`,
+          Accept: "text/event-stream",
+        },
+        signal: ac.signal,
+      });
+      if (!res.ok) return { status: res.status, snaps };
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("no stream body");
+      const dec = new TextDecoder();
+      let buf = "";
+      const deadline = Date.now() + holdMs;
+      while (Date.now() < deadline) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split("\n\n");
+        buf = parts.pop() ?? "";
+        for (const part of parts) {
+          const line = part.split("\n").find((l) => l.startsWith("data: "));
+          if (!line) continue;
+          try {
+            snaps.push(JSON.parse(line.slice(6)));
+          } catch {
+            /* skip */
+          }
         }
       }
+      reader.cancel().catch(() => {});
+      return { status: 200, snaps };
+    } finally {
+      clearTimeout(timer);
     }
-    reader.cancel().catch(() => {});
-  } finally {
-    clearTimeout(timer);
+  };
+
+  let result = await readStream(tok);
+  if (result.status === 401 && session.refreshToken) {
+    const fresh = session.refreshToken();
+    if (fresh) result = await readStream(fresh);
   }
-  return snaps;
+  if (result.status === 401) throw new Error("stream HTTP 401");
+  if (result.status !== 200) throw new Error(`stream HTTP ${result.status}`);
+  return result.snaps;
 }
 
 async function runTick(session, tickNum) {
@@ -194,12 +208,23 @@ async function runTick(session, tickNum) {
 
   for (const [label, streamTop, hmDepth] of [
     ["GEX call", gexCall[0], hmGexDepth.call[0]?.strike],
-    ["GEX put", gexPut[0], hmGexDepth.put[0]?.strike],
     ["VEX call", vexCall[0], hmVexDepth.call[0]?.strike],
     ["VEX put", vexPut[0], hmVexDepth.put[0]?.strike],
   ]) {
     if (streamTop != null && hmDepth != null && streamTop !== hmDepth) {
       issues.push(`${label} stream ${streamTop} vs heatmap ${hmDepth}`);
+    }
+  }
+
+  // GEX put/call #1 should match positioning (same derivation as desk), not heatmap alone.
+  if (gexCall[0] != null && pos.json?.call_wall != null) {
+    if (!flipsAgree(gexCall[0], pos.json.call_wall, hm.json?.spot ?? candle?.close)) {
+      warns.push(`GEX call stream ${gexCall[0]} vs positioning ${pos.json.call_wall}`);
+    }
+  }
+  if (gexPut[0] != null && pos.json?.put_wall != null) {
+    if (!flipsAgree(gexPut[0], pos.json.put_wall, hm.json?.spot ?? candle?.close)) {
+      warns.push(`GEX put stream ${gexPut[0]} vs positioning ${pos.json.put_wall}`);
     }
   }
 
@@ -312,10 +337,11 @@ async function main() {
     let lastE2e = 0;
     while (inRthOpenWindow() || process.argv.includes("--force")) {
       tick += 1;
+      session.refreshToken?.();
       await runTick(session, tick);
 
-      // Full Playwright E2E every 90 minutes
-      if (Date.now() - lastE2e > 90 * 60_000) {
+      // Full Playwright E2E every 90 minutes (skip first tick — let ladder warm up)
+      if (tick > 5 && Date.now() - lastE2e > 90 * 60_000) {
         lastE2e = Date.now();
         logLine("Running validate:vector-e2e (90m cadence)…");
         try {
