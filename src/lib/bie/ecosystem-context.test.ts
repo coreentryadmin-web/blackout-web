@@ -57,7 +57,7 @@ mock.module("../db", {
   },
 });
 
-mock.module("@/features/spx/lib/spx-service", {
+mock.module("../../features/spx/lib/spx-service", {
   namedExports: {
     getSpxPlayState: async () => {
       fullStateCalls++;

@@ -47,7 +47,7 @@ function resetState() {
 
 before(async () => {
   const realDb = await import("@/lib/db");
-  mock.module("@/lib/db", {
+  mock.module("../../../lib/db", {
     namedExports: {
       ...realDb,
       insertNighthawkRejectedAuditLog: async (row: InsertedRow) => {

@@ -42,7 +42,7 @@ function resetState() {
   state.inserted = [];
 }
 
-mock.module("@/lib/db", {
+mock.module("../db", {
   namedExports: {
     dbConfigured: () => state.dbConfigured,
     dbQuery: async () => ({ rows: [], rowCount: 0 }),
@@ -54,23 +54,25 @@ mock.module("@/lib/db", {
     },
   },
 });
-mock.module("@/lib/flow-liveness", {
+mock.module("../flow-liveness", {
   namedExports: {
     isFlowFrameFreshAnywhere: async () => true,
   },
 });
-mock.module("@/lib/providers/spx-session", {
+mock.module("./spx-session", {
   namedExports: {
     todayEtYmd: () => "2026-07-04",
   },
 });
-mock.module("@/lib/providers/config", {
+mock.module("./config", {
   namedExports: {
     polygonConfigured: () => state.polygonConfigured,
   },
 });
-mock.module("@/lib/providers/polygon", {
+mock.module("./polygon", {
   namedExports: {
+    polygonRestBase: () => "https://api.polygon.io",
+    polygonRestApiKey: () => "test-key",
     fetchBenzingaCatalysts: async (ticker: string, limit: number) => {
       state.fetchCalls.push({ ticker, limit });
       return state.catalystsByTicker[ticker.toUpperCase()] ?? [];

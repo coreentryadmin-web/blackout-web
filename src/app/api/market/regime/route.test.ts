@@ -44,7 +44,7 @@ mock.module("../../../../lib/market-api-auth", {
     isCronAuthorized: () => false,
   },
 });
-mock.module("@/features/nighthawk/lib/session", {
+mock.module("../../../../features/nighthawk/lib/session", {
   namedExports: {
     formatEtDate,
     mostRecentTradingDayEt: () => mockMostRecentTradingDay,

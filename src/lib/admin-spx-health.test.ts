@@ -93,12 +93,12 @@ let flowLiveImpl: () => Promise<boolean> = async () => true;
 let signalsImpl: () => Promise<SpxSignalLogRow[]> = async () => [signalRow()];
 let playCalls: Array<{ desk: unknown; technicals: unknown }> = [];
 
-mock.module("@/features/spx/lib/spx-desk-loader", {
+mock.module("../features/spx/lib/spx-desk-loader", {
   namedExports: {
     loadMergedSpxDesk: async () => deskImpl(),
   },
 });
-mock.module("@/features/spx/lib/spx-evaluator", {
+mock.module("../features/spx/lib/spx-evaluator", {
   namedExports: {
     readSpxPlaySnapshot: async (desk: unknown, technicals: unknown) => {
       playCalls.push({ desk, technicals });
@@ -106,17 +106,17 @@ mock.module("@/features/spx/lib/spx-evaluator", {
     },
   },
 });
-mock.module("@/features/spx/lib/spx-play-technicals", {
+mock.module("../features/spx/lib/spx-play-technicals", {
   namedExports: {
     buildPlayTechnicals: async () => technicalsImpl(),
   },
 });
-mock.module("@/lib/flow-liveness", {
+mock.module("./flow-liveness", {
   namedExports: {
     isFlowFrameFreshAnywhere: async () => flowLiveImpl(),
   },
 });
-mock.module("@/features/spx/lib/spx-signal-log", {
+mock.module("../features/spx/lib/spx-signal-log", {
   namedExports: {
     fetchRecentSpxSignals: async () => signalsImpl(),
   },

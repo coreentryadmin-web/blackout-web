@@ -9,13 +9,13 @@ let mockPastNoEntry = false;
 /** Default 10:30 ET — past opening range, before no-entry cutoff. */
 let mockEtMinutes = 10 * 60 + 30;
 
-mock.module("@/lib/ws/uw-socket", {
+mock.module("../../../lib/ws/uw-socket", {
   namedExports: {
     shouldBlockForTradingHalt: () => mockHaltBlock,
   },
 });
 
-mock.module("@/features/spx/lib/spx-play-session-guards", {
+mock.module("./spx-play-session-guards", {
   namedExports: {
     isPastNoEntryCutoff: () => mockPastNoEntry,
     isBeforeCashOpen: () => mockBeforeCashOpen,
@@ -24,7 +24,7 @@ mock.module("@/features/spx/lib/spx-play-session-guards", {
   },
 });
 
-mock.module("@/features/spx/lib/spx-play-session-time", {
+mock.module("./spx-play-session-time", {
   namedExports: {
     etClock: (h: number, m: number) => h * 60 + m,
     etMinutes: () => mockEtMinutes,

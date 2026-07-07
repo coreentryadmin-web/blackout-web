@@ -47,7 +47,7 @@ function resetState() {
   state.inserted = [];
 }
 
-mock.module("@/lib/db", {
+mock.module("../db", {
   namedExports: {
     dbConfigured: () => state.dbConfigured,
     insertShadowFactorObservation: async (row: Record<string, unknown>) => {
@@ -55,7 +55,7 @@ mock.module("@/lib/db", {
     },
   },
 });
-mock.module("@/lib/providers/unusual-whales", {
+mock.module("./unusual-whales", {
   namedExports: {
     fetchUwRiskReversalSkew: async (ticker: string) => {
       state.calls.skew.push(ticker);
@@ -67,7 +67,7 @@ mock.module("@/lib/providers/unusual-whales", {
     },
   },
 });
-mock.module("@/lib/providers/polygon-options-gex", {
+mock.module("./polygon-options-gex", {
   namedExports: {
     fetchPolygonRealizedVol: async () => {
       state.calls.polyRealizedVol += 1;
@@ -79,12 +79,12 @@ mock.module("@/lib/providers/polygon-options-gex", {
     },
   },
 });
-mock.module("@/lib/flow-liveness", {
+mock.module("../flow-liveness", {
   namedExports: {
     isFlowFrameFreshAnywhere: async () => true,
   },
 });
-mock.module("@/lib/providers/spx-session", {
+mock.module("./spx-session", {
   namedExports: {
     todayEtYmd: () => "2026-07-04",
   },

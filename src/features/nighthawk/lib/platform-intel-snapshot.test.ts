@@ -87,7 +87,7 @@ const nhRow = (overrides: Partial<NighthawkPlayOutcomeRow>): NighthawkPlayOutcom
   ...overrides,
 });
 
-mock.module("@/lib/db", {
+mock.module("../../../lib/db", {
   namedExports: {
     dbConfigured: () => true,
     dbQuery: async (sql: string) =>
@@ -101,7 +101,7 @@ mock.module("@/lib/db", {
     fetchNighthawkOutcomeAnalytics: async () => ({ rows: mockNighthawkRows, pending_count: 0 }),
   },
 });
-mock.module("@/lib/providers/spx-session", {
+mock.module("../../../lib/providers/spx-session", {
   namedExports: { isPremarketBriefFresh, todayEtYmd: () => "2026-07-01" },
 });
 

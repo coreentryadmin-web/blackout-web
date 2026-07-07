@@ -43,7 +43,7 @@ let mockForceExit = false;
 // singleton (spx-play-gates.ts imports shouldBlockForTradingHalt from it, and
 // spx-play-engine.ts statically imports spx-play-gates.ts) — same mock shape as
 // spx-play-gates.test.ts.
-mock.module("@/lib/ws/uw-socket", {
+mock.module("../../../lib/ws/uw-socket", {
   namedExports: {
     shouldBlockForTradingHalt: () => ({ block: false, reason: null }),
   },
@@ -56,7 +56,7 @@ mock.module("@/lib/ws/uw-socket", {
 // determinism; every other export this shared module provides (needed because both
 // spx-play-engine.ts and spx-play-gates.ts import from it) is a fixed, inert default
 // since neither is exercised by the open-play path under test.
-mock.module("@/features/spx/lib/spx-play-session-guards", {
+mock.module("./spx-play-session-guards", {
   namedExports: {
     forceExitCutoffLabel: () => "3:50 PM ET",
     isPastForceExitCutoff: () => mockForceExit,
@@ -73,7 +73,7 @@ mock.module("@/features/spx/lib/spx-play-session-guards", {
 // own import graph (UW/Polygon providers, BIE precedent search) pulls in
 // "server-only"-guarded files that throw outside Next's server bundler. Mocked
 // wholesale, same as admin-spx-health.test.ts.
-mock.module("@/features/spx/lib/spx-signal-log", {
+mock.module("./spx-signal-log", {
   namedExports: {
     maybeLogSpxPlay: async () => {},
     logSpxShadowFactors: async () => {},
@@ -89,7 +89,7 @@ mock.module("@/features/spx/lib/spx-signal-log", {
 // loadAdaptivePlayGates ultimately reads spx-play-outcomes.ts; irrelevant to
 // signal_committed and not worth dragging in for this suite. Shape matches
 // AdaptivePlayGates's "inactive" default (see spx-play-telemetry.ts).
-mock.module("@/features/spx/lib/spx-play-telemetry", {
+mock.module("./spx-play-telemetry", {
   namedExports: {
     loadAdaptivePlayGates: async () => ({
       active: false,

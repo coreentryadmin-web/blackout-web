@@ -10,7 +10,7 @@ import type { MarketWideContext } from "./market-wide";
 
 let mockRaw: string | null = null;
 
-mock.module("@/lib/providers/anthropic", {
+mock.module("../../../lib/providers/anthropic", {
   namedExports: {
     anthropicConfigured: () => true,
     anthropicText: async () => mockRaw,

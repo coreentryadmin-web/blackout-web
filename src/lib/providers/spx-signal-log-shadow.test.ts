@@ -55,7 +55,7 @@ function resetState() {
   state.inserted = [];
 }
 
-mock.module("@/lib/db", {
+mock.module("../db", {
   namedExports: {
     dbConfigured: () => state.dbConfigured,
     dbQuery: async (sql: string, params: unknown[]) => {
@@ -67,12 +67,12 @@ mock.module("@/lib/db", {
     },
   },
 });
-mock.module("@/lib/flow-liveness", {
+mock.module("../flow-liveness", {
   namedExports: {
     isFlowFrameFreshAnywhere: async () => state.flowFeedFresh,
   },
 });
-mock.module("@/lib/providers/spx-session", {
+mock.module("./spx-session", {
   namedExports: {
     todayEtYmd: () => "2026-07-04",
   },

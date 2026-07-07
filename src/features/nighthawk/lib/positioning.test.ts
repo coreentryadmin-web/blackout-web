@@ -46,7 +46,7 @@ const FIXTURE_GEX_POSITIONING: GexPositioning = {
 // segment under this test file's own directory) rather than just missing the mock —
 // confirmed by reproducing it directly. The relative form resolves to the identical
 // file and is what every other mock.module() call in this repo's test suite already uses.
-mock.module("@/lib/providers/gex-positioning", {
+mock.module("../../../lib/providers/gex-positioning", {
   namedExports: {
     getGexPositioning: async () => FIXTURE_GEX_POSITIONING,
   },

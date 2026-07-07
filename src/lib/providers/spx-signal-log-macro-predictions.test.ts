@@ -65,7 +65,7 @@ function signal(overrides: Partial<PredictionConsensusSignal> = {}): PredictionC
   };
 }
 
-mock.module("@/lib/db", {
+mock.module("../db", {
   namedExports: {
     dbConfigured: () => state.dbConfigured,
     insertShadowFactorObservation: async (row: InsertedRow) => {
@@ -73,22 +73,22 @@ mock.module("@/lib/db", {
     },
   },
 });
-mock.module("@/lib/flow-liveness", {
+mock.module("../flow-liveness", {
   namedExports: {
     isFlowFrameFreshAnywhere: async () => true,
   },
 });
-mock.module("@/lib/providers/spx-session", {
+mock.module("./spx-session", {
   namedExports: {
     todayEtYmd: () => "2026-07-04",
   },
 });
-mock.module("@/lib/providers/config", {
+mock.module("./config", {
   namedExports: {
     uwConfigured: () => state.uwConfigured,
   },
 });
-mock.module("@/lib/providers/unusual-whales", {
+mock.module("./unusual-whales", {
   namedExports: {
     fetchUwPredictionsConsensus: async () => {
       state.consensusCalls += 1;

@@ -36,7 +36,7 @@ mock.module("../db", {
 // invariant, not the chain cross-check already covered elsewhere) — stub parseOptionsContract to
 // report "no parseable strike" for every play so that layer cleanly no-ops via its own existing
 // "not applicable this run" path, with zero fetch/parse machinery needed.
-mock.module("@/features/nighthawk/lib/option-chain-prompt", {
+mock.module("../../features/nighthawk/lib/option-chain-prompt", {
   namedExports: {
     parseOptionsContract: () => null,
     evaluatePlayAgainstChain: () => ({ verified: false, contradicted: false }),

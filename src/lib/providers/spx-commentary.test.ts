@@ -21,14 +21,14 @@ let mockRaw: string | null = null;
 let mockGrounded = true;
 let mockUngroundedValue: number | null = null;
 
-mock.module("@/lib/providers/anthropic", {
+mock.module("./anthropic", {
   namedExports: {
     anthropicText: async () => mockRaw,
     COMMENTARY_MODEL: "claude-haiku-mock",
   },
 });
 
-mock.module("@/lib/grounding-guard", {
+mock.module("../grounding-guard", {
   namedExports: {
     augmentKnownCommentaryNumbers: (known: number[]) => known,
     knownCommentaryNumbers: () => [],
@@ -55,7 +55,7 @@ type AuditLogRow = {
 let auditLogCalls: AuditLogRow[] = [];
 let dbIsConfigured = true;
 
-mock.module("@/lib/db", {
+mock.module("../db", {
   namedExports: {
     dbConfigured: () => dbIsConfigured,
     insertAlertAuditLog: async (row: AuditLogRow) => {

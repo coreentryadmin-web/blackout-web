@@ -28,7 +28,7 @@ function emptyCtx(overrides: Partial<EcosystemContext> = {}): EcosystemContext {
 let mockCtx: EcosystemContext = emptyCtx();
 let fetchCalls: string[] = [];
 
-mock.module("@/lib/bie/ecosystem-context", {
+mock.module("../../../lib/bie/ecosystem-context", {
   namedExports: {
     fetchEcosystemContext: async (ticker: string) => {
       fetchCalls.push(ticker);

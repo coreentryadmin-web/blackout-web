@@ -45,7 +45,7 @@ function resetState() {
 // / clearNighthawkStaging (same idiom run-tool.test.ts uses for this exact file).
 before(async () => {
   const realDb = await import("@/lib/db");
-  mock.module("@/lib/db", {
+  mock.module("../../../lib/db", {
     namedExports: {
       ...realDb,
       archiveNighthawkStaging: async (editionFor: string) => state.archiveImpl(editionFor),

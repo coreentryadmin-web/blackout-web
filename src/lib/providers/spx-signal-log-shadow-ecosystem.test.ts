@@ -44,7 +44,7 @@ function resetState() {
   state.inserted = [];
 }
 
-mock.module("@/lib/db", {
+mock.module("../db", {
   namedExports: {
     dbConfigured: () => state.dbConfigured,
     // The pre-existing flow_anomalies-shadow query path (dbQuery) is unused by
@@ -57,17 +57,17 @@ mock.module("@/lib/db", {
     },
   },
 });
-mock.module("@/lib/flow-liveness", {
+mock.module("../flow-liveness", {
   namedExports: {
     isFlowFrameFreshAnywhere: async () => true,
   },
 });
-mock.module("@/lib/providers/spx-session", {
+mock.module("./spx-session", {
   namedExports: {
     todayEtYmd: () => "2026-07-04",
   },
 });
-mock.module("@/features/spx/lib/spx-signals-shadow-ecosystem", {
+mock.module("../../features/spx/lib/spx-signals-shadow-ecosystem", {
   namedExports: {
     computeEcosystemShadowFactors: async (desk: unknown, direction: unknown) => {
       state.ecosystemCalls.push({ desk, direction });

@@ -23,7 +23,7 @@ import type { PlayConfirmationResult } from "./spx-play-confirmations";
 // top-level import — a static import here would resolve/instantiate the real
 // providers/anthropic.ts ahead of this call and the mock would never take effect.
 let mockRaw: string | null = null;
-mock.module("@/lib/providers/anthropic", {
+mock.module("../../../lib/providers/anthropic", {
   namedExports: {
     anthropicConfigured: () => true,
     anthropicText: async () => mockRaw,
