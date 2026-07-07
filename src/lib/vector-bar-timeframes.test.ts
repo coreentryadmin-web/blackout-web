@@ -2,12 +2,20 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { aggregateVectorBars } from "./vector-bar-timeframes";
 
-const m1 = (timeSec: number, o: number, h: number, l: number, c: number) => ({
+const m1 = (
+  timeSec: number,
+  o: number,
+  h: number,
+  l: number,
+  c: number,
+  volume?: number
+) => ({
   time: timeSec,
   open: o,
   high: h,
   low: l,
   close: c,
+  ...(volume != null ? { volume } : {}),
 });
 
 test("aggregateVectorBars: 1m passthrough unchanged", () => {
@@ -42,4 +50,16 @@ test("aggregateVectorBars: 15m aligns buckets to interval boundary", () => {
   assert.equal(out.length, 1);
   assert.equal(out[0]!.time, t0);
   assert.equal(out[0]!.close, 2);
+});
+
+test("aggregateVectorBars: sums volume within higher-interval buckets", () => {
+  const base = 300 * 60;
+  const bars = [
+    m1(base, 10, 11, 9, 10.5, 100),
+    m1(base + 60, 10.5, 12, 10, 11, 200),
+    m1(base + 120, 11, 12, 10.5, 11.5, 50),
+  ];
+  const out = aggregateVectorBars(bars, 5);
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.volume, 350);
 });

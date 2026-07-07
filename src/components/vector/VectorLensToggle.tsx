@@ -80,7 +80,7 @@ export function VectorLensToggle({
       <span className="font-mono text-[10px] text-sky-300">
         {lens === "gex"
           ? `Gamma walls ~1s${gexAge != null ? ` (${gexAge} ago)` : ""} · beads every ${chartIntervalMinutes}m`
-          : `Vanna walls ~8s${vexAge != null ? ` (${vexAge} ago)` : ""} · beads every ${chartIntervalMinutes}m`}
+          : `Vanna ~8s heatmap${vexAge != null ? ` (${vexAge} ago)` : ""} · beads every ${chartIntervalMinutes}m`}
       </span>
     </div>
   );
