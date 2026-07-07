@@ -5,6 +5,7 @@ import {
   isTradingDayEt,
   mostRecentTradingDayEt,
   nextTradingDayEt,
+  previousTradingDayEt,
 } from "./session";
 
 // The 2026-07-03 (July 4th observed) scenario that motivated the morning-confirm
@@ -25,6 +26,18 @@ test("nextTradingDayEt skips the holiday weekend: Thu 07-02 -> Mon 07-06", () =>
 
 test("plain weekend skip: Fri -> Mon", () => {
   assert.equal(nextTradingDayEt("2026-07-10"), "2026-07-13");
+});
+
+test("previousTradingDayEt skips weekends: Mon -> Fri", () => {
+  assert.equal(previousTradingDayEt("2026-07-13"), "2026-07-10");
+});
+
+test("previousTradingDayEt skips July-4th observed holiday: Mon 07-06 -> Thu 07-02", () => {
+  assert.equal(previousTradingDayEt("2026-07-06"), "2026-07-02");
+});
+
+test("previousTradingDayEt is inverse of nextTradingDayEt across a holiday weekend", () => {
+  assert.equal(previousTradingDayEt(nextTradingDayEt("2026-07-02")), "2026-07-02");
 });
 
 // task #173 (market_regime staleness): mostRecentTradingDayEt is the boundary

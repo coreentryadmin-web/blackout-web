@@ -477,6 +477,7 @@ export async function queryLargoStream(
         };
 
         if (event.type === "ping") continue;
+        if (event.type === "ping") continue;
         if (event.type === "token" && event.text) onToken(event.text);
         if (event.type === "tool_start" && event.name) onTool?.(event.name);
         if (event.type === "done" && event.answer && event.session_id) {
@@ -673,7 +674,10 @@ export function createVectorEventSource(
     (raw) => {
       try {
         const data = JSON.parse(raw) as VectorStreamSnapshot;
-        if (!data.candle) return;
+        const hasCandle = Boolean(data.candle);
+        const hasWalls =
+          Boolean(data.walls?.callWalls?.length) || Boolean(data.walls?.putWalls?.length);
+        if (!hasCandle && !hasWalls) return;
         onMessage(data);
       } catch {
         /* ignore */
