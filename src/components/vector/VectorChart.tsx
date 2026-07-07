@@ -736,7 +736,6 @@ export function VectorChart({
       HistogramSeries,
       {
         priceFormat: { type: "volume" },
-        priceScaleId: "volume",
         lastValueVisible: false,
         priceLineVisible: false,
       },
@@ -823,10 +822,11 @@ export function VectorChart({
 
   /** Client backfill when SSR seed missed SPY volume (rate-limit / transient Polygon blip). */
   useEffect(() => {
-    if (!chartReady || !barsNeedSpyVolume(minuteBarsRef.current)) return;
+    if (!chartReady) return;
     let cancelled = false;
     (async () => {
       try {
+        if (!barsNeedSpyVolume(minuteBarsRef.current)) return;
         const res = await fetch(
           `/api/market/vector/spy-volume?ymd=${encodeURIComponent(sessionYmd)}`
         );
@@ -848,7 +848,7 @@ export function VectorChart({
     return () => {
       cancelled = true;
     };
-  }, [chartReady, sessionYmd]);
+  }, [chartReady, sessionYmd, initialBars.length]);
 
   useEffect(() => {
     if (!replayMode || !playing || timelineRef.current.length === 0) {
