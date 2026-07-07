@@ -393,6 +393,8 @@ export function VectorChart({
       Boolean(initialVexWalls?.callWalls?.length || initialVexWalls?.putWalls?.length) ||
       hasVexInHistory(initialWallHistory)
   );
+  const [gexAsOf, setGexAsOf] = useState<number | null>(null);
+  const [vexAsOf, setVexAsOf] = useState<number | null>(null);
 
   useEffect(() => {
     lensRef.current = lens;
@@ -502,6 +504,12 @@ export function VectorChart({
 
       if (snap.t) {
         onFreshness?.(snap.t);
+      }
+      if (snap.gexAsOf != null) {
+        setGexAsOf(snap.gexAsOf);
+      }
+      if (snap.vexAsOf != null) {
+        setVexAsOf(snap.vexAsOf);
       }
 
       if (snap.gammaFlip !== undefined) {
@@ -745,7 +753,14 @@ export function VectorChart({
         </p>
       )}
 
-      <VectorLensToggle lens={lens} vexAvailable={vexAvailable} onLens={handleLens} />
+      <VectorLensToggle
+        lens={lens}
+        vexAvailable={vexAvailable}
+        onLens={handleLens}
+        gexAsOf={gexAsOf}
+        vexAsOf={vexAsOf}
+        liveSession={liveSession && !replayMode}
+      />
 
       <VectorWallEventTicker events={wallEvents} lens={lens} />
 

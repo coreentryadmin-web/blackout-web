@@ -18,6 +18,7 @@ import { persistWallSampleDebounced } from "@/lib/providers/vector-wall-persist"
 import { bucketWallSampleTime } from "@/lib/providers/vector-wall-sample";
 import { recordWallSample, type WallHistorySample } from "@/lib/providers/vector-wall-history";
 import { fetchUwDarkPool } from "@/lib/providers/unusual-whales";
+import { roundFloats } from "@/lib/round-floats";
 
 const WALL_SCOPE_REFRESH_MS = 15_000;
 const DARK_POOL_REFRESH_MS = 60_000;
@@ -170,7 +171,12 @@ export type VectorStreamPayload = {
   gammaFlip: number | null;
   vexFlip: number | null;
   darkPoolLevels: VectorDarkPoolLevel[];
+  /** Epoch ms — last SPX candle tick written by the leader. */
   t: number;
+  /** Epoch ms — last GEX wall ladder recompute (UW WS ~1s). */
+  gexAsOf: number;
+  /** Epoch ms — last VEX wall ladder recompute (heatmap ~8s). */
+  vexAsOf: number;
   wallHistory: WallHistorySample[];
   sessionYmd: string;
 };
@@ -210,7 +216,7 @@ export async function buildVectorStreamPayload(): Promise<VectorStreamPayload> {
     }
   }
 
-  return {
+  return roundVectorStreamPayload({
     candle: current,
     walls,
     vexWalls,
@@ -218,9 +224,16 @@ export async function buildVectorStreamPayload(): Promise<VectorStreamPayload> {
     vexFlip,
     darkPoolLevels,
     t: updatedAt,
+    gexAsOf: cachedWallsAt,
+    vexAsOf: cachedVexWallsAt,
     wallHistory,
     sessionYmd,
-  };
+  });
+}
+
+/** Round SPX prices/flips at the stream boundary — avoids 7486.400000000001 in SSE + UI. */
+export function roundVectorStreamPayload(payload: VectorStreamPayload): VectorStreamPayload {
+  return roundFloats(payload);
 }
 
 /** Test-only reset of module caches. */

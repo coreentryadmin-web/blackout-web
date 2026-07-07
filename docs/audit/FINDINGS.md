@@ -8,6 +8,20 @@ and required CI (`verify`) are green — no per-PR approval, no end-of-day hold.
 here and merge the PR in the same session. Supersedes all earlier "leave OPEN for review" notes
 in this file.
 
+## 🟡 P2 FOUND+FIXED 2026-07-07 — Vector stream float artifacts + honesty UX (branch `fix/vector-proposed-polish`)
+
+**Surface:** `/vector` SSE payload, `FreshnessChip`, lens toggle, structure feed.
+
+**Gap:** Proposed follow-ups from the Vector RTH audit pass: SPX prices served as `7486.400000000001`; header chip stayed "Live" when candle was >10s stale; lens toggle had static cadence copy with no actual age; structure feed was plain text.
+
+**Fix:**
+- `roundVectorStreamPayload()` via shared `roundFloats()` at the SSE boundary (candle OHLC, flips, wall strikes).
+- `FreshnessChip` flips to `stale` when candle `t` is >10s old during live sessions.
+- Stream exposes `gexAsOf` / `vexAsOf`; lens buttons show live age + subtitle reflects last refresh.
+- Structure feed: kind pills (SHIFT/FLIP/CROSS/BREAK), scrollable 6-event tail, lens header count.
+
+**Verification:** `vector-snapshot.test.ts` rounding regression; tsc + npm test green.
+
 ## 🟠 P1 FOUND+FIXED 2026-07-07 — Vector RTH monitor false "candle stale" + stale replica candle reads (branch `fix/vector-rth-auth-refresh`)
 
 **Surface:** `scripts/vector-rth-minute-audit.mjs`, `src/lib/ws/spx-candle-store.ts`, Vector wall guide cap.
