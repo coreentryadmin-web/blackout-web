@@ -1,4 +1,6 @@
 [build]
+# Must stay nixpacks — a root Dockerfile makes Railway ignore this file and deploy via
+# `node server.js` (standalone) instead of `next start -H 0.0.0.0 -p $PORT`, which fails healthcheck.
 builder = "nixpacks"
 buildCommand = "bash scripts/railway-build.sh"
 # Only redeploy prod when build-affecting files change — NOT on docs/log-only commits.

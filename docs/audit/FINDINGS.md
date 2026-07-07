@@ -8,6 +8,18 @@ and required CI (`verify`) are green — no per-PR approval, no end-of-day hold.
 here and merge the PR in the same session. Supersedes all earlier "leave OPEN for review" notes
 in this file.
 
+## 🟠 P1 FOUND+FIXED 2026-07-07 — Railway deploy failures after root Dockerfile (#682) — move to `deploy/Dockerfile`
+
+**Surface:** `blackout-web` + legacy cron trigger services (`Grid-Warm-Cron`, `Night's Watch-Warm-New`, `Positions-Expiry-Cron`).
+
+**Root cause:** PR #682 added `Dockerfile` at repo root for AWS/ECS. Railway auto-detects a root Dockerfile and **ignores** `railway.toml`'s `builder = "nixpacks"` + `startCommand = "next start -H 0.0.0.0 -p $PORT"`. Builds switched to multi-stage Docker (`CMD ["node", "server.js"]` standalone); deploy healthcheck failed while old Nixpacks replicas kept serving traffic. Cron trigger services (lightweight `echo` + `hit-cron.mjs`) also attempted full Docker builds and crashed.
+
+**Evidence:** Failed deploys `e3eee218` (#682 @ 21:52 UTC), `ab504428` (#683 @ 21:54 UTC); last SUCCESS `72b8273a` @ 21:24 UTC (pre-Dockerfile). Build logs show `[runner 3/4] COPY .next/standalone` not `railway-build.sh`. `npm run validate:deploy` flagged `Deploy unhealthy` while HTTP smoke passed on old image.
+
+**Fix:** `git mv Dockerfile → deploy/Dockerfile`; update ECR workflow + `npm run docker:build` to `-f deploy/Dockerfile`. Railway stays Nixpacks; ECS keeps standalone image path.
+
+**Status:** fix branch `fix/railway-dockerfile-path`.
+
 ## 🟠 P1 FOUND+FIXED 2026-07-07 — Vector visible to all premium users (launch gate `defaultLaunched: true`) (#678)
 
 **Surface:** `/vector`, `/api/market/vector/stream`, `/api/market/vector/spy-volume`.

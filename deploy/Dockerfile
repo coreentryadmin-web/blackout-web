@@ -1,7 +1,8 @@
-# BlackOut web — Next.js 15 standalone (ECS Fargate / local smoke).
+# NOT at repo root — Railway auto-detects a root Dockerfile and ignores railway.toml's
+# nixpacks builder + startCommand (next start). ECS/Fargate builds use this file.
 # Requires `output: "standalone"` in next.config.mjs.
 #
-# Build:  docker build -t blackout-web .
+# Build:  docker build -f deploy/Dockerfile -t blackout-web .
 # Run:    docker run --rm -p 3000:3000 -e PORT=3000 blackout-web
 # Health: GET /api/ready (same as Railway)
 
