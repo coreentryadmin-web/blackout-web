@@ -378,12 +378,11 @@ async function browserVector(session) {
       await gexBtn.click();
     }
 
-    // Timeframe selector (1m / 3m / 5m / 15m)
-    const tfGroup = page.getByRole("group", { name: "Chart timeframe" });
-    await tfGroup.waitFor({ state: "visible", timeout: 15_000 });
+    // Timeframe selector (dropdown)
+    const tfSelect = page.locator('[data-testid="vector-tf-select"]');
+    await tfSelect.waitFor({ state: "visible", timeout: 15_000 });
     for (const m of ["3", "5", "15", "1"]) {
-      const btn = tfGroup.getByRole("button", { name: `${m}m`, exact: true });
-      await btn.click();
+      await tfSelect.selectOption(m);
       rec(`ui:click-tf-${m}m`, "PASS");
     }
 
@@ -425,9 +424,9 @@ async function browserVector(session) {
       }
 
       for (const speed of ["2", "4"]) {
-        const sp = replayBar.locator("button").filter({ hasText: new RegExp(`^${speed}×$`) });
+        const sp = replayBar.locator("select[aria-label='Replay speed']");
         if (await sp.isVisible()) {
-          await sp.click();
+          await sp.selectOption(speed);
           rec(`ui:click-speed-${speed}x`, "PASS");
         }
       }

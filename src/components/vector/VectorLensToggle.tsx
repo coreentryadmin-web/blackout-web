@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import type { VectorWallLens } from "@/lib/providers/vector-wall-history";
-import type { VectorTimeframeMinutes } from "@/lib/vector-bar-timeframes";
 
 type Props = {
   lens: VectorWallLens;
@@ -12,7 +11,6 @@ type Props = {
   gexAsOf?: number | null;
   vexAsOf?: number | null;
   liveSession?: boolean;
-  chartIntervalMinutes?: VectorTimeframeMinutes;
 };
 
 function formatLensAge(asOf: number | null | undefined, now: number | null): string | null {
@@ -22,7 +20,7 @@ function formatLensAge(asOf: number | null | undefined, now: number | null): str
   return `${Math.floor(s / 60)}m`;
 }
 
-/** GEX / VEX exposure lens — matches SPX Slayer matrix toggle styling. */
+/** Compact GEX / VEX lens toggle — no helper copy (toolbar). */
 export function VectorLensToggle({
   lens,
   vexAvailable,
@@ -30,7 +28,6 @@ export function VectorLensToggle({
   gexAsOf,
   vexAsOf,
   liveSession = false,
-  chartIntervalMinutes = 1,
 }: Props) {
   const [now, setNow] = useState<number | null>(null);
 
@@ -45,11 +42,7 @@ export function VectorLensToggle({
   const vexAge = formatLensAge(vexAsOf, now);
 
   return (
-    <div
-      className="mb-3 flex flex-wrap items-center gap-2"
-      role="group"
-      aria-label="Wall exposure lens"
-    >
+    <div className="flex items-center gap-1.5" role="group" aria-label="Wall exposure lens">
       {(["gex", "vex"] as const).map((key) => {
         const active = lens === key;
         const disabled = key === "vex" && !vexAvailable;
@@ -63,7 +56,7 @@ export function VectorLensToggle({
             aria-pressed={active}
             data-testid={`vector-lens-${key}`}
             className={clsx(
-              "font-mono text-[10px] font-bold uppercase tracking-[0.18em] rounded-lg border px-3 py-1.5 transition-colors",
+              "font-mono text-[10px] font-bold uppercase tracking-[0.16em] rounded-lg border px-2.5 py-1.5 transition-colors",
               active && key === "gex" && "border-[#ffd60a]/70 bg-[#ffd60a]/15 text-[#ffd60a]",
               active && key === "vex" && "border-sky-400/70 bg-sky-400/15 text-sky-300",
               !active && !disabled && "border-white/15 text-cyan-400 hover:border-white/25",
@@ -72,16 +65,11 @@ export function VectorLensToggle({
           >
             {key === "gex" ? "GEX" : "VEX"}
             {liveSession && age != null ? (
-              <span className="ml-1.5 font-normal tracking-normal text-sky-300">· {age}</span>
+              <span className="ml-1 font-normal tracking-normal text-sky-300">· {age}</span>
             ) : null}
           </button>
         );
       })}
-      <span className="font-mono text-[10px] text-sky-300">
-        {lens === "gex"
-          ? `Gamma walls ~1s${gexAge != null ? ` (${gexAge} ago)` : ""} · beads every ${chartIntervalMinutes}m`
-          : `Vanna ~8s heatmap${vexAge != null ? ` (${vexAge} ago)` : ""} · beads every ${chartIntervalMinutes}m`}
-      </span>
     </div>
   );
 }

@@ -1,10 +1,8 @@
 "use client";
 
 import clsx from "clsx";
-import type { VectorWallLens } from "@/lib/providers/vector-wall-history";
 
 type Props = {
-  lens: VectorWallLens;
   replayMode: boolean;
   playing: boolean;
   canReplay: boolean;
@@ -12,17 +10,24 @@ type Props = {
   stepCount: number;
   clockLabel: string;
   speed: number;
+  loop: boolean;
   onToggleReplay: () => void;
   onTogglePlay: () => void;
   onScrub: (index: number) => void;
   onSpeed: (speed: number) => void;
+  onStep: (delta: number) => void;
+  onJumpOpen: () => void;
+  onJumpClose: () => void;
+  onToggleLoop: () => void;
 };
 
-const SPEEDS = [0.5, 1, 2, 4] as const;
+const SPEEDS = [0.5, 1, 2, 4, 8] as const;
 
-/** Session replay transport — scrub + play through recorded wall-trail timeline. */
+const iconBtn =
+  "font-mono text-[10px] rounded-lg border border-white/15 px-2 py-1 text-sky-300 hover:border-white/25 disabled:cursor-not-allowed disabled:opacity-30";
+
+/** Session replay — compact transport in toolbar + expanded scrub row when active. */
 export function VectorReplayControls({
-  lens,
   replayMode,
   playing,
   canReplay,
@@ -30,53 +35,125 @@ export function VectorReplayControls({
   stepCount,
   clockLabel,
   speed,
+  loop,
   onToggleReplay,
   onTogglePlay,
   onScrub,
   onSpeed,
+  onStep,
+  onJumpOpen,
+  onJumpClose,
+  onToggleLoop,
 }: Props) {
   const maxIndex = Math.max(0, stepCount - 1);
 
   return (
-    <div className="vector-replay-bar mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-      <button
-        type="button"
-        onClick={onToggleReplay}
-        disabled={!canReplay && !replayMode}
-        data-testid="vector-replay-toggle"
-        aria-label={replayMode ? "Exit replay" : "Replay session"}
-        className={clsx(
-          "font-mono text-[10px] font-semibold rounded-lg border px-3 py-[5px] transition-all",
-          replayMode
-            ? "border-gold/70 text-gold bg-gold/15"
-            : "border-[rgba(0,230,118,0.3)] text-[#00e676] disabled:cursor-not-allowed disabled:opacity-30"
+    <div className="vector-replay-controls flex min-w-0 flex-col gap-1.5">
+      <div className="vector-replay-bar flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onToggleReplay}
+          disabled={!canReplay && !replayMode}
+          data-testid="vector-replay-toggle"
+          aria-label={replayMode ? "Exit replay" : "Replay session"}
+          title={replayMode ? "Exit replay (Esc)" : "Replay session"}
+          className={clsx(
+            "font-mono text-[10px] font-semibold rounded-lg border px-2.5 py-1.5 transition-all",
+            replayMode
+              ? "border-gold/70 text-gold bg-gold/15"
+              : "border-[rgba(0,230,118,0.3)] text-[#00e676] disabled:cursor-not-allowed disabled:opacity-30"
+          )}
+        >
+          {replayMode ? "■ Live" : "▶ Replay"}
+        </button>
+
+        {replayMode && stepCount > 0 && (
+          <>
+            <button
+              type="button"
+              onClick={() => onStep(-1)}
+              disabled={cursorIndex <= 0}
+              className={iconBtn}
+              aria-label="Step back"
+              title="Step back (←)"
+            >
+              ◀
+            </button>
+            <button
+              type="button"
+              onClick={onTogglePlay}
+              aria-label={playing ? "Pause replay" : "Play replay"}
+              data-testid="vector-replay-play"
+              title={playing ? "Pause (Space)" : "Play (Space)"}
+              className={iconBtn}
+            >
+              {playing ? "⏸" : "▶"}
+            </button>
+            <button
+              type="button"
+              onClick={() => onStep(1)}
+              disabled={cursorIndex >= maxIndex}
+              className={iconBtn}
+              aria-label="Step forward"
+              title="Step forward (→)"
+            >
+              ▶
+            </button>
+            <button
+              type="button"
+              onClick={onJumpOpen}
+              className={iconBtn}
+              title="Jump to 9:30 ET open"
+            >
+              Open
+            </button>
+            <button
+              type="button"
+              onClick={onJumpClose}
+              className={iconBtn}
+              title="Jump to session close"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={onToggleLoop}
+              aria-pressed={loop}
+              className={clsx(
+                iconBtn,
+                loop && "border-gold/50 bg-gold/10 text-gold"
+              )}
+              title="Loop replay"
+            >
+              Loop
+            </button>
+            <select
+              value={String(speed)}
+              onChange={(e) => onSpeed(Number(e.target.value))}
+              aria-label="Replay speed"
+              className="rounded-lg border border-white/15 bg-black/40 px-1.5 py-1 font-mono text-[10px] text-cyan-400"
+            >
+              {SPEEDS.map((s) => (
+                <option key={s} value={String(s)}>
+                  {s}×
+                </option>
+              ))}
+            </select>
+          </>
         )}
-      >
-        {replayMode ? "■ Exit replay" : "▶ Replay session"}
-      </button>
+      </div>
 
       {replayMode && stepCount > 0 && (
-        <>
-          <button
-            type="button"
-            onClick={onTogglePlay}
-            aria-label={playing ? "Pause replay" : "Play replay"}
-            data-testid="vector-replay-play"
-            className="font-mono text-[10px] font-semibold rounded-lg border border-white/15 px-2.5 py-[5px] text-sky-300"
-          >
-            {playing ? "⏸ Pause" : "▶ Play"}
-          </button>
-
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-2 py-1.5">
           <input
             type="range"
             min={0}
             max={maxIndex}
             value={cursorIndex}
             onChange={(e) => onScrub(Number(e.target.value))}
-            className="min-w-[120px] flex-1 accent-cyan-400"
+            className="min-w-[140px] flex-1 accent-cyan-400"
             aria-label="Replay position"
           />
-
           <span className="font-mono text-[10px] text-cyan-400 tabular-nums whitespace-nowrap">
             {clockLabel}
             <span className="text-white/50">
@@ -84,35 +161,7 @@ export function VectorReplayControls({
               · {cursorIndex + 1}/{stepCount}
             </span>
           </span>
-
-          <div className="flex items-center gap-1">
-            {SPEEDS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => onSpeed(s)}
-                aria-label={`Replay speed ${s}x`}
-                data-testid={`vector-replay-speed-${s}`}
-                className={clsx(
-                  "font-mono text-[10px] rounded-md border px-2 py-0.5",
-                  speed === s
-                    ? "border-gold/60 bg-gold/20 text-gold"
-                    : "border-white/10 text-cyan-400"
-                )}
-              >
-                {s}×
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-
-      {!replayMode && (
-        <span className="font-mono text-[10px] text-sky-300">
-          {lens === "gex"
-            ? "GEX beads every 15s · live gamma walls ~1s"
-            : "VEX beads every 15s · vanna walls from heatmap ~8s"}
-        </span>
+        </div>
       )}
     </div>
   );
