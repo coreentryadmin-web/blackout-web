@@ -13,7 +13,7 @@
 | Step | Artifact | Done |
 |------|----------|------|
 | Standalone output | `output: "standalone"` in `next.config.mjs` | ✅ |
-| Docker image | `Dockerfile` + `.dockerignore` | ✅ |
+| Docker image | `deploy/Dockerfile` + `.dockerignore` (not repo root — Railway stays Nixpacks) | ✅ |
 | CI → ECR | `.github/workflows/ecr-push-staging.yml` | ✅ |
 | Local smoke | `docker build` + `docker run` → `/api/health` | manual |
 
