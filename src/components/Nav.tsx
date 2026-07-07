@@ -22,7 +22,7 @@ const FEATURE_LINKS: FeatureLink[] = [
   { href: "/heatmap", label: "BlackOut Thermal", sub: "Dealer gamma & vanna map", accent: "orange" },
   { href: "/terminal", label: "Largo", sub: "BlackOut Intelligence desk analyst", accent: "blue" },
   { href: "/nighthawk", label: "Night Hawk", sub: "Playbook + 0DTE Command", accent: "red" },
-  { href: "/vector", label: "Vector", sub: "Live SPX chart with real-time flow & GEX overlay", accent: "teal" },
+  { href: "/vector", label: "Vector", sub: "Live SPX chart with dealer gamma & vanna structure", accent: "teal" },
 ];
 
 /** Tool routes mount heavy client trees — disable RSC prefetch burst (503 under concurrent ?_rsc=). */

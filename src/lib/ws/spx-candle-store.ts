@@ -34,6 +34,8 @@ export type SpxCandle = {
   high: number;
   low: number;
   close: number;
+  /** SPY 1m share volume proxy — attached at stream boundary, not from tick aggregator. */
+  volume?: number;
 };
 
 const BAR_MS = 60_000;

@@ -714,6 +714,16 @@ export async function fetchIndexMinuteBars(symbol: string, from: string, to: str
   return mapAggBars(data.results);
 }
 
+/** Stock minute aggs (e.g. SPY volume proxy for SPX chart). */
+export async function fetchStockMinuteBars(symbol: string, from: string, to: string) {
+  const sym = symbol.toUpperCase();
+  const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
+    `/v2/aggs/ticker/${sym}/range/1/minute/${from}/${to}`,
+    { limit: "5000", sort: "asc" }
+  );
+  return mapAggBars(data.results);
+}
+
 export async function fetchIndex5MinBars(symbol: string, from: string, to: string) {
   const sym = symbol.toUpperCase();
   const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(

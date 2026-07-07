@@ -5,8 +5,10 @@ import {
   createChart,
   createSeriesMarkers,
   CandlestickSeries,
+  HistogramSeries,
   ColorType,
   LineStyle,
+  type HistogramData,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
@@ -70,6 +72,8 @@ export type VectorBar = {
   high: number;
   low: number;
   close: number;
+  /** SPY 1m share volume proxy aligned to this SPX bar. */
+  volume?: number;
 };
 
 const PUT_WALL_COLOR = "#b26bff";
@@ -82,6 +86,19 @@ const DARK_POOL_COLOR = "#00d4ff";
 const REPLAY_STEP_MS = 350;
 const MAX_WALL_GUIDES = 6;
 const MAX_DP_GUIDES = 6;
+/** If the viewport is within this many bars of the live edge, new bars may follow (TradingView-style). */
+const LIVE_FOLLOW_THRESHOLD_BARS = 2;
+
+function chartIsFollowingLive(chart: IChartApi): boolean {
+  const pos = chart.timeScale().scrollPosition();
+  return Number.isFinite(pos) && pos <= LIVE_FOLLOW_THRESHOLD_BARS;
+}
+
+/** Avoid yanking pan/zoom when the member scrolled back to study structure. */
+function maybeScrollToLive(chart: IChartApi | null): void {
+  if (!chart || !chartIsFollowingLive(chart)) return;
+  chart.timeScale().scrollToRealTime();
+}
 
 type Props = {
   initialBars: VectorBar[];
@@ -142,6 +159,59 @@ function withAlpha(hex: string, alpha: number): string {
 function pinCandlesOnTop(candleSeries: ISeriesApi<"Candlestick">): void {
   const count = candleSeries.getPane().getSeries().length;
   if (count > 0) candleSeries.setSeriesOrder(count - 1);
+}
+
+const VOLUME_UP = "rgba(0, 230, 118, 0.45)";
+const VOLUME_DOWN = "rgba(255, 45, 85, 0.45)";
+
+function volumeHistogramData(bars: VectorBar[]): HistogramData<Time>[] {
+  const out: HistogramData<Time>[] = [];
+  for (const bar of bars) {
+    const value = bar.volume;
+    if (value == null || value <= 0) continue;
+    out.push({
+      time: bar.time as Time,
+      value,
+      color: bar.close >= bar.open ? VOLUME_UP : VOLUME_DOWN,
+    });
+  }
+  return out;
+}
+
+function applyDisplayBars(
+  candleSeries: ISeriesApi<"Candlestick">,
+  volumeSeries: ISeriesApi<"Histogram"> | null,
+  bars: VectorBar[]
+): void {
+  candleSeries.setData(bars);
+  volumeSeries?.setData(volumeHistogramData(bars));
+}
+
+function wallsAtCrosshairTime(
+  history: WallHistorySample[],
+  hoverEpochSec: number | null,
+  activeLens: VectorWallLens,
+  gexLive: VectorWalls | null,
+  vexLive: VectorWalls | null
+): VectorWalls | null {
+  if (hoverEpochSec != null && history.length > 0) {
+    return wallsAtReplayTime(history, hoverEpochSec, activeLens) ?? wallsForActiveLens(activeLens, gexLive, vexLive);
+  }
+  return wallsForActiveLens(activeLens, gexLive, vexLive);
+}
+
+function flipAtCrosshairTime(
+  history: WallHistorySample[],
+  hoverEpochSec: number | null,
+  activeLens: VectorWallLens,
+  gammaLive: number | null,
+  vexLive: number | null
+): number | null {
+  if (hoverEpochSec != null && history.length > 0) {
+    const lensKey = activeLens === "vex" ? "vex" : "gex";
+    return flipAtReplayTime(history, hoverEpochSec, lensKey) ?? flipForActiveLens(activeLens, gammaLive, vexLive);
+  }
+  return flipForActiveLens(activeLens, gammaLive, vexLive);
 }
 
 function applyPriceGuides(
@@ -369,6 +439,7 @@ export function VectorChart({
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const callGuideRefs = useRef<(IPriceLine | null)[]>(emptyGuideRefs());
   const putGuideRefs = useRef<(IPriceLine | null)[]>(emptyGuideRefs());
   const dpGuideRefs = useRef<(IPriceLine | null)[]>([]);
@@ -477,7 +548,7 @@ export function VectorChart({
       if (!chart || !series) return;
 
       const visibleBars = displayBarsFromMinute(bars, timeframeRef.current, cursorTime);
-      series.setData(visibleBars);
+      applyDisplayBars(series, volumeSeriesRef.current, visibleBars);
 
       const visibleHistory = sliceHistoryToTime(history, cursorTime);
       const v = lensVisuals(activeLens);
@@ -508,7 +579,6 @@ export function VectorChart({
     let lastMinuteBarTime = minuteBarsRef.current.length
       ? minuteBarsRef.current[minuteBarsRef.current.length - 1]!.time
       : 0;
-    let newBarOpened = false;
 
     connRef.current = createVectorEventSource((snap) => {
       if (replayModeRef.current) return;
@@ -565,7 +635,6 @@ export function VectorChart({
       }
 
       if (snap.candle && snap.candle.time >= lastMinuteBarTime) {
-        newBarOpened = snap.candle.time > lastMinuteBarTime;
         lastMinuteBarTime = snap.candle.time;
         const curSpot = snap.candle.close;
         const prevSpot = spotRef.current;
@@ -588,12 +657,9 @@ export function VectorChart({
         const displayBars = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
         const lastDisplay = displayBars[displayBars.length - 1];
         if (lastDisplay) {
-          const openedDisplayBar = lastDisplay.time > displayBarTimeRef.current;
           displayBarTimeRef.current = lastDisplay.time;
           seriesRef.current?.update(lastDisplay);
-          if ((newBarOpened || openedDisplayBar) && chartRef.current) {
-            chartRef.current.timeScale().scrollToRealTime();
-          }
+          volumeSeriesRef.current?.setData(volumeHistogramData(displayBars));
         }
       }
 
@@ -622,7 +688,12 @@ export function VectorChart({
         vertLines: { color: "rgba(255,255,255,0.06)" },
         horzLines: { color: "rgba(255,255,255,0.06)" },
       },
-      timeScale: { timeVisible: true, secondsVisible: true },
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: true,
+        // Subtle live follow when the last bar is visible — do not call scrollToRealTime on every new bar.
+        shiftVisibleRangeOnNewBar: true,
+      },
       rightPriceScale: { borderColor: "rgba(255,255,255,0.12)" },
       crosshair: {
         vertLine: { color: "rgba(34, 211, 238, 0.35)", width: 1, style: LineStyle.Dashed },
@@ -638,14 +709,32 @@ export function VectorChart({
       wickDownColor: "#ff2d55",
       priceLineVisible: false,
       lastValueVisible: true,
-    });
+    }, 0);
 
-    series.setData(displayBarsFromMinute(initialBars, 1));
+    const volumeSeries = chart.addSeries(
+      HistogramSeries,
+      {
+        priceFormat: { type: "volume" },
+        priceScaleId: "volume",
+        lastValueVisible: false,
+        priceLineVisible: false,
+      },
+      1
+    );
+    volumeSeries.priceScale().applyOptions({
+      scaleMargins: { top: 0.85, bottom: 0 },
+    });
+    chart.panes()[0]?.setStretchFactor(3);
+    chart.panes()[1]?.setStretchFactor(1);
+
+    const initialDisplay = displayBarsFromMinute(initialBars, 1);
+    applyDisplayBars(series, volumeSeries, initialDisplay);
     displayBarTimeRef.current = initialBars[initialBars.length - 1]?.time ?? 0;
     if (initialBars.length) chart.timeScale().fitContent();
 
     chartRef.current = chart;
     seriesRef.current = series;
+    volumeSeriesRef.current = volumeSeries;
     callBeadsRef.current = createSeriesMarkers(series, []);
     putBeadsRef.current = createSeriesMarkers(series, []);
 
@@ -664,12 +753,26 @@ export function VectorChart({
           ? formatReplayClock(param.time)
           : String(param.time);
       const activeLens = lensRef.current;
-      const walls = wallsForActiveLens(activeLens, gexWallsRef.current, vexWallsRef.current);
+      const hoverEpochSec = typeof param.time === "number" ? param.time : null;
+      const history = wallHistoryRef.current;
+      const walls = wallsAtCrosshairTime(
+        history,
+        hoverEpochSec,
+        activeLens,
+        gexWallsRef.current,
+        vexWallsRef.current
+      );
       setCrosshair({
         time,
         close: bar?.close ?? null,
         lens: activeLens,
-        flip: flipForActiveLens(activeLens, gammaFlipRef.current, vexFlipRef.current),
+        flip: flipAtCrosshairTime(
+          history,
+          hoverEpochSec,
+          activeLens,
+          gammaFlipRef.current,
+          vexFlipRef.current
+        ),
         callWalls: walls?.callWalls ?? [],
         putWalls: walls?.putWalls ?? [],
         darkPoolLevels: darkPoolRef.current,
@@ -690,6 +793,7 @@ export function VectorChart({
       flipGuideRef.current = null;
       callBeadsRef.current = null;
       putBeadsRef.current = null;
+      volumeSeriesRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -737,7 +841,9 @@ export function VectorChart({
     const bars = minuteBarsRef.current;
     const display = displayBarsFromMinute(bars, timeframeRef.current);
     displayBarTimeRef.current = display[display.length - 1]?.time ?? 0;
-    seriesRef.current?.setData(display);
+    if (seriesRef.current) {
+      applyDisplayBars(seriesRef.current, volumeSeriesRef.current, display);
+    }
     const history = wallHistoryRef.current;
     refreshTrails(lens);
     const tail = history[history.length - 1]?.time ?? 0;
@@ -788,13 +894,13 @@ export function VectorChart({
     if (!series) return;
     const display = displayBarsFromMinute(minuteBarsRef.current, timeframe);
     displayBarTimeRef.current = display[display.length - 1]?.time ?? 0;
-    series.setData(display);
+    applyDisplayBars(series, volumeSeriesRef.current, display);
     chart?.timeScale().applyOptions({ secondsVisible: timeframe === 1 });
     if (!replayMode) {
       refreshTrails(lensRef.current);
     }
     if (!replayMode && liveSession) {
-      chart?.timeScale().scrollToRealTime();
+      maybeScrollToLive(chart);
     }
   }, [timeframe, replayMode, liveSession, refreshTrails]);
 

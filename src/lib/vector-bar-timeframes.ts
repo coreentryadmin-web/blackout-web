@@ -9,6 +9,7 @@ export type VectorOhlcBar = {
   high: number;
   low: number;
   close: number;
+  volume?: number;
 };
 
 /** Bucket 1m bars into a higher interval (TradingView-style). Times are epoch seconds. */
@@ -29,6 +30,9 @@ export function aggregateVectorBars<T extends VectorOhlcBar>(
       existing.high = Math.max(existing.high, bar.high);
       existing.low = Math.min(existing.low, bar.low);
       existing.close = bar.close;
+      if (bar.volume != null && bar.volume > 0) {
+        existing.volume = (existing.volume ?? 0) + bar.volume;
+      }
     }
   }
 

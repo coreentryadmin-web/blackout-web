@@ -32,7 +32,31 @@ QQQ and SPXW both fit this pattern exactly (both `TRIM`, both necessarily peaked
 
 **Verification:** `npx tsc --noEmit` clean. Full suite 1749/1749 passing (1 new). `npm run build` clean. `git diff main -- src/lib/spx-signals.ts` empty.
 
-## 🟢 P3 ENHANCEMENT 2026-07-07 — Vector timeframe-linked wall beads (branch `fix/vector-tf-linked-beads`)
+## 🟠 P1 FOUND+FIXED 2026-07-07 — Vector honesty gaps + SPY volume pane (branch `fix/vector-honesty-volume`)
+
+**Surface:** `/vector` SSE stream, crosshair legend, nav copy, lens toggle, chart volume pane.
+
+**Gaps:** (1) `buildVectorStreamPayload()` produced `gexAsOf` / `vexAsOf` but the SSE route stripped them on the wire — lens age chips could not be honest. (2) Crosshair wall/flip readouts always showed **live** tail walls, not walls at hovered time T during replay/scrub. (3) Nav claimed "real-time flow" — Vector is dealer gamma/vanna structure, not flow tape. (4) VEX lens copy implied GEX-parity ~1s refresh; VEX is ~8s heatmap. (5) No volume context on the chart (SPX index has no tape volume).
+
+**Fix:**
+- Serialize `gexAsOf` / `vexAsOf` in `api/market/vector/stream/route.ts`.
+- Crosshair uses `wallsAtReplayTime` / `flipAtReplayTime` at hovered epoch.
+- Nav → "dealer gamma & vanna structure"; VEX lens → "Vanna ~8s heatmap".
+- SPY 1m volume proxy: Polygon `fetchStockMinuteBars` on seed, `spyVolumeForMinuteBar` on live ticks; `HistogramSeries` on pane 1 (1:3 stretch) with up/down coloring; volume summed when aggregating 3m/5m/15m.
+
+**Files:** `vector-spy-volume.ts`, `vector-seed-bars.ts`, `vector-bar-timeframes.ts`, `VectorChart.tsx`, `vector-snapshot.ts`, `polygon.ts`, `stream/route.ts`, `Nav.tsx`, `VectorLensToggle.tsx`, `VectorPageShell.tsx`.
+
+**Verification:** `vector-spy-volume.test.ts`, `vector-seed-bars.test.ts`, `vector-bar-timeframes.test.ts`; tsc + 1782/1782 tests green.
+
+## 🟡 P2 FOUND+FIXED 2026-07-07 — Vector chart yanks viewport every new minute bar (branch `fix/vector-chart-no-autoscroll`)
+
+**User report:** chart recenters / jumps every minute; must reposition after panning.
+
+**Root cause:** `scrollToRealTime()` on every `newBarOpened` (each 1m bar) — resets default scroll even when member panned back to study structure.
+
+**Fix:** remove per-bar `scrollToRealTime`; rely on `shiftVisibleRangeOnNewBar` when last bar is visible; gate timeframe-change scroll with `maybeScrollToLive()` (`scrollPosition() <= 2` bars).
+
+## 🟢 P3 ENHANCEMENT 2026-07-07 — Vector timeframe-linked wall beads (branch `fix/vector-tf-linked-beads`, PR #663)
 
 **User request:** wall bead trails should resample with the chart interval (1m/3m/5m/15m), not show the same 15s-density nodes on every timeframe.
 
