@@ -8,6 +8,28 @@ and required CI (`verify`) are green — no per-PR approval, no end-of-day hold.
 here and merge the PR in the same session. Supersedes all earlier "leave OPEN for review" notes
 in this file.
 
+## 🟠 P1 FOUND+FIXED 2026-07-07 — Vector chart renders as a totally void canvas off-hours; wall updates silently gated behind price-tick presence (branch `fix/vector-blank-chart-and-wall-gating`)
+
+**Surface:** `src/app/(site)/vector/page.tsx` (`readInitialBars`) + `src/components/vector/VectorChart.tsx` (SSE tick handler).
+
+**How it was found:** user shared a live screenshot of `/vector` showing a completely blank chart — no candles, no axes, no grid lines, just a stray marker and the lightweight-charts watermark ("this is what it looks lol .,. wtf"). Independently, Cursor (the parallel agent working this repo) diagnosed and shared the same root cause via its own chat session (screenshotted by the user) before this fix was written — its analysis is corroborated below by reading the actual code, not taken on faith.
+
+**Bug 1 — no fallback when today's session has zero bars yet.** `readInitialBars()` fetched `fetchIndexMinuteBars("I:SPX", today, today)` and used the result as-is. `/vector` is reachable 24/7, but Polygon has no minute bars for "today" for the whole stretch between midnight ET and the first premarket print (~4am ET) — and returns the same empty result on any transient fetch failure. `initialBars = []` flows straight into `series.setData([])`, and with genuinely zero data points lightweight-charts has no price/time range to establish a scale from, so it renders neither candles nor a "market closed" message — a void canvas, exactly matching the screenshot. This isn't a one-off: it recurs every single day during the pre-market gap, and after any transient Polygon hiccup.
+
+**Bug 2 — gamma-wall updates were incorrectly gated behind having a fresh price candle.** `VectorChart.tsx`'s SSE handler: `if (!snap.candle || snap.candle.time < lastBarTime) return;` ran BEFORE the wall-line updates, so any tick with `snap.candle === null` (which `src/app/api/market/vector/stream/route.ts:135` sends whenever `getCurrentSpxCandle()` has nothing fresh — off-hours, weekends, or simply between Polygon ticks) caused the whole tick, walls included, to be dropped on the floor. But `candle` and `walls` are independent fields on the same snapshot — the server derives wall levels from the GEX ladder (`getCurrentGexWalls()`), not from price ticks — so walls could be live and correct server-side while the client silently never applied them. This is the exact mechanism behind the earlier-reported "where are the yellow and purple walls you said shipped" — the walls were computing fine; the client was throwing them away whenever there was no simultaneous fresh candle.
+
+**Fix:**
+1. `readInitialBars()` (rewritten as `src/lib/providers/vector-initial-bars.ts::pickSessionBars`, called from `page.tsx`): when today's fetch is empty, fetch a 5-calendar-day lookback (`priorEtYmd(5)` → today, comfortably spans a 3-day holiday weekend) and filter it down to just the single latest ET calendar date present, so the chart always seeds with one coherent real session instead of nothing.
+2. `VectorChart.tsx`'s SSE handler: decoupled the two updates — the candle-series `update()` only runs when `snap.candle` is present and fresh, but the wall-line `applyWallLines()` calls now run unconditionally on every tick (as long as the series exists), independent of candle presence.
+
+**Why this fix and not an alternative:** considered adding a "market closed" placeholder message instead of a data fallback, but that only patches the *display* of the pre-market gap and does nothing for the (rarer, but real) case of a genuine Polygon outage during RTH — showing the actual last session's price action is strictly more informative in both cases and needed no new UI surface. Extracted the bar-selection logic into its own `vector-initial-bars.ts` module (rather than leaving it inline in the server component) specifically so it's unit-testable without mocking Next.js/auth/Polygon fetch machinery — `page.tsx` itself stays a thin composition of `fetchIndexMinuteBars` calls + the pure `pickSessionBars` decision.
+
+**Tests added:** `src/lib/providers/vector-initial-bars.test.ts` (7 cases: mapping, non-finite/non-positive filtering, today-has-bars passthrough, both-empty, single-session fallback, multi-day-lookback-filtered-to-latest-session, malformed-fallback-timestamp).
+
+**Verification:** `npx tsc --noEmit` clean. Full suite 1734/1734 passing (7 new). `npm run build` clean, `/vector` compiles (54.2 kB route).
+
+---
+
 ## 🟠 P1 FOUND+FIXED 2026-07-07 — Vector's live candle never updates on ~4/5 of replicas (leader-only, no cross-replica fallback) (branch `fix/spx-candle-store-cross-replica-fallback`)
 
 **Surface:** `src/lib/ws/spx-candle-store.ts` — feeds the Vector chart's live current-bar update via `/api/market/vector/stream`.

@@ -140,9 +140,16 @@ export function VectorChart({ initialBars }: Props) {
     // stale/duplicate SSE tick (or one racing the REST-seeded initialBars) ever throwing.
     let lastBarTime = initialBars.length ? initialBars[initialBars.length - 1].time : 0;
     const conn = createVectorEventSource((snap) => {
-      if (!snap.candle || snap.candle.time < lastBarTime) return;
-      lastBarTime = snap.candle.time;
-      seriesRef.current?.update(snap.candle as VectorBar);
+      // candle and walls are independent fields on the same snapshot — the server derives wall
+      // levels from the GEX ladder, not from price ticks — so candle is legitimately null
+      // whenever Polygon has no fresh SPX tick (off-hours, weekends) while walls can still be
+      // live. Gating both updates behind `snap.candle` meant walls silently never rendered
+      // outside RTH ticks even though the server was computing them correctly the whole time —
+      // this is why the user reported "the walls never showed" outside market hours.
+      if (snap.candle && snap.candle.time >= lastBarTime) {
+        lastBarTime = snap.candle.time;
+        seriesRef.current?.update(snap.candle as VectorBar);
+      }
       if (seriesRef.current) {
         applyWallLines(seriesRef.current, callWallLinesRef, snap.walls?.callWalls, CALL_WALL_COLOR, "Call wall");
         applyWallLines(seriesRef.current, putWallLinesRef, snap.walls?.putWalls, PUT_WALL_COLOR, "Put wall");
