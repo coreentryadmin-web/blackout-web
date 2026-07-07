@@ -78,3 +78,27 @@ export async function spyVolumeForMinuteBar(
 export function _resetSpyVolumeCacheForTest(): void {
   cache = null;
 }
+
+/**
+ * Merge fetched SPY volume rows onto SPX bars by matching minute bucket. Only ever fills
+ * in a bar's volume — never clobbers an already-set one with a different value — so it's
+ * safe to call repeatedly with a growing/refreshed row set (VectorChart.tsx polls
+ * /api/market/vector/spy-volume on an interval rather than once, since Polygon only ever
+ * returns CLOSED minute bars: a mount-only merge permanently misses every bar that closes
+ * after that one call).
+ */
+export function mergeSpyVolumeRows<T extends { time: number; volume?: number }>(
+  bars: T[],
+  rows: Array<{ time: number; volume: number }>
+): T[] {
+  if (!rows.length) return bars;
+  const map = new Map(rows.map((r) => [r.time, r.volume]));
+  let touched = false;
+  const merged = bars.map((b) => {
+    const vol = map.get(b.time);
+    if (vol == null || vol <= 0) return b;
+    touched = true;
+    return { ...b, volume: vol };
+  });
+  return touched ? merged : bars;
+}
