@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import clsx from "clsx";
 import type { VectorWallEvent, VectorWallEventKind } from "@/lib/providers/vector-wall-events";
 import type { VectorWallLens } from "@/lib/providers/vector-wall-history";
@@ -28,50 +29,60 @@ const KIND_TONE: Record<VectorWallEventKind, string> = {
   spot_broke_put: "border-rose-400/40 text-rose-300",
 };
 
-/** Deterministic wall-structure event feed — no LLM, grounded in ladder diffs + spot crosses. */
+/** Collapsible wall-structure feed — collapsed by default to preserve chart height. */
 export function VectorWallEventTicker({ events, lens }: Props) {
+  const [open, setOpen] = useState(false);
   const visible = events.filter((e) => e.lens === lens).slice(-6).reverse();
+  const count = visible.length;
 
   return (
-    <div
-      className="mb-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"
-      aria-label="Wall structure events"
-    >
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-400">
+    <div className="mb-2 rounded-lg border border-white/10 bg-white/[0.02]" aria-label="Wall structure events">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left"
+        aria-expanded={open}
+      >
+        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-400">
           Structure feed
-        </div>
-        <span className="font-mono text-[10px] text-sky-300">
-          {lens.toUpperCase()} · {visible.length ? `${visible.length} recent` : "idle"}
         </span>
-      </div>
-      {visible.length === 0 ? (
-        <p className="font-mono text-[11px] leading-snug text-sky-300">
-          No {lens.toUpperCase()} structure shifts yet — events appear when walls or flip migrate, or SPX crosses a level.
-        </p>
-      ) : (
-        <ul className="flex max-h-28 flex-col gap-1.5 overflow-y-auto pr-1">
-          {visible.map((event, i) => (
-            <li
-              key={`${event.time}-${event.kind}-${i}`}
-              className="flex items-start gap-2 font-mono text-[11px] leading-snug"
-            >
-              <span
-                className={clsx(
-                  "mt-px shrink-0 rounded border px-1 py-0.5 text-[9px] font-bold tracking-[0.12em]",
-                  KIND_TONE[event.kind]
-                )}
-              >
-                {KIND_LABEL[event.kind]}
-              </span>
-              <span className={event.severity === "warn" ? "text-rose-300" : "text-white"}>
-                <span className="text-sky-300">{formatReplayClock(event.time)}</span>
-                <span className="text-white/40"> · </span>
-                {event.message}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <span className="font-mono text-[10px] text-sky-300">
+          {lens.toUpperCase()}
+          {count > 0 ? ` · ${count}` : ""}
+          <span className="ml-2 text-white/50">{open ? "▾" : "▸"}</span>
+        </span>
+      </button>
+      {open && (
+        <div className="border-t border-white/10 px-3 py-2">
+          {visible.length === 0 ? (
+            <p className="font-mono text-[11px] leading-snug text-sky-300">
+              No {lens.toUpperCase()} shifts yet.
+            </p>
+          ) : (
+            <ul className="flex max-h-24 flex-col gap-1.5 overflow-y-auto pr-1">
+              {visible.map((event, i) => (
+                <li
+                  key={`${event.time}-${event.kind}-${i}`}
+                  className="flex items-start gap-2 font-mono text-[11px] leading-snug"
+                >
+                  <span
+                    className={clsx(
+                      "mt-px shrink-0 rounded border px-1 py-0.5 text-[9px] font-bold tracking-[0.12em]",
+                      KIND_TONE[event.kind]
+                    )}
+                  >
+                    {KIND_LABEL[event.kind]}
+                  </span>
+                  <span className={event.severity === "warn" ? "text-rose-300" : "text-white"}>
+                    <span className="text-sky-300">{formatReplayClock(event.time)}</span>
+                    <span className="text-white/40"> · </span>
+                    {event.message}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );

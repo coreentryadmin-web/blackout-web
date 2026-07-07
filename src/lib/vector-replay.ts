@@ -1,6 +1,7 @@
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 import type { VectorWallLens, WallHistorySample } from "@/lib/providers/vector-wall-history";
 import { flipForLens, wallsForLens } from "@/lib/providers/vector-wall-history";
+import { etClock, etMinutes } from "@/lib/spx-play-session-time";
 
 export type VectorReplayBar = {
   time: number;
@@ -124,4 +125,52 @@ export function formatReplayClock(epochSec: number): string {
     second: "2-digit",
     hour12: true,
   });
+}
+
+function sessionYmdForEpoch(epochSec: number): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+  }).format(new Date(epochSec * 1000));
+}
+
+/** Index of first timeline step at or after an ET clock on the session day. */
+export function timelineIndexAtOrAfterEtClock(
+  timeline: number[],
+  sessionYmd: string,
+  hour: number,
+  minute: number
+): number {
+  if (!timeline.length) return 0;
+  const target = etClock(hour, minute);
+  for (let i = 0; i < timeline.length; i++) {
+    const t = timeline[i]!;
+    if (sessionYmdForEpoch(t) !== sessionYmd) continue;
+    if (etMinutes(new Date(t * 1000)) >= target) return i;
+  }
+  return timeline.length - 1;
+}
+
+/** Index of last timeline step at or before an ET clock on the session day. */
+export function timelineIndexAtOrBeforeEtClock(
+  timeline: number[],
+  sessionYmd: string,
+  hour: number,
+  minute: number
+): number {
+  if (!timeline.length) return 0;
+  const target = etClock(hour, minute);
+  let best = 0;
+  for (let i = 0; i < timeline.length; i++) {
+    const t = timeline[i]!;
+    if (sessionYmdForEpoch(t) !== sessionYmd) continue;
+    const mins = etMinutes(new Date(t * 1000));
+    if (mins <= target) best = i;
+    else break;
+  }
+  return best;
+}
+
+export function clampTimelineIndex(timeline: number[], index: number): number {
+  if (!timeline.length) return 0;
+  return Math.max(0, Math.min(timeline.length - 1, index));
 }

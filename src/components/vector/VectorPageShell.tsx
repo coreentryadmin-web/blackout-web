@@ -46,9 +46,6 @@ export function VectorPageShell({
   const sessionLabel = formatSessionLabel(sessionYmd);
   const [streamUpdatedAt, setStreamUpdatedAt] = useState<number | null>(null);
   const [now, setNow] = useState<number | null>(null);
-  const subtitle = liveSession
-    ? "SPX live chart · 1m/3m/5m/15m · SPY volume · GEX/VEX wall beads."
-    : `Showing ${sessionLabel} session — scrub replay to watch GEX and VEX walls form through the day.`;
 
   useEffect(() => {
     if (!liveSession) return;
@@ -75,17 +72,16 @@ export function VectorPageShell({
         <PageHeader
           kicker="Live SPX chart"
           title="Vector"
-          subtitle={subtitle}
-          badge={<ProductMark product="vector" size={44} animated={false} />}
+          badge={<ProductMark product="vector" size={40} animated={false} />}
           actions={
             <FreshnessChip
               status={freshnessStatus}
               asOf={liveSession && streamUpdatedAt ? new Date(streamUpdatedAt) : null}
-              label={liveSession ? "Live session" : "Session close"}
+              label={liveSession ? "Live session" : `${sessionLabel} close`}
             />
           }
         />
-        <div className="mt-5">
+        <div className="mt-2">
           <VectorChart
             initialBars={initialBars}
             initialWalls={initialWalls}

@@ -18,9 +18,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { VectorCrosshairLegend, type VectorCrosshairState } from "@/components/vector/VectorCrosshairLegend";
-import { VectorLensToggle } from "@/components/vector/VectorLensToggle";
-import { VectorReplayControls } from "@/components/vector/VectorReplayControls";
-import { VectorTimeframeToggle } from "@/components/vector/VectorTimeframeToggle";
+import { VectorToolbar } from "@/components/vector/VectorToolbar";
 import { VectorWallEventTicker } from "@/components/vector/VectorWallEventTicker";
 import {
   createVectorEventSource,
@@ -55,12 +53,15 @@ import {
 } from "@/lib/providers/vector-wall-history";
 import {
   buildReplayTimeline,
+  clampTimelineIndex,
   flipAtCrosshairTime,
   flipAtReplayTime,
   flipForActiveLens,
   formatReplayClock,
   sliceBarsToTime,
   sliceHistoryToTime,
+  timelineIndexAtOrAfterEtClock,
+  timelineIndexAtOrBeforeEtClock,
   wallsAtCrosshairTime,
   wallsAtReplayTime,
   wallsForActiveLens,
@@ -442,6 +443,7 @@ export function VectorChart({
   const [playing, setPlaying] = useState(false);
   const [cursorIndex, setCursorIndex] = useState(0);
   const [replaySpeed, setReplaySpeed] = useState(1);
+  const [replayLoop, setReplayLoop] = useState(false);
   const [crosshair, setCrosshair] = useState<VectorCrosshairState | null>(null);
   const [lens, setLens] = useState<VectorWallLens>("gex");
   const [wallEvents, setWallEvents] = useState<VectorWallEvent[]>(() => [
@@ -829,6 +831,11 @@ export function VectorChart({
       setCursorIndex((idx) => {
         const next = idx + 1;
         if (next >= timelineRef.current.length) {
+          if (replayLoop) {
+            const t0 = timelineRef.current[0]!;
+            applyFrame(t0, minuteBarsRef.current, wallHistoryRef.current, lensRef.current);
+            return 0;
+          }
           setPlaying(false);
           return idx;
         }
@@ -839,7 +846,7 @@ export function VectorChart({
     }, REPLAY_STEP_MS / Math.max(0.25, replaySpeed));
 
     return stopReplayTimer;
-  }, [replayMode, playing, replaySpeed, applyFrame, stopReplayTimer]);
+  }, [replayMode, playing, replaySpeed, replayLoop, applyFrame, stopReplayTimer]);
 
   const replayTimeline = buildReplayTimeline(sessionHistory, sessionBars);
   const canReplay = replayTimeline.length > 1;
@@ -888,10 +895,59 @@ export function VectorChart({
 
   const scrubTo = (index: number) => {
     setPlaying(false);
-    setCursorIndex(index);
-    const t = timelineRef.current[index];
+    const clamped = clampTimelineIndex(timelineRef.current, index);
+    setCursorIndex(clamped);
+    const t = timelineRef.current[clamped];
     if (t != null) applyFrame(t, minuteBarsRef.current, wallHistoryRef.current, lens);
   };
+
+  const stepReplay = (delta: number) => {
+    setPlaying(false);
+    setCursorIndex((idx) => {
+      const clamped = clampTimelineIndex(timelineRef.current, idx + delta);
+      const t = timelineRef.current[clamped];
+      if (t != null) applyFrame(t, minuteBarsRef.current, wallHistoryRef.current, lensRef.current);
+      return clamped;
+    });
+  };
+
+  const jumpReplayOpen = () => {
+    scrubTo(timelineIndexAtOrAfterEtClock(timelineRef.current, sessionYmd, 9, 30));
+  };
+
+  const jumpReplayClose = () => {
+    scrubTo(timelineIndexAtOrBeforeEtClock(timelineRef.current, sessionYmd, 16, 0));
+  };
+
+  useEffect(() => {
+    if (!replayMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        toggleReplay();
+        return;
+      }
+      if (e.key === " " || e.code === "Space") {
+        e.preventDefault();
+        setPlaying((p) => !p);
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        stepReplay(-1);
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        stepReplay(1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replayMode]);
 
   const stepCount = replayMode ? timelineRef.current.length : replayTimeline.length;
   const cursorTime = timelineRef.current[cursorIndex] ?? 0;
@@ -939,26 +995,16 @@ export function VectorChart({
         </p>
       )}
 
-      <VectorTimeframeToggle
+      <VectorToolbar
         interval={timeframe}
         onInterval={setTimeframe}
-        disabled={replayMode}
-      />
-
-      <VectorLensToggle
+        timeframeDisabled={replayMode}
         lens={lens}
         vexAvailable={vexAvailable}
         onLens={handleLens}
         gexAsOf={gexAsOf}
         vexAsOf={vexAsOf}
         liveSession={liveSession && !replayMode}
-        chartIntervalMinutes={timeframe}
-      />
-
-      <VectorWallEventTicker events={wallEvents} lens={lens} />
-
-      <VectorReplayControls
-        lens={lens}
         replayMode={replayMode}
         playing={playing}
         canReplay={canReplay}
@@ -966,11 +1012,18 @@ export function VectorChart({
         stepCount={stepCount}
         clockLabel={clockLabel}
         speed={replaySpeed}
+        loop={replayLoop}
         onToggleReplay={toggleReplay}
         onTogglePlay={() => setPlaying((p) => !p)}
         onScrub={scrubTo}
         onSpeed={setReplaySpeed}
+        onStep={stepReplay}
+        onJumpOpen={jumpReplayOpen}
+        onJumpClose={jumpReplayClose}
+        onToggleLoop={() => setReplayLoop((v) => !v)}
       />
+
+      <VectorWallEventTicker events={wallEvents} lens={lens} />
 
       <div className="relative">
         <VectorCrosshairLegend state={crosshair} />
@@ -980,7 +1033,7 @@ export function VectorChart({
         <div
           ref={containerRef}
           className="vector-chart-canvas"
-          style={{ height: "calc(100vh - 320px)", minHeight: 440 }}
+          style={{ height: "calc(100vh - 200px)", minHeight: 480 }}
           aria-busy={liveSession && !replayMode}
         />
       </div>

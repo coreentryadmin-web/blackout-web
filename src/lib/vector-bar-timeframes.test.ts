@@ -63,3 +63,16 @@ test("aggregateVectorBars: sums volume within higher-interval buckets", () => {
   assert.equal(out.length, 1);
   assert.equal(out[0]!.volume, 350);
 });
+
+test("aggregateVectorBars: custom 10m interval buckets", () => {
+  const base = 600 * 60;
+  const bars = [
+    m1(base, 1, 2, 0.5, 1.5),
+    m1(base + 60, 1.5, 2.5, 1, 2),
+    m1(base + 600, 2, 3, 1.5, 2.5),
+  ];
+  const out = aggregateVectorBars(bars, 10);
+  assert.equal(out.length, 2);
+  assert.equal(out[0]!.close, 2);
+  assert.equal(out[1]!.close, 2.5);
+});

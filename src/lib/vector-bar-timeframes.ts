@@ -1,7 +1,16 @@
-/** Standard Vector chart intervals — aggregated client-side from 1m SPX seed + live ticks. */
-export const VECTOR_TIMEFRAMES = [1, 3, 5, 15] as const;
+/** Preset Vector chart intervals — aggregated client-side from 1m SPX seed + live ticks. */
+export const VECTOR_PRESET_TIMEFRAMES = [1, 3, 5, 15] as const;
 
-export type VectorTimeframeMinutes = (typeof VECTOR_TIMEFRAMES)[number];
+/** @deprecated Use VECTOR_PRESET_TIMEFRAMES */
+export const VECTOR_TIMEFRAMES = VECTOR_PRESET_TIMEFRAMES;
+
+export type VectorPresetTimeframe = (typeof VECTOR_PRESET_TIMEFRAMES)[number];
+
+/** Any whole-minute interval (presets + custom). */
+export type VectorTimeframeMinutes = number;
+
+export const VECTOR_INTERVAL_MIN = 1;
+export const VECTOR_INTERVAL_MAX = 240;
 
 export type VectorOhlcBar = {
   time: number;
@@ -12,13 +21,26 @@ export type VectorOhlcBar = {
   volume?: number;
 };
 
+export function isPresetTimeframe(minutes: number): minutes is VectorPresetTimeframe {
+  return (VECTOR_PRESET_TIMEFRAMES as readonly number[]).includes(minutes);
+}
+
+export function normalizeVectorIntervalMinutes(minutes: number): number {
+  if (!Number.isFinite(minutes)) return 1;
+  return Math.max(
+    VECTOR_INTERVAL_MIN,
+    Math.min(VECTOR_INTERVAL_MAX, Math.round(minutes))
+  );
+}
+
 /** Bucket 1m bars into a higher interval (TradingView-style). Times are epoch seconds. */
 export function aggregateVectorBars<T extends VectorOhlcBar>(
   bars: T[],
-  intervalMinutes: VectorTimeframeMinutes
+  intervalMinutes: number
 ): T[] {
-  if (!bars.length || intervalMinutes <= 1) return [...bars];
-  const bucketSec = intervalMinutes * 60;
+  const interval = normalizeVectorIntervalMinutes(intervalMinutes);
+  if (!bars.length || interval <= 1) return [...bars];
+  const bucketSec = interval * 60;
   const map = new Map<number, T>();
 
   for (const bar of bars) {
@@ -43,7 +65,7 @@ export function aggregateVectorBars<T extends VectorOhlcBar>(
 
 export function barsForVectorTimeframe<T extends VectorOhlcBar>(
   minuteBars: T[],
-  intervalMinutes: VectorTimeframeMinutes
+  intervalMinutes: number
 ): T[] {
   return aggregateVectorBars(minuteBars, intervalMinutes);
 }
