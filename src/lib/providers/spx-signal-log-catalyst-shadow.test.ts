@@ -83,7 +83,7 @@ mock.module("./polygon", {
 // Lazy import (ESM caches the module under test after the first call) so the
 // mocks above are in place before spx-signal-log.ts's own top-level imports
 // resolve.
-const mod = () => import("@/features/spx/lib/spx-signal-log");
+const mod = () => import("../../features/spx/lib/spx-signal-log");
 
 function deskStub(leaders: Array<{ ticker: string; change_pct: number }> = [], overrides: Partial<SpxDeskPayload> = {}): SpxDeskPayload {
   return {

@@ -80,10 +80,10 @@ function fakeDesk(): SpxDeskPayload {
 }
 
 describe("spx-commentary: grounding-failure audit trail", () => {
-  let generateSpxCommentary: typeof import("@/features/spx/lib/spx-commentary").generateSpxCommentary;
+  let generateSpxCommentary: typeof import("../../features/spx/lib/spx-commentary").generateSpxCommentary;
 
   before(async () => {
-    ({ generateSpxCommentary } = await import("@/features/spx/lib/spx-commentary"));
+    ({ generateSpxCommentary } = await import("../../features/spx/lib/spx-commentary"));
   });
 
   beforeEach(() => {

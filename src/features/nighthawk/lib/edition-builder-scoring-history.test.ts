@@ -44,7 +44,7 @@ function resetState() {
 // the real module must be imported first and spread, overriding only archiveNighthawkStaging
 // / clearNighthawkStaging (same idiom run-tool.test.ts uses for this exact file).
 before(async () => {
-  const realDb = await import("@/lib/db");
+  const realDb = await import("../../../lib/db");
   mock.module("../../../lib/db", {
     namedExports: {
       ...realDb,

@@ -106,7 +106,7 @@ mock.module("./unusual-whales", {
 // Lazy import (ESM caches the module under test after the first call) so the
 // mocks above are in place before spx-signal-log.ts's own top-level imports
 // resolve.
-const mod = () => import("@/features/spx/lib/spx-signal-log");
+const mod = () => import("../../features/spx/lib/spx-signal-log");
 
 function deskStub(macroEvents: SpxDeskPayload["macro_events"] = []): SpxDeskPayload {
   return { available: true, price: 7420, macro_events: macroEvents } as SpxDeskPayload;

@@ -46,7 +46,7 @@ function resetState() {
 }
 
 before(async () => {
-  const realDb = await import("@/lib/db");
+  const realDb = await import("../../../lib/db");
   mock.module("../../../lib/db", {
     namedExports: {
       ...realDb,

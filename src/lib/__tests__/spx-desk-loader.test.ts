@@ -26,7 +26,7 @@ test("loadSpxDesk, loadSpxDeskPulse, and loadSpxDeskFlow share one cache lane ea
   });
 
   const { loadSpxDesk, loadSpxDeskPulse, loadSpxDeskFlow, loadMergedSpxDesk } =
-    await import("@/features/spx/lib/spx-desk-loader");
+    await import("../../features/spx/lib/spx-desk-loader");
 
   const fromStandaloneDesk = await loadSpxDesk();
   const fromStandalonePulse = await loadSpxDeskPulse();
