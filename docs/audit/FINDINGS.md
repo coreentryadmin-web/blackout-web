@@ -8,6 +8,20 @@ and required CI (`verify`) are green — no per-PR approval, no end-of-day hold.
 here and merge the PR in the same session. Supersedes all earlier "leave OPEN for review" notes
 in this file.
 
+## 🟡 P2 FOUND+FIXED 2026-07-07 — Vector's replay/crosshair before the first wall sample leaked live wall state instead of "no data" (branch `fix/vector-replay-prefirst-sample-leak`)
+
+**Surface:** `/vector`'s replay scrubber and chart crosshair — hovering or scrubbing to a point early in the session, before the first wall sample was ever recorded.
+
+**How it was found:** parallel background audit sweep of the newest, most rapidly-shipped feature (Vector — ~8 PRs today), specifically looking for the same bug *shape* as the 0DTE TRIM narrative fix (a value that's stale/absent gets presented as if it still reflects the current query).
+
+**Root cause:** `wallsAtReplayTime()`/`flipAtReplayTime()` (`src/lib/vector-replay.ts`) are honest — they return `null` when the queried time predates the earliest recorded wall sample. But every caller in `VectorChart.tsx` (`wallsAtCrosshairTime`/`flipAtCrosshairTime` for hover; `applyFrame` for replay scrubbing) used a `?? live` fallback that treated that `null` the same as "no history exists at all," silently substituting today's *live* wall/flip state mislabeled as the historical state at the hovered/scrubbed time. Since a `null` return is unambiguous once history is non-empty (any query time at/after `history[0].time` always matches at least that sample), the fallback was only ever masking real data absence, never filling a legitimate gap.
+
+**Blast radius (same root cause, found in the same investigation):** `applyWallsToSeries()` early-returned on `!walls`, which skipped `applyWallGuides()`/`applyPriceGuides()` entirely — the functions that actually *clear* stale price lines when passed an empty levels array. So even once the null-propagation fix landed, the wall lines drawn on the previous frame would have stayed stuck on the chart. `applyFlipGuide()` already had the correct clear-on-null pattern; `applyWallsToSeries()` was the only one missing it — fixed in the same PR.
+
+**Fix:** removed the `?? live` fallback in `wallsAtCrosshairTime`/`flipAtCrosshairTime`, and gated `applyFrame`'s `initialWalls`/etc. seed fallback on `history.length === 0` (only legitimate when the session has recorded zero wall samples ever). Live remains the correct fallback in exactly two cases: the crosshair isn't hovering anything (`hoverEpochSec` null), or zero history has ever been recorded. Moved `wallsAtCrosshairTime`/`flipAtCrosshairTime`/`wallsForActiveLens`/`flipForActiveLens` from `VectorChart.tsx` into `vector-replay.ts` so they're pure and unit-testable without a chart/DOM — `VectorChart.tsx` can't be imported directly under the plain Node test runner (`lightweight-charts`'s package exports aren't Node-ESM-resolvable outside Next's bundler).
+
+**Verification:** `npx tsc --noEmit` clean. Full suite 1793/1793 passing (6 new). `npm run build` clean. `git diff main -- src/lib/spx-signals.ts` empty.
+
 ## 🟠 P1 FOUND+FIXED 2026-07-07 — Vector's live SPX candle serves data up to 15.8 minutes stale, unlabeled, on zombie replicas (branch `fix/vector-stale-candle-zombie-replica`)
 
 **Surface:** `/vector`'s live SSE stream (`/api/market/vector/stream`) and the chart's current-bar price — the headline live SPX number on the page.

@@ -63,6 +63,58 @@ export function gammaFlipAtReplayTime(history: WallHistorySample[], cursorTime: 
   return flipAtReplayTime(history, cursorTime, "gex");
 }
 
+export function wallsForActiveLens(
+  lens: VectorWallLens,
+  gex: GexWalls | null,
+  vex: GexWalls | null
+): GexWalls | null {
+  return lens === "vex" ? vex : gex;
+}
+
+export function flipForActiveLens(lens: VectorWallLens, gammaFlip: number | null, vexFlip: number | null): number | null {
+  return lens === "vex" ? vexFlip : gammaFlip;
+}
+
+/**
+ * Wall ladder for the chart's crosshair legend. When hovering a point in time (replay
+ * or a scrub), returns the historical sample AS OF that hover time, never today's live
+ * ladder — `wallsAtReplayTime` only returns null when hoverEpochSec predates the earliest
+ * recorded sample (any cursor at/after history[0].time always matches at least that
+ * sample), meaning genuinely no wall data existed yet at that point in the session.
+ * Falling back to live there would mislabel today's current walls as the historical state
+ * at the hovered time — same bug shape as a sticky status whose narrative stops checking
+ * whether it still reflects reality. Live is only the right answer when NOT hovering
+ * (hoverEpochSec null — crosshair off the chart) or when no history has ever been
+ * recorded (nothing else to show).
+ */
+export function wallsAtCrosshairTime(
+  history: WallHistorySample[],
+  hoverEpochSec: number | null,
+  activeLens: VectorWallLens,
+  gexLive: GexWalls | null,
+  vexLive: GexWalls | null
+): GexWalls | null {
+  if (hoverEpochSec != null && history.length > 0) {
+    return wallsAtReplayTime(history, hoverEpochSec, activeLens);
+  }
+  return wallsForActiveLens(activeLens, gexLive, vexLive);
+}
+
+/** Same reasoning as wallsAtCrosshairTime above — no live fallback once history exists. */
+export function flipAtCrosshairTime(
+  history: WallHistorySample[],
+  hoverEpochSec: number | null,
+  activeLens: VectorWallLens,
+  gammaLive: number | null,
+  vexLive: number | null
+): number | null {
+  if (hoverEpochSec != null && history.length > 0) {
+    const lensKey = activeLens === "vex" ? "vex" : "gex";
+    return flipAtReplayTime(history, hoverEpochSec, lensKey);
+  }
+  return flipForActiveLens(activeLens, gammaLive, vexLive);
+}
+
 /** Format a unix-second timestamp for the replay scrubber (ET). */
 export function formatReplayClock(epochSec: number): string {
   return new Date(epochSec * 1000).toLocaleTimeString("en-US", {
