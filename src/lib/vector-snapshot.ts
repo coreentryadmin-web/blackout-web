@@ -8,6 +8,7 @@ import {
   type GexWalls,
   type WallScopeState,
 } from "@/lib/providers/gex-wall-levels";
+import { recordWallSample, type WallHistorySample } from "@/lib/providers/vector-wall-history";
 
 const WALL_SCOPE_REFRESH_MS = 15_000;
 let wallScope: WallScopeState = { expiries: undefined, fetchedAt: 0 };
@@ -60,9 +61,26 @@ export type VectorStreamPayload = {
   t: number;
 };
 
+// Per-bar wall-level history for the client's historical trail (VectorChart.tsx) — a record of
+// where each wall rank actually sat over time, not just its current price. Recorded here
+// (rather than purely client-side) so a page load mid-session seeds with what's already been
+// observed on this replica instead of starting empty every time the tab reloads. Per-replica
+// only (no cross-replica Redis sync, unlike spx-candle-store.ts's current-candle fallback) —
+// this is a supplementary visual trail, not a correctness-critical read, so a replica-local gap
+// just means a slightly thinner trail on the client that lands on that replica, not wrong data.
+let wallHistory: WallHistorySample[] = [];
+
+export function getVectorWallHistory(): WallHistorySample[] {
+  return wallHistory;
+}
+
 export function buildVectorStreamPayload(): VectorStreamPayload {
   const { current, updatedAt } = getCurrentSpxCandle();
-  return { candle: current, walls: getVectorGexWalls(), t: updatedAt };
+  const walls = getVectorGexWalls();
+  if (current && walls) {
+    wallHistory = recordWallSample(wallHistory, { time: current.time, walls });
+  }
+  return { candle: current, walls, t: updatedAt };
 }
 
 /** Test-only reset of module caches. */
@@ -72,4 +90,5 @@ export function _resetVectorSnapshotForTest(): void {
   fallbackStrikeTotals = null;
   cachedWalls = null;
   cachedWallsAt = 0;
+  wallHistory = [];
 }
