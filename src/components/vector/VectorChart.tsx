@@ -64,7 +64,7 @@ const GAMMA_FLIP_COLOR = "#22d3ee";
 const VANNA_FLIP_COLOR = "#38bdf8";
 const DARK_POOL_COLOR = "#00d4ff";
 const REPLAY_STEP_MS = 350;
-const MAX_WALL_GUIDES = 3;
+const MAX_WALL_GUIDES = 6;
 const MAX_DP_GUIDES = 6;
 
 type Props = {

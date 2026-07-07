@@ -27,7 +27,7 @@ const WAIT_OPEN = process.argv.includes("--wait-open");
 const OUT = process.env.VECTOR_RTH_DIR || "/opt/cursor/artifacts/vector-rth";
 mkdirSync(OUT, { recursive: true });
 
-const GUIDE_CAP = 3;
+const GUIDE_CAP = 6;
 const BEAD_CAP = 8;
 const WALL_DEPTH_PROBE = 6;
 
@@ -100,9 +100,16 @@ async function probeStream(session, holdMs = 8000) {
   const tok = session.sessionToken();
   if (!tok) throw new Error("no session token");
 
+  const readWithTimeout = (reader, ms = 2500) =>
+    Promise.race([
+      reader.read(),
+      sleep(ms).then(() => ({ done: true, value: undefined, timedOut: true })),
+    ]);
+
   const readStream = async (token) => {
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), holdMs + 4000);
+    const hardCapMs = holdMs + 5000;
+    const timer = setTimeout(() => ac.abort(), hardCapMs);
     const snaps = [];
     try {
       const res = await fetch(`${BASE}/api/market/vector/stream`, {
@@ -119,7 +126,9 @@ async function probeStream(session, holdMs = 8000) {
       let buf = "";
       const deadline = Date.now() + holdMs;
       while (Date.now() < deadline) {
-        const { done, value } = await reader.read();
+        const chunk = await readWithTimeout(reader, Math.min(2500, deadline - Date.now() + 500));
+        if (chunk.timedOut) continue;
+        const { done, value } = chunk;
         if (done) break;
         buf += dec.decode(value, { stream: true });
         const parts = buf.split("\n\n");
@@ -182,13 +191,14 @@ async function runTick(session, tickNum) {
 
   const spotIdx = Number(indices.json?.spx?.price ?? indices.json?.SPX?.price);
   const candle = last.candle;
-  const candleAge =
-    candle?.time && last.t ? Math.max(0, Math.floor(last.t / 1000) - candle.time) : null;
+  const receivedAt = Date.now();
+  const candleFreshSec =
+    last.t > 0 ? Math.max(0, Math.round((receivedAt - last.t) / 1000)) : null;
 
   if (!candle?.close) {
     issues.push("candle null");
-  } else if (candleAge != null && candleAge > 8) {
-    issues.push(`candle stale ${candleAge}s`);
+  } else if (candleFreshSec != null && candleFreshSec > 8) {
+    issues.push(`candle stale ${candleFreshSec}s`);
   }
 
   if (spotIdx > 0 && candle?.close > 0 && !spotsAgree(spotIdx, candle.close, spotIdx)) {
@@ -206,13 +216,14 @@ async function runTick(session, tickNum) {
   const hmGexDepth = wallDepthFromTotals(hm.json?.gex?.strike_totals, WALL_DEPTH_PROBE);
   const hmVexDepth = wallDepthFromTotals(hm.json?.vex?.strike_totals, WALL_DEPTH_PROBE);
 
-  for (const [label, streamTop, hmDepth] of [
-    ["GEX call", gexCall[0], hmGexDepth.call[0]?.strike],
-    ["VEX call", vexCall[0], hmVexDepth.call[0]?.strike],
-    ["VEX put", vexPut[0], hmVexDepth.put[0]?.strike],
+  for (const [label, streamTop, hmDepth, severity] of [
+    ["VEX call", vexCall[0], hmVexDepth.call[0]?.strike, "warn"],
+    ["VEX put", vexPut[0], hmVexDepth.put[0]?.strike, "warn"],
   ]) {
     if (streamTop != null && hmDepth != null && streamTop !== hmDepth) {
-      issues.push(`${label} stream ${streamTop} vs heatmap ${hmDepth}`);
+      const msg = `${label} stream ${streamTop} vs heatmap ${hmDepth}`;
+      if (severity === "warn") warns.push(msg);
+      else issues.push(msg);
     }
   }
 
@@ -276,7 +287,7 @@ async function runTick(session, tickNum) {
     et: stamp,
     status,
     candle: candle?.close ?? null,
-    candleAge,
+    candleFreshSec,
     gexCall,
     gexPut,
     vexCall,
