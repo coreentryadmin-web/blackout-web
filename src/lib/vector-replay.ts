@@ -1,5 +1,6 @@
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
-import type { WallHistorySample } from "@/lib/providers/vector-wall-history";
+import type { VectorWallLens, WallHistorySample } from "@/lib/providers/vector-wall-history";
+import { flipForLens, wallsForLens } from "@/lib/providers/vector-wall-history";
 
 export type VectorReplayBar = {
   time: number;
@@ -34,28 +35,32 @@ export function sliceBarsToTime(bars: VectorReplayBar[], cursorTime: number): Ve
 /** Latest wall ladder at or before the replay cursor. */
 export function wallsAtReplayTime(
   history: WallHistorySample[],
-  cursorTime: number
+  cursorTime: number,
+  lens: VectorWallLens = "gex"
 ): GexWalls | null {
   for (let i = history.length - 1; i >= 0; i--) {
     const sample = history[i];
-    if (sample.time <= cursorTime) return sample.walls;
+    if (sample.time <= cursorTime) return wallsForLens(sample, lens);
   }
   return null;
 }
 
-/** Latest gamma-flip reading at or before the replay cursor. */
-export function gammaFlipAtReplayTime(
+/** Latest flip level at or before the replay cursor. */
+export function flipAtReplayTime(
   history: WallHistorySample[],
-  cursorTime: number
+  cursorTime: number,
+  lens: VectorWallLens = "gex"
 ): number | null {
   for (let i = history.length - 1; i >= 0; i--) {
     const sample = history[i];
-    if (sample.time <= cursorTime) {
-      const flip = sample.gammaFlip;
-      return flip != null && Number.isFinite(flip) && flip > 0 ? flip : null;
-    }
+    if (sample.time <= cursorTime) return flipForLens(sample, lens);
   }
   return null;
+}
+
+/** @deprecated Use flipAtReplayTime(history, t, "gex") */
+export function gammaFlipAtReplayTime(history: WallHistorySample[], cursorTime: number): number | null {
+  return flipAtReplayTime(history, cursorTime, "gex");
 }
 
 /** Format a unix-second timestamp for the replay scrubber (ET). */

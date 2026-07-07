@@ -1,8 +1,10 @@
 "use client";
 
 import clsx from "clsx";
+import type { VectorWallLens } from "@/lib/providers/vector-wall-history";
 
 type Props = {
+  lens: VectorWallLens;
   replayMode: boolean;
   playing: boolean;
   canReplay: boolean;
@@ -20,6 +22,7 @@ const SPEEDS = [0.5, 1, 2, 4] as const;
 
 /** Session replay transport — scrub + play through recorded wall-trail timeline. */
 export function VectorReplayControls({
+  lens,
   replayMode,
   playing,
   canReplay,
@@ -100,7 +103,9 @@ export function VectorReplayControls({
 
       {!replayMode && (
         <span className="font-mono text-[10px] text-sky-300">
-          Gamma wall beads sample every 15s · live levels ~1s
+          {lens === "gex"
+            ? "GEX beads every 15s · live gamma walls ~1s"
+            : "VEX beads every 15s · vanna walls from heatmap ~8s"}
         </span>
       )}
     </div>

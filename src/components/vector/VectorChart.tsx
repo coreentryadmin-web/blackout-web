@@ -14,25 +14,36 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { VectorCrosshairLegend, type VectorCrosshairState } from "@/components/vector/VectorCrosshairLegend";
+import { VectorLensToggle } from "@/components/vector/VectorLensToggle";
 import { VectorReplayControls } from "@/components/vector/VectorReplayControls";
+import { VectorWallEventTicker } from "@/components/vector/VectorWallEventTicker";
 import {
   createVectorEventSource,
   type VectorDarkPoolLevel,
   type VectorWallLevel,
   type VectorWalls,
 } from "@/lib/api";
+import {
+  appendVectorWallEvents,
+  detectSpotStructureEvents,
+  diffVectorWallSample,
+  eventsFromWallHistory,
+  type VectorWallEvent,
+} from "@/lib/providers/vector-wall-events";
 import { alphaForPct, radiusForPct, widthForPct } from "@/lib/providers/vector-wall-visual";
 import {
+  hasVexInHistory,
   mergeWallHistory,
   pickActiveStrikes,
-  trailForGammaFlip,
+  trailForFlipLevel,
   trailsByStrike,
+  type VectorWallLens,
   type WallHistorySample,
 } from "@/lib/providers/vector-wall-history";
 import {
   buildReplayTimeline,
+  flipAtReplayTime,
   formatReplayClock,
-  gammaFlipAtReplayTime,
   sliceBarsToTime,
   sliceHistoryToTime,
   wallsAtReplayTime,
@@ -48,7 +59,10 @@ export type VectorBar = {
 
 const PUT_WALL_COLOR = "#b26bff";
 const CALL_WALL_COLOR = "#ffd60a";
+const VEX_POS_COLOR = "#7dd3fc";
+const VEX_NEG_COLOR = "#fb7185";
 const GAMMA_FLIP_COLOR = "#22d3ee";
+const VANNA_FLIP_COLOR = "#38bdf8";
 const DARK_POOL_COLOR = "#00d4ff";
 const REPLAY_STEP_MS = 350;
 const MAX_WALL_GUIDES = 3;
@@ -57,12 +71,51 @@ const MAX_DP_GUIDES = 6;
 type Props = {
   initialBars: VectorBar[];
   initialWalls: VectorWalls | null;
+  initialVexWalls: VectorWalls | null;
   initialWallHistory: WallHistorySample[];
   initialGammaFlip: number | null;
+  initialVexFlip: number | null;
   initialDarkPoolLevels: VectorDarkPoolLevel[];
   sessionYmd: string;
   liveSession: boolean;
+  onFreshness?: (updatedAt: number) => void;
 };
+
+function lensVisuals(lens: VectorWallLens) {
+  return lens === "vex"
+    ? {
+        callColor: VEX_POS_COLOR,
+        putColor: VEX_NEG_COLOR,
+        flipColor: VANNA_FLIP_COLOR,
+        callLabel: "Vanna +",
+        putLabel: "Vanna −",
+        flipLabel: "Vanna flip",
+      }
+    : {
+        callColor: CALL_WALL_COLOR,
+        putColor: PUT_WALL_COLOR,
+        flipColor: GAMMA_FLIP_COLOR,
+        callLabel: "Call wall",
+        putLabel: "Put wall",
+        flipLabel: "Gamma flip",
+      };
+}
+
+function wallsForActiveLens(
+  lens: VectorWallLens,
+  gex: VectorWalls | null,
+  vex: VectorWalls | null
+): VectorWalls | null {
+  return lens === "vex" ? vex : gex;
+}
+
+function flipForActiveLens(
+  lens: VectorWallLens,
+  gammaFlip: number | null,
+  vexFlip: number | null
+): number | null {
+  return lens === "vex" ? vexFlip : gammaFlip;
+}
 
 function withAlpha(hex: string, alpha: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -153,10 +206,12 @@ function applyDarkPoolGuides(
   );
 }
 
-function applyGammaFlipGuide(
+function applyFlipGuide(
   series: ISeriesApi<"Candlestick">,
   lineRef: React.MutableRefObject<IPriceLine | null>,
-  flip: number | null | undefined
+  flip: number | null | undefined,
+  label: string,
+  color: string
 ): void {
   if (flip == null || !Number.isFinite(flip) || flip <= 0) {
     if (lineRef.current) {
@@ -165,14 +220,14 @@ function applyGammaFlipGuide(
     }
     return;
   }
-  const title = `Gamma flip ${Math.round(flip)}`;
-  const color = withAlpha(GAMMA_FLIP_COLOR, 0.45);
+  const title = `${label} ${Math.round(flip)}`;
+  const lineColor = withAlpha(color, 0.45);
   if (lineRef.current) {
-    lineRef.current.applyOptions({ price: flip, title, color, lineWidth: 2, lineStyle: LineStyle.Dashed });
+    lineRef.current.applyOptions({ price: flip, title, color: lineColor, lineWidth: 2, lineStyle: LineStyle.Dashed });
   } else {
     lineRef.current = series.createPriceLine({
       price: flip,
-      color,
+      color: lineColor,
       lineWidth: 2,
       lineStyle: LineStyle.Dashed,
       axisLabelVisible: true,
@@ -185,11 +240,13 @@ function applyWallsToSeries(
   series: ISeriesApi<"Candlestick">,
   callGuideRefs: React.MutableRefObject<(IPriceLine | null)[]>,
   putGuideRefs: React.MutableRefObject<(IPriceLine | null)[]>,
-  walls: VectorWalls | null | undefined
+  walls: VectorWalls | null | undefined,
+  lens: VectorWallLens
 ): void {
   if (!walls) return;
-  applyWallGuides(series, callGuideRefs, walls.callWalls, CALL_WALL_COLOR, "Call wall");
-  applyWallGuides(series, putGuideRefs, walls.putWalls, PUT_WALL_COLOR, "Put wall");
+  const v = lensVisuals(lens);
+  applyWallGuides(series, callGuideRefs, walls.callWalls, v.callColor, v.callLabel);
+  applyWallGuides(series, putGuideRefs, walls.putWalls, v.putColor, v.putLabel);
 }
 
 function applyStrikeTrails(
@@ -198,9 +255,10 @@ function applyStrikeTrails(
   seriesByStrike: Map<number, ISeriesApi<"Line">>,
   history: WallHistorySample[],
   side: "callWalls" | "putWalls",
-  baseColor: string
+  baseColor: string,
+  lens: VectorWallLens
 ): void {
-  const trails = trailsByStrike(history, side);
+  const trails = trailsByStrike(history, side, lens);
   const active = new Set(pickActiveStrikes(trails));
 
   for (const [strike, trailSeries] of seriesByStrike) {
@@ -238,13 +296,15 @@ function applyStrikeTrails(
   pinCandlesOnTop(candleSeries);
 }
 
-function applyGammaFlipTrail(
+function applyFlipTrail(
   chart: IChartApi,
   candleSeries: ISeriesApi<"Candlestick">,
   flipSeriesRef: React.MutableRefObject<ISeriesApi<"Line"> | null>,
-  history: WallHistorySample[]
+  history: WallHistorySample[],
+  lens: VectorWallLens
 ): void {
-  const points = trailForGammaFlip(history);
+  const points = trailForFlipLevel(history, lens);
+  const flipColor = lensVisuals(lens).flipColor;
   if (!points.length) {
     if (flipSeriesRef.current) {
       chart.removeSeries(flipSeriesRef.current);
@@ -255,7 +315,7 @@ function applyGammaFlipTrail(
   let flipSeries = flipSeriesRef.current;
   if (!flipSeries) {
     flipSeries = chart.addSeries(LineSeries, {
-      color: GAMMA_FLIP_COLOR,
+      color: flipColor,
       lineVisible: false,
       pointMarkersVisible: true,
       pointMarkersRadius: 3,
@@ -269,7 +329,7 @@ function applyGammaFlipTrail(
   const data: LineData<UTCTimestamp>[] = points.map((p) => ({
     time: p.time as UTCTimestamp,
     value: p.strike,
-    color: withAlpha(GAMMA_FLIP_COLOR, 0.85),
+    color: withAlpha(flipColor, 0.85),
   }));
   flipSeries.setData(data);
   pinCandlesOnTop(candleSeries);
@@ -293,11 +353,14 @@ function emptyGuideRefs(): (IPriceLine | null)[] {
 export function VectorChart({
   initialBars,
   initialWalls,
+  initialVexWalls,
   initialWallHistory,
   initialGammaFlip,
+  initialVexFlip,
   initialDarkPoolLevels,
   sessionYmd,
   liveSession,
+  onFreshness,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -312,8 +375,14 @@ export function VectorChart({
   const wallHistoryRef = useRef<WallHistorySample[]>(initialWallHistory);
   const barsRef = useRef<VectorBar[]>(initialBars);
   const gammaFlipRef = useRef<number | null>(initialGammaFlip);
+  const vexFlipRef = useRef<number | null>(initialVexFlip);
   const darkPoolRef = useRef<VectorDarkPoolLevel[]>(initialDarkPoolLevels);
-  const wallsRef = useRef<VectorWalls | null>(initialWalls);
+  const gexWallsRef = useRef<VectorWalls | null>(initialWalls);
+  const vexWallsRef = useRef<VectorWalls | null>(initialVexWalls);
+  const lensRef = useRef<VectorWallLens>("gex");
+  const spotRef = useRef<number | null>(
+    initialBars.length ? initialBars[initialBars.length - 1]!.close : null
+  );
   const timelineRef = useRef<number[]>([]);
   const connRef = useRef<ReturnType<typeof createVectorEventSource> | null>(null);
   const replayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -327,6 +396,18 @@ export function VectorChart({
   const [cursorIndex, setCursorIndex] = useState(0);
   const [replaySpeed, setReplaySpeed] = useState(1);
   const [crosshair, setCrosshair] = useState<VectorCrosshairState | null>(null);
+  const [lens, setLens] = useState<VectorWallLens>("gex");
+  const [wallEvents, setWallEvents] = useState<VectorWallEvent[]>(() => [
+    ...eventsFromWallHistory(initialWallHistory, "gex"),
+    ...eventsFromWallHistory(initialWallHistory, "vex"),
+  ]);
+  const vexAvailable =
+    Boolean(initialVexWalls?.callWalls?.length || initialVexWalls?.putWalls?.length) ||
+    hasVexInHistory(initialWallHistory);
+
+  useEffect(() => {
+    lensRef.current = lens;
+  }, [lens]);
 
   useEffect(() => {
     liveSessionRef.current = liveSession;
@@ -336,28 +417,39 @@ export function VectorChart({
     replayModeRef.current = replayMode;
   }, [replayMode]);
 
-  const refreshTrails = useCallback(() => {
+  const refreshTrails = useCallback((activeLens: VectorWallLens) => {
     const chart = chartRef.current;
     const series = seriesRef.current;
     if (!chart || !series) return;
-    applyStrikeTrails(chart, series, callStrikeSeriesRef.current, wallHistoryRef.current, "callWalls", CALL_WALL_COLOR);
-    applyStrikeTrails(chart, series, putStrikeSeriesRef.current, wallHistoryRef.current, "putWalls", PUT_WALL_COLOR);
-    applyGammaFlipTrail(chart, series, flipTrailSeriesRef, wallHistoryRef.current);
+    const v = lensVisuals(activeLens);
+    applyStrikeTrails(chart, series, callStrikeSeriesRef.current, wallHistoryRef.current, "callWalls", v.callColor, activeLens);
+    applyStrikeTrails(chart, series, putStrikeSeriesRef.current, wallHistoryRef.current, "putWalls", v.putColor, activeLens);
+    applyFlipTrail(chart, series, flipTrailSeriesRef, wallHistoryRef.current, activeLens);
   }, []);
 
   const refreshOverlays = useCallback(
-    (walls: VectorWalls | null, flip: number | null, dp: VectorDarkPoolLevel[]) => {
+    (
+      activeLens: VectorWallLens,
+      gexWalls: VectorWalls | null,
+      vexWalls: VectorWalls | null,
+      gammaFlip: number | null,
+      vexFlip: number | null,
+      dp: VectorDarkPoolLevel[]
+    ) => {
       const series = seriesRef.current;
       if (!series) return;
-      applyWallsToSeries(series, callGuideRefs, putGuideRefs, walls ?? undefined);
-      applyGammaFlipGuide(series, flipGuideRef, flip);
+      const walls = wallsForActiveLens(activeLens, gexWalls, vexWalls);
+      const flip = flipForActiveLens(activeLens, gammaFlip, vexFlip);
+      const v = lensVisuals(activeLens);
+      applyWallsToSeries(series, callGuideRefs, putGuideRefs, walls ?? undefined, activeLens);
+      applyFlipGuide(series, flipGuideRef, flip, v.flipLabel, v.flipColor);
       applyDarkPoolGuides(series, dpGuideRefs, dp);
     },
     []
   );
 
   const applyFrame = useCallback(
-    (cursorTime: number, bars: VectorBar[], history: WallHistorySample[]) => {
+    (cursorTime: number, bars: VectorBar[], history: WallHistorySample[], activeLens: VectorWallLens) => {
       const chart = chartRef.current;
       const series = seriesRef.current;
       if (!chart || !series) return;
@@ -366,15 +458,18 @@ export function VectorChart({
       series.setData(visibleBars);
 
       const visibleHistory = sliceHistoryToTime(history, cursorTime);
-      applyStrikeTrails(chart, series, callStrikeSeriesRef.current, visibleHistory, "callWalls", CALL_WALL_COLOR);
-      applyStrikeTrails(chart, series, putStrikeSeriesRef.current, visibleHistory, "putWalls", PUT_WALL_COLOR);
-      applyGammaFlipTrail(chart, series, flipTrailSeriesRef, visibleHistory);
+      const v = lensVisuals(activeLens);
+      applyStrikeTrails(chart, series, callStrikeSeriesRef.current, visibleHistory, "callWalls", v.callColor, activeLens);
+      applyStrikeTrails(chart, series, putStrikeSeriesRef.current, visibleHistory, "putWalls", v.putColor, activeLens);
+      applyFlipTrail(chart, series, flipTrailSeriesRef, visibleHistory, activeLens);
 
-      const walls = wallsAtReplayTime(history, cursorTime) ?? initialWalls;
-      const flip = gammaFlipAtReplayTime(history, cursorTime) ?? initialGammaFlip;
-      refreshOverlays(walls, flip, darkPoolRef.current);
+      const gexAt = wallsAtReplayTime(history, cursorTime, "gex") ?? initialWalls;
+      const vexAt = wallsAtReplayTime(history, cursorTime, "vex") ?? initialVexWalls;
+      const gammaAt = flipAtReplayTime(history, cursorTime, "gex") ?? initialGammaFlip;
+      const vexFlipAt = flipAtReplayTime(history, cursorTime, "vex") ?? initialVexFlip;
+      refreshOverlays(activeLens, gexAt, vexAt, gammaAt, vexFlipAt, darkPoolRef.current);
     },
-    [initialWalls, initialGammaFlip, refreshOverlays]
+    [initialWalls, initialVexWalls, initialGammaFlip, initialVexFlip, refreshOverlays]
   );
 
   const stopReplayTimer = useCallback(() => {
@@ -397,27 +492,63 @@ export function VectorChart({
       if (!liveSessionRef.current) return;
 
       if (snap.wallHistory?.length) {
+        const prevTail = wallHistoryRef.current[wallHistoryRef.current.length - 1];
         const merged = mergeWallHistory(wallHistoryRef.current, snap.wallHistory);
         if (merged !== wallHistoryRef.current) {
+          const newTail = merged[merged.length - 1];
+          if (prevTail && newTail) {
+            for (const active of ["gex", "vex"] as const) {
+              const incoming = diffVectorWallSample(prevTail, newTail, active);
+              if (incoming.length) {
+                setWallEvents((ev) => appendVectorWallEvents(ev, incoming));
+              }
+            }
+          }
           wallHistoryRef.current = merged;
           setSessionHistory(merged);
-          refreshTrails();
+          refreshTrails(lensRef.current);
         }
+      }
+
+      if (snap.t) {
+        onFreshness?.(snap.t);
       }
 
       if (snap.gammaFlip !== undefined) {
         gammaFlipRef.current = snap.gammaFlip ?? null;
       }
+      if (snap.vexFlip !== undefined) {
+        vexFlipRef.current = snap.vexFlip ?? null;
+      }
       if (snap.darkPoolLevels) {
         darkPoolRef.current = snap.darkPoolLevels;
       }
       if (snap.walls) {
-        wallsRef.current = snap.walls;
+        gexWallsRef.current = snap.walls;
+      }
+      if (snap.vexWalls) {
+        vexWallsRef.current = snap.vexWalls;
       }
 
       if (snap.candle && snap.candle.time >= lastBarTime) {
         newBarOpened = snap.candle.time > lastBarTime;
         lastBarTime = snap.candle.time;
+        const curSpot = snap.candle.close;
+        const prevSpot = spotRef.current;
+        for (const active of ["gex", "vex"] as const) {
+          const spotEvents = detectSpotStructureEvents(
+            prevSpot,
+            curSpot,
+            wallsForActiveLens(active, gexWallsRef.current, vexWallsRef.current),
+            flipForActiveLens(active, gammaFlipRef.current, vexFlipRef.current),
+            active,
+            snap.candle.time
+          );
+          if (spotEvents.length) {
+            setWallEvents((ev) => appendVectorWallEvents(ev, spotEvents));
+          }
+        }
+        spotRef.current = curSpot;
         const nextBars = upsertBar(barsRef.current, snap.candle as VectorBar);
         barsRef.current = nextBars;
         setSessionBars(nextBars);
@@ -427,9 +558,16 @@ export function VectorChart({
         }
       }
 
-      refreshOverlays(wallsRef.current, gammaFlipRef.current, darkPoolRef.current);
+      refreshOverlays(
+        lensRef.current,
+        gexWallsRef.current,
+        vexWallsRef.current,
+        gammaFlipRef.current,
+        vexFlipRef.current,
+        darkPoolRef.current
+      );
     });
-  }, [sessionYmd, refreshTrails, refreshOverlays]);
+  }, [sessionYmd, refreshTrails, refreshOverlays, onFreshness]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -469,8 +607,8 @@ export function VectorChart({
     chartRef.current = chart;
     seriesRef.current = series;
 
-    refreshTrails();
-    refreshOverlays(initialWalls, initialGammaFlip, initialDarkPoolLevels);
+    refreshTrails("gex");
+    refreshOverlays("gex", initialWalls, initialVexWalls, initialGammaFlip, initialVexFlip, initialDarkPoolLevels);
     pinCandlesOnTop(series);
 
     chart.subscribeCrosshairMove((param) => {
@@ -483,12 +621,15 @@ export function VectorChart({
         typeof param.time === "number"
           ? formatReplayClock(param.time)
           : String(param.time);
+      const activeLens = lensRef.current;
+      const walls = wallsForActiveLens(activeLens, gexWallsRef.current, vexWallsRef.current);
       setCrosshair({
         time,
         close: bar?.close ?? null,
-        gammaFlip: gammaFlipRef.current,
-        callWalls: wallsRef.current?.callWalls ?? [],
-        putWalls: wallsRef.current?.putWalls ?? [],
+        lens: activeLens,
+        flip: flipForActiveLens(activeLens, gammaFlipRef.current, vexFlipRef.current),
+        callWalls: walls?.callWalls ?? [],
+        putWalls: walls?.putWalls ?? [],
         darkPoolLevels: darkPoolRef.current,
       });
     });
@@ -525,7 +666,7 @@ export function VectorChart({
           return idx;
         }
         const t = timelineRef.current[next]!;
-        applyFrame(t, barsRef.current, wallHistoryRef.current);
+        applyFrame(t, barsRef.current, wallHistoryRef.current, lensRef.current);
         return next;
       });
     }, REPLAY_STEP_MS / Math.max(0.25, replaySpeed));
@@ -544,7 +685,7 @@ export function VectorChart({
     setPlaying(false);
     setCursorIndex(0);
     if (replayTimeline.length > 0) {
-      applyFrame(replayTimeline[0]!, barsRef.current, wallHistoryRef.current);
+      applyFrame(replayTimeline[0]!, barsRef.current, wallHistoryRef.current, lens);
     }
   };
 
@@ -555,10 +696,16 @@ export function VectorChart({
     const bars = barsRef.current;
     const history = wallHistoryRef.current;
     seriesRef.current?.setData(bars);
-    refreshTrails();
-    const walls = wallsAtReplayTime(history, history[history.length - 1]?.time ?? 0) ?? initialWalls;
-    const flip = gammaFlipAtReplayTime(history, history[history.length - 1]?.time ?? 0) ?? initialGammaFlip;
-    refreshOverlays(walls, flip, darkPoolRef.current);
+    refreshTrails(lens);
+    const tail = history[history.length - 1]?.time ?? 0;
+    refreshOverlays(
+      lens,
+      wallsAtReplayTime(history, tail, "gex") ?? initialWalls,
+      wallsAtReplayTime(history, tail, "vex") ?? initialVexWalls,
+      flipAtReplayTime(history, tail, "gex") ?? initialGammaFlip,
+      flipAtReplayTime(history, tail, "vex") ?? initialVexFlip,
+      darkPoolRef.current
+    );
     chartRef.current?.timeScale().fitContent();
     connectLive();
   };
@@ -572,22 +719,45 @@ export function VectorChart({
     setPlaying(false);
     setCursorIndex(index);
     const t = timelineRef.current[index];
-    if (t != null) applyFrame(t, barsRef.current, wallHistoryRef.current);
+    if (t != null) applyFrame(t, barsRef.current, wallHistoryRef.current, lens);
   };
 
   const stepCount = replayMode ? timelineRef.current.length : replayTimeline.length;
   const cursorTime = timelineRef.current[cursorIndex] ?? 0;
   const clockLabel = cursorTime ? formatReplayClock(cursorTime) : "—";
 
+  useEffect(() => {
+    if (replayMode) return;
+    refreshTrails(lens);
+    refreshOverlays(
+      lens,
+      gexWallsRef.current,
+      vexWallsRef.current,
+      gammaFlipRef.current,
+      vexFlipRef.current,
+      darkPoolRef.current
+    );
+  }, [lens, replayMode, refreshTrails, refreshOverlays]);
+
+  const handleLens = (next: VectorWallLens) => {
+    if (next === "vex" && !vexAvailable) return;
+    setLens(next);
+  };
+
   return (
     <div className="vector-chart-wrap">
       {!initialBars.length && (
         <p className="mb-3 font-mono text-xs text-sky-300">
-          No SPX session bars available yet — gamma walls, flip, and dark-pool levels load when data is present.
+          No SPX session bars available yet — wall beads, flip, and dark-pool levels load when data is present.
         </p>
       )}
 
+      <VectorLensToggle lens={lens} vexAvailable={vexAvailable} onLens={handleLens} />
+
+      <VectorWallEventTicker events={wallEvents} lens={lens} />
+
       <VectorReplayControls
+        lens={lens}
         replayMode={replayMode}
         playing={playing}
         canReplay={canReplay}

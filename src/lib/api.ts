@@ -667,7 +667,9 @@ export type VectorDarkPoolLevel = { strike: number; premium: number; pct: number
 export type VectorStreamSnapshot = {
   candle: VectorStreamCandle | null;
   walls?: VectorWalls | null;
+  vexWalls?: VectorWalls | null;
   gammaFlip?: number | null;
+  vexFlip?: number | null;
   darkPoolLevels?: VectorDarkPoolLevel[];
   t?: number;
   sessionYmd?: string;
@@ -687,11 +689,14 @@ export function createVectorEventSource(
         const hasCandle = Boolean(data.candle);
         const hasWalls =
           Boolean(data.walls?.callWalls?.length) || Boolean(data.walls?.putWalls?.length);
+        const hasVexWalls =
+          Boolean(data.vexWalls?.callWalls?.length) || Boolean(data.vexWalls?.putWalls?.length);
         const hasWallHistory = Boolean(data.wallHistory?.length);
         const hasOverlays =
           data.gammaFlip != null ||
+          data.vexFlip != null ||
           Boolean(data.darkPoolLevels?.length);
-        if (!hasCandle && !hasWalls && !hasWallHistory && !hasOverlays) return;
+        if (!hasCandle && !hasWalls && !hasVexWalls && !hasWallHistory && !hasOverlays) return;
         onMessage(data);
       } catch {
         /* ignore */
