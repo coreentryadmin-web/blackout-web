@@ -1,6 +1,6 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
+import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { PredictionConsensusSignal } from "@/lib/providers/unusual-whales";
 
 // spx-signal-log.ts (the module under test) now also statically imports the
@@ -65,7 +65,7 @@ function signal(overrides: Partial<PredictionConsensusSignal> = {}): PredictionC
   };
 }
 
-mock.module("../db", {
+mock.module("@/lib/db", {
   namedExports: {
     dbConfigured: () => state.dbConfigured,
     insertShadowFactorObservation: async (row: InsertedRow) => {
@@ -73,22 +73,22 @@ mock.module("../db", {
     },
   },
 });
-mock.module("../flow-liveness", {
+mock.module("@/lib/flow-liveness", {
   namedExports: {
     isFlowFrameFreshAnywhere: async () => true,
   },
 });
-mock.module("../providers/spx-session", {
+mock.module("@/lib/providers/spx-session", {
   namedExports: {
     todayEtYmd: () => "2026-07-04",
   },
 });
-mock.module("../providers/config", {
+mock.module("@/lib/providers/config", {
   namedExports: {
     uwConfigured: () => state.uwConfigured,
   },
 });
-mock.module("../providers/unusual-whales", {
+mock.module("@/lib/providers/unusual-whales", {
   namedExports: {
     fetchUwPredictionsConsensus: async () => {
       state.consensusCalls += 1;
@@ -106,7 +106,7 @@ mock.module("../providers/unusual-whales", {
 // Lazy import (ESM caches the module under test after the first call) so the
 // mocks above are in place before spx-signal-log.ts's own top-level imports
 // resolve.
-const mod = () => import("./spx-signal-log");
+const mod = () => import("@/features/spx/lib/spx-signal-log");
 
 function deskStub(macroEvents: SpxDeskPayload["macro_events"] = []): SpxDeskPayload {
   return { available: true, price: 7420, macro_events: macroEvents } as SpxDeskPayload;

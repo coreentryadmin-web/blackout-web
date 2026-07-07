@@ -1,6 +1,6 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import type { SpxDeskPayload } from "@/lib/providers/spx-desk";
+import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 
 // spx-signal-log.ts (the module under test) statically imports the ecosystem
 // shadow factor, whose fetchEcosystemContext -> getSpxPlayState chain
@@ -47,7 +47,7 @@ function resetState() {
   state.inserted = [];
 }
 
-mock.module("../db", {
+mock.module("@/lib/db", {
   namedExports: {
     dbConfigured: () => state.dbConfigured,
     dbQuery: async () => ({ rows: [], rowCount: 0 }),
@@ -59,22 +59,22 @@ mock.module("../db", {
     },
   },
 });
-mock.module("../flow-liveness", {
+mock.module("@/lib/flow-liveness", {
   namedExports: {
     isFlowFrameFreshAnywhere: async () => true,
   },
 });
-mock.module("../providers/spx-session", {
+mock.module("@/lib/providers/spx-session", {
   namedExports: {
     todayEtYmd: () => "2026-07-04",
   },
 });
-mock.module("../bie/embeddings", {
+mock.module("@/lib/bie/embeddings", {
   namedExports: {
     bieEmbeddingsConfigured: () => state.embeddingsConfigured,
   },
 });
-mock.module("../bie/precedent-search", {
+mock.module("@/lib/bie/precedent-search", {
   namedExports: {
     findSimilarPrecedents: async (query: string, k: number) => {
       state.searchCalls.push({ query, k });
@@ -86,7 +86,7 @@ mock.module("../bie/precedent-search", {
 // Lazy import (ESM caches the module under test after the first call) so the
 // mocks above are in place before spx-signal-log.ts's own top-level imports
 // resolve.
-const mod = () => import("./spx-signal-log");
+const mod = () => import("@/features/spx/lib/spx-signal-log");
 
 function deskStub(overrides: Partial<SpxDeskPayload> = {}): SpxDeskPayload {
   return { available: true, price: 7420, gamma_regime: "unknown", ...overrides } as SpxDeskPayload;
