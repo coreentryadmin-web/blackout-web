@@ -10,6 +10,7 @@ import {
 } from "@/lib/providers/gex-wall-levels";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { appendSessionWallSample } from "@/lib/providers/vector-wall-persist";
+import { bucketWallSampleTime } from "@/lib/providers/vector-wall-sample";
 import { recordWallSample, type WallHistorySample } from "@/lib/providers/vector-wall-history";
 
 const WALL_SCOPE_REFRESH_MS = 15_000;
@@ -81,8 +82,9 @@ export function getVectorWallHistory(): WallHistorySample[] {
 export function buildVectorStreamPayload(): VectorStreamPayload {
   const { current, updatedAt } = getCurrentSpxCandle();
   const walls = getVectorGexWalls();
-  if (current && walls) {
-    const sample = { time: current.time, walls };
+  if (walls) {
+    const sampleTime = bucketWallSampleTime(Math.floor(Date.now() / 1000));
+    const sample = { time: sampleTime, walls };
     wallHistory = recordWallSample(wallHistory, sample);
     void appendSessionWallSample(todayEtYmd(), sample);
   }

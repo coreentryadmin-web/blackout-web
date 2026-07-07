@@ -4,20 +4,16 @@ export type WallHistorySample = { time: number; walls: GexWalls };
 
 export type StrikeTrailPoint = { time: number; pct: number };
 
-// ~one RTH session of 1-minute bars — mirrors spx-candle-store.ts's ring-buffer sizing, so the
-// trail can span a full session without growing unbounded across a long-running connection.
-const MAX_HISTORY = 390;
+// ~one RTH session at 15s trail cadence (390 min × 4 ≈ 1560) plus headroom.
+const MAX_HISTORY = 1920;
 
 /** Max simultaneous strike-keyed bead rows per side on the chart (reference shows ~4–6). */
 export const MAX_STRIKE_TRAILS_PER_SIDE = 8;
 
 /**
- * Append a wall reading into the session's history, keyed by the CANDLE's own bar time (not
- * wall-clock) so the client's historical dot-trail lines up exactly under the corresponding
- * candles. If the latest entry is for the SAME bar (still forming — the wall recomputes on
- * every ~1s tick, far more often than the once-a-minute bar rollover), replace it in place
- * rather than appending a duplicate, so one bar always maps to exactly one history entry.
- * Trimmed to MAX_HISTORY from the front so a long-running connection doesn't grow unbounded.
+ * Append a wall reading into the session's history, keyed by the trail bucket time (15s by
+ * default — see vector-wall-sample.ts). Replaces in place when the bucket is unchanged so
+ * magnitude updates within the same 15s window don't duplicate beads.
  */
 export function recordWallSample(history: WallHistorySample[], sample: WallHistorySample): WallHistorySample[] {
   const last = history[history.length - 1];

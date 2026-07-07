@@ -35,12 +35,12 @@ test("recordWallSample: replaces the last entry when the bar is still forming (s
 
 test("recordWallSample: trims from the front once the history exceeds the cap", () => {
   let history: WallHistorySample[] = [];
-  for (let i = 0; i < 400; i++) {
-    history = recordWallSample(history, { time: i * 60, walls: walls([6800], [6700]) });
+  for (let i = 0; i < 2000; i++) {
+    history = recordWallSample(history, { time: i * 15, walls: walls([6800], [6700]) });
   }
-  assert.equal(history.length, 390);
-  assert.equal(history[0].time, 10 * 60); // the oldest 10 entries fell off the front
-  assert.equal(history[history.length - 1].time, 399 * 60);
+  assert.equal(history.length, 1920);
+  assert.equal(history[0].time, 80 * 15);
+  assert.equal(history[history.length - 1].time, 1999 * 15);
 });
 
 test("trailForRank: projects one rank's strike/pct across the history, in order", () => {
