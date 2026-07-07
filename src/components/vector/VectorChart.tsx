@@ -12,6 +12,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { createVectorEventSource, type VectorWallLevel, type VectorWalls } from "@/lib/api";
+import { alphaForPct, widthForPct } from "@/lib/providers/vector-wall-visual";
 
 export type VectorBar = {
   time: UTCTimestamp;
@@ -39,11 +40,6 @@ function withAlpha(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-const RANK_ALPHA = [1, 0.65, 0.42, 0.28, 0.2];
-function alphaForRank(rank: number): number {
-  return RANK_ALPHA[rank] ?? RANK_ALPHA[RANK_ALPHA.length - 1];
-}
-
 function applyWallLines(
   series: ISeriesApi<"Candlestick">,
   linesRef: React.MutableRefObject<(IPriceLine | null)[]>,
@@ -64,14 +60,15 @@ function applyWallLines(
       continue;
     }
     const title = `${label} ${Math.round(level.strike)} — ${level.pct.toFixed(0)}%`;
-    const color = withAlpha(baseColor, alphaForRank(i));
+    const color = withAlpha(baseColor, alphaForPct(level.pct));
+    const lineWidth = widthForPct(level.pct);
     if (lines[i]) {
-      lines[i]!.applyOptions({ price: level.strike, title, color });
+      lines[i]!.applyOptions({ price: level.strike, title, color, lineWidth });
     } else {
       lines[i] = series.createPriceLine({
         price: level.strike,
         color,
-        lineWidth: 2,
+        lineWidth,
         lineStyle: LineStyle.Solid,
         axisLabelVisible: true,
         title,
