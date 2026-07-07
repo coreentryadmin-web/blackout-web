@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildReplayTimeline,
+  gammaFlipAtReplayTime,
   sliceBarsToTime,
   sliceHistoryToTime,
   wallsAtReplayTime,
@@ -43,4 +44,13 @@ test("sliceBarsToTime", () => {
     { time: 180, open: 3, high: 3, low: 3, close: 3 },
   ];
   assert.equal(sliceBarsToTime(bars, 120).length, 2);
+});
+
+test("gammaFlipAtReplayTime: latest flip at or before cursor", () => {
+  const history: WallHistorySample[] = [
+    { time: 100, walls: walls(6800, 6700), gammaFlip: 6740 },
+    { time: 130, walls: walls(6810, 6700), gammaFlip: 6755 },
+  ];
+  assert.equal(gammaFlipAtReplayTime(history, 120), 6740);
+  assert.equal(gammaFlipAtReplayTime(history, 130), 6755);
 });

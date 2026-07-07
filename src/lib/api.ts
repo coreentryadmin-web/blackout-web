@@ -662,11 +662,15 @@ export type VectorStreamCandle = { time: number; open: number; high: number; low
 export type VectorWallLevel = { strike: number; pct: number };
 /** Ranked strongest-first per side, capped server-side (gex-wall-levels.ts's DEFAULT_WALL_NODES_PER_SIDE). */
 export type VectorWalls = { callWalls: VectorWallLevel[]; putWalls: VectorWallLevel[] };
+export type VectorDarkPoolLevel = { strike: number; premium: number; pct: number };
+
 export type VectorStreamSnapshot = {
   candle: VectorStreamCandle | null;
   walls?: VectorWalls | null;
+  gammaFlip?: number | null;
+  darkPoolLevels?: VectorDarkPoolLevel[];
   t?: number;
-  /** Replica-local trail tail from the serving replica (merged on connect). */
+  sessionYmd?: string;
   wallHistory?: import("@/lib/providers/vector-wall-history").WallHistorySample[];
 };
 
@@ -684,7 +688,10 @@ export function createVectorEventSource(
         const hasWalls =
           Boolean(data.walls?.callWalls?.length) || Boolean(data.walls?.putWalls?.length);
         const hasWallHistory = Boolean(data.wallHistory?.length);
-        if (!hasCandle && !hasWalls && !hasWallHistory) return;
+        const hasOverlays =
+          data.gammaFlip != null ||
+          Boolean(data.darkPoolLevels?.length);
+        if (!hasCandle && !hasWalls && !hasWallHistory && !hasOverlays) return;
         onMessage(data);
       } catch {
         /* ignore */

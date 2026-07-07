@@ -43,6 +43,21 @@ export function wallsAtReplayTime(
   return null;
 }
 
+/** Latest gamma-flip reading at or before the replay cursor. */
+export function gammaFlipAtReplayTime(
+  history: WallHistorySample[],
+  cursorTime: number
+): number | null {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const sample = history[i];
+    if (sample.time <= cursorTime) {
+      const flip = sample.gammaFlip;
+      return flip != null && Number.isFinite(flip) && flip > 0 ? flip : null;
+    }
+  }
+  return null;
+}
+
 /** Format a unix-second timestamp for the replay scrubber (ET). */
 export function formatReplayClock(epochSec: number): string {
   return new Date(epochSec * 1000).toLocaleTimeString("en-US", {

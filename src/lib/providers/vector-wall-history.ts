@@ -1,6 +1,6 @@
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 
-export type WallHistorySample = { time: number; walls: GexWalls };
+export type WallHistorySample = { time: number; walls: GexWalls; gammaFlip?: number | null };
 
 export type StrikeTrailPoint = { time: number; pct: number };
 
@@ -95,12 +95,13 @@ export function pickActiveStrikes(
 export function seedWallHistoryForDisplay(
   history: WallHistorySample[],
   barTimes: number[],
-  walls: GexWalls | null | undefined
+  walls: GexWalls | null | undefined,
+  gammaFlip?: number | null
 ): WallHistorySample[] {
   if (history.length > 0 || !walls || barTimes.length === 0) return history;
   const lastTime = barTimes[barTimes.length - 1]!;
   if (!Number.isFinite(lastTime)) return history;
-  return recordWallSample([], { time: lastTime, walls });
+  return recordWallSample([], { time: lastTime, walls, gammaFlip: gammaFlip ?? null });
 }
 
 /** Merge server-observed history into the client buffer — union by bar time, longer tail wins ties. */
@@ -115,4 +116,18 @@ export function mergeWallHistory(
   for (const sample of remote) byTime.set(sample.time, sample);
   const merged = [...byTime.values()].sort((a, b) => a.time - b.time);
   return merged.length > MAX_HISTORY ? merged.slice(merged.length - MAX_HISTORY) : merged;
+}
+
+/** Gamma-flip bead trail — horizontal row at the flip strike when present. */
+export function trailForGammaFlip(
+  history: WallHistorySample[]
+): Array<{ time: number; strike: number }> {
+  const points: Array<{ time: number; strike: number }> = [];
+  for (const sample of history) {
+    const flip = sample.gammaFlip;
+    if (flip != null && Number.isFinite(flip) && flip > 0) {
+      points.push({ time: sample.time, strike: Math.round(flip) });
+    }
+  }
+  return points;
 }
