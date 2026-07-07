@@ -69,7 +69,7 @@ import {
   aggregateVectorBars,
   type VectorTimeframeMinutes,
 } from "@/lib/vector-bar-timeframes";
-import { mergeSpyVolumeRows } from "@/lib/vector-spy-volume";
+import { mergeSpyVolumeRows } from "@/lib/vector-spy-volume-merge";
 
 export type VectorBar = {
   time: UTCTimestamp;
