@@ -93,3 +93,10 @@ test("upsertZeroDteSetupLog: direction/top_strike/expiry are pinned (COALESCE-gu
   assert.match(upsertBody, /flow_avg_fill\s*=\s*COALESCE\(zerodte_setup_log\.flow_avg_fill,\s*EXCLUDED\.flow_avg_fill\)/);
   assert.match(upsertBody, /plan_json\s*=\s*COALESCE\(zerodte_setup_log\.plan_json,\s*EXCLUDED\.plan_json\)/);
 });
+
+test("connectionViaPooler: AWS RDS Proxy hostnames are treated like poolers (no statement_timeout startup param)", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const fn = src.slice(src.indexOf("function connectionViaPooler"), src.indexOf("function connectionCandidates"));
+  assert.match(fn, /\.proxy-/);
+  assert.match(fn, /pgbouncer/);
+});
