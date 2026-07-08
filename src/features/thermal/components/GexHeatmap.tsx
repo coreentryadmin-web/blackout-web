@@ -16,6 +16,7 @@ import {
   TabPanel,
 } from "@/components/ui";
 import { AnchorGlyph, PanelLabel } from "@/components/desk/gex-heatmap/primitives";
+import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
 import { shiftPercentForStrike } from "@/components/desk/gex-heatmap/shift-math";
 import { createPulseEventSource, type PulseStreamSnapshot } from "@/lib/api";
 import { usePollIntervalMs } from "@/hooks/use-et-market-open";
@@ -880,7 +881,7 @@ function ExposureProfile({
               style={isAnchor ? { boxShadow: "inset 0 0 18px rgba(255,255,255,0.12)" } : undefined}
               title={
                 isAnchor
-                  ? `KING NODE · ${fmtStrike(r.strike)} · ${fmtMoney(r.value)} — dominant dealer gamma node`
+                  ? `${GEX_KING_DUAL_LABEL} · ${fmtStrike(r.strike)} · ${fmtMoney(r.value)} — ${GEX_KING_NODE_HELP}`
                   : `${fmtStrike(r.strike)} · ${fmtMoney(r.value)}`
               }
             >
@@ -901,7 +902,7 @@ function ExposureProfile({
                 <span className="inline-flex items-center justify-end gap-1">
                   {/* ANCHOR pin — bright-white ◆ diamond glyph, the unmistakable dominant-node marker. */}
                   {isAnchor && (
-                    <span className="text-white" title="King node — dominant dealer gamma node">
+                    <span className="text-white" title={GEX_KING_NODE_HELP}>
                       <AnchorGlyph size={11} />
                     </span>
                   )}
@@ -1002,7 +1003,7 @@ function ExposureProfile({
                 {/* ANCHOR tag — leads the row's tag slot when this is the dominant node. */}
                 {isAnchor && (
                   <span className="inline-flex items-center gap-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-white">
-                    <AnchorGlyph size={9} /> King
+                    <AnchorGlyph size={9} /> {GEX_KING_COMPACT_LABEL}
                   </span>
                 )}
                 {/* Wall tags only exist on GEX/VEX (DEX/CHARM have no walls → these never fire). */}
@@ -1053,7 +1054,7 @@ function ExposureProfile({
       {anchor != null && (
         <div className="mt-2 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-white">
           <AnchorGlyph size={10} />
-          KING NODE · {fmtStrike(anchor)} — dominant dealer {v.noun.toLowerCase()} node (strongest pin/anchor)
+          {GEX_KING_DUAL_LABEL} · {fmtStrike(anchor)} — {GEX_KING_NODE_HELP}
         </div>
       )}
 
@@ -3221,11 +3222,11 @@ export function GexHeatmap({
       if (matrixAnchorStrike != null) {
         cellsOut.push({
           key: "anchor",
-          label: "King node",
+          label: GEX_KING_DUAL_LABEL,
           value: fmtStrike(matrixAnchorStrike),
           tone: "wall",
           anchor: true,
-          help: "The single strike with the largest absolute net dealer gamma — the dominant dealer-gamma concentration, i.e. the strongest pin/anchor price tends to gravitate toward into expiration.",
+          help: GEX_KING_NODE_HELP,
         });
       }
       return cellsOut;
@@ -3543,9 +3544,9 @@ export function GexHeatmap({
         )}
         {/* ANCHOR legend — the dominant dealer-gamma node (max |net|), now a BRIGHT-WHITE ◆. */}
         {matrixAnchorStrike != null && (
-          <span className="flex items-center gap-1.5 text-white">
+          <span className="flex items-center gap-1.5 text-white" title={GEX_KING_NODE_HELP}>
             <AnchorGlyph size={11} />
-            <span aria-hidden>king node</span>
+            <span aria-hidden>{gexKingDualLabel("near-term")}</span>
             <span className="text-white">{fmtStrike(matrixAnchorStrike)}</span>
           </span>
         )}
@@ -3583,7 +3584,7 @@ export function GexHeatmap({
             <span aria-hidden className="text-[13px] leading-none text-amber-400 [text-shadow:0_0_6px_rgba(251,191,36,0.9)]">
               ★
             </span>
-            <span aria-hidden>per-day King</span>
+            <span aria-hidden>per-day {GEX_KING_DUAL_LABEL}</span>
           </span>
         )}
         {/* Far-dated monthly/quarterly OpEx columns are gold-marked (◆) — where the dominant
