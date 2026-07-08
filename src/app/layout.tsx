@@ -12,6 +12,7 @@ import { SITE } from "@/lib/site";
 import { PwaRegister } from "@/components/PwaRegister";
 import { IosViewportLock } from "@/components/ios/IosViewportLock";
 import { IosKeyboardRoot } from "@/hooks/useIosKeyboardInset";
+import { clerkAllowedRedirectOrigins } from "@/lib/clerk-env";
 import "./globals.css";
 import "./ios-native.css";
 import "./ios-native-pages.css";
@@ -97,6 +98,7 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const allowedRedirectOrigins = clerkAllowedRedirectOrigins();
   return (
     <html
       lang="en"
@@ -132,7 +134,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             per-request (dynamic) auth rendering with `dynamic` — preserving the v5 behavior the
             client nav (useAuth) relies on. v7 also carries the RSC-handshake fix for the soft-nav
             sign-in bounce and clears the GHSA-w24r-5266-9c3c auth-bypass CVE. */}
-        <ClerkProvider dynamic>
+        <ClerkProvider
+          dynamic
+          {...(allowedRedirectOrigins ? { allowedRedirectOrigins } : {})}
+        >
           <MotionProvider>
             <SessionCacheGuard />
             <ClientErrorReporter />
