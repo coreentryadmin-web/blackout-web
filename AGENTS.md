@@ -62,6 +62,17 @@ The ~20 `railway.*.toml` files at the repo root are production cron *trigger* se
   (`role:"admin"` bypasses per-tool launch gates; `tier` drives `requireTierApi`), open
   `https://blackouttrades.com/sign-in?__clerk_ticket=<token>`, then **DELETE the test user afterward**
   (`DELETE /v1/users/{id}`) — it is a real user on the prod Clerk instance.
+- **Rendering an authed/premium page on localhost anyway (recommended for local UI testing).** Launch the
+  dev server with the prod Clerk keys **unset** so keyless mode engages, e.g.
+  `env -u CLERK_SECRET_KEY -u NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY npm run dev`. Keyless writes an ephemeral
+  dev instance's own keys to `.clerk/.tmp/keyless.json`. The sign-up **form is blocked by Cloudflare
+  Turnstile CAPTCHA in automated/headless browsers** ("CAPTCHA failed to load"), so instead use that
+  file's `secretKey` to hit the **Backend API** (`https://api.clerk.com/v1`): create a user with
+  `public_metadata` `{ "role":"admin", "tier":"premium" }` + `skip_password_checks:true`, mint a
+  `sign_in_token`, then open `http://localhost:3000/sign-in?__clerk_ticket=<token>` — this bypasses the
+  CAPTCHA and lands in the authed app. With `UW_API_KEY`/`POLYGON_API_KEY` present the SPX Slayer
+  dashboard renders live GEX/market panels. The keyless instance is ephemeral, but delete test users when
+  done to keep it clean.
 
 ### Premium tool launch gate (LAUNCHED_TOOLS)
 - Non-admin premium users only see tools where `isToolLaunched()` is true (SPX Slayer + HELIX by default;
