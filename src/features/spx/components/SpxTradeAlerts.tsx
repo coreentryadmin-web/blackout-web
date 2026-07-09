@@ -8,6 +8,7 @@ import { useSpxPlay } from "@/features/spx/hooks/useSpxPlay";
 import { useSpxLotto } from "@/features/spx/hooks/useSpxLotto";
 import { useSpxPowerHour } from "@/features/spx/hooks/useSpxPowerHour";
 import { useStablePlayConfirmations, type PlayConfirmationLayer } from "@/features/spx/hooks/useStablePlayConfirmations";
+import { SpxLiveSpotPrice } from "./SpxLiveSpotPrice";
 import { Badge, Kicker } from "@/components/ui";
 import { fmtPrice } from "@/lib/api";
 import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
@@ -633,6 +634,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
       )}
     >
       <div className="spx-sniper-panel-content">
+      <SpxLiveSpotPrice desk={desk} live={live} size="panel" className="spx-play-engine-spot mb-4 hide-in-ios-app" />
       <header className="spx-trade-alerts-header">
         <div className="min-w-0">
           <Kicker className="mb-1">PLAY ENGINE</Kicker>
