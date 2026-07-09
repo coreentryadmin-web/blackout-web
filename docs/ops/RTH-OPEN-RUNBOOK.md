@@ -119,6 +119,11 @@ Fix any FAIL → branch → PR → merge → re-run until GREEN.
 `audit-output/rth-continuous/YYYY-MM-DD/metrics.ndjson`. Run in tmux on Cloud Agent + GHA
 `rth-continuous-monitor.yml`.
 
+**Seven dedicated tool agents (09:31 ET):** see `docs/ops/TOOL-AGENT-PROGRAM.md` — one agent each
+for SPX Slayer, Thermal, HELIX, Largo, Night Hawk, 0DTE, Vector. Each runs
+`npm run validate:tool-agent:{tool}` continuously, writes `cto-report-*.md` + `findings.ndjson`,
+launched via `tool-agents-launch.yml` or `npm run validate:tool-agents:launch`.
+
 ### 1. Speed (per page)
 - Measure **TTFB** and **time-to-interactive** on hard load, and **soft-nav** time (click the
   nav link → first meaningful paint). Prefetch is enabled, so soft-nav should feel near-instant.
