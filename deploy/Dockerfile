@@ -4,7 +4,8 @@
 #
 # Build:  docker build -f deploy/Dockerfile -t blackout-web .
 # Run:    docker run --rm -p 3000:3000 -e PORT=3000 blackout-web
-# Health: GET /api/ready (same as Railway)
+# Health: ECS web liveness GET /api/health; ALB readiness GET /api/ready.
+# Market-data worker overrides HEALTH_CHECK_PATH=/api/worker/health and CMD.
 
 FROM node:20-bookworm-slim AS base
 WORKDIR /app
@@ -39,11 +40,12 @@ RUN groupadd --system --gid 1001 nodejs \
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/deploy/market-worker.mjs ./deploy/market-worker.mjs
 
 USER nextjs
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "const p=process.env.HEALTH_CHECK_PATH||'/api/health';fetch('http://127.0.0.1:'+(process.env.PORT||3000)+p).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "server.js"]

@@ -3,6 +3,7 @@ import { initUwSocket, shutdownUwSocket } from "@/lib/ws/uw-socket";
 import { initOptionsSocket, shutdownOptionsSocket } from "@/lib/ws/options-socket";
 import { initStocksSocket, shutdownStocksSocket } from "@/lib/ws/stocks-socket";
 import { initFlowEventBridge } from "@/lib/flow-events";
+import { shouldBootDataSockets, shouldRunRthWarmLeader } from "@/lib/process-role";
 
 let initialized = false;
 let closed = false;
@@ -43,6 +44,7 @@ function installShutdownHandlers() {
 
 /** Initialize UW + Polygon + options WebSocket managers once per server process. */
 export function ensureDataSockets() {
+  if (!shouldBootDataSockets()) return;
   if (initialized) return;
   initialized = true;
   // Wire graceful shutdown the first time the sockets are booted, so the old
@@ -76,11 +78,13 @@ export function ensureDataSockets() {
   } catch (err) {
     console.warn("[init-data-sockets] stocks/LULD socket init failed (non-fatal):", err);
   }
-  // Backup RTH warmers when Railway cron triggers stall (#90 silent-death). Leader-elected;
-  // dispatches idempotent cache warmers from in-process when cron_job_runs age exceeds cadence.
-  void import("@/lib/rth-warm-leader")
-    .then(({ ensureRthWarmLeader }) => ensureRthWarmLeader())
-    .catch((err) => console.warn("[init-data-sockets] RTH warm leader init failed (non-fatal):", err));
+  // Backup RTH warmers when cron triggers stall (#90 silent-death). Runs on ingest worker only
+  // (web tier relies on EventBridge warm crons + platform-warm).
+  if (shouldRunRthWarmLeader()) {
+    void import("@/lib/rth-warm-leader")
+      .then(({ ensureRthWarmLeader }) => ensureRthWarmLeader())
+      .catch((err) => console.warn("[init-data-sockets] RTH warm leader init failed (non-fatal):", err));
+  }
 }
 
 /**

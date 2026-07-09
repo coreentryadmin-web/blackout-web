@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
+import { isWebProcess } from "@/lib/process-role";
+import { probeClusterSocketHealth } from "@/lib/ws/cluster-socket-probe";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { getIndexStoreStatus } from "@/lib/ws/polygon-socket";
 import { getUwSocketHealth } from "@/lib/ws/uw-socket";
@@ -29,6 +31,19 @@ export async function GET(req: NextRequest) {
   } | null = null;
 
   try {
+    if (isWebProcess()) {
+      const cluster = await probeClusterSocketHealth();
+      payload = {
+        ok: cluster.ok,
+        as_of: cluster.as_of,
+        market_hours: false,
+        websockets: {
+          mode: cluster.mode,
+          cluster: cluster,
+        },
+        ...(cluster.detail ? { error: cluster.detail } : {}),
+      };
+    } else {
     ensureDataSockets();
 
     const options = getOptionsSocketStatus();
@@ -93,6 +108,7 @@ export async function GET(req: NextRequest) {
         },
       },
     };
+    }
   } catch (err) {
     console.error("[cron/socket-health]", err instanceof Error ? err.message : err);
     payload = {
