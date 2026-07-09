@@ -16,7 +16,9 @@ import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 
 const ET = "America/New_York";
 const force = process.argv.includes("--force");
-const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
+/** Public origin for audits — Clerk + Cloudflare; never use internal ALB DNS here. */
+const AUDIT_BASE = "https://blackouttrades.com";
+const BASE = AUDIT_BASE.replace(/\/$/, "");
 
 function etParts(now = new Date()) {
   const fmt = new Intl.DateTimeFormat("en-US", {

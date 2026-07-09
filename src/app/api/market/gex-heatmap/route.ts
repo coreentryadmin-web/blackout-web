@@ -303,7 +303,7 @@ export async function GET(req: NextRequest) {
     let cross_validation = null;
     if (isHeatmapPreset(ticker) && heatmap.gex) {
       const nearTermExpiries = resolveNearTermExpiriesForCrossValidation(heatmap);
-      cross_validation = await validateGexAgainstUW(
+      const crossValidationPromise = validateGexAgainstUW(
         ticker,
         {
           callWall: heatmap.gex.call_wall,
@@ -312,6 +312,11 @@ export async function GET(req: NextRequest) {
         },
         { spot: heatmap.spot, nearTermExpiries }
       ).catch(() => null);
+      const timeoutMs = Number(process.env.GEX_CROSS_VALIDATION_TIMEOUT_MS ?? 2500);
+      cross_validation = await Promise.race([
+        crossValidationPromise,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+      ]);
     }
 
     // A non-null heatmap can still be UNUSABLE: fetchGexHeatmap's emptyHeatmap() fallback

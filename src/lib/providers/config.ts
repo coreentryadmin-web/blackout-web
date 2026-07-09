@@ -55,6 +55,14 @@ export function deskFlowCacheTtlMs(): number {
   return Math.round(sec * 1000);
 }
 
+/** 0DTE Command board payload (scan + ledger + intel). Default 30s — SWR across replicas. */
+export function zerodteBoardCacheTtlMs(): number {
+  const raw = process.env.ZERODTE_BOARD_CACHE_SEC?.trim();
+  const sec = raw ? Number(raw) : 30;
+  if (!Number.isFinite(sec) || sec < 0) return 30_000;
+  return Math.round(sec * 1000);
+}
+
 /** Optional merge from engine /spx/state. Off by default — website owns live desk data. */
 export function engineIntelOverlayEnabled(): boolean {
   return process.env.ENGINE_INTEL_OVERLAY?.trim().toLowerCase() === "1";

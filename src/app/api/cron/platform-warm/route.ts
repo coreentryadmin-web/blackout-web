@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { isEtCashRth } from "@/lib/et-market-hours";
-import { vectorWarmTickers, vectorUniverseTickers } from "@/lib/heatmap-allowlist";
+import { heatmapPresetTickers, vectorWarmTickers, vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import {
   loadBootstrapBundle,
@@ -25,6 +25,7 @@ import { fetchVectorSeedBars, primeVectorWallScope, refreshVectorUniverseSnapsho
 import { warmVectorDarkPool } from "@/features/vector/lib/vector-dark-pool-cache";
 import { warmGridEarnings } from "@/lib/zerodte/earnings";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
+import { primeZeroDteBoardCache } from "@/lib/platform/zerodte-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,25 +82,36 @@ export async function GET(req: NextRequest) {
   ]);
 
   let ok = 0;
+  let failed = 0;
   for (const r of results) {
     if (r.status === "fulfilled") ok += 1;
+    else failed += 1;
   }
-  const failed = results.length - ok;
+
+  // Late refresh — early matrix/board warms can age out during this long batch (~20s+).
+  const finalize = await Promise.allSettled([
+    ...heatmapPresetTickers().map((t) => fetchGexHeatmap(t)),
+    primeZeroDteBoardCache(),
+  ]);
+  for (const r of finalize) {
+    if (r.status === "fulfilled") ok += 1;
+    else failed += 1;
+  }
 
   await logCronRun("platform-warm", started, {
-    ok: failed < results.length,
+    ok: failed < results.length + finalize.length,
     warmed: ok,
     failed,
-    total: results.length,
+    total: results.length + finalize.length,
     heatmap_tickers: heatmapTickers.length,
     dark_pool_tickers: darkPoolTickers.length,
-    ...(failed > 0 ? { error: `${failed}/${results.length} platform warm task(s) failed` } : {}),
+    ...(failed > 0 ? { error: `${failed}/${results.length + finalize.length} platform warm task(s) failed` } : {}),
   });
 
   return NextResponse.json({
-    ok: failed < results.length,
+    ok: failed < results.length + finalize.length,
     warmed: ok,
     failed,
-    total: results.length,
+    total: results.length + finalize.length,
   });
 }
