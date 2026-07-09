@@ -105,8 +105,13 @@ Repo → **Settings → Secrets and variables → Actions**:
 > `ops-auto-fix`) for any **P0/P1**; then run the Fix loop until GREEN.
 
 **Pages to cover every pass:** `/dashboard` (SPX Slayer), `/flows` (HELIX), `/heatmap`
-(BlackOut Thermal — test BOTH Matrix and Profile), `/grid` (and each of the 12 panels),
-`/nighthawk`, `/terminal` (Largo), `/track-record`.
+(BlackOut Thermal — test BOTH Matrix and Profile), `/vector` (live chart + GEX/VEX walls),
+`/grid` (and each of the 12 panels), `/nighthawk`, `/terminal` (Largo), `/track-record`.
+
+**Site-wide speed gate (09:30+ ET):** `npm run validate:rth-latency` — force `platform-warm`,
+assert warm crons fresh, then `validate:site-latency` on every premium API + page (Vector, Largo,
+Thermal, desk, flows, 0DTE). Also runs automatically as step 3 of `validate:rth-open` after open.
+Fix any FAIL → branch → PR → merge → re-run until GREEN.
 
 ### 1. Speed (per page)
 - Measure **TTFB** and **time-to-interactive** on hard load, and **soft-nav** time (click the
