@@ -35,6 +35,8 @@ import {
 } from "@/features/spx/lib/spx-signals-shadow-precedents";
 import { findSimilarPrecedents } from "@/lib/bie/precedent-search";
 import { bieEmbeddingsConfigured } from "@/lib/bie/embeddings";
+import { matchPlaybooksShadow } from "@/features/spx/lib/playbook-shadow-matcher";
+import type { PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
 
 const CURSOR_KEY = "spx_signal_log_cursor";
 
@@ -695,6 +697,59 @@ export async function logSpxPrecedentsShadowFactor(
       implied_weight: obs.implied_weight,
       direction: obs.direction,
       detail: obs.detail,
+      price_at_observation: desk.price ?? null,
+      actual_score: confluence.score,
+      actual_grade: confluence.grade,
+    });
+  }
+}
+
+/**
+ * SHADOW-MODE playbook match logging, Phase 1 (PB-01/02/03) — sibling of
+ * logSpxShadowFactors above, same fire-and-forget call contract from evaluateSpxPlay
+ * (src/features/spx/lib/spx-play-engine.ts), same pre-Night-Hawk-bonus score/grade
+ * snapshot. See src/features/spx/lib/playbook-shadow-matcher.ts's module doc for the
+ * full rationale and inertness proof: this asks "which of the first 3 named SPX Slayer
+ * playbooks (docs/spx/SPX-Slayer-Playbook-Design-v1.docx Section 6) would have matched
+ * right now," purely for future win-rate telemetry — nothing here can affect the real
+ * BUY/WATCH/HOLD/SELL decision.
+ *
+ * REUSES spx_confluence_shadow_observations (db.ts) rather than adding a new table —
+ * confirmed its existing schema already fits: `factor_name` is the discriminator column
+ * (this writes one row per playbook per tick, `factor_name` = "playbook_pb_01_match"
+ * etc., mirroring flow_anomaly_watch's one-row-per-ticker shape), `direction` accepts
+ * the same bullish/bearish/neutral vocabulary every other shadow factor already writes
+ * (long -> bullish, short -> bearish, no trigger -> neutral), and `detail` (a free-text
+ * TEXT column) is where the structured `session_window_open`/`precondition_match`/
+ * `trigger_fired`/`primary` fields this task asked to persist actually go, since no
+ * existing column models "is this row the primary pick" — appending a compact
+ * `key=value` tail to detail was judged simpler and more consistent with this table's
+ * existing all-free-text `detail` convention than adding new nullable columns for a
+ * Phase-1-only, not-yet-evidence-gated feature. `implied_weight` is always 0 for every
+ * row here — a playbook match is a CATEGORICAL identity, not a confluence score
+ * contribution, so there is nothing to weight (unlike the other shadow factors, which
+ * each represent "how many points this WOULD have added").
+ */
+export async function logPlaybookShadowMatch(
+  desk: SpxDeskPayload,
+  technicals: PlayTechnicals,
+  confluence: { score: number; grade: string }
+): Promise<void> {
+  if (!dbConfigured()) return;
+
+  const { verdicts, primary_playbook_id } = matchPlaybooksShadow(desk, technicals);
+  const sessionDate = todayEtYmd();
+
+  for (const v of verdicts) {
+    const direction = v.direction === "long" ? "bullish" : v.direction === "short" ? "bearish" : "neutral";
+    const isPrimary = v.playbook_id === primary_playbook_id;
+    await insertShadowFactorObservation({
+      session_date: sessionDate,
+      factor_name: `playbook_${v.playbook_id.toLowerCase().replace("-", "_")}_match`,
+      available: true,
+      implied_weight: 0,
+      direction,
+      detail: `${v.detail} [window_open=${v.session_window_open} precondition=${v.precondition_match} trigger=${v.trigger_fired} primary=${isPrimary} regime=${desk.regime}]`,
       price_at_observation: desk.price ?? null,
       actual_score: confluence.score,
       actual_grade: confluence.grade,

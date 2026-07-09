@@ -82,6 +82,7 @@ mock.module("./spx-signal-log", {
     logSpxEcosystemShadowFactors: async () => {},
     logMegaCapCatalystShadowFactors: async () => {},
     logSpxPrecedentsShadowFactor: async () => {},
+    logPlaybookShadowMatch: async () => {},
     maybeLogSpxEngineSnapshot: async () => {},
   },
 });
