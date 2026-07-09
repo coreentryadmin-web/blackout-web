@@ -109,6 +109,16 @@ export const CRON_JOBS: CronJobDefinition[] = [
     description: "Pre-warm SPX desk/flow/pulse cache lanes + SPX GEX matrix so dashboard polls are pure cache hits (no multi-second buildSpxDesk blocks)",
   },
   {
+    key: "platform-warm",
+    name: "Platform Warm",
+    kind: "http",
+    path: "/api/cron/platform-warm",
+    schedule_label: "~Every 5 min (24/7 when CACHE_WARM_OFF_HOURS=1)",
+    stale_after_min: 10,
+    description:
+      "Coordinated warm for every member-facing tool — SPX bootstrap, all Thermal presets, Vector seed bars + wall scope, universe snapshot, dark-pool levels, 0DTE board — so cold first paint is not SPX-desk-only",
+  },
+  {
     key: "zerodte-warm",
     name: "0DTE Command Warm",
     kind: "http",

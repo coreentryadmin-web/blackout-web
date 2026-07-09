@@ -30,6 +30,7 @@ const API_PATHS = [
   "/api/market/spx/play",
   "/api/market/gex-heatmap?ticker=SPX",
   "/api/market/gex-heatmap?ticker=SPY",
+  "/api/market/vector/universe",
   "/api/market/flows?limit=30",
   "/api/market/nighthawk/edition",
   "/api/market/zerodte/board",
@@ -40,6 +41,16 @@ const PAGES = [
   { path: "/dashboard", label: "dashboard", ready: () => document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= 20 },
   { path: "/flows", label: "flows", ready: () => document.body.innerText.length > 500 },
   { path: "/heatmap", label: "heatmap", ready: () => document.querySelector(".gex-heatmap-panel") != null },
+  {
+    path: "/vector",
+    label: "vector",
+    ready: () => document.querySelector(".vector-chart-canvas") != null,
+  },
+  {
+    path: "/terminal",
+    label: "largo",
+    ready: () => document.querySelector(".largo-chat-container") != null,
+  },
   {
     path: "/nighthawk",
     label: "nighthawk",

@@ -14,6 +14,7 @@ export const CRON_SERVICE_NAMES = {
   "zerodte-warm": "ZeroDTE-Warm-Cron",
   "heatmap-warm": "heatmap-warm",
   "desk-warm": "SPX-Desk-Warm",
+  "platform-warm": "Platform-Warm",
   "largo-cleanup": "Largo-Chat-CleanUp",
   "market-regime-detector": "Market-Regime-Detector",
   "membership-reconcile": "Membership-Reconcile",

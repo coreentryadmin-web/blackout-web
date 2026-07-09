@@ -1,3 +1,4 @@
+import { withServerCache } from "@/lib/server-cache";
 import type { UTCTimestamp } from "lightweight-charts";
 import { formatEtDate, previousTradingDayEt } from "@/features/nighthawk/lib/session";
 import { fetchIndexMinuteBars, fetchStockMinuteBars } from "@/lib/providers/polygon";
@@ -38,11 +39,12 @@ function mapMinuteBars(bars: AggBar[], volumeByTime?: Map<number, number>): Vect
     });
 }
 
-/**
- * Seed bars for the Vector chart: today's session first, then walk back through prior
- * trading days until Polygon returns data.
- */
-export async function fetchVectorSeedBars(
+function vectorSeedCacheMs(): number {
+  const sec = Number(process.env.VECTOR_SEED_CACHE_SEC ?? 120);
+  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 120_000;
+}
+
+async function buildVectorSeedBars(
   ticker: string = VECTOR_DEFAULT_TICKER,
   now = new Date(),
   fetchIndex: typeof fetchIndexMinuteBars = fetchIndexMinuteBars,
@@ -80,4 +82,30 @@ export async function fetchVectorSeedBars(
   }
 
   return { bars: [], sessionYmd: today, ticker: t };
+}
+
+/**
+ * Seed bars for the Vector chart: today's session first, then walk back through prior
+ * trading days until Polygon returns data. Cached in Redis + in-process so SSR /vector
+ * stays sub-second on warm replicas (was 5–8s cold Polygon fan-out per ECS task).
+ */
+export async function fetchVectorSeedBars(
+  ticker: string = VECTOR_DEFAULT_TICKER,
+  now = new Date(),
+  fetchIndex: typeof fetchIndexMinuteBars = fetchIndexMinuteBars,
+  fetchStock: typeof fetchStockMinuteBars = fetchStockMinuteBars,
+  fetchSpyVolume: (ymd: string) => Promise<Map<number, number>> = fetchSpyVolumeByMinute
+): Promise<{
+  bars: VectorSeedBar[];
+  sessionYmd: string;
+  ticker: string;
+}> {
+  const t = normalizeVectorTicker(ticker);
+  const date = formatEtDate(now);
+  return withServerCache(
+    `vector-seed-bars:${t}:${date}`,
+    vectorSeedCacheMs(),
+    () => buildVectorSeedBars(t, now, fetchIndex, fetchStock, fetchSpyVolume),
+    { staleWhileRevalidate: true }
+  );
 }
