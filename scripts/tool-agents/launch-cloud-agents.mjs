@@ -8,7 +8,7 @@
  *
  * Requires: CURSOR_API_KEY
  */
-import { TOOL_KEYS } from "./registry.mjs";
+import { TOOL_KEYS } from "./tool-keys.mjs";
 
 const REPO = "https://github.com/coreentryadmin-web/blackout-web";
 const only = process.argv.find((a) => a.startsWith("--tool="))?.slice(7);
