@@ -8677,20 +8677,44 @@ body::before {
     padding-bottom: 0.25rem !important;
   }
 
+  .spx-sniper-desk.spx-sniper-desk-fill {
+    @apply space-y-0;
+  }
+
   .spx-sniper-desk-fill {
-    @apply flex flex-1 flex-col min-h-0 w-full gap-1;
+    @apply flex flex-1 flex-col min-h-0 w-full gap-0;
+  }
+
+  .spx-sniper-command-band {
+    @apply flex flex-col gap-1.5;
+  }
+
+  @media (min-width: 1024px) {
+    .spx-sniper-desk-fill .spx-sniper-command-band {
+      @apply flex-row items-center gap-3;
+    }
+
+    .spx-sniper-desk-fill .spx-sniper-command-stats {
+      @apply flex-1 min-w-0;
+    }
   }
 
   .spx-sniper-desk-fill .spx-sniper-command {
-    @apply shrink-0 rounded-xl px-3 py-2 md:px-4 md:py-2;
+    @apply shrink-0 rounded-xl px-3 py-1.5 md:px-4 md:py-1.5;
     box-shadow:
       0 0 40px rgba(0, 230, 118, 0.1),
       inset 0 0 32px rgba(0, 230, 118, 0.03);
   }
 
+  @media (min-width: 1024px) {
+    .spx-sniper-desk-fill .spx-sniper-command {
+      @apply py-1.5;
+    }
+  }
+
   .spx-sniper-desk-fill .spx-sniper-triple {
-    @apply flex-1 min-h-0;
-    min-height: calc(100dvh - var(--nav-offset) - 6.75rem);
+    @apply flex-1 min-h-0 gap-2;
+    min-height: 0;
   }
 
   .spx-sniper-desk-fill .spx-sniper-left-rail,
@@ -8723,12 +8747,6 @@ body::before {
 
   .spx-sniper-desk-fill .spx-trade-alerts-panel {
     @apply h-full min-h-0;
-  }
-
-  @media (min-width: 1280px) {
-    .spx-sniper-desk-fill .spx-sniper-triple {
-      min-height: calc(100dvh - var(--nav-offset) - 6.25rem);
-    }
   }
 
   .spx-sniper-desk-loading {
