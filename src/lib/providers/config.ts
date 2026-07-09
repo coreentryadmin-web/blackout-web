@@ -63,6 +63,14 @@ export function zerodteBoardCacheTtlMs(): number {
   return Math.round(sec * 1000);
 }
 
+/** Cross-service platform snapshot. Default 30s with SWR. */
+export function platformSnapshotCacheTtlMs(): number {
+  const raw = process.env.PLATFORM_SNAPSHOT_CACHE_SEC?.trim();
+  const sec = raw ? Number(raw) : 30;
+  if (!Number.isFinite(sec) || sec < 0) return 30_000;
+  return Math.round(sec * 1000);
+}
+
 /** HELIX flow tape + platform refs. Default 60s — SWR keeps polls on hot reads. */
 export function flowTapeCacheTtlMs(): number {
   const raw = process.env.FLOW_TAPE_CACHE_SEC?.trim();

@@ -2,6 +2,8 @@ import { isWebProcess, shouldRunRthWarmLeader } from "@/lib/process-role";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { heatmapPresetTickers } from "@/lib/heatmap-allowlist";
 import { primeGexOverlays } from "@/lib/gex-overlay";
+import { getCachedPlatformSnapshot } from "@/lib/platform-snapshot-cache";
+import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
 import {
   loadBootstrapBundle,
   loadMergedSpxDesk,
@@ -31,11 +33,13 @@ export function ensureWebBootWarm(): void {
     await Promise.allSettled([
       loadBootstrapBundle(),
       loadMergedSpxDesk(),
-      ...presets.map(async (t) => {
-        const hm = await fetchGexHeatmap(t);
-        if (hm?.strikes?.length) await primeGexOverlays(t, hm.strikes);
-      }),
-    ]);
+    ...presets.map(async (t) => {
+      const hm = await fetchGexHeatmap(t);
+      if (hm?.strikes?.length) await primeGexOverlays(t, hm.strikes);
+    }),
+    getCachedPlatformSnapshot(),
+    getZeroDteBoardPayload(),
+  ]);
   })().catch((err) => {
     console.warn("[web-boot-warm] non-fatal:", err instanceof Error ? err.message : err);
   });

@@ -27,6 +27,7 @@ import { warmVectorDarkPool } from "@/features/vector/lib/vector-dark-pool-cache
 import { warmGridEarnings } from "@/lib/zerodte/earnings";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
 import { primeZeroDteBoardCache } from "@/lib/platform/zerodte-service";
+import { getCachedPlatformSnapshot } from "@/lib/platform-snapshot-cache";
 import { getFlowPlatformRefs } from "@/lib/flow-platform-refs";
 import { primeGexOverlays } from "@/lib/gex-overlay";
 
@@ -100,6 +101,7 @@ export async function GET(req: NextRequest) {
       if (hm?.strikes?.length) await primeGexOverlays(t, hm.strikes);
     }),
     primeZeroDteBoardCache(),
+    getCachedPlatformSnapshot(),
   ]);
   for (const r of finalize) {
     if (r.status === "fulfilled") ok += 1;
