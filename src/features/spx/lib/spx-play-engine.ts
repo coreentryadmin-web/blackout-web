@@ -1140,7 +1140,7 @@ async function evaluateSpxPlayCore(
       score: closedConfluence?.score ?? 0,
       confidence: closedConfluence?.confidence ?? 0,
       headline: "Session closed",
-      thesis: `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes 6:30 AM PT`,
+      thesis: `Session closed · desk re-arms 6:30 AM PT`,
       idle_message: null,
       factors: closedConfluence?.factors ?? [],
       levels: {

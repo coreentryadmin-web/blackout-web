@@ -258,7 +258,7 @@ export function SpxCommentaryRail({
             {live ? "Live commentary" : "Commentary standby"}
           </p>
           <span className="font-syne text-base tracking-[0.12em] text-purple-light block font-bold">
-            {live ? "Largo" : "Largo · offline"}
+            Largo
           </span>
         </div>
         {live && (

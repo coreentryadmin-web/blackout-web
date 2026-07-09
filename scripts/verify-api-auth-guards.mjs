@@ -34,6 +34,10 @@ const PUBLIC_ROUTE_ALLOWLIST = new Set([
   "src/app/api/telemetry/auth-failure/route.ts",
   // Public Whop checkout URLs — runtime env from ECS secrets (no auth, no PII).
   "src/app/api/public/checkout-urls/route.ts",
+  // Cognito OAuth kickoff/callback/logout — browser redirects before any session exists.
+  "src/app/api/auth/cognito/login/route.ts",
+  "src/app/api/auth/cognito/callback/route.ts",
+  "src/app/api/auth/cognito/logout/route.ts",
 ]);
 
 const GUARD_PATTERNS = [
