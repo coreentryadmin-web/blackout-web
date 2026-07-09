@@ -1,17 +1,29 @@
+"use client";
+
 import {
-  WHOP_CHECKOUT,
-  WHOP_PREMIUM_CHECKOUT_OPTIONS,
   WHOP_CHECKOUT_UNAVAILABLE_MESSAGE,
 } from "@/lib/whop-checkout";
 import { valuePropFor } from "@/lib/upsell-features";
+import { useWhopCheckout } from "@/hooks/useWhopCheckout";
 
-// Presentational only. Renders the EXISTING Whop checkout options as a value-framed
-// ladder. Hrefs/labels/value-props are unchanged (already wired to Whop). No billing
-// logic, no new tiers. Prices are parsed from the option label — never hardcoded.
+// Presentational only. Checkout hrefs load at runtime from /api/public/checkout-urls
+// so ECS secrets work without rebuilding the Docker image (force-static upgrade page).
 export function PlanLadder() {
-  if (WHOP_PREMIUM_CHECKOUT_OPTIONS.length === 0) {
-    return WHOP_CHECKOUT.store ? (
-      <a href={WHOP_CHECKOUT.store} target="_blank" rel="noopener noreferrer" className="btn-primary">
+  const payload = useWhopCheckout();
+  const options = payload?.options ?? [];
+  const store = payload?.checkout.store ?? "";
+
+  if (!payload) {
+    return (
+      <div className="mx-auto max-w-md animate-pulse rounded-2xl border border-white/10 bg-[#080a10]/40 p-8 text-center text-sm text-sky-300">
+        Loading plans…
+      </div>
+    );
+  }
+
+  if (options.length === 0) {
+    return store ? (
+      <a href={store} target="_blank" rel="noopener noreferrer" className="btn-primary">
         View plans →
       </a>
     ) : (
@@ -21,7 +33,7 @@ export function PlanLadder() {
 
   return (
     <div className="mx-auto grid max-w-4xl grid-cols-1 gap-5 sm:grid-cols-3">
-      {WHOP_PREMIUM_CHECKOUT_OPTIONS.map((option) => {
+      {options.map((option) => {
         const vp = valuePropFor(option.label);
         const [term, price] = option.label.split("—").map((s) => s.trim());
         return (
