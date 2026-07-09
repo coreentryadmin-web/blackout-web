@@ -14,8 +14,10 @@ import { join } from "node:path";
 // route removal can't silently leave a dead link in the marketing footer again.
 
 const FOOTER_PATH = join(__dirname, "LandingFooter.tsx");
+const STATIC_FOOTER_PATH = join(__dirname, "StaticLandingFooter.tsx");
 const APP_DIR = join(__dirname, "..", "..", "app");
 const SITE_APP_DIR = join(APP_DIR, "(site)");
+const MARKETING_APP_DIR = join(APP_DIR, "(marketing)");
 
 // Clerk's sign-in/sign-up live directly under src/app/ (outside the (site) route group)
 // as catch-all segments, e.g. src/app/sign-in/[[...sign-in]]/page.tsx.
@@ -36,31 +38,47 @@ function extractHrefs(source: string, arrayName: string): string[] {
 function routeExists(href: string): boolean {
   // Strip query/hash and leading slash; ignore external/mailto/anchor-only links.
   const path = href.split(/[?#]/)[0].replace(/^\//, "");
-  if (path === "") return existsSync(join(SITE_APP_DIR, "page.tsx"));
+  if (path === "") {
+    return (
+      existsSync(join(MARKETING_APP_DIR, "page.tsx")) ||
+      existsSync(join(SITE_APP_DIR, "page.tsx"))
+    );
+  }
+  if (existsSync(join(MARKETING_APP_DIR, path, "page.tsx"))) return true;
   if (existsSync(join(SITE_APP_DIR, path, "page.tsx"))) return true;
   // Fall back to a top-level src/app/<path>/ route (e.g. Clerk's sign-in/sign-up).
   return hasCatchAllRoute(join(APP_DIR, path)) || existsSync(join(APP_DIR, path, "page.tsx"));
 }
 
-test("LandingFooter: INSTRUMENTS links all resolve to real (site) routes", () => {
-  const source = readFileSync(FOOTER_PATH, "utf8");
-  const hrefs = extractHrefs(source, "INSTRUMENTS");
-  assert.ok(hrefs.length > 0, "expected at least one INSTRUMENTS entry");
-  for (const href of hrefs) {
-    assert.ok(routeExists(href), `INSTRUMENTS href "${href}" has no matching src/app/(site)${href}/page.tsx`);
+function footerSources(): string[] {
+  const out: string[] = [];
+  if (existsSync(FOOTER_PATH)) out.push(readFileSync(FOOTER_PATH, "utf8"));
+  if (existsSync(STATIC_FOOTER_PATH)) out.push(readFileSync(STATIC_FOOTER_PATH, "utf8"));
+  return out;
+}
+
+test("LandingFooter: INSTRUMENTS links all resolve to real routes", () => {
+  for (const source of footerSources()) {
+    const hrefs = extractHrefs(source, "INSTRUMENTS");
+    assert.ok(hrefs.length > 0, "expected at least one INSTRUMENTS entry");
+    for (const href of hrefs) {
+      assert.ok(routeExists(href), `INSTRUMENTS href "${href}" has no matching app route`);
+    }
   }
 });
 
 test("LandingFooter: never links to the removed /grid route", () => {
-  const source = readFileSync(FOOTER_PATH, "utf8");
-  assert.doesNotMatch(source, /href:\s*"\/grid"/, "LandingFooter must not link to the removed /grid page");
+  for (const source of footerSources()) {
+    assert.doesNotMatch(source, /href:\s*"\/grid"/, "footer must not link to the removed /grid page");
+  }
 });
 
-test("LandingFooter: PLATFORM links all resolve to real (site) routes", () => {
-  const source = readFileSync(FOOTER_PATH, "utf8");
-  const hrefs = extractHrefs(source, "PLATFORM");
-  assert.ok(hrefs.length > 0, "expected at least one PLATFORM entry");
-  for (const href of hrefs) {
-    assert.ok(routeExists(href), `PLATFORM href "${href}" has no matching src/app/(site)${href}/page.tsx`);
+test("LandingFooter: PLATFORM links all resolve to real routes", () => {
+  for (const source of footerSources()) {
+    const hrefs = extractHrefs(source, "PLATFORM");
+    assert.ok(hrefs.length > 0, "expected at least one PLATFORM entry");
+    for (const href of hrefs) {
+      assert.ok(routeExists(href), `PLATFORM href "${href}" has no matching app route`);
+    }
   }
 });
