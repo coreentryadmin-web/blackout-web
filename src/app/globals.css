@@ -4320,18 +4320,13 @@ body::before {
       font-size: 2.75rem;
       line-height: 1;
     }
-    .spx-hero-metric-blocks {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+    .spx-desk-top-stats {
+      justify-content: flex-start;
       width: 100%;
-      gap: 0.5rem;
     }
     .spx-hero-metric-block {
       min-width: 0;
       flex: none;
-    }
-    .spx-hero-metric-block:last-child {
-      grid-column: 1 / -1;
     }
     .spx-sniper-triple {
       min-height: 0;
@@ -8758,10 +8753,42 @@ body::before {
   }
 
   .spx-hero-stat-pill {
-    @apply rounded-lg border bg-void-deep/95 px-3 py-2 min-w-[76px];
+    @apply rounded-lg border bg-void-deep/95 px-2.5 py-1.5 min-w-0 w-auto shrink-0;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.07),
       0 2px 8px rgba(0, 0, 0, 0.45);
+  }
+
+  .spx-hero-stat-value-row {
+    @apply flex items-center justify-end gap-1;
+  }
+
+  .spx-desk-top-stats {
+    @apply flex flex-wrap items-stretch justify-end gap-2 min-w-0;
+  }
+
+  .spx-price-level-indicator {
+    @apply font-mono text-[9px] leading-none shrink-0;
+  }
+
+  .spx-price-level-indicator-up {
+    @apply text-bull;
+  }
+
+  .spx-price-level-indicator-down {
+    @apply text-bear-text;
+  }
+
+  .spx-price-level-indicator-flat {
+    @apply text-secondary/50;
+  }
+
+  .spx-live-spot-price-panel {
+    @apply border-b border-white/[0.06] pb-4 mb-1;
+  }
+
+  .spx-play-engine-spot .spx-hero-price {
+    text-shadow: 0 0 22px rgba(0, 230, 118, 0.35);
   }
 
   .spx-hero-stat-label {
@@ -8773,51 +8800,56 @@ body::before {
   }
 
   .spx-hero-metric-blocks {
-    @apply flex flex-wrap items-stretch gap-2 lg:gap-2.5 min-w-0 flex-1;
+    @apply flex flex-wrap items-stretch gap-2 min-w-0;
   }
 
   .spx-hero-metric-block {
-    @apply rounded-lg border bg-void-deep/95 px-3 py-2.5 min-w-[128px] flex-1;
-    flex-shrink: 1;
+    @apply rounded-lg border bg-void-deep/95 px-2 py-2 w-auto shrink-0;
+    flex: none;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.06),
       0 2px 10px rgba(0, 0, 0, 0.5);
   }
 
   .spx-hero-metric-block-title {
-    @apply font-mono text-[10px] font-semibold uppercase tracking-[0.28em] text-sky-300 mb-2;
+    @apply font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-sky-300 mb-1.5;
   }
 
   .spx-hero-metric-block-body {
-    @apply flex flex-col gap-1.5;
+    @apply flex flex-col gap-1;
   }
 
   .spx-hero-metric-pair {
-    @apply grid grid-cols-2 gap-x-3 gap-y-1.5;
+    @apply grid grid-cols-2 gap-x-2 gap-y-1;
   }
 
   .spx-hero-metric-row {
-    /* Grid (not flex justify-between) — on a squeezed hero block, label + value
-       overlapped and read as one number (e.g. EMA label "200" + "6,943" → "2006,943"). */
-    @apply grid items-baseline gap-x-2;
-    grid-template-columns: minmax(1.75rem, auto) minmax(0, 1fr);
+    @apply grid items-center gap-x-1;
+    grid-template-columns: auto auto;
+    width: fit-content;
   }
 
   .spx-hero-metric-row-compact {
-    @apply flex flex-col items-start gap-0.5;
-    display: flex;
+    display: grid;
+    grid-template-columns: auto auto;
+    @apply items-center gap-x-1;
+    width: fit-content;
   }
 
   .spx-hero-metric-row-label {
-    @apply shrink-0 font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-400;
+    @apply shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-cyan-400;
+  }
+
+  .spx-hero-metric-row-value-wrap {
+    @apply inline-flex items-center justify-end gap-0.5;
   }
 
   .spx-hero-metric-row-value {
-    @apply min-w-0 text-right font-mono text-sm font-semibold tabular-nums leading-none;
+    @apply font-mono text-xs font-semibold tabular-nums leading-none;
   }
 
   .spx-hero-metric-row-compact .spx-hero-metric-row-value {
-    @apply text-[13px];
+    @apply text-xs;
   }
 
   .spx-command-live {
