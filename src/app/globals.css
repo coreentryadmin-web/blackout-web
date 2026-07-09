@@ -8767,6 +8767,17 @@ body::before {
     @apply flex flex-wrap items-stretch justify-end gap-2 min-w-0;
   }
 
+  .spx-desk-top-stats--compact {
+    @apply justify-start lg:justify-end;
+    gap: 0.375rem;
+  }
+
+  @media (min-width: 1024px) {
+    .spx-sniper-command {
+      @apply py-4;
+    }
+  }
+
   .spx-price-level-indicator {
     @apply font-mono text-[9px] leading-none shrink-0;
   }
@@ -8919,7 +8930,7 @@ body::before {
        rather than adding a third size to the center column. */
     @apply xl:grid-cols-[minmax(340px,30vw)_minmax(0,1fr)_minmax(380px,26vw)];
     @apply 2xl:grid-cols-[minmax(380px,28vw)_minmax(0,1fr)_minmax(420px,27vw)];
-    min-height: calc(100vh - 240px);
+    min-height: calc(100vh - 148px);
   }
 
   .spx-sniper-left-rail {
@@ -9328,7 +9339,7 @@ body::before {
   }
 
   .spx-trade-alerts-header {
-    @apply flex items-center justify-between gap-3 pb-2 mb-3 border-b border-white/10 shrink-0;
+    @apply flex items-center gap-3 pb-2 mb-2 border-b border-white/10 shrink-0;
   }
 
   .spx-trade-alert-score-label {
@@ -10115,11 +10126,19 @@ body::before {
   }
 
   .spx-left-matrix {
-    @apply flex flex-col min-h-0 h-full xl:max-h-[calc(100vh-180px)];
+    @apply flex flex-col min-h-0 h-full;
+    min-height: min(560px, calc(100vh - 168px));
+  }
+
+  @media (min-width: 1280px) {
+    .spx-left-matrix {
+      min-height: calc(100vh - 148px);
+      max-height: calc(100vh - 148px);
+    }
   }
 
   .spx-odte-matrix-panel {
-    @apply min-h-[420px] xl:min-h-0 xl:h-full;
+    @apply min-h-[480px] lg:min-h-[520px] xl:min-h-0 xl:h-full;
   }
 
   .spx-odte-matrix-body {

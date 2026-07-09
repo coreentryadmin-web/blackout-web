@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { clsx } from "clsx";
-import Link from "next/link";
 import { Panel } from "@/components/ui";
 import { fmtPrice } from "@/lib/api";
 import { useDeskSessionPollIntervalMs } from "@/hooks/use-et-market-open";
@@ -24,7 +23,7 @@ import {
   heatmapCellTextStyle,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
-import { GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
+import { gexKingDualLabel } from "@/lib/gex-king-node-labels";
 import {
   readGexHeatmapSessionCache,
   writeGexHeatmapSessionCache,
@@ -573,23 +572,6 @@ export function SpxGexMatrixHeatmap({
           flowCallPrem={flow0dteCallPrem}
           flowPutPrem={flow0dtePutPrem}
         />
-
-      <div className="mt-2 shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 font-mono text-[9px] text-cyan-400">
-        <span>{strikesAxis.length} strikes · ±6% SPX band · {displayExpiries.length} expiries</span>
-        {columnKings.size > 0 && (
-          <span>
-            · <span className="text-amber-400">★Npt</span> = per-day {gexKingDualLabel()}, N points
-            from spot (close = live pin candidate; far = structural OI wall, not a live anchor)
-          </span>
-        )}
-        {columnExtremeWalls.size > 0 && (
-          <span>· pulsing cell = that day&apos;s highest +/- gamma</span>
-        )}
-        <span>· refresh {Math.round(pollMs / 1000)}s</span>
-        <Link href="/heatmap" className="text-sky-400/90 hover:text-sky-300 underline-offset-2 hover:underline">
-          Full Thermal →
-        </Link>
-      </div>
         </div>
       )}
     </Panel>
