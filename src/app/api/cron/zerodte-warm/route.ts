@@ -23,6 +23,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { warmGridEarnings } from "@/lib/zerodte/earnings";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
+import { primeZeroDteBoardCache } from "@/lib/platform/zerodte-service";
 import { isEtCashRth } from "@/lib/et-market-hours";
 
 export const runtime = "nodejs";
@@ -51,11 +52,8 @@ export async function GET(req: NextRequest) {
   // Settle-all so one failing warm can't abort the other.
   const results = await Promise.allSettled([
     warmGridEarnings(),
-    // 0DTE Command scanner — the always-on hunt. Every ~2-min tick scans the HELIX
-    // tape for fresh single-name 0DTE concentration, enriches the top finds through
-    // the Night Hawk dossier, and upserts the session ledger (zerodte_setup_log) so
-    // the board's "flagged today" record accumulates whether or not anyone is looking.
     warmZeroDteBoard(),
+    primeZeroDteBoardCache(),
   ]);
 
   let warmed = 0;

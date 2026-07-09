@@ -10,6 +10,7 @@ import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "@/feature
 import { fetchBenzingaNews } from "@/lib/providers/polygon";
 import { readGridEarnings } from "@/lib/zerodte/earnings";
 import { withServerCache, serverCache, TTL } from "@/lib/server-cache";
+import { zerodteBoardCacheTtlMs } from "@/lib/providers/config";
 import { roundFloats } from "@/lib/round-floats";
 import {
   matchEarnings,
@@ -57,7 +58,7 @@ export type ZeroDteBoardPayload = {
   covered_elsewhere: string[];
 };
 
-const BOARD_TTL_MS = 5_000;
+const BOARD_TTL_MS = zerodteBoardCacheTtlMs();
 
 function livePnlPct(entry: number | null, mark: number | null): number | null {
   if (entry == null || entry <= 0 || mark == null) return null;
@@ -142,6 +143,11 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
 /** Cached board read — shared by the member route and Largo/BIE consumers. */
 export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   return withServerCache("zerodte:board:v1", BOARD_TTL_MS, buildZeroDteBoardPayload);
+}
+
+/** Cron/platform-warm: prime the full board payload in Redis after scan warms sub-lanes. */
+export async function primeZeroDteBoardCache(): Promise<ZeroDteBoardPayload> {
+  return getZeroDteBoardPayload();
 }
 
 /** Largo / BIE tool shape — derived from the same board payload the UI polls. */

@@ -163,6 +163,7 @@ export async function mintIosPlaywrightSession({ appUrl }) {
     return {
       skip: false,
       cookies,
+      signInUrl: `${appUrl}/sign-in?__clerk_ticket=${ticket}`,
       cleanup: async () => {
         try {
           await backend("DELETE", `/users/${userId}`);

@@ -107,7 +107,14 @@ async function main() {
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
   const context = await browser.newContext();
   await context.addInitScript(onboardingInitScript());
-  await context.addCookies(session.cookies);
+
+  // Ticket sign-in hydrates Clerk in the browser (cookie injection alone leaves userId null).
+  const signInPage = await context.newPage();
+  await signInPage.goto(session.signInUrl, { waitUntil: "domcontentloaded", timeout: 90_000 });
+  await signInPage
+    .waitForURL(/dashboard|terminal|upgrade|flows|heatmap|vector|nighthawk/, { timeout: 60_000 })
+    .catch(() => null);
+  await signInPage.close();
 
   for (const page of PAGES) {
     const p = await context.newPage();
