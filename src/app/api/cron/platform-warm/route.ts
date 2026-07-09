@@ -11,7 +11,16 @@ import { logCronRun } from "@/lib/cron-run";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { vectorWarmTickers, vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
-import { loadBootstrapBundle } from "@/features/spx/lib/spx-desk-loader";
+import {
+  loadBootstrapBundle,
+  loadMergedSpxDesk,
+  loadSpxDeskFlow,
+  loadSpxDeskPulse,
+} from "@/features/spx/lib/spx-desk-loader";
+import { prefetchSpxDeskEnrichment } from "@/features/spx/lib/spx-desk";
+import { dbConfigured, fetchRecentFlows } from "@/lib/db";
+import { fetchMarketFlowAlerts } from "@/lib/providers/unusual-whales";
+import { serverCache, TTL } from "@/lib/server-cache";
 import { fetchVectorSeedBars, primeVectorWallScope, refreshVectorUniverseSnapshot } from "@/features/vector";
 import { warmVectorDarkPool } from "@/features/vector/lib/vector-dark-pool-cache";
 import { warmGridEarnings } from "@/lib/zerodte/earnings";
@@ -42,8 +51,26 @@ export async function GET(req: NextRequest) {
   const heatmapTickers = vectorWarmTickers();
   const darkPoolTickers = vectorUniverseTickers();
 
+  async function warmFlowsLane() {
+    if (!dbConfigured()) {
+      await serverCache("flows:uw:500:all:0", TTL.DARK_POOL, () =>
+        fetchMarketFlowAlerts({ limit: 500 })
+      );
+      return;
+    }
+    await serverCache("flows:pg:168:0:all", TTL.DARK_POOL, async () => {
+      const flows = await fetchRecentFlows({ limit: 500, since_hours: 168, order: "recent" });
+      return { source: "cache" as const, flows, count: flows.length, platform_refs: { spx: null, nighthawk: null } };
+    });
+  }
+
   const results = await Promise.allSettled([
     loadBootstrapBundle(),
+    loadMergedSpxDesk(),
+    loadSpxDeskPulse(),
+    loadSpxDeskFlow(),
+    prefetchSpxDeskEnrichment(),
+    warmFlowsLane(),
     ...heatmapTickers.map((t) => fetchGexHeatmap(t)),
     fetchVectorSeedBars("SPX"),
     primeVectorWallScope("SPX"),
