@@ -55,6 +55,12 @@ const embedSecurityHeaders = securityHeaders
       : h,
   );
 
+// Hash-named /_next/static/* and /_next/image are safe to edge-cache long-term
+// (new deploy = new hashes). HTML routes keep default security headers only.
+const staticAssetCache = [
+  { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+];
+
 const remotePatterns = [
   { protocol: "https", hostname: "images.unsplash.com" },
 ];
@@ -103,7 +109,15 @@ const nextConfig = {
     // is relaxed only for the public embed cards.
     return [
       {
-        source: "/((?!embed/).*)",
+        source: "/_next/static/:path*",
+        headers: [...securityHeaders, ...staticAssetCache],
+      },
+      {
+        source: "/_next/image",
+        headers: [...securityHeaders, ...staticAssetCache],
+      },
+      {
+        source: "/((?!embed/|_next/).*)",
         headers: securityHeaders,
       },
       {
