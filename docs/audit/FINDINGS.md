@@ -8,6 +8,63 @@ and required CI (`verify`) are green — no per-PR approval, no end-of-day hold.
 here and merge the PR in the same session. Supersedes all earlier "leave OPEN for review" notes
 in this file.
 
+## 🟠 P1 FIXED 2026-07-09 — Member-facing SPX Sniper Playbook served 9 stale numeric parameters + 2 undocumented mechanisms
+
+**Surface:** `private/docs/SPX-Sniper-Playbook.docx`, downloaded by paying members via the
+premium-gated `GET /api/docs/spx-playbook` (`src/app/api/docs/spx-playbook/route.ts`,
+`requireTierApi("premium")`). Members use this document as the reference for exactly how SPX
+Slayer enters and exits 0DTE trades — real-money decisions.
+
+**How this was found:** surfaced as a side effect of reviewing a separate design doc (Cursor's
+`docs/spx/SPX-Slayer-Playbook-Design-v1.docx`, a proposed "twelve playbooks" redesign — see PR
+#725). While fact-checking that proposal against live code, found it never mentioned that a
+playbook-shaped artifact already exists and ships today. Cross-checked every numeric claim in the
+existing Sniper Playbook doc against the live defaults in
+`src/features/spx/lib/spx-play-config.ts`.
+
+**Root cause:** the doc (tracked since 2026-06-30, commit `1c0bca7`) was accurate when written but
+was never re-verified against config changes that landed afterward — no CI check, no generation
+step, nothing ties this `.docx`'s prose to the live constants it describes. Classic content drift,
+same failure mode as ~9 other "duplicated logic drifted" entries already in this file, just never
+previously checked because it's a binary doc, not source `grep`-able by the usual sweeps.
+
+**Evidence — 9 confirmed numeric drifts** (doc value → live `spx-play-config.ts` default):
+`SPX_PLAY_FULL_MIN_SCORE` 58→52; `SPX_PLAY_FORCE_EXIT_ET_MIN` 50→45 (3:50pm→3:45pm ET);
+`SPX_PLAY_COOLDOWN_AFTER_STOP_MIN` 20→15 min; `SPX_PLAY_OPENING_RANGE_MINUTES` 15→20 (9:45am→9:50am
+cutoff); `SPX_PLAY_MIN_CONFIRMATIONS` 6→5; `SPX_PLAY_MIN_AGREEING_FACTORS` 4→3;
+`SPX_PLAY_LOTTO_CONFIRM_MOVE_PTS` (the doc's own headline "8-point rule") 8→5 — note
+`SPX_LOTTO_STOP_LOSS_PTS` is still 8, so confirm/invalidate and stop-loss are now two different
+thresholds, not one; `SPX_OUTCOME_MIN_TRADES` 8→30; `SPX_OUTCOME_MIN_DAYS` 14→30. Plus **2 entirely
+undocumented mechanisms**: the R:R entry gate (`SPX_PLAY_MIN_RISK_REWARD=1.2`, enforced in
+`spx-play-gates.ts:292-306`) and the trailing-stop exit path (`spx-play-engine.ts:224-245`,
+`exit_action: "TRAIL"`) — breakeven lock at +8pt MFE, then trails the peak by a window (~7pt
+static or VIX-indexed) once MFE ≥15pt, `was_loss` always false. Roughly 60% of the doc's checkable
+numbers (the 11-point confirmation count, starter/watch/promote score floors, buy-cooldown/
+re-entry-lock seconds, chain-spread %, all lotto-sizing constants) were still correct — this was a
+carefully written doc that partially drifted, not a neglected one.
+
+**Fix:** corrected all 9 numeric values in place (session-timeline table, entry-gates table, exit-
+cooldown table, cooldown-effect matrix, adaptive-telemetry prose + table, the lotto "8-point rule"
+section's worked examples), added the missing R:R gate as a new entry-gates row, added a new TRAIL
+row to both the exit-type and cooldown-effect tables, added two new prose paragraphs describing the
+trailing-stop mechanism and the exit-priority order (force-exit > target > trail >
+stop/thesis/session — previously undocumented anywhere), and added a "last verified against commit
+X" provenance line above the footer so the next drift is at least dated. Nothing outside these
+specific corrections was touched — nothing was added or claimed that isn't directly grounded in
+the config/engine source cited above.
+
+**Not fixed here (flagged as a separate, non-blocking recommendation):** there is still no
+mechanism that *prevents* this from drifting again — the doc is hand-maintained prose with no CI
+tie to `spx-play-config.ts`. Worth a generation-or-diff-check follow-up; deliberately out of scope
+for this fix, which is a pure correctness pass on today's numbers.
+
+**Verification:** re-opened the saved `.docx` with `python-docx` and diffed every changed
+paragraph/table cell against the intended new value (28 changes, all confirmed applied). N/A
+`tsc`/tests/build — binary doc content, no source files touched.
+
+**PRs:** #725 (independent review of the proposed redesign, where this was found) and this fix
+(`fix/spx-sniper-playbook-drift`).
+
 ## 🔴 P0 FOUND+FIXING 2026-07-07 — Tailwind purged `src/features/` CSS after folder migration (desktop desk broken)
 
 **Surface:** `/dashboard` and other tools moved to `src/features/*` in PR #684.
