@@ -18,6 +18,7 @@
     "validate:deploy": "node scripts/validate-deploy.mjs",
     "validate:deploy-wait": "node scripts/gha-wait-deploy.mjs",
     "validate:rth-open": "node scripts/rth-open-check.mjs",
+    "validate:rth-latency": "node scripts/rth-site-latency.mjs",
     "validate:rth-sweep": "node scripts/rth-comprehensive-sweep.mjs",
     "validate:exhaustive": "node scripts/exhaustive-platform-audit.mjs",
     "validate:spot-check": "node scripts/continuous-spot-check.mjs --once",
