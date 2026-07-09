@@ -8,6 +8,131 @@ and required CI (`verify`) are green — no per-PR approval, no end-of-day hold.
 here and merge the PR in the same session. Supersedes all earlier "leave OPEN for review" notes
 in this file.
 
+## 🧠 NEW FEATURE 2026-07-09 — SPX Slayer Playbook Shadow Matcher, Phase 1 (PB-01/02/03), SHADOW MODE ONLY — zero live behavior change
+
+**Not a bug fix — new-feature addition, left OPEN for human/Claude review before merge (see
+below), not auto-merged.** Branch `feat/spx-playbook-shadow-p1`.
+
+**What/why:** `docs/spx/SPX-Slayer-Playbook-Design-v1.docx` (added #723, 2026-07-09) proposes
+moving SPX Slayer from one additive confluence score to named playbooks with explicit
+preconditions/triggers/invalidations, so trades get a `playbook_id` and can be win-rate-tracked
+per pattern instead of as one opaque score (Section 4-6). The doc's own Section 12 ("Migration
+Roadmap (Shadow → Live)") defines **Phase 1 — Shadow: "Matcher runs alongside legacy engine; log
+would-be `playbook_id` without changing BUY"** as the first step — not a straight jump to all 12
+playbooks as a live gating rewrite — and Section 14 ("Validation Checklist for Other AIs")
+explicitly asks reviewers to weigh in on "Are twelve playbooks too many?" and "Suggested priority
+order for Phase 1-3 implementation" before committing to the full catalog. This PR is exactly
+that Phase-1 slice, for the first 3 playbooks (PB-01 VWAP Reclaim, PB-02 VWAP Reject, PB-03
+Opening Range Breakout — Section 6) — the same proven-safe incremental pattern this codebase
+already used for the original shadow-factor framework (`spx-signals-shadow.ts`, #464, and its 4
+follow-ups: skew/vol, macro predictions, ecosystem, catalysts, precedents — see the "SPX Slayer
+shadow signal framework" entries elsewhere in this file for the precedent this PR follows shape-
+for-shape).
+
+**What was built:**
+- `src/features/spx/lib/playbook-registry.ts` (new file) — static, typed catalog of exactly 3
+  playbooks (not 12). Every `preconditions`/`trigger`/`invalidation`/session-window string is
+  copied VERBATIM from the design doc's Section 6 PB-01/PB-02/PB-03 entries — not paraphrased.
+  Pure data, no evaluation logic.
+- `src/features/spx/lib/playbook-shadow-matcher.ts` (new file) — `matchPlaybooksShadow(desk,
+  technicals, now?)`, a pure function (no DB/fetch, no bare `Date.now()`/`new Date()` — `now` is
+  caller-injected) that approximates each playbook's preconditions/trigger against fields that
+  ALREADY EXIST on `SpxDeskPayload` (`spx-desk.ts`) and `PlayTechnicals`
+  (`spx-play-technicals.ts`) — no new stored state invented. Returns a per-playbook verdict
+  (`session_window_open`, `precondition_match`, `trigger_fired`, `direction`, `detail`) plus a
+  deterministic `primary_playbook_id` (first registry-order playbook whose trigger fired, or
+  `null`).
+- Wiring: `logPlaybookShadowMatch(desk, technicals, confluence)` added to
+  `src/features/spx/lib/spx-signal-log.ts`, called from `evaluateSpxPlayCore`
+  (`spx-play-engine.ts`) immediately after the existing `logSpxPrecedentsShadowFactor` call, same
+  fire-and-forget `firePlayTelemetry` idiom, same pre-Night-Hawk-bonus `confluence.score`/`.grade`
+  snapshot every other shadow factor reads. `technicals` is already computed earlier in the same
+  function for the real confirmations/MTF path — reused as-is, zero extra Polygon calls.
+- **Reused the existing `spx_confluence_shadow_observations` table** (`db.ts`,
+  `insertShadowFactorObservation`) — confirmed its schema already fits (checked before adding
+  anything): `factor_name` is the discriminator column (writes `playbook_pb_01_match` /
+  `_pb_02_match` / `_pb_03_match`, one row per playbook per tick, mirroring `flow_anomaly_watch`'s
+  one-row-per-ticker shape), `direction` accepts the same bullish/bearish/neutral vocabulary every
+  other shadow factor writes (long→bullish, short→bearish, no trigger→neutral), `implied_weight`
+  is always `0` (a playbook match is a categorical identity, not a confluence score contribution —
+  nothing to weight). No new table, no migration.
+
+**Judgment calls on approximating the design doc's prose with real fields (documented inline in
+`playbook-shadow-matcher.ts`'s module doc, summarized here):**
+1. Duration/streak conditions ("below VWAP ≥15m", "hold 2 consecutive 3m bars", "repeated
+   rejections", "acceptance ... (2 closes)") need rolling bar history `PlayTechnicals` does not
+   expose to callers (it's a single fresh/cached snapshot, not a bar array). Substituted the best
+   single-tick proxy already computed there — `breakout.vwap_reclaim`/`vwap_lost` (buffer-guarded
+   "clearly on one side of VWAP" reads) — and said so plainly rather than inventing new stored
+   state, per this task's explicit instruction.
+2. `EMA9` (PB-01's "EMA9 curling toward VWAP") does not exist anywhere in this codebase today
+   (`SpxDeskPayload` has `ema20`/`ema50`/`ema200`; `PlayTechnicals` has `m5_ema20`) — confirmed by
+   grep. Omitted that clause entirely rather than silently substituting a different-period EMA as
+   if it were EMA9.
+3. PB-03's "first 15-30m range" has no dedicated `or_high`/`or_low` field anywhere — approximated
+   with `desk.hod`/`desk.lod`, defensible ONLY inside PB-03's own 09:35-10:30 ET session window
+   (which already gates `trigger_fired`, not just an informational field) since hod/lod can't have
+   diverged far from the true opening range in the first ~55 minutes of trading.
+4. "GEX not pinning inside range" (PB-03) maps to `desk.gamma_regime !== "mean_revert"` (this
+   codebase's existing label for "dealers net long gamma, hedging dampens moves" —
+   `gamma-desk.ts::gammaRegime` — the closest existing concept to "pinning").
+5. PB-02's "repeated rejections at VWAP band" proximity check reuses the existing
+   `playStructureProximityPts()` constant (`spx-play-config.ts`, already this codebase's "nearby a
+   level" threshold) instead of inventing a second magic number.
+
+**PROOF THIS DOES NOT CHANGE LIVE SIGNALS:**
+```
+$ git diff origin/main -- src/features/spx/lib/spx-signals.ts src/features/spx/lib/spx-play-gates.ts
+(empty)
+$ git diff origin/main -- src/features/spx/lib/spx-play-engine.ts
+# +1 import line, +1 new fire-and-forget firePlayTelemetry("logPlaybookShadowMatch", ...) call
+# (15 lines total, all additive) inserted after the existing logSpxPrecedentsShadowFactor call,
+# strictly after confluence is already computed and returned unconditionally above it.
+$ git grep playbook-shadow-matcher src/features/spx/lib/spx-play-engine.ts src/features/spx/lib/spx-signals.ts src/features/spx/lib/spx-play-gates.ts
+(empty — not even a comment mentions the module by its literal filename in those 3 files)
+```
+`computeSpxConfluence()`'s own file is byte-identical to `origin/main`. `evaluatePlayGates()`'s
+own file is byte-identical to `origin/main`. `evaluateSpxPlayCore`'s new call is fire-and-forget
+(`firePlayTelemetry` catches/logs, never throws into the caller) and reads `confluence.score`/
+`.grade` from the same already-computed, already-returned-unconditionally snapshot every other
+shadow factor call reads — it cannot execute before `computeSpxConfluence()` returns and cannot
+mutate its result.
+
+**Blast radius:** `src/features/spx/lib/spx-play-engine.ts` (1 new import + 1 new fire-and-forget
+call, nothing else in that ~1600-line file touched), `src/features/spx/lib/spx-signal-log.ts` (1
+new exported function, every existing export untouched), `src/features/spx/lib/
+spx-play-engine.test.ts` (1 line — added `logPlaybookShadowMatch: async () => {}` to the existing
+`mock.module("./spx-signal-log", ...)` block, which every `evaluateSpxPlay*` test in that file
+transitively depends on; without it those 4 tests threw `logPlaybookShadowMatch is not a
+function` — caught by the full suite run before this PR, fixed in the same commit), and 4 new
+files. `SpxDeskPayload`, `buildSpxDesk()`, `db.ts` (schema/migrations), and every
+`computeSpxConfluence`/`evaluatePlayGates` call site are unaffected.
+
+**Deliberately NOT done in this PR (explicitly out of scope, per the task brief):** the Regime
+Router, matcher-based gating of real BUY decisions, UI surfacing of playbook state, or the
+remaining 9 playbooks (PB-04 through PB-12) from the design doc's Section 6. Those are Phases 2+
+of the design doc's Section 12 migration roadmap ("ARM UI", "Trigger gate: BUY requires playbook
+trigger", "Telemetry: playbook_id on all outcomes", "Deprecate: remove coarse 0dte watch key") —
+each is its own separately-reviewed, evidence-gated change once PB-01/02/03's shadow observations
+accumulate enough evidence (same `bie/calibration.ts` `MIN_EVIDENCE = 10` philosophy every prior
+shadow-factor PR in this file cites).
+
+**Tests added:** `playbook-shadow-matcher.test.ts` (13 cases — PB-01/02/03 trigger-when-
+preconditions-and-trigger-both-true, session-window-closed suppression for each, PB-02's
+bearish-flow requirement, PB-03's gamma-pinning precondition block and halt/feed-degraded trigger
+suppression, and primary-pick logic for 0/1/2+ simultaneous triggers with a deterministic
+registry-order tie-break); `spx-signal-log-playbook-shadow.test.ts` (3 cases — db-not-configured
+short-circuit, the 3-row-per-tick persisted shape/count, and the triggered-playbook
+direction-mapping + primary-flag-in-detail happy path). 16 new tests total.
+
+**Verification:** `npx tsc --noEmit` clean. Full suite `1836/1836` passing (16 new). `npm run
+build` clean. `lint:brand` / `lint:vendor` clean.
+
+**Status:** PR open for review (title `feat(spx): Phase 1 playbook shadow-mode matcher
+(PB-01/02/03)`), **NOT auto-merged** — new architecture, not a bug fix, per this file's own
+standing policy exception ("Do not auto-merge... changes the user explicitly flags as
+deploy-risky" / new-architecture PRs get a review pass first even with green CI).
+
 ## 🔴 P0 FOUND+FIXING 2026-07-07 — Tailwind purged `src/features/` CSS after folder migration (desktop desk broken)
 
 **Surface:** `/dashboard` and other tools moved to `src/features/*` in PR #684.

@@ -59,6 +59,7 @@ import {
   logSpxEcosystemShadowFactors,
   logMegaCapCatalystShadowFactors,
   logSpxPrecedentsShadowFactor,
+  logPlaybookShadowMatch,
   maybeLogSpxEngineSnapshot,
 } from "@/features/spx/lib/spx-signal-log";
 import { evaluateMtfHybrid, keyLevelForDirection, mtfHardPass } from "@/features/spx/lib/spx-play-mtf";
@@ -1257,6 +1258,20 @@ async function evaluateSpxPlayCore(
       grade: confluence.grade,
       direction: confluence.direction,
     })
+  );
+
+  // SHADOW-MODE playbook match logging, Phase 1 — same fire-and-forget idiom, same
+  // pre-Night-Hawk-bonus score/grade snapshot as logSpxShadowFactors above. Logs which of
+  // the first 3 named SPX Slayer playbooks (PB-01 VWAP Reclaim, PB-02 VWAP Reject, PB-03
+  // Opening Range Breakout — docs/spx/SPX-Slayer-Playbook-Design-v1.docx Section 6) would
+  // have matched this tick, purely for future win-rate telemetry. `technicals` is already
+  // computed above (line ~1175) for the real confirmations/MTF path — reused here, no extra
+  // Polygon fetch. computeSpxConfluence()'s return value and evaluateSpxPlay()'s own
+  // BUY/WATCH/HOLD/SELL decision are both untouched by this call — see
+  // logPlaybookShadowMatch's own doc (spx-signal-log.ts) for the full module chain and the
+  // git-grep-verifiable inertness proof.
+  firePlayTelemetry("logPlaybookShadowMatch", () =>
+    logPlaybookShadowMatch(desk, technicals, { score: confluence.score, grade: confluence.grade })
   );
 
   // NH morning prior: inject the Night Hawk evening signal as a signed confluence factor.
