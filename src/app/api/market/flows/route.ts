@@ -4,11 +4,12 @@ import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 import { fetchMarketFlowAlerts } from "@/lib/providers/unusual-whales";
 import { uwConfigured } from "@/lib/providers/config";
 import { maybeRunFlowIngest } from "@/lib/providers/flow-ingest";
-import { marketPlatform } from "@/lib/platform";
-import { serverCache, TTL } from "@/lib/server-cache";
+import { getFlowPlatformRefs } from "@/lib/flow-platform-refs";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { enrichFlowsWithGex } from "@/lib/flow-gex-enrichment";
 import { roundFloats } from "@/lib/round-floats";
+import { flowTapeCacheTtlMs } from "@/lib/providers/config";
+import { withServerCache } from "@/lib/server-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -36,27 +37,29 @@ export async function GET(req: NextRequest) {
     maybeRunFlowIngest().catch((err) => console.error("[flows] lazy ingest error:", err));
     const cacheKey = `flows:pg:${since_hours}:${min_premium ?? 0}:${ticker ?? "all"}`;
     try {
-      const payload = await serverCache(cacheKey, TTL.DARK_POOL, async () => {
-        const [flows, platform] = await Promise.all([
-          // HELIX REAL-TIME TAPE → recency-ordered (P0): the LIMIT must keep the NEWEST
-          // prints, not the top-N-by-premium that the client then reshuffles by time (which
-          // made a "REAL-TIME TAPE" show old whale prints pinned to row 0). The premium
-          // ordering still serves every other caller via the "premium" default. The tape
-          // page's right-column rollups (Net Premium leaderboard, momentum, sector split)
-          // aggregate this same recent-window set and re-rank by premium internally.
-          fetchRecentFlows({ limit, ticker, min_premium, since_hours, order: "recent" }),
-          Promise.all([
-            marketPlatform.spx.getSpxDeskSummary().catch(() => null),
-            marketPlatform.nighthawk.getLatestNightHawkSummary().catch(() => null),
-          ]).then(([spx, nighthawk]) => ({ spx, nighthawk })),
-        ]);
+      const payload = await withServerCache(
+        cacheKey,
+        flowTapeCacheTtlMs(),
+        async () => {
+          const [flows, platform_refs] = await Promise.all([
+            fetchRecentFlows({ limit, ticker, min_premium, since_hours, order: "recent" }),
+            getFlowPlatformRefs(),
+          ]);
 
-        // GEX proximity enrichment — best-effort annotation, MUST NOT block the tape.
-        const enrichedFlows = await enrichFlowsWithGex(flows, 8);
+          const enrichedFlows = await enrichFlowsWithGex(flows, 8);
 
-        console.log(`[market/flows] postgres ok — ${flows.length} rows (min_premium=${min_premium}, since_hours=${since_hours})`);
-        return { source: "cache" as const, flows: enrichedFlows, count: enrichedFlows.length, platform_refs: platform };
-      });
+          console.log(
+            `[market/flows] postgres ok — ${flows.length} rows (min_premium=${min_premium}, since_hours=${since_hours})`
+          );
+          return {
+            source: "cache" as const,
+            flows: enrichedFlows,
+            count: enrichedFlows.length,
+            platform_refs,
+          };
+        },
+        { staleWhileRevalidate: true }
+      );
       return NextResponse.json(roundFloats(payload));
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -74,8 +77,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const cacheKey = `flows:uw:${limit}:${ticker ?? "all"}:${min_premium ?? 0}`;
-    const flows = await serverCache(cacheKey, TTL.DARK_POOL, () =>
-      fetchMarketFlowAlerts({ limit, ticker, min_premium })
+    const flows = await withServerCache(
+      cacheKey,
+      flowTapeCacheTtlMs(),
+      () => fetchMarketFlowAlerts({ limit, ticker, min_premium }),
+      { staleWhileRevalidate: true }
     );
     return NextResponse.json(roundFloats({ source: "live", flows, count: flows.length }));
   } catch (error) {

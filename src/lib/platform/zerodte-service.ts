@@ -142,7 +142,9 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
 
 /** Cached board read — shared by the member route and Largo/BIE consumers. */
 export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
-  return withServerCache("zerodte:board:v1", BOARD_TTL_MS, buildZeroDteBoardPayload);
+  return withServerCache("zerodte:board:v1", BOARD_TTL_MS, buildZeroDteBoardPayload, {
+    staleWhileRevalidate: true,
+  });
 }
 
 /** Cron/platform-warm: prime the full board payload in Redis after scan warms sub-lanes. */

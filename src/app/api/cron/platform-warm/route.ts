@@ -20,12 +20,14 @@ import {
 import { prefetchSpxDeskEnrichment } from "@/features/spx/lib/spx-desk";
 import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 import { fetchMarketFlowAlerts } from "@/lib/providers/unusual-whales";
-import { serverCache, TTL } from "@/lib/server-cache";
+import { flowTapeCacheTtlMs } from "@/lib/providers/config";
+import { serverCache } from "@/lib/server-cache";
 import { fetchVectorSeedBars, primeVectorWallScope, refreshVectorUniverseSnapshot } from "@/features/vector";
 import { warmVectorDarkPool } from "@/features/vector/lib/vector-dark-pool-cache";
 import { warmGridEarnings } from "@/lib/zerodte/earnings";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
 import { primeZeroDteBoardCache } from "@/lib/platform/zerodte-service";
+import { getFlowPlatformRefs } from "@/lib/flow-platform-refs";
 import { primeGexOverlays } from "@/lib/gex-overlay";
 
 export const runtime = "nodejs";
@@ -54,15 +56,17 @@ export async function GET(req: NextRequest) {
   const darkPoolTickers = vectorUniverseTickers();
 
   async function warmFlowsLane() {
+    await getFlowPlatformRefs().catch(() => null);
     if (!dbConfigured()) {
-      await serverCache("flows:uw:500:all:0", TTL.DARK_POOL, () =>
+      await serverCache("flows:uw:500:all:0", flowTapeCacheTtlMs(), () =>
         fetchMarketFlowAlerts({ limit: 500 })
       );
       return;
     }
-    await serverCache("flows:pg:168:0:all", TTL.DARK_POOL, async () => {
+    await serverCache("flows:pg:168:0:all", flowTapeCacheTtlMs(), async () => {
       const flows = await fetchRecentFlows({ limit: 500, since_hours: 168, order: "recent" });
-      return { source: "cache" as const, flows, count: flows.length, platform_refs: { spx: null, nighthawk: null } };
+      const platform_refs = await getFlowPlatformRefs().catch(() => ({ spx: null, nighthawk: null }));
+      return { source: "cache" as const, flows, count: flows.length, platform_refs };
     });
   }
 
