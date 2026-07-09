@@ -62,6 +62,36 @@ jobs:
           docker push "${IMAGE}:latest"
           echo "Pushed ${IMAGE}:${IMAGE_TAG} and :latest"
 
+      - name: Roll ECS production web
+        env:
+          ECS_CLUSTER: blackout-production-cluster
+          ECS_SERVICE: blackout-production-web
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --force-new-deployment
+          echo "Waiting for ECS service stable (up to 10 min)..."
+          aws ecs wait services-stable \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}"
+          echo "ECS rollout complete."
+
+      - name: Validate static assets on origin
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if node scripts/validate-static-assets.mjs; then
+              echo "Static asset check passed."
+              exit 0
+            fi
+            echo "Attempt $i/10 failed — retrying in 15s..."
+            sleep 15
+          done
+          echo "Static assets still broken after ECS rollout."
+          exit 1
+
       - name: Purge Cloudflare edge cache
         if: env.CF_ZONE_ID != '' && env.CF_API_TOKEN != ''
         env:
@@ -72,4 +102,4 @@ jobs:
             -H "Authorization: Bearer ${CF_API_TOKEN}" \
             -H "Content-Type: application/json" \
             --data '{"purge_everything":true}'
-          echo "Cloudflare cache purged after image push."
+          echo "Cloudflare cache purged after ECS rollout + asset validation."
