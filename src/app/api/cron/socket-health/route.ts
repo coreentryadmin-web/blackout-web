@@ -4,6 +4,7 @@ import { logCronRun } from "@/lib/cron-run";
 import { isWebProcess } from "@/lib/process-role";
 import { probeClusterSocketHealth } from "@/lib/ws/cluster-socket-probe";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
+import { socketHealthOkDuringRth, waitForClusterSocketWarmth } from "@/lib/ws/socket-health-probe";
 import { getIndexStoreStatus } from "@/lib/ws/polygon-socket";
 import { getUwSocketHealth } from "@/lib/ws/uw-socket";
 import { getOptionsSocketStatus, inOptionsMarketHours } from "@/lib/ws/options-socket";
@@ -36,15 +37,18 @@ export async function GET(req: NextRequest) {
       payload = {
         ok: cluster.ok,
         as_of: cluster.as_of,
-        market_hours: false,
+        market_hours: inOptionsMarketHours(),
         websockets: {
-          mode: cluster.mode,
-          cluster: cluster,
+          mode: "web_cluster_probe",
+          cluster,
         },
         ...(cluster.detail ? { error: cluster.detail } : {}),
       };
     } else {
-    ensureDataSockets();
+      ensureDataSockets();
+      const warmth = await waitForClusterSocketWarmth(
+        inOptionsMarketHours() ? 20_000 : 3_000
+      );
 
     const options = getOptionsSocketStatus();
     const luld = getStocksSocketStatus();
@@ -88,10 +92,12 @@ export async function GET(req: NextRequest) {
     }
 
     payload = {
-      ok: options_ok && luld_ok,
+      ok: socketHealthOkDuringRth(warmth.cluster, options_ok, luld_ok),
       as_of: new Date().toISOString(),
       market_hours: rth,
       websockets: {
+        cluster: warmth.cluster,
+        cluster_wait_ms: warmth.waited_ms,
         polygon_indices: getIndexStoreStatus(),
         unusual_whales: getUwSocketHealth(),
         options: {
@@ -107,6 +113,7 @@ export async function GET(req: NextRequest) {
           detail: luld_detail,
         },
       },
+      ...(!warmth.ok && rth ? { error: "Cluster UW heartbeat stale after socket boot wait" } : {}),
     };
     }
   } catch (err) {

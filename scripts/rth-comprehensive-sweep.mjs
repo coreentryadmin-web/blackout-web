@@ -28,6 +28,7 @@ const PAGES = [
   { path: "/dashboard", label: "dashboard", liveWaitMs: 12000 },
   { path: "/flows", label: "flows", liveWaitMs: 8000 },
   { path: "/heatmap", label: "heatmap-matrix", liveWaitMs: 20000 },
+  { path: "/vector", label: "vector", liveWaitMs: 15000 },
   { path: "/nighthawk", label: "nighthawk", liveWaitMs: 15000 },
   { path: "/terminal", label: "terminal", liveWaitMs: 5000 },
   { path: "/track-record", label: "track-record", liveWaitMs: 10000 },
@@ -42,6 +43,7 @@ const MARKET_APIS = [
   "/api/market/gex-positioning?ticker=SPX",
   "/api/market/gex-heatmap?ticker=SPX",
   "/api/market/gex-heatmap?ticker=SPY",
+  "/api/market/vector/universe",
   "/api/market/flows?limit=20",
   "/api/market/nighthawk/edition",
   "/api/public/track-record",
@@ -298,16 +300,42 @@ async function browserSweep(signInUrl) {
     const missing = scanMissing(textAfter, label);
     report.missing.push(...missing);
 
-    // Heatmap profile tab
+    // Heatmap profile/matrix tabs + lens toggles; Vector GEX/VEX; dashboard GEX/VEX
     if (path === "/heatmap") {
-      const profileTab = page.getByRole("tab", { name: /profile/i });
-      if (await profileTab.count()) {
-        const tabT0 = Date.now();
-        await profileTab.click();
-        await page.waitForTimeout(2000);
-        const profileText = await page.locator("body").innerText().catch(() => "");
-        report.missing.push(...scanMissing(profileText, "heatmap-profile"));
-        report.pages.push({ label: "heatmap-profile", navType: "tab", loadMs: Date.now() - tabT0, consoleErrors: [] });
+      for (const name of [/profile/i, /matrix/i, /GEX/i, /VEX/i]) {
+        const tab = page.getByRole("tab", { name }).first();
+        if (await tab.count()) {
+          const tabT0 = Date.now();
+          await tab.click();
+          await page.waitForTimeout(1500);
+          const tabText = await page.locator("body").innerText().catch(() => "");
+          report.missing.push(...scanMissing(tabText, `heatmap-${name.source}`));
+          report.pages.push({ label: `heatmap-${name.source}`, navType: "tab", loadMs: Date.now() - tabT0, consoleErrors: [] });
+        }
+      }
+    }
+
+    if (path === "/vector") {
+      for (const name of [/GEX/i, /VEX/i]) {
+        const btn = page.getByRole("button", { name }).first();
+        if (await btn.count()) {
+          const tabT0 = Date.now();
+          await btn.click();
+          await page.waitForTimeout(1000);
+          report.pages.push({ label: `vector-${name.source}`, navType: "click", loadMs: Date.now() - tabT0, consoleErrors: [] });
+        }
+      }
+    }
+
+    if (path === "/dashboard") {
+      for (const name of [/GEX/i, /VEX/i]) {
+        const tab = page.getByRole("tab", { name }).first();
+        if (await tab.count()) {
+          const tabT0 = Date.now();
+          await tab.click();
+          await page.waitForTimeout(800);
+          report.pages.push({ label: `dashboard-${name.source}`, navType: "tab", loadMs: Date.now() - tabT0, consoleErrors: [] });
+        }
       }
     }
 

@@ -1,0 +1,24 @@
+# Launch seven tool-specific Cloud Agents — triggered by rth-autonomous-open.yml
+# Manual: workflow_dispatch
+
+name: Tool agents launch
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Launch seven tool agents (Cursor Cloud)
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: node scripts/tool-agents/launch-cloud-agents.mjs

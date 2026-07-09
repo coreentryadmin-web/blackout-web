@@ -1,0 +1,185 @@
+# RTH autonomous open — all monitors + all tool agents + fix dispatch
+# Weekdays 09:30 AM ET: zero prompts, runs until cash close, auto-fixes via Cloud Agents.
+
+name: RTH autonomous open
+
+on:
+  schedule:
+    - cron: "30 13 * * 1-5"
+    - cron: "30 14 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: rth-autonomous-open
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  open-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: RTH open gate (deploy + latency)
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CRON_TARGET_BASE_URL: https://blackouttrades.com
+        run: npm run validate:rth-open
+
+  launch-fix-agents:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Launch seven tool Cloud Agents + site-wide fixer
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          node scripts/tool-agents/launch-cloud-agents.mjs
+          node scripts/launch-rth-site-agent.mjs || true
+
+  site-continuous:
+    needs: open-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 390
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Site-wide continuous monitor (09:30–16:00 ET)
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATABASE_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          CRON_TARGET_BASE_URL: https://blackouttrades.com
+        run: npm run validate:rth-continuous
+
+      - name: Upload site metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rth-continuous-metrics
+          path: audit-output/rth-continuous/
+          retention-days: 14
+
+  tool-agent:
+    needs: open-gate
+    strategy:
+      fail-fast: false
+      matrix:
+        tool:
+          - spx-slayer
+          - thermal
+          - helix
+          - largo
+          - nighthawk
+          - zerodte
+          - vector
+    runs-on: ubuntu-latest
+    timeout-minutes: 390
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Tool agent session (${{ matrix.tool }})
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATABASE_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          CRON_TARGET_BASE_URL: https://blackouttrades.com
+        run: npm run validate:tool-agent:${{ matrix.tool }}
+
+      - name: Upload tool agent artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tool-agent-${{ matrix.tool }}
+          path: audit-output/tool-agents/${{ matrix.tool }}/
+          retention-days: 14
+
+  findings-dispatch:
+    needs: [site-continuous, tool-agent]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Download tool agent artifacts
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tool-agent-*
+          path: audit-output/tool-agents
+          merge-multiple: true
+
+      - name: Collect + dispatch auto-fix
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          CRON_TARGET_BASE_URL: https://blackouttrades.com
+        run: |
+          set +e
+          node scripts/ops-collect-action-items.mjs > /tmp/ops.json 2>/dev/null || echo '{"items":[]}' > /tmp/ops.json
+          node scripts/tool-agents/export-action-items.mjs > /tmp/tool.json
+          node -e "
+            const fs = require('fs');
+            const a = JSON.parse(fs.readFileSync('/tmp/ops.json','utf8'));
+            const b = JSON.parse(fs.readFileSync('/tmp/tool.json','utf8'));
+            const items = [...(a.items||[]), ...(b.items||[])];
+            const crypto = require('crypto');
+            const fp = crypto.createHash('sha256').update(items.map(i=>i.id).sort().join('|')).digest('hex').slice(0,12);
+            fs.writeFileSync('/tmp/merged.json', JSON.stringify({ generated_at: new Date().toISOString(), fingerprint: fp, count: items.length, items }));
+          "
+          cat /tmp/merged.json | node scripts/ops-dispatch-agent.mjs || true

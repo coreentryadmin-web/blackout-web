@@ -1,0 +1,42 @@
+# Site-wide continuous monitor — triggered by rth-autonomous-open.yml
+# Manual: workflow_dispatch
+
+name: RTH continuous monitor
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  continuous:
+    runs-on: ubuntu-latest
+    timeout-minutes: 390
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: RTH continuous supervisor (full session)
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATABASE_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          CRON_TARGET_BASE_URL: https://blackouttrades.com
+        run: npm run validate:rth-continuous
+
+      - name: Upload metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rth-continuous-metrics
+          path: audit-output/rth-continuous/
+          retention-days: 14
