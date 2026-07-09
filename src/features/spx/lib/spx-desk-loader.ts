@@ -47,7 +47,9 @@ export async function loadSpxDesk(): Promise<SpxDeskPayload> {
  */
 export async function loadSpxDeskPulse(): Promise<SpxDeskPulse> {
   const date = todayEtYmd();
-  return withServerCache(`spx-desk-pulse:${date}`, deskPulseCacheTtlMs(), buildSpxDeskPulse);
+  return withServerCache(`spx-desk-pulse:${date}`, deskPulseCacheTtlMs(), buildSpxDeskPulse, {
+    staleWhileRevalidate: true,
+  });
 }
 
 /**
@@ -56,7 +58,9 @@ export async function loadSpxDeskPulse(): Promise<SpxDeskPulse> {
  */
 export async function loadSpxDeskFlow(): Promise<SpxDeskFlow> {
   const date = todayEtYmd();
-  return withServerCache(`spx-desk-flow:${date}`, deskFlowCacheTtlMs(), buildSpxDeskFlow);
+  return withServerCache(`spx-desk-flow:${date}`, deskFlowCacheTtlMs(), buildSpxDeskFlow, {
+    staleWhileRevalidate: true,
+  });
 }
 
 /** Single server path: cache lanes → merge pulse + flow into desk. */

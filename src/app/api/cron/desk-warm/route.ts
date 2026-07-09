@@ -28,7 +28,8 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!force && !isEtCashRth()) {
+  const offHoursWarm = process.env.CACHE_WARM_OFF_HOURS?.trim() === "1";
+  if (!force && !offHoursWarm && !isEtCashRth()) {
     const payload = {
       ok: true,
       skipped: true,
