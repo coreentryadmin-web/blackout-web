@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { SpxPlayPayload, SpxPlayAction } from "@/features/spx/lib/spx-play-engine";
@@ -26,6 +26,112 @@ type Props = {
   refreshing?: boolean;
   sessionActive?: boolean;
 };
+
+type PlayKind = "structure" | "lotto" | "power";
+type PlayTab = "open" | "watch" | "closed";
+type PlayFilter = "all" | PlayKind;
+
+function filterMatches(kind: PlayKind, filter: PlayFilter): boolean {
+  return filter === "all" || filter === kind;
+}
+
+function lottoIsOpen(lotto: LottoPlayPayload | null): boolean {
+  return lotto != null && (lotto.phase === "BUY" || lotto.phase === "HOLD");
+}
+
+function lottoIsWatch(lotto: LottoPlayPayload | null): boolean {
+  return lotto != null && lotto.phase === "WATCH";
+}
+
+function lottoIsClosed(lotto: LottoPlayPayload | null): boolean {
+  return lotto != null && (lotto.phase === "SELL" || lotto.phase === "INVALID");
+}
+
+function powerIsOpen(powerHour: PowerHourPlayPayload | null): boolean {
+  return powerHour != null && powerHour.phase === "HOLD";
+}
+
+function powerIsWatch(powerHour: PowerHourPlayPayload | null): boolean {
+  return powerHour != null && powerHour.phase === "WATCH";
+}
+
+function powerIsClosed(powerHour: PowerHourPlayPayload | null): boolean {
+  return powerHour != null && powerHour.phase === "SELL";
+}
+
+function PlayTypeBadge({ kind }: { kind: PlayKind }) {
+  const label = kind === "structure" ? "STRUCTURE" : kind === "lotto" ? "LOTTO" : "POWER";
+  return (
+    <span
+      className={clsx(
+        "spx-play-type-badge",
+        kind === "structure" && "spx-play-type-badge-structure",
+        kind === "lotto" && "spx-play-type-badge-lotto",
+        kind === "power" && "spx-play-type-badge-power"
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function PlaySurfaceToolbar({
+  tab,
+  onTabChange,
+  filter,
+  onFilterChange,
+  counts,
+}: {
+  tab: PlayTab;
+  onTabChange: (t: PlayTab) => void;
+  filter: PlayFilter;
+  onFilterChange: (f: PlayFilter) => void;
+  counts: { open: number; watch: number; closed: number };
+}) {
+  const tabs: { id: PlayTab; label: string; count: number }[] = [
+    { id: "open", label: "Open", count: counts.open },
+    { id: "watch", label: "Watch", count: counts.watch },
+    { id: "closed", label: "Closed", count: counts.closed },
+  ];
+  const filters: { id: PlayFilter; label: string }[] = [
+    { id: "all", label: "All" },
+    { id: "structure", label: "Structure" },
+    { id: "lotto", label: "Lotto" },
+    { id: "power", label: "Power" },
+  ];
+
+  return (
+    <div className="spx-play-surface-toolbar">
+      <div className="spx-play-surface-tabs" role="tablist" aria-label="Play state">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className={clsx("spx-play-surface-tab", tab === t.id && "spx-play-surface-tab-active")}
+            onClick={() => onTabChange(t.id)}
+          >
+            {t.label}
+            {t.count > 0 && <span className="spx-play-surface-tab-count">{t.count}</span>}
+          </button>
+        ))}
+      </div>
+      <div className="spx-play-surface-filters" role="group" aria-label="Play type filter">
+        {filters.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            className={clsx("spx-play-surface-filter", filter === f.id && "spx-play-surface-filter-active")}
+            onClick={() => onFilterChange(f.id)}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function playDeskAlert(type: "buy" | "watch") {
   try {
@@ -229,7 +335,10 @@ function OpenPlayBox({ play }: { play: SpxPlayPayload }) {
   return (
     <div className={clsx("spx-trade-play-box spx-trade-open-box", active && openBoxTone(play))}>
       <div className="spx-trade-play-box-header">
-        <p className="spx-trade-play-box-kicker">Current open play</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <p className="spx-trade-play-box-kicker">Current open play</p>
+          <PlayTypeBadge kind="structure" />
+        </div>
         {active ? (
           <span className={clsx("spx-trade-play-box-badge", scoreClass(play.action, play.score))}>
             {actionLabel(play.action, play.direction)}
@@ -334,7 +443,10 @@ function WatchPlayBox({
   return (
     <div className={clsx("spx-trade-play-box spx-trade-watch-box", active && "spx-trade-watch-box-active")}>
       <div className="spx-trade-play-box-header">
-        <p className="spx-trade-play-box-kicker">Watch plays</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <p className="spx-trade-play-box-kicker">Armed setup</p>
+          <PlayTypeBadge kind="structure" />
+        </div>
         {active ? (
           <span className="spx-trade-play-box-badge spx-trade-play-box-badge-watch">WATCH</span>
         ) : (
@@ -420,82 +532,103 @@ function ConfluenceFactorsPanel({
   );
 }
 
-function LottoPlayBlock({
+function LottoPlayCard({
   lotto,
   lottoLoading,
   lottoRefreshing,
+  surface,
 }: {
   lotto: LottoPlayPayload | null;
   lottoLoading: boolean;
   lottoRefreshing: boolean;
+  surface: PlayTab;
 }) {
   const inWindow = isLottoPollWindow();
+  const active =
+    surface === "open"
+      ? lottoIsOpen(lotto)
+      : surface === "watch"
+        ? lottoIsWatch(lotto)
+        : lottoIsClosed(lotto);
 
-  if (lotto && lotto.phase !== "NONE") {
+  const boxTone = clsx(
+    "spx-trade-play-box spx-trade-play-box-lotto",
+    active && surface === "open" && "spx-trade-play-box-lotto-open",
+    active && surface === "watch" && "spx-trade-watch-box-active",
+    active && surface === "closed" && "spx-trade-play-box-lotto-closed"
+  );
+
+  if (lotto && lotto.phase !== "NONE" && active) {
     return (
-      <div
-        className={clsx(
-          "spx-lotto-play-block",
-          lotto.phase === "WATCH" && "spx-lotto-play-block-watch",
-          (lotto.phase === "BUY" || lotto.phase === "HOLD") && "spx-lotto-play-block-ready",
-          lotto.phase === "INVALID" && "spx-lotto-play-block-invalid"
-        )}
-      >
-        <p className="spx-lotto-play-kicker">{lotto.status_label}</p>
-        <p className="spx-lotto-play-headline">{lotto.headline}</p>
-        {lotto.thesis && lotto.thesis !== lotto.headline && (
-          <p className="spx-lotto-play-thesis">{lotto.thesis}</p>
-        )}
-        {lotto.contract_label && (
-          <p className="spx-lotto-play-contract">
-            {lotto.direction === "long" ? "CALL" : "PUT"} · Strike {lotto.strike}
-            {lotto.premium_estimate ? ` · ${lotto.premium_estimate}` : ""}
+      <div className={boxTone}>
+        <div className="spx-trade-play-box-header">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className="spx-trade-play-box-kicker">{lotto.status_label}</p>
+            <PlayTypeBadge kind="lotto" />
+          </div>
+          <span className="spx-trade-play-box-badge spx-trade-play-box-badge-lotto">
+            {lotto.phase}
+          </span>
+        </div>
+        <div className="spx-trade-play-box-body">
+          <p className="spx-trade-play-box-headline">{lotto.headline}</p>
+          {lotto.thesis && lotto.thesis !== lotto.headline && (
+            <p className="spx-trade-play-box-thesis">{lotto.thesis}</p>
+          )}
+          {lotto.contract_label && (
+            <p className="spx-lotto-play-contract">
+              {lotto.direction === "long" ? "CALL" : "PUT"} · Strike {lotto.strike}
+              {lotto.premium_estimate ? ` · ${lotto.premium_estimate}` : ""}
+            </p>
+          )}
+          {lotto.target_price != null && lotto.entry_zone != null && (
+            <p className="spx-lotto-play-contract">
+              Target: +{lotto.target_pts} pts · Zone: {lotto.entry_zone.toFixed(0)}
+            </p>
+          )}
+          {lotto.entry_trigger && lotto.phase === "WATCH" && (
+            <p className="spx-lotto-play-contract">Trigger: {lotto.entry_trigger}</p>
+          )}
+          {lotto.open_anchor_price != null && lotto.phase === "WATCH" && (
+            <p className="spx-lotto-play-anchor">
+              Open anchor: {lotto.open_anchor_price.toFixed(2)} (9:30 cash print)
+            </p>
+          )}
+          {lotto.invalidation && (lotto.phase === "WATCH" || lotto.phase === "HOLD") && (
+            <p className="spx-lotto-play-invalidation">Invalidation: {lotto.invalidation}</p>
+          )}
+          {lotto.catalyst_summary && lotto.phase === "WATCH" && (
+            <p className="spx-lotto-play-flow">Intel: {lotto.catalyst_summary}</p>
+          )}
+          {lotto.flow_summary && <p className="spx-lotto-play-flow">Flow: {lotto.flow_summary}</p>}
+          {lotto.sizing_note && <p className="spx-lotto-play-sizing">{lotto.sizing_note}</p>}
+          {lotto.spread_pct != null && (
+            <p className="spx-lotto-play-spread">Spread: {lotto.spread_pct.toFixed(0)}% (lotto cap)</p>
+          )}
+          <p className="spx-lotto-play-footnote">
+            {lotto.status_message}
+            {lottoRefreshing && " · live"}
           </p>
-        )}
-        {lotto.target_price != null && lotto.entry_zone != null && (
-          <p className="spx-lotto-play-contract">
-            Target: +{lotto.target_pts} pts · Zone: {lotto.entry_zone.toFixed(0)}
-          </p>
-        )}
-        {lotto.entry_trigger && lotto.phase === "WATCH" && (
-          <p className="spx-lotto-play-contract">Confirm: {lotto.entry_trigger}</p>
-        )}
-        {lotto.open_anchor_price != null && lotto.phase === "WATCH" && (
-          <p className="spx-lotto-play-anchor">
-            Open anchor: {lotto.open_anchor_price.toFixed(2)} (9:30 cash print)
-          </p>
-        )}
-        {lotto.invalidation && lotto.phase === "WATCH" && (
-          <p className="spx-lotto-play-invalidation">{lotto.invalidation}</p>
-        )}
-        {lotto.catalyst_summary && lotto.phase === "WATCH" && (
-          <p className="spx-lotto-play-flow">Intel: {lotto.catalyst_summary}</p>
-        )}
-        {lotto.flow_summary && <p className="spx-lotto-play-flow">Flow: {lotto.flow_summary}</p>}
-        {lotto.sizing_note && <p className="spx-lotto-play-sizing">{lotto.sizing_note}</p>}
-        {lotto.spread_pct != null && (
-          <p className="spx-lotto-play-spread">Spread: {lotto.spread_pct.toFixed(0)}% (lotto cap)</p>
-        )}
-        <p className="spx-lotto-play-footnote">
-          {lotto.status_message}
-          {lottoRefreshing && " · live"}
-        </p>
-        <p className="font-mono text-[10px] text-sky-300/60 mt-2">
-          Educational. Not advice. Every trade is your own decision.
-        </p>
+        </div>
       </div>
     );
   }
 
-  if (inWindow) {
+  if (surface === "watch" && inWindow) {
     const copy = lottoLoading
       ? lottoPanelLoadingCopy()
       : lottoPanelEmptyCopy(lotto?.headline);
     return (
-      <div className="spx-lotto-play-block spx-lotto-play-block-empty">
-        <p className="spx-lotto-play-kicker">{copy.kicker}</p>
-        <p className="spx-lotto-play-headline">{copy.headline}</p>
-        <p className="spx-lotto-play-thesis">{copy.thesis}</p>
+      <div className={clsx(boxTone, "spx-trade-play-box-muted")}>
+        <div className="spx-trade-play-box-header">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className="spx-trade-play-box-kicker">{copy.kicker}</p>
+            <PlayTypeBadge kind="lotto" />
+          </div>
+          <span className="spx-trade-play-box-badge spx-trade-play-box-badge-idle">IDLE</span>
+        </div>
+        <p className="spx-trade-play-box-headline">{copy.headline}</p>
+        <p className="spx-trade-play-box-thesis">{copy.thesis}</p>
         {lottoRefreshing && !lottoLoading && (
           <p className="spx-lotto-play-footnote">{copy.footnote ?? "Scanning…"}</p>
         )}
@@ -503,85 +636,129 @@ function LottoPlayBlock({
     );
   }
 
-  const offHours = lottoPanelOffHoursCopy();
-  return (
-    <div className="spx-lotto-play-block spx-lotto-play-block-empty">
-      <p className="spx-lotto-play-kicker">{offHours.kicker}</p>
-      <p className="spx-lotto-play-headline">{offHours.headline}</p>
-      <p className="spx-lotto-play-thesis">{offHours.thesis}</p>
-    </div>
-  );
-}
-
-function PowerHourPlayBlock({
-  powerHour,
-  powerHourLoading,
-  powerHourRefreshing,
-}: {
-  powerHour: PowerHourPlayPayload | null;
-  powerHourLoading: boolean;
-  powerHourRefreshing: boolean;
-}) {
-  const inWindow = isPowerHourWindow();
-  const showDock =
-    inWindow ||
-    (powerHour != null && (powerHour.phase === "WATCH" || powerHour.phase === "HOLD"));
-
-  if (!showDock && !powerHourLoading) return null;
-
-  if (powerHour && powerHour.phase !== "NONE") {
+  if (surface === "watch" && !inWindow) {
+    const offHours = lottoPanelOffHoursCopy();
     return (
-      <div
-        className={clsx(
-          "spx-lotto-play-block spx-power-hour-play-block",
-          powerHour.phase === "WATCH" && "spx-lotto-play-block-watch",
-          powerHour.phase === "HOLD" && "spx-lotto-play-block-ready"
-        )}
-      >
-        <p className="spx-lotto-play-kicker">Power hour · {powerHour.phase}</p>
-        <p className="spx-lotto-play-headline">{powerHour.headline}</p>
-        {powerHour.thesis && powerHour.thesis !== powerHour.headline && (
-          <p className="spx-lotto-play-thesis">{powerHour.thesis}</p>
-        )}
-        {powerHour.contract_label && (
-          <p className="spx-lotto-play-contract">
-            {powerHour.direction === "long" ? "CALL" : "PUT"} · {powerHour.contract_label}
-          </p>
-        )}
-        {powerHour.target_price != null && (
-          <p className="spx-lotto-play-contract">
-            Target +{powerHour.target_pts} pts · Stop −{powerHour.stop_pts} pts
-          </p>
-        )}
-        {powerHour.pnl_pts != null && powerHour.phase === "HOLD" && (
-          <p className="spx-lotto-play-contract">
-            Live PnL: {powerHour.pnl_pts >= 0 ? "+" : ""}
-            {powerHour.pnl_pts.toFixed(1)} pts
-          </p>
-        )}
-        <p className="spx-lotto-play-footnote">
-          {powerHour.status_message}
-          {powerHourRefreshing && " · live"}
-        </p>
-      </div>
-    );
-  }
-
-  if (inWindow) {
-    return (
-      <div className="spx-lotto-play-block spx-lotto-play-block-empty">
-        <p className="spx-lotto-play-kicker">Power hour</p>
-        <p className="spx-lotto-play-headline">
-          {powerHourLoading ? "Scanning closing momentum…" : "No power-hour setup armed yet."}
-        </p>
-        <p className="spx-lotto-play-thesis">
-          Near-money 0DTE momentum window · 2:45–3:15 PM ET.
-        </p>
+      <div className={clsx(boxTone, "spx-trade-play-box-muted")}>
+        <div className="spx-trade-play-box-header">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className="spx-trade-play-box-kicker">{offHours.kicker}</p>
+            <PlayTypeBadge kind="lotto" />
+          </div>
+          <span className="spx-trade-play-box-badge spx-trade-play-box-badge-idle">OFF</span>
+        </div>
+        <p className="spx-trade-play-box-headline">{offHours.headline}</p>
+        <p className="spx-trade-play-box-thesis">{offHours.thesis}</p>
       </div>
     );
   }
 
   return null;
+}
+
+function PowerHourPlayCard({
+  powerHour,
+  powerHourLoading,
+  powerHourRefreshing,
+  surface,
+}: {
+  powerHour: PowerHourPlayPayload | null;
+  powerHourLoading: boolean;
+  powerHourRefreshing: boolean;
+  surface: PlayTab;
+}) {
+  const inWindow = isPowerHourWindow();
+  const showDock =
+    inWindow || (powerHour != null && (powerHour.phase === "WATCH" || powerHour.phase === "HOLD"));
+  const active =
+    surface === "open"
+      ? powerIsOpen(powerHour)
+      : surface === "watch"
+        ? powerIsWatch(powerHour)
+        : powerIsClosed(powerHour);
+
+  if (!showDock && !powerHourLoading && surface === "watch") return null;
+  if (!showDock && !powerHourLoading && surface !== "watch") return null;
+
+  const boxTone = clsx(
+    "spx-trade-play-box spx-trade-play-box-power",
+    active && surface === "open" && "spx-trade-play-box-power-open",
+    active && surface === "watch" && "spx-trade-watch-box-active",
+    active && surface === "closed" && "spx-trade-play-box-power-closed"
+  );
+
+  if (powerHour && powerHour.phase !== "NONE" && active) {
+    return (
+      <div className={boxTone}>
+        <div className="spx-trade-play-box-header">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className="spx-trade-play-box-kicker">Power hour · {powerHour.phase}</p>
+            <PlayTypeBadge kind="power" />
+          </div>
+          <span className="spx-trade-play-box-badge spx-trade-play-box-badge-power">{powerHour.phase}</span>
+        </div>
+        <div className="spx-trade-play-box-body">
+          <p className="spx-trade-play-box-headline">{powerHour.headline}</p>
+          {powerHour.thesis && powerHour.thesis !== powerHour.headline && (
+            <p className="spx-trade-play-box-thesis">{powerHour.thesis}</p>
+          )}
+          {powerHour.contract_label && (
+            <p className="spx-lotto-play-contract">
+              {powerHour.direction === "long" ? "CALL" : "PUT"} · {powerHour.contract_label}
+            </p>
+          )}
+          {powerHour.target_price != null && (
+            <p className="spx-lotto-play-contract">
+              Target +{powerHour.target_pts} pts · Stop −{powerHour.stop_pts} pts
+            </p>
+          )}
+          {powerHour.pnl_pts != null && powerHour.phase === "HOLD" && (
+            <p className="spx-lotto-play-contract">
+              Live PnL: {powerHour.pnl_pts >= 0 ? "+" : ""}
+              {powerHour.pnl_pts.toFixed(1)} pts
+            </p>
+          )}
+          {powerHour.sizing_note && <p className="spx-lotto-play-sizing">{powerHour.sizing_note}</p>}
+          <p className="spx-lotto-play-footnote">
+            {powerHour.status_message}
+            {powerHourRefreshing && " · live"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (surface === "watch" && inWindow) {
+    return (
+      <div className={clsx(boxTone, "spx-trade-play-box-muted")}>
+        <div className="spx-trade-play-box-header">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className="spx-trade-play-box-kicker">Power hour</p>
+            <PlayTypeBadge kind="power" />
+          </div>
+          <span className="spx-trade-play-box-badge spx-trade-play-box-badge-idle">IDLE</span>
+        </div>
+        <p className="spx-trade-play-box-headline">
+          {powerHourLoading ? "Scanning closing momentum…" : "No power-hour setup armed yet."}
+        </p>
+        <p className="spx-trade-play-box-thesis">Near-money 0DTE momentum window · 2:45–3:15 PM ET.</p>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function PlaySurfaceEmpty({ tab, filter }: { tab: PlayTab; filter: PlayFilter }) {
+  const filterLabel =
+    filter === "all" ? "" : filter === "structure" ? " structure" : filter === "lotto" ? " lotto" : " power-hour";
+  const copy =
+    tab === "open"
+      ? `No${filterLabel} open position — engine is scanning.`
+      : tab === "watch"
+        ? `No${filterLabel} setup armed — waiting for alignment.`
+        : `No recent${filterLabel} closed plays in this session.`;
+  return <p className="spx-trade-play-box-empty py-4 text-center">{copy}</p>;
 }
 
 export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }: Props) {
@@ -590,6 +767,8 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
   const { powerHour, powerHourLoading, powerHourRefreshing } = useSpxPowerHour();
   const confirmationLayer = useStablePlayConfirmations(play);
   const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [playTab, setPlayTab] = useState<PlayTab>("open");
+  const [playFilter, setPlayFilter] = useState<PlayFilter>("all");
   const lastIdRef = useRef<string>("");
   const prevActionRef = useRef<string | null>(null);
 
@@ -598,7 +777,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
     const prev = prevActionRef.current;
     prevActionRef.current = action ?? null;
 
-    if (!action || !prev) return; // No alert on first load
+    if (!action || !prev) return;
     if (action === "BUY" && prev !== "BUY" && play?.signal_committed) {
       playDeskAlert("buy");
     } else if (action === "WATCHING" && prev === "SCANNING") {
@@ -625,6 +804,153 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
     (play?.action === "WATCHING" ||
       play?.action === "BUY" ||
       (!play && playRefreshing));
+
+  const structureOpen = Boolean(play && hasOpenPlay(play));
+  const structureWatch = Boolean(play && hasWatchPlay(play) && !structureOpen);
+  const structureClosed = history.length > 1;
+
+  const tabCounts = {
+    open:
+      (structureOpen ? 1 : 0) +
+      (lottoIsOpen(lotto) ? 1 : 0) +
+      (powerIsOpen(powerHour) ? 1 : 0),
+    watch:
+      (structureWatch ? 1 : 0) +
+      (lottoIsWatch(lotto) ? 1 : 0) +
+      (powerIsWatch(powerHour) ? 1 : 0),
+    closed:
+      (structureClosed ? history.length - 1 : 0) +
+      (lottoIsClosed(lotto) ? 1 : 0) +
+      (powerIsClosed(powerHour) ? 1 : 0),
+  };
+
+  function renderPlaySurface(): ReactNode {
+    if (!play) return null;
+    const items: ReactNode[] = [];
+
+    if (playTab === "open") {
+      if (filterMatches("structure", playFilter)) {
+        items.push(<OpenPlayBox key="structure-open" play={play} />);
+      }
+      if (filterMatches("lotto", playFilter) && lottoIsOpen(lotto)) {
+        items.push(
+          <LottoPlayCard
+            key="lotto-open"
+            lotto={lotto}
+            lottoLoading={lottoLoading}
+            lottoRefreshing={lottoRefreshing}
+            surface="open"
+          />
+        );
+      }
+      if (filterMatches("power", playFilter) && powerIsOpen(powerHour)) {
+        items.push(
+          <PowerHourPlayCard
+            key="power-open"
+            powerHour={powerHour}
+            powerHourLoading={powerHourLoading}
+            powerHourRefreshing={powerHourRefreshing}
+            surface="open"
+          />
+        );
+      }
+    }
+
+    if (playTab === "watch") {
+      if (filterMatches("structure", playFilter)) {
+        items.push(
+          <WatchPlayBox
+            key="structure-watch"
+            play={play}
+            confirmationLayer={showConfirmationPanel ? confirmationLayer : null}
+            refreshing={playRefreshing}
+          />
+        );
+      }
+      if (filterMatches("lotto", playFilter)) {
+        items.push(
+          <LottoPlayCard
+            key="lotto-watch"
+            lotto={lotto}
+            lottoLoading={lottoLoading}
+            lottoRefreshing={lottoRefreshing}
+            surface="watch"
+          />
+        );
+      }
+      if (filterMatches("power", playFilter)) {
+        items.push(
+          <PowerHourPlayCard
+            key="power-watch"
+            powerHour={powerHour}
+            powerHourLoading={powerHourLoading}
+            powerHourRefreshing={powerHourRefreshing}
+            surface="watch"
+          />
+        );
+      }
+    }
+
+    if (playTab === "closed") {
+      if (filterMatches("structure", playFilter) && history.length > 1) {
+        items.push(
+          <div key="structure-closed" className="spx-trade-closed-log">
+            <p className="spx-trade-closed-log-title">Structure play log</p>
+            <ul className="spx-desk-list max-h-[220px] overflow-y-auto">
+              {history.slice(1, 12).map((row) => (
+                <li key={row.id} className="spx-desk-list-row text-xs md:text-sm">
+                  <span className={clsx("spx-trade-alert-history-action", historyClass(row.action))}>
+                    {actionLabel(row.action, row.direction)}
+                  </span>
+                  <span className="font-mono text-cyan-400 shrink-0">
+                    {new Date(row.as_of).toLocaleTimeString("en-US", {
+                      hour: "numeric",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })}
+                  </span>
+                  <span className="font-mono text-sky-200 truncate">{row.headline}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      }
+      if (filterMatches("lotto", playFilter) && lottoIsClosed(lotto)) {
+        items.push(
+          <LottoPlayCard
+            key="lotto-closed"
+            lotto={lotto}
+            lottoLoading={lottoLoading}
+            lottoRefreshing={lottoRefreshing}
+            surface="closed"
+          />
+        );
+      }
+      if (filterMatches("power", playFilter) && powerIsClosed(powerHour)) {
+        items.push(
+          <PowerHourPlayCard
+            key="power-closed"
+            powerHour={powerHour}
+            powerHourLoading={powerHourLoading}
+            powerHourRefreshing={powerHourRefreshing}
+            surface="closed"
+          />
+        );
+      }
+    }
+
+    if (items.length === 0) {
+      return <PlaySurfaceEmpty tab={playTab} filter={playFilter} />;
+    }
+    return items;
+  }
+
+  const showConfluence =
+    play != null &&
+    playTab !== "closed" &&
+    filterMatches("structure", playFilter) &&
+    play.factors.length > 0;
 
   return (
     <section
@@ -663,56 +989,22 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
         )
       ) : (
         <>
-          <OpenPlayBox play={play} />
-          <WatchPlayBox
-            play={play}
-            confirmationLayer={showConfirmationPanel ? confirmationLayer : null}
-            refreshing={playRefreshing}
+          <PlaySurfaceToolbar
+            tab={playTab}
+            onTabChange={setPlayTab}
+            filter={playFilter}
+            onFilterChange={setPlayFilter}
+            counts={tabCounts}
           />
-          <ConfluenceFactorsPanel factors={play.factors} updating={panelRefreshing} />
+          <div className="spx-play-surface-stack">{renderPlaySurface()}</div>
+          {showConfluence && (
+            <ConfluenceFactorsPanel factors={play.factors} updating={panelRefreshing} />
+          )}
           <p className="spx-trade-educational-note">
             Educational. Not advice. Every trade is your own decision.
           </p>
         </>
       )}
-
-      {history.length > 1 && (
-        <div className="spx-trade-alert-history mt-4 pt-4 border-t border-white/5">
-          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-cyan-400 mb-2">
-            Play log
-          </p>
-          <ul className="spx-desk-list max-h-[200px] overflow-y-auto">
-            {history.slice(1, 10).map((row) => (
-              <li key={row.id} className="spx-desk-list-row text-xs md:text-sm">
-                <span className={clsx("spx-trade-alert-history-action", historyClass(row.action))}>
-                  {actionLabel(row.action, row.direction)}
-                </span>
-                <span className="font-mono text-cyan-400 shrink-0">
-                  {new Date(row.as_of).toLocaleTimeString("en-US", {
-                    hour: "numeric",
-                    minute: "2-digit",
-                    second: "2-digit",
-                  })}
-                </span>
-                <span className="font-mono text-sky-200 truncate">{row.headline}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      </div>
-
-      <div className="spx-lotto-dock" aria-label="0DTE setup engine">
-        <LottoPlayBlock
-          lotto={lotto}
-          lottoLoading={lottoLoading}
-          lottoRefreshing={lottoRefreshing}
-        />
-        <PowerHourPlayBlock
-          powerHour={powerHour}
-          powerHourLoading={powerHourLoading}
-          powerHourRefreshing={powerHourRefreshing}
-        />
       </div>
       </div>
     </section>
