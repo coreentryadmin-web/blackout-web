@@ -87,10 +87,10 @@ async function main() {
         const res = await fetch(`${BASE}${path}`, { headers: { Cookie: cookieHeader, Accept: "application/json" } });
         await res.text();
         const ms = Math.round(performance.now() - t0);
-        const label =
-          pass === 1
-            ? `api:${path.split("?")[0]}${path.includes("?") ? ":" + new URL(path, BASE).searchParams.get("ticker") : ""}`
-            : `api:${path.split("?")[0]}:warm${path.includes("ticker=") ? ":" + new URL(path, BASE).searchParams.get("ticker") : ""}`;
+        const q = path.includes("?") ? new URL(path, BASE).search : "";
+        const ticker = q.includes("ticker=") ? new URL(path, BASE).searchParams.get("ticker") : null;
+        const suffix = ticker ? `:${ticker}` : q ? `:${q.replace(/^\?/, "").replace(/&/g, "_")}` : "";
+        const label = pass === 1 ? `api:${path.split("?")[0]}${suffix}` : `api:${path.split("?")[0]}:warm${suffix}`;
         rec(label, grade(ms), `HTTP ${res.status}`, ms);
       } catch (e) {
         rec(`api:${path}`, "FAIL", e.message);

@@ -150,6 +150,13 @@ export async function withServerCache<T>(
     return refreshCache(key, ttlMs, loader, localOnly);
   }
 
+  // Cache expired — serve stale immediately while a refresh is in-flight (don't queue
+  // behind the slow loader; live-caught 2026-07-09: spx-desk "warm" pass blocked 11s).
+  if (hit && hit.expiresAt <= now && swr && inflight.has(key)) {
+    const staleAge = now - hit.refreshedAt;
+    if (staleAge <= MAX_STALE_AGE_MS) return hit.value;
+  }
+
   // Cache expired but we have data — return stale immediately, refresh in background.
   // FIX 5a: Enforce a maximum stale age. If the entry is older than MAX_STALE_AGE_MS
   // since its last successful refresh, do not serve it; fall through to a blocking

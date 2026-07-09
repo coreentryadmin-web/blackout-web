@@ -58,8 +58,16 @@ export function deskFlowCacheTtlMs(): number {
 /** 0DTE Command board payload (scan + ledger + intel). Default 30s — SWR across replicas. */
 export function zerodteBoardCacheTtlMs(): number {
   const raw = process.env.ZERODTE_BOARD_CACHE_SEC?.trim();
-  const sec = raw ? Number(raw) : 30;
-  if (!Number.isFinite(sec) || sec < 0) return 30_000;
+  const sec = raw ? Number(raw) : 60;
+  if (!Number.isFinite(sec) || sec < 0) return 60_000;
+  return Math.round(sec * 1000);
+}
+
+/** HELIX flow tape + platform refs. Default 60s — SWR keeps polls on hot reads. */
+export function flowTapeCacheTtlMs(): number {
+  const raw = process.env.FLOW_TAPE_CACHE_SEC?.trim();
+  const sec = raw ? Number(raw) : 60;
+  if (!Number.isFinite(sec) || sec < 0) return 60_000;
   return Math.round(sec * 1000);
 }
 

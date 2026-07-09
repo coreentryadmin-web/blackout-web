@@ -117,13 +117,13 @@ async function warmPlatform() {
   }
 }
 
-async function fastProbe(cookieHeader) {
+async function fastProbe(authHeaders) {
   const results = [];
   for (const api of FAST_APIS) {
     const t0 = performance.now();
     try {
       const res = await fetch(`${BASE}${api.path}`, {
-        headers: { Cookie: cookieHeader, Accept: "application/json" },
+        headers: { ...authHeaders, Accept: "application/json" },
       });
       await res.text();
       const ms = Math.round(performance.now() - t0);
@@ -144,8 +144,8 @@ async function fastProbe(cookieHeader) {
   if (fails.length) console.log(`[fast] tick=${tick} FAIL ${fails.map((f) => `${f.key}:${f.ms}ms`).join(", ")}`);
 }
 
-async function matrixProbe(cookieHeader) {
-  const headers = { Cookie: cookieHeader, Accept: "application/json" };
+async function matrixProbe(authHeaders) {
+  const headers = { ...authHeaders, Accept: "application/json" };
   const probes = [];
 
   async function get(path) {
@@ -369,6 +369,13 @@ async function main() {
     .map((c) => `${c.name}=${c.value}`)
     .join("; ");
 
+  const cron = process.env.CRON_SECRET?.trim();
+  const apiAuthHeaders = cron
+    ? { Authorization: `Bearer ${cron}` }
+    : cookieHeader
+      ? { Cookie: cookieHeader }
+      : {};
+
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
   const context = await browser.newContext();
   await context.addInitScript(onboardingInitScript());
@@ -392,11 +399,11 @@ async function main() {
 
       if (now - lastFast >= FAST_MS) {
         lastFast = now;
-        await fastProbe(cookieHeader);
+        await fastProbe(apiAuthHeaders);
       }
       if (now - lastMatrix >= MATRIX_MS) {
         lastMatrix = now;
-        await matrixProbe(cookieHeader);
+        await matrixProbe(apiAuthHeaders);
       }
       if (now - lastBrowser >= BROWSER_MS) {
         lastBrowser = now;
