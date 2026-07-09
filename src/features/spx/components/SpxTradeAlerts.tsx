@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { SpxPlayPayload, SpxPlayAction } from "@/features/spx/lib/spx-play-engine";
@@ -9,7 +9,10 @@ import { useSpxLotto } from "@/features/spx/hooks/useSpxLotto";
 import { useSpxPowerHour } from "@/features/spx/hooks/useSpxPowerHour";
 import { useStablePlayConfirmations, type PlayConfirmationLayer } from "@/features/spx/hooks/useStablePlayConfirmations";
 import { SpxLiveSpotPrice } from "./SpxLiveSpotPrice";
-import { SpxPlaybookShadowStrip } from "./SpxPlaybookShadowStrip";
+import { SpxPlayKanbanBoard } from "./SpxPlayKanbanBoard";
+import { SpxPlaybookValidationPanel } from "./SpxPlaybookValidationPanel";
+import { buildPlayKanbanChips } from "@/features/spx/lib/spx-play-kanban-chips";
+import type { PlayKanbanFilter } from "@/features/spx/lib/spx-play-kanban-chips";
 import { Kicker } from "@/components/ui";
 import { fmtPrice } from "@/lib/api";
 import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
@@ -30,11 +33,6 @@ type Props = {
 
 type PlayKind = "structure" | "lotto" | "power";
 type PlayTab = "open" | "watch" | "closed";
-type PlayFilter = "all" | PlayKind;
-
-function filterMatches(kind: PlayKind, filter: PlayFilter): boolean {
-  return filter === "all" || filter === kind;
-}
 
 function lottoIsOpen(lotto: LottoPlayPayload | null): boolean {
   return lotto != null && (lotto.phase === "BUY" || lotto.phase === "HOLD");
@@ -73,64 +71,6 @@ function PlayTypeBadge({ kind }: { kind: PlayKind }) {
     >
       {label}
     </span>
-  );
-}
-
-function PlaySurfaceToolbar({
-  tab,
-  onTabChange,
-  filter,
-  onFilterChange,
-  counts,
-}: {
-  tab: PlayTab;
-  onTabChange: (t: PlayTab) => void;
-  filter: PlayFilter;
-  onFilterChange: (f: PlayFilter) => void;
-  counts: { open: number; watch: number; closed: number };
-}) {
-  const tabs: { id: PlayTab; label: string; count: number }[] = [
-    { id: "open", label: "Open", count: counts.open },
-    { id: "watch", label: "Watch", count: counts.watch },
-    { id: "closed", label: "Closed", count: counts.closed },
-  ];
-  const filters: { id: PlayFilter; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "structure", label: "Structure" },
-    { id: "lotto", label: "Lotto" },
-    { id: "power", label: "Power" },
-  ];
-
-  return (
-    <div className="spx-play-surface-toolbar">
-      <div className="spx-play-surface-tabs" role="tablist" aria-label="Play state">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            className={clsx("spx-play-surface-tab", tab === t.id && "spx-play-surface-tab-active")}
-            onClick={() => onTabChange(t.id)}
-          >
-            {t.label}
-            {t.count > 0 && <span className="spx-play-surface-tab-count">{t.count}</span>}
-          </button>
-        ))}
-      </div>
-      <div className="spx-play-surface-filters" role="group" aria-label="Play type filter">
-        {filters.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            className={clsx("spx-play-surface-filter", filter === f.id && "spx-play-surface-filter-active")}
-            onClick={() => onFilterChange(f.id)}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -189,20 +129,6 @@ function actionLabel(action: SpxPlayAction, direction: SpxPlayPayload["direction
       return "WATCH";
     default:
       return "SCANNING";
-  }
-}
-
-function historyClass(action: SpxPlayAction): string {
-  switch (action) {
-    case "BUY":
-      return "spx-history-buy-call";
-    case "SELL":
-      return "spx-history-sell";
-    case "HOLD":
-    case "TRIM":
-      return "spx-history-hold";
-    default:
-      return "spx-history-wait";
   }
 }
 
@@ -750,16 +676,121 @@ function PowerHourPlayCard({
   return null;
 }
 
-function PlaySurfaceEmpty({ tab, filter }: { tab: PlayTab; filter: PlayFilter }) {
-  const filterLabel =
-    filter === "all" ? "" : filter === "structure" ? " structure" : filter === "lotto" ? " lotto" : " power-hour";
-  const copy =
-    tab === "open"
-      ? `No${filterLabel} open position — engine is scanning.`
-      : tab === "watch"
-        ? `No${filterLabel} setup armed — waiting for alignment.`
-        : `No recent${filterLabel} closed plays in this session.`;
-  return <p className="spx-trade-play-box-empty py-4 text-center">{copy}</p>;
+function renderKanbanDetail(input: {
+  selectedId: string | null;
+  play: SpxPlayPayload | null;
+  lotto: LottoPlayPayload | null;
+  powerHour: PowerHourPlayPayload | null;
+  history: HistoryRow[];
+  confirmationLayer: PlayConfirmationLayer | null;
+  playRefreshing: boolean;
+  showConfirmationPanel: boolean;
+  lottoLoading: boolean;
+  lottoRefreshing: boolean;
+  powerHourLoading: boolean;
+  powerHourRefreshing: boolean;
+}): ReactNode {
+  const {
+    selectedId,
+    play,
+    lotto,
+    powerHour,
+    history,
+    confirmationLayer,
+    playRefreshing,
+    showConfirmationPanel,
+    lottoLoading,
+    lottoRefreshing,
+    powerHourLoading,
+    powerHourRefreshing,
+  } = input;
+  if (!selectedId || !play) return null;
+
+  if (selectedId === "structure-open") {
+    return <OpenPlayBox play={play} />;
+  }
+  if (selectedId === "structure-watch") {
+    return (
+      <WatchPlayBox
+        play={play}
+        confirmationLayer={showConfirmationPanel ? confirmationLayer : null}
+        refreshing={playRefreshing}
+      />
+    );
+  }
+  if (selectedId === "lotto-open") {
+    return (
+      <LottoPlayCard
+        lotto={lotto}
+        lottoLoading={lottoLoading}
+        lottoRefreshing={lottoRefreshing}
+        surface="open"
+      />
+    );
+  }
+  if (selectedId === "lotto-watch") {
+    return (
+      <LottoPlayCard
+        lotto={lotto}
+        lottoLoading={lottoLoading}
+        lottoRefreshing={lottoRefreshing}
+        surface="watch"
+      />
+    );
+  }
+  if (selectedId === "lotto-closed") {
+    return (
+      <LottoPlayCard
+        lotto={lotto}
+        lottoLoading={lottoLoading}
+        lottoRefreshing={lottoRefreshing}
+        surface="closed"
+      />
+    );
+  }
+  if (selectedId === "power-open") {
+    return (
+      <PowerHourPlayCard
+        powerHour={powerHour}
+        powerHourLoading={powerHourLoading}
+        powerHourRefreshing={powerHourRefreshing}
+        surface="open"
+      />
+    );
+  }
+  if (selectedId === "power-watch") {
+    return (
+      <PowerHourPlayCard
+        powerHour={powerHour}
+        powerHourLoading={powerHourLoading}
+        powerHourRefreshing={powerHourRefreshing}
+        surface="watch"
+      />
+    );
+  }
+  if (selectedId === "power-closed") {
+    return (
+      <PowerHourPlayCard
+        powerHour={powerHour}
+        powerHourLoading={powerHourLoading}
+        powerHourRefreshing={powerHourRefreshing}
+        surface="closed"
+      />
+    );
+  }
+
+  const closedRow = history.find((r) => r.id === selectedId);
+  if (closedRow) {
+    return (
+      <div className="spx-play-kanban-detail spx-trade-play-box">
+        <p className="spx-trade-play-box-kicker">Closed structure</p>
+        <p className="spx-trade-play-box-headline">{closedRow.headline}</p>
+        <p className="spx-trade-play-box-thesis">{closedRow.thesis}</p>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }: Props) {
@@ -768,8 +799,8 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
   const { powerHour, powerHourLoading, powerHourRefreshing } = useSpxPowerHour();
   const confirmationLayer = useStablePlayConfirmations(play);
   const [history, setHistory] = useState<HistoryRow[]>([]);
-  const [playTab, setPlayTab] = useState<PlayTab>("open");
-  const [playFilter, setPlayFilter] = useState<PlayFilter>("all");
+  const [playFilter, setPlayFilter] = useState<PlayKanbanFilter>("all");
+  const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
   const lastIdRef = useRef<string>("");
   const prevActionRef = useRef<string | null>(null);
 
@@ -808,168 +839,77 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
 
   const structureOpen = Boolean(play && hasOpenPlay(play));
   const structureWatch = Boolean(play && hasWatchPlay(play) && !structureOpen);
-  const structureClosed = history.length > 1;
 
-  const tabCounts = {
-    open:
-      (structureOpen ? 1 : 0) +
-      (lottoIsOpen(lotto) ? 1 : 0) +
-      (powerIsOpen(powerHour) ? 1 : 0),
-    watch:
-      (structureWatch ? 1 : 0) +
-      (lottoIsWatch(lotto) ? 1 : 0) +
-      (powerIsWatch(powerHour) ? 1 : 0),
-    closed:
-      (structureClosed ? history.length - 1 : 0) +
-      (lottoIsClosed(lotto) ? 1 : 0) +
-      (powerIsClosed(powerHour) ? 1 : 0),
-  };
+  const kanbanColumns = useMemo(
+    () =>
+      buildPlayKanbanChips({
+        play,
+        lotto,
+        powerHour,
+        history,
+        filter: playFilter,
+        structureOpen,
+        structureWatch,
+      }),
+    [play, lotto, powerHour, history, playFilter, structureOpen, structureWatch]
+  );
 
-  function renderPlaySurface(): ReactNode {
-    if (!play) return null;
-    const items: ReactNode[] = [];
+  const allChipIds = useMemo(
+    () => [
+      ...kanbanColumns.open.map((c) => c.id),
+      ...kanbanColumns.watch.map((c) => c.id),
+      ...kanbanColumns.closed.map((c) => c.id),
+    ],
+    [kanbanColumns]
+  );
 
-    if (playTab === "open") {
-      if (filterMatches("structure", playFilter)) {
-        items.push(<OpenPlayBox key="structure-open" play={play} />);
-      }
-      if (filterMatches("lotto", playFilter) && lottoIsOpen(lotto)) {
-        items.push(
-          <LottoPlayCard
-            key="lotto-open"
-            lotto={lotto}
-            lottoLoading={lottoLoading}
-            lottoRefreshing={lottoRefreshing}
-            surface="open"
-          />
-        );
-      }
-      if (filterMatches("power", playFilter) && powerIsOpen(powerHour)) {
-        items.push(
-          <PowerHourPlayCard
-            key="power-open"
-            powerHour={powerHour}
-            powerHourLoading={powerHourLoading}
-            powerHourRefreshing={powerHourRefreshing}
-            surface="open"
-          />
-        );
-      }
-    }
+  useEffect(() => {
+    if (selectedChipId && allChipIds.includes(selectedChipId)) return;
+    const next =
+      kanbanColumns.open[0]?.id ??
+      kanbanColumns.watch[0]?.id ??
+      kanbanColumns.closed[0]?.id ??
+      null;
+    setSelectedChipId(next);
+  }, [selectedChipId, allChipIds, kanbanColumns.open, kanbanColumns.watch, kanbanColumns.closed]);
 
-    if (playTab === "watch") {
-      if (filterMatches("structure", playFilter)) {
-        items.push(
-          <WatchPlayBox
-            key="structure-watch"
-            play={play}
-            confirmationLayer={showConfirmationPanel ? confirmationLayer : null}
-            refreshing={playRefreshing}
-          />
-        );
-      }
-      if (filterMatches("lotto", playFilter)) {
-        items.push(
-          <LottoPlayCard
-            key="lotto-watch"
-            lotto={lotto}
-            lottoLoading={lottoLoading}
-            lottoRefreshing={lottoRefreshing}
-            surface="watch"
-          />
-        );
-      }
-      if (filterMatches("power", playFilter)) {
-        items.push(
-          <PowerHourPlayCard
-            key="power-watch"
-            powerHour={powerHour}
-            powerHourLoading={powerHourLoading}
-            powerHourRefreshing={powerHourRefreshing}
-            surface="watch"
-          />
-        );
-      }
-    }
-
-    if (playTab === "closed") {
-      if (filterMatches("structure", playFilter) && history.length > 1) {
-        items.push(
-          <div key="structure-closed" className="spx-trade-closed-log">
-            <p className="spx-trade-closed-log-title">Structure play log</p>
-            <ul className="spx-desk-list max-h-[220px] overflow-y-auto">
-              {history.slice(1, 12).map((row) => (
-                <li key={row.id} className="spx-desk-list-row text-xs md:text-sm">
-                  <span className={clsx("spx-trade-alert-history-action", historyClass(row.action))}>
-                    {actionLabel(row.action, row.direction)}
-                  </span>
-                  <span className="font-mono text-cyan-400 shrink-0">
-                    {new Date(row.as_of).toLocaleTimeString("en-US", {
-                      hour: "numeric",
-                      minute: "2-digit",
-                      second: "2-digit",
-                    })}
-                  </span>
-                  <span className="font-mono text-sky-200 truncate">{row.headline}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      }
-      if (filterMatches("lotto", playFilter) && lottoIsClosed(lotto)) {
-        items.push(
-          <LottoPlayCard
-            key="lotto-closed"
-            lotto={lotto}
-            lottoLoading={lottoLoading}
-            lottoRefreshing={lottoRefreshing}
-            surface="closed"
-          />
-        );
-      }
-      if (filterMatches("power", playFilter) && powerIsClosed(powerHour)) {
-        items.push(
-          <PowerHourPlayCard
-            key="power-closed"
-            powerHour={powerHour}
-            powerHourLoading={powerHourLoading}
-            powerHourRefreshing={powerHourRefreshing}
-            surface="closed"
-          />
-        );
-      }
-    }
-
-    if (items.length === 0) {
-      return <PlaySurfaceEmpty tab={playTab} filter={playFilter} />;
-    }
-    return items;
-  }
+  const selectedDetail = renderKanbanDetail({
+    selectedId: selectedChipId,
+    play,
+    lotto,
+    powerHour,
+    history,
+    confirmationLayer,
+    playRefreshing,
+    showConfirmationPanel,
+    lottoLoading,
+    lottoRefreshing,
+    powerHourLoading,
+    powerHourRefreshing,
+  });
 
   const showConfluence =
     play != null &&
-    playTab !== "closed" &&
-    filterMatches("structure", playFilter) &&
+    selectedChipId?.startsWith("structure") &&
+    playFilter !== "lotto" &&
+    playFilter !== "power" &&
     play.factors.length > 0;
 
   return (
     <section
       className={clsx(
-        "spx-trade-alerts-panel spx-sniper-panel",
+        "spx-trade-alerts-panel spx-sniper-panel spx-trade-alerts-kanban",
         panelRefreshing && "spx-desk-panel-refreshing"
       )}
     >
       <div className="spx-sniper-panel-content">
-      <SpxLiveSpotPrice desk={desk} live={live} size="panel" className="spx-play-engine-spot mb-4 hide-in-ios-app" />
+      <SpxLiveSpotPrice desk={desk} live={live} size="panel" className="spx-play-engine-spot mb-3 hide-in-ios-app" />
       <header className="spx-trade-alerts-header">
         <div className="min-w-0">
           <Kicker className="mb-1">PLAY ENGINE</Kicker>
           <h3 className="t-label text-[15px] uppercase leading-tight text-white">Trade Alerts</h3>
         </div>
       </header>
-
-      <SpxPlaybookShadowStrip panel={play?.playbook_shadow} />
 
       <div className="spx-sniper-panel-body spx-trade-alerts-stack">
       {!show ? (
@@ -989,14 +929,15 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
         )
       ) : (
         <>
-          <PlaySurfaceToolbar
-            tab={playTab}
-            onTabChange={setPlayTab}
+          <SpxPlayKanbanBoard
+            columns={kanbanColumns}
             filter={playFilter}
             onFilterChange={setPlayFilter}
-            counts={tabCounts}
+            selectedId={selectedChipId}
+            onSelect={setSelectedChipId}
           />
-          <div className="spx-play-surface-stack">{renderPlaySurface()}</div>
+          <div className="spx-play-kanban-detail-wrap">{selectedDetail}</div>
+          <SpxPlaybookValidationPanel panel={play?.playbook_shadow} />
           {showConfluence && (
             <ConfluenceFactorsPanel factors={play.factors} updating={panelRefreshing} />
           )}

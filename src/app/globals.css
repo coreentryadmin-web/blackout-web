@@ -9346,6 +9346,175 @@ body::before {
     @apply flex items-center gap-3 pb-2 mb-2 border-b border-white/10 shrink-0;
   }
 
+  .spx-trade-alerts-kanban .spx-trade-alerts-stack {
+    @apply flex flex-col gap-2 min-h-0 flex-1;
+  }
+
+  .spx-play-kanban-board {
+    @apply shrink-0 flex flex-col gap-2;
+  }
+
+  .spx-play-kanban-filters {
+    @apply flex flex-wrap gap-1;
+  }
+
+  .spx-play-kanban-columns {
+    @apply grid gap-0 min-h-[5.5rem] rounded-lg border border-white/10 bg-[#050508] overflow-hidden;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr) minmax(0, 0.85fr);
+  }
+
+  .spx-play-kanban-col {
+    @apply relative flex flex-col min-h-0 border-white/10;
+  }
+
+  .spx-play-kanban-col-open {
+    @apply border-r;
+  }
+
+  .spx-play-kanban-col-watch {
+    @apply border-r;
+  }
+
+  .spx-play-kanban-col-closed {
+    @apply border-0;
+  }
+
+  .spx-play-kanban-funnel {
+    @apply pointer-events-none absolute -left-2 top-1/2 z-10 h-0 w-0;
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+    border-left: 7px solid rgba(0, 230, 118, 0.45);
+    transform: translateY(-50%);
+  }
+
+  .spx-play-kanban-col-title {
+    @apply shrink-0 border-b border-white/[0.06] px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-sky-300;
+  }
+
+  .spx-play-kanban-col-body {
+    @apply flex flex-1 flex-col gap-1.5 p-2 min-h-0 overflow-y-auto;
+  }
+
+  .spx-play-kanban-empty {
+    @apply font-mono text-[10px] text-secondary text-center py-2;
+  }
+
+  .spx-play-kanban-chip {
+    @apply flex w-full flex-col items-start gap-0.5 rounded border border-white/10 bg-black/50 px-2 py-1.5 text-left transition-colors;
+  }
+
+  .spx-play-kanban-chip--selected {
+    @apply border-cyan-400/45 bg-cyan-400/[0.08] ring-1 ring-cyan-400/25;
+  }
+
+  .spx-play-kanban-chip--call {
+    @apply border-bull/35;
+  }
+
+  .spx-play-kanban-chip--put {
+    @apply border-bear/35;
+  }
+
+  .spx-play-kanban-chip--watch {
+    @apply border-amber-400/30 bg-amber-400/[0.05];
+  }
+
+  .spx-play-kanban-chip--lotto {
+    @apply border-gold/35;
+  }
+
+  .spx-play-kanban-chip--power {
+    @apply border-orange-400/35;
+  }
+
+  .spx-play-kanban-chip-prefix {
+    @apply font-mono text-[7px] uppercase tracking-wider text-secondary;
+  }
+
+  .spx-play-kanban-chip-label {
+    @apply font-mono text-sm font-bold tabular-nums text-white leading-none;
+  }
+
+  .spx-play-kanban-detail-wrap {
+    @apply shrink-0 max-h-[min(38vh,320px)] overflow-y-auto;
+  }
+
+  .spx-play-kanban-detail {
+    @apply rounded-lg border border-white/10 bg-black/40 p-3;
+  }
+
+  .spx-playbook-validation-panel {
+    @apply flex flex-1 min-h-[12rem] flex-col rounded-lg border border-violet-500/25 bg-violet-500/[0.04] p-3;
+  }
+
+  .spx-playbook-validation-header {
+    @apply mb-2 flex shrink-0 items-center gap-2 border-b border-white/[0.06] pb-2;
+  }
+
+  .spx-playbook-validation-title {
+    @apply font-syne text-sm font-bold uppercase tracking-[0.12em] text-white;
+  }
+
+  .spx-playbook-validation-badge {
+    @apply rounded border border-violet-400/35 bg-violet-500/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-violet-200;
+  }
+
+  .spx-playbook-validation-empty {
+    @apply font-mono text-[10px] leading-relaxed text-secondary py-4;
+  }
+
+  .spx-playbook-validation-grid {
+    @apply flex flex-1 flex-col gap-2 min-h-0 overflow-y-auto;
+  }
+
+  .spx-playbook-validation-row {
+    @apply rounded border border-white/10 bg-black/35 p-2.5;
+  }
+
+  .spx-playbook-validation-row--armed {
+    @apply border-amber-400/25 bg-amber-400/[0.04];
+  }
+
+  .spx-playbook-validation-row--trigger {
+    @apply border-bull/30 bg-bull/[0.05];
+  }
+
+  .spx-playbook-validation-row--primary {
+    box-shadow: 0 0 14px rgba(0, 230, 118, 0.15);
+  }
+
+  .spx-playbook-validation-row-head {
+    @apply mb-1.5 flex flex-wrap items-center gap-2;
+  }
+
+  .spx-playbook-validation-id {
+    @apply font-mono text-[9px] uppercase tracking-wider text-sky-300;
+  }
+
+  .spx-playbook-validation-name {
+    @apply font-mono text-[11px] font-semibold text-white;
+  }
+
+  .spx-playbook-validation-primary {
+    @apply rounded border border-bull/35 bg-bull/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-bull;
+  }
+
+  .spx-playbook-validation-metrics {
+    @apply mb-1.5 grid grid-cols-3 gap-2 font-mono text-[9px];
+  }
+
+  .spx-playbook-validation-metrics dt {
+    @apply uppercase tracking-wider text-secondary;
+  }
+
+  .spx-playbook-validation-metrics dd {
+    @apply text-white font-semibold;
+  }
+
+  .spx-playbook-validation-detail {
+    @apply font-mono text-[9px] leading-snug text-secondary;
+  }
+
   .spx-playbook-shadow-strip {
     @apply mb-3 shrink-0 rounded-lg border border-violet-500/25 bg-violet-500/[0.06] px-3 py-2;
   }
