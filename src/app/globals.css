@@ -8772,6 +8772,10 @@ body::before {
     gap: 0.375rem;
   }
 
+  .spx-sniper-command .spx-desk-top-stats--compact {
+    @apply justify-start xl:justify-end;
+  }
+
   @media (min-width: 1024px) {
     .spx-sniper-command {
       @apply py-4;
@@ -8930,7 +8934,7 @@ body::before {
        rather than adding a third size to the center column. */
     @apply xl:grid-cols-[minmax(340px,30vw)_minmax(0,1fr)_minmax(380px,26vw)];
     @apply 2xl:grid-cols-[minmax(380px,28vw)_minmax(0,1fr)_minmax(420px,27vw)];
-    min-height: calc(100vh - 148px);
+    min-height: calc(100dvh - 120px);
   }
 
   .spx-sniper-left-rail {
@@ -9340,6 +9344,55 @@ body::before {
 
   .spx-trade-alerts-header {
     @apply flex items-center gap-3 pb-2 mb-2 border-b border-white/10 shrink-0;
+  }
+
+  .spx-playbook-shadow-strip {
+    @apply mb-3 shrink-0 rounded-lg border border-violet-500/25 bg-violet-500/[0.06] px-3 py-2;
+  }
+
+  .spx-playbook-shadow-strip-head {
+    @apply mb-2 flex items-center gap-2;
+  }
+
+  .spx-playbook-shadow-strip-kicker {
+    @apply font-mono text-[9px] uppercase tracking-[0.2em] text-violet-200/90;
+  }
+
+  .spx-playbook-shadow-strip-badge {
+    @apply rounded border border-violet-400/35 bg-violet-500/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-violet-200;
+  }
+
+  .spx-playbook-shadow-strip-row {
+    @apply flex flex-wrap gap-1.5;
+  }
+
+  .spx-playbook-shadow-chip {
+    @apply flex min-w-[7.5rem] flex-col gap-0.5 rounded border border-white/10 bg-black/40 px-2 py-1.5 font-mono text-[9px];
+  }
+
+  .spx-playbook-shadow-chip--armed {
+    @apply border-amber-400/30 bg-amber-400/[0.06];
+  }
+
+  .spx-playbook-shadow-chip--trigger {
+    @apply border-bull/40 bg-bull/[0.08];
+  }
+
+  .spx-playbook-shadow-chip--primary {
+    box-shadow: 0 0 12px rgba(0, 230, 118, 0.2);
+  }
+
+  .spx-playbook-shadow-chip-id {
+    @apply text-[8px] uppercase tracking-wider text-sky-300;
+  }
+
+  .spx-playbook-shadow-chip-name {
+    @apply text-[10px] font-semibold text-white leading-tight;
+  }
+
+  .spx-playbook-shadow-chip-dir,
+  .spx-playbook-shadow-chip-state {
+    @apply text-[8px] uppercase tracking-wider text-secondary;
   }
 
   .spx-trade-alert-score-label {
@@ -10127,18 +10180,18 @@ body::before {
 
   .spx-left-matrix {
     @apply flex flex-col min-h-0 h-full;
-    min-height: min(560px, calc(100vh - 168px));
+    min-height: min(600px, calc(100dvh - 132px));
   }
 
   @media (min-width: 1280px) {
     .spx-left-matrix {
-      min-height: calc(100vh - 148px);
-      max-height: calc(100vh - 148px);
+      min-height: calc(100dvh - 112px);
+      max-height: calc(100dvh - 112px);
     }
   }
 
   .spx-odte-matrix-panel {
-    @apply min-h-[480px] lg:min-h-[520px] xl:min-h-0 xl:h-full;
+    @apply min-h-[520px] lg:min-h-[560px] xl:min-h-0 xl:h-full;
   }
 
   .spx-odte-matrix-body {

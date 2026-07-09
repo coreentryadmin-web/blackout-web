@@ -12,6 +12,7 @@ import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-eng
 import type { PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
 import type { PlayConfirmationResult } from "@/features/spx/lib/spx-play-confirmations";
 import type { ClaudePlayVerdict } from "@/features/spx/lib/spx-play-claude";
+import type { PlaybookShadowPanel } from "@/features/spx/lib/playbook-shadow-panel";
 import { buildPlayIdeaIntel, humanizeGateBlock, humanizeGateBlocks } from "@/features/spx/lib/spx-play-intel";
 import type { MtfHybrid } from "@/features/spx/lib/spx-play-mtf";
 import type { loadAdaptivePlayGates } from "@/features/spx/lib/spx-play-telemetry";
@@ -92,6 +93,8 @@ export type SpxPlayPayload = {
    * true signal_committed BUY before acting, not the snapshot signal alone.
    */
   signal_committed: boolean;
+  /** Phase-1 playbook matcher — shadow telemetry surfaced for staging validation only. */
+  playbook_shadow?: PlaybookShadowPanel | null;
   as_of: string;
 };
 
@@ -188,6 +191,7 @@ export function scanningPayload(
     power_play: null,
     session_phase: currentSessionPhase(desk),
     signal_committed: false,
+    playbook_shadow: null,
     as_of: desk.polled_at ?? desk.as_of ?? new Date().toISOString(),
     ...extras,
   };
