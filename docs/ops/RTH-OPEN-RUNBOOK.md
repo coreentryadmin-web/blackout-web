@@ -113,6 +113,12 @@ assert warm crons fresh, then `validate:site-latency` on every premium API + pag
 Thermal, desk, flows, 0DTE). Also runs automatically as step 3 of `validate:rth-open` after open.
 Fix any FAIL → branch → PR → merge → re-run until GREEN.
 
+**Continuous RTH monitor (09:30–16:00 ET):** `npm run validate:rth-continuous` — see
+`docs/ops/RTH-CONTINUOUS-MONITOR.md`. Probes every **2s** (APIs), **15s** (matrices), **45s**
+(browser nav + button clicks), **5m** (deep matrix audit). All metrics →
+`audit-output/rth-continuous/YYYY-MM-DD/metrics.ndjson`. Run in tmux on Cloud Agent + GHA
+`rth-continuous-monitor.yml`.
+
 ### 1. Speed (per page)
 - Measure **TTFB** and **time-to-interactive** on hard load, and **soft-nav** time (click the
   nav link → first meaningful paint). Prefetch is enabled, so soft-nav should feel near-instant.

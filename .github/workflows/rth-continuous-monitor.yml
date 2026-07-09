@@ -1,0 +1,45 @@
+# RTH continuous site monitor — runs all session 09:30–16:00 ET
+
+name: RTH continuous monitor
+
+on:
+  schedule:
+    # 09:30 AM ET EDT
+    - cron: "30 13 * * 1-5"
+    # 09:30 AM ET EST
+    - cron: "30 14 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  continuous:
+    runs-on: ubuntu-latest
+    timeout-minutes: 390
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: RTH continuous supervisor (full session)
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATABASE_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          CRON_TARGET_BASE_URL: https://blackouttrades.com
+        run: npm run validate:rth-continuous
+
+      - name: Upload metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rth-continuous-metrics
+          path: audit-output/rth-continuous/
+          retention-days: 14
