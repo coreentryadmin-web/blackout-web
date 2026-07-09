@@ -61,3 +61,15 @@ jobs:
           docker push "${IMAGE}:${IMAGE_TAG}"
           docker push "${IMAGE}:latest"
           echo "Pushed ${IMAGE}:${IMAGE_TAG} and :latest"
+
+      - name: Purge Cloudflare edge cache
+        if: env.CF_ZONE_ID != '' && env.CF_API_TOKEN != ''
+        env:
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          curl -fsS -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}'
+          echo "Cloudflare cache purged after image push."
