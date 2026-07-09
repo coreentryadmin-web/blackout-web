@@ -9,7 +9,7 @@ import { useSpxLotto } from "@/features/spx/hooks/useSpxLotto";
 import { useSpxPowerHour } from "@/features/spx/hooks/useSpxPowerHour";
 import { useStablePlayConfirmations, type PlayConfirmationLayer } from "@/features/spx/hooks/useStablePlayConfirmations";
 import { SpxLiveSpotPrice } from "./SpxLiveSpotPrice";
-import { Badge, Kicker } from "@/components/ui";
+import { Kicker } from "@/components/ui";
 import { fmtPrice } from "@/lib/api";
 import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
@@ -966,9 +966,6 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
           <Kicker className="mb-1">PLAY ENGINE</Kicker>
           <h3 className="t-label text-[15px] uppercase leading-tight text-white">Trade Alerts</h3>
         </div>
-        <Badge tone={live ? "bull" : "neutral"} dot={live} className="shrink-0">
-          {live ? "LIVE" : "OFFLINE"}
-        </Badge>
       </header>
 
       <div className="spx-sniper-panel-body spx-trade-alerts-stack">

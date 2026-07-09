@@ -1,13 +1,11 @@
 ﻿"use client";
 
-import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import { fmtPremium, fmtPrice } from "@/lib/api";
-import type { MarketStatusLabel } from "@/features/spx/lib/spx-market-session";
 import { ProductMark } from "@/components/marks/ProductMark";
-import { FreshnessChip, Kicker, type FreshnessStatus } from "@/components/ui";
+import { Kicker } from "@/components/ui";
 import { SpxLiveSpotPrice, priceVsLevel, PriceLevelIndicator } from "./SpxLiveSpotPrice";
 
 type Props = {
@@ -17,55 +15,60 @@ type Props = {
   nativeShell?: boolean;
 };
 
-function resolveFreshness(
-  live: boolean | undefined,
-  feedStalled: boolean,
-  isStale: boolean,
-  asOf: Date | null
-): { status: FreshnessStatus; asOf: Date | null } {
-  if (!live) return { status: "offline", asOf };
-  if (feedStalled) return { status: "stale", asOf };
-  if (isStale) return { status: "stale", asOf };
-  return { status: "live", asOf };
-}
-
 export function SpxSniperHeader({ desk, live, nativeShell = false }: Props) {
-  const [nativeStatsOpen, setNativeStatsOpen] = useState(false);
   const hasQuote = Boolean(desk?.available && (desk?.price ?? 0) > 0);
   const showValues = Boolean(live || hasQuote);
   const spot = desk?.price ?? null;
 
-  const polledAtMs = desk?.polled_at
-    ? new Date(desk.polled_at).getTime()
-    : desk?.as_of
-      ? new Date(desk.as_of).getTime()
-      : 0;
-  const [nowMs, setNowMs] = useState(0);
-  useEffect(() => {
-    setNowMs(Date.now());
-    const id = setInterval(() => setNowMs(Date.now()), 10_000);
-    return () => clearInterval(id);
-  }, []);
-  const isStale = Boolean(live && polledAtMs > 0 && nowMs - polledAtMs > 90_000);
-  const feedStalled = Boolean(live && desk?.feed_stalled);
-  const asOfRaw = desk?.polled_at ?? desk?.as_of;
-  const asOf = asOfRaw ? new Date(asOfRaw) : null;
-  const freshness = resolveFreshness(live, feedStalled, isStale, asOf);
-
-  const sessionChips = (
-    <div className="flex flex-wrap items-center gap-2">
-      <MarketStatusPill label={desk?.market_label} />
-      <FreshnessChip status={freshness.status} asOf={freshness.asOf} />
-      {live && desk?.gex_stale && (
-        <span className="rounded border border-amber-400/35 bg-amber-400/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-amber-200">
-          GEX stale
-        </span>
-      )}
-    </div>
+  const topStatsRow = (
+    <DeskTopStatsRow desk={desk} showValues={showValues} spot={spot} live={live} />
   );
 
-  const inlinePills = (
-    <div className="flex flex-wrap items-center gap-2">
+  return (
+    <header
+      className={clsx(
+        "spx-sniper-command border-b border-white/[0.06]",
+        nativeShell ? "spx-sniper-command-native pb-3" : "pb-3"
+      )}
+    >
+      <div className="spx-sniper-command-grid" aria-hidden />
+      <div className="spx-sniper-command-scan" aria-hidden />
+      <div className="spx-sniper-command-glow" aria-hidden />
+      <div className="relative z-10 flex flex-col gap-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
+          {!nativeShell ? (
+            <div className="spx-sniper-identity shrink-0 flex items-start gap-3">
+              <ProductMark product="spx" size={44} title="SPX Slayer" className="mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <Kicker className="mb-1.5">SPX · 0DTE desk</Kicker>
+                <h1 className="font-syne text-2xl font-bold tracking-tight text-white md:text-3xl">
+                  SPX Slayer
+                </h1>
+              </div>
+            </div>
+          ) : null}
+          <div className="min-w-0 flex-1 lg:flex lg:justify-end">{topStatsRow}</div>
+        </div>
+
+        {nativeShell ? <SpxLiveSpotPrice desk={desk} live={live} size="hero" /> : null}
+      </div>
+    </header>
+  );
+}
+
+function DeskTopStatsRow({
+  desk,
+  showValues,
+  spot,
+  live,
+}: {
+  desk?: SpxDeskPayload;
+  showValues: boolean;
+  spot: number | null;
+  live?: boolean;
+}) {
+  return (
+    <div className="spx-desk-top-stats spx-desk-top-stats--compact">
       <StatPill
         label="VIX"
         value={showValues && desk?.vix != null ? fmtPrice(desk.vix, 2) : "—"}
@@ -83,79 +86,6 @@ export function SpxSniperHeader({ desk, live, nativeShell = false }: Props) {
         value={showValues && desk?.gex_net != null ? fmtPremium(desk.gex_net) : "—"}
         tone={(desk?.gex_net ?? 0) >= 0 ? "bull" : "bear"}
       />
-    </div>
-  );
-
-  const topStatsRow = (
-    <DeskTopStatsRow desk={desk} showValues={showValues} spot={spot} />
-  );
-
-  return (
-    <header
-      className={clsx(
-        "spx-sniper-command border-b border-white/[0.06]",
-        nativeShell ? "spx-sniper-command-native pb-3" : "pb-4"
-      )}
-    >
-      <div className="spx-sniper-command-grid" aria-hidden />
-      <div className="spx-sniper-command-scan" aria-hidden />
-      <div className="spx-sniper-command-glow" aria-hidden />
-      <div className="relative z-10 flex flex-col gap-3 xl:gap-4">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between xl:gap-4">
-          {!nativeShell ? (
-            <div className="spx-sniper-identity shrink-0 flex items-start gap-3">
-              <ProductMark product="spx" size={44} title="SPX Slayer" className="mt-0.5 shrink-0" />
-              <div className="min-w-0">
-                <Kicker className="mb-1.5">SPX · 0DTE desk</Kicker>
-                <h1 className="font-syne text-2xl font-bold tracking-tight text-white md:text-3xl">
-                  SPX Slayer
-                </h1>
-                <p className="spx-hero-tagline-sub mt-1 font-mono text-[11px] tracking-[0.08em] text-secondary">
-                  GEX structure · dealer positioning · session levels
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="spx-sniper-native-meta w-full">{sessionChips}</div>
-          )}
-          {!nativeShell && <div className="shrink-0 xl:text-right">{sessionChips}</div>}
-        </div>
-
-        {nativeShell ? (
-          <>
-            <SpxLiveSpotPrice desk={desk} live={live} size="hero" />
-            <button
-              type="button"
-              className="spx-native-stats-toggle"
-              aria-expanded={nativeStatsOpen}
-              onClick={() => setNativeStatsOpen((v) => !v)}
-            >
-              {nativeStatsOpen ? "Hide desk stats" : "Show desk stats"}
-            </button>
-            {nativeStatsOpen ? <div className="spx-native-stats-panel">{topStatsRow}</div> : null}
-          </>
-        ) : (
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between xl:gap-4">
-            {inlinePills}
-            <div className="min-w-0 xl:max-w-[72%] xl:ml-auto">{topStatsRow}</div>
-          </div>
-        )}
-      </div>
-    </header>
-  );
-}
-
-function DeskTopStatsRow({
-  desk,
-  showValues,
-  spot,
-}: {
-  desk?: SpxDeskPayload;
-  showValues: boolean;
-  spot: number | null;
-}) {
-  return (
-    <div className="spx-desk-top-stats">
       <StatPill
         label="Regime"
         value={showValues ? (desk?.regime ?? "—") : "—"}
@@ -200,6 +130,11 @@ function DeskTopStatsRow({
           <MetricRow label="PDL" value={showValues ? fmtPrice(desk?.pdl ?? null) : "—"} tone="support" compact level={desk?.pdl ?? null} spot={spot} />
         </div>
       </MetricBlock>
+      {live && desk?.gex_stale && (
+        <span className="spx-hero-stat-pill border-amber-400/35 bg-amber-400/10 px-2 py-1.5 font-mono text-[9px] uppercase tracking-wider text-amber-200 self-stretch flex items-center">
+          GEX stale
+        </span>
+      )}
     </div>
   );
 }
@@ -235,27 +170,6 @@ const BLOCK_BORDER: Record<string, string> = {
   orange: "border-orange-500/35",
   violet: "border-violet-500/40",
 };
-
-const MARKET_PILL: Record<MarketStatusLabel, string> = {
-  "RTH OPEN": "border-emerald-500/50 bg-emerald-500/10 text-emerald-300",
-  "PRE-MARKET": "border-gold/50 bg-gold/10 text-gold",
-  EXTENDED: "border-orange-500/50 bg-orange-500/10 text-orange-200",
-  CLOSED: "border-white/10 bg-white/[0.03] text-secondary",
-};
-
-function MarketStatusPill({ label }: { label?: string }) {
-  const key = (label ?? "CLOSED") as MarketStatusLabel;
-  return (
-    <span
-      className={clsx(
-        "rounded border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em]",
-        MARKET_PILL[key] ?? MARKET_PILL.CLOSED
-      )}
-    >
-      {label ?? "—"}
-    </span>
-  );
-}
 
 function MetricBlock({
   title,
