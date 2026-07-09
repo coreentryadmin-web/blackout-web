@@ -13,8 +13,8 @@
 
 | Name | Type | Content | Proxied | Notes |
 |---|---|---|---|---|
-| blackouttrades.com | CNAME | jzwkg5uc.up.railway.app | ✅ YES | Main app → Railway blackout-web |
-| www.blackouttrades.com | CNAME | 8dkf6fp5.up.railway.app | ✅ YES | www → Railway (redirects to apex) |
+| blackouttrades.com | CNAME | `blackout-production-alb-*.elb.amazonaws.com` | ✅ YES | Main app → **ECS prod ALB** (cutover 2026-07) |
+| www.blackouttrades.com | CNAME | same ALB (or apex) | ✅ YES | www → apex via redirect rule |
 | clk._domainkey | CNAME | dkim1.tzneys6rxyan.clerk.services | ❌ NO | Clerk DKIM — must stay DNS-only |
 | clk2._domainkey | CNAME | dkim2.tzneys6rxyan.clerk.services | ❌ NO | Clerk DKIM — must stay DNS-only |
 | mail (Clerk) | CNAME | mail.tzneys6rxyan.clerk.services | ❌ NO | Clerk mail — must stay DNS-only |
@@ -76,11 +76,28 @@
 
 ---
 
+## Audit snapshot (2026-07-09)
+
+| Check | Status | Notes |
+|-------|--------|-------|
+| Zone active | ✅ | Free plan |
+| Origin | ✅ | `cdn-cgi/trace` → AWS IP (ECS ALB), not Railway |
+| Marketing CSS | ✅ | All 3 `/_next/static/css/*.css` return **200** |
+| API bypass | ✅ | `/api/health` → `cf-cache-status: DYNAMIC` |
+| www redirect | ✅ | 301 → apex |
+| Security headers | ✅ | Transform rules (CSP, HSTS, X-Frame-Options, etc.) |
+| Static 404 caching | ❌ **FIX NEEDED** | Repeat 404 on `/_next/static/*.css` → `cf-cache-status: HIT` |
+| `/embed/*` framing | ⚠️ | Transform rule sets `X-Frame-Options: SAMEORIGIN` on all paths — breaks cross-origin embeds |
+| `CF_API_TOKEN` in CI/ops | ⚠️ | Current token is **purge-only** — cannot read/edit rulesets via API |
+| DNS records (API) | ⚠️ | Needs token with **Zone.DNS Read** to verify CNAME targets in dashboard |
+
+---
+
 ## Cache Rules (applied in order — first match wins)
 
 | Priority | Match | Action | Edge TTL |
 |---|---|---|---|
-| 1 | `/_next/static/*` | Cache | 1 year (31536000s) |
+| 1 | `/_next/static/*` (+ extension regex) | Cache | 1 year **for HTTP 200 only**; 404/4xx/5xx **no-cache** |
 | 2 | `/api/market/gex-positioning` | Cache | 60s |
 | 3 | `/api/market/news` | Cache | 120s |
 | 4 | `/api/market/regime` | Cache | 30s |
@@ -150,7 +167,9 @@ After DNSSEC finishes propagating (~24h), go to:
 
 ## Maintenance Notes
 
-- **On every Railway deploy:** Cloudflare automatically purges HTML cache (set in Railway CDN settings — actually purge via CF API if needed)
+- **Static cache rule:** Rule 1 must include **status-code TTL** (404 → 0). Verified bug 2026-07-09: without it, edge caches 404 CSS during deploy. Run `npm run cf:audit-apply` to audit; `--apply --purge` to patch + purge.
+- **CF API token:** `CF_API_TOKEN` in prod must include **Zone.Cache Rules Edit** (not purge-only). Purge-only tokens cannot read/update rulesets.
+- **On every ECS/Railway deploy:** `cf-purge-on-deploy.ts` purges when `CF_API_TOKEN` + deploy id present; also run full purge after cache-rule changes.
 - **If you change an API route from public → auth-gated:** Add it to the cache bypass rule immediately
 - **Never proxy Clerk DNS records** — breaks sign-in
 - **Never enable Railway CDN** while Cloudflare proxy is active
