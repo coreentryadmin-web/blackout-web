@@ -62,6 +62,7 @@ jobs:
 
   site-continuous:
     needs: open-gate
+    if: always() && needs.open-gate.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 390
     steps:
@@ -96,6 +97,7 @@ jobs:
 
   tool-agent:
     needs: open-gate
+    if: always() && needs.open-gate.result != 'cancelled'
     strategy:
       fail-fast: false
       matrix:
