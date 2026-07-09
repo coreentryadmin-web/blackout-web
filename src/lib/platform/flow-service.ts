@@ -3,15 +3,26 @@ import { subscribeFlowEvents, publishFlowEvent } from "@/lib/flow-events";
 import {
   computeFlowStrikeStacks,
 } from "@/lib/largo/flow-strike-stacks";
+import { flowTapeCacheTtlMs } from "@/lib/providers/config";
+import { withServerCache } from "@/lib/server-cache";
 import type { FlowTapeSummary } from "./types";
 
 export { subscribeFlowEvents, publishFlowEvent };
 
 export async function getFlowTape(opts?: { ticker?: string; limit?: number }) {
-  return fetchRecentFlows({
-    limit: opts?.limit ?? 25,
-    ticker: opts?.ticker ? opts.ticker.toUpperCase() : undefined,
-  });
+  const limit = opts?.limit ?? 25;
+  const ticker = opts?.ticker ? opts.ticker.toUpperCase() : undefined;
+  const key = `flows:tape:${ticker ?? "all"}:${limit}`;
+  return withServerCache(
+    key,
+    flowTapeCacheTtlMs(),
+    () =>
+      fetchRecentFlows({
+        limit,
+        ticker,
+      }),
+    { staleWhileRevalidate: true }
+  );
 }
 
 export async function getFlowTapeSummary(opts?: { ticker?: string; limit?: number }): Promise<FlowTapeSummary> {
