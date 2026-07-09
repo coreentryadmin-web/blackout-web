@@ -33,7 +33,7 @@ export function SpxSniperHeader({ desk, live, nativeShell = false }: Props) {
       <div className="spx-sniper-command-grid" aria-hidden />
       <div className="spx-sniper-command-scan" aria-hidden />
       <div className="spx-sniper-command-glow" aria-hidden />
-      <div className="relative z-10 flex flex-col gap-1.5">
+      <div className="relative z-10 spx-sniper-command-band">
         {!nativeShell ? (
           <div className="spx-sniper-identity spx-sniper-identity-top shrink-0 flex items-center gap-2.5">
             <ProductMark product="spx" size={34} title="SPX Slayer" className="shrink-0" />
@@ -47,7 +47,7 @@ export function SpxSniperHeader({ desk, live, nativeShell = false }: Props) {
             </div>
           </div>
         ) : null}
-        <div className="w-full">{topStatsRow}</div>
+        <div className="spx-sniper-command-stats w-full min-w-0">{topStatsRow}</div>
         {nativeShell ? <SpxLiveSpotPrice desk={desk} live={live} size="hero" /> : null}
       </div>
     </header>
