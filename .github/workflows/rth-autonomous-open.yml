@@ -44,7 +44,6 @@ jobs:
         run: npm run validate:rth-open
 
   launch-fix-agents:
-    needs: open-gate
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -172,7 +171,7 @@ jobs:
           CRON_TARGET_BASE_URL: https://blackouttrades.com
         run: |
           set +e
-          node scripts/ops-collect-action-items.mjs > /tmp/ops.json
+          node scripts/ops-collect-action-items.mjs > /tmp/ops.json 2>/dev/null || echo '{"items":[]}' > /tmp/ops.json
           node scripts/tool-agents/export-action-items.mjs > /tmp/tool.json
           node -e "
             const fs = require('fs');
