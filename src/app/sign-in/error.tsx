@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import RouteErrorBoundary from "@/components/route-error-boundary";
 
 /** Sign-in segment errors — usually stale cached JS after deploy; surface cache hint. */
@@ -37,12 +38,12 @@ export default function SignInError(props: {
           >
             Reload page
           </button>
-          <a
+          <Link
             href="/"
             className="rounded-full border border-white/15 px-6 py-2.5 font-mono text-xs uppercase tracking-[0.2em] text-secondary transition hover:border-white/25 hover:text-white"
           >
             Go home
-          </a>
+          </Link>
         </div>
       </div>
     </main>
