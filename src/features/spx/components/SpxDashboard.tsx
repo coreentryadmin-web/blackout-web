@@ -108,7 +108,7 @@ export function SpxDashboard() {
   const activeHalts = desk?.active_halts ?? [];
 
   return (
-    <div className="spx-sniper-desk">
+    <div className="spx-sniper-desk spx-sniper-desk-fill">
       {activeHalts.length > 0 && (
         <div className="flex items-center gap-2 rounded border border-bear/40 bg-bear/10 px-4 py-2 text-xs font-mono text-bear" role="alert">
           <span className="font-bold">TRADING HALT</span>
@@ -181,6 +181,7 @@ export function SpxDashboard() {
             <div
               key={nativeShell ? iosPanel : "intel"}
               className={clsx(
+                "spx-sniper-intel-col flex flex-col min-h-0 h-full",
                 nativeShell && iosPanel !== "intel" && "ios-native-panel-hidden",
                 nativeShell && iosPanel === "intel" && "ios-native-panel-visible"
               )}

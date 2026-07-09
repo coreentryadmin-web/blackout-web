@@ -5,7 +5,6 @@ import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import { fmtPremium, fmtPrice } from "@/lib/api";
 import { ProductMark } from "@/components/marks/ProductMark";
-import { Kicker } from "@/components/ui";
 import { SpxLiveSpotPrice, priceVsLevel, PriceLevelIndicator } from "./SpxLiveSpotPrice";
 
 type Props = {
@@ -28,25 +27,27 @@ export function SpxSniperHeader({ desk, live, nativeShell = false }: Props) {
     <header
       className={clsx(
         "spx-sniper-command border-b border-white/[0.06]",
-        nativeShell ? "spx-sniper-command-native pb-3" : "pb-2"
+        nativeShell ? "spx-sniper-command-native pb-2" : "pb-1.5"
       )}
     >
       <div className="spx-sniper-command-grid" aria-hidden />
       <div className="spx-sniper-command-scan" aria-hidden />
       <div className="spx-sniper-command-glow" aria-hidden />
-      <div className="relative z-10 flex flex-col gap-2">
-        <div className="w-full">{topStatsRow}</div>
+      <div className="relative z-10 flex flex-col gap-1.5">
         {!nativeShell ? (
-          <div className="spx-sniper-identity shrink-0 flex items-start gap-3">
-            <ProductMark product="spx" size={40} title="SPX Slayer" className="mt-0.5 shrink-0" />
-            <div className="min-w-0">
-              <Kicker className="mb-1">SPX · 0DTE desk</Kicker>
-              <h1 className="font-syne text-xl font-bold tracking-tight text-white md:text-2xl">
+          <div className="spx-sniper-identity spx-sniper-identity-top shrink-0 flex items-center gap-2.5">
+            <ProductMark product="spx" size={34} title="SPX Slayer" className="shrink-0" />
+            <div className="min-w-0 leading-tight">
+              <h1 className="font-syne text-lg font-bold tracking-tight text-white md:text-xl">
                 SPX Slayer
               </h1>
+              <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-secondary">
+                SPX · 0DTE desk
+              </p>
             </div>
           </div>
         ) : null}
+        <div className="w-full">{topStatsRow}</div>
         {nativeShell ? <SpxLiveSpotPrice desk={desk} live={live} size="hero" /> : null}
       </div>
     </header>

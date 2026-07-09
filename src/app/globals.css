@@ -8664,6 +8664,73 @@ body::before {
     @apply space-y-3 w-full max-w-none;
   }
 
+  /* SPX dashboard — flush under fixed nav; triple panels fill remaining viewport */
+  .ios-desk-shell.spx-desk-shell-fill {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    padding-top: var(--nav-offset);
+    padding-bottom: 0.25rem !important;
+  }
+
+  .ios-desk-shell.spx-desk-shell-fill.ios-desk-shell-web-pad {
+    padding-bottom: 0.25rem !important;
+  }
+
+  .spx-sniper-desk-fill {
+    @apply flex flex-1 flex-col min-h-0 w-full gap-1;
+  }
+
+  .spx-sniper-desk-fill .spx-sniper-command {
+    @apply shrink-0 rounded-xl px-3 py-2 md:px-4 md:py-2;
+    box-shadow:
+      0 0 40px rgba(0, 230, 118, 0.1),
+      inset 0 0 32px rgba(0, 230, 118, 0.03);
+  }
+
+  .spx-sniper-desk-fill .spx-sniper-triple {
+    @apply flex-1 min-h-0;
+    min-height: calc(100dvh - var(--nav-offset) - 6.75rem);
+  }
+
+  .spx-sniper-desk-fill .spx-sniper-left-rail,
+  .spx-sniper-desk-fill .spx-sniper-chart-col,
+  .spx-sniper-desk-fill .spx-sniper-intel-col {
+    @apply min-h-0 h-full;
+  }
+
+  .spx-sniper-desk-fill .spx-sniper-chart-col {
+    min-height: 0;
+  }
+
+  .spx-sniper-desk-fill .spx-left-matrix {
+    min-height: 100%;
+    max-height: none;
+    height: 100%;
+  }
+
+  .spx-sniper-desk-fill .spx-odte-matrix-panel {
+    @apply min-h-0 h-full;
+  }
+
+  .spx-sniper-desk-fill .spx-commentary-rail-desk {
+    @apply min-h-0 h-full flex flex-col;
+  }
+
+  .spx-sniper-desk-fill .spx-commentary-rail {
+    @apply flex-1 min-h-0 h-full;
+  }
+
+  .spx-sniper-desk-fill .spx-trade-alerts-panel {
+    @apply h-full min-h-0;
+  }
+
+  @media (min-width: 1280px) {
+    .spx-sniper-desk-fill .spx-sniper-triple {
+      min-height: calc(100dvh - var(--nav-offset) - 6.25rem);
+    }
+  }
+
   .spx-sniper-desk-loading {
     @apply w-full;
   }
@@ -8934,7 +9001,7 @@ body::before {
        rather than adding a third size to the center column. */
     @apply xl:grid-cols-[minmax(340px,30vw)_minmax(0,1fr)_minmax(380px,26vw)];
     @apply 2xl:grid-cols-[minmax(380px,28vw)_minmax(0,1fr)_minmax(420px,27vw)];
-    min-height: calc(100dvh - 120px);
+    min-height: calc(100dvh - var(--nav-offset) - 6.75rem);
   }
 
   .spx-sniper-left-rail {
@@ -9103,7 +9170,7 @@ body::before {
   .spx-level-neutral { @apply border-l-2 border-sky-300/25; }
 
   .spx-sniper-chart-col {
-    @apply flex flex-col min-h-[640px] xl:min-h-[720px];
+    @apply flex flex-col min-h-0 xl:min-h-0;
   }
 
   .spx-center-stack .spx-trade-alerts-panel {
@@ -10163,7 +10230,7 @@ body::before {
   }
 
   .spx-commentary-rail-desk {
-    @apply min-h-[420px];
+    @apply min-h-0 flex flex-col h-full;
   }
 
   .spx-commentary-header {
