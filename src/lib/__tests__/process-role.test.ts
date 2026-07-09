@@ -28,12 +28,12 @@ describe("process-role", () => {
     assert.equal(mod.shouldRunRthWarmLeader(), true);
   });
 
-  test("web role disables sockets", async () => {
+  test("web role disables sockets but runs warm leader", async () => {
     setEnv({ PROCESS_ROLE: "web" });
     const mod = await import("../process-role");
     assert.equal(mod.processRole(), "web");
     assert.equal(mod.shouldBootDataSockets(), false);
-    assert.equal(mod.shouldRunRthWarmLeader(), false);
+    assert.equal(mod.shouldRunRthWarmLeader(), true);
   });
 
   test("ingest role enables sockets and warm leader", async () => {

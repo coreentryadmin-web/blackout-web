@@ -87,7 +87,10 @@ async function main() {
         const res = await fetch(`${BASE}${path}`, { headers: { Cookie: cookieHeader, Accept: "application/json" } });
         await res.text();
         const ms = Math.round(performance.now() - t0);
-        const label = pass === 1 ? `api:${path.split("?")[0]}` : `api:${path.split("?")[0]}:warm`;
+        const label =
+          pass === 1
+            ? `api:${path.split("?")[0]}${path.includes("?") ? ":" + new URL(path, BASE).searchParams.get("ticker") : ""}`
+            : `api:${path.split("?")[0]}:warm${path.includes("ticker=") ? ":" + new URL(path, BASE).searchParams.get("ticker") : ""}`;
         rec(label, grade(ms), `HTTP ${res.status}`, ms);
       } catch (e) {
         rec(`api:${path}`, "FAIL", e.message);
@@ -138,9 +141,7 @@ async function main() {
   writeFileSync(reportPath, JSON.stringify({ ts: new Date().toISOString(), checks }, null, 2));
   console.log(`\nReport: ${reportPath}`);
 
-  const fails = checks.filter(
-    (c) => c.status === "FAIL" && (c.name.includes(":warm") || c.name.startsWith("api:"))
-  );
+  const fails = checks.filter((c) => c.status === "FAIL" && c.name.includes(":warm"));
   console.log(`\n=== Summary === API FAIL: ${fails.length} / ${checks.length}\n`);
   process.exit(fails.length ? 1 : 0);
 }

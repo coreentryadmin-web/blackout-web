@@ -35,8 +35,9 @@ export function shouldBootDataSockets(): boolean {
   return role === "ingest" || role === "all";
 }
 
-/** In-process RTH warm leader runs only on the dedicated ingest worker (or legacy all-in-one). */
+/** In-process RTH warm leader runs on web + ingest (Redis SETNX picks one cluster leader). */
 export function shouldRunRthWarmLeader(): boolean {
+  if (process.env.RTH_WARM_LEADER?.trim() === "0") return false;
   const role = processRole();
-  return role === "ingest" || role === "all";
+  return role === "web" || role === "ingest" || role === "all";
 }

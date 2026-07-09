@@ -8,14 +8,15 @@
 // cold-build spike (N users racing N chain fetches before the cache fills). This cron warms each
 // preset ONCE per tick so user-facing reads stay pure cache hits and the cold-build burst never
 // happens. All upstream calls flow through the permissive Polygon rate-limiter, so a warm burst
-// can't trip the 429 breaker on the live desk / GEX path. Overlays (UW) are NOT warmed here — the
-// matrix is the only thing that goes cold; overlays are gated separately by the allowlist.
+// can't trip the 429 breaker on the live desk / GEX path. UW overlays are primed per allowlisted
+// ticker after each matrix warm so member GETs skip overlay cold-fetch too.
 
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
-import { vectorWarmTickers } from "@/lib/heatmap-allowlist";
+import { vectorWarmTickers, heatmapPresetTickers } from "@/lib/heatmap-allowlist";
+import { primeGexOverlays } from "@/lib/gex-overlay";
 import { isEtCashRth } from "@/lib/et-market-hours";
 
 export const runtime = "nodejs";
@@ -41,12 +42,20 @@ export async function GET(req: NextRequest) {
   }
 
   const tickers = vectorWarmTickers();
+  const presetSet = new Set(heatmapPresetTickers());
 
-  // fetchGexHeatmap dedups per ticker via the matrix cache + single-flight guard, so warming each
-  // once is enough. Settle-all so one failing underlying can't abort the rest. A null result
-  // (unconfigured / no spot) is still a successful warm — the empty/negative result is cached and
-  // shields that ticker from per-user re-hammering for the TTL window.
-  const results = await Promise.allSettled(tickers.map((t) => fetchGexHeatmap(t)));
+  // Presets first — SPX Slayer / Thermal paint before the long tail of extra-liquid names.
+  const ordered = [
+    ...tickers.filter((t) => presetSet.has(t)),
+    ...tickers.filter((t) => !presetSet.has(t)),
+  ];
+
+  const results = await Promise.allSettled(
+    ordered.map(async (t) => {
+      const hm = await fetchGexHeatmap(t);
+      if (hm?.strikes?.length) await primeGexOverlays(t, hm.strikes);
+    })
+  );
 
   let warmed = 0;
   for (const r of results) {
