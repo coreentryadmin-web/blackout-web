@@ -15,8 +15,13 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!force && !isEtCashRth()) {
-    const payload = { ok: true, skipped: true, reason: "Outside cash RTH" };
+  const offHoursWarm = process.env.CACHE_WARM_OFF_HOURS?.trim() === "1";
+  if (!force && !offHoursWarm && !isEtCashRth()) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: "Outside cash RTH — use ?force=1 or CACHE_WARM_OFF_HOURS=1",
+    };
     await logCronRun("vector-universe-snapshot", started, payload);
     return NextResponse.json(payload);
   }
