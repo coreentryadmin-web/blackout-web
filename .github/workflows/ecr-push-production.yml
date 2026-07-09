@@ -1,11 +1,20 @@
-# Build the standalone Docker image and push to ECR (staging).
-# Requires repo secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION.
-# Optional: ECR_REPOSITORY (default blackout-web), AWS_ACCOUNT_ID (inferred via STS).
-name: ECR push (staging)
+# Build production Docker image and push to ECR (:latest).
+# Clerk auth — NOT Cognito (staging uses blackout-web-sandbox for that).
+name: ECR push (production)
 
 on:
   workflow_dispatch:
-  # Staging images are built from blackout-web-sandbox, not main.
+  push:
+    branches: [main]
+    paths:
+      - "deploy/Dockerfile"
+      - ".dockerignore"
+      - "next.config.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - "src/**"
+      - "public/**"
+      - ".github/workflows/ecr-push-production.yml"
 
 permissions:
   contents: read
@@ -46,8 +55,9 @@ jobs:
           IMAGE="${REGISTRY}/${REPO}"
           docker build -f deploy/Dockerfile \
             --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}" \
-            --build-arg NEXT_PUBLIC_SITE_URL="https://staging.blackouttrades.com" \
-            -t "${IMAGE}:${IMAGE_TAG}" -t "${IMAGE}:staging" .
+            --build-arg NEXT_PUBLIC_SITE_URL="https://blackouttrades.com" \
+            --build-arg GITHUB_SHA="${{ github.sha }}" \
+            -t "${IMAGE}:${IMAGE_TAG}" -t "${IMAGE}:latest" .
           docker push "${IMAGE}:${IMAGE_TAG}"
-          docker push "${IMAGE}:staging"
-          echo "Pushed ${IMAGE}:${IMAGE_TAG} and :staging"
+          docker push "${IMAGE}:latest"
+          echo "Pushed ${IMAGE}:${IMAGE_TAG} and :latest"
