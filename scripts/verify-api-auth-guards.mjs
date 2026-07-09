@@ -15,6 +15,11 @@ const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const PUBLIC_ROUTE_ALLOWLIST = new Set([
   "src/app/api/health/route.ts",
   "src/app/api/ready/route.ts",
+  // Ingest-worker liveness/readiness/boot — no ALB; returns 404 unless PROCESS_ROLE=ingest.
+  // ECS container health + deploy/market-worker.mjs hit these on localhost only.
+  "src/app/api/worker/health/route.ts",
+  "src/app/api/worker/boot/route.ts",
+  "src/app/api/worker/ready/route.ts",
   "src/app/api/webhook/whop/route.ts",
   "src/app/api/webhooks/clerk/route.ts",
   "src/app/api/webhook/clerk/route.ts",
