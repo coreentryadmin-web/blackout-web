@@ -91,7 +91,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "Thermal Warm",
     kind: "http",
     path: "/api/cron/heatmap-warm",
-    schedule_label: "~Every 5 min (market hours; in-app leader fills sub-5m gaps)",
+    schedule_label: "~Every 1 min (market hours; in-app leader fills sub-2m gaps)",
     stale_after_min: 10,
     weekdays_only: true,
     market_hours_only: true,

@@ -26,6 +26,7 @@ import { warmVectorDarkPool } from "@/features/vector/lib/vector-dark-pool-cache
 import { warmGridEarnings } from "@/lib/zerodte/earnings";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
 import { primeZeroDteBoardCache } from "@/lib/platform/zerodte-service";
+import { primeGexOverlays } from "@/lib/gex-overlay";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,7 +91,10 @@ export async function GET(req: NextRequest) {
 
   // Late refresh — early matrix/board warms can age out during this long batch (~20s+).
   const finalize = await Promise.allSettled([
-    ...heatmapPresetTickers().map((t) => fetchGexHeatmap(t)),
+    ...heatmapPresetTickers().map(async (t) => {
+      const hm = await fetchGexHeatmap(t);
+      if (hm?.strikes?.length) await primeGexOverlays(t, hm.strikes);
+    }),
     primeZeroDteBoardCache(),
   ]);
   for (const r of finalize) {

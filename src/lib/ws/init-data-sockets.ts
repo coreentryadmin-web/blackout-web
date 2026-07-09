@@ -78,8 +78,8 @@ export function ensureDataSockets() {
   } catch (err) {
     console.warn("[init-data-sockets] stocks/LULD socket init failed (non-fatal):", err);
   }
-  // Backup RTH warmers when cron triggers stall (#90 silent-death). Runs on ingest worker only
-  // (web tier relies on EventBridge warm crons + platform-warm).
+  // Backup RTH warmers when EventBridge/Railway cron triggers stall. Web tier participates so
+  // AWS split-role deploys still get sub-5m heatmap/desk heals (Redis SETNX elects one leader).
   if (shouldRunRthWarmLeader()) {
     void import("@/lib/rth-warm-leader")
       .then(({ ensureRthWarmLeader }) => ensureRthWarmLeader())

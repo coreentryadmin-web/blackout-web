@@ -1142,8 +1142,8 @@ function gexHeatmapCacheMs(): number {
 /** SPX Slayer / desk hot path — shorter TTL without warming the whole preset grid. */
 function gexHeatmapCacheMsFor(root: string): number {
   if (root === "SPX") {
-    const sec = Number(process.env.SPX_GEX_HEATMAP_CACHE_SEC ?? 8);
-    return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 8_000;
+    const sec = Number(process.env.SPX_GEX_HEATMAP_CACHE_SEC ?? 15);
+    return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 15_000;
   }
   return gexHeatmapCacheMs();
 }
@@ -1157,8 +1157,8 @@ function gexHeatmapCacheMsFor(root: string): number {
  * (live-caught 2026-07-06: SPX /gex-heatmap 502 + dashboard matrix stuck loading).
  */
 function gexHeatmapMaxStaleMs(): number {
-  const sec = Number(process.env.GEX_HEATMAP_MAX_STALE_SEC ?? 90);
-  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 90_000;
+  const sec = Number(process.env.GEX_HEATMAP_MAX_STALE_SEC ?? 300);
+  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 300_000;
 }
 
 /** Serve an expired matrix immediately and kick off a background rebuild (single-flight). */
