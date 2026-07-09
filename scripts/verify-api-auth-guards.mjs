@@ -32,6 +32,8 @@ const PUBLIC_ROUTE_ALLOWLIST = new Set([
   // Same reasoning: a visitor on /sign-in isn't authenticated yet by definition,
   // so this can't require a guard helper. Same protections as the route above.
   "src/app/api/telemetry/auth-failure/route.ts",
+  // Public Whop checkout URLs — runtime env from ECS secrets (no auth, no PII).
+  "src/app/api/public/checkout-urls/route.ts",
 ]);
 
 const GUARD_PATTERNS = [

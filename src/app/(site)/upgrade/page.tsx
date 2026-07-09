@@ -1,4 +1,4 @@
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 import { UpgradePageShell } from "@/components/desk/UpgradePageShell";

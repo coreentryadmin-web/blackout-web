@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
+import { PricingCheckoutLink } from "@/components/landing/PricingCheckoutLink";
 
 const PREMIUM = [
   "HELIX live options-flow feed",
@@ -14,9 +13,6 @@ const PREMIUM = [
 
 /** Static pricing — no framer-motion; both plans visible (no toggle JS). */
 export function StaticPricingSection() {
-  const yearlyHref = WHOP_CHECKOUT.yearly || WHOP_CHECKOUT.store || "/sign-up";
-  const monthlyHref = WHOP_CHECKOUT.monthly || WHOP_CHECKOUT.store || "/sign-up";
-
   return (
     <section id="pricing" className="mkt-section border-b-0">
       <div className="mkt-section-inner max-w-5xl">
@@ -48,14 +44,12 @@ export function StaticPricingSection() {
                 </li>
               ))}
             </ul>
-            <Link
-              href={yearlyHref}
-              prefetch={false}
+            <PricingCheckoutLink
+              variant="yearly"
               className="landing-btn-primary mt-8 inline-flex items-center justify-center px-6 py-3 font-syne text-sm font-bold uppercase tracking-[0.18em]"
-              {...(yearlyHref.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
             >
               Join yearly
-            </Link>
+            </PricingCheckoutLink>
           </div>
 
           <div className="mkt-card flex flex-col">
@@ -73,14 +67,12 @@ export function StaticPricingSection() {
               ))}
               <li className="text-sky-300/70">+ full desk access</li>
             </ul>
-            <Link
-              href={monthlyHref}
-              prefetch={false}
+            <PricingCheckoutLink
+              variant="monthly"
               className="landing-btn-ghost mt-8 inline-flex items-center justify-center border border-white/20 px-6 py-3 font-syne text-sm font-bold uppercase tracking-[0.18em] text-white"
-              {...(monthlyHref.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
             >
               Join monthly
-            </Link>
+            </PricingCheckoutLink>
           </div>
         </div>
       </div>
