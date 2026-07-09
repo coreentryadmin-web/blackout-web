@@ -1,11 +1,21 @@
-# Build the standalone Docker image and push to ECR (staging).
-# Requires repo secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION.
-# Optional: ECR_REPOSITORY (default blackout-web), AWS_ACCOUNT_ID (inferred via STS).
+# Build staging Docker image and push to ECR (:staging).
+# Deploys from the `staging` branch in this repo (not blackout-web-sandbox).
+# Staging ECS uses AUTH_PROVIDER=cognito; production main uses clerk.
 name: ECR push (staging)
 
 on:
   workflow_dispatch:
-  # Staging images are built from blackout-web-sandbox, not main.
+  push:
+    branches: [staging]
+    paths:
+      - "deploy/Dockerfile"
+      - ".dockerignore"
+      - "next.config.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - "src/**"
+      - "public/**"
+      - ".github/workflows/ecr-push-staging.yml"
 
 permissions:
   contents: read
@@ -45,9 +55,58 @@ jobs:
           fi
           IMAGE="${REGISTRY}/${REPO}"
           docker build -f deploy/Dockerfile \
-            --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}" \
+            --build-arg AUTH_PROVIDER="cognito" \
+            --build-arg NEXT_PUBLIC_AUTH_PROVIDER="cognito" \
+            --build-arg NEXT_PUBLIC_COGNITO_USER_POOL_ID="${{ secrets.COGNITO_USER_POOL_ID }}" \
+            --build-arg NEXT_PUBLIC_COGNITO_CLIENT_ID="${{ secrets.COGNITO_CLIENT_ID }}" \
+            --build-arg NEXT_PUBLIC_COGNITO_DOMAIN="${{ secrets.COGNITO_DOMAIN }}" \
             --build-arg NEXT_PUBLIC_SITE_URL="https://staging.blackouttrades.com" \
+            --build-arg GITHUB_SHA="${{ github.sha }}" \
             -t "${IMAGE}:${IMAGE_TAG}" -t "${IMAGE}:staging" .
           docker push "${IMAGE}:${IMAGE_TAG}"
           docker push "${IMAGE}:staging"
           echo "Pushed ${IMAGE}:${IMAGE_TAG} and :staging"
+
+      - name: Roll ECS staging web
+        env:
+          ECS_CLUSTER: blackout-staging-cluster
+          ECS_SERVICE: blackout-staging-web
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --force-new-deployment
+          echo "Waiting for ECS staging service stable (up to 10 min)..."
+          aws ecs wait services-stable \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}"
+          echo "ECS staging rollout complete."
+
+      - name: Validate static assets on staging
+        env:
+          BASE_URL: https://staging.blackouttrades.com
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if node scripts/validate-static-assets.mjs; then
+              echo "Staging static asset check passed."
+              exit 0
+            fi
+            echo "Attempt $i/10 failed — retrying in 15s..."
+            sleep 15
+          done
+          echo "Staging static assets still broken after ECS rollout."
+          exit 1
+
+      - name: Purge Cloudflare edge cache (staging)
+        if: env.CF_ZONE_ID != '' && env.CF_API_TOKEN != ''
+        env:
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          curl -fsS -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"files":["https://staging.blackouttrades.com/","https://staging.blackouttrades.com/sign-in","https://staging.blackouttrades.com/sign-up"]}'
+          echo "Cloudflare staging URLs purged after ECS rollout."
