@@ -32,17 +32,30 @@ audit-output/tool-agents/{tool}/
   cto-report-YYYY-MM-DD.md   # executive + fix loop
 ```
 
-## Launch at 09:30 ET
+## Launch at 09:30 ET (fully autonomous)
 
-```bash
-# All seven Cursor Cloud Agents (requires CURSOR_API_KEY)
-node scripts/tool-agents/launch-cloud-agents.mjs
+**Single orchestrator:** `.github/workflows/rth-autonomous-open.yml` (weekdays 09:30 ET)
 
-# Or one tool
-node scripts/tool-agents/launch-cloud-agents.mjs --tool=spx-slayer
+| Step | What runs | Until |
+| --- | --- | --- |
+| 1. Open gate | `validate:rth-open` | ~10 min |
+| 2. Launch fixers | 7 tool Cloud Agents + 1 site-wide Cloud Agent | instant |
+| 3. Site monitor | `validate:rth-continuous` | 16:00 ET |
+| 4. Tool monitors | 7 parallel `validate:tool-agent:*` jobs | 16:00 ET |
+| 5. Auto-fix | `ops-auto-fix` every **20 min** merges cron errors + tool findings → dispatches fix agent |
+
+**No user prompts.** Cloud Agents: fix → PR → auto-merge → re-validate → **continue monitoring**.
+
+Monitors **do not stop** on P1 — they log to `findings.ndjson` and keep running. Fix agents work in parallel.
+
+### Fix loop (each Cloud Agent)
+
+```
+find P1 → branch → commit → push → PR → gh pr merge --auto --squash
+→ deploy poll → validate:tool-agent:{tool} --once GREEN → resume continuous loop
 ```
 
-GitHub: `.github/workflows/tool-agents-launch.yml` (weekdays 09:31 ET)
+Standing merge policy: `CLAUDE.md` § Merge authorization.
 
 ## Fix loop (autonomous)
 

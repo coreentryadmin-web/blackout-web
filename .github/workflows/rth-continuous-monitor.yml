@@ -1,14 +1,11 @@
-# RTH continuous site monitor — runs all session 09:30–16:00 ET
+# Site-wide continuous monitor — triggered by rth-autonomous-open.yml
+# Manual: workflow_dispatch
 
 name: RTH continuous monitor
 
 on:
-  schedule:
-    # 09:30 AM ET EDT
-    - cron: "30 13 * * 1-5"
-    # 09:30 AM ET EST
-    - cron: "30 14 * * 1-5"
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   continuous:

@@ -29,6 +29,8 @@
     "validate:tool-agent:zerodte": "node scripts/tool-agents/run.mjs zerodte --wait-open",
     "validate:tool-agent:vector": "node scripts/tool-agents/run.mjs vector --wait-open",
     "validate:tool-agents:launch": "node scripts/tool-agents/launch-cloud-agents.mjs",
+    "validate:tool-agents:export": "node scripts/tool-agents/export-action-items.mjs",
+    "validate:rth-autonomous:launch-agents": "node scripts/tool-agents/launch-cloud-agents.mjs && node scripts/launch-rth-site-agent.mjs",
     "validate:rth-sweep": "node scripts/rth-comprehensive-sweep.mjs",
     "validate:exhaustive": "node scripts/exhaustive-platform-audit.mjs",
     "validate:spot-check": "node scripts/continuous-spot-check.mjs --once",

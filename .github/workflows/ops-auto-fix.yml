@@ -14,7 +14,8 @@ on:
       - Deploy smoke
       - RTH pre-open smoke
       - RTH open check
-      - RTH post-close smoke
+      - RTH autonomous open
+      - RTH continuous monitor
       - Off-hours health
       - Railway audit apply
       - Railway cron config check
@@ -67,11 +68,20 @@ jobs:
           CRON_TARGET_BASE_URL: https://blackouttrades.com
         run: |
           set +e
-          json=$(node scripts/ops-collect-action-items.mjs 2>/dev/null)
-          code=$?
-          set -e
-          echo "$json" > action-items.json
+          node scripts/ops-collect-action-items.mjs > /tmp/ops.json 2>/dev/null
+          node scripts/tool-agents/export-action-items.mjs > /tmp/tool.json 2>/dev/null
+          node -e "
+            const fs = require('fs');
+            const crypto = require('crypto');
+            const a = fs.existsSync('/tmp/ops.json') ? JSON.parse(fs.readFileSync('/tmp/ops.json','utf8')) : { items: [] };
+            const b = fs.existsSync('/tmp/tool.json') ? JSON.parse(fs.readFileSync('/tmp/tool.json','utf8')) : { items: [] };
+            const items = [...(a.items||[]), ...(b.items||[])];
+            const fp = items.length ? crypto.createHash('sha256').update(items.map(i=>i.id).sort().join('|')).digest('hex').slice(0,12) : 'none';
+            fs.writeFileSync('action-items.json', JSON.stringify({ generated_at: new Date().toISOString(), fingerprint: fp, count: items.length, items }));
+          "
+          code=0
           count=$(node -e "const j=JSON.parse(require('fs').readFileSync('action-items.json','utf8')); console.log(j.count||0)")
+          if [ "$count" -gt 0 ]; then code=1; fi
           echo "count=$count" >> "$GITHUB_OUTPUT"
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           if [ "$count" -gt 0 ]; then

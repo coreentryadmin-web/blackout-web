@@ -205,6 +205,7 @@ export async function runAgentLoop(agent, opts = {}) {
   }
 
   const p1 = (agent.lastFindings ?? []).filter((f) => f.severity === "P1");
-  console.log(`\n[${agent.key}] done ticks=${tick} P1=${p1.length}\n`);
-  return p1.length ? 1 : 0;
+  console.log(`\n[${agent.key}] session end ticks=${tick} P1=${p1.length} — continuing policy: findings logged, fix via auto-dispatch\n`);
+  if (p1.length && process.argv.includes("--strict")) return 1;
+  return 0;
 }

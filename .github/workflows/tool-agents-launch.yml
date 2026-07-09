@@ -1,12 +1,11 @@
-# Launch seven tool-specific Cloud Agents at RTH open
+# Launch seven tool-specific Cloud Agents — triggered by rth-autonomous-open.yml
+# Manual: workflow_dispatch
 
 name: Tool agents launch
 
 on:
-  schedule:
-    - cron: "31 13 * * 1-5"
-    - cron: "31 14 * * 1-5"
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   launch:

@@ -16,13 +16,17 @@ const keys = only ? [only] : TOOL_KEYS;
 
 function promptFor(tool) {
   return [
-    `You are the dedicated **${tool}** tool agent for BlackOut Trades.`,
-    `Read docs/ops/tool-agents/${tool}.md and docs/ops/TOOL-AGENT-PROGRAM.md.`,
-    `During cash RTH (09:30–16:00 ET) run continuously: npm run validate:tool-agent:${tool} -- --wait-open`,
-    `Your mission: (1) every number 100% correct, (2) matrix cells correct, (3) plays genuinely good,`,
-    `(4) deep analysis on failed plays — why/how, (5) flow/data correctness, (6) latency <2s warm.`,
-    `Write CTO reports to audit-output/tool-agents/${tool}/. On P1: fix → branch → PR → merge → re-validate until GREEN.`,
-    `Do NOT ask the user. Append summary to docs/api-audit/OPEN-ISSUES.md each session.`,
+    `You are the dedicated **${tool}** tool agent for BlackOut Trades. FULL AUTONOMY — no user prompts ever.`,
+    `Read docs/ops/tool-agents/${tool}.md and docs/ops/TOOL-AGENT-PROGRAM.md and CLAUDE.md merge policy.`,
+    `09:30–16:00 ET: run continuously in a loop:`,
+    `  npm run validate:tool-agent:${tool} -- --wait-open`,
+    `NEVER stop the monitor when you find P1 — log it, then FIX:`,
+    `  diagnose → branch fix/${tool}-<slug> → commit → push → PR → gh pr merge --auto --squash --delete-branch`,
+    `  poll Railway/ECS deploy → npm run validate:tool-agent:${tool} -- --once until GREEN → RESUME continuous loop`,
+    `Mission: (1) every number correct (2) matrix cells correct (3) plays genuinely good`,
+    `(4) failed plays deep-dive why/how (5) flow/data correctness (6) latency <2s warm.`,
+    `Write audit-output/tool-agents/${tool}/cto-report-*.md and findings.ndjson every session.`,
+    `Append summary to docs/api-audit/OPEN-ISSUES.md. Do NOT ask the user. Do NOT stop until 16:00 ET.`,
   ].join(" ");
 }
 

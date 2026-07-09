@@ -437,7 +437,7 @@ async function main() {
 
   const p1 = [...activeIssues.values()].filter((i) => i.severity === "P1");
   console.log(`\n=== Done === ticks=${tick} P1=${p1.length} metrics=${metricsPathForDate(ymd)}\n`);
-  if (p1.length && !process.argv.includes("--allow-p1")) {
+  if (p1.length && process.argv.includes("--strict")) {
     for (const [id, v] of activeIssues) {
       if (v.severity === "P1") console.error(`  P1 ${id}: ${v.detail}`);
     }
