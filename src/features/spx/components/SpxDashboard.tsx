@@ -130,7 +130,11 @@ export function SpxDashboard() {
         />
       )}
 
-      {/* Desk grid: Largo commentary | matrix | Open/Watch/Closed | Terminal */}
+      {/*
+        Four grid slots: Largo | Matrix | Plays | Terminal.
+        SpxTradeAlerts returns a Fragment (plays + terminal) so both become real
+        grid children — avoid display:contents wrappers (unreliable with grid-areas).
+      */}
       <div
         className="spx-sniper-triple spx-sniper-triple--desk-v2"
         data-ios-panel={nativeShell ? iosPanel : undefined}
@@ -169,15 +173,13 @@ export function SpxDashboard() {
         </SpxPanelErrorBoundary>
 
         <SpxPanelErrorBoundary>
-          <div
-            className={clsx(
-              "contents",
-              nativeShell && iosPanel !== "plays" && "ios-native-panel-hidden",
-              nativeShell && iosPanel === "plays" && "ios-native-panel-visible"
-            )}
-          >
-            <SpxTradeAlerts desk={desk} live={live} refreshing={refreshing} sessionActive={sessionActive} />
-          </div>
+          <SpxTradeAlerts
+            desk={desk}
+            live={live}
+            refreshing={refreshing}
+            sessionActive={sessionActive}
+            iosHidden={Boolean(nativeShell && iosPanel !== "plays")}
+          />
         </SpxPanelErrorBoundary>
       </div>
     </div>
