@@ -946,8 +946,10 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
           play={displayPlay}
           lotto={lotto}
           powerHour={powerHour}
+          desk={desk}
           confirmationLayer={confirmationLayer}
           historyThesis={historyThesis}
+          live={sessionLive}
         />
         <SpxPlaybookValidationPanel panel={play?.playbook_shadow} sessionLive={sessionLive} />
         <p className="spx-trade-educational-note">
