@@ -9,10 +9,18 @@ import {
 import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { roundFloats } from "@/lib/round-floats";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
+import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { getActiveTradingHalts, isTradingHaltChannelStale, tideStore } from "@/lib/ws/uw-socket";
 import { getLargoSpxLiveDesk } from "@/lib/largo/spx-desk-cache";
 import { computeSpxConfluence } from "@/features/spx/lib/spx-signals";
 import { loadLottoRecord } from "@/features/spx/lib/spx-lotto-store";
+import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
+import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
+import {
+  buildOdteIntelContext,
+  heatmapToIntelSlice,
+  type IntelHeatmapSlice,
+} from "@/features/spx/lib/spx-odte-intel-feed";
 
 type FeedKey =
   | "market"
@@ -39,9 +47,28 @@ type FeedKey =
   | "spx_confluence"
   | "lotto_live"
   | "power_hour"
-  | "zerodte_plays";
+  | "zerodte_plays"
+  | "odte_intel_edges";
 
 export type LargoLiveFeed = Partial<Record<FeedKey, unknown>>;
+
+/** Per-user prior intel snapshots so Largo chat sees material edges across turns. */
+type IntelPrevSnap = {
+  desk: SpxDeskPayload | null;
+  heatmap: IntelHeatmapSlice | null;
+  nighthawk: NightHawkEdition | null;
+  at: number;
+};
+const INTEL_PREV_TTL_MS = 15 * 60 * 1000;
+const intelPrevByUser = new Map<string, IntelPrevSnap>();
+
+function rememberIntelPrev(userKey: string, snap: Omit<IntelPrevSnap, "at">) {
+  if (intelPrevByUser.size > 2_000) {
+    const oldest = intelPrevByUser.keys().next().value;
+    if (oldest) intelPrevByUser.delete(oldest);
+  }
+  intelPrevByUser.set(userKey, { ...snap, at: Date.now() });
+}
 
 async function safeTool(
   name: string,
@@ -212,6 +239,45 @@ export async function captureLargoLiveFeed(
         active: true,
         minutes_remaining: POWER_HOUR_END - minuteOfDay,
       };
+    }
+  }
+
+  // Material 0DTE intel edges (same diffs as Playbook terminal) — Largo must know
+  // wall reduce/build, VEX/DEX/CHARM, NH publish, regime/OR/stale/halt transitions.
+  // Heatmap read hits the shared matrix cache (already warmed by gex_regime above).
+  if (intent.needsSpxDesk || scopeTicker === "SPX") {
+    try {
+      const userKey = userId ?? "_anon";
+      const [desk, heatmapRaw] = await Promise.all([
+        getLargoSpxLiveDesk(userKey),
+        fetchGexHeatmap("SPX").catch(() => null),
+      ]);
+      const heatmap = heatmapToIntelSlice(heatmapRaw);
+      const nhRaw = feed.nighthawk;
+      const nighthawk =
+        nhRaw && typeof nhRaw === "object" && !("error" in (nhRaw as object))
+          ? (nhRaw as NightHawkEdition)
+          : null;
+      const prev = intelPrevByUser.get(userKey);
+      const stalePrev = !prev || Date.now() - prev.at > INTEL_PREV_TTL_MS;
+      const seed = stalePrev || !prev?.desk?.available;
+      const intel = buildOdteIntelContext({
+        prevDesk: seed ? null : prev?.desk ?? null,
+        desk: desk?.available ? desk : null,
+        prevHeatmap: seed ? null : prev?.heatmap ?? null,
+        heatmap,
+        prevNighthawk: seed ? null : prev?.nighthawk ?? null,
+        nighthawk,
+        seed,
+      });
+      feed.odte_intel_edges = intel.lines;
+      rememberIntelPrev(userKey, {
+        desk: desk?.available ? desk : null,
+        heatmap,
+        nighthawk,
+      });
+    } catch {
+      feed.odte_intel_edges = [];
     }
   }
 
@@ -474,6 +540,17 @@ export function formatLargoLiveFeed(rawFeed: LargoLiveFeed, ticker: string): str
       lines.push(
         `0DTE intraday-adjusted flip: ${intra.adjusted_flip ?? "—"} · net GEX adj: ${intra.adjusted_net_gex ?? "—"}`
       );
+    }
+    lines.push("");
+  }
+
+  // Material 0DTE edges — same event layer as Playbook terminal (walls/greeks/NH/regime).
+  const intelEdges = asArr(feed.odte_intel_edges).map((x) => String(x ?? "").trim()).filter(Boolean);
+  if (intelEdges.length) {
+    lines.push("### 0DTE material edges (structure / greeks / flow / Night Hawk)");
+    lines.push("Authoritative WHAT-MOVED facts for this turn — cite these; do not invent edges.");
+    for (const edge of intelEdges.slice(0, 40)) {
+      lines.push(`- ${edge}`);
     }
     lines.push("");
   }

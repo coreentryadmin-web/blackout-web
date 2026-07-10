@@ -922,3 +922,75 @@ export function odteIntelEventsToTerminalLines(events: OdteIntelEvent[]): PlayTe
   }
   return events.map((e) => e.line);
 }
+
+/** Map a full heatmap payload (or API JSON) into the intel slice. */
+export function heatmapToIntelSlice(
+  hm: {
+    asof?: string;
+    spot?: number;
+    available?: boolean;
+    events?: IntelHeatmapSlice["events"];
+    shift?: IntelHeatmapSlice["shift"];
+    vex_shift?: IntelHeatmapSlice["vex_shift"];
+    gex?: IntelHeatmapSlice["gex"] & {
+      flip?: number | null;
+      total?: number;
+      regime?: { posture?: string | null };
+      strike_totals?: Record<string, number>;
+    };
+    vex?: IntelHeatmapSlice["vex"];
+    dex?: IntelHeatmapSlice["dex"];
+    charm?: IntelHeatmapSlice["charm"];
+  } | null | undefined
+): IntelHeatmapSlice | null {
+  if (!hm) return null;
+  if (hm.available === false) return null;
+  return {
+    asof: hm.asof,
+    spot: hm.spot,
+    events: hm.events,
+    shift: hm.shift,
+    vex_shift: hm.vex_shift,
+    gex: hm.gex,
+    vex: hm.vex,
+    dex: hm.dex,
+    charm: hm.charm,
+  };
+}
+
+export type OdteIntelContext = {
+  events: OdteIntelEvent[];
+  /** Plain text lines for AI prompts (no terminal chrome). */
+  lines: string[];
+};
+
+/**
+ * Shared 0DTE intel context for Largo commentary + chat — same diffs as the
+ * Playbook terminal, without any UI coupling.
+ */
+export function buildOdteIntelContext(opts: {
+  prevDesk?: SpxDeskPayload | null;
+  desk?: SpxDeskPayload | null;
+  prevHeatmap?: IntelHeatmapSlice | null;
+  heatmap?: IntelHeatmapSlice | null;
+  prevNighthawk?: NightHawkEdition | null;
+  nighthawk?: NightHawkEdition | null;
+  /** First tick: seed structure/greek posture without flooding. */
+  seed?: boolean;
+}): OdteIntelContext {
+  const seed = Boolean(opts.seed);
+  const deskEvents = opts.desk
+    ? diffOdteIntelEvents(opts.prevDesk ?? null, opts.desk, { seed })
+    : [];
+  const hmEvents = opts.heatmap
+    ? diffHeatmapIntelEvents(opts.prevHeatmap ?? null, opts.heatmap, { seed })
+    : [];
+  // Night Hawk: never "seed" a static edition as a publish edge on first tick when
+  // we already have prev — first-ever sighting still emits via prev=null.
+  const nhEvents = diffNighthawkIntelEvents(opts.prevNighthawk ?? null, opts.nighthawk ?? null);
+  const events = [...deskEvents, ...hmEvents, ...nhEvents];
+  return {
+    events,
+    lines: events.map((e) => e.line.text),
+  };
+}

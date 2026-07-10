@@ -13,6 +13,11 @@ import {
   type GroundingCheckResult,
 } from "@/lib/grounding-guard";
 import { dbConfigured, insertAlertAuditLog } from "@/lib/db";
+import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
+import {
+  buildOdteIntelContext,
+  type IntelHeatmapSlice,
+} from "@/features/spx/lib/spx-odte-intel-feed";
 
 export type SpxCommentaryResult = {
   headline: string;
@@ -134,7 +139,15 @@ function deskContext(desk: SpxDeskPayload): Record<string, unknown> {
       feed_stalled: desk.feed_stalled ?? false,
       gex_stale: desk.gex_stale ?? false,
       gex_age_ms: desk.gex_age_ms ?? null,
+      price_age_ms: desk.price_age_ms ?? null,
+      halt_channel_stale: desk.halt_channel_stale ?? false,
     },
+
+    active_halts: (desk.active_halts ?? []).map((h) => ({
+      symbol: h.symbol,
+      halt_type: h.halt_type,
+      reason: h.reason,
+    })),
 
     confluence: computeSpxConfluence(desk),
 
@@ -576,11 +589,30 @@ export async function generateSpxCommentary(
     lotto?: import("@/features/spx/lib/spx-lotto-store").LottoRecord | null;
     powerHour?: import("@/features/spx/lib/spx-power-hour-store").PowerHourRecord | null;
     outcomes?: import("@/features/spx/lib/spx-play-outcomes").PlayOutcomeStats | null;
+    /** Prior-window heatmap slice for wall_changes / VEX/DEX/CHARM / events diffs. */
+    prevHeatmap?: IntelHeatmapSlice | null;
+    heatmap?: IntelHeatmapSlice | null;
+    prevNighthawk?: NightHawkEdition | null;
+    nighthawk?: NightHawkEdition | null;
   }
 ): Promise<SpxCommentaryResult | null> {
   const delta = computeDelta(desk, previous);
+  const intel = buildOdteIntelContext({
+    prevDesk: previous as SpxDeskPayload | null | undefined,
+    desk,
+    prevHeatmap: cross?.prevHeatmap ?? null,
+    heatmap: cross?.heatmap ?? null,
+    prevNighthawk: cross?.prevNighthawk ?? null,
+    nighthawk: cross?.nighthawk ?? null,
+    seed: !previous?.price,
+  });
   const ctx = deskContext(desk);
   const ctxRec = ctx as Record<string, unknown>;
+
+  // Material 0DTE edges (same diffs as Playbook terminal) — Largo must see every edge.
+  if (intel.lines.length) {
+    ctxRec.odte_intel_edges = intel.lines;
+  }
 
   // Cross-tool access: surface the platform's OWN engine state (open play + lotto +
   // power-hour) and recent track record so the desk AI aligns with the rest of the
@@ -663,13 +695,16 @@ SESSION PHASE: ${sessionPhase} (ET). Tailor the call to the phase:
 
 ACCURACY: every number/strike/premium comes from the JSON below or WHAT CHANGED. Never invent. Skip anything null/empty. SPX prices to .00; premiums like ${fmtPremium(1_500_000)}.
 
-DATA AVAILABLE (use only what is populated): data_freshness (feed_stalled, gex_stale, gex_age_ms); confluence (grade A+/A/B/C/D, action, factors); price_action (price, change_pct, above_vwap, vwap, hod/lod, pdh/pdl); moving_averages; support_resistance_levels (nearest_support/resistance); dealer_gex (gex_net, gamma_flip, above_gamma_flip, gex_king, max_pain, gamma_regime); gex_walls_0dte (strikes + net_gex); flow_0dte (call/put/net premium); spx_option_flows (sweeps/blocks); live_tape; strike_stacks; dark_pool (bias, pcr, prints); market_tide; nope; volatility (VIX, IV rank, term); internals (TICK/TRIN/ADD); market_breadth; macro_calendar_today; news_headlines; mega_cap_stocks; net_premium_velocity.
+DATA AVAILABLE (use only what is populated): data_freshness (feed_stalled, gex_stale, gex_age_ms, halt_channel_stale); active_halts; confluence (grade A+/A/B/C/D, action, factors); price_action (price, change_pct, above_vwap, vwap, hod/lod, pdh/pdl); moving_averages; support_resistance_levels (nearest_support/resistance); dealer_gex (gex_net, gamma_flip, above_gamma_flip, gex_king, max_pain, gamma_regime); gex_walls_0dte (strikes + net_gex); flow_0dte (call/put/net premium); spx_option_flows (sweeps/blocks); live_tape; strike_stacks; dark_pool (bias, pcr, prints); market_tide; nope; volatility (VIX, IV rank, term); internals (TICK/TRIN/ADD); market_breadth; macro_calendar_today; news_headlines; mega_cap_stocks; net_premium_velocity; odte_intel_edges (material structure/greek/flow/NH edges — treat as authoritative WHAT-MOVED facts).
 
 CURRENT DESK SNAPSHOT (JSON):
 ${JSON.stringify(ctx)}
 
 WHAT CHANGED SINCE LAST DESK READ:
 ${delta.map((d) => `- ${d}`).join("\n")}
+
+0DTE MATERIAL EDGES (desk + heatmap walls/greeks + Night Hawk — cite when relevant; do not invent beyond these):
+${intel.lines.length ? intel.lines.map((d) => `- ${d}`).join("\n") : "- (none this window)"}
 
 TEACH INSIDE THE LINE, NEVER AROUND IT — every line states the fact AND teaches the mechanic in the SAME breath; the decode rides along as a 2-3 word clause, it never gets its own sentence or line:
 1. DECODE jargon inline (2-3 words, in parens) the FIRST time a term appears per read, then use it bare: γflip (dealer trend line), VWAP (session avg price), put-skew (more put than call bets), theta (time-decay), pin (price magnet), GEX wall (dealer defense), neg-γ (dealers amplify moves), pos-γ (dealers fade/pin), debit spread (capped-risk pair), IV rank (how pricey options are), max pain (strike most options expire worthless). Don't re-decode the same term twice in one read.
@@ -696,6 +731,8 @@ Hard rules:
 - live_spx_play / lotto_play / power_hour_play (if present) are the platform's OWN live positions — your READ + SETUP MUST ALIGN with them, or explicitly flag the conflict (e.g. "engine still long X — countertrend"). NEVER hand the trader the opposite side of an open desk position without calling out that it contradicts the live engine.
 - recent_play_outcomes (if present) is the desk's own realized win-rate — you MAY use it to calibrate conviction ("desk's been hot/cold lately"), but never fabricate numbers or over-promise.
 - When data_freshness.gex_stale or data_freshness.feed_stalled is true, dealer GEX levels are STALE or the index feed is FROZEN — say so plainly in RISK (do not cite walls/flip as live); prefer NO-EDGE or lighter size until structure refreshes.
+- When active_halts is non-empty, call out the halt in RISK / FLIPS IT — do not suggest entries on halted symbols.
+- odte_intel_edges are the desk's material structure/greek/flow/NH edges (wall reduce/build, VEX/DEX/CHARM posture flips, OR breaks, NH publish). Prefer them for Δ SINCE LAST when present; never invent edges not listed.
 - ALWAYS show WHY, LEVELS, SETUP, RISK, NEXT 5M, FLIPS IT. Δ/FLOW/NEWS only when they carry signal. Still ~a 20-second read.`;
 
   const raw = await anthropicText(prompt, 1550, undefined, {

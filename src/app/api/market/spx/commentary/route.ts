@@ -7,6 +7,12 @@ import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { serverCache } from "@/lib/server-cache";
 import { sharedCacheGet } from "@/lib/shared-cache";
+import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import {
+  heatmapToIntelSlice,
+  type IntelHeatmapSlice,
+} from "@/features/spx/lib/spx-odte-intel-feed";
+import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +31,8 @@ const COMMENTARY_TTL_MS = 5 * 60 * 1000;
 type CommentaryCache = {
   commentary: SpxCommentaryResult;
   desk: SpxDeskPayload; // retained so next window can compute delta against it
+  heatmap?: IntelHeatmapSlice | null;
+  nighthawk?: NightHawkEdition | null;
 };
 
 export async function POST(req: NextRequest) {
@@ -47,9 +55,13 @@ export async function POST(req: NextRequest) {
     // Read previous window's cached desk from Redis for delta computation.
     // Direct Redis read — no side effects, no write.
     let prevDesk: SpxDeskPayload | null = null;
+    let prevHeatmap: IntelHeatmapSlice | null = null;
+    let prevNighthawk: NightHawkEdition | null = null;
     try {
       const prev = await sharedCacheGet<CommentaryCache>(prevKey);
       prevDesk = prev?.desk ?? null;
+      prevHeatmap = prev?.heatmap ?? null;
+      prevNighthawk = prev?.nighthawk ?? null;
     } catch {
       // Redis unavailable or key expired — no delta this window
     }
@@ -64,18 +76,33 @@ export async function POST(req: NextRequest) {
       // lotto, power-hour) + recent win-rate so its read aligns with the rest of the
       // platform (never contradicts an open position) and can calibrate conviction. All
       // read-only, fetched only on a cache miss (once per window); each falls back to null.
-      const [openPlay, lotto, powerHour, outcomes] = await Promise.all([
+      // Heatmap is shared-cache (same matrix as Thermal / SPX rail). Night Hawk is Postgres.
+      const [openPlay, lotto, powerHour, outcomes, heatmapRaw, nighthawk] = await Promise.all([
         import("@/features/spx/lib/spx-play-store").then((m) => m.loadOpenPlay()).catch(() => null),
         import("@/features/spx/lib/spx-lotto-store").then((m) => m.loadLottoRecord()).catch(() => null),
         import("@/features/spx/lib/spx-power-hour-store").then((m) => m.loadPowerHourRecord()).catch(() => null),
         import("@/features/spx/lib/spx-play-outcomes").then((m) => m.fetchPlayOutcomeStats()).catch(() => null),
+        fetchGexHeatmap("SPX").catch(() => null),
+        import("@/lib/platform/nighthawk-service")
+          .then((m) => m.getLatestNightHawkEdition())
+          .catch(() => null),
       ]);
-      const commentary = await generateSpxCommentary(desk, prevDesk, { openPlay, lotto, powerHour, outcomes });
+      const heatmap = heatmapToIntelSlice(heatmapRaw);
+      const commentary = await generateSpxCommentary(desk, prevDesk, {
+        openPlay,
+        lotto,
+        powerHour,
+        outcomes,
+        prevHeatmap,
+        heatmap,
+        prevNighthawk,
+        nighthawk,
+      });
       // Throw (don't return null) on failure so serverCache's refreshCache skips its
       // .then store/Redis write and rethrows to us — nothing is negatively cached and
       // the next request retries immediately instead of being poisoned for the window.
       if (!commentary) throw new Error("spx-commentary: generation returned null");
-      return { commentary, desk };
+      return { commentary, desk, heatmap, nighthawk };
     });
 
     return NextResponse.json({

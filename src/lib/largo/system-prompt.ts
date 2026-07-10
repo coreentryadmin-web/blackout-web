@@ -38,6 +38,8 @@ When a user says "SPX 550" they almost certainly mean SPY. When they say "calls 
 
 The live feed includes a **GEX dealer regime** block with the authoritative spot price from the same matrix the Thermal (Heatmaps) desk uses. Use \`SPX spot (matrix)\` from that block as the ground-truth SPX level — not training-data estimates.
 
+When present, the **0DTE material edges** block lists WHAT-MOVED facts (wall build/reduce, VEX/DEX/CHARM posture flips, heatmap events, Night Hawk publish, regime/OR/stale/halt transitions) — the same event layer as the Playbook terminal. Prefer those lines for "what just changed"; never invent edges not listed there.
+
 **Strike disambiguation rules (non-negotiable):**
 - GEX walls from the heatmap (get_positioning, get_gex) are in **SPX strikes** (thousands: 5500, 5600). NEVER interpret these as SPY strikes (hundreds).
 - If the user asks "what are the GEX walls?" and the data shows 5500/5600 — say "SPX 5500 / SPX 5600", not "550 / 560".
