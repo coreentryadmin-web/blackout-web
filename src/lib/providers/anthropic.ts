@@ -24,6 +24,11 @@ import {
 } from "@/lib/ai-spend-ledger";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
+import {
+  anthropicBreakerOpenUntil,
+  isHardAnthropicAccountFailure,
+  tripAnthropicBreaker,
+} from "@/lib/providers/anthropic-breaker";
 
 // Per-process daily AI-spend tripwire. It survives Redis loss, so it is kept as the
 // FALLBACK alerter (used only when the cross-replica ledger below is unreachable). The
@@ -275,6 +280,16 @@ async function withTelemetry<T>(
       headers_sent: [],
     });
     console.error("[anthropic]", status ?? "error", message);
+    // Billing/auth failures are guaranteed to repeat until a human fixes the
+    // account — open the breaker so every AI surface stops calling Anthropic
+    // for the cooldown instead of storming a dead account (see anthropic-breaker.ts).
+    if (isHardAnthropicAccountFailure(status, message)) {
+      tripAnthropicBreaker(message);
+      console.error(
+        "[anthropic] hard account failure — breaker OPEN, skipping all Anthropic calls for",
+        "10 minutes. Fix billing/key at console.anthropic.com."
+      );
+    }
     throw err;
   }
 }
@@ -363,6 +378,10 @@ export async function anthropicText(
 ): Promise<string | null> {
   const client = getClient();
   if (!client) return null;
+  if (anthropicBreakerOpenUntil()) {
+    console.warn("[anthropic] account breaker open (billing/auth failure) — skipping anthropic-text");
+    return null;
+  }
   if (await isAiSpendCeilingTripped()) {
     console.warn("[anthropic] daily AI spend ceiling reached — skipping anthropic-text");
     return null;
@@ -444,6 +463,10 @@ export async function anthropicToolLoop(params: {
 }): Promise<string | null> {
   const client = getClient();
   if (!client) return null;
+  if (anthropicBreakerOpenUntil()) {
+    console.warn("[anthropic] account breaker open (billing/auth failure) — skipping anthropic tool loop");
+    return null;
+  }
   if (await isAiSpendCeilingTripped()) {
     console.warn("[anthropic] daily AI spend ceiling reached — skipping anthropic tool loop");
     return null;
@@ -488,6 +511,10 @@ export async function anthropicToolLoop(params: {
   );
 
   for (let round = 0; round < maxRounds; round++) {
+    if (anthropicBreakerOpenUntil()) {
+      console.warn("[anthropic] account breaker opened mid tool-loop — stopping");
+      return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
+    }
     if (await isAiSpendCeilingTripped()) {
       console.warn("[anthropic] daily AI spend ceiling reached mid tool-loop — stopping");
       return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
