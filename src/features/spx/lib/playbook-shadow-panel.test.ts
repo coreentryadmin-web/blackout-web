@@ -46,11 +46,13 @@ test("buildPlaybookShadowPanel returns null when technicals unavailable", () => 
   assert.equal(buildPlaybookShadowPanel(DESK, { ...TECH, available: false }), null);
 });
 
-test("buildPlaybookShadowPanel returns three registry verdicts in shadow mode", () => {
+test("buildPlaybookShadowPanel returns all registry verdicts in shadow mode", () => {
   const panel = buildPlaybookShadowPanel(DESK, TECH);
   assert.ok(panel);
   assert.equal(panel!.mode, "shadow");
-  assert.equal(panel!.verdicts.length, 3);
+  assert.equal(panel!.verdicts.length, 5);
   assert.equal(panel!.verdicts[0]?.playbook_id, "PB-01");
   assert.equal(panel!.verdicts[0]?.name, "VWAP Reclaim");
+  assert.equal(panel!.verdicts[3]?.playbook_id, "PB-04");
+  assert.equal(panel!.verdicts[4]?.playbook_id, "PB-08");
 });

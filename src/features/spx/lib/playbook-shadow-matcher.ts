@@ -293,7 +293,169 @@ function matchPb03(
 }
 
 /**
- * Evaluate Phase-1 playbooks against desk/technicals and pick a deterministic primary.
+ * PB-04 Gamma Pin Fade — EVIDENCE-BACKED (docs/spx/PLAYBOOK-EVIDENCE-BASE.md):
+ * 18/19 logged prod plays entered while gamma_regime was `mean_revert` (dealer pin)
+ * and net-lost fighting it with breakout-style longs. This playbook trades WITH the
+ * pin: fade a wall touch back toward the interior when dealers dampen moves.
+ */
+function matchPb04(
+  desk: SpxDeskPayload,
+  technicals: PlayTechnicals,
+  etMins: number,
+  regimeEligible: boolean
+): PlaybookMatchVerdict {
+  const def = PLAYBOOK_REGISTRY[3];
+  const windowOpen = isWithinSessionWindow(def.sessionWindow, etMins);
+  const walls = desk.gex_walls ?? [];
+  const dataAvailable = technicals.available && desk.price > 0 && walls.length > 0;
+
+  if (!dataAvailable) {
+    return {
+      playbook_id: def.id,
+      session_window_open: windowOpen,
+      regime_eligible: regimeEligible,
+      precondition_match: false,
+      trigger_fired: false,
+      direction: null,
+      detail: "GEX walls or technicals unavailable — cannot evaluate PB-04",
+    };
+  }
+
+  const pinning = desk.gamma_regime === "mean_revert";
+  const prox = playStructureProximityPts();
+  const resistanceAbove = walls
+    .filter((w) => w.kind === "resistance" && w.strike >= desk.price)
+    .sort((a, b) => a.strike - b.strike)[0];
+  const supportBelow = walls
+    .filter((w) => w.kind === "support" && w.strike <= desk.price)
+    .sort((a, b) => b.strike - a.strike)[0];
+  const betweenWalls = resistanceAbove != null && supportBelow != null;
+  const preconditionMatch = pinning && betweenWalls;
+
+  const flow = flowDirection(desk);
+  // "Sustained breakout through wall" invalidation — suppress on live HOD/LOD break.
+  const breakingOut = technicals.breakout.hod_break === true || technicals.breakout.lod_break === true;
+
+  const nearResistance =
+    resistanceAbove != null && resistanceAbove.strike - desk.price <= prox;
+  const nearSupport = supportBelow != null && desk.price - supportBelow.strike <= prox;
+
+  const shortTrigger =
+    regimeEligible &&
+    windowOpen &&
+    preconditionMatch &&
+    !breakingOut &&
+    nearResistance &&
+    flow !== "bullish";
+  const longTrigger =
+    regimeEligible &&
+    windowOpen &&
+    preconditionMatch &&
+    !breakingOut &&
+    !nearResistance &&
+    nearSupport &&
+    flow !== "bearish";
+
+  if (shortTrigger || longTrigger) {
+    const wall = shortTrigger ? resistanceAbove! : supportBelow!;
+    return {
+      playbook_id: def.id,
+      session_window_open: true,
+      regime_eligible: regimeEligible,
+      precondition_match: true,
+      trigger_fired: true,
+      direction: shortTrigger ? "short" : "long",
+      detail: `Pin fade ${shortTrigger ? "off resistance" : "off support"} ${wall.strike} (spot ${desk.price}, γ=mean_revert, flow=${flow ?? "unknown"})`,
+    };
+  }
+
+  return {
+    playbook_id: def.id,
+    session_window_open: windowOpen,
+    regime_eligible: regimeEligible,
+    precondition_match: preconditionMatch,
+    trigger_fired: false,
+    direction: null,
+    detail: !regimeEligible
+      ? `Regime ineligible for PB-04 (desk.regime=${desk.regime})`
+      : !pinning
+        ? `No gamma pin (gamma_regime=${desk.gamma_regime})`
+        : breakingOut
+          ? "Breakout through wall — pin fade invalidated"
+          : `Pinned between walls, awaiting wall touch (res=${resistanceAbove?.strike ?? "—"} sup=${supportBelow?.strike ?? "—"})`,
+  };
+}
+
+/**
+ * PB-08 Power Hour Momentum — EVIDENCE-BACKED: 14:00+ ET was the only net-positive
+ * hour band in the logged prod outcomes (avg +2.05 pts vs losses all morning).
+ * Rides dominant late-day flow through a session-extreme break.
+ */
+function matchPb08(
+  desk: SpxDeskPayload,
+  technicals: PlayTechnicals,
+  etMins: number,
+  regimeEligible: boolean
+): PlaybookMatchVerdict {
+  const def = PLAYBOOK_REGISTRY[4];
+  const windowOpen = isWithinSessionWindow(def.sessionWindow, etMins);
+  const dataAvailable = technicals.available && desk.price > 0;
+
+  if (!dataAvailable) {
+    return {
+      playbook_id: def.id,
+      session_window_open: windowOpen,
+      regime_eligible: regimeEligible,
+      precondition_match: false,
+      trigger_fired: false,
+      direction: null,
+      detail: "Technicals unavailable — cannot evaluate PB-08",
+    };
+  }
+
+  const flow = flowDirection(desk);
+  // "Net flow dominant one side 10m+" proxy: flow sign agrees with a sustained VWAP
+  // side streak (bar history) — both must point the same way.
+  const bullDominant = flow === "bullish" && technicals.minutes_above_vwap >= 10;
+  const bearDominant = flow === "bearish" && technicals.minutes_below_vwap >= 10;
+  const preconditionMatch = bullDominant || bearDominant;
+
+  const longTrigger =
+    regimeEligible && windowOpen && bullDominant && technicals.breakout.hod_break === true;
+  const shortTrigger =
+    regimeEligible && windowOpen && bearDominant && technicals.breakout.lod_break === true;
+
+  if (longTrigger || shortTrigger) {
+    return {
+      playbook_id: def.id,
+      session_window_open: true,
+      regime_eligible: regimeEligible,
+      precondition_match: true,
+      trigger_fired: true,
+      direction: longTrigger ? "long" : "short",
+      detail: `Power hour ${longTrigger ? "HOD" : "LOD"} break with dominant ${flow} flow (vwap streak ${longTrigger ? technicals.minutes_above_vwap : technicals.minutes_below_vwap}m)`,
+    };
+  }
+
+  return {
+    playbook_id: def.id,
+    session_window_open: windowOpen,
+    regime_eligible: regimeEligible,
+    precondition_match: preconditionMatch,
+    trigger_fired: false,
+    direction: null,
+    detail: !regimeEligible
+      ? `Regime ineligible for PB-08 (desk.regime=${desk.regime})`
+      : !windowOpen
+        ? "Outside power hour (15:00–15:55 ET)"
+        : preconditionMatch
+          ? "Flow dominant — awaiting HOD/LOD break"
+          : `No dominant flow (flow=${flow ?? "unknown"}, streaks ${technicals.minutes_above_vwap}m↑/${technicals.minutes_below_vwap}m↓)`,
+  };
+}
+
+/**
+ * Evaluate registry playbooks against desk/technicals and pick a deterministic primary.
  *
  * @param now injectable clock (ms epoch) for deterministic tests.
  */
@@ -307,6 +469,8 @@ export function matchPlaybooksShadow(
     matchPb01(desk, technicals, etMins, isPlaybookEligible("PB-01", desk, now)),
     matchPb02(desk, technicals, etMins, isPlaybookEligible("PB-02", desk, now)),
     matchPb03(desk, technicals, etMins, isPlaybookEligible("PB-03", desk, now)),
+    matchPb04(desk, technicals, etMins, isPlaybookEligible("PB-04", desk, now)),
+    matchPb08(desk, technicals, etMins, isPlaybookEligible("PB-08", desk, now)),
   ];
 
   const primary = verdicts.find((v) => v.trigger_fired && v.regime_eligible);

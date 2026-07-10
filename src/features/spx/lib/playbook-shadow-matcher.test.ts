@@ -315,6 +315,102 @@ test("PB-03: degraded halt feed suppresses trigger even when breakout + flip + f
 });
 
 // ---------------------------------------------------------------------------
+// PB-04 Gamma Pin Fade (evidence-backed: see docs/spx/PLAYBOOK-EVIDENCE-BASE.md)
+// ---------------------------------------------------------------------------
+
+test("PB-04: fades a resistance wall touch inside a gamma pin (short)", () => {
+  const desk = deskStub({
+    price: 7398,
+    gamma_regime: "mean_revert",
+    gex_walls: [
+      { strike: 7400, net_gex: 5e9, kind: "resistance", distance_pts: 2 },
+      { strike: 7370, net_gex: -4e9, kind: "support", distance_pts: 28 },
+    ],
+    flow_0dte_net: -100_000,
+    regime: "neutral",
+  });
+  const technicals = technicalsStub();
+  // 13:00 ET — inside PB-04's 11:30–15:00 window.
+  const midday = Date.parse("2026-07-09T17:00:00.000Z");
+  const result = matchPlaybooksShadow(desk, technicals, midday);
+  const pb04 = result.verdicts.find((v) => v.playbook_id === "PB-04")!;
+  assert.equal(pb04.session_window_open, true);
+  assert.equal(pb04.precondition_match, true);
+  assert.equal(pb04.trigger_fired, true);
+  assert.equal(pb04.direction, "short");
+});
+
+test("PB-04: no trigger without gamma pin (amplification regime)", () => {
+  const desk = deskStub({
+    price: 7398,
+    gamma_regime: "amplification",
+    gex_walls: [
+      { strike: 7400, net_gex: 5e9, kind: "resistance", distance_pts: 2 },
+      { strike: 7370, net_gex: -4e9, kind: "support", distance_pts: 28 },
+    ],
+    flow_0dte_net: -100_000,
+    regime: "neutral",
+  });
+  const midday = Date.parse("2026-07-09T17:00:00.000Z");
+  const result = matchPlaybooksShadow(desk, technicalsStub(), midday);
+  const pb04 = result.verdicts.find((v) => v.playbook_id === "PB-04")!;
+  assert.equal(pb04.precondition_match, false);
+  assert.equal(pb04.trigger_fired, false);
+});
+
+test("PB-04: live breakout through wall invalidates the fade", () => {
+  const desk = deskStub({
+    price: 7398,
+    gamma_regime: "mean_revert",
+    gex_walls: [
+      { strike: 7400, net_gex: 5e9, kind: "resistance", distance_pts: 2 },
+      { strike: 7370, net_gex: -4e9, kind: "support", distance_pts: 28 },
+    ],
+    flow_0dte_net: -100_000,
+    regime: "neutral",
+  });
+  const technicals = technicalsStub({
+    breakout: { pdh_break: false, pdl_break: false, hod_break: true, lod_break: false, vwap_reclaim: false, vwap_lost: false },
+  });
+  const midday = Date.parse("2026-07-09T17:00:00.000Z");
+  const result = matchPlaybooksShadow(desk, technicals, midday);
+  const pb04 = result.verdicts.find((v) => v.playbook_id === "PB-04")!;
+  assert.equal(pb04.trigger_fired, false);
+  assert.match(pb04.detail, /invalidated/);
+});
+
+// ---------------------------------------------------------------------------
+// PB-08 Power Hour Momentum (evidence-backed: 14:00+ only net-positive band)
+// ---------------------------------------------------------------------------
+
+test("PB-08: triggers long on HOD break with dominant bullish flow in power hour", () => {
+  const desk = deskStub({ price: 7405, flow_0dte_net: 900_000, regime: "bullish" });
+  const technicals = technicalsStub({
+    minutes_above_vwap: 25,
+    breakout: { pdh_break: false, pdl_break: false, hod_break: true, lod_break: false, vwap_reclaim: false, vwap_lost: false },
+  });
+  // 15:15 ET
+  const powerHour = Date.parse("2026-07-09T19:15:00.000Z");
+  const result = matchPlaybooksShadow(desk, technicals, powerHour);
+  const pb08 = result.verdicts.find((v) => v.playbook_id === "PB-08")!;
+  assert.equal(pb08.session_window_open, true);
+  assert.equal(pb08.trigger_fired, true);
+  assert.equal(pb08.direction, "long");
+});
+
+test("PB-08: no trigger outside power hour even with dominant flow + break", () => {
+  const desk = deskStub({ price: 7405, flow_0dte_net: 900_000, regime: "bullish" });
+  const technicals = technicalsStub({
+    minutes_above_vwap: 25,
+    breakout: { pdh_break: false, pdl_break: false, hod_break: true, lod_break: false, vwap_reclaim: false, vwap_lost: false },
+  });
+  const result = matchPlaybooksShadow(desk, technicals, MID_MORNING_UTC);
+  const pb08 = result.verdicts.find((v) => v.playbook_id === "PB-08")!;
+  assert.equal(pb08.session_window_open, false);
+  assert.equal(pb08.trigger_fired, false);
+});
+
+// ---------------------------------------------------------------------------
 // Primary-pick logic
 // ---------------------------------------------------------------------------
 
