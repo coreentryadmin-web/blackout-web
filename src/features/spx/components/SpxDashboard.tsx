@@ -130,14 +130,27 @@ export function SpxDashboard() {
         />
       )}
 
-      {/* Desk grid: matrix | Open/Watch/Closed stack | Terminal (commentary below when live). */}
+      {/* Desk grid: Largo commentary | matrix | Open/Watch/Closed | Terminal */}
       <div
         className="spx-sniper-triple spx-sniper-triple--desk-v2"
         data-ios-panel={nativeShell ? iosPanel : undefined}
       >
         <SpxPanelErrorBoundary>
+          <Suspense fallback={null}>
+            <aside
+              className={clsx(
+                "spx-sniper-intel-col spx-left-commentary",
+                nativeShell && iosPanel !== "intel" && "ios-native-panel-hidden",
+                nativeShell && iosPanel === "intel" && "ios-native-panel-visible"
+              )}
+            >
+              <SpxCommentaryRail desk={desk} live={live} />
+            </aside>
+          </Suspense>
+        </SpxPanelErrorBoundary>
+
+        <SpxPanelErrorBoundary>
           <aside
-            key={nativeShell ? iosPanel : "matrix"}
             className={clsx(
               "spx-sniper-left-rail spx-left-matrix",
               nativeShell && iosPanel !== "matrix" && "ios-native-panel-hidden",
@@ -157,7 +170,6 @@ export function SpxDashboard() {
 
         <SpxPanelErrorBoundary>
           <div
-            key={nativeShell ? iosPanel : "plays"}
             className={clsx(
               "contents",
               nativeShell && iosPanel !== "plays" && "ios-native-panel-hidden",
@@ -168,22 +180,6 @@ export function SpxDashboard() {
           </div>
         </SpxPanelErrorBoundary>
       </div>
-
-      {live && (
-        <SpxPanelErrorBoundary>
-          <Suspense fallback={null}>
-            <div
-              className={clsx(
-                "spx-commentary-below-desk mt-2 min-h-0",
-                nativeShell && iosPanel !== "intel" && "ios-native-panel-hidden",
-                nativeShell && iosPanel === "intel" && "ios-native-panel-visible"
-              )}
-            >
-              <SpxCommentaryRail desk={desk} live={live} />
-            </div>
-          </Suspense>
-        </SpxPanelErrorBoundary>
-      )}
     </div>
   );
 }
