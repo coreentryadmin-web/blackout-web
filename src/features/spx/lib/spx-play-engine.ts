@@ -793,7 +793,7 @@ async function evaluateFlatPlay(
   }
 
   if (!claude.approved || !confluence.direction) {
-    console.log('[spx-play-engine] Claude blocked play:', {
+    console.log('[spx-play-engine] play approval blocked:', {
       verdict: claude.verdict,
       source: claude.source,
       approved: claude.approved,
@@ -809,7 +809,7 @@ async function evaluateFlatPlay(
         passed: false,
         blocks:
           claude.verdict === "VETO"
-            ? [`Claude veto: ${claude.headline}`]
+            ? [`Play veto: ${claude.headline}`]
             : entryGatesView.blocks,
       }, sessionExtras),
       phase: "SCANNING",

@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { requireTierApi } from "@/lib/market-api-auth";
 import { getLargoSessionMessages, largoConfigured } from "@/lib/largo-terminal";
 import { requireToolApi } from "@/lib/tool-access-server";
+import { largoEnabled } from "@/lib/largo-env";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,10 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const authResult = await requireTierApi("premium");
   if (authResult instanceof Response) return authResult;
+
+  if (!largoEnabled()) {
+    return NextResponse.json({ error: "Largo is production-only" }, { status: 503 });
+  }
 
   // Launch gate — locked to non-admins until this tool ships.
   const locked = await requireToolApi("largo");

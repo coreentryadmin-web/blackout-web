@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireTierApi } from "@/lib/market-api-auth";
 import { largoConfigured, runLargoQuery, runLargoQueryStream, isSseClientDisconnect, SseClientDisconnected } from "@/lib/largo-terminal";
+import { largoEnabled } from "@/lib/largo-env";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { largoBudgetKey, secondsUntilEtMidnight, largoDailyQueryBudget, isOverLargoBudget } from "@/lib/largo-budget";
 import {
@@ -226,6 +227,10 @@ function wantsStream(req: NextRequest): boolean {
 export async function POST(req: NextRequest) {
   const authResult = await requireTierApi("premium");
   if (authResult instanceof Response) return authResult;
+
+  if (!largoEnabled()) {
+    return NextResponse.json({ error: "Largo is production-only" }, { status: 503 });
+  }
 
   // Launch gate — Largo is locked to non-admins until it ships (every call spends Anthropic tokens).
   const locked = await requireToolApi("largo");

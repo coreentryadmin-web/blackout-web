@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireTierApi } from "@/lib/market-api-auth";
 import { anthropicConfigured } from "@/lib/providers/anthropic";
 import { anthropicBreakerOpenUntil } from "@/lib/providers/anthropic-breaker";
+import { largoEnabled } from "@/lib/largo-env";
 import { generateSpxCommentary, type SpxCommentaryResult } from "@/features/spx/lib/spx-commentary";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
@@ -47,6 +48,10 @@ type CommentaryCache = {
 export async function POST(req: NextRequest) {
   const authResult = await requireTierApi("premium");
   if (authResult instanceof Response) return authResult;
+
+  if (!largoEnabled()) {
+    return NextResponse.json({ error: "Commentary unavailable on staging" }, { status: 503 });
+  }
 
   if (!anthropicConfigured()) {
     return NextResponse.json({ error: "Commentary unavailable" }, { status: 503 });
