@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-engine";
 import { useSpxPlay } from "@/features/spx/hooks/useSpxPlay";
@@ -17,6 +18,8 @@ type Props = {
   live?: boolean;
   refreshing?: boolean;
   sessionActive?: boolean;
+  /** When true (iOS non-plays tab), hide both plays + terminal columns. */
+  iosHidden?: boolean;
 };
 
 type HistoryRow = SpxPlayPayload & { id: string };
@@ -75,7 +78,7 @@ function hasWatchPlay(play: SpxPlayPayload): boolean {
   return Boolean(play.watch?.active || play.action === "WATCHING" || play.phase === "WATCHING");
 }
 
-export function SpxTradeAlerts({ desk, live, sessionActive = true }: Props) {
+export function SpxTradeAlerts({ desk, live, sessionActive = true, iosHidden = false }: Props) {
   const { play } = useSpxPlay(sessionActive);
   const { lotto } = useSpxLotto();
   const { powerHour } = useSpxPowerHour();
@@ -172,8 +175,13 @@ export function SpxTradeAlerts({ desk, live, sessionActive = true }: Props) {
   };
 
   return (
-    <div className="contents">
-      <section className="spx-trade-alerts-panel spx-sniper-panel spx-trade-alerts-v3 spx-sniper-plays-col">
+    <>
+      <section
+        className={clsx(
+          "spx-trade-alerts-panel spx-sniper-panel spx-trade-alerts-v3 spx-sniper-plays-col",
+          iosHidden && "ios-native-panel-hidden"
+        )}
+      >
         <div className="spx-sniper-panel-content">
           <header className="spx-trade-alerts-header">
             <SpxLiveSpotPrice
@@ -219,7 +227,9 @@ export function SpxTradeAlerts({ desk, live, sessionActive = true }: Props) {
         </div>
       </section>
 
-      <div className="spx-sniper-terminal-col">
+      <div
+        className={clsx("spx-sniper-terminal-col", iosHidden && "ios-native-panel-hidden")}
+      >
         <SpxDeskTerminal
           activeTab={terminalTab}
           onTabChange={setTerminalTab}
@@ -236,6 +246,6 @@ export function SpxTradeAlerts({ desk, live, sessionActive = true }: Props) {
           asOf={play?.as_of ?? desk?.polled_at ?? null}
         />
       </div>
-    </div>
+    </>
   );
 }

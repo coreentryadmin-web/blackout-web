@@ -252,27 +252,16 @@ export function SpxGexMatrixHeatmap({
   const hasData = Boolean(data?.available) && strikesAxis.length > 0 && displayExpiries.length > 0;
 
   const scrollBoxRef = useRef<HTMLDivElement | null>(null);
-  const scrollPadRef = useRef<HTMLDivElement | null>(null);
   const spotRowRef = useRef<HTMLTableRowElement | null>(null);
   const userPinnedScrollRef = useRef(false);
   const lastCenteredStrikeRef = useRef<number | null>(null);
-
-  const syncScrollPad = () => {
-    const box = scrollBoxRef.current;
-    const pad = scrollPadRef.current;
-    if (!box || !pad) return;
-    // Pad = half the *actual* viewport so spot can sit mid-ladder.
-    // Do NOT floor at 140px — in the narrow desk column that forced ~280px of
-    // empty space and made the matrix look blank ("no data") until you scrolled.
-    const half = Math.max(0, Math.floor(box.clientHeight / 2) - 8);
-    pad.style.paddingTop = `${half}px`;
-    pad.style.paddingBottom = `${half}px`;
-  };
 
   const centerSpotRow = (behavior: ScrollBehavior = "auto") => {
     const box = scrollBoxRef.current;
     const row = spotRowRef.current;
     if (box == null || row == null) return;
+    // No vertical padding spacer — that hid the ladder in the narrow desk column.
+    // Center by scrollTop only so rows are always in the document flow from y=0.
     if (behavior === "smooth") {
       const scrollRect = box.getBoundingClientRect();
       const rowRect = row.getBoundingClientRect();
@@ -312,10 +301,7 @@ export function SpxGexMatrixHeatmap({
     }
     if (userPinnedScrollRef.current && !strikeMoved) return;
 
-    const run = () => {
-      syncScrollPad();
-      centerSpotRow(strikeMoved ? "smooth" : "auto");
-    };
+    const run = () => centerSpotRow(strikeMoved ? "smooth" : "auto");
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(run);
@@ -331,9 +317,7 @@ export function SpxGexMatrixHeatmap({
   useEffect(() => {
     const box = scrollBoxRef.current;
     if (!box || spotStrike == null) return;
-    syncScrollPad();
     const ro = new ResizeObserver(() => {
-      syncScrollPad();
       if (!userPinnedScrollRef.current) centerSpotRow("auto");
     });
     ro.observe(box);
@@ -485,7 +469,6 @@ export function SpxGexMatrixHeatmap({
           className="spx-gex-matrix-scroll flex-1 min-h-0 overflow-y-scroll overflow-x-auto overscroll-contain"
           aria-label="SPX gamma matrix strike ladder"
         >
-          <div ref={scrollPadRef} className="spx-gex-matrix-scroll-pad">
           <table
             className="spx-gex-matrix-table w-max border-collapse font-mono text-[12px] tabular-nums"
             role="grid"
@@ -643,7 +626,6 @@ export function SpxGexMatrixHeatmap({
               })}
             </tbody>
           </table>
-          </div>
         </div>
 
         <SpxMatrixTapeStrip

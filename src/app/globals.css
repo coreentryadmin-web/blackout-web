@@ -8972,10 +8972,22 @@ body::before {
     grid-area: matrix;
     order: unset;
     min-height: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .spx-sniper-triple--desk-v2 .spx-left-matrix .spx-odte-matrix-panel,
+  .spx-sniper-triple--desk-v2 .spx-left-matrix .spx-gex-matrix-heatmap {
+    flex: 1 1 0;
+    min-height: 0;
+    height: 100%;
   }
 
   .spx-sniper-triple--desk-v2 .spx-gex-matrix-scroll {
-    min-height: 12rem;
+    flex: 1 1 0;
+    min-height: 16rem;
   }
 
   .spx-sniper-triple--desk-v2 .spx-sniper-plays-col {
@@ -9894,9 +9906,9 @@ body::before {
     background: rgba(125, 211, 252, 0.8);
   }
 
-  /* Dynamic pad (JS sets padding) — min fallback before first measure */
+  /* Scroll pad removed — centering is scrollTop-only so the ladder is never blank. */
   .spx-gex-matrix-scroll-pad {
-    min-height: 100%;
+    display: contents;
   }
 
   .spx-gex-matrix-recenter {
