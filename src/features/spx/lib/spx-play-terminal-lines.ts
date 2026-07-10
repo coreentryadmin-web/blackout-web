@@ -4,6 +4,7 @@ import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
 import type { PlayConfirmationLayer } from "@/features/spx/hooks/useStablePlayConfirmations";
 import type { TradeAlertPlay } from "@/features/spx/lib/spx-trade-alert-plays";
+import type { PlaybookShadowPanel } from "@/features/spx/lib/playbook-shadow-panel";
 import { fmtPrice } from "@/lib/api";
 
 export type PlayTerminalIcon =
@@ -243,4 +244,67 @@ export function buildPlayTerminalLines(input: {
 export function playTerminalTitle(selected: TradeAlertPlay | null): string {
   if (!selected) return "blackout — play terminal";
   return `blackout — ${selected.chip.label} · ${selected.chip.column}`;
+}
+
+export function buildPlaybookTerminalLines(
+  panel: PlaybookShadowPanel | null | undefined,
+  sessionLive: boolean
+): PlayTerminalLine[] {
+  const lines: PlayTerminalLine[] = [];
+  lines.push({ icon: "section", tone: "accent", text: "PLAYBOOK VALIDATION · SHADOW" });
+
+  if (!panel?.verdicts.length) {
+    lines.push({
+      icon: "dim",
+      tone: "dim",
+      text: sessionLive
+        ? "Awaiting technicals — PB-01/02/03 verdicts stream here on arm."
+        : "After hours — slow poll refreshes last session shadow state.",
+      indent: 1,
+    });
+    return lines;
+  }
+
+  if (panel.primary_playbook_id) {
+    lines.push({
+      icon: "pulse",
+      tone: "accent",
+      text: `Primary trigger: ${panel.primary_playbook_id}`,
+      indent: 1,
+    });
+  }
+
+  for (const v of panel.verdicts) {
+    const fired = v.trigger_fired;
+    const armed = v.precondition_match && v.session_window_open;
+    lines.push({
+      icon: fired ? "ok" : armed ? "watch" : "dim",
+      tone: fired ? "bull" : armed ? "accent" : "neutral",
+      text: `${v.playbook_id} · ${v.name}${v.primary && fired ? " · PRIMARY" : ""}`,
+      indent: 1,
+    });
+    lines.push({
+      icon: v.session_window_open ? "ok" : "no",
+      tone: v.session_window_open ? "bull" : "bear",
+      text: `Window: ${v.session_window_open ? "open" : "closed"}`,
+      indent: 2,
+    });
+    lines.push({
+      icon: v.precondition_match ? "ok" : "no",
+      tone: v.precondition_match ? "bull" : "dim",
+      text: `Preconditions: ${v.precondition_match ? "met" : "—"}`,
+      indent: 2,
+    });
+    lines.push({
+      icon: fired ? "ok" : "no",
+      tone: fired ? "bull" : "dim",
+      text: `Trigger: ${fired ? (v.direction === "neutral" ? "fired" : v.direction) : "—"}`,
+      indent: 2,
+    });
+    if (v.detail) {
+      lines.push({ icon: "prompt", tone: "neutral", text: v.detail, indent: 2 });
+    }
+  }
+
+  return lines;
 }

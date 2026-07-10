@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildPlayTerminalLines } from "./spx-play-terminal-lines";
+import { buildPlayTerminalLines, buildPlaybookTerminalLines } from "./spx-play-terminal-lines";
 import type { SpxPlayPayload } from "./spx-play-engine";
 
 test("buildPlayTerminalLines: structure HOLD includes VWAP and WHY HOLD", () => {
@@ -51,4 +51,37 @@ test("buildPlayTerminalLines: structure HOLD includes VWAP and WHY HOLD", () => 
   assert.match(text, /Below VWAP/);
   assert.match(text, /0DTE flow/);
   assert.match(text, /Gamma/);
+});
+
+test("buildPlaybookTerminalLines: empty panel shows awaiting copy when session live", () => {
+  const lines = buildPlaybookTerminalLines(null, true);
+  const text = lines.map((l) => l.text).join("\n");
+  assert.match(text, /PLAYBOOK VALIDATION/);
+  assert.match(text, /Awaiting technicals/);
+});
+
+test("buildPlaybookTerminalLines: verdicts render PB rows", () => {
+  const lines = buildPlaybookTerminalLines(
+    {
+      mode: "shadow",
+      primary_playbook_id: "PB-01",
+      verdicts: [
+        {
+          playbook_id: "PB-01",
+          name: "Open Drive",
+          trigger_fired: true,
+          precondition_match: true,
+          session_window_open: true,
+          direction: "long",
+          detail: "Gap-and-go above VWAP",
+          primary: true,
+        },
+      ],
+    },
+    true
+  );
+  const text = lines.map((l) => l.text).join("\n");
+  assert.match(text, /Primary trigger: PB-01/);
+  assert.match(text, /PB-01 · Open Drive/);
+  assert.match(text, /Trigger: long/);
 });

@@ -10,7 +10,6 @@ import { useSpxPowerHour } from "@/features/spx/hooks/useSpxPowerHour";
 import { useStablePlayConfirmations, type PlayConfirmationLayer } from "@/features/spx/hooks/useStablePlayConfirmations";
 import { SpxLiveSpotPrice } from "./SpxLiveSpotPrice";
 import { SpxTradeAlertsPanels } from "./SpxTradeAlertsPanels";
-import { SpxPlaybookValidationPanel } from "./SpxPlaybookValidationPanel";
 import { buildTradeAlertPlays } from "@/features/spx/lib/spx-trade-alert-plays";
 import { fmtPrice } from "@/lib/api";
 import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
@@ -946,12 +945,13 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
           play={displayPlay}
           lotto={lotto}
           powerHour={powerHour}
+          playbookPanel={play?.playbook_shadow}
           desk={desk}
           confirmationLayer={confirmationLayer}
           historyThesis={historyThesis}
+          sessionLive={sessionLive}
           live={sessionLive}
         />
-        <SpxPlaybookValidationPanel panel={play?.playbook_shadow} sessionLive={sessionLive} />
         <p className="spx-trade-educational-note">
           Educational. Not advice. Every trade is your own decision.
         </p>
