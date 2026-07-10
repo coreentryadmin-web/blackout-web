@@ -83,6 +83,26 @@ jobs:
             --services "${ECS_SERVICE}"
           echo "ECS staging rollout complete."
 
+      # Purge BEFORE validate — CF was serving stale HTML (cf-cache HIT) that
+      # referenced old /_next/static hashes → unstyled site + false 404s.
+      # Job-level `if: env.CF_*` never saw step env, so purge was skipped.
+      - name: Purge Cloudflare edge cache (staging)
+        env:
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CF_ZONE_ID:-}" ] || [ -z "${CF_API_TOKEN:-}" ]; then
+            echo "CF_ZONE_ID / CF_API_TOKEN unset — skipping purge"
+            exit 0
+          fi
+          curl -fsS -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}'
+          echo "Cloudflare staging cache purged after ECS rollout."
+          sleep 5
+
       - name: Validate static assets on staging
         env:
           BASE_URL: https://staging.blackouttrades.com
@@ -98,15 +118,3 @@ jobs:
           done
           echo "Staging static assets still broken after ECS rollout."
           exit 1
-
-      - name: Purge Cloudflare edge cache (staging)
-        if: env.CF_ZONE_ID != '' && env.CF_API_TOKEN != ''
-        env:
-          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-        run: |
-          curl -fsS -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" \
-            -H "Authorization: Bearer ${CF_API_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data '{"files":["https://staging.blackouttrades.com/","https://staging.blackouttrades.com/sign-in","https://staging.blackouttrades.com/sign-up"]}'
-          echo "Cloudflare staging URLs purged after ECS rollout."
