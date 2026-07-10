@@ -64,6 +64,9 @@ html.ios-app.ios-native-shell .spx-sniper-triple > *:nth-child(2) {
 html.ios-app.ios-native-shell .spx-sniper-triple > *:nth-child(3) {
   animation-delay: 0.06s;
 }
+html.ios-app.ios-native-shell .spx-sniper-triple > *:nth-child(4) {
+  animation-delay: 0.08s;
+}
 
 html.ios-app.ios-native-shell .ios-native-segment-btn,
 html.ios-app.ios-native-shell .ios-app-tab-link,
