@@ -8971,6 +8971,11 @@ body::before {
   .spx-sniper-triple--desk-v2 .spx-left-matrix {
     grid-area: matrix;
     order: unset;
+    min-height: 0;
+  }
+
+  .spx-sniper-triple--desk-v2 .spx-gex-matrix-scroll {
+    min-height: 12rem;
   }
 
   .spx-sniper-triple--desk-v2 .spx-sniper-plays-col {
