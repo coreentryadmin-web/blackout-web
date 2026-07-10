@@ -5,9 +5,10 @@ import type { PlaybookShadowPanel } from "@/features/spx/lib/playbook-shadow-pan
 
 type Props = {
   panel: PlaybookShadowPanel | null | undefined;
+  sessionLive?: boolean;
 };
 
-export function SpxPlaybookValidationPanel({ panel }: Props) {
+export function SpxPlaybookValidationPanel({ panel, sessionLive = true }: Props) {
   return (
     <section className="spx-playbook-validation-panel" aria-label="Playbook validation shadow">
       <header className="spx-playbook-validation-header">
@@ -17,7 +18,9 @@ export function SpxPlaybookValidationPanel({ panel }: Props) {
 
       {!panel?.verdicts.length ? (
         <p className="spx-playbook-validation-empty">
-          Playbook matcher arms when technicals load — PB-01/02/03 shadow verdicts appear here.
+          {sessionLive
+            ? "Playbook matcher arms when technicals load — PB-01/02/03 shadow verdicts appear here."
+            : "After hours — last session shadow verdicts refresh on the slow poll; open a chip above for structure detail."}
         </p>
       ) : (
         <div className="spx-playbook-validation-grid">

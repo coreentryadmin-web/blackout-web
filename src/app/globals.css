@@ -9762,6 +9762,23 @@ body::before {
     text-shadow: 0 0 14px rgba(0, 230, 118, 0.35);
   }
 
+  /* Compact AH / session-wrapped strip — kanban stays visible below */
+  .spx-desk-session-strip {
+    @apply flex items-start gap-2 shrink-0 rounded-lg border border-amber-400/25 bg-amber-400/[0.06] px-2.5 py-2;
+  }
+
+  .spx-desk-session-strip-dot {
+    @apply mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-400/70;
+  }
+
+  .spx-desk-session-strip-kicker {
+    @apply font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-amber-200/90;
+  }
+
+  .spx-desk-session-strip-body {
+    @apply font-mono text-[10px] leading-snug text-sky-300/85;
+  }
+
   .spx-trade-confirmations {
     @apply mt-4 space-y-1.5 rounded-sm border border-white/5 bg-black/30 p-4;
     min-height: 12rem;

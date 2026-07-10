@@ -76,14 +76,35 @@ export function buildPlayKanbanChips(input: {
   filter: PlayKanbanFilter;
   structureOpen: boolean;
   structureWatch: boolean;
+  /** When false (AH / session wrapped), structure plays surface in Closed — not Open/Watch. */
+  sessionLive?: boolean;
 }): Record<PlayKanbanColumn, PlayKanbanChip[]> {
-  const { play, lotto, powerHour, history, filter, structureOpen, structureWatch } = input;
+  const {
+    play,
+    lotto,
+    powerHour,
+    history,
+    filter,
+    structureOpen,
+    structureWatch,
+    sessionLive = true,
+  } = input;
   const open: PlayKanbanChip[] = [];
   const watch: PlayKanbanChip[] = [];
   const closed: PlayKanbanChip[] = [];
 
   if (play && filterMatches("structure", filter)) {
-    if (structureOpen) {
+    if (!sessionLive && play.action !== "SCANNING") {
+      const label = structureStrikeChip(play) ?? play.action;
+      closed.push({
+        id: "structure-session",
+        column: "closed",
+        kind: "structure",
+        label,
+        prefix: "STR",
+        tone: "closed",
+      });
+    } else if (structureOpen) {
       const label = structureStrikeChip(play);
       if (label) {
         open.push({
