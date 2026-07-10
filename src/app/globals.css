@@ -8750,15 +8750,6 @@ body::before {
     @apply text-[13px];
   }
 
-  .spx-sniper-desk-fill .spx-gex-matrix-table {
-    @apply text-[11px] leading-tight;
-  }
-
-  .spx-sniper-desk-fill .spx-gex-matrix-table th,
-  .spx-sniper-desk-fill .spx-gex-matrix-table td {
-    @apply py-0;
-  }
-
   .spx-sniper-desk-fill .spx-trade-alerts-panel {
     @apply p-3 md:p-3;
   }
@@ -10558,6 +10549,23 @@ body::before {
 
   .spx-gex-matrix-recenter {
     @apply rounded border border-white/10 bg-black/40 px-2 py-0.5 transition-colors;
+  }
+
+  /* Pack expiry columns tight — table width follows content (no min-w-full stretch). */
+  .spx-gex-matrix-table {
+    width: max-content;
+    max-width: 100%;
+  }
+
+  .spx-gex-matrix-table .spx-gex-matrix-expiry-col {
+    width: 1%;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+
+  .spx-gex-matrix-table .spx-gex-matrix-net-col {
+    padding-left: 0.375rem;
+    padding-right: 0.5rem;
   }
 
   .spx-gex-matrix-spot-row td {
