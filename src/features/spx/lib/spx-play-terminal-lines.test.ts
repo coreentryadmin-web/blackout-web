@@ -56,11 +56,11 @@ test("buildPlayTerminalLines: structure HOLD includes VWAP and WHY HOLD", () => 
 test("buildPlaybookTerminalLines: empty panel shows awaiting copy when session live", () => {
   const lines = buildPlaybookTerminalLines(null, true);
   const text = lines.map((l) => l.text).join("\n");
-  assert.match(text, /PLAYBOOK VALIDATION/);
-  assert.match(text, /Awaiting technicals/);
+  assert.match(text, /PLAYBOOK · SHADOW/);
+  assert.match(text, /awaiting technicals/i);
 });
 
-test("buildPlaybookTerminalLines: verdicts render PB rows", () => {
+test("buildPlaybookTerminalLines: verdicts render compact PB status rows", () => {
   const lines = buildPlaybookTerminalLines(
     {
       mode: "shadow",
@@ -81,7 +81,7 @@ test("buildPlaybookTerminalLines: verdicts render PB rows", () => {
     true
   );
   const text = lines.map((l) => l.text).join("\n");
-  assert.match(text, /Primary trigger: PB-01/);
-  assert.match(text, /PB-01 · Open Drive/);
-  assert.match(text, /Trigger: long/);
+  assert.match(text, /Primary: PB-01/);
+  assert.match(text, /PB-01 FIRED · LONG/);
+  assert.match(text, /Gap-and-go above VWAP/);
 });
