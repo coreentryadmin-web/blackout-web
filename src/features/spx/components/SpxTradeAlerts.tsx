@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-engine";
 import { useSpxPlay } from "@/features/spx/hooks/useSpxPlay";
@@ -10,6 +9,7 @@ import { useSpxPowerHour } from "@/features/spx/hooks/useSpxPowerHour";
 import { useStablePlayConfirmations } from "@/features/spx/hooks/useStablePlayConfirmations";
 import { SpxLiveSpotPrice } from "./SpxLiveSpotPrice";
 import { SpxTradeAlertsPanels } from "./SpxTradeAlertsPanels";
+import { SpxDeskTerminal, type DeskTerminalTab } from "./SpxDeskTerminal";
 import { buildTradeAlertPlays } from "@/features/spx/lib/spx-trade-alert-plays";
 
 type Props = {
@@ -82,6 +82,8 @@ export function SpxTradeAlerts({ desk, live, sessionActive = true }: Props) {
   const confirmationLayer = useStablePlayConfirmations(play);
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [pinnedStructure, setPinnedStructure] = useState<SpxPlayPayload | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [terminalTab, setTerminalTab] = useState<DeskTerminalTab>("playbook");
   const lastIdRef = useRef<string>("");
   const prevActionRef = useRef<string | null>(null);
 
@@ -141,6 +143,16 @@ export function SpxTradeAlerts({ desk, live, sessionActive = true }: Props) {
     [play, lotto, powerHour, history, structureOpen, structureWatch, sessionLive, pinnedStructure]
   );
 
+  const allPlays = useMemo(
+    () => [...tradePanels.open, ...tradePanels.watch, ...tradePanels.closed],
+    [tradePanels]
+  );
+
+  useEffect(() => {
+    if (selectedId && allPlays.some((p) => p.id === selectedId)) return;
+    setSelectedId(tradePanels.open[0]?.id ?? tradePanels.watch[0]?.id ?? tradePanels.closed[0]?.id ?? null);
+  }, [selectedId, allPlays, tradePanels.open, tradePanels.watch, tradePanels.closed]);
+
   const historyThesis = useMemo(() => {
     const m = new Map<string, string>();
     for (const row of history) m.set(row.id, row.thesis);
@@ -151,56 +163,79 @@ export function SpxTradeAlerts({ desk, live, sessionActive = true }: Props) {
   }, [history, play, lotto, powerHour]);
 
   const displayPlay = pinnedStructure ?? play;
+  const selected = allPlays.find((p) => p.id === selectedId) ?? null;
+  const closedThesis = selected ? historyThesis.get(selected.id) : undefined;
+
+  const selectPlay = (id: string) => {
+    setSelectedId(id);
+    setTerminalTab("play");
+  };
 
   return (
-    <section className="spx-trade-alerts-panel spx-sniper-panel spx-trade-alerts-v3">
-      <div className="spx-sniper-panel-content">
-        <header className="spx-trade-alerts-header">
-          <SpxLiveSpotPrice
-            desk={desk}
-            live={live}
-            size="panel"
-            className="spx-play-engine-spot spx-trade-alerts-spot hide-in-ios-app"
-          />
-          <div className="min-w-0 flex-1">
-            <h3 className="spx-trade-alerts-title">Trade Alerts</h3>
-            <p className="spx-trade-alerts-subtitle">
-              Structure · Lotto · Power hour
-              {!sessionLive && (
-                <span className="spx-trade-alerts-subtitle-muted"> · session wrapped</span>
-              )}
-            </p>
-          </div>
-        </header>
-
-        <div className="spx-sniper-panel-body spx-trade-alerts-stack">
-          {!sessionLive && (
-            <div className="spx-desk-session-strip spx-desk-session-strip--compact" role="status">
-              <span className="spx-desk-session-strip-dot" aria-hidden />
-              <p className="spx-desk-session-strip-body">
-                {live ? "0DTE window closed" : "After hours"} — wrapped plays · re-arms{" "}
-                <span className="spx-desk-closed-time">6:30 AM PT</span>
+    <div className="contents">
+      <section className="spx-trade-alerts-panel spx-sniper-panel spx-trade-alerts-v3 spx-sniper-plays-col">
+        <div className="spx-sniper-panel-content">
+          <header className="spx-trade-alerts-header">
+            <SpxLiveSpotPrice
+              desk={desk}
+              live={live}
+              size="panel"
+              className="spx-play-engine-spot spx-trade-alerts-spot hide-in-ios-app"
+            />
+            <div className="min-w-0 flex-1">
+              <h3 className="spx-trade-alerts-title">Trade Alerts</h3>
+              <p className="spx-trade-alerts-subtitle">
+                Structure · Lotto · Power hour
+                {!sessionLive && (
+                  <span className="spx-trade-alerts-subtitle-muted"> · session wrapped</span>
+                )}
               </p>
             </div>
-          )}
+          </header>
 
-          <SpxTradeAlertsPanels
-            panels={tradePanels}
-            play={displayPlay}
-            lotto={lotto}
-            powerHour={powerHour}
-            playbookPanel={play?.playbook_shadow}
-            desk={desk}
-            confirmationLayer={confirmationLayer}
-            historyThesis={historyThesis}
-            sessionLive={sessionLive}
-            live={sessionLive}
-          />
-          <p className="spx-trade-educational-note">
-            Educational. Not advice. Every trade is your own decision.
-          </p>
+          <div className="spx-sniper-panel-body spx-trade-alerts-stack spx-trade-alerts-stack--plays">
+            {!sessionLive && (
+              <div className="spx-desk-session-strip spx-desk-session-strip--compact" role="status">
+                <span className="spx-desk-session-strip-dot" aria-hidden />
+                <p className="spx-desk-session-strip-body">
+                  {live ? "0DTE window closed" : "After hours"} — wrapped plays · re-arms{" "}
+                  <span className="spx-desk-closed-time">6:30 AM PT</span>
+                </p>
+              </div>
+            )}
+
+            <SpxTradeAlertsPanels
+              panels={tradePanels}
+              play={displayPlay}
+              lotto={lotto}
+              powerHour={powerHour}
+              selectedId={selectedId}
+              onSelectPlay={selectPlay}
+            />
+            <p className="spx-trade-educational-note spx-trade-educational-note--plays">
+              Educational. Not advice. Every trade is your own decision.
+            </p>
+          </div>
         </div>
+      </section>
+
+      <div className="spx-sniper-terminal-col">
+        <SpxDeskTerminal
+          activeTab={terminalTab}
+          onTabChange={setTerminalTab}
+          selected={selected}
+          play={displayPlay}
+          lotto={lotto}
+          powerHour={powerHour}
+          playbookPanel={play?.playbook_shadow}
+          desk={desk}
+          confirmationLayer={confirmationLayer}
+          closedThesis={closedThesis}
+          sessionLive={sessionLive}
+          live={sessionLive}
+          asOf={play?.as_of ?? desk?.polled_at ?? null}
+        />
       </div>
-    </section>
+    </div>
   );
 }

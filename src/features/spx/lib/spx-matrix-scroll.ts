@@ -2,6 +2,9 @@
 export function scrollRowIntoViewCenter(scrollEl: HTMLElement, rowEl: HTMLElement): void {
   const scrollRect = scrollEl.getBoundingClientRect();
   const rowRect = rowEl.getBoundingClientRect();
-  const delta = rowRect.top - scrollRect.top - (scrollRect.height - rowRect.height) / 2;
-  scrollEl.scrollTop += delta;
+  const target =
+    scrollEl.scrollTop +
+    (rowRect.top - scrollRect.top - (scrollRect.height - rowRect.height) / 2);
+  const max = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+  scrollEl.scrollTop = Math.max(0, Math.min(target, max));
 }

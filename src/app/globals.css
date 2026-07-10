@@ -8950,6 +8950,61 @@ body::before {
     min-height: calc(100dvh - var(--nav-offset) - 6.75rem);
   }
 
+  /* Member desk v2: matrix | Open/Watch/Closed stack | Terminal */
+  .spx-sniper-triple.spx-sniper-triple--desk-v2 {
+    @apply lg:grid-cols-[minmax(260px,0.9fr)_minmax(200px,0.75fr)_minmax(300px,1.1fr)];
+    @apply xl:grid-cols-[minmax(280px,22vw)_minmax(220px,0.62fr)_minmax(360px,1fr)];
+    @apply 2xl:grid-cols-[minmax(300px,20vw)_minmax(240px,0.58fr)_minmax(400px,1.05fr)];
+    gap: 0.5rem;
+  }
+
+  .spx-sniper-plays-col {
+    @apply flex flex-col min-h-0 h-full overflow-hidden;
+  }
+
+  .spx-sniper-terminal-col {
+    @apply flex flex-col min-h-0 h-full overflow-hidden rounded-2xl border border-white/10 bg-[#050508] p-2;
+  }
+
+  .spx-sniper-terminal-col .spx-play-terminal-window {
+    @apply flex-1 min-h-0 h-full;
+  }
+
+  .spx-trade-alerts-stack--plays {
+    @apply flex flex-1 flex-col min-h-0 overflow-hidden gap-2;
+  }
+
+  .spx-trade-alerts-panels--stack {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+    gap: 0.375rem;
+    overflow: hidden;
+  }
+
+  .spx-trade-alerts-panels--stack .spx-trade-alerts-panel-col {
+    flex: 1 1 0;
+    min-height: 4.5rem;
+    max-height: 34%;
+  }
+
+  .spx-trade-alerts-panels--stack .spx-trade-alerts-panel-col--open {
+    max-height: 38%;
+  }
+
+  .spx-trade-educational-note--plays {
+    @apply shrink-0;
+  }
+
+  .spx-commentary-below-desk {
+    max-height: min(28vh, 280px);
+  }
+
+  .spx-commentary-below-desk .spx-commentary-rail {
+    @apply max-h-full;
+  }
+
   .spx-sniper-left-rail {
     @apply flex flex-col min-h-0 h-full order-2 lg:order-1 xl:order-1 xl:pr-0;
   }
@@ -9733,14 +9788,40 @@ body::before {
 
   .spx-gex-matrix-scroll {
     scrollbar-width: thin;
-    scrollbar-color: rgba(125, 211, 252, 0.35) transparent;
+    scrollbar-color: rgba(125, 211, 252, 0.65) rgba(8, 8, 14, 0.85);
+    scrollbar-gutter: stable;
     flex: 1 1 0;
     min-height: 0;
     max-height: 100%;
-    overflow-y: auto;
+    overflow-y: scroll;
     overflow-x: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .spx-gex-matrix-scroll::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+
+  .spx-gex-matrix-scroll::-webkit-scrollbar-track {
+    background: rgba(8, 8, 14, 0.9);
+    border-radius: 4px;
+  }
+
+  .spx-gex-matrix-scroll::-webkit-scrollbar-thumb {
+    background: rgba(125, 211, 252, 0.55);
+    border-radius: 4px;
+    border: 1px solid rgba(8, 8, 14, 0.6);
+  }
+
+  .spx-gex-matrix-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(125, 211, 252, 0.8);
+  }
+
+  /* Dynamic pad (JS sets padding) — min fallback before first measure */
+  .spx-gex-matrix-scroll-pad {
+    min-height: 100%;
   }
 
   .spx-gex-matrix-recenter {

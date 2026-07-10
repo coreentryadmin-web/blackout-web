@@ -252,9 +252,19 @@ export function SpxGexMatrixHeatmap({
   const hasData = Boolean(data?.available) && strikesAxis.length > 0 && displayExpiries.length > 0;
 
   const scrollBoxRef = useRef<HTMLDivElement | null>(null);
+  const scrollPadRef = useRef<HTMLDivElement | null>(null);
   const spotRowRef = useRef<HTMLTableRowElement | null>(null);
   const userPinnedScrollRef = useRef(false);
   const lastCenteredStrikeRef = useRef<number | null>(null);
+
+  const syncScrollPad = () => {
+    const box = scrollBoxRef.current;
+    const pad = scrollPadRef.current;
+    if (!box || !pad) return;
+    const half = Math.max(140, Math.floor(box.clientHeight * 0.5));
+    pad.style.paddingTop = `${half}px`;
+    pad.style.paddingBottom = `${half}px`;
+  };
 
   const centerSpotRow = (behavior: ScrollBehavior = "auto") => {
     const box = scrollBoxRef.current;
@@ -266,7 +276,8 @@ export function SpxGexMatrixHeatmap({
       const target =
         box.scrollTop +
         (rowRect.top - scrollRect.top - (scrollRect.height - rowRect.height) / 2);
-      box.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+      const max = Math.max(0, box.scrollHeight - box.clientHeight);
+      box.scrollTo({ top: Math.max(0, Math.min(target, max)), behavior: "smooth" });
     } else {
       scrollRowIntoViewCenter(box, row);
     }
@@ -298,20 +309,28 @@ export function SpxGexMatrixHeatmap({
     }
     if (userPinnedScrollRef.current && !strikeMoved) return;
 
+    const run = () => {
+      syncScrollPad();
+      centerSpotRow(strikeMoved ? "smooth" : "auto");
+    };
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => centerSpotRow(strikeMoved ? "smooth" : "auto"));
+      raf2 = requestAnimationFrame(run);
     });
+    const t = window.setTimeout(run, 120);
     return () => {
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
+      window.clearTimeout(t);
     };
   }, [spotStrike, hasData, lens, strikesAxis.length, overlaySpot]);
 
   useEffect(() => {
     const box = scrollBoxRef.current;
     if (!box || spotStrike == null) return;
+    syncScrollPad();
     const ro = new ResizeObserver(() => {
+      syncScrollPad();
       if (!userPinnedScrollRef.current) centerSpotRow("auto");
     });
     ro.observe(box);
@@ -460,9 +479,10 @@ export function SpxGexMatrixHeatmap({
         >
         <div
           ref={scrollBoxRef}
-          className="spx-gex-matrix-scroll flex-1 min-h-0 overflow-y-auto overflow-x-auto overscroll-contain"
+          className="spx-gex-matrix-scroll flex-1 min-h-0 overflow-y-scroll overflow-x-auto overscroll-contain"
           aria-label="SPX gamma matrix strike ladder"
         >
+          <div ref={scrollPadRef} className="spx-gex-matrix-scroll-pad">
           <table
             className="spx-gex-matrix-table w-max border-collapse font-mono text-[12px] tabular-nums"
             role="grid"
@@ -620,6 +640,7 @@ export function SpxGexMatrixHeatmap({
               })}
             </tbody>
           </table>
+          </div>
         </div>
 
         <SpxMatrixTapeStrip

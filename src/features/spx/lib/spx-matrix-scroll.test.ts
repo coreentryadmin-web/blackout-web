@@ -5,6 +5,8 @@ import { scrollRowIntoViewCenter } from "./spx-matrix-scroll";
 test("scrollRowIntoViewCenter: adjusts scrollTop toward vertical center", () => {
   const scrollEl = {
     scrollTop: 0,
+    scrollHeight: 800,
+    clientHeight: 200,
     getBoundingClientRect: () => ({ top: 100, height: 200 }),
   } as unknown as HTMLElement;
 
