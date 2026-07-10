@@ -130,9 +130,9 @@ export function SpxDashboard() {
         />
       )}
 
-      {/* Left rail: GEX matrix only — no Benzinga scroll, live tape, or interval-flow stack. */}
+      {/* Desk grid: matrix | Open/Watch/Closed stack | Terminal (commentary below when live). */}
       <div
-        className="spx-sniper-triple"
+        className="spx-sniper-triple spx-sniper-triple--desk-v2"
         data-ios-panel={nativeShell ? iosPanel : undefined}
       >
         <SpxPanelErrorBoundary>
@@ -159,7 +159,7 @@ export function SpxDashboard() {
           <div
             key={nativeShell ? iosPanel : "plays"}
             className={clsx(
-              "spx-sniper-chart-col spx-center-stack",
+              "contents",
               nativeShell && iosPanel !== "plays" && "ios-native-panel-hidden",
               nativeShell && iosPanel === "plays" && "ios-native-panel-visible"
             )}
@@ -167,13 +167,14 @@ export function SpxDashboard() {
             <SpxTradeAlerts desk={desk} live={live} refreshing={refreshing} sessionActive={sessionActive} />
           </div>
         </SpxPanelErrorBoundary>
+      </div>
 
+      {live && (
         <SpxPanelErrorBoundary>
           <Suspense fallback={null}>
             <div
-              key={nativeShell ? iosPanel : "intel"}
               className={clsx(
-                "spx-sniper-intel-col flex flex-col min-h-0 h-full",
+                "spx-commentary-below-desk mt-2 min-h-0",
                 nativeShell && iosPanel !== "intel" && "ios-native-panel-hidden",
                 nativeShell && iosPanel === "intel" && "ios-native-panel-visible"
               )}
@@ -182,7 +183,7 @@ export function SpxDashboard() {
             </div>
           </Suspense>
         </SpxPanelErrorBoundary>
-      </div>
+      )}
     </div>
   );
 }

@@ -1,32 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
-import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-engine";
 import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
-import type { PlayConfirmationLayer } from "@/features/spx/hooks/useStablePlayConfirmations";
-import type { PlaybookShadowPanel } from "@/features/spx/lib/playbook-shadow-panel";
 import type { TradeAlertPlay } from "@/features/spx/lib/spx-trade-alert-plays";
-import { SpxDeskTerminal, type DeskTerminalTab } from "./SpxDeskTerminal";
 
 type Props = {
   panels: { open: TradeAlertPlay[]; watch: TradeAlertPlay[]; closed: TradeAlertPlay[] };
   play: SpxPlayPayload | null;
   lotto: LottoPlayPayload | null;
   powerHour: PowerHourPlayPayload | null;
-  playbookPanel: PlaybookShadowPanel | null | undefined;
-  desk?: SpxDeskPayload;
-  confirmationLayer: PlayConfirmationLayer | null;
-  historyThesis: Map<string, string>;
-  sessionLive?: boolean;
-  live?: boolean;
+  selectedId: string | null;
+  onSelectPlay: (id: string) => void;
 };
-
-function allPlays(panels: Props["panels"]): TradeAlertPlay[] {
-  return [...panels.open, ...panels.watch, ...panels.closed];
-}
 
 function SelectablePlayRow({
   item,
@@ -62,25 +49,9 @@ export function SpxTradeAlertsPanels({
   play,
   lotto,
   powerHour,
-  playbookPanel,
-  desk,
-  confirmationLayer,
-  historyThesis,
-  sessionLive = true,
-  live,
+  selectedId,
+  onSelectPlay,
 }: Props) {
-  const plays = useMemo(() => allPlays(panels), [panels]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [terminalTab, setTerminalTab] = useState<DeskTerminalTab>("playbook");
-
-  useEffect(() => {
-    if (selectedId && plays.some((p) => p.id === selectedId)) return;
-    setSelectedId(panels.open[0]?.id ?? panels.watch[0]?.id ?? panels.closed[0]?.id ?? null);
-  }, [selectedId, plays, panels.open, panels.watch, panels.closed]);
-
-  const selected = plays.find((p) => p.id === selectedId) ?? null;
-  const closedThesis = selected ? historyThesis.get(selected.id) : undefined;
-
   const stageHint = (item: TradeAlertPlay): string | undefined => {
     if (item.chip.column === "watch") return "WATCH";
     if (item.chip.column === "closed") return "CLOSED";
@@ -88,11 +59,6 @@ export function SpxTradeAlertsPanels({
     if (item.chip.kind === "lotto" && lotto) return lotto.phase;
     if (item.chip.kind === "power" && powerHour) return powerHour.phase;
     return "OPEN";
-  };
-
-  const selectPlay = (id: string) => {
-    setSelectedId(id);
-    setTerminalTab("play");
   };
 
   const renderCol = (col: "open" | "watch" | "closed", items: TradeAlertPlay[], wide?: boolean) => (
@@ -121,7 +87,7 @@ export function SpxTradeAlertsPanels({
               item={item}
               selected={selectedId === item.id}
               subtitle={stageHint(item)}
-              onSelect={() => selectPlay(item.id)}
+              onSelect={() => onSelectPlay(item.id)}
             />
           ))
         )}
@@ -130,28 +96,10 @@ export function SpxTradeAlertsPanels({
   );
 
   return (
-    <div className="spx-trade-alerts-shell">
-      <div className="spx-trade-alerts-panels spx-trade-alerts-panels--select">
-        {renderCol("open", panels.open, true)}
-        {renderCol("watch", panels.watch)}
-        {renderCol("closed", panels.closed)}
-      </div>
-
-      <SpxDeskTerminal
-        activeTab={terminalTab}
-        onTabChange={setTerminalTab}
-        selected={selected}
-        play={play}
-        lotto={lotto}
-        powerHour={powerHour}
-        playbookPanel={playbookPanel}
-        desk={desk}
-        confirmationLayer={confirmationLayer}
-        closedThesis={closedThesis}
-        sessionLive={sessionLive}
-        live={live}
-        asOf={play?.as_of ?? desk?.polled_at ?? null}
-      />
+    <div className="spx-trade-alerts-panels spx-trade-alerts-panels--stack">
+      {renderCol("open", panels.open, true)}
+      {renderCol("watch", panels.watch)}
+      {renderCol("closed", panels.closed)}
     </div>
   );
 }

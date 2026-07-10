@@ -31,4 +31,6 @@ test("SpxDashboard keeps matrix-only left rail (no Benzinga / tape / order-flow 
 
   assert.match(src, /SpxGexMatrixHeatmap/);
   assert.match(src, /spx-left-matrix/);
+  assert.match(src, /spx-sniper-triple--desk-v2/);
+  assert.match(src, /spx-commentary-below-desk/);
 });
