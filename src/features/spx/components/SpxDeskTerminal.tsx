@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import useSWR from "swr";
 import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-engine";
@@ -9,6 +10,8 @@ import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-eng
 import type { PlayConfirmationLayer } from "@/features/spx/hooks/useStablePlayConfirmations";
 import type { PlaybookShadowPanel } from "@/features/spx/lib/playbook-shadow-panel";
 import type { TradeAlertPlay } from "@/features/spx/lib/spx-trade-alert-plays";
+import { fetchNightHawkEdition } from "@/lib/api";
+import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
 import {
   buildPlayTerminalLines,
   buildPlaybookTerminalLines,
@@ -18,10 +21,26 @@ import {
 } from "@/features/spx/lib/spx-play-terminal-lines";
 import {
   appendOdteIntelEvents,
+  diffHeatmapIntelEvents,
+  diffNighthawkIntelEvents,
   diffOdteIntelEvents,
   odteIntelEventsToTerminalLines,
+  type IntelHeatmapSlice,
   type OdteIntelEvent,
 } from "@/features/spx/lib/spx-odte-intel-feed";
+
+/** Same SWR key as SpxGexMatrixHeatmap — subscribe only; matrix owns the poll. */
+const SPX_HEATMAP_KEY = "/api/market/gex-heatmap?ticker=SPX";
+
+async function fetchHeatmapForIntel(url: string): Promise<IntelHeatmapSlice & { available?: boolean }> {
+  const res = await fetch(url, {
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+  });
+  if (!res.ok) throw new Error(`GEX heatmap → ${res.status}`);
+  return res.json();
+}
 
 export type DeskTerminalTab = "playbook" | "play";
 
@@ -95,20 +114,61 @@ export function SpxDeskTerminal({
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const prevDeskRef = useRef<SpxDeskPayload | null>(null);
-  const seededRef = useRef(false);
+  const prevHeatmapRef = useRef<IntelHeatmapSlice | null>(null);
+  const prevNhRef = useRef<NightHawkEdition | null>(null);
+  const deskSeededRef = useRef(false);
+  const heatmapSeededRef = useRef(false);
   const [intelEvents, setIntelEvents] = useState<OdteIntelEvent[]>([]);
 
-  // Diff desk snapshots → material 0DTE intel only (anchor / flip / walls / big flow).
+  // Piggyback matrix SWR cache only — matrix owns the 8s/20s poll; do not revalidate here.
+  const { data: heatmap } = useSWR(SPX_HEATMAP_KEY, fetchHeatmapForIntel, {
+    refreshInterval: 0,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    revalidateIfStale: false,
+    revalidateOnMount: false,
+    keepPreviousData: true,
+  });
+
+  const { data: nighthawk } = useSWR("nighthawk-edition", fetchNightHawkEdition, {
+    refreshInterval: sessionLive ? 300_000 : 60_000,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  });
+
+  // Diff desk snapshots → material 0DTE intel (walls / regime / OR / stale / halt / flow).
   useEffect(() => {
     if (!desk?.available) return;
     const prev = prevDeskRef.current;
-    const seed = !seededRef.current;
+    const seed = !deskSeededRef.current;
     const incoming = diffOdteIntelEvents(prev, desk, { seed });
     prevDeskRef.current = desk;
-    seededRef.current = true;
+    deskSeededRef.current = true;
     if (!incoming.length) return;
-    setIntelEvents((cur) => appendOdteIntelEvents(cur, incoming, 40));
+    setIntelEvents((cur) => appendOdteIntelEvents(cur, incoming, 60));
   }, [desk]);
+
+  // Heatmap events + wall_changes + VEX/DEX/CHARM (same cache as matrix).
+  useEffect(() => {
+    if (!heatmap?.available && heatmap?.asof == null && !heatmap?.vex && !heatmap?.events) return;
+    const prev = prevHeatmapRef.current;
+    const seed = !heatmapSeededRef.current;
+    const incoming = diffHeatmapIntelEvents(prev, heatmap, { seed });
+    prevHeatmapRef.current = heatmap;
+    heatmapSeededRef.current = true;
+    if (!incoming.length) return;
+    setIntelEvents((cur) => appendOdteIntelEvents(cur, incoming, 60));
+  }, [heatmap]);
+
+  // Night Hawk publish edges (slow poll).
+  useEffect(() => {
+    if (!nighthawk) return;
+    const prev = prevNhRef.current;
+    const incoming = diffNighthawkIntelEvents(prev, nighthawk);
+    prevNhRef.current = nighthawk;
+    if (!incoming.length) return;
+    setIntelEvents((cur) => appendOdteIntelEvents(cur, incoming, 60));
+  }, [nighthawk]);
 
   const playbookLines = useMemo(
     () => buildPlaybookTerminalLines(playbookPanel, sessionLive),
@@ -119,7 +179,7 @@ export function SpxDeskTerminal({
     const header: PlayTerminalLine = {
       icon: "section",
       tone: "accent",
-      text: "0DTE INTEL · STRUCTURE / FLOW",
+      text: "0DTE INTEL · STRUCTURE / GREEKS / FLOW / NH",
     };
     return [header, ...odteIntelEventsToTerminalLines(intelEvents)];
   }, [intelEvents]);
