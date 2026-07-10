@@ -45,3 +45,20 @@ test("buildPlayKanbanChips: watch column when structure armed", () => {
   assert.equal(cols.watch.length, 1);
   assert.match(cols.watch[0]?.label ?? "", /7550C|W7550/);
 });
+
+test("buildPlayKanbanChips: off-hours structure lands in closed column", () => {
+  const cols = buildPlayKanbanChips({
+    play: basePlay,
+    lotto: null,
+    powerHour: null,
+    history: [],
+    filter: "all",
+    structureOpen: false,
+    structureWatch: false,
+    sessionLive: false,
+  });
+  assert.equal(cols.open.length, 0);
+  assert.equal(cols.closed.length, 1);
+  assert.equal(cols.closed[0]?.label, "7550C");
+  assert.equal(cols.closed[0]?.id, "structure-session");
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { fetchSpxPlay } from "@/lib/api";
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-engine";
@@ -13,8 +13,14 @@ import {
 import { shouldPersistPlayPayload } from "@/features/spx/hooks/useStablePlayConfirmations";
 
 const PLAY_MS = 3_000;
+/** Slow poll off-hours — keeps playbook shadow + last play state visible after close. */
+const PLAY_OFF_HOURS_MS = 60_000;
 const PLAY_CACHE_KEY = "spx-play";
 const PLAY_CACHE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+function readPlayCache(): SpxPlayPayload | undefined {
+  return readSessionCache<SpxPlayPayload>(PLAY_CACHE_KEY, PLAY_CACHE_MAX_AGE_MS) ?? undefined;
+}
 
 /** Exported for unit tests — client play SWR merges session cache on poll gaps. */
 export function mergePlayWithCache(
@@ -73,33 +79,22 @@ export function useSpxPlay(sessionActive = true) {
 
   // Cached payload stored in state so readSessionCache is only called when
   // new SWR data arrives (onSuccess), not on every render in a useMemo.
-  const [cachedPayload, setCachedPayload] = useState<SpxPlayPayload | undefined>(() =>
-    sessionActive ? readSessionCache<SpxPlayPayload>(PLAY_CACHE_KEY, PLAY_CACHE_MAX_AGE_MS) ?? undefined : undefined
-  );
-
-  useEffect(() => {
-    if (!sessionActive) {
-      clearPlayCache();
-      setCachedPayload(undefined);
-    }
-  }, [sessionActive]);
+  const [cachedPayload, setCachedPayload] = useState<SpxPlayPayload | undefined>(readPlayCache);
 
   const { data, isValidating, isLoading } = useSWR(
-    sessionActive ? `spx-play:${sessionDate}` : null,
+    `spx-play:${sessionDate}`,
     fetchSpxPlay,
     {
-      refreshInterval: sessionActive ? PLAY_MS : 0,
+      refreshInterval: sessionActive ? PLAY_MS : PLAY_OFF_HOURS_MS,
       refreshWhenHidden: false,
       refreshWhenOffline: false,
-      revalidateOnFocus: false,
+      revalidateOnFocus: sessionActive,
       revalidateOnReconnect: true,
       keepPreviousData: true,
       dedupingInterval: 1_500,
-      fallbackData: sessionActive
-        ? readSessionCache<SpxPlayPayload>(PLAY_CACHE_KEY, PLAY_CACHE_MAX_AGE_MS)
-        : undefined,
+      fallbackData: readPlayCache(),
       onSuccess: (payload) => {
-        if (!sessionActive || !payload || !shouldPersistPlayPayload(payload)) return;
+        if (!payload || !shouldPersistPlayPayload(payload)) return;
 
         writeSessionCache(PLAY_CACHE_KEY, payload, sessionDate);
         // Update state cache so useMemo uses fresh data without a hot-path read
@@ -109,13 +104,17 @@ export function useSpxPlay(sessionActive = true) {
   );
 
   const play = useMemo(() => {
-    if (!sessionActive) return null;
-    return mergePlayWithCache(data, cachedPayload);
+    const merged = mergePlayWithCache(data, cachedPayload);
+    // After close the API often returns SCANNING — keep last session play for AH kanban.
+    if (!sessionActive && data?.action === "SCANNING" && cachedPayload) {
+      return cachedPayload;
+    }
+    return merged;
   }, [data, sessionActive, cachedPayload]);
 
   return {
     play,
-    playLoading: sessionActive && isLoading && !play,
+    playLoading: isLoading && !play,
     playRefreshing: sessionActive && isValidating && Boolean(play),
   };
 }

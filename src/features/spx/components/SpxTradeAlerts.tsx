@@ -704,7 +704,19 @@ function renderKanbanDetail(input: {
     powerHourLoading,
     powerHourRefreshing,
   } = input;
-  if (!selectedId || !play) return null;
+  if (!selectedId) return null;
+
+  if (selectedId === "structure-session" && play) {
+    return (
+      <div className="spx-play-kanban-detail spx-trade-play-box spx-trade-play-box-muted">
+        <p className="spx-trade-play-box-kicker">Session structure · wrapped</p>
+        <p className="spx-trade-play-box-headline">{play.headline}</p>
+        {play.thesis ? <p className="spx-trade-play-box-thesis">{play.thesis}</p> : null}
+      </div>
+    );
+  }
+
+  if (!play) return null;
 
   if (selectedId === "structure-open") {
     return <OpenPlayBox play={play} />;
@@ -825,7 +837,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
     setHistory((prev) => [{ ...play, id: `${id}|${Date.now()}` }, ...prev].slice(0, 24));
   }, [play]);
 
-  const show = play != null && live && sessionActive;
+  const sessionLive = Boolean(live && sessionActive);
 
   const panelRefreshing = Boolean(
     (refreshing || playRefreshing) && play && play.action !== "SCANNING"
@@ -837,8 +849,8 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
       play?.action === "BUY" ||
       (!play && playRefreshing));
 
-  const structureOpen = Boolean(play && hasOpenPlay(play));
-  const structureWatch = Boolean(play && hasWatchPlay(play) && !structureOpen);
+  const structureOpen = Boolean(sessionLive && play && hasOpenPlay(play));
+  const structureWatch = Boolean(sessionLive && play && hasWatchPlay(play) && !structureOpen);
 
   const kanbanColumns = useMemo(
     () =>
@@ -850,8 +862,9 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
         filter: playFilter,
         structureOpen,
         structureWatch,
+        sessionLive,
       }),
-    [play, lotto, powerHour, history, playFilter, structureOpen, structureWatch]
+    [play, lotto, powerHour, history, playFilter, structureOpen, structureWatch, sessionLive]
   );
 
   const allChipIds = useMemo(
@@ -889,6 +902,7 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
   });
 
   const showConfluence =
+    sessionLive &&
     play != null &&
     selectedChipId?.startsWith("structure") &&
     playFilter !== "lotto" &&
@@ -912,40 +926,36 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
       </header>
 
       <div className="spx-sniper-panel-body spx-trade-alerts-stack">
-      {!show ? (
-        sessionActive && live ? (
-          <p className="spx-desk-offline-line font-mono py-8 text-center">
-            Scanning — no open play
-          </p>
-        ) : (
-          <div className="spx-desk-closed">
-            <Kicker className="spx-desk-closed-kicker">0DTE WINDOW CLOSED</Kicker>
-            <h4 className="spx-desk-closed-headline">MARKET CLOSED</h4>
-            <p className="spx-desk-closed-sub">
-              Desk re-arms at{" "}
-              <span className="spx-desk-closed-time">6:30 AM PT</span>
-            </p>
+        {!sessionLive && (
+          <div className="spx-desk-session-strip" role="status">
+            <span className="spx-desk-session-strip-dot" aria-hidden />
+            <div className="min-w-0">
+              <p className="spx-desk-session-strip-kicker">
+                {live ? "0DTE window closed" : "After hours"}
+              </p>
+              <p className="spx-desk-session-strip-body">
+                Kanban shows today&apos;s wrapped plays · desk re-arms{" "}
+                <span className="spx-desk-closed-time">6:30 AM PT</span>
+              </p>
+            </div>
           </div>
-        )
-      ) : (
-        <>
-          <SpxPlayKanbanBoard
-            columns={kanbanColumns}
-            filter={playFilter}
-            onFilterChange={setPlayFilter}
-            selectedId={selectedChipId}
-            onSelect={setSelectedChipId}
-          />
-          <div className="spx-play-kanban-detail-wrap">{selectedDetail}</div>
-          <SpxPlaybookValidationPanel panel={play?.playbook_shadow} />
-          {showConfluence && (
-            <ConfluenceFactorsPanel factors={play.factors} updating={panelRefreshing} />
-          )}
-          <p className="spx-trade-educational-note">
-            Educational. Not advice. Every trade is your own decision.
-          </p>
-        </>
-      )}
+        )}
+
+        <SpxPlayKanbanBoard
+          columns={kanbanColumns}
+          filter={playFilter}
+          onFilterChange={setPlayFilter}
+          selectedId={selectedChipId}
+          onSelect={setSelectedChipId}
+        />
+        <div className="spx-play-kanban-detail-wrap">{selectedDetail}</div>
+        <SpxPlaybookValidationPanel panel={play?.playbook_shadow} sessionLive={sessionLive} />
+        {sessionLive && showConfluence && (
+          <ConfluenceFactorsPanel factors={play!.factors} updating={panelRefreshing} />
+        )}
+        <p className="spx-trade-educational-note">
+          Educational. Not advice. Every trade is your own decision.
+        </p>
       </div>
       </div>
     </section>
