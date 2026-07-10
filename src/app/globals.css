@@ -9264,28 +9264,8 @@ body::before {
     @apply font-mono text-[10px] text-sky-300/50;
   }
 
-  .spx-sniper-panel .spx-trade-confirmations {
-    @apply bg-black/80;
-  }
-
   .spx-trade-alerts-header {
     @apply flex items-center gap-3 pb-2 mb-2 border-b border-white/[0.08] shrink-0;
-  }
-
-  .spx-trade-alerts-v2 .spx-trade-alerts-title {
-    @apply font-mono text-sm font-bold uppercase tracking-[0.12em] text-white leading-tight;
-  }
-
-  .spx-trade-alerts-v2 .spx-trade-alerts-subtitle {
-    @apply mt-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-sky-300/80;
-  }
-
-  .spx-trade-alerts-v2 .spx-trade-alerts-subtitle-muted {
-    @apply text-amber-300/80;
-  }
-
-  .spx-trade-alerts-v2 .spx-trade-alerts-spot {
-    @apply mb-0 shrink-0;
   }
 
   .spx-trade-alerts-v3 .spx-trade-alerts-title {
@@ -9463,7 +9443,6 @@ body::before {
   .spx-trade-panel-compact-head {
     @apply flex items-baseline gap-1.5;
   }
-  }
 
   .spx-trade-panel-compact-label {
     @apply font-mono text-xs font-bold tabular-nums text-white;
@@ -9471,6 +9450,7 @@ body::before {
 
   .spx-trade-panel-compact-thesis {
     @apply mt-1 font-mono text-[9px] leading-snug text-sky-300/75 line-clamp-3;
+  }
 
   .spx-play-select-row--selected {
     @apply border-cyan-400/35 bg-cyan-400/[0.08] ring-1 ring-cyan-400/20;
@@ -9645,238 +9625,6 @@ body::before {
 
   .spx-desk-session-strip--compact .spx-desk-session-strip-body {
     @apply text-[10px] leading-snug;
-  }
-
-  .spx-trade-alerts-kanban .spx-trade-alerts-stack {
-    @apply flex flex-col gap-2.5 min-h-0 flex-1;
-  }
-
-  .spx-play-kanban-board {
-    @apply shrink-0 flex flex-col gap-2;
-  }
-
-  .spx-play-kanban-toolbar {
-    @apply flex flex-col gap-2;
-  }
-
-  .spx-play-kanban-filters {
-    @apply flex flex-wrap gap-1;
-  }
-
-  .spx-play-kanban-column-tabs {
-    @apply grid grid-cols-3 gap-1 rounded-lg border border-white/10 bg-[#050508] p-1;
-  }
-
-  .spx-play-kanban-column-tab {
-    @apply flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-300/70 transition-colors;
-  }
-
-  .spx-play-kanban-column-tab--active {
-    @apply bg-cyan-400/10 text-cyan-200 ring-1 ring-cyan-400/25;
-  }
-
-  .spx-play-kanban-column-count {
-    @apply inline-flex min-w-[1.1rem] items-center justify-center rounded bg-black/50 px-1 text-[9px] tabular-nums text-sky-200;
-  }
-
-  .spx-play-kanban-chip-tray {
-    @apply min-h-[3.25rem] rounded-lg border border-white/10 bg-[#050508] px-2 py-2;
-  }
-
-  .spx-play-kanban-chip-row {
-    @apply flex flex-wrap gap-1.5;
-  }
-
-  .spx-play-kanban-empty-tray {
-    @apply py-2 text-center font-mono text-[10px] text-sky-300/50;
-  }
-
-  .spx-play-detail-card {
-    @apply rounded-xl border border-white/10 bg-gradient-to-b from-[#0a0a12] to-black/80 p-4;
-  }
-
-  .spx-play-detail-card--structure {
-    box-shadow: inset 3px 0 0 rgba(0, 230, 118, 0.55);
-  }
-
-  .spx-play-detail-card--lotto {
-    box-shadow: inset 3px 0 0 rgba(251, 191, 36, 0.55);
-  }
-
-  .spx-play-detail-card--power {
-    box-shadow: inset 3px 0 0 rgba(251, 146, 60, 0.55);
-  }
-
-  /* Legacy kanban column grid — kept for any embed paths still using old markup */
-  .spx-play-kanban-columns {
-    @apply grid gap-0 min-h-[5.5rem] rounded-lg border border-white/10 bg-[#050508] overflow-hidden;
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr) minmax(0, 0.85fr);
-  }
-
-  .spx-play-kanban-col {
-    @apply relative flex flex-col min-h-0 border-white/10;
-  }
-
-  .spx-play-kanban-col-open {
-    @apply border-r;
-  }
-
-  .spx-play-kanban-col-watch {
-    @apply border-r;
-  }
-
-  .spx-play-kanban-col-closed {
-    @apply border-0;
-  }
-
-  .spx-play-kanban-funnel {
-    @apply pointer-events-none absolute -left-2 top-1/2 z-10 h-0 w-0;
-    border-top: 6px solid transparent;
-    border-bottom: 6px solid transparent;
-    border-left: 7px solid rgba(0, 230, 118, 0.45);
-    transform: translateY(-50%);
-  }
-
-  .spx-play-kanban-col-title {
-    @apply shrink-0 border-b border-white/[0.06] px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-sky-300;
-  }
-
-  .spx-play-kanban-col-body {
-    @apply flex flex-1 flex-col gap-1.5 p-2 min-h-0 overflow-y-auto;
-  }
-
-  .spx-play-kanban-empty {
-    @apply font-mono text-[10px] text-secondary text-center py-2;
-  }
-
-  .spx-play-kanban-chip {
-    @apply inline-flex min-w-[5.5rem] flex-col items-start gap-0.5 rounded-lg border border-white/10 bg-black/60 px-2.5 py-2 text-left transition-colors hover:border-white/20;
-  }
-
-  .spx-play-kanban-chip-kind {
-    @apply font-mono text-[8px] uppercase tracking-[0.16em] text-sky-300/60;
-  }
-
-  .spx-play-kanban-chip--selected {
-    @apply border-cyan-400/45 bg-cyan-400/[0.08] ring-1 ring-cyan-400/25;
-  }
-
-  .spx-play-kanban-chip--call {
-    @apply border-bull/35;
-  }
-
-  .spx-play-kanban-chip--put {
-    @apply border-bear/35;
-  }
-
-  .spx-play-kanban-chip--watch {
-    @apply border-amber-400/30 bg-amber-400/[0.05];
-  }
-
-  .spx-play-kanban-chip--lotto {
-    @apply border-gold/35;
-  }
-
-  .spx-play-kanban-chip--power {
-    @apply border-orange-400/35;
-  }
-
-  .spx-play-kanban-chip-prefix {
-    @apply font-mono text-[7px] uppercase tracking-wider text-secondary;
-  }
-
-  .spx-play-kanban-chip-label {
-    @apply font-mono text-sm font-bold tabular-nums text-white leading-none;
-  }
-
-  .spx-play-kanban-detail-wrap {
-    @apply shrink-0 max-h-[min(38vh,320px)] overflow-y-auto;
-  }
-
-  .spx-play-kanban-detail {
-    @apply rounded-lg border border-white/10 bg-black/40 p-3;
-  }
-
-  .spx-playbook-validation-panel {
-    @apply flex flex-1 min-h-[12rem] flex-col rounded-lg border border-violet-500/25 bg-violet-500/[0.04] p-3;
-  }
-
-  .spx-playbook-validation-header {
-    @apply mb-2 flex shrink-0 items-center gap-2 border-b border-white/[0.06] pb-2;
-  }
-
-  .spx-playbook-validation-title {
-    @apply font-syne text-sm font-bold uppercase tracking-[0.12em] text-white;
-  }
-
-  .spx-playbook-validation-badge {
-    @apply rounded border border-violet-400/35 bg-violet-500/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-violet-200;
-  }
-
-  .spx-playbook-validation-empty {
-    @apply font-mono text-[10px] leading-relaxed text-secondary py-4;
-  }
-
-  .spx-playbook-validation-grid {
-    @apply flex flex-1 flex-col gap-2 min-h-0 overflow-y-auto;
-  }
-
-  .spx-playbook-validation-row {
-    @apply rounded border border-white/10 bg-black/35 p-2.5;
-  }
-
-  .spx-playbook-validation-row--armed {
-    @apply border-amber-400/25 bg-amber-400/[0.04];
-  }
-
-  .spx-playbook-validation-row--trigger {
-    @apply border-bull/30 bg-bull/[0.05];
-  }
-
-  .spx-playbook-validation-row--primary {
-    box-shadow: 0 0 14px rgba(0, 230, 118, 0.15);
-  }
-
-  .spx-playbook-validation-row-head {
-    @apply mb-1.5 flex flex-wrap items-center gap-2;
-  }
-
-  .spx-playbook-validation-id {
-    @apply font-mono text-[9px] uppercase tracking-wider text-sky-300;
-  }
-
-  .spx-playbook-validation-name {
-    @apply font-mono text-[11px] font-semibold text-white;
-  }
-
-  .spx-playbook-validation-primary {
-    @apply rounded border border-bull/35 bg-bull/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-bull;
-  }
-
-  .spx-playbook-validation-metrics {
-    @apply mb-1.5 grid grid-cols-3 gap-2 font-mono text-[9px];
-  }
-
-  .spx-playbook-validation-metrics dt {
-    @apply uppercase tracking-wider text-secondary;
-  }
-
-  .spx-playbook-validation-metrics dd {
-    @apply text-white font-semibold;
-  }
-    @apply text-ember;
-  }
-
-  .spx-live-pill {
-    @apply font-mono text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full border;
-  }
-
-  .spx-live-pill-on {
-    @apply border-bull/40 text-bull bg-bull/10;
-  }
-
-  .spx-live-pill-off {
-    @apply border-sky-300/25 text-cyan-400 bg-sky-300/[0.04];
   }
 
   .spx-chart-frame {
@@ -10522,16 +10270,6 @@ body::before {
 
   .spx-odte-matrix-spot-blink.spx-odte-matrix-live-spot {
     color: #67e8f9;
-  }
-
-  @keyframes spx-matrix-spot-text-pulse-dead {
-    0%,
-    100% {
-      text-shadow: 0 0 12px rgba(34, 211, 238, 0.55);
-    }
-    50% {
-      text-shadow: 0 0 4px rgba(34, 211, 238, 0.15);
-    }
   }
 
   @media (prefers-reduced-motion: reduce) {
