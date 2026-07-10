@@ -1,6 +1,5 @@
 ﻿"use client";
 
-import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import { fmtPremium, fmtPrice } from "@/lib/api";
@@ -31,12 +30,10 @@ export function SpxSniperHeader({ desk, live, nativeShell = false }: Props) {
       )}
     >
       <div className="spx-sniper-command-grid" aria-hidden />
-      <div className="spx-sniper-command-scan" aria-hidden />
-      <div className="spx-sniper-command-glow" aria-hidden />
       <div className="relative z-10 spx-sniper-command-band">
         {!nativeShell ? (
           <div className="spx-sniper-identity spx-sniper-identity-top shrink-0 flex items-center gap-2.5">
-            <ProductMark product="spx" size={34} title="SPX Slayer" className="shrink-0" />
+            <ProductMark product="spx" size={34} title="SPX Slayer" className="shrink-0" animated={false} />
             <div className="min-w-0 leading-tight">
               <h1 className="font-syne text-lg font-bold tracking-tight text-white md:text-xl">
                 SPX Slayer
@@ -234,26 +231,18 @@ function StatPill({
   return (
     <div className={clsx("spx-hero-stat-pill", PILL_BORDER[tone] ?? PILL_BORDER.neutral)}>
       <p className="spx-hero-stat-label">{label}</p>
-      <AnimatePresence mode="popLayout">
-        <motion.div
-          key={value}
-          initial={{ opacity: 0.4, scale: 1.08 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
-          className="spx-hero-stat-value-row"
+      <div className="spx-hero-stat-value-row">
+        {level != null && <PriceLevelIndicator direction={direction} />}
+        <p
+          className={clsx(
+            "spx-hero-stat-value t-num",
+            cap && "capitalize",
+            VALUE_TONE[tone] ?? VALUE_TONE.neutral
+          )}
         >
-          {level != null && <PriceLevelIndicator direction={direction} />}
-          <p
-            className={clsx(
-              "spx-hero-stat-value t-num drop-shadow-[0_0_6px_currentColor]",
-              cap && "capitalize",
-              VALUE_TONE[tone] ?? VALUE_TONE.neutral
-            )}
-          >
-            {value}
-          </p>
-        </motion.div>
-      </AnimatePresence>
+          {value}
+        </p>
+      </div>
     </div>
   );
 }

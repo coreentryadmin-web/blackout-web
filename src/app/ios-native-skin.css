@@ -565,6 +565,7 @@ html.ios-app.ios-native-shell ::-webkit-scrollbar-track {
 }
 
 /* ═══ Empty / loading states ═══ */
+html.ios-app.ios-native-shell .spx-desk-placeholder,
 html.ios-app.ios-native-shell .spx-desk-skeleton,
 html.ios-app.ios-native-shell [class*="skeleton"],
 html.ios-app.ios-native-shell .animate-pulse {

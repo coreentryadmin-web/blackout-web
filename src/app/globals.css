@@ -8819,37 +8819,11 @@ body::before {
     @apply w-full;
   }
 
-  .spx-desk-skeleton {
-    @apply relative w-full overflow-hidden;
+  .spx-desk-placeholder {
+    @apply w-full;
     min-height: min(78vh, 720px);
     background: #08080e;
     border: 1px solid rgba(0, 230, 118, 0.12);
-  }
-
-  .spx-desk-skeleton::after {
-    content: "";
-    @apply absolute inset-y-0 z-[1] pointer-events-none;
-    left: -40%;
-    width: 40%;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(0, 230, 118, 0.06) 35%,
-      rgba(0, 230, 118, 0.16) 50%,
-      rgba(0, 230, 118, 0.06) 65%,
-      transparent 100%
-    );
-    animation: spx-desk-skeleton-sweep 1.6s ease-in-out infinite;
-  }
-
-  @keyframes spx-desk-skeleton-sweep {
-    0% { transform: translateX(0); opacity: 0.55; }
-    50% { opacity: 1; }
-    100% { transform: translateX(350%); opacity: 0.55; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .spx-desk-skeleton::after { animation: none; opacity: 0.5; }
   }
 
   .spx-sniper-header {
@@ -8875,7 +8849,8 @@ body::before {
   .spx-sniper-command-scan {
     @apply absolute inset-x-0 h-px top-0 z-[1];
     background: linear-gradient(90deg, transparent, rgba(0, 230, 118, 0.85), transparent);
-    animation: desk-scan 5s linear infinite;
+    animation: none;
+    display: none;
   }
 
   .spx-sniper-command-glow {
@@ -8885,7 +8860,8 @@ body::before {
     top: 18%;
     left: 32%;
     background: radial-gradient(circle, rgba(0, 230, 118, 0.22) 0%, transparent 70%);
-    animation: spx-command-pulse 4s ease-in-out infinite;
+    animation: none;
+    display: none;
   }
 
   @keyframes spx-command-pulse {
@@ -9283,205 +9259,6 @@ body::before {
     @apply flex flex-col gap-3 min-h-0;
   }
 
-  .spx-play-surface-toolbar {
-    @apply flex flex-col gap-2 shrink-0;
-  }
-
-  .spx-play-surface-tabs {
-    @apply flex flex-wrap gap-1 rounded-lg border border-white/10 bg-[#050508] p-1;
-  }
-
-  .spx-play-surface-tab {
-    @apply flex flex-1 min-w-[4.5rem] items-center justify-center gap-1.5 rounded-md px-2 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-secondary transition-colors;
-  }
-
-  .spx-play-surface-tab-active {
-    @apply bg-white/[0.08] text-white;
-  }
-
-  .spx-play-surface-tab-count {
-    @apply rounded-full bg-cyan-400/15 px-1.5 py-0.5 text-[9px] text-cyan-300;
-  }
-
-  .spx-play-surface-filters {
-    @apply flex flex-wrap gap-1;
-  }
-
-  .spx-play-surface-filter {
-    @apply rounded border border-white/10 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-secondary transition-colors;
-  }
-
-  .spx-play-surface-filter-active {
-    @apply border-cyan-400/35 bg-cyan-400/10 text-cyan-200;
-  }
-
-  .spx-play-surface-stack {
-    @apply flex flex-col gap-3 min-h-0;
-  }
-
-  .spx-play-type-badge {
-    @apply rounded border px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-[0.16em];
-  }
-
-  .spx-play-type-badge-structure {
-    @apply border-cyan-400/30 bg-cyan-400/10 text-cyan-200;
-  }
-
-  .spx-play-type-badge-lotto {
-    @apply border-gold/40 bg-gold/[0.08] text-gold;
-  }
-
-  .spx-play-type-badge-power {
-    @apply border-amber-400/35 bg-amber-400/10 text-amber-200;
-  }
-
-  .spx-trade-play-box-lotto {
-    @apply border-gold/25 border-l-[3px] border-l-gold/70;
-  }
-
-  .spx-trade-play-box-lotto-open {
-    @apply border-gold/40 bg-gold/[0.04];
-  }
-
-  .spx-trade-play-box-lotto-closed {
-    @apply border-white/10 opacity-90;
-  }
-
-  .spx-trade-play-box-power {
-    @apply border-amber-400/25 border-l-[3px] border-l-amber-400/60;
-  }
-
-  .spx-trade-play-box-power-open {
-    @apply border-amber-400/35 bg-amber-400/[0.04];
-  }
-
-  .spx-trade-play-box-muted {
-    @apply opacity-80;
-  }
-
-  .spx-trade-play-box-badge-lotto {
-    @apply border-gold/40 text-gold bg-gold/[0.06];
-  }
-
-  .spx-trade-play-box-badge-power {
-    @apply border-amber-400/40 text-amber-200 bg-amber-400/[0.06];
-  }
-
-  .spx-trade-closed-log-title {
-    @apply mb-2 font-mono text-[10px] uppercase tracking-[0.28em] text-cyan-400;
-  }
-
-  .spx-trade-play-box {
-    @apply rounded-lg border border-white/10 bg-[#050508] p-4;
-  }
-
-  .spx-trade-open-box-active {
-    @apply border-bull/35;
-  }
-
-  .spx-trade-open-box-put {
-    @apply border-bear/35;
-  }
-
-  .spx-trade-open-box-sell {
-    @apply border-rose-400/35;
-  }
-
-  .spx-trade-watch-box-active {
-    @apply border-gold/35;
-  }
-
-  .spx-trade-play-box-header {
-    @apply flex items-center justify-between gap-3 mb-3 pb-2 border-b border-white/[0.06];
-  }
-
-  .spx-trade-play-box-kicker {
-    @apply font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-sky-300;
-  }
-
-  .spx-trade-play-box-badge {
-    @apply rounded border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em];
-  }
-
-  .spx-trade-play-box-badge-idle {
-    @apply border-white/10 text-secondary;
-  }
-
-  .spx-trade-play-box-badge-watch {
-    @apply border-gold/40 text-gold bg-gold/[0.06];
-  }
-
-  .spx-trade-play-box-empty {
-    @apply font-mono text-xs leading-relaxed text-secondary;
-  }
-
-  .spx-trade-play-box-headline {
-    @apply font-syne text-lg font-semibold leading-snug text-white;
-  }
-
-  .spx-trade-play-box-thesis {
-    @apply mt-2 font-mono text-xs leading-relaxed text-sky-200/85;
-  }
-
-  .spx-trade-play-box-meta {
-    @apply mt-1.5 font-mono text-[11px] text-cyan-300/90;
-  }
-
-  .spx-trade-play-box-note {
-    @apply font-mono text-[10px] uppercase tracking-[0.12em] text-amber-300/90;
-  }
-
-  .spx-trade-play-box-score-row {
-    @apply mt-3 flex items-baseline gap-3 pt-2 border-t border-white/[0.06];
-  }
-
-  .spx-trade-play-box-score {
-    @apply font-mono text-xl font-bold tabular-nums;
-  }
-
-  .spx-trade-watch-confirmations {
-    @apply mt-3 space-y-1 rounded border border-white/[0.06] bg-black p-3;
-  }
-
-  .spx-trade-watch-confirmations-title {
-    @apply font-mono text-[10px] uppercase tracking-[0.16em] text-sky-200 mb-2 font-semibold;
-  }
-
-  .spx-trade-watch-updating {
-    @apply font-mono text-[10px] normal-case tracking-normal text-cyan-400;
-  }
-
-  .spx-trade-confluence {
-    @apply rounded-lg border border-white/10 bg-[#050508] p-4;
-  }
-
-  .spx-trade-confluence-header {
-    @apply flex items-center justify-between gap-2 mb-3 pb-2 border-b border-white/[0.06];
-  }
-
-  .spx-trade-confluence-title {
-    @apply font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-400;
-  }
-
-  .spx-trade-confluence-list {
-    @apply max-h-[280px] overflow-y-auto;
-  }
-
-  .spx-trade-confluence-row {
-    @apply gap-2 py-1.5;
-  }
-
-  .spx-trade-confluence-label {
-    @apply w-20 shrink-0 font-mono text-[10px] font-bold uppercase;
-  }
-
-  .spx-trade-confluence-detail {
-    @apply min-w-0 flex-1 font-mono text-[11px] text-sky-200;
-  }
-
-  .spx-trade-confluence-weight {
-    @apply shrink-0 font-mono text-[10px] tabular-nums;
-  }
 
   .spx-trade-educational-note {
     @apply font-mono text-[10px] text-sky-300/50;
@@ -9686,9 +9463,6 @@ body::before {
   .spx-trade-panel-compact-head {
     @apply flex items-baseline gap-1.5;
   }
-
-  .spx-trade-panel-compact-kind {
-    @apply font-mono text-[7px] uppercase tracking-wider text-sky-300/55;
   }
 
   .spx-trade-panel-compact-label {
@@ -9697,21 +9471,6 @@ body::before {
 
   .spx-trade-panel-compact-thesis {
     @apply mt-1 font-mono text-[9px] leading-snug text-sky-300/75 line-clamp-3;
-  }
-
-  .spx-trade-alerts-shell {
-    @apply flex flex-1 flex-col gap-2 min-h-0 overflow-hidden;
-  }
-
-  .spx-trade-alerts-panels--select {
-    flex: 0 0 auto;
-    max-height: 38%;
-    min-height: 7.5rem;
-  }
-
-  .spx-play-select-row {
-    @apply flex w-full flex-wrap items-baseline gap-x-1.5 gap-y-0.5 rounded-md border border-transparent bg-black/30 px-2 py-1.5 text-left transition-colors hover:border-white/15 hover:bg-black/50;
-  }
 
   .spx-play-select-row--selected {
     @apply border-cyan-400/35 bg-cyan-400/[0.08] ring-1 ring-cyan-400/20;
@@ -9774,7 +9533,7 @@ body::before {
   }
 
   .spx-play-terminal-live {
-    @apply text-emerald-400 animate-pulse;
+    @apply text-emerald-400;
   }
 
   .spx-play-terminal-clock {
@@ -9787,7 +9546,7 @@ body::before {
   }
 
   .spx-play-terminal-tab {
-    @apply relative -mb-px rounded-t-md border border-transparent px-3 py-1.5 font-sans text-[10px] font-medium text-white/50 transition-colors;
+    @apply relative -mb-px rounded-t-md border border-transparent px-3 py-1.5 font-sans text-[10px] font-medium text-white/50;
     background: transparent;
   }
 
@@ -9877,17 +9636,7 @@ body::before {
   }
 
   .spx-play-terminal-cursor-line {
-    @apply flex items-center gap-2 pt-1;
-  }
-
-  .spx-play-terminal-cursor {
-    @apply inline-block h-[0.9em] w-[0.45em] bg-emerald-400/90;
-    animation: spx-play-terminal-blink 1.1s step-end infinite;
-  }
-
-  @keyframes spx-play-terminal-blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0; }
+    @apply hidden;
   }
 
   .spx-desk-session-strip--compact {
@@ -10115,276 +9864,6 @@ body::before {
   .spx-playbook-validation-metrics dd {
     @apply text-white font-semibold;
   }
-
-  .spx-playbook-validation-detail {
-    @apply font-mono text-[9px] leading-snug text-secondary;
-  }
-
-  .spx-playbook-shadow-strip {
-    @apply mb-3 shrink-0 rounded-lg border border-violet-500/25 bg-violet-500/[0.06] px-3 py-2;
-  }
-
-  .spx-playbook-shadow-strip-head {
-    @apply mb-2 flex items-center gap-2;
-  }
-
-  .spx-playbook-shadow-strip-kicker {
-    @apply font-mono text-[9px] uppercase tracking-[0.2em] text-violet-200/90;
-  }
-
-  .spx-playbook-shadow-strip-badge {
-    @apply rounded border border-violet-400/35 bg-violet-500/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-violet-200;
-  }
-
-  .spx-playbook-shadow-strip-row {
-    @apply flex flex-wrap gap-1.5;
-  }
-
-  .spx-playbook-shadow-chip {
-    @apply flex min-w-[7.5rem] flex-col gap-0.5 rounded border border-white/10 bg-black/40 px-2 py-1.5 font-mono text-[9px];
-  }
-
-  .spx-playbook-shadow-chip--armed {
-    @apply border-amber-400/30 bg-amber-400/[0.06];
-  }
-
-  .spx-playbook-shadow-chip--trigger {
-    @apply border-bull/40 bg-bull/[0.08];
-  }
-
-  .spx-playbook-shadow-chip--primary {
-    box-shadow: 0 0 12px rgba(0, 230, 118, 0.2);
-  }
-
-  .spx-playbook-shadow-chip-id {
-    @apply text-[8px] uppercase tracking-wider text-sky-300;
-  }
-
-  .spx-playbook-shadow-chip-name {
-    @apply text-[10px] font-semibold text-white leading-tight;
-  }
-
-  .spx-playbook-shadow-chip-dir,
-  .spx-playbook-shadow-chip-state {
-    @apply text-[8px] uppercase tracking-wider text-secondary;
-  }
-
-  .spx-trade-alert-score-label {
-    @apply font-mono uppercase text-sky-300;
-    font-size: clamp(0.7rem, 1.5vw, 0.85rem);
-    letter-spacing: 0.2em;
-  }
-
-  .spx-trade-alert-conf-pct {
-    @apply font-mono text-sky-200 mt-1;
-    font-size: clamp(0.85rem, 1.8vw, 1rem);
-  }
-
-  .spx-lotto-play-contract {
-    @apply font-mono;
-    font-size: clamp(0.8rem, 1.7vw, 0.95rem);
-    color: #ffd23f;
-  }
-
-  .spx-lotto-play-flow {
-    @apply font-mono leading-relaxed;
-    font-size: clamp(0.8rem, 1.7vw, 0.95rem);
-    color: rgba(252, 211, 77, 0.88);
-  }
-
-  .spx-lotto-play-sizing {
-    @apply font-mono leading-snug pt-1;
-    font-size: clamp(0.75rem, 1.6vw, 0.88rem);
-    color: rgba(255, 210, 63, 0.95);
-    font-style: italic;
-  }
-
-  .spx-lotto-play-spread {
-    @apply font-mono;
-    font-size: clamp(0.72rem, 1.5vw, 0.85rem);
-    color: rgba(252, 211, 77, 0.7);
-  }
-
-  .spx-lotto-play-invalidation {
-    @apply font-mono;
-    font-size: clamp(0.75rem, 1.6vw, 0.9rem);
-    color: rgba(251, 146, 60, 0.9);
-  }
-
-  .spx-lotto-play-anchor {
-    @apply font-mono;
-    font-size: clamp(0.75rem, 1.6vw, 0.88rem);
-    color: rgba(253, 230, 138, 0.85);
-  }
-
-  .spx-lotto-play-footnote {
-    @apply pt-1 font-mono italic;
-    font-size: clamp(0.75rem, 1.6vw, 0.9rem);
-    color: rgba(252, 211, 77, 0.82);
-    text-shadow: 0 0 10px rgba(255, 210, 63, 0.15);
-  }
-
-  .spx-desk-offline-line {
-    font-size: clamp(0.85rem, 1.9vw, 1.05rem);
-    letter-spacing: 0.04em;
-    color: #fde68a;
-    text-shadow:
-      0 0 16px rgba(255, 210, 63, 0.45),
-      0 0 32px rgba(255, 210, 63, 0.2);
-  }
-
-  /* MARKET CLOSED centerpiece
-     dimmed command screen rather than an empty panel. Centered flex column,
-     generous vertical air, a quiet dimmed SPX sigil as the focal lens, emerald
-     mono kicker, display headline, sky/white body. (Largo's right-rail WINDOW
-     CLOSED block is the tonal reference; here we stay on the emerald SPX accent
-     with the sigil, not magenta.) */
-  .spx-desk-closed {
-    @apply flex flex-col items-center justify-center text-center;
-    padding: clamp(2.5rem, 7vw, 4.5rem) 1.5rem;
-    gap: 1rem;
-  }
-
-  /* The sigil is the calm focal "lens" — dimmed, never reads as a live mark. */
-  .spx-desk-closed-sigil {
-    opacity: 0.45;
-    filter: saturate(0.85);
-    margin-bottom: 0.25rem;
-  }
-
-  /* Kicker already carries .t-kicker (emerald mono, uppercase, 0.35em tracking)
-     via the <Kicker> component — this only governs spacing. */
-  .spx-desk-closed-kicker {
-    @apply justify-center;
-    margin-bottom: 0.1rem;
-  }
-
-  .spx-desk-closed-headline {
-    font-family: var(--font-anton), sans-serif;
-    @apply uppercase leading-none tracking-wide text-white;
-    font-size: clamp(2rem, 5.5vw, 3.25rem);
-    text-shadow:
-      0 0 28px rgba(0, 230, 118, 0.18),
-      0 0 60px rgba(0, 230, 118, 0.08);
-  }
-
-  .spx-desk-closed-sub {
-    @apply font-mono text-sky-300;
-    max-width: 30rem;
-    font-size: clamp(0.8rem, 1.7vw, 0.95rem);
-    line-height: 1.6;
-    letter-spacing: 0.01em;
-  }
-
-  .spx-desk-closed-time {
-    color: var(--bull);
-    font-weight: 600;
-    text-shadow: 0 0 14px rgba(0, 230, 118, 0.35);
-  }
-
-  /* Compact AH / session-wrapped strip — kanban stays visible below */
-  .spx-desk-session-strip {
-    @apply flex items-start gap-2 shrink-0 rounded-lg border border-amber-400/25 bg-amber-400/[0.06] px-2.5 py-2;
-  }
-
-  .spx-desk-session-strip-dot {
-    @apply mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-400/70;
-  }
-
-  .spx-desk-session-strip-kicker {
-    @apply font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-amber-200/90;
-  }
-
-  .spx-desk-session-strip-body {
-    @apply font-mono text-[10px] leading-snug text-sky-300/85;
-  }
-
-  .spx-trade-confirmations {
-    @apply mt-4 space-y-1.5 rounded-sm border border-white/5 bg-black/30 p-4;
-    min-height: 12rem;
-  }
-
-  .spx-trade-confirmations-refreshing {
-    box-shadow: inset 0 0 0 1px rgba(0, 212, 255, 0.12);
-  }
-
-  .spx-trade-confirmations-title {
-    @apply font-mono uppercase text-sky-200 mb-3 font-semibold;
-    font-size: clamp(0.85rem, 1.8vw, 1rem);
-    letter-spacing: 0.12em;
-  }
-
-  .spx-trade-confirmation-pass {
-    @apply text-bull;
-    font-size: clamp(0.8rem, 1.7vw, 0.95rem);
-    text-shadow: 0 0 10px rgba(110, 231, 183, 0.25);
-  }
-
-  .spx-trade-confirmation-fail {
-    @apply text-rose-300;
-    font-size: clamp(0.8rem, 1.7vw, 0.95rem);
-    text-shadow: 0 0 10px rgba(253, 164, 175, 0.25);
-  }
-
-  .spx-trade-confirmation-meta {
-    @apply font-mono text-cyan/90 pt-2;
-    font-size: clamp(0.8rem, 1.7vw, 0.95rem);
-    text-shadow: 0 0 10px rgba(0, 212, 255, 0.2);
-  }
-
-  .spx-trade-block-warn {
-    @apply text-rose-300 font-medium;
-    font-size: clamp(0.85rem, 1.8vw, 1rem);
-    text-shadow: 0 0 12px rgba(251, 113, 133, 0.3);
-  }
-
-  .spx-trade-idea-line {
-    @apply text-cyan/95 font-medium leading-snug;
-    font-size: clamp(0.9rem, 1.9vw, 1.05rem);
-    text-shadow: 0 0 14px rgba(0, 212, 255, 0.25);
-  }
-
-  .spx-trade-option-ticket {
-    @apply font-mono mt-2 tabular-nums text-bull font-semibold;
-    font-size: clamp(1rem, 2.2vw, 1.25rem);
-    text-shadow: 0 0 16px rgba(167, 243, 208, 0.4);
-  }
-
-  .spx-trade-grade-line {
-    @apply font-mono mt-3 uppercase text-sky-200;
-    font-size: clamp(0.75rem, 1.6vw, 0.9rem);
-    letter-spacing: 0.15em;
-  }
-
-  .spx-trade-alert-levels {
-    @apply rounded-sm border border-white/5 bg-black/25 p-3;
-  }
-
-  .spx-trade-alert-levels .spx-level-value {
-    @apply font-mono font-bold tabular-nums;
-    font-size: clamp(1.1rem, 2.5vw, 1.35rem);
-  }
-
-  .spx-trade-alert-history-action {
-    @apply font-mono uppercase shrink-0 font-bold tracking-wide;
-    font-size: 0.65rem;
-    min-width: 4.5rem;
-  }
-
-  .spx-history-buy-call {
-    @apply text-bull;
-  }
-
-  .spx-history-buy-put {
-    @apply text-bear;
-  }
-
-  .spx-history-sell {
-    @apply text-rose-300;
-  }
-
-  .spx-history-hold,
-  .spx-history-wait {
     @apply text-ember;
   }
 
@@ -10656,234 +10135,6 @@ body::before {
     @apply font-mono text-[10px] font-semibold px-2 py-[3px] rounded-md border border-white/15 text-sky-300 transition-colors;
   }
   .grid-chip-btn:hover { @apply text-white border-white/30; }
-  .grid-chip-btn-active {
-    border-color: color-mix(in srgb, var(--grid-accent) 70%, transparent);
-    color: var(--grid-accent);
-    background: color-mix(in srgb, var(--grid-accent) 12%, transparent);
-  }
-
-  /* Pulse hero */
-  .pulse-grid {
-    @apply grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3 p-4;
-  }
-  .pulse-chip {
-    @apply flex flex-col gap-0.5 rounded-lg border border-white/10 bg-black/40 px-3 py-2.5;
-  }
-  .pulse-chip-label {
-    @apply font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/70;
-  }
-  .pulse-chip-value { @apply font-syne text-xl font-bold leading-none; }
-  .pulse-chip-sub { @apply font-mono text-[10px] text-sky-300/80; }
-
-  /* Notable Flow */
-  .grid-flow-list { @apply flex flex-col divide-y divide-white/[0.06] overflow-y-auto max-h-[440px]; }
-  .grid-flow-row {
-    @apply grid items-center gap-2 px-4 py-2 text-[12px] transition-colors;
-    grid-template-columns: 3rem 2.6rem 1fr auto auto;
-  }
-  .grid-flow-row:hover { @apply bg-white/[0.03]; }
-  .grid-flow-row-whale { background: color-mix(in srgb, #ffcc4d 7%, transparent); }
-  .grid-flow-ticker { @apply font-syne font-bold text-white; }
-  .grid-flow-type { @apply font-mono text-[10px] font-bold uppercase; }
-  .grid-flow-strike { @apply font-mono text-[11px] text-sky-300/80 text-right; }
-  .grid-flow-prem { @apply font-mono text-[12px] font-bold text-right; }
-  .grid-flow-whale { @apply text-[12px]; }
-
-  /* Analyst Actions */
-  .grid-analyst-list { @apply flex flex-col divide-y divide-white/[0.06] overflow-y-auto max-h-[440px]; }
-  .grid-analyst-row { @apply flex flex-col gap-1 px-4 py-2.5; }
-  .grid-analyst-top { @apply flex items-center gap-2; }
-  .grid-analyst-tag { @apply font-mono text-[9px] font-bold uppercase tracking-[0.16em]; }
-  .grid-analyst-tickers { @apply font-mono text-[10px] text-sky-300/80 truncate; }
-  .grid-analyst-ago { @apply ml-auto font-mono text-[10px] text-cyan-400 shrink-0; }
-  .grid-analyst-title { @apply text-[12.5px] leading-snug text-white line-clamp-2; }
-  .grid-analyst-title-link:hover { @apply opacity-80; }
-
-  /* Shared grid tag pill */
-  .grid-tag {
-    @apply inline-block font-mono text-[9px] font-bold uppercase tracking-[0.15em] px-1.5 py-[2px] rounded shrink-0;
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-    background: color-mix(in srgb, currentColor 10%, transparent);
-  }
-
-  /* Dark Pool Prints */
-  .grid-dp-list { @apply flex flex-col divide-y divide-white/[0.06] overflow-y-auto max-h-[440px]; }
-  .grid-dp-row { @apply flex items-center gap-2.5 px-4 py-2 text-[12px]; }
-  .grid-dp-ticker { @apply font-syne font-bold text-white w-14 shrink-0; }
-  .grid-dp-premium { @apply font-mono text-[11px] ml-auto text-sky-300; }
-
-  /* Earnings Radar */
-  .grid-earn-list { @apply flex flex-col content-start overflow-y-auto max-h-[440px]; }
-  .grid-earn-row { @apply flex items-center gap-2 px-4 py-2 text-[11px] border-b border-white/[0.06]; }
-  .grid-earn-ticker { @apply font-syne font-bold text-white shrink-0; }
-  .grid-earn-name { @apply font-mono text-[10px] text-sky-300/45 truncate min-w-0; }
-  .grid-earn-spacer { @apply ml-auto shrink-0; }
-  .grid-earn-date { @apply font-mono text-[10px] text-sky-300/60 shrink-0 tabular-nums; }
-  .grid-earn-em {
-    @apply font-mono text-[10px] font-bold shrink-0 tabular-nums rounded px-1.5 py-0.5;
-    color: #ffcc4d;
-    background: rgba(255, 204, 77, 0.12);
-    border: 1px solid rgba(255, 204, 77, 0.25);
-  }
-  .grid-earn-est { @apply font-mono text-[10px] shrink-0; }
-  .grid-earn-act { @apply font-mono text-[10px] text-white shrink-0; }
-
-  /* Congress Trades */
-  .grid-congress-list { @apply flex flex-col divide-y divide-white/[0.06] overflow-y-auto max-h-[440px]; }
-  .grid-congress-row { @apply flex items-center gap-2 px-4 py-2 text-[11px]; }
-  .grid-congress-dot { @apply text-[8px] shrink-0; }
-  .grid-congress-name { @apply text-sky-300/90 truncate flex-1 min-w-0; }
-  .grid-congress-ticker { @apply font-syne font-bold text-white shrink-0 w-14; }
-  .grid-congress-amt { @apply font-mono text-[10px] text-sky-300/60 shrink-0; }
-  .grid-congress-date { @apply font-mono text-[9px] text-sky-300/40 shrink-0 tabular-nums; }
-
-  /* Economic Calendar (macro tiles grid) */
-  .grid-econ-tiles {
-    @apply grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2 p-4;
-  }
-  .grid-econ-tile {
-    @apply flex flex-col gap-0.5 rounded-xl border border-white/10 bg-black/40 px-3 py-2.5;
-  }
-  .grid-econ-label { @apply font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/70; }
-  .grid-econ-value { @apply font-syne text-lg font-bold leading-none text-white; }
-  .grid-econ-sub { @apply flex items-center gap-1.5 mt-0.5; }
-  .grid-econ-chg { @apply font-mono font-bold; }
-
-  /* Sector Heat */
-  .grid-sector-tiles {
-    @apply grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2 p-4;
-  }
-  .grid-sector-cell {
-    @apply flex flex-col gap-0.5 rounded-xl px-3 py-2.5 cursor-default transition-opacity;
-  }
-  .grid-sector-cell:hover { @apply opacity-80; }
-  .grid-sector-name { @apply font-mono text-[9px] uppercase tracking-[0.12em] leading-tight; }
-  .grid-sector-pct { @apply font-syne text-base font-bold leading-none; }
-
-  /* Top Movers */
-  .grid-movers-cols { @apply grid grid-cols-2 gap-x-4 px-4 py-2 overflow-y-auto max-h-[440px]; }
-  .grid-movers-header { @apply font-mono text-[9px] font-bold uppercase tracking-[0.2em] py-1.5; }
-  .grid-mover-list { @apply flex flex-col divide-y divide-white/[0.06]; }
-  .grid-mover-row { @apply flex items-center gap-1.5 py-1.5 text-[12px]; }
-  .grid-mover-ticker { @apply font-syne font-bold text-white; }
-  .grid-mover-price { @apply font-mono text-[10px]; }
-
-  /* News mount — let the reused rail fill the tile */
-  .grid-news-mount { @apply p-3 h-full; }
-  .grid-news-mount .news-rail {
-    @apply min-h-[400px] xl:min-h-[440px] xl:max-h-[440px] border-0 bg-transparent;
-  }
-
-  /* ── SPX live commentary rail ── */
-  .spx-commentary-rail {
-    @apply flex flex-col rounded-2xl border border-purple/30 bg-black/55 backdrop-blur-md overflow-hidden flex-1 min-h-[280px];
-    box-shadow: inset 0 0 50px rgba(191, 95, 255, 0.06);
-  }
-
-  .spx-commentary-rail-full {
-    @apply xl:min-h-0 xl:h-full xl:max-h-[calc(100vh-240px)];
-  }
-
-  .spx-commentary-rail-desk {
-    @apply min-h-0 flex flex-col h-full;
-  }
-
-  .spx-commentary-header {
-    @apply flex items-center gap-3 shrink-0 px-5 py-4 border-b border-purple/20 bg-purple/5;
-  }
-
-  .spx-commentary-viewport {
-    @apply flex-1 overflow-y-auto;
-  }
-
-  .spx-commentary-feed {
-    @apply flex flex-col gap-4 p-4;
-  }
-
-  .spx-commentary-card {
-    @apply border border-purple/25 bg-black/50 p-4 backdrop-blur-sm;
-  }
-
-  .spx-commentary-card-featured {
-    @apply border-purple/45 bg-purple/[0.08] p-5;
-    box-shadow: inset 0 0 60px rgba(191, 95, 255, 0.08);
-  }
-
-  .spx-commentary-bias {
-    @apply text-[10px] font-syne uppercase tracking-[0.15em] px-2.5 py-1 border font-bold;
-  }
-
-  .spx-bias-bull { @apply border-bull/40 text-bull bg-bull/10; }
-  .spx-bias-bear { @apply border-bear/40 text-bear bg-bear/10; }
-  .spx-bias-neutral { @apply border-sky-300/30 text-sky-300; }
-
-  .spx-commentary-changed {
-    @apply space-y-0.5 list-none;
-  }
-
-  .spx-commentary-changed li {
-    @apply font-mono text-[11px] text-bull/90 pl-3 border-l-2 border-bull/30 leading-relaxed;
-  }
-
-  .spx-commentary-body {
-    @apply text-sm leading-relaxed space-y-2;
-    color: #ffd23f;
-    font-feature-settings: "kern" 1, "liga" 1;
-  }
-
-  .spx-ai-line {
-    @apply leading-relaxed;
-  }
-
-  /* Section labels (LEVELS, SETUP, NEXT 3M, FLIPS IT, …) — bold, big, white, underlined */
-  .spx-ai-label {
-    @apply font-mono text-[15px] font-bold uppercase tracking-wide mr-2;
-    color: #ffffff;
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-
-  /* {{...}} key values — single-color read: same gold as the body, emphasized by weight only */
-  .spx-ai-key {
-    color: inherit;
-    font-weight: 700;
-  }
-
-  /* READ headline — bias-aware color so direction reads at a glance; key values inside
-     inherit the color and pop via weight (.spx-ai-key). Gold base is a fallback only. */
-  .spx-ai-headline {
-    color: #ffd23f;
-  }
-
-  .spx-ai-headline-bull {
-    color: #00e676;
-    text-shadow: 0 0 9px rgba(0, 230, 118, 0.40), 0 0 2px rgba(0, 230, 118, 0.70);
-  }
-
-  .spx-ai-headline-bear {
-    color: #ff4d6d;
-    text-shadow: 0 0 9px rgba(255, 77, 109, 0.40), 0 0 2px rgba(255, 77, 109, 0.70);
-  }
-
-  .spx-ai-headline-neutral {
-    color: #38bdf8;
-    text-shadow: 0 0 9px rgba(56, 189, 248, 0.40), 0 0 2px rgba(56, 189, 248, 0.70);
-  }
-
-  .spx-commentary-watch {
-    @apply space-y-1 list-none;
-  }
-
-  .spx-commentary-watch li {
-    @apply font-mono text-xs text-purple-light/95 leading-relaxed;
-  }
-
-  .spx-commentary-rail-standby {
-    box-shadow:
-      inset 0 0 80px rgba(191, 95, 255, 0.08),
-      0 0 40px rgba(88, 28, 135, 0.15);
-  }
-
   .spx-commentary-offline-hero {
     @apply relative flex flex-col items-center justify-center text-center min-h-[320px] h-full px-6 py-10 overflow-hidden;
   }
@@ -10892,7 +10143,8 @@ body::before {
     content: "";
     @apply pointer-events-none absolute inset-0 opacity-80;
     background: radial-gradient(ellipse 70% 55% at 50% 20%, rgba(191, 95, 255, 0.22), transparent 70%);
-    animation: spx-commentary-offline-glow 5s ease-in-out infinite alternate;
+    animation: none;
+    opacity: 0.7;
   }
 
   @keyframes spx-commentary-offline-glow {
@@ -10921,7 +10173,7 @@ body::before {
     background-clip: text;
     color: transparent;
     filter: drop-shadow(0 0 28px rgba(213, 128, 255, 0.45));
-    animation: spx-commentary-offline-shimmer 4s ease-in-out infinite alternate;
+    animation: none;
   }
 
   @keyframes spx-commentary-offline-shimmer {
@@ -11082,21 +10334,9 @@ body::before {
      highest-negative (put wall) gamma cell — a per-day extreme, distinct from
      the King (*) marker. Brightness+scale pulse rather than opacity so the
      cell never fully dims and stays readable while flashing. */
-  @keyframes spx-gex-matrix-pop {
-    0%, 100% { transform: scale(1); filter: brightness(1); }
-    50% { transform: scale(1.16); filter: brightness(1.55); }
-  }
-  .spx-gex-matrix-extreme-pop {
-    display: inline-block;
-    animation: spx-gex-matrix-pop 1.8s ease-in-out infinite;
-  }
-
-  /* Thermal's GEX heatmap (GexHeatmap.tsx) per-day call-wall/put-wall pop —
-     shares SPX Slayer's keyframe so both products' extreme-cell glow reads
-     as one visual language. */
   .gex-heatmap-extreme-pop {
     display: inline-block;
-    animation: spx-gex-matrix-pop 1.8s ease-in-out infinite;
+    filter: brightness(1.2);
   }
 
   .spx-gex-matrix-table td.sticky,
@@ -11269,38 +10509,22 @@ body::before {
     background: rgba(255, 255, 255, 0.08);
   }
 
-  @keyframes spx-matrix-spot-pulse {
-    0%,
-    100% {
-      opacity: 1;
-      box-shadow:
-        inset 0 0 0 1px rgba(34, 211, 238, 0.95),
-        0 0 14px rgba(34, 211, 238, 0.45);
-    }
-    50% {
-      opacity: 0.88;
-      box-shadow:
-        inset 0 0 0 1px rgba(34, 211, 238, 0.35),
-        0 0 4px rgba(34, 211, 238, 0.12);
-    }
-  }
-
   .spx-odte-matrix-spot-blink.spx-odte-matrix-spot-row td,
   .spx-odte-matrix-spot-blink.spx-odte-matrix-spot-row .spx-odte-matrix-spot-cell {
     background: rgba(34, 211, 238, 0.14);
-    animation: spx-matrix-spot-pulse 1.25s ease-in-out infinite;
+    box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.55);
   }
 
   .spx-odte-matrix-spot-blink.spx-odte-matrix-row--spot-on-strike td {
-    animation: spx-matrix-spot-pulse 1.25s ease-in-out infinite;
     background: rgba(34, 211, 238, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.45);
   }
 
   .spx-odte-matrix-spot-blink.spx-odte-matrix-live-spot {
-    animation: spx-matrix-spot-text-pulse 1.25s ease-in-out infinite;
+    color: #67e8f9;
   }
 
-  @keyframes spx-matrix-spot-text-pulse {
+  @keyframes spx-matrix-spot-text-pulse-dead {
     0%,
     100% {
       text-shadow: 0 0 12px rgba(34, 211, 238, 0.55);
@@ -11446,9 +10670,6 @@ body::before {
     min-height: 9.5rem;
   }
 
-  .spx-desk-panel-refreshing .spx-gex-ladder-list {
-    @apply opacity-90;
-  }
 
   .spx-desk-list {
     @apply space-y-1 list-none;
@@ -15842,19 +15063,10 @@ html.nav-locked body { overflow: hidden; }
 .bo-spx .bo-curve{stroke-dasharray:62}
 @keyframes boSweep{0%{transform:translateX(-34px);opacity:0}6%{opacity:1}20%{transform:translateX(34px);opacity:1}26%{opacity:0}100%{transform:translateX(34px);opacity:0}}
 @keyframes boDrawCurve{from{stroke-dashoffset:62}to{stroke-dashoffset:0}}
-.bo-spx .bo-node-core{animation:boBreath 1.5s var(--ease-breath) infinite}
-.bo-spx .bo-node-halo{animation:boBreath 1.5s var(--ease-breath) infinite .18s}
-.bo-spx .bo-glowgrp{animation:boShimmer 3s var(--ease-breath) infinite}
-.bo-spx .bo-scan{animation:boSweep var(--bo-pulse) var(--ease-sweep) infinite}
-.bo-spx.is-live .bo-ring{animation:boRingExpand .5s var(--ease-draw) both}
-.bo-spx.is-live .bo-r2{animation-delay:.08s}
-.bo-spx.is-live .bo-r3{animation-delay:.16s}
-.bo-spx.is-live .bo-curve{animation:boDrawCurve .9s var(--ease-draw) .3s both}
-.bo-spx.is-live .bo-node{animation:boPop .4s var(--ease-snap) 1s both}
-.bo-spx:hover .bo-node-core,.bo-spx:hover .bo-node-halo{animation-duration:.9s}
-.bo-spx:hover .bo-scan{animation-duration:3.6s}
-.bo-spx:hover .bo-glowgrp{animation-duration:1.8s}
-.bo-spx:hover .bo-ring{transform:scale(.95);transition:transform .22s ease-out}
+.bo-spx .bo-node-core,.bo-spx .bo-node-halo,.bo-spx .bo-glowgrp,.bo-spx .bo-scan,.bo-spx .bo-ring,.bo-spx .bo-curve,.bo-spx .bo-node{animation:none}
+.bo-spx .bo-curve,.bo-spx.is-live .bo-curve{stroke-dashoffset:0}
+.bo-spx.is-live .bo-ring,.bo-spx .bo-ring{transform:scale(1);opacity:1}
+.bo-spx .bo-scan{opacity:.35}
 
 /* ============ HELIX ============ */
 .bo-helix .bo-ring{transform-origin:32px 32px;animation:boSpinCW 6s linear infinite}

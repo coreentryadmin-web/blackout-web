@@ -182,12 +182,7 @@ export function SpxDeskTerminal({
         {lines.map((line, i) => (
           <TerminalLine key={`${activeTab}-${line.text}-${i}`} line={line} />
         ))}
-        <div className="spx-play-terminal-cursor-line">
-          <span className="spx-play-terminal-glyph spx-play-terminal-glyph--prompt" aria-hidden>
-            ❯
-          </span>
-          <span className="spx-play-terminal-cursor" aria-hidden />
-        </div>
+        <div className="spx-play-terminal-cursor-line" aria-hidden />
       </div>
     </div>
   );

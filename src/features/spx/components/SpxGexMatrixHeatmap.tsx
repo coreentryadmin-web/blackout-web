@@ -344,7 +344,7 @@ export function SpxGexMatrixHeatmap({
         <span className="flex items-center gap-2 font-mono text-[10px] tabular-nums text-sky-300">
           {isValidating && !isLoading && <span className="text-cyan-400">↻</span>}
           <span
-            className={clsx("badge-live-dot", feedLive ? "animate-pulse" : "opacity-40")}
+            className={clsx("badge-live-dot", feedLive ? "opacity-100" : "opacity-40")}
             aria-hidden
           />
           {gexStale && (
@@ -383,7 +383,7 @@ export function SpxGexMatrixHeatmap({
                 disabled={disabled}
                 onClick={() => setLens(key)}
                 className={clsx(
-                  "spx-odte-lens-toggle flex-1 rounded border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] transition-colors",
+                  "spx-odte-lens-toggle flex-1 rounded border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em]",
                   active && key === "gex" && "spx-odte-lens-toggle--gex-active",
                   active && key === "vex" && "spx-odte-lens-toggle--vex-active",
                   !active && "spx-odte-lens-toggle--idle",
@@ -573,7 +573,8 @@ export function SpxGexMatrixHeatmap({
                         >
                           <span
                             className={clsx(
-                              (isColumnCallWall || isColumnPutWall) && "spx-gex-matrix-extreme-pop"
+                              isColumnCallWall && "text-emerald-200",
+                              isColumnPutWall && "text-rose-200"
                             )}
                           >
                             {fmtHeatmapMoneySigned(val, { showZero: true })}

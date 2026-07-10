@@ -10,30 +10,22 @@ import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
 import { EmptyState, Button } from "@/components/ui";
 const SpxSniperHeader = dynamic(
   () => import("./SpxSniperHeader").then((m) => ({ default: m.SpxSniperHeader })),
-  {
-    loading: () => <div className="spx-desk-skeleton min-h-[72px]" aria-busy="true" />,
-  }
+  { loading: () => null }
 );
 
 const SpxGexMatrixHeatmap = dynamic(
   () => import("./SpxGexMatrixHeatmap").then((m) => ({ default: m.SpxGexMatrixHeatmap })),
-  {
-    loading: () => <div className="spx-desk-skeleton min-h-[320px]" aria-busy="true" />,
-  }
+  { loading: () => null }
 );
 
 const SpxTradeAlerts = dynamic(
   () => import("./SpxTradeAlerts").then((m) => ({ default: m.SpxTradeAlerts })),
-  {
-    loading: () => <div className="spx-desk-skeleton min-h-[200px]" aria-busy="true" />,
-  }
+  { loading: () => null }
 );
 
 const SpxCommentaryRail = dynamic(
   () => import("./SpxCommentaryRail").then((m) => ({ default: m.SpxCommentaryRail })),
-  {
-    loading: () => <div className="spx-desk-skeleton min-h-[240px]" aria-busy="true" />,
-  }
+  { loading: () => null }
 );
 
 class SpxPanelErrorBoundary extends React.Component<
@@ -100,7 +92,7 @@ export function SpxDashboard() {
   if (deskLoading && !desk) {
     return (
       <div className="spx-sniper-desk spx-sniper-desk-loading" aria-busy="true">
-        <div className="spx-desk-skeleton" />
+        <div className="spx-desk-placeholder" />
       </div>
     );
   }
@@ -177,7 +169,7 @@ export function SpxDashboard() {
         </SpxPanelErrorBoundary>
 
         <SpxPanelErrorBoundary>
-          <Suspense fallback={<div className="spx-desk-skeleton min-h-[240px]" aria-busy="true" />}>
+          <Suspense fallback={null}>
             <div
               key={nativeShell ? iosPanel : "intel"}
               className={clsx(
