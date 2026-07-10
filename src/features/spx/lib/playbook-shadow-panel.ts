@@ -9,6 +9,7 @@ export type PlaybookShadowVerdictSummary = {
   trigger_fired: boolean;
   precondition_match: boolean;
   session_window_open: boolean;
+  regime_eligible: boolean;
   direction: "long" | "short" | "neutral";
   detail: string;
   primary: boolean;
@@ -41,6 +42,7 @@ export function buildPlaybookShadowPanel(
       trigger_fired: v.trigger_fired,
       precondition_match: v.precondition_match,
       session_window_open: v.session_window_open,
+      regime_eligible: v.regime_eligible,
       direction: v.direction === "long" ? "long" : v.direction === "short" ? "short" : "neutral",
       detail: v.detail,
       primary: v.playbook_id === primary_playbook_id,

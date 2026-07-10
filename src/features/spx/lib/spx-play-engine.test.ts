@@ -35,7 +35,7 @@ process.env.DISCORD_PLAY_WEBHOOK_URL = "";
 import { before, beforeEach, test, mock } from "node:test";
 import assert from "node:assert/strict";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
-import type { PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
+import { EMPTY_PLAYBOOK_BAR_METRICS, type PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
 
 let mockForceExit = false;
 
@@ -150,6 +150,7 @@ const EMPTY_TECHNICALS: PlayTechnicals = {
     m5_confirms_long: false,
     m5_confirms_short: false,
   },
+  ...EMPTY_PLAYBOOK_BAR_METRICS,
 };
 
 function desk(price: number, overrides: Partial<SpxDeskPayload> = {}): SpxDeskPayload {

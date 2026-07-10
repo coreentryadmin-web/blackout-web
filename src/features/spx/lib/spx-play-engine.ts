@@ -16,6 +16,8 @@ import {
   type SpxSignalFactor,
 } from "@/features/spx/lib/spx-signals";
 import { evaluatePlayGates, GATE_BLOCK, type PlayGateResult } from "@/features/spx/lib/spx-play-gates";
+import { matchPlaybooksShadow } from "@/features/spx/lib/playbook-shadow-matcher";
+import type { PlaybookId } from "@/features/spx/lib/playbook-registry";
 import { forceExitCutoffLabel, isPastForceExitCutoff, isBeforeCashOpen, isPremarketPlanningWindow } from "@/features/spx/lib/spx-play-session-guards";
 import type { LottoPlayPayload } from "@/features/spx/lib/spx-play-lotto";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
@@ -580,13 +582,18 @@ async function evaluateFlatPlay(
       ? evaluateMtfHybrid(direction, keyLevel, technicals, confluence.grade, confluence.score)
       : null;
 
+  const playbookMatch = matchPlaybooksShadow(desk, technicals);
+  const playbookPrimaryId: PlaybookId | null = playbookMatch.primary_playbook_id;
+
   const gatesBuy = evaluatePlayGates(desk, confluence, session, confirmations, {
     min_score_boost: adaptive.global_min_score_boost,
     entry_intent: "buy",
+    playbook_primary_id: playbookPrimaryId,
   });
   const gatesWatch = evaluatePlayGates(desk, confluence, session, confirmations, {
     min_score_boost: adaptive.global_min_score_boost,
     entry_intent: "watch",
+    playbook_primary_id: playbookPrimaryId,
   });
   const gatesView = intelGates(desk, confluence, gatesWatch);
   const abs = Math.abs(confluence.score);
@@ -934,6 +941,7 @@ async function evaluateFlatPlay(
       option_type: optionTicket.option_type,
       option_label: optionTicket.contract_label,
       option_premium: optionTicket.premium_range,
+      playbook_id: playbookPrimaryId,
     },
     {
       session_date: sessionDate,
@@ -952,6 +960,7 @@ async function evaluateFlatPlay(
       claude,
       option_ticket: optionTicket,
       opened_at: openedAt,
+      playbook_id: playbookPrimaryId,
     }
   );
 

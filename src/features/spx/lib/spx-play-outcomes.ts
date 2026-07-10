@@ -26,6 +26,8 @@ export type PlayEntrySnapshot = {
   claude: ClaudePlayVerdict | null;
   option_ticket: OptionTicket | null;
   opened_at: string;
+  /** Primary playbook id at entry for per-pattern win-rate telemetry. */
+  playbook_id?: string | null;
 };
 
 export type PlayExitAction = "STOP" | "TARGET" | "THESIS" | "SESSION" | "THETA" | "TRAIL" | "UNKNOWN";
