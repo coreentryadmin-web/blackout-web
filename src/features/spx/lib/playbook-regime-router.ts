@@ -46,10 +46,32 @@ const PB03_OK: ReadonlySet<PlaybookRegimeBucket> = new Set([
   "unknown",
 ]);
 
+/** Pin fade works in any non-opening context — the REAL pin check (gamma_regime
+ *  mean_revert + between walls) lives in the matcher preconditions. */
+const PB04_OK: ReadonlySet<PlaybookRegimeBucket> = new Set([
+  "trend_bull",
+  "trend_bear",
+  "recovery",
+  "weak",
+  "neutral",
+  "unknown",
+]);
+/** Power hour momentum is window-gated (15:00–15:55 ET) in the matcher. */
+const PB08_OK: ReadonlySet<PlaybookRegimeBucket> = new Set([
+  "trend_bull",
+  "trend_bear",
+  "recovery",
+  "weak",
+  "neutral",
+  "unknown",
+]);
+
 const ELIGIBILITY: Record<PlaybookId, ReadonlySet<PlaybookRegimeBucket>> = {
   "PB-01": PB01_OK,
   "PB-02": PB02_OK,
   "PB-03": PB03_OK,
+  "PB-04": PB04_OK,
+  "PB-08": PB08_OK,
 };
 
 export function classifyPlaybookRegime(

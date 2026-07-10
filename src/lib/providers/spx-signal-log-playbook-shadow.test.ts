@@ -126,15 +126,21 @@ test("logPlaybookShadowMatch: db not configured — zero inserts", async () => {
   assert.equal(state.inserted.length, 0);
 });
 
-test("logPlaybookShadowMatch: persists exactly one row per registry playbook (3 total), each carrying the real score/grade/price", async () => {
+test("logPlaybookShadowMatch: persists exactly one row per registry playbook (5 total), each carrying the real score/grade/price", async () => {
   const { logPlaybookShadowMatch } = await mod();
   resetState();
 
   await logPlaybookShadowMatch(deskStub({ price: 7420 }), technicalsStub(), { score: 55, grade: "A" });
 
-  assert.equal(state.inserted.length, 3);
+  assert.equal(state.inserted.length, 5);
   const factorNames = state.inserted.map((r) => r.factor_name).sort();
-  assert.deepEqual(factorNames, ["playbook_pb_01_match", "playbook_pb_02_match", "playbook_pb_03_match"]);
+  assert.deepEqual(factorNames, [
+    "playbook_pb_01_match",
+    "playbook_pb_02_match",
+    "playbook_pb_03_match",
+    "playbook_pb_04_match",
+    "playbook_pb_08_match",
+  ]);
   for (const row of state.inserted) {
     assert.equal(row.available, true);
     assert.equal(row.implied_weight, 0);

@@ -25,7 +25,7 @@ test("classifyPlaybookRegime: maps EMA regime labels", () => {
 
 test("eligiblePlaybookIds: PB-02 excluded in bullish mid-session", () => {
   const ids = eligiblePlaybookIds(desk("bullish"), MID_MORNING);
-  assert.deepEqual(ids, ["PB-01", "PB-03"]);
+  assert.deepEqual(ids, ["PB-01", "PB-03", "PB-04", "PB-08"]);
 });
 
 test("eligiblePlaybookIds: PB-02 included in weak mid-session", () => {
@@ -34,7 +34,7 @@ test("eligiblePlaybookIds: PB-02 included in weak mid-session", () => {
   assert.ok(!ids.includes("PB-01"));
 });
 
-test("eligiblePlaybookIds: opening drive includes PB-01 + PB-03 (not PB-02)", () => {
+test("eligiblePlaybookIds: opening drive excludes PB-02/PB-04/PB-08", () => {
   const ids = eligiblePlaybookIds(desk("bullish"), OPENING);
   assert.deepEqual(ids, ["PB-01", "PB-03"]);
 });

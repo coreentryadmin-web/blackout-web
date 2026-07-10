@@ -35,7 +35,7 @@
  */
 
 /** Stable per-playbook identity, used as `factor_name`/`playbook_id` in telemetry. */
-export type PlaybookId = "PB-01" | "PB-02" | "PB-03";
+export type PlaybookId = "PB-01" | "PB-02" | "PB-03" | "PB-04" | "PB-08";
 
 /**
  * The design doc's free-text "Direction:" field for PB-01/02/03 is deliberately richer
@@ -109,5 +109,28 @@ export const PLAYBOOK_REGISTRY: readonly PlaybookDefinition[] = [
     trigger: "Break of OR high/low with flow confirmation; spot clears flip level.",
     invalidation: "Re-entry inside OR; halt feed degraded (optional strict mode).",
     sessionWindow: { startEtHour: 9, startEtMin: 35, endEtHour: 10, endEtMin: 30 },
+  },
+  // PB-04/PB-08 added on prod-outcome evidence (docs/spx/PLAYBOOK-EVIDENCE-BASE.md):
+  // ~all logged entries happened in gamma mean_revert (pin) regime and lost fighting it,
+  // and the 14:00+ ET afternoon was the only net-positive window in the track record.
+  {
+    id: "PB-04",
+    name: "Gamma Pin Fade",
+    direction: "either",
+    regimeTags: "High pin / low vol midday",
+    preconditions: "Spot between major walls; charm decay elevated; low ATR.",
+    trigger: "Touch of wall + rejection; confluence on mean-reversion factors.",
+    invalidation: "Sustained breakout through wall with flow.",
+    sessionWindow: { startEtHour: 11, startEtMin: 30, endEtHour: 15, endEtMin: 0 },
+  },
+  {
+    id: "PB-08",
+    name: "Power Hour Momentum",
+    direction: "either",
+    regimeTags: "Power hour",
+    preconditions: "15:00–16:00; net flow dominant one side 10m+.",
+    trigger: "Break of 30m micro-range with accelerating prints.",
+    invalidation: "Flow flip + VWAP cross against.",
+    sessionWindow: { startEtHour: 15, startEtMin: 0, endEtHour: 15, endEtMin: 55 },
   },
 ];
