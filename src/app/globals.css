@@ -8677,6 +8677,10 @@ body::before {
     padding-bottom: 0.25rem !important;
   }
 
+  .ios-desk-shell.spx-desk-shell-fill {
+    @apply px-1.5 sm:px-2 lg:px-2.5 xl:px-3;
+  }
+
   .spx-sniper-desk.spx-sniper-desk-fill {
     @apply space-y-0;
   }
@@ -8713,8 +8717,70 @@ body::before {
   }
 
   .spx-sniper-desk-fill .spx-sniper-triple {
-    @apply flex-1 min-h-0 gap-2;
+    @apply flex-1 min-h-0 gap-1;
     min-height: 0;
+  }
+
+  /* Compact desk — tighter stats, panel chrome, matrix cells, column gutters */
+  .spx-sniper-desk-fill .spx-desk-top-stats--compact {
+    gap: 0.25rem;
+  }
+
+  .spx-sniper-desk-fill .spx-hero-stat-pill {
+    @apply px-2 py-1;
+  }
+
+  .spx-sniper-desk-fill .spx-hero-metric-block {
+    @apply px-1.5 py-1;
+  }
+
+  .spx-sniper-desk-fill .spx-hero-stat-label {
+    @apply mb-0.5 text-[9px];
+  }
+
+  .spx-sniper-desk-fill .spx-hero-stat-value {
+    @apply text-xs;
+  }
+
+  .spx-sniper-desk-fill .desk-panel > div.border-b.border-white\/10 {
+    @apply gap-2 px-3 py-2 md:px-3;
+  }
+
+  .spx-sniper-desk-fill .desk-panel > div.border-b .t-label {
+    @apply text-[13px];
+  }
+
+  .spx-sniper-desk-fill .spx-gex-matrix-table {
+    @apply text-[11px] leading-tight;
+  }
+
+  .spx-sniper-desk-fill .spx-gex-matrix-table th,
+  .spx-sniper-desk-fill .spx-gex-matrix-table td {
+    @apply py-0;
+  }
+
+  .spx-sniper-desk-fill .spx-trade-alerts-panel {
+    @apply p-3 md:p-3;
+  }
+
+  .spx-sniper-desk-fill .spx-trade-alerts-stack {
+    @apply gap-2;
+  }
+
+  .spx-sniper-desk-fill .spx-commentary-header {
+    @apply px-3 py-2;
+  }
+
+  .spx-sniper-desk-fill .spx-commentary-feed {
+    @apply gap-2 p-2;
+  }
+
+  .spx-sniper-desk-fill .spx-commentary-card {
+    @apply p-2.5;
+  }
+
+  .spx-sniper-desk-fill .spx-commentary-card-featured {
+    @apply p-3;
   }
 
   .spx-sniper-desk-fill .spx-sniper-left-rail,
