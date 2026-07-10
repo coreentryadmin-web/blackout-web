@@ -31,6 +31,21 @@ export function mergePlayWithCache(
   if (!fresh) return cached ?? null;
   if (!cached) return fresh;
 
+  // Pin open position across transient SCANNING read polls (member mutate:false path).
+  if (
+    cached.open_play &&
+    fresh.action === "SCANNING" &&
+    !fresh.open_play &&
+    cached.action !== "SELL" &&
+    (cached.action === "HOLD" || cached.action === "TRIM" || cached.action === "BUY")
+  ) {
+    return {
+      ...cached,
+      as_of: fresh.as_of,
+      factors: fresh.factors.length > 0 ? fresh.factors : cached.factors,
+    };
+  }
+
   const freshHasLayer = Boolean(fresh.confirmations?.checks?.length);
   const cachedHasLayer = Boolean(cached.confirmations?.checks?.length);
 

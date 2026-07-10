@@ -9,10 +9,9 @@ import { useSpxLotto } from "@/features/spx/hooks/useSpxLotto";
 import { useSpxPowerHour } from "@/features/spx/hooks/useSpxPowerHour";
 import { useStablePlayConfirmations, type PlayConfirmationLayer } from "@/features/spx/hooks/useStablePlayConfirmations";
 import { SpxLiveSpotPrice } from "./SpxLiveSpotPrice";
-import { SpxPlayKanbanBoard } from "./SpxPlayKanbanBoard";
+import { SpxTradeAlertsPanels } from "./SpxTradeAlertsPanels";
 import { SpxPlaybookValidationPanel } from "./SpxPlaybookValidationPanel";
-import { buildPlayKanbanChips } from "@/features/spx/lib/spx-play-kanban-chips";
-import type { PlayKanbanFilter } from "@/features/spx/lib/spx-play-kanban-chips";
+import { buildTradeAlertPlays } from "@/features/spx/lib/spx-trade-alert-plays";
 import { fmtPrice } from "@/lib/api";
 import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
@@ -163,12 +162,11 @@ function playId(p: SpxPlayPayload): string {
 
 function hasOpenPlay(play: SpxPlayPayload): boolean {
   return Boolean(
-    play.open_play ||
-      play.phase === "OPEN" ||
-      play.action === "BUY" ||
-      play.action === "HOLD" ||
-      play.action === "TRIM" ||
-      play.action === "SELL"
+    play.open_play &&
+      (play.phase === "OPEN" ||
+        play.action === "BUY" ||
+        play.action === "HOLD" ||
+        play.action === "TRIM")
   );
 }
 
@@ -827,12 +825,11 @@ function renderKanbanDetail(input: {
 
 export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }: Props) {
   const { play, playRefreshing } = useSpxPlay(sessionActive);
-  const { lotto, lottoLoading, lottoRefreshing } = useSpxLotto();
-  const { powerHour, powerHourLoading, powerHourRefreshing } = useSpxPowerHour();
+  const { lotto } = useSpxLotto();
+  const { powerHour } = useSpxPowerHour();
   const confirmationLayer = useStablePlayConfirmations(play);
   const [history, setHistory] = useState<HistoryRow[]>([]);
-  const [playFilter, setPlayFilter] = useState<PlayKanbanFilter>("all");
-  const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
+  const [pinnedStructure, setPinnedStructure] = useState<SpxPlayPayload | null>(null);
   const lastIdRef = useRef<string>("");
   const prevActionRef = useRef<string | null>(null);
 
@@ -857,82 +854,60 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
     setHistory((prev) => [{ ...play, id: `${id}|${Date.now()}` }, ...prev].slice(0, 24));
   }, [play]);
 
+  useEffect(() => {
+    if (!play) return;
+    if (play.action === "SELL") {
+      setPinnedStructure(null);
+      return;
+    }
+    if (play.open_play && (play.action === "HOLD" || play.action === "TRIM" || play.action === "BUY")) {
+      setPinnedStructure(play);
+    }
+  }, [play]);
+
   const sessionLive = Boolean(live && sessionActive);
 
   const panelRefreshing = Boolean(
     (refreshing || playRefreshing) && play && play.action !== "SCANNING"
   );
 
-  const showConfirmationPanel =
-    Boolean(confirmationLayer) &&
-    (play?.action === "WATCHING" ||
-      play?.action === "BUY" ||
-      (!play && playRefreshing));
+  const structureOpen = Boolean(
+    sessionLive && (pinnedStructure ? hasOpenPlay(pinnedStructure) : play && hasOpenPlay(play))
+  );
+  const structureWatch = Boolean(
+    sessionLive && play && hasWatchPlay(play) && !structureOpen && !pinnedStructure?.open_play
+  );
 
-  const structureOpen = Boolean(sessionLive && play && hasOpenPlay(play));
-  const structureWatch = Boolean(sessionLive && play && hasWatchPlay(play) && !structureOpen);
-
-  const kanbanColumns = useMemo(
+  const tradePanels = useMemo(
     () =>
-      buildPlayKanbanChips({
+      buildTradeAlertPlays({
         play,
         lotto,
         powerHour,
         history,
-        filter: playFilter,
         structureOpen,
         structureWatch,
         sessionLive,
+        pinnedStructurePlay: pinnedStructure,
       }),
-    [play, lotto, powerHour, history, playFilter, structureOpen, structureWatch, sessionLive]
+    [play, lotto, powerHour, history, structureOpen, structureWatch, sessionLive, pinnedStructure]
   );
 
-  const allChipIds = useMemo(
-    () => [
-      ...kanbanColumns.open.map((c) => c.id),
-      ...kanbanColumns.watch.map((c) => c.id),
-      ...kanbanColumns.closed.map((c) => c.id),
-    ],
-    [kanbanColumns]
-  );
+  const historyThesis = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const row of history) m.set(row.id, row.thesis);
+    if (play?.action === "SELL") m.set("structure-sell", play.thesis);
+    if (lotto?.phase === "SELL" || lotto?.phase === "INVALID") m.set("lotto-closed", lotto.thesis);
+    if (powerHour?.phase === "SELL") m.set("power-closed", powerHour.thesis ?? "");
+    return m;
+  }, [history, play, lotto, powerHour]);
 
-  useEffect(() => {
-    if (selectedChipId && allChipIds.includes(selectedChipId)) return;
-    const next =
-      kanbanColumns.open[0]?.id ??
-      kanbanColumns.watch[0]?.id ??
-      kanbanColumns.closed[0]?.id ??
-      null;
-    setSelectedChipId(next);
-  }, [selectedChipId, allChipIds, kanbanColumns.open, kanbanColumns.watch, kanbanColumns.closed]);
-
-  const selectedDetail = renderKanbanDetail({
-    selectedId: selectedChipId,
-    play,
-    lotto,
-    powerHour,
-    history,
-    confirmationLayer,
-    playRefreshing,
-    showConfirmationPanel,
-    lottoLoading,
-    lottoRefreshing,
-    powerHourLoading,
-    powerHourRefreshing,
-  });
-
-  const showConfluence =
-    sessionLive &&
-    play != null &&
-    selectedChipId?.startsWith("structure") &&
-    playFilter !== "lotto" &&
-    playFilter !== "power" &&
-    play.factors.length > 0;
+  const displayPlay = pinnedStructure ?? play;
 
   return (
     <section
       className={clsx(
-        "spx-trade-alerts-panel spx-sniper-panel spx-trade-alerts-kanban spx-trade-alerts-v2",
+        "spx-trade-alerts-panel spx-sniper-panel spx-trade-alerts-v3",
         panelRefreshing && "spx-desk-panel-refreshing"
       )}
     >
@@ -966,18 +941,15 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
             </div>
           )}
 
-        <SpxPlayKanbanBoard
-          columns={kanbanColumns}
-          filter={playFilter}
-          onFilterChange={setPlayFilter}
-          selectedId={selectedChipId}
-          onSelect={setSelectedChipId}
+        <SpxTradeAlertsPanels
+          panels={tradePanels}
+          play={displayPlay}
+          lotto={lotto}
+          powerHour={powerHour}
+          confirmationLayer={confirmationLayer}
+          historyThesis={historyThesis}
         />
-        <div className="spx-play-kanban-detail-wrap">{selectedDetail}</div>
         <SpxPlaybookValidationPanel panel={play?.playbook_shadow} sessionLive={sessionLive} />
-        {sessionLive && showConfluence && (
-          <ConfluenceFactorsPanel factors={play!.factors} updating={panelRefreshing} />
-        )}
         <p className="spx-trade-educational-note">
           Educational. Not advice. Every trade is your own decision.
         </p>

@@ -126,6 +126,16 @@ export function buildPlayKanbanChips(input: {
         prefix: "STR",
         tone: "watch",
       });
+    } else if (play.action === "SELL") {
+      const label = structureStrikeChip(play) ?? play.action;
+      closed.push({
+        id: "structure-sell",
+        column: "closed",
+        kind: "structure",
+        label,
+        prefix: "STR",
+        tone: "closed",
+      });
     }
   }
 

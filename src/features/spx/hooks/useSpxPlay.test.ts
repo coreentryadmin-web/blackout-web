@@ -60,6 +60,30 @@ test("mergePlayWithCache still bridges confirmation gaps for same-direction WATC
   assert.equal(merged?.confirmations?.passed_count, 3);
 });
 
+test("mergePlayWithCache pins open_play across transient SCANNING polls", () => {
+  const cached = basePlay({
+    action: "HOLD",
+    direction: "long",
+    phase: "OPEN",
+    open_play: {
+      id: 1,
+      direction: "long",
+      entry_price: 7450,
+      stop: 7440,
+      target: 7475,
+      grade: "A",
+      opened_at: "2026-07-05T14:00:00.000Z",
+      mfe_pts: 4,
+      trim_done: false,
+    },
+  } as Partial<SpxPlayPayload>);
+  const fresh = basePlay({ action: "SCANNING", direction: "long", open_play: null });
+
+  const merged = mergePlayWithCache(fresh, cached);
+  assert.equal(merged?.action, "HOLD");
+  assert.equal(merged?.open_play?.id, 1);
+});
+
 test("mergePlayWithCache drops cached confirmations when direction flips", () => {
   const cached = basePlay({
     action: "WATCHING",
