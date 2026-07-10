@@ -61,6 +61,8 @@ export type PlaybookDefinition = {
   id: PlaybookId;
   name: string;
   direction: PlaybookDirection;
+  /** Verbatim "Regime tags:" text from the design doc's Section 6 entry. */
+  regimeTags: string;
   /** Verbatim "Preconditions:" text from the design doc's Section 6 entry. */
   preconditions: string;
   /** Verbatim "Trigger:" text from the design doc's Section 6 entry. */
@@ -81,6 +83,7 @@ export const PLAYBOOK_REGISTRY: readonly PlaybookDefinition[] = [
     id: "PB-01",
     name: "VWAP Reclaim",
     direction: "either",
+    regimeTags: "Trend / recovery after flush",
     preconditions:
       "Price below VWAP ≥15m, then reclaims with volume; EMA9 curling toward VWAP.",
     trigger: "Close above VWAP + hold 2 consecutive 3m bars; flow skew aligns.",
@@ -91,6 +94,7 @@ export const PLAYBOOK_REGISTRY: readonly PlaybookDefinition[] = [
     id: "PB-02",
     name: "VWAP Reject",
     direction: "short",
+    regimeTags: "Weak trend / distribution",
     preconditions: "Rally into VWAP from below; repeated rejections at VWAP band.",
     trigger: "3m close rejection wick + negative net flow spike.",
     invalidation: "Acceptance above VWAP (2 closes).",
@@ -100,6 +104,7 @@ export const PLAYBOOK_REGISTRY: readonly PlaybookDefinition[] = [
     id: "PB-03",
     name: "Opening Range Breakout",
     direction: "either",
+    regimeTags: "Opening drive",
     preconditions: "First 15–30m range defined; GEX not pinning inside range.",
     trigger: "Break of OR high/low with flow confirmation; spot clears flip level.",
     invalidation: "Re-entry inside OR; halt feed degraded (optional strict mode).",

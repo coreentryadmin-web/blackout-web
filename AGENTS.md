@@ -20,6 +20,10 @@ The ~20 `railway.*.toml` files at the repo root are production cron *trigger* se
 - Blocking CI checks are `npx tsc --noEmit` and `npm run lint:brand`. `npm run lint` (ESLint/jsx-a11y)
   and `npm run lint:css` (stylelint) are **non-blocking** in CI (they emit warnings, `continue-on-error`).
 - Tests: `npm test` (`node --test` via `tsx`, files `src/**/*.test.ts`). No DB/env needed for tests.
+- **Playbook RTH MVP (PB-01/02/03):** shadow matcher + ARM UI always on. Bar metrics (true OR,
+  VWAP streaks, EMA9) live on `PlayTechnicals`. Regime filter: `playbook-regime-router.ts`.
+  Phase 3 BUY gate is **off by default** — set `PLAYBOOK_LIVE_GATE=1` on staging ECS to require a
+  primary playbook trigger for BUY. Open plays / outcomes store optional `playbook_id`.
 
 ### iOS app (Capacitor shell)
 - **Location:** `apps/blackout-ios/` — loads `https://blackouttrades.com` in WKWebView; `appendUserAgent: BlackOutiOSApp`.

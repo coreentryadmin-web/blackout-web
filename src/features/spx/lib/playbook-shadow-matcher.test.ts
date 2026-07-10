@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
+import { EMPTY_PLAYBOOK_BAR_METRICS } from "@/features/spx/lib/spx-play-technicals";
 import { matchPlaybooksShadow } from "./playbook-shadow-matcher";
 
 // Full-shape desk fixture — mirrors spx-desk-merge.test.ts's own deskStub() (same
@@ -101,6 +102,7 @@ function technicalsStub(overrides: Partial<PlayTechnicals> = {}): PlayTechnicals
       m5_confirms_long: false,
       m5_confirms_short: false,
     },
+    ...EMPTY_PLAYBOOK_BAR_METRICS,
     ...overrides,
   };
 }
@@ -158,7 +160,13 @@ test("PB-01: unavailable technicals -> no trigger, no precondition, honest 'unav
 // ---------------------------------------------------------------------------
 
 test("PB-02: triggers short when preconditions + trigger both true, inside session window", () => {
-  const desk = deskStub({ above_vwap: false, vwap: 7380, price: 7377, flow_0dte_net: -400_000 });
+  const desk = deskStub({
+    above_vwap: false,
+    vwap: 7380,
+    price: 7377,
+    flow_0dte_net: -400_000,
+    regime: "weak",
+  });
   const technicals = technicalsStub({
     m3_close: 7377,
     breakout: { pdh_break: false, pdl_break: false, hod_break: false, lod_break: false, vwap_reclaim: false, vwap_lost: true },
@@ -166,13 +174,20 @@ test("PB-02: triggers short when preconditions + trigger both true, inside sessi
   const result = matchPlaybooksShadow(desk, technicals, MID_MORNING_UTC);
   const pb02 = result.verdicts.find((v) => v.playbook_id === "PB-02")!;
   assert.equal(pb02.session_window_open, true);
+  assert.equal(pb02.regime_eligible, true);
   assert.equal(pb02.precondition_match, true); // within playStructureProximityPts() of vwap, below
   assert.equal(pb02.trigger_fired, true);
   assert.equal(pb02.direction, "short");
 });
 
 test("PB-02: does not trigger when session window is closed", () => {
-  const desk = deskStub({ above_vwap: false, vwap: 7380, price: 7377, flow_0dte_net: -400_000 });
+  const desk = deskStub({
+    above_vwap: false,
+    vwap: 7380,
+    price: 7377,
+    flow_0dte_net: -400_000,
+    regime: "weak",
+  });
   const technicals = technicalsStub({
     breakout: { pdh_break: false, pdl_break: false, hod_break: false, lod_break: false, vwap_reclaim: false, vwap_lost: true },
   });
@@ -185,12 +200,35 @@ test("PB-02: does not trigger when session window is closed", () => {
 });
 
 test("PB-02: bearish flow required — vwap_lost alone (neutral/missing flow) does not trigger", () => {
-  const desk = deskStub({ above_vwap: false, vwap: 7380, price: 7377, flow_0dte_net: null });
+  const desk = deskStub({
+    above_vwap: false,
+    vwap: 7380,
+    price: 7377,
+    flow_0dte_net: null,
+    regime: "weak",
+  });
   const technicals = technicalsStub({
     breakout: { pdh_break: false, pdl_break: false, hod_break: false, lod_break: false, vwap_reclaim: false, vwap_lost: true },
   });
   const result = matchPlaybooksShadow(desk, technicals, MID_MORNING_UTC);
   const pb02 = result.verdicts.find((v) => v.playbook_id === "PB-02")!;
+  assert.equal(pb02.trigger_fired, false);
+});
+
+test("PB-02: bullish regime makes PB-02 ineligible even with a perfect reject setup", () => {
+  const desk = deskStub({
+    above_vwap: false,
+    vwap: 7380,
+    price: 7377,
+    flow_0dte_net: -400_000,
+    regime: "bullish",
+  });
+  const technicals = technicalsStub({
+    breakout: { pdh_break: false, pdl_break: false, hod_break: false, lod_break: false, vwap_reclaim: false, vwap_lost: true },
+  });
+  const result = matchPlaybooksShadow(desk, technicals, MID_MORNING_UTC);
+  const pb02 = result.verdicts.find((v) => v.playbook_id === "PB-02")!;
+  assert.equal(pb02.regime_eligible, false);
   assert.equal(pb02.trigger_fired, false);
 });
 
@@ -208,6 +246,10 @@ test("PB-03: triggers long when preconditions + trigger both true, inside sessio
     flow_0dte_net: 250_000,
   });
   const technicals = technicalsStub({
+    or_defined: true,
+    or_high: 7400,
+    or_low: 7370,
+    or_minutes: 20,
     breakout: { pdh_break: false, pdl_break: false, hod_break: true, lod_break: false, vwap_reclaim: false, vwap_lost: false },
   });
   const result = matchPlaybooksShadow(desk, technicals, OPENING_DRIVE_UTC);
@@ -296,9 +338,18 @@ test("primary_playbook_id: the single triggered playbook when exactly one fires"
 });
 
 test("primary_playbook_id: deterministic registry-order tie-break when 2+ playbooks trigger simultaneously", () => {
+  // Overlap regime where both PB-01 and PB-02 are eligible: neutral.
   // vwap_lost + bearish flow simultaneously satisfies PB-01's short mirror (flow !== "bullish")
   // AND PB-02's reject trigger (flow === "bearish") on the same tick, inside both windows.
-  const desk = deskStub({ above_vwap: false, vwap: 7380, price: 7377, hod: 7400, lod: 7370, flow_0dte_net: -400_000 });
+  const desk = deskStub({
+    above_vwap: false,
+    vwap: 7380,
+    price: 7377,
+    hod: 7400,
+    lod: 7370,
+    flow_0dte_net: -400_000,
+    regime: "neutral",
+  });
   const technicals = technicalsStub({
     breakout: { pdh_break: false, pdl_break: false, hod_break: false, lod_break: false, vwap_reclaim: false, vwap_lost: true },
   });

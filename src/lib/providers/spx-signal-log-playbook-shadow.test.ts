@@ -102,6 +102,16 @@ function technicalsStub(overrides: Partial<PlayTechnicals> = {}): PlayTechnicals
       m5_confirms_long: false,
       m5_confirms_short: false,
     },
+    or_high: null,
+    or_low: null,
+    or_defined: false,
+    or_minutes: 20,
+    minutes_below_vwap: 0,
+    minutes_above_vwap: 0,
+    m3_consecutive_closes_above_vwap: 0,
+    m3_consecutive_closes_below_vwap: 0,
+    m1_ema9: null,
+    ema9_curling_toward_vwap: null,
     ...overrides,
   } as PlayTechnicals;
 }

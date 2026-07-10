@@ -348,6 +348,15 @@ export function playTechnicalsCacheSec(): number {
   return num(process.env.SPX_PLAY_TECHNICALS_CACHE_SEC, 30);
 }
 
+/**
+ * Phase 3 playbook live gate — when true, BUY requires a primary playbook trigger
+ * (`matchPlaybooksShadow().primary_playbook_id`). Default false (shadow-only).
+ * Set `PLAYBOOK_LIVE_GATE=1` on staging for Monday RTH validation.
+ */
+export function playbookLiveGateEnabled(): boolean {
+  return flag(process.env.PLAYBOOK_LIVE_GATE, false);
+}
+
 /** Shared cache for GET /api/market/spx/play — collapses member polls into one eval per window. */
 export function playMemberReadCacheSec(): number {
   return num(process.env.SPX_PLAY_MEMBER_READ_CACHE_SEC, 3);

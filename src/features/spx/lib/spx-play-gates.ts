@@ -20,7 +20,9 @@ import {
   playStarterMinScore,
   playWatchMinScore,
   playWeightedConflictBlockMin,
+  playbookLiveGateEnabled,
 } from "@/features/spx/lib/spx-play-config";
+import type { PlaybookId } from "@/features/spx/lib/playbook-registry";
 import { isPastNoEntryCutoff, isBeforeCashOpen, cashOpenLabel, noEntryCutoffLabel } from "@/features/spx/lib/spx-play-session-guards";
 import { etClock, etMinutes, formatEtTime } from "@/features/spx/lib/spx-play-session-time";
 import { parseMacroEventTime, macroBlockWindow } from "@/features/spx/lib/spx-macro-window";
@@ -123,7 +125,12 @@ export function evaluatePlayGates(
     last_stop_at: number | null;
   },
   confirmations?: PlayConfirmationResult | null,
-  opts?: { min_score_boost?: number; entry_intent?: "buy" | "watch" }
+  opts?: {
+    min_score_boost?: number;
+    entry_intent?: "buy" | "watch";
+    /** When PLAYBOOK_LIVE_GATE=1, BUY requires this primary playbook id. */
+    playbook_primary_id?: PlaybookId | null;
+  }
 ): PlayGateResult {
   const blocks: string[] = [];
   const warnings: string[] = [];
@@ -137,6 +144,15 @@ export function evaluatePlayGates(
 
   if (!desk.market_open) {
     blocks.push("Session closed — no new entries");
+  }
+
+  // Phase 3 — opt-in playbook trigger gate (default off). WATCH still allowed without
+  // a primary so the ARM UI can show setups forming before the trigger fires.
+  if (buyIntent && playbookLiveGateEnabled()) {
+    const pbId = opts?.playbook_primary_id ?? null;
+    if (!pbId) {
+      blocks.push("No playbook trigger — PLAYBOOK_LIVE_GATE requires primary PB-01/02/03");
+    }
   }
 
   // Stale halt feed → fail-OPEN (allow play to proceed) with a warning so the operator
