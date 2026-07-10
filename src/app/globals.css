@@ -8637,28 +8637,7 @@ body::before {
     @apply inline-flex items-center gap-3 shrink-0 max-w-[min(100vw,520px)] font-mono text-[11px] tracking-wide;
   }
 
-  /* ── SPX Sniper dashboard ── */
-  .spx-sniper-page {
-    @apply relative min-h-screen overflow-x-hidden;
-    background: #000;
-  }
-
-  .spx-sniper-bg {
-    /* Holds a next/image fill child (object-cover); wrapper carries the ambient
-       opacity/filter/scale treatment. */
-    @apply fixed inset-0 z-0;
-    opacity: 0.32;
-    filter: saturate(1.15) contrast(1.05);
-    transform: scale(1.03);
-  }
-
-  .spx-sniper-overlay {
-    @apply fixed inset-0 z-0 pointer-events-none;
-    background:
-      radial-gradient(ellipse 80% 60% at 50% 0%, rgba(0, 230, 118, 0.12), transparent 55%),
-      radial-gradient(ellipse 50% 40% at 100% 80%, rgba(191, 95, 255, 0.1), transparent 50%),
-      linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.88) 45%, rgba(0, 0, 0, 0.94) 100%);
-  }
+  
 
   .spx-sniper-desk {
     @apply space-y-3 w-full max-w-none;
@@ -8826,11 +8805,6 @@ body::before {
     border: 1px solid rgba(0, 230, 118, 0.12);
   }
 
-  .spx-sniper-header {
-    @apply relative overflow-hidden border border-bull/35 bg-black/55 backdrop-blur-md px-5 py-5 md:px-8;
-    box-shadow: 0 0 60px rgba(0, 230, 118, 0.1), inset 0 0 40px rgba(0, 230, 118, 0.04);
-  }
-
   .spx-sniper-command {
     @apply relative overflow-hidden rounded-2xl border border-bull/35 bg-void-deep/90 backdrop-blur-md px-5 py-5 md:px-7 md:py-6;
     box-shadow:
@@ -8846,37 +8820,9 @@ body::before {
     background-size: 36px 36px;
   }
 
-  .spx-sniper-command-scan {
-    @apply absolute inset-x-0 h-px top-0 z-[1];
-    background: linear-gradient(90deg, transparent, rgba(0, 230, 118, 0.85), transparent);
-    animation: none;
-    display: none;
-  }
-
-  .spx-sniper-command-glow {
-    @apply absolute pointer-events-none rounded-full blur-3xl z-0;
-    width: 38%;
-    height: 55%;
-    top: 18%;
-    left: 32%;
-    background: radial-gradient(circle, rgba(0, 230, 118, 0.22) 0%, transparent 70%);
-    animation: none;
-    display: none;
-  }
-
   @keyframes spx-command-pulse {
     0%, 100% { opacity: 0.15; transform: scale(1); }
     50% { opacity: 0.28; transform: scale(1.04); }
-  }
-
-  .spx-hero-tagline {
-    @apply text-sky-200;
-    text-shadow: 0 0 20px rgba(0, 0, 0, 0.9);
-  }
-
-  .spx-hero-desk-tick {
-    @apply text-sky-300;
-    text-shadow: 0 0 12px rgba(0, 0, 0, 0.85);
   }
 
   .spx-hero-stat-pill {
@@ -8941,10 +8887,6 @@ body::before {
     @apply text-sm font-mono font-semibold tabular-nums truncate leading-none;
   }
 
-  .spx-hero-metric-blocks {
-    @apply flex flex-wrap items-stretch gap-2 min-w-0;
-  }
-
   .spx-hero-metric-block {
     @apply rounded-lg border bg-void-deep/95 px-2 py-2 w-auto shrink-0;
     flex: none;
@@ -8994,62 +8936,8 @@ body::before {
     @apply text-xs;
   }
 
-  .spx-command-live {
-    @apply inline-flex items-center gap-1.5 rounded-full font-mono text-[10px] tracking-[0.22em] uppercase text-sky-300 px-3 py-1.5 border border-sky-300/25 bg-void-deep/90;
-  }
-
-  .spx-command-live-on {
-    @apply text-bull border-bull/45 bg-bull/[0.06];
-  }
-
   .spx-sniper-command .spx-sniper-title {
     @apply font-anton text-4xl md:text-6xl leading-none tracking-wide uppercase;
-  }
-
-  .spx-stat-pill-dark {
-    @apply border bg-black/45 backdrop-blur-sm px-2.5 py-1.5;
-  }
-
-  .spx-stat-pill-glow {
-    box-shadow: inset 0 0 20px rgba(191, 95, 255, 0.1);
-  }
-
-  .spx-sniper-header-inner {
-    @apply relative z-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4;
-  }
-
-  .spx-sniper-title {
-    @apply font-anton text-5xl md:text-7xl leading-none tracking-wide uppercase;
-  }
-
-  .spx-sniper-header-scan {
-    @apply absolute inset-x-0 h-px top-0;
-    background: linear-gradient(90deg, transparent, rgba(0, 230, 118, 0.7), transparent);
-    animation: desk-scan 5s linear infinite;
-  }
-
-  .spx-sniper-hero {
-    @apply relative overflow-hidden border border-bull/25 bg-black/50 backdrop-blur-md px-5 py-6 md:px-8;
-  }
-
-  .spx-sniper-hero-grid {
-    @apply absolute inset-0 opacity-25 pointer-events-none;
-    background:
-      linear-gradient(rgba(0, 230, 118, 0.07) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0, 230, 118, 0.07) 1px, transparent 1px);
-    background-size: 36px 36px;
-  }
-
-  .spx-stat-pill {
-    @apply rounded-lg border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-sm;
-  }
-
-  .spx-sniper-main {
-    @apply grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4 items-stretch;
-  }
-
-  .spx-sniper-split {
-    @apply grid grid-cols-1 xl:grid-cols-[1fr_420px] 2xl:grid-cols-[1fr_460px] gap-4 items-stretch min-h-[720px];
   }
 
   .spx-sniper-triple {
@@ -9073,159 +8961,6 @@ body::before {
   .spx-sniper-triple .spx-commentary-rail-desk {
     @apply order-3 lg:order-3 lg:col-span-2 xl:order-3 xl:col-span-1 xl:pl-0;
   }
-
-  .spx-sniper-right-rail {
-    @apply flex flex-col gap-3 min-h-0 xl:max-h-[calc(100vh-220px)];
-  }
-
-  .spx-structure-grid {
-    @apply grid grid-cols-1 gap-2 shrink-0;
-  }
-
-  .spx-structure-left-rail {
-    @apply flex flex-col gap-3 h-full flex-1 min-h-0;
-  }
-
-  .spx-structure-left-rail .spx-structure-card-large {
-    @apply flex-1 flex flex-col min-h-0;
-  }
-
-  .spx-structure-left-rail .spx-structure-card-body {
-    @apply flex-1 flex flex-col justify-evenly px-4 py-3 space-y-0 overflow-visible max-h-none;
-  }
-
-  .spx-structure-left-rail .spx-structure-label {
-    @apply text-[11px] tracking-[0.18em] text-sky-300;
-  }
-
-  .spx-structure-left-rail .spx-structure-value {
-    @apply text-base font-semibold;
-  }
-
-  .spx-structure-left-rail .spx-structure-row {
-    @apply py-2 px-2 rounded;
-  }
-
-  .spx-structure-left-rail .spx-structure-level {
-    @apply py-2 px-2 text-[11px];
-  }
-
-  .spx-structure-left-rail .spx-structure-dist {
-    @apply text-[10px];
-  }
-
-  .spx-structure-left-rail .spx-structure-card-header {
-    @apply px-4 py-3;
-  }
-
-  .spx-structure-left-rail .spx-structure-divider {
-    @apply my-2;
-  }
-
-  .spx-structure-card {
-    @apply flex flex-col border bg-black/60 backdrop-blur-md overflow-hidden;
-  }
-
-  .spx-structure-card-header {
-    @apply flex items-center gap-2 px-3 py-2 border-b border-white/5;
-  }
-
-  .spx-structure-card-body {
-    /* No fixed max-h: the 0DTE level ladder (the most actionable rows) must be
-       visible without scrolling. Was max-h-[140px]/xl:max-h-[120px] which
-       buried the ladder below an overflow-y-auto scroll. */
-    @apply px-2 py-2 space-y-0.5;
-  }
-
-  .spx-structure-divider {
-    @apply my-1.5 border-t border-white/5;
-  }
-
-  .spx-structure-row {
-    @apply flex items-center justify-between gap-2 py-1 px-1.5 rounded-sm transition-colors;
-  }
-
-  .spx-structure-row-hot {
-    @apply bg-bull/5;
-  }
-
-  .spx-structure-label {
-    @apply text-[10px] font-mono uppercase tracking-wider text-cyan-400;
-  }
-
-  .spx-structure-value {
-    /* Decision data must be the largest type in the card: value (13px) > label
-       (10px) so the hierarchy is glanceable in <2s. Was text-[10px], the same
-       size as its label. */
-    @apply font-mono text-[13px] font-semibold tabular-nums;
-  }
-
-  .spx-structure-level {
-    @apply flex items-center gap-1.5 py-1 px-1.5 text-[10px] border-l-2 border-transparent;
-  }
-
-  .spx-structure-level-support { @apply border-l-bull/50; }
-  .spx-structure-level-resistance { @apply border-l-rose-500/50; }
-  .spx-structure-level-neutral { @apply border-l-purple/40; }
-
-  .spx-structure-dist {
-    @apply font-mono text-[10px] tabular-nums ml-auto;
-  }
-
-  .spx-stat-pill-hot {
-    box-shadow: inset 0 0 20px rgba(191, 95, 255, 0.12);
-  }
-
-  .spx-technicals-panel {
-    @apply flex flex-col border border-bull/25 bg-black/55 backdrop-blur-md min-h-[400px] xl:min-h-[640px] xl:max-h-[640px] overflow-hidden;
-  }
-
-  .spx-technicals-header {
-    @apply flex items-center gap-2 shrink-0 px-4 py-3 border-b border-white/10;
-  }
-
-  .spx-technicals-body {
-    @apply flex-1 overflow-y-auto px-3 py-3 space-y-4;
-  }
-
-  .spx-technicals-section-title {
-    @apply font-mono text-[10px] tracking-[0.35em] uppercase text-cyan-400 mb-2;
-  }
-
-  .spx-tech-row {
-    @apply flex items-center justify-between gap-2 py-1.5 px-2 border-l-2 border-transparent;
-  }
-
-  .spx-tech-row-support { @apply border-l-bull/40; }
-  .spx-tech-row-resistance { @apply border-l-bear/40; }
-
-  .spx-tech-label {
-    @apply text-[10px] font-mono uppercase tracking-wider text-sky-300;
-  }
-
-  .spx-tech-value {
-    @apply font-mono text-[11px] tabular-nums;
-  }
-
-  .spx-level-row {
-    @apply flex items-center gap-2 py-1.5 px-2 text-[10px] border-b border-white/[0.06];
-  }
-
-  .spx-level-label {
-    @apply font-mono uppercase tracking-wider text-cyan-400 w-20 shrink-0;
-  }
-
-  .spx-level-value {
-    @apply font-mono text-white tabular-nums flex-1;
-  }
-
-  .spx-level-dist {
-    @apply font-mono tabular-nums text-[10px];
-  }
-
-  .spx-level-support { @apply border-l-2 border-bull/30; }
-  .spx-level-resistance { @apply border-l-2 border-bear/30; }
-  .spx-level-neutral { @apply border-l-2 border-sky-300/25; }
 
   .spx-sniper-chart-col {
     @apply flex flex-col min-h-0 xl:min-h-0;
@@ -9258,7 +8993,6 @@ body::before {
   .spx-trade-alerts-stack {
     @apply flex flex-col gap-3 min-h-0;
   }
-
 
   .spx-trade-educational-note {
     @apply font-mono text-[10px] text-sky-300/50;
@@ -9332,127 +9066,143 @@ body::before {
     @apply py-4 text-center font-mono text-[10px] text-sky-300/45;
   }
 
-  .spx-open-play-card {
-    @apply rounded-lg border border-white/10 bg-black/50 p-2.5;
+  
+  .spx-trade-alerts-shell {
+    @apply flex flex-1 flex-col gap-2 min-h-0 overflow-hidden;
   }
 
-  .spx-open-play-card--structure {
-    box-shadow: inset 2px 0 0 rgba(0, 230, 118, 0.45);
+  .spx-trade-alerts-panels--select {
+    flex: 0 0 auto;
+    max-height: 38%;
+    min-height: 7.5rem;
   }
 
-  .spx-open-play-card--lotto {
-    box-shadow: inset 2px 0 0 rgba(251, 191, 36, 0.45);
+  .spx-play-select-row {
+    @apply flex w-full flex-wrap items-baseline gap-x-1.5 gap-y-0.5 rounded-md border border-transparent bg-black/30 px-2 py-1.5 text-left transition-colors hover:border-white/15 hover:bg-black/50;
   }
 
-  .spx-open-play-card--power {
-    box-shadow: inset 2px 0 0 rgba(251, 146, 60, 0.45);
+  .spx-desk-session-strip {
+    @apply flex items-start gap-2 shrink-0 rounded-lg border border-amber-400/25 bg-amber-400/[0.06] px-2.5 py-2;
   }
 
-  .spx-open-play-card-head {
-    @apply mb-2 flex items-baseline gap-2;
+  .spx-desk-session-strip-dot {
+    @apply mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-400/70;
   }
 
-  .spx-open-play-card-kind {
-    @apply font-mono text-[8px] uppercase tracking-[0.16em] text-sky-300/55;
+  .spx-desk-session-strip-body {
+    @apply font-mono text-[10px] leading-snug text-sky-300/85;
   }
 
-  .spx-open-play-card-label {
-    @apply font-mono text-base font-bold tabular-nums text-white leading-none;
+  .spx-desk-closed-time {
+    @apply text-amber-200/90 font-semibold;
   }
 
-  .spx-open-play-stage-rail {
-    @apply flex items-center gap-0 mb-2;
+  /* ── SPX live commentary rail ── */
+  .spx-commentary-rail {
+    @apply flex flex-col rounded-2xl border border-purple/30 bg-black/55 backdrop-blur-md overflow-hidden flex-1 min-h-[280px];
+    box-shadow: inset 0 0 50px rgba(191, 95, 255, 0.06);
   }
 
-  .spx-open-play-stage-segment-wrap {
-    @apply flex flex-1 items-center min-w-0;
+  .spx-commentary-rail-full {
+    @apply xl:min-h-0 xl:h-full xl:max-h-[calc(100vh-240px)];
   }
 
-  .spx-open-play-stage-connector {
-    @apply h-px flex-1 min-w-[0.35rem] max-w-[1rem] bg-white/15 mx-0.5;
+  .spx-commentary-rail-desk {
+    @apply min-h-0 flex flex-col h-full;
   }
 
-  .spx-open-play-stage-btn {
-    @apply flex flex-1 items-center justify-center gap-1 rounded-md border border-white/10 bg-black/40 px-2 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-300/70 transition-colors hover:border-white/20;
+  .spx-commentary-header {
+    @apply flex items-center gap-3 shrink-0 px-5 py-4 border-b border-purple/20 bg-purple/5;
   }
 
-  .spx-open-play-stage-btn--active {
-    @apply border-cyan-400/40 bg-cyan-400/10 text-cyan-200;
+  .spx-commentary-viewport {
+    @apply flex-1 overflow-y-auto;
   }
 
-  .spx-open-play-stage-btn--done {
-    @apply border-emerald-400/25 text-emerald-300/80;
+  .spx-commentary-feed {
+    @apply flex flex-col gap-4 p-4;
   }
 
-  .spx-open-play-stage-btn--expanded {
-    @apply ring-1 ring-cyan-400/30;
+  .spx-commentary-card {
+    @apply border border-purple/25 bg-black/50 p-4 backdrop-blur-sm;
   }
 
-  .spx-open-play-stage-btn--sell.spx-open-play-stage-btn--active {
-    @apply border-rose-400/35 bg-rose-400/10 text-rose-200;
+  .spx-commentary-card-featured {
+    @apply border-purple/45 bg-purple/[0.08] p-5;
+    box-shadow: inset 0 0 60px rgba(191, 95, 255, 0.08);
   }
 
-  .spx-open-play-stage-x {
-    @apply text-[11px] leading-none text-rose-300;
+  .spx-commentary-bias {
+    @apply text-[10px] font-syne uppercase tracking-[0.15em] px-2.5 py-1 border font-bold;
   }
 
-  .spx-open-play-stage-detail {
-    @apply rounded-md border border-white/[0.06] bg-black/35 p-2;
+  .spx-bias-bull { @apply border-bull/40 text-bull bg-bull/10; }
+  .spx-bias-bear { @apply border-bear/40 text-bear bg-bear/10; }
+  .spx-bias-neutral { @apply border-sky-300/30 text-sky-300; }
+
+  .spx-commentary-changed {
+    @apply space-y-0.5 list-none;
   }
 
-  .spx-stage-detail-headline {
-    @apply font-mono text-[11px] font-semibold text-white leading-snug;
+  .spx-commentary-changed li {
+    @apply font-mono text-[11px] text-bull/90 pl-3 border-l-2 border-bull/30 leading-relaxed;
   }
 
-  .spx-stage-detail-thesis {
-    @apply mt-1 font-mono text-[10px] leading-snug text-sky-300/85;
+  .spx-commentary-body {
+    @apply text-sm leading-relaxed space-y-2;
+    color: #ffd23f;
+    font-feature-settings: "kern" 1, "liga" 1;
   }
 
-  .spx-stage-detail-meta {
-    @apply mt-1 font-mono text-[9px] text-secondary;
+  .spx-ai-line {
+    @apply leading-relaxed;
   }
 
-  .spx-stage-detail-empty {
-    @apply font-mono text-[10px] text-sky-300/45;
+  .spx-ai-label {
+    @apply font-mono text-[15px] font-bold uppercase tracking-wide mr-2;
+    color: #ffffff;
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
 
-  .spx-stage-detail-factors {
-    @apply mt-2 space-y-1 font-mono text-[9px];
+  .spx-ai-key {
+    color: inherit;
+    font-weight: 700;
   }
 
-  .spx-stage-detail-factors li {
-    @apply flex flex-col gap-0.5 border-b border-white/[0.04] pb-1 last:border-0;
+  .spx-ai-headline {
+    color: #ffd23f;
   }
 
-  .spx-stage-detail-checks {
-    @apply mt-2 space-y-0.5 font-mono text-[9px];
+  .spx-ai-headline-bull {
+    color: #00e676;
+    text-shadow: 0 0 9px rgba(0, 230, 118, 0.40), 0 0 2px rgba(0, 230, 118, 0.70);
   }
 
-  .spx-stage-detail-levels {
-    @apply mt-2 grid grid-cols-2 gap-2 font-mono text-[10px];
+  .spx-ai-headline-bear {
+    color: #ff4d6d;
+    text-shadow: 0 0 9px rgba(255, 77, 109, 0.40), 0 0 2px rgba(255, 77, 109, 0.70);
   }
 
-  .spx-stage-detail-levels span {
-    @apply block text-[8px] uppercase tracking-wider text-sky-300/60;
+  .spx-ai-headline-neutral {
+    color: #38bdf8;
+    text-shadow: 0 0 9px rgba(56, 189, 248, 0.40), 0 0 2px rgba(56, 189, 248, 0.70);
   }
 
-  .spx-trade-panel-compact-card {
-    @apply rounded-md border border-white/10 bg-black/40 px-2 py-1.5;
+  .spx-commentary-watch {
+    @apply space-y-1 list-none;
   }
 
-  .spx-trade-panel-compact-head {
-    @apply flex items-baseline gap-1.5;
+  .spx-commentary-watch li {
+    @apply font-mono text-xs text-purple-light/95 leading-relaxed;
   }
 
-  .spx-trade-panel-compact-label {
-    @apply font-mono text-xs font-bold tabular-nums text-white;
+  .spx-commentary-rail-standby {
+    box-shadow:
+      inset 0 0 80px rgba(191, 95, 255, 0.08),
+      0 0 40px rgba(88, 28, 135, 0.15);
   }
-
-  .spx-trade-panel-compact-thesis {
-    @apply mt-1 font-mono text-[9px] leading-snug text-sky-300/75 line-clamp-3;
-  }
-
-  .spx-play-select-row--selected {
+.spx-play-select-row--selected {
     @apply border-cyan-400/35 bg-cyan-400/[0.08] ring-1 ring-cyan-400/20;
   }
 
@@ -9625,10 +9375,6 @@ body::before {
 
   .spx-desk-session-strip--compact .spx-desk-session-strip-body {
     @apply text-[10px] leading-snug;
-  }
-
-  .spx-chart-frame {
-    @apply h-full min-h-0 flex flex-col border-bull/30 bg-black/45 backdrop-blur-sm;
   }
 
   .spx-sniper-triple .spx-chart-frame {
@@ -9965,10 +9711,6 @@ body::before {
     background-clip: text;
   }
 
-  .spx-left-stack {
-    @apply flex flex-col gap-3 min-h-0 overflow-y-auto xl:max-h-[calc(100vh-200px)] xl:overflow-y-auto;
-  }
-
   .spx-left-matrix {
     @apply flex flex-col min-h-0 h-full overflow-hidden;
     min-height: min(480px, calc(100dvh - 140px));
@@ -10124,91 +9866,8 @@ body::before {
     box-shadow: inset 0 0 12px rgba(125, 211, 252, 0.12);
   }
 
-  .spx-odte-floor-pivot {
-    border-color: rgba(255, 255, 255, 0.08);
-    background: rgba(0, 0, 0, 0.35);
-  }
-
-  .spx-odte-floor-pivot--resistance {
-    border-color: rgba(248, 113, 113, 0.35);
-    background: rgba(248, 113, 113, 0.1);
-  }
-
-  .spx-odte-floor-pivot--support {
-    border-color: rgba(74, 222, 128, 0.4);
-    background: rgba(74, 222, 128, 0.12);
-  }
-
-  .spx-odte-floor-pivot--support .font-bold.uppercase {
-    color: #bbf7d0;
-  }
-
-  .spx-odte-floor-pivot--resistance .font-bold.uppercase {
-    color: #fecaca;
-  }
-
   .spx-odte-matrix-table tbody tr {
     @apply transition-colors duration-150;
-  }
-
-  .spx-odte-matrix-strike,
-  .spx-odte-matrix-value {
-    @apply font-bold text-white;
-    text-shadow: 0 0 10px rgba(255, 255, 255, 0.12);
-  }
-
-  .spx-odte-matrix-label-cell {
-    @apply align-middle;
-  }
-
-  .spx-odte-matrix-label {
-    @apply inline-block rounded px-1 py-px font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-white/90;
-    line-height: 1.2;
-  }
-
-  .spx-odte-matrix-label--anchor {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.14);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
-  }
-
-  .spx-odte-matrix-label--max-pos {
-    color: #d7ffe8;
-    background: rgba(0, 230, 118, 0.22);
-  }
-
-  .spx-odte-matrix-label--max-neg {
-    color: #e9ddff;
-    background: rgba(109, 40, 217, 0.35);
-  }
-
-  .spx-odte-matrix-label--spot {
-    color: #a5f3fc;
-    background: rgba(34, 211, 238, 0.18);
-  }
-
-  .spx-odte-matrix-label--resistance {
-    color: #fecaca;
-    background: rgba(248, 113, 113, 0.16);
-  }
-
-  .spx-odte-matrix-label--support {
-    color: #ecfdf5;
-    background: rgba(16, 185, 129, 0.32);
-    box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.45);
-  }
-
-  .spx-odte-matrix-level-row td {
-    background: rgba(12, 12, 20, 0.75);
-  }
-
-  .spx-odte-matrix-level-row--resistance td {
-    background: rgba(248, 113, 113, 0.06);
-  }
-
-  .spx-odte-matrix-level-row--support td {
-    background: rgba(16, 185, 129, 0.12);
-    box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.25);
   }
 
   /* Default rows: neutral dark — no sign-based coloring */
@@ -10257,196 +9916,12 @@ body::before {
     background: rgba(255, 255, 255, 0.08);
   }
 
-  .spx-odte-matrix-spot-blink.spx-odte-matrix-spot-row td,
-  .spx-odte-matrix-spot-blink.spx-odte-matrix-spot-row .spx-odte-matrix-spot-cell {
-    background: rgba(34, 211, 238, 0.14);
-    box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.55);
-  }
-
-  .spx-odte-matrix-spot-blink.spx-odte-matrix-row--spot-on-strike td {
-    background: rgba(34, 211, 238, 0.12);
-    box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.45);
-  }
-
-  .spx-odte-matrix-spot-blink.spx-odte-matrix-live-spot {
-    color: #67e8f9;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .spx-odte-matrix-spot-blink.spx-odte-matrix-spot-row td,
-    .spx-odte-matrix-spot-blink.spx-odte-matrix-spot-row .spx-odte-matrix-spot-cell,
-    .spx-odte-matrix-spot-blink.spx-odte-matrix-row--spot-on-strike td,
-    .spx-odte-matrix-spot-blink.spx-odte-matrix-live-spot {
-      animation: none;
-    }
-
-    .spx-odte-matrix-spot-blink.spx-odte-matrix-live-spot {
-      text-shadow: 0 0 8px rgba(34, 211, 238, 0.45);
-    }
-
-    .spx-odte-matrix-spot-row td,
-    .spx-odte-matrix-spot-row .spx-odte-matrix-spot-cell,
-    .spx-odte-matrix-row--spot-on-strike td {
-      box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.85);
-      background: rgba(34, 211, 238, 0.14);
-    }
-  }
-
-  .spx-left-stack .spx-left-tape-panel {
-    @apply flex-1 min-h-[12rem] flex flex-col;
-  }
-
-  .spx-left-stack .spx-left-tape-panel .spx-desk-panel-body {
-    @apply flex flex-col flex-1 min-h-0;
-  }
-
-  .spx-tape-empty {
-    min-height: 8rem;
-  }
-
-  .spx-tape-panel .spx-tape-list {
-    @apply overflow-y-auto min-h-[8rem];
-  }
-
-  .spx-left-stack .spx-tape-panel .spx-tape-list {
-    @apply max-h-none flex-1;
-  }
-
   .spx-center-stack {
     @apply flex flex-col gap-3 min-h-0 min-w-0;
   }
 
-  .spx-center-panels {
-    @apply flex flex-col gap-3 shrink-0;
-  }
-
-  .spx-center-panels-row {
-    @apply grid grid-cols-1 lg:grid-cols-2 gap-3;
-  }
-
-  .spx-intel-strip {
-    @apply flex flex-wrap items-center gap-2 py-2 px-1 border border-white/[0.06] bg-void-deep;
-  }
-
-  .spx-intel-chip {
-    @apply flex items-center gap-2 px-2.5 py-1.5 border border-white/[0.08] bg-[#08080e] rounded-md;
-  }
-
-  .spx-intel-chip-wide {
-    @apply min-w-[120px] max-w-[220px];
-  }
-
-  .spx-sector-chip,
-  .spx-stock-chip {
-    @apply min-w-[88px];
-  }
-
-  .spx-stock-chip-bull {
-    border-color: rgba(0, 230, 118, 0.22);
-    background: rgba(0, 230, 118, 0.06);
-  }
-
-  .spx-stock-chip-bear {
-    border-color: rgba(255, 45, 85, 0.22);
-    background: rgba(255, 45, 85, 0.06);
-  }
-
-  .spx-intel-ticker {
-    @apply font-mono text-[10px] tracking-[0.12em] uppercase text-sky-200 font-semibold;
-  }
-
-  .spx-intel-label {
-    @apply font-mono text-[10px] tracking-[0.25em] uppercase text-cyan-400;
-  }
-
-  .spx-panel-amber { @apply border-gold/35; box-shadow: inset 0 0 30px rgba(255, 210, 63, 0.05); }
-  .spx-panel-gold { @apply border-gold/30; box-shadow: inset 0 0 30px rgba(255, 210, 63, 0.05); }
-  .spx-panel-purple { @apply border-purple/35; box-shadow: inset 0 0 30px rgba(191, 95, 255, 0.06); }
-  .spx-panel-cyan { @apply border-cyan/35; box-shadow: inset 0 0 30px rgba(0, 212, 255, 0.05); }
-  .spx-panel-teal { @apply border-teal-500/35; }
-  .spx-panel-violet { @apply border-purple/35; }
-  .spx-panel-rose { @apply border-rose-500/30; }
-
-  .spx-desk-panel-body {
-    @apply px-3 py-2.5;
-  }
-
-  .spx-gex-ladder-list {
-    min-height: 9.5rem;
-    /* Bug #93: the balanced two-sided ladder runs ~8–10 rows (call wall above spot,
-       put wall below). Cap the height and scroll internally so the fuller ladder never
-       pushes the Live Tape below it off-screen. */
-    max-height: 17rem;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 210, 63, 0.35) transparent;
-  }
-
-  .spx-gex-ladder-list::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .spx-gex-ladder-list::-webkit-scrollbar-thumb {
-    background: rgba(255, 210, 63, 0.3);
-    border-radius: 3px;
-  }
-
-  .spx-gex-ladder-list::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  /* Spot anchor row dividing the call side (above) from the put side (below). */
-  .spx-gex-ladder-spot {
-    @apply flex items-center gap-2 my-1 px-1 py-1 rounded-sm;
-    background: rgba(0, 212, 255, 0.06);
-    border-top: 1px solid rgba(0, 212, 255, 0.25);
-    border-bottom: 1px solid rgba(0, 212, 255, 0.25);
-  }
-
-  .spx-gex-ladder-empty {
-    min-height: 9.5rem;
-  }
-
-
-  .spx-desk-list {
-    @apply space-y-1 list-none;
-  }
-
-  .spx-desk-list-row {
-    @apply flex items-center gap-2 py-1.5 px-1 rounded-sm;
-  }
-
-  .spx-desk-bias-pill {
-    @apply text-[10px] font-syne uppercase tracking-wider px-2 py-0.5 border;
-  }
-
-  .spx-sparkline {
-    @apply h-12 text-teal-400;
-  }
-
   .spx-iv-bars {
     @apply flex items-end justify-between gap-1 h-20;
-  }
-
-  .spx-iv-bar-col {
-    @apply flex flex-col items-center flex-1 h-full justify-end;
-  }
-
-  .spx-iv-bar-fill {
-    @apply w-full bg-purple/50 rounded-t min-h-[4px];
-  }
-
-  .spx-odte-bar-wrap {
-    @apply py-1;
-  }
-
-  .spx-odte-bar {
-    @apply h-2 rounded-full bg-bear/30 overflow-hidden flex;
-  }
-
-  .spx-odte-bar-call {
-    @apply h-full bg-bull/70 transition-all duration-500;
   }
 
   @keyframes news-rail-scroll {
