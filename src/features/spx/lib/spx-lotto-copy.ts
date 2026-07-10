@@ -123,6 +123,18 @@ export function lottoHoldStatusMessage(): string {
   return "Position open — far OTM, max theta. High decay, defined risk.";
 }
 
+export function lottoSessionFlatStatusMessage(): string {
+  return "Cash session closed — 0DTE flattened at the bell.";
+}
+
+export function lottoSessionFlatHeadline(contractLabel: string | null): string {
+  return contractLabel ? `${contractLabel} · session flat` : "Lotto · session flat";
+}
+
+export function lottoSessionFlatThesis(): string {
+  return "0DTE cannot stay open after the cash bell — position marked closed at session end.";
+}
+
 export function lottoWinStatusMessage(targetPts: number): string {
   return `Target reached — +${targetPts}pt from entry. Manage your own exit.`;
 }

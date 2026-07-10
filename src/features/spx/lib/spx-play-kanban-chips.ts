@@ -130,7 +130,19 @@ export function buildPlayKanbanChips(input: {
   }
 
   if (lotto && filterMatches("lotto", filter)) {
-    if (lotto.phase === "BUY" || lotto.phase === "HOLD") {
+    const lottoOpenPhase = lotto.phase === "BUY" || lotto.phase === "HOLD";
+    const lottoWatchPhase = lotto.phase === "WATCH";
+    const lottoClosedPhase = lotto.phase === "SELL" || lotto.phase === "INVALID";
+    if (!sessionLive && (lottoOpenPhase || lottoWatchPhase)) {
+      closed.push({
+        id: "lotto-session",
+        column: "closed",
+        kind: "lotto",
+        label: lottoChipLabel(lotto),
+        prefix: "LOT",
+        tone: "closed",
+      });
+    } else if (lottoOpenPhase) {
       open.push({
         id: "lotto-open",
         column: "open",
@@ -139,7 +151,7 @@ export function buildPlayKanbanChips(input: {
         prefix: "LOT",
         tone: "lotto",
       });
-    } else if (lotto.phase === "WATCH") {
+    } else if (lottoWatchPhase) {
       watch.push({
         id: "lotto-watch",
         column: "watch",
@@ -148,7 +160,7 @@ export function buildPlayKanbanChips(input: {
         prefix: "LOT",
         tone: "lotto",
       });
-    } else if (lotto.phase === "SELL" || lotto.phase === "INVALID") {
+    } else if (lottoClosedPhase) {
       closed.push({
         id: "lotto-closed",
         column: "closed",
@@ -161,7 +173,18 @@ export function buildPlayKanbanChips(input: {
   }
 
   if (powerHour && filterMatches("power", filter)) {
-    if (powerHour.phase === "HOLD") {
+    const powerOpenPhase = powerHour.phase === "HOLD";
+    const powerWatchPhase = powerHour.phase === "WATCH";
+    if (!sessionLive && (powerOpenPhase || powerWatchPhase)) {
+      closed.push({
+        id: "power-session",
+        column: "closed",
+        kind: "power",
+        label: powerChipLabel(powerHour),
+        prefix: "PWR",
+        tone: "closed",
+      });
+    } else if (powerOpenPhase) {
       open.push({
         id: "power-open",
         column: "open",
@@ -170,7 +193,7 @@ export function buildPlayKanbanChips(input: {
         prefix: "PWR",
         tone: "power",
       });
-    } else if (powerHour.phase === "WATCH") {
+    } else if (powerWatchPhase) {
       watch.push({
         id: "power-watch",
         column: "watch",

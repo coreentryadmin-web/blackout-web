@@ -13,7 +13,6 @@ import { SpxPlayKanbanBoard } from "./SpxPlayKanbanBoard";
 import { SpxPlaybookValidationPanel } from "./SpxPlaybookValidationPanel";
 import { buildPlayKanbanChips } from "@/features/spx/lib/spx-play-kanban-chips";
 import type { PlayKanbanFilter } from "@/features/spx/lib/spx-play-kanban-chips";
-import { Kicker } from "@/components/ui";
 import { fmtPrice } from "@/lib/api";
 import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
@@ -708,7 +707,7 @@ function renderKanbanDetail(input: {
 
   if (selectedId === "structure-session" && play) {
     return (
-      <div className="spx-play-kanban-detail spx-trade-play-box spx-trade-play-box-muted">
+      <div className="spx-play-kanban-detail spx-play-detail-card spx-play-detail-card--structure">
         <p className="spx-trade-play-box-kicker">Session structure · wrapped</p>
         <p className="spx-trade-play-box-headline">{play.headline}</p>
         {play.thesis ? <p className="spx-trade-play-box-thesis">{play.thesis}</p> : null}
@@ -716,12 +715,33 @@ function renderKanbanDetail(input: {
     );
   }
 
-  if (!play) return null;
+  if (selectedId === "lotto-session" && lotto) {
+    return (
+      <div className="spx-play-kanban-detail spx-play-detail-card spx-play-detail-card--lotto">
+        <p className="spx-trade-play-box-kicker">Lotto · session wrapped</p>
+        <p className="spx-trade-play-box-headline">{lotto.headline}</p>
+        <p className="spx-trade-play-box-thesis">{lotto.thesis}</p>
+        <p className="spx-trade-play-box-note">{lotto.status_message}</p>
+      </div>
+    );
+  }
 
-  if (selectedId === "structure-open") {
+  if (selectedId === "power-session" && powerHour) {
+    return (
+      <div className="spx-play-kanban-detail spx-play-detail-card spx-play-detail-card--power">
+        <p className="spx-trade-play-box-kicker">Power hour · session wrapped</p>
+        <p className="spx-trade-play-box-headline">{powerHour.headline}</p>
+        {powerHour.thesis ? <p className="spx-trade-play-box-thesis">{powerHour.thesis}</p> : null}
+      </div>
+    );
+  }
+
+  if (selectedId.startsWith("structure-") && !play) return null;
+
+  if (selectedId === "structure-open" && play) {
     return <OpenPlayBox play={play} />;
   }
-  if (selectedId === "structure-watch") {
+  if (selectedId === "structure-watch" && play) {
     return (
       <WatchPlayBox
         play={play}
@@ -912,34 +932,39 @@ export function SpxTradeAlerts({ desk, live, refreshing, sessionActive = true }:
   return (
     <section
       className={clsx(
-        "spx-trade-alerts-panel spx-sniper-panel spx-trade-alerts-kanban",
+        "spx-trade-alerts-panel spx-sniper-panel spx-trade-alerts-kanban spx-trade-alerts-v2",
         panelRefreshing && "spx-desk-panel-refreshing"
       )}
     >
       <div className="spx-sniper-panel-content">
-      <SpxLiveSpotPrice desk={desk} live={live} size="panel" className="spx-play-engine-spot mb-3 hide-in-ios-app" />
-      <header className="spx-trade-alerts-header">
-        <div className="min-w-0">
-          <Kicker className="mb-1">PLAY ENGINE</Kicker>
-          <h3 className="t-label text-[15px] uppercase leading-tight text-white">Trade Alerts</h3>
-        </div>
-      </header>
+        <header className="spx-trade-alerts-header">
+          <SpxLiveSpotPrice
+            desk={desk}
+            live={live}
+            size="panel"
+            className="spx-play-engine-spot spx-trade-alerts-spot hide-in-ios-app"
+          />
+          <div className="min-w-0 flex-1">
+            <h3 className="spx-trade-alerts-title">Trade Alerts</h3>
+            <p className="spx-trade-alerts-subtitle">
+              Structure · Lotto · Power hour
+              {!sessionLive && (
+                <span className="spx-trade-alerts-subtitle-muted"> · session wrapped</span>
+              )}
+            </p>
+          </div>
+        </header>
 
-      <div className="spx-sniper-panel-body spx-trade-alerts-stack">
-        {!sessionLive && (
-          <div className="spx-desk-session-strip" role="status">
-            <span className="spx-desk-session-strip-dot" aria-hidden />
-            <div className="min-w-0">
-              <p className="spx-desk-session-strip-kicker">
-                {live ? "0DTE window closed" : "After hours"}
-              </p>
+        <div className="spx-sniper-panel-body spx-trade-alerts-stack">
+          {!sessionLive && (
+            <div className="spx-desk-session-strip spx-desk-session-strip--compact" role="status">
+              <span className="spx-desk-session-strip-dot" aria-hidden />
               <p className="spx-desk-session-strip-body">
-                Kanban shows today&apos;s wrapped plays · desk re-arms{" "}
+                {live ? "0DTE window closed" : "After hours"} — kanban shows wrapped plays · re-arms{" "}
                 <span className="spx-desk-closed-time">6:30 AM PT</span>
               </p>
             </div>
-          </div>
-        )}
+          )}
 
         <SpxPlayKanbanBoard
           columns={kanbanColumns}

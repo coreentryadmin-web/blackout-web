@@ -130,6 +130,15 @@ export function isBeforeCashOpen(now = new Date()): boolean {
   return etMinutes(now) < CASH_OPEN_ET_MINS;
 }
 
+/** True after the cash session bell (early-close aware). Weekends/holidays = closed all day. */
+export function isAfterCashSessionClose(now = new Date()): boolean {
+  if (!isEtWeekday(now)) return true;
+  if (!isTradingDayEt(formatEtDate(now))) return true;
+  const earlyClose = getEarlyCloseMinutes(now);
+  const closeMins = earlyClose ?? etClock(16, 0);
+  return etMinutes(now) >= closeMins;
+}
+
 export function cashOpenLabel(): string {
   return formatEtTime(9, 30);
 }

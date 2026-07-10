@@ -62,3 +62,45 @@ test("buildPlayKanbanChips: off-hours structure lands in closed column", () => {
   assert.equal(cols.closed[0]?.label, "7550C");
   assert.equal(cols.closed[0]?.id, "structure-session");
 });
+
+test("buildPlayKanbanChips: off-hours lotto HOLD lands in closed column", () => {
+  const cols = buildPlayKanbanChips({
+    play: null,
+    lotto: {
+      phase: "HOLD",
+      status_label: "Position open",
+      direction: "long",
+      strike: 7560,
+      contract_label: "7560C",
+      premium_estimate: "0.15",
+      entry_zone: 7550,
+      entry_trigger: "8pt confirm",
+      target_price: 7585,
+      target_pts: 25,
+      invalidation: "stop",
+      catalyst_summary: "gap",
+      catalysts: [],
+      confidence: 70,
+      headline: "CALL Breakout · 7560",
+      thesis: "Test",
+      status_message: "open",
+      status: "ready",
+      drivers: [],
+      footnote: null,
+      flow_summary: null,
+      sizing_note: "",
+      spread_pct: null,
+      open_anchor_price: null,
+    },
+    powerHour: null,
+    history: [],
+    filter: "all",
+    structureOpen: false,
+    structureWatch: false,
+    sessionLive: false,
+  });
+  assert.equal(cols.open.length, 0);
+  assert.equal(cols.closed.length, 1);
+  assert.equal(cols.closed[0]?.id, "lotto-session");
+  assert.equal(cols.closed[0]?.label, "7560C");
+});

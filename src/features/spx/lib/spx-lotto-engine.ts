@@ -30,6 +30,7 @@ import {
 import { logLottoPhase, logLottoWatch } from "@/features/spx/lib/spx-lotto-outcomes";
 import { notifyPlayDiscord } from "@/features/spx/lib/spx-play-notify";
 import {
+  isAfterCashSessionClose,
   isBeforeCashOpen,
   isPremarketPlanningWindow,
 } from "@/features/spx/lib/spx-play-session-guards";
@@ -42,6 +43,9 @@ import {
   lottoWatchHeadline,
   lottoWatchStatusMessage,
   lottoWatchThesis,
+  lottoSessionFlatHeadline,
+  lottoSessionFlatStatusMessage,
+  lottoSessionFlatThesis,
   lottoWinStatusMessage,
   type LottoNoneReason,
 } from "@/features/spx/lib/spx-lotto-copy";
@@ -179,6 +183,19 @@ function recordToPayload(rec: LottoRecord): LottoPlayPayload {
     sizing_note: LOTTO_SIZING_NOTE,
     spread_pct: rec.spread_pct,
     open_anchor_price: rec.open_anchor_price,
+  };
+}
+
+/** Read-only projection when cash session ended but DB still has an open-phase record. */
+function sessionSettledLottoPayload(rec: LottoRecord): LottoPlayPayload {
+  return {
+    ...recordToPayload(rec),
+    phase: "SELL",
+    status_label: "Session closed",
+    headline: lottoSessionFlatHeadline(rec.contract_label),
+    thesis: lottoSessionFlatThesis(),
+    status_message: lottoSessionFlatStatusMessage(),
+    status: "none",
   };
 }
 
@@ -451,6 +468,26 @@ export async function evaluateSpxLotto(
   }
 
   if (rec?.phase === "HOLD") {
+    if (!premarket && !desk.market_open) {
+      try {
+        await logLottoPhase(rec, {
+          phase: "SELL",
+          outcome: "session",
+          exit_price: desk.price > 0 ? desk.price : null,
+          closed_at: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.error("[spx-lotto-engine] logLottoPhase(session) failed:", err);
+      }
+      rec = {
+        ...rec,
+        phase: "SELL",
+        status_message: lottoSessionFlatStatusMessage(),
+      };
+      await saveLottoRecord(rec);
+      return sessionSettledLottoPayload(rec);
+    }
+
     const pnl =
       rec.entry_price != null && desk.price > 0
         ? rec.direction === "long"
@@ -649,6 +686,12 @@ export async function readSpxLottoSnapshot(): Promise<LottoPlayPayload> {
 
   const rec = await loadLottoRecord();
   if (!rec) return nonePayload("no_qualify");
+  if (
+    isAfterCashSessionClose(now) &&
+    (rec.phase === "HOLD" || rec.phase === "BUY" || rec.phase === "WATCH")
+  ) {
+    return sessionSettledLottoPayload(rec);
+  }
   if (isIntradayCutoff(now) && rec.phase !== "HOLD") return nonePayload("expired");
   if (rec.phase === "WATCH" && !beforeCash && isOpeningWatchExpired(rec, now)) {
     return nonePayload("expired");
