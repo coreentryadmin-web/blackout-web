@@ -7,6 +7,7 @@ const BODY_PREVIEW_LINES = 12;
 import type { SpxCommentaryResult, SpxDeskPayload } from "@/lib/api";
 import { requestSpxCommentary } from "@/lib/api";
 import { readSessionCache, writeSessionCache } from "@/lib/session-cache";
+import { largoEnabled } from "@/lib/largo-env";
 import {
   commentaryOfflineTone,
   pickCommentaryOfflineCopy,
@@ -141,7 +142,7 @@ export function SpxCommentaryRail({
   // array (which would write up to 50KB on every 15-30s state update).
 
   const pullCommentary = useCallback(async (force = false) => {
-    if (!live || !desk?.available || inFlightRef.current) return;
+    if (!largoEnabled() || !live || !desk?.available || inFlightRef.current) return;
 
     const prev = prevRef.current;
     if (!force && !shouldRefresh(desk, prev, lastFetchRef.current)) return;
@@ -208,7 +209,7 @@ export function SpxCommentaryRail({
   }, [live, entries.length]);
 
   useEffect(() => {
-    if (!desk?.available || !live) return;
+    if (!largoEnabled() || !desk?.available || !live) return;
     if (hydratedRef.current && entries.length > 0) {
       pullCommentary(false);
       return;
@@ -217,7 +218,7 @@ export function SpxCommentaryRail({
   }, [live, desk?.available, desk?.price, desk?.gamma_flip, desk?.gex_king, desk?.regime]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!desk?.available || !live) return;
+    if (!largoEnabled() || !desk?.available || !live) return;
 
     cancelledRef.current = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -288,7 +289,15 @@ export function SpxCommentaryRail({
       </div>
 
       <div className={clsx("spx-commentary-viewport", railCollapsed && "hidden")}>
-        {!live ? (
+        {!largoEnabled() ? (
+          <div className="spx-commentary-offline-hero spx-commentary-offline-hero-neutral">
+            <p className="spx-commentary-offline-kicker">Production only</p>
+            <h2 className="spx-commentary-offline-headline">Largo is disabled on staging</h2>
+            <p className="spx-commentary-offline-body">
+              Staging validates playbooks, matrix, and trade alerts without Anthropic spend. Use production for live desk commentary.
+            </p>
+          </div>
+        ) : !live ? (
           <div
             className={clsx(
               "spx-commentary-offline-hero",

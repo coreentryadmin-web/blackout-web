@@ -6,12 +6,27 @@ import { LargoTerminal } from "@/features/largo/components/LargoTerminal";
 import { PageHeader, Badge } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
+import { largoEnabled } from "@/lib/largo-env";
 
 /**
  * /terminal page frame — full-viewport chat on web; edge-to-edge native iOS shell.
  */
 export function LargoPageShell() {
   const nativeShell = useIosNativeShell();
+
+  if (!largoEnabled()) {
+    return (
+      <div className="largo-page-shell ios-native-page ios-native-page-largo">
+        <main id="main" className="largo-page-main p-8 text-center">
+          <p className="t-kicker text-purple-light/80 mb-2">Production only</p>
+          <h1 className="font-syne text-2xl text-purple-light font-bold mb-3">Largo is disabled on staging</h1>
+          <p className="font-mono text-sm text-sky-300/70 max-w-md mx-auto">
+            Staging is for playbook shadow, matrix, and trade-alert validation — not Anthropic desk AI.
+          </p>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div

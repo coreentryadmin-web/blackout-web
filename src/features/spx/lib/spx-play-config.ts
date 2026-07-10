@@ -76,9 +76,9 @@ export function playGexStaleMaxSec(): number {
 }
 
 export function playClaudeGateEnabled(): boolean {
-  // Require explicit SPX_CLAUDE_GATE=1 to enable the Claude gate.
-  // Defaulting to true when ANTHROPIC_API_KEY is set surprised operators who
-  // configured Anthropic only for commentary. The gate is now opt-in.
+  // Require explicit SPX_CLAUDE_GATE=1 to require BIE precedent approval before BUY.
+  // Trade-alert narratives use Voyage/BIE — not Anthropic — but this gate still
+  // fail-closes when BIE search is unavailable or inconclusive.
   return process.env.SPX_CLAUDE_GATE === "1";
 }
 
