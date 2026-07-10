@@ -8794,13 +8794,22 @@ body::before {
   }
 
   .spx-sniper-desk-fill .spx-left-matrix {
-    min-height: 100%;
-    max-height: none;
+    min-height: 0;
+    max-height: 100%;
     height: 100%;
+    overflow: hidden;
   }
 
   .spx-sniper-desk-fill .spx-odte-matrix-panel {
-    @apply min-h-0 h-full;
+    @apply min-h-0 h-full overflow-hidden;
+  }
+
+  .spx-gex-matrix-heatmap.desk-panel {
+    @apply flex flex-col min-h-0 overflow-hidden;
+  }
+
+  .spx-gex-matrix-heatmap.desk-panel > div:last-child {
+    @apply flex flex-1 flex-col min-h-0 overflow-hidden;
   }
 
   .spx-sniper-desk-fill .spx-commentary-rail-desk {
@@ -10516,28 +10525,39 @@ body::before {
   }
 
   .spx-left-matrix {
-    @apply flex flex-col min-h-0 h-full;
-    min-height: min(600px, calc(100dvh - 132px));
+    @apply flex flex-col min-h-0 h-full overflow-hidden;
+    min-height: min(480px, calc(100dvh - 140px));
   }
 
   @media (min-width: 1280px) {
     .spx-left-matrix {
-      min-height: calc(100dvh - 112px);
-      max-height: calc(100dvh - 112px);
+      min-height: 0;
+      max-height: 100%;
     }
   }
 
   .spx-odte-matrix-panel {
-    @apply min-h-[520px] lg:min-h-[560px] xl:min-h-0 xl:h-full;
+    @apply min-h-0 xl:h-full overflow-hidden;
   }
 
   .spx-odte-matrix-body {
-    @apply min-h-0;
+    @apply min-h-0 overflow-hidden;
   }
 
   .spx-gex-matrix-scroll {
     scrollbar-width: thin;
     scrollbar-color: rgba(125, 211, 252, 0.35) transparent;
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    overflow-x: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .spx-gex-matrix-recenter {
+    @apply rounded border border-white/10 bg-black/40 px-2 py-0.5 transition-colors;
   }
 
   .spx-gex-matrix-spot-row td {
