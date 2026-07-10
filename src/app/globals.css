@@ -9781,6 +9781,27 @@ body::before {
     @apply text-white/45 tabular-nums;
   }
 
+  .spx-play-terminal-tabs {
+    @apply flex shrink-0 items-end gap-0.5 border-b border-black/60 px-2 pt-1;
+    background: linear-gradient(180deg, #252527 0%, #1e1e20 100%);
+  }
+
+  .spx-play-terminal-tab {
+    @apply relative -mb-px rounded-t-md border border-transparent px-3 py-1.5 font-sans text-[10px] font-medium text-white/50 transition-colors;
+    background: transparent;
+  }
+
+  .spx-play-terminal-tab:hover {
+    @apply text-white/75;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .spx-play-terminal-tab--active {
+    @apply border-white/10 border-b-transparent text-white/90;
+    background: #0d0d0f;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
   .spx-play-terminal-body {
     @apply flex-1 min-h-0 overflow-y-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed;
     background: #0d0d0f;
