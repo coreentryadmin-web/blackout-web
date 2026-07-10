@@ -1,7 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import { fmtPct, fmtPrice } from "@/lib/api";
@@ -18,27 +16,20 @@ export function SpxLiveSpotPrice({ desk, live, size = "panel", className }: Prop
   const hasQuote = Boolean(desk?.available && (desk?.price ?? 0) > 0);
   const showValues = Boolean(live || hasQuote);
   const bull = (desk?.spx_change_pct ?? 0) >= 0;
-  const asOfRaw = desk?.polled_at ?? desk?.as_of;
 
   return (
     <div className={clsx("spx-live-spot-price", size === "panel" && "spx-live-spot-price-panel", className)}>
-      <AnimatePresence mode="popLayout">
-        <motion.p
-          key={`${desk?.price ?? 0}-${asOfRaw ?? ""}`}
-          initial={{ opacity: 0.35, scale: 1.06 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
-          className={clsx(
-            "spx-hero-price t-num font-semibold leading-none drop-shadow-[0_0_18px_currentColor]",
-            size === "hero"
-              ? "text-6xl sm:text-7xl md:text-8xl"
-              : "text-5xl sm:text-6xl",
-            bull ? "text-bull" : "text-bear-text"
-          )}
-        >
-          {showValues ? fmtPrice(desk?.price ?? null, 2) : "—"}
-        </motion.p>
-      </AnimatePresence>
+      <p
+        className={clsx(
+          "spx-hero-price t-num font-semibold leading-none",
+          size === "hero"
+            ? "text-6xl sm:text-7xl md:text-8xl"
+            : "text-5xl sm:text-6xl",
+          bull ? "text-bull" : "text-bear-text"
+        )}
+      >
+        {showValues ? fmtPrice(desk?.price ?? null, 2) : "—"}
+      </p>
       {!live && hasQuote && (
         <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-sky-300">
           Last session snapshot · not live

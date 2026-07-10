@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 
 const BODY_PREVIEW_LINES = 12;
@@ -252,7 +251,7 @@ export function SpxCommentaryRail({
       )}
     >
       <div className="spx-commentary-header">
-        <span className={clsx("badge-live-dot", live && "animate-pulse")} />
+        <span className={clsx("badge-live-dot", live && "opacity-100")} />
         <div className="min-w-0">
           <p className="t-kicker text-purple-light/80 mb-0.5">
             {live ? "Live commentary" : "Commentary standby"}
@@ -276,7 +275,7 @@ export function SpxCommentaryRail({
           </button>
         )}
         {loading && (
-          <span className="ml-auto font-mono text-[10px] text-cyan-400 animate-pulse">
+          <span className="ml-auto font-mono text-[10px] text-cyan-400">
             Reading…
           </span>
         )}
@@ -300,19 +299,16 @@ export function SpxCommentaryRail({
             {error.includes("ANTHROPIC") ? "Intel feed offline — reconnecting" : error}
           </p>
         ) : entries.length === 0 ? (
-          <p className="font-mono text-[10px] text-cyan-400 p-4 text-center animate-pulse">
+          <p className="font-mono text-[10px] text-cyan-400 p-4 text-center">
             Largo, standing by for live tape…
           </p>
         ) : (
           <div className="spx-commentary-feed">
-            <AnimatePresence initial={false}>
-              {entries.map((entry, idx) => (
-                <motion.article
-                  key={entry.id}
-                  initial={{ opacity: 0, y: -12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={clsx("spx-commentary-card", idx === 0 && "spx-commentary-card-featured")}
-                >
+            {entries.map((entry, idx) => (
+              <article
+                key={entry.id}
+                className={clsx("spx-commentary-card", idx === 0 && "spx-commentary-card-featured")}
+              >
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <span
                       className={clsx(
@@ -362,9 +358,8 @@ export function SpxCommentaryRail({
                       </ul>
                     </div>
                   )}
-                </motion.article>
+                </article>
               ))}
-            </AnimatePresence>
           </div>
         )}
       </div>
