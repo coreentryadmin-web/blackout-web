@@ -305,9 +305,9 @@ export function SpxGexMatrixHeatmap({
         </span>
       }
       className="spx-odte-matrix-panel spx-gex-matrix-heatmap flex flex-1 min-h-0 flex-col"
-      bodyClassName="spx-odte-matrix-body !px-1 !py-2 flex flex-1 min-h-0 flex-col"
+      bodyClassName="spx-odte-matrix-body !px-0.5 !py-1 flex flex-1 min-h-0 flex-col"
     >
-      <div className="mb-2 shrink-0 space-y-2 px-1">
+      <div className="mb-1 shrink-0 space-y-1 px-0.5">
         <div
           className="flex gap-1.5"
           role="tablist"
@@ -334,7 +334,7 @@ export function SpxGexMatrixHeatmap({
                 disabled={disabled}
                 onClick={() => setLens(key)}
                 className={clsx(
-                  "spx-odte-lens-toggle flex-1 rounded border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] transition-colors",
+                  "spx-odte-lens-toggle flex-1 rounded border px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] transition-colors",
                   active && key === "gex" && "spx-odte-lens-toggle--gex-active",
                   active && key === "vex" && "spx-odte-lens-toggle--vex-active",
                   !active && "spx-odte-lens-toggle--idle",
@@ -346,7 +346,7 @@ export function SpxGexMatrixHeatmap({
             );
           })}
         </div>
-        <div className="grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-[10px]">
+        <div className="grid grid-cols-2 gap-x-1.5 gap-y-0.5 font-mono text-[10px]">
           <div>
             <span className="text-sky-300 uppercase tracking-wider">
               γ flip {isTrueZeroDte ? "(0DTE)" : "(col)"}
@@ -414,21 +414,21 @@ export function SpxGexMatrixHeatmap({
           className="spx-gex-matrix-scroll flex-1 min-h-0 overflow-auto overscroll-contain"
         >
           <table
-            className="spx-gex-matrix-table w-max min-w-full border-collapse font-mono text-[12px] tabular-nums"
+            className="spx-gex-matrix-table w-max min-w-full border-collapse font-mono text-[11px] leading-tight tabular-nums"
             role="grid"
             aria-label="SPX dealer gamma matrix by strike and expiry"
           >
             <thead className="sticky top-0 z-20 bg-[#08080e]">
               <tr className="border-b border-white/10 text-[10px] uppercase tracking-wider text-sky-300">
-                <th className="sticky left-0 z-30 bg-[#08080e] py-1.5 pl-1 pr-2 text-left font-semibold">
+                <th className="sticky left-0 z-30 bg-[#08080e] py-0.5 pl-0.5 pr-1 text-left font-semibold">
                   Strike
                 </th>
                 {displayExpiries.map((e) => (
-                  <th key={e} className="py-1.5 px-1 text-center font-semibold whitespace-nowrap">
+                  <th key={e} className="py-0.5 px-0.5 text-center font-semibold whitespace-nowrap">
                     {fmtHeatmapExpiry(e)}
                   </th>
                 ))}
-                <th className="py-1.5 pl-1 pr-2 text-right font-semibold whitespace-nowrap">Net</th>
+                <th className="py-0.5 pl-0.5 pr-1 text-right font-semibold whitespace-nowrap">Net</th>
               </tr>
             </thead>
             <tbody>
@@ -463,7 +463,7 @@ export function SpxGexMatrixHeatmap({
                   >
                     <td
                       className={clsx(
-                        "sticky left-0 z-10 bg-[#08080e] py-1 pl-1 pr-2 text-left font-bold",
+                        "sticky left-0 z-10 bg-[#08080e] py-0 pl-0.5 pr-1 text-left font-bold",
                         isSpotRow && "text-cyan-300"
                       )}
                     >
@@ -497,7 +497,7 @@ export function SpxGexMatrixHeatmap({
                         <td
                           key={e}
                           className={clsx(
-                            "whitespace-nowrap px-1 py-1 text-center font-bold",
+                            "whitespace-nowrap px-0.5 py-0 text-center font-bold",
                             has && val > 0 && "text-emerald-300",
                             has && val < 0 && "text-rose-300",
                             !has && "text-sky-300/25"
@@ -543,7 +543,7 @@ export function SpxGexMatrixHeatmap({
                     })}
                     <td
                       className={clsx(
-                        "whitespace-nowrap py-1 pl-1 pr-2 text-right font-bold",
+                        "whitespace-nowrap py-0 pl-0.5 pr-1 text-right font-bold",
                         rowTotal > 0 && "text-emerald-300",
                         rowTotal < 0 && "text-rose-300",
                         rowTotal === 0 && "text-sky-300/25"
