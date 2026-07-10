@@ -261,7 +261,10 @@ export function SpxGexMatrixHeatmap({
     const box = scrollBoxRef.current;
     const pad = scrollPadRef.current;
     if (!box || !pad) return;
-    const half = Math.max(140, Math.floor(box.clientHeight * 0.5));
+    // Pad = half the *actual* viewport so spot can sit mid-ladder.
+    // Do NOT floor at 140px — in the narrow desk column that forced ~280px of
+    // empty space and made the matrix look blank ("no data") until you scrolled.
+    const half = Math.max(0, Math.floor(box.clientHeight / 2) - 8);
     pad.style.paddingTop = `${half}px`;
     pad.style.paddingBottom = `${half}px`;
   };
