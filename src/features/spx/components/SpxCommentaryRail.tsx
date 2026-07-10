@@ -180,6 +180,12 @@ export function SpxCommentaryRail({
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Commentary unavailable";
       nextRefreshMsRef.current = null;
+      // Advance the throttle clock on FAILURE too. It previously only advanced on
+      // success, so while the server was erroring, every desk tick re-entered
+      // shouldRefresh with a stale lastFetchRef and fired another POST — a
+      // sub-second retry storm per client (2026-07-10 incident). With the clock
+      // advanced, retries are bounded by MIN_INTERVAL_MS + the 30s error schedule.
+      lastFetchRef.current = Date.now();
       setError(msg);
     } finally {
       setLoading(false);

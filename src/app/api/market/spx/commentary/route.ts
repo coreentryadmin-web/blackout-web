@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireTierApi } from "@/lib/market-api-auth";
 import { anthropicConfigured } from "@/lib/providers/anthropic";
+import { anthropicBreakerOpenUntil } from "@/lib/providers/anthropic-breaker";
 import { generateSpxCommentary, type SpxCommentaryResult } from "@/features/spx/lib/spx-commentary";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { serverCache } from "@/lib/server-cache";
-import { sharedCacheGet } from "@/lib/shared-cache";
+import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import {
   heatmapToIntelSlice,
@@ -28,6 +29,14 @@ export const dynamic = "force-dynamic";
 // the shared-window cache already bounds spend more tightly than a per-user cap would.)
 const COMMENTARY_TTL_MS = 5 * 60 * 1000;
 
+// Cross-replica negative cache: after a generation failure, every request for the
+// next FAIL_COOLDOWN_SEC short-circuits to 503 WITHOUT loading the desk or touching
+// Anthropic. Without this, a failing window meant one fresh Anthropic attempt per
+// member request (the 2026-07-10 credit-exhaustion call storm) — the success path's
+// shared window cache only throttles when generation succeeds.
+const FAIL_COOLDOWN_SEC = 45;
+const FAIL_KEY = "spx-commentary:fail-cooldown";
+
 type CommentaryCache = {
   commentary: SpxCommentaryResult;
   desk: SpxDeskPayload; // retained so next window can compute delta against it
@@ -41,6 +50,18 @@ export async function POST(req: NextRequest) {
 
   if (!anthropicConfigured()) {
     return NextResponse.json({ error: "Commentary unavailable" }, { status: 503 });
+  }
+
+  // Anthropic account is hard-failing (billing/auth) — don't even load the desk.
+  if (anthropicBreakerOpenUntil()) {
+    return NextResponse.json({ error: "Commentary unavailable" }, { status: 503 });
+  }
+
+  // A generation attempt failed moments ago — everyone waits out the cooldown
+  // instead of each triggering their own retry.
+  const coolingDown = await sharedCacheGet<{ at: string }>(FAIL_KEY).catch(() => null);
+  if (coolingDown) {
+    return NextResponse.json({ error: "Commentary generation failed" }, { status: 503 });
   }
 
   // Body is optional — generation always uses the server-side merged desk.
@@ -117,6 +138,11 @@ export async function POST(req: NextRequest) {
     // retryable — return 502 so the client retries immediately and the next request
     // rebuilds the cache (nothing was stored). Other errors stay 500.
     if (message.startsWith("spx-commentary:")) {
+      // Arm the cross-replica cooldown so the fleet makes at most ~1 Anthropic
+      // attempt per FAIL_COOLDOWN_SEC while generation keeps failing.
+      await sharedCacheSet(FAIL_KEY, { at: new Date().toISOString() }, FAIL_COOLDOWN_SEC).catch(
+        () => {}
+      );
       return NextResponse.json({ error: "Commentary generation failed" }, { status: 502 });
     }
     return NextResponse.json({ error: "Commentary failed" }, { status: 500 });
