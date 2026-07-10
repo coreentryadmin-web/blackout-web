@@ -2,9 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   appendOdteIntelEvents,
+  buildOdteIntelContext,
   diffHeatmapIntelEvents,
   diffNighthawkIntelEvents,
   diffOdteIntelEvents,
+  heatmapToIntelSlice,
   odteIntelEventsToTerminalLines,
   type IntelHeatmapSlice,
   type OdteIntelEvent,
@@ -350,4 +352,84 @@ test("odteIntelEventsToTerminalLines: empty → listening copy", () => {
   const lines = odteIntelEventsToTerminalLines([]);
   assert.equal(lines.length, 1);
   assert.match(lines[0].text, /Listening/);
+});
+
+test("buildOdteIntelContext: merges desk + heatmap + NH into plain lines", () => {
+  const prev = desk({
+    gex_walls: [
+      { strike: 7575, net_gex: 2_000_000_000, kind: "resistance", distance_pts: 35 },
+      { strike: 7500, net_gex: -1_500_000_000, kind: "support", distance_pts: 40 },
+    ],
+    regime: "bullish",
+  });
+  const next = desk({
+    as_of: "2026-07-10T14:12:00.000Z",
+    gex_walls: [
+      { strike: 7575, net_gex: 800_000_000, kind: "resistance", distance_pts: 35 },
+      { strike: 7500, net_gex: -1_500_000_000, kind: "support", distance_pts: 40 },
+    ],
+    regime: "bearish",
+  });
+  const hmPrev: IntelHeatmapSlice = {
+    asof: "2026-07-10T14:00:00.000Z",
+    vex: { regime: { posture: "positive" }, strike_totals: { "7550": 1 } },
+    dex: { regime: { posture: "long" } },
+    charm: { regime: { posture: "positive" } },
+  };
+  const hmNext: IntelHeatmapSlice = {
+    asof: "2026-07-10T14:12:00.000Z",
+    vex: { regime: { posture: "negative" }, strike_totals: { "7560": 1 } },
+    dex: { regime: { posture: "short" } },
+    charm: { regime: { posture: "negative" } },
+  };
+  const nh: NightHawkEdition = {
+    available: true,
+    edition_for: "2026-07-10",
+    published_at: "2026-07-10T08:05:00.000Z",
+    recap_headline: null,
+    recap_summary: null,
+    plays: [
+      {
+        rank: 1,
+        ticker: "SPX",
+        direction: "short",
+        conviction: "A",
+        play_type: "index",
+        thesis: "Fade",
+        key_signal: "neg gamma",
+        entry_range: "7540",
+        target: "7500",
+        stop: "7565",
+        options_play: "7525P",
+      },
+    ],
+  };
+  const ctx = buildOdteIntelContext({
+    prevDesk: prev,
+    desk: next,
+    prevHeatmap: hmPrev,
+    heatmap: hmNext,
+    prevNighthawk: null,
+    nighthawk: nh,
+  });
+  assert.ok(ctx.lines.some((l) => /reducing/.test(l)));
+  assert.ok(ctx.lines.some((l) => /REGIME/.test(l)));
+  assert.ok(ctx.lines.some((l) => /VEX POSTURE/.test(l)));
+  assert.ok(ctx.lines.some((l) => /DEX POSTURE/.test(l)));
+  assert.ok(ctx.lines.some((l) => /CHARM POSTURE/.test(l)));
+  assert.ok(ctx.lines.some((l) => /NIGHT HAWK PUBLISHED/.test(l)));
+  assert.equal(ctx.events.length, ctx.lines.length);
+});
+
+test("heatmapToIntelSlice: drops unavailable payloads", () => {
+  assert.equal(heatmapToIntelSlice(null), null);
+  assert.equal(heatmapToIntelSlice({ available: false }), null);
+  const slice = heatmapToIntelSlice({
+    available: true,
+    asof: "2026-07-10T14:00:00.000Z",
+    vex: { flip: 7500, regime: { posture: "positive" } },
+  });
+  assert.ok(slice);
+  assert.equal(slice!.asof, "2026-07-10T14:00:00.000Z");
+  assert.equal(slice!.vex?.flip, 7500);
 });
