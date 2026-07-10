@@ -16,6 +16,12 @@ import {
   type PlayTerminalIcon,
   type PlayTerminalLine,
 } from "@/features/spx/lib/spx-play-terminal-lines";
+import {
+  appendOdteIntelEvents,
+  diffOdteIntelEvents,
+  odteIntelEventsToTerminalLines,
+  type OdteIntelEvent,
+} from "@/features/spx/lib/spx-odte-intel-feed";
 
 export type DeskTerminalTab = "playbook" | "play";
 
@@ -68,7 +74,7 @@ function TerminalLine({ line }: { line: PlayTerminalLine }) {
 }
 
 function tabTitle(activeTab: DeskTerminalTab, selected: TradeAlertPlay | null): string {
-  if (activeTab === "playbook") return "blackout — playbook validation";
+  if (activeTab === "playbook") return "blackout — playbook + 0DTE intel";
   return playTerminalTitle(selected);
 }
 
@@ -88,35 +94,54 @@ export function SpxDeskTerminal({
   asOf,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const prevDeskRef = useRef<SpxDeskPayload | null>(null);
+  const seededRef = useRef(false);
+  const [intelEvents, setIntelEvents] = useState<OdteIntelEvent[]>([]);
 
-  const lines = useMemo(() => {
-    if (activeTab === "playbook") {
-      return buildPlaybookTerminalLines(playbookPanel, sessionLive);
-    }
-    return buildPlayTerminalLines({
-      selected,
-      play,
-      lotto,
-      powerHour,
-      desk,
-      confirmationLayer,
-      closedThesis,
-    });
-  }, [
-    activeTab,
-    playbookPanel,
-    sessionLive,
-    selected,
-    play,
-    lotto,
-    powerHour,
-    desk,
-    confirmationLayer,
-    closedThesis,
-  ]);
+  // Diff desk snapshots → material 0DTE intel only (anchor / flip / walls / big flow).
+  useEffect(() => {
+    if (!desk?.available) return;
+    const prev = prevDeskRef.current;
+    const seed = !seededRef.current;
+    const incoming = diffOdteIntelEvents(prev, desk, { seed });
+    prevDeskRef.current = desk;
+    seededRef.current = true;
+    if (!incoming.length) return;
+    setIntelEvents((cur) => appendOdteIntelEvents(cur, incoming, 40));
+  }, [desk]);
+
+  const playbookLines = useMemo(
+    () => buildPlaybookTerminalLines(playbookPanel, sessionLive),
+    [playbookPanel, sessionLive]
+  );
+
+  const intelLines = useMemo(() => {
+    const header: PlayTerminalLine = {
+      icon: "section",
+      tone: "accent",
+      text: "0DTE INTEL · STRUCTURE / FLOW",
+    };
+    return [header, ...odteIntelEventsToTerminalLines(intelEvents)];
+  }, [intelEvents]);
+
+  const playLines = useMemo(
+    () =>
+      buildPlayTerminalLines({
+        selected,
+        play,
+        lotto,
+        powerHour,
+        desk,
+        confirmationLayer,
+        closedThesis,
+      }),
+    [selected, play, lotto, powerHour, desk, confirmationLayer, closedThesis]
+  );
+
+  const lines = activeTab === "playbook" ? [...playbookLines, ...intelLines] : playLines;
 
   const cmd =
-    activeTab === "playbook" ? "playbook --shadow --validate" : "play --follow";
+    activeTab === "playbook" ? "playbook --shadow && intel --0dte --edges" : "play --follow";
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -170,7 +195,7 @@ export function SpxDeskTerminal({
         ref={scrollRef}
         className="spx-play-terminal-body"
         role="tabpanel"
-        aria-label={activeTab === "playbook" ? "Playbook validation" : "Selected play feed"}
+        aria-label={activeTab === "playbook" ? "Playbook and 0DTE intel" : "Selected play feed"}
       >
         <div className="spx-play-terminal-prompt-line">
           <span className="spx-play-terminal-user">member</span>
@@ -180,7 +205,7 @@ export function SpxDeskTerminal({
           <span className="spx-play-terminal-cmd">{cmd}</span>
         </div>
         {lines.map((line, i) => (
-          <TerminalLine key={`${activeTab}-${line.text}-${i}`} line={line} />
+          <TerminalLine key={`${activeTab}-${line.icon}-${line.text}-${i}`} line={line} />
         ))}
         <div className="spx-play-terminal-cursor-line" aria-hidden />
       </div>
