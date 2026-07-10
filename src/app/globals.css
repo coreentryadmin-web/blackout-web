@@ -8950,12 +8950,15 @@ body::before {
     min-height: calc(100dvh - var(--nav-offset) - 6.75rem);
   }
 
-  /* Member desk v2: Largo commentary | matrix | Open/Watch/Closed | Terminal */
+  /* Member desk v2: four equal columns — Largo | matrix | plays | terminal */
   .spx-sniper-triple.spx-sniper-triple--desk-v2 {
-    @apply lg:grid-cols-[minmax(180px,0.65fr)_minmax(220px,0.8fr)_minmax(160px,0.55fr)_minmax(260px,1fr)];
-    @apply xl:grid-cols-[minmax(200px,14vw)_minmax(250px,17vw)_minmax(190px,12vw)_minmax(300px,1fr)];
-    @apply 2xl:grid-cols-[minmax(220px,13vw)_minmax(270px,16vw)_minmax(210px,11vw)_minmax(340px,1.05fr)];
     gap: 0.5rem;
+  }
+
+  @media (min-width: 1024px) {
+    .spx-sniper-triple.spx-sniper-triple--desk-v2 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
   }
 
   .spx-sniper-triple--desk-v2 .spx-left-commentary {
@@ -8967,11 +8970,11 @@ body::before {
   }
 
   .spx-sniper-triple--desk-v2 .spx-sniper-plays-col {
-    @apply order-3;
+    @apply order-3 min-w-0;
   }
 
   .spx-sniper-triple--desk-v2 .spx-sniper-terminal-col {
-    @apply order-4;
+    @apply order-4 min-w-0;
   }
 
   .spx-sniper-triple--desk-v2 .spx-commentary-rail-desk {
@@ -8979,11 +8982,11 @@ body::before {
   }
 
   .spx-sniper-plays-col {
-    @apply flex flex-col min-h-0 h-full overflow-hidden;
+    @apply flex flex-col min-h-0 min-w-0 h-full overflow-hidden;
   }
 
   .spx-sniper-terminal-col {
-    @apply flex flex-col min-h-0 h-full overflow-hidden rounded-2xl border border-white/10 bg-[#050508] p-2;
+    @apply flex flex-col min-h-0 h-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-[#050508] p-1.5;
   }
 
   .spx-sniper-terminal-col .spx-play-terminal-window {
