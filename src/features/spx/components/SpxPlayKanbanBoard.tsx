@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import type { PlayKanbanChip, PlayKanbanColumn, PlayKanbanFilter } from "@/features/spx/lib/spx-play-kanban-chips";
 
@@ -11,10 +12,10 @@ type Props = {
   onSelect: (id: string | null) => void;
 };
 
-const COLUMN_META: { id: PlayKanbanColumn; label: string; className: string }[] = [
-  { id: "open", label: "Open", className: "spx-play-kanban-col-open" },
-  { id: "watch", label: "Watch", className: "spx-play-kanban-col-watch" },
-  { id: "closed", label: "Closed", className: "spx-play-kanban-col-closed" },
+const COLUMN_META: { id: PlayKanbanColumn; label: string }[] = [
+  { id: "open", label: "Open" },
+  { id: "watch", label: "Watch" },
+  { id: "closed", label: "Closed" },
 ];
 
 const FILTERS: { id: PlayKanbanFilter; label: string }[] = [
@@ -44,52 +45,92 @@ function PlayKanbanChipButton({
       onClick={() => onSelect(chip.id)}
       title={chip.prefix ? `${chip.prefix} · ${chip.label}` : chip.label}
     >
-      {chip.prefix && <span className="spx-play-kanban-chip-prefix">{chip.prefix}</span>}
+      <span className="spx-play-kanban-chip-kind">{chip.prefix ?? chip.kind.slice(0, 3).toUpperCase()}</span>
       <span className="spx-play-kanban-chip-label">{chip.label}</span>
     </button>
   );
 }
 
+function firstColumnWithChips(columns: Record<PlayKanbanColumn, PlayKanbanChip[]>): PlayKanbanColumn {
+  for (const col of COLUMN_META) {
+    if (columns[col.id].length > 0) return col.id;
+  }
+  return "open";
+}
+
 export function SpxPlayKanbanBoard({ columns, filter, onFilterChange, selectedId, onSelect }: Props) {
+  const [activeColumn, setActiveColumn] = useState<PlayKanbanColumn>("open");
+
+  useEffect(() => {
+    if (selectedId) {
+      for (const col of COLUMN_META) {
+        if (columns[col.id].some((c) => c.id === selectedId)) {
+          setActiveColumn(col.id);
+          return;
+        }
+      }
+    }
+    setActiveColumn(firstColumnWithChips(columns));
+  }, [selectedId, columns.open, columns.watch, columns.closed]);
+
+  const activeChips = columns[activeColumn];
+
   return (
     <div className="spx-play-kanban-board">
-      <div className="spx-play-kanban-filters" role="group" aria-label="Play type filter">
-        {FILTERS.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            className={clsx("spx-play-surface-filter", filter === f.id && "spx-play-surface-filter-active")}
-            onClick={() => onFilterChange(f.id)}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="spx-play-kanban-toolbar">
+        <div className="spx-play-kanban-filters" role="group" aria-label="Play type filter">
+          {FILTERS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              className={clsx("spx-play-surface-filter", filter === f.id && "spx-play-surface-filter-active")}
+              onClick={() => onFilterChange(f.id)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="spx-play-kanban-column-tabs" role="tablist" aria-label="Play state">
+          {COLUMN_META.map((col) => {
+            const count = columns[col.id].length;
+            const active = activeColumn === col.id;
+            return (
+              <button
+                key={col.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                className={clsx("spx-play-kanban-column-tab", active && "spx-play-kanban-column-tab--active")}
+                onClick={() => setActiveColumn(col.id)}
+              >
+                <span>{col.label}</span>
+                <span className="spx-play-kanban-column-count">{count}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="spx-play-kanban-columns" aria-label="Trade alerts by state">
-        {COLUMN_META.map((col, idx) => {
-          const chips = columns[col.id];
-          return (
-            <div key={col.id} className={clsx("spx-play-kanban-col", col.className)}>
-              {idx > 0 && <span className="spx-play-kanban-funnel" aria-hidden />}
-              <p className="spx-play-kanban-col-title">{col.label}</p>
-              <div className="spx-play-kanban-col-body">
-                {chips.length === 0 ? (
-                  <p className="spx-play-kanban-empty">—</p>
-                ) : (
-                  chips.map((chip) => (
-                    <PlayKanbanChipButton
-                      key={chip.id}
-                      chip={chip}
-                      selected={selectedId === chip.id}
-                      onSelect={onSelect}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
-          );
-        })}
+      <div
+        className="spx-play-kanban-chip-tray"
+        role="tabpanel"
+        aria-label={`${activeColumn} plays`}
+      >
+        {activeChips.length === 0 ? (
+          <p className="spx-play-kanban-empty-tray">No {activeColumn} plays in this filter.</p>
+        ) : (
+          <div className="spx-play-kanban-chip-row">
+            {activeChips.map((chip) => (
+              <PlayKanbanChipButton
+                key={chip.id}
+                chip={chip}
+                selected={selectedId === chip.id}
+                onSelect={onSelect}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
