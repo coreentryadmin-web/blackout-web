@@ -5,6 +5,7 @@ import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-eng
 import type { PlayConfirmationLayer } from "@/features/spx/hooks/useStablePlayConfirmations";
 import type { TradeAlertPlay } from "@/features/spx/lib/spx-trade-alert-plays";
 import type { PlaybookShadowPanel } from "@/features/spx/lib/playbook-shadow-panel";
+import { PLAYBOOK_REGISTRY, type PlaybookId } from "@/features/spx/lib/playbook-registry";
 import { fmtPrice } from "@/lib/api";
 
 export type PlayTerminalIcon =
@@ -246,48 +247,136 @@ export function playTerminalTitle(selected: TradeAlertPlay | null): string {
   return `blackout — ${selected.chip.label} · ${selected.chip.column}`;
 }
 
+function registryEntry(id: PlaybookId | string | null | undefined) {
+  if (!id) return null;
+  return PLAYBOOK_REGISTRY.find((p) => p.id === id) ?? null;
+}
+
+function sessionWindowLabel(id: PlaybookId): string {
+  const def = registryEntry(id);
+  if (!def) return "";
+  const { startEtHour, startEtMin, endEtHour, endEtMin } = def.sessionWindow;
+  const fmt = (h: number, m: number) =>
+    `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")}${h < 12 ? "a" : "p"}`;
+  return `${fmt(startEtHour, startEtMin)}–${fmt(endEtHour, endEtMin)} ET`;
+}
+
+function shadowStatus(
+  v: PlaybookShadowPanel["verdicts"][number]
+): "FIRED" | "ARMED" | "WATCH" | "IDLE" {
+  if (v.trigger_fired) return "FIRED";
+  if (v.precondition_match && v.session_window_open) return "ARMED";
+  if (v.session_window_open) return "WATCH";
+  return "IDLE";
+}
+
+function statusHint(v: PlaybookShadowPanel["verdicts"][number]): string | null {
+  const def = registryEntry(v.playbook_id);
+  const status = shadowStatus(v);
+  if (status === "FIRED") return v.detail || def?.trigger || null;
+  if (status === "ARMED") return def ? `Trigger: ${def.trigger}` : null;
+  if (status === "WATCH") {
+    if (!v.precondition_match && def) return `Waiting: ${def.preconditions}`;
+    return "Window open — preconditions not yet met";
+  }
+  if (!v.session_window_open) {
+    return `Window closed (${sessionWindowLabel(v.playbook_id)})`;
+  }
+  return null;
+}
+
 export function buildPlaybookTerminalLines(
   panel: PlaybookShadowPanel | null | undefined,
   sessionLive: boolean
 ): PlayTerminalLine[] {
   const lines: PlayTerminalLine[] = [];
-  lines.push({ icon: "section", tone: "accent", text: "PLAYBOOK · SHADOW" });
+  lines.push({
+    icon: "section",
+    tone: "accent",
+    text: sessionLive ? "PLAYBOOK · SHADOW (live)" : "PLAYBOOK · SHADOW (session closed)",
+  });
 
   if (!panel?.verdicts.length) {
-    lines.push({
-      icon: "dim",
-      tone: "dim",
-      text: sessionLive
-        ? "PB-01/02/03 awaiting technicals…"
-        : "After hours — last session shadow state.",
-      indent: 1,
-    });
+    if (sessionLive) {
+      lines.push({
+        icon: "dim",
+        tone: "dim",
+        text: "PB-01/02/03 awaiting technicals…",
+        indent: 1,
+      });
+    } else {
+      lines.push({
+        icon: "dim",
+        tone: "dim",
+        text: "Session closed — no live shadow state this load.",
+        indent: 1,
+      });
+      lines.push({
+        icon: "dim",
+        tone: "dim",
+        text: "Catalog (shadow-only — does not gate trades):",
+        indent: 1,
+      });
+      for (const pb of PLAYBOOK_REGISTRY) {
+        lines.push({
+          icon: "dim",
+          tone: "dim",
+          text: `${pb.id} ${pb.name} · ${sessionWindowLabel(pb.id)}`,
+          indent: 2,
+        });
+      }
+    }
     return lines;
   }
 
-  if (panel.primary_playbook_id) {
+  lines.push({
+    icon: "dim",
+    tone: "dim",
+    text: "Informational only — does not gate BUY/WATCH/HOLD.",
+    indent: 1,
+  });
+
+  const primary = panel.verdicts.find((v) => v.primary) ?? null;
+  if (panel.primary_playbook_id || primary) {
+    const id = (panel.primary_playbook_id ?? primary?.playbook_id) as PlaybookId;
+    const name = primary?.name ?? registryEntry(id)?.name ?? id;
+    const dir =
+      primary?.direction && primary.direction !== "neutral"
+        ? ` · ${primary.direction.toUpperCase()}`
+        : "";
+    const st = primary ? shadowStatus(primary) : "IDLE";
     lines.push({
       icon: "pulse",
-      tone: "accent",
-      text: `Primary: ${panel.primary_playbook_id}`,
+      tone: st === "FIRED" ? "bull" : st === "ARMED" ? "accent" : "warn",
+      text: `Primary ★ ${id} ${name} · ${st}${dir}`,
+      indent: 1,
+    });
+  } else {
+    lines.push({
+      icon: "dim",
+      tone: "dim",
+      text: "Primary — none (no trigger fired this tick)",
       indent: 1,
     });
   }
 
   for (const v of panel.verdicts) {
-    const fired = v.trigger_fired;
-    const armed = v.precondition_match && v.session_window_open;
-    const status = fired ? "FIRED" : armed ? "ARMED" : v.session_window_open ? "WATCH" : "IDLE";
+    const status = shadowStatus(v);
     const dir =
-      fired && v.direction && v.direction !== "neutral" ? ` · ${v.direction.toUpperCase()}` : "";
+      status === "FIRED" && v.direction && v.direction !== "neutral"
+        ? ` · ${v.direction.toUpperCase()}`
+        : "";
+    const star = v.primary ? " ★" : "";
     lines.push({
-      icon: fired ? "ok" : armed ? "watch" : "dim",
-      tone: fired ? "bull" : armed ? "accent" : "dim",
-      text: `${v.playbook_id} ${status}${dir}`,
+      icon: status === "FIRED" ? "ok" : status === "ARMED" ? "watch" : status === "WATCH" ? "pulse" : "dim",
+      tone:
+        status === "FIRED" ? "bull" : status === "ARMED" ? "accent" : status === "WATCH" ? "warn" : "dim",
+      text: `${v.playbook_id}${star} ${status} · ${v.name}${dir}`,
       indent: 1,
     });
-    if (fired && v.detail) {
-      lines.push({ icon: "dim", tone: "dim", text: v.detail, indent: 2 });
+    const hint = statusHint(v);
+    if (hint) {
+      lines.push({ icon: "dim", tone: "dim", text: hint, indent: 2 });
     }
   }
 

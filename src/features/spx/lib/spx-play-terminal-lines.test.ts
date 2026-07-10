@@ -56,11 +56,22 @@ test("buildPlayTerminalLines: structure HOLD includes VWAP and WHY HOLD", () => 
 test("buildPlaybookTerminalLines: empty panel shows awaiting copy when session live", () => {
   const lines = buildPlaybookTerminalLines(null, true);
   const text = lines.map((l) => l.text).join("\n");
-  assert.match(text, /PLAYBOOK · SHADOW/);
+  assert.match(text, /PLAYBOOK · SHADOW \(live\)/);
   assert.match(text, /awaiting technicals/i);
 });
 
-test("buildPlaybookTerminalLines: verdicts render compact PB status rows", () => {
+test("buildPlaybookTerminalLines: empty AH shows honest copy + catalog", () => {
+  const lines = buildPlaybookTerminalLines(null, false);
+  const text = lines.map((l) => l.text).join("\n");
+  assert.match(text, /session closed/i);
+  assert.match(text, /no live shadow state/i);
+  assert.match(text, /PB-01 VWAP Reclaim/);
+  assert.match(text, /PB-02 VWAP Reject/);
+  assert.match(text, /PB-03 Opening Range Breakout/);
+  assert.doesNotMatch(text, /last session shadow state/i);
+});
+
+test("buildPlaybookTerminalLines: verdicts render named status + arming hints", () => {
   const lines = buildPlaybookTerminalLines(
     {
       mode: "shadow",
@@ -68,7 +79,7 @@ test("buildPlaybookTerminalLines: verdicts render compact PB status rows", () =>
       verdicts: [
         {
           playbook_id: "PB-01",
-          name: "Open Drive",
+          name: "VWAP Reclaim",
           trigger_fired: true,
           precondition_match: true,
           session_window_open: true,
@@ -76,12 +87,37 @@ test("buildPlaybookTerminalLines: verdicts render compact PB status rows", () =>
           detail: "Gap-and-go above VWAP",
           primary: true,
         },
+        {
+          playbook_id: "PB-02",
+          name: "VWAP Reject",
+          trigger_fired: false,
+          precondition_match: true,
+          session_window_open: true,
+          direction: "short",
+          detail: "",
+          primary: false,
+        },
+        {
+          playbook_id: "PB-03",
+          name: "Opening Range Breakout",
+          trigger_fired: false,
+          precondition_match: false,
+          session_window_open: false,
+          direction: "neutral",
+          detail: "",
+          primary: false,
+        },
       ],
     },
     true
   );
   const text = lines.map((l) => l.text).join("\n");
-  assert.match(text, /Primary: PB-01/);
-  assert.match(text, /PB-01 FIRED · LONG/);
+  assert.match(text, /Primary ★ PB-01 VWAP Reclaim · FIRED · LONG/);
+  assert.match(text, /PB-01 ★ FIRED · VWAP Reclaim · LONG/);
   assert.match(text, /Gap-and-go above VWAP/);
+  assert.match(text, /PB-02 ARMED · VWAP Reject/);
+  assert.match(text, /Trigger:/);
+  assert.match(text, /PB-03 IDLE · Opening Range Breakout/);
+  assert.match(text, /Window closed/);
+  assert.match(text, /does not gate/);
 });

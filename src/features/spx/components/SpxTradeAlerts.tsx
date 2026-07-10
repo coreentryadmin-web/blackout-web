@@ -12,6 +12,31 @@ import { SpxLiveSpotPrice } from "./SpxLiveSpotPrice";
 import { SpxTradeAlertsPanels } from "./SpxTradeAlertsPanels";
 import { SpxDeskTerminal, type DeskTerminalTab } from "./SpxDeskTerminal";
 import { buildTradeAlertPlays } from "@/features/spx/lib/spx-trade-alert-plays";
+import type { PlaybookShadowPanel } from "@/features/spx/lib/playbook-shadow-panel";
+
+const PLAYBOOK_SHADOW_CACHE_KEY = "spx:playbook-shadow:last";
+
+function readCachedPlaybookShadow(): PlaybookShadowPanel | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(PLAYBOOK_SHADOW_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PlaybookShadowPanel;
+    if (!parsed?.verdicts?.length) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedPlaybookShadow(panel: PlaybookShadowPanel) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(PLAYBOOK_SHADOW_CACHE_KEY, JSON.stringify(panel));
+  } catch {
+    /* ignore quota */
+  }
+}
 
 type Props = {
   desk?: SpxDeskPayload;
@@ -123,6 +148,18 @@ export function SpxTradeAlerts({ desk, live, sessionActive = true, iosHidden = f
   }, [play]);
 
   const sessionLive = Boolean(live && sessionActive);
+
+  // Persist last non-empty shadow panel so AH / refresh can still show Phase-2 ARM state.
+  const livePlaybook = play?.playbook_shadow ?? null;
+  useEffect(() => {
+    if (livePlaybook?.verdicts?.length) writeCachedPlaybookShadow(livePlaybook);
+  }, [livePlaybook]);
+  const [cachedPlaybook] = useState<PlaybookShadowPanel | null>(() => readCachedPlaybookShadow());
+  const playbookPanel = livePlaybook?.verdicts?.length
+    ? livePlaybook
+    : !sessionLive
+      ? cachedPlaybook
+      : livePlaybook;
 
   const structureOpen = Boolean(
     sessionLive && (pinnedStructure ? hasOpenPlay(pinnedStructure) : play && hasOpenPlay(play))
@@ -237,7 +274,7 @@ export function SpxTradeAlerts({ desk, live, sessionActive = true, iosHidden = f
           play={displayPlay}
           lotto={lotto}
           powerHour={powerHour}
-          playbookPanel={play?.playbook_shadow}
+          playbookPanel={playbookPanel}
           desk={desk}
           confirmationLayer={confirmationLayer}
           closedThesis={closedThesis}

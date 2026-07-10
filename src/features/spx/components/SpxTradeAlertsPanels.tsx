@@ -53,13 +53,39 @@ export function SpxTradeAlertsPanels({
   onSelectPlay,
 }: Props) {
   const stageHint = (item: TradeAlertPlay): string | undefined => {
-    if (item.chip.column === "watch") return "WATCH";
+    if (item.chip.column === "watch") {
+      // Phase 2 ARM UI — surface primary shadow playbook on structure Watch rows.
+      if (item.chip.kind === "structure" && play?.playbook_shadow) {
+        const primary =
+          play.playbook_shadow.verdicts.find((v) => v.primary) ??
+          play.playbook_shadow.verdicts.find((v) => v.playbook_id === play.playbook_shadow?.primary_playbook_id);
+        if (primary) {
+          const st = primary.trigger_fired
+            ? "FIRED"
+            : primary.precondition_match && primary.session_window_open
+              ? "ARMED"
+              : primary.session_window_open
+                ? "WATCH"
+                : "IDLE";
+          return `${primary.playbook_id} ${st}`;
+        }
+      }
+      return "WATCH";
+    }
     if (item.chip.column === "closed") return "CLOSED";
     if (item.chip.kind === "structure" && play) return play.action;
     if (item.chip.kind === "lotto" && lotto) return lotto.phase;
     if (item.chip.kind === "power" && powerHour) return powerHour.phase;
     return "OPEN";
   };
+
+  const watchEmptyCopy = (() => {
+    const primary = play?.playbook_shadow?.verdicts.find((v) => v.primary);
+    if (primary && (primary.precondition_match || primary.session_window_open)) {
+      return `Shadow: ${primary.playbook_id} ${primary.name}`;
+    }
+    return "Nothing armed.";
+  })();
 
   const renderCol = (col: "open" | "watch" | "closed", items: TradeAlertPlay[], wide?: boolean) => (
     <section
@@ -78,7 +104,7 @@ export function SpxTradeAlertsPanels({
       <div className="spx-trade-alerts-panel-col-body">
         {items.length === 0 ? (
           <p className="spx-trade-alerts-panel-empty">
-            {col === "open" ? "No open positions." : col === "watch" ? "Nothing armed." : "No closed plays."}
+            {col === "open" ? "No open positions." : col === "watch" ? watchEmptyCopy : "No closed plays."}
           </p>
         ) : (
           items.map((item) => (

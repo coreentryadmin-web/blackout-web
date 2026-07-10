@@ -117,12 +117,15 @@ export function buildPlayKanbanChips(input: {
         });
       }
     } else if (structureWatch) {
-      const label = structureStrikeChip(play) ?? `G${play.grade}`;
+      const base = structureStrikeChip(play) ?? `G${play.grade}`;
+      const pb = play.playbook_shadow?.verdicts.find((v) => v.primary);
+      const pbTag = pb ? ` · ${pb.playbook_id}` : "";
+      const label = `${base.startsWith("G") ? base : `W${base}`}${pbTag}`;
       watch.push({
         id: "structure-watch",
         column: "watch",
         kind: "structure",
-        label: label.startsWith("G") ? label : `W${label}`,
+        label,
         prefix: "STR",
         tone: "watch",
       });
