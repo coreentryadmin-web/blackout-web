@@ -31,7 +31,8 @@ const NAMED_ENTITIES: Record<string, string> = {
   copy: "©",
 };
 
-function decodeHtmlEntities(s: string): string {
+/** Decode common HTML entities for display (news headlines, catalyst titles). */
+export function decodeHtmlEntities(s: string): string {
   return s
     .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) =>
       String.fromCodePoint(parseInt(hex, 16))
