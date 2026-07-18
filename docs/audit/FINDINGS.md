@@ -202,3 +202,12 @@ evidence / fix / status per the CLAUDE.md policy.)
 - **Root cause:** `nighthawk-tiers.ts:137-151` — scores ≥70 are ceiling-capped at B tier. The measured track record shows A+ (≥70) went 0 wins / 1 loss, while B (40-54) averaged +2.99%. The tier engine prices in the overnight inversion.
 - **Evidence:** FHN score 77 → B (capped), GOOGL score 67 → A (mid-band, 3+ confirming signals).
 - **Status:** By design. No member-facing explanation of the inversion exists (future UX item).
+
+## 2026-07-18 — Production auth redirect validation
+
+### P1 — Authenticated users see sign-in page instead of being redirected (FIXING)
+- **Severity:** P1 (UX disruption — authenticated users landing on /sign-in see the form instead of being redirected to /)
+- **Root cause:** `src/middleware-clerk.ts:47` — Clerk v7.5.17's `auth()` function in the `clerkMiddleware` callback does not reliably return `userId`, even when the session JWT is valid and `auth.protect()` succeeds. The internal `createMiddlewareAuthHandler` calls `requestState.toAuth()` on each invocation, while `createMiddlewareProtect` uses a pre-computed `rawAuthObject` from the initial `requestState.toAuth()` call. The divergence causes `auth().userId` to be `null` while `auth.protect()` correctly detects the authenticated user.
+- **Evidence:** fetch-based validation against `blackouttrades.com` with FAPI-minted Clerk session (JWT `sub` confirmed via Backend API, session status: active). Protected routes return 200 (`auth.protect()` succeeds), but `/sign-in` returns 200 with `x-middleware-rewrite: /sign-in` (our redirect branch never fires). Unauthenticated requests correctly get 307 to `/sign-in?redirect_url=...`.
+- **Fix:** Replace `auth()` userId check with `auth.protect()` in a try-catch — `auth.protect()` uses the pre-computed auth object which correctly reflects authentication state. Throws for unauthenticated users (caught, fall through to show sign-in page); returns normally for authenticated users (redirect to `/` or `redirect_url`).
+- **Status:** Fix committed, PR pending.
