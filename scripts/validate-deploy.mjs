@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Post-deploy validation — run after every push to main (Railway auto-deploy).
+ * Post-deploy validation — run after every push to main (ECS auto-deploy).
  *
  * Usage:
  *   node scripts/validate-deploy.mjs
@@ -40,7 +40,7 @@ function sh(cmd) {
   return execSync(cmd, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
 }
 
-function actionableRailwayDeployment(output) {
+function actionableDeployment(output) {
   const rows = output
     .split("\n")
     .map((line) => line.trim())
@@ -50,7 +50,7 @@ function actionableRailwayDeployment(output) {
   return { actionable, ignored };
 }
 
-function loadRailwayVars() {
+function loadProdVars() {
   try {
     return JSON.parse(sh("railway variables --service blackout-web --json 2>/dev/null"));
   } catch {
@@ -72,7 +72,7 @@ function resolveCronSecret() {
       return "";
     }
   }
-  const vars = loadRailwayVars();
+  const vars = loadProdVars();
   return vars.CRON_SECRET?.trim() ?? "";
 }
 
@@ -103,7 +103,7 @@ async function resolveSentryFromToken(token) {
     );
     if (projRes.ok) {
       const projects = await projRes.json();
-      const rw = loadRailwayVars();
+      const rw = loadProdVars();
       const dsnId = dsnProjectId(rw.SENTRY_DSN || rw.NEXT_PUBLIC_SENTRY_DSN);
       if (dsnId && Array.isArray(projects)) {
         const hit = projects.find((p) => String(p.id) === dsnId);
@@ -161,22 +161,22 @@ console.log("\n=== BlackOut post-deploy validation ===\n");
 console.log(`Target: ${BASE}`);
 console.log(`Time:   ${new Date().toISOString()}\n`);
 
-// ── 1. Railway deploy ───────────────────────────────────────────────────────
-console.log("1. Railway (blackout-web)");
-const skipRailway =
+// ── 1. Production deploy ────────────────────────────────────────────────────
+console.log("1. Production (blackout-web)");
+const skipCli =
   process.env.SKIP_RAILWAY === "1" ||
   IS_STAGING ||
   (process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_TOKEN?.trim());
 
-if (skipRailway) {
-  warn("Railway CLI checks skipped (GITHUB_ACTIONS or SKIP_RAILWAY=1)");
+if (skipCli) {
+  warn("Production CLI checks skipped (GITHUB_ACTIONS or SKIP_RAILWAY=1)");
 } else {
 try {
   const deployments = sh("railway deployment list --service blackout-web 2>/dev/null");
-  const { actionable: latest, ignored } = actionableRailwayDeployment(deployments);
-  if (ignored.length) warn(`Ignored ${ignored.length} skipped/removed Railway deployment row(s)`);
+  const { actionable: latest, ignored } = actionableDeployment(deployments);
+  if (ignored.length) warn(`Ignored ${ignored.length} skipped/removed deployment row(s)`);
   if (latest) console.log(`     ${latest}`);
-  else warn("No actionable Railway deployment row found");
+  else warn("No actionable deployment row found");
   if (/SUCCESS/i.test(latest)) ok("Latest deployment SUCCESS");
   else if (/BUILDING|DEPLOYING|QUEUED/i.test(latest)) fail(`Deploy not finished: ${latest}`);
   else if (latest) fail(`Deploy unhealthy: ${latest}`);
@@ -186,7 +186,7 @@ try {
   else if (/Building|Queued/i.test(status)) warn(`Service still rolling: ${status.trim()}`);
   else warn(status.trim() || "Could not read service status");
 } catch (e) {
-  fail(`Railway CLI: ${e.message}`);
+  fail(`Deploy CLI: ${e.message}`);
 }
 }
 
@@ -307,7 +307,7 @@ if (IS_STAGING && dbUrl) {
       )
     ).map((r) => r.job_key);
     if (zeroRuns.length === 0) ok(`All ${cronKeys.length} registered crons have run history`);
-    else warn(`Cron jobs with zero runs ever (Railway service may be missing): ${zeroRuns.join(", ")}`);
+    else warn(`Cron jobs with zero runs ever (cron service may be missing): ${zeroRuns.join(", ")}`);
 
     await client.end();
   } catch (e) {
@@ -323,7 +323,7 @@ if (IS_STAGING && dbUrl) {
 
 // ── 4. Sentry (token only — auto-discovers org/project) ─────────────────────
 console.log("\n4. Sentry");
-const rwVars = loadRailwayVars();
+const rwVars = loadProdVars();
 const sentryToken =
   process.env.SENTRY_AUTH_TOKEN?.trim() || rwVars.SENTRY_AUTH_TOKEN?.trim() || "";
 const sentryOrgOverride = process.env.SENTRY_ORG?.trim() || rwVars.SENTRY_ORG?.trim() || "";
@@ -366,9 +366,9 @@ if (sentryToken) {
     else fail(`Sentry API: ${e.message} — verify token scopes (event:read, org:read, project:read)`);
   }
 } else {
-  warn("SENTRY_AUTH_TOKEN not found (env or Railway blackout-web) — using error_events mirror");
-  if (rwVars.SENTRY_DSN) ok("SENTRY_DSN configured on Railway (capture forwarding active)");
-  else warn("SENTRY_DSN not set on Railway");
+  warn("SENTRY_AUTH_TOKEN not found (env or production blackout-web) — using error_events mirror");
+  if (rwVars.SENTRY_DSN) ok("SENTRY_DSN configured in production (capture forwarding active)");
+  else warn("SENTRY_DSN not set in production");
 }
 
 // ── 4b. REPLICA_COUNT (UW/Polygon cluster rate-limit math) ───────────────────
@@ -385,7 +385,7 @@ const replicaCount = Math.max(
   )
 );
 let runningReplicas = null;
-if (!skipRailway) {
+if (!skipCli) {
   const runningMatch = sh("railway status 2>/dev/null | rg 'blackout-web' || true").match(
     /(\d+)\/(\d+)\s+running/
   );
@@ -412,8 +412,8 @@ if (replicaCount >= 1 && runningReplicas != null && replicaCount === runningRepl
 }
 
 // ── 5. Options / UW socket churn (socket-health primary; logs secondary) ─────
-console.log("\n5. Socket churn (socket-health + Railway logs)");
-if (skipRailway) {
+console.log("\n5. Socket churn (socket-health + production logs)");
+if (skipCli) {
   if (IS_STAGING && cronSecret) {
     try {
       const { status, body } = await fetchJson("/api/cron/socket-health", {
@@ -427,7 +427,7 @@ if (skipRailway) {
       warn(`socket-health probe failed: ${e.message}`);
     }
   } else {
-    warn("Railway log checks skipped (SKIP_RAILWAY / staging without CRON_SECRET)");
+    warn("Production log checks skipped (SKIP_RAILWAY / staging without CRON_SECRET)");
   }
 } else {
   // Live probe beats log tail: multi-replica clusters + off-hours standdown leave stale
@@ -482,7 +482,7 @@ if (skipRailway) {
     if (/uw-socket.*stall watchdog/i.test(logs)) warn("uw-socket stall reconnects in recent logs");
     else ok("No uw-socket stall storms in recent logs");
   } catch {
-    warn("Could not read Railway logs");
+    warn("Could not read production logs");
   }
 }
 
