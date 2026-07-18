@@ -611,7 +611,7 @@ function StatsCell({ row }: { row: PlayRow }) {
   if (row.plan_outcome && row.plan_outcome !== "ungradeable") {
     const win = (row.plan_pnl_pct ?? 0) > 0;
     return (
-      <span className={clsx("t-num text-[13px] font-bold", win ? "text-bull" : "text-bear")}>
+      <span className={clsx("t-num text-[13px] font-bold", win ? "nh-v2-pnl-up text-bull" : "nh-v2-pnl-down text-bear")}>
         {win ? "WIN" : "LOSS"}
         {row.plan_pnl_pct != null ? ` ${row.plan_pnl_pct >= 0 ? "+" : ""}${row.plan_pnl_pct.toFixed(0)}%` : ""}
       </span>
@@ -623,7 +623,7 @@ function StatsCell({ row }: { row: PlayRow }) {
       <span
         className={clsx(
           "t-num text-[13px] font-bold",
-          up ? "text-bull" : "text-bear",
+          up ? "nh-v2-pnl-up text-bull" : "nh-v2-pnl-down text-bear",
           // Stale-honesty (B-9): money numbers older than the freshness bar dim
           // instead of impersonating a live quote.
           row.mark_stale && "opacity-40"
@@ -1024,7 +1024,8 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
   return (
     <div
       className={clsx(
-        "rounded-xl border border-white/[0.08] bg-white/[0.02] transition-colors",
+        "nh-v2-zerodte-card rounded-xl border border-white/[0.08] bg-white/[0.02] transition-colors",
+        live && "nh-v2-zerodte-card--open",
         open ? "bg-white/[0.03]" : "hover:bg-white/[0.03]"
       )}
     >
@@ -1036,6 +1037,7 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
       >
         {/* header: status · contract · dir · expiry · conviction · size · closed chip */}
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+          {live && <span className="nh-v2-live-dot shrink-0" aria-hidden />}
           <StatusBadge row={row} />
           <span className="t-num text-[14px] font-bold text-white">{contract}</span>
           <Badge tone={row.direction === "long" ? "bull" : "bear"} size="sm">

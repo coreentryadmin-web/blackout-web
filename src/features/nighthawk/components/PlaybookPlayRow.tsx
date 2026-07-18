@@ -56,6 +56,15 @@ export function fmtIvRank(raw: number): string {
   return `${Math.round(clamped)}%`;
 }
 
+function convictionFillPct(conviction: string): number {
+  const c = conviction.trim().toUpperCase();
+  if (c === "A+") return 100;
+  if (c === "A") return 88;
+  if (c === "B") return 68;
+  if (c === "C") return 48;
+  return 36;
+}
+
 function convictionTone(conviction: string): "bull" | "sky" | "neutral" {
   const c = conviction.trim().toUpperCase();
   if (c === "A+" || c === "A") return "bull";
@@ -63,19 +72,16 @@ function convictionTone(conviction: string): "bull" | "sky" | "neutral" {
   return "neutral";
 }
 
+function rankBadgeClass(rank: number): string {
+  if (rank === 1) return "nh-v2-rank-badge nh-v2-rank-badge--1";
+  if (rank <= 3) return "nh-v2-rank-badge nh-v2-rank-badge--top";
+  return "nh-v2-rank-badge nh-v2-rank-badge--std";
+}
+
 /** Mono uppercase micro-label — the 0DTE pane's section-label grammar. */
 function MicroLabel({ children }: { children: React.ReactNode }) {
   return (
     <p className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">{children}</p>
-  );
-}
-
-function LevelCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-sky-300/50">{label}</p>
-      <p className="t-num text-[12px] font-semibold leading-tight text-white">{value}</p>
-    </div>
   );
 }
 
@@ -197,14 +203,16 @@ export function PlaybookPlayRow({
   return (
     <article
       className={clsx(
-        "rounded-xl border border-white/[0.08] bg-white/[0.02] transition-colors",
-        // Direction reads as a left accent — same silhouette as the 0DTE cards' tone edges.
+        "nh-v2-play-card rounded-xl border border-white/[0.08] bg-white/[0.02] transition-colors",
+        rank === 1 && "nh-v2-play-card--rank1",
+        rank > 1 && rank <= 3 && "nh-v2-play-card--rankTop",
         isBull && "border-l-2 border-l-bull/60",
         isBear && "border-l-2 border-l-bear/60",
         !isBull && !isBear && "border-l-2 border-l-sky-400/40",
-        // Pulled: de-emphasize the whole card — the levels below are additionally
-        // struck through so a screenshot can't read as an actionable setup.
         isPulled && "opacity-60",
+        morningConfirm?.status === "CONFIRMED" && !isPulled && "nh-v2-play-card--confirmed",
+        morningConfirm?.status === "DEGRADED" && "nh-v2-play-card--degraded",
+        morningConfirm?.status === "INVALIDATED" && "nh-v2-play-card--invalidated",
         open ? "bg-white/[0.03]" : "hover:bg-white/[0.03]"
       )}
     >
@@ -217,13 +225,10 @@ export function PlaybookPlayRow({
       >
         {/* identity row: rank · ticker · direction · conviction · pulled · morning verdict · score */}
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-          <span
-            aria-hidden="true"
-            className="grid size-6 shrink-0 place-items-center rounded-md border border-white/[0.08] bg-white/[0.03] font-mono text-[11px] font-bold tabular-nums text-sky-300/80"
-          >
+          <span aria-hidden="true" className={rankBadgeClass(rank)}>
             {rank}
           </span>
-          <span className="t-num text-[15px] font-bold text-white">{play.ticker}</span>
+          <span className="nh-v2-play-ticker t-num font-bold text-white">{play.ticker}</span>
           <Badge tone={isBull ? "bull" : isBear ? "bear" : "neutral"} size="sm">
             {play.direction}
           </Badge>
@@ -283,13 +288,22 @@ export function PlaybookPlayRow({
         {/* plan line: entry band · target · stop — struck + dimmed when pulled */}
         <div
           className={clsx(
-            "mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3",
+            "nh-v2-levels-row mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3",
             isPulled && "line-through opacity-70"
           )}
         >
-          <LevelCell label="Entry" value={play.entry_range} />
-          <LevelCell label="Target" value={play.target} />
-          <LevelCell label="Stop" value={play.stop} />
+          <div className="nh-v2-level-cell">
+            <em>Entry</em>
+            <strong className="t-num">{play.entry_range}</strong>
+          </div>
+          <div className="nh-v2-level-cell">
+            <em>Target</em>
+            <strong className="t-num">{play.target}</strong>
+          </div>
+          <div className="nh-v2-level-cell">
+            <em>Stop</em>
+            <strong className="t-num">{play.stop}</strong>
+          </div>
         </div>
 
         {/* contract line */}
@@ -306,8 +320,22 @@ export function PlaybookPlayRow({
           </span>
         </div>
 
+        {play.conviction && (
+          <div className="nh-v2-conviction-meter">
+            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-gold/80">
+              {play.conviction}
+            </span>
+            <div className="nh-v2-conviction-meter-track" aria-hidden>
+              <div
+                className="nh-v2-conviction-meter-fill"
+                style={{ width: `${convictionFillPct(play.conviction)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* thesis */}
-        <p className="mt-2 text-[12px] leading-snug text-sky-200/85">{play.thesis || play.key_signal}</p>
+        <p className="nh-v2-play-thesis">{play.thesis || play.key_signal}</p>
 
         {!open && (
           <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/35">
