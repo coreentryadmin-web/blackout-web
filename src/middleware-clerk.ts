@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { clerkMiddlewareAuthOptions, clerkSatelliteAuthRedirect } from "@/lib/clerk-env";
 import { clerkIsClerkSyncFailed } from "@/lib/clerk-redirect-url";
 import {
+  clerkSessionRecoveryResponse,
+} from "@/lib/clerk-session-recovery";
+import {
   IS_STAGING,
   MUTATION_METHODS,
   PUBLIC_TELEMETRY_PATHS,
@@ -62,7 +65,11 @@ export default clerkMiddleware(
     }
 
     if (isProtectedRoute(req)) {
-      await auth.protect();
+      try {
+        await auth.protect();
+      } catch {
+        return withStagingNoEdgeCache(clerkSessionRecoveryResponse(req));
+      }
     }
 
     if (
