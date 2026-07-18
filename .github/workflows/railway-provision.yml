@@ -1,11 +1,8 @@
-# Apply pending Railway ops: CRON_WATCHDOG_SELF_HEAL + provider-health-reconcile cron.
-#
-# Requires GitHub secret: RAILWAY_TOKEN (account token with project write access)
-# Create at https://railway.com/account/tokens
-#
-# Prefer the full checklist: Railway audit apply workflow (also runs on schedule).
+# DEPRECATED — Railway decommissioned 2026-07. All infra now on AWS ECS.
+# Cron services provisioned via ECS task definitions + EventBridge rules.
+# Retained for reference only.
 
-name: Railway ops provision
+name: "[DEPRECATED] Railway ops provision"
 
 on:
   workflow_dispatch:

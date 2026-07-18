@@ -1,5 +1,5 @@
 /**
- * Registry job key → Railway production service display name.
+ * Registry job key → production cron service display name.
  * Used by railway-apply-cron-config.mjs and railway-audit-apply.mjs.
  */
 export const CRON_SERVICE_NAMES = {
@@ -36,7 +36,7 @@ export const CRON_SERVICE_NAMES = {
   "platform-warm": "Platform-Warm",
 };
 
-/** All cron job keys that have a railway.<key>.toml in the repo. */
+/** All cron job keys that have a cron config railway.<key>.toml in the repo. */
 export const ALL_CRON_KEYS = Object.keys(CRON_SERVICE_NAMES);
 
 export const INTERNAL_CRON_BASE =

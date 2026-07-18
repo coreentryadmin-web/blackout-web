@@ -1,23 +1,13 @@
-# Validate railway.*.toml cron definitions parse and match registry keys.
+# DEPRECATED — Railway decommissioned 2026-07. All infra now on AWS ECS.
+# TOML schedule catalog files (railway.*.toml) are still used as the cron
+# schedule source-of-truth for EventBridge sync (blackout-infra), but the
+# Railway-specific validation in this workflow is no longer needed.
+# Retained for reference only; triggers disabled.
 
-name: Railway cron config check
+name: "[DEPRECATED] Railway cron config check"
 
 on:
-  pull_request:
-    paths:
-      - "railway*.toml"
-      - "scripts/railway-apply-cron-config.mjs"
-      - "scripts/hit-cron.mjs"
-      - "scripts/validate-railway-cron-manifest.mjs"
-      - "scripts/railway-cron-services.mjs"
-  push:
-    branches: [main]
-    paths:
-      - "railway*.toml"
-      - "scripts/railway-apply-cron-config.mjs"
-      - "scripts/validate-railway-cron-manifest.mjs"
-      - "scripts/railway-cron-services.mjs"
-      - "src/lib/cron-registry.ts"
+  workflow_dispatch:
 
 jobs:
   check:
