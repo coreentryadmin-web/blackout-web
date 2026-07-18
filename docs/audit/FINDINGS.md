@@ -209,5 +209,31 @@ evidence / fix / status per the CLAUDE.md policy.)
 - **Severity:** P1 (UX disruption — authenticated users landing on /sign-in see the form instead of being redirected to /)
 - **Root cause:** `src/middleware-clerk.ts:47` — Clerk v7.5.17's `auth()` function in the `clerkMiddleware` callback does not reliably return `userId`, even when the session JWT is valid and `auth.protect()` succeeds. The internal `createMiddlewareAuthHandler` calls `requestState.toAuth()` on each invocation, while `createMiddlewareProtect` uses a pre-computed `rawAuthObject` from the initial `requestState.toAuth()` call. The divergence causes `auth().userId` to be `null` while `auth.protect()` correctly detects the authenticated user.
 - **Evidence:** fetch-based validation against `blackouttrades.com` with FAPI-minted Clerk session (JWT `sub` confirmed via Backend API, session status: active). Protected routes return 200 (`auth.protect()` succeeds), but `/sign-in` returns 200 with `x-middleware-rewrite: /sign-in` (our redirect branch never fires). Unauthenticated requests correctly get 307 to `/sign-in?redirect_url=...`.
-- **Fix:** Replace `auth()` userId check with `auth.protect()` in a try-catch — `auth.protect()` uses the pre-computed auth object which correctly reflects authentication state. Throws for unauthenticated users (caught, fall through to show sign-in page); returns normally for authenticated users (redirect to `/` or `redirect_url`).
-- **Status:** Fix committed, PR pending.
+- **Fix (attempt 2, failed):** `auth.protect()` try-catch (PR #785). Deployed but still broken — `auth.protect()` also throws on `/sign-in` pages (Clerk's `authenticateRequest` produces a different `requestState` for auth pages vs protected pages with the same cookies).
+- **Fix (attempt 3):** Bypass Clerk's auth resolution entirely. Decode the `__session` JWT payload directly in middleware (`atob` base64url decode), check `sub` (userId) and `exp` (expiry). The JWT is already cryptographically verified by Clerk's `authenticateRequest` before our handler runs. See issue #789.
+- **Status:** Fix shipped (PR #790, hardened #792). Prod validated 2026-07-18.
+
+## 2026-07-18 — 0DTE Command deep system audit (docs-only PR)
+
+### P0 — Persist path ignores MOVED / illiquid / NO_QUOTE (FIXING — PR #788)
+- **Severity:** P0 (commit discipline — UI shows SKIP via `resolveFreshFindStatus` but `persistZeroDteScan` only checks `gate.verdict === "COMMIT"`, `scan.ts` ~463–465)
+- **Root cause:** Chase guard lives in `plan.ts` (`CHASE_PCT=35` → `entry_status=MOVED`) and board display, not in the one-way commit door.
+- **Evidence:** `docs/audit/0DTE-SYSTEM-DEEP-AUDIT-2026-07-18.md` §3; `board.test.ts` MOVED → SKIP; no matching test on persist.
+- **Fix:** G-8/G-9 hard blocks in `evaluateZeroDteGates` + persist belt-and-suspenders (PR #788).
+- **Status:** Code PR #788 pending merge.
+
+### P1 — G-7 macro hard-block not wired to 0DTE (FIXING — PR #788)
+- **Severity:** P1 (event-day risk)
+- **Root cause:** SPX Slayer has `macroHardBlock()` in `spx-play-gates.ts`; 0DTE gate spec lists G-7 but no shared module under `src/lib/zerodte/`.
+- **Fix:** `macro-hard-block.ts` + wire into `evaluateZeroDteGates` (PR #788).
+- **Status:** PR #788 pending merge.
+
+### P1 — intraday_conflict flag not a hard gate (FIXING — PR #788)
+- **Severity:** P1
+- **Root cause:** `attachIntradayEdge` sets `intraday_conflict` on setup; logged in audit row only — not evaluated in `gates.ts`.
+- **Fix:** G-10 in PR #788.
+- **Status:** PR #788 pending merge.
+
+### Reference
+- **Full analysis:** `docs/audit/0DTE-SYSTEM-DEEP-AUDIT-2026-07-18.md` (architecture, loser forensics, API roadmap, phased build plan).
+- **Implementation track:** PR #786 Night Hawk UI + 1s live lane; PR #788 precision gates.
