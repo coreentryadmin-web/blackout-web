@@ -7,7 +7,7 @@ const LINKS = [
   { href: "/pricing", label: "Pricing", iosHide: true },
 ];
 
-export function StaticMarketingNav() {
+export function StaticMarketingNav({ signedIn = false }: { signedIn?: boolean }) {
   return (
     <header className="mkt-nav">
       <div className="mkt-nav-inner">
@@ -22,12 +22,20 @@ export function StaticMarketingNav() {
           ))}
         </nav>
         <div className="mkt-nav-auth">
-          <Link href="/sign-in" prefetch={false} className="nav-signin">
-            Sign in
-          </Link>
-          <Link href="/sign-up" prefetch={false} className="nav-join">
-            Get access →
-          </Link>
+          {signedIn ? (
+            <Link href="/dashboard" prefetch={false} className="nav-join">
+              Open desk →
+            </Link>
+          ) : (
+            <>
+              <Link href="/sign-in" prefetch={false} className="nav-signin">
+                Sign in
+              </Link>
+              <Link href="/sign-up" prefetch={false} className="nav-join">
+                Get access →
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </header>

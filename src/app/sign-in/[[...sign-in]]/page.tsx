@@ -4,8 +4,10 @@ import { SignIn } from "@clerk/nextjs";
 import { clerkAppearance } from "@/lib/clerk-theme";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { AuthFailureObserver } from "@/components/auth/AuthFailureObserver";
+import { AuthSignedInRedirect } from "@/components/auth/AuthSignedInRedirect";
 import { clerkSatelliteAuthRedirect } from "@/lib/clerk-env";
 import { clerkStagingReturnPath } from "@/lib/clerk-redirect-url";
+import { activeClerkUserIdFromRequestCookies } from "@/lib/clerk-session-cookies";
 import { isCognitoAuth } from "@/lib/auth-provider";
 
 export const metadata: Metadata = {
@@ -32,10 +34,15 @@ export default async function SignInPage({ searchParams }: Props) {
     redirect(satelliteRedirect);
   }
 
+  if (await activeClerkUserIdFromRequestCookies()) {
+    redirect(returnPath);
+  }
+
   return (
     <AuthShell mode="signin">
+      <AuthSignedInRedirect fallback={returnPath} />
       <AuthFailureObserver mode="signin">
-        <SignIn appearance={clerkAppearance} fallbackRedirectUrl="/" />
+        <SignIn appearance={clerkAppearance} fallbackRedirectUrl={returnPath} forceRedirectUrl={returnPath} />
       </AuthFailureObserver>
     </AuthShell>
   );
