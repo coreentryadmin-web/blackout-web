@@ -36,7 +36,7 @@ export default async function SignUpPage({ searchParams }: Props) {
   return (
     <AuthShell mode="signup">
       <AuthFailureObserver mode="signup">
-        <SignUp appearance={clerkAppearance} />
+        <SignUp appearance={clerkAppearance} fallbackRedirectUrl="/" />
       </AuthFailureObserver>
     </AuthShell>
   );

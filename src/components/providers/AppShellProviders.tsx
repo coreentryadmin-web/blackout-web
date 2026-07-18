@@ -46,6 +46,8 @@ export function AppShellProviders({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider
       dynamic
+      signInFallbackRedirectUrl="/"
+      signUpFallbackRedirectUrl="/"
       {...satellite}
       {...(allowedRedirectOrigins ? { allowedRedirectOrigins } : {})}
     >
