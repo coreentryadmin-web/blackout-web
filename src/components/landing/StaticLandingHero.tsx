@@ -1,45 +1,57 @@
 import Link from "next/link";
-import { SITE } from "@/lib/site";
-import { StaticHeroProductShowcase } from "./StaticHeroProductShowcase";
+import { IMAGES } from "@/lib/images";
+import { StaticHeroWaveform } from "./StaticHeroWaveform";
 
-/** Server-rendered hero with CSS-only motion — split layout + desk mock on desktop. */
+const HERO_LEDE =
+  "Live options flow, dealer positioning, and AI analysis — one terminal built for serious traders.";
+
+/** Centered emblem hero — matches Emergent / brand mock (logo → headline → CTAs). */
 export function StaticLandingHero() {
   return (
-    <section className="mkt-section mkt-hero border-b-0">
-      <div className="mkt-section-inner mkt-hero-grid">
-        <div className="mkt-hero-copy mkt-reveal">
-          <Link href="/" prefetch={false} className="mkt-hero-logo font-anton" aria-label={`${SITE.name} home`}>
-            BLACKOUT
-          </Link>
-          <h1 className="mkt-headline mkt-headline-left mkt-headline-hero">
-            <span className="block">Trade like the</span>
-            <span className="block mkt-gradient-text">lights are on.</span>
-          </h1>
-          <p className="mkt-lede mkt-lede-left">{SITE.description}</p>
-          <div className="mkt-cta-row mkt-cta-row-left">
-            <Link
-              href="/sign-up"
-              prefetch={false}
-              className="landing-btn-primary inline-flex min-w-[200px] items-center justify-center px-8 py-3 font-syne text-sm font-bold uppercase tracking-[0.2em]"
-            >
-              Start trading
-            </Link>
-          <Link
-            href="/sign-in"
-            prefetch={false}
-            className="landing-btn-ghost hide-in-ios-app inline-flex min-w-[200px] items-center justify-center border border-white/20 px-8 py-3 font-syne text-sm font-bold uppercase tracking-[0.2em] text-white"
-          >
-            Sign in
-          </Link>
-          </div>
-          <ul className="mkt-cred-strip mkt-cred-strip-left">
-            {["Professional-grade feeds", "Recorded at generation time", "Your broker, your trigger"].map((t) => (
-              <li key={t}>{t}</li>
-            ))}
-          </ul>
+    <section className="mkt-section mkt-hero mkt-hero-centered border-b-0">
+      <StaticHeroWaveform />
+      <div className="mkt-hero-centered-inner mkt-section-inner mkt-reveal">
+        <div className="mkt-hero-emblem-wrap">
+          <div className="mkt-hero-emblem-glow" aria-hidden />
+          {/* eslint-disable-next-line @next/next/no-img-element -- marketing static shell */}
+          <img
+            src={IMAGES.brandEmblem}
+            alt=""
+            className="mkt-hero-emblem"
+            width={280}
+            height={280}
+            fetchPriority="high"
+            decoding="async"
+          />
         </div>
-        <div className="mkt-hero-visual mkt-reveal">
-          <StaticHeroProductShowcase />
+
+        <p className="mkt-kicker mkt-kicker-center">
+          <span className="mkt-kicker-dot" aria-hidden />
+          Institutional options desk
+        </p>
+
+        <h1 className="mkt-headline mkt-headline-centered">
+          <span className="block mkt-headline-line">Trade like the</span>
+          <span className="block mkt-headline-glow">lights are on.</span>
+        </h1>
+
+        <p className="mkt-lede mkt-lede-centered">{HERO_LEDE}</p>
+
+        <div className="mkt-cta-row mkt-cta-row-centered">
+          <Link
+            href="/sign-up"
+            prefetch={false}
+            className="landing-btn-primary mkt-cta-primary inline-flex min-w-[200px] items-center justify-center px-10 py-3.5 font-syne text-sm font-bold uppercase tracking-[0.2em]"
+          >
+            Start trading
+          </Link>
+          <Link
+            href="/#features"
+            prefetch={false}
+            className="landing-btn-ghost mkt-cta-secondary hide-in-ios-app inline-flex min-w-[200px] items-center justify-center border border-white/25 px-10 py-3.5 font-syne text-sm font-bold uppercase tracking-[0.2em] text-white"
+          >
+            Explore the desk
+          </Link>
         </div>
       </div>
     </section>

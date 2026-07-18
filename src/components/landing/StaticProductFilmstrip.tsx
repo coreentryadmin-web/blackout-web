@@ -13,7 +13,7 @@ const STRIP: { id: MarketingModuleId; label: string; tag: string; accent: string
 /** Horizontal product gallery — real module screenshots, CSS scroll-snap. */
 export function StaticProductFilmstrip() {
   return (
-    <section className="mkt-filmstrip-section" aria-label="Platform product previews">
+    <section id="tape" className="mkt-filmstrip-section" aria-label="Platform product previews">
       <div className="mkt-section-inner">
         <p className="mkt-kicker mkt-kicker-center">
           <span className="mkt-kicker-dot" aria-hidden />
@@ -28,6 +28,7 @@ export function StaticProductFilmstrip() {
           {STRIP.map((item, i) => (
             <li
               key={item.id}
+              id={item.id === "thermal" ? "gamma" : undefined}
               className="mkt-filmstrip-card"
               style={{ "--mkt-accent": item.accent, animationDelay: `${i * 0.06}s` } as CSSProperties}
             >
