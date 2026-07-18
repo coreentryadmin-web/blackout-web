@@ -1,6 +1,10 @@
 import type { NextRequest } from "next/server";
 import { isCognitoAuth } from "@/lib/auth-provider";
 import cognitoMiddleware from "@/middleware-cognito";
+import {
+  clerkStaleCookieRecoveryResponse,
+  requestHasClerkSessionCookie,
+} from "@/lib/clerk-session-recovery";
 
 /** Inline only — Next.js cannot analyze re-exported middleware config. */
 export const config = {
@@ -29,6 +33,17 @@ function loadClerkMiddleware(): MiddlewareFn {
   return require("@/middleware-clerk").default as MiddlewareFn;
 }
 
-const handler: MiddlewareFn = isCognitoAuth() ? cognitoMiddleware : loadClerkMiddleware();
+const handler: MiddlewareFn = isCognitoAuth()
+  ? cognitoMiddleware
+  : async (req: NextRequest, event?: unknown) => {
+      try {
+        return await loadClerkMiddleware()(req, event);
+      } catch {
+        if (requestHasClerkSessionCookie(req)) {
+          return clerkStaleCookieRecoveryResponse(req);
+        }
+        throw new Error("Clerk middleware failed without session cookies");
+      }
+    };
 
 export default handler;

@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { clerkMiddlewareAuthOptions, clerkSatelliteAuthRedirect } from "@/lib/clerk-env";
 import { clerkIsClerkSyncFailed } from "@/lib/clerk-redirect-url";
 import {
-  clerkSessionRecoveryResponse,
+  clerkStaleCookieRecoveryResponse,
+  requestHasClerkSessionCookie,
 } from "@/lib/clerk-session-recovery";
 import {
   IS_STAGING,
@@ -31,6 +32,14 @@ const isPublicTelemetryRoute = createRouteMatcher([
 
 export default clerkMiddleware(
   async (auth, req) => {
+    if (requestHasClerkSessionCookie(req)) {
+      try {
+        await auth();
+      } catch {
+        return withStagingNoEdgeCache(clerkStaleCookieRecoveryResponse(req));
+      }
+    }
+
     if (IS_STAGING && process.env.AUTH_PROVIDER !== "cognito") {
       const path = req.nextUrl.pathname;
       if (path === "/sign-in" || path.startsWith("/sign-in/")) {
@@ -68,7 +77,7 @@ export default clerkMiddleware(
       try {
         await auth.protect();
       } catch {
-        return withStagingNoEdgeCache(clerkSessionRecoveryResponse(req));
+        return withStagingNoEdgeCache(clerkStaleCookieRecoveryResponse(req));
       }
     }
 
