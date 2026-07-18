@@ -151,18 +151,57 @@ jobs:
             --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "Registered new task definition: ${NEW_ARN}"
 
-          # Update the service with the new task definition — this creates a
-          # clean deployment that supersedes any stale/failed ones.
+          # Get the current running task count to use as desired count
+          RUNNING=$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --query 'services[0].runningCount' --output text)
+          DESIRED=${RUNNING:-4}
+          echo "Current running tasks: ${RUNNING}, deploying with desired: ${DESIRED}"
+
+          # Update the service with the new task definition and explicit
+          # desired count. --force-new-deployment creates a fresh PRIMARY
+          # deployment; stale ACTIVE deployments from prior circuit-breaker
+          # rollbacks drain in the background.
           aws ecs update-service \
             --cluster "${ECS_CLUSTER}" \
             --service "${ECS_SERVICE}" \
             --task-definition "${NEW_ARN}" \
+            --desired-count "${DESIRED}" \
             --force-new-deployment
-          echo "Waiting for ECS service stable (up to 10 min)..."
-          aws ecs wait services-stable \
-            --cluster "${ECS_CLUSTER}" \
-            --services "${ECS_SERVICE}"
-          echo "ECS rollout complete."
+
+          # Custom stability check: poll the PRIMARY deployment only.
+          # The built-in `services-stable` waiter blocks on ALL deployments
+          # including stale circuit-breaker leftovers that can never stabilize.
+          echo "Waiting for PRIMARY deployment to stabilize (up to 12 min)..."
+          for i in $(seq 1 48); do
+            sleep 15
+            STATUS=$(aws ecs describe-services \
+              --cluster "${ECS_CLUSTER}" \
+              --services "${ECS_SERVICE}" \
+              --query 'services[0].deployments[?status==`PRIMARY`] | [0]' \
+              --output json)
+            P_RUNNING=$(echo "${STATUS}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('runningCount',0))")
+            P_DESIRED=$(echo "${STATUS}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('desiredCount',0))")
+            P_ROLLOUT=$(echo "${STATUS}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('rolloutState','UNKNOWN'))")
+            echo "  [${i}/48] PRIMARY: running=${P_RUNNING}/${P_DESIRED}, rollout=${P_ROLLOUT}"
+            if [ "${P_ROLLOUT}" = "COMPLETED" ]; then
+              echo "ECS rollout complete."
+              break
+            fi
+            if [ "${P_ROLLOUT}" = "FAILED" ]; then
+              echo "ECS rollout FAILED."
+              exit 1
+            fi
+            if [ "${P_RUNNING}" = "${P_DESIRED}" ] && [ "${P_DESIRED}" != "0" ]; then
+              echo "ECS rollout complete (running == desired)."
+              break
+            fi
+            if [ "$i" = "48" ]; then
+              echo "Timed out waiting for PRIMARY deployment to stabilize."
+              exit 1
+            fi
+          done
 
       - name: Validate static assets on origin
         run: |
