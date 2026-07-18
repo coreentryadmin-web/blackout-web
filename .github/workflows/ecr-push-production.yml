@@ -151,23 +151,13 @@ jobs:
             --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "Registered new task definition: ${NEW_ARN}"
 
-          # Get the current running task count to use as desired count
-          RUNNING=$(aws ecs describe-services \
-            --cluster "${ECS_CLUSTER}" \
-            --services "${ECS_SERVICE}" \
-            --query 'services[0].runningCount' --output text)
-          DESIRED=${RUNNING:-4}
-          echo "Current running tasks: ${RUNNING}, deploying with desired: ${DESIRED}"
-
-          # Update the service with the new task definition and explicit
-          # desired count. --force-new-deployment creates a fresh PRIMARY
-          # deployment; stale ACTIVE deployments from prior circuit-breaker
-          # rollbacks drain in the background.
+          # Do NOT pass --desired-count here: auto-scaling manages the
+          # task count (min 8 / max 15). Overriding it resets the count
+          # on every deploy and fights the scaling target.
           aws ecs update-service \
             --cluster "${ECS_CLUSTER}" \
             --service "${ECS_SERVICE}" \
             --task-definition "${NEW_ARN}" \
-            --desired-count "${DESIRED}" \
             --force-new-deployment
 
           # Custom stability check: poll the PRIMARY deployment only.
