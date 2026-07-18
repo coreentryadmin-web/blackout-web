@@ -35,11 +35,6 @@ export function StaticLandingHero() {
           <span className="block mkt-headline-glow">lights are on.</span>
         </h1>
 
-        <p className="mkt-lede mkt-lede-centered">
-          <span className="mkt-lede-hook">{HERO_HOOK}</span>
-          <span className="mkt-lede-sub">{HERO_LEDE}</span>
-        </p>
-
         <div className="mkt-cta-row mkt-cta-row-centered">
           <Link
             href="/sign-up"
@@ -56,6 +51,11 @@ export function StaticLandingHero() {
             Explore the desk
           </Link>
         </div>
+
+        <p className="mkt-lede mkt-lede-centered mkt-lede-below-cta">
+          <span className="mkt-lede-hook">{HERO_HOOK}</span>
+          <span className="mkt-lede-sub">{HERO_LEDE}</span>
+        </p>
       </div>
     </section>
   );
