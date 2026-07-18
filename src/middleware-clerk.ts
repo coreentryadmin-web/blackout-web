@@ -6,7 +6,7 @@ import {
   clerkStaleCookieRecoveryResponse,
   requestHasClerkSessionCookie,
 } from "@/lib/clerk-session-recovery";
-import { activeClerkUserIdFromSessionCookie } from "@/lib/clerk-session-jwt";
+import { activeClerkUserIdFromRequest } from "@/lib/clerk-session-from-request";
 import {
   IS_STAGING,
   MUTATION_METHODS,
@@ -48,8 +48,8 @@ export default clerkMiddleware(
       // Clerk v7.5.x auth()/auth.protect() do not reliably return userId on sign-in
       // pages with the same cookies that work on /dashboard. Decode __session after
       // Clerk's authenticateRequest has already verified the request (PR #790).
-      const sessionToken = req.cookies.get("__session")?.value;
-      if (activeClerkUserIdFromSessionCookie(sessionToken)) {
+      const userId = activeClerkUserIdFromRequest(req);
+      if (userId) {
         const dest = req.nextUrl.searchParams.get("redirect_url") || "/";
         return withStagingNoEdgeCache(
           NextResponse.redirect(new URL(dest, req.url), 307)
