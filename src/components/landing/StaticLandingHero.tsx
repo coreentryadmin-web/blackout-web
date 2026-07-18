@@ -49,7 +49,7 @@ export function StaticLandingHero() {
               prefetch={false}
               className="landing-btn-ghost mkt-cta-secondary hide-in-ios-app inline-flex min-w-[220px] items-center justify-center border border-white/25 px-10 py-3.5 font-syne text-sm font-bold uppercase tracking-[0.2em] text-white"
             >
-              See pricing
+              Pricing
             </Link>
           </div>
         </div>
