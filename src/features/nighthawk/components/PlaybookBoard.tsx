@@ -11,6 +11,7 @@ import type {
   PlaybookPlay,
   PlayMorningStatus,
 } from "@/features/nighthawk/lib/types";
+import { decodeHtmlEntities } from "@/lib/largo/sanitize-feed-text";
 
 // PR-N12: professional-grade rebuild of the playbook column in the 0DTE pane's desk
 // grammar (see ZeroDteBoard.tsx): one compact edition-header strip, market context as
@@ -80,13 +81,20 @@ export function resolveEditionStatus(args: {
 
 export type MarketContextItem = { label: string; value: string; wide?: boolean };
 
+/** Decode HTML entities in recap strings (Benzinga titles often ship as Friday&#39;s). */
+export function decodeMarketContextText(value: string): string {
+  return decodeHtmlEntities(value);
+}
+
 /** Pure: pick the compact context strings the edition builder actually publishes
  *  (format.ts buildMarketRecap → tide / spx_vix / sector_strength / sector_weakness /
  *  catalysts). Only non-empty strings render; nothing is synthesized. */
 export function marketContextItems(recap: Record<string, unknown>): MarketContextItem[] {
   const items: MarketContextItem[] = [];
   const push = (label: string, v: unknown, wide?: boolean) => {
-    if (typeof v === "string" && v.trim()) items.push({ label, value: v, wide });
+    if (typeof v === "string" && v.trim()) {
+      items.push({ label, value: decodeMarketContextText(v), wide });
+    }
   };
   push("Tide", recap.tide, true);
   push("SPX · VIX", recap.spx_vix, true);

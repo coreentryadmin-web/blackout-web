@@ -120,6 +120,15 @@ test("recap prose is a collapsed disclosure — closed by default, toggle presen
   assert.match(html, /aria-expanded="false"/);
 });
 
+test("marketContextItems decodes HTML entities in catalyst strings", async () => {
+  const { marketContextItems } = await loadBoard();
+  const items = marketContextItems({
+    catalysts: "After-hours: Friday&#39;s close saw NVDA guide up",
+  });
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.value, "After-hours: Friday's close saw NVDA guide up");
+});
+
 test("marketContextItems only emits non-empty string fields — nothing invented", async () => {
   const { marketContextItems } = await loadBoard();
   assert.deepEqual(marketContextItems({}), []);

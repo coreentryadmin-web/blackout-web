@@ -1,4 +1,5 @@
 import { formatFlowStrikeStackLine } from "@/lib/largo/flow-strike-stacks";
+import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { fmtPremium } from "@/lib/fmt-money";
 import {
   EDITION_SYNTHESIS_OVERSHOOT,
@@ -271,7 +272,7 @@ export function buildMarketRecap(ctx: MarketWideContext): {
   // so surface the night's AH headlines alongside macro + earnings in the recap catalysts line.
   const afterHours = (ctx.after_hours_catalysts ?? [])
     .slice(0, 4)
-    .map((c) => String(c.title ?? "").trim())
+    .map((c) => sanitizeFeedText(c.title ?? "").trim())
     .filter(Boolean)
     .map((t) => t.slice(0, 80))
     .join("; ");
