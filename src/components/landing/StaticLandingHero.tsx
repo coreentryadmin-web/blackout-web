@@ -8,13 +8,12 @@ export function StaticLandingHero() {
     <section className="mkt-section mkt-hero border-b-0">
       <div className="mkt-section-inner mkt-hero-grid">
         <div className="mkt-hero-copy mkt-reveal">
-          <p className="mkt-kicker">
-            <span className="mkt-kicker-dot" aria-hidden />
-            Institutional options desk
-          </p>
-          <h1 className="mkt-headline mkt-headline-left">
-            <span className="block">See the structure.</span>
-            <span className="block mkt-gradient-text">Make the call.</span>
+          <Link href="/" prefetch={false} className="mkt-hero-logo font-anton" aria-label={`${SITE.name} home`}>
+            BLACKOUT
+          </Link>
+          <h1 className="mkt-headline mkt-headline-left mkt-headline-hero">
+            <span className="block">Trade like the</span>
+            <span className="block mkt-gradient-text">lights are on.</span>
           </h1>
           <p className="mkt-lede mkt-lede-left">{SITE.description}</p>
           <div className="mkt-cta-row mkt-cta-row-left">
