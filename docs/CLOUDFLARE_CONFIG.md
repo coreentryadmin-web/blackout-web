@@ -1,6 +1,7 @@
 # Cloudflare Configuration — blackouttrades.com
 
-> Configured 2026-06-27 via API through browser session. Reference this before touching CF settings.
+> Configured 2026-06-27 via API. Updated 2026-07-18 for **AWS ECS** origin (Railway decommissioned).
+> Reference this before touching CF settings.
 
 ## Account
 - **Zone:** blackouttrades.com
@@ -13,16 +14,21 @@
 
 | Name | Type | Content | Proxied | Notes |
 |---|---|---|---|---|
-| blackouttrades.com | CNAME | jzwkg5uc.up.railway.app | ✅ YES | Main app → Railway blackout-web |
-| www.blackouttrades.com | CNAME | 8dkf6fp5.up.railway.app | ✅ YES | www → Railway (redirects to apex) |
+| blackouttrades.com | CNAME | `blackout-production-alb-*.elb.amazonaws.com` | ✅ YES | Main app → **AWS ALB** (prod ECS) |
+| www.blackouttrades.com | CNAME | same ALB (or apex redirect via CF rule) | ✅ YES | www → apex via redirect rule |
+| staging.blackouttrades.com | CNAME | `blackout-staging-alb-*.elb.amazonaws.com` | ✅ YES | Staging ECS (if enabled) |
 | clk._domainkey | CNAME | dkim1.tzneys6rxyan.clerk.services | ❌ NO | Clerk DKIM — must stay DNS-only |
 | clk2._domainkey | CNAME | dkim2.tzneys6rxyan.clerk.services | ❌ NO | Clerk DKIM — must stay DNS-only |
 | mail (Clerk) | CNAME | mail.tzneys6rxyan.clerk.services | ❌ NO | Clerk mail — must stay DNS-only |
 | blackouttrades.com | MX | (Zoho) | ❌ NO | Email — must stay DNS-only |
 | blackouttrades.com | TXT | zoho-verification=... | ❌ NO | Zoho domain verify |
-| _railway-verify | TXT | railway-verify=... | ❌ NO | Railway verify |
+
+**Get live ALB hostnames:** `terraform output alb_dns_name` in `blackout-infra`, or
+`aws elbv2 describe-load-balancers --names blackout-production-alb --query 'LoadBalancers[0].DNSName'`.
 
 **CRITICAL:** Clerk DNS records MUST remain DNS-only (grey cloud). Proxying them breaks auth.
+
+**Legacy:** `_railway-verify` TXT and old `*.up.railway.app` CNAMEs may remain — safe to remove after cutover verified.
 
 ---
 
@@ -67,7 +73,7 @@
 | HTTP/3 (QUIC) | `on` | Fastest protocol, especially on mobile |
 | Early Hints (103) | `on` | Browser starts loading assets before full response |
 | Browser cache TTL | `31536000` (1 year) | Static assets cached in browser for 1 year |
-| Always Online | `on` | Serves cached version if Railway is down |
+| Always Online | `on` | Serves cached version if origin (ALB/ECS) is down |
 | Challenge TTL | `3600` (1 hour) | How long a challenged IP stays trusted |
 | ECH (Encrypted Client Hello) | `on` | Hides SNI from network observers |
 | Opportunistic encryption | `on` | |
@@ -121,7 +127,7 @@ Canonical URL is the apex domain (no www).
 | WebSockets | `on` | Required for SSE streams + WS connections |
 | Rocket Loader | `off` | **Must stay off** — breaks Next.js RSC/async JS |
 | Response buffering | `off` | **Must stay off** — breaks SSE streaming |
-| Railway CDN | `off` | **Must stay off** — conflicts with Cloudflare (double CDN) |
+| Origin CDN (Railway/Vercel) | `off` | **Must stay off** — Cloudflare is the only CDN |
 
 ---
 
@@ -150,8 +156,7 @@ After DNSSEC finishes propagating (~24h), go to:
 
 ## Maintenance Notes
 
-- **On every Railway deploy:** Cloudflare automatically purges HTML cache (set in Railway CDN settings — actually purge via CF API if needed)
+- **On every ECS deploy:** purge via CF API in `ecr-push-production.yml` (and in-app `cf-purge-on-deploy.ts` when `CF_PURGE_DEPLOY_ID` is set)
 - **If you change an API route from public → auth-gated:** Add it to the cache bypass rule immediately
 - **Never proxy Clerk DNS records** — breaks sign-in
-- **Never enable Railway CDN** while Cloudflare proxy is active
-- **If you upgrade to Vercel:** Update the Railway CNAME records to point to Vercel deployment URL instead
+- **Never enable a second CDN** at the origin while Cloudflare proxy is active

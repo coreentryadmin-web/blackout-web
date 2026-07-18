@@ -36,6 +36,6 @@
 
 ## References
 
-- `docs/ops/RTH-OPEN-RUNBOOK.md` (prod Railway — parallel, not a substitute)
+- `docs/ops/RTH-OPEN-RUNBOOK.md` (prod ECS — parallel, not a substitute)
 - `docs/ops/STAGING-CONNECT.md` § validation
 - `docs/ops/WORK-LEDGER.md` foundation checklist
