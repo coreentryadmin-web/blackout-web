@@ -3,7 +3,7 @@
  *
  * - `web`    — HTTP/UI tier; no upstream WebSockets (reads Redis snapshots).
  * - `ingest` — market-data worker; owns WS leaders + RTH warm leader.
- * - `all`    — legacy single-process (Railway / local dev without PROCESS_ROLE).
+ * - `all`    — legacy single-process (local dev without PROCESS_ROLE).
  */
 
 export type ProcessRole = "web" | "ingest" | "all";

@@ -5,6 +5,8 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   resolveHeatmapPageGuard,
+  resolveChainBandPageGuard,
+  __test_heatmapBandPct as heatmapBandPct,
   computeGexEvents,
   computeMaxPainFromChain,
   resolveExpiryAxis,
@@ -46,6 +48,15 @@ test("floors at 40 — the OLD cap already proven insufficient for SPX — even 
 
 test("an explicit 0 env value is falsy, so it's treated as unset (defaults to 200, not floored at 40)", () => {
   assert.equal(resolveHeatmapPageGuard("0"), 200);
+});
+
+test("resolveChainBandPageGuard: default 40, honors override, floors at the old cap of 8", () => {
+  assert.equal(resolveChainBandPageGuard(undefined), 40);
+  assert.equal(resolveChainBandPageGuard(""), 40);
+  assert.equal(resolveChainBandPageGuard("not-a-number"), 40);
+  assert.equal(resolveChainBandPageGuard("120"), 120); // wide/deep band needs more
+  assert.equal(resolveChainBandPageGuard("3"), 8); // never below the old bare cap
+  assert.equal(resolveChainBandPageGuard("0"), 40); // falsy → treated as unset
 });
 
 test("fetchGexHeatmap keeps stale-while-revalidate during preset fast-move (no blocking guard)", () => {
@@ -395,4 +406,31 @@ test("resolveExpiryAxis: a far target that never printed a real contract is excl
 
   assert.deepEqual(farKeep, ["2026-09-18"], "December never printed a contract — must not be fabricated into farKeep");
   assert.ok(!expiries.includes("2026-12-18"));
+});
+
+test("heatmapBandPct: SPX stays tight (±6%), non-SPX widens to ±20% for multi-wall coverage", () => {
+  const savedSpx = process.env.SPX_GEX_HEATMAP_BAND_PCT;
+  const savedGlobal = process.env.GEX_HEATMAP_BAND_PCT;
+  delete process.env.SPX_GEX_HEATMAP_BAND_PCT;
+  delete process.env.GEX_HEATMAP_BAND_PCT;
+  try {
+    // SPX chain is dense → keep the band tight so its hot payload stays small.
+    assert.equal(heatmapBandPct("SPX"), 0.06);
+    // Every other ticker gets the wider default so round-number gamma walls on
+    // low-priced names (ASTS 90/100/125 @ $73 spot) are actually fetched.
+    assert.equal(heatmapBandPct("ASTS"), 0.20);
+    assert.equal(heatmapBandPct("NVDA"), 0.20);
+    // env override wins, clamped to (0, 0.25].
+    process.env.GEX_HEATMAP_BAND_PCT = "0.15";
+    assert.equal(heatmapBandPct("ASTS"), 0.15);
+    process.env.GEX_HEATMAP_BAND_PCT = "0.9"; // out of range → ignored, back to default
+    assert.equal(heatmapBandPct("ASTS"), 0.20);
+    process.env.SPX_GEX_HEATMAP_BAND_PCT = "0.03";
+    assert.equal(heatmapBandPct("SPX"), 0.03);
+  } finally {
+    if (savedSpx === undefined) delete process.env.SPX_GEX_HEATMAP_BAND_PCT;
+    else process.env.SPX_GEX_HEATMAP_BAND_PCT = savedSpx;
+    if (savedGlobal === undefined) delete process.env.GEX_HEATMAP_BAND_PCT;
+    else process.env.GEX_HEATMAP_BAND_PCT = savedGlobal;
+  }
 });

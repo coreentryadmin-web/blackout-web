@@ -45,24 +45,18 @@ Complete step-by-step guide to put blackouttrades.com behind Cloudflare (CDN, DD
 
 Navigate to **Caching → Cache Rules** → **Create rule** for each entry below (in order — Cloudflare evaluates top-to-bottom, first match wins).
 
-### Rule 1 — Static Assets (1-year cache, **200 only**)
+### Rule 1 — Static Assets (1-year cache)
 
 | Field | Value |
 |-------|-------|
-| **Rule name** | `Static assets — _next/static + extensions` |
-| **When** | `starts_with(http.request.uri.path, "/_next/static/")` **OR** path matches `\.(js|css|woff2?|ttf|eot|svg|png|jpg|jpeg|gif|webp|ico|avif)$` |
+| **Rule name** | `Static assets — JS/CSS/fonts/images` |
+| **When** | URL path matches regex: `\.(js|css|woff2?|ttf|eot|svg|png|jpg|jpeg|gif|webp|ico|avif)$` |
 | **Cache status** | Cache Everything |
-| **Edge Cache TTL** | Override origin — **1 year for HTTP 200 only** |
-| **Status code TTL** | **404 → no-cache (0)**; **400–499 → no-cache (0)**; **500–599 → no-store (-1)** |
-| **Browser Cache TTL** | 1 year (200 responses) |
-| **Respect origin Cache-Control** | Off for edge TTL (override with status-code table above) |
+| **Edge Cache TTL** | 1 year |
+| **Browser Cache TTL** | 1 year |
+| **Respect origin Cache-Control** | Off (override with TTL above) |
 
-> Next.js content-hashes its static chunks (`/_next/static/…`), so a 1-year TTL on **200** is safe — stale files never get served because the URL changes on each deploy.
->
-> **Critical (2026-07-09 outage):** Without status-code TTL, Cloudflare edge-cached **404** responses for missing CSS during ECS rollouts (`cf-cache-status: MISS` → `HIT` on repeat). That produced a fully unstyled marketing page. Always set 404/4xx/5xx to no-cache on static rules.
->
-> Apply via dashboard (**Caching → Cache Rules → Edit rule → Edge TTL → Status code TTL**) or:
-> `npm run cf:audit-apply -- --apply --purge` (needs `CF_API_TOKEN` with **Zone.Cache Rules Edit**).
+> Next.js content-hashes its static chunks (`/_next/static/…`), so a 1-year TTL is safe — stale files never get served because the URL changes on each deploy.
 
 ### Rule 2 — GEX Positioning (60s CDN cache)
 

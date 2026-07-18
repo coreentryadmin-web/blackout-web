@@ -11,9 +11,8 @@ watchPatterns = [
 ]
 
 [deploy]
-# Fan-out across desk + heatmap + vector + zerodte lanes can exceed 120s on cold Polygon/UW.
-startCommand = "CRON_HTTP_TIMEOUT_MS=300000 node scripts/hit-cron.mjs /api/cron/platform-warm"
-# Every 5 min 24/7 — route self-skips outside RTH unless CACHE_WARM_OFF_HOURS=1 (prod).
+startCommand = "node scripts/hit-cron.mjs /api/cron/platform-warm"
+# Every 5 minutes, 24/7 (no RTH gate — pre-warm general bootstrap bundle for admin/member loads)
 cronSchedule = "*/5 * * * *"
 restartPolicyType = "ON_FAILURE"
 numReplicas = 1

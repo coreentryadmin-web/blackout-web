@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { indexStore } from "@/lib/ws/polygon-socket";
+import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { resolveOptionsRoot } from "@/lib/providers/polygon-options-gex";
 import { fetchStockSnapshot, fetchIndexSnapshot } from "@/lib/providers/polygon";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
@@ -42,10 +43,10 @@ type QuotePayload = {
 const WS_INDEX_KEYS = new Set(Object.keys(indexStore));
 /** A WS index entry older than this is treated as cold → REST fallback. */
 const WS_STALE_MS = 10_000;
-/** Shared REST cache window — one upstream call per ticker per 5s across all users. */
-const QUOTE_CACHE_MS = 5_000;
-/** Redis TTL must be an integer ≥1s; 6s comfortably covers the 5s window. */
-const QUOTE_REDIS_TTL_SEC = 6;
+/** Shared REST cache window — one upstream call per ticker per 1.5s across all users. */
+const QUOTE_CACHE_MS = 1_500;
+/** Redis TTL must be an integer ≥1s; 3s comfortably covers the 1.5s window. */
+const QUOTE_REDIS_TTL_SEC = 3;
 /**
  * Negative-result cache window. Without this, a sustained upstream outage (vendor 404s,
  * timeouts) meant every poll from every open tab, on every replica, re-hit the upstream with
@@ -204,8 +205,27 @@ export async function GET(req: NextRequest) {
       // else: store cold/stale → fall through to the shared-cached index REST snapshot.
     }
 
-    // ── REST path: stocks/ETFs, plus index roots without a live WS feed (NDX/RUT)
-    //    or a cold index store. Shared-cached ~1.5s so 500 users → ~1 upstream/1.5s. ──
+    // ── WS path: stock/ETF tickers from the A.* stock candle store. ──
+    // Uses getStockLiveCandle (not wsSpotPrice) so follower replicas read from
+    // Redis where the leader writes on-demand — without this, followers always
+    // fall through to REST because wsSpotPrice is local-memory-only.
+    if (!isIndex) {
+      const candle = getStockLiveCandle(ticker);
+      if (candle.current && candle.current.close > 0) {
+        const payload: QuotePayload = {
+          available: true,
+          ticker,
+          price: candle.current.close,
+          change_pct: 0,
+          source: "ws",
+          asof: new Date(candle.updatedAt).toISOString(),
+        };
+        return NextResponse.json(payload, { headers: noStore });
+      }
+    }
+
+    // ── REST path: stocks/ETFs without a live WS tick, plus index roots without
+    //    a live WS feed (NDX/RUT) or a cold index store. ──
     const payload = await getRestQuote(ticker, optionsRoot, isIndex);
     if (payload) return NextResponse.json(payload, { headers: noStore });
 

@@ -28,8 +28,9 @@ export const LEVERAGED_ETP_SET = new Set<string>([
   "TSLL", "TSLQ", "TSLS", "NVDL", "NVDD", "NVDS", "MSTU", "MSTZ", "MSTX", "CONL", "AMDL", "AMZU", "GGLL", "METU", "FBL",
 ]);
 
-/** Minimum underlying price for a single-name candidate (penny/garbage-runner floor). */
-export const CANDIDATE_MIN_UNDERLYING_PRICE = 2;
+/** Minimum underlying price for a single-name candidate (penny/garbage-runner floor).
+ *  Raised from $2 to $5 — $2-$4 names have unreliable options chains and whipsaw. */
+export const CANDIDATE_MIN_UNDERLYING_PRICE = 5;
 
 export const SECTOR_WATCH = [
   { key: "technology", label: "Technology" },
@@ -39,9 +40,10 @@ export const SECTOR_WATCH = [
   { key: "consumer", label: "Consumer" },
 ] as const;
 
-// Lowered 60 → 40 to cut the dossier-stage UW fan-out: 60 candidates × multiple UW calls
-// each was tripping the rate-limit circuit breaker. Only the top 12 reach synthesis anyway.
-export const MAX_CANDIDATES = 40;
+// Raised back to 60 — multi-source candidate discovery needs room for corroboration across
+// flow, OI change, unusual trades, catalysts, and predictions. Dossier-stage UW fan-out is
+// paced by the rate limiter (uw-rate-limiter.ts), so the cap belongs there, not here.
+export const MAX_CANDIDATES = 60;
 /** Candidate pool: weighted-premium leaders + unusual-flow movers. */
 export const CANDIDATE_PREMIUM_SLOTS = 28;
 export const CANDIDATE_UNUSUAL_SLOTS = 12;
@@ -50,15 +52,36 @@ export const CANDIDATE_UNUSUALNESS_LOOKBACK_DAYS = 30;
 export const CANDIDATE_MIN_BASELINE_PREMIUM = 75_000;
 export const MAX_DOSSIER_STOCKS = 40;
 /** Top dossiers sent to Claude for play synthesis (not the full ranked pool). */
-export const EDITION_SYNTHESIS_POOL = 12;
+export const EDITION_SYNTHESIS_POOL = 18;
 /** Final play count shown in the UI (PlaybookBoard renders 5 slots). */
 export const EDITION_TARGET_PLAYS = 5;
 /** Minimum plays before ops pages on a thin edition — backfill from ranked pool when below. */
 export const EDITION_MIN_PUBLISH_PLAYS = 3;
+/** PR-N28: minimum composite score to publish a play. The measured overnight track record
+ *  shows below-40 plays (C conviction) underperform — the prime band is 40-55. A floor of
+ *  35 catches clearly weak candidates while keeping near-prime plays that add directional
+ *  diversity. Better to publish 3 strong plays than 5 where half are garbage. */
+export const MIN_PUBLISH_SCORE = 35;
+/** PR-N31: lower floor for the diversity/hedge slot. In a one-directional market the normal
+ *  35 floor blocks every contrarian candidate, leaving a 5-play all-LONG (or all-SHORT) book
+ *  with zero downside protection. The hedge slot uses this softer floor — still high enough to
+ *  reject garbage, but low enough to let a legitimate contrarian play through when flow or
+ *  technicals support a minority view. */
+export const DIVERSITY_HEDGE_FLOOR = 20;
+/** PR-N33: even softer floor for the FORCED contrarian path (Phase 2). When zero natural
+ *  opposite-direction candidates exist, forced re-scoring discounts flow 0.3× and honestly
+ *  scores tech/positioning against the dominant trend — realistic raw totals land 5-18 in
+ *  an extreme bull/bear. The play already carries a gate_warning marking it as a forced hedge,
+ *  so the quality bar is intentionally lower. 8 rejects outright garbage (all zeros + rounding
+ *  noise) while letting any candidate with real contrarian signal through. */
+export const FORCED_CONTRARIAN_FLOOR = 8;
 /** Overshoot sent through synthesis + critic — critic cuts weak plays with no backfill. */
-export const EDITION_SYNTHESIS_OVERSHOOT = 7;
-/** Stock tickers to prefetch option chains for (buffer above 5 final plays). */
-export const EDITION_CHAIN_PREFETCH = 12;
+export const EDITION_SYNTHESIS_OVERSHOOT = 9;
+/** Stock tickers to prefetch option chains for (buffer above 5 final plays).
+ *  Raised from 28 to 40 — matches MAX_DOSSIER_STOCKS so every dossier'd candidate
+ *  gets a chain lookup. The narrower 28 meant candidates ranked 29-60 could never get
+ *  a real contract, even when higher-ranked names failed premium/OI gates. */
+export const EDITION_CHAIN_PREFETCH = 40;
 export const MIN_STOCK_FLOW_PREMIUM = 100_000;
 export const MIN_HOT_CHAIN_PREMIUM = 500_000;
 /** Market-wide flow tape — higher limit captures late-session event volume. */
@@ -70,8 +93,10 @@ export const DOSSIER_BATCH_SIZE = Math.max(
 export const DOSSIER_FETCH_TIMEOUT_MS = 8000;
 export const DOSSIER_INTER_BATCH_MS = 800;
 
-/** Max option entry premium per share — 1 standard contract (100 shares) ≤ $2,000. */
-export const MAX_OPTION_PREMIUM_PER_SHARE = 20;
+/** Max option entry premium per share — 1 standard contract (100 shares) ≤ $3,500.
+ *  Raised from $20 to $35 (PR-N15): the $20 cap blocked every ATM option on stocks above
+ *  ~$250, silently eliminating the strongest institutional-flow names from the playbook. */
+export const MAX_OPTION_PREMIUM_PER_SHARE = 35;
 export const MAX_OPTION_COST_PER_CONTRACT = MAX_OPTION_PREMIUM_PER_SHARE * 100;
 
 export const PLAYBOOK_PREMIUM_CAP_LINE = `Entry option premium MUST be ≤ $${MAX_OPTION_PREMIUM_PER_SHARE}/share (≤ $${MAX_OPTION_COST_PER_CONTRACT.toLocaleString()} per 1-lot contract). If no suitable contract exists under this cap, skip the ticker and substitute the next-ranked candidate.`;

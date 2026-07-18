@@ -105,24 +105,8 @@ Repo → **Settings → Secrets and variables → Actions**:
 > `ops-auto-fix`) for any **P0/P1**; then run the Fix loop until GREEN.
 
 **Pages to cover every pass:** `/dashboard` (SPX Slayer), `/flows` (HELIX), `/heatmap`
-(BlackOut Thermal — test BOTH Matrix and Profile), `/vector` (live chart + GEX/VEX walls),
-`/grid` (and each of the 12 panels), `/nighthawk`, `/terminal` (Largo), `/track-record`.
-
-**Site-wide speed gate (09:30+ ET):** `npm run validate:rth-latency` — force `platform-warm`,
-assert warm crons fresh, then `validate:site-latency` on every premium API + page (Vector, Largo,
-Thermal, desk, flows, 0DTE). Also runs automatically as step 3 of `validate:rth-open` after open.
-Fix any FAIL → branch → PR → merge → re-run until GREEN.
-
-**Continuous RTH monitor (09:30–16:00 ET):** `npm run validate:rth-continuous` — see
-`docs/ops/RTH-CONTINUOUS-MONITOR.md`. Probes every **2s** (APIs), **15s** (matrices), **45s**
-(browser nav + button clicks), **5m** (deep matrix audit). All metrics →
-`audit-output/rth-continuous/YYYY-MM-DD/metrics.ndjson`. Run in tmux on Cloud Agent + GHA
-`rth-continuous-monitor.yml`.
-
-**Seven dedicated tool agents (09:31 ET):** see `docs/ops/TOOL-AGENT-PROGRAM.md` — one agent each
-for SPX Slayer, Thermal, HELIX, Largo, Night Hawk, 0DTE, Vector. Each runs
-`npm run validate:tool-agent:{tool}` continuously, writes `cto-report-*.md` + `findings.ndjson`,
-launched via `tool-agents-launch.yml` or `npm run validate:tool-agents:launch`.
+(BlackOut Thermal — test BOTH Matrix and Profile), `/grid` (and each of the 12 panels),
+`/nighthawk`, `/terminal` (Largo), `/track-record`.
 
 ### 1. Speed (per page)
 - Measure **TTFB** and **time-to-interactive** on hard load, and **soft-nav** time (click the

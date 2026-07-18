@@ -1,11 +1,14 @@
 import type { FlowStrikeStack } from "@/lib/largo/flow-strike-stacks";
 import type { BenzingaCatalyst, BenzingaPriceTarget, FundamentalSignals, PolygonFinancialRatios } from "@/lib/providers/polygon";
-import type { PredictionConsensusSignal } from "@/lib/providers/unusual-whales";import type { TideBias } from "./format";
+import type { PredictionConsensusSignal } from "@/lib/providers/unusual-whales";
+import type { TickerGreekFlowSummary } from "./dossier";
+import type { TideBias } from "./format";
 import { tideBias } from "./format";
 import type { FlowStreak } from "./flow-streak";
 import type { MarketWideContext } from "./market-wide";
 import type { PositioningSummary } from "./positioning";
 import type { TechnicalCard } from "./technicals";
+import { assignNighthawkTier } from "./nighthawk-tiers";
 
 export type NightHawkRegimeContext = {
   vix_iv_rank: number | null;
@@ -35,13 +38,20 @@ export type ScoredCandidate = {
   catalyst_flags?: string[];
   /** Short-interest squeeze bonus (longs only, capped +5). */
   short_interest_score?: number;
+  /** Wall-proximity signal (support/resistance alignment with direction). */
+  wall_proximity_score?: number;
+  /** VEX (vanna exposure) direction alignment. */
+  vex_alignment_score?: number;
   /** Earnings proximity penalty applied to catalyst_score. Set when earnings are tomorrow with matching expiry. */
   earnings_risk?: boolean;
+  /** Count of scoring dimensions with material positive contribution (≥ threshold). */
+  confirming_signals?: number;
   conviction: string;
   regime_multiplier?: number;
   fundamental_block?: boolean;
   fundamental_flags?: string[];
   trading_halt?: boolean;
+  sector?: string;
 };
 
 export function regimeContextFromMarket(ctx: MarketWideContext): NightHawkRegimeContext {
@@ -54,13 +64,15 @@ export function regimeContextFromMarket(ctx: MarketWideContext): NightHawkRegime
   };
 }
 
-/** Scale total score by VIX IV rank + market tide regime + market breadth. Cap at 1.20. */
+/** Scale total score by VIX IV rank + market tide regime + market breadth + composite regime. */
 export function computeRegimeMultiplier(regime?: NightHawkRegimeContext | null): number {
   if (!regime) return 1;
-  const { vix_iv_rank: vix, tide_bias: tide, advance_pct: adv } = regime;
+  const { vix_iv_rank: vix, tide_bias: tide, advance_pct: adv, composite_regime: compRegime } = regime;
   let m: number;
-  if (vix != null && vix > 70 && tide === "BEARISH") m = 0.7;
+  if (vix != null && vix > 80 && tide === "BEARISH") m = 0.6;
+  else if (vix != null && vix > 70 && tide === "BEARISH") m = 0.7;
   else if (vix != null && vix > 55 && tide === "BEARISH") m = 0.85;
+  else if (vix != null && vix < 20 && tide === "BULLISH") m = 1.2;
   else if (vix != null && vix < 25 && tide === "BULLISH") m = 1.15;
   else if (vix != null && vix < 40 && tide === "BULLISH") m = 1.1;
   else m = 1;
@@ -71,7 +83,14 @@ export function computeRegimeMultiplier(regime?: NightHawkRegimeContext | null):
     else if (adv < 30) m -= 0.05;
   }
 
-  return Math.min(1.20, m);
+  // Composite regime from platform intel — strong trending regimes get a small boost.
+  if (compRegime) {
+    const cr = compRegime.toLowerCase();
+    if (cr.includes("trending") || cr.includes("breakout")) m += 0.05;
+    else if (cr.includes("volatile") || cr.includes("crisis")) m -= 0.05;
+  }
+
+  return Math.max(0.6, Math.min(1.30, m));
 }
 
 function normalizeRatioPct(v: number | null): number | null {
@@ -312,8 +331,8 @@ export function scoreFlowQuality(
   flows: Record<string, unknown>[],
   flowStreak?: FlowStreak,
   opts?: { streakWeight?: number; riskReversalSkew?: number | null }
-): { score: number; direction: "long" | "short"; directionFlippedBySkew: boolean } {
-  if (!flows.length) return { score: 0, direction: "long", directionFlippedBySkew: false };
+): { score: number; direction: "long" | "short"; directionFlippedBySkew: boolean; flowMargin: number } {
+  if (!flows.length) return { score: 0, direction: "long", directionFlippedBySkew: false, flowMargin: 1 };
 
   let totalPrem = 0;
   let sweepPrem = 0;
@@ -358,6 +377,7 @@ export function scoreFlowQuality(
   else if (totalPrem >= 1_000_000) score += 9;
   else if (totalPrem >= 500_000) score += 6;
   else if (totalPrem >= 250_000) score += 3;
+  else if (totalPrem >= 100_000) score += 1;
 
   const sweepPct = totalPrem > 0 ? sweepPrem / totalPrem : 0;
   if (sweepPct >= 0.8) score += 10;
@@ -387,12 +407,16 @@ export function scoreFlowQuality(
     const streakWeight = opts?.streakWeight ?? 1;
     if (flowStreak.streak_days >= 5) score += Math.round(12 * streakWeight);
     else if (flowStreak.streak_days >= 3) score += Math.round(8 * streakWeight);
+    else if (flowStreak.streak_days >= 2) score += Math.round(4 * streakWeight);
   }
 
   score = Math.min(38, score);
   let direction: "long" | "short" =
     callWeightedPrem >= putWeightedPrem ? "long" : "short";
   let directionFlippedBySkew = false;
+
+  const weightedTotal = callWeightedPrem + putWeightedPrem;
+  const flowMargin = weightedTotal > 0 ? Math.abs(callWeightedPrem - putWeightedPrem) / weightedTotal : 1;
 
   const skew = opts?.riskReversalSkew;
   if (skew != null && Number.isFinite(skew) && skew !== 0) {
@@ -404,8 +428,6 @@ export function scoreFlowQuality(
     // skew as a bullish signal, which could flip a candidate's flow-implied direction to the
     // WRONG side when flow margin was thin and skew magnitude was large.
     const skewDir: "long" | "short" = skew > 0 ? "short" : "long";
-    const weightedTotal = callWeightedPrem + putWeightedPrem;
-    const flowMargin = weightedTotal > 0 ? Math.abs(callWeightedPrem - putWeightedPrem) / weightedTotal : 1;
 
     if (skewDir !== direction) {
       if (flowMargin < 0.12 && Math.abs(skew) >= 0.3) {
@@ -418,7 +440,7 @@ export function scoreFlowQuality(
     }
   }
 
-  return { score, direction, directionFlippedBySkew };
+  return { score, direction, directionFlippedBySkew, flowMargin };
 }
 
 export function scoreTechnicalSetup(tech: TechnicalCard | null, direction: "long" | "short"): number {
@@ -430,7 +452,7 @@ export function scoreTechnicalSetup(tech: TechnicalCard | null, direction: "long
     if (tech.trend === "bullish") score += 8;
     if (tags.includes("breakout") || tags.includes("hod")) score += 6;
     if (tags.includes("bullish ma")) score += 4;
-    if (tech.rsi14 != null && tech.rsi14 >= 45 && tech.rsi14 <= 65) score += 3;
+    if (tech.rsi14 != null && tech.rsi14 >= 35 && tech.rsi14 <= 70) score += 3;
     if (tags.includes("bearish") || tags.includes("overbought")) score -= 6;
   } else {
     if (tech.trend === "bearish") score += 8;
@@ -442,7 +464,7 @@ export function scoreTechnicalSetup(tech: TechnicalCard | null, direction: "long
     // Mirror of the long branch's MA-stack reward — shorts previously had no
     // structure reward at all beyond the trend read.
     if (tags.includes("bearish ma")) score += 4;
-    if (tech.rsi14 != null && tech.rsi14 >= 55) score += 3;
+    if (tech.rsi14 != null && tech.rsi14 >= 50) score += 3;
     // Mirror of the long branch's breakout reward: a name printing fresh highs
     // (20d breakout / HOD break) is structurally AGAINST a short — penalize it
     // the same way bullish structure was never penalized before.
@@ -451,7 +473,16 @@ export function scoreTechnicalSetup(tech: TechnicalCard | null, direction: "long
   }
 
   if ((tech.rel_volume ?? 0) >= 1.5) score += 4;
-  return Math.max(-10, Math.min(28, score));
+
+  // PR-N30: structural price alignment (independent of setup_tags strings).
+  // Price above both VWAP and EMA20 for longs (below for shorts) is a clear
+  // structure signal that many real candidates have but get no credit for.
+  if (tech.price != null && tech.vwap != null && tech.ema20 != null) {
+    if (direction === "long" && tech.price > tech.vwap && tech.price > tech.ema20) score += 2;
+    else if (direction === "short" && tech.price < tech.vwap && tech.price < tech.ema20) score += 2;
+  }
+
+  return Math.max(-10, Math.min(30, score));
 }
 
 function darkPoolBiasMatchesDirection(
@@ -471,12 +502,93 @@ function stackAlignsWithDirection(stack: FlowStrikeStack, direction: "long" | "s
   return direction === "long" ? t.startsWith("c") : t.startsWith("p");
 }
 
+/**
+ * Wall-proximity scoring: rewards plays where spot is near a GEX wall that SUPPORTS
+ * the direction (put wall = support for longs, call wall = resistance for shorts).
+ * Cortex already uses this signal for 0DTE — wiring it into overnight scoring fills
+ * a gap worth ~2.5/5.3 of the total Cortex signal weight.
+ *
+ * Parses wall_summary text (format: "put wall $5680 (-20pts) · call wall $5720 (+20pts)")
+ * and uses |distance_pts|/strike as the distance fraction (accurate within 0.1%).
+ *
+ * Distance bands:
+ *   ≤1% from a supporting wall: +5 (sitting right on the level)
+ *   ≤3%: +3 (within the zone of influence)
+ *   ≤5%: +1 (aware but not actionable)
+ *   Contradicting wall within 2%: -2 (resistance for a long, support for a short)
+ */
+export function scoreWallProximity(
+  positioning: PositioningSummary | undefined | null,
+  direction: "long" | "short"
+): number {
+  if (!positioning) return 0;
+
+  const wallText = positioning.wall_summary;
+  if (!wallText || wallText === "n/a") return 0;
+
+  let score = 0;
+  const walls = wallText.split(" · ");
+
+  for (const w of walls) {
+    const strikeMatch = w.match(/\$(\d+(?:\.\d+)?)/);
+    const ptsMatch = w.match(/\(([+-]?\d+(?:\.\d+)?)pts\)/);
+    if (!strikeMatch || !ptsMatch) continue;
+    const strike = Number(strikeMatch[1]);
+    const distPts = Math.abs(Number(ptsMatch[1]));
+    if (!Number.isFinite(strike) || strike <= 0) continue;
+
+    const distPct = distPts / strike;
+    const isPutWall = w.includes("put wall");
+    const isCallWall = w.includes("call wall");
+
+    if (direction === "long" && isPutWall) {
+      if (distPct <= 0.01) score += 5;
+      else if (distPct <= 0.03) score += 3;
+      else if (distPct <= 0.05) score += 1;
+    } else if (direction === "short" && isCallWall) {
+      if (distPct <= 0.01) score += 5;
+      else if (distPct <= 0.03) score += 3;
+      else if (distPct <= 0.05) score += 1;
+    }
+
+    if (direction === "long" && isCallWall && distPct <= 0.02) {
+      score -= 2;
+    } else if (direction === "short" && isPutWall && distPct <= 0.02) {
+      score -= 2;
+    }
+  }
+
+  return Math.max(-3, Math.min(7, score));
+}
+
+/**
+ * VEX (vanna exposure) direction scoring: positive net VEX = dealers are net long vanna
+ * = vol drop → dealers buy underlying = bullish tailwind; negative net VEX = bearish.
+ * This captures the "charm/vanna" flow that moves markets overnight and isn't in the
+ * base scoring at all.
+ */
+export function scoreVexAlignment(
+  positioning: PositioningSummary | undefined | null,
+  direction: "long" | "short"
+): number {
+  if (!positioning || positioning.net_vex == null || positioning.net_vex === 0) return 0;
+
+  const vexBullish = positioning.net_vex > 0;
+  const aligns = direction === "long" ? vexBullish : !vexBullish;
+  const contradicts = direction === "long" ? !vexBullish : vexBullish;
+
+  if (aligns) return 3;
+  if (contradicts) return -1;
+  return 0;
+}
+
 export function scoreOptionsPositioning(
   dossier: {
     dark_pool?: { total_premium?: number; bias?: string } | null;
     oi_change?: Array<{ oi_change?: number; option_type?: string }>;
     positioning?: PositioningSummary;
     strike_stacks?: FlowStrikeStack[];
+    greek_flow?: TickerGreekFlowSummary | null;
   },
   direction: "long" | "short"
 ): number {
@@ -524,7 +636,19 @@ export function scoreOptionsPositioning(
   });
   if (alignedOi.length >= 2) score += 2;
 
-  return Math.min(18, score);
+  // Dealer greek flow alignment: if per-ticker net delta confirms direction, bonus +3.
+  // Contradicting flow penalises −1 (mild — dealers can be wrong short-term).
+  const gf = dossier.greek_flow;
+  if (gf && gf.row_count > 0) {
+    const deltaAligns =
+      direction === "long" ? gf.bias === "bullish" : gf.bias === "bearish";
+    const deltaContradicts =
+      direction === "long" ? gf.bias === "bearish" : gf.bias === "bullish";
+    if (deltaAligns) score += 3;
+    else if (deltaContradicts) score -= 1;
+  }
+
+  return Math.min(18, Math.max(0, score));
 }
 
 function predictionAlignsWithDirection(
@@ -767,6 +891,12 @@ export function scoreCandidate(
     tomorrow_ymd?: string | null;
     /** Most recent analyst price target action from Benzinga. Used to nudge catalyst_score. */
     benzinga_price_target?: BenzingaPriceTarget | null;
+    /** Per-ticker dealer greek flow summary (net delta/gamma bias). */
+    greek_flow?: TickerGreekFlowSummary | null;
+    /** IV rank percentile (0-100). Elevated IV = expensive options, risk flag. */
+    iv_rank?: number | null;
+    /** Upcoming FDA calendar events for this ticker (UW). */
+    fda_events?: Record<string, unknown>[];
   },
   flowStreak?: FlowStreak,
   regime?: NightHawkRegimeContext | null,
@@ -793,25 +923,41 @@ export function scoreCandidate(
     streakWeight: scoring?.streakWeight,
     riskReversalSkew: dossierExtras.risk_reversal_skew,
   });
-  const techScore = scoreTechnicalSetup(tech, flow.direction);
-  const posScore = scoreOptionsPositioning(dossierExtras, flow.direction);
-  const newsScore = scoreNewsCatalyst(dossierExtras, flow.direction);
-  const smartMoneyScore = scoreSmartMoney(dossierExtras, flow.direction);
+
+  // PR-N27: when flow is ambiguous (thin margin), let technicals disambiguate direction.
+  // A 55/45 call/put split is noise, not conviction — defer to the structural trend.
+  let direction = flow.direction;
+  if (!flow.directionFlippedBySkew && flow.flowMargin < 0.25 && tech?.trend) {
+    const techDir: "long" | "short" | null =
+      tech.trend === "bearish" ? "short" : tech.trend === "bullish" ? "long" : null;
+    if (techDir && techDir !== direction) {
+      direction = techDir;
+    }
+  }
+
+  const techScore = scoreTechnicalSetup(tech, direction);
+  const posScore = scoreOptionsPositioning(dossierExtras, direction);
+  const newsScore = scoreNewsCatalyst(dossierExtras, direction);
+  const smartMoneyScore = scoreSmartMoney(dossierExtras, direction);
   const skewAdj = flow.directionFlippedBySkew
     ? 0
-    : scoreSkewConfirmation(dossierExtras.risk_reversal_skew, flow.direction);
+    : scoreSkewConfirmation(dossierExtras.risk_reversal_skew, direction);
   // Fundamental tailwind/headwind is a MODIFIER layered on the flow/technical base — never an override.
   const fundamentalScore = scoreFundamentalTailwind(
     dossierExtras.fundamental_ratios,
     dossierExtras.fundamental_signals,
-    flow.direction
+    direction
   );
   // Short-interest squeeze bonus (longs only, proxy via days_to_cover).
-  const shortInterestScore = scoreShortInterest(dossierExtras.short_days_to_cover, flow.direction);
+  const shortInterestScore = scoreShortInterest(dossierExtras.short_days_to_cover, direction);
+
+  // Wall-proximity and VEX-direction scoring — Cortex signal brought into overnight scoring.
+  const wallProxScore = scoreWallProximity(dossierExtras.positioning, direction);
+  const vexScore = scoreVexAlignment(dossierExtras.positioning, direction);
 
   // Catalyst awareness — a SMALL, conservative nudge (binary-event penalty + positive-catalyst note).
   // Like the fundamental modifier, it layers on the base and never overrides flow direction.
-  const catalyst = scoreCatalystAwareness(dossierExtras.catalysts, flow.direction);
+  const catalyst = scoreCatalystAwareness(dossierExtras.catalysts, direction);
 
   // Earnings proximity penalty: if earnings are today or tomorrow-premarket and the nearest
   // flow expiry is tomorrow, apply −6 to the catalyst score (floor behavior) and flag earnings_risk.
@@ -839,17 +985,34 @@ export function scoreCandidate(
     const ptAgeMs = Date.now() - new Date(ptData.published).getTime();
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
     if (ptAgeMs >= 0 && ptAgeMs <= sevenDaysMs) {
-      if (ptData.action === "raised" && flow.direction === "long") {
+      if (ptData.action === "raised" && direction === "long") {
         ptNudge = 2;
         catalyst.flags.push(`analyst PT raised within 7 days (${ptData.firm ?? "firm unknown"})`);
-      } else if (ptData.action === "lowered" && flow.direction === "long") {
+      } else if (ptData.action === "lowered" && direction === "long") {
         ptNudge = -2;
         catalyst.flags.push(`analyst PT cut within 7 days (${ptData.firm ?? "firm unknown"}) — headwind for long`);
       }
     }
   }
 
-  const totalCatalystScore = Math.max(-CATALYST_CAP, Math.min(CATALYST_CAP, catalyst.score + earningsPenalty + ptNudge));
+  // IV rank flag: elevated IV warns members options are expensive (wider spreads, higher decay).
+  const ivRank = dossierExtras.iv_rank;
+  let ivPenalty = 0;
+  if (ivRank != null && Number.isFinite(ivRank) && ivRank > 70) {
+    ivPenalty = -1;
+    catalyst.flags.push(`IV rank ${Math.round(ivRank)} — options expensive, tighter stops`);
+  }
+
+  // FDA calendar reinforcement: if UW FDA calendar has upcoming dates, strengthen the binary
+  // penalty (scoreCatalystAwareness may have already flagged from Benzinga catalysts).
+  let fdaPenalty = 0;
+  const fdaRows = dossierExtras.fda_events ?? [];
+  if (fdaRows.length > 0 && !catalyst.flags.some((f) => f.includes("FDA"))) {
+    fdaPenalty = -2;
+    catalyst.flags.push("FDA calendar event upcoming — binary risk");
+  }
+
+  const totalCatalystScore = Math.max(-CATALYST_CAP, Math.min(CATALYST_CAP, catalyst.score + earningsPenalty + ptNudge + ivPenalty + fdaPenalty));
 
   // Flow-anomaly penalty: names flagged critical in the last hour get demoted unless flow is exceptional.
   let anomalyPenalty = 0;
@@ -860,6 +1023,16 @@ export function scoreCandidate(
   }
 
   const regimeMultiplier = computeRegimeMultiplier(regime);
+  // PR-N30: dampen regime effect — the raw 0.6-1.3 range compresses marginal
+  // candidates below the publish floor in even mildly bearish regimes. A dampening
+  // factor of 0.5 halves the distance from 1.0: 0.85→0.925, 0.7→0.85, 1.2→1.1.
+  // Preserves the regime's directional signal without making it the sole reason a
+  // borderline candidate fails.
+  const dampenedRegime = 1 + (regimeMultiplier - 1) * 0.5;
+  // PR-N30: flow conviction bonus — when directional flow is very strong (≥25/38),
+  // the composite gets +4 outside the flow component. Lifts high-flow names that
+  // might be borderline on tech/positioning into the publish band.
+  const flowConvictionBonus = flow.score >= 25 ? 4 : 0;
   const total = Math.min(
     100,
     Math.max(
@@ -873,9 +1046,12 @@ export function scoreCandidate(
           skewAdj +
           fundamentalScore +
           shortInterestScore +
+          wallProxScore +
+          vexScore +
           totalCatalystScore +
-          anomalyPenalty) *
-          regimeMultiplier
+          anomalyPenalty +
+          flowConvictionBonus) *
+          dampenedRegime
       )
     )
   );
@@ -889,10 +1065,22 @@ export function scoreCandidate(
     ? [...catalyst.flags, "earnings tomorrow — binary risk, expiry into event"]
     : catalyst.flags;
 
+  const confirmingSignals = [
+    flow.score >= 8,
+    techScore >= 6,
+    posScore >= 4,
+    newsScore >= 2,
+    smartMoneyScore >= 2,
+    fundamentalScore >= 2,
+    shortInterestScore >= 2,
+    wallProxScore >= 3,
+    vexScore >= 2,
+  ].filter(Boolean).length;
+
   return {
     ticker,
     score: total,
-    direction: flow.direction,
+    direction,
     flow_score: flow.score,
     tech_score: techScore,
     pos_score: posScore,
@@ -900,10 +1088,17 @@ export function scoreCandidate(
     smart_money_score: smartMoneyScore,
     fundamental_score: fundamentalScore,
     short_interest_score: shortInterestScore,
+    wall_proximity_score: wallProxScore,
+    vex_alignment_score: vexScore,
     catalyst_score: totalCatalystScore,
     catalyst_flags: catalystFlags,
     earnings_risk: earningsRisk,
-    conviction: convictionFromScore(total),
+    confirming_signals: confirmingSignals,
+    conviction: assignNighthawkTier({
+      score: total,
+      confirmingSignals: confirmingSignals,
+      earningsRisk: earningsRisk,
+    }).tier,
     regime_multiplier: regimeMultiplier,
     fundamental_block: !fundCheck.ok,
     fundamental_flags: fundCheck.reasons,
@@ -917,14 +1112,36 @@ export type RankCandidatesResult = {
   exclusionReason?: string;
 };
 
+/** Penalty applied to fundamentally-flagged candidates in ranking (soft demotion, not hard cut). */
+const FUNDAMENTAL_BLOCK_PENALTY = 10;
+/** Bonus per confirming signal dimension (≥ threshold). Rewards multi-signal confluence. */
+const CONFIRMING_SIGNAL_BONUS = 2;
+/** Minimum confirming signals before the bonus kicks in (avoid rewarding noise). */
+const CONFIRMING_SIGNAL_FLOOR = 3;
+
+/**
+ * Effective ranking score: base score + confluence bonus − fundamental penalty.
+ * Multi-signal confluence (flow + tech + positioning + news all confirming) is rewarded
+ * because broad agreement across independent data sources is a stronger signal than
+ * depth in one dimension alone. Fundamental flags are a point penalty, not a partition.
+ */
+export function rankingScore(c: ScoredCandidate): number {
+  let effective = c.score;
+  if (c.fundamental_block) effective -= FUNDAMENTAL_BLOCK_PENALTY;
+  const signals = c.confirming_signals ?? 0;
+  if (signals >= CONFIRMING_SIGNAL_FLOOR) {
+    effective += (signals - CONFIRMING_SIGNAL_FLOOR + 1) * CONFIRMING_SIGNAL_BONUS;
+  }
+  return effective;
+}
+
 /**
  * Rank candidates for synthesis. ONLY `trading_halt` is a hard exclusion — you genuinely cannot trade
- * a halted name. `fundamental_block` (extreme P/E, negative ROE, elevated D/E) is a SOFT demotion, not
- * a hard cut: a high-flow momentum name with a stretched P/E is exactly the kind of forward-looking
+ * a halted name. `fundamental_block` (extreme P/E, negative ROE, elevated D/E) is a SOFT demotion via
+ * a point penalty: a high-flow momentum name with a stretched P/E is exactly the kind of forward-looking
  * setup Night Hawk exists to surface, and the critic + Claude still vet every play downstream. The old
- * behaviour hard-cut every fundamental_block candidate, which on a momentum-heavy session could zero
- * the entire pool (or strip out the strongest-flow names, leaving a thin feed that the critic then
- * emptied). Demoting instead keeps the feed populated while still preferring clean fundamentals. (#77)
+ * partition sort hard-cut flagged candidates below every clean candidate regardless of score, which on
+ * a momentum-heavy session suppressed the strongest-flow names behind weak clean ones (#77).
  */
 export function rankCandidates(
   scored: ScoredCandidate[],
@@ -932,14 +1149,16 @@ export function rankCandidates(
 ): RankCandidatesResult {
   const tradable = scored.filter((c) => !c.trading_halt);
 
-  // Sort: clean fundamentals first, then by score. fundamental_block names sink below their clean
-  // peers but remain eligible — they only get used when there aren't enough clean candidates to fill.
+  // Effective ranking score: base score + confluence bonus − fundamental penalty.
+  // The old partition sort (clean-first, then by score) made fundamental_block a HARD
+  // cut in practice — a clean ticker scoring 25 outranked a flagged ticker scoring 85.
+  // A point penalty within the score sort preserves the intent (prefer clean) without
+  // suppressing strong-flow momentum names behind weak clean ones.
   const ranked = [...tradable]
     .sort((a, b) => {
-      const blockA = a.fundamental_block ? 1 : 0;
-      const blockB = b.fundamental_block ? 1 : 0;
-      if (blockA !== blockB) return blockA - blockB; // clean (0) before blocked (1)
-      return b.score - a.score;
+      const effectiveA = rankingScore(a);
+      const effectiveB = rankingScore(b);
+      return effectiveB - effectiveA;
     })
     .slice(0, max);
 

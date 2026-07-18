@@ -11,7 +11,10 @@ import {
 } from "@/lib/live-api-integrations";
 import {
   UW_SOCKET_STALL_MS,
+  UW_SOCKET_STALL_OFFHOURS_MS,
+  UW_SOCKET_FIRST_MSG_GRACE_MS,
   freshestMessageAt as freshestFromMap,
+  isUwSocketStalled,
   mergeFreshestTimestamps,
 } from "./uw-socket-stall";
 import { isUwErrorFrame } from "@/lib/ws/uw-frame";
@@ -65,20 +68,15 @@ const CHANNEL_JOIN_NAME: Record<UwWsChannel, string> = Object.fromEntries(
 
 const AUTH_FAILED_BACKOFF_MS = 5 * 60_000;
 
-/** Escape hatch: keep UW socket alive off-hours when set (operator rollback). */
-function uwOffHoursReconnectForced(): boolean {
-  const f = (process.env.UW_WS_OFFHOURS_RECONNECT ?? "").trim().toLowerCase();
-  return f === "1" || f === "true" || f === "yes" || f === "on";
-}
-
-/** May the cluster leader hold / (re)open the UW multiplex socket right now? */
-export function uwSocketGateOpen(isLeader: boolean, forced: boolean, now: Date): boolean {
-  if (!isLeader) return false;
-  return forced || inOptionsMarketHours(now);
-}
-
-function shouldMaintainUwSocket(now = new Date()): boolean {
-  return uwSocketGateOpen(uwIsLeader, uwOffHoursReconnectForced(), now);
+/**
+ * May the cluster leader hold / (re)open the UW multiplex socket right now?
+ * Always true for the leader — the `price` channel delivers spot prices for
+ * SPY/equities after-hours and futures-correlated indices 24/7. Options-only
+ * channels (GEX, flow) go quiet off-hours but that's expected silence, not a
+ * reason to tear down the entire socket.
+ */
+export function uwSocketGateOpen(isLeader: boolean): boolean {
+  return isLeader;
 }
 
 const UW_API_KEY = (process.env.UW_API_KEY ?? "").trim();
@@ -253,6 +251,8 @@ class UwSocketManager {
   private authFailedLogged = false;
   private connectStarted = false;
   private shuttingDown = false;
+  /** Timestamp when the current socket's `onopen` fired — used for first-message grace timeout. */
+  private openedAt: number | null = null;
 
   private channelsWithHandlers(): UwWsChannel[] {
     return ALL_CHANNELS.filter((ch) => (this.handlers.get(ch)?.size ?? 0) > 0);
@@ -283,6 +283,7 @@ class UwSocketManager {
     const ws = this.ws;
     this.ws = null;
     this.connectStarted = false;
+    this.openedAt = null;
     if (ws) {
       // Detach handlers BEFORE closing: the ws close handshake can DEFER the 'close' event up to ~30s
       // on a half-open peer (exactly when reconnectIfStalled tears down), so a still-attached onclose
@@ -308,7 +309,6 @@ class UwSocketManager {
 
   private scheduleReconnect() {
     if (this.shuttingDown) return; // shutting down — do not resurrect the socket
-    if (!shouldMaintainUwSocket()) return; // off-hours / non-leader — defer reconnect
     if (!uwIsLeader) return; // only the cluster leader holds the UW socket; standbys stay closed
     if (this.channelsWithHandlers().length === 0) return;
     this.clearReconnect();
@@ -343,6 +343,20 @@ class UwSocketManager {
       if (!this.joined.has(channel)) {
         this.sendJoin(channel);
       }
+    }
+    this.rejoinDynamicGexTickers();
+  }
+
+  /** Re-join dynamically subscribed gex_strike_expiry tickers after a reconnect. */
+  private rejoinDynamicGexTickers() {
+    const ws = this.ws;
+    if (!ws || ws.readyState !== 1) return;
+    for (const sym of dynamicGexTickers) {
+      const wire = `gex_strike_expiry:${sym}`;
+      ws.send(JSON.stringify({ channel: wire, msg_type: "join" }));
+    }
+    if (dynamicGexTickers.size > 0) {
+      console.log(`[uw-socket] re-joined ${dynamicGexTickers.size} dynamic gex_strike_expiry tickers`);
     }
   }
 
@@ -469,6 +483,7 @@ class UwSocketManager {
         if (this.ws !== ws) return; // superseded socket — ignore late open
         this.connectStarted = false;
         this.reconnectDelay = 1000;
+        this.openedAt = Date.now();
         console.log("[uw-socket] multiplex connected — joining channels");
         this.joinActiveChannels();
       };
@@ -488,6 +503,7 @@ class UwSocketManager {
         // path that bypasses it).
         if (this.ws !== ws) return;
         this.connectStarted = false;
+        this.openedAt = null;
         const reason = event.reason?.trim() || `code=${event.code}`;
         this.lastCloseReason = reason;
         this.ws = null;
@@ -558,20 +574,31 @@ class UwSocketManager {
   }
 
   /**
-   * Half-open watchdog: when the socket is OPEN but has stopped delivering
-   * (no message on any channel-with-handlers within the stall window despite
-   * prior delivery), tear it down and reconnect. A socket that has never
-   * delivered yet (freshest == null) is left alone so a freshly opened socket
-   * is not churned before first data arrives.
+   * Half-open watchdog. Two stall modes:
+   * 1. Had data before: stalled when freshest delivery > `stallMs` ago.
+   * 2. Never received ANY data: stalled when socket has been open >
+   *    `firstMsgGraceMs` — catches UW silently accepting a duplicate API-key
+   *    connection and never sending data (the connection looks healthy but is
+   *    dead). Without this, the socket sat OPEN+silent indefinitely after ECS
+   *    deploy races.
    */
-  reconnectIfStalled(freshestMessageAt: number | null, stallMs: number, now = Date.now()): boolean {
+  reconnectIfStalled(
+    freshestMessageAt: number | null,
+    stallMs: number,
+    now = Date.now(),
+    firstMsgGraceMs?: number
+  ): boolean {
     if (!this.isOpen()) return false;
-    if (!inOptionsMarketHours(new Date(now)) && !uwOffHoursReconnectForced()) return false;
     if (this.channelsWithHandlers().length === 0) return false;
-    if (freshestMessageAt == null) return false;
-    if (now - freshestMessageAt <= stallMs) return false;
+    if (!isUwSocketStalled(freshestMessageAt, stallMs, now, this.openedAt, firstMsgGraceMs)) return false;
+    const silentConnect = freshestMessageAt == null;
+    const elapsed = silentConnect
+      ? Math.round((now - (this.openedAt ?? now)) / 1000)
+      : Math.round((now - freshestMessageAt) / 1000);
     console.warn(
-      `[uw-socket] stall watchdog — OPEN but no data for ${Math.round((now - freshestMessageAt) / 1000)}s, reconnecting`
+      silentConnect
+        ? `[uw-socket] stall watchdog — OPEN ${elapsed}s with ZERO messages, reconnecting (possible API-key contention)`
+        : `[uw-socket] stall watchdog — OPEN but no data for ${elapsed}s, reconnecting`
     );
     this.reconnectDelay = 1000;
     this.teardownSocket();
@@ -591,6 +618,7 @@ class UwSocketManager {
     const ws = this.ws;
     this.ws = null;
     this.connectStarted = false;
+    this.openedAt = null;
     if (ws) {
       // Detach handlers first so onclose can't schedule a reconnect.
       try {
@@ -808,6 +836,68 @@ type GexStrikeExpiryTickerState = {
 };
 
 const gexStrikeExpiryByTicker = new Map<string, GexStrikeExpiryTickerState>();
+
+// ── Dynamic per-ticker gex_strike_expiry subscription ───────────────────────────────────
+// Any ticker opened on Vector dynamically joins `gex_strike_expiry:TICKER` on the
+// multiplexed UW socket (stress-tested: 48 concurrent subscriptions, all acked, no cap).
+// Static tickers from UW_WS_GEX_STRIKE_EXPIRY_TICKERS are always joined at init; dynamic
+// tickers are joined on demand and auto-left after an idle timeout.
+
+const dynamicGexTickers = new Set<string>();
+const dynamicGexLastAccess = new Map<string, number>();
+const DYNAMIC_GEX_IDLE_MS = 120_000;
+const DYNAMIC_GEX_FRESHNESS_MS = 60_000;
+
+function staticGexTickers(): Set<string> {
+  const tickers = parseWsTickerCsv(process.env.UW_WS_GEX_STRIKE_EXPIRY_TICKERS, "SPX");
+  return new Set(tickers);
+}
+
+/**
+ * Dynamically subscribe `gex_strike_expiry:TICKER` on the UW multiplexed socket.
+ * Idempotent — does nothing if the ticker is already joined (static or dynamic).
+ * Only the cluster leader sends join frames; non-leaders silently skip (they fall
+ * back to REST-sourced walls anyway since the in-memory WS store is leader-only).
+ */
+export function joinGexStrikeExpiryTicker(ticker: string): void {
+  const sym = ticker.toUpperCase();
+  dynamicGexLastAccess.set(sym, Date.now());
+  if (staticGexTickers().has(sym)) return;
+  if (dynamicGexTickers.has(sym)) return;
+  dynamicGexTickers.add(sym);
+  if (!uwIsLeader) return;
+  const ws = uwSocket as unknown as { ws: WebSocket | null };
+  const sock = ws.ws;
+  if (!sock || sock.readyState !== 1) return;
+  const wire = `gex_strike_expiry:${sym}`;
+  sock.send(JSON.stringify({ channel: wire, msg_type: "join" }));
+  console.log(`[uw-socket] dynamic join gex_strike_expiry:${sym}`);
+}
+
+/**
+ * True when the in-memory UW WS store has recent per-strike GEX data for this
+ * ticker (static or dynamically subscribed). Callers use this to decide between
+ * the WS ladder (5s walls) and the REST fallback (15s walls).
+ */
+export function hasLiveGexStrikeExpiry(ticker: string): boolean {
+  const sym = ticker.toUpperCase();
+  const state = gexStrikeExpiryByTicker.get(sym);
+  if (!state || state.cells.size === 0) return false;
+  return Date.now() - state.updatedAt <= DYNAMIC_GEX_FRESHNESS_MS;
+}
+
+/** Prune dynamic subscriptions that haven't been accessed recently. */
+function pruneIdleDynamicGexTickers(): void {
+  const now = Date.now();
+  for (const sym of [...dynamicGexTickers]) {
+    const lastAccess = dynamicGexLastAccess.get(sym) ?? 0;
+    if (now - lastAccess > DYNAMIC_GEX_IDLE_MS) {
+      dynamicGexTickers.delete(sym);
+      dynamicGexLastAccess.delete(sym);
+      gexStrikeExpiryByTicker.delete(sym);
+    }
+  }
+}
 
 function gexStrikeExpiryCellKey(expiry: string, strike: number): string {
   return `${expiry}|${strike}`;
@@ -1207,13 +1297,13 @@ async function runUwReconcileTick(): Promise<void> {
     uwSocket.standDown();
     return;
   }
-  if (!shouldMaintainUwSocket()) {
-    uwSocket.standDown();
-    return;
-  }
   uwSocket.ensureConnected();
   uwSocket.heartbeat();
-  uwSocket.reconnectIfStalled(freshestUwMessageAt(), UW_SOCKET_STALL_MS);
+  // Off-hours: price channel still delivers but options channels go quiet —
+  // use a wider stall window so expected AH silence doesn't trigger reconnects.
+  const stallMs = inOptionsMarketHours() ? UW_SOCKET_STALL_MS : UW_SOCKET_STALL_OFFHOURS_MS;
+  uwSocket.reconnectIfStalled(freshestUwMessageAt(), stallMs, Date.now(), UW_SOCKET_FIRST_MSG_GRACE_MS);
+  pruneIdleDynamicGexTickers();
 }
 
 /**
@@ -1258,9 +1348,16 @@ export function getUwSocketHealth() {
     last_message_age_ms[ch] = at ? now - at : null;
   }
 
+  const clusterAt = effectiveFreshestUwMessageAt();
+  const clusterAge = clusterAt != null ? now - clusterAt : null;
+
   return {
     configured: Boolean(UW_API_KEY),
     initialized: uwSocketInitialized,
+    is_leader: uwIsLeader,
+    cluster_last_message_at: clusterAt,
+    cluster_last_message_age_ms: clusterAge,
+    cluster_live: clusterAge != null && clusterAge <= 120_000,
     auth_failed: authFailedChannels.length > 0,
     auth_failed_channels: authFailedChannels,
     channels,
@@ -1281,6 +1378,8 @@ export function getUwSocketHealth() {
       gex_strike_expiry_updated_at: gexStrikeExpiryByTicker.get("SPX")?.updatedAt || null,
       gex_strike_expiry_cells: gexStrikeExpiryByTicker.get("SPX")?.cells.size ?? 0,
       gex_strike_expiry_strikes: getGexStrikeExpiryLadder("SPX")?.ladder.size ?? 0,
+      gex_strike_expiry_dynamic_tickers: dynamicGexTickers.size,
+      gex_strike_expiry_active_tickers: [...gexStrikeExpiryByTicker.keys()],
       price_spx_updated_at: priceByTicker.get("SPX")?.updatedAt || null,
       price_spy_updated_at: priceByTicker.get("SPY")?.updatedAt || null,
       active_halts: Array.from(tradingHaltsStore.halts.values())

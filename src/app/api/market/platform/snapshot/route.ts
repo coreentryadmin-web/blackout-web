@@ -1,8 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
-import type { PlatformServiceId } from "@/lib/platform";
-import { getCachedPlatformSnapshot } from "@/lib/platform-snapshot-cache";
+import { getPlatformSnapshot, type PlatformServiceId } from "@/lib/platform";
 import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +24,7 @@ export async function GET(req: NextRequest) {
   const fullEdition = sp.get("full_edition") === "1";
 
   try {
-    const snapshot = await getCachedPlatformSnapshot({ include, flowLimit, fullEdition });
+    const snapshot = await getPlatformSnapshot({ include, flowLimit, fullEdition });
     return NextResponse.json(roundFloats(snapshot), {
       headers: { "Cache-Control": "no-store" },
     });

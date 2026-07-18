@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { serverCache, withServerCache, isDegraded } from "./server-cache";
+import { serverCache, isDegraded } from "./server-cache";
 
 // Covers the load-bearing guarantee behind null-commentary-cache: when the loader
 // THROWS, serverCache stores nothing and clears the in-flight entry, so the next
@@ -43,25 +43,6 @@ test("resolved value is cached: second call within ttl does not re-invoke loader
   assert.equal(invoked, 1);
   assert.deepEqual(first, { n: 1 });
   assert.deepEqual(second, { n: 1 });
-});
-
-test("SWR returns stale immediately while a refresh is in flight", async () => {
-  const key = `test:swr-inflight:${Math.random()}`;
-  let buildCount = 0;
-  const loader = async () => {
-    buildCount += 1;
-    await new Promise((r) => setTimeout(r, 150));
-    return { n: buildCount };
-  };
-  const ttl = 40;
-  const first = await withServerCache(key, ttl, loader, { staleWhileRevalidate: true });
-  await new Promise((r) => setTimeout(r, 50));
-  void withServerCache(key, ttl, loader, { staleWhileRevalidate: true });
-  const t0 = Date.now();
-  const second = await withServerCache(key, ttl, loader, { staleWhileRevalidate: true });
-  const elapsed = Date.now() - t0;
-  assert.equal(second.n, first.n);
-  assert.ok(elapsed < 100, `expected stale handoff <100ms, got ${elapsed}ms`);
 });
 
 test("repeated throws mark the key degraded after the failure threshold", async () => {

@@ -126,6 +126,7 @@ If Playwright is blocked, manually execute the checklist below via `computerUse`
 | # | Action | Pass |
 |---|---|---|
 | 28 | Active halt banner | Matches desk `active_halts` |
+| 29 | Degraded halt feed banner | Only when `halt_channel_stale` + session active; never claims "blocked" incorrectly |
 
 ---
 

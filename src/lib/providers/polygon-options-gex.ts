@@ -6,6 +6,8 @@ import { isHeatmapPreset } from "../heatmap-allowlist";
 import { isLiveOdteSession } from "./unusual-whales";
 import { fmtPremium } from "@/lib/fmt-money";
 import { persistGexRegimeEvents } from "./gex-regime-events";
+import { zeroGammaFlip as computeZeroGammaFlip } from "@/lib/providers/gex-cross-validation-core";
+export { zeroGammaFlip as computeZeroGammaFlip } from "@/lib/providers/gex-cross-validation-core";
 
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
 const KEY = process.env.POLYGON_API_KEY ?? "";
@@ -40,7 +42,7 @@ export type ChainContract = {
   open_interest?: number;
   last_quote?: { bid?: number; ask?: number };
   last_trade?: { price?: number };
-  day?: { close?: number };
+  day?: { close?: number; volume?: number };
   underlying_asset?: { price?: number };
 };
 
@@ -89,6 +91,10 @@ let cachedOdteBundle: {
   rows: Record<string, unknown>[];
   maxPain: number | null;
 } | null = null;
+
+// Single-flight guard: concurrent callers share one in-progress build instead of
+// each independently hitting the Polygon API. Mirrors heatmapInflight above.
+let odteBundleInflight: Promise<{ rows: Record<string, unknown>[]; maxPain: number | null }> | null = null;
 
 const POLYGON_ODTE_CACHE_KEY = "polygon:odte_gex_bundle";
 
@@ -218,28 +224,30 @@ export async function fetchPolygonOdteDeskBundle(
     /* redis optional */
   }
 
-  const contracts = await loadOdteContracts(spot, expiry);
-  if (!contracts.length) {
-    // Same class of noise already fixed for uw-gex-fallback: `expiry` defaults to TODAY, so on
-    // a non-trading day (holiday/weekend) there is NO listed 0DTE contract at all — 0 results is
-    // completely expected, not a sign the API key is misconfigured. Only warn (and suggest
-    // checking the key) when this happens during a real trading session; otherwise it's routine
-    // and the "verify POLYGON_API_KEY" hint would be actively misleading.
-    if (isLiveOdteSession()) {
-      console.warn(`[polygon-gex] 0 I:SPX contracts for ${expiry} @ ${spot} via ${hostOf(BASE)} — GEX walls will be empty. Verify POLYGON_API_KEY is a valid ${hostOf(BASE)} key with options-chain access (set POLYGON_API_BASE if your key is from a different provider, e.g. https://api.polygon.io).`);
-    } else {
-      console.info(`[polygon-gex] 0 I:SPX contracts for ${expiry} @ ${spot} — off-hours/holiday, expected (no listed 0DTE expiry today).`);
+  if (odteBundleInflight) return odteBundleInflight;
+
+  const build = (async () => {
+    const contracts = await loadOdteContracts(spot, expiry);
+    if (!contracts.length) {
+      if (isLiveOdteSession()) {
+        console.warn(`[polygon-gex] 0 I:SPX contracts for ${expiry} @ ${spot} via ${hostOf(BASE)} — GEX walls will be empty. Verify POLYGON_API_KEY is a valid ${hostOf(BASE)} key with options-chain access (set POLYGON_API_BASE if your key is from a different provider, e.g. https://api.polygon.io).`);
+      } else {
+        console.info(`[polygon-gex] 0 I:SPX contracts for ${expiry} @ ${spot} — off-hours/holiday, expected (no listed 0DTE expiry today).`);
+      }
     }
-  }
-  const rows = aggregateGexRows(contracts, spot);
-  const maxPain = computeMaxPainFromChain(contracts);
-  if (rows.length) {
-    cachedOdteBundle = { at: now, spot, rows, maxPain };
-    void import("../shared-cache").then(({ sharedCacheSet }) =>
-      sharedCacheSet(POLYGON_ODTE_CACHE_KEY, cachedOdteBundle, Math.ceil(polygonGexCacheMs() / 1000))
-    );
-  }
-  return { rows, maxPain };
+    const rows = aggregateGexRows(contracts, spot);
+    const maxPain = computeMaxPainFromChain(contracts);
+    if (rows.length) {
+      cachedOdteBundle = { at: now, spot, rows, maxPain };
+      void import("../shared-cache").then(({ sharedCacheSet }) =>
+        sharedCacheSet(POLYGON_ODTE_CACHE_KEY, cachedOdteBundle, Math.ceil(polygonGexCacheMs() / 1000))
+      );
+    }
+    return { rows, maxPain };
+  })().finally(() => { odteBundleInflight = null; });
+
+  odteBundleInflight = build;
+  return build;
 }
 
 // ---------------------------------------------------------------------------
@@ -1057,6 +1065,25 @@ async function liveWsIndexSpot(
 }
 
 /**
+ * Live WS stock spot — reads from the stock-candle-store fed by the stocks WS A.* subscription.
+ * Returns null when no fresh tick exists.
+ */
+async function liveWsStockSpot(
+  ticker: string,
+  now = Date.now()
+): Promise<{ price: number } | null> {
+  try {
+    const { getStockLiveCandle } = await import("../ws/stock-candle-store");
+    const snap = getStockLiveCandle(ticker);
+    if (!snap.current || !(snap.current.close > 0)) return null;
+    if (now - snap.updatedAt >= GEX_INDEX_WS_STALE_MS) return null;
+    return { price: snap.current.close };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Resolve the underlying SPOT for an options root, choosing the correct snapshot endpoint.
  *
  * CRITICAL: index roots (`I:SPX`, `I:NDX`, …) are NOT on the stocks-snapshot endpoint —
@@ -1078,32 +1105,41 @@ async function resolveSpotSnapshot(
 ): Promise<{ price: number; change_pct: number } | null> {
   const root = optionsRoot.toUpperCase();
   const isIndex = root.startsWith("I:") || Object.values(INDEX_ROOTS).includes(root);
+
+  // --- WS-first: try the live candle store BEFORE any REST call ---
+  // Stocks WS A.* and indices WS both feed into candle stores with sub-second updates.
+  // Use the WS price as primary; fall through to REST only when WS has no fresh tick.
+  if (isIndex) {
+    const ws = await liveWsIndexSpot(root);
+    if (ws) {
+      // REST still needed for change_pct when the WS doesn't carry it authoritatively.
+      const restSnap = await fetchIndexSnapshot(root).catch(() => null);
+      return { price: ws.price, change_pct: ws.change_pct ?? restSnap?.change_pct ?? 0 };
+    }
+  } else {
+    const ws = await liveWsStockSpot(root);
+    if (ws) {
+      const restSnap = await fetchStockSnapshot(root).catch(() => null);
+      return { price: ws.price, change_pct: restSnap?.change_pct ?? 0 };
+    }
+  }
+
+  // Fallback: REST snapshot (Polygon unlimited, no rate-limit concern).
   const snap = isIndex
     ? await fetchIndexSnapshot(root).catch(() => null)
     : await fetchStockSnapshot(root).catch(() => null);
   const restPrice = snap && snap.price > 0 ? snap.price : 0;
-  const restChange = snap?.change_pct ?? 0;
-
-  // Index roots: overlay the fresher live WS price (and its change% when authoritative) on top of
-  // the REST snapshot. Falls back to REST when no fresh WS tick exists.
-  if (isIndex) {
-    const ws = await liveWsIndexSpot(root);
-    if (ws) {
-      return { price: ws.price, change_pct: ws.change_pct ?? restChange };
-    }
-  }
-
   if (!(restPrice > 0)) return null;
-  return { price: restPrice, change_pct: restChange };
+  return { price: restPrice, change_pct: snap?.change_pct ?? 0 };
 }
 
 const GEX_HEATMAP_CACHE_PREFIX = "gex-heatmap";
 /**
- * How many NEAR-TERM expiries (the nearest dailies/weeklies, ascending) the matrix keeps — the
- * UNCHANGED legacy "8 nearest" behavior. The far-dated monthly/quarterly columns are ADDED to this
- * block (never replace it), so the near-term view is preserved exactly.
+ * How many NEAR-TERM expiries (the nearest dailies/weeklies, ascending) the matrix keeps. Raised
+ * from 8 → 15 so Thermal shows a dense, premium-grade term-structure grid. The far-dated monthly/
+ * quarterly columns are ADDED to this block (never replace it).
  */
-const NEAR_TERM_EXPIRY_COUNT = 8;
+const NEAR_TERM_EXPIRY_COUNT = 15;
 /** In-memory mirror of the Redis matrix so co-located requests skip Redis too. */
 const cachedHeatmaps = new Map<string, { at: number; data: GexHeatmap }>();
 
@@ -1135,30 +1171,30 @@ function setCachedHeatmap(key: string, entry: { at: number; data: GexHeatmap }):
 }
 
 function gexHeatmapCacheMs(): number {
-  const sec = Number(process.env.GEX_HEATMAP_CACHE_SEC ?? 20);
-  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 20_000;
+  const sec = Number(process.env.GEX_HEATMAP_CACHE_SEC ?? 5);
+  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 5_000;
 }
 
-/** SPX Slayer / desk hot path — shorter TTL without warming the whole preset grid. */
+/** SPX Slayer / desk hot path — same 5s TTL as the global default now. */
 function gexHeatmapCacheMsFor(root: string): number {
   if (root === "SPX") {
-    const sec = Number(process.env.SPX_GEX_HEATMAP_CACHE_SEC ?? 15);
-    return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 15_000;
+    const sec = Number(process.env.SPX_GEX_HEATMAP_CACHE_SEC ?? 5);
+    return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 5_000;
   }
   return gexHeatmapCacheMs();
 }
 
 /**
  * Max age of a matrix entry we'll still SERVE while refreshing in the background.
- * Covers the heatmap-warm cron gap (Railway fires once/min; matrix fresh TTL ~20s) so a
- * cold replica or TTL-boundary miss returns the last good matrix instantly instead of
- * blocking 20–35s on a chain rebuild. Always enabled — including preset fast-move — so a
- * shortened accept TTL (5s) never forces every member GET to block on a full chain rebuild
+ * Covers the heatmap-warm cron gap so a cold replica or TTL-boundary miss returns the
+ * last good matrix instantly instead of blocking 20–35s on a chain rebuild. Always
+ * enabled — including preset fast-move — so a cache miss never forces every member GET
+ * to block on a full chain rebuild
  * (live-caught 2026-07-06: SPX /gex-heatmap 502 + dashboard matrix stuck loading).
  */
 function gexHeatmapMaxStaleMs(): number {
-  const sec = Number(process.env.GEX_HEATMAP_MAX_STALE_SEC ?? 300);
-  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 300_000;
+  const sec = Number(process.env.GEX_HEATMAP_MAX_STALE_SEC ?? 90);
+  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 90_000;
 }
 
 /** Serve an expired matrix immediately and kick off a background rebuild (single-flight). */
@@ -1254,17 +1290,47 @@ export function resolveHeatmapPageGuard(envValue: string | undefined): number {
 }
 const HEATMAP_PAGE_GUARD = resolveHeatmapPageGuard(process.env.OPTIONS_HEATMAP_PAGE_GUARD);
 
-/** Strike band around spot for the shared heatmap chain pull. Default ±6% for all presets. */
+/**
+ * Page backstop for the per-expiry banded chain pull (`fetchChainBand`). A single expiry within a
+ * ~±1.5% band is normally 1–2 pages, but `strikeHints` can widen the band to cover deep ITM/OTM
+ * held legs, pushing past the old bare `guard < 8` cap — which truncated the chain and only WARNED,
+ * silently understating OI/walls for that (underlying, expiry). Like the heatmap guard this is a
+ * runaway-loop backstop, not the stop condition (that's `!next_url`); floored at the OLD cap of 8
+ * so a blank/misconfigured env can never sink below what already shipped, default 40 (~5× headroom).
+ */
+export function resolveChainBandPageGuard(envValue: string | undefined): number {
+  return Math.max(8, Number(envValue) || 40);
+}
+const CHAIN_BAND_PAGE_GUARD = resolveChainBandPageGuard(process.env.OPTIONS_CHAIN_BAND_PAGE_GUARD);
+
+/**
+ * SPX default strike band: ±6%. SPX's chain is DENSE (5-pt strikes → ~180 strikes/expiry inside
+ * ±6% at a 7500 spot), so a tight band already yields a rich ladder AND keeps the hot, cron-warmed
+ * SPX payload small. Widening SPX would balloon its contract count with no wall-count benefit.
+ */
+const SPX_HEATMAP_BAND_PCT = 0.06;
+
+/**
+ * Default strike band for every OTHER ticker: ±20%. ±6% was too narrow for sparse chains (ASTS @
+ * $73: only 10 strikes, 2 call walls — real walls at 90/100/125 never fetched). ±12% improved it
+ * (22 strikes) but still missed round-number gamma walls that sit 20-70% above spot on low-priced
+ * names. ±20% aligns with the Vector chart's BEAD_VIEW_MAX_PCT (0.20) and stays well under the
+ * DTE-scoped path's -30%/+35% band, so the shared heatmap no longer fetches a narrower window than
+ * either the chart or the per-expiry walls are willing to draw. Env-overridable up to 25%.
+ */
+const DEFAULT_HEATMAP_BAND_PCT = 0.20;
+
+/** Strike band around spot for the shared heatmap chain pull. SPX stays tight (dense); everything
+ *  else uses ±20% so sparse/low-priced names surface round-number walls (ASTS 90/100/125 @ $73). */
 function heatmapBandPct(root: string): number {
   const clamp = (n: number) => (Number.isFinite(n) && n > 0 && n <= 0.25 ? n : null);
   if (root === "SPX") {
-    const spx = clamp(Number(process.env.SPX_GEX_HEATMAP_BAND_PCT));
-    if (spx != null) return spx;
+    return clamp(Number(process.env.SPX_GEX_HEATMAP_BAND_PCT)) ?? SPX_HEATMAP_BAND_PCT;
   }
-  const global = clamp(Number(process.env.GEX_HEATMAP_BAND_PCT));
-  if (global != null) return global;
-  return 0.06;
+  return clamp(Number(process.env.GEX_HEATMAP_BAND_PCT)) ?? DEFAULT_HEATMAP_BAND_PCT;
 }
+
+export const __test_heatmapBandPct = heatmapBandPct;
 
 async function fetchHeatmapBand(
   underlying: string,
@@ -1299,65 +1365,6 @@ async function fetchHeatmapBand(
   return out;
 }
 
-/**
- * Compute the zero-gamma flip from per-strike NET dealer gamma totals.
- *
- * PRIMARY: the strike (linear-interpolated to gamma=0) where per-strike net gamma changes
- * sign — in EITHER direction — choosing the crossing NEAREST spot. Real per-strike gamma
- * profiles are lumpy (OI concentrates in specific strikes), so positive→negative transitions
- * are just as common as negative→positive and can legitimately be the crossing closest to
- * spot; restricting to one direction made the function structurally blind to half of the real
- * crossings, silently picking a farther, wrong-direction level whenever the true nearest
- * crossing ran the other way. This is robust on heavily one-sided books (a deep net-short
- * profile still has a clean sign flip), where the old cumulative-sum crossing returned null
- * because the running total never crossed back through zero.
- * FALLBACK: the legacy cumulative-crossing, then null.
- */
-export function computeZeroGammaFlip(strikeTotals: Record<string, number>, spot = 0): number | null {
-  const rows = Object.entries(strikeTotals)
-    .map(([s, g]) => ({ strike: Number(s), gamma: g }))
-    .filter((r) => Number.isFinite(r.strike) && Number.isFinite(r.gamma))
-    .sort((a, b) => a.strike - b.strike);
-  if (rows.length < 2) return null;
-
-  // Primary: per-strike sign transitions in EITHER direction, interpolated to gamma = 0.
-  const crossings: number[] = [];
-  for (let i = 1; i < rows.length; i++) {
-    const a = rows[i - 1];
-    const b = rows[i];
-    if ((a.gamma < 0 && b.gamma > 0) || (a.gamma > 0 && b.gamma < 0)) {
-      const frac = (0 - a.gamma) / (b.gamma - a.gamma); // 0..1 where gamma crosses 0 (direction-agnostic)
-      crossings.push(Number((a.strike + (b.strike - a.strike) * frac).toFixed(2)));
-    }
-  }
-  if (crossings.length) {
-    return spot > 0
-      ? crossings.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best))
-      : crossings[crossings.length - 1];
-  }
-
-  // Fallback: cumulative-sum crossing (legacy) — for unusual profiles with no clean flip.
-  // Build the running cumulative sum per strike, then scan strictly ADJACENT pairs (cum[i-1],
-  // cum[i]) for a sign change and interpolate across that SAME i-1..i strike segment. (The
-  // prior version updated prevCum after the check, so it compared cum[i] vs cum[i-2] while
-  // interpolating i-1..i — the first segment could never flip.)
-  const cum: number[] = [];
-  let running = 0;
-  for (const r of rows) {
-    running += r.gamma;
-    cum.push(running);
-  }
-  for (let i = 1; i < cum.length; i++) {
-    const prevCum = cum[i - 1];
-    const nextCum = cum[i];
-    if (prevCum !== 0 && nextCum !== 0 && Math.sign(nextCum) !== Math.sign(prevCum)) {
-      const span = rows[i].strike - rows[i - 1].strike;
-      const frac = prevCum / (prevCum - nextCum); // 0..1 along the i-1..i segment
-      return Number((rows[i - 1].strike + span * frac).toFixed(2));
-    }
-  }
-  return null;
-}
 
 // ---------------------------------------------------------------------------
 // SHIFT — intraday gamma migration (positioning-history ring + diff)
@@ -2732,7 +2739,10 @@ async function fetchChainBand(
   let page = await polygonFetchUrl(`/v3/snapshot/options/${underlying}?${params}`);
   let guard = 0;
 
-  while (page && guard < 8) {
+  // Follow next_url to completion; the guard is a runaway-loop backstop, NOT the expected stop
+  // condition (that's !next_url). The old bare `guard < 8` silently truncated a strikeHints-widened
+  // band — deep ITM/OTM legs pushed past ~2k contracts — and only WARNED, understating OI/walls.
+  while (page && guard < CHAIN_BAND_PAGE_GUARD) {
     out.push(...(page.results ?? []));
     if (!page.next_url) break;
     page = await polygonFetchUrl(page.next_url);
@@ -2893,6 +2903,45 @@ export async function fetchPolygonAtmOptionsChain(
     return fetchChainBand("I:SPX", spot, expiry, bandPct);
   }
   return fetchChainBand(root, spot, expiry, bandPct);
+}
+
+/**
+ * ATM ± bandPct chain snapshot across ALL non-expired expiries (no expiry filter).
+ * Single API call that returns contracts for every available expiry in the strike band,
+ * so the caller discovers expiries AND gets chain data in one round-trip. Used by
+ * Night Hawk's resolveTickerChainRows to bypass the broken reference-API-based
+ * expiry discovery (that endpoint doesn't include open_interest).
+ */
+export async function fetchPolygonAtmChainAllExpiries(
+  underlying: string,
+  spot: number,
+  bandPct = 0.05
+): Promise<ChainContract[]> {
+  if (!polygonConfigured() || spot <= 0) return [];
+  const root = underlying.toUpperCase();
+  const optionsRoot = root === "SPX" ? "I:SPX" : root;
+
+  const band = Math.max(spot * bandPct, 80);
+  const lo = Math.floor(spot - band);
+  const hi = Math.ceil(spot + band);
+
+  const params = new URLSearchParams({
+    "strike_price.gte": String(lo),
+    "strike_price.lte": String(hi),
+    limit: "250",
+    apiKey: KEY,
+  });
+
+  const out: ChainContract[] = [];
+  let page = await polygonFetchUrl(`/v3/snapshot/options/${optionsRoot}?${params}`);
+  let guard = 0;
+  while (page && guard < CHAIN_BAND_PAGE_GUARD) {
+    out.push(...(page.results ?? []));
+    if (!page.next_url) break;
+    page = await polygonFetchUrl(page.next_url);
+    guard += 1;
+  }
+  return out;
 }
 
 export function summarizeOiByStrike(contracts: ChainContract[], limit = 20) {
@@ -3073,15 +3122,18 @@ export async function fetchPolygonOiByExpiry(
       const expiry = String(c.expiration_date ?? "").slice(0, 10);
       if (!expiry) continue;
       const oi = Number(c.open_interest ?? 0);
-      if (!oi) continue;
       const type = String(c.contract_type ?? "").toLowerCase();
       const row = byExpiry.get(expiry) ?? { call_oi: 0, put_oi: 0 };
+      // Count every contract — the reference endpoint sometimes omits open_interest
+      // entirely (returns null/undefined), which the old `if (!oi) continue` filter
+      // discarded, causing the entire function to return [] and breaking
+      // downstream expiry discovery.
       if (type === "call") row.call_oi += oi;
       else if (type === "put") row.put_oi += oi;
       byExpiry.set(expiry, row);
     }
     if (!page.next_url) break;
-    if (byExpiry.size > limit) break; // target range provably complete — stop before fetching another page
+    if (byExpiry.size > limit) break;
     page = await polygonRefFetch(page.next_url);
     guard += 1;
   }

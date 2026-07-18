@@ -24,7 +24,7 @@
 // ---------------------------------------------------------------------------
 
 /**
- * The ~11 heatmap preset chips surfaced in the UI (src/components/desk/GexHeatmap.tsx
+ * The ~11 heatmap preset chips surfaced in the UI (src/features/thermal/components/GexHeatmap.tsx
  * `PRESET_TICKERS`). Kept in sync MANUALLY — these are the names the warm cron batches
  * and the only symbols whose UW overlays are pre-warmed. SPX index options resolve to
  * I:SPX upstream but the user-facing ticker key is "SPX".
@@ -60,6 +60,12 @@ const HEATMAP_EXTRA_LIQUID_TICKERS = [
   "COIN",
   "MSTR",
   "SMH",
+  // Heavily-traded retail options names. Being on this list also puts them in the recorded Vector
+  // universe (vectorUniverseTickers → the 5-min wall-history recorder cron), so their bead rail
+  // accumulates from the session open instead of only forward-building from a member's first view —
+  // the fix for "ASTS only shows single beads" (an unrecorded ticker has no intraday trail to seed,
+  // so seedWallHistoryForDisplay honestly draws one dot per wall at the last bar).
+  "ASTS",
 ] as const;
 
 /** Normalized allowlist set (uppercased) — overlays fetch ONLY for these symbols. */

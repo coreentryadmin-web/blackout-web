@@ -6,16 +6,20 @@ import type {
   SpxSignalFactor,
 } from "@/features/spx/lib/spx-signals";
 import type { PlayGateResult } from "@/features/spx/lib/spx-play-gates";
+import { emptyCategorizedGateBlocks } from "@/features/spx/lib/playbook-gate-categories";
 import { isBeforeCashOpen, isPremarketPlanningWindow } from "@/features/spx/lib/spx-play-session-guards";
 import type { LottoPlayPayload } from "@/features/spx/lib/spx-play-lotto";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
 import type { PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
 import type { PlayConfirmationResult } from "@/features/spx/lib/spx-play-confirmations";
 import type { ClaudePlayVerdict } from "@/features/spx/lib/spx-play-claude";
+import type { ZeroDteCortexSummary } from "@/lib/zerodte/cortex-gate";
+import type { PlaybookShadowPanel } from "@/features/spx/lib/playbook-shadow-panel";
 import { buildPlayIdeaIntel, humanizeGateBlock, humanizeGateBlocks } from "@/features/spx/lib/spx-play-intel";
 import type { MtfHybrid } from "@/features/spx/lib/spx-play-mtf";
 import type { loadAdaptivePlayGates } from "@/features/spx/lib/spx-play-telemetry";
 import type { OptionTicket } from "@/features/spx/lib/spx-play-options";
+import type { SpxPlayDeskContext } from "@/features/spx/lib/spx-play-context";
 
 export type SpxPlayPayload = {
   available: boolean;
@@ -38,11 +42,14 @@ export type SpxPlayPayload = {
   gates: {
     passed: boolean;
     blocks: string[];
+    blocks_by_category?: PlayGateResult["blocks_by_category"];
+    first_block_category?: PlayGateResult["first_block_category"];
     warnings: string[];
     entry_mode: string;
     play_idea: string | null;
   };
   claude: ClaudePlayVerdict | null;
+  cortex: ZeroDteCortexSummary | null;
   open_play: {
     id: number;
     direction: SpxPlayDirection;
@@ -55,6 +62,7 @@ export type SpxPlayPayload = {
     trim_done: boolean;
     option_label?: string | null;
     option_premium?: string | null;
+    option_pnl_est?: import("@/features/spx/lib/playbook-option-pnl").OptionPnlEstimate | null;
   } | null;
   confirmations: PlayConfirmationResult | null;
   technicals: {
@@ -92,6 +100,9 @@ export type SpxPlayPayload = {
    * true signal_committed BUY before acting, not the snapshot signal alone.
    */
   signal_committed: boolean;
+  /** Phase-1 playbook matcher — shadow telemetry surfaced for staging validation only. */
+  playbook_shadow?: PlaybookShadowPanel | null;
+  desk_context?: SpxPlayDeskContext;
   as_of: string;
 };
 
@@ -132,6 +143,8 @@ export function intelGates(
     // Largo get_spx_play) never carries repeated gate lines. Display-only: the
     // pass/fail decision is computed from the raw blocks in evaluatePlayGates.
     blocks: Array.from(new Set(humanizeGateBlocks(gates.blocks, desk, confluence))),
+    blocks_by_category: gates.blocks_by_category,
+    first_block_category: gates.first_block_category,
     warnings: gates.warnings,
     entry_mode: gates.entry_mode,
     play_idea,
@@ -175,8 +188,17 @@ export function scanningPayload(
     idle_message: idle,
     factors: confluence?.factors ?? [],
     levels: confluence?.levels ?? { entry: null, stop: null, target: null, invalidation: "" },
-    gates: gates ?? { passed: false, blocks: [], warnings: [], entry_mode: "none", play_idea: null },
+    gates: gates ?? {
+      passed: false,
+      blocks: [],
+      blocks_by_category: emptyCategorizedGateBlocks(),
+      first_block_category: null,
+      warnings: [],
+      entry_mode: "none",
+      play_idea: null,
+    },
     claude: null,
+    cortex: null,
     open_play: null,
     confirmations: null,
     technicals: null,
@@ -188,6 +210,7 @@ export function scanningPayload(
     power_play: null,
     session_phase: currentSessionPhase(desk),
     signal_committed: false,
+    playbook_shadow: null,
     as_of: desk.polled_at ?? desk.as_of ?? new Date().toISOString(),
     ...extras,
   };

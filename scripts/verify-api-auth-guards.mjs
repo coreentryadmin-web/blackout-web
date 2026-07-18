@@ -15,11 +15,6 @@ const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const PUBLIC_ROUTE_ALLOWLIST = new Set([
   "src/app/api/health/route.ts",
   "src/app/api/ready/route.ts",
-  // Ingest-worker liveness/readiness/boot — no ALB; returns 404 unless PROCESS_ROLE=ingest.
-  // ECS container health + deploy/market-worker.mjs hit these on localhost only.
-  "src/app/api/worker/health/route.ts",
-  "src/app/api/worker/boot/route.ts",
-  "src/app/api/worker/ready/route.ts",
   "src/app/api/webhook/whop/route.ts",
   "src/app/api/webhooks/clerk/route.ts",
   "src/app/api/webhook/clerk/route.ts",
@@ -32,8 +27,10 @@ const PUBLIC_ROUTE_ALLOWLIST = new Set([
   // Same reasoning: a visitor on /sign-in isn't authenticated yet by definition,
   // so this can't require a guard helper. Same protections as the route above.
   "src/app/api/telemetry/auth-failure/route.ts",
-  // Public Whop checkout URLs — runtime env from ECS secrets (no auth, no PII).
-  "src/app/api/public/checkout-urls/route.ts",
+  // Cognito Hosted UI OAuth — redirects only; session cookies set on callback.
+  "src/app/api/auth/cognito/login/route.ts",
+  "src/app/api/auth/cognito/logout/route.ts",
+  "src/app/api/auth/cognito/callback/route.ts",
 ]);
 
 const GUARD_PATTERNS = [

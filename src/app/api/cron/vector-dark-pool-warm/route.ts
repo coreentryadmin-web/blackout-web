@@ -16,13 +16,8 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  const offHoursWarm = process.env.CACHE_WARM_OFF_HOURS?.trim() === "1";
-  if (!force && !offHoursWarm && !isEtCashRth()) {
-    const payload = {
-      ok: true,
-      skipped: true,
-      reason: "Outside cash RTH — use ?force=1 or CACHE_WARM_OFF_HOURS=1",
-    };
+  if (!force && !isEtCashRth()) {
+    const payload = { ok: true, skipped: true, reason: "Outside cash RTH" };
     await logCronRun("vector-dark-pool-warm", started, payload);
     return NextResponse.json(payload);
   }
@@ -30,20 +25,30 @@ export async function GET(req: NextRequest) {
   const tickers = vectorUniverseTickers();
   const results = await Promise.allSettled(tickers.map((t) => warmVectorDarkPool(t)));
 
+  // warmVectorDarkPool swallows UW errors internally and reports them via
+  // fetchFailed — counting only Promise rejections here made a total UW outage
+  // report ok:true / failed:0 while serving nothing (watchdog-blind).
   let warmed = 0;
   let levels = 0;
+  let fetchFailed = 0;
   for (const r of results) {
     if (r.status === "fulfilled") {
-      warmed += 1;
-      levels += r.value;
+      if (r.value.fetchFailed) {
+        fetchFailed += 1;
+      } else {
+        warmed += 1;
+        levels += r.value.levels;
+      }
     }
   }
-  const failed = results.length - warmed;
+  const rejected = results.length - warmed - fetchFailed;
+  const failed = fetchFailed + rejected;
 
   const payload = {
     ok: failed < results.length,
     warmed,
     failed,
+    fetch_failed: fetchFailed,
     total: tickers.length,
     levels,
   };

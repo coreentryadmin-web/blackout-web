@@ -23,3 +23,26 @@ export function clerkSanitizeStagingReturnUrl(raw: string | undefined | null): s
     return null;
   }
 }
+
+/** Path on staging for satellite redirect helper (must start with /). */
+export function clerkStagingReturnPath(raw: string | undefined | null): string {
+  const trimmed = raw?.trim();
+  if (!trimmed) return "/dashboard";
+  if (trimmed.startsWith("/")) {
+    try {
+      const u = new URL(trimmed, STAGING_ORIGIN);
+      u.searchParams.delete("__clerk_synced");
+      return `${u.pathname}${u.search}`;
+    } catch {
+      return trimmed;
+    }
+  }
+  const full = clerkSanitizeStagingReturnUrl(trimmed);
+  if (!full) return "/dashboard";
+  const u = new URL(full);
+  return `${u.pathname}${u.search}`;
+}
+
+export function clerkIsClerkSyncFailed(url: URL): boolean {
+  return url.searchParams.get("__clerk_synced") === "false";
+}

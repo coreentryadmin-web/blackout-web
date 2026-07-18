@@ -23,8 +23,8 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { warmGridEarnings } from "@/lib/zerodte/earnings";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
-import { primeZeroDteBoardCache } from "@/lib/platform/zerodte-service";
-import { isEtCashRth } from "@/lib/et-market-hours";
+import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
+import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,13 +37,12 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  const offHoursWarm = process.env.CACHE_WARM_OFF_HOURS?.trim() === "1";
-  if (!force && !offHoursWarm && !isEtCashRth()) {
+  if (!shouldRunCacheWarmer(force)) {
     const payload = {
       ok: true,
       skipped: true,
       reason:
-        "Outside cash RTH — use ?force=1 or CACHE_WARM_OFF_HOURS=1",
+        "Outside extended warm window (weekday 4:00 AM–8:00 PM ET) — use ?force=1 or set CACHE_WARM_ALWAYS=1",
     };
     await logCronRun("zerodte-warm", started, payload);
     return NextResponse.json(payload);
@@ -53,7 +52,7 @@ export async function GET(req: NextRequest) {
   const results = await Promise.allSettled([
     warmGridEarnings(),
     warmZeroDteBoard(),
-    primeZeroDteBoardCache(),
+    getZeroDteBoardPayload(),
   ]);
 
   let warmed = 0;

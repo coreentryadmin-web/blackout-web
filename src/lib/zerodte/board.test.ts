@@ -10,6 +10,7 @@ import {
   enrichSetup,
   matchEarnings,
   matchHotNews,
+  polygonSpotTicker,
   SETUP_MIN_GROSS,
   SETUP_MIN_AGGR_SHARE,
   SETUP_MIN_DOMINANCE,
@@ -49,8 +50,14 @@ test("heat: pre-market meter warms toward the open", () => {
 // mergePlays() (the UI) and zerodte-service.ts's zeroDtePlaysForLargo() (Largo/BIE),
 // which previously re-derived its own copy that skipped this cutoff entirely (FINDINGS.md).
 
-test("resolveFreshFindStatus: OPEN during RTH with no moved/illiquid flags", () => {
-  assert.equal(resolveFreshFindStatus("RTH", false, false), "OPEN");
+test("resolveFreshFindStatus: WATCH during RTH with no moved/illiquid flags — NEVER OPEN (P0 one-way commit door)", () => {
+  // Regression guard for the live P0: this used to return "OPEN" for a clean RTH
+  // fresh find, so an UNCOMMITTED candidate rendered exactly like a live position
+  // and then visibly regressed to a watch/SKIP card when the next scan tick's
+  // re-derived plan/gate flapped (MOVED/illiquid/gate verdicts are recomputed from
+  // scratch every ~5s board build). OPEN is reserved for committed ledger rows.
+  assert.equal(resolveFreshFindStatus("RTH", false, false), "WATCH");
+  assert.equal(resolveFreshFindStatus("OPENING_DRIVE", false, false), "WATCH");
 });
 
 test("resolveFreshFindStatus: SKIP once POWER_HOUR/LATE_SESSION/CLOSED starts — the entry cutoff", () => {
@@ -650,6 +657,19 @@ test("gates: aggressive side wins the direction even when raw premium says other
   assert.equal(out[0]!.direction, "short");
 });
 
+test("gates: unknown aggression (null ask_pct) is credited BELOW near-the-ask, not above it", () => {
+  // Two tapes identical except ask_pct: one null (missing metadata), one 50% (near-ask).
+  // The null tape's aggression should be LOWER because unknown is not evidence of conviction.
+  const nullTape = [row({ premium: 1_500_000, option_type: "call", strike: 190, ask_pct: null as unknown as number })];
+  const nearTape = [row({ premium: 1_500_000, option_type: "call", strike: 190, ask_pct: 50 })];
+  const [nullOut] = deriveZeroDteSetups(nullTape);
+  const [nearOut] = deriveZeroDteSetups(nearTape);
+  // Both may or may not clear the gate, but the null tape's aggression must be ≤ near-ask's.
+  if (nullOut && nearOut) {
+    assert.ok(nullOut.aggression! <= nearOut.aggression!, `null aggr ${nullOut.aggression} should be <= near-ask aggr ${nearOut.aggression}`);
+  }
+});
+
 test("gates: deep-ITM top strike (stock replacement) is excluded", () => {
   // 1880 put with the stock at 1723 — 9% ITM. Not a directional 0DTE bet.
   const rows = [row({ premium: 3_000_000, option_type: "put", strike: 1880, underlying_price: 1723 })];
@@ -848,6 +868,18 @@ test("intel: OPEN play says ADD with entry/stop numbers from the plan", () => {
   assert.equal(note.action, "ADD");
   assert.match(note.reason, /Enter ≤ \$4\.20/);
   assert.match(note.reason, /stop \$2\.10/);
+});
+
+test("intel: WATCH (uncommitted fresh find) never says ADD or 'Enter ≤' — candidate language only", () => {
+  // P0 pre-commit honesty: the fresh-find lane used to feed status "OPEN" here,
+  // which produced action:"ADD" with a live entry instruction for a play the desk
+  // had NOT committed. WATCH must read as a candidate, never an actionable entry.
+  const s = enrichSetup(baseSetup(), fakeDossier());
+  const note = buildIntelNote({ status: "WATCH", setup: s, plan: s.plan, entryPremium: 4.2, livePnlPct: null, planOutcome: null, planPnlPct: null });
+  assert.equal(note.action, "WATCH");
+  assert.doesNotMatch(note.reason, /Enter ≤/);
+  assert.match(note.reason, /NOT committed/);
+  assert.match(note.reason, /do not enter/i);
 });
 
 test("intel: illiquid market is a PASS with the spread named", () => {
@@ -1051,4 +1083,27 @@ test("audit row: intraday_conflict gate recorded and fails when conflict is true
   assert.ok(conflict);
   assert.equal(conflict!.passed, false);
   assert.equal(conflict!.value, true);
+});
+
+// ── polygonSpotTicker (index-root → I: namespace mapping) ─────────────────────────
+// Live-verified 2026-07-13: Polygon /v2/aggs for "SPXW"/"SPX"/"NDX" returns status
+// OK with resultsCount 0 (no throw), while "I:SPX"/"I:NDX" return real bars — so an
+// unmapped index-root ledger row was stamped graded with a permanent null direction
+// grade, and its intraday read silently degraded to nulls.
+
+test("polygonSpotTicker: index option roots map to the I: index namespace", () => {
+  assert.equal(polygonSpotTicker("SPXW"), "I:SPX");
+  assert.equal(polygonSpotTicker("SPX"), "I:SPX");
+  assert.equal(polygonSpotTicker("NDX"), "I:NDX");
+  assert.equal(polygonSpotTicker("NDXP"), "I:NDX");
+  assert.equal(polygonSpotTicker("RUT"), "I:RUT");
+  assert.equal(polygonSpotTicker("VIX"), "I:VIX");
+});
+
+test("polygonSpotTicker: equities and ETF wrappers pass through unchanged (case-normalized)", () => {
+  assert.equal(polygonSpotTicker("NVDA"), "NVDA");
+  assert.equal(polygonSpotTicker("SPY"), "SPY"); // ETF, real equity aggs — must NOT map
+  assert.equal(polygonSpotTicker("QQQ"), "QQQ");
+  assert.equal(polygonSpotTicker("spxw"), "I:SPX");
+  assert.equal(polygonSpotTicker("meta"), "META");
 });

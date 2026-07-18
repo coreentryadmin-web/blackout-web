@@ -15,14 +15,17 @@ import {
   TabPanels,
   TabPanel,
 } from "@/components/ui";
-import { AnchorGlyph, PanelLabel } from "@/components/desk/gex-heatmap/primitives";
-import { shiftPercentForStrike } from "@/components/desk/gex-heatmap/shift-math";
+import { AnchorGlyph, PanelLabel } from "@/features/thermal/lib/gex-heatmap/primitives";
+import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
+import { shiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
 import { createPulseEventSource, type PulseStreamSnapshot } from "@/lib/api";
 import { usePollIntervalMs } from "@/hooks/use-et-market-open";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
 import { todayEt } from "@/lib/et-date";
 import {
+  fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
+  fmtHeatmapStrike,
   heatmapCellStyle,
   heatmapCellTextStyle,
   type GexHeatmapLens,
@@ -656,6 +659,7 @@ function ExposureProfile({
   flip,
   anchorStrike: anchor,
   lens,
+  ticker,
   showFlow,
   flowPeak,
   darkPoolLevels,
@@ -674,6 +678,7 @@ function ExposureProfile({
    */
   anchorStrike: number | null;
   lens: Lens;
+  ticker: string;
   showFlow: boolean;
   flowPeak: number;
   darkPoolLevels: DarkPoolLevel[] | null;
@@ -723,7 +728,7 @@ function ExposureProfile({
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
-  }, [spotRowStrike]);
+  }, [spotRowStrike, ticker]);
 
   // Index of the divider: drawn ABOVE the first row (strikes desc) whose strike < flip.
   const flipBoundary = useMemo(() => {
@@ -880,7 +885,7 @@ function ExposureProfile({
               style={isAnchor ? { boxShadow: "inset 0 0 18px rgba(255,255,255,0.12)" } : undefined}
               title={
                 isAnchor
-                  ? `KING NODE · ${fmtStrike(r.strike)} · ${fmtMoney(r.value)} — dominant dealer gamma node`
+                  ? `${GEX_KING_DUAL_LABEL} · ${fmtStrike(r.strike)} · ${fmtMoney(r.value)} — ${GEX_KING_NODE_HELP}`
                   : `${fmtStrike(r.strike)} · ${fmtMoney(r.value)}`
               }
             >
@@ -901,7 +906,7 @@ function ExposureProfile({
                 <span className="inline-flex items-center justify-end gap-1">
                   {/* ANCHOR pin — bright-white ◆ diamond glyph, the unmistakable dominant-node marker. */}
                   {isAnchor && (
-                    <span className="text-white" title="King node — dominant dealer gamma node">
+                    <span className="text-white" title={GEX_KING_NODE_HELP}>
                       <AnchorGlyph size={11} />
                     </span>
                   )}
@@ -1002,7 +1007,7 @@ function ExposureProfile({
                 {/* ANCHOR tag — leads the row's tag slot when this is the dominant node. */}
                 {isAnchor && (
                   <span className="inline-flex items-center gap-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-white">
-                    <AnchorGlyph size={9} /> King
+                    <AnchorGlyph size={9} /> {GEX_KING_COMPACT_LABEL}
                   </span>
                 )}
                 {/* Wall tags only exist on GEX/VEX (DEX/CHARM have no walls → these never fire). */}
@@ -1053,7 +1058,7 @@ function ExposureProfile({
       {anchor != null && (
         <div className="mt-2 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-white">
           <AnchorGlyph size={10} />
-          KING NODE · {fmtStrike(anchor)} — dominant dealer {v.noun.toLowerCase()} node (strongest pin/anchor)
+          {GEX_KING_DUAL_LABEL} · {fmtStrike(anchor)} — {GEX_KING_NODE_HELP}
         </div>
       )}
 
@@ -1533,23 +1538,35 @@ function TickerSwitcher({
     () => (q ? PRESET_TICKERS.filter((t) => t.startsWith(q)) : PRESET_TICKERS),
     [q]
   );
-  // Combined option list (presets first, then remote matches not already shown).
-  // This flat list drives the keyboard cursor + Enter selection.
+  // Combined option list: presets first (filtered by query), then remote results
+  // sorted by RELEVANCE (exact > prefix > substring > fuzzy), so the best match
+  // always lands at the top — typing "ASTS" puts ASTS first, not buried under
+  // alphabetically-earlier Polygon hits like ASTL/ASTR.
   const options = useMemo(() => {
     const seen = new Set(presetMatches);
     const opts: { ticker: string; name?: string; preset: boolean }[] = presetMatches.map((t) => ({
       ticker: t,
       preset: true,
     }));
+    const remote: typeof opts = [];
     for (const r of searchResults) {
       const sym = r.ticker.toUpperCase();
       if (!seen.has(sym)) {
         seen.add(sym);
-        opts.push({ ticker: sym, name: r.name, preset: false });
+        remote.push({ ticker: sym, name: r.name, preset: false });
       }
     }
+    if (q && remote.length > 1) {
+      remote.sort((a, b) => {
+        const at = a.ticker, bt = b.ticker;
+        const aExact = at === q ? 0 : at.startsWith(q) ? 1 : at.includes(q) ? 2 : 3;
+        const bExact = bt === q ? 0 : bt.startsWith(q) ? 1 : bt.includes(q) ? 2 : 3;
+        return aExact - bExact || at.localeCompare(bt);
+      });
+    }
+    opts.push(...remote);
     return opts;
-  }, [presetMatches, searchResults]);
+  }, [presetMatches, searchResults, q]);
 
   // Close the dropdown on outside click (trigger + portaled menu). Native sheet uses backdrop.
   useEffect(() => {
@@ -2510,12 +2527,12 @@ export function GexHeatmap({
   // string. The subset re-sums cells[strike] over the chosen expiry/expiries entirely
   // client-side (no refetch) and re-derives walls/flip from those filtered totals.
   const [expiryScope, setExpiryScope] = useState<string>("all");
-  const matrixPollMs = usePollIntervalMs(20_000, 60_000);
-  const quotePollMs = usePollIntervalMs(15_000, 60_000);
+  const matrixPollMs = usePollIntervalMs(5_000, 5_000);
+  const quotePollMs = usePollIntervalMs(5_000, 5_000);
 
   // Fast-move bypass: when the live quote diverges from the cached matrix snapshot spot
   // by >0.5%, we append `&force=1` to the matrix key for ONE refetch (then clear it) so
-  // the gamma/vanna profile recomputes immediately instead of waiting out the 20s cache.
+  // the gamma/vanna profile recomputes immediately instead of waiting out the 5s cache.
   // `forceNonce` busts SWR's key on each forced refresh; `fastFlash` drives a header pulse.
   const [forceNonce, setForceNonce] = useState(0);
   const [fastFlash, setFastFlash] = useState(false);
@@ -2565,8 +2582,7 @@ export function GexHeatmap({
 
   // Live spot tape — a SEPARATE, fast (~1.5s) SWR just for the header price. Index
   // spot is true real-time WS; stocks/ETFs are shared-cached REST. The gamma
-  // matrix keeps its own 20s cache above; the header quote polls at 15s to avoid
-  // fan-out load (~10× reduction vs the prior 1.5s interval).
+  // matrix keeps its own 5s cache above; the header quote polls at 5s.
   const { data: quote } = useSWR<QuoteResponse>(
     `/api/market/quote?ticker=${encodeURIComponent(ticker)}`,
     fetchQuote,
@@ -3055,7 +3071,8 @@ export function GexHeatmap({
         box.scrollTop = node.offsetTop - box.clientHeight / 2 + node.clientHeight / 2;
       });
     });
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker]);
 
   // Profile rows: strikes desc, each carrying its FILTERED net value + role flags + flow
   // overlay. Values + wall flags follow the rank-5 expiry scope so the profile and the
@@ -3221,11 +3238,11 @@ export function GexHeatmap({
       if (matrixAnchorStrike != null) {
         cellsOut.push({
           key: "anchor",
-          label: "King node",
+          label: GEX_KING_DUAL_LABEL,
           value: fmtStrike(matrixAnchorStrike),
           tone: "wall",
           anchor: true,
-          help: "The single strike with the largest absolute net dealer gamma — the dominant dealer-gamma concentration, i.e. the strongest pin/anchor price tends to gravitate toward into expiration.",
+          help: GEX_KING_NODE_HELP,
         });
       }
       return cellsOut;
@@ -3364,21 +3381,14 @@ export function GexHeatmap({
   ]);
 
   // ── View panels (Step 3) ─────────────────────────────────────────────────────
-  // The four views (Profile / Curve / Shift / Matrix) live in 2 tabs. Each view's render
-  // JSX is REUSED verbatim (not rewritten) — lifted into a panel const here, then placed
-  // into a grid cell below. Each panel keeps its bounded scroller, spot/flip anchoring,
-  // anchor markers, diverging colors, sticky header + legends; a small header label rides
-  // above each so the group reads clearly.
-  // Tab A "Matrix" (default): the Strike × Expiry Matrix ALONE, FULL content width — so the
-  // far-dated monthly columns breathe. Tab B "Profile + Curve + Shift": the Gamma Profile +
-  // Cumulative Curve + Shift grouped (all strike-axis profile views). Scrollers stay
-  // ~clamp(360px,56vh,600px); the matrix-tab box can grow taller since it owns the row.
+  // Tab A "Matrix" (default): the Strike × Expiry Matrix at full content width.
+  // Tab B "Profile + Curve + Shift": 3 equal-width columns, all centered on spot,
+  // with a shared ExpiryScopeBar + overlay toggles above. Largo/DarkPool rail only
+  // shows on the Matrix tab — the 3-panel view is self-contained.
 
-  const profilePanel = (
-    <div className="min-w-0">
-      <PanelLabel>{`${vocab.noun} Profile`}</PanelLabel>
-      {/* Expiry scope — All · 0DTE · per-expiry (Rank 5). Re-sums the profile
-          + curve client-side over the chosen expiry/expiries. */}
+  // Shared controls rendered once ABOVE all 3 profile panels (expiry scope + overlay toggles).
+  const sharedProfileControls = (
+    <div className="mb-4 space-y-2">
       <ExpiryScopeBar
         expiries={expiries}
         zeroDteExpiry={zeroDteExpiry}
@@ -3386,9 +3396,8 @@ export function GexHeatmap({
         scope={expiryScope}
         onScope={setExpiryScope}
       />
-      {/* Cross-tool overlay toggles — only shown when an overlay has data */}
       {(hasFlowOverlay || hasDarkPoolOverlay) && (
-        <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/60">
             Overlays
           </span>
@@ -3424,9 +3433,6 @@ export function GexHeatmap({
               Dark Pool
             </button>
           )}
-          {/* Overlay freshness (#9) — the dark-pool / flow-by-strike overlays ride a separate
-              ~30s cache (dark-pool source up to ~2min) and can be staler than the matrix, so
-              label their OWN sample time rather than letting them inherit the matrix's. */}
           {fmtAsofSeconds(data?.overlays_at ?? undefined) && (
             <span className="font-mono text-[9px] tabular-nums normal-case text-sky-300/60">
               as of {fmtAsofSeconds(data?.overlays_at ?? undefined)} ET
@@ -3434,6 +3440,12 @@ export function GexHeatmap({
           )}
         </div>
       )}
+    </div>
+  );
+
+  const profilePanel = (
+    <div className="min-w-0">
+      <PanelLabel>{`${vocab.noun} Profile`}</PanelLabel>
       <ExposureProfile
         rows={profileRows}
         peak={filteredPeak}
@@ -3441,15 +3453,16 @@ export function GexHeatmap({
         flip={profileFlip}
         anchorStrike={profileAnchorStrike}
         lens={lens}
+        ticker={ticker}
         showFlow={showFlow && hasFlowOverlay}
         flowPeak={flowPeak}
         darkPoolLevels={darkPoolLevels}
         showDarkPool={showDarkPool && hasDarkPoolOverlay}
         shift={shift}
       />
-      <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-sky-300/75">
-        {`Net dealer ${vocab.unit} per strike · ${vocab.pos} / ${vocab.neg} · `}
-        {scopeLabel} total{" "}
+      <p className="mt-2 text-[9px] font-mono uppercase tracking-widest text-sky-300/60">
+        {`${vocab.pos} / ${vocab.neg} · `}
+        {scopeLabel}{" "}
         <span className={clsx(filteredTotal >= 0 ? posColorClass : "text-bear-text")}>
           {fmtMoney(filteredTotal)}
         </span>
@@ -3460,17 +3473,10 @@ export function GexHeatmap({
   const curvePanel = (
     <div className="min-w-0">
       <PanelLabel>Cumulative Curve</PanelLabel>
-      <ExpiryScopeBar
-        expiries={expiries}
-        zeroDteExpiry={zeroDteExpiry}
-        monthlyExpiries={monthlyExpiries}
-        scope={expiryScope}
-        onScope={setExpiryScope}
-      />
       <CumulativeCurve rows={profileRows} spot={spot} flip={profileFlip} lens={lens} />
-      <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-sky-300/75">
-        {`Cumulative net dealer ${vocab.unit} across strikes · zero-crossing = ${vocab.pivot} · `}
-        {scopeLabel} total{" "}
+      <p className="mt-2 text-[9px] font-mono uppercase tracking-widest text-sky-300/60">
+        {`Zero-crossing = ${vocab.pivot} · `}
+        {scopeLabel}{" "}
         <span className={clsx(filteredTotal >= 0 ? posColorClass : "text-bear-text")}>
           {fmtMoney(filteredTotal)}
         </span>
@@ -3488,8 +3494,8 @@ export function GexHeatmap({
       {hasShiftForLens && shift && shift.available ? (
         <>
           <ShiftView shift={shift} strikes={strikes} spotStrike={spotStrike} lens={lens} />
-          <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-sky-300/75">
-            {`Δ net dealer ${vocab.unit} vs earlier snapshot · green built / red melted · pivot drift up = dealers longer`}
+          <p className="mt-2 text-[9px] font-mono uppercase tracking-widest text-sky-300/60">
+            {`Δ ${vocab.unit} · built / melted`}
           </p>
         </>
       ) : (
@@ -3508,112 +3514,12 @@ export function GexHeatmap({
 
   const matrixPanel = (
     <div className="min-w-0">
-      <div className="mb-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-[10px] font-mono uppercase tracking-widest gex-matrix-legend">
-        <span className="mr-1 shrink-0 font-bold tracking-[0.2em] text-sky-300">
-          Strike × Expiry Matrix
-        </span>
-        {/* Always-visible matrix freshness anchor — the gamma matrix / walls / KING NODE /
-            gamma-flip are the numbers traders act on, so the sample time belongs here on the
-            grid header, not only inside the collapsible Largo panel (#8). */}
-        <MatrixFreshness asof={data?.asof} />
-        <span className="flex items-center gap-1.5 text-sky-300">
-          <span
-            className="inline-block h-3 w-3 rounded-sm"
-            style={{ backgroundColor: `rgba(${LENS_COLORS[lens].posRgb},0.5)` }}
-          />
-          {`${vocab.pos} (+)`}
-        </span>
-        <span className="flex items-center gap-1.5 text-sky-300">
-          <span
-            className="inline-block h-3 w-3 rounded-sm"
-            style={{ backgroundColor: `rgba(${LENS_COLORS[lens].negRgb},0.5)` }}
-          />
-          {`${vocab.neg} (−)`}
-        </span>
-        {flip != null && (
-          <span className="flex items-center gap-1.5 text-gold">
-            <span aria-hidden>◀ {vocab.pivot}</span>
-            <span className="text-white">{fmtStrike(flip)}</span>
-          </span>
-        )}
-        {spot > 0 && (
-          <span className="flex items-center gap-1.5 text-cyan-400">
-            <span aria-hidden>● spot</span>
-          </span>
-        )}
-        {/* ANCHOR legend — the dominant dealer-gamma node (max |net|), now a BRIGHT-WHITE ◆. */}
-        {matrixAnchorStrike != null && (
-          <span className="flex items-center gap-1.5 text-white">
-            <AnchorGlyph size={11} />
-            <span aria-hidden>king node</span>
-            <span className="text-white">{fmtStrike(matrixAnchorStrike)}</span>
-          </span>
-        )}
-        {/* +GEX PEAK legend — the dominant call wall (single highest positive cell), matching
-            SPX Slayer's .spx-odte-matrix-row--max-pos BULL GREEN exactly. */}
-        {posPeakCell != null && (
-          <span className="flex items-center gap-1.5" style={{ color: "#00e676" }}>
-            <span
-              aria-hidden
-              className="h-2.5 w-2.5 rounded-sm"
-              style={{ outline: "2px solid #00e676", outlineOffset: "-2px", boxShadow: "inset 0 0 6px rgba(0,230,118,0.7)" }}
-            />
-            <span aria-hidden>+{lensUpper} peak</span>
-            <span className="text-white">{fmtStrike(posPeakCell.strike)}</span>
-          </span>
-        )}
-        {/* −GEX PEAK legend — the dominant put wall (single lowest negative cell), matching
-            SPX Slayer's .spx-odte-matrix-row--max-neg VIOLET exactly. */}
-        {negPeakCell != null && (
-          <span className="flex items-center gap-1.5" style={{ color: "#8b5cf6" }}>
-            <span
-              aria-hidden
-              className="h-2.5 w-2.5 rounded-sm"
-              style={{ outline: "2px solid #8b5cf6", outlineOffset: "-2px", boxShadow: "inset 0 0 6px rgba(109,40,217,0.7)" }}
-            />
-            <span aria-hidden>−{lensUpper} peak</span>
-            <span className="text-white">{fmtStrike(negPeakCell.strike)}</span>
-          </span>
-        )}
-        {/* Per-day King legend (Step 4) — the amber ★ marking each expiry column's own
-            dominant strike, matching SPX Slayer's per-column King star exactly. Only shown
-            when ≥1 column has a per-day King. */}
-        {Object.keys(perDayAnchorByExpiry).length > 0 && (
-          <span className="flex items-center gap-1.5 text-amber-300/80">
-            <span aria-hidden className="text-[13px] leading-none text-amber-400 [text-shadow:0_0_6px_rgba(251,191,36,0.9)]">
-              ★
-            </span>
-            <span aria-hidden>per-day King</span>
-          </span>
-        )}
-        {/* Far-dated monthly/quarterly OpEx columns are gold-marked (◆) — where the dominant
-            dealer walls park. Only shown once the axis actually carries a monthly column. */}
-        {monthlyExpiries.length > 0 && (
-          <span className="flex items-center gap-1.5 text-gold/80" title="Standard monthly / quarterly OpEx expiry">
-            <span aria-hidden className="text-gold text-[9px] font-bold">M</span>
-            <span aria-hidden>monthly OpEx</span>
-          </span>
-        )}
-      </div>
-
       {uwDiverged && (
         <p className="mb-2 font-mono text-[9px] leading-snug text-amber-300/90">
           UW oracle diverges {uwCross?.divergence?.toFixed(0)}pt from Polygon walls — treat levels
           as provisional until channels agree.
         </p>
       )}
-      {monthlyExpiries.length > 0 && (
-        <p className="mb-2 font-mono text-[9px] leading-snug text-white/45">
-          Net column sums near-term expiries only; monthly OpEx columns (M) are additive context.
-        </p>
-      )}
-
-      {/* Horizontal-scroll container with a subtle right-edge fade so on
-          phones the mono values scroll instead of colliding. The table gets
-          a min-width so columns keep their breathing room below the fold. */}
-      <p className="mb-2 font-mono text-[10px] text-mute md:hidden">
-        Swipe horizontally to view all expiry columns.
-      </p>
       <div className="relative">
         {/* Bounded scroll box: scrolls horizontally for expiry columns AND
             vertically for strikes (the spot row is centered inside this box via
@@ -3623,39 +3529,39 @@ export function GexHeatmap({
             Recent Ranges was removed — matrix is the primary surface on this tab. */}
         <div
           ref={matrixScrollRef}
-          className="max-h-[clamp(480px,74vh,880px)] min-h-[clamp(360px,58vh,640px)] overflow-auto overscroll-contain gex-matrix-scroll"
+          className="spx-gex-matrix-scroll gex-matrix-scroll max-h-[clamp(480px,74vh,880px)] min-h-[clamp(360px,58vh,640px)] overflow-auto overscroll-contain"
           role="region"
           tabIndex={0}
           aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} exposure matrix, strikes by expiration`}
         >
-          <table className="w-full min-w-[36rem] border-separate border-spacing-0 font-mono text-[13px]">
-            <thead>
-              <tr>
-                {/* Top-left corner: sticky on BOTH axes (z-20 so it sits above the
-                    body's sticky strike column and the rest of the sticky header). */}
-                <th className="sticky left-0 top-0 z-20 bg-[rgba(8,9,14,0.92)] px-2 py-2 text-left text-[10px] uppercase tracking-widest text-cyan-400 backdrop-blur">
+          <table
+            className="spx-gex-matrix-table w-max min-w-full border-collapse font-mono text-[12px] tabular-nums"
+            role="grid"
+            aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} matrix by strike and expiry`}
+          >
+            <thead className="sticky top-0 z-20 bg-[#08080e]">
+              <tr className="border-b border-white/10 text-[10px] uppercase tracking-normal text-sky-300">
+                <th className="sticky left-0 z-30 bg-[#08080e] py-1.5 pl-1 pr-2 text-left font-semibold">
                   Strike
                 </th>
                 {expiries.map((e) => {
-                  // Far-dated standard-monthly (3rd-Friday) OpEx columns read GOLD so the dominant
-                  // dealer-wall expiries are distinct from the near-term dailies/weeklies (sky).
                   const isMonthly = isMonthlyExpiry(e);
                   return (
                     <th
                       key={e}
-                      title={isMonthly ? `${fmtExpiry(e)} — standard monthly / quarterly OpEx` : fmtExpiry(e)}
+                      title={isMonthly ? `${fmtHeatmapExpiry(e)} — monthly OpEx` : fmtHeatmapExpiry(e)}
                       className={clsx(
-                        "sticky top-0 z-10 whitespace-nowrap bg-[rgba(8,9,14,0.92)] px-2 py-2 text-center text-[10px] uppercase tracking-wide backdrop-blur",
+                        "py-1.5 px-0.5 text-center font-semibold whitespace-nowrap",
                         isMonthly ? "text-gold" : "text-sky-300"
                       )}
                     >
-                      {fmtExpiry(e)}
-                      {isMonthly && <span aria-hidden className="ml-0.5 text-[9px] font-bold text-gold/80">M</span>}
+                      {fmtHeatmapExpiry(e)}
+                      {isMonthly && <span aria-hidden className="ml-0.5 text-[8px] font-bold text-gold/80">M</span>}
                     </th>
                   );
                 })}
                 <th
-                  className="sticky top-0 z-10 whitespace-nowrap bg-[rgba(8,9,14,0.92)] px-2 py-2 text-right text-[10px] uppercase tracking-wide text-cyan-400 backdrop-blur"
+                  className="py-1.5 pl-1 pr-2 text-right font-semibold whitespace-nowrap"
                   title={
                     monthlyExpiries.length > 0
                       ? "Near-term aggregate per strike (excludes monthly OpEx columns)"
@@ -3670,216 +3576,111 @@ export function GexHeatmap({
               {strikes.map((strike) => {
                 const row = cells[String(strike)] ?? {};
                 const isSpot = strike === spotStrike;
-                const isFlip = strike === flipStrike;
-                // OVERALL ANCHOR row — the dominant net-exposure strike (all-expiry). Gets a
-                // bright-white band/left-border (like the spot/flip row treatment, but white;
-                // gold is now reserved for the +GEX peak cell).
                 const isAnchor = matrixAnchorStrike != null && strike === matrixAnchorStrike;
                 const rowTotal = strikeTotals[String(strike)] ?? 0;
-                // PER-DAY anchor (Step 4) — argmax|cell| in EACH expiry column. Computed
-                // for every row but only marked when this row owns a column's peak (see cell).
+                const isCallWallRow = lens === "gex" && posWall != null && strike === posWall;
+                const isPutWallRow = lens === "gex" && negWall != null && strike === negWall;
+
                 return (
                   <tr
                     key={strike}
-                    // Only the spot row carries the auto-center callback ref (it scrolls
-                    // itself into view on mount — i.e. when the Matrix tab is opened).
                     ref={isSpot ? matrixSpotRowRef : undefined}
                     className={clsx(
-                      // Bold-highlight the SPOT and FLIP rows so price is findable in
-                      // the grid: a faint cyan/gold band across the whole row + a clear
-                      // left border (carried on the sticky strike cell below). The ANCHOR
-                      // row wins a stronger WHITE band so the dominant node pops hardest.
-                      isAnchor && "bg-white/[0.08]",
-                      isSpot && "outline outline-1 outline-cyan-400/70 bg-cyan-400/[0.05]",
-                      isFlip && !isSpot && !isAnchor && "bg-gold/[0.05]"
+                      "border-b border-white/[0.04]",
+                      isSpot && "spx-gex-matrix-spot-row",
+                      isAnchor && lens === "gex" && "spx-odte-matrix-row--anchor",
+                      isCallWallRow && "spx-odte-matrix-row--max-pos",
+                      isPutWallRow && "spx-odte-matrix-row--max-neg"
                     )}
                   >
-                    <th
-                      scope="row"
+                    <td
                       className={clsx(
-                        "sticky left-0 z-10 whitespace-nowrap py-2 pr-2 text-left text-[13px] font-bold tabular-nums backdrop-blur",
-                        // The spot row keeps its cyan border (primary anchor). The ANCHOR
-                        // row gets a 2px WHITE left-border + white wash so the dominant node
-                        // is unmistakable; it outranks the flip row's lighter gold band.
-                        isSpot
-                          ? "border-l-2 border-cyan-400 bg-cyan-400/[0.12] pl-1.5 text-white"
-                          : isAnchor
-                            ? "border-l-2 border-white bg-white/[0.16] pl-1.5 text-white"
-                            : isFlip
-                              ? "border-l-2 border-gold bg-gold/[0.10] pl-1.5 text-gold"
-                              : "bg-[rgba(8,9,14,0.92)] pl-2 text-white"
+                        "sticky left-0 z-10 bg-[#08080e] py-1 pl-1 pr-2 text-left font-bold",
+                        isSpot && "text-cyan-300"
                       )}
                     >
-                      <span className="inline-flex items-center gap-1">
-                        {/* ANCHOR pin leads even on the spot row (anchor can coincide with spot). */}
-                        {isAnchor && <span className="text-white"><AnchorGlyph size={10} /></span>}
-                        {isSpot && <span aria-hidden className="text-cyan-400">●</span>}
-                        {isFlip && !isSpot && !isAnchor && <span aria-hidden className="text-gold">◀</span>}
-                        {fmtStrike(strike)}
-                        {isAnchor && (
-                          <span className="ml-1 font-mono text-[8px] font-bold uppercase tracking-wider text-white">
-                            anchor
-                          </span>
-                        )}
-                        {isSpot && !isAnchor && (
-                          <span className="ml-1 font-mono text-[8px] uppercase tracking-wider text-cyan-400">
-                            spot
-                          </span>
-                        )}
-                        {isFlip && !isSpot && !isAnchor && (
-                          <span className="ml-1 font-mono text-[8px] uppercase tracking-wider text-gold">
-                            flip
-                          </span>
-                        )}
-                      </span>
-                    </th>
+                      {fmtHeatmapStrike(strike)}
+                      {isSpot && spot > 0 && Math.abs(strike - spot) >= 0.5 && (
+                        <span className="block text-[8px] font-normal text-cyan-400/80">
+                          ← {fmtHeatmapStrike(spot)}
+                        </span>
+                      )}
+                    </td>
                     {expiries.map((e) => {
                       const v = row[e];
                       const has = typeof v === "number" && Number.isFinite(v);
                       const val = has ? v : 0;
-                      // The single OVERALL-ANCHOR PEAK CELL — the dominant expiry at the
-                      // overall anchor strike. Keeps its diverging magnitude color; a white ◆
-                      // pin + white ring sit ON TOP so it pops as the prominent anchor cell.
-                      const isAnchorCell = isAnchor && matrixAnchorExpiry != null && e === matrixAnchorExpiry;
-                      // ── +GEX / −GEX PEAK cells: the two DOMINANT WALLS across the whole
-                      // matrix. The single highest +cell → BULL GREEN border/glow (dominant call
-                      // wall); the single lowest −cell → VIOLET (#8b5cf6) border/glow (dominant
-                      // put wall) — matching SPX Slayer's row-level max-pos/max-neg palette
-                      // exactly (src/components/desk/SpxGexMatrixHeatmap.tsx /
-                      // .spx-odte-matrix-row--max-pos/--max-neg in globals.css) so the two
-                      // products read as one visual language, not two different conventions.
-                      // When a peak coincides with the ANCHOR cell we LAYER them: the peak's
-                      // glow sits INSIDE (inset), the white anchor ring on the OUTER edge —
-                      // neither is hidden.
                       const isPosPeakCell =
                         posPeakCell != null && posPeakCell.strike === strike && posPeakCell.expiry === e;
                       const isNegPeakCell =
                         negPeakCell != null && negPeakCell.strike === strike && negPeakCell.expiry === e;
-                      // PER-DAY anchor cell (Step 4) — this strike owns the argmax|net GEX| in
-                      // expiry column `e`. Marked with the same ★ amber King star SPX Slayer uses
-                      // for its own per-column King (SpxGexMatrixHeatmap.tsx) so "per-day King"
-                      // looks identical across both products. The overall anchor cell + the
-                      // +/−GEX peaks outrank it (we suppress the star there to avoid stacking three
-                      // markers in one corner).
-                      const isDayAnchorCell =
-                        !isAnchorCell && !isPosPeakCell && !isNegPeakCell &&
+                      const isDayKing =
                         perDayAnchorByExpiry[e] === strike && has && v !== 0;
-                      // PER-DAY call-wall / put-wall — this column's own highest positive / most
-                      // negative cell (may be the SAME strike as isDayAnchorCell, or a distinct
-                      // second cell on the opposite side — see perDayExtremesByExpiry above).
-                      // Gets the same pulsing brightness/scale glow SPX Slayer applies to its
-                      // per-column extreme (.spx-gex-matrix-extreme-pop / bie-heatmap-extreme-pop
-                      // share one keyframe) — deliberately independent of isDayAnchorCell, exactly
-                      // like SPX Slayer never suppresses one for the other.
                       const dayExtremes = perDayExtremesByExpiry[e];
                       const isDayCallWallCell = has && dayExtremes?.callWall === strike;
                       const isDayPutWallCell = has && dayExtremes?.putWall === strike;
+                      const extremeTitle = isDayCallWallCell
+                        ? `Highest positive ${vocab.noun.toLowerCase()} for ${fmtHeatmapExpiry(e)}`
+                        : isDayPutWallCell
+                          ? `Highest negative ${vocab.noun.toLowerCase()} for ${fmtHeatmapExpiry(e)}`
+                          : undefined;
 
-                      // Compose the highlight style so overlapping markers layer cleanly:
-                      //  • the +/−GEX PEAK draws an INSET ring + glow (green or violet) INSIDE the cell;
-                      //  • the ANCHOR draws a WHITE outline on the OUTER edge (so it frames the cell)
-                      //    + a white inset glow only when it ISN'T overlapping a peak (the peak owns
-                      //    the inner glow in the overlap case so the two never clash).
-                      const peakInset = isPosPeakCell
-                        ? "inset 0 0 0 2px #00e676, inset 0 0 14px rgba(0,230,118,0.55)"
-                        : isNegPeakCell
-                          ? "inset 0 0 0 2px #8b5cf6, inset 0 0 14px rgba(109,40,217,0.55)"
-                          : null;
-                      const anchorInset =
-                        isAnchorCell && !peakInset ? "inset 0 0 14px rgba(255,255,255,0.5)" : null;
-                      const boxShadow =
-                        [peakInset, anchorInset].filter(Boolean).join(", ") || undefined;
-                      // The ANCHOR's outer white frame wins the `outline` slot; otherwise the peak
-                      // takes a thin matching outline; otherwise a per-day anchor's subtle white ring.
-                      const highlightStyle: React.CSSProperties = isAnchorCell
-                        ? { outline: "2px solid #ffffff", outlineOffset: "1px", boxShadow }
-                        : isPosPeakCell
-                          ? { outline: "2px solid #00e676", outlineOffset: "-2px", boxShadow }
-                          : isNegPeakCell
-                            ? { outline: "2px solid #8b5cf6", outlineOffset: "-2px", boxShadow }
-                            : isDayAnchorCell
-                              ? {
-                                  // PER-DAY anchor — a SUBTLE thin white ring, no glow/pin, so the
-                                  // column's own anchor is hinted without competing with the one
-                                  // prominent overall anchor. Reduced-motion safe (static).
-                                  outline: "1px solid rgba(255,255,255,0.5)",
-                                  outlineOffset: "-1px",
-                                }
-                              : {};
                       return (
                         <td
                           key={e}
                           className={clsx(
-                            // Cell color carries the magnitude (the heatmap reads at a
-                            // glance), but the numerals now carry more weight + a notch
-                            // larger so the dollar values are easy to read in the dense
-                            // grid; white kicks in on deep cells (heatmapCellTextStyle). Values
-                            // are compacted ($1.2B / -$45.2M / $22.1K / $0.0K) so the bump can't
-                            // overflow — whitespace-nowrap + the scroll container hold.
-                            // z-[5] lifts a highlighted cell above neighboring body cells so its
-                            // outer white anchor frame isn't clipped — but stays BELOW the sticky
-                            // header row + sticky strike column (both z-10) so it never bleeds over
-                            // them when scrolled underneath.
-                            "relative whitespace-nowrap px-2.5 py-2 text-center text-[13px] font-bold tabular-nums",
-                            (isAnchorCell || isPosPeakCell || isNegPeakCell) && "z-[5]",
-                            has
-                              ? v > 0
-                                ? posColorClass
-                                : "text-bear-text"
-                              : "text-sky-300/25"
+                            "whitespace-nowrap px-0.5 py-1 text-center font-bold",
+                            has && val > 0 && (lens === "gex" ? "text-emerald-300" : posColorClass),
+                            has && val < 0 && (lens === "gex" ? "text-rose-300" : "text-bear-text"),
+                            !has && "text-sky-300/25"
                           )}
                           style={{
-                            ...(has ? { ...heatmapCellStyle(val, peak, matrixLens), ...heatmapCellTextStyle(val, peak) } : {}),
-                            ...highlightStyle,
+                            ...(has
+                              ? {
+                                  ...heatmapCellStyle(val, peak, matrixLens),
+                                  ...heatmapCellTextStyle(val, peak),
+                                }
+                              : {}),
                           }}
                           title={
-                            isAnchorCell
-                              ? `ANCHOR · ${strike} · ${fmtExpiry(e)} · ${fmtHeatmapMoneySigned(val, { showZero: true })} — dominant dealer gamma node (overall)${isPosPeakCell ? " · also +GEX peak (call wall)" : isNegPeakCell ? " · also −GEX peak (put wall)" : ""}`
-                              : isPosPeakCell
-                                ? `+${lensUpper} PEAK · ${strike} · ${fmtExpiry(e)} · ${fmtHeatmapMoneySigned(val, { showZero: true })} — dominant call wall`
-                                : isNegPeakCell
-                                  ? `−${lensUpper} PEAK · ${strike} · ${fmtExpiry(e)} · ${fmtHeatmapMoneySigned(val, { showZero: true })} — dominant put wall`
-                                  : isDayAnchorCell
-                                    ? `${fmtExpiry(e)} King · ${strike} · ${fmtHeatmapMoneySigned(val, { showZero: true })} — this expiry's dominant strike${isDayCallWallCell ? " · also this expiry's call wall" : isDayPutWallCell ? " · also this expiry's put wall" : ""}`
-                                    : isDayCallWallCell
-                                      ? `${fmtExpiry(e)} call wall · ${strike} · ${fmtHeatmapMoneySigned(val, { showZero: true })} — this expiry's highest positive`
-                                      : isDayPutWallCell
-                                        ? `${fmtExpiry(e)} put wall · ${strike} · ${fmtHeatmapMoneySigned(val, { showZero: true })} — this expiry's highest negative`
-                                        : has
-                                          ? `${strike} · ${fmtExpiry(e)} · ${fmtHeatmapMoneySigned(val, { showZero: true })}`
-                                          : undefined
+                            isDayKing
+                              ? `King node for ${fmtHeatmapExpiry(e)}${
+                                  spot > 0 ? ` — ${Math.round(Math.abs(strike - spot))}pt from spot` : ""
+                                }`
+                              : extremeTitle
                           }
                         >
-                          {/* white ◆ pin pinned to the overall anchor cell's corner — the ANCHOR marker */}
-                          {isAnchorCell && (
-                            <span
-                              className="pointer-events-none absolute right-0.5 top-0 leading-none text-white"
-                              style={{ filter: "drop-shadow(0 0 4px rgba(255,255,255,0.9))" }}
-                            >
-                              <AnchorGlyph size={9} />
-                            </span>
-                          )}
-                          {/* per-day King — the same amber ★ SPX Slayer uses for its own
-                              per-column King (SpxGexMatrixHeatmap.tsx), so the marker reads
-                              identically across both products. */}
-                          {isDayAnchorCell && (
-                            <span
-                              aria-hidden
-                              className="pointer-events-none absolute right-0.5 top-0 text-[13px] leading-none text-amber-400 [text-shadow:0_0_6px_rgba(251,191,36,0.9)]"
-                            >
-                              ★
-                            </span>
-                          )}
-                          <span className={clsx((isDayCallWallCell || isDayPutWallCell) && "gex-heatmap-extreme-pop")}>
+                          <span
+                            className={clsx(
+                              (isDayCallWallCell || isDayPutWallCell) && "spx-gex-matrix-extreme-pop"
+                            )}
+                          >
                             {fmtHeatmapMoneySigned(val, { showZero: true })}
                           </span>
+                          {isDayKing && (
+                            <span className="ml-0.5 inline-flex items-baseline gap-0.5">
+                              <span
+                                aria-hidden
+                                className="text-[13px] leading-none text-amber-400 [text-shadow:0_0_6px_rgba(251,191,36,0.9)]"
+                              >
+                                ★
+                              </span>
+                              {spot > 0 && (
+                                <span className="text-[7px] font-normal leading-none text-amber-300/70">
+                                  {Math.round(Math.abs(strike - spot))}pt
+                                </span>
+                              )}
+                            </span>
+                          )}
                         </td>
                       );
                     })}
                     <td
                       className={clsx(
-                        "whitespace-nowrap px-2.5 py-2 text-right text-[13px] font-bold tabular-nums",
-                        rowTotal > 0 ? posColorClass : rowTotal < 0 ? "text-bear-text" : "text-sky-300/40"
+                        "whitespace-nowrap py-1 pl-1 pr-2 text-right font-bold",
+                        rowTotal > 0 && (lens === "gex" ? "text-emerald-300" : posColorClass),
+                        rowTotal < 0 && (lens === "gex" ? "text-rose-300" : "text-bear-text"),
+                        rowTotal === 0 && "text-sky-300/25"
                       )}
                       style={{
                         ...(rowTotal
@@ -3905,12 +3706,6 @@ export function GexHeatmap({
         />
       </div>
 
-      <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-sky-300/75">
-        {`Net dealer ${vocab.unit} per strike × expiry · ${vocab.pos} / ${vocab.neg} · total `}
-        <span className={clsx(total >= 0 ? posColorClass : "text-bear-text")}>
-          {fmtMoney(total)}
-        </span>
-      </p>
     </div>
   );
 
@@ -4127,43 +3922,30 @@ export function GexHeatmap({
               renders nothing when empty/absent. Sits above the regime header. ── */}
           <AlertsStrip events={events} />
 
-          {/* ── Main area — 2 views (Step 3), restructured:
-                • "Matrix" (DEFAULT) — the Strike × Expiry Matrix ALONE at FULL content width,
-                  so the far-dated monthly OpEx columns breathe (no longer sharing the row with
-                  the Gamma Profile).
-                • "Profile + Curve + Shift" — the Gamma Profile + Cumulative Curve + Shift, all
-                  strike-axis profile views grouped together. Profile takes the wide left column
-                  (lg:col-span-7); Curve + Shift stack in the right column (lg:col-span-5) so
-                  the curve keeps a readable width and Shift has room. Stacks on md/sm.
-              The VIEW TabList lives on the top control row (controlled by `pairView`); this body
-              `Tabs` is the same controlled value, so it renders ONLY the panels — no duplicate
-              tab strip here. Each panel const (built above) REUSES its view's render JSX verbatim,
-              keeping its bounded scroller, spot/flip anchoring, anchor markers, colors + legends.
-              The GEX/VEX/DEX/CHARM lens switch drives every panel (all read the active `lens`).
+          {/* ── Main area — 2 tabs:
+                • "Matrix" — full-width Strike × Expiry Matrix + Largo/DarkPool rail below.
+                • "Profile + Curve + Shift" — 3 equal columns (lg:grid-cols-3), shared
+                  ExpiryScopeBar + overlay toggles above, no Largo/DarkPool rail.
               ──────────────── */}
           <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b")} className="mt-3">
             <TabPanels>
               <TabPanel value="pair-a">{matrixPanel}</TabPanel>
               {!nativeShell ? (
                 <TabPanel value="pair-b">
-                  <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-                    <div className="min-w-0 lg:col-span-7">{profilePanel}</div>
-                    <div className="grid min-w-0 content-start gap-5 lg:col-span-5">
-                      {curvePanel}
-                      {shiftPanel}
-                    </div>
+                  {sharedProfileControls}
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                    <div className="min-w-0">{profilePanel}</div>
+                    <div className="min-w-0">{curvePanel}</div>
+                    <div className="min-w-0">{shiftPanel}</div>
                   </div>
                 </TabPanel>
               ) : null}
             </TabPanels>
           </Tabs>
 
-          {/* ── Rail (full-width row below the paired views): Largo desk read · dark-pool ·
-              flow summary. The redundant "KEY LEVELS" list was dropped — spot / flip / call
-              wall / put wall / max pain already lead the page in the consolidated key-level
-              box. ASK LARGO leads; the two small optional cards (dark-pool, flow) sit beside
-              it and each self-hides when empty. ── */}
-          {!nativeShell && (
+          {/* ── Rail: Largo + dark-pool + flow — Matrix tab only (the 3-panel
+              Profile+Curve+Shift view is self-contained). ── */}
+          {!nativeShell && pairView === "pair-a" && (
             <div className="mt-5 grid gap-4 lg:grid-cols-[1.6fr_1fr] gex-heatmap-rail">
               <LargoRead key={ticker} ticker={ticker} />
               <div className="grid content-start gap-4">
@@ -4173,7 +3955,7 @@ export function GexHeatmap({
             </div>
           )}
 
-          {!nativeShell && (
+          {!nativeShell && pairView === "pair-a" && (
           <p className="mt-5 border-t border-white/8 pt-3 text-[10px] leading-snug text-sky-300/75 gex-heatmap-methodology">
             <span aria-hidden className="mr-1 text-sky-300/70">ⓘ</span>
             Net dealer gamma uses the standard convention (dealers long calls / short

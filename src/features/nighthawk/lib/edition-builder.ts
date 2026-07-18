@@ -11,17 +11,17 @@ import {
   saveDossierStaging,
   upsertNighthawkJob,
   failStaleNighthawkJobs,
+  fetchRecentNighthawkOutcomesForGovernor,
 } from "@/lib/db";
 import { marketPlatform } from "@/lib/platform";
 import { uwConfigured } from "@/lib/providers/config";
 import { polygonConfigured } from "@/lib/providers/config";
-import { anthropicConfigured } from "@/lib/providers/anthropic";
 import {
   recordNighthawkRejectedAuditTrail,
   recordNighthawkStageRejectedAuditTrail,
   syncNighthawkPlayOutcomes,
 } from "./play-outcomes";
-import { extractCandidateTickers } from "./candidates";
+import { extractMultiSourceCandidates } from "./candidates";
 import { fetchAllDossiers, resetEditionCongressCache, type TickerDossier } from "./dossier";
 import { generateEditionPlays } from "./claude-edition";
 import { fetchPlayOutcomeStats } from "@/features/spx/lib/spx-play-outcomes";
@@ -31,9 +31,20 @@ import { fetchMarketWideContext, type MarketWideContext } from "./market-wide";
 import { critiquePlays } from "./play-critic";
 import { rankCandidates, regimeContextFromMarket, type ScoredCandidate } from "./scorer";
 import { rescoreDossier } from "./hunt-builder";
-import { DOSSIER_BATCH_SIZE, EDITION_SYNTHESIS_POOL, EDITION_TARGET_PLAYS, MAX_CANDIDATES, MAX_DOSSIER_STOCKS } from "./constants";
+import { DOSSIER_BATCH_SIZE, EDITION_MIN_PUBLISH_PLAYS, EDITION_SYNTHESIS_POOL, EDITION_TARGET_PLAYS, MAX_CANDIDATES, MAX_DOSSIER_STOCKS } from "./constants";
 import { backfillThinEditionPlays } from "./play-backfill";
+import { buildNighthawkPublishContexts } from "./publish-context";
+import {
+  acceptableQuoteSessionsEt,
+  applyNighthawkPublishGates,
+  promoteTopBlocked,
+  publishGateRecapReason,
+  type NighthawkPublishGateResult,
+} from "./publish-gates";
 import { partitionPlaysByGeometry } from "./play-constraints";
+import { applyCrossEditionGovernor, GOV_LOOKBACK_EDITIONS } from "./cross-edition-governor";
+import type { RecentOutcomeRow } from "./cross-edition-governor";
+import { applyBearishPosture, BEARISH_RECAP_REASON } from "./bearish-posture";
 import { nextTradingDayEt, todayEt } from "./session";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import type { NightHawkEdition, PlaybookPlay } from "./types";
@@ -43,7 +54,7 @@ import type { NightHawkEdition, PlaybookPlay } from "./types";
  * candidate→play pipeline writes its count here, and `logFunnel` emits a single line at EVERY exit
  * (success and all five recap-only fallbacks) so the next run pinpoints the exact drop without a
  * Railway-log dig. Stages, left→right, mirror the pipeline order:
- *   candidates  — extractCandidateTickers (flow feed → candidate tickers)
+ *   candidates  — extractMultiSourceCandidates (6-lane multi-source → candidate tickers)
  *   ranked      — rankCandidates output (scored dossiers → ranked pool)
  *   dossiers    — dossiers actually sent to Claude synthesis (synthesisDossiers)
  *   synthesized — RAW plays Claude returned & parsed, BEFORE strike/premium/stock filters (funnel.parsed)
@@ -53,6 +64,8 @@ import type { NightHawkEdition, PlaybookPlay } from "./types";
 type FunnelCounts = {
   candidates: number;
   ranked: number;
+  governor_passed: number;
+  posture_applied: number;
   dossiers: number;
   synthesized: number;
   critic_passed: number;
@@ -69,7 +82,7 @@ function formatFunnelLine(editionFor: string, f: Partial<FunnelCounts>): string 
   const c = (n: number | undefined) => (n == null ? "-" : n);
   return (
     `[nighthawk-funnel] ${editionFor}: candidates=${c(f.candidates)} extracted, ` +
-    `ranked=${c(f.ranked)}, dossiers=${c(f.dossiers)}, ` +
+    `ranked=${c(f.ranked)}, governor_passed=${c(f.governor_passed)}, posture=${c(f.posture_applied)}, dossiers=${c(f.dossiers)}, ` +
     `synthesized=${c(f.synthesized)} (claude raw plays), ` +
     `critic_passed=${c(f.critic_passed)}, ` +
     `grounded=${c(f.grounded)}, dropped_ungrounded=${c(f.dropped_ungrounded)}, flagged=${c(f.flagged)}, ` +
@@ -417,13 +430,9 @@ export async function buildEveningEdition(opts?: {
     if (!candidates?.length) {
       if (checkpointing) await upsertNighthawkJob(editionFor, { status: "running", current_stage: "stage_candidates" });
       console.info("[nighthawk/edition] stage_candidates: selection");
-      candidates = await extractCandidateTickers(ctx.stock_flows, ctx.hot_chains, MAX_CANDIDATES, {
-        topNetImpact: ctx.top_net_impact,
-      });
+      candidates = await extractMultiSourceCandidates(ctx, MAX_CANDIDATES);
       if (!candidates.length) {
-        // Funnel collapsed at stage_candidates — the flow feed was genuinely empty (thin tape, or UW
-        // returned nothing). Do NOT leave the UI "being built": publish a recap-only edition.
-        const reason = `No flow candidates (stock_flows ${ctx.stock_flows.length}, hot_chains ${ctx.hot_chains.length}).`;
+        const reason = `No candidates from any source (flows ${ctx.stock_flows.length}, OI ${ctx.market_oi_change.length}, unusual ${ctx.unusual_trades.length}, movers ${ctx.market_movers.length}).`;
         console.warn(`[nighthawk/edition] stage_candidates zeroed — recap-only fallback: ${reason}`);
         funnel.candidates = 0;
         funnel.published = 0;
@@ -577,6 +586,53 @@ export async function buildEveningEdition(opts?: {
 
     funnel.ranked = ranked.length;
 
+    // Enrich ranked candidates with sector from dossiers (needed by the governor's sector cap).
+    for (const c of ranked) {
+      const d = dossiers[c.ticker];
+      if (d && !c.sector && d.sector) c.sector = d.sector;
+    }
+
+    // STAGE 4b — Cross-edition governor (PR-N8): demote repeat tickers, halt loss streaks,
+    // cap rolling sector exposure. Fail-soft: a DB read error skips the governor entirely.
+    try {
+      const recentOutcomes: RecentOutcomeRow[] = await fetchRecentNighthawkOutcomesForGovernor(GOV_LOOKBACK_EDITIONS);
+      if (recentOutcomes.length > 0) {
+        const govResult = applyCrossEditionGovernor(ranked, recentOutcomes);
+        ranked = govResult.ranked;
+
+        for (const cut of govResult.cut) {
+          try {
+            recordNighthawkStageRejectedAuditTrail(
+              [{ ticker: cut.ticker, play: { ticker: cut.ticker } as any, detail: { stage: "cross_edition_governor" as const, reasons: cut.reasons }, scored: cut.scored }],
+              editionFor,
+            );
+          } catch (err) {
+            console.warn("[nighthawk/edition] governor audit-trail write failed:", err);
+          }
+        }
+
+        if (govResult.notes.length) {
+          for (const note of govResult.notes) console.info(`[nighthawk/edition] ${note}`);
+        }
+      }
+    } catch (err) {
+      console.warn("[nighthawk/edition] cross-edition governor skipped (DB read failed):", err);
+    }
+    funnel.governor_passed = ranked.length;
+
+    // STAGE 4c — Bearish-tape posture (PR-N9): when ≥2 of tide/breadth/regime signal
+    // bearish, re-rank to prefer SHORT candidates. Thin-flow longs get flipped to short;
+    // strong-flow longs are penalized but kept for downstream gates to decide.
+    const postureResult = applyBearishPosture(ranked, regime);
+    if (postureResult.posture === "SHORT") {
+      ranked = postureResult.ranked;
+      console.info(
+        `[nighthawk/edition] bearish-posture: SHORT posture engaged (${postureResult.reasons.join("; ")}), ` +
+        `${postureResult.flipped} candidate(s) flipped to short`
+      );
+    }
+    funnel.posture_applied = ranked.length;
+
     const topDossiers = ranked.map((s) => dossiers[s.ticker]).filter(Boolean);
     const synthesisRanked = ranked.slice(0, EDITION_SYNTHESIS_POOL);
     const synthesisDossiers = synthesisRanked.map((s) => dossiers[s.ticker]).filter(Boolean);
@@ -700,34 +756,15 @@ export async function buildEveningEdition(opts?: {
       funnel.synthesized = synthFunnel?.parsed ?? rawPlays.length;
 
       if (!rawPlays.length) {
-        // Name the funnel stage that zeroed the plays so the empty state is self-diagnosing in
-        // edition meta (no Railway-log dig needed). parsed→stock→within-cap→strike-valid.
-        const funnelMsg = synthFunnel
-          ? synthFunnel.parsed === 0
-            ? `Claude returned no parseable JSON plays (raw ${synthRaw?.length ?? 0} chars).`
-            : `All plays filtered out — funnel: ${synthFunnel.parsed} parsed → ${synthFunnel.stock} stock → ${synthFunnel.premium_ok} within-cap → ${synthFunnel.strike_ok} strike-valid → 0 grounded (${synthFunnel.dropped_ungrounded} dropped ungrounded, ${synthFunnel.flagged} flagged).`
-          : "Claude returned no parseable plays.";
-        const reason = anthropicConfigured()
-          ? funnelMsg
-          : "Claude not configured and mechanical fallback empty.";
-        // Synthesis produced no plays — publish a recap-only edition instead of failing dark, so the
-        // UI always shows tonight's market read. Never fabricate plays from nothing.
-        console.warn(`[nighthawk/edition] stage_synthesis zeroed — recap-only fallback: ${reason}`);
-        funnel.critic_passed = 0;
-        funnel.published = 0;
-        logFunnel(editionFor, funnel);
-        await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
-        await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: candidates.length, checkpointing, force: Boolean(opts?.force) });
-        return {
-          ok: true,
-          edition_for: editionFor,
-          plays_count: 0,
-          candidates: candidates.length,
-          recap_only: true,
-          duration_ms: Date.now() - started,
-          job_status: "published",
-          current_stage: "published",
-        };
+        // PR-N13: synthesis zeroed — the pipeline MUST always surface picks. Log it but
+        // DON'T exit to recap-only; the rescue fallback in generateEditionPlays already
+        // tried, so if we're still at zero the ranked pool was truly empty. In that case
+        // (defensive only), fall through to critic with an empty array — the critic-zeroed
+        // handler below will promote from pre-critic plays.
+        const funnelReason = synthFunnel
+          ? `All plays filtered out — funnel: ${synthFunnel.parsed} candidates → ${synthFunnel.stock} contract-ok → ${synthFunnel.premium_ok} within-cap → ${synthFunnel.strike_ok} strike-valid → 0 grounded (${synthFunnel.dropped_ungrounded} dropped ungrounded, ${synthFunnel.flagged} flagged).`
+          : "Deterministic synthesis produced no plays.";
+        console.warn(`[nighthawk/edition] stage_synthesis zeroed — will attempt rescue at publish stage: ${funnelReason}`);
       }
 
       const { plays: vettedPlays, notes: criticNotes } = await critiquePlays({
@@ -741,25 +778,23 @@ export async function buildEveningEdition(opts?: {
       finalCriticNotes = criticNotes;
       funnel.critic_passed = finalPlays.length;
       if (!finalPlays.length) {
-        // Critic rejected every play — do NOT publish unvetted fallback content (no fabricated plays).
-        // But still write a real published recap-only edition so the UI shows tonight's market read
-        // instead of "being built" forever.
-        const reason = "Critic rejected all plays — none passed quality review.";
-        console.warn(`[nighthawk/edition] stage_critic zeroed — recap-only fallback: ${reason}`);
-        funnel.published = 0;
-        logFunnel(editionFor, funnel);
-        await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
-        await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: candidates.length, checkpointing, force: Boolean(opts?.force) });
-        return {
-          ok: true,
-          edition_for: editionFor,
-          plays_count: 0,
-          candidates: candidates.length,
-          recap_only: true,
-          duration_ms: Date.now() - started,
-          job_status: "published",
-          current_stage: "published",
-        };
+        // PR-N13: critic zeroed all plays, but the pipeline MUST always surface picks.
+        // Promote the raw pre-critic plays with gate_promoted warnings — they passed
+        // synthesis constraints, just not the critic's quality bar.
+        if (rawPlays.length) {
+          finalPlays = rawPlays.slice(0, EDITION_TARGET_PLAYS).map((p, i) => ({
+            ...p,
+            rank: i + 1,
+            gate_promoted: true,
+            gate_warnings: ["Play did not pass the critic's quality review — use extra caution"],
+          }));
+          funnel.critic_passed = finalPlays.length;
+          console.info(
+            `[nighthawk/edition] critic zeroed — promoted ${finalPlays.length} raw plays with gate warnings`
+          );
+        }
+        // If rawPlays was also empty (synthesis AND critic both zeroed), fall through —
+        // the publish-gate handler below will catch the empty array and promote from blocked.
       }
 
       // Checkpoint the vetted Claude output so a resume skips synthesis + critic.
@@ -806,6 +841,101 @@ export async function buildEveningEdition(opts?: {
         funnel.published = finalPlays.length;
         funnel.critic_passed = finalPlays.length;
       }
+    }
+
+    // PR-N3 PUBLISH GATES (docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md §N-3): band-vs-spot,
+    // achievable target, stale-quote basis, fail-closed on unknown geometry — evaluated on
+    // the SAME in-memory dossiers the publish-context pin reads, strictly AFTER backfill so
+    // the backfill class that shipped the six 6.4%–45.5% detached plays cannot slip past.
+    // BLOCKED plays never publish: they persist as nighthawk_rejected audit rows (their ONLY
+    // record — counterfactual-gradeable later, same skip-grading philosophy as 0DTE), and
+    // every play's gate result (PASSES with margins included) is pinned into
+    // publish_context.gates below as the threshold-calibration substrate.
+    let gateResults: Record<string, NighthawkPublishGateResult> = {};
+    {
+      const { passing, blocked, results } = applyNighthawkPublishGates({
+        plays: finalPlays,
+        dossiers,
+        quoteSessions: acceptableQuoteSessionsEt(),
+      });
+      gateResults = results;
+      if (blocked.length) {
+        console.warn(
+          "[nighthawk/edition] publish gates BLOCKED:",
+          blocked.map((b) => `${b.ticker}: ${b.result.blocks.map((x) => x.code).join(",")}`)
+        );
+        // Durable rejection rows FIRST — recorded regardless of whether anything publishes
+        // below (same unconditional/fire-and-forget semantics as the synthesis-stage rows).
+        recordNighthawkStageRejectedAuditTrail(
+          blocked.map((b) => ({
+            ticker: b.ticker,
+            play: b.play,
+            detail: { stage: "publish_gate" as const, blocks: b.result.blocks },
+            scored: b.scored,
+          })),
+          editionFor
+        );
+        finalPlays = passing;
+        funnel.critic_passed = finalPlays.length;
+      }
+      if (finalPlays.length < EDITION_TARGET_PLAYS && blocked.length) {
+        // PR-N25: promote top-scoring blocked plays to reach the TARGET play count (5),
+        // not just the minimum (3). Previously 3 passing + 2 blocked = 3 published;
+        // now promotes the 2 best-available blocked plays to fill to 5.
+        const need = EDITION_TARGET_PLAYS - finalPlays.length;
+        const promoted = promoteTopBlocked(blocked, need);
+        if (promoted.length) {
+          const startRank = finalPlays.length + 1;
+          finalPlays = [
+            ...finalPlays,
+            ...promoted.map((p, i) => ({ ...p, rank: startRank + i })),
+          ];
+          funnel.critic_passed = finalPlays.length;
+          console.info(
+            `[nighthawk/edition] publish gates left ${finalPlays.length - promoted.length} play(s) — promoted ${promoted.length} best-available to reach target ${EDITION_TARGET_PLAYS} ` +
+            `(${blocked.length} total blocked: ${blocked.map((b) => `${b.ticker}:${b.result.blocks.map((x) => x.code).join(",")}`).join("; ")})`
+          );
+        }
+      }
+      if (!finalPlays.length) {
+        // PR-N13: the gates zeroed all plays, but the pipeline MUST always surface picks.
+        // Promote the top-scoring blocked plays with warnings instead of publishing zero.
+        // Promote the top-scoring blocked plays with warnings instead of publishing zero.
+        const promoted = promoteTopBlocked(blocked, EDITION_TARGET_PLAYS);
+        if (promoted.length) {
+          finalPlays = promoted;
+          funnel.critic_passed = finalPlays.length;
+          console.info(
+            `[nighthawk/edition] publish gates zeroed — promoted ${promoted.length} best-available plays with gate warnings ` +
+            `(${blocked.length} total blocked: ${blocked.map((b) => `${b.ticker}:${b.result.blocks.map((x) => x.code).join(",")}`).join("; ")})`
+          );
+        } else {
+          // True zero: no blocked plays either (shouldn't happen — defensive only).
+          const reason = publishGateRecapReason(blocked);
+          console.warn(`[nighthawk/edition] publish gates zeroed, no plays to promote — recap-only: ${reason}`);
+          funnel.published = 0;
+          logFunnel(editionFor, funnel);
+          await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
+          await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: candidates.length, checkpointing, force: Boolean(opts?.force) });
+          return {
+            ok: true,
+            edition_for: editionFor,
+            plays_count: 0,
+            candidates: candidates.length,
+            recap_only: true,
+            duration_ms: Date.now() - started,
+            job_status: "published",
+            current_stage: "published",
+          };
+        }
+      }
+    }
+
+    // PR-N26: re-rank by score descending so the highest-conviction play is always #1,
+    // regardless of whether it passed gates organically or was promoted.
+    if (finalPlays.length > 1) {
+      finalPlays.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+      finalPlays.forEach((p, i) => { p.rank = i + 1; });
     }
 
     // WRITE-SIDE INVARIANT (#77): never persist a "normal" edition with zero plays. The five funnel
@@ -906,7 +1036,27 @@ export async function buildEveningEdition(opts?: {
     // rescue. Outcome-sync failure self-heals the same way (sync is idempotent).
     try {
       const sectorByTicker = Object.fromEntries(topDossiers.map((d) => [d.ticker.toUpperCase(), d.sector ?? null]));
-      await syncNighthawkPlayOutcomes(editionFor, finalPlays, sectorByTicker);
+      // PR-N4 evidence pin: what the builder saw for each play, captured from the SAME
+      // in-memory context/dossiers this build published from — never re-fetched. The
+      // builder is fail-soft by contract (per-play failures pin null + warn), so the
+      // worst case is an un-pinned row, never a blocked outcome sync or publish.
+      const publishContexts = buildNighthawkPublishContexts({
+        plays: finalPlays,
+        dossiers,
+        market: {
+          regime: regimeContextFromMarket(ctx),
+          market_breadth: ctx.market_breadth,
+          tomorrow_earnings: ctx.tomorrow_earnings,
+          tomorrow: ctx.tomorrow,
+          vix_close: ctx.vix_bars.at(-1)?.c ?? null,
+          spx_close: ctx.spx_bars.at(-1)?.c ?? null,
+        },
+        builtAt: new Date().toISOString(),
+        // PR-N3: pin each published play's gate verdict + PASS margins — the exact
+        // objects that gated this publish, never re-evaluated.
+        gateResults,
+      });
+      await syncNighthawkPlayOutcomes(editionFor, finalPlays, sectorByTicker, publishContexts);
 
       if (checkpointing) {
         await upsertNighthawkJob(editionFor, {

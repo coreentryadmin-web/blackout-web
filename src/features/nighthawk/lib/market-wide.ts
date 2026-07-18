@@ -1,4 +1,5 @@
 import { fetchSectorPerformance, fetchIndexDailyBars, fetchIndex5MinBars, fetchIndexSnapshots, fetchVixIvRankPercentile, computeVixTermStructure, fetchDailyMarketSummary, fetchPriorDayCloses, computeMarketBreadthFromSummary, fetchBenzingaAfterHoursMovers, type BenzingaCatalyst, type MarketBreadthMetrics } from "@/lib/providers/polygon";
+import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { fetchPolygonMarketNews } from "@/lib/providers/polygon-largo";
 import { macroEventsOnDateLive } from "@/lib/providers/macro-events";
 import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
@@ -16,8 +17,10 @@ import {
   fetchUwPredictionsConsensus,
   fetchUwSectorTide,
   fetchUwTickerFlowAlerts,
+  fetchUwUnusualTrades,
   type PredictionConsensusSignal,
 } from "@/lib/providers/unusual-whales";
+import { fetchMarketMovers } from "@/lib/providers/polygon";
 import { summarizeGroupGreekFlow, type GroupGreekFlowSummary } from "@/lib/group-greek-flow-summary";
 import type { UwMacroIndicatorSnapshot } from "@/lib/providers/unusual-whales";
 import {
@@ -68,6 +71,10 @@ export type MarketWideContext = {
   market_oi_change: Record<string, unknown>[];
   /** Cross-service platform intel (market_regime, anomalies, brief) — same source as /api/platform/intel. */
   platform_intel: PlatformIntelSnapshot | null;
+  /** UW market-wide unusual trades — flagged by UW's internal algo as abnormal activity. */
+  unusual_trades: Record<string, unknown>[];
+  /** Polygon gainers/losers — today's biggest % movers (momentum candidates). */
+  market_movers: Array<{ ticker: string; change_pct: number; price: number; volume?: number }>;
 };
 
 function flowRowToDict(row: { raw: Record<string, unknown>; flow: { ticker: string; premium: number } }) {
@@ -109,9 +116,12 @@ function mapBars(
 async function fetchVixTermPreferPolygon(): Promise<Record<string, unknown>[]> {
   if (polygonConfigured()) {
     const snaps = await fetchIndexSnapshots(["I:VIX", "I:VIX9D", "I:VIX3M"]).catch(() => ({} as Awaited<ReturnType<typeof fetchIndexSnapshots>>));
-    const spot = snaps["I:VIX"]?.price ?? null;
-    const near = snaps["I:VIX9D"]?.price ?? null;
-    const far = snaps["I:VIX3M"]?.price ?? null;
+    const _vix = getStockLiveCandle("VIX");
+    const spot = (_vix.current?.close ?? 0) > 0 ? _vix.current!.close : snaps["I:VIX"]?.price ?? null;
+    const _vix9d = getStockLiveCandle("VIX9D");
+    const near = (_vix9d.current?.close ?? 0) > 0 ? _vix9d.current!.close : snaps["I:VIX9D"]?.price ?? null;
+    const _vix3m = getStockLiveCandle("VIX3M");
+    const far = (_vix3m.current?.close ?? 0) > 0 ? _vix3m.current!.close : snaps["I:VIX3M"]?.price ?? null;
     const term = computeVixTermStructure(spot, near, far);
     if (term.structure !== "unknown") {
       return [
@@ -236,6 +246,8 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     totalOptionsVolume,
     marketOiChange,
     platformIntel,
+    unusualTrades,
+    marketMovers,
   ] = await Promise.all([
     uwConfigured() ? fetchUwMarketTide().catch(() => null) : Promise.resolve(null),
     uwConfigured()
@@ -266,6 +278,10 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     // UW market-wide OI change — top movers by open-interest shift (Redis-cached).
     uwConfigured() ? fetchUwMarketOiChange(20).catch(() => []) : Promise.resolve([]),
     fetchPlatformIntelSnapshot().catch(() => null),
+    // UW unusual trades — market-wide, Redis-cached with short TTL.
+    uwConfigured() ? fetchUwUnusualTrades(undefined, 100).catch(() => []) : Promise.resolve([]),
+    // Polygon gainers + losers — momentum movers for candidate discovery.
+    polygonConfigured() ? fetchMarketMovers(20).catch(() => []) : Promise.resolve([]),
   ]);
 
   const stockFlows = flowRows
@@ -346,5 +362,7 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     total_options_volume: totalOptionsVolume ?? null,
     market_oi_change: (marketOiChange as Record<string, unknown>[]) ?? [],
     platform_intel: platformIntel,
+    unusual_trades: (unusualTrades as Record<string, unknown>[]) ?? [],
+    market_movers: marketMovers ?? [],
   };
 }

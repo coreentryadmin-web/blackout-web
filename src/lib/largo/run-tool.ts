@@ -6,6 +6,9 @@ import { loadLottoRecord } from "@/features/spx/lib/spx-lotto-store";
 import { loadPowerHourRecord } from "@/features/spx/lib/spx-power-hour-store";
 import { fetchPositioningSummary } from "@/features/nighthawk/lib/positioning";
 import { fetchPlayOutcomeStatsForWindow } from "@/features/spx/lib/spx-play-outcomes";
+// PR-N2: the one headline-scoreable predicate (methodology/pulled/unfilled quarantine)
+// shared by every surface that quotes a Night Hawk win rate.
+import { isNighthawkOutcomeScoreable } from "@/lib/track-record-page";
 import {
   fetchNighthawkOutcomeAnalytics,
   fetchNighthawkScoringHistory,
@@ -84,6 +87,7 @@ import {
   fetchVixIvRankPercentile,
   computeVixTermStructure,
 } from "@/lib/providers/polygon";
+import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { priorEtYmd, todayEtYmd } from "@/lib/providers/spx-session";
 import {
   fetchUwAtmChains,
@@ -217,8 +221,16 @@ function optionsUnderlying(ticker: string): string {
   return uwTicker(ticker);
 }
 
+function wsSpot(ticker: string): number | null {
+  const c = getStockLiveCandle(ticker);
+  return c.current && c.current.close > 0 ? c.current.close : null;
+}
+
 async function resolveSpot(ticker: string): Promise<number> {
   const sym = largoSymbol(ticker);
+  const wsTicker = sym.startsWith("I:") ? sym.replace(/^I:/, "") : sym;
+  const ws = wsSpot(wsTicker);
+  if (ws != null) return ws;
   if (sym.startsWith("I:")) {
     const snap = await fetchIndexSnapshots([sym]);
     return snap[sym]?.price ?? 0;
@@ -241,6 +253,11 @@ function spxDeskSummary(merged: Awaited<ReturnType<typeof getLargoSpxLiveDesk>>)
 
 async function toolQuote(ticker: string) {
   const sym = largoSymbol(ticker);
+  const wsTicker = sym.startsWith("I:") ? sym.replace(/^I:/, "") : sym;
+  const ws = wsSpot(wsTicker);
+  if (ws != null) {
+    return { ticker: sym, price: ws, change_pct: 0, source: "polygon_ws" };
+  }
   if (sym.startsWith("I:")) {
     const snap = await fetchIndexSnapshots([sym]);
     const row = snap[sym];
@@ -940,6 +957,42 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return fetchEcosystemContext(ticker);
     }
 
+    case "call_internal_api": {
+      const { callInternalApiRead } = await import("@/lib/bie/internal-api");
+      const rawParams =
+        input.params && typeof input.params === "object" && !Array.isArray(input.params)
+          ? (input.params as Record<string, string | number | boolean | null | undefined>)
+          : undefined;
+      // Governed + read-only: callInternalApiRead hard-denies anything not a GET class:read route.
+      return callInternalApiRead(String(input.path ?? ""), rawParams);
+    }
+
+    case "get_uw": {
+      const { readUw } = await import("@/lib/bie/provider-read");
+      const p = input.params && typeof input.params === "object" && !Array.isArray(input.params)
+        ? (input.params as Record<string, unknown>)
+        : undefined;
+      return readUw(String(input.endpoint ?? ""), p);
+    }
+
+    case "get_polygon": {
+      const { readPolygon } = await import("@/lib/bie/provider-read");
+      const p = input.params && typeof input.params === "object" && !Array.isArray(input.params)
+        ? (input.params as Record<string, unknown>)
+        : undefined;
+      return readPolygon(String(input.endpoint ?? ""), p);
+    }
+
+    case "get_vector_full_state": {
+      const [{ fetchVectorFullState }, { normalizeDteHorizon }] = await Promise.all([
+        import("@/lib/bie/vector-full-state"),
+        import("@/features/vector/lib/vector-dte-horizon"),
+      ]);
+      // fetchVectorFullState normalizes the ticker itself (normalizeVectorTicker); pass the raw
+      // string. horizon is validated to one of 0dte/weekly/monthly/all, defaulting to "all".
+      return fetchVectorFullState(ticker, normalizeDteHorizon(input.horizon));
+    }
+
     case "get_hot_tickers": {
       const { fetchHotTickers } = await import("@/lib/bie/hot-tickers");
       return fetchHotTickers(8);
@@ -1339,7 +1392,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       // src/lib/nighthawk/analytics.ts's winRate() does: target = win,
       // stop = loss, everything else (open/ambiguous/unfilled) excluded from
       // the rate denominator because it isn't a decided outcome yet.
-      const nhRows = nighthawkAnalytics.rows;
+      // PR-N2: filter through the platform's shared headline-scoreable predicate
+      // first — rows still graded under the superseded pre-fillability methodology
+      // (and pulled/unfilled/stop-data-unavailable rows) must not leak into the win
+      // rate Largo quotes to members any more than into the record strip. Same
+      // anti-blend rule as getNighthawkMetrics' segments.
+      const nhRows = nighthawkAnalytics.rows.filter(isNighthawkOutcomeScoreable);
       const nighthawk_wins = nhRows.filter((r) => r.outcome === "target").length;
       const nighthawk_losses = nhRows.filter((r) => r.outcome === "stop").length;
       const nighthawk_decided = nighthawk_wins + nighthawk_losses;

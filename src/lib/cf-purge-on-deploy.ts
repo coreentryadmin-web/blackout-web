@@ -17,24 +17,50 @@
 //     which is harmless — purge is idempotent).
 //   * If there is no deploy id to key on, it does nothing (never purges on every
 //     boot — that would defeat the cache).
-//   * Purges the **entire zone** once per deploy. Marketing-only file purges do not
-//     clear stale /_next/static/* 404s edge-cached during rolling ECS deploys (which
-//     break sign-in hydration when webpack chunks 404 at the edge).
+//   * Purges a fixed list of PUBLIC URLs only ("files" purge, available on every CF
+//     plan). It never purges the whole zone and never touches app/API responses.
 //
-// Called from /api/health on ECS boot and ensureDataSockets() on first market request.
+// Called once from instrumentation.ts register() (nodejs runtime only), lazily
+// imported so ioredis/fetch are never pulled into the edge/client graph.
 
 const PURGE_LOCK_TTL_SEC = 3_600; // 1h: comfortably longer than a rolling deploy
 
+// Public, statically-generated, edge-cached marketing routes (see Cache Rule #6).
+// Keep in sync with the pages carrying `export const dynamic = "force-static"`.
+const MARKETING_PATHS = [
+  "/",
+  "/faq",
+  "/pricing",
+  "/upgrade",
+  "/learn",
+  "/learn/night-hawk",
+  "/learn/helix-flows",
+  "/learn/largo-ai",
+  "/learn/spx-slayer",
+  "/learn/heat-maps",
+  "/learn/glossary",
+  "/learn/getting-started",
+] as const;
+
 function deployId(): string | null {
-  // Railway exposes the commit SHA and a per-deployment id; ECS images bake
-  // GITHUB_SHA as CF_PURGE_DEPLOY_ID in deploy/Dockerfile.
+  // Railway exposes the commit SHA and a per-deployment id; either uniquely tags a
+  // deploy. Prefer the SHA (stable across the deploy's replicas), fall back to the
+  // deployment id. A manual override is supported for non-Railway hosts.
   return (
     process.env.CF_PURGE_DEPLOY_ID?.trim() ||
     process.env.GITHUB_SHA?.trim() ||
+    process.env.CODEBUILD_RESOLVED_SOURCE_VERSION?.trim() ||
     process.env.RAILWAY_GIT_COMMIT_SHA?.trim() ||
     process.env.RAILWAY_DEPLOYMENT_ID?.trim() ||
     null
   );
+}
+
+function siteOrigin(): string | null {
+  const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (!raw) return null;
+  // Normalize: strip any trailing slash so `${origin}${path}` is well-formed.
+  return raw.replace(/\/+$/, "");
 }
 
 let _redisClient: import("ioredis").default | null = null;
@@ -87,7 +113,7 @@ async function claimPurge(id: string): Promise<boolean> {
 }
 
 /**
- * Fire-and-forget: purge the entire Cloudflare zone once per deploy.
+ * Fire-and-forget: purge the marketing URLs from Cloudflare's edge once per deploy.
  * Safe to call unconditionally at boot — it self-gates on configuration and dedup.
  */
 export async function maybePurgeCloudflareOnDeploy(): Promise<void> {
@@ -97,12 +123,25 @@ export async function maybePurgeCloudflareOnDeploy(): Promise<void> {
 
   const id = deployId();
   if (!id) {
-    console.warn("[cf-purge-on-deploy] no deploy id (CF_PURGE_DEPLOY_ID / GITHUB_SHA) — skipping");
+    console.warn("[cf-purge-on-deploy] no deploy id (CF_PURGE_DEPLOY_ID / RAILWAY_GIT_COMMIT_SHA) — skipping to avoid purging on every boot");
+    return;
+  }
+
+  const origin = siteOrigin();
+  if (!origin) {
+    console.warn("[cf-purge-on-deploy] NEXT_PUBLIC_SITE_URL unset — cannot build purge URLs, skipping");
     return;
   }
 
   if (!(await claimPurge(id))) return; // another replica owns this deploy's purge
 
+  const files = MARKETING_PATHS.map((p) => `${origin}${p}`);
+  const prefixes = [`${origin}/_next/static`];
+  const body: { files: string[]; prefixes?: string[]; hosts?: string[] } = { files, prefixes };
+  // Staging: also purge the whole host so stale HTML/chunk 404s cannot brick the UI after deploy.
+  if (origin.includes("staging.")) {
+    body.hosts = [new URL(origin).host];
+  }
   try {
     const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`, {
       method: "POST",
@@ -110,16 +149,14 @@ export async function maybePurgeCloudflareOnDeploy(): Promise<void> {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      // Full purge: rolling deploys can edge-cache 404s for missing hashed JS/CSS;
-      // marketing-only file purge leaves sign-in broken until manual purge.
-      body: JSON.stringify({ purge_everything: true }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       console.warn(`[cf-purge-on-deploy] purge failed: ${res.status} ${text.slice(0, 300)}`);
       return;
     }
-    console.log(`[cf-purge-on-deploy] purged entire zone for deploy ${id}`);
+    console.log(`[cf-purge-on-deploy] purged ${files.length} URLs + ${prefixes.length} prefix(es) for deploy ${id}`);
   } catch (err) {
     console.warn("[cf-purge-on-deploy] purge request error:", err);
   }

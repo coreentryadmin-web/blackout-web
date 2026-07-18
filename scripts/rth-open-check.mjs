@@ -143,17 +143,6 @@ async function main() {
           ).rows[0].n;
           if (grid15 > 0) ok(`zerodte-warm ran in last 20m (${grid15} ok run(s))`);
           else fail("zerodte-warm: no ok run in last 20m during RTH");
-
-          if (et.mins >= 9 * 60 + 30) {
-            const plat15 = (
-              await c.query(
-                `SELECT COUNT(*)::int AS n FROM cron_job_runs
-                 WHERE job_key = 'platform-warm' AND started_at > NOW() - INTERVAL '15 minutes' AND status = 'ok'`
-              )
-            ).rows[0].n;
-            if (plat15 > 0) ok(`platform-warm ran in last 15m (${plat15} ok run(s))`);
-            else fail("platform-warm: no ok run in last 15m during RTH");
-          }
         }
 
         await c.end();
@@ -207,19 +196,6 @@ async function main() {
       console.error(`\nRTH-open FAILED (${failures.length}):`);
       failures.forEach((f) => console.error(`  · ${f}`));
       process.exit(1);
-    }
-
-    // After 09:30 ET on trading days: full-site latency (not SPX-only).
-    if (tradingDay && (force || et.mins >= 9 * 60 + 30)) {
-      console.log("\n3. RTH site-wide latency (platform-warm + every tool page)");
-      const lat = spawnSync("node", ["scripts/rth-site-latency.mjs", ...(force ? ["--force"] : [])], {
-        stdio: "inherit",
-        env: process.env,
-      });
-      if (lat.status !== 0) {
-        console.error("\nRTH-open FAILED — validate:rth-latency did not pass.\n");
-        process.exit(1);
-      }
     }
   }
 

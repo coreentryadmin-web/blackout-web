@@ -1,12 +1,11 @@
 import type { UTCTimestamp } from "lightweight-charts";
 import { getCurrentSpxCandle } from "@/lib/ws/spx-candle-store";
-import { fetchIndexMinuteBars, fetchStockMinuteBars } from "@/lib/providers/polygon";
-import { todayEtYmd } from "@/lib/providers/spx-session";
+import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
+import { fetchStockSnapshot, fetchIndexSnapshot } from "@/lib/providers/polygon";
 import {
-  isVectorIndexTicker,
   normalizeVectorTicker,
-  vectorPolygonMinuteSymbol,
   VECTOR_DEFAULT_TICKER,
+  isVectorIndexTicker,
 } from "./vector-ticker";
 
 export type VectorLiveCandle = {
@@ -18,37 +17,88 @@ export type VectorLiveCandle = {
   volume?: number;
 };
 
-type LiveCache = { candle: VectorLiveCandle | null; updatedAt: number; fetchedAt: number };
+// REST snapshot fallback — fire-and-forget background refresh so the 1Hz SSE
+// poll never blocks on a network roundtrip.  Same pattern as stock-candle-store's
+// Redis fallback: return whatever the cache has NOW, kick a refresh if stale.
+type RestFallbackEntry = {
+  candle: VectorLiveCandle | null;
+  updatedAt: number;
+  fetchedAt: number;
+};
+const restFallback = new Map<string, RestFallbackEntry>();
+const restInflight = new Map<string, Promise<void>>();
+const REST_REFRESH_MS = 1_000;
+const REST_MAX_AGE_MS = 120_000;
 
-const LIVE_CACHE_MS = 5_000;
-const liveByTicker = new Map<string, LiveCache>();
+function refreshRestFallback(ticker: string): void {
+  const entry = restFallback.get(ticker);
+  const now = Date.now();
+  if (entry && now - entry.fetchedAt < REST_REFRESH_MS) return;
+  if (restInflight.has(ticker)) return;
 
-function barFromAgg(b: { t?: number; o: number; h: number; l: number; c: number; v?: number }): VectorLiveCandle | null {
-  if (typeof b.t !== "number" || b.o <= 0) return null;
-  const time = Math.floor(b.t / 1000) as UTCTimestamp;
-  return {
-    time,
-    open: b.o,
-    high: b.h,
-    low: b.l,
-    close: b.c,
-    ...(b.v != null && b.v > 0 ? { volume: b.v } : {}),
-  };
+  const task = (async () => {
+    try {
+      const isIdx = isVectorIndexTicker(ticker);
+      const snap = isIdx
+        ? await fetchIndexSnapshot(`I:${ticker}`)
+        : await fetchStockSnapshot(ticker);
+      const price = snap?.price;
+      if (price && price > 0) {
+        const barSec = Math.floor(now / 60_000) * 60;
+        restFallback.set(ticker, {
+          candle: {
+            time: barSec as UTCTimestamp,
+            open: price,
+            high: price,
+            low: price,
+            close: price,
+          },
+          updatedAt: now,
+          fetchedAt: now,
+        });
+      } else {
+        restFallback.set(ticker, {
+          candle: entry?.candle ?? null,
+          updatedAt: entry?.updatedAt ?? 0,
+          fetchedAt: now,
+        });
+      }
+    } catch {
+      restFallback.set(ticker, {
+        candle: entry?.candle ?? null,
+        updatedAt: entry?.updatedAt ?? 0,
+        fetchedAt: now,
+      });
+    } finally {
+      restInflight.delete(ticker);
+    }
+  })();
+  restInflight.set(ticker, task);
+  if (restFallback.size > 200) restFallback.clear();
 }
 
-async function fetchLatestMinuteBar(ticker: string): Promise<VectorLiveCandle | null> {
-  const t = normalizeVectorTicker(ticker);
-  const ymd = todayEtYmd();
-  const sym = vectorPolygonMinuteSymbol(t);
-  const bars = isVectorIndexTicker(t)
-    ? await fetchIndexMinuteBars(sym, ymd, ymd).catch(() => [])
-    : await fetchStockMinuteBars(t, ymd, ymd).catch(() => []);
-  if (!bars.length) return null;
-  const last = bars[bars.length - 1]!;
-  return barFromAgg(last);
+function getRestFallbackCandle(ticker: string): {
+  current: VectorLiveCandle | null;
+  updatedAt: number;
+} {
+  refreshRestFallback(ticker);
+  const entry = restFallback.get(ticker);
+  if (!entry?.candle || Date.now() - entry.updatedAt > REST_MAX_AGE_MS) {
+    return { current: null, updatedAt: entry?.updatedAt ?? 0 };
+  }
+  return { current: entry.candle, updatedAt: entry.updatedAt };
 }
 
-/** Live forming bar — SPX uses tick WS; other tickers poll Polygon minute bars (cached). */
+/**
+ * Live forming bar — ALL tickers now use Polygon WS (sub-second updates).
+ * SPX reads from spx-candle-store (indices WS V channel).
+ * Everything else reads from stock-candle-store (stocks WS A channel for
+ * stocks/ETFs, indices WS A/V channels for non-SPX indices).
+ *
+ * When the WS store is empty (off-hours, cold start, WS not connected),
+ * falls back to a throttled REST snapshot (~5s refresh) so the spot price
+ * stays alive instead of going dark.
+ */
 export async function getVectorLiveCandle(ticker: string = VECTOR_DEFAULT_TICKER): Promise<{
   current: VectorLiveCandle | null;
   updatedAt: number;
@@ -63,19 +113,14 @@ export async function getVectorLiveCandle(ticker: string = VECTOR_DEFAULT_TICKER
     };
   }
 
-  const now = Date.now();
-  const cached = liveByTicker.get(t);
-  if (cached && now - cached.fetchedAt < LIVE_CACHE_MS) {
-    return { current: cached.candle, updatedAt: cached.updatedAt };
+  const snap = getStockLiveCandle(t);
+  if (snap.current) {
+    return {
+      current: snap.current as VectorLiveCandle | null,
+      updatedAt: snap.updatedAt,
+    };
   }
 
-  const candle = await fetchLatestMinuteBar(t);
-  const updatedAt = candle ? candle.time * 1000 : 0;
-  liveByTicker.set(t, { candle, updatedAt, fetchedAt: now });
-  return { current: candle, updatedAt };
-}
-
-/** Test-only reset. */
-export function _resetVectorLiveCandleForTest(): void {
-  liveByTicker.clear();
+  // WS store empty — REST fallback keeps the spot alive at ~5s cadence
+  return getRestFallbackCandle(t);
 }

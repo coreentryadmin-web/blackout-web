@@ -9,6 +9,8 @@ import { serverCache } from "@/lib/server-cache";
 import { safeTime } from "@/lib/safe-time";
 import { tapeDedupKey } from "@/lib/tape-dedup-key";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import { hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
+import { strikeTotalsFromLadder } from "@/lib/providers/gex-cross-validation-core";
 import { gexPositioningFromHeatmap } from "@/lib/providers/gex-positioning";
 import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 import { markFlowDataFromBriefs, resolveFlowDataAgeMs } from "@/lib/flow-data-freshness";
@@ -22,10 +24,14 @@ import { computeLitDarkRatio } from "@/lib/uw-lit-dark-ratio";
 import { resolveDeskGap } from "@/lib/providers/gap-proxy";
 import {
   gammaRegime,
+  gammaRegimeWithHysteresis,
   topGexWalls,
   type GexStrikeLevel,
   type GexWall,
 } from "@/lib/providers/gamma-desk";
+import { kingFromStrikeTotals } from "@/lib/providers/gex-cross-validation-core";
+import { computeIntradayRead } from "@/lib/zerodte/intraday";
+import { etMinutes } from "@/features/spx/lib/spx-play-session-time";
 import {
   computeVixTermStructure,
   fetchBenzingaNews,
@@ -53,12 +59,15 @@ import { isPremarketPlanningWindow } from "@/features/spx/lib/spx-play-session-g
 import {
   distancePct,
   inferRegime,
+  mergeVolumeIntoBars,
   priorDayFromDailyBars,
   priorEtYmd,
   sessionStatsFromMinuteBars,
   todayEtYmd,
   widenSessionExtremesWithSpot,
 } from "@/lib/providers/spx-session";
+import { fetchSpyVolumeByMinute } from "@/features/vector/lib/vector-spy-volume";
+import { isStagingDeploy } from "@/lib/clerk-env";
 import {
   fetchUwDarkPool,
   fetchUwDarkPoolMarketWide,
@@ -82,12 +91,44 @@ import {
 } from "@/lib/providers/unusual-whales";
 import { runUwPooled } from "@/lib/providers/uw-rate-limiter";
 import { fetchEngine } from "@/lib/engine";
+import { parseEngineIntelOverlay, type EngineIntelOverlay } from "@/lib/engine-intel-overlay";
 import { indexStore, getIndexFeedFreshness } from "@/lib/ws/polygon-socket";
 import { getActiveTradingHalts, isTradingHaltChannelStale } from "@/lib/ws/uw-socket";
 
 /** GEX-wall ladder size — a balanced ~5-per-side two-sided ladder (call wall above spot,
  *  put wall below). 10 fits the scrollable panel without crushing the Live Tape (bug #93). */
 const GEX_WALL_LADDER_LIMIT = 10;
+
+/**
+ * SPX session stats with a TRUE volume-weighted VWAP on STAGING via the SPY-volume proxy.
+ *
+ * STAGING FULL-ENABLEMENT (user directive): SPX index minute bars carry no volume (ISSUE-16), so the
+ * desk VWAP is an equal-weight typical price and `vwap_volume_weighted` is always false — which
+ * permanently hard-blocks PB-01/PB-02 (they require a volume-weighted VWAP). On staging we merge SPY
+ * 1-minute share volume (the standard index proxy the Vector chart already uses) into the SPX bars so
+ * the VWAP becomes genuinely volume-weighted and `vwap_volume_weighted` can be true, unblocking those
+ * playbooks. Fail-open: any SPY-fetch miss falls back to the current typical-price VWAP.
+ *
+ * PROD IS UNCHANGED — prod keeps the existing typical-price VWAP (no SPY fetch, no value change).
+ */
+async function sessionStatsWithProxyVwap(
+  minuteBars: Parameters<typeof sessionStatsFromMinuteBars>[0],
+  ymd: string
+): Promise<ReturnType<typeof sessionStatsFromMinuteBars>> {
+  if (!isStagingDeploy()) return sessionStatsFromMinuteBars(minuteBars);
+  try {
+    const volumeByBarSec = await fetchSpyVolumeByMinute(ymd);
+    return sessionStatsFromMinuteBars(mergeVolumeIntoBars(minuteBars, volumeByBarSec));
+  } catch {
+    return sessionStatsFromMinuteBars(minuteBars);
+  }
+}
+
+/** Round price-like desk numerics at the data layer (deep sweep #21). */
+function roundDeskNum(n: number | null | undefined): number | null {
+  if (n == null || !Number.isFinite(n)) return null;
+  return Math.round(n * 100) / 100;
+}
 
 let lastGoodGexWalls: GexWall[] = [];
 let lastGoodStrikeLevels: GexStrikeLevel[] = [];
@@ -134,9 +175,10 @@ type CanonicalDeskGexSnapshot = {
 /** Map the shared matrix strike_totals into the gamma-desk ladder shape for wall rendering. */
 function strikeTotalsToLevels(totals: Record<string, number>): GexStrikeLevel[] {
   return Object.entries(totals)
-    .map(([s, net]) => {
+    .map(([s, netRaw]) => {
       const strike = Number(s);
-      if (!Number.isFinite(strike) || net === 0) return null;
+      const net = Number(netRaw);
+      if (!Number.isFinite(strike) || !Number.isFinite(net) || net === 0) return null;
       return {
         strike,
         net_gex: net,
@@ -148,29 +190,19 @@ function strikeTotalsToLevels(totals: Record<string, number>): GexStrikeLevel[] 
     .sort((a, b) => Math.abs(b.net_gex) - Math.abs(a.net_gex));
 }
 
-/** King strike = argmax |net_gex| — same rule as Heat Maps ANCHOR / desk GEX Anchor. */
-function kingFromStrikeTotals(totals: Record<string, number>): number | null {
-  let king: number | null = null;
-  let best = 0;
-  const entries = Object.entries(totals)
-    .map(([s, v]) => ({ strike: Number(s), value: v }))
-    .filter((e) => Number.isFinite(e.strike))
-    .sort((a, b) => a.strike - b.strike);
-  for (const e of entries) {
-    const mag = Math.abs(e.value);
-    if (mag > best) {
-      best = mag;
-      king = e.strike;
-    }
-  }
-  return king;
-}
-
 function stickyDeskGexFallback(spot: number): CanonicalDeskGexSnapshot {
   const flip = lastGoodGammaFlip;
-  const gRegime = gammaRegime(spot, flip);
-  const wallsFromLevels = lastGoodStrikeLevels.length
-    ? topGexWalls(lastGoodStrikeLevels, spot, GEX_WALL_LADDER_LIMIT)
+  const gRegime = gammaRegimeWithHysteresis(spot, flip, lastGoodGammaRegime);
+  let fallbackLevels = lastGoodStrikeLevels;
+  if (hasLiveGexStrikeExpiry("SPX")) {
+    const wsLadder = getGexStrikeExpiryLadder("SPX");
+    if (wsLadder) {
+      const wsLevels = strikeTotalsToLevels(strikeTotalsFromLadder(wsLadder.ladder));
+      if (wsLevels.length) fallbackLevels = wsLevels;
+    }
+  }
+  const wallsFromLevels = fallbackLevels.length
+    ? topGexWalls(fallbackLevels, spot, GEX_WALL_LADDER_LIMIT)
     : [];
   const finalWalls = wallsFromLevels.length ? wallsFromLevels : lastGoodGexWalls;
   const gexAgeMs = gexDataAgeMs();
@@ -185,6 +217,36 @@ function stickyDeskGexFallback(spot: number): CanonicalDeskGexSnapshot {
     gex_age_ms: gexAgeMs,
     gex_stale: gexAgeMs == null || gexAgeMs > GEX_STALE_MS,
     fresh_this_cycle: false,
+  };
+}
+
+/** #31: labeled UW REST supplemental fetch — push order lives in one place, not at call site. */
+async function fetchUwDeskRestSupplemental(opts: {
+  needMaxPain: boolean;
+  needIv: boolean;
+}): Promise<{
+  nope: Awaited<ReturnType<typeof fetchUwNope>> | null;
+  maxPain: number | null;
+  iv: number | null;
+}> {
+  if (!uwConfigured()) {
+    return { nope: null, maxPain: null, iv: null };
+  }
+  const tasks: Array<() => Promise<unknown>> = [
+    () =>
+      fetchUwNope("SPX")
+        .catch(() => null)
+        .then((r) => r ?? fetchUwNope("SPY").catch(() => null)),
+  ];
+  const maxPainSlot = opts.needMaxPain ? tasks.length : -1;
+  if (opts.needMaxPain) tasks.push(() => fetchUwMaxPain("SPX").catch(() => null));
+  const ivSlot = opts.needIv ? tasks.length : -1;
+  if (opts.needIv) tasks.push(() => fetchUwIvRank("SPX").catch(() => null));
+  const results = await runUwPooled(tasks);
+  return {
+    nope: results[0] as Awaited<ReturnType<typeof fetchUwNope>> | null,
+    maxPain: maxPainSlot >= 0 ? (results[maxPainSlot] as number | null) : null,
+    iv: ivSlot >= 0 ? (results[ivSlot] as number | null) : null,
   };
 }
 
@@ -213,17 +275,17 @@ let lastGoodDeskEnrichment: DeskEnrichmentSticky | null = null;
 let deskEnrichmentInFlight: Promise<void> | null = null;
 
 async function fetchDeskEnrichmentFields(today: string): Promise<DeskEnrichmentSticky> {
-  const [greekExpRows, flowByExpiry, netFlowByExpiry, netPremTicks, mag7Rows, macroIndicators] =
+  const netPremTicks = await resolveNetPremTicksForDesk("SPY");
+  const [greekExpRows, flowByExpiry, netFlowByExpiry, mag7Rows, macroIndicators] =
     uwConfigured()
       ? await runUwPooled([
           () => fetchUwGreekExposureExpiry("SPX").catch(() => []),
           () => fetchUwFlowPerExpiry("SPX", 12).catch(() => []),
           () => fetchUwNetFlowExpiry(20).catch(() => []),
-          () => fetchUwNetPremTicks("SPY").catch(() => []),
           () => fetchUwGroupGreekFlow("mag7").catch(() => []),
           () => fetchUwMacroIndicators().catch(() => []),
         ])
-      : [[], [], [], [], [], []];
+      : [[], [], [], [], []];
 
   return {
     fetchedAt: Date.now(),
@@ -233,10 +295,33 @@ async function fetchDeskEnrichmentFields(today: string): Promise<DeskEnrichmentS
     ),
     flow_by_expiry: flowByExpiry as Record<string, unknown>[],
     net_flow_by_expiry: netFlowByExpiry as Record<string, unknown>[],
-    net_prem_ticks: netPremTicks as NetPremTick[],
+    net_prem_ticks: netPremTicks,
     mag7_greek_flow: summarizeGroupGreekFlow("mag7", mag7Rows as Record<string, unknown>[]),
     macro_indicators: macroIndicators as UwMacroIndicatorSnapshot[],
   };
+}
+
+/** WS → Redis → REST for net prem ticks (net_flow channel). */
+async function resolveNetPremTicksForDesk(ticker = "SPY"): Promise<NetPremTick[]> {
+  try {
+    const { getNetPremTicksForTicker, isUwChannelFresh } = await import("@/lib/ws/uw-socket");
+    if (isUwChannelFresh("net_flow", 120_000)) {
+      const ticks = getNetPremTicksForTicker(ticker);
+      if (ticks.length) return ticks;
+    }
+  } catch {
+    /* WS optional */
+  }
+  try {
+    const { readUwDeskLaneFromRedis } = await import("@/lib/uw-ws-cache-bridge");
+    const { UW_KEYS } = await import("@/lib/providers/uw-shared-cache");
+    const redisTicks = await readUwDeskLaneFromRedis<NetPremTick[]>(UW_KEYS.netPremTicks(ticker));
+    if (redisTicks?.length) return redisTicks;
+  } catch {
+    /* Redis optional */
+  }
+  if (!uwConfigured()) return [];
+  return fetchUwNetPremTicks(ticker).catch(() => []);
 }
 
 function scheduleDeskEnrichmentRefresh(today: string): void {
@@ -269,8 +354,22 @@ async function resolveCanonicalDeskGex(spot: number): Promise<CanonicalDeskGexSn
   const levels = strikeTotalsToLevels(hm.gex.strike_totals);
   const king = kingFromStrikeTotals(hm.gex.strike_totals);
   const flip = pos.flip;
-  const regime = gammaRegime(spot, flip);
-  const walls = levels.length ? topGexWalls(levels, spot, GEX_WALL_LADDER_LIMIT) : [];
+  // Regime + above_gamma_flip (below) are both derived from THIS one (spot, flip) snapshot so they
+  // can't contradict. Intended local spot-vs-flip model — no net-GEX override (see the full-payload
+  // note / FINDINGS: local regime at spot ≠ the aggregate net-GEX sign).
+  const regime = gammaRegimeWithHysteresis(spot, flip, lastGoodGammaRegime);
+
+  // UW WS ladder is the same 5s real-time source Vector uses for walls.
+  // Prefer it over Polygon heatmap walls so all surfaces show identical strikes.
+  let wallLevels = levels;
+  if (hasLiveGexStrikeExpiry("SPX")) {
+    const wsLadder = getGexStrikeExpiryLadder("SPX");
+    if (wsLadder) {
+      const wsLevels = strikeTotalsToLevels(strikeTotalsFromLadder(wsLadder.ladder));
+      if (wsLevels.length) wallLevels = wsLevels;
+    }
+  }
+  const walls = wallLevels.length ? topGexWalls(wallLevels, spot, GEX_WALL_LADDER_LIMIT) : [];
 
   if (levels.length) {
     lastGoodStrikeLevels = levels;
@@ -332,6 +431,13 @@ async function resolveMarketTide(): Promise<Awaited<ReturnType<typeof fetchUwMar
   } catch {
     /* WS optional */
   }
+  try {
+    const { readUwMarketTideFromRedis } = await import("@/lib/uw-ws-cache-bridge");
+    const redisTide = await readUwMarketTideFromRedis();
+    if (redisTide) return redisTide;
+  } catch {
+    /* Redis optional */
+  }
   return fetchUwMarketTide().catch(() => null);
 }
 
@@ -372,6 +478,13 @@ async function resolveDarkPool(
     }
   } catch {
     /* WS optional */
+  }
+  try {
+    const { readUwDarkPoolFromRedis } = await import("@/lib/uw-ws-cache-bridge");
+    const redisDp = await readUwDarkPoolFromRedis(ticker);
+    if (redisDp?.prints?.length) return redisDp;
+  } catch {
+    /* Redis optional */
   }
   if (cachedDarkPool.key === key && now - cachedDarkPool.fetchedAt < DARK_POOL_CACHE_MS) {
     return cachedDarkPool.data;
@@ -545,6 +658,14 @@ export type SpxFlowBrief = {
   has_sweep: boolean;
 };
 
+/** Honest flow age for desk payloads — caps sparse-tape age when cluster WS is live. */
+function deskFlowDataAgeMs(flows: SpxFlowBrief[], flowClusterLive: boolean): number | null {
+  markFlowDataFromBriefs(flows);
+  let age = resolveFlowDataAgeMs(flows);
+  if (flowClusterLive && age != null && age > 120_000) age = 120_000;
+  return age;
+}
+
 export type SpxTapeItem = {
   kind: "flow" | "darkpool";
   side: "call" | "put" | "neutral";
@@ -572,6 +693,8 @@ export type SpxDeskPayload = {
   lod: number | null;
   hod: number | null;
   vwap: number | null;
+  /** False when SPX index bars lack volume — desk VWAP is typical-price average, not true VWAP. */
+  vwap_volume_weighted?: boolean;
   pdh: number | null;
   pdl: number | null;
   prior_close: number | null;
@@ -615,6 +738,13 @@ export type SpxDeskPayload = {
   dark_pool: DarkPoolSnapshot | null;
   spx_flows: SpxFlowBrief[];
   unified_tape: SpxTapeItem[];
+  /** First 30-min RTH range (9:30–10:00 ET) from minute bars — matrix OR overlay. */
+  opening_range?: {
+    high: number;
+    low: number;
+    break: "above" | "below" | "inside" | null;
+    forming: boolean;
+  } | null;
   /** UW Repeated Hits + same-strike multi-alert stacks on SPX flow. */
   strike_stacks: FlowStrikeStack[];
   net_prem_ticks: NetPremTick[];
@@ -799,7 +929,7 @@ function buildLevels(input: {
   const items: SpxDeskLevel[] = [
     level("HOD", input.hod, p, "resistance"),
     level("PDH", input.pdh, p, "resistance"),
-    level("GEX Anchor", input.gex_king, p, "resistance"),
+    level("King node · GEX anchor", input.gex_king, p, "resistance"),
     level("Max Pain", input.max_pain, p, "neutral"),
     level("γ Flip", input.gamma_flip, p, "neutral"),
     level("EMA 20", input.ema20, p, "neutral"),
@@ -922,21 +1052,42 @@ async function fetchSpxDeskFlowAlertsWithDb(limit = 32): Promise<SpxFlowBrief[]>
 }
 
 async function _fetchSpxDeskFlowAlertsWithDbInner(limit = 32): Promise<SpxFlowBrief[]> {
-  // DB (local, fast) and UW REST run in parallel — never serialize a slow UW round-trip
-  // ahead of Postgres. The tape must be RECENCY-ordered (not premium-ordered): premium sort
-  // was returning ancient whale prints and making flow_data_age_ms read 20m+ stale during RTH.
-  const [fromUw, fromDbRows] = await Promise.all([
-    fetchSpxDeskFlowAlerts(limit).catch(() => [] as SpxFlowBrief[]),
-    dbConfigured()
-      ? fetchRecentFlows({
-          limit,
-          min_premium: spxTapeMinPremium(),
-          order: "recent",
-          since_hours: 4,
-        }).catch(() => [])
-      : Promise.resolve([]),
-  ]);
+  const dbRowsPromise = dbConfigured()
+    ? fetchRecentFlows({
+        limit,
+        min_premium: spxTapeMinPremium(),
+        order: "recent",
+        since_hours: 4,
+      }).catch(() => [])
+    : Promise.resolve([]);
 
+  // DB-first: Postgres HELIX tape is local/fast — skip UW REST when we already have prints.
+  const fromDbRows = await dbRowsPromise;
+  if (dbConfigured() && fromDbRows.length >= Math.min(8, limit)) {
+    const spxDb = fromDbRows
+      .filter((f) => {
+        const t = f.ticker.toUpperCase();
+        return t === "SPX" || t === "SPXW";
+      })
+      .map((f) => ({
+        ticker: f.ticker,
+        premium: f.premium,
+        option_type: f.option_type,
+        strike: f.strike,
+        expiry: f.expiry,
+        direction: f.direction,
+        alerted_at: f.alerted_at,
+        alert_rule: null,
+        trade_count: null,
+        has_sweep: false,
+      }));
+    if (spxDb.length) {
+      lastGoodSpxFlowBriefs = spxDb.slice(0, limit);
+      return lastGoodSpxFlowBriefs;
+    }
+  }
+
+  const fromUw = await fetchSpxDeskFlowAlerts(limit).catch(() => [] as SpxFlowBrief[]);
   if (!dbConfigured()) return fromUw;
 
   try {
@@ -1025,6 +1176,7 @@ function emptyPayload(asOf: string): SpxDeskPayload {
     dark_pool: null,
     spx_flows: [],
     unified_tape: [],
+    opening_range: null,
     strike_stacks: [],
     net_prem_ticks: [],
     vix_term: { vix9d: null, vix3m: null, structure: "unknown", detail: "" },
@@ -1052,6 +1204,13 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
 
   const { ensureDataSockets } = await import("@/lib/ws/init-data-sockets");
   ensureDataSockets();
+  void import("@/lib/uw-ws-cache-bridge")
+    .then(async ({ seedUwCacheFromWsStores }) => {
+      const { getUwCacheRedis } = await import("@/lib/providers/uw-shared-cache");
+      const redis = await getUwCacheRedis();
+      if (redis) await seedUwCacheFromWsStores(redis);
+    })
+    .catch(() => {});
 
   const today = todayEtYmd();
   const fromWeek = priorEtYmd(10);
@@ -1071,11 +1230,11 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     sma200,
     breadthAll,
     newsRaw,
-    intel,
+    intelRaw,
   ] = await Promise.all([
-    fetchIndexSnapshots([SPX, VIX, VIX9D, VIX3M, TICK, TRIN, ADD]),
+    fetchIndexSnapshots([SPX, VIX, VIX9D, VIX3M, TICK, TRIN, ADD]).catch(() => ({})),
     fetchIndexMinuteBars(SPX, today, today).catch(() => []),
-    fetchIndexDailyBars(SPX, fromWeek, today),
+    fetchIndexDailyBars(SPX, fromWeek, today).catch(() => []),
     fetchIndexEma(SPX, 20, "day"),
     fetchIndexEma(SPX, 50, "day"),
     fetchIndexEma(SPX, 200, "day"),
@@ -1089,6 +1248,8 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     intelPromise,
   ]);
 
+  const intel: EngineIntelOverlay | null = parseEngineIntelOverlay(intelRaw);
+
   const snaps = mergeWsIndexSnapshots(snapsRaw);
 
   const spxSnap = snaps[SPX];
@@ -1100,7 +1261,22 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
   // shows a non-zero-but-stale price; surface its age + stall so the UI never labels it live.
   const spxFeed = getIndexFeedFreshness(SPX);
 
-  const session = sessionStatsFromMinuteBars(minuteBars);
+  const session = await sessionStatsWithProxyVwap(minuteBars, today);
+  const intraday = computeIntradayRead(
+    minuteBars
+      .filter((b) => Number.isFinite(b.t))
+      .map((b) => ({ t: b.t!, h: b.h, l: b.l, c: b.c, v: b.v }))
+  );
+  const etMinsNow = etMinutes(new Date());
+  const opening_range =
+    intraday.or_high != null && intraday.or_low != null
+      ? {
+          high: intraday.or_high,
+          low: intraday.or_low,
+          break: intraday.or_break,
+          forming: etMinsNow >= 9 * 60 + 30 && etMinsNow < 10 * 60,
+        }
+      : null;
   const prior = priorDayFromDailyBars(dailyBars);
   const newsHeadlines: DeskNewsHeadline[] = (newsRaw ?? [])
     .map((a) => ({
@@ -1118,33 +1294,31 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
 
   const flowRaceMs = deskFlowRaceMs();
 
-  // PERF: overlap GEX, UW batch-1, flow tape, and macro/gap reads (max wall time, not sum).
-  // UW batch-2 (greek-by-expiry, mag7, macro indicators) is deferred — ~4s saved on cold path.
+  // PERF: overlap GEX, WS/Redis UW lanes (no rate limiter), flow tape, and macro/gap reads.
+  // UW REST pool runs only for nope + optional max-pain/IV fallbacks after GEX lands.
   const [
     [canonicalGex, polygonIvRank],
-    uwExclusive,
+    uwWsLanes,
     freshFlowsRaw,
     [macroEventsResolved, gapSnap, [dailyMarket, priorCloses]],
   ] = await Promise.all([
     Promise.all([resolveCanonicalDeskGex(price), fetchVixIvRankPercentile()]),
     uwConfigured()
-      ? runUwPooled([
-          () => resolveMarketTide(),
-          () =>
-            fetchUwNope("SPX")
-              .catch(() => null)
-              .then((r) => r ?? fetchUwNope("SPY").catch(() => null)),
-          () => resolveFlow0dte("SPX"),
-          () => resolveDarkPool("SPX", { limit: 20, min_premium: 500_000 }),
-          () => fetchUwMaxPain("SPX").catch(() => null),
-          () => fetchUwIvRank("SPX").catch(() => null),
+      ? Promise.all([
+          resolveMarketTide(),
+          resolveFlow0dte("SPX"),
+          resolveDarkPool("SPX", { limit: 20, min_premium: 500_000 }),
         ])
-      : Promise.resolve([null, null, null, null, null, null] as const),
+      : Promise.resolve([null, null, null] as const),
     uwConfigured()
       ? Promise.race([
-          fetchSpxDeskFlowAlertsWithDb(32),
-          new Promise<SpxFlowBrief[]>((resolve) => setTimeout(() => resolve([]), flowRaceMs)),
-        ]).catch(() => [] as SpxFlowBrief[])
+          lastGoodSpxFlowBriefs.length
+            ? Promise.resolve(lastGoodSpxFlowBriefs)
+            : fetchSpxDeskFlowAlertsWithDb(32),
+          new Promise<SpxFlowBrief[]>((resolve) =>
+            setTimeout(() => resolve(lastGoodSpxFlowBriefs), flowRaceMs)
+          ),
+        ]).catch(() => lastGoodSpxFlowBriefs)
       : Promise.resolve([] as SpxFlowBrief[]),
     Promise.all([
       mergeMacroEventsToday({ headlines: newsHeadlines }),
@@ -1160,32 +1334,53 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     ]),
   ]);
 
-  const [uwTide, uwNope, uwFlow, darkPool, uwMaxPain, uwIv] = uwExclusive;
+  const [uwTide, uwFlow, darkPool] = uwWsLanes;
+  const needMaxPain = canonicalGex.max_pain == null;
+  const needIv = polygonIvRank == null;
+  const { nope: uwNope, maxPain: uwMaxPain, iv: uwIv } = await fetchUwDeskRestSupplemental({
+    needMaxPain,
+    needIv,
+  });
+  const uwExclusive = [uwTide, uwNope, uwFlow, darkPool, uwMaxPain, uwIv] as const;
+
   let maxPain = canonicalGex.max_pain ?? uwMaxPain ?? null;
 
-  const vwap = session.vwap ?? (intel?.vwap as number | null) ?? null;
-  const lod = session.lod ?? (intel?.lod as number | null) ?? null;
-  const hod = session.hod ?? (intel?.hod as number | null) ?? null;
+  const vwap = session.vwap ?? intel?.vwap ?? null;
+  const vwapVolumeWeighted = session.vwap_volume_weighted ?? false;
+  const lod = session.lod ?? intel?.lod ?? null;
+  const hod = session.hod ?? intel?.hod ?? null;
 
   const gammaFlip =
-    (intel?.gamma_flip as number | null) ?? canonicalGex.gamma_flip ?? lastGoodGammaFlip ?? null;
+    intel?.gamma_flip ?? canonicalGex.gamma_flip ?? lastGoodGammaFlip ?? null;
   const aboveFlip = gammaFlip != null ? price > gammaFlip : false;
+  // SINGLE-SNAPSHOT coherence: above_gamma_flip and gamma_regime are derived from the SAME
+  // (price, gammaFlip) pair, so the two desk surfaces can never disagree for the same flip. The bug
+  // (independent of F1's horizon mismatch that #294 fixes): aboveFlip read the live `price` while the
+  // regime — in the non-intel-overlay branch — inherited canonicalGex.gamma_regime, computed against a
+  // canonical-spot snapshot AND possibly a different flip, so the label could point opposite to
+  // aboveFlip. gammaFlip already merges intel/canonical/lastGood, so both now read the identical flip.
+  //
+  // The regime stays the INTENDED local spot-vs-flip model (gammaRegimeWithHysteresis) — it does NOT
+  // consult the aggregate net-GEX sign. An adversarial review correctly refuted an earlier attempt to
+  // make net-GEX authoritative here: spot just below the flip is LOCALLY short-gamma (amplification)
+  // even when total-book netGex is positive — they measure different things (local regime at spot vs
+  // the whole book). See docs/audit/FINDINGS.md.
   const gammaRegimeLabel =
-    canonicalGex.gamma_regime !== "unknown"
-      ? canonicalGex.gamma_regime
-      : lastGoodGammaRegime;
+    gammaFlip != null
+      ? gammaRegimeWithHysteresis(price, gammaFlip, lastGoodGammaRegime)
+      : canonicalGex.gamma_regime !== "unknown"
+        ? canonicalGex.gamma_regime
+        : lastGoodGammaRegime;
   const finalWalls = canonicalGex.gex_walls;
   const gexAgeMs = canonicalGex.gex_age_ms;
   const gexStale = canonicalGex.gex_stale;
 
   // Canonical matrix is the sole GEX source — no 0DTE recompute.
-  const gexNet = (intel?.gex_net as number | null) ?? canonicalGex.gex_net ?? null;
-  const gexKing = (intel?.gex_king as number | null) ?? canonicalGex.gex_king ?? null;
-  maxPain = (intel?.max_pain as number | null) ?? maxPain ?? null;
+  const gexNet = intel?.gex_net ?? canonicalGex.gex_net ?? null;
+  const gexKing = intel?.gex_king ?? canonicalGex.gex_king ?? null;
+  maxPain = intel?.max_pain ?? maxPain ?? null;
 
-  const regime =
-    (intel?.chart_levels as { regime?: string } | undefined)?.regime ??
-    inferRegime(price, ema20, ema50);
+  const regime = intel?.regime ?? inferRegime(price, ema20, ema50);
 
   const vixTerm = computeVixTermStructure(
     vixSnap?.price ?? null,
@@ -1197,7 +1392,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
   const spxFlows: SpxFlowBrief[] = freshFlowsRaw.length ? freshFlowsRaw : lastGoodSpxFlowBriefs;
   if (freshFlowsRaw.length) lastGoodSpxFlowBriefs = freshFlowsRaw;
   const flowClusterLive = await isFlowFrameFreshAnywhere(120_000).catch(() => false);
-  markFlowDataFromBriefs(spxFlows);
+  const flowDataAgeMs = deskFlowDataAgeMs(spxFlows, flowClusterLive);
   const freshTape = buildUnifiedTape(spxFlows, darkPool);
   if (freshTape.length) lastGoodUnifiedTape = mergeTapeBuffer(lastGoodUnifiedTape, freshTape);
   const unifiedTape = lastGoodUnifiedTape.length ? lastGoodUnifiedTape : freshTape;
@@ -1206,8 +1401,8 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
   const sectorHeat = (breadthAll ?? []).filter((s) => !LEADER_TICKERS.has(s.ticker));
   const internals = resolveMarketInternals(
     {
-      tick: snaps[TICK]?.price ?? (intel?.tick as number | null) ?? null,
-      trin: snaps[TRIN]?.price ?? (intel?.trin as number | null) ?? null,
+      tick: snaps[TICK]?.price ?? intel?.tick ?? null,
+      trin: snaps[TRIN]?.price ?? intel?.trin ?? null,
       add: snaps[ADD]?.price ?? null,
     },
     breadthAll ?? []
@@ -1247,53 +1442,53 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     available: true,
     as_of: asOf,
     source: intel?.available ? "merged" : uwConfigured() ? "polygon+uw-flow" : "polygon",
-    price,
+    price: roundDeskNum(price)!,
     spx_change_pct: spxSnap.change_pct,
-    vix: vixSnap?.price ?? (intel?.vix as number | null) ?? null,
-    vix_change_pct: vixSnap?.change_pct ?? (intel?.vix_change_pct as number | null) ?? null,
+    vix: roundDeskNum(vixSnap?.price ?? intel?.vix ?? null),
+    vix_change_pct: vixSnap?.change_pct ?? intel?.vix_change_pct ?? null,
     above_vwap: vwap != null ? price >= vwap : false,
-    lod,
-    hod,
-    vwap,
-    pdh: prior.pdh,
-    pdl: prior.pdl,
-    prior_close: prior.pdc,
+    lod: roundDeskNum(lod),
+    hod: roundDeskNum(hod),
+    vwap: roundDeskNum(vwap),
+    vwap_volume_weighted: vwapVolumeWeighted,
+    pdh: roundDeskNum(prior.pdh),
+    pdl: roundDeskNum(prior.pdl),
+    prior_close: roundDeskNum(prior.pdc),
     gap_pct: gapSnap.gap_pct,
     gap_source: gapSnap.gap_source,
-    ema20,
-    ema50,
-    ema200,
-    sma50,
-    sma200,
-    tick: internals.tick,
-    trin: internals.trin,
-    add: internals.add,
+    ema20: roundDeskNum(ema20),
+    ema50: roundDeskNum(ema50),
+    ema200: roundDeskNum(ema200),
+    sma50: roundDeskNum(sma50),
+    sma200: roundDeskNum(sma200),
+    tick: roundDeskNum(internals.tick),
+    trin: roundDeskNum(internals.trin),
+    add: roundDeskNum(internals.add),
     internals_estimated: internals.estimated,
-    gex_net: gexNet,
-    gex_king: gexKing,
-    max_pain: maxPain,
-    gamma_flip: gammaFlip,
+    gex_net: roundDeskNum(gexNet),
+    gex_king: roundDeskNum(gexKing),
+    max_pain: roundDeskNum(maxPain),
+    gamma_flip: roundDeskNum(gammaFlip),
     above_gamma_flip: aboveFlip,
     gamma_regime: gammaRegimeLabel,
     gex_walls: finalWalls,
-    flow_0dte_call_premium:
-      (intel?.flow_0dte_call_premium as number | null) ?? uwFlow?.call_premium ?? null,
-    flow_0dte_put_premium:
-      (intel?.flow_0dte_put_premium as number | null) ?? uwFlow?.put_premium ?? null,
-    flow_0dte_net: (intel?.flow_0dte_net as number | null) ?? uwFlow?.net ?? null,
-    tide_bias: (intel?.tide_bias as string | null) ?? uwTide?.bias ?? null,
+    flow_0dte_call_premium: intel?.flow_0dte_call_premium ?? uwFlow?.call_premium ?? null,
+    flow_0dte_put_premium: intel?.flow_0dte_put_premium ?? uwFlow?.put_premium ?? null,
+    flow_0dte_net: intel?.flow_0dte_net ?? uwFlow?.net ?? null,
+    tide_bias: intel?.tide_bias ?? uwTide?.bias ?? null,
     tide_call_premium: uwTide?.call_premium ?? null,
     tide_put_premium: uwTide?.put_premium ?? null,
     tide_net: uwTide?.net ?? null,
-    nope: (intel?.nope as { nope?: number } | null)?.nope ?? uwNope?.nope ?? null,
+    nope: intel?.nope ?? uwNope?.nope ?? null,
     nope_net_delta: uwNope?.net_delta ?? null,
-    uw_iv_rank: (intel?.uw_iv_rank as number | null) ?? polygonIvRank ?? uwIv ?? null,
+    uw_iv_rank: intel?.uw_iv_rank ?? polygonIvRank ?? uwIv ?? null,
     regime: String(regime),
     levels,
     dark_pool: darkPool,
     lit_dark_ratio: computeLitDarkRatio(),
     spx_flows: spxFlows,
     unified_tape: unifiedTape,
+    opening_range,
     strike_stacks: computeFlowStrikeStacks(spxFlows),
     net_prem_ticks: netPremTicks,
     vix_term: {
@@ -1303,7 +1498,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
       detail: vixTerm.detail,
     },
     data_quality: dataQuality,
-    flow_data_age_ms: resolveFlowDataAgeMs(spxFlows),
+    flow_data_age_ms: flowDataAgeMs,
     flow_cluster_live: flowClusterLive,
     price_age_ms: spxFeed.ageMs,
     feed_stalled: spxFeed.stalled === true,
@@ -1359,7 +1554,7 @@ async function refreshPulseStructureIfNeeded(today: string): Promise<PulseStruct
       serverCache("breadth-universe", 60_000, () => fetchBreadthUniverseSnapshots()).catch(() => []),
     ]);
 
-  const session = sessionStatsFromMinuteBars(minuteBars);
+  const session = await sessionStatsWithProxyVwap(minuteBars, today);
   const leaderStocks = leaderStocksFromBreadth(breadthAll ?? []);
   cachedPulseStructure = {
     fetchedAt: now,
@@ -1379,9 +1574,17 @@ async function refreshPulseStructureIfNeeded(today: string): Promise<PulseStruct
 
 function gexSnapshotForPrice(price: number) {
   const gammaFlip = lastGoodGammaFlip;
-  const walls = topGexWalls(lastGoodStrikeLevels, price, GEX_WALL_LADDER_LIMIT);
+  let priceLevels = lastGoodStrikeLevels;
+  if (hasLiveGexStrikeExpiry("SPX")) {
+    const wsLadder = getGexStrikeExpiryLadder("SPX");
+    if (wsLadder) {
+      const wsLevels = strikeTotalsToLevels(strikeTotalsFromLadder(wsLadder.ladder));
+      if (wsLevels.length) priceLevels = wsLevels;
+    }
+  }
+  const walls = topGexWalls(priceLevels, price, GEX_WALL_LADDER_LIMIT);
   const finalWalls = walls.length ? walls : lastGoodGexWalls;
-  const gRegime = gammaRegime(price, gammaFlip);
+  const gRegime = gammaRegimeWithHysteresis(price, gammaFlip, lastGoodGammaRegime);
   return {
     gamma_flip: gammaFlip,
     above_gamma_flip: gammaFlip != null ? price > gammaFlip : false,
@@ -1450,7 +1653,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
 
   const today = todayEtYmd();
   const [snapsRaw, prior, structure] = await Promise.all([
-    fetchIndexSnapshots([SPX, VIX, VIX9D, VIX3M, TICK, TRIN, ADD]),
+    fetchIndexSnapshots([SPX, VIX, VIX9D, VIX3M, TICK, TRIN, ADD]).catch(() => ({})),
     fetchPriorDayCached(),
     refreshPulseStructureIfNeeded(today),
   ]);
@@ -1587,10 +1790,39 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
   // so the ~4s live flow lane doesn't serialize a Polygon round-trip in front of the UW one.
   const [spxSnapRaw, spxFlowsRaw] = await Promise.all([
     polygonConfigured()
-      ? fetchIndexSnapshots([SPX]).then((m) => mergeWsIndexSnapshots(m)[SPX])
+      ? fetchIndexSnapshots([SPX])
+          .catch(() => ({}))
+          .then((m) => mergeWsIndexSnapshots(m)[SPX])
       : Promise.resolve(null),
-    uwConfigured() ? fetchSpxDeskFlowAlertsWithDb(32) : Promise.resolve([] as SpxFlowBrief[]),
+    uwConfigured() ? fetchSpxDeskFlowAlertsWithDb(32).catch(() => [] as SpxFlowBrief[]) : Promise.resolve([]),
   ]);
+
+  const price = spxSnapRaw?.price ?? 0;
+  if (!price && !spxFlowsRaw.length) return empty;
+
+  const spxFlows: SpxFlowBrief[] = spxFlowsRaw ?? [];
+  if (spxFlows.length) lastGoodSpxFlowBriefs = spxFlows;
+  const flowClusterLive = await isFlowFrameFreshAnywhere(120_000).catch(() => false);
+  const flowDataAgeMs = deskFlowDataAgeMs(spxFlows, flowClusterLive);
+  const strike_stacks = computeFlowStrikeStacks(spxFlows);
+
+  // #32: never compute GEX/regime against spot=0 — return flow lane only with null GEX fields.
+  if (price <= 0) {
+    const freshTape = buildUnifiedTape(spxFlows, null);
+    if (freshTape.length) {
+      lastGoodUnifiedTape = mergeTapeBuffer(lastGoodUnifiedTape, freshTape);
+    }
+    const unifiedTape = lastGoodUnifiedTape.length ? lastGoodUnifiedTape : freshTape;
+    return {
+      ...empty,
+      polled_at: polledAt,
+      spx_flows: spxFlows,
+      unified_tape: unifiedTape,
+      strike_stacks,
+      flow_data_age_ms: flowDataAgeMs,
+      flow_cluster_live: flowClusterLive,
+    };
+  }
 
   const [darkPool, uwFlow, greekExpRows, flowByExpiry, netFlowByExpiry, netPremTicks] = uwConfigured()
     ? await runUwPooled([
@@ -1603,25 +1835,13 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
       ])
     : [null, null, [], [], [], []];
 
-  const spxSnap = spxSnapRaw;
-  const price = spxSnap?.price ?? 0;
-  if (!price && !spxFlowsRaw.length) return empty;
-
-  const canonicalGex = price > 0 ? await resolveCanonicalDeskGex(price) : stickyDeskGexFallback(0);
-
-  const spxFlows: SpxFlowBrief[] = spxFlowsRaw ?? [];
-  if (spxFlows.length) lastGoodSpxFlowBriefs = spxFlows;
-  const flowClusterLive = await isFlowFrameFreshAnywhere(120_000).catch(() => false);
-  markFlowDataFromBriefs(spxFlows);
-  const strike_stacks = computeFlowStrikeStacks(spxFlows);
+  const canonicalGex = await resolveCanonicalDeskGex(price);
 
   const freshTape = buildUnifiedTape(spxFlows, darkPool);
   if (freshTape.length) {
     lastGoodUnifiedTape = mergeTapeBuffer(lastGoodUnifiedTape, freshTape);
   }
   const unifiedTape = lastGoodUnifiedTape.length ? lastGoodUnifiedTape : freshTape;
-
-  const spot = price || spxSnap?.price || 0;
 
   publishDeskStickyToRedis();
 
@@ -1631,9 +1851,9 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
   );
 
   return {
-    available: spot > 0,
+    available: true,
     polled_at: polledAt,
-    price: spot,
+    price,
     dark_pool: darkPool,
     lit_dark_ratio: computeLitDarkRatio(),
     spx_flows: spxFlows,
@@ -1648,7 +1868,7 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
     flow_0dte_call_premium: uwFlow?.call_premium ?? null,
     flow_0dte_put_premium: uwFlow?.put_premium ?? null,
     flow_0dte_net: uwFlow?.net ?? null,
-    flow_data_age_ms: resolveFlowDataAgeMs(spxFlows),
+    flow_data_age_ms: flowDataAgeMs,
     flow_cluster_live: flowClusterLive,
     gex_age_ms: canonicalGex.gex_age_ms,
     gex_stale: canonicalGex.gex_stale,

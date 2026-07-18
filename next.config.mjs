@@ -55,12 +55,6 @@ const embedSecurityHeaders = securityHeaders
       : h,
   );
 
-// Hash-named /_next/static/* and /_next/image are safe to edge-cache long-term
-// (new deploy = new hashes). HTML routes keep default security headers only.
-const staticAssetCache = [
-  { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
-];
-
 const remotePatterns = [
   { protocol: "https", hostname: "images.unsplash.com" },
 ];
@@ -73,12 +67,31 @@ if (railwayHostname) {
 }
 
 import os from "os";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const isCognitoBuild =
+  (process.env.AUTH_PROVIDER ?? process.env.NEXT_PUBLIC_AUTH_PROVIDER ?? "").toLowerCase() ===
+  "cognito";
 
 // P3: os.cpus() can return an empty array (and is unreliable in constrained
 // containers / cgroup-limited environments), so reading .length directly is
 // fragile. Guard with optional chaining + a sane fallback of 1 core before the
 // Math.max(1, ...-1) clamp so we never produce NaN or a value < 1.
 const cpuCount = os.cpus()?.length || 1;
+
+const isStagingSite = (process.env.NEXT_PUBLIC_SITE_URL ?? "").includes("staging.");
+const stagingEdgeBypass = [
+  { key: "CDN-Cache-Control", value: "no-store" },
+  { key: "Cloudflare-CDN-Cache-Control", value: "no-store" },
+  { key: "Cache-Control", value: "private, no-cache, no-store, must-revalidate, max-age=0" },
+];
+/** Hash-named build assets — edge-cache 1y on staging (purge on deploy via CF_PURGE_DEPLOY_ID). */
+const stagingStaticCache = [
+  { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+  { key: "CDN-Cache-Control", value: "public, max-age=31536000" },
+];
 
 const nextConfig = {
   poweredByHeader: false,
@@ -108,17 +121,28 @@ const nextConfig = {
     // rule owns /embed/* exclusively. Net effect: framing stays denied app-wide and
     // is relaxed only for the public embed cards.
     return [
-      {
-        source: "/_next/static/:path*",
-        headers: [...securityHeaders, ...staticAssetCache],
-      },
-      {
-        source: "/_next/image",
-        headers: [...securityHeaders, ...staticAssetCache],
-      },
+      // Staging: hash-named /_next/static/* and /_next/image are safe to edge-cache
+      // (new deploy = new hashes). no-store only on HTML/document routes so landing
+      // pages don't re-fetch 48 JS/CSS chunks from ECS on every visit.
+      ...(isStagingSite
+        ? [
+            {
+              source: "/_next/static/:path*",
+              headers: [...securityHeaders, ...stagingStaticCache],
+            },
+            {
+              source: "/_next/image",
+              headers: [...securityHeaders, ...stagingStaticCache],
+            },
+            {
+              source: "/_next/:path*",
+              headers: securityHeaders,
+            },
+          ]
+        : []),
       {
         source: "/((?!embed/|_next/).*)",
-        headers: securityHeaders,
+        headers: isStagingSite ? [...securityHeaders, ...stagingEdgeBypass] : securityHeaders,
       },
       {
         source: "/embed/:path*",
@@ -137,6 +161,12 @@ const nextConfig = {
   // (This replaced a `webpackIgnore: true` hack that left an unresolvable
   //  import("@/lib/shared-cache") in the server runtime -> ERR_MODULE_NOT_FOUND.)
   webpack: (config, { isServer, nextRuntime }) => {
+    if (isCognitoBuild) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "@/middleware-clerk": path.resolve(__dirname, "src/middleware-clerk.stub.ts"),
+      };
+    }
     if (!isServer) {
       // ioredis is server-only (pulled lazily by shared-cache for cross-instance
       // Redis sticky state, guarded by process.env.REDIS_URL). It must never enter
