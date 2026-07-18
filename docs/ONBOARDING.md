@@ -26,8 +26,9 @@ These are hard guardrails. Violating them breaks production, trust, or the brand
 4. **Institutional design bar.** Benchmark against Bloomberg/TradingView/Stripe/Linear, not Discord.
    No military copy, fake LIVE badges, text-glow on prices, scanlines, or emoji padlocks. See
    [DESIGN_BENCHMARK.md](../DESIGN_BENCHMARK.md) and `.cursor/rules/institutional-design.mdc`.
-5. **Default to commit + push to `main`.** Railway auto-deploys `main`. Branch only for
-   deploy-risky work, and say why. Every push restarts the build (~80s deploy lag).
+5. **Default to commit + push to `main`.** Merging to `main` triggers **ECR push + ECS deploy**
+   (`ecr-push-production.yml`). Branch only for deploy-risky work, and say why. Allow ~3–5 min for
+   ECS rollout + Cloudflare purge before treating prod as updated.
 
 ---
 
@@ -55,12 +56,14 @@ product is a set of **tools** (each gated by subscription tier):
 - **Framework:** Next.js 15.5 (App Router) + React 18 + TypeScript 5, Tailwind 3.4.
 - **Auth:** Clerk (`@clerk/nextjs` 7.5). Webhooks via `svix`.
 - **Billing/entitlements:** Whop.
-- **Database:** PostgreSQL (`pg` 8.21) on Railway.
-- **Cache / pub-sub / live snapshots:** Redis (`ioredis` 5.11) on Railway.
+- **Database:** PostgreSQL 16 (`pg` 8.21) on **AWS RDS** (Multi-AZ) via **RDS Proxy**.
+- **Cache / pub-sub / live snapshots:** Redis 7 (`ioredis` 5.11) on **AWS ElastiCache** (2-node HA).
 - **AI:** Anthropic SDK (`@anthropic-ai/sdk`) — model defaults to latest Claude (Opus/Sonnet).
-- **Realtime data:** WebSockets (`ws` 8.18) to market-data providers.
-- **Hosting/CI:** Railway (auto-deploy on `main` push), 5 replicas (iad×3, US-West×2).
-- **Edge/CDN:** Cloudflare (marketing pages force-static + edge-cached, auto-purge on deploy).
+- **Realtime data:** WebSockets (`ws` 8.18) to market-data providers; **prod ingest** runs on ECS
+  `blackout-production-market-worker` (web tier reads Redis).
+- **Hosting/CI:** **AWS ECS Fargate** (autoscale 8–15 web tasks + 1 market worker), deploy via
+  `ecr-push-production.yml` on `main`. Crons: **EventBridge → Lambda** → `/api/cron/*`.
+- **Edge/CDN:** Cloudflare → ALB (marketing pages force-static + edge-cached, auto-purge on deploy).
 - **Data providers:** a flow/options-positioning provider + a market-data/options-chain provider.
   GEX walls come 100% from the options-chain provider's chain (no fallback). See
   [API_INTEGRATION_MAP.md](API_INTEGRATION_MAP.md) and [BLACKOUT_API_REFERENCE.md](BLACKOUT_API_REFERENCE.md).
@@ -234,40 +237,46 @@ scripts use stale paths; trust the directory tree.
 
 ## 8. Background jobs / crons
 
-21 cron route handlers in `api/cron/`, each triggered by a Railway cron **service** defined by a
-`railway.<name>.toml` at repo root. Auth is **Bearer `CRON_SECRET`**. The dispatcher/registry is
-`cron-dispatch.ts` / `cron-registry.ts`; health is tracked (`admin-cron-health.ts`) and watched by
-`cron-staleness-watchdog`.
+~31 cron route handlers in `api/cron/`. **Production:** EventBridge rules in AWS invoke Lambda
+`blackout-production-hit-cron`, which `GET`s each path with **Bearer `CRON_SECRET`**. Schedule
+expressions are synced from `railway.<name>.toml` at repo root into
+`blackout-infra/terraform/modules/crons/cron-jobs.json` via `sync-cron-schedules.mjs`.
+
+The dispatcher/registry is `cron-dispatch.ts` / `cron-registry.ts`; health is tracked
+(`admin-cron-health.ts`) and watched by `cron-staleness-watchdog`.
 
 Key jobs: `spx-evaluate` (desk heartbeat), `spx-signal-observe`, `flow-ingest`, `gex-eod-snapshot`,
 `heatmap-warm`, `zerodte-warm`, `nighthawk-edition`, `market-regime-detector`,
 `data-correctness` (the auto-auditor), `data-integrity`, `uw-cache-refresh`, `membership-reconcile`,
 `db-cleanup`.
 
-**Gotcha:** a cron only runs if its Railway *service* is actually provisioned. A `.toml` + route
-existing is not enough — the service must be added in Railway. (E.g. `market-regime-detector` has
-been seen with code present but service unprovisioned → its writer never runs.) Verify with
-`railway status`, not just the file tree.
+**Gotcha:** a cron route in code is not enough — the job must exist in `cron-jobs.json` **and** have
+an enabled EventBridge rule after `terraform apply`. Verify via `/admin` cron health or
+`cron_job_runs` in Postgres, not just the file tree.
 
 ---
 
 ## 9. Infrastructure & deploy flow
 
-- **Railway**, project `BlackoutTrades.com`, `production` env, service `blackout-web`, 5 replicas.
-- **Deploy:** push to `main` → Railway auto-builds (~80s lag) → each push restarts the build. Poll
-  the homepage chunk hash to confirm a new deploy actually went live (stale deploys cause false
-  "bug" alarms).
-- **Cloudflare** in front: marketing pages are force-static + edge-cached (~2h), auto-purged on
-  deploy via `cf-purge-on-deploy.ts` (needs `CF_API_TOKEN` + `CF_ZONE_ID`). Don't force SSL Strict;
-  Rocket Loader / Bot Fight are off on purpose. See [CLOUDFLARE_CONFIG.md](CLOUDFLARE_CONFIG.md).
-- **Prod access from a dev machine:** Railway CLI + a project `RAILWAY_TOKEN` in `.env.local`.
-  `railway status`, `railway variables --json` (names only — never print values),
-  `railway logs --tail N`. Postgres/Redis reachable via the **public** proxy URL
-  (`DATABASE_PUBLIC_URL`); `.railway.internal` is not reachable locally.
-- **Env vars that must exist in prod:** `UW_API_KEY`, `POLYGON_API_KEY` (+`POLYGON_API_BASE`),
-  `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY`, `CRON_SECRET`, `DATABASE_URL`,
-  `REDIS_URL`, `VAPID_PRIVATE_KEY`, `CF_API_TOKEN`/`CF_ZONE_ID`. (Note: the UW key is `UW_API_KEY`,
-  not `UNUSUAL_WHALES_API_KEY`.)
+- **AWS ECS Fargate**, cluster `blackout-production-cluster`:
+  - `blackout-production-web` — HTTP/UI (autoscale min 8, max 15)
+  - `blackout-production-market-worker` — upstream market-data WebSockets (1 task)
+- **Deploy:** merge to `main` → `ecr-push-production.yml` builds Docker image → ECR → ECS rolling
+  deploy → Cloudflare purge (`cf-purge-on-deploy.ts` + GHA step). Poll `/api/health` or ECS service
+  events until steady state (~3–5 min).
+- **Cloudflare** → **ALB** origin: marketing pages force-static + edge-cached (~2h), auto-purged on
+  deploy (needs `CF_API_TOKEN` + `CF_ZONE_ID` in Secrets Manager). Rocket Loader / Bot Fight off on
+  purpose. See [CLOUDFLARE_CONFIG.md](CLOUDFLARE_CONFIG.md).
+- **Prod access from a dev machine:** AWS CLI + IAM credentials. Logs:
+  `aws logs tail /ecs/blackout-production --follow`. Secrets: Secrets Manager
+  `blackout-production/app/env` (names via `aws secretsmanager get-secret-value` — never print values
+  in chat). Postgres: RDS via proxy (`DATABASE_URL` in secrets) or `DATABASE_PUBLIC_URL` for audits.
+- **Env vars that must exist in prod:** see `docs/ops/AWS-SECRETS-MANIFEST.md`. Minimum includes
+  `UW_API_KEY`, `POLYGON_API_KEY`, `CLERK_*`, `ANTHROPIC_API_KEY`, `CRON_SECRET`, `DATABASE_URL`,
+  `REDIS_URL`, `REPLICA_COUNT`, `PG_POOL_MAX`, `CF_API_TOKEN`/`CF_ZONE_ID`.
+- **Infra Terraform:** [blackout-infra](https://github.com/coreentryadmin-web/blackout-infra) —
+  `docs/ops/AWS-MIGRATION-PLAN.md` for topology; `blackout-infra/docs/ops/PROD-AWS-MIGRATION-RUNBOOK.md`
+  for cutover history.
 
 ---
 
@@ -293,8 +302,8 @@ been seen with code present but service unprovisioned → its writer never runs.
 | Make a feature live for users | wire it to the **cache-reader** (`api/market/*`), respect §4a |
 | Touch GEX/walls | `providers/gex-positioning.ts` + `getGexPositioning()` (single source) |
 | Change the app shell/nav | `src/app/(site)/layout.tsx` (NOT `PlatformShell.tsx` — dead) |
-| Add a cron | new `api/cron/<x>` route + `railway.<x>.toml` + **provision the Railway service** |
-| Debug a slow/red deploy | `railway status` (deploy layer) before app logs; check lockfile sync |
+| Add a cron | new `api/cron/<x>` route + `railway.<x>.toml` + sync to `blackout-infra` EventBridge |
+| Debug a slow/red deploy | ECS service events + CloudWatch `/ecs/blackout-production` before app logic |
 | Gate a tool behind launch | `tool-access.ts` + `LAUNCHED_TOOLS` env |
 | Change UI without breaking the bar | `DESIGN_BENCHMARK.md` + `.cursor/rules/institutional-design.mdc` + use `FreshnessChip` |
 | Find DB/Redis client setup | `src/lib/db.ts` / `src/lib/make-redis.ts` (don't remove the error handlers) |
@@ -308,10 +317,9 @@ been seen with code present but service unprovisioned → its writer never runs.
 - **`PlatformShell.tsx` is DEAD** — the real shell is `src/app/(site)/layout.tsx`.
 - **Stale duplicate trees** — only edit `blackout-platform/blackout-web`; ignore `BO-AAI/` and any
   root `blackout-web/`.
-- **Lockfile desync red-lines EVERY service** — a `package.json`/`package-lock.json` mismatch fails
-  `npm ci` on every Railway service at once (app + crons). Fix by `npm install` to re-sync, not by
-  reverting. Triage the deploy layer first.
-- **A cron `.toml` ≠ a running cron** — the Railway service must be provisioned (see §8).
+- **Lockfile desync breaks CI** — a `package.json`/`package-lock.json` mismatch fails `npm ci` in
+  GitHub Actions and Docker build. Fix by `npm install` to re-sync, not by reverting.
+- **A cron `.toml` ≠ a running cron** — EventBridge rule must exist after infra sync (see §8).
 - **next/og `ImageResponse` CSS is restricted** — no two-length radial sizes, no Fragments; these
   500 at runtime but pass the build. See `reference: Satori/OG limits` in codebase notes.
 - **Redis is IPv6-internal** — `family:0` in `make-redis.ts` is required; removing it causes
