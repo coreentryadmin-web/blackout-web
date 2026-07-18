@@ -17,6 +17,8 @@ type PlayDetailModalProps = {
   onClose: () => void;
   morningConfirm?: PlayMorningStatus;
   morningConfirmCheckedAt?: string;
+  /** Dev preview only — skips live explain fetch when set. */
+  previewExplanation?: string | null;
 };
 
 export function PlayDetailModal({
@@ -25,6 +27,7 @@ export function PlayDetailModal({
   onClose,
   morningConfirm,
   morningConfirmCheckedAt,
+  previewExplanation,
 }: PlayDetailModalProps) {
   const [tab, setTab] = useState<BriefingTabId>("overview");
 
@@ -32,7 +35,10 @@ export function PlayDetailModal({
     if (play) setTab("overview");
   }, [play?.ticker, play?.rank]);
 
-  const swrKey = play && editionFor ? `nighthawk-explain:${editionFor}:${play.ticker}` : null;
+  const swrKey =
+    play && editionFor && previewExplanation == null
+      ? `nighthawk-explain:${editionFor}:${play.ticker}`
+      : null;
 
   const { data, error, isLoading } = useSWR(
     swrKey,
@@ -45,9 +51,13 @@ export function PlayDetailModal({
   );
 
   const intelSections = useMemo(() => {
+    if (previewExplanation) return parseExplainSections(previewExplanation);
     if (!data?.explanation) return [];
     return parseExplainSections(data.explanation);
-  }, [data?.explanation]);
+  }, [data?.explanation, previewExplanation]);
+
+  const intelLoading = previewExplanation != null ? false : isLoading;
+  const intelError = previewExplanation != null ? null : error;
 
   const isBull =
     play?.direction?.toUpperCase().includes("BULL") ||
@@ -103,7 +113,7 @@ export function PlayDetailModal({
             </div>
           )}
 
-          <BriefingTabs value={tab} onChange={setTab} intelLoading={isLoading} />
+          <BriefingTabs value={tab} onChange={setTab} intelLoading={intelLoading} />
 
           <div className="nh-v2-briefing-modal-body">
             {tab === "overview" && (
@@ -124,22 +134,22 @@ export function PlayDetailModal({
             )}
             {tab === "intel" && (
               <div className="nh-v2-intel-pane">
-                {isLoading && (
+                {intelLoading && (
                   <div className="nighthawk-play-detail-loading nh-v2-intel-loading">
                     <div className="nighthawk-power-ring" />
                     <p>Building Hawk Intel briefing</p>
                     <span>Flow · positioning · technicals · catalysts</span>
                   </div>
                 )}
-                {error && (
+                {intelError && (
                   <p className="nighthawk-modal-error">
-                    Could not load Hawk Intel. {error instanceof Error ? error.message : "Try again."}
+                    Could not load Hawk Intel. {intelError instanceof Error ? intelError.message : "Try again."}
                   </p>
                 )}
-                {!isLoading && !error && intelSections.length > 0 && (
-                  <IntelExplainSections sections={intelSections} cached={data?.cached} />
+                {!intelLoading && !intelError && intelSections.length > 0 && (
+                  <IntelExplainSections sections={intelSections} cached={previewExplanation ? true : data?.cached} />
                 )}
-                {!isLoading && !error && intelSections.length === 0 && data?.explanation && (
+                {!intelLoading && !intelError && intelSections.length === 0 && data?.explanation && (
                   <IntelExplainSections sections={[{ title: "Briefing", body: data.explanation }]} cached={data?.cached} />
                 )}
               </div>

@@ -87,6 +87,22 @@ export const PREVIEW_RECORD: NightHawkRecordResponse = {
   ],
 };
 
+/** Mock Hawk Intel prose for dev preview screenshots (parsed into briefing cards). */
+export const PREVIEW_INTEL_BY_TICKER: Record<string, string> = {
+  NVDA: `**Setup**: Massive call sweeps at the ask into close — dealers remain short gamma above 880 with room to squeeze into CPI whisper.
+**Flow edge**: 3-session call dominance · $12M premium at 880C · ask-side sweeps accelerating after 3pm.
+**Risk**: Gap above entry band invalidates the stock leg; size down if opening drive fails VWAP.
+**Trigger**: Hold $872–878 on the open · add on reclaim of pre-market high with flow still one-sided.`,
+  META: `**Setup**: Put wall building at 520 — negative gamma pin with distribution on rips into resistance.
+**Flow edge**: Repeated put blocks at 520P · RS vs QQQ rolling over into the close.
+**Risk**: Short squeeze through $538 stops the bearish thesis — respect the stop.
+**Trigger**: Fade rips into $528–534 with declining call premium on the tape.`,
+  SPY: `**Setup**: Index tide bullish with dealer long gamma below spot — fade dips toward VWAP for continuation.
+**Flow edge**: Net call premium +$48M · gamma flip held through the close.
+**Risk**: Macro headline (CPI) can gap through stops — keep size modest on the ETF leg.
+**Trigger**: VWAP reclaim aligned with playbook thesis · trim if breadth fades.`,
+};
+
 export const PREVIEW_MORNING: Map<string, PlayMorningStatus> = new Map([
   [
     "NVDA",
