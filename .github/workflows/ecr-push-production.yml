@@ -71,11 +71,55 @@ jobs:
         env:
           ECS_CLUSTER: blackout-production-cluster
           ECS_SERVICE: blackout-production-web
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
           set -euo pipefail
+          REPO="${ECR_REPOSITORY:-blackout-web}"
+          FULL_IMAGE="${REGISTRY}/${REPO}:${IMAGE_TAG}"
+
+          # Get the current task definition from the service
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --query 'services[0].taskDefinition' --output text)
+          echo "Current task definition: ${TASK_DEF_ARN}"
+
+          # Fetch task def and rewrite image tags to the SHA-pinned build.
+          # Using the immutable SHA tag avoids stale :latest resolution
+          # after failed deployments (CannotPullContainerError loop).
+          aws ecs describe-task-definition \
+            --task-definition "${TASK_DEF_ARN}" \
+            --query 'taskDefinition' > /tmp/taskdef.json
+
+          python3 - "${FULL_IMAGE}" /tmp/taskdef.json /tmp/new-taskdef.json <<'PYEOF'
+          import json, sys
+          new_image, src, dst = sys.argv[1], sys.argv[2], sys.argv[3]
+          with open(src) as f:
+              td = json.load(f)
+          for c in td.get("containerDefinitions", []):
+              c["image"] = new_image
+          for k in ["taskDefinitionArn", "revision", "status",
+                     "requiresAttributes", "compatibilities",
+                     "registeredAt", "registeredBy", "deregisteredAt"]:
+              td.pop(k, None)
+          with open(dst, "w") as f:
+              json.dump(td, f)
+          PYEOF
+
+          echo "Rewriting image to: ${FULL_IMAGE}"
+
+          NEW_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file:///tmp/new-taskdef.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "Registered new task definition: ${NEW_ARN}"
+
+          # Update the service with the new task definition — this creates a
+          # clean deployment that supersedes any stale/failed ones.
           aws ecs update-service \
             --cluster "${ECS_CLUSTER}" \
             --service "${ECS_SERVICE}" \
+            --task-definition "${NEW_ARN}" \
             --force-new-deployment
           echo "Waiting for ECS service stable (up to 10 min)..."
           aws ecs wait services-stable \
