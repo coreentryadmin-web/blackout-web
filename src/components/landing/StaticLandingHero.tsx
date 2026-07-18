@@ -38,11 +38,11 @@ export function StaticLandingHero() {
 
           <div className="mkt-cta-row mkt-cta-row-centered">
             <Link
-              href="/sign-up"
+              href="/sign-in"
               prefetch={false}
               className="landing-btn-primary mkt-cta-primary inline-flex min-w-[220px] items-center justify-center px-10 py-3.5 font-syne text-sm font-bold uppercase tracking-[0.2em]"
             >
-              Get access
+              Sign in
             </Link>
             <Link
               href="/pricing"
