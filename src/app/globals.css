@@ -1146,6 +1146,19 @@ body::before {
   to { transform: translate(-50%, -50%) rotate(360deg); }
 }
 
+@keyframes auth-btn-sweep {
+  0%, 65%, 100% { transform: translateX(-150%); }
+  80% { transform: translateX(150%); }
+}
+@keyframes auth-btn-glow {
+  0%, 100% { box-shadow: 0 8px 24px -8px rgba(0, 230, 118, 0.6); }
+  50% { box-shadow: 0 8px 40px -6px rgba(0, 230, 118, 0.85), 0 0 60px -12px rgba(0, 230, 118, 0.35); }
+}
+@keyframes auth-card-border-glow {
+  0%, 100% { border-color: rgba(0, 230, 118, 0.15); box-shadow: 0 0 0 1px rgba(0, 230, 118, 0.12), 0 24px 80px -24px rgba(0, 0, 0, 0.85), 0 0 60px -20px rgba(0, 230, 118, 0.25); }
+  50% { border-color: rgba(0, 230, 118, 0.3); box-shadow: 0 0 0 1px rgba(0, 230, 118, 0.2), 0 24px 80px -24px rgba(0, 0, 0, 0.85), 0 0 80px -16px rgba(0, 230, 118, 0.4); }
+}
+
 @media (pointer: fine) {
   html.landing-cursor-on .landing-page,
   html.landing-cursor-on .landing-page a,
@@ -4695,6 +4708,71 @@ body::before {
     @apply inline-flex items-center justify-center rounded-xl border-2 border-bull/40 px-6 py-3 font-syne
            text-xs font-bold uppercase tracking-[0.2em] text-bull transition-all duration-200
            hover:border-bull hover:bg-bull/10 hover:shadow-glow-bull disabled:opacity-50;
+  }
+
+  /* ===== Auth interactive element animations ===== */
+
+  /* Input fields: focus triggers an emerald glow bloom + border brighten */
+  .auth-input-alive {
+    transition: border-color 0.35s ease, box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .auth-input-alive:focus {
+    border-color: rgba(0, 230, 118, 0.55) !important;
+    box-shadow:
+      0 0 0 3px rgba(0, 230, 118, 0.12),
+      0 0 20px -4px rgba(0, 230, 118, 0.25),
+      inset 0 1px 0 rgba(0, 230, 118, 0.06) !important;
+  }
+
+  /* Primary auth button: shimmer sweep + glow pulse (matches hero CTA language) */
+  .auth-btn-shimmer {
+    position: relative;
+    overflow: hidden;
+    animation: auth-btn-glow 3.5s ease-in-out infinite;
+  }
+  .auth-btn-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, 0.22) 50%, transparent 62%);
+    transform: translateX(-150%);
+    animation: auth-btn-sweep 5s ease-in-out infinite;
+    pointer-events: none;
+  }
+  .auth-btn-shimmer:hover {
+    animation: none;
+    box-shadow: 0 0 40px -4px rgba(0, 230, 118, 0.85) !important;
+  }
+
+  /* Social login buttons: hover border-trace + emerald lift */
+  .auth-social-glow {
+    transition: border-color 0.3s ease, box-shadow 0.35s ease, background-color 0.3s ease, transform 0.2s ease;
+  }
+  .auth-social-glow:hover {
+    border-color: rgba(0, 230, 118, 0.5) !important;
+    box-shadow: 0 0 22px -6px rgba(0, 230, 118, 0.35), inset 0 1px 0 rgba(0, 230, 118, 0.05) !important;
+    background-color: rgba(0, 230, 118, 0.06) !important;
+    transform: translateY(-1px);
+  }
+  .auth-social-glow:active {
+    transform: translateY(0) scale(0.98);
+  }
+
+  /* OTP code fields: focus glow + subtle scale lift */
+  .auth-otp-alive {
+    transition: border-color 0.3s ease, box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1), transform 0.2s ease;
+  }
+  .auth-otp-alive:focus {
+    border-color: rgba(0, 230, 118, 0.6) !important;
+    box-shadow:
+      0 0 0 3px rgba(0, 230, 118, 0.12),
+      0 0 16px -2px rgba(0, 230, 118, 0.3) !important;
+    transform: scale(1.04);
+  }
+
+  /* Auth card border breathing glow */
+  .auth-card-breathe {
+    animation: auth-card-border-glow 6s ease-in-out infinite;
   }
 
   .nav-link-landing::after {

@@ -2,6 +2,7 @@ export const dynamic = "force-static";
 
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { StaticLandingHero } from "@/components/landing/StaticLandingHero";
+import { StaticProductFilmstrip } from "@/components/landing/StaticProductFilmstrip";
 import { StaticStatsStrip } from "@/components/landing/StaticStatsStrip";
 import { StaticAudienceStrip } from "@/components/landing/StaticAudienceStrip";
 import { StaticModuleShowcase } from "@/components/landing/StaticModuleShowcase";
@@ -18,6 +19,7 @@ export default function LandingPage() {
     <MarketingPageShell>
       <script dangerouslySetInnerHTML={{ __html: LANDING_REDIRECT_SCRIPT }} />
       <StaticLandingHero />
+      <StaticProductFilmstrip />
       <StaticStatsStrip />
       <StaticAudienceStrip />
       <StaticModuleShowcase />
