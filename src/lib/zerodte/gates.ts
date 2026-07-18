@@ -1,4 +1,4 @@
-// 0DTE Command hard entry-gate stack (G-1..G-5) — the market-state discipline layer
+// 0DTE Command hard entry-gate stack (G-1..G-11) — the market-state discipline layer
 // specified in docs/audit/NIGHTHAWK-0DTE-DECISION.md §2 and approved 2026-07-13
 // ("best plays only"). The four evidence gates in ./board.ts measure FLOW CONVICTION
 // (is somebody really loading this contract?); this module measures TRADE QUALITY
@@ -18,8 +18,10 @@
 //   ./scan.ts assembles the async inputs.
 
 import type { MarketBias } from "./intraday";
-import type { EnrichedZeroDteSetup, ZeroDteGateFailure, ZeroDteGateRejection } from "./board";
+import type { EarningsFlag, EnrichedZeroDteSetup, ZeroDteGateFailure, ZeroDteGateRejection } from "./board";
 import { evaluateZeroDteGovernor, type GovernorOpenPlan, type GovernorSnapshot } from "./governor";
+import type { ContractPlan } from "./plan";
+import { evaluateMacroHardBlock, type MacroEventLike } from "@/lib/macro-hard-block";
 
 // ── G-1 · Tape-alignment block ──────────────────────────────────────────────────
 // Evidence (nh0dte forensics, 2026-07-13): counter-tape entries are the single most
@@ -163,6 +165,18 @@ export type ZeroDteGateInput = {
   slayerLive?: { direction: "long" | "short" } | null;
   /** Night Hawk's most recent take on THIS ticker (recency-filtered upstream). */
   nighthawkTake?: { direction: "long" | "short"; edition_for: string } | null;
+  /** G-7: today's macro calendar (CPI/FOMC/NFP windows — shared with Slayer). */
+  macroEvents?: MacroEventLike[];
+  /** G-8/G-9: contract plan from attachContractPlans (null = no quote + no fill). */
+  plan?: ContractPlan | null;
+  /** G-10: name's own VWAP/5m trend opposes the play (intraday.ts). */
+  intradayConflict?: boolean;
+  /** G-11: UW trading halt on the underlying. */
+  halted?: boolean;
+  /** G-11: reports today or next session. */
+  earnings?: EarningsFlag | null;
+  /** Session date (yyyy-mm-dd) for G-7 macro window math. */
+  todayYmd?: string;
 };
 
 /**
@@ -254,6 +268,55 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     }
   }
 
+  // G-7 — macro hard-block (Slayer parity via macro-hard-block.ts). Clock-based like
+  // G-2: the block self-expires when the window passes.
+  if (input.todayYmd && (input.macroEvents?.length ?? 0) > 0) {
+    const macro = evaluateMacroHardBlock(input.macroEvents!, input.nowEtMinutes, input.todayYmd);
+    if (macro.blocked) {
+      blocks.push({
+        code: "macro_hard_block",
+        reason: macro.reason ?? "Macro release window — no new 0DTE commits.",
+        threshold: null,
+        unlock_et: null,
+      });
+    }
+  }
+
+  // G-8/G-9 — plan quality: no chase (MOVED), no untradeable spread (illiquid), no
+  // plan without a real quote or fill. UI SKIP already hid these; persist must match.
+  blocks.push(...planQualityGateBlocks(input.plan ?? null));
+
+  // G-10 — intraday structure conflict (was score-only; promoted 2026-07-18 audit).
+  if (input.intradayConflict === true) {
+    blocks.push({
+      code: "intraday_conflict",
+      reason:
+        "Name's session VWAP and 5m trend oppose this direction — structure conflict blocks new commits.",
+      threshold: null,
+      unlock_et: null,
+    });
+  }
+
+  // G-11 — halt + earnings: different risk profile than a normal 0DTE scalp.
+  if (input.halted === true) {
+    blocks.push({
+      code: "halted",
+      reason: "Underlying is halted — no new 0DTE commits until trading resumes.",
+      threshold: null,
+      unlock_et: null,
+    });
+  }
+  if (input.earnings != null) {
+    const when =
+      input.earnings.when === "premarket" ? "premarket today" : "afterhours today/next";
+    blocks.push({
+      code: "earnings",
+      reason: `Earnings ${when} (${input.earnings.report_date ?? "today"}) — 0DTE into a print is a different trade.`,
+      threshold: null,
+      unlock_et: null,
+    });
+  }
+
   // G-5 — session governor (./governor.ts). Unreadable state fails closed: a desk
   // that can't count its own open risk doesn't add more.
   if (input.governor == null) {
@@ -309,6 +372,55 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     blocks,
     calibration: computeGateCalibration(input),
   };
+}
+
+/** G-8/G-9 plan-quality blocks — pure, unit-testable, reused by persist defense. */
+export function planQualityGateBlocks(plan: ContractPlan | null): ZeroDteGateBlock[] {
+  const blocks: ZeroDteGateBlock[] = [];
+  if (plan == null) {
+    blocks.push({
+      code: "plan_no_quote",
+      reason:
+        "No live quote and no flow fill on the top strike — evidence only, no committable plan.",
+      threshold: null,
+      unlock_et: null,
+    });
+    return blocks;
+  }
+  if (plan.entry_status === "NO_QUOTE") {
+    blocks.push({
+      code: "plan_no_quote",
+      reason: "No live quote on the contract — cannot print an entry plan.",
+      threshold: null,
+      unlock_et: null,
+    });
+  }
+  if (plan.entry_status === "MOVED") {
+    const pct = plan.vs_flow_pct != null ? `${Math.round(plan.vs_flow_pct)}%` : "≥35%";
+    blocks.push({
+      code: "plan_moved",
+      reason:
+        `Premium already ran ${pct} past the flow's fill — skip, don't chase (G-8).`,
+      threshold: 35,
+      unlock_et: null,
+    });
+  }
+  if (plan.illiquid) {
+    const spread = plan.spread_pct != null ? `${plan.spread_pct.toFixed(0)}%` : ">15%";
+    blocks.push({
+      code: "plan_illiquid",
+      reason:
+        `Bid/ask spread is ${spread} of the mark — market too thin for a 0DTE scalp (G-9).`,
+      threshold: 15,
+      unlock_et: null,
+    });
+  }
+  return blocks;
+}
+
+/** Belt-and-suspenders: true when a fresh find must NOT write a ledger row. */
+export function freshCommitBlockedByPlan(plan: ContractPlan | null | undefined): boolean {
+  return planQualityGateBlocks(plan ?? null).length > 0;
 }
 
 /** "HH:MM" from ET minutes-since-midnight. */

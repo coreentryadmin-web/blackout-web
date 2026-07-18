@@ -16,7 +16,7 @@
 //      evidence item against the play, or ≥2 opposing items whose combined decayed
 //      weight exceeds the entry's committed score margin, exits at market even at a
 //      loss. A broken thesis is exited, not hoped on.
-//   3. FLAT-TIMEOUT — ≥45 minutes inside the ±10% band is not "still working", it is
+//   3. FLAT-TIMEOUT — ≥25 minutes inside the ±10% band is not "still working", it is
 //      theta bleed: on 0DTE flat = losing, and a small scratch beats certain decay.
 //   4. PLAN STOP/TARGET — the printed plan stays authoritative: stop exits, target
 //      trims first (banks half) and exits the runner if already trimmed.
@@ -55,7 +55,7 @@ export const EXIT_RULES = {
    *  more than down to +50% of the remaining position's basis. */
   runner_floor_pct: 50,
   /** Flat-timeout: age ≥ this AND the play never left the ±band → theta bleed exit. */
-  flat_timeout_min: 45,
+  flat_timeout_min: 25,
   flat_band_pct: 10,
   /** Thesis-break via opposing (non-veto) evidence needs at least this many items —
    *  one contrary reading is a data point, a cluster is a broken thesis. */
@@ -273,7 +273,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
     };
   }
 
-  // ── 4. Flat timeout: ≥45min inside the ±10% band = theta bleed, scratch it. ────
+  // ── 4. Flat timeout: ≥25min inside the ±10% band = theta bleed, scratch it. ────
   // peak < +band means the play NEVER worked (a +12% excursion resets the clock's
   // premise — that play had a pulse); pnl > −band leaves the losing tail to the
   // stop rules, which own it.

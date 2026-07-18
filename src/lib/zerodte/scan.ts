@@ -33,6 +33,7 @@ import { LEVERAGED_ETP_SET } from "@/features/nighthawk/lib/constants";
 import { createDossierBuildCache, fetchTickerDossier } from "@/features/nighthawk/lib/dossier";
 import { etNowParts, todayEt } from "@/features/nighthawk/lib/session";
 import { fetchAggBars } from "@/lib/providers/polygon-largo";
+import { macroEventsOnDateLive } from "@/lib/providers/macro-events";
 import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
 import { buildOcc } from "@/lib/ws/options-socket";
 import { withServerCache } from "@/lib/server-cache";
@@ -52,7 +53,13 @@ import { buildZeroDteEntryContext, fetchZeroDteSessionContext } from "./entry-co
 import { evaluateLedgerRowExit } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
 import { persistZeroDteRejections } from "./rejections";
-import { evaluateZeroDteGates, gateRejectionFor, recentNighthawkTake } from "./gates";
+import {
+  evaluateZeroDteGates,
+  freshCommitBlockedByPlan,
+  gateRejectionFor,
+  planQualityGateBlocks,
+  recentNighthawkTake,
+} from "./gates";
 import {
   deriveGovernorFromLedger,
   loadRecordedGovernorStops,
@@ -301,7 +308,7 @@ async function attachGateVerdicts(
   // stalled scan): day-open VIX cached per session, Slayer's live play briefly,
   // Night Hawk takes in one batched echo query for just the fresh tickers.
   const freshTickers = setups.map((s) => s.ticker.toUpperCase()).filter((t) => !committed.has(t));
-  const [vixDayOpen, slayerLive, nhEcho] = await Promise.all([
+  const [vixDayOpen, slayerLive, nhEcho, macroEvents] = await Promise.all([
     within(
       withServerCache<number | null>(`zerodte:vix-open:${today}`, 10 * 60 * 1000, async () => {
         const bars = await fetchAggBars("I:VIX", 1, "day", today, today);
@@ -328,6 +335,10 @@ async function attachGateVerdicts(
           () => new Map<string, { direction: string; edition_for: string }>()
         )
       : new Map<string, { direction: string; edition_for: string }>(),
+    within(
+      withServerCache(`zerodte:macro:${today}`, 10 * 60 * 1000, () => macroEventsOnDateLive(today)),
+      2_500
+    ).catch(() => [] as Awaited<ReturnType<typeof macroEventsOnDateLive>>),
   ]);
 
   // Pre-warm the vector-full-state cache for fresh (non-committed) tickers so the
@@ -363,6 +374,12 @@ async function attachGateVerdicts(
       vixDayOpen,
       slayerLive,
       nighthawkTake: recentNighthawkTake(nhEcho.get(s.ticker.toUpperCase()) ?? null, today),
+      macroEvents: macroEvents ?? [],
+      todayYmd: today,
+      plan: s.plan ?? null,
+      intradayConflict: s.intraday_conflict,
+      halted: s.halted,
+      earnings: s.earnings,
     });
     if (s.gate.verdict !== "COMMIT") continue;
 
@@ -461,8 +478,20 @@ export async function persistZeroDteScan(setups: EnrichedZeroDteSetup[]): Promis
   const committedFresh: EnrichedZeroDteSetup[] = [];
   const gateRejections: import("./board").ZeroDteGateRejection[] = [];
   for (const s of freshCandidates) {
-    if (s.gate?.verdict === "COMMIT") committedFresh.push(s);
-    else gateRejections.push(gateRejectionFor(s, s.gate));
+    const planBlocked = freshCommitBlockedByPlan(s.plan);
+    if (s.gate?.verdict === "COMMIT" && !planBlocked) {
+      committedFresh.push(s);
+      continue;
+    }
+    let verdict = s.gate;
+    if (s.gate?.verdict === "COMMIT" && planBlocked) {
+      verdict = {
+        ...s.gate,
+        verdict: "BLOCKED",
+        blocks: [...s.gate.blocks, ...planQualityGateBlocks(s.plan ?? null)],
+      };
+    }
+    gateRejections.push(gateRejectionFor(s, verdict ?? null));
   }
   if (gateRejections.length > 0) {
     // Fail-visible half of the block: best-effort durable record (same throttled
@@ -721,7 +750,7 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       // engine only ADDS exits on rows the plan still considers live: profit-ratchet
       // floors (green never finishes red), thesis break (Cortex evidence turned
       // against the play — unconditional, fires even at a loss), flat timeout
-      // (45min inside ±10% = theta bleed), and fresh-lane-mark stop breaches the
+      // (25min inside ±10% = theta bleed), and fresh-lane-mark stop breaches the
       // ~2.5s snapshot above hasn't seen yet. Fail-soft by contract: any missing
       // input (no mark, no evidence) → null → the row proceeds exactly as before.
       const exit =
