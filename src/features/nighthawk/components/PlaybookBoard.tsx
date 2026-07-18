@@ -257,16 +257,17 @@ export function PlaybookBoard({
       key={`nh-board-${plays.length}`}
       className={`nighthawk-playbook${hasPlays && !isStale ? " vitals-nh-border-pulse" : ""}`}
     >
-      {/* ── edition header: one compact strip — date · status · count · record ── */}
-      <header className="shrink-0 border-b border-white/[0.08] bg-white/[0.02] px-4 py-3">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <div className="min-w-0">
-            <p className="font-mono text-[9px] uppercase tracking-[0.22em] text-gold/85">
-              Night Hawk · Tonight&apos;s playbook
-            </p>
-            <h2 className="t-num text-[17px] font-bold leading-tight text-white">
-              {editionLabel ? `For ${editionLabel}` : "Next session"}
+      {/* ── edition header: cinematic strip ── */}
+      <header className="nh-v2-playbook-hero shrink-0">
+        <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
+          <div className="min-w-0 flex-1">
+            <p className="nh-v2-playbook-kicker">Night Hawk · Tonight&apos;s playbook</p>
+            <h2 className="nh-v2-playbook-title">
+              {editionLabel ? editionLabel : "Next session"}
             </h2>
+            {edition?.recap_headline && (
+              <p className="nh-v2-playbook-recap">{edition.recap_headline}</p>
+            )}
           </div>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
             {/* One status element, never two: a fresh playable edition gets the
@@ -287,9 +288,6 @@ export function PlaybookBoard({
             <RecordChip record={record} loading={recordLoading} />
           </div>
         </div>
-        {edition?.recap_headline && (
-          <p className="mt-1.5 truncate font-mono text-[11px] text-gold/80">{edition.recap_headline}</p>
-        )}
       </header>
 
       {editionError && !edition && !loading && (
@@ -377,7 +375,7 @@ export function PlaybookBoard({
 
       {/* ── plays: evidence-first cards, numbered only for ACTUAL plays ── */}
       {hasPlays ? (
-        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+        <div className="nh-v2-play-list flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
           {plays.map((play, i) => (
             <PlaybookPlayRow
               key={`${play.ticker}-${play.rank ?? i}`}

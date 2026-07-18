@@ -1,0 +1,420 @@
+/**
+ * Night Hawk v2 — cinematic desk polish (playbook amber · 0DTE live green).
+ * Scoped under .nh-v2-page so other tools stay untouched.
+ */
+
+.nh-v2-page.nighthawk-page-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.nh-v2-page .nighthawk-page-root {
+  position: relative;
+  z-index: 2;
+}
+
+/* ── Column identity ── */
+.nh-v2-col-playbook {
+  min-height: 0;
+  height: 100%;
+}
+
+.nh-v2-col-playbook .nighthawk-playbook {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 210, 63, 0.22);
+  background:
+    linear-gradient(165deg, rgba(255, 210, 63, 0.07) 0%, transparent 42%),
+    linear-gradient(180deg, rgba(12, 8, 4, 0.98) 0%, rgba(4, 4, 7, 0.96) 100%);
+  box-shadow:
+    0 0 0 1px rgba(255, 210, 63, 0.06) inset,
+    0 24px 64px rgba(0, 0, 0, 0.55),
+    0 0 48px rgba(255, 210, 63, 0.06);
+}
+
+.nh-v2-col-zerodte {
+  min-height: 0;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(0, 230, 118, 0.18);
+  background:
+    linear-gradient(165deg, rgba(0, 230, 118, 0.05) 0%, transparent 38%),
+    rgba(4, 4, 7, 0.92);
+  box-shadow:
+    0 0 0 1px rgba(0, 230, 118, 0.05) inset,
+    0 24px 64px rgba(0, 0, 0, 0.5);
+  padding: 0.5rem;
+}
+
+.nh-v2-col-zerodte.nh-v2-col-zerodte--live {
+  animation: nh-v2-live-border 4s ease-in-out infinite;
+}
+
+@keyframes nh-v2-live-border {
+  0%,
+  100% {
+    border-color: rgba(0, 230, 118, 0.18);
+    box-shadow:
+      0 0 0 1px rgba(0, 230, 118, 0.05) inset,
+      0 24px 64px rgba(0, 0, 0, 0.5);
+  }
+  50% {
+    border-color: rgba(0, 230, 118, 0.38);
+    box-shadow:
+      0 0 0 1px rgba(0, 230, 118, 0.12) inset,
+      0 0 32px rgba(0, 230, 118, 0.12),
+      0 24px 64px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* ── Playbook hero header ── */
+.nh-v2-playbook-hero {
+  border-bottom: 1px solid rgba(255, 210, 63, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 210, 63, 0.1) 0%, rgba(255, 210, 63, 0.02) 55%, transparent 100%);
+  padding: 1rem 1.1rem 0.85rem;
+}
+
+.nh-v2-playbook-kicker {
+  font-family: var(--font-syne), system-ui, sans-serif;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(255, 210, 63, 0.85);
+}
+
+.nh-v2-playbook-title {
+  margin-top: 0.25rem;
+  font-family: var(--font-anton), sans-serif;
+  font-size: clamp(1.35rem, 2.4vw, 1.75rem);
+  line-height: 0.95;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow: 0 0 32px rgba(255, 210, 63, 0.2);
+}
+
+.nh-v2-playbook-recap {
+  margin-top: 0.5rem;
+  font-family: var(--font-syne), system-ui, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: rgba(255, 210, 63, 0.78);
+}
+
+/* ── Play cards ── */
+.nh-v2-play-list {
+  padding: 0.75rem;
+  gap: 0.65rem;
+}
+
+.nh-v2-play-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.015) 100%);
+  transition:
+    transform 0.22s ease,
+    box-shadow 0.22s ease,
+    border-color 0.22s ease;
+  animation: nh-v2-card-rise 0.45s ease backwards;
+}
+
+.nh-v2-play-card:nth-child(1) {
+  animation-delay: 0.04s;
+}
+.nh-v2-play-card:nth-child(2) {
+  animation-delay: 0.08s;
+}
+.nh-v2-play-card:nth-child(3) {
+  animation-delay: 0.12s;
+}
+.nh-v2-play-card:nth-child(4) {
+  animation-delay: 0.16s;
+}
+.nh-v2-play-card:nth-child(5) {
+  animation-delay: 0.2s;
+}
+
+@keyframes nh-v2-card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.nh-v2-play-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 210, 63, 0.28);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+}
+
+.nh-v2-play-card--rank1 {
+  border-color: rgba(255, 210, 63, 0.45);
+  box-shadow:
+    0 0 0 1px rgba(255, 210, 63, 0.12) inset,
+    0 0 40px rgba(255, 210, 63, 0.14);
+}
+
+.nh-v2-play-card--rank1::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255, 210, 63, 0.12), transparent 70%);
+  pointer-events: none;
+}
+
+.nh-v2-play-card--rankTop:not(.nh-v2-play-card--rank1) {
+  border-color: rgba(255, 210, 63, 0.22);
+}
+
+.nh-v2-play-card--confirmed {
+  border-color: rgba(74, 222, 128, 0.35);
+  box-shadow: 0 0 28px rgba(74, 222, 128, 0.08);
+}
+
+.nh-v2-play-card--degraded {
+  border-color: rgba(255, 210, 63, 0.35);
+}
+
+.nh-v2-play-card--invalidated {
+  border-color: rgba(255, 45, 85, 0.35);
+  opacity: 0.72;
+}
+
+.nh-v2-rank-badge {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.35);
+  font-family: var(--font-anton), sans-serif;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.nh-v2-rank-badge--1 {
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: 1.15rem;
+  border-color: rgba(255, 210, 63, 0.55);
+  color: #ffd23f;
+  box-shadow: 0 0 20px rgba(255, 210, 63, 0.35);
+}
+
+.nh-v2-rank-badge--top {
+  width: 1.85rem;
+  height: 1.85rem;
+  font-size: 0.95rem;
+  border-color: rgba(255, 210, 63, 0.3);
+  color: rgba(255, 210, 63, 0.95);
+}
+
+.nh-v2-rank-badge--std {
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.72rem;
+  font-family: var(--font-mono), monospace;
+}
+
+.nh-v2-play-ticker {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.nh-v2-play-card--rank1 .nh-v2-play-ticker {
+  font-size: 1.2rem;
+}
+
+.nh-v2-conviction-meter {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.nh-v2-conviction-meter-track {
+  flex: 1;
+  max-width: 5.5rem;
+  height: 3px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.nh-v2-conviction-meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ffd23f, #00e676);
+  box-shadow: 0 0 8px rgba(0, 230, 118, 0.45);
+}
+
+.nh-v2-play-thesis {
+  margin-top: 0.65rem;
+  padding-left: 0.65rem;
+  border-left: 2px solid rgba(255, 210, 63, 0.35);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  font-style: italic;
+  color: rgba(186, 230, 253, 0.92);
+}
+
+.nh-v2-levels-row {
+  margin-top: 0.65rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.55rem;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.nh-v2-level-cell em {
+  display: block;
+  font-style: normal;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 210, 63, 0.65);
+}
+
+.nh-v2-level-cell strong {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* ── 0DTE live cards ── */
+.nh-v2-zerodte-card {
+  border-radius: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(135deg, rgba(0, 230, 118, 0.04) 0%, rgba(255, 255, 255, 0.02) 100%);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.nh-v2-zerodte-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+}
+
+.nh-v2-zerodte-card--open {
+  border-color: rgba(0, 230, 118, 0.42);
+  box-shadow: 0 0 24px rgba(0, 230, 118, 0.1);
+}
+
+.nh-v2-zerodte-card--open .nh-v2-live-dot {
+  animation: nh-v2-pulse-dot 1.8s ease-in-out infinite;
+}
+
+.nh-v2-live-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: #00e676;
+  box-shadow: 0 0 10px rgba(0, 230, 118, 0.8);
+}
+
+@keyframes nh-v2-pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+}
+
+.nh-v2-pnl-up {
+  color: #4ade80;
+  text-shadow: 0 0 12px rgba(74, 222, 128, 0.35);
+}
+
+.nh-v2-pnl-down {
+  color: #ff2d55;
+}
+
+/* ── Hawk Intel modal briefing deck ── */
+.nh-v2-modal .nighthawk-play-detail-quick {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.nh-v2-modal .nighthawk-play-detail-quick-cell {
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(255, 210, 63, 0.2);
+  background: rgba(255, 210, 63, 0.05);
+}
+
+.nh-v2-modal .nighthawk-play-detail-quick-cell em {
+  font-size: 0.58rem;
+  letter-spacing: 0.18em;
+  color: rgba(255, 210, 63, 0.75);
+}
+
+.nh-v2-modal .nighthawk-play-detail-quick-cell span {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.nh-v2-conviction-hero {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(255, 210, 63, 0.25);
+  background: linear-gradient(90deg, rgba(255, 210, 63, 0.08), transparent);
+}
+
+.nh-v2-conviction-hero-label {
+  font-family: var(--font-anton), sans-serif;
+  font-size: 1.75rem;
+  line-height: 1;
+  color: #ffd23f;
+  text-shadow: 0 0 20px rgba(255, 210, 63, 0.4);
+}
+
+.nh-v2-page-header {
+  margin-bottom: 0.75rem;
+}
+
+.nh-v2-page-header .font-anton {
+  background: linear-gradient(90deg, #fff 0%, #ffd23f 55%, #ff2d55 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nh-v2-play-card,
+  .nh-v2-col-zerodte--live,
+  .nh-v2-live-dot {
+    animation: none !important;
+  }
+  .nh-v2-play-card:hover,
+  .nh-v2-zerodte-card:hover {
+    transform: none;
+  }
+}

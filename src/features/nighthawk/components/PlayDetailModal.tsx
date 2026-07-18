@@ -84,12 +84,40 @@ export function PlayDetailModal({ play, editionFor, onClose }: PlayDetailModalPr
       onClose={onClose}
       title={header}
       className={clsx(
-        "nighthawk-modal nighthawk-play-detail-modal",
+        "nighthawk-modal nighthawk-play-detail-modal nh-v2-modal",
         isBull ? "nighthawk-modal-gold" : "nighthawk-modal-bear"
       )}
     >
       {play && (
         <>
+          {play.conviction && (
+            <div className="nh-v2-conviction-hero">
+              <span className="nh-v2-conviction-hero-label">{play.conviction}</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-gold/75">
+                  Conviction grade
+                </p>
+                <div className="nh-v2-conviction-meter mt-1.5 max-w-xs">
+                  <div className="nh-v2-conviction-meter-track">
+                    <div
+                      className="nh-v2-conviction-meter-fill"
+                      style={{
+                        width: `${
+                          play.conviction.trim().toUpperCase() === "A+"
+                            ? 100
+                            : play.conviction.trim().toUpperCase() === "A"
+                              ? 88
+                              : play.conviction.trim().toUpperCase() === "B"
+                                ? 68
+                                : 48
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="nighthawk-play-detail-quick">
             <div className="nighthawk-play-detail-quick-cell">
               <em>Entry</em>
