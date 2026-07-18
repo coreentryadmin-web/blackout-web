@@ -7,10 +7,31 @@ import {
   evaluateZeroDteGates,
   gateRejectionFor,
   MARKET_BIAS_MAX_AGE_MS,
+  planQualityGateBlocks,
   type ZeroDteGateInput,
 } from "./gates";
+import type { ContractPlan } from "./plan";
 
 const NOW_MS = Date.parse("2026-07-13T15:00:00Z"); // 11:00 ET on the fixture date
+
+/** Enterable plan — clears G-8/G-9 unless a test overrides it. */
+const CLEAN_PLAN: ContractPlan = {
+  occ: "O:QQQ260713P00500000",
+  flow_avg_fill: 2,
+  bid: 1.9,
+  ask: 2.1,
+  mark: 2,
+  entry_max: 2,
+  vs_flow_pct: 0,
+  entry_status: "IN_RANGE",
+  spread_pct: 10,
+  illiquid: false,
+  stop_premium: 1,
+  target_premium: 4,
+  time_stop_et: "15:30",
+  underlying_target: null,
+  underlying_invalid: null,
+};
 
 /** A mid-session, fully-aligned, fresh-bias input that clears every gate — each
  *  test flips exactly the dimension it exercises. */
@@ -24,6 +45,12 @@ function input(overrides: Partial<ZeroDteGateInput> = {}): ZeroDteGateInput {
     bias: "down",
     biasAsOfMs: NOW_MS - 60_000, // 1-minute-old SPY bar — fresh
     governor: { open_plans: [], stops: [] },
+    plan: CLEAN_PLAN,
+    intradayConflict: false,
+    halted: false,
+    earnings: null,
+    todayYmd: "2026-07-13",
+    macroEvents: [],
     ...overrides,
   };
 }
@@ -341,4 +368,69 @@ test("gateRejectionFor: a null verdict (gate context unreadable) is itself a fai
   const row = gateRejectionFor(rejectionSource, null);
   assert.equal(row.gate_failed, "gate_context_unavailable");
   assert.match(String(row.reason), /fail closed/);
+});
+
+// ── G-7..G-11 (precision gates, 2026-07-18 audit) ────────────────────────────────
+
+test("G-8: MOVED plan blocks even when every other gate clears", () => {
+  const moved: ContractPlan = {
+    ...CLEAN_PLAN,
+    entry_status: "MOVED",
+    vs_flow_pct: 40,
+    mark: 2.8,
+  };
+  const v = evaluateZeroDteGates(input({ plan: moved }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "plan_moved"), true);
+});
+
+test("G-9: illiquid spread blocks", () => {
+  const illiquid: ContractPlan = { ...CLEAN_PLAN, spread_pct: 22, illiquid: true };
+  const v = evaluateZeroDteGates(input({ plan: illiquid }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "plan_illiquid"), true);
+});
+
+test("G-9: missing plan blocks (no quote + no fill)", () => {
+  const v = evaluateZeroDteGates(input({ plan: null }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "plan_no_quote"), true);
+});
+
+test("G-10: intraday_conflict hard-blocks", () => {
+  const v = evaluateZeroDteGates(input({ intradayConflict: true }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "intraday_conflict"), true);
+});
+
+test("G-11: halted underlying blocks", () => {
+  const v = evaluateZeroDteGates(input({ halted: true }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "halted"), true);
+});
+
+test("G-11: earnings reporter blocks", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      earnings: { when: "afterhours", report_date: "2026-07-13", expected_move_pct: 8 },
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "earnings"), true);
+});
+
+test("G-7: macro hard-block during CPI window", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      nowEtMinutes: 8 * 60 + 25,
+      macroEvents: [{ event: "CPI", time: "08:30", date: "2026-07-13", country: "US" }],
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "macro_hard_block"), true);
+});
+
+test("planQualityGateBlocks: exported helper matches gate evaluation", () => {
+  assert.deepEqual(planQualityGateBlocks(CLEAN_PLAN), []);
+  assert.equal(planQualityGateBlocks(null)[0]!.code, "plan_no_quote");
 });

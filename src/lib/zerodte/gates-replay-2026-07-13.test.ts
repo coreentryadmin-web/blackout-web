@@ -30,6 +30,7 @@ import assert from "node:assert/strict";
 // not clock position, are what killed the day.
 
 import { evaluateZeroDteGates, gateRejectionFor, type ZeroDteGateVerdict } from "./gates";
+import type { ContractPlan } from "./plan";
 import type { GovernorOpenPlan } from "./governor";
 // ── Cortex layer (PR-B wire-in) — the same 7/13 session replayed through the FULL
 // stack: hard gates first, then composeCortexEvidence over the design doc's own
@@ -67,6 +68,25 @@ const LEDGER_2026_07_13: FixturePlay[] = [
 
 const VIX_DAY_OPEN = 16.32;
 
+/** Historical replay assumes an enterable plan existed at flag time (G-8/G-9). */
+const REPLAY_PLAN: ContractPlan = {
+  occ: "O:REPLAY000000C00000000",
+  flow_avg_fill: 2,
+  bid: 1.9,
+  ask: 2.1,
+  mark: 2,
+  entry_max: 2,
+  vs_flow_pct: 0,
+  entry_status: "IN_RANGE",
+  spread_pct: 10,
+  illiquid: false,
+  stop_premium: 1,
+  target_premium: 4,
+  time_stop_et: "15:30",
+  underlying_target: null,
+  underlying_invalid: null,
+};
+
 /** Replay the session chronologically: each play evaluated at its flag time with
  *  the plays the gated desk would actually have open at that moment. */
 function replaySession(): Map<string, ZeroDteGateVerdict> {
@@ -87,6 +107,12 @@ function replaySession(): Map<string, ZeroDteGateVerdict> {
       slayerLive: null, // no open Slayer play on 7/13
       nighthawkTake:
         p.ticker === "META" ? { direction: "long", edition_for: "2026-07-10" } : null,
+      plan: REPLAY_PLAN,
+      intradayConflict: false,
+      halted: false,
+      earnings: null,
+      todayYmd: "2026-07-13",
+      macroEvents: [],
     });
     verdicts.set(p.ticker, v);
     if (v.verdict === "COMMIT") openPlans.push({ ticker: p.ticker, direction: p.direction });
