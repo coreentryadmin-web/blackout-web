@@ -2,10 +2,9 @@ import Link from "next/link";
 
 const LINKS = [
   { href: "/#features", label: "Platform" },
-  { href: "/#desk", label: "Desk" },
-  { href: "/#edge", label: "How it works" },
+  { href: "/#tape", label: "The tape" },
+  { href: "/#gamma", label: "Gamma" },
   { href: "/pricing", label: "Pricing", iosHide: true },
-  { href: "/faq", label: "FAQ" },
 ];
 
 export function StaticMarketingNav() {
@@ -27,7 +26,7 @@ export function StaticMarketingNav() {
             Sign in
           </Link>
           <Link href="/sign-up" prefetch={false} className="nav-join">
-            Get started
+            Get access →
           </Link>
         </div>
       </div>

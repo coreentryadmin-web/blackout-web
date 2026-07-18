@@ -56,7 +56,7 @@ function loadSecret() {
 }
 
 const PUBLIC_PAGES = [
-  { path: "/", mustMatch: /One engine|See the structure/i, label: "landing" },
+  { path: "/", mustMatch: /Trade like the lights|BLACKOUT/i, label: "landing" },
   { path: "/sign-in", mustMatch: /sign in|Sign in/i, label: "sign-in" },
   { path: "/sign-up", mustMatch: /sign up|Sign up|Create|Signin|username/i, label: "sign-up" },
   { path: "/faq", mustMatch: /faq|question/i, label: "faq" },
