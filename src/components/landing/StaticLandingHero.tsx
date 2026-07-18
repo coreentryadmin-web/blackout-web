@@ -2,8 +2,9 @@ import Link from "next/link";
 import { IMAGES } from "@/lib/images";
 import { StaticHeroWaveform } from "./StaticHeroWaveform";
 
+const HERO_HOOK = "The desk AI that never sleeps.";
 const HERO_LEDE =
-  "Live options flow, dealer positioning, and AI analysis — one terminal built for serious traders.";
+  "Flow, gamma, dealer walls — decoded in real time while the tape still moves.";
 
 /** Centered emblem hero — matches Emergent / brand mock (logo → headline → CTAs). */
 export function StaticLandingHero() {
@@ -35,7 +36,10 @@ export function StaticLandingHero() {
           <span className="block mkt-headline-glow">lights are on.</span>
         </h1>
 
-        <p className="mkt-lede mkt-lede-centered">{HERO_LEDE}</p>
+        <p className="mkt-lede mkt-lede-centered">
+          <span className="mkt-lede-hook">{HERO_HOOK}</span>
+          <span className="mkt-lede-sub">{HERO_LEDE}</span>
+        </p>
 
         <div className="mkt-cta-row mkt-cta-row-centered">
           <Link
