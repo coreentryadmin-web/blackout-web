@@ -401,18 +401,21 @@ export function buildZeroDteLiveMarksPayloadFrom(
   plays: ActiveZeroDtePlay[],
   nowMs: number,
   sessionDate: string,
-  readMark: (occ: string) => ZeroDteLiveMark | undefined = getZeroDteLiveMark
+  readMark: (occ: string) => ZeroDteLiveMark | undefined = getZeroDteLiveMark,
+  /** When set, prefer the 1s lane's latched lifecycle over the 10s active-set cache. */
+  latchedStatus?: (play: ActiveZeroDtePlay) => PlayStatus | null
 ): ZeroDteLiveMarksPayload {
   const marks: ZeroDteLiveMarkRow[] = plays.map((p) => {
     const m = readMark(p.occ);
     const asOf = m?.asOf ?? 0;
     const stale = isZeroDteMarkStale(asOf, nowMs);
+    const status = latchedStatus?.(p) ?? p.status;
     return {
       ticker: p.ticker,
       occ: p.occ,
       direction: p.direction,
       strike: p.strike,
-      status: p.status,
+      status,
       entry_premium: p.entry_premium,
       bid: m?.bid ?? null,
       ask: m?.ask ?? null,
@@ -441,7 +444,14 @@ export async function getZeroDteLiveMarksJson(): Promise<string> {
   const now = Date.now();
   if (payloadMemo && now - payloadMemo.builtAt <= PAYLOAD_MEMO_MS) return payloadMemo.json;
   const plays = await getActivePlays(now);
-  const payload = buildZeroDteLiveMarksPayloadFrom(plays, now, todayEt());
+  const sessionDate = todayEt();
+  const payload = buildZeroDteLiveMarksPayloadFrom(
+    plays,
+    now,
+    sessionDate,
+    getZeroDteLiveMark,
+    (p) => latchMemo.get(`${sessionDate}:${p.ticker}`)?.status ?? null
+  );
   const json = JSON.stringify(payload);
   payloadMemo = { json, builtAt: now };
   return json;

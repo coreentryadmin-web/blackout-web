@@ -250,8 +250,11 @@ export function overlayLiveMark(
   const liveAsOfMs = live.mark_as_of ? Date.parse(live.mark_as_of) : 0;
   // Never let an older lane overwrite a fresher board value.
   if (asOfMs > 0 && liveAsOfMs > 0 && liveAsOfMs < asOfMs) return { ...row, mark_stale: baseStale };
+  const liveStatus =
+    live.status === "OPEN" || live.status === "HOLD" || live.status === "TRIM" ? live.status : null;
   return {
     ...row,
+    ...(liveStatus ? { status: liveStatus } : {}),
     last_mark: live.mark,
     live_pnl_pct: live.live_pnl_pct ?? row.live_pnl_pct,
     mark_as_of: live.mark_as_of,
