@@ -40,8 +40,20 @@ export default clerkMiddleware(
       }
     }
 
+    const path = req.nextUrl.pathname;
+    const isAuthPage = path === "/sign-in" || path.startsWith("/sign-in/") ||
+                       path === "/sign-up" || path.startsWith("/sign-up/");
+    if (isAuthPage) {
+      const { userId } = await auth();
+      if (userId) {
+        const dest = req.nextUrl.searchParams.get("redirect_url") || "/dashboard";
+        return withStagingNoEdgeCache(
+          NextResponse.redirect(new URL(dest, req.url), 307)
+        );
+      }
+    }
+
     if (IS_STAGING && process.env.AUTH_PROVIDER !== "cognito") {
-      const path = req.nextUrl.pathname;
       if (path === "/sign-in" || path.startsWith("/sign-in/")) {
         const returnPath = req.nextUrl.searchParams.get("redirect_url") ?? "/dashboard";
         const primary = clerkSatelliteAuthRedirect("sign-in", returnPath);
