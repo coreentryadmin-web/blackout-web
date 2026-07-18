@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { NighthawkUiPreview } from "@/features/nighthawk/components/NighthawkUiPreview";
 
@@ -6,5 +7,9 @@ export default function NighthawkUiPreviewPage() {
   if (process.env.NODE_ENV === "production") {
     notFound();
   }
-  return <NighthawkUiPreview />;
+  return (
+    <Suspense fallback={null}>
+      <NighthawkUiPreview />
+    </Suspense>
+  );
 }
