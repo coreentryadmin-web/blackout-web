@@ -154,10 +154,16 @@ jobs:
           # Do NOT pass --desired-count here: auto-scaling manages the
           # task count (min 8 / max 15). Overriding it resets the count
           # on every deploy and fights the scaling target.
+          #
+          # Rolling strategy: minHealthy=100 / max=112 → replace ONE task at a
+          # time (9 tasks max during deploy). Default ECS 50/200 tries to spin up
+          # 16×2vCPU tasks and blows the Fargate vCPU quota (~30), causing circuit-
+          # breaker rollbacks that leave prod on stale images.
           aws ecs update-service \
             --cluster "${ECS_CLUSTER}" \
             --service "${ECS_SERVICE}" \
             --task-definition "${NEW_ARN}" \
+            --deployment-configuration "minimumHealthyPercent=100,maximumPercent=112,deploymentCircuitBreaker={enable=true,rollback=true}" \
             --force-new-deployment
 
           # Custom stability check: poll the PRIMARY deployment only.
