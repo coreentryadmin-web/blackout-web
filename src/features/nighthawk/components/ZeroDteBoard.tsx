@@ -36,6 +36,7 @@ import {
 import { displayTierFor, tierForSkip, type TierFactor, type ZeroDteTier } from "@/lib/zerodte/tiers";
 import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 import { useZeroDteLiveMarks } from "@/features/nighthawk/hooks/useZeroDteLiveMarks";
+import { BriefingSection } from "@/features/nighthawk/components/briefing/BriefingSection";
 import { shortMonthDay } from "@/lib/relative-time";
 
 // ── Response shape (structural mirror of /api/market/zerodte/board) ──────────────
@@ -250,8 +251,11 @@ export function overlayLiveMark(
   const liveAsOfMs = live.mark_as_of ? Date.parse(live.mark_as_of) : 0;
   // Never let an older lane overwrite a fresher board value.
   if (asOfMs > 0 && liveAsOfMs > 0 && liveAsOfMs < asOfMs) return { ...row, mark_stale: baseStale };
+  const liveStatus =
+    live.status === "OPEN" || live.status === "HOLD" || live.status === "TRIM" ? live.status : null;
   return {
     ...row,
+    ...(liveStatus ? { status: liveStatus } : {}),
     last_mark: live.mark,
     live_pnl_pct: live.live_pnl_pct ?? row.live_pnl_pct,
     mark_as_of: live.mark_as_of,
@@ -611,7 +615,7 @@ function StatsCell({ row }: { row: PlayRow }) {
   if (row.plan_outcome && row.plan_outcome !== "ungradeable") {
     const win = (row.plan_pnl_pct ?? 0) > 0;
     return (
-      <span className={clsx("t-num text-[13px] font-bold", win ? "text-bull" : "text-bear")}>
+      <span className={clsx("t-num text-[13px] font-bold", win ? "nh-v2-pnl-up text-bull" : "nh-v2-pnl-down text-bear")}>
         {win ? "WIN" : "LOSS"}
         {row.plan_pnl_pct != null ? ` ${row.plan_pnl_pct >= 0 ? "+" : ""}${row.plan_pnl_pct.toFixed(0)}%` : ""}
       </span>
@@ -623,7 +627,7 @@ function StatsCell({ row }: { row: PlayRow }) {
       <span
         className={clsx(
           "t-num text-[13px] font-bold",
-          up ? "text-bull" : "text-bear",
+          up ? "nh-v2-pnl-up text-bull" : "nh-v2-pnl-down text-bear",
           // Stale-honesty (B-9): money numbers older than the freshness bar dim
           // instead of impersonating a live quote.
           row.mark_stale && "opacity-40"
@@ -917,22 +921,26 @@ function FactorChips({ f }: { f: NonNullable<EnrichedZeroDteSetup["factor_breakd
 function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
   const s = row.setup;
   const p = s?.plan ?? null;
+  const view = row.cortex;
   const contract = `${row.ticker} ${fmtStrike(row.strike)}${row.direction === "long" ? "c" : "p"}`;
   const entryStr = row.entry_premium != null ? `$${row.entry_premium.toFixed(2)}` : "—";
   const stop = row.entry_premium != null ? row.entry_premium * 0.5 : null;
   const target = row.entry_premium != null ? row.entry_premium * 2 : null;
   return (
-    <div className="space-y-3 border-t border-white/[0.06] px-4 py-3">
-      <CortexEvidenceBlock view={row.cortex} />
+    <div className="nh-v2-briefing-drawer space-y-3 border-t border-white/[0.06] px-4 py-3">
+      <BriefingSection title="Cortex verdict" accent="green">
+        <CortexEvidenceBlock view={view} />
+      </BriefingSection>
 
-      {/* why this grade (PR-F) — the pinned tier factors, when the row carries them */}
-      {row.tier && <TierFactorsBlock tier={row.tier} />}
+      {row.tier && (
+        <BriefingSection title="Tier factors" accent="gold">
+          <TierFactorsBlock tier={row.tier} />
+        </BriefingSection>
+      )}
 
-      {/* why the play was picked */}
-      <div>
-        <p className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">Why this play</p>
+      <BriefingSection title="Why this play" accent="green">
         {s ? (
-          <p className="mt-1 t-num text-[11px] text-sky-200/85">
+          <p className="nh-v2-briefing-prose t-num">
             {fmtMoney(s.gross_premium)} gross · {Math.round(s.side_dominance * 100)}%{" "}
             {row.direction === "long" ? "call" : "put"}-side · {s.prints} prints ·{" "}
             {Math.round(s.sweep_pct * 100)}% sweeps
@@ -940,7 +948,7 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
             {s.streak_days != null && s.streak_days > 1 ? ` · ${s.streak_days}d flow streak` : ""}
           </p>
         ) : (
-          <p className="mt-1 text-[11px] text-sky-300/70">
+          <p className="nh-v2-briefing-prose">
             Flagged at {fmtTime(row.first_flagged_at)} ET on stacked one-sided 0DTE flow (peak score {row.score}).
           </p>
         )}
@@ -950,7 +958,7 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
           </div>
         )}
         {(s?.catalyst_flags?.length || s?.analyst_note || s?.news_hot) && (
-          <div className="mt-2 space-y-0.5 text-[11px] text-sky-200/80">
+          <div className="mt-2 space-y-0.5 nh-v2-briefing-prose">
             {s?.catalyst_flags?.map((c) => <p key={c}>◆ {c}</p>)}
             {s?.analyst_note && <p>◆ {s.analyst_note}</p>}
             {s?.news_hot && (
@@ -967,11 +975,9 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
             </Badge>
           </p>
         )}
-      </div>
+      </BriefingSection>
 
-      {/* what to watch — entry to exit */}
-      <div>
-        <p className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">What to watch</p>
+      <BriefingSection title="What to watch" accent="sky">
         <p className="mt-1 t-num text-[11px] text-sky-200/85">
           Entry {entryStr}
           {p?.flow_avg_fill != null ? ` (flow paid ~$${p.flow_avg_fill.toFixed(2)})` : ""} · stop −50%
@@ -994,9 +1000,9 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
             Premium tagged +100% — take at least half off; manage the rest to the 3:30 ET exit.
           </p>
         )}
-      </div>
+      </BriefingSection>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between border-t border-white/[0.06] pt-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">
           Flagged {fmtTime(row.first_flagged_at)} ET
           {row.setup?.last_seen ? ` · last print ${fmtTime(row.setup.last_seen)} ET` : ""}
@@ -1024,7 +1030,8 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
   return (
     <div
       className={clsx(
-        "rounded-xl border border-white/[0.08] bg-white/[0.02] transition-colors",
+        "nh-v2-zerodte-card rounded-xl border border-white/[0.08] bg-white/[0.02] transition-colors",
+        live && "nh-v2-zerodte-card--open",
         open ? "bg-white/[0.03]" : "hover:bg-white/[0.03]"
       )}
     >
@@ -1036,6 +1043,7 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
       >
         {/* header: status · contract · dir · expiry · conviction · size · closed chip */}
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+          {live && <span className="nh-v2-live-dot shrink-0" aria-hidden />}
           <StatusBadge row={row} />
           <span className="t-num text-[14px] font-bold text-white">{contract}</span>
           <Badge tone={row.direction === "long" ? "bull" : "bear"} size="sm">
@@ -1122,13 +1130,8 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
           </div>
           {row.nighthawkEcho && <NighthawkEchoNote echo={row.nighthawkEcho} />}
           {!open && (
-            <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/35">
-              {view == null
-                ? "cortex: no verdict on record — gates-only"
-                : view.abstained
-                  ? "cortex: abstained — gates-only commit"
-                  : `cortex: ${view.verdict.score >= 0 ? "+" : ""}${view.verdict.score.toFixed(2)} · ${view.verdict.supports.length} for / ${view.verdict.opposes.length} against${view.verdict.vetoes.length > 0 ? ` / ${view.verdict.vetoes.length} veto` : ""}`}
-              {" · expand for evidence"}
+            <p className="nh-v2-card-cta mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-bull/70">
+              Expand for factors · cortex · plan
             </p>
           )}
         </div>

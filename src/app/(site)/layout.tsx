@@ -12,6 +12,7 @@ import { jetbrainsMono } from "@/lib/fonts-mono";
 import { inter } from "@/lib/fonts-sans";
 import "../globals.css";
 import "../desk-app.css";
+import "../nighthawk-v2.css";
 import "../ios-native.css";
 import "../ios-native-pages.css";
 import "../ios-native-nav.css";

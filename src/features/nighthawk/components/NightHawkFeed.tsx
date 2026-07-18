@@ -57,6 +57,7 @@ export function NightHawkFeed() {
         <div
           key={nativeShell ? iosView : "playbook"}
           className={clsx(
+            "nh-v2-col-playbook",
             nativeShell && iosView !== "playbook" && "ios-native-panel-hidden",
             nativeShell && iosView === "playbook" && "ios-native-panel-visible"
           )}
@@ -80,6 +81,7 @@ export function NightHawkFeed() {
         <div
           key={nativeShell ? iosView : "zerodte"}
           className={clsx(
+            "nh-v2-col-zerodte nh-v2-col-zerodte--live",
             nativeShell && iosView !== "zerodte" && "ios-native-panel-hidden",
             nativeShell && iosView === "zerodte" && "ios-native-panel-visible"
           )}
@@ -92,6 +94,10 @@ export function NightHawkFeed() {
         play={selectedPlay}
         editionFor={edition?.edition_for ?? null}
         onClose={() => setSelectedPlay(null)}
+        morningConfirm={
+          selectedPlay ? confirmByTicker.get(selectedPlay.ticker.toUpperCase()) : undefined
+        }
+        morningConfirmCheckedAt={playStatus?.checked_at}
       />
     </div>
   );

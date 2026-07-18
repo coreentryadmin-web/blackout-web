@@ -86,7 +86,7 @@ test("zero-play unpublished edition renders ONE empty block, no circling slots",
   assert.equal((html.match(/Playbook publishes after the close/g) ?? []).length, 1);
   assert.match(html, /~5:30 PM ET/);
   // No numbered play cards on an empty night.
-  assert.doesNotMatch(html, /aria-label="Play 1:/);
+  assert.doesNotMatch(html, /aria-label="Open briefing for/);
   assert.match(html, /Building/);
 });
 
@@ -139,10 +139,10 @@ test("plays render as cards at their published ranks; carry-until-close notice i
     }),
   });
 
-  assert.match(html, /aria-label="Play 1: QCOM LONG/);
-  assert.match(html, /aria-label="Play 2: NVDA SHORT/);
-  // Exactly two cards — no padded empty slots 3..5.
-  assert.equal((html.match(/aria-label="Play \d+:/g) ?? []).length, 2);
+  assert.match(html, /aria-label="Open briefing for QCOM LONG/);
+  assert.match(html, /aria-label="Open briefing for NVDA SHORT/);
+  // Exactly two briefing cards — no padded empty slots 3..5.
+  assert.equal((html.match(/aria-label="Open briefing for/g) ?? []).length, 2);
   assert.match(html, /Today&#x27;s generated plays stay live until the session close/);
   // Plan line binds entry/target/stop payload strings.
   assert.match(html, /\$200(–|&#x2013;)\$202/);
