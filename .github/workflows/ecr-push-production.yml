@@ -85,20 +85,57 @@ jobs:
             --query 'services[0].taskDefinition' --output text)
           echo "Current task definition: ${TASK_DEF_ARN}"
 
-          # Fetch task def and rewrite image tags to the SHA-pinned build.
-          # Using the immutable SHA tag avoids stale :latest resolution
-          # after failed deployments (CannotPullContainerError loop).
+          # Fetch task def, rewrite image tags to the SHA-pinned build,
+          # and strip any secrets refs for keys missing from Secrets Manager.
+          # The immutable SHA tag avoids stale :latest resolution after failed
+          # deployments; the secrets filter avoids ResourceInitializationError
+          # when Terraform-generated task defs reference removed keys.
           aws ecs describe-task-definition \
             --task-definition "${TASK_DEF_ARN}" \
             --query 'taskDefinition' > /tmp/taskdef.json
 
-          python3 - "${FULL_IMAGE}" /tmp/taskdef.json /tmp/new-taskdef.json <<'PYEOF'
+          # Extract the secret ARN from the task def so we can validate keys
+          SECRET_ARN=$(python3 -c "
+          import json
+          with open('/tmp/taskdef.json') as f:
+              td = json.load(f)
+          for c in td.get('containerDefinitions', []):
+              for s in c.get('secrets', []):
+                  # valueFrom format: arn:...:secret-name:KEY::
+                  arn = ':'.join(s['valueFrom'].split(':')[:-3])
+                  print(arn)
+                  break
+              break
+          ")
+          echo "Secret ARN: ${SECRET_ARN}"
+
+          # Fetch actual keys present in the Secrets Manager JSON
+          aws secretsmanager get-secret-value \
+            --secret-id "${SECRET_ARN}" \
+            --query 'SecretString' --output text | python3 -c "
           import json, sys
-          new_image, src, dst = sys.argv[1], sys.argv[2], sys.argv[3]
+          keys = sorted(json.load(sys.stdin).keys())
+          with open('/tmp/valid-secret-keys.json', 'w') as f:
+              json.dump(keys, f)
+          print(f'Found {len(keys)} valid secret keys')
+          "
+
+          python3 - "${FULL_IMAGE}" /tmp/taskdef.json /tmp/new-taskdef.json /tmp/valid-secret-keys.json <<'PYEOF'
+          import json, sys
+          new_image = sys.argv[1]
+          src, dst, keys_file = sys.argv[2], sys.argv[3], sys.argv[4]
           with open(src) as f:
               td = json.load(f)
+          with open(keys_file) as f:
+              valid_keys = set(json.load(f))
           for c in td.get("containerDefinitions", []):
               c["image"] = new_image
+              orig = c.get("secrets", [])
+              filtered = [s for s in orig if s["name"] in valid_keys]
+              removed = [s["name"] for s in orig if s["name"] not in valid_keys]
+              if removed:
+                  print(f"Stripped stale secret refs: {removed}")
+              c["secrets"] = filtered
           for k in ["taskDefinitionArn", "revision", "status",
                      "requiresAttributes", "compatibilities",
                      "registeredAt", "registeredBy", "deregisteredAt"]:
