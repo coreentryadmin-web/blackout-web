@@ -44,12 +44,15 @@ export default clerkMiddleware(
     const isAuthPage = path === "/sign-in" || path.startsWith("/sign-in/") ||
                        path === "/sign-up" || path.startsWith("/sign-up/");
     if (isAuthPage) {
-      const { userId } = await auth();
-      if (userId) {
+      try {
+        // auth.protect() reliably detects authenticated users (throws for anon)
+        await auth.protect();
         const dest = req.nextUrl.searchParams.get("redirect_url") || "/";
         return withStagingNoEdgeCache(
           NextResponse.redirect(new URL(dest, req.url), 307)
         );
+      } catch {
+        // Not authenticated — fall through to show sign-in/sign-up page
       }
     }
 
