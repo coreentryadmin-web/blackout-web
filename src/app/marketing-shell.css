@@ -216,9 +216,12 @@
   position: relative;
   overflow: hidden;
   justify-content: flex-start;
-  padding-top: 5.5rem;
-  padding-bottom: 2rem;
+  padding-top: 5rem;
+  padding-bottom: 1.5rem;
   min-height: min(100svh - 4rem, 920px);
+}
+@media (min-width: 768px) {
+  .mkt-hero-centered { padding-top: 5.5rem; padding-bottom: 2rem; }
 }
 .mkt-hero-centered-stack {
   position: relative;
@@ -258,10 +261,13 @@
 }
 .mkt-hero-emblem-wrap {
   position: relative;
-  width: min(72vw, 220px);
+  width: min(52vw, 160px);
   aspect-ratio: 1;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
   animation: mkt-emblem-float 7s ease-in-out infinite;
+}
+@media (min-width: 768px) {
+  .mkt-hero-emblem-wrap { width: min(48vw, 180px); }
 }
 @keyframes mkt-emblem-float {
   0%, 100% { transform: translateY(0); }
@@ -283,7 +289,7 @@
   filter: drop-shadow(0 0 40px rgba(0, 230, 118, 0.45));
 }
 .mkt-headline-centered {
-  margin-top: 0.75rem;
+  margin-top: 0.5rem;
   text-align: center;
   font-size: clamp(2.5rem, 7.5vw, 4.75rem);
   letter-spacing: 0.02em;
@@ -313,9 +319,10 @@
 }
 .mkt-hero-floor-tagline {
   margin-top: auto;
-  padding: 3rem 1.25rem 0.75rem;
+  padding: 2.5rem 1.25rem 1rem;
   max-width: 34rem;
   text-align: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 .mkt-hero-floor-hook {
   display: block;
@@ -364,9 +371,35 @@
 .mkt-cta-primary {
   border-radius: 9999px;
   box-shadow: 0 0 32px -8px rgba(0, 230, 118, 0.65);
+  transition: box-shadow 0.25s ease, transform 0.15s ease;
 }
+.mkt-cta-primary:hover {
+  box-shadow: 0 0 40px -4px rgba(0, 230, 118, 0.85);
+}
+.mkt-cta-primary:active { transform: scale(0.97); }
 .mkt-cta-secondary {
   border-radius: 9999px;
+  transition: border-color 0.25s ease, color 0.25s ease;
+}
+.mkt-cta-secondary:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #fff;
+}
+.mkt-cred-strip-centered {
+  justify-content: center;
+  margin-top: 2rem;
+  gap: 0.5rem 1.25rem;
+}
+.mkt-cred-strip-centered li::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: #00e676;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  box-shadow: 0 0 8px rgba(0, 230, 118, 0.6);
 }
 .mkt-hero-grid {
   display: grid;

@@ -5,7 +5,13 @@ import { StaticHeroWaveform } from "./StaticHeroWaveform";
 const HERO_HOOK = "Serious traders don't wait for the tape.";
 const HERO_LEDE = "Neither does BlackOut Intelligence.";
 
-/** Centered emblem hero — logo → headline → CTA; tagline anchors the floor. */
+const CRED_MARKS = [
+  "Real-time dealer positioning",
+  "Institutional-grade feeds",
+  "One command surface",
+] as const;
+
+/** Centered emblem hero — logo → headline → lede → CTA → creds; tagline anchors the floor. */
 export function StaticLandingHero() {
   return (
     <section className="mkt-section mkt-hero mkt-hero-centered border-b-0">
@@ -36,6 +42,11 @@ export function StaticLandingHero() {
             <span className="block mkt-headline-glow">lights are on.</span>
           </h1>
 
+          <p className="mkt-lede mkt-lede-centered">
+            Options flow, dealer positioning, live gamma structure, and the Night
+            Hawk swing scanner — one command surface for the floor.
+          </p>
+
           <div className="mkt-cta-row mkt-cta-row-centered">
             <Link
               href="/sign-in"
@@ -49,9 +60,15 @@ export function StaticLandingHero() {
               prefetch={false}
               className="landing-btn-ghost mkt-cta-secondary hide-in-ios-app inline-flex min-w-[220px] items-center justify-center border border-white/25 px-10 py-3.5 font-syne text-sm font-bold uppercase tracking-[0.2em] text-white"
             >
-              Pricing
+              See pricing
             </Link>
           </div>
+
+          <ul className="mkt-cred-strip mkt-cred-strip-centered">
+            {CRED_MARKS.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
         </div>
 
         <p className="mkt-hero-floor-tagline" aria-label="Brand tagline">
