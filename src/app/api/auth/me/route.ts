@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCognitoSession } from "@/lib/cognito-session";
 import { getUserProfile } from "@/lib/user-directory";
 import { isCognitoAuth } from "@/lib/auth-provider";
-import { auth as clerkAuth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export async function GET() {
     });
   }
 
-  const { userId } = await clerkAuth();
+  const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ signedIn: false, userId: null, email: null });
   }

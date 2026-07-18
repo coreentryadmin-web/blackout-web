@@ -1,17 +1,10 @@
 import { redirect } from "next/navigation";
-import { auth as clerkAuth } from "@clerk/nextjs/server";
 import { tierAtLeast, type Tier } from "@/lib/tiers";
 import { resolveUserTier, TierUnavailableError } from "@/lib/tier-cache";
-import { isCognitoAuth } from "@/lib/auth-provider";
 import { getSession } from "@/lib/auth-server";
 
 export async function requireAuth(): Promise<string> {
-  if (isCognitoAuth()) {
-    const { userId } = await getSession();
-    if (!userId) redirect("/sign-in");
-    return userId;
-  }
-  const { userId } = await clerkAuth();
+  const { userId } = await getSession();
   if (!userId) redirect("/sign-in");
   return userId;
 }

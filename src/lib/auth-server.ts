@@ -17,8 +17,13 @@ export async function getSession(): Promise<AppSession> {
       email: typeof session.claims.email === "string" ? session.claims.email : null,
     };
   }
-  const { userId } = await clerkAuth();
-  return { userId: userId ?? null, email: null };
+  try {
+    const { userId } = await clerkAuth();
+    return { userId: userId ?? null, email: null };
+  } catch {
+    // Stale/invalid __session after Clerk key or domain changes — treat as signed out.
+    return { userId: null, email: null };
+  }
 }
 
 /** Drop-in for Clerk auth() — returns { userId } shape used across the app. */
