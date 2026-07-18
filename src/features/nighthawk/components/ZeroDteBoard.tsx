@@ -36,6 +36,7 @@ import {
 import { displayTierFor, tierForSkip, type TierFactor, type ZeroDteTier } from "@/lib/zerodte/tiers";
 import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 import { useZeroDteLiveMarks } from "@/features/nighthawk/hooks/useZeroDteLiveMarks";
+import { BriefingSection } from "@/features/nighthawk/components/briefing/BriefingSection";
 import { shortMonthDay } from "@/lib/relative-time";
 
 // ── Response shape (structural mirror of /api/market/zerodte/board) ──────────────
@@ -917,22 +918,26 @@ function FactorChips({ f }: { f: NonNullable<EnrichedZeroDteSetup["factor_breakd
 function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
   const s = row.setup;
   const p = s?.plan ?? null;
+  const view = row.cortex;
   const contract = `${row.ticker} ${fmtStrike(row.strike)}${row.direction === "long" ? "c" : "p"}`;
   const entryStr = row.entry_premium != null ? `$${row.entry_premium.toFixed(2)}` : "—";
   const stop = row.entry_premium != null ? row.entry_premium * 0.5 : null;
   const target = row.entry_premium != null ? row.entry_premium * 2 : null;
   return (
-    <div className="space-y-3 border-t border-white/[0.06] px-4 py-3">
-      <CortexEvidenceBlock view={row.cortex} />
+    <div className="nh-v2-briefing-drawer space-y-3 border-t border-white/[0.06] px-4 py-3">
+      <BriefingSection title="Cortex verdict" accent="green">
+        <CortexEvidenceBlock view={view} />
+      </BriefingSection>
 
-      {/* why this grade (PR-F) — the pinned tier factors, when the row carries them */}
-      {row.tier && <TierFactorsBlock tier={row.tier} />}
+      {row.tier && (
+        <BriefingSection title="Tier factors" accent="gold">
+          <TierFactorsBlock tier={row.tier} />
+        </BriefingSection>
+      )}
 
-      {/* why the play was picked */}
-      <div>
-        <p className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">Why this play</p>
+      <BriefingSection title="Why this play" accent="green">
         {s ? (
-          <p className="mt-1 t-num text-[11px] text-sky-200/85">
+          <p className="nh-v2-briefing-prose t-num">
             {fmtMoney(s.gross_premium)} gross · {Math.round(s.side_dominance * 100)}%{" "}
             {row.direction === "long" ? "call" : "put"}-side · {s.prints} prints ·{" "}
             {Math.round(s.sweep_pct * 100)}% sweeps
@@ -940,7 +945,7 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
             {s.streak_days != null && s.streak_days > 1 ? ` · ${s.streak_days}d flow streak` : ""}
           </p>
         ) : (
-          <p className="mt-1 text-[11px] text-sky-300/70">
+          <p className="nh-v2-briefing-prose">
             Flagged at {fmtTime(row.first_flagged_at)} ET on stacked one-sided 0DTE flow (peak score {row.score}).
           </p>
         )}
@@ -950,7 +955,7 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
           </div>
         )}
         {(s?.catalyst_flags?.length || s?.analyst_note || s?.news_hot) && (
-          <div className="mt-2 space-y-0.5 text-[11px] text-sky-200/80">
+          <div className="mt-2 space-y-0.5 nh-v2-briefing-prose">
             {s?.catalyst_flags?.map((c) => <p key={c}>◆ {c}</p>)}
             {s?.analyst_note && <p>◆ {s.analyst_note}</p>}
             {s?.news_hot && (
@@ -967,11 +972,9 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
             </Badge>
           </p>
         )}
-      </div>
+      </BriefingSection>
 
-      {/* what to watch — entry to exit */}
-      <div>
-        <p className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">What to watch</p>
+      <BriefingSection title="What to watch" accent="sky">
         <p className="mt-1 t-num text-[11px] text-sky-200/85">
           Entry {entryStr}
           {p?.flow_avg_fill != null ? ` (flow paid ~$${p.flow_avg_fill.toFixed(2)})` : ""} · stop −50%
@@ -994,9 +997,9 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
             Premium tagged +100% — take at least half off; manage the rest to the 3:30 ET exit.
           </p>
         )}
-      </div>
+      </BriefingSection>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between border-t border-white/[0.06] pt-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">
           Flagged {fmtTime(row.first_flagged_at)} ET
           {row.setup?.last_seen ? ` · last print ${fmtTime(row.setup.last_seen)} ET` : ""}
@@ -1124,13 +1127,8 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
           </div>
           {row.nighthawkEcho && <NighthawkEchoNote echo={row.nighthawkEcho} />}
           {!open && (
-            <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/35">
-              {view == null
-                ? "cortex: no verdict on record — gates-only"
-                : view.abstained
-                  ? "cortex: abstained — gates-only commit"
-                  : `cortex: ${view.verdict.score >= 0 ? "+" : ""}${view.verdict.score.toFixed(2)} · ${view.verdict.supports.length} for / ${view.verdict.opposes.length} against${view.verdict.vetoes.length > 0 ? ` / ${view.verdict.vetoes.length} veto` : ""}`}
-              {" · expand for evidence"}
+            <p className="nh-v2-card-cta mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-bull/70">
+              Expand for factors · cortex · plan
             </p>
           )}
         </div>

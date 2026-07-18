@@ -120,6 +120,10 @@ export function NighthawkUiPreview() {
         play={selectedPlay}
         editionFor={PREVIEW_EDITION.edition_for}
         onClose={() => setSelectedPlay(null)}
+        morningConfirm={
+          selectedPlay ? PREVIEW_MORNING.get(selectedPlay.ticker.toUpperCase()) : undefined
+        }
+        morningConfirmCheckedAt={new Date().toISOString()}
       />
     </div>
   );
