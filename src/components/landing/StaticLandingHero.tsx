@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { SITE } from "@/lib/site";
-import { StaticHeroDeskMock } from "./StaticHeroDeskMock";
+import { StaticHeroProductShowcase } from "./StaticHeroProductShowcase";
 
 /** Server-rendered hero with CSS-only motion — split layout + desk mock on desktop. */
 export function StaticLandingHero() {
@@ -40,7 +40,7 @@ export function StaticLandingHero() {
           </ul>
         </div>
         <div className="mkt-hero-visual mkt-reveal">
-          <StaticHeroDeskMock />
+          <StaticHeroProductShowcase />
         </div>
       </div>
     </section>
