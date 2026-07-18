@@ -5,11 +5,6 @@ export const dynamic = "force-dynamic";
 
 /** Minimal deploy liveness — Railway healthcheck; no auth, no DB migrations. */
 export async function GET() {
-  // Once-per-deploy CF purge on ECS boot (healthcheck hits every new task before traffic).
-  void import("@/lib/cf-purge-on-deploy")
-    .then(({ maybePurgeCloudflareOnDeploy }) => maybePurgeCloudflareOnDeploy())
-    .catch(() => undefined);
-
   const as_of = new Date().toISOString();
 
   if (process.env.NODE_ENV === "production" && !process.env.WHOP_WEBHOOK_SECRET?.trim()) {

@@ -8,14 +8,22 @@
 //   2. Fetches today's Night Hawk edition plays via the edition DB helper.
 //   3. Fetches pre-market SPX price from Polygon snapshot.
 //   4. For each play: computes CONFIRMED / DEGRADED / INVALIDATED verdict.
-//   5. Writes the status blob to Redis at nh:play-status:{YYYYMMDD} (TTL 24h).
-//   6. Writes docs/nighthawk/morning-confirm-{YYYYMMDD}.md (best-effort, ephemeral FS).
-//   7. Ops-alerts on Discord if any play is INVALIDATED.
+//   5. PERSISTS each verdict + the numbers it saw onto the play's outcome row
+//      (nighthawk_play_outcomes.morning_verdict, first-write-wins) and, for
+//      INVALIDATED, engages the one-way PULLED latch (PR-N4 — see
+//      morning-verdict-persist.ts; before this, verdicts lived only in the 24h
+//      Redis blob and an INVALIDATED play stayed tradeable all day: AMD 7/07).
+//   6. Writes the status blob to Redis at nh:play-status:{YYYYMMDD} (TTL 24h) —
+//      kept alongside the DB write; the UI badge layer reads it today.
+//   7. Writes docs/nighthawk/morning-confirm-{YYYYMMDD}.md (best-effort, ephemeral FS).
+//   8. Ops-alerts on Discord if any play is INVALIDATED.
 //
 // AUTH: Bearer CRON_SECRET (isCronAuthorized). force-dynamic. maxDuration 60s.
 //
-// The edition is NEVER mutated — status lives only in Redis, surfaced via
-// /api/nighthawk/play-status for the UI badge layer.
+// The edition ROW (nighthawk_editions.plays) is still never mutated — the pull latch
+// lives on the outcome row and is merged onto the member payload at read time
+// (/api/market/nighthawk/edition), so the published record stays intact while the
+// actionable surface presents the play as PULLED with its reason.
 
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
@@ -29,6 +37,10 @@ import {
   type PlayConfirmStatus,
   type PlayStatus,
 } from "@/features/nighthawk/lib/morning-confirm-verdict";
+import { persistNighthawkMorningVerdicts } from "@/features/nighthawk/lib/morning-verdict-persist";
+import { applyCortexMorningReveto } from "@/features/nighthawk/lib/morning-cortex-reveto";
+import { composeCortexEvidence } from "@/lib/nighthawk/cortex/compose";
+import type { CortexVerdict } from "@/lib/nighthawk/cortex/types";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import { makeRedis } from "@/lib/make-redis";
 import { todayEt as etYmdOf } from "@/lib/et-date";
@@ -68,8 +80,13 @@ function inMorningWindow(force: boolean): boolean {
   return inEtWindow({ targetHour: 9, targetMinute: 10, catchupMin: 35 });
 }
 
-// Fetch pre-market SPX snapshot from Polygon (rate-limited indices batch).
+// Fetch pre-market SPX — WS-first, then REST snapshot.
 async function fetchSpxPremarket(): Promise<number | null> {
+  try {
+    const { getStockLiveCandle } = await import("@/lib/ws/stock-candle-store");
+    const c = getStockLiveCandle("SPX");
+    if (c.current && c.current.close > 0) return c.current.close;
+  } catch { /* fall through */ }
   try {
     const snaps = await fetchIndexSnapshots(["I:SPX"]);
     const spx = snaps["I:SPX"];
@@ -351,11 +368,66 @@ export async function GET(req: NextRequest) {
       })
     );
 
+    // ── Phase 3.25: Cortex morning re-veto (PR-N6) ───────────────────────────
+    // Run a fresh Cortex compose for each non-INVALIDATED play. If the Cortex vetoes
+    // (e.g. overnight earnings/catalyst changed the thesis), upgrade to INVALIDATED.
+    // Fail-soft: a total Cortex failure skips the re-veto; the mechanical verdicts
+    // (Phase 3) still proceed to persist.
+    let finalStatuses = playStatuses;
+    let cortexRevetoMeta: { vetoed: number; cleared: number; skipped: number; error?: string } = {
+      vetoed: 0, cleared: 0, skipped: 0,
+    };
+    try {
+      const nonInvalidated = playStatuses.filter((ps) => ps.status !== "INVALIDATED");
+      if (nonInvalidated.length > 0) {
+        const { fetchCortexInputs } = await import("@/lib/nighthawk/cortex/fetch");
+        const now = new Date();
+        const cortexVerdicts = new Map<string, CortexVerdict | null>();
+
+        const cortexResults = await Promise.allSettled(
+          nonInvalidated.map(async (ps) => {
+            const direction = String(ps.direction ?? "LONG").toUpperCase().includes("SHORT")
+              ? "short" as const
+              : "long" as const;
+            const inputs = await fetchCortexInputs(ps.ticker, direction, { now, timeoutMs: 4_000 });
+            return { ticker: ps.ticker.toUpperCase(), verdict: composeCortexEvidence(inputs) };
+          })
+        );
+
+        for (const r of cortexResults) {
+          if (r.status === "fulfilled") {
+            cortexVerdicts.set(r.value.ticker, r.value.verdict);
+          } else {
+            console.warn("[nighthawk-morning-confirm] Cortex re-veto failed for a play:", r.reason);
+          }
+        }
+
+        const { statuses: mergedStatuses, result: revetoResult } =
+          applyCortexMorningReveto(playStatuses, cortexVerdicts);
+        finalStatuses = mergedStatuses;
+
+        cortexRevetoMeta = {
+          vetoed: revetoResult.vetoed.length,
+          cleared: revetoResult.cleared.length,
+          skipped: revetoResult.skipped.length,
+        };
+
+        if (revetoResult.vetoed.length > 0) {
+          for (const v of revetoResult.vetoed) {
+            console.info(`[nighthawk-morning-confirm] Cortex fresh-veto: ${v.ticker} — ${v.vetoReasons.join("; ")}`);
+          }
+        }
+      }
+    } catch (err) {
+      cortexRevetoMeta.error = err instanceof Error ? err.message : String(err);
+      console.warn("[nighthawk-morning-confirm] Cortex morning re-veto skipped (error):", err);
+    }
+
     const summary = {
-      confirmed: playStatuses.filter((p) => p.status === "CONFIRMED").length,
-      degraded: playStatuses.filter((p) => p.status === "DEGRADED").length,
-      invalidated: playStatuses.filter((p) => p.status === "INVALIDATED").length,
-      unverified: playStatuses.filter((p) => p.status === "UNVERIFIED").length,
+      confirmed: finalStatuses.filter((p) => p.status === "CONFIRMED").length,
+      degraded: finalStatuses.filter((p) => p.status === "DEGRADED").length,
+      invalidated: finalStatuses.filter((p) => p.status === "INVALIDATED").length,
+      unverified: finalStatuses.filter((p) => p.status === "UNVERIFIED").length,
     };
 
     const result: MorningConfirmResult = {
@@ -368,9 +440,38 @@ export async function GET(req: NextRequest) {
       gex_bias: intel.gex_bias,
       call_wall: intel.call_wall,
       put_wall: intel.put_wall,
-      plays: playStatuses,
+      plays: finalStatuses,
       summary,
     };
+
+    // ── Phase 3.5: persist verdicts durably + engage the pull latch ─────────
+    // PR-N4: onto the plays' outcome rows (morning_verdict JSONB, first-write-wins;
+    // INVALIDATED ⇒ one-way pulled). PR-N6: severe DEGRADED (≥2 reasons) also pulls.
+    // Fail-soft by contract — the helper never throws; a DB failure costs the durable
+    // copy for this run (reported in the cron payload below), never the Redis blob or
+    // the cron itself.
+    const verdictPersist = await persistNighthawkMorningVerdicts({
+      editionFor,
+      checkedAt: result.checked_at,
+      playStatuses: finalStatuses,
+      plays,
+      market: {
+        gapPts,
+        spxPremarket,
+        spxPriorClose: priorClose,
+        regime: intel.regime,
+        stockPremarketByTicker: Object.fromEntries(
+          plays.map((p) => [p.ticker.toUpperCase(), stockSnaps[p.ticker.toUpperCase()]?.price ?? null])
+        ),
+      },
+    });
+    if (!verdictPersist.ok || verdictPersist.missing_rows > 0) {
+      console.warn(
+        `[nighthawk-morning-confirm] verdict persistence degraded — persisted=${verdictPersist.persisted} ` +
+          `already=${verdictPersist.already_recorded} missing_rows=${verdictPersist.missing_rows} ` +
+          `errors=${verdictPersist.errors.join("; ") || "none"}`
+      );
+    }
 
     // ── Phase 4: write to Redis ─────────────────────────────────────────────
     try {
@@ -396,7 +497,7 @@ export async function GET(req: NextRequest) {
     }
 
     // ── Phase 6: Discord ops alert on invalidations ─────────────────────────
-    const invalidated = playStatuses.filter((p) => p.status === "INVALIDATED");
+    const invalidated = finalStatuses.filter((p) => p.status === "INVALIDATED");
     if (invalidated.length > 0) {
       await notifyOpsDiscord({
         severity: "warning",
@@ -407,9 +508,23 @@ export async function GET(req: NextRequest) {
       }).catch(() => undefined);
     }
 
-    const payload = { ok: true, edition_for: editionFor, ...summary, duration_ms: Date.now() - started };
+    const payload = {
+      ok: true,
+      edition_for: editionFor,
+      ...summary,
+      // PR-N4: the durable-verdict ledger for this run — cron-health meta shows whether
+      // verdicts actually persisted (and whether any play had no outcome row to pin to).
+      verdicts_persisted: verdictPersist.persisted,
+      verdicts_already_recorded: verdictPersist.already_recorded,
+      verdicts_missing_rows: verdictPersist.missing_rows,
+      plays_pulled: verdictPersist.pulled,
+      verdict_persist_errors: verdictPersist.errors,
+      // PR-N6: Cortex morning re-veto ledger.
+      cortex_reveto: cortexRevetoMeta,
+      duration_ms: Date.now() - started,
+    };
     await logCronRun(CRON_KEY, started, payload);
-    return NextResponse.json({ ...payload, plays: playStatuses });
+    return NextResponse.json({ ...payload, plays: finalStatuses });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.error("[nighthawk-morning-confirm] fatal:", error);

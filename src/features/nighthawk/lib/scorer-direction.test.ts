@@ -7,7 +7,15 @@ import {
   scoreTechnicalSetup,
   scoreSkewConfirmation,
   scoreFlowQuality,
+  scoreCandidate,
+  scoreWallProximity,
+  scoreVexAlignment,
+  computeRegimeMultiplier,
+  rankingScore,
+  rankCandidates,
 } from "./scorer";
+import type { ScoredCandidate } from "./scorer";
+import type { PositioningSummary } from "./positioning";
 import type { TechnicalCard } from "./technicals";
 
 // Direction-correctness regression suite (2026-07-02 audit): several factors scored
@@ -249,3 +257,325 @@ test("scoreFlowQuality: strong negative (bullish) skew flips a put-leaning flow 
   assert.equal(result.direction, "long");
   assert.equal(result.directionFlippedBySkew, true);
 });
+
+// ── scoreCandidate: tech tiebreaker when flow is ambiguous (PR-N27) ──────────
+
+test("scoreCandidate: bearish tech flips ambiguous call-leaning flow to SHORT (PR-N27)", () => {
+  // 52/48 call/put split — margin ~0.077, well under 0.25 threshold
+  const flows = [
+    { type: "call", total_premium: 520_000 },
+    { type: "put", total_premium: 480_000 },
+  ];
+  const bearishTech = {
+    ticker: "TEST", price: 100, trend: "bearish" as const, setup_tags: [],
+    support_levels: [], resistance_levels: [], gap_zones: [], breakout_zones: [],
+    prior_day: { high: 105, low: 95, close: 100 },
+    weekly: { high: null, low: null },
+    rsi14: 60, rel_volume: 1.5, atr14: 3, vwap: 100, ema20: 100, ema50: 100, ema200: 100,
+    summary: "bearish",
+  };
+  const result = scoreCandidate("TEST", flows, bearishTech, {});
+  assert.equal(result.direction, "short", "bearish tech should flip ambiguous flow to short");
+});
+
+test("scoreCandidate: bearish tech does NOT flip strong call-dominant flow (PR-N27)", () => {
+  // 80/20 call/put split — margin ~0.6, well above 0.25 threshold
+  const flows = [
+    { type: "call", total_premium: 4_000_000 },
+    { type: "put", total_premium: 1_000_000 },
+  ];
+  const bearishTech = {
+    ticker: "TEST", price: 100, trend: "bearish" as const, setup_tags: [],
+    support_levels: [], resistance_levels: [], gap_zones: [], breakout_zones: [],
+    prior_day: { high: 105, low: 95, close: 100 },
+    weekly: { high: null, low: null },
+    rsi14: 60, rel_volume: 1.5, atr14: 3, vwap: 100, ema20: 100, ema50: 100, ema200: 100,
+    summary: "bearish",
+  };
+  const result = scoreCandidate("TEST", flows, bearishTech, {});
+  assert.equal(result.direction, "long", "strong flow conviction should override bearish tech");
+});
+
+test("scoreCandidate: bullish tech keeps ambiguous flow as LONG (PR-N27)", () => {
+  // 51/49 call/put split — margin ~0.02
+  const flows = [
+    { type: "call", total_premium: 510_000 },
+    { type: "put", total_premium: 490_000 },
+  ];
+  const bullishTech = {
+    ticker: "TEST", price: 100, trend: "bullish" as const, setup_tags: [],
+    support_levels: [], resistance_levels: [], gap_zones: [], breakout_zones: [],
+    prior_day: { high: 105, low: 95, close: 100 },
+    weekly: { high: null, low: null },
+    rsi14: 55, rel_volume: 1.5, atr14: 3, vwap: 100, ema20: 100, ema50: 100, ema200: 100,
+    summary: "bullish",
+  };
+  const result = scoreCandidate("TEST", flows, bullishTech, {});
+  assert.equal(result.direction, "long", "bullish tech confirms ambiguous long flow");
+});
+
+// ── scoreOptionsPositioning: dealer greek flow alignment ────────────────────
+
+test("positioning: bullish dealer greek flow adds +3 for LONG", () => {
+  const base = scoreOptionsPositioning({}, "long");
+  const withGreek = scoreOptionsPositioning(
+    { greek_flow: { net_delta: 50_000, net_gamma: 1_000, bias: "bullish", row_count: 5 } },
+    "long"
+  );
+  assert.equal(withGreek - base, 3);
+});
+
+test("positioning: bullish dealer greek flow penalizes SHORT (−1 before floor)", () => {
+  // From a non-zero base so the -1 penalty is visible.
+  const withOi = {
+    oi_change: [
+      { oi_change: 100, option_type: "put" },
+      { oi_change: 200, option_type: "put" },
+    ],
+  };
+  const base = scoreOptionsPositioning(withOi, "short");
+  const withGreek = scoreOptionsPositioning(
+    { ...withOi, greek_flow: { net_delta: 50_000, net_gamma: 1_000, bias: "bullish", row_count: 5 } },
+    "short"
+  );
+  assert.equal(withGreek - base, -1);
+});
+
+test("positioning: bearish dealer greek flow adds +3 for SHORT", () => {
+  const base = scoreOptionsPositioning({}, "short");
+  const withGreek = scoreOptionsPositioning(
+    { greek_flow: { net_delta: -50_000, net_gamma: -1_000, bias: "bearish", row_count: 5 } },
+    "short"
+  );
+  assert.equal(withGreek - base, 3);
+});
+
+test("positioning: neutral dealer greek flow has no effect", () => {
+  const base = scoreOptionsPositioning({}, "long");
+  const withGreek = scoreOptionsPositioning(
+    { greek_flow: { net_delta: 500, net_gamma: 100, bias: "neutral", row_count: 3 } },
+    "long"
+  );
+  assert.equal(withGreek, base);
+});
+
+test("positioning: null greek_flow has no effect", () => {
+  const base = scoreOptionsPositioning({}, "long");
+  const withNull = scoreOptionsPositioning({ greek_flow: null }, "long");
+  assert.equal(withNull, base);
+});
+
+test("positioning: greek flow score still capped at 18 total", () => {
+  const result = scoreOptionsPositioning(
+    {
+      dark_pool: { total_premium: 100_000_000, bias: "bullish" },
+      strike_stacks: [
+        { strike: 100, repeated_hits: true, same_strike_accumulation: true, option_type: "call" } as any,
+      ],
+      positioning: { negative_gamma: true } as any,
+      oi_change: [
+        { oi_change: 100, option_type: "call" },
+        { oi_change: 200, option_type: "call" },
+      ],
+      greek_flow: { net_delta: 50_000, net_gamma: 1_000, bias: "bullish", row_count: 5 },
+    },
+    "long"
+  );
+  assert.equal(result, 18);
+});
+
+// ── confirming_signals ──────────────────────────────────────────────────────
+
+test("scoreCandidate returns confirming_signals count based on material thresholds", () => {
+  const flows = [
+    { type: "call", total_premium: 10_000_000, ticker: "TEST" },
+    { type: "call", total_premium: 5_000_000, ticker: "TEST" },
+  ];
+  const result = scoreCandidate("TEST", flows, null, {});
+  assert.equal(typeof result.confirming_signals, "number");
+  assert.ok(result.confirming_signals! >= 0);
+  assert.ok(result.confirming_signals! <= 7);
+});
+
+// ── IV rank penalty ────────────────────────────────────────────────────────
+
+test("scoreCandidate: elevated IV rank (>70) adds catalyst flag and penalty", () => {
+  const flows = [{ type: "call", total_premium: 5_000_000, ticker: "TEST" }];
+  const base = scoreCandidate("TEST", flows, null, {});
+  const withHighIv = scoreCandidate("TEST", flows, null, { iv_rank: 85 });
+  assert.ok(withHighIv.catalyst_flags!.some((f) => f.includes("IV rank 85")));
+  assert.ok(withHighIv.score <= base.score);
+});
+
+test("scoreCandidate: moderate IV rank (<=70) has no penalty or flag", () => {
+  const flows = [{ type: "call", total_premium: 5_000_000, ticker: "TEST" }];
+  const base = scoreCandidate("TEST", flows, null, {});
+  const withModIv = scoreCandidate("TEST", flows, null, { iv_rank: 55 });
+  assert.equal(withModIv.score, base.score);
+  assert.ok(!withModIv.catalyst_flags?.some((f) => f.includes("IV rank")));
+});
+
+// ── FDA calendar reinforcement ──────────────────────────────────────────────
+
+test("scoreCandidate: FDA events add penalty when Benzinga didn't already flag FDA", () => {
+  const flows = [{ type: "call", total_premium: 5_000_000, ticker: "TEST" }];
+  const base = scoreCandidate("TEST", flows, null, {});
+  const withFda = scoreCandidate("TEST", flows, null, {
+    fda_events: [{ date: "2026-08-01", event_type: "PDUFA" }],
+  });
+  assert.ok(withFda.catalyst_flags!.some((f) => f.includes("FDA calendar")));
+  assert.ok(withFda.score < base.score);
+});
+
+test("scoreCandidate: FDA events skip when Benzinga already flagged FDA", () => {
+  const flows = [{ type: "call", total_premium: 5_000_000, ticker: "TEST" }];
+  const withBenzFda = scoreCandidate("TEST", flows, null, {
+    catalysts: [{ type: "binary" }] as never,
+  });
+  const withBoth = scoreCandidate("TEST", flows, null, {
+    catalysts: [{ type: "binary" }] as never,
+    fda_events: [{ date: "2026-08-01", event_type: "PDUFA" }],
+  });
+  assert.equal(withBoth.score, withBenzFda.score);
+});
+
+// ── scoreWallProximity ──────────────────────────────────────────────────────────
+
+function mkPositioning(overrides: Partial<PositioningSummary> = {}): PositioningSummary {
+  return {
+    net_gex: 0, gex_king_strike: null, gamma_flip: null,
+    gamma_regime: "unknown", net_vex: null, max_pain: null,
+    negative_gamma: false, wall_summary: "n/a",
+    ...overrides,
+  };
+}
+
+test("scoreWallProximity: put wall within 1% of spot → +5 for long", () => {
+  const pos = mkPositioning({ wall_summary: "put wall $5690 (-5pts)" });
+  assert.equal(scoreWallProximity(pos, "long"), 5);
+});
+
+test("scoreWallProximity: put wall within 3% of spot → +3 for long", () => {
+  const pos = mkPositioning({ wall_summary: "put wall $100 (-2pts)" });
+  assert.equal(scoreWallProximity(pos, "long"), 3);
+});
+
+test("scoreWallProximity: call wall within 1% for short → +5", () => {
+  const pos = mkPositioning({ wall_summary: "call wall $100 (+1pts)" });
+  assert.equal(scoreWallProximity(pos, "short"), 5);
+});
+
+test("scoreWallProximity: contradicting call wall close for long → -2", () => {
+  const pos = mkPositioning({ wall_summary: "call wall $100 (+1pts)" });
+  assert.equal(scoreWallProximity(pos, "long"), -2);
+});
+
+test("scoreWallProximity: no positioning → 0", () => {
+  assert.equal(scoreWallProximity(null, "long"), 0);
+  assert.equal(scoreWallProximity(mkPositioning(), "long"), 0);
+});
+
+test("scoreWallProximity: combined supporting + contradicting walls", () => {
+  const pos = mkPositioning({ wall_summary: "put wall $5680 (-20pts) · call wall $5720 (+20pts)" });
+  const score = scoreWallProximity(pos, "long");
+  assert.ok(score >= 1, `expected >= 1, got ${score}`);
+});
+
+// ── scoreVexAlignment ───────────────────────────────────────────────────────────
+
+test("scoreVexAlignment: positive VEX aligns with long → +3", () => {
+  assert.equal(scoreVexAlignment(mkPositioning({ net_vex: 50000 }), "long"), 3);
+});
+
+test("scoreVexAlignment: negative VEX aligns with short → +3", () => {
+  assert.equal(scoreVexAlignment(mkPositioning({ net_vex: -50000 }), "short"), 3);
+});
+
+test("scoreVexAlignment: positive VEX contradicts short → -1", () => {
+  assert.equal(scoreVexAlignment(mkPositioning({ net_vex: 50000 }), "short"), -1);
+});
+
+test("scoreVexAlignment: null VEX → 0", () => {
+  assert.equal(scoreVexAlignment(mkPositioning({ net_vex: null }), "long"), 0);
+});
+
+test("scoreVexAlignment: zero VEX → 0", () => {
+  assert.equal(scoreVexAlignment(mkPositioning({ net_vex: 0 }), "long"), 0);
+});
+
+// ── computeRegimeMultiplier (widened range) ─────────────────────────────────────
+
+test("computeRegimeMultiplier: extreme bearish VIX>80 → 0.6", () => {
+  const m = computeRegimeMultiplier({ vix_iv_rank: 85, tide_bias: "BEARISH" as const, advance_pct: null });
+  assert.equal(m, 0.6);
+});
+
+test("computeRegimeMultiplier: extreme bullish VIX<20 → 1.2 base", () => {
+  const m = computeRegimeMultiplier({ vix_iv_rank: 15, tide_bias: "BULLISH" as const, advance_pct: null });
+  assert.equal(m, 1.2);
+});
+
+test("computeRegimeMultiplier: trending composite regime adds 0.05", () => {
+  const base = computeRegimeMultiplier({ vix_iv_rank: 30, tide_bias: "NEUTRAL" as const, advance_pct: null });
+  const trending = computeRegimeMultiplier({ vix_iv_rank: 30, tide_bias: "NEUTRAL" as const, advance_pct: null, composite_regime: "trending_up" });
+  assert.ok(trending > base, `trending ${trending} should exceed base ${base}`);
+});
+
+test("computeRegimeMultiplier: cap at 1.30", () => {
+  const m = computeRegimeMultiplier({ vix_iv_rank: 15, tide_bias: "BULLISH" as const, advance_pct: 80, composite_regime: "breakout" });
+  assert.ok(m <= 1.30, `should be <= 1.30, got ${m}`);
+});
+
+// ── rankingScore ────────────────────────────────────────────────────────────────
+
+function makeCandidate(overrides: Partial<ScoredCandidate>): ScoredCandidate {
+  return {
+    ticker: "TEST",
+    score: 50,
+    direction: "long",
+    flow_score: 20,
+    tech_score: 10,
+    pos_score: 8,
+    news_score: 4,
+    smart_money_score: 3,
+    conviction: "B",
+    ...overrides,
+  };
+}
+
+test("rankingScore: clean candidate returns base score when < 3 confirming signals", () => {
+  const c = makeCandidate({ score: 60, confirming_signals: 2 });
+  assert.equal(rankingScore(c), 60);
+});
+
+test("rankingScore: confluence bonus adds +2 per signal above floor", () => {
+  const c = makeCandidate({ score: 50, confirming_signals: 5 });
+  // 5 signals: (5 - 3 + 1) * 2 = 6 bonus
+  assert.equal(rankingScore(c), 56);
+});
+
+test("rankingScore: fundamental_block applies -10 penalty", () => {
+  const c = makeCandidate({ score: 70, fundamental_block: true, confirming_signals: 2 });
+  assert.equal(rankingScore(c), 60);
+});
+
+test("rankingScore: penalty + bonus combine correctly", () => {
+  const c = makeCandidate({ score: 70, fundamental_block: true, confirming_signals: 5 });
+  // -10 penalty + (5-3+1)*2 = -10 + 6 = -4 net
+  assert.equal(rankingScore(c), 66);
+});
+
+test("rankCandidates: high-scoring flagged candidate outranks low-scoring clean one", () => {
+  const flagged = makeCandidate({ ticker: "FLAG", score: 85, fundamental_block: true, confirming_signals: 5 });
+  const clean = makeCandidate({ ticker: "CLEAN", score: 40, fundamental_block: false, confirming_signals: 2 });
+  const { ranked } = rankCandidates([clean, flagged], 5);
+  assert.equal(ranked[0]!.ticker, "FLAG", "high-scoring flagged should rank first");
+});
+
+test("rankCandidates: close scores favor clean over flagged", () => {
+  const flagged = makeCandidate({ ticker: "FLAG", score: 55, fundamental_block: true, confirming_signals: 2 });
+  const clean = makeCandidate({ ticker: "CLEAN", score: 50, fundamental_block: false, confirming_signals: 2 });
+  const { ranked } = rankCandidates([flagged, clean], 5);
+  assert.equal(ranked[0]!.ticker, "CLEAN", "clean should outrank when scores are close (penalty -10)");
+});
+

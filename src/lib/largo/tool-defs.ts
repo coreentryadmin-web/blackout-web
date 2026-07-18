@@ -225,7 +225,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_zerodte_plays",
-    "0DTE Command's OWN live scanner board (the default tab at /grid, formerly branded 'BlackOut Grid') — a DIFFERENT, MULTI-TICKER engine from SPX Slayer: an always-on scanner that hunts the broader tape all session for brand-new 0DTE setups across many tickers (index products like SPY/QQQ/NDX are eligible alongside single names), never SPX/SPXW's own single-instrument play engine. Returns: `plays` — today's ledger of setups the scanner has already flagged, each with lifecycle `status` (OPEN/HOLD/TRIM/CLOSED), `direction`, `strike`, `entry_premium`, `last_mark`, `live_pnl_pct`, `peak_score`, the current BlackOut Intelligence `action`/`intel` reasoning line, and (once closed) a `graded` outcome/pnl_pct; `fresh_finds` — the top 5 setups the scanner just surfaced this cycle that are NOT yet on the ledger (ticker/direction/strike/score/gross_premium/aggression/plan/intel); `excluded_covered_elsewhere` — tickers deliberately withheld from fresh_finds because last night's Night Hawk edition already covers them (a name members already have is a repeat, not a find, so it won't double-count here); and `rules`, the 0DTE discipline every play is managed to (no new entries after 15:00 ET, -50%/+100% stop/trim plan, hard exit by 15:30 ET). IMPORTANT — do not conflate this with SPX Slayer: this tool has no visibility into and never reflects SPX Slayer's own phase/gates/confluence/score for its current or most recent play. For SPX/SPXW's own single-instrument play-engine state, use get_spx_play (or get_spx_structure for the full desk view) instead — only reach for this tool when the question is actually about the multi-ticker 0DTE Command scanner/board itself. This tool ONLY shows setups that already cleared every gate — for a candidate that DIDN'T make the board, use get_zerodte_rejections instead.",
+    "0DTE Command's OWN live scanner board (the default tab at /grid, formerly branded 'BlackOut Grid') — a DIFFERENT, MULTI-TICKER engine from SPX Slayer: an always-on scanner that hunts the broader tape all session for brand-new 0DTE setups across many tickers (index products like SPY/QQQ/NDX are eligible alongside single names), never SPX/SPXW's own single-instrument play engine. Returns: `plays` — today's ledger of setups the scanner has already flagged, each with lifecycle `status` (OPEN/HOLD/TRIM/CLOSED), `direction`, `strike`, `entry_premium`, `last_mark`, `live_pnl_pct`, `peak_score`, the current BlackOut Intelligence `action`/`intel` reasoning line, and (once closed) a `graded` outcome/pnl_pct; `fresh_finds` — the top 5 setups the scanner just surfaced this cycle that are NOT yet on the ledger (ticker/status/direction/strike/score/gross_premium/aggression/plan/intel; `status` is WATCH for an uncommitted candidate or SKIP for a refused find — a fresh find is NEVER an OPEN position and must not be presented as one); `excluded_covered_elsewhere` — tickers deliberately withheld from fresh_finds because last night's Night Hawk edition already covers them (a name members already have is a repeat, not a find, so it won't double-count here); and `rules`, the 0DTE discipline every play is managed to (no new entries after 15:00 ET, -50%/+100% stop/trim plan, hard exit by 15:30 ET). IMPORTANT — do not conflate this with SPX Slayer: this tool has no visibility into and never reflects SPX Slayer's own phase/gates/confluence/score for its current or most recent play. For SPX/SPXW's own single-instrument play-engine state, use get_spx_play (or get_spx_structure for the full desk view) instead — only reach for this tool when the question is actually about the multi-ticker 0DTE Command scanner/board itself. This tool ONLY shows setups that already cleared every gate — for a candidate that DIDN'T make the board, use get_zerodte_rejections instead.",
     {}
   ),
   t(
@@ -252,12 +252,12 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_platform_snapshot",
-    "Cross-service, ONE-CALL combo across up to 3 products in parallel — NOT a substitute for a product's own dedicated tool when the question needs that product's full detail. `spx` — the exact same object get_spx_structure returns (both call the identical getSpxDeskSummary() — price, GEX, flow, dark pool, macro, tide). `flows` — the exact same object get_flow_tape returns (both call the identical getFlowTapeSummary(): count/total_premium/top_tickers/recent), same default limit 50 (override with `flow_limit`). `nighthawk` — by DEFAULT a STRIPPED-DOWN summary ONLY (available/edition_for/published_at/recap_headline/play_count/top_tickers as bare ticker strings — no thesis/entry/target/stop/score at all); pass `full_edition: true` to ALSO get a `nighthawk_edition` field holding the exact same full object get_nighthawk_edition returns — but even then this is ALWAYS the LATEST published edition. There is no date parameter here, unlike get_nighthawk_edition's own `date` (YYYY-MM-DD) for a specific past edition. Use `include` (subset of spx/flows/nighthawk; defaults to all three) to skip services you don't need. NOTE: 'largo' is also listed as an enum option but is currently a no-op — no largo-specific data exists in this snapshot, so including it fetches nothing extra. IMPORTANT — for a Night-Hawk-ONLY question needing actual play detail (thesis/entry/target/stop/score) or a specific past date, call get_nighthawk_edition directly instead: this tool's default nighthawk field can't answer either, and full_edition:true still can't answer the date case. Reach for THIS tool only when the question genuinely spans multiple products in the same turn (e.g. 'how does the SPX desk look alongside tonight's flow tape and Night Hawk picks').",
+    "Cross-service, ONE-CALL combo across up to 3 products in parallel — NOT a substitute for a product's own dedicated tool when the question needs that product's full detail. `spx` — the exact same object get_spx_structure returns (both call the identical getSpxDeskSummary() — price, GEX, flow, dark pool, macro, tide). `flows` — the exact same object get_flow_tape returns (both call the identical getFlowTapeSummary(): count/total_premium/top_tickers/recent), same default limit 50 (override with `flow_limit`). `nighthawk` — by DEFAULT a STRIPPED-DOWN summary ONLY (available/edition_for/published_at/recap_headline/play_count/top_tickers as bare ticker strings — no thesis/entry/target/stop/score at all); pass `full_edition: true` to ALSO get a `nighthawk_edition` field holding the exact same full object get_nighthawk_edition returns — but even then this is ALWAYS the LATEST published edition. There is no date parameter here, unlike get_nighthawk_edition's own `date` (YYYY-MM-DD) for a specific past edition. Use `include` (subset of spx/flows/nighthawk; defaults to all three) to skip services you don't need. NOTE: pass `include: ['largo']` (or add `largo` to the include array) to attach `snapshot.largo` — the Redis-backed BIE full-platform read (Thermal matrix, Vector SPX, HELIX near-misses, 0DTE rejections). IMPORTANT — for a Night-Hawk-ONLY question needing actual play detail (thesis/entry/target/stop/score) or a specific past date, call get_nighthawk_edition directly instead: this tool's default nighthawk field can't answer either, and full_edition:true still can't answer the date case. Reach for THIS tool only when the question genuinely spans multiple products in the same turn (e.g. 'how does the SPX desk look alongside tonight's flow tape and Night Hawk picks').",
     {
       include: {
         type: "array",
         items: { type: "string", enum: ["spx", "flows", "nighthawk", "largo"] },
-        description: "Subset of services; default all three. 'largo' is currently a no-op.",
+        description: "Subset of services; default all three. `largo` adds `snapshot.largo` — the BIE full-platform state (Thermal, Vector, HELIX near-misses, 0DTE rejections).",
       },
       flow_limit: { type: "integer", default: 50 },
       full_edition: { type: "boolean", description: "Include the full Night Hawk edition object (latest only — no date param)." },
@@ -426,6 +426,43 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   ),
 
   t(
+    "call_internal_api",
+    "Read ANY of BlackOut's own internal READ endpoints for live platform data — the universal read-access tool. GOVERNED + READ-ONLY: only GET requests to routes the route-registry marks class:'read' are served (market quote/indices/news/heatmap/gex-positioning/dark-pool/flows/regime, the full SPX desk read family, the full Vector read family, Night Hawk edition, platform snapshot/intel, track record, health). Anything else is HARD-DENIED: any non-GET verb, any admin/cron/auth/webhook/push/membership/engine route, and every LLM-cost route (largo/query, spx/commentary, nighthawk/hunt) — the tool will refuse them, it cannot mutate, authenticate, spend, or reach a webhook. Pass `path` (e.g. '/api/market/gex-positioning') and optional `params` (query params object). Use when a question needs a specific platform surface not already covered by a dedicated tool; prefer the dedicated tool (get_ecosystem_context, get_vector_full_state, get_flow_tape, …) when one exists.",
+    {
+      path: { type: "string", description: "Internal API path, e.g. /api/market/gex-positioning. Must be a GET, class:read route." },
+      params: { type: "object", description: "Optional query params, e.g. {\"ticker\":\"NVDA\",\"dte\":\"all\"}." },
+    },
+    ["path"]
+  ),
+
+  t(
+    "get_uw",
+    "Read a live Unusual Whales DATA endpoint directly (GET, read-only) — for UW data not already wrapped by a dedicated tool. Pass `endpoint` (a UW API path, e.g. '/api/darkpool/NVDA' or '/api/stock/NVDA/greek-exposure') and optional `params`. GOVERNED: only allowlisted read-data paths (stock/darkpool/option-trades/market/gex/greek/flow/etf/congress/insider/screener/…) are served; absolute URLs, traversal, and off-allowlist paths are refused. Goes through UW's own rate limiter + circuit breaker + cache (never bypassed). Prefer a dedicated tool (get_options_flow, get_dark_pool, get_gex, …) when one covers the need; use this for the long tail.",
+    {
+      endpoint: { type: "string", description: "UW API path, e.g. /api/darkpool/NVDA" },
+      params: { type: "object", description: "Optional query params object." },
+    },
+    ["endpoint"]
+  ),
+
+  t(
+    "get_polygon",
+    "Read a live Polygon/Massive DATA endpoint directly (GET, read-only) — for Polygon data not already wrapped by a dedicated tool. Pass `endpoint` (a Polygon REST path, e.g. '/v2/aggs/ticker/AAPL/range/1/day/2026-07-01/2026-07-10' or '/v3/reference/tickers') and optional `params` (apiKey is injected automatically). GOVERNED: only versioned data namespaces (/v1../v2../v3../vX, /snapshot, /reference, /aggs, /marketstatus) are served; absolute URLs and traversal are refused. Goes through Polygon's own rate limiter (polygonTrackedFetch), never bypassed. Prefer a dedicated tool (get_quote, get_technicals, get_uw_bars, …) when one covers the need.",
+    {
+      endpoint: { type: "string", description: "Polygon REST path, e.g. /v3/reference/tickers" },
+      params: { type: "object", description: "Optional query params object (apiKey added automatically)." },
+    },
+    ["endpoint"]
+  ),
+
+  t(
+    "get_vector_full_state",
+    "Vector's OWN complete live desk state for a ticker + DTE horizon — the exact same object the Vector chart's desk terminal reads and get_ecosystem_context returns as its vector_full_state field (via fetchVectorFullState). Hands you Vector's ENTIRE surface in one call: spot, gamma regime (long/short/transition), gamma walls (call/put, ranked) + per-wall INTEGRITY (firm/moderate/thin, held-% of session), gamma flip, the gamma magnet (pin vs pivot), wall-proximity, the options-implied expected move (±1σ/±2σ bands), max pain, confluence zones, the derived concrete PLAY (buildVectorPlay — style/bias/entry/targets/invalidation/conviction/grade), the full per-strike GEX ladder (king strikes + magnitudes), a compact heatmap-presence summary, options-flow prints, the wall-history RAIL (the 'beads' over the session) + its dynamics events (building/fading/new/dissolved/shifted — the 'fadeness'), the VANNA (VEX) lens (walls + zero-vanna flip), dark-pool levels, and server-computed chart technicals (VWAP/EMA stack/RSI/MACD/structure). horizon is one of 0dte/weekly/monthly/all (default all). Use for ANY question about what Vector shows for a ticker — 'what's the Vector setup / regime / play on NVDA', 'are the walls building or fading', 'where's the gamma flip and magnet', 'what's the expected move' — the deterministic Vector read, zero Claude cost. Runs for any optionable symbol.",
+    { ...T, horizon: { type: "string", enum: ["0dte", "weekly", "monthly", "all"], description: "DTE horizon; defaults to 'all'." } },
+    ["ticker"]
+  ),
+
+  t(
     "get_hot_tickers",
     "Leaderboard of single-name tickers with the most options-flow premium over the last 6h (print count + total premium each). Index/ETF and leveraged-ETP names are excluded so SPY/QQQ don't just occupy every slot. Use for open-ended 'what's hot / what's moving / any unusual flow today' questions that don't name a specific ticker — for a question ABOUT one ticker, use get_ecosystem_context or get_flow_tape instead."
   ),
@@ -461,6 +498,10 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 // both consumers pick it up automatically instead of needing a second edit.
 export const BIE_TOOL_NAMES = [
   "get_ecosystem_context",
+  "call_internal_api",
+  "get_uw",
+  "get_polygon",
+  "get_vector_full_state",
   "get_hot_tickers",
   "get_market_regime",
   "get_confluence_outcomes",

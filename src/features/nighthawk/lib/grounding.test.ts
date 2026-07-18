@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { groundPlay, groundPlays } from "./grounding";
+import { groundPlay, groundPlays, tieredMinOi } from "./grounding";
 import { parseOptionsContract, type ChainStrikeRow } from "./option-chain-prompt";
 import type { PlaybookPlay } from "./types";
 
@@ -19,7 +19,7 @@ function play(entryPremium: number): PlaybookPlay {
     options_play: `NBIS $300 Call 2026-09-18 entry prem ~$${entryPremium.toFixed(2)}`,
     entry_premium: entryPremium,
     entry_cost_per_contract: Math.round(entryPremium * 100),
-    premium_cap_ok: entryPremium <= 20,
+    premium_cap_ok: entryPremium <= 35,
     score: 90,
   };
 }
@@ -78,7 +78,7 @@ test("groundPlay drops a confirmed contract when live premium exceeds cap", () =
   );
 
   assert.equal(result.severity, "drop");
-  assert.match(result.issues.map((i) => i.detail).join(" "), /\$44\.95 exceeds the \$20\/share cap/);
+  assert.match(result.issues.map((i) => i.detail).join(" "), /\$44\.95 exceeds the \$35\/share cap/);
 });
 
 // ── groundPlays' `dropped` field (task #141) ──────────────────────────────────────
@@ -100,7 +100,7 @@ test("groundPlays: a HARD-dropped play is removed from `plays` AND reported (str
   assert.equal(dropped[0]!.play.ticker, "NBIS");
   assert.ok(dropped[0]!.issues.length >= 1);
   assert.ok(dropped[0]!.issues.every((i) => i.severity === "drop"));
-  assert.match(dropped[0]!.issues.map((i) => i.detail).join(" "), /\$44\.95 exceeds the \$20\/share cap/);
+  assert.match(dropped[0]!.issues.map((i) => i.detail).join(" "), /\$44\.95 exceeds the \$35\/share cap/);
 });
 
 test("groundPlays: an ungrounded/flagged/ok mix only reports the HARD-dropped play in `dropped`", () => {
@@ -183,4 +183,21 @@ test("groundPlay drops contradictory user-visible prose strike claims", () => {
 
   assert.equal(result.severity, "drop");
   assert.match(result.issues.map((i) => i.detail).join(" "), /contradictory setup text/);
+});
+
+// ── tieredMinOi ─────────────────────────────────────────────────────────────────
+
+test("tieredMinOi: large-cap (>=$200) uses 500", () => {
+  assert.equal(tieredMinOi(500), 500);
+  assert.equal(tieredMinOi(200), 500);
+});
+
+test("tieredMinOi: mid-cap ($50-$199) uses 200", () => {
+  assert.equal(tieredMinOi(100), 200);
+  assert.equal(tieredMinOi(50), 200);
+});
+
+test("tieredMinOi: small-cap (<$50) uses 100", () => {
+  assert.equal(tieredMinOi(25), 100);
+  assert.equal(tieredMinOi(5), 100);
 });

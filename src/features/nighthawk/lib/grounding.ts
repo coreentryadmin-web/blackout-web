@@ -37,8 +37,18 @@ import type { PlaybookPlay } from "./types";
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "./constants";
 import { fmtPremium } from "@/lib/fmt-money";
 
-/** Minimum open interest for a contract to count as a real, tradeable strike. */
+/** Minimum open interest for a contract to count as a real, tradeable strike.
+ *  Default for most names; see tieredMinOi() for price-aware floors. */
 export const GROUNDING_MIN_OI = 500;
+
+/** Price-tiered OI floor: index products need high liquidity, small names need less.
+ *  Prevents the flat 500 floor from blocking viable small-cap plays while still requiring
+ *  deep liquidity on SPY/QQQ/NVDA-class names. */
+export function tieredMinOi(spot: number): number {
+  if (spot >= 200) return 500;
+  if (spot >= 50) return 200;
+  return 100;
+}
 
 /** Entry premium must land within ±40% of the chain ask (or mid) for the matched contract.
  *  Wide enough to absorb intraday→overnight quote drift and bid/ask vs mid choices, tight enough
@@ -265,11 +275,15 @@ export function groundPlay(
     };
   } else {
     const bestOi = Math.max(...matched.map((r) => sideOi(r, parsed.side)));
-    if (bestOi < GROUNDING_MIN_OI) {
+    // Use tiered OI floor matching the picker: $200+ → 500, $50-$199 → 200, <$50 → 100.
+    // The flat 500 floor was inconsistent with pickChainContract's tieredMinOi, causing
+    // contracts that passed the picker (OI 200 for a $100 stock) to get dropped here.
+    const oiFloor = spot > 0 ? tieredMinOi(spot) : GROUNDING_MIN_OI;
+    if (bestOi < oiFloor) {
       issues.push({
         check: "strike",
         severity: "drop",
-        detail: `${play.ticker} strike ${parsed.strike}${parsed.side ? ` ${parsed.side}` : ""}${parsed.expiryYmd ? ` ${parsed.expiryYmd}` : ""} present on-chain but OI ${bestOi} < ${GROUNDING_MIN_OI} (illiquid/off-chain).`,
+        detail: `${play.ticker} strike ${parsed.strike}${parsed.side ? ` ${parsed.side}` : ""}${parsed.expiryYmd ? ` ${parsed.expiryYmd}` : ""} present on-chain but OI ${bestOi} < ${oiFloor} (illiquid/off-chain).`,
       });
     } else {
       // Contract is real & liquid → the displayed premium MUST come from the live contract mark.

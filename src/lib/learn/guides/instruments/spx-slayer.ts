@@ -15,20 +15,23 @@ export const spxSlayerGuide = defineToolGuide({
     title: "Desk layout",
     paragraphs: [
       "Open `/dashboard` on a wide screen for the intended experience. On mobile, panels stack with Trade Alerts first; on xl breakpoints you get a true command center: left GEX matrix, center play engine, right Largo commentary. The left rail is matrix-only — no Benzinga scroll, live tape, or interval-flow panels.",
-      "Optional halt banners sit above everything. A confirmed active halt blocks entries — read that banner before interpreting any verdict below it.",
+      "Optional halt banners sit above everything. A confirmed active halt blocks entries; a degraded halt feed does not block by itself (the engine fails open with a warning) — read that banner before interpreting any verdict below it, and manually verify no active halt exists.",
       "Scan top-to-bottom, left-to-right during the open: header for regime → left matrix for strike context → center for actionable verdict → right rail for narrative synthesis. Do not start in the commentary rail and work backward.",
     ],
   },
   panels: [
     {
-      name: "Trading halt banner",
+      name: "Trading halt banners",
       location: "Top of page — above header",
       purpose:
-        "Exchange halt awareness. A confirmed active halt on a watched symbol blocks new entries regardless of play engine state.",
-      shows: ["Active halts: symbol, halt type, reason"],
+        "Exchange halt awareness and feed health. A confirmed active halt on a watched symbol blocks new entries regardless of play engine state. A degraded halt feed does NOT block entries by itself — the engine fails open and warns instead, since blocking every entry on a transient feed gap was too aggressive.",
+      shows: [
+        "Active halts: symbol, halt type, reason",
+        "Halt feed degraded warning during an active session when the channel hasn't updated",
+      ],
       cadence: "Updates with merged desk (~2s flow lane)",
       consume:
-        "Read this first every time you land on the desk. A green play card means nothing if the TRADING HALT banner is showing — that one blocks entries for real.",
+        "Read this first every time you land on the desk. A green play card means nothing if the TRADING HALT banner is showing — that one blocks entries for real. The degraded-feed banner is a caution, not a block: manually verify no active halt exists before entering.",
       tip: "Halts on SPX or related indices can freeze the entire 0DTE thesis — do not try to trade through them.",
     },
     {
@@ -98,19 +101,19 @@ export const spxSlayerGuide = defineToolGuide({
       name: "SpxCommentaryRail (Largo feed)",
       location: "Right rail",
       purpose:
-        "Live AI desk commentary synthesized from the current merged desk snapshot — bias, changes, and watch items in card form.",
+        "Largo's live trading signal: a pinned bias read (direction, conviction, dealer mechanic, posture) plus a transition-only tape-event feed — only what changed, with its trade implication.",
       shows: [
-        "Live / standby indicator and Reading… state while fetching",
+        "Pinned bias card: direction-colored header (e.g. BEARISH · 4/4 aligned), a 3–4 sentence read, and up to 3 trigger levels that would flip the bias",
+        "Tape events, newest first: γ-flip crossings, king wall migrations, walls building/fading, VWAP reclaim/reject, EMA-stack flips, structure breaks, expected-move tags, play armed/fired/closed",
         "Offline copy tuned to session (weekend, premarket, extended, closed)",
-        "Feed cards (up to 24): bias chip, time, headline, changed[] bullets, body lines, Watch list",
-        "Featured card with expand/collapse after 12 lines",
+        "Quiet-tape notice when nothing has changed since the pinned read",
       ],
-      actions: ["Expand/collapse featured analysis on long cards"],
+      actions: ["Collapse/expand the rail"],
       cadence:
-        "Server ~5-min generation windows; client minimum ~55s between fetches; refetch on material price/regime changes",
+        "Bias card re-voices on a real bias change or every 5 minutes; events print the moment a transition happens (desk polls ~2s) and are deduped by state so quiet tape stays quiet",
       consume:
-        "Use after you have read header + matrix + play state. Commentary explains what changed, not what to click. Watch lists are monitoring items, not entries. When offline, read the tone-specific hero — it tells you why the rail is quiet. For deep follow-up questions, open full Largo on `/terminal`.",
-      tip: "Deduped by as_of timestamp — if cards stop updating, check FreshnessChip on the header before blaming the AI.",
+        "Read the pinned card first: direction + conviction tells you calls, puts, or wait; the trigger levels are the exact prices that change that answer. The event feed is your tape narrator — green events favor calls, red favor puts, amber means caution/chop. When offline, read the tone-specific hero — it tells you why the rail is quiet. For deep follow-up questions, open full Largo on `/terminal`.",
+      tip: "If the feed is quiet, that IS the signal — nothing structural has changed, so the pinned read still stands.",
     },
   ],
   howItWorks: {

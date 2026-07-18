@@ -1,8 +1,6 @@
 import { isWebProcess, shouldRunRthWarmLeader } from "@/lib/process-role";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { heatmapPresetTickers } from "@/lib/heatmap-allowlist";
-import { primeGexOverlays } from "@/lib/gex-overlay";
-import { getCachedPlatformSnapshot } from "@/lib/platform-snapshot-cache";
 import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
 import {
   loadBootstrapBundle,
@@ -12,9 +10,13 @@ import {
 const BOOT_FLAG = "__blackoutWebBootWarmStarted" as const;
 
 /**
- * Fire-and-forget cache priming on web-tier cold starts. Populates in-memory mirrors from
- * Redis (or triggers a single-flight matrix build) so the first member request after an ECS
- * deploy does not pay an 11–16s chain-fetch penalty.
+ * Fire-and-forget cache priming on web-tier cold starts. Populates in-memory
+ * mirrors from Redis (or triggers a single-flight matrix build) so the first
+ * member request after an ECS deploy does not pay a chain-fetch penalty.
+ *
+ * Only runs on web-tier containers (PROCESS_ROLE=web) — the ingest tier has its
+ * own boot via market-worker.mjs. In "all" mode (dev/staging), the staging-boot-
+ * warm path in init-data-sockets handles priming instead.
  */
 export function ensureWebBootWarm(): void {
   if (!isWebProcess()) return;
@@ -33,13 +35,9 @@ export function ensureWebBootWarm(): void {
     await Promise.allSettled([
       loadBootstrapBundle(),
       loadMergedSpxDesk(),
-    ...presets.map(async (t) => {
-      const hm = await fetchGexHeatmap(t);
-      if (hm?.strikes?.length) await primeGexOverlays(t, hm.strikes);
-    }),
-    getCachedPlatformSnapshot(),
-    getZeroDteBoardPayload(),
-  ]);
+      ...presets.map((t) => fetchGexHeatmap(t)),
+      getZeroDteBoardPayload(),
+    ]);
   })().catch((err) => {
     console.warn("[web-boot-warm] non-fatal:", err instanceof Error ? err.message : err);
   });

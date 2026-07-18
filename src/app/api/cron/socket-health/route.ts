@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
-import { isWebProcess } from "@/lib/process-role";
-import { probeClusterSocketHealth } from "@/lib/ws/cluster-socket-probe";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
-import { socketHealthOkDuringRth, waitForClusterSocketWarmth } from "@/lib/ws/socket-health-probe";
 import { getIndexStoreStatus } from "@/lib/ws/polygon-socket";
 import { getUwSocketHealth } from "@/lib/ws/uw-socket";
 import { getOptionsSocketStatus, inOptionsMarketHours } from "@/lib/ws/options-socket";
 import { getStocksSocketStatus } from "@/lib/ws/stocks-socket";
+import {
+  buildUwClusterHealth,
+  evaluatePolygonClusterOk,
+  evaluateUwClusterOk,
+  readPolygonClusterHealth,
+} from "@/lib/ws/socket-cluster-health";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +19,9 @@ export const dynamic = "force-dynamic";
 /**
  * Cron-accessible WebSocket health probe — boots lazy sockets and returns live
  * cluster-local status. Used by RTH validation instead of brittle Railway log grep.
+ *
+ * Multi-replica note: only one task holds each WS leader lock. Followers report
+ * CLOSED locally but are healthy when the Redis cluster heartbeat is fresh.
  */
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -32,23 +38,7 @@ export async function GET(req: NextRequest) {
   } | null = null;
 
   try {
-    if (isWebProcess()) {
-      const cluster = await probeClusterSocketHealth();
-      payload = {
-        ok: cluster.ok,
-        as_of: cluster.as_of,
-        market_hours: inOptionsMarketHours(),
-        websockets: {
-          mode: "web_cluster_probe",
-          cluster,
-        },
-        ...(cluster.detail ? { error: cluster.detail } : {}),
-      };
-    } else {
-      ensureDataSockets();
-      const warmth = await waitForClusterSocketWarmth(
-        inOptionsMarketHours() ? 20_000 : 3_000
-      );
+    ensureDataSockets();
 
     const options = getOptionsSocketStatus();
     const luld = getStocksSocketStatus();
@@ -77,29 +67,46 @@ export async function GET(req: NextRequest) {
 
     let luld_ok = true;
     let luld_detail = "disabled — UW trading_halts only";
-    if (luld.enabled) {
+    if (luld.luld_enabled) {
       if (!rth) {
         luld_detail = "enabled, off-hours — auth not required";
       } else if (!luld.is_leader) {
-        // Mirror options-socket: only the cluster leader opens the LULD feed; followers are healthy.
         luld_detail = "enabled, follower — cluster leader maintains LULD feed";
       } else if (luld.authenticated && luld.ws_state === "open") {
-        luld_detail = `live (${luld.tickers.join(", ")})`;
+        luld_detail = `live (${luld.luld_tickers.join(", ")})`;
       } else {
         luld_ok = false;
         luld_detail = `leader but not authenticated (${luld.ws_state})`;
       }
     }
 
+    const polygonLocal = getIndexStoreStatus();
+    const uwLocal = getUwSocketHealth();
+    const uwCluster = buildUwClusterHealth({
+      is_leader: uwLocal.is_leader,
+      cluster_last_message_at: uwLocal.cluster_last_message_at,
+    });
+    const polygonCluster = await readPolygonClusterHealth(polygonLocal.is_leader);
+    const uwEval = evaluateUwClusterOk(uwCluster, rth);
+    const polygonEval = evaluatePolygonClusterOk(polygonCluster, rth);
+
     payload = {
-      ok: socketHealthOkDuringRth(warmth.cluster, options_ok, luld_ok),
+      ok: options_ok && luld_ok && uwEval.ok && polygonEval.ok,
       as_of: new Date().toISOString(),
       market_hours: rth,
       websockets: {
-        cluster: warmth.cluster,
-        cluster_wait_ms: warmth.waited_ms,
-        polygon_indices: getIndexStoreStatus(),
-        unusual_whales: getUwSocketHealth(),
+        polygon_indices: {
+          ...polygonLocal,
+          cluster: polygonCluster,
+          ok: polygonEval.ok,
+          detail: polygonEval.detail,
+        },
+        unusual_whales: {
+          ...uwLocal,
+          cluster: uwCluster,
+          ok: uwEval.ok,
+          detail: uwEval.detail,
+        },
         options: {
           ...options,
           authenticated_shards: authenticatedShards,
@@ -113,9 +120,7 @@ export async function GET(req: NextRequest) {
           detail: luld_detail,
         },
       },
-      ...(!warmth.ok && rth ? { error: "Cluster UW heartbeat stale after socket boot wait" } : {}),
     };
-    }
   } catch (err) {
     console.error("[cron/socket-health]", err instanceof Error ? err.message : err);
     payload = {

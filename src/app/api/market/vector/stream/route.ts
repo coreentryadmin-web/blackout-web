@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
-import { buildVectorStreamPayload, normalizeVectorTicker } from "@/features/vector";
+import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector";
+import { touchDynamicUniverse } from "@/features/vector/lib/vector-dynamic-universe";
+import {
+  attachVectorStreamSubscriber,
+  detachVectorStreamSubscriber,
+  getVectorStreamDeltaFrame,
+  getVectorStreamFullFrame,
+  releaseVectorStreamConnection,
+  tryAcquireVectorStreamConnection,
+} from "@/features/vector/lib/vector-stream-hub";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
 
@@ -9,8 +18,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const TICK_MS = 1_000;
-
-let activeStreams = 0;
 const MAX_STREAMS = Number(process.env.SSE_MAX_STREAMS ?? 2000);
 
 export async function GET(req: NextRequest) {
@@ -20,9 +27,21 @@ export async function GET(req: NextRequest) {
   const locked = await requireToolApi("vector");
   if (locked) return locked;
 
-  const ticker = normalizeVectorTicker(req.nextUrl.searchParams.get("ticker"));
+  const rawTicker = req.nextUrl.searchParams.get("ticker");
+  // Any optionable symbol is allowed on demand (Vector is a search-any-stock
+  // desk, not a fixed universe) — but only WELL-FORMED symbols: a junk/oversized
+  // string is refused before it can spin a poller. The two amplification vectors
+  // the old universe gate guarded are now bounded directly: concurrent pollers by
+  // tryAcquireVectorStreamConnection's cap, and per-ticker server state by the
+  // LRU eviction in vector-snapshot's state() map.
+  if (!isVectorTickerAllowed(rawTicker)) {
+    return NextResponse.json({ error: `Invalid ticker` }, { status: 400 });
+  }
+  const ticker = normalizeVectorTicker(rawTicker);
 
-  if (activeStreams >= MAX_STREAMS) {
+  // Claim the slot atomically — the old read-then-increment spanned the stream
+  // construction and let concurrent connects overshoot the cap.
+  if (!tryAcquireVectorStreamConnection(MAX_STREAMS)) {
     return new NextResponse("Too many active streams — try again shortly", { status: 503 });
   }
 
@@ -31,12 +50,13 @@ export async function GET(req: NextRequest) {
   let interval: ReturnType<typeof setInterval> | null = null;
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   let closed = false;
-  let counted = false;
+  let sentFull = false;
 
   const cleanup = () => {
     if (closed) return;
     closed = true;
-    if (counted) activeStreams = Math.max(0, activeStreams - 1);
+    releaseVectorStreamConnection();
+    detachVectorStreamSubscriber(ticker);
     if (interval) {
       clearInterval(interval);
       interval = null;
@@ -49,6 +69,7 @@ export async function GET(req: NextRequest) {
 
   const stream = new ReadableStream({
     start(controller) {
+      let lastSentFrame: string | null = null;
       const send = () => {
         if (closed) return;
         if (sseBackpressureExceeded(controller.desiredSize)) {
@@ -60,24 +81,37 @@ export async function GET(req: NextRequest) {
           }
           return;
         }
-        void buildVectorStreamPayload(ticker)
-          .then((payload) => {
-            if (closed) return;
-            const data = JSON.stringify(payload);
-            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
-          })
-          .catch(() => {
-            cleanup();
-            try {
-              controller.close();
-            } catch {
-              /* already closed */
-            }
-          });
+        // First frame carries the FULL wall history (client seeds/merges once);
+        // steady-state frames carry only the latest sample — shipping the whole
+        // history (~1MB by late session) per connection per second was the
+        // dominant egress cost and killed slow clients via backpressure exactly
+        // when frames were biggest.
+        const frame = sentFull
+          ? getVectorStreamDeltaFrame(ticker)
+          : getVectorStreamFullFrame(ticker);
+        if (!frame) return;
+        // Hub reuses the same string until its 1s refresh — identity compare
+        // skips re-sending an unchanged frame (common off-hours).
+        if (frame === lastSentFrame) return;
+        try {
+          controller.enqueue(encoder.encode(frame));
+          lastSentFrame = frame;
+          sentFull = true;
+        } catch {
+          cleanup();
+          try {
+            controller.close();
+          } catch {
+            /* already closed */
+          }
+        }
       };
 
-      activeStreams++;
-      counted = true;
+      attachVectorStreamSubscriber(ticker);
+      // Dynamic universe: a member opened this chart → the recorder cron keeps recording the
+      // ticker from tomorrow's open onward (user-directed 2026-07-13: "open a new stock — it has
+      // to be added to the universe automatically"). Debounced + fire-and-forget in the module.
+      void touchDynamicUniverse(ticker);
       req.signal.addEventListener("abort", cleanup);
 
       interval = setInterval(send, TICK_MS);

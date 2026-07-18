@@ -5,7 +5,7 @@ import { ensureWebBootWarm } from "@/lib/web-boot-warm";
 
 export const dynamic = "force-dynamic";
 
-/** Railway deploy gate — connectivity only (no migration lock). Retries cold PgBouncer boot. */
+/** ECS deploy gate — connectivity only (no migration lock). Retries cold PgBouncer boot. */
 const READY_ATTEMPTS = 6;
 const READY_RETRY_MS = 4_000;
 
@@ -13,7 +13,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Readiness probe — checks DB connectivity. Use for Railway deploy gates, not liveness. */
+/** Readiness probe — checks DB connectivity. Use for ECS deploy gates, not liveness. */
 export async function GET() {
   ensureWebBootWarm();
 

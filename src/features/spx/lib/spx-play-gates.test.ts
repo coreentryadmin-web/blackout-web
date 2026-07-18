@@ -88,16 +88,29 @@ const passingConfirmations = {
   checks: [{ label: "VWAP", required: true, passed: true, detail: "above" }],
 };
 
-test("evaluatePlayGates: stale halt channel warns but does not block", () => {
+test("evaluatePlayGates: stale halt channel restricts playbook event entries", () => {
   mockHaltBlock = { block: false, reason: null };
   const result = evaluatePlayGates(
     baseDesk({ halt_channel_stale: true }),
     baseConfluence(),
     emptySession,
-    passingConfirmations
+    passingConfirmations,
+    { entry_intent: "buy", playbook_primary_id: "PB-03", playbook_primary_direction: "long" }
   );
-  assert.equal(result.blocks.some((b) => b.includes("halt")), false);
-  assert.match(result.warnings.join(" "), /fail-open/i);
+  assert.match(result.blocks.join(" "), /halt feed/i);
+});
+
+test("evaluatePlayGates: stale halt channel warns for restricted low-velocity PB-01", () => {
+  mockHaltBlock = { block: false, reason: null };
+  const result = evaluatePlayGates(
+    baseDesk({ halt_channel_stale: true }),
+    baseConfluence(),
+    emptySession,
+    passingConfirmations,
+    { entry_intent: "buy", playbook_primary_id: "PB-01", playbook_primary_direction: "long" }
+  );
+  assert.equal(result.blocks.some((b) => b.includes("halt feed")), false);
+  assert.match(result.warnings.join(" "), /restricted mode/i);
 });
 
 test("evaluatePlayGates: confirmed trading halt blocks entry", () => {
@@ -174,7 +187,7 @@ test("evaluatePlayGates: grade below B blocks BUY", () => {
   assert.match(result.blocks.join(" "), /below minimum/i);
 });
 
-test("evaluatePlayGates: opening range blocks BUY before ~9:50", () => {
+test("evaluatePlayGates: opening range blocks BUY before 9:45 (user-directed 2026-07-13 — was 9:50)", () => {
   mockHaltBlock = { block: false, reason: null };
   mockEtMinutes = 9 * 60 + 35;
   const result = evaluatePlayGates(
@@ -185,6 +198,24 @@ test("evaluatePlayGates: opening range blocks BUY before ~9:50", () => {
     { entry_intent: "buy" }
   );
   assert.match(result.blocks.join(" "), /Opening range/i);
+  assert.match(result.blocks.join(" "), /9:45/);
+});
+
+test("evaluatePlayGates: 9:45–9:50 BUY is no longer opening-range blocked (user-directed 2026-07-13)", () => {
+  // Previously blocked (9:30 + SPX_PLAY_OPENING_RANGE_MINUTES=20 → 9:50). The user
+  // chose the 9:45 boundary knowingly — restrict only the first 15 minutes; the
+  // 9:45–10:30 band is measured by the calibration loop (entry_context.
+  // committed_at_et) so it can be revisited with per-play evidence.
+  mockHaltBlock = { block: false, reason: null };
+  mockEtMinutes = 9 * 60 + 47;
+  const result = evaluatePlayGates(
+    baseDesk(),
+    baseConfluence(),
+    emptySession,
+    passingConfirmations,
+    { entry_intent: "buy" }
+  );
+  assert.doesNotMatch(result.blocks.join(" "), /Opening range/i);
 });
 
 test("evaluatePlayGates: macro CPI window blocks during release", () => {
@@ -254,7 +285,7 @@ test("evaluatePlayGates: VIX above 32 blocks new entries", () => {
     emptySession,
     passingConfirmations
   );
-  assert.match(result.blocks.join(" "), /VIX 33\.5 too hot/i);
+  assert.match(result.blocks.join(" "), /governor blocks new 0DTE|VIX 33\.5/i);
 });
 
 test("evaluatePlayGates: pre-market BUY blocked before cash open", () => {
@@ -300,4 +331,27 @@ test("evaluatePlayGates: failed confirmations block entry", () => {
   );
   assert.match(result.blocks.join(" "), /3m MTF/i);
   assert.equal(result.entry_mode, "none");
+});
+
+test("evaluatePlayGates: session loss cap blocks BUY", () => {
+  mockHaltBlock = { block: false, reason: null };
+  const result = evaluatePlayGates(
+    baseDesk(),
+    baseConfluence(),
+    { ...emptySession, session_losses_today: 3 },
+    passingConfirmations
+  );
+  assert.match(result.blocks.join(" "), /Session loss cap/i);
+});
+
+test("evaluatePlayGates: cold BUY path requires A-grade and min score", () => {
+  mockHaltBlock = { block: false, reason: null };
+  const result = evaluatePlayGates(
+    baseDesk(),
+    baseConfluence({ grade: "B", score: 70 }),
+    emptySession,
+    passingConfirmations,
+    { entry_intent: "buy", cold_buy_path: true }
+  );
+  assert.match(result.blocks.join(" "), /grade A or better/i);
 });

@@ -6,7 +6,7 @@
  *
  * Usage:
  *   node scripts/validate-static-assets.mjs
- *   BASE_URL=https://blackouttrades.com node scripts/validate-static-assets.mjs
+ *   BASE_URL=https://staging.blackouttrades.com node scripts/validate-static-assets.mjs
  */
 
 const BASE = (process.env.BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");

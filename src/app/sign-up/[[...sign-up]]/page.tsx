@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { SignUp } from "@clerk/nextjs";
 import { clerkAppearance } from "@/lib/clerk-theme";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { AuthFailureObserver } from "@/components/auth/AuthFailureObserver";
-import { clerkSanitizeStagingReturnUrl } from "@/lib/clerk-redirect-url";
+import { clerkSatelliteAuthRedirect } from "@/lib/clerk-env";
+import { clerkStagingReturnPath } from "@/lib/clerk-redirect-url";
+import { isCognitoAuth } from "@/lib/auth-provider";
 
 export const metadata: Metadata = {
   title: "Create account · BlackOut",
@@ -16,12 +19,24 @@ type Props = {
 
 export default async function SignUpPage({ searchParams }: Props) {
   const sp = await searchParams;
-  const forceRedirectUrl = clerkSanitizeStagingReturnUrl(sp.redirect_url) ?? undefined;
+  const returnPath = clerkStagingReturnPath(sp.redirect_url);
+
+  if (isCognitoAuth()) {
+    const login = new URL("/api/auth/cognito/login", process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000");
+    login.searchParams.set("redirect_url", returnPath);
+    login.searchParams.set("mode", "signup");
+    redirect(login.toString());
+  }
+
+  const satelliteRedirect = clerkSatelliteAuthRedirect("sign-up", returnPath);
+  if (satelliteRedirect) {
+    redirect(satelliteRedirect);
+  }
 
   return (
     <AuthShell mode="signup">
       <AuthFailureObserver mode="signup">
-        <SignUp appearance={clerkAppearance} {...(forceRedirectUrl ? { forceRedirectUrl } : {})} />
+        <SignUp appearance={clerkAppearance} />
       </AuthFailureObserver>
     </AuthShell>
   );

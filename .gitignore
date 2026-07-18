@@ -2,6 +2,9 @@
 .env.production
 .env.local
 .env*.local
+production.env
+staging.env
+railway-*.env
 node_modules/
 .next/
 out/
@@ -25,3 +28,13 @@ apps/blackout-ios/ios/
 
 # AWS infra — separate repo (blackout-infra), own git remote
 /blackout-infra/
+
+# Claude Code transient git worktrees (never commit these)
+.claude/worktrees/
+
+# Root-level transient git worktrees created by background agents (never commit)
+.worktrees/
+
+# BIE eval harness run artifacts (stable scorecard + output dir)
+scripts/bie-eval/last-scorecard.json
+bie-eval-out/

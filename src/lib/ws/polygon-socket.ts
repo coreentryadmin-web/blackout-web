@@ -3,6 +3,7 @@
  */
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { etMinutes, etClock } from "@/features/spx/lib/spx-play-session-time";
+import { recordStockTick } from "@/lib/ws/stock-candle-store";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   alertWsLeaderFailClosedOnce,
@@ -209,6 +210,7 @@ let polygonSocketInitialized = false;
 let indicesReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let indicesConsecutiveFailures = 0;
 let indicesShuttingDown = false;
+let indicesConnectionStartedAt = 0; // timestamp when WS connection was initiated; 0 if no pending connection
 
 function polygonErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -270,9 +272,34 @@ function inIndicesMarketHours(now = new Date()): boolean {
 
 function startIndicesWatchdog() {
   if (indicesWatchdog) return;
+  const INDICES_CONNECTION_TIMEOUT_MS = 10_000; // connection must open within 10s or we reconnect
   indicesWatchdog = setInterval(() => {
     if (indicesShuttingDown) return;
     if (!inIndicesMarketHours()) return; // off-hours silence is expected, not a stall
+
+    // Detect connection timeout: if a connection is stuck in CONNECTING state for >10s, close it and reconnect.
+    // This catches hang scenarios (network stall, firewall drop, DNS timeout) that would otherwise leave the
+    // connection frozen indefinitely, causing the desk to show stale SPX prices forever.
+    if (
+      indicesWs?.readyState === WebSocket.CONNECTING &&
+      indicesConnectionStartedAt > 0 &&
+      Date.now() - indicesConnectionStartedAt > INDICES_CONNECTION_TIMEOUT_MS
+    ) {
+      console.warn(
+        `[polygon-socket] indices connection TIMEOUT — stuck in CONNECTING for ${Math.round(
+          (Date.now() - indicesConnectionStartedAt) / 1000
+        )}s, forcing reconnect`
+      );
+      indicesConnectionStartedAt = 0;
+      try {
+        indicesWs.close(1000, "connection timeout");
+      } catch {
+        /* ignore — onclose will still fire */
+      }
+      return;
+    }
+
+    // Detect stalled feed: if connected but no messages in >25s, reconnect.
     if (
       indicesWs?.readyState === WebSocket.OPEN &&
       lastIndicesMessageAt > 0 &&
@@ -320,9 +347,11 @@ async function connectIndices() {
   }
 
   try {
+    indicesConnectionStartedAt = Date.now();
     indicesWs = new WebSocket(POLYGON_WS_INDICES);
 
     indicesWs.onopen = () => {
+      indicesConnectionStartedAt = 0; // connection opened, no longer pending
       console.log("[polygon-socket] indices connected");
       indicesAuthenticated = false;
     };
@@ -392,6 +421,14 @@ async function connectIndices() {
                 open_source: openSource,
                 updatedAt: Date.now(),
               };
+              // Feed non-SPX index tickers into the generalized stock candle store
+              // so Vector gets sub-second live candles for NDX/DJI/RUT too.
+              if (agg.sym !== "I:SPX") {
+                const idxTicker = agg.sym.replace(/^I:/, "");
+                if (Number.isFinite(agg.c) && agg.c > 0) {
+                  recordStockTick(idxTicker, agg.c);
+                }
+              }
               void (async () => {
                 try {
                   const redis = await getUwCacheRedis();
@@ -430,12 +467,14 @@ async function connectIndices() {
                     : prev.change_pct,
                 updatedAt: Date.now(),
               };
-              // Vector live chart: feed the same SPX tick into the 1-minute candle aggregator.
-              // Uses the message's own timestamp (falls back to receipt time) so bars bucket by
-              // actual market time rather than however late this process got to handling it.
+              // Vector live chart: feed ticks into the candle aggregators.
               if (sym === "I:SPX") {
                 const tickAtMs = Number(msg.t);
                 recordSpxTick(val, Number.isFinite(tickAtMs) && tickAtMs > 0 ? tickAtMs : Date.now());
+              } else {
+                // Non-SPX index tickers (NDX, DJI, RUT, VIX) → stock candle store
+                const idxTicker = sym.replace(/^I:/, "");
+                recordStockTick(idxTicker, val);
               }
             }
           }
@@ -453,12 +492,14 @@ async function connectIndices() {
 
     indicesWs.onclose = (event) => {
       indicesWs = null;
+      indicesConnectionStartedAt = 0;
       indicesAuthenticated = false;
       console.warn("[polygon-socket] indices disconnected — bar gap will occur until reconnection completes");
       scheduleIndicesReconnect(`code=${event.code}`);
     };
   } catch (err) {
     indicesWs = null;
+    indicesConnectionStartedAt = 0;
     console.error("[polygon-socket] failed to connect indices:", polygonErrorMessage(err));
     scheduleIndicesReconnect("connect-threw");
   }
@@ -481,6 +522,7 @@ export function initPolygonSocket() {
  */
 export function shutdownPolygonSocket(): void {
   indicesShuttingDown = true;
+  indicesConnectionStartedAt = 0;
   if (indicesReconnectTimer) {
     clearTimeout(indicesReconnectTimer);
     indicesReconnectTimer = null;
@@ -554,6 +596,7 @@ export function getIndexFeedFreshness(
 
 export function getIndexStoreStatus() {
   return {
+    is_leader: indicesIsLeader,
     authenticated: indicesAuthenticated,
     wsState: indicesWs ? ["CONNECTING", "OPEN", "CLOSING", "CLOSED"][indicesWs.readyState] : "NOT_CREATED",
     consecutiveFailures: indicesConsecutiveFailures,
