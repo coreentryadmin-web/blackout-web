@@ -44,15 +44,25 @@ export default clerkMiddleware(
     const isAuthPage = path === "/sign-in" || path.startsWith("/sign-in/") ||
                        path === "/sign-up" || path.startsWith("/sign-up/");
     if (isAuthPage) {
-      try {
-        // auth.protect() reliably detects authenticated users (throws for anon)
-        await auth.protect();
-        const dest = req.nextUrl.searchParams.get("redirect_url") || "/";
-        return withStagingNoEdgeCache(
-          NextResponse.redirect(new URL(dest, req.url), 307)
-        );
-      } catch {
-        // Not authenticated — fall through to show sign-in/sign-up page
+      // Clerk v7.5.17 auth()/auth.protect() return null userId on sign-in
+      // pages even for valid sessions (works on other routes). Decode the
+      // already-verified __session JWT directly to check authentication.
+      const sessionJwt = req.cookies.get("__session")?.value;
+      if (sessionJwt) {
+        try {
+          const [, payloadB64] = sessionJwt.split(".");
+          const payload = JSON.parse(
+            atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/"))
+          );
+          if (payload.sub && payload.exp > Date.now() / 1000) {
+            const dest = req.nextUrl.searchParams.get("redirect_url") || "/";
+            return withStagingNoEdgeCache(
+              NextResponse.redirect(new URL(dest, req.url), 307)
+            );
+          }
+        } catch {
+          // Malformed JWT — fall through to show sign-in page
+        }
       }
     }
 
