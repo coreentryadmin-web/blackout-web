@@ -204,14 +204,14 @@ test("missing evidence NEVER exits: null cortexEvidence skips the thesis check o
 
 // ── 3. Flat timeout — theta bleed ─────────────────────────────────────────────────
 
-test("flat timeout: 45min inside the ±10% band exits as a scratch", () => {
-  const d = evaluateExitState(input({ ageMinutes: 45, peakPremium: 4.3, currentMark: 3.8 })); // peak +7.5%, now −5%
+test("flat timeout: 25min inside the ±10% band exits as a scratch", () => {
+  const d = evaluateExitState(input({ ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8 })); // peak +7.5%, now −5%
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "flat_theta_bleed");
 });
 
-test("flat timeout does NOT fire at 44 minutes", () => {
-  const d = evaluateExitState(input({ ageMinutes: 44, peakPremium: 4.3, currentMark: 3.8 }));
+test("flat timeout does NOT fire at 24 minutes", () => {
+  const d = evaluateExitState(input({ ageMinutes: 24, peakPremium: 4.3, currentMark: 3.8 }));
   assert.equal(d.action, "HOLD");
 });
 

@@ -54,6 +54,7 @@ import {
 import { isPastNoEntryCutoff, isBeforeCashOpen, cashOpenLabel, noEntryCutoffLabel } from "@/features/spx/lib/spx-play-session-guards";
 import { etClock, etMinutes, formatEtTime } from "@/features/spx/lib/spx-play-session-time";
 import { parseMacroEventTime, macroBlockWindow } from "@/features/spx/lib/spx-macro-window";
+import { evaluateMacroHardBlock } from "@/lib/macro-hard-block";
 
 export type PlayGateResult = {
   passed: boolean;
@@ -110,47 +111,10 @@ function maxWeightedForEntryMode(grade: string, mode: "full" | "starter"): numbe
 }
 
 function macroHardBlock(desk: SpxDeskPayload): string | null {
-  const events = desk.macro_events ?? [];
   const todayYmd = todayEtYmd();
   const mins = etMinutes(new Date());
-
-  for (const ev of events) {
-    const title = String(ev.event ?? ev.country ?? "").toUpperCase();
-    const isMacro =
-      title.includes("CPI") ||
-      title.includes("FOMC") ||
-      title.includes("FED") ||
-      title.includes("NFP") ||
-      title.includes("PAYROLL") ||
-      title.includes("PPI") ||
-      title.includes("GDP");
-    if (!isMacro) continue;
-
-    const evTime = parseMacroEventTime(String(ev.time ?? ""), todayYmd);
-    if (evTime == null) continue;
-
-    const isAfternoonFed =
-      title.includes("FOMC") || title.includes("FED") || title.includes("RATE DECISION");
-
-    if (isAfternoonFed) {
-      // Preserve prior behavior: a precise afternoon time uses itself; anything else
-      // (including a date-only/imprecise anchor) defaults to the 14:00 ET decision window.
-      const fedMins = evTime.precise && evTime.minutes >= 12 * 60 ? evTime.minutes : 14 * 60;
-      if (mins >= fedMins - 15 && mins <= fedMins + 15) {
-        return `Macro hard block: ${title.slice(0, 40)} (Fed window)`;
-      }
-      continue;
-    }
-
-    // Precise releases get the tight [t-5, t+60] block; date-only/imprecise releases
-    // widen to the full morning so a later-than-8:30 print is never left unguarded.
-    const win = macroBlockWindow(evTime);
-    if (mins >= win.start && mins <= win.end) {
-      const label = evTime.precise ? String(ev.time ?? "08:30").slice(0, 5) : "AM";
-      return `Macro hard block: ${title.slice(0, 40)} (${label} ET window)`;
-    }
-  }
-  return null;
+  const result = evaluateMacroHardBlock(desk.macro_events ?? [], mins, todayYmd);
+  return result.blocked ? result.reason : null;
 }
 
 /** Entry gates for the flat path only (SCANNING → WATCH → BUY). Does not manage open plays. */
