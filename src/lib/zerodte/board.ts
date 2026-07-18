@@ -269,6 +269,13 @@ export type ZeroDteGateFailure =
   | "vix_elevated" // G-4: VIX 17-20 regime + score < 75 (69.2% WR at <17 vs 25.0% at ≥17)
   | "vix_extreme" // G-4: VIX ≥ 20 + non-index/ETF product (blocked outright)
   | "cross_system_conflict" // G-6: opposes live Slayer or Night Hawk take + score < 80
+  | "macro_hard_block" // G-7: CPI/FOMC/NFP/PPI/GDP hard-block window (shared w/ Slayer)
+  | "plan_moved" // G-8: mark ran ≥35% past the flow fill — don't chase
+  | "plan_illiquid" // G-9: bid/ask spread >15% of mark — untradeable exit tax
+  | "plan_no_quote" // G-9: no live quote and no fill — evidence only
+  | "intraday_conflict" // G-10: VWAP + 5m trend oppose the play direction
+  | "halted" // G-11: underlying trading halt
+  | "earnings" // G-11: reports today/next session — different trade than 0DTE scalp
   // ── Night Hawk Cortex layer (./cortex-gate.ts, NIGHTHAWK-CORTEX-DESIGN.md §2) —
   // evaluated on gate SURVIVORS only, i.e. only after every hard gate above passed.
   // The <source> suffix names the Cortex source that vetoed (e.g. "cortex_veto:flow-quality").

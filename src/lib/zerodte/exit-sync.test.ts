@@ -317,12 +317,12 @@ test("fail-soft: Cortex outage → no thesis exit, the row stays live, sync othe
   assert.equal(state.updateCalls[0]!.patch.mark, 3.4);
 });
 
-test("flat timeout through the sync path: a 50-minute ±10% sleeper is scratched", async () => {
+test("flat timeout through the sync path: a 26-minute ±10% sleeper is scratched", async () => {
   const { lane, syncLedgerLiveState } = await mods();
   resetState();
   lane._resetZeroDteLiveMarksForTest();
   state.verdictItems = []; // Cortex sees, and sees nothing wrong — only the clock fires
-  state.ledgerRows = [baseRow({ first_flagged_at: new Date(Date.now() - 50 * 60_000).toISOString() })];
+  state.ledgerRows = [baseRow({ first_flagged_at: new Date(Date.now() - 26 * 60_000).toISOString() })];
   state.snapMark = 4.05; // +1.25%, never left the band (peak 4.05)
 
   const rows = await syncLedgerLiveState(state.ledgerRows as never);
