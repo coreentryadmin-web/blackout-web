@@ -251,6 +251,9 @@ test("SSE payload shape: pinned-entry P&L, per-quote asOf, stale flag, idle mark
   assert.equal(row.mark_age_ms, 1_000);
   assert.equal(row.stale, false);
 
+  const latched = lm.buildZeroDteLiveMarksPayloadFrom(plays, now, "2026-07-14", lm.getZeroDteLiveMark, () => "TRIM");
+  assert.equal(latched.marks[0]!.status, "TRIM");
+
   // A quote older than the 5s bar is pushed as STALE, never impersonating live.
   const later = lm.buildZeroDteLiveMarksPayloadFrom(plays, now + 10_000, "2026-07-14");
   assert.equal(later.marks[0]!.stale, true);
