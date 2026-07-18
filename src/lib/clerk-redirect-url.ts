@@ -27,7 +27,7 @@ export function clerkSanitizeStagingReturnUrl(raw: string | undefined | null): s
 /** Path on staging for satellite redirect helper (must start with /). */
 export function clerkStagingReturnPath(raw: string | undefined | null): string {
   const trimmed = raw?.trim();
-  if (!trimmed) return "/dashboard";
+  if (!trimmed) return "/";
   if (trimmed.startsWith("/")) {
     try {
       const u = new URL(trimmed, STAGING_ORIGIN);
@@ -38,7 +38,7 @@ export function clerkStagingReturnPath(raw: string | undefined | null): string {
     }
   }
   const full = clerkSanitizeStagingReturnUrl(trimmed);
-  if (!full) return "/dashboard";
+  if (!full) return "/";
   const u = new URL(full);
   return `${u.pathname}${u.search}`;
 }

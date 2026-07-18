@@ -35,11 +35,11 @@ export default async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
   if (path === "/sign-in" || path.startsWith("/sign-in/")) {
-    const returnPath = req.nextUrl.searchParams.get("redirect_url") ?? "/dashboard";
+    const returnPath = req.nextUrl.searchParams.get("redirect_url") ?? "/";
     return cognitoLoginRedirect(req, returnPath, false);
   }
   if (path === "/sign-up" || path.startsWith("/sign-up/")) {
-    const returnPath = req.nextUrl.searchParams.get("redirect_url") ?? "/dashboard";
+    const returnPath = req.nextUrl.searchParams.get("redirect_url") ?? "/";
     return cognitoLoginRedirect(req, returnPath, true);
   }
 

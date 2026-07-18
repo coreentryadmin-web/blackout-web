@@ -19,16 +19,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function decodeOAuthState(state: string | null): string {
-  if (!state) return "/dashboard";
+  if (!state) return "/";
   try {
     const json = JSON.parse(Buffer.from(state, "base64url").toString("utf8")) as {
       returnPath?: string;
     };
-    const path = json.returnPath ?? "/dashboard";
-    if (!path.startsWith("/") || path.startsWith("//")) return "/dashboard";
+    const path = json.returnPath ?? "/";
+    if (!path.startsWith("/") || path.startsWith("//")) return "/";
     return path;
   } catch {
-    return "/dashboard";
+    return "/";
   }
 }
 
