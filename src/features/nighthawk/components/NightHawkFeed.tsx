@@ -94,6 +94,10 @@ export function NightHawkFeed() {
         play={selectedPlay}
         editionFor={edition?.edition_for ?? null}
         onClose={() => setSelectedPlay(null)}
+        morningConfirm={
+          selectedPlay ? confirmByTicker.get(selectedPlay.ticker.toUpperCase()) : undefined
+        }
+        morningConfirmCheckedAt={playStatus?.checked_at}
       />
     </div>
   );
