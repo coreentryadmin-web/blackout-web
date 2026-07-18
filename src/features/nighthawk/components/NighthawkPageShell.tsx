@@ -4,9 +4,10 @@ import { clsx } from "clsx";
 import { PageShell, PageHeader } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { NightHawkFeed } from "@/features/nighthawk/components/NightHawkFeed";
+import { NighthawkRadarBackdrop } from "@/features/nighthawk/components/NighthawkRadarBackdrop";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 
-/** /nighthawk page frame — segment-first on native shell. */
+/** /nighthawk page frame — radar ambient + v2 column polish. */
 export function NighthawkPageShell() {
   const nativeShell = useIosNativeShell();
 
@@ -15,10 +16,11 @@ export function NighthawkPageShell() {
       fullBleed
       contentClassName={clsx(nativeShell ? "nighthawk-page-content-native !py-0" : "!py-0")}
       className={clsx(
-        "ios-native-page ios-native-page-nighthawk",
+        "ios-native-page ios-native-page-nighthawk nh-v2-page nighthawk-page-shell",
         nativeShell && "nighthawk-page-shell-native"
       )}
     >
+      {!nativeShell && <NighthawkRadarBackdrop />}
       <div
         className={clsx(
           "nighthawk-page-root flex max-w-none flex-col",
@@ -33,7 +35,7 @@ export function NighthawkPageShell() {
             title="Night Hawk"
             subtitle="Tomorrow's ranked setups — published after the close, ready before the open."
             badge={<ProductMark product="nighthawk" size={44} animated={false} />}
-            className="mb-3 shrink-0 [&_p]:text-sky-300"
+            className="nh-v2-page-header mb-3 shrink-0 [&_p]:text-sky-300"
           />
         )}
         <NightHawkFeed />

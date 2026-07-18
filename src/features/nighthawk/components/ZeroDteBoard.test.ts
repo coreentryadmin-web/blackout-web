@@ -625,6 +625,17 @@ test("overlayLiveMark: fresh pushed mark replaces the board mark; P&L is the PUS
   assert.equal(out.mark_ask, 4.64);
 });
 
+test("overlayLiveMark: latched TRIM status from the live lane updates the card immediately", () => {
+  const now = Date.now();
+  const out = overlayLiveMark(
+    playRow({ status: "HOLD" }),
+    liveRow({ status: "TRIM", mark_as_of: new Date(now - 500).toISOString(), live_pnl_pct: 105 }),
+    now
+  );
+  assert.equal(out.status, "TRIM");
+  assert.equal(out.live_pnl_pct, 105);
+});
+
 test("overlayLiveMark: a mark older than the 5s honesty bar renders STALE (dim), never as live", () => {
   const now = Date.now();
   const out = overlayLiveMark(playRow({}), liveRow({ mark_as_of: new Date(now - 8_000).toISOString() }), now);

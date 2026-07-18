@@ -1,39 +1,44 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { clsx } from "clsx";
 import { Modal } from "@/components/ui";
 import useSWR from "swr";
 import { postNightHawkPlayExplain } from "@/lib/api";
-import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
+import type { PlaybookPlay, PlayMorningStatus } from "@/features/nighthawk/lib/types";
+import { parseExplainSections, convictionFillPct } from "@/features/nighthawk/lib/play-briefing-utils";
+import { BriefingTabs, type BriefingTabId } from "./briefing/BriefingTabs";
+import { PlaybookBriefingPanel } from "./briefing/PlaybookBriefingPanel";
+import { IntelExplainSections } from "./briefing/IntelExplainSections";
 
 type PlayDetailModalProps = {
   play: PlaybookPlay | null;
   editionFor: string | null;
   onClose: () => void;
+  morningConfirm?: PlayMorningStatus;
+  morningConfirmCheckedAt?: string;
+  /** Dev preview only — skips live explain fetch when set. */
+  previewExplanation?: string | null;
 };
 
-function renderExplainLine(line: string, key: number) {
-  const parts = line.split(/(\*\*[^*]+\*\*)/g);
-  return (
-    <p key={key} className="nighthawk-play-explain-line">
-      {parts.map((part, i) => {
-        if (part.startsWith("**") && part.endsWith("**")) {
-          return (
-            <strong key={i} className="nighthawk-play-explain-strong">
-              {part.slice(2, -2)}
-            </strong>
-          );
-        }
-        return <span key={i}>{part}</span>;
-      })}
-    </p>
-  );
-}
+export function PlayDetailModal({
+  play,
+  editionFor,
+  onClose,
+  morningConfirm,
+  morningConfirmCheckedAt,
+  previewExplanation,
+}: PlayDetailModalProps) {
+  const [tab, setTab] = useState<BriefingTabId>("overview");
 
-export function PlayDetailModal({ play, editionFor, onClose }: PlayDetailModalProps) {
+  useEffect(() => {
+    if (play) setTab("overview");
+  }, [play?.ticker, play?.rank]);
+
   const swrKey =
-    play && editionFor ? `nighthawk-explain:${editionFor}:${play.ticker}` : null;
+    play && editionFor && previewExplanation == null
+      ? `nighthawk-explain:${editionFor}:${play.ticker}`
+      : null;
 
   const { data, error, isLoading } = useSWR(
     swrKey,
@@ -45,10 +50,14 @@ export function PlayDetailModal({ play, editionFor, onClose }: PlayDetailModalPr
     { revalidateOnFocus: false, shouldRetryOnError: false }
   );
 
-  const paragraphs = useMemo(() => {
+  const intelSections = useMemo(() => {
+    if (previewExplanation) return parseExplainSections(previewExplanation);
     if (!data?.explanation) return [];
-    return data.explanation.split(/\n+/).filter((l) => l.trim());
-  }, [data?.explanation]);
+    return parseExplainSections(data.explanation);
+  }, [data?.explanation, previewExplanation]);
+
+  const intelLoading = previewExplanation != null ? false : isLoading;
+  const intelError = previewExplanation != null ? null : error;
 
   const isBull =
     play?.direction?.toUpperCase().includes("BULL") ||
@@ -84,59 +93,72 @@ export function PlayDetailModal({ play, editionFor, onClose }: PlayDetailModalPr
       onClose={onClose}
       title={header}
       className={clsx(
-        "nighthawk-modal nighthawk-play-detail-modal",
+        "nighthawk-modal nighthawk-play-detail-modal nh-v2-modal nh-v2-briefing-modal",
         isBull ? "nighthawk-modal-gold" : "nighthawk-modal-bear"
       )}
     >
       {play && (
         <>
-          <div className="nighthawk-play-detail-quick">
-            <div className="nighthawk-play-detail-quick-cell">
-              <em>Entry</em>
-              <span>{play.entry_range}</span>
+          {play.conviction && (
+            <div className="nh-v2-conviction-hero nh-v2-conviction-hero--compact">
+              <span className="nh-v2-conviction-hero-label">{play.conviction}</span>
+              <div className="nh-v2-conviction-meter min-w-0 flex-1">
+                <div className="nh-v2-conviction-meter-track">
+                  <div
+                    className="nh-v2-conviction-meter-fill"
+                    style={{ width: `${convictionFillPct(play.conviction)}%` }}
+                  />
+                </div>
+              </div>
             </div>
-            <div className="nighthawk-play-detail-quick-cell">
-              <em>Target</em>
-              <span>{play.target}</span>
-            </div>
-            <div className="nighthawk-play-detail-quick-cell">
-              <em>Stop</em>
-              <span>{play.stop}</span>
-            </div>
-            <div className="nighthawk-play-detail-quick-cell nighthawk-play-detail-contract">
-              <em>Contract</em>
-              <span>{play.options_play}</span>
-            </div>
+          )}
+
+          <BriefingTabs value={tab} onChange={setTab} intelLoading={intelLoading} />
+
+          <div className="nh-v2-briefing-modal-body">
+            {tab === "overview" && (
+              <PlaybookBriefingPanel
+                play={play}
+                mode="overview"
+                morningConfirm={morningConfirm}
+                morningConfirmCheckedAt={morningConfirmCheckedAt}
+              />
+            )}
+            {tab === "scoring" && (
+              <PlaybookBriefingPanel
+                play={play}
+                mode="scoring"
+                morningConfirm={morningConfirm}
+                morningConfirmCheckedAt={morningConfirmCheckedAt}
+              />
+            )}
+            {tab === "intel" && (
+              <div className="nh-v2-intel-pane">
+                {intelLoading && (
+                  <div className="nighthawk-play-detail-loading nh-v2-intel-loading">
+                    <div className="nighthawk-power-ring" />
+                    <p>Building Hawk Intel briefing</p>
+                    <span>Flow · positioning · technicals · catalysts</span>
+                  </div>
+                )}
+                {intelError && (
+                  <p className="nighthawk-modal-error">
+                    Could not load Hawk Intel. {intelError instanceof Error ? intelError.message : "Try again."}
+                  </p>
+                )}
+                {!intelLoading && !intelError && intelSections.length > 0 && (
+                  <IntelExplainSections sections={intelSections} cached={previewExplanation ? true : data?.cached} />
+                )}
+                {!intelLoading && !intelError && intelSections.length === 0 && data?.explanation && (
+                  <IntelExplainSections sections={[{ title: "Briefing", body: data.explanation }]} cached={data?.cached} />
+                )}
+              </div>
+            )}
           </div>
 
-          <p className="nighthawk-play-detail-disclaimer">
+          <p className="nighthawk-play-detail-disclaimer nh-v2-briefing-disclaimer">
             Educational only — not investment advice. Every trade is your own decision.
           </p>
-
-          <div className="nighthawk-play-detail-body">
-            {isLoading && (
-              <div className="nighthawk-play-detail-loading">
-                <div className="nighthawk-power-ring" />
-                <p>Building Hawk Intel briefing</p>
-                <span>Synthesizing flow, positioning, technicals, and catalysts</span>
-              </div>
-            )}
-
-            {error && (
-              <p className="nighthawk-modal-error">
-                Could not load Hawk Intel. {error instanceof Error ? error.message : "Try again."}
-              </p>
-            )}
-
-            {!isLoading && !error && paragraphs.length > 0 && (
-              <div className="nighthawk-play-explain-text">
-                {data?.cached && (
-                  <p className="nighthawk-play-explain-cached">Cached edition briefing</p>
-                )}
-                {paragraphs.map((line, i) => renderExplainLine(line, i))}
-              </div>
-            )}
-          </div>
         </>
       )}
     </Modal>

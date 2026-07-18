@@ -251,6 +251,9 @@ test("SSE payload shape: pinned-entry P&L, per-quote asOf, stale flag, idle mark
   assert.equal(row.mark_age_ms, 1_000);
   assert.equal(row.stale, false);
 
+  const latched = lm.buildZeroDteLiveMarksPayloadFrom(plays, now, "2026-07-14", lm.getZeroDteLiveMark, () => "TRIM");
+  assert.equal(latched.marks[0]!.status, "TRIM");
+
   // A quote older than the 5s bar is pushed as STALE, never impersonating live.
   const later = lm.buildZeroDteLiveMarksPayloadFrom(plays, now + 10_000, "2026-07-14");
   assert.equal(later.marks[0]!.stale, true);
@@ -334,4 +337,38 @@ test("poller tick: persists a status flip immediately, heartbeats otherwise", as
   await lm.runZeroDteMarkTick({ plays, fetchSnapshots: snapOf(1.8, 2.0), readWsMark: noWs, persist, nowMs: t0 + 13_000, nowEtMinutes: 12 * 60 } as never);
   assert.equal(persisted.length, 3);
   assert.equal(persisted[2]!.status, "CLOSED");
+});
+
+test("poller tick: B-8 exit engine on the 1s lane persists CLOSED when evaluateExit fires", async () => {
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const occ = "O:NVDA260714C00180000";
+  const row = ledgerRow({});
+  const plays = lm.boundActivePlays([row]);
+  const rowsByKey = new Map([["2026-07-14:NVDA", row]]);
+  const persisted: Array<{ status: string; mark: number | null }> = [];
+  const persist = (async (_d: string, _t: string, s: { status: string; mark: number | null }) => {
+    persisted.push(s);
+  }) as never;
+  const evaluateExit = (async () =>
+    ({
+      mark: 4.55,
+      decision: { action: "EXIT", reason: "thesis_break", floorPnlPct: null, detail: "" },
+      exitContext: {},
+    })) as never;
+
+  await lm.runZeroDteMarkTick({
+    plays,
+    rowsByKey,
+    fetchSnapshots: async () =>
+      new Map([[occ, { ticker: occ, bid: 4.3, ask: 4.5, last: null } as never]]),
+    readWsMark: (async () => null) as never,
+    evaluateExit,
+    persist,
+    nowMs: Date.now(),
+    nowEtMinutes: 12 * 60,
+  });
+  assert.equal(persisted.length, 1);
+  assert.equal(persisted[0]!.status, "CLOSED");
+  assert.equal(persisted[0]!.mark, 4.55);
 });

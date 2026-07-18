@@ -6,20 +6,13 @@ import { Badge } from "@/components/ui";
 import type { PlaybookPlay, PlayMorningStatus } from "@/features/nighthawk/lib/types";
 import { formatPremiumCapLabel } from "@/features/nighthawk/lib/play-constraints";
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants";
+import { convictionFillPct } from "@/features/nighthawk/lib/play-briefing-utils";
 import { formatCheckedAtEt, isMorningConfirmStale } from "@/features/nighthawk/lib/morning-confirm-verdict";
-
-// PR-N12: rebuilt to the desk grammar the 0DTE pane (ZeroDteBoard) established —
-// mono uppercase section labels, chip stacks, t-num money values, expandable
-// evidence — replacing the old full-height slot rows. Every rendered value binds
-// to a real PlaybookPlay payload field; nothing is invented client-side.
 
 type PlaybookPlayRowProps = {
   rank: number;
   play: PlaybookPlay;
   morningConfirm?: PlayMorningStatus;
-  /** ISO timestamp the morning-confirm cron computed `morningConfirm` — a one-time
-   *  pre-market snapshot (see morning-confirm-verdict.ts). Undefined on older cached
-   *  payloads; the badge just omits the "as of" qualifier in that case. */
   morningConfirmCheckedAt?: string;
   /** Opens the Hawk Intel briefing modal (PlayDetailModal). */
   onSelect?: () => void;
@@ -28,14 +21,10 @@ type PlaybookPlayRowProps = {
 export function morningBadgeLabel(status: PlayMorningStatus["status"]): string {
   if (status === "CONFIRMED") return "Confirmed";
   if (status === "DEGRADED") return "Degraded";
-  // UNVERIFIED = the desk could not run its pre-market checks (data unreachable) —
-  // must not fall through to "Invalidated" (which would read as an adverse verdict).
   if (status === "UNVERIFIED") return "Unverified";
   return "Invalidated";
 }
 
-/** Desk chip tones per verdict: CONFIRMED green, DEGRADED amber, INVALIDATED red,
- *  UNVERIFIED neutral sky (a statement about the check, not the play). */
 const MORNING_CHIP_TONE: Record<PlayMorningStatus["status"], string> = {
   CONFIRMED: "border-bull/35 bg-bull/10 text-bull",
   DEGRADED: "border-gold/35 bg-gold/10 text-gold",
@@ -43,8 +32,6 @@ const MORNING_CHIP_TONE: Record<PlayMorningStatus["status"], string> = {
   UNVERIFIED: "border-sky-300/25 bg-sky-300/[0.05] text-sky-300/80",
 };
 
-/** Unrounded-float guard: scores are integers by contract, but degraded/legacy
- *  sources have served raw floats (systemic audit finding) — always round. */
 export function fmtScore(raw: number | null | undefined): string {
   if (raw == null || !Number.isFinite(raw)) return "—";
   return String(Math.round(raw));
@@ -63,103 +50,10 @@ function convictionTone(conviction: string): "bull" | "sky" | "neutral" {
   return "neutral";
 }
 
-/** Mono uppercase micro-label — the 0DTE pane's section-label grammar. */
-function MicroLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">{children}</p>
-  );
-}
-
-function LevelCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-sky-300/50">{label}</p>
-      <p className="t-num text-[12px] font-semibold leading-tight text-white">{value}</p>
-    </div>
-  );
-}
-
-/** One payload-backed stat chip; renders nothing when the field is absent. */
-function StatChip({ label, value, title }: { label: string; value: string; title?: string }) {
-  return (
-    <span
-      title={title}
-      className="rounded-md border border-sky-300/20 bg-sky-300/[0.04] px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-sky-200/85"
-    >
-      <span className="text-sky-300/50">{label}</span> {value}
-    </span>
-  );
-}
-
-/** Expanded per-play depth — ONLY fields the payload actually carries (key signal,
- *  risk note, score/streak/IV-rank stats, premium math, play type). */
-function PlayRowDetail({ play, onSelect }: { play: PlaybookPlay; onSelect?: () => void }) {
-  const showKeySignal = Boolean(play.key_signal?.trim()) && play.key_signal !== play.thesis;
-  return (
-    <div className="space-y-3 border-t border-white/[0.06] px-4 py-3">
-      {showKeySignal && (
-        <div>
-          <MicroLabel>Key signal</MicroLabel>
-          <p className="mt-1 text-[11px] leading-snug text-sky-200/85">{play.key_signal}</p>
-        </div>
-      )}
-
-      <div>
-        <MicroLabel>Score components</MicroLabel>
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          <StatChip label="Score" value={fmtScore(play.score)} />
-          {play.flow_streak_days != null && (
-            <StatChip
-              label="Flow streak"
-              value={`${Math.round(play.flow_streak_days)}d`}
-              title="Consecutive sessions of one-sided flow in this name"
-            />
-          )}
-          {play.iv_rank != null && <StatChip label="IV rank" value={fmtIvRank(play.iv_rank)} />}
-          {play.entry_premium != null && (
-            <StatChip label="Entry prem" value={`$${play.entry_premium.toFixed(2)}`} />
-          )}
-          {play.entry_cost_per_contract != null && (
-            <StatChip
-              label="Per lot"
-              value={`$${Math.round(play.entry_cost_per_contract).toLocaleString()}`}
-            />
-          )}
-          {play.play_type && <StatChip label="Type" value={play.play_type} />}
-        </div>
-      </div>
-
-      {play.risk_note && (
-        <div>
-          <MicroLabel>Risk</MicroLabel>
-          <p className="mt-1 text-[11px] leading-snug text-sky-200/85">{play.risk_note}</p>
-        </div>
-      )}
-
-      {play.gate_promoted && play.gate_warnings?.length ? (
-        <div>
-          <MicroLabel>Gate caveats</MicroLabel>
-          <ul className="mt-1 list-inside list-disc space-y-0.5">
-            {play.gate_warnings.map((w, i) => (
-              <li key={i} className="text-[11px] leading-snug text-gold/85">{w}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {onSelect && (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={onSelect}
-            className="rounded-lg border border-cyan-400/30 bg-cyan-400/[0.08] px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-cyan-300 transition-colors hover:bg-cyan-400/[0.16] hover:text-cyan-200"
-          >
-            Hawk Intel briefing ↗
-          </button>
-        </div>
-      )}
-    </div>
-  );
+function rankBadgeClass(rank: number): string {
+  if (rank === 1) return "nh-v2-rank-badge nh-v2-rank-badge--1";
+  if (rank <= 3) return "nh-v2-rank-badge nh-v2-rank-badge--top";
+  return "nh-v2-rank-badge nh-v2-rank-badge--std";
 }
 
 export function PlaybookPlayRow({
@@ -169,7 +63,6 @@ export function PlaybookPlayRow({
   morningConfirmCheckedAt,
   onSelect,
 }: PlaybookPlayRowProps) {
-  const [open, setOpen] = useState(false);
   const dir = play.direction?.toUpperCase() ?? "";
   const isBull = dir.includes("BULL") || dir === "LONG" || dir.includes("CALL");
   const isBear = dir.includes("BEAR") || dir === "SHORT" || dir.includes("PUT");
@@ -181,10 +74,6 @@ export function PlaybookPlayRow({
   }, []);
   const morningConfirmStale =
     nowMs != null && isMorningConfirmStale(morningConfirmCheckedAt, nowMs);
-  // PR-N4: the server-side pull latch (an INVALIDATED morning verdict). Stronger than the
-  // Redis-badge "Invalidated" label — the play is no longer actionable and is presented as
-  // PULLED with its reason, but stays visible at its published rank (honesty: pulled plays
-  // are never hidden; their grade is counterfactual-only in the record).
   const isPulled = Boolean(play.pulled);
   const morningConfirmTitle = morningConfirm
     ? morningConfirmCheckedAt
@@ -194,36 +83,38 @@ export function PlaybookPlayRow({
       : morningConfirm.reason
     : undefined;
 
+  const handleOpen = () => {
+    if (onSelect) onSelect();
+  };
+
   return (
     <article
       className={clsx(
-        "rounded-xl border border-white/[0.08] bg-white/[0.02] transition-colors",
-        // Direction reads as a left accent — same silhouette as the 0DTE cards' tone edges.
+        "nh-v2-play-card rounded-xl border border-white/[0.08] bg-white/[0.02] transition-colors",
+        rank === 1 && "nh-v2-play-card--rank1",
+        rank > 1 && rank <= 3 && "nh-v2-play-card--rankTop",
         isBull && "border-l-2 border-l-bull/60",
         isBear && "border-l-2 border-l-bear/60",
         !isBull && !isBear && "border-l-2 border-l-sky-400/40",
-        // Pulled: de-emphasize the whole card — the levels below are additionally
-        // struck through so a screenshot can't read as an actionable setup.
         isPulled && "opacity-60",
-        open ? "bg-white/[0.03]" : "hover:bg-white/[0.03]"
+        morningConfirm?.status === "CONFIRMED" && !isPulled && "nh-v2-play-card--confirmed",
+        morningConfirm?.status === "DEGRADED" && "nh-v2-play-card--degraded",
+        morningConfirm?.status === "INVALIDATED" && "nh-v2-play-card--invalidated",
+        onSelect && "nh-v2-play-card--clickable cursor-pointer hover:bg-white/[0.03]"
       )}
     >
       <button
         type="button"
         className="block w-full cursor-pointer px-4 py-3 text-left"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-label={`Play ${rank}: ${play.ticker} ${play.direction} — expand details`}
+        onClick={handleOpen}
+        disabled={!onSelect}
+        aria-label={`Open briefing for ${play.ticker} ${play.direction}`}
       >
-        {/* identity row: rank · ticker · direction · conviction · pulled · morning verdict · score */}
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-          <span
-            aria-hidden="true"
-            className="grid size-6 shrink-0 place-items-center rounded-md border border-white/[0.08] bg-white/[0.03] font-mono text-[11px] font-bold tabular-nums text-sky-300/80"
-          >
+          <span aria-hidden="true" className={rankBadgeClass(rank)}>
             {rank}
           </span>
-          <span className="t-num text-[15px] font-bold text-white">{play.ticker}</span>
+          <span className="nh-v2-play-ticker t-num font-bold text-white">{play.ticker}</span>
           <Badge tone={isBull ? "bull" : isBear ? "bear" : "neutral"} size="sm">
             {play.direction}
           </Badge>
@@ -233,21 +124,12 @@ export function PlaybookPlayRow({
             </Badge>
           )}
           {isPulled && (
-            <Badge
-              tone="bear"
-              size="sm"
-              className="font-bold"
-              title={play.pulled_reason ?? "Pulled pre-open by the morning confirmation check"}
-            >
+            <Badge tone="bear" size="sm" className="font-bold" title={play.pulled_reason ?? "Pulled pre-open"}>
               Pulled
             </Badge>
           )}
           {play.gate_promoted && !isPulled && (
-            <Badge
-              tone="neutral"
-              size="sm"
-              title={play.gate_warnings?.join(" · ") ?? "This play did not fully clear the standard publish-time quality gates"}
-            >
+            <Badge tone="neutral" size="sm" title={play.gate_warnings?.join(" · ")}>
               Best Available
             </Badge>
           )}
@@ -256,8 +138,6 @@ export function PlaybookPlayRow({
               className={clsx(
                 "rounded-md border px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.12em]",
                 MORNING_CHIP_TONE[morningConfirm.status],
-                // Verdicts are one-time pre-market snapshots — mute once old enough that
-                // full confidence would read as a live status (title keeps the exact time).
                 morningConfirmStale && "border-dashed opacity-55"
               )}
               title={morningConfirmTitle}
@@ -268,9 +148,7 @@ export function PlaybookPlayRow({
           <span className="ml-auto flex items-center gap-2">
             <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/40">score</span>
             <span className="t-num text-[12px] font-bold text-sky-200/85">{fmtScore(play.score)}</span>
-            <span className={clsx("inline-block text-sky-300/40 transition-transform", open && "rotate-90")}>
-              ›
-            </span>
+            {onSelect && <span className="nh-v2-open-briefing" aria-hidden>↗</span>}
           </span>
         </div>
 
@@ -280,19 +158,26 @@ export function PlaybookPlayRow({
           </p>
         )}
 
-        {/* plan line: entry band · target · stop — struck + dimmed when pulled */}
         <div
           className={clsx(
-            "mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3",
+            "nh-v2-levels-row mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3",
             isPulled && "line-through opacity-70"
           )}
         >
-          <LevelCell label="Entry" value={play.entry_range} />
-          <LevelCell label="Target" value={play.target} />
-          <LevelCell label="Stop" value={play.stop} />
+          <div className="nh-v2-level-cell">
+            <em>Entry</em>
+            <strong className="t-num">{play.entry_range}</strong>
+          </div>
+          <div className="nh-v2-level-cell">
+            <em>Target</em>
+            <strong className="t-num">{play.target}</strong>
+          </div>
+          <div className="nh-v2-level-cell">
+            <em>Stop</em>
+            <strong className="t-num">{play.stop}</strong>
+          </div>
         </div>
 
-        {/* contract line */}
         <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-sky-300/50">Contract</span>
           <span className={clsx("t-num min-w-0 text-[11px] leading-snug text-cyan-300/90", isPulled && "line-through")}>
@@ -306,16 +191,28 @@ export function PlaybookPlayRow({
           </span>
         </div>
 
-        {/* thesis */}
-        <p className="mt-2 text-[12px] leading-snug text-sky-200/85">{play.thesis || play.key_signal}</p>
+        {play.conviction && (
+          <div className="nh-v2-conviction-meter">
+            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-gold/80">
+              {play.conviction}
+            </span>
+            <div className="nh-v2-conviction-meter-track" aria-hidden>
+              <div
+                className="nh-v2-conviction-meter-fill"
+                style={{ width: `${convictionFillPct(play.conviction)}%` }}
+              />
+            </div>
+          </div>
+        )}
 
-        {!open && (
-          <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/35">
-            expand for signal · risk · score components
+        <p className="nh-v2-play-thesis">{play.thesis || play.key_signal}</p>
+
+        {onSelect && (
+          <p className="nh-v2-card-cta mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-gold/70">
+            Open briefing · overview · scoring · intel
           </p>
         )}
       </button>
-      {open && <PlayRowDetail play={play} onSelect={onSelect} />}
     </article>
   );
 }

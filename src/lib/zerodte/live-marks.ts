@@ -34,6 +34,7 @@
 // never come from two different quote lanes.
 
 import { dbConfigured, fetchZeroDteSetupLog, updateZeroDteLiveState, type ZeroDteSetupLogRow } from "@/lib/db";
+import { evaluateLedgerRowExit } from "./exit-sync";
 import { etNowParts, todayEt } from "@/features/nighthawk/lib/session";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { fetchOptionsUnifiedSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
@@ -227,6 +228,8 @@ function markFromSnapshot(occ: string, snap: OptionSnapshot, asOf: number): Zero
 // ---------------------------------------------------------------------------
 
 let activeCache: { plays: ActiveZeroDtePlay[]; fetchedAt: number } | null = null;
+/** Ledger rows for open plays — keyed session_date:ticker for the 1s exit engine. */
+let activeRowsByKey = new Map<string, ZeroDteSetupLogRow>();
 let activeInflight: Promise<ActiveZeroDtePlay[]> | null = null;
 
 async function getActivePlays(now = Date.now()): Promise<ActiveZeroDtePlay[]> {
@@ -237,7 +240,12 @@ async function getActivePlays(now = Date.now()): Promise<ActiveZeroDtePlay[]> {
       if (!dbConfigured()) return [];
       const rows = await fetchZeroDteSetupLog(todayEt());
       const plays = boundActivePlays(rows);
+      const rowsByKey = new Map<string, ZeroDteSetupLogRow>();
+      for (const r of rows) {
+        if (toActivePlay(r)) rowsByKey.set(`${r.session_date}:${r.ticker}`, r);
+      }
       activeCache = { plays, fetchedAt: Date.now() };
+      activeRowsByKey = rowsByKey;
       return plays;
     } catch {
       // DB hiccup: keep serving the previous set rather than dropping the lane.
@@ -264,8 +272,10 @@ const latchMemo = new Map<string, PlayLatch>();
 /** One poll tick, exported for tests (deps injectable). Never throws. */
 export async function runZeroDteMarkTick(deps?: {
   plays?: ActiveZeroDtePlay[];
+  rowsByKey?: Map<string, ZeroDteSetupLogRow>;
   fetchSnapshots?: typeof fetchOptionsUnifiedSnapshot;
   readWsMark?: typeof getLiveOptionMark;
+  evaluateExit?: typeof evaluateLedgerRowExit;
   persist?: typeof updateZeroDteLiveState;
   nowMs?: number;
   nowEtMinutes?: number;
@@ -342,18 +352,41 @@ export async function runZeroDteMarkTick(deps?: {
           const { hour, minute } = etNowParts();
           return hour * 60 + minute;
         })();
+      const rowsByKey = deps?.rowsByKey ?? activeRowsByKey;
+      const evalExit = deps?.evaluateExit ?? evaluateLedgerRowExit;
       for (const play of plays) {
         const key = `${play.session_date}:${play.ticker}`;
         const m = markStore.get(play.occ);
         const mark = m && !isZeroDteMarkStale(m.asOf, now, LATCH_MAX_MARK_AGE_MS) ? m.mark : null;
-        const latch = advancePlayLatch(play, latchMemo.get(key) ?? null, mark, nowEtMinutes);
+        let latch = advancePlayLatch(play, latchMemo.get(key) ?? null, mark, nowEtMinutes);
+        let finalStatus = latch.status;
+        let persistMark = mark;
+
+        // B-8 exit engine on the ~1s lane — ratchet / thesis / flat-timeout exits
+        // that used to wait for the ~10s board sync. Cortex evidence is cached ~30s
+        // per (ticker, direction) inside evaluateLedgerRowExit so this does not fan
+        // out providers every tick. Plan stop/time-stop still come from advancePlayLatch.
+        if (finalStatus !== "CLOSED") {
+          const row = rowsByKey.get(key);
+          if (row) {
+            const exit = await evalExit(row, { syncMark: mark, status: finalStatus }, { nowMs: now }).catch(
+              () => null
+            );
+            if (exit) {
+              finalStatus = "CLOSED";
+              persistMark = exit.mark;
+              latch = { ...latch, status: "CLOSED" };
+            }
+          }
+        }
+
         latchMemo.set(key, latch);
         const prev = persistMemo.get(key);
-        const statusChanged = !prev || prev.status !== latch.status;
+        const statusChanged = !prev || prev.status !== finalStatus;
         const due = !prev || now - prev.at >= PERSIST_HEARTBEAT_MS;
         if (statusChanged || due) {
-          persistMemo.set(key, { status: latch.status, at: now });
-          await persist(play.session_date, play.ticker, { status: latch.status, mark }).catch(() => {});
+          persistMemo.set(key, { status: finalStatus, at: now });
+          await persist(play.session_date, play.ticker, { status: finalStatus, mark: persistMark }).catch(() => {});
         }
       }
     }
@@ -401,18 +434,21 @@ export function buildZeroDteLiveMarksPayloadFrom(
   plays: ActiveZeroDtePlay[],
   nowMs: number,
   sessionDate: string,
-  readMark: (occ: string) => ZeroDteLiveMark | undefined = getZeroDteLiveMark
+  readMark: (occ: string) => ZeroDteLiveMark | undefined = getZeroDteLiveMark,
+  /** When set, prefer the 1s lane's latched lifecycle over the 10s active-set cache. */
+  latchedStatus?: (play: ActiveZeroDtePlay) => PlayStatus | null
 ): ZeroDteLiveMarksPayload {
   const marks: ZeroDteLiveMarkRow[] = plays.map((p) => {
     const m = readMark(p.occ);
     const asOf = m?.asOf ?? 0;
     const stale = isZeroDteMarkStale(asOf, nowMs);
+    const status = latchedStatus?.(p) ?? p.status;
     return {
       ticker: p.ticker,
       occ: p.occ,
       direction: p.direction,
       strike: p.strike,
-      status: p.status,
+      status,
       entry_premium: p.entry_premium,
       bid: m?.bid ?? null,
       ask: m?.ask ?? null,
@@ -441,7 +477,14 @@ export async function getZeroDteLiveMarksJson(): Promise<string> {
   const now = Date.now();
   if (payloadMemo && now - payloadMemo.builtAt <= PAYLOAD_MEMO_MS) return payloadMemo.json;
   const plays = await getActivePlays(now);
-  const payload = buildZeroDteLiveMarksPayloadFrom(plays, now, todayEt());
+  const sessionDate = todayEt();
+  const payload = buildZeroDteLiveMarksPayloadFrom(
+    plays,
+    now,
+    sessionDate,
+    getZeroDteLiveMark,
+    (p) => latchMemo.get(`${sessionDate}:${p.ticker}`)?.status ?? null
+  );
   const json = JSON.stringify(payload);
   payloadMemo = { json, builtAt: now };
   return json;
@@ -458,6 +501,7 @@ export function _resetZeroDteLiveMarksForTest(): void {
   persistMemo.clear();
   subscribedOccs = new Set();
   activeCache = null;
+  activeRowsByKey = new Map();
   activeInflight = null;
   payloadMemo = null;
   tickRunning = false;
