@@ -11,11 +11,8 @@ export function StaticMarketingNav() {
   return (
     <header className="mkt-nav">
       <div className="mkt-nav-inner">
-        <Link href="/" prefetch={false} className="mkt-wordmark mkt-wordmark-lockup font-anton">
-          <span className="mkt-wordmark-icon" aria-hidden>
-            B
-          </span>
-          Blackout Trading Desk
+        <Link href="/" prefetch={false} className="mkt-wordmark font-anton">
+          BLACKOUT
         </Link>
         <nav className="mkt-nav-links hide-in-ios-app" aria-label="Marketing">
           {LINKS.map((l) => (
