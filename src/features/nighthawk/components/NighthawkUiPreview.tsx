@@ -8,6 +8,7 @@ import { PlayDetailModal } from "@/features/nighthawk/components/PlayDetailModal
 import { NighthawkRadarBackdrop } from "@/features/nighthawk/components/NighthawkRadarBackdrop";
 import {
   PREVIEW_EDITION,
+  PREVIEW_INTEL_BY_TICKER,
   PREVIEW_MORNING,
   PREVIEW_PLAYS,
   PREVIEW_RECORD,
@@ -124,6 +125,9 @@ export function NighthawkUiPreview() {
           selectedPlay ? PREVIEW_MORNING.get(selectedPlay.ticker.toUpperCase()) : undefined
         }
         morningConfirmCheckedAt={new Date().toISOString()}
+        previewExplanation={
+          selectedPlay ? PREVIEW_INTEL_BY_TICKER[selectedPlay.ticker.toUpperCase()] : null
+        }
       />
     </div>
   );
