@@ -1,77 +1,76 @@
 # AWS migration plan — blackout-web on ECS Fargate
 
-**Status:** Phase 2 (staging stack) Terraform ready in `blackout-infra`. Prod stays on **Railway** until staging ECS is green.
+**Status (2026-07-18):** **Production cutover complete.** `blackouttrades.com` runs on **ECS Fargate**
+behind Cloudflare → ALB. EventBridge crons are **enabled** (31 jobs). Railway is
+**decommissioned** for prod app + cron triggers; `railway.*.toml` files remain as the schedule
+catalog for `blackout-infra/scripts/sync-cron-schedules.mjs`.
 
-**Infra repo:** [blackout-infra](https://github.com/coreentryadmin-web/blackout-infra) — VPC, ECR, RDS, Redis, ECS, ALB, EventBridge crons
+**Infra repo:** [blackout-infra](https://github.com/coreentryadmin-web/blackout-infra)
 
 **Secrets manifest:** `docs/ops/AWS-SECRETS-MANIFEST.md`
 
-**CDN:** Keep **Cloudflare** in front; point origin to ALB (do not add CloudFront).
+**Ops runbook:** `blackout-infra/docs/ops/PROD-AWS-MIGRATION-RUNBOOK.md` (historical phases + ongoing ops)
+
+**CDN:** **Cloudflare** in front of ALB — do not add CloudFront.
 
 ---
 
-## Phase 1 — Container (this repo)
+## Current production topology
 
-| Step | Artifact | Done |
-|------|----------|------|
-| Standalone output | `output: "standalone"` in `next.config.mjs` | ✅ |
-| Docker image | `deploy/Dockerfile` + `.dockerignore` (not repo root — Railway stays Nixpacks) | ✅ |
-| CI → ECR | `.github/workflows/ecr-push-staging.yml` | ✅ |
-| Local smoke | `docker build` + `docker run` → `/api/health` | ✅ (`blackout-infra/scripts/docker-smoke.sh`) |
-
-**Secrets:** never in the image. Inject at runtime via ECS task definition / Secrets Manager (same keys as Railway `blackout-web`).
-
----
-
-## Phase 2 — Staging stack (`blackout-infra`) ✅ Terraform ready
-
-1. **RDS Postgres** + **RDS Proxy** + **ElastiCache Redis** (private subnets)
-2. **ALB** + target group → ECS service (health: `/api/ready`, 90s start)
-3. **ECS Fargate** — 1 task staging, env from Secrets Manager
-4. **Crons** — EventBridge → Lambda → `GET /api/cron/*` with `CRON_SECRET` (24 jobs synced from Railway TOMLs)
-5. Smoke: `npm run validate:deploy` against staging ALB URL
-
-**Apply:** `blackout-infra` → `terraform apply -var-file=environments/staging.tfvars`
+| Layer | Resource |
+|-------|----------|
+| Edge | Cloudflare (DNS, WAF, Transform Rules / CSP, cache) |
+| Origin | ALB → ECS `blackout-production-web` (autoscale 8–15 tasks, 2 vCPU / 4 GB) |
+| Ingest | ECS `blackout-production-market-worker` (1 task) — upstream UW/Polygon WS |
+| Database | RDS Postgres 16 Multi-AZ + RDS Proxy |
+| Cache | ElastiCache Redis 7 (2 nodes, failover) |
+| Crons | EventBridge → Lambda `blackout-production-hit-cron` → `/api/cron/*` |
+| CI/CD | `ecr-push-production.yml` on `main` → ECR → ECS roll → CF purge |
 
 ---
 
-## Phase 3 — Production cutover
+## Phase history (all complete for prod)
 
-| Item | Target |
-|------|--------|
-| ECS tasks | 3–5 in `us-east-1` (not multi-region day one) |
-| Cloudflare | Origin → ALB DNS; keep existing Transform Rules / CSP |
-| Clerk | Same prod instance; add staging origin URLs if needed |
-| DNS | Lower TTL 24h before cutover; `blackouttrades.com` → ALB |
-| Rollback | Cloudflare origin back to Railway; keep Railway warm 48h |
-
----
-
-## Phase 4 — Decommission Railway
-
-Only after 1 week green on ECS:
-
-- Scale Railway `blackout-web` to 0 or remove
-- Migrate 23 cron trigger services to EventBridge (manifest: `npm run validate:railway-crons`)
-- Archive Railway Postgres after final PITR export if RDS is authoritative
+| Phase | Deliverable | Status |
+|-------|-------------|--------|
+| 1 | Standalone Docker + ECR CI | ✅ |
+| 2 | Staging stack (RDS, Redis, ALB, ECS) | ✅ |
+| 3 | Prod RDS data migration from Railway | ✅ |
+| 4 | Cloudflare origin → ALB, EventBridge crons on | ✅ |
+| 5 | Railway scale-down / archive | ✅ (app); legacy TOMLs kept for schedule sync |
 
 ---
 
-## Env manifest (copy to Secrets Manager)
+## Staging
 
-Same as Railway `blackout-web` — see `docs/ONBOARDING.md` § secrets. Minimum for a live desk:
+Staging runs on **`blackout-web-sandbox`** → ECS `blackout-staging-web` at
+`https://staging.blackouttrades.com`. See `docs/ops/STAGING-CONNECT.md`.
 
-- `DATABASE_URL`, `REDIS_URL`
+---
+
+## Env manifest (Secrets Manager)
+
+Same keys as historical Railway `blackout-web` — see `docs/ops/AWS-SECRETS-MANIFEST.md`. Minimum for a live desk:
+
+- `DATABASE_URL`, `REDIS_URL` (RDS Proxy + ElastiCache endpoints — Terraform-seeded, do not overwrite from exports)
 - `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
 - `UW_API_KEY`, `POLYGON_API_KEY` (or `MASSIVE_API_KEY`)
 - `CRON_SECRET`, `WHOP_*`, `ANTHROPIC_API_KEY`
-- `PORT=8080` (if ALB target uses 8080)
+- `REPLICA_COUNT`, `PG_POOL_MAX` — must track live web task count
 
 ---
 
-## Non-goals
+## Non-goals (unchanged)
 
 - EKS / raw EC2 worker fleet
-- Clerk → Cognito (stay on Clerk for migration)
+- Clerk → Cognito
 - CloudFront alongside Cloudflare
-- Splitting into microservices (modular monolith + horizontal scale)
+- Microservices split (modular monolith + horizontal scale)
+
+---
+
+## Legacy Railway artifacts (do not use for prod)
+
+- `scripts/railway-*.mjs`, `.github/workflows/railway-*.yml` — retained for reference only
+- `npm run validate:railway-crons` — validates TOML ↔ registry sync, not Railway provisioning
+- `docs/ops/RAILWAY-CRON-SCHEDULES.md` — **schedule semantics** (UTC); authoritative for EventBridge expressions after sync
