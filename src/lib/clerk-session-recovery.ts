@@ -34,9 +34,18 @@ export function clerkSignInRecoveryUrl(req: NextRequest): URL {
   return signIn;
 }
 
-/** Redirect to sign-in and clear stale Clerk cookies (post-migration recovery). */
-export function clerkSessionRecoveryResponse(req: NextRequest): NextResponse {
-  const res = NextResponse.redirect(clerkSignInRecoveryUrl(req), 307);
+/** Clear stale cookies and reload auth pages, or send protected routes to sign-in. */
+export function clerkStaleCookieRecoveryResponse(req: NextRequest): NextResponse {
+  const path = req.nextUrl.pathname;
+  const isAuthPage =
+    path === "/sign-in" ||
+    path.startsWith("/sign-in/") ||
+    path === "/sign-up" ||
+    path.startsWith("/sign-up/");
+  const target = isAuthPage
+    ? new URL(`${path}${req.nextUrl.search}`, req.url)
+    : clerkSignInRecoveryUrl(req);
+  const res = NextResponse.redirect(target, 307);
   clearClerkSessionCookies(res);
   return res;
 }
