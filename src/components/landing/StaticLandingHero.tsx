@@ -2,9 +2,8 @@ import Link from "next/link";
 import { IMAGES } from "@/lib/images";
 import { StaticHeroWaveform } from "./StaticHeroWaveform";
 
-const HERO_HOOK = "The desk AI that never sleeps.";
-const HERO_LEDE =
-  "Flow, gamma, dealer walls — decoded in real time while the tape still moves.";
+const HERO_HOOK = "Serious traders don't wait for the tape.";
+const HERO_LEDE = "Neither does BlackOut Intelligence.";
 
 /** Centered emblem hero — matches Emergent / brand mock (logo → headline → CTAs). */
 export function StaticLandingHero() {
