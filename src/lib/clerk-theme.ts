@@ -23,31 +23,28 @@ export const clerkAppearance: Appearance = {
   elements: {
     rootBox: "w-full",
     cardBox: "w-full",
-    // more opaque so the form is razor-crisp over the animated backdrop behind it
-    card: "bg-[#080a10]/92 backdrop-blur-2xl border border-bull/15 rounded-2xl px-8 py-9 shadow-[0_0_0_1px_rgba(0,230,118,0.12),0_24px_80px_-24px_rgba(0,0,0,0.85),0_0_60px_-20px_rgba(0,230,118,0.3)]",
+    card: "auth-card-breathe bg-[#080a10]/92 backdrop-blur-2xl border border-bull/15 rounded-2xl px-8 py-9 shadow-[0_0_0_1px_rgba(0,230,118,0.12),0_24px_80px_-24px_rgba(0,0,0,0.85),0_0_60px_-20px_rgba(0,230,118,0.3)]",
     headerTitle: "font-anton tracking-[0.04em] text-white text-3xl uppercase",
     headerSubtitle: "font-mono text-[10px] tracking-[0.3em] text-sky-300 uppercase",
-    // labels read as PRIMARY structure (near-white), distinct from the sky subtitle
     formFieldLabel: "font-mono text-[11px] tracking-[0.14em] uppercase text-white/85",
-    // "Optional" + hints clearly tertiary
     formFieldHintText: "font-mono text-[10px] text-white/55 normal-case tracking-normal",
     formFieldInput:
-      "!bg-[#040407] border border-white/12 rounded-xl py-2.5 text-white placeholder:text-white/55 focus:border-bull/60 focus:ring-2 focus:ring-bull/30 transition-colors [&:-webkit-autofill]:!bg-[#040407] [&:-webkit-autofill]:![box-shadow:0_0_0_1000px_#040407_inset] [&:-webkit-autofill]:![-webkit-text-fill-color:#f4f6fb]",
-    formFieldInputShowPasswordButton: "text-sky-300 hover:text-bull",
+      "auth-input-alive !bg-[#040407] border border-white/12 rounded-xl py-2.5 text-white placeholder:text-white/55 focus:border-bull/60 focus:ring-2 focus:ring-bull/30 [&:-webkit-autofill]:!bg-[#040407] [&:-webkit-autofill]:![box-shadow:0_0_0_1000px_#040407_inset] [&:-webkit-autofill]:![-webkit-text-fill-color:#f4f6fb]",
+    formFieldInputShowPasswordButton: "text-sky-300 hover:text-bull transition-colors",
     formFieldSuccessText: "text-bull",
     formFieldErrorText: "text-bear font-mono text-xs",
-    formFieldAction: "text-sky-300 hover:text-bull",
+    formFieldAction: "text-sky-300 hover:text-bull transition-colors",
     identityPreviewText: "text-white",
-    identityPreviewEditButton: "text-sky-300 hover:text-bull",
+    identityPreviewEditButton: "text-sky-300 hover:text-bull transition-colors",
     formButtonPrimary:
-      "bg-bull text-[#021108] font-syne tracking-[0.18em] uppercase text-xs font-extrabold rounded-xl py-3.5 transition-all duration-200 hover:brightness-110 hover:shadow-glow-bull active:scale-[0.98] shadow-[0_8px_24px_-8px_rgba(0,230,118,0.6)]",
+      "auth-btn-shimmer bg-bull text-[#021108] font-syne tracking-[0.18em] uppercase text-xs font-extrabold rounded-xl py-3.5 transition-all duration-200 hover:brightness-110 active:scale-[0.98] shadow-[0_8px_24px_-8px_rgba(0,230,118,0.6)]",
     socialButtonsBlockButton:
-      "bg-white/[0.04] border border-white/12 rounded-xl text-white hover:border-bull/40 hover:bg-bull/[0.06] transition-colors py-2.5",
+      "auth-social-glow bg-white/[0.04] border border-white/12 rounded-xl text-white py-2.5",
     socialButtonsBlockButtonText: "font-syne text-white font-semibold",
     dividerLine: "bg-white/10",
     dividerText: "font-mono text-[10px] tracking-[0.3em] text-white/55 uppercase",
-    formResendCodeLink: "text-bull hover:brightness-125",
-    otpCodeFieldInput: "border border-white/12 rounded-lg text-white focus:border-bull/60 focus:ring-2 focus:ring-bull/30",
+    formResendCodeLink: "text-bull hover:brightness-125 transition",
+    otpCodeFieldInput: "auth-otp-alive border border-white/12 rounded-lg text-white",
     footer: "bg-transparent",
     footerPages: "text-sky-400",
     footerActionText: "text-white/65",
