@@ -15,6 +15,11 @@ const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const PUBLIC_ROUTE_ALLOWLIST = new Set([
   "src/app/api/health/route.ts",
   "src/app/api/ready/route.ts",
+  // ECS worker-tier health probes — called by ECS/ALB, not users.
+  // Guarded by isIngestProcess() (returns 404 on non-worker containers).
+  "src/app/api/worker/boot/route.ts",
+  "src/app/api/worker/health/route.ts",
+  "src/app/api/worker/ready/route.ts",
   "src/app/api/webhook/whop/route.ts",
   "src/app/api/webhooks/clerk/route.ts",
   "src/app/api/webhook/clerk/route.ts",
