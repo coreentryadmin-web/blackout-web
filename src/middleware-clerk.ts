@@ -46,7 +46,7 @@ export default clerkMiddleware(
     if (isAuthPage) {
       const { userId } = await auth();
       if (userId) {
-        const dest = req.nextUrl.searchParams.get("redirect_url") || "/dashboard";
+        const dest = req.nextUrl.searchParams.get("redirect_url") || "/";
         return withStagingNoEdgeCache(
           NextResponse.redirect(new URL(dest, req.url), 307)
         );
@@ -55,14 +55,14 @@ export default clerkMiddleware(
 
     if (IS_STAGING && process.env.AUTH_PROVIDER !== "cognito") {
       if (path === "/sign-in" || path.startsWith("/sign-in/")) {
-        const returnPath = req.nextUrl.searchParams.get("redirect_url") ?? "/dashboard";
+        const returnPath = req.nextUrl.searchParams.get("redirect_url") ?? "/";
         const primary = clerkSatelliteAuthRedirect("sign-in", returnPath);
         if (primary) {
           return withStagingNoEdgeCache(NextResponse.redirect(primary, 307));
         }
       }
       if (path === "/sign-up" || path.startsWith("/sign-up/")) {
-        const returnPath = req.nextUrl.searchParams.get("redirect_url") ?? "/dashboard";
+        const returnPath = req.nextUrl.searchParams.get("redirect_url") ?? "/";
         const primary = clerkSatelliteAuthRedirect("sign-up", returnPath);
         if (primary) {
           return withStagingNoEdgeCache(NextResponse.redirect(primary, 307));

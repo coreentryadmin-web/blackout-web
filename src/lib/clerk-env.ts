@@ -61,7 +61,7 @@ export function clerkStagingReturnOrigin(): string {
  */
 export function clerkSatelliteAuthRedirect(
   mode: "sign-in" | "sign-up",
-  returnPath = "/dashboard"
+  returnPath = "/"
 ): string | null {
   if (!clerkIsSatellite() || !isStagingDeploy()) return null;
   const base = mode === "sign-in" ? clerkPrimarySignInUrl() : clerkPrimarySignUpUrl();
