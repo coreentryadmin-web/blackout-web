@@ -43,6 +43,9 @@ export async function POST(req: NextRequest) {
       phoneNumber: [phone.trim()],
       firstName: firstName?.trim() || undefined,
       lastName: lastName?.trim() || undefined,
+      skipPasswordRequirement: true,
+      skipPasswordChecks: true,
+      skipLegalChecks: true,
       publicMetadata: {
         tier: parseTier(tier),
         ...(parsedRole === "admin" ? { role: "admin" } : {}),

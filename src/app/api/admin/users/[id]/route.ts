@@ -12,6 +12,9 @@ import { deleteUserDataForClerkId } from "@/lib/db";
 import { updateClerkMembershipMetadata } from "@/lib/membership";
 import { parseTier } from "@/lib/tiers";
 import { publishTierChanged } from "@/lib/tier-cache";
+import { isToolLaunched } from "@/lib/tool-access";
+import { buildToolAccessRows, parseToolAccessMap } from "@/lib/tool-user-access";
+import { getToolAccessForUserId } from "@/lib/tool-access-server";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +37,8 @@ export async function GET(
     const meta = (user.publicMetadata ?? {}) as Record<string, unknown>;
     const primaryEmail =
       user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ?? null;
+    const toolOverrides = await getToolAccessForUserId(id);
+    const toolAccess = buildToolAccessRows((k) => isToolLaunched(k), toolOverrides);
 
     return NextResponse.json({
       id: user.id,
@@ -48,6 +53,7 @@ export async function GET(
       whopUserId: meta.whop_user_id ?? null,
       whopMembershipId: meta.whop_membership_id ?? null,
       publicMetadata: meta,
+      toolAccess,
       createdAt: user.createdAt,
       lastSignInAt: user.lastSignInAt,
       lastActiveAt: user.lastActiveAt,
@@ -127,6 +133,16 @@ export async function PATCH(
     await client.users.updateUserMetadata(id, {
       publicMetadata: { role: parsedRole === "admin" ? "admin" : undefined },
     });
+  }
+
+  if ("toolAccess" in body && body.toolAccess != null) {
+    const { mergeToolAccessMap, parseToolAccessMap } = await import("@/lib/tool-user-access");
+    const { setToolAccessForUserId, getToolAccessForUserId } = await import(
+      "@/lib/tool-access-server"
+    );
+    const patch = parseToolAccessMap(body.toolAccess);
+    const current = await getToolAccessForUserId(id);
+    await setToolAccessForUserId(id, mergeToolAccessMap(current, patch));
   }
 
   if ("banned" in body) {

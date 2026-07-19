@@ -18,6 +18,7 @@
     "test": "PLAYBOOK_VERDICT_GUARD_ASSERT=1 node --import tsx --experimental-test-module-mocks --test \"src/**/*.test.ts\"",
     "validate:deploy": "node scripts/validate-deploy.mjs",
     "validate:prod-ui-full": "node scripts/validate-prod-ui-full.mjs",
+    "validate:prod-admin-ui": "node scripts/validate-prod-admin-ui.mjs",
     "validate:vector-push-gate": "node scripts/vector-staging-e2e.mjs",
     "validate:vector-hardcore": "node scripts/vector-hardcore-e2e.mjs",
     "validate:staging": "node scripts/staging-validate.mjs",
@@ -93,6 +94,9 @@
     "probe:docs": "node scripts/analyze-api-usage.mjs && node scripts/probe-docs-endpoints.mjs",
     "probe:helix-apis": "node scripts/helix-live-api-survey.mjs",
     "validate:helix-ui": "node scripts/helix-ui-audit.mjs",
+    "validate:admin-users-e2e": "node scripts/validate-admin-users-e2e.mjs",
+    "validate:admin-console-e2e": "node scripts/validate-admin-console-e2e.mjs",
+    "validate:admin-e2e": "node scripts/validate-admin-e2e.mjs",
     "analyze:api": "node scripts/analyze-api-usage.mjs"
   },
   "dependencies": {

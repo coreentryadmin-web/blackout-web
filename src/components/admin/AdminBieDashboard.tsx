@@ -108,14 +108,7 @@ type BieReportPayload = {
   report_trail?: Array<{ source: string; at: string; preview: string }>;
 };
 
-type Stage = {
-  n: number;
-  name: string;
-  status: "SHIPPED" | "IN PROGRESS" | "NOT YET" | "BLOCKED";
-  blurb: string;
-};
-
-// SPX health panel (task #111) — payload shape of /api/admin/spx/health, a
+// SPX health panel (task #111)
 // small dedicated route separate from this component's main
 // /api/admin/bie-report fetch (that report is BIE-specific: interactions,
 // calibration, discovery — SPX play-engine health doesn't belong there). See
@@ -325,18 +318,6 @@ type HelixHealthPayload = {
   errors: string[];
 };
 
-// Static, hand-kept-in-sync summary of docs/bie/FULL-SYSTEM-AWARENESS.md — the
-// roadmap doc is the source of truth; this is a legible dashboard view of it,
-// not a second source. Update alongside that doc when a stage's status changes.
-const ROADMAP: Stage[] = [
-  { n: 1, name: "Repo, docs, API usage, schemas", status: "SHIPPED", blurb: "Knowledge corpus ingested + embedded (Voyage); platform telemetry monitoring is real, not aspirational." },
-  { n: 2, name: "Logs, errors, cron/worker health", status: "SHIPPED", blurb: "Backend + frontend error capture, cron health, Postgres pool, Redis internals, data-integrity/data-correctness validators, missed-alert detection (cron-outage ground truth), and duplicate-alert detection (verifies alert_audit_log's own xmax=0 / unique-index dedup actually holds) all wired into discovery. Fixed a real double-counting bug found in the process: an admin-route catch-all was independently re-capturing every dbQuery failure the dbQuery layer had already recorded, inflating this dashboard's own error count. Every item from the original ask is now shipped." },
-  { n: 3, name: "Infra access (ECS)", status: "SHIPPED", blurb: "Postgres slow-query log (pg_stat_statements) is checked, not enabled, per explicit instruction. Clerk auth-failure monitoring: Clerk has no webhook/Backend API for a failed sign-in (confirmed against their docs) — rather than rewrite the sign-in UI, a DOM observer sits alongside the untouched prebuilt <SignIn>/<SignUp> component and reports the error text Clerk already renders on a failed attempt, never a credential. See the \"Auth failures (24h)\" chip above." },
-  { n: 4, name: "Unified per-alert audit trail", status: "SHIPPED", blurb: "alert_audit_log schema, all three write-paths (0DTE, Night Hawk published, Night Hawk rejected — all fixture-tested), and the query surface (Audit trail panel below) are all live. Source-API attribution (source_apis column) is still unpopulated by any write-path — reported honestly as 0% until a future PR threads it through." },
-  { n: 5, name: "BIE opens PRs autonomously", status: "IN PROGRESS", blurb: "The end-state goal — explicitly NOT started as \"BIE writes code\" yet. Step 1 shipped 2026-07-03, dry-run only: for one narrow, 100% mechanical finding (an exported component with zero references anywhere else in src/), BIE drafts a plain-text proposal in the report below — never a diff, never a git action, never an LLM judgment call. A human decides what (if anything) to do about each one. Going further (real draft PRs, broader/LLM-judged finding types) needs its own explicit go-ahead, not assumed from this." },
-  { n: 6, name: "Outcome-driven calibration for plays", status: "NOT YET", blurb: "Outcome grading exists (0DTE, Night Hawk); nothing yet closes the loop by adjusting scoring logic from it. A first measurement step shipped 2026-07-03 (Confluence outcomes panel below) — whether 0DTE Command's graded hit rate differs when it agrees/disagrees with a ticker's prior Night Hawk take — but it is read-only and does not feed back into scoring. Explicitly secondary to data integrity per the charter. (Renumbered from a stale \"Stage 5\" label that collided with the real Stage 5 above — found via the same doc-drift pattern this session kept fixing elsewhere.)" },
-];
-
 function fmtEt(iso: string | null | undefined): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("en-US", {
@@ -346,13 +327,6 @@ function fmtEt(iso: string | null | undefined): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function stageTone(status: Stage["status"]): "bull" | "cyan" | "amber" | "violet" {
-  if (status === "SHIPPED") return "bull";
-  if (status === "IN PROGRESS") return "cyan";
-  if (status === "BLOCKED") return "amber";
-  return "violet";
 }
 
 function severityTone(severity: string): "bull" | "bear" | "amber" | "violet" {
@@ -519,7 +493,6 @@ export function AdminBieDashboard() {
   const openIssueCount = incidents.length + (correctness?.flags.length ?? 0);
   const auditTrail = data?.audit_trail ?? null;
   const duplicateAlerts = data?.duplicate_alerts ?? [];
-  const stage5Proposals = data?.stage5_proposals ?? [];
   const confluenceOutcomes = data?.confluence_outcomes ?? null;
   const hotTickers = data?.hot_tickers ?? [];
   const spxPlay = spxHealth?.play ?? null;
@@ -1303,84 +1276,7 @@ export function AdminBieDashboard() {
         )}
       </GlassPanel>
 
-      {/* Stage 3 infra probes — Postgres pg_stat_statements presence check
-          (never enables it). All read-only, all fail-open (a probe failure shows
-          as "—", never breaks the rest of this panel). */}
-      <GlassPanel kicker="Stage 3 — infra access" title="Infra" accent="violet">
-        <p className="admin-bie-coverage-note">
-          pg_stat_statements:{" "}
-          {!data?.pg_stat_statements?.configured
-            ? "DB not configured"
-            : data.pg_stat_statements.enabled
-              ? `enabled (${data.pg_stat_statements.tracked_statement_count} tracked statements)`
-              : "not enabled (checked, not attempted — server-level config change needs explicit go-ahead)"}
-        </p>
-      </GlassPanel>
-
-      {/* Stage 5, step 1 — DRY-RUN proposals only. BIE never writes a file, never
-          runs git, never opens a PR here; this only reads src/ (read-only) and
-          reports a text finding a human decides what to do with. */}
-      <GlassPanel kicker="Stage 5, step 1 — dry-run only, never touches git" title="Proposals" accent="cyan">
-        {stage5Proposals.length === 0 ? (
-          <p className="admin-bie-empty-text">No orphaned-component candidates found on this scan.</p>
-        ) : (
-          <>
-            <DataTable>
-              <thead>
-                <tr>
-                  <th>Component</th>
-                  <th>File</th>
-                  <th>Detail</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stage5Proposals.slice(0, 20).map((p, i) => (
-                  <tr key={`${p.file}-${p.component}-${i}`}>
-                    <td>{p.component}</td>
-                    <td className="admin-bie-issue-meta">{p.file}</td>
-                    <td className="admin-bie-issue-detail">{p.detail}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </DataTable>
-            <p className="admin-bie-coverage-note">
-              {stage5Proposals.length} candidate{stage5Proposals.length === 1 ? "" : "s"} found
-              {stage5Proposals.length > 20 ? ` (showing first 20)` : ""} — each is a plain-text
-              flag, not a proposed deletion. BIE cannot tell dead code from an unfinished
-              feature without design intent, so every one of these is a human decision.
-            </p>
-          </>
-        )}
-      </GlassPanel>
-
-      {/* Roadmap — legible view of docs/bie/FULL-SYSTEM-AWARENESS.md's stage table. */}
-      <GlassPanel kicker="Where we are, what's next" title="Roadmap" accent="violet">
-        {ROADMAP.map((s) => (
-          <DeckPanel
-            key={s.n}
-            title={`Stage ${s.n} — ${s.name}`}
-            badge={s.status}
-            accent={stageTone(s.status)}
-            storageKey={`bie-roadmap-${s.n}`}
-          >
-            <p className="admin-bie-roadmap-blurb">{s.blurb}</p>
-          </DeckPanel>
-        ))}
-      </GlassPanel>
-
-      {/* The three self-improvement reports — full detail, collapsed by default so
-          the tab reads as a dashboard first, a document second. */}
-      <GlassPanel kicker="Layer 5 reports" title="Self-improvement" accent="cyan">
-        <DeckPanel title="Daily self-evaluation" accent="cyan" storageKey="bie-report-self-eval">
-          <pre className="admin-bie-report-text">{data?.self_eval?.text ?? "—"}</pre>
-        </DeckPanel>
-        <DeckPanel title="Gate calibration · 14 sessions" accent="cyan" storageKey="bie-report-calibration">
-          <pre className="admin-bie-report-text">{data?.calibration?.text ?? "—"}</pre>
-        </DeckPanel>
-        <DeckPanel title="Platform discovery" accent="cyan" storageKey="bie-report-discovery">
-          <pre className="admin-bie-report-text">{data?.discovery?.text ?? "—"}</pre>
-        </DeckPanel>
-      </GlassPanel>
+      {/* Stage 3 infra / roadmap / self-improvement panels removed — ops noise; use BIE reports in repo docs. */}
 
       <p className="admin-bie-footer-note">
         Report-first by design: calibration recommendations cite their evidence and a human ships the

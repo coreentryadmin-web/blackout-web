@@ -14,6 +14,7 @@ import {
   MetricChip,
   TabCommandHero,
 } from "@/components/admin/AdminUi";
+import { AdminLaunchStatusPanel } from "@/components/admin/AdminLaunchStatusPanel";
 import { useAdminHealth, useAdminIncidents } from "@/hooks/use-admin-data";
 import type { AdminIncidentRow } from "@/lib/admin-incidents";
 import type { AuditLogEntry } from "@/app/api/admin/audit-log/route";
@@ -978,6 +979,8 @@ export function AdminOperationsDashboard() {
           </div>
         )}
       </GlassPanel>
+
+      <AdminLaunchStatusPanel />
     </div>
   );
 }

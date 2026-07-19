@@ -27,7 +27,7 @@ function freshnessForPayload(data: TrackRecordPayload, fetchedAt: Date): Freshne
 }
 
 type TrackRecordViewProps = {
-  /** When true, omit PageShell (for Admin console tab embedding). */
+  /** When true, omit PageShell (Admin console tab). */
   embedded?: boolean;
 };
 
@@ -120,14 +120,21 @@ export function TrackRecordView({ embedded = false }: TrackRecordViewProps) {
           kicker="Verified performance"
           title="Track record"
           subtitle="Signal results recorded at generation time and scored automatically — no cherry-picking."
-          actions={
-            <FreshnessChip status={headerFreshness} asOf={headerAsOf} />
-          }
+          actions={<FreshnessChip status={headerFreshness} asOf={headerAsOf} />}
           className="mb-8"
         />
       )}
 
-        {isInitialLoad && <TrackRecordSkeleton />}
+      {embedded && state.kind === "ready" && (
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <p className="text-[12px] text-white/55">
+            Verified SPX Slayer and Night Hawk outcomes — scored at generation time.
+          </p>
+          <FreshnessChip status={headerFreshness} asOf={headerAsOf} />
+        </div>
+      )}
+
+      {isInitialLoad && <TrackRecordSkeleton />}
 
         {state.kind === "error" && (
           <EmptyState
