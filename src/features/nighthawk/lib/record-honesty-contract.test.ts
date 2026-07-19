@@ -123,7 +123,7 @@ test("HawkRecordStrip: renders the honest split — segment-gated sample, unfill
     /const gateSample = cur \? cur\.scoreable : record\?\.total_resolved \?\? 0/,
     "the 30-sample ripeness gate must count CURRENT-methodology scoreable rows, not blended resolved rows"
   );
-  assert.match(src, /LOW_N_THRESHOLD/, "the shared platform threshold, same as the 0DTE record section");
+  assert.match(src, /LOW_N_THRESHOLD/, "the shared platform threshold for thin-sample disclosure");
   assert.match(src, /LowNChip/, "thin evidence must be badged with the shared amber-chip grammar");
   assert.match(src, /MethodologyTag/, "the strip must disclose which rule set the record is graded under");
   assert.match(src, /unfilled/, "unfilled count must be visible");
