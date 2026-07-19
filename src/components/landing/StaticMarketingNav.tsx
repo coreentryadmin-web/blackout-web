@@ -2,8 +2,8 @@ import Link from "next/link";
 
 const LINKS = [
   { href: "/#features", label: "Platform" },
-  { href: "/#tape", label: "The tape" },
-  { href: "/#gamma", label: "Gamma" },
+  { href: "/#tape", label: "Products" },
+  { href: "/#product-thermal", label: "Thermal" },
   { href: "/pricing", label: "Pricing", iosHide: true },
 ];
 

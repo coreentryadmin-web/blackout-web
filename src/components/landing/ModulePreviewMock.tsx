@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
-import { MARKETING_MODULE_IMAGES, type MarketingModuleId } from "@/lib/images";
+import { MarketingProductScene } from "./MarketingProductScene";
+import type { MarketingProductId } from "@/lib/marketing/products";
 
 type Props = {
   moduleId: string;
@@ -7,7 +8,7 @@ type Props = {
   accent: string;
 };
 
-const ALT: Record<MarketingModuleId, string> = {
+const ALT: Record<MarketingProductId, string> = {
   spx: "SPX Slayer — live 0DTE gamma matrix and dealer positioning desk",
   helix: "HELIX — institutional options flow tape with anomaly alerts",
   thermal: "BlackOut Thermal — dealer gamma heatmap across strikes and expiries",
@@ -16,37 +17,28 @@ const ALT: Record<MarketingModuleId, string> = {
   vector: "Vector — cross-ticker flow and gamma universe scan",
 };
 
-/** Real desk screenshot in a chrome frame — falls back to CSS mock if asset missing. */
+/** Live-rendered desk scene in chrome frame — CSS animation, no stale screenshots. */
 export function ModulePreviewMock({ moduleId, label, accent }: Props) {
   const style = { "--mkt-accent": accent } as CSSProperties;
-  const imageId = moduleId as MarketingModuleId;
-  const src = MARKETING_MODULE_IMAGES[imageId];
+  const productId = moduleId as MarketingProductId;
 
   return (
     <div
-      className={`mkt-module-preview mkt-card mkt-preview-${moduleId}`}
+      className={`mkt-module-preview mkt-module-preview--elevated mkt-card mkt-preview-${moduleId}`}
       style={{ borderColor: `${accent}33`, ...style }}
+      role="img"
+      aria-label={ALT[productId] ?? `${label} preview`}
     >
       <div className="mkt-module-preview-bar">
         <span className="mkt-module-preview-dot" style={{ background: accent }} />
         <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/60">{label}</span>
-        <span className="mkt-module-preview-live font-mono text-[10px] uppercase tracking-[0.2em]">Live desk</span>
+        <span className="mkt-module-preview-live font-mono text-[10px] uppercase tracking-[0.2em]">
+          <span className="mkt-scene-live-dot" aria-hidden />
+          Live render
+        </span>
       </div>
       <div className="mkt-module-preview-body mkt-module-preview-body--shot">
-        {src ? (
-          // eslint-disable-next-line @next/next/no-img-element -- static marketing shell; no next/image bundle
-          <img
-            src={src}
-            alt={ALT[imageId] ?? `${label} preview`}
-            className="mkt-module-shot"
-            width={1200}
-            height={675}
-            loading="lazy"
-            decoding="async"
-          />
-        ) : (
-          <div className="mkt-module-shot-fallback" aria-hidden />
-        )}
+        <MarketingProductScene productId={productId} accent={accent} variant="full" />
         <div className="mkt-module-shot-glow" aria-hidden />
       </div>
     </div>
