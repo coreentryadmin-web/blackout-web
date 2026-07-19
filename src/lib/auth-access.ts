@@ -9,13 +9,16 @@ export async function requireAuth(): Promise<string> {
   return userId;
 }
 
-export async function getUserTier(userId: string): Promise<Tier> {
+export async function getUserTier(
+  userId: string,
+  sessionClaims?: Record<string, unknown> | null
+): Promise<Tier> {
   if (!userId) {
     console.warn("[auth-access] getUserTier called with empty userId — treating as free.");
     return "free";
   }
   try {
-    return await resolveUserTier(userId);
+    return await resolveUserTier(userId, sessionClaims);
   } catch (err) {
     if (!(err instanceof TierUnavailableError)) throw err;
     console.warn("[auth-access] tier unavailable; denying (treating as free) to avoid over-grant.");
@@ -25,7 +28,8 @@ export async function getUserTier(userId: string): Promise<Tier> {
 
 export async function requireTier(minTier: Tier) {
   const userId = await requireAuth();
-  const tier = await getUserTier(userId);
+  const { sessionClaims } = await getSession();
+  const tier = await getUserTier(userId, sessionClaims);
 
   if (!tierAtLeast(tier, minTier)) {
     redirect("/upgrade");

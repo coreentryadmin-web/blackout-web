@@ -1,4 +1,5 @@
 import { clerkClient } from "@clerk/nextjs/server";
+import { tierFromSessionClaims } from "@/lib/clerk-session-claims";
 import { parseTier, type Tier } from "@/lib/tiers";
 import { isCognitoAuth } from "@/lib/auth-provider";
 import { getUserProfile } from "@/lib/user-directory";
@@ -122,7 +123,10 @@ export class TierUnavailableError extends Error {
  *   It NEVER returns a default tier on failure — over-granting premium on a Clerk outage
  *   would be a security hole, so that decision is left to the caller.
  */
-export async function resolveUserTier(userId: string): Promise<Tier> {
+export async function resolveUserTier(
+  userId: string,
+  sessionClaims?: Record<string, unknown> | null
+): Promise<Tier> {
   ensureTierCacheSubscription();
   const cached = tierCache.get(userId);
   if (cached && Date.now() - cached.at < TIER_CACHE_TTL_MS) {
@@ -134,6 +138,11 @@ export async function resolveUserTier(userId: string): Promise<Tier> {
       const tier = profile?.tier ?? "free";
       setTierCache(userId, tier);
       return tier;
+    }
+    const fromClaims = tierFromSessionClaims(sessionClaims);
+    if (fromClaims !== null) {
+      setTierCache(userId, fromClaims);
+      return fromClaims;
     }
     const user = await (await clerkClient()).users.getUser(userId);
     const tier = parseTier(user.publicMetadata?.tier);
