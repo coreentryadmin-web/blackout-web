@@ -2,12 +2,32 @@ import { headers } from 'next/headers';
 import { Webhook } from 'svix';
 import { WebhookEvent } from '@clerk/nextjs/server';
 import { dbQuery, deleteUserDataForClerkId } from '@/lib/db';
+import { primaryEmailFromClerkWebhook } from '@/lib/clerk-webhook-email';
+import { syncWhopMembershipForEmail } from '@/lib/membership';
 import { publishTierChanged } from '@/lib/tier-cache';
 
 const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+async function syncWhopForClerkUser(clerkUserId: string, email: string | null): Promise<void> {
+  if (!email?.trim()) return;
+  if (!process.env.WHOP_COMPANY_ID?.trim() || !process.env.WHOP_API_KEY?.trim()) {
+    console.warn('[clerk-webhook] Whop env missing — skipping membership sync');
+    return;
+  }
+  try {
+    const { tier, updatedUserIds } = await syncWhopMembershipForEmail(email);
+    for (const uid of updatedUserIds) publishTierChanged(uid);
+    console.log(
+      `[clerk-webhook] Whop sync for ${clerkUserId} (${email}): tier=${tier}, updated=${updatedUserIds.length}`
+    );
+  } catch (err) {
+    // Do not fail the webhook — DB row is already committed; client sign-in sync + reconcile cron are backups.
+    console.error(`[clerk-webhook] Whop sync failed for ${clerkUserId} (${email}):`, err);
+  }
+}
 
 export async function POST(req: Request) {
   if (!WEBHOOK_SECRET) {
@@ -49,7 +69,7 @@ export async function POST(req: Request) {
 
   try {
     if (type === 'user.created') {
-      const email = data.email_addresses?.[0]?.email_address ?? null;
+      const email = primaryEmailFromClerkWebhook(data);
       const firstName = data.first_name ?? null;
       const lastName = data.last_name ?? null;
 
@@ -64,8 +84,9 @@ export async function POST(req: Request) {
         [data.id, email, firstName, lastName]
       );
       console.log(`[clerk-webhook] Provisioned user: ${data.id} (${email})`);
+      await syncWhopForClerkUser(data.id, email);
     } else if (type === 'user.updated') {
-      const email = data.email_addresses?.[0]?.email_address ?? null;
+      const email = primaryEmailFromClerkWebhook(data);
       const firstName = data.first_name ?? null;
       const lastName = data.last_name ?? null;
 
@@ -76,6 +97,7 @@ export async function POST(req: Request) {
         [data.id, email, firstName, lastName]
       );
       console.log(`[clerk-webhook] Updated user: ${data.id}`);
+      await syncWhopForClerkUser(data.id, email);
     } else if (type === 'user.deleted') {
       const clerkId = data.id;
       if (!clerkId) {

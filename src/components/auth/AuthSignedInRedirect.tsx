@@ -16,6 +16,11 @@ function AuthSignedInRedirectInner({ fallback = "/" }: { fallback?: string }) {
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
+
+    // Pay-before-sign-up: match Whop membership to this Clerk account on first authenticated paint.
+    // Server cooldown (45s) dedupes OAuth double-fires; webhook sync is the other path.
+    void fetch("/api/membership/sync", { method: "POST" }).catch(() => undefined);
+
     const raw = searchParams.get("redirect_url");
     const dest = raw ? clerkStagingReturnPath(raw) : fallback;
     router.replace(dest.startsWith("/") ? dest : `/${dest}`);

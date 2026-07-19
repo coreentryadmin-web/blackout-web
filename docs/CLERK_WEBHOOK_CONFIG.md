@@ -30,9 +30,11 @@ Clerk fires webhook events (via Svix) to our endpoint whenever users are created
 
 | Event | What we do |
 |---|---|
-| `user.created` | INSERT into `users` table (clerk_user_id, email, first_name, last_name) |
-| `user.updated` | UPDATE email/name in `users` table |
-| `user.deleted` | Currently logged only (no hard delete — preserves position history) |
+| `user.created` | INSERT into `users` table, then **Whop membership sync** by primary email (pay-before-sign-up) |
+| `user.updated` | UPDATE email/name in `users` table, then Whop membership sync |
+| `user.deleted` | Cascade-delete user data in Postgres; invalidate tier cache |
+
+**Whop sync on sign-in:** `AuthSignedInRedirect` also `POST`s `/api/membership/sync` once after OAuth/email auth (45s per-user cooldown). Together with the webhook path, a user who paid on Whop before creating a Clerk account gets `premium` tier without clicking “I paid — refresh my access”.
 
 ---
 
