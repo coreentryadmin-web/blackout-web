@@ -2,6 +2,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { syncWhopMembershipForEmail } from "@/lib/membership";
 import { acquireMembershipSyncSlot } from "@/lib/membership-sync-limit";
+import { publishTierChanged } from "@/lib/tier-cache";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 
 export async function POST() {
@@ -29,6 +30,7 @@ export async function POST() {
 
   try {
     const result = await syncWhopMembershipForEmail(email);
+    for (const uid of result.updatedUserIds) publishTierChanged(uid);
     return NextResponse.json({
       ok: true,
       tier: result.tier,
