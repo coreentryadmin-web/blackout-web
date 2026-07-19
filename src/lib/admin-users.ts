@@ -3,6 +3,19 @@ import type { Tier } from "@/lib/tiers";
 
 export type AdminUserRole = "admin" | "member";
 
+export type AdminUserListFilters = {
+  tier?: string;
+  role?: string;
+  query?: string;
+};
+
+export type AdminUserListStats = {
+  total: number;
+  premium: number;
+  admins: number;
+  community: number;
+};
+
 export function parseAdminUserRole(value: unknown): AdminUserRole | undefined {
   if (value === "admin") return "admin";
   if (value === "member" || value === "" || value == null) return "member";
@@ -21,29 +34,123 @@ export function assertAdminSelfGuard(
   return "You cannot remove your own admin role";
 }
 
-/** Postgres-backed tier listing when Clerk metadata filter is unavailable. */
+/** Build WHERE clause fragments for admin user directory queries. */
+export function buildAdminUserFilterSql(filters: AdminUserListFilters): {
+  whereSql: string;
+  params: unknown[];
+} {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+
+  const query = filters.query?.trim();
+  if (query) {
+    params.push(`%${query.replace(/[%_\\]/g, (c) => `\\${c}`)}%`);
+    const idx = params.length;
+    clauses.push(
+      `(email ILIKE $${idx} ESCAPE '\\'
+        OR first_name ILIKE $${idx} ESCAPE '\\'
+        OR last_name ILIKE $${idx} ESCAPE '\\'
+        OR clerk_user_id ILIKE $${idx} ESCAPE '\\')`
+    );
+  }
+
+  const tier = filters.tier?.trim();
+  if (tier === "community") {
+    clauses.push(`membership_kind = 'community'`);
+  } else if (tier === "premium") {
+    clauses.push(`tier = 'premium'`);
+  } else if (tier === "free") {
+    clauses.push(
+      `tier = 'free' AND COALESCE(membership_kind, 'free') NOT IN ('community', 'premium')`
+    );
+  }
+
+  const role = filters.role?.trim();
+  if (role === "admin") {
+    clauses.push(`role = 'admin'`);
+  } else if (role === "member") {
+    clauses.push(`COALESCE(role, '') <> 'admin'`);
+  }
+
+  return {
+    whereSql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
+    params,
+  };
+}
+
+export function shouldUseDbAdminUserList(filters: AdminUserListFilters): boolean {
+  const tier = filters.tier?.trim();
+  const role = filters.role?.trim();
+  return Boolean(tier || role);
+}
+
+/** Postgres-backed user listing with accurate filter pagination. */
+export async function listClerkUserIdsByDbFilters(
+  filters: AdminUserListFilters,
+  limit: number,
+  offset: number
+): Promise<{ ids: string[]; total: number }> {
+  if (!dbConfigured()) return { ids: [], total: 0 };
+
+  const { whereSql, params } = buildAdminUserFilterSql(filters);
+  const limitIdx = params.length + 1;
+  const offsetIdx = params.length + 2;
+
+  const [rows, countRow] = await Promise.all([
+    dbQuery<{ clerk_user_id: string }>(
+      `SELECT clerk_user_id FROM users
+       ${whereSql}
+       ORDER BY updated_at DESC
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      [...params, limit, offset]
+    ),
+    dbQuery<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM users ${whereSql}`,
+      params
+    ),
+  ]);
+
+  return {
+    ids: rows.rows.map((r) => r.clerk_user_id),
+    total: parseInt(countRow.rows[0]?.count ?? "0", 10),
+  };
+}
+
+/** @deprecated Use listClerkUserIdsByDbFilters — kept for callers passing tier only. */
 export async function listClerkUserIdsByDbTier(
   tier: string,
   limit: number,
   offset: number
 ): Promise<{ ids: string[]; total: number }> {
-  if (!dbConfigured()) return { ids: [], total: 0 };
-  const [rows, countRow] = await Promise.all([
-    dbQuery<{ clerk_user_id: string }>(
-      `SELECT clerk_user_id FROM users
-       WHERE tier = $1
-       ORDER BY updated_at DESC
-       LIMIT $2 OFFSET $3`,
-      [tier, limit, offset]
-    ),
-    dbQuery<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM users WHERE tier = $1`,
-      [tier]
-    ),
-  ]);
+  return listClerkUserIdsByDbFilters({ tier }, limit, offset);
+}
+
+/** Global user counts for admin dashboard stats (Postgres mirror of Clerk metadata). */
+export async function getAdminUserListStats(): Promise<AdminUserListStats | null> {
+  if (!dbConfigured()) return null;
+
+  const { rows } = await dbQuery<{
+    total: string;
+    premium: string;
+    admins: string;
+    community: string;
+  }>(`
+    SELECT
+      COUNT(*)::text AS total,
+      COUNT(*) FILTER (WHERE tier = 'premium')::text AS premium,
+      COUNT(*) FILTER (WHERE role = 'admin')::text AS admins,
+      COUNT(*) FILTER (WHERE membership_kind = 'community')::text AS community
+    FROM users
+  `);
+
+  const row = rows[0];
+  if (!row) return null;
+
   return {
-    ids: rows.rows.map((r) => r.clerk_user_id),
-    total: parseInt(countRow.rows[0]?.count ?? "0", 10),
+    total: parseInt(row.total, 10),
+    premium: parseInt(row.premium, 10),
+    admins: parseInt(row.admins, 10),
+    community: parseInt(row.community, 10),
   };
 }
 
@@ -55,18 +162,37 @@ export async function upsertAdminUserRow(input: {
   lastName?: string | null;
   tier?: Tier | null;
   whopUserId?: string | null;
+  role?: AdminUserRole | string | null;
+  membershipKind?: string | null;
 }): Promise<void> {
   if (!dbConfigured()) return;
+
+  const roleValue =
+    input.role === "admin"
+      ? "admin"
+      : input.role === "member" || input.role === "" || input.role === null
+        ? null
+        : undefined;
+
   try {
+    const roleProvided = "role" in input;
+    const membershipKindProvided = "membershipKind" in input;
+
     await dbQuery(
-      `INSERT INTO users (clerk_user_id, email, first_name, last_name, tier, whop_user_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO users (
+         clerk_user_id, email, first_name, last_name, tier, whop_user_id, role, membership_kind
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (clerk_user_id) DO UPDATE
          SET email = COALESCE(EXCLUDED.email, users.email),
              first_name = COALESCE(EXCLUDED.first_name, users.first_name),
              last_name = COALESCE(EXCLUDED.last_name, users.last_name),
              tier = COALESCE(EXCLUDED.tier, users.tier),
              whop_user_id = COALESCE(EXCLUDED.whop_user_id, users.whop_user_id),
+             role = ${roleProvided ? "EXCLUDED.role" : "users.role"},
+             membership_kind = ${
+               membershipKindProvided ? "EXCLUDED.membership_kind" : "users.membership_kind"
+             },
              updated_at = NOW()`,
       [
         input.clerkUserId,
@@ -75,6 +201,8 @@ export async function upsertAdminUserRow(input: {
         input.lastName ?? null,
         input.tier ?? null,
         input.whopUserId ?? null,
+        roleProvided ? roleValue ?? null : null,
+        membershipKindProvided ? input.membershipKind ?? null : null,
       ]
     );
   } catch (err) {

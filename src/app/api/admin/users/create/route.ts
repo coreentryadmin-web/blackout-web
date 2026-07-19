@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
       firstName: user.firstName,
       lastName: user.lastName,
       tier: parseTier(tier),
+      role: parsedRole ?? "member",
     });
 
     let whopTier: string | null = null;
@@ -66,6 +67,11 @@ export async function POST(req: NextRequest) {
       try {
         const synced = await syncWhopMembershipForEmail(email.trim());
         whopTier = synced.tier;
+        await upsertAdminUserRow({
+          clerkUserId: user.id,
+          tier: synced.tier,
+          membershipKind: synced.billingKind,
+        });
       } catch (err) {
         console.warn("[admin-users] Whop sync after create failed:", err);
       }

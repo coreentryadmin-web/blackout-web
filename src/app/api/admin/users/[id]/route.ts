@@ -170,6 +170,9 @@ export async function PATCH(
     lastName: updated.lastName,
     tier: parseTier(meta.tier),
     whopUserId: typeof meta.whop_user_id === "string" ? meta.whop_user_id : null,
+    role: String(meta.role ?? "") === "admin" ? "admin" : "member",
+    membershipKind:
+      typeof meta.membership_kind === "string" ? String(meta.membership_kind) : null,
   });
 
   void logAdminAction({

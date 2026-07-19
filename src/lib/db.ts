@@ -959,6 +959,18 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     CREATE INDEX IF NOT EXISTS users_tier_idx ON users(tier);
   `);
+  await p.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS role TEXT,
+    ADD COLUMN IF NOT EXISTS membership_kind TEXT;
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS users_role_idx ON users(role) WHERE role = 'admin';
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS users_membership_kind_idx ON users(membership_kind)
+    WHERE membership_kind IS NOT NULL;
+  `);
   // Refund/chargeback revocation denylist — Postgres is the durable source of truth
   // (a security denylist must survive a Redis outage/flush); whop-revocation.ts keeps
   // Redis in front as the hot cache. Rows are permanent: a refunded one-time purchase
