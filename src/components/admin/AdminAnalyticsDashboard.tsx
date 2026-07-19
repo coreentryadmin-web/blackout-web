@@ -10,10 +10,11 @@ import { AdminSpxDashboard } from "@/components/admin/AdminSpxDashboard";
 import { AdminOperationsDashboard } from "@/components/admin/AdminOperationsDashboard";
 import { AdminBieDashboard } from "@/components/admin/AdminBieDashboard";
 import { AdminHealthBanner } from "@/components/admin/AdminHealthBanner";
-import { TabCanvas } from "@/components/admin/AdminUi";
+import { TabCanvas, TabCommandHero } from "@/components/admin/AdminUi";
+import { TrackRecordView } from "@/components/track-record";
 import { Tabs, TabList, Tab, TabPanel } from "@/components/ui";
 
-type ToolTab = "spx" | "nighthawk" | "ops" | "apis" | "crons" | "bie";
+type ToolTab = "spx" | "nighthawk" | "ops" | "apis" | "crons" | "bie" | "track-record";
 
 const TABS: Array<{ id: ToolTab; label: string; icon: string; blurb: string }> = [
   { id: "ops",       label: "Operations",  icon: "◉", blurb: "Incidents · audit trail · system vitals" },
@@ -21,6 +22,7 @@ const TABS: Array<{ id: ToolTab; label: string; icon: string; blurb: string }> =
   { id: "crons",     label: "Crons",       icon: "⏱", blurb: "Job health · schedules · last run" },
   { id: "spx",       label: "SPX Slayer",  icon: "◎", blurb: "Live engine · outcomes · desk" },
   { id: "nighthawk", label: "Night Hawk",  icon: "◈", blurb: "Target-hit · signal quality" },
+  { id: "track-record", label: "Track Record", icon: "◆", blurb: "SPX + Night Hawk · play ledger" },
   { id: "bie",       label: "BIE",         icon: "✦", blurb: "Findings · roadmap · self-reports" },
 ];
 
@@ -31,7 +33,8 @@ function parseTab(value: string | null): ToolTab {
     value === "ops" ||
     value === "apis" ||
     value === "crons" ||
-    value === "bie"
+    value === "bie" ||
+    value === "track-record"
   )
     return value;
   return "ops";
@@ -119,6 +122,19 @@ export function AdminAnalyticsDashboard() {
           {tab === "nighthawk" && (
             <TabCanvas theme="neutral">
               <AdminNightHawkDashboard />
+            </TabCanvas>
+          )}
+          {tab === "track-record" && (
+            <TabCanvas theme="neutral">
+              <div className="space-y-6">
+                <TabCommandHero
+                  kicker="Verified performance"
+                  title="Track record"
+                  subtitle="Signal results recorded at generation time and scored automatically — no cherry-picking."
+                  compact
+                />
+                <TrackRecordView embedded />
+              </div>
             </TabCanvas>
           )}
           {tab === "bie" && (
