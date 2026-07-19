@@ -11,9 +11,11 @@ Whop is the billing + Discord entitlement layer. The **website** (`/pricing`, `/
 | BlackOut Premium Monthly | `prod_DVboHRgi2jgYP` | `blackout-trading-community` | $199/mo | Yes |
 | BlackOut Premium Yearly | `prod_pufR0xUcudHVB` | `yearly-access-c0` | $1,999/yr | Yes |
 | BlackOut Discord Community | `prod_hPHU7bWcvWg8T` | `blackout-discord-community` | $75/mo | No (Discord only) |
-| ~~Life Time Access~~ | `prod_fSnPbyYQi50Wm` | hidden | retired | — |
+| ~~Life Time Access~~ | `prod_fSnPbyYQi50Wm` | hidden | retired | **Yes (grandfathered)** |
 
-**Premium entitlements** (`WHOP_PRO_PRODUCT_IDS`): monthly + yearly product IDs only — **never** Community or lifetime.
+**Premium entitlements** (`WHOP_PRO_PRODUCT_IDS`): monthly + yearly + **retired lifetime** (`prod_fSnPbyYQi50Wm`) for existing `completed` one-time purchases. Community is never premium on desk.
+
+Lifetime is **hidden/archived in Whop** — do not sell new lifetime via that SKU. To sell new lifetime again, create a **new** Whop product/plan and add its ID here; keep the retired ID for legacy holders.
 
 ## Checkout URLs (baked at Docker build)
 
