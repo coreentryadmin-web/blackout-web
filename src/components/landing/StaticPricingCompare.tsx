@@ -53,11 +53,11 @@ export function StaticPricingCompare() {
             <p className="mt-1 text-sm text-sky-300">Full desk + Discord · one membership</p>
           </div>
           <div className="mkt-compare-card">
-            <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-sky-300/80">Typical stack</p>
-            <p className="mt-2 font-anton text-4xl text-white/70">
-              $300+<span className="font-syne text-base font-semibold text-sky-300/60">/mo</span>
+            <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-sky-300/80">Premium · Yearly</p>
+            <p className="mt-2 font-anton text-4xl text-white">
+              $1,999<span className="font-syne text-base font-semibold text-sky-300">/yr</span>
             </p>
-            <p className="mt-1 text-sm text-sky-300/70">Flow + gamma + chat · stitched together</p>
+            <p className="mt-1 text-sm text-sky-300/70">Full desk · save $389 vs monthly</p>
           </div>
         </div>
 
