@@ -110,10 +110,13 @@ export type PlanValueProp = {
  * renders with just its label/href — framing is purely additive and optional.
  *
  * Numbers below are presentation copy derived from the list prices
- * ($199/mo, $1,999/yr; lifetime $3,999 is DISABLED until Whop lifts this account's $2,500 cap). If you
+ * ($75/mo Community Discord, $199/mo Premium, $1,999/yr Premium). If you
  * change Whop prices, update the labels in whop-checkout.ts AND these strings together.
  */
 export const PLAN_VALUE_PROPS: Record<string, PlanValueProp> = {
+  "Community — $75": {
+    subline: "Discord access · billed monthly",
+  },
   "Monthly — $199": {
     subline: "Billed monthly · stand down anytime",
   },
@@ -122,10 +125,6 @@ export const PLAN_VALUE_PROPS: Record<string, PlanValueProp> = {
     subline: "≈ $167/mo · billed yearly",
     savings: "Save $389 vs monthly",
     featured: true,
-  },
-  "Lifetime — $3,999": {
-    subline: "One payment · permanent access",
-    savings: "≈ 20 months of monthly",
   },
 };
 
