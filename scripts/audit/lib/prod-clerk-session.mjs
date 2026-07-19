@@ -113,6 +113,7 @@ export async function mintClerkPremiumSession({ appUrl }) {
 
     return {
       skip: false,
+      userId,
       cookieHeader: `__session=${jwt}; __client_uat=${clientUat}`,
       signInUrl: `${appUrl}/sign-in?__clerk_ticket=${ticket}`,
       cleanup: async () => {
