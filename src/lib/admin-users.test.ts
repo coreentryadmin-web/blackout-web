@@ -22,11 +22,12 @@ test("assertAdminSelfGuard blocks self ban and demote", () => {
   assert.match(assertAdminSelfGuard("u1", "u1", "delete")!, /cannot delete/i);
 });
 
-test("shouldUseDbAdminUserList when tier or role filter set", () => {
+test("shouldUseDbAdminUserList when tier, role, or access filter set", () => {
   assert.equal(shouldUseDbAdminUserList({}), false);
   assert.equal(shouldUseDbAdminUserList({ query: "foo" }), false);
   assert.equal(shouldUseDbAdminUserList({ tier: "premium" }), true);
   assert.equal(shouldUseDbAdminUserList({ role: "admin" }), true);
+  assert.equal(shouldUseDbAdminUserList({ access: "free" }), true);
 });
 
 test("buildAdminUserFilterSql maps tier and role filters", () => {
@@ -42,4 +43,12 @@ test("buildAdminUserFilterSql maps tier and role filters", () => {
   const combined = buildAdminUserFilterSql({ tier: "free", role: "member" });
   assert.match(combined.whereSql, /tier = 'free'/);
   assert.match(combined.whereSql, /<> 'admin'/);
+
+  const accessPremium = buildAdminUserFilterSql({ access: "premium" });
+  assert.match(accessPremium.whereSql, /tier = 'premium'/);
+  assert.match(accessPremium.whereSql, /<> 'admin'/);
+
+  const accessFree = buildAdminUserFilterSql({ access: "free" });
+  assert.match(accessFree.whereSql, /tier = 'free'/);
+  assert.match(accessFree.whereSql, /NOT IN \('community', 'premium'\)/);
 });

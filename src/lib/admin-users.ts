@@ -1,4 +1,5 @@
 import { dbQuery, dbConfigured } from "@/lib/db";
+import { adminEmailAllowlist } from "@/lib/admin-emails";
 import type { Tier } from "@/lib/tiers";
 
 export type AdminUserRole = "admin" | "member";
@@ -7,6 +8,8 @@ export type AdminUserListFilters = {
   tier?: string;
   role?: string;
   query?: string;
+  /** Combined access bucket filter (admin / premium / community / free). */
+  access?: string;
 };
 
 export type AdminUserListStats = {
@@ -14,6 +17,7 @@ export type AdminUserListStats = {
   premium: number;
   admins: number;
   community: number;
+  free: number;
 };
 
 export function parseAdminUserRole(value: unknown): AdminUserRole | undefined {
@@ -55,7 +59,26 @@ export function buildAdminUserFilterSql(filters: AdminUserListFilters): {
   }
 
   const tier = filters.tier?.trim();
-  if (tier === "community") {
+  const access = filters.access?.trim();
+
+  if (access === "admin") {
+    const allow = adminEmailAllowlist();
+    if (allow.length > 0) {
+      params.push(allow.map((e) => e.toLowerCase()));
+      const idx = params.length;
+      clauses.push(`(role = 'admin' OR LOWER(email) = ANY($${idx}::text[]))`);
+    } else {
+      clauses.push(`role = 'admin'`);
+    }
+  } else if (access === "premium") {
+    clauses.push(`tier = 'premium' AND COALESCE(role, '') <> 'admin'`);
+  } else if (access === "community") {
+    clauses.push(`membership_kind = 'community'`);
+  } else if (access === "free") {
+    clauses.push(
+      `tier = 'free' AND COALESCE(membership_kind, 'free') NOT IN ('community', 'premium') AND COALESCE(role, '') <> 'admin'`
+    );
+  } else if (tier === "community") {
     clauses.push(`membership_kind = 'community'`);
   } else if (tier === "premium") {
     clauses.push(`tier = 'premium'`);
@@ -81,7 +104,8 @@ export function buildAdminUserFilterSql(filters: AdminUserListFilters): {
 export function shouldUseDbAdminUserList(filters: AdminUserListFilters): boolean {
   const tier = filters.tier?.trim();
   const role = filters.role?.trim();
-  return Boolean(tier || role);
+  const access = filters.access?.trim();
+  return Boolean(tier || role || access);
 }
 
 /** Postgres-backed user listing with accurate filter pagination. */
@@ -129,19 +153,36 @@ export async function listClerkUserIdsByDbTier(
 export async function getAdminUserListStats(): Promise<AdminUserListStats | null> {
   if (!dbConfigured()) return null;
 
+  const allow = adminEmailAllowlist();
+  const adminEmailClause =
+    allow.length > 0
+      ? `OR LOWER(email) = ANY($1::text[])`
+      : "";
+  const adminFilter = `(role = 'admin' ${adminEmailClause})`;
+  const params = allow.length > 0 ? [allow] : [];
+
   const { rows } = await dbQuery<{
     total: string;
     premium: string;
     admins: string;
     community: string;
-  }>(`
+    free: string;
+  }>(
+    `
     SELECT
       COUNT(*)::text AS total,
-      COUNT(*) FILTER (WHERE tier = 'premium')::text AS premium,
-      COUNT(*) FILTER (WHERE role = 'admin')::text AS admins,
-      COUNT(*) FILTER (WHERE membership_kind = 'community')::text AS community
+      COUNT(*) FILTER (WHERE tier = 'premium' AND NOT ${adminFilter})::text AS premium,
+      COUNT(*) FILTER (WHERE ${adminFilter})::text AS admins,
+      COUNT(*) FILTER (WHERE membership_kind = 'community' AND NOT ${adminFilter})::text AS community,
+      COUNT(*) FILTER (
+        WHERE tier = 'free'
+          AND COALESCE(membership_kind, 'free') NOT IN ('community', 'premium')
+          AND NOT ${adminFilter}
+      )::text AS free
     FROM users
-  `);
+  `,
+    params
+  );
 
   const row = rows[0];
   if (!row) return null;
@@ -151,6 +192,7 @@ export async function getAdminUserListStats(): Promise<AdminUserListStats | null
     premium: parseInt(row.premium, 10),
     admins: parseInt(row.admins, 10),
     community: parseInt(row.community, 10),
+    free: parseInt(row.free, 10),
   };
 }
 

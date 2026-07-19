@@ -15,6 +15,9 @@ import { publishTierChanged } from "@/lib/tier-cache";
 import { isToolLaunched } from "@/lib/tool-access";
 import { buildToolAccessRows, parseToolAccessMap } from "@/lib/tool-user-access";
 import { getToolAccessForUserId } from "@/lib/tool-access-server";
+import { isAdminEmail } from "@/lib/admin-emails";
+import { classifyAdminUserAccess } from "@/lib/admin-user-access";
+import type { BillingKind } from "@/lib/whop";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +42,18 @@ export async function GET(
       user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ?? null;
     const toolOverrides = await getToolAccessForUserId(id);
     const toolAccess = buildToolAccessRows((k) => isToolLaunched(k), toolOverrides);
+    const membershipKind = String(meta.membership_kind ?? "") as BillingKind | "";
+    const tier = String(meta.tier ?? "free");
+    const role = String(meta.role ?? "");
+    const access = classifyAdminUserAccess({
+      tier,
+      membershipKind:
+        membershipKind === "premium" || membershipKind === "community" || membershipKind === "free"
+          ? membershipKind
+          : null,
+      role,
+      emailAdmin: isAdminEmail(primaryEmail),
+    });
 
     return NextResponse.json({
       id: user.id,
@@ -47,9 +62,12 @@ export async function GET(
       firstName: user.firstName,
       lastName: user.lastName,
       imageUrl: user.imageUrl,
-      tier: String(meta.tier ?? "free"),
-      membershipKind: String(meta.membership_kind ?? "") || null,
-      role: String(meta.role ?? ""),
+      tier,
+      membershipKind:
+        membershipKind === "premium" || membershipKind === "community" || membershipKind === "free"
+          ? membershipKind
+          : null,
+      role,
       whopUserId: meta.whop_user_id ?? null,
       whopMembershipId: meta.whop_membership_id ?? null,
       publicMetadata: meta,
@@ -59,6 +77,9 @@ export async function GET(
       lastActiveAt: user.lastActiveAt,
       banned: user.banned,
       phoneNumbers: user.phoneNumbers?.map((p) => p.phoneNumber) ?? [],
+      accessLabel: access.accessLabel,
+      deskAccess: access.deskAccess,
+      accessSummary: access.accessSummary,
     });
   } catch (err) {
     const status = (err as { status?: number })?.status;

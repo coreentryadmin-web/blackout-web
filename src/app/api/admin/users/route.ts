@@ -7,6 +7,8 @@ import {
   listClerkUserIdsByDbFilters,
   shouldUseDbAdminUserList,
 } from "@/lib/admin-users";
+import { isAdminEmail } from "@/lib/admin-emails";
+import { classifyAdminUserAccess } from "@/lib/admin-user-access";
 import { isCognitoAuth } from "@/lib/auth-provider";
 import type { BillingKind } from "@/lib/whop";
 
@@ -18,27 +20,41 @@ type ClerkUser = Awaited<
 
 function mapClerkUser(user: ClerkUser) {
   const meta = (user.publicMetadata ?? {}) as Record<string, unknown>;
-  const primaryEmail =
+  const email =
     user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ?? null;
   const membershipKind = String(meta.membership_kind ?? "") as BillingKind | "";
-
-  return {
-    id: user.id,
-    email: primaryEmail,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    imageUrl: user.imageUrl,
-    tier: String(meta.tier ?? "free"),
+  const tier = String(meta.tier ?? "free");
+  const role = String(meta.role ?? "");
+  const access = classifyAdminUserAccess({
+    tier,
     membershipKind:
       membershipKind === "premium" || membershipKind === "community" || membershipKind === "free"
         ? membershipKind
         : null,
-    role: String(meta.role ?? ""),
+    role,
+    emailAdmin: isAdminEmail(email),
+  });
+
+  return {
+    id: user.id,
+    email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    imageUrl: user.imageUrl,
+    tier,
+    membershipKind:
+      membershipKind === "premium" || membershipKind === "community" || membershipKind === "free"
+        ? membershipKind
+        : null,
+    role,
     whopUserId: meta.whop_user_id ?? null,
     whopMembershipId: meta.whop_membership_id ?? null,
     createdAt: user.createdAt,
     lastSignInAt: user.lastSignInAt,
     banned: user.banned,
+    accessLabel: access.accessLabel,
+    deskAccess: access.deskAccess,
+    accessSummary: access.accessSummary,
   };
 }
 
@@ -66,9 +82,10 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || "50")));
   const tierFilter = url.searchParams.get("tier") || "";
   const roleFilter = url.searchParams.get("role") || "";
+  const accessFilter = url.searchParams.get("access") || "";
   const offset = (page - 1) * limit;
 
-  const filters = { tier: tierFilter, role: roleFilter, query };
+  const filters = { tier: tierFilter, role: roleFilter, query, access: accessFilter };
   const stats = await getAdminUserListStats();
   const client = await clerkClient();
 
