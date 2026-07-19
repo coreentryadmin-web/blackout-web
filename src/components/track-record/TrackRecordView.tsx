@@ -26,7 +26,12 @@ function freshnessForPayload(data: TrackRecordPayload, fetchedAt: Date): Freshne
   return "live";
 }
 
-export function TrackRecordView() {
+type TrackRecordViewProps = {
+  /** When true, omit PageShell (Admin console tab). */
+  embedded?: boolean;
+};
+
+export function TrackRecordView({ embedded = false }: TrackRecordViewProps) {
   const [state, setState] = useState<TrackRecordLoadState>({ kind: "loading" });
   const loadedOnce = useRef(false);
   const inFlight = useRef(false);
@@ -102,18 +107,32 @@ export function TrackRecordView() {
 
   const headerAsOf = state.kind === "ready" ? state.fetchedAt : null;
 
-  return (
-    <PageShell>
-      <div className="content-rail mx-auto max-w-3xl pb-12 pt-2">
+  const body = (
+    <div
+      className={
+        embedded
+          ? "admin-track-record mx-auto max-w-3xl"
+          : "content-rail mx-auto max-w-3xl pb-12 pt-2"
+      }
+    >
+      {!embedded && (
         <PageHeader
           kicker="Verified performance"
           title="Track record"
           subtitle="Signal results recorded at generation time and scored automatically — no cherry-picking."
-          actions={
-            <FreshnessChip status={headerFreshness} asOf={headerAsOf} />
-          }
+          actions={<FreshnessChip status={headerFreshness} asOf={headerAsOf} />}
           className="mb-8"
         />
+      )}
+
+      {embedded && state.kind === "ready" && (
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <p className="text-[12px] text-white/55">
+            Verified SPX Slayer and Night Hawk outcomes — scored at generation time.
+          </p>
+          <FreshnessChip status={headerFreshness} asOf={headerAsOf} />
+        </div>
+      )}
 
         {isInitialLoad && <TrackRecordSkeleton />}
 
@@ -192,7 +211,9 @@ export function TrackRecordView() {
             </Card>
           </div>
         )}
-      </div>
-    </PageShell>
+    </div>
   );
+
+  if (embedded) return body;
+  return <PageShell>{body}</PageShell>;
 }

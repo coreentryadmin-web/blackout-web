@@ -12,7 +12,11 @@ import {
   MegaStat,
   ConfirmModal,
 } from "@/components/admin/AdminUi";
+import { AdminToolsPanel, UserToolAccessEditor } from "@/components/admin/AdminToolsPanel";
 import { Modal } from "@/components/ui";
+import type { ToolKey } from "@/lib/tool-access";
+import type { ToolAccessMode, ToolAccessRow } from "@/lib/tool-user-access";
+import { emptyToolAccessMap } from "@/lib/tool-user-access";
 
 type UserRow = {
   id: string;
@@ -35,6 +39,7 @@ type UserDetail = UserRow & {
   publicMetadata: Record<string, unknown>;
   lastActiveAt: number | null;
   phoneNumbers: string[];
+  toolAccess: ToolAccessRow[];
 };
 
 type UsersResponse = {
@@ -63,6 +68,7 @@ export function UserManagement() {
   const [deleteConfirm, setDeleteConfirm] = useState<UserRow | null>(null);
   const [actionError, setActionError] = useState("");
   const [filterNote, setFilterNote] = useState<string | null>(null);
+  const [section, setSection] = useState<"users" | "tools">("users");
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -159,7 +165,28 @@ export function UserManagement() {
   const adminCount = users.filter((u) => u.role === "admin").length;
 
   return (
-    <div className="space-y-6">
+    <div className="admin-v2-users space-y-6">
+      <nav className="admin-v2-users-nav" aria-label="User management sections">
+        <button
+          type="button"
+          className={clsx("admin-v2-users-nav-btn", section === "users" && "admin-v2-users-nav-btn-active")}
+          onClick={() => setSection("users")}
+        >
+          Users
+        </button>
+        <button
+          type="button"
+          className={clsx("admin-v2-users-nav-btn", section === "tools" && "admin-v2-users-nav-btn-active")}
+          onClick={() => setSection("tools")}
+        >
+          Tools &amp; access
+        </button>
+      </nav>
+
+      {section === "tools" ? (
+        <AdminToolsPanel />
+      ) : (
+        <>
       {/* Stats bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <MegaStat label="Total users" value={String(total)} tone="cyan" />
@@ -390,6 +417,8 @@ export function UserManagement() {
         onConfirm={handleBan}
         onCancel={() => setBanConfirm(null)}
       />
+        </>
+      )}
     </div>
   );
 }
@@ -419,6 +448,9 @@ function EditUserModal({
   const [error, setError] = useState("");
   const [signInUrl, setSignInUrl] = useState<string | null>(null);
   const [linkLoading, setLinkLoading] = useState(false);
+  const [toolAccess, setToolAccess] = useState<Record<ToolKey, ToolAccessMode>>(() =>
+    emptyToolAccessMap()
+  );
 
   useEffect(() => {
     setFirstName(user.firstName ?? "");
@@ -426,6 +458,11 @@ function EditUserModal({
     setTier(user.tier);
     setRole(user.role);
     setError("");
+    const modes = emptyToolAccessMap();
+    for (const row of user.toolAccess ?? []) {
+      modes[row.key] = row.mode;
+    }
+    setToolAccess(modes);
   }, [user]);
 
   const mintSignInLink = async () => {
@@ -451,7 +488,7 @@ function EditUserModal({
       const res = await fetch(`/api/admin/users/${user.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firstName, lastName, tier, role }),
+        body: JSON.stringify({ firstName, lastName, tier, role, toolAccess }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -497,6 +534,7 @@ function EditUserModal({
             onChange={(e) => setTier(e.target.value)}
           >
             <option value="free">free</option>
+            <option value="community">community</option>
             <option value="premium">premium</option>
           </select>
         </div>
@@ -511,6 +549,15 @@ function EditUserModal({
             <option value="admin">admin</option>
           </select>
         </div>
+      </div>
+
+      <div className="border-t border-white/5 pt-4 mb-4">
+        <p className="admin-filter-label mb-2">Tool access overrides</p>
+        <UserToolAccessEditor
+          rows={user.toolAccess ?? []}
+          value={toolAccess}
+          onChange={setToolAccess}
+        />
       </div>
 
       {/* Info section */}

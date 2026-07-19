@@ -17,51 +17,27 @@ function sourceLabel(source: LaunchSource): string {
   return "locked";
 }
 
-/** Server-rendered launch gate readout for /admin (premium non-admin view). */
+/** Collapsible launch gate readout — shown on the Operations tab. */
 export function AdminLaunchStatusPanel() {
   const status = getLaunchStatusSnapshot();
-  const allOpen = status.open_count === status.total_count;
 
   return (
-    <section
-      className="admin-glass admin-deck-panel admin-glass-shimmer admin-glass-violet mb-6"
-      aria-labelledby="admin-launch-status-heading"
-    >
-      <div className="admin-glass" aria-hidden />
-      <p className="admin-deck-kicker">Premium launch gate · server env</p>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 id="admin-launch-status-heading" className="admin-glass-title admin-deck-title">
-            Tool launch status
-          </h2>
-          <p className="mt-1 max-w-2xl font-mono text-[11px] leading-relaxed text-cyan">
-            What paying <strong className="font-semibold text-sky-200">non-admin</strong> users see.
-            Admins bypass all gates. Five tools ship live by default; add{" "}
-            <code className="rounded bg-white/5 px-1 text-sky-200">largo</code> to{" "}
-            <code className="rounded bg-white/5 px-1 text-sky-200">LAUNCHED_TOOLS</code> in the ECS task definition{" "}
-            <span className="text-white/40">blackout-web → Variables</span> to unlock Largo — no deploy.
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="font-mono text-[10px] uppercase tracking-widest text-white/40">Premium tools open</p>
-          <p className="font-syne text-2xl font-bold text-white">
-            {status.open_count}
-            <span className="text-white/30"> / {status.total_count}</span>
-          </p>
-        </div>
-      </div>
+    <details className="admin-v2-details">
+      <summary className="admin-v2-details-summary">
+        Tool launch · {status.open_count}/{status.total_count} open for premium users
+      </summary>
+      <div className="admin-v2-details-body space-y-4">
+        <p className="font-mono text-[11px] leading-relaxed text-white/55">
+          Non-admin premium users only see tools marked open. Admins bypass all gates. Set{" "}
+          <code className="rounded bg-white/5 px-1">LAUNCHED_TOOLS</code> on the ECS task to unlock
+          additional tools without a deploy.
+        </p>
 
-      <div className="admin-glass-body mt-4 space-y-4">
         <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 font-mono text-[11px]">
           <span className="text-white/40">LAUNCHED_TOOLS=</span>
           <span className={clsx("font-semibold", status.launched_tools_env ? "text-gold" : "text-white/50")}>
-            {status.launched_tools_env ?? "(unset — defaults except Largo locked)"}
+            {status.launched_tools_env ?? "(unset)"}
           </span>
-          {status.env_launched_keys.length > 0 && (
-            <span className="ml-2 text-cyan">
-              → keys: {status.env_launched_keys.join(", ")}
-            </span>
-          )}
         </div>
 
         <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -75,15 +51,15 @@ export function AdminLaunchStatusPanel() {
                   tool.launched ? "border-bull/25 bg-bull/5" : "border-white/10 bg-white/[0.02]"
                 )}
               >
-                {sigil ? <ProductMark product={sigil} size={32} /> : null}
+                {sigil ? <ProductMark product={sigil} size={28} /> : null}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-mono text-[11px] font-semibold text-sky-200">{tool.label}</p>
-                  <p className="font-mono text-[10px] text-cyan">{sourceLabel(tool.launch_source)}</p>
+                  <p className="truncate text-[12px] font-medium text-white/90">{tool.label}</p>
+                  <p className="font-mono text-[10px] text-white/45">{sourceLabel(tool.launch_source)}</p>
                 </div>
                 <div className="flex flex-shrink-0 flex-col items-end gap-1">
                   <span
                     className={clsx(
-                      "font-mono text-[10px] font-bold uppercase tracking-wider",
+                      "font-mono text-[10px] font-semibold uppercase",
                       tool.launched ? "text-bull" : "text-gold"
                     )}
                   >
@@ -91,7 +67,7 @@ export function AdminLaunchStatusPanel() {
                   </span>
                   <Link
                     href={tool.href}
-                    className="font-mono text-[10px] text-white/40 underline-offset-2 hover:text-sky-200 hover:underline"
+                    className="font-mono text-[10px] text-white/40 hover:text-cyan-300"
                   >
                     {tool.href}
                   </Link>
@@ -100,15 +76,7 @@ export function AdminLaunchStatusPanel() {
             );
           })}
         </ul>
-
-        <p className="font-mono text-[10px] text-white/35">
-          {allOpen
-            ? "All six tools are live for premium users on this replica."
-            : status.locked_keys.length > 0
-              ? `Locked for premium users: ${status.locked_keys.join(", ")} — nav padlocks + Coming soon pages + API 403 coming_soon.`
-              : null}
-        </p>
       </div>
-    </section>
+    </details>
   );
 }

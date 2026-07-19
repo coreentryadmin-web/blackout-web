@@ -7,6 +7,7 @@ import type { SpxAdminDashboardPayload } from "@/lib/admin-spx-dashboard";
 import type { PlayOutcomeRow } from "@/features/spx/lib/spx-play-outcomes";
 import type { JournalEntry } from "@/lib/journal/journal-core";
 import { JournalEditor } from "@/components/admin/JournalEditor";
+import { SignalAnalyticsPanel } from "@/features/spx";
 import { AdminSpxTerminal } from "@/components/admin/AdminSpxTerminal";
 import {
   ActionButton,
@@ -38,41 +39,35 @@ type SectionId =
   | "overview"
   | "terminal"
   | "live"
-  | "desk"
   | "lotto"
   | "outcomes"
   | "signals"
-  | "analytics"
-  | "config";
-
-const SECTIONS: Array<{ id: SectionId; label: string; icon: string }> = [
-  { id: "terminal", label: "Terminal", icon: "▸" },
-  { id: "overview", label: "Overview", icon: "◎" },
-  { id: "live", label: "Live Engine", icon: "⚡" },
-  { id: "desk", label: "Desk Intel", icon: "◈" },
-  { id: "lotto", label: "Lotto", icon: "◇" },
-  { id: "outcomes", label: "Outcomes", icon: "▣" },
-  { id: "signals", label: "Signals", icon: "◉" },
-  { id: "analytics", label: "Analytics", icon: "◐" },
-  { id: "config", label: "Config", icon: "⚙" },
-];
+  | "analytics";
 
 function parseSection(value: string | null): SectionId {
   if (
     value === "overview" ||
     value === "terminal" ||
     value === "live" ||
-    value === "desk" ||
     value === "lotto" ||
     value === "outcomes" ||
     value === "signals" ||
-    value === "analytics" ||
-    value === "config"
+    value === "analytics"
   ) {
     return value;
   }
   return "terminal";
 }
+
+const SECTIONS: Array<{ id: SectionId; label: string; icon: string }> = [
+  { id: "terminal", label: "Terminal", icon: "▸" },
+  { id: "overview", label: "Overview", icon: "◎" },
+  { id: "live", label: "Live Engine", icon: "⚡" },
+  { id: "lotto", label: "Lotto", icon: "◇" },
+  { id: "outcomes", label: "Outcomes", icon: "▣" },
+  { id: "signals", label: "Signals", icon: "◉" },
+  { id: "analytics", label: "Analytics", icon: "◐" },
+];
 
 function fmtTime(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -787,6 +782,12 @@ function AnalyticsSection({ data }: { data: SpxAdminDashboardPayload }) {
           <HorzBar label="Promote win rate" value={stats.watch_promote.win_rate} max={1} tone="violet" right={pct(stats.watch_promote.win_rate)} />
         </div>
       </GlassPanel>
+
+      <div className="admin-v2-signal-block">
+        <h3>Signal factor accuracy</h3>
+        <p>Per-signal accuracy vs baseline — which factors have predictive alpha.</p>
+        <SignalAnalyticsPanel />
+      </div>
     </SectionDeck>
   );
 }
@@ -1098,14 +1099,12 @@ export function AdminSpxDashboard() {
             <AdminSpxTerminal data={data} loading={loading} onRefresh={() => load(false)} />
           )}
           {section === "live" && <LiveEngineSection data={data} onRunMutate={() => setConfirmMutate(true)} />}
-          {section === "desk" && <DeskSection data={data} />}
           {section === "lotto" && <LottoSection data={data} />}
           {section === "outcomes" && (
             <OutcomesSection rows={data.outcomes_all} journal={journal} journalUserId={journalUserId} />
           )}
           {section === "signals" && <SignalsSection data={data} />}
           {section === "analytics" && <AnalyticsSection data={data} />}
-          {section === "config" && <ConfigSection data={data} />}
           {section !== "terminal" && (
             <p className="admin-api-footer">
               Updated {fmtTime(data.generated_at)}
