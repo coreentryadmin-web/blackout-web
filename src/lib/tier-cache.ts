@@ -140,7 +140,9 @@ export async function resolveUserTier(
       return tier;
     }
     const fromClaims = tierFromSessionClaims(sessionClaims);
-    if (fromClaims !== null) {
+    // Trust premium from JWT (fast path). When JWT says free, verify with Backend —
+    // misconfigured session claims or pre-refresh sessions must not lock out paying users.
+    if (fromClaims === "premium") {
       setTierCache(userId, fromClaims);
       return fromClaims;
     }
