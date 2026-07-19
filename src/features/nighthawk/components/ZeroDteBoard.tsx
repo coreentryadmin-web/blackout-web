@@ -34,7 +34,6 @@ import {
 // modules already stubbed for the client bundle (next.config.mjs aliases ioredis
 // to false, same isomorphic pattern as spx-desk-merge.ts).
 import { displayTierFor, tierForSkip, type TierFactor, type ZeroDteTier } from "@/lib/zerodte/tiers";
-import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 import { useZeroDteLiveMarks } from "@/features/nighthawk/hooks/useZeroDteLiveMarks";
 import { BriefingSection } from "@/features/nighthawk/components/briefing/BriefingSection";
 import { shortMonthDay } from "@/lib/relative-time";
@@ -1282,239 +1281,16 @@ function SkipsSection({ rows, nowMs }: { rows: PlayRow[]; nowMs: number }) {
   );
 }
 
-// ── record section (measured, never asserted) ─────────────────────────────────────
-
-type RecordBucket = {
-  label: string;
-  n: number;
-  wins: number;
-  losses: number;
-  win_rate_pct: number | null;
-  avg_pnl_pct: number | null;
-  low_n: boolean;
-};
-
-type RecordPlay = {
-  session_date: string;
-  ticker: string;
-  direction: "long" | "short";
-  flagged_et: string;
-  score: number;
-  conviction: string | null;
-  plan_outcome: string | null;
-  plan_pnl_pct: number | null;
-};
-
-type RecordResponse = {
-  available: boolean;
-  degraded?: boolean;
-  methodology?: string;
-  window?: { since: string; through: string; days: number; sessions: number };
-  plays?: RecordPlay[];
-  total_flagged?: number;
-  graded?: number;
-  wins?: number;
-  losses?: number;
-  win_rate_pct?: number | null;
-  avg_pnl_pct?: number | null;
-  by_time_of_day?: RecordBucket[];
-  by_direction?: RecordBucket[];
-  by_score_band?: RecordBucket[];
-};
-
-const recordFetcher = (url: string) =>
-  fetch(url, { cache: "no-store", credentials: "same-origin" }).then((r) => r.json()) as Promise<RecordResponse>;
-
-function LowNChip() {
-  return (
-    <span
-      className="rounded-md border border-gold/35 bg-gold/[0.08] px-1 py-px font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-gold"
-      title={`Fewer than ${LOW_N_THRESHOLD} graded plays in this bucket — not enough samples to read as a track record`}
-    >
-      n&lt;{LOW_N_THRESHOLD}
-    </span>
-  );
-}
-
-function fmtPct(v: number | null | undefined, signed = false): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${signed && v > 0 ? "+" : ""}${v.toFixed(1)}%`;
-}
-
-function CutTable({ title, buckets }: { title: string; buckets: RecordBucket[] }) {
-  if (buckets.length === 0) return null;
-  return (
-    <div className="min-w-0">
-      <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/50">{title}</p>
-      <ul className="mt-1.5 space-y-1">
-        {buckets.map((b) => (
-          <li key={b.label} className="flex items-baseline gap-2">
-            <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-sky-200/75">{b.label}</span>
-            {b.low_n && <LowNChip />}
-            <span className="t-num shrink-0 text-[10px] text-sky-300/60">
-              {b.wins}W/{b.losses}L
-            </span>
-            <span
-              className={clsx(
-                "t-num w-[44px] shrink-0 text-right text-[11px] font-bold",
-                b.win_rate_pct != null && b.win_rate_pct >= 50 ? "text-bull" : "text-sky-200/80"
-              )}
-            >
-              {fmtPct(b.win_rate_pct)}
-            </span>
-            <span
-              className={clsx(
-                "t-num w-[52px] shrink-0 text-right text-[10px]",
-                b.avg_pnl_pct != null && b.avg_pnl_pct > 0 ? "text-bull" : b.avg_pnl_pct != null ? "text-bear" : "text-sky-300/50"
-              )}
-            >
-              {fmtPct(b.avg_pnl_pct, true)}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-const RECORD_OUTCOME_LABEL: Record<string, string> = {
-  doubled: "+100% target",
-  stopped: "stopped",
-  time_stop: "time stop",
-  ungradeable: "ungradeable",
-};
-
-function RecordSection() {
-  const { data, error } = useSWR<RecordResponse>("/api/market/zerodte/record?days=30", recordFetcher, {
-    refreshInterval: 300_000,
-    revalidateOnFocus: false,
-  });
-  if (error || data?.degraded) {
-    return (
-      <Panel accent="accent" kicker="Measured · 30 days" title="0DTE record">
-        <p className="text-[12px] text-sky-300/70">Record temporarily unavailable — it reloads automatically.</p>
-      </Panel>
-    );
-  }
-  if (!data) {
-    return <Skeleton className="h-48 w-full rounded-2xl" />;
-  }
-  const headline = (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <div className="rounded-xl border border-white/[0.07] bg-void-deep/60 px-3.5 py-2.5">
-        <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/50">Win rate</p>
-        <p
-          className={clsx(
-            "t-num mt-0.5 text-[20px] font-bold leading-none",
-            data.win_rate_pct != null && data.win_rate_pct >= 50 ? "text-bull" : "text-white"
-          )}
-        >
-          {fmtPct(data.win_rate_pct)}
-        </p>
-        <p className="t-num mt-1 text-[10px] text-sky-300/60">
-          {data.wins ?? 0}W / {data.losses ?? 0}L graded
-        </p>
-      </div>
-      <div className="rounded-xl border border-white/[0.07] bg-void-deep/60 px-3.5 py-2.5">
-        <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/50">Avg plan P&L</p>
-        <p
-          className={clsx(
-            "t-num mt-0.5 text-[20px] font-bold leading-none",
-            data.avg_pnl_pct != null && data.avg_pnl_pct > 0 ? "text-bull" : data.avg_pnl_pct != null ? "text-bear" : "text-white"
-          )}
-        >
-          {fmtPct(data.avg_pnl_pct, true)}
-        </p>
-        <p className="mt-1 font-mono text-[10px] text-sky-300/60">per graded play</p>
-      </div>
-      <div className="rounded-xl border border-white/[0.07] bg-void-deep/60 px-3.5 py-2.5">
-        <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/50">Graded</p>
-        <p className="t-num mt-0.5 text-[20px] font-bold leading-none text-white">{data.graded ?? 0}</p>
-        <p className="t-num mt-1 text-[10px] text-sky-300/60">of {data.total_flagged ?? 0} flagged</p>
-      </div>
-      <div className="rounded-xl border border-white/[0.07] bg-void-deep/60 px-3.5 py-2.5">
-        <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/50">Sessions</p>
-        <p className="t-num mt-0.5 text-[20px] font-bold leading-none text-white">{data.window?.sessions ?? 0}</p>
-        <p className="t-num mt-1 text-[10px] text-sky-300/60">last {data.window?.days ?? 30} days</p>
-      </div>
-    </div>
-  );
-  return (
-    <Panel accent="accent" kicker="Measured · every committed setup, no cherry-picking" title="0DTE record — 30 days">
-      <div className="space-y-4">
-        {headline}
-        {!data.available && (
-          <p className="text-[11px] text-sky-300/60">
-            No graded plays in the window yet — the record prints itself as sessions grade.
-          </p>
-        )}
-        {data.available && (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <CutTable title="By time of day" buckets={data.by_time_of_day ?? []} />
-            <CutTable title="By direction" buckets={data.by_direction ?? []} />
-            <CutTable title="By score band" buckets={data.by_score_band ?? []} />
-          </div>
-        )}
-        {data.plays && data.plays.length > 0 && (
-          <div>
-            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/50">Recent plays</p>
-            <ul className="mt-1.5 divide-y divide-white/[0.05]">
-              {data.plays.slice(0, 10).map((p) => (
-                <li key={`${p.session_date}-${p.ticker}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 py-1.5">
-                  <span className="t-num w-[48px] shrink-0 text-[10px] text-sky-300/50">{shortMonthDay(p.session_date)}</span>
-                  <span className="t-num shrink-0 text-[11px] font-bold text-sky-100/90">
-                    {p.ticker} {p.direction}
-                  </span>
-                  {p.flagged_et && (
-                    <span className="shrink-0 font-mono text-[10px] text-sky-300/50">{p.flagged_et}</span>
-                  )}
-                  {capConvictionDisplay(p.conviction) && (
-                    <span className="shrink-0 font-mono text-[10px] text-sky-300/60">
-                      {capConvictionDisplay(p.conviction)}
-                    </span>
-                  )}
-                  <span className="ml-auto shrink-0 font-mono text-[10px] text-sky-300/60">
-                    {p.plan_outcome ? (RECORD_OUTCOME_LABEL[p.plan_outcome] ?? p.plan_outcome) : "ungraded"}
-                  </span>
-                  <span
-                    className={clsx(
-                      "t-num w-[56px] shrink-0 text-right text-[11px] font-bold",
-                      p.plan_pnl_pct != null && p.plan_pnl_pct > 0
-                        ? "text-bull"
-                        : p.plan_pnl_pct != null
-                          ? "text-bear"
-                          : "text-sky-300/40"
-                    )}
-                    title={p.plan_pnl_pct == null ? "Not graded yet — grades come from the contract's own bars after the session" : undefined}
-                  >
-                    {p.plan_pnl_pct != null ? fmtPct(p.plan_pnl_pct, true) : "—"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {data.methodology && (
-          <p className="border-t border-white/[0.06] pt-3 text-[10px] leading-relaxed text-sky-300/50">
-            {data.methodology}
-          </p>
-        )}
-      </div>
-    </Panel>
-  );
-}
-
 // ── the pane ──────────────────────────────────────────────────────────────────────
 
 /**
  * Night Hawk 0DTE — the member-facing pane over the whole 0DTE stack: committed
  * play cards (live marks + Cortex evidence + honest sizing), the discipline layer
- * (every gate-blocked/skipped setup with its reason), the session governor strip,
- * and the measured 30-day record. Statuses are derived server-side from each play's
- * premium vs its fixed rules and latched extremes — OPEN → HOLD → TRIM → CLOSED,
- * everything force-closed by 3:30 ET, no new plays after 3:00 ET. Every number
- * rendered here is a payload field; the client contributes only clocks (countdowns,
- * staleness dimming). Auto-refreshes; no user action needed.
+ * (every gate-blocked/skipped setup with its reason), and the session governor strip.
+ * Multi-day track record lives on /track-record, not here. Statuses are derived
+ * server-side from each play's premium vs its fixed rules and latched extremes —
+ * OPEN → HOLD → TRIM → CLOSED, everything force-closed by 3:30 ET, no new plays
+ * after 3:00 ET.
  */
 export function ZeroDteBoard() {
   const { data, error } = useSWR<BoardResponse>("/api/market/zerodte/board", fetcher, {
@@ -1627,8 +1403,6 @@ export function ZeroDteBoard() {
       </Panel>
 
       <SkipsSection rows={skips} nowMs={nowMs} />
-
-      <RecordSection />
     </div>
   );
 }
