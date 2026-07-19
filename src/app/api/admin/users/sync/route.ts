@@ -18,7 +18,10 @@ export async function POST(req: NextRequest) {
   try {
     const result = await syncWhopMembershipForEmail(email.trim());
     console.log(
-      `[admin-users] ${actor!.email} synced Whop for ${email}: tier=${result.tier}`
+      "[admin-users] %s synced Whop for %s: tier=%s",
+      actor!.email,
+      email.trim().replace(/[\r\n]/g, ""),
+      result.tier
     );
     return NextResponse.json(result);
   } catch (err) {

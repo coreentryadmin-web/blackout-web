@@ -37,7 +37,10 @@ export async function POST(req: NextRequest) {
     });
 
     console.log(
-      `[admin-users] ${actor!.email} created user ${user.id} (${email})`
+      "[admin-users] %s created user %s (%s)",
+      actor!.email,
+      user.id,
+      email.trim().replace(/[\r\n]/g, "")
     );
 
     return NextResponse.json({ id: user.id, email }, { status: 201 });

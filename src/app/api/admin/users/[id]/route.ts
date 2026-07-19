@@ -96,7 +96,10 @@ export async function PATCH(
   )?.emailAddress ?? null;
 
   console.log(
-    `[admin-users] ${actor!.email} updated user ${id}: ${JSON.stringify(body)}`
+    "[admin-users] %s updated user %s: %s",
+    actor!.email,
+    id.replace(/[\r\n]/g, ""),
+    JSON.stringify(body)
   );
 
   return NextResponse.json({
