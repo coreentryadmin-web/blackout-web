@@ -86,7 +86,7 @@ export function PricingSection() {
             </span>
           </h2>
           <p className="mt-5 text-[15px] leading-relaxed text-white/65 max-w-2xl mx-auto">
-            Community on Discord, or the full desk — monthly or yearly on Whop.
+            Community on Discord, or the full desk — monthly or yearly at checkout.
           </p>
         </motion.div>
 

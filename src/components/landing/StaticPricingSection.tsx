@@ -41,7 +41,7 @@ export function StaticPricingSection() {
           <span className="mkt-gradient-text">PRICED FOR RETAIL.</span>
         </h2>
         <p className="mkt-lede text-center">
-          Community on Discord, or the full desk — monthly or yearly on Whop.
+          Community on Discord, or the full desk — monthly or yearly at checkout.
         </p>
 
         <div className="mt-12 grid gap-6 md:grid-cols-3">
@@ -135,7 +135,7 @@ export function StaticPricingSection() {
           <Link href="/sign-up" prefetch={false} className="text-bull hover:underline">
             Sign up free
           </Link>{" "}
-          — checkout on Whop uses the same email.
+          — checkout uses the same email.
         </p>
       </div>
     </section>
