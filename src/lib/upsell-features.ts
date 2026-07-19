@@ -114,6 +114,9 @@ export type PlanValueProp = {
  * change Whop prices, update the labels in whop-checkout.ts AND these strings together.
  */
 export const PLAN_VALUE_PROPS: Record<string, PlanValueProp> = {
+  "Community — $75": {
+    subline: "Discord access · billed monthly",
+  },
   "Monthly — $199": {
     subline: "Billed monthly · stand down anytime",
   },

@@ -28,7 +28,6 @@ const PLANS: Record<
     badge: "Standard issue",
     href: WHOP_CHECKOUT.yearly,
   },
-  // Kept (unreachable while lifetime is out of TERMS) so re-enabling is one uncomment. Price matches Whop.
   lifetime: {
     price: "$3,999",
     per: "once",
@@ -42,8 +41,6 @@ const PLANS: Record<
 const TERMS: { key: Term; label: string; tag?: string }[] = [
   { key: "monthly", label: "Monthly" },
   { key: "yearly", label: "Yearly", tag: "−16%" },
-  // Lifetime hidden at launch — Whop's $2,500 account cap blocks a $3,999 charge. Re-add when lifted:
-  // { key: "lifetime", label: "Lifetime" },
 ];
 
 const PREMIUM_FEATURES = [
@@ -57,14 +54,38 @@ const PREMIUM_FEATURES = [
   "Transparent play log, graded A–F",
 ];
 
+const COMMUNITY_FEATURES: { text: string; on: boolean }[] = [
+  { text: "Private Discord server access", on: true },
+  { text: "Daily live signals & market reads", on: true },
+  { text: "Real-time session discussions", on: true },
+  { text: "Evening recaps & next-day prep", on: true },
+  { text: "Platform tools (Vector, Helix…)", on: false },
+  { text: "AI desk analyst (Largo)", on: false },
+];
+
 const FREE_FEATURES: { text: string; on: boolean }[] = [
   { text: "Community access & updates", on: true },
   { text: "Create your account", on: true },
   { text: "Ticker search", on: true },
-  { text: "HELIX live flow feed", on: false },
+  { text: "Discord server", on: false },
   { text: "SPX Slayer desk", on: false },
   { text: "Largo & Night Hawk", on: false },
 ];
+
+function FeatureCheck({ on }: { on: boolean }) {
+  return (
+    <span
+      className="grid place-items-center h-[18px] w-[18px] rounded-md shrink-0 font-mono text-[11px]"
+      style={
+        on
+          ? { background: "rgba(0,230,118,0.14)", color: "#00e676", border: "1px solid rgba(0,230,118,0.3)" }
+          : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.3)", border: "1px solid rgba(255,255,255,0.08)" }
+      }
+    >
+      {on ? "✓" : "✕"}
+    </span>
+  );
+}
 
 export function PricingSection() {
   const [term, setTerm] = useState<Term>("yearly");
@@ -72,6 +93,8 @@ export function PricingSection() {
   const hasCheckout = Boolean(plan.href || WHOP_CHECKOUT.store);
   const ctaHref = plan.href || WHOP_CHECKOUT.store || "/sign-up";
   const ctaExternal = Boolean(plan.href || WHOP_CHECKOUT.store);
+  const communityHref = WHOP_CHECKOUT.community || WHOP_CHECKOUT.store || "/sign-up";
+  const communityExternal = Boolean(WHOP_CHECKOUT.community || WHOP_CHECKOUT.store);
 
   return (
     <section
@@ -80,7 +103,7 @@ export function PricingSection() {
     >
       <PricingBackdrop />
 
-      <div className="max-w-5xl mx-auto relative z-10">
+      <div className="max-w-6xl mx-auto relative z-10">
         {/* header */}
         <motion.div
           initial={{ opacity: 0, y: 26 }}
@@ -107,11 +130,11 @@ export function PricingSection() {
             </span>
           </h2>
           <p className="mt-5 text-[15px] leading-relaxed text-white/65 max-w-2xl mx-auto">
-            One membership. Every instrument on the desk. No tiers, no add-ons.
+            Start with the community. Upgrade to the full desk when you&#39;re ready.
           </p>
         </motion.div>
 
-        {/* billing toggle */}
+        {/* billing toggle (applies to Premium) */}
         <div className="flex justify-center mb-10">
           <div
             className="inline-flex items-center gap-1 rounded-2xl p-1.5 border"
@@ -157,15 +180,15 @@ export function PricingSection() {
           </div>
         </div>
 
-        {/* cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+        {/* cards — 3 columns */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch">
           {/* FREE */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
-            className="flex flex-col rounded-2xl p-8 md:p-9"
+            className="flex flex-col rounded-2xl p-7 md:p-8"
             style={{
               border: "1px solid rgba(125,211,252,0.1)",
               background: "rgba(8,9,14,0.6)",
@@ -174,25 +197,16 @@ export function PricingSection() {
           >
             <p className="font-mono text-[10px] tracking-[0.35em] uppercase text-sky-300/80 mb-3">Free</p>
             <div className="flex items-end gap-2">
-              <span className="font-anton text-6xl text-white leading-none">$0</span>
+              <span className="font-anton text-5xl text-white leading-none">$0</span>
               <span className="font-mono text-[11px] text-secondary uppercase tracking-widest mb-1.5">forever</span>
             </div>
             <p className="mt-4 text-[13px] text-secondary leading-relaxed">
               Step onto the floor — open an account and walk the desk before you go live.
             </p>
-            <ul className="flex flex-col gap-3 my-8 flex-1">
+            <ul className="flex flex-col gap-3 my-7 flex-1">
               {FREE_FEATURES.map((f) => (
                 <li key={f.text} className="flex items-center gap-3 text-[13px]">
-                  <span
-                    className="grid place-items-center h-[18px] w-[18px] rounded-md shrink-0 font-mono text-[11px]"
-                    style={
-                      f.on
-                        ? { background: "rgba(0,230,118,0.14)", color: "#00e676", border: "1px solid rgba(0,230,118,0.3)" }
-                        : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.3)", border: "1px solid rgba(255,255,255,0.08)" }
-                    }
-                  >
-                    {f.on ? "✓" : "✕"}
-                  </span>
+                  <FeatureCheck on={f.on} />
                   <span style={{ color: f.on ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.4)" }}>
                     {f.text}
                   </span>
@@ -204,13 +218,57 @@ export function PricingSection() {
             </LandingCta>
           </motion.div>
 
+          {/* COMMUNITY */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5, delay: 0.05 }}
+            className="relative flex flex-col rounded-2xl p-7 md:p-8"
+            style={{
+              border: "1px solid rgba(125,211,252,0.25)",
+              background: "linear-gradient(180deg, rgba(125,211,252,0.05), rgba(10,14,18,0.75))",
+              backdropFilter: "blur(14px)",
+            }}
+          >
+            <p className="font-mono text-[10px] tracking-[0.35em] uppercase text-sky-300 mb-3">Community</p>
+            <div className="flex items-end gap-2">
+              <span className="font-anton text-5xl text-white leading-none">$75</span>
+              <span className="font-mono text-[11px] text-secondary uppercase tracking-widest mb-1.5">/ month</span>
+            </div>
+            <p className="mt-4 text-[13px] text-sky-300/90 font-semibold">
+              Discord access — live signals, daily reads, the room.
+            </p>
+            <ul className="flex flex-col gap-3 my-7 flex-1">
+              {COMMUNITY_FEATURES.map((f) => (
+                <li key={f.text} className="flex items-center gap-3 text-[13px]">
+                  <FeatureCheck on={f.on} />
+                  <span style={{ color: f.on ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.4)" }}>
+                    {f.text}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <LandingCta
+              href={communityHref}
+              external={communityExternal}
+              variant="outline"
+              className="w-full text-center"
+            >
+              Join the community →
+            </LandingCta>
+            <p className="mt-3 text-center font-mono text-[10px] tracking-[0.12em] text-secondary uppercase">
+              Upgrade to Premium anytime
+            </p>
+          </motion.div>
+
           {/* PREMIUM */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="relative flex flex-col rounded-2xl p-8 md:p-9 md:scale-[1.015]"
+            className="relative flex flex-col rounded-2xl p-7 md:p-8 md:scale-[1.015]"
             style={{
               border: "1px solid rgba(0,230,118,0.45)",
               background: "linear-gradient(180deg, rgba(0,230,118,0.07), rgba(10,14,18,0.85))",
@@ -251,7 +309,7 @@ export function PricingSection() {
                 transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
               >
                 <div className="flex items-end gap-2">
-                  <span className="font-anton text-6xl md:text-7xl text-white leading-none">{plan.price}</span>
+                  <span className="font-anton text-5xl md:text-6xl text-white leading-none">{plan.price}</span>
                   <span className="font-mono text-[12px] text-secondary uppercase tracking-widest mb-2">{plan.per}</span>
                 </div>
                 <div className="mt-2 flex items-center gap-3 flex-wrap">
@@ -268,17 +326,12 @@ export function PricingSection() {
               </motion.div>
             </AnimatePresence>
 
-            <p className="mt-4 text-[13px] text-bull/90 font-semibold">Every instrument. One flat price. No tiers.</p>
+            <p className="mt-4 text-[13px] text-bull/90 font-semibold">Every instrument. One flat price. Discord included.</p>
 
-            <ul className="grid grid-cols-1 gap-2.5 my-7 flex-1">
+            <ul className="grid grid-cols-1 gap-2.5 my-6 flex-1">
               {PREMIUM_FEATURES.map((f) => (
-                <li key={f} className="flex items-center gap-3 text-[13.5px]">
-                  <span
-                    className="grid place-items-center h-[18px] w-[18px] rounded-md shrink-0 font-mono text-[11px]"
-                    style={{ background: "rgba(0,230,118,0.16)", color: "#00e676", border: "1px solid rgba(0,230,118,0.32)" }}
-                  >
-                    ✓
-                  </span>
+                <li key={f} className="flex items-center gap-3 text-[13px]">
+                  <FeatureCheck on />
                   <span className="text-white/90">{f}</span>
                 </li>
               ))}
@@ -291,7 +344,7 @@ export function PricingSection() {
             >
               {hasCheckout ? "Unlock Premium →" : "Open account first →"}
             </LandingCta>
-            <p className="mt-4 text-center font-mono text-[10px] tracking-[0.12em] text-secondary uppercase">
+            <p className="mt-3 text-center font-mono text-[10px] tracking-[0.12em] text-secondary uppercase">
               Secure checkout · cancel anytime
             </p>
           </motion.div>

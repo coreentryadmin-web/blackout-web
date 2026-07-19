@@ -1,15 +1,15 @@
 import {
   WHOP_CHECKOUT,
+  WHOP_COMMUNITY_CHECKOUT_OPTION,
   WHOP_PREMIUM_CHECKOUT_OPTIONS,
   WHOP_CHECKOUT_UNAVAILABLE_MESSAGE,
 } from "@/lib/whop-checkout";
 import { valuePropFor } from "@/lib/upsell-features";
 
-// Presentational only. Renders the EXISTING Whop checkout options as a value-framed
-// ladder. Hrefs/labels/value-props are unchanged (already wired to Whop). No billing
-// logic, no new tiers. Prices are parsed from the option label — never hardcoded.
 export function PlanLadder() {
-  if (WHOP_PREMIUM_CHECKOUT_OPTIONS.length === 0) {
+  const hasAnyOption = WHOP_COMMUNITY_CHECKOUT_OPTION || WHOP_PREMIUM_CHECKOUT_OPTIONS.length > 0;
+
+  if (!hasAnyOption) {
     return WHOP_CHECKOUT.store ? (
       <a href={WHOP_CHECKOUT.store} target="_blank" rel="noopener noreferrer" className="btn-primary">
         View plans →
@@ -21,6 +21,25 @@ export function PlanLadder() {
 
   return (
     <div className="mx-auto grid max-w-4xl grid-cols-1 gap-5 sm:grid-cols-3">
+      {WHOP_COMMUNITY_CHECKOUT_OPTION && (
+        <div className="relative flex flex-col rounded-2xl border border-sky-300/25 bg-[#080a10]/60 p-6 text-left backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-sky-300/50">
+          <p className="font-syne text-[11px] font-bold uppercase tracking-[0.22em] text-sky-300">Community</p>
+          <p className="mt-1 font-anton text-4xl leading-none text-white">$75</p>
+          <p className="mt-2 text-xs text-sky-300">Discord access · billed monthly</p>
+          <p className="mt-3 text-[13px] leading-relaxed text-white/60">
+            Live signals, daily reads, session discussions, evening recaps — the room.
+          </p>
+          <a
+            href={WHOP_COMMUNITY_CHECKOUT_OPTION.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Join the Community"
+            className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-sky-300/25 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.2em] text-sky-100 transition-all duration-200 hover:border-sky-300 hover:bg-sky-300/5 hover:text-sky-300"
+          >
+            Join Community →
+          </a>
+        </div>
+      )}
       {WHOP_PREMIUM_CHECKOUT_OPTIONS.map((option) => {
         const vp = valuePropFor(option.label);
         const [term, price] = option.label.split("—").map((s) => s.trim());
