@@ -14,7 +14,7 @@ export default async function AdminUsersPage() {
           className="mb-6"
           kicker="Administration"
           title="User Management"
-          subtitle="Clerk users, Whop subscriptions, tier overrides, and access control."
+          subtitle="Users, subscriptions, tier overrides, and access control."
         />
         <UserManagement />
       </main>
