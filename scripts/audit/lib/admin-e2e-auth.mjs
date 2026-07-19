@@ -51,6 +51,9 @@ export async function mintClerkSessionViaPlaywright({
     cookieHeader: `__session=${session.value}; __client_uat=${uat}`,
   };
 }
+
+/** Visit keyless dev origin once so Clerk dev-browser cookies exist for Backend API sign-in. */
+async function bootstrapKeylessDevBrowser(appUrl) {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
