@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
       skipLegalChecks: true,
       publicMetadata: {
         tier: parseTier(tier),
+        tier_managed_by: "admin",
         ...(parsedRole === "admin" ? { role: "admin" } : {}),
       },
     });

@@ -111,7 +111,7 @@ async function main() {
       body: JSON.stringify({
         email_address: [`jwt-probe-${tag}@blackouttrades.com`],
         phone_number: [generateDefaultAuditPhone()],
-        public_metadata: { tier: "premium", role: "admin" },
+        public_metadata: { tier: "premium", role: "admin", tier_managed_by: "admin" },
         skip_password_requirement: true,
         skip_password_checks: true,
         skip_legal_checks: true,
