@@ -1,12 +1,49 @@
 import { NextRequest, NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { resolveAdminApi } from "@/lib/admin-access";
+import { logAdminAction } from "@/lib/admin-audit";
+import { isCognitoAuth } from "@/lib/auth-provider";
 
 export const dynamic = "force-dynamic";
 
+function mapClerkUser(user: Awaited<ReturnType<Awaited<ReturnType<typeof clerkClient>>["users"]["getUser"]>>) {
+  const meta = (user.publicMetadata ?? {}) as Record<string, unknown>;
+  const primaryEmail =
+    user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ?? null;
+
+  return {
+    id: user.id,
+    email: primaryEmail,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    imageUrl: user.imageUrl,
+    tier: String(meta.tier ?? "free"),
+    role: String(meta.role ?? ""),
+    whopUserId: meta.whop_user_id ?? null,
+    whopMembershipId: meta.whop_membership_id ?? null,
+    createdAt: user.createdAt,
+    lastSignInAt: user.lastSignInAt,
+    banned: user.banned,
+  };
+}
+
 export async function GET(req: NextRequest) {
-  const { denied } = await resolveAdminApi();
+  const { actor, denied } = await resolveAdminApi();
   if (denied) return denied;
+
+  if (isCognitoAuth()) {
+    return NextResponse.json(
+      { error: "User management requires Clerk auth (production)." },
+      { status: 501 }
+    );
+  }
+
+  void logAdminAction({
+    actorUserId: actor?.userId,
+    actorEmail: actor?.email,
+    action: "admin_users_list",
+    detail: { path: "admin/users" },
+  });
 
   const url = new URL(req.url);
   const query = url.searchParams.get("q")?.trim() || "";
@@ -35,27 +72,7 @@ export async function GET(req: NextRequest) {
   const { data, totalCount } = await client.users.getUserList(params);
 
   const users = data
-    .map((user) => {
-      const meta = (user.publicMetadata ?? {}) as Record<string, unknown>;
-      const primaryEmail = user.emailAddresses.find(
-        (e) => e.id === user.primaryEmailAddressId
-      )?.emailAddress ?? null;
-
-      return {
-        id: user.id,
-        email: primaryEmail,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        imageUrl: user.imageUrl,
-        tier: String(meta.tier ?? "free"),
-        role: String(meta.role ?? ""),
-        whopUserId: meta.whop_user_id ?? null,
-        whopMembershipId: meta.whop_membership_id ?? null,
-        createdAt: user.createdAt,
-        lastSignInAt: user.lastSignInAt,
-        banned: user.banned,
-      };
-    })
+    .map(mapClerkUser)
     .filter((u) => {
       if (tierFilter && u.tier !== tierFilter) return false;
       if (roleFilter === "admin" && u.role !== "admin") return false;
@@ -69,5 +86,9 @@ export async function GET(req: NextRequest) {
     page,
     limit,
     pages: Math.ceil(totalCount / limit),
+    filterNote:
+      tierFilter || roleFilter
+        ? "Tier and role filters apply to the current Clerk page only — use email search for exact lookup."
+        : null,
   });
 }

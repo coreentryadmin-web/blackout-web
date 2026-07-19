@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { clsx } from "clsx";
 import {
@@ -41,6 +42,7 @@ type UsersResponse = {
   page: number;
   limit: number;
   pages: number;
+  filterNote?: string | null;
 };
 
 export function UserManagement() {
@@ -57,6 +59,8 @@ export function UserManagement() {
   const [createOpen, setCreateOpen] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [banConfirm, setBanConfirm] = useState<UserRow | null>(null);
+  const [actionError, setActionError] = useState("");
+  const [filterNote, setFilterNote] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -72,6 +76,7 @@ export function UserManagement() {
       setUsers(data.users);
       setTotal(data.total);
       setPages(data.pages);
+      setFilterNote(data.filterNote ?? null);
     } finally {
       setLoading(false);
     }
@@ -94,18 +99,22 @@ export function UserManagement() {
 
   const syncWhop = async (email: string) => {
     setSyncing(email);
+    setActionError("");
     try {
       const res = await fetch("/api/admin/users/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      if (res.ok) {
-        await fetchUsers();
-        if (selectedUser?.email === email) {
-          const detail = await fetch(`/api/admin/users/${selectedUser.id}`);
-          if (detail.ok) setSelectedUser(await detail.json());
-        }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setActionError(data.error ?? "Billing sync failed");
+        return;
+      }
+      await fetchUsers();
+      if (selectedUser?.email === email) {
+        const detail = await fetch(`/api/admin/users/${selectedUser.id}`);
+        if (detail.ok) setSelectedUser(await detail.json());
       }
     } finally {
       setSyncing(null);
@@ -114,11 +123,17 @@ export function UserManagement() {
 
   const handleBan = async () => {
     if (!banConfirm) return;
-    await fetch(`/api/admin/users/${banConfirm.id}`, {
+    setActionError("");
+    const res = await fetch(`/api/admin/users/${banConfirm.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ banned: !banConfirm.banned }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setActionError(data.error ?? "Ban action failed");
+      return;
+    }
     setBanConfirm(null);
     fetchUsers();
   };
@@ -168,7 +183,19 @@ export function UserManagement() {
           <ActionButton variant="primary" onClick={() => setCreateOpen(true)}>
             + Create user
           </ActionButton>
+          <Link
+            href="/admin"
+            className="text-[10px] font-mono text-white/30 hover:text-cyan-400/80 uppercase tracking-wider"
+          >
+            Audit log →
+          </Link>
         </div>
+        {filterNote && (
+          <p className="text-[10px] text-amber-200/60 font-mono mt-3">{filterNote}</p>
+        )}
+        {actionError && (
+          <p className="text-[11px] text-red-400 font-mono mt-2">{actionError}</p>
+        )}
       </GlassPanel>
 
       {/* User table */}
@@ -184,7 +211,7 @@ export function UserManagement() {
                 <th className="admin-th">User</th>
                 <th className="admin-th">Tier</th>
                 <th className="admin-th">Role</th>
-                <th className="admin-th">Whop</th>
+                <th className="admin-th">Billing</th>
                 <th className="admin-th">Joined</th>
                 <th className="admin-th">Last seen</th>
                 <th className="admin-th">Actions</th>
@@ -209,6 +236,9 @@ export function UserManagement() {
                         <p className="text-[10px] text-white/40 font-mono truncate max-w-[180px]">
                           {user.email ?? user.id}
                         </p>
+                        {user.banned && (
+                          <span className="text-[9px] font-mono uppercase text-red-400/90">banned</span>
+                        )}
                       </div>
                     </div>
                   </td>
@@ -357,6 +387,14 @@ function EditUserModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    setFirstName(user.firstName ?? "");
+    setLastName(user.lastName ?? "");
+    setTier(user.tier);
+    setRole(user.role);
+    setError("");
+  }, [user]);
+
   const save = async () => {
     setSaving(true);
     setError("");
@@ -438,11 +476,11 @@ function EditUserModal({
             {user.phoneNumbers?.join(", ") ?? "—"}
           </div>
           <div>
-            <span className="text-white/30">Whop user: </span>
+            <span className="text-white/30">Billing user: </span>
             {user.whopUserId ?? "—"}
           </div>
           <div>
-            <span className="text-white/30">Whop membership: </span>
+            <span className="text-white/30">Membership: </span>
             {user.whopMembershipId ?? "—"}
           </div>
           <div>
@@ -481,7 +519,7 @@ function EditUserModal({
       <div className="admin-confirm-actions">
         <ActionButton onClick={onClose}>Cancel</ActionButton>
         <ActionButton onClick={onSync} disabled={syncing || !user.email}>
-          {syncing ? "Syncing…" : "Sync Whop"}
+          {syncing ? "Syncing…" : "Sync billing"}
         </ActionButton>
         <ActionButton onClick={save} disabled={saving} variant="primary">
           {saving ? "Saving…" : "Save changes"}
@@ -540,7 +578,7 @@ function CreateUserModal({
       <p className="admin-confirm-kicker">New user</p>
       <h3 className="admin-confirm-title">Create user manually</h3>
       <p className="text-[10px] text-white/30 font-mono mb-4">
-        Creates a Clerk account. Clerk requires a phone number.
+        Manual account creation requires email and phone. Billing sync runs automatically after create.
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
