@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await syncWhopMembershipForEmail(email.trim());
+    const result = await syncWhopMembershipForEmail(email.trim(), { ignoreAdminTierLock: true });
     for (const uid of result.updatedUserIds) publishTierChanged(uid);
 
     void logAdminAction({

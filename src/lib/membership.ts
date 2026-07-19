@@ -20,7 +20,14 @@ type MembershipMetadata = {
   whop_user_id?: string;
   whop_membership_id?: string;
   membership_kind?: BillingKind;
+  /** Set by admin PATCH tier — blocks webhook Whop sync from overwriting manual tier. */
+  tier_managed_by?: "admin" | null;
 };
+
+/** Admin-set tier via dashboard PATCH; webhook Whop sync must not overwrite until billing sync. */
+export function isAdminManagedTier(meta: Record<string, unknown> | undefined): boolean {
+  return meta?.tier_managed_by === "admin";
+}
 
 export async function findClerkUsersByEmail(email: string) {
   const normalized = email.trim().toLowerCase();
@@ -128,7 +135,10 @@ async function resolveMembershipTierForEmail(
   return { tier, billingKind, activeMembership };
 }
 
-export async function syncWhopMembershipForEmail(email: string): Promise<{
+export async function syncWhopMembershipForEmail(
+  email: string,
+  opts?: { ignoreAdminTierLock?: boolean }
+): Promise<{
   tier: Tier;
   billingKind: BillingKind;
   updatedUserIds: string[];
@@ -157,6 +167,11 @@ export async function syncWhopMembershipForEmail(email: string): Promise<{
   let bestBillingKind: BillingKind = "free";
   const updatedUserIds: string[] = [];
   for (const user of clerkUsers) {
+    const existingMeta = (user.publicMetadata ?? {}) as Record<string, unknown>;
+    if (!opts?.ignoreAdminTierLock && isAdminManagedTier(existingMeta)) {
+      continue;
+    }
+
     const emails = new Set<string>([normalized]);
     const primaryId = user.primaryEmailAddressId;
     for (const addr of user.emailAddresses ?? []) {
@@ -189,6 +204,7 @@ export async function syncWhopMembershipForEmail(email: string): Promise<{
       membership_kind: userBillingKind,
       whop_user_id: activeMembership?.user?.id,
       whop_membership_id: activeMembership?.id,
+      ...(opts?.ignoreAdminTierLock ? { tier_managed_by: null } : {}),
     });
     updatedUserIds.push(user.id);
     if (userTier === "premium") bestTier = "premium";

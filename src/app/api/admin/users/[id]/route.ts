@@ -123,8 +123,13 @@ export async function PATCH(
   if ("whopUserId" in body) metaUpdates.whop_user_id = body.whopUserId || undefined;
   if ("whopMembershipId" in body) metaUpdates.whop_membership_id = body.whopMembershipId || undefined;
 
+  const tierManagedByAdmin = "tier" in body;
+
   if (Object.keys(metaUpdates).length > 0) {
-    await updateClerkMembershipMetadata(id, metaUpdates);
+    await updateClerkMembershipMetadata(id, {
+      ...metaUpdates,
+      ...(tierManagedByAdmin ? { tier_managed_by: "admin" as const } : {}),
+    });
     if ("tier" in metaUpdates) publishTierChanged(id);
   }
 
