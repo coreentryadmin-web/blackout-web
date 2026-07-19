@@ -24,6 +24,9 @@ export function clerkSanitizeStagingReturnUrl(raw: string | undefined | null): s
   }
 }
 
+/** Default path after sign-in when no redirect_url is provided. */
+export const CLERK_DEFAULT_POST_AUTH_PATH = "/dashboard";
+
 /** Path on staging for satellite redirect helper (must start with /). */
 export function clerkStagingReturnPath(raw: string | undefined | null): string {
   const trimmed = raw?.trim();
@@ -41,6 +44,16 @@ export function clerkStagingReturnPath(raw: string | undefined | null): string {
   if (!full) return "/";
   const u = new URL(full);
   return `${u.pathname}${u.search}`;
+}
+
+/**
+ * Post-auth destination: explicit redirect_url wins; otherwise send users to the desk
+ * (not the public marketing homepage — avoids sign-in ↔ / loops and duplicate "homepages").
+ */
+export function clerkPostAuthReturnPath(raw: string | undefined | null): string {
+  const trimmed = raw?.trim();
+  if (!trimmed) return CLERK_DEFAULT_POST_AUTH_PATH;
+  return clerkStagingReturnPath(trimmed);
 }
 
 export function clerkIsClerkSyncFailed(url: URL): boolean {

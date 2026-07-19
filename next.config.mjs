@@ -63,6 +63,12 @@ const isCognitoBuild =
 const cpuCount = os.cpus()?.length || 1;
 
 const isStagingSite = (process.env.NEXT_PUBLIC_SITE_URL ?? "").includes("staging.");
+const authDocumentEdgeBypass = [
+  { key: "CDN-Cache-Control", value: "no-store" },
+  { key: "Cloudflare-CDN-Cache-Control", value: "no-store" },
+  { key: "Cache-Control", value: "private, no-cache, no-store, must-revalidate, max-age=0" },
+  { key: "Vary", value: "Cookie" },
+];
 const stagingEdgeBypass = [
   { key: "CDN-Cache-Control", value: "no-store" },
   { key: "Cloudflare-CDN-Cache-Control", value: "no-store" },
@@ -121,6 +127,18 @@ const nextConfig = {
             },
           ]
         : []),
+      {
+        source: "/",
+        headers: [...securityHeaders, ...authDocumentEdgeBypass],
+      },
+      {
+        source: "/sign-in/:path*",
+        headers: [...securityHeaders, ...authDocumentEdgeBypass],
+      },
+      {
+        source: "/sign-up/:path*",
+        headers: [...securityHeaders, ...authDocumentEdgeBypass],
+      },
       {
         source: "/((?!embed/|_next/).*)",
         headers: isStagingSite ? [...securityHeaders, ...stagingEdgeBypass] : securityHeaders,

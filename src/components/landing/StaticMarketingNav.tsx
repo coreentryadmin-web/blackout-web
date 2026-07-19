@@ -28,7 +28,7 @@ export function StaticMarketingNav({ signedIn = false }: { signedIn?: boolean })
             </Link>
           ) : (
             <>
-              <Link href="/sign-in" prefetch={false} className="nav-signin">
+              <Link href="/sign-in?redirect_url=%2Fdashboard" prefetch={false} className="nav-signin">
                 Sign in
               </Link>
               <Link href="/sign-up" prefetch={false} className="nav-join">
