@@ -19,16 +19,14 @@ const COMMUNITY = [
   "Evening recaps & next-day prep",
 ];
 
-const FREE = [
-  "Create your account",
-  "Ticker search",
-  "Product updates & announcements",
-];
-
-/** Static pricing — no framer-motion; all 3 tiers visible (no toggle JS). */
+/** Static pricing — no framer-motion; all 3 paid tiers visible (no toggle JS). */
 export function StaticPricingSection() {
+  const monthlyHref = WHOP_CHECKOUT.monthly || WHOP_CHECKOUT.store || "/sign-up";
   const yearlyHref = WHOP_CHECKOUT.yearly || WHOP_CHECKOUT.store || "/sign-up";
   const communityHref = WHOP_CHECKOUT.community || WHOP_CHECKOUT.store || "/sign-up";
+
+  const external = (href: string) =>
+    href.startsWith("http") ? { target: "_blank" as const, rel: "noopener noreferrer" } : {};
 
   return (
     <section id="pricing" className="mkt-section border-b-0">
@@ -43,34 +41,10 @@ export function StaticPricingSection() {
           <span className="mkt-gradient-text">PRICED FOR RETAIL.</span>
         </h2>
         <p className="mkt-lede text-center">
-          Start with the community. Upgrade to the full desk when you&#39;re ready.
+          Community on Discord, or the full desk — monthly or yearly on Whop.
         </p>
 
         <div className="mt-12 grid gap-6 md:grid-cols-3">
-          {/* FREE */}
-          <div className="mkt-card flex flex-col">
-            <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-sky-300/80">Free</p>
-            <p className="mt-4 font-anton text-5xl text-white">
-              $0<span className="font-syne text-lg font-semibold text-sky-300"> forever</span>
-            </p>
-            <p className="mt-2 text-sm text-sky-300/70">Open an account and explore the platform</p>
-            <ul className="mt-6 flex flex-1 flex-col gap-2 text-sm text-white/85">
-              {FREE.map((f) => (
-                <li key={f} className="flex gap-2">
-                  <span className="text-sky-300">✓</span>
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <Link
-              href="/sign-up"
-              prefetch={false}
-              className="landing-btn-ghost mt-8 inline-flex items-center justify-center border border-white/20 px-6 py-3 font-syne text-sm font-bold uppercase tracking-[0.18em] text-white"
-            >
-              Open free account
-            </Link>
-          </div>
-
           {/* COMMUNITY */}
           <div className="mkt-card flex flex-col" style={{ borderColor: "rgba(125,211,252,0.25)" }}>
             <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-sky-300">Community</p>
@@ -90,7 +64,7 @@ export function StaticPricingSection() {
               href={communityHref}
               prefetch={false}
               className="landing-btn-ghost mt-8 inline-flex items-center justify-center border border-sky-300/30 px-6 py-3 font-syne text-sm font-bold uppercase tracking-[0.18em] text-white"
-              {...(communityHref.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              {...external(communityHref)}
             >
               Join the community
             </Link>
@@ -99,9 +73,37 @@ export function StaticPricingSection() {
             </p>
           </div>
 
-          {/* PREMIUM */}
+          {/* PREMIUM MONTHLY */}
+          <div className="mkt-card flex flex-col" style={{ borderColor: "rgba(0,230,118,0.35)" }}>
+            <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-bull">Premium · Monthly</p>
+            <p className="mt-4 font-anton text-5xl text-white">
+              $199<span className="font-syne text-lg font-semibold text-sky-300"> / month</span>
+            </p>
+            <p className="mt-2 text-sm text-sky-300">Full desk + Discord · billed monthly</p>
+            <ul className="mt-6 flex flex-1 flex-col gap-2 text-sm text-white/85">
+              {PREMIUM.map((f) => (
+                <li key={f} className="flex gap-2">
+                  <span className="text-bull">✓</span>
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <Link
+              href={monthlyHref}
+              prefetch={false}
+              className="landing-btn-primary mt-8 inline-flex items-center justify-center px-6 py-3 font-syne text-sm font-bold uppercase tracking-[0.18em]"
+              {...external(monthlyHref)}
+            >
+              Start monthly
+            </Link>
+            <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-[0.12em] text-white/50">
+              Cancel anytime
+            </p>
+          </div>
+
+          {/* PREMIUM YEARLY */}
           <div className="mkt-card mkt-card-glow flex flex-col">
-            <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-bull">Premium · Best Value</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-bull">Premium · Yearly</p>
             <p className="mt-4 font-anton text-5xl text-white">
               $1,999<span className="font-syne text-lg font-semibold text-sky-300"> / year</span>
             </p>
@@ -118,15 +120,23 @@ export function StaticPricingSection() {
               href={yearlyHref}
               prefetch={false}
               className="landing-btn-primary mt-8 inline-flex items-center justify-center px-6 py-3 font-syne text-sm font-bold uppercase tracking-[0.18em]"
-              {...(yearlyHref.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              {...external(yearlyHref)}
             >
-              Unlock Premium
+              Save $389 / yearly
             </Link>
             <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-[0.12em] text-white/50">
               Discord included · cancel anytime
             </p>
           </div>
         </div>
+
+        <p className="mt-10 text-center text-sm text-white/70">
+          Need an account first?{" "}
+          <Link href="/sign-up" prefetch={false} className="text-bull hover:underline">
+            Sign up free
+          </Link>{" "}
+          — checkout on Whop uses the same email.
+        </p>
       </div>
     </section>
   );

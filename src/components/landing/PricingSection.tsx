@@ -1,39 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { LandingCta } from "@/components/landing/LandingCta";
 import { PricingBackdrop } from "@/components/landing/PricingBackdrop";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
-
-type Term = "monthly" | "yearly";
-
-const PLANS: Record<
-  Term,
-  { price: string; per: string; note: string; save: string | null; badge: string; href: string }
-> = {
-  monthly: {
-    price: "$199",
-    per: "/ month",
-    note: "Billed monthly · stand down anytime",
-    save: null,
-    badge: "Standing",
-    href: WHOP_CHECKOUT.monthly,
-  },
-  yearly: {
-    price: "$1,999",
-    per: "/ year",
-    note: "≈ $167/mo · billed yearly",
-    save: "Save $389 vs monthly",
-    badge: "Standard issue",
-    href: WHOP_CHECKOUT.yearly,
-  },
-};
-
-const TERMS: { key: Term; label: string; tag?: string }[] = [
-  { key: "monthly", label: "Monthly" },
-  { key: "yearly", label: "Yearly", tag: "−16%" },
-];
 
 const PREMIUM_FEATURES = [
   "HELIX live options-flow feed",
@@ -55,15 +25,6 @@ const COMMUNITY_FEATURES: { text: string; on: boolean }[] = [
   { text: "AI desk analyst (Largo)", on: false },
 ];
 
-const FREE_FEATURES: { text: string; on: boolean }[] = [
-  { text: "Product updates & announcements", on: true },
-  { text: "Create your account", on: true },
-  { text: "Ticker search", on: true },
-  { text: "Discord server", on: false },
-  { text: "SPX Slayer desk", on: false },
-  { text: "Largo & Night Hawk", on: false },
-];
-
 function FeatureCheck({ on }: { on: boolean }) {
   return (
     <span
@@ -79,14 +40,18 @@ function FeatureCheck({ on }: { on: boolean }) {
   );
 }
 
+function checkoutHref(url: string) {
+  return url || WHOP_CHECKOUT.store || "/sign-up";
+}
+
+function isExternal(url: string) {
+  return Boolean(url || WHOP_CHECKOUT.store);
+}
+
 export function PricingSection() {
-  const [term, setTerm] = useState<Term>("yearly");
-  const plan = PLANS[term];
-  const hasCheckout = Boolean(plan.href || WHOP_CHECKOUT.store);
-  const ctaHref = plan.href || WHOP_CHECKOUT.store || "/sign-up";
-  const ctaExternal = Boolean(plan.href || WHOP_CHECKOUT.store);
-  const communityHref = WHOP_CHECKOUT.community || WHOP_CHECKOUT.store || "/sign-up";
-  const communityExternal = Boolean(WHOP_CHECKOUT.community || WHOP_CHECKOUT.store);
+  const communityHref = checkoutHref(WHOP_CHECKOUT.community);
+  const monthlyHref = checkoutHref(WHOP_CHECKOUT.monthly);
+  const yearlyHref = checkoutHref(WHOP_CHECKOUT.yearly);
 
   return (
     <section
@@ -96,7 +61,6 @@ export function PricingSection() {
       <PricingBackdrop />
 
       <div className="max-w-6xl mx-auto relative z-10">
-        {/* header */}
         <motion.div
           initial={{ opacity: 0, y: 26 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -122,100 +86,17 @@ export function PricingSection() {
             </span>
           </h2>
           <p className="mt-5 text-[15px] leading-relaxed text-white/65 max-w-2xl mx-auto">
-            Start with the community. Upgrade to the full desk when you&#39;re ready.
+            Community on Discord, or the full desk — monthly or yearly on Whop.
           </p>
         </motion.div>
 
-        {/* billing toggle (applies to Premium) */}
-        <div className="flex justify-center mb-10">
-          <div
-            className="inline-flex items-center gap-1 rounded-2xl p-1.5 border"
-            style={{
-              borderColor: "rgba(0,230,118,0.18)",
-              background: "rgba(8,9,14,0.7)",
-              backdropFilter: "blur(12px)",
-            }}
-            role="tablist"
-            aria-label="Billing term"
-          >
-            {TERMS.map((t) => {
-              const on = term === t.key;
-              return (
-                <button
-                  key={t.key}
-                  role="tab"
-                  aria-selected={on}
-                  onClick={() => setTerm(t.key)}
-                  className="relative rounded-xl px-5 py-2.5 text-[13px] font-semibold tracking-[0.02em] transition-colors"
-                  style={{
-                    color: on ? "#021c14" : "rgba(255,255,255,0.7)",
-                    background: on ? "linear-gradient(180deg,#00e676,#0f9d58)" : "transparent",
-                    boxShadow: on ? "0 0 26px -8px rgba(0,230,118,0.6)" : "none",
-                  }}
-                >
-                  {t.label}
-                  {t.tag && (
-                    <span
-                      className="ml-2 font-mono text-[10px] rounded-md px-1.5 py-0.5"
-                      style={
-                        on
-                          ? { background: "rgba(2,28,20,0.25)", color: "#021c14" }
-                          : { background: "rgba(0,230,118,0.14)", color: "#34d399" }
-                      }
-                    >
-                      {t.tag}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* cards — 3 columns */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch">
-          {/* FREE */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            className="flex flex-col rounded-2xl p-7 md:p-8"
-            style={{
-              border: "1px solid rgba(125,211,252,0.1)",
-              background: "rgba(8,9,14,0.6)",
-              backdropFilter: "blur(12px)",
-            }}
-          >
-            <p className="font-mono text-[10px] tracking-[0.35em] uppercase text-sky-300/80 mb-3">Free</p>
-            <div className="flex items-end gap-2">
-              <span className="font-anton text-5xl text-white leading-none">$0</span>
-              <span className="font-mono text-[11px] text-secondary uppercase tracking-widest mb-1.5">forever</span>
-            </div>
-            <p className="mt-4 text-[13px] text-secondary leading-relaxed">
-              Step onto the floor — open an account and walk the desk before you go live.
-            </p>
-            <ul className="flex flex-col gap-3 my-7 flex-1">
-              {FREE_FEATURES.map((f) => (
-                <li key={f.text} className="flex items-center gap-3 text-[13px]">
-                  <FeatureCheck on={f.on} />
-                  <span style={{ color: f.on ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.4)" }}>
-                    {f.text}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <LandingCta href="/sign-up" variant="outline" className="w-full text-center">
-              Open free account →
-            </LandingCta>
-          </motion.div>
-
           {/* COMMUNITY */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ duration: 0.5, delay: 0.05 }}
+            transition={{ duration: 0.5 }}
             className="relative flex flex-col rounded-2xl p-7 md:p-8"
             style={{
               border: "1px solid rgba(125,211,252,0.25)",
@@ -243,7 +124,7 @@ export function PricingSection() {
             </ul>
             <LandingCta
               href={communityHref}
-              external={communityExternal}
+              external={isExternal(WHOP_CHECKOUT.community)}
               variant="outline"
               className="w-full text-center"
             >
@@ -254,12 +135,12 @@ export function PricingSection() {
             </p>
           </motion.div>
 
-          {/* PREMIUM */}
+          {/* PREMIUM MONTHLY */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ duration: 0.5, delay: 0.1 }}
+            transition={{ duration: 0.5, delay: 0.05 }}
             className="relative flex flex-col rounded-2xl p-7 md:p-8 md:scale-[1.015]"
             style={{
               border: "1px solid rgba(0,230,118,0.45)",
@@ -268,56 +149,24 @@ export function PricingSection() {
               boxShadow: "0 30px 80px -36px rgba(0,230,118,0.55)",
             }}
           >
-            {/* top accent bar */}
             <span
               aria-hidden
               className="absolute top-0 left-8 right-8 h-[2px] rounded-full"
               style={{ background: "linear-gradient(90deg, transparent, #00e676, transparent)", boxShadow: "0 0 18px #00e676" }}
             />
-            {/* dynamic badge */}
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={plan.badge}
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 6 }}
-                transition={{ duration: 0.2 }}
-                className="absolute -top-3 left-1/2 -translate-x-1/2 font-mono text-[10px] tracking-[0.3em] uppercase px-4 py-1.5 rounded-full font-bold"
-                style={{ background: "linear-gradient(180deg,#00e676,#0f9d58)", color: "#021c14", boxShadow: "0 0 24px -6px rgba(0,230,118,0.7)" }}
-              >
-                {plan.badge}
-              </motion.span>
-            </AnimatePresence>
+            <span
+              className="absolute -top-3 left-1/2 -translate-x-1/2 font-mono text-[10px] tracking-[0.3em] uppercase px-4 py-1.5 rounded-full font-bold"
+              style={{ background: "linear-gradient(180deg,#00e676,#0f9d58)", color: "#021c14", boxShadow: "0 0 24px -6px rgba(0,230,118,0.7)" }}
+            >
+              Most popular
+            </span>
 
-            <p className="font-mono text-[10px] tracking-[0.35em] uppercase text-bull mb-3">Premium · Full Access</p>
-
-            {/* price (animated on term change) */}
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={term}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-              >
-                <div className="flex items-end gap-2">
-                  <span className="font-anton text-5xl md:text-6xl text-white leading-none">{plan.price}</span>
-                  <span className="font-mono text-[12px] text-secondary uppercase tracking-widest mb-2">{plan.per}</span>
-                </div>
-                <div className="mt-2 flex items-center gap-3 flex-wrap">
-                  <span className="font-mono text-[11px] text-secondary">{plan.note}</span>
-                  {plan.save && (
-                    <span
-                      className="font-mono text-[10px] rounded-md px-2 py-0.5"
-                      style={{ background: "rgba(0,230,118,0.14)", color: "#34d399", border: "1px solid rgba(0,230,118,0.28)" }}
-                    >
-                      {plan.save}
-                    </span>
-                  )}
-                </div>
-              </motion.div>
-            </AnimatePresence>
-
+            <p className="font-mono text-[10px] tracking-[0.35em] uppercase text-bull mb-3">Premium · Monthly</p>
+            <div className="flex items-end gap-2">
+              <span className="font-anton text-5xl md:text-6xl text-white leading-none">$199</span>
+              <span className="font-mono text-[12px] text-secondary uppercase tracking-widest mb-2">/ month</span>
+            </div>
+            <p className="mt-2 font-mono text-[11px] text-secondary">Billed monthly · stand down anytime</p>
             <p className="mt-4 text-[13px] text-bull/90 font-semibold">Every instrument. One flat price. Discord included.</p>
 
             <ul className="grid grid-cols-1 gap-2.5 my-6 flex-1">
@@ -330,19 +179,76 @@ export function PricingSection() {
             </ul>
 
             <LandingCta
-              href={ctaHref}
-              external={ctaExternal}
+              href={monthlyHref}
+              external={isExternal(WHOP_CHECKOUT.monthly)}
               className="w-full text-center !px-0"
             >
-              {hasCheckout ? "Unlock Premium →" : "Open account first →"}
+              Start monthly →
             </LandingCta>
             <p className="mt-3 text-center font-mono text-[10px] tracking-[0.12em] text-secondary uppercase">
               Secure checkout · cancel anytime
             </p>
           </motion.div>
+
+          {/* PREMIUM YEARLY */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="relative flex flex-col rounded-2xl p-7 md:p-8"
+            style={{
+              border: "1px solid rgba(125,211,252,0.25)",
+              background: "linear-gradient(180deg, rgba(125,211,252,0.05), rgba(10,14,18,0.75))",
+              backdropFilter: "blur(14px)",
+            }}
+          >
+            <span
+              className="absolute -top-3 left-1/2 -translate-x-1/2 font-mono text-[10px] tracking-[0.3em] uppercase px-4 py-1.5 rounded-full font-bold"
+              style={{ background: "rgba(125,211,252,0.18)", color: "#7dd3fc", border: "1px solid rgba(125,211,252,0.35)" }}
+            >
+              Best value
+            </span>
+
+            <p className="font-mono text-[10px] tracking-[0.35em] uppercase text-sky-300 mb-3">Premium · Yearly</p>
+            <div className="flex items-end gap-2">
+              <span className="font-anton text-5xl text-white leading-none">$1,999</span>
+              <span className="font-mono text-[11px] text-secondary uppercase tracking-widest mb-1.5">/ year</span>
+            </div>
+            <div className="mt-2 flex items-center gap-3 flex-wrap">
+              <span className="font-mono text-[11px] text-secondary">≈ $167/mo · billed yearly</span>
+              <span
+                className="font-mono text-[10px] rounded-md px-2 py-0.5"
+                style={{ background: "rgba(0,230,118,0.14)", color: "#34d399", border: "1px solid rgba(0,230,118,0.28)" }}
+              >
+                Save $389 vs monthly
+              </span>
+            </div>
+            <p className="mt-4 text-[13px] text-sky-300/90 font-semibold">Same full desk — pay once for the year.</p>
+
+            <ul className="grid grid-cols-1 gap-2.5 my-6 flex-1">
+              {PREMIUM_FEATURES.map((f) => (
+                <li key={f} className="flex items-center gap-3 text-[13px]">
+                  <FeatureCheck on />
+                  <span className="text-white/90">{f}</span>
+                </li>
+              ))}
+            </ul>
+
+            <LandingCta
+              href={yearlyHref}
+              external={isExternal(WHOP_CHECKOUT.yearly)}
+              variant="outline"
+              className="w-full text-center"
+            >
+              Save $389 / yearly →
+            </LandingCta>
+            <p className="mt-3 text-center font-mono text-[10px] tracking-[0.12em] text-secondary uppercase">
+              Discord included · cancel anytime
+            </p>
+          </motion.div>
         </div>
 
-        {/* trust row */}
         <motion.p
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
