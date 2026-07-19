@@ -4,6 +4,8 @@ import {
   clerkIsClerkSyncFailed,
   clerkSanitizeStagingReturnUrl,
   clerkStagingReturnPath,
+  clerkPostAuthReturnPath,
+  CLERK_DEFAULT_POST_AUTH_PATH,
 } from "./clerk-redirect-url";
 
 test("clerkSanitizeStagingReturnUrl: allows staging absolute URLs", () => {
@@ -31,6 +33,15 @@ test("clerkStagingReturnPath: normalizes full staging URL to path", () => {
     clerkStagingReturnPath("https://staging.blackouttrades.com/spx?x=1"),
     "/spx?x=1"
   );
+});
+
+test("clerkPostAuthReturnPath: empty → dashboard", () => {
+  assert.equal(clerkPostAuthReturnPath(undefined), CLERK_DEFAULT_POST_AUTH_PATH);
+  assert.equal(clerkPostAuthReturnPath(""), CLERK_DEFAULT_POST_AUTH_PATH);
+});
+
+test("clerkPostAuthReturnPath: honors explicit path", () => {
+  assert.equal(clerkPostAuthReturnPath("/flows"), "/flows");
 });
 
 test("clerkIsClerkSyncFailed", () => {

@@ -3,7 +3,7 @@
 import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
-import { clerkStagingReturnPath } from "@/lib/clerk-redirect-url";
+import { clerkPostAuthReturnPath } from "@/lib/clerk-redirect-url";
 
 /**
  * Client fallback after OAuth / ticket auth when the session is live in the browser
@@ -22,7 +22,7 @@ function AuthSignedInRedirectInner({ fallback = "/" }: { fallback?: string }) {
     void fetch("/api/membership/sync", { method: "POST" }).catch(() => undefined);
 
     const raw = searchParams.get("redirect_url");
-    const dest = raw ? clerkStagingReturnPath(raw) : fallback;
+    const dest = raw ? clerkPostAuthReturnPath(raw) : fallback;
     router.replace(dest.startsWith("/") ? dest : `/${dest}`);
   }, [isLoaded, isSignedIn, router, searchParams, fallback]);
 
