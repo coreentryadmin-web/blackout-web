@@ -7,7 +7,7 @@ type WhopMembershipLike = Pick<MembershipListResponse, "id" | "status" | "plan" 
 export const PREMIUM_MEMBERSHIP_STATUSES: WhopMembershipLike["status"][] = [
   "active",
   "trialing",
-  "completed", // one-time / lifetime purchases
+  "completed", // legacy one-time purchases (retired lifetime SKUs)
   // Grace statuses — extend premium during billing retry / cancel window (ops policy)
   "past_due",
   "canceling",
