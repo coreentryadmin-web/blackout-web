@@ -1,60 +1,72 @@
 import type { CSSProperties } from "react";
-import { MARKETING_MODULE_IMAGES, type MarketingModuleId } from "@/lib/images";
+import Link from "next/link";
+import { MarketingProductScene } from "./MarketingProductScene";
+import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
 
-const STRIP: { id: MarketingModuleId; label: string; tag: string; accent: string }[] = [
-  { id: "spx", label: "SPX Slayer", tag: "0DTE desk", accent: "#00e676" },
-  { id: "helix", label: "HELIX", tag: "Flow tape", accent: "#22d3ee" },
-  { id: "thermal", label: "Thermal", tag: "GEX matrix", accent: "#bf5fff" },
-  { id: "largo", label: "Largo", tag: "Desk AI", accent: "#ffd23f" },
-  { id: "hawk", label: "Night Hawk", tag: "Playbook", accent: "#ff6b2b" },
-  { id: "vector", label: "Vector", tag: "Structure", accent: "#7c5cff" },
-];
-
-/** Horizontal product gallery — real module screenshots, CSS scroll-snap. */
+/** Cinematic product reel — infinite marquee of live-rendered desk scenes. */
 export function StaticProductFilmstrip() {
+  const loop = [...MARKETING_PRODUCTS, ...MARKETING_PRODUCTS];
+
   return (
-    <section id="tape" className="mkt-filmstrip-section" aria-label="Platform product previews">
-      <div className="mkt-section-inner">
+    <section id="tape" className="mkt-products-reel" aria-label="Platform products preview">
+      <div className="mkt-section-inner mkt-products-reel-head">
         <p className="mkt-kicker mkt-kicker-center">
           <span className="mkt-kicker-dot" aria-hidden />
-          Inside the desk
+          Unified terminal
         </p>
-        <p className="mkt-filmstrip-lede">
-          Real surfaces from the live platform — not mockups.
+        <h2 className="mkt-products-reel-title font-anton">
+          MULTIPLE MODULES.
+          <span className="mkt-gradient-text"> ONE EDGE.</span>
+        </h2>
+        <p className="mkt-products-reel-lede">
+          Each module is purpose-built for a dimension of trading intelligence — flow, gamma, AI, and
+          playbook — on one live-rendered desk surface.
         </p>
+        <Link href="#features" prefetch={false} className="mkt-products-reel-cta font-syne">
+          Explore every module ↓
+        </Link>
       </div>
-      <div className="mkt-filmstrip-track-wrap">
-        <ul className="mkt-filmstrip-track">
-          {STRIP.map((item, i) => (
-            <li
-              key={item.id}
-              id={item.id === "thermal" ? "gamma" : undefined}
-              className="mkt-filmstrip-card"
-              style={{ "--mkt-accent": item.accent, animationDelay: `${i * 0.06}s` } as CSSProperties}
-            >
-              <div className="mkt-filmstrip-card-chrome">
-                <span className="mkt-filmstrip-dot" style={{ background: item.accent }} />
-                <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/55">{item.label}</span>
-              </div>
-              <div className="mkt-filmstrip-card-body">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={MARKETING_MODULE_IMAGES[item.id]}
-                  alt={`${item.label} — ${item.tag}`}
-                  className="mkt-filmstrip-shot"
-                  width={640}
-                  height={360}
-                  loading={i < 2 ? "eager" : "lazy"}
-                  decoding="async"
-                />
-                <div className="mkt-filmstrip-card-foot">
-                  <span className="font-syne text-sm font-bold text-white">{item.label}</span>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-sky-300">{item.tag}</span>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+
+      <div className="mkt-products-marquee-wrap">
+        <div className="mkt-products-marquee-fade mkt-products-marquee-fade--left" aria-hidden />
+        <div className="mkt-products-marquee-fade mkt-products-marquee-fade--right" aria-hidden />
+        <div className="mkt-products-marquee">
+          <ul className="mkt-products-marquee-track">
+            {loop.map((item, i) => (
+              <li
+                key={`${item.id}-${i}`}
+                className="mkt-products-reel-card"
+                style={{ "--mkt-accent": item.accent } as CSSProperties}
+              >
+                <Link
+                  href={`#product-${item.id}`}
+                  prefetch={false}
+                  className="mkt-products-reel-card-link"
+                  aria-label={`${item.label} — ${item.tag}`}
+                >
+                  <div className="mkt-products-reel-card-chrome">
+                    <span className="mkt-products-reel-index font-mono">{String(item.index).padStart(2, "0")}</span>
+                    <span className="mkt-products-reel-dot" style={{ background: item.accent }} />
+                    <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/55">{item.label}</span>
+                    <span className="mkt-products-reel-audience font-mono">{item.audience}</span>
+                    {item.launchStatus === "soon" && (
+                      <span className="mkt-products-reel-soon font-mono">Soon</span>
+                    )}
+                  </div>
+                  <div className="mkt-products-reel-card-body">
+                    <div className="mkt-products-reel-scan" aria-hidden />
+                    <MarketingProductScene productId={item.id} accent={item.accent} variant="card" />
+                    <div className="mkt-products-reel-glow" aria-hidden />
+                  </div>
+                  <div className="mkt-products-reel-card-foot">
+                    <span className="font-syne text-sm font-bold text-white">{item.label}</span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-sky-300">{item.tag}</span>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </section>
   );

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IMAGES } from "@/lib/images";
 import { StaticHeroWaveform } from "./StaticHeroWaveform";
+import { StaticHeroProductStage } from "./StaticHeroProductStage";
 
 const HERO_HOOK = "Serious traders don't wait for the tape.";
 const HERO_LEDE = "Neither does BlackOut Intelligence.";
@@ -69,6 +70,8 @@ export function StaticLandingHero() {
               <li key={t}>{t}</li>
             ))}
           </ul>
+
+          <StaticHeroProductStage />
         </div>
 
         <p className="mkt-hero-floor-tagline" aria-label="Brand tagline">

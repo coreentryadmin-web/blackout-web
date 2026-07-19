@@ -1,184 +1,106 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { ModulePreviewMock } from "./ModulePreviewMock";
+import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
 
-const MODULES = [
-  {
-    id: "spx",
-    label: "SPX Slayer",
-    tag: "0DTE desk",
-    accent: "#00e676",
-    headline: "Read SPX structure before the tape moves.",
-    bullets: [
-      "Live 0DTE gamma matrix with GEX / VEX / DEX lenses",
-      "Spot ladder, dealer walls, and graded play alerts",
-      "Same tape BIE uses to gate every downstream signal",
-    ],
-    stat: { k: "8s", v: "matrix refresh in RTH" },
-  },
-  {
-    id: "helix",
-    label: "HELIX",
-    tag: "Options flow",
-    accent: "#22d3ee",
-    headline: "Institutional prints, not delayed screenshots.",
-    bullets: [
-      "Tick-by-tick unusual options activity",
-      "Premium-tier filters and anomaly scoring",
-      "Feeds SPX Slayer and Night Hawk playbooks",
-    ],
-    stat: { k: "Live", v: "UW websocket tape" },
-  },
-  {
-    id: "thermal",
-    label: "Thermal",
-    tag: "Dealer gamma",
-    accent: "#bf5fff",
-    headline: "See where dealers are pinned.",
-    bullets: [
-      "Full-screen GEX heatmap across strikes & expiries",
-      "Charm / DEX lenses for positioning shifts",
-      "Cross-validated against live SPX rail",
-    ],
-    stat: { k: "Multi", v: "ticker presets" },
-  },
-  {
-    id: "largo",
-    label: "Largo",
-    tag: "Desk analyst",
-    accent: "#ffd23f",
-    headline: "Ask the desk — get structure, not chat fluff.",
-    bullets: [
-      "Context-aware reads on flow, gamma, and regime",
-      "Strike, invalidation, and sizing in plain language",
-      "Grounded in the same live feeds as your tools",
-    ],
-    stat: { k: "AI", v: "structure-first answers" },
-  },
-  {
-    id: "hawk",
-    label: "Night Hawk",
-    tag: "Playbook",
-    accent: "#ff6b2b",
-    headline: "Overnight and swing setups with receipts.",
-    bullets: [
-      "Graded playbook with transparent A–F log",
-      "Evening scanner tied to HELIX anomalies",
-      "Push alerts when structure clears gates",
-    ],
-    stat: { k: "A–F", v: "graded play log" },
-  },
-  {
-    id: "vector",
-    label: "Vector",
-    tag: "Universe scan",
-    accent: "#7c5cff",
-    headline: "Broaden the hunt beyond SPX.",
-    bullets: [
-      "Cross-ticker flow and gamma context",
-      "Ranked setups from the same BIE engine",
-      "Launching as the desk expands coverage",
-    ],
-    stat: { k: "Soon", v: "multi-ticker radar" },
-  },
-] as const;
-
-/** CSS-radio tabs — module deep-dive without client JS. */
+/** Full product catalog — alternating rows, anchor deep-links, CSS motion. */
 export function StaticModuleShowcase() {
-  const defaultId = MODULES[0].id;
-
   return (
-    <section id="features" className="mkt-section mkt-section-alt">
+    <section id="features" className="mkt-section mkt-products-catalog">
       <div className="mkt-section-inner">
-        <p className="mkt-kicker">
-          <span className="mkt-kicker-dot" aria-hidden />
-          Platform
-        </p>
-        <h2 className="mt-3 font-anton text-4xl leading-[0.92] text-white md:text-6xl">
-          MULTIPLE MODULES.
-          <br />
-          <span className="mkt-gradient-text">ONE EDGE.</span>
-        </h2>
-        <p className="mkt-lede !mx-0 !mt-4 !max-w-2xl !text-left !text-sm md:!text-base">
-          Every surface runs on BlackOut Intelligence — same verification gate, same live tape, no broker
-          lock-in.
-        </p>
+        <div className="mkt-products-catalog-intro mkt-reveal">
+          <p className="mkt-kicker">
+            <span className="mkt-kicker-dot" aria-hidden />
+            Platform modules
+          </p>
+          <h2 className="mt-3 font-anton text-4xl leading-[0.92] text-white md:text-6xl">
+            BUILT FOR THE
+            <br />
+            <span className="mkt-gradient-text">SERIOUS FLOOR.</span>
+          </h2>
+          <p className="mkt-lede !mx-0 !mt-4 !max-w-2xl !text-left !text-sm md:!text-base">
+            Purpose-built modules — like the best terminals — unified by BlackOut Intelligence. Same
+            verification gate, same live tape, no broker lock-in.
+          </p>
+        </div>
 
-        <div className="mkt-module-tabs mt-10">
-          {MODULES.map((m) => (
-            <input
-              key={m.id}
-              type="radio"
-              name="mkt-module"
-              id={`mkt-mod-${m.id}`}
-              className="mkt-module-input"
-              defaultChecked={m.id === defaultId}
-            />
+        <nav className="mkt-products-rail" aria-label="Jump to product">
+          {MARKETING_PRODUCTS.map((p) => (
+            <a
+              key={p.id}
+              href={`#product-${p.id}`}
+              className="mkt-products-rail-pill"
+              style={{ "--mkt-accent": p.accent } as CSSProperties}
+            >
+              <span className="mkt-products-rail-num font-mono">{String(p.index).padStart(2, "0")}</span>
+              <span className="font-syne text-xs font-bold">{p.label}</span>
+            </a>
           ))}
+        </nav>
 
-          <div className="mkt-module-tablist" role="tablist" aria-label="Platform modules">
-            {MODULES.map((m) => (
-              <label
-                key={m.id}
-                htmlFor={`mkt-mod-${m.id}`}
-                className="mkt-module-tab"
-                style={{ "--mkt-accent": m.accent } as CSSProperties}
-              >
-                <span className="mkt-module-tab-label">{m.label}</span>
-                <span className="mkt-module-tab-tag">{m.tag}</span>
-              </label>
-            ))}
-          </div>
+        <div className="mkt-products-stack">
+          {MARKETING_PRODUCTS.map((m, i) => {
+            const reverse = i % 2 === 1;
+            const ctaLabel =
+              m.launchStatus === "soon" ? "Get early access →" : `Open ${m.label} →`;
 
-          <div className="mkt-module-panels">
-            {MODULES.map((m) => (
+            return (
               <article
                 key={m.id}
-                className="mkt-module-panel"
-                data-module={m.id}
-                aria-labelledby={`mkt-mod-${m.id}`}
+                id={`product-${m.id}`}
+                className={`mkt-product-row mkt-product-row--${m.id}${reverse ? " mkt-product-row--reverse" : ""}`}
+                style={
+                  {
+                    "--mkt-accent": m.accent,
+                    "--mkt-row-delay": `${0.08 + i * 0.07}s`,
+                  } as CSSProperties
+                }
               >
-                <div className="mkt-module-copy">
-                  <h3 className="font-syne text-2xl font-extrabold text-white md:text-3xl">{m.headline}</h3>
-                  <ul className="mkt-module-bullets">
-                    {m.bullets.map((b) => (
-                      <li key={b}>{b}</li>
-                    ))}
-                  </ul>
-                  <div className="mkt-module-foot">
-                    <div className="mkt-module-stat" style={{ borderColor: `${m.accent}44` }}>
-                      <span className="font-anton text-3xl" style={{ color: m.accent }}>
-                        {m.stat.k}
-                      </span>
-                      <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-sky-300">
-                        {m.stat.v}
-                      </span>
+                <div className="mkt-product-row-grid">
+                  <div className="mkt-product-copy">
+                    <div className="mkt-product-copy-head">
+                      <span className="mkt-product-index font-mono">{String(m.index).padStart(2, "0")}</span>
+                      <span className="mkt-product-audience font-mono">{m.audience}</span>
+                      <span className="mkt-product-tag font-mono">{m.tag}</span>
+                      {m.launchStatus === "soon" && (
+                        <span className="mkt-product-soon-badge font-mono">Launching soon</span>
+                      )}
                     </div>
-                    <Link
-                    href={
-                      m.id === "spx"
-                        ? "/dashboard"
-                        : m.id === "helix"
-                          ? "/flows"
-                          : m.id === "thermal"
-                            ? "/heatmap"
-                            : m.id === "largo"
-                              ? "/terminal"
-                              : m.id === "hawk"
-                                ? "/nighthawk"
-                                : "/vector"
-                    }
-                    prefetch={false}
-                    className="mkt-module-link font-syne text-sm font-bold uppercase tracking-[0.16em] text-bull no-underline"
-                  >
-                    Open {m.label} →
-                    </Link>
+                    <h3 className="font-anton text-3xl leading-[0.95] text-white md:text-5xl">{m.label}</h3>
+                    <p className="mkt-product-headline font-syne text-lg font-bold text-white/90 md:text-xl">
+                      {m.headline}
+                    </p>
+                    <p className="mkt-product-lede">{m.lede}</p>
+                    <ul className="mkt-module-bullets mkt-product-bullets">
+                      {m.bullets.map((b) => (
+                        <li key={b}>{b}</li>
+                      ))}
+                    </ul>
+                    <div className="mkt-module-foot mkt-product-foot">
+                      <div className="mkt-module-stat" style={{ borderColor: `${m.accent}44` }}>
+                        <span className="font-anton text-3xl" style={{ color: m.accent }}>
+                          {m.stat.k}
+                        </span>
+                        <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-sky-300">
+                          {m.stat.v}
+                        </span>
+                      </div>
+                      <Link
+                        href={m.href}
+                        prefetch={false}
+                        className="mkt-module-link mkt-product-cta font-syne text-sm font-bold uppercase tracking-[0.16em] text-bull no-underline"
+                      >
+                        {ctaLabel}
+                      </Link>
+                    </div>
+                  </div>
+                  <div className="mkt-product-visual">
+                    <ModulePreviewMock moduleId={m.id} label={m.label} accent={m.accent} />
                   </div>
                 </div>
-                <ModulePreviewMock moduleId={m.id} label={m.label} accent={m.accent} />
               </article>
-            ))}
-          </div>
+            );
+          })}
         </div>
       </div>
     </section>
