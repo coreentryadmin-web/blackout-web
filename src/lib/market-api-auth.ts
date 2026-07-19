@@ -32,6 +32,11 @@ export async function requireTierApi(
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
+  const { isAdminUser } = await import("@/lib/admin-access");
+  if (await isAdminUser(userId, sessionClaims)) {
+    return { userId, tier: "premium" };
+  }
+
   // Cache-first tier resolution shared with the page gate (resolveUserTier): ~one Clerk
   // call per user per minute, with last-known-tier fallback so a transient Clerk failure
   // doesn't kick out a paying user. Session JWT claims (tier) skip the Backend getUser when configured.

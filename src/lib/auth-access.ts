@@ -29,6 +29,10 @@ export async function getUserTier(
 export async function requireTier(minTier: Tier) {
   const userId = await requireAuth();
   const { sessionClaims } = await getSession();
+  const { isAdminUser } = await import("@/lib/admin-access");
+  if (await isAdminUser(userId, sessionClaims)) {
+    return { userId, tier: "premium" as Tier };
+  }
   const tier = await getUserTier(userId, sessionClaims);
 
   if (!tierAtLeast(tier, minTier)) {
