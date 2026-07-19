@@ -6,7 +6,6 @@ const legacyCheckout = process.env.NEXT_PUBLIC_WHOP_CHECKOUT_PRO ?? "";
 const requiredVars: Record<string, string | undefined> = {
   NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY,
   NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY,
-  NEXT_PUBLIC_WHOP_CHECKOUT_LIFETIME: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_LIFETIME,
   NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY,
   NEXT_PUBLIC_WHOP_STORE_URL: process.env.NEXT_PUBLIC_WHOP_STORE_URL,
 };
@@ -25,7 +24,6 @@ export const WHOP_CHECKOUT = {
   community: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY ?? "",
   monthly: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY ?? legacyCheckout,
   yearly: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY ?? "",
-  lifetime: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_LIFETIME ?? "",
   store: process.env.NEXT_PUBLIC_WHOP_STORE_URL ?? legacyCheckout,
 };
 
@@ -46,7 +44,4 @@ export const WHOP_COMMUNITY_CHECKOUT_OPTION = WHOP_CHECKOUT.community
 export const WHOP_PREMIUM_CHECKOUT_OPTIONS = [
   { label: "Monthly — $199", href: WHOP_CHECKOUT.monthly },
   { label: "Yearly — $1,999", href: WHOP_CHECKOUT.yearly },
-  // Lifetime DISABLED at launch — Whop caps this account at $2,500/purchase, so a $3,999 lifetime
-  // can't be charged yet. Re-enable this line once Whop lifts the cap (account verification / support):
-  // { label: "Lifetime — $3,999", href: WHOP_CHECKOUT.lifetime },
 ].filter((option) => option.href);

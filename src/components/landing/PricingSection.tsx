@@ -6,7 +6,7 @@ import { LandingCta } from "@/components/landing/LandingCta";
 import { PricingBackdrop } from "@/components/landing/PricingBackdrop";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
 
-type Term = "monthly" | "yearly" | "lifetime";
+type Term = "monthly" | "yearly";
 
 const PLANS: Record<
   Term,
@@ -27,14 +27,6 @@ const PLANS: Record<
     save: "Save $389 vs monthly",
     badge: "Standard issue",
     href: WHOP_CHECKOUT.yearly,
-  },
-  lifetime: {
-    price: "$3,999",
-    per: "once",
-    note: "One payment · permanent access",
-    save: "No renewals",
-    badge: "Permanent",
-    href: WHOP_CHECKOUT.lifetime,
   },
 };
 
@@ -64,7 +56,7 @@ const COMMUNITY_FEATURES: { text: string; on: boolean }[] = [
 ];
 
 const FREE_FEATURES: { text: string; on: boolean }[] = [
-  { text: "Community access & updates", on: true },
+  { text: "Product updates & announcements", on: true },
   { text: "Create your account", on: true },
   { text: "Ticker search", on: true },
   { text: "Discord server", on: false },

@@ -22,7 +22,7 @@ const COMMUNITY = [
 const FREE = [
   "Create your account",
   "Ticker search",
-  "Community access & updates",
+  "Product updates & announcements",
 ];
 
 /** Static pricing — no framer-motion; all 3 tiers visible (no toggle JS). */
