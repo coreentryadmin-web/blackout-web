@@ -61,6 +61,10 @@ jobs:
             --build-arg NEXT_PUBLIC_CLERK_ALLOWED_REDIRECT_ORIGINS="https://blackouttrades.com,https://staging.blackouttrades.com" \
             --build-arg NEXT_PUBLIC_CLERK_SIGN_IN_URL="/sign-in" \
             --build-arg NEXT_PUBLIC_CLERK_SIGN_UP_URL="/sign-up" \
+            --build-arg NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY="${{ secrets.NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY }}" \
+            --build-arg NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY="${{ secrets.NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY }}" \
+            --build-arg NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY="${{ secrets.NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY }}" \
+            --build-arg NEXT_PUBLIC_WHOP_STORE_URL="${{ secrets.NEXT_PUBLIC_WHOP_STORE_URL }}" \
             --build-arg GITHUB_SHA="${{ github.sha }}" \
             -t "${IMAGE}:${IMAGE_TAG}" -t "${IMAGE}:latest" .
           docker push "${IMAGE}:${IMAGE_TAG}"

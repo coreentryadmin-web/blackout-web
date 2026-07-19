@@ -31,7 +31,7 @@ export function UpgradePageShell() {
             kicker="Premium access"
             title="Unlock the desk"
             titleAccent="full floor"
-            subtitle="One membership opens every instrument — live flow, SPX structure, AI analyst, and overnight playbook."
+            subtitle="Community Discord or Premium — pick your lane, upgrade anytime."
             className="mb-10 justify-center text-center [&_h1]:mx-auto [&_p]:mx-auto"
           />
         )}
@@ -43,8 +43,7 @@ export function UpgradePageShell() {
             </p>
             <h1 className="mt-2 font-syne text-2xl font-bold text-white">Unlock the desk</h1>
             <p className="mt-2 text-sm leading-relaxed text-sky-300">
-              One membership opens every instrument — live flow, SPX structure, AI analyst, and
-              overnight playbook.
+              Community Discord or Premium — pick your lane, upgrade anytime.
             </p>
           </div>
         )}
