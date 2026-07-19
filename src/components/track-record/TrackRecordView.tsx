@@ -134,7 +134,7 @@ export function TrackRecordView({ embedded = false }: TrackRecordViewProps) {
         </div>
       )}
 
-        {isInitialLoad && <TrackRecordSkeleton />}
+      {isInitialLoad && <TrackRecordSkeleton />}
 
         {state.kind === "error" && (
           <EmptyState
