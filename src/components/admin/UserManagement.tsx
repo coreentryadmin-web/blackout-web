@@ -49,13 +49,22 @@ type UsersResponse = {
   limit: number;
   pages: number;
   filterNote?: string | null;
+  stats?: {
+    total: number;
+    premium: number;
+    admins: number;
+    community: number;
+  } | null;
 };
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 export function UserManagement() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
+  const [pageLimit, setPageLimit] = useState<number>(50);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [tierFilter, setTierFilter] = useState("");
@@ -68,11 +77,12 @@ export function UserManagement() {
   const [deleteConfirm, setDeleteConfirm] = useState<UserRow | null>(null);
   const [actionError, setActionError] = useState("");
   const [filterNote, setFilterNote] = useState<string | null>(null);
+  const [globalStats, setGlobalStats] = useState<UsersResponse["stats"]>(null);
   const [section, setSection] = useState<"users" | "tools">("users");
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(page), limit: "20" });
+    const params = new URLSearchParams({ page: String(page), limit: String(pageLimit) });
     if (query) params.set("q", query);
     if (tierFilter) params.set("tier", tierFilter);
     if (roleFilter) params.set("role", roleFilter);
@@ -85,10 +95,11 @@ export function UserManagement() {
       setTotal(data.total);
       setPages(data.pages);
       setFilterNote(data.filterNote ?? null);
+      setGlobalStats(data.stats ?? null);
     } finally {
       setLoading(false);
     }
-  }, [page, query, tierFilter, roleFilter]);
+  }, [page, pageLimit, query, tierFilter, roleFilter]);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
@@ -161,8 +172,11 @@ export function UserManagement() {
     fetchUsers();
   };
 
-  const premiumCount = users.filter((u) => u.tier === "premium").length;
-  const adminCount = users.filter((u) => u.role === "admin").length;
+  const premiumCount = globalStats?.premium ?? users.filter((u) => u.tier === "premium").length;
+  const adminCount = globalStats?.admins ?? users.filter((u) => u.role === "admin").length;
+  const totalUsers = tierFilter || roleFilter ? total : (globalStats?.total ?? total);
+  const showingFrom = users.length === 0 ? 0 : (page - 1) * pageLimit + 1;
+  const showingTo = users.length === 0 ? 0 : showingFrom + users.length - 1;
 
   return (
     <div className="admin-v2-users space-y-6">
@@ -189,10 +203,14 @@ export function UserManagement() {
         <>
       {/* Stats bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <MegaStat label="Total users" value={String(total)} tone="cyan" />
-        <MegaStat label="Premium (page)" value={String(premiumCount)} tone="bull" />
-        <MegaStat label="Admins (page)" value={String(adminCount)} tone="violet" />
-        <MegaStat label="Page" value={`${page}/${pages}`} tone="neutral" />
+        <MegaStat
+          label={tierFilter || roleFilter ? "Matching users" : "Total users"}
+          value={String(totalUsers)}
+          tone="cyan"
+        />
+        <MegaStat label="Premium" value={String(premiumCount)} tone="bull" />
+        <MegaStat label="Admins" value={String(adminCount)} tone="violet" />
+        <MegaStat label="Page" value={`${page}/${Math.max(pages, 1)}`} tone="neutral" />
       </div>
 
       {/* Filters */}
@@ -225,6 +243,18 @@ export function UserManagement() {
               { value: "member", label: "Members" },
             ]}
           />
+          <FilterSelect
+            label="Rows"
+            value={String(pageLimit)}
+            onChange={(v) => {
+              setPageLimit(Number(v) || 50);
+              setPage(1);
+            }}
+            options={PAGE_SIZE_OPTIONS.map((n) => ({
+              value: String(n),
+              label: `${n} / page`,
+            }))}
+          />
           <ActionButton variant="primary" onClick={() => setCreateOpen(true)}>
             + Create user
           </ActionButton>
@@ -250,6 +280,7 @@ export function UserManagement() {
         ) : users.length === 0 ? (
           <p className="admin-api-muted p-4">No users found.</p>
         ) : (
+          <div className="admin-users-table-wrap max-h-[min(72vh,960px)] overflow-y-auto">
           <DataTable>
             <thead>
               <tr>
@@ -346,32 +377,36 @@ export function UserManagement() {
               ))}
             </tbody>
           </DataTable>
+          </div>
         )}
 
         {/* Pagination */}
-        {pages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-white/5">
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="admin-action-btn text-[10px]"
-            >
-              ← Prev
-            </button>
-            <span className="text-[10px] text-white/40 font-mono">
-              Page {page} of {pages} ({total} users)
-            </span>
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.min(pages, p + 1))}
-              disabled={page >= pages}
-              className="admin-action-btn text-[10px]"
-            >
-              Next →
-            </button>
-          </div>
-        )}
+        <div className="flex items-center justify-between px-4 py-3 border-t border-white/5 gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="admin-action-btn text-[10px]"
+          >
+            ← Prev
+          </button>
+          <span className="text-[10px] text-white/40 font-mono text-center">
+            {tierFilter || roleFilter ? (
+              <>Showing {showingFrom}–{showingTo} of {total} matching</>
+            ) : (
+              <>Showing {showingFrom}–{showingTo} of {totalUsers} users</>
+            )}
+            {pages > 1 ? ` · page ${page} of ${pages}` : ""}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(pages, p + 1))}
+            disabled={pages <= 1 || page >= pages}
+            className="admin-action-btn text-[10px]"
+          >
+            Next →
+          </button>
+        </div>
       </GlassPanel>
 
       {/* Edit user modal */}

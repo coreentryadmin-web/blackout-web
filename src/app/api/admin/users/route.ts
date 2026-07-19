@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { resolveAdminApi } from "@/lib/admin-access";
 import { logAdminAction } from "@/lib/admin-audit";
-import { listClerkUserIdsByDbTier } from "@/lib/admin-users";
+import {
+  getAdminUserListStats,
+  listClerkUserIdsByDbFilters,
+  shouldUseDbAdminUserList,
+} from "@/lib/admin-users";
 import { isCognitoAuth } from "@/lib/auth-provider";
 import type { BillingKind } from "@/lib/whop";
 
@@ -38,18 +42,6 @@ function mapClerkUser(user: ClerkUser) {
   };
 }
 
-function applyRoleFilter(
-  users: ReturnType<typeof mapClerkUser>[],
-  roleFilter: string
-): ReturnType<typeof mapClerkUser>[] {
-  if (!roleFilter) return users;
-  return users.filter((u) => {
-    if (roleFilter === "admin") return u.role === "admin";
-    if (roleFilter === "member") return u.role !== "admin";
-    return true;
-  });
-}
-
 export async function GET(req: NextRequest) {
   const { actor, denied } = await resolveAdminApi();
   if (denied) return denied;
@@ -71,46 +63,46 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const query = url.searchParams.get("q")?.trim() || "";
   const page = Math.max(1, Number(url.searchParams.get("page") || "1"));
-  const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit") || "20")));
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || "50")));
   const tierFilter = url.searchParams.get("tier") || "";
   const roleFilter = url.searchParams.get("role") || "";
   const offset = (page - 1) * limit;
 
+  const filters = { tier: tierFilter, role: roleFilter, query };
+  const stats = await getAdminUserListStats();
   const client = await clerkClient();
 
-  // Postgres tier index path (free/premium) — accurate paging when not searching.
-  if (
-    !query &&
-    (tierFilter === "free" || tierFilter === "premium") &&
-    !roleFilter
-  ) {
-    const { ids, total } = await listClerkUserIdsByDbTier(tierFilter, limit, offset);
-    if (total > 0 && ids.length > 0) {
-      const { data } = await client.users.getUserList({ userId: ids, limit: ids.length });
-      const byId = new Map(data.map((u) => [u.id, u]));
-      const users = ids
-        .map((id) => byId.get(id))
-        .filter((u): u is ClerkUser => Boolean(u))
-        .map(mapClerkUser);
-      return NextResponse.json({
-        users,
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit),
-        filterNote: "Tier filter uses Postgres index (synced on billing sync and admin edits).",
-      });
-    }
-    if (total === 0) {
+  if (shouldUseDbAdminUserList(filters)) {
+    const { ids, total } = await listClerkUserIdsByDbFilters(filters, limit, offset);
+
+    if (total === 0 || ids.length === 0) {
       return NextResponse.json({
         users: [],
         total: 0,
         page,
         limit,
         pages: 0,
+        stats,
         filterNote: null,
       });
     }
+
+    const { data } = await client.users.getUserList({ userId: ids, limit: ids.length });
+    const byId = new Map(data.map((u) => [u.id, u]));
+    const users = ids
+      .map((id) => byId.get(id))
+      .filter((u): u is ClerkUser => Boolean(u))
+      .map(mapClerkUser);
+
+    return NextResponse.json({
+      users,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+      stats,
+      filterNote: null,
+    });
   }
 
   const params: Parameters<typeof client.users.getUserList>[0] = {
@@ -128,27 +120,7 @@ export async function GET(req: NextRequest) {
   }
 
   const { data, totalCount } = await client.users.getUserList(params);
-
-  let users = data.map(mapClerkUser);
-
-  if (tierFilter === "community") {
-    users = users.filter((u) => u.membershipKind === "community");
-  } else if (tierFilter === "free" || tierFilter === "premium") {
-    users = users.filter((u) => u.tier === tierFilter);
-  }
-
-  users = applyRoleFilter(users, roleFilter);
-
-  const filterNote =
-    tierFilter === "community" || roleFilter
-      ? tierFilter === "community"
-        ? "Community filter applies to the current page — run billing sync to refresh membership_kind metadata."
-        : "Role filter applies to the current Clerk page only — use email search for exact lookup."
-      : tierFilter && tierFilter !== "free" && tierFilter !== "premium"
-        ? null
-        : tierFilter || roleFilter
-          ? "Tier and role filters apply to the current Clerk page only — use email search for exact lookup."
-          : null;
+  const users = data.map(mapClerkUser);
 
   return NextResponse.json({
     users,
@@ -156,6 +128,7 @@ export async function GET(req: NextRequest) {
     page,
     limit,
     pages: Math.ceil(totalCount / limit),
-    filterNote,
+    stats,
+    filterNote: null,
   });
 }

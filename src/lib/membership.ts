@@ -12,6 +12,7 @@ import { isMembershipInDunningGrace } from "@/lib/whop-dunning";
 import { isMembershipRevoked } from "@/lib/whop-revocation";
 import { publishTierChanged } from "@/lib/tier-cache";
 import { sortMemberships } from "@/lib/membership-sort";
+import { upsertAdminUserRow } from "@/lib/admin-users";
 
 export { sortMemberships } from "@/lib/membership-sort";
 
@@ -205,6 +206,18 @@ export async function syncWhopMembershipForEmail(
       whop_user_id: activeMembership?.user?.id,
       whop_membership_id: activeMembership?.id,
       ...(opts?.ignoreAdminTierLock ? { tier_managed_by: null } : {}),
+    });
+    const primaryEmail =
+      user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ?? normalized;
+    await upsertAdminUserRow({
+      clerkUserId: user.id,
+      email: primaryEmail,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      tier: userTier,
+      membershipKind: userBillingKind,
+      role: existingMeta.role === "admin" ? "admin" : "member",
+      whopUserId: activeMembership?.user?.id ?? null,
     });
     updatedUserIds.push(user.id);
     if (userTier === "premium") bestTier = "premium";
