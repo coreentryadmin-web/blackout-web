@@ -17,6 +17,11 @@ import { Modal } from "@/components/ui";
 import type { ToolKey } from "@/lib/tool-access";
 import type { ToolAccessMode, ToolAccessRow } from "@/lib/tool-user-access";
 import { emptyToolAccessMap } from "@/lib/tool-user-access";
+import {
+  ADMIN_ACCESS_LABELS,
+  classifyAdminUserAccess,
+  type AdminUserAccessLabel,
+} from "@/lib/admin-user-access";
 
 type UserRow = {
   id: string;
@@ -32,6 +37,9 @@ type UserRow = {
   createdAt: number;
   lastSignInAt: number | null;
   banned: boolean;
+  accessLabel: AdminUserAccessLabel;
+  deskAccess: boolean;
+  accessSummary: string;
 };
 
 type UserDetail = UserRow & {
@@ -54,6 +62,7 @@ type UsersResponse = {
     premium: number;
     admins: number;
     community: number;
+    free: number;
   } | null;
 };
 
@@ -67,7 +76,7 @@ export function UserManagement() {
   const [pageLimit, setPageLimit] = useState<number>(50);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [tierFilter, setTierFilter] = useState("");
+  const [accessFilter, setAccessFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -84,7 +93,7 @@ export function UserManagement() {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), limit: String(pageLimit) });
     if (query) params.set("q", query);
-    if (tierFilter) params.set("tier", tierFilter);
+    if (accessFilter) params.set("access", accessFilter);
     if (roleFilter) params.set("role", roleFilter);
 
     try {
@@ -99,7 +108,7 @@ export function UserManagement() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageLimit, query, tierFilter, roleFilter]);
+  }, [page, pageLimit, query, accessFilter, roleFilter]);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
@@ -172,9 +181,11 @@ export function UserManagement() {
     fetchUsers();
   };
 
-  const premiumCount = globalStats?.premium ?? users.filter((u) => u.tier === "premium").length;
-  const adminCount = globalStats?.admins ?? users.filter((u) => u.role === "admin").length;
-  const totalUsers = tierFilter || roleFilter ? total : (globalStats?.total ?? total);
+  const premiumCount = globalStats?.premium ?? users.filter((u) => u.accessLabel === "premium").length;
+  const adminCount = globalStats?.admins ?? users.filter((u) => u.accessLabel === "admin").length;
+  const freeCount = globalStats?.free ?? users.filter((u) => u.accessLabel === "free").length;
+  const communityCount = globalStats?.community ?? users.filter((u) => u.accessLabel === "community").length;
+  const totalUsers = accessFilter || roleFilter ? total : (globalStats?.total ?? total);
   const showingFrom = users.length === 0 ? 0 : (page - 1) * pageLimit + 1;
   const showingTo = users.length === 0 ? 0 : showingFrom + users.length - 1;
 
@@ -202,15 +213,16 @@ export function UserManagement() {
       ) : (
         <>
       {/* Stats bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <MegaStat
-          label={tierFilter || roleFilter ? "Matching users" : "Total users"}
+          label={accessFilter || roleFilter ? "Matching" : "Total users"}
           value={String(totalUsers)}
           tone="cyan"
         />
         <MegaStat label="Premium" value={String(premiumCount)} tone="bull" />
+        <MegaStat label="Free signup" value={String(freeCount)} tone="neutral" />
+        <MegaStat label="Community" value={String(communityCount)} tone="neutral" />
         <MegaStat label="Admins" value={String(adminCount)} tone="violet" />
-        <MegaStat label="Page" value={`${page}/${Math.max(pages, 1)}`} tone="neutral" />
       </div>
 
       {/* Filters */}
@@ -223,23 +235,24 @@ export function UserManagement() {
             placeholder="Email, name, or user ID…"
           />
           <FilterSelect
-            label="Tier"
-            value={tierFilter}
-            onChange={(v) => { setTierFilter(v); setPage(1); }}
+            label="Access type"
+            value={accessFilter}
+            onChange={(v) => { setAccessFilter(v); setPage(1); }}
             options={[
-              { value: "", label: "All tiers" },
-              { value: "premium", label: "Premium" },
-              { value: "community", label: "Community ($75)" },
-              { value: "free", label: "Free" },
+              { value: "", label: "All access types" },
+              { value: "premium", label: "Premium (full desk)" },
+              { value: "free", label: "Free (marketing only)" },
+              { value: "community", label: "Community (Discord)" },
+              { value: "admin", label: "Admins" },
             ]}
           />
           <FilterSelect
-            label="Role"
+            label="Clerk role"
             value={roleFilter}
             onChange={(v) => { setRoleFilter(v); setPage(1); }}
             options={[
-              { value: "", label: "All roles" },
-              { value: "admin", label: "Admins" },
+              { value: "", label: "Any role" },
+              { value: "admin", label: "role=admin" },
               { value: "member", label: "Members" },
             ]}
           />
@@ -285,8 +298,8 @@ export function UserManagement() {
             <thead>
               <tr>
                 <th className="admin-th">User</th>
-                <th className="admin-th">Tier</th>
-                <th className="admin-th">Role</th>
+                <th className="admin-th">Access</th>
+                <th className="admin-th">Desk</th>
                 <th className="admin-th">Billing</th>
                 <th className="admin-th">Joined</th>
                 <th className="admin-th">Last seen</th>
@@ -319,10 +332,13 @@ export function UserManagement() {
                     </div>
                   </td>
                   <td className="admin-td">
-                    <TierBadge tier={user.tier} membershipKind={user.membershipKind} />
+                    <AccessBadge
+                      label={user.accessLabel ?? classifyAccessFallback(user)}
+                      summary={user.accessSummary}
+                    />
                   </td>
                   <td className="admin-td">
-                    <RoleBadge role={user.role} />
+                    <DeskAccessBadge allowed={user.deskAccess ?? false} />
                   </td>
                   <td className="admin-td">
                     <span className={clsx(
@@ -391,7 +407,7 @@ export function UserManagement() {
             ← Prev
           </button>
           <span className="text-[10px] text-white/40 font-mono text-center">
-            {tierFilter || roleFilter ? (
+            {accessFilter || roleFilter ? (
               <>Showing {showingFrom}–{showingTo} of {total} matching</>
             ) : (
               <>Showing {showingFrom}–{showingTo} of {totalUsers} users</>
@@ -543,6 +559,19 @@ function EditUserModal({
         {user.firstName} {user.lastName}
       </h3>
       <p className="text-xs text-white/40 font-mono mb-4">{user.id}</p>
+
+      <div className="flex flex-wrap items-center gap-2 mb-4 p-3 rounded border border-white/10 bg-white/[0.02]">
+        <AccessBadge
+          label={user.accessLabel ?? classifyAccessFallback(user)}
+          summary={user.accessSummary}
+        />
+        <DeskAccessBadge allowed={user.deskAccess ?? false} />
+        {user.accessSummary && (
+          <p className="text-[10px] text-white/45 font-mono w-full sm:w-auto sm:flex-1 min-w-[12rem]">
+            {user.accessSummary}
+          </p>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
@@ -809,37 +838,46 @@ function CreateUserModal({
   );
 }
 
-function TierBadge({ tier, membershipKind }: { tier: string; membershipKind?: string | null }) {
-  if (membershipKind === "community") {
-    return (
-      <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-sky-500/15 text-sky-300 border border-sky-500/20">
-        community
-      </span>
-    );
-  }
+function classifyAccessFallback(user: Pick<UserRow, "tier" | "membershipKind" | "role">): AdminUserAccessLabel {
+  return classifyAdminUserAccess({
+    tier: user.tier,
+    membershipKind: user.membershipKind,
+    role: user.role,
+  }).accessLabel;
+}
+
+function AccessBadge({ label, summary }: { label: AdminUserAccessLabel; summary?: string }) {
+  const copy = ADMIN_ACCESS_LABELS[label];
   return (
     <span
       className={clsx(
-        "inline-block px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider",
-        tier === "premium"
-          ? "bg-bull/15 text-bull border border-bull/20"
-          : "bg-white/5 text-white/40 border border-white/10"
+        "inline-block px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider border",
+        label === "admin" && "bg-violet-500/15 text-violet-300 border-violet-500/20",
+        label === "premium" && "bg-bull/15 text-bull border-bull/20",
+        label === "community" && "bg-sky-500/15 text-sky-300 border-sky-500/20",
+        label === "free" && "bg-white/5 text-white/40 border-white/10"
       )}
+      title={summary ?? copy.title}
     >
-      {tier}
+      {copy.short}
     </span>
   );
 }
 
-function RoleBadge({ role }: { role: string }) {
-  if (role === "admin") {
-    return (
-      <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-violet-500/15 text-violet-300 border border-violet-500/20">
-        admin
-      </span>
-    );
-  }
-  return <span className="text-[10px] text-white/20 font-mono">—</span>;
+function DeskAccessBadge({ allowed }: { allowed: boolean }) {
+  return (
+    <span
+      className={clsx(
+        "inline-block px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider border",
+        allowed
+          ? "bg-emerald-500/10 text-emerald-300/90 border-emerald-500/20"
+          : "bg-white/5 text-white/30 border-white/10"
+      )}
+      title={allowed ? "Can open /dashboard and premium desk routes" : "Marketing site and /upgrade only"}
+    >
+      {allowed ? "Desk" : "No desk"}
+    </span>
+  );
 }
 
 function formatDate(ts: number): string {
