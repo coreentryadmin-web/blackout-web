@@ -15,6 +15,7 @@
     "lint:vendor": "node scripts/check-vendor-surfaces.mjs",
     "lint:css": "stylelint \"src/**/*.css\"",
     "whop:remodel": "node scripts/whop-remodel.mjs",
+    "clerk:purge-test-users": "node scripts/clerk-purge-test-users.mjs --dry-run",
     "test": "PLAYBOOK_VERDICT_GUARD_ASSERT=1 node --import tsx --experimental-test-module-mocks --test \"src/**/*.test.ts\"",
     "validate:deploy": "node scripts/validate-deploy.mjs",
     "validate:prod-ui-full": "node scripts/validate-prod-ui-full.mjs",
