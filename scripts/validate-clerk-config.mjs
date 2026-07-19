@@ -6,6 +6,7 @@
  *   npm run validate:clerk-config
  */
 import { mintClerkPremiumSession } from "./audit/lib/prod-clerk-session.mjs";
+import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
 
 const API = "https://api.clerk.com/v1";
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -93,14 +94,63 @@ async function main() {
     const hasTier = payload && Object.prototype.hasOwnProperty.call(payload, "tier");
     const hasRole = payload && Object.prototype.hasOwnProperty.call(payload, "role");
     if (hasTier && hasRole) {
-      rec("JWT tier claim", "PASS", String(payload.tier));
-      rec("JWT role claim", "PASS", String(payload.role ?? ""));
+      rec("JWT tier claim present", "PASS", String(payload.tier ?? ""));
+      rec("JWT role claim present", "PASS", String(payload.role ?? ""));
     } else {
       rec(
         "JWT tier+role claims",
         "WARN",
-        "not in session token yet — run npm run clerk:recommendations-apply and paste claims in Dashboard"
+        "not in session token — paste claims from npm run clerk:recommendations-apply"
       );
+    }
+
+    const tag = Date.now();
+    const probeUser = await fetch(`${API}/users`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email_address: [`jwt-probe-${tag}@blackouttrades.com`],
+        phone_number: [generateDefaultAuditPhone()],
+        public_metadata: { tier: "premium", role: "admin" },
+        skip_password_requirement: true,
+        skip_password_checks: true,
+        skip_legal_checks: true,
+      }),
+    });
+    const created = await probeUser.json();
+    const probeId = created?.id;
+    if (probeId) {
+      const tokRes = await fetch(`${API}/sign_in_tokens`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: probeId, expires_in_seconds: 120 }),
+      });
+      const tok = await tokRes.json();
+      const { chromium } = await import("playwright");
+      const browser = await chromium.launch({ headless: true });
+      const page = await browser.newPage();
+      await page.goto(`${BASE}/sign-in?__clerk_ticket=${encodeURIComponent(tok.token)}`, {
+        waitUntil: "domcontentloaded",
+        timeout: 60_000,
+      });
+      await page.waitForTimeout(2000);
+      const cookies = await page.context().cookies();
+      const probeJwt = cookies.find((c) => c.name === "__session")?.value;
+      const probePayload = probeJwt ? decodeJwtPayload(probeJwt) : null;
+      await browser.close();
+      await fetch(`${API}/users/${probeId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${secret}` },
+      });
+      if (probePayload?.tier === "premium") {
+        rec("JWT tier mirrors metadata (premium probe)", "PASS");
+      } else {
+        rec(
+          "JWT tier mirrors metadata (premium probe)",
+          "FAIL",
+          `metadata premium but JWT tier=${String(probePayload?.tier)} — use {{user.public_metadata.tier}} in Dashboard session claims (not a literal "free")`
+        );
+      }
     }
     await session.cleanup?.();
   }
