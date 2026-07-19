@@ -1,14 +1,26 @@
 import { redirect } from "next/navigation";
 import { requireAuth } from "@/lib/auth-access";
 import { isAdminEmail } from "@/lib/admin-emails";
-import { auth } from "@/lib/auth-server";
+import { auth, getSession } from "@/lib/auth-server";
 import { isCognitoAuth } from "@/lib/auth-provider";
+import { roleFromSessionClaims } from "@/lib/clerk-session-claims";
 import { getUserProfile, isUserAdmin } from "@/lib/user-directory";
 
 export { isAdminEmail } from "@/lib/admin-emails";
 
-export async function isAdminUser(userId: string): Promise<boolean> {
+export async function isAdminUser(
+  userId: string,
+  sessionClaims?: Record<string, unknown> | null
+): Promise<boolean> {
   if (isCognitoAuth()) return isUserAdmin(userId);
+
+  const roleFromJwt = roleFromSessionClaims(sessionClaims);
+  if (roleFromJwt === "admin") return true;
+  if (roleFromJwt === "member") {
+    const profile = await getUserProfile(userId);
+    return isAdminEmail(profile?.email ?? null);
+  }
+
   const { clerkClient } = await import("@clerk/nextjs/server");
   const user = await (await clerkClient()).users.getUser(userId);
   const role = String(user.publicMetadata?.role ?? "").toLowerCase();
@@ -19,10 +31,11 @@ export async function isAdminUser(userId: string): Promise<boolean> {
 
 export async function requireAdmin(): Promise<{ userId: string; email: string | null }> {
   const userId = await requireAuth();
+  const { sessionClaims } = await getSession();
   const profile = await getUserProfile(userId);
   const email = profile?.email ?? null;
 
-  if (!(await isAdminUser(userId))) {
+  if (!(await isAdminUser(userId, sessionClaims))) {
     redirect("/dashboard");
   }
 
@@ -30,11 +43,11 @@ export async function requireAdmin(): Promise<{ userId: string; email: string | 
 }
 
 export async function getAdminStatus(): Promise<{ admin: boolean; email: string | null }> {
-  const { userId } = await auth();
+  const { userId, sessionClaims } = await auth();
   if (!userId) return { admin: false, email: null };
   const profile = await getUserProfile(userId);
   if (!profile) return { admin: false, email: null };
-  const admin = await isAdminUser(userId);
+  const admin = await isAdminUser(userId, sessionClaims);
   return { admin, email: profile.email };
 }
 
@@ -55,7 +68,8 @@ export async function resolveAdminApi(): Promise<{
 
   const profile = await getUserProfile(userId);
   const email = profile?.email ?? null;
-  const isAdmin = await isAdminUser(userId);
+  const { sessionClaims } = await getSession();
+  const isAdmin = await isAdminUser(userId, sessionClaims);
 
   if (!isAdmin) {
     return {

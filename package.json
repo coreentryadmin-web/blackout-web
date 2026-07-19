@@ -19,6 +19,8 @@
     "validate:deploy": "node scripts/validate-deploy.mjs",
     "validate:prod-ui-full": "node scripts/validate-prod-ui-full.mjs",
     "validate:prod-admin-ui": "node scripts/validate-prod-admin-ui.mjs",
+    "clerk:recommendations-apply": "node scripts/clerk-recommendations-apply.mjs",
+    "validate:clerk-config": "node scripts/validate-clerk-config.mjs",
     "validate:vector-push-gate": "node scripts/vector-staging-e2e.mjs",
     "validate:vector-hardcore": "node scripts/vector-hardcore-e2e.mjs",
     "validate:staging": "node scripts/staging-validate.mjs",

@@ -27,17 +27,17 @@ function jsonResponse(body: unknown, status: number): Response {
 export async function requireTierApi(
   minTier: Tier
 ): Promise<{ userId: string; tier: Tier } | Response> {
-  const { userId } = await auth();
+  const { userId, sessionClaims } = await auth();
   if (!userId) {
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
   // Cache-first tier resolution shared with the page gate (resolveUserTier): ~one Clerk
   // call per user per minute, with last-known-tier fallback so a transient Clerk failure
-  // doesn't kick out a paying user.
+  // doesn't kick out a paying user. Session JWT claims (tier) skip the Backend getUser when configured.
   let tier: Tier;
   try {
-    tier = await resolveUserTier(userId);
+    tier = await resolveUserTier(userId, sessionClaims);
   } catch (err) {
     // Clerk unreachable AND no cached tier → RETRYABLE 503 (not a hard 401/500) so the
     // client backs off and retries instead of seeing a misleading "Unauthorized".

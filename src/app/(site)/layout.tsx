@@ -42,8 +42,8 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
   // gates are the real access boundary — this is cosmetic, so it fails open.
   let lockedTools: ToolKey[] = [];
   try {
-    const { userId } = await auth();
-    if (userId && !(await isAdminUser(userId))) lockedTools = lockedToolKeys();
+    const { userId, sessionClaims } = await auth();
+    if (userId && !(await isAdminUser(userId, sessionClaims))) lockedTools = lockedToolKeys();
   } catch {
     lockedTools = [];
   }
