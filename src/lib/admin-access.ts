@@ -16,15 +16,12 @@ export async function isAdminUser(
 
   const roleFromJwt = roleFromSessionClaims(sessionClaims);
   if (roleFromJwt === "admin") return true;
-  if (roleFromJwt === "member") {
-    const profile = await getUserProfile(userId);
-    return isAdminEmail(profile?.email ?? null);
-  }
 
   const { clerkClient } = await import("@clerk/nextjs/server");
   const user = await (await clerkClient()).users.getUser(userId);
   const role = String(user.publicMetadata?.role ?? "").toLowerCase();
   if (role === "admin") return true;
+
   const email = user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress;
   return isAdminEmail(email);
 }
