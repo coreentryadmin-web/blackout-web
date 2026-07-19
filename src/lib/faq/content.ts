@@ -117,11 +117,19 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
   member: [
     {
       q: "How do I get access?",
-      a: "Create your free BlackOut account, then choose monthly or yearly access using the same email. One click unlocks the full platform — same login, full clearance.",
+      a: "Create your free BlackOut account, then pick a plan: Community ($75/mo) for Discord-only access — live signals, daily reads, and the room — or Premium ($199/mo or $1,999/yr) to unlock the full platform and Discord. Same email, same login — upgrade anytime from your account.",
+    },
+    {
+      q: "What's the difference between Community and Premium?",
+      a: "Community gives you the private Discord server — daily live signals, market reads, real-time session discussions, and evening recaps. Premium includes everything in Community plus the full platform: the SPX Slayer desk, HELIX live flow feed, Largo desk analyst, GEX / dealer positioning, dark-pool activity, Night Hawk, strike-level heatmaps, and the graded play log.",
     },
     {
       q: "What's included in Premium?",
-      a: "The entire arsenal, one membership: the SPX Slayer desk, the HELIX live flow feed, Largo, GEX / dealer positioning, dark-pool activity, Night Hawk, the market heatmap, and the public play log. One tier, full clearance — nothing held back.",
+      a: "The entire arsenal, one membership: the SPX Slayer desk, the HELIX live flow feed, Largo, GEX / dealer positioning, dark-pool activity, Night Hawk, the market heatmap, the graded play log — and full Discord access. One tier, full clearance — nothing held back.",
+    },
+    {
+      q: "Can I upgrade from Community to Premium later?",
+      a: "Yes — upgrade from your account at any time. Your Community subscription is replaced by Premium, which includes everything Community offers plus the full platform.",
     },
     {
       q: "Can I cancel anytime?",
