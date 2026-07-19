@@ -4,7 +4,9 @@ import { type Tier } from "@/lib/tiers";
 import {
   getWhopClient,
   PREMIUM_MEMBERSHIP_STATUSES,
+  resolveBillingKindFromMemberships,
   resolveTierFromMemberships,
+  type BillingKind,
 } from "@/lib/whop";
 import { isMembershipInDunningGrace } from "@/lib/whop-dunning";
 import { isMembershipRevoked } from "@/lib/whop-revocation";
@@ -17,6 +19,7 @@ type MembershipMetadata = {
   tier?: Tier;
   whop_user_id?: string;
   whop_membership_id?: string;
+  membership_kind?: BillingKind;
 };
 
 export async function findClerkUsersByEmail(email: string) {
@@ -75,7 +78,7 @@ async function findWhopUserIdsByEmail(
 async function resolveMembershipTierForEmail(
   normalized: string,
   companyId: string
-): Promise<{ tier: Tier; activeMembership?: MembershipListResponse }> {
+): Promise<{ tier: Tier; billingKind: BillingKind; activeMembership?: MembershipListResponse }> {
   const whop = getWhopClient();
   const userIds = await findWhopUserIdsByEmail(normalized, companyId);
 
@@ -120,12 +123,14 @@ async function resolveMembershipTierForEmail(
     }
   }
   const tier = resolveTierFromMemberships(sorted, revoked, dunningGrace);
+  const billingKind = resolveBillingKindFromMemberships(sorted, revoked, dunningGrace);
   const activeMembership = sorted.find((m) => !revoked.has(m.id)) ?? sorted[0];
-  return { tier, activeMembership };
+  return { tier, billingKind, activeMembership };
 }
 
 export async function syncWhopMembershipForEmail(email: string): Promise<{
   tier: Tier;
+  billingKind: BillingKind;
   updatedUserIds: string[];
 }> {
   const companyId = process.env.WHOP_COMPANY_ID?.trim();
@@ -139,8 +144,8 @@ export async function syncWhopMembershipForEmail(email: string): Promise<{
   // No Clerk account yet (e.g. paid before signing up): resolve the triggering email so the caller
   // still gets a tier, but there's nothing to write.
   if (clerkUsers.length === 0) {
-    const { tier } = await resolveMembershipTierForEmail(normalized, companyId);
-    return { tier, updatedUserIds: [] };
+    const { tier, billingKind } = await resolveMembershipTierForEmail(normalized, companyId);
+    return { tier, billingKind, updatedUserIds: [] };
   }
 
   // Resolve EACH matched Clerk user across ALL their verified emails — premium if ANY of them has a
@@ -149,6 +154,7 @@ export async function syncWhopMembershipForEmail(email: string): Promise<{
   // (audit launch-path #7). A member:email:read outage throws out of the inner resolve, aborting the
   // whole sync (caller keeps prior tiers) rather than writing 'free'.
   let bestTier: Tier = "free";
+  let bestBillingKind: BillingKind = "free";
   const updatedUserIds: string[] = [];
   for (const user of clerkUsers) {
     const emails = new Set<string>([normalized]);
@@ -161,27 +167,38 @@ export async function syncWhopMembershipForEmail(email: string): Promise<{
     }
 
     let userTier: Tier = "free";
+    let userBillingKind: BillingKind = "free";
     let activeMembership: MembershipListResponse | undefined;
     for (const e of emails) {
       const r = await resolveMembershipTierForEmail(e, companyId);
       if (!activeMembership) activeMembership = r.activeMembership;
+      if (r.billingKind === "premium") userBillingKind = "premium";
+      else if (r.billingKind === "community" && userBillingKind !== "premium") {
+        userBillingKind = "community";
+      }
       if (r.tier === "premium") {
         userTier = "premium";
+        userBillingKind = "premium";
         activeMembership = r.activeMembership;
-        break; // premium wins — no need to check the rest
+        break;
       }
     }
 
     await updateClerkMembershipMetadata(user.id, {
       tier: userTier,
+      membership_kind: userBillingKind,
       whop_user_id: activeMembership?.user?.id,
       whop_membership_id: activeMembership?.id,
     });
     updatedUserIds.push(user.id);
     if (userTier === "premium") bestTier = "premium";
+    if (userBillingKind === "premium") bestBillingKind = "premium";
+    else if (userBillingKind === "community" && bestBillingKind !== "premium") {
+      bestBillingKind = "community";
+    }
   }
 
-  return { tier: bestTier, updatedUserIds };
+  return { tier: bestTier, billingKind: bestBillingKind, updatedUserIds };
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   upsertAdminUserRow,
 } from "@/lib/admin-users";
 import { isCognitoAuth } from "@/lib/auth-provider";
+import { deleteUserDataForClerkId } from "@/lib/db";
 import { updateClerkMembershipMetadata } from "@/lib/membership";
 import { parseTier } from "@/lib/tiers";
 import { publishTierChanged } from "@/lib/tier-cache";
@@ -42,6 +43,7 @@ export async function GET(
       lastName: user.lastName,
       imageUrl: user.imageUrl,
       tier: String(meta.tier ?? "free"),
+      membershipKind: String(meta.membership_kind ?? "") || null,
       role: String(meta.role ?? ""),
       whopUserId: meta.whop_user_id ?? null,
       whopMembershipId: meta.whop_membership_id ?? null,
@@ -178,4 +180,55 @@ export async function PATCH(
     role: String(meta.role ?? ""),
     banned: updated.banned,
   });
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { actor, denied } = await resolveAdminApi();
+  if (denied) return denied;
+
+  if (isCognitoAuth()) {
+    return NextResponse.json({ error: "User management requires Clerk auth." }, { status: 501 });
+  }
+
+  const { id } = await params;
+  const selfErr = assertAdminSelfGuard(actor!.userId, id, "delete");
+  if (selfErr) {
+    return NextResponse.json({ error: selfErr }, { status: 400 });
+  }
+
+  const client = await clerkClient();
+  let email: string | null = null;
+  try {
+    const user = await client.users.getUser(id);
+    email =
+      user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ?? null;
+  } catch (err) {
+    const status = (err as { status?: number })?.status;
+    if (status === 404) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+    throw err;
+  }
+
+  await client.users.deleteUser(id);
+  const deleted = await deleteUserDataForClerkId(id);
+  publishTierChanged(id);
+
+  void logAdminAction({
+    actorUserId: actor?.userId,
+    actorEmail: actor?.email,
+    action: "admin_user_delete",
+    detail: { targetUserId: id, targetEmail: email, deleted },
+  });
+
+  console.log(
+    "[admin-users] %s deleted user %s",
+    actor!.email,
+    id.replace(/[\r\n]/g, "")
+  );
+
+  return NextResponse.json({ ok: true, deleted });
 }

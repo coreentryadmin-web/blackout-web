@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import {
@@ -67,6 +68,8 @@ const ACTION_META: Record<string, { icon: string; color: string }> = {
   spx_live_engine:     { icon: "◎", color: "text-gold"   },
   incident_ack:        { icon: "✓", color: "text-gold"   },
   incident_resolve:    { icon: "✓", color: "text-bull"   },
+  admin_user:          { icon: "◎", color: "text-violet"  },
+  admin_users:         { icon: "◎", color: "text-violet"  },
 };
 
 function actionMeta(action: string) {
@@ -568,6 +571,7 @@ type HealthState = { payload: AdminHealthPayload | null; loading: boolean };
 type ErrorsState = { events: ErrorEventRow[]; loading: boolean; error: string | null; lastAt: string | null };
 
 export function AdminOperationsDashboard() {
+  const searchParams = useSearchParams();
   // Shared (SWR, keyed by URL) with every other admin panel reading the same data —
   // this dashboard no longer runs its own independent poll loop for either.
   const { data: healthData, isLoading: healthLoading } = useAdminHealth();
@@ -589,6 +593,13 @@ export function AdminOperationsDashboard() {
   const [errors, setErrors] = useState<ErrorsState>({ events: [], loading: true, error: null, lastAt: null });
   const [auditAction, setAuditAction] = useState("");
   const [auditActor, setAuditActor] = useState("");
+
+  useEffect(() => {
+    const action = searchParams.get("auditAction")?.trim();
+    const actor = searchParams.get("auditActor")?.trim();
+    if (action) setAuditAction(action);
+    if (actor) setAuditActor(actor);
+  }, [searchParams]);
 
   // Load audit trail
   const loadAudit = useCallback(async () => {

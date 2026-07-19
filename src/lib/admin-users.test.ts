@@ -17,4 +17,5 @@ test("assertAdminSelfGuard blocks self ban and demote", () => {
   assert.equal(assertAdminSelfGuard("u1", "u2", "ban"), null);
   assert.match(assertAdminSelfGuard("u1", "u1", "ban")!, /cannot ban/i);
   assert.match(assertAdminSelfGuard("u1", "u1", "demote")!, /admin role/i);
+  assert.match(assertAdminSelfGuard("u1", "u1", "delete")!, /cannot delete/i);
 });

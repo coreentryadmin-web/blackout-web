@@ -956,6 +956,9 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     CREATE INDEX IF NOT EXISTS users_email_idx ON users(email);
   `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS users_tier_idx ON users(tier);
+  `);
   // Refund/chargeback revocation denylist — Postgres is the durable source of truth
   // (a security denylist must survive a Redis outage/flush); whop-revocation.ts keeps
   // Redis in front as the hot cache. Rows are permanent: a refunded one-time purchase

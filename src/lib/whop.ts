@@ -4,6 +4,9 @@ import type { Tier } from "@/lib/tiers";
 
 type WhopMembershipLike = Pick<MembershipListResponse, "id" | "status" | "plan" | "product">;
 
+/** Site access tier vs Discord-only community subscribers (still `free` on desk). */
+export type BillingKind = "premium" | "community" | "free";
+
 export const PREMIUM_MEMBERSHIP_STATUSES: WhopMembershipLike["status"][] = [
   "active",
   "trialing",
@@ -38,6 +41,14 @@ export function getPremiumProductIds(): string[] {
     process.env.WHOP_PREMIUM_PRODUCT_IDS,
     process.env.WHOP_PRO_PRODUCT_IDS,
     process.env.WHOP_ELITE_PRODUCT_IDS
+  );
+}
+
+/** Discord Community ($75) — desk stays free; override via WHOP_COMMUNITY_PRODUCT_IDS. */
+export function getCommunityProductIds(): string[] {
+  return parseIdList(
+    process.env.WHOP_COMMUNITY_PRODUCT_IDS,
+    "prod_hPHU7bWcvWg8T"
   );
 }
 
@@ -116,6 +127,43 @@ export function resolveTierFromMemberships(
     if (revokedIds?.has(membership.id)) continue;
     if (resolveTierFromMembership(membership, { dunningGraceIds }) === "premium") {
       return "premium";
+    }
+  }
+  return "free";
+}
+
+export function resolveBillingKindFromMembership(
+  membership: WhopMembershipLike,
+  opts?: { dunningGraceIds?: ReadonlySet<string> }
+): BillingKind | null {
+  if (!ACTIVE_STATUSES.has(membership.status)) return null;
+  if (
+    membership.status === "past_due" &&
+    !opts?.dunningGraceIds?.has(membership.id)
+  ) {
+    return null;
+  }
+  if (resolveTierFromMembership(membership, opts) === "premium") return "premium";
+  const communityProducts = getCommunityProductIds();
+  if (communityProducts.includes(membership.product.id)) return "community";
+  return null;
+}
+
+export function resolveBillingKindFromMemberships(
+  memberships: WhopMembershipLike[],
+  revokedIds?: ReadonlySet<string>,
+  dunningGraceIds?: ReadonlySet<string>
+): BillingKind {
+  for (const membership of memberships) {
+    if (revokedIds?.has(membership.id)) continue;
+    if (resolveBillingKindFromMembership(membership, { dunningGraceIds }) === "premium") {
+      return "premium";
+    }
+  }
+  for (const membership of memberships) {
+    if (revokedIds?.has(membership.id)) continue;
+    if (resolveBillingKindFromMembership(membership, { dunningGraceIds }) === "community") {
+      return "community";
     }
   }
   return "free";

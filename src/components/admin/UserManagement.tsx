@@ -21,6 +21,7 @@ type UserRow = {
   lastName: string | null;
   imageUrl: string | null;
   tier: string;
+  membershipKind: string | null;
   role: string;
   whopUserId: string | null;
   whopMembershipId: string | null;
@@ -59,6 +60,7 @@ export function UserManagement() {
   const [createOpen, setCreateOpen] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [banConfirm, setBanConfirm] = useState<UserRow | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<UserRow | null>(null);
   const [actionError, setActionError] = useState("");
   const [filterNote, setFilterNote] = useState<string | null>(null);
 
@@ -138,6 +140,21 @@ export function UserManagement() {
     fetchUsers();
   };
 
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    setActionError("");
+    const res = await fetch(`/api/admin/users/${deleteConfirm.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setActionError(data.error ?? "Delete failed");
+      return;
+    }
+    setDeleteConfirm(null);
+    setEditOpen(false);
+    setSelectedUser(null);
+    fetchUsers();
+  };
+
   const premiumCount = users.filter((u) => u.tier === "premium").length;
   const adminCount = users.filter((u) => u.role === "admin").length;
 
@@ -167,6 +184,7 @@ export function UserManagement() {
             options={[
               { value: "", label: "All tiers" },
               { value: "premium", label: "Premium" },
+              { value: "community", label: "Community ($75)" },
               { value: "free", label: "Free" },
             ]}
           />
@@ -184,10 +202,10 @@ export function UserManagement() {
             + Create user
           </ActionButton>
           <Link
-            href="/admin"
+            href="/admin?tab=ops&auditAction=admin_user"
             className="text-[10px] font-mono text-white/30 hover:text-cyan-400/80 uppercase tracking-wider"
           >
-            Audit log →
+            User audit log →
           </Link>
         </div>
         {filterNote && (
@@ -243,7 +261,7 @@ export function UserManagement() {
                     </div>
                   </td>
                   <td className="admin-td">
-                    <TierBadge tier={user.tier} />
+                    <TierBadge tier={user.tier} membershipKind={user.membershipKind} />
                   </td>
                   <td className="admin-td">
                     <RoleBadge role={user.role} />
@@ -337,9 +355,20 @@ export function UserManagement() {
           onClose={() => { setEditOpen(false); setSelectedUser(null); }}
           onSaved={() => { fetchUsers(); setEditOpen(false); setSelectedUser(null); }}
           onSync={() => selectedUser.email ? syncWhop(selectedUser.email) : undefined}
+          onDelete={() => setDeleteConfirm(selectedUser)}
           syncing={syncing === selectedUser.email}
         />
       )}
+
+      {/* Delete confirm */}
+      <ConfirmModal
+        open={!!deleteConfirm}
+        title="Delete user permanently?"
+        body={`This removes ${deleteConfirm?.email ?? deleteConfirm?.id} from auth and deletes their Postgres rows. This cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteConfirm(null)}
+      />
 
       {/* Create user modal */}
       <CreateUserModal
@@ -371,6 +400,7 @@ function EditUserModal({
   onClose,
   onSaved,
   onSync,
+  onDelete,
   syncing,
 }: {
   user: UserDetail;
@@ -378,6 +408,7 @@ function EditUserModal({
   onClose: () => void;
   onSaved: () => void;
   onSync: () => void;
+  onDelete: () => void;
   syncing: boolean;
 }) {
   const [firstName, setFirstName] = useState(user.firstName ?? "");
@@ -386,6 +417,8 @@ function EditUserModal({
   const [role, setRole] = useState(user.role);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [signInUrl, setSignInUrl] = useState<string | null>(null);
+  const [linkLoading, setLinkLoading] = useState(false);
 
   useEffect(() => {
     setFirstName(user.firstName ?? "");
@@ -394,6 +427,22 @@ function EditUserModal({
     setRole(user.role);
     setError("");
   }, [user]);
+
+  const mintSignInLink = async () => {
+    setLinkLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/sign-in-link`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Could not create sign-in link");
+        return;
+      }
+      setSignInUrl(data.url);
+    } finally {
+      setLinkLoading(false);
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -476,6 +525,10 @@ function EditUserModal({
             {user.phoneNumbers?.join(", ") ?? "—"}
           </div>
           <div>
+            <span className="text-white/30">Billing kind: </span>
+            {user.membershipKind ?? "—"}
+          </div>
+          <div>
             <span className="text-white/30">Billing user: </span>
             {user.whopUserId ?? "—"}
           </div>
@@ -512,12 +565,30 @@ function EditUserModal({
         </pre>
       </details>
 
+      {signInUrl && (
+        <div className="mb-4 p-2 rounded border border-cyan-500/20 bg-cyan-500/5">
+          <p className="text-[10px] text-white/40 font-mono mb-1">One-time sign-in link (15 min):</p>
+          <input
+            className="admin-filter-input w-full text-[10px]"
+            readOnly
+            value={signInUrl}
+            onFocus={(e) => e.target.select()}
+          />
+        </div>
+      )}
+
       {error && (
         <p className="text-[11px] text-red-400 font-mono mb-2">{error}</p>
       )}
 
-      <div className="admin-confirm-actions">
+      <div className="admin-confirm-actions flex-wrap">
         <ActionButton onClick={onClose}>Cancel</ActionButton>
+        <ActionButton onClick={onDelete} variant="danger">
+          Delete
+        </ActionButton>
+        <ActionButton onClick={mintSignInLink} disabled={linkLoading}>
+          {linkLoading ? "…" : "Sign-in link"}
+        </ActionButton>
         <ActionButton onClick={onSync} disabled={syncing || !user.email}>
           {syncing ? "Syncing…" : "Sync billing"}
         </ActionButton>
@@ -656,7 +727,14 @@ function CreateUserModal({
   );
 }
 
-function TierBadge({ tier }: { tier: string }) {
+function TierBadge({ tier, membershipKind }: { tier: string; membershipKind?: string | null }) {
+  if (membershipKind === "community") {
+    return (
+      <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-sky-500/15 text-sky-300 border border-sky-500/20">
+        community
+      </span>
+    );
+  }
   return (
     <span
       className={clsx(

@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
       detail: {
         targetEmail: email.trim(),
         tier: result.tier,
+        billingKind: result.billingKind,
         updatedUsers: result.updatedUserIds.length,
       },
     });
@@ -43,7 +44,10 @@ export async function POST(req: NextRequest) {
       email.trim().replace(/[\r\n]/g, ""),
       result.tier
     );
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      billingKind: result.billingKind,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Sync failed";
     return NextResponse.json({ error: msg }, { status: 500 });

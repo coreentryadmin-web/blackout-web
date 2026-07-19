@@ -9,15 +9,42 @@ export function parseAdminUserRole(value: unknown): AdminUserRole | undefined {
   return undefined;
 }
 
-/** Prevent admins from locking themselves out via ban or role demotion. */
+/** Prevent admins from locking themselves out via ban, demotion, or delete. */
 export function assertAdminSelfGuard(
   actorUserId: string,
   targetUserId: string,
-  action: "ban" | "demote"
+  action: "ban" | "demote" | "delete"
 ): string | null {
   if (actorUserId !== targetUserId) return null;
   if (action === "ban") return "You cannot ban your own account";
+  if (action === "delete") return "You cannot delete your own account";
   return "You cannot remove your own admin role";
+}
+
+/** Postgres-backed tier listing when Clerk metadata filter is unavailable. */
+export async function listClerkUserIdsByDbTier(
+  tier: string,
+  limit: number,
+  offset: number
+): Promise<{ ids: string[]; total: number }> {
+  if (!dbConfigured()) return { ids: [], total: 0 };
+  const [rows, countRow] = await Promise.all([
+    dbQuery<{ clerk_user_id: string }>(
+      `SELECT clerk_user_id FROM users
+       WHERE tier = $1
+       ORDER BY updated_at DESC
+       LIMIT $2 OFFSET $3`,
+      [tier, limit, offset]
+    ),
+    dbQuery<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM users WHERE tier = $1`,
+      [tier]
+    ),
+  ]);
+  return {
+    ids: rows.rows.map((r) => r.clerk_user_id),
+    total: parseInt(countRow.rows[0]?.count ?? "0", 10),
+  };
 }
 
 /** Keep Postgres users row aligned with Clerk metadata for admin search/reporting. */
