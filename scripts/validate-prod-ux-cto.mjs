@@ -70,6 +70,10 @@ async function runNpmScript(script) {
 
 async function mintTicketUser({ emailPrefix, metadata }) {
   const tag = crypto.randomBytes(4).toString("hex");
+  const meta = { ...metadata };
+  if (meta.tier === "premium" || meta.tier === "pro") {
+    meta.tier_managed_by = "admin";
+  }
   const user = await clerk("/users", {
     method: "POST",
     body: JSON.stringify({
@@ -78,7 +82,7 @@ async function mintTicketUser({ emailPrefix, metadata }) {
       skip_password_requirement: true,
       skip_password_checks: true,
       skip_legal_checks: true,
-      public_metadata: metadata,
+      public_metadata: meta,
     }),
   });
   const token = await clerk("/sign_in_tokens", {
