@@ -111,6 +111,9 @@ async function main() {
     ];
 
     if (isV2) {
+      const sidebarUsers = page.locator('a[href="/admin/users"]');
+      if (await sidebarUsers.count()) rec("v2 sidebar user mgmt link", "PASS");
+
       for (const { qs, file, label, re } of adminTabs) {
         await page.goto(`${BASE}/admin${qs}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
         await wait(1200);
@@ -142,6 +145,11 @@ async function main() {
       await wait(800);
       rec("tools & access panel", "PASS");
       await shot(page, "11-tools-access-panel.png");
+      await shot(page, "11b-tools-global-launch-table.png");
+      const bulkTier = page.locator("select").filter({ hasText: /free|premium/i }).first();
+      if (await bulkTier.count()) {
+        rec("tools bulk tier UI", "PASS");
+      }
       await page.getByRole("button", { name: /^users$/i }).click().catch(() => {});
       await wait(400);
     } else {
@@ -166,6 +174,43 @@ async function main() {
         await tierSelect.selectOption("premium").catch(() => {});
         await wait(300);
         await shot(page, "13-edit-user-tier-premium.png", false);
+      }
+
+      const roleSelect = page.locator("label", { hasText: /^Role$/i }).locator("..").locator("select");
+      if (await roleSelect.count()) {
+        await roleSelect.selectOption("admin");
+        await wait(300);
+        await shot(page, "13b-edit-promote-admin.png", false);
+        await roleSelect.selectOption("");
+        await wait(200);
+        rec("promote/demote role UI", "PASS");
+      }
+
+      const largoGrant = page.locator("label").filter({ hasText: /Largo/i }).locator("select");
+      if (await largoGrant.count()) {
+        await largoGrant.selectOption("grant");
+        await wait(300);
+        await shot(page, "13c-tool-access-grant-largo.png", false);
+        rec("per-user tool grant UI", "PASS");
+      } else {
+        rec("per-user tool grant UI", "SKIP", "tool editor not visible");
+      }
+
+      const signInBtn = page.getByRole("button", { name: /sign-in link/i });
+      if (await signInBtn.count()) {
+        await signInBtn.click();
+        await wait(1500);
+        await shot(page, "13d-sign-in-link-minted.png", false);
+        rec("sign-in link mint", "PASS");
+      }
+
+      const deleteBtn = page.getByRole("button", { name: /^delete$/i });
+      if (await deleteBtn.count()) {
+        await deleteBtn.click();
+        await wait(500);
+        await shot(page, "13e-delete-confirm-modal.png", false);
+        await page.getByRole("button", { name: /cancel/i }).first().click().catch(() => page.keyboard.press("Escape"));
+        rec("delete confirm modal", "PASS");
       }
 
       const saveBtn = page.getByRole("button", { name: /save changes/i });

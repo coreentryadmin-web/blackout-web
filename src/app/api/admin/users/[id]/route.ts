@@ -131,7 +131,7 @@ export async function PATCH(
   if ("role" in body) {
     const parsedRole = parseAdminUserRole(body.role)!;
     await client.users.updateUserMetadata(id, {
-      publicMetadata: { role: parsedRole === "admin" ? "admin" : undefined },
+      publicMetadata: { role: parsedRole === "admin" ? "admin" : null },
     });
   }
 
