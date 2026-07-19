@@ -7,7 +7,7 @@ import type { SpxAdminDashboardPayload } from "@/lib/admin-spx-dashboard";
 import type { PlayOutcomeRow } from "@/features/spx/lib/spx-play-outcomes";
 import type { JournalEntry } from "@/lib/journal/journal-core";
 import { JournalEditor } from "@/components/admin/JournalEditor";
-import { SignalAnalyticsPanel } from "@/features/spx";
+import { SignalAnalyticsPanel } from "@/features/spx/components/SignalAnalyticsPanel";
 import { AdminSpxTerminal } from "@/components/admin/AdminSpxTerminal";
 import {
   ActionButton,
