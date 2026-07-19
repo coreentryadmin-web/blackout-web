@@ -7,6 +7,7 @@ const requiredVars: Record<string, string | undefined> = {
   NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY,
   NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY,
   NEXT_PUBLIC_WHOP_CHECKOUT_LIFETIME: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_LIFETIME,
+  NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY,
   NEXT_PUBLIC_WHOP_STORE_URL: process.env.NEXT_PUBLIC_WHOP_STORE_URL,
 };
 const missingVars = Object.entries(requiredVars)
@@ -21,6 +22,7 @@ if (missingVars.length > 0) {
 }
 
 export const WHOP_CHECKOUT = {
+  community: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY ?? "",
   monthly: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY ?? legacyCheckout,
   yearly: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY ?? "",
   lifetime: process.env.NEXT_PUBLIC_WHOP_CHECKOUT_LIFETIME ?? "",
@@ -37,6 +39,10 @@ export const WHOP_CHECKOUT_UNAVAILABLE_MESSAGE =
 // Displayed prices. NOTE: these are UI labels only — the amount actually charged is
 // configured on the Whop product behind each checkout URL. Keep these in sync with the
 // Whop product prices so customers never see one price and get charged another.
+export const WHOP_COMMUNITY_CHECKOUT_OPTION = WHOP_CHECKOUT.community
+  ? { label: "Community — $75", href: WHOP_CHECKOUT.community }
+  : null;
+
 export const WHOP_PREMIUM_CHECKOUT_OPTIONS = [
   { label: "Monthly — $199", href: WHOP_CHECKOUT.monthly },
   { label: "Yearly — $1,999", href: WHOP_CHECKOUT.yearly },

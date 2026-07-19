@@ -38,12 +38,19 @@ export function StaticPricingCompare() {
         </p>
 
         <div className="mkt-compare-cards mt-10">
+          <div className="mkt-compare-card">
+            <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-sky-300">Community</p>
+            <p className="mt-2 font-anton text-4xl text-white">
+              $75<span className="font-syne text-base font-semibold text-sky-300">/mo</span>
+            </p>
+            <p className="mt-1 text-sm text-sky-300/70">Discord · live signals · the room</p>
+          </div>
           <div className="mkt-compare-card mkt-compare-card-primary">
-            <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-bull">BlackOut</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-bull">Premium</p>
             <p className="mt-2 font-anton text-4xl text-white">
               $199<span className="font-syne text-base font-semibold text-sky-300">/mo</span>
             </p>
-            <p className="mt-1 text-sm text-sky-300">All six modules · one membership</p>
+            <p className="mt-1 text-sm text-sky-300">Full desk + Discord · one membership</p>
           </div>
           <div className="mkt-compare-card">
             <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-sky-300/80">Typical stack</p>
