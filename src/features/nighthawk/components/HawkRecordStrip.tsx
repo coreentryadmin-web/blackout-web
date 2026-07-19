@@ -2,9 +2,7 @@
 
 import type { NightHawkRecordResponse, NightHawkRecordSegmentWire } from "@/features/nighthawk/lib/types";
 import { TRACK_RECORD_MIN_SAMPLE } from "@/components/track-record/format";
-// Shared platform LOW-N threshold — the same n<5 amber-chip grammar the 0DTE record
-// section uses (ZeroDteBoard's LowNChip), so both records disclose thin evidence
-// identically.
+// Shared platform LOW-N threshold — amber-chip grammar for thin evidence samples.
 import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 import { GRADE_METHODOLOGY_CURRENT } from "@/features/nighthawk/lib/grade-methodology";
 
