@@ -26,7 +26,12 @@ function freshnessForPayload(data: TrackRecordPayload, fetchedAt: Date): Freshne
   return "live";
 }
 
-export function TrackRecordView() {
+type TrackRecordViewProps = {
+  /** When true, omit PageShell (for Admin console tab embedding). */
+  embedded?: boolean;
+};
+
+export function TrackRecordView({ embedded = false }: TrackRecordViewProps) {
   const [state, setState] = useState<TrackRecordLoadState>({ kind: "loading" });
   const loadedOnce = useRef(false);
   const inFlight = useRef(false);
@@ -102,9 +107,15 @@ export function TrackRecordView() {
 
   const headerAsOf = state.kind === "ready" ? state.fetchedAt : null;
 
-  return (
-    <PageShell>
-      <div className="content-rail mx-auto max-w-3xl pb-12 pt-2">
+  const body = (
+    <div
+      className={
+        embedded
+          ? "admin-track-record mx-auto max-w-3xl"
+          : "content-rail mx-auto max-w-3xl pb-12 pt-2"
+      }
+    >
+      {!embedded && (
         <PageHeader
           kicker="Verified performance"
           title="Track record"
@@ -114,6 +125,7 @@ export function TrackRecordView() {
           }
           className="mb-8"
         />
+      )}
 
         {isInitialLoad && <TrackRecordSkeleton />}
 
@@ -192,7 +204,9 @@ export function TrackRecordView() {
             </Card>
           </div>
         )}
-      </div>
-    </PageShell>
+    </div>
   );
+
+  if (embedded) return body;
+  return <PageShell>{body}</PageShell>;
 }

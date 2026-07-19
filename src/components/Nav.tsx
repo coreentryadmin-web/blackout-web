@@ -119,7 +119,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
   const isLearnActive = path.startsWith("/learn");
   const isFaqActive = path.startsWith("/faq");
   const isPricingActive = path.startsWith("/pricing");
-  const isAdminTrackActive = path.startsWith("/admin/track-record");
+  const isAdminActive = path.startsWith("/admin");
 
   const [iosApp, setIosApp] = useState(false);
   useEffect(() => {
@@ -322,17 +322,9 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
           {showAdmin && (
             <li className="nav-pill-li">
               <Link
-                href="/admin/track-record"
-                className={clsx("nav-pill-item nav-pill-admin", isAdminTrackActive && "nav-pill-item-active")}
+                href="/admin"
+                className={clsx("nav-pill-item nav-pill-admin", isAdminActive && "nav-pill-item-active")}
               >
-                Track Record
-              </Link>
-            </li>
-          )}
-
-          {showAdmin && (
-            <li className="nav-pill-li">
-              <Link href="/admin" className={clsx("nav-pill-item nav-pill-admin", path.startsWith("/admin") && !isAdminTrackActive && "nav-pill-item-active")}>
                 Admin
               </Link>
             </li>
@@ -434,15 +426,10 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
               </Link>
               {showAdmin && (
                 <Link
-                  href="/admin/track-record"
+                  href="/admin"
                   onClick={() => setMobileOpen(false)}
-                  className={clsx("nav-sheet-link font-syne nav-pill-admin", isAdminTrackActive && "nav-sheet-link-active")}
+                  className={clsx("nav-sheet-link font-syne nav-pill-admin", isAdminActive && "nav-sheet-link-active")}
                 >
-                  Track Record
-                </Link>
-              )}
-              {showAdmin && (
-                <Link href="/admin" onClick={() => setMobileOpen(false)} className="nav-sheet-link font-syne nav-pill-admin">
                   Admin
                 </Link>
               )}

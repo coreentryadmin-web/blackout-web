@@ -22,20 +22,12 @@ export default async function AdminPage() {
           subtitle="Engine health, incidents, API telemetry, and desk analytics."
           badge={<ProductMark product="spx" size={44} />}
           actions={
-            <div className="flex gap-4">
-              <Link
-                href="/admin/users"
-                className="font-mono text-[11px] uppercase tracking-widest text-cyan-400/80 transition-colors hover:text-cyan-400"
-              >
-                Users →
-              </Link>
-              <Link
-                href="/admin/track-record"
-                className="font-mono text-[11px] uppercase tracking-widest text-bull/80 transition-colors hover:text-bull"
-              >
-                Track record →
-              </Link>
-            </div>
+            <Link
+              href="/admin/users"
+              className="font-mono text-[11px] uppercase tracking-widest text-cyan-400/80 transition-colors hover:text-cyan-400"
+            >
+              Users →
+            </Link>
           }
         />
         <AdminLaunchStatusPanel />
