@@ -44,17 +44,24 @@ export default clerkMiddleware(
     const path = req.nextUrl.pathname;
     const isAuthPage = path === "/sign-in" || path.startsWith("/sign-in/") ||
                        path === "/sign-up" || path.startsWith("/sign-up/");
-    if (isAuthPage) {
+    const signedInUserId = activeClerkUserIdFromRequest(req);
+
+    if (isAuthPage && signedInUserId) {
       // Clerk v7.5.x auth()/auth.protect() do not reliably return userId on sign-in
       // pages with the same cookies that work on /dashboard. Decode __session after
       // Clerk's authenticateRequest has already verified the request (PR #790).
-      const userId = activeClerkUserIdFromRequest(req);
-      if (userId) {
-        const dest = req.nextUrl.searchParams.get("redirect_url") || CLERK_DEFAULT_POST_AUTH_PATH;
-        return withStagingNoEdgeCache(
-          NextResponse.redirect(new URL(dest, req.url), 307)
-        );
-      }
+      const dest = req.nextUrl.searchParams.get("redirect_url") || CLERK_DEFAULT_POST_AUTH_PATH;
+      return withStagingNoEdgeCache(
+        NextResponse.redirect(new URL(dest, req.url), 307)
+      );
+    }
+
+    // Marketing `/` can be edge-cached without Vary:Cookie on older deploys — middleware
+    // redirect is reliable and keeps signed-in users off the public homepage.
+    if (path === "/" && signedInUserId) {
+      return withStagingNoEdgeCache(
+        NextResponse.redirect(new URL(CLERK_DEFAULT_POST_AUTH_PATH, req.url), 307)
+      );
     }
 
     if (IS_STAGING && process.env.AUTH_PROVIDER !== "cognito") {
