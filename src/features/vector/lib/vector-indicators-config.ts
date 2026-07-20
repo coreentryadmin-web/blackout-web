@@ -1,6 +1,7 @@
 /**
- * Registry of the price-pane overlay indicators the member can toggle on the Vector chart
- * (default OFF — nothing is drawn until enabled). Each entry is pure config; the chart layer maps
+ * Registry of the price-pane overlay indicators the member can toggle on the Vector chart.
+ * Most indicators default OFF; dealer gamma positioning (`gex-heatmap`) defaults ON — see
+ * `VECTOR_DEFAULT_ENABLED_INDICATORS`. Each entry is pure config; the chart layer maps
  * `kind`+`period` to the matching `vector-indicators` series computer and draws a line in `color`.
  * Kept as data (not hard-coded in the component) so adding an overlay is a one-line change and the
  * toggle menu renders straight from this list.
@@ -203,8 +204,8 @@ export function isVectorExpectedMoveId(v: unknown): v is VectorExpectedMoveId {
 /**
  * "Positioning" — the strike×time dealer-gamma (GEX) surface drawn as a background HEATMAP BEHIND
  * the candles (task #14). x = time, y = strike (price axis), cell colour = signed net GEX intensity
- * (call-dominated positive → cyan/teal, put-dominated negative → magenta). One toggle (default OFF);
- * the chart maps it to a lightweight-charts series PRIMITIVE whose paneView renders at `zOrder:
+ * (call-dominated positive → cyan/teal, put-dominated negative → magenta). Defaults ON via
+ * `VECTOR_DEFAULT_ENABLED_INDICATORS`; the chart maps it to a lightweight-charts series PRIMITIVE whose paneView renders at `zOrder:
  * "bottom"` so the surface sits under the price action. DTE-aware (re-scopes with the horizon toggle
  * like the walls/max-pain/cone) and real-data-only — an empty/absent grid draws nothing, never a
  * fabricated surface. Distinct from `/api/market/gex-heatmap` (the standalone strike×EXPIRY matrix
@@ -280,3 +281,10 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
     ],
   },
 ];
+
+/** Indicators enabled on first paint — dealer gamma positioning surface behind candles. */
+export const VECTOR_DEFAULT_ENABLED_INDICATORS: readonly VectorIndicatorId[] = ["gex-heatmap"] as const;
+
+export function defaultVectorIndicators(): Set<VectorIndicatorId> {
+  return new Set(VECTOR_DEFAULT_ENABLED_INDICATORS);
+}

@@ -44,6 +44,11 @@ export {
   type WallHistorySample,
 } from "./lib/vector-wall-history";
 export type { VectorTimeframeMinutes } from "./lib/vector-bar-timeframes";
+export { VECTOR_DEFAULT_TIMEFRAME } from "./lib/vector-bar-timeframes";
+export {
+  VECTOR_DEFAULT_ENABLED_INDICATORS,
+  defaultVectorIndicators,
+} from "./lib/vector-indicators-config";
 export { loadSessionWallHistory } from "./lib/vector-wall-persist";
 export { loadVectorSeedProps, type VectorSeedProps } from "./lib/vector-seed-props";
 export { reconstructSessionRail, reconstructSessionHeatmap } from "./lib/vector-gex-reconstruct-server";

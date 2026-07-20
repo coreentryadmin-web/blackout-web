@@ -10,6 +10,8 @@ import {
   isVectorLevelId,
   isVectorGexHeatmapId,
   overlayFamilyAvailability,
+  VECTOR_DEFAULT_ENABLED_INDICATORS,
+  defaultVectorIndicators,
 } from "./vector-indicators-config";
 
 test("VECTOR_OVERLAYS: unique ids, ema/sma carry a positive period, vwap does not need one", () => {
@@ -113,4 +115,10 @@ test("VECTOR_INDICATOR_GROUPS: covers every family + level + structure id exactl
     "gex-heatmap",
   ];
   assert.deepEqual([...grouped].sort(), [...expected].sort());
+});
+
+test("VECTOR_DEFAULT_ENABLED_INDICATORS: dealer gamma positioning on by default", () => {
+  assert.deepEqual([...VECTOR_DEFAULT_ENABLED_INDICATORS], ["gex-heatmap"]);
+  assert.ok(defaultVectorIndicators().has("gex-heatmap"));
+  assert.equal(defaultVectorIndicators().size, 1);
 });
