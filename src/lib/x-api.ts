@@ -22,6 +22,12 @@ export function xApiEnabled(): boolean {
   return getCredentials() !== null;
 }
 
+/** @BlackOutTrade account user id (OAuth context). */
+export const X_ACCOUNT_USER_ID = "2055511397338087425";
+
+/** Never amplify other brand accounts on @BlackOutTrade. */
+export const X_BLOCK_RT_USERNAMES = new Set(["IHate0dte", "ihate0dte"]);
+
 function pctEnc(s: string): string {
   return encodeURIComponent(s).replace(
     /[!'()*]/g,
@@ -56,7 +62,6 @@ function oauthHeader(
 
   const baseStr = `${method}&${pctEnc(url)}&${pctEnc(paramStr)}`;
   const sigKey = `${pctEnc(creds.consumerSecret)}&${pctEnc(creds.accessTokenSecret)}`;
-  // OAuth 1.0a spec mandates HMAC-SHA1 — not used for password storage
   const sig = crypto
     .createHmac("sha1", sigKey) // lgtm[js/insufficient-password-hash]
     .update(baseStr)
@@ -70,6 +75,31 @@ function oauthHeader(
       .map((k) => `${pctEnc(k)}="${pctEnc(oauthParams[k])}"`)
       .join(", ")
   );
+}
+
+async function oauthFetch(
+  method: string,
+  url: string,
+  body?: Record<string, unknown>,
+): Promise<Response> {
+  const u = new URL(url);
+  const base = `${u.origin}${u.pathname}`;
+  const queryParams: Record<string, string> = {};
+  u.searchParams.forEach((v, k) => {
+    queryParams[k] = v;
+  });
+  const auth = oauthHeader(
+    method,
+    base,
+    method === "GET" ? queryParams : {},
+  );
+  const headers: Record<string, string> = { Authorization: auth };
+  let init: RequestInit = { method, headers };
+  if (body) {
+    headers["Content-Type"] = "application/json";
+    init = { ...init, headers, body: JSON.stringify(body) };
+  }
+  return fetch(url, init);
 }
 
 // ---------------------------------------------------------------------------
@@ -86,7 +116,6 @@ export async function uploadMedia(
     media_category: "tweet_image",
   };
 
-  // OAuth signature for form-encoded body includes all params
   const auth = oauthHeader("POST", X_MEDIA_UPLOAD_URL, params);
   const body = Object.entries(params)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
@@ -139,17 +168,13 @@ export async function postTweet(
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`X post tweet failed (${res.status}): ${text}`);
+    const errText = await res.text();
+    throw new Error(`X post tweet failed (${res.status}): ${errText}`);
   }
 
   const json = (await res.json()) as { data: TweetResult };
   return json.data;
 }
-
-// ---------------------------------------------------------------------------
-// Delete a tweet (v2)
-// ---------------------------------------------------------------------------
 
 export async function deleteTweet(id: string): Promise<boolean> {
   const url = `${X_TWEET_URL}/${id}`;
@@ -161,10 +186,6 @@ export async function deleteTweet(id: string): Promise<boolean> {
   return res.ok;
 }
 
-// ---------------------------------------------------------------------------
-// Tweet with image convenience wrapper
-// ---------------------------------------------------------------------------
-
 export async function tweetWithImage(
   text: string,
   imageBuffer: Buffer,
@@ -172,4 +193,230 @@ export async function tweetWithImage(
 ): Promise<TweetResult> {
   const mediaId = await uploadMedia(imageBuffer, mimeType);
   return postTweet(text, [mediaId]);
+}
+
+// ---------------------------------------------------------------------------
+// Threads / replies
+// ---------------------------------------------------------------------------
+
+export async function postReply(
+  text: string,
+  inReplyToTweetId: string,
+  mediaIds?: string[],
+): Promise<TweetResult> {
+  const payload: Record<string, unknown> = {
+    text,
+    reply: { in_reply_to_tweet_id: inReplyToTweetId },
+  };
+  if (mediaIds?.length) payload.media = { media_ids: mediaIds };
+
+  const auth = oauthHeader("POST", X_TWEET_URL);
+  const res = await fetch(X_TWEET_URL, {
+    method: "POST",
+    headers: {
+      Authorization: auth,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(`X post reply failed (${res.status}): ${await res.text()}`);
+  }
+  const json = (await res.json()) as { data: TweetResult };
+  return json.data;
+}
+
+export async function postThread(texts: string[]): Promise<TweetResult[]> {
+  const out: TweetResult[] = [];
+  let parentId: string | undefined;
+  for (const text of texts) {
+    const tweet = parentId
+      ? await postReply(text, parentId)
+      : await postTweet(text);
+    out.push(tweet);
+    parentId = tweet.id;
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Engagement — likes, RTs, follows
+// ---------------------------------------------------------------------------
+
+export type LikeResult = "ok" | "rate_limited" | "failed";
+
+export async function likeTweet(tweetId: string): Promise<LikeResult> {
+  const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}/likes`;
+  const res = await oauthFetch("POST", url, { tweet_id: tweetId });
+  if (res.ok) return "ok";
+  if (res.status === 429) return "rate_limited";
+  return "failed";
+}
+
+export async function retweet(tweetId: string): Promise<boolean> {
+  const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}/retweets`;
+  const res = await oauthFetch("POST", url, { tweet_id: tweetId });
+  return res.ok;
+}
+
+export async function followUser(targetUserId: string): Promise<boolean> {
+  const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}/following`;
+  const res = await oauthFetch("POST", url, { target_user_id: targetUserId });
+  return res.ok;
+}
+
+export interface XUser {
+  id: string;
+  username: string;
+  name?: string;
+}
+
+export async function lookupUserByUsername(
+  username: string,
+): Promise<XUser | null> {
+  const handle = username.replace(/^@/, "");
+  const url = `https://api.x.com/2/users/by/username/${encodeURIComponent(handle)}?user.fields=username,name`;
+  const res = await oauthFetch("GET", url);
+  if (!res.ok) return null;
+  const json = (await res.json()) as { data?: XUser };
+  return json.data ?? null;
+}
+
+export interface XTweet {
+  id: string;
+  text: string;
+  author_id?: string;
+  created_at?: string;
+  public_metrics?: {
+    impression_count?: number;
+    like_count?: number;
+    reply_count?: number;
+    retweet_count?: number;
+  };
+}
+
+export interface XTweetSearchHit extends XTweet {
+  author_username?: string;
+}
+
+export async function fetchUserTweets(
+  userId: string,
+  maxResults = 5,
+): Promise<XTweet[]> {
+  const params = new URLSearchParams({
+    max_results: String(Math.min(Math.max(maxResults, 5), 100)),
+    exclude: "retweets,replies",
+    "tweet.fields": "author_id,created_at",
+  });
+  const url = `https://api.x.com/2/users/${userId}/tweets?${params}`;
+  const res = await oauthFetch("GET", url);
+  if (!res.ok) return [];
+  const json = (await res.json()) as { data?: XTweet[] };
+  return json.data ?? [];
+}
+
+/** Recent search — discovery for engagement (requires X API search access). */
+export async function searchRecentTweets(
+  query: string,
+  maxResults = 10,
+): Promise<XTweetSearchHit[]> {
+  const params = new URLSearchParams({
+    query,
+    max_results: String(Math.min(Math.max(maxResults, 10), 100)),
+    "tweet.fields": "author_id,created_at,public_metrics",
+    expansions: "author_id",
+    "user.fields": "username",
+  });
+  const url = `https://api.x.com/2/tweets/search/recent?${params}`;
+  const res = await oauthFetch("GET", url);
+  if (!res.ok) return [];
+
+  const json = (await res.json()) as {
+    data?: XTweet[];
+    includes?: { users?: XUser[] };
+  };
+  const users = new Map(
+    (json.includes?.users ?? []).map((u) => [u.id, u.username]),
+  );
+  return (json.data ?? []).map((t) => ({
+    ...t,
+    author_username: t.author_id ? users.get(t.author_id) : undefined,
+  }));
+}
+
+/** Recent @mentions of @BlackOutTrade with author usernames resolved. */
+export interface XMention extends XTweet {
+  author_username: string;
+  author_id: string;
+}
+
+export async function fetchMentions(maxResults = 10): Promise<XMention[]> {
+  const params = new URLSearchParams({
+    max_results: String(Math.min(Math.max(maxResults, 5), 100)),
+    "tweet.fields": "author_id,created_at,in_reply_to_user_id",
+    expansions: "author_id",
+    "user.fields": "username",
+  });
+  const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}/mentions?${params}`;
+  const res = await oauthFetch("GET", url);
+  if (!res.ok) return [];
+
+  const json = (await res.json()) as {
+    data?: XTweet[];
+    includes?: { users?: XUser[] };
+  };
+  const users = new Map(
+    (json.includes?.users ?? []).map((u) => [u.id, u.username]),
+  );
+  return (json.data ?? [])
+    .map((t) => {
+      const authorId = t.author_id ?? "";
+      const username = users.get(authorId);
+      if (!username) return null;
+      return {
+        ...t,
+        author_id: authorId,
+        author_username: username,
+      };
+    })
+    .filter((m): m is XMention => m !== null);
+}
+
+/** Original tweets posted by @BlackOutTrade today (ET calendar day). */
+export async function countOwnPostsTodayEt(): Promise<number> {
+  const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 20);
+  const todayEt = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/New_York",
+  });
+  return tweets.filter((t) => {
+    if (!t.created_at) return false;
+    const d = new Date(t.created_at).toLocaleDateString("en-CA", {
+      timeZone: "America/New_York",
+    });
+    return d === todayEt;
+  }).length;
+}
+
+/** Minutes since the most recent original tweet from @BlackOutTrade. */
+export async function minutesSinceLastOwnPost(): Promise<number | null> {
+  const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 5);
+  const latest = tweets.find((t) => t.created_at)?.created_at;
+  if (!latest) return null;
+  return (Date.now() - new Date(latest).getTime()) / 60_000;
+}
+
+/** @mention outreach posts today (start with @, not product footer spam). */
+export async function countOwnMentionPostsTodayEt(): Promise<number> {
+  const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 40);
+  const todayEt = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/New_York",
+  });
+  return tweets.filter((t) => {
+    if (!t.created_at || !t.text?.trim().startsWith("@")) return false;
+    const d = new Date(t.created_at).toLocaleDateString("en-CA", {
+      timeZone: "America/New_York",
+    });
+    return d === todayEt;
+  }).length;
 }
