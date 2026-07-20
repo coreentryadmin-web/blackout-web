@@ -272,23 +272,17 @@ async function buildCollage(buffers, ticker) {
     .toBuffer();
 }
 
-function buildTweet(ticker) {
-  const whop = "whop.com/blackout-2d9c?utm_source=x&utm_medium=social&utm_campaign=showcase";
-  const lines = [
-    `${ticker} isn't moving on vibes.`,
-    "",
-    "Six tools. One desk. Real dealer positioning, live flow, GEX heat, 0DTE signals, AI reads, overnight playbook.",
-    "",
-    "This is what we see before the candle prints.",
-    "",
-    `@BlackOutTrade ${whop}`,
-  ];
-  let text = lines.join("\n");
+function buildTweet(ticker, spxLine) {
+  const site =
+    "blackouttrades.com/pricing?utm_source=x&utm_medium=social&utm_campaign=showcase";
+  const hook = spxLine
+    ? `${ticker} desk read: ${spxLine} What's your line into the close?`
+    : `${ticker} gamma + flow on one screen — not six tabs. What's your flip level today?`;
+  let text = `${hook}\n\n@BlackOutTrade ${site}`;
   if (text.length > 280) {
-    text = `${ticker} isn't moving on vibes.\n\nSix tools on one desk — GEX, flow, heatmap, 0DTE signals, Largo AI, Night Hawk.\n\nThis is what we see before the candle.\n\n@BlackOutTrade ${whop}`;
+    text = `${ticker}: dealer positioning + live flow on one desk. What's your read?\n\n@BlackOutTrade ${site}`;
   }
-  if (text.length > 280) text = text.slice(0, 277) + "…";
-  return text;
+  return text.slice(0, 280);
 }
 
 async function main() {

@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { isTweetContentValid } from "./x-post-guard";
 
 describe("isTweetContentValid", () => {
-  const footer = "\n@BlackOutTrade whop.com/blackout-2d9c";
+  const footer = "\n@BlackOutTrade blackouttrades.com/pricing?utm_source=x";
 
   it("rejects placeholder and spam patterns", () => {
     assert.equal(
