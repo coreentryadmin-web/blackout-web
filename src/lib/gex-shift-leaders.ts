@@ -53,3 +53,47 @@ export function pickGexShiftLeaders(
 
   return [...calls.map((c) => toLeader(c, "call")), ...puts.map((p) => toLeader(p, "put"))];
 }
+
+export function gexMatrixShiftCellKey(strike: number, expiry: string): string {
+  return `${strike}:${expiry}`;
+}
+
+/**
+ * Map matrix cell → shift leader for inline % badges (top 3 call + top 3 put).
+ * Each leader badge lands on the expiry column where that strike has max |cell GEX|.
+ */
+export function pickGexShiftLeaderCells(
+  strikeTotals: Record<string, number> | null | undefined,
+  cells: Record<string, Record<string, number>>,
+  expiries: readonly string[],
+  shift: GexShiftLike | null | undefined,
+  opts?: { perSide?: number }
+): Map<string, GexShiftLeader> {
+  const leaders = pickGexShiftLeaders(strikeTotals, shift, opts);
+  const out = new Map<string, GexShiftLeader>();
+  for (const leader of leaders) {
+    const row = cells[String(leader.strike)];
+    if (!row) continue;
+    let bestExp: string | null = null;
+    let bestMag = 0;
+    for (const e of expiries) {
+      const v = row[e];
+      if (typeof v !== "number" || !Number.isFinite(v) || v === 0) continue;
+      const mag = Math.abs(v);
+      if (mag > bestMag) {
+        bestMag = mag;
+        bestExp = e;
+      }
+    }
+    if (bestExp == null) {
+      bestExp = expiries.find((e) => {
+        const v = row[e];
+        return typeof v === "number" && Number.isFinite(v);
+      }) ?? null;
+    }
+    if (bestExp != null) {
+      out.set(gexMatrixShiftCellKey(leader.strike, bestExp), leader);
+    }
+  }
+  return out;
+}
