@@ -124,11 +124,15 @@ function fapiHost(pub) {
   return "https://clerk.blackouttrades.com";
 }
 
+const CJS = "5.57.0";
+
 const TMP = join(tmpdir(), "comprehensive-audit-" + process.pid);
 mkdirSync(TMP, { recursive: true });
 const JAR = join(TMP, "cookies.txt");
 let seq = 0;
 let sessionJwt = null;
+let clientUat = 0;
+let sid = null;
 let userId = null;
 
 function curl(opts) {
@@ -184,30 +188,42 @@ function establishAdmin() {
     return false;
   }
 
-  const tok = backend("POST", "/sign_in_tokens", { user_id: userId, expires_in_seconds: 600 });
-  const ticket = tok?.token;
+  const ticket = backend("POST", "/sign_in_tokens", { user_id: userId, expires_in_seconds: 600 })?.token;
   if (!ticket) {
     rec("auth:sign-in-token", "FAIL", "no token");
     return false;
   }
 
-  const hand = J(
+  const si = curl({
+    method: "POST",
+    url: FAPI + "/v1/client/sign_ins?_clerk_js_version=" + CJS,
+    headers: { Origin: BASE, Referer: BASE + "/", "Content-Type": "application/x-www-form-urlencoded" },
+    urlencodeForm: { strategy: "ticket", ticket },
+    saveJar: true,
+    jar: true,
+  });
+  sid = J(si)?.response?.created_session_id;
+  if (!sid) {
+    rec("auth:FAPI-ticket", "FAIL", si.body.slice(0, 120));
+    return false;
+  }
+  clientUat = Math.floor(Date.now() / 1000);
+  mintJwt();
+  rec("auth:admin-session", sessionJwt ? "PASS" : "FAIL", EMAIL);
+  return Boolean(sessionJwt);
+}
+
+function mintJwt() {
+  const FAPI = fapiHost(PUB);
+  sessionJwt = J(
     curl({
       method: "POST",
-      url: FAPI + "/v1/client/sign_ins",
-      urlencodeForm: { strategy: "ticket", ticket },
+      url: FAPI + "/v1/client/sessions/" + sid + "/tokens?_clerk_js_version=" + CJS,
+      headers: { Origin: BASE, Referer: BASE + "/", "Content-Type": "application/x-www-form-urlencoded" },
+      jar: true,
       saveJar: true,
-    })
-  );
-  sessionJwt = hand?.response?.last_active_token?.jwt ?? hand?.created_session_id;
-  if (!sessionJwt && hand?.response?.created_session_id) {
-    sessionJwt = hand.response.created_session_id;
-  }
-  const jwt = hand?.response?.last_active_token?.jwt;
-  if (jwt) sessionJwt = jwt;
-
-  rec("auth:admin-session", jwt || hand?.response?.created_session_id ? "PASS" : "FAIL", EMAIL);
-  return Boolean(jwt || hand?.response?.created_session_id);
+    }),
+  )?.jwt;
 }
 
 function cleanupUser() {
@@ -222,10 +238,21 @@ function cleanupUser() {
 }
 
 function appFetch(path, mode = "anon") {
-  const headers = {};
+  const headers = { Accept: "application/json" };
   if (mode === "cron" && CRON) headers.Authorization = "Bearer " + CRON;
-  if (mode === "admin" && sessionJwt) headers.Cookie = "__session=" + sessionJwt;
-  return curl({ url: BASE + path, headers, jar: mode === "admin", maxTime: 90 });
+  if (mode === "admin" && sessionJwt) {
+    headers.Cookie = "__session=" + sessionJwt + "; __client_uat=" + clientUat;
+  }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (mode === "admin" && !sessionJwt) mintJwt();
+    const r = curl({ url: BASE + path, headers, jar: mode === "admin", maxTime: 90 });
+    if (mode === "admin" && (r.status === 401 || r.status === 403) && attempt === 0) {
+      mintJwt();
+      continue;
+    }
+    return r;
+  }
+  return curl({ url: BASE + path, headers, maxTime: 90 });
 }
 
 function scanFinite(obj, path = "", out = []) {
@@ -308,12 +335,13 @@ async function auditRouteDiscovery() {
     "/api/webhooks/clerk",
     "/api/webhook/whop",
   ]);
+  const skipOAuth = new Set(["/api/auth/cognito/callback", "/api/auth/cognito/login"]);
 
   let pass = 0;
   let fail = 0;
   let skip = 0;
   for (const path of routes) {
-    if (skipPostOnly.has(path)) {
+    if (skipPostOnly.has(path) || skipOAuth.has(path)) {
       skip++;
       continue;
     }
