@@ -16,7 +16,7 @@ function loadEnv() {
 loadEnv();
 
 const { fetchUserTweets, deleteTweet, X_ACCOUNT_USER_ID } = await import(
-  "../src/lib/x-api"
+  "../src/lib/x-api.ts"
 );
 
 const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 40);
