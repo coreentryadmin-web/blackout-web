@@ -84,9 +84,11 @@ function oauthHeader(
 
   const baseStr = `${method}&${pctEnc(url)}&${pctEnc(paramStr)}`;
   const sigKey = `${pctEnc(creds.consumerSecret)}&${pctEnc(creds.accessTokenSecret)}`;
-  // OAuth 1.0a spec mandates HMAC-SHA1 — not used for password storage
+  // OAuth 1.0a spec mandates HMAC-SHA1 for signature generation — this is
+  // not password hashing; it's a protocol-required message authentication code.
+  // X/Twitter's API rejects any other algorithm.
   const sig = crypto
-    .createHmac("sha1", sigKey) // lgtm[js/insufficient-password-hash]
+    .createHmac("sha1", sigKey) // lgtm[js/insufficient-password-hash]  CodeQL: js/weak-cryptographic-algorithm — false positive, OAuth 1.0a requires HMAC-SHA1
     .update(baseStr)
     .digest("base64");
 

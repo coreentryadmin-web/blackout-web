@@ -5,30 +5,60 @@
  *
  * Usage: node scripts/ecs-sync-app-secrets.mjs [--cluster blackout-production-cluster] [--service blackout-production-web]
  */
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
-const CLUSTER = process.argv.includes("--cluster")
-  ? process.argv[process.argv.indexOf("--cluster") + 1]
-  : "blackout-production-cluster";
-const SERVICE = process.argv.includes("--service")
-  ? process.argv[process.argv.indexOf("--service") + 1]
-  : "blackout-production-web";
-const SECRET_ID = process.env.APP_SECRET_ID ?? "blackout-production/app/env";
-
-function sh(cmd) {
-  return execSync(cmd, { encoding: "utf8" }).trim();
+// Validate inputs to prevent injection — only allow alphanumeric, hyphens, slashes, dots
+function sanitize(val, label) {
+  if (!/^[\w./-]+$/.test(val)) {
+    throw new Error(`Invalid ${label}: ${val}`);
+  }
+  return val;
 }
 
-const taskDefArn = sh(
-  `aws ecs describe-services --cluster ${CLUSTER} --services ${SERVICE} --query 'services[0].taskDefinition' --output text`,
+const CLUSTER = sanitize(
+  process.argv.includes("--cluster")
+    ? process.argv[process.argv.indexOf("--cluster") + 1]
+    : "blackout-production-cluster",
+  "cluster",
 );
-const secretJson = sh(
-  `aws secretsmanager get-secret-value --secret-id ${SECRET_ID} --query SecretString --output text`,
+const SERVICE = sanitize(
+  process.argv.includes("--service")
+    ? process.argv[process.argv.indexOf("--service") + 1]
+    : "blackout-production-web",
+  "service",
+);
+const SECRET_ID = sanitize(
+  process.env.APP_SECRET_ID ?? "blackout-production/app/env",
+  "secret-id",
+);
+
+// Use execFileSync with argument arrays to avoid shell injection (CodeQL js/command-line-injection)
+function awsCli(...args) {
+  return execFileSync("aws", args, { encoding: "utf8" }).trim();
+}
+
+const taskDefArn = awsCli(
+  "ecs", "describe-services",
+  "--cluster", CLUSTER,
+  "--services", SERVICE,
+  "--query", "services[0].taskDefinition",
+  "--output", "text",
+);
+const secretJson = awsCli(
+  "secretsmanager", "get-secret-value",
+  "--secret-id", SECRET_ID,
+  "--query", "SecretString",
+  "--output", "text",
 );
 const validKeys = Object.keys(JSON.parse(secretJson)).sort();
 const td = JSON.parse(
-  sh(`aws ecs describe-task-definition --task-definition ${taskDefArn} --query taskDefinition --output json`),
+  awsCli(
+    "ecs", "describe-task-definition",
+    "--task-definition", taskDefArn,
+    "--query", "taskDefinition",
+    "--output", "json",
+  ),
 );
 
 const secretArn = td.containerDefinitions[0].secrets[0].valueFrom.split(":").slice(0, -3).join(":");
@@ -56,11 +86,18 @@ for (const k of [
 }
 
 writeFileSync("/tmp/ecs-sync-secrets-taskdef.json", JSON.stringify(td));
-const newArn = sh(
-  "aws ecs register-task-definition --cli-input-json file:///tmp/ecs-sync-secrets-taskdef.json --query taskDefinition.taskDefinitionArn --output text",
+const newArn = awsCli(
+  "ecs", "register-task-definition",
+  "--cli-input-json", "file:///tmp/ecs-sync-secrets-taskdef.json",
+  "--query", "taskDefinition.taskDefinitionArn",
+  "--output", "text",
 );
-sh(
-  `aws ecs update-service --cluster ${CLUSTER} --service ${SERVICE} --task-definition ${newArn} --force-new-deployment`,
+awsCli(
+  "ecs", "update-service",
+  "--cluster", CLUSTER,
+  "--service", SERVICE,
+  "--task-definition", newArn,
+  "--force-new-deployment",
 );
 
 console.log(JSON.stringify({ taskDefArn: newArn, secretCount: validKeys.length, added }, null, 2));
