@@ -217,19 +217,6 @@ export function isVectorGexHeatmapId(v: unknown): v is VectorGexHeatmapId {
 }
 
 /**
- * "Gamma surface" — a continuous call/neutral/put zone background behind candles showing three
- * macro regimes: gold CALL pressure above the flip, teal NEUTRAL corridor around it, crimson PUT
- * pressure below. Complements the GEX heatmap (per-cell) and the beads (per-wall) — this gives
- * the member a glance read of "am I in call territory or put territory?" without counting dots.
- * Same data source (GexHeatmapGrid), same DTE-scoping, same default-OFF toggle contract.
- */
-export type VectorGammaSurfaceId = "gamma-surface";
-
-export function isVectorGammaSurfaceId(v: unknown): v is VectorGammaSurfaceId {
-  return v === "gamma-surface";
-}
-
-/**
  * Every toggleable indicator id — a moving-average FAMILY (not an individual line), a level, a
  * structure toggle, or an oscillator. This is what the enabled Set and the menu deal in; the chart
  * expands each to its lines/markers/panes at draw time.
@@ -242,8 +229,7 @@ export type VectorIndicatorId =
   | VectorConfluenceId
   | VectorFlowId
   | VectorExpectedMoveId
-  | VectorGexHeatmapId
-  | VectorGammaSurfaceId;
+  | VectorGexHeatmapId;
 
 /** Menu structure — the toggle menu renders straight from this (title + its items). */
 export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
@@ -285,12 +271,12 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   },
   {
     title: "Positioning",
-    // Teal swatch = the call/positive pole of the diverging surface (puts render magenta).
-    items: [{ id: "gex-heatmap", label: "GEX heatmap (dealer positioning surface)", color: "#2dd4bf" }],
-  },
-  {
-    title: "Gamma surface",
-    // Gold swatch = call-pressure zone colour (the dominant upper zone).
-    items: [{ id: "gamma-surface", label: "Gamma surface (call/neutral/put zones)", color: "#ebaa28" }],
+    items: [
+      {
+        id: "gex-heatmap",
+        label: "GEX heatmap (reconstructed dealer positioning)",
+        color: "#10b981",
+      },
+    ],
   },
 ];

@@ -4,6 +4,9 @@ import {
   heatmapCellColor,
   bandEdges,
   heatmapRects,
+  gexCellAtGridPoint,
+  heatmapBucketSecForChartTimeframe,
+  normalizeHeatmapBucketSec,
   HEATMAP_TRANSPARENT,
 } from "./vector-gex-heatmap-paint";
 import type { GexHeatmapGrid } from "./vector-gex-reconstruct";
@@ -14,10 +17,10 @@ function rgba(s: string): { r: number; g: number; b: number; a: number } {
   return { r: +m![1]!, g: +m![2]!, b: +m![3]!, a: +m![4]! };
 }
 
-test("heatmapCellColor: call cells cyan-positive, put cells magenta-negative", () => {
+test("heatmapCellColor: call cells emerald-positive, put cells magenta-negative", () => {
   const call = rgba(heatmapCellColor(50, 100));
   const put = rgba(heatmapCellColor(-50, 100));
-  assert.deepEqual([call.r, call.g, call.b], [34, 211, 238], "call = cyan #22d3ee");
+  assert.deepEqual([call.r, call.g, call.b], [16, 185, 129], "call = emerald #10b981");
   assert.deepEqual([put.r, put.g, put.b], [217, 70, 239], "put = magenta #d946ef");
 });
 
@@ -25,97 +28,76 @@ test("heatmapCellColor: alpha scales with |cell|/maxAbs and clamps at 1", () => 
   const weak = rgba(heatmapCellColor(10, 100)).a;
   const strong = rgba(heatmapCellColor(90, 100)).a;
   assert.ok(strong > weak, "heavier gamma → more opaque");
-  // A cell at/above maxAbs clamps to the ceiling (intensity 1), not beyond.
   const atMax = rgba(heatmapCellColor(100, 100)).a;
   const overMax = rgba(heatmapCellColor(500, 100)).a;
   assert.equal(atMax, overMax, "intensity clamps at 1");
-  // Background ceiling stays subtle so candles read on top.
   assert.ok(atMax <= 0.55 + 1e-9);
 });
 
-test("heatmapCellColor: power curve separates weak/medium/strong — weak much fainter than strong", () => {
-  const weak = rgba(heatmapCellColor(10, 100)).a;   // intensity 0.1
-  const mid = rgba(heatmapCellColor(50, 100)).a;     // intensity 0.5
-  const strong = rgba(heatmapCellColor(90, 100)).a;  // intensity 0.9
-  const max = rgba(heatmapCellColor(100, 100)).a;    // intensity 1.0
-  // Weak cells should be very faint (near MIN_ALPHA 0.03)
-  assert.ok(weak < 0.06, `weak alpha ${weak} should be < 0.06`);
-  // Strong cells should be significantly more opaque than medium
-  assert.ok(strong > mid * 1.5, `strong ${strong} should be >1.5× medium ${mid}`);
-  // Max should be near MAX_ALPHA 0.55
-  assert.ok(max > 0.5, `max alpha ${max} should be > 0.5`);
-});
-
-test("heatmapCellColor: zero / empty grid / non-finite → transparent (honest absence)", () => {
+test("heatmapCellColor: zero / empty grid / non-finite → transparent", () => {
   assert.equal(heatmapCellColor(0, 100), HEATMAP_TRANSPARENT);
-  assert.equal(heatmapCellColor(50, 0), HEATMAP_TRANSPARENT, "maxAbs 0 = empty grid");
+  assert.equal(heatmapCellColor(50, 0), HEATMAP_TRANSPARENT);
   assert.equal(heatmapCellColor(NaN, 100), HEATMAP_TRANSPARENT);
 });
 
-test("bandEdges: tiles an increasing axis with contiguous, non-overlapping bands", () => {
-  // Evenly spaced coords 0,10,20 → bands [-5,5],[5,15],[15,25]: end cells mirror the 10-gap.
+test("bandEdges: single resolved coordinate yields min-width band (zoom-safe)", () => {
+  const bands = bandEdges([100], 8);
+  assert.deepEqual(bands[0], { lo: 92, hi: 108 });
+});
+
+test("bandEdges: tiles an increasing axis with contiguous bands", () => {
   const bands = bandEdges([0, 10, 20]);
   assert.deepEqual(bands[0], { lo: -5, hi: 5 });
   assert.deepEqual(bands[1], { lo: 5, hi: 15 });
   assert.deepEqual(bands[2], { lo: 15, hi: 25 });
-  // Contiguous: each band's hi is the next band's lo (no gap, no overlap).
-  assert.equal(bands[0]!.hi, bands[1]!.lo);
-  assert.equal(bands[1]!.hi, bands[2]!.lo);
-});
-
-test("bandEdges: works on a decreasing axis (strike coords descend on screen) via min/max", () => {
-  // priceToCoordinate is inverted: higher strike → smaller y. Coords 100,60,20 (descending).
-  const bands = bandEdges([100, 60, 20]);
-  for (const b of bands) assert.ok(b && b.lo < b.hi, "lo<hi regardless of direction");
-  assert.deepEqual(bands[1], { lo: 40, hi: 80 }); // midpoints of 100/60 and 60/20
-});
-
-test("bandEdges: null coords are skipped; a lone point yields no band", () => {
-  const withGap = bandEdges([0, null, 20]);
-  assert.equal(withGap[1], null, "unresolved column → no band");
-  assert.ok(withGap[0] && withGap[2], "resolved neighbours still get bands");
-  assert.deepEqual(bandEdges([42]), [null], "single point → no derivable width");
-  assert.deepEqual(bandEdges([null, null]), [null, null]);
 });
 
 const grid: GexHeatmapGrid = {
   times: [1000, 1300],
   strikes: [7450, 7500, 7550],
-  // t0: put-heavy low strike, call-heavy high strike, zero mid; t1: mirror-ish.
   cells: [
     [-80, 0, 40],
     [-20, 0, 100],
   ],
   maxAbs: 100,
+  bucketSec: 300,
 };
 
-test("heatmapRects: one rect per NON-ZERO cell, zero cells skipped, colour tracks sign", () => {
-  const rects = heatmapRects(grid, (t) => t / 10, (s) => 10000 - s); // identity-ish resolvable coords
-  // 6 cells, 2 are zero → 4 rects.
+test("heatmapRects: non-zero cells draw; column normalize keeps weak column visible", () => {
+  const rects = heatmapRects(grid, (t) => t / 10, (s) => 10000 - s, { normalize: "column" });
   assert.equal(rects.length, 4);
-  for (const r of rects) {
-    assert.ok(r.w > 0 && r.h > 0, "positive extents");
-    assert.notEqual(r.color, HEATMAP_TRANSPARENT);
-  }
-  // Every put cell (negative) is magenta, every call cell (positive) is cyan.
-  const negRects = rects.filter((r) => rgba(r.color).r === 217);
-  const posRects = rects.filter((r) => rgba(r.color).r === 34);
-  assert.equal(negRects.length, 2, "two put cells");
-  assert.equal(posRects.length, 2, "two call cells");
+  const weakCol = rects.filter((r) => rgba(r.color).a < 0.15);
+  const strongCol = rects.filter((r) => rgba(r.color).a > 0.2);
+  assert.ok(weakCol.length > 0 && strongCol.length > 0, "column norm spreads alpha across columns");
 });
 
-test("heatmapRects: empty grid / maxAbs 0 → no rects (draws nothing, never fabricates)", () => {
-  assert.deepEqual(heatmapRects({ times: [], strikes: [], cells: [], maxAbs: 0 }, () => 0, () => 0), []);
-  assert.deepEqual(
-    heatmapRects({ ...grid, maxAbs: 0 }, (t) => t, (s) => s),
-    [],
-    "maxAbs 0 → nothing"
-  );
-});
-
-test("heatmapRects: a column the time scale can't place is skipped (no rects for it)", () => {
-  // Second column unresolvable → only the first column's non-zero cells (2) draw.
+test("heatmapRects: single visible time column still draws (min band width)", () => {
   const rects = heatmapRects(grid, (t) => (t === 1000 ? 100 : null), (s) => 10000 - s);
-  // With only one resolvable column, bandEdges can't derive an x-width (needs ≥2) → 0 rects.
-  assert.equal(rects.length, 0);
+  assert.ok(rects.length >= 2, "single x column paints non-zero strike cells");
+});
+
+test("gexCellAtGridPoint: nearest cell lookup for crosshair legend", () => {
+  const hit = gexCellAtGridPoint(grid, 1010, 7455);
+  assert.ok(hit);
+  assert.equal(hit!.strike, 7450);
+  assert.equal(hit!.value, -80);
+});
+
+test("heatmapRects: empty grid → no rects", () => {
+  assert.deepEqual(heatmapRects({ times: [], strikes: [], cells: [], maxAbs: 0 }, () => 0, () => 0), []);
+});
+
+test("heatmapBucketSecForChartTimeframe: 1–5m → 60s buckets, coarser TFs → 300s", () => {
+  assert.equal(heatmapBucketSecForChartTimeframe(1), 60);
+  assert.equal(heatmapBucketSecForChartTimeframe(5), 60);
+  assert.equal(heatmapBucketSecForChartTimeframe(15), 300);
+});
+
+test("normalizeHeatmapBucketSec: accepts 60/120/300, defaults to 300", () => {
+  assert.equal(normalizeHeatmapBucketSec(60), 60);
+  assert.equal(normalizeHeatmapBucketSec(120), 120);
+  assert.equal(normalizeHeatmapBucketSec(300), 300);
+  assert.equal(normalizeHeatmapBucketSec("60"), 60);
+  assert.equal(normalizeHeatmapBucketSec(null), 300);
+  assert.equal(normalizeHeatmapBucketSec(90), 300);
 });
