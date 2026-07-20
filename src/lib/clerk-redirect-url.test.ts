@@ -35,7 +35,7 @@ test("clerkStagingReturnPath: normalizes full staging URL to path", () => {
   );
 });
 
-test("clerkPostAuthReturnPath: empty → dashboard", () => {
+test("clerkPostAuthReturnPath: empty → marketing home", () => {
   assert.equal(clerkPostAuthReturnPath(undefined), CLERK_DEFAULT_POST_AUTH_PATH);
   assert.equal(clerkPostAuthReturnPath(""), CLERK_DEFAULT_POST_AUTH_PATH);
 });

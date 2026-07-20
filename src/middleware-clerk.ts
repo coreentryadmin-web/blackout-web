@@ -56,14 +56,6 @@ export default clerkMiddleware(
       );
     }
 
-    // Marketing `/` can be edge-cached without Vary:Cookie on older deploys — middleware
-    // redirect is reliable and keeps signed-in users off the public homepage.
-    if (path === "/" && signedInUserId) {
-      return withStagingNoEdgeCache(
-        NextResponse.redirect(new URL(CLERK_DEFAULT_POST_AUTH_PATH, req.url), 307)
-      );
-    }
-
     if (IS_STAGING && process.env.AUTH_PROVIDER !== "cognito") {
       if (path === "/sign-in" || path.startsWith("/sign-in/")) {
         const returnPath = req.nextUrl.searchParams.get("redirect_url") ?? CLERK_DEFAULT_POST_AUTH_PATH;

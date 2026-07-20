@@ -125,7 +125,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
   useEffect(() => {
     setIosApp(isIosAppShell());
   }, []);
-  const brandHref = iosApp && isSignedIn ? "/dashboard" : "/";
+  const brandHref = "/";
   const iosToolLabel = iosApp && isSignedIn ? getIosToolNavLabel(path) : null;
   const iosToolChrome = Boolean(iosToolLabel);
 
