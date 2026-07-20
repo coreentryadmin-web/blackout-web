@@ -31,6 +31,7 @@ import { zeroDteRejectionsForLargo } from "@/lib/zerodte/rejections";
 import { gexRegimeEventsForLargo } from "@/lib/providers/gex-regime-events";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { enrichFlowsWithGex } from "@/lib/flow-gex-enrichment";
+import { runUwPooled } from "@/lib/providers/uw-rate-limiter";
 import { gexHeatmapForLargo } from "@/lib/largo/gex-heatmap-for-largo";
 import { gexMatrixChangesForLargo } from "@/lib/largo/gex-matrix-changes";
 import { flowAnomalyNearMissesForLargo } from "@/lib/platform/flow-anomaly-near-misses";
@@ -754,12 +755,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
     case "get_financials": {
       const sym = uwTicker(ticker);
-      const [uwFin, income, balance, cashflow] = await Promise.all([
-        fetchUwFinancials(sym),
-        fetchUwIncomeStatements(sym),
-        fetchUwBalanceSheets(sym),
-        fetchUwCashFlows(sym),
-      ]);
+      const [uwFin, income, balance, cashflow] = await runUwPooled([
+        () => fetchUwFinancials(sym),
+        () => fetchUwIncomeStatements(sym),
+        () => fetchUwBalanceSheets(sym),
+        () => fetchUwCashFlows(sym),
+      ] as const);
       return { ticker: sym, source: "unusual_whales", unusual_whales: { summary: uwFin, income, balance, cashflow } };
     }
     case "get_earnings": {
@@ -1172,15 +1173,15 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return { etf, info, holdings, weights, exposure, in_outflow: inOut, tide, quote };
     }
     case "get_market_stats": {
-      const [totalVol, correlations, sectorEtfs, netFlow, tide, litRecent, seasonality] = await Promise.all([
-        fetchUwMarketTotalOptionsVolume(),
-        fetchUwMarketCorrelations(30),
-        fetchUwMarketSectorEtfs(),
-        fetchUwNetFlowExpiry(30),
-        fetchUwMarketTide(),
-        fetchUwLitFlowRecent(20),
-        fetchUwSeasonalityMarket(),
-      ]);
+      const [totalVol, correlations, sectorEtfs, netFlow, tide, litRecent, seasonality] = await runUwPooled([
+        () => fetchUwMarketTotalOptionsVolume(),
+        () => fetchUwMarketCorrelations(30),
+        () => fetchUwMarketSectorEtfs(),
+        () => fetchUwNetFlowExpiry(30),
+        () => fetchUwMarketTide(),
+        () => fetchUwLitFlowRecent(20),
+        () => fetchUwSeasonalityMarket(),
+      ] as const);
       return { total_options_volume: totalVol, correlations, sector_etfs: sectorEtfs, net_flow_by_expiry: netFlow, market_tide: tide, lit_flow_recent: litRecent, seasonality_market: seasonality };
     }
     case "get_nbbo": {

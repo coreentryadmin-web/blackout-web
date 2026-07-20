@@ -80,7 +80,10 @@ function CognitoAuthProvider({ children }: { children: ReactNode }) {
 function ClerkAuthBridge({ children }: { children: ReactNode }) {
   const clerk = useClerkAuth();
   const { user } = useClerkUser();
-  const tier = (user?.publicMetadata as { tier?: string } | undefined)?.tier ?? null;
+  const meta = user?.publicMetadata as { tier?: string; role?: string } | undefined;
+  // role:admin must bypass client-side Premium gates (matches requireTierApi server-side).
+  const tier =
+    meta?.role === "admin" ? "admin" : meta?.tier === "premium" ? "premium" : meta?.tier ?? null;
 
   const value = useMemo<AppAuthState>(
     () => ({

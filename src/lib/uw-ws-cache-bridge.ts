@@ -90,8 +90,12 @@ export async function readUwDarkPoolFromRedis(ticker = "SPX"): Promise<DarkPoolS
   return readUwDeskLaneFromRedis<DarkPoolSnapshot>(UW_KEYS.darkPoolRecent());
 }
 
+function darkPoolWsFresh(): boolean {
+  return isUwChannelFresh("off_lit_trades", 120_000) && darkPoolStore.updatedAt > 0 && Boolean(darkPoolStore.data);
+}
+
 export function shouldSkipUwCacheRefreshTask(
-  task: "market_tide" | "net_prem_ticks" | "flow_per_strike",
+  task: "market_tide" | "net_prem_ticks" | "flow_per_strike" | "dark_pool_recent" | "dark_pool_ticker",
   ticker?: string
 ): boolean {
   if (task === "market_tide") {
@@ -105,6 +109,13 @@ export function shouldSkipUwCacheRefreshTask(
       isUwChannelFresh("option_trades", 120_000) &&
       aggregateOptionTradesToStrikeRows(optionTradesStore.rows, ticker).length > 0
     );
+  }
+  if (task === "dark_pool_recent") {
+    return darkPoolWsFresh();
+  }
+  // WS off_lit_trades seeds SPX from the market-wide store; skip per-ticker REST for SPX only.
+  if (task === "dark_pool_ticker" && ticker === "SPX") {
+    return darkPoolWsFresh();
   }
   return false;
 }

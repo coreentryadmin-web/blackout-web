@@ -133,7 +133,7 @@ async function main() {
   await stagingForceWarmCrons();
 
   const cronSecret = process.env.CRON_SECRET?.trim();
-  const useCronAuth = IS_STAGING && API_ONLY && cronSecret;
+  const useCronAuth = (IS_STAGING || process.env.SITE_LATENCY_CRON_AUTH === "1") && API_ONLY && cronSecret;
 
   let apiHeaders = { Accept: "application/json" };
   let cleanup = null;
