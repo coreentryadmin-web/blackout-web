@@ -162,3 +162,54 @@ export function formatBieFullStateAnswer(state: BieFullState): string {
 
   return lines.join("\n");
 }
+
+/** Dense platform vitals block for Largo Claude system prompt (every turn). */
+export function formatCompactBieFullStateBlock(state: BieFullState, maxChars = 3200): string {
+  const sections: string[] = [
+    `### Platform vitals (bie:full-state · ${state.asOf})`,
+    "_Cross-product numbers — cite exactly; drill with get_platform_snapshot(include:largo) or product tools._",
+    "",
+    ...formatPlatformSnapshot(state.platform),
+    ...formatIntel(state.intel),
+    ...formatPositioning("Thermal SPX", state.thermalSpx as ThermalPositioningSummary | null),
+    ...formatMatrix(state.thermalMatrix as ThermalMatrixSummary | null),
+    ...formatVector(state.vectorSpx),
+    ...formatZerodte(state.zerodte),
+  ];
+
+  const regime = state.regime as { regime_label?: string; risk_tone?: string; session_phase?: string } | null;
+  if (regime) {
+    sections.push(`**HELIX regime:** ${regime.regime_label ?? "—"} · ${regime.risk_tone ?? "—"} · ${regime.session_phase ?? "—"}`);
+  }
+
+  const hot = state.hotTickers as Array<{ ticker?: string; total_premium?: number; premium?: number }> | null;
+  if (hot?.length) {
+    sections.push(
+      `**Hot flow:** ${hot
+        .slice(0, 5)
+        .map((h) => `${h.ticker ?? "?"} $${fmt(h.total_premium ?? h.premium, 0)}`)
+        .join(" · ")}`
+    );
+  }
+
+  const vu = state.vectorUniverse as { rows?: Array<{ ticker: string; spot?: number; gamma_flip?: number | null }> } | null;
+  if (vu?.rows?.length) {
+    sections.push(
+      `**Vector universe:** ${vu.rows
+        .slice(0, 6)
+        .map((r) => `${r.ticker}${r.spot != null ? ` ${fmt(r.spot, 0)}` : ""}${r.gamma_flip != null ? ` γ${fmt(r.gamma_flip, 0)}` : ""}`)
+        .join(" · ")}`
+    );
+  }
+
+  const errKeys = Object.keys(state.errors ?? {});
+  if (errKeys.length) {
+    sections.push(`_Partial loaders: ${errKeys.join(", ")}._`);
+  }
+
+  let text = sections.filter(Boolean).join("\n");
+  if (text.length > maxChars) {
+    text = `${text.slice(0, maxChars - 20).trim()}\n…(truncated)`;
+  }
+  return text;
+}
