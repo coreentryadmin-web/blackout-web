@@ -190,21 +190,107 @@ async function dismissOverlays(page) {
 }
 
 const PANELS = [
-  { key: "vector", label: "Vector GEX", url: (t) => `${BASE}/vector?ticker=${t}`, wait: 8000 },
   { key: "helix", label: "Helix Flow", url: () => `${BASE}/flows`, wait: 7000 },
   { key: "thermal", label: "Thermal", url: (t) => `${BASE}/heatmap?ticker=${t}`, wait: 8000 },
   { key: "slayer", label: "SPX Slayer", url: () => `${BASE}/dashboard`, wait: 7000 },
-  { key: "largo", label: "Largo AI", url: () => `${BASE}/terminal`, wait: 6000 },
   { key: "nighthawk", label: "Night Hawk", url: () => `${BASE}/nighthawk`, wait: 6000 },
 ];
+
+/** Vector: 0DTE + 15m timeframe → full session beads visible in chart element. */
+async function captureVector0Dte(page, ticker) {
+  const url = `${BASE}/vector?ticker=${encodeURIComponent(ticker)}`;
+  console.log(`  → Vector 0DTE chart: ${url}`);
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await page.waitForSelector(".vector-chart-wrap", { timeout: 45_000 });
+  await dismissOverlays(page);
+  await page.waitForTimeout(3000);
+
+  const dteBtn = page.locator('[data-testid="vector-dte-0dte"]');
+  await dteBtn.waitFor({ state: "visible", timeout: 15_000 });
+  await dteBtn.click();
+  await page.waitForTimeout(4000);
+
+  const tf = page.locator("#vector-tf-select");
+  await tf.selectOption("15");
+  await page.waitForTimeout(5000);
+
+  const chart = page.locator(".vector-chart-wrap").first();
+  await chart.waitFor({ state: "visible" });
+  const buf = await chart.screenshot({ type: "png" });
+  const path = join(OUT, `vector-0dte-${ticker}.png`);
+  writeFileSync(path, buf);
+  console.log(`    saved ${path}`);
+  return { key: "vector", label: "Vector · 0DTE beads", buf, path, hero: true };
+}
+
+/** Largo: ask a real ticker question and screenshot the answered thread. */
+async function captureLargoAnswer(page, ticker) {
+  const question = `What's the ${ticker} gamma setup right now? Flip level, call/put walls, and dealer regime.`;
+  console.log(`  → Largo AI: ${question}`);
+  await page.goto(`${BASE}/terminal`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await dismissOverlays(page);
+
+  const input = page.locator('input[aria-label="Ask Largo"]').first();
+  await input.waitFor({ state: "visible", timeout: 20_000 });
+  await page.waitForFunction(
+    () => {
+      const el = document.querySelector('input[aria-label="Ask Largo"]');
+      return el && !el.disabled;
+    },
+    { timeout: 30_000 },
+  );
+
+  await input.fill(question);
+  await page.waitForTimeout(400);
+  const submit = page.locator('.largo-input-form button[type="submit"]').first();
+  if (await submit.count()) await submit.click();
+  else await input.press("Enter");
+
+  await page.waitForSelector(".desk-largo-assistant, .largo-msg-assistant", {
+    timeout: 60_000,
+  });
+  await page.waitForFunction(
+    () => {
+      const stopBtn = document.querySelector('.largo-stop-btn, [aria-label="Stop generating"]');
+      if (stopBtn && stopBtn.offsetParent !== null) return false;
+      const nodes = document.querySelectorAll(".desk-largo-assistant, .largo-msg-assistant");
+      const last = nodes[nodes.length - 1];
+      const text = last?.textContent?.trim() ?? "";
+      return text.length > 180 && !/working|pulling live|thinking/i.test(text.slice(0, 40));
+    },
+    { timeout: 120_000 },
+  );
+  await page.waitForTimeout(2500);
+
+  const panel = page.locator(".largo-terminal-fullpage, .desk-largo-panel, main").first();
+  const buf = await panel.screenshot({ type: "png" });
+  const path = join(OUT, `largo-${ticker}.png`);
+  writeFileSync(path, buf);
+  console.log(`    saved ${path}`);
+  return { key: "largo", label: "Largo AI read", buf, path };
+}
+
+async function captureStandardPanel(page, panel, ticker) {
+  const url = panel.url(ticker);
+  console.log(`  → ${panel.label}: ${url}`);
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await page.waitForTimeout(panel.wait);
+  await dismissOverlays(page);
+  await page.waitForTimeout(1500);
+  const buf = await page.screenshot({ type: "png" });
+  const path = join(OUT, `${panel.key}-${ticker}.png`);
+  writeFileSync(path, buf);
+  console.log(`    saved ${path}`);
+  return { ...panel, buf, path };
+}
 
 function escSvg(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-async function labelPanel(buf, label, sub, cellW, cellH) {
+async function labelPanel(buf, label, sub, cellW, cellH, { fit = "cover" } = {}) {
   const resized = await sharp(buf)
-    .resize(cellW, cellH, { fit: "cover", position: "top" })
+    .resize(cellW, cellH, { fit, position: "top", background: { r: 6, g: 8, b: 12, alpha: 1 } })
     .png()
     .toBuffer();
   const barH = 36;
@@ -224,26 +310,37 @@ async function labelPanel(buf, label, sub, cellW, cellH) {
     .toBuffer();
 }
 
-async function buildCollage(buffers, ticker) {
-  const cellW = 600;
-  const cellH = 380;
-  const labeled = [];
-  for (const item of buffers) {
-    labeled.push(await labelPanel(item.buf, item.label, ticker, cellW, cellH));
-  }
-
-  const rowH = cellH + 36;
-  const gridW = cellW * 2;
-  const gridH = rowH * 3;
+async function buildCollage(items, ticker) {
+  const gridW = 1200;
   const headerH = 72;
   const footerH = 48;
-  const totalH = headerH + gridH + footerH;
+  const barH = 36;
+  const hero = items.find((i) => i.hero);
+  const rest = items.filter((i) => !i.hero);
+  const cellW = 600;
+  const cellH = 360;
 
-  const composites = labeled.map((buf, i) => ({
-    input: buf,
-    top: headerH + Math.floor(i / 2) * rowH,
-    left: (i % 2) * cellW,
-  }));
+  const composites = [];
+  let y = headerH;
+
+  if (hero) {
+    const heroH = 500;
+    const heroLabeled = await labelPanel(hero.buf, hero.label, `${ticker} · 15m · full session`, gridW, heroH, {
+      fit: "contain",
+    });
+    composites.push({ input: heroLabeled, top: y, left: 0 });
+    y += heroH + barH;
+  }
+
+  for (let i = 0; i < rest.length; i++) {
+    const labeled = await labelPanel(rest[i].buf, rest[i].label, ticker, cellW, cellH, { fit: "contain" });
+    const row = Math.floor(i / 2);
+    const col = i % 2;
+    composites.push({ input: labeled, top: y + row * (cellH + barH), left: col * cellW });
+  }
+
+  const gridRows = Math.ceil(rest.length / 2);
+  const totalH = y + gridRows * (cellH + barH) + footerH;
 
   const headerSvg = Buffer.from(`<svg width="${gridW}" height="${headerH}" xmlns="http://www.w3.org/2000/svg">
     <rect width="${gridW}" height="${headerH}" fill="#06080c"/>
@@ -266,7 +363,7 @@ async function buildCollage(buffers, ticker) {
     .composite([
       { input: headerSvg, top: 0, left: 0 },
       ...composites,
-      { input: footerSvg, top: headerH + gridH, left: 0 },
+      { input: footerSvg, top: totalH - footerH, left: 0 },
     ])
     .png()
     .toBuffer();
@@ -319,19 +416,12 @@ async function main() {
   try {
     await signInWithTicket(page, auth.ticket);
     console.log("  Signed in via Clerk ticket");
+
+    captures.push(await captureVector0Dte(page, TICKER));
     for (const panel of PANELS) {
-      const url = panel.url(TICKER);
-      console.log(`  → ${panel.label}: ${url}`);
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await page.waitForTimeout(panel.wait);
-      await dismissOverlays(page);
-      await page.waitForTimeout(1500);
-      const buf = await page.screenshot({ type: "png" });
-      const path = join(OUT, `${panel.key}-${TICKER}.png`);
-      writeFileSync(path, buf);
-      captures.push({ label: panel.label, buf, path });
-      console.log(`    saved ${path}`);
+      captures.push(await captureStandardPanel(page, panel, TICKER));
     }
+    captures.push(await captureLargoAnswer(page, TICKER));
 
     const collage = await buildCollage(captures, TICKER);
     const collagePath = join(OUT, `showcase-${TICKER}-collage.png`);
