@@ -11,7 +11,10 @@ export type PostType =
   | "close_recap"
   | "feature_showcase"
   | "free_data_drop"
-  | "weekend_education";
+  | "weekend_education"
+  | "hot_take"
+  | "loss_porn_roast"
+  | "after_hours_alpha";
 
 export interface PostSlot {
   type: PostType;
@@ -24,11 +27,15 @@ export interface PostSlot {
 export const SCHEDULE: PostSlot[] = [
   { type: "premarket_walls", hours: [6, 8] },
   { type: "market_open", hours: [9, 10] },
+  { type: "hot_take", hours: [10, 11] },
   { type: "midday_flow", hours: [12, 13] },
   { type: "free_data_drop", hours: [14, 15] },
   { type: "close_recap", hours: [16, 17] },
+  { type: "after_hours_alpha", hours: [17, 18] },
   { type: "feature_showcase", hours: [19, 20] },
-  { type: "weekend_education", hours: [11, 12], days: [0, 6] },
+  { type: "loss_porn_roast", hours: [20, 21] },
+  { type: "weekend_education", hours: [10, 12], days: [0, 6] },
+  { type: "feature_showcase", hours: [14, 16], days: [0, 6] },
 ];
 
 export function selectPostType(nowEt: Date): PostType | null {
@@ -59,7 +66,9 @@ interface MarketSnapshot {
 }
 
 const APP_BASE =
-  process.env.X_AUTOPOST_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://blackouttrades.com";
+  process.env.X_AUTOPOST_APP_URL ??
+  process.env.NEXT_PUBLIC_APP_URL ??
+  "https://blackouttrades.com";
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
@@ -67,7 +76,10 @@ async function fetchJson<T>(path: string): Promise<T | null> {
     const headers: Record<string, string> = {};
     const cronSecret = process.env.CRON_SECRET?.trim();
     if (cronSecret) headers.Authorization = `Bearer ${cronSecret}`;
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
+    const res = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(15_000),
+    });
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
@@ -110,61 +122,164 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
 // Content generation via Claude
 // ---------------------------------------------------------------------------
 
-const BRAND_VOICE = `You are the social media voice of BlackOut Trades — a premium options analytics platform.
+const SITE = "www.blackouttrades.com";
 
-VOICE RULES:
-- Confident, data-driven, slightly aggressive but never arrogant
-- Talk like a sharp trader, not a marketer. No corporate speak.
-- Use specific numbers — never vague ("SPX pinned at 5,520 between the 5,500 put wall and 5,550 call wall")
-- Short, punchy sentences. One idea per tweet.
-- Emojis: use sparingly — max 1-2 per tweet, only when they add energy
-- NEVER use hashtags. They look desperate.
-- End with a hook that makes non-members curious
-- Keep under 270 characters to leave room for an image card
-- NO quotation marks around the tweet text
-- Write ONLY the tweet text, nothing else`;
+const BRAND_VOICE = `You are the social media voice of BlackOut Trades — the most advanced options analytics platform for serious traders. Your account is @IHate0dte.
+
+WHO WE ARE:
+BlackOut Trades shows what market makers are doing before they do it. Real-time gamma exposure (GEX) walls, dealer positioning, AI-powered trade signals, live options flow — the weapons institutional traders use, built for retail.
+
+OUR TOOLS (reference these naturally, not as a list):
+- Vector: real-time GEX charts with animated wall beads that form, grow, and fade as dealers reposition. Put/call walls, flip levels, regime detection across any stock.
+- Helix: live options flow tape — see every large trade hit the tape in real-time, filtered by size, sentiment, and unusual activity.
+- BlackOut Thermal: GEX heatmap matrix — see positioning across dozens of strikes and expirations at a glance. The heat shows where dealers are trapped.
+- Largo: AI analyst terminal — ask it anything about the market and it pulls from every data source we have. Like having a quant on speed dial.
+- Night Hawk: overnight playbook — AI-generated 0DTE game plan published before the bell, with entry levels, targets, and stop losses based on overnight positioning shifts.
+- SPX Slayer: 0DTE trading desk — live AI trade signals with real-time P&L tracking, tier-graded setups (A+ through F), and automatic exit intelligence.
+
+VOICE — THIS IS CRITICAL:
+- You're the smartest trader in the room who actually backs it up with data
+- Swagger, not arrogance. You SHOW the edge, you don't just claim it.
+- Write like fintwit's sharpest voice — punchy, quotable, makes people screenshot and share
+- Mix up your style: sometimes one-liner zingers, sometimes mini-breakdowns, sometimes provocative questions
+- Use line breaks strategically for rhythm and emphasis — don't just write a wall of text
+- Emojis: 0-2 max, only when they hit hard (🎯 for precision, ⚡ for speed, 🔥 for heat)
+- NEVER use hashtags
+- NEVER sound like a bot or a corporate account
+- NEVER use "unlock", "game-changer", "revolutionize", "take your trading to the next level" or any generic marketing language
+- Reference specific strikes, levels, and numbers when data is available
+- Create FOMO through specificity — "our members saw the 5,520 put wall hold 4 times before the bounce" is 100x better than "our platform shows support levels"
+- The CTA should feel natural, not salesy — end with the website as a flex, not a plea
+
+FORMAT:
+- Write ONLY the tweet text, nothing else
+- NO quotation marks around the tweet
+- Keep under 250 characters (leave room for image card + link)
+- Always end with ${SITE} on its own line — this is the call to action
+- The link should feel like dropping the mic, not begging for a click`;
+
+const STYLE_VARIATIONS = [
+  "Write in a BOLD DECLARATIVE style — short punchy statement, then the proof.",
+  "Write as a PROVOCATIVE QUESTION that makes traders feel behind — then answer it with what we show.",
+  "Write as a MINI STORY — 'Yesterday at 3:47 PM...' type energy. Specific moment, specific data, specific outcome.",
+  "Write as a FLEX — casually mention what our members saw before a move happened. Let the results speak.",
+  "Write as a ROAST of traders who don't use positioning data — funny but not mean, more 'bro you're trading blind'.",
+  "Write as a ONE-LINER ZINGER followed by a single supporting line. Mic-drop energy.",
+  "Write as an INSIDE LOOK — 'Here's what our desk is watching right now...' Pull back the curtain.",
+  "Write as a PATTERN INTERRUPT — start with something unexpected that stops the scroll, then connect it to our data.",
+];
+
+function pickStyle(): string {
+  return STYLE_VARIATIONS[Math.floor(Math.random() * STYLE_VARIATIONS.length)];
+}
 
 const POST_PROMPTS: Record<PostType, (data: MarketSnapshot) => string> = {
-  premarket_walls: (d) => `Write a pre-market tweet about SPX options positioning.
-Data: SPX at ${d.spxPrice ?? "N/A"}, regime: ${d.regime ?? "unknown"},
+  premarket_walls: (d) => `${pickStyle()}
+
+Write a pre-market tweet that makes traders feel NAKED without this data.
+Live data: SPX at ${d.spxPrice ?? "N/A"}, regime: ${d.regime ?? "unknown"},
 call wall: ${d.topCallWall ?? "N/A"}, put wall: ${d.topPutWall ?? "N/A"},
 flip level: ${d.flipLevel ?? "N/A"}, max pain: ${d.maxPain ?? "N/A"}.
-Angle: tell people where the walls are and what the regime means for today's session.
-Make them feel like they're missing out on seeing this data in real-time.`,
 
-  market_open: (d) => `Write a market-open tweet with a free data point.
-Data: SPX at ${d.spxPrice ?? "N/A"}, regime: ${d.regime ?? "unknown"},
+Show them the battlefield before the bell rings. Where are the walls? What does the regime mean?
+Make it feel like classified intel that just got declassified. The traders who see this before open
+have a massive edge — and they should feel it.`,
+
+  market_open: (d) => `${pickStyle()}
+
+Write a market-open tweet that GIVES AWAY real alpha for free.
+Live data: SPX at ${d.spxPrice ?? "N/A"}, regime: ${d.regime ?? "unknown"},
 flip level: ${d.flipLevel ?? "N/A"}, top call wall: ${d.topCallWall ?? "N/A"}.
-Give away the regime + flip level for free. Tease that members see walls, max pain,
-flow, AI plays, and more — all updating in real-time.`,
 
-  midday_flow: (d) => `Write a midday flow update tweet.
-Data: SPX at ${d.spxPrice ?? "N/A"}, regime: ${d.regime ?? "unknown"}.
-Talk about how the session is developing relative to the walls. Reference the
-Helix flow tape feature. Make traders curious about what unusual flow our members are seeing.`,
+Drop the regime and flip level for free — this is how we hook them. Be generous with one data point
+but make it painfully clear there's a whole universe of data behind the paywall. The free data point
+should be genuinely useful, not a teaser that feels empty.`,
 
-  close_recap: (d) => `Write an end-of-day recap tweet.
-Data: SPX at ${d.spxPrice ?? "N/A"}, regime: ${d.regime ?? "unknown"}.
-Recap how the walls held or broke, how the regime played out.
-Tease tomorrow's overnight positioning analysis via Night Hawk.`,
+  hot_take: (d) => `${pickStyle()}
 
-  free_data_drop: (d) => `Write a "free data drop" tweet giving away a specific data point.
-Data: SPX at ${d.spxPrice ?? "N/A"}, regime: ${d.regime ?? "unknown"},
+Write a mid-morning hot take that's slightly controversial or surprising.
+Live data: SPX at ${d.spxPrice ?? "N/A"}, regime: ${d.regime ?? "unknown"},
+flip level: ${d.flipLevel ?? "N/A"}.
+
+This should be the kind of tweet that gets quote-tweeted and debated. Take a strong position on
+what's happening in the market right now based on the positioning data. Be specific and confident.
+If the regime is negative gamma, lean into the volatility angle. If positive, talk about the pin.
+Make people want to argue with you — engagement is the goal.`,
+
+  midday_flow: (d) => `${pickStyle()}
+
+Write a midday update that reads like a war correspondent's dispatch from the trading floor.
+Live data: SPX at ${d.spxPrice ?? "N/A"}, regime: ${d.regime ?? "unknown"}.
+
+Reference Helix (our live flow tape) and what unusual activity our members are seeing. Use language
+like "the tape just lit up", "massive prints coming through", "someone knows something at the 5,500 strike".
+Create urgency — this is happening NOW and you're either watching it or you're not.`,
+
+  close_recap: (d) => `${pickStyle()}
+
+Write an end-of-day recap that makes today's action feel like an episode of a show people need to follow.
+Live data: SPX at ${d.spxPrice ?? "N/A"}, regime: ${d.regime ?? "unknown"}.
+
+Frame the day through our data: did the walls hold? Did price respect the flip level? Was the regime
+prediction accurate? Tease tomorrow with Night Hawk — our overnight AI playbook that drops before the bell.
+Make people feel like they missed the show and need to tune in tomorrow.`,
+
+  free_data_drop: (d) => `${pickStyle()}
+
+Write a "free alpha" tweet that gives away a genuinely useful data point.
+Live data: SPX at ${d.spxPrice ?? "N/A"}, regime: ${d.regime ?? "unknown"},
 put wall: ${d.topPutWall ?? "N/A"}, call wall: ${d.topCallWall ?? "N/A"},
 max pain: ${d.maxPain ?? "N/A"}.
-Pick the most interesting number and explain what it means in plain English.
-End with what else members get access to.`,
 
-  feature_showcase: () => `Write a tweet showcasing a random BlackOut Trades feature.
-Pick ONE from: Vector (multi-stock GEX charts with wall beads), Helix (live options flow tape),
-BlackOut Thermal (GEX heatmap matrix), Largo (AI analyst terminal), Night Hawk (overnight playbook),
-SPX Slayer (0DTE trading desk). Describe what it does in a way that makes a trader NEED to see it.
-Focus on the visual — "watch the walls form in real-time" type energy.`,
+Pick the MOST interesting number and break it down in plain English. What does it mean for a trader?
+What's the actionable insight? This should feel like a free sample from a dealer — good enough to get
+hooked, leaves you wanting the full supply. Be generous. Real alpha, not vague platitudes.`,
 
-  weekend_education: () => `Write an educational tweet about options gamma positioning.
-Explain one concept clearly: gamma exposure (GEX), dealer positioning, put/call walls,
-gamma flip, max pain, or how market makers hedge. Keep it approachable but not dumbed down.
-End with how BlackOut Trades makes this visible.`,
+  feature_showcase: () => `${pickStyle()}
+
+Write a tweet that makes ONE of our tools look absolutely insane. Pick randomly:
+- Vector: GEX charts with animated wall beads forming/growing/fading in real-time
+- Helix: live options flow tape catching whale trades as they happen
+- BlackOut Thermal: GEX heatmap matrix showing where dealers are trapped across strikes
+- Largo: AI terminal that answers any market question with real data
+- Night Hawk: overnight 0DTE playbook published before the bell
+- SPX Slayer: 0DTE desk with AI signals, live P&L, tier-graded setups
+
+Describe what it LOOKS like and FEELS like to use it, not just what it does. Make a trader
+picture themselves using it and getting an edge they can't get anywhere else. Sensory language —
+"watch the beads pulse", "the heatmap goes dark red", "the AI just flagged a setup".`,
+
+  loss_porn_roast: () => `${pickStyle()}
+
+Write a tweet that's a playful roast of traders who trade without positioning data.
+Think: "Trading 0DTE without seeing the walls is like driving blindfolded on the highway."
+Or: "You really out here buying calls without checking if there's a 50K contract call wall sitting right above you?"
+Keep it funny and relatable. Every trader has been there. The punchline is that our tools
+would have shown them EXACTLY where the danger was. Not mean-spirited — more like tough love
+from a friend who's tired of watching you blow up.`,
+
+  after_hours_alpha: (d) => `${pickStyle()}
+
+Write an after-hours tweet that previews tomorrow's setup.
+Live data: SPX closed at ${d.spxPrice ?? "N/A"}, regime: ${d.regime ?? "unknown"},
+flip level: ${d.flipLevel ?? "N/A"}.
+
+Reference Night Hawk — our AI overnight playbook. Tease what the positioning data suggests for
+tomorrow without giving away the full playbook. Create anticipation. Make traders feel like going
+to bed without checking BlackOut is leaving money on the table. Frame it as "while you sleep,
+the positioning shifts — Night Hawk catches it all."`,
+
+  weekend_education: () => `${pickStyle()}
+
+Write an educational tweet that teaches ONE concept so clearly that traders screenshot it.
+Pick from: gamma exposure (GEX), dealer hedging mechanics, put/call walls as support/resistance,
+gamma flip (the line where dealer behavior inverts), max pain (where options expire worthless),
+or how market makers create "gravity" at certain strikes.
+
+Make it approachable but smart — don't dumb it down, make it click. Use a concrete example:
+"When SPX is above the flip level, dealers buy dips. Below it, they sell into weakness.
+That one line on the chart changes EVERYTHING about how the day trades."
+End by connecting it to what BlackOut Trades visualizes.`,
 };
 
 export async function generateTweetContent(
@@ -177,9 +292,10 @@ export async function generateTweetContent(
   const userPrompt = promptFn(data);
 
   try {
-    const text = await anthropicText(userPrompt, 300, BRAND_VOICE, {
+    const text = await anthropicText(userPrompt, 400, BRAND_VOICE, {
       model: "claude-haiku-4-5",
       aiGate: "global",
+      temperature: 0.9,
     });
     return text?.trim() || null;
   } catch (e) {
@@ -202,13 +318,16 @@ export const MARKETING_IMAGES: Record<string, string> = {
 };
 
 const IMAGE_ROTATION: Record<PostType, string[]> = {
-  premarket_walls: ["vector", "spx"],
-  market_open: ["spx", "vector"],
+  premarket_walls: ["vector", "thermal", "spx"],
+  market_open: ["spx", "vector", "thermal"],
+  hot_take: ["vector", "thermal"],
   midday_flow: ["helix", "vector"],
-  close_recap: ["spx", "thermal"],
+  close_recap: ["spx", "thermal", "vector"],
   free_data_drop: ["vector", "thermal", "helix"],
   feature_showcase: ["vector", "helix", "thermal", "largo", "hawk", "spx"],
-  weekend_education: ["vector", "thermal"],
+  loss_porn_roast: ["spx", "vector", "thermal"],
+  after_hours_alpha: ["hawk", "spx", "vector"],
+  weekend_education: ["vector", "thermal", "largo"],
 };
 
 export function pickImageKey(postType: PostType): string {

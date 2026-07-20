@@ -10,6 +10,7 @@ import {
   generateTweetContent,
   pickImageKey,
   MARKETING_IMAGES,
+  SCHEDULE,
   type PostType,
 } from "@/lib/x-content";
 
@@ -52,9 +53,13 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Allow forcing a specific post type via query param
-  const forceType = req.nextUrl.searchParams.get("type") as PostType | null;
   const dryRun = req.nextUrl.searchParams.get("dry") === "1";
+
+  // Validate forced post type against known schedule types
+  const validTypes = new Set<string>(SCHEDULE.map((s) => s.type));
+  const rawType = req.nextUrl.searchParams.get("type");
+  const forceType =
+    rawType && validTypes.has(rawType) ? (rawType as PostType) : null;
 
   const et = nowET();
   const postType = forceType ?? selectPostType(et);

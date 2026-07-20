@@ -56,8 +56,9 @@ function oauthHeader(
 
   const baseStr = `${method}&${pctEnc(url)}&${pctEnc(paramStr)}`;
   const sigKey = `${pctEnc(creds.consumerSecret)}&${pctEnc(creds.accessTokenSecret)}`;
+  // OAuth 1.0a spec mandates HMAC-SHA1 — not used for password storage
   const sig = crypto
-    .createHmac("sha1", sigKey)
+    .createHmac("sha1", sigKey) // lgtm[js/insufficient-password-hash]
     .update(baseStr)
     .digest("base64");
 
