@@ -6,6 +6,10 @@ import {
 import { deriveVectorRegime } from "@/features/vector/lib/vector-regime";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import type { PostType } from "@/lib/x-content-types";
+import {
+  composeHumanTweet,
+  attachFooter,
+} from "@/lib/x-content-humanize";
 export type { PostType } from "@/lib/x-content-types";
 export {
   selectPostType,
@@ -86,17 +90,21 @@ const FULL_STACK = `THE DESK (weave ALL of these naturally — one unified story
 
 const PRICING_RULES = `PRICING: Community $75/mo · Premium $199/mo (full desk) · Yearly $1,999/yr. Never say free.`;
 
-const BRAND_VOICE = `You are @BlackOutTrade — the official BlackOut Trades account.
+const BRAND_VOICE = `You write as a real trader who runs the @BlackOutTrade desk — not a social media manager.
 
 ${PRICING_RULES}
 
-${FULL_STACK}
+Tools you know intimately (mention 2-3 per tweet max, never all six in one line):
+Vector (GEX ladder), Helix (flow tape), Thermal (heatmap), Largo (AI), Night Hawk (overnight playbook), SPX Slayer (0DTE signals).
 
-RULES:
-- ONE tweet, ONE story — connect live market data to how the full desk works together
-- Ask ONE question at the end to drive replies
-- Specific SPX levels when provided — never placeholders
-- 0-2 emojis max. NO hashtags
+VOICE — sound human:
+- Write like you're texting a sharp friend between setups — contractions, rhythm, specificity
+- Lead with what matters NOW (a level, a print, a regime shift) then connect to how you read it
+- Avoid marketing clichés: no "one desk not six tabs", "full stack", "game-changer", "unlock"
+- Avoid listing every product name in a row — that's bot energy
+- Ask ONE genuine question traders would actually answer
+- NEVER @tag other accounts
+- 0-1 emojis. NO hashtags
 - Body under 195 chars (footer added automatically)
 - Do NOT include @BlackOutTrade or Whop in body`;
 
@@ -132,14 +140,14 @@ export function fallbackDeskTweet(
   const spx = d.spxPrice ? `$${Math.round(d.spxPrice)}` : "SPX";
   const flip = d.flipLevel ? `$${d.flipLevel}` : "flip";
   const hooks: Record<PostType, string> = {
-    desk_open: `${spx} at open — Night Hawk called the levels, Vector mapped the walls, SPX Slayer flagged the setup. One desk, not six tabs. What's your open plan?`,
-    desk_flow: `Helix just lit up on a whale print while Thermal showed dealers pinned at the wall. Vector flip at ${flip} confirms the read. Are you watching flow or guessing?`,
-    desk_ai: `Asked Largo where gamma flip is → ${flip}. SPX Slayer graded the 0DTE setup while Vector beads pulsed on the ladder. AI + structure + signals. What's your ticker?`,
-    desk_matrix: `${spx}, ${d.regime ?? "negative"} gamma, flip ${flip}. Same positioning read on Thermal matrix + Vector ladder — dealers don't hide. Which lens do you trust?`,
-    desk_midday: `Midday: Helix flow + Thermal heatmap + Vector walls + Largo AI + SPX Slayer signals — one connected desk on ${spx}. Trading blind or trading positioned?`,
-    desk_close: `Close on ${spx} — did the walls hold? Full desk tracked it live. Night Hawk is already building tomorrow's playbook. Are you on the list?`,
-    desk_evening: `Trading 0DTE with charts alone vs Vector walls + Helix flow + Thermal matrix + Largo AI + SPX Slayer + Night Hawk. Which version of you makes money?`,
-    weekend_desk: `Weekend truth: gamma flip is where dealer behavior inverts. Vector + Thermal show it live Monday. Are you mapping positioning or trading blind into the open?`,
+    desk_open: `Morning — SPX at ${spx}, flip sitting at ${flip}. Night Hawk had the levels before the bell; Vector's showing where dealers lean. How are you playing the open?`,
+    desk_flow: `Helix caught a fat print while Thermal lit up the wall zone. Flip at ${flip} still the line in the sand. You fading or riding flow today?`,
+    desk_ai: `Asked Largo where gamma flip is — ${flip}. SPX Slayer flagged a setup while Vector beads moved. What's your conviction level?`,
+    desk_matrix: `${spx}, ${d.regime ?? "negative"} gamma, flip ${flip}. Thermal and Vector tell the same story from two angles. Which strike are you watching?`,
+    desk_midday: `Midday check: ${spx} holding below flip or reclaiming? Flow's been telling a story on Helix. What's your read into the close?`,
+    desk_close: `Closing ${spx} — walls did what walls do. Night Hawk's already sketching tomorrow. Did you trade the positioning or the chart?`,
+    desk_evening: `Honest take: charts without dealer gamma is half the picture. We run Vector, Helix, Thermal, Largo, Night Hawk, SPX Slayer for a reason. What's missing from your setup?`,
+    weekend_desk: `Weekend thought: gamma flip is where dealer hedging inverts. Come Monday, Vector + Thermal make it visible. Mapping levels or winging it?`,
   };
   return `${hooks[type]}\n${xPostFooter()}`;
 }
@@ -147,19 +155,40 @@ export function fallbackDeskTweet(
 export async function generateTweetContent(
   postType: PostType,
   data: MarketSnapshot,
-): Promise<string | null> {
+): Promise<{ content: string; draftBody: string; enhanced: boolean } | null> {
+  const footer = xPostFooter();
+  let draftBody: string;
+
   try {
     const raw = await anthropicText(buildPrompt(postType, data), 400, BRAND_VOICE, {
       model: "claude-haiku-4-5",
       aiGate: "global",
-      temperature: 0.85,
+      temperature: 0.88,
     });
-    const body = raw?.trim();
-    if (!body) return fallbackDeskTweet(postType, data);
-    return `${body}\n${xPostFooter()}`;
+    draftBody = raw?.trim() ?? "";
   } catch {
-    return fallbackDeskTweet(postType, data);
+    draftBody = "";
   }
+
+  if (!draftBody) {
+    return {
+      content: fallbackDeskTweet(postType, data),
+      draftBody: "(fallback)",
+      enhanced: false,
+    };
+  }
+
+  const composed = await composeHumanTweet(draftBody, {
+    postType,
+    spxPrice: data.spxPrice,
+    regime: data.regime,
+  });
+
+  return {
+    content: attachFooter(composed.body, footer),
+    draftBody: composed.draftBody,
+    enhanced: composed.enhanced,
+  };
 }
 
 // ---------------------------------------------------------------------------

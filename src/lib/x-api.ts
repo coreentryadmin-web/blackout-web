@@ -148,10 +148,17 @@ export interface TweetResult {
   text: string;
 }
 
+import { isTimelinePostAllowed } from "@/lib/x-feed-policy";
+
 export async function postTweet(
   text: string,
   mediaIds?: string[],
 ): Promise<TweetResult> {
+  if (!isTimelinePostAllowed(text)) {
+    throw new Error(
+      "Timeline post rejected: do not @tag other accounts on @BlackOutTrade profile",
+    );
+  }
   const payload: Record<string, unknown> = { text };
   if (mediaIds?.length) {
     payload.media = { media_ids: mediaIds };
@@ -307,7 +314,7 @@ export async function fetchUserTweets(
   const params = new URLSearchParams({
     max_results: String(Math.min(Math.max(maxResults, 5), 100)),
     exclude: "retweets,replies",
-    "tweet.fields": "author_id,created_at",
+    "tweet.fields": "author_id,created_at,public_metrics",
   });
   const url = `https://api.x.com/2/users/${userId}/tweets?${params}`;
   const res = await oauthFetch("GET", url);

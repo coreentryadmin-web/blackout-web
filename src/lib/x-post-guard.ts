@@ -11,6 +11,8 @@ export const X_POST_LIMITS = {
   minMinutesBetween: 110,
 } as const;
 
+import { isTimelinePostAllowed } from "@/lib/x-feed-policy";
+
 const BROKEN_PATTERNS = [
   /unknown gamma/i,
   /flip flip/i,
@@ -24,6 +26,7 @@ const BROKEN_PATTERNS = [
 export function isTweetContentValid(text: string): boolean {
   const body = text.split("\n")[0] ?? text;
   if (body.length < 40) return false;
+  if (!isTimelinePostAllowed(text)) return false;
   for (const re of BROKEN_PATTERNS) {
     if (re.test(text)) return false;
   }
