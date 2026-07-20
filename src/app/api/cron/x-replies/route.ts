@@ -2,22 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { xApiEnabled, fetchMentions, postReply } from "@/lib/x-api";
-import { xPostFooter } from "@/lib/x-content";
+import { pickMentionReply } from "@/lib/x-engage-replies";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
-const MAX_REPLIES_PER_RUN = 5;
-
-const REPLY_TEMPLATES = [
-  (u: string) =>
-    `@${u} Dealer positioning beats chart patterns. What ticker are you watching tomorrow?`,
-  (u: string) =>
-    `@${u} Appreciate you — we map gamma walls + flow live. What's your go-to setup?`,
-  (u: string) =>
-    `@${u} Flip level + regime = whether dealers amplify or dampen. That's the edge.`,
-];
+const MAX_REPLIES_PER_RUN = 10;
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -32,18 +23,13 @@ export async function GET(req: NextRequest) {
   const stats = { replied: 0, scanned: 0, errors: [] as string[] };
 
   try {
-    const mentions = await fetchMentions(15);
+    const mentions = await fetchMentions(20);
     for (const m of mentions) {
       stats.scanned += 1;
-      const lower = m.text.toLowerCase();
-      if (lower.startsWith("@blackouttrade")) continue;
-
       const username = m.author_username;
       if (!username || username.toLowerCase() === "blackouttrade") continue;
 
-      const body =
-        REPLY_TEMPLATES[stats.replied % REPLY_TEMPLATES.length](username);
-      const text = `${body} ${xPostFooter()}`.slice(0, 280);
+      const text = pickMentionReply(username, m.text).slice(0, 280);
 
       if (!dryRun) {
         try {
@@ -55,7 +41,7 @@ export async function GET(req: NextRequest) {
       } else {
         stats.replied += 1;
       }
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, 1200));
       if (stats.replied >= MAX_REPLIES_PER_RUN) break;
     }
 

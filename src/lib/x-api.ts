@@ -284,6 +284,16 @@ export interface XTweet {
   text: string;
   author_id?: string;
   created_at?: string;
+  public_metrics?: {
+    impression_count?: number;
+    like_count?: number;
+    reply_count?: number;
+    retweet_count?: number;
+  };
+}
+
+export interface XTweetSearchHit extends XTweet {
+  author_username?: string;
 }
 
 export async function fetchUserTweets(
@@ -300,6 +310,35 @@ export async function fetchUserTweets(
   if (!res.ok) return [];
   const json = (await res.json()) as { data?: XTweet[] };
   return json.data ?? [];
+}
+
+/** Recent search — discovery for engagement (requires X API search access). */
+export async function searchRecentTweets(
+  query: string,
+  maxResults = 10,
+): Promise<XTweetSearchHit[]> {
+  const params = new URLSearchParams({
+    query,
+    max_results: String(Math.min(Math.max(maxResults, 10), 100)),
+    "tweet.fields": "author_id,created_at,public_metrics",
+    expansions: "author_id",
+    "user.fields": "username",
+  });
+  const url = `https://api.x.com/2/tweets/search/recent?${params}`;
+  const res = await oauthFetch("GET", url);
+  if (!res.ok) return [];
+
+  const json = (await res.json()) as {
+    data?: XTweet[];
+    includes?: { users?: XUser[] };
+  };
+  const users = new Map(
+    (json.includes?.users ?? []).map((u) => [u.id, u.username]),
+  );
+  return (json.data ?? []).map((t) => ({
+    ...t,
+    author_username: t.author_id ? users.get(t.author_id) : undefined,
+  }));
 }
 
 /** Recent @mentions of @BlackOutTrade with author usernames resolved. */

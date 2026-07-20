@@ -4,6 +4,7 @@ import {
   getVectorGammaFlipForHorizon,
 } from "@/features/vector/lib/vector-snapshot";
 import { deriveVectorRegime } from "@/features/vector/lib/vector-regime";
+import { getGexPositioning } from "@/lib/providers/gex-positioning";
 
 // ---------------------------------------------------------------------------
 // Post types — the engine picks one based on time-of-day + rotation
@@ -72,20 +73,21 @@ interface MarketSnapshot {
 export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
   const snap: MarketSnapshot = {};
   try {
-    const [walls, flipLevel] = await Promise.all([
+    const [walls, flipLevel, positioning] = await Promise.all([
       getVectorGexWallsForHorizon("SPX", "0dte"),
       getVectorGammaFlipForHorizon("SPX", "0dte"),
+      getGexPositioning("SPX").catch(() => null),
     ]);
-    const spot = walls?.spot ?? null;
+    const spot = positioning?.spot ?? null;
     if (spot != null) snap.spxPrice = spot;
     if (flipLevel != null) snap.flipLevel = flipLevel;
     snap.topCallWall = walls?.callWalls?.[0]?.strike;
     snap.topPutWall = walls?.putWalls?.[0]?.strike;
     const regime = deriveVectorRegime({
       spot: snap.spxPrice ?? null,
-      flip: snap.flipLevel ?? null,
-      callWall: snap.topCallWall ?? null,
-      putWall: snap.topPutWall ?? null,
+      gammaFlip: snap.flipLevel ?? null,
+      topCallWall: snap.topCallWall ?? null,
+      topPutWall: snap.topPutWall ?? null,
     });
     snap.regime = regime.read;
   } catch (e) {

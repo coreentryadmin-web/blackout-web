@@ -64,6 +64,15 @@ try {
     case "engage":
       result = await hit("/api/cron/x-engage");
       break;
+    case "replies":
+      result = await hit("/api/cron/x-replies");
+      break;
+    case "engage-all":
+      result = {
+        engage: await hit("/api/cron/x-engage"),
+        replies: await hit("/api/cron/x-replies"),
+      };
+      break;
     case "dry-replies":
       result = await hit("/api/cron/x-replies?dry=1");
       break;

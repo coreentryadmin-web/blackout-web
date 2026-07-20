@@ -33,6 +33,7 @@
     "validate:staging-site-e2e": "node scripts/staging-site-e2e.mjs",
     "capture:marketing-modules": "node scripts/capture-marketing-module-shots.mjs",
     "x-marketing:run": "node scripts/x-marketing-run.mjs",
+    "x-engage:now": "node --import tsx scripts/x-engage-now.ts",
     "validate:staging-latency-watch": "node scripts/staging-prod-latency-watch.mjs",
     "validate:staging-monitor": "node scripts/staging-continuous-monitor.mjs",
     "validate:staging-monitor:once": "node scripts/staging-continuous-monitor.mjs --once",
