@@ -176,8 +176,23 @@ export function SpxGexMatrixHeatmap({
     MATRIX_POLL_RTH_MS,
     MATRIX_POLL_OFF_MS
   );
-  const matrixKey = "/api/market/gex-heatmap?ticker=SPX";
+  // Fast-move bypass (Thermal parity): when live desk spot diverges from cached matrix
+  // spot by >0.5%, force ONE immediate matrix recompute via &force=1 (throttled ≤1/8s).
+  const [forceNonce, setForceNonce] = useState(0);
+  const [fastFlash, setFastFlash] = useState(false);
+  const lastForceAtRef = useRef(0);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const forceResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const matrixKey =
+    forceNonce > 0
+      ? `/api/market/gex-heatmap?ticker=SPX&force=1&n=${forceNonce}`
+      : "/api/market/gex-heatmap?ticker=SPX";
   const cachedMatrix = useMemo(() => readGexHeatmapSessionCache<GexHeatmapResponse>("SPX"), []);
+
+  const clearForceNonce = () => {
+    setForceNonce((n) => (n > 0 ? 0 : n));
+  };
 
   const { data, isLoading, error, isValidating, mutate } = useSWR<GexHeatmapResponse>(
     matrixKey,
@@ -192,7 +207,9 @@ export function SpxGexMatrixHeatmap({
         if (payload?.available && payload.gex?.strike_totals) {
           writeGexHeatmapSessionCache("SPX", payload);
         }
+        clearForceNonce();
       },
+      onError: clearForceNonce,
     }
   );
 
@@ -263,6 +280,29 @@ export function SpxGexMatrixHeatmap({
   const matrixSpot = data?.spot ?? 0;
   const overlaySpot =
     liveSpot != null && liveSpot > 0 ? liveSpot : matrixSpot > 0 ? matrixSpot : 0;
+
+  useEffect(() => {
+    if (!(matrixSpot > 0) || !(overlaySpot > 0)) return;
+    if (liveSpot == null || liveSpot <= 0) return;
+    const divergence = Math.abs(liveSpot - matrixSpot) / matrixSpot;
+    if (divergence <= 0.005) return;
+    const nowMs = Date.now();
+    if (nowMs - lastForceAtRef.current < 8_000) return;
+    lastForceAtRef.current = nowMs;
+    setForceNonce((n) => n + 1);
+    setFastFlash(true);
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => setFastFlash(false), 2_000);
+    if (forceResetTimerRef.current) clearTimeout(forceResetTimerRef.current);
+    forceResetTimerRef.current = setTimeout(() => setForceNonce(0), 4_000);
+  }, [liveSpot, matrixSpot, overlaySpot]);
+
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      if (forceResetTimerRef.current) clearTimeout(forceResetTimerRef.current);
+    };
+  }, []);
 
   const odteTotals = useMemo(
     () => odteStrikeTotalsFromCells(cells, strikesAxis, columnExpiry),
@@ -431,6 +471,14 @@ export function SpxGexMatrixHeatmap({
           />
           {gexStale && (
             <span className="text-amber-300/90 uppercase tracking-wider">GEX stale</span>
+          )}
+          {fastFlash && (
+            <span
+              className="inline-flex items-center gap-1 rounded-md bg-cyan-400/15 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-cyan-400 outline outline-1 outline-cyan-400/40 motion-safe:animate-pulse"
+              title="Spot moved >0.5% — forcing matrix refresh"
+            >
+              <span aria-hidden>⚡</span> fast
+            </span>
           )}
           {asofLabel ? <span>{asofLabel} ET</span> : null}
           {/* Manual refresh (user-directed 2026-07-14): revalidates ONLY this panel's SWR key
