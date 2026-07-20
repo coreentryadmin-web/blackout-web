@@ -218,8 +218,14 @@ test("G-4: normal VIX (<17) commits freely, calibration tier logged", () => {
   assert.equal(normal.calibration.g4_vix.would_block, false);
 });
 
-test("G-4: elevated VIX (>=17) with score < 75 BLOCKS (the 44pp WR gap is too strong to ignore)", () => {
-  const weak = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 70 }));
+test("G-4: elevated VIX tape-aligned score 65–74 commits (G-1 already blocks counter-tape)", () => {
+  const aligned = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 70 }));
+  assert.equal(aligned.verdict, "COMMIT");
+  assert.equal(aligned.calibration.g4_vix.would_block, false);
+});
+
+test("G-4: elevated VIX without readable tape alignment still needs score >= 75", () => {
+  const weak = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 70, bias: "flat" }));
   assert.equal(weak.verdict, "BLOCKED");
   assert.equal(weak.blocks.some((b) => b.code === "vix_elevated"), true);
   assert.match(weak.blocks.find((b) => b.code === "vix_elevated")!.reason, /25% WR/);
