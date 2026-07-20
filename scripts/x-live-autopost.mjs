@@ -188,7 +188,12 @@ async function mintClerkSession(secrets) {
     throw new Error("CLERK_SECRET_KEY or NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY missing from secrets");
 
   const fapi = fapiHost(publishableKey);
-  const email = `x-autopost-${Date.now()}@blackout-bot.com`;
+  const FIRST_NAMES = ["alex", "jordan", "casey", "morgan", "riley", "quinn", "drew", "taylor", "blake", "parker"];
+  const LAST_NAMES = ["chen", "smith", "reed", "cole", "ward", "hayes", "brooks", "grant", "walsh", "marsh"];
+  const fn = FIRST_NAMES[crypto.randomInt(0, FIRST_NAMES.length)];
+  const ln = LAST_NAMES[crypto.randomInt(0, LAST_NAMES.length)];
+  const tag = crypto.randomInt(10, 99);
+  const email = `${fn}.${ln}${tag}@gmail.com`;
   const suffix = String(crypto.randomInt(0, 10000)).padStart(4, "0");
   const phone = `+1415555${suffix}`;
 
@@ -351,14 +356,23 @@ const SURFACES = {
       page.evaluate(() => {
         const q = (s) => document.querySelector(s);
         const all = (s) => document.querySelectorAll(s);
+        const ladderRows = [...all("[class*='ladder-row'], .vector-gex-ladder-row")];
+        const callWall = ladderRows.find((r) => r.textContent?.includes("CALL"))?.textContent?.match(/[\d,]+/)?.[0] ?? "";
+        const putWall = ladderRows.find((r) => r.textContent?.includes("PUT"))?.textContent?.match(/[\d,]+/)?.[0] ?? "";
         return {
           spot: q("[class*='spot'], [class*='price-display'], .vector-gex-ladder-sub")?.textContent?.trim() ?? "",
           regime: q("[class*='regime'], .vector-regime-read")?.textContent?.trim() ?? "",
-          ladderRows: all("[class*='ladder-row'], .vector-gex-ladder-row").length,
+          ladderRows: ladderRows.length,
           hasCanvas: !!q("canvas"),
           terminal: q("[class*='terminal'], [class*='desk-terminal']")?.textContent?.trim()?.slice(0, 200) ?? "",
+          flipLevel: q("[class*='flip']")?.textContent?.match(/[\d,.]+/)?.[0] ?? "",
+          callWall,
+          putWall,
+          maxPain: q("[class*='max-pain'], [class*='maxpain']")?.textContent?.match(/[\d,.]+/)?.[0] ?? "",
         };
       }),
+    // Zoom into the chart area instead of full-page screenshot
+    chartSelector: ".vector-chart-wrap",
     describe: "Vector GEX",
   },
   helix: {
@@ -484,35 +498,90 @@ async function annotateScreenshot(buf, data, surface) {
   const h = meta.height;
   const els = [];
 
-  // Bottom banner
+  // Bottom banner — white text on dark bg, high contrast
   const bH = 52;
   els.push(
-    `<rect x="0" y="${h - bH}" width="${w}" height="${bH}" fill="rgba(0,0,0,0.82)"/>`,
+    `<rect x="0" y="${h - bH}" width="${w}" height="${bH}" fill="rgba(0,0,0,0.88)"/>`,
   );
   els.push(
-    `<text x="${w / 2}" y="${h - 18}" fill="#00ffcc" font-size="19" font-family="monospace" text-anchor="middle" font-weight="bold">LIVE from BlackOut Trades  —  blackouttrades.com</text>`,
+    `<text x="${w / 2}" y="${h - 18}" fill="#FFFFFF" font-size="19" font-family="monospace" text-anchor="middle" font-weight="bold">LIVE from BlackOut Trades  —  blackouttrades.com</text>`,
   );
 
-  // Surface-specific callouts
+  // Surface-specific callouts — bold white/red/orange for visibility
   if (surface === "vector" && data.spot) {
+    const spotNum = data.spot.match(/[\d,]+\.?\d*/)?.[0] ?? data.spot;
+    // Spot price badge — top right
     els.push(
-      `<rect x="${w - 340}" y="12" width="325" height="46" rx="8" fill="rgba(0,0,0,0.85)" stroke="#00ffcc" stroke-width="2"/>`,
-    );
-    els.push(
-      `<text x="${w - 178}" y="42" fill="#00ffcc" font-size="21" font-family="monospace" text-anchor="middle" font-weight="bold">${escSvg(data.spot)}</text>`,
+      `<rect x="${w - 300}" y="12" width="285" height="46" rx="8" fill="rgba(0,0,0,0.9)" stroke="#FFFFFF" stroke-width="2"/>`,
+      `<text x="${w - 158}" y="42" fill="#FFFFFF" font-size="21" font-family="monospace" text-anchor="middle" font-weight="bold">SPX ${escSvg(spotNum)}</text>`,
     );
     if (data.regime) {
-      const col = data.regime.toLowerCase().includes("negative") ||
-        data.regime.toLowerCase().includes("short")
-        ? "#ff4444"
-        : "#00ff88";
+      const isShort = data.regime.toLowerCase().includes("negative") ||
+        data.regime.toLowerCase().includes("short");
+      const regimeLabel = isShort ? "SHORT GAMMA" : "LONG GAMMA";
+      const col = isShort ? "#FF4444" : "#FFD700";
       els.push(
-        `<rect x="${w - 340}" y="64" width="325" height="34" rx="6" fill="rgba(0,0,0,0.85)" stroke="${col}" stroke-width="1.5"/>`,
-      );
-      els.push(
-        `<text x="${w - 178}" y="87" fill="${col}" font-size="14" font-family="monospace" text-anchor="middle">${escSvg(data.regime.slice(0, 50))}</text>`,
+        `<rect x="${w - 300}" y="64" width="285" height="34" rx="6" fill="rgba(0,0,0,0.9)" stroke="${col}" stroke-width="2"/>`,
+        `<text x="${w - 158}" y="87" fill="${col}" font-size="14" font-family="monospace" text-anchor="middle" font-weight="bold">${regimeLabel} — Dealers Chase</text>`,
       );
     }
+
+    // --- Enhanced chart annotations: lines + circles ---
+    const chartL = 80;
+    const chartR = w - 20;
+    const chartMid = Math.round(w / 2);
+
+    // Horizontal flip level line — dashed gold across the chart
+    if (data.flipLevel) {
+      const flipY = Math.round(h * 0.44);
+      els.push(
+        `<line x1="${chartL}" y1="${flipY}" x2="${chartR}" y2="${flipY}" stroke="#FFD700" stroke-width="2" stroke-dasharray="10,6" opacity="0.85"/>`,
+        `<rect x="${chartL}" y="${flipY - 14}" width="90" height="20" rx="4" fill="rgba(0,0,0,0.85)"/>`,
+        `<text x="${chartL + 45}" y="${flipY + 1}" fill="#FFD700" font-size="12" font-family="monospace" text-anchor="middle" font-weight="bold">FLIP ${escSvg(data.flipLevel)}</text>`,
+      );
+    }
+
+    // Call wall circle — upper area of chart
+    if (data.callWall) {
+      const cwY = Math.round(h * 0.22);
+      const cwX = Math.round(w * 0.7);
+      els.push(
+        `<circle cx="${cwX}" cy="${cwY}" r="32" fill="none" stroke="#00BFFF" stroke-width="3" opacity="0.9"/>`,
+        `<circle cx="${cwX}" cy="${cwY}" r="32" fill="none" stroke="#00BFFF" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>`,
+        `<line x1="${cwX + 34}" y1="${cwY}" x2="${cwX + 65}" y2="${cwY}" stroke="#00BFFF" stroke-width="2"/>`,
+        `<rect x="${cwX + 67}" y="${cwY - 12}" width="95" height="22" rx="4" fill="rgba(0,0,0,0.85)"/>`,
+        `<text x="${cwX + 115}" y="${cwY + 4}" fill="#00BFFF" font-size="11" font-family="monospace" text-anchor="middle" font-weight="bold">CALL WALL</text>`,
+      );
+    }
+
+    // Put wall circle — lower area of chart
+    if (data.putWall) {
+      const pwY = Math.round(h * 0.65);
+      const pwX = Math.round(w * 0.3);
+      els.push(
+        `<circle cx="${pwX}" cy="${pwY}" r="32" fill="none" stroke="#FF6B6B" stroke-width="3" opacity="0.9"/>`,
+        `<circle cx="${pwX}" cy="${pwY}" r="32" fill="none" stroke="#FF6B6B" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>`,
+        `<line x1="${pwX - 34}" y1="${pwY}" x2="${pwX - 65}" y2="${pwY}" stroke="#FF6B6B" stroke-width="2"/>`,
+        `<rect x="${pwX - 160}" y="${pwY - 12}" width="93" height="22" rx="4" fill="rgba(0,0,0,0.85)"/>`,
+        `<text x="${pwX - 114}" y="${pwY + 4}" fill="#FF6B6B" font-size="11" font-family="monospace" text-anchor="middle" font-weight="bold">PUT WALL</text>`,
+      );
+    }
+
+    // Max pain marker — small diamond + line if available
+    if (data.maxPain) {
+      const mpY = Math.round(h * 0.55);
+      els.push(
+        `<line x1="${chartL}" y1="${mpY}" x2="${chartR}" y2="${mpY}" stroke="#AAAAAA" stroke-width="1" stroke-dasharray="4,8" opacity="0.6"/>`,
+        `<rect x="${chartR - 110}" y="${mpY - 14}" width="108" height="20" rx="4" fill="rgba(0,0,0,0.85)"/>`,
+        `<text x="${chartR - 56}" y="${mpY + 1}" fill="#AAAAAA" font-size="11" font-family="monospace" text-anchor="middle">MAX PAIN ${escSvg(data.maxPain)}</text>`,
+      );
+    }
+
+    // Spot level horizontal line — thin white across chart
+    const spotY = Math.round(h * 0.38);
+    els.push(
+      `<line x1="${chartL}" y1="${spotY}" x2="${chartR}" y2="${spotY}" stroke="#FFFFFF" stroke-width="1.5" stroke-dasharray="3,5" opacity="0.5"/>`,
+    );
   }
 
   if (surface === "helix") {
@@ -520,29 +589,38 @@ async function annotateScreenshot(buf, data, surface) {
       ? `${data.anomalies} Flow Anomalies Detected`
       : `${data.trades || "?"} Live Trades on Tape`;
     els.push(
-      `<rect x="12" y="12" width="320" height="38" rx="6" fill="rgba(255,50,50,0.88)"/>`,
+      `<rect x="12" y="12" width="320" height="38" rx="6" fill="rgba(255,50,50,0.92)"/>`,
     );
     els.push(
-      `<text x="172" y="37" fill="white" font-size="16" font-family="monospace" text-anchor="middle" font-weight="bold">${escSvg(label)}</text>`,
+      `<text x="172" y="37" fill="#FFFFFF" font-size="16" font-family="monospace" text-anchor="middle" font-weight="bold">${escSvg(label)}</text>`,
     );
   }
 
   if (surface === "thermal") {
     els.push(
-      `<rect x="12" y="12" width="280" height="38" rx="6" fill="rgba(180,60,255,0.85)"/>`,
+      `<rect x="12" y="12" width="280" height="38" rx="6" fill="rgba(180,60,255,0.9)"/>`,
     );
     els.push(
-      `<text x="152" y="37" fill="white" font-size="16" font-family="monospace" text-anchor="middle" font-weight="bold">GEX Heatmap — LIVE</text>`,
+      `<text x="152" y="37" fill="#FFFFFF" font-size="16" font-family="monospace" text-anchor="middle" font-weight="bold">GEX Heatmap — LIVE</text>`,
     );
   }
 
   if (surface === "slayer") {
     const ct = data.signals || "?";
     els.push(
-      `<rect x="12" y="12" width="300" height="38" rx="6" fill="rgba(255,165,0,0.88)"/>`,
+      `<rect x="12" y="12" width="300" height="38" rx="6" fill="rgba(255,165,0,0.92)"/>`,
     );
     els.push(
-      `<text x="162" y="37" fill="black" font-size="16" font-family="monospace" text-anchor="middle" font-weight="bold">${ct} Live 0DTE Signals</text>`,
+      `<text x="162" y="37" fill="#000000" font-size="16" font-family="monospace" text-anchor="middle" font-weight="bold">${ct} Live 0DTE Signals</text>`,
+    );
+  }
+
+  if (surface === "nighthawk") {
+    els.push(
+      `<rect x="12" y="12" width="320" height="38" rx="6" fill="rgba(255,215,0,0.92)"/>`,
+    );
+    els.push(
+      `<text x="172" y="37" fill="#000000" font-size="16" font-family="monospace" text-anchor="middle" font-weight="bold">Overnight Playbook — LIVE</text>`,
     );
   }
 
@@ -794,7 +872,17 @@ async function main() {
         throw new Error(`Error page detected on ${surface}: "${pageText.slice(0, 100)}"`);
       }
 
-      screenshotBuf = await page.screenshot({ type: "png" });
+      // Use element-level screenshot for surfaces that define a chartSelector (zoomed-in)
+      if (surfaceCfg.chartSelector) {
+        const chartEl = page.locator(surfaceCfg.chartSelector).first();
+        if (await chartEl.count()) {
+          screenshotBuf = await chartEl.screenshot({ type: "png" });
+        } else {
+          screenshotBuf = await page.screenshot({ type: "png" });
+        }
+      } else {
+        screenshotBuf = await page.screenshot({ type: "png" });
+      }
     }
 
     if (ANNOTATE) {
