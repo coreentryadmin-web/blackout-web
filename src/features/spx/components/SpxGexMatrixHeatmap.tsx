@@ -38,10 +38,6 @@ import { scrollRowIntoViewCenter } from "@/features/spx/lib/spx-matrix-scroll";
 import type { SpxTapeItem } from "@/features/spx/lib/spx-desk";
 import type { VectorPriceScaleMap } from "@/features/vector/lib/vector-price-scale-map";
 
-/** Persisted matrix view mode — ladder (shared chart axis, default) vs the dense table. */
-const MATRIX_VIEW_STORAGE_KEY = "spx-matrix-view-mode";
-type MatrixViewMode = "ladder" | "table";
-
 const MATRIX_POLL_RTH_MS = SPX_MATRIX_POLL_RTH_MS;
 const MATRIX_POLL_OFF_MS = SPX_MATRIX_POLL_OFF_MS;
 /** Near-term columns shown in the compact rail (matches competitor density). */
@@ -121,8 +117,7 @@ type DeskProps = {
   flow0dteNet?: number | null;
   flow0dteCallPrem?: number | null;
   flow0dtePutPrem?: number | null;
-  /** SHARED PRICE AXIS (2026-07-13): the embedded Vector chart's live y-mapping — the ladder
-   *  view renders strikes/spot at the SAME pixel heights as the chart. Null → linear fallback. */
+  /** SHARED PRICE AXIS: focus-mode king rail only (table is the default matrix view). */
   priceScaleMap?: VectorPriceScaleMap | null;
   /** FOCUS MODE (2026-07-13): collapse to a 48px king-strike rail on the shared axis. Data
    *  hooks keep running so exiting focus restores the full panel instantly. */
@@ -152,25 +147,6 @@ export function SpxGexMatrixHeatmap({
   focus,
 }: DeskProps) {
   const [lens, setLens] = useState<GexHeatmapLens>("gex");
-  // Ladder is the default view (flagship shared-axis upgrade); the dense table stays one
-  // click away. Hydrated from localStorage after mount so SSR markup is deterministic.
-  const [view, setView] = useState<MatrixViewMode>("ladder");
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(MATRIX_VIEW_STORAGE_KEY);
-      if (saved === "table" || saved === "ladder") setView(saved);
-    } catch {
-      /* storage unavailable — keep the default */
-    }
-  }, []);
-  const pickView = (next: MatrixViewMode) => {
-    setView(next);
-    try {
-      window.localStorage.setItem(MATRIX_VIEW_STORAGE_KEY, next);
-    } catch {
-      /* best-effort persistence */
-    }
-  };
   const pollMs = useDeskSessionPollIntervalMs(
     sessionActive ?? deskLive,
     MATRIX_POLL_RTH_MS,
@@ -505,9 +481,8 @@ export function SpxGexMatrixHeatmap({
       bodyClassName="spx-odte-matrix-body !px-1 !py-2 flex flex-1 min-h-0 flex-col overflow-hidden"
     >
       <div className="mb-2 shrink-0 space-y-2 px-1">
-        <div className="flex items-center gap-1.5">
         <div
-          className="flex gap-1.5 flex-1 min-w-0"
+          className="flex gap-1.5"
           role="tablist"
           aria-label="Exposure lens"
           onKeyDown={(e) => {
@@ -543,36 +518,6 @@ export function SpxGexMatrixHeatmap({
               </button>
             );
           })}
-        </div>
-        {/* Ladder (shared chart axis) ↔ dense table — one click each way, persisted. */}
-        <div
-          className="flex gap-0.5 shrink-0"
-          role="group"
-          aria-label="Matrix view mode"
-        >
-          {(["ladder", "table"] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              id={`spx-matrix-view-${mode}`}
-              aria-pressed={view === mode}
-              onClick={() => pickView(mode)}
-              title={
-                mode === "ladder"
-                  ? "Strike ladder on the chart's price axis"
-                  : "Dense per-expiry table"
-              }
-              className={clsx(
-                "spx-matrix-view-toggle rounded border px-1.5 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.14em]",
-                view === mode
-                  ? "border-cyan-400/60 bg-cyan-500/15 text-cyan-200"
-                  : "border-white/10 text-sky-300/60 hover:text-sky-200"
-              )}
-            >
-              {mode === "ladder" ? "Axis" : "Table"}
-            </button>
-          ))}
-        </div>
         </div>
         <div className="grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-[10px]">
           <div>
@@ -643,26 +588,10 @@ export function SpxGexMatrixHeatmap({
           aria-labelledby={`spx-matrix-tab-${lens}`}
           className="flex flex-1 min-h-0 flex-col"
         >
-        {view === "ladder" ? (
-          // SHARED PRICE AXIS ladder — same data as the table (block strike_totals +
-          // 0DTE-scoped king/walls/flip), positioned by the embedded chart's live y-scale.
-          <SpxStrikeLadderAxis
-            variant="full"
-            strikes={strikesAxis}
-            totals={ladderTotals}
-            spot={overlaySpot > 0 ? overlaySpot : null}
-            king={ladderKing}
-            callWall={odteLevels.callWall ?? null}
-            putWall={odteLevels.putWall ?? null}
-            flip={odteLevels.flip ?? null}
-            lens={lens}
-            map={priceScaleMap ?? null}
-          />
-        ) : (
         <div
           ref={scrollBoxRef}
           className="spx-gex-matrix-scroll flex-1 min-h-0 overflow-y-scroll overflow-x-auto overscroll-contain"
-          aria-label="SPX gamma matrix strike ladder"
+          aria-label="SPX gamma matrix table"
         >
           <table
             className="spx-gex-matrix-table w-max border-collapse font-mono text-[12px] tabular-nums"
@@ -822,7 +751,6 @@ export function SpxGexMatrixHeatmap({
             </tbody>
           </table>
         </div>
-        )}
 
         <SpxMatrixTapeStrip
           seed={unifiedTape}
