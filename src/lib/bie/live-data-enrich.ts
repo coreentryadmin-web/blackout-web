@@ -23,16 +23,16 @@ type EnrichOpts = {
 
 const TOOLS_BY_INTENT: Partial<Record<string, string[]>> = {
   technical_read: ["get_technicals"],
-  wall_dynamics_read: ["get_gex", "get_positioning"],
-  thermal_read: ["get_gex"],
+  wall_dynamics_read: ["get_wall_dynamics", "get_positioning", "get_gex_matrix_changes"],
+  thermal_read: ["get_gex_heatmap", "get_positioning", "get_gex_matrix_changes"],
   helix_read: ["get_flow_tape"],
   flow_tape: ["get_flow_tape"],
   spx_structure: ["get_spx_structure"],
   market_context: ["get_market_context"],
   play_suggest_read: ["get_spx_play"],
   ticker_advice: ["get_quote", "get_technicals"],
-  vector_read: ["get_gex", "get_positioning"],
-  vector_pulse_read: ["get_gex", "get_positioning"],
+  vector_read: ["get_vector_full_state", "get_positioning"],
+  vector_pulse_read: ["get_vector_full_state", "get_wall_dynamics"],
   spx_desk_read: ["get_spx_structure"],
   ticker_compare: ["get_quote"],
 };
@@ -72,7 +72,7 @@ function snippetFromTool(name: string, data: unknown, ticker: string): string | 
     return `**Live quote (${ticker}):** **${fmt(p, 2)}**${d.change_pct != null ? ` (${fmt(d.change_pct, 2)}%)` : ""}`;
   }
 
-  if (name === "get_gex" || name === "get_positioning") {
+  if (name === "get_gex" || name === "get_positioning" || name === "get_gex_heatmap") {
     const spot = d.spot ?? d.price;
     const flip = d.gamma_flip ?? d.flip;
     const net = d.net_gex;
@@ -81,6 +81,26 @@ function snippetFromTool(name: string, data: unknown, ticker: string): string | 
       `**Live positioning (${ticker})**`,
       `- Spot **${fmt(spot, 0)}** · γ-flip **${fmt(flip, 0)}** · net GEX **${fmt(net, 0)}**`,
     ].join("\n");
+  }
+
+  if (name === "get_vector_full_state") {
+    const spot = d.spot;
+    const regime = (d.regime as { posture?: string } | undefined)?.posture;
+    const call = (d.gexWalls as { callWalls?: Array<{ strike: number }> } | null)?.callWalls?.[0]?.strike;
+    const put = (d.gexWalls as { putWalls?: Array<{ strike: number }> } | null)?.putWalls?.[0]?.strike;
+    if (spot == null) return null;
+    return [
+      `**Vector live (${ticker})**`,
+      `- Spot **${fmt(spot, 2)}** · regime **${regime ?? "—"}** · call **${fmt(call, 0)}** · put **${fmt(put, 0)}**`,
+    ].join("\n");
+  }
+
+  if (name === "get_wall_dynamics") {
+    const answer = d.answer;
+    if (typeof answer === "string" && answer.trim()) {
+      return answer.split("\n").slice(0, 6).join("\n");
+    }
+    return null;
   }
 
   if (name === "get_flow_tape") {

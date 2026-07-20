@@ -232,12 +232,21 @@ export const PREDICTIONS_RE = /\b(predictions|prediction market|smart money|whal
 export const PLATFORM_READ_RE =
   /\b(blackout|platform|every product|all products|full platform|platform snapshot|everything on the site|all tools|all data|know everything|data plane|bie)\b/i;
 
+/** Wall build / fade / shift wording — beads, re-stacking, material moves. */
+export const WALL_DYNAMICS_RE =
+  /\b(wall build|wall built|building wall|walls building|beads?|wall shift|shifted wall|wall fade|fading wall|re-?stack|restack|wall dynamics|gamma build|gex build)\b/i;
+
+/** Matrix % change / material strike migration on Thermal. */
+export const MATRIX_CHANGE_RE =
+  /\b(matrix change|gex change|what changed|shifted strike|wall building|material move|delta matrix|matrix delta|largest move)\b/i;
+
 /** BlackOut Thermal / heatmap matrix wording. */
 export const THERMAL_READ_RE =
-  /\b(thermal|heatmap|heat map|blackout thermal|gex matrix|matrix ladder|vex flip|dex zero|charm zero|king node|king strike)\b/i;
+  /\b(thermal|heatmap|heat map|blackout thermal|gex matrix|matrix ladder|vex flip|dex zero|charm zero|king node|king strike|per strike|gamma per strike|strike ladder)\b/i;
 
 /** Vector terminal / pulse wording. */
-export const VECTOR_READ_RE = /\b(vector|vector pulse|beads|wall scope|gamma ladder|structure feed)\b/i;
+export const VECTOR_READ_RE =
+  /\b(vector|vector pulse|beads|wall scope|gamma ladder|structure feed|expected move|gamma magnet|wall integrity|chart technicals?|% change|percent change)\b/i;
 
 /** HELIX flow terminal wording beyond generic FLOW_RE. */
 export const HELIX_READ_RE =
