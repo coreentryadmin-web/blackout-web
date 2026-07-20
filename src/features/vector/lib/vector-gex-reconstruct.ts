@@ -142,6 +142,8 @@ export function reconstructGexRail(
 export type GexHeatmapGrid = {
   /** Time buckets (unix seconds), ascending — the x axis, aligned to spot samples. */
   times: number[];
+  /** Spot at each time bucket — parallel to `times`, used to locate per-column gamma flip. */
+  spots: number[];
   /** Strike rows, ascending — the y axis (union of significant strikes, capped). */
   strikes: number[];
   /** cells[timeIndex][strikeIndex] = signed net dealer GEX (+ call, − put); 0 where absent. */
@@ -158,12 +160,12 @@ export function reconstructGexHeatmapGrid(
 ): GexHeatmapGrid {
   // Pass 1: full ladder at each spot; track each strike's PEAK |GEX| so the axis cap keeps
   // the strikes that mattered most at any point, not just at the close.
-  const ladders: Array<{ time: number; ladder: Map<number, number> }> = [];
+  const ladders: Array<{ time: number; spot: number; ladder: Map<number, number> }> = [];
   const peakAbsByStrike = new Map<number, number>();
   for (const { time, spot } of spotSamples) {
     const ladder = gexLadderAtSpot(contracts, spot, sessionYmd);
     if (ladder.size === 0) continue;
-    ladders.push({ time, ladder });
+    ladders.push({ time, spot, ladder });
     for (const [k, v] of ladder) {
       const a = Math.abs(v);
       if (a > (peakAbsByStrike.get(k) ?? 0)) peakAbsByStrike.set(k, a);
@@ -179,9 +181,10 @@ export function reconstructGexHeatmapGrid(
 
   // Pass 2: stack each ladder into a dense signed column, keyed to the capped strike axis.
   const times: number[] = [];
+  const spots: number[] = [];
   const cells: number[][] = [];
   let maxAbs = 0;
-  for (const { time, ladder } of ladders) {
+  for (const { time, spot, ladder } of ladders) {
     const row = new Array<number>(strikes.length).fill(0);
     for (const [k, v] of ladder) {
       const si = strikeIndex.get(k);
@@ -191,10 +194,11 @@ export function reconstructGexHeatmapGrid(
       if (a > maxAbs) maxAbs = a;
     }
     times.push(time);
+    spots.push(spot);
     cells.push(row);
   }
 
-  return { times, strikes, cells, maxAbs };
+  return { times, spots, strikes, cells, maxAbs };
 }
 
 /**

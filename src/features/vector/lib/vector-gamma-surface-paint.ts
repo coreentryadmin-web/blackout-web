@@ -1,4 +1,5 @@
 import type { GexHeatmapGrid } from "./vector-gex-reconstruct";
+import { gammaFlipFromLadder } from "./vector-gex-reconstruct";
 
 /**
  * Paint/geometry layer for the Gamma Surface — a continuous-zone background behind candles showing
@@ -37,6 +38,75 @@ const SMOOTH_ALPHA = 0.35;
 
 /** One drawable rect in canvas media coordinates. */
 export type SurfaceRect = { x: number; y: number; w: number; h: number; color: string };
+
+/** Build a strike ladder Map for one grid time column. */
+export function ladderFromGridColumn(grid: GexHeatmapGrid, timeIndex: number): Map<number, number> {
+  const row = grid.cells[timeIndex];
+  if (!row) return new Map();
+  const ladder = new Map<number, number>();
+  for (let si = 0; si < grid.strikes.length; si++) {
+    const v = row[si] ?? 0;
+    if (v !== 0) ladder.set(grid.strikes[si]!, v);
+  }
+  return ladder;
+}
+
+/** Gamma flip for one grid column — same ladder the heatmap cell column used at that spot. */
+export function flipAtGridColumn(grid: GexHeatmapGrid, timeIndex: number): number | null {
+  const spot = grid.spots[timeIndex];
+  if (!(spot != null && spot > 0)) return null;
+  const ladder = ladderFromGridColumn(grid, timeIndex);
+  if (ladder.size < 2) return null;
+  return gammaFlipFromLadder(ladder, spot);
+}
+
+/** Resolve flip for a grid time bucket (exact match, else nearest column). */
+export function flipAtGridTime(grid: GexHeatmapGrid, time: number): number | null {
+  const { times } = grid;
+  if (!times.length) return null;
+  let ti = times.indexOf(time);
+  if (ti < 0) {
+    let best = 0;
+    let bestDist = Math.abs(times[0]! - time);
+    for (let i = 1; i < times.length; i++) {
+      const d = Math.abs(times[i]! - time);
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    }
+    ti = best;
+  }
+  return flipAtGridColumn(grid, ti);
+}
+
+export type GammaSurfaceFlipContext = {
+  grid: GexHeatmapGrid | null;
+  /** Live stream flip — fallback when grid column flip is unavailable (e.g. last bucket). */
+  liveFlip: () => number | null;
+  replayMode: boolean;
+  /** When replaying, flip recorded at or before `time` (e.g. flipAtReplayTime). */
+  replayFlipAt?: (time: number) => number | null;
+};
+
+/**
+ * Per-column flip resolver for the gamma surface primitive.
+ * Replay → recorded flip; live → grid-column flip (OI reconstruction, self-consistent with cells);
+ * fallback → live stream flip.
+ */
+export function makeGammaSurfaceFlipAtTime(ctx: GammaSurfaceFlipContext): (time: number) => number | null {
+  return (time: number) => {
+    if (ctx.replayMode && ctx.replayFlipAt) {
+      const replayFlip = ctx.replayFlipAt(time);
+      if (replayFlip != null && Number.isFinite(replayFlip)) return replayFlip;
+    }
+    if (ctx.grid) {
+      const gridFlip = flipAtGridTime(ctx.grid, time);
+      if (gridFlip != null && Number.isFinite(gridFlip)) return gridFlip;
+    }
+    return ctx.liveFlip();
+  };
+}
 
 type Band = { lo: number; hi: number };
 
@@ -80,8 +150,11 @@ export function buildColumnProfiles(
         const v = row[si] ?? 0;
         if (v === 0) continue;
         const strike = strikes[si]!;
-        if (strike >= flip && v > 0) callP += v;
-        else if (strike < flip && v < 0) putP += Math.abs(v);
+        const absV = Math.abs(v);
+        // Total |GEX| mass on each side of the flip — includes opposite-sign cells that the
+        // prior call+/put−-only split dropped (e.g. +GEX below flip near put walls).
+        if (strike >= flip) callP += absV;
+        else putP += absV;
       }
     }
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildColumnProfiles, gammaSurfaceRects } from "./vector-gamma-surface-paint";
+import { buildColumnProfiles, gammaSurfaceRects, flipAtGridColumn, makeGammaSurfaceFlipAtTime } from "./vector-gamma-surface-paint";
 import type { GexHeatmapGrid } from "./vector-gex-reconstruct";
 
 function rgba(s: string): { r: number; g: number; b: number; a: number } {
@@ -11,6 +11,7 @@ function rgba(s: string): { r: number; g: number; b: number; a: number } {
 
 const grid: GexHeatmapGrid = {
   times: [1000, 1300, 1600],
+  spots: [7510, 7520, 7530],
   strikes: [7400, 7450, 7500, 7550, 7600],
   cells: [
     [-50, -30, 0, 20, 60],
@@ -44,7 +45,7 @@ test("buildColumnProfiles: uses midStrike as fallback when flipAtTime returns nu
 });
 
 test("buildColumnProfiles: empty grid → empty profiles", () => {
-  const empty: GexHeatmapGrid = { times: [], strikes: [], cells: [], maxAbs: 0 };
+  const empty: GexHeatmapGrid = { times: [], spots: [], strikes: [], cells: [], maxAbs: 0 };
   assert.deepEqual(buildColumnProfiles(empty, flipAt7500), []);
 });
 
@@ -96,7 +97,7 @@ test("gammaSurfaceRects: alpha envelope stays within [MIN_ALPHA, MAX_ALPHA]", ()
 });
 
 test("gammaSurfaceRects: empty grid → no rects", () => {
-  const empty: GexHeatmapGrid = { times: [], strikes: [], cells: [], maxAbs: 0 };
+  const empty: GexHeatmapGrid = { times: [], spots: [], strikes: [], cells: [], maxAbs: 0 };
   assert.deepEqual(gammaSurfaceRects(empty, () => 0, () => 0, flipAt7500), []);
 });
 
@@ -108,6 +109,7 @@ test("gammaSurfaceRects: unresolvable coordinates → no rects", () => {
 test("gammaSurfaceRects: all-zero grid → no rects (nothing to draw)", () => {
   const zeroGrid: GexHeatmapGrid = {
     times: [1000, 1300],
+    spots: [7500, 7500],
     strikes: [7400, 7500, 7600],
     cells: [
       [0, 0, 0],
@@ -122,4 +124,65 @@ test("gammaSurfaceRects: all-zero grid → no rects (nothing to draw)", () => {
     flipAt7500
   );
   assert.equal(rects.length, 0, "zero pressure everywhere → no zones drawn");
+});
+
+test("buildColumnProfiles: counts |GEX| on both sides — positive below flip included in put side", () => {
+  const mixed: GexHeatmapGrid = {
+    times: [1000],
+    spots: [7480],
+    strikes: [7400, 7450, 7500, 7550],
+    cells: [[-50, 30, 0, 40]],
+    maxAbs: 50,
+  };
+  const profiles = buildColumnProfiles(mixed, () => 7500);
+  assert.equal(profiles[0]!.putPressure, 80, "7400 + 7450 opposite-sign mass below flip");
+  assert.equal(profiles[0]!.callPressure, 40, "7550 above flip only");
+});
+
+test("flipAtGridColumn: resolves flip from column ladder + spot", () => {
+  const ladderGrid: GexHeatmapGrid = {
+    times: [1000, 1300],
+    spots: [7525, 7480],
+    strikes: [7400, 7500, 7550, 7600],
+    cells: [
+      [-4, -2, 8, 3],
+      [-4, -2, 8, 3],
+    ],
+    maxAbs: 8,
+  };
+  const flip0 = flipAtGridColumn(ladderGrid, 0);
+  assert.ok(flip0 != null && flip0 > 7500 && flip0 < 7550, `expected flip between 7500-7550, got ${flip0}`);
+});
+
+test("makeGammaSurfaceFlipAtTime: replay uses recorded flip before grid/live", () => {
+  const ladderGrid: GexHeatmapGrid = {
+    times: [1000, 1300],
+    spots: [7525, 7480],
+    strikes: [7400, 7500, 7550, 7600],
+    cells: [
+      [-4, -2, 8, 3],
+      [-4, -2, 8, 3],
+    ],
+    maxAbs: 8,
+  };
+  const gridFlip = flipAtGridColumn(ladderGrid, 0)!;
+  assert.ok(gridFlip != null);
+  const resolver = makeGammaSurfaceFlipAtTime({
+    grid: ladderGrid,
+    liveFlip: () => 9999,
+    replayMode: true,
+    replayFlipAt: (t) => (t === 1300 ? 7480 : null),
+  });
+  assert.equal(resolver(1300), 7480);
+  assert.equal(resolver(1000), gridFlip);
+});
+
+test("makeGammaSurfaceFlipAtTime: live falls back to stream flip when grid flip null", () => {
+  const emptyGrid: GexHeatmapGrid = { times: [1000], spots: [7500], strikes: [7500], cells: [[5]], maxAbs: 5 };
+  const resolver = makeGammaSurfaceFlipAtTime({
+    grid: emptyGrid,
+    liveFlip: () => 7510,
+    replayMode: false,
+  });
+  assert.equal(resolver(1000), 7510);
 });

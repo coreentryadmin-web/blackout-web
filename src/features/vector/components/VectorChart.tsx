@@ -83,6 +83,7 @@ import {
 } from "@/features/vector/lib/vector-indicators-config";
 import { GexHeatmapPrimitive } from "@/features/vector/lib/vector-gex-heatmap-primitive";
 import { GammaSurfacePrimitive } from "@/features/vector/lib/vector-gamma-surface-primitive";
+import { makeGammaSurfaceFlipAtTime } from "@/features/vector/lib/vector-gamma-surface-paint";
 import type { GexHeatmapGrid } from "@/features/vector/lib/vector-gex-reconstruct";
 import { levelLinesFor, type LevelLine, type PriorDayOhlc } from "@/features/vector/lib/vector-key-levels";
 import { buildStructureMarkers } from "@/features/vector/lib/vector-structure-markers";
@@ -1432,14 +1433,11 @@ export function VectorChart({
       // draws nothing. This lives in paintOverlays so a toggle flip (which repaints here via the
       // indicators effect) shows/hides the surface instantly; the fetch pushes fresh data directly.
       gexHeatmapPrimitiveRef.current?.setData(gexHeatmapGridRef.current, enabled.has("gex-heatmap"));
-      // Gamma surface — same grid, same toggle pattern, but also needs the flip callback so the
-      // zones know where call territory ends and put territory begins. Uses a uniform flip (the
-      // current live value) rather than per-time-column, since the surface already smooths across
-      // columns and the live flip is the most relevant read for the member.
+      // Gamma surface — grid-column flip per time bucket (replay-aware); stream flip fallback.
       gammaSurfacePrimitiveRef.current?.setData(
         gexHeatmapGridRef.current,
         enabled.has("gamma-surface"),
-        () => liveGammaFlip()
+        gammaSurfaceFlipAtTime
       );
     }
 
@@ -1707,6 +1705,28 @@ export function VectorChart({
     (): number | null =>
       pickHorizonScopedValue(dteHorizonRef.current, horizonFlipRef.current, gammaFlipRef.current),
     []
+  );
+
+  // Per-column flip for the gamma surface: replay uses recorded flip at each scrub time;
+  // live uses the grid column's own ladder flip (self-consistent with heatmap cells);
+  // falls back to the horizon-scoped stream flip when the column cannot resolve one.
+  const gammaSurfaceFlipAtTime = useCallback(
+    (time: number): number | null =>
+      makeGammaSurfaceFlipAtTime({
+        grid: gexHeatmapGridRef.current,
+        liveFlip: liveGammaFlip,
+        replayMode: replayModeRef.current,
+        replayFlipAt: (t) => {
+          const sourceHistory = pickReplayTrailSource(
+            dteHorizonRef.current,
+            lensRef.current,
+            horizonHistoryRef.current,
+            wallHistoryRef.current
+          );
+          return sourceHistory.length > 0 ? flipAtReplayTime(sourceHistory, t, "gex") : null;
+        },
+      })(time),
+    [liveGammaFlip]
   );
 
   // Compute the gamma regime from the current spot / flip / walls and emit it up to
@@ -2012,7 +2032,7 @@ export function VectorChart({
         gammaSurfacePrimitiveRef.current?.setData(
           grid,
           indicatorsRef.current.has("gamma-surface"),
-          () => liveGammaFlip()
+          gammaSurfaceFlipAtTime
         );
       } catch {
         // Network throw: keep the last-drawn surface rather than blank it on a transient blip.
@@ -2110,6 +2130,7 @@ export function VectorChart({
     refreshTrails,
     liveGexWalls,
     liveGammaFlip,
+    gammaSurfaceFlipAtTime,
     emitRegime,
     emitProximity,
     emitMagnet, emitConfluence,

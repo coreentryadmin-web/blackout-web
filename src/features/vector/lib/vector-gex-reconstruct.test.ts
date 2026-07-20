@@ -70,7 +70,9 @@ test("reconstructGexHeatmapGrid: dense strike×time matrix — signed cells, cal
   const grid = reconstructGexHeatmapGrid(chain, spots, "2026-07-10");
   // One column per spot sample; rows = the 4 chain strikes, ascending.
   assert.equal(grid.times.length, 6);
+  assert.equal(grid.spots.length, 6);
   assert.equal(grid.cells.length, 6);
+  assert.deepEqual(grid.spots, spots.map((s) => s.spot));
   assert.deepEqual(grid.strikes, [7450, 7500, 7550, 7600]);
   for (const col of grid.cells) assert.equal(col.length, grid.strikes.length);
   // Signed: the call strikes (7550/7600) are +, the put strikes (7450/7500) are − at every column.
@@ -104,9 +106,10 @@ test("reconstructGexHeatmapGrid: caps the strike axis to the heaviest strikes by
 
 test("reconstructGexHeatmapGrid: empty/invalid inputs → empty grid, never throws", () => {
   const empty = reconstructGexHeatmapGrid(chain, [], "2026-07-10");
-  assert.deepEqual(empty, { times: [], strikes: [], cells: [], maxAbs: 0 });
+  assert.deepEqual(empty, { times: [], spots: [], strikes: [], cells: [], maxAbs: 0 });
   assert.deepEqual(reconstructGexHeatmapGrid([], [{ time: 1, spot: 7500 }], "2026-07-10"), {
     times: [],
+    spots: [],
     strikes: [],
     cells: [],
     maxAbs: 0,

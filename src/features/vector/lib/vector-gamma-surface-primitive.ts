@@ -80,8 +80,8 @@ export class GammaSurfacePrimitive implements ISeriesPrimitive<Time> {
 
   /**
    * Push the horizon-scoped grid, toggle state, and flip callback. The flip callback lets the
-   * surface resolve the gamma flip at each time column — it reads the live (possibly horizon-scoped)
-   * flip so the zones track the regime in real time.
+ * `flipAtTime` callback resolves per-column flip from the grid ladder (live) or recorded
+ * wall history (replay), with stream flip as fallback.
    */
   setData(
     grid: GexHeatmapGrid | null,

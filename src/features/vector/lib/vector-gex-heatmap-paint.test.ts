@@ -80,6 +80,7 @@ test("bandEdges: null coords are skipped; a lone point yields no band", () => {
 
 const grid: GexHeatmapGrid = {
   times: [1000, 1300],
+  spots: [7500, 7510],
   strikes: [7450, 7500, 7550],
   // t0: put-heavy low strike, call-heavy high strike, zero mid; t1: mirror-ish.
   cells: [
@@ -105,7 +106,7 @@ test("heatmapRects: one rect per NON-ZERO cell, zero cells skipped, colour track
 });
 
 test("heatmapRects: empty grid / maxAbs 0 → no rects (draws nothing, never fabricates)", () => {
-  assert.deepEqual(heatmapRects({ times: [], strikes: [], cells: [], maxAbs: 0 }, () => 0, () => 0), []);
+  assert.deepEqual(heatmapRects({ times: [], spots: [], strikes: [], cells: [], maxAbs: 0 }, () => 0, () => 0), []);
   assert.deepEqual(
     heatmapRects({ ...grid, maxAbs: 0 }, (t) => t, (s) => s),
     [],
