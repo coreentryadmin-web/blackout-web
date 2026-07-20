@@ -65,7 +65,6 @@ const API_PROBE_LIST = [
   "/api/market/ticker-search?q=NVDA",
   "/api/market/flows?limit=50",
   "/api/market/largo/query",
-  "/api/account/positions/health/detail",
 ].filter((v, i, a) => a.indexOf(v) === i);
 
 const PUBLIC_PAGES = [
