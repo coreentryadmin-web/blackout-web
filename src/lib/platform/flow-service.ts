@@ -35,5 +35,6 @@ export async function getFlowTapeSummary(opts?: { ticker?: string; limit?: numbe
     total_premium: rows.reduce((s, r) => s + r.premium, 0),
     top_tickers,
     recent: rows,
+    strike_stacks: computeFlowStrikeStacks(rows, { limit: 24 }),
   };
 }

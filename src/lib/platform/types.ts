@@ -63,6 +63,8 @@ export type FlowTapeSummary = {
   total_premium: number;
   top_tickers: Array<{ ticker: string; premium: number; count: number }>;
   recent: FlowRow[];
+  /** UW Repeated Hits + same-strike stacks derived from `recent` — same path as HELIX/Largo. */
+  strike_stacks: FlowStrikeStack[];
 };
 
 export type NightHawkEditionSummary = {
