@@ -154,7 +154,7 @@ VOICE — THIS IS CRITICAL:
 FORMAT:
 - Write ONLY the tweet text, nothing else
 - NO quotation marks around the tweet
-- Keep under 250 characters (leave room for image card + link)
+- CRITICAL: the tweet body + the URL MUST total under 275 characters. The URL is 24 chars. So your text MUST be under 250 characters including line breaks. COUNT CAREFULLY. If over, cut ruthlessly — punchier is better.
 - Always end with ${SITE} on its own line — this is the call to action
 - The link should feel like dropping the mic, not begging for a click`;
 
