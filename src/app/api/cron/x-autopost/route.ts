@@ -11,8 +11,11 @@ import {
   pickImageKey,
   MARKETING_IMAGES,
   SCHEDULE,
+  marketDataReady,
+  xPostFooter,
   type PostType,
 } from "@/lib/x-content";
+import { checkPostGuard, isTweetContentValid } from "@/lib/x-post-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +35,14 @@ async function loadImage(key: string): Promise<Buffer | null> {
   } catch {
     return null;
   }
+}
+
+function trimToLimit(content: string): string {
+  const footer = `\n${xPostFooter()}`;
+  const maxBody = 280 - footer.length - 1;
+  if (content.length <= 280) return content;
+  const body = content.slice(0, content.lastIndexOf("\n"));
+  return body.slice(0, maxBody).trimEnd() + "…" + footer;
 }
 
 export async function GET(req: NextRequest) {
@@ -54,8 +65,8 @@ export async function GET(req: NextRequest) {
   }
 
   const dryRun = req.nextUrl.searchParams.get("dry") === "1";
+  const forcePost = req.nextUrl.searchParams.get("force") === "1";
 
-  // Validate forced post type against known schedule types
   const validTypes = new Set<string>(SCHEDULE.map((s) => s.type));
   const rawType = req.nextUrl.searchParams.get("type");
   const forceType =
@@ -78,28 +89,58 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  if (!dryRun && !forcePost) {
+    const guard = await checkPostGuard();
+    if (!guard.allowed) {
+      await logCronRun("x-autopost", started, {
+        ok: true,
+        skipped: true,
+        reason: guard.reason,
+        postType,
+        ...guard,
+      });
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: guard.reason,
+        postType,
+        ...guard,
+      });
+    }
+  }
+
   try {
     const data = await fetchMarketSnapshot();
-    let content = await generateTweetContent(postType, data);
 
-    // X enforces 280 chars; t.co wraps the URL to 23 chars.
-    // Content now includes "@blackouttrade www.blackouttrades.com" footer.
-    const T_CO_URL = 23;
-    const MAX_TOTAL = 280 - T_CO_URL + "www.blackouttrades.com".length;
-    if (content && content.length > MAX_TOTAL) {
-      const footer = content.slice(content.lastIndexOf("\n"));
-      const body = content.slice(0, content.lastIndexOf("\n"));
-      content = body.slice(0, MAX_TOTAL - footer.length - 1).trimEnd() + "…" + footer;
+    if (!marketDataReady(postType, data)) {
+      await logCronRun("x-autopost", started, {
+        ok: true,
+        skipped: true,
+        reason: "Market snapshot incomplete — will not post placeholder data",
+        postType,
+        dataSnapshot: data,
+      });
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: "incomplete market data",
+        postType,
+        data,
+      });
     }
 
-    if (!content) {
+    let content = await generateTweetContent(postType, data);
+    if (content) content = trimToLimit(content);
+
+    if (!content || !isTweetContentValid(content)) {
       await logCronRun("x-autopost", started, {
         ok: false,
-        reason: "Content generation returned empty",
+        reason: "Content generation failed validation",
         postType,
+        content,
       });
       return NextResponse.json(
-        { ok: false, reason: "empty content", postType },
+        { ok: false, reason: "invalid or empty content", postType, content },
         { status: 200 },
       );
     }
@@ -122,7 +163,6 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Try to attach a marketing image
     const imgKey = pickImageKey(postType);
     const imgBuf = await loadImage(imgKey);
 

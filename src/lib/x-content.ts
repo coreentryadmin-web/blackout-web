@@ -1,4 +1,9 @@
 import { anthropicText } from "@/lib/providers/anthropic";
+import {
+  getVectorGexWallsForHorizon,
+  getVectorGammaFlipForHorizon,
+} from "@/features/vector/lib/vector-snapshot";
+import { deriveVectorRegime } from "@/features/vector/lib/vector-regime";
 
 // ---------------------------------------------------------------------------
 // Post types — the engine picks one based on time-of-day + rotation
@@ -24,16 +29,15 @@ export interface PostSlot {
   days?: number[];
 }
 
+/** Max 6 weekday slots — matches X_POST_LIMITS.maxDailyPosts in x-post-guard.ts */
 export const SCHEDULE: PostSlot[] = [
-  { type: "premarket_walls", hours: [6, 8] },
+  { type: "premarket_walls", hours: [8, 9] },
   { type: "market_open", hours: [9, 10] },
   { type: "hot_take", hours: [10, 11] },
   { type: "midday_flow", hours: [12, 13] },
   { type: "free_data_drop", hours: [14, 15] },
   { type: "close_recap", hours: [16, 17] },
-  { type: "after_hours_alpha", hours: [17, 18] },
-  { type: "feature_showcase", hours: [19, 20] },
-  { type: "loss_porn_roast", hours: [20, 21] },
+  { type: "after_hours_alpha", hours: [19, 20], days: [1, 2, 3, 4, 5] },
   { type: "weekend_education", hours: [10, 12], days: [0, 6] },
   { type: "feature_showcase", hours: [14, 16], days: [0, 6] },
 ];
@@ -65,99 +69,93 @@ interface MarketSnapshot {
   maxPain?: number;
 }
 
-const APP_BASE =
-  process.env.X_AUTOPOST_APP_URL ??
-  process.env.NEXT_PUBLIC_APP_URL ??
-  "https://blackouttrades.com";
-
-async function fetchJson<T>(path: string): Promise<T | null> {
-  try {
-    const url = `${APP_BASE}${path}`;
-    const headers: Record<string, string> = {};
-    const cronSecret = process.env.CRON_SECRET?.trim();
-    if (cronSecret) headers.Authorization = `Bearer ${cronSecret}`;
-    const res = await fetch(url, {
-      headers,
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
-}
-
 export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
   const snap: MarketSnapshot = {};
-
-  const [gex, regime] = await Promise.all([
-    fetchJson<{
-      spot?: number;
-      flipLevel?: number;
-      topCallWall?: { strike: number };
-      topPutWall?: { strike: number };
-      maxPain?: number;
-    }>("/api/vector/gex-ladder?ticker=SPX&dte=0DTE"),
-    fetchJson<{ regime?: string; flipLevel?: number; spot?: number }>(
-      "/api/vector/regime?ticker=SPX",
-    ),
-  ]);
-
-  if (gex) {
-    snap.spxPrice = gex.spot;
-    snap.flipLevel = gex.flipLevel;
-    snap.topCallWall = gex.topCallWall?.strike;
-    snap.topPutWall = gex.topPutWall?.strike;
-    snap.maxPain = gex.maxPain;
-  }
-  if (regime) {
-    snap.regime = regime.regime;
-    snap.flipLevel ??= regime.flipLevel;
-    snap.spxPrice ??= regime.spot;
+  try {
+    const [walls, flipLevel] = await Promise.all([
+      getVectorGexWallsForHorizon("SPX", "0dte"),
+      getVectorGammaFlipForHorizon("SPX", "0dte"),
+    ]);
+    const spot = walls?.spot ?? null;
+    if (spot != null) snap.spxPrice = spot;
+    if (flipLevel != null) snap.flipLevel = flipLevel;
+    snap.topCallWall = walls?.callWalls?.[0]?.strike;
+    snap.topPutWall = walls?.putWalls?.[0]?.strike;
+    const regime = deriveVectorRegime({
+      spot: snap.spxPrice ?? null,
+      flip: snap.flipLevel ?? null,
+      callWall: snap.topCallWall ?? null,
+      putWall: snap.topPutWall ?? null,
+    });
+    snap.regime = regime.read;
+  } catch (e) {
+    console.warn("[x-autopost] market snapshot failed:", e);
   }
   return snap;
 }
 
+const DATA_POST_TYPES = new Set<PostType>([
+  "premarket_walls",
+  "market_open",
+  "hot_take",
+  "midday_flow",
+  "close_recap",
+  "free_data_drop",
+  "after_hours_alpha",
+]);
+
+export function marketDataReady(
+  postType: PostType,
+  data: MarketSnapshot,
+): boolean {
+  if (!DATA_POST_TYPES.has(postType)) return true;
+  return (
+    data.spxPrice != null &&
+    data.regime != null &&
+    data.regime !== "unknown" &&
+    data.flipLevel != null
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Content generation via Claude
+// @BlackOutTrade identity — OAuth keys authenticate as user 2055511397338087425
 // ---------------------------------------------------------------------------
 
-const SITE = "www.blackouttrades.com";
-const TAG = "@blackouttrade";
+export const X_ACCOUNT_USERNAME = "BlackOutTrade";
+export const WHOP_URL = "whop.com/blackout-2d9c";
+const TAG = `@${X_ACCOUNT_USERNAME}`;
 
-const BRAND_VOICE = `You are the social media voice of BlackOut Trades — the most advanced options analytics platform for serious traders. Your account is @IHate0dte. Our main brand account is ${TAG}.
+/** Appended to every tweet — keep body under limit minus this footer. */
+export function xPostFooter(): string {
+  return `${TAG} ${WHOP_URL}`;
+}
+
+const PRICING_RULES = `PRICING (never violate):
+- Community $75/mo (Discord + signals, NOT full desk)
+- Premium $199/mo (full desk — MOST POPULAR)
+- Premium Yearly $1,999/yr (~$167/mo)
+- NO free tier. Never say free or $0.`;
+
+const BRAND_VOICE = `You are @BlackOutTrade on X — BlackOut Trades' official account (https://x.com/BlackOutTrade).
+
+${PRICING_RULES}
 
 WHO WE ARE:
-BlackOut Trades shows what market makers are doing before they do it. Real-time gamma exposure (GEX) walls, dealer positioning, AI-powered trade signals, live options flow — the weapons institutional traders use, built for retail.
+Real-time gamma (GEX), dealer walls, whale flow, AI desk signals for serious options traders.
 
-OUR TOOLS (reference these naturally, not as a list):
-- Vector: real-time GEX charts with animated wall beads that form, grow, and fade as dealers reposition. Put/call walls, flip levels, regime detection across any stock.
-- Helix: live options flow tape — see every large trade hit the tape in real-time, filtered by size, sentiment, and unusual activity.
-- BlackOut Thermal: GEX heatmap matrix — see positioning across dozens of strikes and expirations at a glance. The heat shows where dealers are trapped.
-- Largo: AI analyst terminal — ask it anything about the market and it pulls from every data source we have. Like having a quant on speed dial.
-- Night Hawk: overnight playbook — AI-generated 0DTE game plan published before the bell, with entry levels, targets, and stop losses based on overnight positioning shifts.
-- SPX Slayer: 0DTE trading desk — live AI trade signals with real-time P&L tracking, tier-graded setups (A+ through F), and automatic exit intelligence.
+TOOLS (reference naturally): Vector, Helix, Thermal, Largo, Night Hawk, SPX Slayer.
 
-VOICE — THIS IS CRITICAL:
-- You're the smartest trader in the room who actually backs it up with data
-- Swagger, not arrogance. You SHOW the edge, you don't just claim it.
-- Write like fintwit's sharpest voice — punchy, quotable, makes people screenshot and share
-- Mix up your style: sometimes one-liner zingers, sometimes mini-breakdowns, sometimes provocative questions
-- Use line breaks strategically for rhythm and emphasis — don't just write a wall of text
-- Emojis: 0-2 max, only when they hit hard (🎯 for precision, ⚡ for speed, 🔥 for heat)
-- NEVER use hashtags
-- NEVER sound like a bot or a corporate account
-- NEVER use "unlock", "game-changer", "revolutionize", "take your trading to the next level" or any generic marketing language
-- Reference specific strikes, levels, and numbers when data is available
-- Create FOMO through specificity — "our members saw the 5,520 put wall hold 4 times before the bounce" is 100x better than "our platform shows support levels"
-- The CTA should feel natural, not salesy — end with the website as a flex, not a plea
+VOICE:
+- Data-backed, screenshot-worthy, one strong idea per tweet
+- Ask ONE question to drive replies — don't spam threads of product pitches
+- Specific strikes/levels/regimes — never "unknown gamma" or placeholder dashes
+- 0-2 emojis max. NO hashtags (kills reach on X)
+- Never mention @IHate0dte or any other account — YOU are the brand
+- Never post 10 product tweets in a row — quality beats volume
 
 FORMAT:
-- Write ONLY the tweet text, nothing else
-- NO quotation marks around the tweet
-- CRITICAL: your tweet text MUST be under 230 characters. The footer (tag + URL) adds ~40 chars automatically. COUNT CAREFULLY. If over, cut ruthlessly — punchier is better.
-- Do NOT include the website URL or ${TAG} — those are appended automatically
-- End your text with a punchy closer, not a CTA — the link drops automatically after`;
+- Body ONLY, under 200 chars (footer appended automatically)
+- Do NOT include @BlackOutTrade or Whop link in body`;
 
 const STYLE_VARIATIONS = [
   "Write in a BOLD DECLARATIVE style — short punchy statement, then the proof.",
@@ -300,7 +298,7 @@ export async function generateTweetContent(
     });
     const body = raw?.trim();
     if (!body) return null;
-    return `${body}\n${TAG} ${SITE}`;
+    return `${body}\n${xPostFooter()}`;
   } catch (e) {
     console.error("[x-autopost] Claude content generation failed:", e);
     return null;
