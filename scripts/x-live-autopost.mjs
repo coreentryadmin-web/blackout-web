@@ -529,7 +529,6 @@ async function annotateScreenshot(buf, data, surface) {
     // --- Enhanced chart annotations: lines + circles ---
     const chartL = 80;
     const chartR = w - 20;
-    const chartMid = Math.round(w / 2);
 
     // Horizontal flip level line — dashed gold across the chart
     if (data.flipLevel) {
