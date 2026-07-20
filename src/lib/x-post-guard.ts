@@ -1,13 +1,14 @@
 import {
   countOwnPostsTodayEt,
   minutesSinceLastOwnPost,
+  fetchUserTweets,
+  X_ACCOUNT_USER_ID,
 } from "@/lib/x-api";
 
+/** One showcase post every 2 hours (8am–8pm ET) ≈ 7/day max. */
 export const X_POST_LIMITS = {
-  /** Hard cap — today's Claude burst hit 41 originals; quality > volume. */
-  maxDailyPosts: 6,
-  /** Minimum spacing between scheduled posts. */
-  minMinutesBetween: 90,
+  maxDailyPosts: 7,
+  minMinutesBetween: 110,
 } as const;
 
 const BROKEN_PATTERNS = [
@@ -20,7 +21,6 @@ const BROKEN_PATTERNS = [
   /@there\b/i,
 ];
 
-/** Reject placeholder / spammy / off-brand generated text before posting. */
 export function isTweetContentValid(text: string): boolean {
   const body = text.split("\n")[0] ?? text;
   if (body.length < 40) return false;
@@ -28,6 +28,31 @@ export function isTweetContentValid(text: string): boolean {
     if (re.test(text)) return false;
   }
   return true;
+}
+
+/** Product posts include Whop footer — exclude @mention outreach from spacing cap. */
+export async function countOwnProductPostsTodayEt(): Promise<number> {
+  const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 30);
+  const todayEt = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/New_York",
+  });
+  return tweets.filter((t) => {
+    if (!t.created_at || !t.text) return false;
+    if (t.text.trim().startsWith("@")) return false;
+    const d = new Date(t.created_at).toLocaleDateString("en-CA", {
+      timeZone: "America/New_York",
+    });
+    return d === todayEt;
+  }).length;
+}
+
+export async function minutesSinceLastProductPost(): Promise<number | null> {
+  const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 15);
+  const latest = tweets.find(
+    (t) => t.created_at && t.text && !t.text.trim().startsWith("@"),
+  )?.created_at;
+  if (!latest) return null;
+  return (Date.now() - new Date(latest).getTime()) / 60_000;
 }
 
 export interface PostGuardResult {
@@ -41,8 +66,8 @@ export async function checkPostGuard(
   opts: { bypassDailyCap?: boolean } = {},
 ): Promise<PostGuardResult> {
   const [postsToday, minutesSinceLast] = await Promise.all([
-    countOwnPostsTodayEt(),
-    minutesSinceLastOwnPost(),
+    countOwnProductPostsTodayEt(),
+    minutesSinceLastProductPost(),
   ]);
 
   if (!opts.bypassDailyCap && postsToday >= X_POST_LIMITS.maxDailyPosts) {
@@ -68,3 +93,6 @@ export async function checkPostGuard(
 
   return { allowed: true, postsToday, minutesSinceLast };
 }
+
+// Legacy export for tests
+export { countOwnPostsTodayEt, minutesSinceLastOwnPost };

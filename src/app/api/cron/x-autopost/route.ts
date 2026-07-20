@@ -10,9 +10,9 @@ import {
   generateTweetContent,
   pickImageKey,
   MARKETING_IMAGES,
-  SCHEDULE,
   marketDataReady,
   xPostFooter,
+  isPostWindow,
   type PostType,
 } from "@/lib/x-content";
 import { checkPostGuard, isTweetContentValid } from "@/lib/x-post-guard";
@@ -67,7 +67,16 @@ export async function GET(req: NextRequest) {
   const dryRun = req.nextUrl.searchParams.get("dry") === "1";
   const forcePost = req.nextUrl.searchParams.get("force") === "1";
 
-  const validTypes = new Set<string>(SCHEDULE.map((s) => s.type));
+  const validTypes = new Set<string>([
+    "desk_open",
+    "desk_flow",
+    "desk_ai",
+    "desk_matrix",
+    "desk_midday",
+    "desk_close",
+    "desk_evening",
+    "weekend_desk",
+  ]);
   const rawType = req.nextUrl.searchParams.get("type");
   const forceType =
     rawType && validTypes.has(rawType) ? (rawType as PostType) : null;
@@ -75,11 +84,14 @@ export async function GET(req: NextRequest) {
   const et = nowET();
   const postType = forceType ?? selectPostType(et);
 
-  if (!postType) {
+  if (!postType && !forceType) {
+    const inWindow = isPostWindow(et);
     await logCronRun("x-autopost", started, {
       ok: true,
       skipped: true,
-      reason: `No post scheduled for ET ${et.getHours()}:${String(et.getMinutes()).padStart(2, "0")} ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][et.getDay()]}`,
+      reason: inWindow
+        ? "Outside 2-hour post window"
+        : `No post slot — next at even ET hour 8–20 (now ${et.getHours()}:${String(et.getMinutes()).padStart(2, "0")})`,
     });
     return NextResponse.json({
       ok: true,
@@ -87,6 +99,10 @@ export async function GET(req: NextRequest) {
       hour: et.getHours(),
       day: et.getDay(),
     });
+  }
+
+  if (!postType) {
+    return NextResponse.json({ ok: true, skipped: true, reason: "no slot" });
   }
 
   if (!dryRun && !forcePost) {
