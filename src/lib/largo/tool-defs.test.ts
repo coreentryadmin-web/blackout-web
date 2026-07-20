@@ -672,3 +672,24 @@ test("unrelated 0DTE/play-state wording does NOT spuriously add get_positioning"
   const tools = getToolsForIntent("how are today's plays doing");
   assert.ok(!tools.includes("get_positioning"), "bare 0DTE/play-board wording should not add get_positioning");
 });
+
+test("platform-wide wording unlocks platform snapshot + cross-product tools", () => {
+  const tools = getToolsForIntent("give me a full platform snapshot");
+  assert.ok(tools.includes("get_platform_snapshot"));
+  assert.ok(tools.includes("get_vector_full_state"));
+  assert.ok(tools.includes("get_flow_tape"));
+  assert.ok(tools.includes("get_zerodte_plays"));
+});
+
+test("thermal/vector/helix wording routes to product tools", () => {
+  assert.ok(getToolsForIntent("show the thermal heatmap matrix").includes("get_positioning"));
+  assert.ok(getToolsForIntent("vector pulse on SPX").includes("get_vector_full_state"));
+  assert.ok(getToolsForIntent("helix strike stacks today").includes("get_flow_tape"));
+});
+
+test("every turn includes baseline platform tools", () => {
+  const tools = getToolsForIntent("hello");
+  assert.ok(tools.includes("get_platform_snapshot"));
+  assert.ok(tools.includes("get_ecosystem_context"));
+  assert.ok(tools.includes("get_hot_tickers"));
+});

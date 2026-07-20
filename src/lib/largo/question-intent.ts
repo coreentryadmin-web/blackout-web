@@ -3,14 +3,19 @@ import {
   FLOW_ANOMALY_NEAR_MISS_RE,
   FLOW_RE,
   GEX_REGIME_HISTORY_RE,
+  HELIX_READ_RE,
   MARKET_REGIME_RE,
   matchesIntent,
   NEWS_RE,
   NIGHTHAWK_DATED_EDITION_RE,
   NIGHTHAWK_RE,
+  PLATFORM_READ_RE,
   PLAY_STATE_RE,
+  RECORD_READ_RE,
   SPX_DESK_RE,
   SPX_ENGINE_STATE_RE,
+  THERMAL_READ_RE,
+  VECTOR_READ_RE,
   VOL_RE,
   ZERODTE_COMMAND_RE,
   ZERODTE_REJECTION_RE,
@@ -51,6 +56,11 @@ export type LargoQuestionIntent = {
    *  since get_platform_snapshot's nighthawk fields are ALWAYS the latest edition, with
    *  no date parameter at all, even when its full_edition flag is set. */
   needsNighthawkDatedEdition: boolean;
+  needsPlatformRead: boolean;
+  needsThermalRead: boolean;
+  needsVectorRead: boolean;
+  needsHelixRead: boolean;
+  needsRecordRead: boolean;
   tickerHint: string | null;
   guidance: string;
 };
@@ -116,11 +126,38 @@ export function analyzeLargoQuestion(
   const needsGexRegimeHistory = matchesIntent(ctx, GEX_REGIME_HISTORY_RE);
   const needsFlowAnomalyNearMisses = matchesIntent(ctx, FLOW_ANOMALY_NEAR_MISS_RE);
   const needsNighthawkDatedEdition = matchesIntent(ctx, NIGHTHAWK_DATED_EDITION_RE);
+  const needsPlatformRead = matchesIntent(ctx, PLATFORM_READ_RE);
+  const needsThermalRead = matchesIntent(ctx, THERMAL_READ_RE);
+  const needsVectorRead = matchesIntent(ctx, VECTOR_READ_RE);
+  const needsHelixRead = matchesIntent(ctx, HELIX_READ_RE);
+  const needsRecordRead = matchesIntent(ctx, RECORD_READ_RE);
 
   const tickerHint = extractTicker(question, recentUserText(history));
   const scopeTicker = tickerHint ?? (needsSpxDesk ? "SPX" : null);
 
-  const toolHints: string[] = ["get_market_context"];
+  const toolHints: string[] = ["get_market_context", "get_platform_snapshot"];
+
+  if (needsPlatformRead) {
+    toolHints.push(
+      "get_ecosystem_context",
+      "get_hot_tickers",
+      "get_vector_full_state",
+      "get_flow_tape",
+      "get_zerodte_plays"
+    );
+  }
+  if (needsThermalRead) {
+    toolHints.push("get_positioning", "get_gex", "get_gex_regime_events");
+  }
+  if (needsVectorRead) {
+    toolHints.push("get_vector_full_state", "get_positioning");
+  }
+  if (needsHelixRead) {
+    toolHints.push("get_flow_tape", "get_flow_anomaly_near_misses", "get_global_flow");
+  }
+  if (needsRecordRead) {
+    toolHints.push("get_spx_vs_nighthawk_comparison", "get_setup_stats", "get_trade_history");
+  }
 
   if (needsSpxDesk || scopeTicker === "SPX") {
     toolHints.push("get_spx_structure", "get_gex", "get_greek_flow");
@@ -233,6 +270,11 @@ export function analyzeLargoQuestion(
     needsGexRegimeHistory,
     needsFlowAnomalyNearMisses,
     needsNighthawkDatedEdition,
+    needsPlatformRead,
+    needsThermalRead,
+    needsVectorRead,
+    needsHelixRead,
+    needsRecordRead,
     tickerHint,
     guidance,
   };

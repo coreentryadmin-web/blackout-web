@@ -30,6 +30,8 @@ import {
   sessionOwnedByUser,
 } from "@/lib/largo/largo-store";
 import { analyzeLargoQuestion } from "@/lib/largo/question-intent";
+import { deterministicLargoFollowups } from "@/lib/largo/largo-followups";
+import { loadLargoPlatformSnapshotBlock } from "@/lib/largo/platform-snapshot-block";
 import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-live-feed";
 import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
 import { webSearchConfigured } from "@/lib/providers/web-search";
@@ -92,34 +94,47 @@ export async function generateLargoFollowups(
   answer: string,
   tickerHint?: string | null
 ): Promise<string[]> {
-  if (!largoClaudeEnabled() || !answer.trim()) return [];
-  const focus = tickerHint ? ` The current focus is ${tickerHint}.` : "";
-  const prompt = `You generate follow-up questions for Largo, an institutional options/markets AI desk.${focus}
+  const fallback = deterministicLargoFollowups(question, tickerHint);
+  if (!largoClaudeEnabled() || !answer.trim()) return fallback;
+
+  const focus = tickerHint ? ` Focus ticker: ${tickerHint}.` : "";
+  const prompt = `You generate follow-up questions for Largo — the AI desk lead on BlackOut Trading (SPX Slayer, HELIX flow, Thermal GEX, Vector, Night Hawk, 0DTE Command, Cortex gates, track record).${focus}
 
 The member asked: "${question}"
 
 Largo answered:
 """
-${answer.slice(0, 1800)}
+${answer.slice(0, 2200)}
 """
 
-Write exactly 3 follow-up questions the member would most naturally ask NEXT — each a direct continuation of THIS exchange (reference the same ticker/setup/topic; drill deeper, stress-test, or pivot to the logical next angle). Specific and trader-relevant, not generic. Each ≤ 9 words, plain text, no numbering, no quotes. Return ONLY the 3 questions, one per line.`;
+Write exactly 3 follow-up questions the member would ask NEXT. Rules:
+- Each must drill deeper into THIS exchange (same ticker/setup/topic) OR pivot to the logical cross-product angle (e.g. flow → GEX walls → invalidation).
+- Prefer concrete, numerical asks ("Where's the gamma flip?", "Show strike stacks", "Cortex skip reason on NVDA") over vague prompts.
+- Each ≤ 10 words, plain text, no numbering, no quotes.
+Return ONLY the 3 questions, one per line.`;
   try {
-    const out = await anthropicText(prompt, 160, undefined, {
+    const out = await anthropicText(prompt, 200, undefined, {
       model: COMMENTARY_MODEL,
-      temperature: 0.7,
-      timeoutMs: 12_000,
+      temperature: 0.65,
+      timeoutMs: 14_000,
       maxRetries: 1,
       aiGate: "largo",
     });
-    if (!out) return [];
-    return out
+    if (!out) return fallback;
+    const haiku = out
       .split("\n")
       .map((l) => l.replace(/^[\s\-*•\d.)]+/, "").replace(/^["']|["']$/g, "").trim())
-      .filter((l) => l.length > 0 && l.length <= 90)
+      .filter((l) => l.length > 0 && l.length <= 96)
       .slice(0, 3);
+    if (haiku.length >= 3) return haiku;
+    const merged = [...haiku];
+    for (const f of fallback) {
+      if (merged.length >= 3) break;
+      if (!merged.some((m) => m.toLowerCase() === f.toLowerCase())) merged.push(f);
+    }
+    return merged.slice(0, 3);
   } catch {
-    return [];
+    return fallback;
   }
 }
 
@@ -130,18 +145,22 @@ function trimHistory(history: AnthropicMessage[]) {
 function buildDynamicSystem(
   question: string,
   history: AnthropicMessage[],
-  liveFeedBlock: string
+  liveFeedBlock: string,
+  platformVitalsBlock: string
 ): AnthropicSystemBlock[] {
   const intent = analyzeLargoQuestion(question, history);
+  const platformSection = platformVitalsBlock.trim()
+    ? `\n\n${platformVitalsBlock.trim()}\n`
+    : "";
   const dynamicPart = `## This turn
 
 Session date (ET): ${todayEtYmd()}
 
-${liveFeedBlock}
+${liveFeedBlock}${platformSection}
 
 ${intent.guidance}
 
-Session memory is in Postgres — honor follow-ups. Re-fetch via tools if you need fresher flow or stacks. Facts from the live feed only; opinion in Bottom line.`;
+Session memory is in Postgres — honor follow-ups. Re-fetch via tools if you need fresher flow, matrix, or platform numbers. Facts from the live feed and platform vitals only; opinion in Bottom line.`;
 
   return [
     {
@@ -240,7 +259,16 @@ async function prepareLargoTurn(
   } catch {
     // retrieval is optional grounding — never blocks the turn
   }
-  const system = buildDynamicSystem(question, history.slice(0, -1), liveFeedBlock + knowledgeBlock);
+
+  const platformVitalsBlock = await loadLargoPlatformSnapshotBlock().catch(() => "");
+  if (platformVitalsBlock) toolsUsed.push("platform_vitals_prefetch");
+
+  const system = buildDynamicSystem(
+    question,
+    history.slice(0, -1),
+    liveFeedBlock + knowledgeBlock,
+    platformVitalsBlock
+  );
 
   resetLargoSpxDeskCache(userId);
   const allowedToolNames = new Set(getToolsForIntent(question));

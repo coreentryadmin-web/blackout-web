@@ -186,6 +186,12 @@ before(async () => {
     },
   });
 
+  mock.module("./largo/platform-snapshot-block", {
+    namedExports: {
+      loadLargoPlatformSnapshotBlock: async () => "",
+    },
+  });
+
   // classifyBieIntent/bieIntentBucket are deliberately left REAL (unmocked) —
   // this suite exists to prove the real router decision reaches the persisted
   // row, not a stand-in for it.

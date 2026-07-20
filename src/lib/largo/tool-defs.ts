@@ -1,14 +1,20 @@
 import type { AnthropicToolDef } from "@/lib/providers/anthropic";
 import {
+  CORTEX_READ_RE,
   FLOW_TOOLS_RE,
   FUNDAMENTAL_RE,
   GEX_POSITIONING_RE,
+  HELIX_READ_RE,
   matchesIntent,
   NEWS_TOOLS_RE,
   NIGHTHAWK_RE,
+  PLATFORM_READ_RE,
   PREDICTIONS_RE,
+  RECORD_READ_RE,
   SCREENER_RE,
   SPX_DESK_TOOLS_RE,
+  THERMAL_READ_RE,
+  VECTOR_READ_RE,
   VOL_TOOLS_RE,
 } from "@/lib/largo/intent-keywords";
 import { KNOWN_TICKERS } from "@/lib/largo/question-intent";
@@ -923,7 +929,52 @@ function mentionsTicker(question: string): boolean {
 
 export function getToolsForIntent(question: string): string[] {
   const lower = question.toLowerCase();
-  const names = new Set<string>(["get_market_context"]);
+  const names = new Set<string>([
+    "get_market_context",
+    "get_platform_snapshot",
+    "get_ecosystem_context",
+    "get_hot_tickers",
+  ]);
+
+  if (matchesIntent(lower, PLATFORM_READ_RE)) {
+    for (const n of TOOL_GROUPS.platform) names.add(n);
+    for (const n of TOOL_GROUPS.spx_desk) names.add(n);
+    for (const n of TOOL_GROUPS.flow_analysis) names.add(n);
+    for (const n of TOOL_GROUPS.vol_analysis) names.add(n);
+  }
+
+  if (matchesIntent(lower, THERMAL_READ_RE)) {
+    names.add("get_positioning");
+    names.add("get_gex");
+    names.add("get_gex_regime_events");
+    for (const n of TOOL_GROUPS.spx_desk) names.add(n);
+  }
+
+  if (matchesIntent(lower, VECTOR_READ_RE)) {
+    names.add("get_vector_full_state");
+    names.add("get_positioning");
+    for (const n of TOOL_GROUPS.spx_desk) names.add(n);
+  }
+
+  if (matchesIntent(lower, HELIX_READ_RE)) {
+    names.add("get_flow_tape");
+    for (const n of [...TOOL_GROUPS.flow_analysis, ...TOOL_GROUPS.platform]) names.add(n);
+  }
+
+  if (matchesIntent(lower, RECORD_READ_RE)) {
+    names.add("get_spx_vs_nighthawk_comparison");
+    names.add("get_setup_stats");
+    names.add("get_trade_history");
+    names.add("get_nighthawk_outcomes");
+    for (const n of TOOL_GROUPS.platform) names.add(n);
+  }
+
+  if (matchesIntent(lower, CORTEX_READ_RE)) {
+    names.add("get_zerodte_plays");
+    names.add("get_zerodte_rejections");
+    names.add("get_ecosystem_context");
+    for (const n of TOOL_GROUPS.platform) names.add(n);
+  }
 
   // 0DTE Command — "today's plays", the board, or anything zero-DTE flavored.
   if (/\b(0\s*dte|zero\s*dte|zerodte|command board|today'?s plays|the plays|scanner plays)\b/i.test(lower)) {

@@ -228,6 +228,29 @@ export const FUNDAMENTAL_RE = /\b(fundamental|financial|insider|congress|analyst
 
 export const PREDICTIONS_RE = /\b(predictions|prediction market|smart money|whales|insiders|consensus)\b/;
 
+/** Cross-product / full-platform wording — unlocks platform tool cohort on Claude path. */
+export const PLATFORM_READ_RE =
+  /\b(blackout|platform|every product|all products|full platform|platform snapshot|everything on the site|all tools|all data|know everything|data plane|bie)\b/i;
+
+/** BlackOut Thermal / heatmap matrix wording. */
+export const THERMAL_READ_RE =
+  /\b(thermal|heatmap|heat map|blackout thermal|gex matrix|matrix ladder|vex flip|dex zero|charm zero|king node|king strike)\b/i;
+
+/** Vector terminal / pulse wording. */
+export const VECTOR_READ_RE = /\b(vector|vector pulse|beads|wall scope|gamma ladder|structure feed)\b/i;
+
+/** HELIX flow terminal wording beyond generic FLOW_RE. */
+export const HELIX_READ_RE =
+  /\b(helix|flow feed|strike stacks?|top prints|top strikes|net premium leader|flow anomaly)\b/i;
+
+/** Public track record / graded performance stats. */
+export const RECORD_READ_RE =
+  /\b(track record|win rate|hit rate|graded trades|public record|spx vs nighthawk|performance stats|our record)\b/i;
+
+/** Cortex commit/skip/exit decision wording (Claude tool hints; BIE routes cortex_read). */
+export const CORTEX_READ_RE =
+  /\b(cortex|why did we commit|why did we skip|why was .{0,12} skipped|commit evidence|skip reason|cortex verdict|cortex veto)\b/i;
+
 export function matchesIntent(text: string, pattern: RegExp): boolean {
   return pattern.test(text.toLowerCase());
 }
