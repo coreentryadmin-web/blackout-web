@@ -123,6 +123,13 @@ import {
   type PriceScaleSnapshot,
   type VectorPriceScaleMap,
 } from "@/features/vector/lib/vector-price-scale-map";
+import {
+  VECTOR_GEX_HEATMAP_FAST_MOVE_PCT,
+  VECTOR_GEX_HEATMAP_POLL_MS,
+  VECTOR_WALLS_SCOPE_POLL_MS,
+  VECTOR_WALL_TRAIL_SEC,
+} from "@/features/vector/lib/vector-cadence";
+import { vectorHeatmapScopeLabel } from "@/lib/gex-scope-labels";
 
 export type VectorBar = {
   time: UTCTimestamp;
@@ -147,8 +154,8 @@ const GAMMA_FLIP_COLOR = "#22d3ee";
 const VANNA_FLIP_COLOR = "#38bdf8";
 const DARK_POOL_COLOR = "#ff8a3d"; // orange, not cyan — dark-pool cyan #00d4ff failed CVD separation vs gamma-flip cyan #22d3ee (worst-pair ΔE 6.9); orange lifts it to 36.7 (validated via dataviz palette checker)
 const REPLAY_STEP_MS = 350;
-/** Live RTH refresh for the reconstructed GEX heatmap — aligned with server cache TTL (~90s). */
-const GEX_HEATMAP_REFRESH_MS = 90_000;
+/** Live RTH refresh for reconstructed GEX heatmap — aligned with server cache TTL. */
+const GEX_HEATMAP_REFRESH_MS = VECTOR_GEX_HEATMAP_POLL_MS;
 /** Widen the price axis to reveal walls within this % of spot (env-tunable). Without
  *  this the axis fits candles only and support walls a few % below spot render off-screen. */
 const WALL_VIEW_MAX_PCT = (() => {
@@ -838,10 +845,14 @@ function applyWallBeadMarkers(
   baseColor: string,
   lens: VectorWallLens,
   intervalMinutes: VectorTimeframeMinutes,
-  lastBarTime: number = 0
+  lastBarTime: number = 0,
+  liveBeads = false
 ): number[] {
   if (!beadsPlugin) return [];
-  const bucketed = bucketWallHistoryForInterval(history, intervalMinutes);
+  const bucketed = bucketWallHistoryForInterval(history, intervalMinutes, {
+    minBucketSec: VECTOR_WALL_TRAIL_SEC,
+    liveBeads,
+  });
   // Lifecycle carries each strike's birth/last-seen/active flags so the marker layer can anchor
   // beads to the birth candle and fade departed walls (BUG 3). It wraps trailsByStrike, so the
   // point lists are identical to before — only the per-strike metadata is added.
@@ -1026,6 +1037,7 @@ export function VectorChart({
   // switch / unmount — chart.remove() disposes the series (and its primitives), so we just drop refs.
   const gexHeatmapPrimitiveRef = useRef<GexHeatmapPrimitive | null>(null);
   const gexHeatmapGridRef = useRef<GexHeatmapGrid | null>(null);
+  const gexHeatmapSpotAtFetchRef = useRef<number | null>(null);
   const lastConfluenceRef = useRef<string>("");
   // Opt-in technical overlays (VWAP/EMA/SMA) — one lightweight-charts line series per enabled
   // indicator, created on demand and removed when toggled off. Default: none. `indicatorsRef`
@@ -1251,8 +1263,27 @@ export function VectorChart({
             liveTrailAnchorSec(wallHistoryRef.current, minuteBarsRef.current.map((b) => b.time))
           )
         : wallHistoryRef.current);
-    const callStrikes = applyWallBeadMarkers(callBeadsRef.current, history, "callWalls", v.callColor, activeLens, timeframeRef.current, lastBarTime);
-    const putStrikes = applyWallBeadMarkers(putBeadsRef.current, history, "putWalls", v.putColor, activeLens, timeframeRef.current, lastBarTime);
+    const liveBeads = liveSessionRef.current && !replayModeRef.current;
+    const callStrikes = applyWallBeadMarkers(
+      callBeadsRef.current,
+      history,
+      "callWalls",
+      v.callColor,
+      activeLens,
+      timeframeRef.current,
+      lastBarTime,
+      liveBeads
+    );
+    const putStrikes = applyWallBeadMarkers(
+      putBeadsRef.current,
+      history,
+      "putWalls",
+      v.putColor,
+      activeLens,
+      timeframeRef.current,
+      lastBarTime,
+      liveBeads
+    );
     // Record what was actually drawn so the autoscale provider widens to reveal these exact beads
     // at every zoom level, then nudge a rescale (off-hours there is no tick to trigger it).
     beadStrikesRef.current = { call: callStrikes, put: putStrikes };
@@ -1986,12 +2017,23 @@ export function VectorChart({
     // (the exact class of bug #237 fixed for the cone/max-pain). Stores the grid and pushes it to the
     // background primitive with the current toggle state; the primitive paints only when the
     // "gex-heatmap" toggle is on, and a null grid (no honest surface) clears it — never fabricated.
-    const fetchGexHeatmap = async () => {
+    const fetchGexHeatmap = async (force = false) => {
       const bucketSec = heatmapBucketSecForChartTimeframe(timeframeRef.current);
+      const spotNow = spotRef.current;
+      if (
+        !force &&
+        spotNow != null &&
+        gexHeatmapSpotAtFetchRef.current != null &&
+        gexHeatmapSpotAtFetchRef.current > 0
+      ) {
+        const move = Math.abs(spotNow - gexHeatmapSpotAtFetchRef.current) / gexHeatmapSpotAtFetchRef.current;
+        if (move >= VECTOR_GEX_HEATMAP_FAST_MOVE_PCT) force = true;
+      }
       try {
+        const forceQ = force ? "&force=1" : "";
         const res = await fetch(
           `/api/market/vector/gex-heatmap?ticker=${encodeURIComponent(ticker)}&dte=${dteHorizon}` +
-            `&session=${encodeURIComponent(sessionYmd)}&bucketSec=${bucketSec}`
+            `&session=${encodeURIComponent(sessionYmd)}&bucketSec=${bucketSec}${forceQ}`
         );
         if (cancelled || dteHorizonRef.current !== dteHorizon) return;
         const grid = res.ok
@@ -1999,7 +2041,10 @@ export function VectorChart({
           : null;
         if (cancelled || dteHorizonRef.current !== dteHorizon) return;
         gexHeatmapGridRef.current = grid;
+        if (spotNow != null && spotNow > 0) gexHeatmapSpotAtFetchRef.current = spotNow;
+        else if (grid?.spot != null) gexHeatmapSpotAtFetchRef.current = grid.spot;
         gexHeatmapPrimitiveRef.current?.setData(grid, indicatorsRef.current.has("gex-heatmap"));
+        if (spotRef.current != null) gexHeatmapPrimitiveRef.current?.setSpot(spotRef.current);
       } catch {
         // Network throw: keep the last-drawn surface rather than blank it on a transient blip.
       }
@@ -2007,9 +2052,9 @@ export function VectorChart({
 
     void fetchMaxPain();
     void fetchExpectedMove();
-    void fetchGexHeatmap();
+    void fetchGexHeatmap(false);
 
-    const heatmapId = liveSession ? setInterval(fetchGexHeatmap, GEX_HEATMAP_REFRESH_MS) : null;
+    const heatmapId = liveSession ? setInterval(() => void fetchGexHeatmap(false), GEX_HEATMAP_REFRESH_MS) : null;
 
     // Clear stale horizon state UP FRONT on every DTE switch — prevents the terminal from
     // briefly narrating the PREVIOUS horizon's walls/confluence while the new fetch is in flight,
@@ -2078,9 +2123,9 @@ export function VectorChart({
 
     void fetchScoped();
     void fetchHistory();
-    // Refresh both walls and wall history on the same 15s cadence for coherent display.
-    const id = liveSession ? setInterval(fetchScoped, 15_000) : null;
-    const histId = liveSession ? setInterval(fetchHistory, 15_000) : null;
+    // Refresh both walls and wall history on the same cadence for coherent display.
+    const id = liveSession ? setInterval(fetchScoped, VECTOR_WALLS_SCOPE_POLL_MS) : null;
+    const histId = liveSession ? setInterval(fetchHistory, VECTOR_WALLS_SCOPE_POLL_MS) : null;
     return () => {
       cancelled = true;
       if (id) clearInterval(id);
@@ -2256,6 +2301,29 @@ export function VectorChart({
         }
         spotRef.current = curSpot;
         onSpotChange?.(curSpot);
+        gexHeatmapPrimitiveRef.current?.setSpot(curSpot);
+        if (
+          liveSessionRef.current &&
+          !inReplay &&
+          gexHeatmapSpotAtFetchRef.current != null &&
+          gexHeatmapSpotAtFetchRef.current > 0 &&
+          curSpot > 0
+        ) {
+          const move = Math.abs(curSpot - gexHeatmapSpotAtFetchRef.current) / gexHeatmapSpotAtFetchRef.current;
+          if (move >= VECTOR_GEX_HEATMAP_FAST_MOVE_PCT) {
+            void fetch(`/api/market/vector/gex-heatmap?ticker=${encodeURIComponent(ticker)}&dte=${dteHorizonRef.current}` +
+              `&session=${encodeURIComponent(sessionYmd)}&bucketSec=${heatmapBucketSecForChartTimeframe(timeframeRef.current)}&force=1`)
+              .then(async (res) => {
+                if (!res.ok) return;
+                const grid = ((await res.json()) as { grid?: GexHeatmapGrid | null }).grid ?? null;
+                gexHeatmapGridRef.current = grid;
+                gexHeatmapSpotAtFetchRef.current = curSpot;
+                gexHeatmapPrimitiveRef.current?.setData(grid, indicatorsRef.current.has("gex-heatmap"));
+                gexHeatmapPrimitiveRef.current?.setSpot(curSpot);
+              })
+              .catch(() => {});
+          }
+        }
         minuteBarsRef.current = upsertBar(minuteBarsRef.current, snap.candle as VectorBar);
         setSessionBars(minuteBarsRef.current);
         if (!inReplay) {
@@ -2964,7 +3032,7 @@ export function VectorChart({
               hasModeledBeads ? "bottom-8 right-2" : "bottom-2 right-2"
             }`}
           >
-            ◇ reconstructed GEX surface
+            ◇ {vectorHeatmapScopeLabel(dteHorizon)} · spot-aligned
           </p>
         )}
         <div

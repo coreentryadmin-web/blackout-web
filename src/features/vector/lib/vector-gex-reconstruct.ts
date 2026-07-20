@@ -152,6 +152,8 @@ export type GexHeatmapGrid = {
   bucketSec?: number;
   /** When true, the last time column used volume-adjusted positioning (live column only). */
   volumeAdjustedLastColumn?: boolean;
+  /** Live spot at grid build — y-axis band centers on this strike. */
+  spot?: number;
 };
 
 export type ReconstructHeatmapOptions = {
@@ -159,7 +161,34 @@ export type ReconstructHeatmapOptions = {
   /** Live right-edge column only — matches volume-aware wall births without back-projecting volume. */
   volumeAdjustLastColumn?: boolean;
   bucketSec?: number;
+  /** Pin strike rows within this % band of spot before filling with peak-|GEX| strikes. */
+  spotBandPct?: number;
 };
+
+/** Select strike axis: always include near-spot band, then heaviest |GEX| rows up to cap. */
+export function selectHeatmapStrikes(
+  peakAbsByStrike: ReadonlyMap<number, number>,
+  maxStrikes: number,
+  spot?: number,
+  spotBandPct = 0.04
+): number[] {
+  if (peakAbsByStrike.size === 0) return [];
+  const ranked = [...peakAbsByStrike.entries()].sort((a, b) => b[1] - a[1]);
+  const selected = new Set<number>();
+
+  if (spot != null && spot > 0 && spotBandPct > 0) {
+    for (const [strike] of ranked) {
+      if (Math.abs(strike - spot) / spot <= spotBandPct) selected.add(strike);
+    }
+  }
+
+  for (const [strike] of ranked) {
+    if (selected.size >= maxStrikes) break;
+    selected.add(strike);
+  }
+
+  return [...selected].sort((a, b) => a - b);
+}
 
 export function reconstructGexHeatmapGrid(
   contracts: readonly ReconstructContract[],
@@ -171,10 +200,12 @@ export function reconstructGexHeatmapGrid(
     typeof maxStrikesOrOpts === "number" ? { maxStrikes: maxStrikesOrOpts } : maxStrikesOrOpts;
   const maxStrikes = opts.maxStrikes ?? 80;
   const volumeAdjustLast = opts.volumeAdjustLastColumn === true;
+  const spotBandPct = opts.spotBandPct ?? 0.04;
 
   const ladders: Array<{ time: number; ladder: Map<number, number> }> = [];
   const peakAbsByStrike = new Map<number, number>();
   const sampleCount = spotSamples.length;
+  let latestSpot = spotSamples[sampleCount - 1]?.spot;
   for (let i = 0; i < sampleCount; i++) {
     const { time, spot } = spotSamples[i]!;
     const isLast = i === sampleCount - 1;
@@ -189,11 +220,7 @@ export function reconstructGexHeatmapGrid(
     }
   }
 
-  const strikes = [...peakAbsByStrike.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, maxStrikes)
-    .map(([k]) => k)
-    .sort((a, b) => a - b);
+  const strikes = selectHeatmapStrikes(peakAbsByStrike, maxStrikes, latestSpot, spotBandPct);
   const strikeIndex = new Map(strikes.map((k, i) => [k, i]));
 
   // Pass 2: stack each ladder into a dense signed column, keyed to the capped strike axis.
@@ -220,6 +247,7 @@ export function reconstructGexHeatmapGrid(
     maxAbs,
     bucketSec: opts.bucketSec,
     volumeAdjustedLastColumn: volumeAdjustLast && cells.length > 0,
+    spot: latestSpot,
   };
 }
 

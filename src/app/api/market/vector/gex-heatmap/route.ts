@@ -41,7 +41,9 @@ export async function GET(req: NextRequest) {
   const session = /^\d{4}-\d{2}-\d{2}$/.test(rawSession) ? rawSession : todayEtYmd();
   const bucketSec = normalizeHeatmapBucketSec(req.nextUrl.searchParams.get("bucketSec"));
 
-  const grid = await getVectorGexHeatmap(ticker, horizon, session, bucketSec);
+  const force = req.nextUrl.searchParams.get("force") === "1";
+
+  const grid = await getVectorGexHeatmap(ticker, horizon, session, bucketSec, { force });
   return NextResponse.json(
     roundFloats({
       ticker,

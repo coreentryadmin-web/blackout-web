@@ -6,6 +6,7 @@ import {
   gexLadderAtSpot,
   reconstructGexRail,
   reconstructGexHeatmapGrid,
+  selectHeatmapStrikes,
   yearsToExpiry,
   type ReconstructContract,
 } from "./vector-gex-reconstruct";
@@ -115,6 +116,7 @@ test("reconstructGexHeatmapGrid: empty/invalid inputs → empty grid, never thro
     maxAbs: 0,
     bucketSec: undefined,
     volumeAdjustedLastColumn: false,
+    spot: 7500,
   });
 });
 
@@ -139,6 +141,18 @@ test("reconstructGexHeatmapGrid: volumeAdjustLastColumn only on the last time co
   const lastCol405 = grid.cells[grid.cells.length - 1]![i405] ?? 0;
   assert.equal(firstCol405, 0, "earlier column stays OI-only — no back-projected volume");
   assert.ok(lastCol405 > 0, "last column includes today's volume at 405");
+});
+
+test("selectHeatmapStrikes: includes near-spot band before peak-|GEX| cap", () => {
+  const peak = new Map<number, number>([
+    [7000, 100],
+    [7500, 50],
+    [8000, 200],
+    [8050, 180],
+  ]);
+  const strikes = selectHeatmapStrikes(peak, 3, 8025, 0.02);
+  assert.ok(strikes.includes(8050), "near-spot strike included");
+  assert.equal(strikes.length, 3);
 });
 
 test("gammaFlipFromLadder: interpolates the single zero-crossing of cumulative net GEX", () => {

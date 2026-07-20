@@ -34,17 +34,32 @@ type PaneRendererTarget = Parameters<IPrimitivePaneRenderer["draw"]>[0];
 // `attached()` hands us a series typed over the full options map — alias it so the field is precise.
 type AttachedSeries = ISeriesApi<SeriesType, Time>;
 
+const SPOT_LINE_COLOR = "rgba(34, 211, 238, 0.85)"; // gamma-flip cyan — spot axis guide
+
 class GexHeatmapRenderer implements IPrimitivePaneRenderer {
-  constructor(private readonly _rects: readonly HeatmapRect[]) {}
+  constructor(
+    private readonly _rects: readonly HeatmapRect[],
+    private readonly _spotY: number | null
+  ) {}
 
   draw(target: PaneRendererTarget): void {
-    // Media coordinate space: `priceToCoordinate`/`timeToCoordinate` return media (CSS) pixels, so
-    // the rects are already in this space — the library handles device-pixel scaling for us.
     target.useMediaCoordinateSpace((scope) => {
       const ctx = scope.context;
       for (const r of this._rects) {
         ctx.fillStyle = r.color;
         ctx.fillRect(r.x, r.y, r.w, r.h);
+      }
+      if (this._spotY != null && Number.isFinite(this._spotY)) {
+        const y = this._spotY;
+        ctx.save();
+        ctx.strokeStyle = SPOT_LINE_COLOR;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(scope.mediaSize.width, y);
+        ctx.stroke();
+        ctx.restore();
       }
     });
   }
@@ -60,8 +75,9 @@ class GexHeatmapPaneView implements IPrimitivePaneView {
 
   renderer(): IPrimitivePaneRenderer | null {
     const rects = this._source.computeRects();
-    // No rects (toggle off, no grid, unresolved axes) → null tells the library to skip this view.
-    return rects.length ? new GexHeatmapRenderer(rects) : null;
+    const spotY = this._source.spotCoordinate();
+    if (!rects.length && spotY == null) return null;
+    return new GexHeatmapRenderer(rects, spotY);
   }
 }
 
@@ -71,6 +87,8 @@ export class GexHeatmapPrimitive implements ISeriesPrimitive<Time> {
   private _requestUpdate: (() => void) | null = null;
   private _grid: GexHeatmapGrid | null = null;
   private _visible = false;
+  /** Live spot — horizontal guide aligned with candle price scale. */
+  private _spot: number | null = null;
   // A stable single-view array — the library caches on the array reference, so it must not churn.
   private readonly _paneViews: readonly IPrimitivePaneView[] = [new GexHeatmapPaneView(this)];
 
@@ -100,6 +118,13 @@ export class GexHeatmapPrimitive implements ISeriesPrimitive<Time> {
     this._requestUpdate?.();
   }
 
+  /** Pin spot price line to chart y-axis (updates every SSE tick). */
+  setSpot(spot: number | null): void {
+    if (this._spot === spot) return;
+    this._spot = spot;
+    this._requestUpdate?.();
+  }
+
   /**
    * Project the current grid to media-space rects using the LIVE axis coordinates (recomputed every
    * frame by the caller). Returns [] whenever there's nothing honest to draw — invisible, no grid,
@@ -114,5 +139,10 @@ export class GexHeatmapPrimitive implements ISeriesPrimitive<Time> {
       (time) => timeScale.timeToCoordinate(time as Time),
       (strike) => series.priceToCoordinate(strike)
     );
+  }
+
+  spotCoordinate(): number | null {
+    if (!this._series || this._spot == null || !Number.isFinite(this._spot)) return null;
+    return this._series.priceToCoordinate(this._spot);
   }
 }

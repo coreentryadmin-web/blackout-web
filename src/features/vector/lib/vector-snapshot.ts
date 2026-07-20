@@ -32,8 +32,7 @@ import {
 import { expiriesForHorizon, type VectorDteHorizon } from "./vector-dte-horizon";
 import { getPerExpiryGexWalls } from "./vector-dte-walls-server";
 import { VECTOR_WALL_NODES_PER_SIDE } from "./vector-bar-timeframes";
-
-const WALL_SCOPE_REFRESH_MS = 15_000;
+import { VECTOR_WALL_SCOPE_REFRESH_MS } from "./vector-cadence";
 const VEX_WALLS_CACHE_MS = 8_000;
 const WALLS_CACHE_MS = 900;
 const FLIP_CACHE_MS = 5_000;
@@ -132,7 +131,7 @@ function state(ticker: string): TickerState {
 function refreshWallScope(ticker: string): void {
   const s = state(ticker);
   const now = Date.now();
-  if (now - s.wallScope.fetchedAt < WALL_SCOPE_REFRESH_MS || s.wallScopeInFlight) return;
+  if (now - s.wallScope.fetchedAt < VECTOR_WALL_SCOPE_REFRESH_MS || s.wallScopeInFlight) return;
   s.wallScopeInFlight = runWallScopeFetch(ticker);
 }
 
@@ -169,7 +168,7 @@ export async function primeVectorWallScope(ticker: string = VECTOR_DEFAULT_TICKE
   const s = state(t);
   const now = Date.now();
   if (
-    now - s.wallScope.fetchedAt < WALL_SCOPE_REFRESH_MS &&
+    now - s.wallScope.fetchedAt < VECTOR_WALL_SCOPE_REFRESH_MS &&
     (s.fallbackStrikeTotals || s.fallbackVexStrikeTotals)
   ) {
     return;

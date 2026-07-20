@@ -8,10 +8,11 @@ import { loadCurrentChainContracts, loadSessionSpotSamples } from "./vector-gex-
 import { reconstructGexHeatmapGrid, type GexHeatmapGrid } from "./vector-gex-reconstruct";
 import { normalizeHeatmapBucketSec } from "./vector-gex-heatmap-paint";
 import { expiriesForHorizon, type VectorDteHorizon } from "./vector-dte-horizon";
+import { VECTOR_GEX_HEATMAP_CACHE_SEC } from "./vector-cadence";
 
 const LIVE_HEATMAP_CACHE_PREFIX = "vector:live-gex-heatmap";
-/** Short TTL — grid is cheap to rebuild but bars/spot path moves every minute during RTH. */
-const LIVE_HEATMAP_TTL_SEC = 90;
+/** Short TTL — grid rebuilds cheaply; spot path moves every minute during RTH. */
+const LIVE_HEATMAP_TTL_SEC = VECTOR_GEX_HEATMAP_CACHE_SEC;
 
 export { normalizeHeatmapBucketSec } from "./vector-gex-heatmap-paint";
 
@@ -33,14 +34,17 @@ export async function getVectorGexHeatmap(
   ticker: string,
   horizon: VectorDteHorizon,
   sessionYmd: string,
-  bucketSec = 300
+  bucketSec = 300,
+  opts?: { force?: boolean }
 ): Promise<GexHeatmapGrid | null> {
   const t = normalizeVectorTicker(ticker);
   const bucket = normalizeHeatmapBucketSec(bucketSec);
   try {
     const cacheKey = liveHeatmapCacheKey(t, horizon, sessionYmd, bucket);
-    const hit = await sharedCacheGet<GexHeatmapGrid>(cacheKey).catch(() => null);
-    if (hit?.times?.length) return hit;
+    if (!opts?.force) {
+      const hit = await sharedCacheGet<GexHeatmapGrid>(cacheKey).catch(() => null);
+      if (hit?.times?.length) return hit;
+    }
 
     const pos = await getGexPositioning(t);
     const spot = pos?.spot;
@@ -63,6 +67,7 @@ export async function getVectorGexHeatmap(
       maxStrikes: 80,
       volumeAdjustLastColumn: true,
       bucketSec: bucket,
+      spotBandPct: 0.04,
     });
     if (!grid.times.length) return null;
 
