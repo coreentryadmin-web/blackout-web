@@ -3025,6 +3025,7 @@ type RefContractsResponse = {
 };
 
 const positioningCache = new Map<string, { at: number; bundle: PolygonPositioningBundle }>();
+const positioningInflight = new Map<string, Promise<PolygonPositioningBundle>>();
 
 function positioningCacheMs(): number {
   const sec = Number(process.env.POLYGON_POSITIONING_CACHE_SEC ?? 30);
@@ -3039,20 +3040,11 @@ export type PolygonPositioningBundle = {
   expiry: string;
 };
 
-/** GEX rows + max pain from Polygon options chain — any underlying (SPX uses SPX+SPXW). */
-export async function fetchPolygonPositioningBundle(
-  underlying: string,
-  opts?: { spot?: number; expiry?: string }
+async function buildPolygonPositioningBundle(
+  sym: string,
+  expiry: string,
+  opts?: { spot?: number }
 ): Promise<PolygonPositioningBundle> {
-  const sym = underlying.toUpperCase();
-  const expiry = opts?.expiry ?? todayEtYmd();
-  const cacheKey = `${sym}:${expiry}`;
-  const now = Date.now();
-  const cached = positioningCache.get(cacheKey);
-  if (cached && now - cached.at < positioningCacheMs()) {
-    return cached.bundle;
-  }
-
   if (!polygonConfigured()) {
     return { rows: [], maxPain: null, spot: 0, source: "polygon", expiry };
   }
@@ -3072,13 +3064,42 @@ export async function fetchPolygonPositioningBundle(
   const contracts = await fetchPolygonOptionsChain(sym, spot, expiry);
   const rows = aggregateGexRows(contracts, spot);
   const maxPain = computeMaxPainFromChain(contracts);
-  const bundle: PolygonPositioningBundle = { rows, maxPain, spot, source: "polygon", expiry };
-  if (rows.length) {
-    // Bound: keyed by user-supplied ticker → cap so garbage symbols can't leak memory.
-    if (positioningCache.size > 200) positioningCache.clear();
-    positioningCache.set(cacheKey, { at: now, bundle });
+  return { rows, maxPain, spot, source: "polygon", expiry };
+}
+
+/** GEX rows + max pain from Polygon options chain — any underlying (SPX uses SPX+SPXW). */
+export async function fetchPolygonPositioningBundle(
+  underlying: string,
+  opts?: { spot?: number; expiry?: string }
+): Promise<PolygonPositioningBundle> {
+  const sym = underlying.toUpperCase();
+  const expiry = opts?.expiry ?? todayEtYmd();
+  const cacheKey = `${sym}:${expiry}`;
+  const now = Date.now();
+  const cached = positioningCache.get(cacheKey);
+  if (cached && now - cached.at < positioningCacheMs()) {
+    return cached.bundle;
   }
-  return bundle;
+
+  const inflight = positioningInflight.get(cacheKey);
+  if (inflight) return inflight;
+
+  const build = (async () => {
+    const bundle = await buildPolygonPositioningBundle(sym, expiry, opts);
+    if (bundle.rows.length) {
+      // Bound: keyed by user-supplied ticker → cap so garbage symbols can't leak memory.
+      if (positioningCache.size > 200) positioningCache.clear();
+      positioningCache.set(cacheKey, { at: Date.now(), bundle });
+    }
+    return bundle;
+  })();
+
+  positioningInflight.set(cacheKey, build);
+  try {
+    return await build;
+  } finally {
+    positioningInflight.delete(cacheKey);
+  }
 }
 
 /** OI aggregated by expiry from Polygon reference contracts (unlimited plan).

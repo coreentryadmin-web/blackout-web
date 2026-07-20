@@ -38,6 +38,15 @@ const WALLS_CACHE_MS = 900;
 const FLIP_CACHE_MS = 5_000;
 const DARK_POOL_LOCAL_CACHE_MS = 30_000;
 
+/** Fill missing call/put side from blended walls when a narrowed horizon only resolves one side. */
+function mergeWallSides(primary: GexWalls, fallback: GexWalls | null | undefined): GexWalls {
+  if (!fallback || !wallsHaveNodes(fallback)) return primary;
+  return {
+    callWalls: primary.callWalls.length ? primary.callWalls : fallback.callWalls,
+    putWalls: primary.putWalls.length ? primary.putWalls : fallback.putWalls,
+  };
+}
+
 type TickerState = {
   wallScope: WallScopeState;
   wallScopeInFlight: Promise<void> | null;
@@ -312,7 +321,11 @@ export async function getVectorGexWallsForHorizon(
   // narrows, so it takes precedence; the WS ladder stays a fallback below.
   const perExpiry = await getPerExpiryGexWalls(t, horizon).catch(() => null);
   if (perExpiry?.walls && (perExpiry.walls.callWalls.length || perExpiry.walls.putWalls.length)) {
-    return perExpiry.walls;
+    const blended = getVectorGexWalls(t);
+    return mergeWallSides(
+      perExpiry.walls,
+      wallsHaveNodes(blended) ? blended : null
+    );
   }
 
   // WS ladder fallback: slice the live per-expiry ladder to the horizon, if the chain path
