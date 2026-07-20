@@ -73,6 +73,12 @@ try {
         replies: await hit("/api/cron/x-replies"),
       };
       break;
+    case "growth":
+      result = await hit("/api/cron/x-growth");
+      break;
+    case "dry-growth":
+      result = await hit("/api/cron/x-growth?dry=1");
+      break;
     case "dry-replies":
       result = await hit("/api/cron/x-replies?dry=1");
       break;

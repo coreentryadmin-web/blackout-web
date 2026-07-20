@@ -244,10 +244,14 @@ export async function postThread(texts: string[]): Promise<TweetResult[]> {
 // Engagement — likes, RTs, follows
 // ---------------------------------------------------------------------------
 
-export async function likeTweet(tweetId: string): Promise<boolean> {
+export type LikeResult = "ok" | "rate_limited" | "failed";
+
+export async function likeTweet(tweetId: string): Promise<LikeResult> {
   const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}/likes`;
   const res = await oauthFetch("POST", url, { tweet_id: tweetId });
-  return res.ok;
+  if (res.ok) return "ok";
+  if (res.status === 429) return "rate_limited";
+  return "failed";
 }
 
 export async function retweet(tweetId: string): Promise<boolean> {
@@ -400,4 +404,19 @@ export async function minutesSinceLastOwnPost(): Promise<number | null> {
   const latest = tweets.find((t) => t.created_at)?.created_at;
   if (!latest) return null;
   return (Date.now() - new Date(latest).getTime()) / 60_000;
+}
+
+/** @mention outreach posts today (start with @, not product footer spam). */
+export async function countOwnMentionPostsTodayEt(): Promise<number> {
+  const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 40);
+  const todayEt = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/New_York",
+  });
+  return tweets.filter((t) => {
+    if (!t.created_at || !t.text?.trim().startsWith("@")) return false;
+    const d = new Date(t.created_at).toLocaleDateString("en-CA", {
+      timeZone: "America/New_York",
+    });
+    return d === todayEt;
+  }).length;
 }
