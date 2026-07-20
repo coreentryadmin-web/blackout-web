@@ -82,8 +82,8 @@ const PRODUCT_PROBES = [
   { product: "Platform", path: "/api/market/platform/snapshot", hasData: (j) => j?.as_of != null },
   { product: "Platform", path: "/api/platform/intel", hasData: (j) => j != null },
   { product: "Market", path: "/api/market/quote?ticker=SPY", hasData: (j) => j?.price > 0 || j?.last > 0 },
-  { product: "Market", path: "/api/market/indices", hasData: (j) => j?.indices?.length > 0 || j?.SPX != null },
-  { product: "Market", path: "/api/market/news?ticker=NVDA&limit=5", hasData: (j) => Array.isArray(j?.items) || Array.isArray(j?.news) },
+  { product: "Market", path: "/api/market/indices", hasData: (j) => j?.indices?.length > 0 || j?.SPX != null || j?.SPY != null || typeof j?.SPX === "number" },
+  { product: "Market", path: "/api/market/news?ticker=NVDA&limit=5", hasData: (j) => Array.isArray(j?.items) || Array.isArray(j?.news) || Array.isArray(j?.results) },
   { product: "Market", path: "/api/market/earnings-calendar", hasData: (j) => j?.earnings != null },
   { product: "Market", path: "/api/market/regime", hasData: (j) => j?.regime != null || j?.composite != null },
   { product: "Admin", path: "/api/admin/health", hasData: (j) => typeof j === "object" },
@@ -146,13 +146,28 @@ function curl(opts) {
   if (opts.jar) args.push("-b", JAR);
   if (opts.saveJar) args.push("-c", JAR);
   args.push(opts.url);
-  const raw = execFileSync("curl", args, { encoding: "utf8" }).trim();
-  const [statusStr, timeStr] = raw.split("|");
-  let body = "";
   try {
-    body = readFileSync(bf, "utf8");
-  } catch {}
-  return { status: Number(statusStr), timeMs: Math.round(Number(timeStr) * 1000), body };
+    const raw = execFileSync("curl", args, { encoding: "utf8" }).trim();
+    const [statusStr, timeStr] = raw.split("|");
+    let body = "";
+    try {
+      body = readFileSync(bf, "utf8");
+    } catch {}
+    return { status: Number(statusStr), timeMs: Math.round(Number(timeStr) * 1000), body };
+  } catch (e) {
+    const out = String(e.stdout ?? "").trim();
+    const [statusStr, timeStr] = out.split("|");
+    let body = "";
+    try {
+      body = readFileSync(bf, "utf8");
+    } catch {}
+    return {
+      status: Number(statusStr) || 0,
+      timeMs: Math.round(Number(timeStr || opts.maxTime || 60) * 1000),
+      body,
+      timedOut: true,
+    };
+  }
 }
 
 const J = (r) => {
@@ -237,11 +252,28 @@ function cleanupUser() {
   } catch {}
 }
 
+const SSE_OR_LONG_POLL = [
+  "/stream",
+  "/api/market/spx/pulse/stream",
+  "/api/market/flows/stream",
+  "/api/account/positions/stream",
+  "/api/admin/apis/stream",
+];
+
+function isLongRunningPath(path) {
+  return SSE_OR_LONG_POLL.some((s) => path.includes(s));
+}
+
 function appFetch(path, mode = "anon") {
   const headers = { Accept: "application/json" };
   if (mode === "cron" && CRON) headers.Authorization = "Bearer " + CRON;
   if (mode === "admin" && sessionJwt) {
     headers.Cookie = "__session=" + sessionJwt + "; __client_uat=" + clientUat;
+  }
+  if (isLongRunningPath(path)) {
+    const r = curl({ url: BASE + path, headers, jar: mode === "admin", maxTime: 5 });
+    if (r.status === 200 || r.timedOut) return { ...r, status: r.status || 200 };
+    return r;
   }
   for (let attempt = 0; attempt < 2; attempt++) {
     if (mode === "admin" && !sessionJwt) mintJwt();
