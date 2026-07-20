@@ -1,4 +1,5 @@
 import type { GexHeatmapGrid } from "./vector-gex-reconstruct";
+import { bandEdges, type Band } from "./vector-chart-geometry";
 
 /**
  * Paint/geometry layer for the Gamma Surface — a continuous-zone background behind candles showing
@@ -37,8 +38,6 @@ const SMOOTH_ALPHA = 0.35;
 
 /** One drawable rect in canvas media coordinates. */
 export type SurfaceRect = { x: number; y: number; w: number; h: number; color: string };
-
-type Band = { lo: number; hi: number };
 
 /**
  * Per-column aggregation: for a single time slice, compute the call pressure (sum of +GEX above
@@ -108,34 +107,6 @@ function zoneColor(rgb: readonly [number, number, number], inten: number): strin
   if (inten <= 0) return "rgba(0,0,0,0)";
   const alpha = MIN_ALPHA + inten * (MAX_ALPHA - MIN_ALPHA);
   return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha.toFixed(3)})`;
-}
-
-/**
- * Turn a per-index array of axis coordinates into per-index [lo,hi] bands (same utility as
- * bandEdges in the heatmap paint, duplicated here to keep this module dependency-free).
- */
-function bandEdges(coords: ReadonlyArray<number | null>): Array<Band | null> {
-  const n = coords.length;
-  const out: Array<Band | null> = new Array(n).fill(null);
-  const resolved: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const c = coords[i];
-    if (c != null && Number.isFinite(c)) resolved.push(i);
-  }
-  if (resolved.length < 2) return out;
-
-  for (let k = 0; k < resolved.length; k++) {
-    const i = resolved[k]!;
-    const c = coords[i]!;
-    const left = k > 0 ? coords[resolved[k - 1]!]! : null;
-    const right = k < resolved.length - 1 ? coords[resolved[k + 1]!]! : null;
-    const edges: number[] = [];
-    if (left != null) edges.push((left + c) / 2);
-    if (right != null) edges.push((right + c) / 2);
-    if (edges.length === 1) edges.push(c - (edges[0]! - c));
-    out[i] = { lo: Math.min(edges[0]!, edges[1]!), hi: Math.max(edges[0]!, edges[1]!) };
-  }
-  return out;
 }
 
 /**

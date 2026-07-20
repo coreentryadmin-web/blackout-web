@@ -1328,7 +1328,7 @@ export function VectorChart({
    * nothing is drawn while the (default-empty) enabled set is empty. Values are computed 1:1 with
    * the bars and the null warm-up region is dropped so lines simply start once defined.
    */
-  const paintOverlays = useCallback((bars: VectorBar[]) => {
+  const paintOverlays = useCallback((bars: VectorBar[], flipOverride?: (time: number) => number | null) => {
     const chart = chartRef.current;
     if (!chart || !seriesRef.current) return;
     lastDisplayBarsRef.current = bars;
@@ -1432,14 +1432,23 @@ export function VectorChart({
       // draws nothing. This lives in paintOverlays so a toggle flip (which repaints here via the
       // indicators effect) shows/hides the surface instantly; the fetch pushes fresh data directly.
       gexHeatmapPrimitiveRef.current?.setData(gexHeatmapGridRef.current, enabled.has("gex-heatmap"));
-      // Gamma surface — same grid, same toggle pattern, but also needs the flip callback so the
-      // zones know where call territory ends and put territory begins. Uses a uniform flip (the
-      // current live value) rather than per-time-column, since the surface already smooths across
-      // columns and the live flip is the most relevant read for the member.
+      // Gamma surface — per-bucket flip: each time column reads the flip from wall history at THAT
+      // column's epoch, so the zone boundaries shift historically (the flip moves intraday as GEX
+      // rebalances). During replay, applyFrame passes a flipOverride scoped to the cursor-visible
+      // history; during live, we walk the full wall history and fall back to the live stream flip
+      // for the most recent column (which may not be in history yet).
+      const surfaceFlip = flipOverride ?? ((t: number) => {
+        const hist = wallHistoryRef.current;
+        if (hist.length > 0) {
+          const f = flipAtReplayTime(hist, t, "gex");
+          if (f != null) return f;
+        }
+        return liveGammaFlip();
+      });
       gammaSurfacePrimitiveRef.current?.setData(
         gexHeatmapGridRef.current,
         enabled.has("gamma-surface"),
-        () => liveGammaFlip()
+        surfaceFlip
       );
     }
 
@@ -1640,7 +1649,6 @@ export function VectorChart({
 
       const visibleBars = displayBarsFromMinute(bars, timeframeRef.current, cursorTime);
       applyDisplayBars(series, volumeSeriesRef.current, visibleBars);
-      paintOverlays(visibleBars);
 
       // Horizon-aware replay: when the member has narrowed the DTE (GEX lens) and that horizon
       // has a recorded trail, replay THAT horizon's beads forming point-in-time — not the blended
@@ -1655,6 +1663,16 @@ export function VectorChart({
         horizonHistoryRef.current,
         history
       );
+
+      // Replay-aware per-bucket flip for the gamma surface: each time column reads the flip from
+      // the horizon-scoped history at THAT column's epoch (not a uniform live value), so the zone
+      // boundaries shift historically as the cursor scrubs. Falls back to the page-load seed when
+      // the cursor predates all recorded samples.
+      const replayFlip = (t: number): number | null => {
+        if (sourceHistory.length > 0) return flipAtReplayTime(sourceHistory, t, "gex");
+        return initialGammaFlip;
+      };
+      paintOverlays(visibleBars, replayFlip);
 
       const visibleHistory = sliceHistoryToTime(sourceHistory, cursorTime);
       const v = lensVisuals(activeLens);
@@ -2009,10 +2027,20 @@ export function VectorChart({
         // Push straight to the primitive with the current toggle state — no full repaint needed
         // (paintOverlays also re-pushes on a toggle flip, so both entry points stay consistent).
         gexHeatmapPrimitiveRef.current?.setData(grid, indicatorsRef.current.has("gex-heatmap"));
+        // Per-bucket flip from wall history so the surface zones shift historically, with the
+        // live stream flip as fallback for the most recent column (not yet in history).
+        const hist = wallHistoryRef.current;
+        const fetchFlip = (t: number): number | null => {
+          if (hist.length > 0) {
+            const f = flipAtReplayTime(hist, t, "gex");
+            if (f != null) return f;
+          }
+          return liveGammaFlip();
+        };
         gammaSurfacePrimitiveRef.current?.setData(
           grid,
           indicatorsRef.current.has("gamma-surface"),
-          () => liveGammaFlip()
+          fetchFlip
         );
       } catch {
         // Network throw: keep the last-drawn surface rather than blank it on a transient blip.
