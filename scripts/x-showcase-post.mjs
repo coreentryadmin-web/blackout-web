@@ -189,6 +189,101 @@ async function dismissOverlays(page) {
   }
 }
 
+/** Fail fast if the UI is still on a different symbol than the post ticker. */
+async function assertActiveTicker(page, ticker, surface) {
+  const sym = ticker.toUpperCase();
+  const ok = await page.waitForFunction(
+    (expected) => {
+      const checks = [
+        document.querySelector('button[aria-label*="Change ticker"]')?.textContent ?? "",
+        document.querySelector("#helix-ticker-search")?.value ?? "",
+        document.querySelector('[data-testid="vector-ticker-search"]')?.value ?? "",
+        location.search,
+        location.pathname + location.search,
+      ].join(" ");
+      return checks.toUpperCase().includes(expected);
+    },
+    sym,
+    { timeout: 20_000 },
+  ).then(() => true).catch(() => false);
+
+  if (!ok) {
+    throw new Error(`${surface}: UI never switched to ${sym} — refusing to screenshot wrong ticker`);
+  }
+}
+
+/** Thermal has no URL ticker param — must use the searchable combobox (defaults to SPY). */
+async function selectThermalTicker(page, ticker) {
+  const sym = ticker.toUpperCase();
+  await page.goto(`${BASE}/heatmap`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await dismissOverlays(page);
+  await page.waitForSelector(".gex-heatmap-desk", { timeout: 45_000 });
+  await page.waitForTimeout(2000);
+
+  const trigger = page.locator('button[aria-label*="Change ticker"]').first();
+  await trigger.click();
+  const search = page.locator('input[aria-label="Search any ticker"]').first();
+  await search.waitFor({ state: "visible", timeout: 10_000 });
+  await search.fill(sym);
+  await page.waitForTimeout(1200);
+
+  const option = page.locator("#ticker-listbox button").filter({ hasText: sym }).first();
+  if (await option.count()) {
+    await option.click();
+  } else {
+    await search.press("Enter");
+  }
+
+  await page.waitForFunction(
+    (expected) =>
+      (document.querySelector('button[aria-label*="Change ticker"]')?.textContent ?? "").toUpperCase()
+        .includes(expected),
+    sym,
+    { timeout: 15_000 },
+  );
+  await page.waitForTimeout(5000);
+  await assertActiveTicker(page, sym, "Thermal");
+}
+
+/** Helix tape filter — must set Symbol input, not screenshot default SPX/SPY tape. */
+async function filterHelixTicker(page, ticker) {
+  const sym = ticker.toUpperCase();
+  await page.goto(`${BASE}/flows`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await dismissOverlays(page);
+  await page.waitForTimeout(4000);
+
+  const search = page.locator("#helix-ticker-search").first();
+  await search.waitFor({ state: "visible", timeout: 20_000 });
+  await search.click();
+  await search.fill("");
+  await search.pressSequentially(sym, { delay: 60 });
+  await search.press("Tab");
+
+  await page.waitForFunction(
+    (expected) => document.querySelector("#helix-ticker-search")?.value === expected,
+    sym,
+    { timeout: 10_000 },
+  );
+  await page.waitForTimeout(4000);
+  await assertActiveTicker(page, sym, "Helix");
+}
+
+async function waitForHelixTapeScoped(page, ticker) {
+  const sym = ticker.toUpperCase();
+  await page.waitForFunction(
+    (expected) => {
+      const input = document.querySelector("#helix-ticker-search");
+      if (input?.value !== expected) return false;
+      if (document.body.innerText.includes(`No prints for ${expected}`)) return true;
+      const symbols = [...document.querySelectorAll(".helix-tape-symbol-text")];
+      if (symbols.length === 0) return false;
+      return symbols.every((el) => el.textContent?.trim().toUpperCase() === expected);
+    },
+    sym,
+    { timeout: 45_000 },
+  );
+}
+
 /** Which surfaces belong in a ticker-scoped post (no unrelated product dumps). */
 function showcasePlan(ticker) {
   const isSpx = ticker === "SPX" || ticker === "SPXW";
@@ -224,6 +319,7 @@ async function captureVector0Dte(page, ticker) {
   await tf.selectOption("15");
   await page.waitForTimeout(5000);
 
+  await assertActiveTicker(page, ticker, "Vector");
   const chart = page.locator(".vector-chart-wrap").first();
   await chart.waitFor({ state: "visible" });
   const buf = await chart.screenshot({ type: "png" });
@@ -236,32 +332,30 @@ async function captureVector0Dte(page, ticker) {
 /** Helix: filter tape to the post ticker only. */
 async function captureHelixTicker(page, ticker) {
   console.log(`  → Helix Flow (${ticker} only): ${BASE}/flows`);
-  await page.goto(`${BASE}/flows`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-  await dismissOverlays(page);
-  await page.waitForTimeout(5000);
+  await filterHelixTicker(page, ticker);
 
-  const search = page.locator('#helix-ticker-search, input[aria-label="Filter by ticker"]').first();
-  await search.waitFor({ state: "visible", timeout: 20_000 });
-  await search.fill(ticker);
-  await page.waitForTimeout(3500);
+  const hideAnalytics = page.getByRole("button", { name: "Hide analytics" });
+  if (await hideAnalytics.count()) {
+    await hideAnalytics.click();
+    await page.waitForTimeout(800);
+  }
 
-  const grid = page.locator(".helix-desk-terminal-grid").first();
-  await grid.waitFor({ state: "visible", timeout: 15_000 });
-  const buf = await grid.screenshot({ type: "png" });
+  await waitForHelixTapeScoped(page, ticker);
+
+  const panel = page.locator(".helix-desk-terminal").first();
+  const buf = await panel.screenshot({ type: "png" });
   const path = join(OUT, `helix-${ticker}.png`);
   writeFileSync(path, buf);
   console.log(`    saved ${path}`);
   return { key: "helix", label: `Helix · ${ticker} flow`, buf, path };
 }
 
-/** Thermal heatmap scoped to ticker. */
+/** Thermal heatmap — search combobox for ticker (page always boots SPY). */
 async function captureThermal(page, ticker) {
-  const url = `${BASE}/heatmap?ticker=${encodeURIComponent(ticker)}`;
-  console.log(`  → Thermal (${ticker}): ${url}`);
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-  await dismissOverlays(page);
-  await page.waitForTimeout(8000);
-  const panel = page.locator(".gex-heatmap-shell, .thermal-desk, main").first();
+  console.log(`  → Thermal (${ticker}): search + select in UI`);
+  await selectThermalTicker(page, ticker);
+
+  const panel = page.locator(".gex-heatmap-desk").first();
   const buf = await panel.screenshot({ type: "png" });
   const path = join(OUT, `thermal-${ticker}.png`);
   writeFileSync(path, buf);
