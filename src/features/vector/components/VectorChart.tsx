@@ -82,7 +82,6 @@ import {
   type VectorIndicatorId,
 } from "@/features/vector/lib/vector-indicators-config";
 import { GexHeatmapPrimitive } from "@/features/vector/lib/vector-gex-heatmap-primitive";
-import { GammaSurfacePrimitive } from "@/features/vector/lib/vector-gamma-surface-primitive";
 import type { GexHeatmapGrid } from "@/features/vector/lib/vector-gex-reconstruct";
 import { levelLinesFor, type LevelLine, type PriorDayOhlc } from "@/features/vector/lib/vector-key-levels";
 import { buildStructureMarkers } from "@/features/vector/lib/vector-structure-markers";
@@ -1024,7 +1023,6 @@ export function VectorChart({
   // switch / unmount — chart.remove() disposes the series (and its primitives), so we just drop refs.
   const gexHeatmapPrimitiveRef = useRef<GexHeatmapPrimitive | null>(null);
   const gexHeatmapGridRef = useRef<GexHeatmapGrid | null>(null);
-  const gammaSurfacePrimitiveRef = useRef<GammaSurfacePrimitive | null>(null);
   const lastConfluenceRef = useRef<string>("");
   // Opt-in technical overlays (VWAP/EMA/SMA) — one lightweight-charts line series per enabled
   // indicator, created on demand and removed when toggled off. Default: none. `indicatorsRef`
@@ -1328,7 +1326,7 @@ export function VectorChart({
    * nothing is drawn while the (default-empty) enabled set is empty. Values are computed 1:1 with
    * the bars and the null warm-up region is dropped so lines simply start once defined.
    */
-  const paintOverlays = useCallback((bars: VectorBar[], flipOverride?: (time: number) => number | null) => {
+  const paintOverlays = useCallback((bars: VectorBar[]) => {
     const chart = chartRef.current;
     if (!chart || !seriesRef.current) return;
     lastDisplayBarsRef.current = bars;
@@ -1432,24 +1430,6 @@ export function VectorChart({
       // draws nothing. This lives in paintOverlays so a toggle flip (which repaints here via the
       // indicators effect) shows/hides the surface instantly; the fetch pushes fresh data directly.
       gexHeatmapPrimitiveRef.current?.setData(gexHeatmapGridRef.current, enabled.has("gex-heatmap"));
-      // Gamma surface — per-bucket flip: each time column reads the flip from wall history at THAT
-      // column's epoch, so the zone boundaries shift historically (the flip moves intraday as GEX
-      // rebalances). During replay, applyFrame passes a flipOverride scoped to the cursor-visible
-      // history; during live, we walk the full wall history and fall back to the live stream flip
-      // for the most recent column (which may not be in history yet).
-      const surfaceFlip = flipOverride ?? ((t: number) => {
-        const hist = wallHistoryRef.current;
-        if (hist.length > 0) {
-          const f = flipAtReplayTime(hist, t, "gex");
-          if (f != null) return f;
-        }
-        return liveGammaFlip();
-      });
-      gammaSurfacePrimitiveRef.current?.setData(
-        gexHeatmapGridRef.current,
-        enabled.has("gamma-surface"),
-        surfaceFlip
-      );
     }
 
     // Oscillator sub-panes (RSI / MACD) in their OWN panes below price. The pane LAYOUT is rebuilt
@@ -1666,13 +1646,7 @@ export function VectorChart({
 
       // Replay-aware per-bucket flip for the gamma surface: each time column reads the flip from
       // the horizon-scoped history at THAT column's epoch (not a uniform live value), so the zone
-      // boundaries shift historically as the cursor scrubs. Falls back to the page-load seed when
-      // the cursor predates all recorded samples.
-      const replayFlip = (t: number): number | null => {
-        if (sourceHistory.length > 0) return flipAtReplayTime(sourceHistory, t, "gex");
-        return initialGammaFlip;
-      };
-      paintOverlays(visibleBars, replayFlip);
+      paintOverlays(visibleBars);
 
       const visibleHistory = sliceHistoryToTime(sourceHistory, cursorTime);
       const v = lensVisuals(activeLens);
@@ -2027,23 +2001,8 @@ export function VectorChart({
         // Push straight to the primitive with the current toggle state — no full repaint needed
         // (paintOverlays also re-pushes on a toggle flip, so both entry points stay consistent).
         gexHeatmapPrimitiveRef.current?.setData(grid, indicatorsRef.current.has("gex-heatmap"));
-        // Per-bucket flip from wall history so the surface zones shift historically, with the
-        // live stream flip as fallback for the most recent column (not yet in history).
-        const hist = wallHistoryRef.current;
-        const fetchFlip = (t: number): number | null => {
-          if (hist.length > 0) {
-            const f = flipAtReplayTime(hist, t, "gex");
-            if (f != null) return f;
-          }
-          return liveGammaFlip();
-        };
-        gammaSurfacePrimitiveRef.current?.setData(
-          grid,
-          indicatorsRef.current.has("gamma-surface"),
-          fetchFlip
-        );
       } catch {
-        // Network throw: keep the last-drawn surface rather than blank it on a transient blip.
+        // Network throw: keep the last-drawn heatmap rather than blank it on a transient blip.
       }
     };
 
@@ -2448,9 +2407,6 @@ export function VectorChart({
     const gexHeatmap = new GexHeatmapPrimitive();
     series.attachPrimitive(gexHeatmap);
     gexHeatmapPrimitiveRef.current = gexHeatmap;
-    const gammaSurface = new GammaSurfacePrimitive();
-    series.attachPrimitive(gammaSurface);
-    gammaSurfacePrimitiveRef.current = gammaSurface;
 
     refreshTrails("gex");
     refreshOverlays("gex", initialWalls, initialVexWalls, initialGammaFlip, initialVexFlip, initialDarkPoolLevels);
@@ -2617,7 +2573,6 @@ export function VectorChart({
       // a remount (ticker switch) re-attaches a fresh primitive instead of touching a dead one.
       gexHeatmapPrimitiveRef.current = null;
       gexHeatmapGridRef.current = null;
-      gammaSurfacePrimitiveRef.current = null;
       volumeSeriesRef.current = null;
       setChartReady(false);
     };

@@ -1,5 +1,5 @@
 /**
- * Shared geometry primitives for Vector chart paint layers (heatmap, gamma surface, etc.).
+ * Shared geometry primitives for Vector chart paint layers (heatmap, etc.).
  * Pure + DOM-free — unit-testable without a canvas or chart.
  */
 
