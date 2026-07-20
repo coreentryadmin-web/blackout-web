@@ -78,6 +78,7 @@ import { smaSeries, emaSeries, vwapSeries, rsiSeries, macdSeries } from "@/featu
 import {
   VECTOR_OVERLAYS,
   VECTOR_LEVELS,
+  defaultVectorIndicators,
   type VectorOverlayId,
   type VectorIndicatorId,
 } from "@/features/vector/lib/vector-indicators-config";
@@ -113,6 +114,7 @@ import {
   mergeBarsByTime,
   wallCountForTimeframe,
   anchorBandPctForTimeframe,
+  VECTOR_DEFAULT_TIMEFRAME,
   VECTOR_WALL_NODES_PER_SIDE,
   type VectorTimeframeMinutes,
 } from "@/features/vector/lib/vector-bar-timeframes";
@@ -244,8 +246,8 @@ type Props = {
    *  opens on 0DTE (SPX day-trading desk) while the standalone /vector page keeps WEEKLY. Initial
    *  state only — the member's toggle still rules after mount. */
   defaultDteHorizon?: VectorDteHorizon;
-  /** Initial candle interval override (same seam): the dashboard embed opens on 3-minute candles;
-   *  the standalone page keeps 1-minute. Initial state only. */
+  /** Initial candle interval override (same seam): host desks may pass 3m explicitly;
+   *  standalone /vector uses `VECTOR_DEFAULT_TIMEFRAME` (3-minute). Initial state only. */
   defaultTimeframe?: VectorTimeframeMinutes;
   /**
    * SHARED PRICE AXIS seam (SPX desk, 2026-07-13): reports the price pane's live y-mapping
@@ -960,6 +962,8 @@ export function VectorChart({
   defaultTimeframe,
   onPriceScaleRender,
 }: Props) {
+  const initialTimeframe = defaultTimeframe ?? VECTOR_DEFAULT_TIMEFRAME;
+  const initialIndicators = defaultVectorIndicators();
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -1002,11 +1006,11 @@ export function VectorChart({
   // autoscaleInfoProvider to widen the price axis so support/resistance walls
   // (esp. put walls a few % below spot) aren't clipped off-screen. Seeded from the
   // SSR walls so the FIRST autoscale on mount already includes them.
-  // Sliced to the 1m shown-count (the mount default timeframe) so the first autoscale matches
-  // what's actually drawn; refreshOverlays re-slices to the active timeframe on every repaint.
+  // Sliced to the mount default timeframe so the first autoscale matches what's actually drawn;
+  // refreshOverlays re-slices to the active timeframe on every repaint.
   const rangeWallsRef = useRef<{ call: number[]; put: number[] }>({
-    call: (initialWalls?.callWalls ?? []).slice(0, wallCountForTimeframe(1)).map((w) => w.strike),
-    put: (initialWalls?.putWalls ?? []).slice(0, wallCountForTimeframe(1)).map((w) => w.strike),
+    call: (initialWalls?.callWalls ?? []).slice(0, wallCountForTimeframe(initialTimeframe)).map((w) => w.strike),
+    put: (initialWalls?.putWalls ?? []).slice(0, wallCountForTimeframe(initialTimeframe)).map((w) => w.strike),
   });
   // The strikes ACTUALLY drawn as beads (from the session-trail rail, per side). The autoscale
   // provider widens for these too — not just the live ladder in rangeWallsRef — so a bead never
@@ -1060,7 +1064,7 @@ export function VectorChart({
   // such a level is enabled). `priorDayTickerRef` guards a fetch from a previous ticker landing late.
   const priorDayRef = useRef<PriorDayOhlc | null>(null);
   const priorDayTickerRef = useRef<string | null>(null);
-  const indicatorsRef = useRef<Set<VectorIndicatorId>>(new Set());
+  const indicatorsRef = useRef<Set<VectorIndicatorId>>(initialIndicators);
   const lastDisplayBarsRef = useRef<VectorBar[]>(initialBars);
   const callBeadsRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const putBeadsRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
@@ -1079,11 +1083,11 @@ export function VectorChart({
   /** Canonical 1m session bars — SSE live ticks and Polygon seed write here only. */
   const minuteBarsRef = useRef<VectorBar[]>(initialBars);
   const displayBarTimeRef = useRef<number>(0);
-  const timeframeRef = useRef<VectorTimeframeMinutes>(1);
+  const timeframeRef = useRef<VectorTimeframeMinutes>(initialTimeframe);
   // Tracks the timeframe the time scale was last fitContent()'d to, so the timeframe effect can
   // tell a GENUINE timeframe switch (refit expected) from a re-run triggered by a dependency's
   // identity change or a liveSession flip (must preserve the member's zoom/pan). See BUG 2.
-  const lastFittedTimeframeRef = useRef<VectorTimeframeMinutes>(1);
+  const lastFittedTimeframeRef = useRef<VectorTimeframeMinutes>(initialTimeframe);
   const gammaFlipRef = useRef<number | null>(initialGammaFlip);
   const vexFlipRef = useRef<number | null>(initialVexFlip);
   const darkPoolRef = useRef<VectorDarkPoolLevel[]>(initialDarkPoolLevels);
@@ -1169,12 +1173,12 @@ export function VectorChart({
   );
   const [gexAsOf, setGexAsOf] = useState<number | null>(null);
   const [vexAsOf, setVexAsOf] = useState<number | null>(null);
-  // 1m is the seed resolution; host desks may open on a coarser preset (defaultTimeframe — the
-  // SPX Slayer embed opens on 3-minute candles). Aggregation is client-side from the same 1m bars.
-  const [timeframe, setTimeframe] = useState<VectorTimeframeMinutes>(defaultTimeframe ?? 1);
+  // 1m is the seed resolution; host desks may open on a coarser preset (defaultTimeframe — 3m default).
+  // Aggregation is client-side from the same 1m bars.
+  const [timeframe, setTimeframe] = useState<VectorTimeframeMinutes>(initialTimeframe);
   const [chartReady, setChartReady] = useState(false);
-  // Enabled overlay indicators (default none — the chart stays clean until the member opts in).
-  const [indicators, setIndicators] = useState<Set<VectorIndicatorId>>(() => new Set());
+  // Enabled indicators — dealer gamma positioning (`gex-heatmap`) defaults on.
+  const [indicators, setIndicators] = useState<Set<VectorIndicatorId>>(() => new Set(initialIndicators));
   // Count of bars currently shown (at the active timeframe). Drives the indicator menu's
   // "not enough bars" annotation so an MA family that can't compute at this timeframe is explained
   // rather than looking broken. Updated imperatively from paintOverlays; setState bails out when

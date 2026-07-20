@@ -13,6 +13,9 @@ export const VECTOR_TIMEFRAMES = VECTOR_PRESET_TIMEFRAMES;
 
 export type VectorPresetTimeframe = (typeof VECTOR_PRESET_TIMEFRAMES)[number];
 
+/** Default candle interval on first paint (SPX Slayer embed + standalone /vector). */
+export const VECTOR_DEFAULT_TIMEFRAME: VectorPresetTimeframe = 3;
+
 /** Any whole-minute interval (presets + custom). */
 export type VectorTimeframeMinutes = number;
 
