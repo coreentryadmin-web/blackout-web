@@ -145,7 +145,8 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    let content = await generateTweetContent(postType, data);
+    const generated = await generateTweetContent(postType, data);
+    let content = generated?.content ?? null;
     if (content) content = trimToLimit(content);
 
     if (!content || !isTweetContentValid(content)) {
@@ -154,6 +155,7 @@ export async function GET(req: NextRequest) {
         reason: "Content generation failed validation",
         postType,
         content,
+        draftBody: generated?.draftBody,
       });
       return NextResponse.json(
         { ok: false, reason: "invalid or empty content", postType, content },
@@ -175,6 +177,8 @@ export async function GET(req: NextRequest) {
         dryRun: true,
         postType,
         content,
+        draftBody: generated?.draftBody,
+        enhanced: generated?.enhanced,
         data,
       });
     }
