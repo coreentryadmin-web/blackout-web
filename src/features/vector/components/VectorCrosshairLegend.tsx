@@ -11,6 +11,8 @@ export type VectorCrosshairState = {
   callWalls: VectorWallLevel[];
   putWalls: VectorWallLevel[];
   darkPoolLevels: VectorDarkPoolLevel[];
+  /** Nearest reconstructed GEX cell when the heatmap overlay is on. */
+  gexCell?: { strike: number; value: number } | null;
 };
 
 type Props = {
@@ -21,6 +23,14 @@ type Props = {
 };
 
 function fmtStrike(n: number): string {
+  return Math.round(n).toLocaleString("en-US");
+}
+
+function fmtGex(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+  if (abs >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
   return Math.round(n).toLocaleString("en-US");
 }
 
@@ -78,6 +88,12 @@ export function VectorCrosshairLegend({ state, ticker }: Props) {
             .slice(0, 3)
             .map((l) => `${fmtStrike(l.strike)} (${l.pct.toFixed(0)}%)`)
             .join(" · ")}
+        </div>
+      )}
+      {state.gexCell != null && (
+        <div className={state.gexCell.value > 0 ? "text-emerald-400" : "text-fuchsia-400"}>
+          GEX {fmtStrike(state.gexCell.strike)}{" "}
+          <span className="text-white/80">{fmtGex(state.gexCell.value)}</span>
         </div>
       )}
     </div>

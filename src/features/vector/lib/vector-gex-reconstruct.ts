@@ -148,20 +148,39 @@ export type GexHeatmapGrid = {
   cells: number[][];
   /** Max |cell| across the grid — colour-intensity normaliser (0 when the grid is empty). */
   maxAbs: number;
+  /** Spot sample cadence in seconds (60 = 1m, 300 = 5m). */
+  bucketSec?: number;
+  /** When true, the last time column used volume-adjusted positioning (live column only). */
+  volumeAdjustedLastColumn?: boolean;
+};
+
+export type ReconstructHeatmapOptions = {
+  maxStrikes?: number;
+  /** Live right-edge column only — matches volume-aware wall births without back-projecting volume. */
+  volumeAdjustLastColumn?: boolean;
+  bucketSec?: number;
 };
 
 export function reconstructGexHeatmapGrid(
   contracts: readonly ReconstructContract[],
   spotSamples: readonly SpotSample[],
   sessionYmd: string,
-  maxStrikes = 60
+  maxStrikesOrOpts: number | ReconstructHeatmapOptions = 80
 ): GexHeatmapGrid {
-  // Pass 1: full ladder at each spot; track each strike's PEAK |GEX| so the axis cap keeps
-  // the strikes that mattered most at any point, not just at the close.
+  const opts: ReconstructHeatmapOptions =
+    typeof maxStrikesOrOpts === "number" ? { maxStrikes: maxStrikesOrOpts } : maxStrikesOrOpts;
+  const maxStrikes = opts.maxStrikes ?? 80;
+  const volumeAdjustLast = opts.volumeAdjustLastColumn === true;
+
   const ladders: Array<{ time: number; ladder: Map<number, number> }> = [];
   const peakAbsByStrike = new Map<number, number>();
-  for (const { time, spot } of spotSamples) {
-    const ladder = gexLadderAtSpot(contracts, spot, sessionYmd);
+  const sampleCount = spotSamples.length;
+  for (let i = 0; i < sampleCount; i++) {
+    const { time, spot } = spotSamples[i]!;
+    const isLast = i === sampleCount - 1;
+    const ladder = gexLadderAtSpot(contracts, spot, sessionYmd, {
+      volumeAdjusted: volumeAdjustLast && isLast,
+    });
     if (ladder.size === 0) continue;
     ladders.push({ time, ladder });
     for (const [k, v] of ladder) {
@@ -194,7 +213,14 @@ export function reconstructGexHeatmapGrid(
     cells.push(row);
   }
 
-  return { times, strikes, cells, maxAbs };
+  return {
+    times,
+    strikes,
+    cells,
+    maxAbs,
+    bucketSec: opts.bucketSec,
+    volumeAdjustedLastColumn: volumeAdjustLast && cells.length > 0,
+  };
 }
 
 /**

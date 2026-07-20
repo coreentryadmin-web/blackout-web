@@ -104,13 +104,41 @@ test("reconstructGexHeatmapGrid: caps the strike axis to the heaviest strikes by
 
 test("reconstructGexHeatmapGrid: empty/invalid inputs → empty grid, never throws", () => {
   const empty = reconstructGexHeatmapGrid(chain, [], "2026-07-10");
-  assert.deepEqual(empty, { times: [], strikes: [], cells: [], maxAbs: 0 });
+  assert.deepEqual(empty.times, []);
+  assert.deepEqual(empty.strikes, []);
+  assert.deepEqual(empty.cells, []);
+  assert.equal(empty.maxAbs, 0);
   assert.deepEqual(reconstructGexHeatmapGrid([], [{ time: 1, spot: 7500 }], "2026-07-10"), {
     times: [],
     strikes: [],
     cells: [],
     maxAbs: 0,
+    bucketSec: undefined,
+    volumeAdjustedLastColumn: false,
   });
+});
+
+test("reconstructGexHeatmapGrid: volumeAdjustLastColumn only on the last time column", () => {
+  const contracts = [
+    { strike: 400, expiry: "2026-07-17", openInterest: 10000, dayVolume: 0, iv: 0.4, type: "call" as const },
+    { strike: 405, expiry: "2026-07-17", openInterest: 0, dayVolume: 25000, iv: 0.4, type: "call" as const },
+  ];
+  const spots = [
+    { time: 1000, spot: 402 },
+    { time: 1300, spot: 402 },
+  ];
+  const grid = reconstructGexHeatmapGrid(contracts, spots, "2026-07-13", {
+    volumeAdjustLastColumn: true,
+    bucketSec: 300,
+  });
+  assert.equal(grid.volumeAdjustedLastColumn, true);
+  assert.equal(grid.bucketSec, 300);
+  const i405 = grid.strikes.indexOf(405);
+  assert.ok(i405 >= 0, "405 enters the strike axis when the last column is vol-adjusted");
+  const firstCol405 = grid.cells[0]![i405] ?? 0;
+  const lastCol405 = grid.cells[grid.cells.length - 1]![i405] ?? 0;
+  assert.equal(firstCol405, 0, "earlier column stays OI-only — no back-projected volume");
+  assert.ok(lastCol405 > 0, "last column includes today's volume at 405");
 });
 
 test("gammaFlipFromLadder: interpolates the single zero-crossing of cumulative net GEX", () => {

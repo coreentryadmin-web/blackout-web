@@ -82,7 +82,7 @@ import {
   type VectorIndicatorId,
 } from "@/features/vector/lib/vector-indicators-config";
 import { GexHeatmapPrimitive } from "@/features/vector/lib/vector-gex-heatmap-primitive";
-import { GammaSurfacePrimitive } from "@/features/vector/lib/vector-gamma-surface-primitive";
+import { gexCellAtGridPoint, heatmapBucketSecForChartTimeframe } from "@/features/vector/lib/vector-gex-heatmap-paint";
 import type { GexHeatmapGrid } from "@/features/vector/lib/vector-gex-reconstruct";
 import { levelLinesFor, type LevelLine, type PriorDayOhlc } from "@/features/vector/lib/vector-key-levels";
 import { buildStructureMarkers } from "@/features/vector/lib/vector-structure-markers";
@@ -147,6 +147,8 @@ const GAMMA_FLIP_COLOR = "#22d3ee";
 const VANNA_FLIP_COLOR = "#38bdf8";
 const DARK_POOL_COLOR = "#ff8a3d"; // orange, not cyan — dark-pool cyan #00d4ff failed CVD separation vs gamma-flip cyan #22d3ee (worst-pair ΔE 6.9); orange lifts it to 36.7 (validated via dataviz palette checker)
 const REPLAY_STEP_MS = 350;
+/** Live RTH refresh for the reconstructed GEX heatmap — aligned with server cache TTL (~90s). */
+const GEX_HEATMAP_REFRESH_MS = 90_000;
 /** Widen the price axis to reveal walls within this % of spot (env-tunable). Without
  *  this the axis fits candles only and support walls a few % below spot render off-screen. */
 const WALL_VIEW_MAX_PCT = (() => {
@@ -1024,7 +1026,6 @@ export function VectorChart({
   // switch / unmount — chart.remove() disposes the series (and its primitives), so we just drop refs.
   const gexHeatmapPrimitiveRef = useRef<GexHeatmapPrimitive | null>(null);
   const gexHeatmapGridRef = useRef<GexHeatmapGrid | null>(null);
-  const gammaSurfacePrimitiveRef = useRef<GammaSurfacePrimitive | null>(null);
   const lastConfluenceRef = useRef<string>("");
   // Opt-in technical overlays (VWAP/EMA/SMA) — one lightweight-charts line series per enabled
   // indicator, created on demand and removed when toggled off. Default: none. `indicatorsRef`
@@ -1432,15 +1433,6 @@ export function VectorChart({
       // draws nothing. This lives in paintOverlays so a toggle flip (which repaints here via the
       // indicators effect) shows/hides the surface instantly; the fetch pushes fresh data directly.
       gexHeatmapPrimitiveRef.current?.setData(gexHeatmapGridRef.current, enabled.has("gex-heatmap"));
-      // Gamma surface — same grid, same toggle pattern, but also needs the flip callback so the
-      // zones know where call territory ends and put territory begins. Uses a uniform flip (the
-      // current live value) rather than per-time-column, since the surface already smooths across
-      // columns and the live flip is the most relevant read for the member.
-      gammaSurfacePrimitiveRef.current?.setData(
-        gexHeatmapGridRef.current,
-        enabled.has("gamma-surface"),
-        () => liveGammaFlip()
-      );
     }
 
     // Oscillator sub-panes (RSI / MACD) in their OWN panes below price. The pane LAYOUT is rebuilt
@@ -1995,10 +1987,11 @@ export function VectorChart({
     // background primitive with the current toggle state; the primitive paints only when the
     // "gex-heatmap" toggle is on, and a null grid (no honest surface) clears it — never fabricated.
     const fetchGexHeatmap = async () => {
+      const bucketSec = heatmapBucketSecForChartTimeframe(timeframeRef.current);
       try {
         const res = await fetch(
           `/api/market/vector/gex-heatmap?ticker=${encodeURIComponent(ticker)}&dte=${dteHorizon}` +
-            `&session=${encodeURIComponent(sessionYmd)}`
+            `&session=${encodeURIComponent(sessionYmd)}&bucketSec=${bucketSec}`
         );
         if (cancelled || dteHorizonRef.current !== dteHorizon) return;
         const grid = res.ok
@@ -2006,14 +1999,7 @@ export function VectorChart({
           : null;
         if (cancelled || dteHorizonRef.current !== dteHorizon) return;
         gexHeatmapGridRef.current = grid;
-        // Push straight to the primitive with the current toggle state — no full repaint needed
-        // (paintOverlays also re-pushes on a toggle flip, so both entry points stay consistent).
         gexHeatmapPrimitiveRef.current?.setData(grid, indicatorsRef.current.has("gex-heatmap"));
-        gammaSurfacePrimitiveRef.current?.setData(
-          grid,
-          indicatorsRef.current.has("gamma-surface"),
-          () => liveGammaFlip()
-        );
       } catch {
         // Network throw: keep the last-drawn surface rather than blank it on a transient blip.
       }
@@ -2022,6 +2008,8 @@ export function VectorChart({
     void fetchMaxPain();
     void fetchExpectedMove();
     void fetchGexHeatmap();
+
+    const heatmapId = liveSession ? setInterval(fetchGexHeatmap, GEX_HEATMAP_REFRESH_MS) : null;
 
     // Clear stale horizon state UP FRONT on every DTE switch — prevents the terminal from
     // briefly narrating the PREVIOUS horizon's walls/confluence while the new fetch is in flight,
@@ -2034,7 +2022,10 @@ export function VectorChart({
 
     if (dteHorizon === "all") {
       repaint();
-      return;
+      return () => {
+        cancelled = true;
+        if (heatmapId) clearInterval(heatmapId);
+      };
     }
 
     // Fetch the RECORDED per-horizon trail (frozen clusters) in parallel with the current walls.
@@ -2094,12 +2085,14 @@ export function VectorChart({
       cancelled = true;
       if (id) clearInterval(id);
       if (histId) clearInterval(histId);
+      if (heatmapId) clearInterval(heatmapId);
     };
   }, [
     dteHorizon,
     ticker,
     sessionYmd,
     liveSession,
+    timeframe,
     // chartReady: at mount this effect runs BEFORE the chart-creation effect builds the series, so
     // repaintLive() bails on !seriesRef.current and the terminal stays blank until the first SSE
     // frame — which never arrives in a closed session (→ "had to refresh"). Re-running once the
@@ -2420,9 +2413,6 @@ export function VectorChart({
     const gexHeatmap = new GexHeatmapPrimitive();
     series.attachPrimitive(gexHeatmap);
     gexHeatmapPrimitiveRef.current = gexHeatmap;
-    const gammaSurface = new GammaSurfacePrimitive();
-    series.attachPrimitive(gammaSurface);
-    gammaSurfacePrimitiveRef.current = gammaSurface;
 
     refreshTrails("gex");
     refreshOverlays("gex", initialWalls, initialVexWalls, initialGammaFlip, initialVexFlip, initialDarkPoolLevels);
@@ -2464,6 +2454,15 @@ export function VectorChart({
         gexWallsRef.current,
         vexWallsRef.current
       );
+      const hoverPrice = series.coordinateToPrice(param.point.y);
+      const gexCell =
+        indicatorsRef.current.has("gex-heatmap") &&
+        gexHeatmapGridRef.current &&
+        hoverEpochSec != null &&
+        hoverPrice != null &&
+        Number.isFinite(hoverPrice)
+          ? gexCellAtGridPoint(gexHeatmapGridRef.current, hoverEpochSec, hoverPrice as number)
+          : null;
       setCrosshair({
         time,
         close: bar?.close ?? null,
@@ -2477,6 +2476,7 @@ export function VectorChart({
         ),
         callWalls: walls?.callWalls ?? [],
         putWalls: walls?.putWalls ?? [],
+        gexCell,
         // No DP history exists — only today's live ladder. Walls/flip above resolve
         // to their value AT the hovered time; showing live DP under a historical
         // hover timestamp would mislabel it. Show DP only when hovering the present
@@ -2589,7 +2589,6 @@ export function VectorChart({
       // a remount (ticker switch) re-attaches a fresh primitive instead of touching a dead one.
       gexHeatmapPrimitiveRef.current = null;
       gexHeatmapGridRef.current = null;
-      gammaSurfacePrimitiveRef.current = null;
       volumeSeriesRef.current = null;
       setChartReady(false);
     };
@@ -2800,6 +2799,7 @@ export function VectorChart({
   // samples overwrite the modeled buckets (mergeWallHistory in the SSE handler drops the modeled
   // flag), a fully-observed trail flips this false and the caption disappears on its own.
   const hasModeledBeads = sessionHistory.some((s) => s.modeled === true);
+  const showGexHeatmapReconstructedChip = indicators.has("gex-heatmap");
 
   useEffect(() => {
     if (replayMode) {
@@ -2956,6 +2956,15 @@ export function VectorChart({
         {hasModeledBeads && (
           <p className="pointer-events-none absolute bottom-2 right-2 z-10 font-mono text-[10px] uppercase tracking-wide text-sky-300/70">
             ◇ dim = modeled · ● solid = recorded
+          </p>
+        )}
+        {showGexHeatmapReconstructedChip && (
+          <p
+            className={`pointer-events-none absolute z-10 font-mono text-[10px] uppercase tracking-wide text-emerald-400/80 ${
+              hasModeledBeads ? "bottom-8 right-2" : "bottom-2 right-2"
+            }`}
+          >
+            ◇ reconstructed GEX surface
           </p>
         )}
         <div

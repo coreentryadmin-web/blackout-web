@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
-import { getVectorGexHeatmap } from "@/features/vector/lib/vector-gex-heatmap-server";
+import { getVectorGexHeatmap, normalizeHeatmapBucketSec } from "@/features/vector/lib/vector-gex-heatmap-server";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { roundFloats } from "@/lib/round-floats";
@@ -39,13 +39,15 @@ export async function GET(req: NextRequest) {
   const horizon = normalizeDteHorizon(req.nextUrl.searchParams.get("dte"));
   const rawSession = req.nextUrl.searchParams.get("session") ?? "";
   const session = /^\d{4}-\d{2}-\d{2}$/.test(rawSession) ? rawSession : todayEtYmd();
+  const bucketSec = normalizeHeatmapBucketSec(req.nextUrl.searchParams.get("bucketSec"));
 
-  const grid = await getVectorGexHeatmap(ticker, horizon, session);
+  const grid = await getVectorGexHeatmap(ticker, horizon, session, bucketSec);
   return NextResponse.json(
     roundFloats({
       ticker,
       horizon,
       sessionYmd: session,
+      bucketSec,
       grid,
     })
   );

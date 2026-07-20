@@ -111,7 +111,6 @@ test("VECTOR_INDICATOR_GROUPS: covers every family + level + structure id exactl
     "flow-markers",
     "expected-move",
     "gex-heatmap",
-    "gamma-surface",
   ];
   assert.deepEqual([...grouped].sort(), [...expected].sort());
 });
