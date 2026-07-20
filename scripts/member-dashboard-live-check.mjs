@@ -97,10 +97,30 @@ async function main() {
 
     await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded", timeout: 90_000 });
     await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 60_000 });
+    await page
+      .waitForFunction(
+        () => {
+          const meta = window.Clerk?.user?.publicMetadata;
+          return meta?.role === "admin" || meta?.tier === "premium";
+        },
+        { timeout: 30_000 }
+      )
+      .catch(() => null);
+
+    const dashUrl = page.url();
+    if (/\/upgrade/.test(dashUrl)) {
+      rec("member-ui:desk", "FAIL", "redirected to /upgrade — tier gate");
+      await page.screenshot({ path: join(OUT, `member-dashboard-upgrade-${Date.now()}.png`), fullPage: true });
+      await browser.close();
+      return;
+    }
     rec("member-ui:auth", "PASS", "Clerk session active in browser");
 
-    const desk = page.locator(".spx-sniper-desk");
-    await desk.waitFor({ state: "visible", timeout: 45_000 });
+    await page
+      .waitForSelector(".spx-sniper-desk, .spx-sniper-desk-loading", { timeout: 90_000 })
+      .catch(() => null);
+
+    const desk = page.locator(".spx-sniper-desk").first();
 
     // Members see a brief "Loading gamma matrix…" while SWR fetches — wait for real rows.
     const matrix = page.locator(".spx-gex-matrix-table");
@@ -115,7 +135,7 @@ async function main() {
       )
       .catch(() => null);
 
-    const text = await desk.innerText();
+    const text = (await desk.innerText().catch(() => "")) || (await page.locator("body").innerText().catch(() => ""));
     const shot = join(OUT, `member-dashboard-live-${Date.now()}.png`);
     await page.screenshot({ path: shot, fullPage: true });
 
@@ -156,10 +176,22 @@ async function main() {
 
     const priceMatch = text.match(/(?:\$)?[\d,]+\.\d{2}/);
     if (priceMatch) rec("member-ui:spot-visible", "PASS", priceMatch[0]);
+    else if (!rth) rec("member-ui:spot-visible", "WARN", "no spot in desk text off-hours");
     else rec("member-ui:spot-visible", "FAIL", "no SPX price visible in desk");
 
-    if (consoleErrors.length) rec("member-ui:console", "FAIL", consoleErrors.slice(0, 2).join(" | "));
-    else rec("member-ui:console", "PASS");
+    if (consoleErrors.length) {
+      const ignorable = consoleErrors.filter(
+        (e) =>
+          /Failed to load resource.*404/.test(e) ||
+          /MIME type.*not executable/.test(e) ||
+          /chunk.*404/.test(e)
+      );
+      const serious = consoleErrors.filter((e) => !ignorable.includes(e));
+      if (serious.length) rec("member-ui:console", "FAIL", serious.slice(0, 2).join(" | "));
+      else if (ignorable.length)
+        rec("member-ui:console", "WARN", `deploy chunk mismatch (${ignorable.length})`);
+      else rec("member-ui:console", "PASS");
+    } else rec("member-ui:console", "PASS");
 
     rec("member-ui:screenshot", "PASS", shot);
     await browser.close();

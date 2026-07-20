@@ -61,6 +61,7 @@ export async function GET(req: NextRequest) {
     }),
 
     async () => {
+      if (shouldSkipUwCacheRefreshTask("dark_pool_recent")) return;
       const data = await fetchUwDarkPoolRecent();
       await uwCacheSet(redis, UW_KEYS.darkPoolRecent(), UW_CACHE_TTL.darkPoolRecent, data);
     },
@@ -91,6 +92,7 @@ export async function GET(req: NextRequest) {
         await uwCacheSet(redis, UW_KEYS.nope(ticker), UW_CACHE_TTL.nope, data);
       },
       async () => {
+        if (shouldSkipUwCacheRefreshTask("dark_pool_ticker", ticker)) return;
         const data = await fetchUwDarkPool(ticker);
         await uwCacheSet(redis, UW_KEYS.darkPoolTicker(ticker), UW_CACHE_TTL.darkPoolTicker, data);
       },
