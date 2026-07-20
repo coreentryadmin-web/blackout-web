@@ -28,7 +28,7 @@ import { scoreTopWalls, type WallIntegrity } from "@/features/vector/lib/vector-
 import type { VectorWallEvent } from "@/features/vector/lib/vector-wall-events";
 import { VECTOR_DEFAULT_TICKER } from "@/features/vector/lib/vector-ticker";
 import { GexShiftLeadersStrip } from "@/components/gex/GexShiftLeadersStrip";
-import { pickGexShiftLeaders, type GexShiftLeader } from "@/lib/gex-shift-leaders";
+import { pickGexShiftLeaders, matrixShiftForLens, type GexShiftLeader } from "@/lib/gex-shift-leaders";
 import { vectorGexScopeLabel } from "@/lib/gex-scope-labels";
 import { VECTOR_GEX_HEATMAP_POLL_MS } from "@/features/vector/lib/vector-cadence";
 
@@ -215,7 +215,7 @@ export function VectorPageShell({
           shift?: { available?: boolean; delta_by_strike?: Record<string, number> };
         };
         if (cancelled) return;
-        setShiftLeaders(pickGexShiftLeaders(payload.gex?.strike_totals, payload.shift));
+        setShiftLeaders(pickGexShiftLeaders(payload.gex?.strike_totals, matrixShiftForLens("gex", payload)));
       } catch {
         /* best-effort terminal chrome */
       }

@@ -35,6 +35,15 @@ import {
   readGexHeatmapSessionCache,
   writeGexHeatmapSessionCache,
 } from "@/lib/gex-heatmap-session-cache";
+import {
+  gexMatrixShiftCellKey,
+  matrixShiftForLens,
+  matrixShiftSinceMs,
+  pickGexShiftLeaderCells,
+  pickGexShiftLeaders,
+} from "@/lib/gex-shift-leaders";
+import { GexMatrixShiftBadge } from "@/components/gex/GexMatrixShiftBadge";
+import { GexShiftLeadersStrip } from "@/components/gex/GexShiftLeadersStrip";
 
 /** GEX regime read derived server-side from spot vs the gamma flip. */
 type GexRegime = {
@@ -181,6 +190,10 @@ type GexHeatmapResponse = {
   shift?: GexShift;
   /** Intraday VANNA migration — same GexShift shape as `shift`. Additive (absent on older caches). */
   vex_shift?: GexShift;
+  /** Intraday DEX migration — same GexShift shape. Additive (absent on older caches). */
+  dex_shift?: GexShift;
+  /** Intraday CHARM migration — same GexShift shape. Additive (absent on older caches). */
+  charm_shift?: GexShift;
   /**
    * Server-computed alert events for this sample vs the prior snapshot. Additive — absent on
    * cold history (<2 snapshots), empty array when nothing crossed. Never fabricated client-side.
@@ -2693,17 +2706,18 @@ export function GexHeatmap({
   const hasFlowOverlay = flowByStrike != null && Object.keys(flowByStrike).length > 0;
   const hasDarkPoolOverlay = darkPoolLevels != null && darkPoolLevels.length > 0;
 
-  // ── Intraday migration: GEX shift under the GEX lens, VEX shift under the VEX lens
-  //    (same GexShift shape, server-computed, cached with the matrix). DEX/CHARM ship
-  //    no shift → the Shift tab is hidden/disabled for them (never fabricated). ──
-  const shift = lens === "gex" ? data?.shift ?? null : lens === "vex" ? data?.vex_shift ?? null : null;
-  // Which lenses are actually present in THIS payload — older caches omit dex/charm/vex_shift,
-  // so we hide those affordances rather than render empty (never fabricate a missing block).
+  // ── Intraday migration per lens (GEX/VEX/DEX/CHARM) — server-computed, cached with matrix. ──
+  const shift = (matrixShiftForLens(lens, data) ?? null) as GexShift | null;
+  // Which lenses carry shift blocks in THIS payload — older caches may omit dex/charm shifts.
+  const hasShiftForLens =
+    (lens === "gex" && data?.shift != null) ||
+    (lens === "vex" && data?.vex_shift != null) ||
+    (lens === "dex" && data?.dex_shift != null) ||
+    (lens === "charm" && data?.charm_shift != null);
   const hasDex = data?.dex != null;
   const hasCharm = data?.charm != null;
-  const hasShiftForLens = (lens === "gex" && data?.shift != null) || (lens === "vex" && data?.vex_shift != null);
 
-  // Server-computed alert events (Rank 4c) — already on the polled 20s matrix payload, no
+  // Server-computed alert events (Rank 4c)
   // extra fetch. Only trust the CURRENT ticker's events (keepPreviousData can leave a prior
   // ticker's list in hand across a switch). Empty/absent → strip renders nothing.
   const events = useMemo<GexEvent[]>(() => (stale ? [] : data?.events ?? []), [stale, data?.events]);
@@ -2863,6 +2877,15 @@ export function GexHeatmap({
     }
     return p;
   }, [strikeTotals]);
+
+  const shiftLeaderCells = useMemo(
+    () => pickGexShiftLeaderCells(strikeTotals, cells, expiries, shift),
+    [strikeTotals, cells, expiries, shift]
+  );
+  const shiftLeaders = useMemo(
+    () => pickGexShiftLeaders(strikeTotals, shift),
+    [strikeTotals, shift]
+  );
 
   const matrixLens = lens as GexHeatmapLens;
   const uwCross = data?.cross_validation;
@@ -3506,7 +3529,7 @@ export function GexHeatmap({
           description={
             hasShiftForLens
               ? `The shift view fills in as snapshots accumulate (first read ~after the open). ${vocab.noun} migration — where dealer ${vocab.noun.toLowerCase()} is building vs melting and how the pivot drifts — appears once enough history is collected.`
-              : `Intraday migration is tracked for GEX and VEX. Switch the lens to GEX or VEX to see where dealer exposure is building vs melting and how the pivot drifts.`
+              : `Intraday migration is tracked for GEX, VEX, DEX, and CHARM — switch lens to see build/melt drift.`
           }
         />
       )}
@@ -3521,6 +3544,12 @@ export function GexHeatmap({
           as provisional until channels agree.
         </p>
       )}
+      <GexShiftLeadersStrip
+        leaders={shiftLeaders}
+        scopeLabel={`${data?.underlying ?? ticker} · ${lens.toUpperCase()}`}
+        compact
+        className="mb-2 w-full"
+      />
       <div className="relative">
         {/* Bounded scroll box: scrolls horizontally for expiry columns AND
             vertically for strikes (the spot row is centered inside this box via
@@ -3620,6 +3649,7 @@ export function GexHeatmap({
                       const dayExtremes = perDayExtremesByExpiry[e];
                       const isDayCallWallCell = has && dayExtremes?.callWall === strike;
                       const isDayPutWallCell = has && dayExtremes?.putWall === strike;
+                      const shiftLeader = shiftLeaderCells.get(gexMatrixShiftCellKey(strike, e));
                       const extremeTitle = isDayCallWallCell
                         ? `Highest positive ${vocab.noun.toLowerCase()} for ${fmtHeatmapExpiry(e)}`
                         : isDayPutWallCell
@@ -3631,6 +3661,7 @@ export function GexHeatmap({
                           key={e}
                           className={clsx(
                             "whitespace-nowrap px-0.5 py-1 text-center font-bold",
+                            shiftLeader && "gex-matrix-cell-with-badge",
                             has &&
                               val > 0 &&
                               !isDayCallWallCell &&
@@ -3661,6 +3692,9 @@ export function GexHeatmap({
                               : extremeTitle
                           }
                         >
+                          {shiftLeader ? (
+                            <GexMatrixShiftBadge leader={shiftLeader} sinceMs={shift?.since_ms} />
+                          ) : null}
                           <span
                             className={clsx(
                               (isDayCallWallCell || isDayPutWallCell) && "spx-gex-matrix-extreme-pop"

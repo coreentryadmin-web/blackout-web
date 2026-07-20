@@ -459,6 +459,16 @@ export type GexHeatmap = {
    */
   vex_shift?: GexShift;
   /**
+   * Intraday DEX migration — same GexShift shape; `available:false` until ≥2 snapshots with
+   * `dex_strike_totals` exist.
+   */
+  dex_shift?: GexShift;
+  /**
+   * Intraday CHARM migration — same GexShift shape; `available:false` until ≥2 snapshots with
+   * `charm_strike_totals` exist.
+   */
+  charm_shift?: GexShift;
+  /**
    * Server-computed alert events for THIS sample vs the prior history snapshot. OPTIONAL +
    * additive. Empty array when nothing crossed (≥2 snapshots exist); omitted on cold history
    * (<2 snapshots) so the client can tell "nothing crossed" from "no prior to diff".
@@ -1650,6 +1660,30 @@ const VEX_SHIFT_SPEC: ShiftMetricSpec = {
   netNoun: "net dealer vanna",
 };
 
+const DEX_SHIFT_SPEC: ShiftMetricSpec = {
+  flipLabel: "delta-zero",
+  wallLabel: "pos-delta wall",
+  netRead: (n) =>
+    n > 0
+      ? "net dealer delta rising → directional hedge pressure building"
+      : n < 0
+      ? "net dealer delta falling → directional hedge pressure easing"
+      : "net dealer delta roughly flat",
+  netNoun: "net dealer delta",
+};
+
+const CHARM_SHIFT_SPEC: ShiftMetricSpec = {
+  flipLabel: "charm-zero",
+  wallLabel: "pos-charm wall",
+  netRead: (n) =>
+    n > 0
+      ? "net dealer charm rising → time-decay pin strengthening"
+      : n < 0
+      ? "net dealer charm falling → time-decay pin weakening"
+      : "net dealer charm roughly flat",
+  netNoun: "net dealer charm",
+};
+
 /**
  * GENERIC shift diff over ANY metric's per-strike totals + flip — produces the GexShift shape.
  * `pick` extracts (strike_totals, flip) from a snapshot for THIS metric; a snapshot is only a
@@ -1779,6 +1813,34 @@ function computeVexShift(
         ? { strike_totals: s.vex_strike_totals, flip: s.vex_flip ?? null }
         : null,
     VEX_SHIFT_SPEC
+  );
+}
+
+/** DEX shift — diff over each snapshot's `dex_strike_totals`. */
+function computeDexShift(
+  ring: GexHistorySnapshot[],
+  current: { ts: number; zero_level: number | null; strike_totals: Record<string, number> }
+): GexShift {
+  return computeMetricShift(
+    ring,
+    { ts: current.ts, flip: current.zero_level, strike_totals: current.strike_totals },
+    (s) =>
+      s.dex_strike_totals ? { strike_totals: s.dex_strike_totals, flip: null } : null,
+    DEX_SHIFT_SPEC
+  );
+}
+
+/** CHARM shift — diff over each snapshot's `charm_strike_totals`. */
+function computeCharmShift(
+  ring: GexHistorySnapshot[],
+  current: { ts: number; zero_level: number | null; strike_totals: Record<string, number> }
+): GexShift {
+  return computeMetricShift(
+    ring,
+    { ts: current.ts, flip: current.zero_level, strike_totals: current.strike_totals },
+    (s) =>
+      s.charm_strike_totals ? { strike_totals: s.charm_strike_totals, flip: null } : null,
+    CHARM_SHIFT_SPEC
   );
 }
 
@@ -2366,6 +2428,8 @@ async function buildGexHeatmapUncached(
   // Computed once here and cached with the matrix (all users read the cached shift — never per user).
   let shift: GexShift = { available: false, status: "collecting" };
   let vexShift: GexShift = { available: false, status: "collecting" };
+  let dexShift: GexShift = { available: false, status: "collecting" };
+  let charmShift: GexShift = { available: false, status: "collecting" };
   let events: GexEvent[] | undefined;
   try {
     const snapshot: GexHistorySnapshot = {
@@ -2392,6 +2456,16 @@ async function buildGexHeatmapUncached(
       flip: vexFlip,
       strike_totals: vexBuilt.strikeTotals,
     });
+    dexShift = computeDexShift(ring, {
+      ts: now,
+      zero_level: dexZeroLevel,
+      strike_totals: dexBuilt.strikeTotals,
+    });
+    charmShift = computeCharmShift(ring, {
+      ts: now,
+      zero_level: charmZeroLevel,
+      strike_totals: charmBuilt.strikeTotals,
+    });
     events = computeGexEvents(ring, {
       ts: now,
       spot,
@@ -2403,6 +2477,8 @@ async function buildGexHeatmapUncached(
   } catch {
     shift = { available: false, status: "collecting" };
     vexShift = { available: false, status: "collecting" };
+    dexShift = { available: false, status: "collecting" };
+    charmShift = { available: false, status: "collecting" };
     events = undefined;
   }
 
@@ -2473,6 +2549,8 @@ async function buildGexHeatmapUncached(
     charm: charmBlock,
     shift,
     vex_shift: vexShift,
+    dex_shift: dexShift,
+    charm_shift: charmShift,
     // Omit `events` on cold history (undefined) so the client distinguishes "nothing crossed" ([])
     // from "no prior to diff yet".
     ...(events !== undefined ? { events } : {}),
@@ -2558,6 +2636,8 @@ function emptyHeatmap(
     // No matrix → no positioning to migrate; the shift views stay in their collecting state.
     shift: { available: false, status: "collecting" },
     vex_shift: { available: false, status: "collecting" },
+    dex_shift: { available: false, status: "collecting" },
+    charm_shift: { available: false, status: "collecting" },
     // No prior history to diff → no events (omitted, never fabricated).
     source: "polygon",
     data_delay: POLYGON_OPTIONS_DATA_DELAY,
