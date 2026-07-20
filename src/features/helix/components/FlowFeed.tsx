@@ -847,7 +847,12 @@ export function FlowFeed() {
   const analyticsRail = (
     <>
       {analyticsRailHeader}
-      <HighScorePrints alerts={displayAlerts} loading={loading} onSelect={setSelectedContract} />
+      <HighScorePrints
+        alerts={displayAlerts}
+        loading={loading}
+        onSelect={setSelectedContract}
+        timeAnchor={ageTick}
+      />
       <div className="helix-analytics-wide">
         <NetPremiumLeaderboard alerts={displayAlerts} loading={loading} />
       </div>
