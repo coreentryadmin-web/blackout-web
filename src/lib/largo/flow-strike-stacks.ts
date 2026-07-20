@@ -138,6 +138,14 @@ function stackKey(a: FlowAlertForStack): string {
   return `${a.ticker}|${a.strike}|${a.option_type}|${a.expiry}`;
 }
 
+function alertRecencyMs(raw: unknown): number {
+  const row = normalizeFlowAlertForStack(raw);
+  if (!row) return 0;
+  return flowStackAlertTimeMs(row) ?? 0;
+}
+
+const FLOW_STACK_INPUT_CAP = 500;
+
 export function computeFlowStrikeStacks(
   alerts: unknown[],
   opts?: { minAlerts?: number; limit?: number; windowMs?: number; nowMs?: number }
@@ -147,8 +155,15 @@ export function computeFlowStrikeStacks(
   const windowMs = opts?.windowMs ?? HELIX_STRIKE_HITS_WINDOW_MS;
   const nowMs = opts?.nowMs ?? Date.now();
   const hitsWindowMin = Math.round(windowMs / 60_000) || HELIX_STRIKE_HITS_WINDOW_MIN;
-  // Bug 9: cap input to recent 500 alerts — beyond that stacks are stale anyway
-  const input = alerts.length > 500 ? alerts.slice(0, 500) : alerts;
+  // Cap input to the 500 most recent alerts. Premium-sorted tapes (HELIX buffer, DB
+  // fetchRecentFlows) can have stale high-premium prints at the head — blind slice(0, 500)
+  // dropped fresh stacks and made Largo/HELIX miss live Repeated Hits.
+  const input =
+    alerts.length > FLOW_STACK_INPUT_CAP
+      ? [...alerts]
+          .sort((a, b) => alertRecencyMs(b) - alertRecencyMs(a))
+          .slice(0, FLOW_STACK_INPUT_CAP)
+      : alerts;
   const groups = new Map<string, FlowAlertForStack[]>();
 
   for (const raw of input) {

@@ -118,6 +118,7 @@ function deps(over: Partial<CortexFetchDeps> = {}): CortexFetchDeps {
         flowRow({ alert_rule: "SweepsFollowedByFloor" }),
         flowRow({ alert_rule: "FloorTradeLargeCap", event_at: "2026-07-13T14:50:00.000Z" }),
       ],
+      strike_stacks: [],
     }),
     fetchTickerNews: async () => ({
       items: [
