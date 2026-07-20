@@ -569,26 +569,21 @@ async function askLargo(page, question) {
   });
   await surface.waitFor(page);
 
-  const input = page
-    .locator(
-      'textarea, input[type="text"], [contenteditable="true"], [data-testid="largo-input"]',
-    )
-    .first();
-  if (await input.count()) {
-    await input.fill(question);
-    await page.waitForTimeout(500);
-    const submit = page
-      .locator(
-        'button[type="submit"], [data-testid="largo-send"], button:has-text("Send"), button:has-text("Ask")',
-      )
-      .first();
-    if (await submit.count()) {
-      await submit.click();
-    } else {
-      await input.press("Enter");
-    }
-    await page.waitForTimeout(18000);
+  const input = page.locator('input[aria-label="Ask Largo"], input.desk-largo-input').first();
+  await input.waitFor({ state: "attached", timeout: 10_000 });
+  await page.waitForFunction(
+    () => !document.querySelector('input[aria-label="Ask Largo"]')?.disabled,
+    { timeout: 10_000 },
+  );
+  await input.fill(question);
+  await page.waitForTimeout(500);
+  const submit = page.locator('.largo-input-form button[type="submit"]').first();
+  if (await submit.count()) {
+    await submit.click();
+  } else {
+    await input.press("Enter");
   }
+  await page.waitForTimeout(18000);
 
   return page.screenshot({ type: "png" });
 }
