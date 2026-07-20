@@ -261,13 +261,15 @@ export async function runEngagementSweep(opts: {
       if (!(await tryLike(t.id))) break;
       const imps = t.public_metrics?.impression_count ?? 0;
       if (rtCap > 0) await tryRetweet(t.id, imps);
-      // One public reply per cron run on the best recent FinTwit post — builds reach
+      // One public reply per run on a recent FinTwit post — builds reach
       // (likes alone are invisible; replies show up in threads + our profile).
+      // Do not gate on impression count — search API often omits metrics; score >= 1
+      // (fresh post) is enough; manual runs may post up to 2 replies.
+      const replyMaxPerRun = cronMode ? 1 : 2;
       if (
         replyCap > 0 &&
-        stats.replies === 0 &&
-        scoreSearchHit(t) >= 2 &&
-        tweetAgeHours(t.created_at) < 3
+        stats.replies < replyMaxPerRun &&
+        tweetAgeHours(t.created_at) <= MAX_TWEET_AGE_HOURS
       ) {
         await tryReply(t);
       }
