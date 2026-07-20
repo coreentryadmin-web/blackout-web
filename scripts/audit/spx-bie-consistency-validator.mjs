@@ -232,7 +232,7 @@ function staticInvariantChecks() {
     platformIndexSrc = readSrc("src/lib/platform/index.ts");
     evaluatorSrc = readSrc("src/features/spx/lib/spx-evaluator.ts");
     routeSrc = readSrc("src/app/api/market/spx/play/route.ts");
-    spxServiceSrc = readSrc("src/lib/platform/spx-service.ts");
+    spxServiceSrc = readSrc("src/features/spx/lib/spx-service.ts");
   } catch (e) {
     rec("static: read source files", "FAIL", `could not read one of the traced files: ${e.message}`);
     return;
@@ -240,7 +240,7 @@ function staticInvariantChecks() {
 
   // 1. ecosystem-context.ts imports getSpxPlayState from platform/spx-service,
   //    and fetchSpxFullState() returns it verbatim (no field reconstruction).
-  const importsGetSpxPlayState = /import\s*\{\s*getSpxPlayState\s*\}\s*from\s*["']@\/lib\/platform\/spx-service["']/.test(ecosystemSrc);
+  const importsGetSpxPlayState = /import\s*\{\s*getSpxPlayState\s*\}\s*from\s*["']@\/features\/spx\/lib\/spx-service["']/.test(ecosystemSrc);
   const fetchSpxFullStateBlock = findBalancedBlock(ecosystemSrc, /async function fetchSpxFullState\(\)[^{]*\{/);
   const isVerbatimPassthrough = !!fetchSpxFullStateBlock && /return\s+getSpxPlayState\(\)\s*;/.test(fetchSpxFullStateBlock);
   rec(
@@ -265,7 +265,7 @@ function staticInvariantChecks() {
 
   // 3. marketPlatform.spx literally IS spx-service.ts (same module, not a
   //    re-export or wrapper) — otherwise check #2 would prove nothing.
-  const spxIsSpxService = /import\s*\*\s*as\s*spx\s*from\s*["']\.\/spx-service["']/.test(platformIndexSrc) && /^\s*spx,/m.test(platformIndexSrc);
+  const spxIsSpxService = /import\s*\*\s*as\s*spx\s*from\s*["']@\/features\/spx\/lib\/spx-service["']/.test(platformIndexSrc) && /^\s*spx,/m.test(platformIndexSrc);
   rec(
     "static: marketPlatform.spx resolves to platform/spx-service.ts (same module ecosystem-context.ts imports)",
     spxIsSpxService ? "PASS" : "FAIL",
@@ -370,7 +370,7 @@ async function callGetSpxPlayStateDirect() {
   // for this task) as long as --experimental-test-module-mocks is passed.
   mock.module("server-only", { namedExports: {} });
   try {
-    const mod = await import(join(REPO_ROOT, "src/lib/platform/spx-service.ts"));
+    const mod = await import(join(REPO_ROOT, "src/features/spx/lib/spx-service.ts"));
     const timeout = new Promise((_, reject) =>
       setTimeout(() => reject(new Error(`timed out after ${DIRECT_CALL_TIMEOUT_MS}ms (likely no DB/Redis/Polygon/UW network egress in this environment)`)), DIRECT_CALL_TIMEOUT_MS)
     );
