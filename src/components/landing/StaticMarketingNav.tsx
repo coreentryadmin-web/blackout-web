@@ -11,7 +11,7 @@ export function StaticMarketingNav({ signedIn = false }: { signedIn?: boolean })
   return (
     <header className="mkt-nav">
       <div className="mkt-nav-inner">
-        <Link href="/" prefetch={false} className="mkt-wordmark font-anton">
+        <Link href={signedIn ? "/dashboard" : "/"} prefetch={false} className="mkt-wordmark font-anton">
           BLACKOUT
         </Link>
         <nav className="mkt-nav-links hide-in-ios-app" aria-label="Marketing">
