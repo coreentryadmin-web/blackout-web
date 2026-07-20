@@ -12447,13 +12447,15 @@ body::before {
   }
 
   .spx-odte-matrix-label--max-pos {
-    color: #d7ffe8;
-    background: rgba(0, 230, 118, 0.22);
+    color: #fffbeb;
+    background: rgba(255, 214, 10, 0.28);
+    box-shadow: inset 0 0 0 1px rgba(255, 214, 10, 0.55);
   }
 
   .spx-odte-matrix-label--max-neg {
-    color: #e9ddff;
-    background: rgba(109, 40, 217, 0.35);
+    color: #faf5ff;
+    background: rgba(217, 123, 255, 0.32);
+    box-shadow: inset 0 0 0 1px rgba(217, 123, 255, 0.55);
   }
 
   .spx-odte-matrix-label--spot {
@@ -12490,16 +12492,16 @@ body::before {
     background: rgba(8, 8, 14, 0.65);
   }
 
-  /* Max +GEX (dominant positive) — bull green wash */
+  /* Max +GEX (dominant positive) — call-bead yellow wash */
   .spx-odte-matrix-row--max-pos td {
-    background: rgba(0, 230, 118, 0.28);
-    box-shadow: inset 0 0 0 1px rgba(0, 230, 118, 0.55);
+    background: rgba(255, 214, 10, 0.22);
+    box-shadow: inset 0 0 0 1px rgba(255, 214, 10, 0.55);
   }
 
-  /* Max −GEX (dominant negative) — deep purple wash */
+  /* Max −GEX (dominant negative) — put-bead purple wash */
   .spx-odte-matrix-row--max-neg td {
-    background: rgba(109, 40, 217, 0.42);
-    box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.55);
+    background: rgba(217, 123, 255, 0.28);
+    box-shadow: inset 0 0 0 1px rgba(217, 123, 255, 0.55);
   }
 
   /* Anchor (max |GEX|) — white frame layered on peak or solo */
@@ -12510,17 +12512,17 @@ body::before {
   }
 
   .spx-odte-matrix-row--max-pos.spx-odte-matrix-row--anchor td {
-    background: rgba(0, 230, 118, 0.34);
+    background: rgba(255, 214, 10, 0.3);
     box-shadow:
       inset 0 0 0 1px rgba(255, 255, 255, 0.9),
-      inset 0 0 0 3px rgba(0, 230, 118, 0.45);
+      inset 0 0 0 3px rgba(255, 214, 10, 0.45);
   }
 
   .spx-odte-matrix-row--max-neg.spx-odte-matrix-row--anchor td {
-    background: rgba(109, 40, 217, 0.48);
+    background: rgba(217, 123, 255, 0.36);
     box-shadow:
       inset 0 0 0 1px rgba(255, 255, 255, 0.9),
-      inset 0 0 0 3px rgba(139, 92, 246, 0.45);
+      inset 0 0 0 3px rgba(217, 123, 255, 0.45);
   }
 
   .spx-odte-matrix-row--anchor .spx-odte-matrix-value {
