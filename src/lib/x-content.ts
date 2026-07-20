@@ -10,6 +10,14 @@ import {
   composeHumanTweet,
   attachFooter,
 } from "@/lib/x-content-humanize";
+import { xPostFooterLine } from "@/lib/x-whop-link";
+import {
+  isTooSimilarToRecentPosts,
+  dedupRewriteHint,
+} from "@/lib/x-content-dedup";
+import { getLatestAnalytics } from "@/lib/x-marketing-meta";
+import { topPerformingHooks } from "@/lib/x-analytics";
+import { recordPostHook } from "@/lib/x-marketing-meta";
 export type { PostType } from "@/lib/x-content-types";
 export {
   selectPostType,
@@ -74,10 +82,10 @@ export function marketDataReady(
 
 export const X_ACCOUNT_USERNAME = "BlackOutTrade";
 export const WHOP_URL = "whop.com/blackout-2d9c";
-const TAG = `@${X_ACCOUNT_USERNAME}`;
 
+/** @deprecated use xPostFooterLine(postType) from x-whop-link */
 export function xPostFooter(): string {
-  return `${TAG} ${WHOP_URL}`;
+  return xPostFooterLine();
 }
 
 const FULL_STACK = `THE DESK (weave ALL of these naturally — one unified story, not a bullet list):
@@ -119,7 +127,11 @@ const ANGLES: Record<PostType, string> = {
   weekend_desk: `ANGLE: Weekend education + desk preview. Teach one gamma/dealer concept, then connect it to Vector + Thermal visualization. Build FOMO for Monday.`,
 };
 
-function buildPrompt(type: PostType, d: MarketSnapshot): string {
+function buildPrompt(
+  type: PostType,
+  d: MarketSnapshot,
+  extraHint = "",
+): string {
   const levels =
     d.spxPrice != null
       ? `LIVE SPX: $${Math.round(d.spxPrice)}, regime: ${d.regime}, flip: ${d.flipLevel}, call wall: ${d.topCallWall ?? "—"}, put wall: ${d.topPutWall ?? "—"}`
@@ -127,9 +139,17 @@ function buildPrompt(type: PostType, d: MarketSnapshot): string {
 
   return `${ANGLES[type]}
 
-${levels}
+${levels}${extraHint}
 
 Write the single best tweet that makes traders want the FULL desk.`;
+}
+
+async function performanceHint(): Promise<string> {
+  const latest = await getLatestAnalytics();
+  if (!latest?.recent_tweets?.length) return "";
+  const top = topPerformingHooks(latest, 2);
+  if (!top.length) return "";
+  return `\n\nPosts that resonated lately (match energy, new angle): ${top.join(" | ")}`;
 }
 
 /** Deterministic fallback if Claude unavailable. */
@@ -149,45 +169,71 @@ export function fallbackDeskTweet(
     desk_evening: `Honest take: charts without dealer gamma is half the picture. We run Vector, Helix, Thermal, Largo, Night Hawk, SPX Slayer for a reason. What's missing from your setup?`,
     weekend_desk: `Weekend thought: gamma flip is where dealer hedging inverts. Come Monday, Vector + Thermal make it visible. Mapping levels or winging it?`,
   };
-  return `${hooks[type]}\n${xPostFooter()}`;
+  return `${hooks[type]}\n${xPostFooterLine(type)}`;
 }
 
 export async function generateTweetContent(
   postType: PostType,
   data: MarketSnapshot,
 ): Promise<{ content: string; draftBody: string; enhanced: boolean } | null> {
-  const footer = xPostFooter();
-  let draftBody: string;
+  const footer = xPostFooterLine(postType);
+  const perfHint = await performanceHint();
+  let draftBody = "";
+  let extraHint = perfHint;
 
-  try {
-    const raw = await anthropicText(buildPrompt(postType, data), 400, BRAND_VOICE, {
-      model: "claude-haiku-4-5",
-      aiGate: "global",
-      temperature: 0.88,
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const raw = await anthropicText(
+        buildPrompt(postType, data, extraHint),
+        400,
+        BRAND_VOICE,
+        {
+          model: "claude-haiku-4-5",
+          aiGate: "global",
+          temperature: 0.88,
+        },
+      );
+      draftBody = raw?.trim() ?? "";
+    } catch {
+      draftBody = "";
+    }
+
+    if (!draftBody) break;
+
+    const composed = await composeHumanTweet(draftBody, {
+      postType,
+      spxPrice: data.spxPrice,
+      regime: data.regime,
     });
-    draftBody = raw?.trim() ?? "";
-  } catch {
-    draftBody = "";
+
+    const dup = await isTooSimilarToRecentPosts(composed.body);
+    if (!dup.similar) {
+      return {
+        content: attachFooter(composed.body, footer),
+        draftBody: composed.draftBody,
+        enhanced: composed.enhanced,
+      };
+    }
+    extraHint = perfHint + dedupRewriteHint(dup.matched);
   }
 
-  if (!draftBody) {
+  if (draftBody) {
+    const composed = await composeHumanTweet(draftBody, {
+      postType,
+      spxPrice: data.spxPrice,
+      regime: data.regime,
+    });
     return {
-      content: fallbackDeskTweet(postType, data),
-      draftBody: "(fallback)",
-      enhanced: false,
+      content: attachFooter(composed.body, footer),
+      draftBody: composed.draftBody,
+      enhanced: composed.enhanced,
     };
   }
 
-  const composed = await composeHumanTweet(draftBody, {
-    postType,
-    spxPrice: data.spxPrice,
-    regime: data.regime,
-  });
-
   return {
-    content: attachFooter(composed.body, footer),
-    draftBody: composed.draftBody,
-    enhanced: composed.enhanced,
+    content: fallbackDeskTweet(postType, data),
+    draftBody: "(fallback)",
+    enhanced: false,
   };
 }
 

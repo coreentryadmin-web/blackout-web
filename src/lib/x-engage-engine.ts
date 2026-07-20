@@ -11,11 +11,18 @@ import {
 import {
   ENGAGEMENT_TARGETS,
   SEARCH_QUERIES,
-  ENGAGE_LIMITS,
   MAX_TWEET_AGE_HOURS,
   MIN_IMPRESSIONS_FOR_RT,
 } from "@/lib/x-engage-config";
 import { isReplyableTweet } from "@/lib/x-engage-replies";
+import { bumpEngageRotation } from "@/lib/x-marketing-meta";
+import {
+  resolveRunBudget,
+  recordBudgetUse,
+  pauseForRateLimit,
+  engagementJitterMs,
+  type RunBudget,
+} from "@/lib/x-rate-budget";
 
 export interface EngageStats {
   likes: number;
@@ -24,6 +31,9 @@ export interface EngageStats {
   scanned: string[];
   errors: string[];
   rateLimited: boolean;
+  cronMode?: boolean;
+  budget?: RunBudget;
+  skippedReason?: string;
 }
 
 function sleep(ms: number) {
@@ -45,14 +55,34 @@ function scoreSearchHit(t: XTweetSearchHit): number {
   return score;
 }
 
+function rotatedTargets(rotation: number, batch: number): string[] {
+  const all = [...ENGAGEMENT_TARGETS];
+  const start = rotation % all.length;
+  const slice: string[] = [];
+  for (let i = 0; i < batch; i += 1) {
+    slice.push(all[(start + i) % all.length]!);
+  }
+  return slice;
+}
+
+async function handleRateLimited(stats: EngageStats): Promise<void> {
+  stats.rateLimited = true;
+  await pauseForRateLimit();
+  stats.errors.push("429: paused all X writes 15m");
+}
+
 /**
- * Silent engagement — likes, follows, selective RTs.
- * Does NOT post anything to @BlackOutTrade timeline (no @tag spam).
+ * Silent engagement — budgeted likes/follows/RTs. Stops before X rate limits.
  */
 export async function runEngagementSweep(opts: {
   dryRun?: boolean;
+  cronMode?: boolean;
 }): Promise<EngageStats> {
   const dryRun = opts.dryRun === true;
+  const cronMode = opts.cronMode !== false;
+  const budget = await resolveRunBudget({ cronMode });
+  const rotation = cronMode ? await bumpEngageRotation() : 0;
+
   const stats: EngageStats = {
     likes: 0,
     retweets: 0,
@@ -60,93 +90,129 @@ export async function runEngagementSweep(opts: {
     scanned: [],
     errors: [],
     rateLimited: false,
+    cronMode,
+    budget,
   };
 
-  async function tryLike(tweetId: string): Promise<void> {
-    if (stats.likes >= ENGAGE_LIMITS.likes || stats.rateLimited) return;
+  if (!budget.allowed) {
+    stats.skippedReason = budget.reason;
+    return stats;
+  }
+
+  let likeCap = budget.likes;
+  let followCap = budget.follows;
+  let rtCap = budget.retweets;
+
+  async function tryLike(tweetId: string): Promise<boolean> {
+    if (likeCap <= 0 || stats.rateLimited) return false;
     if (dryRun) {
       stats.likes += 1;
-      return;
+      likeCap -= 1;
+      return true;
     }
     const result = await likeTweet(tweetId);
-    if (result === "ok") stats.likes += 1;
-    else if (result === "rate_limited") {
-      stats.rateLimited = true;
-      await sleep(ENGAGE_LIMITS.rateLimitBackoffMs);
+    if (result === "ok") {
+      stats.likes += 1;
+      likeCap -= 1;
+      await recordBudgetUse("likes");
+    } else if (result === "rate_limited") {
+      await handleRateLimited(stats);
+      return false;
     }
-    await sleep(ENGAGE_LIMITS.delayMs);
+    await sleep(engagementJitterMs());
+    return result === "ok";
   }
 
-  async function tryFollow(userId: string, label: string) {
-    if (stats.follows >= ENGAGE_LIMITS.follows) return;
-    if (!dryRun) {
-      const ok = await followUser(userId);
-      if (ok) stats.follows += 1;
-      else stats.errors.push(`follow:${label}`);
-    } else {
+  async function tryFollow(userId: string, label: string): Promise<boolean> {
+    if (followCap <= 0 || stats.rateLimited) return false;
+    if (dryRun) {
       stats.follows += 1;
+      followCap -= 1;
+      return true;
     }
-    await sleep(ENGAGE_LIMITS.delayMs);
-  }
-
-  async function tryRetweet(tweetId: string, imps: number) {
-    if (stats.retweets >= ENGAGE_LIMITS.retweets) return;
-    if (imps < MIN_IMPRESSIONS_FOR_RT) return;
-    if (!dryRun) {
-      const ok = await retweet(tweetId);
-      if (ok) stats.retweets += 1;
+    const result = await followUser(userId);
+    if (result === "ok") {
+      stats.follows += 1;
+      followCap -= 1;
+      await recordBudgetUse("follows");
+    } else if (result === "rate_limited") {
+      await handleRateLimited(stats);
+      return false;
     } else {
-      stats.retweets += 1;
+      stats.errors.push(`follow:${label}`);
     }
-    await sleep(ENGAGE_LIMITS.delayMs);
+    await sleep(engagementJitterMs());
+    return result === "ok";
   }
 
-  for (const handle of ENGAGEMENT_TARGETS) {
-    if (stats.rateLimited && stats.likes >= ENGAGE_LIMITS.likes - 5) break;
+  async function tryRetweet(tweetId: string, imps: number): Promise<boolean> {
+    if (rtCap <= 0 || stats.rateLimited) return false;
+    if (imps < MIN_IMPRESSIONS_FOR_RT) return false;
+    if (dryRun) {
+      stats.retweets += 1;
+      rtCap -= 1;
+      return true;
+    }
+    const result = await retweet(tweetId);
+    if (result === "ok") {
+      stats.retweets += 1;
+      rtCap -= 1;
+      await recordBudgetUse("retweets");
+    } else if (result === "rate_limited") {
+      await handleRateLimited(stats);
+      return false;
+    }
+    await sleep(engagementJitterMs());
+    return result === "ok";
+  }
+
+  const targetBatch = cronMode ? 2 : 4;
+  const targets = rotatedTargets(rotation, targetBatch);
+
+  for (const handle of targets) {
+    if (stats.rateLimited) break;
     if (X_BLOCK_RT_USERNAMES.has(handle)) continue;
 
     const user = await lookupUserByUsername(handle);
     if (!user) {
       stats.errors.push(`lookup:${handle}`);
-      await sleep(ENGAGE_LIMITS.delayMs);
+      await sleep(engagementJitterMs());
       continue;
     }
     stats.scanned.push(`@${user.username}`);
-    await tryFollow(user.id, user.username);
 
-    const tweets = await fetchUserTweets(user.id, 5);
-    for (const t of tweets) {
-      if (!isReplyableTweet(t.text)) continue;
-      await tryLike(t.id);
-      const imps = t.public_metrics?.impression_count ?? 0;
-      if (imps >= MIN_IMPRESSIONS_FOR_RT) {
-        await tryRetweet(t.id, imps);
+    if (likeCap > 0) {
+      const tweets = await fetchUserTweets(user.id, 2);
+      for (const t of tweets) {
+        if (!isReplyableTweet(t.text)) continue;
+        if (!(await tryLike(t.id))) break;
       }
     }
-  }
 
-  const candidates: XTweetSearchHit[] = [];
-  for (const query of SEARCH_QUERIES) {
-    if (stats.rateLimited) break;
-    const hits = await searchRecentTweets(query, 10);
-    for (const h of hits) {
-      if (tweetAgeHours(h.created_at) > MAX_TWEET_AGE_HOURS) continue;
-      if (!h.author_username) continue;
-      if (h.author_username.toLowerCase() === "blackouttrade") continue;
-      if (!isReplyableTweet(h.text)) continue;
-      candidates.push(h);
+    if (followCap > 0) {
+      await tryFollow(user.id, user.username);
     }
-    await sleep(ENGAGE_LIMITS.delayMs);
   }
-  candidates.sort((a, b) => scoreSearchHit(b) - scoreSearchHit(a));
 
-  for (const t of candidates.slice(0, 8)) {
-    if (stats.rateLimited && stats.likes >= ENGAGE_LIMITS.likes - 3) break;
-    stats.scanned.push(`search:@${t.author_username}`);
-    await tryLike(t.id);
-    const imps = t.public_metrics?.impression_count ?? 0;
-    if (imps >= MIN_IMPRESSIONS_FOR_RT) await tryRetweet(t.id, imps);
-    if (t.author_id) await tryFollow(t.author_id, t.author_username!);
+  if (!stats.rateLimited && likeCap > 0) {
+    const query = SEARCH_QUERIES[rotation % SEARCH_QUERIES.length]!;
+    const hits = await searchRecentTweets(query, cronMode ? 4 : 8);
+    const candidates = hits
+      .filter((h) => {
+        if (tweetAgeHours(h.created_at) > MAX_TWEET_AGE_HOURS) return false;
+        if (!h.author_username) return false;
+        if (h.author_username.toLowerCase() === "blackouttrade") return false;
+        return isReplyableTweet(h.text);
+      })
+      .sort((a, b) => scoreSearchHit(b) - scoreSearchHit(a));
+
+    for (const t of candidates.slice(0, likeCap)) {
+      if (stats.rateLimited) break;
+      stats.scanned.push(`search:@${t.author_username}`);
+      if (!(await tryLike(t.id))) break;
+      const imps = t.public_metrics?.impression_count ?? 0;
+      if (rtCap > 0) await tryRetweet(t.id, imps);
+    }
   }
 
   return stats;

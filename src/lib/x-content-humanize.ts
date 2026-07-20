@@ -136,8 +136,6 @@ export async function composeHumanTweet(
 
   if (botFlagged || body.split(/[.!?]/).length < 2) {
     body = await enhanceTweetDraft(body, context);
-  } else {
-    body = await enhanceTweetDraft(body, context);
   }
 
   body = trimBody(body, 195);

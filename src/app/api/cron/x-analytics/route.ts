@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { xApiEnabled } from "@/lib/x-api";
-import { runMentionReplySweep } from "@/lib/x-mention-replies";
-import { fetchMarketSnapshot } from "@/lib/x-content";
+import { collectXAnalyticsSnapshot } from "@/lib/x-analytics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -19,28 +18,23 @@ export async function GET(req: NextRequest) {
   }
 
   const dryRun = req.nextUrl.searchParams.get("dry") === "1";
-  const cronMode = req.nextUrl.searchParams.get("manual") !== "1";
 
   try {
-    const marketSnapshot = await fetchMarketSnapshot();
-    const stats = await runMentionReplySweep({
-      dryRun,
-      cronMode,
-      marketSnapshot,
-    });
-    await logCronRun("x-replies", started, {
-      ok: true,
-      dryRun,
-      replied: stats.replied,
-      scanned: stats.scanned,
-      skippedCount: stats.skipped,
-      errors: stats.errors,
-      skippedReason: stats.skippedReason,
-    });
-    return NextResponse.json({ ok: true, dryRun, ...stats });
+    if (dryRun) {
+      await logCronRun("x-analytics", started, {
+        ok: true,
+        skipped: true,
+        reason: "dry run",
+      });
+      return NextResponse.json({ ok: true, dryRun: true });
+    }
+
+    const snap = await collectXAnalyticsSnapshot();
+    await logCronRun("x-analytics", started, { ok: true, ...snap });
+    return NextResponse.json({ ok: true, snapshot: snap });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown";
-    await logCronRun("x-replies", started, { ok: false, error: message });
+    await logCronRun("x-analytics", started, { ok: false, error: message });
     return NextResponse.json({ ok: false, error: message });
   }
 }
