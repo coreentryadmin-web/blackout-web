@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 /**
- * Full-platform X showcase — prod UI screenshots → collage → @BlackOutTrade post.
+ * Full-platform X showcase — prod UI screenshots → collage → optional @BlackOutTrade post.
+ *
+ * Defaults to DRY (screenshots + manifest only). Live posts require explicit --post
+ * and timeline verification before success is reported.
  *
  * Usage:
- *   node scripts/x-showcase-post.mjs --ticker NVDA [--dry]
+ *   node scripts/x-showcase-post.mjs --ticker NVDA
+ *   node scripts/x-showcase-post.mjs --ticker NVDA --post
  */
 import { execSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
@@ -21,9 +25,14 @@ const opt = (k, def) => {
 
 const BASE = "https://blackouttrades.com";
 const TICKER = opt("ticker", "NVDA").toUpperCase();
-const DRY = flag("dry");
+const POST = flag("post");
+const VERIFY_WAIT_MS = Number(opt("verify-wait-ms", "90000")) || 90_000;
+const VERIFY_POLL_MS = Number(opt("verify-poll-ms", "15000")) || 15_000;
 const OUT = "/opt/cursor/artifacts/x-showcase";
+const X_ACCOUNT_USER_ID = "2055511397338087425";
 mkdirSync(OUT, { recursive: true });
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------------------
 // Secrets + X OAuth (from x-live-autopost.mjs)
@@ -97,6 +106,68 @@ async function postTweet(text, mediaIds, xCreds) {
   });
   if (!res.ok) throw new Error(`Tweet failed (${res.status}): ${await res.text()}`);
   return (await res.json()).data;
+}
+
+async function oauthGet(url, xCreds) {
+  const u = new URL(url);
+  const base = `${u.origin}${u.pathname}`;
+  const queryParams = {};
+  u.searchParams.forEach((v, k) => {
+    queryParams[k] = v;
+  });
+  const auth = oauthHeader("GET", base, xCreds, queryParams);
+  return fetch(url, { headers: { Authorization: auth } });
+}
+
+async function fetchTweetById(id, xCreds) {
+  const url = `https://api.x.com/2/tweets/${id}?tweet.fields=author_id,created_at`;
+  const res = await oauthGet(url, xCreds);
+  if (res.status === 404) return null;
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data ?? null;
+}
+
+async function fetchUserTweets(userId, maxResults, xCreds) {
+  const params = new URLSearchParams({
+    max_results: String(Math.min(Math.max(maxResults, 5), 100)),
+    exclude: "retweets,replies",
+    "tweet.fields": "author_id,created_at,public_metrics",
+  });
+  const url = `https://api.x.com/2/users/${userId}/tweets?${params}`;
+  const res = await oauthGet(url, xCreds);
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.data ?? [];
+}
+
+/** Poll until tweet is fetchable and appears on @BlackOutTrade timeline. */
+async function verifyTweetPersisted(tweetId, xCreds) {
+  const deadline = Date.now() + VERIFY_WAIT_MS;
+  let attempts = 0;
+  while (Date.now() < deadline) {
+    attempts += 1;
+    const direct = await fetchTweetById(tweetId, xCreds);
+    const timeline = await fetchUserTweets(X_ACCOUNT_USER_ID, 10, xCreds);
+    const onTimeline = timeline.some((t) => t.id === tweetId);
+    if (direct?.id === tweetId && onTimeline) {
+      return { verified: true, attempts, direct, onTimeline: true };
+    }
+    console.log(
+      `  verify attempt ${attempts}: direct=${direct?.id === tweetId ? "ok" : "missing"} timeline=${onTimeline ? "ok" : "missing"}`,
+    );
+    await sleep(VERIFY_POLL_MS);
+  }
+  throw new Error(
+    `Tweet ${tweetId} not verified on @BlackOutTrade after ${VERIFY_WAIT_MS}ms — do not treat as posted (X moderation or API lag)`,
+  );
+}
+
+function writeManifest(manifest) {
+  const path = join(OUT, "manifest.json");
+  writeFileSync(path, JSON.stringify(manifest, null, 2));
+  console.log(`Manifest: ${path}`);
+  return path;
 }
 
 // ---------------------------------------------------------------------------
@@ -565,7 +636,13 @@ function buildTweet(ticker, plan) {
 }
 
 async function main() {
-  console.log(`[x-showcase] ticker=${TICKER} dry=${DRY}`);
+  console.log(`[x-showcase] ticker=${TICKER} mode=${POST ? "post" : "dry"}`);
+  if (POST) {
+    console.log(
+      "  LIVE POST — review collage in artifacts before running; success requires timeline verification.",
+    );
+  }
+
   const secrets = loadSecrets();
   const xCreds = {
     ck: secrets.X_API_KEY,
@@ -588,36 +665,76 @@ async function main() {
   });
   const page = await ctx.newPage();
 
+  const manifest = {
+    ticker: TICKER,
+    mode: POST ? "post" : "dry",
+    createdAt: new Date().toISOString(),
+    plan: null,
+    captures: [],
+    collagePath: null,
+    tweetText: null,
+    posted: null,
+  };
+
   const captures = [];
   try {
     await signInWithTicket(page, auth.ticket);
     console.log("  Signed in via Clerk ticket");
 
     const plan = showcasePlan(TICKER);
+    manifest.plan = plan;
     console.log(`  Plan: ${plan.steps.join(" → ")}`);
 
     for (const step of plan.steps) {
-      captures.push(await captureStep(page, step, TICKER));
+      const shot = await captureStep(page, step, TICKER);
+      captures.push(shot);
+      manifest.captures.push({ key: shot.key, label: shot.label, path: shot.path });
     }
 
     const collage = await buildCollage(captures, TICKER, plan);
     const collagePath = join(OUT, `showcase-${TICKER}-collage.png`);
     writeFileSync(collagePath, collage);
+    manifest.collagePath = collagePath;
     console.log(`Collage: ${collagePath} (${collage.length} bytes)`);
 
     const tweetText = buildTweet(TICKER, plan);
+    manifest.tweetText = tweetText;
     console.log(`Tweet (${tweetText.length} chars):\n${tweetText}\n`);
 
-    if (DRY) {
-      console.log("DRY — not posting");
+    if (!POST) {
+      manifest.posted = { skipped: true, reason: "dry-run default — pass --post to publish" };
+      writeManifest(manifest);
+      console.log("DRY — screenshots + manifest only (no X write). Review collage before --post.");
       return;
+    }
+
+    if (!xCreds.ck || !xCreds.at) {
+      throw new Error("X API credentials missing from secrets — cannot post");
     }
 
     const mediaId = await uploadMedia(collage, xCreds);
     const result = await postTweet(tweetText, [mediaId], xCreds);
     const url = `https://x.com/BlackOutTrade/status/${result.id}`;
-    console.log(`POSTED ${url}`);
-    writeFileSync(join(OUT, "post-result.json"), JSON.stringify({ tweetId: result.id, url, ticker: TICKER }, null, 2));
+    console.log(`Tweet API accepted id=${result.id} — verifying on timeline…`);
+
+    const verification = await verifyTweetPersisted(result.id, xCreds);
+    manifest.posted = {
+      tweetId: result.id,
+      url,
+      verified: true,
+      verifiedAt: new Date().toISOString(),
+      verification,
+    };
+    writeManifest(manifest);
+    writeFileSync(
+      join(OUT, "post-result.json"),
+      JSON.stringify({ tweetId: result.id, url, ticker: TICKER, verified: true }, null, 2),
+    );
+    console.log(`VERIFIED POST ${url}`);
+  } catch (err) {
+    manifest.error = String(err?.message ?? err);
+    writeManifest(manifest);
+    throw err;
   } finally {
     await auth.cleanup();
     await browser.close();

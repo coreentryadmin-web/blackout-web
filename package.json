@@ -34,6 +34,8 @@
     "capture:marketing-modules": "node scripts/capture-marketing-module-shots.mjs",
     "x-marketing:run": "node scripts/x-marketing-run.mjs",
     "validate:x-marketing": "node scripts/validate-x-marketing.mjs",
+    "x-showcase:dry": "node scripts/x-showcase-post.mjs",
+    "x-showcase:post": "node scripts/x-showcase-post.mjs --post",
     "x-engage:now": "node --import tsx scripts/x-engage-now.ts",
     "x-growth:now": "node --import tsx scripts/x-growth-now.ts",
     "validate:staging-latency-watch": "node scripts/staging-prod-latency-watch.mjs",

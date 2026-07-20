@@ -40,3 +40,25 @@ X crons live in `blackout-infra` `cron-jobs.json`. **Requires production Terrafo
 node scripts/x-cleanup-tag-spam.mjs --dry
 node scripts/x-cleanup-tag-spam.mjs
 ```
+
+## Showcase posts (manual, ticker-scoped)
+
+Multi-product collage for a **single ticker** — Vector 0DTE chart, Helix flow tape, Thermal GEX, Largo read. SPX/SPXW adds Slayer + Night Hawk. Non-SPX posts **never** include SPX-only surfaces.
+
+**Policy:** default is dry-run. Review `/opt/cursor/artifacts/x-showcase/showcase-<TICKER>-collage.png` and `manifest.json` before any live post. Do not auto-post from agents without human approval.
+
+```bash
+# Screenshots + collage + manifest only (default)
+npm run x-showcase:dry -- --ticker NVDA
+
+# Live post — requires explicit --post; verifies tweet on timeline before success
+npm run x-showcase:post -- --ticker NVDA
+```
+
+Artifacts: `/opt/cursor/artifacts/x-showcase/` (`manifest.json`, panel PNGs, collage).
+
+**Gotchas**
+
+- Thermal has no URL ticker param — script searches the combobox (defaults to SPY).
+- Helix must filter `#helix-ticker-search` and wait until tape rows match the ticker.
+- X may accept a tweet (HTTP 201) then remove it within minutes — the script polls the timeline (~90s) and **fails closed** if the tweet is not visible.
