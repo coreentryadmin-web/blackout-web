@@ -22,7 +22,7 @@
  */
 import { execSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { chromium } from "playwright";
 import sharp from "sharp";
@@ -362,7 +362,7 @@ const SURFACES = {
     describe: "Vector GEX",
   },
   helix: {
-    url: () => `${BASE}/helix`,
+    url: () => `${BASE}/flows`,
     waitFor: async (page) => {
       await page.waitForTimeout(6000);
       await dismissOverlays(page);
@@ -380,7 +380,7 @@ const SURFACES = {
     describe: "Helix Flow",
   },
   thermal: {
-    url: (ticker) => `${BASE}/thermal?ticker=${encodeURIComponent(ticker)}`,
+    url: (ticker) => `${BASE}/heatmap?ticker=${encodeURIComponent(ticker)}`,
     waitFor: async (page) => {
       await page.waitForTimeout(7000);
       await dismissOverlays(page);
@@ -394,7 +394,7 @@ const SURFACES = {
     describe: "Thermal Heatmap",
   },
   largo: {
-    url: () => `${BASE}/largo`,
+    url: () => `${BASE}/terminal`,
     waitFor: async (page) => {
       await page.waitForTimeout(5000);
       await dismissOverlays(page);
@@ -404,7 +404,7 @@ const SURFACES = {
     describe: "Largo AI",
   },
   slayer: {
-    url: () => `${BASE}/spx-slayer`,
+    url: () => `${BASE}/dashboard`,
     waitFor: async (page) => {
       await page.waitForTimeout(6000);
       await dismissOverlays(page);
@@ -420,7 +420,7 @@ const SURFACES = {
     describe: "SPX Slayer",
   },
   nighthawk: {
-    url: () => `${BASE}/night-hawk`,
+    url: () => `${BASE}/nighthawk`,
     waitFor: async (page) => {
       await page.waitForTimeout(5000);
       await dismissOverlays(page);
@@ -607,7 +607,8 @@ function buildTweetText(surface, data, ticker) {
     vector: [
       (d) => {
         const spot = extractNum(d.spot);
-        const regime = d.regime?.toLowerCase().includes("negative") ? "short gamma" : "long gamma";
+        const low = d.regime?.toLowerCase() ?? "";
+        const regime = (low.includes("short") || low.includes("negative")) ? "short gamma" : "long gamma";
         if (spot) return `${ticker} ${spot} in ${regime}\n\nEvery wall. Every flip. Real-time.\nThis is what the other side of your trade sees.`;
         return `${ticker} GEX walls forming live on Vector right now\n\nThe walls don't lie. Neither does the flip level.`;
       },
@@ -789,6 +790,15 @@ async function main() {
       await surfaceCfg.waitFor(page);
       extractedData = await surfaceCfg.extractData(page);
       console.log(`  Data: ${JSON.stringify(extractedData)}`);
+
+      // Error page detection — abort if the page shows an error state
+      const pageText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) ?? "");
+      const errorPatterns = ["something went wrong", "couldn't load", "error", "try again", "500", "404"];
+      const isErrorPage = errorPatterns.some((p) => pageText.toLowerCase().includes(p) && pageText.length < 200);
+      if (isErrorPage) {
+        throw new Error(`Error page detected on ${surface}: "${pageText.slice(0, 100)}"`);
+      }
+
       screenshotBuf = await page.screenshot({ type: "png" });
     }
 
