@@ -35,6 +35,11 @@ import {
   readGexHeatmapSessionCache,
   writeGexHeatmapSessionCache,
 } from "@/lib/gex-heatmap-session-cache";
+import {
+  gexMatrixShiftCellKey,
+  pickGexShiftLeaderCells,
+} from "@/lib/gex-shift-leaders";
+import { GexMatrixShiftBadge } from "@/components/gex/GexMatrixShiftBadge";
 
 /** GEX regime read derived server-side from spot vs the gamma flip. */
 type GexRegime = {
@@ -2864,6 +2869,11 @@ export function GexHeatmap({
     return p;
   }, [strikeTotals]);
 
+  const shiftLeaderCells = useMemo(
+    () => pickGexShiftLeaderCells(strikeTotals, cells, expiries, shift),
+    [strikeTotals, cells, expiries, shift]
+  );
+
   const matrixLens = lens as GexHeatmapLens;
   const uwCross = data?.cross_validation;
   const uwDiverged =
@@ -3620,6 +3630,7 @@ export function GexHeatmap({
                       const dayExtremes = perDayExtremesByExpiry[e];
                       const isDayCallWallCell = has && dayExtremes?.callWall === strike;
                       const isDayPutWallCell = has && dayExtremes?.putWall === strike;
+                      const shiftLeader = shiftLeaderCells.get(gexMatrixShiftCellKey(strike, e));
                       const extremeTitle = isDayCallWallCell
                         ? `Highest positive ${vocab.noun.toLowerCase()} for ${fmtHeatmapExpiry(e)}`
                         : isDayPutWallCell
@@ -3631,6 +3642,7 @@ export function GexHeatmap({
                           key={e}
                           className={clsx(
                             "whitespace-nowrap px-0.5 py-1 text-center font-bold",
+                            shiftLeader && "gex-matrix-cell-with-badge",
                             has &&
                               val > 0 &&
                               !isDayCallWallCell &&
@@ -3661,6 +3673,9 @@ export function GexHeatmap({
                               : extremeTitle
                           }
                         >
+                          {shiftLeader ? (
+                            <GexMatrixShiftBadge leader={shiftLeader} sinceMs={shift?.since_ms} />
+                          ) : null}
                           <span
                             className={clsx(
                               (isDayCallWallCell || isDayPutWallCell) && "spx-gex-matrix-extreme-pop"
