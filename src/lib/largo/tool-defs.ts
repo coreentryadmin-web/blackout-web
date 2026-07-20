@@ -15,6 +15,8 @@ import {
   SPX_DESK_TOOLS_RE,
   THERMAL_READ_RE,
   VECTOR_READ_RE,
+  WALL_DYNAMICS_RE,
+  MATRIX_CHANGE_RE,
   VOL_TOOLS_RE,
 } from "@/lib/largo/intent-keywords";
 import { KNOWN_TICKERS } from "@/lib/largo/question-intent";
@@ -344,6 +346,12 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t("get_earnings_market", "UW ONLY — today's premarket/afterhours earnings.", {}),
 
+  t(
+    "get_earnings_calendar",
+    "Market-wide earnings calendar (Alpha Vantage, 3-month horizon) — next report date per ticker. Distinct from get_earnings (Benzinga per-ticker). Optional ticker filter.",
+    { ticker: { type: "string", description: "Optional — filter to one symbol." } }
+  ),
+
   t("get_congress_unusual", "UW ONLY — unusual congressional trades.", { ticker: { type: "string" } }),
 
   t("get_vix_term", "VIX term structure — Polygon VIX indices first; UW fallback.", { ticker: { type: "string" } }),
@@ -377,7 +385,32 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   // --- Cross-tool objects the platform already computes (Largo audit wiring) ---
   t("get_spx_confluence", "SPX confluence engine — the scored desk thesis: action (BUY_CALL/BUY_PUT/HOLD/WAIT), bias, score (-100..100), grade A+..D, agreeing vs conflicting factors with weights, entry/stop/target/invalidation. Explains WHY the desk leans a direction. Pure compute on the live desk."),
 
-  t("get_positioning", "Dealer positioning for ANY ticker — net GEX, gex king strike, gamma flip, gamma regime, net vex (vanna), max pain, negative-gamma flag, wall summary. For SPX/I:SPX queries, all strike levels returned are SPX-denomination (thousands, e.g. 5500) — never SPY (hundreds).", T, ["ticker"]),
+  t("get_positioning", "Dealer positioning for ANY ticker — full Thermal canonical read: spot, change_pct, net GEX/VEX/DEX/CHARM with posture + regime reads, gamma flip, call/put walls, gex king strike, max pain, nearest_wall, distance_to_flip_pct, intraday shift_summary, optional UW cross-validation. Same object as get_ecosystem_context.gex_positioning. For SPX/I:SPX, strikes are SPX-denomination (thousands). Prefer get_gex_heatmap for per-strike ladder / lens toggles (GEX/VEX/DEX/CHARM).", T, ["ticker"]),
+
+  t(
+    "get_gex_heatmap",
+    "BlackOut Thermal matrix for a ticker — the SAME shared gex-heatmap cache the /heatmap UI reads. Returns spot, change_pct, flip, walls, max pain, net GEX/VEX/DEX/CHARM, regime reads, nearest_wall, shift_summary, plus top_strikes ranked by |net| for the requested lens (gex/vex/dex/charm). Use for 'show me the gamma matrix', 'per-strike GEX on NVDA', 'VEX/DEX/CHARM lens', 'what is the king strike'. NOT the same as get_gex (which reads SPX desk or raw Polygon 0DTE bundle).",
+    {
+      ...T,
+      lens: { type: "string", enum: ["gex", "vex", "dex", "charm"], description: "Matrix lens; default gex." },
+      top_strikes: { type: "integer", default: 12, description: "How many top |net| strikes to return." },
+    },
+    ["ticker"]
+  ),
+
+  t(
+    "get_gex_matrix_changes",
+    "Material strike-level GEX changes since the last heatmap-warm snapshot — answers 'what changed in the matrix', 'is a wall building', 'which strikes moved'. Compares current Thermal cache vs the prior cron snapshot (≥$100 notional threshold). Returns largest_moves with signed gex_change and direction (stronger/weaker/flipped). Use alongside get_gex_regime_events for durable flip/wall-cross history.",
+    { ...T, limit: { type: "integer", default: 15 } },
+    ["ticker"]
+  ),
+
+  t(
+    "get_wall_dynamics",
+    "Dealer wall ladder + build/fade/shift dynamics. SPX: live desk γ-ladder + intel. Single names: full Vector rail — walls, wallEvents (building/fading/new/dissolved/shifted), wallHistory beads, integrity scores. Use for 'are walls building or fading', 'bead trail on NVDA', 'did the put wall shift'. Prefer get_vector_full_state for the complete Vector desk; this is the focused wall-dynamics read.",
+    T,
+    ["ticker"]
+  ),
 
   t(
     "get_gex_regime_events",
@@ -426,7 +459,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_ecosystem_context",
-    "BIE cross-instrument snapshot for ONE ticker: today's 0DTE Command take (if any), the most recent PUBLISHED Night Hawk take (a rejected play never appears here — check recent_audit_entries for an 'nighthawk_rejected' alert_type instead), the last 10 alert_audit_log entries, a same-day HELIX flow summary (print count + call/put premium totals over the last 6h — reported neutrally, never as a single bullish/bearish label), flow_full_state (HELIX's ENTIRE flow-tape snapshot for this ticker — the exact same object get_flow_tape returns: count, total_premium, top_tickers, and the full recent print list, EACH print additionally carrying gex_proximity ('at_gamma_flip'/'at_call_wall'/'at_put_wall'/'near_call_wall'/'near_put_wall') from the same GEX enrichment the live /flows member page applies; null when there's no flow for this ticker in-window — use this instead of a separate get_flow_tape call when you already need this ticker's other ecosystem context too, and prefer it over recent_flow whenever you need the actual prints/strikes/GEX proximity rather than just the premium totals), any pattern-detected flow anomalies in the last 24h (coordinated sweeps, premium spikes, put surges, concentration), spx_play (SPX/SPXW only — SPX Slayer's own current open play and most recently closed play, null for every other ticker), spx_full_state (SPX/SPXW only — SPX Slayer's ENTIRE live play-engine snapshot, the exact same object get_spx_play returns: phase, every confluence factor with its weight/detail, full gate pass/fail state, the 10-item confirmation checklist, MTF/RSI/EMA technicals, adaptive-gate telemetry, watch state, the AI arbiter's verdict, the option ticket; null for every other ticker — use this instead of a separate get_spx_play call when you already need this ticker's other ecosystem context too), gex_positioning (BlackOut Thermal's canonical dealer positioning for this ticker — the exact same object get_positioning's underlying getGexPositioning() call reads: spot, gamma flip, call_wall/put_wall, max_pain, gex_king_strike, net GEX/VEX/DEX/CHARM each with a posture + one-line regime read, nearest_wall (closer of the two walls, with signed point distance), distance_to_flip_pct, and an optional UW cross-validation check on the primary levels; runs for EVERY ticker, not gated to SPX/SPXW, since GEX positioning is not a single-instrument product; null when the shared GEX matrix is cold for this ticker — use this instead of a separate get_positioning call when you already need this ticker's other ecosystem context too, and prefer get_positioning standalone only when you don't need anything else here; it returns a lighter reshaped subset missing DEX/CHARM/nearest_wall/distance_to_flip_pct. For the raw per-strike/per-expiry GEX chain itself rather than this summarized positioning read, use get_gex instead), and flow_feed_fresh (is the live flow pipeline actually up right now). IMPORTANT: if flow_feed_fresh is false, a null/empty recent_flow, flow_full_state, or recent_anomalies means 'we can't currently see,' NOT 'genuinely quiet' — say so rather than reporting silence as a finding. Use when a question needs 'what does the rest of the desk already think about this name' rather than a single tool's isolated view — e.g. confirming whether today's 0DTE flag and last night's Night Hawk pick agree or conflict, whether unusual options flow has been building on the name (including exactly which strikes/prints and whether they sit near a GEX wall), whether dealer gamma positioning favors a squeeze or pin, or (for SPX/SPXW) whether SPX Slayer already has a live play on and its full reasoning behind it.",
+    "BIE cross-instrument snapshot for ONE ticker: today's 0DTE Command take (if any), the most recent PUBLISHED Night Hawk take (a rejected play never appears here — check recent_audit_entries for an 'nighthawk_rejected' alert_type instead), the last 10 alert_audit_log entries, a same-day HELIX flow summary (print count + call/put premium totals over the last 6h — reported neutrally, never as a single bullish/bearish label), flow_full_state (HELIX's ENTIRE flow-tape snapshot for this ticker — the exact same object get_flow_tape returns: count, total_premium, top_tickers, strike_stacks, and the full recent print list, EACH print additionally carrying gex_proximity ('at_gamma_flip'/'at_call_wall'/'at_put_wall'/'near_call_wall'/'near_put_wall') from the same GEX enrichment the live /flows member page applies; null when there's no flow for this ticker in-window — use this instead of a separate get_flow_tape call when you already need this ticker's other ecosystem context too, and prefer it over recent_flow whenever you need the actual prints/strikes/GEX proximity rather than just the premium totals), any pattern-detected flow anomalies in the last 24h (coordinated sweeps, premium spikes, put surges, concentration), spx_play (SPX/SPXW only — SPX Slayer's own current open play and most recently closed play, null for every other ticker), spx_full_state (SPX/SPXW only — SPX Slayer's ENTIRE live play-engine snapshot, the exact same object get_spx_play returns: phase, every confluence factor with its weight/detail, full gate pass/fail state, the 10-item confirmation checklist, MTF/RSI/EMA technicals, adaptive-gate telemetry, watch state, the AI arbiter's verdict, the option ticket; null for every other ticker — use this instead of a separate get_spx_play call when you already need this ticker's other ecosystem context too), vector_full_state (Vector's ENTIRE live desk for this ticker — same object get_vector_full_state returns: walls, flip, beads/wallHistory, wallEvents, ladder, heatmap summary, technicals, VEX, dark pool, play; null when no live spot), gex_positioning (BlackOut Thermal's canonical dealer positioning for this ticker — the exact same object get_positioning's underlying getGexPositioning() call reads: spot, gamma flip, call_wall/put_wall, max_pain, gex_king_strike, net GEX/VEX/DEX/CHARM each with a posture + one-line regime read, nearest_wall (closer of the two walls, with signed point distance), distance_to_flip_pct, and an optional UW cross-validation check on the primary levels; runs for EVERY ticker, not gated to SPX/SPXW, since GEX positioning is not a single-instrument product; null when the shared GEX matrix is cold for this ticker — use this instead of a separate get_positioning call when you already need this ticker's other ecosystem context too), arsenal (relevance-gated earnings date, fundamentals snippet, peer RS, news headlines, macro events — the cross-product research block), and flow_feed_fresh (is the live flow pipeline actually up right now). IMPORTANT: if flow_feed_fresh is false, a null/empty recent_flow, flow_full_state, or recent_anomalies means 'we can't currently see,' NOT 'genuinely quiet' — say so rather than reporting silence as a finding. Use when a question needs 'what does the rest of the desk already think about this name' rather than a single tool's isolated view — e.g. confirming whether today's 0DTE flag and last night's Night Hawk pick agree or conflict, whether unusual options flow has been building on the name (including exactly which strikes/prints and whether they sit near a GEX wall), whether dealer gamma positioning favors a squeeze or pin, whether Vector walls are building/fading, or (for SPX/SPXW) whether SPX Slayer already has a live play on and its full reasoning behind it.",
     T,
     ["ticker"]
   ),
@@ -566,6 +599,9 @@ export const TOOL_GROUPS = {
     "get_short_interest",
     "get_nbbo",
     "get_positioning",
+    "get_gex_heatmap",
+    "get_gex_matrix_changes",
+    "get_wall_dynamics",
     "get_gex_regime_events",
     // previously orphaned — LARGO-9
     "get_seasonality",
@@ -595,6 +631,7 @@ export const TOOL_GROUPS = {
     "get_economic_calendar",
     "get_macro_indicator",
     "get_earnings_market",
+    "get_earnings_calendar",
     "get_fda_calendar",
     "get_ipo_calendar",
     "get_catalysts",
@@ -803,7 +840,13 @@ export const HELIX_ENGINE_TOOL_NAMES = ["get_flow_tape", "get_flow_anomaly_near_
 // stock_analysis's bundle composition changes for unrelated routing reasons — see
 // tool-defs.test.ts for the assertion keeping this a verified subset of
 // TOOL_GROUPS.stock_analysis.
-export const THERMAL_ENGINE_TOOL_NAMES = ["get_positioning", "get_gex_regime_events"];
+export const THERMAL_ENGINE_TOOL_NAMES = [
+  "get_positioning",
+  "get_gex_heatmap",
+  "get_gex_matrix_changes",
+  "get_wall_dynamics",
+  "get_gex_regime_events",
+];
 
 // Task #144 — the cohort-membership test for "did this Largo turn touch Night
 // Hawk's OWN live-engine state" (BIE's self-eval loop, calibration.ts) — the
@@ -945,13 +988,23 @@ export function getToolsForIntent(question: string): string[] {
 
   if (matchesIntent(lower, THERMAL_READ_RE)) {
     names.add("get_positioning");
-    names.add("get_gex");
+    names.add("get_gex_heatmap");
+    names.add("get_gex_matrix_changes");
     names.add("get_gex_regime_events");
     for (const n of TOOL_GROUPS.spx_desk) names.add(n);
   }
 
+  if (matchesIntent(lower, WALL_DYNAMICS_RE) || matchesIntent(lower, MATRIX_CHANGE_RE)) {
+    names.add("get_wall_dynamics");
+    names.add("get_gex_matrix_changes");
+    names.add("get_gex_regime_events");
+    names.add("get_positioning");
+    names.add("get_vector_full_state");
+  }
+
   if (matchesIntent(lower, VECTOR_READ_RE)) {
     names.add("get_vector_full_state");
+    names.add("get_wall_dynamics");
     names.add("get_positioning");
     for (const n of TOOL_GROUPS.spx_desk) names.add(n);
   }

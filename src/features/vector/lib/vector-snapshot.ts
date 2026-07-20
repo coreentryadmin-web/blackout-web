@@ -338,7 +338,9 @@ export async function getVectorGexWallsForHorizon(
     if (scoped.length) {
       const ws = getGexStrikeExpiryLadder(t, scoped);
       if (ws && ws.ladder.size > 0) {
-        return computeGexWalls(ws.ladder, { maxPerSide: VECTOR_WALL_NODES_PER_SIDE });
+        const wsWalls = computeGexWalls(ws.ladder, { maxPerSide: VECTOR_WALL_NODES_PER_SIDE });
+        const blended = getVectorGexWalls(t);
+        return mergeWallSides(wsWalls, wallsHaveNodes(blended) ? blended : null);
       }
     }
   }

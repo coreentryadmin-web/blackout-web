@@ -29,6 +29,10 @@ import { getPlatformSnapshot, marketPlatform } from "@/lib/platform";
 import { summarizeSpxDesk } from "@/features/spx/lib/spx-service";
 import { zeroDteRejectionsForLargo } from "@/lib/zerodte/rejections";
 import { gexRegimeEventsForLargo } from "@/lib/providers/gex-regime-events";
+import { getGexPositioning } from "@/lib/providers/gex-positioning";
+import { enrichFlowsWithGex } from "@/lib/flow-gex-enrichment";
+import { gexHeatmapForLargo } from "@/lib/largo/gex-heatmap-for-largo";
+import { gexMatrixChangesForLargo } from "@/lib/largo/gex-matrix-changes";
 import { flowAnomalyNearMissesForLargo } from "@/lib/platform/flow-anomaly-near-misses";
 import {
   buildPeerRelativeStrength,
@@ -937,11 +941,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return edition ?? { available: false, plays: [] };
     }
 
-    case "get_flow_tape":
-      return marketPlatform.flows.getFlowTapeSummary({
+    case "get_flow_tape": {
+      const summary = await marketPlatform.flows.getFlowTapeSummary({
         limit: Number(input.limit ?? 50),
         ticker: input.ticker ? uwTicker(String(input.ticker)) : undefined,
       });
+      const recent = await enrichFlowsWithGex(summary.recent);
+      return { ...summary, recent };
+    }
 
     case "get_platform_snapshot":
       return getPlatformSnapshot({
@@ -1326,7 +1333,37 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
     case "get_positioning": {
       const sym = uwTicker(ticker);
+      const full = await getGexPositioning(sym);
+      if (full) return full;
       return { ticker: sym, ...(await fetchPositioningSummary(sym)) };
+    }
+    case "get_gex_heatmap":
+      return gexHeatmapForLargo(uwTicker(ticker), {
+        lens: (input.lens as "gex" | "vex" | "dex" | "charm" | undefined) ?? "gex",
+        top_strikes: Number(input.top_strikes ?? 12),
+      });
+    case "get_gex_matrix_changes":
+      return gexMatrixChangesForLargo(uwTicker(ticker), {
+        limit: Number(input.limit ?? 15),
+      });
+    case "get_wall_dynamics": {
+      const { composeWallDynamicsRead } = await import("@/lib/bie/wall-dynamics-read");
+      const composed = await composeWallDynamicsRead(uwTicker(ticker));
+      return composed ?? { available: false, ticker: uwTicker(ticker) };
+    }
+    case "get_earnings_calendar": {
+      const { callInternalApiRead } = await import("@/lib/bie/internal-api");
+      const filter = input.ticker ? uwTicker(String(input.ticker)) : null;
+      const res = await callInternalApiRead("/api/market/earnings-calendar");
+      const earnings =
+        res && typeof res === "object" && "earnings" in res
+          ? (res as { earnings: Record<string, string> }).earnings
+          : {};
+      if (filter && earnings[filter]) {
+        return { configured: true, earnings: { [filter]: earnings[filter] } };
+      }
+      if (filter) return { configured: true, earnings: {}, note: `No upcoming date for ${filter}` };
+      return res;
     }
     case "get_gex_regime_events":
       return gexRegimeEventsForLargo(

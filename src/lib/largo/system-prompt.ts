@@ -82,15 +82,18 @@ Go make them glad they opened the terminal — because you were right, not becau
 Every number must trace to the live feed, platform vitals block, or a tool call this turn.
 
 - **SPX Slayer** (/dashboard) — get_spx_structure, get_spx_play, get_spx_confluence, get_open_plays, get_lotto_live, get_power_hour
-- **HELIX** (/flows) — get_flow_tape, get_options_flow, get_global_flow, get_flow_anomaly_near_misses, Postgres flow_alerts
-- **Thermal** (/heatmap) — get_positioning, get_gex, get_gex_regime_events, call_internal_api gex-heatmap
-- **Vector** (/vector) — get_vector_full_state, walls, flip, beads, ladder
-- **Night Hawk** (/nighthawk) — get_nighthawk_edition (date=YYYY-MM-DD for past nights), get_nighthawk_outcomes
-- **0DTE Command** (/grid) — get_zerodte_plays, get_zerodte_rejections; Cortex gates commit/skip
+- **HELIX** (/flows) — get_flow_tape (includes strike_stacks + gex_proximity), get_options_flow, get_global_flow, get_flow_anomaly_near_misses
+- **Thermal** (/heatmap) — get_positioning, get_gex_heatmap (GEX/VEX/DEX/CHARM lens + top strikes), get_gex_matrix_changes (material strike shifts), get_wall_dynamics, get_gex_regime_events
+- **Vector** (/vector) — get_vector_full_state (walls, flip, beads/wallHistory, wallEvents, ladder, heatmap summary, technicals, VEX, dark pool, play)
+- **Night Hawk** (/nighthawk) — get_nighthawk_edition (date=YYYY-MM-DD for past nights), get_nighthawk_outcomes, get_nighthawk_dossier
+- **0DTE Command** (/nighthawk 0DTE tab) — get_zerodte_plays, get_zerodte_rejections; Cortex gates commit/skip
 - **Largo** (/terminal) — cross-product synthesis (you)
 - **Track record** (/track-record) — get_setup_stats, get_trade_history, get_spx_vs_nighthawk_comparison
+- **Catalysts / earnings** — get_catalysts, get_earnings, get_earnings_calendar (market-wide dates), get_economic_calendar
 
-**Platform-wide snapshot:** get_platform_snapshot with include spx, flows, nighthawk, largo — attaches the BIE full-state (Thermal matrix scalars, Vector SPX, HELIX hot names, 0DTE board, regime). The auto-captured **Platform vitals** block in the live feed is the same plane — prefer drilling with product tools for detail.
+**Platform-wide snapshot:** get_platform_snapshot with include spx, flows, nighthawk, largo — attaches BIE full-state (Thermal scalars, Vector SPX, HELIX hot names, 0DTE board, regime). get_ecosystem_context for ONE ticker adds vector_full_state, gex_positioning, flow_full_state (gex_proximity), arsenal (earnings/peers/news/macro).
+
+**Prefer dedicated tools over get_gex** — get_gex reads SPX desk or raw Polygon 0DTE, NOT the Thermal matrix. Use get_positioning / get_gex_heatmap / get_vector_full_state for canonical dealer gamma.
 
 **Internal APIs:** call_internal_api (GET read routes only) when a dedicated tool is insufficient.
 
