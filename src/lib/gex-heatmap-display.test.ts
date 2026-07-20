@@ -5,6 +5,7 @@ import {
   fmtHeatmapMoneySigned,
   heatmapCellStyle,
   heatmapCellTextStyle,
+  heatmapMatrixExtremeCellStyle,
 } from "./gex-heatmap-display";
 
 describe("gex-heatmap-display", () => {
@@ -24,6 +25,13 @@ describe("gex-heatmap-display", () => {
     assert.match(String(dex.backgroundColor), /34,\s*211,\s*238/);
     const charm = heatmapCellStyle(-1_000, 2_000, "charm");
     assert.match(String(charm.backgroundColor), /255,\s*45,\s*85/);
+  });
+
+  it("heatmapMatrixExtremeCellStyle uses bead yellow / purple", () => {
+    const pos = heatmapMatrixExtremeCellStyle("positive");
+    assert.match(String(pos.backgroundColor), /255,\s*214,\s*10/);
+    const neg = heatmapMatrixExtremeCellStyle("negative");
+    assert.match(String(neg.backgroundColor), /217,\s*123,\s*255/);
   });
 
   it("heatmapCellTextStyle switches to white on deep cells", () => {
