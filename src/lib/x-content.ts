@@ -123,8 +123,9 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
 // ---------------------------------------------------------------------------
 
 const SITE = "www.blackouttrades.com";
+const TAG = "@blackouttrade";
 
-const BRAND_VOICE = `You are the social media voice of BlackOut Trades — the most advanced options analytics platform for serious traders. Your account is @IHate0dte.
+const BRAND_VOICE = `You are the social media voice of BlackOut Trades — the most advanced options analytics platform for serious traders. Your account is @IHate0dte. Our main brand account is ${TAG}.
 
 WHO WE ARE:
 BlackOut Trades shows what market makers are doing before they do it. Real-time gamma exposure (GEX) walls, dealer positioning, AI-powered trade signals, live options flow — the weapons institutional traders use, built for retail.
@@ -154,9 +155,9 @@ VOICE — THIS IS CRITICAL:
 FORMAT:
 - Write ONLY the tweet text, nothing else
 - NO quotation marks around the tweet
-- CRITICAL: the tweet body + the URL MUST total under 275 characters. The URL is 24 chars. So your text MUST be under 250 characters including line breaks. COUNT CAREFULLY. If over, cut ruthlessly — punchier is better.
-- Always end with ${SITE} on its own line — this is the call to action
-- The link should feel like dropping the mic, not begging for a click`;
+- CRITICAL: your tweet text MUST be under 230 characters. The footer (tag + URL) adds ~40 chars automatically. COUNT CAREFULLY. If over, cut ruthlessly — punchier is better.
+- Do NOT include the website URL or ${TAG} — those are appended automatically
+- End your text with a punchy closer, not a CTA — the link drops automatically after`;
 
 const STYLE_VARIATIONS = [
   "Write in a BOLD DECLARATIVE style — short punchy statement, then the proof.",
@@ -292,12 +293,14 @@ export async function generateTweetContent(
   const userPrompt = promptFn(data);
 
   try {
-    const text = await anthropicText(userPrompt, 400, BRAND_VOICE, {
+    const raw = await anthropicText(userPrompt, 400, BRAND_VOICE, {
       model: "claude-haiku-4-5",
       aiGate: "global",
       temperature: 0.9,
     });
-    return text?.trim() || null;
+    const body = raw?.trim();
+    if (!body) return null;
+    return `${body}\n${TAG} ${SITE}`;
   } catch (e) {
     console.error("[x-autopost] Claude content generation failed:", e);
     return null;

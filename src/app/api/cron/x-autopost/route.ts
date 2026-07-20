@@ -82,12 +82,14 @@ export async function GET(req: NextRequest) {
     const data = await fetchMarketSnapshot();
     let content = await generateTweetContent(postType, data);
 
-    // X enforces 280 chars total; t.co wraps URLs to 23 chars + 1 space = 24.
-    // Prompt asks for ≤250 but LLMs sometimes overshoot — hard-trim here.
-    const URL_COST = 24;
-    const MAX_TEXT = 280 - URL_COST;
-    if (content && content.length > MAX_TEXT) {
-      content = content.slice(0, MAX_TEXT - 1).trimEnd() + "…";
+    // X enforces 280 chars; t.co wraps the URL to 23 chars.
+    // Content now includes "@blackouttrade www.blackouttrades.com" footer.
+    const T_CO_URL = 23;
+    const MAX_TOTAL = 280 - T_CO_URL + "www.blackouttrades.com".length;
+    if (content && content.length > MAX_TOTAL) {
+      const footer = content.slice(content.lastIndexOf("\n"));
+      const body = content.slice(0, content.lastIndexOf("\n"));
+      content = body.slice(0, MAX_TOTAL - footer.length - 1).trimEnd() + "…" + footer;
     }
 
     if (!content) {

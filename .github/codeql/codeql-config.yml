@@ -1,0 +1,14 @@
+name: "BlackOut CodeQL config"
+
+# Extend the default security-and-quality suite, but exclude
+# false-positive queries that flag legitimate protocol usage.
+queries:
+  - uses: security-and-quality
+
+query-filters:
+  # OAuth 1.0a spec mandates HMAC-SHA1 for request signing.
+  # This is NOT password hashing — it's a protocol signature.
+  - exclude:
+      id: js/insufficient-key-size
+  - exclude:
+      id: js/weak-cryptographic-algorithm
