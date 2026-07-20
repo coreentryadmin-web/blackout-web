@@ -8,6 +8,7 @@ import {
   type FlowAlert, type DarkPoolRow,
 } from "@/lib/api";
 import { computeFlowStrikeStacks } from "@/lib/largo/flow-strike-stacks";
+import { HELIX_TOP_STRIKES_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
 import { getSector } from "@/lib/sector-map";
 import { HelixFlowTable } from "@/features/helix/components/HelixFlowTable";
 import { HelixCommandBar } from "@/features/helix/components/HelixCommandBar";
@@ -316,7 +317,7 @@ export function FlowFeed() {
   const compoundTickers = useMemo<Set<string>>(() => {
     const stacks = computeFlowStrikeStacks(filteredTapeBuffer.slice(0, 5000), {
       minAlerts: 2,
-      limit: 20,
+      limit: HELIX_TOP_STRIKES_LIMIT,
     });
     return new Set(stacks.map((s) => s.ticker));
   }, [filteredTapeBuffer]);

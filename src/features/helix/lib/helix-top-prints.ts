@@ -1,6 +1,7 @@
 import type { FlowAlert } from "@/lib/api";
+import { HELIX_TOP_PRINTS_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
 
-export const HELIX_TOP_PRINTS_LIMIT = 6;
+export { HELIX_TOP_PRINTS_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
 export const HELIX_TOP_PRINTS_MIN_SCORE = 5;
 
 export type TopPrintsMode = "score" | "premium";

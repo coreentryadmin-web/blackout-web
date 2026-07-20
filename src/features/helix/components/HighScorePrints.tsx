@@ -6,6 +6,13 @@ import { clsx } from "clsx";
 import { fmtPremium, type FlowAlert } from "@/lib/api";
 import { Panel, Skeleton } from "@/components/ui";
 import { selectTopPrints } from "@/features/helix/lib/helix-top-prints";
+import {
+  countMatchingContractHits,
+  formatHitsInWindow,
+  HELIX_STRIKE_HITS_WINDOW_MIN,
+} from "@/features/helix/lib/helix-strike-leaders";
+import { fmtExpiryShort } from "@/features/helix/lib/helix-flow-format";
+import { aggressorRead } from "@/features/helix/lib/helix-print-detail";
 
 function scoreTone(score: number): { bg: string; border: string; text: string } {
   if (score >= 9) return { bg: "rgba(250,204,21,0.08)", border: "rgba(250,204,21,0.3)", text: "#facc15" };
@@ -47,6 +54,8 @@ export function HighScorePrints({
           {top.map((a, i) => {
             const isCall = a.option_type?.toUpperCase() === "CALL";
             const tone = scoreTone(a.score);
+            const hits = countMatchingContractHits(alerts, a);
+            const aggr = aggressorRead(a.ask_pct);
             return (
               <motion.div
                 key={a.alert_id ?? `${a.ticker}-${a.strike}-${a.expiry}-${i}`}
@@ -67,35 +76,46 @@ export function HighScorePrints({
                       }
                     : undefined
                 }
-                className="flex items-center justify-between rounded-lg px-3 py-2 cursor-pointer transition-colors hover:bg-white/[0.04]"
+                className="flex flex-col gap-1 rounded-lg px-3 py-2 cursor-pointer transition-colors hover:bg-white/[0.04]"
                 style={{ background: tone.bg, border: `1px solid ${tone.border}` }}
               >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className="font-mono text-[13px] font-black tabular-nums w-8 text-center"
-                    style={{ color: tone.text }}
-                  >
-                    {a.score > 0 ? a.score.toFixed(1) : "—"}
-                  </span>
-                  <span className="font-mono text-[12px] font-bold text-white tracking-wide">{a.ticker}</span>
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                    <span
+                      className="font-mono text-[13px] font-black tabular-nums w-8 text-center"
+                      style={{ color: tone.text }}
+                    >
+                      {a.score > 0 ? a.score.toFixed(1) : "—"}
+                    </span>
+                    <span className="font-mono text-[12px] font-bold text-white tracking-wide">{a.ticker}</span>
+                    <span
+                      className={clsx(
+                        "font-mono text-[11px] font-semibold tabular-nums",
+                        isCall ? "text-bull" : "text-bear-text"
+                      )}
+                    >
+                      {a.strike}
+                      {isCall ? "C" : "P"}
+                    </span>
+                    <span className="font-mono text-[10px] text-sky-300 tabular-nums">
+                      exp {fmtExpiryShort(a.expiry)}
+                    </span>
+                  </div>
                   <span
                     className={clsx(
-                      "font-mono text-[11px] font-semibold",
-                      isCall ? "text-bull" : "text-bear-text"
+                      "font-mono text-[12px] font-bold tabular-nums shrink-0",
+                      isCall ? "num-bull" : "num-bear"
                     )}
                   >
-                    {a.strike}
-                    {isCall ? "C" : "P"}
+                    {fmtPremium(a.premium)}
                   </span>
                 </div>
-                <span
-                  className={clsx(
-                    "font-mono text-[12px] font-bold tabular-nums",
-                    isCall ? "num-bull" : "num-bear"
-                  )}
-                >
-                  {fmtPremium(a.premium)}
-                </span>
+                <p className="font-mono text-[10px] text-cyan-300 pl-10">
+                  <span className="text-white/90 font-semibold">
+                    {formatHitsInWindow(hits, HELIX_STRIKE_HITS_WINDOW_MIN)}
+                  </span>
+                  {aggr ? <span className="text-sky-300/80"> · {aggr.label}</span> : null}
+                </p>
               </motion.div>
             );
           })}
@@ -103,8 +123,8 @@ export function HighScorePrints({
       )}
       <p className="font-mono text-[10px] text-sky-300/70 text-center pt-1">
         {mode === "score"
-          ? "Highest-scored prints on the tape · click to drill down"
-          : "Largest prints on this filter · click to drill down"}
+          ? `Top ${top.length} scored prints · strike + expiry + ${HELIX_STRIKE_HITS_WINDOW_MIN}m hits`
+          : `Largest prints on this filter · click to drill down`}
       </p>
     </Panel>
   );
