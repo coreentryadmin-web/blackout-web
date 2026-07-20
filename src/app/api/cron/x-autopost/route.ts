@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { xApiEnabled, postTweet, tweetWithImage } from "@/lib/x-api";
+import { xPostFooterLine } from "@/lib/x-whop-link";
+import { renderDeskCardPng } from "@/lib/x-desk-card";
+import { recordPostHook } from "@/lib/x-marketing-meta";
+import { recordBudgetUse, pauseForRateLimit } from "@/lib/x-rate-budget";
 import {
   selectPostType,
   fetchMarketSnapshot,
@@ -11,7 +15,6 @@ import {
   pickImageKey,
   MARKETING_IMAGES,
   marketDataReady,
-  xPostFooter,
   isPostWindow,
   type PostType,
 } from "@/lib/x-content";
@@ -19,7 +22,7 @@ import { checkPostGuard, isTweetContentValid } from "@/lib/x-post-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 function nowET(): Date {
   return new Date(
@@ -37,12 +40,26 @@ async function loadImage(key: string): Promise<Buffer | null> {
   }
 }
 
-function trimToLimit(content: string): string {
-  const footer = `\n${xPostFooter()}`;
+function trimToLimit(content: string, postType: PostType): string {
+  const footer = `\n${xPostFooterLine(postType)}`;
   const maxBody = 280 - footer.length - 1;
   if (content.length <= 280) return content;
   const body = content.slice(0, content.lastIndexOf("\n"));
   return body.slice(0, maxBody).trimEnd() + "…" + footer;
+}
+
+async function resolvePostImage(
+  postType: PostType,
+  data: Awaited<ReturnType<typeof fetchMarketSnapshot>>,
+): Promise<{ buf: Buffer | null; source: string }> {
+  try {
+    const live = await renderDeskCardPng(postType, data);
+    return { buf: live, source: "live-desk-card" };
+  } catch {
+    const key = pickImageKey(postType);
+    const fallback = await loadImage(key);
+    return { buf: fallback, source: fallback ? `static-${key}` : "none" };
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -147,7 +164,7 @@ export async function GET(req: NextRequest) {
 
     const generated = await generateTweetContent(postType, data);
     let content = generated?.content ?? null;
-    if (content) content = trimToLimit(content);
+    if (content) content = trimToLimit(content, postType);
 
     if (!content || !isTweetContentValid(content)) {
       await logCronRun("x-autopost", started, {
@@ -183,12 +200,18 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const imgKey = pickImageKey(postType);
-    const imgBuf = await loadImage(imgKey);
+    const { buf: imgBuf, source: imageSource } = await resolvePostImage(
+      postType,
+      data,
+    );
 
     const result = imgBuf
-      ? await tweetWithImage(content, imgBuf, "image/webp")
+      ? await tweetWithImage(content, imgBuf, "image/png")
       : await postTweet(content);
+
+    const bodyLine = content.split("\n")[0] ?? content;
+    await recordPostHook(bodyLine);
+    await recordBudgetUse("posts");
 
     await logCronRun("x-autopost", started, {
       ok: true,
@@ -196,7 +219,7 @@ export async function GET(req: NextRequest) {
       tweetId: result.id,
       content: result.text,
       hasImage: !!imgBuf,
-      imageKey: imgKey,
+      imageSource,
     });
 
     return NextResponse.json({
@@ -205,10 +228,14 @@ export async function GET(req: NextRequest) {
       tweetId: result.id,
       content: result.text,
       hasImage: !!imgBuf,
+      imageSource,
     });
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unknown error";
+    if (message.includes("429") || message.includes("rate limited")) {
+      await pauseForRateLimit();
+    }
     await logCronRun("x-autopost", started, {
       ok: false,
       error: message,

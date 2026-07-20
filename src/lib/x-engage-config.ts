@@ -18,16 +18,27 @@ export const SEARCH_QUERIES = [
   "(options flow OR whale flow) (SPX OR SPY) lang:en -is:retweet -from:BlackOutTrade",
 ] as const;
 
-/** Silent engagement — nothing new on our profile except scheduled desk posts. */
+/** Legacy export — prefer x-rate-budget.ts caps. */
 export const ENGAGE_LIMITS = {
-  likes: 20,
-  follows: 10,
-  /** RT sparingly — only truly high-signal posts. */
-  retweets: 3,
-  mentionReplies: 15,
+  likes: 8,
+  follows: 3,
+  retweets: 1,
+  mentionReplies: 5,
   delayMs: 3000,
   rateLimitBackoffMs: 45_000,
 } as const;
 
+/** @deprecated use X_CRON_RUN_CAPS in x-rate-budget.ts */
+export const ENGAGE_LIMITS_CRON = {
+  likes: 3,
+  follows: 1,
+  retweets: 0,
+  mentionReplies: 2,
+  delayMs: 2500,
+  rateLimitBackoffMs: 30_000,
+  targetBatchSize: 2,
+  searchHits: 4,
+} as const;
+
 export const MAX_TWEET_AGE_HOURS = 6;
-export const MIN_IMPRESSIONS_FOR_RT = 100;
+export const MIN_IMPRESSIONS_FOR_RT = 500;

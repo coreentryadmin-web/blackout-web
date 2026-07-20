@@ -28,9 +28,10 @@ export async function GET(req: NextRequest) {
   }
 
   const dryRun = req.nextUrl.searchParams.get("dry") === "1";
+  const cronMode = req.nextUrl.searchParams.get("manual") !== "1";
 
   try {
-    const stats = await runEngagementSweep({ dryRun });
+    const stats = await runEngagementSweep({ dryRun, cronMode });
 
     await logCronRun("x-engage", started, {
       ok: true,

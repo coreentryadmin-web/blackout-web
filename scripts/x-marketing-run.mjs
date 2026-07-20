@@ -59,28 +59,28 @@ try {
       result = await hit("/api/cron/x-autopost");
       break;
     case "dry-engage":
-      result = await hit("/api/cron/x-engage?dry=1");
+      result = await hit("/api/cron/x-engage?dry=1&manual=1");
       break;
     case "engage":
-      result = await hit("/api/cron/x-engage");
+      result = await hit("/api/cron/x-engage?manual=1");
       break;
     case "replies":
-      result = await hit("/api/cron/x-replies");
+      result = await hit("/api/cron/x-replies?manual=1");
       break;
     case "engage-all":
       result = {
-        engage: await hit("/api/cron/x-engage"),
-        replies: await hit("/api/cron/x-replies"),
+        engage: await hit("/api/cron/x-engage?manual=1"),
+        replies: await hit("/api/cron/x-replies?manual=1"),
       };
       break;
     case "growth":
-      result = await hit("/api/cron/x-growth");
+      result = await hit("/api/cron/x-growth?manual=1");
       break;
     case "dry-growth":
-      result = await hit("/api/cron/x-growth?dry=1");
+      result = await hit("/api/cron/x-growth?dry=1&manual=1");
       break;
     case "dry-replies":
-      result = await hit("/api/cron/x-replies?dry=1");
+      result = await hit("/api/cron/x-replies?dry=1&manual=1");
       break;
     default:
       console.error("Unknown mode:", mode);
