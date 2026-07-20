@@ -27,6 +27,10 @@ import { deriveGammaMagnet, type GammaMagnet } from "@/features/vector/lib/vecto
 import { scoreTopWalls, type WallIntegrity } from "@/features/vector/lib/vector-wall-integrity";
 import type { VectorWallEvent } from "@/features/vector/lib/vector-wall-events";
 import { VECTOR_DEFAULT_TICKER } from "@/features/vector/lib/vector-ticker";
+import { GexShiftLeadersStrip } from "@/components/gex/GexShiftLeadersStrip";
+import { pickGexShiftLeaders, type GexShiftLeader } from "@/lib/gex-shift-leaders";
+import { vectorGexScopeLabel } from "@/lib/gex-scope-labels";
+import { VECTOR_GEX_HEATMAP_POLL_MS } from "@/features/vector/lib/vector-cadence";
 
 const VectorChart = dynamic(
   () => import("@/features/vector/components/VectorChart").then((m) => m.VectorChart),
@@ -171,6 +175,7 @@ export function VectorPageShell({
       }).posture,
     })
   );
+  const [shiftLeaders, setShiftLeaders] = useState<GexShiftLeader[]>([]);
   const [wallIntegrity, setWallIntegrity] = useState<{
     call: WallIntegrity | null;
     put: WallIntegrity | null;
@@ -195,6 +200,33 @@ export function VectorPageShell({
     setRecentAlerts([]);
     setToast(null);
   }, [activeTicker]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadShift = async () => {
+      try {
+        const res = await fetch(
+          `/api/market/gex-heatmap?ticker=${encodeURIComponent(activeTicker)}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok || cancelled) return;
+        const payload = (await res.json()) as {
+          gex?: { strike_totals?: Record<string, number> };
+          shift?: { available?: boolean; delta_by_strike?: Record<string, number> };
+        };
+        if (cancelled) return;
+        setShiftLeaders(pickGexShiftLeaders(payload.gex?.strike_totals, payload.shift));
+      } catch {
+        /* best-effort terminal chrome */
+      }
+    };
+    void loadShift();
+    const id = liveSession ? setInterval(loadShift, VECTOR_GEX_HEATMAP_POLL_MS) : null;
+    return () => {
+      cancelled = true;
+      if (id) clearInterval(id);
+    };
+  }, [activeTicker, liveSession]);
 
   // Auto-dismiss the toast a few seconds after the newest fire.
   useEffect(() => {
@@ -400,6 +432,11 @@ export function VectorPageShell({
           </div>
           {/* Full RIGHT column: Vector Pulse — live signal feed + intel context. */}
           <div className="vector-terminal-rail">
+            <GexShiftLeadersStrip
+              leaders={shiftLeaders}
+              scopeLabel={`${vectorGexScopeLabel(dteHorizon)} matrix`}
+              className="mb-2"
+            />
             <VectorPulse
               ticker={activeTicker}
               lens={lens}

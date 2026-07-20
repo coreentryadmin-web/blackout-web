@@ -3,7 +3,9 @@
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
 import { buildGexLadder, type GexLadder, type GexLadderRow } from "@/features/vector/lib/vector-gex-ladder";
-import { dteHorizonLabel, type VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
+import { VECTOR_WALLS_SCOPE_POLL_MS } from "@/features/vector/lib/vector-cadence";
+import { vectorGexScopeLabel } from "@/lib/gex-scope-labels";
+import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 
 // Match the chart's bead colours exactly (VectorChart CALL_WALL_COLOR / PUT_WALL_COLOR) so the
 // ladder and the beads read as the same object: gold = call/resistance, purple = put/support.
@@ -102,7 +104,7 @@ export function VectorGexLadder({
     // Off-hours: one fetch — the ladder is static. Pre-warm on ticker/horizon change for faster navigation.
     const id =
       liveSession && (Date.now() - lastFetchTimeRef.current > 10_000)
-        ? setInterval(load, 15_000)
+        ? setInterval(load, VECTOR_WALLS_SCOPE_POLL_MS)
         : null;
     return () => {
       cancelled = true;
@@ -147,7 +149,7 @@ export function VectorGexLadder({
         <span className="vector-gex-ladder-title">GEX Ladder</span>
         <span className="vector-gex-ladder-sub">
           {spot != null ? `spot ${spot.toLocaleString("en-US", { maximumFractionDigits: 2 })}` : "—"}
-          <span className="vector-gex-ladder-scope"> · {dteHorizon === "all" ? "near-term" : dteHorizonLabel(dteHorizon)}</span>
+          <span className="vector-gex-ladder-scope"> · {vectorGexScopeLabel(dteHorizon)}</span>
         </span>
       </header>
 

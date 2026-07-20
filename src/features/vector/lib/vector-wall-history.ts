@@ -259,16 +259,28 @@ export function trimHistoryForLiveTrails(
   return history.filter((s) => s.time >= cutoff);
 }
 
+export type BucketWallHistoryOpts = {
+  /** Floor bucket size for live display — e.g. 5 keeps 5s bead density on 1m charts. */
+  minBucketSec?: number;
+  /** When true, use minBucketSec instead of collapsing to candle width. */
+  liveBeads?: boolean;
+};
+
 /**
- * Resample the wall-history trail (5s for oracle tickers, 15s for others) to the active
- * chart interval — one bead per candle bucket (last reading in each bucket wins).
+ * Resample wall-history for chart beads. Live mode keeps the trail sample cadence (5s);
+ * replay / higher-TF views collapse to candle buckets.
  */
 export function bucketWallHistoryForInterval(
   history: WallHistorySample[],
-  intervalMinutes: VectorTimeframeMinutes
+  intervalMinutes: VectorTimeframeMinutes,
+  opts?: BucketWallHistoryOpts
 ): WallHistorySample[] {
   if (!history.length) return history;
-  const bucketSec = intervalMinutes * 60;
+  const candleSec = intervalMinutes * 60;
+  const bucketSec =
+    opts?.liveBeads && opts.minBucketSec != null && opts.minBucketSec > 0
+      ? Math.min(candleSec, opts.minBucketSec)
+      : candleSec;
   const map = new Map<number, WallHistorySample>();
 
   for (const sample of history) {

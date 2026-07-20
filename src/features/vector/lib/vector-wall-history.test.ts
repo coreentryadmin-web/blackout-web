@@ -444,6 +444,17 @@ test("bucketWallHistoryForInterval: 1m collapses 15s samples to one bead per min
   assert.equal(out[1]!.walls.callWalls[0]!.strike, 6815);
 });
 
+test("bucketWallHistoryForInterval: liveBeads keeps 5s density on 1m chart", () => {
+  const history: WallHistorySample[] = [
+    { time: 100, walls: walls([6800], [6700]) },
+    { time: 105, walls: walls([6805], [6700]) },
+    { time: 110, walls: walls([6810], [6700]) },
+    { time: 115, walls: walls([6815], [6705]) },
+  ];
+  const out = bucketWallHistoryForInterval(history, 1, { minBucketSec: 5, liveBeads: true });
+  assert.deepEqual(out.map((s) => s.time), [100, 105, 110, 115]);
+});
+
 test("bucketWallHistoryForInterval: 5m aligns to five-minute candle buckets", () => {
   const base = 300 * 60;
   const history: WallHistorySample[] = [
