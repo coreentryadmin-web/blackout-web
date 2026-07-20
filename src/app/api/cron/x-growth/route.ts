@@ -6,7 +6,7 @@ import { runGrowthSweep } from "@/lib/x-growth-engine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 120;
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -28,9 +28,10 @@ export async function GET(req: NextRequest) {
   }
 
   const dryRun = req.nextUrl.searchParams.get("dry") === "1";
+  const cronMode = req.nextUrl.searchParams.get("manual") !== "1";
 
   try {
-    const stats = await runGrowthSweep({ dryRun });
+    const stats = await runGrowthSweep({ dryRun, cronMode });
 
     await logCronRun("x-growth", started, {
       ok: true,

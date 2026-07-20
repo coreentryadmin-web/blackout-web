@@ -176,6 +176,9 @@ export async function postTweet(
 
   if (!res.ok) {
     const errText = await res.text();
+    if (res.status === 429) {
+      throw new Error(`X post tweet rate limited (429): ${errText.slice(0, 120)}`);
+    }
     throw new Error(`X post tweet failed (${res.status}): ${errText}`);
   }
 
@@ -227,7 +230,11 @@ export async function postReply(
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    throw new Error(`X post reply failed (${res.status}): ${await res.text()}`);
+    const err = await res.text();
+    if (res.status === 429) {
+      throw new Error(`X post reply rate limited (429): ${err.slice(0, 120)}`);
+    }
+    throw new Error(`X post reply failed (${res.status}): ${err}`);
   }
   const json = (await res.json()) as { data: TweetResult };
   return json.data;
@@ -251,7 +258,9 @@ export async function postThread(texts: string[]): Promise<TweetResult[]> {
 // Engagement — likes, RTs, follows
 // ---------------------------------------------------------------------------
 
-export type LikeResult = "ok" | "rate_limited" | "failed";
+export type XActionResult = "ok" | "rate_limited" | "failed";
+
+export type LikeResult = XActionResult;
 
 export async function likeTweet(tweetId: string): Promise<LikeResult> {
   const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}/likes`;
@@ -261,16 +270,20 @@ export async function likeTweet(tweetId: string): Promise<LikeResult> {
   return "failed";
 }
 
-export async function retweet(tweetId: string): Promise<boolean> {
+export async function retweet(tweetId: string): Promise<XActionResult> {
   const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}/retweets`;
   const res = await oauthFetch("POST", url, { tweet_id: tweetId });
-  return res.ok;
+  if (res.ok) return "ok";
+  if (res.status === 429) return "rate_limited";
+  return "failed";
 }
 
-export async function followUser(targetUserId: string): Promise<boolean> {
+export async function followUser(targetUserId: string): Promise<XActionResult> {
   const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}/following`;
   const res = await oauthFetch("POST", url, { target_user_id: targetUserId });
-  return res.ok;
+  if (res.ok) return "ok";
+  if (res.status === 429) return "rate_limited";
+  return "failed";
 }
 
 export interface XUser {
@@ -413,7 +426,33 @@ export async function minutesSinceLastOwnPost(): Promise<number | null> {
   return (Date.now() - new Date(latest).getTime()) / 60_000;
 }
 
-/** @mention outreach posts today (start with @, not product footer spam). */
+export interface XAccountMetrics {
+  followers: number;
+  following: number;
+  tweet_count: number;
+}
+
+/** @BlackOutTrade public metrics for growth tracking. */
+export async function fetchOwnAccountMetrics(): Promise<XAccountMetrics | null> {
+  const params = new URLSearchParams({
+    "user.fields": "public_metrics",
+  });
+  const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}?${params}`;
+  const res = await oauthFetch("GET", url);
+  if (!res.ok) return null;
+  const json = (await res.json()) as {
+    data?: { public_metrics?: Record<string, number> };
+  };
+  const m = json.data?.public_metrics;
+  if (!m) return null;
+  return {
+    followers: m.followers_count ?? 0,
+    following: m.following_count ?? 0,
+    tweet_count: m.tweet_count ?? 0,
+  };
+}
+
+/** @mention outreach posts today (legacy counter — outreach removed from timeline). */
 export async function countOwnMentionPostsTodayEt(): Promise<number> {
   const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 40);
   const todayEt = new Date().toLocaleDateString("en-CA", {

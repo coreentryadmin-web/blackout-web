@@ -8,7 +8,7 @@ function loadEnv() {
     "aws secretsmanager get-secret-value --secret-id blackout-production/app/env --query SecretString --output text",
     { encoding: "utf8" },
   );
-  for (const [k, v] of Object.entries(JSON.parse(raw) as Record<string, string>)) {
+  for (const [k, v] of Object.entries(JSON.parse(raw))) {
     if (typeof v === "string") process.env[k] = v;
   }
 }
