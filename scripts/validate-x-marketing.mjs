@@ -16,21 +16,35 @@ function loadSecrets() {
   return { ...process.env, ...JSON.parse(raw) };
 }
 
-async function hit(path) {
+async function hit(path, { retries = 4 } = {}) {
   const secret = loadSecrets().CRON_SECRET?.trim();
   if (!secret) throw new Error("CRON_SECRET missing");
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { Authorization: `Bearer ${secret}` },
-    signal: AbortSignal.timeout(120_000),
-  });
-  const text = await res.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = { raw: text.slice(0, 400) };
+  let last;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(`${BASE}${path}`, {
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      },
+      signal: AbortSignal.timeout(120_000),
+    });
+    const text = await res.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = { raw: text.slice(0, 400) };
+    }
+    last = { status: res.status, json };
+    if (res.status === 200 && json.ok !== false) return last;
+    if (attempt < retries && (res.status === 404 || res.status >= 502)) {
+      await new Promise((r) => setTimeout(r, 4000 * (attempt + 1)));
+      continue;
+    }
+    return last;
   }
-  return { status: res.status, json };
+  return last;
 }
 
 const checks = [];
