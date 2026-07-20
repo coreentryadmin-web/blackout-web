@@ -82,6 +82,7 @@ import {
   type VectorIndicatorId,
 } from "@/features/vector/lib/vector-indicators-config";
 import { GexHeatmapPrimitive } from "@/features/vector/lib/vector-gex-heatmap-primitive";
+import { GammaSurfacePrimitive } from "@/features/vector/lib/vector-gamma-surface-primitive";
 import type { GexHeatmapGrid } from "@/features/vector/lib/vector-gex-reconstruct";
 import { levelLinesFor, type LevelLine, type PriorDayOhlc } from "@/features/vector/lib/vector-key-levels";
 import { buildStructureMarkers } from "@/features/vector/lib/vector-structure-markers";
@@ -1023,6 +1024,7 @@ export function VectorChart({
   // switch / unmount — chart.remove() disposes the series (and its primitives), so we just drop refs.
   const gexHeatmapPrimitiveRef = useRef<GexHeatmapPrimitive | null>(null);
   const gexHeatmapGridRef = useRef<GexHeatmapGrid | null>(null);
+  const gammaSurfacePrimitiveRef = useRef<GammaSurfacePrimitive | null>(null);
   const lastConfluenceRef = useRef<string>("");
   // Opt-in technical overlays (VWAP/EMA/SMA) — one lightweight-charts line series per enabled
   // indicator, created on demand and removed when toggled off. Default: none. `indicatorsRef`
@@ -1430,6 +1432,15 @@ export function VectorChart({
       // draws nothing. This lives in paintOverlays so a toggle flip (which repaints here via the
       // indicators effect) shows/hides the surface instantly; the fetch pushes fresh data directly.
       gexHeatmapPrimitiveRef.current?.setData(gexHeatmapGridRef.current, enabled.has("gex-heatmap"));
+      // Gamma surface — same grid, same toggle pattern, but also needs the flip callback so the
+      // zones know where call territory ends and put territory begins. Uses a uniform flip (the
+      // current live value) rather than per-time-column, since the surface already smooths across
+      // columns and the live flip is the most relevant read for the member.
+      gammaSurfacePrimitiveRef.current?.setData(
+        gexHeatmapGridRef.current,
+        enabled.has("gamma-surface"),
+        () => liveGammaFlip()
+      );
     }
 
     // Oscillator sub-panes (RSI / MACD) in their OWN panes below price. The pane LAYOUT is rebuilt
@@ -1998,6 +2009,11 @@ export function VectorChart({
         // Push straight to the primitive with the current toggle state — no full repaint needed
         // (paintOverlays also re-pushes on a toggle flip, so both entry points stay consistent).
         gexHeatmapPrimitiveRef.current?.setData(grid, indicatorsRef.current.has("gex-heatmap"));
+        gammaSurfacePrimitiveRef.current?.setData(
+          grid,
+          indicatorsRef.current.has("gamma-surface"),
+          () => liveGammaFlip()
+        );
       } catch {
         // Network throw: keep the last-drawn surface rather than blank it on a transient blip.
       }
@@ -2404,6 +2420,9 @@ export function VectorChart({
     const gexHeatmap = new GexHeatmapPrimitive();
     series.attachPrimitive(gexHeatmap);
     gexHeatmapPrimitiveRef.current = gexHeatmap;
+    const gammaSurface = new GammaSurfacePrimitive();
+    series.attachPrimitive(gammaSurface);
+    gammaSurfacePrimitiveRef.current = gammaSurface;
 
     refreshTrails("gex");
     refreshOverlays("gex", initialWalls, initialVexWalls, initialGammaFlip, initialVexFlip, initialDarkPoolLevels);
@@ -2570,6 +2589,7 @@ export function VectorChart({
       // a remount (ticker switch) re-attaches a fresh primitive instead of touching a dead one.
       gexHeatmapPrimitiveRef.current = null;
       gexHeatmapGridRef.current = null;
+      gammaSurfacePrimitiveRef.current = null;
       volumeSeriesRef.current = null;
       setChartReady(false);
     };
