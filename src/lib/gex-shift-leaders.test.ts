@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { pickGexShiftLeaders, pickGexShiftLeaderCells, gexMatrixShiftCellKey } from "./gex-shift-leaders";
+import { pickGexShiftLeaders, pickGexShiftLeaderCells, gexMatrixShiftCellKey, matrixShiftForLens } from "./gex-shift-leaders";
 
 describe("pickGexShiftLeaders", () => {
   it("returns top 3 call + top 3 put by |delta|", () => {
@@ -32,6 +32,19 @@ describe("pickGexShiftLeaders", () => {
 
   it("returns empty when shift unavailable", () => {
     assert.deepEqual(pickGexShiftLeaders({}, { available: false }), []);
+  });
+
+  it("matrixShiftForLens resolves per-lens shift blocks", () => {
+    const payload = {
+      shift: { available: true, delta_by_strike: { "100": 1 } },
+      vex_shift: { available: true, delta_by_strike: { "200": 2 } },
+      dex_shift: { available: true, delta_by_strike: { "300": 3 } },
+      charm_shift: { available: true, delta_by_strike: { "400": 4 } },
+    };
+    assert.equal(matrixShiftForLens("gex", payload)?.delta_by_strike?.["100"], 1);
+    assert.equal(matrixShiftForLens("vex", payload)?.delta_by_strike?.["200"], 2);
+    assert.equal(matrixShiftForLens("dex", payload)?.delta_by_strike?.["300"], 3);
+    assert.equal(matrixShiftForLens("charm", payload)?.delta_by_strike?.["400"], 4);
   });
 
   it("pickGexShiftLeaderCells maps leaders to max-|cell| expiry column", () => {

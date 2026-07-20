@@ -31,7 +31,7 @@ import {
   writeGexHeatmapSessionCache,
 } from "@/lib/gex-heatmap-session-cache";
 import { spxMatrixScopeLabel } from "@/lib/gex-scope-labels";
-import { pickGexShiftLeaders, pickGexShiftLeaderCells, gexMatrixShiftCellKey } from "@/lib/gex-shift-leaders";
+import { pickGexShiftLeaders, pickGexShiftLeaderCells, gexMatrixShiftCellKey, matrixShiftForLens, matrixShiftSinceMs } from "@/lib/gex-shift-leaders";
 import { GexShiftLeadersStrip } from "@/components/gex/GexShiftLeadersStrip";
 import { GexMatrixShiftBadge } from "@/components/gex/GexMatrixShiftBadge";
 import { SpxMatrixTapeStrip } from "./SpxMatrixTapeStrip";
@@ -66,6 +66,16 @@ type GexHeatmapResponse = {
     since_ms?: number;
   };
   vex_shift?: {
+    available?: boolean;
+    delta_by_strike?: Record<string, number>;
+    since_ms?: number;
+  };
+  dex_shift?: {
+    available?: boolean;
+    delta_by_strike?: Record<string, number>;
+    since_ms?: number;
+  };
+  charm_shift?: {
     available?: boolean;
     delta_by_strike?: Record<string, number>;
     since_ms?: number;
@@ -196,29 +206,19 @@ export function SpxGexMatrixHeatmap({
   const todayEt = useMemo(() => todayEtYmd(), []);
   const block = lens === "gex" ? data?.gex : data?.vex;
   const hasVex = Boolean(data?.vex && Object.keys(data.vex.cells ?? {}).length > 0);
+  const activeShift = matrixShiftForLens(lens, data);
   const shiftLeaders = useMemo(
-    () =>
-      pickGexShiftLeaders(
-        block?.strike_totals,
-        lens === "gex" ? data?.shift : data?.vex_shift
-      ),
-    [block?.strike_totals, data?.shift, data?.vex_shift, lens]
+    () => pickGexShiftLeaders(block?.strike_totals, activeShift),
+    [block?.strike_totals, activeShift]
   );
   const cells = block?.cells ?? {};
   const expiriesAll = data?.expiries ?? [];
   const displayExpiries = useMemo(() => expiriesAll.slice(0, MAX_EXPIRY_COLS), [expiriesAll]);
   const shiftLeaderCells = useMemo(
-    () =>
-      pickGexShiftLeaderCells(
-        block?.strike_totals,
-        cells,
-        displayExpiries,
-        lens === "gex" ? data?.shift : data?.vex_shift
-      ),
-    [block?.strike_totals, cells, displayExpiries, data?.shift, data?.vex_shift, lens]
+    () => pickGexShiftLeaderCells(block?.strike_totals, cells, displayExpiries, activeShift),
+    [block?.strike_totals, cells, displayExpiries, activeShift]
   );
-  const shiftSinceMs =
-    lens === "gex" ? data?.shift?.since_ms : data?.vex_shift?.since_ms;
+  const shiftSinceMs = matrixShiftSinceMs(lens, data);
 
   useEffect(() => {
     if (lens === "vex" && data != null && !hasVex) setLens("gex");

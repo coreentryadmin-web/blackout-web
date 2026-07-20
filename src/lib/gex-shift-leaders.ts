@@ -1,4 +1,5 @@
 import { shiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
+import type { GexHeatmapLens } from "@/lib/gex-heatmap-display";
 
 export type GexShiftLeader = {
   strike: number;
@@ -11,7 +12,43 @@ export type GexShiftLeader = {
 export type GexShiftLike = {
   available?: boolean;
   delta_by_strike?: Record<string, number>;
+  since_ms?: number;
 };
+
+/** Per-lens shift block on the shared gex-heatmap payload. */
+export type MatrixShiftPayload = {
+  shift?: GexShiftLike | null;
+  vex_shift?: GexShiftLike | null;
+  dex_shift?: GexShiftLike | null;
+  charm_shift?: GexShiftLike | null;
+};
+
+/** Resolve intraday migration for the active matrix lens (GEX/VEX/DEX/CHARM). */
+export function matrixShiftForLens(
+  lens: GexHeatmapLens,
+  payload: MatrixShiftPayload | null | undefined
+): GexShiftLike | null | undefined {
+  if (!payload) return null;
+  switch (lens) {
+    case "gex":
+      return payload.shift;
+    case "vex":
+      return payload.vex_shift;
+    case "dex":
+      return payload.dex_shift;
+    case "charm":
+      return payload.charm_shift;
+    default:
+      return null;
+  }
+}
+
+export function matrixShiftSinceMs(
+  lens: GexHeatmapLens,
+  payload: MatrixShiftPayload | null | undefined
+): number | undefined {
+  return matrixShiftForLens(lens, payload)?.since_ms;
+}
 
 /**
  * Top N call-side (positive Δ) and put-side (negative Δ) intraday drift leaders.
