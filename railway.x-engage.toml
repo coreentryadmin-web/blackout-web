@@ -1,0 +1,16 @@
+# X engagement — follow FinTwit, like/RT relevant posts (3x daily).
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.x-engage.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "node scripts/hit-cron.mjs /api/cron/x-engage"
+# 8:30am, 12:30pm, 5pm ET approx (UTC band)
+cronSchedule = "30 12,16,21 * * 1-5"
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1

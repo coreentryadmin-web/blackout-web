@@ -1,0 +1,16 @@
+# X autopost — @BlackOutTrade growth tweets (hourly during market hours + evenings).
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.x-autopost.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "node scripts/hit-cron.mjs /api/cron/x-autopost"
+# Hourly 8am-9pm ET weekdays (UTC band covers EDT+EST). Route self-skips outside post slots.
+cronSchedule = "0 12-23,0-2 * * 1-5"
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1

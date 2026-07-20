@@ -11,6 +11,7 @@ import {
   pickImageKey,
   MARKETING_IMAGES,
   SCHEDULE,
+  xPostFooter,
   type PostType,
 } from "@/lib/x-content";
 
@@ -82,14 +83,13 @@ export async function GET(req: NextRequest) {
     const data = await fetchMarketSnapshot();
     let content = await generateTweetContent(postType, data);
 
-    // X enforces 280 chars; t.co wraps the URL to 23 chars.
-    // Content now includes "@blackouttrade www.blackouttrades.com" footer.
+    const footer = xPostFooter();
     const T_CO_URL = 23;
-    const MAX_TOTAL = 280 - T_CO_URL + "www.blackouttrades.com".length;
+    const MAX_TOTAL = 280 - T_CO_URL + footer.split(" ").pop()!.length;
     if (content && content.length > MAX_TOTAL) {
-      const footer = content.slice(content.lastIndexOf("\n"));
+      const footerLine = content.slice(content.lastIndexOf("\n"));
       const body = content.slice(0, content.lastIndexOf("\n"));
-      content = body.slice(0, MAX_TOTAL - footer.length - 1).trimEnd() + "…" + footer;
+      content = body.slice(0, MAX_TOTAL - footerLine.length - 1).trimEnd() + "…" + footerLine;
     }
 
     if (!content) {

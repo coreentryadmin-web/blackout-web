@@ -124,22 +124,26 @@ jobs:
           print(f'Found {len(keys)} valid secret keys')
           "
 
-          python3 - "${FULL_IMAGE}" /tmp/taskdef.json /tmp/new-taskdef.json /tmp/valid-secret-keys.json <<'PYEOF'
+          python3 - "${FULL_IMAGE}" /tmp/taskdef.json /tmp/new-taskdef.json /tmp/valid-secret-keys.json "${SECRET_ARN}" <<'PYEOF'
           import json, sys
           new_image = sys.argv[1]
-          src, dst, keys_file = sys.argv[2], sys.argv[3], sys.argv[4]
+          src, dst, keys_file, secret_arn = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
           with open(src) as f:
               td = json.load(f)
           with open(keys_file) as f:
-              valid_keys = set(json.load(f))
+              valid_keys = sorted(json.load(f))
           for c in td.get("containerDefinitions", []):
               c["image"] = new_image
-              orig = c.get("secrets", [])
-              filtered = [s for s in orig if s["name"] in valid_keys]
-              removed = [s["name"] for s in orig if s["name"] not in valid_keys]
+              orig = {s["name"] for s in c.get("secrets", [])}
+              c["secrets"] = [
+                  {"name": k, "valueFrom": f"{secret_arn}:{k}::"} for k in valid_keys
+              ]
+              added = [k for k in valid_keys if k not in orig]
+              removed = [k for k in orig if k not in set(valid_keys)]
+              if added:
+                  print(f"Added secret refs: {added}")
               if removed:
                   print(f"Stripped stale secret refs: {removed}")
-              c["secrets"] = filtered
           for k in ["taskDefinitionArn", "revision", "status",
                      "requiresAttributes", "compatibilities",
                      "registeredAt", "registeredBy", "deregisteredAt"]:

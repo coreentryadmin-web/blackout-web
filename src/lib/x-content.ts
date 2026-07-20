@@ -25,17 +25,19 @@ export interface PostSlot {
 }
 
 export const SCHEDULE: PostSlot[] = [
-  { type: "premarket_walls", hours: [6, 8] },
+  { type: "premarket_walls", hours: [8, 9] },
   { type: "market_open", hours: [9, 10] },
   { type: "hot_take", hours: [10, 11] },
   { type: "midday_flow", hours: [12, 13] },
-  { type: "free_data_drop", hours: [14, 15] },
+  { type: "free_data_drop", hours: [13, 14] },
+  { type: "close_recap", hours: [15, 16] },
   { type: "close_recap", hours: [16, 17] },
-  { type: "after_hours_alpha", hours: [17, 18] },
-  { type: "feature_showcase", hours: [19, 20] },
-  { type: "loss_porn_roast", hours: [20, 21] },
+  { type: "after_hours_alpha", hours: [19, 20] },
+  { type: "feature_showcase", hours: [20, 21] },
+  { type: "loss_porn_roast", hours: [11, 12] },
   { type: "weekend_education", hours: [10, 12], days: [0, 6] },
   { type: "feature_showcase", hours: [14, 16], days: [0, 6] },
+  { type: "hot_take", hours: [18, 19], days: [0, 6] },
 ];
 
 export function selectPostType(nowEt: Date): PostType | null {
@@ -122,42 +124,43 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
 // Content generation via Claude
 // ---------------------------------------------------------------------------
 
-const SITE = "www.blackouttrades.com";
-const TAG = "@blackouttrade";
+const WHOP = "whop.com/blackout-2d9c";
+const TAG = "@BlackOutTrade";
 
-const BRAND_VOICE = `You are the social media voice of BlackOut Trades — the most advanced options analytics platform for serious traders. Your account is @IHate0dte. Our main brand account is ${TAG}.
+/** Appended to every tweet — keep body under limit minus this footer. */
+export function xPostFooter(): string {
+  return `${TAG} ${WHOP}`;
+}
+
+const PRICING_RULES = `MANDATORY PRICING (never violate):
+- Community: $75/month (Discord + signals — NOT the full desk)
+- Premium Monthly: $199/month (MOST POPULAR — full desk: HELIX, SPX Slayer, Largo, GEX, Thermal, Night Hawk)
+- Premium Yearly: $1,999/year (~$167/mo)
+- THERE IS NO FREE TIER. NEVER say free, $0, or "no cost." Signup starts at $75/mo.`;
+
+const BRAND_VOICE = `You are @BlackOutTrade on X — the growth voice for BlackOut Trades, the sharpest options-intelligence desk on FinTwit.
+
+${PRICING_RULES}
 
 WHO WE ARE:
-BlackOut Trades shows what market makers are doing before they do it. Real-time gamma exposure (GEX) walls, dealer positioning, AI-powered trade signals, live options flow — the weapons institutional traders use, built for retail.
+Real-time gamma (GEX), dealer walls, whale flow, AI desk signals — institutional weapons for serious traders.
 
-OUR TOOLS (reference these naturally, not as a list):
-- Vector: real-time GEX charts with animated wall beads that form, grow, and fade as dealers reposition. Put/call walls, flip levels, regime detection across any stock.
-- Helix: live options flow tape — see every large trade hit the tape in real-time, filtered by size, sentiment, and unusual activity.
-- BlackOut Thermal: GEX heatmap matrix — see positioning across dozens of strikes and expirations at a glance. The heat shows where dealers are trapped.
-- Largo: AI analyst terminal — ask it anything about the market and it pulls from every data source we have. Like having a quant on speed dial.
-- Night Hawk: overnight playbook — AI-generated 0DTE game plan published before the bell, with entry levels, targets, and stop losses based on overnight positioning shifts.
-- SPX Slayer: 0DTE trading desk — live AI trade signals with real-time P&L tracking, tier-graded setups (A+ through F), and automatic exit intelligence.
+TOOLS (reference naturally):
+Vector (gamma walls + regime), Helix (whale flow tape), Thermal (GEX heatmap), Largo (AI analyst), Night Hawk (0DTE playbook), SPX Slayer (live graded 0DTE desk).
 
-VOICE — THIS IS CRITICAL:
-- You're the smartest trader in the room who actually backs it up with data
-- Swagger, not arrogance. You SHOW the edge, you don't just claim it.
-- Write like fintwit's sharpest voice — punchy, quotable, makes people screenshot and share
-- Mix up your style: sometimes one-liner zingers, sometimes mini-breakdowns, sometimes provocative questions
-- Use line breaks strategically for rhythm and emphasis — don't just write a wall of text
-- Emojis: 0-2 max, only when they hit hard (🎯 for precision, ⚡ for speed, 🔥 for heat)
-- NEVER use hashtags
-- NEVER sound like a bot or a corporate account
-- NEVER use "unlock", "game-changer", "revolutionize", "take your trading to the next level" or any generic marketing language
-- Reference specific strikes, levels, and numbers when data is available
-- Create FOMO through specificity — "our members saw the 5,520 put wall hold 4 times before the bounce" is 100x better than "our platform shows support levels"
-- The CTA should feel natural, not salesy — end with the website as a flex, not a plea
+VOICE:
+- Bold, data-backed, screenshot-worthy. Make traders feel behind if they're not on the desk.
+- Provocative questions and hot takes drive replies — ask FinTwit to weigh in.
+- Specific strikes, levels, regimes — never vague platitudes.
+- 0-2 emojis max. NO hashtags (X algo penalizes spam tags).
+- Never corporate. Never "game-changer" or "unlock your potential."
+- Create FOMO through specificity and free alpha drops (one level/regime insight, then point to Whop).
 
 FORMAT:
-- Write ONLY the tweet text, nothing else
-- NO quotation marks around the tweet
-- CRITICAL: your tweet text MUST be under 230 characters. The footer (tag + URL) adds ~40 chars automatically. COUNT CAREFULLY. If over, cut ruthlessly — punchier is better.
-- Do NOT include the website URL or ${TAG} — those are appended automatically
-- End your text with a punchy closer, not a CTA — the link drops automatically after`;
+- Write ONLY the tweet body — no quotes.
+- Body MUST stay under 200 chars (footer adds ~35 chars).
+- Do NOT include @BlackOutTrade or the Whop link — appended automatically.
+- End with a punchy line or engagement hook (question > CTA).`;
 
 const STYLE_VARIATIONS = [
   "Write in a BOLD DECLARATIVE style — short punchy statement, then the proof.",
@@ -300,7 +303,7 @@ export async function generateTweetContent(
     });
     const body = raw?.trim();
     if (!body) return null;
-    return `${body}\n${TAG} ${SITE}`;
+    return `${body}\n${xPostFooter()}`;
   } catch (e) {
     console.error("[x-autopost] Claude content generation failed:", e);
     return null;

@@ -22,6 +22,34 @@ export function xApiEnabled(): boolean {
   return getCredentials() !== null;
 }
 
+/** @BlackOutTrade account user id (OAuth context). */
+export const X_ACCOUNT_USER_ID = "2055511397338087425";
+
+async function oauthFetch(
+  method: string,
+  url: string,
+  body?: Record<string, unknown>,
+): Promise<Response> {
+  const u = new URL(url);
+  const base = `${u.origin}${u.pathname}`;
+  const queryParams: Record<string, string> = {};
+  u.searchParams.forEach((v, k) => {
+    queryParams[k] = v;
+  });
+  const auth = oauthHeader(
+    method,
+    base,
+    method === "GET" ? queryParams : {},
+  );
+  const headers: Record<string, string> = { Authorization: auth };
+  let init: RequestInit = { method, headers };
+  if (body) {
+    headers["Content-Type"] = "application/json";
+    init = { ...init, headers, body: JSON.stringify(body) };
+  }
+  return fetch(url, init);
+}
+
 function pctEnc(s: string): string {
   return encodeURIComponent(s).replace(
     /[!'()*]/g,
@@ -172,4 +200,111 @@ export async function tweetWithImage(
 ): Promise<TweetResult> {
   const mediaId = await uploadMedia(imageBuffer, mimeType);
   return postTweet(text, [mediaId]);
+}
+
+// ---------------------------------------------------------------------------
+// Threads (reply chain)
+// ---------------------------------------------------------------------------
+
+export async function postReply(
+  text: string,
+  inReplyToTweetId: string,
+  mediaIds?: string[],
+): Promise<TweetResult> {
+  const payload: Record<string, unknown> = {
+    text,
+    reply: { in_reply_to_tweet_id: inReplyToTweetId },
+  };
+  if (mediaIds?.length) payload.media = { media_ids: mediaIds };
+
+  const auth = oauthHeader("POST", X_TWEET_URL);
+  const res = await fetch(X_TWEET_URL, {
+    method: "POST",
+    headers: {
+      Authorization: auth,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(`X post reply failed (${res.status}): ${await res.text()}`);
+  }
+  const json = (await res.json()) as { data: TweetResult };
+  return json.data;
+}
+
+export async function postThread(texts: string[]): Promise<TweetResult[]> {
+  const out: TweetResult[] = [];
+  let parentId: string | undefined;
+  for (const text of texts) {
+    const tweet = parentId
+      ? await postReply(text, parentId)
+      : await postTweet(text);
+    out.push(tweet);
+    parentId = tweet.id;
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Engagement — likes, RTs, follows
+// ---------------------------------------------------------------------------
+
+export async function likeTweet(tweetId: string): Promise<boolean> {
+  const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}/likes`;
+  const res = await oauthFetch("POST", url, { tweet_id: tweetId });
+  return res.ok;
+}
+
+export async function retweet(tweetId: string): Promise<boolean> {
+  const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}/retweets`;
+  const res = await oauthFetch("POST", url, { tweet_id: tweetId });
+  return res.ok;
+}
+
+export async function followUser(targetUserId: string): Promise<boolean> {
+  const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}/following`;
+  const res = await oauthFetch("POST", url, { target_user_id: targetUserId });
+  return res.ok;
+}
+
+export interface XUser {
+  id: string;
+  username: string;
+  name?: string;
+}
+
+export async function lookupUserByUsername(
+  username: string,
+): Promise<XUser | null> {
+  const handle = username.replace(/^@/, "");
+  const url = `https://api.x.com/2/users/by/username/${encodeURIComponent(handle)}?user.fields=username,name`;
+  const res = await oauthFetch("GET", url);
+  if (!res.ok) return null;
+  const json = (await res.json()) as { data?: XUser };
+  return json.data ?? null;
+}
+
+export interface XTweet {
+  id: string;
+  text: string;
+  author_id?: string;
+}
+
+/** Recent tweets from a user (excludes replies/retweets when possible). */
+export async function fetchUserTweets(
+  userId: string,
+  maxResults = 5,
+): Promise<XTweet[]> {
+  const params = new URLSearchParams({
+    max_results: String(Math.min(maxResults, 10)),
+    exclude: "retweets,replies",
+    "tweet.fields": "author_id,created_at",
+  });
+  const url = `https://api.x.com/2/users/${userId}/tweets?${params}`;
+  const res = await oauthFetch("GET", url);
+  if (!res.ok) return [];
+  const json = (await res.json()) as { data?: XTweet[] };
+  return json.data ?? [];
 }
