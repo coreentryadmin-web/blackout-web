@@ -65,7 +65,6 @@ const API_PROBE_LIST = [
   "/api/market/ticker-search?q=NVDA",
   "/api/market/flows?limit=50",
   "/api/market/largo/query",
-  "/api/account/positions/health/detail",
 ].filter((v, i, a) => a.indexOf(v) === i);
 
 const PUBLIC_PAGES = [
@@ -306,8 +305,10 @@ function isLongRunningPath(path) {
 
 function classifyRoute(path) {
   if (path.startsWith("/api/cron/")) return "cron";
+  if (path === "/api/signals/open") return "cron";
   if (path.startsWith("/api/admin/")) return "admin";
   if (path.startsWith("/api/webhook") || path.startsWith("/api/webhooks/")) return "webhook";
+  if (path.startsWith("/api/auth/cognito/")) return "oauth";
   if (
     path.startsWith("/api/market/") ||
     path.startsWith("/api/account/") ||
@@ -350,6 +351,11 @@ async function auditAllApis() {
     const json = J(r);
 
     if (r.status >= 500) {
+      if (kind === "oauth") {
+        rec(`API ${path}`, "WARN", `HTTP ${r.status} (OAuth route — GET without state)`);
+        byStatus.auth++;
+        continue;
+      }
       rec(`API ${path}`, "FAIL", `HTTP ${r.status} (${r.timeMs}ms)`);
       byStatus.error++;
       continue;

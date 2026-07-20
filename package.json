@@ -72,6 +72,8 @@
     "validate:vector-e2e": "node scripts/vector-e2e-audit.mjs",
     "validate:gex-parity": "node scripts/validate-gex-parity.mjs",
     "validate:platform-integrity": "node scripts/validate-platform-integrity.mjs",
+    "validate:comprehensive-endpoints": "node scripts/comprehensive-endpoint-audit.mjs",
+    "validate:endpoint-audit-all": "node scripts/comprehensive-endpoint-audit.mjs && node scripts/audit/data-validator.mjs && node scripts/probe-docs-endpoints.mjs --uw-only",
     "validate:vector-rth": "node scripts/vector-rth-minute-audit.mjs --wait-open",
     "validate:member-dashboard": "node scripts/member-dashboard-live-check.mjs",
     "validate:site-latency": "node scripts/site-latency-audit.mjs",
