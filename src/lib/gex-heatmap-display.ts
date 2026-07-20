@@ -8,6 +8,12 @@ export { fmtHeatmapMoney };
 /** SPX Slayer matrix uses gex/vex; Thermal adds dex/charm on the same cell scale. */
 export type GexHeatmapLens = "gex" | "vex" | "dex" | "charm";
 
+/** Vector call/put bead colors — canonical for matrix peak nodes (matches VectorChart). */
+export const GEX_BEAD_CALL_HEX = "#ffd60a";
+export const GEX_BEAD_PUT_HEX = "#d97bff";
+export const GEX_BEAD_CALL_RGB = "255, 214, 10";
+export const GEX_BEAD_PUT_RGB = "217, 123, 255";
+
 const LENS_COLORS: Record<GexHeatmapLens, { posRgb: string; negRgb: string }> = {
   gex: { posRgb: "0, 230, 118", negRgb: "255, 45, 85" },
   vex: { posRgb: "125, 211, 252", negRgb: "255, 45, 85" },
@@ -42,6 +48,45 @@ export function heatmapCellTextStyle(value: number, peak: number): CSSProperties
   const mag = Math.min(1, Math.abs(value) / peak);
   if (mag > 0.45) return { color: "#ffffff", textShadow: "0 1px 2px rgba(0,0,0,0.55)" };
   return { textShadow: "0 1px 2px rgba(0,0,0,0.72)" };
+}
+
+/** Per-column highest positive cell — call-bead yellow (dominant +GEX node). */
+export function heatmapExtremePositiveStyle(): CSSProperties {
+  return {
+    backgroundColor: `rgba(${GEX_BEAD_CALL_RGB}, 0.58)`,
+    boxShadow: `inset 0 0 0 1px rgba(${GEX_BEAD_CALL_RGB}, 0.9), 0 0 16px rgba(${GEX_BEAD_CALL_RGB}, 0.38)`,
+  };
+}
+
+/** Per-column highest negative cell — put-bead purple (dominant −GEX node). */
+export function heatmapExtremeNegativeStyle(): CSSProperties {
+  return {
+    backgroundColor: `rgba(${GEX_BEAD_PUT_RGB}, 0.55)`,
+    boxShadow: `inset 0 0 0 1px rgba(${GEX_BEAD_PUT_RGB}, 0.9), 0 0 16px rgba(${GEX_BEAD_PUT_RGB}, 0.38)`,
+  };
+}
+
+export function heatmapExtremePositiveTextStyle(): CSSProperties {
+  return {
+    color: "#fffbeb",
+    textShadow: `0 0 10px rgba(${GEX_BEAD_CALL_RGB}, 0.95), 0 1px 2px rgba(0,0,0,0.65)`,
+  };
+}
+
+export function heatmapExtremeNegativeTextStyle(): CSSProperties {
+  return {
+    color: "#faf5ff",
+    textShadow: `0 0 10px rgba(${GEX_BEAD_PUT_RGB}, 0.95), 0 1px 2px rgba(0,0,0,0.65)`,
+  };
+}
+
+/** Style bundle for matrix peak cells (positive / negative per expiry column). */
+export function heatmapMatrixExtremeCellStyle(
+  kind: "positive" | "negative"
+): CSSProperties {
+  return kind === "positive"
+    ? { ...heatmapExtremePositiveStyle(), ...heatmapExtremePositiveTextStyle() }
+    : { ...heatmapExtremeNegativeStyle(), ...heatmapExtremeNegativeTextStyle() };
 }
 
 export function fmtHeatmapExpiry(ymd: string): string {

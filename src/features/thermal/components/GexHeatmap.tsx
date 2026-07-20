@@ -28,6 +28,7 @@ import {
   fmtHeatmapStrike,
   heatmapCellStyle,
   heatmapCellTextStyle,
+  heatmapMatrixExtremeCellStyle,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
 import {
@@ -3630,16 +3631,26 @@ export function GexHeatmap({
                           key={e}
                           className={clsx(
                             "whitespace-nowrap px-0.5 py-1 text-center font-bold",
-                            has && val > 0 && (lens === "gex" ? "text-emerald-300" : posColorClass),
-                            has && val < 0 && (lens === "gex" ? "text-rose-300" : "text-bear-text"),
+                            has &&
+                              val > 0 &&
+                              !isDayCallWallCell &&
+                              (lens === "gex" ? "text-emerald-300" : posColorClass),
+                            has &&
+                              val < 0 &&
+                              !isDayPutWallCell &&
+                              (lens === "gex" ? "text-rose-300" : "text-bear-text"),
                             !has && "text-sky-300/25"
                           )}
                           style={{
                             ...(has
-                              ? {
-                                  ...heatmapCellStyle(val, peak, matrixLens),
-                                  ...heatmapCellTextStyle(val, peak),
-                                }
+                              ? isDayCallWallCell
+                                ? heatmapMatrixExtremeCellStyle("positive")
+                                : isDayPutWallCell
+                                  ? heatmapMatrixExtremeCellStyle("negative")
+                                  : {
+                                      ...heatmapCellStyle(val, peak, matrixLens),
+                                      ...heatmapCellTextStyle(val, peak),
+                                    }
                               : {}),
                           }}
                           title={

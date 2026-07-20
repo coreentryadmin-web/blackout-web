@@ -22,6 +22,7 @@ import {
   fmtHeatmapStrike,
   heatmapCellStyle,
   heatmapCellTextStyle,
+  heatmapMatrixExtremeCellStyle,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
 import { gexKingDualLabel } from "@/lib/gex-king-node-labels";
@@ -683,13 +684,21 @@ export function SpxGexMatrixHeatmap({
                           key={e}
                           className={clsx(
                             "spx-gex-matrix-expiry-col whitespace-nowrap px-1 py-1 text-center font-bold",
-                            has && val > 0 && "text-emerald-300",
-                            has && val < 0 && "text-rose-300",
+                            has && val > 0 && !isColumnCallWall && "text-emerald-300",
+                            has && val < 0 && !isColumnPutWall && "text-rose-300",
                             !has && "text-sky-300/25"
                           )}
                           style={{
-                            ...(has ? heatmapCellStyle(val, peak, lens) : {}),
-                            ...(has ? heatmapCellTextStyle(val, peak) : {}),
+                            ...(has
+                              ? isColumnCallWall
+                                ? heatmapMatrixExtremeCellStyle("positive")
+                                : isColumnPutWall
+                                  ? heatmapMatrixExtremeCellStyle("negative")
+                                  : {
+                                      ...heatmapCellStyle(val, peak, lens),
+                                      ...heatmapCellTextStyle(val, peak),
+                                    }
+                              : {}),
                           }}
                           title={
                             isColumnKing
@@ -703,8 +712,7 @@ export function SpxGexMatrixHeatmap({
                         >
                           <span
                             className={clsx(
-                              isColumnCallWall && "text-emerald-200",
-                              isColumnPutWall && "text-rose-200"
+                              (isColumnCallWall || isColumnPutWall) && "spx-gex-matrix-extreme-pop"
                             )}
                           >
                             {fmtHeatmapMoneySigned(val, { showZero: true })}
