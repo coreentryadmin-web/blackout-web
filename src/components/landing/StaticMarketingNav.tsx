@@ -3,7 +3,8 @@ import Link from "next/link";
 const LINKS = [
   { href: "/#features", label: "Platform" },
   { href: "/#tape", label: "Products" },
-  { href: "/#product-thermal", label: "Thermal" },
+  { href: "/learn", label: "Learn" },
+  { href: "/faq", label: "FAQ" },
   { href: "/pricing", label: "Pricing", iosHide: true },
 ];
 
@@ -28,7 +29,7 @@ export function StaticMarketingNav({ signedIn = false }: { signedIn?: boolean })
             </Link>
           ) : (
             <>
-              <Link href="/sign-in?redirect_url=%2Fdashboard" prefetch={false} className="nav-signin">
+              <Link href="/sign-in" prefetch={false} className="nav-signin">
                 Sign in
               </Link>
               <Link href="/sign-up" prefetch={false} className="nav-join">

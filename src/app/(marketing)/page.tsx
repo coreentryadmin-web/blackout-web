@@ -1,6 +1,5 @@
 export const dynamic = "force-dynamic";
 
-import { redirect } from "next/navigation";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { StaticLandingHero } from "@/components/landing/StaticLandingHero";
 import { StaticProductFilmstrip } from "@/components/landing/StaticProductFilmstrip";
@@ -12,20 +11,17 @@ import { StaticEdgeSection } from "@/components/landing/StaticEdgeSection";
 import { StaticPricingCompare } from "@/components/landing/StaticPricingCompare";
 import { StaticClosingCta } from "@/components/landing/StaticClosingCta";
 import { activeClerkUserIdFromRequestCookies } from "@/lib/clerk-session-cookies";
-import { CLERK_DEFAULT_POST_AUTH_PATH } from "@/lib/clerk-redirect-url";
 
 const LANDING_REDIRECT_SCRIPT =
-  "try{var h=location.hash.slice(1);if(h==='faq')location.replace('/faq');else if(h==='pricing')location.replace('/pricing');else if(document.documentElement.classList.contains('ios-app'))location.replace('/dashboard')}catch(e){}";
+  "try{var h=location.hash.slice(1);if(h==='faq')location.replace('/faq');else if(h==='pricing')location.replace('/pricing')}catch(e){}";
 
 export default async function LandingPage() {
-  if (await activeClerkUserIdFromRequestCookies()) {
-    redirect(CLERK_DEFAULT_POST_AUTH_PATH);
-  }
+  const signedIn = Boolean(await activeClerkUserIdFromRequestCookies());
 
   return (
     <MarketingPageShell>
       <script dangerouslySetInnerHTML={{ __html: LANDING_REDIRECT_SCRIPT }} />
-      <StaticLandingHero />
+      <StaticLandingHero signedIn={signedIn} />
       <StaticProductFilmstrip />
       <StaticStatsStrip />
       <StaticAudienceStrip />

@@ -13,7 +13,7 @@ const CRED_MARKS = [
 ] as const;
 
 /** Centered emblem hero — logo → headline → lede → CTA → creds; tagline anchors the floor. */
-export function StaticLandingHero() {
+export function StaticLandingHero({ signedIn = false }: { signedIn?: boolean }) {
   return (
     <section className="mkt-section mkt-hero mkt-hero-centered border-b-0">
       <StaticHeroWaveform />
@@ -49,13 +49,23 @@ export function StaticLandingHero() {
           </p>
 
           <div className="mkt-cta-row mkt-cta-row-centered">
-            <Link
-              href="/sign-in?redirect_url=%2Fdashboard"
-              prefetch={false}
-              className="landing-btn-primary mkt-cta-primary inline-flex min-w-[220px] items-center justify-center px-10 py-3.5 font-syne text-sm font-bold uppercase tracking-[0.2em]"
-            >
-              Sign in
-            </Link>
+            {signedIn ? (
+              <Link
+                href="/dashboard"
+                prefetch={false}
+                className="landing-btn-primary mkt-cta-primary inline-flex min-w-[220px] items-center justify-center px-10 py-3.5 font-syne text-sm font-bold uppercase tracking-[0.2em]"
+              >
+                Open desk →
+              </Link>
+            ) : (
+              <Link
+                href="/sign-in"
+                prefetch={false}
+                className="landing-btn-primary mkt-cta-primary inline-flex min-w-[220px] items-center justify-center px-10 py-3.5 font-syne text-sm font-bold uppercase tracking-[0.2em]"
+              >
+                Sign in
+              </Link>
+            )}
             <Link
               href="/pricing"
               prefetch={false}
