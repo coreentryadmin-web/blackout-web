@@ -6,6 +6,7 @@ import {
   anchorBandPctForTimeframe,
   VECTOR_WALL_NODES_PER_SIDE,
   VECTOR_PRESET_TIMEFRAMES,
+  VECTOR_DEFAULT_TIMEFRAME,
   isPresetTimeframe,
 } from "./vector-bar-timeframes";
 
@@ -27,6 +28,7 @@ const m1 = (
 
 test("VECTOR_PRESET_TIMEFRAMES: includes the 30m + 60m intraday roll-ups", () => {
   assert.deepEqual([...VECTOR_PRESET_TIMEFRAMES], [1, 3, 5, 15, 30, 60]);
+  assert.equal(VECTOR_DEFAULT_TIMEFRAME, 3, "default chart interval is 3-minute");
   assert.ok(isPresetTimeframe(30) && isPresetTimeframe(60), "30/60 are presets");
   assert.ok(!isPresetTimeframe(45), "non-preset stays custom");
 });
