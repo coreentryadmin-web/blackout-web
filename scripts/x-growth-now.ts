@@ -16,10 +16,13 @@ function loadEnv(): void {
 async function main() {
   loadEnv();
   const dryRun = process.argv.includes("--dry");
+  const silentOnly = process.argv.includes("--silent");
   const { runGrowthSweep } = await import("../src/lib/x-growth-engine");
 
-  console.log(dryRun ? "[dry-run] x-growth…" : "[live] x-growth — max engagement…");
-  const stats = await runGrowthSweep({ dryRun });
+  const mode = dryRun ? "[dry-run]" : "[live]";
+  const kind = silentOnly ? "silent x-growth" : "x-growth";
+  console.log(`${mode} ${kind}…`);
+  const stats = await runGrowthSweep({ dryRun, cronMode: false, silentOnly });
   console.log(JSON.stringify(stats, null, 2));
 }
 

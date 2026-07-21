@@ -28,6 +28,7 @@ import {
   getRepliedTweetIds,
   markTweetReplied,
 } from "@/lib/x-marketing-meta";
+import { xMarketingSilentOnly } from "@/lib/x-marketing-env";
 import {
   resolveRunBudget,
   recordBudgetUse,
@@ -52,6 +53,8 @@ export interface EngageStats {
   cronMode?: boolean;
   budget?: RunBudget;
   skippedReason?: string;
+  /** Likes + follows only — no quote/reply/RT. */
+  silentOnly?: boolean;
 }
 
 function sleep(ms: number) {
@@ -109,9 +112,12 @@ async function handleRateLimited(stats: EngageStats): Promise<void> {
 export async function runEngagementSweep(opts: {
   dryRun?: boolean;
   cronMode?: boolean;
+  /** Likes + follows only — skips quote/reply/RT (no new timeline activity). */
+  silentOnly?: boolean;
 }): Promise<EngageStats> {
   const dryRun = opts.dryRun === true;
   const cronMode = opts.cronMode !== false;
+  const silentOnly = opts.silentOnly === true || xMarketingSilentOnly();
   const budget = await resolveRunBudget({ cronMode });
   const rotation = cronMode ? await bumpEngageRotation() : 0;
 
@@ -127,6 +133,7 @@ export async function runEngagementSweep(opts: {
     rateLimited: false,
     cronMode,
     budget,
+    silentOnly,
   };
 
   if (!budget.allowed) {
@@ -138,9 +145,9 @@ export async function runEngagementSweep(opts: {
 
   let likeCap = budget.likes;
   let followCap = budget.follows;
-  let rtCap = budget.retweets;
-  let visibleCap = budget.replies;
-  const visibleMaxPerRun = cronMode ? 1 : 2;
+  let rtCap = silentOnly ? 0 : budget.retweets;
+  let visibleCap = silentOnly ? 0 : budget.replies;
+  const visibleMaxPerRun = silentOnly ? 0 : cronMode ? 1 : 2;
 
   async function tryLike(tweetId: string): Promise<boolean> {
     if (likeCap <= 0 || stats.rateLimited) return false;
