@@ -10,6 +10,7 @@ import {
   countMatchingContractHits,
   formatHitsInWindow,
   HELIX_STRIKE_HITS_WINDOW_MIN,
+  HELIX_STRIKE_HITS_WINDOW_MS,
 } from "@/features/helix/lib/helix-strike-leaders";
 import { fmtExpiryShort } from "@/features/helix/lib/helix-flow-format";
 import { aggressorRead } from "@/features/helix/lib/helix-print-detail";
@@ -24,12 +25,19 @@ export function HighScorePrints({
   alerts,
   loading,
   onSelect,
+  timeAnchor,
 }: {
   alerts: FlowAlert[];
   loading: boolean;
   onSelect?: (alert: FlowAlert) => void;
+  /** Parent heartbeat (e.g. FlowFeed ageTick) so hit counts roll with the 15m window. */
+  timeAnchor?: number;
 }) {
-  const { rows: top, mode } = useMemo(() => selectTopPrints(alerts), [alerts]);
+  const nowMs = useMemo(() => Date.now(), [timeAnchor]);
+  const { rows: top, mode, sessionFallback } = useMemo(
+    () => selectTopPrints(alerts, { nowMs }),
+    [alerts, nowMs]
+  );
 
   return (
     <Panel
@@ -54,7 +62,7 @@ export function HighScorePrints({
           {top.map((a, i) => {
             const isCall = a.option_type?.toUpperCase() === "CALL";
             const tone = scoreTone(a.score);
-            const hits = countMatchingContractHits(alerts, a);
+            const hits = countMatchingContractHits(alerts, a, HELIX_STRIKE_HITS_WINDOW_MS, nowMs);
             const aggr = aggressorRead(a.ask_pct);
             return (
               <motion.div
@@ -123,8 +131,12 @@ export function HighScorePrints({
       )}
       <p className="font-mono text-[10px] text-sky-300/70 text-center pt-1">
         {mode === "score"
-          ? `Top ${top.length} scored prints · strike + expiry + ${HELIX_STRIKE_HITS_WINDOW_MIN}m hits`
-          : `Largest prints on this filter · click to drill down`}
+          ? sessionFallback
+            ? `Session leaders · nothing in last ${HELIX_STRIKE_HITS_WINDOW_MIN}m on this filter`
+            : `Top ${top.length} scored prints · strike + expiry + ${HELIX_STRIKE_HITS_WINDOW_MIN}m hits`
+          : sessionFallback
+            ? `Largest prints on this filter (session) · click to drill down`
+            : `Largest prints on this filter · click to drill down`}
       </p>
     </Panel>
   );
