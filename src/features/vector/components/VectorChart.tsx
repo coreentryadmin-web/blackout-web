@@ -858,7 +858,10 @@ function applyWallBeadMarkers(
   intervalMinutes: VectorTimeframeMinutes,
   lastBarTime: number = 0,
   liveBeads = false,
-  maxStrikes = wallCountForTimeframe(intervalMinutes)
+  maxStrikes = wallCountForTimeframe(intervalMinutes),
+  /** Pin a ghost bead at the latest bar for live-edge zoom — off during session overview so the
+   *  full recorded trail stretches across RTH without a fake right-edge column. */
+  pinLiveAnchorBeads = true
 ): number[] {
   if (!beadsPlugin) return [];
   const bucketed = bucketWallHistoryForInterval(history, intervalMinutes, {
@@ -883,7 +886,7 @@ function applyWallBeadMarkers(
   // bead at the latest bar time for every rendered trail so at least one marker is always near
   // the chart's right edge. Active walls get a normal-strength anchor; inactive (faded) walls
   // get a faint ghost so the user can still see where the wall was.
-  if (lastBarTime > 0) {
+  if (lastBarTime > 0 && pinLiveAnchorBeads) {
     const anchorTime = lastBarTime as Time;
     let maxPct = 0;
     for (const trail of rendered) {
@@ -1289,6 +1292,7 @@ export function VectorChart({
           )
         : wallHistoryRef.current);
     const liveBeads = liveSessionRef.current && !replayModeRef.current;
+    const pinLiveAnchorBeads = liveFollowEnabledRef.current;
     const callStrikes = applyWallBeadMarkers(
       callBeadsRef.current,
       history,
@@ -1298,7 +1302,8 @@ export function VectorChart({
       timeframeRef.current,
       lastBarTime,
       liveBeads,
-      beadRowCap
+      beadRowCap,
+      pinLiveAnchorBeads
     );
     const putStrikes = applyWallBeadMarkers(
       putBeadsRef.current,
@@ -1309,7 +1314,8 @@ export function VectorChart({
       timeframeRef.current,
       lastBarTime,
       liveBeads,
-      beadRowCap
+      beadRowCap,
+      pinLiveAnchorBeads
     );
     // Record what was actually drawn so the autoscale provider widens to reveal these exact beads
     // at every zoom level, then nudge a rescale (off-hours there is no tick to trigger it).
@@ -1945,20 +1951,22 @@ export function VectorChart({
         vexFlipRef.current,
         darkPoolRef.current
       );
-      // Repaint the BEADS on the horizon toggle too — refreshTrails is now horizon-aware, so a
-      // narrowed horizon redraws the scoped walls instead of the blended "All" rail. Without this,
-      // the toggle re-scoped only the flip line + terminal and the beads stayed on "All" (the bug).
       refreshTrails(lensRef.current);
-      // Re-derive the desk-terminal narration against the just-scoped walls/flip so the
-      // regime banner, magnet, proximity, and integrity all snap to the new DTE horizon
-      // the instant the member toggles it — not on the next SSE tick. Each emit is
-      // self-deduped, so switching back to a horizon that yields the same reads is a no-op.
       emitRegime();
       emitProximity();
       emitMagnet();
       emitConfluence();
-      paintConfluenceBand(); // keep the on-chart band in lockstep with the re-scoped terminal zone
+      paintConfluenceBand();
       emitWallIntegrity();
+    };
+
+    const fitSessionOverview = () => {
+      if (liveFollowEnabledRef.current) return;
+      const chart = chartRef.current;
+      if (!chart) return;
+      chart.timeScale().fitContent();
+      chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
+      refreshTrails(lensRef.current);
     };
 
     // Repaint dispatcher: in replay a DTE toggle must redraw the CURRENT cursor frame (not the
@@ -2095,6 +2103,10 @@ export function VectorChart({
         : [];
     lastConfluenceRef.current = "";
 
+    if (dteHorizon === "0dte") {
+      requestAnimationFrame(() => fitSessionOverview());
+    }
+
     if (dteHorizon === "all") {
       repaint();
       return () => {
@@ -2117,6 +2129,7 @@ export function VectorChart({
         if (cancelled || dteHorizonRef.current !== dteHorizon) return;
         horizonHistoryRef.current = Array.isArray(data.history) ? data.history : [];
         repaint();
+        if (dteHorizonRef.current === "0dte") requestAnimationFrame(() => fitSessionOverview());
       } catch {
         // History is a supplementary overlay — on any failure keep the single-column fallback
         // (horizonHistoryRef stays []), which refreshTrails already draws. No repaint needed.

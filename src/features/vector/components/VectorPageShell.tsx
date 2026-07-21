@@ -77,6 +77,9 @@ type Props = {
   /** Opening candle interval override (SPX Slayer embed opens on 3-minute candles; standalone
    *  /vector uses `VECTOR_DEFAULT_TIMEFRAME` — also 3-minute). Initial state only. */
   defaultTimeframe?: VectorTimeframeMinutes;
+  /** Opening time viewport — "session" fits the full RTH tape + bead trail on load (SPX desk 0DTE);
+   *  "live" follows the right edge immediately. Both /vector and SPX Slayer default to session. */
+  defaultChartViewport?: "session" | "live";
   /** SHARED PRICE AXIS seam (2026-07-13): forwarded verbatim to VectorChart so a host desk
    *  (SPX Slayer) can align its strike ladder to the chart's live y-scale. Only meaningful
    *  for embeds; the standalone /vector page never sets it. See vector-price-scale-map.ts. */
@@ -112,6 +115,7 @@ export function VectorPageShell({
   embed,
   defaultDteHorizon,
   defaultTimeframe,
+  defaultChartViewport = "session",
   onPriceScaleRender,
   toolbarReplayLeadSlot,
 }: Props) {
@@ -352,7 +356,7 @@ export function VectorPageShell({
           liveSession={liveSession}
           defaultDteHorizon={defaultDteHorizon}
           defaultTimeframe={defaultTimeframe}
-          defaultChartViewport="session"
+          defaultChartViewport={defaultChartViewport}
           onPriceScaleRender={onPriceScaleRender}
           onFreshness={liveSession ? setStreamUpdatedAt : undefined}
           onRegimeChange={setRegime}
@@ -416,6 +420,7 @@ export function VectorPageShell({
               liveSession={liveSession}
               defaultDteHorizon={defaultDteHorizon}
               defaultTimeframe={defaultTimeframe}
+              defaultChartViewport={defaultChartViewport}
               onFreshness={liveSession ? setStreamUpdatedAt : undefined}
               onSpotChange={liveSession ? setLiveSpot : undefined}
               onWallEventsChange={setWallEvents}
