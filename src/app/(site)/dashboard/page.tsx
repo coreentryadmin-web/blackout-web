@@ -24,7 +24,7 @@ export default async function DashboardPage() {
   // whole flagship desk.
   let vectorSeed: VectorSeedProps | null = null;
   if (await canAccessTool("vector")) {
-    vectorSeed = await loadVectorSeedProps("SPX").catch(() => null);
+    vectorSeed = await loadVectorSeedProps("SPX", { seedDteHorizon: "0dte" }).catch(() => null);
   }
 
   return (

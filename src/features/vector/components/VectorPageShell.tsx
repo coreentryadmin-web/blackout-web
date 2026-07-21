@@ -56,6 +56,7 @@ type Props = {
   initialWalls: VectorWalls | null;
   initialVexWalls: VectorWalls | null;
   initialWallHistory: WallHistorySample[];
+  initialHorizonWallHistory?: WallHistorySample[];
   initialGammaFlip: number | null;
   initialVexFlip: number | null;
   initialDarkPoolLevels: VectorDarkPoolLevel[];
@@ -102,6 +103,7 @@ export function VectorPageShell({
   initialWalls,
   initialVexWalls,
   initialWallHistory,
+  initialHorizonWallHistory = [],
   initialGammaFlip,
   initialVexFlip,
   initialDarkPoolLevels,
@@ -342,6 +344,7 @@ export function VectorPageShell({
           initialWalls={initialWalls}
           initialVexWalls={initialVexWalls}
           initialWallHistory={initialWallHistory}
+          initialHorizonWallHistory={initialHorizonWallHistory}
           initialGammaFlip={initialGammaFlip}
           initialVexFlip={initialVexFlip}
           initialDarkPoolLevels={initialDarkPoolLevels}
@@ -349,6 +352,7 @@ export function VectorPageShell({
           liveSession={liveSession}
           defaultDteHorizon={defaultDteHorizon}
           defaultTimeframe={defaultTimeframe}
+          defaultChartViewport="session"
           onPriceScaleRender={onPriceScaleRender}
           onFreshness={liveSession ? setStreamUpdatedAt : undefined}
           onRegimeChange={setRegime}
@@ -404,6 +408,7 @@ export function VectorPageShell({
               initialWalls={initialWalls}
               initialVexWalls={initialVexWalls}
               initialWallHistory={initialWallHistory}
+              initialHorizonWallHistory={initialHorizonWallHistory}
               initialGammaFlip={initialGammaFlip}
               initialVexFlip={initialVexFlip}
               initialDarkPoolLevels={initialDarkPoolLevels}
