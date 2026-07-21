@@ -41,7 +41,7 @@ import { todayEt } from "./session";
 /** Mirrors resolvePendingNighthawkOutcomes' default lookback (play-outcomes.ts). If
  *  that default ever changes, this must follow — the selector below defines "stuck"
  *  as "pending AND older than what the cron will ever look at again". */
-export const RESOLVER_LOOKBACK_DAYS = 7;
+export const RESOLVER_LOOKBACK_DAYS = 14;
 
 /** How far back the repair searches for stuck rows. The product's entire history is
  *  weeks old, so 90 days covers everything while still bounding the query. */

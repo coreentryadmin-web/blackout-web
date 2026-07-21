@@ -8,6 +8,8 @@ import {
   GATE_TARGET_MAX_ATR_MULTIPLE,
   promoteTopBlocked,
   publishGateRecapReason,
+  isPromotableBlockedPlay,
+  capGatePromotedConviction,
 } from "./publish-gates";
 import {
   buildNighthawkStageRejectedAuditRow,
@@ -449,11 +451,11 @@ test("promoteTopBlocked returns empty array on count <= 0", () => {
   assert.deepEqual(promoteTopBlocked(blocked, 0), []);
 });
 
-test("promoteTopBlocked ranks by fewer gate failures first, then by score", () => {
+test("promoteTopBlocked ranks promotable plays by fewer gate failures first, then by score", () => {
   const blocked = [
     {
       ticker: "AAPL",
-      play: play({ ticker: "AAPL", score: 80 }),
+      play: play({ ticker: "AAPL", score: 80, conviction: "A" }),
       result: {
         verdict: "BLOCK" as const,
         blocks: [
@@ -466,20 +468,20 @@ test("promoteTopBlocked ranks by fewer gate failures first, then by score", () =
     },
     {
       ticker: "NVDA",
-      play: play({ ticker: "NVDA", score: 60 }),
+      play: play({ ticker: "NVDA", score: 60, conviction: "A" }),
       result: {
         verdict: "BLOCK" as const,
-        blocks: [{ code: "band_detached" as const, reason: "r3", threshold: 3.5, value: 3.8 }],
+        blocks: [{ code: "stale_quote_basis" as const, reason: "r3", threshold: "2026-07-13", value: "2026-07-10" }],
         checks: [],
       },
       scored: null,
     },
     {
       ticker: "TSLA",
-      play: play({ ticker: "TSLA", score: 90 }),
+      play: play({ ticker: "TSLA", score: 90, conviction: "A+" }),
       result: {
         verdict: "BLOCK" as const,
-        blocks: [{ code: "target_unreachable" as const, reason: "r4", threshold: 2.0, value: 2.5 }],
+        blocks: [{ code: "stale_quote_basis" as const, reason: "r4", threshold: "2026-07-13", value: "2026-07-10" }],
         checks: [],
       },
       scored: null,
@@ -488,16 +490,40 @@ test("promoteTopBlocked ranks by fewer gate failures first, then by score", () =
 
   const promoted = promoteTopBlocked(blocked, 2);
   assert.equal(promoted.length, 2);
-  // TSLA (1 failure, score 90) should rank first, NVDA (1 failure, score 60) second.
-  // AAPL (2 failures) is dropped.
+  // TSLA (1 soft failure, score 90) first; NVDA second. AAPL geometry-blocked → excluded.
   assert.equal(promoted[0].ticker, "TSLA");
   assert.equal(promoted[0].rank, 1);
   assert.equal(promoted[0].gate_promoted, true);
+  assert.equal(promoted[0].conviction, "B", "gate_promoted conviction capped at B");
   assert.deepEqual(promoted[0].gate_warnings, ["r4"]);
 
   assert.equal(promoted[1].ticker, "NVDA");
   assert.equal(promoted[1].rank, 2);
   assert.equal(promoted[1].gate_promoted, true);
+  assert.equal(promoted[1].conviction, "B");
+});
+
+test("promoteTopBlocked returns empty when every block fails geometry gates", () => {
+  const blocked = [{
+    ticker: "NVDA",
+    play: play({ ticker: "NVDA" }),
+    result: {
+      verdict: "BLOCK" as const,
+      blocks: [{ code: "target_unreachable" as const, reason: "too far", threshold: 2.5, value: 4.0 }],
+      checks: [],
+    },
+    scored: null,
+  }];
+  assert.deepEqual(promoteTopBlocked(blocked, 5), []);
+  assert.equal(isPromotableBlockedPlay(blocked[0]), false);
+});
+
+test("capGatePromotedConviction leaves organic plays untouched", () => {
+  assert.equal(capGatePromotedConviction(play({ conviction: "A" })).conviction, "A");
+  assert.equal(
+    capGatePromotedConviction(play({ conviction: "A", gate_promoted: true })).conviction,
+    "B"
+  );
 });
 
 test("promoteTopBlocked caps at count", () => {
@@ -506,7 +532,7 @@ test("promoteTopBlocked caps at count", () => {
     play: play({ ticker: `T${i}`, score: 50 + i }),
     result: {
       verdict: "BLOCK" as const,
-      blocks: [{ code: "band_detached" as const, reason: `r${i}`, threshold: 3.5, value: 4.0 }],
+      blocks: [{ code: "stale_quote_basis" as const, reason: `r${i}`, threshold: "2026-07-13", value: "2026-07-10" }],
       checks: [],
     },
     scored: null,

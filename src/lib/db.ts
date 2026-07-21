@@ -6127,13 +6127,13 @@ export async function pruneNighthawkPlayOutcomesForEdition(
   return res.rowCount ?? 0;
 }
 
-export async function fetchPendingNighthawkOutcomes(lookbackDays = 7): Promise<NighthawkPlayOutcomeRow[]> {
+export async function fetchPendingNighthawkOutcomes(lookbackDays = 14): Promise<NighthawkPlayOutcomeRow[]> {
   await ensureSchema();
   // Backstop: the $1::int cast below throws "invalid input syntax for type integer" for any
   // non-integer arg. Coerce to a safe positive integer so no caller (incl. LLM-driven tools)
   // can crash pg through this day-param.
   const safeLookbackDays =
-    Number.isFinite(lookbackDays) && lookbackDays > 0 ? Math.trunc(lookbackDays) : 7;
+    Number.isFinite(lookbackDays) && lookbackDays > 0 ? Math.trunc(lookbackDays) : 14;
   const res = await (await getPool()).query(
     `
     SELECT id, edition_for, ticker, direction, conviction,
