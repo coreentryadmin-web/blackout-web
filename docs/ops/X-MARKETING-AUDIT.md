@@ -44,15 +44,22 @@ We have **~1,910 followers** but recent posts average **~20 impressions** and **
 # Audit snapshot
 npm run x-marketing:audit
 
-# Preview deletions
-node scripts/x-cleanup-low-quality.mjs --dry
-node scripts/x-cleanup-low-quality.mjs
+# Timeline cleanup (generic ticker spam)
+npm run x-cleanup -- --dry
+npm run x-cleanup
 
-# Manual momentum (likes/follows — higher caps)
-npm run x-marketing:run engage
+# Profile bio + pricing URL
+npm run x-profile:optimize
 
-# Quality showcase (screenshots + collage)
-node scripts/x-showcase-post.mjs --ticker SPX --dry
+# Quality desk post (live PNG + question)
+npm run x-marketing:run desk-post
+
+# Visible momentum (likes + quote/reply on FinTwit + @mention replies)
+npm run x-marketing:run engage-all
+npm run x-marketing:run growth
+
+# Silent-only (background) when needed
+npm run x-marketing:run engage-silent
 ```
 
 ## KPI targets (30 days)

@@ -32,13 +32,23 @@ const LOW_QUALITY = [
   /Six tools\. One desk/i,
   /record sitting at \d+\/\d+/i,
   /tightest gamma structure in mega-cap/i,
+  // Generic ticker showcase spam (no desk card / hurts reach)
+  /\$\d+M call premium on \$/i,
+  /Whales REPEAT-printing/i,
+  /sitting in \+\$[\d.]+M positive gamma/i,
+  /gamma structure is loaded/i,
+  /dealers are the shock absorber/i,
+  /Semis are about to RIP/i,
+  /Tomorrow's playbook is live/i,
+  /Top plays ranked before the bell/i,
+  /net GEX\. gamma flip at/i,
 ];
 
 const { fetchUserTweets, deleteTweet, X_ACCOUNT_USER_ID } = await import(
   "../src/lib/x-api.ts"
 );
 
-const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 50);
+const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 100);
 const bad = tweets.filter((t) => {
   const text = t.text ?? "";
   return LOW_QUALITY.some((re) => re.test(text));
