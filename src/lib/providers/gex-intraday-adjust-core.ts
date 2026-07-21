@@ -103,8 +103,8 @@ export const GEX_INTRADAY_TOOLTIP =
   "front-expiry (0DTE) intraday net dealer positioning, signed buy-vs-sell from the trade tape " +
   "via the quote rule, to capture same-day gamma that settled OI misses. Front expiry only.";
 
-import { zeroGammaFlip, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
-// Re-exported from the canonical shared location.
+import { cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
+// Re-exported from the canonical shared location (independent of the import above).
 export { zeroGammaFlip } from "@/lib/providers/gex-cross-validation-core";
 
 /** Largest-positive (call) and largest-negative (put) net-gamma strikes from per-strike totals. */

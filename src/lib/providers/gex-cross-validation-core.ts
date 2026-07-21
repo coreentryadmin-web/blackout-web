@@ -157,7 +157,8 @@ export function cumulativeGammaFlip(strikeTotals: Record<string, number>, spot =
   for (const r of rows) {
     cum += r.gamma;
     if (prevCum <= 0 && cum > 0) {
-      const frac = prevCum === cum ? 0 : -prevCum / (cum - prevCum);
+      // In this branch cum > 0 >= prevCum, so cum - prevCum is always > 0 (no divide-by-zero).
+      const frac = -prevCum / (cum - prevCum);
       crossings.push(Number((prevStrike + frac * (r.strike - prevStrike)).toFixed(2)));
     }
     prevStrike = r.strike;
