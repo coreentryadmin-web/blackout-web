@@ -120,7 +120,9 @@ type OpeningRange = {
 
 type DeskProps = {
   live?: boolean;
-  /** When true (RTH or premarket), matrix polls at 8s; off-session uses 20s. */
+  /** Session state for cadence. The matrix polls at 5s in BOTH RTH/premarket and off-session
+   *  (SPX_MATRIX_POLL_RTH_MS === SPX_MATRIX_POLL_OFF_MS === 5000; a >0.5% spot move force-refreshes,
+   *  throttled ≤1/8s). */
   sessionActive?: boolean;
   liveSpot?: number | null;
   deskGammaFlip?: number | null;

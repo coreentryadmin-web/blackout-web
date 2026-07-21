@@ -580,6 +580,8 @@ type PulseStructureCache = {
   fetchedAt: number;
   lod: number | null;
   hod: number | null;
+  /** RTH session opening print (first-bar open) — frozen for the day; feeds the opening gap. */
+  open: number | null;
   vwap: number | null;
   ema20: number | null;
   ema50: number | null;
@@ -594,6 +596,7 @@ let cachedPulseStructure: PulseStructureCache = {
   fetchedAt: 0,
   lod: null,
   hod: null,
+  open: null,
   vwap: null,
   ema20: null,
   ema50: null,
@@ -1320,6 +1323,8 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
         spx_price: price,
         prior_close: prior.pdc,
         premarket: isPremarketPlanningWindow(),
+        // RTH gap is frozen at the session open, not the live price (audit 2026-07-21).
+        rth_open: session.open,
       }),
       Promise.all([
         fetchDailyMarketSummary(today).catch(() => null),
@@ -1554,6 +1559,7 @@ async function refreshPulseStructureIfNeeded(today: string): Promise<PulseStruct
     fetchedAt: now,
     lod: session.lod,
     hod: session.hod,
+    open: session.open,
     vwap: session.vwap ?? null,
     ema20,
     ema50,
@@ -1691,6 +1697,8 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     spx_price: price,
     prior_close: prior.pdc,
     premarket: premarketPlan && !rthOpen,
+    // RTH gap is frozen at the session open, not the live price (audit 2026-07-21).
+    rth_open: structure.open,
   });
 
   const result: SpxDeskPulse = {
