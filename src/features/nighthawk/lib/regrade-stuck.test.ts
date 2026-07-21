@@ -12,15 +12,16 @@ import {
 import type { NighthawkPlayOutcomeRow } from "@/lib/db";
 
 // "Today" for every test: the date the 12 stuck rows were found (2026-07-14). The
-// resolver-lookback cutoff is therefore 2026-07-07: the 07-06 edition is outside the
-// cron's window (the H-2 permanent-orphan case, stuck), while 07-07..07-10 editions
-// are still >= the cutoff — in-window, the cron's job.
+// resolver-lookback cutoff is therefore 2026-06-30 (14 days): editions on/before
+// 2026-06-29 are outside the cron's window (permanent-orphan case, stuck), while
+// 2026-06-30..07-10 editions are still >= the cutoff — in-window, the cron's job.
 const TODAY = "2026-07-14";
+const STUCK_EDITION = "2026-06-29";
 
 function row(over: Partial<NighthawkPlayOutcomeRow>): NighthawkPlayOutcomeRow {
   return {
     id: 1,
-    edition_for: "2026-07-06",
+    edition_for: STUCK_EDITION,
     ticker: "AAPL",
     direction: "LONG",
     conviction: "A",
@@ -76,11 +77,11 @@ test("isoDaysBefore: pure calendar arithmetic across month boundaries", () => {
 });
 
 test("isStuckNighthawkOutcome: pending beyond the resolver lookback is stuck; in-window and graded rows are not", () => {
-  // 07-06 < cutoff 07-07 → the cron will never see it again → stuck.
-  assert.equal(isStuckNighthawkOutcome(row({ edition_for: "2026-07-06" }), TODAY), true);
-  // Exactly at the cutoff (edition_for == today − 7d): fetchPendingNighthawkOutcomes'
+  // 06-29 < cutoff 06-30 → the cron will never see it again → stuck.
+  assert.equal(isStuckNighthawkOutcome(row({ edition_for: STUCK_EDITION }), TODAY), true);
+  // Exactly at the cutoff (edition_for == today − 14d): fetchPendingNighthawkOutcomes'
   // `>=` still returns it to the cron, so the repair must leave it alone.
-  assert.equal(isStuckNighthawkOutcome(row({ edition_for: "2026-07-07" }), TODAY), false);
+  assert.equal(isStuckNighthawkOutcome(row({ edition_for: "2026-06-30" }), TODAY), false);
   // Fresh pending row: the cron's job.
   assert.equal(isStuckNighthawkOutcome(row({ edition_for: "2026-07-13" }), TODAY), false);
   // Old but already graded: no repair needed.
@@ -93,7 +94,7 @@ test("isStuckNighthawkOutcome: pending beyond the resolver lookback is stuck; in
 test("stuck LONG whose session never traded back into the band regrades to 'unfilled' (the H-1 class)", async () => {
   // AAPL@07-06 shape: published band 198–202, stock gapped away — session low 205
   // stayed above the band top all day. Pre-fix this write threw on the CHECK.
-  const rows = [row({ id: 11, ticker: "AAPL", edition_for: "2026-07-06" })];
+  const rows = [row({ id: 11, ticker: "AAPL", edition_for: STUCK_EDITION })];
   const { deps, persisted } = harness(rows, {
     AAPL: { o: 206, h: 212, l: 205, c: 210 },
   });
@@ -110,9 +111,9 @@ test("stuck LONG whose session never traded back into the band regrades to 'unfi
 test("stuck rows regrade to target/stop under the same current rules the cron applies", async () => {
   const rows = [
     // Filled (low 199 within band) and ran through target 215.
-    row({ id: 21, ticker: "AMZN", edition_for: "2026-07-01" }),
+    row({ id: 21, ticker: "AMZN", edition_for: "2026-06-20" }),
     // Filled and broke the stop 190 intraday.
-    row({ id: 22, ticker: "WFC", edition_for: "2026-07-01" }),
+    row({ id: 22, ticker: "WFC", edition_for: "2026-06-20" }),
   ];
   const { deps, persisted } = harness(rows, {
     AMZN: { o: 201, h: 216, l: 199, c: 214 },
@@ -130,8 +131,8 @@ test("stuck rows regrade to target/stop under the same current rules the cron ap
 
 test("dry-run resolves every stuck row but persists NOTHING", async () => {
   const rows = [
-    row({ id: 31, ticker: "AAPL", edition_for: "2026-07-06" }),
-    row({ id: 32, ticker: "CSX", edition_for: "2026-07-06", entry_range_low: 30, entry_range_high: 31, target: 34, stop: 28 }),
+    row({ id: 31, ticker: "AAPL", edition_for: STUCK_EDITION }),
+    row({ id: 32, ticker: "CSX", edition_for: STUCK_EDITION, entry_range_low: 30, entry_range_high: 31, target: 34, stop: 28 }),
   ];
   const { deps, persisted } = harness(rows, {
     AAPL: { o: 206, h: 212, l: 205, c: 210 },
@@ -154,7 +155,7 @@ test("dry-run resolves every stuck row but persists NOTHING", async () => {
 });
 
 test("idempotent: a second run after a real run matches nothing and writes nothing", async () => {
-  const rows = [row({ id: 41, ticker: "AAPL", edition_for: "2026-07-06" })];
+  const rows = [row({ id: 41, ticker: "AAPL", edition_for: STUCK_EDITION })];
   const { deps, persisted } = harness(rows, { AAPL: { o: 206, h: 212, l: 205, c: 210 } });
 
   const first = await regradeStuckNighthawkOutcomes({}, deps);
@@ -168,9 +169,9 @@ test("idempotent: a second run after a real run matches nothing and writes nothi
 
 test("bounded: processes at most `limit` rows per run and reports the full matched count", async () => {
   const rows = [
-    row({ id: 51, ticker: "AAPL", edition_for: "2026-07-06" }),
-    row({ id: 52, ticker: "CSX", edition_for: "2026-07-06" }),
-    row({ id: 53, ticker: "MAGS", edition_for: "2026-07-06" }),
+    row({ id: 51, ticker: "AAPL", edition_for: STUCK_EDITION }),
+    row({ id: 52, ticker: "CSX", edition_for: STUCK_EDITION }),
+    row({ id: 53, ticker: "MAGS", edition_for: STUCK_EDITION }),
   ];
   const bar: DailyBar = { o: 206, h: 212, l: 205, c: 210 };
   const { deps, persisted } = harness(rows, { AAPL: bar, CSX: bar, MAGS: bar });
@@ -184,7 +185,7 @@ test("bounded: processes at most `limit` rows per run and reports the full match
 });
 
 test("a stuck row with no session bar is skipped, stays pending, and re-matches next run (honest)", async () => {
-  const rows = [row({ id: 61, ticker: "PG", edition_for: "2026-07-06" })];
+  const rows = [row({ id: 61, ticker: "PG", edition_for: STUCK_EDITION })];
   const { deps, persisted } = harness(rows, { PG: null });
 
   const result = await regradeStuckNighthawkOutcomes({}, deps);
@@ -201,8 +202,8 @@ test("a stuck row with no session bar is skipped, stays pending, and re-matches 
 
 test("in-window pending rows are left to the cron even when mixed with stuck ones", async () => {
   const rows = [
-    row({ id: 71, ticker: "AAPL", edition_for: "2026-07-06" }), // stuck
-    row({ id: 72, ticker: "META", edition_for: "2026-07-10" }), // cutoff is 07-07 → in-window
+    row({ id: 71, ticker: "AAPL", edition_for: STUCK_EDITION }), // stuck
+    row({ id: 72, ticker: "META", edition_for: "2026-07-10" }), // cutoff is 06-30 → in-window
   ];
   const { deps, persisted } = harness(rows, {
     AAPL: { o: 206, h: 212, l: 205, c: 210 },
@@ -218,8 +219,8 @@ test("in-window pending rows are left to the cron even when mixed with stuck one
 
 test("a per-row failure lands in errors and does not abort the rest of the batch", async () => {
   const rows = [
-    row({ id: 81, ticker: "BOOM", edition_for: "2026-07-06" }),
-    row({ id: 82, ticker: "AAPL", edition_for: "2026-07-06" }),
+    row({ id: 81, ticker: "BOOM", edition_for: STUCK_EDITION }),
+    row({ id: 82, ticker: "AAPL", edition_for: STUCK_EDITION }),
   ];
   const { deps, persisted } = harness(rows, { AAPL: { o: 206, h: 212, l: 205, c: 210 } });
   const failingDeps: RegradeStuckDeps = {
@@ -233,14 +234,14 @@ test("a per-row failure lands in errors and does not abort the rest of the batch
   const result = await regradeStuckNighthawkOutcomes({}, failingDeps);
 
   assert.equal(result.errors.length, 1);
-  assert.match(result.errors[0], /BOOM@2026-07-06/);
+  assert.match(result.errors[0], new RegExp(`BOOM@${STUCK_EDITION}`));
   assert.equal(result.regraded, 1, "the healthy row still graded");
   assert.deepEqual(persisted.map((p) => p.id), [82]);
 });
 
 test("the selector's lookback constant mirrors the resolver default", () => {
-  // resolvePendingNighthawkOutcomes (play-outcomes.ts) defaults lookbackDays to 7;
+  // resolvePendingNighthawkOutcomes (play-outcomes.ts) defaults lookbackDays to 14;
   // "stuck" is defined relative to that. If the resolver default moves, this constant
   // (and this test) must move with it — see the constant's doc.
-  assert.equal(RESOLVER_LOOKBACK_DAYS, 7);
+  assert.equal(RESOLVER_LOOKBACK_DAYS, 14);
 });

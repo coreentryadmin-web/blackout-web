@@ -625,7 +625,7 @@ export async function resolvePendingNighthawkOutcomes(opts?: {
     return { resolved: 0, skipped: 0, errors: ["Polygon not configured"] };
   }
 
-  const lookbackDays = opts?.lookbackDays ?? 7;
+  const lookbackDays = opts?.lookbackDays ?? 14;
   const pending = await fetchPendingNighthawkOutcomes(lookbackDays);
   let resolved = 0;
   let skipped = 0;

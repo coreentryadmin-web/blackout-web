@@ -62,6 +62,15 @@ export const GATE_BAND_MAX_DISTANCE_PCT = 3.5;
  */
 export const GATE_TARGET_MAX_ATR_MULTIPLE = 2.5;
 
+/** Gate failures that must NEVER be rescued via gate_promoted — the geometry is wrong,
+ *  not merely stale-quote or a soft miss. Promoting these is how Jul 21 NVDA/BE/NBIS
+ *  shipped conviction A with target_unreachable warnings. */
+export const NON_PROMOTABLE_GATE_CODES: ReadonlySet<NighthawkGateCode> = new Set([
+  "band_detached",
+  "target_unreachable",
+  "geometry_unknown",
+]);
+
 export type NighthawkGateCode =
   | "band_detached" // G-N1
   | "target_unreachable" // G-N2
@@ -292,6 +301,24 @@ export function publishGateRecapReason(blocked: NighthawkGateBlockedPlay[]): str
 // is more trustworthy than one that fails all three). Within the same failure
 // count, the play's original confluence score breaks the tie.
 
+/** True when a blocked play may be considered for gate_promoted rescue. Geometry
+ *  failures (band/target/unknown) stay blocked — only softer failures (e.g.
+ *  stale_quote_basis alone) may promote with warnings. */
+export function isPromotableBlockedPlay(b: NighthawkGateBlockedPlay): boolean {
+  return b.result.blocks.every((block) => !NON_PROMOTABLE_GATE_CODES.has(block.code));
+}
+
+/** gate_promoted plays are best-available rescues — cap displayed conviction at B
+ *  so a mechanically blocked A does not read as top-tier overnight merit. */
+export function capGatePromotedConviction(play: PlaybookPlay): PlaybookPlay {
+  if (!play.gate_promoted) return play;
+  const conv = String(play.conviction ?? "").trim().toUpperCase();
+  if (conv === "A+" || conv === "A") {
+    return { ...play, conviction: "B" };
+  }
+  return play;
+}
+
 /** Compute a promotion priority for a blocked play: lower = better candidate for
  *  promotion. A single-gate failure with a high score is the best rescue pick. */
 function promotionBadness(b: NighthawkGateBlockedPlay): number {
@@ -315,12 +342,17 @@ export function promoteTopBlocked(
 ): PlaybookPlay[] {
   if (!blocked.length || count <= 0) return [];
 
-  const sorted = [...blocked].sort((a, b) => promotionBadness(a) - promotionBadness(b));
+  const promotable = blocked.filter(isPromotableBlockedPlay);
+  if (!promotable.length) return [];
 
-  return sorted.slice(0, count).map((b, i) => ({
-    ...b.play,
-    rank: i + 1,
-    gate_promoted: true,
-    gate_warnings: b.result.blocks.map((block) => block.reason),
-  }));
+  const sorted = [...promotable].sort((a, b) => promotionBadness(a) - promotionBadness(b));
+
+  return sorted.slice(0, count).map((b, i) =>
+    capGatePromotedConviction({
+      ...b.play,
+      rank: i + 1,
+      gate_promoted: true,
+      gate_warnings: b.result.blocks.map((block) => block.reason),
+    })
+  );
 }

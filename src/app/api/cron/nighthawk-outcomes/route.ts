@@ -5,6 +5,7 @@ import {
   nighthawkOutcomesRunHealth,
   resolvePendingNighthawkOutcomes,
 } from "@/features/nighthawk/lib/play-outcomes";
+import { regradeStuckNighthawkOutcomes } from "@/features/nighthawk/lib/regrade-stuck";
 import {
   runNighthawkDebriefPass,
   runNighthawkRejectionCounterfactuals,
@@ -52,9 +53,9 @@ export async function GET(req: NextRequest) {
   try {
     // Guard against a non-numeric ?days override: Number("abc") → NaN, which would bind to
     // the $1::int SQL param and make Postgres throw "invalid input syntax for type integer".
-    // Fall back to the 7-day default for anything non-finite or non-positive.
-    const rawDays = Number(req.nextUrl.searchParams.get("days") ?? "7");
-    const lookbackDays = Number.isFinite(rawDays) && rawDays > 0 ? rawDays : 7;
+    // Fall back to the 14-day default for anything non-finite or non-positive.
+    const rawDays = Number(req.nextUrl.searchParams.get("days") ?? "14");
+    const lookbackDays = Number.isFinite(rawDays) && rawDays > 0 ? rawDays : 14;
     const result = await resolvePendingNighthawkOutcomes({ lookbackDays });
     // Cron honesty (PR-N1): per-row grade-write failures used to be tucked into
     // meta.errors under an unconditional ok:true — the H-1 constraint clobber failed
@@ -89,7 +90,24 @@ export async function GET(req: NextRequest) {
       errors: [err instanceof Error ? err.message : String(err)],
     }));
 
-    const payload = { ok: health.ok, ...result, debrief, rejection_counterfactuals: rejectionCf };
+    // PR-N1 follow-up: rows that aged past the resolver window stay `pending` forever
+    // unless explicitly regraded. Fail-soft — never fail the grading run.
+    const regradeStuck = await regradeStuckNighthawkOutcomes({ limit: 50 }).catch((err) => ({
+      dry_run: false,
+      matched: 0,
+      regraded: 0,
+      skipped_no_bar: 0,
+      errors: [err instanceof Error ? err.message : String(err)],
+      rows: [],
+    }));
+
+    const payload = {
+      ok: health.ok,
+      ...result,
+      debrief,
+      rejection_counterfactuals: rejectionCf,
+      regrade_stuck: regradeStuck,
+    };
     await logCronRun("nighthawk-outcomes", started, {
       ok: health.ok,
       error: health.error,
@@ -98,6 +116,7 @@ export async function GET(req: NextRequest) {
       errors: result.errors,
       debrief,
       rejection_counterfactuals: rejectionCf,
+      regrade_stuck: regradeStuck,
     });
     return NextResponse.json(payload, health.ok ? undefined : { status: 500 });
   } catch (error) {

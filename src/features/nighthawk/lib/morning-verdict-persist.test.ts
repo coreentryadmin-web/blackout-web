@@ -4,6 +4,7 @@ import {
   buildMorningVerdictRecord,
   persistNighthawkMorningVerdicts,
   isDegradedSevere,
+  isDegradedGapAway,
   MORNING_VERDICT_VERSION,
   DEGRADED_SEVERE_REASON_COUNT,
   type MorningVerdictMarketContext,
@@ -173,10 +174,38 @@ test("severe DEGRADED (≥2 reasons) engages the pull latch (PR-N6)", async () =
   assert.equal((h.rows.AMD.morning_verdict as Record<string, unknown>).status, "DEGRADED");
 });
 
-test("isDegradedSevere: single reason → false, two reasons → true, non-DEGRADED → false", () => {
+test("gap-away DEGRADED (single reason) engages the pull latch", async () => {
+  const h = harness({ NVDA: freshRow() });
+  const gapReason =
+    "NVDA pre-market 142.50 gapped above the entry range — do not chase the published entry";
+  const result = await persistNighthawkMorningVerdicts(
+    {
+      editionFor: "2026-07-21",
+      checkedAt: "2026-07-21T13:15:30.000Z",
+      playStatuses: [status({ ticker: "NVDA", status: "DEGRADED", reason: gapReason })],
+      plays: [play({ ticker: "NVDA" })],
+      market: market(),
+    },
+    { record: h.record }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.persisted, 1);
+  assert.equal(result.pulled, 1);
+  assert.match(h.rows.NVDA.pulled_reason ?? "", /gap-away/);
+  assert.equal(isDegradedGapAway(status({ status: "DEGRADED", reason: gapReason })), true);
+});
+
+test("isDegradedSevere: single reason → false, two reasons → true, gap-away → true", () => {
   assert.equal(isDegradedSevere(status({ status: "DEGRADED", reason: "One reason only" })), false);
   assert.equal(isDegradedSevere(status({ status: "DEGRADED", reason: "Reason A; Reason B" })), true);
-  assert.equal(isDegradedSevere(status({ status: "DEGRADED", reason: "A; B; C" })), true);
+  assert.equal(
+    isDegradedSevere(status({
+      status: "DEGRADED",
+      reason: "NVDA pre-market 142.50 gapped above the entry range — do not chase the published entry",
+    })),
+    true
+  );
   assert.equal(isDegradedSevere(status({ status: "CONFIRMED", reason: "A; B" })), false);
   assert.equal(isDegradedSevere(status({ status: "INVALIDATED", reason: "A; B" })), false);
   assert.equal(DEGRADED_SEVERE_REASON_COUNT, 2);
