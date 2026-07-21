@@ -15,6 +15,7 @@ import {
   TabCommandHero,
 } from "@/components/admin/AdminUi";
 import { AdminLaunchStatusPanel } from "@/components/admin/AdminLaunchStatusPanel";
+import { AdminXMarketingPanel } from "@/components/admin/AdminXMarketingPanel";
 import { useAdminHealth, useAdminIncidents } from "@/hooks/use-admin-data";
 import type { AdminIncidentRow } from "@/lib/admin-incidents";
 import type { AuditLogEntry } from "@/app/api/admin/audit-log/route";
@@ -887,6 +888,9 @@ export function AdminOperationsDashboard() {
 
       {/* ── Data Pipeline Health ── */}
       <DataPipelineHealthTile health={h} />
+
+      {/* ── X / @BlackOutTrade marketing ── */}
+      <AdminXMarketingPanel />
 
       {/* ── Durable error sink (error_events) ── */}
       <GlassPanel
