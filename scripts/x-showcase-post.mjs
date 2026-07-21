@@ -7,7 +7,8 @@
  *
  * Usage:
  *   node scripts/x-showcase-post.mjs --ticker NVDA
- *   node scripts/x-showcase-post.mjs --ticker NVDA --post
+ *   node scripts/x-showcase-post.mjs --ticker SPX --post
+ *   node scripts/x-showcase-post.mjs --mode platform --steps slayer,helix,thermal --post
  */
 import { execSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
@@ -24,7 +25,9 @@ const opt = (k, def) => {
 };
 
 const BASE = "https://blackouttrades.com";
-const TICKER = opt("ticker", "NVDA").toUpperCase();
+const TICKER = opt("ticker", "SPX").toUpperCase();
+const MODE = opt("mode", "ticker");
+const STEPS_OPT = opt("steps", "");
 const POST = flag("post");
 const VERIFY_WAIT_MS = Number(opt("verify-wait-ms", "90000")) || 90_000;
 const VERIFY_POLL_MS = Number(opt("verify-poll-ms", "15000")) || 15_000;
@@ -355,6 +358,27 @@ async function waitForHelixTapeScoped(page, ticker) {
   );
 }
 
+function resolvePlan(ticker) {
+  if (MODE === "platform") {
+    const steps = STEPS_OPT
+      ? STEPS_OPT.split(",").map((s) => s.trim()).filter(Boolean)
+      : ["slayer", "helix", "thermal"];
+    return {
+      title: "BlackOut — live options desk",
+      footer: "SPX Slayer · HELIX · Thermal · Premium on Whop",
+      steps,
+    };
+  }
+  if (STEPS_OPT) {
+    const base = showcasePlan(ticker);
+    return {
+      ...base,
+      steps: STEPS_OPT.split(",").map((s) => s.trim()).filter(Boolean),
+    };
+  }
+  return showcasePlan(ticker);
+}
+
 /** Which surfaces belong in a ticker-scoped post (no unrelated product dumps). */
 function showcasePlan(ticker) {
   const isSpx = ticker === "SPX" || ticker === "SPXW";
@@ -623,6 +647,14 @@ async function buildCollage(items, ticker, plan) {
 }
 
 function buildTweet(ticker, plan) {
+  if (MODE === "platform") {
+    const text =
+      "Six tools. One desk. One Whop membership.\n\n" +
+      "SPX Slayer matrix · HELIX whale tape · Thermal GEX — live in one session, not six tabs.\n\n" +
+      "Built for serious index / 0DTE traders. What's missing from your stack?\n\n" +
+      "@BlackOutTrade · link in bio";
+    return text.slice(0, 280);
+  }
   const site =
     "blackouttrades.com/pricing?utm_source=x&utm_medium=social&utm_campaign=showcase";
   const isSpx = ticker === "SPX" || ticker === "SPXW";
@@ -639,7 +671,7 @@ function buildTweet(ticker, plan) {
 }
 
 async function main() {
-  console.log(`[x-showcase] ticker=${TICKER} mode=${POST ? "post" : "dry"}`);
+  console.log(`[x-showcase] ticker=${TICKER} mode=${MODE} post=${POST ? "live" : "dry"}`);
   if (POST) {
     console.log(
       "  LIVE POST — review collage in artifacts before running; success requires timeline verification.",
@@ -684,7 +716,7 @@ async function main() {
     await signInWithTicket(page, auth.ticket);
     console.log("  Signed in via Clerk ticket");
 
-    const plan = showcasePlan(TICKER);
+    const plan = resolvePlan(TICKER);
     manifest.plan = plan;
     console.log(`  Plan: ${plan.steps.join(" → ")}`);
 
