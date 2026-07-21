@@ -128,3 +128,37 @@ export async function bumpEngageRotation(): Promise<number> {
   await writeMeta(ENGAGE_ROTATION_KEY, String(next));
   return next;
 }
+
+const FOLLOWING_CACHE_KEY = "x_marketing_following_ids_cache";
+const FOLLOWING_CACHE_MS = 60 * 60 * 1000;
+
+/** Cached set of user IDs @BlackOutTrade already follows (refreshed hourly). */
+export async function getCachedFollowingUserIds(
+  refresh: () => Promise<Set<string>>,
+): Promise<Set<string>> {
+  const raw = await readMeta(FOLLOWING_CACHE_KEY);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as { at?: number; ids?: string[] };
+      if (
+        parsed.at &&
+        Date.now() - parsed.at < FOLLOWING_CACHE_MS &&
+        Array.isArray(parsed.ids)
+      ) {
+        return new Set(parsed.ids);
+      }
+    } catch {
+      /* refresh below */
+    }
+  }
+  const ids = await refresh();
+  await writeMeta(
+    FOLLOWING_CACHE_KEY,
+    JSON.stringify({ at: Date.now(), ids: [...ids] }),
+  );
+  return ids;
+}
+
+export async function invalidateFollowingCache(): Promise<void> {
+  await writeMeta(FOLLOWING_CACHE_KEY, "");
+}

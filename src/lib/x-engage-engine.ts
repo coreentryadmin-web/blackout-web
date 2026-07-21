@@ -2,6 +2,7 @@ import {
   lookupUserByUsername,
   fetchUserTweets,
   searchRecentTweets,
+  fetchFollowingUserIds,
   likeTweet,
   retweet,
   followUser,
@@ -14,9 +15,11 @@ import {
 import {
   ENGAGEMENT_TARGETS,
   SEARCH_QUERIES,
+  DISCOVERY_SEARCH_QUERIES,
   MAX_TWEET_AGE_HOURS,
   MIN_IMPRESSIONS_FOR_RT,
   MIN_IMPRESSIONS_FOR_RT_INTENSIVE,
+  MIN_IMPRESSIONS_FOR_DISCOVERY_RT,
   isEngagementTarget,
 } from "@/lib/x-engage-config";
 import {
@@ -28,6 +31,8 @@ import {
   bumpEngageRotation,
   getRepliedTweetIds,
   markTweetReplied,
+  getCachedFollowingUserIds,
+  invalidateFollowingCache,
 } from "@/lib/x-marketing-meta";
 import {
   xApiEnterpriseAccess,
@@ -52,6 +57,8 @@ export interface EngageStats {
   quotes: number;
   /** Quote/cold-reply blocked by self-serve API policy (403). */
   skipped403: number;
+  /** New profiles followed via search discovery (not curated giants). */
+  discoveryFollows: number;
   scanned: string[];
   errors: string[];
   rateLimited: boolean;
@@ -142,6 +149,7 @@ export async function runEngagementSweep(opts: {
     replies: 0,
     quotes: 0,
     skipped403: 0,
+    discoveryFollows: 0,
     scanned: [],
     errors: [],
     rateLimited: false,
@@ -187,11 +195,16 @@ export async function runEngagementSweep(opts: {
     return result === "ok";
   }
 
-  async function tryFollow(userId: string, label: string): Promise<boolean> {
+  async function tryFollow(
+    userId: string,
+    label: string,
+    discovery = false,
+  ): Promise<boolean> {
     if (followCap <= 0 || stats.rateLimited) return false;
     if (dryRun) {
       stats.follows += 1;
       followCap -= 1;
+      if (discovery) stats.discoveryFollows += 1;
       return true;
     }
     const result = await followUser(userId);
@@ -199,6 +212,8 @@ export async function runEngagementSweep(opts: {
       stats.follows += 1;
       followCap -= 1;
       await recordBudgetUse("follows");
+      if (discovery) stats.discoveryFollows += 1;
+      if (!dryRun) await invalidateFollowingCache();
     } else if (result === "rate_limited") {
       await handleRateLimited(stats);
       return false;
@@ -318,6 +333,69 @@ export async function runEngagementSweep(opts: {
   const likesPerTarget = intensive ? 2 : 1;
   const targets = rotatedTargets(rotation, targetBatch);
 
+  const followingIds = dryRun
+    ? new Set<string>()
+    : await getCachedFollowingUserIds(fetchFollowingUserIds);
+
+  function isNewDiscoveryAuthor(hit: XTweetSearchHit): boolean {
+    const username = hit.author_username?.replace(/^@/, "").toLowerCase();
+    if (!username || !hit.author_id) return false;
+    if (username === "blackouttrade") return false;
+    if (isEngagementTarget(username)) return false;
+    if (X_BLOCK_RT_USERNAMES.has(username)) return false;
+    if (followingIds.has(hit.author_id)) return false;
+    return true;
+  }
+
+  async function runDiscoveryPass(): Promise<void> {
+    if (stats.rateLimited) return;
+    if (followCap <= 0 && likeCap <= 0 && rtCap <= 0) return;
+
+    const queryCount = cronMode ? 1 : 2;
+    const seenAuthors = new Set<string>();
+
+    for (let q = 0; q < queryCount; q += 1) {
+      if (stats.rateLimited) break;
+      const query =
+        DISCOVERY_SEARCH_QUERIES[
+          (rotation + q) % DISCOVERY_SEARCH_QUERIES.length
+        ]!;
+      const hits = await searchRecentTweets(query, cronMode ? 15 : 25);
+      const candidates = hits
+        .filter((h) => {
+          if (!isNewDiscoveryAuthor(h)) return false;
+          if (seenAuthors.has(h.author_id!)) return false;
+          if (tweetAgeHours(h.created_at) > MAX_TWEET_AGE_HOURS) return false;
+          return isReplyableTweet(h.text);
+        })
+        .sort((a, b) => scoreSearchHit(b) - scoreSearchHit(a));
+
+      for (const t of candidates) {
+        if (stats.rateLimited) break;
+        if (followCap <= 0 && likeCap <= 0 && rtCap <= 0) break;
+        const authorId = t.author_id!;
+        seenAuthors.add(authorId);
+        stats.scanned.push(`discover:@${t.author_username}`);
+
+        if (likeCap > 0) await tryLike(t.id);
+
+        if (followCap > 0) {
+          const followed = await tryFollow(authorId, t.author_username!, true);
+          if (followed) followingIds.add(authorId);
+        }
+
+        if (rtCap > 0) {
+          const imps = t.public_metrics?.impression_count ?? 0;
+          await tryRetweet(t.id, imps, MIN_IMPRESSIONS_FOR_DISCOVERY_RT);
+        }
+      }
+    }
+  }
+
+  // 1) Discovery first — new FinTwit voices from search (follows only land here).
+  await runDiscoveryPass();
+
+  // 2) Curated giants — likes + selective RT only (skip follows; we're already following most).
   for (const handle of targets) {
     if (stats.rateLimited) break;
     if (X_BLOCK_RT_USERNAMES.has(handle)) continue;
@@ -340,10 +418,6 @@ export async function runEngagementSweep(opts: {
       }
     }
 
-    if (followCap > 0) {
-      await tryFollow(user.id, user.username);
-    }
-
     if (rtCap > 0) {
       for (const t of tweets) {
         const imps = t.public_metrics?.impression_count ?? 0;
@@ -357,6 +431,7 @@ export async function runEngagementSweep(opts: {
     }
   }
 
+  // 3) Extra search likes on trending 0DTE posts (no follows — giants/search overlap).
   if (!stats.rateLimited && likeCap > 0) {
     const query = SEARCH_QUERIES[rotation % SEARCH_QUERIES.length]!;
     const hits = await searchRecentTweets(query, cronMode ? 4 : 8);
@@ -369,10 +444,14 @@ export async function runEngagementSweep(opts: {
       })
       .sort((a, b) => scoreSearchHit(b) - scoreSearchHit(a));
 
-    for (const t of candidates.slice(0, likeCap + (cronMode ? 1 : 2))) {
+    for (const t of candidates.slice(0, likeCap + (cronMode ? 1 : 2) + followCap)) {
       if (stats.rateLimited) break;
       stats.scanned.push(`search:@${t.author_username}`);
       if (!(await tryLike(t.id))) break;
+      if (followCap > 0 && t.author_id && isNewDiscoveryAuthor(t)) {
+        const followed = await tryFollow(t.author_id, t.author_username!, true);
+        if (followed) followingIds.add(t.author_id);
+      }
       const imps = t.public_metrics?.impression_count ?? 0;
       if (rtCap > 0) await tryRetweet(t.id, imps);
     }
