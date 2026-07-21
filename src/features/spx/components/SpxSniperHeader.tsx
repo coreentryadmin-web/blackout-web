@@ -58,7 +58,7 @@ const METRIC_TIPS = {
   vwapVW: "True volume-weighted via SPY minute volume.",
   gex: "Net dealer gamma exposure — positive dampens moves, negative amplifies them.",
   regime: "Trend regime read from price vs the 20/50-day EMAs.",
-  flip: "Strike where net dealer gamma flips sign — above it dealers dampen moves, below it they amplify.",
+  flip: "Strike where net dealer gamma flips sign — above it dealers dampen moves, below it they amplify. This desk value is the NEAR-TERM aggregate (multiple expiries); the chart's flip line is 0DTE-scoped, so the two can read differently.",
   maxPain: "Strike where the most option value expires worthless — a common pin magnet into the close.",
   ivRank: "Where implied volatility sits inside its 1-year range (0–100).",
   ema: "Exponential moving averages (20/50/200-day) — trend guide rails; recent price weighs more.",

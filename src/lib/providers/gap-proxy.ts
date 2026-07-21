@@ -61,12 +61,20 @@ export type GapSnapshot = {
 };
 
 /**
- * Pre-market: prefer SPY overnight gap. RTH: SPX vs prior close.
+ * Pre-market: prefer SPY overnight gap. RTH: the OPENING gap = the RTH opening print vs prior close,
+ * FROZEN for the session.
+ *
+ * Fix (audit 2026-07-21): the RTH branch used `gapFromPrice(spx_price, prior_close)` — the LIVE price
+ * — so `gap_pct` drifted with every tick and was identical to `spx_change_pct` (confirmed live: it
+ * changed 9× in 8 min in lockstep). A gap is the opening dislocation, fixed once the session opens.
+ * Prefer the true RTH open (`rth_open` = session first-bar open, which never moves); only fall back to
+ * spot before the first bar prints, when there is genuinely no opening gap to report yet.
  */
 export async function resolveDeskGap(input: {
   spx_price: number;
   prior_close: number | null;
   premarket: boolean;
+  rth_open?: number | null;
 }): Promise<GapSnapshot> {
   if (input.premarket) {
     const spyGap = await fetchSpyGapPct();
@@ -75,7 +83,8 @@ export async function resolveDeskGap(input: {
     }
   }
 
-  const spxGap = gapFromPrice(input.spx_price, input.prior_close);
+  const basis = input.rth_open != null && input.rth_open > 0 ? input.rth_open : input.spx_price;
+  const spxGap = gapFromPrice(basis, input.prior_close);
   return {
     gap_pct: spxGap,
     gap_source: spxGap != null ? "SPX" : null,

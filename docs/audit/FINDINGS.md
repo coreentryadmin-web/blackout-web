@@ -330,3 +330,38 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - P3 flip level jitter (7578–7607, ±18pt on a 4pt-quiet tape — sensitive near the concentrated 7600 wall);
   consider display smoothing. TICK/TRIN/ADD estimated (`add` clamp) + not rendered. Matrix poll comment
   stale (says 8s/20s; actual 5s).
+
+## 2026-07-21 — SPX Slayer audit fixes batch 2
+
+### P2 — gap_pct was the live change, not a gap, during RTH (FIXED, tested)
+- **Root cause:** `gap-proxy.ts:resolveDeskGap` RTH branch used `gapFromPrice(spx_price, prior_close)`
+  — the LIVE price — so `gap_pct` drifted every tick and was identical to `spx_change_pct` (audit
+  evidence: changed 9× in 8 min in lockstep). A gap is the OPENING dislocation, frozen at the open.
+- **Fix:** `resolveDeskGap` now takes `rth_open` and, in RTH, computes the gap from the session open
+  (frozen `sessionStatsFromMinuteBars(...).open`, first-bar open), falling back to spot only before
+  the first bar prints. Threaded through both the desk (`session.open`) and pulse (added `open` to
+  `PulseStructureCache`, populated from the same session stats → `structure.open`). Consumers (lotto
+  engine) now get a true opening gap. Test: `gap-proxy.test.ts` 4/4 — proves the gap stays frozen as
+  spot moves and is NOT the live change; null-open falls back; null prior → null.
+
+### P2/UX — same concept, two numbers on one screen (FIXED — ribbon flip label)
+- Ribbon γ-flip (near-term aggregate, ~7598) vs the embedded chart's 0DTE flip line (~7504) read
+  differently; both are internally correct (different scopes). **Fix:** the ribbon flip tooltip now
+  states its scope explicitly ("NEAR-TERM aggregate … the chart's flip line is 0DTE-scoped, so the two
+  can read differently"). EMA/SMA are already period-labeled (20/50/200 vs 9/21/50), self-disambiguating.
+  The matrix king already carries the multi-expiry disclaimer. Text-only, no layout risk.
+
+### P3 — stale matrix-poll comment (FIXED)
+- `SpxGexMatrixHeatmap.tsx` DeskProps comment claimed "8s RTH / 20s off"; actual is 5s in both
+  (`SPX_MATRIX_POLL_RTH_MS === SPX_MATRIX_POLL_OFF_MS === 5000`). Comment corrected.
+
+### Deferred with rationale (NOT forgotten)
+- **P3 flip-jitter smoothing:** the flip jitters ±~15pt near a concentrated wall on a quiet tape. A
+  server-side deadband is unreliable here — the desk value is cached 5s and served by any of 8+
+  replicas, so there is no dependable "previous displayed flip" to hold against. Correct fix is
+  CLIENT-side (the continuous SSE/SWR view owns a stable prior value) — a larger, separate change.
+- **TICK/TRIN/ADD "wire real internals":** `market-internals.ts` computes these as PROXIES from
+  adv/dec ("TICK-like reading", "TRIN proxy"); there is no real TICK/TRIN/ADD feed wired. They are
+  already honestly flagged `internals_estimated` AND not rendered. So this is not a bug to fix —
+  surfacing them requires integrating a real intraday internals feed (data-integration project),
+  which should precede any UI. Left estimated-and-gated, as designed.
