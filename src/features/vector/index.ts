@@ -30,6 +30,8 @@ export {
 export {
   loadVectorUniverseSnapshot,
   refreshVectorUniverseSnapshot,
+  registerVectorUniverseView,
+  ensureTickerInUniverseSnapshot,
   type VectorUniverseRow,
   type VectorUniverseSnapshot,
 } from "./lib/vector-universe";
