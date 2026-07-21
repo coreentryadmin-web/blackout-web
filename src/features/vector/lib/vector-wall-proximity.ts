@@ -76,9 +76,14 @@ export function deriveWallProximity(input: {
       ? `Testing ${fmt(best.strike)} call wall (${best.dist.toFixed(2)}% below) — dealers sell into strength; resistance unless it breaks on volume.`
       : `Back under the ${fmt(best.strike)} call wall (${best.dist.toFixed(2)}% away) — lost magnet, watch for fade.`;
   } else {
+    // `above` (signed >= 0) means the put-wall STRIKE is at/above spot — i.e. spot has fallen to or
+    // through its largest-negative-gamma support. That is support BREAKING, not a reclaim: the prior
+    // "reclaimed support, dip-buy zone" wording printed a bullish dip-buy at the exact moment the put
+    // wall was lost (spot under it), inverting the directional bias. Mirror the flip/call cautions
+    // instead. `!above` (spot still above the wall) is the intact-support case and stays a support read.
     callout = !above
-      ? `Testing ${fmt(best.strike)} put wall (${best.dist.toFixed(2)}% above) — dealers buy weakness; support unless it breaks on volume.`
-      : `Just over the ${fmt(best.strike)} put wall (${best.dist.toFixed(2)}% away) — reclaimed support, dip-buy zone.`;
+      ? `Testing ${fmt(best.strike)} put wall (${best.dist.toFixed(2)}% below) — dealers buy weakness; support unless it breaks on volume.`
+      : `Lost the ${fmt(best.strike)} put wall (${best.dist.toFixed(2)}% overhead) — support gave way; dealers stop cushioning, watch for continuation lower.`;
   }
 
   return { strike: best.strike, side: best.side, distancePct: signed, nearness, callout };

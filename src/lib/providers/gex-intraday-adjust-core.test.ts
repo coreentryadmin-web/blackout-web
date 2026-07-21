@@ -130,7 +130,8 @@ test("classifyTradeSide: missing / inverted / zero-width NBBO → 0", () => {
 // ----------------------------- helper-level math -----------------------------
 
 test("zeroGammaFlip interpolates the neg→pos crossing nearest spot", () => {
-  // strike 95 = -10, 105 = +10 → crosses 0 at 100.
+  // strike 95 = -10, 105 = +10 → crosses 0 at 100. (Per-strike detector — the GENERIC zero-level
+  // used for VEX/DEX/CHARM; the gamma flip has its own cumulative detector, tested below.)
   const flip = zeroGammaFlip({ "95": -10, "105": 10 }, 100);
   assert.equal(flip, 100);
 });

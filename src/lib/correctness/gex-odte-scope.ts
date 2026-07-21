@@ -2,6 +2,7 @@ import type { GexHeatmap } from "@/lib/providers/polygon-options-gex";
 import {
   kingFromStrikeTotals,
   zeroGammaFlip as computeZeroGammaFlip,
+  cumulativeGammaFlip,
 } from "@/lib/providers/gex-cross-validation-core";
 
 /**
@@ -165,7 +166,7 @@ export function recomputeScopedGexLevels(
   }
 
   return {
-    flip: computeZeroGammaFlip(strikeTotals, spot),
+    flip: cumulativeGammaFlip(strikeTotals, spot),
     callWall,
     putWall,
     king: kingFromStrikeTotals(strikeTotals),
