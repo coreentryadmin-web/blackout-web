@@ -18,6 +18,7 @@ import { dbConfigured, fetchLatestNighthawkEdition } from "@/lib/db";
 import { roundFloats, reconcileStrikeTotal } from "@/lib/round-floats";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { joinGexStrikeExpiryTicker, hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
+import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -274,6 +275,8 @@ export async function GET(req: NextRequest) {
   // Activate UW WS GEX subscription for this ticker so walls update at WS cadence
   // (~2-5s) instead of waiting for the Polygon REST cache to expire.
   joinGexStrikeExpiryTicker(ticker);
+  // Dynamic Vector universe: viewing a name on Thermal adds it to the scanner + recorder set.
+  registerVectorUniverseView(ticker);
 
   try {
     const heatmap = await fetchGexHeatmap(ticker, { forceRefresh });

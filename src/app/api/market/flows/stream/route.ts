@@ -4,6 +4,7 @@ import { initFlowEventBridge, subscribeFlowEvents } from "@/lib/flow-events";
 import { enrichFlowWithGex, getGexLevelsForTicker } from "@/lib/flow-gex-enrichment";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
+import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest) {
   if (auth instanceof Response) return auth;
 
   const tickerFilter = req.nextUrl.searchParams.get("ticker")?.toUpperCase().trim() || undefined;
+  if (tickerFilter) registerVectorUniverseView(tickerFilter);
 
   // Boot the UW WebSocket (idempotent) so a replica serving ONLY /flows traffic still
   // initializes uwSocket — without this the live tape's SSE bridge never receives WS

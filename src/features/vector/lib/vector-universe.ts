@@ -5,8 +5,8 @@ import {
   mapFromStrikeTotalsRecord,
 } from "@/lib/providers/gex-wall-levels";
 import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
-import { listDynamicUniverseTickers } from "./vector-dynamic-universe";
-import { normalizeVectorTicker } from "./vector-ticker";
+import { listDynamicUniverseTickers, touchDynamicUniverse } from "./vector-dynamic-universe";
+import { isVectorTickerAllowed, normalizeVectorTicker } from "./vector-ticker";
 import { roundFloats } from "@/lib/round-floats";
 import { bucketWallSampleTime, buildWallHistorySample, wallTrailSampleSecForTicker } from "./vector-wall-sample";
 import { appendSessionWallSample } from "./vector-wall-persist";
@@ -71,96 +71,135 @@ const TTL_SEC = 48 * 60 * 60;
  * covered ticker. Kept out of the inline scanner-poll path (opts default off)
  * so off-hours polls can't append stale samples onto the session rail.
  */
+async function buildVectorUniverseRow(
+  raw: string,
+  opts: { recordWallHistory?: boolean; sessionYmd?: string; nowSec?: number } = {}
+): Promise<VectorUniverseRow | null> {
+  const { recordWallHistory = false, sessionYmd, nowSec = Math.floor(Date.now() / 1000) } = opts;
+  const ticker = normalizeVectorTicker(raw);
+  const hm = await fetchGexHeatmap(ticker);
+  const spot = hm?.spot ?? null;
+  const gexWalls = hm?.gex?.strike_totals
+    ? computeGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals), {
+        maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+      })
+    : { callWalls: [], putWalls: [] };
+  const vexWalls = hm?.vex?.strike_totals
+    ? computeGexWalls(mapFromStrikeTotalsRecord(hm.vex.strike_totals), {
+        maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+      })
+    : { callWalls: [], putWalls: [] };
+
+  if (recordWallHistory && sessionYmd) {
+    const sampleTime = bucketWallSampleTime(nowSec, wallTrailSampleSecForTicker(ticker));
+    const sample = buildWallHistorySample({
+      time: sampleTime,
+      gexWalls,
+      gammaFlip: hm?.gex?.flip ?? null,
+      vexWalls,
+      vexFlip: hm?.vex?.flip ?? null,
+    });
+    if (sample) await appendSessionWallSample(sessionYmd, sample, ticker);
+
+    if (spot && spot > 0) {
+      const narrowed = await buildNarrowedHorizonWallSamples(ticker, sampleTime, {
+        walls: gexWalls,
+        flip: hm?.gex?.flip ?? null,
+      });
+      for (const r of narrowed) {
+        if (r.sample) await appendSessionWallSample(sessionYmd, r.sample, ticker, r.horizon);
+        else if (r.source === "error") {
+          console.warn(
+            `[vector-universe] ${ticker} ${r.horizon} narrowed-wall recording threw: ${r.reason ?? "unknown"}`
+          );
+        }
+      }
+    }
+  }
+
+  const asOfMs = hm?.asof ? Date.parse(hm.asof) : NaN;
+  return {
+    ticker,
+    spot,
+    gammaFlip: hm?.gex?.flip ?? null,
+    vexFlip: hm?.vex?.flip ?? null,
+    topCallWall: gexWalls.callWalls[0]?.strike ?? null,
+    topPutWall: gexWalls.putWalls[0]?.strike ?? null,
+    topCallPct: gexWalls.callWalls[0]?.pct ?? null,
+    topPutPct: gexWalls.putWalls[0]?.pct ?? null,
+    asOf: Number.isFinite(asOfMs) ? asOfMs : null,
+  };
+}
+
 export async function buildVectorUniverseSnapshot(
   opts: VectorUniverseBuildOpts = {}
 ): Promise<VectorUniverseSnapshot> {
   const { recordWallHistory = false, sessionYmd } = opts;
-  // Recording builds (the 5-min cron) union in the DYNAMIC universe — every ticker a member has
-  // opened in the last 14 days — so a name viewed once keeps recording from the next open onward
-  // (user-directed 2026-07-13). Scanner-only polls stay on the static set (no recording, no need
-  // to spend per-ticker fetches on the long tail). Dynamic names also surface in the screener
-  // rows on cron builds, which is the intended "it joined the universe" experience.
-  const dynamic = recordWallHistory ? await listDynamicUniverseTickers().catch(() => []) : [];
+  // Union static + dynamic on EVERY build (scanner polls and cron). Dynamic names are Polygon-cache-
+  // first once warm; `registerVectorUniverseView` also appends a single row immediately after a
+  // Thermal/Helix/Vector view so the scanner does not wait for the next full rebuild.
+  const dynamic = await listDynamicUniverseTickers().catch(() => []);
   const tickers = [...new Set([...vectorUniverseTickers(), ...dynamic])];
   const rows: VectorUniverseRow[] = [];
   const nowSec = Math.floor(Date.now() / 1000);
 
   const results = await Promise.allSettled(
-    tickers.map(async (raw) => {
-      const ticker = normalizeVectorTicker(raw);
-      const hm = await fetchGexHeatmap(ticker);
-      const spot = hm?.spot ?? null;
-      const gexWalls = hm?.gex?.strike_totals
-        ? computeGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals), {
-            maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-          })
-        : { callWalls: [], putWalls: [] };
-      const vexWalls = hm?.vex?.strike_totals
-        ? computeGexWalls(mapFromStrikeTotalsRecord(hm.vex.strike_totals), {
-            maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-          })
-        : { callWalls: [], putWalls: [] };
-
-      if (recordWallHistory && sessionYmd) {
-        // Each ticker snaps to its own bucket interval (5s for oracle, 15s for others).
-        const sampleTime = bucketWallSampleTime(nowSec, wallTrailSampleSecForTicker(ticker));
-        const sample = buildWallHistorySample({
-          time: sampleTime,
-          gexWalls,
-          gammaFlip: hm?.gex?.flip ?? null,
-          vexWalls,
-          vexFlip: hm?.vex?.flip ?? null,
-        });
-        // Await so the cron only reports success once the rail is durable;
-        // append is idempotent (union-by-time) and self-catching.
-        if (sample) await appendSessionWallSample(sessionYmd, sample, ticker);
-
-        // Per-horizon rails: record the SAME bucket for 0DTE/weekly/monthly too, via the SHARED
-        // recorder the live hub uses. Two behaviour changes vs the old inline loop (both fix the
-        // frozen/sparse SPX 0DTE rail): (1) when a horizon's per-expiry reconstruction is empty we
-        // FALL BACK to the blended near-term walls (this bucket's fresh reading) instead of dropping
-        // the bucket — the documented "null → blended near-term walls" contract; (2) an unexpected
-        // throw is surfaced (logged) rather than silently swallowed, so a chronic miss is diagnosable
-        // instead of invisible. Still best-effort: never blocks the "all" rail or the scanner row.
-        if (spot && spot > 0) {
-          const narrowed = await buildNarrowedHorizonWallSamples(ticker, sampleTime, {
-            walls: gexWalls,
-            flip: hm?.gex?.flip ?? null,
-          });
-          for (const r of narrowed) {
-            if (r.sample) await appendSessionWallSample(sessionYmd, r.sample, ticker, r.horizon);
-            else if (r.source === "error") {
-              console.warn(
-                `[vector-universe] ${ticker} ${r.horizon} narrowed-wall recording threw: ${r.reason ?? "unknown"}`
-              );
-            }
-          }
-        }
-      }
-
-      const asOfMs = hm?.asof ? Date.parse(hm.asof) : NaN;
-      return {
-        ticker,
-        spot,
-        gammaFlip: hm?.gex?.flip ?? null,
-        vexFlip: hm?.vex?.flip ?? null,
-        topCallWall: gexWalls.callWalls[0]?.strike ?? null,
-        topPutWall: gexWalls.putWalls[0]?.strike ?? null,
-        topCallPct: gexWalls.callWalls[0]?.pct ?? null,
-        topPutPct: gexWalls.putWalls[0]?.pct ?? null,
-        asOf: Number.isFinite(asOfMs) ? asOfMs : null,
-      } satisfies VectorUniverseRow;
-    })
+    tickers.map((raw) =>
+      buildVectorUniverseRow(raw, { recordWallHistory, sessionYmd, nowSec })
+    )
   );
 
   for (const r of results) {
-    if (r.status === "fulfilled") rows.push(r.value);
+    if (r.status === "fulfilled" && r.value) rows.push(r.value);
   }
 
   rows.sort((a, b) => a.ticker.localeCompare(b.ticker));
-  // Round at the data layer (repo policy) — topCallPct/topPutPct are raw
-  // (abs/total)*100 divisions and spot is a raw provider float.
   return roundFloats({ updatedAt: Date.now(), rows });
+}
+
+const appendInFlight = new Map<string, Promise<void>>();
+
+/**
+ * Append one ticker to the warmed scanner snapshot when it is not already present.
+ * Fire-and-forget helper for view registration — never throws into the hot path.
+ */
+export async function ensureTickerInUniverseSnapshot(rawTicker: string): Promise<void> {
+  if (!isVectorTickerAllowed(rawTicker)) return;
+  const ticker = normalizeVectorTicker(rawTicker);
+  const existing = appendInFlight.get(ticker);
+  if (existing) return existing;
+
+  const p = (async () => {
+    const snap = await loadVectorUniverseSnapshot();
+    if (snap?.rows.some((r) => r.ticker === ticker)) return;
+
+    const row = await buildVectorUniverseRow(ticker);
+    if (!row) return;
+
+    const mergedRows = [...(snap?.rows ?? []).filter((r) => r.ticker !== ticker), row];
+    mergedRows.sort((a, b) => a.ticker.localeCompare(b.ticker));
+    await persistVectorUniverseSnapshot(roundFloats({ updatedAt: Date.now(), rows: mergedRows }));
+  })().finally(() => {
+    appendInFlight.delete(ticker);
+  });
+
+  appendInFlight.set(ticker, p);
+  return p;
+}
+
+/**
+ * A member opened a ticker on Thermal, Helix, or Vector — track it in the dynamic universe and
+ * surface it in the scanner snapshot on the next poll (~5s) without waiting for the cron rebuild.
+ */
+export function registerVectorUniverseView(rawTicker: string): void {
+  void (async () => {
+    try {
+      await touchDynamicUniverse(rawTicker);
+      await ensureTickerInUniverseSnapshot(rawTicker);
+    } catch {
+      /* best-effort: universe tracking must never disturb desk hot paths */
+    }
+  })();
 }
 
 export async function persistVectorUniverseSnapshot(snap: VectorUniverseSnapshot): Promise<void> {

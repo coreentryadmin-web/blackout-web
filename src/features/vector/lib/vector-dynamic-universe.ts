@@ -10,8 +10,8 @@ import { normalizeVectorTicker, isVectorTickerAllowed } from "./vector-ticker";
  * from scratch ("first thing I see is one bead"). This module makes every VIEWED ticker part of
  * the recorded universe automatically:
  *
- *  - `touchDynamicUniverse(ticker)` fires on every Vector stream attach (a member actually opened
- *    the chart) — debounced per process, fire-and-forget, never throws into the hot path.
+ *  - `touchDynamicUniverse(ticker)` fires when a member opens the ticker on Vector, Thermal
+ *    (gex-heatmap), or Helix (flows filter/stream) — debounced per process, fire-and-forget.
  *  - The recorder cron unions `listDynamicUniverseTickers()` into its ticker set, so a name viewed
  *    today is recorded from TOMORROW'S OPENING BELL onward, viewer or not.
  *  - Retention: names not viewed for RETENTION_DAYS drop out (a one-time curiosity must not tax
