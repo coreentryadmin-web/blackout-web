@@ -6,6 +6,7 @@ import {
 } from "@/features/spx/lib/spx-desk";
 import type { SpxDeskFlow, SpxDeskPayload, SpxDeskPulse } from "@/features/spx/lib/spx-desk";
 import { mergeDeskLayers } from "@/features/spx/lib/spx-desk-merge";
+import { buildSpxPinForecast, type SpxPinForecast } from "@/features/spx/lib/spx-pin";
 import { withServerCache } from "@/lib/server-cache";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 
@@ -57,6 +58,19 @@ export async function loadSpxDeskPulse(): Promise<SpxDeskPulse> {
 export async function loadSpxDeskFlow(): Promise<SpxDeskFlow> {
   const date = todayEtYmd();
   return withServerCache(`spx-desk-flow:${date}`, deskFlowCacheTtlMs(), buildSpxDeskFlow);
+}
+
+/**
+ * THE single cache lane for the EOD Pin Forecaster — 5s TTL (reuses the pulse TTL), session-keyed.
+ * Standalone /api/market/spx/pin must call this. (loadSpxPinForecast → buildSpxPinForecast →
+ * loadSpxDeskPulse is a deferred/runtime cycle; both exports are hoisted function decls, so ESM
+ * resolves it without a load-order hazard.)
+ */
+export async function loadSpxPinForecast(): Promise<SpxPinForecast> {
+  const date = todayEtYmd();
+  return withServerCache(`spx-pin:${date}`, deskPulseCacheTtlMs(), buildSpxPinForecast, {
+    staleWhileRevalidate: true,
+  });
 }
 
 /** Single server path: cache lanes → merge pulse + flow into desk. */
