@@ -24,41 +24,46 @@ test("true 0/0 empty strike is DROPPED", () => {
   assert.equal(out.ranked_levels.find((l) => l.strike === 105), undefined);
 });
 
-test("balanced net-0 row is output-neutral for computeGammaFlip", () => {
-  // A net-0 row adds 0 to the cumulative sum and can never be the selected flip
-  // anchor: for [100:+10, 105:0, 110:-10] @ spot 106 the cum is 10 through 105
-  // then hits 0 at 110 -> flip is 110. Dropping the balanced 105 row yields the
-  // SAME flip (the real regression guard).
+test("balanced net-0 row past the crossing is output-neutral for computeGammaFlip", () => {
+  // Unified cumulative flip: a net-short→net-long crossing. [95:-10, 105:+30] @ spot 100 crosses at
+  // 95 + (10/30)*10 = 98.33. A balanced net-0 row ABOVE the crossing adds 0 to the running sum and
+  // does not sit between the bracketing strikes, so it is output-neutral — the regression guard.
   const withBalanced = computeGammaFlip(
     [
-      { strike: 100, net_gex: 10 },
-      { strike: 105, net_gex: 0 },
-      { strike: 110, net_gex: -10 },
+      { strike: 95, net_gex: -10 },
+      { strike: 105, net_gex: 30 },
+      { strike: 120, net_gex: 0 },
     ],
-    106
+    100
   );
   const withoutBalanced = computeGammaFlip(
     [
-      { strike: 100, net_gex: 10 },
-      { strike: 110, net_gex: -10 },
+      { strike: 95, net_gex: -10 },
+      { strike: 105, net_gex: 30 },
     ],
-    106
+    100
   );
-  assert.equal(withBalanced, 110);
+  assert.equal(withBalanced, 98.33);
   assert.equal(withBalanced, withoutBalanced);
 });
 
-test("sign-change interpolation unaffected (cumulative crosses zero)", () => {
-  // cum: 8 at 100, then 8 + (-12) = -4 at 110 -> crosses zero -> interpolate
-  // flip = 100 + (8/12)*10 = 106.67, strictly within (100, 110).
+test("net-short→net-long crossing interpolates (the unified cumulative flip)", () => {
+  // cum: -8 at 100, then -8 + 20 = +12 at 110 → crosses from net-short to net-long →
+  // flip = 100 + (8/20)*10 = 104, inside the ±12% band around spot 104.
   const flip = computeGammaFlip(
     [
-      { strike: 100, net_gex: 8 },
-      { strike: 110, net_gex: -12 },
+      { strike: 100, net_gex: -8 },
+      { strike: 110, net_gex: 20 },
     ],
     104
   );
-  assert.ok(flip !== null && flip > 100 && flip < 110, "flip interpolates within (100,110)");
+  assert.equal(flip, 104);
+});
+
+test("net-short-everywhere book → null (no long-gamma regime; delegates to cumulativeGammaFlip)", () => {
+  // Cumulative stays ≤0 at every strike (-8, -20) → dealers short gamma throughout → honest null,
+  // never a fabricated below-spot flip. This is the inversion class the unification removes.
+  assert.equal(computeGammaFlip([{ strike: 100, net_gex: -8 }, { strike: 110, net_gex: -12 }], 104), null);
 });
 
 test("empty / insufficient input", () => {
