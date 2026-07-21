@@ -9,6 +9,7 @@ import {
   radiusForPct,
   widthForPct,
   MODELED_ALPHA_SCALE,
+  haloRingForTier,
 } from "./vector-wall-visual";
 
 test("alphaForPct: a 0% wall gets the faint visual floor, not fully invisible", () => {
@@ -120,4 +121,26 @@ test("MODELED_ALPHA_SCALE: modeled beads render as a FAINT ghost (< observed) bu
   // Even the session-king strike is a quiet ghost: a full-strength modeled bead is dimmer than a
   // MID-strength observed bead, so a real recorded sample always reads as "more real."
   assert.ok(alphaForPct(100) * MODELED_ALPHA_SCALE < alphaForPct(3));
+});
+
+test("haloRingForTier: unknown/undefined tier is NEUTRAL — beads render exactly as pre-ring", () => {
+  // This is the non-breaking guarantee: VEX-lens beads and any unscored rail pass no tier, so the
+  // halo multiplier must be identity. If this drifts from {1,1}, every legacy bead silently changes.
+  assert.deepEqual(haloRingForTier(undefined), { alphaMul: 1, sizeMul: 1 });
+  assert.deepEqual(haloRingForTier(null), { alphaMul: 1, sizeMul: 1 });
+});
+
+test("haloRingForTier: firm > moderate > thin in both ring brightness and size", () => {
+  const firm = haloRingForTier("firm");
+  const moderate = haloRingForTier("moderate");
+  const thin = haloRingForTier("thin");
+  assert.ok(firm.alphaMul > moderate.alphaMul, "firm ring brighter than moderate");
+  assert.ok(moderate.alphaMul > thin.alphaMul, "moderate ring brighter than thin");
+  assert.ok(firm.sizeMul >= moderate.sizeMul, "firm ring at least as large as moderate");
+  assert.ok(moderate.sizeMul > thin.sizeMul, "thin ring shrinks toward a bare dot");
+});
+
+test("haloRingForTier: a firm wall's halo pops above neutral; a thin wall's is suppressed", () => {
+  assert.ok(haloRingForTier("firm").alphaMul > 1, "firm brightens the ring past the legacy glow");
+  assert.ok(haloRingForTier("thin").alphaMul < 0.5, "thin nearly erases the ring → bead reads as a dot");
 });

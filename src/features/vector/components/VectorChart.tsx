@@ -49,11 +49,16 @@ import {
   DEFAULT_WALL_VIEW_MAX_PCT,
   BEAD_VIEW_MAX_PCT,
 } from "@/features/vector/lib/vector-price-range";
-import { scoreTopWalls, type WallIntegrity } from "@/features/vector/lib/vector-wall-integrity";
+import {
+  scoreTopWalls,
+  integrityByStrike,
+  type WallIntegrity,
+} from "@/features/vector/lib/vector-wall-integrity";
 import {
   alphaForPct,
   alphaForPctRel,
   glowAlphaForPctRel,
+  haloRingForTier,
   markerSizeForPctRel,
   widthForPct,
   MODELED_ALPHA_SCALE,
@@ -769,7 +774,10 @@ function applyWallsToSeries(
 function buildWallBeadMarkers(
   trails: StrikeTrail[],
   baseColor: string,
-  intervalSec: number = 60
+  intervalSec: number = 60,
+  /** Per-strike integrity (firm/moderate/thin) → the halo becomes a confidence RING. Omitted (VEX
+   *  lens / unscored rails) leaves every halo at neutral weight, i.e. byte-identical to pre-ring. */
+  tierByStrike?: Map<number, WallIntegrity>
 ): SeriesMarker<Time>[] {
   const markers: SeriesMarker<Time>[] = [];
   // Earliest bucket across every rendered trail — the boundary where a trail's start is ambiguous
@@ -796,6 +804,10 @@ function buildWallBeadMarkers(
     // already stop at its last-seen bucket (trailsByStrike never back-fills or extends), so a
     // departed wall neither runs to "now" nor to session open — it occupies exactly its lifespan.
     const staleFade = trail.active ? 1 : STALE_TRAIL_FADE;
+    // Integrity ring: the wall's firm/moderate/thin confidence scales the HALO (its ring), never the
+    // core dot. Same tier for every bead in this strike's trail — integrity is a property of the wall,
+    // not of a single candle. Unknown strike → neutral {1,1}, so the halo is unchanged (see haloRingForTier).
+    const ring = haloRingForTier(tierByStrike?.get(trail.strike)?.tier);
     const points = trail.points;
     for (let i = 0; i < points.length; i++) {
       const p = points[i]!;
@@ -818,8 +830,8 @@ function buildWallBeadMarkers(
         position: "atPriceMiddle",
         price: trail.strike,
         shape: "circle",
-        color: withAlpha(baseColor, glowAlpha),
-        size: size * 1.6,
+        color: withAlpha(baseColor, Math.min(1, glowAlpha * ring.alphaMul)),
+        size: size * 1.6 * ring.sizeMul,
       });
       markers.push({
         time,
@@ -887,7 +899,16 @@ function applyWallBeadMarkers(
   const active = pickActiveStrikes(trailMap, maxStrikes);
   const activeSet = new Set(active);
   const rendered = lifecycle.filter((t) => activeSet.has(t.strike));
-  const markers = buildWallBeadMarkers(rendered, baseColor, intervalMinutes * 60);
+  // Per-wall integrity → bead rings. Scored only on the GEX lens: persistence is measured against
+  // sample.walls (GEX), so scoring VEX beads off GEX history would ring the wrong strikes. On the
+  // VEX lens tierByStrike stays undefined → neutral halos (unchanged). Computed from the LATEST rail
+  // sample's walls so the ring matches the live desk-terminal firm/moderate/thin verdict exactly.
+  const latestWalls = history[history.length - 1]?.walls;
+  const tierByStrike =
+    lens === "gex" && latestWalls
+      ? integrityByStrike(latestWalls, history)[side === "callWalls" ? "call" : "put"]
+      : undefined;
+  const markers = buildWallBeadMarkers(rendered, baseColor, intervalMinutes * 60, tierByStrike);
   // ZOOM ANCHOR: lightweight-charts only renders markers at timestamps within the visible time
   // range. If a wall's beads are concentrated in the earlier part of the session (e.g. a wall
   // formed at 17:30 and faded by 18:30), zooming in on recent candles clips ALL its beads and

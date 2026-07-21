@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { scoreWallIntegrity, scoreTopWalls } from "./vector-wall-integrity";
+import { scoreWallIntegrity, scoreTopWalls, integrityByStrike } from "./vector-wall-integrity";
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 import type { WallHistorySample } from "./vector-wall-history";
 
@@ -101,4 +101,38 @@ test("scoreTopWalls: returns the top call + top put, null side when absent", () 
   const noPut = scoreTopWalls({ callWalls: walls.callWalls, putWalls: [] }, persistentHistory);
   assert.equal(noPut.put, null);
   assert.equal(scoreTopWalls(null).call, null);
+});
+
+test("integrityByStrike: scores EVERY wall per side, keyed by raw strike", () => {
+  const r = integrityByStrike(walls, persistentHistory);
+  // Both call strikes present in the map (not just the top one, unlike scoreTopWalls).
+  assert.deepEqual([...r.call.keys()].sort((a, b) => a - b), [7600, 7650]);
+  assert.deepEqual([...r.put.keys()].sort((a, b) => a - b), [7490, 7500]);
+  // The map's verdict for the top wall is byte-identical to scoreTopWalls — one source of truth.
+  const top = scoreTopWalls(walls, persistentHistory);
+  assert.deepEqual(r.call.get(7600), top.call);
+  assert.deepEqual(r.put.get(7500), top.put);
+});
+
+test("integrityByStrike: the dominant persistent wall rings FIRM, its weak clustered peer does not", () => {
+  const r = integrityByStrike(walls, persistentHistory);
+  assert.equal(r.call.get(7600)!.tier, "firm", "dominant, held-all-session → firm ring");
+  // 7650 is weak (30 vs ref 100) and never in the rail → not firm.
+  assert.notEqual(r.call.get(7650)!.tier, "firm");
+});
+
+test("integrityByStrike: shared refMaxPct across BOTH sides — a put isn't over-scored by its own max", () => {
+  // The strongest wall is the 7600 call (100); the top put (55) must be scored against 100, not 55,
+  // so its strength factor is ~0.55, not 1.0. This is what keeps the ring consistent cross-side.
+  const r = integrityByStrike(walls, persistentHistory);
+  assert.ok(r.put.get(7500)!.factors.strength < 1, "put strength normalized against the 100 call king");
+});
+
+test("integrityByStrike: null / empty sides → empty maps, never fabricated entries", () => {
+  const r = integrityByStrike(null);
+  assert.equal(r.call.size, 0);
+  assert.equal(r.put.size, 0);
+  const oneSide = integrityByStrike({ callWalls: [{ strike: 7600, pct: 10 }], putWalls: [] });
+  assert.equal(oneSide.call.size, 1);
+  assert.equal(oneSide.put.size, 0);
 });

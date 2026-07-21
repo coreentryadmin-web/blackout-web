@@ -5,6 +5,28 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-21 — Enhancement: Wall Integrity Rings (second visual channel on beads)
+
+### FEATURE — Bead halo now encodes wall confidence (firm/moderate/thin), not just magnitude
+- **Gap, not a bug:** a bead's SIZE encodes magnitude (dealer gamma parked at the strike), but a
+  member staring at the rail couldn't distinguish a wall that held all session and towers over its
+  neighbors from a fat-but-fleeting level sitting in a mushy cluster — both drew as a big bead.
+  Integrity was already computed (`vector-wall-integrity.ts`) but only surfaced as text for the
+  TOP wall on the desk terminal; the chart threw it away.
+- **Fix (additive, zero new plumbing):** generalized `scoreTopWalls` → `integrityByStrike()`
+  (scores EVERY wall per side, same math + shared refMaxPct, so ring and terminal never disagree).
+  New pure `haloRingForTier()` in `vector-wall-visual.ts` maps the tier onto the halo already drawn
+  behind each core dot → the halo becomes a confidence RING (firm: crisp/bright/larger; moderate:
+  soft; thin: suppressed → bare dot). `buildWallBeadMarkers`/`applyWallBeadMarkers` thread the map
+  from the latest rail sample; GEX lens only (persistence is GEX-scoped). Core dot untouched, so the
+  magnitude and confidence channels stay independent.
+- **Non-breaking by construction:** unknown tier → neutral {1,1} multiplier, so VEX-lens and
+  unscored/legacy rails render byte-identical to pre-ring (unit-tested).
+- **Evidence:** 3909/3909 unit tests pass (+7 new: `integrityByStrike` all-wall scoring + shared
+  ref + empty-safety; `haloRingForTier` neutral default + firm>moderate>thin ordering). tsc clean.
+- **Status:** OPEN PR (fresh branch off main after #876 merged). Live visual validation via the
+  Vector E2E screenshot gate after staging deploy.
+
 ## 2026-07-13 — Vector bead-rail / DTE-coherence audit (member-driven, RTH live)
 
 ### P0 — Bead trails ran full-width from the open; "no new walls all day" (FIXED, live-verified)
