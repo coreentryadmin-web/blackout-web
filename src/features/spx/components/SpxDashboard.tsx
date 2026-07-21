@@ -310,6 +310,7 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
                 {...vectorSeed}
                 embed="chart-only"
                 defaultDteHorizon="0dte"
+                defaultChartViewport="session"
                 defaultTimeframe={3}
                 onPriceScaleRender={setPriceScaleMap}
                 toolbarReplayLeadSlot={

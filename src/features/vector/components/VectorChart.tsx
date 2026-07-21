@@ -201,6 +201,14 @@ function maybeScrollToLive(chart: IChartApi | null, liveFollowEnabled: boolean):
   chart.timeScale().scrollToRealTime();
 }
 
+function wantsSessionOverviewViewport(
+  viewport: "session" | "live",
+  liveFollowEnabled: boolean,
+  dteHorizon: VectorDteHorizon
+): boolean {
+  return viewport === "session" && !liveFollowEnabled && dteHorizon === "0dte";
+}
+
 type Props = {
   ticker: string;
   initialBars: VectorBar[];
@@ -1132,6 +1140,10 @@ export function VectorChart({
   const dteHorizonRef = useRef<VectorDteHorizon>(openingDteHorizon);
   /** Session overview on load (full RTH + bead trail) until the member pans to the live edge. */
   const liveFollowEnabledRef = useRef(defaultChartViewport === "live");
+  const defaultChartViewportRef = useRef(defaultChartViewport);
+  useEffect(() => {
+    defaultChartViewportRef.current = defaultChartViewport;
+  }, [defaultChartViewport]);
   const chartUserPannedRef = useRef(false);
   // Dedupe regime emissions — the read only changes when posture/flip/levels
   // shift, not every tick, so we skip identical reads to avoid re-rendering the
@@ -2508,15 +2520,18 @@ export function VectorChart({
     });
     applyPaneStretch(chart);
 
-    const initialDisplay = displayBarsFromMinute(initialBars, 1);
+    const initialDisplay = displayBarsFromMinute(initialBars, initialTimeframe);
     applyDisplayBars(series, volumeSeries, initialDisplay);
     paintOverlays(initialDisplay);
     displayBarTimeRef.current = initialBars[initialBars.length - 1]?.time ?? 0;
+    lastDisplayBarsRef.current = initialDisplay;
     // Deliberate refit on FIRST load only — there is no prior viewport to preserve here.
     // Session overview frames the newest ET day only (seed carries multiple sessions); live
     // follow fits the full seed. Background re-seeds route through applyDisplayBarsPreservingView.
     if (initialBars.length) {
-      if (defaultChartViewport === "session") {
+      if (
+        wantsSessionOverviewViewport(defaultChartViewport, liveFollowEnabledRef.current, openingDteHorizon)
+      ) {
         applySessionOverviewViewport(chart, initialDisplay);
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       } else {
@@ -2560,6 +2575,18 @@ export function VectorChart({
     refreshTrails("gex");
     refreshOverlays("gex", initialWalls, initialVexWalls, initialGammaFlip, initialVexFlip, initialDarkPoolLevels);
     pinCandlesOnTop(series);
+
+    if (
+      wantsSessionOverviewViewport(defaultChartViewport, liveFollowEnabledRef.current, openingDteHorizon)
+    ) {
+      // Trails/overlays paint after the first viewport pass — re-frame once markers exist.
+      requestAnimationFrame(() => {
+        const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
+        applySessionOverviewViewport(chart, display);
+        chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
+        refreshTrails(lensRef.current);
+      });
+    }
 
     // SCROLL-ZOOM FIX: stamp a cooldown on every wheel event so the autoscaleInfoProvider
     // and reassertPriceAutoScale calls respect the member's zoom for 8s instead of
@@ -2998,10 +3025,18 @@ export function VectorChart({
       const timeframeChanged = timeframe !== lastFittedTimeframeRef.current;
       const timeScale = chart?.timeScale() ?? null;
       const following = chart ? chartIsFollowingLive(chart) : false;
+      const sessionOverview = wantsSessionOverviewViewport(
+        defaultChartViewportRef.current,
+        liveFollowEnabledRef.current,
+        dteHorizonRef.current
+      );
       const prevRange =
-        timeScale && !timeframeChanged && !following ? timeScale.getVisibleLogicalRange() : null;
+        timeScale && !timeframeChanged && !following && !sessionOverview
+          ? timeScale.getVisibleLogicalRange()
+          : null;
       applyDisplayBars(series, volumeSeriesRef.current, display);
       paintOverlays(display);
+      lastDisplayBarsRef.current = display;
       if (timeframeChanged) {
         // Re-fit the time scale to the new bar COUNT. A higher timeframe has far fewer bars (a 6.5h
         // session ≈ 390 1m bars but only ~26 at 15m), and lightweight-charts keeps the previous
@@ -3010,13 +3045,18 @@ export function VectorChart({
         // squished into that sliver and look absent. fitContent recomputes the spacing so the bars —
         // and their overlays — fill the chart width at every timeframe. This is the deliberate,
         // user-expected refit; the create effect is the only other deliberate first-load refit.
-        if (!liveFollowEnabledRef.current && dteHorizonRef.current === "0dte") {
+        if (sessionOverview) {
           applySessionOverviewViewport(chart!, display);
           chart?.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
         } else {
           chart?.timeScale().fitContent();
         }
         lastFittedTimeframeRef.current = timeframe;
+      } else if (sessionOverview && !following) {
+        // Never restore a stale logical range after setData — bar counts shift when callbacks re-run
+        // or when the mount effect used a different aggregation than the active timeframe.
+        applySessionOverviewViewport(chart!, display);
+        chart?.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       } else if (prevRange && timeScale) {
         // Background re-run: pin the exact viewport the member had so zoom/pan survives.
         timeScale.setVisibleLogicalRange(prevRange);
