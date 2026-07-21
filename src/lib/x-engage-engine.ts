@@ -133,7 +133,7 @@ export async function runEngagementSweep(opts: {
   const enterprise = xApiEnterpriseAccess();
   const intensive = xGrowthIntensive();
   const budget = await resolveRunBudget({ cronMode });
-  const rotation = cronMode ? await bumpEngageRotation() : 0;
+  const rotation = await bumpEngageRotation();
 
   const stats: EngageStats = {
     likes: 0,
