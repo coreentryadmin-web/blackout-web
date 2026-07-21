@@ -56,7 +56,7 @@ export function isUwRepeatedHitsRule(rule: string | null | undefined): boolean {
 }
 
 // Bug 6: normalize expiry to YYYY-MM-DD regardless of input format so stackKey is consistent
-function normalizeExpiry(raw: string): string {
+export function normalizeFlowExpiry(raw: string): string {
   if (!raw) return "";
   if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
   const usLong = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
@@ -98,7 +98,7 @@ export function normalizeFlowAlertForStack(item: unknown): FlowAlertForStack | n
     ticker: String(o.ticker ?? o.symbol ?? "").toUpperCase(),
     strike,
     option_type,
-    expiry: normalizeExpiry(String(o.expiry ?? o.expiration ?? "")),
+    expiry: normalizeFlowExpiry(String(o.expiry ?? o.expiration ?? "")),
     premium,
     alerted_at,
     event_at: eventAt,
