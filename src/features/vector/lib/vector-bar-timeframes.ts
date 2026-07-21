@@ -1,3 +1,5 @@
+import type { VectorDteHorizon } from "./vector-dte-horizon";
+
 /**
  * Preset Vector chart intervals (minutes) — aggregated client-side from the 1m seed + live ticks.
  * 30m/60m are intraday roll-ups of the SAME session's 1m bars (a 6.5h RTH session → ~13 30m or
@@ -15,6 +17,10 @@ export type VectorPresetTimeframe = (typeof VECTOR_PRESET_TIMEFRAMES)[number];
 
 /** Default candle interval on first paint (SPX Slayer embed + standalone /vector). */
 export const VECTOR_DEFAULT_TIMEFRAME: VectorPresetTimeframe = 3;
+
+/** Bead rows per side when a narrowed 0DTE horizon is active — wider than the 3m default (8)
+ *  so the desk opens on the full intraday rail Skylit shows, not a tight spot cluster. */
+export const VECTOR_0DTE_WALL_COUNT = 12;
 
 /** Any whole-minute interval (presets + custom). */
 export type VectorTimeframeMinutes = number;
@@ -53,6 +59,14 @@ export function wallCountForTimeframe(tf: VectorTimeframeMinutes): number {
   else if (tf <= 120) count = 18;
   else count = 20; // 2h+ custom intervals — widest view, saturates at the cap
   return Math.max(1, Math.min(VECTOR_WALL_NODES_PER_SIDE, count));
+}
+
+/** Wall/bead row cap for the active DTE horizon — 0DTE on the SPX desk shows more of the rail. */
+export function wallCountForHorizon(tf: VectorTimeframeMinutes, horizon: VectorDteHorizon): number {
+  if (horizon === "0dte") {
+    return Math.max(wallCountForTimeframe(tf), Math.min(VECTOR_WALL_NODES_PER_SIDE, VECTOR_0DTE_WALL_COUNT));
+  }
+  return wallCountForTimeframe(tf);
 }
 
 /**

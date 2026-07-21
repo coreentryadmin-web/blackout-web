@@ -169,3 +169,12 @@ test("mergeBarsByTime: fills reconnect holes, prefers fetched OHLC, preserves li
   assert.equal(merged[1]!.volume, 900, "fetched volume wins when present");
   assert.equal(merged[4]!.close, 5, "existing bars beyond the fetch window survive");
 });
+
+test("wallCountForHorizon: 0DTE shows more bead rows than the base 3m cap", async () => {
+  const { wallCountForHorizon, wallCountForTimeframe, VECTOR_0DTE_WALL_COUNT } = await import(
+    "./vector-bar-timeframes"
+  );
+  assert.equal(wallCountForTimeframe(3), 8);
+  assert.equal(wallCountForHorizon(3, "0dte"), VECTOR_0DTE_WALL_COUNT);
+  assert.equal(wallCountForHorizon(3, "weekly"), 8);
+});

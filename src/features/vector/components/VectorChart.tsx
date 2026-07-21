@@ -113,6 +113,7 @@ import {
   aggregateVectorBars,
   mergeBarsByTime,
   wallCountForTimeframe,
+  wallCountForHorizon,
   anchorBandPctForTimeframe,
   VECTOR_DEFAULT_TIMEFRAME,
   VECTOR_WALL_NODES_PER_SIDE,
@@ -193,8 +194,9 @@ function chartIsFollowingLive(chart: IChartApi): boolean {
 }
 
 /** Avoid yanking pan/zoom when the member scrolled back to study structure. */
-function maybeScrollToLive(chart: IChartApi | null): void {
-  if (!chart || !chartIsFollowingLive(chart)) return;
+function maybeScrollToLive(chart: IChartApi | null, liveFollowEnabled: boolean): void {
+  if (!chart || !liveFollowEnabled) return;
+  if (!chartIsFollowingLive(chart)) return;
   chart.timeScale().scrollToRealTime();
 }
 
@@ -204,6 +206,8 @@ type Props = {
   initialWalls: VectorWalls | null;
   initialVexWalls: VectorWalls | null;
   initialWallHistory: WallHistorySample[];
+  /** SSR preloaded per-horizon rail (see loadVectorSeedProps seedDteHorizon). */
+  initialHorizonWallHistory?: WallHistorySample[];
   initialGammaFlip: number | null;
   initialVexFlip: number | null;
   initialDarkPoolLevels: VectorDarkPoolLevel[];
@@ -249,6 +253,9 @@ type Props = {
   /** Initial candle interval override (same seam): host desks may pass 3m explicitly;
    *  standalone /vector uses `VECTOR_DEFAULT_TIMEFRAME` (3-minute). Initial state only. */
   defaultTimeframe?: VectorTimeframeMinutes;
+  /** Opening time viewport: "session" fits the full RTH tape on load (SPX desk 0DTE beads);
+   *  "live" follows the right edge once the member pans there. */
+  defaultChartViewport?: "session" | "live";
   /**
    * SHARED PRICE AXIS seam (SPX desk, 2026-07-13): reports the price pane's live y-mapping
    * (series.priceToCoordinate + visible price range + pane height + viewport top) so a host
@@ -337,14 +344,16 @@ function applyDisplayBarsPreservingView(
   chart: IChartApi | null,
   candleSeries: ISeriesApi<"Candlestick">,
   volumeSeries: ISeriesApi<"Histogram"> | null,
-  bars: VectorBar[]
+  bars: VectorBar[],
+  liveFollowEnabled: boolean
 ): void {
   const timeScale = chart?.timeScale() ?? null;
   const following = chart ? chartIsFollowingLive(chart) : false;
-  const prevRange = timeScale && !following ? timeScale.getVisibleLogicalRange() : null;
+  const prevRange =
+    timeScale && !(following && liveFollowEnabled) ? timeScale.getVisibleLogicalRange() : null;
   applyDisplayBars(candleSeries, volumeSeries, bars);
-  if (following) {
-    maybeScrollToLive(chart);
+  if (following && liveFollowEnabled) {
+    maybeScrollToLive(chart, true);
   } else if (prevRange && timeScale) {
     timeScale.setVisibleLogicalRange(prevRange);
   }
@@ -848,7 +857,8 @@ function applyWallBeadMarkers(
   lens: VectorWallLens,
   intervalMinutes: VectorTimeframeMinutes,
   lastBarTime: number = 0,
-  liveBeads = false
+  liveBeads = false,
+  maxStrikes = wallCountForTimeframe(intervalMinutes)
 ): number[] {
   if (!beadsPlugin) return [];
   const bucketed = bucketWallHistoryForInterval(history, intervalMinutes, {
@@ -862,7 +872,7 @@ function applyWallBeadMarkers(
   const trailMap = new Map(lifecycle.map((t) => [t.strike, t.points]));
   // Bead strike-rows scale with the timeframe the same way the wall guides do — few near-spot
   // rows on 1m, more (further-out) rows on higher timeframes.
-  const active = pickActiveStrikes(trailMap, wallCountForTimeframe(intervalMinutes));
+  const active = pickActiveStrikes(trailMap, maxStrikes);
   const activeSet = new Set(active);
   const rendered = lifecycle.filter((t) => activeSet.has(t.strike));
   const markers = buildWallBeadMarkers(rendered, baseColor, intervalMinutes * 60);
@@ -935,6 +945,7 @@ export function VectorChart({
   initialWalls,
   initialVexWalls,
   initialWallHistory,
+  initialHorizonWallHistory = [],
   initialGammaFlip,
   initialVexFlip,
   initialDarkPoolLevels,
@@ -960,9 +971,11 @@ export function VectorChart({
   regimeSlot,
   defaultDteHorizon,
   defaultTimeframe,
+  defaultChartViewport = "live",
   onPriceScaleRender,
 }: Props) {
   const initialTimeframe = defaultTimeframe ?? VECTOR_DEFAULT_TIMEFRAME;
+  const openingDteHorizon: VectorDteHorizon = defaultDteHorizon ?? "weekly";
   const initialIndicators = defaultVectorIndicators();
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -1107,8 +1120,15 @@ export function VectorChart({
   // (that rail is SSR-seeded into wallHistoryRef) or when nothing was recorded for the horizon.
   // refreshTrails prefers this over the single-column narrowedHorizonTrail so weekly/monthly show
   // the accumulated clusters after close — the after-hours analogue of the live "All" rail.
-  const horizonHistoryRef = useRef<WallHistorySample[]>([]);
-  const dteHorizonRef = useRef<VectorDteHorizon>("all");
+  const horizonHistoryRef = useRef<WallHistorySample[]>(
+    initialHorizonWallHistory.length && openingDteHorizon !== "all"
+      ? initialHorizonWallHistory
+      : []
+  );
+  const dteHorizonRef = useRef<VectorDteHorizon>(openingDteHorizon);
+  /** Session overview on load (full RTH + bead trail) until the member pans to the live edge. */
+  const liveFollowEnabledRef = useRef(defaultChartViewport === "live");
+  const chartUserPannedRef = useRef(false);
   // Dedupe regime emissions — the read only changes when posture/flip/levels
   // shift, not every tick, so we skip identical reads to avoid re-rendering the
   // banner on every SSE frame.
@@ -1248,6 +1268,7 @@ export function VectorChart({
     // before (member finding "select 0DTE, still shows All's walls" is still fixed either way).
     const lastBarTime = minuteBarsRef.current[minuteBarsRef.current.length - 1]?.time ?? 0;
     const horizon = dteHorizonRef.current;
+    const beadRowCap = wallCountForHorizon(timeframeRef.current, horizon);
     const currentColumn = narrowedHorizonTrail(
       horizon,
       activeLens,
@@ -1276,7 +1297,8 @@ export function VectorChart({
       activeLens,
       timeframeRef.current,
       lastBarTime,
-      liveBeads
+      liveBeads,
+      beadRowCap
     );
     const putStrikes = applyWallBeadMarkers(
       putBeadsRef.current,
@@ -1286,7 +1308,8 @@ export function VectorChart({
       activeLens,
       timeframeRef.current,
       lastBarTime,
-      liveBeads
+      liveBeads,
+      beadRowCap
     );
     // Record what was actually drawn so the autoscale provider widens to reveal these exact beads
     // at every zoom level, then nudge a rescale (off-hours there is no tick to trigger it).
@@ -1316,7 +1339,7 @@ export function VectorChart({
       // How many wall guides/beads THIS timeframe shows (1m→6 … 15m→12). Higher timeframe →
       // more, further-out walls drawn → wider axis (extendRangeForWalls keys off these SHOWN
       // strikes below, so 1m stays tight while 15m widens).
-      const maxGuides = wallCountForTimeframe(timeframeRef.current);
+      const maxGuides = wallCountForHorizon(timeframeRef.current, dteHorizonRef.current);
       // Walls are shown ONLY as strength-scaled beads now (the Skylit-clean look) — clear any
       // wall guide price-lines rather than drawing them, so the price axis is not stacked with
       // "Call/Put wall — %" labels. The gamma-flip line stays (member kept it); dark-pool level
@@ -2066,7 +2089,10 @@ export function VectorChart({
     // match the old key string.
     horizonWallsRef.current = null;
     horizonFlipRef.current = null;
-    horizonHistoryRef.current = [];
+    horizonHistoryRef.current =
+      dteHorizon === openingDteHorizon && initialHorizonWallHistory.length
+        ? initialHorizonWallHistory
+        : [];
     lastConfluenceRef.current = "";
 
     if (dteHorizon === "all") {
@@ -2202,7 +2228,13 @@ export function VectorChart({
           displayBarTimeRef.current = display[display.length - 1]?.time ?? 0;
           // BUG 2: closed-bar backfill on (re)connect is a background re-seed — must not reset
           // the member's zoom/pan. Preserve the viewport (or follow live if at the edge).
-          applyDisplayBarsPreservingView(chartRef.current, seriesRef.current, volumeSeriesRef.current, display);
+          applyDisplayBarsPreservingView(
+            chartRef.current,
+            seriesRef.current,
+            volumeSeriesRef.current,
+            display,
+            liveFollowEnabledRef.current
+          );
           paintOverlays(display);
         }
       })
@@ -2384,8 +2416,8 @@ export function VectorChart({
       timeScale: {
         timeVisible: true,
         secondsVisible: true,
-        // Subtle live follow when the last bar is visible — do not call scrollToRealTime on every new bar.
-        shiftVisibleRangeOnNewBar: true,
+        // Live follow is opt-in after load when defaultChartViewport is "session" — see liveFollowEnabledRef.
+        shiftVisibleRangeOnNewBar: defaultChartViewport === "live",
         // Leave whitespace between the last candle and the price axis so the bead bands stop short
         // of the axis (Skylit-style) instead of running flush into it.
         rightOffset: VECTOR_RIGHT_OFFSET_BARS,
@@ -2469,6 +2501,23 @@ export function VectorChart({
     // fitting the seeded bars to the width is the correct default. Background re-seeds route
     // through applyDisplayBarsPreservingView instead (see BUG 2).
     if (initialBars.length) chart.timeScale().fitContent();
+
+    const enableLiveFollowIfAtEdge = () => {
+      if (liveFollowEnabledRef.current || !chartUserPannedRef.current) return;
+      if (!chartIsFollowingLive(chart)) return;
+      liveFollowEnabledRef.current = true;
+      chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: true });
+    };
+
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+      enableLiveFollowIfAtEdge();
+    });
+
+    const onChartPointerDown = () => {
+      chartUserPannedRef.current = true;
+    };
+    container.addEventListener("mousedown", onChartPointerDown);
+    container.addEventListener("touchstart", onChartPointerDown, { passive: true });
 
     chartRef.current = chart;
     seriesRef.current = series;
@@ -2616,6 +2665,8 @@ export function VectorChart({
 
     return () => {
       container.removeEventListener("wheel", onWheel);
+      container.removeEventListener("mousedown", onChartPointerDown);
+      container.removeEventListener("touchstart", onChartPointerDown);
       stopReplayTimer();
       if (priceScaleTimer != null) clearInterval(priceScaleTimer);
       priceScaleThrottle?.cancel();
@@ -2709,7 +2760,13 @@ export function VectorChart({
         // zoom/pan across it — a plain applyDisplayBars/fitContent here is what made the zoom
         // "flash and reset" once a minute. The helper restores the prior viewport, or follows
         // live if the chart was at the edge.
-        applyDisplayBarsPreservingView(chartRef.current, seriesRef.current!, volumeSeriesRef.current, display);
+        applyDisplayBarsPreservingView(
+          chartRef.current,
+          seriesRef.current!,
+          volumeSeriesRef.current,
+          display,
+          liveFollowEnabledRef.current
+        );
         paintOverlays(display);
       } catch {
         /* best-effort */
@@ -2952,7 +3009,7 @@ export function VectorChart({
         darkPoolRef.current
       );
       if (liveSession) {
-        maybeScrollToLive(chart);
+        maybeScrollToLive(chart, liveFollowEnabledRef.current);
       }
     }
     chart?.timeScale().applyOptions({ secondsVisible: timeframe === 1 });

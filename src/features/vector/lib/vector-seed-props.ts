@@ -22,6 +22,7 @@ import {
 } from "@/features/vector/lib/vector-wall-history";
 import { loadSessionWallHistory } from "@/features/vector/lib/vector-wall-persist";
 import { reconstructSessionRail } from "@/features/vector/lib/vector-gex-reconstruct-server";
+import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 
 /** Server-seeded props consumed by VectorPageShell (SSR snapshot for first paint). */
 export type VectorSeedProps = {
@@ -30,11 +31,19 @@ export type VectorSeedProps = {
   initialWalls: VectorWalls | null;
   initialVexWalls: VectorWalls | null;
   initialWallHistory: WallHistorySample[];
+  /** Preloaded per-horizon recorded rail for the host's default DTE (e.g. SPX desk 0DTE). */
+  initialHorizonWallHistory: WallHistorySample[];
   initialGammaFlip: number | null;
   initialVexFlip: number | null;
   initialDarkPoolLevels: VectorDarkPoolLevel[];
   sessionYmd: string;
   liveSession: boolean;
+};
+
+export type LoadVectorSeedOpts = {
+  /** When set, also SSR-load the recorded wall-history rail for this horizon so narrowed
+   *  toggles (SPX desk 0DTE) paint the full session on first paint, not a single live column. */
+  seedDteHorizon?: VectorDteHorizon;
 };
 
 /**
@@ -45,7 +54,10 @@ export type VectorSeedProps = {
  *
  * `ticker` must already be normalized (normalizeVectorTicker) by the caller.
  */
-export async function loadVectorSeedProps(ticker: string): Promise<VectorSeedProps> {
+export async function loadVectorSeedProps(
+  ticker: string,
+  opts: LoadVectorSeedOpts = {}
+): Promise<VectorSeedProps> {
   ensureDataSockets();
   await primeVectorWallScope(ticker);
   const [{ bars, sessionYmd }, walls, vexWalls, gammaFlip, vexFlip, darkPoolLevels] =
@@ -112,12 +124,21 @@ export async function loadVectorSeedProps(ticker: string): Promise<VectorSeedPro
     vexFlip
   );
 
+  const seedHorizon = opts.seedDteHorizon;
+  const initialHorizonWallHistory =
+    seedHorizon && seedHorizon !== "all"
+      ? await loadSessionWallHistory(sessionYmd, ticker, seedHorizon).catch(
+          () => [] as WallHistorySample[]
+        )
+      : [];
+
   return {
     ticker,
     initialBars: bars,
     initialWalls: walls,
     initialVexWalls: vexWalls,
     initialWallHistory,
+    initialHorizonWallHistory,
     initialGammaFlip: gammaFlip,
     initialVexFlip: vexFlip,
     initialDarkPoolLevels: darkPoolLevels,
