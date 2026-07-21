@@ -293,7 +293,7 @@ export async function postThread(texts: string[]): Promise<TweetResult[]> {
 // Engagement — likes, RTs, follows
 // ---------------------------------------------------------------------------
 
-export type XActionResult = "ok" | "rate_limited" | "failed";
+export type XActionResult = "ok" | "rate_limited" | "failed" | "already_following";
 
 export type LikeResult = XActionResult;
 
@@ -318,6 +318,15 @@ export async function followUser(targetUserId: string): Promise<XActionResult> {
   const res = await oauthFetch("POST", url, { target_user_id: targetUserId });
   if (res.ok) return "ok";
   if (res.status === 429) return "rate_limited";
+  const body = await res.text();
+  if (
+    res.status === 403 ||
+    res.status === 409 ||
+    /already/i.test(body) ||
+    /duplicate/i.test(body)
+  ) {
+    return "already_following";
+  }
   return "failed";
 }
 

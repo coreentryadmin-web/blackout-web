@@ -6,6 +6,7 @@ import {
   xApiAccessTier,
   xApiEnterpriseAccess,
   xDeskPostIncludeUrl,
+  xGrowthIntensive,
 } from "./x-marketing-env";
 
 describe("x-marketing-env", () => {
@@ -14,6 +15,7 @@ describe("x-marketing-env", () => {
     "X_GROWTH_SILENT_ONLY",
     "X_API_ACCESS_TIER",
     "X_DESK_POST_INCLUDE_URL",
+    "X_GROWTH_INTENSIVE",
   ] as const;
   const prev: Record<string, string | undefined> = {};
 
@@ -50,5 +52,13 @@ describe("x-marketing-env", () => {
     assert.equal(xMarketingPostsPaused(), true);
     assert.equal(xMarketingSilentOnly(), true);
     assert.equal(xDeskPostIncludeUrl(), true);
+  });
+
+  it("intensive growth defaults off unless X_GROWTH_INTENSIVE=1", () => {
+    assert.equal(xGrowthIntensive(), false);
+    process.env.X_GROWTH_INTENSIVE = "1";
+    assert.equal(xGrowthIntensive(), true);
+    process.env.X_GROWTH_INTENSIVE = "0";
+    assert.equal(xGrowthIntensive(), false);
   });
 });

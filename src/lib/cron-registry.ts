@@ -378,8 +378,8 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "X Growth (silent)",
     kind: "http",
     path: "/api/cron/x-growth",
-    schedule_label: "Hourly weekdays (budgeted likes/follows)",
-    stale_after_min: 90,
+    schedule_label: "Every 30m ET (9am–7pm, budgeted likes/follows/RT)",
+    stale_after_min: 45,
     weekdays_only: true,
     description:
       "X engagement — pay-per-use: likes/follows/RT; Enterprise adds FinTwit quote/reply",

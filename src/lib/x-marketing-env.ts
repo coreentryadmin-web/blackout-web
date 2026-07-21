@@ -18,7 +18,7 @@ export function xMarketingPostsPaused(): boolean {
   return v === "1" || v === "true" || v === "yes";
 }
 
-/** Likes + follows only — no quote/reply/RT on our profile. */
+/** Likes + follows only — no quote/reply on our profile (RT still OK). */
 export function xMarketingSilentOnly(): boolean {
   const v = process.env.X_GROWTH_SILENT_ONLY?.trim().toLowerCase();
   return v === "1" || v === "true" || v === "yes";
@@ -33,4 +33,11 @@ export function xDeskPostIncludeUrl(): boolean {
   if (v === "1" || v === "true" || v === "yes") return true;
   if (v === "0" || v === "false" || v === "no") return false;
   return xApiEnterpriseAccess();
+}
+
+/** User-requested burst mode: 30-min cron, larger batches, RT on giants (until X_GROWTH_INTENSIVE=0). */
+export function xGrowthIntensive(): boolean {
+  const v = process.env.X_GROWTH_INTENSIVE?.trim().toLowerCase();
+  if (v === "0" || v === "false" || v === "no") return false;
+  return v === "1" || v === "true" || v === "yes";
 }
