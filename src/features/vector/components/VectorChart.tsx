@@ -133,6 +133,7 @@ import {
   VECTOR_WALL_TRAIL_SEC,
 } from "@/features/vector/lib/vector-cadence";
 import { vectorHeatmapScopeLabel } from "@/lib/gex-scope-labels";
+import { applySessionOverviewViewport } from "@/features/vector/lib/vector-chart-viewport";
 
 export type VectorBar = {
   time: UTCTimestamp;
@@ -1964,7 +1965,8 @@ export function VectorChart({
       if (liveFollowEnabledRef.current) return;
       const chart = chartRef.current;
       if (!chart) return;
-      chart.timeScale().fitContent();
+      const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
+      applySessionOverviewViewport(chart, display);
       chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       refreshTrails(lensRef.current);
     };
@@ -2510,10 +2512,17 @@ export function VectorChart({
     applyDisplayBars(series, volumeSeries, initialDisplay);
     paintOverlays(initialDisplay);
     displayBarTimeRef.current = initialBars[initialBars.length - 1]?.time ?? 0;
-    // Deliberate refit on FIRST load only — there is no prior viewport to preserve here, so
-    // fitting the seeded bars to the width is the correct default. Background re-seeds route
-    // through applyDisplayBarsPreservingView instead (see BUG 2).
-    if (initialBars.length) chart.timeScale().fitContent();
+    // Deliberate refit on FIRST load only — there is no prior viewport to preserve here.
+    // Session overview frames the newest ET day only (seed carries multiple sessions); live
+    // follow fits the full seed. Background re-seeds route through applyDisplayBarsPreservingView.
+    if (initialBars.length) {
+      if (defaultChartViewport === "session") {
+        applySessionOverviewViewport(chart, initialDisplay);
+        chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
+      } else {
+        chart.timeScale().fitContent();
+      }
+    }
 
     const enableLiveFollowIfAtEdge = () => {
       if (liveFollowEnabledRef.current || !chartUserPannedRef.current) return;
@@ -3000,8 +3009,13 @@ export function VectorChart({
         // with a huge empty gap on the left, and the price-following overlays (VWAP/EMA/SMA) get
         // squished into that sliver and look absent. fitContent recomputes the spacing so the bars —
         // and their overlays — fill the chart width at every timeframe. This is the deliberate,
-        // user-expected refit; the create effect's fitContent is the only other one (first load).
-        chart?.timeScale().fitContent();
+        // user-expected refit; the create effect is the only other deliberate first-load refit.
+        if (!liveFollowEnabledRef.current && dteHorizonRef.current === "0dte") {
+          applySessionOverviewViewport(chart!, display);
+          chart?.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
+        } else {
+          chart?.timeScale().fitContent();
+        }
         lastFittedTimeframeRef.current = timeframe;
       } else if (prevRange && timeScale) {
         // Background re-run: pin the exact viewport the member had so zoom/pan survives.
