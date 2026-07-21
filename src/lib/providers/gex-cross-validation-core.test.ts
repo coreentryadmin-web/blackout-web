@@ -2,11 +2,38 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   crossValidateGexLevels,
+  cumulativeGammaFlip,
   resolveNearTermExpiriesForCrossValidation,
   restFallbackAllowed,
   uwLevelsFromLadder,
   wallsFromStrikeTotals,
+  zeroGammaFlip,
 } from "./gex-cross-validation-core";
+
+// ── cumulativeGammaFlip: the SpotGamma-standard GAMMA flip (aggregate zero-gamma boundary) ──
+test("cumulativeGammaFlip: net-short→net-long crossing nearest spot", () => {
+  // cumulative: 90→-30, 100→-20, 110→+20 → running total crosses 0 at 100+(20/40)*10 = 105.
+  assert.equal(cumulativeGammaFlip({ "90": -30, "100": 10, "110": 40 }, 100), 105);
+});
+
+test("cumulativeGammaFlip: net-short-across-the-book → null; per-strike flip would INVERT the regime", () => {
+  // Ladder has per-strike sign flips (700→710 neg→pos, 720→730 pos→neg) but cumulative net gamma is
+  // negative at EVERY strike (-2,-5,-4.9,-2.9,-3.0 e9) — dealers are short gamma throughout, so the
+  // honest gamma flip is null. The old per-strike zeroGammaFlip returns 709.68 (below spot 715),
+  // which computeGexRegime would read as spot≥flip → "long gamma" — the exact inversion this fixes.
+  const ladder = { "698": -2e9, "700": -3e9, "710": 1e8, "720": 2e9, "730": -1e8 };
+  assert.equal(cumulativeGammaFlip(ladder, 715), null);
+  assert.equal(zeroGammaFlip(ladder, 715), 709.68); // contrast: the old per-strike answer
+});
+
+test("cumulativeGammaFlip: rejects a crossing outside the ±12% plausibility band", () => {
+  // only crossing is ~48, >12% from spot 100 → thin-far-strike artifact → null
+  assert.equal(cumulativeGammaFlip({ "45": -10, "55": 30, "150": -1 }, 100), null);
+});
+
+test("cumulativeGammaFlip: fewer than 2 strikes → null", () => {
+  assert.equal(cumulativeGammaFlip({ "100": 50 }, 100), null);
+});
 
 test("REST fallback is disallowed when the caller requires expiry scoping", () => {
   assert.equal(restFallbackAllowed(["2026-07-01", "2026-07-02"]), false);

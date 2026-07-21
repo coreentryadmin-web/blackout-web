@@ -29,6 +29,17 @@ test("put wall below → support callout", () => {
   assert.match(p!.callout, /buy weakness/);
 });
 
+test("put wall overhead (spot fell through it) → support-broken caution, NOT dip-buy", () => {
+  // spot 7498 is below the 7500 put wall (0.027% away, inside the band): support has been lost.
+  const p = deriveWallProximity({ spot: 7498, walls, gammaFlip: 7000, bandPct: 0.5 });
+  assert.ok(p);
+  assert.equal(p!.side, "put");
+  assert.ok(p!.distancePct > 0); // strike is overhead
+  assert.match(p!.callout, /support gave way/);
+  // must never narrate a bullish reclaim/dip-buy when spot is UNDER the put wall
+  assert.doesNotMatch(p!.callout, /dip-buy|reclaimed/i);
+});
+
 test("gamma flip proximity → regime-hinge callout wins when closest", () => {
   // flip (7501, 0.013% away) is closer than the put wall (7500, 0.027%).
   const p = deriveWallProximity({

@@ -77,9 +77,15 @@ export function kingFromStrikeTotals(strikeTotals: Record<string, number>): numb
 }
 
 /**
- * Zero-gamma flip: the strike (linear-interpolated to gamma=0) where per-strike net gamma
- * changes sign — in EITHER direction — choosing the crossing NEAREST spot. Falls back to
+ * Zero-crossing level: the strike (linear-interpolated to value=0) where a per-strike net Greek
+ * total changes sign — in EITHER direction — choosing the crossing NEAREST spot. Falls back to
  * cumulative-sum crossing for unusual profiles with no clean per-strike sign flip.
+ *
+ * GENERIC by design: this is reused for the VEX flip and the DEX / CHARM zero-levels
+ * (polygon-options-gex.ts), where a per-strike sign crossing in either direction is exactly the
+ * right "where does this Greek profile flip sign across strikes" definition. Do NOT retarget it to
+ * the cumulative gamma-flip definition — the GEX gamma flip has its own `cumulativeGammaFlip`
+ * (below), which is the SpotGamma aggregate-zero-gamma boundary. See docs/audit/FINDINGS.md.
  */
 export function zeroGammaFlip(strikeTotals: Record<string, number>, spot = 0): number | null {
   const rows = Object.entries(strikeTotals)
@@ -90,8 +96,8 @@ export function zeroGammaFlip(strikeTotals: Record<string, number>, spot = 0): n
 
   const crossings: number[] = [];
   for (let i = 1; i < rows.length; i++) {
-    const a = rows[i - 1];
-    const b = rows[i];
+    const a = rows[i - 1]!;
+    const b = rows[i]!;
     if ((a.gamma < 0 && b.gamma > 0) || (a.gamma > 0 && b.gamma < 0)) {
       const frac = (0 - a.gamma) / (b.gamma - a.gamma);
       crossings.push(Number((a.strike + (b.strike - a.strike) * frac).toFixed(2)));
@@ -111,15 +117,60 @@ export function zeroGammaFlip(strikeTotals: Record<string, number>, spot = 0): n
     cum.push(running);
   }
   for (let i = 1; i < cum.length; i++) {
-    const prevCum = cum[i - 1];
-    const nextCum = cum[i];
+    const prevCum = cum[i - 1]!;
+    const nextCum = cum[i]!;
     if (prevCum !== 0 && nextCum !== 0 && Math.sign(nextCum) !== Math.sign(prevCum)) {
-      const span = rows[i].strike - rows[i - 1].strike;
+      const span = rows[i]!.strike - rows[i - 1]!.strike;
       const frac = prevCum / (prevCum - nextCum);
-      return Number((rows[i - 1].strike + span * frac).toFixed(2));
+      return Number((rows[i - 1]!.strike + span * frac).toFixed(2));
     }
   }
   return null;
+}
+
+/**
+ * Gamma flip (SpotGamma-standard): the price where CUMULATIVE dealer gamma, summed low→high strike,
+ * crosses from net-short (≤0) to net-long (>0) — the aggregate zero-gamma regime boundary. This is
+ * the SAME definition the reconstruct rail (`gammaFlipFromLadder`) and the SPX desk
+ * (`computeGammaFlip`) use, so every GEX surface now reports one flip. Collects every
+ * net-short→net-long crossing and returns the one NEAREST spot, rejecting any crossing beyond
+ * ±FLIP_MAX_DIST_PCT of spot as a thin-far-strike artifact of the banded chain snapshot.
+ *
+ * Returns null (never a fabricated level) when cumulative gamma never turns positive — dealers are
+ * net-short at EVERY strike, so there is no long-gamma region and hence no honest flip. This
+ * replaces the old per-strike `zeroGammaFlip` for the GAMMA flip specifically: on a
+ * net-short-everywhere book the per-strike crossing could interpolate a spurious level below spot
+ * and INVERT the `spot >= flip ? "long" : "short"` regime posture. VEX/DEX/CHARM zero-levels keep
+ * using the per-strike `zeroGammaFlip` — only the gamma flip is cumulative. See docs/audit/FINDINGS.md.
+ */
+export function cumulativeGammaFlip(strikeTotals: Record<string, number>, spot = 0): number | null {
+  const rows = Object.entries(strikeTotals)
+    .map(([s, g]) => ({ strike: Number(s), gamma: g }))
+    .filter((r) => Number.isFinite(r.strike) && Number.isFinite(r.gamma))
+    .sort((a, b) => a.strike - b.strike);
+  if (rows.length < 2) return null;
+
+  const crossings: number[] = [];
+  let cum = 0;
+  let prevStrike = rows[0]!.strike;
+  let prevCum = 0;
+  for (const r of rows) {
+    cum += r.gamma;
+    if (prevCum <= 0 && cum > 0) {
+      // In this branch cum > 0 >= prevCum, so cum - prevCum is always > 0 (no divide-by-zero).
+      const frac = -prevCum / (cum - prevCum);
+      crossings.push(Number((prevStrike + frac * (r.strike - prevStrike)).toFixed(2)));
+    }
+    prevStrike = r.strike;
+    prevCum = cum;
+  }
+  if (crossings.length === 0) return null;
+  if (!(spot > 0)) return crossings[crossings.length - 1];
+
+  const FLIP_MAX_DIST_PCT = 0.12;
+  const plausible = crossings.filter((c) => Math.abs(c - spot) <= spot * FLIP_MAX_DIST_PCT);
+  if (plausible.length === 0) return null;
+  return plausible.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best));
 }
 
 export function strikeTotalsFromLadder(ladder: Map<number, number>): Record<string, number> {
@@ -137,7 +188,7 @@ export function uwLevelsFromLadder(
 ): { callWall: number | null; putWall: number | null; gammaFlip: number | null } {
   const strikeTotals = strikeTotalsFromLadder(ladder);
   const { callWall, putWall } = wallsFromStrikeTotals(strikeTotals);
-  const gammaFlip = zeroGammaFlip(strikeTotals, spot);
+  const gammaFlip = cumulativeGammaFlip(strikeTotals, spot);
   return { callWall, putWall, gammaFlip };
 }
 
