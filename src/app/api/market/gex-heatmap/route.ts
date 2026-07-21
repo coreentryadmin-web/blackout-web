@@ -391,6 +391,8 @@ export async function GET(req: NextRequest) {
     if (!isEtCashRth()) {
       rounded.shift = { available: false, status: "collecting" };
       if (rounded.vex_shift) rounded.vex_shift = { available: false, status: "collecting" };
+      if (rounded.dex_shift) rounded.dex_shift = { available: false, status: "collecting" };
+      if (rounded.charm_shift) rounded.charm_shift = { available: false, status: "collecting" };
     }
 
     // Reconcile each metric's total AFTER rounding: independently rounding total and

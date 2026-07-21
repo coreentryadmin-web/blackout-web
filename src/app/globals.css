@@ -12353,6 +12353,40 @@ body::before {
     animation: spx-gex-matrix-pop 1.8s ease-in-out infinite;
   }
 
+  /* Top-3 call/put intraday shift % — inset pill (bead yellow / purple). */
+  .gex-matrix-cell-with-badge {
+    position: relative;
+    padding-top: 0.65rem !important;
+  }
+
+  .gex-matrix-shift-badge {
+    position: absolute;
+    top: 1px;
+    left: 2px;
+    z-index: 2;
+    border-radius: 3px;
+    padding: 0 3px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 8px;
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+
+  .gex-matrix-shift-badge--call {
+    color: #1a1400;
+    background: rgba(255, 214, 10, 0.92);
+    box-shadow: 0 0 6px rgba(255, 214, 10, 0.45);
+  }
+
+  .gex-matrix-shift-badge--put {
+    color: #faf5ff;
+    background: rgba(217, 123, 255, 0.88);
+    box-shadow: 0 0 6px rgba(217, 123, 255, 0.4);
+  }
+
   /* Thermal's GEX heatmap (GexHeatmap.tsx) per-day call-wall/put-wall pop —
      shares SPX Slayer's keyframe so both products' extreme-cell glow reads
      as one visual language. */
@@ -12447,13 +12481,15 @@ body::before {
   }
 
   .spx-odte-matrix-label--max-pos {
-    color: #d7ffe8;
-    background: rgba(0, 230, 118, 0.22);
+    color: #fffbeb;
+    background: rgba(255, 214, 10, 0.28);
+    box-shadow: inset 0 0 0 1px rgba(255, 214, 10, 0.55);
   }
 
   .spx-odte-matrix-label--max-neg {
-    color: #e9ddff;
-    background: rgba(109, 40, 217, 0.35);
+    color: #faf5ff;
+    background: rgba(217, 123, 255, 0.32);
+    box-shadow: inset 0 0 0 1px rgba(217, 123, 255, 0.55);
   }
 
   .spx-odte-matrix-label--spot {
@@ -12490,16 +12526,16 @@ body::before {
     background: rgba(8, 8, 14, 0.65);
   }
 
-  /* Max +GEX (dominant positive) — bull green wash */
+  /* Max +GEX (dominant positive) — call-bead yellow wash */
   .spx-odte-matrix-row--max-pos td {
-    background: rgba(0, 230, 118, 0.28);
-    box-shadow: inset 0 0 0 1px rgba(0, 230, 118, 0.55);
+    background: rgba(255, 214, 10, 0.22);
+    box-shadow: inset 0 0 0 1px rgba(255, 214, 10, 0.55);
   }
 
-  /* Max −GEX (dominant negative) — deep purple wash */
+  /* Max −GEX (dominant negative) — put-bead purple wash */
   .spx-odte-matrix-row--max-neg td {
-    background: rgba(109, 40, 217, 0.42);
-    box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.55);
+    background: rgba(217, 123, 255, 0.28);
+    box-shadow: inset 0 0 0 1px rgba(217, 123, 255, 0.55);
   }
 
   /* Anchor (max |GEX|) — white frame layered on peak or solo */
@@ -12510,17 +12546,17 @@ body::before {
   }
 
   .spx-odte-matrix-row--max-pos.spx-odte-matrix-row--anchor td {
-    background: rgba(0, 230, 118, 0.34);
+    background: rgba(255, 214, 10, 0.3);
     box-shadow:
       inset 0 0 0 1px rgba(255, 255, 255, 0.9),
-      inset 0 0 0 3px rgba(0, 230, 118, 0.45);
+      inset 0 0 0 3px rgba(255, 214, 10, 0.45);
   }
 
   .spx-odte-matrix-row--max-neg.spx-odte-matrix-row--anchor td {
-    background: rgba(109, 40, 217, 0.48);
+    background: rgba(217, 123, 255, 0.36);
     box-shadow:
       inset 0 0 0 1px rgba(255, 255, 255, 0.9),
-      inset 0 0 0 3px rgba(139, 92, 246, 0.45);
+      inset 0 0 0 3px rgba(217, 123, 255, 0.45);
   }
 
   .spx-odte-matrix-row--anchor .spx-odte-matrix-value {

@@ -97,6 +97,11 @@ export async function remainingDaily(
   return Math.max(0, X_DAILY_CAPS[action] - used);
 }
 
+/** ET-day budget usage for admin dashboard. */
+export async function getDayBudgetSnapshot(): Promise<DayBudget> {
+  return loadDayBudget();
+}
+
 export interface RunBudget {
   allowed: boolean;
   reason?: string;

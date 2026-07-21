@@ -22,6 +22,7 @@ import {
   fmtHeatmapStrike,
   heatmapCellStyle,
   heatmapCellTextStyle,
+  heatmapMatrixExtremeCellStyle,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
 import { gexKingDualLabel } from "@/lib/gex-king-node-labels";
@@ -30,8 +31,9 @@ import {
   writeGexHeatmapSessionCache,
 } from "@/lib/gex-heatmap-session-cache";
 import { spxMatrixScopeLabel } from "@/lib/gex-scope-labels";
-import { pickGexShiftLeaders } from "@/lib/gex-shift-leaders";
+import { pickGexShiftLeaders, pickGexShiftLeaderCells, gexMatrixShiftCellKey, matrixShiftForLens, matrixShiftSinceMs } from "@/lib/gex-shift-leaders";
 import { GexShiftLeadersStrip } from "@/components/gex/GexShiftLeadersStrip";
+import { GexMatrixShiftBadge } from "@/components/gex/GexMatrixShiftBadge";
 import { SpxMatrixTapeStrip } from "./SpxMatrixTapeStrip";
 import { SpxStrikeLadderAxis } from "./SpxStrikeLadderAxis";
 import { scrollRowIntoViewCenter } from "@/features/spx/lib/spx-matrix-scroll";
@@ -61,10 +63,22 @@ type GexHeatmapResponse = {
   shift?: {
     available?: boolean;
     delta_by_strike?: Record<string, number>;
+    since_ms?: number;
   };
   vex_shift?: {
     available?: boolean;
     delta_by_strike?: Record<string, number>;
+    since_ms?: number;
+  };
+  dex_shift?: {
+    available?: boolean;
+    delta_by_strike?: Record<string, number>;
+    since_ms?: number;
+  };
+  charm_shift?: {
+    available?: boolean;
+    delta_by_strike?: Record<string, number>;
+    since_ms?: number;
   };
   cross_validation?: {
     callWallMatch: boolean;
@@ -192,17 +206,19 @@ export function SpxGexMatrixHeatmap({
   const todayEt = useMemo(() => todayEtYmd(), []);
   const block = lens === "gex" ? data?.gex : data?.vex;
   const hasVex = Boolean(data?.vex && Object.keys(data.vex.cells ?? {}).length > 0);
+  const activeShift = matrixShiftForLens(lens, data);
   const shiftLeaders = useMemo(
-    () =>
-      pickGexShiftLeaders(
-        block?.strike_totals,
-        lens === "gex" ? data?.shift : data?.vex_shift
-      ),
-    [block?.strike_totals, data?.shift, data?.vex_shift, lens]
+    () => pickGexShiftLeaders(block?.strike_totals, activeShift),
+    [block?.strike_totals, activeShift]
   );
   const cells = block?.cells ?? {};
   const expiriesAll = data?.expiries ?? [];
   const displayExpiries = useMemo(() => expiriesAll.slice(0, MAX_EXPIRY_COLS), [expiriesAll]);
+  const shiftLeaderCells = useMemo(
+    () => pickGexShiftLeaderCells(block?.strike_totals, cells, displayExpiries, activeShift),
+    [block?.strike_totals, cells, displayExpiries, activeShift]
+  );
+  const shiftSinceMs = matrixShiftSinceMs(lens, data);
 
   useEffect(() => {
     if (lens === "vex" && data != null && !hasVex) setLens("gex");
@@ -673,6 +689,7 @@ export function SpxGexMatrixHeatmap({
                       const columnExtremes = columnExtremeWalls.get(e);
                       const isColumnCallWall = has && columnExtremes?.callWall === strike;
                       const isColumnPutWall = has && columnExtremes?.putWall === strike;
+                      const shiftLeader = shiftLeaderCells.get(gexMatrixShiftCellKey(strike, e));
                       const extremeTitle = isColumnCallWall
                         ? `Highest positive gamma for ${fmtHeatmapExpiry(e)}`
                         : isColumnPutWall
@@ -683,13 +700,22 @@ export function SpxGexMatrixHeatmap({
                           key={e}
                           className={clsx(
                             "spx-gex-matrix-expiry-col whitespace-nowrap px-1 py-1 text-center font-bold",
-                            has && val > 0 && "text-emerald-300",
-                            has && val < 0 && "text-rose-300",
+                            shiftLeader && "gex-matrix-cell-with-badge",
+                            has && val > 0 && !isColumnCallWall && "text-emerald-300",
+                            has && val < 0 && !isColumnPutWall && "text-rose-300",
                             !has && "text-sky-300/25"
                           )}
                           style={{
-                            ...(has ? heatmapCellStyle(val, peak, lens) : {}),
-                            ...(has ? heatmapCellTextStyle(val, peak) : {}),
+                            ...(has
+                              ? isColumnCallWall
+                                ? heatmapMatrixExtremeCellStyle("positive")
+                                : isColumnPutWall
+                                  ? heatmapMatrixExtremeCellStyle("negative")
+                                  : {
+                                      ...heatmapCellStyle(val, peak, lens),
+                                      ...heatmapCellTextStyle(val, peak),
+                                    }
+                              : {}),
                           }}
                           title={
                             isColumnKing
@@ -701,10 +727,12 @@ export function SpxGexMatrixHeatmap({
                               : extremeTitle
                           }
                         >
+                          {shiftLeader ? (
+                            <GexMatrixShiftBadge leader={shiftLeader} sinceMs={shiftSinceMs} />
+                          ) : null}
                           <span
                             className={clsx(
-                              isColumnCallWall && "text-emerald-200",
-                              isColumnPutWall && "text-rose-200"
+                              (isColumnCallWall || isColumnPutWall) && "spx-gex-matrix-extreme-pop"
                             )}
                           >
                             {fmtHeatmapMoneySigned(val, { showZero: true })}

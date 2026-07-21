@@ -35,6 +35,15 @@ export function pickEngagementReply(
   return `${u} Solid take. Positioning (flip + walls) usually confirms or kills these ${ticker} setups — what's your level?`;
 }
 
+/** Quote-tweet commentary — no leading @ (quoted tweet provides context). */
+export function pickEngagementQuote(
+  username: string,
+  tweetText: string,
+): string {
+  const withHandle = pickEngagementReply(username, tweetText);
+  return withHandle.replace(/^@\w+\s+/, "").trim().slice(0, 280);
+}
+
 /** Reply when someone @mentions us — warmer, still one question. */
 export function pickMentionReply(username: string, mentionText: string): string {
   const base = pickEngagementReply(username, mentionText);

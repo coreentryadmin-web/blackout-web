@@ -1,4 +1,6 @@
 import type { FlowAlert } from "@/lib/api";
+import { flowEventTimeMs } from "@/lib/flow-timestamp";
+import { normalizeFlowExpiry } from "@/lib/largo/flow-strike-stacks";
 
 /** HELIX analytics rail — list sizes and strike-hit windows. */
 
@@ -21,25 +23,17 @@ export function formatHitsInWindow(hitCount: number, windowMin = HELIX_STRIKE_HI
   return `${hitCount} ${noun} in last ${windowMin} min`;
 }
 
-/** Best-effort event time for windowed hit counts — prefers UW event_at. */
+/** Best-effort event time for windowed hit counts — matches LIVE/freshness (real UW time only). */
 export function flowStackAlertTimeMs(row: {
   event_at?: string | null;
   alerted_at?: string;
+  tape_time_estimated?: boolean;
 }): number | null {
-  if (row.event_at) {
-    const t = new Date(row.event_at).getTime();
-    if (Number.isFinite(t)) return t;
-  }
-  if (row.alerted_at) {
-    const t = new Date(row.alerted_at).getTime();
-    if (Number.isFinite(t)) return t;
-  }
-  return null;
+  return flowEventTimeMs(row);
 }
 
 function normalizeExpiryKey(expiry: string): string {
-  if (!expiry) return "";
-  return expiry.slice(0, 10);
+  return normalizeFlowExpiry(expiry);
 }
 
 /** Count prints on the same contract within the rolling window (Top Prints magnitude line). */
@@ -58,7 +52,11 @@ export function countMatchingContractHits(
     if (a.option_type.toUpperCase() !== opt) continue;
     if (Math.round(a.strike) !== Math.round(target.strike)) continue;
     if (normalizeExpiryKey(a.expiry) !== exp) continue;
-    const ms = flowStackAlertTimeMs({ event_at: a.event_at, alerted_at: a.alerted_at });
+    const ms = flowStackAlertTimeMs({
+      event_at: a.event_at,
+      alerted_at: a.alerted_at,
+      tape_time_estimated: a.tape_time_estimated,
+    });
     if (ms == null || nowMs - ms > windowMs) continue;
     n++;
   }

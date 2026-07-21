@@ -623,16 +623,19 @@ async function buildCollage(items, ticker, plan) {
 }
 
 function buildTweet(ticker, plan) {
-  const whop = "whop.com/blackout-2d9c?utm_source=x&utm_medium=social&utm_campaign=showcase";
+  const site =
+    "blackouttrades.com/pricing?utm_source=x&utm_medium=social&utm_campaign=showcase";
   const isSpx = ticker === "SPX" || ticker === "SPXW";
   let text;
   if (isSpx) {
-    text = `${ticker} 0DTE desk — live.\n\nGamma beads, flow tape, heatmap, Slayer signals, Night Hawk playbook, Largo read.\n\nBefore the bell, not after.\n\n@BlackOutTrade ${whop}`;
+    text = `${ticker} 0DTE desk — live.\n\nGamma beads, flow tape, heatmap, Slayer signals, Night Hawk playbook, Largo read.\n\nWhat's your line into the close?\n\n@BlackOutTrade ${site}`;
   } else {
-    text = `${ticker} isn't moving on vibes.\n\n0DTE beads on Vector. ${ticker} flow on Helix. GEX heat on Thermal. Largo desk read.\n\nSame name, four lenses.\n\n@BlackOutTrade ${whop}`;
+    text = `${ticker} gamma + flow on one screen — not six tabs.\n\nVector beads, Helix tape, Thermal matrix, Largo read.\n\nWhat's your flip level today?\n\n@BlackOutTrade ${site}`;
   }
-  if (text.length > 280) text = text.slice(0, 277) + "…";
-  return text;
+  if (text.length > 280) {
+    text = `${ticker}: dealer positioning + live flow on one desk. What's your read?\n\n@BlackOutTrade ${site}`;
+  }
+  return text.slice(0, 280);
 }
 
 async function main() {
