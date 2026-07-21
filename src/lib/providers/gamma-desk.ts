@@ -1,5 +1,7 @@
 /** 0DTE gamma desk — flip level & GEX walls (ported from engine gamma_desk.py). */
 
+import { cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
+
 export type GexStrikeLevel = {
   strike: number;
   net_gex: number;
@@ -52,77 +54,30 @@ export function analyzeStrikeGexRows(rows: Record<string, unknown>[]): {
   };
 }
 
+/**
+ * Gamma flip for the desk = the SpotGamma cumulative zero-gamma boundary. Delegates to the shared
+ * `cumulativeGammaFlip` (unified 2026-07-21) so the SPX desk, the heatmap regime, the reconstruct
+ * rail, and Nighthawk positioning all report ONE flip definition. Converts the desk's ranked_levels
+ * ({strike, net_gex}) into the strike→net-gamma record the shared helper expects; a balanced net-0
+ * strike is still output-neutral (it adds 0 to the cumulative sum).
+ *
+ * Behavior change vs the old desk-local implementation: it now takes only the net-short→net-long
+ * crossing nearest spot — the regime boundary where dealers flip from short to long gamma — with a
+ * ±12% plausibility band, and returns null when the book never turns net-long (an honest "no flip")
+ * rather than reporting a long→short crossing or a terminal zero-touch as a flip. That removes the
+ * cross-surface disagreement and the below-spot inversion documented in docs/audit/FINDINGS.md.
+ */
 export function computeGammaFlip(
   levels: Array<{ strike: number; net_gex: number }>,
   spot: number
 ): number | null {
   if (!levels.length || spot <= 0) return null;
-
-  const sorted = [...levels].sort((a, b) => a.strike - b.strike);
-  let cum = 0;
-  let prevStrike: number | null = null;
-  let prevCum = 0;
-  let bestFlip: number | null = null;
-  let bestDist = Infinity;
-  // P3 fix: a flip requires the cumulative GEX to actually CHANGE SIGN, not merely
-  // touch zero. The old prevCum===0 / newCum===0 branches fired on any zero touch,
-  // so a "tangent" profile (e.g. cum +10 -> 0 -> +10) registered a flip that could be
-  // arbitrarily far from spot and win on distance. We defer a zero-touch and only
-  // confirm it when the next non-zero cumulative has the OPPOSITE sign (a true
-  // crossing), or when it is the terminal touch away from a non-zero side.
-  let lastNonZeroSign = 0;
-  let pendingZeroStrike: number | null = null;
-  let pendingSignBefore = 0;
-
-  const considerFlip = (flip: number, exact: boolean) => {
-    const dist = Math.abs(spot - flip);
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestFlip = exact ? flip : Math.round(flip * 100) / 100;
-    }
-  };
-
-  for (const lv of sorted) {
-    const strike = lv.strike;
-    const net = lv.net_gex;
-    const newCum = cum + net;
-    const newSign = newCum > 0 ? 1 : newCum < 0 ? -1 : 0;
-
-    // Genuine sign change between two non-zero cumulatives -> interpolate (unchanged).
-    if (prevStrike != null && prevCum !== 0 && newCum !== 0 && prevCum * newCum < 0) {
-      const denom = Math.abs(prevCum) + Math.abs(newCum);
-      const frac = denom > 0 ? Math.abs(prevCum) / denom : 0.5;
-      considerFlip(prevStrike + frac * (strike - prevStrike), false);
-    }
-
-    if (newSign !== 0) {
-      if (pendingZeroStrike != null) {
-        // Confirm the deferred zero touch only if it was a real crossing: the sign
-        // before the zero differs from the sign after (or the cumulative began at 0).
-        if (pendingSignBefore === 0 || pendingSignBefore !== newSign) {
-          considerFlip(pendingZeroStrike, true);
-        }
-        pendingZeroStrike = null;
-      }
-      lastNonZeroSign = newSign;
-    } else if (prevStrike != null && pendingZeroStrike == null) {
-      // Cumulative hit exactly zero -> defer until the next non-zero sign resolves it.
-      pendingZeroStrike = strike;
-      pendingSignBefore = lastNonZeroSign;
-    }
-
-    cum = newCum;
-    prevStrike = strike;
-    prevCum = newCum;
+  const strikeTotals: Record<string, number> = {};
+  for (const lv of levels) {
+    if (!Number.isFinite(lv.strike) || !Number.isFinite(lv.net_gex)) continue;
+    strikeTotals[lv.strike] = (strikeTotals[lv.strike] ?? 0) + lv.net_gex;
   }
-
-  // Terminal zero touch: reaching zero from a non-zero side at the end of the chain
-  // is the boundary of the gamma profile, so it is the flip (e.g. cum +10 -> 0).
-  if (pendingZeroStrike != null && pendingSignBefore !== 0) {
-    considerFlip(pendingZeroStrike, true);
-  }
-
-  return bestFlip;
+  return cumulativeGammaFlip(strikeTotals, spot);
 }
 
 export function gammaRegime(spot: number, flip: number | null): string {
