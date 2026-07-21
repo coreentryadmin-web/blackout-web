@@ -382,7 +382,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 90,
     weekdays_only: true,
     description:
-      "Silent X engagement — likes/follows on niche accounts; rate-budget capped",
+      "X engagement — likes/follows + quote/reply on followed FinTwit accounts (Basic tier safe)",
   },
   {
     key: "x-replies",

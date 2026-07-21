@@ -6,9 +6,13 @@
  * - Replies ONLY when someone @mentions us (x-replies) — never cold @tag posts
  * - NEVER post "@someone ..." as an original tweet on our profile
  *
- * SILENT ENGAGEMENT (x-growth, invisible on our feed):
- * - Like + follow niche accounts; selective RT of high-signal posts
- * - Reply to @mentions with substantive answers
+ * SILENT ENGAGEMENT (x-growth):
+ * - Like + follow niche accounts; selective RT of high-signal search hits
+ * - Quote-tweet or reply ONLY on followed ENGAGEMENT_TARGETS (X Basic tier)
+ * - Never cold-reply on search hits (403 on Basic — wastes budget + error noise)
+ *
+ * @MENTIONS (x-replies):
+ * - Reply when someone @mentions us — substantive answers, no Whop link
  *
  * GOAL: followers, impressions, Whop subs — not timeline spam.
  */

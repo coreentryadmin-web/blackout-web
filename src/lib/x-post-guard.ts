@@ -16,11 +16,14 @@ import { isTimelinePostAllowed } from "@/lib/x-feed-policy";
 const BROKEN_PATTERNS = [
   /unknown gamma/i,
   /flip flip/i,
-  /put —/i,
-  /call —/i,
+  /flip\s*—/i,
+  /put\s*—/i,
+  /call\s*—/i,
   /#\w+/,
   /@IHate0dte/i,
   /@there\b/i,
+  /isn't moving on vibes/i,
+  /Six tools\. One desk/i,
 ];
 
 export function isTweetContentValid(text: string): boolean {

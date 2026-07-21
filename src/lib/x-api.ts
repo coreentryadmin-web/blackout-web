@@ -240,6 +240,41 @@ export async function postReply(
   return json.data;
 }
 
+/** Quote-tweet — visible on @BlackOutTrade profile (preferred over cold replies on Basic tier). */
+export async function postQuoteTweet(
+  text: string,
+  quotedTweetId: string,
+): Promise<TweetResult> {
+  if (!isTimelinePostAllowed(text)) {
+    throw new Error(
+      "Quote tweet rejected: do not @tag other accounts on @BlackOutTrade profile",
+    );
+  }
+  const payload: Record<string, unknown> = {
+    text,
+    quote_tweet_id: quotedTweetId,
+  };
+
+  const auth = oauthHeader("POST", X_TWEET_URL);
+  const res = await fetch(X_TWEET_URL, {
+    method: "POST",
+    headers: {
+      Authorization: auth,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    if (res.status === 429) {
+      throw new Error(`X quote tweet rate limited (429): ${err.slice(0, 120)}`);
+    }
+    throw new Error(`X quote tweet failed (${res.status}): ${err}`);
+  }
+  const json = (await res.json()) as { data: TweetResult };
+  return json.data;
+}
+
 export async function postThread(texts: string[]): Promise<TweetResult[]> {
   const out: TweetResult[] = [];
   let parentId: string | undefined;
