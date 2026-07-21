@@ -5,6 +5,7 @@ import {
   likeTweet,
   retweet,
   followUser,
+  postReply,
   X_BLOCK_RT_USERNAMES,
   type XTweetSearchHit,
 } from "@/lib/x-api";
@@ -14,8 +15,15 @@ import {
   MAX_TWEET_AGE_HOURS,
   MIN_IMPRESSIONS_FOR_RT,
 } from "@/lib/x-engage-config";
-import { isReplyableTweet } from "@/lib/x-engage-replies";
-import { bumpEngageRotation } from "@/lib/x-marketing-meta";
+import {
+  isReplyableTweet,
+  pickEngagementReply,
+} from "@/lib/x-engage-replies";
+import {
+  bumpEngageRotation,
+  getRepliedTweetIds,
+  markTweetReplied,
+} from "@/lib/x-marketing-meta";
 import {
   resolveRunBudget,
   recordBudgetUse,
@@ -28,6 +36,8 @@ export interface EngageStats {
   likes: number;
   retweets: number;
   follows: number;
+  /** Public replies on FinTwit posts (visible on our profile — drives reach). */
+  replies: number;
   scanned: string[];
   errors: string[];
   rateLimited: boolean;
@@ -87,6 +97,7 @@ export async function runEngagementSweep(opts: {
     likes: 0,
     retweets: 0,
     follows: 0,
+    replies: 0,
     scanned: [],
     errors: [],
     rateLimited: false,
@@ -99,9 +110,12 @@ export async function runEngagementSweep(opts: {
     return stats;
   }
 
+  const repliedIds = dryRun ? new Set<string>() : await getRepliedTweetIds();
+
   let likeCap = budget.likes;
   let followCap = budget.follows;
   let rtCap = budget.retweets;
+  let replyCap = budget.replies;
 
   async function tryLike(tweetId: string): Promise<boolean> {
     if (likeCap <= 0 || stats.rateLimited) return false;
@@ -143,6 +157,41 @@ export async function runEngagementSweep(opts: {
     }
     await sleep(engagementJitterMs());
     return result === "ok";
+  }
+
+  async function tryReply(
+    tweet: XTweetSearchHit,
+  ): Promise<boolean> {
+    if (replyCap <= 0 || stats.rateLimited) return false;
+    const username = tweet.author_username;
+    if (!username || username.toLowerCase() === "blackouttrade") return false;
+    if (repliedIds.has(tweet.id)) return false;
+    const text = pickEngagementReply(username, tweet.text ?? "").slice(0, 280);
+    if (text.length < 25) return false;
+
+    if (dryRun) {
+      stats.replies += 1;
+      replyCap -= 1;
+      return true;
+    }
+
+    try {
+      await postReply(text, tweet.id);
+      await markTweetReplied(tweet.id);
+      await recordBudgetUse("replies");
+      stats.replies += 1;
+      replyCap -= 1;
+      repliedIds.add(tweet.id);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "reply failed";
+      stats.errors.push(`reply:${username}:${msg.slice(0, 80)}`);
+      if (msg.includes("429") || msg.includes("rate limited")) {
+        await handleRateLimited(stats);
+      }
+      return false;
+    }
+    await sleep(engagementJitterMs());
+    return true;
   }
 
   async function tryRetweet(tweetId: string, imps: number): Promise<boolean> {
@@ -206,12 +255,24 @@ export async function runEngagementSweep(opts: {
       })
       .sort((a, b) => scoreSearchHit(b) - scoreSearchHit(a));
 
-    for (const t of candidates.slice(0, likeCap)) {
+    for (const t of candidates.slice(0, likeCap + (cronMode ? 1 : 2))) {
       if (stats.rateLimited) break;
       stats.scanned.push(`search:@${t.author_username}`);
       if (!(await tryLike(t.id))) break;
       const imps = t.public_metrics?.impression_count ?? 0;
       if (rtCap > 0) await tryRetweet(t.id, imps);
+      // One public reply per run on a recent FinTwit post — builds reach
+      // (likes alone are invisible; replies show up in threads + our profile).
+      // Do not gate on impression count — search API often omits metrics; score >= 1
+      // (fresh post) is enough; manual runs may post up to 2 replies.
+      const replyMaxPerRun = cronMode ? 1 : 2;
+      if (
+        replyCap > 0 &&
+        stats.replies < replyMaxPerRun &&
+        tweetAgeHours(t.created_at) <= MAX_TWEET_AGE_HOURS
+      ) {
+        await tryReply(t);
+      }
     }
   }
 
