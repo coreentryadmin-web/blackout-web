@@ -58,6 +58,7 @@ test("SpxDashboard mounts triple desk: Largo | matrix | embedded Vector chart (n
   assert.match(src, /spx-sniper-vector-col/);
   assert.match(src, /embed="chart-only"/);
   assert.match(src, /defaultDteHorizon="0dte"/);
+  assert.match(src, /defaultChartViewport="session"/);
   assert.match(src, /defaultTimeframe=\{3\}/);
   assert.match(src, /spx-sniper-triple--desk-v3/);
 });
