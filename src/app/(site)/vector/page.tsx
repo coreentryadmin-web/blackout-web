@@ -27,8 +27,15 @@ export default async function VectorPage({ searchParams }: PageProps) {
   // Shared seed loader (2026-07-13, member-directed desk consolidation): the SPX Slayer dashboard
   // embeds this same Vector surface, so ALL seed logic (bars, wall scope, observed-rail merge,
   // modeled-prefix backfill, empty-case seeding) lives in loadVectorSeedProps — one code path for
-  // both routes, zero drift.
-  const seed = await loadVectorSeedProps(ticker);
+  // both routes, zero drift. Preload the 0DTE recorded rail so the first paint shows the full
+  // intraday bead trail when the member opens 0DTE (SPX Slayer + /vector SPX).
+  const seed = await loadVectorSeedProps(ticker, { seedDteHorizon: "0dte" });
 
-  return <VectorPageShell {...seed} />;
+  return (
+    <VectorPageShell
+      {...seed}
+      defaultDteHorizon={ticker === "SPX" ? "0dte" : undefined}
+      defaultChartViewport="session"
+    />
+  );
 }
