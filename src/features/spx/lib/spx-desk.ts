@@ -6,6 +6,9 @@ import {
   deskFlowRaceMs,
 } from "@/lib/providers/config";
 import { serverCache } from "@/lib/server-cache";
+// Pure numeric helpers (round + GEX staleness + pulse rounding) live in a server-only-free module
+// so they can be unit-tested in isolation. See spx-desk-numerics.ts.
+import { roundDeskNum, gexStaleFromAge, roundPulseNumerics } from "./spx-desk-numerics";
 import { safeTime } from "@/lib/safe-time";
 import { tapeDedupKey } from "@/lib/tape-dedup-key";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
@@ -124,11 +127,6 @@ async function sessionStatsWithProxyVwap(
   }
 }
 
-/** Round price-like desk numerics at the data layer (deep sweep #21). */
-function roundDeskNum(n: number | null | undefined): number | null {
-  if (n == null || !Number.isFinite(n)) return null;
-  return Math.round(n * 100) / 100;
-}
 
 let lastGoodGexWalls: GexWall[] = [];
 let lastGoodStrikeLevels: GexStrikeLevel[] = [];
@@ -153,12 +151,6 @@ function gexDataAgeMs(now = Date.now()): number | null {
  * during a chain outage), so the UI grays them / shows an age badge instead of presenting a
  * day-stale wall as a live node. ~30s per the audit. Env-tunable without a deploy.
  */
-const GEX_STALE_MS = (() => {
-  const raw = process.env.SPX_GEX_STALE_SEC?.trim();
-  const sec = raw ? Number(raw) : 30;
-  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 30_000;
-})();
-
 type CanonicalDeskGexSnapshot = {
   gex_net: number | null;
   gex_king: number | null;
@@ -215,7 +207,7 @@ function stickyDeskGexFallback(spot: number): CanonicalDeskGexSnapshot {
     gamma_regime: gRegime !== "unknown" ? gRegime : lastGoodGammaRegime,
     gex_walls: finalWalls,
     gex_age_ms: gexAgeMs,
-    gex_stale: gexAgeMs == null || gexAgeMs > GEX_STALE_MS,
+    gex_stale: gexStaleFromAge(gexAgeMs),
     fresh_this_cycle: false,
   };
 }
@@ -392,7 +384,9 @@ async function resolveCanonicalDeskGex(spot: number): Promise<CanonicalDeskGexSn
     gamma_regime: regime !== "unknown" ? regime : lastGoodGammaRegime,
     gex_walls: walls.length ? walls : lastGoodGexWalls,
     gex_age_ms: gexAgeMs,
-    gex_stale: false,
+    // Derive from the snapshot age, NOT a hardcoded false: `pos.asof` can lag the fetch (UW feed
+    // cooldown / cache miss), so a "fresh fetch this cycle" is not the same as fresh DATA.
+    gex_stale: gexStaleFromAge(gexAgeMs),
     fresh_this_cycle: levels.length > 0,
   };
 }
@@ -1747,8 +1741,9 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     halt_channel_stale: isTradingHaltChannelStale(),
     lit_dark_ratio: computeLitDarkRatio(),
   };
-  lastPulseForSignals = result;
-  return result;
+  const rounded = roundPulseNumerics(result);
+  lastPulseForSignals = rounded;
+  return rounded;
 }
 
 /** UW flow lane — GEX strike ladder, live tape, dark pool (~4s). */
