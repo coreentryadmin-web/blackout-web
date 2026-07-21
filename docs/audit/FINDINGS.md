@@ -237,3 +237,39 @@ evidence / fix / status per the CLAUDE.md policy.)
 ### Reference
 - **Full analysis:** `docs/audit/0DTE-SYSTEM-DEEP-AUDIT-2026-07-18.md` (architecture, loser forensics, API roadmap, phased build plan).
 - **Implementation track:** PR #786 Night Hawk UI + 1s live lane; PR #788 precision gates.
+
+## 2026-07-21 — Wall / bead / matrix-drift end-to-end validation (live prod, RTH)
+
+### Live validation result: walls + beads + matrix % drift are numerically correct (PASS)
+- **Method:** minted one temp prod Clerk admin/premium user (deleted after), swept SPX/SPY/NVDA/ASTS ×
+  0DTE/WEEKLY/MONTHLY/ALL against the clean JSON APIs, independently RECOMPUTED the wall pick + pct
+  share + drift-% formulas, and cross-checked against Polygon ground truth. 312 assertions PASS / 0 FAIL.
+- **Walls:** served king wall == ladder argmax(+g)/argmin(−g) on every ticker×horizon; king pct ==
+  independent |g|/Σ|g|; magnitude∈[0,1]; ≤1 king/side; flip within ±12% of spot; no malformed floats.
+- **Beads:** recorded rails present (e.g. SPX 957 samples), times ascending/unique, all nodes finite &
+  pct-valid, genuine mid-session births (SPX 11/17 strikes born after the first bucket — not back-filled).
+- **Matrix % drift:** `shiftPercentForStrike` = (Δ/|current−Δ|)·100 is finite, sign-tracks-Δ, non-absurd
+  across all strikes; drift keys ⊆ matrix strikes (2 minor out-of-window strikes on NVDA/ASTS — cosmetic).
+- **Parity:** SPX≈10×SPY (10.034); app spot vs Polygon last within 0.14% (SPY/NVDA/ASTS); ladder advanced live in 35s.
+
+### P2 — Put-wall proximity callout inverted the trade bias when support broke (FIXED, tested)
+- **Severity:** P2 (member-facing narration; narrow ≤0.5% band, crossed-side case only). No numeric wall/bead value affected.
+- **Root cause:** `src/features/vector/lib/vector-wall-proximity.ts` — for `side==="put"`, `above = signed>=0`
+  means the put-wall STRIKE is at/above spot, i.e. spot has fallen THROUGH its largest-negative-gamma
+  support (support breaking). The branch printed "reclaimed support, dip-buy zone" — a bullish dip-buy at
+  the exact moment support was lost. The `!above` (intact support) branch was already correct, which made
+  the inversion clear. The distance word ("% above") was also geometrically wrong for a below-spot wall.
+- **Blast radius:** surfaced in the Vector desk terminal (`VectorChart`), `VectorPageShell`, AND the Largo
+  AI read (`src/lib/bie/vector-full-state.ts`) — three member-facing consumers of the same string.
+- **Fix:** `above` put branch now reads "Lost the {strike} put wall ({dist}% overhead) — support gave way …";
+  `!above` distance corrected to "% below". Regression test added (spot under put wall must not narrate
+  dip-buy/reclaimed). `npx tsx --test vector-wall-proximity.test.ts` → 7/7 pass.
+
+### P3 — Two coexisting gamma-flip definitions (OPEN — needs product decision, not auto-changed)
+- **Observation:** `gex-cross-validation-core.ts:zeroGammaFlip` (Heat Map / Vector primary) uses a PER-STRIKE
+  net-gamma sign crossing; `vector-gex-reconstruct.ts:gammaFlipFromLadder` and `gamma-desk.ts:computeGammaFlip`
+  (reconstruct + SPX desk) use the CUMULATIVE zero-gamma crossing. On a net-short-everywhere chain the
+  per-strike path can return a flip below spot and invert the `spot>=flip?"long":"short"` regime posture.
+- **Live status:** flips observed sane (all within ±12% of spot) across SPX/SPY/NVDA/ASTS today — edge-case /
+  cross-surface-consistency risk, not an observed live miscalc. Deliberately NOT changed (moves the regime
+  banner; blast radius warrants a human decision).
