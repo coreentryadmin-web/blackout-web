@@ -16,6 +16,7 @@ import {
   SEARCH_QUERIES,
   MAX_TWEET_AGE_HOURS,
   MIN_IMPRESSIONS_FOR_RT,
+  MIN_IMPRESSIONS_FOR_RT_INTENSIVE,
   isEngagementTarget,
 } from "@/lib/x-engage-config";
 import {
@@ -30,6 +31,7 @@ import {
 } from "@/lib/x-marketing-meta";
 import {
   xApiEnterpriseAccess,
+  xGrowthIntensive,
   xMarketingSilentOnly,
 } from "@/lib/x-marketing-env";
 import {
@@ -60,6 +62,7 @@ export interface EngageStats {
   silentOnly?: boolean;
   /** ppu = likes/follows/RT; enterprise adds FinTwit quote/reply. */
   apiTier?: "ppu" | "enterprise";
+  intensive?: boolean;
 }
 
 function sleep(ms: number) {
@@ -128,6 +131,7 @@ export async function runEngagementSweep(opts: {
   const cronMode = opts.cronMode !== false;
   const silentOnly = opts.silentOnly === true || xMarketingSilentOnly();
   const enterprise = xApiEnterpriseAccess();
+  const intensive = xGrowthIntensive();
   const budget = await resolveRunBudget({ cronMode });
   const rotation = cronMode ? await bumpEngageRotation() : 0;
 
@@ -145,6 +149,7 @@ export async function runEngagementSweep(opts: {
     budget,
     silentOnly,
     apiTier: enterprise ? "enterprise" : "ppu",
+    intensive,
   };
 
   if (!budget.allowed) {
@@ -156,7 +161,8 @@ export async function runEngagementSweep(opts: {
 
   let likeCap = budget.likes;
   let followCap = budget.follows;
-  let rtCap = silentOnly ? 0 : budget.retweets;
+  let rtCap = budget.retweets;
+  const rtMinImps = intensive ? MIN_IMPRESSIONS_FOR_RT_INTENSIVE : MIN_IMPRESSIONS_FOR_RT;
   const allowVisibleEngage = !silentOnly && enterprise;
   let visibleCap = allowVisibleEngage ? budget.replies : 0;
   const visibleMaxPerRun = allowVisibleEngage ? (cronMode ? 1 : 2) : 0;
@@ -196,6 +202,8 @@ export async function runEngagementSweep(opts: {
     } else if (result === "rate_limited") {
       await handleRateLimited(stats);
       return false;
+    } else if (result === "already_following") {
+      /* skip — save follow budget for new giants */
     } else {
       stats.errors.push(`follow:${label}`);
     }
@@ -285,9 +293,9 @@ export async function runEngagementSweep(opts: {
     return tryReply(tweet, username);
   }
 
-  async function tryRetweet(tweetId: string, imps: number): Promise<boolean> {
+  async function tryRetweet(tweetId: string, imps: number, minImps = rtMinImps): Promise<boolean> {
     if (rtCap <= 0 || stats.rateLimited) return false;
-    if (imps < MIN_IMPRESSIONS_FOR_RT) return false;
+    if (imps < minImps) return false;
     if (dryRun) {
       stats.retweets += 1;
       rtCap -= 1;
@@ -306,7 +314,8 @@ export async function runEngagementSweep(opts: {
     return result === "ok";
   }
 
-  const targetBatch = cronMode ? 2 : 4;
+  const targetBatch = cronMode ? (intensive ? 4 : 2) : 5;
+  const likesPerTarget = intensive ? 2 : 1;
   const targets = rotatedTargets(rotation, targetBatch);
 
   for (const handle of targets) {
@@ -321,16 +330,25 @@ export async function runEngagementSweep(opts: {
     }
     stats.scanned.push(`@${user.username}`);
 
-    const tweets = await fetchUserTweets(user.id, 5);
+    const tweets = await fetchUserTweets(user.id, 8);
     if (likeCap > 0) {
+      let likedOnAccount = 0;
       for (const t of tweets) {
+        if (likedOnAccount >= likesPerTarget) break;
         if (!isReplyableTweet(t.text ?? "")) continue;
-        if (!(await tryLike(t.id))) break;
+        if (await tryLike(t.id)) likedOnAccount += 1;
       }
     }
 
     if (followCap > 0) {
       await tryFollow(user.id, user.username);
+    }
+
+    if (rtCap > 0) {
+      for (const t of tweets) {
+        const imps = t.public_metrics?.impression_count ?? 0;
+        if (await tryRetweet(t.id, imps, rtMinImps)) break;
+      }
     }
 
     const visibleTweet = pickVisibleEngageTweet(tweets);

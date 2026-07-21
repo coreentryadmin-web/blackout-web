@@ -1,4 +1,5 @@
 import { getMeta, setMeta } from "@/lib/db";
+import { xGrowthIntensive } from "@/lib/x-marketing-env";
 
 /** Conservative caps — stay under pay-per-use spend + 429 thresholds. */
 export const X_DAILY_CAPS = {
@@ -9,12 +10,20 @@ export const X_DAILY_CAPS = {
   posts: 7,
 } as const;
 
-/** Per scheduled cron invocation (x-growth every ~60 min). */
+/** Per scheduled cron invocation (x-growth every ~30 min when intensive). */
 export const X_CRON_RUN_CAPS = {
   likes: 3,
   follows: 1,
   replies: 2,
   retweets: 0,
+} as const;
+
+/** X_GROWTH_INTENSIVE=1 — larger batches within same daily caps. */
+export const X_INTENSIVE_CRON_RUN_CAPS = {
+  likes: 4,
+  follows: 2,
+  replies: 0,
+  retweets: 1,
 } as const;
 
 /** Manual `npm run x-marketing:run` — still bounded. */
@@ -148,7 +157,11 @@ export async function resolveRunBudget(opts: {
     };
   }
 
-  const perRun = opts.cronMode ? X_CRON_RUN_CAPS : X_MANUAL_RUN_CAPS;
+  const perRun = opts.cronMode
+    ? xGrowthIntensive()
+      ? X_INTENSIVE_CRON_RUN_CAPS
+      : X_CRON_RUN_CAPS
+    : X_MANUAL_RUN_CAPS;
   const b = await loadDayBudget();
 
   const likes = Math.min(

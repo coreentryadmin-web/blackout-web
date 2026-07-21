@@ -1,4 +1,4 @@
-/** FinTwit accounts — silent engagement only (like/follow/RT). Never @tag on our timeline. */
+/** FinTwit / market giants — silent engagement (like/follow/RT). Never cold @tag on our timeline. */
 export const ENGAGEMENT_TARGETS = [
   "spotgamma",
   "unusual_whales",
@@ -10,6 +10,16 @@ export const ENGAGEMENT_TARGETS = [
   "DeItaone",
   "FirstSquawk",
   "drayinvests",
+  "TrendSpider",
+  "InvestingVisual",
+  "LiveSquawk",
+  "Fxhedgers",
+  "MichaelBolling",
+  "OptionsHawk",
+  "StockMKTNewz",
+  "PelosiTracker",
+  "WallStJesus",
+  "MarketWatch",
 ] as const;
 
 /** Lowercase handles we follow — Enterprise API only for programmatic quote/reply. */
@@ -52,3 +62,5 @@ export const ENGAGE_LIMITS_CRON = {
 
 export const MAX_TWEET_AGE_HOURS = 6;
 export const MIN_IMPRESSIONS_FOR_RT = 500;
+/** Intensive growth mode — RT giant desk posts with moderate reach. */
+export const MIN_IMPRESSIONS_FOR_RT_INTENSIVE = 200;
