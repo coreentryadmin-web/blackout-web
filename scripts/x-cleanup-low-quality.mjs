@@ -29,7 +29,6 @@ const LOW_QUALITY = [
   /Live read: flip/i,
   /^@\w/i,
   /isn't moving on vibes/i,
-  /Six tools\. One desk/i,
   /record sitting at \d+\/\d+/i,
   /tightest gamma structure in mega-cap/i,
   // Generic ticker showcase spam (no desk card / hurts reach)
@@ -49,8 +48,12 @@ const { fetchUserTweets, deleteTweet, X_ACCOUNT_USER_ID } = await import(
 );
 
 const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 100);
+/** Intentional product showcase — never auto-delete. */
+const PROTECTED_SHOWCASE = /SPX Slayer matrix · HELIX whale tape · Thermal GEX/i;
+
 const bad = tweets.filter((t) => {
   const text = t.text ?? "";
+  if (PROTECTED_SHOWCASE.test(text)) return false;
   return LOW_QUALITY.some((re) => re.test(text));
 });
 

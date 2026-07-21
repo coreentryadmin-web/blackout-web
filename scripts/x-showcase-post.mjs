@@ -7,7 +7,8 @@
  *
  * Usage:
  *   node scripts/x-showcase-post.mjs --ticker NVDA
- *   node scripts/x-showcase-post.mjs --ticker NVDA --post
+ *   node scripts/x-showcase-post.mjs --ticker SPX --post
+ *   node scripts/x-showcase-post.mjs --mode platform --steps slayer,helix,thermal --post
  */
 import { execSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
@@ -24,8 +25,11 @@ const opt = (k, def) => {
 };
 
 const BASE = "https://blackouttrades.com";
-const TICKER = opt("ticker", "NVDA").toUpperCase();
+const TICKER = opt("ticker", "SPX").toUpperCase();
+const MODE = opt("mode", "ticker");
+const STEPS_OPT = opt("steps", "");
 const POST = flag("post");
+const REUSE_COLLAGE = flag("reuse-collage");
 const VERIFY_WAIT_MS = Number(opt("verify-wait-ms", "90000")) || 90_000;
 const VERIFY_POLL_MS = Number(opt("verify-poll-ms", "15000")) || 15_000;
 const OUT = "/opt/cursor/artifacts/x-showcase";
@@ -33,6 +37,27 @@ const X_ACCOUNT_USER_ID = "2055511397338087425";
 mkdirSync(OUT, { recursive: true });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Validate X tweet ids before persisting API payloads to disk (CodeQL taint). */
+function assertSafeTweetId(id) {
+  const s = String(id ?? "").trim();
+  if (!/^\d{5,25}$/.test(s)) {
+    throw new Error("Refusing to persist invalid tweet id from API");
+  }
+  return s;
+}
+
+function tweetPublicUrl(tweetId) {
+  return `https://x.com/BlackOutTrade/status/${assertSafeTweetId(tweetId)}`;
+}
+
+function safeTickerSymbol(raw) {
+  const t = String(raw ?? "SPX").trim().toUpperCase();
+  if (!/^[A-Z0-9.$-]{1,12}$/.test(t)) {
+    throw new Error("Invalid ticker symbol");
+  }
+  return t;
+}
 
 // ---------------------------------------------------------------------------
 // Secrets + X OAuth (from x-live-autopost.mjs)
@@ -120,7 +145,8 @@ async function oauthGet(url, xCreds) {
 }
 
 async function fetchTweetById(id, xCreds) {
-  const url = `https://api.x.com/2/tweets/${id}?tweet.fields=author_id,created_at`;
+  const safeId = assertSafeTweetId(id);
+  const url = `https://api.x.com/2/tweets/${safeId}?tweet.fields=author_id,created_at`;
   const res = await oauthGet(url, xCreds);
   if (res.status === 404) return null;
   if (!res.ok) return null;
@@ -353,6 +379,27 @@ async function waitForHelixTapeScoped(page, ticker) {
     sym,
     { timeout: 45_000 },
   );
+}
+
+function resolvePlan(ticker) {
+  if (MODE === "platform") {
+    const steps = STEPS_OPT
+      ? STEPS_OPT.split(",").map((s) => s.trim()).filter(Boolean)
+      : ["slayer", "helix", "thermal"];
+    return {
+      title: "BlackOut — live options desk",
+      footer: "SPX Slayer · HELIX · Thermal · Premium on Whop",
+      steps,
+    };
+  }
+  if (STEPS_OPT) {
+    const base = showcasePlan(ticker);
+    return {
+      ...base,
+      steps: STEPS_OPT.split(",").map((s) => s.trim()).filter(Boolean),
+    };
+  }
+  return showcasePlan(ticker);
 }
 
 /** Which surfaces belong in a ticker-scoped post (no unrelated product dumps). */
@@ -623,6 +670,14 @@ async function buildCollage(items, ticker, plan) {
 }
 
 function buildTweet(ticker, plan) {
+  if (MODE === "platform") {
+    const text =
+      "One Whop seat. Six live tools on one desk.\n\n" +
+      "SPX Slayer matrix · HELIX whale tape · Thermal GEX — prod screenshots, one session.\n\n" +
+      "Built for index / 0DTE traders. What's missing from your stack?\n\n" +
+      "@BlackOutTrade · link in bio";
+    return text.slice(0, 280);
+  }
   const site =
     "blackouttrades.com/pricing?utm_source=x&utm_medium=social&utm_campaign=showcase";
   const isSpx = ticker === "SPX" || ticker === "SPXW";
@@ -638,8 +693,61 @@ function buildTweet(ticker, plan) {
   return text.slice(0, 280);
 }
 
+async function postShowcaseCollage(collagePath, tweetText, xCreds, manifest) {
+  if (!existsSync(collagePath)) {
+    throw new Error(`Collage missing: ${collagePath}`);
+  }
+  const collage = readFileSync(collagePath);
+  manifest.collagePath = collagePath;
+  manifest.tweetText = tweetText;
+  console.log(`Collage: ${collagePath} (${collage.length} bytes)`);
+  console.log(`Tweet (${tweetText.length} chars):\n${tweetText}\n`);
+
+  if (!POST) {
+    manifest.posted = { skipped: true, reason: "dry-run default — pass --post to publish" };
+    writeManifest(manifest);
+    console.log("DRY — collage + manifest only (no X write).");
+    return;
+  }
+
+  if (!xCreds.ck || !xCreds.at) {
+    throw new Error("X API credentials missing from secrets — cannot post");
+  }
+
+  const mediaId = await uploadMedia(collage, xCreds);
+  const result = await postTweet(tweetText, [mediaId], xCreds);
+  const tweetId = assertSafeTweetId(result.id);
+  const url = tweetPublicUrl(tweetId);
+  console.log(`Tweet API accepted id=${tweetId} — verifying on timeline…`);
+
+  const verification = await verifyTweetPersisted(tweetId, xCreds);
+  manifest.posted = {
+    tweetId,
+    url,
+    verified: true,
+    verifiedAt: new Date().toISOString(),
+    verification: {
+      verified: verification.verified,
+      attempts: verification.attempts,
+      onTimeline: verification.onTimeline,
+    },
+  };
+  writeManifest(manifest);
+  writeFileSync(
+    join(OUT, "post-result.json"),
+    JSON.stringify(
+      { tweetId, url, ticker: safeTickerSymbol(TICKER), verified: true },
+      null,
+      2,
+    ),
+  );
+  console.log(`VERIFIED POST ${url}`);
+}
+
 async function main() {
-  console.log(`[x-showcase] ticker=${TICKER} mode=${POST ? "post" : "dry"}`);
+  console.log(
+    `[x-showcase] ticker=${TICKER} mode=${MODE} post=${POST ? "live" : "dry"} reuse=${REUSE_COLLAGE}`,
+  );
   if (POST) {
     console.log(
       "  LIVE POST — review collage in artifacts before running; success requires timeline verification.",
@@ -653,6 +761,32 @@ async function main() {
     at: secrets.X_ACCESS_TOKEN,
     ats: secrets.X_ACCESS_TOKEN_SECRET,
   };
+
+  const manifest = {
+    ticker: TICKER,
+    mode: POST ? "post" : "dry",
+    createdAt: new Date().toISOString(),
+    plan: null,
+    captures: [],
+    collagePath: null,
+    tweetText: null,
+    posted: null,
+  };
+
+  if (REUSE_COLLAGE) {
+    const plan = resolvePlan(TICKER);
+    manifest.plan = plan;
+    const collagePath = join(OUT, `showcase-${TICKER}-collage.png`);
+    const tweetText = buildTweet(TICKER, plan);
+    try {
+      await postShowcaseCollage(collagePath, tweetText, xCreds, manifest);
+    } catch (err) {
+      manifest.error = String(err?.message ?? err);
+      writeManifest(manifest);
+      throw err;
+    }
+    return;
+  }
 
   const auth = await mintClerkSession(secrets);
   console.log(`Clerk user ${auth.userId}`);
@@ -668,23 +802,12 @@ async function main() {
   });
   const page = await ctx.newPage();
 
-  const manifest = {
-    ticker: TICKER,
-    mode: POST ? "post" : "dry",
-    createdAt: new Date().toISOString(),
-    plan: null,
-    captures: [],
-    collagePath: null,
-    tweetText: null,
-    posted: null,
-  };
-
   const captures = [];
   try {
     await signInWithTicket(page, auth.ticket);
     console.log("  Signed in via Clerk ticket");
 
-    const plan = showcasePlan(TICKER);
+    const plan = resolvePlan(TICKER);
     manifest.plan = plan;
     console.log(`  Plan: ${plan.steps.join(" → ")}`);
 
@@ -701,39 +824,7 @@ async function main() {
     console.log(`Collage: ${collagePath} (${collage.length} bytes)`);
 
     const tweetText = buildTweet(TICKER, plan);
-    manifest.tweetText = tweetText;
-    console.log(`Tweet (${tweetText.length} chars):\n${tweetText}\n`);
-
-    if (!POST) {
-      manifest.posted = { skipped: true, reason: "dry-run default — pass --post to publish" };
-      writeManifest(manifest);
-      console.log("DRY — screenshots + manifest only (no X write). Review collage before --post.");
-      return;
-    }
-
-    if (!xCreds.ck || !xCreds.at) {
-      throw new Error("X API credentials missing from secrets — cannot post");
-    }
-
-    const mediaId = await uploadMedia(collage, xCreds);
-    const result = await postTweet(tweetText, [mediaId], xCreds);
-    const url = `https://x.com/BlackOutTrade/status/${result.id}`;
-    console.log(`Tweet API accepted id=${result.id} — verifying on timeline…`);
-
-    const verification = await verifyTweetPersisted(result.id, xCreds);
-    manifest.posted = {
-      tweetId: result.id,
-      url,
-      verified: true,
-      verifiedAt: new Date().toISOString(),
-      verification,
-    };
-    writeManifest(manifest);
-    writeFileSync(
-      join(OUT, "post-result.json"),
-      JSON.stringify({ tweetId: result.id, url, ticker: TICKER, verified: true }, null, 2),
-    );
-    console.log(`VERIFIED POST ${url}`);
+    await postShowcaseCollage(collagePath, tweetText, xCreds, manifest);
   } catch (err) {
     manifest.error = String(err?.message ?? err);
     writeManifest(manifest);
