@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 /**
- * Full-platform X showcase — prod UI screenshots → collage → @BlackOutTrade post.
+ * Full-platform X showcase — prod UI screenshots → collage → optional @BlackOutTrade post.
+ *
+ * Defaults to DRY (screenshots + manifest only). Live posts require explicit --post
+ * and timeline verification before success is reported.
  *
  * Usage:
- *   node scripts/x-showcase-post.mjs --ticker NVDA [--dry]
+ *   node scripts/x-showcase-post.mjs --ticker NVDA
+ *   node scripts/x-showcase-post.mjs --ticker NVDA --post
  */
 import { execSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
@@ -21,9 +25,14 @@ const opt = (k, def) => {
 
 const BASE = "https://blackouttrades.com";
 const TICKER = opt("ticker", "NVDA").toUpperCase();
-const DRY = flag("dry");
+const POST = flag("post");
+const VERIFY_WAIT_MS = Number(opt("verify-wait-ms", "90000")) || 90_000;
+const VERIFY_POLL_MS = Number(opt("verify-poll-ms", "15000")) || 15_000;
 const OUT = "/opt/cursor/artifacts/x-showcase";
+const X_ACCOUNT_USER_ID = "2055511397338087425";
 mkdirSync(OUT, { recursive: true });
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------------------
 // Secrets + X OAuth (from x-live-autopost.mjs)
@@ -97,6 +106,68 @@ async function postTweet(text, mediaIds, xCreds) {
   });
   if (!res.ok) throw new Error(`Tweet failed (${res.status}): ${await res.text()}`);
   return (await res.json()).data;
+}
+
+async function oauthGet(url, xCreds) {
+  const u = new URL(url);
+  const base = `${u.origin}${u.pathname}`;
+  const queryParams = {};
+  u.searchParams.forEach((v, k) => {
+    queryParams[k] = v;
+  });
+  const auth = oauthHeader("GET", base, xCreds, queryParams);
+  return fetch(url, { headers: { Authorization: auth } });
+}
+
+async function fetchTweetById(id, xCreds) {
+  const url = `https://api.x.com/2/tweets/${id}?tweet.fields=author_id,created_at`;
+  const res = await oauthGet(url, xCreds);
+  if (res.status === 404) return null;
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data ?? null;
+}
+
+async function fetchUserTweets(userId, maxResults, xCreds) {
+  const params = new URLSearchParams({
+    max_results: String(Math.min(Math.max(maxResults, 5), 100)),
+    exclude: "retweets,replies",
+    "tweet.fields": "author_id,created_at,public_metrics",
+  });
+  const url = `https://api.x.com/2/users/${userId}/tweets?${params}`;
+  const res = await oauthGet(url, xCreds);
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.data ?? [];
+}
+
+/** Poll until tweet is fetchable and appears on @BlackOutTrade timeline. */
+async function verifyTweetPersisted(tweetId, xCreds) {
+  const deadline = Date.now() + VERIFY_WAIT_MS;
+  let attempts = 0;
+  while (Date.now() < deadline) {
+    attempts += 1;
+    const direct = await fetchTweetById(tweetId, xCreds);
+    const timeline = await fetchUserTweets(X_ACCOUNT_USER_ID, 10, xCreds);
+    const onTimeline = timeline.some((t) => t.id === tweetId);
+    if (direct?.id === tweetId && onTimeline) {
+      return { verified: true, attempts, direct, onTimeline: true };
+    }
+    console.log(
+      `  verify attempt ${attempts}: direct=${direct?.id === tweetId ? "ok" : "missing"} timeline=${onTimeline ? "ok" : "missing"}`,
+    );
+    await sleep(VERIFY_POLL_MS);
+  }
+  throw new Error(
+    `Tweet ${tweetId} not verified on @BlackOutTrade after ${VERIFY_WAIT_MS}ms — do not treat as posted (X moderation or API lag)`,
+  );
+}
+
+function writeManifest(manifest) {
+  const path = join(OUT, "manifest.json");
+  writeFileSync(path, JSON.stringify(manifest, null, 2));
+  console.log(`Manifest: ${path}`);
+  return path;
 }
 
 // ---------------------------------------------------------------------------
@@ -189,22 +260,279 @@ async function dismissOverlays(page) {
   }
 }
 
-const PANELS = [
-  { key: "vector", label: "Vector GEX", url: (t) => `${BASE}/vector?ticker=${t}`, wait: 8000 },
-  { key: "helix", label: "Helix Flow", url: () => `${BASE}/flows`, wait: 7000 },
-  { key: "thermal", label: "Thermal", url: (t) => `${BASE}/heatmap?ticker=${t}`, wait: 8000 },
-  { key: "slayer", label: "SPX Slayer", url: () => `${BASE}/dashboard`, wait: 7000 },
-  { key: "largo", label: "Largo AI", url: () => `${BASE}/terminal`, wait: 6000 },
-  { key: "nighthawk", label: "Night Hawk", url: () => `${BASE}/nighthawk`, wait: 6000 },
-];
+/** Fail fast if the UI is still on a different symbol than the post ticker. */
+async function assertActiveTicker(page, ticker, surface) {
+  const sym = ticker.toUpperCase();
+  const ok = await page.waitForFunction(
+    (expected) => {
+      const checks = [
+        document.querySelector('button[aria-label*="Change ticker"]')?.textContent ?? "",
+        document.querySelector("#helix-ticker-search")?.value ?? "",
+        document.querySelector('[data-testid="vector-ticker-search"]')?.value ?? "",
+        location.search,
+        location.pathname + location.search,
+      ].join(" ");
+      return checks.toUpperCase().includes(expected);
+    },
+    sym,
+    { timeout: 20_000 },
+  ).then(() => true).catch(() => false);
+
+  if (!ok) {
+    throw new Error(`${surface}: UI never switched to ${sym} — refusing to screenshot wrong ticker`);
+  }
+}
+
+/** Thermal has no URL ticker param — must use the searchable combobox (defaults to SPY). */
+async function selectThermalTicker(page, ticker) {
+  const sym = ticker.toUpperCase();
+  await page.goto(`${BASE}/heatmap`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await dismissOverlays(page);
+  await page.waitForSelector(".gex-heatmap-desk", { timeout: 45_000 });
+  await page.waitForTimeout(2000);
+
+  const trigger = page.locator('button[aria-label*="Change ticker"]').first();
+  await trigger.click();
+  const search = page.locator('input[aria-label="Search any ticker"]').first();
+  await search.waitFor({ state: "visible", timeout: 10_000 });
+  await search.fill(sym);
+  await page.waitForTimeout(1200);
+
+  const option = page.locator("#ticker-listbox button").filter({ hasText: sym }).first();
+  if (await option.count()) {
+    await option.click();
+  } else {
+    await search.press("Enter");
+  }
+
+  await page.waitForFunction(
+    (expected) =>
+      (document.querySelector('button[aria-label*="Change ticker"]')?.textContent ?? "").toUpperCase()
+        .includes(expected),
+    sym,
+    { timeout: 15_000 },
+  );
+  await page.waitForTimeout(5000);
+  await assertActiveTicker(page, sym, "Thermal");
+}
+
+/** Helix tape filter — must set Symbol input, not screenshot default SPX/SPY tape. */
+async function filterHelixTicker(page, ticker) {
+  const sym = ticker.toUpperCase();
+  await page.goto(`${BASE}/flows`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await dismissOverlays(page);
+  await page.waitForTimeout(4000);
+
+  const search = page.locator("#helix-ticker-search").first();
+  await search.waitFor({ state: "visible", timeout: 20_000 });
+  await search.click();
+  await search.fill("");
+  await search.pressSequentially(sym, { delay: 60 });
+  await search.press("Tab");
+
+  await page.waitForFunction(
+    (expected) => document.querySelector("#helix-ticker-search")?.value === expected,
+    sym,
+    { timeout: 10_000 },
+  );
+  await page.waitForTimeout(4000);
+  await assertActiveTicker(page, sym, "Helix");
+}
+
+async function waitForHelixTapeScoped(page, ticker) {
+  const sym = ticker.toUpperCase();
+  await page.waitForFunction(
+    (expected) => {
+      const input = document.querySelector("#helix-ticker-search");
+      if (input?.value !== expected) return false;
+      if (document.body.innerText.includes(`No prints for ${expected}`)) return true;
+      const symbols = [...document.querySelectorAll(".helix-tape-symbol-text")];
+      if (symbols.length === 0) return false;
+      return symbols.every((el) => el.textContent?.trim().toUpperCase() === expected);
+    },
+    sym,
+    { timeout: 45_000 },
+  );
+}
+
+/** Which surfaces belong in a ticker-scoped post (no unrelated product dumps). */
+function showcasePlan(ticker) {
+  const isSpx = ticker === "SPX" || ticker === "SPXW";
+  if (isSpx) {
+    return {
+      title: `${ticker} — 0DTE desk`,
+      footer: "Vector · Helix · Thermal · SPX Slayer · Night Hawk · Largo",
+      steps: ["vector", "helix", "thermal", "slayer", "nighthawk", "largo"],
+    };
+  }
+  return {
+    title: `${ticker} — dealer positioning`,
+    footer: `Vector · Helix · Thermal · Largo — ${ticker} only`,
+    steps: ["vector", "helix", "thermal", "largo"],
+  };
+}
+
+/** Vector: 0DTE + 15m timeframe → full session beads visible in chart element. */
+async function captureVector0Dte(page, ticker) {
+  const url = `${BASE}/vector?ticker=${encodeURIComponent(ticker)}`;
+  console.log(`  → Vector 0DTE chart: ${url}`);
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await page.waitForSelector(".vector-chart-wrap", { timeout: 45_000 });
+  await dismissOverlays(page);
+  await page.waitForTimeout(3000);
+
+  const dteBtn = page.locator('[data-testid="vector-dte-0dte"]');
+  await dteBtn.waitFor({ state: "visible", timeout: 15_000 });
+  await dteBtn.click();
+  await page.waitForTimeout(4000);
+
+  const tf = page.locator("#vector-tf-select");
+  await tf.selectOption("15");
+  await page.waitForTimeout(5000);
+
+  await assertActiveTicker(page, ticker, "Vector");
+  const chart = page.locator(".vector-chart-wrap").first();
+  await chart.waitFor({ state: "visible" });
+  const buf = await chart.screenshot({ type: "png" });
+  const path = join(OUT, `vector-0dte-${ticker}.png`);
+  writeFileSync(path, buf);
+  console.log(`    saved ${path}`);
+  return { key: "vector", label: "Vector · 0DTE beads", buf, path, hero: true };
+}
+
+/** Helix: filter tape to the post ticker only. */
+async function captureHelixTicker(page, ticker) {
+  console.log(`  → Helix Flow (${ticker} only): ${BASE}/flows`);
+  await filterHelixTicker(page, ticker);
+
+  const hideAnalytics = page.getByRole("button", { name: "Hide analytics" });
+  if (await hideAnalytics.count()) {
+    await hideAnalytics.click();
+    await page.waitForTimeout(800);
+  }
+
+  await waitForHelixTapeScoped(page, ticker);
+
+  const panel = page.locator(".helix-desk-terminal").first();
+  const buf = await panel.screenshot({ type: "png" });
+  const path = join(OUT, `helix-${ticker}.png`);
+  writeFileSync(path, buf);
+  console.log(`    saved ${path}`);
+  return { key: "helix", label: `Helix · ${ticker} flow`, buf, path };
+}
+
+/** Thermal heatmap — search combobox for ticker (page always boots SPY). */
+async function captureThermal(page, ticker) {
+  console.log(`  → Thermal (${ticker}): search + select in UI`);
+  await selectThermalTicker(page, ticker);
+
+  const panel = page.locator(".gex-heatmap-desk").first();
+  const buf = await panel.screenshot({ type: "png" });
+  const path = join(OUT, `thermal-${ticker}.png`);
+  writeFileSync(path, buf);
+  console.log(`    saved ${path}`);
+  return { key: "thermal", label: `Thermal · ${ticker} GEX`, buf, path };
+}
+
+/** SPX Slayer desk — only for SPX/SPXW posts. */
+async function captureSlayer(page, ticker) {
+  console.log(`  → SPX Slayer: ${BASE}/dashboard`);
+  await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await dismissOverlays(page);
+  await page.waitForTimeout(7000);
+  const buf = await page.screenshot({ type: "png" });
+  const path = join(OUT, `slayer-${ticker}.png`);
+  writeFileSync(path, buf);
+  console.log(`    saved ${path}`);
+  return { key: "slayer", label: "SPX Slayer", buf, path };
+}
+
+/** Night Hawk — only when SPX desk story includes overnight playbook. */
+async function captureNighthawk(page, ticker) {
+  console.log(`  → Night Hawk: ${BASE}/nighthawk`);
+  await page.goto(`${BASE}/nighthawk`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await dismissOverlays(page);
+  await page.waitForTimeout(6000);
+  const buf = await page.screenshot({ type: "png" });
+  const path = join(OUT, `nighthawk-${ticker}.png`);
+  writeFileSync(path, buf);
+  console.log(`    saved ${path}`);
+  return { key: "nighthawk", label: "Night Hawk", buf, path };
+}
+
+/** Largo: ask a real ticker question and screenshot the answered thread. */
+async function captureLargoAnswer(page, ticker) {
+  const question = `What's the ${ticker} gamma setup right now? Flip level, call/put walls, and dealer regime.`;
+  console.log(`  → Largo AI: ${question}`);
+  await page.goto(`${BASE}/terminal`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await dismissOverlays(page);
+
+  const input = page.locator('input[aria-label="Ask Largo"]').first();
+  await input.waitFor({ state: "visible", timeout: 20_000 });
+  await page.waitForFunction(
+    () => {
+      const el = document.querySelector('input[aria-label="Ask Largo"]');
+      return el && !el.disabled;
+    },
+    { timeout: 30_000 },
+  );
+
+  await input.fill(question);
+  await page.waitForTimeout(400);
+  const submit = page.locator('.largo-input-form button[type="submit"]').first();
+  if (await submit.count()) await submit.click();
+  else await input.press("Enter");
+
+  await page.waitForSelector(".desk-largo-assistant, .largo-msg-assistant", {
+    timeout: 60_000,
+  });
+  await page.waitForFunction(
+    () => {
+      const stopBtn = document.querySelector('.largo-stop-btn, [aria-label="Stop generating"]');
+      if (stopBtn && stopBtn.offsetParent !== null) return false;
+      const nodes = document.querySelectorAll(".desk-largo-assistant, .largo-msg-assistant");
+      const last = nodes[nodes.length - 1];
+      const text = last?.textContent?.trim() ?? "";
+      return text.length > 180 && !/working|pulling live|thinking/i.test(text.slice(0, 40));
+    },
+    { timeout: 120_000 },
+  );
+  await page.waitForTimeout(2500);
+
+  const panel = page.locator(".largo-terminal-fullpage, .desk-largo-panel, main").first();
+  const buf = await panel.screenshot({ type: "png" });
+  const path = join(OUT, `largo-${ticker}.png`);
+  writeFileSync(path, buf);
+  console.log(`    saved ${path}`);
+  return { key: "largo", label: `Largo · ${ticker} read`, buf, path, wide: true };
+}
+
+async function captureStep(page, step, ticker) {
+  switch (step) {
+    case "vector":
+      return captureVector0Dte(page, ticker);
+    case "helix":
+      return captureHelixTicker(page, ticker);
+    case "thermal":
+      return captureThermal(page, ticker);
+    case "slayer":
+      return captureSlayer(page, ticker);
+    case "nighthawk":
+      return captureNighthawk(page, ticker);
+    case "largo":
+      return captureLargoAnswer(page, ticker);
+    default:
+      throw new Error(`Unknown capture step: ${step}`);
+  }
+}
 
 function escSvg(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-async function labelPanel(buf, label, sub, cellW, cellH) {
+async function labelPanel(buf, label, sub, cellW, cellH, { fit = "cover" } = {}) {
   const resized = await sharp(buf)
-    .resize(cellW, cellH, { fit: "cover", position: "top" })
+    .resize(cellW, cellH, { fit, position: "top", background: { r: 6, g: 8, b: 12, alpha: 1 } })
     .png()
     .toBuffer();
   const barH = 36;
@@ -224,36 +552,58 @@ async function labelPanel(buf, label, sub, cellW, cellH) {
     .toBuffer();
 }
 
-async function buildCollage(buffers, ticker) {
-  const cellW = 600;
-  const cellH = 380;
-  const labeled = [];
-  for (const item of buffers) {
-    labeled.push(await labelPanel(item.buf, item.label, ticker, cellW, cellH));
-  }
-
-  const rowH = cellH + 36;
-  const gridW = cellW * 2;
-  const gridH = rowH * 3;
+async function buildCollage(items, ticker, plan) {
+  const gridW = 1200;
   const headerH = 72;
   const footerH = 48;
-  const totalH = headerH + gridH + footerH;
+  const barH = 36;
+  const hero = items.find((i) => i.hero);
+  const rest = items.filter((i) => !i.hero);
+  const cellW = 600;
+  const cellH = 360;
 
-  const composites = labeled.map((buf, i) => ({
-    input: buf,
-    top: headerH + Math.floor(i / 2) * rowH,
-    left: (i % 2) * cellW,
-  }));
+  const composites = [];
+  let y = headerH;
+
+  if (hero) {
+    const heroH = 500;
+    const heroLabeled = await labelPanel(hero.buf, hero.label, `${ticker} · 15m · full session`, gridW, heroH, {
+      fit: "contain",
+    });
+    composites.push({ input: heroLabeled, top: y, left: 0 });
+    y += heroH + barH;
+  }
+
+  const wide = rest.find((i) => i.wide);
+  const gridItems = rest.filter((i) => !i.wide);
+
+  for (let i = 0; i < gridItems.length; i++) {
+    const labeled = await labelPanel(gridItems[i].buf, gridItems[i].label, ticker, cellW, cellH, { fit: "contain" });
+    const row = Math.floor(i / 2);
+    const col = i % 2;
+    composites.push({ input: labeled, top: y + row * (cellH + barH), left: col * cellW });
+  }
+
+  let yAfterGrid = y + Math.ceil(gridItems.length / 2) * (cellH + barH);
+
+  if (wide) {
+    const wideH = 380;
+    const wideLabeled = await labelPanel(wide.buf, wide.label, ticker, gridW, wideH, { fit: "contain" });
+    composites.push({ input: wideLabeled, top: yAfterGrid, left: 0 });
+    yAfterGrid += wideH + barH;
+  }
+
+  const totalH = yAfterGrid + footerH;
 
   const headerSvg = Buffer.from(`<svg width="${gridW}" height="${headerH}" xmlns="http://www.w3.org/2000/svg">
     <rect width="${gridW}" height="${headerH}" fill="#06080c"/>
-    <text x="24" y="46" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="28" font-weight="700">${escSvg(ticker)} — full desk snapshot</text>
+    <text x="24" y="46" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="28" font-weight="700">${escSvg(plan.title)}</text>
     <text x="${gridW - 24}" y="46" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="18" text-anchor="end">LIVE · blackouttrades.com</text>
   </svg>`);
 
   const footerSvg = Buffer.from(`<svg width="${gridW}" height="${footerH}" xmlns="http://www.w3.org/2000/svg">
     <rect width="${gridW}" height="${footerH}" fill="#0f172a"/>
-    <text x="${gridW / 2}" y="30" fill="#cbd5e1" font-family="system-ui,sans-serif" font-size="15" text-anchor="middle">Vector · Helix · Thermal · SPX Slayer · Largo · Night Hawk</text>
+    <text x="${gridW / 2}" y="30" fill="#cbd5e1" font-family="system-ui,sans-serif" font-size="15" text-anchor="middle">${escSvg(plan.footer)}</text>
   </svg>`);
 
   const base = await sharp({
@@ -266,19 +616,22 @@ async function buildCollage(buffers, ticker) {
     .composite([
       { input: headerSvg, top: 0, left: 0 },
       ...composites,
-      { input: footerSvg, top: headerH + gridH, left: 0 },
+      { input: footerSvg, top: totalH - footerH, left: 0 },
     ])
     .png()
     .toBuffer();
 }
 
-function buildTweet(ticker, spxLine) {
+function buildTweet(ticker, plan) {
   const site =
     "blackouttrades.com/pricing?utm_source=x&utm_medium=social&utm_campaign=showcase";
-  const hook = spxLine
-    ? `${ticker} desk read: ${spxLine} What's your line into the close?`
-    : `${ticker} gamma + flow on one screen — not six tabs. What's your flip level today?`;
-  let text = `${hook}\n\n@BlackOutTrade ${site}`;
+  const isSpx = ticker === "SPX" || ticker === "SPXW";
+  let text;
+  if (isSpx) {
+    text = `${ticker} 0DTE desk — live.\n\nGamma beads, flow tape, heatmap, Slayer signals, Night Hawk playbook, Largo read.\n\nWhat's your line into the close?\n\n@BlackOutTrade ${site}`;
+  } else {
+    text = `${ticker} gamma + flow on one screen — not six tabs.\n\nVector beads, Helix tape, Thermal matrix, Largo read.\n\nWhat's your flip level today?\n\n@BlackOutTrade ${site}`;
+  }
   if (text.length > 280) {
     text = `${ticker}: dealer positioning + live flow on one desk. What's your read?\n\n@BlackOutTrade ${site}`;
   }
@@ -286,7 +639,13 @@ function buildTweet(ticker, spxLine) {
 }
 
 async function main() {
-  console.log(`[x-showcase] ticker=${TICKER} dry=${DRY}`);
+  console.log(`[x-showcase] ticker=${TICKER} mode=${POST ? "post" : "dry"}`);
+  if (POST) {
+    console.log(
+      "  LIVE POST — review collage in artifacts before running; success requires timeline verification.",
+    );
+  }
+
   const secrets = loadSecrets();
   const xCreds = {
     ck: secrets.X_API_KEY,
@@ -309,42 +668,76 @@ async function main() {
   });
   const page = await ctx.newPage();
 
+  const manifest = {
+    ticker: TICKER,
+    mode: POST ? "post" : "dry",
+    createdAt: new Date().toISOString(),
+    plan: null,
+    captures: [],
+    collagePath: null,
+    tweetText: null,
+    posted: null,
+  };
+
   const captures = [];
   try {
     await signInWithTicket(page, auth.ticket);
     console.log("  Signed in via Clerk ticket");
-    for (const panel of PANELS) {
-      const url = panel.url(TICKER);
-      console.log(`  → ${panel.label}: ${url}`);
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await page.waitForTimeout(panel.wait);
-      await dismissOverlays(page);
-      await page.waitForTimeout(1500);
-      const buf = await page.screenshot({ type: "png" });
-      const path = join(OUT, `${panel.key}-${TICKER}.png`);
-      writeFileSync(path, buf);
-      captures.push({ label: panel.label, buf, path });
-      console.log(`    saved ${path}`);
+
+    const plan = showcasePlan(TICKER);
+    manifest.plan = plan;
+    console.log(`  Plan: ${plan.steps.join(" → ")}`);
+
+    for (const step of plan.steps) {
+      const shot = await captureStep(page, step, TICKER);
+      captures.push(shot);
+      manifest.captures.push({ key: shot.key, label: shot.label, path: shot.path });
     }
 
-    const collage = await buildCollage(captures, TICKER);
+    const collage = await buildCollage(captures, TICKER, plan);
     const collagePath = join(OUT, `showcase-${TICKER}-collage.png`);
     writeFileSync(collagePath, collage);
+    manifest.collagePath = collagePath;
     console.log(`Collage: ${collagePath} (${collage.length} bytes)`);
 
-    const tweetText = buildTweet(TICKER);
+    const tweetText = buildTweet(TICKER, plan);
+    manifest.tweetText = tweetText;
     console.log(`Tweet (${tweetText.length} chars):\n${tweetText}\n`);
 
-    if (DRY) {
-      console.log("DRY — not posting");
+    if (!POST) {
+      manifest.posted = { skipped: true, reason: "dry-run default — pass --post to publish" };
+      writeManifest(manifest);
+      console.log("DRY — screenshots + manifest only (no X write). Review collage before --post.");
       return;
+    }
+
+    if (!xCreds.ck || !xCreds.at) {
+      throw new Error("X API credentials missing from secrets — cannot post");
     }
 
     const mediaId = await uploadMedia(collage, xCreds);
     const result = await postTweet(tweetText, [mediaId], xCreds);
     const url = `https://x.com/BlackOutTrade/status/${result.id}`;
-    console.log(`POSTED ${url}`);
-    writeFileSync(join(OUT, "post-result.json"), JSON.stringify({ tweetId: result.id, url, ticker: TICKER }, null, 2));
+    console.log(`Tweet API accepted id=${result.id} — verifying on timeline…`);
+
+    const verification = await verifyTweetPersisted(result.id, xCreds);
+    manifest.posted = {
+      tweetId: result.id,
+      url,
+      verified: true,
+      verifiedAt: new Date().toISOString(),
+      verification,
+    };
+    writeManifest(manifest);
+    writeFileSync(
+      join(OUT, "post-result.json"),
+      JSON.stringify({ tweetId: result.id, url, ticker: TICKER, verified: true }, null, 2),
+    );
+    console.log(`VERIFIED POST ${url}`);
+  } catch (err) {
+    manifest.error = String(err?.message ?? err);
+    writeManifest(manifest);
+    throw err;
   } finally {
     await auth.cleanup();
     await browser.close();
