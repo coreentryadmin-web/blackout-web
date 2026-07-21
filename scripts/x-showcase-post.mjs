@@ -9,6 +9,7 @@
  *   node scripts/x-showcase-post.mjs --ticker NVDA
  *   node scripts/x-showcase-post.mjs --ticker SPX --post
  *   node scripts/x-showcase-post.mjs --mode platform --steps slayer,helix,thermal --post
+ *   node scripts/x-showcase-post.mjs --mode play-evolution --ticker TSLA --play-side put --post
  */
 import { execSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
@@ -27,6 +28,7 @@ const opt = (k, def) => {
 const BASE = "https://blackouttrades.com";
 const TICKER = opt("ticker", "SPX").toUpperCase();
 const MODE = opt("mode", "ticker");
+const PLAY_SIDE = opt("play-side", "put").toLowerCase();
 const STEPS_OPT = opt("steps", "");
 const POST = flag("post");
 const REUSE_COLLAGE = flag("reuse-collage");
@@ -392,6 +394,17 @@ function resolvePlan(ticker) {
       steps,
     };
   }
+  if (MODE === "play-evolution") {
+    const side = PLAY_SIDE === "call" ? "call" : "put";
+    const steps = STEPS_OPT
+      ? STEPS_OPT.split(",").map((s) => s.trim()).filter(Boolean)
+      : ["vector", "helix", "thermal"];
+    return {
+      title: `${ticker} — 0DTE ${side} · caught live`,
+      footer: "Vector 0DTE · HELIX flow · Thermal GEX — play evolution",
+      steps,
+    };
+  }
   if (STEPS_OPT) {
     const base = showcasePlan(ticker);
     return {
@@ -676,6 +689,16 @@ function buildTweet(ticker, plan) {
       "SPX Slayer matrix · HELIX whale tape · Thermal GEX — prod screenshots, one session.\n\n" +
       "Built for index / 0DTE traders. What's missing from your stack?\n\n" +
       "@BlackOutTrade · link in bio";
+    return text.slice(0, 280);
+  }
+  if (MODE === "play-evolution") {
+    const side = PLAY_SIDE === "call" ? "call" : "put";
+    const sym = ticker.toUpperCase();
+    const text =
+      `$${sym} 0DTE ${side} — how the desk caught it.\n\n` +
+      `Vector 0DTE beads flagged the setup → HELIX repeat ${side} sweeps → Thermal GEX pinned dealer flip vs spot.\n\n` +
+      `Three panels, one timeline. That's the play evolution before the move.\n\n` +
+      `@BlackOutTrade · link in bio`;
     return text.slice(0, 280);
   }
   const site =
