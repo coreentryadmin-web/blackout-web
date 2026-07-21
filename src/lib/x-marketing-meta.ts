@@ -87,6 +87,17 @@ export async function getLatestAnalytics(): Promise<XAnalyticsSnapshot | null> {
   }
 }
 
+export async function getAnalyticsHistory(limit = 30): Promise<XAnalyticsSnapshot[]> {
+  const raw = await getMeta(ANALYTICS_HISTORY_KEY);
+  if (!raw) return [];
+  try {
+    const history = JSON.parse(raw) as XAnalyticsSnapshot[];
+    return history.slice(-limit);
+  } catch {
+    return [];
+  }
+}
+
 export async function getEngageRotationIndex(): Promise<number> {
   const raw = await getMeta(ENGAGE_ROTATION_KEY);
   const n = raw ? parseInt(raw, 10) : 0;
