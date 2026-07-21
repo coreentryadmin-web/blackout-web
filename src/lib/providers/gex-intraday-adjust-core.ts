@@ -103,7 +103,7 @@ export const GEX_INTRADAY_TOOLTIP =
   "front-expiry (0DTE) intraday net dealer positioning, signed buy-vs-sell from the trade tape " +
   "via the quote rule, to capture same-day gamma that settled OI misses. Front expiry only.";
 
-import { zeroGammaFlip } from "@/lib/providers/gex-cross-validation-core";
+import { zeroGammaFlip, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
 // Re-exported from the canonical shared location.
 export { zeroGammaFlip } from "@/lib/providers/gex-cross-validation-core";
 
@@ -183,7 +183,8 @@ export function gexIntradayAdjustedFrom(
   }
 
   const netGexAdjusted = netGexOi + netAdjustment;
-  const flipAdjusted = zeroGammaFlip(adjusted, spot);
+  // Gamma flip → cumulative zero-gamma boundary (matches the base/heatmap flip definition).
+  const flipAdjusted = cumulativeGammaFlip(adjusted, spot);
   const w = walls(adjusted);
   const coverage = totalPrints > 0 ? Number((sideClassifiedPrints / totalPrints).toFixed(3)) : 0;
   // 'thin' when the estimate is weak (no classified prints / no net adjustment) → view ≈ OI base.

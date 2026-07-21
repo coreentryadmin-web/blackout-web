@@ -6,8 +6,8 @@ import { isHeatmapPreset } from "../heatmap-allowlist";
 import { isLiveOdteSession } from "./unusual-whales";
 import { fmtPremium } from "@/lib/fmt-money";
 import { persistGexRegimeEvents } from "./gex-regime-events";
-import { zeroGammaFlip as computeZeroGammaFlip } from "@/lib/providers/gex-cross-validation-core";
-export { zeroGammaFlip as computeZeroGammaFlip } from "@/lib/providers/gex-cross-validation-core";
+import { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
+export { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
 
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
 const KEY = process.env.POLYGON_API_KEY ?? "";
@@ -2380,8 +2380,10 @@ async function buildGexHeatmapUncached(
   );
   const maxPain = computeMaxPainFromChain(frontExpiryContracts);
 
-  // GEX levels + regime.
-  const gexFlip = computeZeroGammaFlip(gexBuilt.strikeTotals, spot);
+  // GEX levels + regime. Gamma flip = CUMULATIVE zero-gamma boundary (SpotGamma-standard), the
+  // aggregate net-short→net-long crossing — NOT the per-strike sign flip (VEX/DEX/CHARM below still
+  // use that generic per-strike helper). See cumulativeGammaFlip / docs/audit/FINDINGS.md 2026-07-21.
+  const gexFlip = cumulativeGammaFlip(gexBuilt.strikeTotals, spot);
   const { callWall, putWall, regime: gexRegime } = computeGexRegime(
     gexBuilt.strikeTotals,
     spot,

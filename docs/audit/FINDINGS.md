@@ -265,11 +265,19 @@ evidence / fix / status per the CLAUDE.md policy.)
   `!above` distance corrected to "% below". Regression test added (spot under put wall must not narrate
   dip-buy/reclaimed). `npx tsx --test vector-wall-proximity.test.ts` → 7/7 pass.
 
-### P3 — Two coexisting gamma-flip definitions (OPEN — needs product decision, not auto-changed)
-- **Observation:** `gex-cross-validation-core.ts:zeroGammaFlip` (Heat Map / Vector primary) uses a PER-STRIKE
-  net-gamma sign crossing; `vector-gex-reconstruct.ts:gammaFlipFromLadder` and `gamma-desk.ts:computeGammaFlip`
-  (reconstruct + SPX desk) use the CUMULATIVE zero-gamma crossing. On a net-short-everywhere chain the
-  per-strike path can return a flip below spot and invert the `spot>=flip?"long":"short"` regime posture.
-- **Live status:** flips observed sane (all within ±12% of spot) across SPX/SPY/NVDA/ASTS today — edge-case /
-  cross-surface-consistency risk, not an observed live miscalc. Deliberately NOT changed (moves the regime
-  banner; blast radius warrants a human decision).
+### P2 — Gamma flip used a per-strike crossing, not the cumulative zero-gamma boundary (FIXED, tested)
+- **Root cause:** `gex-cross-validation-core.ts:zeroGammaFlip` (Heat Map / positioning / intraday-adjust /
+  odte-scope) picked the PER-STRIKE net-gamma sign crossing nearest spot, while `gammaFlipFromLadder`
+  (reconstruct rail) and `gamma-desk.ts:computeGammaFlip` (SPX desk) used the CUMULATIVE zero-gamma crossing.
+  On a net-short-across-the-book chain the per-strike path interpolates a spurious crossing below spot; the
+  `spot >= flip ? "long" : "short"` posture in `computeGexRegime` then reads "long gamma" on a book that is
+  short gamma everywhere. Evidenced by unit ladder {698:-2e9,700:-3e9,710:+1e8,720:+2e9,730:-1e8} @ spot 715:
+  per-strike → 709.68 (→ "long"), cumulative → null (honest: no long-gamma regime).
+- **Scope discipline:** `zeroGammaFlip` is ALSO the generic per-strike zero-level detector for the VEX flip and
+  DEX/CHARM zero-levels (polygon-options-gex.ts:2395/2403/2414), where bidirectional per-strike crossing is the
+  correct definition (a deliberate prior fix). So `zeroGammaFlip` was LEFT UNCHANGED; a dedicated
+  `cumulativeGammaFlip` was added and wired to the four GAMMA sites only (gexFlip 2384, cross-validation
+  gammaFlip, intraday `flipAdjusted`, odte-scope scoped flip). All surfaces now share one gamma-flip definition.
+- **Live pre-validation (RTH 2026-07-21):** recomputed old-vs-new on 16 live ticker×horizon chains — the
+  cumulative flip sits at spot (SPX/SPY/NVDA narrowed 0.00–0.29% from spot vs the old ~13pt-below-spot bias)
+  and NEVER blanked. Unit tests: net-short→null (+ per-strike contrast), ±12% band rejection, <2 strikes→null.
