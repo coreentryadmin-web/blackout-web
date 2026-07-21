@@ -1,6 +1,6 @@
 import { runEngagementSweep, type EngageStats } from "@/lib/x-engage-engine";
 
-/** Scheduled growth pass — silent likes/follows/RTs (mentions → x-replies). */
+/** Scheduled growth pass — likes/follows + quote/reply on followed FinTwit targets. */
 export async function runGrowthSweep(opts: {
   dryRun?: boolean;
   cronMode?: boolean;
