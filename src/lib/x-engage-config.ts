@@ -20,6 +20,13 @@ export const ENGAGEMENT_TARGETS = [
   "PelosiTracker",
   "WallStJesus",
   "MarketWatch",
+  "Barchart",
+  "Stocktwits",
+  "KobeissiLetter",
+  "OpenOutcrier",
+  "TheShortBear",
+  "OptionsSignals",
+  "gammaborama",
 ] as const;
 
 /** Lowercase handles we follow — Enterprise API only for programmatic quote/reply. */
