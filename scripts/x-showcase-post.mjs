@@ -38,6 +38,27 @@ mkdirSync(OUT, { recursive: true });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Validate X tweet ids before persisting API payloads to disk (CodeQL taint). */
+function assertSafeTweetId(id) {
+  const s = String(id ?? "").trim();
+  if (!/^\d{5,25}$/.test(s)) {
+    throw new Error("Refusing to persist invalid tweet id from API");
+  }
+  return s;
+}
+
+function tweetPublicUrl(tweetId) {
+  return `https://x.com/BlackOutTrade/status/${assertSafeTweetId(tweetId)}`;
+}
+
+function safeTickerSymbol(raw) {
+  const t = String(raw ?? "SPX").trim().toUpperCase();
+  if (!/^[A-Z0-9.$-]{1,12}$/.test(t)) {
+    throw new Error("Invalid ticker symbol");
+  }
+  return t;
+}
+
 // ---------------------------------------------------------------------------
 // Secrets + X OAuth (from x-live-autopost.mjs)
 // ---------------------------------------------------------------------------
@@ -124,7 +145,8 @@ async function oauthGet(url, xCreds) {
 }
 
 async function fetchTweetById(id, xCreds) {
-  const url = `https://api.x.com/2/tweets/${id}?tweet.fields=author_id,created_at`;
+  const safeId = assertSafeTweetId(id);
+  const url = `https://api.x.com/2/tweets/${safeId}?tweet.fields=author_id,created_at`;
   const res = await oauthGet(url, xCreds);
   if (res.status === 404) return null;
   if (!res.ok) return null;
@@ -694,21 +716,30 @@ async function postShowcaseCollage(collagePath, tweetText, xCreds, manifest) {
 
   const mediaId = await uploadMedia(collage, xCreds);
   const result = await postTweet(tweetText, [mediaId], xCreds);
-  const url = `https://x.com/BlackOutTrade/status/${result.id}`;
-  console.log(`Tweet API accepted id=${result.id} — verifying on timeline…`);
+  const tweetId = assertSafeTweetId(result.id);
+  const url = tweetPublicUrl(tweetId);
+  console.log(`Tweet API accepted id=${tweetId} — verifying on timeline…`);
 
-  const verification = await verifyTweetPersisted(result.id, xCreds);
+  const verification = await verifyTweetPersisted(tweetId, xCreds);
   manifest.posted = {
-    tweetId: result.id,
+    tweetId,
     url,
     verified: true,
     verifiedAt: new Date().toISOString(),
-    verification,
+    verification: {
+      verified: verification.verified,
+      attempts: verification.attempts,
+      onTimeline: verification.onTimeline,
+    },
   };
   writeManifest(manifest);
   writeFileSync(
     join(OUT, "post-result.json"),
-    JSON.stringify({ tweetId: result.id, url, ticker: TICKER, verified: true }, null, 2),
+    JSON.stringify(
+      { tweetId, url, ticker: safeTickerSymbol(TICKER), verified: true },
+      null,
+      2,
+    ),
   );
   console.log(`VERIFIED POST ${url}`);
 }
