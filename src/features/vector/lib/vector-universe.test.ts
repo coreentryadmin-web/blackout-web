@@ -10,7 +10,7 @@ let dynamicTickers: string[] = [];
 let cacheStore: VectorUniverseSnapshot | null = null;
 let fetchCalls: string[] = [];
 
-mock.module("@/lib/heatmap-allowlist", {
+mock.module("../../../lib/heatmap-allowlist", {
   namedExports: {
     vectorUniverseTickers: () => staticTickers,
   },
@@ -26,7 +26,7 @@ mock.module("./vector-dynamic-universe", {
   },
 });
 
-mock.module("@/lib/shared-cache", {
+mock.module("../../../lib/shared-cache", {
   namedExports: {
     sharedCacheGet: async () => cacheStore,
     sharedCacheSet: async (_key: string, value: VectorUniverseSnapshot) => {
@@ -35,7 +35,7 @@ mock.module("@/lib/shared-cache", {
   },
 });
 
-mock.module("@/lib/providers/polygon-options-gex", {
+mock.module("../../../lib/providers/polygon-options-gex", {
   namedExports: {
     fetchGexHeatmap: async (ticker: string) => {
       fetchCalls.push(ticker);
