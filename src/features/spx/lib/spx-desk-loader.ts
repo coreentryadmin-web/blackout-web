@@ -6,7 +6,11 @@ import {
 } from "@/features/spx/lib/spx-desk";
 import type { SpxDeskFlow, SpxDeskPayload, SpxDeskPulse } from "@/features/spx/lib/spx-desk";
 import { mergeDeskLayers } from "@/features/spx/lib/spx-desk-merge";
-import { buildSpxPinForecast, type SpxPinForecast } from "@/features/spx/lib/spx-pin";
+// Type-only import — erased at compile. The runtime builder is loaded lazily inside
+// loadSpxPinForecast() so that importing this loader does NOT eagerly pull spx-pin.ts's
+// server-only chain dependency into non-server-condition contexts (e.g. the mocked unit
+// tests for this file, which stub ./spx-desk but not the reconstruct chain loader).
+import type { SpxPinForecast } from "@/features/spx/lib/spx-pin";
 import { withServerCache } from "@/lib/server-cache";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 
@@ -62,12 +66,13 @@ export async function loadSpxDeskFlow(): Promise<SpxDeskFlow> {
 
 /**
  * THE single cache lane for the EOD Pin Forecaster — 5s TTL (reuses the pulse TTL), session-keyed.
- * Standalone /api/market/spx/pin must call this. (loadSpxPinForecast → buildSpxPinForecast →
- * loadSpxDeskPulse is a deferred/runtime cycle; both exports are hoisted function decls, so ESM
- * resolves it without a load-order hazard.)
+ * Standalone /api/market/spx/pin must call this. buildSpxPinForecast is lazy-imported at call
+ * time (not at module load) so the server-only chain dependency only resolves when the forecast
+ * is actually requested — and never leaks into this loader's mocked unit tests.
  */
 export async function loadSpxPinForecast(): Promise<SpxPinForecast> {
   const date = todayEtYmd();
+  const { buildSpxPinForecast } = await import("@/features/spx/lib/spx-pin");
   return withServerCache(`spx-pin:${date}`, deskPulseCacheTtlMs(), buildSpxPinForecast, {
     staleWhileRevalidate: true,
   });

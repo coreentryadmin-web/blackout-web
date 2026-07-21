@@ -32,7 +32,7 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
     const why = pin?.drivers?.[0];
     return (
       <Shell>
-        <Header pin={pin} method={method} setMethod={setMethod} hasMc={false} />
+        <Header method={method} setMethod={setMethod} hasMc={false} />
         <div style={{ color: C.muted, fontFamily: C.mono, fontSize: 12.5, padding: 24, lineHeight: 1.5 }}>
           <b style={{ color: C.ink }}>{why?.label ?? "Collecting"}</b><br />{why?.detail ?? "Waiting for a live 0DTE chain."}
         </div>
@@ -46,7 +46,7 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
 
   return (
     <Shell>
-      <Header pin={pin} method={method} setMethod={setMethod} hasMc={Boolean(pin.montecarlo)} />
+      <Header method={method} setMethod={setMethod} hasMc={Boolean(pin.montecarlo)} />
       {pin.degraded && (
         <div style={{ margin: "0 14px 8px", padding: "6px 10px", borderRadius: 8, fontFamily: C.mono, fontSize: 11.5, color: C.warn, background: "rgba(255,138,61,.08)", border: "1px solid rgba(255,138,61,.35)" }}>
           ⚠ Low conviction — {pin.degradeReason === "macro_event" ? "macro event can overwhelm dealer pinning" : "realized vol is running above implied (trending, not pinning)"}
@@ -149,7 +149,7 @@ function Shell({ children }: { children: ReactNode }) {
   return <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, background: C.bg, overflow: "hidden" }}>{children}</div>;
 }
 
-function Header({ pin, method, setMethod, hasMc }: { pin: PinPayload | null; method: "analytic" | "montecarlo"; setMethod: (m: "analytic" | "montecarlo") => void; hasMc: boolean }) {
+function Header({ method, setMethod, hasMc }: { method: "analytic" | "montecarlo"; setMethod: (m: "analytic" | "montecarlo") => void; hasMc: boolean }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: `1px solid ${C.line}` }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
