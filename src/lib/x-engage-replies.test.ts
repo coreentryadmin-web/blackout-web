@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   pickEngagementReply,
+  pickEngagementQuote,
   isReplyableTweet,
 } from "./x-engage-replies";
 
@@ -20,5 +21,11 @@ describe("pickEngagementReply", () => {
   it("isReplyableTweet filters promos", () => {
     assert.equal(isReplyableTweet("SPX gamma flip at 6318"), true);
     assert.equal(isReplyableTweet("discord.gg/join now"), false);
+  });
+
+  it("pickEngagementQuote strips @ prefix", () => {
+    const q = pickEngagementQuote("trader_joe", "SPX gamma flip at 6318");
+    assert.doesNotMatch(q, /^@trader_joe/);
+    assert.match(q, /flip/i);
   });
 });

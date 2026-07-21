@@ -12,6 +12,16 @@ export const ENGAGEMENT_TARGETS = [
   "drayinvests",
 ] as const;
 
+/** Lowercase handles we follow — only these get public quote/reply (X Basic tier). */
+export const ENGAGEMENT_TARGET_SET = new Set(
+  ENGAGEMENT_TARGETS.map((h) => h.toLowerCase()),
+);
+
+export function isEngagementTarget(username: string | undefined): boolean {
+  if (!username) return false;
+  return ENGAGEMENT_TARGET_SET.has(username.replace(/^@/, "").toLowerCase());
+}
+
 export const SEARCH_QUERIES = [
   "(0DTE OR SPX 0dte) (gamma OR GEX OR dealer) lang:en -is:retweet -from:BlackOutTrade",
   "(SPX OR SPY) (gamma flip OR call wall OR put wall) lang:en -is:retweet -from:BlackOutTrade",
