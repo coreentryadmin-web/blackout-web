@@ -30,6 +30,11 @@ const SpxGexMatrixHeatmap = dynamic(
   { loading: () => null }
 );
 
+const SpxPinForecast = dynamic(
+  () => import("./SpxPinForecast").then((m) => ({ default: m.SpxPinForecast })),
+  { loading: () => null }
+);
+
 // DESK CONSOLIDATION (2026-07-13, member-directed): the Trade Alerts panel (plays kanban +
 // engine cards) and the Slayer desk terminal (mounted inside that same component) are
 // REMOVED from the flagship desk in favour of the embedded SPX Vector chart below — one
@@ -290,6 +295,10 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
               priceScaleMap={priceScaleMap}
               focus={focusActive}
             />
+            {/* EOD Pin Forecaster — forward-looking 0DTE close projection, stacked under the matrix. */}
+            <div style={{ marginTop: 10 }}>
+              <SpxPinForecast sessionActive={sessionActive} />
+            </div>
           </aside>
         </SpxPanelErrorBoundary>
 

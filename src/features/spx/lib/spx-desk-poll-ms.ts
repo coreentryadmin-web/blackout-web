@@ -28,6 +28,9 @@ export const SPX_PULSE_REST_SSE_POLL_MS = pollMs("NEXT_PUBLIC_SPX_PULSE_REST_SSE
 /** Left-rail GEX/VEX matrix during RTH — default 5s (pairs with SPX_GEX_HEATMAP_CACHE_SEC). */
 export const SPX_MATRIX_POLL_RTH_MS = pollMs("NEXT_PUBLIC_SPX_MATRIX_POLL_RTH_MS", 5_000);
 
+/** EOD Pin Forecaster — recomputes the projected close every 5s during RTH. */
+export const SPX_PIN_POLL_MS = pollMs("NEXT_PUBLIC_SPX_PIN_POLL_MS", 5_000);
+
 /** Matrix off-hours / AH — default 5s. */
 export const SPX_MATRIX_POLL_OFF_MS = pollMs("NEXT_PUBLIC_SPX_MATRIX_POLL_OFF_MS", 5_000);
 

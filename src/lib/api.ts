@@ -93,6 +93,9 @@ export async function requestSpxCommentary(
 
 /** Full SPX-Sniper desk — Polygon + UW dealer/flow (slower lane, ~10s). */
 export const fetchSpxDesk = () => marketFetch<SpxDeskPayload>("/spx/desk");
+// Inline type import keeps the server-only spx-pin module out of the client bundle (type is erased).
+export const fetchSpxPin = () =>
+  marketFetch<import("@/features/spx/lib/spx-pin").SpxPinForecast>("/spx/pin");
 
 /** One-shot dashboard bundle — desk + flow + pulse + merged (+ SPX matrix server-side). */
 export type SpxBootstrapPayload = {
