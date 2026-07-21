@@ -62,10 +62,13 @@ try {
       result = await hit("/api/cron/x-engage?dry=1&manual=1");
       break;
     case "engage":
-      result = await hit("/api/cron/x-engage?manual=1&silent=1");
+      result = await hit("/api/cron/x-engage?manual=1");
       break;
     case "replies":
       result = await hit("/api/cron/x-replies?manual=1");
+      break;
+    case "engage-silent":
+      result = await hit("/api/cron/x-engage?manual=1&silent=1");
       break;
     case "engage-all":
       result = {
@@ -74,10 +77,23 @@ try {
       };
       break;
     case "growth":
+      result = await hit("/api/cron/x-growth?manual=1");
+      break;
+    case "growth-silent":
       result = await hit("/api/cron/x-growth?manual=1&silent=1");
       break;
     case "dry-growth":
       result = await hit("/api/cron/x-growth?dry=1&manual=1");
+      break;
+    case "desk-post":
+      result = await hit(
+        "/api/cron/x-autopost?force=1&type=desk_evening&manual=1",
+      );
+      break;
+    case "dry-desk-post":
+      result = await hit(
+        "/api/cron/x-autopost?dry=1&force=1&type=desk_evening&manual=1",
+      );
       break;
     case "dry-replies":
       result = await hit("/api/cron/x-replies?dry=1&manual=1");
