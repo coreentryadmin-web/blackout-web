@@ -293,3 +293,40 @@ evidence / fix / status per the CLAUDE.md policy.)
   net-short→net-long crossing nearest spot, ±12% band, null when the book never turns net-long. Behavior
   change is confined to inverted/net-short/boundary books (now null or the near-spot crossing instead of a
   long→short crossing / terminal zero-touch). Tests updated + net-short→null case added; gamma-desk suite 15/15.
+
+## 2026-07-21 — SPX Slayer live CTO audit (99 samples, RTH) — fixes batch 1
+
+Deep live audit of the SPX Slayer desk (poll every 15s, 18:54–19:35 UTC, cross-checked vs Polygon).
+No P0: 0 correctness violations across 99 samples (above_flip, flip/maxpain band, SPX≈10×SPY 10.032–10.035,
+price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every poll ≈5s). Beads forming
+(wall-history 976→992). This batch fixes the two clean backend data-correctness findings.
+
+### P1 — "GEX stale" pill never fired even at 3-min-old dealer gamma (FIXED, tested)
+- **Root cause:** `spx-desk.ts` canonical desk-GEX path returned `gex_stale: false` HARDCODED while
+  computing a real `gex_age_ms = now − pos.asof`. When the UW positioning snapshot lagged, the desk
+  served stale GEX flagged as fresh. The fallback path derived staleness correctly, so the two paths
+  disagreed. **Evidence:** live sample 19:08:25 had `gex_age_ms = 183,827` (183s, 6× the 30s
+  `GEX_STALE_MS`) with `gex_stale:false`; 0/99 samples ever flagged stale.
+- **Fix:** extracted `gexStaleFromAge(ageMs)` (pure, `spx-desk-numerics.ts`) = `age==null || age>GEX_STALE_MS`;
+  both desk-GEX paths now derive `gex_stale` from it. Unit-tested incl. the exact 183,827ms case.
+
+### P2 — /api/market/spx/pulse leaked unrounded floats (FIXED, tested)
+- **Root cause:** `buildSpxDeskPulse` returned every numeric RAW; `buildSpxDeskFull` rounds via
+  `roundDeskNum`. The header ribbon merges both lanes, so the pulse lane surfaced unrounded floats.
+  **Evidence (every one of 99 samples):** `vwap 7500.4571055…`, `ema20 7490.6383…`,
+  `lod 7467.860000000001`, `sma200 6994.99535…` (desk lane served these rounded). CLAUDE.md systemic
+  "round at the data layer".
+- **Fix:** `roundPulseNumerics(pulse)` (pure, `spx-desk-numerics.ts`) rounds all price-class fields to
+  2dp; applied to the pulse result at return (after regime/above_vwap are computed from raw values, so
+  no derived flag shifts). Unit-tested (rounds the live leak values; preserves nulls; price stays number).
+
+### Deferred (logged, not in this batch)
+- P2 `gap_pct` is not a gap in RTH — `gap-proxy.ts:resolveDeskGap` uses `gapFromPrice(current, prior)`,
+  so it tracks live price and equals `spx_change_pct` (confirmed: changed 9× in 8 min in lockstep). NOT
+  rendered on the SPX ribbon (backend field → lotto engine); fix needs the session-open price. Hold.
+- P2/UX same concept, different number on one screen: ribbon flip (~7598, near-term aggregate) vs embedded
+  chart flip (~7504, 0DTE); desk king 7600 vs 0DTE ladder king ~7515; ribbon EMA 20/50/200 vs chart EMA
+  9/21/50. Needs scope labels / design decision.
+- P3 flip level jitter (7578–7607, ±18pt on a 4pt-quiet tape — sensitive near the concentrated 7600 wall);
+  consider display smoothing. TICK/TRIN/ADD estimated (`add` clamp) + not rendered. Matrix poll comment
+  stale (says 8s/20s; actual 5s).
