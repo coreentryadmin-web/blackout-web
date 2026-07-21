@@ -28,8 +28,8 @@ export const X_INTENSIVE_CRON_RUN_CAPS = {
 
 /** Manual `npm run x-marketing:run` — still bounded. */
 export const X_MANUAL_RUN_CAPS = {
-  likes: 8,
-  follows: 3,
+  likes: 12,
+  follows: 4,
   replies: 5,
   retweets: 1,
 } as const;
