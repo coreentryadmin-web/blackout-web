@@ -31,10 +31,12 @@ test("VectorChart: session viewport defers live-edge scroll until member pans", 
   assert.match(src, /pinLiveAnchorBeads/);
   assert.match(src, /fitSessionOverview/);
   assert.match(src, /applySessionOverviewViewport/);
+  assert.match(src, /wantsSessionOverviewViewport/);
 });
 
-test("vector-chart-viewport: session logical range uses lastSessionBars", () => {
+test("vector-chart-viewport: session time range uses lastSessionBars", () => {
   const lib = read("src/features/vector/lib/vector-chart-viewport.ts");
   assert.match(lib, /lastSessionBars/);
+  assert.match(lib, /setVisibleRange/);
   assert.match(lib, /setVisibleLogicalRange/);
 });
