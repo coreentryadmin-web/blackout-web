@@ -281,3 +281,15 @@ evidence / fix / status per the CLAUDE.md policy.)
 - **Live pre-validation (RTH 2026-07-21):** recomputed old-vs-new on 16 live ticker×horizon chains — the
   cumulative flip sits at spot (SPX/SPY/NVDA narrowed 0.00–0.29% from spot vs the old ~13pt-below-spot bias)
   and NEVER blanked. Unit tests: net-short→null (+ per-strike contrast), ±12% band rejection, <2 strikes→null.
+
+### P3 — Third gamma-flip implementation (gamma-desk) folded onto the shared cumulative flip (FIXED, tested)
+- **Follow-on to the 2026-07-21 flip unification.** `gamma-desk.ts:computeGammaFlip` (SPX desk + Nighthawk
+  positioning, via `/api/market/gex-positioning`) was a THIRD cumulative flip impl that detected a cumulative
+  sign change in EITHER direction plus terminal zero-touches (no plausibility band). It agreed with the
+  heatmap flip on normal books but diverged on inverted/boundary profiles (e.g. [100:+8,110:-12]→106.67;
+  [100:+10,105:0,110:-10]→110).
+- **Fix:** `computeGammaFlip` now delegates to the shared `cumulativeGammaFlip` (convert ranked_levels →
+  strike-total record). One gamma-flip definition across heatmap, SPX desk, reconstruct rail, and Nighthawk:
+  net-short→net-long crossing nearest spot, ±12% band, null when the book never turns net-long. Behavior
+  change is confined to inverted/net-short/boundary books (now null or the near-spot crossing instead of a
+  long→short crossing / terminal zero-touch). Tests updated + net-short→null case added; gamma-desk suite 15/15.
