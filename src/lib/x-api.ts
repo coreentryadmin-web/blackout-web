@@ -467,6 +467,16 @@ export interface XAccountMetrics {
   tweet_count: number;
 }
 
+export interface XOwnProfile {
+  id: string;
+  username: string;
+  name?: string;
+  description?: string;
+  url?: string;
+  pinned_tweet_id?: string;
+  public_metrics?: XAccountMetrics;
+}
+
 /** @BlackOutTrade public metrics for growth tracking. */
 export async function fetchOwnAccountMetrics(): Promise<XAccountMetrics | null> {
   const params = new URLSearchParams({
@@ -484,6 +494,83 @@ export async function fetchOwnAccountMetrics(): Promise<XAccountMetrics | null> 
     followers: m.followers_count ?? 0,
     following: m.following_count ?? 0,
     tweet_count: m.tweet_count ?? 0,
+  };
+}
+
+const X_ACCOUNT_UPDATE_URL =
+  "https://api.twitter.com/1.1/account/update_profile.json";
+
+/** Update @BlackOutTrade bio / website (v1.1 — OAuth user context). */
+export async function updateAccountProfile(opts: {
+  description?: string;
+  url?: string;
+  name?: string;
+  location?: string;
+}): Promise<boolean> {
+  const params: Record<string, string> = {};
+  if (opts.description !== undefined) params.description = opts.description;
+  if (opts.url !== undefined) params.url = opts.url;
+  if (opts.name !== undefined) params.name = opts.name;
+  if (opts.location !== undefined) params.location = opts.location;
+  if (!Object.keys(params).length) return false;
+
+  const auth = oauthHeader("POST", X_ACCOUNT_UPDATE_URL, params);
+  const body = Object.entries(params)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join("&");
+
+  const res = await fetch(X_ACCOUNT_UPDATE_URL, {
+    method: "POST",
+    headers: {
+      Authorization: auth,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`X profile update failed (${res.status}): ${text.slice(0, 200)}`);
+  }
+  return true;
+}
+
+/** Current @BlackOutTrade profile fields for growth ops. */
+export async function fetchOwnProfile(): Promise<XOwnProfile | null> {
+  const params = new URLSearchParams({
+    "user.fields":
+      "username,name,description,url,pinned_tweet_id,public_metrics",
+  });
+  const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}?${params}`;
+  const res = await oauthFetch("GET", url);
+  if (!res.ok) return null;
+  const json = (await res.json()) as {
+    data?: {
+      id: string;
+      username: string;
+      name?: string;
+      description?: string;
+      url?: string;
+      pinned_tweet_id?: string;
+      public_metrics?: Record<string, number>;
+    };
+  };
+  const d = json.data;
+  if (!d) return null;
+  const m = d.public_metrics;
+  return {
+    id: d.id,
+    username: d.username,
+    name: d.name,
+    description: d.description,
+    url: d.url,
+    pinned_tweet_id: d.pinned_tweet_id,
+    public_metrics: m
+      ? {
+          followers: m.followers_count ?? 0,
+          following: m.following_count ?? 0,
+          tweet_count: m.tweet_count ?? 0,
+        }
+      : undefined,
   };
 }
 

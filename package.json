@@ -35,6 +35,8 @@
     "x-marketing:run": "node scripts/x-marketing-run.mjs",
     "validate:x-marketing": "node scripts/validate-x-marketing.mjs",
     "x-marketing:audit": "node scripts/x-marketing-audit.mjs",
+    "x-cleanup": "node --import tsx scripts/x-cleanup-low-quality.mjs",
+    "x-profile:optimize": "node --import tsx scripts/x-profile-optimize.ts",
     "x-showcase:dry": "node scripts/x-showcase-post.mjs",
     "x-showcase:post": "node scripts/x-showcase-post.mjs --post",
     "x-engage:now": "node --import tsx scripts/x-engage-now.ts",
