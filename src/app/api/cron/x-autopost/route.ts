@@ -19,6 +19,7 @@ import {
   type PostType,
 } from "@/lib/x-content";
 import { checkPostGuard, isTweetContentValid } from "@/lib/x-post-guard";
+import { xMarketingPostsPaused } from "@/lib/x-marketing-env";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,6 +80,19 @@ export async function GET(req: NextRequest) {
       { ok: false, reason: "X API credentials not configured" },
       { status: 200 },
     );
+  }
+
+  if (xMarketingPostsPaused()) {
+    await logCronRun("x-autopost", started, {
+      ok: true,
+      skipped: true,
+      reason: "X_MARKETING_POSTS_PAUSED",
+    });
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: "X_MARKETING_POSTS_PAUSED",
+    });
   }
 
   const dryRun = req.nextUrl.searchParams.get("dry") === "1";

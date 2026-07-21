@@ -3,6 +3,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { xApiEnabled } from "@/lib/x-api";
 import { runGrowthSweep } from "@/lib/x-growth-engine";
+import { xMarketingSilentOnly } from "@/lib/x-marketing-env";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,9 +30,11 @@ export async function GET(req: NextRequest) {
 
   const dryRun = req.nextUrl.searchParams.get("dry") === "1";
   const cronMode = req.nextUrl.searchParams.get("manual") !== "1";
+  const silentOnly =
+    req.nextUrl.searchParams.get("silent") === "1" || xMarketingSilentOnly();
 
   try {
-    const stats = await runGrowthSweep({ dryRun, cronMode });
+    const stats = await runGrowthSweep({ dryRun, cronMode, silentOnly });
 
     await logCronRun("x-growth", started, {
       ok: true,

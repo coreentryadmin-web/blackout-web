@@ -3,8 +3,9 @@
  * Run engagement sweep NOW via direct OAuth (bypasses ECS load balancer).
  * Loads X_* from env or AWS Secrets Manager.
  *
- *   npm run x-engage:now           # live likes + replies + follows
- *   npm run x-engage:now -- --dry  # preview only
+ *   npm run x-engage:now              # live likes + replies + follows
+ *   npm run x-engage:now -- --silent  # likes + follows only (no posts)
+ *   npm run x-engage:now -- --dry     # preview only
  */
 import { execSync } from "node:child_process";
 
@@ -22,10 +23,17 @@ function loadEnv(): void {
 async function main() {
   loadEnv();
   const dryRun = process.argv.includes("--dry");
+  const silentOnly = process.argv.includes("--silent");
   const { runEngagementSweep } = await import("../src/lib/x-engage-engine");
 
-  console.log(dryRun ? "[dry-run] engagement sweep…" : "[live] engagement sweep…");
-  const stats = await runEngagementSweep({ dryRun });
+  const mode = dryRun ? "[dry-run]" : "[live]";
+  const kind = silentOnly ? "silent engagement" : "engagement sweep";
+  console.log(`${mode} ${kind}…`);
+  const stats = await runEngagementSweep({
+    dryRun,
+    cronMode: false,
+    silentOnly,
+  });
   console.log(JSON.stringify(stats, null, 2));
 }
 

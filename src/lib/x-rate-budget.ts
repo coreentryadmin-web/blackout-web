@@ -45,9 +45,28 @@ function todayEt(): string {
   });
 }
 
+const memoryMeta = new Map<string, string>();
+
+async function readMeta(key: string): Promise<string | null> {
+  try {
+    return await getMeta(key);
+  } catch {
+    return memoryMeta.get(key) ?? null;
+  }
+}
+
+async function writeMeta(key: string, value: string): Promise<void> {
+  try {
+    await setMeta(key, value);
+  } catch {
+    if (value === "") memoryMeta.delete(key);
+    else memoryMeta.set(key, value);
+  }
+}
+
 async function loadDayBudget(): Promise<DayBudget> {
   const date = todayEt();
-  const raw = await getMeta(`${BUDGET_PREFIX}${date}`);
+  const raw = await readMeta(`${BUDGET_PREFIX}${date}`);
   if (!raw) {
     return {
       date,
@@ -67,18 +86,18 @@ async function loadDayBudget(): Promise<DayBudget> {
 }
 
 async function saveDayBudget(b: DayBudget): Promise<void> {
-  await setMeta(`${BUDGET_PREFIX}${b.date}`, JSON.stringify(b));
+  await writeMeta(`${BUDGET_PREFIX}${b.date}`, JSON.stringify(b));
 }
 
 export async function isRateLimitPaused(): Promise<{
   paused: boolean;
   until?: string;
 }> {
-  const raw = await getMeta(PAUSE_KEY);
+  const raw = await readMeta(PAUSE_KEY);
   if (!raw) return { paused: false };
   const until = parseInt(raw, 10);
   if (!Number.isFinite(until) || Date.now() >= until) {
-    await setMeta(PAUSE_KEY, "");
+    await writeMeta(PAUSE_KEY, "");
     return { paused: false };
   }
   return { paused: true, until: new Date(until).toISOString() };
@@ -86,7 +105,7 @@ export async function isRateLimitPaused(): Promise<{
 
 /** Pause all X write actions after a 429 (default 15 min). */
 export async function pauseForRateLimit(ms = 15 * 60_000): Promise<void> {
-  await setMeta(PAUSE_KEY, String(Date.now() + ms));
+  await writeMeta(PAUSE_KEY, String(Date.now() + ms));
 }
 
 export async function remainingDaily(
