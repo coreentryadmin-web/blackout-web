@@ -12,7 +12,7 @@ export const ENGAGEMENT_TARGETS = [
   "drayinvests",
 ] as const;
 
-/** Lowercase handles we follow — only these get public quote/reply (X Basic tier). */
+/** Lowercase handles we follow — Enterprise API only for programmatic quote/reply. */
 export const ENGAGEMENT_TARGET_SET = new Set(
   ENGAGEMENT_TARGETS.map((h) => h.toLowerCase()),
 );

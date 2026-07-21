@@ -5,6 +5,7 @@ import {
   getAnalyticsHistory,
   type XAnalyticsSnapshot,
 } from "@/lib/x-marketing-meta";
+import { xApiEnterpriseAccess } from "@/lib/x-marketing-env";
 import {
   X_DAILY_CAPS,
   getDayBudgetSnapshot,
@@ -148,9 +149,13 @@ function buildInsights(input: {
     lines.push("X write actions paused after rate limit — crons will skip until window clears.");
   }
   const growth = input.crons.find((c) => c.job_key === "x-growth");
-  if (growth?.skipped403 && growth.skipped403 > 0) {
+  if (!xApiEnterpriseAccess()) {
     lines.push(
-      "Growth skipped cold 403 blocks — quotes/replies only fire on followed FinTwit targets.",
+      "Pay-per-use API: growth is likes/follows only — FinTwit quotes need Enterprise or manual posts from the X app.",
+    );
+  } else if (growth?.skipped403 && growth.skipped403 > 0) {
+    lines.push(
+      "Some Enterprise quote/reply calls returned 403 — check summon rules or rate limits.",
     );
   }
   if (input.budget.posts >= input.budget.caps.posts) {

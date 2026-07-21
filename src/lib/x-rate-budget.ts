@@ -1,6 +1,6 @@
 import { getMeta, setMeta } from "@/lib/db";
 
-/** Conservative caps — stay well under X Basic tier to avoid 429s. */
+/** Conservative caps — stay under pay-per-use spend + 429 thresholds. */
 export const X_DAILY_CAPS = {
   likes: 48,
   follows: 12,

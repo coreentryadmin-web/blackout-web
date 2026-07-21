@@ -6,10 +6,14 @@
  * - Replies ONLY when someone @mentions us (x-replies) — never cold @tag posts
  * - NEVER post "@someone ..." as an original tweet on our profile
  *
- * SILENT ENGAGEMENT (x-growth):
+ * SILENT ENGAGEMENT (x-growth on pay-per-use):
  * - Like + follow niche accounts; selective RT of high-signal search hits
- * - Quote-tweet or reply ONLY on followed ENGAGEMENT_TARGETS (X Basic tier)
- * - Never cold-reply on search hits (403 on Basic — wastes budget + error noise)
+ * - Quote-post + cold reply on FinTwit: Enterprise API only (X_API_ACCESS_TIER=enterprise)
+ * - Summoned @mention replies: x-replies cron ($0.01/post on PPU)
+ *
+ * DESK POSTS (x-autopost):
+ * - Default footer omits URL ($0.015/post PPU) — pricing link lives in profile bio
+ * - X_DESK_POST_INCLUDE_URL=1 for in-tweet link ($0.20/post PPU)
  *
  * @MENTIONS (x-replies):
  * - Reply when someone @mentions us — substantive answers, no Whop link

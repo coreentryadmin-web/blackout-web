@@ -5,7 +5,7 @@
  *   npm run x-profile:optimize           # live bio + website
  *   npm run x-profile:optimize -- --dry  # preview only
  *
- * Pinning: X API has no public pin endpoint on Basic tier — after a desk-post,
+ * Pinning: no public pin API — pin desk posts manually in the X app after autopost.
  * pin the returned tweetId manually in the X app (or use the PIN_CANDIDATE link).
  */
 import { execSync } from "node:child_process";
