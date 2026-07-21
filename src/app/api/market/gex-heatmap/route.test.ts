@@ -79,6 +79,11 @@ mock.module("../../../../lib/et-market-hours", {
     isEtCashRth: () => mockMarketOpen,
   },
 });
+mock.module("../../../../features/vector/lib/vector-universe", {
+  namedExports: {
+    registerVectorUniverseView: () => {},
+  },
+});
 // heatmap-allowlist is intentionally left real (its own header notes it's a pure data +
 // predicate module, safe outside a server bundle) — "ZZZZ" below is neither a preset nor an
 // overlay-allowlisted ticker, so cross_validation/overlays stay on their skip paths for free.

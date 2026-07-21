@@ -15,6 +15,7 @@ import {
   HELIX_FLOW_MAX_SINCE_HOURS,
 } from "@/features/helix/lib/helix-flow-limits";
 import { flowPageCursor } from "@/features/helix/lib/helix-flow-tape-merge";
+import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,7 @@ export async function GET(req: NextRequest) {
     HELIX_FLOW_MAX_LIMIT
   );
   const ticker = sp.get("ticker") ?? undefined;
+  if (ticker) registerVectorUniverseView(ticker);
   const min_premium = Number(sp.get("min_premium") ?? 0) || undefined;
   const since_hours = Math.min(
     Math.max(Number(sp.get("since_hours") ?? HELIX_FLOW_DEFAULT_SINCE_HOURS) || HELIX_FLOW_DEFAULT_SINCE_HOURS, 1),
