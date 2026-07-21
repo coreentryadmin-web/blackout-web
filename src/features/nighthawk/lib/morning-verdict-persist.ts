@@ -29,16 +29,28 @@ import { recordNighthawkMorningVerdict } from "@/lib/db";
 /** Bump when the persisted verdict shape changes so calibration reads can segment. */
 export const MORNING_VERDICT_VERSION = 2;
 
-// PR-N6: DEGRADED becomes binding when multiple independent signals fire. A single
-// "reduce size" stays advisory (a reasoned caution, not an actionable defect);
-// ≥2 distinct degradation reasons means the play's premise is compromised on multiple
-// axes and the honest call is to pull rather than badge.
+// PR-N6: DEGRADED becomes binding when multiple independent signals fire, OR when
+// the play gapped away from its published entry pre-open (single reason — the Jul 21
+// NVDA/BE/NBIS signature). A lone "reduce size" advisory stays label-only.
 export const DEGRADED_SEVERE_REASON_COUNT = 2;
 
+/** True when a DEGRADED verdict reflects a gap-away from the published entry band —
+ *  the member should not chase, so the play is pulled pre-open. */
+export function isDegradedGapAway(status: PlayStatus): boolean {
+  if (status.status !== "DEGRADED") return false;
+  const reason = status.reason.toLowerCase();
+  return (
+    reason.includes("do not chase the published entry")
+    || reason.includes("gapped above the entry range")
+    || reason.includes("gapped below the entry range")
+  );
+}
+
 /** True when a DEGRADED verdict is severe enough to engage the pull latch (PR-N6).
- *  Severity = count of distinct reasons (semicolon-separated in PlayStatus.reason). */
+ *  Severity = gap-away OR count of distinct reasons (semicolon-separated). */
 export function isDegradedSevere(status: PlayStatus): boolean {
   if (status.status !== "DEGRADED") return false;
+  if (isDegradedGapAway(status)) return true;
   const reasons = status.reason.split(";").map((r) => r.trim()).filter(Boolean);
   return reasons.length >= DEGRADED_SEVERE_REASON_COUNT;
 }
@@ -150,8 +162,12 @@ export async function persistNighthawkMorningVerdicts(
         market: opts.market,
       });
       const invalidated = status.status === "INVALIDATED";
-      // PR-N6: severe DEGRADED (≥2 independent degradation reasons) also pulls.
       const degradedSevere = isDegradedSevere(status);
+      const pullReasonTag = invalidated
+        ? ""
+        : isDegradedGapAway(status)
+          ? " (gap-away)"
+          : " (severe degradation)";
       const shouldPull = invalidated || degradedSevere;
       const res = await record({
         edition_for: opts.editionFor,
@@ -159,7 +175,7 @@ export async function persistNighthawkMorningVerdicts(
         verdict,
         pull: shouldPull,
         pull_reason: shouldPull
-          ? `Pulled pre-open${degradedSevere ? " (severe degradation)" : ""}: ${status.reason}`
+          ? `Pulled pre-open${pullReasonTag}: ${status.reason}`
           : null,
       });
       if (!res.matched) {

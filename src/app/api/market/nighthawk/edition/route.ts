@@ -140,12 +140,15 @@ export async function GET(req: NextRequest) {
   const dbDenied = requireDatabaseInProduction();
   if (dbDenied) return dbDenied;
 
-  const editionFor = req.nextUrl.searchParams.get("date") ?? nextTradingDayEt(todayEt());
+  const explicitDate = req.nextUrl.searchParams.get("date");
+  const editionFor = explicitDate ?? nextTradingDayEt(todayEt());
   const activePlayable = await fetchLatestPlayableNighthawkEdition();
 
   // A generated playbook remains actionable until its target session closes. If the next evening
   // build has already written a recap-only/pending row, do NOT hide today's live plays before 4PM ET.
+  // Historical ?date= lookups skip carry — they must resolve the exact session, not today's board.
   if (
+    !explicitDate &&
     activePlayable &&
     activePlayable.edition_for !== editionFor &&
     isBeforeOrAtMarketCloseEt(activePlayable.edition_for)
@@ -172,10 +175,18 @@ export async function GET(req: NextRequest) {
   const latest = await fetchLatestNighthawkEdition();
   if (latest) {
     const edition = rowToNightHawkEdition(latest);
-    const recencyWindow = new Set([editionFor, todayEt(), priorEt()]);
-    if (edition.edition_for && !recencyWindow.has(edition.edition_for)) {
+    // Serving a prior session's plays when tonight's edition_for is not published yet must
+    // always read as stale — the recency window alone let Jul 21's five names masquerade as
+    // Jul 22's live board.
+    if (edition.edition_for && edition.edition_for !== editionFor) {
       edition.stale = true;
       edition.served_for = edition.edition_for;
+    } else {
+      const recencyWindow = new Set([editionFor, todayEt(), priorEt()]);
+      if (edition.edition_for && !recencyWindow.has(edition.edition_for)) {
+        edition.stale = true;
+        edition.served_for = edition.edition_for;
+      }
     }
     return NextResponse.json(roundFloats(await withPullOverlay(edition)), { headers: NO_STORE_HEADERS });
   }

@@ -37,6 +37,7 @@ import { buildNighthawkPublishContexts } from "./publish-context";
 import {
   acceptableQuoteSessionsEt,
   applyNighthawkPublishGates,
+  capGatePromotedConviction,
   promoteTopBlocked,
   publishGateRecapReason,
   type NighthawkPublishGateResult,
@@ -782,12 +783,14 @@ export async function buildEveningEdition(opts?: {
         // Promote the raw pre-critic plays with gate_promoted warnings — they passed
         // synthesis constraints, just not the critic's quality bar.
         if (rawPlays.length) {
-          finalPlays = rawPlays.slice(0, EDITION_TARGET_PLAYS).map((p, i) => ({
-            ...p,
-            rank: i + 1,
-            gate_promoted: true,
-            gate_warnings: ["Play did not pass the critic's quality review — use extra caution"],
-          }));
+          finalPlays = rawPlays.slice(0, EDITION_TARGET_PLAYS).map((p, i) =>
+            capGatePromotedConviction({
+              ...p,
+              rank: i + 1,
+              gate_promoted: true,
+              gate_warnings: ["Play did not pass the critic's quality review — use extra caution"],
+            })
+          );
           funnel.critic_passed = finalPlays.length;
           console.info(
             `[nighthawk/edition] critic zeroed — promoted ${finalPlays.length} raw plays with gate warnings`
