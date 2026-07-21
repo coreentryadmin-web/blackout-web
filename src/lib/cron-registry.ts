@@ -382,7 +382,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 90,
     weekdays_only: true,
     description:
-      "X engagement — likes/follows + quote/reply on followed FinTwit accounts (Basic tier safe)",
+      "X engagement — pay-per-use: likes/follows/RT; Enterprise adds FinTwit quote/reply",
   },
   {
     key: "x-replies",

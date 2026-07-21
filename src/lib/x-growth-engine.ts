@@ -1,7 +1,7 @@
 import { runEngagementSweep, type EngageStats } from "@/lib/x-engage-engine";
 import { xMarketingSilentOnly } from "@/lib/x-marketing-env";
 
-/** Scheduled growth pass — likes/follows; quote/reply unless X_GROWTH_SILENT_ONLY=1. */
+/** Scheduled growth pass — PPU: likes/follows; Enterprise: + FinTwit quote/reply. */
 export async function runGrowthSweep(opts: {
   dryRun?: boolean;
   cronMode?: boolean;

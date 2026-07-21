@@ -78,11 +78,11 @@ if (!redFlags.length) console.log("  (none detected in snapshot)");
 else for (const f of redFlags) console.log(`  • ${f}`);
 
 console.log("\n--- P0 actions ---");
-console.log("  1. Delete low-quality timeline posts: node scripts/x-cleanup-low-quality.mjs --dry");
-console.log("  2. Public FinTwit replies (deploy x-growth patch) — likes alone are invisible");
-console.log("  3. Footer → blackouttrades.com/pricing (site funnel, not Whop-only)");
-console.log("  4. Desk posts every 2h RTH with live desk card PNG + question hook");
-console.log("  5. Manual momentum: npm run x-marketing:run engage");
+console.log("  1. Timeline cleanup: npm run x-cleanup -- --dry");
+console.log("  2. PPU growth = desk posts + likes; FinTwit quotes manual or Enterprise API");
+console.log("  3. Profile bio URL (not in-tweet) saves $0.185/post on pay-per-use");
+console.log("  4. RTH desk posts with live desk card PNG + question hook");
+console.log("  5. Reply when @mentioned: npm run x-marketing:run engage-all");
 
 const dryPost = await cron("/api/cron/x-autopost?dry=1&type=desk_midday");
 console.log("\n--- Next desk post preview ---");

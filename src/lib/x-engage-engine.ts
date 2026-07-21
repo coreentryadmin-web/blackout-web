@@ -28,7 +28,10 @@ import {
   getRepliedTweetIds,
   markTweetReplied,
 } from "@/lib/x-marketing-meta";
-import { xMarketingSilentOnly } from "@/lib/x-marketing-env";
+import {
+  xApiEnterpriseAccess,
+  xMarketingSilentOnly,
+} from "@/lib/x-marketing-env";
 import {
   resolveRunBudget,
   recordBudgetUse,
@@ -41,11 +44,11 @@ export interface EngageStats {
   likes: number;
   retweets: number;
   follows: number;
-  /** Thread replies on followed FinTwit accounts only. */
+  /** Summoned @mention replies — use x-replies cron, not growth sweep. */
   replies: number;
-  /** Quote-tweets on followed accounts — visible on our profile. */
+  /** Quote-posts — Enterprise API only; disabled on pay-per-use. */
   quotes: number;
-  /** Cold reply/quote blocked by X Basic tier (403) — not logged as errors. */
+  /** Quote/cold-reply blocked by self-serve API policy (403). */
   skipped403: number;
   scanned: string[];
   errors: string[];
@@ -55,6 +58,8 @@ export interface EngageStats {
   skippedReason?: string;
   /** Likes + follows only — no quote/reply/RT. */
   silentOnly?: boolean;
+  /** ppu = likes/follows/RT; enterprise adds FinTwit quote/reply. */
+  apiTier?: "ppu" | "enterprise";
 }
 
 function sleep(ms: number) {
@@ -66,8 +71,12 @@ function tweetAgeHours(createdAt?: string): number {
   return (Date.now() - new Date(createdAt).getTime()) / 3_600_000;
 }
 
-function isXBasicTierBlock(msg: string): boolean {
-  return msg.includes("(403)") || /only reply to or quote posts/i.test(msg);
+function isSelfServeApiBlock(msg: string): boolean {
+  return (
+    msg.includes("(403)") ||
+    /only reply to or quote posts/i.test(msg) ||
+    /enterprise plan/i.test(msg)
+  );
 }
 
 function scoreSearchHit(t: XTweetSearchHit): number {
@@ -106,18 +115,19 @@ async function handleRateLimited(stats: EngageStats): Promise<void> {
 }
 
 /**
- * Growth engagement — likes/follows everywhere; public quote/reply on followed
- * FinTwit targets only (X Basic tier blocks cold thread replies on search hits).
+ * Growth engagement on pay-per-use: likes, follows, selective RT on search hits.
+ * FinTwit quote/reply requires X_API_ACCESS_TIER=enterprise (self-serve forbids
+ * cold quotes; replies only when @mentioned — see x-replies cron).
  */
 export async function runEngagementSweep(opts: {
   dryRun?: boolean;
   cronMode?: boolean;
-  /** Likes + follows only — skips quote/reply/RT (no new timeline activity). */
   silentOnly?: boolean;
 }): Promise<EngageStats> {
   const dryRun = opts.dryRun === true;
   const cronMode = opts.cronMode !== false;
   const silentOnly = opts.silentOnly === true || xMarketingSilentOnly();
+  const enterprise = xApiEnterpriseAccess();
   const budget = await resolveRunBudget({ cronMode });
   const rotation = cronMode ? await bumpEngageRotation() : 0;
 
@@ -134,6 +144,7 @@ export async function runEngagementSweep(opts: {
     cronMode,
     budget,
     silentOnly,
+    apiTier: enterprise ? "enterprise" : "ppu",
   };
 
   if (!budget.allowed) {
@@ -146,8 +157,9 @@ export async function runEngagementSweep(opts: {
   let likeCap = budget.likes;
   let followCap = budget.follows;
   let rtCap = silentOnly ? 0 : budget.retweets;
-  let visibleCap = silentOnly ? 0 : budget.replies;
-  const visibleMaxPerRun = silentOnly ? 0 : cronMode ? 1 : 2;
+  const allowVisibleEngage = !silentOnly && enterprise;
+  let visibleCap = allowVisibleEngage ? budget.replies : 0;
+  const visibleMaxPerRun = allowVisibleEngage ? (cronMode ? 1 : 2) : 0;
 
   async function tryLike(tweetId: string): Promise<boolean> {
     if (likeCap <= 0 || stats.rateLimited) return false;
@@ -192,7 +204,7 @@ export async function runEngagementSweep(opts: {
   }
 
   async function tryQuote(tweet: XTweet, username: string): Promise<boolean> {
-    if (visibleCap <= 0 || stats.rateLimited) return false;
+    if (!allowVisibleEngage || visibleCap <= 0 || stats.rateLimited) return false;
     if (engagedIds.has(tweet.id)) return false;
     const text = pickEngagementQuote(username, tweet.text ?? "").slice(0, 280);
     if (text.length < 20) return false;
@@ -212,7 +224,7 @@ export async function runEngagementSweep(opts: {
       engagedIds.add(tweet.id);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "quote failed";
-      if (isXBasicTierBlock(msg)) {
+      if (isSelfServeApiBlock(msg)) {
         stats.skipped403 += 1;
         return false;
       }
@@ -228,7 +240,7 @@ export async function runEngagementSweep(opts: {
   }
 
   async function tryReply(tweet: XTweet, username: string): Promise<boolean> {
-    if (visibleCap <= 0 || stats.rateLimited) return false;
+    if (!allowVisibleEngage || visibleCap <= 0 || stats.rateLimited) return false;
     if (engagedIds.has(tweet.id)) return false;
     const text = pickEngagementReply(username, tweet.text ?? "").slice(0, 280);
     if (text.length < 25) return false;
@@ -248,7 +260,7 @@ export async function runEngagementSweep(opts: {
       engagedIds.add(tweet.id);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "reply failed";
-      if (isXBasicTierBlock(msg)) {
+      if (isSelfServeApiBlock(msg)) {
         stats.skipped403 += 1;
         return false;
       }
@@ -267,7 +279,7 @@ export async function runEngagementSweep(opts: {
     tweet: XTweet,
     username: string,
   ): Promise<boolean> {
-    if (!isEngagementTarget(username)) return false;
+    if (!allowVisibleEngage || !isEngagementTarget(username)) return false;
     if (stats.quotes + stats.replies >= visibleMaxPerRun) return false;
     if (await tryQuote(tweet, username)) return true;
     return tryReply(tweet, username);
