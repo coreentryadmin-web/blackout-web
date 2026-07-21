@@ -342,6 +342,19 @@ async function selectThermalTicker(page, ticker) {
   );
   await page.waitForTimeout(5000);
   await assertActiveTicker(page, sym, "Thermal");
+
+  await page.waitForFunction(
+    () => {
+      const body = document.body.innerText ?? "";
+      if (/NO OPTIONS CHAIN/i.test(body)) return false;
+      const cells = document.querySelectorAll(".gex-heatmap-desk td, .gex-heatmap-desk [class*='strike']");
+      return cells.length > 8;
+    },
+    { timeout: 45_000 },
+  ).catch(() => {
+    console.warn(`    Thermal: chain still loading for ${sym} — screenshot anyway`);
+  });
+  await page.waitForTimeout(3000);
 }
 
 /** Helix tape filter — must set Symbol input, not screenshot default SPX/SPY tape. */
@@ -473,7 +486,8 @@ async function captureHelixTicker(page, ticker) {
 
   await waitForHelixTapeScoped(page, ticker);
 
-  const panel = page.locator(".helix-desk-terminal").first();
+  const panel = page.locator(".helix-desk-terminal, .helix-pro-desk").first();
+  await panel.waitFor({ state: "visible", timeout: 15_000 });
   const buf = await panel.screenshot({ type: "png" });
   const path = join(OUT, `helix-${ticker}.png`);
   writeFileSync(path, buf);
