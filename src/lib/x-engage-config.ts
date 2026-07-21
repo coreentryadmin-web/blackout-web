@@ -45,6 +45,17 @@ export const SEARCH_QUERIES = [
   "(options flow OR whale flow) (SPX OR SPY) lang:en -is:retweet -from:BlackOutTrade",
 ] as const;
 
+/** Discovery search — fresh FinTwit / 0DTE voices not on the curated giant list. */
+export const DISCOVERY_SEARCH_QUERIES = [
+  "(0DTE OR 0dte OR gex OR gamma exposure) (trader OR setup OR playbook) lang:en min_faves:2 -is:retweet -from:BlackOutTrade",
+  "(SPX OR SPY OR SPXW) (dealer gamma OR vanna OR charm) lang:en min_faves:3 -is:retweet -from:BlackOutTrade",
+  "(options flow OR dark pool OR whale) (spx OR spy OR qqq) lang:en min_faves:2 -is:retweet -from:BlackOutTrade",
+  "(call wall OR put wall OR gamma flip) (0dte OR odte) lang:en -is:retweet -from:BlackOutTrade",
+  "(futures OR index options) (gamma OR gex) lang:en min_faves:1 -is:retweet -from:BlackOutTrade",
+] as const;
+
+export const MIN_IMPRESSIONS_FOR_DISCOVERY_RT = 150;
+
 /** Legacy export — prefer x-rate-budget.ts caps. */
 export const ENGAGE_LIMITS = {
   likes: 8,

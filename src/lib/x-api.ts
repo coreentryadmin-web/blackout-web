@@ -409,6 +409,33 @@ export async function searchRecentTweets(
   }));
 }
 
+/** User IDs @BlackOutTrade already follows (paginated, capped at 2k). */
+export async function fetchFollowingUserIds(maxPages = 2): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let paginationToken: string | undefined;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const params = new URLSearchParams({
+      max_results: "1000",
+    });
+    if (paginationToken) params.set("pagination_token", paginationToken);
+    const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}/following?${params}`;
+    const res = await oauthFetch("GET", url);
+    if (!res.ok) break;
+    const json = (await res.json()) as {
+      data?: Array<{ id: string }>;
+      meta?: { next_token?: string };
+    };
+    for (const u of json.data ?? []) {
+      if (u.id) ids.add(u.id);
+    }
+    paginationToken = json.meta?.next_token;
+    if (!paginationToken) break;
+  }
+
+  return ids;
+}
+
 /** Recent @mentions of @BlackOutTrade with author usernames resolved. */
 export interface XMention extends XTweet {
   author_username: string;
