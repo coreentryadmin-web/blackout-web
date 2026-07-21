@@ -9,6 +9,7 @@
  *   node scripts/x-showcase-post.mjs --ticker NVDA
  *   node scripts/x-showcase-post.mjs --ticker SPX --post
  *   node scripts/x-showcase-post.mjs --mode platform --steps slayer,helix,thermal --post
+ *   node scripts/x-showcase-post.mjs --mode play-evolution --ticker TSLA --play-side put --post
  */
 import { execSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
@@ -27,9 +28,11 @@ const opt = (k, def) => {
 const BASE = "https://blackouttrades.com";
 const TICKER = opt("ticker", "SPX").toUpperCase();
 const MODE = opt("mode", "ticker");
+const PLAY_SIDE = opt("play-side", "put").toLowerCase();
 const STEPS_OPT = opt("steps", "");
 const POST = flag("post");
 const REUSE_COLLAGE = flag("reuse-collage");
+const DELETE_TWEET = opt("delete-tweet", "");
 const VERIFY_WAIT_MS = Number(opt("verify-wait-ms", "90000")) || 90_000;
 const VERIFY_POLL_MS = Number(opt("verify-poll-ms", "15000")) || 15_000;
 const OUT = "/opt/cursor/artifacts/x-showcase";
@@ -37,6 +40,30 @@ const X_ACCOUNT_USER_ID = "2055511397338087425";
 mkdirSync(OUT, { recursive: true });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** US cash equity RTH (Mon–Fri 09:30–16:00 ET). Thermal + 0DTE board need this for live chains. */
+function isUsCashRth(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  }).formatToParts(now);
+  const get = (t) => parts.find((p) => p.type === t)?.value ?? "";
+  const wd = get("weekday");
+  if (wd === "Sat" || wd === "Sun") return false;
+  const mins = Number(get("hour")) * 60 + Number(get("minute"));
+  return mins >= 9 * 60 + 30 && mins < 16 * 60;
+}
+
+function assertPlayEvolutionRth() {
+  if (MODE !== "play-evolution" || !POST) return;
+  if (isUsCashRth()) return;
+  throw new Error(
+    "play-evolution --post requires US cash RTH (09:30–16:00 ET Mon–Fri) so Night Hawk 0DTE + Thermal chains are live — dry-run captures OK off-hours",
+  );
+}
 
 /** Validate X tweet ids before persisting API payloads to disk (CodeQL taint). */
 function assertSafeTweetId(id) {
@@ -117,6 +144,15 @@ async function uploadMedia(buf, xCreds) {
   });
   if (!res.ok) throw new Error(`Media upload failed: ${await res.text()}`);
   return (await res.json()).media_id_string;
+}
+
+async function deleteTweetById(tweetId, xCreds) {
+  const safeId = assertSafeTweetId(tweetId);
+  const url = `https://api.x.com/2/tweets/${safeId}`;
+  const auth = oauthHeader("DELETE", url, xCreds);
+  const res = await fetch(url, { method: "DELETE", headers: { Authorization: auth } });
+  if (!res.ok) throw new Error(`Delete tweet failed (${res.status}): ${await res.text()}`);
+  return true;
 }
 
 async function postTweet(text, mediaIds, xCreds) {
@@ -309,6 +345,44 @@ async function assertActiveTicker(page, ticker, surface) {
   }
 }
 
+/** Clip a tall scrollable panel to its on-screen viewport (Playwright element shots capture full scroll height). */
+async function screenshotViewportPanel(page, locator, maxH = 880) {
+  const el = locator.first();
+  await el.waitFor({ state: "visible", timeout: 20_000 });
+  await el.evaluate((node) => {
+    node.scrollTop = 0;
+  });
+  const clip = await el.evaluate((node, h) => {
+    const r = node.getBoundingClientRect();
+    return {
+      x: Math.max(0, r.x),
+      y: Math.max(0, r.y),
+      width: Math.min(r.width, 1552),
+      height: Math.min(r.height, h),
+    };
+  }, maxH);
+  return page.screenshot({ type: "png", clip });
+}
+
+/** Force-fetch chain into Redis before UI poll (off-hours still serves last RTH snapshot when cached). */
+async function warmThermalChain(page, ticker) {
+  const sym = ticker.toUpperCase();
+  const result = await page.evaluate(async (t) => {
+    const res = await fetch(`/api/market/gex-heatmap?ticker=${encodeURIComponent(t)}&force=1`, {
+      credentials: "include",
+    });
+    if (!res.ok) return { ok: false, status: res.status };
+    const data = await res.json();
+    const strikes =
+      data?.gex?.strikes?.length ??
+      data?.strikes?.length ??
+      (Array.isArray(data?.matrix?.strikes) ? data.matrix.strikes.length : 0);
+    return { ok: true, available: Boolean(data.available), strikes: strikes ?? 0 };
+  }, sym);
+  console.log(`    Thermal warm ${sym}: ${JSON.stringify(result)}`);
+  return result;
+}
+
 /** Thermal has no URL ticker param — must use the searchable combobox (defaults to SPY). */
 async function selectThermalTicker(page, ticker) {
   const sym = ticker.toUpperCase();
@@ -316,6 +390,7 @@ async function selectThermalTicker(page, ticker) {
   await dismissOverlays(page);
   await page.waitForSelector(".gex-heatmap-desk", { timeout: 45_000 });
   await page.waitForTimeout(2000);
+  await warmThermalChain(page, sym);
 
   const trigger = page.locator('button[aria-label*="Change ticker"]').first();
   await trigger.click();
@@ -340,6 +415,29 @@ async function selectThermalTicker(page, ticker) {
   );
   await page.waitForTimeout(5000);
   await assertActiveTicker(page, sym, "Thermal");
+
+  const chainReady = await page
+    .waitForFunction(
+      () => {
+        const body = document.body.innerText ?? "";
+        if (/NO OPTIONS CHAIN/i.test(body)) return false;
+        if (/options chain for/i.test(body) && /Pick a more liquid/i.test(body)) return false;
+        const cells = document.querySelectorAll(
+          ".gex-heatmap-desk td, .gex-heatmap-desk [class*='strike'], .gex-heatmap-desk [data-strike]",
+        );
+        return cells.length > 8;
+      },
+      { timeout: 60_000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+
+  if (!chainReady) {
+    throw new Error(
+      `Thermal: no live chain for ${sym} — refusing empty screenshot (warm failed or off-hours with no cache)`,
+    );
+  }
+  await page.waitForTimeout(3000);
 }
 
 /** Helix tape filter — must set Symbol input, not screenshot default SPX/SPY tape. */
@@ -363,6 +461,14 @@ async function filterHelixTicker(page, ticker) {
   );
   await page.waitForTimeout(4000);
   await assertActiveTicker(page, sym, "Helix");
+
+  if (MODE === "play-evolution") {
+    const dte0 = page.getByRole("button", { name: "0DTE", exact: true }).first();
+    if (await dte0.count()) {
+      await dte0.click();
+      await page.waitForTimeout(3500);
+    }
+  }
 }
 
 async function waitForHelixTapeScoped(page, ticker) {
@@ -392,6 +498,18 @@ function resolvePlan(ticker) {
       steps,
     };
   }
+  if (MODE === "play-evolution") {
+    const side = PLAY_SIDE === "call" ? "call" : "put";
+    const steps = STEPS_OPT
+      ? STEPS_OPT.split(",").map((s) => s.trim()).filter(Boolean)
+      : ["zerodte", "helix", "thermal"];
+    return {
+      title: `${ticker} — 0DTE ${side} · caught live`,
+      footer: "Night Hawk 0DTE · HELIX flow · Thermal GEX — play evolution",
+      heroSub: "0DTE Command · committed plan",
+      steps,
+    };
+  }
   if (STEPS_OPT) {
     const base = showcasePlan(ticker);
     return {
@@ -416,6 +534,99 @@ function showcasePlan(ticker) {
     title: `${ticker} — dealer positioning`,
     footer: `Vector · Helix · Thermal · Largo — ${ticker} only`,
     steps: ["vector", "helix", "thermal", "largo"],
+  };
+}
+
+/** Night Hawk 0DTE Command — committed play card for ticker/side (not Vector beads). */
+async function captureZeroDteNighthawk(page, ticker) {
+  const sym = ticker.toUpperCase();
+  const wantPut = PLAY_SIDE !== "call";
+  const sideLabel = wantPut ? "put" : "call";
+  console.log(`  → Night Hawk 0DTE Command (${sym} ${sideLabel}): ${BASE}/nighthawk`);
+
+  await page.goto(`${BASE}/nighthawk`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await dismissOverlays(page);
+  await page.waitForSelector(".nh-v2-col-zerodte", { timeout: 45_000 });
+  await page.waitForFunction(
+    () => {
+      const col = document.querySelector(".nh-v2-col-zerodte");
+      if (!col) return false;
+      const cards = col.querySelectorAll(".nh-v2-zerodte-card");
+      if (cards.length > 0) return true;
+      const text = col.textContent ?? "";
+      return text.includes("Today's plays") || text.includes("committed plans");
+    },
+    { timeout: 90_000 },
+  );
+  await page.waitForTimeout(4000);
+
+  const cards = page.locator(".nh-v2-zerodte-card");
+  const count = await cards.count();
+  let target = null;
+
+  for (let i = 0; i < count; i++) {
+    const card = cards.nth(i);
+    const text = (await card.innerText()).toUpperCase();
+    if (!text.includes(sym)) continue;
+    if (wantPut) {
+      if (/\bSHORT\b/.test(text) || /\d+\.?\d*P\b/.test(text)) {
+        target = card;
+        break;
+      }
+    } else if (/\bLONG\b/.test(text) || /\d+\.?\d*C\b/.test(text)) {
+      target = card;
+      break;
+    }
+  }
+
+  if (!target) {
+    for (let i = 0; i < count; i++) {
+      const card = cards.nth(i);
+      if ((await card.innerText()).toUpperCase().includes(sym)) {
+        target = card;
+        break;
+      }
+    }
+  }
+
+  let buf;
+  if (target) {
+    await target.scrollIntoViewIfNeeded();
+    const toggle = target.locator("button").first();
+    if (await toggle.count()) {
+      await toggle.click();
+      await page.waitForTimeout(1200);
+    }
+    buf = await target.screenshot({ type: "png" });
+  } else {
+    const playCount = await page
+      .locator(".nh-v2-col-zerodte")
+      .first()
+      .evaluate((col) => {
+        const text = col.textContent ?? "";
+        const m = text.match(/(\d+)\s+PLAYS/i);
+        return m ? Number(m[1]) : 0;
+      });
+    if (playCount === 0) {
+      throw new Error(
+        `Night Hawk 0DTE: no ${sym} play on board (${playCount} plays today) — run during RTH after the scanner commits a plan`,
+      );
+    }
+    console.warn(`    No ${sym} card on 0DTE board — capturing 0DTE Command column`);
+    const col = page.locator(".nh-v2-col-zerodte").first();
+    buf = await screenshotViewportPanel(page, col, 920);
+  }
+
+  const path = join(OUT, `zerodte-${ticker}.png`);
+  writeFileSync(path, buf);
+  console.log(`    saved ${path}`);
+  return {
+    key: "zerodte",
+    label: `Night Hawk · ${sym} 0DTE ${sideLabel}`,
+    buf,
+    path,
+    hero: true,
+    heroSub: "0DTE Command · live plan",
   };
 }
 
@@ -460,8 +671,8 @@ async function captureHelixTicker(page, ticker) {
 
   await waitForHelixTapeScoped(page, ticker);
 
-  const panel = page.locator(".helix-desk-terminal").first();
-  const buf = await panel.screenshot({ type: "png" });
+  const panel = page.locator(".helix-desk-terminal, .helix-pro-desk").first();
+  const buf = await screenshotViewportPanel(page, panel, 860);
   const path = join(OUT, `helix-${ticker}.png`);
   writeFileSync(path, buf);
   console.log(`    saved ${path}`);
@@ -556,6 +767,9 @@ async function captureLargoAnswer(page, ticker) {
 
 async function captureStep(page, step, ticker) {
   switch (step) {
+    case "zerodte":
+    case "nighthawk-zerodte":
+      return captureZeroDteNighthawk(page, ticker);
     case "vector":
       return captureVector0Dte(page, ticker);
     case "helix":
@@ -614,7 +828,8 @@ async function buildCollage(items, ticker, plan) {
 
   if (hero) {
     const heroH = 500;
-    const heroLabeled = await labelPanel(hero.buf, hero.label, `${ticker} · 15m · full session`, gridW, heroH, {
+    const heroSub = hero.heroSub ?? plan.heroSub ?? `${ticker} · live desk`;
+    const heroLabeled = await labelPanel(hero.buf, hero.label, heroSub, gridW, heroH, {
       fit: "contain",
     });
     composites.push({ input: heroLabeled, top: y, left: 0 });
@@ -676,6 +891,16 @@ function buildTweet(ticker, plan) {
       "SPX Slayer matrix · HELIX whale tape · Thermal GEX — prod screenshots, one session.\n\n" +
       "Built for index / 0DTE traders. What's missing from your stack?\n\n" +
       "@BlackOutTrade · link in bio";
+    return text.slice(0, 280);
+  }
+  if (MODE === "play-evolution") {
+    const side = PLAY_SIDE === "call" ? "call" : "put";
+    const sym = ticker.toUpperCase();
+    const text =
+      `$${sym} 0DTE ${side} — how the desk caught it.\n\n` +
+      `Night Hawk 0DTE Command flagged the plan → HELIX repeat ${side} sweeps → Thermal GEX pinned dealer flip vs spot.\n\n` +
+      `Three panels, one timeline. That's the play evolution before the move.\n\n` +
+      `@BlackOutTrade · link in bio`;
     return text.slice(0, 280);
   }
   const site =
@@ -761,6 +986,16 @@ async function main() {
     at: secrets.X_ACCESS_TOKEN,
     ats: secrets.X_ACCESS_TOKEN_SECRET,
   };
+
+  if (DELETE_TWEET) {
+    const id = assertSafeTweetId(DELETE_TWEET);
+    console.log(`Deleting tweet ${id}…`);
+    await deleteTweetById(id, xCreds);
+    console.log(`Deleted ${tweetPublicUrl(id)}`);
+    return;
+  }
+
+  assertPlayEvolutionRth();
 
   const manifest = {
     ticker: TICKER,
