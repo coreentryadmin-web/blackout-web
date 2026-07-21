@@ -3,33 +3,52 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import {
   xMarketingPostsPaused,
   xMarketingSilentOnly,
+  xApiAccessTier,
+  xApiEnterpriseAccess,
+  xDeskPostIncludeUrl,
 } from "./x-marketing-env";
 
 describe("x-marketing-env", () => {
-  const prevPosts = process.env.X_MARKETING_POSTS_PAUSED;
-  const prevSilent = process.env.X_GROWTH_SILENT_ONLY;
+  const keys = [
+    "X_MARKETING_POSTS_PAUSED",
+    "X_GROWTH_SILENT_ONLY",
+    "X_API_ACCESS_TIER",
+    "X_DESK_POST_INCLUDE_URL",
+  ] as const;
+  const prev: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    delete process.env.X_MARKETING_POSTS_PAUSED;
-    delete process.env.X_GROWTH_SILENT_ONLY;
+    for (const k of keys) {
+      prev[k] = process.env[k];
+      delete process.env[k];
+    }
   });
 
   afterEach(() => {
-    if (prevPosts === undefined) delete process.env.X_MARKETING_POSTS_PAUSED;
-    else process.env.X_MARKETING_POSTS_PAUSED = prevPosts;
-    if (prevSilent === undefined) delete process.env.X_GROWTH_SILENT_ONLY;
-    else process.env.X_GROWTH_SILENT_ONLY = prevSilent;
+    for (const k of keys) {
+      if (prev[k] === undefined) delete process.env[k];
+      else process.env[k] = prev[k];
+    }
   });
 
-  it("defaults to active posting and visible growth", () => {
-    assert.equal(xMarketingPostsPaused(), false);
-    assert.equal(xMarketingSilentOnly(), false);
+  it("defaults to pay-per-use without enterprise quote/reply", () => {
+    assert.equal(xApiAccessTier(), "ppu");
+    assert.equal(xApiEnterpriseAccess(), false);
+    assert.equal(xDeskPostIncludeUrl(), false);
   });
 
-  it("honors pause and silent env flags", () => {
+  it("enterprise tier enables URL posts by default", () => {
+    process.env.X_API_ACCESS_TIER = "enterprise";
+    assert.equal(xApiEnterpriseAccess(), true);
+    assert.equal(xDeskPostIncludeUrl(), true);
+  });
+
+  it("honors pause, silent, and explicit URL footer flags", () => {
     process.env.X_MARKETING_POSTS_PAUSED = "1";
     process.env.X_GROWTH_SILENT_ONLY = "true";
+    process.env.X_DESK_POST_INCLUDE_URL = "1";
     assert.equal(xMarketingPostsPaused(), true);
     assert.equal(xMarketingSilentOnly(), true);
+    assert.equal(xDeskPostIncludeUrl(), true);
   });
 });

@@ -240,7 +240,7 @@ export async function postReply(
   return json.data;
 }
 
-/** Quote-tweet — visible on @BlackOutTrade profile (preferred over cold replies on Basic tier). */
+/** Quote-post — Enterprise API only on self-serve pay-per-use. */
 export async function postQuoteTweet(
   text: string,
   quotedTweetId: string,

@@ -1,64 +1,61 @@
 # X Marketing CTO Audit (@BlackOutTrade)
 
-**Date:** 2026-07-20 · **Status:** P0 remediation in progress
+**Updated:** 2026-07-21 · **Status:** pay-per-use API aligned
 
 ## Executive summary
 
-We have **~1,910 followers** but recent posts average **~20 impressions** and **0–2 likes**. The autonomous stack is **technically healthy** (`npm run validate:x-marketing` passes), but **growth is broken at the content + distribution layer**:
+~**1,908 followers** but recent posts average **~8–40 impressions** and **~0 likes**. Reach is algorithm-cold after legacy spam. Growth on the **pay-per-use (PPU) X API** is **your timeline + summoned @mention replies** — not automated FinTwit quotes.
 
 | Symptom | Root cause |
 |---------|------------|
-| No followers | Silent likes only — **zero public thread presence** until this patch |
-| No likes | Low impressions + **generic/spammy recent timeline** (ticker bots, placeholder threads) |
-| No site signups | Footer went **Whop-only** — no `blackouttrades.com` funnel; X traffic never hits marketing site |
-| Flat reach | Legacy **@tag spam + broken threads** (`flip —, put —`) train algorithm to suppress us |
+| No new followers | Low impressions; API cannot quote FinTwit on PPU |
+| No likes | Posts barely shown; need desk PNG + question hooks |
+| 403 on growth | Old stack tried API quotes — **Enterprise-only** on self-serve |
 
-## What was working
+## Pay-per-use API (current model)
 
-- Crons: `x-autopost`, `x-growth`, `x-replies`, `x-analytics` on EventBridge
-- Rate budget (no 429s)
-- New desk voice pipeline (human hooks, live desk card PNG, dedup guards)
-- Mention reply AI when @BlackOutTrade is tagged
+Official docs: [X API pricing](https://x-preview.mintlify.app/x-api/getting-started/pricing), [Manage Posts](https://x-preview.mintlify.app/x-api/posts/manage-tweets/introduction).
 
-## What was broken (P0)
+| Action | Self-serve (PPU) | Cost (approx.) |
+|--------|------------------|----------------|
+| Desk post **without URL** in body | ✅ | **$0.015** / post |
+| Desk post **with URL** in body | ✅ | **$0.20** / post |
+| Summoned @mention reply | ✅ | **$0.01** / post |
+| Quote-post via API | ❌ Enterprise only | — |
+| Cold reply to FinTwit thread | ❌ unless they @you | — |
+| Like / follow | ✅ (no bulk spam) | **$0.015** / action |
 
-1. **`x-growth` only liked silently** — FinTwit never saw us; `pickEngagementReply()` existed but was **never called**
-2. **Showcase / agent posts** flooded timeline with generic ticker copy (NVDA/AMD/MSFT) — **no questions, no images in analytics sample**
-3. **Placeholder thread** (`Live read: flip —, put —`) — credibility killer; now blocked in `x-post-guard`
-4. **Conversion link** pointed at Whop checkout only — bypasses product marketing + Clerk sign-up path
-5. **Claude draft often falls back** in prod (`draftBody: "(fallback)"`) — still OK copy but check `ANTHROPIC_API_KEY` / AI kill-switch
+**Env (Secrets Manager / ECS):**
 
-## P0 fixes (this PR)
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `X_API_ACCESS_TIER` | `ppu` | `enterprise` enables FinTwit quote/reply in `x-growth` |
+| `X_DESK_POST_INCLUDE_URL` | off on PPU | `1` = pricing URL in tweet ($0.20/post) |
+| `X_MARKETING_POSTS_PAUSED` | off | `1` = skip autopost + mention replies |
+| `X_GROWTH_SILENT_ONLY` | off | `1` = likes/follows only |
 
-| Fix | File |
-|-----|------|
-| Public FinTwit replies (1/cron run) | `src/lib/x-engage-engine.ts` |
-| Footer → `blackouttrades.com/pricing?utm_*` | `src/lib/x-whop-link.ts` |
-| Block + cleanup low-quality posts | `x-post-guard.ts`, `scripts/x-cleanup-low-quality.mjs` |
-| Showcase copy: question + site link | `scripts/x-showcase-post.mjs` |
-| Audit command | `npm run x-marketing:audit` |
+**Cost example (7 desk posts/day):** ~$3.15/mo without URL in tweet vs ~$42/mo with URL (bio carries link).
 
-## Manual ops (run now)
+## What the stack does on PPU
+
+| Cron | Behavior |
+|------|----------|
+| `x-autopost` | RTH desk card + question; footer `@BlackOutTrade · link in bio` |
+| `x-growth` | Likes, follows, selective RT — **no API quotes** |
+| `x-replies` | Reply when someone @mentions us (summoned) |
+| `x-analytics` | Daily follower/impression snapshot |
+
+**Manual FinTwit discovery:** quote-tweet from the **X app** 2–3×/day at RTH open (API cannot on PPU).
+
+## Manual ops
 
 ```bash
-# Audit snapshot
 npm run x-marketing:audit
-
-# Timeline cleanup (generic ticker spam)
-npm run x-cleanup -- --dry
-npm run x-cleanup
-
-# Profile bio + pricing URL
+npm run x-cleanup -- --dry && npm run x-cleanup
 npm run x-profile:optimize
-
-# Quality desk post (live PNG + question)
 npm run x-marketing:run desk-post
-
-# Visible momentum (likes + quote/reply on FinTwit + @mention replies)
-npm run x-marketing:run engage-all
-npm run x-marketing:run growth
-
-# Silent-only (background) when needed
+npm run x-marketing:run engage-all   # likes + @mention replies
+npm run x-marketing:run growth       # likes/follows (PPU)
 npm run x-marketing:run engage-silent
 ```
 
@@ -66,14 +63,13 @@ npm run x-marketing:run engage-silent
 
 | Metric | Now | Target |
 |--------|-----|--------|
-| Avg impressions/post | ~20 | **500+** |
-| Avg likes/post | ~0.5 | **5+** |
-| Profile replies/week | ~0 | **20+** |
-| `utm_source=x` site sessions | unknown | Track in analytics |
+| Avg impressions/post | ~8–40 | **500+** |
+| Avg likes/post | ~0 | **5+** |
+| New followers/week | ~0 | **10+** |
+| Summoned replies/week | varies | **10+** |
 
-## Still needed (P1)
+## P1
 
-- Admin dashboard tile for `x_marketing_analytics_*` in platform_meta
-- CI workflow for `validate:x-marketing` on `main`
-- A/B: desk card vs module collage posts
-- Whop webhook ↔ `utm_campaign` join for true X → paid attribution
+- CI gate for `validate:x-marketing`
+- Track `utm_source=x` → signups
+- Pin best desk post manually after each strong autopost
