@@ -1,4 +1,5 @@
 import type { LineWidth } from "lightweight-charts";
+import type { WallIntegrityTier } from "./vector-wall-integrity";
 
 /** Faint floor so a weak wall is a ghost, not a peer of the session king (Skylit-style
  *  high contrast). Was 0.12 — too bright, which washed every rail to the same weight. */
@@ -60,6 +61,42 @@ export function markerSizeForPct(pct: number): number {
 /** Halo opacity multiplier for the outer glow ring drawn behind each bead. */
 export function glowAlphaForPct(pct: number): number {
   return alphaForPct(pct) * (0.22 + magnitudeT(pct) * 0.18);
+}
+
+// ── WALL INTEGRITY RING (second visual channel) ─────────────────────────────────────────────
+//
+// A bead's SIZE already encodes magnitude (how much dealer gamma is parked there). But size alone
+// can't tell a member a wall that has held all session and towers over its neighbors from one that
+// just blinked in and sits in a mushy cluster — both can be fat. Integrity (firm/moderate/thin,
+// from vector-wall-integrity.ts) is that missing second channel, and the halo already drawn behind
+// every core dot is the natural place to render it: modulate the halo into a defined RING.
+//
+//  - FIRM   → a crisp, bright, slightly larger ring haloing the core: "this wall is real."
+//  - MODERATE → a soft halo, close to the legacy glow.
+//  - THIN   → halo suppressed to a faint trace, so the bead reads as a bare dot: "about to fold."
+//
+// The core dot is left entirely to the magnitude channel — the ring never changes a bead's size or
+// core opacity, only the glow around it — so the two channels stay independent and legible.
+//
+// CRITICAL (non-breaking): an UNKNOWN tier (VEX lens, legacy rails with no scoring, any future path
+// that doesn't pass integrity) returns the NEUTRAL {1,1} multiplier, so those beads render exactly
+// as they did before this channel existed. Rings are strictly additive.
+
+/** Halo alpha ×, halo size × for a wall's integrity tier. Neutral (unknown tier) = {1, 1}. */
+export function haloRingForTier(tier?: WallIntegrityTier | null): {
+  alphaMul: number;
+  sizeMul: number;
+} {
+  switch (tier) {
+    case "firm":
+      return { alphaMul: 1.35, sizeMul: 1.18 };
+    case "moderate":
+      return { alphaMul: 0.85, sizeMul: 1.0 };
+    case "thin":
+      return { alphaMul: 0.32, sizeMul: 0.9 };
+    default:
+      return { alphaMul: 1, sizeMul: 1 };
+  }
 }
 
 // ── RELATIVE (frame-normalized) bead strength ──────────────────────────────────────────────

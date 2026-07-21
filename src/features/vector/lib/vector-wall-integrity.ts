@@ -125,19 +125,27 @@ export function scoreWallIntegrity(
   };
 }
 
+/**
+ * Strength normalizer = the strongest wall's share across BOTH sides, so the dominant level
+ * anchors strength at 1.0 and no wall's score is crushed by the fact that any single strike is
+ * only a few % of the whole chain's gamma. Shared by every scorer so the "firm/moderate/thin"
+ * verdict is identical whether it's read on the desk terminal (top wall) or on a bead ring
+ * (every wall) — one source of truth, no drift between surfaces.
+ */
+function refMaxPctOf(walls: GexWalls | null | undefined): number {
+  return Math.max(
+    0,
+    ...(walls?.callWalls ?? []).map((w) => w.pct),
+    ...(walls?.putWalls ?? []).map((w) => w.pct)
+  );
+}
+
 /** Integrity of the top call + top put wall — the two levels the desk reads first. */
 export function scoreTopWalls(
   walls: GexWalls | null | undefined,
   history: readonly WallHistorySample[] = []
 ): { call: WallIntegrity | null; put: WallIntegrity | null } {
-  // Strength normalizer = the strongest wall's share across BOTH sides, so the
-  // dominant level anchors strength at 1.0 and the score isn't crushed by the fact
-  // that any single strike is only a few % of the whole chain's gamma.
-  const refMaxPct = Math.max(
-    0,
-    ...(walls?.callWalls ?? []).map((w) => w.pct),
-    ...(walls?.putWalls ?? []).map((w) => w.pct)
-  );
+  const refMaxPct = refMaxPctOf(walls);
   const call = walls?.callWalls?.length
     ? scoreWallIntegrity(walls.callWalls[0]!, "call", walls.callWalls, history, refMaxPct)
     : null;
@@ -145,6 +153,38 @@ export function scoreTopWalls(
     ? scoreWallIntegrity(walls.putWalls[0]!, "put", walls.putWalls, history, refMaxPct)
     : null;
   return { call, put };
+}
+
+/**
+ * Score EVERY wall on each side, keyed by strike — the per-wall integrity the chart's bead rings
+ * consume so each drawn wall (not just the top one) carries its firm/moderate/thin confidence as a
+ * second visual channel. Uses the exact same {@link scoreWallIntegrity} math and shared `refMaxPct`
+ * as {@link scoreTopWalls}, so a bead ring and the desk terminal can never disagree about a wall.
+ *
+ * Keyed by the raw ladder strike (the recorder stores strikes verbatim, so a bead trail's `strike`
+ * matches a scored wall's `strike` exactly — no tolerance needed at lookup). A null/empty side maps
+ * to an empty Map, never a fabricated entry.
+ */
+export function integrityByStrike(
+  walls: GexWalls | null | undefined,
+  history: readonly WallHistorySample[] = []
+): { call: Map<number, WallIntegrity>; put: Map<number, WallIntegrity> } {
+  const refMaxPct = refMaxPctOf(walls);
+  const scoreSide = (
+    sideWalls: readonly GexWallLevel[] | undefined,
+    side: "call" | "put"
+  ): Map<number, WallIntegrity> => {
+    const map = new Map<number, WallIntegrity>();
+    for (const wall of sideWalls ?? []) {
+      const scored = scoreWallIntegrity(wall, side, sideWalls ?? [], history, refMaxPct);
+      if (scored) map.set(wall.strike, scored);
+    }
+    return map;
+  };
+  return {
+    call: scoreSide(walls?.callWalls, "call"),
+    put: scoreSide(walls?.putWalls, "put"),
+  };
 }
 
 function round2(n: number): number {
