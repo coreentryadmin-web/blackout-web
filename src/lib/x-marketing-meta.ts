@@ -6,6 +6,25 @@ const ANALYTICS_KEY = "x_marketing_analytics_latest";
 const ANALYTICS_HISTORY_KEY = "x_marketing_analytics_history";
 const ENGAGE_ROTATION_KEY = "x_marketing_engage_rotation";
 
+const memoryMeta = new Map<string, string>();
+
+async function readMeta(key: string): Promise<string | null> {
+  try {
+    return await getMeta(key);
+  } catch {
+    return memoryMeta.get(key) ?? null;
+  }
+}
+
+async function writeMeta(key: string, value: string): Promise<void> {
+  try {
+    await setMeta(key, value);
+  } catch {
+    if (value === "") memoryMeta.delete(key);
+    else memoryMeta.set(key, value);
+  }
+}
+
 const MAX_REPLIED = 500;
 const MAX_HOOKS = 30;
 const MAX_HISTORY = 90;
@@ -21,7 +40,7 @@ function parseJsonArray(raw: string | null): string[] {
 }
 
 export async function getRepliedTweetIds(): Promise<Set<string>> {
-  const ids = parseJsonArray(await getMeta(REPLIED_KEY));
+  const ids = parseJsonArray(await readMeta(REPLIED_KEY));
   return new Set(ids);
 }
 
@@ -29,11 +48,11 @@ export async function markTweetReplied(tweetId: string): Promise<void> {
   const set = await getRepliedTweetIds();
   set.add(tweetId);
   const arr = [...set].slice(-MAX_REPLIED);
-  await setMeta(REPLIED_KEY, JSON.stringify(arr));
+  await writeMeta(REPLIED_KEY, JSON.stringify(arr));
 }
 
 export async function getRecentPostHooks(): Promise<string[]> {
-  return parseJsonArray(await getMeta(HOOKS_KEY));
+  return parseJsonArray(await readMeta(HOOKS_KEY));
 }
 
 export async function recordPostHook(body: string): Promise<void> {
@@ -41,7 +60,7 @@ export async function recordPostHook(body: string): Promise<void> {
   if (!hook) return;
   const prev = await getRecentPostHooks();
   prev.push(hook);
-  await setMeta(HOOKS_KEY, JSON.stringify(prev.slice(-MAX_HOOKS)));
+  await writeMeta(HOOKS_KEY, JSON.stringify(prev.slice(-MAX_HOOKS)));
 }
 
 export interface XAnalyticsSnapshot {
@@ -62,8 +81,8 @@ export interface XAnalyticsSnapshot {
 export async function saveAnalyticsSnapshot(
   snap: XAnalyticsSnapshot,
 ): Promise<void> {
-  await setMeta(ANALYTICS_KEY, JSON.stringify(snap));
-  const raw = await getMeta(ANALYTICS_HISTORY_KEY);
+  await writeMeta(ANALYTICS_KEY, JSON.stringify(snap));
+  const raw = await readMeta(ANALYTICS_HISTORY_KEY);
   let history: XAnalyticsSnapshot[] = [];
   try {
     history = raw ? (JSON.parse(raw) as XAnalyticsSnapshot[]) : [];
@@ -71,14 +90,14 @@ export async function saveAnalyticsSnapshot(
     history = [];
   }
   history.push(snap);
-  await setMeta(
+  await writeMeta(
     ANALYTICS_HISTORY_KEY,
     JSON.stringify(history.slice(-MAX_HISTORY)),
   );
 }
 
 export async function getLatestAnalytics(): Promise<XAnalyticsSnapshot | null> {
-  const raw = await getMeta(ANALYTICS_KEY);
+  const raw = await readMeta(ANALYTICS_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as XAnalyticsSnapshot;
@@ -88,7 +107,7 @@ export async function getLatestAnalytics(): Promise<XAnalyticsSnapshot | null> {
 }
 
 export async function getAnalyticsHistory(limit = 30): Promise<XAnalyticsSnapshot[]> {
-  const raw = await getMeta(ANALYTICS_HISTORY_KEY);
+  const raw = await readMeta(ANALYTICS_HISTORY_KEY);
   if (!raw) return [];
   try {
     const history = JSON.parse(raw) as XAnalyticsSnapshot[];
@@ -99,13 +118,13 @@ export async function getAnalyticsHistory(limit = 30): Promise<XAnalyticsSnapsho
 }
 
 export async function getEngageRotationIndex(): Promise<number> {
-  const raw = await getMeta(ENGAGE_ROTATION_KEY);
+  const raw = await readMeta(ENGAGE_ROTATION_KEY);
   const n = raw ? parseInt(raw, 10) : 0;
   return Number.isFinite(n) ? n : 0;
 }
 
 export async function bumpEngageRotation(): Promise<number> {
   const next = ((await getEngageRotationIndex()) + 1) % 1000;
-  await setMeta(ENGAGE_ROTATION_KEY, String(next));
+  await writeMeta(ENGAGE_ROTATION_KEY, String(next));
   return next;
 }
