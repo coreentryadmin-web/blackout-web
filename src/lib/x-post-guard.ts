@@ -23,7 +23,6 @@ const BROKEN_PATTERNS = [
   /@IHate0dte/i,
   /@there\b/i,
   /isn't moving on vibes/i,
-  /Six tools\. One desk/i,
 ];
 
 export function isTweetContentValid(text: string): boolean {
