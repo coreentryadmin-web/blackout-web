@@ -5,6 +5,37 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-22 — Multi-day flow accumulation wired into the LIVE 0DTE loop (feat, calibration-first)
+
+### feat — the always-on scanner now has multi-day memory
+- **Root problem (the user's red flag, confirmed):** `scanZeroDteBoard()` discovered setups from a
+  SEVEN-HOUR window only — `fetchRecentFlows({ since_hours: 7, min_premium: 150_000, max_dte: 1 })`
+  (`src/lib/zerodte/scan.ts:152`). Single-day amnesia: a name hit on the same directional strike for
+  three days running looked identical to a one-off print. Real conviction is ACCUMULATION.
+- **Fix:** the scan now also pulls a WIDE multi-day window (`MULTI_DAY_FLOW_HOURS=120` ≈ 5 days, all
+  expiries, `min_premium 250k`, best-effort — a failure degrades to "no memory", never breaks the
+  intraday scan) and runs the merged multi-day accumulation engine (`flowAccumulationByTicker`, #943)
+  over it. New pure module `src/lib/zerodte/flow-accumulation-context.ts` maps DB `FlowRow`s →
+  `FlowAlertRow`s (reconstructing the aggressor split from `ask_pct`), computes per-ticker signals,
+  and attaches `flow_accumulation` to every `EnrichedZeroDteSetup`: `{direction, strength, days,
+  net_signed_premium, magnet_strike, magnet_side, aligned}` — where `aligned` = today's 0DTE
+  direction agrees with the multi-day stacked positioning. Flows through the board payload
+  (`setups: EnrichedZeroDteSetup[]`).
+- **Calibration-first (this codebase's own discipline, `calibration.ts`):** EVIDENCE ONLY. It is
+  recorded/surfaced but does NOT yet move the score or gate the board. Whether "aligned with
+  multi-day accumulation" predicts wins is a question for the graded ledger — once the bucket is
+  large enough and measurably better, the alignment graduates into a scoring input the way G-4/G-6
+  did. Never on vibes.
+- **Evidence:** new pure module 6/6 unit tests (ask_pct split, missing-split fallback, malformed-row
+  drop, alignment logic, end-to-end 3-day build reads bull + aligned, attach match/miss);
+  `board.test.ts` 82/82 (no regression); tsc + eslint clean. (DB path itself can't run in-sandbox —
+  Postgres TCP is blocked — but the engine was proven on live flow via `sim:0dte`.)
+- **Follow-ups (noted, not in this PR — single-issue discipline):** (1) render the badge on the 0DTE
+  card (payload already carries it); (2) persist `flow_accumulation` + `aligned` into the ledger
+  `entry_context` and extend `calibration.ts` to bucket graded outcomes by alignment → graduate to a
+  real scoring boost.
+- **Status:** MERGED-pending (PR opens next). This is breakthrough #1 of the 0DTE loop plan.
+
 ## 2026-07-22 — 0DTE play SIMULATOR shipped + first structural findings (tooling + P2)
 
 ### Tooling — `scripts/audit/zerodte-sim.mjs` (`npm run sim:0dte`)
