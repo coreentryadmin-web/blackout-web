@@ -495,17 +495,3 @@ const signalDeskStub = (): SpxDeskPayload => ({
   mag7_greek_flow: null,
   macro_indicators: [],
 });
-
-/** Minimal merged desk for server-side signal logging (pulse + flow lanes). */
-export function buildDeskFromPulseFlow(pulse: SpxDeskPulse, flow: SpxDeskFlow): SpxDeskPayload {
-  const price = pulse.price || flow.price;
-  let out = mergeFlowIntoDesk({ ...signalDeskStub(), price, available: price > 0 }, flow);
-  out = mergePulseIntoDesk(out, pulse);
-  return {
-    ...out,
-    available: price > 0 && (pulse.market_open ?? true),
-    market_open: pulse.market_open,
-    market_status: pulse.market_status,
-    market_label: pulse.market_label,
-  };
-}

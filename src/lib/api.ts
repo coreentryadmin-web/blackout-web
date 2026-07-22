@@ -37,16 +37,6 @@ export { emptySpxState, deskPayloadToSpxState } from "@/features/spx/lib/spx-des
 import type { SpxState } from "@/features/spx/lib/spx-desk-state";
 import { deskPayloadToSpxState, emptySpxState } from "@/features/spx/lib/spx-desk-state";
 
-/** Fast Polygon-only quote — polled every 5s on dashboard */
-export async function fetchSpxIndices() {
-  return marketFetch<{
-    source?: string;
-    as_of?: string;
-    spx?: { price: number; change_pct: number };
-    vix?: { price: number; change_pct: number };
-  }>("/indices");
-}
-
 export type SpxDeskLevel = {
   label: string;
   value: number | null;
@@ -447,28 +437,10 @@ export interface NewsArticle {
   url: string;
 }
 
-export const fetchMarketNews = () =>
-  marketFetch<{ articles: NewsArticle[] }>("/news");
-
 // ── Largo (BlackOut intel only) ───────────────────────────────────────────────
 
 /** Client-side ceiling — route maxDuration is 120s; leave headroom for slow mobile proxies. */
 const LARGO_STREAM_TIMEOUT_MS = 130_000;
-
-export const queryLargo = (question: string, sessionId: string) =>
-  marketFetch<{
-    answer: string;
-    session_id: string;
-    source?: string;
-    tools_used?: string[];
-    envelope?: BieAnswerEnvelope | null;
-  }>(
-    "/largo/query",
-    {
-      method: "POST",
-      body: JSON.stringify({ question, session_id: sessionId }),
-    }
-  );
 
 /** Thrown when the caller cancels an in-flight Largo stream (Stop button). */
 export class LargoStreamAborted extends Error {

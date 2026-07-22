@@ -58,11 +58,6 @@ export function markerSizeForPct(pct: number): number {
   return MARKER_SIZE_MIN + magnitudeT(pct) * (MARKER_SIZE_MAX - MARKER_SIZE_MIN);
 }
 
-/** Halo opacity multiplier for the outer glow ring drawn behind each bead. */
-export function glowAlphaForPct(pct: number): number {
-  return alphaForPct(pct) * (0.22 + magnitudeT(pct) * 0.18);
-}
-
 // ── WALL INTEGRITY RING (second visual channel) ─────────────────────────────────────────────
 //
 // A bead's SIZE already encodes magnitude (how much dealer gamma is parked there). But size alone

@@ -10,9 +10,6 @@ import type { VectorDteHorizon } from "./vector-dte-horizon";
  */
 export const VECTOR_PRESET_TIMEFRAMES = [1, 3, 5, 15, 30, 60] as const;
 
-/** @deprecated Use VECTOR_PRESET_TIMEFRAMES */
-export const VECTOR_TIMEFRAMES = VECTOR_PRESET_TIMEFRAMES;
-
 export type VectorPresetTimeframe = (typeof VECTOR_PRESET_TIMEFRAMES)[number];
 
 /** Default candle interval on first paint (SPX Slayer embed + standalone /vector). */
@@ -136,13 +133,6 @@ export function aggregateVectorBars<T extends VectorOhlcBar>(
   return [...map.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([, v]) => v);
-}
-
-export function barsForVectorTimeframe<T extends VectorOhlcBar>(
-  minuteBars: T[],
-  intervalMinutes: number
-): T[] {
-  return aggregateVectorBars(minuteBars, intervalMinutes);
 }
 
 /**

@@ -93,17 +93,6 @@ function buildInstancePayload(): InstanceTelemetryPayload {
   };
 }
 
-export function scheduleTelemetryRedisFlush(): void {
-  if (flushTimer || !process.env.REDIS_URL?.trim()) return;
-  flushTimer = setInterval(() => {
-    void flushTelemetryToRedis();
-  }, FLUSH_MS);
-  // Allow the process to exit even if this interval is still pending (e.g. tests,
-  // graceful shutdown) without requiring an explicit clear.
-  flushTimer.unref?.();
-  void flushTelemetryToRedis();
-}
-
 /** Stops the periodic telemetry flush and resets back-off state. Safe to call when not scheduled. */
 export function clearTelemetryRedisFlush(): void {
   if (flushTimer) {

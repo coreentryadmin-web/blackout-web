@@ -702,27 +702,6 @@ export async function logSpxPrecedentsShadowFactor(
   }
 }
 
-/** @deprecated Use maybeLogSpxPlay from play engine */
-export async function maybeLogSpxSignal(
-  desk: import("./spx-desk").SpxDeskPayload
-): Promise<void> {
-  const { computeSpxTradeSignal } = await import("@/features/spx/lib/spx-signals");
-  const signal = computeSpxTradeSignal(desk);
-  if (!signal) return;
-  await maybeLogSpxPlay(desk, {
-    action: signal.action === "BUY_CALL" || signal.action === "BUY_PUT" ? "BUY" : signal.action,
-    direction:
-      signal.action === "BUY_CALL" ? "long" : signal.action === "BUY_PUT" ? "short" : null,
-    grade: "C",
-    score: signal.score,
-    confidence: signal.confidence,
-    headline: signal.headline,
-    thesis: signal.thesis,
-    factors: signal.factors,
-    levels: signal.levels,
-  });
-}
-
 export async function fetchRecentSpxSignals(limit = 50): Promise<SpxSignalLogRow[]> {
   if (!dbConfigured()) return [];
   const { fetchRecentSpxSignalLogs } = await import("@/lib/db");
