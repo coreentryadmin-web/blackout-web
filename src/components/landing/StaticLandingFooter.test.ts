@@ -5,16 +5,17 @@ import { join } from "node:path";
 
 // Regression: the classic Grid page was fully removed (commit 40099f0, "feat: remove
 // classic Grid page and infrastructure (#648)") — src/app/(site)/grid/page.tsx no longer
-// exists — but LandingFooter.tsx's INSTRUMENTS list still linked to "/grid". That footer is
-// mounted on the homepage, /pricing, and /faq (via FaqPageShell), so every logged-out
-// visitor/prospect who clicked "BlackOut Grid" landed on Next's generic not-found page.
-// Nav.tsx's FEATURE_LINKS was updated correctly when Grid was removed; only this second,
-// duplicate link list was missed. This test statically checks every href in the footer's
-// INSTRUMENTS/PLATFORM/SUPPORT link arrays resolves to a real route on disk, so a future
-// route removal can't silently leave a dead link in the marketing footer again.
+// exists — but the footer's INSTRUMENTS list still linked to "/grid", so every logged-out
+// visitor who clicked "BlackOut Grid" landed on Next's generic not-found page. This test
+// statically checks every href in the footer's INSTRUMENTS/PLATFORM link arrays resolves to
+// a real route on disk, so a future route removal can't silently leave a dead link in the
+// marketing footer again.
+//
+// StaticLandingFooter is the ONE live marketing footer (MarketingPageShell renders it on the
+// homepage, /pricing, /faq, /learn, /upgrade). The old animated LandingFooter + its
+// FaqPageShell/FaqSection host were dead code and were removed alongside this rename.
 
 const FOOTER_PATHS = [
-  join(__dirname, "LandingFooter.tsx"),
   join(__dirname, "StaticLandingFooter.tsx"),
 ];
 const APP_DIR = join(__dirname, "..", "..", "app");
@@ -49,7 +50,7 @@ function routeExists(href: string): boolean {
   return hasCatchAllRoute(join(APP_DIR, path)) || existsSync(join(APP_DIR, path, "page.tsx"));
 }
 
-test("LandingFooter: INSTRUMENTS links all resolve to real routes", () => {
+test("StaticLandingFooter: INSTRUMENTS links all resolve to real routes", () => {
   for (const footerPath of FOOTER_PATHS) {
     const source = readFileSync(footerPath, "utf8");
     const hrefs = extractHrefs(source, "INSTRUMENTS");
@@ -60,14 +61,14 @@ test("LandingFooter: INSTRUMENTS links all resolve to real routes", () => {
   }
 });
 
-test("LandingFooter: never links to the removed /grid route", () => {
+test("StaticLandingFooter: never links to the removed /grid route", () => {
   for (const footerPath of FOOTER_PATHS) {
     const source = readFileSync(footerPath, "utf8");
     assert.doesNotMatch(source, /href:\s*"\/grid"/, `${footerPath} must not link to /grid`);
   }
 });
 
-test("LandingFooter: PLATFORM links all resolve to real routes", () => {
+test("StaticLandingFooter: PLATFORM links all resolve to real routes", () => {
   for (const footerPath of FOOTER_PATHS) {
     const source = readFileSync(footerPath, "utf8");
     const hrefs = extractHrefs(source, "PLATFORM");
