@@ -268,9 +268,12 @@ body {
      desk — do NOT wrap it. */
   .content-rail {
     @apply mx-auto w-full;
-    max-width: var(--content-max);
-    padding-left: var(--page-pad-x);
-    padding-right: var(--page-pad-x);
+    /* Full-bleed product/desk shells: the rail no longer caps at --content-max
+       (80rem) — data-dense desk tools, tables, and charts use the whole viewport.
+       Fluid side padding keeps breathing room and scales up on large screens. */
+    max-width: none;
+    padding-left: clamp(var(--page-pad-x), 3vw, 3.5rem);
+    padding-right: clamp(var(--page-pad-x), 3vw, 3.5rem);
   }
 
   /* Default desk grid — the codified multi-column tier so future grids don't
