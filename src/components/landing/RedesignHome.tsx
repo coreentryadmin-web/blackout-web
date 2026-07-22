@@ -74,8 +74,8 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
             </div>
             <div className="rl-reveal rl-in" style={{ transitionDelay: ".12s" }}>
               {/* Brand emblem as the hero's right-side statement (replaced the SPX desk
-                  mock). Points at /images/blackout-emblem.png — drop a 4K master at that
-                  same path to upgrade clarity with no code change. */}
+                  mock). 1254² master exported to max-quality webp (502KB vs 2.67MB png)
+                  — visually identical, ~5× faster hero paint. */}
               {/* eslint-disable-next-line @next/next/no-img-element -- marketing hero brand logo */}
               <img
                 src={IMAGES.brandEmblem}
