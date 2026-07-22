@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { PersonalAlertsSettings } from "@/components/account/PersonalAlertsSettings";
 import { AccountProfilePanel } from "@/components/account/AccountProfilePanel";
+// Contrast hardening for the Clerk <UserProfile> widget (fields were dark-on-dark).
+import "../../account.css";
 
 export const metadata: Metadata = {
   title: "Account · BlackOut",
