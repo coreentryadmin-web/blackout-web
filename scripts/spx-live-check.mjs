@@ -33,15 +33,21 @@ if (session.skip) {
   process.exit(2);
 }
 
-const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"] });
+// --disable-quic: the GH runner intermittently fails HTTP/3 to the edge (net::ERR_QUIC_PROTOCOL_ERROR),
+// which stalled the load; force HTTP/1.1+2 over TCP so navigation is reliable.
+const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--disable-quic"] });
 try {
   const ctx = await browser.newContext({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1, reducedMotion: "reduce" });
   await ctx.addCookies(session.cookies);
   const page = await ctx.newPage();
   page.on("console", (m) => { if (m.type() === "error") report.notes.push("console:" + m.text().slice(0, 120)); });
 
-  await page.goto(`${BASE}/dashboard`, { waitUntil: "networkidle", timeout: 60000 });
-  await page.waitForTimeout(9000);
+  // NOT waitUntil:"networkidle" — the desk is a live-polling SPA (SWR + SSE never go idle), so
+  // networkidle never fires and page.goto times out at 60s with zero frames. Wait for the DOM, then
+  // a fixed hydration window for the client-only desk components (matrix/pin/commentary mount + SWR
+  // populate) before capturing.
+  await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.waitForTimeout(12000);
   await page.evaluate(async () => { await new Promise((r) => { let y = 0; const t = () => { window.scrollTo(0, y); y += Math.round(window.innerHeight * 0.7); if (y < document.body.scrollHeight) setTimeout(t, 130); else { window.scrollTo(0, 0); setTimeout(r, 400); } }; t(); }); });
   await page.waitForTimeout(3000);
 
