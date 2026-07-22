@@ -8,6 +8,8 @@ import {
   relStrengthT,
   radiusForPct,
   widthForPct,
+  growthModulation,
+  magnitudeGlowBoost,
   MODELED_ALPHA_SCALE,
   haloRingForTier,
 } from "./vector-wall-visual";
@@ -110,17 +112,58 @@ test("markerSizeForPctRel / alphaForPctRel: king is max weight, straggler near t
   assert.ok(markerSizeForPctRel(30, 30) >= markerSizeForPctRel(29, 30), "king at/above all others");
   assert.ok(markerSizeForPctRel(3, 30) < markerSizeForPctRel(30, 30) * 0.4, "straggler stays thin");
   assert.ok(alphaForPctRel(3, 30) < alphaForPctRel(30, 30), "straggler is fainter than the king");
-  assert.equal(alphaForPctRel(0, 30), 0.05, "zero-share keeps the faint floor, not invisible");
+  assert.equal(alphaForPctRel(0, 30), 0.14, "zero-share keeps the (brighter) faint floor, not invisible");
+});
+
+test("BRIGHTNESS RETUNE: a secondary wall reads legibly present, not a near-dead ghost", () => {
+  // The "beads too light" fix: under the old 0.05 floor + squared contrast, a half-king wall sat
+  // at ~0.29 alpha and read as barely there. It must now clear ~0.4 so real secondary walls are
+  // clearly visible against the dark ground, while the king still tops out at full opacity.
+  assert.ok(alphaForPctRel(15, 30) >= 0.4, "half-king wall is clearly visible");
+  assert.equal(alphaForPctRel(30, 30), 1, "the in-frame king is still full opacity");
+  assert.ok(alphaForPctRel(3, 30) >= 0.14, "even a straggler stays above the visible floor");
 });
 
 test("MODELED_ALPHA_SCALE: modeled beads render as a FAINT ghost (< observed) but not invisible", () => {
   // Faint enough to read as a ghosted secondary underlay — verified live that 0.4 was too bright
-  // (a 30% wall still looked solid/full-width). Must stay well under a quarter of observed weight,
-  // and above zero so it never fully vanishes.
-  assert.ok(MODELED_ALPHA_SCALE > 0 && MODELED_ALPHA_SCALE <= 0.2);
+  // (a 30% wall still looked solid/full-width). Kept under half observed weight, and lifted off the
+  // 0.15 floor where early-session (mostly-modeled) rails read as "too light".
+  assert.ok(MODELED_ALPHA_SCALE > 0.15 && MODELED_ALPHA_SCALE <= 0.35);
   // Even the session-king strike is a quiet ghost: a full-strength modeled bead is dimmer than a
   // MID-strength observed bead, so a real recorded sample always reads as "more real."
   assert.ok(alphaForPct(100) * MODELED_ALPHA_SCALE < alphaForPct(3));
+});
+
+test("growthModulation: a wall being STACKED flares brighter + fatter than one holding steady", () => {
+  const steady = growthModulation(20, 20, 40);
+  const building = growthModulation(20, 8, 40); // jumped from 8% → 20% share of a 40% king
+  assert.deepEqual(steady, { alphaMul: 1, sizeMul: 1, building: false, fading: false });
+  assert.ok(building.building && !building.fading, "flagged building");
+  assert.ok(building.alphaMul > 1 && building.sizeMul > 1, "building flares up");
+});
+
+test("growthModulation: a wall bleeding out dims + narrows and is flagged fading", () => {
+  const fading = growthModulation(8, 20, 40); // dropped from 20% → 8%
+  assert.ok(fading.fading && !fading.building, "flagged fading");
+  assert.ok(fading.alphaMul < 1 && fading.sizeMul < 1, "fading dims down");
+});
+
+test("growthModulation: first bead (no previous) and bad input are neutral, and the flare is capped", () => {
+  assert.deepEqual(growthModulation(20, null, 40), { alphaMul: 1, sizeMul: 1, building: false, fading: false });
+  assert.deepEqual(growthModulation(20, undefined, 40), { alphaMul: 1, sizeMul: 1, building: false, fading: false });
+  assert.deepEqual(growthModulation(20, NaN, 40), { alphaMul: 1, sizeMul: 1, building: false, fading: false });
+  assert.deepEqual(growthModulation(20, 5, 0), { alphaMul: 1, sizeMul: 1, building: false, fading: false });
+  // A giant one-bucket burst can't blow the bead out past the cap.
+  const burst = growthModulation(40, 0, 40);
+  assert.ok(burst.alphaMul <= 1.35 + 1e-9 && burst.sizeMul <= 1.28 + 1e-9, "flare is bounded");
+});
+
+test("magnitudeGlowBoost: an absolutely massive wall halos brighter than a modest one, regardless of frame", () => {
+  // Magnitude is a SEPARATE channel from frame-relative strength: a 7%+ king glows ~1.7×, a tiny
+  // wall ~1×, so "monster wall" reads even when a slightly bigger one shares the frame.
+  assert.ok(magnitudeGlowBoost(0) === 1, "zero magnitude → neutral halo");
+  assert.ok(magnitudeGlowBoost(7) > 1.6, "a saturated wall glows markedly wider");
+  assert.ok(magnitudeGlowBoost(2) < magnitudeGlowBoost(6), "monotonic in absolute magnitude");
 });
 
 test("haloRingForTier: unknown/undefined tier is NEUTRAL — beads render exactly as pre-ring", () => {

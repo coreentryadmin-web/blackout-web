@@ -425,3 +425,34 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
   already honestly flagged `internals_estimated` AND not rendered. So this is not a bug to fix —
   surfacing them requires integrating a real intraday internals feed (data-integration project),
   which should precede any UI. Left estimated-and-gated, as designed.
+
+## 2026-07-22 — SPX Slayer bead rail: "too light" + thin semantics (P2, FIXED — full SPX audit)
+
+### P2 — Wall/bead rail rendered too faint and encoded only ONE dimension three times
+- **Symptom (member-reported):** beads "too light on rendering"; the rail "just paints" instead
+  of representing wall dynamics.
+- **Root cause:** in `src/features/vector/lib/vector-wall-visual.ts`, core opacity, bead size, and
+  glow ALL keyed off the same frame-relative strength `t = (pct/maxPct)^REL_CONTRAST_EXP`, with
+  `REL_CONTRAST_EXP = 2.0` (squared) and floor `ALPHA_MIN = 0.05`. A half-king wall therefore sat
+  at t=0.25 → ~0.29 alpha (near-dead), and early-session modeled beads were ghosted to
+  `MODELED_ALPHA_SCALE = 0.15` — the "too light" report. Absolute magnitude, growth/decay velocity,
+  and death were not encoded at all (birth was; death was only a whole-trail dim).
+- **Evidence:** live authenticated probe (SPX desk `/api/market/spx/pin` + `gex_walls`) confirmed
+  per-strike shares in the 5–7% band so the frame-relative king is ~7% and secondaries fall to
+  25–30% of it → the exact regime the squared curve crushes. Opacity math corroborated in
+  `vector-wall-visual.test.ts`.
+- **Fix (`vector-wall-visual.ts` + `VectorChart.tsx`):**
+  - Brightness: new `REL_ALPHA_MIN = 0.14` floor for the bead rail (separate from the legacy
+    absolute `ALPHA_MIN`, so absolute-path tests are untouched); `REL_CONTRAST_EXP 2.0 → 1.6`;
+    `MODELED_ALPHA_SCALE 0.15 → 0.26`. Half-king wall now ~0.42 alpha.
+  - New **absolute-magnitude glow channel** (`magnitudeGlowBoost`): a genuinely massive wall halos
+    up to ~1.7× wider regardless of frame rank — magnitude gets its own voice, distinct from the
+    (frame-relative) size/opacity, so the frame-contrast regression tests still hold.
+  - New **growth/decay velocity channel** (`growthModulation`): a bead compares its share to the
+    previous bucket — a wall being STACKED flares brighter+fatter, one bleeding out dims+narrows
+    (capped so a single burst can't blow out). The rail now visibly breathes.
+  - New **death dissipation halo**: the last bucket of a departed (inactive) wall gets a wide, dim
+    ring so it reads as "dissolved here," completing the birth→build→fade→death lifecycle.
+- **Tests:** `vector-wall-visual.test.ts` extended (brightness retune, growthModulation building/
+  fading/neutral/cap, magnitudeGlowBoost monotonicity) — 23 pass; `tsc --noEmit` clean.
+- **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
