@@ -91,6 +91,7 @@ import {
 } from "@/features/vector/lib/vector-indicators-config";
 import { GexHeatmapPrimitive } from "@/features/vector/lib/vector-gex-heatmap-primitive";
 import { PinConePrimitive, type PinConeStep } from "@/features/vector/lib/vector-pin-cone-primitive";
+import { WallRailPrimitive } from "@/features/vector/lib/vector-wall-rail-primitive";
 import { gexCellAtGridPoint, heatmapBucketSecForChartTimeframe } from "@/features/vector/lib/vector-gex-heatmap-paint";
 import type { GexHeatmapGrid } from "@/features/vector/lib/vector-gex-reconstruct";
 import { levelLinesFor, type LevelLine, type PriorDayOhlc } from "@/features/vector/lib/vector-key-levels";
@@ -826,7 +827,13 @@ function buildWallBeadMarkers(
   intervalSec: number = 60,
   /** Per-strike integrity (firm/moderate/thin) → the halo becomes a confidence RING. Omitted (VEX
    *  lens / unscored rails) leaves every halo at neutral weight, i.e. byte-identical to pre-ring. */
-  tierByStrike?: Map<number, WallIntegrity>
+  tierByStrike?: Map<number, WallIntegrity>,
+  /** Ribbon mode: the WallRailPrimitive canvas now carries strength (band thickness), magnitude
+   *  (brightness), build/fade, birth, and death — the channels circle markers can't express. So in
+   *  this mode the marker layer drops the fat glow halo + birth/death markers (which were the "blob"
+   *  that flattened every bead to the same size) and keeps only a small, dim CORE dot per bucket as a
+   *  crisp punctuation over the ribbon (and a safety net if the primitive ever fails to draw). */
+  ribbonMode = false
 ): SeriesMarker<Time>[] {
   const markers: SeriesMarker<Time>[] = [];
   // Earliest bucket across every rendered trail — the boundary where a trail's start is ambiguous
@@ -883,21 +890,25 @@ function buildWallBeadMarkers(
       // velocity. Multiplier reduced from 2.2 → 1.6 so the halo doesn't mask the core's size.
       const glowAlpha =
         glowAlphaForPctRel(p.pct, maxPct) * alphaScale * mod.alphaMul * (modeled ? 1 : magnitudeGlowBoost(p.pct));
+      // Ribbon mode: skip the glow halo entirely (the ribbon owns magnitude/brightness) and draw a
+      // small dim core dot so the sample points read as crisp ticks ON the band, not a fat blob.
+      if (!ribbonMode) {
+        markers.push({
+          time,
+          position: "atPriceMiddle",
+          price: trail.strike,
+          shape: "circle",
+          color: withAlpha(baseColor, Math.min(1, glowAlpha * ring.alphaMul)),
+          size: size * 1.6 * ring.sizeMul,
+        });
+      }
       markers.push({
         time,
         position: "atPriceMiddle",
         price: trail.strike,
         shape: "circle",
-        color: withAlpha(baseColor, Math.min(1, glowAlpha * ring.alphaMul)),
-        size: size * 1.6 * ring.sizeMul,
-      });
-      markers.push({
-        time,
-        position: "atPriceMiddle",
-        price: trail.strike,
-        shape: "circle",
-        color: withAlpha(baseColor, coreAlpha),
-        size,
+        color: withAlpha(baseColor, ribbonMode ? Math.min(1, coreAlpha * 0.9) : coreAlpha),
+        size: ribbonMode ? Math.max(0.3, size * 0.5) : size,
       });
       // BIRTH bead: the candle where this wall first appeared. A new wall naturally starts at the
       // current candle (birth-anchored), and we brighten that origin bead so a member can SEE when
@@ -913,7 +924,7 @@ function buildWallBeadMarkers(
       // is unknowable (live-window trim edge or session open): the wall may have existed before the
       // window we're drawing. Only a birth strictly INSIDE the drawn window is a real formation cue.
       const trueBirth = i === 0 && earliestBucket != null && p.time > earliestBucket;
-      if ((trueBirth || reborn) && !modeled) {
+      if ((trueBirth || reborn) && !modeled && !ribbonMode) {
         markers.push({
           time,
           position: "atPriceMiddle",
@@ -929,7 +940,7 @@ function buildWallBeadMarkers(
       // ghosts (no real death) and skip when the terminal bead already got a birth/rebirth boost
       // (a one-bucket blip is a blip, not a death worth haloing).
       const isDeath = !trail.active && i === points.length - 1 && !modeled && !(trueBirth || reborn);
-      if (isDeath) {
+      if (isDeath && !ribbonMode) {
         markers.push({
           time,
           position: "atPriceMiddle",
@@ -957,8 +968,8 @@ function applyWallBeadMarkers(
   /** Pin a ghost bead at the latest bar for live-edge zoom — off during session overview so the
    *  full recorded trail stretches across RTH without a fake right-edge column. */
   pinLiveAnchorBeads = true
-): number[] {
-  if (!beadsPlugin) return [];
+): { strikes: number[]; rendered: StrikeTrail[] } {
+  if (!beadsPlugin) return { strikes: [], rendered: [] };
   const bucketed = bucketWallHistoryForInterval(history, intervalMinutes, {
     minBucketSec: VECTOR_WALL_TRAIL_SEC,
     liveBeads,
@@ -982,7 +993,7 @@ function applyWallBeadMarkers(
     lens === "gex" && latestWalls
       ? integrityByStrike(latestWalls, history)[side === "callWalls" ? "call" : "put"]
       : undefined;
-  const markers = buildWallBeadMarkers(rendered, baseColor, intervalMinutes * 60, tierByStrike);
+  const markers = buildWallBeadMarkers(rendered, baseColor, intervalMinutes * 60, tierByStrike, true);
   // ZOOM ANCHOR: lightweight-charts only renders markers at timestamps within the visible time
   // range. If a wall's beads are concentrated in the earlier part of the session (e.g. a wall
   // formed at 17:30 and faded by 18:30), zooming in on recent candles clips ALL its beads and
@@ -1015,8 +1026,31 @@ function applyWallBeadMarkers(
   }
   beadsPlugin.setMarkers(markers);
   // Return the strikes actually drawn so the caller can widen the price axis to cover them —
-  // otherwise a drawn bead outside the current-ladder range clips out on zoom (see beadStrikesRef).
-  return active;
+  // otherwise a drawn bead outside the current-ladder range clips out on zoom (see beadStrikesRef) —
+  // plus the lifecycle-filtered trails so the caller can feed the WallRailPrimitive (ribbon rail),
+  // which draws the SAME strikes as continuous strength/growth/fade bands.
+  return { strikes: active, rendered };
+}
+
+/** Feed the WallRailPrimitive the composed call+put trails. maxPct is taken across BOTH sides so the
+ *  king wall (whichever side) is the single frame reference every band scales against — a call and a
+ *  put of equal share render equally fat. A null primitive or empty trails draws nothing. */
+function feedWallRail(
+  rail: WallRailPrimitive | null,
+  callRendered: StrikeTrail[],
+  putRendered: StrikeTrail[],
+  callColor: string,
+  putColor: string,
+  visible: boolean
+): void {
+  if (!rail) return;
+  let maxPct = 0;
+  for (const t of callRendered) for (const p of t.points) if (p.pct > maxPct) maxPct = p.pct;
+  for (const t of putRendered) for (const p of t.points) if (p.pct > maxPct) maxPct = p.pct;
+  rail.setData(
+    { callTrails: callRendered, putTrails: putRendered, maxPct, callColor, putColor },
+    visible && maxPct > 0
+  );
 }
 
 function upsertBar(bars: VectorBar[], candle: VectorBar): VectorBar[] {
@@ -1191,6 +1225,11 @@ export function VectorChart({
   // way as the level lines. Separate map because the zone is derived from live walls/flip/max-pain,
   // not from `levelLinesFor(bars)`, so it repaints on wall/flip updates too — not just bar changes.
   const confluenceBandRef = useRef<Map<string, IPriceLine>>(new Map());
+  // WALL RIBBON RAIL (the dealer-wall beads drawn as continuous strength/growth/fade bands, replacing
+  // the same-size circle markers as the primary rail visual — see WallRailPrimitive). One canvas
+  // primitive draws BOTH sides; it's fed the lifecycle-filtered call+put trails from
+  // applyWallBeadMarkers each repaint. Cleared on ticker switch / unmount with the series.
+  const wallRailPrimitiveRef = useRef<WallRailPrimitive | null>(null);
   // Prior-session OHLC for the PDH/PDL/PDC + floor-pivot levels — fetched once per ticker (only when
   // such a level is enabled). `priorDayTickerRef` guards a fetch from a previous ticker landing late.
   const priorDayRef = useRef<PriorDayOhlc | null>(null);
@@ -1412,7 +1451,7 @@ export function VectorChart({
         : wallHistoryRef.current);
     const liveBeads = liveSessionRef.current && !replayModeRef.current;
     const pinLiveAnchorBeads = liveFollowEnabledRef.current;
-    const callStrikes = applyWallBeadMarkers(
+    const call = applyWallBeadMarkers(
       callBeadsRef.current,
       history,
       "callWalls",
@@ -1424,7 +1463,7 @@ export function VectorChart({
       beadRowCap,
       pinLiveAnchorBeads
     );
-    const putStrikes = applyWallBeadMarkers(
+    const put = applyWallBeadMarkers(
       putBeadsRef.current,
       history,
       "putWalls",
@@ -1436,9 +1475,11 @@ export function VectorChart({
       beadRowCap,
       pinLiveAnchorBeads
     );
+    // Feed the ribbon rail the SAME composed call+put trails (both sides share one frame reference).
+    feedWallRail(wallRailPrimitiveRef.current, call.rendered, put.rendered, v.callColor, v.putColor, true);
     // Record what was actually drawn so the autoscale provider widens to reveal these exact beads
     // at every zoom level, then nudge a rescale (off-hours there is no tick to trigger it).
-    beadStrikesRef.current = { call: callStrikes, put: putStrikes };
+    beadStrikesRef.current = { call: call.strikes, put: put.strikes };
     // Respect a manual vertical zoom — only nudge autoscale when the member hasn't taken the
     // price axis over AND hasn't scrolled within the cooldown window.
     if (Date.now() - wheelZoomCooldownRef.current >= 8_000) {
@@ -1905,10 +1946,12 @@ export function VectorChart({
 
       const visibleHistory = sliceHistoryToTime(sourceHistory, cursorTime);
       const v = lensVisuals(activeLens);
-      const callStrikes = applyWallBeadMarkers(callBeadsRef.current, visibleHistory, "callWalls", v.callColor, activeLens, timeframeRef.current, cursorTime);
-      const putStrikes = applyWallBeadMarkers(putBeadsRef.current, visibleHistory, "putWalls", v.putColor, activeLens, timeframeRef.current, cursorTime);
+      const call = applyWallBeadMarkers(callBeadsRef.current, visibleHistory, "callWalls", v.callColor, activeLens, timeframeRef.current, cursorTime);
+      const put = applyWallBeadMarkers(putBeadsRef.current, visibleHistory, "putWalls", v.putColor, activeLens, timeframeRef.current, cursorTime);
+      // Feed the ribbon rail the point-in-time trails so replay scrubs the bands too, not just dots.
+      feedWallRail(wallRailPrimitiveRef.current, call.rendered, put.rendered, v.callColor, v.putColor, true);
       // Same zoom-stability guarantee in replay: widen the axis for the beads this frame drew.
-      beadStrikesRef.current = { call: callStrikes, put: putStrikes };
+      beadStrikesRef.current = { call: call.strikes, put: put.strikes };
       pinCandlesOnTop(series);
 
       // initialWalls/etc are the page-load seed — a reasonable fallback only when the
@@ -2745,6 +2788,11 @@ export function VectorChart({
     putBeadsRef.current = createSeriesMarkers(series, []);
     structureMarkersRef.current = createSeriesMarkers(series, []);
     flowMarkersRef.current = createSeriesMarkers(series, []);
+    // Wall ribbon rail — the primary bead visual (strength=thickness, magnitude=brightness,
+    // build/fade/birth cues). Attached once; fed the composed call+put trails on each repaint.
+    const wallRail = new WallRailPrimitive();
+    series.attachPrimitive(wallRail);
+    wallRailPrimitiveRef.current = wallRail;
     // GEX positioning heatmap (#14): attach the background surface primitive to the candle series.
     // It renders at zOrder "bottom" (under the candles + every overlay); its data/visibility are
     // pushed via setData from paintOverlays + the DTE-scoped fetch, so it stays hidden (draws
@@ -2916,6 +2964,8 @@ export function VectorChart({
       putGuideRefs.current = emptyGuideRefs();
       dpGuideRefs.current = [];
       flipGuideRef.current = null;
+      // chart.remove() disposed the ribbon-rail primitive with the series; drop the ref so a remount reattaches.
+      wallRailPrimitiveRef.current = null;
       // chart.remove() disposes the series (and its price lines) — just drop the stale refs so a
       // remount (ticker switch) starts clean instead of calling removePriceLine on a dead series.
       kingCallLineRef.current = null;
