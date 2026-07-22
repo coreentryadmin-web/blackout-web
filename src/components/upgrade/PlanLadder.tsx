@@ -5,6 +5,7 @@ import {
   WHOP_CHECKOUT_UNAVAILABLE_MESSAGE,
 } from "@/lib/whop-checkout";
 import { valuePropFor } from "@/lib/upsell-features";
+import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 
 export function PlanLadder() {
   const hasAnyOption = WHOP_COMMUNITY_CHECKOUT_OPTION || WHOP_PREMIUM_CHECKOUT_OPTIONS.length > 0;
@@ -53,6 +54,8 @@ export function PlanLadder() {
                 : "border-white/10 hover:border-bull/40")
             }
           >
+            {/* Border beam marks the recommended plan — bull-green, matching /pricing. */}
+            {vp.featured && <BorderBeam color="var(--sig-bull)" duration="6s" width="1.6px" />}
             {vp.badge && (
               <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-bull px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-black">
                 {vp.badge}

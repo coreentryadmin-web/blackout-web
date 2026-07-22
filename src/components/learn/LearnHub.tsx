@@ -9,6 +9,7 @@ import { CURRICULUM } from "@/lib/learn/curriculum";
 import { LEARN_NAV, learnHref } from "@/lib/learn/nav";
 import { LearnHeroGlow, LearnStagger, LearnStaggerItem } from "@/components/learn/LearnMotion";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
+import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 
 export function LearnHub() {
   const reduced = useReducedMotion();
@@ -52,6 +53,9 @@ export function LearnHub() {
           transition={{ duration: 0.25 }}
         >
           <div className="learn-hub-featured-glow" aria-hidden />
+          {/* Cyan border beam on the featured start card — "featured = beam", the
+              same phosphor cue used on /pricing and /upgrade's recommended cards. */}
+          {!native && <BorderBeam color="var(--sig-flow)" duration="7s" width="1.4px" />}
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
             <span className="grid size-14 shrink-0 place-items-center rounded-2xl border border-cyan-400/30 bg-cyan-400/10">
               <Compass className="size-7 text-cyan-300" aria-hidden />
