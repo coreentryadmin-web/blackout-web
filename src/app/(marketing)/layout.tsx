@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 import "../marketing-base.css";
 import "../marketing.css";
 import "../marketing-shell.css";
+import "../marketing-redesign.css";
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return children;
