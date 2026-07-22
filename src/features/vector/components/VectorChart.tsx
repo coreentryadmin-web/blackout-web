@@ -666,20 +666,23 @@ function applyPinProjection(
   linesRef.current = [];
   if (!ok) return;
   const PIN_GOLD = "#ffd23f"; // --sig-king gold, matching the pin panel + max-pain
+  // The full-width horizontal pin line is GONE — the Monte-Carlo cone (PinConePrimitive) now draws
+  // the p50 pin as a converging curve + tip dot in the right margin, so a flat line across the whole
+  // tape was redundant and visually fought the cone (member call, 2026-07-22). We keep ONLY the
+  // price-axis label (lineVisible:false, axisLabelVisible:true): a clean gold tag at the pin price on
+  // the right axis, aligned to where the cone tip lands, so the exact pin value stays legible without
+  // any line clutter. The p10/p90 band likewise lives entirely in the cone now.
   linesRef.current.push(
     series.createPriceLine({
       price: proj!.close,
       color: PIN_GOLD,
-      lineWidth: 2 as const,
+      lineWidth: 1 as const,
       lineStyle: LineStyle.Solid,
-      lineVisible: true,
+      lineVisible: false,
       axisLabelVisible: true,
       title: `Pin ${Math.round(proj!.close).toLocaleString("en-US")}`,
     })
   );
-  // The pin BAND (p10/p90) is now drawn by the converging cone primitive (PinConePrimitive), not as
-  // full-width horizontal lines — a horizontal band would visually fight the cone. Only the projected
-  // -close (p50) reference line stays here.
 }
 
 /**
