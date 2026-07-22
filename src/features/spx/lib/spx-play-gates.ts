@@ -418,8 +418,21 @@ export function evaluatePlayGates(
   // via the invalidation text and is the operator's responsibility to size down.
   if (buyIntent && confluence.levels.stop != null && confluence.levels.target != null) {
     const entryPrice = desk.price;
-    const stopDist = Math.abs(entryPrice - confluence.levels.stop);
-    const targetDist = Math.abs(confluence.levels.target - entryPrice);
+    const stop = confluence.levels.stop;
+    const target = confluence.levels.target;
+    // SIGNED side check FIRST — `Math.abs` below erases direction, so an inverted stop (long stop
+    // above entry / short stop below it) would otherwise pass the ratio and publish a play that reads
+    // as stopped-out at open. Direction is inferred from the target: target above entry ⇒ long ⇒ stop
+    // must be below entry; target below ⇒ short ⇒ stop must be above. Same-side stop = invalid geometry.
+    const long = target > entryPrice;
+    const short = target < entryPrice;
+    if ((long && stop >= entryPrice) || (short && stop <= entryPrice)) {
+      blocks.push(
+        `Invalid geometry: ${long ? "long" : "short"} stop ${Math.round(stop)} is on the wrong side of entry ${Math.round(entryPrice)} (must be ${long ? "below" : "above"})`
+      );
+    }
+    const stopDist = Math.abs(entryPrice - stop);
+    const targetDist = Math.abs(target - entryPrice);
     const minRR = playMinRiskReward();
     if (stopDist > 0 && targetDist / stopDist < minRR) {
       blocks.push(

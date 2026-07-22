@@ -50,9 +50,16 @@ function clamp(n: number, min: number, max: number): number {
 function nearestWall(
   walls: SpxDeskPayload["gex_walls"],
   kind: "support" | "resistance",
-  price: number
+  price: number,
+  /** Constrain to the correct SIDE of price. A stop wall MUST be on the right side: a long's support
+   *  below price, a short's resistance above price. Without this, `nearestWall` picked purely by
+   *  absolute distance, so after a gap a put-dominated "support"-kind wall sitting ABOVE spot became a
+   *  long's stop → a stop above entry (reads as stopped-out the instant it opens). See buildLevels. */
+  requireSide?: "below" | "above"
 ) {
-  const pool = walls.filter((w) => w.kind === kind);
+  let pool = walls.filter((w) => w.kind === kind);
+  if (requireSide === "below") pool = pool.filter((w) => w.strike < price);
+  else if (requireSide === "above") pool = pool.filter((w) => w.strike > price);
   if (!pool.length) return null;
   return pool.reduce((best, w) => {
     const d = Math.abs(w.strike - price);
@@ -153,8 +160,9 @@ function buildLevels(
   bias: "bullish" | "bearish" | "neutral",
   action: SpxSignalAction
 ) {
-  const support = nearestWall(desk.gex_walls ?? [], "support", price);
-  const resistance = nearestWall(desk.gex_walls ?? [], "resistance", price);
+  // Side-constrained: a long's support stop must be BELOW price, a short's resistance stop ABOVE it.
+  const support = nearestWall(desk.gex_walls ?? [], "support", price, "below");
+  const resistance = nearestWall(desk.gex_walls ?? [], "resistance", price, "above");
   const entry = price;
   let stop: number | null = null;
   let target: number | null = null;
@@ -173,6 +181,18 @@ function buildLevels(
     stop = resistance != null ? resistance.strike + 3 : (desk.hod ?? desk.vwap ?? null);
     target = price - targetPts;
     if (stop != null) invalidation = `Above ${stop.toFixed(0)} (GEX resistance wall + 3pt)`;
+  }
+
+  // Final signed guard: a stop on the WRONG side of entry is invalid geometry (a long's stop above
+  // entry / a short's stop below it) — it reads as stopped-out at open. The wall picker is now
+  // side-constrained, but the LOD/HOD/VWAP fallback can still land on the wrong side (e.g. VWAP above
+  // price used as a long stop). Drop such a stop to null rather than publish an inverted play; the
+  // publish-gate treats a null-stop play as reduce-size, and the R:R gate side-check backstops it.
+  const isLong = action === "BUY_CALL" || (action === "HOLD" && bias === "bullish");
+  const isShort = action === "BUY_PUT" || (action === "HOLD" && bias === "bearish");
+  if (stop != null && ((isLong && stop >= price) || (isShort && stop <= price))) {
+    stop = null;
+    invalidation = "No clean level on the correct side — reduce size or wait";
   }
 
   return { entry, stop, target, invalidation, support, resistance };
