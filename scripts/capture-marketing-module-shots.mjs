@@ -2,6 +2,18 @@
 /**
  * Capture polished marketing screenshots for all six platform modules.
  * Output: public/images/marketing/{spx,helix,thermal,largo,hawk,vector}.webp
+ *   and, with SHOTS>1, additional per-module views: {id}-2.webp, {id}-3.webp …
+ *
+ * MUST run from a browser-capable environment (staging/CI/Cursor) — headless
+ * Chromium egress is blocked in the Claude sandbox, so this cannot run there.
+ *
+ * Env:
+ *   CAPTURE_BASE_URL   target host (default staging)
+ *   SHOTS              screenshots per module (default 1; e.g. 3 for a gallery)
+ *   SHOT_TICKERS       per-module override, e.g. "spx=SPX,helix=NVDA,thermal=TSLA"
+ *                      — the module is loaded, that ticker is searched, THEN captured,
+ *                      so the shot shows a deliberate ticker rather than the default.
+ *   SHOT_QUALITY       webp quality (default 90 — sharper than the old 84)
  */
 import { execSync } from "node:child_process";
 import { mkdirSync, unlinkSync } from "node:fs";
@@ -82,6 +94,50 @@ const MODULES = [
   },
 ];
 
+const SHOTS = Math.max(1, Number(process.env.SHOTS || 1));
+const SHOT_QUALITY = Math.min(100, Math.max(60, Number(process.env.SHOT_QUALITY || 90)));
+const SHOT_TICKERS = Object.fromEntries(
+  (process.env.SHOT_TICKERS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((kv) => kv.split("=").map((x) => x.trim()))
+);
+
+/**
+ * Best-effort: type a specific ticker into whatever search/command surface the
+ * module page exposes, so the shot shows a deliberate symbol rather than the
+ * default. Silently no-ops if the page has no ticker search (e.g. SPX-only).
+ */
+async function searchTicker(page, ticker) {
+  if (!ticker) return;
+  const candidates = [
+    'input[placeholder*="Search" i]',
+    'input[placeholder*="ticker" i]',
+    'input[aria-label*="ticker" i]',
+    'input[aria-label*="search" i]',
+    'input[type="search"]',
+    '[data-ticker-search] input',
+  ];
+  for (const sel of candidates) {
+    const inp = page.locator(sel).first();
+    if (await inp.isVisible().catch(() => false)) {
+      await inp.click().catch(() => {});
+      await inp.fill(ticker).catch(() => {});
+      await page.waitForTimeout(700);
+      // pick the first suggestion if a listbox opened, else Enter
+      const opt = page.getByRole("option").first();
+      if (await opt.isVisible().catch(() => false)) await opt.click().catch(() => {});
+      else await inp.press("Enter").catch(() => {});
+      await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => null);
+      await page.waitForTimeout(2500);
+      console.log(`     searched ticker ${ticker}`);
+      return;
+    }
+  }
+  console.log(`     (no ticker search on ${page.url()} — captured default)`);
+}
+
 function loadSecret() {
   const raw = execSync(
     `aws secretsmanager get-secret-value --secret-id "${SECRET_NAME}" --query SecretString --output text`,
@@ -109,28 +165,33 @@ async function captureModule(page, mod, attempt = 1) {
     throw new Error(`${mod.id}: error page after 3 attempts`);
   }
 
-  const pngPath = join(OUT_DIR, `${mod.id}.png`);
-  const webpPath = join(OUT_DIR, `${mod.id}.webp`);
+  // Optionally drive a specific ticker into the page before shooting.
+  await searchTicker(page, SHOT_TICKERS[mod.id]);
+
   const target = page.locator(mod.selector).first();
+  const hasTarget = await target.isVisible().catch(() => false);
 
-  if (await target.isVisible().catch(() => false)) {
-    await target.screenshot({ path: pngPath, animations: "disabled" });
-  } else {
-    await page.screenshot({ path: pngPath, fullPage: false, animations: "disabled" });
+  for (let shot = 1; shot <= SHOTS; shot++) {
+    // Views after the first scroll the page to surface a different panel, so a
+    // gallery shows genuinely different parts of the desk (not the same frame).
+    if (shot > 1) {
+      await page.evaluate((n) => window.scrollBy({ top: Math.round(window.innerHeight * 0.72 * n), behavior: "instant" }), shot - 1).catch(() => {});
+      await page.waitForTimeout(1400);
+    }
+    const suffix = shot === 1 ? "" : `-${shot}`;
+    const pngPath = join(OUT_DIR, `${mod.id}${suffix}.png`);
+    const webpPath = join(OUT_DIR, `${mod.id}${suffix}.webp`);
+    if (hasTarget) await target.screenshot({ path: pngPath, animations: "disabled" });
+    else await page.screenshot({ path: pngPath, fullPage: false, animations: "disabled" });
+    await sharp(pngPath)
+      .resize(1600, null, { withoutEnlargement: true, fit: "inside" }) // sharper than the old 1200
+      .sharpen()
+      .webp({ quality: SHOT_QUALITY })
+      .toFile(webpPath);
+    try { unlinkSync(pngPath); } catch { /* ok */ }
+    console.log(`     saved ${webpPath}`);
   }
-
-  await sharp(pngPath)
-    .resize(1200, null, { withoutEnlargement: true, fit: "inside" })
-    .webp({ quality: 84 })
-    .toFile(webpPath);
-
-  try {
-    unlinkSync(pngPath);
-  } catch {
-    /* ok */
-  }
-
-  console.log(`     saved ${webpPath}`);
+  await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
 }
 
 async function main() {
