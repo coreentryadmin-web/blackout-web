@@ -1,0 +1,275 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHOSPHOR LADDER — command-key button system
+   ───────────────────────────────────────────────────────────────────────────
+   Signature: KEYPRESS FLASH + DETENT (replaces the retired Emerald Sweep).
+   Idle cost is ZERO — nothing animates at rest. Color is signal only:
+   violet=brand chrome, bear=destructive, green=SEMANTIC confirm (never default).
+
+   Import once (e.g. in globals.css `@import "../components/ui/button.css";`
+   or at the top of Button.tsx). Reads the additive :root tokens documented in
+   the "PHOSPHOR LADDER tokens" block that ships alongside this file.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.bo-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  overflow: hidden;
+
+  border-radius: var(--r-key, 3px);
+  border: 1px solid transparent;
+
+  /* MONO command-key label — "function key, not SaaS pill". tabular locked. */
+  font-family: var(--font-jetbrains, ui-monospace, "JetBrains Mono", monospace);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  user-select: none;
+  cursor: pointer;
+
+  /* Detent travel + phosphor warm on hover: transform / border / color / shadow.
+     No background repaint on the hover loop. */
+  transition:
+    transform var(--dur-detent, 90ms) var(--ease-persist, cubic-bezier(.22, 1, .36, 1)),
+    border-color var(--dur-fast, 120ms) var(--ease-snap, ease),
+    box-shadow var(--dur-fast, 120ms) var(--ease-snap, ease),
+    color var(--dur-fast, 120ms) var(--ease-snap, ease),
+    opacity var(--dur-fast, 120ms) var(--ease-snap, ease);
+}
+
+.bo-btn__inner {
+  position: relative;
+  z-index: 1; /* label + icons ride above the flash bloom */
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.bo-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* lucide restraint: hairline 1.5px stroke, monochrome phosphor, squared caps. */
+.bo-btn__icon > svg {
+  width: 1em;
+  height: 1em;
+  stroke-width: 1.5;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+/* ── Sizes ──────────────────────────────────────────────────────────────── */
+.bo-btn--xs { height: 1.75rem; padding: 0 0.625rem; font-size: 11px; gap: 0.375em; }
+.bo-btn--sm { height: 2.25rem; padding: 0 1rem;     font-size: 13px; }
+.bo-btn--md { height: 2.75rem; padding: 0 1.5rem;   font-size: 14px; }
+.bo-btn--lg { height: 3.25rem; padding: 0 2rem;     font-size: 15px; }
+
+.bo-btn--block { width: 100%; }
+
+/* icon-only square keys — width tracks height per size. */
+.bo-btn--icon { padding: 0; aspect-ratio: 1 / 1; }
+.bo-btn--icon.bo-btn--xs { width: 1.75rem; }
+.bo-btn--icon.bo-btn--sm { width: 2.25rem; }
+.bo-btn--icon.bo-btn--md { width: 2.75rem; }
+.bo-btn--icon.bo-btn--lg { width: 3.25rem; }
+.bo-btn--icon .bo-btn__icon > svg { width: 1.15em; height: 1.15em; }
+
+/* ═══ VARIANTS ══════════════════════════════════════════════════════════════
+   PRIMARY "command key": solid-edged violet with a hairline border, a faint
+   --inner-phosphor fill, and the VERNIER debossed treatment (1px top-highlight /
+   bottom-shadow inset) so it reads as a physically debossed panel key. */
+.bo-btn--primary {
+  color: #f4ecff;
+  border-color: color-mix(in srgb, var(--brand, #bf5fff) 55%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--brand, #bf5fff) 26%, var(--panel-1, #08080e)) 0%,
+      color-mix(in srgb, var(--brand, #bf5fff) 14%, var(--panel-1, #08080e)) 100%
+    );
+  /* debossed nameplate: inner top-highlight + inner bottom-shadow + faint fill. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.55),
+    inset 0 0 12px -6px var(--brand, #bf5fff);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+}
+.bo-btn--primary:hover {
+  /* Hover warms the phosphor ONE notch — border + inner glow, not shape. */
+  border-color: color-mix(in srgb, var(--brand, #bf5fff) 75%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.55),
+    inset 0 0 18px -6px var(--brand, #bf5fff),
+    0 0 22px -10px var(--brand, #bf5fff);
+}
+
+/* SECONDARY / GHOST: hairline violet border, transparent fill, phosphor label.
+   Hover only lifts border alpha (+ a whisper of inner phosphor). */
+.bo-btn--secondary,
+.bo-btn--ghost {
+  color: color-mix(in srgb, var(--brand, #bf5fff) 82%, #ffffff);
+  background: transparent;
+  border-color: color-mix(in srgb, var(--brand, #bf5fff) 22%, transparent);
+}
+.bo-btn--secondary { background: var(--inner-phosphor, rgba(191, 95, 255, 0.06)); }
+.bo-btn--secondary:hover,
+.bo-btn--ghost:hover {
+  border-color: color-mix(in srgb, var(--brand, #bf5fff) 45%, transparent);
+  box-shadow: inset 0 0 16px -10px var(--brand, #bf5fff);
+}
+.bo-btn--ghost { color: #e6ecf5; }
+
+/* DANGER: bear border/label — reserved for destructive / downside-committing. */
+.bo-btn--danger {
+  color: var(--sig-bear-text, #ff5c78);
+  background: color-mix(in srgb, var(--sig-bear, #ff2d55) 10%, transparent);
+  border-color: color-mix(in srgb, var(--sig-bear, #ff2d55) 45%, transparent);
+}
+.bo-btn--danger:hover {
+  border-color: color-mix(in srgb, var(--sig-bear, #ff2d55) 70%, transparent);
+  box-shadow: inset 0 0 18px -10px var(--sig-bear, #ff2d55);
+}
+
+/* CONFIRM: SEMANTIC green (confirm-long / positive-gamma) — NEVER the default. */
+.bo-btn--confirm {
+  color: var(--sig-bull, #00e676);
+  background: color-mix(in srgb, var(--sig-bull, #00e676) 9%, transparent);
+  border-color: color-mix(in srgb, var(--sig-bull, #00e676) 42%, transparent);
+}
+.bo-btn--confirm:hover {
+  border-color: color-mix(in srgb, var(--sig-bull, #00e676) 65%, transparent);
+  box-shadow: inset 0 0 18px -10px var(--sig-bull, #00e676);
+}
+
+/* ═══ FOCUS — the single shared ring (identical on Button/Select/TextField/…) ═*/
+.bo-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring, 0 0 0 2px #040407, 0 0 0 4px #bf5fff);
+}
+
+/* ═══ SIGNATURE INTERACTION — KEYPRESS FLASH + DETENT ═══════════════════════ */
+
+/* Detent: physical CRT key travel + inset detent on active. */
+.bo-btn:not(.is-inert):not(:disabled):active {
+  transform: scale(0.98) translateY(1px);
+}
+.bo-btn--primary:not(:disabled):active {
+  /* the debossed key presses IN — top-highlight fades, bottom-shadow deepens. */
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.55),
+    inset 0 0 14px -6px var(--brand, #bf5fff);
+}
+.bo-btn--secondary:not(:disabled):active,
+.bo-btn--ghost:not(:disabled):active,
+.bo-btn--danger:not(.is-inert):not(:disabled):active,
+.bo-btn--confirm:not(:disabled):active {
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+
+/* Phosphor bloom ignited at the click point (positioned inline via left/top). */
+.bo-btn__flash {
+  position: absolute;
+  z-index: 0;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px; /* center on the click point */
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    currentColor 0%,
+    color-mix(in srgb, currentColor 40%, transparent) 45%,
+    transparent 70%
+  );
+  opacity: 0;
+  animation: bo-key-flash var(--dur-persist, 320ms)
+    var(--ease-persist, cubic-bezier(.22, 1, .36, 1)) forwards;
+}
+
+/* Label flares to full brightness then decays (phosphor persistence). */
+.bo-btn[data-flash] .bo-btn__label { /* reserved hook; JS uses the flash node */ }
+.bo-btn:active .bo-btn__label,
+.bo-btn:active .bo-btn__icon {
+  animation: bo-key-flare var(--dur-persist, 320ms)
+    var(--ease-persist, cubic-bezier(.22, 1, .36, 1));
+}
+
+@keyframes bo-key-flash {
+  0%   { opacity: 0.9; transform: scale(0.35); }
+  100% { opacity: 0;   transform: scale(3.4); }
+}
+@keyframes bo-key-flare {
+  0%   { filter: brightness(1.9) drop-shadow(0 0 6px currentColor); }
+  100% { filter: brightness(1) drop-shadow(0 0 0 transparent); }
+}
+
+/* ═══ STATES ═══════════════════════════════════════════════════════════════ */
+
+/* disabled / inert — desaturated, de-energized, NO phosphor. */
+.bo-btn:disabled,
+.bo-btn.is-inert {
+  cursor: not-allowed;
+  opacity: 0.42;
+  filter: saturate(0.35);
+  box-shadow: none;
+  text-shadow: none;
+}
+.bo-btn.is-inert { pointer-events: none; }
+.bo-btn:disabled:hover,
+.bo-btn.is-inert:hover {
+  box-shadow: none;
+  border-color: inherit;
+}
+
+/* loading — the bead charges; label dims but stays measured. */
+.bo-btn.is-loading { cursor: progress; }
+.bo-btn.is-loading .bo-btn__label { opacity: 0.7; }
+
+/* ═══ SHARED SPINNER — expanding return ring (bead/ring motif) ══════════════ */
+.bo-spinner {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  color: currentColor;
+}
+.bo-spinner__ring,
+.bo-spinner__ring--2 {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  opacity: 0;
+  animation: bo-return-ring 1.15s var(--ease-draw, cubic-bezier(.22, 1, .36, 1)) infinite;
+}
+.bo-spinner__ring--2 { animation-delay: 0.55s; }
+.bo-spinner__core {
+  position: absolute;
+  inset: 40%;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.9;
+}
+@keyframes bo-return-ring {
+  0%   { transform: scale(0.2); opacity: 0; }
+  30%  { opacity: 0.95; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+/* ═══ REDUCED MOTION — collapse to an instant crisp static frame ════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .bo-btn { transition: none; }
+  .bo-btn:not(:disabled):active { transform: none; }
+  .bo-btn__flash { display: none; }
+  .bo-btn:active .bo-btn__label,
+  .bo-btn:active .bo-btn__icon { animation: none; }
+  /* Spinner freezes to a single firm ring — no RAF, no pulse. */
+  .bo-spinner__ring { animation: none; opacity: 0.9; transform: scale(1); }
+  .bo-spinner__ring--2 { display: none; }
+}
