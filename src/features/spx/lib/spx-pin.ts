@@ -15,6 +15,8 @@ import {
 /** Monte-Carlo overlay summary — the truer (multi-humped) distribution beside the analytic base. */
 export type PinMonteCarlo = {
   pin: number | null;
+  /** Unsnapped live projected close (empirical median of the MC closes) — see PinForecast. */
+  projectedClose: number | null;
   pinPct: number | null;
   pinBand: [number, number] | null;
   cone: PinConeStep[];
@@ -65,7 +67,7 @@ export async function buildSpxPinForecast(): Promise<SpxPinForecast> {
 
   const mc = forecastPin({ ...common, method: "montecarlo", mcPaths: MC_PATHS, seed: Math.floor(nowMs / 60_000) });
   const montecarlo: PinMonteCarlo | null = mc.available
-    ? { pin: mc.pin, pinPct: mc.pinPct, pinBand: mc.pinBand, cone: mc.cone, scenarios: mc.scenarios, paths: MC_PATHS }
+    ? { pin: mc.pin, projectedClose: mc.projectedClose, pinPct: mc.pinPct, pinBand: mc.pinBand, cone: mc.cone, scenarios: mc.scenarios, paths: MC_PATHS }
     : null;
 
   return { ...base, montecarlo };

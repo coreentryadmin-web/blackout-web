@@ -33,8 +33,14 @@ export type PinForecast = {
   spot: number;
   priorClose: number | null;
   timeToCloseMin: number;
-  /** Modal projected close, or null when there's nothing to forecast. */
+  /** Modal projected close SNAPPED to the dominant magnet strike (real pins sit ON a strike), or
+   *  null when there's nothing to forecast. This is the discrete "pin target". */
   pin: number | null;
+  /** UNSNAPPED live projected close — the median drift path's terminal value (analytic) or the
+   *  empirical median of the simulated closes (MC), before the snap-to-strike. Moves continuously
+   *  with spot/drift intraday, so it's the "live" number to headline; `pin` is the strike it rounds
+   *  to. On a quiet pinning day the two nearly coincide; on a trending day projectedClose leads. */
+  projectedClose: number | null;
   /** Confidence 0..1 — probability the close lands inside pinBand. Rises as the cone pinches. */
   pinPct: number | null;
   pinBand: [number, number] | null;
@@ -472,7 +478,7 @@ function assemble(
   return {
     available: true, method,
     spot: input.spot, priorClose: input.priorClose, timeToCloseMin: Number(p.tMin.toFixed(1)),
-    pin: Number(pin.toFixed(2)), pinPct: Number(conf.toFixed(3)),
+    pin: Number(pin.toFixed(2)), projectedClose: Number(medianClose.toFixed(2)), pinPct: Number(conf.toFixed(3)),
     pinBand: band,
     pinPctOfClose: input.priorClose && input.priorClose > 0 ? Number((((pin - input.priorClose) / input.priorClose) * 100).toFixed(2)) : null,
     regime: p.regime, flip: p.flip,
@@ -486,7 +492,7 @@ function assemble(
 
 const EMPTY = (input: PinForecastInput, reason: string): PinForecast => ({
   available: false, method: input.method ?? "analytic", spot: input.spot, priorClose: input.priorClose,
-  timeToCloseMin: Math.max(0, (input.closeMs - input.nowMs) / 60000), pin: null, pinPct: null, pinBand: null,
+  timeToCloseMin: Math.max(0, (input.closeMs - input.nowMs) / 60000), pin: null, projectedClose: null, pinPct: null, pinBand: null,
   pinPctOfClose: null, regime: "unknown", flip: null, magnet: null, charmState: "early", cone: [], scenarios: [],
   degraded: false, degradeReason: null,
   drivers: [{ label: reason === "closed" ? "Market closed" : "Collecting", detail: reason === "closed" ? "The 0DTE pin forecast runs during RTH." : "Waiting for a live 0DTE chain and session bars.", weight: 1 }],

@@ -1863,16 +1863,23 @@ export function VectorChart({
         if (cancelled || !res.ok) return;
         const j = (await res.json()) as {
           pin?: unknown;
+          projectedClose?: unknown;
           pinBand?: unknown;
-          montecarlo?: { pin?: unknown; pinBand?: unknown; cone?: unknown } | null;
+          montecarlo?: { pin?: unknown; projectedClose?: unknown; pinBand?: unknown; cone?: unknown } | null;
         };
         if (cancelled) return;
-        // Prefer the MONTE-CARLO projection on the chart (member-directed): its pin is the modal
-        // close of the simulated distribution and its band is empirical, so the on-chart line/band
-        // reflect the true (possibly asymmetric) distribution. Fall back to the analytic base when
-        // the MC overlay is absent.
+        // Prefer the MONTE-CARLO projection on the chart (member-directed): its band is empirical, so
+        // the on-chart line/band reflect the true (possibly asymmetric) distribution. Fall back to the
+        // analytic base when the MC overlay is absent.
+        // Use the UNSNAPPED projectedClose (not the snap-to-strike `pin`) so the on-chart pin tag
+        // AGREES with the forecaster panel's headline and visibly drifts intraday instead of sitting
+        // frozen on a round strike (the "7520 all day" report). Fall back to `pin` if absent.
         const mc = j.montecarlo ?? null;
-        const rawPin = typeof mc?.pin === "number" ? mc.pin : j.pin;
+        const rawPin =
+          typeof mc?.projectedClose === "number" ? mc.projectedClose
+          : typeof mc?.pin === "number" ? mc.pin
+          : typeof j.projectedClose === "number" ? j.projectedClose
+          : j.pin;
         const rawBand = Array.isArray(mc?.pinBand) ? mc!.pinBand : j.pinBand;
         const close = typeof rawPin === "number" && Number.isFinite(rawPin) ? rawPin : null;
         const band =
