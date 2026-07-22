@@ -29,6 +29,19 @@ test("flip sits near the call-wall crossover; spot below → short gamma", () =>
   assert.ok(flip != null && flip > 7508 && flip < 7620, `flip ${flip} — should sit just above spot (short γ below)`);
 });
 
+test("flip ladder is OI-ONLY: unsigned intraday volume must NOT move the gamma flip", () => {
+  // The signed net-GEX ladder that drives the flip must ignore dayVolume — volume is unsigned, so
+  // folding it into a signed cumulative crossing poisons the sign (the documented ~7,522→~7,000
+  // regression). Adding lopsided put-side volume must leave the flip exactly where OI puts it.
+  const tYears = 390 / (365 * 24 * 60);
+  const oiOnlyFlip = pinFlip(pinLadderAtSpot(chain(), 7507.6, tYears), 7507.6);
+  const withVolume = chain().map((c) =>
+    c.type === "put" ? { ...c, dayVolume: 50_000 } : { ...c, dayVolume: 100 }
+  );
+  const withVolumeFlip = pinFlip(pinLadderAtSpot(withVolume, 7507.6, tYears), 7507.6);
+  assert.equal(withVolumeFlip, oiOnlyFlip, "flip must be identical with/without volume (OI-only ladder)");
+});
+
 test("analytic: available, short-gamma, magnet UP toward the call wall, pin above spot", () => {
   const f = forecastPin(base("2026-07-21T17:04:00Z")); // 13:04 ET
   assert.equal(f.available, true);
