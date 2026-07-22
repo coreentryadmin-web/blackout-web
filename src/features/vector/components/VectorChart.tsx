@@ -2164,7 +2164,10 @@ export function VectorChart({
             : null;
         if (cancelled || dteHorizonRef.current !== dteHorizon || !seriesRef.current) return;
         maxPainValueRef.current = strike;
-        applyMaxPainLine(seriesRef.current, maxPainLineRef, strike);
+        // Max-pain LINE removed from the chart (user-directed: "remove Max Pain from chart, not
+        // needed") — pass null so no line is drawn (and any existing one is cleared). The value is
+        // still kept in maxPainValueRef so it can contribute to the confluence zone stack below.
+        applyMaxPainLine(seriesRef.current, maxPainLineRef, null);
         emitConfluence(); // the max-pain level just landed — the zone stack may have changed
         paintConfluenceBand();
       } catch {

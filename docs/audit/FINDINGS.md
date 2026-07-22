@@ -632,3 +632,22 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Tests:** `spx-live-voice.test.ts` — key changes on king-call + max-pain migration, direction
   unchanged, price-tick invariance still holds; 54 pass. `tsc` clean.
 - **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
+
+## 2026-07-22 — SPX desk: 4-panel layout (EOD pin own rail) + drop chart max-pain line (member-directed)
+
+### Layout — EOD pin split into its own 4th panel so the matrix gets full height
+- **Request:** "4 panels with EOD pin forecaster as the new panel so we can get full view of the
+  matrix table"; and "remove the Max Pain from the chart, not needed".
+- **Change:**
+  - `SpxDashboard.tsx`: the `SpxPinForecast` was stacked UNDER the matrix in the same column,
+    squeezing the (now full) Dealer Gamma Map. Split it into its OWN `aside.spx-left-pin` rail.
+    Desk is now **Largo | Matrix | EOD Pin | Vector** (4 rails); the matrix gets the full column
+    height. On the compact/iOS shell the pin rides the "matrix" segment (kept together there).
+  - `globals.css`: `desk-v3` grid → 4 columns `"largo matrix pin vector"` (chart still the widest,
+    minmax(0,…) so the canvas shrinks — no h-overflow); focus mode → 4 tracks (3 rails collapse,
+    chart fills); new `.spx-left-pin { grid-area: pin }` + desk-fill height rules.
+  - `VectorChart.tsx`: removed the amber "⊗ Max Pain" price line (`applyMaxPainLine(..., null)`);
+    the value is kept in `maxPainValueRef` so it still feeds the confluence zone stack.
+- **Verification:** `tsc --noEmit` clean. Client-canvas/layout change — needs a look on the deployed
+  build (will capture via spx-live-check). Stylelint pre-existing error at :7945 is unrelated.
+- **Status:** DONE (branch `claude/wall-beads-data-validation-4re5wo`).
