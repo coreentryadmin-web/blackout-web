@@ -57,9 +57,9 @@ const METRIC_TIPS = {
   vwap: "Volume-weighted average price for today's session — the fair-value line institutions track.",
   vwapVW: "True volume-weighted via SPY minute volume.",
   gex: "Net dealer gamma exposure — positive dampens moves, negative amplifies them.",
-  regime: "Trend regime read from price vs the 20/50-day EMAs.",
+  regime: "TREND regime — price vs the 20/50-day EMAs (bullish / bearish / neutral). Distinct from the GAMMA regime (long/short gamma) the chart banner and EOD pin show, which is spot vs the gamma flip — the two answer different questions.",
   flip: "Strike where net dealer gamma flips sign — above it dealers dampen moves, below it they amplify. This desk value is the NEAR-TERM aggregate (multiple expiries); the chart's flip line is 0DTE-scoped, so the two can read differently.",
-  maxPain: "Strike where the most option value expires worthless — a common pin magnet into the close.",
+  maxPain: "Strike where the most option value expires worthless — a common pin magnet into the close. This desk value is the NEAR-TERM aggregate (multiple expiries); the EOD pin + chart use the 0DTE-scoped max pain, so the two can read differently.",
   ivRank: "Where implied volatility sits inside its 1-year range (0–100).",
   ema: "Exponential moving averages (20/50/200-day) — trend guide rails; recent price weighs more.",
   sma: "Simple moving averages (50/200-day) — slower structural trend lines.",
@@ -141,7 +141,18 @@ function DeskTopStatsRow({
         <StatPill
           label="VWAP"
           value={showValues ? fmtPrice(desk?.vwap ?? null) : "—"}
-          tone={desk?.above_vwap ? "bull" : "bear"}
+          // Tone from the SAME displayed VWAP as the value/arrow (spot vs desk.vwap), not the raw
+          // pulse `above_vwap` flag — when pulse.vwap momentarily goes null the flag and the shown
+          // (sticky) VWAP could disagree, painting a bear tone above a VWAP drawn below spot.
+          tone={
+            desk?.vwap != null && spot != null
+              ? spot >= desk.vwap
+                ? "bull"
+                : "bear"
+              : desk?.above_vwap
+                ? "bull"
+                : "bear"
+          }
           level={desk?.vwap ?? null}
           spot={spot}
           title={
@@ -158,7 +169,7 @@ function DeskTopStatsRow({
           title={METRIC_TIPS.gex}
         />
         <StatPill
-          label="Regime"
+          label="Trend"
           value={showValues ? (desk?.regime ?? "—") : "—"}
           tone="violet"
           capitalize
