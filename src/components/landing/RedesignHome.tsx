@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
 import { IMAGES, MARKETING_MODULE_IMAGES } from "@/lib/images";
+import { InstrumentIcon } from "@/components/ui/icons/InstrumentIcons";
 import { LandingRedesignFx } from "./LandingRedesignFx";
 import DealersLadderBackground from "@/components/render/DealersLadderBackground";
 
@@ -124,6 +125,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
               return (
                 <article key={m.id} className={`rl-mod rl-reveal ${size}`} style={{ "--a": m.accent, transitionDelay: `${i * 0.05}s` } as CSSProperties}>
                   <div className="rl-mod-top">
+                    <span className="rl-mod-glyph" aria-hidden><InstrumentIcon id={m.id} size={22} /></span>
                     <span className="rl-mod-idx">{String(m.index).padStart(2, "0")}</span>
                     <span className="rl-mod-tag">{m.tag}</span>
                     {soon && <span className="rl-mod-soon">Soon</span>}
@@ -166,6 +168,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                 >
                   <div className="rl-deep-copy">
                     <div className="rl-deep-top">
+                      <span className="rl-deep-glyph" aria-hidden><InstrumentIcon id={m.id} size={20} /></span>
                       <span className="rl-deep-idx">{String(m.index).padStart(2, "0")}</span>
                       <span className="rl-deep-tag">{m.tag}</span>
                       <span className="rl-deep-aud">{m.audience}</span>
