@@ -7,6 +7,10 @@ import { SITE } from "@/lib/site";
 // the root layout (globals.css is only imported per route-group) so the tokens are
 // truly global.
 import "./phosphor-tokens.css";
+// Command-key button system (.bo-btn). Global (not imported from Button.tsx) so
+// the tsx test runner — which can't parse per-component CSS imports — stays happy
+// and every surface reads the same button styles. Loads after the tokens it uses.
+import "@/components/ui/button.css";
 
 const anton = Anton({
   weight: "400",
