@@ -795,6 +795,7 @@ export type SpxVoiceEvent = {
   kind:
     | "flip-cross"
     | "king-migrate"
+    | "pin-migrate"
     | "wall-lifecycle"
     | "vwap-cross"
     | "ema-flip"
@@ -817,6 +818,9 @@ export type SpxVoiceEvent = {
 const WALL_DELTA_PCT = 0.35;
 /** Ignore wall lifecycle on tiny nodes (noise floor, $ gamma). */
 const WALL_MIN_ABS = 250_000;
+/** Minimum max-pain (pin) move to report a migration — one SPX strike (5 pts), so ordinary
+ *  recompute jitter doesn't spam the rail but a real pin step into the close does. */
+const MAXPAIN_STEP_MIN = 5;
 /** Max events emitted per tick — highest-priority first, the rest wait for the next transition. */
 const MAX_EVENTS_PER_TICK = 5;
 
@@ -869,6 +873,21 @@ export function detectSpxVoiceEvents(
       tone: upStep ? "bull" : "bear",
       at,
       line: `⚑ king put ${fmtLevel(prev.kingPut.strike)}→${fmtLevel(next.kingPut.strike)} — support stepped ${upStep ? "UP → dips bought sooner" : "DOWN → floor is lower now"}`,
+    });
+  }
+
+  // 2b) Pin / max-pain migration — for a 0DTE desk the drift of the max-pain magnet into the close
+  // is exactly what traders watch (the pin they're being dragged toward moved). The prior engine
+  // surfaced max-pain only as a static watch-level and never announced when it STEPPED. Fire on a
+  // real strike step (≥ MAXPAIN_STEP_MIN) so ordinary recompute jitter doesn't spam the rail.
+  if (prev.maxPain != null && next.maxPain != null && Math.abs(next.maxPain - prev.maxPain) >= MAXPAIN_STEP_MIN) {
+    const up = next.maxPain > prev.maxPain;
+    events.push({
+      key: `pin:${Math.round(prev.maxPain)}->${Math.round(next.maxPain)}`,
+      kind: "pin-migrate",
+      tone: up ? "bull" : "bear",
+      at,
+      line: `◎ pin ${fmtLevel(prev.maxPain)}→${fmtLevel(next.maxPain)} — max-pain magnet stepped ${up ? "UP → close-drift target higher" : "DOWN → close-drift target lower"}`,
     });
   }
 

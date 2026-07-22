@@ -578,3 +578,20 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Follow-ups (noted):** the MC diffusion ×tFracAt over-suppresses late-session noise; the
   trend-day degrade never fires live (recentReturns not passed) — both tracked for a later PR.
 - **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
+
+## 2026-07-22 — Commentary rail never announced a pin/max-pain migration (P2, FIXED — signal gap)
+
+### P2 — 0DTE pin (max-pain magnet) drift was silent in the live commentary
+- **Symptom (from the left-pane audit):** `detectSpxVoiceEvents` fired on γ-flip crosses, king-wall
+  migrations, wall build/fade, VWAP, EMA, HOD/LOD etc., but had NO event for the max-pain (pin)
+  magnet stepping — even though for a 0DTE desk a pin drifting into the close is exactly what a
+  trader watches. Max pain surfaced only as a static "watch level," never announced when it moved.
+- **Fix (`spx-live-voice.ts`):** new `pin-migrate` event kind. When `maxPain` steps ≥ one SPX strike
+  (`MAXPAIN_STEP_MIN = 5`) between snapshots, the rail emits `◎ pin 7,500→7,510 — max-pain magnet
+  stepped UP → close-drift target higher` (bull on up-step, bear on down-step). Sub-strike jitter is
+  suppressed; the existing per-key cooldown dedupes repeats.
+- **Tests:** `spx-live-voice.test.ts` — up-step (bull), down-step (bear), sub-strike jitter ignored;
+  53 pass. `tsc --noEmit` clean.
+- **Related gap noted (not fixed here):** the `rsi` event kind is dead on the live rail (the desk
+  feed carries no `rsi`, so overbought/oversold never fires) — a follow-up (wire RSI or remove).
+- **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
