@@ -109,12 +109,14 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
         ctx.moveTo(s.x0, s.y + s.h0);
         ctx.lineTo(s.x1, s.y + s.h1);
         ctx.stroke();
-        // Bright vertical cap on the RIGHT edge when the wall is building this bucket (or is being
-        // born) — the "forming right now" tick the eye catches. Height slightly exceeds the band.
-        if (s.building || s.birth) {
+        // Bright vertical flash ONLY at a wall's BIRTH (its first in-window bucket) — the "a new wall
+        // formed here" cue. Building/fading is NOT capped per-bucket: it's already carried by the
+        // band's brightness (a1) and thickness (h1), so a per-bucket cap just painted a picket-fence
+        // of ticks over a steady wall. Birth is rare, so this stays a clean occasional marker.
+        if (s.birth) {
           ctx.strokeStyle = withA(s.color, EDGE_ALPHA);
-          ctx.lineWidth = s.birth ? 2 : 1.4;
-          const cap = s.h1 + (s.birth ? 3 : 1.5);
+          ctx.lineWidth = 2;
+          const cap = s.h1 + 3;
           ctx.beginPath();
           ctx.moveTo(s.x1, s.y - cap);
           ctx.lineTo(s.x1, s.y + cap);
