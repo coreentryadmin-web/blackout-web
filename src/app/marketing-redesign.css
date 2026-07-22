@@ -207,7 +207,8 @@
 @media(max-width:860px){.rl-tier-grid{grid-template-columns:1fr;max-width:420px;margin-inline:auto}}
 
 /* ── FAQ ──────────────────────────────────────────────────────────────────── */
-.rl-faq-page{padding:120px 0 90px}
+.rl-faq-page{padding:120px 0 90px;position:relative;overflow:hidden}
+.rl-faq-page .rl-wrap{position:relative;z-index:1}
 .rl-faq-inner{max-width:820px;margin:0 auto}
 .rl-faq-inner h1{font-size:clamp(36px,6vw,64px);margin-top:14px}
 .rl-faq-inner>p{color:var(--rl-dim);margin-top:14px;font-size:16px}
