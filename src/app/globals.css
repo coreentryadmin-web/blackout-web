@@ -299,6 +299,11 @@ body {
 
   .learn-shell {
     @apply content-rail;
+    /* Full-bleed: extend the docs shell to the full viewport width (was capped
+       at --content-max / max-w-7xl and centered). The sidebar stays fixed-width;
+       the reading column absorbs the extra room. */
+    max-width: none;
+    padding-inline: clamp(1.5rem, 4vw, 4.5rem);
   }
   .learn-shell-grid {
     @apply grid gap-8 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-12;
