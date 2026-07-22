@@ -57,6 +57,9 @@ type GexHeatmapResponse = {
   spot?: number;
   asof?: string;
   expiries?: string[];
+  /** The near-term expiry subset (front ~15). Used to split the color scale so far-dated monthly
+   *  columns don't flatten the near-term heat when the full table is shown. */
+  near_term_expiries?: string[];
   strikes?: number[];
   gex?: MetricBlock;
   vex?: MetricBlock;
@@ -215,7 +218,21 @@ export function SpxGexMatrixHeatmap({
   );
   const cells = block?.cells ?? {};
   const expiriesAll = data?.expiries ?? [];
-  const displayExpiries = useMemo(() => expiriesAll.slice(0, MAX_EXPIRY_COLS), [expiriesAll]);
+  // Full table by default (user wants the complete GEX/VEX matrix, every expiry as a column);
+  // a "Near" toggle collapses back to the compact near-term rail. The far-dated columns are
+  // already in the payload (cells carry near + far), so this is a pure client-render expansion.
+  const [showAllCols, setShowAllCols] = useState(true);
+  const displayExpiries = useMemo(
+    () => (showAllCols ? expiriesAll : expiriesAll.slice(0, MAX_EXPIRY_COLS)),
+    [expiriesAll, showAllCols]
+  );
+  // The near-term expiry set drives the COLOR scale split below: far-dated monthly OpEx cells are
+  // orders of magnitude larger than near-term ones, so a single shared peak would wash the whole
+  // near-term block to near-zero alpha. Near and far columns are each scaled to their OWN peak.
+  const nearTermExpirySet = useMemo(
+    () => new Set(data?.near_term_expiries ?? expiriesAll.slice(0, MAX_EXPIRY_COLS)),
+    [data?.near_term_expiries, expiriesAll]
+  );
   const shiftLeaderCells = useMemo(
     () => pickGexShiftLeaderCells(block?.strike_totals, cells, displayExpiries, activeShift),
     [block?.strike_totals, cells, displayExpiries, activeShift]
@@ -312,20 +329,26 @@ export function SpxGexMatrixHeatmap({
     [odteTotals, overlaySpot]
   );
 
-  const peak = useMemo(() => {
-    let p = 0;
+  // Two-tier color peak: near-term and far-dated columns each scale to their OWN maximum, so adding
+  // the (much larger) far-dated monthly columns to the full table doesn't flatten the near-term map.
+  const { nearPeak, farPeak } = useMemo(() => {
+    let near = 0,
+      far = 0;
     for (const strike of strikesAxis) {
       const row = cells[String(strike)];
       if (!row) continue;
       for (const e of displayExpiries) {
         const v = row[e];
-        if (typeof v === "number" && Number.isFinite(v)) {
-          p = Math.max(p, Math.abs(v));
-        }
+        if (typeof v !== "number" || !Number.isFinite(v)) continue;
+        const a = Math.abs(v);
+        if (nearTermExpirySet.has(e)) near = Math.max(near, a);
+        else far = Math.max(far, a);
       }
     }
-    return p;
-  }, [cells, strikesAxis, displayExpiries]);
+    return { nearPeak: near, farPeak: far || near };
+  }, [cells, strikesAxis, displayExpiries, nearTermExpirySet]);
+  // Near-term peak drives the Net column (a near-term aggregate) and any near-term cell.
+  const peak = nearPeak;
 
   const spotStrike = useMemo(() => {
     if (!(overlaySpot > 0) || strikesAxis.length === 0) return null;
@@ -542,6 +565,26 @@ export function SpxGexMatrixHeatmap({
             );
           })}
         </div>
+        {expiriesAll.length > MAX_EXPIRY_COLS && (
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-[9px] uppercase tracking-wider text-sky-300/60">
+              {displayExpiries.length} {displayExpiries.length === 1 ? "expiry" : "expiries"}
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowAllCols((v) => !v)}
+              aria-pressed={showAllCols}
+              title={
+                showAllCols
+                  ? "Full table — every expiry. Click for near-term columns only."
+                  : "Near-term columns only. Click for the full table."
+              }
+              className="rounded border border-white/15 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-sky-200 hover:border-sky-300/60 hover:text-sky-100"
+            >
+              {showAllCols ? "Full" : "Near"}
+            </button>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-[10px]">
           <div>
             <span className="text-sky-300 uppercase tracking-wider">
@@ -693,6 +736,9 @@ export function SpxGexMatrixHeatmap({
                       const has = typeof v === "number" && Number.isFinite(v);
                       const val = has ? v : 0;
                       const isColumnKing = columnKings.get(e) === strike;
+                      // Far-dated columns scale to their own (much larger) peak so both blocks show
+                      // gradient instead of the near-term map washing flat against a monthly wall.
+                      const cellPeak = nearTermExpirySet.has(e) ? nearPeak : farPeak;
                       const columnExtremes = columnExtremeWalls.get(e);
                       const isColumnCallWall = has && columnExtremes?.callWall === strike;
                       const isColumnPutWall = has && columnExtremes?.putWall === strike;
@@ -719,8 +765,8 @@ export function SpxGexMatrixHeatmap({
                                 : isColumnPutWall
                                   ? heatmapMatrixExtremeCellStyle("negative")
                                   : {
-                                      ...heatmapCellStyle(val, peak, lens),
-                                      ...heatmapCellTextStyle(val, peak),
+                                      ...heatmapCellStyle(val, cellPeak, lens),
+                                      ...heatmapCellTextStyle(val, cellPeak),
                                     }
                               : {}),
                           }}
