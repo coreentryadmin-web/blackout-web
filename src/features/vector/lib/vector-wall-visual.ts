@@ -2,9 +2,18 @@ import type { LineWidth } from "lightweight-charts";
 import type { WallIntegrityTier } from "./vector-wall-integrity";
 
 /** Faint floor so a weak wall is a ghost, not a peer of the session king (Skylit-style
- *  high contrast). Was 0.12 — too bright, which washed every rail to the same weight. */
+ *  high contrast). Was 0.12 — too bright, which washed every rail to the same weight.
+ *  NOTE: this floor governs the ABSOLUTE path (alphaForPct/markerSizeForPct, the legacy
+ *  LineSeries fallback + width). The on-chart bead RAIL uses REL_ALPHA_MIN below. */
 const ALPHA_MIN = 0.05;
 const ALPHA_MAX = 1;
+/** Brighter floor for the frame-relative bead rail. Raised from the shared 0.05: on a live
+ *  desk the beads were rendering "too light" — a mid-strength wall (half the king) sat at
+ *  ~0.29 alpha and early-session modeled beads were near-invisible. A 0.14 floor keeps even
+ *  a weak wall legibly present against the #040407 ground while the king still tops out at 1,
+ *  so contrast is preserved but the whole rail reads brighter. Separate from ALPHA_MIN so the
+ *  absolute/legacy path (and its pinned tests) are untouched. */
+const REL_ALPHA_MIN = 0.14;
 const WIDTH_MIN: LineWidth = 1;
 const WIDTH_MAX: LineWidth = 4;
 /** Slightly larger beads — reference product reads chunky on mobile, not pinpoints. */
@@ -109,11 +118,13 @@ export function haloRingForTier(tier?: WallIntegrityTier | null): {
 // preserved at any absolute concentration (6% SPX or 40% AMD alike).
 
 /** Contrast exponent for relative strength. >1 widens the gap so a half-strength wall reads
- *  clearly thinner than the king rather than nearly as fat. Raised from 1.4 → 2.0 so a wall
- *  at half the king's magnitude renders at 25% weight (not 38%) — the size gap between a king
- *  and a fading wall is obvious at a glance rather than a subtle difference you have to squint
- *  at, and a wall that builds up over the session visibly fattens its trail. */
-const REL_CONTRAST_EXP = 2.0;
+ *  clearly thinner than the king rather than nearly as fat. Tuned to 1.6: 2.0 (squared) was
+ *  crushing mid-strength walls into the floor — a wall at half the king's magnitude rendered
+ *  at just 25% weight and read as near-dead, part of the "beads too light" report. At 1.6 a
+ *  half-king wall reads ~33% (vs 25%) and a 70%-king wall ~57% (vs 49%) — the king↔straggler
+ *  contrast is still obvious, but real secondary walls stay legibly present instead of washing
+ *  out. Combined with REL_ALPHA_MIN this is the core brightness retune. */
+const REL_CONTRAST_EXP = 1.6;
 
 /** Frame-normalized strength in [0,1]: `pct` relative to the strongest wall in view (`maxPct`),
  *  raised to REL_CONTRAST_EXP for separation. 0 for non-positive/non-finite input or maxPct ≤ 0. */
@@ -127,15 +138,66 @@ export function markerSizeForPctRel(pct: number, maxPct: number): number {
   return MARKER_SIZE_MIN + relStrengthT(pct, maxPct) * (MARKER_SIZE_MAX - MARKER_SIZE_MIN);
 }
 
-/** Per-bead core opacity relative to the frame's strongest wall. */
+/** Per-bead core opacity relative to the frame's strongest wall. Uses the brighter REL_ALPHA_MIN
+ *  floor so a secondary wall stays legibly present, not a near-invisible ghost. */
 export function alphaForPctRel(pct: number, maxPct: number): number {
-  return ALPHA_MIN + relStrengthT(pct, maxPct) * (ALPHA_MAX - ALPHA_MIN);
+  return REL_ALPHA_MIN + relStrengthT(pct, maxPct) * (ALPHA_MAX - REL_ALPHA_MIN);
 }
 
 /** Per-bead halo opacity relative to the frame's strongest wall (glow grows with strength). */
 export function glowAlphaForPctRel(pct: number, maxPct: number): number {
   const t = relStrengthT(pct, maxPct);
-  return (ALPHA_MIN + t * (ALPHA_MAX - ALPHA_MIN)) * (0.22 + t * 0.18);
+  return (REL_ALPHA_MIN + t * (ALPHA_MAX - REL_ALPHA_MIN)) * (0.22 + t * 0.18);
+}
+
+// ── ABSOLUTE-MAGNITUDE GLOW CHANNEL (magnitude ≠ frame-relative strength) ────────────────────
+//
+// Size and core opacity encode FRAME-RELATIVE strength (a wall vs the current king) — deliberately
+// normalized so a 6% SPX king and a 40% AMD king both read as "the dominant wall." But that
+// normalization discards ABSOLUTE magnitude: a genuinely massive wall (40% of all chain gamma
+// parked on one strike) and a modest 6% king look identical. The glow HALO is the free channel to
+// restore it — a truly heavy wall gets a wider, brighter halo regardless of its frame rank, so
+// "this is a monster wall" reads even when a slightly bigger one shares the frame. Size/opacity
+// (relative) stay untouched, so the frame-contrast tests hold; only the halo gains a second voice.
+
+/** Halo brightness/size multiplier from a wall's ABSOLUTE share of chain gamma (independent of the
+ *  in-frame king). Neutral 1× at zero magnitude, up to ~1.7× at/above the 7% saturation point. */
+export function magnitudeGlowBoost(pct: number): number {
+  return 1 + magnitudeT(pct) * 0.7;
+}
+
+// ── GROWTH / DECAY VELOCITY CHANNEL (scaling with time — building vs unwinding) ──────────────────
+//
+// Nothing in the rail encoded a wall's RATE of change: a wall holding steady at 20% and a wall that
+// just rocketed from 5% to 20% drew identical beads. But "dealers are STACKING this wall right now"
+// vs "this wall is bleeding out" is exactly the 0DTE signal a member wants. This compares a bead's
+// share to the PREVIOUS bucket's share (both normalized to the frame king) and modulates the bead:
+// a building wall flares brighter + fatter (charging up), a fading wall dims + narrows (dying off),
+// steady walls are neutral. This is what makes the rail visibly BREATHE over the session.
+
+const GROWTH_EPS = 0.02; // |Δ share-of-king| below this is "steady" — ignore honest bucket jitter.
+
+/** Per-bead growth/decay modulation from the change in frame-relative share vs the previous bucket.
+ *  `prevPct` null/undefined (first bead in a trail) → neutral. Returns clamped alpha/size multipliers
+ *  plus building/fading flags for the caller (e.g. a birth/afterglow cue). */
+export function growthModulation(
+  pct: number,
+  prevPct: number | null | undefined,
+  maxPct: number
+): { alphaMul: number; sizeMul: number; building: boolean; fading: boolean } {
+  const neutral = { alphaMul: 1, sizeMul: 1, building: false, fading: false };
+  if (prevPct == null || !Number.isFinite(prevPct) || !Number.isFinite(pct) || !(maxPct > 0)) return neutral;
+  const dRel = (pct - prevPct) / maxPct; // change in share-of-king since last bucket
+  if (dRel > GROWTH_EPS) {
+    // Building: scale the flare with how fast it's stacking, capped so a single burst can't blow out.
+    const drive = Math.min(1, (dRel - GROWTH_EPS) / 0.25);
+    return { alphaMul: 1 + drive * 0.35, sizeMul: 1 + drive * 0.28, building: true, fading: false };
+  }
+  if (dRel < -GROWTH_EPS) {
+    const drive = Math.min(1, (-dRel - GROWTH_EPS) / 0.25);
+    return { alphaMul: 1 - drive * 0.32, sizeMul: 1 - drive * 0.22, building: false, fading: true };
+  }
+  return neutral;
 }
 
 /**
@@ -145,8 +207,10 @@ export function glowAlphaForPctRel(pct: number, maxPct: number): number {
  * renders as a bright, solid full-width row (verified live on AMZN/TSLA: the modeled reconstruction
  * back-projects the closing chain across every bucket → full-width rows, and at 0.4 they looked
  * indistinguishable from observed walls — re-creating the "axis-to-axis walls" the modeled underlay
- * was supposed to visually disown). 0.15 makes even the session-king strike a quiet ghost, so the
- * moment a real observed sample overwrites it the solid bead is unmistakably "more real."
+ * was supposed to visually disown). 0.26 keeps the modeled prefix a clear ghost — well under half an
+ * observed bead's weight so a real recorded sample always reads as "more real" the moment it
+ * overwrites — while lifting it off the 0.15 floor where early-session (mostly-modeled) rails were
+ * reported as "too light" / near-invisible before enough observed samples accrued.
  * Honesty is the whole point: modeled ≠ observed must be visible at a glance.
  */
-export const MODELED_ALPHA_SCALE = 0.15;
+export const MODELED_ALPHA_SCALE = 0.26;

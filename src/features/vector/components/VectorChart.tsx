@@ -58,7 +58,9 @@ import {
   alphaForPct,
   alphaForPctRel,
   glowAlphaForPctRel,
+  growthModulation,
   haloRingForTier,
+  magnitudeGlowBoost,
   markerSizeForPctRel,
   widthForPct,
   MODELED_ALPHA_SCALE,
@@ -193,6 +195,10 @@ const STALE_TRAIL_FADE = 0.15;
 /** Extra opacity added to a wall's BIRTH bead (its first observed candle) so the moment/price a
  *  new wall forms visibly pops out of its trail rather than looking identical to every other bead. */
 const BIRTH_BEAD_ALPHA_BOOST = 0.35;
+/** Opacity factor for a dead wall's DISSIPATION halo — a wide, dim ring on the last bucket a
+ *  departed wall was seen, so it reads as "dissolved here" rather than simply stopping. Kept low
+ *  (a faint wash) because the whole dead trail is already dimmed by STALE_TRAIL_FADE. */
+const DEATH_BEAD_ALPHA = 0.5;
 
 function chartIsFollowingLive(chart: IChartApi): boolean {
   const pos = chart.timeScale().scrollPosition();
@@ -819,12 +825,21 @@ function buildWallBeadMarkers(
       // Observed beads (modeled falsy) are unchanged.
       const modeled = p.modeled === true;
       const alphaScale = (modeled ? MODELED_ALPHA_SCALE : 1) * staleFade;
-      const size = markerSizeForPctRel(p.pct, maxPct) * (modeled ? 0.6 : 1);
-      const coreAlpha = alphaForPctRel(p.pct, maxPct) * alphaScale;
-      const glowAlpha = glowAlphaForPctRel(p.pct, maxPct) * alphaScale;
-      // Halo + core — glow on dominant walls (per-bead size + opacity). Multiplier reduced
-      // from 2.2 → 1.6 so the halo doesn't mask the core's magnitude-scaled size — a fat king
-      // bead must look clearly larger than a fading straggler, not two similar-looking blobs.
+      // Growth/decay velocity: compare this bucket's share to the previous one so a wall being
+      // STACKED right now flares brighter+fatter and one bleeding out dims+narrows — the rail
+      // breathes instead of just painting. Neutral for the first bead and for modeled ghosts
+      // (their reconstructed prefix has no honest bucket-to-bucket velocity).
+      const prevPct = i > 0 ? points[i - 1]!.pct : null;
+      const mod = modeled
+        ? { alphaMul: 1, sizeMul: 1, building: false, fading: false }
+        : growthModulation(p.pct, prevPct, maxPct);
+      const size = markerSizeForPctRel(p.pct, maxPct) * (modeled ? 0.6 : 1) * mod.sizeMul;
+      const coreAlpha = Math.min(1, alphaForPctRel(p.pct, maxPct) * alphaScale * mod.alphaMul);
+      // Glow carries TWO independent channels the core can't: absolute magnitude (a genuinely
+      // massive wall halos wider/brighter regardless of its frame rank) and the same build/fade
+      // velocity. Multiplier reduced from 2.2 → 1.6 so the halo doesn't mask the core's size.
+      const glowAlpha =
+        glowAlphaForPctRel(p.pct, maxPct) * alphaScale * mod.alphaMul * (modeled ? 1 : magnitudeGlowBoost(p.pct));
       markers.push({
         time,
         position: "atPriceMiddle",
@@ -863,6 +878,22 @@ function buildWallBeadMarkers(
           shape: "circle",
           color: withAlpha(baseColor, Math.min(1, coreAlpha + BIRTH_BEAD_ALPHA_BOOST)),
           size: size + 1.5,
+        });
+      }
+      // DEATH bead: the LAST bucket of a wall that has left the dominant set (trail.active === false)
+      // is where it died. Mark it with a wide, very-faint "dissipation" halo — larger than the core
+      // but dim — so the member sees the wall didn't just stop, it dissolved here. Skip modeled
+      // ghosts (no real death) and skip when the terminal bead already got a birth/rebirth boost
+      // (a one-bucket blip is a blip, not a death worth haloing).
+      const isDeath = !trail.active && i === points.length - 1 && !modeled && !(trueBirth || reborn);
+      if (isDeath) {
+        markers.push({
+          time,
+          position: "atPriceMiddle",
+          price: trail.strike,
+          shape: "circle",
+          color: withAlpha(baseColor, Math.min(1, glowAlpha * DEATH_BEAD_ALPHA)),
+          size: size * 2.1,
         });
       }
     }
