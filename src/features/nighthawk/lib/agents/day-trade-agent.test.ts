@@ -140,3 +140,18 @@ test("optionsPlayWithinMaxDte: weekly/monthly are not same-day and drop under th
   assert.equal(optionsPlayWithinMaxDte("META 520P (weekly)", 0), false);
   assert.equal(optionsPlayWithinMaxDte("AAPL 230C (monthly)", 1), false);
 });
+
+// ── optionsPlayWithinMaxDte: month-name expiry ("— Jul 27") — the LIVE deterministic format ──────
+// The deterministic synthesis emits "SPY $565 CALL @ $4.00 — Jul 27" (shortExpiry: month name, no
+// year). Without a month-name branch this fell to reject-if-tight and the whole day board dropped.
+import { todayEt as _todayEt } from "@/lib/et-date";
+test("optionsPlayWithinMaxDte: month-name today = 0DTE keeps; far month drops", () => {
+  const t = _todayEt();
+  const monName = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][Number(t.slice(5,7)) - 1]!;
+  const dd = Number(t.slice(8, 10));
+  assert.equal(optionsPlayWithinMaxDte(`SPY $565 CALL @ $4.00 — ${monName} ${dd}`, 0), true, "today's month-name expiry is 0DTE");
+  assert.equal(optionsPlayWithinMaxDte(`SPY $565 CALL @ $4.00 — ${monName} ${dd}`, 1), true);
+  // A month ~6 months away must drop at maxDte 0/1 (pick a month clearly not near today).
+  const farMon = monName === "Jan" ? "Jul 15" : "Jan 15";
+  assert.equal(optionsPlayWithinMaxDte(`SPY $565 CALL @ $4.00 — ${farMon}`, 0), false, "far month-name expiry drops at 0DTE");
+});

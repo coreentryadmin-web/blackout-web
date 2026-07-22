@@ -108,10 +108,34 @@ export function optionsPlayWithinMaxDte(optionsPlay: string, maxDte: number): bo
     if (Number.isFinite(lowDte)) return lowDte <= maxDte;
   }
 
-  // 3) "weekly"/"monthly" markers → not a same-day expiry; drop under a tight 0–1 DTE day filter.
+  // 3) MONTH-NAME expiry ("… — Jul 27") — the format the deterministic synthesis actually emits
+  //    (deterministic-edition.ts formatOptionsPlay → shortExpiry: "Mon DD", no year). This is the
+  //    LIVE production format, so without this branch the entire day board fell through to the
+  //    reject-if-tight default below — the structural other half of the empty-0DTE-board bug. Year
+  //    is inferred from today; a wrap across year-end (today Dec, expiry Jan) is corrected.
+  const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const mon = text.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b/i);
+  if (mon) {
+    const monIdx = MONTHS.indexOf(mon[1]!.slice(0, 3).toLowerCase());
+    const day = Number(mon[2]);
+    if (monIdx >= 0 && Number.isFinite(day)) {
+      const todayEt = todayEtStr();
+      const year = Number(todayEt.slice(0, 4));
+      const todayMs = new Date(`${todayEt}T12:00:00-04:00`).getTime();
+      const mm = String(monIdx + 1).padStart(2, "0");
+      const dd = String(day).padStart(2, "0");
+      let dte = Math.round((new Date(`${year}-${mm}-${dd}T16:00:00-04:00`).getTime() - todayMs) / 86_400_000);
+      if (dte < -60) {
+        dte = Math.round((new Date(`${year + 1}-${mm}-${dd}T16:00:00-04:00`).getTime() - todayMs) / 86_400_000);
+      }
+      return dte <= maxDte;
+    }
+  }
+
+  // 4) "weekly"/"monthly" markers → not a same-day expiry; drop under a tight 0–1 DTE day filter.
   if (/\b(weekly|monthly|leaps?)\b/i.test(text)) return maxDte > 1;
 
-  // 4) No parseable expiry AND no marker — reject when enforcing tight DTE (0–1 DTE day trade).
+  // 5) No parseable expiry AND no marker — reject when enforcing tight DTE (0–1 DTE day trade).
   return maxDte > 1;
 }
 

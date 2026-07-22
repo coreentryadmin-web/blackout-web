@@ -34,8 +34,11 @@ export type NormalizedHuntFilters = {
 
 export function huntModeWeights(mode: HuntMode): HuntModeWeights {
   switch (mode) {
+    // Day mode IS the intraday 0–1 DTE surface — the contract picker (pickChainContract) uses this
+    // ceiling, and the day filter enforces 0–1 DTE. It was 5 (an overnight-swing value), which forced
+    // the picker to select ≥5-DTE contracts that the day filter then dropped → empty 0DTE board.
     case "day":
-      return { maxDte: 5, minLiquidity: 500_000, sweepBonus: 1.5, streakWeight: 1.0 };
+      return { maxDte: 1, minLiquidity: 500_000, sweepBonus: 1.5, streakWeight: 1.0 };
     case "swing":
       return { maxDte: 30, minLiquidity: 250_000, sweepBonus: 1.2, streakWeight: 1.3 };
     case "leap":
