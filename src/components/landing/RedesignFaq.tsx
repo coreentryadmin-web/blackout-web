@@ -1,4 +1,5 @@
 import { FAQ_CATEGORIES, FAQ_ITEMS } from "@/lib/faq/content";
+import { RetroGrid } from "@/components/ui/motion/RetroGrid";
 
 /**
  * Redesigned FAQ — native <details> accordion (zero client JS), restyled into the
@@ -9,6 +10,8 @@ export function RedesignFaq() {
   return (
     <div className="rl">
       <section className="rl-faq-page">
+        {/* Perspective phosphor floor behind the briefing — matches pricing/CTA. */}
+        <RetroGrid lineColor="rgba(191,95,255,0.14)" opacity={0.4} />
         <div className="rl-wrap">
           <div className="rl-faq-inner">
             <span className="rl-kicker"><span className="dot" aria-hidden />The briefing</span>
