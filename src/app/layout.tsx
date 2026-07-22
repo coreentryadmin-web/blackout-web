@@ -15,6 +15,10 @@ import "@/components/ui/button.css";
 // as button.css above — loading.tsx must stay a dependency-light server component,
 // so its keyframes/rules live here rather than being imported per-component.
 import "./phosphor-loading.css";
+// Phosphor motion primitives (BorderBeam, RetroGrid) — Magic-UI-caliber effects
+// re-authored natively in the phosphor language. Global for the same reason as
+// the loaders: the primitives are pure-CSS server components.
+import "./phosphor-motion.css";
 
 const anton = Anton({
   weight: "400",

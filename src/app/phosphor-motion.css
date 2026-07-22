@@ -1,0 +1,102 @@
+/* =========================================================================
+   PHOSPHOR MOTION — 21st.dev / Magic-UI-caliber motion primitives, re-authored
+   natively in the PHOSPHOR LADDER language (cold-violet CRT, "data is the only
+   ornament"). No framer-motion, no component library — pure CSS so each
+   primitive stays a dependency-light server component and every motion is
+   prefers-reduced-motion gated at the bottom of this file.
+
+   Primitives:
+     .pm-beam       — BorderBeam: a phosphor comet tracing a rounded border
+     .pm-retrogrid  — RetroGrid: a perspective grid floor receding to a horizon
+   ========================================================================= */
+
+/* Animatable angle for the border comet (needs @property to interpolate). */
+@property --pm-beam-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* ---- BorderBeam ---------------------------------------------------------
+   A single bright head + trailing arc sweeps around the parent's border. The
+   parent must be position:relative with its own border-radius; the beam ring
+   inherits that radius and is masked to a hairline band (mask-composite:exclude
+   punches out the interior, leaving only the border ring lit). */
+.pm-beam {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: var(--pm-beam-width, 1.5px);
+  pointer-events: none;
+  z-index: 3;
+  background: conic-gradient(
+    from var(--pm-beam-angle),
+    transparent 0deg,
+    transparent 298deg,
+    color-mix(in srgb, var(--pm-beam-color, #bf5fff) 55%, transparent) 330deg,
+    var(--pm-beam-color, #bf5fff) 350deg,
+    #ffffff 358deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: pm-beam-spin var(--pm-beam-dur, 6s) linear infinite;
+  animation-delay: var(--pm-beam-delay, 0s);
+}
+
+@keyframes pm-beam-spin {
+  to { --pm-beam-angle: 360deg; }
+}
+
+/* ---- RetroGrid ----------------------------------------------------------
+   A tilted, scrolling phosphor grid floor. The plane is rotated into
+   perspective and its grid lines scroll toward the viewer; a top-fade mask
+   dissolves it into the horizon so it reads as a receding floor, not a sheet. */
+.pm-retrogrid {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  perspective: 240px;
+  opacity: var(--pm-grid-opacity, 0.5);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 55%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 55%, #000 100%);
+}
+
+.pm-retrogrid-plane {
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  bottom: -60%;
+  height: 160%;
+  transform: rotateX(64deg);
+  transform-origin: 50% 100%;
+  background-image:
+    linear-gradient(to right, var(--pm-grid-line, rgba(191, 95, 255, 0.22)) 1px, transparent 0),
+    linear-gradient(to bottom, var(--pm-grid-line, rgba(191, 95, 255, 0.22)) 1px, transparent 0);
+  background-size: 56px 56px;
+  animation: pm-grid-scroll 16s linear infinite;
+}
+
+@keyframes pm-grid-scroll {
+  to { background-position: 0 56px; }
+}
+
+/* ---- Reduced motion: no travel; primitives degrade to a static, quiet state.
+   The beam becomes a faint uniform ring; the grid floor stops scrolling but
+   still frames the section. */
+@media (prefers-reduced-motion: reduce) {
+  .pm-beam {
+    animation: none;
+    background: conic-gradient(
+      var(--pm-beam-color, #bf5fff),
+      var(--pm-beam-color, #bf5fff)
+    );
+    opacity: 0.16;
+  }
+  .pm-retrogrid-plane {
+    animation: none;
+  }
+}

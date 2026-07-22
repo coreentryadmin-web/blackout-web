@@ -251,6 +251,10 @@
 /* Hero right-column brand emblem (replaced the SPX desk mock). The PNG carries its
    own black ground + green energy, so it sits on the void hero; the drop-shadow adds
    an emerald bloom that breathes. Points at /images/blackout-emblem.png. */
+/* Emblem "reactor" housing — a rounded frame the BorderBeam orbits. fit-content
+   so the frame hugs the emblem; the beam ring inherits its 26px radius. */
+.rl-hero-emblem-frame{position:relative;margin:0 auto;width:-moz-fit-content;width:fit-content;max-width:100%;border-radius:26px;padding:22px;border:1px solid var(--rl-line);background:radial-gradient(120% 120% at 50% 40%,color-mix(in srgb,var(--rl-violet) 8%,transparent),transparent 70%);box-shadow:0 0 60px rgba(191,95,255,.10) inset}
+.rl-hero-emblem-frame .rl-hero-logo{margin:0;max-width:min(400px,68vw)}
 .rl-hero-logo{display:block;width:100%;max-width:min(480px,86%);height:auto;margin:0 auto;filter:drop-shadow(0 0 60px rgba(0,230,118,.34));animation:rl-logo-breathe 6.5s var(--rl-ease-breath,cubic-bezier(.4,0,.6,1)) infinite}
 @keyframes rl-logo-breathe{0%,100%{filter:drop-shadow(0 0 46px rgba(0,230,118,.26))}50%{filter:drop-shadow(0 0 74px rgba(0,230,118,.5))}}
 @media(max-width:900px){.rl-hero-logo{max-width:300px}}

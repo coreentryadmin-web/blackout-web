@@ -3,6 +3,8 @@ import type { CSSProperties } from "react";
 import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
 import { IMAGES, MARKETING_MODULE_IMAGES } from "@/lib/images";
 import { InstrumentIcon } from "@/components/ui/icons/InstrumentIcons";
+import { BorderBeam } from "@/components/ui/motion/BorderBeam";
+import { RetroGrid } from "@/components/ui/motion/RetroGrid";
 import { LandingRedesignFx } from "./LandingRedesignFx";
 import DealersLadderBackground from "@/components/render/DealersLadderBackground";
 
@@ -76,17 +78,21 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
             <div className="rl-reveal rl-in" style={{ transitionDelay: ".12s" }}>
               {/* Brand emblem as the hero's right-side statement (replaced the SPX desk
                   mock). 1254² master exported to max-quality webp (502KB vs 2.67MB png)
-                  — visually identical, ~5× faster hero paint. */}
-              {/* eslint-disable-next-line @next/next/no-img-element -- marketing hero brand logo */}
-              <img
-                src={IMAGES.brandEmblem}
-                alt="BlackOut"
-                className="rl-hero-logo"
-                width={1024}
-                height={1024}
-                fetchPriority="high"
-                decoding="async"
-              />
+                  — visually identical, ~5× faster hero paint. A phosphor border beam
+                  orbits its housing (the "reactor" framing the brand mark). */}
+              <div className="rl-hero-emblem-frame">
+                <BorderBeam color="var(--rl-violet)" duration="7s" width="1.6px" />
+                {/* eslint-disable-next-line @next/next/no-img-element -- marketing hero brand logo */}
+                <img
+                  src={IMAGES.brandEmblem}
+                  alt="BlackOut"
+                  className="rl-hero-logo"
+                  width={1024}
+                  height={1024}
+                  fetchPriority="high"
+                  decoding="async"
+                />
+              </div>
             </div>
           </div>
           <p className="rl-floor">
@@ -124,6 +130,9 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
               const soon = m.launchStatus === "soon";
               return (
                 <article key={m.id} className={`rl-mod rl-reveal ${size}`} style={{ "--a": m.accent, transitionDelay: `${i * 0.05}s` } as CSSProperties}>
+                  {/* Flagship card gets a border beam tinted to its accent — draws
+                      the eye to the anchor product without a second color channel. */}
+                  {size === "big" && <BorderBeam color="var(--a)" duration="7s" width="1.5px" />}
                   <div className="rl-mod-top">
                     <span className="rl-mod-glyph" aria-hidden><InstrumentIcon id={m.id} size={22} /></span>
                     <span className="rl-mod-idx">{String(m.index).padStart(2, "0")}</span>
@@ -278,6 +287,8 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
 
       {/* CLOSING */}
       <section className="rl-closing">
+        {/* Perspective phosphor floor receding to the horizon behind the final CTA. */}
+        <RetroGrid lineColor="rgba(191,95,255,0.20)" opacity={0.55} />
         <div className="rl-wrap">
           <span className="rl-kicker" style={{ justifyContent: "center" }}><span className="dot" aria-hidden />Ready when you are</span>
           <h2>Stop trading <span className="rl-gt">blind.</span></h2>
