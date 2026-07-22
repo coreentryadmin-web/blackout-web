@@ -25,7 +25,9 @@ const slug = (p) => (p === "/" ? "home" : p.replace(/^\//, "").replace(/\//g, "-
 const report = { base: BASE, at: new Date().toISOString(), pages: [], brokenLinks: [], buttons: {} };
 
 const browser = await chromium.launch({ headless: true, executablePath: EXEC, args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"] });
-const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+// reducedMotion so scroll-reveal (opacity:0 until in-view) sections render for
+// the full-page capture instead of showing as black voids.
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, reducedMotion: "reduce" });
 const page = await ctx.newPage();
 const consoleErrors = [];
 page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text().slice(0, 160)); });
@@ -41,7 +43,22 @@ for (const path of PAGES) {
     report.pages.push({ path, status: "NAV_ERROR", error: String(e).slice(0, 160) });
     continue;
   }
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1200);
+  // Scroll the whole page to trigger IntersectionObserver reveals + lazy images,
+  // then return to top, so the full-page capture shows every section.
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      let y = 0;
+      const tick = () => {
+        window.scrollTo(0, y);
+        y += Math.round(window.innerHeight * 0.8);
+        if (y < document.body.scrollHeight) setTimeout(tick, 120);
+        else { window.scrollTo(0, 0); setTimeout(resolve, 400); }
+      };
+      tick();
+    });
+  });
+  await page.waitForTimeout(900);
   const shot = join(OUT, `${slug(path)}.png`);
   await page.screenshot({ path: shot, fullPage: true });
 
