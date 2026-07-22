@@ -112,8 +112,10 @@ html.ios-app .cl-dividerRow {
   --surface-1: #0B1017;   /* panel */
   --surface-2: #0E141D;   /* panel, raised */
   --surface-3: #121A25;   /* menus / popovers */
-  --hairline: rgba(255, 255, 255, 0.07);
-  --hairline-strong: rgba(255, 255, 255, 0.13);
+  /* --hairline / --hairline-strong now live in phosphor-tokens.css (violet
+     signal grid), loaded globally from the root layout. The old white-alpha
+     values here were unused (0 consumers) and, loading after phosphor-tokens
+     on (site) routes, would have silently overridden the violet ones. */
 
   --radius-sm: 8px;
   --radius-md: 12px;
