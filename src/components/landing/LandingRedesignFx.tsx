@@ -96,42 +96,7 @@ export function LandingRedesignFx() {
       cleanups.push(() => { cancelAnimationFrame(raf); window.removeEventListener("resize", onResize); });
     }
 
-    // 5. per-product deep-dive visuals — one static mock per module, drawn once (+ redraw on resize).
-    const hx = (c: string, a: number) => { const n = parseInt(c.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; };
-    const drawPviz = (cv: HTMLCanvasElement) => {
-      const kind = cv.dataset.pviz || "";
-      const a = cv.dataset.a || "#00e676";
-      const ctx = cv.getContext("2d");
-      if (!ctx) return;
-      const r = cv.parentElement?.getBoundingClientRect();
-      const W = (r?.width || 320), H = Math.max(160, (r?.height || 200) - 40);
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, W, H);
-      const rng = (s: number) => { let x = Math.sin(s) * 1e4; return x - Math.floor(x); };
-      if (kind === "spx") { // GEX ladder
-        const rows = 7; for (let i = 0; i < rows; i++) { const y = 14 + i * ((H - 28) / rows); const w = (0.25 + rng(i + 1) * 0.7) * (W - 90); const c = i < 3 ? a : i === 3 ? "#7c5cff" : "#bf5fff"; ctx.fillStyle = hx(c, 0.14); ctx.fillRect(60, y, W - 90, 9); ctx.fillStyle = hx(c, 0.9); ctx.fillRect(60, y, w, 9); ctx.fillStyle = hx("#9AA7B6", 1); ctx.font = "10px ui-monospace"; ctx.fillText(String(7585 - i * 30), 8, y + 9); }
-      } else if (kind === "helix") { // flow bars
-        const n = 40; for (let i = 0; i < n; i++) { const x = 10 + i * ((W - 20) / n); const h = rng(i * 3.1) * (H - 30) + 6; const up = rng(i) > 0.4; ctx.fillStyle = hx(up ? a : "#ff4d57", rng(i * 2) > 0.6 ? 0.95 : 0.5); ctx.fillRect(x, H - 12 - h, ((W - 20) / n) - 2, h); }
-      } else if (kind === "thermal") { // heatmap grid
-        const cols = 12, rowsN = 6, cw = W / cols, ch = (H - 8) / rowsN; for (let y = 0; y < rowsN; y++) for (let x = 0; x < cols; x++) { ctx.globalAlpha = rng(x * 7 + y * 13) * 0.9 + 0.08; ctx.fillStyle = a; ctx.fillRect(x * cw + 1, y * ch + 4, cw - 2, ch - 2); } ctx.globalAlpha = 1;
-      } else if (kind === "largo") { // AI concentric + nodes
-        const cx = W / 2, cy = H / 2; ctx.globalAlpha = 0.5; ctx.strokeStyle = a; for (let i = 1; i <= 5; i++) { ctx.beginPath(); ctx.arc(cx, cy, i * 11, 0, 6.28); ctx.stroke(); } ctx.globalAlpha = 1; ctx.fillStyle = a; ctx.beginPath(); ctx.arc(cx, cy, 5, 0, 6.28); ctx.fill(); for (let i = 0; i < 6; i++) { const an = i * 1.05, d = 22 + rng(i) * 40; ctx.beginPath(); ctx.arc(cx + Math.cos(an) * d, cy + Math.sin(an) * d, 3, 0, 6.28); ctx.fill(); }
-      } else if (kind === "hawk") { // A-F grade cards
-        const grades = ["A", "A-", "B+", "A", "B"]; grades.forEach((g, i) => { const x = 12 + i * ((W - 24) / grades.length); const w = ((W - 24) / grades.length) - 8; ctx.strokeStyle = hx(a, 0.5); ctx.strokeRect(x, H / 2 - 26, w, 52); ctx.fillStyle = a; ctx.font = "700 22px system-ui"; ctx.fillText(g, x + 10, H / 2 + 6); });
-      } else { // vector radar
-        const cx = W / 2, cy = H / 2; ctx.strokeStyle = hx(a, 0.35); for (let i = 1; i <= 3; i++) { ctx.beginPath(); ctx.arc(cx, cy, i * (H / 8), 0, 6.28); ctx.stroke(); } ctx.fillStyle = a; for (let i = 0; i < 9; i++) { const an = rng(i) * 6.28, d = rng(i + 5) * (H / 2.4); ctx.globalAlpha = 0.5 + rng(i * 2) * 0.5; ctx.beginPath(); ctx.arc(cx + Math.cos(an) * d, cy + Math.sin(an) * d, 2.5, 0, 6.28); ctx.fill(); } ctx.globalAlpha = 1;
-      }
-    };
-    const pvizEls = Array.from(document.querySelectorAll<HTMLCanvasElement>("canvas[data-pviz]"));
-    if (pvizEls.length) {
-      const drawAll = () => pvizEls.forEach(drawPviz);
-      // draw once visible so the parent has layout dimensions
-      const pio = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { drawPviz(e.target as HTMLCanvasElement); pio.unobserve(e.target); } }), { threshold: 0.1 });
-      pvizEls.forEach((el) => pio.observe(el));
-      window.addEventListener("resize", drawAll);
-      cleanups.push(() => { pio.disconnect(); window.removeEventListener("resize", drawAll); });
-    }
+    // (Per-product deep-dive visuals now use real product screenshots — no canvas mocks.)
 
     return () => cleanups.forEach((fn) => fn());
   }, []);
