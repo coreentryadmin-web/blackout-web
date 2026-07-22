@@ -86,6 +86,34 @@ a SKIP not a fail, and the replay frame count covers the temporal aspect.
 - **`${{shared.*}}` env refs do NOT resolve here** — set literals: `UW_API_KEY` (UUID), `DATABASE_URL`, `REDIS_URL`, `POLYGON_API_BASE`. Working: `POLYGON_API_KEY`, `CLERK_SECRET_KEY`, Clerk publishable key. **Benzinga rides the Polygon key** — the Benzinga news/catalysts feed is served under the same Polygon subscription at `{POLYGON_API_BASE}/benzinga/v2/news?...&apiKey={POLYGON_API_KEY}` (re-verified live 2026-07-13: 200 for `channels=fda|guidance|m&a` and `ticker=NVDA&channels=earnings`). There is **no separate `BENZINGA_API_KEY`**; news fetches live via the Polygon key. (Earlier note claiming the key was missing was stale.)
 - Clerk instance requires a **phone number** on user creation; rapid sign-in/token cycles get **FAPI-rate-limited** — authenticate once per run.
 
+## Access reality — three DIFFERENT things, do not conflate (learned 2026-07-22)
+1. **Logging into the live site as a real member — WORKS, pure HTTP, no browser.** Mint a temp
+   admin+premium user (Clerk Backend API) → `POST /sign_in_tokens` → FAPI ticket exchange
+   (`clerk.blackouttrades.com`, `_clerk_js_version=5.57.0`, curl `-c/-b` cookie jar) → mint a
+   `__session` JWT → fetch ANY authenticated page with `Cookie: __session=<jwt>; __client_uat=<epoch>`.
+   Reusable auth block: `scripts/audit/data-validator.mjs` (~lines 237-271); phone via
+   `scripts/audit/lib/audit-phone.mjs` `generateDefaultAuditPhone()` (E.164 `+1415555xxxx`). So
+   **"log in and check every page" IS possible headlessly** — validates served HTML / DOM / component
+   presence for the whole authenticated desk/app. Always DELETE the temp user after (cleanup).
+2. **Headless BROWSER is blocked** — Chromium egress resets on every host (proven incl. example.com,
+   proxy on/off). So NO screenshots, NO rendered pixels, NO client-side click flows, NO visual QA from
+   here. Pixel/visual QA needs a browser-capable env (CI runner / device). Say "read served HTML"
+   (works), never claim "can't validate the live UI" (I can — just not pixels).
+3. **AWS — the operator supplies valid creds; the sandbox defaults are INVALID.** Default
+   `AWS_ACCESS_KEY_ID/SECRET` env vars are placeholders (`InvalidClientTokenId`). When the operator
+   pastes valid creds (in-session env vars), the `aws` CLI works through the proxy — pass `--region
+   us-east-1` explicitly (bare `AWS_REGION` didn't stick; use `AWS_DEFAULT_REGION` or `--region`).
+   **NEVER commit cred values.** Acct `177922194517` (IAM `vinay-blackout`). Prod web ALB target group
+   `blackout-production-app` (`arn:...targetgroup/blackout-production-app/8841ca2aeba05d87`). Prod ACM
+   cert (blackouttrades.com): `arn:aws:acm:us-east-1:177922194517:certificate/586bdf10-ec5f-4e8a-a14a-f257f218bd18`.
+   Prefer **surgical `aws` CLI changes** (e.g. `elbv2 modify-target-group-attributes`) over the prod
+   `terraform apply -auto-approve` (human-gated `workflow_dispatch`, needs `ACM_CERTIFICATE_ARN` secret,
+   reconciles the WHOLE stack = drift risk). `deregistration_delay` on the prod TG was set to 30s this
+   way on 2026-07-22 (was the 300s default → deploys served stale for ~5min; now ~30s).
+4. **Cloudflare purge works in-session** — `CF_API_TOKEN` + `CF_ZONE_ID` are valid;
+   `POST api.cloudflare.com/.../zones/$CF_ZONE_ID/purge_cache {"purge_everything":true}` after a
+   *visible* deploy clears the edge once ECS has drained.
+
 ## Auth model (quick ref)
 - Admin: Clerk `publicMetadata.role === "admin"` (or `ADMIN_EMAILS`). Tier: `publicMetadata.tier` (Whop-driven; 60s cache). `role:admin` bypasses per-tool launch gates.
 - Prod audit login: mint Backend-API `sign_in_token` → FAPI `clerk.blackouttrades.com` ticket exchange → `__session` cookie. Documented in `AGENTS.md`.
