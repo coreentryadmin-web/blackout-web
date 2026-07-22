@@ -112,7 +112,23 @@ a SKIP not a fail, and the replay frame count covers the temporal aspect.
    way on 2026-07-22 (was the 300s default → deploys served stale for ~5min; now ~30s).
 4. **Cloudflare purge works in-session** — `CF_API_TOKEN` + `CF_ZONE_ID` are valid;
    `POST api.cloudflare.com/.../zones/$CF_ZONE_ID/purge_cache {"purge_everything":true}` after a
-   *visible* deploy clears the edge once ECS has drained.
+   *visible* deploy clears the edge once ECS has drained. The token also **reads AND writes the
+   cache rulesets** (`GET/PATCH .../zones/$CF_ZONE_ID/rulesets[/{id}/rules/{ruleId}]`, phase
+   `http_request_cache_settings`) — it does NOT have legacy Page Rules scope (9109). These cache
+   rules are hand-made in the CF dashboard, **not** in `blackout-infra` terraform, so API edits
+   persist.
+5. **Cloudflare edge-caches some HTML pages — auth-dependent chrome gotcha (fixed 2026-07-22).**
+   A cache rule (rule `f261edb0…`) force-caches `/`, `/upgrade`, `/learn*` HTML at the edge
+   (`edge_ttl 7200`, `override_origin`), *ignoring* the origin's `Cache-Control: no-store`. Because
+   those pages render per-user nav (Sign-in vs "Open desk →"), one anonymous snapshot was served to
+   everyone → **signed-in users saw "Sign in" forever**. Fix: the rule expression now ends with
+   `and (not http.cookie contains "__session")`, so any request with a Clerk session cookie bypasses
+   the edge (origin renders correct state) while anon/logged-out (`__client_uat=0`, no `__session`)
+   still cache fast. `__session` is httpOnly but the edge still sees it. **Rule of thumb:** never
+   edge-cache HTML that renders auth-dependent chrome without the `__session` cookie-bypass guard;
+   `/pricing`, `/faq`, and all `(site)` desk pages are already `DYNAMIC` (uncached) and fine. Codify
+   the CF cache rules in terraform as the durable follow-up so a dashboard edit can't silently
+   regress this.
 
 ## Auth model (quick ref)
 - Admin: Clerk `publicMetadata.role === "admin"` (or `ADMIN_EMAILS`). Tier: `publicMetadata.tier` (Whop-driven; 60s cache). `role:admin` bypasses per-tool launch gates.
