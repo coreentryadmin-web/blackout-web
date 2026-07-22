@@ -191,6 +191,19 @@ describe("deriveSpxBias", () => {
     const c = deriveSpxBias(bearishSnap({ aboveVwap: true }));
     assert.notEqual(a.key, c.key);
   });
+
+  test("bias key CHANGES when a named level (king wall / max-pain) migrates → prose re-voices", () => {
+    const base = deriveSpxBias(bearishSnap({ maxPain: 7500 }));
+    // King call wall steps down — the pinned prose names it, so the key must change to re-voice.
+    const kc = deriveSpxBias(bearishSnap({ maxPain: 7500, kingCall: { strike: 7525, netGex: 3_200_000 } }));
+    assert.notEqual(base.key, kc.key, "king-call migration must change the key");
+    // Max-pain pin steps — same requirement.
+    const mp = deriveSpxBias(bearishSnap({ maxPain: 7510 }));
+    assert.notEqual(base.key, mp.key, "max-pain migration must change the key");
+    // But the DIRECTION/conviction are unchanged (this is a re-voice trigger, not a bias flip).
+    assert.equal(kc.direction, base.direction);
+    assert.equal(mp.direction, base.direction);
+  });
 });
 
 // ---------------------------------------------------------------------------
