@@ -85,6 +85,11 @@ const Z90 = 1.2815515655; // 10th/90th percentile z
  *  confidence floor (~15%, `analytic` sigmaClose) so confidence still reads a touch tighter than the
  *  drawn cone, and well under the 35% "cone pinches into the close" contract the tests assert. */
 const CONE_RESIDUAL_FRAC = 0.12;
+/** Floor on the Monte-Carlo Brownian-bridge diffusion shrink: the per-step noise scales with
+ *  `MC_BRIDGE_NOISE_FLOOR + (1 − floor)·tFracAt` instead of raw `tFracAt`, so late-session variance
+ *  never collapses to ~0 (which over-tightened the MC cone and over-stated confidence). ~0.35 keeps
+ *  honest settlement noise into the bell while the drift still pulls paths onto the pin. */
+const MC_BRIDGE_NOISE_FLOOR = 0.35;
 
 const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
 const fin = (x: number) => Number.isFinite(x);
@@ -424,12 +429,18 @@ function montecarlo(input: PinForecastInput, p: Prep): PinForecast {
         ? ((w.callWall?.oi ?? 0) >= (w.putWall?.oi ?? 0) && w.callWall ? w.callWall.strike : w.putWall?.strike ?? p.maxPain ?? price)
         : (p.maxPain ?? price);
       // Mean-reversion toward the magnet whose strength RAMPS UP into the close (kappa → ~0.6 near
-      // expiry) — the pin gets stickier as gamma concentrates. Paired with diffusion that SHRINKS with
-      // remaining time (×tFracAt), this is a Brownian-bridge-style pin: paths bulge mid-session, then
-      // the strengthening pull + collapsing noise re-converge them onto the pin → the cone pinches.
+      // expiry) — the pin gets stickier as gamma concentrates. Paired with diffusion that shrinks with
+      // remaining time, this is a Brownian-bridge-style pin: paths bulge mid-session, then the
+      // strengthening pull + collapsing noise re-converge them onto the pin → the cone pinches.
       const kappa = clamp(pullFraction(tFracAt, reg, p.degraded) * (0.12 + 0.88 * (1 - tFracAt)), 0, 0.6);
       const drift = (target - price) * kappa;
-      const diffusion = price * p.atmIv * Math.sqrt(Math.max(dtMin, 0) / YEAR_MIN) * randn(rng) * tFracAt;
+      // Diffusion shrink into the close: `× (BRIDGE_NOISE_FLOOR + (1-floor)·tFracAt)` rather than the
+      // raw `× tFracAt`, which drove step variance to ~0 at the bell (on TOP of the √dt term) and
+      // manufactured an over-tight MC cone / over-confident pin. The floor keeps honest settlement
+      // noise into 16:00 so the cone stays a real distribution, not a collapsing thread — the MC
+      // analogue of the analytic cone's residual-σ floor.
+      const bridge = MC_BRIDGE_NOISE_FLOOR + (1 - MC_BRIDGE_NOISE_FLOOR) * tFracAt;
+      const diffusion = price * p.atmIv * Math.sqrt(Math.max(dtMin, 0) / YEAR_MIN) * randn(rng) * bridge;
       price = Math.max(1, price + drift + diffusion);
       stepPrices[s]!.push(price);
     }
