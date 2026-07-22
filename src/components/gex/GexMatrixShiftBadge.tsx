@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import type { GexShiftLeader } from "@/lib/gex-shift-leaders";
 import { fmtHeatmapStrike } from "@/lib/gex-heatmap-display";
+import { wallStrengthShift } from "@/features/thermal/lib/gex-heatmap/shift-math";
 
 type Props = {
   leader: GexShiftLeader;
@@ -25,12 +26,18 @@ function fmtPct(pct: number): string {
 }
 
 /**
- * Inline intraday shift % pill — top-3 call (bead yellow) / put (bead purple) leaders in matrix cells.
+ * Inline intraday shift % pill — top call (bead yellow) / put (bead purple) shift leaders in matrix
+ * cells. Side is the strike's OWN gamma dominance (sign of its net GEX), and built/melted + the %
+ * are magnitude-based (wallStrengthShift), so a building put wall reads "built +X%" (purple), never
+ * the inverted "melted" the raw-delta convention produced.
  */
 export function GexMatrixShiftBadge({ leader, sinceMs }: Props) {
-  if (leader.pct == null || !Number.isFinite(leader.pct)) return null;
-  const isCall = leader.side === "call";
-  const built = leader.delta > 0;
+  const strength = wallStrengthShift(leader.currentValue, leader.delta);
+  if (!strength) return null;
+  // Colour by the strike's own side (net-GEX sign), not the delta direction — a melting put wall
+  // (net GEX rising toward zero, delta > 0) is still a PUT strike and must stay purple.
+  const isCall = leader.currentValue >= 0;
+  const { pct, built } = strength;
 
   return (
     <span
@@ -38,11 +45,11 @@ export function GexMatrixShiftBadge({ leader, sinceMs }: Props) {
         "gex-matrix-shift-badge",
         isCall ? "gex-matrix-shift-badge--call" : "gex-matrix-shift-badge--put"
       )}
-      title={`${fmtHeatmapStrike(leader.strike)} · ${built ? "built" : "melted"} intraday ${fmtPct(leader.pct)}${
+      title={`${fmtHeatmapStrike(leader.strike)} · ${built ? "built" : "melted"} intraday ${fmtPct(pct)}${
         sinceMs != null ? ` vs ${fmtElapsed(sinceMs)} ago` : ""
       }`}
     >
-      {fmtPct(leader.pct)}
+      {fmtPct(pct)}
     </span>
   );
 }

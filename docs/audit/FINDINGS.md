@@ -456,3 +456,30 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Tests:** `vector-wall-visual.test.ts` extended (brightness retune, growthModulation building/
   fading/neutral/cap, magnitudeGlowBoost monotonicity) — 23 pass; `tsc --noEmit` clean.
 - **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
+
+## 2026-07-22 — GEX matrix "built/melted" verb inverted on the put side (P2, FIXED)
+
+### P2 — Shift leaders labeled build/decay by raw delta sign → building put walls read "melted"
+- **Symptom:** in the Dealer Gamma Map shift strip + cell badges, a put wall that is actively
+  BUILDING (its net dealer GEX going more negative) was labeled "melted" (and a decaying put wall
+  "built"), and put-side % showed the wrong sign. Root of the user's "top-3 calls/puts don't look
+  right" question.
+- **Root cause:** `GexMatrixShiftBadge.tsx` / `GexShiftLeadersStrip.tsx` derived the verb from
+  `delta > 0` and bucketed side by the leader's delta sign. For a put strike (negative net GEX),
+  building means delta < 0, so `built = delta > 0` inverted it; and a melting put wall (delta > 0)
+  was bucketed as a "call". The % came from `shiftPercentForStrike` (delta/|baseline|), whose sign
+  follows the raw delta — correct on the call side, inverted on the put side. The arithmetic was
+  fine; the SEMANTICS were wrong.
+- **Evidence:** live desk screenshot showed puts as "-62% / -21% / -27%" (all melting) during a
+  session where those put walls were building; audit of `shift-math.ts:4-8` (documents the
+  delta-sign convention) + `GexMatrixShiftBadge.tsx:33` (`built = leader.delta > 0`).
+- **Fix:** new `wallStrengthShift(currentValue, delta)` in `shift-math.ts` — compares |current| vs
+  |baseline| so `built` = the wall's magnitude grew, side-agnostic, with the % signed by growth
+  (+ heavier / − lighter), always consistent with the verb. Wired into both display components;
+  side is now the strike's OWN net-GEX sign (`currentValue >= 0` → call/yellow) not the delta
+  direction, so a melting put wall stays purple under P. `shiftPercentForStrike` left intact for
+  any other consumer. Deeper follow-up (noted): move the side bucketing into `pickGexShiftLeaders`
+  so Thermal/Vector surfaces inherit the same correction at the source.
+- **Tests:** `shift-math.test.ts` extended (call/put build+melt, verb⇔sign consistency, guards) —
+  12 pass; `tsc --noEmit` clean.
+- **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
