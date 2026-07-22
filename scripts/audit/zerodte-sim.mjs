@@ -89,15 +89,12 @@ const QUIET = Boolean(argv.quiet);
 const INDEX_INSTRUMENTS = new Set(["SPX", "SPXW", "VIX", "VIXW", "NDX", "RUT", "XSP", "VVIX", "DJX"]);
 
 if (QUIET) {
-  const origInfo = console.info;
-  // Strip CR/LF from any string arg before re-emitting — this wrapper passes through the app's own
-  // console.info args, and newline-sanitizing them closes the log-injection sink (CodeQL) without
-  // changing what QUIET is for (suppressing the [nighthawk] funnel line).
-  const scrub = (x) => (typeof x === "string" ? x.replace(/[\r\n]+/g, " ") : x);
-  console.info = (...a) => {
-    if (typeof a[0] === "string" && a[0].startsWith("[nighthawk")) return;
-    origInfo(...a.map(scrub));
-  };
+  // --quiet suppresses the app's own diagnostic chatter (the `[nighthawk/det-edition] funnel:` line
+  // emitted inside buildDeterministicEditionPlays) so only this script's report shows. console.info
+  // is the app's channel for that; the sim itself writes via console.log. Silence console.info
+  // outright rather than re-emit its args — a passthrough would route app-side strings into a log
+  // sink (CodeQL log-injection), and there's nothing on console.info worth keeping under --quiet.
+  console.info = () => {};
 }
 
 // ── Imports (real pipeline) ─────────────────────────────────────────────────────────
