@@ -77,7 +77,10 @@ export function StaticLandingFooter() {
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden>{ICONS.discord}</svg>
             </SocialKey>
             {WHOP_CHECKOUT.store && (
-              <SocialKey href={WHOP_CHECKOUT.store} label="Join on Whop" iosHide>
+              // Neutral label — the vendor-surface guard (App-Store neutral-labeling
+              // policy) forbids naming the payment provider in user-facing copy. The
+              // "W" mark stays; only the aria/title text is neutralized. iosHide too.
+              <SocialKey href={WHOP_CHECKOUT.store} label="Premium membership" iosHide>
                 <span className="font-anton text-[13px] leading-none tracking-tight" aria-hidden>W</span>
               </SocialKey>
             )}
