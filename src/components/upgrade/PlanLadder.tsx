@@ -36,7 +36,7 @@ export function PlanLadder() {
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Join the Community"
-            className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-sky-300/25 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.2em] text-sky-100 transition-all duration-200 hover:border-sky-300 hover:bg-sky-300/5 hover:text-sky-300"
+            className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-sky-300/25 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] whitespace-nowrap text-sky-100 transition-all duration-200 hover:border-sky-300 hover:bg-sky-300/5 hover:text-sky-300"
           >
             Join Community →
           </a>
@@ -74,7 +74,7 @@ export function PlanLadder() {
               rel="noopener noreferrer"
               aria-label={`Unlock Premium — ${option.label}`}
               className={
-                "mt-6 inline-flex w-full items-center justify-center rounded-xl py-3 font-syne text-xs font-extrabold uppercase tracking-[0.2em] transition-all duration-200 " +
+                "mt-6 inline-flex w-full items-center justify-center rounded-xl py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] whitespace-nowrap transition-all duration-200 " +
                 (vp.featured
                   ? "bg-bull text-[#021108] hover:scale-105 hover:shadow-glow-bull"
                   : "border-2 border-white/15 text-sky-100 hover:border-bull hover:bg-bull/5 hover:text-bull")
