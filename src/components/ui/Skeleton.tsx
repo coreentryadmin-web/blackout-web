@@ -32,7 +32,7 @@ function dim(v: Dimension | undefined): string | undefined {
 }
 
 /**
- * Shimmer placeholder block — an emerald sweep over a translucent base.
+ * Shimmer placeholder block — a phosphor-violet sweep over a translucent base.
  * Reduced-motion gated (the sweep is disabled, the block stays as a static tint).
  *
  * The sweep relies on the `ui-skeleton` keyframe in globals.css.
@@ -51,9 +51,12 @@ export const Skeleton = forwardRef<HTMLDivElement, SkeletonProps>(function Skele
       aria-hidden
       className={clsx(
         "relative overflow-hidden bg-white/[0.05]",
-        // The emerald sweep; turned off under reduced-motion.
+        // Phosphor-violet sweep; turned off under reduced-motion. (Was bull-green,
+        // but green is a SIGNAL color in this system — "bullish" — so using it for
+        // a content-agnostic loading shimmer mis-signals. Violet is the phosphor
+        // chrome tone, carrying no market meaning, and matches the Boot loader.)
         "before:absolute before:inset-0 before:-translate-x-full " +
-          "before:bg-gradient-to-r before:from-transparent before:via-bull/15 before:to-transparent " +
+          "before:bg-gradient-to-r before:from-transparent before:via-[rgba(191,95,255,0.16)] before:to-transparent " +
           "before:[animation:ui-skeleton_1.6s_ease-in-out_infinite] " +
           "motion-reduce:before:hidden",
         className
