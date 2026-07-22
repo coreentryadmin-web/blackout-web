@@ -559,3 +559,22 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
   vs 0DTE), so the correct unification is precise labels, NOT forcing different measures equal (that
   would itself be wrong data). Verified `tsc --noEmit` clean.
 - **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
+
+## 2026-07-22 — EOD pin cone painted ZERO uncertainty at the bell (P2, FIXED — accuracy)
+
+### P2 — Analytic confidence cone collapsed to a point (p10=p50=p90) at 16:00
+- **Symptom:** the EOD pin forecaster's confidence cone pinched to a single point at the close,
+  asserting perfect certainty the model hasn't earned (settlement/auction still moves the close).
+- **Root cause:** in `medianPath` (`spx-pin-forecast-core.ts`), the diffusion sigma
+  `spot·atmIv·√(tYearsRemain)` → 0 as time-to-close → 0, so the last cone step had
+  `p10 = p50 = p90 = pin`. Verified LIVE twice via authenticated probe: `cone[last]` =
+  `{tMin:0, p10:7517.74, p50:7517.74, p90:7517.74}` (and again 7518.13).
+- **Fix:** floor the cone sigma at `CONE_RESIDUAL_FRAC = 0.12 ×` the session's OPENING sigma, so the
+  cone stays honestly narrow into the bell instead of collapsing to a line. Kept under the ~15%
+  confidence floor (so confidence still reads a hair tighter than the drawn cone) and well under the
+  35% "cone pinches into the close" contract the tests assert.
+- **Tests:** `spx-pin-forecast-core.test.ts` — the pinch test now also asserts the bell cone keeps
+  non-zero width and stays ordered p10<p50<p90; 8 pass. `tsc --noEmit` clean.
+- **Follow-ups (noted):** the MC diffusion ×tFracAt over-suppresses late-session noise; the
+  trend-day degrade never fires live (recentReturns not passed) — both tracked for a later PR.
+- **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).

@@ -77,6 +77,14 @@ const RTH_MIN = 390;
 const YEAR_MIN = 365 * 24 * 60;
 const INV_SQRT_2PI = 0.3989422804014327;
 const Z90 = 1.2815515655; // 10th/90th percentile z
+/** Residual-uncertainty floor for the analytic cone, as a fraction of the session's OPENING sigma.
+ *  The raw diffusion sigma → 0 as time-to-close → 0, which painted the cone as a ZERO-WIDTH point at
+ *  16:00 (verified live: cone[last] had p10=p50=p90) — asserting perfect certainty the model hasn't
+ *  earned (settlement/auction still moves the close). Flooring sigma at ~12% of the opening sigma
+ *  keeps the cone honestly narrow into the bell without collapsing to a line. Kept a hair under the
+ *  confidence floor (~15%, `analytic` sigmaClose) so confidence still reads a touch tighter than the
+ *  drawn cone, and well under the 35% "cone pinches into the close" contract the tests assert. */
+const CONE_RESIDUAL_FRAC = 0.12;
 
 const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
 const fin = (x: number) => Number.isFinite(x);
@@ -342,6 +350,8 @@ function buildDrivers(p: Prep, input: PinForecastInput, medianClose: number): Pi
 function medianPath(input: PinForecastInput, p: Prep, steps: number): { times: number[]; median: number[]; sigmaRemain: number[] } {
   const times: number[] = [], median: number[] = [], sigmaRemain: number[] = [];
   const target = p.magnetStrike ?? input.spot;
+  // Honest residual: never let the cone pinch to a zero-width point at 16:00 (see CONE_RESIDUAL_FRAC).
+  const sigFloor = input.spot * p.atmIv * Math.sqrt(Math.max(p.tMin, 1) / YEAR_MIN) * CONE_RESIDUAL_FRAC;
   for (let i = 0; i <= steps; i++) {
     const frac = i / steps; // 0 now → 1 close
     const tMinAt = p.tMin * (1 - frac);
@@ -349,7 +359,7 @@ function medianPath(input: PinForecastInput, p: Prep, steps: number): { times: n
     const pf = pullFraction(tFracAt, p.regime, p.degraded) * frac; // cumulative pull grows to the bell
     const med = input.spot + (target - input.spot) * pf;
     const tYearsRemain = Math.max(tMinAt / YEAR_MIN, 0);
-    const sig = input.spot * p.atmIv * Math.sqrt(tYearsRemain);
+    const sig = Math.max(input.spot * p.atmIv * Math.sqrt(tYearsRemain), sigFloor);
     times.push(tMinAt); median.push(med); sigmaRemain.push(sig);
   }
   return { times, median, sigmaRemain };

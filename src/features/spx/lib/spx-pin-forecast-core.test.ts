@@ -54,12 +54,20 @@ test("analytic: available, short-gamma, magnet UP toward the call wall, pin abov
   assert.ok(f.drivers.length >= 3 && f.drivers[0]!.weight >= f.drivers[1]!.weight); // ranked
 });
 
-test("cone PINCHES into the close (width at the bell << width now)", () => {
+test("cone PINCHES into the close (width at the bell << width now) but keeps HONEST residual width", () => {
   const f = forecastPin(base("2026-07-21T17:04:00Z"));
   const first = coneWidth(f.cone[0]!); // now
   const last = coneWidth(f.cone[f.cone.length - 1]!); // 16:00
   assert.ok(last < first * 0.35, `cone should pinch: now ${first.toFixed(1)} → close ${last.toFixed(1)}`);
   assert.ok(Math.abs(f.cone[f.cone.length - 1]!.tMin) < 0.5, "last cone step lands at the close");
+  // Honesty floor: the bell cone must NOT collapse to a zero-width point (p10=p50=p90) — settlement
+  // still carries real close risk. It must retain a small but non-zero band.
+  const lastStep = f.cone[f.cone.length - 1]!;
+  assert.ok(last > 0, `cone must keep residual width at the bell, got ${last}`);
+  assert.ok(
+    lastStep.p10 < lastStep.p50 && lastStep.p50 < lastStep.p90,
+    `bell cone must stay ordered p10<p50<p90, got ${lastStep.p10}/${lastStep.p50}/${lastStep.p90}`
+  );
 });
 
 test("confidence RISES as the session matures (less time → tighter pin)", () => {
