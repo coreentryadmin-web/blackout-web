@@ -5,6 +5,58 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-22 — 0DTE play SIMULATOR shipped + first structural findings (tooling + P2)
+
+### Tooling — `scripts/audit/zerodte-sim.mjs` (`npm run sim:0dte`)
+- **What:** a per-change 0DTE simulator that runs the REAL pipeline functions (imported from
+  `src/`, not reimplemented) against REAL data (multi-day UW flow + live Polygon chains + Polygon
+  minute bars) and reports, per stage: which tickers become candidates, the exact FUNNEL
+  (candidates → score floor → chain → contract → premium → geometry → grounded → built → 0DTE
+  filter → published), a per-ticker GATE TRACE (where each candidate died / that it passed), the
+  generated plays with real contracts, and — in `--grade=YYYY-MM-DD` backtest mode — a minute-bar
+  outcome (doubled / stopped / time-stop) per play.
+- **Real code exercised:** `flowAccumulationByTicker`, `buildDeterministicEditionPlays` +
+  `pickChainContract` (+ its funnel), `filterPlaysByMaxDte`/`optionsPlayWithinMaxDte`,
+  `validatePlayGeometry`, `gradePlanFromBars` + `PLAN_RULES`.
+- **Scope boundary (honest):** candidate DISCOVERY here is the accumulation engine itself
+  (direction + strength from stacked multi-day flow), not the full production market-wide
+  discovery (`candidates.ts` needs UW endpoints + Redis not all reachable from the sandbox). The
+  point is to test how accumulation-driven candidates flow through the REAL selector/gates.
+  Backtest grading uses an ATM 0DTE strike probed against the option's OWN minute bars on the
+  session date (historical per-strike OI isn't available, so the live-OI picker is not used in
+  backtest mode).
+- **Env:** the script self-defaults `POLYGON_API_BASE` to `https://api.massive.com` when it's the
+  unresolved sandbox placeholder. Run with `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY`.
+
+### P2 — Strict `maxDte=1` structurally starves the board on non-Friday sessions
+- **Symptom (simulator, live + backtest):** on a Tuesday (`--grade=2026-07-21`) only SPY/QQQ/IWM
+  graded; every single-name candidate returned `no_0dte` ("no 0DTE contract"). On a Friday
+  (`--grade=2026-07-17`) all 10 candidates graded (the whole weekly universe expires that day).
+- **Root cause:** only the big index ETFs (SPY/QQQ/IWM) + a few indices list Mon–Fri **daily**
+  expiries; single names (NVDA, AAPL, MU, TSM, …) list weekly (Friday) expiries. `pickChainContract`
+  in day mode requires an expiry within `[today, today+maxDte]`, so on Mon–Thu every non-daily name
+  becomes stock-only ("— no options data available") and is dropped by `filterPlaysByMaxDte`. In
+  today-mode the gate trace shows this precisely (`◐ built but dropped by 0DTE filter — contract
+  "TSM — no options data available"`).
+- **Evidence:** `npm run sim:0dte -- --grade=2026-07-21` → 2 gradeable (SPY/QQQ), 8 `no_0dte`;
+  `--grade=2026-07-17` → 10 gradeable. Live today-mode funnel: 25 candidates → 10 stock-only.
+- **Implication (not yet fixed — design decision needed):** a strict same-day-only 0DTE system can
+  only trade ~3 ETFs four days out of five. Options to strengthen coverage: (a) widen the day window
+  to the nearest listed weekly per-underlying (trade the true front expiry, still short-dated); (b)
+  on Mon–Thu, concentrate the single-name universe into Friday 0DTE and only trade ETFs same-day;
+  (c) keep strict same-day and accept an ETF-only board Mon–Thu. Flagging for the roadmap; the
+  simulator now measures the trade-off of whichever path we pick.
+- **Status:** OPEN (design). Simulator committed so any fix can be measured before/after.
+
+### P2 — Grader shows stop-dominated outcomes at a fixed 09:45 ATM entry
+- **Observation (backtest):** `--grade=2026-07-17` → 2 doubled / 8 stopped (20% double-rate, avg
+  −20%); `--grade=2026-07-21` → 1/1. A fixed 09:45-ET ATM entry with the current PLAN_RULES
+  (−50% stop / +100% target / 15:30 time-stop) is stop-heavy — consistent with the earlier live
+  debrief (0% win / `target_unreachable` gate). Not a code bug; a tuning signal. The simulator is
+  the harness to sweep entry timing / strike offset / stop-target geometry against real bars before
+  changing the live rules.
+- **Status:** OPEN (tuning) — measure candidate changes with the sim before shipping.
+
 ## 2026-07-22 — Auth nav stuck on "Sign in" after login (P1, FIXED live)
 
 ### P1 — Cloudflare edge-cached the homepage HTML, so signed-in users saw the anonymous nav
