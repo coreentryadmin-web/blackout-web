@@ -30,20 +30,34 @@ async function main() {
   if (pw.skip) throw new Error(`auth skipped: ${pw.reason}`);
   console.log("✓ minted temp admin+premium Clerk session");
 
-  const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
-  const context = await browser.newContext({
-    userAgent: DESKTOP_UA,
-    viewport: { width: 1680, height: 1050 },
-    deviceScaleFactor: 2,
-  });
-  await context.addInitScript(onboardingInitScript());
-  await context.addCookies(pw.cookies);
-  const page = await context.newPage();
-  const consoleErrors = [];
-  page.on("console", (m) => m.type() === "error" && consoleErrors.push(m.text()));
-
+  // Pre-installed Chromium (the repo's playwright pin may not match /opt/pw-browsers; never download).
+  const EXEC =
+    process.env.PW_CHROMIUM || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
   const shots = [];
+  let browser;
   try {
+    const proxyServer = process.env.HTTPS_PROXY || process.env.https_proxy;
+    browser = await chromium.launch({
+      headless: true,
+      executablePath: EXEC,
+      args: [
+        "--no-sandbox",
+        "--ignore-certificate-errors", // agent proxy MITMs TLS with a private CA
+        ...(proxyServer ? [`--proxy-server=${proxyServer}`] : []),
+      ],
+      ...(proxyServer ? { proxy: { server: proxyServer } } : {}),
+    });
+    const context = await browser.newContext({
+      userAgent: DESKTOP_UA,
+      viewport: { width: 1680, height: 1050 },
+      deviceScaleFactor: 2,
+      ignoreHTTPSErrors: true, // agent-proxy CA is not in Chromium's trust store
+    });
+    await context.addInitScript(onboardingInitScript());
+    await context.addCookies(pw.cookies);
+    const page = await context.newPage();
+    const consoleErrors = [];
+    page.on("console", (m) => m.type() === "error" && consoleErrors.push(m.text()));
     // Try a ticker-scoped URL first; fall back to the default /vector if the route ignores it.
     const url = `${BASE}/vector?ticker=${encodeURIComponent(TICKER)}`;
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 120_000 });
@@ -78,7 +92,7 @@ async function main() {
       if (real.length) console.log(`⚠ ${real.length} console error(s):`, real.slice(0, 3));
     }
   } finally {
-    await browser.close().catch(() => {});
+    if (browser) await browser.close().catch(() => {});
     if (pw.cleanup) await pw.cleanup();
     console.log("✓ temp user deleted");
   }
