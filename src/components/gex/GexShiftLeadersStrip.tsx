@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import type { GexShiftLeader } from "@/lib/gex-shift-leaders";
 import { fmtHeatmapStrike } from "@/lib/gex-heatmap-display";
+import { wallStrengthShift } from "@/features/thermal/lib/gex-heatmap/shift-math";
 
 type Props = {
   leaders: readonly GexShiftLeader[];
@@ -17,14 +18,21 @@ function fmtPct(pct: number | null): string {
   return `${sign}${pct.toFixed(0)}%`;
 }
 
+/** Magnitude-based shift % for a leader — built (+) / melted (−) of the wall's own strength. */
+function strengthPct(l: GexShiftLeader): number | null {
+  return wallStrengthShift(l.currentValue, l.delta)?.pct ?? null;
+}
+
 /**
- * Top call + put drift leaders (intraday Δ-gamma %) — one strip across desk surfaces.
+ * Top call + put wall-shift leaders — one strip across desk surfaces. Side is the strike's OWN
+ * gamma dominance (net-GEX sign) and the % is magnitude-based (built +, melted −), so a building
+ * put wall reads "+X%" under P (not the inverted "−X%" the raw signed-delta convention produced).
  */
 export function GexShiftLeadersStrip({ leaders, scopeLabel, className, compact }: Props) {
   if (!leaders.length) return null;
 
-  const calls = leaders.filter((l) => l.side === "call");
-  const puts = leaders.filter((l) => l.side === "put");
+  const calls = leaders.filter((l) => l.currentValue >= 0);
+  const puts = leaders.filter((l) => l.currentValue < 0);
 
   return (
     <div
@@ -45,7 +53,7 @@ export function GexShiftLeadersStrip({ leaders, scopeLabel, className, compact }
           <span className="text-emerald-400/90">C</span>
           {calls.map((l) => (
             <span key={`c-${l.strike}`} className="text-emerald-300/95">
-              {fmtHeatmapStrike(l.strike)} {fmtPct(l.pct)}
+              {fmtHeatmapStrike(l.strike)} {fmtPct(strengthPct(l))}
             </span>
           ))}
         </span>
@@ -55,7 +63,7 @@ export function GexShiftLeadersStrip({ leaders, scopeLabel, className, compact }
           <span className="text-fuchsia-400/90">P</span>
           {puts.map((l) => (
             <span key={`p-${l.strike}`} className="text-fuchsia-300/95">
-              {fmtHeatmapStrike(l.strike)} {fmtPct(l.pct)}
+              {fmtHeatmapStrike(l.strike)} {fmtPct(strengthPct(l))}
             </span>
           ))}
         </span>

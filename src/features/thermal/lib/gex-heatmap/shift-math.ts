@@ -20,3 +20,27 @@ export function shiftPercentForStrike(
   if (!Number.isFinite(baseline) || Math.abs(baseline) < 1) return null;
   return (delta / Math.abs(baseline)) * 100;
 }
+
+/**
+ * Wall STRENGTH shift: did the dealer gamma parked at this strike get HEAVIER or LIGHTER over the
+ * window, and by what %? This is what a trader means by a wall "building" vs "melting".
+ *
+ * `shiftPercentForStrike` above keys its sign to the raw signed delta — which is correct for a
+ * call-side (positive-GEX) strike but INVERTS on the put side: a put wall building means its net
+ * GEX goes MORE NEGATIVE (delta < 0), so the raw-delta convention (`built = delta > 0`) mislabels a
+ * strengthening put wall as "melted" and a decaying one as "built". This compares |current| vs
+ * |baseline| instead, so `built` means the wall's magnitude grew regardless of which side it's on,
+ * and the % is signed by that growth (+ = heavier, − = lighter) — always consistent with the verb.
+ *
+ * Returns null on the same guards (no delta / ~zero baseline) so it never fabricates a shift.
+ */
+export function wallStrengthShift(
+  currentValue: number,
+  delta: number | null | undefined
+): { pct: number; built: boolean } | null {
+  if (delta == null || !Number.isFinite(delta) || !Number.isFinite(currentValue)) return null;
+  const baseline = currentValue - delta;
+  if (!Number.isFinite(baseline) || Math.abs(baseline) < 1) return null;
+  const magnitudeDelta = Math.abs(currentValue) - Math.abs(baseline);
+  return { pct: (magnitudeDelta / Math.abs(baseline)) * 100, built: magnitudeDelta > 0 };
+}
