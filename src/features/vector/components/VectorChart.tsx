@@ -1815,14 +1815,25 @@ export function VectorChart({
       try {
         const res = await fetch("/api/market/spx/pin", { cache: "no-store" });
         if (cancelled || !res.ok) return;
-        const j = (await res.json()) as { pin?: unknown; pinBand?: unknown };
+        const j = (await res.json()) as {
+          pin?: unknown;
+          pinBand?: unknown;
+          montecarlo?: { pin?: unknown; pinBand?: unknown } | null;
+        };
         if (cancelled) return;
-        const close = typeof j.pin === "number" && Number.isFinite(j.pin) ? j.pin : null;
+        // Prefer the MONTE-CARLO projection on the chart (member-directed): its pin is the modal
+        // close of the simulated distribution and its band is empirical, so the on-chart line/band
+        // reflect the true (possibly asymmetric) distribution. Fall back to the analytic base when
+        // the MC overlay is absent.
+        const mc = j.montecarlo ?? null;
+        const rawPin = typeof mc?.pin === "number" ? mc.pin : j.pin;
+        const rawBand = Array.isArray(mc?.pinBand) ? mc!.pinBand : j.pinBand;
+        const close = typeof rawPin === "number" && Number.isFinite(rawPin) ? rawPin : null;
         const band =
-          Array.isArray(j.pinBand) &&
-          j.pinBand.length === 2 &&
-          j.pinBand.every((n) => typeof n === "number" && Number.isFinite(n))
-            ? ([j.pinBand[0] as number, j.pinBand[1] as number] as [number, number])
+          Array.isArray(rawBand) &&
+          rawBand.length === 2 &&
+          rawBand.every((n) => typeof n === "number" && Number.isFinite(n))
+            ? ([rawBand[0] as number, rawBand[1] as number] as [number, number])
             : null;
         pinProjRef.current = close != null ? { close, band } : null;
         paintOverlays(lastDisplayBarsRef.current);

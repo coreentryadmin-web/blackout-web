@@ -651,3 +651,23 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Verification:** `tsc --noEmit` clean. Client-canvas/layout change — needs a look on the deployed
   build (will capture via spx-live-check). Stylelint pre-existing error at :7945 is unrelated.
 - **Status:** DONE (branch `claude/wall-beads-data-validation-4re5wo`).
+
+## 2026-07-22 — On-chart pin → Monte-Carlo source + relax over-tight MC diffusion (member-directed)
+
+### The on-chart pin now uses the Monte-Carlo projection; MC late-session cone widened to be honest
+- **Request:** "do the monte carlo EOD pin so it looks like a curve on chart instead of the analytic
+  one"; and the conceptual Q: do analytic & MC give the same pin? (Usually yes — both pull to the
+  dominant magnet — but MC diverges when the close distribution is bimodal, which is the point of MC.)
+- **Changes:**
+  - `VectorChart.tsx`: the on-chart pin line + band now read `montecarlo.pin` / `montecarlo.pinBand`
+    (empirical modal close + band), falling back to the analytic base when the MC overlay is absent.
+  - `spx-pin-forecast-core.ts`: relaxed the MC Brownian-bridge diffusion — was `× tFracAt`, which
+    drove step variance to ~0 at the bell (on top of √dt) and manufactured an over-tight MC cone /
+    over-confident pin. Now `× (MC_BRIDGE_NOISE_FLOOR=0.35 + 0.65·tFracAt)`, so late-session
+    settlement noise stays real (the MC analogue of the analytic cone-floor fix). Verified: the MC
+    cone still narrows from its mid-session bulge (51.6→45.2, 0.88×) instead of collapsing to a thread.
+- **Tests:** MC test updated to assert the cone narrows from the peak AND keeps honest residual width
+  (>0.5× max); 8 pass. `tsc` clean.
+- **Follow-up (next PR):** the SHADED time→16:00 converging cone as a canvas primitive (needs future
+  whitespace so it maps past the last candle) — this PR does the levels + honest width.
+- **Status:** DONE (levels + width). Branch `claude/wall-beads-data-validation-4re5wo`.
