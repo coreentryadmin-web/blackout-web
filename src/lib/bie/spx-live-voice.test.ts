@@ -366,6 +366,25 @@ describe("detectSpxVoiceEvents", () => {
     );
   });
 
+  test("pin (max-pain) stepping UP fires a bullish pin-migrate event", () => {
+    const prev = bearishSnap({ maxPain: 7500 });
+    const next = bearishSnap({ maxPain: 7510 });
+    const events = detectSpxVoiceEvents(prev, next);
+    const pin = events.find((e) => e.kind === "pin-migrate");
+    assert.ok(pin, "a pin-migrate event should fire on a real max-pain step");
+    assert.equal(pin!.tone, "bull");
+    assert.equal(pin!.line, "◎ pin 7,500→7,510 — max-pain magnet stepped UP → close-drift target higher");
+  });
+
+  test("pin (max-pain) stepping DOWN is bearish; sub-strike jitter is ignored", () => {
+    const down = detectSpxVoiceEvents(bearishSnap({ maxPain: 7510 }), bearishSnap({ maxPain: 7500 }));
+    const pinDown = down.find((e) => e.kind === "pin-migrate");
+    assert.ok(pinDown && pinDown.tone === "bear", "down step is bearish");
+    // A 2-pt move (< one 5-pt SPX strike) must NOT fire — noise floor.
+    const jitter = detectSpxVoiceEvents(bearishSnap({ maxPain: 7500 }), bearishSnap({ maxPain: 7502 }));
+    assert.equal(jitter.filter((e) => e.kind === "pin-migrate").length, 0, "sub-strike jitter is suppressed");
+  });
+
   test("king put stepping UP is bullish (dips bought sooner)", () => {
     const prev = bearishSnap();
     const next = bearishSnap({
