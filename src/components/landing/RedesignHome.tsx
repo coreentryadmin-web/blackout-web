@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
 import { IMAGES, MARKETING_MODULE_IMAGES } from "@/lib/images";
 import { LandingRedesignFx } from "./LandingRedesignFx";
+import DealersLadderBackground from "@/components/render/DealersLadderBackground";
 
 /** Bento column spans per module id — tiles 6 modules into three 6-col rows. */
 const SPAN: Record<string, "big" | "wide" | ""> = {
@@ -56,7 +57,11 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
     <div className="rl">
       {/* HERO */}
       <header className="rl-hero" id="rl-top">
-        <canvas className="rl-hero-canvas" id="rl-gex" aria-hidden />
+        {/* Signature "Phosphor Ladder" WebGL background — the live dealer's gamma book
+            (strike rungs + marching beads + integrity rings + dark-pool substrate),
+            replacing the old flat 2D GEX canvas. Reduced-motion / no-WebGL fall back
+            to a static CSS gradient inside the component. */}
+        <DealersLadderBackground className="rl-hero-canvas" opacity={0.9} />
         <div className="rl-hero-veil" aria-hidden />
         <div className="rl-wrap">
           <div className="rl-hero-grid">
