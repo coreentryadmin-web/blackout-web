@@ -84,6 +84,95 @@
   to { background-position: 0 56px; }
 }
 
+/* ---- ProductGallery — screenshot carousel chrome ----------------------- */
+.pm-gallery {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-height: 220px;
+}
+.pm-gallery:focus-visible {
+  outline: 2px solid var(--brand, #bf5fff);
+  outline-offset: -2px;
+}
+/* Each slide fades in as it becomes active (key remount). */
+.pm-gallery-img { animation: pm-gallery-fade 0.45s ease; }
+@keyframes pm-gallery-fade {
+  from { opacity: 0.3; }
+  to { opacity: 1; }
+}
+.pm-gallery-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 6;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  line-height: 1;
+  color: #f4f0ff;
+  background: rgba(8, 8, 14, 0.6);
+  border: 1px solid var(--hairline-strong, rgba(191, 95, 255, 0.28));
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+.pm-gallery:hover .pm-gallery-arrow,
+.pm-gallery:focus-within .pm-gallery-arrow { opacity: 1; }
+.pm-gallery-arrow:hover {
+  background: color-mix(in srgb, var(--brand, #bf5fff) 30%, rgba(8, 8, 14, 0.6));
+  border-color: var(--brand, #bf5fff);
+}
+.pm-gallery-arrow.prev { left: 10px; }
+.pm-gallery-arrow.next { right: 10px; }
+/* Touch devices have no hover — keep the arrows visible. */
+@media (hover: none) {
+  .pm-gallery-arrow { opacity: 1; }
+}
+.pm-gallery-dots {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  gap: 6px;
+}
+.pm-gallery-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  background: rgba(244, 240, 255, 0.35);
+  transition: width 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+.pm-gallery-dot.on {
+  width: 18px;
+  border-radius: 4px;
+  background: var(--brand, #bf5fff);
+  box-shadow: 0 0 8px rgba(191, 95, 255, 0.7);
+}
+.pm-gallery-count {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 6;
+  font-family: var(--font-jetbrains, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #cfc6e6;
+  background: rgba(8, 8, 14, 0.55);
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
 /* ---- Reduced motion: no travel; primitives degrade to a static, quiet state.
    The beam becomes a faint uniform ring; the grid floor stops scrolling but
    still frames the section. */
