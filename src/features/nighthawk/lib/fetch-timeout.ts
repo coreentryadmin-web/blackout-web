@@ -1,20 +1,3 @@
-/** Race a fetch against a deadline — slow providers return fallback instead of blocking the dossier.
- *
- * NOTE: `promise` is a pre-created Promise and cannot be aborted here.
- * For fetch()-backed calls use `dossierFetch` below, which wires an AbortController
- * so the underlying connection is actually torn down when the timeout fires.
- */
-export function withFetchTimeout<T>(promise: Promise<T>, fallback: T, ms = 8000): Promise<T> {
-  let timerId: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<T>((resolve) => {
-    timerId = setTimeout(() => resolve(fallback), ms);
-  });
-  return Promise.race([
-    promise.finally(() => clearTimeout(timerId)),
-    timeout,
-  ]);
-}
-
 /**
  * Wrap a fetch-like factory function with a timeout that actually aborts the
  * underlying HTTP connection via AbortController.

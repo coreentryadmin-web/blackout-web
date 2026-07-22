@@ -35,10 +35,6 @@ const PRICES: Record<string, Price> = {
 const CACHE_READ_MULT = 0.1;
 const CACHE_WRITE_MULT = 1.25;
 
-export function isKnownModel(model: string): boolean {
-  return model in PRICES;
-}
-
 /**
  * Estimate the USD cost of a single Anthropic response from its usage block.
  * Returns null when the model is unknown OR usage is missing — callers MUST treat
