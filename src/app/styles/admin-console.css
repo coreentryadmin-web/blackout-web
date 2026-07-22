@@ -6,9 +6,11 @@
   --admin-v2-panel: rgba(255, 255, 255, 0.03);
   --admin-v2-border: rgba(255, 255, 255, 0.08);
   --admin-v2-border-strong: rgba(255, 255, 255, 0.12);
-  --admin-v2-text: #ececf4;
-  --admin-v2-muted: #9494a8;
-  --admin-v2-dim: #6b6b7d;
+  --admin-v2-text: #eef2fb;
+  /* Cool-slate neutrals (were pure grey #9494a8 / #6b6b7d) — align the admin
+     console with the house "no grey, cool-tinted" language used site-wide. */
+  --admin-v2-muted: #9fb4d4;
+  --admin-v2-dim: #71809e;
   --admin-v2-accent: #22d3ee;
   --admin-v2-ok: #34d399;
   --admin-v2-warn: #fbbf24;
