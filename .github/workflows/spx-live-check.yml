@@ -14,11 +14,19 @@ on:
         description: "Run stamp (unique label for this capture)"
         required: false
         default: "run"
+      frames:
+        description: "Number of per-minute frames"
+        required: false
+        default: "15"
+      interval_ms:
+        description: "Interval between frames (ms)"
+        required: false
+        default: "60000"
 
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -31,6 +39,8 @@ jobs:
         env:
           VALIDATE_BASE: ${{ github.event.inputs.base }}
           RUN_STAMP: ${{ github.event.inputs.stamp }}
+          FRAMES: ${{ github.event.inputs.frames }}
+          INTERVAL_MS: ${{ github.event.inputs.interval_ms }}
           SPX_CHECK_DIR: ./artifacts/spx-live-check
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
