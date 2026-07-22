@@ -87,6 +87,13 @@
 .rl-stat .l{font-family:var(--rl-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--rl-dim)}
 @media(max-width:760px){.rl-stats-grid{grid-template-columns:repeat(2,1fr)}}
 
+/* Instrument band — the six product glyphs scrolling as pill chips (Marquee). */
+.rl-instband{padding:22px 0;border-bottom:1px solid var(--rl-line);background:linear-gradient(180deg,var(--rl-bg2),transparent)}
+.rl-inst-chip{display:inline-flex;align-items:center;gap:10px;padding:9px 16px 9px 10px;border:1px solid color-mix(in srgb,var(--a) 26%,var(--rl-line));border-radius:999px;background:color-mix(in srgb,var(--a) 6%,var(--rl-panel));white-space:nowrap}
+.rl-inst-ic{display:grid;place-items:center;width:28px;height:28px;flex:none;color:var(--a);border-radius:50%;background:color-mix(in srgb,var(--a) 12%,transparent)}
+.rl-inst-name{font-family:var(--rl-disp);font-size:15px;letter-spacing:.01em;color:var(--rl-ink)}
+.rl-inst-tag{font-family:var(--rl-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--rl-dim)}
+
 /* SECTIONS */
 .rl-sec{padding:88px 0}
 .rl-sec-head{max-width:680px}
