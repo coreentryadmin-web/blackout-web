@@ -160,6 +160,58 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         </div>
       </section>
 
+      {/* PER-PRODUCT DEEP DIVE — every module marketed in full */}
+      <section className="rl-sec" id="rl-products" style={{ paddingTop: 0 }}>
+        <div className="rl-wrap">
+          <div className="rl-sec-head rl-reveal">
+            <span className="rl-kicker"><span className="dot" aria-hidden />Every module, in depth</span>
+            <h2>Six edges. <span className="rl-gt">One membership.</span></h2>
+            <p>Each module is a full product — purpose-built for one dimension of the tape, unified by BlackOut Intelligence. No add-ons, no upsells: the whole desk is one price.</p>
+          </div>
+          <div className="rl-deep">
+            {MARKETING_PRODUCTS.map((m, i) => {
+              const soon = m.launchStatus === "soon";
+              return (
+                <article
+                  key={m.id}
+                  id={`product-${m.id}`}
+                  className={`rl-deep-row rl-reveal${i % 2 === 1 ? " rev" : ""}`}
+                  style={{ "--a": m.accent } as CSSProperties}
+                >
+                  <div className="rl-deep-copy">
+                    <div className="rl-deep-top">
+                      <span className="rl-deep-idx">{String(m.index).padStart(2, "0")}</span>
+                      <span className="rl-deep-tag">{m.tag}</span>
+                      <span className="rl-deep-aud">{m.audience}</span>
+                      {soon && <span className="rl-mod-soon">Launching soon</span>}
+                    </div>
+                    <h3 className="rl-deep-name">{m.label}</h3>
+                    <p className="rl-deep-hl">{m.headline}</p>
+                    <p className="rl-deep-lede">{m.lede}</p>
+                    <ul className="rl-deep-bullets">
+                      {m.bullets.map((b) => <li key={b}>{b}</li>)}
+                    </ul>
+                    <div className="rl-deep-foot">
+                      <div className="rl-deep-stat"><span className="k">{m.stat.k}</span><span className="v">{m.stat.v}</span></div>
+                      <Link href={m.href} prefetch={false} className="rl-mod-link">
+                        {soon ? "Get early access →" : `Open ${m.label} →`}
+                      </Link>
+                    </div>
+                  </div>
+                  <div className="rl-deep-visual">
+                    <div className="rl-deep-visual-chrome" aria-hidden>
+                      <span className="d" /><span className="d" /><span className="d" />
+                      <span className="rl-deep-visual-lbl">{m.label} · live</span>
+                    </div>
+                    <canvas data-pviz={m.id} data-a={m.accent} aria-hidden />
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
       {/* FLOW */}
       <section className="rl-sec" id="rl-flow" style={{ paddingTop: 0 }}>
         <div className="rl-wrap">
