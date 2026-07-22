@@ -1,8 +1,12 @@
 import Link from "next/link";
 
+// Anchors must match the real section ids in RedesignHome. The old
+// "/#features" / "/#tape" targets never existed there (the redesign uses
+// rl-* ids), so Platform/Products silently scrolled nowhere. Point them at
+// the modules-overview and per-product deep-dive sections.
 const LINKS = [
-  { href: "/#features", label: "Platform" },
-  { href: "/#tape", label: "Products" },
+  { href: "/#rl-modules", label: "Platform" },
+  { href: "/#rl-products", label: "Products" },
   { href: "/learn", label: "Learn" },
   { href: "/faq", label: "FAQ" },
   { href: "/pricing", label: "Pricing", iosHide: true },
