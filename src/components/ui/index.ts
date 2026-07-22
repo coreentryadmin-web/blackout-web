@@ -64,3 +64,13 @@ export type {
   TabPanelsProps,
   TabPanelProps,
 } from "./Tabs";
+
+// Form primitives (Phase 1 design-system foundation).
+export { Select } from "./Select";
+export type { SelectProps, SelectOption } from "./Select";
+
+export { TextField } from "./TextField";
+export type { TextFieldProps } from "./TextField";
+
+export { Switch } from "./Switch";
+export type { SwitchProps } from "./Switch";
