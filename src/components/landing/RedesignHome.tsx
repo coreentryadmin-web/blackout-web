@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
+import { IMAGES, MARKETING_MODULE_IMAGES } from "@/lib/images";
 import { LandingRedesignFx } from "./LandingRedesignFx";
 
 /** Bento column spans per module id — tiles 6 modules into three 6-col rows. */
@@ -60,6 +61,8 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         <div className="rl-wrap">
           <div className="rl-hero-grid">
             <div className="rl-reveal rl-in">
+              {/* eslint-disable-next-line @next/next/no-img-element -- marketing hero brand emblem */}
+              <img src={IMAGES.brandEmblem} alt="BlackOut" className="rl-hero-emblem" width={92} height={92} fetchPriority="high" decoding="async" />
               <span className="rl-kicker"><span className="dot" aria-hidden />Institutional options desk</span>
               <h1 className="rl-hero-h1">Trade like<br />the lights<br /><span className="on">are on.</span></h1>
               <p className="rl-hero-lede">Options flow, dealer positioning, live gamma structure, and the Night Hawk swing scanner — <b>one command surface for the floor.</b> The intelligence layer institutions pay a premium for, unified by BlackOut Intelligence.</p>
@@ -201,9 +204,17 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                   <div className="rl-deep-visual">
                     <div className="rl-deep-visual-chrome" aria-hidden>
                       <span className="d" /><span className="d" /><span className="d" />
-                      <span className="rl-deep-visual-lbl">{m.label} · live</span>
+                      <span className="rl-deep-visual-lbl">{m.label} · live desk</span>
                     </div>
-                    <canvas data-pviz={m.id} data-a={m.accent} aria-hidden />
+                    {/* Real product screenshot — the strongest marketing is the actual desk. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element -- marketing product shot */}
+                    <img
+                      src={MARKETING_MODULE_IMAGES[m.id]}
+                      alt={`${m.label} — live product screen`}
+                      className="rl-deep-shot"
+                      loading="lazy"
+                      decoding="async"
+                    />
                   </div>
                 </article>
               );
