@@ -202,6 +202,33 @@ jobs:
             fi
           done
 
+      # Purge the edge BEFORE validating. The validator fetches the site THROUGH
+      # Cloudflare, and Cloudflare edge-caches the transient 404s that hashed
+      # /_next/static/* chunks throw during the rolling task swap. If we validate
+      # first, those cached 404s fail the check for the full retry window and the
+      # job exits 1 *before* this purge ever runs — so the stale/404 edge cache is
+      # never cleared and the deploy is marked failed even though ECS rolled out
+      # fine. Purge → then validate against a cleared edge that re-fetches the
+      # now-healthy origin. (Guard lives in the script, not `if:`, because
+      # step-scoped `env` is not reliably in scope for that step's own `if`.)
+      - name: Purge Cloudflare edge cache
+        env:
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CF_ZONE_ID}" ] || [ -z "${CF_API_TOKEN}" ]; then
+            echo "Cloudflare secrets not set — skipping edge purge."
+            exit 0
+          fi
+          curl -fsS -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}'
+          echo "Cloudflare cache purged after ECS rollout."
+          # Let the edge drop entries before we validate through it.
+          sleep 10
+
       - name: Validate static assets on origin
         run: |
           set -euo pipefail
@@ -215,15 +242,3 @@ jobs:
           done
           echo "Static assets still broken after ECS rollout."
           exit 1
-
-      - name: Purge Cloudflare edge cache
-        if: env.CF_ZONE_ID != '' && env.CF_API_TOKEN != ''
-        env:
-          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-        run: |
-          curl -fsS -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" \
-            -H "Authorization: Bearer ${CF_API_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data '{"purge_everything":true}'
-          echo "Cloudflare cache purged after ECS rollout + asset validation."
