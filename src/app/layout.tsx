@@ -11,6 +11,10 @@ import "./phosphor-tokens.css";
 // the tsx test runner — which can't parse per-component CSS imports — stays happy
 // and every surface reads the same button styles. Loads after the tokens it uses.
 import "@/components/ui/button.css";
+// Phosphor Boot loader styles (route-transition splash). Global, same rationale
+// as button.css above — loading.tsx must stay a dependency-light server component,
+// so its keyframes/rules live here rather than being imported per-component.
+import "./phosphor-loading.css";
 
 const anton = Anton({
   weight: "400",

@@ -1,0 +1,159 @@
+/* =========================================================================
+   PHOSPHOR BOOT — route-transition loader for the PHOSPHOR LADDER system.
+
+   Thesis: BlackOut IS a gamma-ladder terminal, so the loading state is that
+   ladder powering on — a cold-violet CRT panel warming up, rungs discharging
+   into place, one KING rung striking gold. "Data is the only ornament": every
+   animated pixel here maps to a real desk primitive (spot line, call/put wall,
+   king level, scanline refresh), not abstract spinner filler.
+
+   Pure CSS (no JS) so the host stays a dependency-light server component and
+   paints on the very first frame of any Suspense/navigation boundary. Every
+   motion is gated by prefers-reduced-motion at the bottom of this file, which
+   freezes the rail in its fully-formed end state.
+   ========================================================================= */
+
+.pboot {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(120% 90% at 50% 42%, rgba(191, 95, 255, 0.06), transparent 60%),
+    var(--ground, #040407);
+  padding: 6vh 6vw;
+  z-index: 40;
+}
+
+/* The CRT panel the ladder boots inside. */
+.pboot-crt {
+  position: relative;
+  width: min(340px, 82vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  isolation: isolate;
+}
+
+/* Scanline sweep — the "refresh" pass reading down the tube. */
+.pboot-crt::after {
+  content: "";
+  position: absolute;
+  inset: -8% -12%;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(191, 95, 255, 0.05) 46%,
+    rgba(191, 95, 255, 0.12) 50%,
+    rgba(191, 95, 255, 0.05) 54%,
+    transparent 100%
+  );
+  background-size: 100% 220%;
+  mix-blend-mode: screen;
+  animation: pboot-scan 2.6s linear infinite;
+}
+
+/* ---- Wordmark: flickers on like a phosphor tube striking ---- */
+.pboot-mark {
+  font-family: var(--font-anton, "Anton", system-ui), sans-serif;
+  font-size: clamp(28px, 8vw, 40px);
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: #f4f0ff;
+  text-shadow: 0 0 18px rgba(191, 95, 255, 0.55), 0 0 2px rgba(191, 95, 255, 0.9);
+  animation: pboot-strike 1.9s ease-out both;
+}
+
+/* ---- The forming GEX ladder rail ---- */
+.pboot-rail {
+  position: relative;
+  width: 100%;
+  height: 132px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.pboot-rung {
+  position: relative;
+  height: 3px;
+  border-radius: 999px;
+  transform-origin: left center;
+  transform: scaleX(0);
+  opacity: 0;
+  animation: pboot-rung 1.4s var(--ease-persist, cubic-bezier(.22, 1, .36, 1)) forwards;
+}
+
+/* Magnitude tint per rung — call-side bull, put-side bear, one gold KING. */
+.pboot-rung[data-k="bull"] { background: var(--sig-bull, #00e676); box-shadow: 0 0 10px rgba(0, 230, 118, 0.5); }
+.pboot-rung[data-k="bear"] { background: var(--sig-bear, #ff2d55); box-shadow: 0 0 10px rgba(255, 45, 85, 0.45); }
+.pboot-rung[data-k="king"] { background: var(--sig-king, #ffd23f); box-shadow: 0 0 16px rgba(255, 210, 63, 0.7); height: 4px; }
+.pboot-rung[data-k="ref"]  { background: var(--sig-ref, #7dd3fc); opacity: 0.55; }
+
+/* Cascade the rungs discharging into place, top → down. */
+.pboot-rung:nth-child(1) { animation-delay: 0.10s; width: 46%; }
+.pboot-rung:nth-child(2) { animation-delay: 0.20s; width: 68%; }
+.pboot-rung:nth-child(3) { animation-delay: 0.30s; width: 90%; } /* KING */
+.pboot-rung:nth-child(4) { animation-delay: 0.42s; width: 72%; }
+.pboot-rung:nth-child(5) { animation-delay: 0.54s; width: 100%; } /* spot ref */
+.pboot-rung:nth-child(6) { animation-delay: 0.66s; width: 58%; }
+.pboot-rung:nth-child(7) { animation-delay: 0.78s; width: 80%; }
+.pboot-rung:nth-child(8) { animation-delay: 0.90s; width: 40%; }
+
+/* ---- Boot status line: blinking caret + phase label ---- */
+.pboot-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--font-jetbrains, "JetBrains Mono", ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: rgba(191, 95, 255, 0.72);
+}
+
+.pboot-caret {
+  width: 7px;
+  height: 13px;
+  background: var(--sig-bull, #00e676);
+  box-shadow: 0 0 8px rgba(0, 230, 118, 0.7);
+  animation: pboot-blink 1.05s steps(1) infinite;
+}
+
+@keyframes pboot-scan {
+  from { background-position: 0 -110%; }
+  to   { background-position: 0 110%; }
+}
+
+@keyframes pboot-strike {
+  0%   { opacity: 0; }
+  6%   { opacity: 0.9; }
+  9%   { opacity: 0.2; }
+  14%  { opacity: 1; }
+  18%  { opacity: 0.4; }
+  22%  { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+@keyframes pboot-rung {
+  0%   { transform: scaleX(0); opacity: 0; }
+  60%  { opacity: 1; }
+  100% { transform: scaleX(1); opacity: 1; }
+}
+
+@keyframes pboot-blink {
+  0%, 50%   { opacity: 1; }
+  51%, 100% { opacity: 0.15; }
+}
+
+/* Reduced motion: no sweep, no flicker, no cascade — the rail is simply
+   shown in its fully-formed end state, caret steady. Data still reads. */
+@media (prefers-reduced-motion: reduce) {
+  .pboot-crt::after { display: none; }
+  .pboot-mark { animation: none; }
+  .pboot-rung { animation: none; transform: scaleX(1); opacity: 1; }
+  .pboot-rung[data-k="ref"] { opacity: 0.55; }
+  .pboot-caret { animation: none; opacity: 1; }
+}
