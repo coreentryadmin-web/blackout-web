@@ -302,9 +302,14 @@ export function SpxGexMatrixHeatmap({
     () => odteStrikeTotalsFromCells(cells, strikesAxis, columnExpiry),
     [cells, strikesAxis, columnExpiry]
   );
+  // FLIP (0DTE) + scoped levels interpolate the zero-gamma crossing AT the spot. Use the LIVE
+  // stream spot (overlaySpot), not the matrix's own cached snapshot spot (matrixSpot) — the matrix
+  // payload can be several seconds stale, and interpolating the crossing at a lagging spot pushed
+  // this 0DTE flip several points off the chart's flip (which uses live spot). Same spot in → same
+  // flip out, so the matrix's "FLIP (0DTE)" now agrees with the chart instead of drifting.
   const odteLevels = useMemo(
-    () => recomputeScopedGexLevels(odteTotals, matrixSpot),
-    [odteTotals, matrixSpot]
+    () => recomputeScopedGexLevels(odteTotals, overlaySpot),
+    [odteTotals, overlaySpot]
   );
 
   const peak = useMemo(() => {

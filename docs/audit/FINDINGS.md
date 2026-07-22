@@ -483,3 +483,35 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Tests:** `shift-math.test.ts` extended (call/put build+melt, verb⇔sign consistency, guards) —
   12 pass; `tsc --noEmit` clean.
 - **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
+
+## 2026-07-22 — SPX 0DTE gamma flip fragmented across panels (P1, FIXED — data unification)
+
+### P1 — Four independent gamma-flip engines; pin used a volume-poisoned SIGNED ladder
+- **Symptom (member-reported, screenshot):** the gamma flip showed FOUR different values on one
+  page — header Γ FLIP 7,600.71, Vector chart 7,524.02, EOD Pin Forecaster 7,513, Dealer Gamma Map
+  "FLIP (0DTE)" ~7,531.5 — and two panels gave contradictory regime reads (chart "sitting ON the
+  flip, undecided" vs pin "above the flip, long gamma").
+- **Root cause:** every panel recomputes the flip independently with a different expiry scope /
+  positioning basis / spot snapshot. Two are genuine bugs:
+  1. **Pin forecaster (7,513):** `pinLadderAtSpot` (`spx-pin-forecast-core.ts:105`) built the SIGNED
+     net-GEX ladder from `openInterest + max(0, dayVolume)`. Volume is UNSIGNED, so folding it into a
+     signed cumulative zero-crossing poisons the sign — the exact regression the Vector 0DTE path
+     documents (`vector-dte-walls-core.ts`: volume "dragged the flip from ~7,522 to ~7,000"). The pin
+     re-committed it, dragging its flip ~11 pts off the chart's OI-only flip.
+  2. **GEX matrix (7,531.5):** `SpxGexMatrixHeatmap.tsx:305` interpolated the 0DTE crossing at
+     `matrixSpot` (the matrix payload's own, several-seconds-stale snapshot spot) instead of the live
+     stream spot — a ~7 pt skew vs the chart.
+  The header's 7,600 is a DIFFERENT measure (near-term 8–15 expiry aggregate) and is correctly
+  labeled — not a bug.
+- **Evidence:** cross-surface trace (SpxSniperHeader/spx-desk near-term aggregate vs
+  getVectorGammaFlipForHorizon 0DTE OI-only vs pinFlip OI+vol vs matrix 0DTE column at stale spot);
+  live authenticated probe confirmed pin.flip=7510.95 while chart flip ~7524 same instant.
+- **Fix:**
+  1. `pinLadderAtSpot` → **OI-only** (drop dayVolume from the SIGNED ladder). Walls (`oiWalls`) +
+     max-pain keep volume — those are unsigned concentration measures where intraday build is signal.
+  2. Matrix 0DTE levels → **`overlaySpot` (live)** instead of `matrixSpot` (stale snapshot).
+  Result: chart, pin, and matrix converge on one SPX 0DTE gamma flip; header stays the labeled
+  aggregate. First step of the broader "unify every SPX value" mandate.
+- **Tests:** `spx-pin-forecast-core.test.ts` — new OI-only invariance test (lopsided put volume must
+  not move the flip); 8 pass. `tsc --noEmit` clean.
+- **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
