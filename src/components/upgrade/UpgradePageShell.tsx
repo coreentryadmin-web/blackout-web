@@ -10,16 +10,18 @@ import { FeatureComparison } from "@/components/upgrade/FeatureComparison";
 import { AuthProofRail } from "@/components/auth/AuthProofRail";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 
-/** /upgrade — App Store safe membership page; compact on native shell. */
-export function UpgradePageShell() {
+/**
+ * /upgrade — App Store safe membership page; compact on native shell.
+ *
+ * `frame={false}` drops the in-app PageShell/backdrop so the page can be framed
+ * by the marketing chrome (MarketingPageShell) instead — used now that /upgrade
+ * lives in the (marketing) route group. Two page frames would emit duplicate
+ * `<main id="main">`, so exactly one owner renders the frame.
+ */
+export function UpgradePageShell({ frame = true }: { frame?: boolean }) {
   const nativeShell = useIosNativeShell();
 
-  return (
-    <PageShell
-      backdropSlot={<PricingBackdrop />}
-      className={clsx(nativeShell && "upgrade-page-shell-native ios-native-page-upgrade")}
-      contentClassName={clsx(nativeShell && "upgrade-page-content-native")}
-    >
+  const body = (
       <div
         className={clsx(
           "content-rail mx-auto max-w-4xl py-8 pb-20 text-center md:py-12",
@@ -94,6 +96,18 @@ export function UpgradePageShell() {
           </div>
         )}
       </div>
+  );
+
+  // Frameless: the marketing chrome supplies nav + backdrop + footer.
+  if (!frame) return body;
+
+  return (
+    <PageShell
+      backdropSlot={<PricingBackdrop />}
+      className={clsx(nativeShell && "upgrade-page-shell-native ios-native-page-upgrade")}
+      contentClassName={clsx(nativeShell && "upgrade-page-content-native")}
+    >
+      {body}
     </PageShell>
   );
 }
