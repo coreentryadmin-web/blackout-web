@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { NavAuthLinks } from "./NavAuthLinks";
 
 // Anchors must match the real section ids in RedesignHome. The old
 // "/#features" / "/#tape" targets never existed there (the redesign uses
@@ -27,20 +28,9 @@ export function StaticMarketingNav({ signedIn = false }: { signedIn?: boolean })
           ))}
         </nav>
         <div className="mkt-nav-auth">
-          {signedIn ? (
-            <Link href="/dashboard" prefetch={false} className="nav-join">
-              Open desk →
-            </Link>
-          ) : (
-            <>
-              <Link href="/sign-in" prefetch={false} className="nav-signin">
-                Sign in
-              </Link>
-              <Link href="/sign-up" prefetch={false} className="nav-join">
-                Get access →
-              </Link>
-            </>
-          )}
+          {/* Client-reconciled from the __client_uat cookie so the auth chrome is
+              correct even on statically-generated / edge-cached marketing pages. */}
+          <NavAuthLinks signedIn={signedIn} />
         </div>
       </div>
     </header>
