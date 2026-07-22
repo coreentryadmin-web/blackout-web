@@ -355,3 +355,29 @@ test("evaluatePlayGates: cold BUY path requires A-grade and min score", () => {
   );
   assert.match(result.blocks.join(" "), /grade A or better/i);
 });
+
+test("evaluatePlayGates: inverted stop (long stop ABOVE entry) is blocked as invalid geometry", () => {
+  mockHaltBlock = { block: false, reason: null };
+  const result = evaluatePlayGates(
+    baseDesk(), // price 6000
+    // Long (target 6025 > entry 6000) but stop 6010 is ABOVE entry — inverted geometry the Math.abs
+    // R:R ratio would otherwise hide (reads as stopped-out at open). Must be blocked.
+    baseConfluence({ levels: { stop: 6010, target: 6025 } }),
+    emptySession,
+    passingConfirmations,
+    { entry_intent: "buy", playbook_primary_id: "PB-03", playbook_primary_direction: "long" }
+  );
+  assert.match(result.blocks.join(" "), /Invalid geometry.*wrong side/i);
+});
+
+test("evaluatePlayGates: correct long geometry (stop below, target above) is NOT geometry-blocked", () => {
+  mockHaltBlock = { block: false, reason: null };
+  const result = evaluatePlayGates(
+    baseDesk(),
+    baseConfluence({ levels: { stop: 5985, target: 6025 } }),
+    emptySession,
+    passingConfirmations,
+    { entry_intent: "buy", playbook_primary_id: "PB-03", playbook_primary_direction: "long" }
+  );
+  assert.equal(result.blocks.some((b) => /Invalid geometry/i.test(b)), false);
+});
