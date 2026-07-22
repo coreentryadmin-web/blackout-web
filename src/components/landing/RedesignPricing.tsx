@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { BorderBeam } from "@/components/ui/motion/BorderBeam";
+import { RetroGrid } from "@/components/ui/motion/RetroGrid";
+import { NumberTicker } from "@/components/ui/motion/NumberTicker";
 
 /** Full-desk perks — every module, one membership. */
 const DESK_PERKS = [
@@ -24,6 +27,8 @@ export function RedesignPricing() {
   return (
     <div className="rl">
       <section className="rl-pricing-page">
+        {/* Perspective phosphor floor behind the tier grid. */}
+        <RetroGrid lineColor="rgba(191,95,255,0.16)" opacity={0.42} />
         <div className="rl-wrap">
           <div className="rl-pricing-head">
             <span className="rl-kicker" style={{ justifyContent: "center" }}>
@@ -37,7 +42,7 @@ export function RedesignPricing() {
             {/* Community */}
             <div className="rl-plan">
               <div className="pl">Community</div>
-              <div className="amt">$75<span> / mo</span></div>
+              <div className="amt">$<NumberTicker value={75} /><span> / mo</span></div>
               <div className="save">Discord · live signals · the room</div>
               <ul className="perks">
                 {COMMUNITY_PERKS.map((p) => <li key={p}>{p}</li>)}
@@ -47,9 +52,11 @@ export function RedesignPricing() {
 
             {/* Premium Monthly — featured */}
             <div className="rl-plan feat">
+              {/* Border beam marks the recommended tier — bull-green to match its accent. */}
+              <BorderBeam color="var(--rl-bull)" duration="6s" width="1.6px" />
               <div className="badge">Full desk</div>
               <div className="pl">Premium · Monthly</div>
-              <div className="amt">$199<span> / mo</span></div>
+              <div className="amt">$<NumberTicker value={199} /><span> / mo</span></div>
               <div className="save">Every module + Discord · one membership</div>
               <ul className="perks">
                 {DESK_PERKS.map((p) => <li key={p}>{p}</li>)}
@@ -60,7 +67,7 @@ export function RedesignPricing() {
             {/* Premium Yearly */}
             <div className="rl-plan">
               <div className="pl">Premium · Yearly</div>
-              <div className="amt">$1,999<span> / yr</span></div>
+              <div className="amt">$<NumberTicker value={1999} /><span> / yr</span></div>
               <div className="save">≈ $167/mo · save $389 vs monthly</div>
               <ul className="perks">
                 {DESK_PERKS.map((p) => <li key={p}>{p}</li>)}
