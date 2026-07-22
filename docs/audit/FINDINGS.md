@@ -5,6 +5,44 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-22 — Auth nav stuck on "Sign in" after login (P1, FIXED live)
+
+### P1 — Cloudflare edge-cached the homepage HTML, so signed-in users saw the anonymous nav
+- **Symptom (member-reported):** sign in successfully, but the marketing nav keeps showing
+  "Sign in" / "Get access →" instead of "Open desk →" — indefinitely.
+- **Root cause — NOT the app.** The origin is correct: `MarketingPageShell`
+  (`src/components/landing/MarketingPageShell.tsx:15`) computes `signedIn` per-request via
+  `activeClerkUserIdFromRequestCookies()` (`src/lib/clerk-session-cookies.ts`), which decodes the
+  `__session` JWT; `cookies()` makes the route dynamic and the origin sends
+  `Cache-Control: private, no-store`. The bug was at the edge: a Cloudflare **cache rule**
+  (`http_request_cache_settings` ruleset, rule `f261edb0…`) matched
+  `path eq "/" or path eq "/upgrade" or starts_with(path,"/learn")` with
+  `cache:true, edge_ttl.default=7200, mode=override_origin` — i.e. it **force-cached the HTML for
+  2h, ignoring the origin's no-store**. One anonymous snapshot was stored and served to every
+  visitor, signed-in included. (`/pricing`, `/faq`, and all `(site)` desk pages were already
+  `cf-cache-status: DYNAMIC`, so only these three auth-chrome pages were affected.)
+- **Evidence (live, headless Clerk login):** origin fetch of `/` with a cache-buster —
+  anonymous → `Get access →` present; with a real `__session` cookie → `Get access →` gone,
+  `/dashboard` links +2 (the nav flips to "Open desk →"). So the origin renders both states
+  correctly. But the EDGE fetch of the real URL `/` WITH a valid `__session` cookie returned
+  `cf-cache-status: HIT` (age climbing 135→136 across requests) — the cached anonymous HTML.
+- **Fix (live, root cause):** appended `and (not http.cookie contains "__session")` to the rule's
+  expression via the Cloudflare rulesets API (PATCH `…/rulesets/{id}/rules/{ruleId}`). Now any
+  request carrying a Clerk session cookie **bypasses** the edge cache and hits the origin (correct
+  per-user nav), while anonymous / signed-out (`__client_uat=0`, no `__session`) requests still get
+  the fast cached copy — landing-page perf preserved. `__session` is httpOnly but the edge sees it
+  (httpOnly hides from JS, not from Cloudflare). Verified post-fix: signed-in edge fetch →
+  `cf-cache-status: MISS/DYNAMIC` + correct "Open desk →" nav; anonymous → still `HIT`.
+- **Durability / follow-up:** this cache ruleset was created **manually in the Cloudflare dashboard**
+  — it is NOT in `blackout-infra` terraform, so the live edit persists and no IaC will revert it. The
+  deploy pipeline's `purge_everything` does not reintroduce the bug (first anon request re-caches
+  anon; signed-in still bypasses). Remaining risk is a human re-editing the rule and dropping the
+  cookie guard → codifying the Cloudflare cache rules in terraform (blackout-infra) is the durable
+  belt-and-suspenders follow-up. Any NEW auth-dependent HTML route added to an edge-cache rule must
+  carry the same `not http.cookie contains "__session"` guard.
+- **Status:** FIXED live + verified. This docs entry is the in-repo record (the fix itself lives in
+  Cloudflare, not code).
+
 ## 2026-07-21 — Enhancement: Wall Integrity Rings (second visual channel on beads)
 
 ### FEATURE — Bead halo now encodes wall confidence (firm/moderate/thin), not just magnitude
