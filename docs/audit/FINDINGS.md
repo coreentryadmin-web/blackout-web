@@ -539,3 +539,23 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
   follow-up if members find it confusing.
 - **Verification:** `tsc --noEmit` clean; brand lint clean.
 - **Status:** DONE (branch `claude/wall-beads-data-validation-4re5wo`).
+
+## 2026-07-22 — Header label collisions + VWAP tone/value split (P2, FIXED — consistency)
+
+### P2 — "Regime" meant two things; max-pain horizon undisclosed; VWAP tone could contradict value
+- **Symptom:** the desk "said different things" for the same label. (1) Header "Regime" pill = TREND
+  (price vs EMAs) while the chart banner + EOD pin show GAMMA regime (spot vs flip) — one word, two
+  concepts. (2) Header Max Pain = near-term aggregate while pin/chart use 0DTE — undisclosed (γ-flip
+  had a disclosure, max-pain didn't). (3) VWAP pill TONE was driven by the raw pulse `above_vwap`
+  flag while the VALUE/arrow use the sticky merged `desk.vwap` — when `pulse.vwap` momentarily nulls,
+  a bear tone could paint over a VWAP drawn below spot.
+- **Fix (`SpxSniperHeader.tsx`):**
+  - Relabel the trend pill "Regime" → **"Trend"**, and expand its tooltip to explicitly contrast it
+    with the gamma regime on the chart/pin — same word no longer implies the same measure.
+  - Add the near-term-vs-0DTE horizon disclosure to the **Max Pain** tooltip (mirrors γ-flip).
+  - Derive the VWAP **tone from the displayed value** (`spot >= desk.vwap`), falling back to
+    `above_vwap` only when vwap is null — tone, arrow, and value can no longer disagree.
+- **Rationale:** these are intentionally DIFFERENT concepts (daily trend vs gamma regime; near-term
+  vs 0DTE), so the correct unification is precise labels, NOT forcing different measures equal (that
+  would itself be wrong data). Verified `tsc --noEmit` clean.
+- **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
