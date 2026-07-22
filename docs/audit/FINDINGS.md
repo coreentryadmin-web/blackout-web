@@ -617,3 +617,18 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
   deployed build.
 - **Verification:** `tsc --noEmit` clean; brand lint clean.
 - **Status:** DONE (levels); cone + panel-slim = follow-ups. Branch `claude/wall-beads-data-validation-4re5wo`.
+
+## 2026-07-22 — Pinned bias prose named stale walls after a king migration (P3, FIXED)
+
+### P3 — Bias card kept citing an old king wall for up to 5 min after it stepped
+- **Symptom (left-pane audit item A):** the pinned bias narrative bakes specific wall/pin numbers
+  into prose ("7,530 put wall is the line…"), but `deriveSpxBias.key` excluded the king-wall strikes
+  and max-pain, so the card only re-voiced on a direction change or the 5-min periodic refresh. After
+  a king migration the "Recent shifts"/tape feed showed the move while the pinned paragraph kept
+  naming the OLD wall — internally contradictory on the same card.
+- **Fix (`spx-live-voice.ts`):** add the king call/put strikes + max-pain to the bias key, so the
+  pinned card re-voices the moment a NAMED level migrates (still not on plain price ticks — those
+  aren't in the key). It's a re-voice trigger, not a bias flip (direction/conviction unaffected).
+- **Tests:** `spx-live-voice.test.ts` — key changes on king-call + max-pain migration, direction
+  unchanged, price-tick invariance still holds; 54 pass. `tsc` clean.
+- **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
