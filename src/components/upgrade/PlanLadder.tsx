@@ -6,6 +6,7 @@ import {
 } from "@/lib/whop-checkout";
 import { valuePropFor } from "@/lib/upsell-features";
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
+import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 
 export function PlanLadder() {
   const hasAnyOption = WHOP_COMMUNITY_CHECKOUT_OPTION || WHOP_PREMIUM_CHECKOUT_OPTIONS.length > 0;
@@ -25,7 +26,7 @@ export function PlanLadder() {
       {WHOP_COMMUNITY_CHECKOUT_OPTION && (
         <div className="relative flex flex-col rounded-2xl border border-sky-300/25 bg-[#080a10]/60 p-6 text-left backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-sky-300/50">
           <p className="font-syne text-[11px] font-bold uppercase tracking-[0.22em] text-sky-300">Community</p>
-          <p className="mt-1 font-anton text-4xl leading-none text-white">$75</p>
+          <p className="mt-1 font-anton text-4xl leading-none text-white">{usd(MEMBERSHIP_PRICING.community)}</p>
           <p className="mt-2 text-xs text-sky-300">Discord access · billed monthly</p>
           <p className="mt-3 text-[13px] leading-relaxed text-white/60">
             Live signals, daily reads, session discussions, evening recaps — the room.

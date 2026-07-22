@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { RetroGrid } from "@/components/ui/motion/RetroGrid";
-import { NumberTicker } from "@/components/ui/motion/NumberTicker";
+import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 
 /** Full-desk perks — every module, one membership. */
 const DESK_PERKS = [
@@ -42,7 +42,7 @@ export function RedesignPricing() {
             {/* Community */}
             <div className="rl-plan">
               <div className="pl">Community</div>
-              <div className="amt">$<NumberTicker value={75} /><span> / mo</span></div>
+              <div className="amt">{usd(MEMBERSHIP_PRICING.community)}<span> / mo</span></div>
               <div className="save">Discord · live signals · the room</div>
               <ul className="perks">
                 {COMMUNITY_PERKS.map((p) => <li key={p}>{p}</li>)}
@@ -56,7 +56,7 @@ export function RedesignPricing() {
               <BorderBeam color="var(--rl-bull)" duration="6s" width="1.6px" />
               <div className="badge">Full desk</div>
               <div className="pl">Premium · Monthly</div>
-              <div className="amt">$<NumberTicker value={199} /><span> / mo</span></div>
+              <div className="amt">{usd(MEMBERSHIP_PRICING.monthly)}<span> / mo</span></div>
               <div className="save">Every module + Discord · one membership</div>
               <ul className="perks">
                 {DESK_PERKS.map((p) => <li key={p}>{p}</li>)}
@@ -67,8 +67,8 @@ export function RedesignPricing() {
             {/* Premium Yearly */}
             <div className="rl-plan">
               <div className="pl">Premium · Yearly</div>
-              <div className="amt">$<NumberTicker value={1999} /><span> / yr</span></div>
-              <div className="save">≈ $167/mo · save $389 vs monthly</div>
+              <div className="amt">{usd(MEMBERSHIP_PRICING.yearly)}<span> / yr</span></div>
+              <div className="save">≈ ${MEMBERSHIP_PRICING.yearlyEffectiveMonthly}/mo · save ${MEMBERSHIP_PRICING.yearlySavingsVsMonthly} vs monthly</div>
               <ul className="perks">
                 {DESK_PERKS.map((p) => <li key={p}>{p}</li>)}
               </ul>
