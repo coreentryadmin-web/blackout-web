@@ -56,6 +56,7 @@ export {
 export { BorderBeam } from "./motion/BorderBeam";
 export { RetroGrid } from "./motion/RetroGrid";
 export { NumberTicker } from "./motion/NumberTicker";
+export { ProductGallery } from "./motion/ProductGallery";
 
 export { PageShell } from "./PageShell";
 export type { PageShellProps } from "./PageShell";

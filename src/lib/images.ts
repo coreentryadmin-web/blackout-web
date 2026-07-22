@@ -20,6 +20,24 @@ export const MARKETING_MODULE_IMAGES = {
 
 export type MarketingModuleId = keyof typeof MARKETING_MODULE_IMAGES;
 
+/**
+ * Per-product screenshot GALLERY — the deep-dive carousel shows every shot listed
+ * here (one image = static, two or more = a slider). The first entry is the
+ * primary shot (also used anywhere a single image is needed).
+ *
+ * To add more shots for a product: drop the webp in `public/images/marketing/`
+ * (convention: `<id>-2.webp`, `<id>-3.webp`, …, 4K source → webp q92) and add its
+ * path to that product's array below. Order here is the order shown.
+ */
+export const MARKETING_MODULE_GALLERY: Record<MarketingModuleId, readonly string[]> = {
+  spx: [MARKETING_MODULE_IMAGES.spx],
+  helix: [MARKETING_MODULE_IMAGES.helix],
+  thermal: [MARKETING_MODULE_IMAGES.thermal],
+  largo: [MARKETING_MODULE_IMAGES.largo],
+  hawk: [MARKETING_MODULE_IMAGES.hawk],
+  vector: [MARKETING_MODULE_IMAGES.vector],
+};
+
 export const IMAGE_FILES = [
   { path: "public/images/hero-banner.png", label: "BlackOut Trading Community (hero)" },
   { path: "public/images/blackout-emblem.webp", label: "Brand emblem — marketing hero" },
