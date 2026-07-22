@@ -1,8 +1,9 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
-import { IMAGES, MARKETING_MODULE_IMAGES } from "@/lib/images";
+import { IMAGES, MARKETING_MODULE_GALLERY } from "@/lib/images";
 import { InstrumentIcon } from "@/components/ui/icons/InstrumentIcons";
+import { ProductGallery } from "@/components/ui/motion/ProductGallery";
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { RetroGrid } from "@/components/ui/motion/RetroGrid";
 import { LandingRedesignFx } from "./LandingRedesignFx";
@@ -201,15 +202,9 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                       <span className="d" /><span className="d" /><span className="d" />
                       <span className="rl-deep-visual-lbl">{m.label} · live desk</span>
                     </div>
-                    {/* Real product screenshot — the strongest marketing is the actual desk. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element -- marketing product shot */}
-                    <img
-                      src={MARKETING_MODULE_IMAGES[m.id]}
-                      alt={`${m.label} — live product screen`}
-                      className="rl-deep-shot"
-                      loading="lazy"
-                      decoding="async"
-                    />
+                    {/* Real product screenshots — the strongest marketing is the actual
+                        desk. One shot renders static; multiple become a carousel. */}
+                    <ProductGallery images={MARKETING_MODULE_GALLERY[m.id]} label={m.label} />
                   </div>
                 </article>
               );
