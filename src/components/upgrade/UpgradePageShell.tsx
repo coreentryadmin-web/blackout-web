@@ -29,7 +29,7 @@ export function UpgradePageShell() {
         {!nativeShell && (
           <PageHeader
             kicker="Premium access"
-            title="Unlock the desk"
+            title="Unlock the"
             titleAccent="full floor"
             subtitle="One membership opens every instrument — live flow, SPX structure, AI analyst, and overnight playbook."
             className="mb-10 justify-center text-center [&_h1]:mx-auto [&_p]:mx-auto"
