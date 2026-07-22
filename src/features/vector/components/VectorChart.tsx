@@ -836,6 +836,10 @@ function buildWallBeadMarkers(
   ribbonMode = false
 ): SeriesMarker<Time>[] {
   const markers: SeriesMarker<Time>[] = [];
+  // Ribbon mode: the WallRailPrimitive owns the entire per-bucket rail (strength/growth/fade bands),
+  // so this function emits NO per-point markers — the caller still appends the faint zoom-anchor
+  // beads to this array. Short-circuit here so the per-point loop's work is skipped entirely.
+  if (ribbonMode) return markers;
   // Earliest bucket across every rendered trail — the boundary where a trail's start is ambiguous
   // (window trim edge / session open) rather than a genuine formation. See trueBirth below.
   let earliestBucket: number | null = null;
@@ -890,25 +894,21 @@ function buildWallBeadMarkers(
       // velocity. Multiplier reduced from 2.2 → 1.6 so the halo doesn't mask the core's size.
       const glowAlpha =
         glowAlphaForPctRel(p.pct, maxPct) * alphaScale * mod.alphaMul * (modeled ? 1 : magnitudeGlowBoost(p.pct));
-      // Ribbon mode: skip the glow halo entirely (the ribbon owns magnitude/brightness) and draw a
-      // small dim core dot so the sample points read as crisp ticks ON the band, not a fat blob.
-      if (!ribbonMode) {
-        markers.push({
-          time,
-          position: "atPriceMiddle",
-          price: trail.strike,
-          shape: "circle",
-          color: withAlpha(baseColor, Math.min(1, glowAlpha * ring.alphaMul)),
-          size: size * 1.6 * ring.sizeMul,
-        });
-      }
       markers.push({
         time,
         position: "atPriceMiddle",
         price: trail.strike,
         shape: "circle",
-        color: withAlpha(baseColor, ribbonMode ? Math.min(1, coreAlpha * 0.9) : coreAlpha),
-        size: ribbonMode ? Math.max(0.3, size * 0.5) : size,
+        color: withAlpha(baseColor, Math.min(1, glowAlpha * ring.alphaMul)),
+        size: size * 1.6 * ring.sizeMul,
+      });
+      markers.push({
+        time,
+        position: "atPriceMiddle",
+        price: trail.strike,
+        shape: "circle",
+        color: withAlpha(baseColor, coreAlpha),
+        size,
       });
       // BIRTH bead: the candle where this wall first appeared. A new wall naturally starts at the
       // current candle (birth-anchored), and we brighten that origin bead so a member can SEE when
@@ -924,7 +924,7 @@ function buildWallBeadMarkers(
       // is unknowable (live-window trim edge or session open): the wall may have existed before the
       // window we're drawing. Only a birth strictly INSIDE the drawn window is a real formation cue.
       const trueBirth = i === 0 && earliestBucket != null && p.time > earliestBucket;
-      if ((trueBirth || reborn) && !modeled && !ribbonMode) {
+      if ((trueBirth || reborn) && !modeled) {
         markers.push({
           time,
           position: "atPriceMiddle",
@@ -940,7 +940,7 @@ function buildWallBeadMarkers(
       // ghosts (no real death) and skip when the terminal bead already got a birth/rebirth boost
       // (a one-bucket blip is a blip, not a death worth haloing).
       const isDeath = !trail.active && i === points.length - 1 && !modeled && !(trueBirth || reborn);
-      if (isDeath && !ribbonMode) {
+      if (isDeath) {
         markers.push({
           time,
           position: "atPriceMiddle",
