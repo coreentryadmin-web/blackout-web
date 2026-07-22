@@ -515,3 +515,27 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Tests:** `spx-pin-forecast-core.test.ts` — new OI-only invariance test (lopsided put volume must
   not move the flip); 8 pass. `tsc --noEmit` clean.
 - **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
+
+## 2026-07-22 — Full GEX/VEX matrix table (feature — SPX desk)
+
+### Dealer Gamma Map was truncated to 6 expiry columns; user wants the full table
+- **Request:** show the complete GEX/VEX matrix (every expiry as a column), not the shortened rail.
+- **Root of the truncation:** `SpxGexMatrixHeatmap.tsx` sliced columns to `MAX_EXPIRY_COLS = 6`
+  (`displayExpiries = expiriesAll.slice(0, 6)`). The payload already ships the FULL expiry axis
+  (near-term ≤15 + far-dated monthlies ≤8 ≈ 23 columns) in `cells` — the cut was purely client
+  display, so no provider/fetch change is needed. Strikes were never client-truncated.
+- **Fix (`SpxGexMatrixHeatmap.tsx`):**
+  - Default to the FULL table (all expiries); a compact **Near/Full toggle** collapses back to the
+    6-column rail (only shown when there are >6 expiries).
+  - **Two-tier color peak** — far-dated monthly OpEx cells are orders of magnitude larger than
+    near-term ones, so a single shared peak would wash the near-term block flat. Near-term and
+    far-dated columns now each scale to their OWN peak (`nearPeak`/`farPeak`, split by
+    `near_term_expiries`), so both blocks show gradient. The Net column (a near-term aggregate)
+    keeps the near-term peak.
+  - Added `near_term_expiries` to the client `GexHeatmapResponse` type (already served by the route
+    via `...heatmap`; only the client type omitted it).
+- **Known display caveat (documented, not a bug):** the "Net" column is the near-term aggregate
+  per strike, so once far columns are visible it is not the sum of the on-screen cells — a labeled
+  follow-up if members find it confusing.
+- **Verification:** `tsc --noEmit` clean; brand lint clean.
+- **Status:** DONE (branch `claude/wall-beads-data-validation-4re5wo`).
