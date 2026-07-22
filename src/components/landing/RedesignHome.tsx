@@ -5,6 +5,7 @@ import { IMAGES, MARKETING_MODULE_GALLERY } from "@/lib/images";
 import { InstrumentIcon } from "@/components/ui/icons/InstrumentIcons";
 import { ProductGallery } from "@/components/ui/motion/ProductGallery";
 import { Marquee } from "@/components/ui/motion/Marquee";
+import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { RetroGrid } from "@/components/ui/motion/RetroGrid";
 import { LandingRedesignFx } from "./LandingRedesignFx";
@@ -281,15 +282,15 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
               ))}
             </div>
             <div className="rl-tiers rl-reveal" style={{ transitionDelay: ".1s" }}>
-              <div className="rl-tier"><div className="plan">Community</div><div className="amt">$75<small>/mo</small></div><div className="sub">Discord · live signals · the room</div></div>
+              <div className="rl-tier"><div className="plan">Community</div><div className="amt">{usd(MEMBERSHIP_PRICING.community)}<small>/mo</small></div><div className="sub">Discord · live signals · the room</div></div>
               <div className="rl-tier best">
                 <div className="badge">Full desk</div>
                 <div className="plan" style={{ color: "var(--rl-bull)" }}>Premium</div>
-                <div className="amt">$199<small>/mo</small></div>
+                <div className="amt">{usd(MEMBERSHIP_PRICING.monthly)}<small>/mo</small></div>
                 <div className="sub">Every module + Discord · one membership</div>
                 <Link href="/sign-up" prefetch={false} className="rl-btn rl-btn-primary" style={{ width: "100%", marginTop: 16 }}>Start now →</Link>
               </div>
-              <div className="rl-tier"><div className="plan">Premium · Yearly</div><div className="amt">$1,999<small>/yr</small></div><div className="sub">Full desk · save $389 vs monthly</div></div>
+              <div className="rl-tier"><div className="plan">Premium · Yearly</div><div className="amt">{usd(MEMBERSHIP_PRICING.yearly)}<small>/yr</small></div><div className="sub">Full desk · save ${MEMBERSHIP_PRICING.yearlySavingsVsMonthly} vs monthly</div></div>
             </div>
           </div>
         </div>
