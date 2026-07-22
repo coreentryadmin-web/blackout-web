@@ -1,0 +1,87 @@
+/* =========================================================================
+   ACCOUNT — Clerk <UserProfile> contrast hardening.
+
+   The widget is themed via `variables` + `elements`, but Clerk's LIGHT base
+   theme still colors every UN-overridden element with dark text — so on our
+   dark card the nav header, field values, and (worst) the input text render
+   dark-on-dark ("can't see any field"). @clerk/themes' `dark` baseTheme would
+   fix it wholesale but isn't installed (and the house style avoids deps), so
+   force readable contrast here on Clerk's STABLE cl-* semantic classes.
+
+   Guiding rule: lift text to readable light/slate, but never touch the green
+   accent actions (links / primary buttons keep colorPrimary).
+   ========================================================================= */
+
+/* --- Inputs: the reported bug. Readable text on a visible field, every state
+   (incl. autofill, which otherwise repaints text black). --------------------*/
+.ios-account-page :is(.cl-formFieldInput, .cl-card input, .cl-card textarea, .cl-card select) {
+  color: #f4f6fb !important;
+  -webkit-text-fill-color: #f4f6fb !important;
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  caret-color: #00e676;
+}
+.ios-account-page :is(.cl-formFieldInput, .cl-card input, .cl-card textarea)::placeholder {
+  color: rgba(159, 180, 212, 0.55) !important;
+  -webkit-text-fill-color: rgba(159, 180, 212, 0.55) !important;
+}
+.ios-account-page :is(.cl-card input, .cl-card textarea):-webkit-autofill {
+  -webkit-text-fill-color: #f4f6fb !important;
+  box-shadow: 0 0 0 1000px #0b0d13 inset !important;
+}
+
+/* --- Primary text — titles, names, nav labels, field VALUES → near-white. ---*/
+.ios-account-page :is(
+  .cl-headerTitle,
+  .cl-navbar,
+  .cl-navbarButton,
+  .cl-navbarButtons,
+  .cl-profileSectionTitleText,
+  .cl-accordionTriggerButton,
+  .cl-userPreviewMainIdentifier,
+  .cl-userButtonPreviewMainIdentifier,
+  .cl-menuButton,
+  .cl-selectButton,
+  .cl-selectButton__countryCode,
+  .cl-formFieldInputGroup
+) {
+  color: #f4f6fb !important;
+}
+
+/* --- Secondary text — subtitles, hints, section body, labels → slate. -------*/
+.ios-account-page :is(
+  .cl-headerSubtitle,
+  .cl-profileSectionContent,
+  .cl-profileSectionItem,
+  .cl-formFieldLabel,
+  .cl-formFieldHintText,
+  .cl-userPreviewSecondaryIdentifier,
+  .cl-userButtonPreviewSecondaryIdentifier,
+  .cl-breadcrumbsItem,
+  .cl-menuList,
+  .cl-tableHead
+) {
+  color: #c3d0e6 !important;
+}
+
+/* --- Base fallback: any remaining un-classed text in the card reads light,
+   without overriding the accent links/buttons (they keep colorPrimary). ------*/
+.ios-account-page .cl-card {
+  color: #dbe4f0;
+}
+.ios-account-page .cl-card p,
+.ios-account-page .cl-card span:not([class*="Button"]):not([class*="Link"]),
+.ios-account-page .cl-card td,
+.ios-account-page .cl-card li {
+  color: inherit;
+}
+
+/* Menus/popovers Clerk renders in a portal (outside .ios-account-page) — keep
+   their surfaces dark with readable items so dropdowns aren't white-on-white. */
+.cl-menuList,
+.cl-menuItem {
+  background-color: #0b0d13 !important;
+}
+.cl-menuItem {
+  color: #dbe4f0 !important;
+}
