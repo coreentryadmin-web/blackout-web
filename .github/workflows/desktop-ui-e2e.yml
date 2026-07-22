@@ -1,0 +1,39 @@
+name: desktop-ui-e2e
+
+# Real headless-Chromium walk of the live DESKTOP site (screenshots + link
+# resolution). Manual trigger — GH Actions runners have network egress to prod,
+# so this is how we capture actual rendered pixels + click-through, which the
+# agent sandbox cannot do. Screenshots + report.json are uploaded as artifacts.
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Base URL to walk"
+        required: false
+        default: "https://blackouttrades.com"
+
+jobs:
+  walk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Walk the desktop site
+        env:
+          VALIDATE_BASE: ${{ github.event.inputs.base }}
+          DESKTOP_E2E_DIR: ./artifacts/desktop-ui-e2e
+        run: node scripts/desktop-ui-e2e.mjs
+      - name: Upload screenshots + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-ui-e2e
+          path: artifacts/desktop-ui-e2e/
+          retention-days: 7
