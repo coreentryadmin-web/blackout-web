@@ -97,12 +97,21 @@ export function bsmGamma(spot: number, strike: number, tYears: number, sigma: nu
   return normPdf(d1) / (spot * sigma * sqrtT);
 }
 
-/** Net dealer GEX by strike at a spot: Σ sign·γ·positioning·100·S²·0.01 (calls +, puts −). */
+/** Net dealer GEX by strike at a spot: Σ sign·γ·OI·100·S²·0.01 (calls +, puts −).
+ *
+ * Positioning here is OPEN INTEREST ONLY — deliberately NOT OI + today's volume. This ladder is a
+ * SIGNED quantity (calls +, puts −) and feeds the gamma-flip zero-crossing + the net-gamma regime.
+ * Intraday volume is UNSIGNED (a traded contract has no dealer long/short sign), so blending it into
+ * a signed cumulative sum poisons the crossing — the exact regression the Vector 0DTE path documents
+ * (`vector-dte-walls-core.ts`: volume "dragged the flip from ~7,522 to ~7,000"). Keeping this OI-only
+ * makes the pin's flip agree with the chart's OI-only flip (one SPX 0DTE gamma flip across the desk).
+ * The OI-concentration WALLS (oiWalls) + max-pain legitimately still fold in volume — those are
+ * unsigned magnitude/where-is-the-crowd measures, where intraday build is real signal. */
 export function pinLadderAtSpot(contracts: readonly PinContract[], spot: number, tYears: number): Map<number, number> {
   const ladder = new Map<number, number>();
   if (!(spot > 0)) return ladder;
   for (const c of contracts) {
-    const positioning = c.openInterest + Math.max(0, c.dayVolume ?? 0);
+    const positioning = c.openInterest;
     if (!(positioning > 0) || !(c.iv > 0)) continue;
     const g = bsmGamma(spot, c.strike, tYears, c.iv);
     if (g <= 0) continue;
