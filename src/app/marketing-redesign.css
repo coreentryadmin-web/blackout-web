@@ -102,6 +102,13 @@
 .rl-mod.big{grid-column:span 4;min-height:300px}
 .rl-mod.wide{grid-column:span 3}
 .rl-mod-top{position:relative;z-index:2;display:flex;align-items:center;gap:10px}
+/* Instrument glyph — tinted to the module accent, seated on a faint phosphor key.
+   currentColor drives the SVG stroke, so `color:var(--a)` is all it takes. */
+.rl-mod-glyph{display:grid;place-items:center;width:34px;height:34px;flex:none;color:var(--a);
+  border:1px solid color-mix(in srgb,var(--a) 30%,transparent);border-radius:8px;
+  background:color-mix(in srgb,var(--a) 9%,transparent);
+  box-shadow:0 0 18px color-mix(in srgb,var(--a) 18%,transparent) inset}
+.rl-mod:hover .rl-mod-glyph{box-shadow:0 0 22px color-mix(in srgb,var(--a) 34%,transparent)}
 .rl-mod-idx{font-family:var(--rl-mono);font-size:11px;color:var(--a)}
 .rl-mod-tag{font-family:var(--rl-mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--rl-faint);border:1px solid var(--rl-line2);padding:3px 8px;border-radius:20px}
 .rl-mod-soon{margin-left:auto;font-family:var(--rl-mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--a);border:1px solid color-mix(in srgb,var(--a) 40%,transparent);padding:3px 8px;border-radius:20px}
@@ -217,6 +224,9 @@
 .rl-deep-row.rev .rl-deep-copy{order:2}
 .rl-deep-copy{position:relative;z-index:2}
 .rl-deep-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rl-deep-glyph{display:grid;place-items:center;width:30px;height:30px;flex:none;color:var(--a);
+  border:1px solid color-mix(in srgb,var(--a) 30%,transparent);border-radius:8px;
+  background:color-mix(in srgb,var(--a) 9%,transparent)}
 .rl-deep-idx{font-family:var(--rl-mono);font-size:12px;color:var(--a)}
 .rl-deep-tag{font-family:var(--rl-mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--rl-ink);border:1px solid color-mix(in srgb,var(--a) 40%,transparent);padding:3px 9px;border-radius:20px}
 .rl-deep-aud{font-family:var(--rl-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--rl-faint)}

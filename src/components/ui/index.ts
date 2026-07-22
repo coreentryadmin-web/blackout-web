@@ -43,6 +43,16 @@ export type { SkeletonProps } from "./Skeleton";
 
 export { PhosphorBoot } from "./loading/PhosphorBoot";
 
+export {
+  InstrumentIcon,
+  LadderIcon,
+  HelixIcon,
+  ThermalIcon,
+  GraphIcon,
+  ReticleIcon,
+  RadarIcon,
+} from "./icons/InstrumentIcons";
+
 export { PageShell } from "./PageShell";
 export type { PageShellProps } from "./PageShell";
 
