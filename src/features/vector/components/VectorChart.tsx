@@ -90,6 +90,7 @@ import {
   type VectorIndicatorId,
 } from "@/features/vector/lib/vector-indicators-config";
 import { GexHeatmapPrimitive } from "@/features/vector/lib/vector-gex-heatmap-primitive";
+import { PinConePrimitive, type PinConeStep } from "@/features/vector/lib/vector-pin-cone-primitive";
 import { gexCellAtGridPoint, heatmapBucketSecForChartTimeframe } from "@/features/vector/lib/vector-gex-heatmap-paint";
 import type { GexHeatmapGrid } from "@/features/vector/lib/vector-gex-reconstruct";
 import { levelLinesFor, type LevelLine, type PriorDayOhlc } from "@/features/vector/lib/vector-key-levels";
@@ -676,22 +677,9 @@ function applyPinProjection(
       title: `Pin ${Math.round(proj!.close).toLocaleString("en-US")}`,
     })
   );
-  if (proj!.band) {
-    for (const edge of proj!.band) {
-      if (!(edge > 0) || !Number.isFinite(edge)) continue;
-      linesRef.current.push(
-        series.createPriceLine({
-          price: edge,
-          color: withAlpha(PIN_GOLD, 0.4),
-          lineWidth: 1 as const,
-          lineStyle: LineStyle.Dashed,
-          lineVisible: true,
-          axisLabelVisible: false,
-          title: "",
-        })
-      );
-    }
-  }
+  // The pin BAND (p10/p90) is now drawn by the converging cone primitive (PinConePrimitive), not as
+  // full-width horizontal lines — a horizontal band would visually fight the cone. Only the projected
+  // -close (p50) reference line stays here.
 }
 
 /**
@@ -1168,6 +1156,12 @@ export function VectorChart({
   const pinProjRef = useRef<{ close: number; band: [number, number] | null } | null>(null);
   const pinLinesRef = useRef<IPriceLine[]>([]);
   const pinSigRef = useRef<string>("");
+  // EOD pin CONE (SPX desk only): the Monte-Carlo p10/p50/p90 close distribution, drawn as a
+  // converging shaded curve in the chart's RIGHT MARGIN (now → 16:00) by PinConePrimitive. The
+  // cone data is the last-fetched MC `cone` array; the primitive projects it by time-fraction so it
+  // reads as a funnel narrowing onto the pin. Cleared on ticker switch / unmount with the series.
+  const pinConePrimitiveRef = useRef<PinConePrimitive | null>(null);
+  const pinConeRef = useRef<PinConeStep[] | null>(null);
   // GEX positioning heatmap (#14): the strike×time surface primitive attached BEHIND the candles
   // (zOrder "bottom"), plus the last horizon-scoped grid it draws. The grid is fetched in the
   // DTE-scoped effect (like max-pain/expected-move) and visibility is gated on the "gex-heatmap"
@@ -1615,6 +1609,14 @@ export function VectorChart({
         // EOD pin projection (SPX desk only) — always on for SPX (no toggle); the fetch effect
         // only populates pinProjRef when ticker === "SPX", so it's inert elsewhere.
         applyPinProjection(seriesRef.current, pinLinesRef, pinSigRef, pinProjRef.current, ticker === "SPX");
+        // EOD pin CONE — the MC p10/p50/p90 close distribution as a converging curve in the right
+        // margin (now → 16:00). Projected off the LAST shown bar's time, so the funnel starts at
+        // "now" and narrows onto the pin. SPX-only; a null cone or non-SPX draws nothing.
+        pinConePrimitiveRef.current?.setData(
+          pinConeRef.current,
+          bars.length ? (bars[bars.length - 1]!.time as Time) : null,
+          ticker === "SPX"
+        );
       }
       // GEX positioning heatmap (#14) — push the last horizon-scoped grid + toggle state to the
       // background primitive (attached at zOrder "bottom", so candles/walls stay readable on top).
@@ -1818,7 +1820,7 @@ export function VectorChart({
         const j = (await res.json()) as {
           pin?: unknown;
           pinBand?: unknown;
-          montecarlo?: { pin?: unknown; pinBand?: unknown } | null;
+          montecarlo?: { pin?: unknown; pinBand?: unknown; cone?: unknown } | null;
         };
         if (cancelled) return;
         // Prefer the MONTE-CARLO projection on the chart (member-directed): its pin is the modal
@@ -1836,6 +1838,21 @@ export function VectorChart({
             ? ([rawBand[0] as number, rawBand[1] as number] as [number, number])
             : null;
         pinProjRef.current = close != null ? { close, band } : null;
+        // Parse the MC cone (p10/p50/p90 per time-step) for the on-chart converging curve. Only the
+        // MC forecast carries a cone; validate each step is finite + ordered so a malformed payload
+        // draws nothing rather than a broken funnel. Empty/absent → null (primitive draws nothing).
+        const rawCone = Array.isArray(mc?.cone) ? mc!.cone : null;
+        const cone: PinConeStep[] | null = rawCone
+          ? (rawCone.filter(
+              (s): s is PinConeStep =>
+                !!s &&
+                typeof s === "object" &&
+                ["tMin", "p10", "p50", "p90"].every(
+                  (k) => typeof (s as Record<string, unknown>)[k] === "number" && Number.isFinite((s as Record<string, unknown>)[k])
+                )
+            ) as PinConeStep[])
+          : null;
+        pinConeRef.current = cone && cone.length >= 2 ? cone : null;
         paintOverlays(lastDisplayBarsRef.current);
       } catch {
         // keep the last-drawn line on a transient blip
@@ -2732,6 +2749,13 @@ export function VectorChart({
     const gexHeatmap = new GexHeatmapPrimitive();
     series.attachPrimitive(gexHeatmap);
     gexHeatmapPrimitiveRef.current = gexHeatmap;
+    // EOD pin CONE (SPX desk only): attach the converging-cone primitive to the candle series. It
+    // renders at zOrder "top" (a translucent gold funnel over the candles) and stays hidden until
+    // paintOverlays pushes a real MC cone for SPX. The right-margin room it needs comes from
+    // VECTOR_RIGHT_OFFSET_BARS on the time scale (the cone maps into that whitespace by time-frac).
+    const pinCone = new PinConePrimitive();
+    series.attachPrimitive(pinCone);
+    pinConePrimitiveRef.current = pinCone;
 
     refreshTrails("gex");
     refreshOverlays("gex", initialWalls, initialVexWalls, initialGammaFlip, initialVexFlip, initialDarkPoolLevels);
@@ -2903,6 +2927,9 @@ export function VectorChart({
       pinLinesRef.current = [];
       pinProjRef.current = null;
       pinSigRef.current = "";
+      // chart.remove() disposed the pin-cone primitive with the series; drop refs so a remount reattaches.
+      pinConePrimitiveRef.current = null;
+      pinConeRef.current = null;
       // chart.remove() disposes the overlay line series too — swap in a fresh map so a remount
       // rebuilds instead of touching the now-disposed series (matches the sibling ref resets).
       overlaySeriesRef.current = new Map();
