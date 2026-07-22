@@ -245,3 +245,34 @@
 .rl-deep-shot{flex:1;width:100%;height:100%;min-height:220px;object-fit:cover;object-position:top center;display:block}
 .rl-deep-row:hover .rl-deep-shot{filter:brightness(1.04)}
 @media(prefers-reduced-motion:reduce){.rl-hero-emblem{animation:none}}
+
+/* ── CINEMATIC PRODUCT-SHOT FRAMES (premium, animated, unique per product) ──── */
+.rl-deep{perspective:1800px}
+.rl-deep-visual{
+  position:relative;border:1px solid var(--rl-line2);border-radius:14px;overflow:hidden;
+  transform:rotateY(7deg) rotateX(2.5deg);transform-origin:center;
+  transition:transform .55s cubic-bezier(.22,1,.36,1),box-shadow .55s ease;
+  box-shadow:0 34px 74px -32px rgba(0,0,0,.9),
+    0 0 0 1px color-mix(in srgb,var(--a) 22%,transparent) inset,
+    0 0 60px -22px color-mix(in srgb,var(--a) 55%,transparent);
+}
+.rl-deep-row.rev .rl-deep-visual{transform:rotateY(-7deg) rotateX(2.5deg)}
+.rl-deep-row:hover .rl-deep-visual{
+  transform:rotateY(0) rotateX(0) translateY(-2px);
+  box-shadow:0 46px 96px -30px rgba(0,0,0,.92),
+    0 0 0 1px color-mix(in srgb,var(--a) 42%,transparent) inset,
+    0 0 96px -20px color-mix(in srgb,var(--a) 72%,transparent);
+}
+/* top accent light bar */
+.rl-deep-visual::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;z-index:5;
+  background:linear-gradient(90deg,transparent,var(--a),transparent);opacity:.7}
+/* diagonal scan sweep across the shot */
+.rl-deep-visual::after{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;
+  background:linear-gradient(115deg,transparent 42%,color-mix(in srgb,var(--a) 20%,transparent) 50%,transparent 58%);
+  transform:translateX(-130%);animation:rl-shot-scan 7s ease-in-out infinite}
+@keyframes rl-shot-scan{0%,68%{transform:translateX(-130%)}86%,100%{transform:translateX(130%)}}
+.rl-deep-visual-chrome{position:relative;z-index:4}
+.rl-deep-shot{position:relative;z-index:1;filter:saturate(1.06) contrast(1.035)}
+.rl-deep-row:hover .rl-deep-shot{filter:saturate(1.12) contrast(1.06) brightness(1.05)}
+@media(max-width:820px){.rl-deep-visual,.rl-deep-row.rev .rl-deep-visual{transform:none}}
+@media(prefers-reduced-motion:reduce){.rl-deep-visual::after{animation:none;display:none}.rl-deep-visual,.rl-deep-row.rev .rl-deep-visual{transform:none}}
