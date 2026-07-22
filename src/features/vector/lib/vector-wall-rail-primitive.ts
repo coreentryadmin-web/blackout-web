@@ -51,82 +51,92 @@ type AttachedSeries = ISeriesApi<SeriesType, Time>;
 
 /** Band half-height in px at zero vs full frame-relative strength. A king wall → ~2·MAX px tall
  *  band (unmistakably fat); a straggler → a ~MIN px hairline. This is the "width" channel markers
- *  never had. */
-const HALF_PX_MIN = 1.4;
-const HALF_PX_MAX = 8;
-/** Floor so a weak-but-present wall reads as a THIN VISIBLE BAND (not an invisible hairline that
- *  leaves only stray dots) — the whole rail should be one family of bands, fat→thin by strength. */
-const FILL_ALPHA_MIN = 0.26;
-const FILL_ALPHA_MAX = 0.82;
-/** The whole rail is translucent so overlapping bands + candles read through it. */
-const RAIL_TRANSLUCENCY = 0.9;
-/** A building wall's bright leading cap; a birth flash. */
-const EDGE_ALPHA = 0.95;
+ *  never had. MIN raised so even a weak wall is a solid readable band, not a hairline. */
+const HALF_PX_MIN = 2.4;
+const HALF_PX_MAX = 9;
+/** Fill opacity floor/ceiling. Raised HARD (0.26→0.6, 0.82→0.98) after a member report that the
+ *  bands were "too light, barely visible" — especially over the bright GEX heatmap background. The
+ *  rail must read as SOLID coloured bands, not a faint wash. */
+const FILL_ALPHA_MIN = 0.6;
+const FILL_ALPHA_MAX = 0.98;
+/** Full opacity — the per-vertex alpha above already governs translucency; no global dimming (was
+ *  0.9, which compounded with the low fill alpha to wash the rail out over the heatmap). */
+const RAIL_TRANSLUCENCY = 1;
+/** Birth flash. */
+const EDGE_ALPHA = 1;
+/** A trail is split into separate bands when a time gap exceeds this × its median bucket step — a
+ *  real dead stretch (wall left the dominant set) breaks the band honestly instead of bridging it. */
+const GAP_SPLIT_FACTOR = 2.5;
 
-type Seg = {
-  x0: number;
-  x1: number;
-  y: number;
-  h0: number;
-  h1: number;
-  a0: number;
-  a1: number;
-  building: boolean;
-  birth: boolean;
-  death: boolean;
+type BandPt = { x: number; yTop: number; yBot: number; a: number };
+/** One CONTINUOUS band segment for a wall (a run of adjacent buckets with no gap). Rendered as a
+ *  single filled polygon so it reads as a solid ribbon, not a row of disconnected per-bucket dots. */
+type Band = {
+  pts: BandPt[];
   color: string;
+  birth: { x: number; y: number; half: number } | null;
+  death: { x: number; y: number; half: number } | null;
 };
 
 class WallRailRenderer implements IPrimitivePaneRenderer {
-  constructor(private readonly _segs: Seg[]) {}
+  constructor(private readonly _bands: Band[]) {}
 
   draw(target: PaneRendererTarget): void {
     target.useMediaCoordinateSpace((scope) => {
       const ctx = scope.context;
       ctx.save();
       ctx.globalAlpha = RAIL_TRANSLUCENCY;
-      for (const s of this._segs) {
-        // Filled trapezoid band: strength (half-height) tapers between the two buckets, so a wall
-        // that grew reads as a widening band and one that bled out as a narrowing one.
-        const grad = ctx.createLinearGradient(s.x0, 0, s.x1, 0);
-        grad.addColorStop(0, withA(s.color, s.a0));
-        grad.addColorStop(1, withA(s.color, s.a1));
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.moveTo(s.x0, s.y - s.h0);
-        ctx.lineTo(s.x1, s.y - s.h1);
-        ctx.lineTo(s.x1, s.y + s.h1);
-        ctx.lineTo(s.x0, s.y + s.h0);
-        ctx.closePath();
-        ctx.fill();
-        // Crisp top+bottom edge (brighter than the fill) so each band reads as a defined shape and
-        // the fat-king / thin-straggler thickness contrast is unmistakable, not a soft smear.
-        ctx.strokeStyle = withA(s.color, Math.min(1, s.a1 + 0.18));
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(s.x0, s.y - s.h0);
-        ctx.lineTo(s.x1, s.y - s.h1);
-        ctx.moveTo(s.x0, s.y + s.h0);
-        ctx.lineTo(s.x1, s.y + s.h1);
-        ctx.stroke();
-        // Bright vertical flash ONLY at a wall's BIRTH (its first in-window bucket) — the "a new wall
-        // formed here" cue. Building/fading is NOT capped per-bucket: it's already carried by the
-        // band's brightness (a1) and thickness (h1), so a per-bucket cap just painted a picket-fence
-        // of ticks over a steady wall. Birth is rare, so this stays a clean occasional marker.
-        if (s.birth) {
-          ctx.strokeStyle = withA(s.color, EDGE_ALPHA);
-          ctx.lineWidth = 2;
-          const cap = s.h1 + 3;
+      for (const b of this._bands) {
+        const pts = b.pts;
+        if (pts.length >= 2) {
+          const x0 = pts[0]!.x;
+          const xN = pts[pts.length - 1]!.x;
+          // Multi-stop horizontal gradient: each bucket contributes its own alpha, so a wall that
+          // GREW brightens along its length and one that FADED dims — the growth/fade channel, now
+          // carried continuously instead of by per-bucket ticks.
+          const grad = ctx.createLinearGradient(x0, 0, Math.max(xN, x0 + 0.01), 0);
+          const span = Math.max(xN - x0, 1e-6);
+          for (let i = 0; i < pts.length; i++) {
+            grad.addColorStop(Math.min(1, Math.max(0, (pts[i]!.x - x0) / span)), withA(b.color, pts[i]!.a));
+          }
+          // Solid filled band: top edge left→right, bottom edge right→left.
+          ctx.fillStyle = grad;
           ctx.beginPath();
-          ctx.moveTo(s.x1, s.y - cap);
-          ctx.lineTo(s.x1, s.y + cap);
+          ctx.moveTo(pts[0]!.x, pts[0]!.yTop);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.yTop);
+          for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i]!.x, pts[i]!.yBot);
+          ctx.closePath();
+          ctx.fill();
+          // Bright crisp top+bottom edges so the thickness (strength) contrast reads as a defined
+          // shape even over a busy background.
+          ctx.lineWidth = 1.25;
+          for (const edge of ["yTop", "yBot"] as const) {
+            ctx.beginPath();
+            ctx.moveTo(pts[0]!.x, pts[0]![edge]);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]![edge]);
+            ctx.strokeStyle = withA(b.color, Math.min(1, pts[pts.length - 1]!.a + 0.02));
+            ctx.stroke();
+          }
+        } else if (pts.length === 1) {
+          // A wall seen in exactly one bucket (a lone birth) — a small solid lozenge so it's not lost.
+          const p = pts[0]!;
+          ctx.fillStyle = withA(b.color, p.a);
+          ctx.fillRect(p.x - 2, p.yTop, 4, Math.max(2, p.yBot - p.yTop));
+        }
+        // Birth: a bright vertical flash at the wall's first in-window bucket ("formed here").
+        if (b.birth) {
+          ctx.strokeStyle = withA(b.color, EDGE_ALPHA);
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(b.birth.x, b.birth.y - b.birth.half - 3);
+          ctx.lineTo(b.birth.x, b.birth.y + b.birth.half + 3);
           ctx.stroke();
         }
-        // A departed wall's terminal segment fades to nothing with a faint dot at its grave.
-        if (s.death) {
-          ctx.fillStyle = withA(s.color, 0.28);
+        // Death: a faint dot at a departed wall's grave ("dissolved here").
+        if (b.death) {
+          ctx.fillStyle = withA(b.color, 0.5);
           ctx.beginPath();
-          ctx.arc(s.x1, s.y, Math.max(1.2, s.h1), 0, Math.PI * 2);
+          ctx.arc(b.death.x, b.death.y, Math.max(1.5, b.death.half), 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -141,9 +151,9 @@ class WallRailPaneView implements IPrimitivePaneView {
     return "top"; // over the candles, but translucent so the tape stays readable
   }
   renderer(): IPrimitivePaneRenderer | null {
-    const segs = this._source.project();
-    if (!segs || segs.length === 0) return null;
-    return new WallRailRenderer(segs);
+    const bands = this._source.project();
+    if (!bands || bands.length === 0) return null;
+    return new WallRailRenderer(bands);
   }
 }
 
@@ -204,14 +214,15 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     this._requestUpdate?.();
   }
 
-  /** Project every trail's points into media-space ribbon segments. Null when nothing honest to draw. */
-  project(): Seg[] | null {
+  /** Project every trail into CONTINUOUS media-space bands (one filled polygon per gap-free run), so
+   *  the rail reads as solid ribbons. Null when there's nothing honest to draw. */
+  project(): Band[] | null {
     if (!this._visible || !this._data || !this._chart || !this._series) return null;
     const { callTrails, putTrails, maxPct, callColor, putColor } = this._data;
     if (!(maxPct > 0)) return null;
     const ts = this._chart.timeScale();
     const series = this._series;
-    const segs: Seg[] = [];
+    const bands: Band[] = [];
 
     // Earliest bucket across every trail — a trail that STARTS here began before/at the drawn window
     // edge (session open / live-window trim), so its "birth" is unknowable and must NOT flash. Only a
@@ -227,54 +238,56 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       if (y == null) return;
       const pts = trail.points;
       if (pts.length === 0) return;
-      // A single-point trail (a wall seen exactly once) still deserves a mark: draw a tiny self-
-      // segment so its birth is visible instead of silently dropped.
-      const coordOf = (t: number): number | null => {
-        const c = ts.timeToCoordinate(t as Time);
-        return c == null ? null : c;
+      // Median bucket step → gap threshold. A jump beyond GAP_SPLIT_FACTOR× the median means the wall
+      // genuinely dropped out of the dominant set (a dead stretch), so we break the band there rather
+      // than bridging a solid ribbon across time it wasn't a wall.
+      const steps: number[] = [];
+      for (let i = 1; i < pts.length; i++) steps.push(pts[i]!.time - pts[i - 1]!.time);
+      steps.sort((a, b) => a - b);
+      const medStep = steps.length ? steps[Math.floor(steps.length / 2)]! : 0;
+      const gapLimit = medStep > 0 ? medStep * GAP_SPLIT_FACTOR : Infinity;
+
+      let run: BandPt[] = [];
+      let runStartIdx = 0;
+      const flush = (endIdx: number) => {
+        if (run.length === 0) return;
+        const startsInWindow = pts[runStartIdx]!.time > earliest && runStartIdx === 0;
+        const first = run[0]!;
+        const last = run[run.length - 1]!;
+        const isDeath = !trail.active && endIdx === pts.length - 1;
+        bands.push({
+          pts: run,
+          color,
+          birth: startsInWindow ? { x: first.x, y, half: (first.yBot - first.yTop) / 2 } : null,
+          death: isDeath ? { x: last.x, y, half: (last.yBot - last.yTop) / 2 } : null,
+        });
+        run = [];
       };
+
       for (let i = 0; i < pts.length; i++) {
         const p = pts[i]!;
         const prev = i > 0 ? pts[i - 1]! : null;
-        const x1 = coordOf(p.time);
-        if (x1 == null) continue;
-        // Left anchor: the previous bucket's x (a real ribbon) or a hair to the left for a lone/birth
-        // point so it still paints a sliver.
-        const x0raw = prev ? coordOf(prev.time) : null;
-        const x0 = x0raw == null ? x1 - 3 : x0raw;
-        const h1 = halfPx(p.pct, maxPct);
-        const h0 = prev ? halfPx(prev.pct, maxPct) : Math.max(HALF_PX_MIN, h1 * 0.4);
-        // Growth/decay velocity vs the previous bucket, reusing the tuned marker math so the ribbon
-        // and any residual markers agree on what "building/fading" means.
+        const x = ts.timeToCoordinate(p.time as Time);
+        if (x == null) continue; // off-screen bucket — skip (its neighbours still draw)
+        // New run when there's a real time gap since the previous bucket.
+        if (prev && p.time - prev.time > gapLimit && run.length) {
+          flush(i - 1);
+          runStartIdx = i;
+        } else if (run.length === 0) {
+          runStartIdx = i;
+        }
         const mod = growthModulation(p.pct, prev ? prev.pct : null, maxPct);
         const glow = magnitudeGlowBoost(p.pct); // absolute-magnitude brightness (frame-independent)
-        const baseA = fillAlpha(p.pct, maxPct);
-        const a1 = Math.min(1, baseA * mod.alphaMul * (0.7 + 0.3 * Math.min(1.6, glow)));
-        const a0 = prev
-          ? Math.min(1, fillAlpha(prev.pct, maxPct) * (0.7 + 0.3 * Math.min(1.6, glow)))
-          : a1 * 0.5;
-        // Real birth only when the first bucket is strictly inside the drawn window (see `earliest`).
-        const isBirth = i === 0 && p.time > earliest;
-        const isDeath = !trail.active && i === pts.length - 1; // terminal bucket of a departed wall
-        segs.push({
-          x0,
-          x1,
-          y,
-          h0,
-          h1: h1 * mod.sizeMul,
-          a0,
-          a1,
-          building: mod.building,
-          birth: isBirth,
-          death: isDeath,
-          color,
-        });
+        const half = halfPx(p.pct, maxPct) * mod.sizeMul;
+        const a = Math.min(1, fillAlpha(p.pct, maxPct) * mod.alphaMul * (0.75 + 0.25 * Math.min(1.6, glow)));
+        run.push({ x, yTop: y - half, yBot: y + half, a });
       }
+      flush(pts.length - 1);
     };
 
     for (const t of callTrails) addTrail(t, callColor);
     for (const t of putTrails) addTrail(t, putColor);
-    if (segs.length === 0) return null;
-    return segs;
+    if (bands.length === 0) return null;
+    return bands;
   }
 }
