@@ -59,11 +59,6 @@ export function flipAtReplayTime(
   return null;
 }
 
-/** @deprecated Use flipAtReplayTime(history, t, "gex") */
-export function gammaFlipAtReplayTime(history: WallHistorySample[], cursorTime: number): number | null {
-  return flipAtReplayTime(history, cursorTime, "gex");
-}
-
 export function wallsForActiveLens(
   lens: VectorWallLens,
   gex: GexWalls | null,

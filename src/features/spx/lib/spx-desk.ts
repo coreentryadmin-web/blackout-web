@@ -566,9 +566,6 @@ function publishDeskStickyToRedis(): void {
   );
 }
 
-export function getLastPulseForSignals(): SpxDeskPulse | null {
-  return lastPulseForSignals;
-}
 let cachedPriorDay = {
   pdh: null as number | null,
   pdl: null as number | null,

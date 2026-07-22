@@ -140,15 +140,6 @@ export async function listClerkUserIdsByDbFilters(
   };
 }
 
-/** @deprecated Use listClerkUserIdsByDbFilters — kept for callers passing tier only. */
-export async function listClerkUserIdsByDbTier(
-  tier: string,
-  limit: number,
-  offset: number
-): Promise<{ ids: string[]; total: number }> {
-  return listClerkUserIdsByDbFilters({ tier }, limit, offset);
-}
-
 /** Global user counts for admin dashboard stats (Postgres mirror of Clerk metadata). */
 export async function getAdminUserListStats(): Promise<AdminUserListStats | null> {
   if (!dbConfigured()) return null;
