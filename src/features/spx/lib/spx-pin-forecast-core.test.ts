@@ -70,6 +70,27 @@ test("cone PINCHES into the close (width at the bell << width now) but keeps HON
   );
 });
 
+test("projectedClose is the UNSNAPPED live close; pin snaps it to the magnet strike", () => {
+  const f = forecastPin(base("2026-07-21T17:04:00Z"));
+  // projectedClose is finite and equals the cone's terminal median (the drift path's close).
+  assert.ok(f.projectedClose != null && Number.isFinite(f.projectedClose), "projectedClose must be a live number");
+  assert.ok(
+    Math.abs(f.projectedClose! - f.cone[f.cone.length - 1]!.p50) < 0.02,
+    `projectedClose ${f.projectedClose} should match the cone's terminal median ${f.cone[f.cone.length - 1]!.p50}`
+  );
+  // pin is either projectedClose itself (no snap — magnet too far) or the magnet strike it snaps to
+  // when the projection lands within a strike of it; either way pin sits within one strike of the
+  // live projectedClose. That invariant is what lets the panel headline projectedClose and label pin.
+  assert.ok(
+    Math.abs(f.pin! - f.projectedClose!) <= 5,
+    `pin ${f.pin} must be within a strike of projectedClose ${f.projectedClose}`
+  );
+  assert.ok(
+    f.pin === f.magnet!.strike || Math.abs(f.pin! - f.projectedClose!) < 0.02,
+    `pin is either the snapped magnet strike or equals projectedClose (got pin ${f.pin}, magnet ${f.magnet!.strike}, proj ${f.projectedClose})`
+  );
+});
+
 test("confidence RISES as the session matures (less time → tighter pin)", () => {
   const morning = forecastPin(base("2026-07-21T14:00:00Z")); // 10:00 ET
   const powerHour = forecastPin(base("2026-07-21T19:20:00Z")); // 15:20 ET

@@ -23,8 +23,12 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
   const view = useMemo(() => {
     if (!pin) return null;
     const mc = pin.montecarlo;
-    if (method === "montecarlo" && mc) return { cone: mc.cone, pinPx: mc.pin, pinPct: mc.pinPct, band: mc.pinBand, scenarios: mc.scenarios };
-    return { cone: pin.cone, pinPx: pin.pin, pinPct: pin.pinPct, band: pin.pinBand, scenarios: pin.scenarios };
+    // pinPx = the discrete pin STRIKE (snapped to the magnet); projPx = the UNSNAPPED live projected
+    // close (drifts sub-strike intraday). The headline shows projPx so the forecaster visibly breathes
+    // even on a quiet pinning day; pinPx is shown as the magnet target it rounds to.
+    if (method === "montecarlo" && mc)
+      return { cone: mc.cone, pinPx: mc.pin, projPx: mc.projectedClose ?? mc.pin, pinPct: mc.pinPct, band: mc.pinBand, scenarios: mc.scenarios };
+    return { cone: pin.cone, pinPx: pin.pin, projPx: pin.projectedClose ?? pin.pin, pinPct: pin.pinPct, band: pin.pinBand, scenarios: pin.scenarios };
   }, [pin, method]);
 
   if (pinLoading && !pin) return <Shell><div style={{ color: C.muted, fontFamily: C.mono, fontSize: 12, padding: 24 }}>Loading pin forecast…</div></Shell>;
@@ -57,7 +61,7 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
         {/* ── chart ── */}
         <div style={{ padding: "6px 8px 10px 12px", borderRight: `1px solid ${C.line}` }}>
           <svg viewBox={`0 0 ${chart.W} ${chart.H}`} width="100%" role="img"
-               aria-label={`SPX 0DTE projected close ${fmt(view.pinPx)} at ${Math.round(conf * 100)}% confidence`}>
+               aria-label={`SPX 0DTE projected close ${fmt(view.projPx, 1)} at ${Math.round(conf * 100)}% confidence`}>
             {/* level lines */}
             {chart.levels.map((l) => (
               <g key={l.label}>
@@ -79,11 +83,11 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
             <g style={{ cursor: "pointer" }} onClick={() => setShowWhy((s) => !s)} tabIndex={0}
                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowWhy((s) => !s); } }}
                role="button" aria-pressed={showWhy} aria-label="Explain this projection">
-              <circle cx={chart.W - chart.padR} cy={chart.y(view.pinPx ?? pin.spot)} r={6} fill={C.pin} stroke={C.bg} strokeWidth={1.5} />
-              <circle cx={chart.W - chart.padR} cy={chart.y(view.pinPx ?? pin.spot)} r={10} fill="none" stroke={C.pin} strokeWidth={1} opacity={0.5} />
-              <rect x={chart.W - chart.padR - 128} y={chart.y(view.pinPx ?? pin.spot) - 30} width={120} height={22} rx={5} fill="#141b12" stroke={C.pin} strokeOpacity={0.5} />
-              <text x={chart.W - chart.padR - 120} y={chart.y(view.pinPx ?? pin.spot) - 15} fontFamily={C.mono} fontSize={11} fill={C.pin}>
-                {fmt(view.pinPx)} · {Math.round(conf * 100)}%
+              <circle cx={chart.W - chart.padR} cy={chart.y(view.projPx ?? pin.spot)} r={6} fill={C.pin} stroke={C.bg} strokeWidth={1.5} />
+              <circle cx={chart.W - chart.padR} cy={chart.y(view.projPx ?? pin.spot)} r={10} fill="none" stroke={C.pin} strokeWidth={1} opacity={0.5} />
+              <rect x={chart.W - chart.padR - 128} y={chart.y(view.projPx ?? pin.spot) - 30} width={120} height={22} rx={5} fill="#141b12" stroke={C.pin} strokeOpacity={0.5} />
+              <text x={chart.W - chart.padR - 120} y={chart.y(view.projPx ?? pin.spot) - 15} fontFamily={C.mono} fontSize={11} fill={C.pin}>
+                {fmt(view.projPx, 1)} · {Math.round(conf * 100)}%
               </text>
             </g>
             {/* x labels */}
@@ -102,10 +106,17 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
           ) : (
             <>
               <Card label="Projected close">
-                <div style={{ fontFamily: C.mono, fontSize: 34, fontWeight: 600, color: C.pin, lineHeight: 1 }}>{fmt(view.pinPx)}</div>
+                {/* Live, unsnapped projection (1dp) so it moves intraday — not the frozen strike. */}
+                <div style={{ fontFamily: C.mono, fontSize: 34, fontWeight: 600, color: C.pin, lineHeight: 1 }}>{fmt(view.projPx, 1)}</div>
                 <div style={{ fontFamily: C.mono, fontSize: 12, color: C.muted, marginTop: 6 }}>
-                  {pin.pinPctOfClose != null && <span style={{ color: pin.pinPctOfClose >= 0 ? C.call : C.put }}>{pin.pinPctOfClose >= 0 ? "▲ +" : "▼ "}{fmt(pin.pinPctOfClose, 2)}%</span>} · {fmt((view.pinPx ?? pin.spot) - pin.spot)} pts vs spot
+                  {pin.pinPctOfClose != null && <span style={{ color: pin.pinPctOfClose >= 0 ? C.call : C.put }}>{pin.pinPctOfClose >= 0 ? "▲ +" : "▼ "}{fmt(pin.pinPctOfClose, 2)}%</span>} · {fmt((view.projPx ?? pin.spot) - pin.spot, 1)} pts vs spot
                 </div>
+                {/* The strike it pins to — the discrete target the live projection rounds onto. */}
+                {view.pinPx != null && (
+                  <div style={{ fontFamily: C.mono, fontSize: 11.5, color: C.faint, marginTop: 7 }}>
+                    pins to <span style={{ color: C.ink }}>{fmt(view.pinPx)}</span>{magnet ? ` ${KIND_LABEL[magnet.kind] ?? ""}` : ""}
+                  </div>
+                )}
               </Card>
               <Card label="Pin confidence">
                 <ConfBar pct={conf} />
