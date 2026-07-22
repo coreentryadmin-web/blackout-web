@@ -78,7 +78,7 @@ test("confidence RISES as the session matures (less time → tighter pin)", () =
   assert.equal(powerHour.charmState, "accelerating");
 });
 
-test("Monte Carlo: deterministic; sane distribution in the structural band; cone pinches at close", () => {
+test("Monte Carlo: deterministic; sane distribution in the structural band; cone narrows but keeps honest residual width", () => {
   const a = forecastPin(base("2026-07-21T17:04:00Z", { method: "montecarlo", mcPaths: 300 }));
   const b = forecastPin(base("2026-07-21T17:04:00Z", { method: "montecarlo", mcPaths: 300 }));
   assert.equal(a.method, "montecarlo");
@@ -88,8 +88,13 @@ test("Monte Carlo: deterministic; sane distribution in the structural band; cone
   assert.ok(a.pin! > a.spot - 60 && a.pin! < a.magnet!.strike + 15, `MC pin ${a.pin} outside the band`);
   assert.ok(a.scenarios.length >= 1 && a.scenarios[0]!.p > 0);
   const widths = a.cone.map(coneWidth);
-  const maxW = Math.max(...widths); // MC starts at 0 width (all paths at spot), bulges, then pins
-  assert.ok(widths[widths.length - 1]! < maxW * 0.8, "MC cone pinches into the close (not widest there)");
+  const maxW = Math.max(...widths); // MC starts at 0 width (all paths at spot), bulges, then narrows
+  const last = widths[widths.length - 1]!;
+  // The close is NOT the widest point (drift pulls paths onto the pin) …
+  assert.ok(last < maxW, `MC cone should narrow from its mid-session bulge (last ${last.toFixed(1)} vs max ${maxW.toFixed(1)})`);
+  // … but with the MC_BRIDGE_NOISE_FLOOR it must NOT collapse to a thread — honest settlement noise
+  // keeps a real band into the bell (was over-tight before, manufacturing false MC confidence).
+  assert.ok(last > maxW * 0.5, `MC cone must keep honest residual width at the close (last/max ${(last / maxW).toFixed(2)})`);
 });
 
 test("degrade: a macro event downgrades confidence and adds a driver", () => {
