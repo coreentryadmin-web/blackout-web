@@ -2,7 +2,7 @@ export const dynamic = "force-static";
 
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
-import { StaticFaqSection } from "@/components/landing/StaticFaqSection";
+import { RedesignFaq } from "@/components/landing/RedesignFaq";
 
 export const metadata: Metadata = {
   title: "FAQ · BlackOut",
@@ -13,9 +13,7 @@ export const metadata: Metadata = {
 export default function FaqPage() {
   return (
     <MarketingPageShell>
-      <div className="pt-20">
-        <StaticFaqSection />
-      </div>
+      <RedesignFaq />
     </MarketingPageShell>
   );
 }
