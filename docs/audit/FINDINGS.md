@@ -595,3 +595,25 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Related gap noted (not fixed here):** the `rsi` event kind is dead on the live rail (the desk
   feed carries no `rsi`, so overbought/oversold never fires) — a follow-up (wire RSI or remove).
 - **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
+
+## 2026-07-22 — EOD pin projected close + band drawn ON the price chart (feature)
+
+### Move the EOD pin onto the chart (user chose "on-chart cone + slim panel")
+- **What:** the SPX Vector chart now draws the EOD pin's **projected 0DTE close** as a solid gold
+  price-line + the **pin band** edges as dashed gold lines, in price space next to the candles —
+  the 0DTE close-target a trader watches, no longer only in the side panel.
+- **Implementation (`VectorChart.tsx`):** `applyPinProjection` mirrors the proven
+  `applyExpectedMoveBand` (idempotent signature ref; `createPriceLine`; cleared when disabled). A
+  new effect **gated to `ticker === "SPX"`** self-fetches `/api/market/spx/pin` at the 5s desk
+  cadence (one fetch off-hours) and repaints via `paintOverlays`; `/vector` and other tickers never
+  fetch or draw it. Refs cleared on the same ticker-change teardown as the expected-move band.
+- **Scope:** the *levels* (close + band) ship now via the battle-tested price-line infra; the shaded
+  time→close **cone** is a follow-up (needs a canvas primitive). Panel-slimming (drop the redundant
+  levels, keep why/scenarios) is a follow-up too — the on-chart lines are additive for now.
+- **Validation caveat:** this is a client-canvas change; it CANNOT be pixel-verified from the
+  sandbox (headless browser egress is blocked — proven: ERR_CONNECTION_RESET to example.com; and the
+  CI screenshot path needs a repo CLERK secret that isn't set). Logic is typecheck-clean and reuses
+  proven infra (worst case is a cosmetic misplacement, never a broken chart). Needs a glance on the
+  deployed build.
+- **Verification:** `tsc --noEmit` clean; brand lint clean.
+- **Status:** DONE (levels); cone + panel-slim = follow-ups. Branch `claude/wall-beads-data-validation-4re5wo`.
