@@ -40,11 +40,6 @@ const COMPARE: [string, "y" | "n" | "p", "y" | "n" | "p"][] = [
   ["One membership · all modules", "y", "n"],
 ];
 
-const LADDER: [string, number, string][] = [
-  ["7585", 0.92, "#00e676"], ["7560", 0.61, "#00e676"], ["6472", 0.34, "#22d3ee"],
-  ["6455", 0.5, "#bf5fff"], ["6420", 0.74, "#bf5fff"],
-];
-
 function cmpCell(v: "y" | "n" | "p") {
   if (v === "y") return <span className="rl-c rl-yes">✓</span>;
   if (v === "p") return <span className="rl-c rl-par">~</span>;
@@ -66,8 +61,6 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         <div className="rl-wrap">
           <div className="rl-hero-grid">
             <div className="rl-reveal rl-in">
-              {/* eslint-disable-next-line @next/next/no-img-element -- marketing hero brand emblem */}
-              <img src={IMAGES.brandEmblem} alt="BlackOut" className="rl-hero-emblem" width={92} height={92} fetchPriority="high" decoding="async" />
               <span className="rl-kicker"><span className="dot" aria-hidden />Institutional options desk</span>
               <h1 className="rl-hero-h1">Trade like<br />the lights<br /><span className="on">are on.</span></h1>
               <p className="rl-hero-lede">Options flow, dealer positioning, live gamma structure, and the Night Hawk swing scanner — <b>one command surface for the floor.</b> The intelligence layer institutions pay a premium for, unified by BlackOut Intelligence.</p>
@@ -80,34 +73,19 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
               </ul>
             </div>
             <div className="rl-reveal rl-in" style={{ transitionDelay: ".12s" }}>
-              <div className="rl-desk">
-                <div className="rl-desk-top">
-                  <span className="d" /><span className="d" /><span className="d" />
-                  <span className="lbl">SPX Slayer · 0DTE</span>
-                  <span className="rl-desk-live"><span className="b" />LIVE</span>
-                </div>
-                <div className="rl-desk-body">
-                  <div className="rl-desk-row"><span className="k">Spot</span><span className="v" id="rl-spot" style={{ color: "var(--rl-ink)" }}>6472.15</span></div>
-                  <div className="rl-desk-row"><span className="k">Gamma flip</span><span className="v" style={{ color: "var(--rl-cyan)" }}>6455.0</span></div>
-                  <div className="rl-desk-row"><span className="k">Regime</span><span className="v" style={{ color: "var(--rl-bull)", fontSize: 13 }}>NET-LONG · SUPPRESSED</span></div>
-                  <div className="rl-ladder">
-                    {LADDER.map(([s, m, c]) => (
-                      <div className="rl-lrow" key={s}>
-                        <span className="s">{s}</span>
-                        <div className="bar" style={{ background: `${c}1a` }}><i style={{ background: c, transform: `scaleX(${m})`, boxShadow: `0 0 10px ${c}` }} /></div>
-                        <span className="p">{Math.round(m * 100)}%</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="rl-playchip">
-                    <span className="rl-grade">A</span>
-                    <div>
-                      <div className="pt">Call-wall fade · 7585</div>
-                      <div className="ps">BIE verified · invalidation 7602 · size ¼</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              {/* Brand emblem as the hero's right-side statement (replaced the SPX desk
+                  mock). Points at /images/blackout-emblem.png — drop a 4K master at that
+                  same path to upgrade clarity with no code change. */}
+              {/* eslint-disable-next-line @next/next/no-img-element -- marketing hero brand logo */}
+              <img
+                src={IMAGES.brandEmblem}
+                alt="BlackOut"
+                className="rl-hero-logo"
+                width={1024}
+                height={1024}
+                fetchPriority="high"
+                decoding="async"
+              />
             </div>
           </div>
           <p className="rl-floor">
