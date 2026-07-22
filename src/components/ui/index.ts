@@ -53,6 +53,9 @@ export {
   RadarIcon,
 } from "./icons/InstrumentIcons";
 
+export { BorderBeam } from "./motion/BorderBeam";
+export { RetroGrid } from "./motion/RetroGrid";
+
 export { PageShell } from "./PageShell";
 export type { PageShellProps } from "./PageShell";
 
