@@ -2,7 +2,7 @@ export const dynamic = "force-static";
 
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
-import { StaticPricingSection } from "@/components/landing/StaticPricingSection";
+import { RedesignPricing } from "@/components/landing/RedesignPricing";
 
 export const metadata: Metadata = {
   title: "Pricing · BlackOut",
@@ -12,8 +12,8 @@ export const metadata: Metadata = {
 export default function PricingPage() {
   return (
     <MarketingPageShell showChart={false}>
-      <div className="hide-in-ios-app pt-24">
-        <StaticPricingSection />
+      <div className="hide-in-ios-app">
+        <RedesignPricing />
       </div>
       <div className="show-in-ios-app px-6 py-32 text-center">
         <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-bull">Membership</p>
