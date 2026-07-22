@@ -1,7 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Anton, Syne } from "next/font/google";
+import { Anton, Syne, JetBrains_Mono } from "next/font/google";
 import { IMAGES } from "@/lib/images";
 import { SITE } from "@/lib/site";
+// PHOSPHOR LADDER token foundation — additive tokens + utility primitives, loaded
+// ONCE here so marketing = desk = ios all read the same instrument grid. Placed in
+// the root layout (globals.css is only imported per route-group) so the tokens are
+// truly global.
+import "./phosphor-tokens.css";
 
 const anton = Anton({
   weight: "400",
@@ -14,6 +19,16 @@ const syne = Syne({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-syne",
+});
+// The instrument mono — data IS the wallpaper in the PHOSPHOR LADDER system, so
+// numerals, tickers, kickers and command keys are set in JetBrains Mono. The
+// token/motion/button CSS references var(--font-jetbrains); load it here so it
+// resolves to the intended face instead of falling back to system monospace.
+const jetbrainsMono = JetBrains_Mono({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-jetbrains",
 });
 export const metadata: Metadata = {
   metadataBase: new URL(SITE.url),
@@ -46,7 +61,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${anton.variable} ${syne.variable}`}>
+    <html lang="en" className={`${anton.variable} ${syne.variable} ${jetbrainsMono.variable}`}>
       <head>
         <link rel="preconnect" href={SITE.url} />
         <link rel="dns-prefetch" href={SITE.url} />
