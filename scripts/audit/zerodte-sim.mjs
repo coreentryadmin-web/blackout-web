@@ -90,9 +90,13 @@ const INDEX_INSTRUMENTS = new Set(["SPX", "SPXW", "VIX", "VIXW", "NDX", "RUT", "
 
 if (QUIET) {
   const origInfo = console.info;
+  // Strip CR/LF from any string arg before re-emitting — this wrapper passes through the app's own
+  // console.info args, and newline-sanitizing them closes the log-injection sink (CodeQL) without
+  // changing what QUIET is for (suppressing the [nighthawk] funnel line).
+  const scrub = (x) => (typeof x === "string" ? x.replace(/[\r\n]+/g, " ") : x);
   console.info = (...a) => {
     if (typeof a[0] === "string" && a[0].startsWith("[nighthawk")) return;
-    origInfo(...a);
+    origInfo(...a.map(scrub));
   };
 }
 
