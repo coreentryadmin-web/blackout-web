@@ -52,13 +52,14 @@ type AttachedSeries = ISeriesApi<SeriesType, Time>;
 /** Band half-height in px at zero vs full frame-relative strength. A king wall → ~2·MAX px tall
  *  band (unmistakably fat); a straggler → a ~MIN px hairline. This is the "width" channel markers
  *  never had. */
-const HALF_PX_MIN = 0.6;
+const HALF_PX_MIN = 1.4;
 const HALF_PX_MAX = 8;
-/** Floor so a weak-but-present wall stays legible; full strength tops the fill out near-solid. */
-const FILL_ALPHA_MIN = 0.1;
+/** Floor so a weak-but-present wall reads as a THIN VISIBLE BAND (not an invisible hairline that
+ *  leaves only stray dots) — the whole rail should be one family of bands, fat→thin by strength. */
+const FILL_ALPHA_MIN = 0.26;
 const FILL_ALPHA_MAX = 0.82;
 /** The whole rail is translucent so overlapping bands + candles read through it. */
-const RAIL_TRANSLUCENCY = 0.85;
+const RAIL_TRANSLUCENCY = 0.9;
 /** A building wall's bright leading cap; a birth flash. */
 const EDGE_ALPHA = 0.95;
 
@@ -98,6 +99,16 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
         ctx.lineTo(s.x0, s.y + s.h0);
         ctx.closePath();
         ctx.fill();
+        // Crisp top+bottom edge (brighter than the fill) so each band reads as a defined shape and
+        // the fat-king / thin-straggler thickness contrast is unmistakable, not a soft smear.
+        ctx.strokeStyle = withA(s.color, Math.min(1, s.a1 + 0.18));
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(s.x0, s.y - s.h0);
+        ctx.lineTo(s.x1, s.y - s.h1);
+        ctx.moveTo(s.x0, s.y + s.h0);
+        ctx.lineTo(s.x1, s.y + s.h1);
+        ctx.stroke();
         // Bright vertical cap on the RIGHT edge when the wall is building this bucket (or is being
         // born) — the "forming right now" tick the eye catches. Height slightly exceeds the band.
         if (s.building || s.birth) {
