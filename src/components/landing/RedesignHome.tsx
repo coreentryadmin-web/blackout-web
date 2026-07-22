@@ -4,6 +4,7 @@ import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
 import { IMAGES, MARKETING_MODULE_GALLERY } from "@/lib/images";
 import { InstrumentIcon } from "@/components/ui/icons/InstrumentIcons";
 import { ProductGallery } from "@/components/ui/motion/ProductGallery";
+import { Marquee } from "@/components/ui/motion/Marquee";
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { RetroGrid } from "@/components/ui/motion/RetroGrid";
 import { LandingRedesignFx } from "./LandingRedesignFx";
@@ -115,6 +116,20 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
             ))}
           </div>
         </div>
+      </section>
+
+      {/* INSTRUMENT BAND — the six desk instruments scrolling as a kinetic
+          "one desk, six instruments" strip; reuses the per-product glyphs. */}
+      <section className="rl-instband" aria-label="The desk instruments">
+        <Marquee durationSec={40} gap="18px">
+          {MARKETING_PRODUCTS.map((m) => (
+            <span key={m.id} className="rl-inst-chip" style={{ "--a": m.accent } as CSSProperties}>
+              <span className="rl-inst-ic" aria-hidden><InstrumentIcon id={m.id} size={18} /></span>
+              <span className="rl-inst-name">{m.label}</span>
+              <span className="rl-inst-tag">{m.tag}</span>
+            </span>
+          ))}
+        </Marquee>
       </section>
 
       {/* MODULES */}

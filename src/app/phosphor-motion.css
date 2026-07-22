@@ -84,6 +84,34 @@
   to { background-position: 0 56px; }
 }
 
+/* ---- Marquee — seamless infinite scroller ------------------------------ */
+.pm-marquee {
+  display: flex;
+  width: 100%;
+  overflow: hidden;
+  -webkit-mask: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.pm-marquee-track {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-width: 100%;
+  width: max-content;
+  animation: pm-marquee-scroll var(--pm-mq-dur, 32s) linear infinite;
+}
+.pm-marquee-group {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--pm-mq-gap, 28px);
+  padding-right: var(--pm-mq-gap, 28px);
+}
+.pm-marquee-pause:hover .pm-marquee-track { animation-play-state: paused; }
+@keyframes pm-marquee-scroll {
+  to { transform: translateX(-50%); }
+}
+
 /* ---- ProductGallery — screenshot carousel chrome ----------------------- */
 .pm-gallery {
   position: relative;
@@ -186,6 +214,9 @@
     opacity: 0.16;
   }
   .pm-retrogrid-plane {
+    animation: none;
+  }
+  .pm-marquee-track {
     animation: none;
   }
 }
