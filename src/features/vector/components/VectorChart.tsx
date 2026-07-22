@@ -643,6 +643,58 @@ function applyExpectedMoveBand(
 }
 
 /**
+ * EOD PIN projection on the price chart (SPX desk): a solid gold price-line at the projected 0DTE
+ * close + two dashed, fainter lines at the pin BAND edges — the 0DTE trader's close-target read in
+ * price space, next to the candles (user-directed: move the pin onto the chart). Mirrors
+ * applyExpectedMoveBand exactly: idempotent via a signature ref so live-tick repaints are no-ops;
+ * cleared when disabled or there's no real projection. The shaded time→close CONE is a follow-up
+ * (needs a canvas primitive); this draws the actionable levels with the proven price-line infra.
+ */
+function applyPinProjection(
+  series: ISeriesApi<"Candlestick">,
+  linesRef: React.MutableRefObject<IPriceLine[]>,
+  sigRef: React.MutableRefObject<string>,
+  proj: { close: number; band: [number, number] | null } | null,
+  enabled: boolean
+): void {
+  const ok = enabled && proj && Number.isFinite(proj.close) && proj.close > 0;
+  const sig = ok ? `${proj!.close}:${proj!.band?.[0] ?? ""}:${proj!.band?.[1] ?? ""}` : "off";
+  if (sig === sigRef.current) return; // no change → don't churn the price lines on every tick
+  sigRef.current = sig;
+  for (const l of linesRef.current) series.removePriceLine(l);
+  linesRef.current = [];
+  if (!ok) return;
+  const PIN_GOLD = "#ffd23f"; // --sig-king gold, matching the pin panel + max-pain
+  linesRef.current.push(
+    series.createPriceLine({
+      price: proj!.close,
+      color: PIN_GOLD,
+      lineWidth: 2 as const,
+      lineStyle: LineStyle.Solid,
+      lineVisible: true,
+      axisLabelVisible: true,
+      title: `Pin ${Math.round(proj!.close).toLocaleString("en-US")}`,
+    })
+  );
+  if (proj!.band) {
+    for (const edge of proj!.band) {
+      if (!(edge > 0) || !Number.isFinite(edge)) continue;
+      linesRef.current.push(
+        series.createPriceLine({
+          price: edge,
+          color: withAlpha(PIN_GOLD, 0.4),
+          lineWidth: 1 as const,
+          lineStyle: LineStyle.Dashed,
+          lineVisible: true,
+          axisLabelVisible: false,
+          title: "",
+        })
+      );
+    }
+  }
+}
+
+/**
  * Pane layout: 0 = price/candles, 1 = volume (always present, its own sub-pane like RSI/MACD — NOT
  * an overlay on the candles), 2..N = enabled oscillators. `applyPaneStretch` reasserts the relative
  * pane heights so the price pane stays dominant and volume is a thin strip; it must run after the
@@ -1111,6 +1163,11 @@ export function VectorChart({
   const expectedMoveBandsRef = useRef<ExpectedMove | null>(null);
   const emBandLinesRef = useRef<IPriceLine[]>([]);
   const emBandSigRef = useRef<string>("");
+  // EOD pin projection (SPX desk only): the last-fetched projected close + band, its drawn
+  // price-lines, and a signature so paintOverlays only rebuilds the lines when the value changes.
+  const pinProjRef = useRef<{ close: number; band: [number, number] | null } | null>(null);
+  const pinLinesRef = useRef<IPriceLine[]>([]);
+  const pinSigRef = useRef<string>("");
   // GEX positioning heatmap (#14): the strike×time surface primitive attached BEHIND the candles
   // (zOrder "bottom"), plus the last horizon-scoped grid it draws. The grid is fetched in the
   // DTE-scoped effect (like max-pain/expected-move) and visibility is gated on the "gex-heatmap"
@@ -1555,6 +1612,9 @@ export function VectorChart({
           expectedMoveBandsRef.current,
           enabled.has("expected-move")
         );
+        // EOD pin projection (SPX desk only) — always on for SPX (no toggle); the fetch effect
+        // only populates pinProjRef when ticker === "SPX", so it's inert elsewhere.
+        applyPinProjection(seriesRef.current, pinLinesRef, pinSigRef, pinProjRef.current, ticker === "SPX");
       }
       // GEX positioning heatmap (#14) — push the last horizon-scoped grid + toggle state to the
       // background primitive (attached at zOrder "bottom", so candles/walls stay readable on top).
@@ -1742,6 +1802,41 @@ export function VectorChart({
       if (id) clearInterval(id);
     };
   }, [indicators, ticker, dteHorizon, liveSession, paintOverlays]);
+
+  // EOD PIN projection (SPX desk only) — fetch the 0DTE projected close + band and draw it on the
+  // price chart (solid gold line + dashed band edges). Gated to ticker === "SPX", so /vector and any
+  // other ticker never fetch or draw it. Polls at the desk cadence (5s) during a live session; a
+  // single fetch off-hours. Best-effort: a failed fetch keeps the last-drawn line rather than
+  // blanking it. Draws via paintOverlays → applyPinProjection (idempotent sig ref).
+  useEffect(() => {
+    if (ticker !== "SPX") return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/market/spx/pin", { cache: "no-store" });
+        if (cancelled || !res.ok) return;
+        const j = (await res.json()) as { pin?: unknown; pinBand?: unknown };
+        if (cancelled) return;
+        const close = typeof j.pin === "number" && Number.isFinite(j.pin) ? j.pin : null;
+        const band =
+          Array.isArray(j.pinBand) &&
+          j.pinBand.length === 2 &&
+          j.pinBand.every((n) => typeof n === "number" && Number.isFinite(n))
+            ? ([j.pinBand[0] as number, j.pinBand[1] as number] as [number, number])
+            : null;
+        pinProjRef.current = close != null ? { close, band } : null;
+        paintOverlays(lastDisplayBarsRef.current);
+      } catch {
+        // keep the last-drawn line on a transient blip
+      }
+    };
+    void load();
+    const id = liveSession ? setInterval(load, 5_000) : null;
+    return () => {
+      cancelled = true;
+      if (id) clearInterval(id);
+    };
+  }, [ticker, liveSession, paintOverlays]);
 
   const toggleIndicator = useCallback((id: VectorIndicatorId) => {
     setIndicators((prev) => {
@@ -2790,6 +2885,10 @@ export function VectorChart({
       emBandLinesRef.current = [];
       expectedMoveBandsRef.current = null;
       emBandSigRef.current = "";
+      // Same for the EOD pin projection lines.
+      pinLinesRef.current = [];
+      pinProjRef.current = null;
+      pinSigRef.current = "";
       // chart.remove() disposes the overlay line series too — swap in a fresh map so a remount
       // rebuilds instead of touching the now-disposed series (matches the sibling ref resets).
       overlaySeriesRef.current = new Map();
