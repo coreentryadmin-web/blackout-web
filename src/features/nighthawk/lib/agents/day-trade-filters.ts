@@ -85,6 +85,7 @@ export function optionsPlayWithinMaxDte(optionsPlay: string, maxDte: number): bo
   const text = optionsPlay.trim();
   if (!text || text === "—") return true;
 
+  // 1) Explicit ISO expiry (e.g. "SPY 2026-07-22 $565 CALL") — the precise path.
   const iso = text.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
   if (iso) {
     const expiry = new Date(`${iso[1]}T16:00:00-04:00`);
@@ -93,7 +94,24 @@ export function optionsPlayWithinMaxDte(optionsPlay: string, maxDte: number): bo
     const dte = Math.round((expiry.getTime() - todayMs) / 86_400_000);
     return dte <= maxDte;
   }
-  // No parseable expiry — reject when enforcing tight DTE (0–1 DTE day trade).
+
+  // 2) Explicit DTE MARKER in the text ("0DTE", "0 DTE", "1DTE", "0–3 DTE"). The playbook / LLM
+  //    path writes the expiry this way instead of an ISO date (see the format prompt + UI fixtures:
+  //    "SPY 565C (0DTE)", "NVDA 880C (0–3 DTE)"). Before this, ANY such play fell through to the
+  //    reject-if-tight branch below and was dropped — so on a normal day the 0–1 DTE day filter
+  //    silently discarded nearly every 0DTE play and only an ISO-dated one (e.g. an index play)
+  //    survived: the "only one SPX play all day" bug. For a RANGE ("0–3 DTE") use the LOW end — the
+  //    contract is available at that minimum DTE, so it qualifies for a ≤ maxDte day trade.
+  const dteMarker = text.match(/(\d+)\s*(?:[–—-]\s*\d+\s*)?d(?:te|\.t\.e|ays?\s*to\s*(?:exp|expir))/i);
+  if (dteMarker) {
+    const lowDte = Number(dteMarker[1]);
+    if (Number.isFinite(lowDte)) return lowDte <= maxDte;
+  }
+
+  // 3) "weekly"/"monthly" markers → not a same-day expiry; drop under a tight 0–1 DTE day filter.
+  if (/\b(weekly|monthly|leaps?)\b/i.test(text)) return maxDte > 1;
+
+  // 4) No parseable expiry AND no marker — reject when enforcing tight DTE (0–1 DTE day trade).
   return maxDte > 1;
 }
 

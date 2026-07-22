@@ -109,3 +109,34 @@ test("expireSignalsAtMarketClose: expires CANDIDATE/WATCH but not ACTIONABLE onc
   const out = expireSignalsAtMarketClose(signals, new Date("2026-03-05T21:15:00.000Z"));
   assert.deepEqual(out.map((s) => s.phase), ["EXPIRED", "EXPIRED", "ACTIONABLE"]);
 });
+
+// ── optionsPlayWithinMaxDte: the "(0DTE)" text marker must not be dropped ───────────────
+//
+// Regression: the 0–1 DTE day filter only recognized a full ISO expiry ("2026-07-22") in the
+// options_play string. The playbook / LLM path writes the expiry as a TEXT MARKER instead
+// ("SPY 565C (0DTE)", "NVDA 880C (0–3 DTE)"), so every such play fell through to the reject-if-tight
+// branch and was silently dropped — on a normal day the agent discarded nearly every 0DTE play and
+// only an ISO-dated one (e.g. an index play) survived: the "only one SPX play all day" bug.
+import { optionsPlayWithinMaxDte } from "./day-trade-filters";
+
+test("optionsPlayWithinMaxDte: KEEPS text-marked 0DTE plays (the one-play-a-day regression)", () => {
+  for (const s of ["SPY 565C (0DTE)", "NVDA 880C (0–3 DTE)", "SPX 5900C (0DTE) — entry prem ~$4.20", "TSLA 250C 0DTE"]) {
+    assert.equal(optionsPlayWithinMaxDte(s, 0), true, `should KEEP ${s} at maxDte=0`);
+  }
+});
+
+test("optionsPlayWithinMaxDte: ISO-dated expiries still graded precisely", () => {
+  const iso0 = optionsPlayWithinMaxDte("SPY 2026-07-22 $565 CALL", 0); // if today is 2026-07-22 this is 0DTE
+  assert.equal(typeof iso0, "boolean");
+  assert.equal(optionsPlayWithinMaxDte("SPY 2099-08-15 $565 CALL", 0), false, "far-dated ISO must drop at maxDte=0");
+});
+
+test("optionsPlayWithinMaxDte: a 1DTE marker respects the maxDte bound", () => {
+  assert.equal(optionsPlayWithinMaxDte("QQQ 500C (1DTE)", 0), false, "1DTE must drop when maxDte=0");
+  assert.equal(optionsPlayWithinMaxDte("QQQ 500C (1DTE)", 1), true, "1DTE must keep when maxDte=1");
+});
+
+test("optionsPlayWithinMaxDte: weekly/monthly are not same-day and drop under the tight day filter", () => {
+  assert.equal(optionsPlayWithinMaxDte("META 520P (weekly)", 0), false);
+  assert.equal(optionsPlayWithinMaxDte("AAPL 230C (monthly)", 1), false);
+});
