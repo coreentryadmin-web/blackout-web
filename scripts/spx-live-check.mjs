@@ -48,6 +48,13 @@ try {
   // populate) before capturing.
   await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.waitForTimeout(12000);
+  // Dismiss the first-visit onboarding modal ("WELCOME TO BLACKOUT" quick tour). A fresh temp user
+  // ALWAYS sees it and it dims/covers the desk, wrecking the capture. Try Skip / close / Escape.
+  for (const sel of ['button:has-text("Skip")', 'button:has-text("SKIP")', 'button[aria-label="Close"]', '[aria-label="Close"]']) {
+    try { const b = page.locator(sel).first(); if (await b.count() && await b.isVisible()) { await b.click({ timeout: 2500 }); await page.waitForTimeout(600); break; } } catch { /**/ }
+  }
+  try { await page.keyboard.press("Escape"); } catch { /**/ }
+  await page.waitForTimeout(1500);
   await page.evaluate(async () => { await new Promise((r) => { let y = 0; const t = () => { window.scrollTo(0, y); y += Math.round(window.innerHeight * 0.7); if (y < document.body.scrollHeight) setTimeout(t, 130); else { window.scrollTo(0, 0); setTimeout(r, 400); } }; t(); }); });
   await page.waitForTimeout(3000);
 
