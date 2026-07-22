@@ -40,7 +40,7 @@ try {
   const page = await ctx.newPage();
   page.on("console", (m) => { if (m.type() === "error") report.notes.push("console:" + m.text().slice(0, 120)); });
 
-  const resp = await page.goto(`${BASE}/dashboard`, { waitUntil: "networkidle", timeout: 60000 });
+  await page.goto(`${BASE}/dashboard`, { waitUntil: "networkidle", timeout: 60000 });
   await page.waitForTimeout(9000);
   await page.evaluate(async () => { await new Promise((r) => { let y = 0; const t = () => { window.scrollTo(0, y); y += Math.round(window.innerHeight * 0.7); if (y < document.body.scrollHeight) setTimeout(t, 130); else { window.scrollTo(0, 0); setTimeout(r, 400); } }; t(); }); });
   await page.waitForTimeout(3000);
