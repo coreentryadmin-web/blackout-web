@@ -280,6 +280,10 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
             {/* Spot module removed from this column (user-directed 2026-07-14): spot now lives
                 in the header ribbon left of EMA, and the Dealer Gamma Map gets the full column
                 height — same as the other two panels. */}
+            {/* Spot module removed from this column (user-directed 2026-07-14): spot now lives in
+                the header ribbon. The EOD Pin Forecaster was ALSO split out into its own 4th panel
+                (below) so the Dealer Gamma Map now gets the FULL column height (member-directed:
+                "4 panels with EOD pin as the new panel so we can get full view of the matrix"). */}
             <SpxGexMatrixHeatmap
               live={live}
               sessionActive={sessionActive}
@@ -295,10 +299,21 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
               priceScaleMap={priceScaleMap}
               focus={focusActive}
             />
-            {/* EOD Pin Forecaster — forward-looking 0DTE close projection, stacked under the matrix. */}
-            <div style={{ marginTop: 10 }}>
-              <SpxPinForecast sessionActive={sessionActive} />
-            </div>
+          </aside>
+        </SpxPanelErrorBoundary>
+
+        {/* EOD Pin Forecaster — now its OWN 4th desk panel (was stacked under the matrix). On the
+            compact/iOS shell it rides the "matrix" segment so the two 0DTE-structure panels stay
+            together there. */}
+        <SpxPanelErrorBoundary>
+          <aside
+            className={clsx(
+              "spx-sniper-left-rail spx-left-pin",
+              compactPanels && iosPanel !== "matrix" && "ios-native-panel-hidden",
+              compactPanels && iosPanel === "matrix" && "ios-native-panel-visible"
+            )}
+          >
+            <SpxPinForecast sessionActive={sessionActive} />
           </aside>
         </SpxPanelErrorBoundary>
 
