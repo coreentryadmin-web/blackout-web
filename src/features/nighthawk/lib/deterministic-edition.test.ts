@@ -577,3 +577,47 @@ test("PR-N33: forced contrarian fires with low-score candidate (between FORCED_C
   const hedgeScore = shorts[0]!.score ?? 0;
   assert.ok(hedgeScore >= 8, `hedge score ${hedgeScore} should be >= FORCED_CONTRARIAN_FLOOR (8)`);
 });
+
+// ── pickChainContract maxDte window (intraday 0DTE vs overnight swing) ──────────────────────────
+// Regression: the day-trade agent asks for a 0–1 DTE contract but the picker was hardcoded to the
+// overnight-swing window (skip same-day expiry, require ≥5 calendar DTE), so a "0DTE day trade"
+// always got a ~5-DTE contract that the day filter then dropped — the structural half of the empty
+// intraday-0DTE-board bug. maxDte 0/1 must select a same-day/next-day contract; null keeps swing.
+import { todayEtYmd } from "@/lib/providers/spx-session";
+
+function ymdPlus(days: number): string {
+  const t = todayEtYmd();
+  const d = new Date(t + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function multiExpiryChain(): EditionChainData {
+  return {
+    spot: 100,
+    rows: [
+      row(100, { expiry: ymdPlus(0), callAsk: 4.2, callBid: 3.8 }),
+      row(100, { expiry: ymdPlus(1), callAsk: 4.2, callBid: 3.8 }),
+      row(100, { expiry: ymdPlus(7), callAsk: 4.2, callBid: 3.8 }),
+    ],
+  };
+}
+
+test("pickChainContract: maxDte=0 selects the SAME-DAY (0DTE) contract", () => {
+  const c = pickChainContract(multiExpiryChain(), "long", 0);
+  assert.ok(c, "should pick a contract");
+  assert.equal(c!.expiry, ymdPlus(0), "0DTE window must select the same-day expiry");
+});
+
+test("pickChainContract: maxDte=null keeps the overnight-swing window (≥5 DTE, never same-day)", () => {
+  const c = pickChainContract(multiExpiryChain(), "long", null);
+  assert.ok(c, "should pick a contract");
+  assert.equal(c!.expiry, ymdPlus(7), "swing must select the ≥5-DTE expiry, not the same-day one");
+});
+
+test("pickChainContract: maxDte=0 returns null when the chain has NO same-day expiry (honest)", () => {
+  const noSameDay: EditionChainData = {
+    spot: 100,
+    rows: [row(100, { expiry: ymdPlus(4), callAsk: 4.2, callBid: 3.8 }), row(100, { expiry: ymdPlus(7), callAsk: 4.2, callBid: 3.8 })],
+  };
+  assert.equal(pickChainContract(noSameDay, "long", 0), null);
+});

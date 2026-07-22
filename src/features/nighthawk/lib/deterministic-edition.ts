@@ -194,14 +194,34 @@ function minExpiryDate(today: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Add N calendar days to a YYYY-MM-DD (UTC-noon anchored, DST-agnostic). */
+function addCalendarDaysYmd(ymd: string, days: number): string {
+  const d = new Date(ymd + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Pick the best contract for a play. `maxDte` selects the EXPIRY WINDOW:
+ *   • null / > 1  → OVERNIGHT SWING window: expiry ≥ today+5 calendar days (needs time value);
+ *                   shorter-dated contracts drop to a last-resort pool. (unchanged legacy behavior)
+ *   • 0 or 1      → DAY / 0DTE window: expiry in [today, today+maxDte]. This is REQUIRED for the
+ *                   intraday day-trade agent — without it the picker forced a ≥5-DTE swing contract
+ *                   even for a "0DTE day trade", which the day filter then dropped, emptying the
+ *                   whole intraday board (the "only one play all day" bug's structural half). A
+ *                   ticker with no expiry inside the window returns null (honest: no 0DTE to trade).
+ */
 export function pickChainContract(
   chain: EditionChainData,
-  direction: "long" | "short"
+  direction: "long" | "short",
+  maxDte?: number | null
 ): PickedContract | null {
   const side: "call" | "put" = direction === "long" ? "call" : "put";
   const spot = chain.spot;
   const minOi = spot > 0 ? tieredMinOi(spot) : GROUNDING_MIN_OI;
   const today = todayEtYmd();
+  const dayMode = maxDte != null && maxDte <= 1;
+  const dayMaxExpiry = dayMode ? addCalendarDaysYmd(today, Math.max(0, Math.floor(maxDte!))) : null;
   const minExpiry = minExpiryDate(today);
 
   type Candidate = PickedContract & { dist: number };
@@ -209,11 +229,18 @@ export function pickChainContract(
   const relaxedPremium: Candidate[] = [];
   const relaxedOi: Candidate[] = [];
   const anyQuoted: Candidate[] = [];
-  // Short-dated fallback: contracts between today and minExpiry (DTE too low for swing)
+  // Short-dated fallback: contracts between today and minExpiry (DTE too low for swing). Unused in
+  // day mode (the whole window IS short-dated; there is no "too short" last resort).
   const shortDated: Candidate[] = [];
 
   for (const row of chain.rows) {
-    if (row.expiry <= today) continue;
+    if (dayMode) {
+      // Day/0DTE window: allow same-day expiry (0DTE), reject anything past today+maxDte.
+      if (row.expiry < today || row.expiry > dayMaxExpiry!) continue;
+    } else if (row.expiry <= today) {
+      // Swing never trades a same-day expiry.
+      continue;
+    }
     const premium = contractPremium(row, side);
     if (premium == null) continue;
     const oi = contractOi(row, side);
@@ -226,8 +253,8 @@ export function pickChainContract(
     };
     const oiOk = oi >= minOi;
     const premOk = premium <= MAX_OPTION_PREMIUM_PER_SHARE;
-    if (row.expiry < minExpiry) {
-      // Too short-dated for overnight swing — last-resort pool
+    if (!dayMode && row.expiry < minExpiry) {
+      // Too short-dated for overnight swing — last-resort pool.
       if (premOk) shortDated.push(entry);
       continue;
     }
@@ -475,6 +502,8 @@ export function buildDeterministicEditionPlays(params: {
   dossierMap: Record<string, TickerDossier>;
   chains: Record<string, EditionChainData>;
   target?: number;
+  /** 0 or 1 → select a same-day/1-DTE contract (intraday day-trade path). null/undefined → overnight swing. */
+  maxDte?: number | null;
 }): { plays: PlaybookPlay[]; funnel: { candidates: number; score_below_floor: number; contract_ok: number; stock_only: number; no_chain: number; no_spot: number; premium_capped: number; geometry_fail: number; geometry_ok: number; premium_ok: number; grounded: number; dropped_ungrounded: number } } {
   const target = params.target ?? DETERMINISTIC_EDITION_TARGET;
   // PR-N18: increased buffer from target+12 to target+20 — with 60 candidates and wider
@@ -504,7 +533,7 @@ export function buildDeterministicEditionPlays(params: {
     const dossier = params.dossierMap[ticker] ?? params.dossierMap[scored.ticker];
     const spot = chain?.spot ?? dossier?.tech?.price ?? null;
 
-    const contract = chain ? pickChainContract(chain, scored.direction) : null;
+    const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte) : null;
     if (contract && !contract.caveat) {
       contractOk += 1;
     } else if (contract && contract.caveat) {
@@ -547,7 +576,7 @@ export function buildDeterministicEditionPlays(params: {
   for (const scored of params.ranked) {
     const chain = params.chains[scored.ticker.toUpperCase()];
     if (!chain) continue;
-    const c = pickChainContract(chain, scored.direction);
+    const c = pickChainContract(chain, scored.direction, params.maxDte);
     if (c && !c.caveat) strictContractTickers.add(scored.ticker.toUpperCase());
   }
   const withContract = built.filter((p) => p.entry_premium != null && strictContractTickers.has(p.ticker.toUpperCase()));
@@ -587,7 +616,7 @@ export function buildDeterministicEditionPlays(params: {
         const dos = params.dossierMap[t] ?? params.dossierMap[scored.ticker];
         const sp = ch?.spot ?? dos?.tech?.price ?? null;
         if (sp == null || !Number.isFinite(sp) || sp <= 0) continue;
-        const ctr = ch ? pickChainContract(ch, scored.direction) : null;
+        const ctr = ch ? pickChainContract(ch, scored.direction, params.maxDte) : null;
         const lvl = resolveLevels(dos, scored.direction, sp);
         const p = buildPlay(scored, dos, ctr, lvl, target);
         if (!validatePlayGeometry(p).ok) continue;
@@ -627,7 +656,7 @@ export function buildDeterministicEditionPlays(params: {
           );
           if (contrarian.score < FORCED_CONTRARIAN_FLOOR) continue;
 
-          const ctr = ch ? pickChainContract(ch, contrarian.direction) : null;
+          const ctr = ch ? pickChainContract(ch, contrarian.direction, params.maxDte) : null;
           const lvl = resolveLevels(dos, contrarian.direction, sp);
           const p = buildPlay(contrarian, dos, ctr, lvl, target);
           if (!validatePlayGeometry(p).ok) { contrarianScores[contrarianScores.length - 1] += ":geom-fail"; continue; }
@@ -695,6 +724,8 @@ export function buildRescuePlays(params: {
   dossierMap: Record<string, TickerDossier>;
   chains: Record<string, EditionChainData>;
   target?: number;
+  /** 0 or 1 → select a same-day/1-DTE contract (intraday day-trade path). null/undefined → overnight swing. */
+  maxDte?: number | null;
 }): PlaybookPlay[] {
   const target = params.target ?? DETERMINISTIC_EDITION_TARGET;
   const plays: PlaybookPlay[] = [];
@@ -715,7 +746,7 @@ export function buildRescuePlays(params: {
     const { thesis, key_signal } = buildDeterministicThesis(scored, dossier);
 
     const warnings: string[] = [];
-    const contract = chain ? pickChainContract(chain, scored.direction) : null;
+    const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte) : null;
     let options_play: string;
     if (contract) {
       options_play = `${ticker} ${contract.expiry} $${formatStrike(contract.strike)} ${contract.side.toUpperCase()} — entry prem ~$${contract.premium.toFixed(2)}`;

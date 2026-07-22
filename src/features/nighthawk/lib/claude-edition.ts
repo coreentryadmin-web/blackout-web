@@ -122,6 +122,9 @@ export async function generateEditionPlays(params: {
     dossierMap,
     chains: detChains,
     target: EDITION_SYNTHESIS_OVERSHOOT,
+    // Thread the caller's DTE ceiling so the intraday day-trade path (maxDte 0/1) actually selects a
+    // same-day/1-DTE contract instead of the overnight ≥5-DTE swing default. Was dropped here.
+    maxDte: params.maxDte ?? null,
   });
 
   // PR-N13: when normal synthesis produces zero plays (all candidates failed geometry,
@@ -133,6 +136,7 @@ export async function generateEditionPlays(params: {
       dossierMap,
       chains: detChains,
       target: EDITION_SYNTHESIS_OVERSHOOT,
+      maxDte: params.maxDte ?? null,
     });
     if (rescue.length) {
       detPlays = rescue;
