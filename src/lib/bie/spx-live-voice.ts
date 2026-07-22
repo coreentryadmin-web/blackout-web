@@ -280,6 +280,13 @@ export function deriveSpxBias(s: SpxVoiceSnapshot): SpxBiasRead {
       s.aboveFlip == null ? "?" : s.aboveFlip ? "aF" : "bF",
       s.aboveVwap == null ? "?" : s.aboveVwap ? "aV" : "bV",
       s.emaStack ?? "?",
+      // Include the levels the pinned narrative NAMES (king call/put walls + max-pain pin) so the
+      // bias card re-voices when a named level MIGRATES — not just on a direction change. Without
+      // this the prose kept citing an old king wall for up to 5 min (BIAS_REFRESH_MS) after it
+      // stepped, contradicting the live "Recent shifts"/tape feed on the same card.
+      s.kingCall ? `kc${Math.round(s.kingCall.strike)}` : "?",
+      s.kingPut ? `kp${Math.round(s.kingPut.strike)}` : "?",
+      s.maxPain != null ? `mp${Math.round(s.maxPain)}` : "?",
     ].join("|"),
   };
 }
