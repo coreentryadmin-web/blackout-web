@@ -105,3 +105,19 @@ test("no ask/bid split → falls back to HALF the directional weight of a confir
     `no-split (${noSplit.signedPremium}) should be ~half of confirmed ask-side (${fullAsk.signedPremium})`
   );
 });
+
+test("strength reflects the DOMINANT-side identity, not a bigger CONTRA-side print (audit fix)", () => {
+  // One big bullish call build (the single strongest identity) is outvoted on NET by six smaller
+  // bearish put builds. Pre-fix, strength was sourced from the big call (~43); it must instead
+  // reflect the dominant (bearish put) side the direction actually reports.
+  const rows = [
+    row({ ticker: "X", side: "call", strike: 900, premium: 6_000_000, askSidePremium: 6_000_000, bidSidePremium: 0, sweep: false, opening: false, volOiRatio: null, createdAtMs: NOW }),
+    ...[850, 860, 870, 880, 890, 895].map((k) =>
+      row({ ticker: "X", side: "put", strike: k, premium: 1_200_000, askSidePremium: 1_200_000, bidSidePremium: 0, sweep: false, opening: false, volOiRatio: null, createdAtMs: NOW })
+    ),
+  ];
+  const sig = flowAccumulationByTicker(rows, NOW).get("X")!;
+  assert.equal(sig.direction, "bear", "net premium is bearish");
+  assert.equal(sig.magnet?.side, "put", "magnet is on the dominant (put) side");
+  assert.ok(sig.strength < 25, `strength (${sig.strength}) must reflect the dominant put side, not the bigger contra call (~43 pre-fix)`);
+});
