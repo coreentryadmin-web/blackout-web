@@ -33,6 +33,16 @@ function row(overrides: Partial<GovernorLedgerRow> = {}): GovernorLedgerRow {
   };
 }
 
+// ── anti-overfit FIREWALL: value-pin the governor caps (Step 5) ───────────────────────
+// The 2026-07-13 forensics showed a seven-stop day; these caps are the ledger's proven brake. A silent
+// loosening (max concurrent up, session-stop halt up, re-entry lock down) reintroduces the runaway-loss
+// day the record already paid for — so the values are pinned, not just their behavior.
+test("FIREWALL: governor caps are pinned (max 3 concurrent, halt after 3 stops, 20-min re-entry lock)", () => {
+  assert.equal(GOVERNOR_MAX_CONCURRENT_PLANS, 3);
+  assert.equal(GOVERNOR_MAX_SESSION_STOPS, 3);
+  assert.equal(GOVERNOR_REENTRY_LOCK_MS, 20 * 60 * 1000);
+});
+
 // ── ledger-derived snapshot ────────────────────────────────────────────────────────
 
 test("deriveGovernorFromLedger: non-CLOSED rows count as open — including null status (just committed)", () => {
