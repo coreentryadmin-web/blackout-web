@@ -5,6 +5,29 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-23 — [MILESTONE] Banger scale-out flagship WIRED LIVE end-to-end (rearchitecture 6b complete)
+
+- **What shipped:** the whole-market banger scale-out — the +26%/+20%-net-OOS positive-skew flagship — is
+  no longer backtest-only. It now grades on the live overnight cron and graduates on the live ledger:
+  - **#973** pure core: `resolveBangerGradeRequest` (published play → OCC + entry premium + expiry, or
+    `not_banger`/`ungradeable`) + `optionAggBarsToScaleOut` (Polygon AggBar → ScaleOutBar, drop undefined-t).
+  - **#974** migration + fail-soft cron: nullable `nighthawk_play_outcomes.scale_out_grade` JSONB; a
+    dedicated EXPIRY-GATED pass (`resolveBangerScaleOutGrades`) grades each banger on its OPTION's forward
+    bars once expiry passes and pins first-write-wins. Fully isolated — can never fail the stock-outcome sync.
+  - **#975** reader: shared pure graduation core (`recommendScaleOutFromGrades` + `readScaleOutGradeBlob`,
+    reused by BOTH the 0DTE ledger and the nighthawk ledger so the rule can't drift) + `summarizeBangerScaleOut`
+    track record, surfaced read-only on `admin/nighthawk/analytics` (fail-soft).
+- **The bridge (why 3 PRs, not 1):** `recommendScaleOut` reads `zerodte_setup_log`, but bangers live only in
+  `nighthawk_play_outcomes` (disjoint tables, no shared column). The nighthawk-side bridge keeps the two
+  products cleanly separated while sharing ONE graduation rule.
+- **Validation:** full path proven live (real daily option bars → real multiple, e.g. NVDA $180C
+  1.23×/1.23×); flagship EV re-confirmed at ~1000-play scale (**1176 movers, +19% net-OOS, 53% green**,
+  realistic minute fills + 7.5% slippage); shipped trail 0.5 at/below OOS optimum. Index pipeline sim runs
+  clean end-to-end (3179 alerts/3d → 5 published gated plays). Touched-file tests 47/47 green.
+- **Remaining (6d, gated on evidence, NOT build work):** flip the live managed exit when the live ledger's
+  `recommendScaleOut` reads `enforce` (n ≥ 10 gradeable bangers clearing the +0.15×/$1 bar). Until then the
+  scale-out is advisory and accrues real evidence — calibration-first to the end. **Status: 6b COMPLETE.**
+
 ## 2026-07-23 — [HIGH] Offline ratchet grader was EV-optimistic (mark-faithfulness) — FIXED + iron-condor guard
 
 - **Severity:** HIGH for evidence-fidelity (the grader that measures the ratchet exit / would gate the
