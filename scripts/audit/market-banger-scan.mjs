@@ -35,6 +35,9 @@ const BASE = process.env.POLYGON_API_BASE;
 const KEY = process.env.POLYGON_API_KEY;
 const SRC = new URL("../../src/", import.meta.url).pathname;
 const { fetchAggBars } = await import(`${SRC}lib/providers/polygon-largo.ts`);
+// Share ONE exit definition with production — the backtest grades under the exact same rule the
+// live banger manager will run (src/lib/zerodte/scale-out.ts), so research and prod can't drift.
+const { gradeScaleOut, SCALE_OUT_RULES } = await import(`${SRC}lib/zerodte/scale-out.ts`);
 
 const argv = Object.fromEntries(process.argv.slice(2).map((a) => {
   const m = /^--([^=]+)(?:=(.*))?$/.exec(a);
@@ -49,11 +52,12 @@ const PRICE_MAX = Number(argv["price-max"] ?? 400);
 const EMIT_JSON = Boolean(argv.json);
 const HOLD_DAYS = 9;
 
-// Scale-out exit rule (the edge). Tunable; defaults from the research doc.
-const SCALE_AT = 2.0;      // realize the first tranche when the option touches 2×
-const SCALE_FRAC = 0.5;    // fraction sold at 2×
-const TRAIL_FROM_PEAK = 0.5; // runner exits if it retraces to 50% of its peak
-const HARD_STOP = 0.4;     // exit all at −60% if it stops out before touching 2×
+// Scale-out exit rule (the edge) — imported from the production module (SCALE_OUT_RULES) so the
+// backtest and the live manager are literally the same numbers. Kept as locals for the printout.
+const SCALE_AT = SCALE_OUT_RULES.scale_at_mult;
+const SCALE_FRAC = SCALE_OUT_RULES.scale_fraction;
+const TRAIL_FROM_PEAK = SCALE_OUT_RULES.trail_from_peak;
+const HARD_STOP = SCALE_OUT_RULES.hard_stop_mult; // exit all at this multiple before touching 2×
 
 const jget = async (u) => { const r = await fetch(u); return r.ok ? r.json() : null; };
 const ymd = (d) => d.toISOString().slice(0, 10);
@@ -97,18 +101,6 @@ function screenMovers(results) {
     .slice(0, TOP);
 }
 
-/** Simulate the mechanical scale-out on an option's forward daily bars from entry. */
-function realizedUnderScaleOut(bars, entry) {
-  let peak = entry, scaled = false, realized = 0, remaining = 1;
-  for (const b of bars) {
-    peak = Math.max(peak, b.h);
-    if (!scaled && b.l <= entry * HARD_STOP) { realized += remaining * (entry * HARD_STOP); remaining = 0; break; }
-    if (!scaled && b.h >= entry * SCALE_AT) { realized += SCALE_FRAC * (entry * SCALE_AT); remaining -= SCALE_FRAC; scaled = true; }
-    if (scaled && b.l <= peak * TRAIL_FROM_PEAK) { realized += remaining * (peak * TRAIL_FROM_PEAK); remaining = 0; break; }
-  }
-  if (remaining > 0) realized += remaining * (bars.at(-1)?.c ?? entry);
-  return realized / entry; // realized multiple
-}
 
 /** Probe a cheap ~5–10% OTM weekly call with real bars over the hold window. */
 async function probeWeekly(ticker, spot, exp, fromDate, toDate) {
@@ -160,7 +152,7 @@ if (!GRADE) {
     if (!w) continue;
     const maxRet = Math.max(...w.window.map((b) => b.h)) / w.entry;
     const holdRet = w.window.at(-1).c / w.entry;
-    const realized = realizedUnderScaleOut(w.window, w.entry);
+    const realized = gradeScaleOut(w.window, w.entry); // shared production exit rule
     rows.push({ ...m, strike: w.strike, entry: w.entry, maxRet, holdRet, realized });
   }
   console.log(`\n  ${pad("TICKER", 7)}${padL("GAIN", 6)}${padL("VOL", 7)}${padL("STRIKE", 8)}${padL("ENTRY", 8)}${padL("maxRet", 8)}${padL("hold", 7)}${padL("REALIZED", 10)}`);
