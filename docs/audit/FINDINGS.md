@@ -5,6 +5,28 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-23 — 0DTE entry-timing correction: unlock 9:45 → 10:00 + timeOfDayFactor recalibration (USER-AUTHORIZED)
+
+- **Root cause:** the G-2 opening-window unlock sat at **9:45 ET** (2026-07-13 directive) and
+  `timeOfDayFactor` (`intraday.ts`) **rewarded** the 9:50–11:00 window (+5) while **penalizing** 11:00
+  (−5, "lunch chop"). The simulator (25 sessions × SPY/QQQ/IWM, EV by fixed entry time) showed this is
+  inverted vs reality: **9:45 −12.1% EV / 26% win (the WORST tested time)**, improving monotonically —
+  10:00 −7.8%, 10:30 −9.1%, **11:00 +1.5%**. The gate unlocked at the worst moment and the score nudge
+  favored the weak window.
+- **Fix (user-authorized 2026-07-23, supersedes the 2026-07-13 directive):**
+  (a) `OPENING_WINDOW_UNLOCK_ET_MINUTES` 9:45 → **10:00** (block the demonstrably-worst first 30 min);
+  (b) `timeOfDayFactor` recalibrated — opening-chop penalty extends to 10:00, the **+reward moves to the
+  10:30–12:30 continuation window**, real lunch chop is 12:30–14:00, afternoon-trend window unchanged.
+- **Measured, not blunt:** stopped at 10:00 (not 11:00) because the backtest grader holds to
+  stop/target/15:30 and ignores the live exit engine (likely UNDERSTATES early entries), and blocking
+  the whole morning would empty the board. The soft 10:00–12:30 gradient is a score nudge, not a gate.
+  The gate still buckets every commit by ET time (`gate_calibration_json.committed_at_et`), so the
+  **live ledger** — not this backtest — decides whether to push the unlock later.
+- **Evidence:** gates + board + 7/13-replay suites updated and green (133/133); the 7/13 replay now
+  shows G-2 catching the pre-10:00 entries (AMD 09:50, SPY/MU 09:55) as a corroborating guard while
+  G-1 tape-alignment remains the primary killer (F-3 holds). tsc + eslint clean.
+- **Status:** SHIPPED (PR next).
+
 ## 2026-07-23 — Whole-market banger research + scanner tool (research + tooling)
 
 ### Research (docs/audit/0DTE-RESEARCH.md) — evidence-driven map for a top-tier system

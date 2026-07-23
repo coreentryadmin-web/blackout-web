@@ -159,14 +159,22 @@ export type TimeOfDayFactor = {
   label: string | null;
 };
 
-/** The known 0DTE edge windows: opening chop → prime morning drive → lunch chop →
- *  afternoon trend window. Fresh entries after 15:00 are already blocked upstream. */
+/** The 0DTE edge windows, RE-CALIBRATED to measured expectancy (2026-07-23,
+ *  docs/audit/0DTE-RESEARCH.md — 25 sessions × SPY/QQQ/IWM, EV by fixed entry time):
+ *    9:45 −12.1% · 10:00 −7.8% · 10:30 −9.1% · 11:00 +1.5% (monotone-ish; later is better).
+ *  The prior boundaries were inverted vs the data: they REWARDED the 9:50–11:00 window
+ *  (whose early half is negative) and PENALIZED 11:00 (the best cell) as "lunch chop." Now:
+ *  opening chop runs to 10:00 (matches the G-2 unlock), the reward sits on the 10:30–12:30
+ *  continuation window where the edge actually shows, real lunch chop is 12:30–14:00, and
+ *  the afternoon-trend window stays. This is a SCORE NUDGE (±5 on 0–100), not a gate — it
+ *  softly deprioritizes weak-timing setups; the hard block is G-2. Fresh entries after
+ *  15:00 are already blocked upstream. */
 export function timeOfDayFactor(etMinutes: number): TimeOfDayFactor {
   if (etMinutes < RTH_OPEN) return { delta: 0, label: null };
-  if (etMinutes < 9 * 60 + 50) return { delta: -5, label: "opening chop — ranges still forming" };
-  if (etMinutes < 11 * 60) return { delta: 5, label: "prime morning window" };
-  if (etMinutes < 13 * 60 + 30) return { delta: -5, label: "lunch chop — fake-out hours, size down" };
-  if (etMinutes < 14 * 60) return { delta: 0, label: null };
+  if (etMinutes < 10 * 60) return { delta: -5, label: "opening chop — ranges still forming" };
+  if (etMinutes < 10 * 60 + 30) return { delta: 0, label: null }; // 10:00–10:30 transition, still soft
+  if (etMinutes < 12 * 60 + 30) return { delta: 5, label: "prime continuation window" };
+  if (etMinutes < 14 * 60) return { delta: -5, label: "lunch chop — fake-out hours, size down" };
   if (etMinutes < 15 * 60) return { delta: 3, label: "afternoon trend window" };
   return { delta: 0, label: null };
 }

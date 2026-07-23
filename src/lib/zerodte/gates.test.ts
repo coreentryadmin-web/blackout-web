@@ -105,25 +105,28 @@ test("G-1 fail-closed: bias present but its freshness unknown (no bar timestamp)
   assert.equal(v.blocks[0]!.code, "no_market_bias");
 });
 
-// ── G-2 · opening window (first 15 minutes — user-directed 2026-07-13) ─────────────
+// ── G-2 · opening window (worst first 30 min, unlock 10:00 — user-authorized 2026-07-23) ──
 
-test("G-2: an aligned setup in the first 15 minutes is BLOCKED, with the unlock time on the card", () => {
+test("G-2: an aligned setup before 10:00 ET is BLOCKED, with the unlock time on the card", () => {
   const v = evaluateZeroDteGates(input({ nowEtMinutes: 9 * 60 + 40 }));
   assert.equal(v.verdict, "BLOCKED");
   assert.equal(v.blocks.length, 1, "only the window blocks — alignment is clean");
   assert.equal(v.blocks[0]!.code, "opening_window");
-  assert.equal(v.blocks[0]!.unlock_et, "9:45 ET");
+  assert.equal(v.blocks[0]!.unlock_et, "10:00 ET");
 });
 
-test("G-2: exactly 9:45 ET unlocks (boundary inclusive)", () => {
-  const v = evaluateZeroDteGates(input({ nowEtMinutes: 9 * 60 + 45 }));
+test("G-2: 9:55 is still inside the (extended) window — blocked", () => {
+  // The 2026-07-23 evidence move: 9:45 was the WORST entry time (−12% EV), so the unlock
+  // pushed from 9:45 → 10:00. A 9:55 setup that used to commit is now held to 10:00.
+  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 9 * 60 + 55 })).verdict, "BLOCKED");
+});
+
+test("G-2: exactly 10:00 ET unlocks (boundary inclusive)", () => {
+  const v = evaluateZeroDteGates(input({ nowEtMinutes: 10 * 60 }));
   assert.equal(v.verdict, "COMMIT");
 });
 
-test("G-2: 9:55/10:20 entries are OUTSIDE the window — the user chose 9:45 knowingly; the 9:45-10:30 band is the calibration loop's to judge", () => {
-  // 7/13's opening losers were flagged 9:50-10:20, i.e. AFTER 9:45 — under this
-  // boundary G-2 does not catch them (G-1 tape alignment is the gate that does).
-  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 9 * 60 + 55 })).verdict, "COMMIT");
+test("G-2: 10:20 is past the window — commits (the 10:00–10:30 band is the calibration loop's to judge)", () => {
   assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 10 * 60 + 20 })).verdict, "COMMIT");
 });
 
@@ -363,7 +366,7 @@ test("gateRejectionFor: one row per blocked setup — primary code, ALL reasons 
   assert.equal(row.ticker, "SPY");
   assert.equal(row.gate_failed, "tape_alignment", "primary = first-evaluated failing gate");
   assert.match(String(row.reason), /fights the DOWN market tape/);
-  assert.match(String(row.reason), /9:45 ET/, "second block's sentence rides the same row");
+  assert.match(String(row.reason), /10:00 ET/, "second block's sentence rides the same row");
   // Evidence-gate columns carry through so both gate families are comparable rows.
   assert.equal(row.gross_premium, 2_400_000);
   assert.equal(row.direction, "long");

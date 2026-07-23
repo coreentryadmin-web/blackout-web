@@ -21,13 +21,13 @@ import assert from "node:assert/strict";
 //   canonical G-6 conflict. No Slayer play was open on 7/13 (its ledger's last
 //   play closed 7/10; Monday's edition had 0 plays).
 //
-// G-2 ATTRIBUTION (user-directed 2026-07-13): the opening window is 9:30–9:45 ET
-// only — the user chose 9:45 KNOWINGLY over the decision doc's original 10:30,
-// with the calibration loop (gate_calibration_json.committed_at_et) as the
-// arbiter for the 9:45–10:30 band. Every 7/13 entry was flagged ≥ 9:50, so G-2
-// catches NONE of them in this replay — the four opening longs block on G-1
-// (tape alignment), which is exactly the doc's F-3 finding: counter-tape entries,
-// not clock position, are what killed the day.
+// G-2 ATTRIBUTION (user-authorized 2026-07-23, supersedes the 2026-07-13 boundary): the
+// opening window now runs 9:30–10:00 ET (unlock 10:00), on evidence that 9:45 was the WORST
+// entry time (−12% EV, docs/audit/0DTE-RESEARCH.md). In this replay the pre-10:00 entries
+// (AMD 09:50, SPY/MU 09:55) now ALSO collect G-2; the ≥10:00 entries do not. The original
+// F-3 finding still holds — the four opening longs ALSO block on G-1 (tape alignment):
+// counter-tape entries, not clock position alone, are what killed the day; the extended
+// window is a second, corroborating guard on the worst clock band.
 
 import { evaluateZeroDteGates, gateRejectionFor, type ZeroDteGateVerdict } from "./gates";
 import type { ContractPlan } from "./plan";
@@ -143,10 +143,13 @@ test("7/13 replay: full verdict table matches the decision doc's §2 projection 
   //                                           score 61 sits in the 55-64 band that
   //                                           runs 18.8% WR, so the floor blocks it.
   //                                           It stopped out at −50% — correctly.)
+  // 2026-07-23 (user-authorized): the opening-window unlock moved 9:45 → 10:00, so the pre-10:00
+  // entries now ALSO collect G-2 (AMD 09:50, SPY/MU 09:55). SPXW at exactly 10:00 is unlocked
+  // (boundary inclusive). Block order is tape_alignment → opening_window → score_floor.
   const expected: Record<string, string[] | "COMMIT"> = {
-    AMD: ["tape_alignment", "score_floor"],
-    SPY: ["tape_alignment"],
-    MU: ["tape_alignment"],
+    AMD: ["tape_alignment", "opening_window", "score_floor"],
+    SPY: ["tape_alignment", "opening_window"],
+    MU: ["tape_alignment", "opening_window"],
     SPXW: ["tape_alignment"],
     QQQ: "COMMIT",
     META: ["cross_system_conflict"],
@@ -170,13 +173,16 @@ test("7/13 replay: full verdict table matches the decision doc's §2 projection 
   }
 });
 
-test("7/13 replay: G-2 catches none of the entries (all flagged ≥ 9:50 > 9:45) — G-1 is the killer gate", () => {
+test("7/13 replay: post-2026-07-23 the 10:00 unlock catches the pre-10:00 entries (AMD 09:50, SPY/MU 09:55); ≥10:00 entries are clean of G-2", () => {
   const verdicts = replaySession();
+  const caught = new Set(["AMD", "SPY", "MU"]); // flagged before 10:00
   for (const [ticker, v] of verdicts) {
-    assert.ok(
-      !v.blocks.some((b) => b.code === "opening_window"),
-      `${ticker}: user-directed 9:45 boundary leaves the 9:45-10:30 band open — the calibration loop is the arbiter`
-    );
+    const hasWindow = v.blocks.some((b) => b.code === "opening_window");
+    if (caught.has(ticker)) {
+      assert.ok(hasWindow, `${ticker} (flagged before 10:00) is now held by G-2's extended window`);
+    } else {
+      assert.ok(!hasWindow, `${ticker} (flagged ≥ 10:00) is past the window — G-2 clean`);
+    }
   }
 });
 

@@ -250,7 +250,7 @@ export function isCortexBlockCode(code: string): boolean {
 
 // ── G-2 unlock countdown ───────────────────────────────────────────────────────────
 // The payload's opening_window block carries its own unlock as `threshold` (ET
-// minutes-since-midnight, 585 = 9:45 ET) and `unlock_et` ("9:45 ET"); the client
+// minutes-since-midnight, 600 = 10:00 ET) and `unlock_et` ("10:00 ET"); the client
 // only supplies the ticking clock. Countdown math, not a payload re-derivation.
 
 export function minutesUntilEtUnlock(
