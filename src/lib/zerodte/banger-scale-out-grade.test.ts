@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { gradeBangerScaleOut, bangerOccSymbol } from "./banger-scale-out-grade";
+import {
+  gradeBangerScaleOut,
+  bangerOccSymbol,
+  resolveBangerGradeRequest,
+  optionAggBarsToScaleOut,
+} from "./banger-scale-out-grade";
 import { gradeScaleOut, type ScaleOutBar } from "./scale-out";
 
 const bar = (t: number, h: number, l: number, c: number): ScaleOutBar => ({ t, h, l, c });
@@ -54,4 +59,73 @@ test("malformed inputs → null (caller records ungradeable, never fetches a gar
   assert.equal(bangerOccSymbol("", 880, "2026-07-10", "call"), null);
   assert.equal(bangerOccSymbol("NVDA", 0, "2026-07-10", "call"), null);
   assert.equal(bangerOccSymbol("NVDA", 880, "07/10/2026", "call"), null);
+});
+
+// ── resolveBangerGradeRequest ─────────────────────────────────────────────────────
+test("non-banger (no scale_out marker) → not_banger, whatever else is present", () => {
+  const r = resolveBangerGradeRequest({
+    ticker: "NVDA",
+    exit_style: undefined,
+    entry_premium: 1.2,
+    contract: { strike: 880, side: "call", expiryYmd: "2026-07-10" },
+  });
+  assert.equal(r.kind, "not_banger");
+  // a non-"scale_out" string is still not a banger
+  assert.equal(resolveBangerGradeRequest({ ticker: "X", exit_style: "let_run", entry_premium: 1, contract: null }).kind, "not_banger");
+});
+
+test("banger, valid contract → ok with the OCC + entry premium + expiry the caller fetches against", () => {
+  const r = resolveBangerGradeRequest({
+    ticker: "nvda",
+    exit_style: "scale_out",
+    entry_premium: 1.25,
+    contract: { strike: 880, side: "call", expiryYmd: "2026-07-10" },
+  });
+  assert.equal(r.kind, "ok");
+  assert.deepEqual(r.kind === "ok" ? r.request : null, {
+    occ: "O:NVDA260710C00880000",
+    entryPremium: 1.25,
+    expiryYmd: "2026-07-10",
+    ticker: "NVDA",
+    side: "call",
+    strike: 880,
+  });
+});
+
+test("banger but unresolvable → ungradeable with the reason, never a fetch of a garbage symbol", () => {
+  const base = { ticker: "NVDA", exit_style: "scale_out" as const };
+  // missing/zero entry premium
+  for (const ep of [null, undefined, 0, -1]) {
+    const r = resolveBangerGradeRequest({ ...base, entry_premium: ep, contract: { strike: 880, side: "call", expiryYmd: "2026-07-10" } });
+    assert.equal(r.kind, "ungradeable");
+    assert.equal(r.kind === "ungradeable" ? r.reason : "", "no_entry_premium");
+  }
+  // unparseable contract
+  assert.equal(
+    (resolveBangerGradeRequest({ ...base, entry_premium: 1, contract: null }) as { reason: string }).reason,
+    "unparseable_contract"
+  );
+  // parsed but no side / no expiry (the nighthawk parser can return those as null)
+  assert.equal(
+    (resolveBangerGradeRequest({ ...base, entry_premium: 1, contract: { strike: 880, side: null, expiryYmd: "2026-07-10" } }) as { reason: string }).reason,
+    "no_side"
+  );
+  assert.equal(
+    (resolveBangerGradeRequest({ ...base, entry_premium: 1, contract: { strike: 880, side: "call", expiryYmd: null } }) as { reason: string }).reason,
+    "no_expiry"
+  );
+});
+
+// ── optionAggBarsToScaleOut ───────────────────────────────────────────────────────
+test("maps Polygon AggBars → ScaleOutBars, dropping any bar without a finite timestamp", () => {
+  const out = optionAggBarsToScaleOut([
+    { t: 1, h: 2, l: 1, c: 1.5 },
+    { t: undefined, h: 3, l: 1, c: 2 }, // AggBar.t is optional → dropped
+    { t: NaN, h: 3, l: 1, c: 2 }, // non-finite → dropped
+    { t: 2, h: 4, l: 2, c: 3 },
+  ]);
+  assert.deepEqual(out, [
+    { t: 1, h: 2, l: 1, c: 1.5 },
+    { t: 2, h: 4, l: 2, c: 3 },
+  ]);
 });

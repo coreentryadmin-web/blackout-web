@@ -68,3 +68,66 @@ export function bangerOccSymbol(
   const cp = side === "put" ? "P" : "C";
   return `O:${ticker.toUpperCase()}${yy}${cp}${String(Math.round(strike * 1000)).padStart(8, "0")}`;
 }
+
+/** The parsed-contract shape the resolver consumes — structurally the nighthawk parser's
+ *  `ParsedOptionsContract`. Declared INLINE (not imported) so this pure lib module stays free of any
+ *  nighthawk-feature import: `option-chain-prompt.ts` drags in Polygon/UW/WS IO modules, which would
+ *  pollute this module's import graph and its unit test. The caller (the outcomes cron) does the parse
+ *  and hands the result in. */
+export type ParsedContractInput = { strike: number; side: "call" | "put" | null; expiryYmd: string | null };
+
+/** Resolving a published play into the inputs the forward-bar fetch + `gradeBangerScaleOut` need.
+ *  Three outcomes: NOT a scale_out banger (caller skips silently); IS a banger but the contract can't
+ *  be resolved (caller pins an `ungradeable` grade with the reason — never fetches a garbage symbol);
+ *  or OK with the OCC + entry premium + expiry the caller fetches against. */
+export type BangerGradeRequest = {
+  occ: string;
+  entryPremium: number;
+  expiryYmd: string;
+  ticker: string;
+  side: "call" | "put";
+  strike: number;
+};
+export type BangerGradeResolution =
+  | { kind: "not_banger" }
+  | { kind: "ungradeable"; reason: string }
+  | { kind: "ok"; request: BangerGradeRequest };
+
+/** PURE: decide how to grade a play's scale-out. Only `exit_style === "scale_out"` plays are bangers;
+ *  everything else is `not_banger` (the caller must not touch it). A banger with a missing entry
+ *  premium or an unresolvable contract is `ungradeable` — reported, never imputed to a multiple
+ *  (the survivorship guard that keeps the realized rate honest). */
+export function resolveBangerGradeRequest(input: {
+  ticker: string;
+  exit_style?: string | null;
+  entry_premium?: number | null;
+  contract: ParsedContractInput | null;
+}): BangerGradeResolution {
+  if (input.exit_style !== "scale_out") return { kind: "not_banger" };
+  const ep = input.entry_premium;
+  if (ep == null || !(ep > 0)) return { kind: "ungradeable", reason: "no_entry_premium" };
+  const c = input.contract;
+  if (!c) return { kind: "ungradeable", reason: "unparseable_contract" };
+  if (c.side == null) return { kind: "ungradeable", reason: "no_side" };
+  if (c.expiryYmd == null) return { kind: "ungradeable", reason: "no_expiry" };
+  const occ = bangerOccSymbol(input.ticker, c.strike, c.expiryYmd, c.side);
+  if (!occ) return { kind: "ungradeable", reason: "bad_occ" };
+  return {
+    kind: "ok",
+    request: { occ, entryPremium: ep, expiryYmd: c.expiryYmd, ticker: input.ticker.toUpperCase(), side: c.side, strike: c.strike },
+  };
+}
+
+/** PURE: map forward option aggregate bars (Polygon AggBar shape — `t` is OPTIONAL there) onto the
+ *  `ScaleOutBar` the grader consumes, dropping any bar without a finite timestamp so a malformed row
+ *  can never scramble the chronological sort in `gradeBangerScaleOut`. */
+export function optionAggBarsToScaleOut(
+  bars: ReadonlyArray<{ t?: number; h: number; l: number; c: number }>
+): ScaleOutBar[] {
+  const out: ScaleOutBar[] = [];
+  for (const b of bars ?? []) {
+    if (b == null || !Number.isFinite(b.t)) continue;
+    out.push({ t: b.t as number, h: b.h, l: b.l, c: b.c });
+  }
+  return out;
+}
