@@ -59,12 +59,31 @@ evidence / fix / status per the CLAUDE.md policy.)
   EV is dominated by a few big winners, so even at n=276/40-sessions the *config* choice is regime-noise.
   The *direction* (hold ≥ shipped ratchet on the full sample) is robust; the *optimal intermediate config*
   is not. Flipping a LIVE risk-management exit on windows that disagree would be reckless.
-- **Fix path (scoped follow-up):** the honest grader now stands as the measurement tool. Resolve the config
-  either by an even larger / REGIME-CONDITIONED sweep (VIX bucket, trend-vs-range) where an intermediate
-  config might separate, OR let the LIVE graded ledger decide via a `recommendExit`-style verdict (the same
-  calibration-first ladder as confluence/accumulation/scale-out). Until a config robustly beats shipped
-  across both windows, the shipped ratchet stands — its protection has risk-management value and the
-  full-sample EV cost is modest (+2.8 to +4.1 pts/play to hold, inside the OOS noise band).
+- **MECHANISM breakthrough (robust, unlike the config question):** the earlier work compared the shipped
+  breakeven-FLOOR-EXIT only against pure HOLD (which flipped OOS). Testing the *mechanism* the exit-engine
+  header itself hints at — a partial **TRIM**-at-arm instead of a floor-**EXIT** — separates cleanly. Over
+  **352 plays / 51 sessions** (mark-faithful grader), a `trim ⅓@+25% + ⅓@+50%, run the last ⅓` beats **both**
+  HOLD and the shipped floor-exit in **every** split (calib AND valid) and **both** universes (all-names AND
+  index-only), and lifts win-rate 32%→**50%**:
+  ```
+  exit (all names)          calib    valid    all     win
+  HOLD                      -0.8%   -12.1%   -3.7%    33%
+  shipped floor arm+25      -4.4%   -10.1%   -5.8%    32%
+  trim ⅓@25 + ⅓@50, run     +0.6%    -4.4%   -0.7%    50%   ← dominates both, every window
+  ```
+  Root: the floor-exit dumps the WHOLE runner on a dip to breakeven (scratching momentum); a partial trim
+  banks into strength while letting the rest run — positive-skew-preserving, the same edge as the banger
+  scale-out. Honest caveat: the valid regime was bad for 0DTE longs so all configs are negative there; the
+  trim just loses least — it makes the exit strictly better and much greener, not the engine profitable.
+- **Fix path — leading candidate identified, graduate before flipping:** the partial-trim is the clear
+  replacement for the floor-exit, BUT `exit-engine.ts`'s own design says the ratchet thresholds are "v1
+  constants … tuned with data" via **the counterfactual LEDGER grader**, not an offline backtest — and my
+  evidence is an offline mirror over probed contracts. So the disciplined path is a `recommendExit`-style
+  coded verdict that pins per-row floor-vs-trim counterfactuals on the LIVE ledger and graduates the trim
+  when the live data confirms (the same calibration-first ladder as confluence/accumulation/scale-out).
+  Until then the shipped floor-exit stands; the offline mirror (a `RATCHET_DUMP`-fed exit-variant sweep over
+  the cached bar-paths) is reproducible evidence, not a license to hand-flip live risk code. **Do NOT flip
+  the live exit off the backtest alone.**
 
 ## 2026-07-23 — 0DTE entry-timing correction: unlock 9:45 → 10:00 + timeOfDayFactor recalibration (USER-AUTHORIZED)
 
