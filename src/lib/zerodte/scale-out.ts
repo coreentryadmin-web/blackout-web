@@ -33,6 +33,17 @@ export const SCALE_OUT_RULES = {
   hard_stop_mult: 0.4,
 } as const;
 
+/** Human-readable exit guidance for a banger/breakout play — the scale-out rule in one sentence, for
+ *  a play's risk_note. Numbers come straight from SCALE_OUT_RULES so the copy never drifts. */
+export function bangerScaleOutNote(): string {
+  const { scale_at_mult, scale_fraction, trail_from_peak, hard_stop_mult } = SCALE_OUT_RULES;
+  return (
+    `Banger exit — scale out, don't hold to expiry: realize ${(scale_fraction * 100).toFixed(0)}% at ` +
+    `${scale_at_mult}×, trail the runner at ${(trail_from_peak * 100).toFixed(0)}% of its peak, hard stop ` +
+    `−${((1 - hard_stop_mult) * 100).toFixed(0)}%. These cheap OTM weeklies spike then decay — the exit is the edge.`
+  );
+}
+
 export type ScaleOutAction = "HOLD" | "TAKE_PARTIAL" | "EXIT_RUNNER" | "STOP_OUT";
 
 export type ScaleOutBar = { t: number; h: number; l: number; c: number };
