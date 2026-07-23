@@ -75,6 +75,48 @@ backtest (`condor-wr.mjs`) **calibration-first — evidence only, not gating.** 
 credits, real breach-stop fills) graduates it into a live second play-type before it sizes real risk;
 until then it's a measured geometry + an honest skew warning, not an EV claim.
 
+### E5 — the exit engine is the spine (P3, resolved): hold-and-scale beats the ratchet
+The exit-engine study (P3) closed the loop on "80% of the plays should be GREEN." Two mark-faithful
+findings, both reproducible in `zerodte-sim.mjs`:
+
+1. **Green IS available on almost every directional play — the exit, not the entry, decides red/green.**
+   An MFE (max-favorable-excursion) pass over the graded index plays: **97.7%** offer a sellable green
+   exit at some point in the session (a 10–1000% window), only **2.3% never print green**. So the user's
+   instinct ("if the board prints it, we should be able to sell it in profit, never red") is *reachable*
+   — but only by an exit that *takes* the green, not one that round-trips or scratches it.
+
+2. **The shipped index ratchet costs EV vs hold — CONFIRMED, live change DEFERRED.** The sim now grades
+   through the SHIPPED exit (`gradeThroughExitEngine`, mark-fidelity bracket `RATCHET_PROTECT_AT=low|close`).
+   Over **106 index plays**, HOLD (−50/+100) beats the shipped ratchet in **both** mark bounds (wick
+   −6.7 pts/play, close −1.5 pts/play). Mechanism: of 51 floored plays, ~49% would have reached +100% if
+   held — `EXIT_RULES.ratchet_arm_pnl_pct=25` arms a breakeven floor exactly when a 0DTE momentum play is
+   *continuing*, scratching the runners. The **direction** (hold > shipped ratchet) is robust; the
+   **optimal intermediate config** is not identifiable at n=50 (calib ranks shipped least-bad, OOS ranks
+   pure-hold best — they disagree; 0DTE EV is a few-big-winners distribution). So the finding is logged
+   (FINDINGS 2026-07-23) and the fix is scoped to a larger-sample sweep — we do **not** flip a live
+   risk-management exit on inconclusive optimal-config evidence.
+
+**The banger scale-out is the flagship, and it's the positive-skew spine both engines share.** Validated
+at scale (minute-bar realistic gap-fills, **7,086 movers / 500 sessions / 2 years / all sectors**):
+**+26% gross / ~+20% net-OOS** realized under the mechanical scale-out (0.5@2×, trail runner at 50% of
+peak, hard stop 0.4×) — vs hold-to-expiry ~1.0× (decays to zero). That is the durable edge: buy cheap
+positive-skew optionality, then *exit mechanically into the spike*. It ships **calibration-first** as a
+pure core (`banger-scale-out-grade.ts`) pinned into `entry_context.scale_out`; the ledger's
+`recommendScaleOut` (EV-mult delta ≥ 0.15, ENFORCE_MIN_BLOCK_N=10) graduates it before it manages a live
+exit — same discipline as every other signal.
+
+**Rearchitecture synthesis (task #21):** the "strongest 0DTE engine" is not one clever entry — it's a
+**two-engine, positive-skew, scale-out-spined** system with a **calibration-first graduation ladder**:
+- **Engine A (index 0DTE grinder):** SPY/QQQ/IWM/SPX — the only true same-day-expiry names. Confluence
+  tier (E3, +16% EV) takes fewer triple-confirmed trades; let-it-run geometry; the ratchet finding above
+  is the next exit tune.
+- **Engine B (whole-market weekly banger):** all sectors, cheap OTM weeklies, the +20% net-OOS
+  scale-out. Finding movers is trivial; the exit is the whole edge.
+- **Spine:** every new signal/exit ships as **evidence pinned in `entry_context`** (non-gating); the
+  graded ledger graduates it via `recommendGate`/`recommendSignal`/`recommendScaleOut` (ENFORCE_MIN_BLOCK_N,
+  ENFORCE_MIN_DELTA) before it sizes or gates real risk. The measurement loop — not any single parameter —
+  is the moat.
+
 ---
 
 ## Part 2 — Whole-market weekly BANGER engine
@@ -137,8 +179,9 @@ turns fleeting whole-market bangers into strongly +EV trades; holding to expiry 
 3. **The live architecture is largely RIGHT** (multi-signal scorer + gates + exit engine + governor +
    calibration graduation). Wins are in **tuning on evidence**, plus concrete fixes: the 9:45 unlock,
    the `timeOfDayFactor` boundaries, and requiring confluence vs additive scoring.
-4. **Exits are the undermodeled edge** — for 0DTE (my grader ignores the live ratchet) and *especially*
-   for bangers (maxRet→hold collapse).
+4. **Exits are the edge** (E5 resolved it) — for 0DTE the grader now replays the SHIPPED ratchet and
+   proves hold > ratchet (fix deferred, FINDINGS 2026-07-23); for bangers the mechanical scale-out is the
+   +20% net-OOS spine that converts the maxRet→hold collapse into realized EV.
 5. **The measurement loop is the moat.** The simulator + the ledger's calibration buckets let every
    change be proven before it gates. That is what makes it top-tier vs vibes.
 
@@ -147,8 +190,9 @@ turns fleeting whole-market bangers into strongly +EV trades; holding to expiry 
   market-align}; A+/"triple-confirmed" tier on let-it-run geometry. Calibration-first.
 - **P2 — Whole-market banger scanner** — committed tool first (grouped screen + confluence), then wire
   into discovery. THE "scan the whole market for bangers" ask.
-- **P3 — Exit-engine study** — replicate/extend ratchet + scale-out; quantify the exit EV (biggest
-  undermodeled lever for both engines).
+- **P3 — Exit-engine study** — ✅ RESOLVED (E5). Sim now grades through the SHIPPED ratchet
+  (`gradeThroughExitEngine`); banger scale-out validated +20% net-OOS at 500-session scale; shipped index
+  ratchet CONFIRMED to cost EV vs hold (fix deferred to a larger sweep, FINDINGS 2026-07-23).
 - **P4 — Regime conditioning** — validate F-1 (VIX 15–17 → 69% WR) on 25+ sessions; gate/size by VIX.
 - **P5 — Entry-timing correction** — re-measure `timeOfDayFactor` + 9:45 unlock on the live by-ToD
   ledger; propose a measured shift (surface the 2026-07-13 directive to the user).

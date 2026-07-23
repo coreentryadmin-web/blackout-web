@@ -5,6 +5,32 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-23 — [MEDIUM] Index 0DTE ratchet exit costs EV vs hold — CONFIRMED finding, live change DEFERRED
+
+- **Severity:** MEDIUM (an EV leak on the live index exit; not a crash/data bug). **Status: CONFIRMED
+  FINDING; exit change DEFERRED pending larger-sample optimal-config evidence — do NOT flip the live
+  exit yet.**
+- **Root cause:** `exit-engine.ts` `EXIT_RULES.ratchet_arm_pnl_pct = 25` arms a **breakeven floor** once
+  a play's peak P&L hits +25%. But a 0DTE momentum play reaching +25% is a *continuation* signal, not a
+  take-profit one — so the floor scratches at breakeven the exact plays that go on to +100%. The
+  scratched-winner cost exceeds the saved-loss benefit.
+- **Evidence (mark-faithful, this session):** the sim now grades through the SHIPPED exit
+  (`gradeThroughExitEngine`, PR #961) with a mark-fidelity bracket (`RATCHET_PROTECT_AT=low|close`, PR
+  #963). Over **106 index plays**, HOLD (−50/+100, no ratchet) beats the shipped ratchet in **BOTH**
+  bounds: wick/over-trigger **−6.7 pts/play**, close/under-trigger **−1.5 pts/play** (true cost between).
+  Mechanism check: of 51 floored plays, **49% would have reached +100% if held** (−2,165 scratched-winner
+  pts vs +1,440 saved-loss pts → net −725). This CONVERGES with the P3 study's "let-it-run is EV-best".
+- **Why DEFERRED (not fixed):** a ratchet-parameter sweep (`RATCHET_DUMP`, PR #967 → offline grade of
+  every play through arm=25/40/60/80/lock-only/pure-hold) is **inconclusive at n=50**: the calib window
+  ranks shipped-arm+25 least-bad (−0.4%), the OOS window ranks pure-hold best (+25.0%) — they **disagree**
+  (0DTE EV is dominated by a few big winners; n=50 is noise for the config choice). The *direction* (hold
+  > shipped ratchet) is robust; the *optimal intermediate config* is not identifiable. On a LIVE
+  risk-management exit, shipping a change on inconclusive optimal-config data would be reckless.
+- **Fix path (scoped follow-up):** cache a larger index-play sample (RATCHET_DUMP over 40–60 sessions),
+  re-sweep OOS; if an intermediate config (e.g. arm+60 / lock-only) or pure-hold robustly beats shipped
+  across both windows, change `EXIT_RULES` with the evidence. Until then the shipped ratchet stands (its
+  protection has risk-management value; the conservative-bound EV cost is only −1.5 pts/play).
+
 ## 2026-07-23 — 0DTE entry-timing correction: unlock 9:45 → 10:00 + timeOfDayFactor recalibration (USER-AUTHORIZED)
 
 - **Root cause:** the G-2 opening-window unlock sat at **9:45 ET** (2026-07-13 directive) and
