@@ -125,6 +125,14 @@ async function main() {
     rec('/nighthawk page renders (authed)', 'FAIL', `HTTP ${pg.s}`);
   }
 
+  // --- 4. is the 0DTE/Swings/LEAPS/Legacy TOGGLE build deployed? ---
+  // "Swings" + "LEAPS" are the new-build markers (0DTE/Legacy existed before). They render server-side in
+  // the IosNativeSegment button labels, so the served HTML carries them once ECS rolls the new image.
+  const hasSwings = /Swings/.test(pg.b), hasLeaps = /LEAPS/.test(pg.b);
+  const toggleLive = hasSwings && hasLeaps;
+  rec('toggle build deployed (0DTE/Swings/LEAPS/Legacy)', toggleLive ? 'PASS' : 'WARN',
+    toggleLive ? 'served HTML carries the Swings+LEAPS toggle labels' : `NOT yet — Swings:${hasSwings} LEAPS:${hasLeaps} (ECS deploy still rolling)`);
+
   const fails = out.filter((o) => o.status === 'FAIL').length;
   console.log(`\n${fails === 0 ? '✅' : '❌'} ${out.filter((o) => o.status === 'PASS').length} pass · ${out.filter((o) => o.status === 'WARN').length} warn · ${fails} fail\n`);
   process.exitCode = fails === 0 ? 0 : 1;
