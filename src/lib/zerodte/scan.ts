@@ -36,6 +36,7 @@ import {
   MULTI_DAY_FLOW_LIMIT,
   MULTI_DAY_MIN_PREMIUM,
 } from "./flow-accumulation-context";
+import { attachConfluence } from "./confluence";
 import { LEVERAGED_ETP_SET } from "@/features/nighthawk/lib/constants";
 import { createDossierBuildCache, fetchTickerDossier } from "@/features/nighthawk/lib/dossier";
 import { etNowParts, todayEt } from "@/features/nighthawk/lib/session";
@@ -240,6 +241,13 @@ export async function scanZeroDteBoard(flags?: {
   // reuses the same SPY read the edge layer just fetched (one bias per scan cycle,
   // scoring and gating can never disagree about what the tape said).
   await attachGateVerdicts(setups, tape.bias, tape.biasAsOfMs);
+
+  // Confluence read — how many of {post-open timing, price vs VWAP, market alignment} agree with each
+  // setup's direction. Runs AFTER the intraday-edge pass (which populates intraday + market_aligned).
+  // Evidence only, calibration-first: the measured edge is the VWAP+market "double" bucket
+  // (+15.9% EV, docs/audit/0DTE-RESEARCH.md); does not gate/score the board yet. See confluence.ts.
+  const nowEt = etNowParts();
+  attachConfluence(setups, nowEt.hour * 60 + nowEt.minute);
 
   return { setups, nighthawk_covered: nighthawkCovered, upstream_ok: upstreamOk, rejections };
 }
