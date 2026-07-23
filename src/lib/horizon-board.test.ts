@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assembleHorizonBoard, makePlaySet } from "./horizon-board.ts";
+import { assembleHorizonBoard, makePlaySet, scopeBoardToHorizon } from "./horizon-board.ts";
 import type { HorizonPlay } from "./horizon-plays.ts";
 import type { ChainContract } from "./horizon-fanout.ts";
 
@@ -52,4 +52,27 @@ test("asOf is caller-stamped verbatim (module stays pure)", () => {
   const board = assembleHorizonBoard(makePlaySet({}), "2026-07-23T09:41:00Z");
   assert.equal(board.asOf, "2026-07-23T09:41:00Z");
   assert.equal(board.totalCommitted, 0);
+});
+
+test("scopeBoardToHorizon keeps only the selected lane's plays; others stay present but empty", () => {
+  const full = assembleHorizonBoard(
+    makePlaySet({
+      ZERO_DTE: [play({ status: "COMMIT" })],
+      SWING: [play({ horizon: "SWING", status: "COMMIT", scoreFloor: 60 }), play({ ticker: "QQQ", horizon: "SWING", status: "WATCH", scoreFloor: 60 })],
+    }),
+    "2026-07-23T15:00:00Z",
+  );
+  const swingOnly = scopeBoardToHorizon(full, "SWING");
+  assert.equal(swingOnly.lanes.SWING.committedCount, 1);
+  assert.equal(swingOnly.lanes.SWING.watchCount, 1);
+  assert.equal(swingOnly.lanes.ZERO_DTE.committedCount, 0); // emptied
+  assert.equal(swingOnly.lanes.ZERO_DTE.committed.length, 0);
+  assert.equal(swingOnly.lanes.ZERO_DTE.label, "0DTE"); // ...but still PRESENT for the toggle chip
+  assert.equal(swingOnly.totalCommitted, 1); // recomputed to the surviving lane
+  assert.equal(swingOnly.totalWatch, 1);
+});
+
+test("scopeBoardToHorizon with null (legacy/all-lanes view) returns the board unchanged", () => {
+  const full = assembleHorizonBoard(makePlaySet({ ZERO_DTE: [play({})] }), "2026-07-23T15:00:00Z");
+  assert.equal(scopeBoardToHorizon(full, null), full);
 });
