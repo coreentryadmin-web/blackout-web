@@ -115,12 +115,22 @@ const { appendFileSync } = await import("node:fs"); // for RATCHET_DUMP (offline
  * floor, flat-theta scratch). Faithful bar replay: conservative intrabar order = adverse extreme (low)
  * for protective exits FIRST, then favorable extreme (high) for target/trim, then the close for the
  * flat-timeout. Cortex evidence is null (thesis-break can't be replayed off-line → skipped, never
- * fabricated). Returns { pnl_pct, outcome } or null. RTH-capped at 16:00 ET.
+ * fabricated). Returns { pnl_pct, outcome } or null.
+ *
+ * MARK-FAITHFULNESS (audit 2026-07-23, three fixes so the ratchet EV is honest, not optimistic):
+ *  #2  the replay stops at 15:30 ET (PLAN_RULES.time_stop_et_minutes = 930), NOT 16:00 — the board
+ *      hard-CLOSES every 0DTE row at 15:30 (derivePlayStatus) and never fires an exit after, freezing
+ *      P&L at the ~15:30 mark. Grading 15:31→16:00 bars would credit/charge trades the board forbids
+ *      (and diverge from the sibling gradePlanFromBars, which already breaks at 15:30).
+ *  #3  the ENTRY bar is excluded (b.t > flaggedMs, not >=). Entry is the entry bar's CLOSE, so its
+ *      intrabar HIGH can print BEFORE entry existed — including it let a pre-entry high arm a ratchet
+ *      floor (or trim) off a price the trade never had. The live peak latch only starts at flag time.
  */
 const PROTECT_AT = process.env.RATCHET_PROTECT_AT === "close" ? "close" : "low";
+const REPLAY_STOP_ET_MIN = 15 * 60 + 30; // 930 = 15:30 ET board hard time-stop (PLAN_RULES.time_stop_et_minutes)
 function gradeThroughExitEngine(bars, entry, planStop, planTarget, flaggedMs) {
   if (!(entry > 0)) return null;
-  const seq = [...bars].filter((b) => b.t >= flaggedMs && etMinOfBar(b.t) <= 960).sort((a, z) => a.t - z.t);
+  const seq = [...bars].filter((b) => b.t > flaggedMs && etMinOfBar(b.t) <= REPLAY_STOP_ET_MIN).sort((a, z) => a.t - z.t);
   if (!seq.length) return null;
   const pnlAt = (mark) => ((mark - entry) / entry) * 100;
   let peak = entry, trimmed = false, realized = 0, remaining = 1, exited = false, outcome = "time_stop", lastClose = entry;
@@ -129,14 +139,24 @@ function gradeThroughExitEngine(bars, entry, planStop, planTarget, flaggedMs) {
     const age = (b.t - flaggedMs) / 60000;
     const mk = (m, pk) => ({ entryPremium: entry, currentMark: m, peakPremium: pk, ageMinutes: age, cortexEvidence: null, planStop, planTarget, status: trimmed ? "TRIM" : "OPEN", trimmed, entryCortexScore: null });
     // 1) PROTECTIVE exit only (plan-stop or ratchet/runner floor). Flat-timeout is a time-based scratch
-    // at the mark, handled at the close below. The protective mark brackets the live exit's fidelity:
-    // RATCHET_PROTECT_AT=low (default) uses the bar LOW — the wick, which OVER-triggers vs live SSE marks
-    // (a dip that recovers still exits); =close uses the bar CLOSE — which UNDER-triggers (only a sustained
-    // breach exits). The true live behavior sits between; running both brackets the ratchet's real cost.
+    // at the mark, handled at the close below. RATCHET_PROTECT_AT brackets BOTH axes of the live exit's
+    // fidelity (audit 2026-07-23 fix #1) — trigger AND fill, not just trigger:
+    //   =low (default, PESSIMISTIC): the bar LOW both TRIGGERS (the wick over-triggers vs live SSE marks —
+    //     a dip that recovers still exits) AND is booked as the FILL (gap-through — the live poller freezes
+    //     the first observed mark ≤ floor, which on a fast candle undershoots the floor toward the low).
+    //   =close (OPTIMISTIC): the bar CLOSE triggers (only a sustained breach exits) and the fill is the
+    //     clean floor level (a resting order fills AT the floor).
+    // The old grader booked floorPnlPct in BOTH modes — always the best-case fill — so the ratchet EV was
+    // systematically optimistic and the advertised bracket never actually varied the fill. The true live
+    // fill sits inside [low-mode, close-mode]; running both now brackets the ratchet's real cost honestly.
     const protMark = PROTECT_AT === "close" ? b.c : b.l;
     const dLow = evaluateExitState(mk(protMark, peak));
     if (dLow.action === "EXIT" && (dLow.reason === "plan_stop" || /ratchet|runner/.test(dLow.reason))) {
-      const exitPnl = dLow.reason === "plan_stop" ? pnlAt(planStop) : dLow.floorPnlPct;
+      // plan_stop books at the stop level (repo stop convention, marks-math.ts). A ratchet/runner FLOOR
+      // breach books the gap-through fill (bar low) in the pessimistic bound, the clean floor in the optimistic.
+      const exitPnl = dLow.reason === "plan_stop"
+        ? pnlAt(planStop)
+        : (PROTECT_AT === "low" ? pnlAt(protMark) : dLow.floorPnlPct);
       realized += remaining * exitPnl; exited = true;
       outcome = dLow.reason === "plan_stop" ? "stopped" : "ratchet";
       break;

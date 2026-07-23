@@ -5,31 +5,66 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-23 — [HIGH] Offline ratchet grader was EV-optimistic (mark-faithfulness) — FIXED + iron-condor guard
+
+- **Severity:** HIGH for evidence-fidelity (the grader that measures the ratchet exit / would gate the
+  banger scale-out was optimistically biased); **LOW blast radius** — every defect lived in the audit
+  HARNESS (`scripts/audit/zerodte-sim.mjs`) + one latent guard in `iron-condor.ts`, **not** in any live
+  trading path. Surfaced by a 10-agent adversarial audit of this session's new 0DTE code (the banger-live
+  cores `banger-scale-out-grade.ts` + the calibration graduation ladder came back CLEAN). **Status: FIXED.**
+- **Root cause & fixes (`gradeThroughExitEngine`):**
+  1. **(#1, HIGH) best-case fill.** A ratchet/runner FLOOR breach booked `floorPnlPct` — the rule level —
+     not the breaching mark. The live engine freezes `pinnedLivePnlPct(entry, mark)`, and by the breach
+     condition that mark is at/below the floor (a fast candle undershoots it). So every ratchet exit was
+     credited the best-case fill → the ratchet's realized EV was systematically **optimistic by ~20–50 pts
+     per floored event**, and the advertised `RATCHET_PROTECT_AT=low|close` bracket only moved the TRIGGER,
+     never the fill. **Fix:** the pessimistic bound (`=low`) now books the gap-through fill `pnlAt(bar low)`;
+     the optimistic bound (`=close`) keeps the clean-floor `floorPnlPct`. The bracket now varies the fill
+     (proven: SPY/QQ/… 2026-07-20 low 43.0% vs close 45.0%, previously identical). plan_stop keeps
+     `pnlAt(planStop)` (repo stop convention).
+  2. **(#2, MED) post-15:30 grading.** The replay ran bars to 16:00 (960) while the board hard-CLOSES every
+     0DTE row at 15:30 (930, `derivePlayStatus`) and fires NO exit after — grading 30 min of trades the
+     board forbids, and diverging from the sibling `gradePlanFromBars` (which breaks at 15:30). **Fix:** cap
+     the replay at `REPLAY_STOP_ET_MIN = 930`.
+  3. **(#3, MED) entry-bar look-ahead.** The entry bar was included (`b.t >= flaggedMs`); entry is its CLOSE,
+     so its intrabar HIGH (printed earlier in that minute) could arm a floor/trim off a price the trade
+     never had. **Fix:** exclude the entry bar (`b.t > flaggedMs`); the peak latch starts post-entry.
+  - **(LOW, #5) iron-condor guard** — `selectIronCondor` never asserted strikes > 0, so a sub-$1.50 spot
+    could return a negative-strike condor with `est_win_rate=100`. Fixed + tested in **PR #970** (latent on
+    today's index/mega-cap 0DTE universe; load-bearing before the geometry is reused on cheaper bangers).
+- **Net effect on the ratchet finding below:** the bias was optimistic TOWARD the ratchet, so correcting it
+  did not overturn "hold > ratchet" — it **reinforced** it and made the magnitudes honest (see the updated
+  evidence). No production behavior changed; the corrected grader is what the ratchet-finding numbers now cite.
+
 ## 2026-07-23 — [MEDIUM] Index 0DTE ratchet exit costs EV vs hold — CONFIRMED finding, live change DEFERRED
 
 - **Severity:** MEDIUM (an EV leak on the live index exit; not a crash/data bug). **Status: CONFIRMED
-  FINDING; exit change DEFERRED pending larger-sample optimal-config evidence — do NOT flip the live
-  exit yet.**
+  FINDING; exit change DEFERRED — larger-sample sweep run with the honest grader still cannot identify an
+  optimal config; do NOT flip the live exit yet.**
 - **Root cause:** `exit-engine.ts` `EXIT_RULES.ratchet_arm_pnl_pct = 25` arms a **breakeven floor** once
   a play's peak P&L hits +25%. But a 0DTE momentum play reaching +25% is a *continuation* signal, not a
   take-profit one — so the floor scratches at breakeven the exact plays that go on to +100%. The
   scratched-winner cost exceeds the saved-loss benefit.
-- **Evidence (mark-faithful, this session):** the sim now grades through the SHIPPED exit
-  (`gradeThroughExitEngine`, PR #961) with a mark-fidelity bracket (`RATCHET_PROTECT_AT=low|close`, PR
-  #963). Over **106 index plays**, HOLD (−50/+100, no ratchet) beats the shipped ratchet in **BOTH**
-  bounds: wick/over-trigger **−6.7 pts/play**, close/under-trigger **−1.5 pts/play** (true cost between).
-  Mechanism check: of 51 floored plays, **49% would have reached +100% if held** (−2,165 scratched-winner
-  pts vs +1,440 saved-loss pts → net −725). This CONVERGES with the P3 study's "let-it-run is EV-best".
-- **Why DEFERRED (not fixed):** a ratchet-parameter sweep (`RATCHET_DUMP`, PR #967 → offline grade of
-  every play through arm=25/40/60/80/lock-only/pure-hold) is **inconclusive at n=50**: the calib window
-  ranks shipped-arm+25 least-bad (−0.4%), the OOS window ranks pure-hold best (+25.0%) — they **disagree**
-  (0DTE EV is dominated by a few big winners; n=50 is noise for the config choice). The *direction* (hold
-  > shipped ratchet) is robust; the *optimal intermediate config* is not identifiable. On a LIVE
-  risk-management exit, shipping a change on inconclusive optimal-config data would be reckless.
-- **Fix path (scoped follow-up):** cache a larger index-play sample (RATCHET_DUMP over 40–60 sessions),
-  re-sweep OOS; if an intermediate config (e.g. arm+60 / lock-only) or pure-hold robustly beats shipped
-  across both windows, change `EXIT_RULES` with the evidence. Until then the shipped ratchet stands (its
-  protection has risk-management value; the conservative-bound EV cost is only −1.5 pts/play).
+- **Evidence (mark-faithful grader, larger sample):** graded through the SHIPPED exit
+  (`gradeThroughExitEngine`, PR #961), now MARK-CORRECT (the grader-fidelity fixes above — gap-through
+  fill, 15:30 cap, no entry-bar look-ahead). Re-swept over a dense Feb→Jul grid: **276 plays / 40 sessions**
+  (all names) and **106 index-only plays** (SPY/QQQ/IWM). On the FULL sample **HOLD (−50/+100) beats the
+  shipped ratchet**: **+4.1 pts/play** (all), **+2.8 pts/play** (index-only). The ratchet **buys win-rate,
+  not EV** — WR climbs 34%→51% as the floors tighten while full-sample EV stays flat-to-worse (a clean
+  green≠profitable illustration). Index 0DTE directional buying at 09:45 is ~breakeven-to-slightly-negative
+  under EVERY exit config; the exit tune is a second-order lever. CONVERGES with the P3 "let-it-run" result.
+- **Why STILL DEFERRED (larger sweep run, config still not identifiable):** the OOS split **disagrees in
+  both universes** — calib ranks HOLD best (all +0.2% vs shipped −6.1%; index +1.1% vs −6.1%), the newest
+  30% ranks the RATCHET best (all: shipped +3.0% vs hold +0.2%; index: shipped −4.9% vs hold −13.8%). 0DTE
+  EV is dominated by a few big winners, so even at n=276/40-sessions the *config* choice is regime-noise.
+  The *direction* (hold ≥ shipped ratchet on the full sample) is robust; the *optimal intermediate config*
+  is not. Flipping a LIVE risk-management exit on windows that disagree would be reckless.
+- **Fix path (scoped follow-up):** the honest grader now stands as the measurement tool. Resolve the config
+  either by an even larger / REGIME-CONDITIONED sweep (VIX bucket, trend-vs-range) where an intermediate
+  config might separate, OR let the LIVE graded ledger decide via a `recommendExit`-style verdict (the same
+  calibration-first ladder as confluence/accumulation/scale-out). Until a config robustly beats shipped
+  across both windows, the shipped ratchet stands — its protection has risk-management value and the
+  full-sample EV cost is modest (+2.8 to +4.1 pts/play to hold, inside the OOS noise band).
 
 ## 2026-07-23 — 0DTE entry-timing correction: unlock 9:45 → 10:00 + timeOfDayFactor recalibration (USER-AUTHORIZED)
 
