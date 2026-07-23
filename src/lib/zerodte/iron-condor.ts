@@ -126,6 +126,15 @@ export function selectIronCondor(input: {
   const long_call = roundTo(short_call + wingPts, inc, "up");
   const long_put = roundTo(short_put - wingPts, inc, "down");
 
+  // LOWER-BOUND invariant (audit 2026-07-23): the guard above only checks the upper/inversion
+  // side (short_call > spot, short_put < spot). On a low-priced underlying the rounded short_put
+  // can floor to 0 and long_put go NEGATIVE while both still sit below spot — a malformed,
+  // negative-strike "condor" with put_width_pct→1.0 and est_win_rate mislabeled 100. Every real
+  // strike must be strictly positive; reject rather than emit a nonsense contract. (Unreachable on
+  // today's index/mega-cap 0DTE universe, but load-bearing the moment this geometry is reused on a
+  // cheaper banger universe.)
+  if (!(short_put > 0) || !(long_put > 0)) return null;
+
   const call_width_pct = (short_call - spot) / spot;
   const put_width_pct = (spot - short_put) / spot;
   const tighter = Math.min(call_width_pct, put_width_pct);
