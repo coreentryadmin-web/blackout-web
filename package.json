@@ -26,6 +26,7 @@
     "validate:vector-push-gate": "node scripts/vector-staging-e2e.mjs",
     "validate:vector-hardcore": "node scripts/vector-hardcore-e2e.mjs",
     "sim:0dte": "node --import tsx scripts/audit/zerodte-sim.mjs",
+    "scan:bangers": "node --import tsx scripts/audit/market-banger-scan.mjs",
     "validate:staging": "node scripts/staging-validate.mjs",
     "validate:staging-rth": "node scripts/staging-rth-check.mjs",
     "validate:staging-live": "node scripts/staging-live-check.mjs",
