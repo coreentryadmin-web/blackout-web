@@ -16,6 +16,17 @@ on:
       - "public/**"
       - ".github/workflows/ecr-push-production.yml"
 
+# Serialize production deploys and let the NEWEST win. Without this, rapid back-to-back merges to main
+# launch overlapping deploys that race each other: an earlier deploy's post-roll "Validate static assets"
+# step checks the origin AFTER a later deploy has already swapped the _next/* chunk hashes out from under
+# it, so it validates against assets that no longer exist and FALSE-FAILS (observed 2026-07-23: #973/#974
+# deploys red on the static-asset step, ECS actually rolled fine; only the unraced #975 passed). Cancelling
+# the in-progress older run means only the latest commit deploys — the final ECS state is always the newest
+# code, the smoke check runs unraced, and a red deploy once again means a REAL failure (no cry-wolf).
+concurrency:
+  group: ecr-push-production
+  cancel-in-progress: true
+
 permissions:
   contents: read
   id-token: write
