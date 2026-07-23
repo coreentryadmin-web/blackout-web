@@ -146,6 +146,10 @@ export type CalibrationReport = {
    *  alignment) — the same enforce/keep_calibrating/insufficient_data ladder the gates use, so a signal
    *  can only enter scoring once the live ledger clears the n>=10 / delta>=15pt bar. Non-gating. */
   signal_recommendations: SignalRecommendation[];
+  /** Graduation verdict for the whole-market BANGER scale-out exit (EV-based: realized-under-scale-out
+   *  vs hold-to-expiry over the pinned banger grades). Gates when the live managed exit may activate;
+   *  insufficient_data until the basis-correct banger ledger accrues n>=10 gradeable rows. Non-gating. */
+  scale_out_recommendation: ScaleOutRecommendation;
   available: boolean;
 };
 
@@ -523,6 +527,95 @@ export function recommendAccumulation(graded: CalibrationPlayRow[]): SignalRecom
   return recommendSignal("accumulation_aligned", aligned, misaligned, noSignal);
 }
 
+/** The banger scale-out must beat hold-to-expiry by at least this multiple (per $1 risked) before the
+ *  live managed exit activates — the EV analog of the 15-pt win-rate bar, sized to the +26%/+50%
+ *  realized-vs-hold gap the backtest showed while staying well above execution-cost noise. */
+export const SCALE_OUT_MIN_DELTA_MULT = 0.15;
+
+/** The pinned banger scale-out grade blob (written into entry_context.scale_out by the outcomes sync,
+ *  produced by banger-scale-out-grade.ts). Read defensively — every field optional, ungradeable rows
+ *  excluded from the rate (survivorship guard). */
+function readScaleOutGrade(
+  ec: Record<string, unknown> | null | undefined
+): { real: number | null; hold: number | null; ungradeable: boolean } | null {
+  const s = (ec?.scale_out ?? null) as
+    | { scale_out_realized_mult?: unknown; hold_mult?: unknown; ungradeable?: unknown }
+    | null;
+  if (!s || typeof s !== "object") return null;
+  return {
+    real: typeof s.scale_out_realized_mult === "number" && Number.isFinite(s.scale_out_realized_mult) ? s.scale_out_realized_mult : null,
+    hold: typeof s.hold_mult === "number" && Number.isFinite(s.hold_mult) ? s.hold_mult : null,
+    ungradeable: s.ungradeable === true,
+  };
+}
+
+export type ScaleOutRecommendation = {
+  signal: "scale_out";
+  verdict: "enforce" | "keep_calibrating" | "insufficient_data";
+  evidence: {
+    n_gradeable: number;
+    n_ungradeable: number;
+    mean_realized_mult: number | null;
+    mean_hold_mult: number | null;
+    delta_mult: number | null;
+    min_n: number;
+    min_delta_mult: number;
+    reason: string;
+  };
+};
+
+/** Coded graduation verdict for the whole-market BANGER scale-out exit (the +26%/+50% realized-vs-hold
+ *  positive-skew lever). EV-based (mean realized multiple vs mean hold-to-expiry), not win-rate — the
+ *  edge is skew, not hit-rate. enforce (activate the live managed exit) only once n>=10 gradeable banger
+ *  rows show the scale-out beating hold by >= SCALE_OUT_MIN_DELTA_MULT per $1. Ungradeable (thin/expired
+ *  weekly) rows are counted separately and excluded — never imputed. Non-gating: a human/PR still flips
+ *  the live exit on; this is the evidence bar it must clear. */
+export function recommendScaleOut(graded: CalibrationPlayRow[]): ScaleOutRecommendation {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const reals: number[] = [];
+  const holds: number[] = [];
+  let nUngr = 0;
+  for (const r of graded) {
+    const g = readScaleOutGrade(r.entry_context);
+    if (!g) continue;
+    if (g.ungradeable || g.real == null || g.hold == null) { nUngr++; continue; }
+    reals.push(g.real);
+    holds.push(g.hold);
+  }
+  const n = reals.length;
+  const meanReal = n ? reals.reduce((a, b) => a + b, 0) / n : null;
+  const meanHold = n ? holds.reduce((a, b) => a + b, 0) / n : null;
+  const delta = meanReal != null && meanHold != null ? meanReal - meanHold : null;
+
+  let verdict: ScaleOutRecommendation["verdict"];
+  let reason: string;
+  if (n < ENFORCE_MIN_BLOCK_N || delta == null) {
+    verdict = "insufficient_data";
+    reason = `only n=${n} gradeable banger rows (need n>=${ENFORCE_MIN_BLOCK_N}) — the scale-out exit stays ADVISORY (risk_note only) until the live ledger clears the bar.`;
+  } else if (delta >= SCALE_OUT_MIN_DELTA_MULT - DELTA_EPSILON) {
+    verdict = "enforce";
+    reason = `scale-out realized ${r2(meanReal!)}× vs hold ${r2(meanHold!)}× over n=${n} — +${r2(delta)}×/$1, clearing the ${SCALE_OUT_MIN_DELTA_MULT}× bar. The managed scale-out exit has earned live activation.`;
+  } else {
+    verdict = "keep_calibrating";
+    reason = `scale-out ${r2(meanReal!)}× vs hold ${r2(meanHold!)}× (+${r2(delta)}×) — under the ${SCALE_OUT_MIN_DELTA_MULT}× bar; keep grading before the exit goes live.`;
+  }
+
+  return {
+    signal: "scale_out",
+    verdict,
+    evidence: {
+      n_gradeable: n,
+      n_ungradeable: nUngr,
+      mean_realized_mult: meanReal != null ? r2(meanReal) : null,
+      mean_hold_mult: meanHold != null ? r2(meanHold) : null,
+      delta_mult: delta != null ? r2(delta) : null,
+      min_n: ENFORCE_MIN_BLOCK_N,
+      min_delta_mult: SCALE_OUT_MIN_DELTA_MULT,
+      reason,
+    },
+  };
+}
+
 /** Score bands for the G-3 floor evidence. FINER than record.ts's member-facing
  *  3-band cut: F-5's finding is a top-band INVERSION (85+ underperforming 75-84 on
  *  three surfaces), which a single "75+" bucket would hide by construction. */
@@ -625,6 +718,7 @@ export function analyzeGateCalibration(input: {
     accumulation_alignment: analyzeAccumulationAlignment(graded),
     confluence_tiers: analyzeConfluenceTiers(graded),
     signal_recommendations: [recommendConfluence(graded), recommendAccumulation(graded)],
+    scale_out_recommendation: recommendScaleOut(graded),
     available: graded.length > 0,
   };
 }
