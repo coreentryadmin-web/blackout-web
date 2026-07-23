@@ -110,6 +110,15 @@ test("selectIronCondor: rejects non-positive / non-finite spot and width", () =>
   assert.equal(selectIronCondor({ spot: 6000, shortWidthPct: -0.01 }), null);
 });
 
+// A tiny-positive spot passes the upper/inversion guard (short_put < spot is still true) but the
+// rounded short_put floors to 0 and long_put goes NEGATIVE — the malformed, negative-strike condor
+// the lower-bound guard now rejects (audit 2026-07-23). Latent on the index/mega-cap 0DTE universe,
+// live the moment this geometry is pointed at a cheaper banger underlying.
+test("selectIronCondor: a sub-increment spot that would floor short_put to 0 returns null, not a negative-strike condor", () => {
+  const legs = selectIronCondor({ spot: 0.4, targetWinRate: 80 });
+  assert.equal(legs, null);
+});
+
 test("selectIronCondor: a NaN wall is treated as absent (falls back to the width)", () => {
   const legs = selectIronCondor({ spot: 6000, targetWinRate: 80, callWall: Number.NaN, putWall: null });
   assert.ok(legs);
