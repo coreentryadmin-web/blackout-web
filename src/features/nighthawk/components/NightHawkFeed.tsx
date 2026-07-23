@@ -83,6 +83,7 @@ export function NightHawkFeed() {
         {view === "LEAPS" && <HorizonLaneBoard horizon="LEAPS" />}
         {isLegacy && (
           <PlaybookBoard
+            lean
             edition={edition}
             loading={editionLoading}
             editionError={

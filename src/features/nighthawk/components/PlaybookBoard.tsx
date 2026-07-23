@@ -32,7 +32,13 @@ type PlaybookBoardProps = {
   morningConfirmCheckedAt?: string;
   record?: NightHawkRecordResponse;
   recordLoading?: boolean;
+  /** Legacy toggle: render ONLY the 1-5 ranked plays — no edition header, market context,
+   *  pre-market summary, recap, record chip, or honesty banners. Just the play cards. */
+  lean?: boolean;
 };
+
+/** The Night Hawk playbook holds at most five ranked plays ("1-5"). */
+const MAX_LEGACY_PLAYS = 5;
 
 export function formatEditionDate(editionFor: string | null | undefined): string | null {
   if (!editionFor) return null;
@@ -218,10 +224,51 @@ export function PlaybookBoard({
   morningConfirmCheckedAt,
   record,
   recordLoading,
+  lean,
 }: PlaybookBoardProps) {
   const [recapOpen, setRecapOpen] = useState(false);
   const plays = edition?.plays ?? [];
   const hasPlays = plays.length > 0;
+
+  // Legacy toggle: strictly the 1-5 ranked plays and nothing else. No header/context/recap/
+  // record/notices — just the numbered play cards (or a single loading/empty state).
+  if (lean) {
+    const leanPlays = plays.slice(0, MAX_LEGACY_PLAYS);
+    return (
+      <section className="nighthawk-playbook nighthawk-playbook--lean" aria-label="Night Hawk plays 1-5">
+        {leanPlays.length > 0 ? (
+          <div className="nh-v2-play-list flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+            {leanPlays.map((play, i) => (
+              <PlaybookPlayRow
+                key={`${play.ticker}-${play.rank ?? i}`}
+                rank={play.rank ?? i + 1}
+                play={play}
+                morningConfirm={confirmByTicker?.get(play.ticker.toUpperCase())}
+                morningConfirmCheckedAt={morningConfirmCheckedAt}
+                onSelect={onPlaySelect ? () => onPlaySelect(play) : undefined}
+              />
+            ))}
+          </div>
+        ) : loading && !edition ? (
+          <div className="min-h-0 flex-1 space-y-2 p-3" role="status" aria-label="Loading plays">
+            <Skeleton height={72} rounded="xl" />
+            <Skeleton height={72} rounded="xl" />
+            <Skeleton height={72} rounded="xl" />
+          </div>
+        ) : (
+          <div className="flex flex-1 items-center justify-center p-4" role="status">
+            <EmptyState
+              className="w-full max-w-md"
+              icon="◎"
+              title="No plays yet"
+              description="Five ranked setups land here automatically after the evening scan · ~5:30 PM ET."
+            />
+          </div>
+        )}
+      </section>
+    );
+  }
+
   const hasRecap = editionHasRecapContent(edition);
   const showRecapState = (Boolean(edition?.available) || hasRecap) && !hasPlays;
   const editionLabel = formatEditionDate(edition?.edition_for);
