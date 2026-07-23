@@ -98,6 +98,36 @@ test("empty candidate pool yields three empty lanes, not a crash", () => {
   assert.equal(totalCommitted(set), 0);
 });
 
+test("per-horizon scoring: one name, different score per lens → different COMMIT/WATCH", () => {
+  // Great 0DTE (hot flow, 90), mediocre Swing (55), no LEAPS thesis at all (omitted, no flat fallback).
+  const cand = { ...fullChainCandidate("SPLIT", "LONG", 0), horizonScores: { ZERO_DTE: 90, SWING: 55 } };
+  delete (cand as { score?: number }).score; // no flat fallback → LEAPS (unscored) must be absent
+  const set = produceHorizonPlays([cand]);
+  assert.equal(set.ZERO_DTE[0].status, "COMMIT"); // 90 >= 65
+  assert.equal(set.ZERO_DTE[0].score, 90);
+  assert.equal(set.SWING[0].status, "WATCH"); // 55 < 60
+  assert.equal(set.SWING[0].score, 55);
+  assert.equal(set.LEAPS.length, 0); // no LEAPS score → not in the lane at all
+});
+
+test("horizonScores wins over the flat score fallback, per lane", () => {
+  const cand = { ...fullChainCandidate("MIX", "LONG", 40), horizonScores: { LEAPS: 88 } };
+  const set = produceHorizonPlays([cand]);
+  // 0DTE + Swing fall back to flat 40 (WATCH); LEAPS uses its own 88 (COMMIT)
+  assert.equal(set.ZERO_DTE[0].status, "WATCH");
+  assert.equal(set.ZERO_DTE[0].score, 40);
+  assert.equal(set.LEAPS[0].status, "COMMIT");
+  assert.equal(set.LEAPS[0].score, 88);
+});
+
+test("a candidate with no score and no horizonScores produces nothing", () => {
+  const cand = { ...fullChainCandidate("NOSCORE", "LONG", 0) };
+  delete (cand as { score?: number }).score;
+  const set = produceHorizonPlays([cand]);
+  assert.equal(totalCommitted(set), 0);
+  assert.equal(set.ZERO_DTE.length + set.SWING.length + set.LEAPS.length, 0);
+});
+
 test("illiquid chain produces no plays (honesty rule: no contract, no lane)", () => {
   const cand: HorizonCandidate = {
     ticker: "THIN",

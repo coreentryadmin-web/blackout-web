@@ -26,17 +26,38 @@ import {
   explodeChainRows,
 } from "./horizon-fanout";
 
-/** A scored whole-market candidate from discovery, with its full option chain attached. */
+/**
+ * A whole-market candidate from discovery, with its full option chain attached.
+ *
+ * SCORING IS PER HORIZON, not one number. What makes a name a great 0DTE (hot intraday flow + gamma)
+ * is NOT what makes it a great LEAPS (a durable thesis) — so each horizon scores the same candidate
+ * through its OWN lens (slice 5 ships the three scorers: flow/gamma for 0DTE, momentum/accumulation for
+ * Swing, the thesis composite for LEAPS). A name can COMMIT one lane and not even WATCH another.
+ *
+ * Provide `horizonScores` with a per-lane 0–100 score. `score` remains as a single-number fallback for
+ * any lane `horizonScores` omits (used by the plumbing harness before the real scorers exist). A lane
+ * whose resolved score is null/undefined is skipped entirely — no scorer, no play in that lane.
+ */
 export interface HorizonCandidate {
   ticker: string;
   /** LONG buys calls, SHORT buys puts. */
   direction: PlayDirection;
-  /** 0–100 conviction score from the discovery/scoring layer. */
-  score: number;
+  /** Per-horizon conviction (0–100), each from that horizon's own scorer. Preferred over `score`. */
+  horizonScores?: Partial<Record<Horizon, number>>;
+  /** Single-number fallback conviction, used only for a horizon `horizonScores` doesn't cover. */
+  score?: number;
   /** As-of date (YYYY-MM-DD) the DTEs are measured from. */
   asOfYmd: string;
   /** The name's full option chain (every listed expiry × strike). */
   chainRows: Parameters<typeof explodeChainRows>[1];
+}
+
+/** Resolve the conviction score for one candidate at one horizon: per-lane score wins, else the fallback. */
+function scoreForHorizon(cand: HorizonCandidate, horizon: Horizon): number | null {
+  const per = cand.horizonScores?.[horizon];
+  if (per != null && Number.isFinite(per)) return per;
+  if (cand.score != null && Number.isFinite(cand.score)) return cand.score;
+  return null; // no score for this lane → this name isn't evaluated here
 }
 
 /** Whether a play is committed (over the lane's floor) or watch-only (real contract, under floor). */
@@ -65,8 +86,10 @@ function emptyPlaySet(): HorizonPlaySet {
 }
 
 /**
- * Fan a pool of scored candidates across all three horizons. Every (candidate × lane) that has a
- * tradeable contract becomes one play, stamped COMMIT/WATCH against the lane's floor. Each lane is
+ * Fan a pool of candidates across all three horizons. Every (candidate × lane) that has BOTH a tradeable
+ * contract AND a score for that lane becomes one play, stamped COMMIT/WATCH against the lane's floor —
+ * scored through that horizon's OWN lens (see HorizonCandidate.horizonScores). A name absent from a
+ * lane's scorer, or with no liquid contract there, simply doesn't appear in that lane. Each lane is
  * returned sorted by score (desc), then by delta-fit tie-break already applied inside the fan-out.
  */
 export function produceHorizonPlays(
@@ -76,17 +99,19 @@ export function produceHorizonPlays(
   const out = emptyPlaySet();
 
   for (const cand of candidates) {
-    if (!cand.ticker || !Number.isFinite(cand.score)) continue;
+    if (!cand.ticker) continue;
     const picks = fanOutChain(cand.ticker, cand.chainRows, cand.asOfYmd, cand.direction, gate);
     for (const pick of picks) {
       if (!pick.contract) continue; // no liquid contract at this horizon → this name simply isn't in this lane
+      const score = scoreForHorizon(cand, pick.horizon);
+      if (score == null) continue; // this horizon's scorer didn't rate this name → not in this lane
       const spec = HORIZONS[pick.horizon];
       out[pick.horizon].push({
         ticker: cand.ticker.toUpperCase(),
         direction: cand.direction,
         horizon: pick.horizon,
-        score: cand.score,
-        status: cand.score >= spec.scoreFloor ? "COMMIT" : "WATCH",
+        score,
+        status: score >= spec.scoreFloor ? "COMMIT" : "WATCH",
         contract: pick.contract,
         scoreFloor: spec.scoreFloor,
         reason: pick.reason,
