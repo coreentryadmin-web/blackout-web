@@ -403,6 +403,16 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 1800,
     description: "Snapshot follower count + tweet performance for content tuning",
   },
+  {
+    key: "whop-autopost",
+    name: "Whop Autopost",
+    kind: "http",
+    path: "/api/cron/whop-autopost",
+    schedule_label: "Hourly (8am–8pm ET)",
+    stale_after_min: 150,
+    description:
+      "Auto-post to Whop public feed — product spotlights, Night Hawk teasers, regime briefs, recaps",
+  },
 ];
 
 export const CRON_JOB_BY_KEY = Object.fromEntries(CRON_JOBS.map((j) => [j.key, j])) as Record<
