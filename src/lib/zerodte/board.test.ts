@@ -107,6 +107,27 @@ test("setups: one-sided 0DTE concentration produces a long setup with the domina
   assert.ok(out[0]!.score > 0);
 });
 
+test("setups: flow_quality is computed on the setup's own tape (institutional flow-quality read)", () => {
+  // A strong at-the-ask, one-strike, sweep-heavy accumulation spread over ~10 min: the
+  // flow-quality engine should score it well and read the dominant side as calls. This proves
+  // the tape is threaded into computeFlowQuality (not that a null/zero placeholder is emitted).
+  const rows = Array.from({ length: 8 }, (_, i) =>
+    row({
+      premium: 300_000 + i * 60_000,
+      strike: 190,
+      ask_pct: 76,
+      alert_rule: i % 2 === 0 ? "SweepsFollowedByFloor" : "RepeatedHitsAscendingFill",
+      alerted_at: new Date(Date.parse("2026-07-06T14:31:00Z") + i * 90_000).toISOString(),
+    })
+  );
+  const out = deriveZeroDteSetups(rows);
+  assert.equal(out.length, 1);
+  const fq = out[0]!.flow_quality;
+  assert.ok(fq, "flow_quality should be attached");
+  assert.ok(fq!.score > 50, `expected a solid flow-quality score, got ${fq!.score}`);
+  assert.equal(fq!.dominantSide, "call");
+});
+
 test("setups: top strike is chosen by aggression-weighted premium, not raw dollar premium", () => {
   // Strike A: bigger RAW premium ($1M) but mostly SOLD/bid-side (ask_pct=20 -> weight 0.15
   // -> $150k weighted). Strike B: smaller raw premium ($900k) but almost entirely bought
