@@ -736,8 +736,8 @@ export function buildRescuePlays(params: {
   target?: number;
   /** 0 or 1 → select a same-day/1-DTE contract (intraday day-trade path). null/undefined → overnight swing. */
   maxDte?: number | null;
-  /** Tickers surfaced by the whole-market breakout lane — these get the scale-out exit risk_note. */
-  bangerTickers?: Set<string>;
+  // NB: no bangerTickers here — rescue plays are stock-only fallbacks (no option contract), so the
+  // scale-out option exit doesn't apply; the note is attached only in buildDeterministicEditionPlays.
 }): PlaybookPlay[] {
   const target = params.target ?? DETERMINISTIC_EDITION_TARGET;
   const plays: PlaybookPlay[] = [];

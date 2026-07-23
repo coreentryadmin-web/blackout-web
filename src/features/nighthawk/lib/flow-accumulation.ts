@@ -90,7 +90,8 @@ export const FLOW_ACC_HALFLIFE_DAYS = 2.5;
 const SWEEP_MULT = 1.5; // a swept alert weighs 1.5× a passive one
 const OPENING_MULT = 1.4; // opening (new positioning) weighs 1.4× closing
 const VOL_OI_BONUS = 0.5; // + up to 0.5× when today's volume >> resting OI (vol/oi ≥ 3)
-/** Persistence multiplier per DISTINCT day (compounding): 1 day = 1.0, 2 = 1.5, 3 = 2.0, capped. */
+/** Persistence multiplier per DISTINCT day (compounding): 1 day = 1.0, 2 = 1.5, 3 = 2.0, 4 = 2.5,
+ *  5+ = 3.0 (capped at PERSISTENCE_CAP). Saturates at 5 distinct days. */
 const PERSISTENCE_PER_DAY = 0.5;
 const PERSISTENCE_CAP = 3.0;
 /** Premium (recency+aggression weighted) that saturates a single identity's premium sub-score to 1. */
@@ -170,9 +171,11 @@ export function accumulateStrikes(rows: FlowAlertRow[], nowMs: number): StrikeAc
     const days = g.days.size;
     const persistence = Math.min(PERSISTENCE_CAP, 1 + (days - 1) * PERSISTENCE_PER_DAY);
     const premScore = Math.min(1, weightedPremium / PREMIUM_SATURATION); // 0..1 by premium
-    // Persistence normalized to 0..1 (1 day → 1/CAP, CAP+ days → 1) so multi-day stacking dominates:
-    // a saturated 1-day identity scores ~33, a saturated 3-day one ~100. This is what makes "stacked
-    // hits over days" outrank a single big print.
+    // Persistence normalized to 0..1 (1 day → 1/CAP, CAP-days → 1) so multi-day stacking dominates.
+    // With PERSISTENCE_CAP=3.0 and +0.5/day, persistence saturates at 5 DISTINCT days: a saturated
+    // identity scores ~33 at 1 day, ~67 at 3 days, ~100 at 5 days. This is what makes "stacked hits
+    // over days" outrank a single big print. (Ranking is unaffected by the exact cap — it's a uniform
+    // scalar — but the magnitude matters if this evidence-only score ever graduates into board scoring.)
     const score = Math.round(Math.min(100, premScore * (persistence / PERSISTENCE_CAP) * 100));
     const first = g.rows[0]!;
     out.push({
@@ -204,16 +207,21 @@ export function flowAccumulationByTicker(rows: FlowAlertRow[], nowMs: number): M
   const out = new Map<string, FlowAccumulationSignal>();
   for (const [ticker, arr] of byTicker) {
     const netSigned = arr.reduce((sum, s) => sum + s.signedPremium, 0);
-    // Strength: the strongest identity's score, lifted if several identities agree on the same side.
-    const agree = arr.filter((s) => Math.sign(s.signedPremium) === Math.sign(netSigned) && s.signedPremium !== 0);
-    const agreeBoost = Math.min(1.3, 1 + (agree.length - 1) * 0.08);
-    const strength = Math.round(Math.min(100, (arr[0]?.score ?? 0) * agreeBoost));
     const direction: FlowAccumulationSignal["direction"] =
       Math.abs(netSigned) < DIRECTION_MIN_NET_PREMIUM ? "neutral" : netSigned > 0 ? "bull" : "bear";
-    // Magnet = the strongest identity on the DOMINANT side (the strike positioning is actually building).
+    // Magnet = the strongest identity on the DOMINANT (net) side — the strike positioning actually
+    // building in the reported direction.
     const dominant = arr
       .filter((s) => direction === "neutral" || (direction === "bull" ? s.signedPremium > 0 : s.signedPremium < 0))
       .sort((a, b) => b.score - a.score)[0] ?? null;
+    // Strength MUST measure conviction IN the reported direction: base it on the dominant-side magnet,
+    // NOT arr[0] (the globally-strongest identity, which can sit on the OPPOSITE side of the net when
+    // one big print is outvoted by many smaller ones — that would source the conviction number from a
+    // contra-directional identity and inflate it by the agree count). Lifted when several dominant-side
+    // identities agree.
+    const agree = arr.filter((s) => Math.sign(s.signedPremium) === Math.sign(netSigned) && s.signedPremium !== 0);
+    const agreeBoost = Math.min(1.3, 1 + (agree.length - 1) * 0.08);
+    const strength = Math.round(Math.min(100, (dominant?.score ?? 0) * agreeBoost));
     out.set(ticker, {
       ticker,
       direction,
