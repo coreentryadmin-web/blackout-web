@@ -494,6 +494,16 @@ test("both evidence-bucket sections appear on the full report and never gate", (
   assert.ok(Array.isArray(report.confluence_tiers) && report.confluence_tiers.length === 4);
 });
 
+// ── Step 5: anti-overfit firewall — VALUE-pin the graduation constants ────────────────
+// Behavior tests (n=9 vs 10, 14.9 vs 15.1) shift WITH the constant, so they can't catch a silent
+// loosening; these pin the values themselves. The 10/15 bar is why the F-1 priors (n=12/13) and the
+// confluence "double" (n=22, single-window) are NOT enforced — a rebuild that lowers them reintroduces
+// exactly the small-sample overfit the whole calibration-first design exists to prevent.
+test("FIREWALL: graduation constants are pinned (a change here must be deliberate, not silent)", () => {
+  assert.equal(ENFORCE_MIN_BLOCK_N, 10, "n>=10 graduation floor — lowering it lets small samples gate");
+  assert.equal(ENFORCE_MIN_DELTA_PTS, 15, "15-pt win-rate delta bar — lowering it graduates noise");
+});
+
 // ── Step 4: coded graduation verdicts for the positive evidence signals ──────────────
 test("recommendConfluence: small double bucket (n<10) is insufficient_data — the small-sample firewall", () => {
   // the research finding is n=22 single-window; a sub-10 live bucket must NOT graduate into score
