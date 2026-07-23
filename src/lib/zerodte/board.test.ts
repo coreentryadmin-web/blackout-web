@@ -983,11 +983,12 @@ test("market alignment: with SPY +4, against −6; flat/unknown 0", () => {
   assert.equal(marketAlignAdjust("long", null), 0);
 });
 
-test("time of day: prime windows reward, lunch chop penalizes", () => {
-  assert.ok(timeOfDayFactor(9 * 60 + 40).delta < 0); // opening chop
-  assert.ok(timeOfDayFactor(10 * 60 + 15).delta > 0); // prime morning
-  assert.ok(timeOfDayFactor(12 * 60).delta < 0); // lunch chop
-  assert.match(timeOfDayFactor(12 * 60).label ?? "", /lunch chop/);
+test("time of day: prime continuation rewards, opening chop + real lunch chop penalize (recalibrated 2026-07-23)", () => {
+  assert.ok(timeOfDayFactor(9 * 60 + 40).delta < 0); // opening chop (now runs to 10:00)
+  assert.equal(timeOfDayFactor(10 * 60 + 15).delta, 0); // 10:00–10:30 soft transition
+  assert.ok(timeOfDayFactor(11 * 60).delta > 0); // prime continuation window (was penalized as "lunch chop" before)
+  assert.ok(timeOfDayFactor(13 * 60).delta < 0); // real lunch chop is 12:30–14:00 now
+  assert.match(timeOfDayFactor(13 * 60).label ?? "", /lunch chop/);
   assert.ok(timeOfDayFactor(14 * 60 + 30).delta > 0); // afternoon trend window
 });
 

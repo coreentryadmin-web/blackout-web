@@ -34,21 +34,23 @@ import { evaluateMacroHardBlock, type MacroEventLike } from "@/lib/macro-hard-bl
 export const MARKET_BIAS_MAX_AGE_MS = 15 * 60 * 1000;
 
 // ── G-2 · Opening-window block ──────────────────────────────────────────────────
-// USER-DIRECTED 2026-07-13: restrict only the FIRST 15 MINUTES (9:30-9:45 ET), not
-// the decision doc's original 10:30 — most 0DTE plays happen at the open and the
-// user does not want them blocked wholesale. Chosen KNOWINGLY against the F-4 cut
-// (9:50-11:00 ran 36.8% WR n=19, and 7/13's four opening losers were flagged
-// 9:50-10:20, i.e. AFTER this boundary — under this rule G-2 would NOT have caught
-// them; G-1 tape alignment is the gate that removes them). The 9:45-10:30 band is
-// measured by the calibration loop (gate_calibration_json.committed_at_et buckets
-// every commit by ET time), so this boundary can be revisited with per-play
-// evidence rather than re-litigated on priors. Setups found 9:30-9:45 stay visible
-// as WATCH/SKIP cards carrying the unlock time — the scanner re-evaluates every
-// ~2 minutes, so a setup still alive on the tape at 9:45 commits then. The
-// existing no-new-plays->=15:00 + hard-exit-15:30 rules are unchanged and live
-// upstream (persistZeroDteScan / PLAN_RULES).
-export const OPENING_WINDOW_UNLOCK_ET_MINUTES = 9 * 60 + 45;
-export const OPENING_WINDOW_UNLOCK_LABEL = "9:45 ET";
+// USER-AUTHORIZED 2026-07-23 (supersedes the 2026-07-13 "first 15 min only" directive):
+// push the unlock from 9:45 → 10:00 ET, blocking the demonstrably-worst first 30 minutes
+// of RTH. Evidence (simulator, 25 sessions × SPY/QQQ/IWM, docs/audit/0DTE-RESEARCH.md): a
+// fixed entry at 9:45 ran −12.1% expectancy / 26% win — the worst tested time — improving
+// monotonically through the morning (10:00 −7.8%, 10:30 −9.1%, 11:00 +1.5%). 9:45 was
+// literally the worst moment to unlock. The move stops at 10:00 (NOT 11:00) on purpose:
+// (1) the backtest grader holds to stop/target/15:30 and ignores the live exit engine, so
+// it likely UNDERSTATES early-entry outcomes; (2) blocking the whole morning would empty
+// the board 9:30–11:00. The soft 10:00–12:30 gradient is handled by timeOfDayFactor
+// (intraday.ts), a score nudge, not a hard block. The gate still buckets every commit by ET
+// time (gate_calibration_json.committed_at_et), so the ledger — not this backtest — decides
+// whether to push the unlock later. Setups found before 10:00 stay visible as WATCH/SKIP
+// cards carrying the unlock time; the scanner re-evaluates every ~2 min, so a setup still
+// alive at 10:00 commits then. The no-new-plays->=15:00 + hard-exit-15:30 rules are
+// unchanged and live upstream (persistZeroDteScan / PLAN_RULES).
+export const OPENING_WINDOW_UNLOCK_ET_MINUTES = 10 * 60;
+export const OPENING_WINDOW_UNLOCK_LABEL = "10:00 ET";
 
 // ── G-4 · VIX regime throttle — HARD GATE (promoted from calibration 2026-07-16) ──
 // Evidence (F-1): the strongest per-play split in the whole forensics dataset —
@@ -103,7 +105,7 @@ export type ZeroDteGateCalibration = {
   score_at_commit: number;
   market_bias: MarketBias | null;
   /** "HH:MM" ET at evaluation — the time-of-day bucket key for the calibration
-   *  loop (e.g. measuring the 9:45–10:30 band the user chose to keep open). */
+   *  loop (e.g. measuring the 10:00–10:30 band left open past the G-2 unlock). */
   committed_at_et: string;
   g4_vix: ZeroDteVixCalibration;
   g6_conflict: ZeroDteConflictCalibration;
@@ -210,15 +212,15 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     });
   }
 
-  // G-2 — opening window (first 15 minutes only — user-directed 2026-07-13, see the
-  // constant's doc). Clock-based, so the block self-expires: the card carries the
-  // unlock time and the next scan cycle at/after 9:45 re-evaluates cleanly.
+  // G-2 — opening window (block the worst first 30 min, unlock 10:00 ET — user-authorized
+  // 2026-07-23, see the constant's doc). Clock-based, so the block self-expires: the card
+  // carries the unlock time and the next scan cycle at/after 10:00 re-evaluates cleanly.
   if (input.nowEtMinutes < OPENING_WINDOW_UNLOCK_ET_MINUTES) {
     blocks.push({
       code: "opening_window",
       reason:
-        `No new 0DTE commits in the first 15 minutes (before ${OPENING_WINDOW_UNLOCK_LABEL}) — ` +
-        "ranges are still forming. " +
+        `No new 0DTE commits before ${OPENING_WINDOW_UNLOCK_LABEL} — the opening drive is still ` +
+        "resolving (entries here backtest worst by expectancy). " +
         `Watching; commits unlock at ${OPENING_WINDOW_UNLOCK_LABEL} if the setup is still live.`,
       threshold: OPENING_WINDOW_UNLOCK_ET_MINUTES,
       unlock_et: OPENING_WINDOW_UNLOCK_LABEL,
