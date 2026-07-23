@@ -10,6 +10,8 @@ import {
   analyzeConfluenceTiers,
   recommendConfluence,
   recommendAccumulation,
+  recommendScaleOut,
+  SCALE_OUT_MIN_DELTA_MULT,
   analyzeTierRecord,
   calibrationScoreBand,
   gateVerdictOf,
@@ -552,4 +554,42 @@ test("recommendAccumulation: aligned vs misaligned graduates on the same ladder;
   const report = analyzeGateCalibration({ rows, window: WINDOW });
   assert.ok(Array.isArray(report.signal_recommendations) && report.signal_recommendations.length === 2);
   assert.ok(report.signal_recommendations.every((r) => ["enforce", "keep_calibrating", "insufficient_data"].includes(r.verdict)));
+});
+
+// ── Step 6c: recommendScaleOut — EV-based graduation of the BANGER scale-out exit ────
+const soRow = (real: number | null, hold: number | null, ungradeable = false): CalibrationPlayRow =>
+  ({ entry_context: { scale_out: { scale_out_realized_mult: real, hold_mult: hold, ungradeable } } } as unknown as CalibrationPlayRow);
+
+test("recommendScaleOut: <10 gradeable banger rows → insufficient_data (exit stays advisory)", () => {
+  const rec = recommendScaleOut(repeat(8, () => soRow(1.6, 1.1)));
+  assert.equal(rec.verdict, "insufficient_data");
+  assert.equal(rec.evidence.n_gradeable, 8);
+});
+
+test("recommendScaleOut: n>=10 AND realized beats hold by >= the mult bar → enforce (activate live exit)", () => {
+  const rec = recommendScaleOut(repeat(10, () => soRow(1.55, 1.1))); // +0.45× >> 0.15× bar
+  assert.equal(rec.verdict, "enforce");
+  assert.equal(rec.evidence.delta_mult, 0.45);
+  assert.ok(rec.evidence.delta_mult! >= SCALE_OUT_MIN_DELTA_MULT);
+});
+
+test("recommendScaleOut: n>=10 but delta under the mult bar → keep_calibrating", () => {
+  const rec = recommendScaleOut(repeat(10, () => soRow(1.15, 1.1))); // +0.05× < 0.15×
+  assert.equal(rec.verdict, "keep_calibrating");
+});
+
+test("recommendScaleOut: ungradeable banger rows are counted separately, excluded from the rate (survivorship guard)", () => {
+  const rec = recommendScaleOut([
+    ...repeat(10, () => soRow(1.6, 1.1)),
+    ...repeat(4, () => soRow(null, null, true)), // thin/expired weekly → ungradeable, not imputed
+  ]);
+  assert.equal(rec.evidence.n_gradeable, 10);
+  assert.equal(rec.evidence.n_ungradeable, 4);
+  assert.equal(rec.verdict, "enforce"); // the 4 ungradeable never dilute the +EV rate
+});
+
+test("recommendScaleOut is surfaced on the full report and never gates", () => {
+  const report = analyzeGateCalibration({ rows: [play({ win: true })], window: WINDOW });
+  assert.equal(report.scale_out_recommendation.signal, "scale_out");
+  assert.ok(["enforce", "keep_calibrating", "insufficient_data"].includes(report.scale_out_recommendation.verdict));
 });
