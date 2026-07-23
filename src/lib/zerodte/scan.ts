@@ -573,11 +573,18 @@ export async function persistZeroDteScan(setups: EnrichedZeroDteSetup[]): Promis
     // upsert's COALESCE pin keeps the original commit-time context untouched
     // either way. Blocked finds never reach this map at all — they went to
     // zerodte_scan_rejections above and never write entry_context.
-    entry_context: buildZeroDteEntryContext(
-      { score: s.score, gamma_regime: s.gamma_regime, cortex: cortexEntryContextFor(s.cortex) },
-      sessionCtx,
-      committedAtMs
-    ) as unknown as Record<string, unknown>,
+    entry_context: {
+      ...buildZeroDteEntryContext(
+        { score: s.score, gamma_regime: s.gamma_regime, cortex: cortexEntryContextFor(s.cortex) },
+        sessionCtx,
+        committedAtMs
+      ),
+      // Pin the two calibration-first evidence signals at first flag so the graded ledger can bucket
+      // outcomes by them (calibration.ts) and let each graduate into scoring ON EVIDENCE — the read
+      // itself still does NOT gate the board. Omitted when absent so the blob stays honest.
+      ...(s.flow_accumulation ? { flow_accumulation: s.flow_accumulation } : {}),
+      ...(s.confluence ? { confluence: s.confluence } : {}),
+    } as unknown as Record<string, unknown>,
     flags_json: {
       ...(s.earnings ? { earnings: s.earnings } : {}),
       ...(s.news_hot ? { news_hot: s.news_hot.title } : {}),

@@ -6,6 +6,8 @@ import assert from "node:assert/strict";
 
 import {
   analyzeGateCalibration,
+  analyzeAccumulationAlignment,
+  analyzeConfluenceTiers,
   analyzeTierRecord,
   calibrationScoreBand,
   gateVerdictOf,
@@ -34,8 +36,14 @@ function play(opts: {
   g4?: boolean | null;
   g6?: boolean;
   noCalibJson?: boolean;
+  aligned?: boolean | null; // entry_context.flow_accumulation.aligned
+  confTier?: "triple" | "double" | "weak"; // entry_context.confluence.tier
 }): CalibrationPlayRow {
   const win = opts.win ?? false;
+  const ec: Record<string, unknown> = {};
+  if (opts.score != null) ec.score = opts.score;
+  if (opts.aligned !== undefined) ec.flow_accumulation = { aligned: opts.aligned };
+  if (opts.confTier != null) ec.confluence = { tier: opts.confTier };
   return {
     session_date: "2026-07-10",
     ticker: "SPY",
@@ -43,7 +51,7 @@ function play(opts: {
     score_max: opts.scoreMax ?? 70,
     plan_outcome: opts.ungraded ? null : win ? "doubled" : "stopped",
     plan_pnl_pct: opts.ungraded ? null : (opts.pnl ?? (win ? 100 : -50)),
-    entry_context: opts.score != null ? { score: opts.score } : null,
+    entry_context: Object.keys(ec).length ? ec : null,
     gate_calibration_json: opts.noCalibJson
       ? null
       : {
@@ -438,4 +446,48 @@ test("tier_record rides the full calibration report additively", () => {
   assert.equal(report.tier_record.tiers.find((t) => t.tier === "C")!.n, 1);
   // The bare play() row has entry_context:null → untiered, not C.
   assert.equal(report.tier_record.untiered_n, 1);
+});
+
+// ── Calibration-first evidence buckets (PR-A): accumulation alignment + confluence tier ──
+test("accumulation-alignment buckets split graded rows by entry_context.flow_accumulation.aligned", () => {
+  const rows = [
+    ...repeat(3, () => play({ win: true, aligned: true })),
+    ...repeat(1, () => play({ win: false, aligned: true })),
+    ...repeat(2, () => play({ win: false, aligned: false })),
+    ...repeat(2, () => play({ win: true, aligned: null })), // neutral/no-signal
+    play({ win: false }), // no flow_accumulation key at all → no_signal
+  ];
+  const [aligned, misaligned, noSignal] = analyzeAccumulationAlignment(rows);
+  assert.equal(aligned.n, 4);
+  assert.equal(aligned.wins, 3);
+  assert.equal(aligned.win_rate_pct, 75);
+  assert.equal(misaligned.n, 2);
+  assert.equal(misaligned.wins, 0);
+  assert.equal(noSignal.n, 3, "aligned:null AND missing key both land in no_signal");
+});
+
+test("confluence-tier buckets split graded rows by entry_context.confluence.tier (double = the edge bucket)", () => {
+  const rows = [
+    ...repeat(5, () => play({ win: true, confTier: "double" })),
+    ...repeat(3, () => play({ win: false, confTier: "double" })),
+    ...repeat(2, () => play({ win: false, confTier: "weak" })),
+    play({ win: true, confTier: "triple" }),
+    play({ win: false }), // no confluence read → no_read
+  ];
+  const [triple, double, weak, noRead] = analyzeConfluenceTiers(rows);
+  assert.equal(triple.n, 1);
+  assert.equal(double.n, 8);
+  assert.equal(double.wins, 5);
+  assert.equal(double.win_rate_pct, 62.5);
+  assert.equal(weak.n, 2);
+  assert.equal(noRead.n, 1);
+});
+
+test("both evidence-bucket sections appear on the full report and never gate", () => {
+  const report = analyzeGateCalibration({
+    rows: [play({ win: true, aligned: true, confTier: "double" }), play({ win: false, aligned: false, confTier: "weak" })],
+    window: WINDOW,
+  });
+  assert.ok(Array.isArray(report.accumulation_alignment) && report.accumulation_alignment.length === 3);
+  assert.ok(Array.isArray(report.confluence_tiers) && report.confluence_tiers.length === 4);
 });
