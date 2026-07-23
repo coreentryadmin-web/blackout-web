@@ -194,13 +194,57 @@ test("fetchZeroDteSessionContext: VIX day-open from the daily bar, bias from SPY
   assert.ok(ctx);
   assert.equal(ctx.vix_open, 17.2);
   assert.equal(ctx.spy_bias, "down");
+  // Three provider reads: VIX day-open, SPY minute tape (bias), SPY daily series (regime).
   assert.deepEqual(
-    state.aggCalls.map((c) => c.symbol).sort(),
+    [...new Set(state.aggCalls.map((c) => c.symbol))].sort(),
     ["I:VIX", "SPY"]
+  );
+  assert.deepEqual(
+    state.aggCalls.filter((c) => c.symbol === "SPY").map((c) => c.timespan).sort(),
+    ["day", "minute"]
   );
 
   // Second call inside the TTL serves the cache — no new provider calls.
   const again = await fetchZeroDteSessionContext();
   assert.deepEqual(again, ctx);
-  assert.equal(state.aggCalls.length, 2);
+  assert.equal(state.aggCalls.length, 3);
+});
+
+test("buildSessionRegime: classifies from SPY session + prior-day OHLC when every field is real", async () => {
+  const { buildSessionRegime } = await mod();
+  const today = "2026-07-23";
+  const todayMs = Date.parse("2026-07-23T14:00:00Z"); // 10:00 ET → renders 2026-07-23 in ET
+  const DAY = 86_400_000;
+  // 16 ascending daily bars (≥15 → ATR resolvable); a calm ~600 tape, last bar = today.
+  const daily = Array.from({ length: 16 }, (_, i) => {
+    const base = 590 + i;
+    return { t: todayMs - (15 - i) * DAY, o: base, h: base + 2, l: base - 2, c: base + 1 };
+  });
+  const reg = buildSessionRegime(
+    daily,
+    { last: 611, day_high: 612, day_low: 604, vwap: 607 },
+    18,
+    today
+  );
+  assert.ok(reg, "regime should classify");
+  assert.equal(typeof reg!.structure, "string");
+  assert.ok(reg!.tags.includes(reg!.vol));
+});
+
+test("buildSessionRegime: null (never guessed) when today's bar is stale or a field is missing", async () => {
+  const { buildSessionRegime } = await mod();
+  const today = "2026-07-23";
+  const staleMs = Date.parse("2026-07-21T14:00:00Z"); // last bar two sessions old
+  const DAY = 86_400_000;
+  const daily = Array.from({ length: 16 }, (_, i) => {
+    const base = 590 + i;
+    return { t: staleMs - (15 - i) * DAY, o: base, h: base + 2, l: base - 2, c: base + 1 };
+  });
+  // Stale last bar → unknowable session open → null.
+  assert.equal(buildSessionRegime(daily, { last: 611, day_high: 612, day_low: 604, vwap: 607 }, 18, today), null);
+  // Missing VIX → null even with fresh bars.
+  const fresh = daily.map((b, i) => ({ ...b, t: Date.parse("2026-07-23T14:00:00Z") - (15 - i) * DAY }));
+  assert.equal(buildSessionRegime(fresh, { last: 611, day_high: 612, day_low: 604, vwap: 607 }, null, today), null);
+  // Too few bars for ATR → null.
+  assert.equal(buildSessionRegime(fresh.slice(-3), { last: 611, day_high: 612, day_low: 604, vwap: 607 }, 18, today), null);
 });

@@ -177,7 +177,9 @@ mock.module("../server-cache", {
 // same "server-only" pull-in problem run-tool.test.ts/rejections.test.ts document
 // for their own siblings. Stubbed for the same reason.
 mock.module("../providers/spx-session", {
-  namedExports: { todayEtYmd: () => "2026-07-06" },
+  // entry-context.ts (session-context fetch) also pulls priorEtYmd for the SPY daily
+  // window that feeds the regime read; stub it alongside todayEtYmd so the fetch runs.
+  namedExports: { todayEtYmd: () => "2026-07-06", priorEtYmd: (_d?: number) => "2026-05-27" },
 });
 
 // scan.ts's last line re-exports zeroDtePlaysForLargo from zerodte-service.ts (a

@@ -594,15 +594,17 @@ export async function persistZeroDteScan(setups: EnrichedZeroDteSetup[]): Promis
       ...(s.direction_confirmed != null ? { dossier_agrees: s.direction_confirmed } : {}),
     },
     // Feature vector pinned at first flag — the intelligence layer's raw material (feature-vector.ts),
-    // COALESCE-pinned by the upsert so refresh ticks never re-stamp a committed row. flowQuality is
-    // now threaded from the aggregation site (board.ts computes it on the setup's own tape); regime
-    // is still deferred (it needs the session-context fetch a later slice threads) and persists null.
+    // COALESCE-pinned by the upsert so refresh ticks never re-stamp a committed row. Both engines are
+    // now threaded: flowQuality from the aggregation site (board.ts, per-setup tape) and regime from
+    // the session-context fetch (SPY proxy, session-level) — no fq_*/reg_* field persists a deferred
+    // null anymore when the data is present.
     feature_vector: buildSetupFeatureVector({
       ticker: s.ticker,
       direction: s.direction,
       etMinutes: hour * 60 + minute - 570, // minutes since the 9:30 ET open (570)
       evidenceScore: s.score,
       flowQuality: s.flow_quality ?? null,
+      regime: sessionCtx?.regime ?? null,
       dossierScore: s.dossier_score ?? null,
       vwapDistPct: s.intraday?.vwap_dist_pct ?? null,
       orBreak: s.intraday?.or_break ?? null,
