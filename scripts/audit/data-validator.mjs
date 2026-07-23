@@ -271,32 +271,46 @@ async function main() {
     if (u?.id) { userId = u.id; backend('PATCH', `/users/${userId}`, { public_metadata: { role: 'admin', tier: 'premium' } }); }
   }
   if (!userId) { rec('auth: create/adopt temp user', 'FAIL', create.b.slice(0, 160)); return; }
-  const ticket = J(backend('POST', '/sign_in_tokens', { user_id: userId }))?.token;
-  const si = curl({ method: 'POST', url: `${FAPI}/v1/client/sign_ins?_clerk_js_version=${CJS}`, headers: { Origin: APP, Referer: `${APP}/`, 'Content-Type': 'application/x-www-form-urlencoded' }, form: { strategy: 'ticket' }, urlencodeForm: { ticket }, saveJar: true, jar: true });
-  const sid = J(si)?.response?.created_session_id;
-  if (!sid) { rec('auth: FAPI ticket exchange', 'FAIL', si.b.slice(0, 160)); return; }
-  let tok = null;
-  // Clerk's middleware signs a request out if the session token's `iat` predates
-  // the `__client_uat` cookie ("session-token-iat-before-client-uat"). Pinning
-  // this to a moment BEFORE the first mint (rather than recomputing Date.now()
-  // on every request) guarantees it never overtakes any token minted afterward
-  // — recomputing per-request made every app() call after the first one in a
-  // run silently receive a 401 body once a wall-clock second ticked over.
-  const clientUat = Math.floor(Date.now() / 1000);
-  const mint = () => { tok = J(curl({ method: 'POST', url: `${FAPI}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`, headers: { Origin: APP, Referer: `${APP}/`, 'Content-Type': 'application/x-www-form-urlencoded' }, jar: true, saveJar: true }))?.jwt; return tok; };
-  mint();
+  // Session state is RE-ESTABLISHABLE. A long-running WATCH loop outlives a single Clerk
+  // session: mint() (a cheap token refresh off an existing session) eventually returns null once
+  // the session ages out / the FAPI /tokens endpoint stops honoring it — at which point the ONLY
+  // recovery is a full re-sign-in (new sign_in_token → ticket exchange → fresh session id). The
+  // original one-auth watch silently degraded here: mint() started failing ~10 min in, every
+  // app() call shipped `__session=null` → 401 → all app-derived checks skipped to INFO, and the
+  // pass still printed "✓ all clean" on ~1 surviving check. So sid/clientUat are `let`, re-pinned
+  // per SESSION, and app() escalates re-mint → full re-establish.
+  let tok = null, sid = null, clientUat = 0, authDead = false;
+  const mint = () => { tok = sid ? J(curl({ method: 'POST', url: `${FAPI}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`, headers: { Origin: APP, Referer: `${APP}/`, 'Content-Type': 'application/x-www-form-urlencoded' }, jar: true, saveJar: true }))?.jwt : null; return tok; };
+  // Clerk's middleware signs a request out if the session token's `iat` predates the
+  // `__client_uat` cookie ("session-token-iat-before-client-uat"). Pin client_uat once per
+  // SESSION (just before that session's first mint) — never per request (recomputing per request
+  // made every app() call after the first silently 401 once a wall-clock second ticked over). A
+  // re-established session re-pins it, so each session's minted tokens always post-date its uat.
+  const establishSession = () => {
+    const ticket = J(backend('POST', '/sign_in_tokens', { user_id: userId }))?.token;
+    if (!ticket) return false;
+    const si = curl({ method: 'POST', url: `${FAPI}/v1/client/sign_ins?_clerk_js_version=${CJS}`, headers: { Origin: APP, Referer: `${APP}/`, 'Content-Type': 'application/x-www-form-urlencoded' }, form: { strategy: 'ticket' }, urlencodeForm: { ticket }, saveJar: true, jar: true });
+    const newSid = J(si)?.response?.created_session_id;
+    if (!newSid) return false;
+    sid = newSid;
+    clientUat = Math.floor(Date.now() / 1000);
+    return !!mint();
+  };
+  // Cheap refresh → full re-establish, with a per-pass dead-flag so a genuinely-down Clerk can't
+  // trigger a re-sign-in STORM (one dead session × ~30 app() calls × retries = FAPI rate-limit).
+  const ensureAuth = () => { if (tok) return true; if (authDead) return false; if (mint()) return true; if (establishSession()) return true; authDead = true; return false; };
+  if (!establishSession()) { rec('auth: FAPI ticket exchange', 'FAIL', 'could not establish session'); return; }
   const app = (path) => {
     for (let i = 0; i < 2; i++) {
-      if (!tok) mint();
+      if (!ensureAuth()) return null;
       const r = curl({ url: `${APP}${path}`, headers: { Cookie: `__session=${tok}; __client_uat=${clientUat}`, Accept: 'application/json' } });
-      if (isAuthFailureStatus(r.s)) { tok = null; continue; }
+      if (isAuthFailureStatus(r.s)) { tok = null; if (i === 0 && !authDead) establishSession(); continue; }
       const j = J(r);
       if (j) return j;
       tok = null;
     }
     return null;
   };
-  rec('auth: admin session established', 'PASS', `session ${sid}`);
 
   // WATCH mode (per-minute continuous validation): authenticate ONCE above, then loop the full check
   // battery on a persistent session, REFRESHING the token each pass (mint() — NOT a re-sign-in, so no
@@ -306,8 +320,12 @@ async function main() {
   const WATCH_STATUS = process.env.WATCH_STATUS || join(OUT, 'watch.status');
   const WATCH_LOG = process.env.WATCH_LOG || join(OUT, 'watch.log');
   const WATCH_END = process.env.WATCH_END_UTC ? Date.parse(process.env.WATCH_END_UTC) : Infinity;
+  let baselinePass = 0; // pass-1 healthy PASS count; later passes flagged if they collapse below it
   for (let iter = 1; ; iter++) {
-    if (iter > 1) { checks.length = 0; mint(); }
+    if (iter > 1) { checks.length = 0; authDead = false; tok = null; if (!ensureAuth()) establishSession(); }
+    // Re-assert auth EVERY pass. A dead/unrecoverable session now records a FAIL (was: silent —
+    // app() returned null, every payload check skipped to INFO, and the pass read "all clean").
+    rec('auth: admin session', ensureAuth() ? 'PASS' : 'FAIL', ensureAuth() ? `session ${sid}` : 'session unrecoverable this pass (re-sign-in failed)');
 
   // --- app payloads ---
   const P = {
@@ -532,7 +550,16 @@ async function main() {
     const t = checks.reduce((m, c) => ((m[c.status] = (m[c.status] || 0) + 1), m), {});
     const et = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' }).format(new Date());
     const bad = checks.filter((c) => c.status === 'FAIL' || c.status === 'WARN');
-    const line = `[${et} ET pass#${iter}] ${JSON.stringify(t)}${bad.length ? ' ⚠ ' + bad.map((f) => `${f.name}: ${(f.detail || '').slice(0, 110)}`).join(' | ') : ' ✓ all clean'}`;
+    // Coverage-collapse backstop: even with the auth re-establish above, if a pass's PASS count
+    // ever craters vs the pass-1 baseline (auth AND upstream both dead, an upstream outage, etc.)
+    // it must NOT read "✓ all clean" — a near-empty pass is a validation GAP, not a green light.
+    const passN = t.PASS || 0;
+    if (iter === 1 && passN >= 5) baselinePass = passN;
+    const degraded = baselinePass >= 5 && passN < baselinePass * 0.6;
+    const tail = bad.length ? ' ⚠ ' + bad.map((f) => `${f.name}: ${(f.detail || '').slice(0, 110)}`).join(' | ')
+      : degraded ? ` ⚠ COVERAGE DROP: ${passN} PASS vs baseline ${baselinePass} — NOT actually all-clean (auth/upstream degraded)`
+      : ' ✓ all clean';
+    const line = `[${et} ET pass#${iter}] ${JSON.stringify(t)}${tail}`;
     try { appendFileSync(WATCH_LOG, line + '\n'); writeFileSync(WATCH_STATUS, line + '\n'); } catch {}
     console.log(line);
     if (Date.now() >= WATCH_END) break; // bounded run self-terminates → falls through to .finally() cleanup

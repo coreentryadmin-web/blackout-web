@@ -5,6 +5,34 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-23 — [HIGH, self-inflicted] `--watch` gave FALSE "all clean" after ~10min (silent auth decay) — FIXED
+
+**Severity HIGH** because it's the failure the whole audit layer exists to prevent: a validator that
+reports green while validating nothing. Caught by the 12:22 ET act-on-findings pass reading the live
+watch log — passes #9-15 showed `{"INFO":3,"PASS":1} ✓ all clean`, down from `{"PASS":32}` at launch.
+
+**Root cause.** The shipped `--watch` loop (PR #980) authenticated ONCE and only ever called `mint()`
+(a token refresh off the existing Clerk session) each pass. A Clerk session ages out after ~10 min;
+once it did, `mint()` returned null, every `app()` call shipped `Cookie: __session=null` → 401 → all
+~29 app-derived checks skipped to INFO ("payload unavailable"), leaving ~1 non-authed check (the
+Polygon/UW ground-truth ones) to carry a green summary. Two independent defects made it invisible:
+(1) no recovery path — `mint()` can't revive a dead session, only a full re-sign-in can; (2) the
+per-pass summary counted only PASS/FAIL/WARN, so a collapse from 32→1 PASS with everything else
+skipped (INFO) still printed "✓ all clean."
+
+**Evidence.** `validation-watch.out` pass#11-15: `[INFO] 0DTE board: no response … (fetch/auth
+failure)` on every app surface, `PASS:1`, yet `✓ all clean`. Reproduced the decay window; the ground-
+truth-only checks are exactly the 1 that survived.
+
+**Fix (`data-validator.mjs`).** (a) Session state is now re-establishable: `sid`/`clientUat` are `let`,
+and `establishSession()` does a fresh `sign_in_token → ticket → session`. `app()` escalates re-mint →
+full re-establish via `ensureAuth()`, with a per-pass `authDead` flag so a genuinely-down Clerk can't
+trigger a re-sign-in storm (FAPI rate-limit guard). (b) Auth is re-asserted EVERY pass — a dead session
+now records a `FAIL`, not silence. (c) Coverage-collapse backstop: a pass whose PASS count craters below
+60% of the pass-1 baseline prints `⚠ COVERAGE DROP … NOT actually all-clean`, never "✓ all clean".
+**Verified:** 6 consecutive passes hold `PASS:32`; one-shot mode + temp-user cleanup (DELETE 200/404)
+unchanged. Lesson: a "clean" signal must be able to distinguish *checked-and-passed* from *never-checked*.
+
 ## 2026-07-23 — [TOOLING] data-validator `--watch` = per-minute continuous validation (one auth)
 
 **What:** added a `WATCH_SECONDS` loop to `scripts/audit/data-validator.mjs` so the full authed check
