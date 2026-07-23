@@ -48,6 +48,33 @@ Take fewer, **triple-confirmed** trades (post-open timing + VWAP-side + market-a
 **let-it-run −50/+100** geometry → ~40% win / +16% EV. Gate the rest out. Ship the confluence tier
 **calibration-first**; let the ledger confirm before it gates.
 
+### E4 — the WIN-RATE ceiling, and the mirror engine (iron condor)
+"Make it 70–80% WR" is **unreachable by tuning directional buying.** A stop/target sweep on the confluent
+subset shows a tighter profit target buys win rate but *destroys* EV: even a +25% scalp caps at ~65% WR
+and goes negative (the −50/+100 let-it-run at ~40% WR is the EV peak). Win rate on a **long** 0DTE option
+is bounded by needing a directional move — you can't buy your way to 75%.
+
+The 70–80% WR lives on the **other side of the trade: SELLING** a 0DTE iron condor. Same infra, opposite
+skew. Backtest (`npm run wr:condor`, SPY/QQQ/IWM × 25 sessions, 11:00 entry, close settle) — WIN = close
+lands inside both short strikes:
+```
+short width   ±0.40%  ±0.60%  ±0.80%  ±1.00%  ±1.50%
+WIN%            60      77      92      96     100      (n=75)
+```
+The shipped `selectIronCondor(target=80)` geometry graded over the same tape → **98.7% WR** (it rounds
+short strikes *away* from spot, so realized width ≥ nominal), with an **18.7% intraday-breach** rate
+(price *touched* a short then recovered by close). That breach number is the honest catch: **high WR is
+NEGATIVE skew** — a small credit ~80–99% of days, a bigger (but **DEFINED**, capped by the long wings)
+loss on the ~1–20% breakout days. WR is real; **profitability is not implied by WR** — it needs the credit
+priced right off the live chain + a breach stop + small size. Condors win on range days, directional wins
+on trend days → the two engines are **naturally hedged**.
+
+**Iron-condor decision:** ship the strike-selection core (`src/lib/zerodte/iron-condor.ts`, pure geometry:
+width-for-target-WR pushed **beyond the dealer GEX walls**, defined-risk wings) + the reproducible WR
+backtest (`condor-wr.mjs`) **calibration-first — evidence only, not gating.** The graded ledger (real
+credits, real breach-stop fills) graduates it into a live second play-type before it sizes real risk;
+until then it's a measured geometry + an honest skew warning, not an EV claim.
+
 ---
 
 ## Part 2 — Whole-market weekly BANGER engine
