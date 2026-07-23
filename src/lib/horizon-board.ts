@@ -77,6 +77,28 @@ export function makePlaySet(parts: Partial<Record<Horizon, HorizonPlay[]>>): Hor
   };
 }
 
+/**
+ * Scope an assembled board to a SINGLE horizon lane — the toggle model: when the desk shows only "Swings",
+ * the payload carries only the SWING lane's plays. The other lanes stay PRESENT (metadata + zero counts) so
+ * the toggle can still render all four chips; only their play arrays are emptied. Totals are recomputed to
+ * the surviving lane. `null` returns the board unchanged (the all-lanes / legacy view).
+ */
+export function scopeBoardToHorizon(board: HorizonBoard, horizon: Horizon | null): HorizonBoard {
+  if (horizon == null) return board;
+  const lanes = { ...board.lanes };
+  let totalCommitted = 0;
+  let totalWatch = 0;
+  for (const h of HORIZON_ORDER) {
+    if (h === horizon) {
+      totalCommitted += lanes[h].committedCount;
+      totalWatch += lanes[h].watchCount;
+    } else {
+      lanes[h] = { ...lanes[h], committed: [], watch: [], committedCount: 0, watchCount: 0 };
+    }
+  }
+  return { ...board, lanes, totalCommitted, totalWatch };
+}
+
 /** Assemble the three-board payload from a composed play set. `asOf` is caller-stamped (keeps this pure). */
 export function assembleHorizonBoard(set: HorizonPlaySet, asOf: string): HorizonBoard {
   const lanes = {

@@ -7,6 +7,8 @@ import { NextResponse } from "next/server";
 import { requireDatabaseInProduction } from "@/lib/db";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
+import { scopeBoardToHorizon } from "@/lib/horizon-board";
+import { horizonForView, parseNightHawkView } from "@/features/nighthawk/lib/nighthawk-view";
 import { horizonBoardFromZeroDtePayload } from "@/lib/zerodte/horizon-board-from-payload";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
@@ -28,8 +30,13 @@ export async function GET(req: NextRequest) {
 
   ensureDataSockets();
   try {
+    // Toggle scoping: ?view=0dte|swings|leaps|legacy (or ?horizon=) narrows the payload to one lane so the
+    // whole desk shows the selected horizon. Absent → the full board (all lanes). LEGACY has no horizon
+    // lane here (it's served by the separate evening-edition route), so it scopes to an all-empty board.
+    const viewParam = req.nextUrl.searchParams.get("view") ?? req.nextUrl.searchParams.get("horizon");
+    const horizon = viewParam ? horizonForView(parseNightHawkView(viewParam)) : null;
     const payload = await getZeroDteBoardPayload();
-    const board = horizonBoardFromZeroDtePayload(payload, payload.as_of);
+    const board = scopeBoardToHorizon(horizonBoardFromZeroDtePayload(payload, payload.as_of), horizon);
     return NextResponse.json(
       { board, upstream_ok: payload.upstream_ok, session: payload.session },
       {
