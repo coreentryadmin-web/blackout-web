@@ -19,6 +19,16 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
   more. Fix (`data-validator.mjs`): asset-class-aware tolerance — index/ETF names keep the tight 0.3%
   band, single names get a wider band (1.5% RTH) that still catches GROSS staleness. The code comment had
   already flagged this exact assumption as "worth revisiting if it false-fails in practice" — today it did.
+- **[FIXED] Validator false-FAILed `entry_premium` (basis mismatch, 11:00 checkpoint).** `0DTE ledger QQQ:
+  entry_premium` FAILed at logged 7.81 vs the option's ±3m flag-window range [5.29, 6.63]. Root cause:
+  `entry_premium` is `resolveLedgerEntryPremium(plan.entry_max, top_strike_avg_fill)` (plan.ts:146) — the
+  flow's AVERAGE FILL over the accumulation window (the "enter ≤ X" ceiling), which the grading uses as the
+  entry basis by design (`scan.ts:560` "MUST match entry_max") and is CONSERVATIVE (grades long entries at
+  the ceiling → understates wins, never overstates). The fill accumulated from the 9:30 open where the
+  option traded 7.78; the setup only flagged at 10:01 where it traded ~6, so the tight ±3m window missed the
+  real fill. Fix (`data-validator.mjs`): ground `entry_premium` against an ASYMMETRIC accumulation-aware
+  window (look back `ENTRY_PREM_LOOKBACK_MS`=150m + a small forward cushion) — 7.81 now sits inside [3.61,
+  7.78] → PASS. Still catches a fabricated premium the contract never traded near all day. NOT an app bug.
 - **[OPEN, app-design] The board's `underlying_price` is FLOW-DERIVED, so it lags on sparse-flow names.**
   `scan.ts` sets `underlying_price` from the UW flow alerts (`f.underlying_price`), not a live quote — so
   it's only as fresh as the name's flow cadence. SPY/QQQ (constant flow) stay live-fresh; MU (sparse flow)
