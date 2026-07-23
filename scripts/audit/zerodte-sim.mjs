@@ -116,6 +116,7 @@ const { fetchAggBars } = await import(`${SRC}lib/providers/polygon-largo.ts`);
  * flat-timeout. Cortex evidence is null (thesis-break can't be replayed off-line → skipped, never
  * fabricated). Returns { pnl_pct, outcome } or null. RTH-capped at 16:00 ET.
  */
+const PROTECT_AT = process.env.RATCHET_PROTECT_AT === "close" ? "close" : "low";
 function gradeThroughExitEngine(bars, entry, planStop, planTarget, flaggedMs) {
   if (!(entry > 0)) return null;
   const seq = [...bars].filter((b) => b.t >= flaggedMs && etMinOfBar(b.t) <= 960).sort((a, z) => a.t - z.t);
@@ -126,9 +127,13 @@ function gradeThroughExitEngine(bars, entry, planStop, planTarget, flaggedMs) {
     lastClose = b.c;
     const age = (b.t - flaggedMs) / 60000;
     const mk = (m, pk) => ({ entryPremium: entry, currentMark: m, peakPremium: pk, ageMinutes: age, cortexEvidence: null, planStop, planTarget, status: trimmed ? "TRIM" : "OPEN", trimmed, entryCortexScore: null });
-    // 1) adverse extreme (low) → PROTECTIVE exit only (plan-stop or ratchet/runner floor). Flat-timeout
-    // is a time-based scratch at the mark, not an adverse-wick event, so it's handled at the close below.
-    const dLow = evaluateExitState(mk(b.l, peak));
+    // 1) PROTECTIVE exit only (plan-stop or ratchet/runner floor). Flat-timeout is a time-based scratch
+    // at the mark, handled at the close below. The protective mark brackets the live exit's fidelity:
+    // RATCHET_PROTECT_AT=low (default) uses the bar LOW — the wick, which OVER-triggers vs live SSE marks
+    // (a dip that recovers still exits); =close uses the bar CLOSE — which UNDER-triggers (only a sustained
+    // breach exits). The true live behavior sits between; running both brackets the ratchet's real cost.
+    const protMark = PROTECT_AT === "close" ? b.c : b.l;
+    const dLow = evaluateExitState(mk(protMark, peak));
     if (dLow.action === "EXIT" && (dLow.reason === "plan_stop" || /ratchet|runner/.test(dLow.reason))) {
       const exitPnl = dLow.reason === "plan_stop" ? pnlAt(planStop) : dLow.floorPnlPct;
       realized += remaining * exitPnl; exited = true;
