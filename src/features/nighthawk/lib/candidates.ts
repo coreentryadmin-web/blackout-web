@@ -284,6 +284,7 @@ const LANE_MAX_UNUSUAL = 12;
 const LANE_MAX_CATALYST = 10;
 const LANE_MAX_PREDICTIONS = 8;
 const LANE_MAX_MOVERS = 8;
+const LANE_MAX_BREAKOUT = 10;
 
 type LaneEntry = { ticker: string; rawScore: number };
 
@@ -408,6 +409,67 @@ function laneMovers(ctx: MarketWideContext): Map<string, number> {
   return normalizeToMax(entries, LANE_MAX_MOVERS);
 }
 
+// ── Whole-market breakout lane (P2b) ────────────────────────────────────────────────
+// The banger backtest (docs/audit/0DTE-RESEARCH.md) showed the confluence of gain% × VOLUME ×
+// CLOSE-STRENGTH is what separates a real breakout from a weak-closing pop — heavy-volume movers hit
+// ≥2× 91% vs 75%. laneMovers only weights abs(change_pct); this lane screens the WHOLE market
+// (Polygon grouped-daily, already fetched for breadth — no extra API call) for closed-strong,
+// high-volume breakouts and scores them by gain × close-strength. Additive: the corroboration bonus
+// handles overlap with the flow/movers lanes, and the existing gates/scorer still decide what
+// actually publishes — this only widens the top of the funnel toward tradeable bangers.
+export const BREAKOUT_MIN_PRICE = 5;
+export const BREAKOUT_MAX_PRICE = 400;
+export const BREAKOUT_MIN_VOLUME = 1_000_000;
+export const BREAKOUT_MIN_GAIN = 0.05; // intraday (c−o)/o
+export const BREAKOUT_MIN_CLOSE_STRENGTH = 0.5; // (c−l)/(h−l) — closed in the upper half of the range
+
+/** One whole-market breakout candidate screened from a grouped-daily bar. */
+export type BreakoutMover = {
+  ticker: string;
+  /** Intraday gain (c−o)/o. */
+  gain: number;
+  volume: number;
+  /** (c−l)/(h−l) — 1 = closed on the high (strong), 0 = closed on the low (fade). */
+  close_strength: number;
+  /** volume × close = $-volume, the liquidity/conviction rank. */
+  dollar: number;
+};
+
+/** Pure whole-market breakout screen over grouped-daily bars. Returns the top `maxKeep` by $-volume.
+ *  Bar shape is Polygon grouped-daily (T/o/h/l/c/v). Deterministic; no IO. */
+export function screenBreakoutMovers(
+  results: Array<{ T?: string; o?: number; h?: number; l?: number; c?: number; v?: number }>,
+  maxKeep = 40
+): BreakoutMover[] {
+  const out: BreakoutMover[] = [];
+  for (const r of results) {
+    const ticker = String(r.T ?? "").toUpperCase();
+    if (!ticker || ticker.includes(".") || isExcludedInstrument(ticker)) continue;
+    const c = Number(r.c);
+    const o = Number(r.o);
+    const h = Number(r.h);
+    const l = Number(r.l);
+    const v = Number(r.v);
+    if (!(c >= BREAKOUT_MIN_PRICE && c <= BREAKOUT_MAX_PRICE) || !(v >= BREAKOUT_MIN_VOLUME)) continue;
+    if (!(o > 0) || (c - o) / o < BREAKOUT_MIN_GAIN) continue;
+    const range = h - l;
+    const closeStrength = range > 0 ? (c - l) / range : 0;
+    if (closeStrength < BREAKOUT_MIN_CLOSE_STRENGTH) continue;
+    out.push({ ticker, gain: (c - o) / o, volume: v, close_strength: closeStrength, dollar: v * c });
+  }
+  return out.sort((a, b) => b.dollar - a.dollar).slice(0, maxKeep);
+}
+
+function laneBreakout(ctx: MarketWideContext): Map<string, number> {
+  const entries: LaneEntry[] = [];
+  for (const m of ctx.breakout_movers ?? []) {
+    if (isExcludedInstrument(m.ticker)) continue;
+    // A strong-closing 10% mover outranks a weak-closing 10% one; volume is already gated in the screen.
+    entries.push({ ticker: m.ticker.toUpperCase(), rawScore: m.gain * (0.5 + m.close_strength) });
+  }
+  return normalizeToMax(entries, LANE_MAX_BREAKOUT);
+}
+
 export type MultiSourceCandidateRow = {
   ticker: string;
   composite_score: number;
@@ -433,6 +495,7 @@ export async function extractMultiSourceCandidates(
     ["catalyst", laneCatalyst(ctx)],
     ["predictions", lanePredictions(ctx.predictions_consensus)],
     ["movers", laneMovers(ctx)],
+    ["breakout", laneBreakout(ctx)],
   ];
 
   const composite = new Map<string, { score: number; sources: string[]; laneScores: Record<string, number> }>();

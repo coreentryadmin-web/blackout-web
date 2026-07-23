@@ -21,6 +21,7 @@ import {
   type PredictionConsensusSignal,
 } from "@/lib/providers/unusual-whales";
 import { fetchMarketMovers } from "@/lib/providers/polygon";
+import { screenBreakoutMovers } from "./candidates";
 import { summarizeGroupGreekFlow, type GroupGreekFlowSummary } from "@/lib/group-greek-flow-summary";
 import type { UwMacroIndicatorSnapshot } from "@/lib/providers/unusual-whales";
 import {
@@ -75,6 +76,9 @@ export type MarketWideContext = {
   unusual_trades: Record<string, unknown>[];
   /** Polygon gainers/losers — today's biggest % movers (momentum candidates). */
   market_movers: Array<{ ticker: string; change_pct: number; price: number; volume?: number }>;
+  /** Whole-market breakout screen (P2b) — closed-strong, high-volume movers from the grouped-daily
+   *  summary already fetched for breadth (no extra API call). Feeds the discovery `breakout` lane. */
+  breakout_movers: import("./candidates").BreakoutMover[];
 };
 
 function flowRowToDict(row: { raw: Record<string, unknown>; flow: { ticker: string; premium: number } }) {
@@ -364,5 +368,8 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
     platform_intel: platformIntel,
     unusual_trades: (unusualTrades as Record<string, unknown>[]) ?? [],
     market_movers: marketMovers ?? [],
+    // Whole-market breakout screen off the grouped-daily summary already fetched for breadth — no
+    // extra API call. Best-effort: no daily data → empty lane, never a throw (RECAP-MUST-NOT-THROW).
+    breakout_movers: dailyMarket?.results?.length ? screenBreakoutMovers(dailyMarket.results, 40) : [],
   };
 }
