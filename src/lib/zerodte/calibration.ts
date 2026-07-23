@@ -136,6 +136,12 @@ export type CalibrationReport = {
   /** Measured record of the merit tiers (PR-F) — where A+ is earned or withheld
    *  and where a mis-weighted tier function gets caught (tier_inversion). */
   tier_record: TierRecordAnalysis;
+  /** Graded record by multi-day accumulation alignment (aligned / misaligned / no_signal) — evidence
+   *  for whether the flow-accumulation signal predicts wins before it ever gates. */
+  accumulation_alignment: CalibrationBucket[];
+  /** Graded record by confluence tier (triple / double / weak / no_read) — the "double" bucket is the
+   *  +15.9% EV research finding; this is where it earns (or fails to earn) enforcement. */
+  confluence_tiers: CalibrationBucket[];
   available: boolean;
 };
 
@@ -313,6 +319,48 @@ function bucketOf(label: string, rows: GradablePlayRow[]): CalibrationBucket {
   };
 }
 
+// ── Calibration-first evidence buckets: multi-day accumulation alignment + confluence tier ─────────
+// Both signals ship as EVIDENCE ONLY on the board (flow-accumulation-context.ts, confluence.ts) —
+// pinned into each row's entry_context but never gating. Bucketing GRADED outcomes by each answers,
+// with the exact same n / win-rate / avg-PnL math as every other bucket, whether they actually
+// predict wins — the prerequisite for either graduating into scoring. Reads are defensive: an
+// absent/old blob simply lands in the no-signal bucket, never a fabricated verdict.
+
+function readAlignment(ec: Record<string, unknown> | null | undefined): boolean | null {
+  const fa = (ec?.flow_accumulation ?? null) as { aligned?: unknown } | null;
+  return fa && typeof fa.aligned === "boolean" ? fa.aligned : null;
+}
+
+function readConfluenceTier(ec: Record<string, unknown> | null | undefined): "triple" | "double" | "weak" | null {
+  const c = (ec?.confluence ?? null) as { tier?: unknown } | null;
+  return c?.tier === "triple" || c?.tier === "double" || c?.tier === "weak" ? c.tier : null;
+}
+
+/** Graded record bucketed by whether today's direction agreed with multi-day accumulation. */
+export function analyzeAccumulationAlignment(graded: CalibrationPlayRow[]): CalibrationBucket[] {
+  const aligned: CalibrationPlayRow[] = [];
+  const misaligned: CalibrationPlayRow[] = [];
+  const noSignal: CalibrationPlayRow[] = [];
+  for (const r of graded) {
+    const a = readAlignment(r.entry_context);
+    (a === true ? aligned : a === false ? misaligned : noSignal).push(r);
+  }
+  return [bucketOf("aligned", aligned), bucketOf("misaligned", misaligned), bucketOf("no_signal", noSignal)];
+}
+
+/** Graded record bucketed by confluence tier — the "double" bucket is the +15.9% EV research finding. */
+export function analyzeConfluenceTiers(graded: CalibrationPlayRow[]): CalibrationBucket[] {
+  const triple: CalibrationPlayRow[] = [];
+  const double: CalibrationPlayRow[] = [];
+  const weak: CalibrationPlayRow[] = [];
+  const noRead: CalibrationPlayRow[] = [];
+  for (const r of graded) {
+    const t = readConfluenceTier(r.entry_context);
+    (t === "triple" ? triple : t === "double" ? double : t === "weak" ? weak : noRead).push(r);
+  }
+  return [bucketOf("triple", triple), bucketOf("double", double), bucketOf("weak", weak), bucketOf("no_read", noRead)];
+}
+
 /** Unrounded win rate for the graduation delta — the rounded display rate loses up
  *  to 0.05 pts per bucket, enough to flip a boundary case at the 15-pt line. */
 function rawWinRatePct(rows: GradablePlayRow[]): number | null {
@@ -468,6 +516,10 @@ export function analyzeGateCalibration(input: {
     // Retro-tiered off each row's pinned entry_context — measurable from day one,
     // no tier column or backfill required (PR-F; stamping is the follow-up PR).
     tier_record: analyzeTierRecord(graded),
+    // Calibration-first evidence loop for the two board signals (accumulation + confluence): both are
+    // pinned in entry_context and bucketed here so the ledger decides whether either graduates.
+    accumulation_alignment: analyzeAccumulationAlignment(graded),
+    confluence_tiers: analyzeConfluenceTiers(graded),
     available: graded.length > 0,
   };
 }
