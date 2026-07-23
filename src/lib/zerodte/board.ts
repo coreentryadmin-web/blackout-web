@@ -803,6 +803,12 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
   earnings: EarningsFlag | null;
   /** Fresh headline (<2h) naming this ticker. */
   news_hot: NewsHeat | null;
+  /** Multi-day flow-accumulation read (the "stacked hits over days" memory) — whether today's 0DTE
+   *  direction is confirmed by (or fights) multi-day stacked positioning, + the magnet strike being
+   *  built. Attached by the scan from a multi-day flow window. EVIDENCE ONLY (calibration-first):
+   *  present on the card + persisted for the graded ledger, but it does not move the score or gate
+   *  the board yet. Null = no multi-day signal for this name. See flow-accumulation-context.ts. */
+  flow_accumulation?: import("./flow-accumulation-context").ZeroDteFlowAccumulation | null;
 };
 
 // ── Stage 4 audit trail (alert_audit_log) ─────────────────────────────────────────
