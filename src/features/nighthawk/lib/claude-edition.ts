@@ -117,6 +117,10 @@ export async function generateEditionPlays(params: {
 
   const detTickers = params.ranked.slice(0, EDITION_CHAIN_PREFETCH).map((s) => s.ticker);
   const detChains = await fetchEditionChains({ stockTickers: detTickers, dossiers: params.dossiers });
+  // Tickers surfaced by the whole-market breakout lane get the scale-out exit guidance (advisory
+  // risk_note — the proven banger exit; does not change the plan or grading). Sourced from the ctx's
+  // breakout screen already computed in fetchMarketWideContext (no new work here).
+  const bangerTickers = new Set((params.ctx.breakout_movers ?? []).map((m) => m.ticker.toUpperCase()));
   let { plays: detPlays, funnel: detFunnel } = buildDeterministicEditionPlays({
     ranked: params.ranked,
     dossierMap,
@@ -125,6 +129,7 @@ export async function generateEditionPlays(params: {
     // Thread the caller's DTE ceiling so the intraday day-trade path (maxDte 0/1) actually selects a
     // same-day/1-DTE contract instead of the overnight ≥5-DTE swing default. Was dropped here.
     maxDte: params.maxDte ?? null,
+    bangerTickers,
   });
 
   // PR-N13: when normal synthesis produces zero plays (all candidates failed geometry,

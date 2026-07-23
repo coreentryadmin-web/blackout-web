@@ -621,3 +621,30 @@ test("pickChainContract: maxDte=0 returns null when the chain has NO same-day ex
   };
   assert.equal(pickChainContract(noSameDay, "long", 0), null);
 });
+
+test("bangerTickers get the scale-out exit risk_note; non-banger plays do not", () => {
+  const ranked = [scored("AAA", "long", 68), scored("BBB", "short", 61)];
+  const chains = { AAA: chainAround(120), BBB: chainAround(80) };
+  const dossierMap = { AAA: dossier("AAA", 120), BBB: dossier("BBB", 80) };
+
+  const { plays } = buildDeterministicEditionPlays({
+    ranked,
+    dossierMap,
+    chains,
+    target: 5,
+    bangerTickers: new Set(["AAA"]), // only AAA is a whole-market breakout
+  });
+  const aaa = plays.find((p) => p.ticker === "AAA");
+  const bbb = plays.find((p) => p.ticker === "BBB");
+  assert.ok(aaa, "AAA play built");
+  assert.match(aaa.risk_note ?? "", /scale out|Banger exit/i, "banger play carries the scale-out guidance");
+  assert.equal(bbb?.risk_note, undefined, "non-banger play has no scale-out note");
+});
+
+test("no bangerTickers passed → no play gets a scale-out note (backwards compatible)", () => {
+  const ranked = [scored("AAA", "long", 68)];
+  const chains = { AAA: chainAround(120) };
+  const dossierMap = { AAA: dossier("AAA", 120) };
+  const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains });
+  assert.equal(plays[0]?.risk_note, undefined);
+});

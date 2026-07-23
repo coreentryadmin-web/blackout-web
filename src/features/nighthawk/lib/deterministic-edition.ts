@@ -47,6 +47,7 @@ import { groundPlays } from "./grounding";
 import { GROUNDING_MIN_OI, tieredMinOi } from "./grounding";
 import { MAX_OPTION_PREMIUM_PER_SHARE, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR } from "./constants";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
 
 /** Default number of plays a full edition publishes. Mirrors the Claude path's top-5 shape. */
 export const DETERMINISTIC_EDITION_TARGET = 5;
@@ -439,7 +440,8 @@ function buildPlay(
   dossier: TickerDossier | undefined,
   contract: PickedContract | null,
   levels: { entry_range: string; target: string; stop: string },
-  rank: number
+  rank: number,
+  bangerTickers?: Set<string>
 ): PlaybookPlay {
   // PR-N29: ensure the stock target makes the option profitable — a LONG target below
   // the call strike means the option expires worthless at "target", which is incoherent.
@@ -479,6 +481,12 @@ function buildPlay(
     iv_rank: dossier?.iv_rank ?? undefined,
     rr_ratio: rr ?? undefined,
   };
+  // Breakout/banger-sourced plays get the scale-out exit guidance (the proven +EV lever): these cheap
+  // OTM momentum plays spike then decay, so hold-to-target is the wrong exit. Advisory only (risk_note)
+  // — it does NOT change the play's plan/target/stop or how it's graded.
+  if (bangerTickers?.has(scored.ticker.toUpperCase())) {
+    base.risk_note = bangerScaleOutNote();
+  }
   if (contract && !contract.caveat) {
     return applyPremiumCapToPlay(base, { entry_premium: contract.premium, options_play });
   }
@@ -504,6 +512,8 @@ export function buildDeterministicEditionPlays(params: {
   target?: number;
   /** 0 or 1 → select a same-day/1-DTE contract (intraday day-trade path). null/undefined → overnight swing. */
   maxDte?: number | null;
+  /** Tickers surfaced by the whole-market breakout lane — these get the scale-out exit risk_note. */
+  bangerTickers?: Set<string>;
 }): { plays: PlaybookPlay[]; funnel: { candidates: number; score_below_floor: number; contract_ok: number; stock_only: number; no_chain: number; no_spot: number; premium_capped: number; geometry_fail: number; geometry_ok: number; premium_ok: number; grounded: number; dropped_ungrounded: number } } {
   const target = params.target ?? DETERMINISTIC_EDITION_TARGET;
   // PR-N18: increased buffer from target+12 to target+20 — with 60 candidates and wider
@@ -549,7 +559,7 @@ export function buildDeterministicEditionPlays(params: {
     }
 
     const levels = resolveLevels(dossier, scored.direction, spot);
-    const play = buildPlay(scored, dossier, contract, levels, built.length + 1);
+    const play = buildPlay(scored, dossier, contract, levels, built.length + 1, params.bangerTickers);
 
     if (contract && !contract.caveat && play.premium_cap_ok === false) {
       premiumCapCount += 1;
@@ -618,7 +628,7 @@ export function buildDeterministicEditionPlays(params: {
         if (sp == null || !Number.isFinite(sp) || sp <= 0) continue;
         const ctr = ch ? pickChainContract(ch, scored.direction, params.maxDte) : null;
         const lvl = resolveLevels(dos, scored.direction, sp);
-        const p = buildPlay(scored, dos, ctr, lvl, target);
+        const p = buildPlay(scored, dos, ctr, lvl, target, params.bangerTickers);
         if (!validatePlayGeometry(p).ok) continue;
         const hedgeWarnings = p.gate_warnings ? [...p.gate_warnings] : [];
         hedgeWarnings.push(`Hedge/contrarian play (score ${scored.score}) — minority-view balance against ${dominant} book`);
@@ -658,7 +668,7 @@ export function buildDeterministicEditionPlays(params: {
 
           const ctr = ch ? pickChainContract(ch, contrarian.direction, params.maxDte) : null;
           const lvl = resolveLevels(dos, contrarian.direction, sp);
-          const p = buildPlay(contrarian, dos, ctr, lvl, target);
+          const p = buildPlay(contrarian, dos, ctr, lvl, target, params.bangerTickers);
           if (!validatePlayGeometry(p).ok) { contrarianScores[contrarianScores.length - 1] += ":geom-fail"; continue; }
 
           if (!bestContrarian || contrarian.score > bestContrarian.scored.score) {
@@ -726,6 +736,8 @@ export function buildRescuePlays(params: {
   target?: number;
   /** 0 or 1 → select a same-day/1-DTE contract (intraday day-trade path). null/undefined → overnight swing. */
   maxDte?: number | null;
+  /** Tickers surfaced by the whole-market breakout lane — these get the scale-out exit risk_note. */
+  bangerTickers?: Set<string>;
 }): PlaybookPlay[] {
   const target = params.target ?? DETERMINISTIC_EDITION_TARGET;
   const plays: PlaybookPlay[] = [];
