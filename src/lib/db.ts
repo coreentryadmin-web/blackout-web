@@ -758,6 +758,14 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE zerodte_setup_log ADD COLUMN IF NOT EXISTS gate_calibration_json JSONB;
   `);
+  // Feature vector pinned at commit — the flow-quality / regime / technicals / positioning snapshot
+  // (src/lib/zerodte/feature-vector.ts) that the intelligence layer (probability engine, historical
+  // similarity, Bayesian likelihoods, Kelly sizing) reads once it's joined to the graded outcome and
+  // accumulated over N sessions. Additive JSONB, COALESCE-pinned first-write-wins exactly like
+  // entry_context — a later refresh tick never re-stamps a committed row (no hindsight).
+  await p.query(`
+    ALTER TABLE zerodte_setup_log ADD COLUMN IF NOT EXISTS feature_vector JSONB;
+  `);
   // BLACKOUT Intelligence Engine — every answered question logged with its route
   // (deterministic router vs Claude fallback) and numeric-claim verification, so
   // router coverage, verification rate, and cost avoided are queryable from day one.
@@ -4423,6 +4431,7 @@ export type ZeroDteSetupLogRow = {
    *  committed_at_et as of FIRST flag — see zerodte/entry-context.ts. NULL on
    *  every row committed before the column shipped; consumers must not assume it. */
   entry_context: Record<string, unknown> | null;
+  feature_vector: Record<string, unknown> | null;
 };
 
 export type ZeroDteSetupLogUpsert = {
@@ -4445,6 +4454,9 @@ export type ZeroDteSetupLogUpsert = {
   /** Context-at-entry blob (C-2). Optional so existing callers/tests are untouched;
    *  pinned at first flag by the upsert below (never re-stamped by a refresh tick). */
   entry_context?: Record<string, unknown> | null;
+  /** Setup feature vector (feature-vector.ts) pinned at first flag — the intelligence layer's raw
+   *  material. Optional; COALESCE-pinned by the upsert exactly like entry_context. */
+  feature_vector?: Record<string, unknown> | null;
 };
 
 /** Upsert scanner finds — one row per (session, ticker). First sighting pins
@@ -4472,8 +4484,8 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
         session_date, ticker, direction, top_strike, expiry, score, score_max,
         dossier_score, conviction, gross_premium, spike, underlying_at_flag,
         underlying_latest, flags_json, entry_premium, flow_avg_fill, plan_json,
-        gate_calibration_json, entry_context, first_flagged_at, last_seen_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$11,$12,$13,$14,$15,$16,$17,NOW(),NOW())
+        gate_calibration_json, entry_context, feature_vector, first_flagged_at, last_seen_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$11,$12,$13,$14,$15,$16,$17,$18,NOW(),NOW())
       ON CONFLICT (session_date, ticker) DO UPDATE SET
         score = EXCLUDED.score,
         score_max = GREATEST(zerodte_setup_log.score_max, EXCLUDED.score),
@@ -4501,6 +4513,9 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
         -- entry_context is PINNED with the plan fields: "what did the desk look like
         -- at commit" must never be re-stamped by a later refresh tick (C-2).
         entry_context = COALESCE(zerodte_setup_log.entry_context, EXCLUDED.entry_context),
+        -- feature_vector pinned at first flag (same no-hindsight rule as entry_context): the
+        -- intelligence layer must read the setup as it was at commit, never re-stamped by a refresh.
+        feature_vector = COALESCE(zerodte_setup_log.feature_vector, EXCLUDED.feature_vector),
         last_seen_at = NOW()
       RETURNING (xmax = 0) AS inserted
       `,
@@ -4522,6 +4537,7 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
         r.plan_json,
         r.gate_calibration_json,
         r.entry_context ?? null,
+        r.feature_vector ?? null,
       ]
     );
     if (res.rows[0]?.inserted === true) freshlyFlagged.add(ticker);
@@ -5058,6 +5074,7 @@ function mapZeroDteLogRow(r: QueryResultRow): ZeroDteSetupLogRow {
     trough_premium: r.trough_premium != null ? Number(r.trough_premium) : null,
     gate_calibration_json: (r.gate_calibration_json as Record<string, unknown>) ?? null,
     entry_context: (r.entry_context as Record<string, unknown>) ?? null,
+    feature_vector: (r.feature_vector as Record<string, unknown>) ?? null,
   };
 }
 

@@ -96,6 +96,18 @@ test("numeric and categorical key sets are disjoint", () => {
   for (const k of NUMERIC_FEATURE_KEYS) assert.ok(!cat.has(k), `${k} is in both key sets`);
 });
 
+test("deferred flowQuality / regime persist as null throughout — never fabricated zeros", () => {
+  const v = buildSetupFeatureVector(inputs({ flowQuality: null, regime: null }));
+  assert.equal(v.fq_score, null);
+  assert.equal(v.fq_momentum, null);
+  assert.equal(v.fq_accelerating, null);
+  assert.equal(v.reg_structure, null);
+  assert.equal(v.reg_opex, null);
+  // the non-deferred features are still present
+  assert.equal(v.evidence_score, 82);
+  assert.equal(v.rsi14, 58);
+});
+
 test("every numeric key resolves to a number or null on a full vector", () => {
   const v = buildSetupFeatureVector(inputs());
   for (const k of NUMERIC_FEATURE_KEYS) {
