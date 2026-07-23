@@ -6289,6 +6289,32 @@ export async function fetchNighthawkRowsMissingScaleOutGrade(
   }));
 }
 
+/** Step-6b READER: the PINNED banger scale-out grades within lookback (scale_out_grade IS NOT NULL) —
+ *  the input the nighthawk-side recommendScaleOut graduates the live managed exit on. Returns the raw
+ *  grade blobs + minimal row identity; the caller parses with readScaleOutGradeBlob (survivorship guard
+ *  keeps ungradeable rows separate). */
+export async function fetchNighthawkScaleOutGrades(
+  lookbackDays = 120
+): Promise<Array<{ edition_for: string; ticker: string; scale_out_grade: Record<string, unknown> | null }>> {
+  await ensureSchema();
+  const safe = Number.isFinite(lookbackDays) && lookbackDays > 0 ? Math.trunc(lookbackDays) : 120;
+  const res = await (await getPool()).query(
+    `
+    SELECT edition_for, ticker, scale_out_grade
+    FROM nighthawk_play_outcomes
+    WHERE scale_out_grade IS NOT NULL
+      AND edition_for >= ((NOW() AT TIME ZONE 'America/New_York')::date - ($1::int || ' days')::interval)
+    ORDER BY edition_for ASC, ticker ASC
+    `,
+    [safe]
+  );
+  return res.rows.map((r) => ({
+    edition_for: isoDateString(r.edition_for),
+    ticker: String(r.ticker),
+    scale_out_grade: (r.scale_out_grade as Record<string, unknown>) ?? null,
+  }));
+}
+
 /** PR-N2: resolved rows still carrying a non-current grade methodology — the honest-
  *  regrade work queue. Selector matches analytics' segmentation rule exactly
  *  (isCurrentGradeMethodology): anything not explicitly stamped CURRENT is legacy,

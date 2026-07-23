@@ -532,21 +532,31 @@ export function recommendAccumulation(graded: CalibrationPlayRow[]): SignalRecom
  *  realized-vs-hold gap the backtest showed while staying well above execution-cost noise. */
 export const SCALE_OUT_MIN_DELTA_MULT = 0.15;
 
-/** The pinned banger scale-out grade blob (written into entry_context.scale_out by the outcomes sync,
- *  produced by banger-scale-out-grade.ts). Read defensively — every field optional, ungradeable rows
- *  excluded from the rate (survivorship guard). */
+export type ScaleOutGradeReading = { real: number | null; hold: number | null; ungradeable: boolean };
+
+/** Coerce a RAW banger scale-out grade blob ({scale_out_realized_mult, hold_mult, ungradeable}, produced
+ *  by banger-scale-out-grade.ts) into the reader shape. Defensive — every field optional, ungradeable rows
+ *  excluded from the rate (survivorship guard). Exported so the nighthawk-side reader (which pins the blob
+ *  directly on nighthawk_play_outcomes.scale_out_grade, NOT wrapped in entry_context) shares one parser
+ *  with the 0DTE-ledger reader — the graduation rule can never drift between the two ledgers. */
+export function readScaleOutGradeBlob(
+  s: Record<string, unknown> | null | undefined
+): ScaleOutGradeReading | null {
+  if (!s || typeof s !== "object") return null;
+  const b = s as { scale_out_realized_mult?: unknown; hold_mult?: unknown; ungradeable?: unknown };
+  return {
+    real: typeof b.scale_out_realized_mult === "number" && Number.isFinite(b.scale_out_realized_mult) ? b.scale_out_realized_mult : null,
+    hold: typeof b.hold_mult === "number" && Number.isFinite(b.hold_mult) ? b.hold_mult : null,
+    ungradeable: b.ungradeable === true,
+  };
+}
+
+/** The pinned banger scale-out grade blob nested under entry_context.scale_out (the 0DTE-ledger location,
+ *  written by the outcomes sync). Thin wrapper over readScaleOutGradeBlob. */
 function readScaleOutGrade(
   ec: Record<string, unknown> | null | undefined
-): { real: number | null; hold: number | null; ungradeable: boolean } | null {
-  const s = (ec?.scale_out ?? null) as
-    | { scale_out_realized_mult?: unknown; hold_mult?: unknown; ungradeable?: unknown }
-    | null;
-  if (!s || typeof s !== "object") return null;
-  return {
-    real: typeof s.scale_out_realized_mult === "number" && Number.isFinite(s.scale_out_realized_mult) ? s.scale_out_realized_mult : null,
-    hold: typeof s.hold_mult === "number" && Number.isFinite(s.hold_mult) ? s.hold_mult : null,
-    ungradeable: s.ungradeable === true,
-  };
+): ScaleOutGradeReading | null {
+  return readScaleOutGradeBlob((ec?.scale_out ?? null) as Record<string, unknown> | null);
 }
 
 export type ScaleOutRecommendation = {
@@ -571,12 +581,22 @@ export type ScaleOutRecommendation = {
  *  weekly) rows are counted separately and excluded — never imputed. Non-gating: a human/PR still flips
  *  the live exit on; this is the evidence bar it must clear. */
 export function recommendScaleOut(graded: CalibrationPlayRow[]): ScaleOutRecommendation {
+  return recommendScaleOutFromGrades(graded.map((r) => readScaleOutGrade(r.entry_context)));
+}
+
+/** The PURE EV-based graduation, shared by BOTH the 0DTE-ledger reader (recommendScaleOut, reads
+ *  entry_context.scale_out) and the nighthawk reader (reads the scale_out_grade column). Takes already-
+ *  parsed grade readings so the banger exit graduates on ONE identical rule wherever the grades are pinned.
+ *  enforce only once n>=ENFORCE_MIN_BLOCK_N gradeable rows beat hold by >= SCALE_OUT_MIN_DELTA_MULT/$1;
+ *  ungradeable rows are counted separately and NEVER imputed (survivorship guard). Non-gating evidence. */
+export function recommendScaleOutFromGrades(
+  readings: Array<ScaleOutGradeReading | null>
+): ScaleOutRecommendation {
   const r2 = (n: number) => Math.round(n * 100) / 100;
   const reals: number[] = [];
   const holds: number[] = [];
   let nUngr = 0;
-  for (const r of graded) {
-    const g = readScaleOutGrade(r.entry_context);
+  for (const g of readings) {
     if (!g) continue;
     if (g.ungradeable || g.real == null || g.hold == null) { nUngr++; continue; }
     reals.push(g.real);
