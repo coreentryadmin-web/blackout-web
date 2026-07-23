@@ -8,6 +8,8 @@ import {
   analyzeGateCalibration,
   analyzeAccumulationAlignment,
   analyzeConfluenceTiers,
+  recommendConfluence,
+  recommendAccumulation,
   analyzeTierRecord,
   calibrationScoreBand,
   gateVerdictOf,
@@ -490,4 +492,54 @@ test("both evidence-bucket sections appear on the full report and never gate", (
   });
   assert.ok(Array.isArray(report.accumulation_alignment) && report.accumulation_alignment.length === 3);
   assert.ok(Array.isArray(report.confluence_tiers) && report.confluence_tiers.length === 4);
+});
+
+// ── Step 4: coded graduation verdicts for the positive evidence signals ──────────────
+test("recommendConfluence: small double bucket (n<10) is insufficient_data — the small-sample firewall", () => {
+  // the research finding is n=22 single-window; a sub-10 live bucket must NOT graduate into score
+  const rec = recommendConfluence([
+    ...repeat(8, () => play({ win: true, confTier: "double" })),
+    ...repeat(6, () => play({ win: false, confTier: "weak" })),
+  ]);
+  assert.equal(rec.verdict, "insufficient_data");
+  assert.equal(rec.evidence.min_on_n, ENFORCE_MIN_BLOCK_N);
+});
+
+test("recommendConfluence: n>=10 AND delta>=15pts → enforce (the signal earned scoring)", () => {
+  const rec = recommendConfluence([
+    ...repeat(10, () => play({ win: true, confTier: "double" })), // 100% WR on
+    ...repeat(10, () => play({ win: false, confTier: "weak" })), // 0% WR off → delta 100
+  ]);
+  assert.equal(rec.verdict, "enforce");
+  assert.equal(rec.evidence.delta_win_rate_pts, 100);
+});
+
+test("recommendConfluence: n>=10 but delta<15pts → keep_calibrating (edge not yet demonstrated)", () => {
+  const rec = recommendConfluence([
+    ...repeat(6, () => play({ win: true, confTier: "double" })),
+    ...repeat(4, () => play({ win: false, confTier: "double" })), // double 60% (n=10)
+    ...repeat(5, () => play({ win: true, confTier: "weak" })),
+    ...repeat(5, () => play({ win: false, confTier: "weak" })), // weak 50% → delta 10 < 15
+  ]);
+  assert.equal(rec.verdict, "keep_calibrating");
+  assert.equal(rec.evidence.delta_win_rate_pts, 10);
+});
+
+test("recommendConfluence: low_n baseline (weak < LOW_N) blocks a verdict even with a big double bucket", () => {
+  const rec = recommendConfluence([
+    ...repeat(12, () => play({ win: true, confTier: "double" })),
+    ...repeat(2, () => play({ win: false, confTier: "weak" })), // baseline low_n
+  ]);
+  assert.equal(rec.verdict, "insufficient_data");
+});
+
+test("recommendAccumulation: aligned vs misaligned graduates on the same ladder; surfaced on the report", () => {
+  const rows = [
+    ...repeat(10, () => play({ win: true, aligned: true })),
+    ...repeat(10, () => play({ win: false, aligned: false })),
+  ];
+  assert.equal(recommendAccumulation(rows).verdict, "enforce");
+  const report = analyzeGateCalibration({ rows, window: WINDOW });
+  assert.ok(Array.isArray(report.signal_recommendations) && report.signal_recommendations.length === 2);
+  assert.ok(report.signal_recommendations.every((r) => ["enforce", "keep_calibrating", "insufficient_data"].includes(r.verdict)));
 });

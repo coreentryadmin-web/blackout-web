@@ -142,6 +142,10 @@ export type CalibrationReport = {
   /** Graded record by confluence tier (triple / double / weak / no_read) — the "double" bucket is the
    *  +15.9% EV research finding; this is where it earns (or fails to earn) enforcement. */
   confluence_tiers: CalibrationBucket[];
+  /** Coded graduation verdicts for the positive evidence signals (confluence double, accumulation
+   *  alignment) — the same enforce/keep_calibrating/insufficient_data ladder the gates use, so a signal
+   *  can only enter scoring once the live ledger clears the n>=10 / delta>=15pt bar. Non-gating. */
+  signal_recommendations: SignalRecommendation[];
   available: boolean;
 };
 
@@ -419,6 +423,106 @@ function recommendGate(gate: CalibrationGateKey, graded: CalibrationPlayRow[]): 
   };
 }
 
+/** Graduation verdict for a POSITIVE evidence signal (confluence tier, accumulation alignment, the
+ *  scale-out exit) — the mirror of recommendGate for signals we'd ADD to scoring rather than gates we'd
+ *  enforce. Same ladder, same LOW-N discipline: the signal-present bucket must clear n>=ENFORCE_MIN_BLOCK_N,
+ *  the baseline must not be low_n, and the win-rate delta (signal_on − signal_off) must clear the
+ *  ENFORCE_MIN_DELTA_PTS bar before the ledger says "enforce" (i.e. wire it into score). Until then it
+ *  stays keep_calibrating/insufficient_data — the structural guard against eyeballing a small,
+ *  single-window sample (e.g. the confluence "double" n=22 at 11:00) into the live score. Non-gating:
+ *  this returns a verdict; a human/PR still does the wiring. */
+export type SignalRecommendation = {
+  signal: string;
+  verdict: "enforce" | "keep_calibrating" | "insufficient_data";
+  evidence: {
+    signal_on: CalibrationBucket;
+    signal_off: CalibrationBucket;
+    delta_win_rate_pts: number | null;
+    no_read_n: number;
+    min_on_n: number;
+    min_delta_pts: number;
+    reason: string;
+  };
+};
+
+function recommendSignal(
+  signal: string,
+  onRows: CalibrationPlayRow[],
+  offRows: CalibrationPlayRow[],
+  noReadN: number
+): SignalRecommendation {
+  const signalOn = bucketOf("signal_on", onRows);
+  const signalOff = bucketOf("signal_off", offRows);
+  const rawOn = rawWinRatePct(onRows);
+  const rawOff = rawWinRatePct(offRows);
+  const delta = rawOn != null && rawOff != null ? rawOn - rawOff : null;
+
+  let verdict: SignalRecommendation["verdict"];
+  let reason: string;
+  if (signalOn.n < ENFORCE_MIN_BLOCK_N || signalOff.low_n || delta == null) {
+    verdict = "insufficient_data";
+    reason =
+      signalOn.n < ENFORCE_MIN_BLOCK_N
+        ? `signal_on has n=${signalOn.n} graded plays — graduation into score requires n>=${ENFORCE_MIN_BLOCK_N} (the research finding this rests on was itself small-n and single-window; it is NOT enforced until the live ledger clears the bar).`
+        : `signal_off has n=${signalOff.n} (< ${LOW_N_THRESHOLD}) — no baseline to measure the signal's edge against.`;
+  } else if (delta >= ENFORCE_MIN_DELTA_PTS - DELTA_EPSILON) {
+    verdict = "enforce";
+    reason =
+      `signal_on ran ${signalOn.win_rate_pct}% WR (n=${signalOn.n}) vs signal_off ${signalOff.win_rate_pct}% ` +
+      `(n=${signalOff.n}) — ${round1(delta)} pts better, clearing the ${ENFORCE_MIN_DELTA_PTS}-pt bar. The ` +
+      `signal has earned a place in scoring.`;
+  } else {
+    verdict = "keep_calibrating";
+    reason =
+      `Delta is ${round1(delta)} pts (signal_on ${signalOn.win_rate_pct}% vs signal_off ${signalOff.win_rate_pct}%) ` +
+      `— under the ${ENFORCE_MIN_DELTA_PTS}-pt bar. Not enough demonstrated edge to move score; keep pinning evidence.`;
+  }
+
+  return {
+    signal,
+    verdict,
+    evidence: {
+      signal_on: signalOn,
+      signal_off: signalOff,
+      delta_win_rate_pts: delta != null ? round1(delta) : null,
+      no_read_n: noReadN,
+      min_on_n: ENFORCE_MIN_BLOCK_N,
+      min_delta_pts: ENFORCE_MIN_DELTA_PTS,
+      reason,
+    },
+  };
+}
+
+/** Coded graduation verdict for the confluence "double" tier (the +15.9% EV research finding, measured
+ *  n=22 at 11:00) — double vs weak. Structurally keeps that small single-window sample OUT of the score
+ *  until the live graded ledger clears the n>=10 / delta>=15pt bar. */
+export function recommendConfluence(graded: CalibrationPlayRow[]): SignalRecommendation {
+  const double: CalibrationPlayRow[] = [];
+  const weak: CalibrationPlayRow[] = [];
+  let noRead = 0;
+  for (const r of graded) {
+    const t = readConfluenceTier(r.entry_context);
+    if (t === "double") double.push(r);
+    else if (t === "weak") weak.push(r);
+    else noRead++; // triple/no_read are not part of the double-vs-weak graduation comparison
+  }
+  return recommendSignal("confluence_double", double, weak, noRead);
+}
+
+/** Coded graduation verdict for multi-day accumulation alignment — aligned vs misaligned. */
+export function recommendAccumulation(graded: CalibrationPlayRow[]): SignalRecommendation {
+  const aligned: CalibrationPlayRow[] = [];
+  const misaligned: CalibrationPlayRow[] = [];
+  let noSignal = 0;
+  for (const r of graded) {
+    const a = readAlignment(r.entry_context);
+    if (a === true) aligned.push(r);
+    else if (a === false) misaligned.push(r);
+    else noSignal++;
+  }
+  return recommendSignal("accumulation_aligned", aligned, misaligned, noSignal);
+}
+
 /** Score bands for the G-3 floor evidence. FINER than record.ts's member-facing
  *  3-band cut: F-5's finding is a top-band INVERSION (85+ underperforming 75-84 on
  *  three surfaces), which a single "75+" bucket would hide by construction. */
@@ -520,6 +624,7 @@ export function analyzeGateCalibration(input: {
     // pinned in entry_context and bucketed here so the ledger decides whether either graduates.
     accumulation_alignment: analyzeAccumulationAlignment(graded),
     confluence_tiers: analyzeConfluenceTiers(graded),
+    signal_recommendations: [recommendConfluence(graded), recommendAccumulation(graded)],
     available: graded.length > 0,
   };
 }
