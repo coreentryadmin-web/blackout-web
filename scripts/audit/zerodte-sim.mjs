@@ -106,6 +106,7 @@ const { fetchMarketFlowAlertRows } = await import(`${SRC}lib/providers/unusual-w
 const { gradePlanFromBars, PLAN_RULES } = await import(`${SRC}lib/zerodte/plan.ts`);
 const { evaluateExitState } = await import(`${SRC}lib/zerodte/exit-engine.ts`);
 const { fetchAggBars } = await import(`${SRC}lib/providers/polygon-largo.ts`);
+const { appendFileSync } = await import("node:fs"); // for RATCHET_DUMP (offline ratchet-param sweep)
 
 /**
  * Grade a play through the SHIPPED live exit engine (exit-engine.ts evaluateExitState) instead of the
@@ -506,6 +507,12 @@ if (!GRADE_DATE) {
     const planStop = entryPremium * (1 + PLAN_RULES.stop_pct / 100);
     const planTarget = entryPremium * (1 + PLAN_RULES.target_pct / 100);
     const rex = gradeThroughExitEngine(atm.bars, entryPremium, planStop, planTarget, entryBar.t);
+    // Offline ratchet-param sweep: dump the RTH bar path + plan levels so many exit configs can be
+    // graded without re-fetching (RATCHET_DUMP=<path>). Diagnostic only, off unless the env is set.
+    if (process.env.RATCHET_DUMP) {
+      const rth = atm.bars.filter((b) => b.t >= entryBar.t && etMinOfBar(b.t) <= 960).map((b) => ({ t: b.t, h: b.h, l: b.l, c: b.c }));
+      if (rth.length) appendFileSync(process.env.RATCHET_DUMP, JSON.stringify({ date: GRADE_DATE, ticker: c.ticker, entry: entryPremium, planStop, planTarget, bars: rth }) + "\n");
+    }
     results.push({ ticker: c.ticker, occ: atm.occ, side, strike: atm.strike, spot, entryPremium, outcome: grade.outcome, pnl_pct: grade.pnl_pct, mfe_pct: Math.round(mfe * 10) / 10, mae_pct: Math.round(mae * 10) / 10, ratchet_pnl_pct: rex?.pnl_pct ?? null, ratchet_outcome: rex?.outcome ?? null });
   }
 
