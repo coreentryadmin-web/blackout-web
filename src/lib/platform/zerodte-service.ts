@@ -19,6 +19,8 @@ import {
   type EnrichedZeroDteSetup,
 } from "@/lib/zerodte/board";
 import { buildIntelNote } from "@/lib/zerodte/intel";
+import { allocateBoard, openPositionsFromLedger } from "@/lib/portfolio/board-allocation";
+import type { AllocationDecision } from "@/lib/portfolio/allocation";
 import { cortexSummaryFor } from "@/lib/zerodte/cortex-gate";
 import { tierForSkip } from "@/lib/zerodte/tiers";
 import {
@@ -101,6 +103,11 @@ export type ZeroDteBoardPayload = {
    *  when the state couldn't be read this build (rendered as "unavailable", never
    *  guessed; the gate stack itself independently fails closed on the same read). */
   governor: ZeroDteGovernorSummary | null;
+  /** Portfolio Allocation Engine (advisory): cross-sectional rank + duplicate-thesis + opportunity-cost
+   *  decision per setup, computed over the day's setups vs the open book. ADVISORY — rides alongside the
+   *  board, does not gate the engine or resize a real position (graduates on the portfolio backtest). One
+   *  entry per display setup, keyed by ticker; empty when the committed set is unknowable this build. */
+  allocation: AllocationDecision[];
 };
 
 const BOARD_TTL_MS = 5_000;
@@ -251,6 +258,16 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   const committedKnown = ledgerRead.committed_known;
   const displaySetups = committedKnown ? setups : [];
 
+  // Portfolio Allocation Engine (advisory): rank today's setups cross-sectionally, collapse duplicate theses,
+  // and price opportunity cost against the currently-open book. Additive — attached alongside the setups; it
+  // does not gate the engine. Fail-soft: any error yields an empty allocation, never a broken board.
+  let allocation: AllocationDecision[] = [];
+  try {
+    allocation = allocateBoard(displaySetups, openPositionsFromLedger(ledgerRows)).decisions;
+  } catch (err) {
+    console.warn("[zerodte-service] allocation failed (advisory, empty):", err);
+  }
+
   const payload = roundFloats({
     available: true,
     as_of: new Date().toISOString(),
@@ -260,6 +277,7 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     ledger: ledgerRows.map((r) => mapLedgerRow(r, nighthawkEcho, liveMarks.get(r.ticker.toUpperCase()) ?? null)),
     covered_elsewhere: nighthawk_covered,
     governor,
+    allocation,
   }) as ZeroDteBoardPayload;
 
   // roundFloats() rounds entry_premium/last_mark independently; recompute PnL from the
