@@ -7,8 +7,18 @@ import {
   pruneNighthawkPlayOutcomesForEdition,
   upsertNighthawkPlayOutcomes,
   updateNighthawkPlayOutcome,
+  fetchNighthawkEditionByDate,
+  fetchNighthawkRowsMissingScaleOutGrade,
+  pinNighthawkScaleOutGrade,
   type NighthawkPlayOutcomeRow,
 } from "@/lib/db";
+import {
+  resolveBangerGradeRequest,
+  gradeBangerScaleOut,
+  optionAggBarsToScaleOut,
+} from "@/lib/zerodte/banger-scale-out-grade";
+import { parseOptionsContract } from "./option-chain-prompt";
+import { fetchPolygonOptionBars } from "@/lib/providers/polygon-largo";
 
 // Per-edition distributed lock for outcome sync.
 // Prevents concurrent force-rebuilds from racing on the same upsert and
@@ -671,6 +681,106 @@ export async function resolvePendingNighthawkOutcomes(opts?: {
   }
 
   return { resolved, skipped, errors };
+}
+
+/**
+ * STEP-6b — grade the whole-market BANGER population on the OPTION scale-out basis (the +EV positive-skew
+ * lever) and pin the grade onto its outcome row, so the nighthawk-side calibration reader can graduate the
+ * live managed exit on real evidence. Deliberately SEPARATE from resolvePendingNighthawkOutcomes:
+ *
+ *  - Basis: bangers are graded on the OPTION's own forward bars (multi-day scale-out), not the underlying's
+ *    next-day target/stop the stock-outcome pass uses. Different data, different question.
+ *  - Timing: a banger's scale-out grade needs the FULL forward window (entry → expiry, up to ~9 days). The
+ *    stock outcome usually resolves and leaves the pending set BEFORE the option expires, so this pass runs
+ *    off `scale_out_grade IS NULL` (not `outcome = 'pending'`) and EXPIRY-GATES: it grades only once the
+ *    expiry has passed, and pins first-write-wins so the completed grade is never overwritten.
+ *  - Fail-soft: every row is isolated in try/catch and a failure only lands in `errors` — it can NEVER
+ *    corrupt or block the headline stock-outcome sync. `exit_style` lives in the edition JSON (not on the
+ *    outcome row), so the pass fetches each edition once (cached) to find the banger plays.
+ */
+export async function resolveBangerScaleOutGrades(opts?: {
+  lookbackDays?: number;
+  /** ISO date "today" (injectable for tests / deterministic runs); defaults to the current UTC date. */
+  today?: string;
+}): Promise<{ graded: number; ungradeable: number; skipped: number; errors: string[] }> {
+  if (!polygonConfigured()) {
+    return { graded: 0, ungradeable: 0, skipped: 0, errors: ["Polygon not configured"] };
+  }
+  const lookbackDays = opts?.lookbackDays ?? 21;
+  const today = opts?.today ?? new Date().toISOString().slice(0, 10);
+  const candidates = await fetchNighthawkRowsMissingScaleOutGrade(lookbackDays);
+
+  let graded = 0;
+  let ungradeable = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+  // One edition fetch per distinct edition_for → ticker→play map (the plays carry exit_style/options_play/
+  // entry_premium, none of which the outcome row itself has).
+  const editionCache = new Map<string, Map<string, PlaybookPlay>>();
+
+  for (const row of candidates) {
+    try {
+      let byTicker = editionCache.get(row.edition_for);
+      if (!byTicker) {
+        const edition = await fetchNighthawkEditionByDate(row.edition_for);
+        byTicker = new Map<string, PlaybookPlay>();
+        for (const p of (edition?.plays ?? []) as PlaybookPlay[]) {
+          if (p && typeof p.ticker === "string") byTicker.set(p.ticker.toUpperCase(), p);
+        }
+        editionCache.set(row.edition_for, byTicker);
+      }
+      const play = byTicker.get(row.ticker.toUpperCase());
+      if (!play) {
+        // Row with no matching edition play (pruned/renamed) — nothing to grade, don't pin.
+        skipped += 1;
+        continue;
+      }
+
+      const resolution = resolveBangerGradeRequest({
+        ticker: row.ticker,
+        exit_style: play.exit_style,
+        entry_premium: play.entry_premium ?? null,
+        contract: play.options_play ? parseOptionsContract(play.options_play) : null,
+      });
+
+      if (resolution.kind === "not_banger") {
+        // Not a scale_out play — leave scale_out_grade NULL forever (never applicable).
+        skipped += 1;
+        continue;
+      }
+      if (resolution.kind === "ungradeable") {
+        await pinNighthawkScaleOutGrade(row.id, {
+          scale_out_realized_mult: null,
+          hold_mult: null,
+          ungradeable: true,
+          reason: resolution.reason,
+        });
+        ungradeable += 1;
+        continue;
+      }
+      // OK — expiry-gate: only grade once the option's full forward window exists.
+      if (resolution.request.expiryYmd >= today) {
+        skipped += 1; // not expired yet — a later pass will grade it
+        continue;
+      }
+      const rawBars = await fetchPolygonOptionBars(
+        resolution.request.occ,
+        1,
+        "day",
+        row.edition_for,
+        resolution.request.expiryYmd,
+        "250"
+      );
+      const grade = gradeBangerScaleOut(resolution.request.entryPremium, optionAggBarsToScaleOut(rawBars));
+      await pinNighthawkScaleOutGrade(row.id, { ...grade });
+      if (grade.ungradeable) ungradeable += 1;
+      else graded += 1;
+    } catch (err) {
+      errors.push(`${row.ticker}@${row.edition_for}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return { graded, ungradeable, skipped, errors };
 }
 
 /** Cron honesty (PR-N1): the run's health verdict from its per-row error ledger.
