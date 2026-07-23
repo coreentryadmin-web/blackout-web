@@ -443,7 +443,18 @@ if (!GRADE_DATE) {
     const entryBar = atm.bars.find((b) => etMinOfBar(b.t) >= ENTRY_ET_MIN) ?? atm.bars[0];
     const entryPremium = entryBar.c;
     const grade = gradePlanFromBars(atm.bars, entryPremium, entryBar.t);
-    results.push({ ticker: c.ticker, occ: atm.occ, side, strike: atm.strike, spot, entryPremium, outcome: grade.outcome, pnl_pct: grade.pnl_pct });
+    // MFE / green-exit availability: the BEST (mfe) and WORST (mae) the contract ever marked after
+    // entry, RTH-capped at 16:00 ET (bars are extended-hours; a 0DTE option is done at the PM close).
+    // mfe answers "could this play EVER have been sold green, and by how much?" — the never-red goal.
+    let mfe = 0, mae = 0;
+    for (const b of atm.bars) {
+      if (b.t < entryBar.t || etMinOfBar(b.t) > 960) continue;
+      const up = ((b.h - entryPremium) / entryPremium) * 100;
+      const dn = ((b.l - entryPremium) / entryPremium) * 100;
+      if (up > mfe) mfe = up;
+      if (dn < mae) mae = dn;
+    }
+    results.push({ ticker: c.ticker, occ: atm.occ, side, strike: atm.strike, spot, entryPremium, outcome: grade.outcome, pnl_pct: grade.pnl_pct, mfe_pct: Math.round(mfe * 10) / 10, mae_pct: Math.round(mae * 10) / 10 });
   }
 
   console.log(`    ${pad("TICKER", 8)}${pad("SIDE", 6)}${padL("STRIKE", 7)}${padL("ENTRY$", 8)}  ${pad("OUTCOME", 12)}${padL("P/L%", 8)}  contract`);
@@ -463,13 +474,20 @@ if (!GRADE_DATE) {
   const stops = graded.filter((r) => r.outcome === "stopped").length;
   const times = graded.filter((r) => r.outcome === "time_stop").length;
   const avgPnl = graded.length ? graded.reduce((s, r) => s + (r.pnl_pct ?? 0), 0) / graded.length : null;
+  // Green-exit availability: of the plays printed, how many EVER offered a +X% sell (MFE), and how
+  // many never traded green at all (the irreducible instant-loser tail). This is the "never red" lens.
+  const withMfe = graded.filter((r) => r.mfe_pct != null);
+  const availAt = (x) => (withMfe.length ? (withMfe.filter((r) => r.mfe_pct >= x).length / withMfe.length) * 100 : null);
+  const neverGreen = withMfe.length ? (withMfe.filter((r) => r.mfe_pct <= 0).length / withMfe.length) * 100 : null;
+  const pctOr = (v) => (v == null ? "—" : v.toFixed(0) + "%");
   console.log(`\n${line("═")}`);
   console.log(`  BACKTEST ${GRADE_DATE}: ${graded.length} gradeable plays · ${wins} doubled · ${stops} stopped · ${times} time-stop`);
   console.log(`  win-rate ${graded.length ? ((wins / graded.length) * 100).toFixed(1) : "—"}% · avg P/L ${avgPnl != null ? avgPnl.toFixed(1) + "%" : "—"} · ${results.length - graded.length} no-data/ungradeable`);
+  console.log(`  GREEN-EXIT AVAILABILITY (MFE): +10% ${pctOr(availAt(10))} · +25% ${pctOr(availAt(25))} · +50% ${pctOr(availAt(50))} · +100% ${pctOr(availAt(100))} · NEVER-green ${pctOr(neverGreen)}`);
   console.log(line("═"));
 
   if (EMIT_JSON) {
     console.log("\n<<<JSON>>>");
-    console.log(JSON.stringify({ gradeDate: GRADE_DATE, results, summary: { gradeable: graded.length, wins, stops, times, avgPnl } }, null, 2));
+    console.log(JSON.stringify({ gradeDate: GRADE_DATE, results, summary: { gradeable: graded.length, wins, stops, times, avgPnl, green_avail_10: availAt(10), green_avail_25: availAt(25), green_avail_50: availAt(50), green_avail_100: availAt(100), never_green: neverGreen } }, null, 2));
   }
 }
