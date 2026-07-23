@@ -85,16 +85,19 @@ findings, both reproducible in `zerodte-sim.mjs`:
    instinct ("if the board prints it, we should be able to sell it in profit, never red") is *reachable*
    — but only by an exit that *takes* the green, not one that round-trips or scratches it.
 
-2. **The shipped index ratchet costs EV vs hold — CONFIRMED, live change DEFERRED.** The sim now grades
-   through the SHIPPED exit (`gradeThroughExitEngine`, mark-fidelity bracket `RATCHET_PROTECT_AT=low|close`).
-   Over **106 index plays**, HOLD (−50/+100) beats the shipped ratchet in **both** mark bounds (wick
-   −6.7 pts/play, close −1.5 pts/play). Mechanism: of 51 floored plays, ~49% would have reached +100% if
-   held — `EXIT_RULES.ratchet_arm_pnl_pct=25` arms a breakeven floor exactly when a 0DTE momentum play is
-   *continuing*, scratching the runners. The **direction** (hold > shipped ratchet) is robust; the
-   **optimal intermediate config** is not identifiable at n=50 (calib ranks shipped least-bad, OOS ranks
-   pure-hold best — they disagree; 0DTE EV is a few-big-winners distribution). So the finding is logged
-   (FINDINGS 2026-07-23) and the fix is scoped to a larger-sample sweep — we do **not** flip a live
-   risk-management exit on inconclusive optimal-config evidence.
+2. **The shipped index ratchet costs EV vs hold — CONFIRMED, live change DEFERRED.** The sim grades through
+   the SHIPPED exit (`gradeThroughExitEngine`), now **mark-faithful** (a 10-agent adversarial audit caught
+   the grader booking ratchet exits at the best-case floor, not the gap-through fill; grading post-15:30;
+   and an entry-bar look-ahead — all fixed, FINDINGS 2026-07-23). Re-swept honest over a dense Feb→Jul grid
+   — **276 plays / 40 sessions** (all) and **106 index-only** — HOLD (−50/+100) beats the shipped ratchet
+   on the full sample by **+4.1 pts/play** (all) / **+2.8** (index-only). Mechanism: `ratchet_arm_pnl_pct=25`
+   arms a breakeven floor exactly when a 0DTE momentum play is *continuing*, scratching the runners. The
+   ratchet **buys win-rate (34%→51%), not EV** — a textbook green≠profitable result. The **direction**
+   (hold ≥ ratchet) is robust; the **optimal intermediate config** is NOT identifiable even at n=276 — the
+   calib window ranks HOLD best, the newest-30% ranks the ratchet best (they disagree; 0DTE EV is a
+   few-big-winners distribution). So the finding is logged and the fix stays scoped to a regime-conditioned
+   sweep or a live-ledger `recommendExit` verdict — we do **not** flip a live risk-management exit on OOS
+   windows that disagree.
 
 **The banger scale-out is the flagship, and it's the positive-skew spine both engines share.** Validated
 at scale (minute-bar realistic gap-fills, **7,086 movers / 500 sessions / 2 years / all sectors**):
