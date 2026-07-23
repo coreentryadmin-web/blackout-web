@@ -395,6 +395,19 @@ export const fetchNightHawkRecord = (days = 30) =>
     by_conviction: [],
   }));
 
+/** The unified three-board response, scoped to one horizon via ?view= (0dte/swings/leaps). */
+export type NightHawkHorizonsResponse = {
+  board: import("@/lib/horizon-board").HorizonBoard;
+  upstream_ok?: boolean;
+  session?: { date: string; trading_day: boolean };
+};
+
+/** Fetch the Night Hawk horizon board for one toggle view (the whole desk scopes to it). */
+export const fetchNightHawkHorizons = (view: "ZERO_DTE" | "SWING" | "LEAPS") =>
+  marketFetch<NightHawkHorizonsResponse>(`/nighthawk/horizons?view=${encodeURIComponent(view)}`).catch(
+    () => ({ board: null }) as unknown as NightHawkHorizonsResponse
+  );
+
 export const postNightHawkHunt = (body: import("@/features/nighthawk/lib/types").HuntRequest) =>
   marketFetch<import("@/features/nighthawk/lib/types").HuntResponse>("/nighthawk/hunt", {
     method: "POST",
