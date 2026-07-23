@@ -205,6 +205,13 @@ export type ZeroDteSetup = {
   spike: boolean;
   first_seen: string | null;
   last_seen: string | null;
+  /**
+   * 0-100 flow-quality read on THIS setup's tape (computeFlowQuality) — the institutional
+   * flow-quality layer. Kept alongside `score` (not folded into it) so the feature store
+   * records it as an independent signal for the probability/Bayesian layers to weigh; the
+   * gate stack still judges `score`. Null only if the tape produced no usable prints.
+   */
+  flow_quality: FlowQuality | null;
 };
 
 // Exported so the audit trail (buildZeroDteAuditRow below) can cite the actual
@@ -353,6 +360,8 @@ export function deriveZeroDteSetups(
     minDte: number;
     /** (epoch-ms, premium) per print — for the sudden-spike read. */
     stamps: Array<[number, number]>;
+    /** Raw prints in FlowQuality's shape — feeds computeFlowQuality on emit (the flow-quality read). */
+    flowPrints: FlowPrint[];
   };
   const byTicker = new Map<string, Agg>();
 
@@ -386,6 +395,7 @@ export function deriveZeroDteSetups(
         lastSeen: null,
         minDte: SETUP_MAX_DTE,
         stamps: [],
+        flowPrints: [],
       } as Agg);
 
     const isCall = (r.option_type ?? "").toLowerCase().startsWith("c");
@@ -400,7 +410,22 @@ export function deriveZeroDteSetups(
     agg.aggrWeighted += prem * w;
     agg.gross += prem;
     agg.prints += 1;
-    if ((r.alert_rule ?? "").toLowerCase().includes("sweep")) agg.sweep += prem;
+    const isSweep = (r.alert_rule ?? "").toLowerCase().includes("sweep");
+    if (isSweep) agg.sweep += prem;
+    // Feed the flow-quality engine the SAME print that drove the aggregation above, in its
+    // own shape. Timestamp non-finite when alerted_at is missing — computeFlowQuality's
+    // persistence/momentum reads tolerate it (they filter to finite stamps internally).
+    agg.flowPrints.push({
+      premiumUsd: prem,
+      askPct: r.ask_pct ?? null,
+      isSweep,
+      strike: r.strike,
+      expiryYmd: (r.expiry ?? "").slice(0, 10),
+      side: isCall ? "call" : "put",
+      tsMs: r.alerted_at ? Date.parse(r.alerted_at) : Number.NaN,
+      // `size` (contracts traded) intentionally omitted — the row carries OI, not
+      // traded size, and the institutional read keys off block PREMIUM anyway.
+    });
     // Rows arrive premium-ordered, not time-ordered — last-write-wins here used to
     // pin `underlying` to whatever print happened to be processed last (often hours
     // stale), skewing the fib/level annotations. Keep the freshest print's mark.
@@ -636,6 +661,7 @@ export function deriveZeroDteSetups(
       spike,
       first_seen: agg.firstSeen,
       last_seen: agg.lastSeen,
+      flow_quality: computeFlowQuality(agg.flowPrints),
     });
   }
 
@@ -689,6 +715,9 @@ import { computeFibLevels, nearestFibNote, type FibNote } from "./fib";
 // Runtime import is safe: ./iron-condor is pure geometry (no providers, no cycle back
 // into this module) — it adds nothing to board.ts's provider load graph.
 import { selectIronCondor, type IronCondorLegs } from "./iron-condor";
+// Runtime import is safe: ./flow-quality is pure (no providers) — it turns the setup's
+// own tape (the prints that formed the aggregation) into a 0-100 flow-quality read.
+import { computeFlowQuality, type FlowPrint, type FlowQuality } from "./flow-quality";
 import type { ContractPlan } from "./plan";
 import type { IntradayRead } from "./intraday";
 // Type-only (erased at compile time — no runtime cycle with ./gates, which imports
