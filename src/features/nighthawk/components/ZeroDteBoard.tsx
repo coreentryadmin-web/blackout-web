@@ -762,6 +762,41 @@ function TierChip({ tier }: { tier: NonNullable<PlayRow["tier"]> }) {
   );
 }
 
+/** Confluence chip — surfaces the calibration-first agreement read (confluence.ts). Only shown for
+ *  the "double" (VWAP+market, the +15.9% EV research bucket) and "triple" (adds post-open timing)
+ *  tiers; weak/unconfirmed setups render nothing so the card stays clean. Evidence-only: this is a
+ *  legibility badge, NOT a gate — the board is not filtered by it. */
+function ConfluenceBadge({ confluence }: { confluence: EnrichedZeroDteSetup["confluence"] }) {
+  if (!confluence || (confluence.tier !== "double" && confluence.tier !== "triple")) return null;
+  const triple = confluence.tier === "triple";
+  return (
+    <Badge
+      tone="bull"
+      size="sm"
+      title={`Confluence ${confluence.label} — independent confirmations agreeing with the play's direction (post-open timing, price vs VWAP, market/SPY alignment). The double bucket ran +15.9% EV in research; shown as evidence, does not gate the board.`}
+    >
+      {triple ? "◆◆◆ confluence" : "◆◆ VWAP+mkt"}
+    </Badge>
+  );
+}
+
+/** Multi-day flow-accumulation chip — shows when today's direction is CONFIRMED by stacked
+ *  positioning over the week (flow-accumulation-context.ts). Only rendered when aligned; a
+ *  misaligned/no-signal read shows nothing. Evidence-only, does not gate. */
+function AccumulationBadge({ acc }: { acc: EnrichedZeroDteSetup["flow_accumulation"] }) {
+  if (!acc || acc.aligned !== true) return null;
+  const days = acc.days > 0 ? `${acc.days}d ` : "";
+  return (
+    <Badge
+      tone="bull"
+      size="sm"
+      title={`Multi-day flow accumulation CONFIRMS this direction — ${acc.direction} stacked positioning${acc.magnet_strike != null ? `, magnet ${acc.magnet_strike}${acc.magnet_side === "put" ? "P" : "C"}` : ""} (strength ${acc.strength}/100). Shown as evidence, does not gate the board.`}
+    >
+      {days}flow ✓
+    </Badge>
+  );
+}
+
 /** "Why this grade" — every point and cap behind the tier, verbatim from the pinned
  *  factors (same visual grammar as the Cortex evidence rows above it). */
 function TierFactorsBlock({ tier }: { tier: NonNullable<PlayRow["tier"]> }) {
@@ -1053,6 +1088,8 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
           </span>
           {row.tier && <TierChip tier={row.tier} />}
           <ConvictionBadge raw={row.conviction} />
+          {row.setup?.confluence && <ConfluenceBadge confluence={row.setup.confluence} />}
+          {row.setup?.flow_accumulation && <AccumulationBadge acc={row.setup.flow_accumulation} />}
           {live && <SizeChip view={view} />}
           {row.closed_reason === "stopped" && (
             <span className="rounded-md border border-bear/35 bg-bear/[0.08] px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-bear">
