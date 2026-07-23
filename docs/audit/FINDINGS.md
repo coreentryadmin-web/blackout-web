@@ -5,6 +5,29 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-23 — Whole-market banger research + scanner tool (research + tooling)
+
+### Research (docs/audit/0DTE-RESEARCH.md) — evidence-driven map for a top-tier system
+- **0DTE grinder:** multi-day vs single-day discovery is a WASH (32% vs 36% WR, n≈30); entry timing is
+  a real-but-modest edge (later > open ~13 EV pts; a 7-session "+43%" was OVERFIT, 25-session truth
+  +1.5%); **CONFLUENCE is the edge** — 0/1/2 confirmations (VWAP-side + SPY-aligned) ladder −12.5% → 0%
+  → **+15.9% EV** @ −50/+100, which resolves the geometry paradox (wide target is best ONLY for the
+  confluent subset). The live `timeOfDayFactor`/9:45-unlock look mis-boundaried vs the data (surface to
+  user; don't override the 2026-07-13 directive).
+- **Whole-market bangers:** Polygon grouped-daily screens EVERY US stock (~12.4k/day). A dumb
+  breakout+volume screen surfaces bangers constantly — **75% of movers' cheap OTM weeklies touch ≥2x,
+  50% ≥3x, 25% ≥5x** (ANET $0.36→23x). **BUT held to expiry they decay to ~zero** (hold ~1.3x mean).
+  The edge is the EXIT: a mechanical scale-out (50%@2x + trail + −60% stop) returns **+47% / +86% / +16%
+  realized EV** across the 3 sessions with data (~+50% weighted, n=28, every session positive).
+
+### Tooling — `scripts/audit/market-banger-scan.mjs` (`npm run scan:bangers`)
+- Whole-market screen → ranked banger candidates + suggested cheap OTM weekly call; `--grade=DATE`
+  measures maxRet vs hold-to-expiry vs REALIZED-under-scale-out. Read-only; secrets from env.
+- **Key product truth:** finding bangers is trivial; **exiting them mechanically is the whole edge** —
+  where a system beats a human. This is the north star for the whole-market engine.
+- **Status:** research + tool committed (PR next). Prioritized plan in the research doc: P1 confluence
+  tier → P2 banger scanner→discovery → P3 exit-engine study → P4 regime → P5 timing → P6 learning loop.
+
 ## 2026-07-22 — Multi-day flow accumulation wired into the LIVE 0DTE loop (feat, calibration-first)
 
 ### feat — the always-on scanner now has multi-day memory
