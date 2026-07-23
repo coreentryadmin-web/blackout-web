@@ -73,6 +73,7 @@ function fakeSetup(ticker: string, plan: ContractPlan | null): EnrichedZeroDteSe
     dark_pool_bias: null,
     gex_king_strike: null,
     gamma_regime: null,
+    condor: null,
     intraday: null,
     intraday_conflict: false,
     market_aligned: null,

@@ -686,6 +686,9 @@ export function rankEngineCards(
 // unit-testable with a fake dossier; the route does the (cached) fetching.
 
 import { computeFibLevels, nearestFibNote, type FibNote } from "./fib";
+// Runtime import is safe: ./iron-condor is pure geometry (no providers, no cycle back
+// into this module) — it adds nothing to board.ts's provider load graph.
+import { selectIronCondor, type IronCondorLegs } from "./iron-condor";
 import type { ContractPlan } from "./plan";
 import type { IntradayRead } from "./intraday";
 // Type-only (erased at compile time — no runtime cycle with ./gates, which imports
@@ -773,6 +776,16 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
   /** Dealer gamma king node + regime for the name (from the dossier's positioning). */
   gex_king_strike: number | null;
   gamma_regime: string | null;
+  /** Defined-risk 0DTE IRON-CONDOR geometry (./iron-condor.ts) — the high-win-rate
+   *  premium-SELLING counterpart to this directional setup, computed for every name:
+   *  short strikes at a target-80 width FLOOR, pushed beyond the nearest chart wall
+   *  (key_resistances above / key_supports below, gex_king as fallback) so we sell
+   *  where price rarely goes. CALIBRATION-FIRST EVIDENCE ONLY — attached to every
+   *  setup, gated by nothing, traded by nothing; the graded ledger measures the real
+   *  per-ticker win rate before it ever becomes an actionable play. `est_win_rate` is
+   *  the index-ETF measured-table estimate (exact for SPY/QQQ/IWM, approximate for a
+   *  single name — the honest number comes from the ledger). Null when spot is unknown. */
+  condor: IronCondorLegs | null;
   /** Today's minute-bar read (session VWAP, opening range, 5m trend) — scan-attached. */
   intraday: IntradayRead | null;
   /** Hard intraday conflict: wrong side of VWAP AND short-term trend against — A-tier disqualifier. */
@@ -966,6 +979,19 @@ export function enrichSetup(
       ? (tech?.resistance_levels ?? []).filter((l) => l > price).sort((a, b) => a - b).slice(0, 2)
       : [];
 
+  // Defined-risk iron-condor geometry for the name (calibration-first evidence — see the
+  // `condor` field doc). Push short strikes beyond the nearest chart wall on each side;
+  // the dealer king node is the fallback wall when a same-side chart level is absent. The
+  // module already takes the FURTHER of (target-80 width) and (wall), so a wall INSIDE the
+  // width is ignored — we never sell tighter than the width floor.
+  const gexKing = dossier?.positioning?.gex_king_strike ?? null;
+  const condorCallWall = keyResistances[0] ?? (gexKing != null && price != null && gexKing > price ? gexKing : null);
+  const condorPutWall = keySupports[0] ?? (gexKing != null && price != null && gexKing < price ? gexKing : null);
+  const condor =
+    price != null && price > 0
+      ? selectIronCondor({ spot: price, targetWinRate: 80, callWall: condorCallWall, putWall: condorPutWall })
+      : null;
+
   return {
     ...setup,
     dossier_score: scored?.score ?? null,
@@ -991,8 +1017,9 @@ export function enrichSetup(
     rel_volume: tech?.rel_volume ?? null,
     streak_days: dossier?.flow_streak?.streak_days ?? null,
     dark_pool_bias: dossier?.dark_pool?.bias ?? null,
-    gex_king_strike: dossier?.positioning?.gex_king_strike ?? null,
+    gex_king_strike: gexKing,
     gamma_regime: dossier?.positioning?.gamma_regime ?? null,
+    condor,
     intraday: null,
     intraday_conflict: false,
     market_aligned: null,

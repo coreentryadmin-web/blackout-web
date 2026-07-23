@@ -408,6 +408,39 @@ test("enrich: trading halt is surfaced", () => {
   assert.equal(e.halted, true);
 });
 
+// ── iron-condor geometry attach (calibration-first evidence) ────────────────────────
+test("enrich: iron-condor legs computed, short strikes pushed BEYOND the chart walls", () => {
+  // spot 188.2, inc 2.5. Nearest resistance above = 190.2, nearest support below = 186.5.
+  // The 0.8%-width strikes (≈189.7/≈186.7) sit INSIDE those walls, so the walls win:
+  // short call rounds up past 190.2 → 192.5, short put rounds down past 186.5 → 185.0.
+  const e = enrichSetup(baseSetup(), fakeDossier());
+  assert.ok(e.condor, "condor legs should be attached when spot + walls are known");
+  assert.equal(e.condor!.short_call, 192.5);
+  assert.equal(e.condor!.short_put, 185.0);
+  assert.equal(e.condor!.long_call, 195.0); // defined-risk wing beyond the short
+  assert.equal(e.condor!.long_put, 182.5);
+  // shorts straddle spot; longs sit further out than shorts (capped loss)
+  assert.ok(e.condor!.short_call > 188.2 && e.condor!.short_put < 188.2);
+  assert.ok(e.condor!.long_call > e.condor!.short_call && e.condor!.long_put < e.condor!.short_put);
+  // sold at/beyond the dealer walls, never tighter
+  assert.ok(e.condor!.short_call >= 190.2 && e.condor!.short_put <= 186.5);
+});
+
+test("enrich: with no chart walls the condor falls back to the target-width floor (tighter than walled)", () => {
+  // null dossier → no support/resistance levels → width-only strikes (short call 190.0),
+  // which is INSIDE the walled 192.5 — proving the walls genuinely pushed the short out.
+  const e = enrichSetup(baseSetup(), null);
+  assert.ok(e.condor);
+  assert.equal(e.condor!.short_call, 190.0);
+  assert.equal(e.condor!.short_put, 185.0);
+  assert.ok(e.condor!.short_call < 192.5);
+});
+
+test("enrich: condor is null when spot is unknown (no fabricated geometry)", () => {
+  const e = enrichSetup(baseSetup({ underlying_price: null }), null);
+  assert.equal(e.condor, null);
+});
+
 // ── engine ranking ───────────────────────────────────────────────────────────────
 
 test("ranking: ACTIVE play leads; power hour outranks lotto only inside its window", () => {
