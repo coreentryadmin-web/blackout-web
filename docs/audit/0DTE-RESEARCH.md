@@ -105,11 +105,20 @@ findings, both reproducible in `zerodte-sim.mjs`:
 **The banger scale-out is the flagship, and it's the positive-skew spine both engines share.** Validated
 at scale (minute-bar realistic gap-fills, **7,086 movers / 500 sessions / 2 years / all sectors**):
 **+26% gross / ~+20% net-OOS** realized under the mechanical scale-out (0.5@2×, trail runner at 50% of
-peak, hard stop 0.4×) — vs hold-to-expiry ~1.0× (decays to zero). That is the durable edge: buy cheap
-positive-skew optionality, then *exit mechanically into the spike*. It ships **calibration-first** as a
-pure core (`banger-scale-out-grade.ts`) pinned into `entry_context.scale_out`; the ledger's
-`recommendScaleOut` (EV-mult delta ≥ 0.15, ENFORCE_MIN_BLOCK_N=10) graduates it before it manages a live
-exit — same discipline as every other signal.
+peak, hard stop 0.4×) — vs hold-to-expiry ~1.0× (decays to zero). Re-confirmed at ~1000-play scale
+(**1176 movers, +19% net-OOS, 53% green**, realistic minute fills + 7.5% slippage); the shipped trail 0.5
+sits at/below the OOS optimum. That is the durable edge: buy cheap positive-skew optionality, then *exit
+mechanically into the spike*.
+
+**LIVE-WIRED (step 6b — COMPLETE):** the flagship is no longer backtest-only. The overnight outcomes cron
+now grades every banger on its OPTION's forward bars and pins the grade on `nighthawk_play_outcomes.scale_out_grade`
+(a bridge, since bangers live in the nighthawk ledger, not `zerodte_setup_log`): pure resolver + mapper
+(#973) → migration + fail-soft cron pin (#974) → nighthawk-side `recommendScaleOut` reader + read-only
+track record on the admin analytics route (#975). The graduation rule (`recommendScaleOutFromGrades`: EV
+delta ≥ 0.15/$1, n ≥ 10, ungradeable never imputed) is shared with the 0DTE ledger so it can never drift.
+The full path is proven live (real daily option bars → real multiple). The last step (6d — flipping the
+live managed exit) fires automatically once the live ledger reads `enforce`; until then the scale-out
+stays advisory and accrues evidence.
 
 **Rearchitecture synthesis (task #21):** the "strongest 0DTE engine" is not one clever entry — it's a
 **two-engine, positive-skew, scale-out-spined** system with a **calibration-first graduation ladder**:
@@ -117,7 +126,8 @@ exit — same discipline as every other signal.
   tier (E3, +16% EV) takes fewer triple-confirmed trades; let-it-run geometry; the ratchet finding above
   is the next exit tune.
 - **Engine B (whole-market weekly banger):** all sectors, cheap OTM weeklies, the +20% net-OOS
-  scale-out. Finding movers is trivial; the exit is the whole edge.
+  scale-out. Finding movers is trivial; the exit is the whole edge. **Now live-wired end-to-end (6b):**
+  graded on the option basis every night, pinned to the ledger, read by the graduation verdict.
 - **Spine:** every new signal/exit ships as **evidence pinned in `entry_context`** (non-gating); the
   graded ledger graduates it via `recommendGate`/`recommendSignal`/`recommendScaleOut` (ENFORCE_MIN_BLOCK_N,
   ENFORCE_MIN_DELTA) before it sizes or gates real risk. The measurement loop — not any single parameter —
