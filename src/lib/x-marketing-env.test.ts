@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it, beforeEach, afterEach } from "node:test";
 import {
   xMarketingPostsPaused,
+  xMentionRepliesPaused,
   xMarketingSilentOnly,
   xApiAccessTier,
   xApiEnterpriseAccess,
@@ -12,6 +13,7 @@ import {
 describe("x-marketing-env", () => {
   const keys = [
     "X_MARKETING_POSTS_PAUSED",
+    "X_MENTION_REPLIES_PAUSED",
     "X_GROWTH_SILENT_ONLY",
     "X_API_ACCESS_TIER",
     "X_DESK_POST_INCLUDE_URL",
@@ -50,8 +52,15 @@ describe("x-marketing-env", () => {
     process.env.X_GROWTH_SILENT_ONLY = "true";
     process.env.X_DESK_POST_INCLUDE_URL = "1";
     assert.equal(xMarketingPostsPaused(), true);
+    assert.equal(xMentionRepliesPaused(), true);
     assert.equal(xMarketingSilentOnly(), true);
     assert.equal(xDeskPostIncludeUrl(), true);
+  });
+
+  it("X_MENTION_REPLIES_PAUSED stops mention replies without full marketing pause", () => {
+    process.env.X_MENTION_REPLIES_PAUSED = "1";
+    assert.equal(xMentionRepliesPaused(), true);
+    assert.equal(xMarketingPostsPaused(), false);
   });
 
   it("intensive growth defaults off unless X_GROWTH_INTENSIVE=1", () => {

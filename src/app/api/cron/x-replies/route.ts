@@ -4,7 +4,7 @@ import { logCronRun } from "@/lib/cron-run";
 import { xApiEnabled } from "@/lib/x-api";
 import { runMentionReplySweep } from "@/lib/x-mention-replies";
 import { fetchMarketSnapshot } from "@/lib/x-content";
-import { xMarketingPostsPaused } from "@/lib/x-marketing-env";
+import { xMarketingPostsPaused, xMentionRepliesPaused } from "@/lib/x-marketing-env";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,16 +19,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, reason: "X API not configured" });
   }
 
-  if (xMarketingPostsPaused()) {
+  if (xMentionRepliesPaused()) {
     await logCronRun("x-replies", started, {
       ok: true,
       skipped: true,
-      reason: "X_MARKETING_POSTS_PAUSED",
+      reason: xMarketingPostsPaused()
+        ? "X_MARKETING_POSTS_PAUSED"
+        : "X_MENTION_REPLIES_PAUSED",
     });
     return NextResponse.json({
       ok: true,
       skipped: true,
-      reason: "X_MARKETING_POSTS_PAUSED",
+      reason: xMarketingPostsPaused()
+        ? "X_MARKETING_POSTS_PAUSED"
+        : "X_MENTION_REPLIES_PAUSED",
     });
   }
 

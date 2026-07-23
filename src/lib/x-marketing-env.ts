@@ -18,6 +18,13 @@ export function xMarketingPostsPaused(): boolean {
   return v === "1" || v === "true" || v === "yes";
 }
 
+/** Stop x-replies cron + @mention auto-replies only (desk autopost can stay on). */
+export function xMentionRepliesPaused(): boolean {
+  if (xMarketingPostsPaused()) return true;
+  const v = process.env.X_MENTION_REPLIES_PAUSED?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
 /** Likes + follows only — no quote/reply on our profile (RT still OK). */
 export function xMarketingSilentOnly(): boolean {
   const v = process.env.X_GROWTH_SILENT_ONLY?.trim().toLowerCase();
