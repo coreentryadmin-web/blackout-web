@@ -75,7 +75,7 @@ export function NightHawkFeed() {
         className="ios-native-desk-segment mb-3"
         segments={NIGHTHAWK_VIEWS.map((v) => ({ id: v, label: NIGHTHAWK_VIEW_META[v].label }))}
       />
-      <p className="mb-3 text-xs text-slate-400">{NIGHTHAWK_VIEW_META[view].blurb}</p>
+      <p className="mb-3 text-xs text-mute">{NIGHTHAWK_VIEW_META[view].blurb}</p>
 
       <div className="nighthawk-single-view flex w-full max-w-none flex-col">
         {view === "ZERO_DTE" && <ZeroDteBoard />}

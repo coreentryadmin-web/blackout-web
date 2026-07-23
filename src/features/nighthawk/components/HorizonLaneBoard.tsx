@@ -27,20 +27,20 @@ export function HorizonLaneBoard({ horizon }: { horizon: Extract<Horizon, "SWING
   const watch = lane?.watch ?? [];
 
   return (
-    <section className="horizon-lane-board flex flex-col gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3 md:p-4">
+    <section className="horizon-lane-board flex flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3 md:p-4">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="flex items-baseline gap-2">
-          <h2 className="text-lg font-semibold tracking-tight text-slate-100">{lane?.label ?? horizon}</h2>
-          <span className="text-xs uppercase tracking-wide text-slate-400">{lane?.holdLabel}</span>
+          <h2 className="text-lg font-semibold tracking-tight text-white">{lane?.label ?? horizon}</h2>
+          <span className="text-xs uppercase tracking-wide text-mute">{lane?.holdLabel}</span>
         </div>
         <div className="flex items-center gap-2 text-xs">
-          <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 font-medium text-emerald-300">
+          <span className="rounded-md bg-bull/15 px-2 py-0.5 font-medium text-bull">
             {committed.length} committed
           </span>
-          <span className="rounded-md bg-white/5 px-2 py-0.5 text-slate-400">{watch.length} watch</span>
+          <span className="rounded-md bg-white/5 px-2 py-0.5 text-mute">{watch.length} watch</span>
           {lane && !lane.scoreFloorGraduated && (
             <span
-              className="rounded-md bg-amber-500/15 px-2 py-0.5 font-medium text-amber-300"
+              className="rounded-md bg-gold/[0.10] px-2 py-0.5 font-medium text-gold"
               title="This lane's commit floor is provisional — not yet graduated on graded evidence."
             >
               floor provisional
@@ -68,7 +68,7 @@ export function HorizonLaneBoard({ horizon }: { horizon: Extract<Horizon, "SWING
 
       {watch.length > 0 && (
         <>
-          <div className="mt-1 text-[0.7rem] font-medium uppercase tracking-wider text-slate-500">
+          <div className="mt-1 text-[0.7rem] font-medium uppercase tracking-wider text-mute/60">
             Watching (under floor)
           </div>
           <ul className="flex flex-col gap-1.5 opacity-70">
@@ -84,7 +84,7 @@ export function HorizonLaneBoard({ horizon }: { horizon: Extract<Horizon, "SWING
 
 function LaneMessage({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-lg border border-dashed border-white/10 bg-white/[0.02] px-3 py-6 text-center text-sm text-slate-400">
+    <p className="rounded-lg border border-dashed border-white/10 bg-white/[0.02] px-3 py-6 text-center text-sm text-mute">
       {children}
     </p>
   );
@@ -98,29 +98,29 @@ function PlayRow({ play, committed }: { play: HorizonPlay; committed: boolean })
     <li
       className={clsx(
         "grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border px-3 py-2",
-        committed ? "border-emerald-500/20 bg-emerald-500/[0.06]" : "border-white/10 bg-white/[0.02]"
+        committed ? "border-bull/25 bg-bull/[0.08]" : "border-white/10 bg-white/[0.02]"
       )}
     >
       <div className="flex items-center gap-2">
-        <span className="font-mono text-sm font-semibold text-slate-100">{play.ticker}</span>
+        <span className="font-mono text-sm font-semibold text-white">{play.ticker}</span>
         <span
           className={clsx(
             "rounded px-1.5 py-0.5 text-[0.65rem] font-bold uppercase",
-            long ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300"
+            long ? "bg-bull/20 text-bull" : "bg-bear/20 text-bear"
           )}
         >
           {long ? "Long" : "Short"}
         </span>
       </div>
-      <div className="min-w-0 truncate text-xs text-slate-400">
-        <span className="font-mono text-slate-300">
+      <div className="min-w-0 truncate text-xs text-mute">
+        <span className="font-mono text-sky-200">
           {c.strike}
           {c.right} · {c.expiry} · {c.dte}DTE
         </span>
-        <span className="ml-2 text-slate-500">{play.reason}</span>
+        <span className="ml-2 text-mute/60">{play.reason}</span>
       </div>
       <div className="flex items-center gap-3 text-right">
-        <span className="font-mono text-xs text-slate-400">{mid}</span>
+        <span className="font-mono text-xs text-mute">{mid}</span>
         <span
           className="rounded-md bg-white/5 px-2 py-0.5 font-mono text-sm font-semibold text-sky-300"
           title={`Score vs floor ${play.scoreFloor}`}
