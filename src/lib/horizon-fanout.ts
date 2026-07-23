@@ -18,7 +18,7 @@
  * exists** — contract availability is what scopes each lane across the whole market, never a ticker list.
  */
 
-import { HORIZON_ORDER, HORIZONS, type Horizon } from "./horizons.ts";
+import { HORIZON_ORDER, HORIZONS, type Horizon } from "./horizons";
 
 /** Trade direction for a candidate. LONG buys calls, SHORT buys puts. */
 export type PlayDirection = "LONG" | "SHORT";

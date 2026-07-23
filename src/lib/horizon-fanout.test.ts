@@ -7,7 +7,7 @@ import {
   fanOutChain,
   DEFAULT_LIQUIDITY,
   type ChainContract,
-} from "./horizon-fanout.ts";
+} from "./horizon-fanout";
 
 const ASOF = "2026-07-23";
 
