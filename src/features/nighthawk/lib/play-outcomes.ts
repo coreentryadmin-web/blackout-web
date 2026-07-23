@@ -94,6 +94,7 @@ export function buildNighthawkAuditRow(
       stop: play.stop,
       options_play: play.options_play,
       entry_premium: play.entry_premium ?? null,
+      exit_style: play.exit_style ?? null,
     },
   };
 }

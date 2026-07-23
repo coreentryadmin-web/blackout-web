@@ -638,7 +638,9 @@ test("bangerTickers get the scale-out exit risk_note; non-banger plays do not", 
   const bbb = plays.find((p) => p.ticker === "BBB");
   assert.ok(aaa, "AAA play built");
   assert.match(aaa.risk_note ?? "", /scale out|Banger exit/i, "banger play carries the scale-out guidance");
+  assert.equal(aaa.exit_style, "scale_out", "banger play carries the queryable exit_style marker");
   assert.equal(bbb?.risk_note, undefined, "non-banger play has no scale-out note");
+  assert.equal(bbb?.exit_style, undefined, "non-banger play has no exit_style marker (default grinder exit)");
 });
 
 test("no bangerTickers passed → no play gets a scale-out note (backwards compatible)", () => {

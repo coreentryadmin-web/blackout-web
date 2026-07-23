@@ -486,6 +486,7 @@ function buildPlay(
   // — it does NOT change the play's plan/target/stop or how it's graded.
   if (bangerTickers?.has(scored.ticker.toUpperCase())) {
     base.risk_note = bangerScaleOutNote();
+    base.exit_style = "scale_out"; // structured marker (not just prose) so the ledger can SELECT bangers
   }
   if (contract && !contract.caveat) {
     return applyPremiumCapToPlay(base, { entry_premium: contract.premium, options_play });
