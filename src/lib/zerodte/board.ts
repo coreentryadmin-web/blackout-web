@@ -809,6 +809,11 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  present on the card + persisted for the graded ledger, but it does not move the score or gate
    *  the board yet. Null = no multi-day signal for this name. See flow-accumulation-context.ts. */
   flow_accumulation?: import("./flow-accumulation-context").ZeroDteFlowAccumulation | null;
+  /** Confluence read (calibration-first): how many independent confirmations — post-open timing,
+   *  price vs VWAP, market/SPY alignment — AGREE with the setup's direction, + a tier. The graded
+   *  edge is the VWAP+market "double" bucket (+15.9% EV, docs/audit/0DTE-RESEARCH.md); "triple" gilds
+   *  it. Evidence only — does not gate/score the board yet. See confluence.ts. */
+  confluence?: import("./confluence").ZeroDteConfluence | null;
 };
 
 // ── Stage 4 audit trail (alert_audit_log) ─────────────────────────────────────────
