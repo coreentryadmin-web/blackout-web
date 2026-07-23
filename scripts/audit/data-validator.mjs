@@ -140,6 +140,17 @@ const ZERODTE_HIST_WINDOW_MS = 3 * 60 * 1000;
 // when it diverges from the contract's own traded range by more than the app's own
 // definition of "abnormal" for an option's price.
 const ZERODTE_OPTION_PREM_TOL_PCT = 15;
+// entry_premium is NOT the option's traded price at the flag instant — it is entry_max =
+// resolveLedgerEntryPremium(plan.entry_max, top_strike_avg_fill) (src/lib/zerodte/plan.ts:146,
+// scan.ts:563), i.e. the flow's AVERAGE FILL over the accumulation window (falling back to the
+// plan mark). That accumulation starts at the open and can precede first_flagged_at by many
+// minutes, so the tight ±3m flag window legitimately misses the fill price (proven live 2026-07-23:
+// QQQ $700P entry_max 7.81 came from the 9:30 open where the option traded 7.78, but the setup
+// flagged at 10:01 where it traded 5.3-6.6 → false FAIL). entry_premium is therefore ground-truthed
+// against an ASYMMETRIC window that looks BACK across the accumulation period (still catches a
+// fabricated premium the contract never traded near, all day). Bounded so a stale flagMs can't walk
+// off the session.
+const ENTRY_PREM_LOOKBACK_MS = 150 * 60 * 1000;
 
 /** NYSE-next-trading-day, reimplemented locally (mirrors src/lib/nighthawk/session.ts's
  *  nextTradingDayEt byte-for-byte) so this script stays self-contained (it already imports
@@ -224,6 +235,18 @@ function polygonHistRange(symbol, centerMs, windowMs) {
   const from = Math.round(centerMs - windowMs);
   const to = Math.round(centerMs + windowMs);
   const rows = poly(`/v2/aggs/ticker/${encodeURIComponent(symbol)}/range/1/minute/${from}/${to}?adjusted=true&sort=asc&limit=50`)?.results;
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return { lo: Math.min(...rows.map((b) => b.l)), hi: Math.max(...rows.map((b) => b.h)) };
+}
+
+/** ASYMMETRIC range: [centerMs - lookbackMs, centerMs + lookaheadMs]. Used for entry_premium (=entry_max
+ *  = the flow's fill over the accumulation window, which precedes the flag) — the range must reach back
+ *  across that accumulation period, not just ±a few minutes of the flag instant. */
+function polygonHistRangeAsym(symbol, centerMs, lookbackMs, lookaheadMs) {
+  if (!Number.isFinite(centerMs)) return null;
+  const from = Math.round(centerMs - lookbackMs);
+  const to = Math.round(centerMs + lookaheadMs);
+  const rows = poly(`/v2/aggs/ticker/${encodeURIComponent(symbol)}/range/1/minute/${from}/${to}?adjusted=true&sort=asc&limit=400`)?.results;
   if (!Array.isArray(rows) || rows.length === 0) return null;
   return { lo: Math.min(...rows.map((b) => b.l)), hi: Math.max(...rows.map((b) => b.h)) };
 }
@@ -461,12 +484,15 @@ async function main() {
             if (!resolved?.occ) {
               rec(`0DTE ledger ${ticker}: entry_premium vs Polygon option minute bars`, 'INFO', 'skipped — no resolved OCC contract (top_strike existence check above did not resolve one)');
             } else {
-              const range = polygonHistRange(resolved.occ, flagMs, ZERODTE_HIST_WINDOW_MS);
+              // Asymmetric, accumulation-aware window: entry_premium is entry_max (the flow's fill over
+              // the accumulation window, which precedes the flag), so look BACK across that period +
+              // a small forward cushion — NOT the tight ±3m flag window (see ENTRY_PREM_LOOKBACK_MS note).
+              const range = polygonHistRangeAsym(resolved.occ, flagMs, ENTRY_PREM_LOOKBACK_MS, ZERODTE_HIST_WINDOW_MS);
               if (!range) {
-                rec(`0DTE ledger ${ticker}: entry_premium vs Polygon option minute bars`, 'INFO', `skipped — no Polygon minute bars for ${resolved.occ} in the ±${ZERODTE_HIST_WINDOW_MS / 60000}m window around ${r0.first_flagged_at} (thin/illiquid single-name 0DTE contracts often have zero trades in a given minute)`);
+                rec(`0DTE ledger ${ticker}: entry_premium vs Polygon option minute bars`, 'INFO', `skipped — no Polygon minute bars for ${resolved.occ} in the [-${ENTRY_PREM_LOOKBACK_MS / 60000}m,+${ZERODTE_HIST_WINDOW_MS / 60000}m] window around ${r0.first_flagged_at} (thin/illiquid single-name 0DTE contracts often have zero trades in a given minute)`);
               } else {
                 const ok = withinHistRange(ep, range, ZERODTE_OPTION_PREM_TOL_PCT);
-                rec(`0DTE ledger ${ticker}: entry_premium vs Polygon option minute bars`, ok ? 'PASS' : 'FAIL', `logged=${ep} polygon_range=[${range.lo.toFixed(4)}, ${range.hi.toFixed(4)}] (±${ZERODTE_OPTION_PREM_TOL_PCT}% cushion, ${resolved.occ}) at ${r0.first_flagged_at}`);
+                rec(`0DTE ledger ${ticker}: entry_premium vs Polygon option minute bars`, ok ? 'PASS' : 'FAIL', `logged=${ep} polygon_range=[${range.lo.toFixed(4)}, ${range.hi.toFixed(4)}] (±${ZERODTE_OPTION_PREM_TOL_PCT}% cushion over the accumulation window, ${resolved.occ}) at ${r0.first_flagged_at}`);
               }
             }
           }
