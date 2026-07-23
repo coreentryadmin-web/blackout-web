@@ -31,7 +31,8 @@ Official docs: [X API pricing](https://x-preview.mintlify.app/x-api/getting-star
 |----------|---------|---------|
 | `X_API_ACCESS_TIER` | `ppu` | `enterprise` enables FinTwit quote/reply in `x-growth` |
 | `X_DESK_POST_INCLUDE_URL` | off on PPU | `1` = pricing URL in tweet ($0.20/post) |
-| `X_MARKETING_POSTS_PAUSED` | off | `1` = skip autopost + mention replies |
+| `X_MARKETING_POSTS_PAUSED` | off | `1` = skip **autopost + @mention replies** |
+| `X_MENTION_REPLIES_PAUSED` | off | `1` = skip **@mention replies only** (desk autopost OK) |
 | `X_GROWTH_SILENT_ONLY` | off | `1` = likes/follows only |
 
 **Cost example (7 desk posts/day):** ~$3.15/mo without URL in tweet vs ~$42/mo with URL (bio carries link).
