@@ -17,6 +17,10 @@ import { todayEt } from "@/features/nighthawk/lib/session";
 import { fetchAggBars } from "@/lib/providers/polygon-largo";
 import { withServerCache } from "@/lib/server-cache";
 import { computeIntradayRead, marketBias, type MarketBias } from "./intraday";
+import { priorEtYmd } from "@/lib/providers/spx-session";
+// Runtime import is safe: ./regime is pure (no providers, no cycle) — it turns the SPY
+// session/prior-day OHLC into the "what kind of day is it" read the feature store records.
+import { classifyRegime, type MarketRegime } from "./regime";
 // Runtime import is safe here: ./tiers is pure (its only import is ./gates
 // constants), so it adds no providers to this module's load graph.
 import { tierFromEntryContext, type ZeroDteTierAssignment } from "./tiers";
@@ -52,6 +56,12 @@ export type ZeroDteSessionContext = {
   /** SPY session bias from the SAME marketBias() read the edge layer scores with —
    *  "flat" is the mixed/no-lean state. Null when SPY minute bars were unreadable. */
   spy_bias: MarketBias | null;
+  /** "What kind of day is it" (classifyRegime over SPY as the market proxy): structure /
+   *  gap / vol band / calendar. Session-level, so it's computed ONCE here and stamped onto
+   *  every setup's feature vector — identical for every play committed in the window. Null
+   *  when the SPY OHLC needed to classify it was unreadable (never guessed). Optional so
+   *  the many buildZeroDteEntryContext call sites (which don't read it) stay untouched. */
+  regime?: MarketRegime | null;
 };
 
 /** The persisted per-row context blob (zerodte_setup_log.entry_context /
@@ -145,6 +155,75 @@ export function buildZeroDteEntryContext(
 const SESSION_CTX_TTL_MS = 3 * 60 * 1000; // same cadence as the intraday read cache
 const SESSION_CTX_WAIT_MS = 2_500; // soft deadline — a slow provider degrades to null
 
+/** A daily/minute OHLC bar as polygon-largo's fetchAggBars returns it. */
+type OhlcBar = { t?: number; o?: number; h?: number; l?: number; c?: number };
+
+/** ET YYYY-MM-DD for a bar's epoch-ms `t` (bars are keyed at UTC day-start; render in ET
+ *  so "is this today's bar" compares against the ET session date, not a UTC date). */
+function barEtYmd(t: number): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(t));
+}
+
+/** 14-period ATR over COMPLETED daily bars (Wilder's true range, simple mean of the last
+ *  14). Needs ≥15 bars so the first TR has a prior close. Null otherwise. */
+function atr14Daily(bars: OhlcBar[]): number | null {
+  if (bars.length < 15) return null;
+  const trs: number[] = [];
+  for (let i = 1; i < bars.length; i++) {
+    const cur = bars[i]!;
+    const prev = bars[i - 1]!;
+    if (![cur.h, cur.l, prev.c].every((n) => n != null && Number.isFinite(n))) continue;
+    trs.push(Math.max(cur.h! - cur.l!, Math.abs(cur.h! - prev.c!), Math.abs(cur.l! - prev.c!)));
+  }
+  if (trs.length < 14) return null;
+  const slice = trs.slice(-14);
+  return slice.reduce((a, b) => a + b, 0) / slice.length;
+}
+
+/**
+ * PURE regime read for the session (SPY as the market proxy). Composes today's session OHLC
+ * (open from the daily bar, high/low/last/vwap from the intraday minute read) with the prior
+ * session's OHLC and a daily ATR, then classifyRegime()s it. Returns null — never a fabricated
+ * regime — unless EVERY field it needs is a real finite number: a null regime is honest; a
+ * guessed one poisons the feature store the calibration layer trusts.
+ *
+ * `dailyBars` must be ascending by time and include today's (forming) session as the last bar.
+ */
+export function buildSessionRegime(
+  dailyBars: OhlcBar[],
+  spyRead: { last: number | null; day_high: number | null; day_low: number | null; vwap: number | null },
+  vixLevel: number | null,
+  todayYmd: string
+): MarketRegime | null {
+  if (dailyBars.length < 2 || vixLevel == null || !Number.isFinite(vixLevel)) return null;
+  const todayBar = dailyBars.at(-1)!;
+  // Today's bar must actually be today's — a stale/lagged series (last bar = a prior session)
+  // can't give a session open, so the regime is unknowable rather than wrong.
+  if (todayBar.t == null || barEtYmd(todayBar.t) !== todayYmd) return null;
+  const prevBar = dailyBars.at(-2)!;
+  const atr = atr14Daily(dailyBars.slice(0, -1)); // completed sessions only — exclude today's partial
+  const open = todayBar.o ?? null;
+  const last = spyRead.last ?? todayBar.c ?? null;
+  const high = spyRead.day_high ?? todayBar.h ?? null;
+  const low = spyRead.day_low ?? todayBar.l ?? null;
+  const vwap = spyRead.vwap ?? null;
+  const prevClose = prevBar.c ?? null;
+  const prevHigh = prevBar.h ?? null;
+  const prevLow = prevBar.l ?? null;
+  const need = [open, last, high, low, vwap, prevClose, prevHigh, prevLow, atr];
+  if (need.some((n) => n == null || !Number.isFinite(n as number))) return null;
+  return classifyRegime({
+    open: open!, last: last!, high: high!, low: low!,
+    prevClose: prevClose!, prevHigh: prevHigh!, prevLow: prevLow!,
+    vwap: vwap!, atr: atr!, vix: vixLevel, dateYmd: todayYmd,
+  });
+}
+
 /**
  * Fetch the session half of the context, cached per (session, 3-min window) across
  * all replicas. VIX day-open is a daily-bar `o` (fixed at 9:30 ET, so the 3-min TTL
@@ -155,9 +234,12 @@ export async function fetchZeroDteSessionContext(): Promise<ZeroDteSessionContex
   const today = todayEt();
   return within(
     withServerCache<ZeroDteSessionContext>(`zerodte:entryctx:${today}`, SESSION_CTX_TTL_MS, async () => {
-      const [vixBars, spyBars] = await Promise.all([
+      // ~40 calendar days back → ≥15 completed daily bars for ATR + the prior session's OHLC.
+      const dailyFrom = priorEtYmd(40);
+      const [vixBars, spyBars, spyDaily] = await Promise.all([
         fetchAggBars("I:VIX", 1, "day", today, today).catch(() => []),
         fetchAggBars("SPY", 1, "minute", today, today, "1000").catch(() => []),
+        fetchAggBars("SPY", 1, "day", dailyFrom, today).catch(() => []),
       ]);
       const vixOpen = vixBars.length ? vixBars[0]!.o : null;
       const spyRead = computeIntradayRead(
@@ -165,9 +247,16 @@ export async function fetchZeroDteSessionContext(): Promise<ZeroDteSessionContex
           .filter((b) => b.t != null && Number.isFinite(b.t))
           .map((b) => ({ t: b.t as number, h: b.h, l: b.l, c: b.c, v: b.v }))
       );
+      const vixLevel = vixOpen != null && Number.isFinite(vixOpen) ? vixOpen : null;
       return {
-        vix_open: vixOpen != null && Number.isFinite(vixOpen) ? vixOpen : null,
+        vix_open: vixLevel,
         spy_bias: marketBias(spyRead),
+        regime: buildSessionRegime(
+          spyDaily.filter((b) => b.t != null && Number.isFinite(b.t)),
+          { last: spyRead.last, day_high: spyRead.day_high, day_low: spyRead.day_low, vwap: spyRead.vwap },
+          vixLevel,
+          today
+        ),
       };
     }),
     SESSION_CTX_WAIT_MS
