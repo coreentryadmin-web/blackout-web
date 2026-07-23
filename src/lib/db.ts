@@ -5116,6 +5116,43 @@ export async function fetchUngradedZeroDteRows(beforeDate: string, limit = 12): 
   return res.rows.map(mapZeroDteLogRow);
 }
 
+/** A graded setup joined to its pinned feature vector — the feature store's read row
+ *  (src/lib/zerodte/feature-store.ts shapes + summarizes these). Only the columns the
+ *  intelligence layer needs, so the whole store can be pulled in one lean query. */
+export type GradedFeatureVectorRow = {
+  ticker: string;
+  session_date: string;
+  feature_vector: Record<string, unknown> | null;
+  plan_outcome: string | null;
+  plan_pnl_pct: number | null;
+};
+
+/**
+ * The feature store's read side: every GRADED setup that carries a pinned feature_vector, newest first.
+ * Filtered in SQL to rows that (a) have a feature vector and (b) graded to a win/loss plan_outcome — an
+ * ungradeable or still-open row is not evidence, so it never leaves the DB. Capped; the store is meant to
+ * be summarized into base rates, not streamed unbounded.
+ */
+export async function fetchGradedFeatureVectorRows(limit = 5000): Promise<GradedFeatureVectorRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT ticker, session_date, feature_vector, plan_outcome, plan_pnl_pct
+       FROM zerodte_setup_log
+      WHERE feature_vector IS NOT NULL
+        AND plan_outcome IN ('doubled', 'stopped', 'time_stop')
+      ORDER BY session_date DESC, first_flagged_at DESC
+      LIMIT $1`,
+    [limit]
+  );
+  return res.rows.map((r) => ({
+    ticker: String(r.ticker ?? ""),
+    session_date: isoDateString(r.session_date),
+    feature_vector: (r.feature_vector as Record<string, unknown> | null) ?? null,
+    plan_outcome: r.plan_outcome != null ? String(r.plan_outcome) : null,
+    plan_pnl_pct: r.plan_pnl_pct != null ? Number(r.plan_pnl_pct) : null,
+  }));
+}
+
 /**
  * P-6 backfill: un-stamp `graded_at` on historical index-root rows that carry the
  * null-grade signature of the pre-polygonSpotTicker bug (graded_at set, close_price
