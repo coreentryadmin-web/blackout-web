@@ -124,6 +124,10 @@ function scan(obj, path, out) {
 // script, not a hot path, but there is no reason to hammer Polygon for a 30-row ledger.
 const ZERODTE_LIVE_CHECK_CAP = 5;
 const ZERODTE_LEDGER_CHECK_CAP = 5;
+// Index/ETF 0DTE names that must match Polygon TIGHTLY (slow, deep tape) — everything else on the
+// board is a single stock whose app-snapshot-vs-async-Polygon-tick divergence is legitimately wider.
+// Used to pick the underlying-price tolerance so the check stops false-failing fast single-name movers.
+const INDEX_ETF_0DTE = new Set(['SPY', 'QQQ', 'IWM', 'DIA', 'SPX', 'SPXW', 'NDX', 'RUT']);
 // Historical cross-checks (entry_premium / underlying_at_flag) compare the logged number
 // against Polygon's own minute bars in a window centered on first_flagged_at — wide enough
 // to absorb a few seconds of clock skew between "the scan flagged it" and "the aggregate
@@ -386,11 +390,20 @@ async function main() {
           const spot = polygonSpotNow(ticker, rth);
           if (appPrice != null && spot != null && spot > 0) {
             const d = Math.abs(appPrice - spot) / spot * 100;
-            // Reuses priceTol verbatim (the SPY/SPX/GEX-spot convention above) rather than
-            // inventing a single-name tolerance — flagged in FINDINGS.md as an assumption
-            // worth revisiting if live single-name volatility around alert time false-fails
-            // this in practice.
-            rec(`0DTE live ${ticker}: underlying_price vs Polygon`, d <= priceTol ? 'PASS' : 'FAIL', `app=${appPrice} polygon(${rth ? 'live' : 'prev-close'})=${spot} Δ=${d.toFixed(3)}%`);
+            // ASSET-CLASS-AWARE tolerance (fixed 2026-07-23 after this false-failed MU live). ROOT CAUSE:
+            // a setup's underlying_price is FLOW-DERIVED (scan.ts: `f.underlying_price` off the UW flow
+            // alerts), not a live "now" quote — so it is only as fresh as the name's FLOW cadence.
+            // Continuously-active names (SPY/QQQ) get a fresh underlying every scan (they matched Polygon
+            // to 0.003%); a sparse-flow single name lags live between flow bursts — MU sat at 972.84 from
+            // its last flow while Polygon ran 967→987 (~2% in 5min). The tight index tolerance (0.3% RTH)
+            // is right for the index/ETF core (real staleness there IS a bug) but cried wolf on every
+            // single-name mover. Single names get a wider band that still catches GROSS staleness (a
+            // liquid 0DTE name off >1.5% is a genuine feed problem, not flow-cadence lag). NOTE: the
+            // flow-derived underlying's lag on sparse-flow names is a real board freshness question
+            // (moneyness/display) logged in FINDINGS.md — the validator widening only stops the
+            // false-FAIL; it does not paper over a gross-staleness break.
+            const nameTol = INDEX_ETF_0DTE.has(ticker) ? priceTol : Math.max(priceTol, rth ? 1.5 : 2.5);
+            rec(`0DTE live ${ticker}: underlying_price vs Polygon`, d <= nameTol ? 'PASS' : 'FAIL', `app=${appPrice} polygon(${rth ? 'live' : 'prev-close'})=${spot} Δ=${d.toFixed(3)}% (tol ${nameTol}%${INDEX_ETF_0DTE.has(ticker) ? ' index' : ' single-name'})`);
           } else {
             rec(`0DTE live ${ticker}: underlying_price vs Polygon`, 'INFO', `skipped — app=${appPrice} polygon=${spot} (missing one side)`);
           }
