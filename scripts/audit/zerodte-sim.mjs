@@ -104,7 +104,49 @@ const { filterPlaysByMaxDte } = await import(`${SRC}features/nighthawk/lib/agent
 const { fetchEditionChains } = await import(`${SRC}features/nighthawk/lib/option-chain-prompt.ts`);
 const { fetchMarketFlowAlertRows } = await import(`${SRC}lib/providers/unusual-whales.ts`);
 const { gradePlanFromBars, PLAN_RULES } = await import(`${SRC}lib/zerodte/plan.ts`);
+const { evaluateExitState } = await import(`${SRC}lib/zerodte/exit-engine.ts`);
 const { fetchAggBars } = await import(`${SRC}lib/providers/polygon-largo.ts`);
+
+/**
+ * Grade a play through the SHIPPED live exit engine (exit-engine.ts evaluateExitState) instead of the
+ * hold-to-stop/target gradePlanFromBars — so the backtest measures the ratchet/trim/flat-timeout the
+ * board ACTUALLY runs (arm +25%→BE, +50%→+20% lock, TRIM half at +100% then run the rest with a +50%
+ * floor, flat-theta scratch). Faithful bar replay: conservative intrabar order = adverse extreme (low)
+ * for protective exits FIRST, then favorable extreme (high) for target/trim, then the close for the
+ * flat-timeout. Cortex evidence is null (thesis-break can't be replayed off-line → skipped, never
+ * fabricated). Returns { pnl_pct, outcome } or null. RTH-capped at 16:00 ET.
+ */
+function gradeThroughExitEngine(bars, entry, planStop, planTarget, flaggedMs) {
+  if (!(entry > 0)) return null;
+  const seq = [...bars].filter((b) => b.t >= flaggedMs && etMinOfBar(b.t) <= 960).sort((a, z) => a.t - z.t);
+  if (!seq.length) return null;
+  const pnlAt = (mark) => ((mark - entry) / entry) * 100;
+  let peak = entry, trimmed = false, realized = 0, remaining = 1, exited = false, outcome = "time_stop", lastClose = entry;
+  for (const b of seq) {
+    lastClose = b.c;
+    const age = (b.t - flaggedMs) / 60000;
+    const mk = (m, pk) => ({ entryPremium: entry, currentMark: m, peakPremium: pk, ageMinutes: age, cortexEvidence: null, planStop, planTarget, status: trimmed ? "TRIM" : "OPEN", trimmed, entryCortexScore: null });
+    // 1) adverse extreme (low) → PROTECTIVE exit only (plan-stop or ratchet/runner floor). Flat-timeout
+    // is a time-based scratch at the mark, not an adverse-wick event, so it's handled at the close below.
+    const dLow = evaluateExitState(mk(b.l, peak));
+    if (dLow.action === "EXIT" && (dLow.reason === "plan_stop" || /ratchet|runner/.test(dLow.reason))) {
+      const exitPnl = dLow.reason === "plan_stop" ? pnlAt(planStop) : dLow.floorPnlPct;
+      realized += remaining * exitPnl; exited = true;
+      outcome = dLow.reason === "plan_stop" ? "stopped" : "ratchet";
+      break;
+    }
+    peak = Math.max(peak, b.h);
+    // 2) favorable extreme (high) → trim half at target, or bank the runner
+    const dHigh = evaluateExitState(mk(b.h, peak));
+    if (dHigh.action === "TRIM" && !trimmed) { realized += 0.5 * pnlAt(planTarget); trimmed = true; remaining = 0.5; }
+    else if (dHigh.action === "EXIT" && trimmed && dHigh.reason === "plan_target_final") { realized += remaining * pnlAt(planTarget); exited = true; outcome = "doubled"; break; }
+    // 3) close → flat-theta scratch
+    const dClose = evaluateExitState(mk(b.c, peak));
+    if (dClose.action === "EXIT" && dClose.reason === "flat_theta_bleed") { realized += remaining * pnlAt(b.c); exited = true; outcome = "flat_scratch"; break; }
+  }
+  if (!exited) { realized += remaining * pnlAt(lastClose); outcome = trimmed ? "runner_close" : "time_stop"; }
+  return { pnl_pct: Math.round(realized * 10) / 10, outcome };
+}
 
 // ── Small helpers ────────────────────────────────────────────────────────────────
 const num = (v) => {
@@ -454,7 +496,12 @@ if (!GRADE_DATE) {
       if (up > mfe) mfe = up;
       if (dn < mae) mae = dn;
     }
-    results.push({ ticker: c.ticker, occ: atm.occ, side, strike: atm.strike, spot, entryPremium, outcome: grade.outcome, pnl_pct: grade.pnl_pct, mfe_pct: Math.round(mfe * 10) / 10, mae_pct: Math.round(mae * 10) / 10 });
+    // Grade the SAME play through the SHIPPED ratchet exit engine (evaluateExitState) — the exit the
+    // board actually runs — so we measure realized EV under the live rule, not just hold-to-stop/target.
+    const planStop = entryPremium * (1 + PLAN_RULES.stop_pct / 100);
+    const planTarget = entryPremium * (1 + PLAN_RULES.target_pct / 100);
+    const rex = gradeThroughExitEngine(atm.bars, entryPremium, planStop, planTarget, entryBar.t);
+    results.push({ ticker: c.ticker, occ: atm.occ, side, strike: atm.strike, spot, entryPremium, outcome: grade.outcome, pnl_pct: grade.pnl_pct, mfe_pct: Math.round(mfe * 10) / 10, mae_pct: Math.round(mae * 10) / 10, ratchet_pnl_pct: rex?.pnl_pct ?? null, ratchet_outcome: rex?.outcome ?? null });
   }
 
   console.log(`    ${pad("TICKER", 8)}${pad("SIDE", 6)}${padL("STRIKE", 7)}${padL("ENTRY$", 8)}  ${pad("OUTCOME", 12)}${padL("P/L%", 8)}  contract`);
@@ -480,14 +527,21 @@ if (!GRADE_DATE) {
   const availAt = (x) => (withMfe.length ? (withMfe.filter((r) => r.mfe_pct >= x).length / withMfe.length) * 100 : null);
   const neverGreen = withMfe.length ? (withMfe.filter((r) => r.mfe_pct <= 0).length / withMfe.length) * 100 : null;
   const pctOr = (v) => (v == null ? "—" : v.toFixed(0) + "%");
+  // Realized EV under the SHIPPED ratchet exit engine (evaluateExitState) vs the hold-to-stop/target
+  // plan grade — the load-bearing comparison: does the live ratchet/trim/flat exit beat holding?
+  const withRex = graded.filter((r) => r.ratchet_pnl_pct != null);
+  const rexWin = withRex.length ? (withRex.filter((r) => r.ratchet_pnl_pct > 0).length / withRex.length) * 100 : null;
+  const rexAvg = withRex.length ? withRex.reduce((s, r) => s + r.ratchet_pnl_pct, 0) / withRex.length : null;
+  const planAvgOnRex = withRex.length ? withRex.reduce((s, r) => s + (r.pnl_pct ?? 0), 0) / withRex.length : null;
   console.log(`\n${line("═")}`);
   console.log(`  BACKTEST ${GRADE_DATE}: ${graded.length} gradeable plays · ${wins} doubled · ${stops} stopped · ${times} time-stop`);
   console.log(`  win-rate ${graded.length ? ((wins / graded.length) * 100).toFixed(1) : "—"}% · avg P/L ${avgPnl != null ? avgPnl.toFixed(1) + "%" : "—"} · ${results.length - graded.length} no-data/ungradeable`);
+  console.log(`  RATCHET EXIT (shipped engine): win ${rexWin != null ? rexWin.toFixed(1) + "%" : "—"} · avg P/L ${rexAvg != null ? rexAvg.toFixed(1) + "%" : "—"}  (vs hold ${planAvgOnRex != null ? planAvgOnRex.toFixed(1) + "%" : "—"} on same n=${withRex.length})`);
   console.log(`  GREEN-EXIT AVAILABILITY (MFE): +10% ${pctOr(availAt(10))} · +25% ${pctOr(availAt(25))} · +50% ${pctOr(availAt(50))} · +100% ${pctOr(availAt(100))} · NEVER-green ${pctOr(neverGreen)}`);
   console.log(line("═"));
 
   if (EMIT_JSON) {
     console.log("\n<<<JSON>>>");
-    console.log(JSON.stringify({ gradeDate: GRADE_DATE, results, summary: { gradeable: graded.length, wins, stops, times, avgPnl, green_avail_10: availAt(10), green_avail_25: availAt(25), green_avail_50: availAt(50), green_avail_100: availAt(100), never_green: neverGreen } }, null, 2));
+    console.log(JSON.stringify({ gradeDate: GRADE_DATE, results, summary: { gradeable: graded.length, wins, stops, times, avgPnl, ratchet_win: rexWin, ratchet_avg_pnl: rexAvg, plan_avg_on_rex: planAvgOnRex, green_avail_10: availAt(10), green_avail_25: availAt(25), green_avail_50: availAt(50), green_avail_100: availAt(100), never_green: neverGreen } }, null, 2));
   }
 }
