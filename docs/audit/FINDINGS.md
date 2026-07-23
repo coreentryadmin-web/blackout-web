@@ -5,6 +5,22 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-23 — [TOOLING] data-validator `--watch` = per-minute continuous validation (one auth)
+
+**What:** added a `WATCH_SECONDS` loop to `scripts/audit/data-validator.mjs` so the full authed check
+battery (prices/indices, GEX/greeks, 0DTE live+ledger contract/underlying/entry-premium, track-record
+math, malformed-float scan) runs **every minute** on a single Clerk session instead of one-shot.
+**Root cause it solves:** the prior cadence was every ~12 min (`validation-loop.sh`) because a fresh
+`node` invocation re-signs-in, and rapid Clerk sign-in cycles get FAPI-rate-limited. Key realization:
+`mint()` REFRESHES the token from the *existing* session (not a new sign-in) → no rate limit → safe to
+loop at 60s. **How:** authenticate once (unchanged), then `for (iter…)` re-runs the battery; each pass
+clears `checks`, calls `mint()`, and appends a one-line `TOTALS + any FAIL/WARN` to `WATCH_LOG`/
+`WATCH_STATUS`. `WATCH_END_UTC` bounds the run; `WATCH` unset → **exact original one-shot behavior**
+(verified: `TOTALS {"PASS":33,"INFO":3}` + cleanup 200/404 unchanged). Added SIGINT/SIGTERM cleanup so
+a killed watch still deletes the temp Clerk user (the unbounded loop bypasses `main().finally()`).
+**Evidence:** live multi-pass on one auth, no auth failure, entry_premium now PASSES live (3.74 ∈
+[0.99, 3.95]). Retired `validation-loop.sh` (superseded). Status: SHIPPED.
+
 ## 2026-07-23 — [LOW] Live-open validation findings (RTH acid test of the shipped system)
 
 Ran the full live-validation sequence at the 9:33 ET open (data-validator + both engines) against LIVE

@@ -36,7 +36,7 @@
  * Authenticate ONCE per run — rapid Clerk sign-in cycles get FAPI-rate-limited.
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isTradingDayEt, todayEtYmd } from '../gha-et-window.mjs';
@@ -298,6 +298,17 @@ async function main() {
   };
   rec('auth: admin session established', 'PASS', `session ${sid}`);
 
+  // WATCH mode (per-minute continuous validation): authenticate ONCE above, then loop the full check
+  // battery on a persistent session, REFRESHING the token each pass (mint() — NOT a re-sign-in, so no
+  // Clerk FAPI rate limit). WATCH_SECONDS=60 → check everything every minute; WATCH_END_UTC bounds it;
+  // per-pass TOTALS + any FAIL/WARN append to WATCH_LOG/WATCH_STATUS. WATCH unset → one-shot (unchanged).
+  const WATCH = Number(process.env.WATCH_SECONDS) || 0;
+  const WATCH_STATUS = process.env.WATCH_STATUS || join(OUT, 'watch.status');
+  const WATCH_LOG = process.env.WATCH_LOG || join(OUT, 'watch.log');
+  const WATCH_END = process.env.WATCH_END_UTC ? Date.parse(process.env.WATCH_END_UTC) : Infinity;
+  for (let iter = 1; ; iter++) {
+    if (iter > 1) { checks.length = 0; mint(); }
+
   // --- app payloads ---
   const P = {
     quote: app('/api/market/quote?ticker=SPY'), indices: app('/api/market/indices'),
@@ -516,7 +527,30 @@ async function main() {
   let flagged = 0;
   for (const [name, p] of Object.entries(P)) { if (!p) continue; const out = []; scan(p, '', out); if (out.length) { flagged++; rec(`malformed: ${name}`, 'WARN', out.slice(0, 3).join(' | '), { suspects: out.slice(0, 20) }); } }
   rec('malformed scan complete', flagged ? 'WARN' : 'PASS', `${Object.values(P).filter(Boolean).length} payloads, ${flagged} with suspect numeric formatting (unrounded floats)`);
+
+    if (!WATCH) break; // one-shot mode: exactly the original single pass
+    const t = checks.reduce((m, c) => ((m[c.status] = (m[c.status] || 0) + 1), m), {});
+    const et = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' }).format(new Date());
+    const bad = checks.filter((c) => c.status === 'FAIL' || c.status === 'WARN');
+    const line = `[${et} ET pass#${iter}] ${JSON.stringify(t)}${bad.length ? ' ⚠ ' + bad.map((f) => `${f.name}: ${(f.detail || '').slice(0, 110)}`).join(' | ') : ' ✓ all clean'}`;
+    try { appendFileSync(WATCH_LOG, line + '\n'); writeFileSync(WATCH_STATUS, line + '\n'); } catch {}
+    console.log(line);
+    if (Date.now() >= WATCH_END) break; // bounded run self-terminates → falls through to .finally() cleanup
+    await new Promise((r) => setTimeout(r, WATCH * 1000));
+  }
 }
+
+// WATCH mode runs an unbounded loop, so main()'s .finally() cleanup only fires on a bounded/errored run.
+// A kill (SIGINT/SIGTERM) must still delete the temp Clerk user — register a best-effort cleanup for it.
+let _cleanedUp = false;
+function _signalCleanup() {
+  if (_cleanedUp) return; _cleanedUp = true;
+  try { if (userId) backend('DELETE', `/users/${userId}`); } catch {}
+  try { rmSync(TMP, { recursive: true, force: true }); } catch {}
+  process.exit(0);
+}
+process.on('SIGINT', _signalCleanup);
+process.on('SIGTERM', _signalCleanup);
 
 let exitCode = 0;
 main().catch((e) => { rec('script error', 'FAIL', String(e.message || e)); }).finally(() => {
