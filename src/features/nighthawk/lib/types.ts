@@ -18,6 +18,12 @@ export type PlaybookPlay = {
   entry_cost_per_contract?: number;
   premium_cap_ok?: boolean;
   risk_note?: string;
+  /** Exit discipline this play should be MANAGED under. "scale_out" = a whole-market breakout/banger
+   *  play (positive-skew: partial at 2×, trail the runner, hard stop) — structurally distinct from the
+   *  index 0DTE grinder's let-it-run ratchet. Absent = the default grinder exit. This is the queryable
+   *  marker (the risk_note is only prose) that lets the ledger SELECT bangers to grade them on the
+   *  option scale-out path and graduate the exit on evidence. */
+  exit_style?: "scale_out";
   /** Optional so a degraded/legacy source with no real score renders "—", never a fabricated 0. */
   score?: number;
   flow_streak_days?: number;
