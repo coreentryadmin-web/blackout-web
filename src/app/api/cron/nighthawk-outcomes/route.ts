@@ -4,6 +4,7 @@ import { requireDatabaseInProduction } from "@/lib/db";
 import {
   nighthawkOutcomesRunHealth,
   resolvePendingNighthawkOutcomes,
+  resolveBangerScaleOutGrades,
 } from "@/features/nighthawk/lib/play-outcomes";
 import { regradeStuckNighthawkOutcomes } from "@/features/nighthawk/lib/regrade-stuck";
 import {
@@ -101,12 +102,25 @@ export async function GET(req: NextRequest) {
       rows: [],
     }));
 
+    // Step-6b: grade the whole-market BANGER population on the option scale-out basis and pin the grade
+    // onto its outcome row (the evidence the nighthawk-side scale-out reader graduates the live managed
+    // exit on). FAIL-SOFT BY CONTRACT, same as the debrief/rejection/regrade passes above: it reports its
+    // own ledger but can NEVER fail the grading run — `health.ok` is computed from stock-outcome grading
+    // alone, and this catch covers even an unexpected throw.
+    const bangerScaleOut = await resolveBangerScaleOutGrades({ lookbackDays }).catch((err) => ({
+      graded: 0,
+      ungradeable: 0,
+      skipped: 0,
+      errors: [err instanceof Error ? err.message : String(err)],
+    }));
+
     const payload = {
       ok: health.ok,
       ...result,
       debrief,
       rejection_counterfactuals: rejectionCf,
       regrade_stuck: regradeStuck,
+      banger_scale_out: bangerScaleOut,
     };
     await logCronRun("nighthawk-outcomes", started, {
       ok: health.ok,
@@ -117,6 +131,7 @@ export async function GET(req: NextRequest) {
       debrief,
       rejection_counterfactuals: rejectionCf,
       regrade_stuck: regradeStuck,
+      banger_scale_out: bangerScaleOut,
     });
     return NextResponse.json(payload, health.ok ? undefined : { status: 500 });
   } catch (error) {

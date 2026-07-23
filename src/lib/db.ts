@@ -607,6 +607,14 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE nighthawk_play_outcomes ADD COLUMN IF NOT EXISTS debrief JSONB;
   `);
+  // Step-6b: the banger scale-out grade blob {scale_out_realized_mult, hold_mult, ungradeable}
+  // (banger-scale-out-grade.ts), pinned FIRST-WRITE-WINS by the expiry-gated banger grading pass once
+  // the option's full forward window exists. Additive, nullable — non-banger rows stay NULL forever;
+  // this is what the nighthawk-side scale-out calibration reader graduates the live managed exit on.
+  // Idempotent ALTER (same discipline as debrief/publish_context above).
+  await p.query(`
+    ALTER TABLE nighthawk_play_outcomes ADD COLUMN IF NOT EXISTS scale_out_grade JSONB;
+  `);
   // PR-N2 boot backfill: a resolved row with no methodology stamp was, by construction,
   // graded before stamping existed (every post-PR-N2 grade write stamps at write time), so
   // its provenance is unprovable from the row — tag it LEGACY. Deliberately conservative:
@@ -5988,6 +5996,11 @@ export type NighthawkPlayOutcomeRow = {
    *  first-write-wins by the outcomes cron after grading. NULL until the debrief pass
    *  visits the graded row. */
   debrief?: Record<string, unknown> | null;
+  /** Step-6b: the pinned banger scale-out grade blob {scale_out_realized_mult, hold_mult, ungradeable,
+   *  reason?} (banger-scale-out-grade.ts). Written first-write-wins by the expiry-gated banger grading
+   *  pass once the option's full forward window exists. NULL until then; stays NULL forever for
+   *  non-banger plays (exit_style ≠ "scale_out"). The nighthawk-side scale-out reader graduates on it. */
+  scale_out_grade?: Record<string, unknown> | null;
 };
 
 function mapNighthawkPlayOutcomeRow(r: QueryResultRow): NighthawkPlayOutcomeRow {
@@ -6018,6 +6031,7 @@ function mapNighthawkPlayOutcomeRow(r: QueryResultRow): NighthawkPlayOutcomeRow 
     grade_methodology: r.grade_methodology != null ? String(r.grade_methodology) : null,
     legacy_grade: (r.legacy_grade as Record<string, unknown>) ?? null,
     debrief: (r.debrief as Record<string, unknown>) ?? null,
+    scale_out_grade: (r.scale_out_grade as Record<string, unknown>) ?? null,
   };
 }
 
@@ -6229,6 +6243,50 @@ export async function updateNighthawkPlayOutcome(
       patch.outcome,
     ]
   );
+}
+
+/** Step-6b: pin the banger scale-out grade blob, FIRST-WRITE-WINS. The grade is computed only once the
+ *  option's forward window is COMPLETE (expiry passed), so it must never be overwritten by a later pass —
+ *  the `COALESCE` + `WHERE scale_out_grade IS NULL` guard enforces that idempotently. Fail-soft caller:
+ *  a grade failure never touches the row's headline stock outcome. */
+export async function pinNighthawkScaleOutGrade(
+  id: number,
+  grade: Record<string, unknown>
+): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `
+    UPDATE nighthawk_play_outcomes
+    SET scale_out_grade = COALESCE(scale_out_grade, $2::jsonb), updated_at = NOW()
+    WHERE id = $1 AND scale_out_grade IS NULL
+    `,
+    [id, JSON.stringify(grade)]
+  );
+}
+
+/** Step-6b: outcome rows still missing a banger scale-out grade, within lookback — the input to the
+ *  expiry-gated grading pass. Non-banger rows can't be excluded in SQL (exit_style lives in the edition
+ *  JSON, not on this table), so the pass filters them in code; the small lookback bounds the scan. */
+export async function fetchNighthawkRowsMissingScaleOutGrade(
+  lookbackDays = 21
+): Promise<Array<{ id: number; edition_for: string; ticker: string }>> {
+  await ensureSchema();
+  const safe = Number.isFinite(lookbackDays) && lookbackDays > 0 ? Math.trunc(lookbackDays) : 21;
+  const res = await (await getPool()).query(
+    `
+    SELECT id, edition_for, ticker
+    FROM nighthawk_play_outcomes
+    WHERE scale_out_grade IS NULL
+      AND edition_for >= ((NOW() AT TIME ZONE 'America/New_York')::date - ($1::int || ' days')::interval)
+    ORDER BY edition_for ASC, ticker ASC
+    `,
+    [safe]
+  );
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    edition_for: isoDateString(r.edition_for),
+    ticker: String(r.ticker),
+  }));
 }
 
 /** PR-N2: resolved rows still carrying a non-current grade methodology — the honest-
