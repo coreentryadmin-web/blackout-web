@@ -4,6 +4,7 @@
  */
 import { persistAndPublishFlowAlert, alertId as computeFlowAlertId, MIN_PREMIUM as FLOW_MIN_PREMIUM } from "@/lib/flow-persist";
 import { makeFlowDedup } from "@/lib/flow-dedup";
+import { isMaterialFlowAlert, createScanDebouncer } from "@/lib/zerodte/scan-trigger";
 import {
   UW_WS_CHANNELS,
   type UwWsChannel,
@@ -1038,6 +1039,10 @@ export function getActiveTradingHalts(symbols: readonly string[] = PLAY_HALT_WAT
 
 const flowAlertDedup = makeFlowDedup();
 const optionTradeDedup = makeFlowDedup();
+
+// Event-driven 0DTE scan: a big swept short-dated print wakes the scanner out-of-band (react to the
+// tape, not just the 5-min cron). Throttled so a burst can't spam it; the scan self-skips off-hours.
+const eventScanDebouncer = createScanDebouncer();
 let uwSocketInitialized = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 // Reconcile cadence: pings + leadership re-check + stall watchdog. Must be < UW_LEADER_TTL_SEC so a
@@ -1122,6 +1127,14 @@ export function initUwSocket() {
         // so skipping it cannot drop a genuinely-distinct alert.
         if (flowAlertDedup.seen(computeFlowAlertId(rec, flow), now)) continue;
         void persistAndPublishFlowAlert(rec, flow);
+        // A material (big, swept, short-dated) print fires an out-of-band 0DTE scan immediately —
+        // throttled + fire-and-forget. warmZeroDteBoard self-skips outside the warm window, so this
+        // is a no-op off-hours; dynamic import keeps the heavy scan module out of the hot socket path.
+        if (isMaterialFlowAlert(flow, now)) {
+          eventScanDebouncer.maybeFire(now, () => {
+            void import("@/lib/zerodte/scan").then((m) => m.warmZeroDteBoard()).catch(() => {});
+          });
+        }
       }
     } catch {
       /* ignore */
