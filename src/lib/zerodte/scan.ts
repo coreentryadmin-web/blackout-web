@@ -29,6 +29,13 @@ import {
   type ZeroDteSetupLogUpsert,
 } from "@/lib/db";
 import { fetchNighthawkEchoForTickers } from "@/lib/bie/ecosystem-context";
+import {
+  accumulationSignalsFromFlow,
+  attachFlowAccumulation,
+  MULTI_DAY_FLOW_HOURS,
+  MULTI_DAY_FLOW_LIMIT,
+  MULTI_DAY_MIN_PREMIUM,
+} from "./flow-accumulation-context";
 import { LEVERAGED_ETP_SET } from "@/features/nighthawk/lib/constants";
 import { createDossierBuildCache, fetchTickerDossier } from "@/features/nighthawk/lib/dossier";
 import { etNowParts, todayEt } from "@/features/nighthawk/lib/session";
@@ -145,7 +152,7 @@ export async function scanZeroDteBoard(flags?: {
 }): Promise<ZeroDteScanResult> {
   const today = todayEt();
   let upstreamOk = true;
-  const [flows, nhEdition] = await Promise.all([
+  const [flows, nhEdition, multiDayFlows] = await Promise.all([
     // max_dte: 1 is LOAD-BEARING — it scopes the premium ranking to 0-1DTE prints in
     // SQL. Without it the top-400 spans ALL expiries and heavy-day whale prints crowd
     // every 0DTE print out of the scan's input (live-reproduced: $3.1M AAPL stack → 0 setups).
@@ -156,6 +163,16 @@ export async function scanZeroDteBoard(flags?: {
       }
     ),
     fetchLatestNighthawkEdition().catch(() => null),
+    // MULTI-DAY MEMORY (PR: accumulation context): a separate WIDE window — several days, ALL
+    // expiries (no max_dte) — feeds the multi-day flow-accumulation engine so each setup knows
+    // whether today's 0DTE direction is confirmed by stacked positioning over the week. Best-effort:
+    // a failure here degrades to "no memory" (null context), never breaks the intraday scan.
+    fetchRecentFlows({
+      since_hours: MULTI_DAY_FLOW_HOURS,
+      min_premium: MULTI_DAY_MIN_PREMIUM,
+      order: "premium",
+      limit: MULTI_DAY_FLOW_LIMIT,
+    }).catch(() => []),
   ]);
 
   const nighthawkCovered = Array.from(
@@ -210,6 +227,12 @@ export async function scanZeroDteBoard(flags?: {
       return enrichSetup(setup, dossier, extras);
     })
   );
+
+  // Multi-day flow-accumulation memory: attach whether each setup's direction is confirmed by
+  // stacked positioning over the week (+ the magnet strike). Evidence only — calibration-first, does
+  // not gate the board (see flow-accumulation-context.ts). Pure + best-effort: an empty multi-day
+  // window just leaves every context null.
+  attachFlowAccumulation(setups, accumulationSignalsFromFlow(multiDayFlows, Date.now()));
 
   await attachContractPlans(setups);
   const tape = await attachIntradayEdge(setups);
