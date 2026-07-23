@@ -58,6 +58,7 @@ import {
   type ZeroDteGateRejection,
 } from "./board";
 import { buildZeroDteEntryContext, fetchZeroDteSessionContext } from "./entry-context";
+import { buildSetupFeatureVector } from "./feature-vector";
 import { evaluateLedgerRowExit } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
 import { persistZeroDteRejections } from "./rejections";
@@ -592,6 +593,32 @@ export async function persistZeroDteScan(setups: EnrichedZeroDteSetup[]): Promis
       ...(s.fib_note ? { fib: s.fib_note.label } : {}),
       ...(s.direction_confirmed != null ? { dossier_agrees: s.direction_confirmed } : {}),
     },
+    // Feature vector pinned at first flag — the intelligence layer's raw material (feature-vector.ts),
+    // COALESCE-pinned by the upsert so refresh ticks never re-stamp a committed row. flowQuality and
+    // regime are intentionally deferred (they're produced at the aggregation site / session-context
+    // fetch, which later slices thread through) and persist as null rather than a fabricated value.
+    feature_vector: buildSetupFeatureVector({
+      ticker: s.ticker,
+      direction: s.direction,
+      etMinutes: hour * 60 + minute - 570, // minutes since the 9:30 ET open (570)
+      evidenceScore: s.score,
+      dossierScore: s.dossier_score ?? null,
+      vwapDistPct: s.intraday?.vwap_dist_pct ?? null,
+      orBreak: s.intraday?.or_break ?? null,
+      trend5m: s.intraday?.trend_5m ?? null,
+      rsi14: s.rsi14 ?? null,
+      relVolume: s.rel_volume ?? null,
+      atr14: s.atr14 ?? null,
+      gammaRegime: s.gamma_regime ?? null,
+      gexKingDistPct:
+        s.gex_king_strike != null && s.underlying_price
+          ? ((s.gex_king_strike - s.underlying_price) / s.underlying_price) * 100
+          : null,
+      darkPoolBias: (s.dark_pool_bias as "bullish" | "bearish" | "mixed" | null) ?? null,
+      vix: sessionCtx?.vix_open ?? null,
+      spyBias: sessionCtx?.spy_bias ?? null,
+      confluence: s.confluence?.tier ?? null,
+    }) as unknown as Record<string, unknown>,
   }));
   const freshlyFlagged = await upsertZeroDteSetupLog(rows);
   if (freshlyFlagged.size > 0) {

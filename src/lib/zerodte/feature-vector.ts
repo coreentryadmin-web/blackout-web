@@ -42,10 +42,16 @@ export interface SetupFeatureInputs {
   evidenceScore: number;
   /** Dossier composite score, when the setup was enriched (top-5). */
   dossierScore?: number | null;
-  /** From computeFlowQuality(prints). */
-  flowQuality: FlowQuality;
-  /** From classifyRegime(input). */
-  regime: MarketRegime;
+  /**
+   * From computeFlowQuality(prints). OPTIONAL: it's produced at the aggregation site (board.ts), which
+   * a later slice threads through; when absent, all fq_* fields persist as null rather than fabricated.
+   */
+  flowQuality?: FlowQuality | null;
+  /**
+   * From classifyRegime(input). OPTIONAL: needs SPY session OHLC that a later slice threads to the
+   * persist point; when absent, all reg_* fields persist as null. A null feature is honest; a zero is a lie.
+   */
+  regime?: MarketRegime | null;
   // ── intraday technicals ──
   vwapDistPct?: number | null;
   orBreak?: "above" | "below" | "inside" | null;
@@ -75,26 +81,26 @@ export interface SetupFeatureVector {
   // scores
   evidence_score: number;
   dossier_score: number | null;
-  // flow quality (flattened from FlowQuality)
-  fq_score: number;
-  fq_premium_depth: number;
-  fq_aggression: number;
-  fq_sweep: number;
-  fq_persistence: number;
-  fq_concentration: number;
-  fq_momentum: number;
-  fq_institutional: number;
-  fq_dominance: number;
-  fq_accelerating: 0 | 1;
-  fq_prem_per_min: number;
-  fq_net_prem_slope: number;
-  // regime
-  reg_structure: string;
-  reg_gap: string;
-  reg_vol: string;
-  reg_opex: 0 | 1;
-  reg_quad: 0 | 1;
-  reg_fed: 0 | 1;
+  // flow quality (flattened from FlowQuality; null when flowQuality wasn't threaded to this setup yet)
+  fq_score: number | null;
+  fq_premium_depth: number | null;
+  fq_aggression: number | null;
+  fq_sweep: number | null;
+  fq_persistence: number | null;
+  fq_concentration: number | null;
+  fq_momentum: number | null;
+  fq_institutional: number | null;
+  fq_dominance: number | null;
+  fq_accelerating: 0 | 1 | null;
+  fq_prem_per_min: number | null;
+  fq_net_prem_slope: number | null;
+  // regime (null when the regime wasn't threaded to the persist point yet)
+  reg_structure: string | null;
+  reg_gap: string | null;
+  reg_vol: string | null;
+  reg_opex: 0 | 1 | null;
+  reg_quad: 0 | 1 | null;
+  reg_fed: 0 | 1 | null;
   // intraday technicals
   vwap_dist_pct: number | null;
   or_break: string | null;
@@ -117,8 +123,8 @@ const numOrNull = (n: number | null | undefined): number | null =>
 
 /** Compose the two engines + technicals + context into the flat, versioned feature row. */
 export function buildSetupFeatureVector(input: SetupFeatureInputs): SetupFeatureVector {
-  const fq = input.flowQuality;
-  const reg = input.regime;
+  const fq = input.flowQuality ?? null;
+  const reg = input.regime ?? null;
   return {
     v: FEATURE_VECTOR_VERSION,
     ticker: input.ticker.toUpperCase(),
@@ -126,26 +132,26 @@ export function buildSetupFeatureVector(input: SetupFeatureInputs): SetupFeature
     tod_min: Math.round(input.etMinutes),
     evidence_score: Math.round(input.evidenceScore),
     dossier_score: numOrNull(input.dossierScore),
-    // flow quality
-    fq_score: fq.score,
-    fq_premium_depth: fq.components.premiumDepth,
-    fq_aggression: fq.components.aggression,
-    fq_sweep: fq.components.sweepIntensity,
-    fq_persistence: fq.components.persistence,
-    fq_concentration: fq.components.concentration,
-    fq_momentum: fq.components.momentum,
-    fq_institutional: fq.components.institutional,
-    fq_dominance: fq.dominance,
-    fq_accelerating: fq.momentum.accelerating ? 1 : 0,
-    fq_prem_per_min: fq.momentum.premiumPerMin,
-    fq_net_prem_slope: fq.momentum.netPremiumSlopePerMin,
-    // regime
-    reg_structure: reg.structure,
-    reg_gap: reg.gap,
-    reg_vol: reg.vol,
-    reg_opex: reg.calendar.opex ? 1 : 0,
-    reg_quad: reg.calendar.quarterlyOpex ? 1 : 0,
-    reg_fed: reg.calendar.fedDay ? 1 : 0,
+    // flow quality — null throughout when not yet threaded, never a fabricated 0
+    fq_score: fq ? fq.score : null,
+    fq_premium_depth: fq ? fq.components.premiumDepth : null,
+    fq_aggression: fq ? fq.components.aggression : null,
+    fq_sweep: fq ? fq.components.sweepIntensity : null,
+    fq_persistence: fq ? fq.components.persistence : null,
+    fq_concentration: fq ? fq.components.concentration : null,
+    fq_momentum: fq ? fq.components.momentum : null,
+    fq_institutional: fq ? fq.components.institutional : null,
+    fq_dominance: fq ? fq.dominance : null,
+    fq_accelerating: fq ? (fq.momentum.accelerating ? 1 : 0) : null,
+    fq_prem_per_min: fq ? fq.momentum.premiumPerMin : null,
+    fq_net_prem_slope: fq ? fq.momentum.netPremiumSlopePerMin : null,
+    // regime — null throughout when not yet threaded
+    reg_structure: reg ? reg.structure : null,
+    reg_gap: reg ? reg.gap : null,
+    reg_vol: reg ? reg.vol : null,
+    reg_opex: reg ? (reg.calendar.opex ? 1 : 0) : null,
+    reg_quad: reg ? (reg.calendar.quarterlyOpex ? 1 : 0) : null,
+    reg_fed: reg ? (reg.calendar.fedDay ? 1 : 0) : null,
     // intraday technicals
     vwap_dist_pct: numOrNull(input.vwapDistPct),
     or_break: input.orBreak ?? null,
