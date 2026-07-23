@@ -4,6 +4,7 @@
  */
 
 import type { EnrichedZeroDteSetup } from "./board";
+import { selectIronCondor } from "./iron-condor";
 
 export type LiveSimTick = {
   /** Human label for the tick log. */
@@ -89,6 +90,7 @@ export const LIVE_SIM_MOCK_SETUP: EnrichedZeroDteSetup = {
   dark_pool_bias: "bullish",
   gex_king_strike: 875,
   gamma_regime: "short_gamma",
+  condor: selectIronCondor({ spot: 878.5, targetWinRate: 80, callWall: 885, putWall: 875 }),
   intraday: {
     vwap: 876.2,
     vwap_dist_pct: 0.26,
