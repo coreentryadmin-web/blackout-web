@@ -5,6 +5,36 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-23 — [INVESTIGATION] "Only 2 committed 0DTE plays?" — the 65 floor is correct; 75-84 is a watch-item
+
+**Trigger:** operator saw only 2 committed plays on the live 0DTE board (`SPY 740P` +52%, `QQQ 700P`)
+and asked if that's too few. **Investigated live** (authed fetch of `/api/market/zerodte/board` +
+`/api/market/zerodte/calibration`, temp admin user, deleted after).
+
+**Not starved — gated by design.** The board surfaced **9 live candidates**; only `SPY` (score 90)
+cleared the commit gate. The other 8 sat below `ZERODTE_SCORE_FLOOR=65` — a near-miss cluster at
+55-58 (SOXX 58 / META 57 / SMH 56 / MSFT 55) + a 31-39 tail — all correctly shown as watch-only in
+the "Skipped & Watching" drawer (nothing hidden). Across the whole desk the member got 5 committed
+plays today: 2 on the 0DTE tab + 3 on the equity edition (GS/AAPL/LQDA, the board's `covered_elsewhere`).
+
+**The live score-band record PROVES loosening the floor would ship a losing book** (breakeven on the
+−50/+100 0DTE payoff = 33.3% WR):
+
+| band | n | WR | avg P&L |
+|------|---|-----|---------|
+| <55   | 20 | 20.0% | −23.2% |
+| 55-64 | 19 | 36.8% | **−3.6%** (WR just over breakeven but still net-negative) |
+| 65-74 | 30 | 46.7% | **+10.3%** ← the floor sits exactly at the edge of profitability |
+| 75-84 | 18 | 22.2% | **−15.2%** ← anomaly (see below) |
+| 85+   | 9  | 44.4% | +16.7% |
+
+**Conclusion: floor stays at 65** — sub-floor bands are net-negative on live grades; "2 plays" is the
+discipline protecting members, not a bug. **[WATCH, not gated] the 75-84 band is EV-negative right now**
+(−15.2%, worse than both neighbors), BUT the sign has FLIPPED vs the seed F-5 finding (75-84 was the
+*strong* band at 63.6%). A band that inverts between samples is regime-dependent, not a stable edge —
+gating it now = overfitting. Kept as a continuously-measured watch-item; graduates to a downweight only
+if the next independent sample confirms the negative sign. No code change shipped (evidence, not gating).
+
 ## 2026-07-23 — [HIGH, self-inflicted] `--watch` gave FALSE "all clean" after ~10min (silent auth decay) — FIXED
 
 **Severity HIGH** because it's the failure the whole audit layer exists to prevent: a validator that
@@ -47,7 +77,9 @@ clears `checks`, calls `mint()`, and appends a one-line `TOTALS + any FAIL/WARN`
 (verified: `TOTALS {"PASS":33,"INFO":3}` + cleanup 200/404 unchanged). Added SIGINT/SIGTERM cleanup so
 a killed watch still deletes the temp Clerk user (the unbounded loop bypasses `main().finally()`).
 **Evidence:** live multi-pass on one auth, no auth failure, entry_premium now PASSES live (3.74 ∈
-[0.99, 3.95]). Retired `validation-loop.sh` (superseded). Status: SHIPPED.
+[0.99, 3.95]). Retired `validation-loop.sh` (superseded). Status: SHIPPED. (Superseded same-day by the
+auth-decay fix — see the [HIGH] entry: the one-auth assumption broke after ~10min; watch now
+re-establishes the session.)
 
 ## 2026-07-23 — [LOW] Live-open validation findings (RTH acid test of the shipped system)
 
