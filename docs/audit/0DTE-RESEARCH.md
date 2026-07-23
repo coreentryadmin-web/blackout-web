@@ -97,7 +97,10 @@ findings, both reproducible in `zerodte-sim.mjs`:
    calib window ranks HOLD best, the newest-30% ranks the ratchet best (they disagree; 0DTE EV is a
    few-big-winners distribution). So the finding is logged and the fix stays scoped to a regime-conditioned
    sweep or a live-ledger `recommendExit` verdict — we do **not** flip a live risk-management exit on OOS
-   windows that disagree.
+   windows that disagree. **Update:** testing the *mechanism* (partial TRIM-at-arm vs the floor-EXIT) DOES
+   separate — `trim ⅓@+25 + ⅓@+50, run` beats both HOLD and the shipped floor-exit in every split + both
+   universes over 352 plays (win-rate 32%→50%); it's the leading replacement, to graduate via the live
+   counterfactual ledger per `exit-engine.ts`'s own "tune with data" design (FINDINGS 2026-07-23).
 
 **The banger scale-out is the flagship, and it's the positive-skew spine both engines share.** Validated
 at scale (minute-bar realistic gap-fills, **7,086 movers / 500 sessions / 2 years / all sectors**):
