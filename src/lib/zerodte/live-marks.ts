@@ -90,6 +90,16 @@ const PAYLOAD_MEMO_MS = 900;
 // Types
 // ---------------------------------------------------------------------------
 
+/** Live option greeks for the streaming strip. From the REST options snapshot; carried forward across the
+ *  faster WS mark ticks (which don't carry greeks) so the terminal always has the last-known set. */
+export type ZeroDteGreeks = {
+  delta: number | null;
+  gamma: number | null;
+  theta: number | null;
+  vega: number | null;
+  iv: number | null;
+};
+
 export type ZeroDteLiveMark = {
   occ: string;
   bid: number | null;
@@ -103,6 +113,8 @@ export type ZeroDteLiveMark = {
   asOf: number;
   /** Which lane produced it — surfaced for honesty/debugging, never for math. */
   lane: "ws" | "rest";
+  /** Greeks from the last REST snapshot (null on the WS-only fast path until the next snapshot). */
+  greeks?: ZeroDteGreeks | null;
 };
 
 /** One open play in the live lane — the pinned identity + the pinned entry. */
@@ -140,6 +152,8 @@ export type ZeroDteLiveMarkRow = {
   stale: boolean;
   /** (mark − entry)/entry via pinnedLivePnlPct — the ONE P&L derivation. */
   live_pnl_pct: number | null;
+  /** Live greeks (Δ Γ Θ V + IV) for the terminal's streaming strip; null until a snapshot has priced them. */
+  greeks: ZeroDteGreeks | null;
 };
 
 export type ZeroDteLiveMarksPayload = {
@@ -205,6 +219,9 @@ export function getZeroDteLiveMark(occ: string): ZeroDteLiveMark | undefined {
 export function putZeroDteLiveMark(m: ZeroDteLiveMark): void {
   const prev = markStore.get(m.occ);
   if (prev && prev.asOf > m.asOf) return;
+  // Carry greeks forward: the WS fast lane ticks the mark ~1s but doesn't carry greeks; keep the last
+  // REST-snapshot greeks so the terminal always has them (greeks are smooth, so a few-second age is fine).
+  if ((m.greeks == null) && prev?.greeks != null) m = { ...m, greeks: prev.greeks };
   markStore.set(m.occ, m);
 }
 
@@ -220,6 +237,7 @@ function markFromSnapshot(occ: string, snap: OptionSnapshot, asOf: number): Zero
     source,
     asOf,
     lane: "rest",
+    greeks: { delta: snap.delta, gamma: snap.gamma, theta: snap.theta, vega: snap.vega, iv: snap.iv },
   };
 }
 
@@ -460,6 +478,7 @@ export function buildZeroDteLiveMarksPayloadFrom(
       mark_age_ms: asOf > 0 ? Math.max(0, nowMs - asOf) : null,
       stale,
       live_pnl_pct: pinnedLivePnlPct(p.entry_premium, m?.mark ?? null),
+      greeks: m?.greeks ?? null,
     };
   });
   return {
