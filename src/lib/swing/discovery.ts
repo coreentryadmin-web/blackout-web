@@ -51,6 +51,20 @@ import {
 } from "../horizon-plays";
 import type { PlayDirection } from "../horizon-fanout";
 
+// ─── WHY RECALL MATTERS (operator critique #7) ──────────────────────────────────
+// A discovery funnel is easy to optimize for PRECISION (everything that surfaces is good) while
+// silently destroying RECALL (a genuinely strong candidate never surfaces) — and recall damage is
+// INVISIBLE by construction: you only see what came out, never what the funnel dropped. Two silent
+// leaks live in THIS funnel:
+//   (a) the top-N Tier-1 budget CAP — `rankTierZeroSeeds(...).slice(0, tier1Cap)` — can drop a name
+//       whose Tier-0 rank sat right at the floor of the enriched set. Nothing downstream ever learns
+//       that name existed. This is the load-bearing leak; `cappedOut`/`cappedOutCount` make it VISIBLE.
+//   (b) per-cut erosion — one archetype / liquidity band / regime can lose a disproportionate share of
+//       its candidates to thin (degraded) reads while the headline count looks healthy.
+// The `SwingDiscoveryRecall` object below is EVIDENCE-ONLY instrumentation: it changes NOTHING about
+// what surfaces (identical dossiers/watch/plays); it just measures the funnel so a recall collapse is
+// observable instead of silent. `computeSwingDiscoveryRecall` is PURE/deterministic on fixed inputs.
+
 /** Which Tier-0 screen(s) surfaced a name — provenance carried through the merge for ranking + explain. */
 export type SwingDiscoveryPath = "FLOW" | "STRUCTURE";
 
@@ -158,6 +172,159 @@ export function deriveSwingCandidates(seeds: SwingCandidateSeed[]): SwingDossier
     .sort((a, b) => b.score.score - a.score.score || a.ticker.localeCompare(b.ticker));
 }
 
+// ─── PURE recall instrumentation (evidence-only — see the WHY-RECALL header) ────────
+
+/** One funnel cut: how many candidates were `seen` in this bucket vs how many survived as a usable
+ *  (`enriched`, non-degraded) read. `recall = enriched/seen` is the within-cut survival rate. */
+export interface RecallCut {
+  seen: number;
+  enriched: number;
+}
+
+/** A candidate the top-N cap dropped — surfaced (bounded sample) so a strong name lost purely to the
+ *  budget is VISIBLE, not silent. `tier0Rank` is 1-based over the full ranked order (pre-cap). */
+export interface SwingCappedOutEntry {
+  ticker: string;
+  tier0Rank: number;
+  reason: string;
+}
+
+/** Discovery-recall metrics emitted alongside the dossiers. Pure/deterministic on fixed inputs. */
+export interface SwingDiscoveryRecall {
+  /** Candidates that passed Tier-0 (the deduped merged union). */
+  tier0Count: number;
+  tier0FlowCount: number;
+  tier0StructureCount: number;
+  mergedCount: number;
+  /** Names that actually produced a dossier in Tier-1 (post-cap, minus un-groundable enrich failures). */
+  tier1EnrichedCount: number;
+  /** Candidates that passed Tier-0 but were dropped purely by the top-N cap (the load-bearing leak). */
+  cappedOutCount: number;
+  /** Bounded sample of the capped-out names, worst-rank first, flagged when near the enriched floor. */
+  cappedOut: SwingCappedOutEntry[];
+  /** Per-cut seen/enriched over the surfaced dossiers (keys derived from the dossier itself). */
+  byArchetype: Record<string, RecallCut>;
+  byLiquidityTier: Record<string, RecallCut>;
+  byRegime: Record<string, RecallCut>;
+}
+
+/** Bucket a breakout-mover's $-volume into a coarse liquidity tier (flow-only names have no $-vol → UNKNOWN). */
+export function liquidityTierForDollar(dollar: number | null | undefined): string {
+  if (dollar == null || !Number.isFinite(dollar) || dollar <= 0) return "UNKNOWN";
+  if (dollar >= 1e9) return "MEGA";
+  if (dollar >= 2.5e8) return "LARGE";
+  if (dollar >= 5e7) return "MID";
+  return "SMALL";
+}
+
+/** Bucket a normalized (0–1) regime read into a named band; null/absent → UNKNOWN. */
+export function regimeBandFor01(regime01: number | null | undefined): string {
+  if (regime01 == null || !Number.isFinite(regime01)) return "UNKNOWN";
+  if (regime01 >= 0.66) return "RISK_ON";
+  if (regime01 >= 0.34) return "NEUTRAL";
+  return "RISK_OFF";
+}
+
+/**
+ * PURE: compute the discovery-recall metrics for one scan. See the WHY-RECALL header for the motivation.
+ *
+ * Funnel level (the "silently dropped a candidate" leak): `tier0Count → tier1EnrichedCount`, plus the
+ * candidates the top-N cap severed (`cappedOut`/`cappedOutCount`). A capped name is flagged NEAR ENRICHED
+ * FLOOR when it's corroborated (both screens) or its flow-accumulation strength meets/exceeds the WEAKEST
+ * strength among the names that DID get enriched — i.e. it was no weaker than something we kept, so the cap,
+ * not the evidence, is why it's gone.
+ *
+ * Per-cut level (`byArchetype`/`byLiquidityTier`/`byRegime`): computed over the SURFACED dossiers, where
+ * `seen` = a dossier exists in that bucket and `enriched` = that dossier's read is usable (not degraded).
+ * `recall = enriched/seen` is the within-cut trustworthy-survival rate — it exposes a bucket bleeding
+ * candidates to thin reads even when the headline count looks fine. `seen` sums to `dossiers.length` across
+ * a cut's buckets by construction (every dossier lands in exactly one bucket per cut).
+ */
+export function computeSwingDiscoveryRecall(args: {
+  tier0FlowCount: number;
+  tier0StructureCount: number;
+  merged: TierZeroSeed[];
+  /** The FULL ranked order (pre-cap) — needed to know each capped name's rank + who was severed. */
+  rankedFull: TierZeroSeed[];
+  tier1Cap: number;
+  /** The dossiers actually produced in Tier-1 (post-cap, post-enrich). */
+  dossiers: SwingDossier[];
+  accSignals?: Map<string, FlowAccumulationSignal>;
+  moverByTicker?: Map<string, BreakoutMover>;
+  /** Max capped-out entries to sample (bounded so the log/JSON stays small). Default 20. */
+  cappedSampleLimit?: number;
+}): SwingDiscoveryRecall {
+  const {
+    tier0FlowCount,
+    tier0StructureCount,
+    merged,
+    rankedFull,
+    tier1Cap,
+    dossiers,
+    accSignals,
+    moverByTicker,
+    cappedSampleLimit = 20,
+  } = args;
+
+  const strengthOf = (t: string) => accSignals?.get(t.toUpperCase())?.strength ?? 0;
+
+  // The enriched-set floor = the weakest flow strength we chose to KEEP. A capped name at/above this floor
+  // was no weaker than something enriched → its exclusion is the cap's doing, not the evidence's.
+  const enrichedStrengths = dossiers.map((d) => strengthOf(d.ticker));
+  const floorStrength = enrichedStrengths.length ? Math.min(...enrichedStrengths) : 0;
+
+  const cappedSeeds = rankedFull.slice(Math.max(0, tier1Cap)); // everything beyond the top-N budget
+  const cappedOut: SwingCappedOutEntry[] = cappedSeeds
+    .map((seed, i) => {
+      const rank = tier1Cap + i + 1; // 1-based rank in the full ranked order
+      const strength = strengthOf(seed.ticker);
+      const corroborated = seed.paths.length >= 2;
+      const nearFloor = corroborated || (strength > 0 && strength >= floorStrength);
+      const reason =
+        `dropped by top-${tier1Cap} cap (rank ${rank}/${rankedFull.length}; ` +
+        `paths ${seed.paths.join("+")}; flowStrength ${strength})` +
+        (nearFloor ? " — NEAR ENRICHED FLOOR" : "");
+      return { ticker: seed.ticker, tier0Rank: rank, reason };
+    })
+    // Corroborated / near-floor names first (the ones whose loss actually matters), else by rank.
+    .sort((a, b) => {
+      const an = a.reason.includes("NEAR ENRICHED FLOOR") ? 0 : 1;
+      const bn = b.reason.includes("NEAR ENRICHED FLOOR") ? 0 : 1;
+      return an - bn || a.tier0Rank - b.tier0Rank;
+    })
+    .slice(0, cappedSampleLimit);
+
+  // ── Per-cut seen/enriched over the surfaced dossiers. ──
+  const bump = (rec: Record<string, RecallCut>, key: string, usable: boolean) => {
+    const cur = rec[key] ?? { seen: 0, enriched: 0 };
+    cur.seen += 1;
+    if (usable) cur.enriched += 1;
+    rec[key] = cur;
+  };
+  const byArchetype: Record<string, RecallCut> = {};
+  const byLiquidityTier: Record<string, RecallCut> = {};
+  const byRegime: Record<string, RecallCut> = {};
+  for (const d of dossiers) {
+    const usable = !d.dataQuality.degraded;
+    bump(byArchetype, d.archetype.archetype ?? "unclassified", usable);
+    bump(byLiquidityTier, liquidityTierForDollar(moverByTicker?.get(d.ticker.toUpperCase())?.dollar), usable);
+    bump(byRegime, regimeBandFor01(d.pillarSignals.REGIME ?? null), usable);
+  }
+
+  return {
+    tier0Count: merged.length,
+    tier0FlowCount,
+    tier0StructureCount,
+    mergedCount: merged.length,
+    tier1EnrichedCount: dossiers.length,
+    cappedOutCount: cappedSeeds.length,
+    cappedOut,
+    byArchetype,
+    byLiquidityTier,
+    byRegime,
+  };
+}
+
 // ─── IO shell ─────────────────────────────────────────────────────────────────────
 
 /** Everything the shell needs, INJECTED so the orchestration is testable without live DB/providers. */
@@ -216,6 +383,8 @@ export interface SwingDiscoveryResult {
   playSet: HorizonPlaySet;
   /** LITERAL 0 — PR-11 is a WATCH-only, evidence-only rail; nothing is authorized to commit yet. */
   commitEligibleCount: 0;
+  /** Discovery-recall instrumentation (evidence-only; does NOT change what surfaces). See WHY-RECALL header. */
+  recall: SwingDiscoveryRecall;
 }
 
 /**
@@ -246,7 +415,10 @@ export async function runSwingDiscoveryScan(
 
   // ── MERGE + rank + cap to the Tier-1 budget. ──
   const merged = mergeTierZeroScreens(flowTickers, structureTickers);
-  const ranked = rankTierZeroSeeds(merged, accSignals, moverByTicker).slice(0, cfg.tier1Cap);
+  // Keep the FULL ranked order so the recall instrumentation can see WHO the top-N cap severed (not just
+  // the survivors). The behavior is unchanged — only `ranked` (the capped slice) feeds Tier-1.
+  const rankedFull = rankTierZeroSeeds(merged, accSignals, moverByTicker);
+  const ranked = rankedFull.slice(0, cfg.tier1Cap);
 
   // ── TIER-1 enrich (one SPY fetch shared across every name). ──
   const spyCloses = await deps.fetchSpyCloses();
@@ -265,6 +437,25 @@ export async function runSwingDiscoveryScan(
 
   // ── SCORE (pure). ──
   const dossiers = deriveSwingCandidates(candidateSeeds);
+
+  // ── RECALL (pure, evidence-only): measure the funnel so a dropped-strong-candidate is VISIBLE. ──
+  const recall = computeSwingDiscoveryRecall({
+    tier0FlowCount: flowTickers.length,
+    tier0StructureCount: structureTickers.length,
+    merged,
+    rankedFull,
+    tier1Cap: cfg.tier1Cap,
+    dossiers,
+    accSignals,
+    moverByTicker,
+  });
+  // One-line recall summary in the shell (the funnel + the load-bearing capped-out leak).
+  const nearFloor = recall.cappedOut.filter((c) => c.reason.includes("NEAR ENRICHED FLOOR")).length;
+  console.info(
+    `[swing-discovery] recall: tier0 ${recall.tier0Count} (flow ${recall.tier0FlowCount}/struct ${recall.tier0StructureCount}) ` +
+      `→ enriched ${recall.tier1EnrichedCount}; capped-out ${recall.cappedOutCount}` +
+      (recall.cappedOutCount ? ` (${nearFloor} near enriched floor)` : ""),
+  );
 
   // ── PERSISTENCE: observe each directional dossier this session, then read who has cleared the bar. ──
   for (const d of dossiers) {
@@ -320,5 +511,6 @@ export async function runSwingDiscoveryScan(
     // WATCH-only rail: PR-11 commits NOTHING. Held at 0 by construction, not derived — the lane graduates
     // to commit-eligible only when its archetype×sub-lane bucket clears the ladder (PR-16).
     commitEligibleCount: 0,
+    recall,
   };
 }
