@@ -5,7 +5,10 @@ import {
   widthPctForWinRate,
   estWinRateForWidth,
   strikeIncrementFor,
+  surfacedWinRate,
   CONDOR_WINRATE_BY_WIDTH,
+  SURFACED_WIN_RATE_CAP,
+  SHIPPED_INTRADAY_BREACH_PCT,
 } from "./iron-condor";
 
 // ── the measured width→WR table (evidence guardrail) ────────────────────────────
@@ -124,4 +127,47 @@ test("selectIronCondor: a NaN wall is treated as absent (falls back to the width
   assert.ok(legs);
   assert.equal(legs!.short_call, 6050);
   assert.equal(legs!.short_put, 5950);
+});
+
+// ── HONESTY: surfaced WR is capped, breach tail + skew travel with the number ─────
+test("surfacedWinRate: clamps to the cap and never asserts a literal 100", () => {
+  assert.equal(surfacedWinRate(100), SURFACED_WIN_RATE_CAP);
+  assert.equal(surfacedWinRate(96), 96); // below the cap → untouched
+  assert.ok(surfacedWinRate(100) < 100);
+});
+
+test("selectIronCondor: est_win_rate is ALWAYS <= the cap (never a member-facing 100), across the width table + a very wide pick", () => {
+  // Sweep every table width plus a wide explicit width whose raw WR is 100.
+  const picks = [
+    selectIronCondor({ spot: 6000, shortWidthPct: 0.004 }),
+    selectIronCondor({ spot: 6000, shortWidthPct: 0.006 }),
+    selectIronCondor({ spot: 6000, shortWidthPct: 0.008 }),
+    selectIronCondor({ spot: 6000, shortWidthPct: 0.010 }),
+    selectIronCondor({ spot: 6000, shortWidthPct: 0.015 }),
+    selectIronCondor({ spot: 6000, shortWidthPct: 0.02 }),
+  ];
+  for (const legs of picks) {
+    assert.ok(legs);
+    assert.ok(legs!.est_win_rate <= SURFACED_WIN_RATE_CAP, `est_win_rate ${legs!.est_win_rate} exceeded cap`);
+    assert.notEqual(legs!.est_win_rate, 100);
+  }
+});
+
+test("selectIronCondor: a top-bucket width clamps est_win_rate to the cap and flags small-sample", () => {
+  // width 0.02 → raw table WR 100 → surfaced as the cap, flagged small-sample.
+  const legs = selectIronCondor({ spot: 6000, shortWidthPct: 0.02 });
+  assert.ok(legs);
+  assert.equal(legs!.est_win_rate, SURFACED_WIN_RATE_CAP);
+  assert.equal(legs!.est_win_rate_small_sample, true);
+});
+
+test("selectIronCondor: breach rate + negative-skew marker are present, finite, and travel with the WR", () => {
+  const legs = selectIronCondor({ spot: 6000, targetWinRate: 80 });
+  assert.ok(legs);
+  assert.equal(legs!.est_win_rate, 92); // normal (below-cap) pick → not clamped
+  assert.equal(legs!.est_win_rate_small_sample, false);
+  assert.ok(Number.isFinite(legs!.est_intraday_breach_pct));
+  assert.ok(legs!.est_intraday_breach_pct > 0);
+  assert.equal(legs!.est_intraday_breach_pct, SHIPPED_INTRADAY_BREACH_PCT);
+  assert.equal(legs!.skew, "negative");
 });
