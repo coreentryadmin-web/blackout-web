@@ -29,8 +29,12 @@ import type { EvidenceItem } from "@/lib/nighthawk/cortex/types";
 import {
   buildExitContext,
   evaluateExitState,
+  trimTranchesArmed,
+  DEFAULT_EXIT_MODE,
   type ExitDecision,
   type ZeroDteExitContext,
+  type ZeroDteExitMode,
+  type ZeroDteRegime,
 } from "./exit-engine";
 import { getZeroDteLiveMark, type ZeroDteLiveMark } from "./live-marks";
 import { isZeroDteMarkStale, pinnedLivePnlPct } from "./marks-math";
@@ -90,6 +94,19 @@ export function entryCortexScoreOf(entryContext: Record<string, unknown> | null)
   return typeof score === "number" && Number.isFinite(score) ? score : null;
 }
 
+/**
+ * Live exit-mode selector — the CONFIG flag lives in the IO shell so the pure engine
+ * (exit-engine.ts) never reads an env or a clock. Defaults to the shipped ratchet;
+ * `ZERODTE_EXIT_MODE=trim_scale` flips the board to the E5 ⅓@+25% / ⅓@+50% / run
+ * scale-out for an operator A/B. DEFAULT-OFF: unset ⇒ ratchet ⇒ live behavior is
+ * byte-for-byte unchanged (this is the "keep the old ratchet behind a flag" the change
+ * requires). The trim graduates on the live-ledger grader — this env is the operator's
+ * post-sign-off switch, not an auto-flip.
+ */
+export function resolveExitMode(env: NodeJS.ProcessEnv = process.env): ZeroDteExitMode {
+  return env.ZERODTE_EXIT_MODE === "trim_scale" ? "trim_scale" : DEFAULT_EXIT_MODE;
+}
+
 /** Injectable IO seams (cortex-gate.ts's CortexCommitDeps idiom) so the wiring is
  *  unit-testable without module mocks or a live platform. */
 export type ExitSyncDeps = {
@@ -97,6 +114,10 @@ export type ExitSyncDeps = {
   fetchEvidence?: (ticker: string, direction: "long" | "short") => Promise<EvidenceItem[] | null>;
   stampExit?: ((sessionDate: string, ticker: string, exit: Record<string, unknown>) => Promise<void>) | null;
   nowMs?: number;
+  /** Exit family override (tests / A-B). Omitted → resolveExitMode() reads the env. */
+  exitMode?: ZeroDteExitMode;
+  /** Day regime for the trim_scale schedule (trim_scale only). Omitted → "neutral". */
+  regime?: ZeroDteRegime | null;
 };
 
 export type ZeroDteRowExit = {
@@ -156,6 +177,20 @@ export async function evaluateLedgerRowExit(
         ? (row.plan_json.target_premium as number)
         : entry * (1 + PLAN_RULES.target_pct / 100);
 
+    // Exit family (A/B, default ratchet). In trim_scale mode there is no persisted
+    // trim-count column yet (that is the graduation follow-up — FINDINGS 2026-07-23), so
+    // derive "thirds already banked" from the MONOTONIC peak: taken == armed keeps the
+    // runner's protective/target/thesis/flat exits self-consistent while the two
+    // intermediate ⅓ TRIMs stay advisory (this sync path acts only on EXIT, exactly as
+    // in ratchet mode). The conservative effect: flipping the env captures the core E5
+    // win — never dump the whole runner at breakeven, run it to the target/stop — while
+    // the precise per-third banking accounting graduates with the persisted count. In the
+    // DEFAULT ratchet mode every field below is ignored by the engine.
+    const exitMode = deps.exitMode ?? resolveExitMode();
+    const regime = deps.regime ?? null;
+    const trimsTaken =
+      exitMode === "trim_scale" ? trimTranchesArmed(pinnedLivePnlPct(entry, peak), regime ?? "neutral") : 0;
+
     const decision = evaluateExitState({
       entryPremium: entry,
       currentMark: mark,
@@ -168,6 +203,9 @@ export async function evaluateLedgerRowExit(
       // TRIM is sticky via the peak latch, so status alone carries the trim fact.
       trimmed: opts.status === "TRIM",
       entryCortexScore: entryCortexScoreOf(row.entry_context),
+      exitMode,
+      regime,
+      trimsTaken,
     });
     if (decision.action !== "EXIT") return null;
 

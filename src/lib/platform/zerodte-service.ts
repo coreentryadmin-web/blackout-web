@@ -30,6 +30,11 @@ import {
   ZERODTE_MARK_STALE_MS,
   type ZeroDteMarkSource,
 } from "@/lib/zerodte/marks-math";
+import {
+  categorizeExitReason,
+  ratchetFloorPct,
+  type ZeroDteExitReasonCategory,
+} from "@/lib/zerodte/exit-engine";
 import { PLAN_RULES } from "@/lib/zerodte/plan";
 import {
   loadRecordedGovernorStops,
@@ -59,10 +64,30 @@ export type ZeroDteBoardLedgerRow = {
   peak_premium: number | null;
   trough_premium: number | null;
   live_pnl_pct: number | null;
-  /** Why a CLOSED play closed, when derivable from the latched extremes:
-   *  "stopped" pins live_pnl_pct to the −50% stop (B-9 D-1 fix — the number the
-   *  post-session grader will stamp), null = live row or a time-stop close. */
-  closed_reason: "stopped" | null;
+  /** Why a CLOSED play closed — now DISTINGUISHES the exit type (pre-this-change a
+   *  ratchet exit and a target trim were both null, indistinguishable). "stopped" still
+   *  pins live_pnl_pct to the −50% stop (B-9 D-1 fix — the number the post-session grader
+   *  will stamp) and drives the "stopped −50%" badge; "ratchet"/"thesis"/"flat"/"target"
+   *  categorize an engine exit from the pinned entry_context.exit; "time_stop" is a plain
+   *  15:30 close with no engine exit; null = a live (still-open) row. Additive: only
+   *  "stopped" pins P&L — every other value is a display label. */
+  closed_reason: "stopped" | ZeroDteExitReasonCategory | "time_stop" | null;
+  /** The active PROTECTIVE ratchet floor in P&L % terms (ratchet mode — the shipped
+   *  default), derived purely from the latched peak + trim state: "your stop is now at
+   *  breakeven/+20%/+50%". This is the guidance the exit engine computes but that never
+   *  reached the member before. Null = no floor armed (peak below +25%) or a trim_scale
+   *  runner (which rides the plan stop, not a ratchet floor). Pure, no IO. */
+  floor_pnl_pct: number | null;
+  /** Coarse category of the engine's EXIT decision, read from the pinned
+   *  entry_context.exit.reason (ratchet/thesis/flat/target/stop). Present exactly when the
+   *  engine stamped an exit; null on a plain time-stop close or a live row. Lets the pane
+   *  say WHY the engine got out without re-deriving it from the raw snake_case reason. */
+  exit_reason: ZeroDteExitReasonCategory | null;
+  /** The engine's one-sentence exit rationale (entry_context.exit.detail) — the argued
+   *  "Mark X (+Y%) is at/below the +Z% floor …" line. Null when no engine exit is pinned.
+   *  This is the member-facing guidance sentence, surfaced verbatim (already rounded at the
+   *  data layer by buildExitContext). */
+  exit_detail: string | null;
   /** ISO instant of the quote behind last_mark, when the live-marks lane served
    *  it (B-9). Null = legacy sync lane (no per-quote timestamp available). */
   mark_as_of: string | null;
@@ -126,6 +151,25 @@ const BOARD_TTL_MS = 5_000;
 /** A live-lane mark overlay for one ledger row (see attachLiveMarkMeta below). */
 type LiveMarkMeta = { mark: number; mark_as_of: string; mark_source: ZeroDteMarkSource };
 
+/** Read the exit-engine record pinned on a row (entry_context.exit — stamped by
+ *  exit-sync's buildExitContext on an engine EXIT). Structural + fail-soft: any missing
+ *  or malformed shape yields nulls, so the board surfaces the real reason/sentence or
+ *  nothing — never a fabricated one. */
+function readPinnedExit(entryContext: Record<string, unknown> | null | undefined): {
+  reason: string | null;
+  detail: string | null;
+} {
+  const exit =
+    entryContext && typeof entryContext.exit === "object"
+      ? (entryContext.exit as Record<string, unknown> | null)
+      : null;
+  if (!exit) return { reason: null, detail: null };
+  return {
+    reason: typeof exit.reason === "string" ? exit.reason : null,
+    detail: typeof exit.detail === "string" ? exit.detail : null,
+  };
+}
+
 function mapLedgerRow(
   r: ZeroDteSetupLogRow,
   nighthawkEcho: Awaited<ReturnType<typeof fetchNighthawkEchoForTickers>>,
@@ -138,13 +182,42 @@ function mapLedgerRow(
   // timestamp, which is surfaced honestly as mark_as_of: null.
   const lastMark = liveMark?.mark ?? r.last_mark;
   // D-1 fix: a stopped play's displayed P&L is the stop P&L (what the grader will
-  // stamp), never the frozen last_mark of whichever tick happened to cross it.
+  // stamp), never the frozen last_mark of whichever tick happened to cross it. This
+  // "stopped" verdict is ALSO the only closed_reason that pins P&L (below) — every other
+  // value is a display label.
   const closedReason = closedStopReason({
     status: r.status,
     entry_premium: r.entry_premium,
     peak_premium: r.peak_premium,
     trough_premium: r.trough_premium,
   });
+
+  // ── Exit-engine visibility (additive, no computation change) ──────────────────────
+  // The rich exit decision the engine already computes (floor / reason / detail) was
+  // invisible to the member — nothing carried it onto the board. Surface it here from
+  // data ALREADY on the row: the pinned entry_context.exit blob (stamped on an engine
+  // EXIT) + the latched peak (for the live ratchet floor). All pure — no new IO.
+  const pinnedExit = readPinnedExit(r.entry_context);
+  const engineExitCategory = categorizeExitReason(pinnedExit.reason);
+  // Live ratchet floor (the shipped default mode): "your stop is now at breakeven/+20/
+  // +50". Derived purely from the latched peak vs the pinned entry; TRIM status is the
+  // ratchet's `trimmed` latch (a trimmed runner's floor is +50%). Null when the peak
+  // never armed a floor. buildZeroDteBoardPayload's roundFloats() rounds this like every
+  // other premium % on the payload.
+  const floorPnlPct = ratchetFloorPct(
+    pinnedLivePnlPct(r.entry_premium, r.peak_premium),
+    r.status === "TRIM"
+  );
+  // The terminal close label, now distinguishing the exit type: a pinned stop pins (and
+  // wins); else an engine exit is categorized; else a plain 15:30 close is "time_stop";
+  // else the row is still live (null).
+  const boardClosedReason: ZeroDteBoardLedgerRow["closed_reason"] =
+    closedReason === "stopped"
+      ? "stopped"
+      : r.status === "CLOSED"
+        ? (engineExitCategory ?? "time_stop")
+        : null;
+
   return {
     ticker: r.ticker,
     direction: r.direction,
@@ -163,7 +236,10 @@ function mapLedgerRow(
     trough_premium: r.trough_premium,
     live_pnl_pct:
       closedReason === "stopped" ? PLAN_RULES.stop_pct : pinnedLivePnlPct(r.entry_premium, lastMark),
-    closed_reason: closedReason,
+    closed_reason: boardClosedReason,
+    floor_pnl_pct: floorPnlPct,
+    exit_reason: engineExitCategory,
+    exit_detail: pinnedExit.detail,
     mark_as_of: liveMark?.mark_as_of ?? null,
     mark_source: liveMark?.mark_source ?? null,
     // SEV-4: flag a mark served by the SYNC lane (no per-quote timestamp) so the deck can

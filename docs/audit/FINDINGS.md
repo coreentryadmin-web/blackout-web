@@ -5,6 +5,52 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-24 — [feat + SAFE] 0DTE trade management: trim-scale exit A/B (default-OFF) + exit-engine visibility + condor breach guard
+
+Branch `feat/zerodte-exit-engine-visibility`. Three changes, deploy after close, NO auto-merge —
+one STRATEGY change (operator sign-off) + two SAFE.
+
+**1. [STRATEGY, default-OFF] trim-scale exit as the ratchet replacement (`exit-engine.ts`).**
+- **Root cause:** `EXIT_RULES.ratchet_arm_pnl_pct = 25` (`exit-engine.ts:48`) arms a breakeven floor
+  the moment a 0DTE momentum leg reaches +25% — a *continuation* signal — so it scratches at
+  breakeven the exact plays that go on to +100% (green≠profitable). E5 (FINDINGS 2026-07-23) measured
+  it: HOLD beats the shipped ratchet full-sample, and a **trim ⅓@+25% + ⅓@+50%, run the last ⅓**
+  scale-out beats BOTH in every split (calib+valid) and both universes, lifting WR 32%→50%
+  (`+0.6%/−4.4%/−0.7%` vs HOLD `−0.8%/−12.1%/−3.7%` vs shipped `−4.4%/−10.1%/−5.8%`).
+- **Fix:** new `exitMode` A/B on the pure engine — `"ratchet"` (`DEFAULT_EXIT_MODE`, unchanged live
+  behavior) vs `"trim_scale"` (`decideTrimScale` + `TRIM_SCALE_RULES` + `trimTranchesArmed`). The
+  trim schedule is **regime-conditioned** (`neutral`=E5 base +25/+50; `trend`=+40/+80 lets it run;
+  `range`=+20/+40 banks sooner) and reuses scale-out.ts's partial-SCALE mechanism — but deliberately
+  NO trailing stop (P3 proved trailing hurts 0DTE; the last third runs to the plan rails). Thesis
+  break / flat timeout / plan stop+target are shared by both modes. **DEFAULT-OFF:** graduates on the
+  live-ledger grader, not this offline flip — the operator flips it via `ZERODTE_EXIT_MODE=trim_scale`
+  (IO shell `exit-sync.ts:resolveExitMode`; the pure leaf never reads an env). Live wiring derives the
+  trim latch from the monotonic peak (no DB column yet — the tranche-persistence graduation is the
+  follow-up); the two intermediate ⅓ TRIMs stay advisory until then, matching today's EXIT-only sync.
+- **Evidence:** `sim:0dte` extended to grade BOTH modes head-to-head on live bars through the REAL
+  engine (`gradeTrimScaleExit`, `ZERODTE_SIM_REGIME`). Synthetic validation of the accounting: a play
+  peaking +50% then reversing to the stop returns **+8.3%** under trim_scale (banked ⅓@+25 + ⅓@+50,
+  last third stops) vs **−50%** hold vs **~breakeven** ratchet-scratch — the positive-skew edge, live.
+
+**2. [SAFE] exit-engine decision surfaced on the board payload (`zerodte-service.ts`).** The rich exit
+decision (`floorPnlPct` / reason / `detail`) was computed but never left the engine — `closed_reason`
+couldn't even tell a ratchet exit from a target trim (both null). Added `floor_pnl_pct` (the live
+ratchet floor — the "your stop is now at breakeven/+20/+50" guidance, pure from the latched peak),
+`exit_reason` (coarse category from the pinned `entry_context.exit`), `exit_detail` (the engine's
+sentence), and WIDENED `closed_reason` to distinguish stopped/ratchet/thesis/flat/target/time_stop.
+Additive, no computation change; the pinned-stop P&L pin is preserved. Rendered as a floor chip +
+exit-reason chip (detail = tooltip) on the play card (`ZeroDteBoard.tsx`).
+
+**3. [SAFE] condor breach-pct guard (`iron-condor.ts:195`).** `SHIPPED_INTRADAY_BREACH_PCT=18.7` was
+stamped on EVERY condor regardless of width — it was measured for the shipped target-80 geometry ONLY.
+Now `est_intraday_breach_pct` (type `number | null`) nulls off when `targetWinRate`/`shortWidthPct`
+deviates from the shipped default, so a consumer can't pair a non-default win rate with a mismatched
+breach number. Walls don't count as a deviation (same selection, pushed out).
+
+- **Verify:** `tsc` clean; `zerodte/*.test.ts` 497/497 + platform 19/19 (adds trim_scale mode/regime
+  tables, board visibility fields, condor null-off); brand guard clean. **Status: PR OPEN (non-draft,
+  deploy after close, operator sign-off on the STRATEGY flip; no auto-merge).**
+
 ## 2026-07-24 — [SEV-3 + SEV-4] 0DTE command-deck live-marks: missing REST fallback + no sync-mark age flag — FIXED
 
 **SEV-3 — command-deck live-marks hook was SSE-only despite the documented REST fallback.**
