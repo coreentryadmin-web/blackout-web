@@ -75,6 +75,43 @@ test("horizon adapter: SCALE_OUT model, reason as note, mid as mark", () => {
   assert.equal(play.progress, null); // scale-out → tranches, no ratchet track
 });
 
+test("horizon adapter (PR-12 de-hardcode): real factors/regime/thesisBreak flow from the serving meta", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "pltr", direction: "LONG", horizon: "SWING", score: 77, status: "WATCH",
+    contract: { strike: 52, right: "C", expiry: "2026-08-07", dte: 14, mid: 2.32 },
+    factors: [{ label: "Structure", points: 24 }, { label: "Flow", points: 15 }],
+    regime: "Breakout continuation · regime 0.60",
+    thesisBreak: { level: "warn", note: "thin read — 3/7 pillars grounded" },
+  });
+  assert.equal(play.factors[0]!.label, "Structure"); // real pillar contributions, no longer []
+  assert.equal(play.regime, "Breakout continuation · regime 0.60"); // no longer null
+  assert.equal(play.thesisBreak!.level, "warn"); // no longer a hardcoded 'intact'
+});
+
+test("horizon adapter (PR-12): thesisBreak DERIVES from setupState; INVALIDATED → break", () => {
+  const invalid = terminalPlayFromHorizon({
+    ticker: "x", direction: "LONG", horizon: "SWING", score: 61, setupState: "INVALIDATED",
+    contract: { strike: 10, right: "C", expiry: "2026-08-07", dte: 14 },
+  });
+  assert.equal(invalid.thesisBreak!.level, "break");
+  const live = terminalPlayFromHorizon({
+    ticker: "y", direction: "LONG", horizon: "SWING", score: 61, setupState: "TRIGGERED",
+    contract: { strike: 10, right: "C", expiry: "2026-08-07", dte: 14 },
+  });
+  assert.equal(live.thesisBreak!.level, "intact");
+});
+
+test("horizon adapter (PR-12): LEAPS / un-enriched caller is UNCHANGED — legacy literals preserved", () => {
+  // No swing reads supplied (the live LEAPS path): factors []/regime null/thesisBreak intact — exactly as before.
+  const play = terminalPlayFromHorizon({
+    ticker: "aapl", direction: "LONG", horizon: "LEAPS", score: 70,
+    contract: { strike: 200, right: "C", expiry: "2026-10-16", dte: 84, mid: 12.5 },
+  });
+  assert.deepEqual(play.factors, []);
+  assert.equal(play.regime, null);
+  assert.equal(play.thesisBreak!.level, "intact");
+});
+
 test("edition adapter: dossier factors, PLAN model, WATCH status", () => {
   const play = terminalPlayFromEdition({
     ticker: "AAPL", direction: "long", rank: 1, score: 82,
