@@ -9,7 +9,11 @@ import { buildPublicTrackRecord, formatPercent } from "@/lib/track-record-public
 import { entryRangeMid } from "@/features/nighthawk/lib/entry-range";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
 import { isCurrentGradeMethodology } from "@/features/nighthawk/lib/grade-methodology";
-import { buildZeroDteRecord, type ZeroDteRecordBucket } from "@/lib/zerodte/record";
+import {
+  buildZeroDteRecord,
+  type ZeroDteRecordBucket,
+  type ZeroDteRecordRollup,
+} from "@/lib/zerodte/record";
 
 /** Shape returned by GET /api/track-record — shared with TrackRecordView. */
 export type TrackRecordPagePayload = {
@@ -37,11 +41,13 @@ export type TrackRecordPagePayload = {
     unresolved?: number;
   };
   /**
-   * 0DTE Command's multi-day plan-outcome record (P-3) — a THIRD, separately-labeled
-   * methodology: option-premium plan grades (-50%/+100%/15:30), never blended with
-   * Slayer pnl-points or Night Hawk stock-move percentages. Optional/additive like
-   * nightHawk.unresolved: undefined on older cached payloads means "not computed."
-   * Buckets carry low_n (n<5) so the UI can badge thin evidence.
+   * 0DTE Command's multi-day record (P-3) — a THIRD, separately-labeled methodology:
+   * option-premium returns, never blended with Slayer pnl-points or Night Hawk stock-move
+   * percentages. The headline W/L is the AS-MANAGED grade (the exit the member was
+   * live-guided to take); the fixed -50/+100/15:30 plan grade rides beside it as a labeled
+   * comparison (`mechanical`). Optional/additive like nightHawk.unresolved: undefined on
+   * older cached payloads means "not computed." Buckets carry low_n (n<5) so the UI can
+   * badge thin evidence.
    */
   zerodte?: {
     windowDays: number;
@@ -50,12 +56,16 @@ export type TrackRecordPagePayload = {
     ungraded: number;
     wins: number;
     losses: number;
+    /** pnl exactly 0 — SPX 3-way parity, excluded from wins AND losses. */
+    breakeven: number;
     winRatePct: number | null;
     avgPnlPct: number | null;
     byOutcome: ZeroDteRecordBucket[];
     byTimeOfDay: ZeroDteRecordBucket[];
     byDirection: ZeroDteRecordBucket[];
     byScoreBand: ZeroDteRecordBucket[];
+    /** The fixed -50/+100/15:30 plan grade over the same rows — labeled comparison only. */
+    mechanical: ZeroDteRecordRollup;
   };
   methodology: string;
   liveData: boolean;
@@ -195,12 +205,14 @@ export function zerodteFromRows(
     ungraded: record.ungraded,
     wins: record.wins,
     losses: record.losses,
+    breakeven: record.breakeven,
     winRatePct: record.win_rate_pct,
     avgPnlPct: record.avg_pnl_pct,
     byOutcome: record.by_outcome,
     byTimeOfDay: record.by_time_of_day,
     byDirection: record.by_direction,
     byScoreBand: record.by_score_band,
+    mechanical: record.mechanical,
   };
 }
 

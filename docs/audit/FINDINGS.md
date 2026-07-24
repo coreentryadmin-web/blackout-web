@@ -1271,3 +1271,70 @@ on the fix (`6050`). `tsc --noEmit` clean; all 77 `src/lib/providers/gex*.test.t
 `check-brand.mjs` clean. Files: `src/lib/providers/gex-positioning.ts`,
 `src/lib/providers/gex-positioning.test.ts`. Status: FIXED, branch
 `fix/gex-positioning-walls-nearterm-scope` (PR to main).
+
+## 2026-07-24 — [7-fix cluster] 0DTE grading + track-record HONESTY — FIXED (deploys AFTER close)
+
+The reported 0DTE record must reflect the exit the member actually trades, and every number
+must be internally consistent. Seven root causes, one branch (`fix/zerodte-grading-record-honesty`).
+These change REPORTED numbers → **deploy AFTER market close** (no auto-merge).
+
+**Fix 1 (SEV-2, biggest) — record graded a PHANTOM mechanical plan, not the executed exit.**
+Production grades only the fixed −50/+100/15:30 plan (`plan.ts` `gradePlanFromBars`, surfaced by
+`record.ts`), IGNORING the exit engine (ratchet / thesis-break / flat-timeout / plan stop-or-target)
+the member is live-guided by (`exit-engine.ts` via `syncLedgerLiveState`) whose realized exit is
+already stamped at `entry_context.exit` (`exit-sync.ts:174-182`). A member ratcheted out green at
++22% had it booked −50%. **Fix:** dual-track in `record.ts` — the HEADLINE is now the AS-MANAGED
+grade (`managedGradeView`: the stamped engine exit, falling back to the mechanical grade when no
+engine exit fired), with the mechanical plan grade kept as a labeled comparison (`ZeroDteRecord.mechanical`).
+Per-play carries `managed_outcome/managed_pnl_pct/managed_source` beside `plan_outcome/plan_pnl_pct`.
+When no engine exit fired, as-managed == mechanical → the clean path (incl. the 7/13 1W/7L fixture)
+is unchanged. Threaded through `track-record-page.ts`.
+
+**Fix 2 (SEV-3) — card vs grade resolved a within-bar stop+target tie OPPOSITELY.** `plan.ts`
+`gradePlanFromBars` is stop-first (pessimistic) on a same-bar tie; `derivePlayStatus` is peak-first
+(a target touch is a STICKY TRIM — the guarded "already-doubled stays TRIM" P0 test). A member saw a
+TRIM; the mechanical record booked −50%. The peak-first card is a DELIBERATE, guarded design, so this
+is resolved per the "document + make the reported record match what was shown" path: both functions
+now cross-document the intentional divergence, and the member-facing record is the AS-MANAGED grade
+(Fix 1) — a trimmed/target play books the engine's WIN, matching the card, while the mechanical −50%
+stays only as the labeled comparison. Test: a TRIM-shown row books a headline win, mechanical loss.
+
+**Fix 3 (SEV-3) — grade used a flow-fill basis up to +34% BELOW the achievable mark.** `plan.ts:81`
+`entryMax = flowAvgFill ?? mark`; `CHASE_PCT=35` keeps IN_RANGE while the mark runs +34% over the
+fill. The graded entry/stop/target were pinned to the smart-money's cheaper fill — a price a member
+arriving at flag time can't get → flatters WR. **Fix:** `resolveLedgerEntryPremium` takes the
+flag-time mark and FLOORS the graded basis at it (raises only UP toward the mark, never below
+entry_max); `scan.ts` threads `s.plan?.mark` (pinned first-write-wins by the upsert). The
+member-facing entry_max/stop/target (the don't-chase instruction) are untouched — only the ledger
+basis moves. Test: mark 5.20 > fill 4.20 flips a phantom "doubled" (off 4.20) into the honest
+"stopped" (off 5.20) through `gradePlanFromBars`.
+
+**Fix 4 (SEV-4) — breakeven booked as a loss; flat close a directional miss.** `record.ts:102`
+`isZeroDteWin = pnl > 0` lumped exact-0 into losses (`losses = graded − wins`). **Fix:** added a
+`breakeven` bucket (pnl exactly 0 → neither win nor loss), `losses = graded − wins − breakeven`,
+`win_rate = wins/graded` — SPX 3-way parity (`wins+losses+breakeven == graded`). Also
+`computeLedgerGrade` (`board.ts`) `direction_hit: signed > 0` booked a dead-flat close (signed===0)
+as a `false` miss; now `signed>0 ? true : signed<0 ? false : null` (flat = no directional edge).
+
+**Fix 5 (SEV-4) — win predicates keyed on different columns.** `isGradedZeroDteRow` read
+`plan_outcome`; `isZeroDteWin` read `plan_pnl_pct`. A partial write (outcome set, pnl NULL) counted
+as graded-but-not-a-win → a phantom loss. **Fix:** `isGradedZeroDteRow` now ALSO requires a finite
+`plan_pnl_pct`, so the two can never disagree (calibration.ts inherits the fix — single source).
+
+**Fix 6 (SEV-4) — track-record verifier miscounted `superseded`.** `track-record-verifier.ts:94`
+kept `superseded` in `closedRows`, but the served path (`computePlayOutcomeStats`:
+`outcome !== 'open' && !== 'superseded'`) excludes them → false L1/L2 + hit-rate FLAGs on a healthy
+ledger whenever any superseded rows existed. **Fix:** exclude `superseded` to match the served
+"closed" definition. New `track-record-verifier.test.ts` (proven fail-before / pass-after).
+
+**Fix 7 (SEV-4) — index-root empty bars → PERMANENT null grade.** `scan.ts` `gradeZeroDteLedger`:
+a known index root whose mapped `I:` symbol returns ZERO daily bars (transient provider gap) got
+`close=null` → stamped graded with a null direction FOREVER (`graded_at` removes it; only THROWN
+fetches retry, not empty results). **Fix:** empty bars for a KNOWN index root (`INDEX_OPTION_ROOTS`)
+are a RETRYABLE non-grade (leave ungraded, mirror the throw path); equities unchanged (a real gap).
+
+**Evidence/verify:** `tsc --noEmit` clean; `check-brand.mjs` clean; the full target suite
+(`src/lib/zerodte/*.test.ts src/lib/*record*.test.ts src/lib/correctness/*.test.ts`) 549 pass
+(+13 new, one per fix, each fail-before / pass-after). Files: `src/lib/zerodte/{plan,record,board,scan}.ts`,
+`src/lib/track-record-page.ts`, `src/lib/correctness/track-record-verifier.ts` (+ their tests).
+**Status:** DONE — PR to main, **HOLD for after-market-close deploy** (changes reported numbers), NO auto-merge.
