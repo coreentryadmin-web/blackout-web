@@ -240,17 +240,21 @@ export async function scanZeroDteBoard(flags?: {
 
   await attachContractPlans(setups);
   const tape = await attachIntradayEdge(setups);
-  // Hard-gate verdicts LAST — G-3 judges the final post-edge-layer score, and G-1
-  // reuses the same SPY read the edge layer just fetched (one bias per scan cycle,
-  // scoring and gating can never disagree about what the tape said).
-  await attachGateVerdicts(setups, tape.bias, tape.biasAsOfMs);
 
   // Confluence read — how many of {post-open timing, price vs VWAP, market alignment} agree with each
-  // setup's direction. Runs AFTER the intraday-edge pass (which populates intraday + market_aligned).
-  // Evidence only, calibration-first: the measured edge is the VWAP+market "double" bucket
-  // (+15.9% EV, docs/audit/0DTE-RESEARCH.md); does not gate/score the board yet. See confluence.ts.
+  // setup's direction. Runs AFTER the intraday-edge pass (which populates intraday + market_aligned)
+  // and BEFORE the gate stack, because G-12 now reads its `confirmations` count (Phase 1, 2026-07-24):
+  // the VWAP+market agreement is a real commit input, not just a card badge. The tier/score stay
+  // calibration-first display; only the confirmation FLOOR gates. Attached to ALL setups so the
+  // committed row carries a PRESENT read (0/1/2), closing the live "no_read on 96/98" hole.
   const nowEt = etNowParts();
-  attachConfluence(setups, nowEt.hour * 60 + nowEt.minute);
+  const nowEtMinutes = nowEt.hour * 60 + nowEt.minute;
+  attachConfluence(setups, nowEtMinutes);
+
+  // Hard-gate verdicts LAST — G-3 judges the final post-edge-layer score, G-1 reuses the same SPY read
+  // the edge layer just fetched, and G-12 reads the confluence just attached (one clock per cycle, so
+  // scoring, gating, and confluence can never disagree about the time or the tape).
+  await attachGateVerdicts(setups, tape.bias, tape.biasAsOfMs, nowEtMinutes);
 
   return { setups, nighthawk_covered: nighthawkCovered, upstream_ok: upstreamOk, rejections };
 }
@@ -320,12 +324,11 @@ async function attachIntradayEdge(
 async function attachGateVerdicts(
   setups: EnrichedZeroDteSetup[],
   bias: MarketBias | null,
-  biasAsOfMs: number | null
+  biasAsOfMs: number | null,
+  nowEtMinutes: number
 ): Promise<void> {
   if (setups.length === 0) return;
   const today = todayEt();
-  const { hour, minute } = etNowParts();
-  const nowEtMinutes = hour * 60 + minute;
   const nowMs = Date.now();
   const ledgerRows = dbConfigured()
     ? await fetchZeroDteSetupLog(today).catch(() => null)
@@ -481,6 +484,7 @@ async function attachGateVerdicts(
       // The dossier's own read (top-5) is kept as the fallback where the batch was empty.
       halted: freshHalts.has(s.ticker.toUpperCase()) || s.halted === true,
       earnings: freshEarnings.get(s.ticker.toUpperCase()) ?? s.earnings ?? null,
+      confluence: s.confluence ?? null, // G-12 (Phase 1): attached just above, before this gate pass
     });
     if (s.gate.verdict !== "COMMIT") continue;
 

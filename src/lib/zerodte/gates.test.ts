@@ -8,9 +8,27 @@ import {
   gateRejectionFor,
   MARKET_BIAS_MAX_AGE_MS,
   planQualityGateBlocks,
+  confluenceFloorAt,
+  ZERODTE_CONFLUENCE_MIN,
+  ZERODTE_CONFLUENCE_MIN_EARLY,
   type ZeroDteGateInput,
 } from "./gates";
 import type { ContractPlan } from "./plan";
+import type { ZeroDteConfluence } from "./confluence";
+
+/** Minimal confluence read carrying `confirmations` (the only field G-12 reads). */
+function confluence(confirmations: number): ZeroDteConfluence {
+  return {
+    score: confirmations,
+    confirmations,
+    timing_ok: true,
+    early_window: false,
+    vwap_ok: confirmations >= 1,
+    market_ok: confirmations >= 2,
+    tier: confirmations >= 2 ? "double" : "weak",
+    label: `${confirmations} conf`,
+  };
+}
 
 const NOW_MS = Date.parse("2026-07-13T15:00:00Z"); // 11:00 ET on the fixture date
 
@@ -494,4 +512,53 @@ test("G-7: macro hard-block during CPI window", () => {
 test("planQualityGateBlocks: exported helper matches gate evaluation", () => {
   assert.deepEqual(planQualityGateBlocks(CLEAN_PLAN), []);
   assert.equal(planQualityGateBlocks(null)[0]!.code, "plan_no_quote");
+});
+
+// ── G-12 · confluence floor (Phase 1) ────────────────────────────────────────────
+const EARLY_ET = 10 * 60 + 15; // 10:15 ET — inside the measured-negative early window
+
+test("G-12: no confluence read attached → fails OPEN (commits, never manufactures a block)", () => {
+  const v = evaluateZeroDteGates(input({ confluence: null }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.ok(!v.blocks.some((b) => b.code === "confluence_floor"));
+});
+
+test("G-12: 0-confluence (the −12.5% EV bucket) is BLOCKED at the default floor of 1", () => {
+  assert.equal(ZERODTE_CONFLUENCE_MIN, 1, "test assumes the conservative default floor");
+  const v = evaluateZeroDteGates(input({ confluence: confluence(0) }));
+  assert.equal(v.verdict, "BLOCKED");
+  const b = v.blocks.find((x) => x.code === "confluence_floor");
+  assert.ok(b, "expected a confluence_floor block");
+  assert.equal(b!.threshold, 1);
+  assert.match(b!.reason, /0 of the needed 1 confluence/);
+});
+
+test("G-12: 1-conf and 2-conf commit at mid-session (11:00, floor 1)", () => {
+  assert.equal(evaluateZeroDteGates(input({ confluence: confluence(1) })).verdict, "COMMIT");
+  assert.equal(evaluateZeroDteGates(input({ confluence: confluence(2) })).verdict, "COMMIT");
+});
+
+test("G-12: early window [10:00,10:45) raises the floor — 1-conf BLOCKED, 2-conf commits", () => {
+  assert.equal(ZERODTE_CONFLUENCE_MIN_EARLY, 2, "test assumes the default early floor");
+  const oneEarly = evaluateZeroDteGates(input({ confluence: confluence(1), nowEtMinutes: EARLY_ET }));
+  assert.equal(oneEarly.verdict, "BLOCKED");
+  const b = oneEarly.blocks.find((x) => x.code === "confluence_floor");
+  assert.ok(b);
+  assert.equal(b!.threshold, 2);
+  assert.match(b!.reason, /early window/);
+  // the same 1-conf setup commits once past the early window (11:00, floor drops to 1)
+  assert.equal(evaluateZeroDteGates(input({ confluence: confluence(1) })).verdict, "COMMIT");
+  // 2-conf (the +15.9% double) clears the early floor
+  assert.equal(
+    evaluateZeroDteGates(input({ confluence: confluence(2), nowEtMinutes: EARLY_ET })).verdict,
+    "COMMIT"
+  );
+});
+
+test("confluenceFloorAt: early floor inside [10:00,10:45), base floor outside", () => {
+  assert.equal(confluenceFloorAt(EARLY_ET), ZERODTE_CONFLUENCE_MIN_EARLY);
+  assert.equal(confluenceFloorAt(10 * 60), ZERODTE_CONFLUENCE_MIN_EARLY); // 10:00 inclusive
+  assert.equal(confluenceFloorAt(10 * 60 + 45), ZERODTE_CONFLUENCE_MIN); // 10:45 exclusive
+  assert.equal(confluenceFloorAt(11 * 60), ZERODTE_CONFLUENCE_MIN); // 11:00
+  assert.equal(confluenceFloorAt(9 * 60 + 40), ZERODTE_CONFLUENCE_MIN); // before the unlock
 });
