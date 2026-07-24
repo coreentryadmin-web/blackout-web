@@ -26,7 +26,10 @@ function setMemoryEntry(key: string, entry: MemoryEntry): void {
 
 type RedisClient = {
   get(key: string): Promise<string | null>;
-  set(key: string, value: string, mode: string, ttlSec: number): Promise<unknown>;
+  // Variadic to cover both the plain `SET key val EX ttl` write and the atomic claim
+  // `SET key val EX ttl NX` (see sharedCacheSetNx). ioredis returns "OK" on a successful SET and
+  // null when an NX SET is refused because the key already exists.
+  set(key: string, value: string, ...args: (string | number)[]): Promise<unknown>;
   del(key: string): Promise<unknown>;
   ttl(key: string): Promise<number>;
 };
@@ -126,6 +129,45 @@ export async function sharedCacheSet(key: string, value: unknown, ttlSec: number
   } catch {
     // memory copy already stored
   }
+}
+
+/**
+ * Atomic "claim if absent" — the cross-replica idempotency primitive. Returns true iff THIS caller
+ * won the claim (the key did not previously exist), false if someone already holds it.
+ *
+ * WHY NX and not sharedCacheGet-then-sharedCacheSet: a read-then-write pair is a race. Two replicas
+ * firing the same cron minute can BOTH read "key absent" and BOTH proceed to write it → both run the
+ * guarded work (e.g. duplicate swing discovery, double-incremented accumulation memory). `SET key val
+ * NX EX ttl` is a SINGLE atomic Redis command: exactly one caller's SET creates the key and returns
+ * "OK"; every concurrent caller gets nil. The winner is decided by Redis, never by the interleaving of
+ * two round-trips. TTL bounds the key so it self-expires (no leak) — pass a TTL past the window the
+ * claim must outlive.
+ *
+ * Fallback: with Redis unavailable the in-memory map gives per-PROCESS NX only (no cross-replica
+ * guarantee) — the same best-effort posture as the rest of this module. A multi-replica deploy always
+ * has Redis wired, so the atomic path is the one that actually runs in prod.
+ */
+export async function sharedCacheSetNx(key: string, value: unknown, ttlSec: number): Promise<boolean> {
+  const payload = JSON.stringify(value);
+  const redis = await getRedis();
+  if (redis) {
+    try {
+      // ioredis: `set(key, val, "EX", ttl, "NX")` → "OK" when the key was created, null when refused.
+      const res = await redis.set(`blackout:${key}`, payload, "EX", ttlSec, "NX");
+      const acquired = res === "OK";
+      // Mirror only on a win so the memory copy reflects the value the claim winner stored.
+      if (acquired) setMemoryEntry(key, { value: payload, expiresAt: Date.now() + ttlSec * 1000 });
+      return acquired;
+    } catch {
+      // fall through to the in-memory claim
+    }
+  }
+
+  // In-memory NX: a live (unexpired) entry means the claim is already held in this process.
+  const hit = memory.get(key);
+  if (hit && hit.expiresAt > Date.now()) return false;
+  setMemoryEntry(key, { value: payload, expiresAt: Date.now() + ttlSec * 1000 });
+  return true;
 }
 
 export async function sharedCacheDel(key: string): Promise<void> {
