@@ -50,6 +50,7 @@ import {
   type HorizonPlaySet,
 } from "../horizon-plays";
 import type { PlayDirection } from "../horizon-fanout";
+import type { SwingArchetype } from "./taxonomy";
 
 // ─── WHY RECALL MATTERS (operator critique #7) ──────────────────────────────────
 // A discovery funnel is easy to optimize for PRECISION (everything that surfaces is good) while
@@ -105,6 +106,10 @@ export const DEFAULT_SWING_DISCOVERY_CONFIG: SwingDiscoveryConfig = {
   minPersistenceSessions: MIN_PERSISTENCE_SESSIONS,
   intendedDte: 14,
 };
+
+/** How many accumulating rows to pull when reading the WATCH-eligible rail. Matches the accumulation-store
+ *  accessor default; ample for a whole-market rail where only persisted names surface. */
+export const WATCH_ELIGIBLE_FETCH_LIMIT = 500;
 
 // ─── PURE Tier-0 merge + rank ────────────────────────────────────────────────────
 
@@ -170,6 +175,22 @@ export function deriveSwingCandidates(seeds: SwingCandidateSeed[]): SwingDossier
   return seeds
     .map((s) => buildSwingDossier(s.input))
     .sort((a, b) => b.score.score - a.score.score || a.ticker.localeCompare(b.ticker));
+}
+
+/**
+ * The independent SIGNAL KINDS a scan sighting carries for corroboration (accumulation-store's anti-lone-print
+ * gate): the Tier-0 SCREEN provenance (FLOW / STRUCTURE) the name surfaced under, PLUS "CATALYST" when its
+ * dossier grounded the CATALYST pillar (a genuinely independent read from the flow/structure screens). This is
+ * the honest independence axis — distinct KINDS of evidence — NOT the cadence phase the writers also stamp
+ * (see the `hasCorroboration` note in accumulation-store.ts). Two FLOW sightings across cadence windows are one
+ * kind; a FLOW print AND a CATALYST (or a STRUCTURE breakout) are two. PURE. */
+export function signalKindsForObservation(
+  paths: SwingDiscoveryPath[],
+  dossier: SwingDossier,
+): string[] {
+  const kinds = new Set<string>(paths); // FLOW / STRUCTURE — the Tier-0 screens that surfaced the name
+  if (dossier.pillarSignals.CATALYST != null) kinds.add("CATALYST"); // a grounded catalyst = an independent signal
+  return [...kinds];
 }
 
 // ─── PURE recall instrumentation (evidence-only — see the WHY-RECALL header) ────────
@@ -458,22 +479,38 @@ export async function runSwingDiscoveryScan(
   );
 
   // ── PERSISTENCE: observe each directional dossier this session, then read who has cleared the bar. ──
+  // The Tier-0 screen provenance (seed.paths) lives on the candidate seeds, not on the scored dossier, so map
+  // ticker → paths to accrete the real SIGNAL KINDS (FLOW/STRUCTURE[+CATALYST]) into the corroboration set.
+  const pathsByTicker = new Map<string, SwingDiscoveryPath[]>(
+    candidateSeeds.map((s) => [s.ticker.toUpperCase(), s.paths]),
+  );
+  // (ticker,direction) → archetype resolver for this scan's dossiers — makes WATCH promotion ARCHETYPE-AWARE
+  // so an event/immediate archetype (EVENT_DRIVEN / POST_EARNINGS_DRIFT / FAILED_BREAKDOWN) can clear on a
+  // single CORROBORATED session (its intended 1-session fast-track) instead of the conservative 2-session
+  // default that fetchWatchEligible falls back to WITHOUT a resolver.
+  const archetypeByKey = new Map<string, SwingArchetype | null>();
   for (const d of dossiers) {
-    if (d.direction) {
-      await observeSwingCandidate(deps.accum, {
-        ticker: d.ticker,
-        direction: d.direction,
-        sessionDay: deps.sessionDay,
-        phase: deps.phase,
-      });
-    }
+    if (!d.direction) continue;
+    archetypeByKey.set(`${d.ticker.toUpperCase()}|${d.direction}`, d.archetype.archetype);
+    await observeSwingCandidate(deps.accum, {
+      ticker: d.ticker,
+      direction: d.direction,
+      sessionDay: deps.sessionDay,
+      phase: deps.phase,
+      signalKinds: signalKindsForObservation(pathsByTicker.get(d.ticker.toUpperCase()) ?? [], d),
+    });
   }
   // The WATCH rail = persistence-cleared candidates that ALSO appear in this scan (a stale memory row for a
   // name that didn't show up today is not surfaced here — fadeStaleAccum retires those on the cron path).
   const seenThisScan = new Set(
     dossiers.filter((d) => d.direction).map((d) => `${d.ticker}|${d.direction}`),
   );
-  const eligible = await fetchWatchEligible(deps.accum, cfg.minPersistenceSessions);
+  const eligible = await fetchWatchEligible(
+    deps.accum,
+    cfg.minPersistenceSessions,
+    WATCH_ELIGIBLE_FETCH_LIMIT,
+    (c) => archetypeByKey.get(`${c.ticker.toUpperCase()}|${c.direction}`) ?? null,
+  );
   const watchCandidates = eligible.filter((c) => seenThisScan.has(`${c.ticker}|${c.direction}`));
 
   // ── OPTIONAL play production: attach a concrete WATCH contract when chains are available. ──

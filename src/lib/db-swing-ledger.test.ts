@@ -215,7 +215,7 @@ test("mapSwingSnapshotRow: NUMERIC→number, null stays null, JSONB parsed, crea
 
 // ─── mapSwingAccumRow ─────────────────────────────────────────────────────────
 
-test("mapSwingAccumRow: counts→number, phases JSONB array→string[], last_session_day ISO", () => {
+test("mapSwingAccumRow: counts→number, phases + signal_kinds JSONB array→string[], last_session_day ISO", () => {
   const row = mapSwingAccumRow({
     ticker: "SMH",
     direction: "long",
@@ -223,6 +223,7 @@ test("mapSwingAccumRow: counts→number, phases JSONB array→string[], last_ses
     distinct_session_days: "2",
     last_session_day: new Date("2026-07-24T00:00:00.000Z"),
     phases_seen: ["POST_CLOSE", "MIDDAY"],
+    signal_kinds: ["FLOW", "CATALYST"],
     promoted_position_id: null,
     first_seen_at: "2026-07-23T20:00:00.000Z",
     last_seen_at: "2026-07-24T20:00:00.000Z",
@@ -231,9 +232,11 @@ test("mapSwingAccumRow: counts→number, phases JSONB array→string[], last_ses
   assert.equal(row.distinct_session_days, 2);
   assert.equal(row.last_session_day, "2026-07-24");
   assert.deepEqual(row.phases_seen, ["POST_CLOSE", "MIDDAY"]);
+  assert.deepEqual(row.signal_kinds, ["FLOW", "CATALYST"], "screen provenance parses into the corroboration set");
   assert.equal(row.promoted_position_id, null);
 
-  // phases_seen delivered as a raw JSON string is still parsed to string[].
+  // phases_seen / signal_kinds delivered as raw JSON strings are still parsed to string[]; a legacy row
+  // with NO signal_kinds column maps to null (handled downstream as an empty corroboration set).
   const row2 = mapSwingAccumRow({
     ticker: "QQQ",
     direction: "short",
@@ -241,14 +244,24 @@ test("mapSwingAccumRow: counts→number, phases JSONB array→string[], last_ses
     distinct_session_days: 1,
     last_session_day: null,
     phases_seen: '["OPEN"]',
+    signal_kinds: '["STRUCTURE"]',
     promoted_position_id: "42",
     first_seen_at: "2026-07-24T14:00:00.000Z",
     last_seen_at: "2026-07-24T14:00:00.000Z",
   });
   assert.deepEqual(row2.phases_seen, ["OPEN"]);
+  assert.deepEqual(row2.signal_kinds, ["STRUCTURE"]);
   assert.equal(row2.promoted_position_id, 42);
   assert.equal(row2.last_session_day, null);
   assert.equal(row2.direction, "short");
+
+  // A legacy row missing the signal_kinds column entirely → null (never throws).
+  const legacy = mapSwingAccumRow({
+    ticker: "AMD", direction: "long", observation_count: 2, distinct_session_days: 2,
+    last_session_day: null, phases_seen: ["POST_CLOSE"], promoted_position_id: null,
+    first_seen_at: "2026-07-24T14:00:00.000Z", last_seen_at: "2026-07-24T14:00:00.000Z",
+  });
+  assert.equal(legacy.signal_kinds, null, "legacy row with no signal_kinds column maps to null");
 });
 
 // ─── isMonotonicSwingStatusTransition ─────────────────────────────────────────
@@ -490,6 +503,20 @@ test("SEV-3: upsertSwingAccum SQL uses strictly-newer (>) increment + GREATEST h
   assert.doesNotMatch(body, /IS DISTINCT FROM EXCLUDED\.last_session_day/, "the buggy IS DISTINCT FROM guard is gone");
   // High-water mark pinned to GREATEST so an out-of-order day cannot rewind it.
   assert.match(body, /last_session_day = GREATEST\(swing_candidate_accumulation\.last_session_day, EXCLUDED\.last_session_day\)/);
+});
+
+test("signal_kinds: DDL adds the column, upsertSwingAccum deduped-unions it (the corroboration set)", () => {
+  const src = dbSource();
+  // The column is added idempotently (ADD COLUMN IF NOT EXISTS) so an existing deploy migrates in place.
+  assert.match(src, /ALTER TABLE swing_candidate_accumulation\s+ADD COLUMN IF NOT EXISTS signal_kinds JSONB NOT NULL DEFAULT '\[\]'::jsonb/);
+  const body = src.slice(
+    src.indexOf("export async function upsertSwingAccum"),
+    src.indexOf("export async function fetchAccumulating")
+  );
+  // signal_kinds is written on insert and deduped-unioned on conflict — the same jsonb_agg(DISTINCT) shape
+  // phases_seen uses, but a SEPARATE column so a legacy cadence-only phases_seen can't leak in as a kind.
+  assert.match(body, /signal_kinds = \(\s*SELECT COALESCE\(jsonb_agg\(DISTINCT e\), '\[\]'::jsonb\)/);
+  assert.match(body, /jsonb_array_elements\(swing_candidate_accumulation\.signal_kinds \|\| EXCLUDED\.signal_kinds\)/);
 });
 
 // ─── SEV-4: root/parent identity not clobbered + graded-feature index ─────────────────────────

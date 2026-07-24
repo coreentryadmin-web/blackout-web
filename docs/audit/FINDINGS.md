@@ -5,6 +5,83 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-24 — [SEV-2/SEV-3, swing pre-live] Discovery reduced the 8-archetype × 7-pillar swing engine to a 3-pillar momentum screen; archetype fast-track + corroboration were dead — FIXED
+
+**Context / risk.** The swing lane is pre-live (WATCH-only, `commitEligibleCount` is a literal 0;
+nothing sizes risk), so live blast radius is nil — but the sophistication the engine advertises was
+silently inert. Three coupled defects. Branch `fix/swing-discovery-archetype-grounding`.
+
+**Fix 1 (SEV-2) — only 3 of 7 pillars grounded → the engine renormalized to momentum+flow, and 2 of
+the 3 FAST-TRACK archetypes could never be produced (dead code).**
+Root cause: `swing-ingest.ts` `assembleSwingDossierInput` grounded STRUCTURE / REL_STRENGTH / FLOW
+and left VOLATILITY / CATALYST / REGIME / DATA_QUALITY null. `swing-pillars.ts:64` renormalizes over
+PRESENT pillars, so every name scored on a 3-pillar (momentum+flow) vector — the archetype-specific
+weight tables (`swing-archetype.ts`) barely mattered. Worse, the classifier's catalyst/earnings
+signal clusters (`catalystInWindow01` / `earningsGapRecent01` / `postEarningsDrift01`, archetype.ts)
+were NEVER grounded, so `fitEventDriven` / `fitPostEarningsDrift` always returned null → EVENT_DRIVEN
+and POST_EARNINGS_DRIFT could not classify. Those are exactly the two archetypes the persistence
+FAST-TRACK (`taxonomy.ts:180-182`, `ARCHETYPE_PERSISTENCE`) was built for — so the fast-track guarded
+archetypes that could never be produced. Dead code end-to-end.
+- **New `src/lib/swing/swing-catalyst.ts` (PURE, tested):** `deriveCatalystReads` grounds
+  `catalystStrength01` (freshest in-window Benzinga catalyst-channel headline, recency-weighted, OR a
+  known upcoming earnings inside the holding window as pre-earnings momentum) + the `earningsInWindow`
+  binary-gap hazard, `catalystInWindow01` (→ EVENT_DRIVEN), and the post-earnings drift extras
+  (`earningsGapRecent01` recency×gap-size, `postEarningsDrift01` direction-aligned continuation) which
+  fire ONLY inside a ≤15-day post-print window (→ POST_EARNINGS_DRIFT). `contractQualityFromIvRank`
+  grounds VOLATILITY as the INVERSE of UW IV rank (a 0.5–0.75Δ debit swing wants cheap premium).
+  `parseEarningsWindows` derives BOTH the next and last print from ONE `/api/earnings/{ticker}` feed
+  (no second fetch). Benzinga rides the Polygon key per CLAUDE.md; the readers already fail-open.
+- **REGIME** grounded in `regimeFromSpyTrend` from the SPY closes already fetched once per scan (SPY
+  trend-stack as risk-on, DIRECTION-ALIGNED — risk-on is a LONG tailwind / SHORT headwind). Coarse v1
+  by design; TODO left in-code to upgrade to breadth/VIX/`market_regime`.
+- **DATA_QUALITY** deliberately left null (TODO): it is an honesty meta-pillar the dossier already
+  tracks via `dataQuality.degraded/missing`; grounding it as a real feed-agreement 0–1 is a follow-up.
+  `oversold01`/`reclaim01`/`retraceToSupport01` (MEAN_REVERSION / FAILED_BREAKDOWN reclaim) left as
+  TODOs — reliable level/reclaim detection needs intraday/structure the daily-closes read can't give
+  honestly; PULLBACK already classifies on the grounded `trendStack01`. Pillars grounded: **6 of 7**.
+- IO: `SwingIngestDeps` gains OPTIONAL fail-soft `fetchCatalystNews`/`fetchEarningsRows`/`fetchIvRank`
+  (absent → those pillars stay null, unchanged behavior); the cron route + the audit scan wire the
+  real Benzinga/UW readers. Each read degrades to null independently — a provider outage drops only
+  that pillar for that name, never the candidate.
+Evidence: a fresh-catalyst name now classifies EVENT_DRIVEN with 6 present pillars (was the 3-pillar
+screen); a recent-earnings name classifies POST_EARNINGS_DRIFT — both previously impossible.
+
+**Fix 2 (SEV-3) — the archetype-aware 1-session fast-track never fired in the live rail.**
+Root cause: `discovery.ts` called `fetchWatchEligible(deps.accum, cfg.minPersistenceSessions)` with NO
+`archetypeOf` arg, so `accumulation-store.ts:192` applied the conservative ≥2-distinct-session default
+to EVERY candidate — the 1-session event fast-track (`ARCHETYPE_PERSISTENCE`) was unreachable from the
+live scan. Fix: build a `(ticker,direction)→archetype` resolver from THIS scan's dossiers
+(`d.archetype.archetype`) and pass it (plus an explicit fetch limit) so event archetypes get their
+intended single-corroborated-session promotion; cross-session archetypes still gate to 2 sessions.
+
+**Fix 3 (SEV-3) — corroboration counted CADENCE PHASE, not signal KIND (weakened the anti-lone-print
+invariant).** Root cause: `hasCorroboration` counted `new Set(phases_seen).size`, but every writer
+stamps `phases_seen` with the CADENCE phase/channel (`deps.phase` = POST_CLOSE…; event-trigger's
+`SWING_LIVE_FLOW_PHASE` = LIVE_FLOW), NOT the screen provenance. So ONE kind of evidence re-seen
+across cadence windows (FLOW at POST_CLOSE, FLOW again at MIDDAY) read as "2 independent signals" and
+could corroborate a lone print. Fix: a NEW `signal_kinds` column (JSONB, `ADD COLUMN IF NOT EXISTS`;
+deduped-unioned exactly like `phases_seen`) carries the real SCREEN provenance — the discovery writer
+accretes `seed.paths` (FLOW/STRUCTURE) + `CATALYST` when the dossier grounded that pillar
+(`signalKindsForObservation`), and the live-flow writer stamps `FLOW`. `hasCorroboration` now counts
+`signal_kinds`; `phases_seen` stays as pure cadence provenance. Two FLOW sightings across cadence
+windows = one kind = NOT corroborated; a FLOW print + a grounded CATALYST = two kinds = corroborated.
+
+**The three fixes interlock:** an EVENT_DRIVEN name surfaced by the FLOW screen with a grounded
+CATALYST now carries `signal_kinds={FLOW,CATALYST}` (Fix 1+3) → corroborated → the resolver (Fix 2)
+applies the event archetype's 1-session rule → it reaches WATCH in a SINGLE scan, as designed.
+
+**Evidence / tests.** `tsc --noEmit` clean; `check-brand.mjs` clean; full swing suite
+`node --import tsx --test src/lib/swing/*.test.ts` → 301 pass, `db-swing-ledger.test.ts` → 22 pass.
+New/updated coverage: `swing-catalyst.test.ts` (all mappings incl. direction-aligned drift, IV-rank
+inverse, honest-null); `swing-ingest.test.ts` (regime alignment, pillar grounding, EVENT_DRIVEN now
+producible, fail-soft providers); `dossier.test.ts` (POST_EARNINGS_DRIFT now producible);
+`accumulation-store.test.ts` (corroboration counts KINDS not phases — the exact regression);
+`discovery.test.ts` (end-to-end 1-session fast-track for an EVENT_DRIVEN name + no false fast-track
+for a cross-session name); `db-swing-ledger.test.ts` (`signal_kinds` DDL + deduped-union SQL guard).
+
+**Status:** DONE (branch `fix/swing-discovery-archetype-grounding`). Swing is pre-live — deploy AFTER
+close; NO auto-merge (non-draft PR to `main`, held for review per the task).
+
 ## 2026-07-24 — [SEV-3 + SEV-4] 0DTE command-deck live-marks: missing REST fallback + no sync-mark age flag — FIXED
 
 **SEV-3 — command-deck live-marks hook was SSE-only despite the documented REST fallback.**

@@ -32,8 +32,13 @@ export const SWING_EVENT_MIN_DTE = 2;
 export const SWING_EVENT_MAX_DTE = 30;
 /** At most one advance per (ticker,direction) per this interval — well above the write cost, spam-proof. */
 export const SWING_EVENT_MIN_INTERVAL_MS = 60_000;
-/** Provenance tag written into `phases_seen` so a live-tape advance is distinguishable from a scheduled scan. */
+/** Cadence provenance tag written into `phases_seen` so a live-tape advance is distinguishable from a
+ *  scheduled scan. NOT the corroboration axis (that is the signal KIND below). */
 export const SWING_LIVE_FLOW_PHASE = "LIVE_FLOW";
+/** Screen provenance for a live-tape advance: it is a FLOW-screen signal (a big directional print), accreted
+ *  into `signal_kinds`. So a live FLOW advance + a scheduled STRUCTURE/CATALYST sighting corroborate; two live
+ *  FLOW advances (same kind) do NOT — the anti-lone-print invariant holds across the live rail too. */
+export const SWING_LIVE_FLOW_SIGNAL_KIND = "FLOW";
 
 /** The subset of a parsed flow alert the swing materiality test needs (matches MarketFlowAlert fields). */
 export type MaterialSwingFlowInput = {
@@ -140,6 +145,7 @@ export async function advanceSwingAccumulationFromFlow(
     direction,
     sessionDay: deps.sessionDay,
     phase: SWING_LIVE_FLOW_PHASE,
+    signalKinds: [SWING_LIVE_FLOW_SIGNAL_KIND], // a live print is FLOW-kind provenance
   });
   return { advanced: true, ticker, direction, reason: "advanced accumulation (never committed)" };
 }
