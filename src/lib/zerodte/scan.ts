@@ -39,7 +39,7 @@ import {
 import { attachConfluence } from "./confluence";
 import { LEVERAGED_ETP_SET } from "@/features/nighthawk/lib/constants";
 import { createDossierBuildCache, fetchTickerDossier } from "@/features/nighthawk/lib/dossier";
-import { etNowParts, todayEt } from "@/features/nighthawk/lib/session";
+import { etNowParts, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { fetchAggBars } from "@/lib/providers/polygon-largo";
 import { macroEventsOnDateLive } from "@/lib/providers/macro-events";
 import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
@@ -51,6 +51,7 @@ import {
   deriveZeroDteSetups,
   enrichSetup,
   INDEX_OPTION_ROOTS,
+  matchEarnings,
   polygonSpotTicker,
   type EarningsFlag,
   type EnrichedZeroDteSetup,
@@ -349,12 +350,14 @@ async function attachGateVerdicts(
     stops: mergeGovernorStops(ledgerGovernor.stops, recordedStops),
   };
 
-  // G-4/G-6 calibration context — all best-effort (calibration LOGS, never blocks,
-  // so a missing input degrades to an honest "unknown"/no-conflict verdict, never a
-  // stalled scan): day-open VIX cached per session, Slayer's live play briefly,
-  // Night Hawk takes in one batched echo query for just the fresh tickers.
+  // G-4/G-6 calibration context + the Phase-0 firewall inputs — all best-effort. The
+  // calibration/echo reads never block (a miss degrades to an honest "unknown"/no-conflict
+  // verdict); the VIX and macro reads now ALSO carry an "attempted-and-unavailable" signal
+  // (null) that the gate stack fails a fresh commit closed on (G-4/G-7 firewall, gates.ts),
+  // and the earnings/halt reads feed G-11 for EVERY committable candidate, not just the
+  // dossier-enriched top-5.
   const freshTickers = setups.map((s) => s.ticker.toUpperCase()).filter((t) => !committed.has(t));
-  const [vixDayOpen, slayerLive, nhEcho, macroEvents] = await Promise.all([
+  const [vixDayOpen, slayerLive, nhEcho, macroRead, freshEarnings, freshHalts] = await Promise.all([
     within(
       withServerCache<number | null>(`zerodte:vix-open:${today}`, 10 * 60 * 1000, async () => {
         const bars = await fetchAggBars("I:VIX", 1, "day", today, today);
@@ -381,11 +384,53 @@ async function attachGateVerdicts(
           () => new Map<string, { direction: string; edition_for: string }>()
         )
       : new Map<string, { direction: string; edition_for: string }>(),
+    // G-7 macro read. within() → null on timeout/inner-rejection; a SUCCESSFUL fetch
+    // returns an array (empty = "zero events today", a SAFE state). Keep that distinction:
+    // null (read failed/timed out) → macroUnavailable below → G-7 fails a fresh commit
+    // closed; [] → macroEvents empty → G-7 finds nothing to block. (Previously .catch(=>[])
+    // collapsed a failed fetch into "zero events" — the exact hole G-7 fail-closed fixes.)
     within(
       withServerCache(`zerodte:macro:${today}`, 10 * 60 * 1000, () => macroEventsOnDateLive(today)),
       2_500
-    ).catch(() => [] as Awaited<ReturnType<typeof macroEventsOnDateLive>>),
+    ).catch(() => null as Awaited<ReturnType<typeof macroEventsOnDateLive>> | null),
+    // G-11 earnings for ALL fresh candidates (not just the top-5 dossier): one cached
+    // market-wide snapshot (warmed by the same zerodte-warm cron), matched to today/next
+    // session. Best-effort — a miss yields an empty map (no earnings flag), never a throw.
+    // Dynamic import mirrors the vector pre-warm below, keeping the heavy earnings graph
+    // out of this module's static import chain.
+    (async (): Promise<Map<string, EarningsFlag>> => {
+      if (freshTickers.length === 0) return new Map();
+      try {
+        const { readGridEarnings } = await import("./earnings");
+        const snap = await within(readGridEarnings(), 2_500);
+        if (!snap) return new Map();
+        return matchEarnings(snap.items ?? [], { today, nextDay: nextTradingDayEt(today) });
+      } catch {
+        return new Map();
+      }
+    })(),
+    // G-11 halt for ALL fresh candidates: a cheap synchronous read of the in-memory UW
+    // trading-halts store. failClosedOnStale:false MIRRORS the dossier's existing halt
+    // semantics (dossier.ts) — active halts block; a naturally-quiet halt channel must NOT
+    // (that would empty the board, the exact edition-builder trap). Best-effort.
+    (async (): Promise<Set<string>> => {
+      if (freshTickers.length === 0) return new Set();
+      try {
+        const { shouldBlockForTradingHalt } = await import("@/lib/ws/uw-socket");
+        const halted = new Set<string>();
+        for (const t of freshTickers) {
+          if (shouldBlockForTradingHalt([t], { failClosedOnStale: false }).block) halted.add(t);
+        }
+        return halted;
+      } catch {
+        return new Set();
+      }
+    })(),
   ]);
+  // Phase-0 firewall signals derived from the reads above (see gates.ts G-4/G-7).
+  const vixUnavailable = vixDayOpen == null;
+  const macroUnavailable = macroRead == null;
+  const macroEvents = macroRead ?? [];
 
   // Pre-warm the vector-full-state cache for fresh (non-committed) tickers so the
   // sequential Cortex evaluation below hits warm reads (~200ms) instead of cold
@@ -418,14 +463,24 @@ async function attachGateVerdicts(
       governor,
       committedThisCycle,
       vixDayOpen,
+      // Phase-0 firewall: G-4 fails a fresh commit closed when the VIX read was attempted
+      // but unavailable AND a present VIX could have blocked this candidate.
+      vixUnavailable,
       slayerLive,
       nighthawkTake: recentNighthawkTake(nhEcho.get(s.ticker.toUpperCase()) ?? null, today),
-      macroEvents: macroEvents ?? [],
+      macroEvents,
+      // Phase-0 firewall: G-7 fails a fresh commit closed when the macro FETCH failed
+      // (distinct from "fetched, zero events" — macroEvents empty on the latter).
+      macroUnavailable,
       todayYmd: today,
       plan: s.plan ?? null,
       intradayConflict: s.intraday_conflict,
-      halted: s.halted,
-      earnings: s.earnings,
+      // G-11 for EVERY committable rank: prefer the cheap batch halt/earnings reads
+      // (computed for all fresh tickers above) over the dossier-only flags that ranks
+      // 6-10 never receive, so no halted / earnings-today name commits regardless of rank.
+      // The dossier's own read (top-5) is kept as the fallback where the batch was empty.
+      halted: freshHalts.has(s.ticker.toUpperCase()) || s.halted === true,
+      earnings: freshEarnings.get(s.ticker.toUpperCase()) ?? s.earnings ?? null,
     });
     if (s.gate.verdict !== "COMMIT") continue;
 
@@ -438,16 +493,21 @@ async function attachGateVerdicts(
     // (concurrency cap, correlated-conflict) depend on that set being accurate.
     // Latency is bounded: fetchCortexInputs is per-read time-budgeted (2.5s, cache-
     // first readers) and survivors per cycle are few (the governor caps open risk).
-    // evaluateCortexForCommit never throws — total Cortex outage degrades to an
-    // ABSTAIN (commit proceeds on gates alone; see cortex-gate.ts for the WHY).
-    s.cortex = await evaluateCortexForCommit(s.ticker, s.direction, new Date(nowMs));
+    // evaluateCortexForCommit never throws. failClosedOnVetoBlind:true (Phase-0 firewall)
+    // means a fresh commit where BOTH veto-capable sources (gex-walls + flow-quality)
+    // failed to read HOLDs as VETO_BLIND instead of committing blind; a partial Cortex
+    // outage that still leaves one veto channel readable degrades to ABSTAIN and commits
+    // on the gates alone as before (see cortex-gate.ts for the WHY).
+    s.cortex = await evaluateCortexForCommit(s.ticker, s.direction, new Date(nowMs), {}, {
+      failClosedOnVetoBlind: true,
+    });
     const cortexBlocks = cortexGateBlocks(s.cortex);
     if (cortexBlocks.length > 0) {
-      // A Cortex veto / net-negative blocks EXACTLY like a hard-gate block: the
-      // verdict flips to BLOCKED carrying the Cortex blocks, so the SKIP card, the
-      // zerodte_scan_rejections row (code cortex_veto:<source>/cortex_net_negative
-      // + evidence sentences) and the fail-closed persist lane all reuse the
-      // existing gate plumbing untouched. Gate blocks were empty here (COMMIT).
+      // A Cortex veto / veto-blind / net-negative blocks EXACTLY like a hard-gate block:
+      // the verdict flips to BLOCKED carrying the Cortex blocks, so the SKIP card, the
+      // zerodte_scan_rejections row (code cortex_veto:<source> / cortex_veto_blind /
+      // cortex_net_negative + evidence sentences) and the fail-closed persist lane all
+      // reuse the existing gate plumbing untouched. Gate blocks were empty here (COMMIT).
       s.gate = { ...s.gate, verdict: "BLOCKED", blocks: cortexBlocks };
       continue;
     }

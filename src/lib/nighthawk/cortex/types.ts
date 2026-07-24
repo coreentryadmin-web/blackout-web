@@ -55,6 +55,22 @@ export const CORTEX_SOURCES = [
 export type CortexSourceId = (typeof CORTEX_SOURCES)[number];
 
 /**
+ * The ONLY sources whose derive functions can emit a `veto` stance (the unbounded
+ * hard-block channel): gex-walls vetoes when the play's target path crosses a dominant
+ * OPPOSING wall inside 0.5× EM ("a dealer wall in your path"); flow-quality vetoes on an
+ * opposing ≥$1M sweep/block cluster inside 15 min ("an opposing $1M cluster"). Every
+ * other source can only support/oppose/abstain.
+ *
+ * The model exposes stance PER EVIDENCE ITEM, not a per-source capability flag, so there
+ * is no metadata to read this from — this is the single centralized source of truth for
+ * "which sources are the veto channel". If a new veto-emitting source ever ships, add it
+ * here (and it is automatically honored by the veto-blind firewall in cortex-gate.ts). A
+ * source's veto-capability is a structural fact about the dealer-landscape / whale-flow it
+ * reads, not a tunable — do NOT env-gate this list.
+ */
+export const VETO_CAPABLE_SOURCES: readonly CortexSourceId[] = ["gex-walls", "flow-quality"];
+
+/**
  * One signed, bounded, timestamped piece of evidence (design §0).
  *
  * `weight` is the item's contribution magnitude. On items EMITTED BY A SOURCE it is

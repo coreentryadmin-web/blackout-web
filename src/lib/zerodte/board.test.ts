@@ -15,6 +15,7 @@ import {
   SETUP_MIN_AGGR_SHARE,
   SETUP_MIN_DOMINANCE,
   SETUP_MAX_ITM_PCT,
+  SETUP_MAX_OTM_PCT,
   type FlowSetupInput,
   type SetupDossierView,
   type ZeroDteGateRejection,
@@ -805,6 +806,25 @@ test("gates: deep-ITM top strike (stock replacement) is excluded", () => {
   const otm = [row({ premium: 3_000_000, option_type: "put", strike: 1700, underlying_price: 1723 })];
   assert.equal(deriveZeroDteSetups(otm).length, 1);
   assert.ok(deriveZeroDteSetups(otm)[0]!.otm_pct! > 0);
+});
+
+test("gates: far-OTM lotto stack is excluded by the SETUP_MAX_OTM_PCT cap (Phase-0 firewall)", () => {
+  // A big CALL stack whose strike sits ~16% OTM (220 vs stock 190): clears premium +
+  // dominance on size alone but is an egregious 0DTE lottery ticket, not a momentum play.
+  const rejections: ZeroDteGateRejection[] = [];
+  const lotto = [row({ premium: 3_000_000, option_type: "call", strike: 220, underlying_price: 190 })];
+  const out = deriveZeroDteSetups(lotto, { rejections });
+  assert.equal(out.length, 0, "a far-OTM lotto stack must not reach the board");
+  assert.equal(rejections.length, 1);
+  assert.equal(rejections[0]!.gate_failed, "max_otm_pct");
+  assert.equal(rejections[0]!.threshold, SETUP_MAX_OTM_PCT);
+  assert.ok(rejections[0]!.otm_pct! > SETUP_MAX_OTM_PCT, `otm_pct ${rejections[0]!.otm_pct} should exceed the cap`);
+
+  // A normal slightly-OTM momentum call (~2.7% OTM: 195 vs 190) is untouched by the cap.
+  const normal = [row({ premium: 3_000_000, option_type: "call", strike: 195, underlying_price: 190 })];
+  const normalOut = deriveZeroDteSetups(normal);
+  assert.equal(normalOut.length, 1);
+  assert.ok(normalOut[0]!.otm_pct! > 0 && normalOut[0]!.otm_pct! <= SETUP_MAX_OTM_PCT);
 });
 
 test("gates: missing underlying price fails CLOSED, not open — P0 regression guard", () => {

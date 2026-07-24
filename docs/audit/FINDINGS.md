@@ -1770,3 +1770,47 @@ are a RETRYABLE non-grade (leave ungraded, mirror the throw path); equities unch
 (+13 new, one per fix, each fail-before / pass-after). Files: `src/lib/zerodte/{plan,record,board,scan}.ts`,
 `src/lib/track-record-page.ts`, `src/lib/correctness/track-record-verifier.ts` (+ their tests).
 **Status:** DONE — PR to main, **HOLD for after-market-close deploy** (changes reported numbers), NO auto-merge.
+
+## 2026-07-24 — [SEV-2, real-money gate] 0DTE firewall: five safety protections FAILED OPEN under provider stress — FIXED (Phase 0, `fix/zerodte-firewall-fail-closed`)
+
+**Class.** The live 0DTE commit stack (scan → board evidence gates → G-1..G-11 → Cortex) had several
+protections that silently degraded to a PASS exactly when their input was unavailable — i.e. on the
+volatile/stressed days they exist for. Pure risk-reduction; NO strategy/scoring/discovery change. Each
+fix is conservative (blocks only when a present value could actually have fired the gate → no spurious
+empties) and env-overridable.
+
+1. **Cortex veto-blindness → ABSTAIN-pass (the #1 leak).** `evaluateCortexForCommit` degraded a total
+   Cortex outage to ABSTAIN → commit on gates alone. The ONLY two veto-capable sources are `gex-walls`
+   ("dealer wall in your path") and `flow-quality` ("opposing $1M cluster"). If BOTH failed to read the
+   commit went in blind to every hard-block reason. **Fix:** `cortex-gate.ts` `assessCortexVerdict` gains
+   an opt-in `failClosedOnVetoBlind` — when BOTH `VETO_CAPABLE_SOURCES` (new centralized const in
+   `nighthawk/cortex/types.ts`) are absent it returns a new `VETO_BLIND` HOLD (block code
+   `cortex_veto_blind`), NOT a pass. ≥1 veto source answering keeps prior behavior. **Opt-in scopes it to
+   0DTE fresh commits** (`scan.ts` passes it) — SPX engine + exit engine pass it off, so they are
+   byte-for-byte unchanged (proven by their green suites).
+2. **G-4 VIX fail-open.** null day-open VIX (best-effort `within(...,2500)` timeout) = "no G-4 verdict" =
+   free pass. **Fix:** `gates.ts` blocks `vix_unavailable` when scan signals `vixUnavailable` AND a present
+   VIX could have blocked (non-index single name, or non-tape-aligned index/ETF below the 75 elevated
+   floor). Index/ETF clearing the floor is NOT blocked. Env: `ZERODTE_G4_FAIL_CLOSED=0` to disable.
+3. **G-7 macro fail-open.** A FAILED macro-calendar fetch (`.catch(()=>[])`) was indistinguishable from
+   "zero events" → CPI/FOMC/NFP hard-block silently disabled. **Fix:** scan preserves null (failed) vs []
+   (zero events); `gates.ts` blocks `macro_unavailable` only on a genuine fetch failure. Env:
+   `ZERODTE_G7_FAIL_CLOSED=0`.
+4. **Far-OTM lotto had no cap.** `board.ts` moneyness gate only bounded ITM; far-OTM lotto stacks passed.
+   **Fix:** new `SETUP_MAX_OTM_PCT` evidence gate (code `max_otm_pct`), default 12% (env
+   `ZERODTE_SETUP_MAX_OTM_PCT`) — egregious only; normal 2-5% OTM momentum untouched.
+5. **G-11 halt/earnings no-op'd for ranks 6-10 AND the whole cron commit path had no earnings.** Only the
+   top-5 got a dossier (halt), and `warmZeroDteBoard`→`scanZeroDteBoard()` passes NO earnings flags, so
+   earnings never reached the commit path at all. **Fix (lower-risk of the two options):** `scan.ts`
+   `attachGateVerdicts` now fetches cheap batch halt (in-memory UW store, `failClosedOnStale:false` to
+   mirror the dossier and avoid a naturally-quiet-channel empty) + earnings (one cached market-wide
+   snapshot) for EVERY fresh candidate and feeds them to G-11, so no halted/earnings-today name commits
+   regardless of rank. Fail-closed-on-unknown was rejected because it would blank ranks 6-10 wholesale.
+6. **Stale comment** in `gates.ts` claiming "missing/stale gate inputs block a NEW commit" is now true for
+   VIX/macro — comment updated to match.
+
+**Evidence/verify:** `tsc --noEmit` clean; `check-brand.mjs` clean; `src/lib/zerodte/*.test.ts` = 512 pass
+(+13 new across cortex-gate/gates/board/scan, each fail-before/pass-after); cortex core+sources (116),
+SPX play-engine + cortex-read (33), pane/replay/board-component (60) all green (shared-module regression
+guard). Files: `nighthawk/cortex/{types,index}.ts`, `zerodte/{cortex-gate,gates,board,scan,pane}.ts`.
+**Status:** DONE on branch — pushed, **NO PR / NO merge** (user reviews the diff first).

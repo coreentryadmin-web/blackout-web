@@ -37,6 +37,10 @@ const state = {
   dailyBars: new Map<string, Array<{ t: number; o: number; h: number; l: number; c: number }>>(),
   // persistZeroDteScan wiring (PR-F commit-time tier stamp test below)
   upsertRows: [] as Array<Record<string, unknown>>,
+  // G-11 firewall wiring (rank-7 earnings block test below): the market-wide earnings
+  // snapshot readGridEarnings returns, and the set of tickers the halt store reports.
+  earningsItems: [] as Array<Record<string, unknown>>,
+  haltedTickers: new Set<string>(),
 };
 
 function resetState() {
@@ -50,6 +54,8 @@ function resetState() {
   state.aggBarCalls = [];
   state.dailyBars = new Map();
   state.upsertRows = [];
+  state.earningsItems = [];
+  state.haltedTickers = new Set();
 }
 
 // scan.ts's exit-engine wiring (./exit-sync) imports ./live-marks, which reaches
@@ -127,6 +133,25 @@ mock.module("../../features/nighthawk/lib/session", {
     // real modules importing these names from this (mocked) module.
     isTradingDayEt: () => true,
     formatEtDate: (d: Date) => d.toISOString().slice(0, 10),
+    // G-11 earnings firewall: attachGateVerdicts matches today/nextDay to flag reporters.
+    nextTradingDayEt: () => "2026-07-07",
+  },
+});
+
+// G-11 firewall (rank-7 earnings block test): scan.ts dynamic-imports these two cheap
+// halt/earnings readers to flag EVERY committable candidate, not just the dossier top-5.
+// Hermetic stand-ins driven by `state` — no Redis, no in-memory WS store, no network.
+mock.module("./earnings", {
+  namedExports: {
+    readGridEarnings: async () => ({ as_of: "2026-07-06T15:00:00Z", items: state.earningsItems }),
+  },
+});
+mock.module("../ws/uw-socket", {
+  namedExports: {
+    shouldBlockForTradingHalt: (symbols: readonly string[]) => {
+      const hit = symbols.some((s) => state.haltedTickers.has(s.toUpperCase()));
+      return { block: hit, reason: hit ? "halted" : null };
+    },
   },
 });
 
@@ -634,4 +659,60 @@ test("scanZeroDteBoard: 3 realized losing time-stops HALT a fresh commit — the
       "two-field literal dropped it and this block was absent (fresh commits ran through a 3-loser day)"
   );
   assert.equal(nvda!.gate!.verdict, "BLOCKED", "a halted session must not COMMIT a fresh play");
+});
+
+// ── G-11 firewall: halt/earnings for EVERY committable rank, not just the dossier top-5 ──
+// Pre-fix, ranks 6-10 never received a dossier (halt) and the cron commit path passed NO
+// earnings flags at all — so an earnings-today name outside the top-5 committed blind. The
+// firewall fetches cheap batch halt/earnings for every FRESH candidate in attachGateVerdicts.
+test("scanZeroDteBoard: an earnings-today name at RANK 7 is blocked by G-11 (batch earnings reaches ranks 6-10)", async () => {
+  resetState();
+  // Six higher-premium clean call setups (rank 1-6) + one lower-premium earnings name that
+  // sorts LAST (rank 7, outside the top-5 dossier enrichment). Each is a single at-the-ask
+  // 0DTE call print that survives deriveZeroDteSetups' evidence gates.
+  const cleanFlow = (ticker: string, premium: number) => ({
+    ticker,
+    premium,
+    option_type: "call",
+    strike: 145, // ~3.6% OTM vs 140 — inside the moneyness caps
+    expiry: "2026-07-06", // == mocked todayEt (a live 0DTE expiry)
+    dte: 0,
+    alert_rule: "sweep",
+    ask_pct: 75,
+    underlying_price: 140,
+    fill_price: 4.2,
+    open_interest: 100,
+    alerted_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+  });
+  state.flows = [
+    cleanFlow("AAA", 3_000_000),
+    cleanFlow("BBB", 2_900_000),
+    cleanFlow("CCC", 2_800_000),
+    cleanFlow("DDD", 2_700_000),
+    cleanFlow("EEE", 2_600_000),
+    cleanFlow("FFF", 2_500_000),
+    // Lowest premium (lower score tier) → sorts to rank 7, past ENRICH_TOP_N (5).
+    cleanFlow("ERNZ", 1_000_000),
+  ];
+  // ERNZ reports TODAY — the batch earnings snapshot flags it even though it gets no dossier.
+  state.earningsItems = [
+    { ticker: "ERNZ", when: "premarket", report_date: "2026-07-06", expected_move_pct: 8 },
+  ];
+
+  const { scanZeroDteBoard } = await mod();
+  const result = (await scanZeroDteBoard()) as {
+    setups: Array<{ ticker: string; gate?: { verdict: string; blocks: Array<{ code: string; reason: string }> } | null }>;
+  };
+
+  const ernzIdx = result.setups.findIndex((s) => s.ticker.toUpperCase() === "ERNZ");
+  assert.ok(ernzIdx >= 0, "ERNZ must survive discovery into a gated setup");
+  assert.ok(ernzIdx >= 5, `ERNZ must rank outside the top-5 (dossier-less) — got index ${ernzIdx}`);
+  const ernz = result.setups[ernzIdx]!;
+  assert.ok(ernz.gate, "a fresh (un-committed) candidate must get a gate verdict");
+  assert.equal(
+    ernz.gate!.blocks.some((b) => b.code === "earnings"),
+    true,
+    "G-11 earnings must fire for a rank-7 name — pre-fix, ranks 6-10 got earnings:null and committed blind"
+  );
+  assert.equal(ernz.gate!.verdict, "BLOCKED");
 });
