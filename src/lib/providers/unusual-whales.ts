@@ -101,6 +101,14 @@ function uwCacheTtlMs(path: string): number {
   if (path === "/api/net-flow/expiry") return uwEnvSec("UW_NET_FLOW_CACHE_SEC", 120) * 1000;
   if (path.includes("/api/group-flow/")) return uwEnvSec("UW_GROUP_FLOW_CACHE_SEC", 180) * 1000;
   if (path === "/api/market/economic-calendar") return uwEnvSec("UW_MACRO_CALENDAR_CACHE_SEC", 3600) * 1000;
+  // IV rank + its daily series are END-OF-DAY data (UW recomputes once per session ~22:35 UTC —
+  // see `updated_at`), so they never move intraday. Long TTL as the in-process L1 layer, mirroring
+  // /api/economy/. The Redis L2 (uwCacheGet in fetchUwIvRank/Series) is the cross-process cache;
+  // this L1 entry also gives the raw-uwGetSafe path a hit + circuit-open stale fallback when Redis
+  // is down. Same env knob (UW_IV_RANK_CACHE_SEC) so both layers share one long TTL.
+  if (path.endsWith("/volatility/stats") || path.endsWith("/iv-rank")) {
+    return uwEnvSec("UW_IV_RANK_CACHE_SEC", 3600) * 1000;
+  }
   return 0;
 }
 
@@ -560,14 +568,28 @@ export async function fetchUwNope(ticker = "SPX") {
   });
 }
 
+// IV rank is EOD data — UW recomputes it once per session (~22:35 UTC), so a live hit per call was
+// pure rate-limit exposure (this fetcher was previously uncached: uwGetSafe direct, ttl=0). Now it
+// rides the Redis shared cache (L2) with a long EOD-cadence TTL, and /volatility/stats also sits in
+// uwCacheTtlMs (L1) — same double-layer resilience as market-tide. Return contract is UNCHANGED
+// (number|null) so every caller (SPX desk, Nighthawk dossier, Largo, cold-profile runner) is
+// unaffected. The circuit-breaker / coalescer still run inside uwGetSafe → uwGet.
 export async function fetchUwIvRank(ticker = "SPX") {
-  const data = await uwGetSafe<Record<string, unknown>>(`/api/stock/${safeTicker(ticker)}/volatility/stats`, {});
-  if (!data) return null;
-  const block = data.data;
-  const row = Array.isArray(block) ? block[0] : block;
-  if (!row || typeof row !== "object") return null;
-  const ivRank = (row as Record<string, unknown>).iv_rank;
-  return ivRank != null ? Number(ivRank) : null;
+  const redis = await getUwCacheRedis();
+  return uwCacheGet(
+    redis,
+    UW_KEYS.ivRank(ticker),
+    uwEnvSec("UW_IV_RANK_CACHE_SEC", UW_CACHE_TTL.ivRank),
+    async () => {
+      const data = await uwGetSafe<Record<string, unknown>>(`/api/stock/${safeTicker(ticker)}/volatility/stats`, {});
+      if (!data) return null;
+      const block = data.data;
+      const row = Array.isArray(block) ? block[0] : block;
+      if (!row || typeof row !== "object") return null;
+      const ivRank = (row as Record<string, unknown>).iv_rank;
+      return ivRank != null ? Number(ivRank) : null;
+    },
+  );
 }
 
 /**
@@ -1764,10 +1786,20 @@ export async function fetchUwTechnicalIndicator(
   return extractRows(data);
 }
 
-/** Daily IV rank time series. */
+/** Daily IV rank time series. EOD data (same ~22:35 UTC cadence as fetchUwIvRank) → long-TTL cached
+ *  (Redis L2 + /iv-rank in uwCacheTtlMs L1) so the series doesn't re-hit UW per call. Return contract
+ *  unchanged (rows[]); the limit is part of the cache key so divergent callers don't cross-poison. */
 export async function fetchUwIvRankSeries(ticker: string, limit = 30) {
-  const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/iv-rank`, {});
-  return extractRows(data).slice(0, limit);
+  const redis = await getUwCacheRedis();
+  return uwCacheGet(
+    redis,
+    UW_KEYS.ivRankSeries(ticker, limit),
+    uwEnvSec("UW_IV_RANK_CACHE_SEC", UW_CACHE_TTL.ivRankSeries),
+    async () => {
+      const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/iv-rank`, {});
+      return extractRows(data).slice(0, limit);
+    },
+  );
 }
 
 export function formatUwOptionContracts(

@@ -100,6 +100,24 @@ test("classification metadata is NOT threaded into the numeric/categorical featu
   }
 });
 
+// ── iv_rank capture (EOD metadata; threaded from the cached UW feed; honest-null; appended last) ──
+test("iv_rank threads a finite number, stays null when absent/NaN, is the LAST numeric key", () => {
+  // Threaded when a real number is supplied (0–100 IV rank).
+  assert.equal(buildSwingFeatureVector({ ...base, ivRank: 43.08 }).iv_rank, 43.08);
+  assert.equal(buildSwingFeatureVector({ ...base, ivRank: 0 }).iv_rank, 0); // a real 0 IV rank is kept
+  // Honest-null (never a fabricated 0) when the EOD feed is missing / non-finite.
+  assert.equal(buildSwingFeatureVector({ ...base, ivRank: null }).iv_rank, null);
+  assert.equal(buildSwingFeatureVector({ ...base, ivRank: NaN }).iv_rank, null);
+  assert.equal(buildSwingFeatureVector({ ...base, ivRank: undefined }).iv_rank, null);
+  assert.equal(buildSwingFeatureVector(base).iv_rank, null); // absent input → null
+  // Present in the numeric key list, appended at the END (positional list — never reordered).
+  const keys = SWING_NUMERIC_FEATURE_KEYS as readonly string[];
+  assert.ok(keys.includes("iv_rank"), "iv_rank must be a numeric feature key");
+  assert.equal(keys[keys.length - 1], "iv_rank", "iv_rank must be appended LAST");
+  // Capture-only: it is a numeric feature but is NOT a categorical/gating key.
+  assert.ok(!(SWING_CATEGORICAL_FEATURE_KEYS as readonly string[]).includes("iv_rank"));
+});
+
 // ── null-safety (numOrNull; non-finite → null; missing pillars → null not 0) ──────
 test("null-safe: missing / non-finite numerics collapse to null, never a fabricated 0", () => {
   const v = buildSwingFeatureVector({
