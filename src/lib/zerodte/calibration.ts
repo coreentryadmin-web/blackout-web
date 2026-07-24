@@ -313,7 +313,10 @@ export function gateVerdictOf(row: CalibrationPlayRow, gate: CalibrationGateKey)
  *  same bucket/rate helpers on its narrower row shape (no casts). */
 type GradablePlayRow = Pick<ZeroDteSetupLogRow, "plan_pnl_pct">;
 
-function bucketOf(label: string, rows: GradablePlayRow[]): CalibrationBucket {
+// EXPORTED (additive, PR-16): the swing calibration wrappers (src/lib/swing/calibration.ts) reuse this
+// bucket math + the recommendSignal ladder VERBATIM so the swing lane graduates on the SAME n>=10 /
+// delta>=15pt bar as 0DTE — no second, drift-prone copy of the graduation math. Logic/signature unchanged.
+export function bucketOf(label: string, rows: GradablePlayRow[]): CalibrationBucket {
   const wins = rows.filter(isZeroDteWin).length;
   const pnls = rows.map((r) => r.plan_pnl_pct).filter((p): p is number => p != null);
   return {
@@ -371,7 +374,7 @@ export function analyzeConfluenceTiers(graded: CalibrationPlayRow[]): Calibratio
 
 /** Unrounded win rate for the graduation delta — the rounded display rate loses up
  *  to 0.05 pts per bucket, enough to flip a boundary case at the 15-pt line. */
-function rawWinRatePct(rows: GradablePlayRow[]): number | null {
+export function rawWinRatePct(rows: GradablePlayRow[]): number | null {
   if (rows.length === 0) return null;
   return (rows.filter(isZeroDteWin).length / rows.length) * 100;
 }
@@ -449,7 +452,7 @@ export type SignalRecommendation = {
   };
 };
 
-function recommendSignal(
+export function recommendSignal(
   signal: string,
   onRows: CalibrationPlayRow[],
   offRows: CalibrationPlayRow[],
