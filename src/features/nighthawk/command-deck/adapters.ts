@@ -102,9 +102,13 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
         .map(([k, v]) => ({ label: FB_LABELS[k] ?? k, points: v as number }));
 
   const gate = setup?.gate ?? null;
+  const isWorking = status === "OPEN" || status === "HOLD" || status === "TRIM";
   const gates: Array<{ label: string; ok: boolean }> = [
-    { label: "Hard gate", ok: gate?.verdict === "COMMIT" },
-    { label: "Tape align", ok: setup?.market_aligned !== false },
+    // A committed/working play passed its hard gate at entry; a refresh-lane row whose gate context aged
+    // out (gate === null) must not render a red "✗ Hard gate" as if it failed validation (9-6b).
+    { label: "Hard gate", ok: gate?.verdict === "COMMIT" || isWorking },
+    // Only a TRUE alignment read passes — null (data-absent) is unknown, not a confirmed green (9-6c).
+    { label: "Tape align", ok: setup?.market_aligned === true },
   ];
 
   const pnl = fin(src.live_pnl_pct);
@@ -128,7 +132,12 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     gates,
     regime: setup?.gamma_regime ? `gamma ${setup.gamma_regime}` : null,
     allocation: alloc,
-    thesisBreak: setup?.market_aligned === false ? { level: "warn", note: "tape alignment lost" } : { level: "intact" },
+    thesisBreak:
+      setup?.market_aligned === false
+        ? { level: "warn", note: "tape alignment lost" }
+        : setup?.market_aligned == null
+          ? { level: "unknown", note: "tape read not attached to this play" } // data-absent ≠ confirmed-intact (9-6c)
+          : { level: "intact" },
     ...mgmt,
     entry,
     mark: fin(src.last_mark),

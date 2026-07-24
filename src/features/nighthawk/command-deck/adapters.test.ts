@@ -87,3 +87,31 @@ test("edition adapter: dossier factors, PLAN model, WATCH status", () => {
   assert.ok(!play.factors.some((f) => f.label === "News")); // 0 dropped
   assert.equal(play.contract, "Rank 1 · next session");
 });
+
+test("0DTE adapter: committed OPEN with aged-out gate context still passes the Hard gate (9-6b)", () => {
+  // A refresh-lane committed play whose setup.gate aged to null must NOT render '✗ Hard gate'.
+  const play = terminalPlayFromZeroDte({
+    ticker: "nvda", strike: 190, status: "OPEN", score: 80, live_pnl_pct: 12, entry_premium: 4, last_mark: 4.5,
+    setup: { direction: "long", gate: null, market_aligned: null },
+  });
+  const hard = play.gates.find((g) => g.label === "Hard gate")!;
+  assert.equal(hard.ok, true); // working status passes even with null gate
+});
+
+test("0DTE adapter: null tape-alignment is UNKNOWN — not a green tape-align gate nor 'intact' (9-6c)", () => {
+  const play = terminalPlayFromZeroDte({
+    ticker: "amd", strike: 170, status: "WATCH", score: 66,
+    setup: { direction: "long", gate: { verdict: "WATCH" }, market_aligned: null },
+  });
+  const tape = play.gates.find((g) => g.label === "Tape align")!;
+  assert.equal(tape.ok, false); // null is not a confirmed pass
+  assert.equal(play.thesisBreak?.level, "unknown"); // neither intact nor degrading
+});
+
+test("0DTE adapter: market_aligned false → warn 'tape alignment lost'; true → intact + tape-align ok", () => {
+  const lost = terminalPlayFromZeroDte({ ticker: "x", status: "WATCH", setup: { direction: "long", market_aligned: false } });
+  assert.equal(lost.thesisBreak?.level, "warn");
+  const aligned = terminalPlayFromZeroDte({ ticker: "y", status: "WATCH", setup: { direction: "long", market_aligned: true } });
+  assert.equal(aligned.thesisBreak?.level, "intact");
+  assert.equal(aligned.gates.find((g) => g.label === "Tape align")!.ok, true);
+});

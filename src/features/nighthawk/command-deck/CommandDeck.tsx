@@ -15,11 +15,15 @@ export function CommandDeck({
   plays,
   laneLabel,
   emptyHint,
+  degraded = false,
 }: {
   plays: TerminalPlay[];
   laneLabel: string;
   /** Shown when the lane has no plays (e.g. Swings/LEAPS before discovery, or a flat 0DTE tape). */
   emptyHint?: string;
+  /** True when the board data is unavailable/degraded — renders a distinct warning so an outage is never
+   *  painted as a calm flat tape (9-3). */
+  degraded?: boolean;
 }) {
   const [selId, setSelId] = useState<string | null>(plays[0]?.id ?? null);
 
@@ -37,8 +41,11 @@ export function CommandDeck({
   return (
     <div className="nh-deck">
       <div className="nh-deck-left">
-        <div className="nh-deck-lh"><span>{laneLabel}</span><span>{plays.length} plays</span></div>
+        <div className="nh-deck-lh"><span>{laneLabel}</span><span>{degraded ? "data down" : `${plays.length} plays`}</span></div>
         <div className="nh-deck-rows">
+          {degraded && (
+            <div className="nh-deck-degraded" role="alert">⚠ Board data unavailable — retrying</div>
+          )}
           {plays.length === 0 && (
             <div className="nh-deck-empty">{emptyHint ?? "No plays right now."}</div>
           )}
