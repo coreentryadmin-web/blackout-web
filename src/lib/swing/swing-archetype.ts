@@ -46,12 +46,13 @@ export const SWING_PILLAR_BASE_WEIGHTS: Record<SwingPillar, number> = {
 
 /** Provisional (ungraduated) — a weight vector only sizes/gates once its archetype bucket graduates.
  *
- *  CRITIQUE #6 (blocked-on-data): SECTOR_ROTATION is additionally flagged
- *  `ARCHETYPE_META.SECTOR_ROTATION.provisionalUntilIndustryRs === true`. A rotation thesis is only real
- *  if the name LEADS its INDUSTRY GROUP, and no industry-group relative-strength feed exists yet — so the
- *  REL_STRENGTH-heavy rotation vector below can't be verified. When the archetype-bucket graduation write
- *  lands, it MUST refuse to graduate any archetype carrying `provisionalUntilIndustryRs` until that feed
- *  ships, even if the graded bucket otherwise clears the ladder. Marker/comment only — no behavior here. */
+ *  CRITIQUE #6 (RESOLVED): SECTOR_ROTATION was blocked-on-data because a rotation thesis is only real if the
+ *  name LEADS its INDUSTRY GROUP and no industry-group relative-strength feed existed — so the REL_STRENGTH-
+ *  heavy rotation vector below couldn't be verified. That feed now SHIPS: `industry-group-rs.ts` resolves the
+ *  name's industry-group / sector ETF (Polygon SIC) and `swing-ingest.ts` grounds `sectorLeadership01` as the
+ *  name's RS vs that group — the SOLE SECTOR_ROTATION classifier signal (no longer the coarse name-vs-SPY RS).
+ *  `ARCHETYPE_META.SECTOR_ROTATION.provisionalUntilIndustryRs` is therefore no longer set, and SECTOR_ROTATION
+ *  graduates on its graded bucket like every other archetype (still gated by this global flag until then). */
 export const SWING_PILLAR_WEIGHTS_GRADUATED = false;
 
 /** Per-archetype weight vectors — each sums to 100. DATA_QUALITY is held at 5 everywhere (an honesty
