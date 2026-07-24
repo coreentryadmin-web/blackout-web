@@ -215,6 +215,21 @@ export function getZeroDteLiveMark(occ: string): ZeroDteLiveMark | undefined {
   return markStore.get(occ);
 }
 
+/**
+ * Prune marks for OCCs no longer in the active set. The store is otherwise
+ * append-only (a mark is only ever WRITTEN, never removed except by the test
+ * reset), so a closed/rolled play's contract would linger for the whole process
+ * lifetime — a slow per-replica memory leak over a trading day of turnover.
+ * Only ever evicts OCCs ABSENT from `activeOccs`; an OCC that is still active is
+ * never touched, so a live play can never lose its mark to the prune.
+ */
+export function pruneMarkStore(activeOccs: Iterable<string>): void {
+  const keep = activeOccs instanceof Set ? activeOccs : new Set(activeOccs);
+  for (const occ of markStore.keys()) {
+    if (!keep.has(occ)) markStore.delete(occ);
+  }
+}
+
 /** Write a mark into the store — newest asOf wins (never regress a fresher tick). */
 export function putZeroDteLiveMark(m: ZeroDteLiveMark): void {
   const prev = markStore.get(m.occ);
@@ -315,6 +330,12 @@ export async function runZeroDteMarkTick(deps?: {
 
     const occs = Array.from(new Set(plays.map((p) => p.occ)));
 
+    // Reconcile the mark store to the active set: drop marks for contracts that
+    // are no longer open (closed/rolled) so the store can't grow unbounded across
+    // a day of turnover. Runs against the SAME active set the WS reconcile uses, so
+    // an active OCC is never evicted (pruneMarkStore only removes absent keys).
+    pruneMarkStore(occs);
+
     // Keep the app-wide options WS pool subscribed to exactly the active set —
     // additive to its own user_positions reconciler (which set-diffs only against
     // symbols it added itself, so it never tears these down).
@@ -382,7 +403,21 @@ export async function runZeroDteMarkTick(deps?: {
       for (const play of plays) {
         const key = `${play.session_date}:${play.ticker}`;
         const m = markStore.get(play.occ);
+        // LATCH mark (peak/trough + the plan hard-stop): tolerates up to
+        // LATCH_MAX_MARK_AGE_MS. The trough only ever widens, so a slightly-aged
+        // mark can only DEEPEN a latched stop, never lift it — and once the trough
+        // has crossed the stop, derivePlayStatus fires CLOSED off the LATCH alone,
+        // independent of live-mark freshness (a null mark keeps the prior trough).
+        // This protective stop path MUST survive staleness, so it keeps the 30s bar.
         const mark = m && !isZeroDteMarkStale(m.asOf, now, LATCH_MAX_MARK_AGE_MS) ? m.mark : null;
+        // ENGINE mark (ratchet floor / thesis / flat-timeout / fresh-mark stop-or-
+        // target breach): a DIFFERENT contract. 0DTE premium moves 10–30%/min, so a
+        // mark-DRIVEN engine exit may only act on a CURRENT quote (≤ ZERODTE_MARK_STALE_MS,
+        // the app-wide 5s bar). When the freshest mark is staler, engineMark is null →
+        // evaluateLedgerRowExit HOLDs (missing mark = no engine exit, by its own contract),
+        // so the engine can never exit at a price nobody currently sees. The latch stop
+        // above is unaffected, so capital protection never depends on live-mark freshness.
+        const engineMark = m && !isZeroDteMarkStale(m.asOf, now) ? m.mark : null;
         let latch = advancePlayLatch(play, latchMemo.get(key) ?? null, mark, nowEtMinutes);
         let finalStatus = latch.status;
         let persistMark = mark;
@@ -394,7 +429,9 @@ export async function runZeroDteMarkTick(deps?: {
         if (finalStatus !== "CLOSED") {
           const row = rowsByKey.get(key);
           if (row) {
-            const exit = await evalExit(row, { syncMark: mark, status: finalStatus }, { nowMs: now }).catch(
+            // Pass the FRESH-only engineMark, not the ≤30s latch mark: the engine
+            // must hold when the only mark is stale (see the engineMark note above).
+            const exit = await evalExit(row, { syncMark: engineMark, status: finalStatus }, { nowMs: now }).catch(
               () => null
             );
             if (exit) {
@@ -451,7 +488,26 @@ export function ensureZeroDteMarkPoller(): void {
 // Member payload (SSE frame body + REST fallback body) — memoized per ~tick
 // ---------------------------------------------------------------------------
 
-let payloadMemo: { json: string; builtAt: number } | null = null;
+let payloadMemo: { json: string; contentKey: string; builtAt: number } | null = null;
+
+/**
+ * A CONTENT signature of a live-marks payload that EXCLUDES the purely time-derived
+ * fields — the top-level `as_of` and each row's `mark_age_ms`. Those two advance from
+ * `now` on EVERY build even when no quote moved, so a raw-JSON identity compare could
+ * never dedupe an unchanged market (the SSE lane's per-tick skip was dead code). The
+ * per-quote instant `mark_as_of` is KEPT: it only changes when a NEW quote arrives —
+ * which is exactly a content change the lane must push. `stale` is kept too (a mark
+ * crossing the 5s bar is a real state change the UI must reflect, once).
+ */
+export function zeroDteMarksContentKey(payload: ZeroDteLiveMarksPayload): string {
+  return JSON.stringify({
+    available: payload.available,
+    session_date: payload.session_date,
+    idle: payload.idle,
+    cap: payload.cap,
+    marks: payload.marks.map(({ mark_age_ms: _ageOmitted, ...row }) => row),
+  });
+}
 
 /** Build the live-marks payload from the active set + the mark store. Pure given
  *  injected inputs (tests); production callers use the cached active set. */
@@ -498,10 +554,14 @@ export function buildZeroDteLiveMarksPayloadFrom(
   };
 }
 
-/** Serialized payload for the SSE/REST routes — one build shared per ~tick. */
-export async function getZeroDteLiveMarksJson(): Promise<string> {
+/** Serialized payload + its time-independent content key for the SSE/REST routes —
+ *  one build shared per ~tick. The SSE lane dedupes on `contentKey` (not `json`,
+ *  which always differs via the per-build `as_of`/`mark_age_ms`). */
+export async function getZeroDteLiveMarksFrame(): Promise<{ json: string; contentKey: string }> {
   const now = Date.now();
-  if (payloadMemo && now - payloadMemo.builtAt <= PAYLOAD_MEMO_MS) return payloadMemo.json;
+  if (payloadMemo && now - payloadMemo.builtAt <= PAYLOAD_MEMO_MS) {
+    return { json: payloadMemo.json, contentKey: payloadMemo.contentKey };
+  }
   const plays = await getActivePlays(now);
   const sessionDate = todayEt();
   const payload = buildZeroDteLiveMarksPayloadFrom(
@@ -512,8 +572,14 @@ export async function getZeroDteLiveMarksJson(): Promise<string> {
     (p) => latchMemo.get(`${sessionDate}:${p.ticker}`)?.status ?? null
   );
   const json = JSON.stringify(payload);
-  payloadMemo = { json, builtAt: now };
-  return json;
+  const contentKey = zeroDteMarksContentKey(payload);
+  payloadMemo = { json, contentKey, builtAt: now };
+  return { json, contentKey };
+}
+
+/** Serialized payload for the REST fallback route — one build shared per ~tick. */
+export async function getZeroDteLiveMarksJson(): Promise<string> {
+  return (await getZeroDteLiveMarksFrame()).json;
 }
 
 // ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
-import { ensureZeroDteMarkPoller, getZeroDteLiveMarksJson } from "@/lib/zerodte/live-marks";
+import { ensureZeroDteMarkPoller, getZeroDteLiveMarksFrame } from "@/lib/zerodte/live-marks";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
 
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
 
   const stream = new ReadableStream({
     start(controller) {
-      let lastSentFrame: string | null = null;
+      let lastSentKey: string | null = null;
       const send = async () => {
         if (closed) return;
         if (sseBackpressureExceeded(controller.desiredSize)) {
@@ -81,13 +81,15 @@ export async function GET(req: NextRequest) {
           return;
         }
         try {
-          const json = await getZeroDteLiveMarksJson();
-          // The payload builder memoizes per ~tick and stamps as_of from the memo
-          // build, so an unchanged market between ticks yields the SAME string —
-          // identity compare skips re-sending it (mirrors vector/stream).
-          if (json === lastSentFrame) return;
+          const { json, contentKey } = await getZeroDteLiveMarksFrame();
+          // Dedupe on the CONTENT key, not the JSON: every build stamps a fresh
+          // `as_of` (and per-row `mark_age_ms`) from `now`, so the JSON string always
+          // differs even when no quote moved — a raw-string compare here never fired.
+          // The content key excludes those time-only fields, so an unchanged market
+          // between ticks skips the re-send (real bandwidth save; mirrors vector/stream).
+          if (contentKey === lastSentKey) return;
           controller.enqueue(encoder.encode(`data: ${json}\n\n`));
-          lastSentFrame = json;
+          lastSentKey = contentKey;
         } catch {
           cleanup();
           try {

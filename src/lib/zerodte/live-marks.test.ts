@@ -434,3 +434,136 @@ test("poller tick: B-8 exit engine on the 1s lane persists CLOSED when evaluateE
   assert.equal(persisted[0]!.status, "CLOSED");
   assert.equal(persisted[0]!.mark, 4.55);
 });
+
+test("exit ENGINE holds on a >5s-stale mark (syncMark withheld); a fresh mark still drives it", async () => {
+  // FIX 1: the mark-DRIVEN engine (ratchet/thesis/flat-timeout) must only act on a
+  // CURRENT quote. A stale mark → engine receives syncMark=null → HOLD; the same
+  // level fresh → the engine gets the mark and can exit.
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const occ = "O:NVDA260714C00180000";
+  const row = ledgerRow({ peak_premium: 5.2 }); // +30% peak armed a breakeven floor
+  const plays = lm.boundActivePlays([row]);
+  const rowsByKey = new Map([["2026-07-14:NVDA", row]]);
+  const now = Date.now();
+  const seenSyncMarks: Array<number | null> = [];
+  // A stand-in for the real engine: exits at/below the floor, but ONLY on a usable mark.
+  const evaluateExit = (async (_r: unknown, opts: { syncMark: number | null }) => {
+    seenSyncMarks.push(opts.syncMark);
+    return opts.syncMark != null && opts.syncMark <= 4.0
+      ? {
+          mark: opts.syncMark,
+          decision: { action: "EXIT", reason: "ratchet_breakeven_floor", floorPnlPct: 0, detail: "" },
+          exitContext: {},
+        }
+      : null;
+  }) as never;
+  const persisted: Array<{ status: string; mark: number | null }> = [];
+  const persist = (async (_d: string, _t: string, s: { status: string; mark: number | null }) => {
+    persisted.push(s);
+  }) as never;
+  const noWs = (async () => null) as never;
+  const noSnap = (async () => new Map()) as never;
+
+  // 10s-old mark (> the 5s bar) at a floor-breach level 3.98. The engine must HOLD.
+  lm.putZeroDteLiveMark({ occ, bid: 3.9, ask: 4.06, mid: 3.98, last: null, mark: 3.98, source: "mid", asOf: now - 10_000, lane: "rest" });
+  await lm.runZeroDteMarkTick({ plays, rowsByKey, evaluateExit, persist, readWsMark: noWs, fetchSnapshots: noSnap, nowMs: now, nowEtMinutes: 12 * 60 } as never);
+  assert.equal(seenSyncMarks.at(-1), null, "a stale mark is withheld from the engine (syncMark=null)");
+  assert.ok(!persisted.some((p) => p.status === "CLOSED"), "no engine exit fires on a stale mark");
+
+  // Same 3.98 level, but FRESH now → the engine receives it and exits.
+  lm.putZeroDteLiveMark({ occ, bid: 3.9, ask: 4.06, mid: 3.98, last: null, mark: 3.98, source: "mid", asOf: now, lane: "rest" });
+  await lm.runZeroDteMarkTick({ plays, rowsByKey, evaluateExit, persist, readWsMark: noWs, fetchSnapshots: noSnap, nowMs: now, nowEtMinutes: 12 * 60 } as never);
+  assert.equal(seenSyncMarks.at(-1), 3.98, "a fresh mark IS passed to the engine");
+  assert.ok(persisted.some((p) => p.status === "CLOSED" && p.mark === 3.98), "the fresh mark drives the engine exit");
+});
+
+test("plan hard-stop via the latched trough STILL fires under staleness (engine not consulted)", async () => {
+  // FIX 1 counterpart: staleness must NOT disable the protective stop. A stale
+  // (>5s, ≤30s) mark below the plan stop closes the row off the LATCH; the mark-
+  // driven engine is never even consulted for a latch-closed row.
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const occ = "O:NVDA260714C00180000";
+  const row = ledgerRow({}); // entry 4.0 → stop 2.0
+  const plays = lm.boundActivePlays([row]);
+  const rowsByKey = new Map([["2026-07-14:NVDA", row]]);
+  const now = Date.now();
+  let engineCalls = 0;
+  const evaluateExit = (async () => {
+    engineCalls += 1;
+    return null;
+  }) as never;
+  const persisted: Array<{ status: string; mark: number | null }> = [];
+  const persist = (async (_d: string, _t: string, s: { status: string; mark: number | null }) => {
+    persisted.push(s);
+  }) as never;
+
+  // 12s-old mark (> the 5s engine bar, < the 30s latch bar) BELOW the plan stop.
+  lm.putZeroDteLiveMark({ occ, bid: 1.85, ask: 1.95, mid: 1.9, last: null, mark: 1.9, source: "mid", asOf: now - 12_000, lane: "rest" });
+  await lm.runZeroDteMarkTick({
+    plays, rowsByKey, evaluateExit, persist,
+    readWsMark: (async () => null) as never,
+    fetchSnapshots: (async () => new Map()) as never,
+    nowMs: now, nowEtMinutes: 12 * 60,
+  } as never);
+  assert.ok(persisted.some((p) => p.status === "CLOSED" && p.mark === 1.9), "the latched trough stop closes the row even on a stale mark");
+  assert.equal(engineCalls, 0, "a latch-closed row never consults the mark-driven engine");
+});
+
+test("mark store prunes OCCs no longer in the active set, never evicting an active one", async () => {
+  // FIX 2: the store was append-only, so closed/rolled OCCs lingered for the
+  // process lifetime. Prune to the active set — but never an active OCC.
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const active = "O:NVDA260714C00180000";
+  const dead = "O:TSLA260714C00250000";
+  const now = Date.now();
+  const put = (occ: string, mark: number) =>
+    lm.putZeroDteLiveMark({ occ, bid: mark - 0.1, ask: mark + 0.1, mid: mark, last: null, mark, source: "mid", asOf: now, lane: "rest" });
+  put(active, 4.1);
+  put(dead, 1.1);
+  assert.ok(lm.getZeroDteLiveMark(dead), "precondition: the dead OCC has a mark");
+
+  // Direct prune: the active OCC survives, the absent one is evicted.
+  lm.pruneMarkStore([active]);
+  assert.ok(lm.getZeroDteLiveMark(active), "an active OCC is never evicted");
+  assert.equal(lm.getZeroDteLiveMark(dead), undefined, "a no-longer-active OCC is pruned");
+
+  // And the poller tick prunes automatically to its active set.
+  put(dead, 1.1);
+  await lm.runZeroDteMarkTick({
+    plays: lm.boundActivePlays([ledgerRow({})]), // active set = the NVDA OCC only
+    readWsMark: (async () => null) as never,
+    fetchSnapshots: (async () => new Map()) as never,
+    skipPersist: true,
+    nowMs: now,
+    nowEtMinutes: 12 * 60,
+  } as never);
+  assert.equal(lm.getZeroDteLiveMark(dead), undefined, "the tick prunes the dead OCC");
+  assert.ok(lm.getZeroDteLiveMark(active), "the tick keeps the still-active OCC");
+});
+
+test("SSE dedupe: content key ignores time-only fields so an unchanged market dedupes", async () => {
+  // FIX 3: as_of + per-row mark_age_ms advance every build, so raw-JSON compare
+  // never deduped. The content key excludes those two → identical between ticks
+  // when nothing moved, but changes on a real new quote.
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const occ = "O:NVDA260714C00180000";
+  const plays = lm.boundActivePlays([ledgerRow({})]);
+  const t0 = 2_000_000;
+  lm.putZeroDteLiveMark({ occ, bid: 4.3, ask: 4.5, mid: 4.4, last: 4.35, mark: 4.4, source: "mid", asOf: t0 - 1_000, lane: "rest" });
+
+  const p0 = lm.buildZeroDteLiveMarksPayloadFrom(plays, t0, "2026-07-14");
+  const p1 = lm.buildZeroDteLiveMarksPayloadFrom(plays, t0 + 800, "2026-07-14"); // 800ms later, same quote, still fresh
+  // Raw JSON differs (as_of + mark_age_ms advanced)…
+  assert.notEqual(JSON.stringify(p0), JSON.stringify(p1));
+  // …but the content key is identical → the SSE lane dedupes.
+  assert.equal(lm.zeroDteMarksContentKey(p0), lm.zeroDteMarksContentKey(p1));
+
+  // A real change (a new quote) DOES move the content key.
+  lm.putZeroDteLiveMark({ occ, bid: 4.5, ask: 4.7, mid: 4.6, last: 4.55, mark: 4.6, source: "mid", asOf: t0 + 900, lane: "rest" });
+  const p2 = lm.buildZeroDteLiveMarksPayloadFrom(plays, t0 + 1_000, "2026-07-14");
+  assert.notEqual(lm.zeroDteMarksContentKey(p1), lm.zeroDteMarksContentKey(p2));
+});

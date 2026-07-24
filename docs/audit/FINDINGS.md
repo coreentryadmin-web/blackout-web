@@ -5,6 +5,47 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-24 — [MED+LOW×2] 0DTE live-marks lane: stale-mark engine exit + store leak + dead SSE dedupe — FIXED
+
+Three defects in the ~1s live-marks lane (branch `fix/live-marks-robustness`), one PR.
+
+**FIX 1 [MED, correctness] — the exit ENGINE could fire on a stale mark.**
+Root cause: `live-marks.ts` derived ONE `mark` at up to `LATCH_MAX_MARK_AGE_MS` (30s) old and passed it
+as `syncMark` into `evaluateLedgerRowExit`. `exit-sync.ts:132` uses the lane mark only if fresh (≤5s,
+`ZERODTE_MARK_STALE_MS`) else falls back to that ≤30s `syncMark` — so a mark-DRIVEN engine exit
+(ratchet-floor / thesis / flat-timeout) could trigger at a price 5–30s old. On 0DTE premium (10–30%/min)
+that's an exit at a price nobody currently sees. Evidence: `exit-sync.ts` freshest-mark-wins block +
+`live-marks.ts:385/397` passing the 30s mark as `syncMark`.
+Fix (`live-marks.ts`, tick loop): split into two marks. `mark` keeps the 30s bar and feeds ONLY
+`advancePlayLatch` (peak/trough + the plan hard-stop — the trough only widens, so an aged mark can only
+deepen a latched stop, and `derivePlayStatus` fires CLOSED off the latch regardless of freshness). New
+`engineMark` uses the 5s bar and is the `syncMark` passed to the engine; when the freshest mark is >5s,
+`engineMark` is null → the engine HOLDs by its own missing-mark contract. The latch-driven stop is
+deliberately left on the 30s bar so capital protection never depends on live-mark freshness. Contract
+note added to `exit-sync.ts` (callers must pass a CURRENT `syncMark` or null — a bare number's age can't
+be re-checked there). `scan.ts` unaffected (it passes a just-fetched snapshot mark).
+
+**FIX 2 [LOW, memory] — `markStore` was append-only.** Closed/rolled OCCs lingered for the process
+lifetime (per-replica leak over a day of turnover). Fix: new `pruneMarkStore(activeOccs)` evicts marks
+for OCCs absent from the active set (never an active OCC), called in the tick's active-set/reconcile path
+right after the active `occs` are derived.
+
+**FIX 3 [LOW, bandwidth] — SSE per-tick dedupe was dead code.** `route.ts` compared the full JSON string,
+but every build stamps `as_of` + per-row `mark_age_ms` from `now`, so consecutive frames always differ →
+`if (json === lastSentFrame) return;` never fired. Fix: new `zeroDteMarksContentKey(payload)` hashes the
+payload EXCLUDING the two time-only fields (`as_of`, `mark_age_ms`); `getZeroDteLiveMarksFrame()` returns
+`{ json, contentKey }` and the SSE route dedupes on `contentKey`. `mark_as_of` and `stale` are kept (a new
+quote / a mark crossing the 5s bar are real content changes that must push). `mark_age_ms` retained on the
+row (multiple consumers derive age from it) — only excluded from the dedupe key. `getZeroDteLiveMarksJson`
+kept for the REST fallback route.
+
+**Evidence/verify:** `tsc --noEmit` clean; `live-marks.test.ts` 22/22 (adds: engine HOLDs on a >5s-stale
+mark while the latched trough stop still CLOSES on a stale mark; store prunes a dead OCC but keeps the
+active one; two identical-market ticks share a content key while raw JSON differs); `exit-sync.test.ts`
+7/7; `zerodte-service-marks.test.ts` 1/1; `check-brand.mjs` clean. Files: `src/lib/zerodte/live-marks.ts`,
+`src/lib/zerodte/exit-sync.ts`, `src/app/api/market/zerodte/marks/stream/route.ts`. Status: FIXED, on
+branch (not merged — no PR opened per request).
+
 ## 2026-07-24 — [HIGH, honesty] iron-condor surfaced a literal "100%" WR with no breach companion — FIXED
 
 **Severity HIGH (member-facing honesty on a real-money product).** `selectIronCondor` returned
