@@ -27,11 +27,13 @@ WS upgrades to browsers. UW/Polygon **WebSockets run server-side on ECS**, land 
 cache, and the browser receives the data over **SSE (`/stream`, ~1s) + SWR REST polling (5s board / 30s
 horizons)**. The chain is intact end-to-end for marks/P&L/greeks and for the board.
 
-**Do we have flaws?** Yes — none catastrophic, several real. The audit found a cluster of **HIGH-severity**
-issues concentrated in the live-marks display seam and the board→UI wiring (stale marks shown as live; an
-open position that can vanish from the deck; a degraded board that renders as a calm empty tape). Two of the
-HIGHs (stale-overlay + greeks-null) are **already fixed** (PR #1020). The rest are catalogued in §9 with
-severity, `file:line`, failure scenario, and fix.
+**Do we have flaws?** We *did* — none catastrophic, several real: a cluster of **HIGH-severity** issues in the
+live-marks display seam and the board→UI wiring (stale marks shown as live; an open position that could vanish
+from the deck; a degraded board that rendered as a calm empty tape), plus honesty/calibration/provenance
+findings. **As of 2026-07-24 the remediation is essentially complete — 10 fix PRs are merged to `main`** and
+the two deploy-risky ones (aggression floor #1028, governor-txn #1031) are written + tested and held as drafts
+pending one validation step each. Every finding is catalogued in §9 with its status and the full ledger is in
+§10.
 
 ---
 
@@ -256,82 +258,92 @@ change-flashed — not literal per-millisecond (the browser can't hold a WS thro
 
 ## 9. QA FINDINGS (consolidated, ranked)
 
-Legend: **[C]** CONFIRMED, **[P]** PLAUSIBLE. `✅ fixed` = already shipped.
+Legend: **[C]** CONFIRMED, **[P]** PLAUSIBLE. **✅ MERGED** = fix shipped to `main` (PR#). **⏸ HELD** = fix written + tested, held as a draft PR pending a validation step. **○ open** = not yet done.
+
+> **Remediation status (2026-07-24):** every finding below is MERGED, HELD-for-validation, or a documented cosmetic leftover — see §10. Ten fix PRs (#1020, #1022–#1027, #1029, #1030) are on `main`; two (#1028 aggression floor, #1031 governor-txn) are held as drafts for their one validation step.
 
 ### HIGH
-- **9-1 [C] ✅ Stale SSE mark overlaid as LIVE** — `use-live-marks.ts` `overlayLiveMarks` ignored `row.stale`,
+- **9-1 [C] ✅ MERGED (#1020) Stale SSE mark overlaid as LIVE** — `use-live-marks.ts` `overlayLiveMarks` ignored `row.stale`,
   replacing the fresher 5s board value with a >5s-old mark under a `● LIVE` badge; a dead lane froze its last
   frame. **Fixed in PR #1020** (skip stale rows + clear map on `CLOSED`).
-- **9-2 [C] ✅ Greeks carry-forward defeated by an all-null object** — `markFromSnapshot` emitted an all-null
-  greeks object (not `== null`), blanking the Δ Γ Θ V IV strip on every unpriced snapshot. **Fixed in PR #1020**
-  (collapse all-null → `null`).
-- **9-3 [C] Degraded/unknowable board renders as a calm "flat tape"** — the deck derives plays only from
-  `resp.setups` and never reads `available/upstream_ok/degraded`; when the committed set is unknowable
+- **9-2 [C] ✅ MERGED (#1020) Greeks carry-forward defeated by an all-null object** — `markFromSnapshot` emitted an all-null
+  greeks object (not `== null`), blanking the Δ Γ Θ V IV strip on every unpriced snapshot. Fix: collapse all-null → `null`.
+- **9-3 [C] ✅ MERGED (#1022) Degraded/unknowable board renders as a calm "flat tape"** — the deck derived plays only from
+  `resp.setups` and never read `available/upstream_ok/degraded`; when the committed set is unknowable
   (`displaySetups=[]`) or the route returns `{available:false}` at HTTP 200, a member holding a live OPEN
-  position sees zero rows + "no setup has cleared the floor" — a degraded board impersonating a healthy empty
-  one. **Fix:** branch on `available===false || upstream_ok===false` → a distinct "board degraded" state.
-- **9-4 [C] An open position can vanish from the deck** — the play list iterates **setups**, so a committed
-  OPEN/HOLD/TRIM ledger row whose ticker ages out of the scan (score dropped, chase-gate now blocks a *new*
-  entry) has no setup → never renders; the member can't see/manage their live position. **Fix:** seed the deck
-  from the **union** of setups and OPEN/HOLD/TRIM ledger rows.
-- **9-5 [C] Live deck wired to the weaker of two duplicate hooks** — `containers.tsx` imports the
-  command-deck hook (no REST fallback, no staleness clock) while a richer
-  `hooks/useZeroDteLiveMarks.ts` (2.5s REST fallback + staleness + `transport`) exists but is only wired to
-  the now-dead `ZeroDteBoard`. On the SSE `503` cap or edge buffering, the deck silently degrades to the 5s
-  board poll with no fallback. **Fix:** consolidate onto the rich hook (or port its REST fallback); delete the
-  dead board. _(Partially mitigated by #1020's stale-skip; full consolidation is the follow-up.)_
+  position saw zero rows + "no setup has cleared the floor" — a degraded board impersonating a healthy empty
+  one. Fix: `isBoardDegraded()` → a distinct "board data unavailable — retrying" banner.
+- **9-4 [C] ✅ MERGED (#1022) An open position can vanish from the deck** — the play list iterated **setups**, so a committed
+  OPEN/HOLD/TRIM ledger row whose ticker aged out of the scan had no setup → never rendered; the member couldn't
+  see/manage their live position. Fix: deck sources are now the **union** of setups and OPEN/HOLD/TRIM ledger rows
+  (synthesized from ledger fields). Refactored into the pure `command-deck/zerodte-sources.ts`.
+- **9-5 [C] ⏳ PARTIAL (#1020) Live deck wired to the weaker of two duplicate hooks** — `containers.tsx` imports the
+  command-deck hook while a richer `hooks/useZeroDteLiveMarks.ts` (2.5s REST fallback + staleness clock) exists but
+  is only wired to the now-dead `ZeroDteBoard`. **#1020 closed the correctness half** (the deck hook now skips stale
+  rows + clears the map on a dead lane, so it no longer shows stale-as-live). The remaining item is a *robustness*
+  cleanup — consolidate onto the rich hook (2.5s REST fallback for the SSE-503/edge-buffer case) and delete the dead
+  board. **○ open follow-up** (not member-risk; the deck already falls back to the 5s board poll).
 
 ### MEDIUM
-- **9-H1 [C] Stale `market_regime` served as current** — `platform-intel-snapshot.ts` + `/api/platform/intel`
-  read the latest `market_regime` row with **no trading-day freshness gate**, while the sibling
-  `/api/market/regime` route already fixed exactly this (documented Fri→Sun 49h-stale incident). Feeds member
-  sizing notes + the AI prompt a days-old regime over a weekend/holiday/cron outage. **Fix:** propagate the
-  `captured_at != mostRecentTradingDay → stale/null` gate.
-- **9-C1 [C] Scale-out realized multiple inflated by intrabar look-ahead** — `scale-out.ts` updates `peak`
-  from the current bar's high **before** testing the trailing stop against the same bar's low; on **daily**
-  bars (production) the ambiguous window is a whole day. Biases `recommendScaleOut` toward `enforce` and
-  inflates the headline "realized-vs-hold" claim. **Fix:** compare the trail against the **prior** peak, update
-  peak after.
-- **9-C2 [C] Condor `est_win_rate` surfaces 92/96/100 with no breach companion** — a 25-session backtest can't
-  support a literal 100% WR, and only close-settlement WR is exposed while the negative-skew product breaches
-  ~1 session in 5 (18.7%). **Fix:** cap the label + add `est_breach_rate`/`skew:"negative"`.
-- **9-6 [C] Board vs UI status labels** — gate-BLOCKED finds render as `WATCH` not `SKIP`
-  (`containers.tsx:40`); a committed OPEN with aged-out gate context shows "✗ Hard gate" (`adapters.ts:105`);
-  `market_aligned===null` renders a green "✓ Tape align / thesis intact" (`null !== false`). **Fix:** derive
-  status/gate/thesis from persisted status + treat null-alignment as unknown, not pass.
-- **9-7 [C] Top-5-only edge layer corrupts gating + calibration for ranks 6-10** — `attachIntradayEdge` runs
-  only on the top 5, but all 10 are gated and confluence-logged, so ranks 6-10 gate on an un-adjusted score,
-  G-10 can't fire, and they're always logged `weak` — biasing the confluence dataset. **Fix:** compute the
-  intraday read for every gated setup (or gate only the enriched top-N).
-- **9-8 [P] Cross-replica governor overshoot** — the concurrency/session-stop caps are enforced only in the
-  pure pre-persist evaluation, not inside the upsert; two cron replicas can each commit past the cap. **Fix:**
-  enforce the governor in the upsert transaction (conditional insert on a live-count/stop-count check).
-- **9-9 [P] Exit engine can fire on a 5–30s-stale mark** via the `LATCH_MAX_MARK_AGE_MS=30000` fallback in
-  `evalExit`; 0DTE premium moves 10–30%/min. **Fix:** gate the effective exit mark on the same 5s staleness the
-  display promises.
-- **9-C3 [C] Two disagreeing win definitions** — `isZeroDteWin = pnl>0` (record + calibration) vs the feature
-  store's `doubled=win, time_stop=loss`; a green time-stop is a win in one and a loss in the other. **Fix:**
-  rename the feature-store label to what it measures (`hitTarget`) or align to `pnl>0`.
+- **9-H1 [C] ✅ MERGED (#1026) Stale `market_regime` served as current** — `platform-intel-snapshot.ts` + `/api/platform/intel`
+  read the latest `market_regime` row with **no trading-day freshness gate** (documented Fri→Sun 49h-stale incident),
+  feeding member sizing notes + the AI prompt a days-old regime. Fix: propagated the same
+  `formatEtDate(captured_at) != mostRecentTradingDay → null + regime_stale` gate the sibling `/api/market/regime` already used.
+- **9-C1 [C] ✅ MERGED (#1025) Scale-out realized multiple inflated by intrabar look-ahead** — `scale-out.ts` updated `peak`
+  from the current bar's high **before** testing the trailing stop against the same bar's low (on **daily** bars the ambiguous
+  window is a whole session), biasing `recommendScaleOut` toward `enforce`. Fix: capture `prevPeak` before the max, test the
+  trail against it, update peak after.
+- **9-C2 [C] ✅ MERGED (#1023) Condor `est_win_rate` surfaced 92/96/100 with no breach companion** — a 25-session backtest can't
+  support a literal 100% WR, and only close-settlement WR was exposed while the negative-skew product breaches ~1 session in 5
+  (18.7%). Fix: cap the surfaced WR at 97 (`est_win_rate_small_sample` flag) + added `est_intraday_breach_pct` + `skew:"negative"`.
+- **9-6 [C] ✅ MERGED (#1022) Board vs UI status labels** — gate-BLOCKED finds rendered as `WATCH` not `SKIP`; a committed OPEN
+  with aged-out gate context showed "✗ Hard gate"; `market_aligned===null` rendered a green "✓ Tape align / thesis intact".
+  Fix: status derives from the gate verdict (BLOCKED→SKIP); a working play passes the Hard gate; null-alignment is a new neutral
+  "unknown" thesis state, never a false green.
+- **9-7 [C] ✅ MERGED (#1027) Top-5-only edge layer corrupted gating + calibration for ranks 6-10** — `attachIntradayEdge` ran
+  only on the top 5, but all 10 were gated + confluence-logged, so ranks 6-10 gated on an un-adjusted score, G-10 couldn't fire,
+  and they were always logged `weak` — biasing the confluence dataset. Fix: compute the light intraday read for **every gated
+  setup** (heavy dossier enrichment still top-N).
+- **9-8 [P] ⏸ HELD (#1031, staging-verify) Cross-replica governor overshoot** — the concurrency/session-stop caps were enforced
+  only in the pure pre-persist evaluation, not inside the upsert; two concurrent scan runs (cron + WS-trigger on different
+  replicas) can each commit past the cap. Fix (written + tested): `INSERT … SELECT … WHERE (live-count < cap AND stop-count <
+  halt) … ON CONFLICT` on the fresh commit, mirroring `deriveGovernorFromLedger` exactly. **Held as a draft** — touches the live
+  commit-path SQL; needs a staging commit-cap test (4th fresh vs 3 live → blocked) before prod.
+- **9-9 [P] ✅ MERGED (#1029) Exit engine could fire on a 5–30s-stale mark** via the `LATCH_MAX_MARK_AGE_MS=30000` fallback.
+  Fix: split into two marks — the 30s `mark` feeds only the peak/trough latch + plan hard-stop (capital protection must not
+  depend on freshness); a fresh-only (≤5s) `engineMark` is what the ratchet/thesis/flat exits act on (else the engine HOLDs).
+- **9-C3 [C] ✅ MERGED (#1025) Two disagreeing win definitions** — `isZeroDteWin = pnl>0` (record + calibration) vs the feature
+  store's `doubled=win, time_stop=loss`. Fix: aligned the feature store to `plan_pnl_pct > 0` (a green time-stop is a win in both).
 
 ### LOW (cleanups toward "a null is honest, a fabricated zero is a lie")
-- **9-P1 [C] Index-option underlying dropped** — the unified snapshot reads `underlying_asset.price`; Polygon
-  sends `.value` for index OCCs (SPX/SPXW/NDX/RUT/VIX) → `underlyingPrice` null for index-option valuation
-  (contained: GEX/Vector resolves spot independently). **Fix:** `?? underlying_asset.value`.
-- **9-H2 [P] Empty positioning fallback** emits `net_gex:0 / negative_gamma:false / source:"polygon"` with no
-  `available` field — "no data" looks like "flat book." Guarded incidentally by null checks downstream. **Fix:**
-  return `null`/`{available:false}`; make `negative_gamma` nullable.
-- **9-5b/9-4-floats [C] Unrounded floats** — raw UW underlying + VIX interpolated into SKIP-card reason strings
-  (`VIX 17.34000…01`) reach the member/ledger. **Fix:** round at aggregation + in reason strings.
-- **9-C5 [P] Grader intrabar asymmetry** — committed grader includes the flag bar (`t < flag`), skip grader
-  excludes it (`t+1`); a flag on a minute boundary can grade `doubled` on the flag bar. **Fix:** exclude the
-  flag bar in both.
-- **9-P/IV [C] IV unit inconsistency** — provider returns decimal (0.229) for live rows, `20`/`15.83`
-  placeholders for expired/edge rows; stored verbatim. **Fix:** normalize/guard wherever IV renders as a %.
-- **9-misc:** `net_premium` is aggression-weighted not raw (misleading name); `dte` (ticker-min) can disagree
-  with `expiry` (top-strike); Night Hawk dedupe misses `SPX`↔`SPXW` root aliasing; SSE per-tick dedupe is dead
-  code (`as_of` in every frame) — bandwidth waste, not a correctness bug; `markStore` never evicted; empty-sample
-  analytics win rates return `0` not `null`; `OPTIONS_WS_ENABLED` likely unset in prod (marks ride the REST
-  poller — still genuine ~1s, but the WS path is dead weight).
+- **9-P1 [C] ✅ MERGED (#1024) Index-option underlying dropped** — the unified snapshot read `underlying_asset.price`; Polygon
+  sends `.value` for index OCCs (SPX/SPXW/NDX/RUT/VIX) → `underlyingPrice` null for index-option valuation. Fix:
+  `underlying_asset.price ?? underlying_asset.value` (still null when neither). + a conservative `normalizeImpliedVol()` helper.
+- **9-H2 [P] ✅ MERGED (#1026) Empty positioning fallback** emitted `net_gex:0 / negative_gamma:false / source:"polygon"` with no
+  `available` field — "no data" looked like "flat book." Fix: the empty branch returns `null`; `negative_gamma` is now nullable;
+  `/api/market/gex-positioning` degraded fallback `change_pct`/`net_vex` → `null`.
+- **9-floats [C] ✅ MERGED (#1027) Unrounded floats** — raw UW underlying + VIX interpolated into SKIP-card reason strings
+  (`VIX 17.34000…01`) reached the member/ledger. Fix: round the underlying at aggregation + `vixR` in every gate reason string.
+- **9-C5 [P] ✅ MERGED (#1025) Grader intrabar asymmetry** — the committed grader included the flag bar (`t < flag`) while the
+  skip grader excluded it (`t+1`). Fix: skip `bar.t <= flaggedAtMs` — grading starts strictly after the flag in both.
+- **9-P/IV [C] ✅ MERGED (#1024) IV unit inconsistency** — provider returns decimal (0.229) for live rows, `20`/`15.83`
+  placeholders for expired/edge rows. Fix: opt-in `normalizeImpliedVol()` rescales only impossible-as-decimal values (≥500%);
+  the mapper still stores raw IV verbatim.
+- **9-misc-null [C] ✅ MERGED (#1029, #1030):** `markStore` never evicted → `pruneMarkStore` (#1029); SSE per-tick dedupe was dead
+  code (`as_of` in every frame) → content-key dedupe excluding time-only fields (#1029); empty-sample analytics win rates returned
+  `0` not `null` → `null` (#1030); cortex unpriced flow premium `?? 0` → `null` (#1030); banger `hold_mult` measured hold-to-last-bar
+  not hold-to-expiry → `ungradeable` when the forward series is truncated (#1030).
+- **9-misc-cosmetic ○ open (no member impact):** `net_premium` is aggression-weighted not raw (misleading field name); `dte`
+  (ticker-min) can disagree with `expiry` (top-strike) label; Night Hawk dedupe misses `SPX`↔`SPXW` root aliasing. Left as-is —
+  2 of the 3 carry filter/exclusion behavior risk not worth churn for a naming nicety. `OPTIONS_WS_ENABLED` likely unset in prod
+  (marks ride the REST poller — still genuine ~1s, the WS path is dead weight) — an ops config note, not a code defect.
+
+- **9-1-aggr [C] ⏸ HELD (#1028, sim-validate) Aggression gate fails OPEN on missing ask-side metadata** — when every print for a
+  ticker lacks `ask_pct`, `aggressionWeight` returns the neutral 0.5 for all, so the aggression share ≈ 0.5 clears
+  `SETUP_MIN_AGGR_SHARE` (0.3) with **zero real aggressor evidence** and direction reverts to a raw call-vs-put split. Fix (written
+  + tested): track `knownAskPrem` and require `knownAskPrem/gross ≥ SETUP_MIN_KNOWN_AGGR_FRAC (0.5)` before the aggression gate
+  passes (fail-closed, like `no_underlying_price`). **Held as a draft** — it changes *what commits*; the 0.5 threshold needs a
+  market-hours `sim:0dte` before/after to confirm it doesn't starve the board, then tune on the evidence.
 
 ### Verified SOUND (checked, not defects)
 Marks/P&L null-honesty; greeks OCC-keyed carry-forward; GEX positioning returns null on cold cache; base-rate
@@ -341,15 +353,36 @@ allocation is advisory-only (never sizes); selection state stable across polls; 
 
 ---
 
-## 10. Priority remediation queue
+## 10. Remediation status (as of 2026-07-24)
 
-1. **Fixed:** 9-1, 9-2 (PR #1020).
-2. **Next HIGH batch (UI truth):** 9-3 degraded-state, 9-4 union-with-ledger, 9-6 status labels, 9-5 hook
-   consolidation — all in the board→deck seam; one focused PR each.
-3. **Honesty:** 9-H1 regime staleness, 9-H2 positioning fallback, 9-C2 condor breach-rate.
-4. **Calibration integrity:** 9-C1 scale-out look-ahead, 9-7 top-5 edge coverage, 9-C3 win-def unification.
-5. **Robustness:** 9-8 governor-in-transaction, 9-9 exit-mark staleness.
-6. **Cleanups:** 9-P1 index underlying, float rounding, IV normalization, dedupe aliasing, store eviction.
+The audit was run, then remediated in two waves. **10 fix PRs are merged to `main`**; the two deploy-risky
+ones are written + tested and held as drafts pending their single validation step.
 
-_None of these block the system from operating; the HIGH cluster is about not showing a member a stale/absent
-value as if it were live — the exact failure mode to eliminate for a real-money desk._
+### ✅ Merged (10 PRs)
+| PR | Findings closed |
+|---|---|
+| **#1020** | 9-1 stale-mark overlay · 9-2 greeks-null carry-forward |
+| **#1022** | 9-3 degraded-board state · 9-4 open-position union · 9-6 honest gates/status · (PnL peak/trough dead-data) |
+| **#1023** | 9-C2 condor win-rate cap + breach/skew |
+| **#1024** | 9-P1 index-option underlying · 9-P/IV normalization helper |
+| **#1025** | 9-C1 scale-out look-ahead · 9-C3 win-def unification · 9-C5 grader flag-bar |
+| **#1026** | 9-H1 stale-regime gate · 9-H2 empty-positioning null |
+| **#1027** | 9-7 intraday-edge coverage · 9-floats underlying/VIX rounding |
+| **#1029** | 9-9 exit-needs-fresh-mark · markStore eviction · SSE dedupe |
+| **#1030** | analytics 0→null · cortex premium null · banger hold_mult |
+| **#1021** | this document |
+
+### ⏸ Held as drafts (2 — deploy-risky, one validation step each)
+- **#1028 / 9-1-aggr** — aggression evidence floor. Changes *what commits*; needs a market-hours `sim:0dte`
+  before/after (confirm the known-aggressor floor doesn't starve the board; tune `SETUP_MIN_KNOWN_AGGR_FRAC`).
+- **#1031 / 9-8** — governor-in-transaction. Touches the live commit-path SQL; needs a **staging** commit-cap
+  test (a 4th fresh find against 3 live → blocked; a 3rd against 2 → commits) before prod merge.
+
+### ○ Open, non-blocking
+- **9-5** hook consolidation — the *correctness* half shipped in #1020 (deck no longer shows stale-as-live); the
+  remaining REST-fallback consolidation + dead-`ZeroDteBoard` deletion is a robustness cleanup, not member-risk.
+- **9-misc-cosmetic** — `net_premium` naming, `dte`/`expiry` label, `SPX`↔`SPXW` dedupe aliasing. No member
+  impact; 2 of 3 carry filter/exclusion behavior risk not worth the churn.
+
+_None of these ever blocked the system from operating. The HIGH cluster was about not showing a member a
+stale-or-absent value as if it were live — the exact failure mode eliminated for a real-money desk._
