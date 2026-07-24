@@ -335,8 +335,16 @@ async function attachGateVerdicts(
   // stop timestamps from the Redis record (best-effort — see governor.ts's model).
   const recordedStops = await loadRecordedGovernorStops(today).catch(() => []);
   const ledgerGovernor = deriveGovernorFromLedger(ledgerRows);
+  // Build the ENFORCEMENT snapshot FROM the derived one (spread), not a hand-written
+  // two-field literal. The AUDIT SEV-3 realized-loss halt reads snap.realized_losers /
+  // snap.session_pnl_pct; the previous literal copied ONLY open_plans + stops and dropped
+  // those two, so governorLossHaltReason always saw 0/0 and the loss-halt could NEVER
+  // fire in the live commit path (while the board strip showed "halted" from a separately
+  // derived snapshot). Spreading ledgerGovernor carries all four fields into
+  // evaluateZeroDteGovernor; we still override stops with the Redis-merged set (the only
+  // field that needs the recorded timestamps for the re-entry lock).
   const governor: GovernorSnapshot = {
-    open_plans: ledgerGovernor.open_plans,
+    ...ledgerGovernor,
     stops: mergeGovernorStops(ledgerGovernor.stops, recordedStops),
   };
 

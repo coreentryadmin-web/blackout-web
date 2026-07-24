@@ -5,6 +5,51 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-24 — [HIGH, safety-inert] 0DTE realized-loss session halt was WIRED but INERT — FIXED
+
+**Severity HIGH (a shipped capital-protection halt could never fire).** PR #1056 added the AUDIT
+SEV-3 realized-loss day-halt to `governor.ts`: `governorLossHaltReason` stands the desk down when
+`realized_losers >= 3` OR `session_pnl_pct <= −120`, and `deriveGovernorFromLedger` correctly
+COMPUTES both tallies.
+
+**Root cause — dropped fields in the ENFORCEMENT snapshot.** `scan.ts`'s `attachGateVerdicts`
+(~L337-341) built the snapshot handed to the gate stack as a hand-written object literal that copied
+ONLY `open_plans` + `stops` and DROPPED `realized_losers` + `session_pnl_pct`:
+```ts
+const governor: GovernorSnapshot = {
+  open_plans: ledgerGovernor.open_plans,
+  stops: mergeGovernorStops(ledgerGovernor.stops, recordedStops),
+}; // realized_losers + session_pnl_pct dropped
+```
+Those two fields are OPTIONAL on `GovernorSnapshot` (back-compat for pre-SEV-3 literals), so
+`governorLossHaltReason` read `snap.realized_losers ?? 0` / `snap.session_pnl_pct ?? 0` → always 0 →
+**the loss-halt could NEVER fire in the live commit path.** Meanwhile the member board strip showed
+"halted" because `summarizeGovernorForBoard` derives its OWN snapshot correctly — board said halted,
+scanner kept committing. A chop-and-bleed day of losing time-stops (each ~−25…−45%, none tripping the
+−50% hard stop) was uncapped exactly as before SEV-3 shipped — the same class of day (7/13) the halt
+was built for.
+
+**Why it wasn't caught:** governor.test.ts passes a snapshot in DIRECTLY (never exercises scan.ts's
+construction), so the wiring seam was untested.
+
+**Fix (`scan.ts:337-346`, one line of substance):** build the enforcement snapshot FROM the derived
+one via spread so all four fields reach the gate stack, still overriding `stops` with the
+Redis-timestamp-merged set:
+```ts
+const governor: GovernorSnapshot = { ...ledgerGovernor, stops: mergeGovernorStops(ledgerGovernor.stops, recordedStops) };
+```
+Left the two fields OPTIONAL (making them required cascades into ~17 test/literal call sites across
+governor.test.ts / gates.test.ts / gates-replay — over the safe-scope threshold; noted, not done).
+Strictly-more-conservative: this only lets an existing fail-safe halt fire; no thresholds changed.
+
+**Evidence/verify:** new integration test in `scan.test.ts` drives the REAL `scanZeroDteBoard` with a
+ledger of 3 losing time-stops (realized_losers 3, stops 0/3, session −90% — isolating the count
+channel) + a fresh NVDA flow candidate, and asserts the fresh setup's gate carries the
+`governor_session_stops` loss-halt block and verdict BLOCKED. Proven to FAIL on the old two-field
+literal (`not ok 10`) and PASS on the fix. `tsc --noEmit` clean; all 480 `src/lib/zerodte/*.test.ts`
+pass; `check-brand.mjs` clean. Files: `src/lib/zerodte/scan.ts`, `src/lib/zerodte/scan.test.ts`.
+Status: FIXED, branch `fix/zerodte-loss-halt-wire` (PR to main).
+
 ## 2026-07-24 — [MED+LOW×2] 0DTE live-marks lane: stale-mark engine exit + store leak + dead SSE dedupe — FIXED
 
 Three defects in the ~1s live-marks lane (branch `fix/live-marks-robustness`), one PR.
