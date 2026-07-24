@@ -26,7 +26,7 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 
-test("board ledger: stopped play pins live_pnl_pct to −50; live row carries lane mark + asOf; stale lane marks never overlay", async () => {
+test("board ledger: stopped play pins live_pnl_pct to −50; live row carries lane mark + asOf; stale lane marks never overlay; sync marks flag mark_is_sync", async () => {
   const OPEN_OCC = "O:NVDA260714C00180000";
   mock.module("server-only", { namedExports: {} });
   mock.module("../bie/ecosystem-context", {
@@ -140,6 +140,9 @@ test("board ledger: stopped play pins live_pnl_pct to −50; live row carries la
     assert.equal(nvda.last_mark, 4.4); // sync value — the stale lane mark was refused
     assert.equal(nvda.mark_as_of, null);
     assert.equal(nvda.mark_source, null);
+    // SEV-4: a mark from the sync lane (no per-quote timestamp) but non-null is flagged so
+    // the deck can badge it as unknown-age rather than showing it as a 1s-fresh live mark.
+    assert.equal(nvda.mark_is_sync, true);
   }
 
   // ── Direction 2: a FRESH lane mark overlays with provenance + timestamp.
@@ -159,6 +162,8 @@ test("board ledger: stopped play pins live_pnl_pct to −50; live row carries la
   assert.equal(nvda.mark_source, "mid");
   assert.equal(nvda.mark_as_of, new Date(asOf).toISOString());
   assert.equal(nvda.closed_reason, null);
+  // SEV-4: a fresh, timestamped live-lane mark is NOT sync — the deck shows it as live.
+  assert.equal(nvda.mark_is_sync, false);
 
   // D-1: the stopped play's displayed result is the stop P&L (−50, what the grader
   // will stamp), not the frozen −38.1% — and it is labeled.
@@ -167,6 +172,8 @@ test("board ledger: stopped play pins live_pnl_pct to −50; live row carries la
   assert.equal(tsla.live_pnl_pct, -50);
   // CLOSED rows never get a live overlay (frozen by design).
   assert.equal(tsla.mark_as_of, null);
+  // SEV-4: with a mark (2.6) but no live timestamp, the CLOSED row's mark is flagged sync too.
+  assert.equal(tsla.mark_is_sync, true);
 
   lane._resetZeroDteLiveMarksForTest();
 });

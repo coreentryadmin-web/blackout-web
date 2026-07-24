@@ -5,6 +5,49 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-24 — [SEV-3 + SEV-4] 0DTE command-deck live-marks: missing REST fallback + no sync-mark age flag — FIXED
+
+**SEV-3 — command-deck live-marks hook was SSE-only despite the documented REST fallback.**
+`src/features/nighthawk/command-deck/use-live-marks.ts` subscribed to the ~1s SSE lane and, on a
+terminal `EventSource.CLOSED`, cleared its marks and relied entirely on the 5s board poll. But both
+route headers promise a client fallback — `marks/stream/route.ts:8` and `marks/route.ts:3` state
+*"Client fallback: GET /api/market/zerodte/marks polled at 2–3s."* So whenever the SSE lane dropped
+(proxy kills the stream, a `503` from the stream cap, a network blip past the reconnect window),
+per-contract mark/P&L/greeks refreshed at 5s — or greeks vanished entirely (the board payload's
+`greeks` is null; only the live lane carries Δ Γ Θ V IV) — instead of the promised ~2.5s. The
+documented contract existed and the REST route was built; only the client wiring was missing. The
+sibling hook `src/features/nighthawk/hooks/useZeroDteLiveMarks.ts` already implements this fallback,
+so the command-deck hook was the odd one out (blast radius: one hook; the sibling is correct).
+
+**Fix.** Added a `setInterval` REST poll (2.5s) that activates ONLY while `EventSource.readyState
+!== OPEN` (`restFallbackShouldPoll`) — the CONNECTING reconnect window and the terminal CLOSED state
+the browser won't auto-retry — and feeds the SAME OCC-keyed overlay map via a shared
+`marksMapFromPayload` builder used by BOTH the SSE frame and the poll. A healthy OPEN stream
+short-circuits every tick, so the two never double-fetch; when SSE reopens, the poll stands down on
+its own. The `>5s` stale-row drop is untouched — polled rows carry the same server-computed `stale`
+flag and route through `overlayLiveMarks` identically. In-flight/unmount guards (`pollInflight`,
+`closed`) prevent overlap and post-unmount `setState`. **The fallback gates cleanly on SSE state:
+yes** — `EventSource.readyState` is the exact signal ("not OPEN → poll"), no timers/heuristics.
+
+**SEV-4 — no per-mark age indicator when the board is the sole mark source.**
+`src/lib/platform/zerodte-service.ts` `mapLedgerRow` (~L132/160): when the live lane has no fresh
+quote for a contract, the board falls back to `r.last_mark` with `mark_as_of: null` and
+`mark_source: null` — an unknown-age "sync" mark the deck rendered indistinguishably from a 1s-fresh
+live one. **Fix:** added a derived boolean `mark_is_sync` to `ZeroDteBoardLedgerRow`
+(`mark_is_sync = liveMark == null && lastMark != null`) so the deck can badge a non-live mark as
+unknown-age. Additive/minimal — no payload restructure, no P&L/greek computation touched. The board
+payload is `Record<string,unknown>` to the deck (`zerodte-sources.ts`), so the flag is readable
+without a client type change; wiring the actual UI badge is a follow-up.
+
+**Evidence / tests.** `tsc --noEmit` clean; `check-brand.mjs` clean. Extended
+`command-deck/use-live-marks.test.ts` (pure pieces: `restFallbackShouldPoll` polls only when not
+OPEN; SSE & REST payloads build the identical map; empty/idle → no-op; a polled STALE row still hits
+the >5s drop) and `platform/zerodte-service-marks.test.ts` (`mark_is_sync` true on the stale-refused
+sync row + the CLOSED sync row, false on the fresh live row). 98/98 across command-deck + platform +
+live-marks suites pass.
+
+**Status:** DONE. Branch `fix/zerodte-marks-rest-fallback`.
+
 ## 2026-07-24 — [HIGH, safety-inert] 0DTE realized-loss session halt was WIRED but INERT — FIXED
 
 **Severity HIGH (a shipped capital-protection halt could never fire).** PR #1056 added the AUDIT
