@@ -140,6 +140,32 @@ export const CRON_JOBS: CronJobDefinition[] = [
     description: "Warms 0DTE Command's earnings-match cache (readGridEarnings, relocated from the deleted classic-Grid tool) and runs its always-on scanner tick (warmZeroDteBoard) so zerodte_setup_log stays current",
   },
   {
+    key: "swing-discovery",
+    name: "Night Hawk Swing Discovery",
+    kind: "http",
+    path: "/api/cron/swing-discovery",
+    // Phase-anchored (scan-cadence.ts): EventBridge fires on a wide band; the route resolves the active phase
+    // (POST_CLOSE 4:15–8PM ET first, plus PRE_OPEN/MIDDAY/POWER_HOUR/OVERNIGHT) and runs ONCE per (day, phase).
+    // Stale ceiling spans a full day since only one phase fires per window and off-phase firings self-skip.
+    schedule_label: "Phase-anchored (post-close first; wide-band fire, route decides)",
+    stale_after_min: 36 * 60,
+    weekdays_only: true,
+    description:
+      "Whole-market swing (2–30 DTE) discovery: two-tier flow+structure screen → dossiers → advances the cross-session accumulation memory (WATCH-only, commits nothing). Idempotent per (session day, phase).",
+  },
+  {
+    key: "swing-active-refresh",
+    name: "Night Hawk Swing Refresh",
+    kind: "http",
+    path: "/api/cron/swing-active-refresh",
+    schedule_label: "Hourly (market hours)",
+    stale_after_min: 3 * 60,
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Hourly refresh of held swing positions: appends an eod/tick snapshot per position + runs management sync (capital-preservation rungs act; edge rungs evidence-only). Never opens or closes a position (PR-15 rolls).",
+  },
+  {
     key: "gex-eod-snapshot",
     name: "GEX EOD Snapshot",
     kind: "http",
