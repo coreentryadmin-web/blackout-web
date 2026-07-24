@@ -156,7 +156,8 @@ function ManagePanel({ play }: { play: TerminalPlay }) {
       <div className="nh-deck-lab">Trade management — advisory (we recommend, you execute)</div>
       <div className="nh-deck-rec">
         <span className={clsx("nh-deck-recb", badge)}>{badge}</span>
-        <span className="nh-deck-recnote" dangerouslySetInnerHTML={{ __html: sanitizeNote(play.recNote ?? "") }} />
+        {/* Plain text only — never inject HTML (recNote is authored plain; React escapes it safely). */}
+        <span className="nh-deck-recnote">{play.recNote}</span>
       </div>
       {play.exitModel === "RATCHET" && play.progress != null && (
         <>
@@ -199,9 +200,4 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
       <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>
     </>
   );
-}
-
-/** recNote may contain the <b> emphasis we author; strip everything else. */
-function sanitizeNote(s: string): string {
-  return s.replace(/<(?!\/?b>)[^>]*>/gi, "");
 }
