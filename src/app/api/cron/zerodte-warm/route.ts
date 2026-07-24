@@ -23,7 +23,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { warmGridEarnings } from "@/lib/zerodte/earnings";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
-import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
+import { refreshZeroDteBoardSnapshot } from "@/lib/platform/zerodte-service";
 import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
 
 export const runtime = "nodejs";
@@ -52,7 +52,11 @@ export async function GET(req: NextRequest) {
   const results = await Promise.allSettled([
     warmGridEarnings(),
     warmZeroDteBoard(),
-    getZeroDteBoardPayload(),
+    // Proactively rebuild + PUBLISH the shared board snapshot every tick so every web
+    // replica reads one converged board (fix/zerodte-board-convergence). Blocking
+    // publish (awaited) — unlike getZeroDteBoardPayload's SWR read, this guarantees the
+    // shared snapshot advances even with zero member traffic.
+    refreshZeroDteBoardSnapshot(),
   ]);
 
   let warmed = 0;

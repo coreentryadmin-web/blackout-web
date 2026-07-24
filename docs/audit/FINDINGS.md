@@ -5,6 +5,61 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-24 — [SEV-3, member-facing display] 0DTE board setup SCORES flip-flopped between two values across a member's poll (board assembled per-replica, no shared snapshot) — FIXED
+
+**Symptom (live evidence).** A 4-round authenticated poll of `/api/market/zerodte/board` ~12s apart
+(17:18 UTC 2026-07-24) showed the board `as_of` ADVANCING every round (fresh builds) while the setup
+SCORES alternated between exactly TWO states: round1==round3 (QQQ=68, MU=52, SNDK=60) and
+round2==round4 (QQQ=50, MU=56, SNDK=52). A member's ~5s SWR poll round-robins across web replicas →
+scores JUMP between two values. CONTRAST: in the SAME poll the live MARKS were monotonic/consistent
+(QQQ 11.36→11.29→11.04→10.915) because they ride the shared `nw:optmark:` Redis write-through — the
+fast lane is converged cross-replica; the board was NOT.
+
+**Root cause (confirmed by code).** `getZeroDteBoardPayload` served the board through
+`withServerCache("zerodte:board:v1", 5s, buildZeroDteBoardPayload)`. `withServerCache` prefers each
+replica's OWN in-process store during the 5s fresh window (`server-cache.ts:131`) and its background
+SWR refresh re-runs `buildZeroDteBoardPayload` LOCALLY (`server-cache.ts:218` → the loader), so the
+Redis layer is continuously overwritten by whichever replica rebuilt last and is bypassed on the hot
+path. The board is therefore ASSEMBLED PER-REPLICA (root cause class **a**), and `buildZeroDteBoardPayload`
+→ `scanZeroDteBoard` scores each setup off per-replica-cached inputs — the per-ticker
+`zerodte:intraday:<t>:<day>` reads (3-min TTL, replica-local while fresh; `scan.ts:257`) and
+`zerodte:vix-open` — which each replica warmed at a DIFFERENT instant with a DIFFERENT bar snapshot
+(root cause class **c**). Result: each replica converges to its OWN stable-but-different score set,
+stable for the ~3-min intraday-cache life (matches the 4 rounds ~36s apart), and the member poll
+alternates between replicas. Marks did not flip because `mapLedgerRow` reads them from the shared
+`nw:optmark:` store every replica READS in common.
+
+**Fix (`fix/zerodte-board-convergence`).** Give the WHOLE board the marks lane's property — one shared
+snapshot every replica reads. `getZeroDteBoardPayload` now reads a shared Redis snapshot
+(`zerodte:board:snapshot:v1`, `shared-cache.ts`) and serves it directly, so any two reads across any
+two replicas within a cycle return the byte-identical board. Liveness is preserved with a
+stale-while-revalidate refresh: a snapshot younger than 5s is served as-is; once it ages past 5s the
+next reader fires a SINGLE-WRITER background rebuild (NX build-lock elects one replica per cycle,
+deletes the lock after publishing so the next cycle advances); only a cold miss or a snapshot older
+than 30s blocks on a build, and that build publishes so peers converge onto it. The ~1-5 min cron
+warmer (`api/cron/zerodte-warm`) now calls the new `refreshZeroDteBoardSnapshot()` to proactively
+rebuild+publish each tick so the shared snapshot advances even with zero member traffic (mirrors
+"scan/cron builds once → writes the shared store"). Fail-soft throughout: any shared-store error
+(`sharedCacheGet/Set/SetNx`) degrades to a local build — the pre-fix per-replica behaviour — never a
+blank board. NO change to the scan/scoring/gates or to WHAT commits — only WHERE the served board
+comes from.
+
+**Files:** `src/lib/platform/zerodte-service.ts` (shared-snapshot read/publish/SWR + cron publisher;
+dropped `withServerCache` for the board), `src/app/api/cron/zerodte-warm/route.ts` (proactive publish),
+tests `src/lib/platform/zerodte-board-convergence.test.ts` (new) + `zerodte-service.test.ts`
+(always-miss shared-cache mock so its state-driven cases stay isolated).
+
+**Evidence.** `npx tsc --noEmit` clean; `zerodte-board-convergence.test.ts` 4/4 (two reads within a
+cycle = one build + identical `as_of`; snapshot advances across cycles; SWR single background rebuild
+republishes a newer `as_of`; shared-store outage still serves `available:true`); `zerodte-service.test.ts`
+11/11, `zerodte-service-marks` 1/1, `zerodte-ledger-pnl` 1/1, `horizon-board-from-payload` 5/5,
+`nighthawk/horizons` + `admin-zerodte-health` 16/16; `check-brand.mjs` clean.
+
+**Status.** FIXED on `fix/zerodte-board-convergence`. **SAFE TO DEPLOY MID-RTH** — serving-consistency
+only: this changes WHERE a replica reads the board from (shared snapshot vs its own in-memory build),
+not the scan/scoring/gates or what commits; fail-soft to the old local build on any Redis hiccup.
+NON-DRAFT PR; no auto-merge (lead reviews — touches the core board).
+
 ## 2026-07-24 — [SEV-3, member-facing display] 0DTE Command Deck showed Δ Γ Θ V IV + mark "—" for every WATCH-only setup (live greeks never sourced for non-entered contracts) — FIXED
 
 **Symptom (live screenshot).** Selecting a WATCH-only setup (not entered — below the score floor /
