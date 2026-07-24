@@ -4471,13 +4471,72 @@ export type ZeroDteSetupLogUpsert = {
  *  session), detected via the `xmax = 0` Postgres idiom (xmax is unset on a
  *  brand-new row; ON CONFLICT DO UPDATE sets it) — so callers can write a
  *  Stage 4 audit-trail row exactly once per alert, never on a refresh tick. */
-export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Promise<Set<string>> {
+/** Governor cap enforced ATOMICALLY at fresh-insert time (9-8). The gate stack evaluates the
+ *  concurrency/session-stop caps against a ledger SNAPSHOT read before persist; two concurrent
+ *  scan runs (the ~2min cron + the leader's WS-trigger, on different replicas) can each read
+ *  "2 of 3 live" and each commit a fresh find → 4 concurrent. This guard re-checks the caps inside
+ *  the INSERT itself, so a fresh commit that would breach the cap produces zero rows (never a partial
+ *  race). Mirrors deriveGovernorFromLedger EXACTLY: live = status IS DISTINCT FROM 'CLOSED';
+ *  stopped = plan_outcome='stopped' OR (CLOSED AND entry>0 AND trough <= entry*stopPremiumMult). */
+export type ZeroDteGovernorGuard = {
+  /** Uppercased tickers being committed FRESH this cycle — only these inserts are cap-gated (a refresh
+   *  of an already-committed row is already counted and must always upsert). */
+  freshTickers: Set<string>;
+  maxConcurrent: number;
+  maxStops: number;
+  /** entry_premium multiplier for the stop level (1 + stop_pct/100 = 0.5 for the −50% 0DTE stop). */
+  stopPremiumMult: number;
+};
+
+export async function upsertZeroDteSetupLog(
+  rows: ZeroDteSetupLogUpsert[],
+  opts?: { governorGuard?: ZeroDteGovernorGuard }
+): Promise<Set<string>> {
   if (!rows.length) return new Set();
   await ensureSchema();
   const p = await getPool();
   const freshlyFlagged = new Set<string>();
+  const guard = opts?.governorGuard ?? null;
   for (const r of rows) {
     const ticker = r.ticker.toUpperCase();
+    // A FRESH commit (new ticker this cycle) is cap-gated in-transaction; a refresh always upserts.
+    const guarded = guard != null && guard.freshTickers.has(ticker);
+    // The insert source: guarded fresh commits use SELECT…WHERE(caps) so the cap check is atomic with
+    // the insert; refreshes keep the plain VALUES. The ON CONFLICT branch is identical for both.
+    const source = guarded
+      ? `SELECT $1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$11,$12,$13,$14,$15,$16,$17,$18,NOW(),NOW()
+         WHERE (
+           (SELECT count(*) FROM zerodte_setup_log
+              WHERE session_date = $1 AND status IS DISTINCT FROM 'CLOSED') < $19
+           AND (SELECT count(*) FROM zerodte_setup_log
+              WHERE session_date = $1
+                AND (plan_outcome = 'stopped'
+                     OR (status = 'CLOSED' AND entry_premium > 0
+                         AND trough_premium IS NOT NULL AND trough_premium <= entry_premium * $21))
+              ) < $20
+         )`
+      : `VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$11,$12,$13,$14,$15,$16,$17,$18,NOW(),NOW())`;
+    const params: unknown[] = [
+      r.session_date,
+      ticker,
+      r.direction,
+      r.top_strike,
+      r.expiry,
+      Math.round(r.score),
+      r.dossier_score != null ? Math.round(r.dossier_score) : null,
+      r.conviction,
+      r.gross_premium,
+      r.spike,
+      r.underlying,
+      r.flags_json,
+      r.entry_premium,
+      r.flow_avg_fill,
+      r.plan_json,
+      r.gate_calibration_json,
+      r.entry_context ?? null,
+      r.feature_vector ?? null,
+    ];
+    if (guarded) params.push(guard!.maxConcurrent, guard!.maxStops, guard!.stopPremiumMult);
     const res = await p.query<{ inserted: boolean }>(
       `
       INSERT INTO zerodte_setup_log (
@@ -4485,7 +4544,7 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
         dossier_score, conviction, gross_premium, spike, underlying_at_flag,
         underlying_latest, flags_json, entry_premium, flow_avg_fill, plan_json,
         gate_calibration_json, entry_context, feature_vector, first_flagged_at, last_seen_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$11,$12,$13,$14,$15,$16,$17,$18,NOW(),NOW())
+      ) ${source}
       ON CONFLICT (session_date, ticker) DO UPDATE SET
         score = EXCLUDED.score,
         score_max = GREATEST(zerodte_setup_log.score_max, EXCLUDED.score),
@@ -4519,26 +4578,7 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
         last_seen_at = NOW()
       RETURNING (xmax = 0) AS inserted
       `,
-      [
-        r.session_date,
-        ticker,
-        r.direction,
-        r.top_strike,
-        r.expiry,
-        Math.round(r.score),
-        r.dossier_score != null ? Math.round(r.dossier_score) : null,
-        r.conviction,
-        r.gross_premium,
-        r.spike,
-        r.underlying,
-        r.flags_json,
-        r.entry_premium,
-        r.flow_avg_fill,
-        r.plan_json,
-        r.gate_calibration_json,
-        r.entry_context ?? null,
-        r.feature_vector ?? null,
-      ]
+      params
     );
     if (res.rows[0]?.inserted === true) freshlyFlagged.add(ticker);
   }
