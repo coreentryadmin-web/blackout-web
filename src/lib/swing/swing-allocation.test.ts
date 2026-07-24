@@ -7,6 +7,7 @@ import {
   CLUSTER_POLICY,
   type SwingAllocationCandidate,
 } from "./swing-allocation.ts";
+import { DEFAULT_PORTFOLIO_BUDGET, type PortfolioBudget } from "./swing-portfolio-budget.ts";
 
 const cand = (
   ticker: string,
@@ -100,6 +101,40 @@ test("empty book is a valid case — a within-caps single name is clean FULL", (
   assert.equal(d.advisorySizing, "FULL");
   assert.ok(d.capFlags.every((f) => !f.wouldBreach));
   assert.equal(res.capsApplied.totalInSwingsOverCap, false);
+});
+
+test("portfolio budget default is a NO-OP — decisions/capsApplied IDENTICAL, verdict clean", () => {
+  const cands = [cand("NVDA", 90), cand("AMD", 88), cand("SMH", 86), cand("QQQ", 84), cand("AVGO", 82)];
+  // Baseline: no budget arg (uses DEFAULT_PORTFOLIO_BUDGET internally).
+  const baseline = allocateSwingBook(cands);
+  // Explicitly passing the default budget must yield BYTE-IDENTICAL decisions + capsApplied.
+  const withDefault = allocateSwingBook(cands, [], DEFAULT_SWING_CAPS, DEFAULT_PORTFOLIO_BUDGET);
+  assert.deepEqual(withDefault.decisions, baseline.decisions);
+  assert.deepEqual(withDefault.capsApplied, baseline.capsApplied);
+  // The advisory verdict itself is a clean no-op under the default.
+  assert.equal(baseline.portfolioBudget.enforce, false);
+  assert.equal(baseline.portfolioBudget.advisoryBreaches.length, 0);
+  assert.equal(baseline.portfolioBudget.hardExceeded.length, 0);
+  for (const d of baseline.portfolioBudget.verdicts) assert.equal(d.constrained, false);
+});
+
+test("an ARMED budget still does NOT change allocation — only the verdict differs (no-op on decisions)", () => {
+  const cands = [cand("NVDA", 90), cand("AMD", 88)];
+  const baseline = allocateSwingBook(cands);
+  // Arm a budget with capital + a tiny per-position cap; even enforce:true must not touch decisions,
+  // because the live allocator passes only tickers (no riskUsd) — the verdict is informational only.
+  const armed: PortfolioBudget = {
+    ...DEFAULT_PORTFOLIO_BUDGET,
+    capitalUsd: 100_000,
+    maxPortfolioLossPct: 1,
+    enforce: true,
+  };
+  const withArmed = allocateSwingBook(cands, [], DEFAULT_SWING_CAPS, armed);
+  assert.deepEqual(withArmed.decisions, baseline.decisions); // allocation UNCHANGED
+  assert.deepEqual(withArmed.capsApplied, baseline.capsApplied);
+  // With no riskUsd on the positions the observed risk is 0 → no breach even armed.
+  assert.equal(withArmed.portfolioBudget.enforce, true);
+  assert.equal(withArmed.portfolioBudget.hardExceeded.length, 0);
 });
 
 test("expiryWeekKey buckets two dates in the same Mon–Sun week together, distinct weeks apart", () => {
