@@ -66,7 +66,13 @@ export function gradeScaleOut(bars: ScaleOutBar[], entryPremium: number): number
     // the bar AFTER the scale — the low that enabled a 2× high almost always preceded it intrabar,
     // so exiting the runner on the scale bar's own low would be a phantom fill.
     const wasScaledBefore = scaled;
-    peak = Math.max(peak, b.h);
+    // The trail level must derive from a peak that ALREADY PRINTED — capture the running peak
+    // BEFORE folding in this bar's own high, and only update `peak` AFTER the trailing-stop test.
+    // Otherwise a single bar's high raises the peak and its own low is then measured against that
+    // same-bar peak (intrabar look-ahead — clairvoyance, and the grade runs on DAILY bars in prod
+    // so the "same bar" is a whole session). A retrace can only be measured against a prior high;
+    // this mirrors the `wasScaledBefore` discipline already applied to the scale bar itself.
+    const prevPeak = peak;
     if (!scaled && b.l <= entryPremium * hard_stop_mult) {
       realized += remaining * entryPremium * hard_stop_mult;
       remaining = 0;
@@ -77,11 +83,12 @@ export function gradeScaleOut(bars: ScaleOutBar[], entryPremium: number): number
       remaining -= scale_fraction;
       scaled = true;
     }
-    if (wasScaledBefore && b.l <= peak * trail_from_peak) {
-      realized += remaining * peak * trail_from_peak;
+    if (wasScaledBefore && b.l <= prevPeak * trail_from_peak) {
+      realized += remaining * prevPeak * trail_from_peak;
       remaining = 0;
       break;
     }
+    peak = Math.max(peak, b.h);
   }
   if (remaining > 0) realized += remaining * (sorted.at(-1)?.c ?? entryPremium);
   return realized / entryPremium;

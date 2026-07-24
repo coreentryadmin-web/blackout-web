@@ -125,8 +125,9 @@ export function gradeSkippedPlay(input: {
     const entryBar = entryBarOf(premiumBars, blockedAtMs);
     if (entryBar != null) {
       const entry = entryBar.c;
-      // +1ms: gradePlanFromBars includes bars with t >= flaggedAt, and the entry
-      // bar itself must be excluded (see the function doc above).
+      // Pass the entry bar's own timestamp as the flag: gradePlanFromBars now excludes bars with
+      // t <= flaggedAt, so the entry bar is skipped and grading starts on the NEXT bar. (+1ms kept
+      // for explicitness; with the <= guard, entryBar.t alone would exclude the entry bar too.)
       const grade = gradePlanFromBars(premiumBars, entry, entryBar.t + 1);
       if (grade.outcome !== "ungradeable") {
         return {

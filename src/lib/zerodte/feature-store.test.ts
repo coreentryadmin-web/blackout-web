@@ -29,28 +29,35 @@ function gr(label: "win" | "loss", over: Partial<SetupFeatureVector> = {}, pnl: 
   return { ticker: "SPY", sessionDate: "2026-07-23", features: fv(over), label, pnlPct: pnl };
 }
 
-test("labelFromPlanOutcome: doubled=win, stopped/time_stop=loss, everything else=null", () => {
-  assert.equal(labelFromPlanOutcome("doubled"), "win");
-  assert.equal(labelFromPlanOutcome("stopped"), "loss");
-  assert.equal(labelFromPlanOutcome("time_stop"), "loss");
-  assert.equal(labelFromPlanOutcome("ungradeable"), null);
-  assert.equal(labelFromPlanOutcome(null), null);
-  assert.equal(labelFromPlanOutcome(""), null);
-  assert.equal(labelFromPlanOutcome("DOUBLED"), "win"); // case-insensitive
+test("labelFromPlanOutcome: win = positive plan P&L (matches record.ts isZeroDteWin); outcome only gates evidence", () => {
+  // Outcome gates evidence; realized P&L decides win/loss — identical to isZeroDteWin (pnl > 0).
+  assert.equal(labelFromPlanOutcome("doubled", 100), "win"); // +100% → win
+  assert.equal(labelFromPlanOutcome("stopped", -50), "loss"); // −50% → loss
+  // The bug this fixes: a GREEN time_stop is a WIN, not a loss (it was previously forced to loss).
+  assert.equal(labelFromPlanOutcome("time_stop", 12), "win", "a profitable time_stop is a win");
+  assert.equal(labelFromPlanOutcome("time_stop", -8), "loss", "a losing time_stop is a loss");
+  assert.equal(labelFromPlanOutcome("time_stop", 0), "loss", "flat (pnl not > 0) is a loss, per isZeroDteWin");
+  // Non-graded outcomes are never evidence regardless of any P&L.
+  assert.equal(labelFromPlanOutcome("ungradeable", 100), null);
+  assert.equal(labelFromPlanOutcome(null, 100), null);
+  assert.equal(labelFromPlanOutcome("", 100), null);
+  assert.equal(labelFromPlanOutcome("DOUBLED", 100), "win"); // case-insensitive
 });
 
 test("toGradedFeatureRows: drops ungradeable rows and rows without a feature vector — never fabricates", () => {
   const raw: RawGradedRow[] = [
     { ticker: "SPY", session_date: "2026-07-23", feature_vector: fv(), plan_outcome: "doubled", plan_pnl_pct: 105 },
     { ticker: "QQQ", session_date: "2026-07-23", feature_vector: fv(), plan_outcome: "stopped", plan_pnl_pct: -48 },
+    // a GREEN time_stop — closed profitable before 15:30 — is a WIN (matches record.ts isZeroDteWin).
+    { ticker: "AAPL", session_date: "2026-07-23", feature_vector: fv(), plan_outcome: "time_stop", plan_pnl_pct: 14 },
     { ticker: "IWM", session_date: "2026-07-23", feature_vector: fv(), plan_outcome: "ungradeable" }, // dropped
     { ticker: "NVDA", session_date: "2026-07-23", feature_vector: null, plan_outcome: "doubled" }, // no vector → dropped
     { ticker: "AMD", session_date: "2026-07-23", plan_outcome: "doubled" }, // missing vector → dropped
   ];
   const rows = toGradedFeatureRows(raw);
-  assert.equal(rows.length, 2);
-  assert.deepEqual(rows.map((r) => r.label), ["win", "loss"]);
-  assert.deepEqual(rows.map((r) => r.pnlPct), [105, -48]);
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows.map((r) => r.label), ["win", "loss", "win"]);
+  assert.deepEqual(rows.map((r) => r.pnlPct), [105, -48, 14]);
 });
 
 test("summarizeFeatureStore: counts are exact but winRate stays null below MIN_SAMPLES (calibration-first)", () => {
