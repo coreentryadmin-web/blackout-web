@@ -253,3 +253,152 @@ jobs:
           done
           echo "Static assets still broken after ECS rollout."
           exit 1
+
+      # Roll the market-worker LAST — after web has fully rolled, been edge-purged,
+      # and validated — so this additive step never delays the user-facing web deploy
+      # and a worker failure can't roll back web.
+      #
+      # WHY THIS STEP EXISTS (it is NOT redundant with "Roll ECS production web"):
+      # this pipeline previously rolled ONLY blackout-production-web, so the separate
+      # blackout-production-market-worker service's task def was updated only by hand and
+      # ROTTED between manual touches — (1) its pinned image tag eventually got pruned by
+      # the ECR lifecycle policy → CannotPullContainerError, and (2) its secrets[] kept
+      # referencing keys later removed from Secrets Manager (e.g. NEXT_PUBLIC_WHOP_CHECKOUT_LIFETIME)
+      # → ResourceInitializationError. Both took the worker DOWN (runningCount 0/1). This step
+      # mirrors the web roll's generic fix — repin the image to the freshly-built SHA and strip
+      # stale secret refs — on every deploy, so the worker tracks web and can never rot again.
+      - name: Roll ECS production market-worker
+        env:
+          ECS_CLUSTER: blackout-production-cluster
+          ECS_SERVICE: blackout-production-market-worker
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          REPO="${ECR_REPOSITORY:-blackout-web}"
+          FULL_IMAGE="${REGISTRY}/${REPO}:${IMAGE_TAG}"
+
+          # Get the current task definition from the service
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --query 'services[0].taskDefinition' --output text)
+          echo "Current worker task definition: ${TASK_DEF_ARN}"
+
+          # Fetch task def, rewrite image tags to the SHA-pinned build, and strip any
+          # secrets refs for keys missing from Secrets Manager — identical generic logic
+          # to the web roll. The worker runs the SAME image as web (same repo, same SHA);
+          # only its command/role/env differ and those already live in the task def, so we
+          # swap ONLY `image` and strip stale secrets, nothing else.
+          aws ecs describe-task-definition \
+            --task-definition "${TASK_DEF_ARN}" \
+            --query 'taskDefinition' > /tmp/worker-taskdef.json
+
+          # Re-derive the secret ARN from the WORKER's OWN task def (self-contained — do
+          # not depend on the web step's /tmp/valid-secret-keys.json). Worker and web point
+          # at the same Secrets Manager secret, but deriving it here keeps this step robust
+          # in isolation even if the web step is reordered or removed.
+          SECRET_ARN=$(python3 -c "
+          import json
+          with open('/tmp/worker-taskdef.json') as f:
+              td = json.load(f)
+          for c in td.get('containerDefinitions', []):
+              for s in c.get('secrets', []):
+                  # valueFrom format: arn:...:secret-name:KEY::
+                  arn = ':'.join(s['valueFrom'].split(':')[:-3])
+                  print(arn)
+                  break
+              break
+          ")
+          echo "Worker secret ARN: ${SECRET_ARN}"
+
+          # Fetch actual keys present in the Secrets Manager JSON
+          aws secretsmanager get-secret-value \
+            --secret-id "${SECRET_ARN}" \
+            --query 'SecretString' --output text | python3 -c "
+          import json, sys
+          keys = sorted(json.load(sys.stdin).keys())
+          with open('/tmp/worker-valid-secret-keys.json', 'w') as f:
+              json.dump(keys, f)
+          print(f'Found {len(keys)} valid secret keys')
+          "
+
+          python3 - "${FULL_IMAGE}" /tmp/worker-taskdef.json /tmp/worker-new-taskdef.json /tmp/worker-valid-secret-keys.json <<'PYEOF'
+          import json, sys
+          new_image = sys.argv[1]
+          src, dst, keys_file = sys.argv[2], sys.argv[3], sys.argv[4]
+          with open(src) as f:
+              td = json.load(f)
+          with open(keys_file) as f:
+              valid_keys = set(json.load(f))
+          for c in td.get("containerDefinitions", []):
+              c["image"] = new_image
+              orig = c.get("secrets", [])
+              filtered = [s for s in orig if s["name"] in valid_keys]
+              removed = [s["name"] for s in orig if s["name"] not in valid_keys]
+              if removed:
+                  print(f"Stripped stale secret refs: {removed}")
+              c["secrets"] = filtered
+          for k in ["taskDefinitionArn", "revision", "status",
+                     "requiresAttributes", "compatibilities",
+                     "registeredAt", "registeredBy", "deregisteredAt"]:
+              td.pop(k, None)
+          with open(dst, "w") as f:
+              json.dump(td, f)
+          PYEOF
+
+          echo "Rewriting worker image to: ${FULL_IMAGE}"
+
+          NEW_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file:///tmp/worker-new-taskdef.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "Registered new worker task definition: ${NEW_ARN}"
+
+          # Do NOT pass --desired-count: the worker is a singleton (desiredCount=1)
+          # configured on the service; overriding it on every deploy fights that config.
+          #
+          # Rolling strategy for a SINGLETON: minHealthy=0 / max=200. Unlike the 8-task web
+          # service (minHealthy=50), a 1-task service with minHealthy>0 can DEADLOCK — ECS
+          # will not stop the only running task to start the replacement. minHealthy=0 lets
+          # ECS drain the old task and start the new one (a brief gap is fine for a headless
+          # background worker); max=200 permits a one-task overlap slot. Circuit breaker with
+          # rollback stays enabled so a bad task def auto-reverts instead of leaving 0 running.
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --task-definition "${NEW_ARN}" \
+            --deployment-configuration "minimumHealthyPercent=0,maximumPercent=200,deploymentCircuitBreaker={enable=true,rollback=true}" \
+            --force-new-deployment
+
+          # Custom stability check: poll the PRIMARY deployment only (same rationale as web —
+          # the built-in services-stable waiter blocks on stale circuit-breaker leftovers that
+          # can never stabilize).
+          echo "Waiting for worker PRIMARY deployment to stabilize (up to 12 min)..."
+          for i in $(seq 1 48); do
+            sleep 15
+            STATUS=$(aws ecs describe-services \
+              --cluster "${ECS_CLUSTER}" \
+              --services "${ECS_SERVICE}" \
+              --query 'services[0].deployments[?status==`PRIMARY`] | [0]' \
+              --output json)
+            P_RUNNING=$(echo "${STATUS}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('runningCount',0))")
+            P_DESIRED=$(echo "${STATUS}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('desiredCount',0))")
+            P_ROLLOUT=$(echo "${STATUS}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('rolloutState','UNKNOWN'))")
+            echo "  [${i}/48] worker PRIMARY: running=${P_RUNNING}/${P_DESIRED}, rollout=${P_ROLLOUT}"
+            if [ "${P_ROLLOUT}" = "COMPLETED" ]; then
+              echo "Worker ECS rollout complete."
+              break
+            fi
+            if [ "${P_ROLLOUT}" = "FAILED" ]; then
+              echo "Worker ECS rollout FAILED."
+              exit 1
+            fi
+            if [ "${P_RUNNING}" = "${P_DESIRED}" ] && [ "${P_DESIRED}" != "0" ]; then
+              echo "Worker ECS rollout complete (running == desired)."
+              break
+            fi
+            if [ "$i" = "48" ]; then
+              echo "Timed out waiting for worker PRIMARY deployment to stabilize."
+              exit 1
+            fi
+          done
