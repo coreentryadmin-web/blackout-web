@@ -213,6 +213,46 @@ export function classifyArchetype(inputs: ArchetypeInputs): ArchetypeVerdict {
   };
 }
 
+// ─── Classification metadata (the full breakdown persisted alongside the primary label) ─────────
+// The verdict already ranks every archetype and computes the margin, but the persisted feature row historically
+// kept ONLY the winning label — so a later study could never ask "what did the misclassified names ALSO look
+// like?" or "how close was this call?". This reshapes the verdict into the metadata the feature store persists
+// (feature-vector.ts). PURELY DESCRIPTIVE: `primary` is the ONLY field anything downstream partitions on
+// (scoring/gating/calibration all key off the single archetype); secondary/scores/margin are captured for
+// offline mis/secondary-classification analysis and are never bucketed on. Pure — reads only the verdict.
+export interface ArchetypeClassificationMeta {
+  /** The winning archetype — authoritative, the ONLY field calibration keys off; null when unclassified. */
+  primary: SwingArchetype | null;
+  /** Remaining grounded archetypes ranked by fit (desc, priority tie-break), primary excluded; [] when none. */
+  secondary: SwingArchetype[];
+  /** Per-archetype fit-score map — GROUNDED fits only; an unmeasured archetype is omitted, never a fabricated 0. */
+  scores: Record<string, number>;
+  /** topFit − runner-up fit — the verdict's already-computed decisiveness margin (small ⇒ a near-tie call). */
+  margin: number;
+}
+
+/**
+ * Derive the full classification metadata from a verdict for persistence. The classifier already did the
+ * ranking + margin math; this only RESHAPES it (no re-classification, no new thresholds), so the winner the
+ * calibration partitions on can never drift from the secondaries captured beside it. Ranking mirrors the
+ * winner's rule — fit desc, ARCHETYPE_PRIORITY (most-specific-first) breaking a fit tie — so the "runner-up"
+ * ordering is consistent with how the winner itself was chosen.
+ */
+export function classificationMetaFromVerdict(v: ArchetypeVerdict): ArchetypeClassificationMeta {
+  // Only grounded (non-null) fits are real scores: a null fit means "couldn't measure", NOT a measured 0.
+  const ranked = SWING_ARCHETYPES.filter((a) => isNum(v.fits[a])).sort((x, y) => {
+    const dy = (v.fits[y] as number) - (v.fits[x] as number);
+    if (dy !== 0) return dy;
+    // Fit tie → most-specific-first, the same ARCHETYPE_PRIORITY order that breaks the winner's tie above.
+    return ARCHETYPE_PRIORITY.indexOf(x) - ARCHETYPE_PRIORITY.indexOf(y);
+  });
+  const scores: Record<string, number> = {};
+  for (const a of ranked) scores[a] = v.fits[a] as number;
+  // Secondary = every ranked grounded archetype except the primary winner (when one was assigned).
+  const secondary = ranked.filter((a) => a !== v.archetype);
+  return { primary: v.archetype, secondary, scores, margin: v.margin };
+}
+
 // ─── Adapter: reads → ArchetypeInputs (reuses swing-signals direction-signing) ───
 /** Grounded archetype reads that are NOT derivable from SwingReads — supplied pre-normalized (0–1) and, for
  *  the direction-dependent ones, pre-signed by the caller (upstream discovery), same discipline as reads. */
