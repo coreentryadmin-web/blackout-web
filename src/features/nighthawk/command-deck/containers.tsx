@@ -11,6 +11,7 @@ import {
 import { fetchNightHawkHorizons } from "@/lib/api";
 import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
 import type { TerminalPlay } from "./types";
+import { useZeroDteLiveMarks, overlayLiveMarks } from "./use-live-marks";
 
 const json = (u: string) => fetch(u, { cache: "no-store", credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null));
 
@@ -52,7 +53,11 @@ function zeroDteSources(resp: BoardResp | null): ZeroDteDeckSource[] {
 
 export function ZeroDteDeck() {
   const { data } = useSWR<BoardResp>("/api/market/zerodte/board", json, { refreshInterval: 5_000 });
-  const plays: TerminalPlay[] = zeroDteSources(data ?? null).map(terminalPlayFromZeroDte);
+  const liveMarks = useZeroDteLiveMarks();
+  const plays: TerminalPlay[] = overlayLiveMarks(
+    zeroDteSources(data ?? null).map(terminalPlayFromZeroDte),
+    liveMarks,
+  );
   return (
     <CommandDeck
       plays={plays}
