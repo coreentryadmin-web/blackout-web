@@ -66,8 +66,10 @@ export const CORRELATION_GROUPS: ReadonlyArray<ReadonlySet<string>> = [
   new Set(["SPY", "QQQ", "IWM", "DIA", "SPX", "SPXW", "NDX", "XSP"]),
 ];
 
-/** The correlation group a ticker belongs to, or null. */
-function correlationGroupOf(ticker: string): ReadonlySet<string> | null {
+/** The correlation group a ticker belongs to, or null. Exported so the SWING theme resolver
+ *  (src/lib/swing/theme-cluster.ts, SEV-9) can seed its broad-market cluster from the ONE
+ *  correlation-group source instead of hand-copying the index/ETF list. Caller must uppercase. */
+export function correlationGroupOf(ticker: string): ReadonlySet<string> | null {
   for (const g of CORRELATION_GROUPS) if (g.has(ticker)) return g;
   return null;
 }
