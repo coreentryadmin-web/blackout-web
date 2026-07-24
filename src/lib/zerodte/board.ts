@@ -225,6 +225,17 @@ export const SETUP_MIN_AGGR_SHARE = 0.3;
 /** Top strike more than this % IN the money = stock replacement, not a directional
  *  0DTE bet — the SNDK 1880p-at-1723 class of fake-out. */
 export const SETUP_MAX_ITM_PCT = 2;
+/** Far-OTM lotto cap (Phase 0 firewall): a top strike more than this % OUT of the money
+ *  is an egregious 0DTE lottery ticket, not a momentum play — the moneyness gate had NO
+ *  upper bound, so a far-OTM lotto stack (big premium, terrible geometry) passed straight
+ *  through. Default DELIBERATELY GENEROUS (12%) so a normal slightly-OTM momentum entry
+ *  (typ. 2–5% OTM) is untouched — this only rejects the tail. Env-overridable via
+ *  ZERODTE_SETUP_MAX_OTM_PCT (a number; invalid/absent → the 12 default). Set very high
+ *  (e.g. 999) to effectively disable. */
+export const SETUP_MAX_OTM_PCT = ((): number => {
+  const raw = Number(process.env.ZERODTE_SETUP_MAX_OTM_PCT);
+  return Number.isFinite(raw) && raw > 0 ? raw : 12;
+})();
 
 /** How much of a print's premium counts DIRECTIONALLY, by aggressor side.
  *  At/near the ask = conviction buying; bid-side = sold premium (opposite intent);
@@ -283,10 +294,18 @@ export type ZeroDteGateFailure =
   | "intraday_conflict" // G-10: VWAP + 5m trend oppose the play direction
   | "halted" // G-11: underlying trading halt
   | "earnings" // G-11: reports today/next session — different trade than 0DTE scalp
+  // ── Fresh-commit fail-CLOSED firewall (Phase 0) — a gate INPUT was attempted but came
+  // back UNAVAILABLE, so a present value COULD have blocked this candidate. Blocking is
+  // conservative (only when a present value could actually have fired the gate) so it
+  // never spuriously empties the board. Each is env-overridable (see gates.ts).
+  | "vix_unavailable" // G-4 fail-closed: day-open VIX unreadable AND a present VIX could have blocked
+  | "macro_unavailable" // G-7 fail-closed: macro-calendar FETCH failed (not "zero events") — can't rule out CPI/FOMC/NFP
+  | "max_otm_pct" // far-OTM lotto cap: top strike is more than SETUP_MAX_OTM_PCT% OTM
   // ── Night Hawk Cortex layer (./cortex-gate.ts, NIGHTHAWK-CORTEX-DESIGN.md §2) —
   // evaluated on gate SURVIVORS only, i.e. only after every hard gate above passed.
   // The <source> suffix names the Cortex source that vetoed (e.g. "cortex_veto:flow-quality").
   | `cortex_veto:${string}` // a Cortex source hard-vetoed the entry
+  | "cortex_veto_blind" // Cortex blind to BOTH veto-capable sources on a fresh commit → HOLD
   | "cortex_net_negative"; // no veto, but the evidence score nets < 0 — doesn't print
 
 export type ZeroDteGateRejection = {
@@ -600,6 +619,27 @@ export function deriveZeroDteSetups(
         ticker,
         gate_failed: "max_itm_pct",
         threshold: -SETUP_MAX_ITM_PCT,
+        gross_premium: agg.gross,
+        aggression: Math.round(aggression * 100) / 100,
+        side_dominance: Math.round(dominance * 100) / 100,
+        otm_pct: otmPct,
+        direction: dominantCall ? "long" : "short",
+        prints: agg.prints,
+        first_seen: agg.firstSeen,
+        last_seen: agg.lastSeen,
+      });
+      continue;
+    }
+    // Far-OTM lotto cap (Phase 0 firewall): mirror of the ITM gate on the OTM side. The
+    // ITM gate catches stock-replacement; this catches the egregious-lotto tail (a huge
+    // far-OTM 0DTE stack that clears the premium/dominance gates on size alone but whose
+    // strike is nowhere near a same-day move). Same rejection plumbing, its own code.
+    // Generous default (SETUP_MAX_OTM_PCT) so ordinary slightly-OTM momentum is untouched.
+    if (otmPct > SETUP_MAX_OTM_PCT) {
+      opts?.rejections?.push({
+        ticker,
+        gate_failed: "max_otm_pct",
+        threshold: SETUP_MAX_OTM_PCT,
         gross_premium: agg.gross,
         aggression: Math.round(aggression * 100) / 100,
         side_dominance: Math.round(dominance * 100) / 100,

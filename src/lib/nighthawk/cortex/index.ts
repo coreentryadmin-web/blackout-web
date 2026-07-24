@@ -28,7 +28,7 @@ export type {
   CortexWallTrendSlice,
   EvidenceItem,
 } from "./types";
-export { CORTEX_SOURCES } from "./types";
+export { CORTEX_SOURCES, VETO_CAPABLE_SOURCES } from "./types";
 
 export {
   composeCortexEvidence,

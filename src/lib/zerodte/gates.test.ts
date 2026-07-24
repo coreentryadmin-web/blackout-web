@@ -257,11 +257,63 @@ test("G-4: extreme VIX (>=20) lets index/ETF products through (half-size in cali
   assert.equal(qqq.calibration.g4_vix.would_halve_size, true);
 });
 
-test("G-4: unknown VIX does not block — fail-open on missing data (tier engine handles the penalty)", () => {
+test("G-4: unknown VIX (not attempted) does not block — a caller that omits VIX is unaffected", () => {
+  // No vixUnavailable signal → the Phase-0 fail-closed path never fires (back-compat).
   const v = evaluateZeroDteGates(input({ vixDayOpen: null }));
   assert.equal(v.calibration.g4_vix.tier, "unknown");
   assert.equal(v.calibration.g4_vix.would_block, false);
   assert.equal(v.verdict, "COMMIT");
+});
+
+// ── G-4 · VIX fail-CLOSED for fresh commits (Phase-0 firewall) ──────────────────────
+
+test("G-4 fail-closed: attempted-but-unavailable VIX blocks a fresh NON-index commit (a present VIX ≥20 could have blocked it outright)", () => {
+  const v = evaluateZeroDteGates(input({ ticker: "NVDA", direction: "short", vixDayOpen: null, vixUnavailable: true }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "vix_unavailable"), true);
+  assert.match(v.blocks.find((b) => b.code === "vix_unavailable")!.reason, /VIX read unavailable/);
+});
+
+test("G-4 fail-closed: unavailable VIX does NOT block an index/ETF whose score clears the elevated floor (no spurious empty)", () => {
+  // QQQ (index) tape-aligned short at 80 ≥ 75: no present VIX regime could have blocked it,
+  // so an unavailable VIX must not either.
+  const strong = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 80, vixDayOpen: null, vixUnavailable: true }));
+  assert.equal(strong.verdict, "COMMIT");
+  assert.equal(strong.blocks.some((b) => b.code === "vix_unavailable"), false);
+  // Tape-aligned index at 70 clears too (aligned elevated floor is 65, G-3 guarantees ≥65).
+  const aligned = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, vixDayOpen: null, vixUnavailable: true }));
+  assert.equal(aligned.verdict, "COMMIT");
+  assert.equal(aligned.blocks.some((b) => b.code === "vix_unavailable"), false);
+});
+
+test("G-4 fail-closed: unavailable VIX DOES block an index/ETF that is NOT tape-aligned and below the 75 elevated floor (a present elevated VIX could have blocked it)", () => {
+  const v = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "vix_unavailable"), true);
+});
+
+test("G-4 fail-closed: a PRESENT VIX ignores the unavailable signal entirely (normal regime path runs)", () => {
+  // vixUnavailable set but a real VIX present → the present-VIX branch runs; no vix_unavailable.
+  const v = evaluateZeroDteGates(input({ ticker: "NVDA", direction: "short", vixDayOpen: 16, vixUnavailable: true }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "vix_unavailable"), false);
+  assert.equal(v.calibration.g4_vix.tier, "normal");
+});
+
+// ── G-7 · macro fail-CLOSED for fresh commits (Phase-0 firewall) ────────────────────
+
+test("G-7 fail-closed: a FAILED macro fetch blocks a fresh commit (can't rule out a CPI/FOMC/NFP window)", () => {
+  const v = evaluateZeroDteGates(input({ macroUnavailable: true }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "macro_unavailable"), true);
+  assert.match(v.blocks.find((b) => b.code === "macro_unavailable")!.reason, /Macro calendar unavailable/);
+});
+
+test("G-7 fail-closed: 'fetched, zero events' (empty array, macroUnavailable NOT set) does NOT block", () => {
+  // The everyday case — a clean macro read that found nothing. Must commit freely.
+  const v = evaluateZeroDteGates(input({ macroEvents: [], macroUnavailable: false }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "macro_unavailable"), false);
 });
 
 // ── G-6 · cross-system conflict (HARD GATE — promoted from calibration 2026-07-16) ──

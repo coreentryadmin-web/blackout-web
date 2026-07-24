@@ -10,7 +10,15 @@
 // - HARD gates apply to NEW plan commits only. Already-committed ledger rows are
 //   NEVER retro-blocked or mutated — a printed play is managed to its exit, period.
 // - Fail closed: missing/stale gate inputs block a NEW commit (same discipline as
-//   the evidence gates' no_underlying_price rejection), never a free pass.
+//   the evidence gates' no_underlying_price rejection), never a free pass. This holds
+//   across the stack: an unreadable tape (G-1 no_market_bias), governor (G-5
+//   gate_context_unavailable), an ATTEMPTED-but-unavailable day-open VIX where a present
+//   VIX could have blocked (G-4 vix_unavailable), and a FAILED macro-calendar fetch (G-7
+//   macro_unavailable) all HOLD a fresh commit rather than let it through blind. The two
+//   Phase-0 additions (VIX/macro) are keyed off an EXPLICIT "attempted and unavailable"
+//   signal from scan.ts, so a caller that simply doesn't supply the input is unaffected,
+//   and each is conservative (blocks only when a present value could actually have fired
+//   the gate) and env-overridable, so it never spuriously empties the board.
 // - Fail visible: every block becomes a zerodte_scan_rejections row with a
 //   machine-readable code + a human sentence, and rides the setup payload as a
 //   WATCH/SKIP card — a member can always see WHY the desk sat one out.
@@ -64,6 +72,15 @@ export const OPENING_WINDOW_UNLOCK_LABEL = "10:00 ET";
 export const VIX_ELEVATED_THRESHOLD = 17;
 export const VIX_EXTREME_THRESHOLD = 20;
 export const VIX_ELEVATED_SCORE_FLOOR = 75;
+/** Phase-0 firewall kill-switch: G-4 fails a fresh commit closed when the day-open VIX
+ *  read was ATTEMPTED but unavailable AND a present VIX could have blocked this candidate
+ *  (see the G-4 block below). ON by default; set ZERODTE_G4_FAIL_CLOSED=0 to disable (e.g.
+ *  if a VIX-provider outage is emptying the board and the desk chooses to trade blind). */
+export const G4_VIX_FAIL_CLOSED_ENABLED = process.env.ZERODTE_G4_FAIL_CLOSED !== "0";
+/** Phase-0 firewall kill-switch: G-7 fails a fresh commit closed when the macro-calendar
+ *  FETCH failed (distinct from "fetched, zero events"). ON by default; set
+ *  ZERODTE_G7_FAIL_CLOSED=0 to disable. */
+export const G7_MACRO_FAIL_CLOSED_ENABLED = process.env.ZERODTE_G7_FAIL_CLOSED !== "0";
 /** Products that stay tradable (at half size) in an extreme-VIX regime — broad
  *  index options + their ETF wrappers, where 0DTE liquidity survives a vol spike. */
 export const INDEX_ETF_TICKERS = new Set([
@@ -160,15 +177,27 @@ export type ZeroDteGateInput = {
    *  governor's concurrency cap + correlated-conflict check so one cycle can't
    *  overshoot the cap or commit correlated-but-opposed plans together. */
   committedThisCycle?: GovernorOpenPlan[];
-  /** Day-open VIX (Polygon I:VIX daily bar open). Null = unavailable — G-4 is
-   *  calibration-only, so unknown is logged honestly, never guessed or blocking. */
+  /** Day-open VIX (Polygon I:VIX daily bar open). Null = value not supplied to the gate —
+   *  the G-4 regime throttle only fires on a present value, never guesses. To fail a fresh
+   *  commit CLOSED on an unavailable VIX, set `vixUnavailable` (below) as well. */
   vixDayOpen?: number | null;
+  /** Phase-0 firewall: TRUE only when scan.ts ATTEMPTED the day-open VIX read and it came
+   *  back unavailable (timeout / no bar). Distinct from a caller that simply omits VIX:
+   *  those pass `undefined` here and are never blocked. When true (and G4 fail-closed is
+   *  enabled), G-4 holds a fresh commit closed IF a present VIX could have blocked it. */
+  vixUnavailable?: boolean;
   /** SPX Slayer's live open play today (direction only). Null = none/unreadable. */
   slayerLive?: { direction: "long" | "short" } | null;
   /** Night Hawk's most recent take on THIS ticker (recency-filtered upstream). */
   nighthawkTake?: { direction: "long" | "short"; edition_for: string } | null;
-  /** G-7: today's macro calendar (CPI/FOMC/NFP windows — shared with Slayer). */
+  /** G-7: today's macro calendar (CPI/FOMC/NFP windows — shared with Slayer). An empty
+   *  array means "fetched, zero events" (safe); a FAILED fetch is signalled separately via
+   *  `macroUnavailable` (below), never conflated with zero events. */
   macroEvents?: MacroEventLike[];
+  /** Phase-0 firewall: TRUE only when the macro-calendar FETCH itself failed (not merely
+   *  "no events today"). When true (and G7 fail-closed is enabled), G-7 holds a fresh
+   *  commit closed — a blind macro read can't rule out a CPI/FOMC/NFP window. */
+  macroUnavailable?: boolean;
   /** G-8/G-9: contract plan from attachContractPlans (null = no quote + no fill). */
   plan?: ContractPlan | null;
   /** G-10: name's own VWAP/5m trend opposes the play (intraday.ts). */
@@ -285,6 +314,39 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         });
       }
     }
+  } else if (input.vixUnavailable === true && G4_VIX_FAIL_CLOSED_ENABLED) {
+    // ── G-4 FRESH-COMMIT FAIL-CLOSED (Phase-0 firewall) ──────────────────────────────
+    // The day-open VIX read was ATTEMPTED (scan.ts's best-effort within(...,2500ms)) but
+    // came back unavailable. Previously a null VIX meant "no G-4 verdict" — a free pass —
+    // so on exactly the volatile days the VIX provider is most likely to time out, the
+    // regime throttle silently switched off. Fail closed, BUT only when a present VIX
+    // could actually have blocked THIS candidate, so a routine VIX blip never empties the
+    // board:
+    //   • non-index/ETF single name → a present VIX ≥ 20 would block it outright (extreme
+    //     regime, index/ETF only) → could-block = true;
+    //   • index/ETF → extreme never blocks it, and elevated (17–20) only blocks below its
+    //     floor: 65 when tape-aligned (G-3 already guarantees ≥65), else 75. So a present
+    //     VIX could only have blocked an index/ETF that is NOT tape-aligned and sits below
+    //     the 75 elevated floor. A tape-aligned index/ETF (or one already ≥75) clears any
+    //     VIX regime → NOT blocked here (no spurious empty).
+    const tickerUp = input.ticker.toUpperCase();
+    const isIndexEtf = INDEX_ETF_TICKERS.has(tickerUp);
+    const tapeAligned =
+      input.bias != null &&
+      input.bias !== "flat" &&
+      (input.bias === "up") === (input.direction === "long");
+    const couldBlock = !isIndexEtf || (!tapeAligned && input.score < VIX_ELEVATED_SCORE_FLOOR);
+    if (couldBlock) {
+      blocks.push({
+        code: "vix_unavailable",
+        reason:
+          "Day-open VIX read unavailable (provider timeout) — a fresh 0DTE commit that a " +
+          "present VIX could have thrown out on regime fails closed until VIX is readable " +
+          "again, rather than trade the vol regime blind (G-4 fail-closed).",
+        threshold: null,
+        unlock_et: null,
+      });
+    }
   }
 
   // G-7 — macro hard-block (Slayer parity via macro-hard-block.ts). Clock-based like
@@ -299,6 +361,22 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         unlock_et: null,
       });
     }
+  } else if (input.macroUnavailable === true && G7_MACRO_FAIL_CLOSED_ENABLED) {
+    // ── G-7 FRESH-COMMIT FAIL-CLOSED (Phase-0 firewall) ──────────────────────────────
+    // The macro-calendar FETCH failed (scan.ts distinguishes this from "fetched, zero
+    // events" — only a genuine fetch failure sets macroUnavailable). Previously a failed
+    // fetch silently disabled the CPI/FOMC/NFP hard-block, so the desk could open a fresh
+    // 0DTE straight into a macro release it simply couldn't see. Fail closed: HOLD fresh
+    // commits until the calendar is readable. (Zero-events days never reach here — the
+    // first branch already ran with an empty array and found nothing to block.)
+    blocks.push({
+      code: "macro_unavailable",
+      reason:
+        "Macro calendar unavailable (fetch failed) — new 0DTE commits fail closed rather " +
+        "than open blind into a possible CPI/FOMC/NFP release window (G-7 fail-closed).",
+      threshold: null,
+      unlock_et: null,
+    });
   }
 
   // G-8/G-9 — plan quality: no chase (MOVED), no untradeable spread (illiquid), no
