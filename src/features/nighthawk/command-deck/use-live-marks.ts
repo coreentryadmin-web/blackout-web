@@ -63,8 +63,13 @@ export function useZeroDteLiveMarks(enabled = true): Map<string, LiveMarkRow> {
       }
     };
 
-    // On error the browser retries automatically (SSE semantics); nothing to do but let it — and never
-    // throw, so a dropped lane silently falls back to the board poll rather than breaking the deck.
+    es.onerror = () => {
+      // The browser auto-reconnects while readyState is CONNECTING — leave the last marks in place so a
+      // 1s blip doesn't flicker the terminal. But if the connection is fully CLOSED, drop every mark so
+      // the deck falls back to the board poll instead of freezing the last frame on screen forever.
+      if (es.readyState === EventSource.CLOSED) setMarks(new Map());
+    };
+
     return () => es.close();
   }, [enabled]);
 
@@ -78,7 +83,12 @@ export function overlayLiveMarks(plays: TerminalPlay[], marks: Map<string, LiveM
   if (marks.size === 0) return plays;
   return plays.map((p) => {
     const row = p.occ ? marks.get(p.occ) : undefined;
-    if (!row) return p;
+    // Skip a STALE row: the server flags a row stale when its quote is older than the mark-stale window
+    // (>5s), yet still computes a live_pnl_pct off that old mark. Overlaying it would REPLACE the fresher
+    // 5s board-poll mark/P&L with an older number under a "● LIVE" badge — the exact stale-shown-as-fresh
+    // failure this lane exists to kill (and if the SSE lane dies mid-session its last frame would freeze
+    // on screen, masking the still-advancing board poll). When the live row is stale, keep board values.
+    if (!row || row.stale) return p;
     return {
       ...p,
       mark: row.mark ?? p.mark,

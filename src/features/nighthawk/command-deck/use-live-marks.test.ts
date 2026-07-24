@@ -70,3 +70,15 @@ test("overlayLiveMarks: a play with no OCC is left untouched", () => {
   const out = overlayLiveMarks([play({ occ: null })], new Map([[row().occ, row()]]));
   assert.equal(out[0]!.mark, 5.0);
 });
+
+test("overlayLiveMarks: a STALE live row is NOT overlaid — the fresher board value wins", () => {
+  // A stale SSE row still carries a (now-old) mark/pnl; overlaying it would replace the fresher board poll
+  // with a stale number under a LIVE badge. Must keep board values.
+  const out = overlayLiveMarks(
+    [play()],
+    new Map([[row().occ, row({ stale: true, mark: 9.9, live_pnl_pct: 135 })]]),
+  );
+  assert.equal(out[0]!.mark, 5.0); // board value kept, stale 9.9 ignored
+  assert.equal(out[0]!.pnlPct, 19);
+  assert.equal(out[0]!.greeks, null); // stale greeks not applied either
+});
