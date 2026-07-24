@@ -45,6 +45,84 @@ OCC); all `src/lib/zerodte/*.test.ts` 487/487 pass; command-deck suites pass; `c
 watch setup gets a QUOTE ONLY, never a ledger row/status/persist/exit, so nothing about what trades
 commit changes. NON-DRAFT PR; no auto-merge (per launch instruction).
 
+## 2026-07-24 — [GO-LIVE, REAL MONEY] SWING engine taken LIVE — commit + roll now open REAL member positions (operator-authorized "everything live")
+
+**Status: NON-DRAFT PR, HELD for lead review of the commit gate before deploy (no auto-merge).** Branch
+`feat/swing-commit-roll-live`. The operator EXPLICITLY authorized the swing lane live ("GO — everything
+live, not paper-first"). This lifts the three deliberate holds — discovery's literal-`0`
+`commitEligibleCount`, the unreachable `insertSwingPosition`, and the un-wired `roll.ts` — behind FOUR
+conjunctive hard rails. Nothing was weakened; the commit was WIRED to fire only where the existing
+graduation/Wilson-LB/persistence gates already say eligible.
+
+**The exact commit-trigger condition (`src/lib/swing/commit.ts` `computeSwingCommitPlan`).** A WATCH
+candidate opens a real position IFF ALL of:
+1. **GRADUATION** — its archetype×sub-lane bucket has GRADUATED through the shipped staged Wilson-LB
+   ladder: `analyzeArchetypeRecord(...).floorGraduated` **AND** `analyzeSubLaneRecord(...).floorGraduated`
+   over the live graded history (`isCommitGraduated`). BOTH floors — the conservative reading, reusing the
+   PR-16 wrappers verbatim (zero new calibration math). Cold book / thin record (n<30, or Wilson-LB below
+   the bar) ⇒ nothing graduates ⇒ nothing commits. That is the rail, not a bug.
+2. **ARMED BUDGET** — the candidate, added to the live book, must not push a portfolio-risk dimension it
+   contributes to into HARD over-limit (`evaluateSwingCommitBudget`).
+3. **BOOK-PERCENT CAPS** — orthogonal %-of-member-book concentration (`allocateSwingBook`): per-position
+   5% / theme 20% / total-in-swings 40% / max-3-same-week-expiry.
+4. **IDEMPOTENCY** — a stable `commit_key` (`${session}:${TICKER}:${SUBLANE}:${dir}`); a name already open
+   under that key is never re-opened (and `insertSwingPosition` upserts on it as a DB backstop).
+Any failure ⇒ no commit, with a queryable `blockedBy` reason. `commitEligibleCount` is now the REAL count
+of graduated WATCH candidates (was a hardcoded literal `0`).
+
+**Armed budget — the operator-delegated numbers (`swing-portfolio-budget.ts` `PRODUCTION_PORTFOLIO_BUDGET`,
+env-overridable via `resolveProductionPortfolioBudget`).** Against a **$100k reference account** (the
+engine's own model book; members size to their own capital at serve time): `maxPortfolioLossPct 6`
+(total book heat $6k), `perPositionLossPct 2` (per-trade $2k), `eventExposureCap 3` ($3k of EVENT_DRIVEN /
+POST_EARNINGS_DRIFT exposure), `overnightCap 4` ($4k, every swing is overnight), `enforce true`. Env
+overrides: `SWING_CAPITAL_USD / SWING_MAX_PORTFOLIO_LOSS_PCT / SWING_PER_POSITION_LOSS_PCT /
+SWING_EVENT_EXPOSURE_CAP / SWING_OVERNIGHT_CAP / SWING_BUDGET_ENFORCE`. `DEFAULT_PORTFOLIO_BUDGET` stays
+DISARMED so every pure test / advisory consumer is a clean no-op. **Sizing model:** the ledger row is a
+MODEL position of ONE reference contract; `riskUsd = entry_premium × 100` (a long option's max loss IS the
+debit paid). A single lot richer than the 2% cap ($2k → premium > $20/share) is blocked by the per-position
+budget dimension — the honest "too expensive for a 2% risk slice."
+
+**How the budget gate blocks (`evaluateSwingCommitBudget`).** It evaluates (book + candidate) and blocks the
+candidate ONLY for a hard-exceeded dimension it CONTRIBUTES to: per-position when the candidate is itself the
+oversized offender; portfolio/event/overnight when the candidate adds nonzero risk to an aggregate that is
+over. Edge cases: unknown/zero risk ⇒ 0 contribution ⇒ never blocks on the budget; a non-event candidate is
+never blocked by an event breach it doesn't touch; book at an aggregate cap ⇒ new commits blocked until a
+close frees room.
+
+**Roll wired live (`src/lib/swing/roll-plan.ts` → active-refresh cron).** The already-built roll executor
+(`roll.ts` `closeAndRollSwingPosition`, transactional via `withSwingRollTx`) is now activated: at a
+capital-preservation GATE rung, `buildSwingRollPlan` freezes the parent from the live/latched mark
+(`(mark−entry)/entry×100`; never a fabricated grade — no mark ⇒ DEFER) and, for a ROLL (still-valid thesis),
+picks a FURTHER-OUT child via `rankSwingContracts` and gates it on the SAME budget + caps + idempotency
+rails (child key carries the roll generation `:r{seq}` so it never collides with the parent). A CLOSE
+(thesis-broken) grades+closes with no child. Any block ⇒ DEFER (parent stays OPEN, re-evaluated next tick) —
+a roll never half-executes or opens risk a gate forbids. The roll is NOT re-gated on graduation (capital
+preservation never waits on the ladder — manager design); it continues an already-authorized thesis.
+
+**Discovery cron** now attaches WATCH contracts (`fetchChainRows` → `resolveTickerChainRows`, fail-soft per
+name) so `playSet.SWING` is non-empty, and injects the commit seam (graded-history → calibration report,
+open book, `insertSwingPosition`, `promoteSwingCandidate`, armed budget). Absent the seam (every unit test /
+evidence-only caller) `commitEligibleCount` stays 0 and nothing opens — the exact PR-11 behavior.
+
+**Evidence.** `npx tsc --noEmit` clean; `node --import tsx --experimental-test-module-mocks --test
+src/lib/swing/*.test.ts src/lib/db-swing-ledger.test.ts` → 364 pass / 0 fail; `node scripts/check-brand.mjs`
+clean. New suites: `commit.test.ts` (17), `roll-plan.test.ts` (11), budget arming (8 added), discovery
+commit-seam (4 added), calibration mapper (1). Tests prove: commit fires ONLY on graduated+budget+caps+
+idempotency; each over-cap dimension blocks; the real graduated `commitEligibleCount`; roll opens a gated
+child; unknown-risk / missing-contract / at-cap edges are safe.
+
+**Unsure-about / conservative defaults chosen (flagged for the lead):**
+- *"archetype×sub-lane bucket graduates" → BOTH floors (AND), not either.* The calibration ladder graduates
+  per-archetype and per-sub-lane separately (no joint bucket exists; building one would be "inventing a new
+  bar"). I require BOTH to have graduated — the stricter reading, using the shipped wrappers unchanged.
+- *Roll parent graded from the live mark, not the full multi-truth forward-bar grade.* Honest realized P&L
+  at roll time with no heavy forward-bar dependency in the hot cron path; `graded_at IS NULL` freezes it once.
+- *The roll child is gated on budget/caps/idempotency but NOT re-gated on graduation* (a roll continues an
+  authorized thesis on a capital-preservation rung; the manager's gates never wait on the ladder).
+- *Roll needs an option mark, which the active-refresh reads supply.* PR-#1066 (now merged) wires the live
+  option mark into the active-refresh reads; the roll's `gradeParentFromMark` uses it (falling back to the
+  latched `last_mark`). No mark ⇒ the roll DEFERS (null-honest), never a fabricated grade.
+
 ## 2026-07-24 — [SEV-2/SEV-3, swing pre-live] Discovery reduced the 8-archetype × 7-pillar swing engine to a 3-pillar momentum screen; archetype fast-track + corroboration were dead — FIXED
 
 **Context / risk.** The swing lane is pre-live (WATCH-only, `commitEligibleCount` is a literal 0;

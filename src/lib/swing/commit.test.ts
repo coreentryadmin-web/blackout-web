@@ -1,0 +1,273 @@
+// src/lib/swing/commit.test.ts — the LIVE commit gate (go-live 2026-07-24). Proves a WATCH candidate opens a
+// REAL position ONLY when ALL FOUR gates pass — graduation ∧ armed budget ∧ book-percent caps ∧ idempotency —
+// and that `commitEligibleCount` is the REAL graduated count, with every edge case (unknown risk / missing
+// contract / at-cap) safe. Pure decision core + the fail-soft executor, injected accessors (no live DB).
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  computeSwingCommitPlan,
+  executeSwingCommits,
+  isCommitGraduated,
+  modelRiskUsd,
+  isEventArchetype,
+  swingCommitKey,
+  swingRollCommitKey,
+  type SwingCommitCandidate,
+  type CommitBookPosition,
+  type SwingCommitDeps,
+} from "./commit.ts";
+import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration.ts";
+import type { ChainContract, PlayDirection } from "../horizon-fanout.ts";
+import { PRODUCTION_PORTFOLIO_BUDGET, DEFAULT_PORTFOLIO_BUDGET } from "./swing-portfolio-budget.ts";
+import type { SwingArchetype, SwingSubLane } from "./taxonomy.ts";
+
+// ── report builders — REAL graded rows run through the shipped ladder (no faked graduation) ──
+function gradedRows(archetype: SwingArchetype, subLane: SwingSubLane, nWin: number, nLoss: number): SwingCalibrationRow[] {
+  const rows: SwingCalibrationRow[] = [];
+  // Winners score ABOVE both the archetype + sub-lane floors; losers BELOW — so the same rows graduate BOTH
+  // buckets: on-signal (cleared floor) wins by ~100pt over off-signal (below floor) at n≥30 (LIMITED tier).
+  for (let i = 0; i < nWin; i++) rows.push({ realized_pnl_pct: 55, graded_at: "2026-07-01T00:00:00Z", archetype, sub_lane: subLane, score: 92 });
+  for (let i = 0; i < nLoss; i++) rows.push({ realized_pnl_pct: -35, graded_at: "2026-07-01T00:00:00Z", archetype, sub_lane: subLane, score: 25 });
+  return rows;
+}
+/** A report in which EXACTLY (archetype, subLane) has both floors graduated (32 win / 12 loss → LIMITED + Δ100). */
+function graduatedReport(archetype: SwingArchetype = "BREAKOUT", subLane: SwingSubLane = "STANDARD"): SwingCalibrationReport {
+  return analyzeSwingCalibration(gradedRows(archetype, subLane, 32, 12));
+}
+
+// ── fixtures ──
+function contract(over: Partial<ChainContract> = {}): ChainContract {
+  return { ticker: "NVDA", right: "C", expiry: "2026-08-14", dte: 14, strike: 180, delta: 0.6, openInterest: 1000, bid: 5.0, ask: 5.2, mid: 5.1, ...over };
+}
+function candidate(over: Partial<SwingCommitCandidate> = {}): SwingCommitCandidate {
+  return {
+    ticker: "NVDA", direction: "LONG", archetype: "BREAKOUT", subLane: "STANDARD", score: 85,
+    contract: contract(), sessionDate: "2026-07-24", ...over,
+  };
+}
+const book = (over: Partial<CommitBookPosition> & { ticker: string }): CommitBookPosition => ({
+  direction: "LONG", commitKey: `2026-07-24:${over.ticker.toUpperCase()}:STANDARD:long`, isOvernight: true, ...over,
+});
+
+// ─── the REAL graduation integration (wire, don't weaken) ──────────────────────
+
+test("graduation: a real 32-win/12-loss BREAKOUT×STANDARD record graduates BOTH floors via the shipped ladder", () => {
+  const report = graduatedReport("BREAKOUT", "STANDARD");
+  assert.equal(report.archetype_floors.find((g) => g.archetype === "BREAKOUT")!.floorGraduated, true);
+  assert.equal(report.sub_lane_floors.find((g) => g.subLane === "STANDARD")!.floorGraduated, true);
+  assert.equal(isCommitGraduated(report, "BREAKOUT", "STANDARD").graduated, true);
+  // A different archetype / sub-lane in the SAME report is NOT graduated (no record) → not eligible.
+  assert.equal(isCommitGraduated(report, "MEAN_REVERSION", "STANDARD").graduated, false);
+  assert.equal(isCommitGraduated(report, "BREAKOUT", "TACTICAL").graduated, false);
+  // Null archetype/sub-lane and a null report are never graduated (conservative).
+  assert.equal(isCommitGraduated(report, null, "STANDARD").graduated, false);
+  assert.equal(isCommitGraduated(report, "BREAKOUT", null).graduated, false);
+  assert.equal(isCommitGraduated(null, "BREAKOUT", "STANDARD").graduated, false);
+});
+
+test("a thin (n<30) record does NOT graduate → nothing commits (the cold-book hard rail)", () => {
+  const thin = analyzeSwingCalibration(gradedRows("BREAKOUT", "STANDARD", 8, 3)); // n=8 → RESEARCH tier
+  const plan = computeSwingCommitPlan({ candidates: [candidate()], report: thin, book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  assert.equal(plan.commitEligibleCount, 0);
+  assert.equal(plan.committableCount, 0);
+  assert.deepEqual(plan.decisions[0].blockedBy, ["not_graduated"]);
+});
+
+// ─── the happy path + the four-gate conjunction ────────────────────────────────
+
+test("commit FIRES only when graduated ∧ contract-present ∧ budget-cleared ∧ caps-cleared ∧ not-open", () => {
+  const plan = computeSwingCommitPlan({ candidates: [candidate()], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const d = plan.decisions[0];
+  assert.equal(d.graduated, true);
+  assert.equal(d.committable, true);
+  assert.deepEqual(d.blockedBy, []);
+  assert.equal(plan.commitEligibleCount, 1);
+  assert.equal(plan.committableCount, 1);
+  // The ledger row is built with the traded contract + the pinned commit-gate evidence.
+  assert.ok(d.insert, "committable → an insert row is built");
+  assert.equal(d.insert!.commit_key, swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long"));
+  assert.equal(d.insert!.sub_lane, "STANDARD");
+  assert.equal(d.insert!.direction, "long");
+  assert.equal(d.insert!.contract_type, "call");
+  assert.equal(d.insert!.entry_premium, 5.1);
+  assert.equal((d.insert!.entry_context as Record<string, unknown>).risk_usd, 510);
+  assert.equal((d.insert!.gate_calibration_json as Record<string, unknown>).graduated, true);
+});
+
+test("commitEligibleCount = the REAL graduated count (graduated but budget-blocked STILL counts as eligible)", () => {
+  // Two graduated candidates; the 2nd is priced so its single lot exceeds the 2% per-trade cap → blocked, but it
+  // is still GRADUATED, so commitEligibleCount = 2 while committableCount = 1.
+  const ok = candidate({ ticker: "NVDA", score: 90 });
+  const tooRich = candidate({ ticker: "AMD", score: 80, contract: contract({ ticker: "AMD", mid: 25 }) }); // $2.5k > $2k
+  const plan = computeSwingCommitPlan({ candidates: [ok, tooRich], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  assert.equal(plan.commitEligibleCount, 2, "both graduated → eligible count 2");
+  assert.equal(plan.committableCount, 1, "only the affordable one opens");
+  const amd = plan.decisions.find((d) => d.ticker === "AMD")!;
+  assert.equal(amd.graduated, true);
+  assert.equal(amd.committable, false);
+  assert.deepEqual(amd.blockedBy, ["budget:per_position_loss"]);
+});
+
+test("an UNGRADUATED candidate is neither eligible nor committable (and does not count)", () => {
+  const plan = computeSwingCommitPlan({ candidates: [candidate({ archetype: "MEAN_REVERSION" })], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  assert.equal(plan.commitEligibleCount, 0);
+  assert.deepEqual(plan.decisions[0].blockedBy, ["not_graduated"]);
+});
+
+// ─── sizing ────────────────────────────────────────────────────────────────────
+
+test("sizing: riskUsd = premium × 100 (the reference lot); null premium → unknown", () => {
+  assert.equal(modelRiskUsd(5.1), 510);
+  assert.equal(modelRiskUsd(0), null);
+  assert.equal(modelRiskUsd(null), null);
+  assert.equal(modelRiskUsd(-1), null);
+  const plan = computeSwingCommitPlan({ candidates: [candidate()], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  assert.equal(plan.decisions[0].riskUsd, 510);
+});
+
+// ─── budget gate (each dimension blocks; see swing-portfolio-budget.test for the dimension math) ──
+
+test("budget: the per-trade 2% cap blocks a single lot richer than $2k", () => {
+  const plan = computeSwingCommitPlan({ candidates: [candidate({ contract: contract({ mid: 22 }) })], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  assert.equal(plan.commitEligibleCount, 1); // graduated…
+  assert.equal(plan.decisions[0].committable, false); // …but blocked
+  assert.deepEqual(plan.decisions[0].blockedBy, ["budget:per_position_loss"]);
+});
+
+test("budget: a book at the overnight cap blocks a new overnight commit", () => {
+  // Overnight cap 4% = $4k. Two $2k overnight positions already on the book → the new $510 overnight is blocked.
+  const existing = [
+    book({ ticker: "AMD", riskUsd: 2000 }),
+    book({ ticker: "MSFT", riskUsd: 2000 }),
+  ];
+  const plan = computeSwingCommitPlan({ candidates: [candidate()], report: graduatedReport(), book: existing, budget: PRODUCTION_PORTFOLIO_BUDGET });
+  assert.equal(plan.decisions[0].committable, false);
+  assert.ok(plan.decisions[0].blockedBy.includes("budget:overnight"));
+});
+
+// ─── book-percent caps (allocation) ──────────────────────────────────────────────
+
+test("caps: the same-week-expiry cap (max 3) blocks the 4th same-week commit", () => {
+  // Four graduated names, SAME expiry week, cheap premium (budget won't bind). The 1st–3rd open; the 4th trips
+  // the max-same-week-expiry cap.
+  const exp = "2026-08-14";
+  const cands = ["AAA", "BBB", "CCC", "DDD"].map((t, i) =>
+    candidate({ ticker: t, score: 90 - i, contract: contract({ ticker: t, expiry: exp, mid: 3 }) }),
+  );
+  const plan = computeSwingCommitPlan({ candidates: cands, report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  assert.equal(plan.committableCount, 3, "only 3 positions may share an expiry week");
+  const fourth = plan.decisions.find((d) => d.ticker === "DDD")!;
+  assert.equal(fourth.committable, false);
+  assert.ok(fourth.blockedBy.includes("cap:max_same_week_expiry"), `4th blocked by the same-week cap (${fourth.blockedBy})`);
+});
+
+// ─── idempotency ────────────────────────────────────────────────────────────────
+
+test("idempotency: a name already OPEN under its commit_key is never re-opened", () => {
+  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long") })];
+  const plan = computeSwingCommitPlan({ candidates: [candidate()], report: graduatedReport(), book: existing, budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const d = plan.decisions[0];
+  assert.equal(d.graduated, true, "still graduated (counts as eligible)…");
+  assert.equal(plan.commitEligibleCount, 1);
+  assert.equal(d.committable, false, "…but not re-opened");
+  assert.ok(d.blockedBy.includes("already_open"));
+});
+
+test("idempotency: a name open from a PRIOR session (different commit_key) is still blocked — one thesis per name+side", () => {
+  // The open position carries LAST week's commit_key; today's candidate would mint a NEW key. Keying idempotency
+  // on (ticker, direction) — not the session-scoped key — prevents a graduated name that STAYS on WATCH from
+  // opening a fresh position every single session.
+  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-17", "NVDA", "STANDARD", "long") })];
+  const plan = computeSwingCommitPlan({ candidates: [candidate({ sessionDate: "2026-07-24" })], report: graduatedReport(), book: existing, budget: PRODUCTION_PORTFOLIO_BUDGET });
+  assert.equal(plan.decisions[0].committable, false);
+  assert.ok(plan.decisions[0].blockedBy.includes("already_open"), "prior-session open blocks a same-name re-commit");
+});
+
+// ─── edge cases (missing contract / unknown premium / no direction) — all SAFE ──
+
+test("edge: no contract → not committable (blocked no_contract), still eligible if graduated", () => {
+  const plan = computeSwingCommitPlan({ candidates: [candidate({ contract: null })], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const d = plan.decisions[0];
+  assert.equal(d.graduated, true, "graduation reads the intended sub-lane when no contract is attached");
+  assert.equal(plan.commitEligibleCount, 1);
+  assert.equal(d.committable, false);
+  assert.ok(d.blockedBy.includes("no_contract"));
+  assert.equal(d.insert, undefined);
+});
+
+test("edge: unknown premium (mid null) → blocked unknown_premium (never opens without an entry price)", () => {
+  const plan = computeSwingCommitPlan({ candidates: [candidate({ contract: contract({ mid: null }) })], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const d = plan.decisions[0];
+  assert.equal(d.committable, false);
+  assert.ok(d.blockedBy.includes("unknown_premium"));
+});
+
+test("edge: a direction-null (structure-only) candidate never commits", () => {
+  const plan = computeSwingCommitPlan({ candidates: [candidate({ direction: null })], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  assert.equal(plan.decisions[0].committable, false);
+  assert.ok(plan.decisions[0].blockedBy.includes("no_direction"));
+});
+
+test("disarmed budget path: with the DEFAULT (advisory) budget the budget gate never blocks", () => {
+  // Even a $9k lot clears the DISARMED budget (advisory) — proving the budget block is enforce-gated. (Caps +
+  // graduation still apply; this isolates the budget dimension.)
+  const plan = computeSwingCommitPlan({ candidates: [candidate({ contract: contract({ mid: 90 }) })], report: graduatedReport(), book: [], budget: DEFAULT_PORTFOLIO_BUDGET });
+  const d = plan.decisions[0];
+  assert.ok(!d.blockedBy.some((b) => b.startsWith("budget:")), "disarmed budget contributes no block");
+  assert.equal(d.committable, true);
+});
+
+test("determinism: same inputs → identical plan (best-first, ticker tie-break)", () => {
+  const cands = [candidate({ ticker: "BBB" }), candidate({ ticker: "AAA" }), candidate({ ticker: "CCC" })];
+  const a = computeSwingCommitPlan({ candidates: cands, report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const b = computeSwingCommitPlan({ candidates: [...cands], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  assert.deepEqual(a.decisions.map((d) => d.ticker), b.decisions.map((d) => d.ticker));
+});
+
+// ─── the executor (fail-soft IO shell) ───────────────────────────────────────────
+
+test("executeSwingCommits: opens every committable position + links it; skips the rest; fail-soft on error", async () => {
+  const cands = [
+    candidate({ ticker: "NVDA", score: 90 }),
+    candidate({ ticker: "AMD", score: 80, archetype: "MEAN_REVERSION" }), // ungraduated → skipped
+    candidate({ ticker: "BOOM", score: 70 }), // committable but the insert throws
+  ];
+  const plan = computeSwingCommitPlan({ candidates: cands, report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const inserted: string[] = [];
+  const promoted: string[] = [];
+  let nextId = 100;
+  const deps: SwingCommitDeps = {
+    insertPosition: async (pos) => {
+      if (pos.ticker === "BOOM") throw new Error("insert boom");
+      inserted.push(pos.ticker);
+      return (nextId += 1);
+    },
+    promote: async (ticker, _dir, id) => { promoted.push(`${ticker}:${id}`); },
+  };
+  const res = await executeSwingCommits(deps, plan);
+
+  assert.deepEqual(inserted, ["NVDA"], "only the committable, non-throwing position is inserted");
+  assert.deepEqual(promoted, ["NVDA:101"], "the opened position's candidate is linked (promoted)");
+  assert.equal(res.errors, 1, "the throwing insert is caught + tallied (fail-soft)");
+  assert.ok(res.committed.find((c) => c.ticker === "NVDA")!.positionId != null);
+  assert.equal(res.committed.find((c) => c.ticker === "BOOM")!.positionId, null);
+  assert.ok(res.skipped.find((s) => s.ticker === "AMD"), "the ungraduated candidate is in the skipped list with its reason");
+});
+
+// ─── small helpers ────────────────────────────────────────────────────────────
+
+test("helpers: event archetype set + commit_key formats", () => {
+  assert.equal(isEventArchetype("EVENT_DRIVEN"), true);
+  assert.equal(isEventArchetype("POST_EARNINGS_DRIFT"), true);
+  assert.equal(isEventArchetype("FAILED_BREAKDOWN"), false, "structural reclaim is not event exposure");
+  assert.equal(isEventArchetype("BREAKOUT"), false);
+  assert.equal(isEventArchetype(null), false);
+  assert.equal(swingCommitKey("2026-07-24", "nvda", "STANDARD", "long"), "2026-07-24:NVDA:STANDARD:long");
+  assert.equal(swingRollCommitKey("2026-07-24", "nvda", "STANDARD", "long", 1), "2026-07-24:NVDA:STANDARD:long:r1");
+  assert.notEqual(
+    swingRollCommitKey("2026-07-24", "NVDA", "STANDARD", "long", 1),
+    swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long"),
+    "a roll child key never collides with the parent key",
+  );
+});

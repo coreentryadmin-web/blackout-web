@@ -31,7 +31,16 @@ import {
   fetchAccumulating,
   markAccumPromoted,
   fadeStaleAccum,
+  fetchGradedSwingFeatureRows,
+  fetchOpenSwingPositions,
+  insertSwingPosition,
 } from "@/lib/db";
+import { promoteSwingCandidate, type SwingAccumAccessors } from "@/lib/swing/accumulation-store";
+import { swingCalibrationRowFromLedger } from "@/lib/swing/calibration";
+import { modelRiskUsd, isEventArchetype, type CommitBookPosition } from "@/lib/swing/commit";
+import { resolveProductionPortfolioBudget } from "@/lib/swing/swing-portfolio-budget";
+import type { SwingArchetype } from "@/lib/swing/taxonomy";
+import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import { fetchDailyMarketSummary, fetchStockDailyBars } from "@/lib/providers/polygon";
 import { fetchPolygonTickerDetails } from "@/lib/providers/polygon-largo";
 import { fetchTickerNews, DEFAULT_CATALYST_CHANNELS } from "@/lib/providers/polygon-news";
@@ -75,6 +84,7 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
     }
     return cached;
   };
+  const accum: SwingAccumAccessors = { upsertSwingAccum, fetchAccumulating, markAccumPromoted, fadeStaleAccum };
   return {
     fetchFlowWindow: async (): Promise<MinimalFlowRow[]> =>
       fetchRecentFlows({ since_hours: MULTI_DAY_FLOW_HOURS, min_premium: MULTI_DAY_MIN_PREMIUM, limit: MULTI_DAY_FLOW_LIMIT }),
@@ -123,7 +133,47 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
           mover: ctx.mover,
         },
       ),
-    accum: { upsertSwingAccum, fetchAccumulating, markAccumPromoted, fadeStaleAccum },
+    accum,
+    // ── ATTACH WATCH CONTRACTS: resolve the ATM chain (front expiries) per candidate so `playSet.SWING` is
+    //    non-empty and the commit gate has a concrete instrument to open. FAIL-SOFT: a chain miss/throw for one
+    //    name returns [] (that candidate simply carries no contract), never sinks the cron. ──
+    fetchChainRows: async (ticker: string) => {
+      try {
+        const resolved = await resolveTickerChainRows(ticker);
+        return resolved?.rows ?? [];
+      } catch (err) {
+        console.error(`[cron/swing-discovery] chain fetch failed for ${ticker} — dropping contract`, err);
+        return [];
+      }
+    },
+    // ── LIVE COMMIT SEAM (go-live 2026-07-24). Its PRESENCE authorizes real opens — but every commit still
+    //    passes graduation ∧ armed budget ∧ book-percent caps ∧ idempotency inside commit.ts. ──
+    // The GRADUATION input: graded roll-chain legs → the calibration-row shape the ladder reads.
+    fetchGradedHistory: async () => {
+      const rows = await fetchGradedSwingFeatureRows(5000);
+      return rows.map(swingCalibrationRowFromLedger);
+    },
+    // The live book (budget + caps + idempotency). Prefer the pinned commit-time risk; fall back to the model
+    // reference lot (premium × 100) so a legacy/roll row without a pinned risk still counts honestly.
+    fetchOpenBook: async (): Promise<CommitBookPosition[]> => {
+      const rows = await fetchOpenSwingPositions();
+      return rows.map((r) => {
+        const pinned = r.entry_context?.risk_usd;
+        const riskUsd = typeof pinned === "number" && Number.isFinite(pinned) ? pinned : modelRiskUsd(r.entry_premium);
+        return {
+          ticker: r.ticker,
+          direction: r.direction === "short" ? "SHORT" : "LONG",
+          commitKey: r.commit_key,
+          riskUsd,
+          isEvent: isEventArchetype(r.archetype as SwingArchetype | null),
+          isOvernight: true,
+          expiry: r.contract_expiry,
+        };
+      });
+    },
+    insertPosition: insertSwingPosition,
+    promoteCommit: (ticker, direction, positionId) => promoteSwingCandidate(accum, ticker, direction, positionId),
+    budget: resolveProductionPortfolioBudget(),
     nowMs,
     sessionDay,
     phase,
@@ -200,8 +250,12 @@ export async function GET(req: NextRequest) {
       enriched: result.enrichedCount,
       dossiers: result.dossiers.length,
       watch: result.watchCount,
-      // Evidence-only rail: PR-13 commits nothing. This stays 0 by construction (not derived).
+      // LIVE (go-live 2026-07-24): the REAL count of WATCH candidates whose archetype×sub-lane bucket GRADUATED,
+      // and how many actually opened after the armed budget + book-percent caps + idempotency gates.
       commitEligible: result.commitEligibleCount,
+      committed: result.commit?.committed.filter((c) => c.positionId != null).length ?? 0,
+      commitErrors: result.commit?.errors ?? 0,
+      commitSkipped: result.commit?.skipped.length ?? 0,
     };
     await logCronRun("swing-discovery", started, payload);
     return NextResponse.json(payload);

@@ -10,6 +10,7 @@ import {
   analyzeAllocationRecord,
   analyzeSwingCalibration,
   isGradedSwingRow,
+  swingCalibrationRowFromLedger,
   swingGraduationTier,
   wilsonLowerBound,
   SWING_GRADUATION_TIERS,
@@ -29,6 +30,33 @@ const row = (win: boolean, extra: Partial<SwingCalibrationRow> = {}): SwingCalib
 /** N rows, `wins` of them winners. */
 const rows = (n: number, wins: number, extra: Partial<SwingCalibrationRow> = {}): SwingCalibrationRow[] =>
   Array.from({ length: n }, (_, i) => row(i < wins, extra));
+
+// ── ledger → calibration row mapper (the commit-gate graduation input) ─────────────────────────
+test("swingCalibrationRowFromLedger: reads pinned grade/archetype/sub-lane/score; foreign values → null", () => {
+  const mapped = swingCalibrationRowFromLedger({
+    realized_pnl_pct: 42.5,
+    graded_at: "2026-07-20T00:00:00Z",
+    archetype: "BREAKOUT",
+    sub_lane: "STANDARD",
+    entry_context: { score: 88, risk_usd: 510 },
+    feature_vector: { score: 12 }, // entry_context wins over feature_vector
+  });
+  assert.equal(mapped.realized_pnl_pct, 42.5);
+  assert.equal(mapped.graded_at, "2026-07-20T00:00:00Z");
+  assert.equal(mapped.archetype, "BREAKOUT");
+  assert.equal(mapped.sub_lane, "STANDARD");
+  assert.equal(mapped.score, 88, "score is read from entry_context (where the commit gate pins it)");
+
+  // Falls back to feature_vector.score; foreign archetype/sub-lane map to null (a no-read bucket, not a vote).
+  const fallback = swingCalibrationRowFromLedger({ realized_pnl_pct: 1, archetype: "NOPE", sub_lane: "BOGUS", feature_vector: { score: 70 } });
+  assert.equal(fallback.score, 70);
+  assert.equal(fallback.archetype, null);
+  assert.equal(fallback.sub_lane, null);
+  // A row missing everything is still a valid (all-null) calibration row — never throws.
+  const bare = swingCalibrationRowFromLedger({ realized_pnl_pct: null });
+  assert.equal(bare.score, null);
+  assert.equal(bare.archetype, null);
+});
 
 // ── graded gate ──────────────────────────────────────────────────────────────────────────────
 test("isGradedSwingRow requires BOTH a grade stamp and a finite realized P&L", () => {

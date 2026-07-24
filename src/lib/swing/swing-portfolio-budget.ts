@@ -45,8 +45,9 @@ export interface PortfolioBudget {
 
 /**
  * Advisory-only default: every limit null, `enforce:false`. With this, `evaluatePortfolioBudget`
- * NEVER reports a breach and the allocator behaves exactly as it does today. Arming it is a
- * deferred operator input (real `capitalUsd` + loss limits + `enforce:true`).
+ * NEVER reports a breach and the allocator behaves exactly as it does today. Kept DISARMED so every
+ * pure test / advisory consumer that omits a budget stays a clean no-op. The LIVE commit path uses
+ * `PRODUCTION_PORTFOLIO_BUDGET` (below), never this.
  */
 export const DEFAULT_PORTFOLIO_BUDGET: PortfolioBudget = {
   capitalUsd: null,
@@ -56,6 +57,58 @@ export const DEFAULT_PORTFOLIO_BUDGET: PortfolioBudget = {
   overnightCap: null,
   enforce: false,
 };
+
+// ─── ARMED production budget (operator-delegated numbers — go-live 2026-07-24) ──────────────────────
+// The operator delegated the risk numbers and authorized the swing lane LIVE. These are the HARD rails
+// the live commit gate enforces against a $100k REFERENCE account (the engine's own model book — members
+// size to their own capital at serve time; see swing-allocation.ts for the orthogonal %-of-member-book caps):
+//   • capitalUsd 100_000        — the reference account the percentages resolve against.
+//   • maxPortfolioLossPct 6     — TOTAL book heat: at most 6% ($6k) of loss-at-risk across every open swing.
+//   • perPositionLossPct 2      — PER-TRADE risk: no single position risks more than 2% ($2k) max loss.
+//   • eventExposureCap 3        — at most 3% ($3k) of loss-at-risk concentrated in EVENT-driven names.
+//   • overnightCap 4            — at most 4% ($4k) of loss-at-risk held OVERNIGHT (every swing is overnight).
+//   • enforce true              — ARMED: `hardExceeded` is populated and the commit gate BLOCKS on it.
+// Reference constants (the fallback when no env override is set). Env-overridable via
+// `resolveProductionPortfolioBudget()` so the operator can retune without a deploy.
+export const PRODUCTION_PORTFOLIO_BUDGET: PortfolioBudget = {
+  capitalUsd: 100_000,
+  maxPortfolioLossPct: 6,
+  perPositionLossPct: 2,
+  eventExposureCap: 3,
+  overnightCap: 4,
+  enforce: true,
+};
+
+/** Parse a positive-finite number from an env string; null/blank/garbage → the fallback (never a NaN or 0). */
+function envNum(raw: string | undefined, fallback: number): number {
+  if (raw == null) return fallback;
+  const n = Number(String(raw).trim());
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/**
+ * Resolve the LIVE portfolio budget: `PRODUCTION_PORTFOLIO_BUDGET` with each field overridable from the
+ * environment, so the operator can retune the reference account / loss limits without a code deploy.
+ *   SWING_CAPITAL_USD · SWING_MAX_PORTFOLIO_LOSS_PCT · SWING_PER_POSITION_LOSS_PCT ·
+ *   SWING_EVENT_EXPOSURE_CAP · SWING_OVERNIGHT_CAP · SWING_BUDGET_ENFORCE (set to "0"/"false" to disarm).
+ * A malformed/blank override falls back to the constant (never NaN/0 — a hollow limit could open the gate).
+ * `enforce` stays TRUE unless explicitly disarmed, so the default posture is ARMED (fail-safe for real money).
+ */
+export function resolveProductionPortfolioBudget(
+  env: Record<string, string | undefined> = process.env,
+): PortfolioBudget {
+  const enforceRaw = env.SWING_BUDGET_ENFORCE;
+  const enforce =
+    enforceRaw == null ? PRODUCTION_PORTFOLIO_BUDGET.enforce : !/^(0|false|no|off)$/i.test(enforceRaw.trim());
+  return {
+    capitalUsd: envNum(env.SWING_CAPITAL_USD, PRODUCTION_PORTFOLIO_BUDGET.capitalUsd!),
+    maxPortfolioLossPct: envNum(env.SWING_MAX_PORTFOLIO_LOSS_PCT, PRODUCTION_PORTFOLIO_BUDGET.maxPortfolioLossPct!),
+    perPositionLossPct: envNum(env.SWING_PER_POSITION_LOSS_PCT, PRODUCTION_PORTFOLIO_BUDGET.perPositionLossPct!),
+    eventExposureCap: envNum(env.SWING_EVENT_EXPOSURE_CAP, PRODUCTION_PORTFOLIO_BUDGET.eventExposureCap!),
+    overnightCap: envNum(env.SWING_OVERNIGHT_CAP, PRODUCTION_PORTFOLIO_BUDGET.overnightCap!),
+    enforce,
+  };
+}
 
 /** One position's contribution to the portfolio risk budget. `riskUsd` = its max loss (dollar risk). */
 export interface BudgetPosition {
@@ -172,4 +225,73 @@ export function evaluatePortfolioBudget(
   const hardExceeded = budget.enforce ? advisoryBreaches.slice() : [];
 
   return { enforce: budget.enforce, verdicts, advisoryBreaches, hardExceeded };
+}
+
+/** Dollar loss-at-risk a candidate contributes (its max loss). Null/≤0 ⇒ 0 — unknown risk never blocks. */
+export function budgetRiskUsd(p: BudgetPosition): number {
+  return risk(p);
+}
+
+/** The verdict of the HARD pre-commit budget gate for ONE candidate against the current live book. */
+export interface SwingCommitBudgetVerdict {
+  /** True when the candidate MUST be blocked — it is part of a HARD-exceeded dimension it contributes to. */
+  blocked: boolean;
+  /** The hard-exceeded dimensions the candidate contributes to (the block reasons). Empty ⇒ cleared. */
+  blockedDimensions: BudgetDimension[];
+  /** The candidate's own loss-at-risk (0 when unknown). */
+  candidateRiskUsd: number;
+  /** Mirrors the budget's flag — advisory (enforce:false) NEVER blocks. */
+  enforce: boolean;
+  /** The full verdict over (book + candidate) — surfaced verbatim as the queryable reason. */
+  verdict: PortfolioBudgetVerdict;
+}
+
+/**
+ * HARD pre-commit budget gate: would opening `candidate` on top of the CURRENT live `book` push a budget
+ * dimension the candidate CONTRIBUTES to into HARD over-limit? This is the money guard the live commit path
+ * consults (unlike `evaluatePortfolioBudget`, which only annotates the whole set).
+ *
+ * A candidate is blocked ONLY for a hard-exceeded dimension it actually contributes to — never for one it
+ * doesn't touch (a non-event candidate is never blocked by an event-exposure breach; a small candidate is
+ * never blocked by an EXISTING position's per-position breach). This encodes the operator's edge cases:
+ *   • unknown/zero risk ⇒ 0 contribution ⇒ never blocked on the budget (don't block on unknown);
+ *   • a single position over `perPositionLossPct` ⇒ it is its own per-position offender ⇒ blocked;
+ *   • the book already at an aggregate cap ⇒ any nonzero-risk candidate contributing to that dimension is
+ *     blocked until a close frees room.
+ * Advisory (enforce:false) ⇒ `blocked:false` always (mirrors `hardExceeded` being empty when disarmed).
+ */
+export function evaluateSwingCommitBudget(
+  book: BudgetPosition[],
+  candidate: BudgetPosition,
+  budget: PortfolioBudget = DEFAULT_PORTFOLIO_BUDGET,
+): SwingCommitBudgetVerdict {
+  const verdict = evaluatePortfolioBudget([...book, candidate], budget);
+  const candidateRiskUsd = risk(candidate);
+  const base: Omit<SwingCommitBudgetVerdict, "blocked" | "blockedDimensions"> = {
+    candidateRiskUsd,
+    enforce: budget.enforce,
+    verdict,
+  };
+  // Disarmed, or nothing hard-exceeded → the gate is open.
+  if (!budget.enforce || verdict.hardExceeded.length === 0) {
+    return { ...base, blocked: false, blockedDimensions: [] };
+  }
+  const key = candidate.ticker.trim().toUpperCase();
+  const blockedDimensions = verdict.hardExceeded.filter((dim) => {
+    const dv = verdict.verdicts.find((v) => v.dimension === dim);
+    switch (dim) {
+      case "per_position_loss":
+        // Per-position lists exactly the positions whose OWN risk exceeds the cap — block iff the candidate
+        // is itself an offender (an existing over-cap position must not block a fresh small one).
+        return dv?.offenders.includes(key) ?? false;
+      case "event_exposure":
+        return candidate.isEvent === true && candidateRiskUsd > 0;
+      case "overnight":
+        return candidate.isOvernight === true && candidateRiskUsd > 0;
+      case "portfolio_loss":
+      default:
+        return candidateRiskUsd > 0;
+    }
+  });
+  return { ...base, blocked: blockedDimensions.length > 0, blockedDimensions };
 }

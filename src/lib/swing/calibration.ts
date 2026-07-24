@@ -126,6 +126,43 @@ export function isGradedSwingRow(row: SwingCalibrationRow): boolean {
   return row.graded_at != null && typeof row.realized_pnl_pct === "number" && Number.isFinite(row.realized_pnl_pct);
 }
 
+/** The structural subset of a ledger `SwingPositionRow` this mapper reads — kept local so calibration.ts stays
+ *  pure (type-only, no db runtime import) and testable with a plain object. */
+export interface SwingLedgerRowForCalibration {
+  realized_pnl_pct: number | null;
+  graded_at?: string | null;
+  archetype?: string | null;
+  sub_lane?: string | null;
+  entry_context?: Record<string, unknown> | null;
+  feature_vector?: Record<string, unknown> | null;
+}
+
+/**
+ * Map a persisted swing ledger row → the `SwingCalibrationRow` the graduation ladder reads. Reads ONLY what was
+ * pinned at commit/grade time (never re-derives a grade): the frozen realized P&L, the classified archetype +
+ * sub-lane, and the committed evidence `score` (from entry_context, where the commit gate pins it; falls back
+ * to feature_vector.score). Unknown/foreign values map to null — an unclassified/unscored row lands in a
+ * wrapper's no-read bucket, never a fabricated on/off vote. The exit-rung / gate / rank / allocation buckets
+ * are not needed for the COMMIT floor graduation, so they are left undefined here.
+ */
+export function swingCalibrationRowFromLedger(row: SwingLedgerRowForCalibration): SwingCalibrationRow {
+  const archetype = (SWING_ARCHETYPES as readonly string[]).includes(row.archetype ?? "")
+    ? (row.archetype as SwingArchetype)
+    : null;
+  const subLane = (SWING_SUB_LANES_ORDER as readonly string[]).includes(row.sub_lane ?? "")
+    ? (row.sub_lane as SwingSubLane)
+    : null;
+  const rawScore = row.entry_context?.score ?? row.feature_vector?.score;
+  const score = typeof rawScore === "number" && Number.isFinite(rawScore) ? rawScore : null;
+  return {
+    realized_pnl_pct: typeof row.realized_pnl_pct === "number" ? row.realized_pnl_pct : null,
+    graded_at: row.graded_at ?? null,
+    archetype,
+    sub_lane: subLane,
+    score,
+  };
+}
+
 /**
  * Map a swing row's realized P&L onto a 0DTE CalibrationPlayRow so `recommendSignal`/`bucketOf` grade it
  * with ZERO new math. Only `plan_pnl_pct` is read by the ladder (via isZeroDteWin = plan_pnl_pct>0, which

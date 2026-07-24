@@ -15,7 +15,10 @@ import {
 } from "./discovery.ts";
 import { assembleSwingDossierInput } from "./swing-ingest.ts";
 import type { SwingAccumAccessors } from "./accumulation-store.ts";
-import type { SwingAccumRow } from "../db.ts";
+import type { SwingAccumRow, SwingPositionInsert } from "../db.ts";
+import type { SwingCalibrationRow } from "./calibration.ts";
+import { PRODUCTION_PORTFOLIO_BUDGET } from "./swing-portfolio-budget.ts";
+import type { SwingArchetype, SwingSubLane } from "./taxonomy.ts";
 import type { FlowAccumulationSignal } from "../../features/nighthawk/lib/flow-accumulation.ts";
 import type { BreakoutMover } from "../../features/nighthawk/lib/candidates.ts";
 import type { MinimalFlowRow } from "../zerodte/flow-accumulation-context.ts";
@@ -212,6 +215,124 @@ test("runSwingDiscoveryScan: WATCH rail clears only after cross-session persiste
   // the position-linking accessor still never runs across BOTH scans. This is the real invariant behind the
   // old `commitEligibleCount === 0` literal (which could never fail regardless of what the scan did).
   assert.equal(calls.markAccumPromoted, 0, "promotion to WATCH still links no position — commit path never taken");
+});
+
+// ── LIVE COMMIT seam (go-live 2026-07-24) ─────────────────────────────────────────
+
+/** Graded rows that graduate BOTH the (archetype) + (subLane) floors through the shipped ladder. */
+function gradedRows(archetype: SwingArchetype, subLane: SwingSubLane): SwingCalibrationRow[] {
+  const rows: SwingCalibrationRow[] = [];
+  for (let i = 0; i < 32; i++) rows.push({ realized_pnl_pct: 55, graded_at: "2026-07-01T00:00:00Z", archetype, sub_lane: subLane, score: 92 });
+  for (let i = 0; i < 12; i++) rows.push({ realized_pnl_pct: -35, graded_at: "2026-07-01T00:00:00Z", archetype, sub_lane: subLane, score: 25 });
+  return rows;
+}
+/** A liquid NVDA STANDARD (≈14 DTE) call chain so `playSet.SWING` carries a concrete contract to open. */
+function nvdaChain(expiry = "2026-08-08") {
+  return [
+    { expiry, strike: 150, call_bid: 5.0, call_ask: 5.2, call_delta: 0.6, call_oi: 1200, put_bid: 4.6, put_ask: 4.9, put_delta: -0.4, put_oi: 900 },
+  ];
+}
+
+test("runSwingDiscoveryScan: LIVE seam OPENS a graduated WATCH candidate (all four gates cleared)", async () => {
+  const { accessors } = makeFakeAccum();
+  await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors)); // session 1
+  const probe = await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors)); // session 2 → NVDA WATCH
+  const nvda = probe.dossiers.find((d) => d.ticker === "NVDA")!;
+  const archetype = nvda.archetype.archetype!;
+  const subLane = nvda.subLane!; // intendedDte 14 → STANDARD
+  assert.ok(archetype && subLane, "NVDA classified with an archetype + sub-lane");
+
+  const opened: SwingPositionInsert[] = [];
+  const deps: SwingDiscoveryDeps = {
+    ...makeDeps("2026-07-25", accessors), // session 3 — NVDA still persisted → WATCH
+    fetchChainRows: async () => nvdaChain(),
+    fetchGradedHistory: async () => gradedRows(archetype, subLane), // graduates NVDA's bucket
+    fetchOpenBook: async () => [],
+    insertPosition: async (pos) => { opened.push(pos); return opened.length; },
+    promoteCommit: async () => { /* linked via accessors.markAccumPromoted in the real wire */ },
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  };
+  const res = await runSwingDiscoveryScan(deps);
+
+  assert.equal(res.commitEligibleCount, 1, "NVDA's graduated bucket → 1 commit-eligible (the REAL derived count)");
+  assert.equal(res.commit?.committed.filter((c) => c.positionId != null).length, 1, "one position opened");
+  assert.equal(opened.length, 1);
+  assert.equal(opened[0].ticker, "NVDA");
+  assert.equal(opened[0].sub_lane, "STANDARD");
+  assert.equal(opened[0].status, "OPEN");
+  assert.equal((opened[0].gate_calibration_json as Record<string, unknown>).graduated, true);
+});
+
+test("runSwingDiscoveryScan: seam wired but history NOT graduated → commitEligibleCount 0, nothing opens", async () => {
+  const { accessors } = makeFakeAccum();
+  await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors));
+  await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors)); // NVDA now WATCH
+
+  const opened: SwingPositionInsert[] = [];
+  const deps: SwingDiscoveryDeps = {
+    ...makeDeps("2026-07-25", accessors),
+    fetchChainRows: async () => nvdaChain(),
+    fetchGradedHistory: async () => [], // NO graded history → nothing graduates (the cold-book hard rail)
+    fetchOpenBook: async () => [],
+    insertPosition: async (pos) => { opened.push(pos); return opened.length; },
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  };
+  const res = await runSwingDiscoveryScan(deps);
+  assert.equal(res.commitEligibleCount, 0, "no graduated bucket → 0 eligible");
+  assert.equal(opened.length, 0, "nothing opened on an ungraduated book");
+  assert.equal(res.commit?.committed.length, 0);
+});
+
+test("runSwingDiscoveryScan: idempotency — a name already OPEN on the book is not re-opened", async () => {
+  const { accessors } = makeFakeAccum();
+  await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors));
+  const probe = await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors));
+  const nvda = probe.dossiers.find((d) => d.ticker === "NVDA")!;
+
+  const opened: SwingPositionInsert[] = [];
+  const deps: SwingDiscoveryDeps = {
+    ...makeDeps("2026-07-25", accessors),
+    fetchChainRows: async () => nvdaChain(),
+    fetchGradedHistory: async () => gradedRows(nvda.archetype.archetype!, nvda.subLane!),
+    // NVDA already open under its session-3 commit_key → the commit must not double-open.
+    fetchOpenBook: async () => [
+      { ticker: "NVDA", direction: "LONG" as const, commitKey: "2026-07-25:NVDA:STANDARD:long", riskUsd: 510, isOvernight: true },
+    ],
+    insertPosition: async (pos) => { opened.push(pos); return opened.length; },
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  };
+  const res = await runSwingDiscoveryScan(deps);
+  assert.equal(res.commitEligibleCount, 1, "still graduated (eligible)…");
+  assert.equal(opened.length, 0, "…but NOT re-opened (idempotency)");
+});
+
+test("runSwingDiscoveryScan: a FAILED open-book read fails CLOSED — nothing opens even for a graduated name", async () => {
+  const { accessors } = makeFakeAccum();
+  await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors));
+  const probe = await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors));
+  const nvda = probe.dossiers.find((d) => d.ticker === "NVDA")!;
+
+  const opened: SwingPositionInsert[] = [];
+  const deps: SwingDiscoveryDeps = {
+    ...makeDeps("2026-07-25", accessors),
+    fetchChainRows: async () => nvdaChain(),
+    fetchGradedHistory: async () => gradedRows(nvda.archetype.archetype!, nvda.subLane!),
+    fetchOpenBook: async () => { throw new Error("db down"); }, // book unverifiable
+    insertPosition: async (pos) => { opened.push(pos); return opened.length; },
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  };
+  const res = await runSwingDiscoveryScan(deps);
+  assert.equal(res.commitEligibleCount, 1, "graduation is book-independent → still reported for observability");
+  assert.equal(opened.length, 0, "but a failed book read opens NOTHING (fail-closed, never fail-open)");
+});
+
+test("runSwingDiscoveryScan: no commit seam ⇒ commitEligibleCount 0 (evidence-only preserved)", async () => {
+  const { accessors, calls } = makeFakeAccum();
+  await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors));
+  const res = await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors)); // NVDA WATCH, but no insertPosition dep
+  assert.equal(res.commitEligibleCount, 0, "unwired seam stays at 0");
+  assert.equal(res.commit, undefined, "no commit result when the seam is absent");
+  assert.equal(calls.markAccumPromoted, 0, "nothing promoted/committed");
 });
 
 // ── Archetype-aware persistence FAST-TRACK (Fix: resolver was never passed to fetchWatchEligible) ──
