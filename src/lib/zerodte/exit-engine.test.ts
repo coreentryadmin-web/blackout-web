@@ -13,6 +13,9 @@ import {
   detectThesisBreak,
   evaluateExitState,
   ratchetFloorPct,
+  trimTranchesArmed,
+  DEFAULT_EXIT_MODE,
+  TRIM_SCALE_RULES,
   EXIT_RULES,
   type ExitEngineInput,
 } from "./exit-engine";
@@ -329,4 +332,165 @@ test("buildExitContext: reason + rounded mark + pinned P&L + peak P&L + ISO stam
   assert.equal(ctx.pnl_pct, -2.5);
   assert.equal(ctx.peak_pnl_pct, 25);
   assert.equal(ctx.at, "2026-07-14T15:00:00.000Z");
+});
+
+// ── 8. Exit MODE: ratchet is the default; trim_scale is the E5 ⅓/⅓/run replacement ──
+// The trim_scale schedule is DEFAULT-OFF — it graduates on the live-ledger grader, not
+// an offline flip. These tables prove the mechanism fires the measured schedule and
+// regime-conditions it; the existing suites (unchanged) prove ratchet mode is untouched.
+
+test("mode: DEFAULT_EXIT_MODE is the shipped ratchet — trim_scale never fires unless selected", () => {
+  assert.equal(DEFAULT_EXIT_MODE, "ratchet");
+  // A +25% peak with NO exitMode arms the RATCHET breakeven floor (old behavior), NOT a trim.
+  const d = evaluateExitState(input({ peakPremium: 5.0, currentMark: 4.4 })); // peak +25%, now +10%
+  assert.equal(d.action, "RAISE_FLOOR");
+  assert.equal(d.reason, "ratchet_breakeven_floor_set");
+});
+
+test("trimTranchesArmed: monotonic tranche count off the latched peak, per regime", () => {
+  assert.equal(trimTranchesArmed(null, "neutral"), 0);
+  assert.equal(trimTranchesArmed(24.99, "neutral"), 0);
+  assert.equal(trimTranchesArmed(25, "neutral"), 1);
+  assert.equal(trimTranchesArmed(49.99, "neutral"), 1);
+  assert.equal(trimTranchesArmed(50, "neutral"), 2);
+  assert.equal(trimTranchesArmed(400, "neutral"), 2, "capped at the two tranches");
+  // range banks sooner (+20/+40); trend lets it run (+40/+80).
+  assert.equal(trimTranchesArmed(20, "range"), 1);
+  assert.equal(trimTranchesArmed(40, "range"), 2);
+  assert.equal(trimTranchesArmed(25, "trend"), 0, "trend does not trim at +25% — it runs");
+  assert.equal(trimTranchesArmed(40, "trend"), 1);
+  assert.equal(trimTranchesArmed(80, "trend"), 2);
+});
+
+test("TRIM_SCALE_RULES: neutral base is the exact E5-measured schedule (+25/+50, ⅓ each)", () => {
+  assert.deepEqual(TRIM_SCALE_RULES.tranches_by_regime.neutral, [25, 50]);
+  assert.ok(Math.abs(TRIM_SCALE_RULES.tranche_fraction - 1 / 3) < 1e-12);
+});
+
+test("trim_scale: +25% peak banks the FIRST third (neutral)", () => {
+  const d = evaluateExitState(
+    input({ exitMode: "trim_scale", peakPremium: 5.0, currentMark: 5.0, trimsTaken: 0 })
+  );
+  assert.equal(d.action, "TRIM");
+  assert.equal(d.reason, "trim_scale_first");
+  assert.equal(d.floorPnlPct, null, "trim_scale has no ratchet floor — it rides the plan stop");
+  assert.match(d.detail, /trim 1\/2/);
+});
+
+test("trim_scale: +50% peak with the first third already banked banks the SECOND", () => {
+  const d = evaluateExitState(
+    input({ exitMode: "trim_scale", peakPremium: 6.0, currentMark: 6.0, trimsTaken: 1 })
+  );
+  assert.equal(d.action, "TRIM");
+  assert.equal(d.reason, "trim_scale_second");
+  assert.match(d.detail, /trim 2\/2/);
+});
+
+test("trim_scale: banks ONE third per tick — a peak that armed BOTH still trims the first only", () => {
+  // Peak +100% (both tranches armed) but nothing banked yet → the ladder takes ONE step.
+  const first = evaluateExitState(
+    input({ exitMode: "trim_scale", peakPremium: 8.0, currentMark: 7.0, trimsTaken: 0 })
+  );
+  assert.equal(first.reason, "trim_scale_first", "one tranche per tick, same as the ratchet trim latch");
+  const second = evaluateExitState(
+    input({ exitMode: "trim_scale", peakPremium: 8.0, currentMark: 7.0, trimsTaken: 1 })
+  );
+  assert.equal(second.reason, "trim_scale_second");
+});
+
+test("trim_scale: the tranche arms off the LATCHED PEAK — a retraced mark still banks it", () => {
+  // Peak +50% earlier, mark now +10%: the second third still arms (peak, not the mark, decides).
+  const d = evaluateExitState(
+    input({ exitMode: "trim_scale", peakPremium: 6.0, currentMark: 4.4, trimsTaken: 1 })
+  );
+  assert.equal(d.action, "TRIM");
+  assert.equal(d.reason, "trim_scale_second");
+});
+
+test("trim_scale: both thirds banked → the last third RUNS (RAISE_FLOOR report, no exit)", () => {
+  const d = evaluateExitState(
+    input({ exitMode: "trim_scale", peakPremium: 6.0, currentMark: 5.6, trimsTaken: 2 })
+  );
+  assert.equal(d.action, "RAISE_FLOOR");
+  assert.equal(d.reason, "trim_scale_running");
+  assert.match(d.detail, /2\/2 thirds banked/);
+});
+
+test("trim_scale: the last third banks in full when it tags the +100% target", () => {
+  const d = evaluateExitState(
+    input({ exitMode: "trim_scale", peakPremium: 8.0, currentMark: 8.0, trimsTaken: 2 })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "trim_scale_runner_target");
+});
+
+test("trim_scale: below the first tranche, nothing fires (holds — room to work)", () => {
+  const d = evaluateExitState(
+    input({ exitMode: "trim_scale", peakPremium: 4.96, currentMark: 4.9, trimsTaken: 0 }) // peak +24%
+  );
+  assert.equal(d.action, "HOLD");
+  assert.equal(d.reason, "hold");
+  assert.match(d.detail, /next trim at \+25%/);
+});
+
+test("trim_scale regime: RANGE banks tighter (+20% arms the first third)", () => {
+  const armed = evaluateExitState(
+    input({ exitMode: "trim_scale", regime: "range", peakPremium: 4.8, currentMark: 4.8, trimsTaken: 0 }) // +20%
+  );
+  assert.equal(armed.action, "TRIM");
+  assert.equal(armed.reason, "trim_scale_first");
+  const notYet = evaluateExitState(
+    input({ exitMode: "trim_scale", regime: "range", peakPremium: 4.76, currentMark: 4.76, trimsTaken: 0 }) // +19%
+  );
+  assert.equal(notYet.action, "HOLD");
+});
+
+test("trim_scale regime: TREND lets it run (+25% does NOT trim; +40% arms the first third)", () => {
+  const runs = evaluateExitState(
+    input({ exitMode: "trim_scale", regime: "trend", peakPremium: 5.0, currentMark: 5.0, trimsTaken: 0 }) // +25%
+  );
+  assert.equal(runs.action, "HOLD", "trend day — a +25% momentum leg is let run, not trimmed");
+  const arms = evaluateExitState(
+    input({ exitMode: "trim_scale", regime: "trend", peakPremium: 5.6, currentMark: 5.6, trimsTaken: 0 }) // +40%
+  );
+  assert.equal(arms.action, "TRIM");
+  assert.equal(arms.reason, "trim_scale_first");
+});
+
+test("trim_scale: the plan stop still exits (the runner's only hard floor)", () => {
+  const d = evaluateExitState(
+    input({ exitMode: "trim_scale", currentMark: 2.0, peakPremium: 6.0, trimsTaken: 1 })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "plan_stop");
+});
+
+test("trim_scale: a thesis break dumps the WHOLE remaining position, outranking the trim", () => {
+  // Mark at +25% would arm the first trim, but a veto says the play is wrong → exit it all.
+  const d = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      currentMark: 5.0,
+      peakPremium: 5.0,
+      trimsTaken: 0,
+      cortexEvidence: evidence([{ stance: "veto", source: "wall-trend", detail: "wall building against it" }]),
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "thesis_break:wall-trend");
+});
+
+test("trim_scale: a play that never armed a tranche still scratches on the flat timeout", () => {
+  const d = evaluateExitState(
+    input({ exitMode: "trim_scale", ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8, trimsTaken: 0 })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "flat_theta_bleed");
+});
+
+test("trim_scale: missing mark holds with a null floor (no ratchet floor in this mode)", () => {
+  const d = evaluateExitState(input({ exitMode: "trim_scale", currentMark: null, peakPremium: 6.0 }));
+  assert.equal(d.action, "HOLD");
+  assert.equal(d.reason, "no_live_mark");
+  assert.equal(d.floorPnlPct, null);
 });

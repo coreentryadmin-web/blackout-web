@@ -166,8 +166,30 @@ test("selectIronCondor: breach rate + negative-skew marker are present, finite, 
   assert.ok(legs);
   assert.equal(legs!.est_win_rate, 92); // normal (below-cap) pick → not clamped
   assert.equal(legs!.est_win_rate_small_sample, false);
-  assert.ok(Number.isFinite(legs!.est_intraday_breach_pct));
-  assert.ok(legs!.est_intraday_breach_pct > 0);
+  assert.ok(Number.isFinite(legs!.est_intraday_breach_pct!));
+  assert.ok(legs!.est_intraday_breach_pct! > 0);
   assert.equal(legs!.est_intraday_breach_pct, SHIPPED_INTRADAY_BREACH_PCT);
   assert.equal(legs!.skew, "negative");
+});
+
+// ── breach rate is stamped ONLY for the shipped target-80 geometry (audit fix) ────
+// SHIPPED_INTRADAY_BREACH_PCT (18.7%) was measured for exactly one selection — the shipped
+// target-80 condor. Stamping it on EVERY returned condor (any width/target) let a consumer
+// pair a non-default win rate with a breach number that was never measured for it. It now
+// nulls off the moment the geometry deviates.
+test("est_intraday_breach_pct: stamped for the shipped target-80 geometry (default + walls), null when it deviates", () => {
+  // Shipped default (explicit target 80) → the measured breach travels with the number.
+  assert.equal(selectIronCondor({ spot: 6000, targetWinRate: 80 })!.est_intraday_breach_pct, SHIPPED_INTRADAY_BREACH_PCT);
+  // Default target (undefined ⇒ 80) is ALSO the shipped geometry.
+  assert.equal(selectIronCondor({ spot: 6000 })!.est_intraday_breach_pct, SHIPPED_INTRADAY_BREACH_PCT);
+  // Dealer walls push the SAME shipped selection further out — not a width/target override → still stamped.
+  assert.equal(
+    selectIronCondor({ spot: 6000, targetWinRate: 80, callWall: 6100, putWall: 5880 })!.est_intraday_breach_pct,
+    SHIPPED_INTRADAY_BREACH_PCT
+  );
+  // A different target win rate → 18.7% was never measured for it → null.
+  assert.equal(selectIronCondor({ spot: 6000, targetWinRate: 92 })!.est_intraday_breach_pct, null);
+  // An explicit width override → null (even one that equals the target-80 width — an explicit width is a deviation).
+  assert.equal(selectIronCondor({ spot: 6000, shortWidthPct: 0.01 })!.est_intraday_breach_pct, null);
+  assert.equal(selectIronCondor({ spot: 6000, shortWidthPct: 0.008 })!.est_intraday_breach_pct, null);
 });
