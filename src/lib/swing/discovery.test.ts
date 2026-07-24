@@ -8,6 +8,7 @@ import {
   computeSwingDiscoveryRecall,
   liquidityTierForDollar,
   regimeBandFor01,
+  signalKindsForObservation,
   type SwingCandidateSeed,
   type SwingDiscoveryDeps,
   type TierZeroSeed,
@@ -122,11 +123,13 @@ function makeFakeAccum() {
     async upsertSwingAccum(a) {
       const key = `${a.ticker.toUpperCase()}|${a.direction}`;
       const cur = rows.get(key);
-      if (!cur) rows.set(key, { ticker: a.ticker.toUpperCase(), direction: a.direction, observation_count: 1, distinct_session_days: 1, last_session_day: a.session_day, phases_seen: [a.phase], promoted_position_id: null, first_seen_at: now(), last_seen_at: now() });
+      if (!cur) rows.set(key, { ticker: a.ticker.toUpperCase(), direction: a.direction, observation_count: 1, distinct_session_days: 1, last_session_day: a.session_day, phases_seen: [a.phase], signal_kinds: [...new Set(a.signal_kinds ?? [])], promoted_position_id: null, first_seen_at: now(), last_seen_at: now() });
       else {
         cur.observation_count += 1;
         if (cur.last_session_day !== a.session_day) cur.distinct_session_days += 1;
         cur.last_session_day = a.session_day;
+        if (!(cur.phases_seen ?? []).includes(a.phase)) cur.phases_seen = [...(cur.phases_seen ?? []), a.phase];
+        for (const k of a.signal_kinds ?? []) if (!(cur.signal_kinds ?? []).includes(k)) cur.signal_kinds = [...(cur.signal_kinds ?? []), k];
         cur.last_seen_at = now();
       }
     },
@@ -209,6 +212,60 @@ test("runSwingDiscoveryScan: WATCH rail clears only after cross-session persiste
   // the position-linking accessor still never runs across BOTH scans. This is the real invariant behind the
   // old `commitEligibleCount === 0` literal (which could never fail regardless of what the scan did).
   assert.equal(calls.markAccumPromoted, 0, "promotion to WATCH still links no position — commit path never taken");
+});
+
+// ── Archetype-aware persistence FAST-TRACK (Fix: resolver was never passed to fetchWatchEligible) ──
+
+test("signalKindsForObservation: Tier-0 screen paths + a grounded CATALYST are the corroboration set", () => {
+  const withCatalyst = mkSeed("MRNA", bullSignal("MRNA"), null);
+  withCatalyst.input.catalyst = { catalystStrength01: 0.9 }; // grounded catalyst pillar
+  const [dossier] = deriveSwingCandidates([withCatalyst]);
+  assert.deepEqual(signalKindsForObservation(["FLOW"], dossier).sort(), ["CATALYST", "FLOW"], "FLOW screen + grounded catalyst = 2 kinds");
+
+  const noCatalyst = deriveSwingCandidates([mkSeed("AMD", bullSignal("AMD"), null)])[0];
+  assert.deepEqual(signalKindsForObservation(["FLOW", "STRUCTURE"], noCatalyst).sort(), ["FLOW", "STRUCTURE"], "no catalyst → just the screens");
+});
+
+test("runSwingDiscoveryScan: an EVENT_DRIVEN name gets the 1-session fast-track (resolver + FLOW+CATALYST corroboration)", async () => {
+  const { accessors } = makeFakeAccum();
+  // Enrich the flow name with a DOMINANT fresh catalyst so it classifies EVENT_DRIVEN and grounds the CATALYST
+  // pillar — giving it two independent signal KINDS in a SINGLE session (FLOW screen + CATALYST).
+  const deps: SwingDiscoveryDeps = {
+    ...makeDeps("2026-07-23", accessors),
+    enrichCandidate: async (seed, ctx) =>
+      assembleSwingDossierInput({
+        ticker: seed.ticker,
+        asOf: ctx.asOf,
+        intendedDte: ctx.intendedDte,
+        accumulation: ctx.accumulation,
+        flowWindowDays: 5,
+        nameCloses: ASC,
+        spyCloses: ctx.spyCloses,
+        mover: ctx.mover,
+        catalyst: { freshCatalystAgeDays: 0, earnings: { nextEarnings: null, lastEarnings: null } },
+        ivRank: 30,
+      }),
+  };
+  const res = await runSwingDiscoveryScan(deps);
+
+  const nvda = res.dossiers.find((d) => d.ticker === "NVDA");
+  assert.equal(nvda?.archetype.archetype, "EVENT_DRIVEN", "the dominant fresh catalyst classifies NVDA as EVENT_DRIVEN");
+  // The load-bearing assertion: ONE session, but the resolver applies the event archetype's 1-session rule and
+  // the FLOW+CATALYST corroboration clears it → WATCH in a single scan. WITHOUT the resolver (the bug) the
+  // conservative 2-session default would keep watchCount at 0 here.
+  assert.deepEqual(res.watchCandidates.map((c) => c.ticker), ["NVDA"], "event archetype fast-tracks on 1 corroborated session");
+  assert.equal(res.watchCandidates[0].distinctSessionDays, 1, "cleared on a SINGLE session (not the 2-session default)");
+  assert.deepEqual([...res.watchCandidates[0].signalKinds].sort(), ["CATALYST", "FLOW"], "corroboration = FLOW screen + grounded catalyst");
+});
+
+test("runSwingDiscoveryScan: WITHOUT a dominant catalyst, a cross-session name still needs 2 sessions (no false fast-track)", async () => {
+  // The same flow name, but enriched as a plain cross-session thesis (no catalyst) → its archetype is NOT an
+  // event archetype, so the resolver leaves it on the 2-session gate. A single session must NOT promote it.
+  const { accessors } = makeFakeAccum();
+  const res = await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors));
+  const nvda = res.dossiers.find((d) => d.ticker === "NVDA");
+  assert.ok(nvda && nvda.archetype.archetype !== "EVENT_DRIVEN" && nvda.archetype.archetype !== "POST_EARNINGS_DRIFT", "no catalyst → a cross-session archetype");
+  assert.equal(res.watchCount, 0, "a cross-session archetype is still gated to 2 distinct sessions (fast-track is event-only)");
 });
 
 // ── RECALL instrumentation (evidence-only; operator critique #7) ──────────────────

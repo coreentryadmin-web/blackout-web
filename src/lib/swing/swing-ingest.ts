@@ -24,14 +24,43 @@
 import type { SwingDossierInput } from "./dossier";
 import type { SwingReads } from "../swing-signals";
 import { swingSignalsFromReads } from "../swing-signals";
+import type { PlayDirection } from "../horizon-fanout";
 import type { FlowAccumulationSignal } from "@/features/nighthawk/lib/flow-accumulation";
 import type { ZeroDteFlowAccumulation } from "../zerodte/flow-accumulation-context";
 import type { BreakoutMover } from "@/features/nighthawk/lib/candidates";
 import { emaFromCloses } from "../providers/ma-math";
+import { trendStackScore } from "../horizon-scorers";
 import type { ArchetypeReadExtras } from "./archetype";
+import {
+  deriveCatalystReads,
+  contractQualityFromIvRank,
+  freshestCatalystAgeDays,
+  parseEarningsWindows,
+  type SwingCatalystNewsItem,
+  type SwingEarningsWindows,
+} from "./swing-catalyst";
 
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 const isNum = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
+
+/**
+ * REGIME (pillar F) from the broad market: SPY's own daily EMA trend-stack as a risk-on/off read, then
+ * DIRECTION-ALIGNED to the trade — a risk-on tape is a tailwind for a LONG and a headwind for a SHORT, so a
+ * SHORT's favorable regime is risk-OFF (1 − riskOn). Neutral / no-direction uses the raw risk-on read.
+ *
+ * Coarse v1 on purpose (SPY-trend proxy, reusing the SPY closes already fetched once per scan — zero extra
+ * IO). NULL-HONEST: when there isn't enough SPY history for a trend stack the read is absent (null), never a
+ * fabricated 0/1. TODO (richer regime): fold in breadth / VIX term / the `market_regime` detector table for a
+ * true risk-on/off read instead of SPY's price stack alone.
+ */
+export function regimeFromSpyTrend(spyCloses: number[], direction: PlayDirection | null): number | null {
+  const stack = emaStackFromCloses(spyCloses);
+  const hasStack =
+    stack.priceAboveEma20 != null || stack.ema20AboveEma50 != null || stack.ema50Rising != null;
+  if (!hasStack) return null; // not enough SPY history → honest absence, never a fabricated regime
+  const riskOn01 = clamp01(trendStackScore(stack));
+  return direction === "SHORT" ? 1 - riskOn01 : riskOn01;
+}
 
 /** ~10-session lookback for the momentum / relative-strength returns (the swing thesis is a multi-day move). */
 export const SWING_RETURN_LOOKBACK_SESSIONS = 10;
@@ -122,10 +151,21 @@ export interface SwingReadsAssemblyArgs {
   flowWindowDays: number;
   /** Ascending daily closes for the name. */
   nameCloses: number[];
-  /** Ascending daily closes for SPY (relative-strength denominator). */
+  /** Ascending daily closes for SPY (relative-strength denominator AND the coarse REGIME read). */
   spyCloses: number[];
   /** The breakout-screen row when the structure screen surfaced this name (Tier-0 Path-B evidence). */
   mover?: BreakoutMover | null;
+  /** Fetched catalyst context (Benzinga news + parsed earnings windows) → grounds the CATALYST pillar +
+   *  the event-archetype extras. Absent (undefined/null) when no catalyst context was fetched → the pillar
+   *  and extras stay null (honest absence), exactly as before this grounding shipped. */
+  catalyst?: {
+    /** Age (days) of the freshest in-window Benzinga catalyst headline, or null. From `freshestCatalystAgeDays`. */
+    freshCatalystAgeDays?: number | null;
+    /** Parsed next/last earnings windows for the name (from `parseEarningsWindows`). */
+    earnings?: SwingEarningsWindows | null;
+  } | null;
+  /** UW EOD IV rank (0–100 or 0–1) → grounds the VOLATILITY pillar. Null/absent → the pillar stays null. */
+  ivRank?: number | null;
 }
 
 /**
@@ -158,12 +198,33 @@ export function assembleSwingDossierInput(args: SwingReadsAssemblyArgs): SwingDo
   const dir = args.accumulation?.direction ?? null;
   const ev = moverEvidence(args.mover, dir);
 
+  // ── CATALYST + event-archetype extras (grounded from the fetched catalyst context; null when absent). ──
+  // The DRIFT proxy is the DIRECTION-SIGNED 10-session return (a down-move is positive conviction for a
+  // SHORT), exactly as the rel-strength pillar reads it, so a short's post-earnings drift scores correctly.
+  const catReads = deriveCatalystReads({
+    intendedDte: args.intendedDte ?? null,
+    signedReturnPct10d: signed.returnPct10d,
+    freshCatalystAgeDays: args.catalyst?.freshCatalystAgeDays ?? null,
+    earnings: args.catalyst?.earnings ?? { nextEarnings: null, lastEarnings: null },
+  });
+
+  // ── VOLATILITY (from IV rank) + REGIME (from the SPY trend, direction-aligned). ──
+  const contractQuality01 = contractQualityFromIvRank(args.ivRank);
+  const regime01 = regimeFromSpyTrend(args.spyCloses, signed.direction);
+
   return {
     ticker: args.ticker.toUpperCase(),
     asOf: args.asOf,
     intendedDte: args.intendedDte ?? null,
     reads,
-    archetypeExtras: ev.extras,
+    // Breakout-screen extras + the grounded event-archetype extras (catalyst / earnings-drift). A null extra
+    // simply drops from its archetype's fit — POST_EARNINGS_DRIFT / EVENT_DRIVEN classify only when grounded.
+    archetypeExtras: {
+      ...ev.extras,
+      catalystInWindow01: catReads.catalystInWindow01,
+      earningsGapRecent01: catReads.earningsGapRecent01,
+      postEarningsDrift01: catReads.postEarningsDrift01,
+    },
     structure: {
       priceAboveEma20: signed.priceAboveEma20 ?? stack.priceAboveEma20,
       ema20AboveEma50: signed.ema20AboveEma50 ?? stack.ema20AboveEma50,
@@ -183,24 +244,50 @@ export function assembleSwingDossierInput(args: SwingReadsAssemblyArgs): SwingDo
         ? clamp01((args.accumulation.magnet.sweepRatio + args.accumulation.magnet.openingRatio) / 2)
         : null,
     },
-    // VOLATILITY / CATALYST / REGIME / DATA_QUALITY pillars need providers PR-11 doesn't wire (IV term,
-    // earnings-in-window, macro regime) — left absent (null) so they drop from the score, never faked.
+    // VOLATILITY: contract quality from the UW EOD IV rank (inverse — cheap premium = high quality for a
+    // 0.5–0.75Δ debit swing). Cluster present only when a rank grounded (else absent, never faked).
+    volatility: contractQuality01 != null ? { contractQuality01 } : undefined,
+    // CATALYST: fresh-news / pre-earnings strength, with the earnings-in-window binary hazard flagged so the
+    // pillar scorer discounts it per the sub-lane's earningsHazard. Cluster present only when a catalyst grounded.
+    catalyst:
+      catReads.catalystStrength01 != null
+        ? { catalystStrength01: catReads.catalystStrength01, earningsInWindow: catReads.earningsInWindow }
+        : undefined,
+    // REGIME: coarse SPY-trend risk-on/off, direction-aligned. Null when SPY history is too thin.
+    regime01,
+    // DATA_QUALITY (pillar G) stays absent: it is an honesty meta-pillar the dossier already tracks via
+    // `dataQuality.degraded`/`missing`; grounding it as a real 0–1 feed-agreement read is a follow-up (TODO).
   };
 }
 
-/** The injected provider surface the ingest shell needs — the name's ascending daily closes. Testable with a
- *  fake; the real script backs it with polygon.fetchStockDailyBars. */
+/** The injected provider surface the ingest shell needs. `fetchDailyCloses` is required (the name's ascending
+ *  daily closes); the catalyst/IV-rank fetchers are OPTIONAL — when omitted the CATALYST + VOLATILITY pillars
+ *  and the event-archetype extras stay null (honest absence), so a caller that can't/won't wire the extra
+ *  providers still gets the structure/rel-strength/flow/regime read. Testable with fakes; the cron route + the
+ *  audit scan back them with the real Benzinga/UW readers. */
 export interface SwingIngestDeps {
   fetchDailyCloses: (ticker: string, lookbackSessions: number) => Promise<number[]>;
+  /** Recent Benzinga catalyst-channel news items for the name (polygon-news `fetchTickerNews`). */
+  fetchCatalystNews?: (ticker: string) => Promise<SwingCatalystNewsItem[] | null>;
+  /** The name's earnings feed rows (past + upcoming) — UW `fetchUwTickerEarningsHistory`; parsed into windows. */
+  fetchEarningsRows?: (ticker: string) => Promise<Array<Record<string, unknown>> | null>;
+  /** The name's UW EOD IV rank (0–100 or 0–1) — `fetchUwIvRank`. */
+  fetchIvRank?: (ticker: string) => Promise<number | null>;
 }
 
 /** Sessions of daily history to pull per name (enough for a 50-EMA + slope + the 10-session return). */
 export const SWING_INGEST_LOOKBACK_SESSIONS = 90;
 
 /**
- * Tier-1 IO shell: fetch the name's daily closes and assemble its dossier input. SPY closes are passed in
- * (fetched ONCE by the discovery shell). Returns null when the name has no usable daily history — a name we
- * can't ground at all is dropped, not carried as a hollow all-null dossier.
+ * Tier-1 IO shell: fetch the name's daily closes (+ its catalyst context / IV rank when those fetchers are
+ * wired) and assemble its dossier input. SPY closes are passed in (fetched ONCE by the discovery shell).
+ * Returns null when the name has no usable daily history — a name we can't ground at all is dropped, not
+ * carried as a hollow all-null dossier.
+ *
+ * FAIL-SOFT enrichment: the catalyst/IV-rank providers each degrade to null on any error (the underlying
+ * readers already fail-open), so a Benzinga/UW hiccup only drops the CATALYST/VOLATILITY pillars for that
+ * name — it NEVER drops the name or throws out of the scan. The `nowMs` for catalyst freshness is derived
+ * from `asOf` so the same scan timestamp anchors every recency read.
  */
 export async function ingestSwingReads(
   deps: SwingIngestDeps,
@@ -221,6 +308,25 @@ export async function ingestSwingReads(
   );
   if (!Array.isArray(nameCloses) || nameCloses.length === 0) return null;
 
+  // Enrich with catalyst context + IV rank when the fetchers are wired. Each is independently fail-soft: a
+  // provider error yields null for that read only, never a dropped candidate. Fetched in parallel per name.
+  const nowMs = Date.parse(args.asOf);
+  const [newsItems, earningsRows, ivRank] = await Promise.all([
+    deps.fetchCatalystNews?.(args.ticker).catch(() => null) ?? Promise.resolve(null),
+    deps.fetchEarningsRows?.(args.ticker).catch(() => null) ?? Promise.resolve(null),
+    deps.fetchIvRank?.(args.ticker).catch(() => null) ?? Promise.resolve(null),
+  ]);
+
+  const hasCatalystDeps = deps.fetchCatalystNews != null || deps.fetchEarningsRows != null;
+  const catalyst = hasCatalystDeps
+    ? {
+        freshCatalystAgeDays: Number.isFinite(nowMs)
+          ? freshestCatalystAgeDays(newsItems, nowMs)
+          : null,
+        earnings: parseEarningsWindows(earningsRows, nowMs),
+      }
+    : null;
+
   return assembleSwingDossierInput({
     ticker: args.ticker,
     asOf: args.asOf,
@@ -230,5 +336,7 @@ export async function ingestSwingReads(
     nameCloses,
     spyCloses: args.spyCloses,
     mover: args.mover,
+    catalyst,
+    ivRank,
   });
 }

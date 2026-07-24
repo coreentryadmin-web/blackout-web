@@ -1781,6 +1781,15 @@ async function runMigrations(): Promise<void> {
     ON swing_candidate_accumulation(last_seen_at DESC)
     WHERE promoted_position_id IS NULL;
   `);
+  // signal_kinds: the SCREEN PROVENANCE a candidate surfaced under (FLOW / STRUCTURE / CATALYST — the Tier-0
+  // screens + a grounded catalyst), the anti-lone-print CORROBORATION set for event archetypes. Distinct from
+  // phases_seen (the cadence phase/channel: POST_CLOSE / LIVE_FLOW) — corroboration must count independent
+  // signal KINDS, not the same evidence re-seen across cadence windows. Added as a separate column so a legacy
+  // phases_seen (which stored cadence phases) can never be mis-read as two independent signals.
+  await p.query(`
+    ALTER TABLE swing_candidate_accumulation
+    ADD COLUMN IF NOT EXISTS signal_kinds JSONB NOT NULL DEFAULT '[]'::jsonb;
+  `);
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
     try { await lockClient.query(`SELECT pg_advisory_unlock($1)`, [MIGRATION_LOCK_ID]); } catch { /* ignore */ }
@@ -5694,7 +5703,10 @@ export type SwingAccumRow = {
   observation_count: number;
   distinct_session_days: number;
   last_session_day: string | null;
+  /** Cadence phase/channel the name was seen in (POST_CLOSE / LIVE_FLOW …) — provenance, NOT corroboration. */
   phases_seen: string[] | null;
+  /** Screen provenance (FLOW / STRUCTURE / CATALYST) — the independent signal-KIND set corroboration counts. */
+  signal_kinds: string[] | null;
   promoted_position_id: number | null;
   first_seen_at: string;
   last_seen_at: string;
@@ -5708,6 +5720,7 @@ export function mapSwingAccumRow(r: QueryResultRow): SwingAccumRow {
     distinct_session_days: Number(r.distinct_session_days) || 0,
     last_session_day: r.last_session_day != null ? isoDateString(r.last_session_day) : null,
     phases_seen: jsonbColumnToStringArray(r.phases_seen),
+    signal_kinds: jsonbColumnToStringArray(r.signal_kinds),
     promoted_position_id: r.promoted_position_id != null ? Number(r.promoted_position_id) : null,
     first_seen_at: new Date(String(r.first_seen_at)).toISOString(),
     last_seen_at: new Date(String(r.last_seen_at)).toISOString(),
@@ -6158,22 +6171,30 @@ export async function fetchSwingSnapshots(positionId: number, limit = 2000): Pro
  * forward progress), and last_session_day is pinned to GREATEST(existing, incoming) — so an
  * out-of-order or replayed scan (an older day) neither double-counts nor rewinds the high-water
  * mark, keeping the persistence gate ("seen across ≥2 sessions") honest. phases_seen accumulates a
- * deduped set of the discovery phases the name showed up in. Never re-stamps first_seen_at.
+ * deduped set of the discovery phases the name showed up in; signal_kinds accumulates the deduped set of
+ * SCREEN provenances (FLOW / STRUCTURE / CATALYST) — the independent-signal set corroboration counts.
+ * Never re-stamps first_seen_at.
  */
 export async function upsertSwingAccum(a: {
   ticker: string;
   direction: "long" | "short";
   session_day: string;
   phase: string;
+  /** Screen provenance (FLOW / STRUCTURE / CATALYST). Deduped-unioned into signal_kinds for corroboration.
+   *  Optional/empty for legacy callers — an empty set simply adds no corroboration (never a phantom kind). */
+  signal_kinds?: string[];
 }): Promise<void> {
   await ensureSchema();
   const normalized = normalizeIsoDateInput(a.session_day);
   if (!normalized) return;
+  const signalKinds = Array.isArray(a.signal_kinds)
+    ? [...new Set(a.signal_kinds.map((k) => String(k)).filter((k) => k.length > 0))]
+    : [];
   await (await getPool()).query(
     `INSERT INTO swing_candidate_accumulation (
        ticker, direction, observation_count, distinct_session_days, last_session_day,
-       phases_seen, first_seen_at, last_seen_at
-     ) VALUES ($1,$2,1,1,$3::date,$4::jsonb,NOW(),NOW())
+       phases_seen, signal_kinds, first_seen_at, last_seen_at
+     ) VALUES ($1,$2,1,1,$3::date,$4::jsonb,$5::jsonb,NOW(),NOW())
      ON CONFLICT (ticker, direction) DO UPDATE SET
        observation_count = swing_candidate_accumulation.observation_count + 1,
        -- FINDINGS 2026-07-24 (SEV-3, distinct_session_days miscount): the prior guard used IS DISTINCT
@@ -6189,13 +6210,18 @@ export async function upsertSwingAccum(a: {
                    OR EXCLUDED.last_session_day > swing_candidate_accumulation.last_session_day
                  THEN 1 ELSE 0 END),
        last_session_day = GREATEST(swing_candidate_accumulation.last_session_day, EXCLUDED.last_session_day),
-       -- Deduped union of phases seen.
+       -- Deduped union of phases seen (cadence provenance).
        phases_seen = (
          SELECT COALESCE(jsonb_agg(DISTINCT e), '[]'::jsonb)
          FROM jsonb_array_elements(swing_candidate_accumulation.phases_seen || EXCLUDED.phases_seen) AS e
        ),
+       -- Deduped union of signal KINDS (screen provenance) — the corroboration set.
+       signal_kinds = (
+         SELECT COALESCE(jsonb_agg(DISTINCT e), '[]'::jsonb)
+         FROM jsonb_array_elements(swing_candidate_accumulation.signal_kinds || EXCLUDED.signal_kinds) AS e
+       ),
        last_seen_at = NOW()`,
-    [a.ticker.toUpperCase(), a.direction, normalized, JSON.stringify([a.phase])]
+    [a.ticker.toUpperCase(), a.direction, normalized, JSON.stringify([a.phase]), JSON.stringify(signalKinds)]
   );
 }
 

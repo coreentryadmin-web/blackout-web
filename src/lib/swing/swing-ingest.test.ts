@@ -6,8 +6,10 @@ import {
   pctReturnOverSessions,
   emaStackFromCloses,
   accumulationReadFromSignal,
+  regimeFromSpyTrend,
   type SwingIngestDeps,
 } from "./swing-ingest.ts";
+import { buildSwingDossier } from "./dossier.ts";
 import type { FlowAccumulationSignal } from "../../features/nighthawk/lib/flow-accumulation.ts";
 import type { BreakoutMover } from "../../features/nighthawk/lib/candidates.ts";
 
@@ -155,4 +157,92 @@ test("ingestSwingReads: fetches name closes then assembles; null when no history
     spyCloses: FLAT_SPY,
   });
   assert.equal(none, null, "a name with no daily history is dropped, not carried as a hollow dossier");
+});
+
+// ── Pillar/archetype GROUNDING (the 7-pillar engine, not a 3-pillar screen) ──────────
+
+test("regimeFromSpyTrend: SPY risk-on is a LONG tailwind and a SHORT headwind (direction-aligned)", () => {
+  assert.equal(regimeFromSpyTrend(ASC, "LONG"), 1, "SPY uptrend → risk-on → max regime for a LONG");
+  assert.equal(regimeFromSpyTrend(ASC, "SHORT"), 0, "the same risk-on tape is a headwind for a SHORT");
+  assert.equal(regimeFromSpyTrend(DESC, "SHORT"), 1, "SPY downtrend → risk-off → max regime for a SHORT");
+  assert.equal(regimeFromSpyTrend(ASC, null), 1, "no direction → the raw risk-on read");
+  // Too little SPY history → honest absence (null), never a fabricated 0/1.
+  assert.equal(regimeFromSpyTrend([100, 101, 102], "LONG"), null);
+});
+
+test("assembleSwingDossierInput: catalyst + IV-rank ground the CATALYST / VOLATILITY / REGIME pillars + event extras", () => {
+  const input = assembleSwingDossierInput({
+    ticker: "MRNA",
+    asOf: "2026-07-24T21:00:00.000Z",
+    intendedDte: 14,
+    accumulation: bullSignal(),
+    flowWindowDays: 5,
+    nameCloses: ASC,
+    spyCloses: ASC, // risk-on tape
+    mover: null,
+    catalyst: { freshCatalystAgeDays: 0, earnings: { nextEarnings: null, lastEarnings: null } },
+    ivRank: 20, // low IV → high contract quality
+  });
+  assert.ok((input.volatility?.contractQuality01 ?? 0) > 0.7, "low IV rank → high VOLATILITY contract quality");
+  assert.ok((input.catalyst?.catalystStrength01 ?? 0) > 0.9, "a same-day catalyst grounds the CATALYST pillar");
+  assert.equal(input.regime01, 1, "risk-on SPY → max REGIME for a LONG");
+  assert.ok((input.archetypeExtras?.catalystInWindow01 ?? 0) > 0.9, "the EVENT_DRIVEN fit input is grounded");
+
+  // Absent-context path (no catalyst/ivRank args): those pillars stay null (honest), REGIME still grounds.
+  const bare = assembleSwingDossierInput({
+    ticker: "MRNA", asOf: "2026-07-24T21:00:00.000Z", intendedDte: 14,
+    accumulation: bullSignal(), flowWindowDays: 5, nameCloses: ASC, spyCloses: FLAT_SPY, mover: null,
+  });
+  assert.equal(bare.volatility, undefined, "no IV rank → VOLATILITY cluster absent (never faked)");
+  assert.equal(bare.catalyst, undefined, "no catalyst context → CATALYST cluster absent");
+  assert.equal(bare.archetypeExtras?.catalystInWindow01, null);
+});
+
+test("EVENT_DRIVEN is now PRODUCIBLE: a fresh-catalyst name classifies EVENT_DRIVEN on the grounded extra (was dead code)", () => {
+  const input = assembleSwingDossierInput({
+    ticker: "MRNA",
+    asOf: "2026-07-24T21:00:00.000Z",
+    intendedDte: 14,
+    accumulation: bullSignal(),
+    flowWindowDays: 5,
+    nameCloses: ASC,
+    spyCloses: ASC,
+    mover: null,
+    catalyst: { freshCatalystAgeDays: 0, earnings: { nextEarnings: null, lastEarnings: null } },
+    ivRank: 30,
+  });
+  const d = buildSwingDossier(input);
+  assert.equal(d.archetype.archetype, "EVENT_DRIVEN", "a dominant fresh catalyst wins (priority #1) — the archetype the fast-track was built for");
+  assert.ok(d.pillarSignals.CATALYST != null && d.pillarSignals.VOLATILITY != null && d.pillarSignals.REGIME != null);
+  assert.ok(d.score.presentCount >= 6, "6+ pillars grounded — no longer the renormalized 3-pillar momentum screen");
+});
+
+test("ingestSwingReads: wired catalyst/IV-rank fetchers thread through; fail-soft on a throwing provider", async () => {
+  const deps: SwingIngestDeps = {
+    async fetchDailyCloses() { return ASC; },
+    async fetchCatalystNews() { return [{ channels: ["fda"], publishedAt: "2026-07-24T12:00:00.000Z" }]; },
+    async fetchEarningsRows() { return [{ report_date: "2026-07-21", surprise_pct: 12 }]; },
+    async fetchIvRank() { return 15; },
+  };
+  const input = await ingestSwingReads(deps, {
+    ticker: "MRNA", asOf: "2026-07-24T21:00:00.000Z", intendedDte: 14,
+    accumulation: bullSignal(), flowWindowDays: 5, spyCloses: ASC,
+  });
+  assert.ok(input != null);
+  assert.ok((input!.catalyst?.catalystStrength01 ?? 0) > 0, "wired Benzinga news grounds the CATALYST pillar");
+  assert.ok((input!.volatility?.contractQuality01 ?? 0) > 0.8, "wired IV rank grounds the VOLATILITY pillar");
+  assert.ok((input!.archetypeExtras?.earningsGapRecent01 ?? 0) > 0, "wired earnings feed grounds the post-earnings drift extras");
+
+  // A THROWING provider degrades only that read — the candidate is never dropped and never throws.
+  const flaky: SwingIngestDeps = {
+    async fetchDailyCloses() { return ASC; },
+    async fetchCatalystNews() { throw new Error("benzinga down"); },
+    async fetchIvRank() { throw new Error("uw down"); },
+  };
+  const soft = await ingestSwingReads(flaky, {
+    ticker: "MRNA", asOf: "2026-07-24T21:00:00.000Z", intendedDte: 14,
+    accumulation: bullSignal(), flowWindowDays: 5, spyCloses: ASC,
+  });
+  assert.ok(soft != null, "a provider outage never drops the candidate (fail-soft)");
+  assert.equal(soft!.catalyst?.catalystStrength01 ?? null, null, "the failed catalyst read is just null, not a throw");
 });

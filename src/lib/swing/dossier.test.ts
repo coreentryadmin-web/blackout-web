@@ -115,3 +115,23 @@ test("buildSwingDossier: score partitions on the classified archetype (label fee
   assert.equal(d.score.archetype, d.archetype.archetype);
   assert.equal(d.score.subLane, d.subLane);
 });
+
+test("buildSwingDossier: POST_EARNINGS_DRIFT is now PRODUCIBLE from the grounded earnings-drift extras (was dead code)", () => {
+  // A recent earnings gap + aligned drift, with only modest trend/flow/rel-strength around it and NO fresh
+  // catalyst-in-window (so EVENT_DRIVEN's fit is absent) → POST_EARNINGS_DRIFT is the dominant fit. Before the
+  // catalyst grounding shipped, `earningsGapRecent01`/`postEarningsDrift01` were never populated, so this
+  // archetype (a persistence FAST-TRACK target) could never be produced.
+  const d = buildSwingDossier({
+    ticker: "SNOW",
+    intendedDte: 14,
+    asOf: "2026-07-24T14:00:00.000Z",
+    reads: modestReads, // trend-stack ≈ 0.33, accumulation ≈ 0.2, rel-strength ≈ 0.33
+    archetypeExtras: { earningsGapRecent01: 0.9, postEarningsDrift01: 0.85 },
+    structure: { priceAboveEma20: true },
+    relStrength: { nameReturnPct: 3, spyReturnPct: 1 },
+    flow: { accumAlignedDays: 1, accumTotalDays: 5 },
+    catalyst: { catalystStrength01: 0.4 },
+  });
+  assert.equal(d.archetype.archetype, "POST_EARNINGS_DRIFT", "the recent earnings gap dominates → POST_EARNINGS_DRIFT");
+  assert.ok(d.archetype.confidence > 0.35, "the winning fit clears the evidence floor");
+});

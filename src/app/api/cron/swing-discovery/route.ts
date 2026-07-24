@@ -32,6 +32,8 @@ import {
   fadeStaleAccum,
 } from "@/lib/db";
 import { fetchDailyMarketSummary, fetchStockDailyBars } from "@/lib/providers/polygon";
+import { fetchTickerNews, DEFAULT_CATALYST_CHANNELS } from "@/lib/providers/polygon-news";
+import { fetchUwTickerEarningsHistory, fetchUwIvRank } from "@/lib/providers/unusual-whales";
 import {
   MULTI_DAY_FLOW_HOURS,
   MULTI_DAY_MIN_PREMIUM,
@@ -70,7 +72,20 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
     fetchSpyCloses: async () => closesFor("SPY"),
     enrichCandidate: (seed, ctx) =>
       ingestSwingReads(
-        { fetchDailyCloses: (ticker) => closesFor(ticker) },
+        {
+          fetchDailyCloses: (ticker) => closesFor(ticker),
+          // CATALYST pillar + event-archetype extras: fresh Benzinga catalyst-channel news (rides the Polygon
+          // key) + the UW earnings feed (one call yields BOTH the upcoming print for the earnings-in-window
+          // hazard AND the recent print for post-earnings drift). VOLATILITY pillar: the UW EOD IV rank. Each
+          // reader already fails open (→ [] / null), so a provider hiccup only drops those pillars for the name.
+          fetchCatalystNews: async (ticker) => {
+            const res = await fetchTickerNews(ticker, { channels: DEFAULT_CATALYST_CHANNELS, limit: 12 });
+            return res.items.map((i) => ({ channels: i.channels, publishedAt: i.publishedAt }));
+          },
+          fetchEarningsRows: (ticker) =>
+            fetchUwTickerEarningsHistory(ticker, 8) as Promise<Array<Record<string, unknown>>>,
+          fetchIvRank: (ticker) => fetchUwIvRank(ticker),
+        },
         {
           ticker: seed.ticker,
           asOf: ctx.asOf,

@@ -36,6 +36,8 @@ const SRC = new URL("../../src/", import.meta.url).pathname;
 const { runSwingDiscoveryScan } = await import(`${SRC}lib/swing/discovery.ts`);
 const { ingestSwingReads } = await import(`${SRC}lib/swing/swing-ingest.ts`);
 const { fetchDailyMarketSummary, fetchStockDailyBars } = await import(`${SRC}lib/providers/polygon.ts`);
+const { fetchTickerNews, DEFAULT_CATALYST_CHANNELS } = await import(`${SRC}lib/providers/polygon-news.ts`);
+const { fetchUwTickerEarningsHistory, fetchUwIvRank } = await import(`${SRC}lib/providers/unusual-whales.ts`);
 const db = await import(`${SRC}lib/db.ts`);
 
 const argv = Object.fromEntries(
@@ -114,7 +116,17 @@ const deps = {
   fetchSpyCloses: async () => closesFor("SPY", session, 90),
   enrichCandidate: async (seed, ctx) =>
     ingestSwingReads(
-      { fetchDailyCloses: (ticker, lookback) => closesFor(ticker, session, lookback) },
+      {
+        fetchDailyCloses: (ticker, lookback) => closesFor(ticker, session, lookback),
+        // Parity with the live cron: ground the CATALYST + VOLATILITY pillars + the event-archetype extras.
+        // Each reader fails open, so a Benzinga/UW hiccup only drops those pillars for the name.
+        fetchCatalystNews: async (ticker) => {
+          const r = await fetchTickerNews(ticker, { channels: DEFAULT_CATALYST_CHANNELS, limit: 12 }).catch(() => null);
+          return (r?.items ?? []).map((i) => ({ channels: i.channels, publishedAt: i.publishedAt }));
+        },
+        fetchEarningsRows: (ticker) => fetchUwTickerEarningsHistory(ticker, 8).catch(() => []),
+        fetchIvRank: (ticker) => fetchUwIvRank(ticker).catch(() => null),
+      },
       {
         ticker: seed.ticker,
         asOf: ctx.asOf,
@@ -179,9 +191,9 @@ for (const d of res.dossiers) {
   );
 }
 if (res.watchCandidates.length) {
-  console.log("\n  WATCH RAIL (persisted ≥2 sessions):");
+  console.log("\n  WATCH RAIL (persisted ≥2 sessions, or an event archetype on 1 corroborated session):");
   for (const c of res.watchCandidates) {
-    console.log(`    ${pad(c.ticker, 7)}${pad(c.direction, 6)} · ${c.distinctSessionDays} sessions · ${c.observationCount} obs · phases ${c.phasesSeen.join(",")}`);
+    console.log(`    ${pad(c.ticker, 7)}${pad(c.direction, 6)} · ${c.distinctSessionDays} sessions · ${c.observationCount} obs · kinds ${(c.signalKinds ?? []).join("+") || "—"} · phases ${c.phasesSeen.join(",")}`);
   }
 } else {
   console.log("\n  WATCH RAIL: empty (no candidate has persisted across ≥2 sessions yet — expected on a first scan).");
