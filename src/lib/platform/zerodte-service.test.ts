@@ -271,6 +271,97 @@ test("tier passthrough: a pre-wiring row (no entry_context.tier) serves tier:nul
   assert.equal(board.ledger[0]!.tier, null);
 });
 
+// ── Exit-engine visibility (feat/zerodte-exit-engine-visibility) ──────────────────
+// The engine's rich exit decision (floor / reason / detail) is now surfaced on the
+// ledger row — additive, no computation change. These assert the four new surfaces off
+// rows carrying exactly what mapLedgerRow reads: the latched peak + the pinned
+// entry_context.exit blob.
+
+test("exit visibility: an OPEN play's latched peak surfaces the live ratchet floor (floor_pnl_pct)", async () => {
+  // entry 4.0, peak 6.0 = +50% → the ratchet locks a +20% floor; mark 5.0 = +25% live.
+  state.ledgerRead = {
+    rows: [ledgerRow({ entry_premium: 4.0, peak_premium: 6.0, last_mark: 5.0, trough_premium: 4.0, status: "HOLD" })],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.floor_pnl_pct, 20, "'your stop is now at +20%' — the guidance the member never saw");
+  assert.equal(board.ledger[0]!.closed_reason, null, "a live row is not closed");
+  assert.equal(board.ledger[0]!.exit_reason, null, "no engine exit stamped yet");
+  assert.equal(board.ledger[0]!.exit_detail, null);
+});
+
+test("exit visibility: a live play below the +25% arm has no floor (floor_pnl_pct null)", async () => {
+  state.ledgerRead = {
+    rows: [ledgerRow({ entry_premium: 4.0, peak_premium: 4.6, last_mark: 4.2, trough_premium: 4.0, status: "HOLD" })],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.floor_pnl_pct, null);
+});
+
+test("exit visibility: a pinned ratchet exit surfaces reason + detail and makes closed_reason distinguishable", async () => {
+  const exit = {
+    reason: "ratchet_breakeven_floor",
+    detail: "Mark 4 (+0%) is at/below the +0% floor armed by a +25% peak — the ratchet exits so the green trade cannot finish red.",
+    mark: 4.0,
+    pnl_pct: 0,
+    peak_pnl_pct: 25,
+    at: "2026-07-07T15:00:00.000Z",
+  };
+  state.ledgerRead = {
+    rows: [ledgerRow({ entry_premium: 4.0, last_mark: 4.0, peak_premium: 5.0, trough_premium: null, status: "CLOSED", entry_context: { exit } })],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.exit_reason, "ratchet");
+  assert.equal(board.ledger[0]!.exit_detail, exit.detail);
+  assert.equal(board.ledger[0]!.closed_reason, "ratchet", "a ratchet exit is no longer indistinguishable from a target trim (both were null)");
+});
+
+test("exit visibility: a target-trim exit is categorized 'target' — distinct from a ratchet exit", async () => {
+  const exit = { reason: "plan_target_final", detail: "runner banked in full.", mark: 8.2, pnl_pct: 105, peak_pnl_pct: 112, at: "2026-07-07T15:00:00.000Z" };
+  state.ledgerRead = {
+    rows: [ledgerRow({ entry_premium: 4.0, last_mark: 8.2, peak_premium: 9.0, trough_premium: 4.0, status: "CLOSED", entry_context: { exit } })],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.exit_reason, "target");
+  assert.equal(board.ledger[0]!.closed_reason, "target");
+});
+
+test("exit visibility: a stopped play still pins P&L and reads closed_reason 'stopped' (unchanged pin)", async () => {
+  // entry 4.0, stop 2.0; trough 1.8 ≤ stop and the peak never tagged the +100% target.
+  state.ledgerRead = {
+    rows: [ledgerRow({ entry_premium: 4.0, last_mark: 1.9, peak_premium: 4.4, trough_premium: 1.8, status: "CLOSED" })],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.closed_reason, "stopped");
+  assert.equal(board.ledger[0]!.live_pnl_pct, -50, "stopped still pins to the stop P&L");
+});
+
+test("exit visibility: a plain 15:30 close with no engine exit reads closed_reason 'time_stop'", async () => {
+  state.ledgerRead = {
+    rows: [ledgerRow({ entry_premium: 4.0, last_mark: 4.1, peak_premium: 4.5, trough_premium: 3.5, status: "CLOSED" })],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.closed_reason, "time_stop");
+  assert.equal(board.ledger[0]!.exit_reason, null);
+});
+
 test("fresh-lane tiers: a refused (SKIP) find carries tierForSkip's F with each block as a down factor; a WATCH candidate carries NO tier", async () => {
   state.ledgerRead = { rows: [], committed_known: true };
   state.setups = [

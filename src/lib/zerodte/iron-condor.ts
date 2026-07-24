@@ -82,11 +82,14 @@ export type IronCondorLegs = {
   /** True when this width's RAW measured WR exceeds the cap, i.e. est_win_rate was clamped down from
    *  an unsupportable small-sample bucket (the UI should caveat "small sample" here). */
   est_win_rate_small_sample: boolean;
-  /** Documented AGGREGATE intraday-breach rate for the shipped geometry (= SHIPPED_INTRADAY_BREACH_PCT):
-   *  the negative-skew tail carried machine-readably NEXT TO the win rate, not buried in prose. Not a
-   *  per-width figure — the shipped-geometry backtest aggregate — so read it alongside est_win_rate as
-   *  "wins ~most days, but breaches a short ~this often intraday". */
-  est_intraday_breach_pct: number;
+  /** Documented AGGREGATE intraday-breach rate for the SHIPPED geometry (= SHIPPED_INTRADAY_BREACH_PCT):
+   *  the negative-skew tail carried machine-readably NEXT TO the win rate, not buried in prose. It was
+   *  measured for exactly ONE geometry — the shipped target-80 selection — so it is stamped ONLY when
+   *  this pick IS that geometry; a deviating `targetWinRate`/`shortWidthPct` (a different, wider/tighter
+   *  condor) gets NULL rather than a breach number that was never measured for it, so a consumer can't
+   *  pair a non-default win rate with a mismatched 18.7%. Read alongside est_win_rate as "wins ~most
+   *  days, but breaches a short ~this often intraday"; null = breach rate unknown for this width. */
+  est_intraday_breach_pct: number | null;
   /** This product is NEGATIVE skew: high close-settlement WR bought with a defined loss on the breach
    *  days. Marked explicitly so a consumer can never render the WR as if it were symmetric edge. */
   skew: "negative";
@@ -182,6 +185,13 @@ export function selectIronCondor(input: {
   // breach tail so the honest catch travels with the number instead of living only in a header comment.
   const rawWinRate = estWinRateForWidth(tighter);
 
+  // The 18.7% breach was measured for the SHIPPED target-80 geometry ONLY — it is an aggregate over that
+  // one selection, not a per-width curve. Stamp it just for THAT geometry (default target 80, no explicit
+  // width override); any deviation gets null so a caller can't read a mismatched breach next to a
+  // different win rate. Walls don't change this: they push the SAME shipped selection further out, they
+  // are not a width/target override.
+  const isShippedGeometry = input.shortWidthPct == null && (input.targetWinRate ?? 80) === 80;
+
   return {
     short_put,
     long_put,
@@ -192,7 +202,7 @@ export function selectIronCondor(input: {
     wing_pts: Number((long_call - short_call).toFixed(4)),
     est_win_rate: surfacedWinRate(rawWinRate),
     est_win_rate_small_sample: rawWinRate > SURFACED_WIN_RATE_CAP,
-    est_intraday_breach_pct: SHIPPED_INTRADAY_BREACH_PCT,
+    est_intraday_breach_pct: isShippedGeometry ? SHIPPED_INTRADAY_BREACH_PCT : null,
     skew: "negative",
     gross_wing_risk_per_side: Number(((long_call - short_call) * 100).toFixed(2)),
   };

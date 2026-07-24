@@ -36,6 +36,14 @@
 //
 // Missing data NEVER exits: no mark / no entry premium / no evidence → the engine
 // holds (and keeps reporting the armed floor). Exits happen on observed numbers only.
+//
+// PROFIT-MANAGEMENT MODE (A/B, `exitMode`): family 1 above is the SHIPPED ratchet, the
+// default. A second, DEFAULT-OFF family — `trim_scale` — replaces the ratchet floor with
+// the E5-measured ⅓@+25% / ⅓@+50% / run-the-last-⅓ partial scale-out (regime-conditioned;
+// see DEFAULT_EXIT_MODE / TRIM_SCALE_RULES / decideTrimScale). Families 2–4 (thesis break,
+// flat timeout, plan stop/target) are shared by both modes; only HOW profit is taken
+// changes. The trim graduates on the LIVE-ledger counterfactual grader, not an offline
+// flip — the operator selects it via config; this leaf never reads an env or a clock.
 
 import type { EvidenceItem } from "@/lib/nighthawk/cortex/types";
 import { pinnedLivePnlPct } from "./marks-math";
@@ -65,6 +73,53 @@ export const EXIT_RULES = {
    *  residue, not evidence. Same scale as compose.ts's decayed weights. */
   thesis_min_oppose_weight: 0.5,
 } as const;
+
+// ── EXIT MODE (A/B, default the shipped ratchet) ──────────────────────────────────
+// The profit-management family is selectable. `ratchet` is the SHIPPED breakeven-
+// floor ratchet above — unchanged live behavior, the default. `trim_scale` is the
+// E5-measured replacement (FINDINGS 2026-07-23): a partial SCALE-OUT — trim ⅓ at
+// +25%, trim ⅓ at +50%, then run the last ⅓ to the plan rails. That schedule beat
+// BOTH pure-hold and the shipped floor-exit in EVERY split (calib+valid) and BOTH
+// universes (all-names + index-only), lifting win-rate 32%→50%:
+//   HOLD                  -0.8% calib / -12.1% valid / -3.7% all / 33% win
+//   shipped floor arm+25   -4.4% / -10.1% / -5.8% / 32%
+//   trim ⅓@25 + ⅓@50, run  +0.6% /  -4.4% / -0.7% / 50%   ← dominates every window
+// The floor-exit dumps the WHOLE runner on a dip to breakeven (scratching momentum);
+// a partial trim banks into strength while letting the rest run — positive-skew-
+// preserving, the same edge as the banger scale-out.
+//
+// DEFAULT-OFF, DELIBERATELY: `DEFAULT_EXIT_MODE` stays "ratchet". FINDINGS is explicit
+// that the trim is not to be flipped off the offline backtest alone — it graduates on
+// the LIVE-ledger counterfactual grader (the same calibration-first ladder as
+// confluence/accumulation/scale-out). The mode is a per-call input so the sim can A/B
+// it and the operator can flip it (env-driven, in the IO shell — exit-sync.ts) once
+// signed off, WITHOUT this pure leaf ever reading a clock or an env.
+export type ZeroDteExitMode = "ratchet" | "trim_scale";
+export const DEFAULT_EXIT_MODE: ZeroDteExitMode = "ratchet";
+
+/** Day regime that conditions the trim-scale schedule. `neutral` is the E5-measured
+ *  base; `trend` lets a runner run (later/looser trims — don't scratch a trend-day
+ *  momentum leg); `range`/chop banks sooner (theta + mean-reversion punish the runner). */
+export type ZeroDteRegime = "trend" | "neutral" | "range";
+
+export const TRIM_SCALE_RULES = {
+  /** Fraction of the ORIGINAL position banked at each of the two trim tranches; the
+   *  remainder (the last ⅓) runs to the plan rails. ⅓/⅓/⅓ is the E5-measured split. */
+  tranche_fraction: 1 / 3,
+  /** Regime-conditioned tranche thresholds — the PEAK P&L % that arms each trim.
+   *  `neutral` is the exact E5-measured winner (+25%, +50%). `trend`/`range` are the
+   *  documented conditioning spread AROUND that base: v1 heuristics (like the ratchet's
+   *  own "v1 constants tuned with data"), calibrated on the live ledger before they size
+   *  real risk. Both tranches sit BELOW the +100% plan target, so the ladder always
+   *  banks its two thirds before the target rule takes the runner. */
+  tranches_by_regime: {
+    trend: [40, 80],
+    neutral: [25, 50],
+    range: [20, 40],
+  },
+} as const satisfies Record<"tranche_fraction", number> & {
+  tranches_by_regime: Record<ZeroDteRegime, readonly [number, number]>;
+};
 
 export type ExitAction = "HOLD" | "RAISE_FLOOR" | "TRIM" | "EXIT";
 
@@ -103,6 +158,16 @@ export type ExitEngineInput = {
    *  the thesis was bought with; opposing weight must exceed it to break the thesis.
    *  Null/absent → the thesis_min_oppose_weight noise floor is the margin. */
   entryCortexScore?: number | null;
+  /** Profit-management family (A/B). Omitted → DEFAULT_EXIT_MODE ("ratchet", the
+   *  shipped floor-exit). "trim_scale" selects the E5 ⅓@+25% / ⅓@+50% / run scale-out. */
+  exitMode?: ZeroDteExitMode;
+  /** Day regime that conditions the trim-scale tranche thresholds (trim_scale only;
+   *  ignored in ratchet mode). Omitted → "neutral" (the E5-measured base schedule). */
+  regime?: ZeroDteRegime | null;
+  /** How many trim-scale tranches the caller has ALREADY banked (0/1/2) — the latch
+   *  the two-stage scale-out needs, same pattern as `trimmed` for the ratchet runner.
+   *  trim_scale only; omitted → 0. Ignored in ratchet mode. */
+  trimsTaken?: number;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -127,6 +192,20 @@ export function ratchetFloorPct(peakPnlPct: number | null, trimmed: boolean): nu
 function floorReason(floor: number, trimmed: boolean): string {
   if (trimmed) return "runner_floor";
   return floor >= EXIT_RULES.ratchet_lock_floor_pct ? "ratchet_profit_floor" : "ratchet_breakeven_floor";
+}
+
+/**
+ * How many trim-scale tranches the LATCHED PEAK has armed (0/1/2) under the regime
+ * schedule. Pure function of the monotonic peak — the same structural property as
+ * ratchetFloorPct: a retracing mark can never DIS-arm a tranche the peak already
+ * reached, so "banked ⅓ at +25%" is remembered by the peak, not by mutable state.
+ */
+export function trimTranchesArmed(peakPnlPct: number | null, regime: ZeroDteRegime): number {
+  if (peakPnlPct == null) return 0;
+  const thresholds = TRIM_SCALE_RULES.tranches_by_regime[regime];
+  let n = 0;
+  for (const t of thresholds) if (peakPnlPct >= t) n += 1;
+  return n;
 }
 
 export type ThesisBreak = {
@@ -173,12 +252,127 @@ export function detectThesisBreak(
 }
 
 /**
+ * The trim-scale profit-management decision (EXIT_MODE "trim_scale"): the E5-measured
+ * ⅓@+25% / ⅓@+50% / run-the-last-⅓ scale-out, regime-conditioned. Precedence MIRRORS
+ * the ratchet path — protective plan stop > thesis break > profit management (the two
+ * trim tranches + the runner's target) > flat timeout > hold — so the ONLY thing that
+ * changes between modes is HOW profit is taken: partial trims into strength here vs the
+ * single dump-to-breakeven floor-exit in ratchet mode. Called only after
+ * evaluateExitState's shared guards + no-mark guard, so mark/entry/pnl are non-null.
+ *
+ * DELIBERATELY no trailing stop on the runner: the P3 exit study proved trailing/ratchet
+ * HURTS same-day 0DTE (intraminute chop stops you out before the move completes —
+ * scale-out.ts's own HORIZON NOTE). We reuse the partial-SCALE MECHANISM from
+ * scale-out.ts (bank strength in fractional tranches), NOT its weekly trailing stop; the
+ * last third runs to the plan target/stop/time-stop like any 0DTE runner.
+ */
+function decideTrimScale(
+  input: ExitEngineInput,
+  ctx: { entryPremium: number; currentMark: number; pnlPct: number; peakPnlPct: number | null }
+): ExitDecision {
+  const { currentMark, pnlPct, peakPnlPct } = ctx;
+  const regime: ZeroDteRegime = input.regime ?? "neutral";
+  const thresholds = TRIM_SCALE_RULES.tranches_by_regime[regime];
+  // How many thirds the caller has already banked (clamped/floored — the latch is 0/1/2).
+  const taken = Math.max(0, Math.min(thresholds.length, Math.floor(input.trimsTaken ?? 0)));
+
+  // 1. Protective: the plan stop is the runner's only hard floor in this mode — the trims
+  //    already banked the profit, so the last third simply rides the printed stop.
+  if (input.planStop != null && currentMark <= input.planStop) {
+    return {
+      action: "EXIT",
+      floorPnlPct: null,
+      reason: "plan_stop",
+      detail: `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the plan stop ${input.planStop} — the printed stop is authoritative.`,
+    };
+  }
+
+  // 2. Thesis break: the play is WRONG → dump the WHOLE remaining position at any P&L
+  //    (outranks banking another third — same veto asymmetry as the ratchet path).
+  const broken = detectThesisBreak(input.cortexEvidence, input.entryCortexScore);
+  if (broken) {
+    return {
+      action: "EXIT",
+      floorPnlPct: null,
+      reason: `thesis_break:${broken.source}`,
+      detail: `Thesis broken (${broken.kind}) at ${fmtPct(pnlPct)} — exiting the remaining position at market, not hoping: ${broken.detail}`,
+    };
+  }
+
+  // 3. Trim ladder: the LATCHED PEAK arms tranches monotonically; bank the next third
+  //    whenever the peak has armed more than the caller has already taken. One third per
+  //    tick until caught up (same one-step-per-tick catch-up as the ratchet trim latch).
+  const armed = trimTranchesArmed(peakPnlPct, regime);
+  if (armed > taken) {
+    const trancheIdx = taken + 1; // banking the 1st or 2nd third now
+    const at = thresholds[taken]!;
+    const pctEach = Math.round(TRIM_SCALE_RULES.tranche_fraction * 100);
+    return {
+      action: "TRIM",
+      floorPnlPct: null,
+      reason: trancheIdx === 1 ? "trim_scale_first" : "trim_scale_second",
+      detail:
+        `Peak ${fmtPct(peakPnlPct)} armed trim ${trancheIdx}/2 (+${at}%, regime ${regime}) — bank ${pctEach}% ` +
+        `into strength and run the rest (E5 scale-out: don't scratch a momentum runner at breakeven).`,
+    };
+  }
+
+  // 4. Runner target: both thirds banked and the last third tags +100% → bank it in full.
+  if (taken >= thresholds.length && input.planTarget != null && currentMark >= input.planTarget) {
+    return {
+      action: "EXIT",
+      floorPnlPct: null,
+      reason: "trim_scale_runner_target",
+      detail: `Mark ${currentMark} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} after both trims — the last third is banked in full.`,
+    };
+  }
+
+  // 5. Flat timeout: the SAME theta-bleed scratch as the ratchet path (a play that never
+  //    armed a tranche can still bleed out flat). Unreachable once a tranche armed — that
+  //    needs peak ≥ +20%, which fails the peak < ±band condition below.
+  if (
+    input.ageMinutes != null &&
+    input.ageMinutes >= EXIT_RULES.flat_timeout_min &&
+    (peakPnlPct ?? 0) < EXIT_RULES.flat_band_pct &&
+    pnlPct > -EXIT_RULES.flat_band_pct
+  ) {
+    return {
+      action: "EXIT",
+      floorPnlPct: null,
+      reason: "flat_theta_bleed",
+      detail:
+        `${Math.floor(input.ageMinutes)}min in and the play never left the ±${EXIT_RULES.flat_band_pct}% band ` +
+        `(peak ${fmtPct(peakPnlPct)}, now ${fmtPct(pnlPct)}) — on 0DTE flat is losing; a small scratch beats theta decay.`,
+    };
+  }
+
+  // 6. Nothing fires: report the ladder state — thirds banked so far + the next arm level.
+  if (taken > 0) {
+    return {
+      action: "RAISE_FLOOR",
+      floorPnlPct: null,
+      reason: "trim_scale_running",
+      detail:
+        `${taken}/2 thirds banked (regime ${regime}); running the last third at ${fmtPct(pnlPct)} ` +
+        `(peak ${fmtPct(peakPnlPct)}) to the plan target/stop.`,
+    };
+  }
+  return {
+    action: "HOLD",
+    floorPnlPct: null,
+    reason: "hold",
+    detail: `No trim armed yet at ${fmtPct(pnlPct)} (peak ${fmtPct(peakPnlPct)}); next trim at +${thresholds[0]}% (regime ${regime}).`,
+  };
+}
+
+/**
  * THE exit decision for one open play at one tick. Pure and total: every input
  * combination returns exactly one decision with a reason — see the module doc for
  * the rule families and the precedence order (and WHY it is that order).
  */
 export function evaluateExitState(input: ExitEngineInput): ExitDecision {
   const { entryPremium, currentMark } = input;
+  const mode = input.exitMode ?? DEFAULT_EXIT_MODE;
 
   // ── Guards: never re-decide a closed row; never exit on missing data. ──────────
   if (input.status === "CLOSED") {
@@ -201,7 +395,9 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
       : (input.peakPremium ?? currentMark);
   const pnlPct = pinnedLivePnlPct(entryPremium, currentMark);
   const peakPnlPct = pinnedLivePnlPct(entryPremium, peakPremium);
-  const floor = ratchetFloorPct(peakPnlPct, input.trimmed);
+  // The ratchet floor only exists in ratchet mode; trim_scale banks profit in tranches
+  // and rides the plan stop, so it has no ratchet floor to report (null).
+  const floor = mode === "ratchet" ? ratchetFloorPct(peakPnlPct, input.trimmed) : null;
 
   if (currentMark == null || pnlPct == null) {
     return {
@@ -210,6 +406,13 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
       reason: "no_live_mark",
       detail: "No usable live mark this tick — exits fire on observed prices only.",
     };
+  }
+
+  // trim_scale (A/B, default-off): the E5 ⅓@+25% / ⅓@+50% / run scale-out replaces the
+  // ratchet's floor-exit. Shared guards + no-mark guard above still apply; only the
+  // profit-taking family differs. mark/entry/pnl are all non-null past this point.
+  if (mode === "trim_scale") {
+    return decideTrimScale(input, { entryPremium, currentMark, pnlPct, peakPnlPct });
   }
 
   // ── 1. Protective exits: plan stop vs ratchet floor — the HIGHER mark wins. ────
@@ -308,6 +511,33 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
     reason: "hold",
     detail: `No exit rule fires at ${fmtPct(pnlPct)} (peak ${fmtPct(peakPnlPct)}) — plan stop/target stand.`,
   };
+}
+
+/** Coarse, member-facing category of an exit-engine `reason` — the five families the
+ *  board surfaces so a consumer can distinguish (e.g.) a ratchet floor exit from a
+ *  target trim, which the raw snake_case reason buries and `closed_reason` alone could
+ *  not tell apart (both were null pre-this-change). */
+export type ZeroDteExitReasonCategory = "ratchet" | "thesis" | "flat" | "target" | "stop";
+
+/**
+ * Map a raw engine `reason` (persisted on entry_context.exit, or a live decision) to its
+ * coarse family. Single source of truth for the vocabulary so the board/pane never
+ * re-derive it from string prefixes and drift. Returns null for reasons that are not an
+ * exit (holds/floor-arms/guards) or an unknown token.
+ */
+export function categorizeExitReason(
+  reason: string | null | undefined
+): ZeroDteExitReasonCategory | null {
+  if (!reason) return null;
+  if (reason.startsWith("thesis_break")) return "thesis";
+  if (reason === "plan_stop") return "stop";
+  if (reason === "flat_theta_bleed") return "flat";
+  // Profit-taking, either mode: the ratchet's plan-target trim/final, and the trim_scale
+  // tranche + runner-target exits are all "we banked profit at/toward the target".
+  if (reason.startsWith("plan_target") || reason.startsWith("trim_scale")) return "target";
+  // The ratchet's breakeven/profit floor + the post-trim runner floor are the ratchet family.
+  if (reason.startsWith("ratchet") || reason.startsWith("runner_floor")) return "ratchet";
+  return null;
 }
 
 /** The counterfactual-grading record persisted into entry_context.exit on an engine

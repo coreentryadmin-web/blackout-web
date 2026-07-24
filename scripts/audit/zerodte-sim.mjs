@@ -104,7 +104,7 @@ const { filterPlaysByMaxDte } = await import(`${SRC}features/nighthawk/lib/agent
 const { fetchEditionChains } = await import(`${SRC}features/nighthawk/lib/option-chain-prompt.ts`);
 const { fetchMarketFlowAlertRows } = await import(`${SRC}lib/providers/unusual-whales.ts`);
 const { gradePlanFromBars, PLAN_RULES } = await import(`${SRC}lib/zerodte/plan.ts`);
-const { evaluateExitState } = await import(`${SRC}lib/zerodte/exit-engine.ts`);
+const { evaluateExitState, TRIM_SCALE_RULES } = await import(`${SRC}lib/zerodte/exit-engine.ts`);
 const { fetchAggBars } = await import(`${SRC}lib/providers/polygon-largo.ts`);
 const { appendFileSync } = await import("node:fs"); // for RATCHET_DUMP (offline ratchet-param sweep)
 
@@ -117,6 +117,11 @@ const { appendFileSync } = await import("node:fs"); // for RATCHET_DUMP (offline
  * flat-timeout. Cortex evidence is null (thesis-break can't be replayed off-line → skipped, never
  * fabricated). Returns { pnl_pct, outcome } or null.
  *
+ * MODE (A/B): `mode="ratchet"` (default) is the body below — the shipped exit, unchanged. `mode=
+ * "trim_scale"` routes to gradeTrimScaleExit above, the DEFAULT-OFF E5 ⅓@+25/⅓@+50/run scale-out
+ * graded through the SAME engine, so `npm run sim:0dte --grade=DATE` prints both head-to-head and the
+ * operator sees the measured delta on live data before signing off on the flip.
+ *
  * MARK-FAITHFULNESS (audit 2026-07-23, three fixes so the ratchet EV is honest, not optimistic):
  *  #2  the replay stops at 15:30 ET (PLAN_RULES.time_stop_et_minutes = 930), NOT 16:00 — the board
  *      hard-CLOSES every 0DTE row at 15:30 (derivePlayStatus) and never fires an exit after, freezing
@@ -128,10 +133,52 @@ const { appendFileSync } = await import("node:fs"); // for RATCHET_DUMP (offline
  */
 const PROTECT_AT = process.env.RATCHET_PROTECT_AT === "close" ? "close" : "low";
 const REPLAY_STOP_ET_MIN = 15 * 60 + 30; // 930 = 15:30 ET board hard time-stop (PLAN_RULES.time_stop_et_minutes)
-function gradeThroughExitEngine(bars, entry, planStop, planTarget, flaggedMs) {
+const SIM_TRIM_REGIME = ["trend", "neutral", "range"].includes(process.env.ZERODTE_SIM_REGIME) ? process.env.ZERODTE_SIM_REGIME : "neutral";
+
+/**
+ * trim_scale replay (A/B, the E5 ⅓@+25% / ⅓@+50% / run-the-last-⅓ scale-out): grade a play
+ * through the REAL evaluateExitState in "trim_scale" mode so the operator can measure the
+ * DEFAULT-OFF exit against the shipped ratchet on live data before flipping it. Local tranche
+ * state (taken/realized/remaining) drives the two ⅓ trims — the sim owns the latch the live
+ * DB will own after graduation — while the pure engine owns every threshold. Each third banks
+ * at its tranche LEVEL (a resting limit at +25%/+50% fills), the same fill methodology the
+ * ratchet grader uses for its half-trim at the target. Regime conditions the thresholds.
+ */
+function gradeTrimScaleExit(seq, entry, planStop, planTarget, flaggedMs, regime) {
+  const pnlAt = (mark) => ((mark - entry) / entry) * 100;
+  const thresholds = TRIM_SCALE_RULES.tranches_by_regime[regime] ?? TRIM_SCALE_RULES.tranches_by_regime.neutral;
+  const frac = TRIM_SCALE_RULES.tranche_fraction;
+  let peak = entry, taken = 0, realized = 0, remaining = 1, exited = false, outcome = "time_stop", lastClose = entry;
+  for (const b of seq) {
+    lastClose = b.c;
+    const age = (b.t - flaggedMs) / 60000;
+    const mk = (m, pk) => ({ entryPremium: entry, currentMark: m, peakPremium: pk, ageMinutes: age, cortexEvidence: null, planStop, planTarget, status: taken > 0 ? "TRIM" : "OPEN", trimmed: taken > 0, entryCortexScore: null, exitMode: "trim_scale", regime, trimsTaken: taken });
+    // 1) protective (bar low): the plan stop is the runner's only hard floor in this mode.
+    const dLow = evaluateExitState(mk(b.l, peak));
+    if (dLow.action === "EXIT" && dLow.reason === "plan_stop") { realized += remaining * pnlAt(planStop); exited = true; outcome = "stopped"; break; }
+    peak = Math.max(peak, b.h);
+    // 2) favorable (bar high): bank every tranche the (now-updated) peak has armed — a single
+    // minute/daily bar can arm both thirds — then the runner-target exit for the last third.
+    let dHigh = evaluateExitState(mk(b.h, peak));
+    while (dHigh.action === "TRIM" && taken < thresholds.length) {
+      realized += frac * pnlAt(entry * (1 + thresholds[taken] / 100)); // bank ⅓ at the tranche level
+      remaining -= frac; taken += 1;
+      dHigh = evaluateExitState(mk(b.h, peak));
+    }
+    if (dHigh.action === "EXIT" && dHigh.reason === "trim_scale_runner_target") { realized += remaining * pnlAt(planTarget); remaining = 0; exited = true; outcome = "doubled"; break; }
+    // 3) close: flat-theta scratch of whatever remains (reachable only when no tranche ever armed).
+    const dClose = evaluateExitState(mk(b.c, peak));
+    if (dClose.action === "EXIT" && dClose.reason === "flat_theta_bleed") { realized += remaining * pnlAt(b.c); exited = true; outcome = "flat_scratch"; break; }
+  }
+  if (!exited) { realized += remaining * pnlAt(lastClose); outcome = taken > 0 ? "runner_close" : "time_stop"; }
+  return { pnl_pct: Math.round(realized * 10) / 10, outcome };
+}
+
+function gradeThroughExitEngine(bars, entry, planStop, planTarget, flaggedMs, mode = "ratchet", regime = "neutral") {
   if (!(entry > 0)) return null;
   const seq = [...bars].filter((b) => b.t > flaggedMs && etMinOfBar(b.t) <= REPLAY_STOP_ET_MIN).sort((a, z) => a.t - z.t);
   if (!seq.length) return null;
+  if (mode === "trim_scale") return gradeTrimScaleExit(seq, entry, planStop, planTarget, flaggedMs, regime);
   const pnlAt = (mark) => ((mark - entry) / entry) * 100;
   let peak = entry, trimmed = false, realized = 0, remaining = 1, exited = false, outcome = "time_stop", lastClose = entry;
   for (const b of seq) {
@@ -527,13 +574,16 @@ if (!GRADE_DATE) {
     const planStop = entryPremium * (1 + PLAN_RULES.stop_pct / 100);
     const planTarget = entryPremium * (1 + PLAN_RULES.target_pct / 100);
     const rex = gradeThroughExitEngine(atm.bars, entryPremium, planStop, planTarget, entryBar.t);
+    // A/B (default-OFF): the E5 trim-scale exit graded on the SAME bars through the REAL engine.
+    // ZERODTE_SIM_REGIME=trend|neutral|range conditions the tranche thresholds (default neutral).
+    const tmx = gradeThroughExitEngine(atm.bars, entryPremium, planStop, planTarget, entryBar.t, "trim_scale", SIM_TRIM_REGIME);
     // Offline ratchet-param sweep: dump the RTH bar path + plan levels so many exit configs can be
     // graded without re-fetching (RATCHET_DUMP=<path>). Diagnostic only, off unless the env is set.
     if (process.env.RATCHET_DUMP) {
       const rth = atm.bars.filter((b) => b.t >= entryBar.t && etMinOfBar(b.t) <= 960).map((b) => ({ t: b.t, h: b.h, l: b.l, c: b.c }));
       if (rth.length) appendFileSync(process.env.RATCHET_DUMP, JSON.stringify({ date: GRADE_DATE, ticker: c.ticker, entry: entryPremium, planStop, planTarget, bars: rth }) + "\n");
     }
-    results.push({ ticker: c.ticker, occ: atm.occ, side, strike: atm.strike, spot, entryPremium, outcome: grade.outcome, pnl_pct: grade.pnl_pct, mfe_pct: Math.round(mfe * 10) / 10, mae_pct: Math.round(mae * 10) / 10, ratchet_pnl_pct: rex?.pnl_pct ?? null, ratchet_outcome: rex?.outcome ?? null });
+    results.push({ ticker: c.ticker, occ: atm.occ, side, strike: atm.strike, spot, entryPremium, outcome: grade.outcome, pnl_pct: grade.pnl_pct, mfe_pct: Math.round(mfe * 10) / 10, mae_pct: Math.round(mae * 10) / 10, ratchet_pnl_pct: rex?.pnl_pct ?? null, ratchet_outcome: rex?.outcome ?? null, trim_pnl_pct: tmx?.pnl_pct ?? null, trim_outcome: tmx?.outcome ?? null });
   }
 
   console.log(`    ${pad("TICKER", 8)}${pad("SIDE", 6)}${padL("STRIKE", 7)}${padL("ENTRY$", 8)}  ${pad("OUTCOME", 12)}${padL("P/L%", 8)}  contract`);
@@ -565,15 +615,21 @@ if (!GRADE_DATE) {
   const rexWin = withRex.length ? (withRex.filter((r) => r.ratchet_pnl_pct > 0).length / withRex.length) * 100 : null;
   const rexAvg = withRex.length ? withRex.reduce((s, r) => s + r.ratchet_pnl_pct, 0) / withRex.length : null;
   const planAvgOnRex = withRex.length ? withRex.reduce((s, r) => s + (r.pnl_pct ?? 0), 0) / withRex.length : null;
+  // A/B: the DEFAULT-OFF E5 trim-scale exit (⅓@+25/⅓@+50/run), graded on the same plays through the
+  // REAL engine — the head-to-head the operator reads before signing off on the flip.
+  const withTrim = graded.filter((r) => r.trim_pnl_pct != null);
+  const trimWin = withTrim.length ? (withTrim.filter((r) => r.trim_pnl_pct > 0).length / withTrim.length) * 100 : null;
+  const trimAvg = withTrim.length ? withTrim.reduce((s, r) => s + r.trim_pnl_pct, 0) / withTrim.length : null;
   console.log(`\n${line("═")}`);
   console.log(`  BACKTEST ${GRADE_DATE}: ${graded.length} gradeable plays · ${wins} doubled · ${stops} stopped · ${times} time-stop`);
   console.log(`  win-rate ${graded.length ? ((wins / graded.length) * 100).toFixed(1) : "—"}% · avg P/L ${avgPnl != null ? avgPnl.toFixed(1) + "%" : "—"} · ${results.length - graded.length} no-data/ungradeable`);
-  console.log(`  RATCHET EXIT (shipped engine): win ${rexWin != null ? rexWin.toFixed(1) + "%" : "—"} · avg P/L ${rexAvg != null ? rexAvg.toFixed(1) + "%" : "—"}  (vs hold ${planAvgOnRex != null ? planAvgOnRex.toFixed(1) + "%" : "—"} on same n=${withRex.length})`);
+  console.log(`  RATCHET EXIT (shipped, default): win ${rexWin != null ? rexWin.toFixed(1) + "%" : "—"} · avg P/L ${rexAvg != null ? rexAvg.toFixed(1) + "%" : "—"}  (vs hold ${planAvgOnRex != null ? planAvgOnRex.toFixed(1) + "%" : "—"} on same n=${withRex.length})`);
+  console.log(`  TRIM-SCALE EXIT (E5 ⅓@+25/⅓@+50/run · ${SIM_TRIM_REGIME} · DEFAULT-OFF): win ${trimWin != null ? trimWin.toFixed(1) + "%" : "—"} · avg P/L ${trimAvg != null ? trimAvg.toFixed(1) + "%" : "—"}  (A/B vs ratchet ${rexAvg != null ? rexAvg.toFixed(1) + "%" : "—"} · hold ${planAvgOnRex != null ? planAvgOnRex.toFixed(1) + "%" : "—"} on same n=${withTrim.length})`);
   console.log(`  GREEN-EXIT AVAILABILITY (MFE): +10% ${pctOr(availAt(10))} · +25% ${pctOr(availAt(25))} · +50% ${pctOr(availAt(50))} · +100% ${pctOr(availAt(100))} · NEVER-green ${pctOr(neverGreen)}`);
   console.log(line("═"));
 
   if (EMIT_JSON) {
     console.log("\n<<<JSON>>>");
-    console.log(JSON.stringify({ gradeDate: GRADE_DATE, results, summary: { gradeable: graded.length, wins, stops, times, avgPnl, ratchet_win: rexWin, ratchet_avg_pnl: rexAvg, plan_avg_on_rex: planAvgOnRex, green_avail_10: availAt(10), green_avail_25: availAt(25), green_avail_50: availAt(50), green_avail_100: availAt(100), never_green: neverGreen } }, null, 2));
+    console.log(JSON.stringify({ gradeDate: GRADE_DATE, results, summary: { gradeable: graded.length, wins, stops, times, avgPnl, ratchet_win: rexWin, ratchet_avg_pnl: rexAvg, plan_avg_on_rex: planAvgOnRex, trim_scale_regime: SIM_TRIM_REGIME, trim_scale_win: trimWin, trim_scale_avg_pnl: trimAvg, green_avail_10: availAt(10), green_avail_25: availAt(25), green_avail_50: availAt(50), green_avail_100: availAt(100), never_green: neverGreen } }, null, 2));
   }
 }

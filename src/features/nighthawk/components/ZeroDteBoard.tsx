@@ -64,8 +64,16 @@ type LedgerRow = {
   status: string | null;
   last_mark: number | null;
   live_pnl_pct: number | null;
-  /** B-9: "stopped" pins live_pnl_pct to −50 server-side (frozen-mark fix). */
-  closed_reason?: "stopped" | null;
+  /** "stopped" pins live_pnl_pct to −50 server-side (frozen-mark fix); the other values
+   *  DISTINGUISH the engine exit type (ratchet/thesis/flat/target) or a plain time_stop
+   *  close. Optional/back-compat: older payloads sent only "stopped"|null. */
+  closed_reason?: "stopped" | "ratchet" | "thesis" | "flat" | "target" | "stop" | "time_stop" | null;
+  /** Exit-engine visibility (additive): the live ratchet floor in P&L % ("your stop is
+   *  at breakeven/+20/+50"), the coarse exit category, and the engine's one-sentence
+   *  rationale — all null when absent (no floor armed / no engine exit / older payload). */
+  floor_pnl_pct?: number | null;
+  exit_reason?: "ratchet" | "thesis" | "flat" | "target" | "stop" | null;
+  exit_detail?: string | null;
   /** B-9: quote timestamp/provenance when the live-marks lane served last_mark. */
   mark_as_of?: string | null;
   mark_source?: ZeroDteMarkSource | null;
@@ -197,7 +205,12 @@ type PlayRow = {
   conviction: string | null;
   last_mark: number | null;
   live_pnl_pct: number | null;
-  closed_reason: "stopped" | null;
+  closed_reason: "stopped" | "ratchet" | "thesis" | "flat" | "target" | "stop" | "time_stop" | null;
+  /** Exit-engine visibility (additive): live ratchet floor %, coarse exit category, and
+   *  the engine's one-sentence rationale. Null when not applicable / older payload. */
+  floor_pnl_pct: number | null;
+  exit_reason: "ratchet" | "thesis" | "flat" | "target" | "stop" | null;
+  exit_detail: string | null;
   plan_outcome: string | null;
   plan_pnl_pct: number | null;
   first_flagged_at: string | null;
@@ -292,6 +305,9 @@ export function mergePlays(
     last_mark: r.last_mark,
     live_pnl_pct: r.live_pnl_pct,
     closed_reason: r.closed_reason ?? null,
+    floor_pnl_pct: r.floor_pnl_pct ?? null,
+    exit_reason: r.exit_reason ?? null,
+    exit_detail: r.exit_detail ?? null,
     plan_outcome: r.plan_outcome,
     plan_pnl_pct: r.plan_pnl_pct,
     first_flagged_at: r.first_flagged_at,
@@ -344,6 +360,9 @@ export function mergePlays(
       last_mark: s.plan?.mark ?? null,
       live_pnl_pct: null,
       closed_reason: null,
+      floor_pnl_pct: null,
+      exit_reason: null,
+      exit_detail: null,
       plan_outcome: null,
       plan_pnl_pct: null,
       first_flagged_at: s.first_seen,
@@ -1091,9 +1110,30 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
           {row.setup?.confluence && <ConfluenceBadge confluence={row.setup.confluence} />}
           {row.setup?.flow_accumulation && <AccumulationBadge acc={row.setup.flow_accumulation} />}
           {live && <SizeChip view={view} />}
+          {/* Exit-engine guidance, now VISIBLE (was computed server-side but never shown):
+              a live play with an armed protective floor gets the "your stop is at
+              breakeven/+20/+50" chip; the engine's full rationale sentence is the tooltip. */}
+          {row.floor_pnl_pct != null && row.status !== "CLOSED" && (
+            <span
+              title={row.exit_detail ?? undefined}
+              className="rounded-md border border-gold/35 bg-gold/[0.08] px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-gold"
+            >
+              floor {row.floor_pnl_pct === 0 ? "BE" : `+${row.floor_pnl_pct}%`}
+            </span>
+          )}
           {row.closed_reason === "stopped" && (
             <span className="rounded-md border border-bear/35 bg-bear/[0.08] px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-bear">
               stopped −50%
+            </span>
+          )}
+          {/* A non-stop engine exit (ratchet/thesis/flat/target) or a plain 15:30 close —
+              distinguished now that closed_reason carries the type; detail is the tooltip. */}
+          {row.status === "CLOSED" && row.closed_reason != null && row.closed_reason !== "stopped" && (
+            <span
+              title={row.exit_detail ?? undefined}
+              className="rounded-md border border-sky-300/35 bg-sky-300/[0.08] px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-sky-200"
+            >
+              {row.closed_reason === "time_stop" ? "15:30 exit" : `${row.closed_reason} exit`}
             </span>
           )}
           {row.status === "TRIM" && (
