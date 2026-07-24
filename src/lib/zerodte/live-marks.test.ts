@@ -567,3 +567,229 @@ test("SSE dedupe: content key ignores time-only fields so an unchanged market de
   const p2 = lm.buildZeroDteLiveMarksPayloadFrom(plays, t0 + 1_000, "2026-07-14");
   assert.notEqual(lm.zeroDteMarksContentKey(p1), lm.zeroDteMarksContentKey(p2));
 });
+
+// ── watch-only board setup quotes (live greeks + mark for NON-entered setups) ───────
+// The member-facing bug: a WATCH setup (below the score floor / SKIP / BLOCKED, not
+// entered) showed Δ Γ Θ V IV + mark as "—" because the lane only quoted entered ledger
+// plays. These tests cover the extension: the CURRENT board setups' contracts are
+// quoted too (greeks + mark) WITHOUT ever entering the ledger persist/exit path.
+
+/** A watch-only setup quote (structurally a ZeroDteSetupQuote). */
+const setupQuote = (
+  occ: string,
+  ticker = "TSLA",
+  direction: "long" | "short" = "long",
+  strike: number | null = 250
+) => ({ ticker, direction, strike, occ });
+
+test("mergeTrackedContracts: entered plays take the cap first; setups fill the remainder, deduped, no-occ skipped", async () => {
+  const lm = await loadLane();
+  const entered = lm.boundActivePlays([ledgerRow({ ticker: "NVDA", plan_json: { occ: "O:NVDA260714C00180000" } })]);
+  const quotes = [
+    setupQuote("O:TSLA260714C00250000", "TSLA"),
+    setupQuote("O:NVDA260714C00180000", "NVDA"), // SAME OCC as the entered play → dropped (entered owns it)
+    setupQuote("", "AMD"), // no OCC → nothing to quote → skipped
+    setupQuote("O:SPY260714C00560000", "SPY", "long", 560),
+    setupQuote("O:SPY260714C00560000", "SPY", "long", 560), // dup of an earlier setup → dropped
+  ];
+  const { enteredPlays, setupPlays } = lm.mergeTrackedContracts(entered, quotes, "2026-07-14");
+  assert.equal(enteredPlays.length, 1);
+  assert.equal(enteredPlays[0]!.occ, "O:NVDA260714C00180000");
+  assert.deepEqual(setupPlays.map((p: { occ: string }) => p.occ), ["O:TSLA260714C00250000", "O:SPY260714C00560000"]);
+  // Every setup play is QUOTE-ONLY: never entered → null entry (→ null P&L), WATCH status.
+  assert.ok(setupPlays.every((p: { quote_only?: boolean; entry_premium: number | null; status: string | null }) =>
+    p.quote_only === true && p.entry_premium === null && p.status === "WATCH"));
+});
+
+test("mergeTrackedContracts: the cap is entered-first — a full book leaves no room, and an entered play is never evicted", async () => {
+  const lm = await loadLane();
+  const rows = [];
+  for (let i = 0; i < 16; i++) rows.push(ledgerRow({ ticker: `E${i}`, plan_json: { occ: `O:E${i}260714C00100000` } }));
+  const full = lm.boundActivePlays(rows); // 16 entered = the whole cap
+  const merged = lm.mergeTrackedContracts(full, [setupQuote("O:TSLA260714C00250000")], "2026-07-14");
+  assert.equal(merged.enteredPlays.length, 16);
+  assert.equal(merged.setupPlays.length, 0, "a full book of entered plays leaves zero room for setups");
+
+  // 15 entered → exactly ONE setup slot opens; the second setup is truncated, no entered play lost.
+  const fifteen = lm.boundActivePlays(rows.slice(0, 15));
+  const m2 = lm.mergeTrackedContracts(
+    fifteen,
+    [setupQuote("O:TSLA260714C00250000", "TSLA"), setupQuote("O:AMD260714C00150000", "AMD", "long", 150)],
+    "2026-07-14"
+  );
+  assert.equal(m2.enteredPlays.length, 15);
+  assert.equal(m2.setupPlays.length, 1);
+  assert.equal(m2.setupPlays[0]!.occ, "O:TSLA260714C00250000");
+});
+
+test("watch setup: payload row carries live greeks + mark but live_pnl_pct null (entry not fabricated)", async () => {
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const enteredOcc = "O:NVDA260714C00180000";
+  const setupOcc = "O:TSLA260714C00250000";
+  const now = Date.now();
+  // Both contracts have a fresh REST mark WITH greeks in the store.
+  lm.putZeroDteLiveMark({ occ: enteredOcc, bid: 4.3, ask: 4.5, mid: 4.4, last: 4.35, mark: 4.4, source: "mid", asOf: now - 1_000, lane: "rest", greeks: { delta: 0.6, gamma: 0.09, theta: -0.42, vega: 0.11, iv: 0.6 } });
+  lm.putZeroDteLiveMark({ occ: setupOcc, bid: 1.0, ask: 1.2, mid: 1.1, last: 1.05, mark: 1.1, source: "mid", asOf: now - 1_000, lane: "rest", greeks: { delta: 0.35, gamma: 0.05, theta: -0.2, vega: 0.08, iv: 0.7 } });
+
+  const entered = lm.boundActivePlays([ledgerRow({})]); // NVDA entry 4.0
+  const { enteredPlays, setupPlays } = lm.mergeTrackedContracts(entered, [setupQuote(setupOcc)], "2026-07-14");
+  const payload = lm.buildZeroDteLiveMarksPayloadFrom([...enteredPlays, ...setupPlays], now, "2026-07-14");
+  const byOcc = new Map(payload.marks.map((m: { occ: string }) => [m.occ, m]));
+
+  const enteredRow = byOcc.get(enteredOcc)!;
+  assert.equal(enteredRow.entry_premium, 4.0);
+  assert.equal(enteredRow.live_pnl_pct, 10); // pinned-entry P&L for the ENTERED play
+  assert.equal(enteredRow.greeks?.delta, 0.6);
+
+  const setupRow = byOcc.get(setupOcc)!;
+  assert.equal(setupRow.mark, 1.1, "the watch setup carries a live mark");
+  assert.equal(setupRow.greeks?.delta, 0.35, "…and live greeks");
+  assert.equal(setupRow.greeks?.iv, 0.7);
+  assert.equal(setupRow.stale, false);
+  assert.equal(setupRow.entry_premium, null, "a watch setup has no entry");
+  assert.equal(setupRow.live_pnl_pct, null, "…so P&L stays 'not entered', never fabricated");
+
+  // Production's payload callback skips the latch for quote_only rows (they have no latch),
+  // so an entered play still takes its latched status while the setup stays WATCH.
+  const latched = lm.buildZeroDteLiveMarksPayloadFrom(
+    [...enteredPlays, ...setupPlays], now, "2026-07-14", lm.getZeroDteLiveMark,
+    (p: { quote_only?: boolean }) => (p.quote_only ? null : "TRIM")
+  );
+  const l = new Map(latched.marks.map((m: { occ: string }) => [m.occ, m]));
+  assert.equal(l.get(enteredOcc)!.status, "TRIM", "entered row takes the latched status");
+  assert.equal(l.get(setupOcc)!.status, "WATCH", "quote-only setup skips the latch, stays WATCH");
+});
+
+test("poller tick: quotes the watch setup's OCC in the SAME batch, but persists ONLY the entered play", async () => {
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const enteredOcc = "O:NVDA260714C00180000";
+  const setupOcc = "O:TSLA260714C00250000";
+  const entered = lm.boundActivePlays([ledgerRow({})]); // NVDA entry 4.0
+  const persisted: Array<{ ticker: string; status: string; mark: number | null }> = [];
+  const persist = (async (_d: string, ticker: string, s: { status: string; mark: number | null }) => {
+    persisted.push({ ticker, status: s.status, mark: s.mark });
+  }) as never;
+  const snapCalls: string[][] = [];
+  const fetchSnapshots = (async (occs: string[]) => {
+    snapCalls.push(occs);
+    const out = new Map();
+    for (const occ of occs) out.set(occ, { ticker: occ, bid: 1.0, ask: 1.2, last: 1.05 });
+    return out;
+  }) as never;
+
+  await lm.runZeroDteMarkTick({
+    plays: entered,
+    setupQuotes: [setupQuote(setupOcc)],
+    // NOTE: no rowsByKey → the mark-driven exit engine is never consulted (activeRowsByKey is empty);
+    // this test isolates the persist path. The entered-exit path is covered by the next test.
+    fetchSnapshots,
+    readWsMark: (async () => null) as never,
+    persist,
+    nowMs: Date.now(),
+    nowEtMinutes: 12 * 60,
+  });
+
+  // ONE batched snapshot call, quoting BOTH the entered and the setup OCC.
+  assert.equal(snapCalls.length, 1);
+  assert.deepEqual(new Set(snapCalls[0]), new Set([enteredOcc, setupOcc]));
+  assert.ok(lm.getZeroDteLiveMark(setupOcc), "the setup OCC has a live quote");
+  assert.equal(lm.getZeroDteLiveMark(setupOcc)?.mark, 1.1); // mid of 1.0/1.2
+  assert.ok(lm.getZeroDteLiveMark(enteredOcc), "the entered OCC has a live quote");
+  // Persist fired for the ENTERED ticker only — the watch setup never touches the ledger.
+  assert.ok(persisted.length >= 1);
+  assert.ok(persisted.every((p) => p.ticker === "NVDA"), "no ledger write for the watch-only setup");
+  assert.ok(!persisted.some((p) => p.ticker === "TSLA"));
+});
+
+test("poller tick: entered play still exits via the engine; a co-tracked setup is NEVER exit-evaluated", async () => {
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const setupOcc = "O:TSLA260714C00250000";
+  const row = ledgerRow({});
+  const entered = lm.boundActivePlays([row]);
+  const rowsByKey = new Map([["2026-07-14:NVDA", row]]);
+  const exitEvaluated: string[] = [];
+  const evaluateExit = (async (r: { ticker: string }) => {
+    exitEvaluated.push(r.ticker);
+    return { mark: 4.55, decision: { action: "EXIT", reason: "thesis_break", floorPnlPct: null, detail: "" }, exitContext: {} };
+  }) as never;
+  const persisted: Array<{ ticker: string; status: string; mark: number | null }> = [];
+  const persist = (async (_d: string, t: string, s: { status: string; mark: number | null }) => {
+    persisted.push({ ticker: t, status: s.status, mark: s.mark });
+  }) as never;
+
+  await lm.runZeroDteMarkTick({
+    plays: entered,
+    setupQuotes: [setupQuote(setupOcc)],
+    rowsByKey,
+    fetchSnapshots: (async (occs: string[]) => {
+      const out = new Map();
+      for (const occ of occs) out.set(occ, { ticker: occ, bid: 4.3, ask: 4.5, last: null });
+      return out;
+    }) as never,
+    readWsMark: (async () => null) as never,
+    evaluateExit,
+    persist,
+    nowMs: Date.now(),
+    nowEtMinutes: 12 * 60,
+  });
+
+  // The exit engine ran for the ENTERED row only; the setup (no ledger row) is never evaluated.
+  assert.deepEqual(exitEvaluated, ["NVDA"]);
+  assert.ok(persisted.some((p) => p.ticker === "NVDA" && p.status === "CLOSED" && p.mark === 4.55));
+  assert.ok(!persisted.some((p) => p.ticker === "TSLA"), "the watch setup is never persisted");
+});
+
+test("poller tick: reads REGISTERED setup quotes when none are injected (setZeroDteSetupQuotes → quoted)", async () => {
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const setupOcc = "O:TSLA260714C00250000";
+  lm.setZeroDteSetupQuotes([setupQuote(setupOcc)]);
+  assert.deepEqual(lm.getZeroDteSetupQuotes().map((q: { occ: string }) => q.occ), [setupOcc]);
+
+  const snapCalls: string[][] = [];
+  await lm.runZeroDteMarkTick({
+    plays: lm.boundActivePlays([ledgerRow({})]), // entered NVDA
+    // deliberately NO setupQuotes dep → the tick falls back to the module registry
+    fetchSnapshots: (async (occs: string[]) => {
+      snapCalls.push(occs);
+      const out = new Map();
+      for (const occ of occs) out.set(occ, { ticker: occ, bid: 1.0, ask: 1.2, last: 1.05 });
+      return out;
+    }) as never,
+    readWsMark: (async () => null) as never,
+    skipPersist: true,
+    nowMs: Date.now(),
+    nowEtMinutes: 12 * 60,
+  });
+  assert.ok(snapCalls[0]!.includes(setupOcc), "the registered setup OCC was quoted via the registry fallback");
+});
+
+test("poller tick: a setup-only OCC (no entered plays) is quoted but the ledger persist pass writes NOTHING", async () => {
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const setupOcc = "O:TSLA260714C00250000";
+  const persisted: Array<{ status: string; mark: number | null }> = [];
+  const persist = (async (_d: string, _t: string, s: { status: string; mark: number | null }) => {
+    persisted.push(s);
+  }) as never;
+
+  await lm.runZeroDteMarkTick({
+    plays: [], // no entered plays at all
+    setupQuotes: [setupQuote(setupOcc)],
+    fetchSnapshots: (async (occs: string[]) => {
+      const out = new Map();
+      for (const occ of occs) out.set(occ, { ticker: occ, bid: 1.0, ask: 1.2, last: 1.05 });
+      return out;
+    }) as never,
+    readWsMark: (async () => null) as never,
+    persist, // persist IS provided — proving the pass runs but iterates entered (empty)
+    nowMs: Date.now(),
+    nowEtMinutes: 12 * 60,
+  });
+  assert.ok(lm.getZeroDteLiveMark(setupOcc), "the setup OCC got a live quote even with no entered plays");
+  assert.equal(lm.getZeroDteLiveMark(setupOcc)?.mark, 1.1);
+  assert.equal(persisted.length, 0, "a setup-only tick makes ZERO ledger writes");
+});
