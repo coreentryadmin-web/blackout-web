@@ -5,6 +5,7 @@ import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/
 import { getVectorExpectedMove } from "@/features/vector/lib/vector-expected-move-server";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
 
   const rawTicker = req.nextUrl.searchParams.get("ticker");
   if (!isVectorTickerAllowed(rawTicker)) {
-    return NextResponse.json({ error: `Invalid ticker` }, { status: 400 });
+    return NextResponse.json({ error: `Invalid ticker` }, { status: 400, headers: NO_STORE_HEADERS });
   }
   const ticker = normalizeVectorTicker(rawTicker);
   const horizon = normalizeDteHorizon(req.nextUrl.searchParams.get("dte"));
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
       ticker,
       horizon,
       expectedMove: em, // { atmIv, dteDays, spot, movePct, bands:[{sigma,low,high,movePts}], expiry } | null
-    })
+    }),
+    { headers: NO_STORE_HEADERS }
   );
 }

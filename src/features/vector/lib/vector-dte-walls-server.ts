@@ -78,12 +78,16 @@ export async function getPerExpiryGexWalls(
 export async function getHorizonStrikeTotals(
   ticker: string,
   horizon: VectorDteHorizon
-): Promise<{ spot: number; strikeTotals: Record<string, number> } | null> {
+): Promise<{ spot: number; strikeTotals: Record<string, number>; asOf: string } | null> {
   const t = normalizeVectorTicker(ticker);
   try {
     const pos = await getGexPositioning(t);
     const spot = pos?.spot;
-    if (!(spot && spot > 0)) return null;
+    // `!pos ||` is a no-op guard change (spot is derived from pos, so pos was already
+    // guaranteed non-null once spot>0) that narrows `pos` for the `pos.asof` read below —
+    // the positioning snapshot's ISO time, the freshest genuine upstream timestamp on this
+    // scoped path (same heatmap-matrix `asof` the "all"/heatmap branch threads via hm.asof).
+    if (!pos || !(spot && spot > 0)) return null;
     const contracts = await loadCurrentChainContracts(t, spot);
     if (!contracts.length) return null;
     const today = todayEtYmd();
@@ -98,7 +102,7 @@ export async function getHorizonStrikeTotals(
     if (ladder.size === 0) return null;
     const strikeTotals: Record<string, number> = {};
     for (const [strike, gex] of ladder) strikeTotals[String(strike)] = gex;
-    return { spot, strikeTotals };
+    return { spot, strikeTotals, asOf: pos.asof };
   } catch {
     return null; // honest fallback — the route drops back to the near-term heatmap
   }

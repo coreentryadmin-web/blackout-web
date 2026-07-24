@@ -11,6 +11,7 @@ import { fetchIndexDailyBars, fetchStockDailyBars } from "@/lib/providers/polygo
 import { priorDayFromDailyBars, priorEtYmd } from "@/lib/providers/spx-session";
 import { formatEtDate } from "@/features/nighthawk/lib/session";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
 
   const rawTicker = req.nextUrl.searchParams.get("ticker");
   if (!isVectorTickerAllowed(rawTicker)) {
-    return NextResponse.json({ error: `Invalid ticker` }, { status: 400 });
+    return NextResponse.json({ error: `Invalid ticker` }, { status: 400, headers: NO_STORE_HEADERS });
   }
   const ticker = normalizeVectorTicker(rawTicker);
 
@@ -61,5 +62,5 @@ export async function GET(req: NextRequest) {
 
   // Passing undefined engages priorDayFromDailyBars' todayEtYmd() default — the legacy behavior.
   const { pdh, pdl, pdc } = priorDayFromDailyBars(bars, anchor);
-  return NextResponse.json(roundFloats({ ticker, pdh, pdl, pdc }));
+  return NextResponse.json(roundFloats({ ticker, pdh, pdl, pdc }), { headers: NO_STORE_HEADERS });
 }

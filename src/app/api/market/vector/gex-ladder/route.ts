@@ -7,6 +7,7 @@ import { buildGexLadder } from "@/features/vector/lib/vector-gex-ladder";
 import { getHorizonStrikeTotals } from "@/features/vector/lib/vector-dte-walls-server";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
 
   const rawTicker = req.nextUrl.searchParams.get("ticker");
   if (!isVectorTickerAllowed(rawTicker)) {
-    return NextResponse.json({ error: `Invalid ticker` }, { status: 400 });
+    return NextResponse.json({ error: `Invalid ticker` }, { status: 400, headers: NO_STORE_HEADERS });
   }
   const ticker = normalizeVectorTicker(rawTicker);
   const horizon = normalizeDteHorizon(req.nextUrl.searchParams.get("dte"));
@@ -44,8 +45,13 @@ export async function GET(req: NextRequest) {
     const scoped = await getHorizonStrikeTotals(ticker, horizon).catch(() => null);
     if (scoped) {
       const ladder = buildGexLadder(scoped.strikeTotals, scoped.spot);
+      // `asOf` was hardcoded null on this scoped path, so the panel had no freshness stamp
+      // when a DTE horizon was selected. Thread the positioning snapshot's real ISO time
+      // (getHorizonStrikeTotals → pos.asof) — the same heatmap-matrix timestamp class the
+      // "all"/fallback branch below already surfaces via hm.asof. Never fabricated.
       return NextResponse.json(
-        roundFloats({ ticker, spot: scoped.spot, asOf: null, horizon, ladder })
+        roundFloats({ ticker, spot: scoped.spot, asOf: scoped.asOf, horizon, ladder }),
+        { headers: NO_STORE_HEADERS }
       );
     }
   }
@@ -55,6 +61,7 @@ export async function GET(req: NextRequest) {
   const ladder = buildGexLadder(hm?.gex?.strike_totals ?? null, spot);
 
   return NextResponse.json(
-    roundFloats({ ticker, spot, asOf: hm?.asof ?? null, horizon, ladder })
+    roundFloats({ ticker, spot, asOf: hm?.asof ?? null, horizon, ladder }),
+    { headers: NO_STORE_HEADERS }
   );
 }

@@ -4,6 +4,7 @@ import { fetchIndexSnapshots } from "@/lib/providers/polygon";
 import { polygonConfigured } from "@/lib/providers/config";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
   if (auth instanceof Response) return auth;
 
   if (!polygonConfigured()) {
-    return NextResponse.json({ error: "Market data unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Market data unavailable" }, { status: 503, headers: NO_STORE_HEADERS });
   }
 
   try {
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
     if (!spx && !vix) {
       return NextResponse.json(
         { error: "Index data temporarily unavailable" },
-        { status: 502 }
+        { status: 502, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -53,10 +54,11 @@ export async function GET(req: NextRequest) {
         as_of: cached.fetched_at,
         spx,
         vix,
-      })
+      }),
+      { headers: NO_STORE_HEADERS }
     );
   } catch (error) {
     console.error("[market/indices]", error);
-    return NextResponse.json({ error: "Index fetch failed" }, { status: 502 });
+    return NextResponse.json({ error: "Index fetch failed" }, { status: 502, headers: NO_STORE_HEADERS });
   }
 }

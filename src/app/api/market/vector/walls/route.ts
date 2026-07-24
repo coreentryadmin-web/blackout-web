@@ -8,6 +8,7 @@ import {
 } from "@/features/vector/lib/vector-snapshot";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
 
   const rawTicker = req.nextUrl.searchParams.get("ticker");
   if (!isVectorTickerAllowed(rawTicker)) {
-    return NextResponse.json({ error: `Invalid ticker` }, { status: 400 });
+    return NextResponse.json({ error: `Invalid ticker` }, { status: 400, headers: NO_STORE_HEADERS });
   }
   const ticker = normalizeVectorTicker(rawTicker);
 
@@ -43,5 +44,5 @@ export async function GET(req: NextRequest) {
   // Round at the data layer (repo policy). This route was the ONLY vector read missing roundFloats
   // (max-pain / gex-ladder / expected-move all round), so `flip` — a computed float — leaked full
   // precision (e.g. 7622.690014281115) to every consumer. Wall strikes are already listed strikes.
-  return NextResponse.json(roundFloats({ ticker, horizon, walls, flip }));
+  return NextResponse.json(roundFloats({ ticker, horizon, walls, flip }), { headers: NO_STORE_HEADERS });
 }
