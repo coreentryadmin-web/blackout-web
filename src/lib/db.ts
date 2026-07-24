@@ -1600,6 +1600,166 @@ async function runMigrations(): Promise<void> {
     ALTER TABLE largo_messages
     ADD COLUMN IF NOT EXISTS tool_results JSONB;
   `);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Night Hawk SWING engine ledger (docs/audit/SWING-ENGINE.md §3.3, PR-10).
+  //
+  // Three tables — the greenfield persistence artifact every swing IO shell and all
+  // grading depend on. Schema-only in PR-10: nothing writes yet (PR-11 is the first
+  // writer). Three load-bearing invariants are baked into the DDL/accessors so they
+  // survive even a careless writer:
+  //
+  //   1. ROLL CHAIN — a swing thesis is never overwritten across a roll. A roll =
+  //      close+grade the parent (terminal ROLLED, realized_pnl_pct frozen) + insert a
+  //      NEW linked child. root_position_id/parent_position_id/roll_seq thread the
+  //      chain; the root row carries root_position_id = NULL (it IS the root) so
+  //      fetchSwingPositionChain(root) = `id = root OR root_position_id = root`
+  //      ORDER BY roll_seq. A loss on leg N can never be netted away by a winning
+  //      leg N+1 (each leg keeps its own frozen grade).
+  //
+  //   2. FIRST-WRITE-WINS PINNING — entry_context/gate_calibration_json/feature_vector/
+  //      plan_json capture what the desk/gates/features looked like AT COMMIT. A later
+  //      refresh tick must NEVER re-stamp them with hindsight, so insertSwingPosition
+  //      upserts on commit_key and COALESCE-pins every pinned column
+  //      (`col = COALESCE(swing_positions.col, EXCLUDED.col)` — see coalescePinnedColumns).
+  //      scale_out_grade is pinned the same way (pinSwingScaleOutGrade, WHERE ... IS NULL).
+  //      Same discipline as zerodte_setup_log's plan_json/entry_context/feature_vector.
+  //
+  //   3. MONOTONIC STATUS — status only moves forward along the ladder
+  //      PENDING < OPEN = HOLD < TRIM < {CLOSED, ROLLED terminal}. Two independent
+  //      writers (cron sync + live-marks lane) share updateSwingLiveState, each with a
+  //      possibly-stale row snapshot, so the regression guard lives IN the SQL CASE
+  //      (a JS-side check reads a status that may already be stale) — mirrors the 0DTE
+  //      one-way commit door (updateZeroDteLiveState). The pure
+  //      isMonotonicSwingStatusTransition mirrors that CASE for unit testing.
+  //
+  // Underlying-terms thesis (thesis_invalidation_px/target_underlying_px) + premium
+  // latches (peak/trough) + underlying MFE/MAE let the multi-truth grader
+  // (swing/grade.ts) score execution/path/thesis/management/financial off one row.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS swing_positions (
+      id BIGSERIAL PRIMARY KEY,
+      -- Idempotency + first-write-wins target: PR-11 supplies a stable commit token
+      -- (e.g. session:ticker:sub_lane:direction, and a fresh token per roll) so a
+      -- re-running scan upserts the SAME row instead of duplicating a commit.
+      commit_key TEXT NOT NULL,
+      -- Roll chain (invariant #1). root NULL on the chain's first leg (it is the root).
+      root_position_id BIGINT,
+      parent_position_id BIGINT,
+      roll_seq INT NOT NULL DEFAULT 0,
+      session_date DATE NOT NULL,
+      ticker TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      sub_lane TEXT NOT NULL,
+      archetype TEXT,
+      -- Flow provenance: the top-flow strike the ranker SAW (never necessarily picked;
+      -- SEV-4 — the swing instrument is a 0.50–0.75Δ directional contract, not the flow strike).
+      top_flow_strike NUMERIC,
+      -- The contract the ranker actually chose.
+      contract_strike NUMERIC,
+      contract_expiry DATE,
+      contract_type TEXT,
+      contract_occ TEXT,
+      contract_delta NUMERIC,
+      -- Thesis is expressed in UNDERLYING terms (structural stop + target), not premium.
+      entry_underlying_px NUMERIC,
+      thesis_invalidation_px NUMERIC,
+      target_underlying_px NUMERIC,
+      -- Premium latches (contract mark since commit) — running peak/trough.
+      entry_premium NUMERIC,
+      last_mark NUMERIC,
+      peak_premium NUMERIC,
+      trough_premium NUMERIC,
+      -- Underlying-terms maximum favorable / adverse excursion.
+      underlying_mfe NUMERIC,
+      underlying_mae NUMERIC,
+      -- Frozen at close/roll — a leg's realized return can never be re-litigated.
+      realized_pnl_pct NUMERIC,
+      -- COALESCE-pinned at first write (invariant #2): commit-time context blobs.
+      entry_context JSONB,
+      gate_calibration_json JSONB,
+      feature_vector JSONB,
+      plan_json JSONB,
+      -- Grades. scale_out_grade first-write-wins; grade_json is the multi-truth grade;
+      -- legacy_grade preserves a prior grader's verdict across a methodology change.
+      scale_out_grade JSONB,
+      grade_json JSONB,
+      grade_methodology TEXT,
+      legacy_grade JSONB,
+      -- Monotonic lifecycle (invariant #3). PENDING is the pre-commit rung.
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      committed_at TIMESTAMPTZ,
+      closed_at TIMESTAMPTZ,
+      graded_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_swing_positions_commit_key ON swing_positions(commit_key)`);
+  // Open-book scan: the active positions the manager/refresh loop walks each tick.
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_swing_positions_open
+    ON swing_positions(status, session_date DESC)
+    WHERE status NOT IN ('CLOSED','ROLLED');
+  `);
+  // Ungraded terminal rows the lazy grader picks up.
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_swing_positions_ungraded
+    ON swing_positions(session_date DESC)
+    WHERE graded_at IS NULL AND status IN ('CLOSED','ROLLED');
+  `);
+  // Roll-chain walk (fetchSwingPositionChain) + range/feature reads.
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_swing_positions_root ON swing_positions(root_position_id, roll_seq)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_swing_positions_session ON swing_positions(session_date DESC)`);
+
+  // Append-only longitudinal series: one row per observation of a live position, never
+  // upserted (each tick is evidence of the path, not a correction of the last). The
+  // multi-truth grader + trajectory studies (PR-14) join this series to the outcome.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS swing_position_snapshots (
+      id BIGSERIAL PRIMARY KEY,
+      position_id BIGINT NOT NULL REFERENCES swing_positions(id) ON DELETE CASCADE,
+      snapshot_kind TEXT NOT NULL,
+      dte_remaining INT,
+      underlying_px NUMERIC,
+      option_mark NUMERIC,
+      running_mfe NUMERIC,
+      running_mae NUMERIC,
+      thesis_state TEXT,
+      feature_vector JSONB,
+      event_json JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_swing_snapshots_position
+    ON swing_position_snapshots(position_id, created_at ASC);
+  `);
+
+  // Pre-commit persistence memory: accretes one observation per scan per (ticker,
+  // direction). The engine only promotes a candidate to WATCH once its thesis has
+  // PERSISTED across sessions (distinct_session_days) — never on a lone print. Once
+  // promoted, promoted_position_id links to the committed position; fadeStaleAccum
+  // clears candidates that stopped showing up.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS swing_candidate_accumulation (
+      ticker TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      observation_count INT NOT NULL DEFAULT 0,
+      distinct_session_days INT NOT NULL DEFAULT 0,
+      last_session_day DATE,
+      phases_seen JSONB NOT NULL DEFAULT '[]'::jsonb,
+      promoted_position_id BIGINT,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (ticker, direction)
+    );
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_swing_accum_active
+    ON swing_candidate_accumulation(last_seen_at DESC)
+    WHERE promoted_position_id IS NULL;
+  `);
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
     try { await lockClient.query(`SELECT pg_advisory_unlock($1)`, [MIGRATION_LOCK_ID]); } catch { /* ignore */ }
@@ -5294,6 +5454,670 @@ export async function stampZeroDteExitContext(
      WHERE session_date = $1::date AND ticker = $2 AND (entry_context -> 'exit') IS NULL`,
     [sessionDate, ticker.toUpperCase(), JSON.stringify(exit)]
   );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Night Hawk SWING engine ledger — accessors (docs/audit/SWING-ENGINE.md §3.3, PR-10).
+//
+// Schema-only PR: nothing writes yet (PR-11 is the first writer). The pure helpers +
+// row mappers below are the unit-testable core (Postgres is not exercised in CI — see
+// src/lib/db-swing-ledger.test.ts); the accessors carry the three ledger invariants
+// documented on the DDL block in runMigrations: roll chain, first-write-wins pinning,
+// monotonic status. Row types use plain string columns (direction/sub_lane/archetype/
+// status) — db.ts stays free of swing-module imports so there is no cycle; the swing
+// types (SwingArchetype/SwingSubLane/SwingGrade) live in src/lib/swing/*.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * First-write-wins COALESCE-pin SQL fragment builder. Emits
+ * `col = COALESCE(<table>.col, EXCLUDED.col)` for each pinned column — the EXISTING
+ * (already-committed) value wins over the incoming EXCLUDED value, so a later refresh
+ * tick can never overwrite a commit-time blob with hindsight. Mirrors the hand-written
+ * pins in upsertZeroDteSetupLog; factored out so the swing upsert can't typo one.
+ * Pure + exported so the semantics are unit-tested directly (no live PG).
+ */
+export function coalescePinnedColumns(table: string, cols: readonly string[]): string {
+  return cols.map((c) => `${c} = COALESCE(${table}.${c}, EXCLUDED.${c})`).join(",\n        ");
+}
+
+/**
+ * The monotonic swing status ladder rank. OPEN and HOLD share a rung (the mark drifting
+ * in/out of the entry band is legitimate both ways, exactly like the 0DTE OPEN↔HOLD
+ * pair); TRIM is sticky (never demotes to a live rung); CLOSED and ROLLED are terminal.
+ */
+const SWING_STATUS_RANK: Record<string, number> = {
+  PENDING: 0,
+  OPEN: 1,
+  HOLD: 1,
+  TRIM: 2,
+  CLOSED: 3,
+  ROLLED: 3,
+};
+const SWING_TERMINAL_STATUSES = new Set(["CLOSED", "ROLLED"]);
+
+/**
+ * Pure guard mirroring the SQL CASE in updateSwingLiveState: is `to` a legal forward (or
+ * lateral, or no-op) transition from `from`? Rejects any regression (CLOSED→OPEN,
+ * TRIM→OPEN/HOLD/PENDING, OPEN/HOLD→PENDING), freezes the terminal states (CLOSED/ROLLED
+ * accept only themselves), allows the lateral OPEN↔HOLD, and treats an idempotent
+ * same-status write as legal. An unknown status on either side is rejected (fail-closed).
+ */
+export function isMonotonicSwingStatusTransition(from: string, to: string): boolean {
+  const fromRank = SWING_STATUS_RANK[from];
+  const toRank = SWING_STATUS_RANK[to];
+  if (fromRank === undefined || toRank === undefined) return false;
+  if (from === to) return true; // idempotent no-op is always legal
+  if (SWING_TERMINAL_STATUSES.has(from)) return false; // terminal is frozen
+  return toRank >= fromRank;
+}
+
+/** Parse a JSONB column value into a plain object. node-pg usually hands back an already
+ *  parsed object for jsonb, but some pool/type-parser configs surface it as a string —
+ *  handle both so the mappers never leak a raw JSON string to a consumer. */
+function jsonbColumnToObject(v: unknown): Record<string, unknown> | null {
+  if (v == null) return null;
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+  return null;
+}
+
+/** Parse a JSONB array column (phases_seen) into a string[]. Same string-or-array
+ *  tolerance as jsonbColumnToObject. */
+function jsonbColumnToStringArray(v: unknown): string[] | null {
+  let arr: unknown = v;
+  if (typeof v === "string") {
+    try {
+      arr = JSON.parse(v);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(arr)) return null;
+  return arr.map((e) => String(e));
+}
+
+export type SwingPositionRow = {
+  id: number;
+  commit_key: string;
+  root_position_id: number | null;
+  parent_position_id: number | null;
+  roll_seq: number;
+  session_date: string;
+  ticker: string;
+  direction: "long" | "short";
+  sub_lane: string;
+  archetype: string | null;
+  top_flow_strike: number | null;
+  contract_strike: number | null;
+  contract_expiry: string | null;
+  contract_type: string | null;
+  contract_occ: string | null;
+  contract_delta: number | null;
+  entry_underlying_px: number | null;
+  thesis_invalidation_px: number | null;
+  target_underlying_px: number | null;
+  entry_premium: number | null;
+  last_mark: number | null;
+  peak_premium: number | null;
+  trough_premium: number | null;
+  underlying_mfe: number | null;
+  underlying_mae: number | null;
+  realized_pnl_pct: number | null;
+  entry_context: Record<string, unknown> | null;
+  gate_calibration_json: Record<string, unknown> | null;
+  feature_vector: Record<string, unknown> | null;
+  plan_json: Record<string, unknown> | null;
+  scale_out_grade: Record<string, unknown> | null;
+  grade_json: Record<string, unknown> | null;
+  grade_methodology: string | null;
+  legacy_grade: Record<string, unknown> | null;
+  status: string;
+  first_seen_at: string;
+  committed_at: string | null;
+  closed_at: string | null;
+  graded_at: string | null;
+  updated_at: string;
+};
+
+/** Pure row mapper: NUMERIC strings (node-pg hands NUMERIC back as a string) → numbers,
+ *  nulls stay null (never the "null" string or a 0), DATE/TIMESTAMPTZ → ISO, JSONB → object. */
+export function mapSwingPositionRow(r: QueryResultRow): SwingPositionRow {
+  return {
+    id: Number(r.id),
+    commit_key: String(r.commit_key),
+    root_position_id: r.root_position_id != null ? Number(r.root_position_id) : null,
+    parent_position_id: r.parent_position_id != null ? Number(r.parent_position_id) : null,
+    roll_seq: Number(r.roll_seq) || 0,
+    session_date: isoDateString(r.session_date),
+    ticker: String(r.ticker),
+    direction: r.direction === "short" ? "short" : "long",
+    sub_lane: String(r.sub_lane),
+    archetype: r.archetype != null ? String(r.archetype) : null,
+    top_flow_strike: r.top_flow_strike != null ? Number(r.top_flow_strike) : null,
+    contract_strike: r.contract_strike != null ? Number(r.contract_strike) : null,
+    contract_expiry: r.contract_expiry != null ? isoDateString(r.contract_expiry) : null,
+    contract_type: r.contract_type != null ? String(r.contract_type) : null,
+    contract_occ: r.contract_occ != null ? String(r.contract_occ) : null,
+    contract_delta: r.contract_delta != null ? Number(r.contract_delta) : null,
+    entry_underlying_px: r.entry_underlying_px != null ? Number(r.entry_underlying_px) : null,
+    thesis_invalidation_px: r.thesis_invalidation_px != null ? Number(r.thesis_invalidation_px) : null,
+    target_underlying_px: r.target_underlying_px != null ? Number(r.target_underlying_px) : null,
+    entry_premium: r.entry_premium != null ? Number(r.entry_premium) : null,
+    last_mark: r.last_mark != null ? Number(r.last_mark) : null,
+    peak_premium: r.peak_premium != null ? Number(r.peak_premium) : null,
+    trough_premium: r.trough_premium != null ? Number(r.trough_premium) : null,
+    underlying_mfe: r.underlying_mfe != null ? Number(r.underlying_mfe) : null,
+    underlying_mae: r.underlying_mae != null ? Number(r.underlying_mae) : null,
+    realized_pnl_pct: r.realized_pnl_pct != null ? Number(r.realized_pnl_pct) : null,
+    entry_context: jsonbColumnToObject(r.entry_context),
+    gate_calibration_json: jsonbColumnToObject(r.gate_calibration_json),
+    feature_vector: jsonbColumnToObject(r.feature_vector),
+    plan_json: jsonbColumnToObject(r.plan_json),
+    scale_out_grade: jsonbColumnToObject(r.scale_out_grade),
+    grade_json: jsonbColumnToObject(r.grade_json),
+    grade_methodology: r.grade_methodology != null ? String(r.grade_methodology) : null,
+    legacy_grade: jsonbColumnToObject(r.legacy_grade),
+    status: String(r.status),
+    first_seen_at: new Date(String(r.first_seen_at)).toISOString(),
+    committed_at: r.committed_at != null ? new Date(String(r.committed_at)).toISOString() : null,
+    closed_at: r.closed_at != null ? new Date(String(r.closed_at)).toISOString() : null,
+    graded_at: r.graded_at != null ? new Date(String(r.graded_at)).toISOString() : null,
+    updated_at: new Date(String(r.updated_at)).toISOString(),
+  };
+}
+
+export type SwingSnapshotRow = {
+  id: number;
+  position_id: number;
+  snapshot_kind: string;
+  dte_remaining: number | null;
+  underlying_px: number | null;
+  option_mark: number | null;
+  running_mfe: number | null;
+  running_mae: number | null;
+  thesis_state: string | null;
+  feature_vector: Record<string, unknown> | null;
+  event_json: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export function mapSwingSnapshotRow(r: QueryResultRow): SwingSnapshotRow {
+  return {
+    id: Number(r.id),
+    position_id: Number(r.position_id),
+    snapshot_kind: String(r.snapshot_kind),
+    dte_remaining: r.dte_remaining != null ? Number(r.dte_remaining) : null,
+    underlying_px: r.underlying_px != null ? Number(r.underlying_px) : null,
+    option_mark: r.option_mark != null ? Number(r.option_mark) : null,
+    running_mfe: r.running_mfe != null ? Number(r.running_mfe) : null,
+    running_mae: r.running_mae != null ? Number(r.running_mae) : null,
+    thesis_state: r.thesis_state != null ? String(r.thesis_state) : null,
+    feature_vector: jsonbColumnToObject(r.feature_vector),
+    event_json: jsonbColumnToObject(r.event_json),
+    created_at: new Date(String(r.created_at)).toISOString(),
+  };
+}
+
+export type SwingAccumRow = {
+  ticker: string;
+  direction: "long" | "short";
+  observation_count: number;
+  distinct_session_days: number;
+  last_session_day: string | null;
+  phases_seen: string[] | null;
+  promoted_position_id: number | null;
+  first_seen_at: string;
+  last_seen_at: string;
+};
+
+export function mapSwingAccumRow(r: QueryResultRow): SwingAccumRow {
+  return {
+    ticker: String(r.ticker),
+    direction: r.direction === "short" ? "short" : "long",
+    observation_count: Number(r.observation_count) || 0,
+    distinct_session_days: Number(r.distinct_session_days) || 0,
+    last_session_day: r.last_session_day != null ? isoDateString(r.last_session_day) : null,
+    phases_seen: jsonbColumnToStringArray(r.phases_seen),
+    promoted_position_id: r.promoted_position_id != null ? Number(r.promoted_position_id) : null,
+    first_seen_at: new Date(String(r.first_seen_at)).toISOString(),
+    last_seen_at: new Date(String(r.last_seen_at)).toISOString(),
+  };
+}
+
+// ─── swing_positions accessors ────────────────────────────────────────────────
+
+export type SwingPositionInsert = {
+  /** Stable idempotency + first-write-wins target. */
+  commit_key: string;
+  /** NULL on the chain's first leg (this row IS the root). */
+  root_position_id?: number | null;
+  parent_position_id?: number | null;
+  roll_seq?: number;
+  session_date: string;
+  ticker: string;
+  direction: "long" | "short";
+  sub_lane: string;
+  archetype?: string | null;
+  top_flow_strike?: number | null;
+  contract_strike?: number | null;
+  contract_expiry?: string | null;
+  contract_type?: string | null;
+  contract_occ?: string | null;
+  contract_delta?: number | null;
+  entry_underlying_px?: number | null;
+  thesis_invalidation_px?: number | null;
+  target_underlying_px?: number | null;
+  entry_premium?: number | null;
+  /** Commit-time context blobs — COALESCE-pinned first-write-wins by the upsert below. */
+  entry_context?: Record<string, unknown> | null;
+  gate_calibration_json?: Record<string, unknown> | null;
+  feature_vector?: Record<string, unknown> | null;
+  plan_json?: Record<string, unknown> | null;
+  /** Initial lifecycle rung (defaults to OPEN — a committed position is live). */
+  status?: string;
+};
+
+/** Columns pinned first-write-wins on the commit_key upsert (invariant #2). Identity +
+ *  commit-time context: a re-running scan must not re-pick the contract, re-sign the
+ *  thesis, or re-stamp the desk/gate/feature blobs. Scoring/live fields are NOT pinned —
+ *  those are (re)set by updateSwingLiveState. */
+const SWING_POSITION_PINNED_COLUMNS = [
+  "root_position_id",
+  "parent_position_id",
+  "roll_seq",
+  "direction",
+  "sub_lane",
+  "archetype",
+  "top_flow_strike",
+  "contract_strike",
+  "contract_expiry",
+  "contract_type",
+  "contract_occ",
+  "contract_delta",
+  "entry_underlying_px",
+  "thesis_invalidation_px",
+  "target_underlying_px",
+  "entry_premium",
+  "entry_context",
+  "gate_calibration_json",
+  "feature_vector",
+  "plan_json",
+] as const;
+
+/**
+ * Insert (or idempotently re-touch) a committed swing position. Upserts on commit_key so a
+ * re-running scan lands on the SAME row; every identity + commit-time column is COALESCE-pinned
+ * first-write-wins (invariant #2) — only committed_at/updated_at advance on a re-touch.
+ * Returns the position id.
+ */
+export async function insertSwingPosition(pos: SwingPositionInsert): Promise<number> {
+  await ensureSchema();
+  const res = await (await getPool()).query<{ id: string }>(
+    `
+    INSERT INTO swing_positions (
+      commit_key, root_position_id, parent_position_id, roll_seq, session_date, ticker,
+      direction, sub_lane, archetype, top_flow_strike, contract_strike, contract_expiry,
+      contract_type, contract_occ, contract_delta, entry_underlying_px, thesis_invalidation_px,
+      target_underlying_px, entry_premium, entry_context, gate_calibration_json, feature_vector,
+      plan_json, status, committed_at, updated_at
+    ) VALUES (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+      $20::jsonb,$21::jsonb,$22::jsonb,$23::jsonb,$24,NOW(),NOW()
+    )
+    ON CONFLICT (commit_key) DO UPDATE SET
+        ${coalescePinnedColumns("swing_positions", SWING_POSITION_PINNED_COLUMNS)},
+        updated_at = NOW()
+    RETURNING id
+    `,
+    [
+      pos.commit_key,
+      pos.root_position_id ?? null,
+      pos.parent_position_id ?? null,
+      pos.roll_seq ?? 0,
+      pos.session_date,
+      pos.ticker.toUpperCase(),
+      pos.direction,
+      pos.sub_lane,
+      pos.archetype ?? null,
+      pos.top_flow_strike ?? null,
+      pos.contract_strike ?? null,
+      pos.contract_expiry ?? null,
+      pos.contract_type ?? null,
+      pos.contract_occ ?? null,
+      pos.contract_delta ?? null,
+      pos.entry_underlying_px ?? null,
+      pos.thesis_invalidation_px ?? null,
+      pos.target_underlying_px ?? null,
+      pos.entry_premium ?? null,
+      toJsonbParam(pos.entry_context ?? null),
+      toJsonbParam(pos.gate_calibration_json ?? null),
+      toJsonbParam(pos.feature_vector ?? null),
+      toJsonbParam(pos.plan_json ?? null),
+      pos.status ?? "OPEN",
+    ]
+  );
+  return Number(res.rows[0]!.id);
+}
+
+/**
+ * Latch live state on a held position. The status write is guarded by the SAME monotonic
+ * ladder isMonotonicSwingStatusTransition encodes, IN THE SQL CASE (invariant #3) — two
+ * writers (cron sync + live-marks lane) race here, so a JS check on a possibly-stale row
+ * snapshot is not enough. Marks always land (real quote data is never dropped by the guard);
+ * peak/trough + underlying MFE/MAE ratchet monotonically.
+ */
+export async function updateSwingLiveState(
+  id: number,
+  s: {
+    status: string;
+    mark?: number | null;
+    underlyingMfe?: number | null;
+    underlyingMae?: number | null;
+  }
+): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `UPDATE swing_positions SET
+       status = CASE
+         WHEN status IN ('CLOSED','ROLLED') THEN status                      -- terminal frozen
+         WHEN status = 'TRIM' AND $2 IN ('PENDING','OPEN','HOLD') THEN status -- TRIM sticky
+         WHEN status IN ('OPEN','HOLD') AND $2 = 'PENDING' THEN status        -- no regress to PENDING
+         ELSE $2
+       END,
+       last_mark = COALESCE($3, last_mark),
+       peak_premium = CASE WHEN $3 IS NOT NULL THEN GREATEST(COALESCE(peak_premium, $3), $3) ELSE peak_premium END,
+       trough_premium = CASE WHEN $3 IS NOT NULL THEN LEAST(COALESCE(trough_premium, $3), $3) ELSE trough_premium END,
+       underlying_mfe = CASE WHEN $4 IS NOT NULL THEN GREATEST(COALESCE(underlying_mfe, $4), $4) ELSE underlying_mfe END,
+       underlying_mae = CASE WHEN $5 IS NOT NULL THEN LEAST(COALESCE(underlying_mae, $5), $5) ELSE underlying_mae END,
+       updated_at = NOW()
+     WHERE id = $1`,
+    [id, s.status, s.mark ?? null, s.underlyingMfe ?? null, s.underlyingMae ?? null]
+  );
+}
+
+/**
+ * Freeze the multi-truth grade onto a terminal position (status becomes CLOSED unless the
+ * caller passes ROLLED for a rolled leg). Guarded WHERE graded_at IS NULL so a leg is graded
+ * exactly once — a re-run of the lazy grader can never re-litigate a frozen realized_pnl_pct.
+ */
+export async function gradeSwingPosition(
+  id: number,
+  g: {
+    grade_json: Record<string, unknown>;
+    grade_methodology: string;
+    legacy_grade?: Record<string, unknown> | null;
+    realized_pnl_pct?: number | null;
+    status?: "CLOSED" | "ROLLED";
+  }
+): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `UPDATE swing_positions SET
+       grade_json = $2::jsonb,
+       grade_methodology = $3,
+       legacy_grade = COALESCE($4::jsonb, legacy_grade),
+       realized_pnl_pct = COALESCE($5, realized_pnl_pct),
+       status = CASE WHEN status = 'ROLLED' THEN 'ROLLED' ELSE $6 END,
+       closed_at = COALESCE(closed_at, NOW()),
+       graded_at = NOW(),
+       updated_at = NOW()
+     WHERE id = $1 AND graded_at IS NULL`,
+    [
+      id,
+      toJsonbParam(g.grade_json),
+      g.grade_methodology,
+      toJsonbParam(g.legacy_grade ?? null),
+      g.realized_pnl_pct ?? null,
+      g.status ?? "CLOSED",
+    ]
+  );
+}
+
+/** Pin the scale-out (financial) grade first-write-wins — the exit decision that actually
+ *  closed the play is frozen; a later re-grade against fresher bars must not rewrite it. */
+export async function pinSwingScaleOutGrade(id: number, scaleOutGrade: Record<string, unknown>): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `UPDATE swing_positions
+       SET scale_out_grade = $2::jsonb, updated_at = NOW()
+     WHERE id = $1 AND scale_out_grade IS NULL`,
+    [id, toJsonbParam(scaleOutGrade)]
+  );
+}
+
+/** Every live position (the manager/refresh loop's working set). */
+export async function fetchOpenSwingPositions(): Promise<SwingPositionRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT * FROM swing_positions WHERE status NOT IN ('CLOSED','ROLLED') ORDER BY session_date DESC, id DESC`
+  );
+  return res.rows.map(mapSwingPositionRow);
+}
+
+/** Positions committed on/after a session date — the calibration harness's input. */
+export async function fetchSwingPositionsRange(sinceDate: string, limit = 1000): Promise<SwingPositionRow[]> {
+  await ensureSchema();
+  const normalized = normalizeIsoDateInput(sinceDate);
+  if (!normalized) return [];
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT * FROM swing_positions WHERE session_date >= $1::date ORDER BY session_date DESC, id DESC LIMIT $2`,
+    [normalized, limit]
+  );
+  return res.rows.map(mapSwingPositionRow);
+}
+
+/** Terminal-but-ungraded positions the lazy grader picks up (a leg is graded once it is
+ *  CLOSED/ROLLED and its forward bars exist). Capped — grading is incremental. */
+export async function fetchUngradedSwingPositions(limit = 25): Promise<SwingPositionRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT * FROM swing_positions
+      WHERE graded_at IS NULL AND status IN ('CLOSED','ROLLED')
+      ORDER BY session_date ASC, id ASC
+      LIMIT $1`,
+    [limit]
+  );
+  return res.rows.map(mapSwingPositionRow);
+}
+
+/** The full roll chain for a root, oldest→newest by roll_seq (invariant #1). Accepts the
+ *  root id: matches the root row itself (id = root, root_position_id NULL) OR any child
+ *  (root_position_id = root). Each leg keeps its own frozen grade — the composite is
+ *  assembled by the record layer (PR-14), never by netting rows here. */
+export async function fetchSwingPositionChain(rootPositionId: number): Promise<SwingPositionRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT * FROM swing_positions
+      WHERE id = $1 OR root_position_id = $1
+      ORDER BY roll_seq ASC, id ASC`,
+    [rootPositionId]
+  );
+  return res.rows.map(mapSwingPositionRow);
+}
+
+/** Graded positions carrying a pinned feature vector — the feature store's read row. Only
+ *  rows that are both graded and feature-bearing are evidence; anything else stays in the DB. */
+export async function fetchGradedSwingFeatureRows(limit = 5000): Promise<SwingPositionRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT * FROM swing_positions
+      WHERE graded_at IS NOT NULL AND feature_vector IS NOT NULL
+      ORDER BY session_date DESC, id DESC
+      LIMIT $1`,
+    [limit]
+  );
+  return res.rows.map(mapSwingPositionRow);
+}
+
+export type SwingExposureRow = {
+  ticker: string;
+  direction: "long" | "short";
+  open_positions: number;
+  total_entry_premium: number | null;
+};
+
+/** Aggregate open exposure per (ticker, direction) — the allocation overlap check's live
+ *  read (how much premium is already committed to a name/side). */
+export async function fetchOpenSwingExposure(): Promise<SwingExposureRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT ticker, direction,
+            COUNT(*)::int AS open_positions,
+            SUM(entry_premium) AS total_entry_premium
+       FROM swing_positions
+      WHERE status NOT IN ('CLOSED','ROLLED')
+      GROUP BY ticker, direction
+      ORDER BY ticker ASC, direction ASC`
+  );
+  return res.rows.map((r) => ({
+    ticker: String(r.ticker),
+    direction: r.direction === "short" ? "short" : "long",
+    open_positions: Number(r.open_positions) || 0,
+    total_entry_premium: r.total_entry_premium != null ? Number(r.total_entry_premium) : null,
+  }));
+}
+
+// ─── swing_position_snapshots accessors ───────────────────────────────────────
+
+export type SwingSnapshotInsert = {
+  position_id: number;
+  snapshot_kind: string;
+  dte_remaining?: number | null;
+  underlying_px?: number | null;
+  option_mark?: number | null;
+  running_mfe?: number | null;
+  running_mae?: number | null;
+  thesis_state?: string | null;
+  feature_vector?: Record<string, unknown> | null;
+  event_json?: Record<string, unknown> | null;
+};
+
+/** Append one snapshot to a position's longitudinal series. NEVER an upsert — each tick is
+ *  a distinct observation of the path, so history is preserved. Returns the snapshot id. */
+export async function insertSwingSnapshot(s: SwingSnapshotInsert): Promise<number> {
+  await ensureSchema();
+  const res = await (await getPool()).query<{ id: string }>(
+    `INSERT INTO swing_position_snapshots (
+       position_id, snapshot_kind, dte_remaining, underlying_px, option_mark,
+       running_mfe, running_mae, thesis_state, feature_vector, event_json
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb)
+     RETURNING id`,
+    [
+      s.position_id,
+      s.snapshot_kind,
+      s.dte_remaining ?? null,
+      s.underlying_px ?? null,
+      s.option_mark ?? null,
+      s.running_mfe ?? null,
+      s.running_mae ?? null,
+      s.thesis_state ?? null,
+      toJsonbParam(s.feature_vector ?? null),
+      toJsonbParam(s.event_json ?? null),
+    ]
+  );
+  return Number(res.rows[0]!.id);
+}
+
+/** A position's snapshot series, oldest→newest (the grader/trajectory walk order). */
+export async function fetchSwingSnapshots(positionId: number, limit = 2000): Promise<SwingSnapshotRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT * FROM swing_position_snapshots WHERE position_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2`,
+    [positionId, limit]
+  );
+  return res.rows.map(mapSwingSnapshotRow);
+}
+
+// ─── swing_candidate_accumulation accessors ───────────────────────────────────
+
+/**
+ * Accrete one observation of a candidate for (ticker, direction). distinct_session_days only
+ * increments when the incoming session day differs from the last one recorded (scans arrive in
+ * time order), so the persistence gate ("seen across ≥2 sessions") is honest. phases_seen
+ * accumulates a deduped set of the discovery phases the name showed up in. Never re-stamps
+ * first_seen_at.
+ */
+export async function upsertSwingAccum(a: {
+  ticker: string;
+  direction: "long" | "short";
+  session_day: string;
+  phase: string;
+}): Promise<void> {
+  await ensureSchema();
+  const normalized = normalizeIsoDateInput(a.session_day);
+  if (!normalized) return;
+  await (await getPool()).query(
+    `INSERT INTO swing_candidate_accumulation (
+       ticker, direction, observation_count, distinct_session_days, last_session_day,
+       phases_seen, first_seen_at, last_seen_at
+     ) VALUES ($1,$2,1,1,$3::date,$4::jsonb,NOW(),NOW())
+     ON CONFLICT (ticker, direction) DO UPDATE SET
+       observation_count = swing_candidate_accumulation.observation_count + 1,
+       -- +1 distinct day only when the session day actually changed (persistence, not repeats).
+       distinct_session_days = swing_candidate_accumulation.distinct_session_days
+         + (CASE WHEN swing_candidate_accumulation.last_session_day IS DISTINCT FROM EXCLUDED.last_session_day THEN 1 ELSE 0 END),
+       last_session_day = EXCLUDED.last_session_day,
+       -- Deduped union of phases seen.
+       phases_seen = (
+         SELECT COALESCE(jsonb_agg(DISTINCT e), '[]'::jsonb)
+         FROM jsonb_array_elements(swing_candidate_accumulation.phases_seen || EXCLUDED.phases_seen) AS e
+       ),
+       last_seen_at = NOW()`,
+    [a.ticker.toUpperCase(), a.direction, normalized, JSON.stringify([a.phase])]
+  );
+}
+
+/** Candidates still accumulating (not yet promoted), most-recent first. `minSessionDays`
+ *  filters to those that have cleared the cross-session persistence bar. */
+export async function fetchAccumulating(minSessionDays = 1, limit = 500): Promise<SwingAccumRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT * FROM swing_candidate_accumulation
+      WHERE promoted_position_id IS NULL AND distinct_session_days >= $1
+      ORDER BY last_seen_at DESC
+      LIMIT $2`,
+    [minSessionDays, limit]
+  );
+  return res.rows.map(mapSwingAccumRow);
+}
+
+/** Link an accumulation row to the position it promoted into (stops further accretion counting
+ *  as a fresh candidate). */
+export async function markAccumPromoted(
+  ticker: string,
+  direction: "long" | "short",
+  positionId: number
+): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `UPDATE swing_candidate_accumulation
+       SET promoted_position_id = $3, last_seen_at = NOW()
+     WHERE ticker = $1 AND direction = $2`,
+    [ticker.toUpperCase(), direction, positionId]
+  );
+}
+
+/** Fade candidates that stopped showing up: delete unpromoted rows not seen since `beforeIso`.
+ *  Returns the number faded. Promoted rows are never touched (they belong to a live position). */
+export async function fadeStaleAccum(beforeIso: string): Promise<number> {
+  await ensureSchema();
+  const cutoff = parseTimestamptz(beforeIso);
+  if (!cutoff) return 0;
+  const res = await (await getPool()).query(
+    `DELETE FROM swing_candidate_accumulation
+      WHERE promoted_position_id IS NULL AND last_seen_at < $1::timestamptz`,
+    [cutoff]
+  );
+  return res.rowCount ?? 0;
 }
 
 export type BieKnowledgeRow = {
