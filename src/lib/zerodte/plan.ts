@@ -136,18 +136,34 @@ export function buildContractPlan(input: {
 /**
  * The premium reference persisted to the ledger row — consumed by BOTH
  * gradePlanFromBars (the final win/loss grade) and derivePlayStatus (live
- * OPEN/HOLD/TRIM/CLOSED math via peak/trough). This MUST resolve the same way
- * buildContractPlan's own `entry_max` does (flow's fill, falling back to mark),
- * since entry_max is the literal "enter at or below this premium" instruction
- * shown to the member and what the plan's own stop_premium/target_premium are
- * computed from — grading against a different reference (e.g. the live mark at
- * flag time) would score a trade the member was never actually told to make.
+ * OPEN/HOLD/TRIM/CLOSED math via peak/trough). This resolves from buildContractPlan's
+ * own `entry_max` (flow's fill, falling back to mark) — entry_max is the literal
+ * "enter at or below this premium" instruction shown to the member and what the plan's
+ * own stop_premium/target_premium are computed from.
+ *
+ * ACHIEVABILITY FLOOR (`markAtFlag`) — grade the trade a member could actually take:
+ * entry_max is the FLOW's own fill, i.e. the price the SMART MONEY got, which can sit
+ * well BELOW the live mark (the tape front-ran the print). CHASE_PCT lets the mark run
+ * up to +34% over that fill and still print IN_RANGE, so the graded entry/stop/target
+ * could be pinned to a premium a member filling at the live mark at flag time simply
+ * cannot get — a cheaper-than-achievable basis flatters the win rate (an easier double,
+ * a stop that never realistically triggers). So the LEDGER basis is floored at the
+ * flag-time mark: a member arriving at flag time pays ~the mark, never a price already
+ * gone. The member-facing entry_max/stop_premium/target_premium (the printed "enter at
+ * or below" instruction and the don't-chase MOVED band) are deliberately left UNTOUCHED
+ * — only the ledger's grading/tracking reference moves, and only UP toward the mark
+ * (never below entry_max), so the clean IN_RANGE/CHEAPER path where the mark sits at or
+ * below the fill is unchanged. `markAtFlag` omitted → legacy behavior (no floor).
  */
 export function resolveLedgerEntryPremium(
   planEntryMax: number | null | undefined,
-  flowAvgFill: number | null
+  flowAvgFill: number | null,
+  markAtFlag?: number | null
 ): number | null {
-  return planEntryMax ?? flowAvgFill ?? null;
+  const base = planEntryMax ?? flowAvgFill ?? null;
+  if (base == null) return null;
+  if (markAtFlag != null && markAtFlag > 0 && markAtFlag > base) return round2(markAtFlag);
+  return base;
 }
 
 // ── Plan grading (the accountability half) ────────────────────────────────────────
@@ -183,6 +199,18 @@ export function etMinutesOf(epochMs: number): number {
  * would be intrabar clairvoyance — the same discipline the skip grader applies via
  * `entryBar.t + 1`. Past the time stop, exit at the last usable close ≤15:30 ET. No bars
  * strictly after the flag → ungradeable.
+ *
+ * TIE-BREAK DIVERGENCE vs derivePlayStatus (deliberate, documented): on a same-bar
+ * stop+target tie this grade is PESSIMISTIC (books the stop) while the live card
+ * (derivePlayStatus) is OPTIMISTIC (its latched-peak check makes a target touch a
+ * STICKY win — guarded by the "already-doubled stays TRIM" P0 test). The two can
+ * therefore disagree only in that ambiguous both-touched window: the card can show a
+ * TRIM the moment the target is tagged, while THIS mechanical grade later books −50%
+ * if the stop shared the bar. That is NOT the member-facing record: record.ts reports
+ * the AS-MANAGED grade (the exit-engine's realized exit — a target/ratchet trim books a
+ * WIN, matching the card), and keeps this mechanical grade only as a labeled comparison.
+ * So the number the member is shown and the number booked to their record agree; this
+ * conservative grade is the honest hold-to-stop/target benchmark beside it.
  */
 export function gradePlanFromBars(
   bars: PlanBar[],
@@ -269,6 +297,16 @@ export function derivePlayStatus(input: {
   // touch wins" grading and this file's own "peak >= target -> TRIM until close" doc
   // comment. A genuine stop-first case is unaffected: peak can't have reached target
   // yet when the row closes, so it still falls through to the stop check below.
+  //
+  // INTENTIONAL, GUARDED divergence from gradePlanFromBars' same-bar tie-break (see
+  // that function's doc + the "already-doubled stays TRIM" P0 test): the live card is
+  // OPTIMISTIC-sticky here (a real target touch is a real trim the member could take),
+  // while the post-hoc mechanical grade is PESSIMISTIC on the both-touched-same-bar
+  // ambiguity. They can disagree ONLY in that window. Reconciliation lives in record.ts:
+  // the member-facing REPORTED record is the AS-MANAGED grade (the exit engine's realized
+  // exit — the trim/ratchet that this TRIM card actually guides), so what the member is
+  // shown and what is booked to their record agree; the mechanical grade is kept beside
+  // it only as a labeled hold-to-stop/target comparison.
   if (peak != null && peak >= target) {
     return { status: "TRIM", live_pnl_pct: pnl, closed_reason: null };
   }

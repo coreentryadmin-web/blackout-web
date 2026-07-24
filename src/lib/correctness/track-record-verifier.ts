@@ -90,8 +90,13 @@ export async function verifyTrackRecord(_marketOpen: boolean): Promise<TickerSco
     rows = [];
   }
 
-  // Independent recompute over the ledger.
-  const closedRows = rows.filter((r) => r.outcome !== "open");
+  // Independent recompute over the ledger. "superseded" (a stale open force-closed as
+  // bookkeeping) is NOT a real closed outcome — the served path excludes it
+  // (computePlayOutcomeStats: `outcome !== "open" && outcome !== "superseded"`). Keeping
+  // it here inflated myClosed, so the L2 partition (wins+losses+scratch == closed) and
+  // the L1 recompute-vs-served both FLAGGED a perfectly healthy ledger whenever any
+  // superseded rows existed. Match the served "closed" definition exactly.
+  const closedRows = rows.filter((r) => r.outcome !== "open" && r.outcome !== "superseded");
   const myWins = closedRows.filter((r) => r.outcome === "win").length;
   const myLosses = closedRows.filter((r) => r.outcome === "loss").length;
   const myScratch = closedRows.filter((r) => r.outcome === "breakeven").length;

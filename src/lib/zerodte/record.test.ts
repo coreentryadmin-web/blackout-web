@@ -206,3 +206,113 @@ test("scoreBand + scoreForBanding + graded/win predicates", () => {
   assert.equal(isZeroDteWin(row({ plan_pnl_pct: null })), false);
   assert.equal(LOW_N_THRESHOLD, 5);
 });
+
+// ── Fix 5: the graded predicate requires a FINITE plan_pnl_pct (partial-write guard) ──
+// isGradedZeroDteRow keyed on plan_outcome while isZeroDteWin keyed on plan_pnl_pct, so a
+// PARTIAL write (outcome stamped, pnl still NULL) counted as graded-but-not-a-win → a
+// phantom LOSS. The two predicates must agree: no finite pnl ⇒ not graded (retried, not lost).
+test("Fix 5: a plan_outcome with a NULL plan_pnl_pct is NOT graded — never a phantom loss", () => {
+  assert.equal(isGradedZeroDteRow(row({ plan_outcome: "stopped", plan_pnl_pct: null })), false);
+  assert.equal(isGradedZeroDteRow(row({ plan_outcome: "doubled", plan_pnl_pct: 100 })), true);
+  const rec = buildZeroDteRecord([row({ ticker: "PART", plan_outcome: "stopped", plan_pnl_pct: null })], WINDOW);
+  assert.equal(rec.graded, 0, "a partial-write row is ungraded, not a loss");
+  assert.equal(rec.losses, 0);
+  assert.equal(rec.ungraded, 1);
+  assert.equal(rec.mechanical.graded, 0);
+});
+
+// ── Fix 1: the HEADLINE record is the AS-MANAGED (executed) exit, mechanical is a label ─
+/** Stamp a realized engine exit (exit-engine.ts buildExitContext shape) onto a row. */
+function withExit(
+  over: Partial<ZeroDteSetupLogRow>,
+  exit: { reason: string; pnl_pct: number }
+): ZeroDteSetupLogRow {
+  return row({ ...over, entry_context: { ...((over.entry_context as Record<string, unknown>) ?? {}), exit } });
+}
+
+test("Fix 1: a ratchet exit books the REALIZED win even though the mechanical plan stopped out", () => {
+  // The member was ratcheted out at +22.5% (green never finished red); the fixed
+  // -50/+100/15:30 plan grade later books -50%. Headline = the exit actually traded;
+  // mechanical = the labeled hold-to-stop comparison.
+  const r = withExit(
+    { ticker: "AMZN", plan_outcome: "stopped", plan_pnl_pct: -50 },
+    { reason: "ratchet_profit_floor", pnl_pct: 22.5 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.wins, 1);
+  assert.equal(rec.losses, 0);
+  assert.equal(rec.win_rate_pct, 100);
+  assert.equal(rec.avg_pnl_pct, 22.5);
+  assert.deepEqual(rec.by_outcome.map((b) => b.label), ["ratchet"]);
+  // Mechanical comparison = the fixed plan grade: a loss.
+  assert.equal(rec.mechanical.wins, 0);
+  assert.equal(rec.mechanical.losses, 1);
+  assert.equal(rec.mechanical.win_rate_pct, 0);
+  assert.equal(rec.mechanical.avg_pnl_pct, -50);
+  assert.deepEqual(rec.mechanical.by_outcome.map((b) => b.label), ["stopped"]);
+  // Per-play carries BOTH grades + the source.
+  const play = rec.plays[0]!;
+  assert.equal(play.managed_outcome, "ratchet");
+  assert.equal(play.managed_pnl_pct, 22.5);
+  assert.equal(play.managed_source, "engine");
+  assert.equal(play.plan_outcome, "stopped");
+  assert.equal(play.plan_pnl_pct, -50);
+});
+
+test("Fix 1: with NO engine exit the record falls back to the mechanical plan (source=plan) — the clean path is unchanged", () => {
+  const rec = buildZeroDteRecord(LEDGER_7_13, WINDOW);
+  // 7/13 rows carry no entry_context.exit → as-managed == mechanical (1W/7L both ways).
+  assert.equal(rec.wins, 1);
+  assert.equal(rec.losses, 7);
+  assert.equal(rec.win_rate_pct, 12.5);
+  assert.equal(rec.mechanical.wins, 1);
+  assert.equal(rec.mechanical.losses, 7);
+  assert.equal(rec.mechanical.win_rate_pct, 12.5);
+  const graded = rec.plays.filter((p) => p.managed_source != null);
+  assert.equal(graded.length, 8);
+  assert.ok(graded.every((p) => p.managed_source === "plan"));
+  assert.ok(graded.every((p) => p.managed_pnl_pct === p.plan_pnl_pct));
+});
+
+// ── Fix 2: card (peak-first TRIM) vs grade (stop-first) divergence is reconciled by the
+// reported record being the AS-MANAGED grade — what the member saw is what is booked. ──
+test("Fix 2: a play shown TRIM (target tagged) books the engine's WIN, not the mechanical stop-first -50%", () => {
+  const r = withExit(
+    { ticker: "TSLA", plan_outcome: "stopped", plan_pnl_pct: -50 },
+    { reason: "plan_target_final", pnl_pct: 100 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.wins, 1, "member saw a trimmed winner → the record books a win");
+  assert.equal(rec.plays[0]!.managed_outcome, "doubled");
+  assert.equal(rec.mechanical.losses, 1, "the conservative hold-to-stop grade is kept as the -50% comparison");
+});
+
+// ── Fix 4a: pnl exactly 0 is a BREAKEVEN — neither win nor loss (SPX 3-way parity) ─────
+test("Fix 4a: an exactly-breakeven managed exit is NOT booked as a loss", () => {
+  const scratch = withExit(
+    { ticker: "GOOG", plan_outcome: "time_stop", plan_pnl_pct: -20 },
+    { reason: "flat_theta_bleed", pnl_pct: 0 }
+  );
+  const win = withExit({ ticker: "NVDA", plan_outcome: "doubled", plan_pnl_pct: 100 }, { reason: "plan_target_final", pnl_pct: 100 });
+  const loss = withExit({ ticker: "META", plan_outcome: "stopped", plan_pnl_pct: -50 }, { reason: "plan_stop", pnl_pct: -50 });
+  const rec = buildZeroDteRecord([scratch, win, loss], WINDOW);
+  assert.equal(rec.graded, 3);
+  assert.equal(rec.wins, 1);
+  assert.equal(rec.losses, 1);
+  assert.equal(rec.breakeven, 1);
+  assert.equal(rec.wins + rec.losses + rec.breakeven, rec.graded, "wins+losses+breakeven == graded");
+  assert.equal(rec.win_rate_pct, 33.3, "win rate is wins/graded with breakeven in the denominator (SPX parity)");
+  const flat = rec.by_outcome.find((b) => b.label === "flat_scratch");
+  assert.ok(flat);
+  assert.equal(flat.breakeven, 1);
+  assert.equal(flat.losses, 0);
+  assert.equal(flat.wins, 0);
+});
+
+test("Fix 4a: a MECHANICAL exact-0 plan pnl is a breakeven too, not a loss", () => {
+  const rec = buildZeroDteRecord([row({ ticker: "FLAT", plan_outcome: "time_stop", plan_pnl_pct: 0 })], WINDOW);
+  assert.equal(rec.breakeven, 1);
+  assert.equal(rec.losses, 0);
+  assert.equal(rec.mechanical.breakeven, 1);
+  assert.equal(rec.mechanical.losses, 0);
+});
