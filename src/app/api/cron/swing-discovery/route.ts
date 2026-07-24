@@ -15,9 +15,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
-import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
+import { sharedCacheSetNx } from "@/lib/shared-cache";
 import { todayEt } from "@/lib/et-date";
-import { decideSwingScan, resolveScanPhase, phaseRunKey } from "@/lib/swing/scan-cadence";
+import { decideSwingScan } from "@/lib/swing/scan-cadence";
 import {
   runSwingDiscoveryScan,
   DEFAULT_SWING_DISCOVERY_CONFIG,
@@ -98,29 +98,38 @@ export async function GET(req: NextRequest) {
   const nowMs = started;
   const sessionDay = todayEt(new Date(nowMs));
 
-  // Resolve the active phase and read its idempotency marker → the pure decision decides run/skip.
-  const window = resolveScanPhase(nowMs);
-  let ranKeys: ReadonlySet<string> = new Set();
-  if (window) {
-    const key = phaseRunKey(sessionDay, window.phase);
-    // Marker read is best-effort: a redis miss/outage just means we can't dedup — better to run than to
-    // silently skip the whole phase (a double-run only over-accretes one observation, harmless to the
-    // ≥2-distinct-session persistence gate).
-    const claimed = await sharedCacheGet<number>(key).catch(() => null);
-    if (claimed != null) ranKeys = new Set([key]);
-  }
-
-  const decision = decideSwingScan({ nowMs, sessionDay, ranKeys });
+  // Resolve the active phase (pure). The idempotency dedup is now the ATOMIC claim below, so the
+  // decision runs with an empty ranKeys — it only tells us whether the ET clock is inside a phase window.
+  const decision = decideSwingScan({ nowMs, sessionDay, ranKeys: new Set() });
   if (!decision.run) {
     const payload = { ok: true, skipped: true, phase: decision.phase, reason: decision.reason };
     await logCronRun("swing-discovery", started, payload);
     return NextResponse.json(payload);
   }
 
-  try {
-    // CLAIM the (date, phase) key BEFORE scanning — a concurrent/retry firing now sees the marker and skips.
-    if (decision.key) await sharedCacheSet(decision.key, nowMs, PHASE_CLAIM_TTL_SEC).catch(() => undefined);
+  // ATOMIC (date, phase) CLAIM — the load-bearing idempotency gate. This used to be a GET-then-SET
+  // (sharedCacheGet the marker → decide → sharedCacheSet), which is a read-then-write RACE: two replicas
+  // firing the same cron minute can BOTH read "not yet claimed" and BOTH proceed → duplicate discovery
+  // that double-increments the accumulation memory for the same (day, phase). `SET key val NX EX ttl` is a
+  // single atomic Redis command, so exactly ONE replica's SET wins (acquired=true) and every other
+  // concurrent firing gets acquired=false and skips here. On a Redis miss/outage we DEFAULT TO RUN
+  // (acquired=true): losing dedup is better than silently skipping the whole phase — a lone double-run only
+  // over-accretes one observation, harmless to the ≥2-distinct-session persistence gate.
+  const acquired = decision.key
+    ? await sharedCacheSetNx(decision.key, nowMs, PHASE_CLAIM_TTL_SEC).catch(() => true)
+    : true;
+  if (!acquired) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      phase: decision.phase,
+      reason: `phase ${decision.phase} already claimed for ${sessionDay} (idempotent skip)`,
+    };
+    await logCronRun("swing-discovery", started, payload);
+    return NextResponse.json(payload);
+  }
 
+  try {
     const deps = buildDiscoveryDeps(nowMs, sessionDay, decision.phase!);
     const result = await runSwingDiscoveryScan(deps);
 

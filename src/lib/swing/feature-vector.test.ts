@@ -8,6 +8,7 @@ import {
   SWING_CATEGORICAL_FEATURE_KEYS,
   type SwingFeatureInputs,
 } from "./feature-vector.ts";
+import { classifyArchetype, classificationMetaFromVerdict } from "./archetype.ts";
 
 const base: SwingFeatureInputs = {
   ticker: "nvda",
@@ -53,6 +54,50 @@ test("archetype + sub-lane one-hot: winner=1, others=0, unknown=null throughout"
   assert.equal(unknown.lane_standard, null);
   assert.equal(unknown.archetype, null);
   assert.equal(unknown.sub_lane, null);
+});
+
+// ── full classification metadata capture (primary + secondary[] + scores{} + margin) ────────────
+test("record carries the FULL classification metadata, not just the primary label", () => {
+  // A verdict with a clear BREAKOUT winner and grounded runners-up (EVENT_DRIVEN + MEAN_REVERSION).
+  const verdict = classifyArchetype({
+    direction: "LONG",
+    nearRangeExtreme01: 0.9,
+    breakoutQuality01: 0.9,
+    volumeExpansion01: 0.9, // BREAKOUT ≈ 0.90 (winner)
+    catalystInWindow01: 0.6, // EVENT_DRIVEN = 0.60
+    oversold01: 0.4, // MEAN_REVERSION = 0.40
+  });
+  const meta = classificationMetaFromVerdict(verdict);
+  const v = buildSwingFeatureVector({ ...base, archetype: verdict.archetype, archetypeSecondary: meta.secondary, archetypeScores: meta.scores, classificationMargin: meta.margin });
+
+  // primary is authoritative and mirrors `archetype` (the calibration key).
+  assert.equal(v.primary, "BREAKOUT");
+  assert.equal(v.archetype, "BREAKOUT");
+  // secondary = ranked runners-up, primary excluded, in fit-descending order.
+  assert.deepEqual(v.secondary, ["EVENT_DRIVEN", "MEAN_REVERSION"]);
+  // archetype_scores = grounded fits only (the three we grounded), primary included.
+  assert.deepEqual(v.archetype_scores, { BREAKOUT: 0.9, EVENT_DRIVEN: 0.6, MEAN_REVERSION: 0.4 });
+  // classification_margin = topFit − runner-up (0.90 − 0.60).
+  assert.ok(Math.abs((v.classification_margin ?? NaN) - 0.3) < 1e-9);
+});
+
+test("classification metadata defaults are null-safe when absent (never fabricated)", () => {
+  // base carries no secondary/scores/margin → empty list, empty map, null margin (not 0, not undefined).
+  const v = buildSwingFeatureVector(base);
+  assert.equal(v.primary, "BREAKOUT"); // still mirrors the archetype
+  assert.deepEqual(v.secondary, []);
+  assert.deepEqual(v.archetype_scores, {});
+  assert.equal(v.classification_margin, null);
+});
+
+test("classification metadata is NOT threaded into the numeric/categorical feature key lists", () => {
+  // secondary (a list) + archetype_scores (a map) are metadata, not standardizable scalar features.
+  const numeric = SWING_NUMERIC_FEATURE_KEYS as readonly string[];
+  const categorical = SWING_CATEGORICAL_FEATURE_KEYS as readonly string[];
+  for (const k of ["secondary", "archetype_scores", "classification_margin", "primary"]) {
+    assert.ok(!numeric.includes(k), `${k} must not be a numeric feature key`);
+    assert.ok(!categorical.includes(k), `${k} must not be a categorical feature key`);
+  }
 });
 
 // ── null-safety (numOrNull; non-finite → null; missing pillars → null not 0) ──────

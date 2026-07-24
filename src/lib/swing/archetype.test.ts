@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   classifyArchetype,
   archetypeInputsFromReads,
+  classificationMetaFromVerdict,
   type ArchetypeInputs,
   type ArchetypeReadExtras,
 } from "./archetype.ts";
@@ -49,6 +50,36 @@ test("margin confidence = topFit − secondFit is exposed and non-negative", () 
   assert.equal(v.archetype, "BREAKOUT");
   assert.ok(v.margin > 0 && v.margin <= 1);
   assert.ok(Math.abs(v.margin - (0.9 - 0.4)) < 1e-9);
+});
+
+// ── classification metadata (the full breakdown persisted beside the primary) ──
+test("classificationMetaFromVerdict: primary + ranked secondary[] + grounded scores{} + margin", () => {
+  const v = classifyArchetype({
+    direction: "LONG",
+    nearRangeExtreme01: 0.9,
+    breakoutQuality01: 0.9,
+    volumeExpansion01: 0.9, // BREAKOUT = 0.90 (winner)
+    catalystInWindow01: 0.6, // EVENT_DRIVEN = 0.60
+    oversold01: 0.4, // MEAN_REVERSION = 0.40
+  });
+  const meta = classificationMetaFromVerdict(v);
+  assert.equal(meta.primary, "BREAKOUT");
+  // secondary = ranked grounded runners-up, primary excluded, fit-descending.
+  assert.deepEqual(meta.secondary, ["EVENT_DRIVEN", "MEAN_REVERSION"]);
+  // scores = grounded fits only (never a fabricated 0 for the ungrounded archetypes).
+  assert.deepEqual(meta.scores, { BREAKOUT: 0.9, EVENT_DRIVEN: 0.6, MEAN_REVERSION: 0.4 });
+  assert.equal(Object.keys(meta.scores).length, 3); // the 5 ungrounded archetypes are OMITTED, not 0
+  assert.ok(Math.abs(meta.margin - 0.3) < 1e-9); // 0.90 − 0.60
+});
+
+test("classificationMetaFromVerdict: unclassified verdict → primary null, secondary keeps grounded ranking", () => {
+  // Two weak fits below the floor → primary null, but the runners-up ordering is still captured for analysis.
+  const v = classifyArchetype({ direction: "LONG", oversold01: 0.3, catalystInWindow01: 0.2 });
+  const meta = classificationMetaFromVerdict(v);
+  assert.equal(meta.primary, null);
+  // No primary to exclude → all grounded archetypes rank in secondary (fit-descending).
+  assert.deepEqual(meta.secondary, ["MEAN_REVERSION", "EVENT_DRIVEN"]);
+  assert.deepEqual(meta.scores, { MEAN_REVERSION: 0.3, EVENT_DRIVEN: 0.2 });
 });
 
 test("tie within the confidence margin resolves by ARCHETYPE_PRIORITY (most-specific-first)", () => {

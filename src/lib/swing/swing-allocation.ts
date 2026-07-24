@@ -29,6 +29,13 @@
 import type { PlayDirection } from "../horizon-fanout";
 import { allocate, type AllocationCandidate } from "../portfolio/allocation";
 import { resolveTheme } from "./theme-cluster";
+import {
+  evaluatePortfolioBudget,
+  DEFAULT_PORTFOLIO_BUDGET,
+  type PortfolioBudget,
+  type PortfolioBudgetVerdict,
+  type BudgetPosition,
+} from "./swing-portfolio-budget";
 
 export interface SwingCaps {
   /** Max % of the member's book in a single swing position. */
@@ -134,6 +141,14 @@ export interface SwingAllocationResult {
   capsApplied: SwingCapsApplied;
   /** ADVISORY ONLY — the caps annotate; they resize/block nothing until PR-16 graduates them. */
   enforce: false;
+  /**
+   * ADVISORY portfolio-budget verdict (whole-book capital/loss dimension, orthogonal to the % caps
+   * above). With `DEFAULT_PORTFOLIO_BUDGET` (all-null limits, enforce:false) this is a clean no-op —
+   * every dimension unconstrained, no breaches — and `decisions`/`capsApplied` are IDENTICAL to a run
+   * without a budget. It arms only when the operator supplies real capital + loss limits + enforce:true;
+   * even then nothing in the live path consults it yet. See swing-portfolio-budget.ts.
+   */
+  portfolioBudget: PortfolioBudgetVerdict;
 }
 
 const isFin = (x: number | null | undefined): x is number => x != null && Number.isFinite(x);
@@ -162,6 +177,10 @@ export function allocateSwingBook(
   candidates: SwingAllocationCandidate[],
   existing: ExistingSwingPosition[] = [],
   caps: SwingCaps = DEFAULT_SWING_CAPS,
+  // Whole-portfolio capital/loss budget — advisory. Defaulting to DEFAULT_PORTFOLIO_BUDGET (all-null,
+  // enforce:false) makes the budget a strict no-op: it is CONSULTED but changes NOTHING about the
+  // decisions/capsApplied below. See swing-portfolio-budget.ts for why it ships disarmed.
+  budget: PortfolioBudget = DEFAULT_PORTFOLIO_BUDGET,
 ): SwingAllocationResult {
   // Reuse allocate() purely for the deterministic rank/percentile/rankValue skeleton (theme as its sector).
   const allocInput: AllocationCandidate[] = candidates.map((c) => ({
@@ -279,6 +298,16 @@ export function allocateSwingBook(
     };
   });
 
+  // Consult the whole-portfolio budget over the same set (existing holds + this session's decisions).
+  // We pass ONLY tickers — no invented riskUsd/isEvent/isOvernight — so with the default (all-null)
+  // budget every dimension is unconstrained and this is provably a no-op on the allocation above. The
+  // operator arms it later by supplying real per-position risk on ExistingSwingPosition + real limits.
+  const budgetPositions: BudgetPosition[] = [
+    ...existing.map((e) => ({ ticker: e.ticker })),
+    ...decisions.map((d) => ({ ticker: d.ticker })),
+  ];
+  const portfolioBudget = evaluatePortfolioBudget(budgetPositions, budget);
+
   return {
     decisions,
     capsApplied: {
@@ -289,5 +318,6 @@ export function allocateSwingBook(
       clusterPolicy: CLUSTER_POLICY,
     },
     enforce: false,
+    portfolioBudget,
   };
 }

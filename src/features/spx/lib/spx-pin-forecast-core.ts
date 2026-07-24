@@ -53,6 +53,13 @@ export type PinForecast = {
   scenarios: PinScenario[];
   degraded: boolean;
   degradeReason: string | null;
+  /** Provenance: TRUE when the ATM IV that sizes the whole cone was neither supplied
+   *  (`input.atmIv`) nor readable from any chain contract, so the hardcoded 12% guess
+   *  was used. Numbers are unchanged — this flag just lets the UI mark a forecast whose
+   *  vol input is a fallback, not observed, so a guessed-IV cone reads differently from a
+   *  real-IV one. Distinct from `degraded` (which flags an unreliable REGIME, not a
+   *  guessed input). */
+  ivFallback: boolean;
   /** Human-readable "why" — powers the click-to-explain detail. Ordered strongest-first. */
   drivers: PinDriver[];
 };
@@ -247,6 +254,8 @@ type Prep = {
   charmState: PinForecast["charmState"];
   degraded: boolean;
   degradeReason: string | null;
+  /** TRUE when atmIv fell through to the hardcoded 12% guess (no input + no chain IV). */
+  ivFallback: boolean;
 };
 
 /** Shared setup: build the ladder, flip, regime, dominant magnet, vol, charm state, degrade flags. */
@@ -257,7 +266,7 @@ function prepare(input: PinForecastInput): Prep {
   const structYears = RTH_MIN / YEAR_MIN;
   const ladder = pinLadderAtSpot(input.contracts, input.spot, structYears);
   if (ladder.size < 2) {
-    return { ok: false, reason: "chain_cold", tMin, tFrac, structYears, ladder, flip: null, regime: "unknown", maxPain: null, magnetStrike: null, magnetKind: "max_pain", magnetStrengthPct: 0, direction: "flat", atmIv: input.atmIv ?? 0.12, strikeSpacing: 5, charmState: "early", degraded: false, degradeReason: null };
+    return { ok: false, reason: "chain_cold", tMin, tFrac, structYears, ladder, flip: null, regime: "unknown", maxPain: null, magnetStrike: null, magnetKind: "max_pain", magnetStrengthPct: 0, direction: "flat", atmIv: input.atmIv ?? 0.12, strikeSpacing: 5, charmState: "early", degraded: false, degradeReason: null, ivFallback: !(input.atmIv != null && input.atmIv > 0) };
   }
   // Regime from the gamma flip; when the book never turns net-long (no crossing), fall back to the
   // net-gamma sign — an honest "short everywhere" reads short, not "unknown".
@@ -284,11 +293,18 @@ function prepare(input: PinForecastInput): Prep {
   if (magnetStrike == null && maxPain != null) { magnetStrike = maxPain; magnetKind = "max_pain"; magnetStrengthPct = frac(king?.oi); }
   const direction = magnetStrike == null ? "flat" : magnetStrike > input.spot + 0.5 ? "up" : magnetStrike < input.spot - 0.5 ? "down" : "flat";
 
-  // ATM IV
+  // ATM IV. Track whether we end up on the hardcoded 12% guess so the forecast can be
+  // badged as vol-fallback: real IV missing means the whole cone width is a guess.
   let atmIv = input.atmIv ?? 0;
+  let ivFallback = false;
   if (!(atmIv > 0)) {
     const near = input.contracts.filter((c) => c.iv > 0).sort((a, b) => Math.abs(a.strike - input.spot) - Math.abs(b.strike - input.spot))[0];
-    atmIv = near?.iv ?? 0.12;
+    if (near?.iv != null && near.iv > 0) {
+      atmIv = near.iv;
+    } else {
+      atmIv = 0.12;
+      ivFallback = true;
+    }
   }
   const strikeSpacing = inferSpacing(input.contracts);
   const charmState: PinForecast["charmState"] = tFrac > 0.55 ? "early" : tFrac > 0.25 ? "moderate" : "accelerating";
@@ -300,7 +316,7 @@ function prepare(input: PinForecastInput): Prep {
     const rv = realizedVolAnnualized(input.recentReturns);
     if (atmIv > 0 && rv > atmIv * 1.8) { degraded = true; degradeReason = "realized_gt_implied"; }
   }
-  return { ok: true, reason: null, tMin, tFrac, structYears, ladder, flip, regime, maxPain, magnetStrike, magnetKind, magnetStrengthPct, direction, atmIv, strikeSpacing, charmState, degraded, degradeReason };
+  return { ok: true, reason: null, tMin, tFrac, structYears, ladder, flip, regime, maxPain, magnetStrike, magnetKind, magnetStrengthPct, direction, atmIv, strikeSpacing, charmState, degraded, degradeReason, ivFallback };
 }
 
 function inferSpacing(contracts: readonly PinContract[]): number {
@@ -486,15 +502,16 @@ function assemble(
     charmState: p.charmState,
     cone, scenarios,
     degraded: p.degraded, degradeReason: p.degradeReason,
+    ivFallback: p.ivFallback,
     drivers: buildDrivers(p, input, medianClose),
   };
 }
 
-const EMPTY = (input: PinForecastInput, reason: string): PinForecast => ({
+const EMPTY = (input: PinForecastInput, reason: string, ivFallback = false): PinForecast => ({
   available: false, method: input.method ?? "analytic", spot: input.spot, priorClose: input.priorClose,
   timeToCloseMin: Math.max(0, (input.closeMs - input.nowMs) / 60000), pin: null, projectedClose: null, pinPct: null, pinBand: null,
   pinPctOfClose: null, regime: "unknown", flip: null, magnet: null, charmState: "early", cone: [], scenarios: [],
-  degraded: false, degradeReason: null,
+  degraded: false, degradeReason: null, ivFallback,
   drivers: [{ label: reason === "closed" ? "Market closed" : "Collecting", detail: reason === "closed" ? "The 0DTE pin forecast runs during RTH." : "Waiting for a live 0DTE chain and session bars.", weight: 1 }],
 });
 
@@ -503,6 +520,10 @@ export function forecastPin(input: PinForecastInput): PinForecast {
   if (!(input.spot > 0)) return EMPTY(input, "collecting");
   if (input.closeMs <= input.nowMs) return EMPTY(input, "closed");
   const p = prepare(input);
-  if (!p.ok) return EMPTY(input, "collecting");
+  // A thin chain can't build a ladder → unavailable. That's also the ONLY path where the hardcoded
+  // 12% IV guess is the sole vol input (an available forecast always reads a real chain IV for the
+  // cone), so surface prepare()'s ivFallback here too: it distinguishes "no forecast, and the only
+  // IV we had was the guess" from "no forecast, but a real IV was supplied".
+  if (!p.ok) return EMPTY(input, "collecting", p.ivFallback);
   return (input.method ?? "analytic") === "montecarlo" ? montecarlo(input, p) : analytic(input, p);
 }
