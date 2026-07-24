@@ -110,7 +110,9 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
 }
 
 function ThesisPanel({ play }: { play: TerminalPlay }) {
-  const broke = play.thesisBreak && play.thesisBreak.level !== "intact";
+  const level = play.thesisBreak?.level ?? "intact";
+  const broke = level === "warn" || level === "break";
+  const unknown = level === "unknown";
   return (
     <>
       <div className="nh-deck-lab">Why this play was picked</div>
@@ -137,12 +139,21 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
         {play.allocation && <div><span className="k">Allocation</span><span className="v">{play.allocation.role}</span></div>}
         <div><span className="k">Exit model</span><span className="v">{play.exitModel}</span></div>
       </div>
-      <div className="nh-deck-break" style={broke ? undefined : { borderColor: "rgba(53,255,158,.2)" }}>
-        <div className="bh" style={broke ? undefined : { color: "var(--dk-green)" }}>◉ LIVE THESIS MONITOR</div>
+      <div
+        className="nh-deck-break"
+        style={broke ? undefined : { borderColor: unknown ? "rgba(255,255,255,.14)" : "rgba(53,255,158,.2)" }}
+      >
+        <div className="bh" style={broke ? undefined : { color: unknown ? "var(--dk-amber)" : "var(--dk-green)" }}>◉ LIVE THESIS MONITOR</div>
         <div className="nh-deck-feed">
-          {broke
-            ? <div><span className="brk">✗ THESIS DEGRADING</span> — {play.thesisBreak!.note}. Recommend {play.recommendation}.</div>
-            : <div><span className="ok">✓ thesis intact</span> — evidence holding; monitor updates on each marks push.</div>}
+          {broke ? (
+            <div><span className="brk">✗ THESIS DEGRADING</span> — {play.thesisBreak!.note}. Recommend {play.recommendation}.</div>
+          ) : unknown ? (
+            // Data-absent (e.g. a working position with no fresh tape read) — neutral, NOT a false green
+            // and NOT a false "degrading". Honest: we're not monitoring the thesis for this play right now.
+            <div><span className="warn">• thesis not monitored</span> — {play.thesisBreak?.note ?? "live tape read unavailable for this play"}.</div>
+          ) : (
+            <div><span className="ok">✓ thesis intact</span> — evidence holding; monitor updates on each marks push.</div>
+          )}
         </div>
       </div>
     </>

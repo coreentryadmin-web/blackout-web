@@ -54,6 +54,10 @@ export type ZeroDteBoardLedgerRow = {
   flow_avg_fill: number | null;
   status: string | null;
   last_mark: number | null;
+  /** Latched premium extremes since entry — the PnL panel's peak/trough excursion (the server tracks
+   *  these via advancePlayLatch; without them on the payload the terminal's Peak/Trough render "—"). */
+  peak_premium: number | null;
+  trough_premium: number | null;
   live_pnl_pct: number | null;
   /** Why a CLOSED play closed, when derivable from the latched extremes:
    *  "stopped" pins live_pnl_pct to the −50% stop (B-9 D-1 fix — the number the
@@ -148,6 +152,8 @@ function mapLedgerRow(
     flow_avg_fill: r.flow_avg_fill,
     status: r.status,
     last_mark: lastMark,
+    peak_premium: r.peak_premium,
+    trough_premium: r.trough_premium,
     live_pnl_pct:
       closedReason === "stopped" ? PLAN_RULES.stop_pct : pinnedLivePnlPct(r.entry_premium, lastMark),
     closed_reason: closedReason,
