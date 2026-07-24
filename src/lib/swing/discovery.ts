@@ -49,8 +49,20 @@ import {
   type HorizonCandidate,
   type HorizonPlaySet,
 } from "../horizon-plays";
-import type { PlayDirection } from "../horizon-fanout";
+import type { PlayDirection, ChainContract } from "../horizon-fanout";
 import type { SwingArchetype } from "./taxonomy";
+import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
+import {
+  computeSwingCommitPlan,
+  executeSwingCommits,
+  type SwingCommitCandidate,
+  type CommitBookPosition,
+  type SwingCommitDeps,
+  type SwingCommitResult,
+} from "./commit";
+import type { PortfolioBudget } from "./swing-portfolio-budget";
+import type { SwingCaps } from "./swing-allocation";
+import type { SwingPositionInsert } from "../db";
 
 // ─── WHY RECALL MATTERS (operator critique #7) ──────────────────────────────────
 // A discovery funnel is easy to optimize for PRECISION (everything that surfaces is good) while
@@ -375,6 +387,24 @@ export interface SwingDiscoveryDeps {
   /** OPTIONAL: fetch a name's option chain to attach a concrete WATCH contract (produceHorizonPlays). When
    *  absent, the play set is empty — the WATCH rail is still driven by persistence, not by a contract. */
   fetchChainRows?: (ticker: string) => Promise<HorizonCandidate["chainRows"]>;
+
+  // ── LIVE COMMIT seam (go-live 2026-07-24) — ALL OPTIONAL. Present ONLY on the authorized cron; absent for
+  //    every unit test / evidence-only caller, which keeps `commitEligibleCount` at 0 and opens NOTHING. A
+  //    commit fires ONLY when a WATCH candidate's archetype×sub-lane bucket has GRADUATED (fetchGradedHistory)
+  //    AND clears the armed budget + book-percent caps + idempotency — see commit.ts. ──
+  /** Graded roll-chain legs → the calibration ladder input (the GRADUATION gate). Absent ⇒ nothing graduates. */
+  fetchGradedHistory?: () => Promise<SwingCalibrationRow[]>;
+  /** The current live book (budget + caps + idempotency). Absent ⇒ an empty book. */
+  fetchOpenBook?: () => Promise<CommitBookPosition[]>;
+  /** Open a committed position (db.insertSwingPosition). Its PRESENCE is what authorizes real commits. */
+  insertPosition?: (pos: SwingPositionInsert) => Promise<number>;
+  /** OPTIONAL: link the promoted candidate to its position (db.markAccumPromoted via the store). */
+  promoteCommit?: (ticker: string, direction: PlayDirection, positionId: number) => Promise<void>;
+  /** The ARMED portfolio budget (resolveProductionPortfolioBudget). Absent ⇒ the disarmed default (no-op gate). */
+  budget?: PortfolioBudget;
+  /** The book-percent caps (defaults to DEFAULT_SWING_CAPS). */
+  caps?: SwingCaps;
+
   nowMs: number;
   /** ET session day (YYYY-MM-DD) the scan is anchored to — the distinct-day persistence key. */
   sessionDay: string;
@@ -382,7 +412,8 @@ export interface SwingDiscoveryDeps {
   config?: Partial<SwingDiscoveryConfig>;
 }
 
-/** What one discovery scan surfaces. `commitEligibleCount` is a LITERAL 0 — the WATCH-only rail (see header). */
+/** What one discovery scan surfaces. `commitEligibleCount` is the REAL graduated-eligible count once the live
+ *  commit seam is wired (0 when it isn't — every unit test / evidence-only caller). See the COMMIT block. */
 export interface SwingDiscoveryResult {
   asOf: string;
   sessionDay: string;
@@ -402,8 +433,12 @@ export interface SwingDiscoveryResult {
   watchCount: number;
   /** Concrete WATCH plays with a liquid contract (empty unless `fetchChainRows` is provided). */
   playSet: HorizonPlaySet;
-  /** LITERAL 0 — PR-11 is a WATCH-only, evidence-only rail; nothing is authorized to commit yet. */
-  commitEligibleCount: 0;
+  /** WATCH candidates whose archetype×sub-lane bucket GRADUATED through the staged Wilson-LB ladder — the REAL
+   *  count that replaces the old literal 0. Stays 0 when the commit seam is unwired OR nothing has graduated. */
+  commitEligibleCount: number;
+  /** Positions actually OPENED this scan (graduated ∧ budget ∧ caps ∧ idempotency all cleared). Absent when the
+   *  commit seam is unwired (evidence-only). */
+  commit?: SwingCommitResult;
   /** Discovery-recall instrumentation (evidence-only; does NOT change what surfaces). See WHY-RECALL header. */
   recall: SwingDiscoveryRecall;
 }
@@ -533,6 +568,92 @@ export async function runSwingDiscoveryScan(
     playSet = produceHorizonPlays(horizonCands);
   }
 
+  // ── LIVE COMMIT (go-live 2026-07-24) — WIRED ONLY when the authorized cron injects `insertPosition`. ──
+  // A WATCH candidate opens a REAL position ONLY when its archetype×sub-lane bucket has GRADUATED through the
+  // staged Wilson-LB ladder AND it clears the armed budget + book-percent caps + idempotency (commit.ts). When
+  // the seam is absent (every unit test / evidence-only caller) this whole block is skipped: `commitEligibleCount`
+  // stays 0 and nothing is opened — the exact PR-11 behavior. `commitEligibleCount` is now DERIVED (the real
+  // graduated count), never a hardcoded literal.
+  let commitEligibleCount = 0;
+  let commit: SwingCommitResult | undefined;
+  if (deps.insertPosition) {
+    // The graduation input: graded roll-chain legs → the calibration report (reused wrappers, zero new math).
+    let report: SwingCalibrationReport | null = null;
+    try {
+      const gradedRows = deps.fetchGradedHistory ? await deps.fetchGradedHistory() : [];
+      report = analyzeSwingCalibration(gradedRows);
+    } catch (err) {
+      // Fail-soft: a history-read failure means NOTHING graduates (nothing commits) — never a crash, never a
+      // commit on unknown evidence. This is the safe direction for real money.
+      console.error("[swing-discovery] graded-history read failed — treating as no graduation", err);
+      report = null;
+    }
+
+    // The live book (budget + caps + idempotency). A read failure FAILS CLOSED: we compute the plan for the
+    // observable `commitEligibleCount` (graduation is book-independent) but SKIP execution — opening risk against
+    // an unverifiable book could double-open a name already held or blow the real aggregate caps. Never fail-open.
+    let book: CommitBookPosition[] = [];
+    let bookReadOk = true;
+    if (deps.fetchOpenBook) {
+      try {
+        book = await deps.fetchOpenBook();
+      } catch (err) {
+        console.error("[swing-discovery] open-book read FAILED — commits SKIPPED this scan (fail-closed)", err);
+        bookReadOk = false;
+        book = [];
+      }
+    }
+
+    // Assemble the commit candidates: each WATCH candidate joined to its scored dossier (archetype/score) and,
+    // when a chain was available, its concrete SWING contract (the instrument to open).
+    const dossierByKey = new Map<string, SwingDossier>(
+      dossiers.filter((d) => d.direction).map((d) => [`${d.ticker.toUpperCase()}|${d.direction}`, d]),
+    );
+    const contractByKey = new Map<string, ChainContract>();
+    for (const p of playSet.SWING) {
+      const key = `${p.ticker.toUpperCase()}|${p.direction}`;
+      if (!contractByKey.has(key)) contractByKey.set(key, p.contract); // best (first — plays are score-sorted)
+    }
+    const commitCandidates: SwingCommitCandidate[] = watchCandidates.map((w) => {
+      const key = `${w.ticker.toUpperCase()}|${w.direction}`;
+      const d = dossierByKey.get(key);
+      return {
+        ticker: w.ticker,
+        direction: w.direction,
+        archetype: d?.archetype.archetype ?? null,
+        subLane: d?.subLane ?? null,
+        score: d?.score.score ?? 0,
+        contract: contractByKey.get(key) ?? null,
+        sessionDate: deps.sessionDay,
+        // Underlying-terms levels + top-flow strike are not carried on the scored dossier; the ledger columns
+        // are nullable and the manager/grader never require them, so they stay null-honest at commit time. A
+        // future PR can thread real structure levels through without touching the commit gate.
+        topFlowStrike: null,
+      };
+    });
+
+    const plan = computeSwingCommitPlan({ candidates: commitCandidates, report, book, budget: deps.budget, caps: deps.caps });
+    commitEligibleCount = plan.commitEligibleCount;
+
+    // Execute the graduated + cleared opens ONLY when the book read succeeded (fail-closed above). Link each
+    // promotion through the accumulation store (best-effort).
+    if (bookReadOk) {
+      const commitDeps: SwingCommitDeps = {
+        insertPosition: deps.insertPosition,
+        promote: deps.promoteCommit,
+      };
+      commit = await executeSwingCommits(commitDeps, plan);
+      console.info(
+        `[swing-discovery] commit gate: ${commitEligibleCount} graduated-eligible / ${plan.committableCount} opened` +
+          (commit.errors ? ` (${commit.errors} errors)` : ""),
+      );
+    } else {
+      console.error(
+        `[swing-discovery] commit gate: ${commitEligibleCount} graduated-eligible but book read failed — 0 opened (fail-closed)`,
+      );
+    }
+  }
+
   return {
     asOf,
     sessionDay: deps.sessionDay,
@@ -545,9 +666,10 @@ export async function runSwingDiscoveryScan(
     watchCandidates,
     watchCount: watchCandidates.length,
     playSet,
-    // WATCH-only rail: PR-11 commits NOTHING. Held at 0 by construction, not derived — the lane graduates
-    // to commit-eligible only when its archetype×sub-lane bucket clears the ladder (PR-16).
-    commitEligibleCount: 0,
+    // DERIVED (not a literal): the count of WATCH candidates whose archetype×sub-lane bucket graduated. 0 when
+    // the commit seam is unwired OR nothing has graduated yet (the cold-book hard rail).
+    commitEligibleCount,
+    commit,
     recall,
   };
 }

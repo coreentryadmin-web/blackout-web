@@ -294,7 +294,10 @@ async function frontExpiries(ticker: string): Promise<string[]> {
   return unique.slice(0, FRONT_EXPIRIES);
 }
 
-async function resolveTickerChainRows(
+// Exported (additive) so the swing discovery cron can attach a concrete WATCH contract per candidate — it
+// resolves the ATM chain (front expiries) for ONE name in a single call, exactly what `explodeChainRows`/the
+// SWING contract ranker consume. Unchanged behavior for the existing internal callers.
+export async function resolveTickerChainRows(
   ticker: string,
   dossier?: TickerDossier
 ): Promise<{ spot: number; rows: ChainStrikeRow[] } | null> {
