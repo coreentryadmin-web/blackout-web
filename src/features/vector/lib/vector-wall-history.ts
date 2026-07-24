@@ -37,7 +37,20 @@ export function hasVexInHistory(history: WallHistorySample[]): boolean {
   return history.some((s) => Boolean(s.vexWalls?.callWalls?.length || s.vexWalls?.putWalls?.length));
 }
 
-export type StrikeTrailPoint = { time: number; pct: number; modeled?: boolean };
+export type StrikeTrailPoint = {
+  time: number;
+  pct: number;
+  modeled?: boolean;
+  /**
+   * ABSOLUTE dealer-gamma exposure at this strike, in $ (dollar notional). Optional/absent today:
+   * the recorded wall ladder (GexWallLevel) only carries `pct` (share of total |gamma|), and no real
+   * gamma-$ total is threaded through the recorder/persist layer yet — so the bead-size renderer
+   * falls back to a documented proxy (share × a nominal book, see pctToNotionalProxy). This field is
+   * the seam: once a real per-ticker |gamma| $ total is available on the trail, populate it here as
+   * (pct/100) × total and the ABSOLUTE bead ladder (beadRadiusForNotional) becomes literal $, no
+   * renderer change. */
+  notional?: number;
+};
 
 // ~one RTH session at 5s trail cadence for oracle tickers (390 min × 12 = 4680) plus headroom.
 // Non-oracle tickers at 15s produce ~1560 samples — well within this cap.

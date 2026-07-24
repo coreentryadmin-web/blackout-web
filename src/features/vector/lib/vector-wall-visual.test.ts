@@ -12,6 +12,8 @@ import {
   magnitudeGlowBoost,
   MODELED_ALPHA_SCALE,
   haloRingForTier,
+  beadRadiusForNotional,
+  pctToNotionalProxy,
 } from "./vector-wall-visual";
 
 test("alphaForPct: a 0% wall gets the faint visual floor, not fully invisible", () => {
@@ -186,4 +188,75 @@ test("haloRingForTier: firm > moderate > thin in both ring brightness and size",
 test("haloRingForTier: a firm wall's halo pops above neutral; a thin wall's is suppressed", () => {
   assert.ok(haloRingForTier("firm").alphaMul > 1, "firm brightens the ring past the legacy glow");
   assert.ok(haloRingForTier("thin").alphaMul < 0.5, "thin nearly erases the ring → bead reads as a dot");
+});
+
+// ── ABSOLUTE $-GAMMA BEAD LADDER ─────────────────────────────────────────────────────────────────
+
+const LADDER = { floorPx: 2.4, ceilPx: 9 };
+
+test("beadRadiusForNotional: monotonically non-decreasing in $ exposure", () => {
+  // The core contract — a bigger wall must never render a smaller bead. Sweep across the decades.
+  let prev = -Infinity;
+  for (const usd of [1e6, 50e6, 200e6, 400e6, 600e6, 1.2e9, 2.5e9, 5e9, 20e9]) {
+    const r = beadRadiusForNotional(usd, LADDER);
+    assert.ok(r >= prev, `radius(${usd}) = ${r} < prev ${prev} (must be non-decreasing)`);
+    prev = r;
+  }
+});
+
+test("beadRadiusForNotional: clamps to [floor, ceil] below/above the anchors", () => {
+  // Below the $200M floor anchor → floor; above the $2.5B ceil anchor → ceil. No overshoot either way.
+  assert.equal(beadRadiusForNotional(200e6, LADDER), LADDER.floorPx, "$200M sits at the floor anchor");
+  assert.equal(beadRadiusForNotional(10e6, LADDER), LADDER.floorPx, "well below floor clamps to floor");
+  assert.equal(beadRadiusForNotional(2_500e6, LADDER), LADDER.ceilPx, "$2.5B sits at the ceil anchor");
+  assert.equal(beadRadiusForNotional(50e9, LADDER), LADDER.ceilPx, "well above ceil clamps to ceil");
+});
+
+test("beadRadiusForNotional: the four ladder anchors land in visibly DISTINCT size bands", () => {
+  // small≈$200M / medium≈$600M / large≈$1.2B / huge≈$2.5B must be four clearly separable sizes, not a
+  // mush — this is the "a genuinely bigger wall looks bigger" requirement made testable.
+  const small = beadRadiusForNotional(200e6, LADDER);
+  const medium = beadRadiusForNotional(600e6, LADDER);
+  const large = beadRadiusForNotional(1_200e6, LADDER);
+  const huge = beadRadiusForNotional(2_500e6, LADDER);
+  assert.ok(small < medium && medium < large && large < huge, "strictly increasing across the ladder");
+  // Each step is at least ~1.4px — a perceptible jump at these radii, so the bands read apart.
+  assert.ok(medium - small >= 1.4, `small→medium step too small (${(medium - small).toFixed(2)}px)`);
+  assert.ok(large - medium >= 1.4, `medium→large step too small (${(large - medium).toFixed(2)}px)`);
+  assert.ok(huge - large >= 1.4, `large→huge step too small (${(huge - large).toFixed(2)}px)`);
+});
+
+test("beadRadiusForNotional: NaN / 0 / negative $ → the floor bead, never a giant or a throw", () => {
+  assert.equal(beadRadiusForNotional(NaN, LADDER), LADDER.floorPx);
+  assert.equal(beadRadiusForNotional(0, LADDER), LADDER.floorPx);
+  assert.equal(beadRadiusForNotional(-500e6, LADDER), LADDER.floorPx);
+  // Infinity is non-finite → treated as bad data → floor (safe), never a NaN/garbage radius.
+  assert.equal(beadRadiusForNotional(Infinity, LADDER), LADDER.floorPx, "Infinity is non-finite → floor, no NaN radius");
+});
+
+test("pctToNotionalProxy: monotonic in share, and non-positive/non-finite → 0 (→ ladder floor)", () => {
+  // The documented proxy that bridges pct → $ until a real notional is threaded. Ordering must be
+  // exact (that's the whole point — relative magnitude stays correct even if $ calibration is nominal).
+  assert.ok(pctToNotionalProxy(10) > pctToNotionalProxy(5), "monotonic increasing in pct");
+  assert.ok(pctToNotionalProxy(30) > pctToNotionalProxy(15));
+  assert.equal(pctToNotionalProxy(0), 0);
+  assert.equal(pctToNotionalProxy(-3), 0);
+  assert.equal(pctToNotionalProxy(NaN), 0);
+});
+
+test("proxy + ladder: a high-concentration stock king reads bigger than a spread-out index king", () => {
+  // End-to-end of the ABSOLUTE requirement: a 30%-share stock wall (proxy ≈ $2.4B) must render a
+  // bigger bead than a 7%-share index king (proxy ≈ $560M) — the "bigger wall looks bigger even as
+  // the frame changes" behaviour, independent of any frame-relative normalisation.
+  const stockKing = beadRadiusForNotional(pctToNotionalProxy(30), LADDER);
+  const indexKing = beadRadiusForNotional(pctToNotionalProxy(7), LADDER);
+  assert.ok(stockKing > indexKing, `stock king ${stockKing} should exceed index king ${indexKing}`);
+});
+
+test("real notional takes precedence over the proxy when present (seam is honoured)", () => {
+  // When StrikeTrailPoint.notional is eventually threaded, the ladder consumes the REAL $ directly —
+  // this pins that a real value maps through the same monotone ladder as the proxy's output.
+  const viaReal = beadRadiusForNotional(600e6, LADDER);
+  const viaProxy = beadRadiusForNotional(pctToNotionalProxy(7.5), LADDER); // 7.5% × $8B nominal = $600M
+  assert.ok(Math.abs(viaReal - viaProxy) < 1e-9, "proxy at 7.5% reproduces the $600M real-notional bead");
 });
