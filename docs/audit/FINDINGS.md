@@ -1110,3 +1110,31 @@ still stores the RAW value verbatim so nothing is lost.
 the IV guard cases. `npx tsx --test` 15/15 pass; `tsc --noEmit` clean; `check-brand.mjs` clean.
 
 **Status:** DONE. Branch `fix/index-option-underlying-value`.
+
+---
+
+## 2026-07-24 — Night Hawk SWING (2–30 DTE) engine BUILT end-to-end (16 PRs)
+
+**Severity:** N/A (feature build, not a defect). **Status:** DONE.
+
+The full Swing lane shipped as a 16-PR dependency-ordered sequence (`docs/audit/SWING-ENGINE.md` §4),
+redesigned around a multi-session thesis rather than a stretched 0DTE engine (operator directive):
+- **PRs #1032, #1033, #1035, #1036** (Phase 0) — canonical taxonomy (8 archetypes × 3 sub-lanes), 7-pillar
+  archetype-weighted scorer, archetype classifier + canonical `SwingDossier`, 0.50–0.75Δ directional contract ranker.
+- **#1037, #1038, #1039, #1040, #1041** (Phase 1) — management state machine (underlying-thesis-primary),
+  multi-truth grader, gate stack + setup-state + entry-model + theme-cluster, 7-section serving router,
+  risk math + advisory allocation (caps 5%/20%/40%/max-3-same-week as % of member book, `enforce:false`).
+- **#1042** (ledger) — `swing_positions` (roll chain + first-write-wins pinning + monotonic status),
+  `swing_position_snapshots` (append-only), `swing_candidate_accumulation`.
+- **#1043, #1044, #1045, #1046** (feature store, discovery, serving lane, cron/WS) — longitudinal feature
+  vector + roll-chain-aware record, whole-market two-tier discovery + persistence-gated WATCH, `?view=swings`
+  live desk, phase-anchored cron + active-refresh snapshots + UW WS accumulation hook.
+- **#1047, #1048** (calibration, roll) — 7 distinct graduation wrappers over the reused `recommendSignal`
+  ladder, transactional close+grade+link roll execution (preserve-parent-loss, all-or-nothing guard).
+
+**Discipline:** every stage is evidence-only until its archetype×sub-lane bucket graduates (n≥10, Δ≥15pt);
+`commitEligibleCount` held at 0 (WATCH-only rail); cron/WS writes are accumulation + snapshots only (no
+position commits). PR-4 shipped a fixture regression (10 horizon tests encoded the old 0.35Δ swing stance)
+caught in CI and fixed; two CodeQL nits (self-assignment, unused import) caught + fixed in-flight. Every PR
+verified `tsc --noEmit` + full swing/horizon suite + `check-brand.mjs` before merge. The 0DTE HOLDs #1028
+(aggression floor) and #1031 (governor-txn) remain parked as drafts (operator validates).
