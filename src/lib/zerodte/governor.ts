@@ -10,6 +10,19 @@
 // governor (halt after 3 losses, re-entry locks) is the one piece of its stack with
 // a proven closed-ledger effect (48% WR from a ~42% signal environment).
 //
+// AUDIT SEV-3 (2026-07-24) — realized-loss day-halt (additive, strictly more
+// conservative). The original 3-strike session halt counts ONLY −50% HARD stops
+// (plan_outcome "stopped" / trough ≤ entry·0.5). A LOSING TIME-STOP — a play that
+// closes red at 15:30 (e.g. −25%…−45%) without ever touching the hard stop — was
+// explicitly excluded, so a chop-and-bleed day where 5–6 committed plays each
+// time-stop red never tripped the halt and the scanner kept committing all day: the
+// SAME capital loss as the 7/13 incident this governor was built for, reached by a
+// different exit reason and entirely uncapped. The fix adds a realized-loss halt
+// ALONGSIDE the hard-stop halt — it counts realized LOSERS regardless of exit reason
+// (any closed row with realized P&L < 0) and also guards a cumulative session-P&L
+// floor. The hard-stop count is left untouched (its re-entry lock still keys off it).
+// This channel only ever ADDS halting, never removes it.
+//
 // State model — deterministic and replica-safe:
 // - open plans and the stopped-play COUNT derive from the Postgres ledger
 //   (zerodte_setup_log), which every replica already shares — the halt decision
@@ -37,6 +50,20 @@ export const GOVERNOR_MAX_SESSION_STOPS = 3;
 /** Same-direction re-entry lock on a ticker after its stop (Slayer's 20m rule). */
 export const GOVERNOR_REENTRY_LOCK_MS = 20 * 60 * 1000;
 
+// ── AUDIT SEV-3 realized-loss halt thresholds ──────────────────────────────────────
+// CONSERVATIVE STARTING VALUES — to be tuned on the ledger (calibration-first). Both
+// mirror the hard-stop halt's SHAPE: the count mirrors the 3-stop ceiling, and the
+// floor is a cushion above three −50% hard stops (−150%) so a bleed of smaller losing
+// time-stops (each ~−25%…−45%) trips it before it reaches the same total drawdown as
+// the 7/13 day. Either condition halts new commits.
+/** Realized LOSERS in a session — regardless of exit reason (hard stop OR losing
+ *  time-stop) — before the desk stands down. Mirrors the 3-stop hard-halt shape. */
+export const GOVERNOR_LOSS_HALT_COUNT = 3;
+/** Cumulative session realized P&L % floor. At/below this, new commits halt even if
+ *  the loser COUNT hasn't hit the cap (a few large losers drain capital just as fast
+ *  as many small ones). −120% ≈ 2.4 hard stops' worth of realized drawdown. */
+export const GOVERNOR_SESSION_LOSS_FLOOR_PCT = -120;
+
 export type GovernorStopEvent = {
   ticker: string;
   direction: "long" | "short";
@@ -55,6 +82,16 @@ export type GovernorSnapshot = {
   open_plans: GovernorOpenPlan[];
   /** One entry per stopped ticker this session (ledger ∪ Redis-recorded). */
   stops: GovernorStopEvent[];
+  /** AUDIT SEV-3: realized LOSERS this session regardless of exit reason — every
+   *  CLOSED row whose realized P&L is < 0 (a losing time-stop counts, not just a
+   *  −50% hard stop). Optional so pre-existing snapshot literals (scan.ts, tests)
+   *  still type-check; treated as 0 when absent. deriveGovernorFromLedger always
+   *  sets it. */
+  realized_losers?: number;
+  /** AUDIT SEV-3: cumulative realized session P&L % (sum of graded plan_pnl_pct over
+   *  CLOSED rows; a −50% fallback stands in for a trough-proven but ungraded hard
+   *  stop). Winners net against losers. Optional for the same back-compat reason. */
+  session_pnl_pct?: number;
 };
 
 // B-3 (docs/audit/0DTE-BREAKTHROUGH-LEDGER.md) — correlated-conflict rule.
@@ -77,7 +114,7 @@ export function correlationGroupOf(ticker: string): ReadonlySet<string> | null {
 /** The ledger fields the governor reads — subset so tests need no full row. */
 export type GovernorLedgerRow = Pick<
   ZeroDteSetupLogRow,
-  "ticker" | "direction" | "status" | "entry_premium" | "trough_premium" | "plan_outcome"
+  "ticker" | "direction" | "status" | "entry_premium" | "trough_premium" | "plan_outcome" | "plan_pnl_pct"
 >;
 
 /** Did this ledger row stop out? Two independent signals, either suffices:
@@ -95,15 +132,63 @@ function ledgerRowStopped(r: GovernorLedgerRow): boolean {
   );
 }
 
+/** AUDIT SEV-3: a CLOSED row's REALIZED session P&L % contribution, or null if the
+ *  row isn't realized yet. Prefers the graded plan_pnl_pct (the true close P&L, which
+ *  captures a losing time-stop the −50%-only hard-stop test never sees); falls back to
+ *  the −50% stop level for a row whose latched trough already proves a hard stop but
+ *  the lazy grader hasn't stamped plan_pnl_pct yet (mirrors ledgerRowStopped, so the
+ *  halt is right BEFORE grading, same discipline the stop count already uses). */
+function ledgerRowRealizedPnlPct(r: GovernorLedgerRow): number | null {
+  if (r.plan_pnl_pct != null && Number.isFinite(r.plan_pnl_pct)) return r.plan_pnl_pct;
+  if (ledgerRowStopped(r)) return PLAN_RULES.stop_pct; // −50, proven by outcome/trough
+  return null;
+}
+
 /** Deterministic snapshot from today's ledger rows (the shared-Postgres half). */
 export function deriveGovernorFromLedger(rows: GovernorLedgerRow[]): GovernorSnapshot {
   const stops: GovernorStopEvent[] = [];
   const openPlans: GovernorOpenPlan[] = [];
+  let realizedLosers = 0;
+  let sessionPnlPct = 0;
   for (const r of rows) {
     if (r.status !== "CLOSED") openPlans.push({ ticker: r.ticker.toUpperCase(), direction: r.direction });
     if (ledgerRowStopped(r)) stops.push({ ticker: r.ticker.toUpperCase(), direction: r.direction, at_ms: null });
+    // AUDIT SEV-3 — realized-loss tallies, independent of the stop channel above so a
+    // losing time-stop (never in `stops`) still counts toward the day-halt.
+    const pnl = ledgerRowRealizedPnlPct(r);
+    if (pnl != null) {
+      sessionPnlPct += pnl;
+      if (pnl < 0) realizedLosers += 1;
+    }
   }
-  return { open_plans: openPlans, stops };
+  return { open_plans: openPlans, stops, realized_losers: realizedLosers, session_pnl_pct: sessionPnlPct };
+}
+
+/**
+ * AUDIT SEV-3 — the realized-loss day-halt verdict, as a human sentence or null.
+ * Halts when EITHER the realized-loser count hits the cap (mirrors the 3-stop
+ * hard-halt) OR cumulative session P&L sinks to/below the floor. Pure over the
+ * snapshot's own tallies; absent tallies read as 0 (no halt) so a snapshot built by
+ * an older path can't spuriously trip it. Exposed so the board can SURFACE the reason
+ * (would_halt) as calibration evidence even where the gate stack hasn't enforced it.
+ */
+export function governorLossHaltReason(snap: GovernorSnapshot): string | null {
+  const losers = snap.realized_losers ?? 0;
+  const sessionPnl = snap.session_pnl_pct ?? 0;
+  if (losers >= GOVERNOR_LOSS_HALT_COUNT) {
+    return (
+      `Session governor: ${losers} realized losers today (max ${GOVERNOR_LOSS_HALT_COUNT}, ANY exit ` +
+      "reason — a losing time-stop counts, not just a −50% hard stop) — no new commits for the rest " +
+      "of the session. 7/13's bleed came the same way, uncapped (AUDIT SEV-3)."
+    );
+  }
+  if (sessionPnl <= GOVERNOR_SESSION_LOSS_FLOOR_PCT) {
+    return (
+      `Session governor: cumulative realized session P&L ${Math.round(sessionPnl)}% at/below the ` +
+      `${GOVERNOR_SESSION_LOSS_FLOOR_PCT}% floor — no new commits for the rest of the session (AUDIT SEV-3).`
+    );
+  }
+  return null;
 }
 
 /** Union ledger-derived stops with Redis-recorded ones (per ticker). A recorded
@@ -152,6 +237,25 @@ export function evaluateZeroDteGovernor(
         `Session governor: ${snap.stops.length} plays stopped out today (max ${GOVERNOR_MAX_SESSION_STOPS}) — ` +
         "no new commits for the rest of the session. 7/13 took 7 uncapped stops; this is the ceiling.",
       threshold: GOVERNOR_MAX_SESSION_STOPS,
+      unlock_et: null,
+    });
+    return blocks;
+  }
+
+  // AUDIT SEV-3 — realized-loss halt, ALONGSIDE the hard-stop halt above and equally
+  // dominating. Catches the chop-and-bleed day the hard-stop count misses: enough
+  // committed plays closing red (losing time-stops that never hit −50%) drains the
+  // same capital as the 7/13 seven-stop day but through a different exit reason. Reuses
+  // the existing governor_session_stops gate code deliberately — it IS a session halt,
+  // and the ZeroDteGateFailure union (board.ts) is intentionally left untouched to keep
+  // this change scoped to governor.ts; the realized-loss cause is spelled out in the
+  // reason. Strictly additive: it can only ADD a block, never remove one.
+  const lossHalt = governorLossHaltReason(snap);
+  if (lossHalt) {
+    blocks.push({
+      code: "governor_session_stops",
+      reason: lossHalt,
+      threshold: GOVERNOR_LOSS_HALT_COUNT,
       unlock_et: null,
     });
     return blocks;
@@ -231,11 +335,25 @@ export type ZeroDteGovernorSummary = {
   max_concurrent: number;
   stops: GovernorStopEvent[];
   max_session_stops: number;
-  /** stops.length >= max_session_stops — the desk is stood down for the session. */
+  /** True when the desk is stood down for the session — hard-stop halt (stops.length
+   *  >= max_session_stops) OR the AUDIT SEV-3 realized-loss halt (would_halt != null). */
   halted: boolean;
   /** Same-direction re-entry lock length (ms) — the client counts down from each
    *  stop's at_ms + this; a stop with at_ms null gets no timer (never fabricated). */
   reentry_lock_ms: number;
+  // ── AUDIT SEV-3 realized-loss halt surface (calibration-first) ──────────────────
+  /** Realized losers this session (any exit reason). */
+  realized_losers: number;
+  /** Cumulative realized session P&L % (winners net against losers). */
+  session_pnl_pct: number;
+  /** The realized-loser cap driving the loss-halt (payload number, not a UI copy). */
+  loss_halt_count: number;
+  /** The cumulative-P&L floor driving the loss-halt. */
+  session_loss_floor_pct: number;
+  /** The realized-loss halt reason if the loss-halt condition is met, else null —
+   *  SURFACED so the operator sees the halt firing on ledger evidence. Non-null here
+   *  is already reflected in `halted` (this channel enforces). */
+  would_halt: string | null;
 };
 
 /** Pure: the payload's governor block from today's ledger rows + the recorded
@@ -246,13 +364,21 @@ export function summarizeGovernorForBoard(
 ): ZeroDteGovernorSummary {
   const snap = deriveGovernorFromLedger(rows);
   const stops = mergeGovernorStops(snap.stops, recordedStops);
+  // AUDIT SEV-3 — the realized-loss halt reason keys off the ledger-derived tallies
+  // (timestamps don't matter for it), so compute it from `snap`, not the merged stops.
+  const wouldHalt = governorLossHaltReason(snap);
   return {
     open_plans: snap.open_plans,
     max_concurrent: GOVERNOR_MAX_CONCURRENT_PLANS,
     stops,
     max_session_stops: GOVERNOR_MAX_SESSION_STOPS,
-    halted: stops.length >= GOVERNOR_MAX_SESSION_STOPS,
+    halted: stops.length >= GOVERNOR_MAX_SESSION_STOPS || wouldHalt != null,
     reentry_lock_ms: GOVERNOR_REENTRY_LOCK_MS,
+    realized_losers: snap.realized_losers ?? 0,
+    session_pnl_pct: snap.session_pnl_pct ?? 0,
+    loss_halt_count: GOVERNOR_LOSS_HALT_COUNT,
+    session_loss_floor_pct: GOVERNOR_SESSION_LOSS_FLOOR_PCT,
+    would_halt: wouldHalt,
   };
 }
 
