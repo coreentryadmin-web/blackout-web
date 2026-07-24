@@ -39,6 +39,12 @@ import {
   type SwingCatalystNewsItem,
   type SwingEarningsWindows,
 } from "./swing-catalyst";
+import {
+  resolveGroupBenchmark,
+  industryGroupRs01,
+  type GroupBenchmark,
+} from "./industry-group-rs";
+import { getSector } from "../sector-map";
 
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 const isNum = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
@@ -166,6 +172,13 @@ export interface SwingReadsAssemblyArgs {
   } | null;
   /** UW EOD IV rank (0–100 or 0–1) → grounds the VOLATILITY pillar. Null/absent → the pillar stays null. */
   ivRank?: number | null;
+  /** The name's SECTOR_ROTATION benchmark (resolved industry-group / sector ETF), or null when unresolvable.
+   *  Provenance only — the RS is computed from `groupCloses`; this carries the label/kind for reasons/audits. */
+  groupBenchmark?: GroupBenchmark | null;
+  /** Ascending daily closes for `groupBenchmark.etf` — the industry-group RS denominator that grounds
+   *  `sectorLeadership01`. Null/absent (no benchmark, or its closes couldn't be fetched) → the sector-rotation
+   *  signal stays null and SECTOR_ROTATION simply won't fire (honest absence, never a coarse SPY-RS mislabel). */
+  groupCloses?: number[] | null;
 }
 
 /**
@@ -212,6 +225,18 @@ export function assembleSwingDossierInput(args: SwingReadsAssemblyArgs): SwingDo
   const contractQuality01 = contractQualityFromIvRank(args.ivRank);
   const regime01 = regimeFromSpyTrend(args.spyCloses, signed.direction);
 
+  // ── SECTOR_ROTATION signal: the name's INDUSTRY-GROUP relative strength (name return vs its industry-group /
+  // sector ETF), the grounded replacement for the coarse name-vs-SPY RS that used to MISLABEL this archetype
+  // (in a broad rally everything beats SPY). Direction-signed exactly like the SPY rel-strength pillar. Null
+  // (honest absence) when there's no benchmark / direction / enough history → SECTOR_ROTATION won't fire. The
+  // REL_STRENGTH pillar's own SPY comparison is untouched; only the archetype LABEL stops keying off SPY RS.
+  const sectorLeadership01 = industryGroupRs01({
+    nameCloses: args.nameCloses,
+    benchmarkCloses: args.groupCloses ?? null,
+    direction: signed.direction,
+    lookback: SWING_RETURN_LOOKBACK_SESSIONS,
+  });
+
   return {
     ticker: args.ticker.toUpperCase(),
     asOf: args.asOf,
@@ -224,6 +249,8 @@ export function assembleSwingDossierInput(args: SwingReadsAssemblyArgs): SwingDo
       catalystInWindow01: catReads.catalystInWindow01,
       earningsGapRecent01: catReads.earningsGapRecent01,
       postEarningsDrift01: catReads.postEarningsDrift01,
+      // Industry-group RS → the SOLE SECTOR_ROTATION classifier signal (see the block above + archetype.ts).
+      sectorLeadership01,
     },
     structure: {
       priceAboveEma20: signed.priceAboveEma20 ?? stack.priceAboveEma20,
@@ -273,6 +300,15 @@ export interface SwingIngestDeps {
   fetchEarningsRows?: (ticker: string) => Promise<Array<Record<string, unknown>> | null>;
   /** The name's UW EOD IV rank (0–100 or 0–1) — `fetchUwIvRank`. */
   fetchIvRank?: (ticker: string) => Promise<number | null>;
+  /** Classify the name for SECTOR_ROTATION benchmark resolution — Polygon `/v3/reference/tickers/{ticker}`
+   *  reference data (`sic_code`/`sic_description`/`type`; rate-limit-free, `fetchPolygonTickerDetails`).
+   *  OPTIONAL + fail-soft: omitted or null → benchmark resolution falls back to the static sector-map (or
+   *  null). SECTOR_ROTATION just won't fire for names it can't ground — it is NEVER a coarse SPY-RS mislabel. */
+  fetchTickerClassification?: (ticker: string) => Promise<{
+    sicCode?: string | null;
+    sicDescription?: string | null;
+    tickerType?: string | null;
+  } | null>;
 }
 
 /** Sessions of daily history to pull per name (enough for a 50-EMA + slope + the 10-session return). */
@@ -311,11 +347,39 @@ export async function ingestSwingReads(
   // Enrich with catalyst context + IV rank when the fetchers are wired. Each is independently fail-soft: a
   // provider error yields null for that read only, never a dropped candidate. Fetched in parallel per name.
   const nowMs = Date.parse(args.asOf);
-  const [newsItems, earningsRows, ivRank] = await Promise.all([
+  // SECTOR_ROTATION needs a directional lean (the RS is direction-signed), so only a bull/bear flow name can
+  // ever carry it. Gate the classifier + benchmark IO on that: a neutral / flow-less (structure-only) candidate
+  // skips the extra reference call and benchmark-closes fetch entirely (it could never classify SECTOR_ROTATION).
+  const hasDirection = args.accumulation?.direction === "bull" || args.accumulation?.direction === "bear";
+  const [newsItems, earningsRows, ivRank, classification] = await Promise.all([
     deps.fetchCatalystNews?.(args.ticker).catch(() => null) ?? Promise.resolve(null),
     deps.fetchEarningsRows?.(args.ticker).catch(() => null) ?? Promise.resolve(null),
     deps.fetchIvRank?.(args.ticker).catch(() => null) ?? Promise.resolve(null),
+    hasDirection
+      ? (deps.fetchTickerClassification?.(args.ticker).catch(() => null) ?? Promise.resolve(null))
+      : Promise.resolve(null),
   ]);
+
+  // SECTOR_ROTATION benchmark: resolve the name's industry-group / sector ETF (finest-first; the static
+  // sector-map is the zero-IO fallback even when the classifier is absent) and fetch its daily closes — the
+  // industry-group RS denominator for `sectorLeadership01`. Fully fail-soft: a null benchmark or a failed
+  // closes fetch just leaves the sector-rotation signal null (SECTOR_ROTATION won't fire), never a mislabel.
+  const groupBenchmark = hasDirection
+    ? resolveGroupBenchmark({
+        ticker: args.ticker,
+        sicCode: classification?.sicCode ?? null,
+        sicDescription: classification?.sicDescription ?? null,
+        tickerType: classification?.tickerType ?? null,
+        sectorLabel: getSector(args.ticker),
+      })
+    : null;
+  let groupCloses: number[] | null = null;
+  if (groupBenchmark) {
+    const closes = await deps
+      .fetchDailyCloses(groupBenchmark.etf, args.lookbackSessions ?? SWING_INGEST_LOOKBACK_SESSIONS)
+      .catch(() => null);
+    groupCloses = Array.isArray(closes) && closes.length > 0 ? closes : null;
+  }
 
   const hasCatalystDeps = deps.fetchCatalystNews != null || deps.fetchEarningsRows != null;
   const catalyst = hasCatalystDeps
@@ -338,5 +402,7 @@ export async function ingestSwingReads(
     mover: args.mover,
     catalyst,
     ivRank,
+    groupBenchmark,
+    groupCloses,
   });
 }

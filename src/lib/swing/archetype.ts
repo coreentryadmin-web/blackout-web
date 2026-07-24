@@ -26,11 +26,7 @@
 import type { PlayDirection } from "../horizon-fanout";
 import type { SwingReads } from "../swing-signals";
 import { swingSignalsFromReads } from "../swing-signals";
-import {
-  accumulationPersistence,
-  relativeStrengthScore,
-  trendStackScore,
-} from "../horizon-scorers";
+import { accumulationPersistence, trendStackScore } from "../horizon-scorers";
 import type { SwingArchetype } from "./taxonomy";
 import { SWING_ARCHETYPES, ARCHETYPE_PRIORITY } from "./taxonomy";
 
@@ -75,11 +71,12 @@ export interface ArchetypeInputs {
   /** Multi-day accumulation persistence (aligned sessions / window), 0–1. */
   accumPersistence01?: number | null;
 
-  // SECTOR_ROTATION — relative-strength leadership as capital rotates into the group.
-  /** Sector RS leadership (the group leads the tape), 0–1. */
+  // SECTOR_ROTATION — the name's relative-strength leadership vs ITS OWN INDUSTRY GROUP as capital rotates in.
+  /** Industry-group RS: the name's return vs its industry-group / sector ETF (direction-signed), 0–1. This is
+   *  the ONLY sector-rotation signal — grounded from industry-group-rs.ts. It is deliberately NOT the coarse
+   *  name-vs-SPY relative strength: in a broad rally almost everything beats SPY, so SPY-RS fired SECTOR_ROTATION
+   *  on names merely riding the tape (the mislabel this replaces). A rotation thesis requires LEADING the GROUP. */
   sectorLeadership01?: number | null;
-  /** Name relative strength vs SPY (direction-signed), 0–1. */
-  relStrength01?: number | null;
 
   // EVENT_DRIVEN — a known catalyst inside the window drives the thesis.
   /** Catalyst-in-window strength (earnings-momentum / product / FDA / investor-day / gap), 0–1. */
@@ -134,8 +131,11 @@ const fitPostEarningsDrift = (i: ArchetypeInputs): number | null =>
 
 const fitFlowAccumulation = (i: ArchetypeInputs): number | null => blend(i.accumPersistence01);
 
-const fitSectorRotation = (i: ArchetypeInputs): number | null =>
-  blend(i.sectorLeadership01, i.relStrength01);
+// SECTOR_ROTATION fires ONLY on the industry-group RS (name vs its own group). It intentionally does NOT
+// blend in the broad name-vs-SPY relative strength: firing on SPY RS was the mislabel — every name beats SPY
+// in a rally, so the label attached to tape-riders, not rotation leaders. No industry-group RS ⇒ null fit ⇒
+// SECTOR_ROTATION doesn't fire (honest absence), which is strictly better than a SPY-RS mislabel.
+const fitSectorRotation = (i: ArchetypeInputs): number | null => blend(i.sectorLeadership01);
 
 const fitEventDriven = (i: ArchetypeInputs): number | null => blend(i.catalystInWindow01);
 
@@ -280,11 +280,10 @@ export function archetypeInputsFromReads(reads: SwingReads, extras: ArchetypeRea
   const hasStack = s.priceAboveEma20 != null || s.ema20AboveEma50 != null || s.ema50Rising != null;
   const trendStack01 = hasStack ? trendStackScore(s) : null;
 
-  const relStrength01 =
-    isNum(s.returnPct10d) && isNum(s.spyReturnPct10d)
-      ? relativeStrengthScore(s.returnPct10d, s.spyReturnPct10d)
-      : null;
-
+  // NOTE: the coarse name-vs-SPY relative strength is DELIBERATELY not derived here — it is not a
+  // SECTOR_ROTATION classification signal (it caused the mislabel). Broad RS still surfaces as the
+  // REL_STRENGTH *pillar* (swing-pillars.ts); only the archetype LABEL stops keying off it. The
+  // sector-rotation signal is `sectorLeadership01` (industry-group RS), passed in via `extras`.
   const accumPersistence01 =
     isNum(s.accumAlignedDays) && isNum(s.accumTotalDays) && s.accumTotalDays > 0
       ? accumulationPersistence(s.accumAlignedDays, s.accumTotalDays)
@@ -293,7 +292,6 @@ export function archetypeInputsFromReads(reads: SwingReads, extras: ArchetypeRea
   return {
     direction: s.direction,
     trendStack01,
-    relStrength01,
     accumPersistence01,
     nearRangeExtreme01: extras.nearRangeExtreme01 ?? null,
     breakoutQuality01: extras.breakoutQuality01 ?? null,

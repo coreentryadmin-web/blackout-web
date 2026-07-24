@@ -64,12 +64,13 @@ export interface ArchetypeMeta {
   scoreFloor: number;
   /** v1: always false — an archetype's floor graduates on its OWN graded bucket, never on vibes. */
   scoreFloorGraduated: boolean;
-  /** Critique #6 marker: this archetype's score-floor/weight graduation is BLOCKED-ON-DATA until an
-   *  industry-group relative-strength feed exists — a "sector rotation" thesis is only real if the
-   *  NAME leads its INDUSTRY GROUP, and we have no industry-RS feed yet. Until then SECTOR_ROTATION
-   *  weights/floors stay provisional-and-flagged (never graduate) even if their graded bucket clears
-   *  the ladder, because the classifier can't yet prove the rotation leg. Marker only — no behavior
-   *  change here; it's read by the graduation write so a rotation bucket can't silently size risk. */
+  /** Critique #6 marker — NOW RESOLVED, retained for provenance. This flagged SECTOR_ROTATION as
+   *  BLOCKED-ON-DATA while no industry-group relative-strength feed existed (a "sector rotation" thesis is
+   *  only real if the NAME leads its INDUSTRY GROUP, not merely SPY). That feed SHIPPED — `industry-group-rs.ts`
+   *  resolves the name's industry-group / sector ETF (Polygon SIC) and `swing-ingest.ts` grounds
+   *  `sectorLeadership01` as the name's RS vs that group, which is now the SOLE SECTOR_ROTATION classifier
+   *  signal. So the blocker is lifted and this is no longer set on any archetype; graduation is governed by the
+   *  normal `scoreFloorGraduated` / `SWING_PILLAR_WEIGHTS_GRADUATED` ladder like every other archetype. */
   provisionalUntilIndustryRs?: boolean;
 }
 
@@ -119,12 +120,11 @@ export const ARCHETYPE_META: Record<SwingArchetype, ArchetypeMeta> = {
   SECTOR_ROTATION: {
     id: "SECTOR_ROTATION",
     label: "Sector rotation leadership",
-    note: "Relative-strength leadership as capital rotates into the group; sector + breadth lead. " +
-      "PROVISIONAL-UNTIL-INDUSTRY-RS (critique #6): no industry-group RS feed exists yet, so the " +
-      "rotation leg is unverifiable — floor/weights stay flagged and never graduate.",
+    note: "The name's relative-strength leadership vs ITS OWN INDUSTRY GROUP / sector ETF as capital rotates " +
+      "in (industry-group-rs.ts → sectorLeadership01); sector + breadth lead. Critique #6 (no industry-group " +
+      "RS feed) is RESOLVED: the classifier now keys off real industry-group RS, not the coarse name-vs-SPY RS.",
     scoreFloor: 63,
     scoreFloorGraduated: false,
-    provisionalUntilIndustryRs: true,
   },
   EVENT_DRIVEN: {
     id: "EVENT_DRIVEN",

@@ -33,6 +33,7 @@ import {
   fadeStaleAccum,
 } from "@/lib/db";
 import { fetchDailyMarketSummary, fetchStockDailyBars } from "@/lib/providers/polygon";
+import { fetchPolygonTickerDetails } from "@/lib/providers/polygon-largo";
 import { fetchTickerNews, DEFAULT_CATALYST_CHANNELS } from "@/lib/providers/polygon-news";
 import { fetchUwTickerEarningsHistory, fetchUwIvRank } from "@/lib/providers/unusual-whales";
 import {
@@ -59,9 +60,20 @@ function ymdDaysAgo(nowMs: number, days: number): string {
 function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDiscoveryDeps["phase"]): SwingDiscoveryDeps {
   const to = todayEt(new Date(nowMs));
   const from = ymdDaysAgo(nowMs, DAILY_BAR_LOOKBACK_DAYS);
-  const closesFor = async (ticker: string): Promise<number[]> => {
-    const bars = await fetchStockDailyBars(ticker, from, to);
-    return bars.map((b) => b.c).filter((c) => Number.isFinite(c));
+  // Memoize daily closes per ticker for the WHOLE scan. The name, SPY, and every SECTOR_ROTATION benchmark
+  // ETF (SMH/XLK/KBE/GDX/…) are shared across many candidates — a semis-heavy scan would otherwise refetch
+  // SMH once per name. One in-flight promise per symbol ⇒ each series is fetched at most once per scan.
+  const closesCache = new Map<string, Promise<number[]>>();
+  const closesFor = (ticker: string): Promise<number[]> => {
+    const key = ticker.toUpperCase();
+    let cached = closesCache.get(key);
+    if (!cached) {
+      cached = fetchStockDailyBars(key, from, to).then((bars) =>
+        bars.map((b) => b.c).filter((c) => Number.isFinite(c)),
+      );
+      closesCache.set(key, cached);
+    }
+    return cached;
   };
   return {
     fetchFlowWindow: async (): Promise<MinimalFlowRow[]> =>
@@ -86,6 +98,20 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
           fetchEarningsRows: (ticker) =>
             fetchUwTickerEarningsHistory(ticker, 8) as Promise<Array<Record<string, unknown>>>,
           fetchIvRank: (ticker) => fetchUwIvRank(ticker),
+          // SECTOR_ROTATION benchmark classifier: Polygon reference data (sic_code/sic_description/type) —
+          // rate-limit-free and already fail-open (→ null). Resolves the name's industry-group / sector ETF so
+          // the archetype classifies on real industry-group RS instead of the coarse name-vs-SPY RS. A hiccup
+          // just drops the sector-rotation signal for the name (the static sector-map is the zero-IO fallback).
+          fetchTickerClassification: async (ticker) => {
+            const details = await fetchPolygonTickerDetails(ticker);
+            const r = (details?.results ?? null) as Record<string, unknown> | null;
+            if (!r) return null;
+            return {
+              sicCode: typeof r.sic_code === "string" ? r.sic_code : null,
+              sicDescription: typeof r.sic_description === "string" ? r.sic_description : null,
+              tickerType: typeof r.type === "string" ? r.type : null,
+            };
+          },
         },
         {
           ticker: seed.ticker,

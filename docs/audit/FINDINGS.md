@@ -1399,3 +1399,84 @@ on the fix (`6050`). `tsc --noEmit` clean; all 77 `src/lib/providers/gex*.test.t
 `check-brand.mjs` clean. Files: `src/lib/providers/gex-positioning.ts`,
 `src/lib/providers/gex-positioning.test.ts`. Status: FIXED, branch
 `fix/gex-positioning-walls-nearterm-scope` (PR to main).
+
+## 2026-07-24 — [SEV-3, swing pre-live] SECTOR_ROTATION mislabeled on coarse name-vs-SPY RS; wired a real INDUSTRY-GROUP RS feed — FIXED (WIRED, not skipped)
+
+**Context / risk.** Swing lane is pre-live (WATCH-only, `commitEligibleCount` ≡ 0 — nothing sizes
+risk), so live blast radius is nil. Operator directive: *"Industry-group RS data feed → so
+SECTOR_ROTATION stops mislabeling on coarse SPY RS. — if our current apis don't provide these
+details, skip it fully .. but check closely."* Branch `fix/swing-sector-rotation-rs`.
+
+**DECISION: WIRED (the data IS obtainable, live-probed).** The "check closely" step confirmed both
+providers ground industry-group membership AND its relative performance, cheaply — so per the directive
+this was wired, not skipped.
+
+**Root cause.** `archetype.ts` `fitSectorRotation` was `blend(sectorLeadership01, relStrength01)`, but
+`sectorLeadership01` was **never grounded** by `assembleSwingDossierInput` (swing-ingest.ts) — the
+`archetypeExtras` it built omitted it. So the fit collapsed to `relStrength01` alone, which
+`archetypeInputsFromReads` computes as `relativeStrengthScore(returnPct10d, spyReturnPct10d)` — the
+name's return **vs SPY**. A rotation thesis is only real when a name LEADS ITS OWN INDUSTRY GROUP; vs
+SPY, in any broad rally almost everything beats SPY, so SECTOR_ROTATION attached to tape-riders, not
+rotation leaders. It was flagged blocked-on-data by `ARCHETYPE_META.SECTOR_ROTATION.provisionalUntilIndustryRs`
+(taxonomy.ts) awaiting exactly this feed.
+
+**API evidence (live probes, 2026-07-24, `env -u AWS_*`).**
+- Polygon `GET /v3/reference/tickers/{ticker}` → 200 with `sic_code` + `sic_description` (rate-limit-free
+  reference; `fetchPolygonTickerDetails`). NVDA/AMD → `3674 SEMICONDUCTORS & RELATED DEVICES`; JPM →
+  `6021 NATIONAL COMMERCIAL BANKS`; PLTR → `7372 PREPACKAGED SOFTWARE`; NEM → `1040 GOLD AND SILVER
+  ORES`; DAL → `4512 AIR TRANSPORTATION`; AAPL → `3571 ELECTRONIC COMPUTERS`; NEE → `4911 ELECTRIC
+  SERVICES`. (XOM returned no SIC; SMH/XLK/SPY are `type:"ETF"` with no SIC — used as the ETF/self guard.)
+- UW `GET /api/companies/{t}/profile` → 200 `{ sector:"TECHNOLOGY", industry:"SEMICONDUCTORS", … }`;
+  `GET /api/stock/{t}/info` → 200 `{ sector:"Technology", uw_tags:["semi","gaming"], … }`;
+  `GET /api/market/sector-etfs` → 200 (11 sector ETFs' OHLC); `GET /api/group-flow/{g}/greek-flow` 422
+  leaked the valid group slugs (`…, semi, silver, technology, uranium, …`). UW gives membership too,
+  but Polygon SIC is finer + rate-limit-free, so it's the classifier.
+- Benchmark ETF closes (SMH/XLK/KBE/…) fetch on the SAME `/v2/aggs/.../range/1/day` path the swing
+  name-closes already use (SMH → 200, `c` present) — so the RS denominator is one cacheable extra fetch,
+  not a new pipeline.
+
+**Construction (name RS vs its INDUSTRY GROUP, not SPY).** New pure `src/lib/swing/industry-group-rs.ts`:
+`resolveGroupBenchmark` maps finest-first — exact-SIC **industry** ETF (SMH/KBE/IGV/GDX/JETS/XOP/XHB;
+high-confidence only) → SIC-range **sector** ETF (the 11 SPDRs) → static sector-map label → null (honest
+absence). `industryGroupRs01` = the name's N-session return vs that benchmark's, direction-signed exactly
+like the SPY rel-strength pillar (so a SHORT leading its group DOWN mirrors its LONG), reusing
+`relativeStrengthScore`. Guards: an ETF candidate or a self-benchmark (candidate IS the ETF) → null.
+
+**Wiring (fail-soft, in-pattern with PR #1069's optional deps).**
+- `swing-ingest.ts`: `SwingIngestDeps` gains optional `fetchTickerClassification` (Polygon SIC).
+  `ingestSwingReads` resolves the benchmark + fetches its closes (only for a directional flow name — the
+  RS is direction-signed), passes `groupCloses` to `assembleSwingDossierInput`, which grounds
+  `sectorLeadership01 = industryGroupRs01(…)` into `archetypeExtras`. Any hiccup ⇒ null benchmark/closes
+  ⇒ null signal ⇒ SECTOR_ROTATION simply doesn't fire (never a SPY-RS mislabel).
+- `archetype.ts`: `fitSectorRotation = blend(sectorLeadership01)` **only** — `relStrength01` (vs SPY) is
+  removed from the fit AND from `ArchetypeInputs`. The REL_STRENGTH *pillar*'s own SPY comparison is
+  untouched; only the archetype LABEL stops keying off SPY RS.
+- `swing-discovery/route.ts`: wires `fetchTickerClassification` from `fetchPolygonTickerDetails`; memoizes
+  per-scan closes so a semis-heavy scan fetches SMH once, not once per name.
+- `taxonomy.ts` / `swing-archetype.ts`: the `provisionalUntilIndustryRs` blocked-on-data marker is now
+  RESOLVED (the feed shipped) — no archetype carries it; SECTOR_ROTATION stays a valid enum, graduates on
+  its bucket like every other archetype.
+
+**Evidence the fix changes the label (shipped functions, REAL data — SPY RS vs industry-group RS, LONG):**
+```
+name  benchmark(kind)   spyRS   groupRS   sic  | industry
+NVDA  SMH(industry)     0.152   1.000     3674 SEMICONDUCTORS   (leads semis; SPY RS under-rated it)
+AMD   SMH(industry)     0.000   0.334     3674 SEMICONDUCTORS   (SPY RS: no leader → actually leads group)
+JPM   KBE(industry)     1.000   0.604     6021 BANKS            (SPY RS overstated the lead)
+DAL   JETS(industry)    0.000   0.519     4512 AIRLINES         (SPY RS: no leader → clearly leads airlines)
+NEE   XLU(sector)       0.662   0.000     4911 ELECTRIC         (THE mislabel: hot sector → beats SPY, LAGS group)
+XOM   XLE(sector)       1.000   0.752     ---- (no SIC)         (static-map fallback works, fail-soft)
+```
+NEE is the exact false-positive the operator flagged (rides a hot sector → high SPY RS, but 0.000 within
+its own group); AMD/DAL are false-negatives SPY RS missed. The classifier now sees within-group leadership.
+
+**Tests.** New `industry-group-rs.test.ts` (resolver tiers, ETF/self/null guards, RS sign-symmetry). New
+`swing-ingest` tests (SIC→industry benchmark grounds `sectorLeadership01`; classifier-outage → static
+sector fallback; unclassifiable → null signal + no extra fetch). New `archetype` test (SECTOR_ROTATION
+grounds ONLY on `sectorLeadership01`, never SPY RS). Updated fixtures/symmetry + the taxonomy marker test.
+`npx tsc --noEmit` clean; `node --import tsx --experimental-test-module-mocks --test src/lib/swing/*.test.ts`
+= **315 pass / 0 fail**; `node scripts/check-brand.mjs` clean. Files: `src/lib/swing/industry-group-rs.ts`
+(+ test), `src/lib/swing/archetype.ts` (+ test), `src/lib/swing/swing-ingest.ts` (+ test),
+`src/lib/swing/taxonomy.ts` (+ test), `src/lib/swing/swing-archetype.ts`,
+`src/app/api/cron/swing-discovery/route.ts`. Status: FIXED, branch `fix/swing-sector-rotation-rs`
+(NON-DRAFT PR to main, no auto-merge per operator directive).
