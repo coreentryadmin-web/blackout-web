@@ -51,7 +51,10 @@ type UnifiedSnapshotResult = {
     /** Deliverable shares per contract — 100 standard, non-100 for corp-action-adjusted. */
     shares_per_contract?: number;
   };
-  underlying_asset?: { price?: number; ticker?: string; last_updated?: number };
+  // Underlying spot. STOCK OCCs carry it under `.price`; INDEX OCCs (SPX/SPXW/NDX/RUT/VIX)
+  // carry it under `.value` instead (Massive/Polygon quirk — an index has no trade "price",
+  // only an index value). Read `price ?? value` so index options get a real spot, not null.
+  underlying_asset?: { price?: number; value?: number; ticker?: string; last_updated?: number };
   session?: {
     close?: number;
     open?: number;
@@ -92,7 +95,10 @@ export type OptionSnapshot = {
   vega: number | null;
   iv: number | null;
   openInterest: number | null;
-  /** Underlying spot = underlying_asset.price; null when absent. */
+  /**
+   * Underlying spot = underlying_asset.price (stock OCCs) ?? underlying_asset.value (index OCCs);
+   * null when neither exists. NEVER fabricated.
+   */
   underlyingPrice: number | null;
   strike: number | null;
   optionType: "call" | "put" | null;
@@ -116,6 +122,29 @@ export const UNIFIED_SNAPSHOT_MAX_PER_CALL = 250;
 function finiteOrNull(v: unknown): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Upper bound for a REAL decimal-scale implied vol. Live rows return implied_volatility as a
+ * DECIMAL (0.229 = 22.9%); even an extreme meme-stock IV of 300% is 3.0, so nothing genuine sits
+ * anywhere near this bound. Any value >= it is a provider PLACEHOLDER carried on the PERCENT scale
+ * (seen on expired/edge rows: 20, 15.83 → 2000%, 1583%), which must be /100 to be a usable vol.
+ */
+export const IV_DECIMAL_MAX = 5; // 500% — safely above any real decimal-scale option IV
+
+/**
+ * SAFE, conservative IV unit guard for CONSUMERS (render/compare layer). Real decimals pass through
+ * untouched (0.229 → 0.229 — a live value is NEVER rescaled); only an unmistakable percent-scale
+ * placeholder (>= IV_DECIMAL_MAX) is rescaled by /100 (20 → 0.20, 15.83 → 0.1583). Non-finite → null;
+ * 0/negative left as-is for the caller to decide. The mapper deliberately stores the RAW provider
+ * value (below) so nothing is silently lost — call this at the point IV is displayed/compared.
+ */
+export function normalizeImpliedVol(iv: number | null | undefined): number | null {
+  if (iv == null) return null; // Number(null) === 0, so guard nullish explicitly first.
+  const n = Number(iv);
+  if (!Number.isFinite(n)) return null;
+  if (n <= 0) return n;
+  return n >= IV_DECIMAL_MAX ? Number((n / 100).toFixed(6)) : n;
 }
 
 /**
@@ -177,7 +206,10 @@ export function mapUnifiedSnapshotResult(r: UnifiedSnapshotResult): OptionSnapsh
   const spcRaw = finiteOrNull(r.details?.shares_per_contract);
   const sharesPerContract = spcRaw != null && spcRaw > 0 ? spcRaw : null;
 
-  const up = finiteOrNull(r.underlying_asset?.price);
+  // Index-option OCCs (SPX/SPXW/NDX/RUT/VIX) return the underlying under `.value`, NOT `.price`
+  // (only stock OCCs use `.price`). Read `price ?? value` so index options aren't left spot-null
+  // on this batched path; still null when neither is a finite number (never fabricated).
+  const up = finiteOrNull(r.underlying_asset?.price ?? r.underlying_asset?.value);
 
   return {
     ticker,
@@ -190,6 +222,9 @@ export function mapUnifiedSnapshotResult(r: UnifiedSnapshotResult): OptionSnapsh
     gamma: finiteOrNull(r.greeks?.gamma),
     theta: finiteOrNull(r.greeks?.theta),
     vega: finiteOrNull(r.greeks?.vega),
+    // RAW provider IV (decimal for live rows; sometimes a percent-scale placeholder like 20/15.83
+    // on expired/edge rows). Stored verbatim so nothing is lost; consumers pass it through
+    // normalizeImpliedVol() to guard the placeholder without rescaling real decimals.
     iv: finiteOrNull(r.implied_volatility),
     openInterest: finiteOrNull(r.open_interest),
     underlyingPrice: up != null && up > 0 ? up : null,

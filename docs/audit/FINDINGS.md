@@ -979,3 +979,31 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Follow-up (next PR):** the SHADED time→16:00 converging cone as a canvas primitive (needs future
   whitespace so it maps past the last candle) — this PR does the levels + honest width.
 - **Status:** DONE (levels + width). Branch `claude/wall-beads-data-validation-4re5wo`.
+
+## 2026-07-24 — [HIGH] index-option underlying spot dropped in batched snapshot mapper — FIXED
+
+**Severity HIGH** (real-money valuation surface): `OptionSnapshot.underlyingPrice` was `null` for
+EVERY index-option OCC (SPX/SPXW/NDX/RUT/VIX) valued through the batched `/v3/snapshot` path.
+
+**Root cause.** `mapUnifiedSnapshotResult` (`src/lib/providers/options-snapshot.ts:180`) read the
+underlying spot ONLY from `underlying_asset.price`. Massive/Polygon returns the underlying for INDEX
+OCCs under `underlying_asset.value` (an index has no trade "price", only an index value); only STOCK
+OCCs use `.price`. So every index-option row got `up = finiteOrNull(undefined) = null` → spot null.
+
+**Fix.** Read `underlying_asset.price ?? underlying_asset.value` (type widened to include `value?`).
+Still `null` when neither is finite — never fabricated. **Blast radius:** the only real consumer of
+`underlying_asset` for spot is this mapper. `polygon-options-gex.ts` declares `underlying_asset?.price`
+on `ChainContract` but NEVER reads it for spot (the chain path gets spot from `resolveSpotSnapshot`),
+so no second call site to fix — noted for completeness.
+
+**Adjacent [LOW] — IV unit inconsistency.** Provider `implied_volatility` is a decimal for live rows
+(0.229) but sometimes a percent-scale placeholder on expired/edge rows (20, 15.83). Added a
+conservative, opt-in `normalizeImpliedVol()` consumer guard (rescales only values >= `IV_DECIMAL_MAX`
+= 5 / 500%, a bound no real decimal vol reaches; live decimals pass through UNTOUCHED). The mapper
+still stores the RAW value verbatim so nothing is lost.
+
+**Evidence / tests.** Extended `options-snapshot.test.ts`: index OCC with `.value` (no `.price`) →
+`underlyingPrice` is the value; stock OCC with `.price` still resolves; neither present → null; plus
+the IV guard cases. `npx tsx --test` 15/15 pass; `tsc --noEmit` clean; `check-brand.mjs` clean.
+
+**Status:** DONE. Branch `fix/index-option-underlying-value`.
