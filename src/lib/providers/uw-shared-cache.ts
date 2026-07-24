@@ -30,6 +30,13 @@ export const UW_CACHE_TTL = {
   screenerStocks:    600,  // 10 min
   screenerContracts: 600,  // 10 min
   seasonality:      3600,  // 1 hr — historical, never changes intraday
+  // IV rank is END-OF-DAY data: UW recomputes `iv_rank` once per session (~22:35 UTC, see the
+  // payload's `updated_at`), so it does NOT change intraday. A long TTL is correct AND is the
+  // rate-limit fix — fetchUwIvRank was previously uncached (uwGetSafe direct, ttl=0), so every
+  // caller (SPX desk, Nighthawk dossier, Largo, the cold-profile runner) hit UW live per call.
+  // 1 hr is the floor; env UW_IV_RANK_CACHE_SEC can widen it to 4 hr since it only changes daily.
+  ivRank:           3600,  // 1 hr default (EOD cadence — env UW_IV_RANK_CACHE_SEC overrides)
+  ivRankSeries:     3600,  // 1 hr default (same EOD series, env-overridable)
   fdaCalendar:      1800,  // 30 min
   unusualTrades:     120,  // 2 min
   litFlow:           120,  // 2 min
@@ -169,6 +176,8 @@ export const UW_KEYS = {
   screenerStocks:      ()                => 'screener_stocks',
   screenerContracts:   ()                => 'screener_contracts',
   seasonality:         (ticker: string)  => `seasonality:${ticker}`,
+  ivRank:              (ticker: string)  => `iv_rank:${ticker}`,
+  ivRankSeries:        (ticker: string, limit: number) => `iv_rank_series:${ticker}:l${limit}`,
   fdaCalendar:         ()                => 'fda_calendar',
   unusualTrades:       ()                => 'unusual_trades',
   litFlow:             (ticker: string)  => `lit_flow:${ticker}`,

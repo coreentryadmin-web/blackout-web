@@ -62,6 +62,19 @@ export interface SwingFeatureInputs {
   presentPillars?: number | null;
   /** Dossier data-quality degraded flag. */
   dataQualityDegraded?: boolean | null;
+  /**
+   * UW implied-vol rank (0–100) for the name at commit. EOD data (UW recomputes once/session), so it
+   * is fetched via the now-cached fetchUwIvRank at the persist call site — NOT recomputed per snapshot.
+   * CAPTURE-ONLY metadata (like the archetype secondary fields): it feeds the feature row for later
+   * study but is NOT bucketed by calibration/graduation. Honest-null when the feed is missing — never 0.
+   *
+   * TODO(swing-ledger persist hook): this vector is not yet invoked by any production persist path (the
+   * snapshot-write hook lives in the HELD ledger PRs — see the module header). When that hook lands, pass
+   * the swing dossier's already-resolved IV rank here — `resolveIvRank` in features/nighthawk/lib/dossier.ts
+   * already computes it (Polygon VIX percentile for index proxies, the now-cached fetchUwIvRank for single
+   * names), so the wiring is a single null-safe field pass, no new UW IO on the vector-build path.
+   */
+  ivRank?: number | null;
   // ── dynamic longitudinal part (recomputed every snapshot) ──
   /** Calendar DTE left on the contract at this snapshot. */
   dteRemaining?: number | null;
@@ -120,6 +133,8 @@ export interface SwingFeatureVector {
   evidence_score: number | null;
   present_pillars: number | null;
   dq_degraded: 0 | 1 | null;
+  /** UW IV rank (0–100) at commit; EOD-cadence, honest-null when unavailable. Capture-only (not gated). */
+  iv_rank: number | null;
   // pillar sub-scores (0–1; null when the pillar wasn't grounded)
   pil_structure: number | null;
   pil_rel_strength: number | null;
@@ -186,6 +201,8 @@ export function buildSwingFeatureVector(input: SwingFeatureInputs): SwingFeature
     evidence_score: numOrNull(input.evidenceScore),
     present_pillars: numOrNull(input.presentPillars),
     dq_degraded: input.dataQualityDegraded == null ? null : input.dataQualityDegraded ? 1 : 0,
+    // EOD IV rank captured from the (now-cached) UW feed at the persist call site; honest-null, not gated.
+    iv_rank: numOrNull(input.ivRank),
     // pillar sub-scores — null throughout when a pillar wasn't grounded, never a fabricated 0
     pil_structure: numOrNull(p?.STRUCTURE),
     pil_rel_strength: numOrNull(p?.REL_STRENGTH),
@@ -222,6 +239,10 @@ export const SWING_NUMERIC_FEATURE_KEYS = [
   "pil_data_quality",
   "dte_remaining", "running_mfe", "running_mae", "underlying_px", "option_mark", "option_return_pct",
   "snapshot_seq", "sessions_elapsed",
+  // APPENDED at the END — this list is positional (a downstream vector reads it by index), so new keys
+  // only ever go last; never reorder. iv_rank is captured feature metadata, standardizable as a scalar,
+  // but NOT bucketed by calibration/graduation (honest-null when the EOD feed is missing).
+  "iv_rank",
 ] as const satisfies ReadonlyArray<keyof SwingFeatureVector>;
 
 /** The categorical feature keys — compared by exact match / one-hot in the downstream layers. */

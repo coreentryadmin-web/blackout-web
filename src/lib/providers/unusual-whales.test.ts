@@ -1,6 +1,6 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
-import { isLiveOdteSession, safeTicker, safePathSegment, safeDateSegment, sym, optionTradePrintToFlowRaw } from "./unusual-whales";
+import { isLiveOdteSession, safeTicker, safePathSegment, safeDateSegment, sym, optionTradePrintToFlowRaw, fetchUwIvRank } from "./unusual-whales";
 import { UW_REST_SECTIONS } from "../uw-docs-catalog";
 
 // 2026-07-03 is a US market holiday (July 4th observed) per nighthawk/session.ts's calendar.
@@ -113,4 +113,43 @@ test("optionTradePrintToFlowRaw forwards per-contract price for Fill column", ()
   });
   assert.equal(raw.price, 3.45);
   assert.equal(raw.size, 500);
+});
+
+// ── EOD IV-rank caching (the rate-limit fix) ─────────────────────────────────────────
+// WHY: iv_rank is END-OF-DAY data (UW recomputes once/session ~22:35 UTC), so a live UW hit per
+// caller was pure rate-limit exposure. fetchUwIvRank was uncached (uwGetSafe direct, ttl=0). Now
+// /volatility/stats has a long TTL in uwCacheTtlMs (in-process L1) AND fetchUwIvRank rides the Redis
+// shared cache (L2). This test proves the L1 layer: two sequential calls within TTL issue exactly ONE
+// underlying network fetch (the second is served from cache). Uses a unique ticker so the first call
+// is a guaranteed cold miss regardless of any other test's cache state. No REDIS_URL → L1-only path.
+test("fetchUwIvRank caches within TTL: two sequential calls → ONE underlying fetch", async () => {
+  const prevKey = process.env.UW_API_KEY;
+  const prevRedis = process.env.REDIS_URL;
+  const prevTtl = process.env.UW_IV_RANK_CACHE_SEC;
+  process.env.UW_API_KEY = "test-uw-key";            // uwConfigured() → true (fetch is mocked; header value is irrelevant)
+  delete process.env.REDIS_URL;                       // force the L1-only path (getUwCacheRedis → null)
+  process.env.UW_IV_RANK_CACHE_SEC = "3600";          // long TTL so the 2nd call is a fresh hit, not a stale re-fetch
+
+  let fetchCount = 0;
+  mock.method(globalThis, "fetch", async () => {
+    fetchCount += 1;
+    return new Response(JSON.stringify({ data: { iv_rank: "43.0832" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+
+  try {
+    // Unique ticker → the first call cannot hit a warm L1 slot left by another test.
+    const a = await fetchUwIvRank("IVCACHETEST");
+    const b = await fetchUwIvRank("IVCACHETEST");
+    assert.equal(a, 43.0832);                          // parsed number, contract unchanged (number|null)
+    assert.equal(b, 43.0832);                          // identical served value
+    assert.equal(fetchCount, 1, "second call must be served from cache — only ONE upstream fetch");
+  } finally {
+    mock.restoreAll();
+    if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
+    if (prevRedis === undefined) delete process.env.REDIS_URL; else process.env.REDIS_URL = prevRedis;
+    if (prevTtl === undefined) delete process.env.UW_IV_RANK_CACHE_SEC; else process.env.UW_IV_RANK_CACHE_SEC = prevTtl;
+  }
 });
