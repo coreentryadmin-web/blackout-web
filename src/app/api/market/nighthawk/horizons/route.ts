@@ -10,7 +10,7 @@ import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
 import { scopeBoardToHorizon } from "@/lib/horizon-board";
 import { horizonForView, parseNightHawkView } from "@/features/nighthawk/lib/nighthawk-view";
 import { horizonBoardFromZeroDtePayload } from "@/lib/zerodte/horizon-board-from-payload";
-import { getSwingServingLane } from "@/lib/swing/serving-lane";
+import { getSwingServingLane, discoverSwingFromPersisted } from "@/lib/swing/serving-lane";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { roundFloats } from "@/lib/round-floats";
@@ -43,10 +43,12 @@ export async function GET(req: NextRequest) {
     // SWING branch (PR-12): the 0DTE payload only carries the 0DTE lane — its SWING lane is an empty
     // placeholder. When the desk toggles to Swings, splice in the REAL sectioned serving lane (four pre-entry
     // sections live; three live-position sections empty until PR-13) BEFORE scoping, so `scopeBoardToHorizon`
-    // recomputes the totals against it. `getSwingServingLane` degrades to an empty structured lane on any
-    // discovery hiccup, so this stays member-safe. Other views (0DTE/LEAPS/Legacy) are untouched.
+    // recomputes the totals against it. The `discover` source is the persisted whole-market scan
+    // (discoverSwingFromPersisted — a pure shared-cache read the swing-discovery cron writes), gated to
+    // persistence-cleared names. `getSwingServingLane` degrades to an empty structured lane on any discovery
+    // hiccup, so this stays member-safe. Other views (0DTE/LEAPS/Legacy) are untouched.
     if (horizon === "SWING") {
-      const swingLane = await getSwingServingLane();
+      const swingLane = await getSwingServingLane({ discover: discoverSwingFromPersisted });
       board = { ...board, lanes: { ...board.lanes, SWING: swingLane } };
     }
     board = scopeBoardToHorizon(board, horizon);

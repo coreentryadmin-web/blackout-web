@@ -123,3 +123,115 @@ test("runSwingActiveRefresh: whole-fetch failure degrades to an empty pass (neve
   });
   assert.deepEqual(res, { positions: 0, refreshed: 0, snapshotsAppended: 0, skipped: 0, errored: 0, outcomes: [] });
 });
+
+// ── FIX 3: running_mfe/running_mae are SIGNED excursion % vs entry, NOT raw spot ──────────────────────────
+test("planManageSync: running_mfe/mae are signed excursion % vs entry (not raw spot)", () => {
+  // LONG entry 150, spot 156, extremes seeded at entry → MFE +4%, MAE 0% (never traded below entry).
+  const plan = planManageSync(
+    positionRow({ entry_underlying_px: 150, underlying_mfe: 150, underlying_mae: 150 }),
+    { underlyingPrice: 156, dte: 20, underlyingMfe: 156, underlyingMae: 156 },
+    { snapshotKind: "eod" },
+  );
+  assert.ok(Math.abs((plan.snapshot.running_mfe ?? NaN) - 4) < 1e-6, "MFE = (156-150)/150*100 = 4%");
+  assert.equal(plan.snapshot.running_mae, 0, "MAE seeded at entry → 0% (price never dipped below entry)");
+  assert.notEqual(plan.snapshot.running_mfe, 156, "must NOT be the raw spot price");
+});
+
+test("planManageSync: MFE/MAE read the ratcheted ledger PRICE extremes (favorable + adverse excursion)", () => {
+  // LONG entry 150, ratcheted high-water 158 / low-water 141, spot 148 → MFE +5.33%, MAE −6%.
+  const plan = planManageSync(
+    positionRow({ entry_underlying_px: 150, underlying_mfe: 158, underlying_mae: 141 }),
+    { underlyingPrice: 148, dte: 20 },
+    { snapshotKind: "eod" },
+  );
+  assert.equal(plan.snapshot.running_mfe, 5.3333, "MFE from ratcheted high-water 158, rounded to 4dp");
+  assert.equal(plan.snapshot.running_mae, -6, "MAE from ratcheted low-water 141");
+});
+
+test("planManageSync: SHORT excursion is sign-flipped (favorable = price falling)", () => {
+  // SHORT entry 100, extremes 106/94, spot 95 → MFE = (100-94)/100 = +6%; MAE = (100-106)/100 = −6%.
+  const plan = planManageSync(
+    positionRow({ direction: "short", entry_underlying_px: 100, underlying_mfe: 106, underlying_mae: 94, thesis_invalidation_px: 110 }),
+    { underlyingPrice: 95, dte: 20 },
+    { snapshotKind: "eod" },
+  );
+  assert.ok(Math.abs((plan.snapshot.running_mfe ?? NaN) - 6) < 1e-6);
+  assert.ok(Math.abs((plan.snapshot.running_mae ?? NaN) - -6) < 1e-6);
+});
+
+test("planManageSync: excursion is honest-null when entry price is missing (never fabricated)", () => {
+  const plan = planManageSync(positionRow({ entry_underlying_px: null }), { underlyingPrice: 156, dte: 20 }, { snapshotKind: "eod" });
+  assert.equal(plan.snapshot.running_mfe, null);
+  assert.equal(plan.snapshot.running_mae, null);
+});
+
+// ── FIX 2: every snapshot carries a populated feature_vector (was always null → studies permanently empty) ──
+test("planManageSync: snapshot carries a populated feature_vector (dynamic reads + pinned static)", () => {
+  const pinned = { pil_flow: 0.62, evidence_score: 78, iv_rank: 44, present_pillars: 5 };
+  const plan = planManageSync(
+    positionRow({
+      archetype: "BREAKOUT", sub_lane: "STANDARD", entry_premium: 4, feature_vector: pinned,
+      entry_underlying_px: 150, underlying_mfe: 150, underlying_mae: 150,
+    }),
+    { underlyingPrice: 156, dte: 20, mark: 6, sessionsHeld: 2 },
+    { snapshotKind: "eod" },
+  );
+  const fv = plan.snapshot.feature_vector as Record<string, unknown> | null;
+  assert.ok(fv, "feature_vector is populated (was structurally always null before this fix)");
+  assert.equal(fv!.v, 1);
+  assert.equal(fv!.archetype, "BREAKOUT");
+  assert.equal(fv!.sub_lane, "STANDARD");
+  assert.equal(fv!.side, "long");
+  // dynamic longitudinal part
+  assert.equal(fv!.dte_remaining, 20);
+  assert.equal(fv!.option_mark, 6);
+  assert.equal(fv!.option_return_pct, 50); // (6/4 − 1) × 100
+  assert.ok(Math.abs((fv!.running_mfe as number) - 4) < 1e-6, "running_mfe is the signed excursion %");
+  assert.equal(fv!.thesis_state, "INTACT");
+  assert.equal(fv!.snapshot_kind, "eod");
+  // pinned static echoed so the trajectory studies have data (studyFlowDecay=pil_flow, studyIvKills=evidence)
+  assert.equal(fv!.pil_flow, 0.62);
+  assert.equal(fv!.evidence_score, 78);
+  assert.equal(fv!.iv_rank, 44);
+});
+
+test("planManageSync: feature_vector is null-safe when the pinned vector + marks are absent", () => {
+  const plan = planManageSync(
+    positionRow({ feature_vector: null, entry_premium: null }),
+    { underlyingPrice: 156, dte: 20 },
+    { snapshotKind: "eod" },
+  );
+  const fv = plan.snapshot.feature_vector as Record<string, unknown> | null;
+  assert.ok(fv);
+  assert.equal(fv!.pil_flow, null, "absent pinned pillar → null, never a fabricated 0");
+  assert.equal(fv!.evidence_score, null);
+  assert.equal(fv!.iv_rank, null);
+  assert.equal(fv!.option_mark, null, "no mark supplied → null");
+  assert.equal(fv!.option_return_pct, null);
+});
+
+test("planManageSync: a fresh-resolved ivRank read wins over the commit-pinned value", () => {
+  const plan = planManageSync(
+    positionRow({ feature_vector: { iv_rank: 20 } }),
+    { underlyingPrice: 156, dte: 20, ivRank: 61 },
+    { snapshotKind: "eod" },
+  );
+  assert.equal((plan.snapshot.feature_vector as Record<string, unknown>).iv_rank, 61);
+});
+
+// ── FIX 4: an option mark loaded per-position lands on the snapshot + feature vector ───────────────────────
+test("runSwingActiveRefresh: an option mark from loadReads lands on the snapshot + feature vector", async () => {
+  const snapshots: SwingSnapshotInsert[] = [];
+  await runSwingActiveRefresh({
+    fetchOpen: async () => [positionRow({ id: 1, entry_premium: 4 })],
+    // Simulates the route's loadReads AFTER loadOptionMark resolved the held contract's live mark.
+    loadReads: async () => ({ underlyingPrice: 156, dte: 20, mark: 6, underlyingMfe: 156, underlyingMae: 156 }),
+    insertSnapshot: async (s) => { snapshots.push(s); return snapshots.length; },
+    updateLiveState: async () => {},
+    snapshotKind: "eod",
+  });
+  assert.equal(snapshots[0]!.option_mark, 6, "the loaded contract mark lands on the snapshot");
+  const fv = snapshots[0]!.feature_vector as Record<string, unknown>;
+  assert.equal(fv.option_mark, 6, "premium-based management now has a real mark to evaluate");
+  assert.equal(fv.option_return_pct, 50);
+});

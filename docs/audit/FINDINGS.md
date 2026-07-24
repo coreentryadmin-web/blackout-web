@@ -81,6 +81,57 @@ for a cross-session name); `db-swing-ledger.test.ts` (`signal_kinds` DDL + dedup
 
 **Status:** DONE (branch `fix/swing-discovery-archetype-grounding`). Swing is pre-live — deploy AFTER
 close; NO auto-merge (non-draft PR to `main`, held for review per the task).
+## 2026-07-24 — [SEV-3 ×4, pre-live] SWING serving + feature-vector wiring dead-ends — FIXED
+
+Four WIRING dead-ends (not the deliberate commit/roll holds) left the swing engine dark even as a
+research scaffold. All swing-surface / pre-live, so low live risk; member-facing serving is involved
+(deploy after close). Branch `fix/swing-serving-featurevector-wiring`.
+
+**1 — the member SWING board rendered permanently empty.** `market/nighthawk/horizons/route.ts:48`
+called `getSwingServingLane()` with NO `discover` source, so `serving-lane.ts:73` returned
+`emptySwingServingLane()` unconditionally; AND `cron/swing-discovery/route.ts` advanced only the
+accumulation memory — it never persisted the scored dossiers/plays/watch, so there was nothing to
+read even if a source were injected. **Fix:** the discovery cron now `persistSwingServingSnapshot(...)`s
+its scored output to a shared-cache blob (best-effort; never fails the cron), and the route injects
+`discoverSwingFromPersisted` — a pure cache read (no provider IO on the member request path) GATED so
+only persistence-cleared names (in the persisted `watch` list) can surface. Member-safe empty fallback
+untouched. NOTE: `playSet.SWING` is only non-empty once discovery attaches concrete WATCH contracts
+(the OPTIONAL `fetchChainRows` dep — the deliberate "WATCH by persistence, not by contract" evidence-only
+posture), so the live board is honestly empty until that lands; the persist+read path is now complete
+and lights up with zero further route change.
+
+**2 — the feature-vector WRITE side was dead → every snapshot's `feature_vector` was null.**
+`buildSwingFeatureVector` (`feature-vector.ts`) had ZERO callers; `planManageSync` built the snapshot
+insert with no `feature_vector`, so `feature-store.ts` trajectory studies (`studyFlowDecay` reads
+`feature_vector.pil_flow`, `studyIvKillsGoodSetups` reads `evidence_score`, …) were permanently empty.
+**Fix:** `planManageSync` now builds and stamps the vector on every snapshot from the position's pinned
+commit vector (echoed static thesis part — pillars/evidence/iv_rank so the studies have data) + the
+authoritative ledger columns + the tick's dynamic reads/verdict. iv_rank prefers a fresh resolved read
+(the new `ManageSyncReads.ivRank` seam), else the commit-pinned value. Null-safe throughout.
+
+**3 — active-refresh wrote RAW SPOT into `running_mfe`/`running_mae`.** `swing-active-refresh/route.ts`
+passed `underlyingMfe: spot`, and `manage-sync.ts` copied that straight into the snapshot, so
+`studyTwoStagnantSessions` (compares running_mfe across sessions) and `studyIvKillsGoodSetups`
+(compares running_mae to a −3% threshold) saw prices, not excursion — a raw price ≥ −3 always, so the
+"underlying held" branch could never be false. **Fix:** new pure `signedExcursionPct` converts the
+ledger's ratcheted PRICE extremes + entry + this tick's spot into direction-aware SIGNED excursion %
+(MFE ≥ 0, MAE ≤ 0), and `planManageSync` writes THAT to the snapshot (+ the feature vector). The
+ledger's `underlying_mfe`/`underlying_mae` PRICE columns keep their GREATEST/LEAST ratchet (separate,
+unchanged).
+
+**4 — option marks were never fed to active-refresh.** `loadReads` returned underlying only, so every
+premium rung (profit-ladder / −60% backstop) and the premium ratchet skipped via null-honesty even for
+a live position. **Fix:** a best-effort `loadOptionMark(row)` (reuses the 0DTE unified-snapshot marks
+path; normalizes the ledger OCC to the `O:`-prefixed form the endpoint needs) now runs in parallel with
+the spot fetch and threads the contract mark into `reads.mark`.
+
+**Evidence / tests.** `tsc --noEmit` clean; `check-brand.mjs` clean; `swing/*.test.ts` + `horizon*.test.ts`
+= 343/343 pass. New tests: serving-lane persist→read round-trip + persistence-gate filtering + end-to-end
+board render; snapshot carries a populated feature_vector (dynamic + echoed pinned static) + null-safety +
+fresh-ivRank-wins; running_mfe/mae are signed % (LONG/SHORT/ratcheted-extremes/honest-null); an option mark
+from loadReads lands on the snapshot + feature vector. Calibration/graduation logic untouched — pure wiring.
+
+**Status:** DONE (PR open, deploy-after-close, no auto-merge).
 
 ## 2026-07-24 — [SEV-3 + SEV-4] 0DTE command-deck live-marks: missing REST fallback + no sync-mark age flag — FIXED
 

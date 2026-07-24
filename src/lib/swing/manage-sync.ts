@@ -37,6 +37,8 @@ import { SWING_ARCHETYPES } from "./taxonomy";
 import type { SwingDossier } from "./dossier";
 import { SWING_DOSSIER_VERSION } from "./dossier";
 import type { ArchetypeVerdict } from "./archetype";
+import { buildSwingFeatureVector, type SwingFeatureInputs } from "./feature-vector";
+import type { SwingPillarSignals } from "./swing-pillars";
 import {
   evaluateSwingManagement,
   GATING_RUNGS,
@@ -78,9 +80,14 @@ export interface ManageSyncReads {
   thesisBreakReason?: string;
   /** Calendar DTE of the held contract right now. */
   dte?: number | null;
-  /** Running underlying favorable/adverse excursion (ratcheted by the ledger). */
+  /** PRICE candidates for the ledger's underlying_mfe/underlying_mae high/low-water columns (ratcheted via
+   *  GREATEST/LEAST). These stay PRICES — the SIGNED excursion % the snapshot carries is derived from the
+   *  ratcheted extremes + entry inside planManageSync, not from these fields. */
   underlyingMfe?: number | null;
   underlyingMae?: number | null;
+  /** UW/VIX implied-vol rank (0–100) for the name, freshly resolved this tick (the seam the dossier's
+   *  resolveIvRank feeds). When absent the feature vector falls back to the iv_rank pinned at commit. */
+  ivRank?: number | null;
   // advisory evidence reads (each null when unknown → its rung is skipped, evidence-only anyway) —
   catalystShift?: boolean | null;
   regimeShift?: boolean | null;
@@ -156,6 +163,86 @@ function thesisStateOf(v: SwingManageVerdict): string {
 }
 
 /**
+ * Signed favorable/adverse excursion (% vs entry), direction-aware, from the ratcheted price extremes plus
+ * this tick's spot. The ledger keeps underlying_mfe/underlying_mae as PRICE high/low-water marks; this turns
+ * those into the excursion the snapshot's running_mfe/running_mae must carry (feature-store.ts's trajectory
+ * studies read them as PERCENTS — `studyTwoStagnantSessions` compares running_mfe across sessions, and
+ * `studyIvKillsGoodSetups` compares running_mae to a −3% threshold; both are meaningless against raw prices).
+ *
+ * Seeded with `entry` on both extremes so a fresh position starts at MFE ≥ 0 / MAE ≤ 0 (the documented sign
+ * convention), and includes `spot` so this tick counts even before the ledger ratchet runs. Honest-null when
+ * entry or spot is missing/invalid — never a fabricated 0.
+ */
+export function signedExcursionPct(args: {
+  direction: "long" | "short";
+  entryPx: number | null;
+  spot: number | null;
+  /** Prior ratcheted high-water PRICE (row.underlying_mfe) — optional; seeded from entry/spot when absent. */
+  priorMfePx?: number | null;
+  /** Prior ratcheted low-water PRICE (row.underlying_mae) — optional; seeded from entry/spot when absent. */
+  priorMaePx?: number | null;
+}): { mfePct: number | null; maePct: number | null } {
+  const { entryPx: entry, spot } = args;
+  if (entry == null || !Number.isFinite(entry) || entry <= 0 || spot == null || !Number.isFinite(spot)) {
+    return { mfePct: null, maePct: null };
+  }
+  const fin = (n: number | null | undefined): n is number => n != null && Number.isFinite(n);
+  const hi = Math.max(...[args.priorMfePx, spot, entry].filter(fin)); // favorable extreme (highest price)
+  const lo = Math.min(...[args.priorMaePx, spot, entry].filter(fin)); // adverse extreme (lowest price)
+  const pct = (px: number) => Math.round(((px - entry) / entry) * 100 * 1e4) / 1e4; // round — no unrounded floats
+  // SHORT profits when price FALLS, so its favorable/adverse extremes are the mirror of a LONG's.
+  return args.direction === "short"
+    ? { mfePct: -pct(lo), maePct: -pct(hi) }
+    : { mfePct: pct(hi), maePct: pct(lo) };
+}
+
+/**
+ * Rehydrate the STATIC thesis part of the SWING feature vector from the position's commit-pinned
+ * feature_vector (a flat SwingFeatureVector when the commit path pinned one). These fields — the 7 pillar
+ * sub-scores, evidence score, IV rank, present-pillar count, data-quality flag, and the classification
+ * metadata — don't live on the ledger columns, so a per-snapshot recompute would drop them (e.g. pil_flow,
+ * which `studyFlowDecay` reads off every snapshot). Echoing them keeps each snapshot's feature row
+ * self-describing. Everything is read null-safely: a missing/absent pinned vector yields an empty partial
+ * (all honest-null downstream), NEVER a fabricated value.
+ */
+function staticSwingFeatureInputsFromPinned(
+  pinned: Record<string, unknown> | null,
+): Partial<SwingFeatureInputs> {
+  if (!pinned || typeof pinned !== "object") return {};
+  const num = (k: string): number | null => {
+    const v = pinned[k];
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  };
+  const pillars: SwingPillarSignals = {
+    STRUCTURE: num("pil_structure"),
+    REL_STRENGTH: num("pil_rel_strength"),
+    FLOW: num("pil_flow"),
+    VOLATILITY: num("pil_volatility"),
+    CATALYST: num("pil_catalyst"),
+    REGIME: num("pil_regime"),
+    DATA_QUALITY: num("pil_data_quality"),
+  };
+  const anyPillar = Object.values(pillars).some((v) => v != null);
+  const secondary = Array.isArray(pinned.secondary)
+    ? (pinned.secondary.filter((s): s is SwingArchetype => typeof s === "string") as SwingArchetype[])
+    : null;
+  const scores =
+    pinned.archetype_scores && typeof pinned.archetype_scores === "object"
+      ? (pinned.archetype_scores as Record<string, number>)
+      : null;
+  return {
+    evidenceScore: num("evidence_score"),
+    presentPillars: num("present_pillars"),
+    ivRank: num("iv_rank"),
+    classificationMargin: num("classification_margin"),
+    pillars: anyPillar ? pillars : null,
+    dataQualityDegraded: typeof pinned.dq_degraded === "number" ? pinned.dq_degraded === 1 : null,
+    archetypeSecondary: secondary,
+    archetypeScores: scores,
+  };
+}
+
+/**
  * PURE: turn a held position + fresh reads into the writes this refresh will make. Runs the PR-7 manager and
  * maps its verdict onto (a) a NON-TERMINAL live-state latch — the marks/MFE/MAE always land; the status is the
  * row's current status, never advanced to CLOSED/ROLLED (PR-15 owns terminal transitions) — and (b) an
@@ -197,9 +284,47 @@ export function planManageSync(
     // holds it monotonic; we deliberately never pass CLOSED/ROLLED here — terminal transitions are PR-15.
     status: row.status,
     mark: numOrNull(reads.mark),
+    // These stay PRICE candidates for the ledger's high/low-water columns (GREATEST/LEAST); the snapshot's
+    // running_mfe/running_mae below is the SIGNED excursion %, derived separately.
     underlyingMfe: numOrNull(reads.underlyingMfe),
     underlyingMae: numOrNull(reads.underlyingMae),
   };
+
+  const thesisState = thesisStateOf(verdict);
+
+  // SIGNED excursion % (not raw spot): the running_mfe/running_mae the trajectory studies actually read.
+  // Derived from the ledger's ratcheted PRICE extremes + entry + this tick's spot (see signedExcursionPct).
+  const excursion = signedExcursionPct({
+    direction: row.direction,
+    entryPx: numOrNull(row.entry_underlying_px),
+    spot: numOrNull(reads.underlyingPrice),
+    priorMfePx: numOrNull(row.underlying_mfe),
+    priorMaePx: numOrNull(row.underlying_mae),
+  });
+
+  // LONGITUDINAL feature row, stamped on EVERY snapshot so feature-store.ts's trajectory studies have data
+  // (previously never built → feature_vector always null → studies permanently empty). Static thesis part =
+  // the commit-pinned vector + authoritative ledger columns (direction/archetype/sub-lane); dynamic part =
+  // this tick's reads + verdict + the signed excursion above. iv_rank prefers a fresh resolved read, else the
+  // value pinned at commit. NULL-SAFE throughout — a missing feed is honest-null, never fabricated.
+  const pinnedStatic = staticSwingFeatureInputsFromPinned(row.feature_vector);
+  const featureVector = buildSwingFeatureVector({
+    ...pinnedStatic,
+    ticker: row.ticker,
+    direction: row.direction,
+    archetype: coerceArchetype(row.archetype),
+    subLane: coerceSubLane(row.sub_lane),
+    ivRank: numOrNull(reads.ivRank) ?? pinnedStatic.ivRank ?? null,
+    dteRemaining: numOrNull(reads.dte),
+    runningMfe: excursion.mfePct,
+    runningMae: excursion.maePct,
+    underlyingPx: numOrNull(reads.underlyingPrice),
+    optionMark: numOrNull(reads.mark),
+    entryPremium: numOrNull(row.entry_premium),
+    thesisState,
+    snapshotKind: opts.snapshotKind,
+    sessionsElapsed: numOrNull(reads.sessionsHeld),
+  });
 
   const snapshot: SwingSnapshotInsert = {
     position_id: row.id,
@@ -207,9 +332,10 @@ export function planManageSync(
     dte_remaining: numOrNull(reads.dte),
     underlying_px: numOrNull(reads.underlyingPrice),
     option_mark: numOrNull(reads.mark),
-    running_mfe: numOrNull(reads.underlyingMfe),
-    running_mae: numOrNull(reads.underlyingMae),
-    thesis_state: thesisStateOf(verdict),
+    running_mfe: excursion.mfePct,
+    running_mae: excursion.maePct,
+    thesis_state: thesisState,
+    feature_vector: featureVector as unknown as Record<string, unknown>,
     event_json: {
       rung: verdict.rung,
       action: verdict.action,
