@@ -1093,6 +1093,12 @@ export function computeLedgerGrade(
   return {
     close_price: closePrice,
     move_pct: Math.round(signed * 100) / 100,
-    direction_hit: signed > 0,
+    // Three-way, not a boolean: a flat close (signed exactly 0 — close == flag) is a
+    // BREAKEVEN, not a directional miss. `signed > 0` alone booked every dead-flat
+    // session as a `direction_hit:false` loss, biasing the underlying-move honesty
+    // ledger down (asymmetric with the SPX 3-way win/loss/breakeven partition). null
+    // = "no directional edge either way", excluded from hit/miss just like the
+    // ungradeable branch above — the row is still stamped graded (real close present).
+    direction_hit: signed > 0 ? true : signed < 0 ? false : null,
   };
 }
