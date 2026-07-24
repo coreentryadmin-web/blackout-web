@@ -4,6 +4,9 @@ import {
   SWING_ARCHETYPES,
   ARCHETYPE_PRIORITY,
   ARCHETYPE_META,
+  ARCHETYPE_PERSISTENCE,
+  DEFAULT_PERSISTENCE_RULE,
+  persistenceRuleFor,
   SWING_SUB_LANES,
   SWING_SUB_LANES_ORDER,
   subLaneForDte,
@@ -21,6 +24,38 @@ test("archetypes: 8 members, each has meta, priority is a permutation", () => {
   // priority is a permutation of the archetype list (no missing / duplicate)
   assert.deepEqual([...ARCHETYPE_PRIORITY].sort(), [...SWING_ARCHETYPES].sort());
   assert.equal(new Set(ARCHETYPE_PRIORITY).size, SWING_ARCHETYPES.length);
+});
+
+test("critique #6: SECTOR_ROTATION is flagged provisional-until-industry-RS; no other archetype is", () => {
+  assert.equal(ARCHETYPE_META.SECTOR_ROTATION.provisionalUntilIndustryRs, true);
+  for (const a of SWING_ARCHETYPES) {
+    if (a === "SECTOR_ROTATION") continue;
+    assert.notEqual(
+      ARCHETYPE_META[a].provisionalUntilIndustryRs,
+      true,
+      `${a} must NOT carry the industry-RS provisional marker`,
+    );
+  }
+});
+
+test("critique #3: archetype-aware persistence policy — cross-session=2, event/immediate=1+corroboration", () => {
+  // Every archetype has a rule; the default is the conservative cross-session gate.
+  assert.equal(DEFAULT_PERSISTENCE_RULE.minDistinctSessions, 2);
+  assert.equal(DEFAULT_PERSISTENCE_RULE.requiresCorroboration, false);
+  assert.deepEqual(persistenceRuleFor(null), DEFAULT_PERSISTENCE_RULE);
+
+  const crossSession = ["FLOW_ACCUMULATION", "PULLBACK_CONTINUATION", "SECTOR_ROTATION", "BREAKOUT", "MEAN_REVERSION"] as const;
+  for (const a of crossSession) {
+    assert.equal(ARCHETYPE_PERSISTENCE[a].minDistinctSessions, 2, `${a} keeps the 2-session gate`);
+    assert.equal(ARCHETYPE_PERSISTENCE[a].requiresCorroboration, false, `${a} needs no corroboration`);
+  }
+  const eventImmediate = ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT", "FAILED_BREAKDOWN"] as const;
+  for (const a of eventImmediate) {
+    assert.equal(ARCHETYPE_PERSISTENCE[a].minDistinctSessions, 1, `${a} may fire the session it triggers`);
+    assert.equal(ARCHETYPE_PERSISTENCE[a].requiresCorroboration, true, `${a} still needs a 2nd independent signal`);
+  }
+  // Every archetype is covered (no missing rule).
+  for (const a of SWING_ARCHETYPES) assert.ok(ARCHETYPE_PERSISTENCE[a], `persistence rule for ${a}`);
 });
 
 test("subLaneForDte: boundaries — outside [2,30] is null, each lane owns its inclusive range", () => {

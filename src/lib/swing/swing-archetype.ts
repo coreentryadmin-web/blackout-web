@@ -44,7 +44,14 @@ export const SWING_PILLAR_BASE_WEIGHTS: Record<SwingPillar, number> = {
   DATA_QUALITY: 5,
 };
 
-/** Provisional (ungraduated) — a weight vector only sizes/gates once its archetype bucket graduates. */
+/** Provisional (ungraduated) — a weight vector only sizes/gates once its archetype bucket graduates.
+ *
+ *  CRITIQUE #6 (blocked-on-data): SECTOR_ROTATION is additionally flagged
+ *  `ARCHETYPE_META.SECTOR_ROTATION.provisionalUntilIndustryRs === true`. A rotation thesis is only real
+ *  if the name LEADS its INDUSTRY GROUP, and no industry-group relative-strength feed exists yet — so the
+ *  REL_STRENGTH-heavy rotation vector below can't be verified. When the archetype-bucket graduation write
+ *  lands, it MUST refuse to graduate any archetype carrying `provisionalUntilIndustryRs` until that feed
+ *  ships, even if the graded bucket otherwise clears the ladder. Marker/comment only — no behavior here. */
 export const SWING_PILLAR_WEIGHTS_GRADUATED = false;
 
 /** Per-archetype weight vectors — each sums to 100. DATA_QUALITY is held at 5 everywhere (an honesty

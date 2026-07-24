@@ -64,6 +64,13 @@ export interface ArchetypeMeta {
   scoreFloor: number;
   /** v1: always false — an archetype's floor graduates on its OWN graded bucket, never on vibes. */
   scoreFloorGraduated: boolean;
+  /** Critique #6 marker: this archetype's score-floor/weight graduation is BLOCKED-ON-DATA until an
+   *  industry-group relative-strength feed exists — a "sector rotation" thesis is only real if the
+   *  NAME leads its INDUSTRY GROUP, and we have no industry-RS feed yet. Until then SECTOR_ROTATION
+   *  weights/floors stay provisional-and-flagged (never graduate) even if their graded bucket clears
+   *  the ladder, because the classifier can't yet prove the rotation leg. Marker only — no behavior
+   *  change here; it's read by the graduation write so a rotation bucket can't silently size risk. */
+  provisionalUntilIndustryRs?: boolean;
 }
 
 export const ARCHETYPE_META: Record<SwingArchetype, ArchetypeMeta> = {
@@ -112,9 +119,12 @@ export const ARCHETYPE_META: Record<SwingArchetype, ArchetypeMeta> = {
   SECTOR_ROTATION: {
     id: "SECTOR_ROTATION",
     label: "Sector rotation leadership",
-    note: "Relative-strength leadership as capital rotates into the group; sector + breadth lead.",
+    note: "Relative-strength leadership as capital rotates into the group; sector + breadth lead. " +
+      "PROVISIONAL-UNTIL-INDUSTRY-RS (critique #6): no industry-group RS feed exists yet, so the " +
+      "rotation leg is unverifiable — floor/weights stay flagged and never graduate.",
     scoreFloor: 63,
     scoreFloorGraduated: false,
+    provisionalUntilIndustryRs: true,
   },
   EVENT_DRIVEN: {
     id: "EVENT_DRIVEN",
@@ -124,6 +134,58 @@ export const ARCHETYPE_META: Record<SwingArchetype, ArchetypeMeta> = {
     scoreFloorGraduated: false,
   },
 };
+
+// ─── Archetype-aware persistence policy (operator critique #3) ─────────────────
+// WHY THIS EXISTS: the swing WATCH-promotion persistence gate used to be uniform — EVERY archetype
+// had to persist across ≥2 DISTINCT session days before it could be promoted. That is correct for a
+// thesis that BUILDS across days (multi-day flow accumulation, a pullback maturing back to support,
+// a sector's RS grind, a base tightening toward a breakout), but it is TOO RESTRICTIVE for
+// EVENT-DRIVEN / IMMEDIATE setups. A post-earnings drift, an FDA/guidance/gap catalyst, or a
+// freshly-triggered failed-breakdown reclaim is actionable the SESSION IT FIRES — forcing a 2nd
+// session throws away the whole edge (the move is already underway by tomorrow's scan).
+//
+// THE RULE: cross-session archetypes keep `minDistinctSessions: 2`. Event/immediate archetypes drop
+// to `minDistinctSessions: 1` BUT set `requiresCorroboration: true`, which is NOT a licence to
+// promote a single raw print. It swaps "wait for a 2nd SESSION" for "require a 2nd independent
+// SIGNAL within the session" — e.g. a flow print AND a structure/catalyst signal, i.e. ≥2 distinct
+// signal kinds. See `meetsPersistence` in accumulation-store.ts for the ANTI-LONE-PRINT invariant:
+// a lone print (one observation, one signal kind, one session) NEVER promotes for ANY archetype.
+export interface ArchetypePersistenceRule {
+  /** Distinct session days required before promotion is even considered. 2 = classic cross-session
+   *  build; 1 = an event/immediate setup that can be actioned the session it fires. */
+  minDistinctSessions: number;
+  /** When true (event/immediate archetypes on a 1-session floor), promotion additionally requires a
+   *  2nd INDEPENDENT signal in the same session — corroboration REPLACES the 2nd session, it never
+   *  lowers the bar to a single lone print. Ignored for cross-session archetypes (they clear on the
+   *  distinct-session count alone). */
+  requiresCorroboration: boolean;
+}
+
+/** Default (unclassified name / no archetype): the conservative classic gate — a real multi-session
+ *  build, never a first-sighting. Identical to the pre-critique-#3 uniform behavior. */
+export const DEFAULT_PERSISTENCE_RULE: ArchetypePersistenceRule = {
+  minDistinctSessions: 2,
+  requiresCorroboration: false,
+};
+
+export const ARCHETYPE_PERSISTENCE: Record<SwingArchetype, ArchetypePersistenceRule> = {
+  // Cross-session archetypes — theses that BUILD over days. Keep the 2-distinct-session gate.
+  BREAKOUT: { minDistinctSessions: 2, requiresCorroboration: false },
+  PULLBACK_CONTINUATION: { minDistinctSessions: 2, requiresCorroboration: false },
+  MEAN_REVERSION: { minDistinctSessions: 2, requiresCorroboration: false },
+  FLOW_ACCUMULATION: { minDistinctSessions: 2, requiresCorroboration: false },
+  SECTOR_ROTATION: { minDistinctSessions: 2, requiresCorroboration: false },
+  // Event / immediate archetypes — actionable the session they fire. 1 session BUT corroboration
+  // required (a 2nd independent signal, never a lone print).
+  EVENT_DRIVEN: { minDistinctSessions: 1, requiresCorroboration: true },
+  POST_EARNINGS_DRIFT: { minDistinctSessions: 1, requiresCorroboration: true },
+  FAILED_BREAKDOWN: { minDistinctSessions: 1, requiresCorroboration: true },
+};
+
+/** The persistence rule for an archetype, or the conservative default when the name is unclassified. */
+export function persistenceRuleFor(archetype: SwingArchetype | null): ArchetypePersistenceRule {
+  return archetype == null ? DEFAULT_PERSISTENCE_RULE : ARCHETYPE_PERSISTENCE[archetype];
+}
 
 // ─── Sub-lane (FM#2 — 2–30 DTE is three contract classes, not one) ─────────────
 // Tactical (2–7): high gamma / fast theta / needs immediate timing → nearest-ITM, harshest theta penalty.
