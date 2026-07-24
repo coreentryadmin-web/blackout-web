@@ -15714,6 +15714,10 @@ body::before {
 .nh-deck-dp.short{color:var(--dk-red);border:1px solid rgba(255,77,109,.4)}
 .nh-deck-rr{text-align:right}
 .nh-deck-score{font-weight:700;color:var(--dk-green);text-shadow:var(--dk-glow)}
+/* Card premium (replaces score on the row) — same phosphor treatment as the score it supersedes,
+   with a tiny dim "PREM" caption so the number reads unambiguously as the option premium. */
+.nh-deck-prem{font-weight:700;font-size:15px;color:var(--dk-green);text-shadow:var(--dk-glow);font-variant-numeric:tabular-nums;line-height:1.1}
+.nh-deck-premlab{display:block;font-size:8px;letter-spacing:.16em;color:var(--dk-green-dim);text-transform:uppercase}
 .nh-deck-pnl{font-size:11px}.nh-deck-pos{color:var(--dk-green)}.nh-deck-neg{color:var(--dk-red)}
 .nh-deck-st{font-size:8.5px;letter-spacing:.1em;padding:1px 5px;border-radius:2px;margin-top:3px;display:inline-block;border:1px solid rgba(111,157,137,.3);color:var(--dk-ink-dim)}
 .nh-deck-st.OPEN{color:var(--dk-green);border-color:rgba(53,255,158,.4)}
@@ -15736,11 +15740,24 @@ body::before {
 .nh-deck-gk .gl{font-size:8.5px;color:var(--dk-green-dim);letter-spacing:.12em}
 .nh-deck-gk .gv{font-size:13px;font-weight:700;color:var(--dk-green);text-shadow:var(--dk-glow);font-variant-numeric:tabular-nums;transition:color .2s}
 .nh-deck-gk .gv.dn{color:var(--dk-red)}
-.nh-deck-tabs{display:flex;border-bottom:1px solid var(--dk-line)}
-.nh-deck-tabs button{background:none;border:0;border-bottom:2px solid transparent;color:var(--dk-ink-dim);
-  font-family:inherit;font-size:11px;letter-spacing:.1em;padding:9px 15px;cursor:pointer;text-transform:uppercase}
-.nh-deck-tabs button .n{color:var(--dk-green-dim);margin-right:5px}
-.nh-deck-tabs button.on{color:var(--dk-green);border-bottom-color:var(--dk-green);text-shadow:var(--dk-glow)}
+/* Tabs — made obviously switchable: bigger hit area, a clear ACTIVE state (brightened text +
+   glowing underline + faint phosphor wash) against a distinctly DIMMER inactive state, plus a
+   visible keyboard focus ring. Same green/dim tokens as the rest of the deck — no new palette. */
+.nh-deck-tabs{display:flex;gap:4px;padding:6px 8px 0;border-bottom:1px solid var(--dk-line);background:#061009}
+.nh-deck-tabs button{position:relative;background:rgba(53,255,158,.03);border:1px solid transparent;
+  border-bottom:2px solid transparent;border-radius:4px 4px 0 0;color:var(--dk-ink-dim);
+  font-family:inherit;font-size:12px;font-weight:700;letter-spacing:.12em;padding:11px 18px;cursor:pointer;
+  text-transform:uppercase;transition:color .15s,background .15s,border-color .15s}
+.nh-deck-tabs button:hover{color:var(--dk-ink);background:rgba(53,255,158,.07)}
+.nh-deck-tabs button .n{color:var(--dk-green-dim);margin-right:6px;font-weight:700}
+.nh-deck-tabs button:hover .n{color:var(--dk-green)}
+.nh-deck-tabs button:focus-visible{outline:none;border-color:var(--dk-green);
+  box-shadow:0 0 0 1px var(--dk-green),0 0 8px rgba(53,255,158,.5)}
+.nh-deck-tabs button.on{color:var(--dk-green-hi);background:rgba(53,255,158,.12);
+  border-color:var(--dk-line);border-bottom-color:var(--dk-green);text-shadow:var(--dk-glow)}
+.nh-deck-tabs button.on::after{content:"";position:absolute;left:0;right:0;bottom:-2px;height:2px;
+  background:var(--dk-green);box-shadow:var(--dk-glow)}
+.nh-deck-tabs button.on .n{color:var(--dk-green-hi);text-shadow:var(--dk-glow)}
 .nh-deck-body{flex:1;overflow-y:auto;padding:15px 18px;min-height:0}
 .nh-deck-lab{color:var(--dk-green-dim);font-size:10px;letter-spacing:.2em;text-transform:uppercase;margin:2px 0 10px}
 .nh-deck-fac{display:grid;grid-template-columns:1fr auto;gap:10px;padding:5px 0;border-bottom:1px dashed rgba(53,255,158,.08)}

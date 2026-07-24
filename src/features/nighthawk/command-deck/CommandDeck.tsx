@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import { PlayTerminal } from "./PlayTerminal";
+import { sortPlaysForDeck } from "./deck-sort";
 import type { TerminalPlay } from "./types";
 
 /**
@@ -25,18 +26,23 @@ export function CommandDeck({
    *  painted as a calm flat tape (9-3). */
   degraded?: boolean;
 }) {
-  const [selId, setSelId] = useState<string | null>(plays[0]?.id ?? null);
+  // Display-only re-order: OPEN(top) → WATCH(middle) → CLOSED(bottom), stable within each band so the
+  // incoming score rank is preserved per group. Never mutates `plays`.
+  const sorted = useMemo(() => sortPlaysForDeck(plays), [plays]);
 
-  // Keep a valid selection as the polled list changes: default to the first play; drop a stale selection.
+  const [selId, setSelId] = useState<string | null>(sorted[0]?.id ?? null);
+
+  // Keep a valid selection as the polled list changes: default to the top (sorted) play; drop a stale
+  // selection. Membership is checked against the same play objects, so ordering doesn't affect validity.
   useEffect(() => {
-    if (plays.length === 0) {
+    if (sorted.length === 0) {
       if (selId !== null) setSelId(null);
-    } else if (!plays.some((p) => p.id === selId)) {
-      setSelId(plays[0]!.id);
+    } else if (!sorted.some((p) => p.id === selId)) {
+      setSelId(sorted[0]!.id);
     }
-  }, [plays, selId]);
+  }, [sorted, selId]);
 
-  const selected = plays.find((p) => p.id === selId) ?? null;
+  const selected = sorted.find((p) => p.id === selId) ?? null;
 
   return (
     <div className="nh-deck">
@@ -49,7 +55,7 @@ export function CommandDeck({
           {plays.length === 0 && (
             <div className="nh-deck-empty">{emptyHint ?? "No plays right now."}</div>
           )}
-          {plays.map((p, i) => (
+          {sorted.map((p, i) => (
             <button
               key={p.id}
               type="button"
@@ -66,8 +72,15 @@ export function CommandDeck({
                 <span className={clsx("nh-deck-st", p.status)}>{p.status}</span>
               </span>
               <span className="nh-deck-rr">
-                <span className="nh-deck-score" style={{ display: "block" }}>{p.score}</span>
-                <span className={clsx("nh-deck-pnl", (p.pnlPct ?? 0) > 0 && "nh-deck-pos", (p.pnlPct ?? 0) < 0 && "nh-deck-neg")}>
+                {/* Premium, not score — entry premium once entered/closed, else the live mark (would-be
+                    entry) for a WATCH setup. Members trade the premium, not an internal score. */}
+                <span className="nh-deck-prem" style={{ display: "block" }}>
+                  {p.entry != null || p.mark != null
+                    ? `$${(p.entry != null ? p.entry : p.mark!).toFixed(2)}`
+                    : "—"}
+                </span>
+                <span className="nh-deck-premlab">PREM</span>
+                <span className={clsx("nh-deck-pnl", (p.pnlPct ?? 0) > 0 && "nh-deck-pos", (p.pnlPct ?? 0) < 0 && "nh-deck-neg")} style={{ display: "block" }}>
                   {p.pnlPct != null && p.pnlPct !== 0 ? `${p.pnlPct > 0 ? "+" : ""}${p.pnlPct}%` : "—"}
                 </span>
               </span>
