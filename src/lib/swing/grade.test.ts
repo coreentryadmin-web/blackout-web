@@ -26,6 +26,26 @@ test("graderTimeframeForSubLane pins TACTICAL→minute, STANDARD→hour, EXTENDE
   assert.equal(graderTimeframeForSubLane(null), "day");
 });
 
+// ── graderTimeframeForSubLane by grade dimension (design-critique #8) ────────────
+test("graderTimeframeForSubLane: THESIS keeps the pinned base; PATH/FINANCIAL refine a daily lane to intraday", () => {
+  // THESIS (and EXECUTION) always keep the unchanged pinned base — the daily EXTENDED thesis must not move.
+  assert.equal(graderTimeframeForSubLane("EXTENDED", "THESIS"), "day");
+  assert.equal(graderTimeframeForSubLane("EXTENDED", "EXECUTION"), "day");
+  // FINANCIAL + PATH (+ MANAGEMENT) refine the coarse EXTENDED (day) lane to HOUR for P&L / MFE / MAE.
+  assert.equal(graderTimeframeForSubLane("EXTENDED", "PATH"), "hour");
+  assert.equal(graderTimeframeForSubLane("EXTENDED", "FINANCIAL"), "hour");
+  assert.equal(graderTimeframeForSubLane("EXTENDED", "MANAGEMENT"), "hour");
+  // Lanes already pinned intraday are already fine enough — the refinement is a no-op there.
+  assert.equal(graderTimeframeForSubLane("TACTICAL", "PATH"), "minute");
+  assert.equal(graderTimeframeForSubLane("STANDARD", "PATH"), "hour");
+  assert.equal(graderTimeframeForSubLane("STANDARD", "FINANCIAL"), "hour");
+  // null sub-lane refines its coarse day fallback to hour for PATH/FINANCIAL, stays day for THESIS.
+  assert.equal(graderTimeframeForSubLane(null, "PATH"), "hour");
+  assert.equal(graderTimeframeForSubLane(null, "THESIS"), "day");
+  // Omitting the dimension is backward-compatible (unchanged pinned base).
+  assert.equal(graderTimeframeForSubLane("EXTENDED"), "day");
+});
+
 // ── EXECUTION truth ─────────────────────────────────────────────────────────────
 test("execution: LONG paid UP is adverse (quality < 1); ungradeable until a real fill", () => {
   const worse = gradeSwingPosition({ subLane: "STANDARD", direction: "LONG", plannedEntryPx: 100, actualEntryPx: 101 });
@@ -69,6 +89,33 @@ test("path: SHORT flips favorable direction; truncated/empty bars → ungradeabl
   assert.equal(empty.path.reason, "no_forward_bars");
 });
 
+// ── PATH intraday refinement + safe daily fallback (design-critique #8) ──────────
+test("path: EXTENDED refines to intraday bars WHERE PRESENT, else degrades to daily", () => {
+  // Daily-only: EXTENDED PATH degrades to the coarse daily series (still graded).
+  const daily = [bar(1, 100, 100, 100, 100), bar(2, 100, 104, 98, 102)];
+  const coarse = gradeSwingPosition({ subLane: "EXTENDED", direction: "LONG", actualEntryPx: 100, underlyingBars: daily });
+  assert.equal(coarse.path.gradeable, true);
+  assert.equal(coarse.path.graderTimeframe, "day"); // no intraday supplied → daily fallback
+  assert.equal(coarse.path.mfePct, 4); // daily high 104
+  assert.equal(coarse.path.maePct, -2); // daily low 98
+
+  // Supply finer intraday underlying → PATH walks IT and reports the refined timeframe. The intraday
+  // spike to 108 (a strict improvement) is caught where the daily bar smeared it into a 104 high.
+  const intraday = [bar(1, 100, 100, 100, 100), bar(2, 100, 102, 99, 101), bar(3, 101, 108, 100, 107)];
+  const fine = gradeSwingPosition({
+    subLane: "EXTENDED",
+    direction: "LONG",
+    actualEntryPx: 100,
+    underlyingBars: daily,
+    intradayUnderlyingBars: intraday,
+  });
+  assert.equal(fine.path.graderTimeframe, "hour"); // refined
+  assert.equal(fine.path.bars, 3); // walked the intraday series
+  assert.equal(fine.path.mfePct, 8); // intraday high 108 → +8%, richer than the daily 104
+  // THESIS + the top-level canonical timeframe stay pinned to daily — the refinement never touches them.
+  assert.equal(fine.graderTimeframe, "day");
+});
+
 // ── THESIS truth (structural, underlying terms; stop-before-target intrabar) ─────
 test("thesis: LONG confirms on target, invalidates on stop, OPEN when neither", () => {
   const up = [bar(1, 100, 101, 99, 100), bar(2, 100, 106, 100, 105)];
@@ -101,6 +148,28 @@ test("thesis: SHORT mirrors; no thesis levels → ungradeable", () => {
   assert.equal(g.thesis.reason, "no_thesis_levels");
 });
 
+// ── SEV-4: a bar with a non-finite timestamp is dropped before grading ───────────
+test("thesis/path: a poisoned bar (non-finite t) is dropped; the good bars still grade correctly", () => {
+  const good = [bar(1, 100, 101, 99, 100), bar(2, 100, 106, 100, 105)]; // reaches target 105 → CONFIRMED
+  // Two poisoned bars (t=NaN and t=Infinity) with wild lows/highs: if NOT dropped, the low 1 would
+  // breach the stop 95 (→ INVALIDATED) and the high 200 would corrupt MFE, and NaN comparators would
+  // make the time sort undefined. Dropping them leaves the honest CONFIRMED / +6% MFE.
+  const poisonedNaN = { t: NaN, o: 100, h: 200, l: 1, c: 100 };
+  const poisonedInf = { t: Infinity, o: 100, h: 300, l: 2, c: 100 };
+  const g = gradeSwingPosition({
+    subLane: "STANDARD",
+    direction: "LONG",
+    actualEntryPx: 100,
+    targetUnderlyingPx: 105,
+    thesisInvalidationPx: 95,
+    underlyingBars: [poisonedNaN, ...good, poisonedInf],
+  });
+  assert.equal(g.path.bars, 2); // both poisoned bars dropped, only the 2 good bars walked
+  assert.equal(g.path.mfePct, 6); // 106 high, NOT the poisoned 200/300
+  assert.equal(g.thesis.gradeable, true);
+  assert.equal(g.thesis.outcome, "CONFIRMED"); // poisoned low 1 never breaches the stop — it was dropped
+});
+
 // ── FINANCIAL truth (gradeBangerScaleOut parity + survivorship guard) ────────────
 test("gradeSwingScaleOut is a verbatim parity wrapper over gradeBangerScaleOut", () => {
   const entry = 1.0;
@@ -121,6 +190,29 @@ test("financial: truncated forward series → ungradeable, NEVER imputed to a nu
   assert.equal(g.financial.holdMult, null);
   // Management inherits the guard — it can only grade what financial could.
   assert.equal(g.management.gradeable, false);
+});
+
+test("financial/management: EXTENDED grades on intraday option bars WHERE PRESENT, else the daily series (#8)", () => {
+  const expiry = "2026-08-21";
+  const t0 = Date.parse("2026-08-21T13:30:00Z");
+  // Intraday (hourly) option bars that peak at a 3× high before fading, running to expiry.
+  const intraday = [optBar(t0, 1.4, 0.9, 1.3), optBar(t0 + 3600e3, 3.0, 1.2, 2.6), optBar(t0 + 7200e3, 2.4, 1.0, 1.2)];
+  const fine = gradeSwingPosition({
+    subLane: "EXTENDED",
+    direction: "LONG",
+    entryPremium: 1.0,
+    optionBars: [], // no daily option series at all
+    intradayOptionBars: intraday,
+    expiryYmd: expiry,
+  });
+  // With no daily bars but intraday present, FINANCIAL/MANAGEMENT still grade — off the intraday series.
+  assert.equal(fine.financial.ungradeable, false);
+  assert.equal(fine.management.gradeable, true);
+  assert.equal(fine.management.optionMfeMult, 3); // peak intraday high 3.0 / entry 1.0
+
+  // No intraday supplied → FINANCIAL falls back to the daily `optionBars` (here empty → ungradeable).
+  const coarse = gradeSwingPosition({ subLane: "EXTENDED", direction: "LONG", entryPremium: 1.0, optionBars: [], expiryYmd: expiry });
+  assert.equal(coarse.financial.ungradeable, true); // fell back to the empty daily series
 });
 
 test("financial: no entry premium → ungradeable with reason", () => {

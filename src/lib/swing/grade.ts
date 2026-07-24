@@ -38,15 +38,48 @@ const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
 const finite = (n: number | null | undefined): n is number => n != null && Number.isFinite(n);
 
 /**
- * The grader timeframe a sub-lane's path/outcome truth is walked on — pinned per lane (SEV-9): the
- * short TACTICAL lane resolves on minutes, STANDARD on hours, EXTENDED on days. Reads the ONE canonical
- * taxonomy (`SWING_SUB_LANES[x].grader`) so this never drifts from the sub-lane spec. A null sub-lane
- * (no DTE / outside [2,30]) falls back to the coarsest ("day") — the conservative default that never
- * over-claims minute-level resolution we don't have.
+ * Which of the five truth families a grader-timeframe query is for. The timeframe a family SHOULD be
+ * walked on is not one-size-per-lane: a multi-day directional THESIS is a structural call best judged on
+ * the coarse pinned lane bars (a 22–30d EXTENDED thesis confirms/breaks on DAILY structure, not on
+ * intrabar noise), while the FINANCIAL P&L and the PATH excursion (MFE/MAE/stop-touch) are point-in-time
+ * measurements that only get MORE honest with finer bars. EXECUTION reads a single fill (no bar walk) and
+ * MANAGEMENT reuses FINANCIAL's exact option series, so they inherit FINANCIAL's preference.
  */
-export function graderTimeframeForSubLane(subLane: SwingSubLane | null): GraderTimeframe {
-  if (subLane == null) return "day";
-  return SWING_SUB_LANES[subLane].grader;
+export type SwingGradeDimension = "EXECUTION" | "PATH" | "THESIS" | "MANAGEMENT" | "FINANCIAL";
+
+/** Sub-daily = the finer resolution FINANCIAL/PATH want for real P&L / MFE / MAE / stop-touch. */
+const isIntraday = (tf: GraderTimeframe): boolean => tf === "minute" || tf === "hour";
+
+/**
+ * The grader timeframe a sub-lane's truth family is walked on. The base is pinned per lane (SEV-9): the
+ * short TACTICAL lane resolves on minutes, STANDARD on hours, EXTENDED on days — read from the ONE
+ * canonical taxonomy (`SWING_SUB_LANES[x].grader`) so it never drifts from the sub-lane spec. A null
+ * sub-lane (no DTE / outside [2,30]) falls back to the coarsest ("day"), the conservative default that
+ * never over-claims minute-level resolution we don't have.
+ *
+ * REFINEMENT (design-critique #8): the base timeframe is right for THESIS (the multi-day directional call
+ * — keep it byte-for-byte), but too coarse for the FINANCIAL P&L and PATH excursion, which want intraday
+ * resolution when it exists. So for PATH/FINANCIAL/MANAGEMENT a DAILY-pinned lane (the EXTENDED sub-lane)
+ * refines to HOUR — the finer bar that actually captures MFE/MAE/stop-touch a daily bar smears over.
+ * Lanes already pinned intraday (TACTICAL=minute, STANDARD=hour) are already fine enough and stay put.
+ * Callers omit `gradeDimension` to get the unchanged pinned base (backward-compatible). This returns the
+ * DESIRED timeframe; whether the finer series is actually AVAILABLE is a runtime decision the grader
+ * makes, and when it isn't the grader safely degrades back to the daily series (finer-when-present,
+ * never a failure).
+ */
+export function graderTimeframeForSubLane(
+  subLane: SwingSubLane | null,
+  gradeDimension?: SwingGradeDimension,
+): GraderTimeframe {
+  const pinned: GraderTimeframe = subLane == null ? "day" : SWING_SUB_LANES[subLane].grader;
+  // THESIS (and the omitted-dimension default + the bar-less EXECUTION fill check) keep the canonical
+  // pinned lane timeframe — unchanged, so the thesis conclusion never moves.
+  if (gradeDimension == null || gradeDimension === "THESIS" || gradeDimension === "EXECUTION") {
+    return pinned;
+  }
+  // PATH / FINANCIAL / MANAGEMENT prefer intraday: refine a coarse DAILY lane to HOURLY for the P&L /
+  // excursion measurement; a lane already on intraday bars keeps its finer timeframe.
+  return pinned === "day" ? "hour" : pinned;
 }
 
 /** A forward UNDERLYING bar (Polygon AggBar shape; `t` optional there, dropped if non-finite). */
@@ -139,11 +172,22 @@ export interface SwingGradeInput {
   targetUnderlyingPx?: number | null;
 
   // ── path + thesis: forward UNDERLYING bars on the grader timeframe ──
+  // THESIS always walks these (the canonical pinned/daily series — its structural call). PATH walks
+  // these too UNLESS `intradayUnderlyingBars` is supplied (see below).
   underlyingBars?: UnderlyingBar[];
+  /** OPTIONAL finer-than-daily forward UNDERLYING bars (design-critique #8). PATH uses these WHERE
+   *  PRESENT so MFE/MAE/stop-touch resolve at intraday granularity; when absent PATH degrades to the
+   *  daily `underlyingBars` (still graded, just coarser). THESIS NEVER consumes these — the multi-day
+   *  directional call stays on the canonical daily series, byte-for-byte unchanged. */
+  intradayUnderlyingBars?: UnderlyingBar[];
 
   // ── management + financial: forward OPTION bars ──
   entryPremium?: number | null;
   optionBars?: ScaleOutBar[];
+  /** OPTIONAL finer-than-daily forward OPTION bars. FINANCIAL/MANAGEMENT grade on these WHERE PRESENT
+   *  (finer realized-P&L / capture); absent → they fall back to the daily `optionBars`. Same safe
+   *  degrade rule as `intradayUnderlyingBars`. */
+  intradayOptionBars?: ScaleOutBar[];
   /** Contract expiry (YYYY-MM-DD) — the financial `hold_mult` baseline is hold-to-expiry. */
   expiryYmd?: string | null;
 }
@@ -162,7 +206,23 @@ export function gradeSwingScaleOut(
 }
 
 function usableUnderlying(bars: UnderlyingBar[] | undefined): UnderlyingBar[] {
-  return (bars ?? []).filter((b) => finite(b?.h) && finite(b?.l) && finite(b?.c) && b.c > 0);
+  return (bars ?? []).filter(
+    (b) =>
+      finite(b?.h) &&
+      finite(b?.l) &&
+      finite(b?.c) &&
+      b.c > 0 &&
+      // SEV-4: drop any bar carrying a PRESENT-but-non-finite timestamp (NaN/Infinity). A poisoned `t`
+      // corrupts the time-ordered thesis walk (NaN comparators make the sort undefined) and any
+      // path/timestamp math downstream, so a single malformed bar could flip an outcome. An ABSENT
+      // `t` (undefined) is still tolerated — the thesis walk falls back to `t ?? 0`, unchanged.
+      (b.t == null || Number.isFinite(b.t)),
+  );
+}
+
+/** Usable forward OPTION bars for the intraday-availability decision (a positive high to measure). */
+function usableOption(bars: ScaleOutBar[] | undefined): ScaleOutBar[] {
+  return (bars ?? []).filter((b) => finite(b?.h) && b.h > 0);
 }
 
 /** Execution: how close did the real fill land to the plan? Ungradeable until a real fill exists. */
@@ -187,9 +247,13 @@ function gradeExecution(input: SwingGradeInput): SwingExecutionTruth {
   };
 }
 
-/** Path: MFE/MAE of the underlying vs the entry, in the position's direction, over the grader bars. */
-function gradePath(input: SwingGradeInput, graderTimeframe: GraderTimeframe): SwingPathTruth {
-  const bars = usableUnderlying(input.underlyingBars);
+/**
+ * Path: MFE/MAE of the underlying vs the entry, in the position's direction, over the chosen bars.
+ * `bars` is the already-usable series the caller resolved (finer intraday WHERE PRESENT, else the daily
+ * fallback) and `graderTimeframe` is the timeframe those bars actually represent — the two travel
+ * together so the reported timeframe never over-claims resolution the bars don't have.
+ */
+function gradePath(input: SwingGradeInput, bars: UnderlyingBar[], graderTimeframe: GraderTimeframe): SwingPathTruth {
   const entryPx = finite(input.actualEntryPx)
     ? input.actualEntryPx!
     : finite(input.plannedEntryPx)
@@ -246,8 +310,16 @@ function gradeThesis(input: SwingGradeInput): SwingThesisTruth {
   return { gradeable: true, archetype, outcome: "OPEN" };
 }
 
-/** Management: did the managed scale-out capture the move the OPTION actually offered, vs a naive hold? */
-function gradeManagement(input: SwingGradeInput, financial: SwingFinancialTruth): SwingManagementTruth {
+/**
+ * Management: did the managed scale-out capture the move the OPTION actually offered, vs a naive hold?
+ * `optionBars` is the SAME series the financial truth graded (finer intraday WHERE PRESENT, else the
+ * daily fallback), so capture/edge are measured on identical bars to the realized P&L.
+ */
+function gradeManagement(
+  input: SwingGradeInput,
+  financial: SwingFinancialTruth,
+  optionBars: ScaleOutBar[],
+): SwingManagementTruth {
   const base = {
     scaleOutMult: financial.scaleOutRealizedMult,
     holdMult: financial.holdMult,
@@ -258,7 +330,7 @@ function gradeManagement(input: SwingGradeInput, financial: SwingFinancialTruth)
   // Management can only grade what the financial truth could (it's the same forward series + entry).
   if (financial.ungradeable) return { gradeable: false, reason: financial.reason ?? "financial_ungradeable", ...base };
   const entry = finite(input.entryPremium) ? input.entryPremium! : null;
-  const bars = (input.optionBars ?? []).filter((b) => finite(b?.h) && b.h > 0);
+  const bars = usableOption(optionBars);
   if (entry == null || !(entry > 0) || bars.length === 0) {
     return { gradeable: false, reason: "no_option_bars", ...base };
   }
@@ -287,9 +359,28 @@ function gradeManagement(input: SwingGradeInput, financial: SwingFinancialTruth)
  * thin option series never voids the underlying-based truths (and vice-versa).
  */
 export function gradeSwingPosition(input: SwingGradeInput): SwingGrade {
+  // Canonical (pinned) lane timeframe — the THESIS/top-level basis; unchanged by the #8 refinement.
   const graderTimeframe = graderTimeframeForSubLane(input.subLane);
 
-  const fin = gradeBangerScaleOut(input.entryPremium ?? null, input.optionBars ?? [], input.expiryYmd ?? null);
+  // ── PATH: prefer the finer intraday underlying WHERE PRESENT, else degrade to the daily series ──
+  // Finer-when-available is a strict improvement (an intraday spike a daily bar smears over is now
+  // caught); the daily fallback keeps PATH gradeable when no intraday series was fetched — degraded,
+  // never a failure. The reported timeframe tracks the series actually walked (no over-claiming).
+  const pathPref = graderTimeframeForSubLane(input.subLane, "PATH");
+  const intradayUnder = usableUnderlying(input.intradayUnderlyingBars);
+  const usePathIntraday = isIntraday(pathPref) && intradayUnder.length > 0;
+  const pathBars = usePathIntraday ? intradayUnder : usableUnderlying(input.underlyingBars);
+  const pathTimeframe = usePathIntraday ? pathPref : graderTimeframe;
+
+  // ── FINANCIAL + MANAGEMENT: same finer-when-present rule on the OPTION series ──
+  // The RAW intraday array is fed to gradeBangerScaleOut (it owns its own truncation/expiry logic), so
+  // we only PRE-check availability with `usableOption` rather than pre-filtering the bars it grades.
+  const finPref = graderTimeframeForSubLane(input.subLane, "FINANCIAL");
+  const hasIntradayOption = usableOption(input.intradayOptionBars).length > 0;
+  const useOptionIntraday = isIntraday(finPref) && hasIntradayOption;
+  const optionBars = useOptionIntraday ? input.intradayOptionBars ?? [] : input.optionBars ?? [];
+
+  const fin = gradeBangerScaleOut(input.entryPremium ?? null, optionBars, input.expiryYmd ?? null);
   const financial: SwingFinancialTruth = {
     ungradeable: fin.ungradeable,
     reason: fin.reason,
@@ -303,9 +394,9 @@ export function gradeSwingPosition(input: SwingGradeInput): SwingGrade {
     direction: input.direction,
     graderTimeframe,
     execution: gradeExecution(input),
-    path: gradePath(input, graderTimeframe),
+    path: gradePath(input, pathBars, pathTimeframe),
     thesis: gradeThesis(input),
-    management: gradeManagement(input, financial),
+    management: gradeManagement(input, financial, optionBars),
     financial,
   };
 }
