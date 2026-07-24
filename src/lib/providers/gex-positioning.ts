@@ -149,9 +149,23 @@ export async function getGexPositioning(
   const base = gexPositioningFromHeatmap(root, hm);
   if (!base) return null;
 
-  // Override wall labels with UW WS when live — same source Vector uses.
+  // NEAR-TERM expiry scope, resolved ONCE and shared by BOTH the WS wall override (immediately
+  // below) and the UW cross-validation oracle (further down). base.call_wall/put_wall/flip are
+  // derived from Polygon's NEAR-TERM-ONLY expiries, so every ladder we overlay onto them or compare
+  // them against MUST be scoped to that same set. See resolveNearTermExpiriesForCrossValidation()'s
+  // doc comment for why this must read `hm.near_term_expiries`, not a bare `hm.expiries.slice(0, 8)`.
+  const nearTermExpiries = resolveNearTermExpiriesForCrossValidation(hm);
+
+  // Override wall labels with UW WS when live — same source Vector uses. SCOPED to near-term.
+  // The WS `gex_strike_expiry` ladder carries EVERY expiry; passing `nearTermExpiries` keeps the
+  // 5s-fresh WS benefit while making the override walls consistent with `base.flip` and the
+  // cross-val oracle. Calling with NO scope (the prior bug) summed all expiries → the call/put wall
+  // snapped to a far monthly/quarterly OpEx strike hundreds of points from the near-term flip on the
+  // gex-positioning surface (desk terminal / Largo / Night's Watch), and drove 500pt+ spurious
+  // cross-validation "divergence" warnings on SPX during RTH. RTH-only: off-hours the WS channel is
+  // idle so `hasLiveGexStrikeExpiry` is false and this override never fired anyway.
   if (hasLiveGexStrikeExpiry(root)) {
-    const wsLadder = getGexStrikeExpiryLadder(root);
+    const wsLadder = getGexStrikeExpiryLadder(root, nearTermExpiries);
     if (wsLadder) {
       const wsWalls = wallsFromStrikeTotals(strikeTotalsFromLadder(wsLadder.ladder));
       if (wsWalls.callWall != null) base.call_wall = wsWalls.callWall;
@@ -166,15 +180,11 @@ export async function getGexPositioning(
   // Best-effort + bounded: a failure leaves the field null; the canonical OI fields are never
   // affected. The pure mapper has no flow input, so matrix-vs-positioning checks stay like-for-like.
   // Cross-validate primary key levels against UW REST strike ladder (best-effort, non-blocking).
-  // Cached 60s — safe on every call without touching the 2 RPS UW REST budget.
-  //
-  // base.call_wall/put_wall/flip are computed from Polygon's NEAR-TERM-ONLY expiries —
-  // scoping the UW oracle side to match is required, or the two sides compare different
-  // questions and can show hundreds of points of spurious "divergence" for SPX around
-  // monthly/quarterly OpEx (confirmed live 2026-07-01 — see docs/audit/FINDINGS.md). See
-  // resolveNearTermExpiriesForCrossValidation()'s doc comment for why this must read
-  // `hm.near_term_expiries`, not a bare `hm.expiries.slice(0, 8)`.
-  const nearTermExpiries = resolveNearTermExpiriesForCrossValidation(hm);
+  // Cached 60s — safe on every call without touching the 2 RPS UW REST budget. Uses the SAME
+  // `nearTermExpiries` scope resolved above for the WS override, so both sides ask the same
+  // question (scoping the UW oracle to Polygon's near-term set avoids hundreds of points of
+  // spurious "divergence" for SPX around monthly/quarterly OpEx — confirmed live 2026-07-01,
+  // see docs/audit/FINDINGS.md).
   const crossValidation = await validateGexAgainstUW(
     root,
     {
@@ -188,7 +198,15 @@ export async function getGexPositioning(
   if (crossValidation) {
     const div = crossValidation.divergence;
     if (div != null && div > 5) {
-      console.warn(
+      // A materially-large mismatch is one where a WALL disagrees — walls are the levels this
+      // surface publishes. A flip-only gap within the residual tolerance is a known FLIP-methodology
+      // difference (Polygon's zero-gamma interpolation vs UW's per-strike ladder), not a data bug,
+      // and it recurred on nearly every call → the old unconditional `div > 5` warn spammed the logs
+      // every few seconds during RTH. Reserve `console.warn` for an actual wall disagreement; demote
+      // the flip-only residual to `console.debug` so it stays observable without the spam.
+      const wallMismatch = !crossValidation.callWallMatch || !crossValidation.putWallMatch;
+      const log = wallMismatch ? console.warn : console.debug;
+      log(
         `[gex-positioning] cross-validation divergence for ${root}: ` +
           `callWallMatch=${crossValidation.callWallMatch} putWallMatch=${crossValidation.putWallMatch} ` +
           `flipMatch=${crossValidation.flipMatch} divergence=${div}pt vs UW strike ladder`
