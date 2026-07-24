@@ -41,6 +41,18 @@ export interface SwingFeatureInputs {
   direction?: "long" | "short" | null;
   // ── static thesis part (pinned at commit, echoed on every snapshot) ──
   archetype?: SwingArchetype | null;
+  // ── full classification metadata (captured for later mis/secondary-classification analysis) ──
+  // Only `archetype` (the PRIMARY) is authoritative — it is what scoring/gating/calibration partition on.
+  // These three are METADATA ONLY: no downstream bucketing/graduation reads them (see calibration.ts, which
+  // keys off `archetype`). We persist them so a later study can see the runners-up and how close the call was,
+  // instead of throwing that away the moment the winner is picked. `classificationMetaFromVerdict` (archetype.ts)
+  // produces them from the classifier's verdict.
+  /** Ranked secondary archetypes (runners-up), primary excluded. */
+  archetypeSecondary?: SwingArchetype[] | null;
+  /** Per-archetype fit-score map (grounded fits only). */
+  archetypeScores?: Record<string, number> | null;
+  /** Classification decisiveness margin (topFit − runner-up fit). */
+  classificationMargin?: number | null;
   subLane?: SwingSubLane | null;
   /** Dossier composite evidence score (0–100). */
   evidenceScore?: number | null;
@@ -78,6 +90,18 @@ export interface SwingFeatureVector {
   ticker: string;
   side: "long" | "short" | null;
   archetype: string | null;
+  // full classification metadata — PURE CAPTURE for later analysis. Calibration keys off `archetype`/`primary`
+  // ONLY; secondary/scores/margin are never bucketed on (asserted in calibration.test.ts). Deliberately NOT in
+  // SWING_NUMERIC_FEATURE_KEYS / SWING_CATEGORICAL_FEATURE_KEYS — a ranked list + a variable-key map aren't
+  // standardizable scalar features; they ride the JSONB feature-vector blob as metadata only.
+  /** The primary archetype — mirrors `archetype`; the authoritative label calibration partitions on. */
+  primary: string | null;
+  /** Ranked secondary archetypes (runners-up), primary excluded; [] when none grounded. */
+  secondary: string[];
+  /** Per-archetype fit-score map (grounded fits only); {} when nothing was classifiable. */
+  archetype_scores: Record<string, number>;
+  /** Classification decisiveness margin (topFit − runner-up fit); null when unknown. */
+  classification_margin: number | null;
   sub_lane: string | null;
   // archetype one-hot (null throughout when archetype unknown)
   arch_breakout: 0 | 1 | null;
@@ -138,6 +162,12 @@ export function buildSwingFeatureVector(input: SwingFeatureInputs): SwingFeature
     ticker: input.ticker.toUpperCase(),
     side: input.direction ?? null,
     archetype: arch,
+    // full classification metadata: `primary` mirrors `archetype` (the calibration key); secondary/scores/margin
+    // are captured verbatim for later mis-classification study and are NOT read by any bucketing/graduation path.
+    primary: arch,
+    secondary: input.archetypeSecondary ?? [],
+    archetype_scores: input.archetypeScores ?? {},
+    classification_margin: numOrNull(input.classificationMargin),
     sub_lane: lane,
     // archetype one-hot
     arch_breakout: oneHot(arch, "BREAKOUT"),

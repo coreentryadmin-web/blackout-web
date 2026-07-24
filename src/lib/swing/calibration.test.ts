@@ -130,6 +130,32 @@ test("archetype floor — 45-of-60 with a wide off gap AND Wilson-LB passing →
   assert.equal(all.filter((r) => r.floorGraduated).length, 1);
 });
 
+test("archetype bucketing keys off the PRIMARY archetype ONLY — secondary metadata never shifts a bucket", () => {
+  // Persisting the full classification metadata (secondary[]/archetype_scores{}/classification_margin) must be
+  // pure capture: calibration partitions solely on `archetype` (the primary). Here a BREAKOUT row ALSO carries
+  // near-tie secondary metadata pointing at EVENT_DRIVEN; if any of it leaked into bucketing it would move the
+  // row out of BREAKOUT. It must not — so the BREAKOUT bucket counts BOTH rows, EVENT_DRIVEN counts zero of them.
+  const floor = ARCHETYPE_META.BREAKOUT.scoreFloor;
+  const withSecondaryMeta = {
+    archetype: "BREAKOUT" as const,
+    score: floor + 5,
+    // Extra keys the calibration row type doesn't model — proving they're structurally invisible to bucketing.
+    secondary: ["EVENT_DRIVEN"],
+    archetype_scores: { BREAKOUT: 0.8, EVENT_DRIVEN: 0.79 },
+    classification_margin: 0.01,
+  } as unknown as Partial<SwingCalibrationRow>;
+  const input = [
+    ...rows(1, 1, { archetype: "BREAKOUT", score: floor + 5 }),
+    ...rows(1, 0, withSecondaryMeta),
+    ...rows(1, 1, { archetype: "EVENT_DRIVEN", score: floor + 5 }),
+  ];
+  const all = analyzeArchetypeRecord(input);
+  const brk = all.find((r) => r.archetype === "BREAKOUT")!;
+  const evt = all.find((r) => r.archetype === "EVENT_DRIVEN")!;
+  assert.equal(brk.bucket.n, 2); // both BREAKOUT rows, incl. the near-tie one, stay in BREAKOUT
+  assert.equal(evt.bucket.n, 1); // the secondary=EVENT_DRIVEN metadata did NOT pull a row into EVENT_DRIVEN
+});
+
 test("archetype floor — n=30 whose Wilson-LB does NOT clear → LIMITED tier but NOT graduated", () => {
   const floor = ARCHETYPE_META.PULLBACK_CONTINUATION.scoreFloor;
   // on n=30 @ 60% WR (point-Δ 20pt vs off 40% → raw verdict "enforce", tier LIMITED)…
