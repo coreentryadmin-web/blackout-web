@@ -11,6 +11,7 @@ import {
   classifyFlowPrintKind,
   expectedMovePtsFrom,
   fetchCortexInputs,
+  mapFlowSlice,
   mapGexSlice,
   mapNewsSlice,
   mapOpeningSlice,
@@ -172,6 +173,22 @@ describe("fetch: pure mappers", () => {
   test("expectedMovePtsFrom picks the 1-sigma band", () => {
     assert.equal(expectedMovePtsFrom(vectorState()), 4);
     assert.equal(expectedMovePtsFrom(null), null);
+  });
+
+  test("mapFlowSlice carries a null premium (never coerces an unpriced print to $0)", () => {
+    const slice = mapFlowSlice(
+      {
+        recent: [
+          flowRow({ premium: 400_000, alert_rule: "SweepA" }),
+          flowRow({ premium: null as unknown as number, alert_rule: "SweepB" }),
+          flowRow({ premium: Number.NaN, alert_rule: "SweepC" }), // non-finite → null too
+        ],
+      },
+      NOW.toISOString()
+    );
+    assert.equal(slice?.prints[0].premium, 400_000);
+    assert.equal(slice?.prints[1].premium, null);
+    assert.equal(slice?.prints[2].premium, null);
   });
 
   test("mapGexSlice mirrors walls/flip/regime; null without a spot", () => {

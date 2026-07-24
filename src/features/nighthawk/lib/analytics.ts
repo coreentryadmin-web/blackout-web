@@ -124,8 +124,10 @@ export type NighthawkRecordSegment = {
 };
 
 /** A grouped cut over CURRENT-methodology scoreable rows only (never blended), with the
- *  shared LOW-N flag so every surface badges thin evidence identically. */
-export type NighthawkRecordCut = { n: number; win_rate: number; avg_return_pct: number; low_n: boolean };
+ *  shared LOW-N flag so every surface badges thin evidence identically. `win_rate` is
+ *  `null` (never a fabricated 0%) for an empty cut — a zero-row sample has no rate, and a
+ *  rendered "0%" reads as "every play lost." Matches calibration.ts's null-on-empty rule. */
+export type NighthawkRecordCut = { n: number; win_rate: number | null; avg_return_pct: number; low_n: boolean };
 
 export type NighthawkMetrics = {
   window_days: number;
@@ -166,7 +168,7 @@ export type NighthawkMetrics = {
   by_conviction: Array<{ conviction: string } & NighthawkRecordCut>;
   by_direction: Array<{ direction: "LONG" | "SHORT" } & NighthawkRecordCut>;
   by_sector: Array<{ sector: string } & NighthawkRecordCut>;
-  by_score_bucket: Array<{ bucket: string; n: number; win_rate: number; low_n: boolean }>;
+  by_score_bucket: Array<{ bucket: string; n: number; win_rate: number | null; low_n: boolean }>;
   by_edition: Array<{ edition_for: string } & NighthawkRecordCut>;
   /** Task #145: synthesis funnel — candidates considered vs. published vs. rejected (by stage),
    *  over the same window_days. Independent of total_resolved/pending_count above: those are
@@ -208,15 +210,18 @@ export function avgLoserReturn(losers: NighthawkPlayOutcomeRow[]): number {
   return Math.min(0, avgReturn(losers));
 }
 
-function winRate(rows: NighthawkPlayOutcomeRow[]): number {
-  if (rows.length === 0) return 0;
+// null (not a fabricated 0%) for a zero-row sample: an empty cut has no win rate, and a
+// rendered "0%" reads as "every play lost." Consistent with calibration.ts (win_rate_pct:
+// rows.length > 0 ? … : null). Exported for unit tests. Consumers coalesce/badge with low_n.
+export function winRate(rows: NighthawkPlayOutcomeRow[]): number | null {
+  if (rows.length === 0) return null;
   return rows.filter((r) => r.outcome === "target").length / rows.length;
 }
 
-function profitableRate(rows: NighthawkPlayOutcomeRow[]): number {
-  if (rows.length === 0) return 0;
+export function profitableRate(rows: NighthawkPlayOutcomeRow[]): number | null {
+  if (rows.length === 0) return null;
   const withReturn = rows.filter((r) => realizedReturnPct(r) != null);
-  if (withReturn.length === 0) return 0;
+  if (withReturn.length === 0) return null; // no priced rows → no rate, not a 0%
   return withReturn.filter((r) => (realizedReturnPct(r) ?? 0) > 0).length / withReturn.length;
 }
 
@@ -229,7 +234,7 @@ function scoreBucket(score: number | null): string | null {
   return null;
 }
 
-function groupWithReturn(rows: NighthawkPlayOutcomeRow[]): NighthawkRecordCut {
+export function groupWithReturn(rows: NighthawkPlayOutcomeRow[]): NighthawkRecordCut {
   return {
     n: rows.length,
     win_rate: winRate(rows),
@@ -304,22 +309,23 @@ function emptyMetrics(windowDays: number): NighthawkMetrics {
     avg_return_pct: 0,
     avg_winner_return_pct: 0,
     avg_loser_return_pct: 0,
+    // Empty cuts carry win_rate: null (not 0%) — same honesty rule as groupWithReturn.
     by_conviction: CONVICTION_ORDER.map((conviction) => ({
       conviction,
       n: 0,
-      win_rate: 0,
+      win_rate: null,
       avg_return_pct: 0,
       low_n: true,
     })),
     by_direction: (["LONG", "SHORT"] as const).map((direction) => ({
       direction,
       n: 0,
-      win_rate: 0,
+      win_rate: null,
       avg_return_pct: 0,
       low_n: true,
     })),
     by_sector: [],
-    by_score_bucket: SCORE_BUCKETS.map((bucket) => ({ bucket, n: 0, win_rate: 0, low_n: true })),
+    by_score_bucket: SCORE_BUCKETS.map((bucket) => ({ bucket, n: 0, win_rate: null, low_n: true })),
     by_edition: [],
     stop_data_unavailable_count: 0,
     unfilled_count: 0,
@@ -402,7 +408,8 @@ export async function getNighthawkMetrics(windowDays = 30): Promise<NighthawkMet
   const by_sector = Array.from(sectorMap.entries())
     .map(([sector, group]) => ({ sector, ...groupWithReturn(group) }))
     .filter((g) => g.n > 0)
-    .sort((a, b) => b.win_rate - a.win_rate || b.n - a.n);
+    // g.n > 0 guarantees a non-null win_rate here; coalesce only to satisfy the widened type.
+    .sort((a, b) => (b.win_rate ?? 0) - (a.win_rate ?? 0) || b.n - a.n);
 
   const by_score_bucket = SCORE_BUCKETS.map((bucket) => {
     const group = scoreable.filter((r) => scoreBucket(r.score) === bucket);
@@ -435,7 +442,10 @@ export async function getNighthawkMetrics(windowDays = 30): Promise<NighthawkMet
     // methodology filter internally AND reports the legacy quarantine count honestly.
     debrief: summarizeDebriefPins(rows),
     win_rate: scoreableTotal > 0 ? winners.length / scoreableTotal : 0,
-    profitable_rate: profitableRate(scoreable),
+    // Headline stays a number: this line is reached only when rows.length > 0, and the
+    // headline (unlike a cut) has no low_n badge to carry a null. Empty-scoreable → 0,
+    // mirroring the sibling headline rates (win_rate/loss_rate) computed inline below.
+    profitable_rate: profitableRate(scoreable) ?? 0,
     loss_rate: scoreableTotal > 0 ? losers.length / scoreableTotal : 0,
     open_rate: scoreableTotal > 0 ? opens.length / scoreableTotal : 0,
     ambiguous_rate: scoreableTotal > 0 ? ambiguous.length / scoreableTotal : 0,

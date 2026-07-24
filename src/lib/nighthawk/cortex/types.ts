@@ -150,7 +150,11 @@ export type CortexFlowPrintKind = "sweep" | "block" | "other";
  *  parser's TRUTH-MANDATE convention (unusual-whales.ts): an unparseable side stays
  *  "unknown" and never counts toward either cluster. */
 export type CortexFlowPrint = {
-  premium: number;
+  /** Gross premium in dollars, or `null` when upstream had no priced value. `null` is
+   *  carried (not coerced to 0) so the cluster sum EXCLUDES an unpriced print instead of
+   *  adding a fake $0 that would still count toward the print tally — a null is honest,
+   *  a fabricated $0 is a lie. See findFlowCluster's premium guard. */
+  premium: number | null;
   direction: "bullish" | "bearish" | "unknown";
   kind: CortexFlowPrintKind;
   /** ISO print time; "" when upstream had no real timestamp (excluded from

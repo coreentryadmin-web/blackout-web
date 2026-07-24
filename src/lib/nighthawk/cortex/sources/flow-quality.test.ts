@@ -75,6 +75,23 @@ describe("flow-quality: opposing-cluster veto (design $1M / 15 min)", () => {
     assert.equal(deriveFlowQualityEvidence(input).some((i) => i.stance === "veto"), false);
   });
 
+  test("a null-premium (unpriced) print is excluded — never summed as $0, never counted", () => {
+    // Two priced bearish sweeps + one unpriced (premium null) bearish sweep. The null must
+    // not join the sum (no fake $0) AND must not inflate the print count.
+    const cluster = findFlowCluster(
+      [
+        print({ premium: 600_000, at: at(2) }),
+        print({ premium: null, at: at(3) }),
+        print({ premium: 550_000, at: at(4) }),
+      ],
+      "bearish",
+      NOW_MS
+    );
+    assert.ok(cluster);
+    assert.equal(cluster.prints, 2);
+    assert.equal(cluster.totalPremium, 1_150_000);
+  });
+
   test("unknown-side prints never count toward either side (TRUTH MANDATE)", () => {
     const input = baseInputs({
       direction: "long",
