@@ -48,6 +48,57 @@ live-marks suites pass.
 
 **Status:** DONE. Branch `fix/zerodte-marks-rest-fallback`.
 
+## 2026-07-24 — [HIGH, correctness] 0DTE aggression signal DEAD — `ask_pct` read a field UW never sends — FIXED
+
+**Severity HIGH (the engine's core "at-the-ask conviction" edge was silently inert in production).**
+The 0DTE board weights each print's directional premium by aggressor side via `aggressionWeight`
+(`src/lib/zerodte/board.ts` ~L232, a 0-100 `ask_pct` → conviction-weight map: ≥60→1, ≥45→0.6,
+else→0.15, null→neutral 0.5).
+
+**Root cause — both `ask_pct` extractors read `ask_side_pct`, a field UW does NOT send.** The SSE
+path (`flow-raw-fields.ts:37` `numFromRaw(raw,"ask_side_pct")`) and the REST/DB read path
+(`db.ts:2211` `(raw_payload->>'ask_side_pct')::numeric AS ask_pct`) both keyed off `ask_side_pct`.
+Live UW `flow_alerts` tape: **`ask_side_pct` 0/2782 rows, `total_ask_side_prem`/`total_bid_side_prem`
+2782/2782 (100%)**. So `ask_pct` was **null on every print** → `aggressionWeight` fell back to the
+neutral **0.5 for every ticker**. Consequences: (a) the `SETUP_MIN_AGGR_SHARE=0.3` gate was a **silent
+no-op** (every candidate's aggression == 0.50 ≥ 0.3), and (b) direction was decided by the raw
+call/put premium split, NOT aggressor-confirmed flow.
+
+**Why it wasn't caught:** the field name was plausible and `numFromRaw`/the SQL cast returned null
+silently (no error); `flow-raw-fields.test.ts` only fed a synthetic row that HAD `ask_side_pct`, so it
+never exercised the real-tape shape. `scorer.ts:366-367` (Night Hawk) already derives aggression from
+`total_ask_side_prem` — the 0DTE path just never adopted that.
+
+**Fix — derive `ask_pct` from the premium legs UW actually sends, mirroring scorer.ts.** New pure
+helper `askPctFromTwoSidedPremium(ask,bid)` in `flow-raw-fields.ts`: prefer a real `ask_side_pct`,
+else `ask/(ask+bid) * 100`. Both paths now COALESCE(real, derived): the SSE extractor calls the
+helper; the SQL mirrors it (`COALESCE(ask_side_pct-cast, (ask/NULLIF(ask+bid,0))*100)`). **Scale is
+0-100** (the established `ask_pct` scale — `flow-raw-fields.test.ts` asserts `"72"→72`, board.test.ts
+`90→weight 1`, helix `askPct>=60`); the `0.70` *ratio* for ask=700k/bid=300k is stored as **70**.
+Storing the raw 0.70 would be worse-than-dead: all fractions <45 collapse to a flat 0.15 AND invert
+conviction. Divide-by-zero → null (NOT 0 — a 0 reads as 100% sold). `aggressionWeight`, gate
+thresholds, `SETUP_MIN_AGGR_SHARE` deliberately unchanged — only `ask_pct` now populates.
+
+**Evidence — live `deriveZeroDteSetups` before/after (same tape, ~2780 rows):**
+```
+                 aggression range   distinct  knownAggrFrac(avg)  SETUP_MIN_AGGR_SHARE gate
+  BEFORE (main):  [0.500, 0.500]        1           0.00          no-op (all pass at 0.50)
+  AFTER  (fix):   [0.150, 0.910]       22           0.99          discriminates
+```
+After the fix the gate correctly REJECTS bid-heavy/sold flow that the bug waved through: SNDK 0.297,
+MSFT 0.256, DHR/SE 0.150, ASML 0.232 now fail `>=0.3` (SNDK was a live "long" survivor off majority-
+SOLD premium — the exact fake-out the gate exists to stop); survivors 11→7. Direction is now
+aggressor-confirmed.
+
+**Verify:** `tsc --noEmit` clean; `flow-raw-fields.test.ts` + `board.test.ts` + `db.test.ts` =
+104/104 pass (new: derivation, 0-100 scale, primary-wins, zero/absent→undefined, reactivated
+`aggressionWeight`, and a `db.ts` source-assertion pinning the SQL — raw PG blocked in CI);
+`check-brand.mjs` clean. Files: `src/lib/flow-raw-fields.ts`, `src/lib/db.ts`,
+`src/lib/flow-raw-fields.test.ts`, `src/lib/db.test.ts`. Status: FIXED, branch
+`fix/zerodte-aggression-askpct-plumbing` (PR to main; deploys AFTER close — changes direction
+determination — so NOT auto-merged). Unblocks #1028 (its `SETUP_MIN_KNOWN_AGGR_FRAC` floor is a no-op
+until `ask_pct` actually populates).
+
 ## 2026-07-24 — [HIGH, safety-inert] 0DTE realized-loss session halt was WIRED but INERT — FIXED
 
 **Severity HIGH (a shipped capital-protection halt could never fire).** PR #1056 added the AUDIT

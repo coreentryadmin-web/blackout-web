@@ -130,6 +130,42 @@ test("updateZeroDteLiveState: SQL status CASE is monotonic — CLOSED terminal, 
 // DROP is paired exactly once, and the allowed set is the full 6-outcome union
 // resolveOutcome (play-outcomes.ts) can emit. Same source-inspection idiom as the
 // tests above (no PG in CI).
+// fix/zerodte-aggression-askpct-plumbing (P1): UW does NOT send `ask_side_pct` on the
+// flow_alerts feed (live-verified 2026-07-24: 0/2780 rows), so fetchRecentFlows' old
+// `(raw_payload->>'ask_side_pct')::numeric AS ask_pct` returned NULL on every row — which
+// pinned board.ts aggressionWeight to the neutral 0.5 for every ticker (dead
+// SETUP_MIN_AGGR_SHARE gate + direction not aggressor-confirmed). The read path must instead
+// DERIVE ask_pct from total_ask_side_prem/total_bid_side_prem (100% coverage) as a 0-100 pct,
+// mirroring askPctFromTwoSidedPremium() in flow-raw-fields.ts so REST rows match SSE rows. Raw
+// PG is blocked in CI, so pin the SQL by source inspection (same idiom as the tests above).
+test("fetchRecentFlows: ask_pct = COALESCE(ask_side_pct, ask/(ask+bid)*100) with a NULLIF divide-by-zero guard", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const fnStart = src.indexOf("export async function fetchRecentFlows");
+  assert.ok(fnStart > 0, "fetchRecentFlows exists");
+  const body = src.slice(fnStart, src.indexOf("FROM flow_alerts", fnStart));
+
+  // The broken single-field read (the bug) must be gone — it produced NULL on 100% of prod rows.
+  assert.doesNotMatch(
+    body,
+    /\(raw_payload->>'ask_side_pct'\)::numeric AS ask_pct/,
+    "the bare ask_side_pct read is the bug — it must be replaced by the COALESCE derivation"
+  );
+
+  // Isolate the ask_pct SELECT expression: the COALESCE(...) that ends in "AS ask_pct".
+  const askPctIdx = body.indexOf("AS ask_pct");
+  assert.ok(askPctIdx > 0, "ask_pct column still selected");
+  const expr = body.slice(body.lastIndexOf("COALESCE(", askPctIdx), askPctIdx);
+  assert.match(expr, /ask_side_pct/, "primary branch still prefers a real ask_side_pct");
+  assert.match(expr, /total_ask_side_prem/, "derived numerator = ask-side premium");
+  assert.match(expr, /total_bid_side_prem/, "derived denominator adds bid-side premium");
+  assert.match(expr, /\*\s*100 END/, "scaled to the 0-100 ask_pct scale (aggressionWeight 60/45), not 0-1");
+  assert.match(
+    expr,
+    /NULLIF\(\s*\(raw_payload->>'total_ask_side_prem'\)::numeric[\s\S]*?total_bid_side_prem[\s\S]*?,\s*0\)/,
+    "NULLIF guards a zero two-sided total -> NULL, never 0 (0 would read as 100% sold)"
+  );
+});
+
 test("ensureSchema: nighthawk play-outcome CHECK issued exactly once, allowed set includes 'unfilled'", () => {
   const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
   const adds = src.match(/ADD CONSTRAINT nighthawk_play_outcomes_outcome_check/g) ?? [];

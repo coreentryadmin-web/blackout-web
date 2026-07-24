@@ -2208,7 +2208,29 @@ export async function fetchRecentFlows(params: {
              raw_payload->>'alert_rule',
              raw_payload->>'rule_name'
            ), '') AS alert_rule,
-           (raw_payload->>'ask_side_pct')::numeric AS ask_pct,
+           -- ask_pct (0-100): prefer a real ask_side_pct, else DERIVE the ask-side share of
+           -- two-sided premium as a 0-100 pct from total_ask_side_prem/total_bid_side_prem. UW
+           -- does NOT send ask_side_pct on flow_alerts (live-verified 2026-07-24: 0/2780 rows)
+           -- but sends both premium legs on 100% of rows. This is the SQL mirror of
+           -- askPctFromTwoSidedPremium() in flow-raw-fields.ts (the SSE path) — both MUST agree
+           -- so REST rows match SSE rows. Without it ask_pct was NULL on every row, pinning
+           -- board.ts aggressionWeight to the neutral 0.5 for every ticker (dead
+           -- SETUP_MIN_AGGR_SHARE gate + direction not aggressor-confirmed). NULLIF guards
+           -- divide-by-zero -> NULL (never 0, which would read as 100% sold and invert
+           -- conviction). Same string-tolerant numeric handling as the fields below (UW sends
+           -- some values as JSON strings, not numbers).
+           COALESCE(
+             CASE WHEN jsonb_typeof(raw_payload->'ask_side_pct') = 'number'
+                    OR (raw_payload->>'ask_side_pct') ~ '^-?[0-9]+(\.[0-9]+)?$'
+                  THEN (raw_payload->>'ask_side_pct')::numeric END,
+             CASE WHEN (jsonb_typeof(raw_payload->'total_ask_side_prem') = 'number'
+                        OR (raw_payload->>'total_ask_side_prem') ~ '^-?[0-9]+(\.[0-9]+)?$')
+                   AND (jsonb_typeof(raw_payload->'total_bid_side_prem') = 'number'
+                        OR (raw_payload->>'total_bid_side_prem') ~ '^-?[0-9]+(\.[0-9]+)?$')
+                  THEN ((raw_payload->>'total_ask_side_prem')::numeric
+                        / NULLIF((raw_payload->>'total_ask_side_prem')::numeric
+                                 + (raw_payload->>'total_bid_side_prem')::numeric, 0)) * 100 END
+           ) AS ask_pct,
            -- UW's WS flow_alerts feed sends these fields as JSON *strings* (e.g. "590.24")
            -- rather than JSON numbers on a large share of rows (live-verified: ~48% of
            -- HELIX rows), which the old jsonb_typeof = 'number' gate silently dropped to
