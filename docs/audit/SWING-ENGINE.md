@@ -1,6 +1,8 @@
 # SWING-ENGINE.md — Night Hawk SWING (2–30 DTE) Authoritative Build Plan
 
-Status: build plan (authoritative). Supersedes the nine independent design drafts and the adversarial review. Where a draft conflicts with this document, this document wins. Every reconciliation decision from the adversarial review (SEV-1…SEV-9) is resolved here and marked `[R]`.
+**STATUS: BUILT — all 16 PRs merged 2026-07-24** (#1032, #1033, #1035, #1036, #1037, #1038, #1039, #1040, #1041, #1042, #1043, #1044, #1045, #1046, #1047, #1048). The full pipeline — Ingest → Discover → Score → Contract → Gate → Commit → Manage → Grade → Calibrate — ships on `main`, 33 `src/lib/swing/*` modules, ~289 swing/horizon tests green. Everything is **evidence-only / calibration-first**: nothing sizes real risk or flips a floor/weight/gate/exit-rung/cap to enforcement until its own archetype×sub-lane graded bucket clears the ladder (n≥10, Δ≥15pt). Live-but-dormant on the desk: phase-anchored cron writes accumulation + append-only snapshots as evidence, the lane serves a WATCH-only rail (`commitEligibleCount = 0`), and roll execution is wired opt-in. The graduation ladder is the safety. See the per-PR ledger below.
+
+Status (original): build plan (authoritative). Supersedes the nine independent design drafts and the adversarial review. Where a draft conflicts with this document, this document wins. Every reconciliation decision from the adversarial review (SEV-1…SEV-9) is resolved here and marked `[R]`.
 
 ---
 
