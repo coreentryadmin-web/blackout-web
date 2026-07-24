@@ -13,6 +13,7 @@ import { horizonBoardFromZeroDtePayload } from "@/lib/zerodte/horizon-board-from
 import { getSwingServingLane } from "@/lib/swing/serving-lane";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
+import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
 
@@ -49,8 +50,14 @@ export async function GET(req: NextRequest) {
       board = { ...board, lanes: { ...board.lanes, SWING: swingLane } };
     }
     board = scopeBoardToHorizon(board, horizon);
+    // roundFloats at the boundary: the 0DTE lane is already rounded inside zerodte-service,
+    // but the SWING lane is spliced in raw from getSwingServingLane() and the board totals are
+    // re-derived here (scopeBoardToHorizon) without rounding — so raw provider floats (e.g.
+    // 7499.360000000001) could leak into the horizon board once swings ship. Rounding the whole
+    // payload at the response edge is the same backstop every sibling market route applies and
+    // touches no computed value (roundFloats only trims IEEE float noise on numbers).
     return NextResponse.json(
-      { board, upstream_ok: payload.upstream_ok, session: payload.session },
+      roundFloats({ board, upstream_ok: payload.upstream_ok, session: payload.session }),
       {
         headers: {
           "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",

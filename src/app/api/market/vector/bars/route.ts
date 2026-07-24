@@ -3,6 +3,7 @@ import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
 import { fetchVectorSeedBars } from "@/features/vector/lib/vector-seed-bars";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,10 +25,13 @@ export async function GET(req: NextRequest) {
 
   const rawTicker = req.nextUrl.searchParams.get("ticker");
   if (!isVectorTickerAllowed(rawTicker)) {
-    return NextResponse.json({ error: `Invalid ticker` }, { status: 400 });
+    return NextResponse.json({ error: `Invalid ticker` }, { status: 400, headers: NO_STORE_HEADERS });
   }
   const ticker = normalizeVectorTicker(rawTicker);
 
   const { bars, sessionYmd } = await fetchVectorSeedBars(ticker);
-  return NextResponse.json({ ticker, sessionYmd, bars, available: bars.length > 0 });
+  return NextResponse.json(
+    { ticker, sessionYmd, bars, available: bars.length > 0 },
+    { headers: NO_STORE_HEADERS }
+  );
 }

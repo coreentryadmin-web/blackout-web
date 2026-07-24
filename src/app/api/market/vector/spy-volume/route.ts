@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { requireToolApiForDeskCaller } from "@/lib/tool-access-server";
 import { fetchSpyVolumeRows } from "@/features/vector";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,9 +20,12 @@ export async function GET(req: NextRequest) {
 
   const ymd = req.nextUrl.searchParams.get("ymd")?.trim();
   if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
-    return NextResponse.json({ error: "ymd required (YYYY-MM-DD)" }, { status: 400 });
+    return NextResponse.json({ error: "ymd required (YYYY-MM-DD)" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
   const volumes = await fetchSpyVolumeRows(ymd);
-  return NextResponse.json({ ymd, volumes, available: volumes.length > 0 });
+  return NextResponse.json(
+    { ymd, volumes, available: volumes.length > 0 },
+    { headers: NO_STORE_HEADERS }
+  );
 }
