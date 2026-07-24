@@ -23,6 +23,9 @@ type LedgerRow = Record<string, unknown>;
 
 const state = {
   ledgerRows: [] as LedgerRow[],
+  /** Flow prints fetchRecentFlows returns — drives the deriveZeroDteSetups discovery
+   *  path in the scanZeroDteBoard governor-wiring test below. */
+  flows: [] as Array<Record<string, unknown>>,
   /** When true, fetchZeroDteSetupLog throws — drives the P0 ledger-read-failure tests. */
   ledgerReadFails: false,
   liveMark: null as number | null,
@@ -38,6 +41,7 @@ const state = {
 
 function resetState() {
   state.ledgerRows = [];
+  state.flows = [];
   state.ledgerReadFails = false;
   state.liveMark = null;
   state.updateCalls = [];
@@ -84,7 +88,7 @@ mock.module("../db", {
     // ESM import throws "does not provide an export named ...".
     fetchLatestNighthawkEdition: async () => null,
     fetchOpenSpxPlay: async () => null,
-    fetchRecentFlows: async () => [],
+    fetchRecentFlows: async () => state.flows,
     fetchUngradedZeroDteRows: async () => state.ungradedRows,
     gradeZeroDteSetupRow: async (sessionDate: string, ticker: string, grade: Record<string, unknown>) => {
       state.gradeCalls.push({ sessionDate, ticker, grade });
@@ -170,6 +174,26 @@ mock.module("../server-cache", {
   namedExports: {
     withServerCache: async (_k: string, _ttl: number, fn: () => Promise<unknown>) => fn(),
   },
+});
+
+// governor.ts's loadRecordedGovernorStops reads the Redis-backed shared cache for stop
+// TIMESTAMPS. Hermetic no-op (no recorded stops) — the ledger-derived halt tallies are
+// what the governor-wiring test exercises, and those come straight from Postgres rows.
+mock.module("../shared-cache", {
+  namedExports: {
+    sharedCacheGet: async () => null,
+    sharedCacheSet: async () => {},
+  },
+});
+
+// scanZeroDteBoard's G-7 macro-calendar read + the fresh-ticker vector pre-warm both
+// reach live providers; neither is needed to exercise the governor wiring. Stubbed so
+// the discovery pass stays hermetic (no network, no 2.5s within() timeouts).
+mock.module("../providers/macro-events", {
+  namedExports: { macroEventsOnDateLive: async () => [] },
+});
+mock.module("../bie/vector-full-state", {
+  namedExports: { fetchVectorFullState: async () => null },
 });
 
 // ./rejections (left real below) imports @/lib/providers/spx-session directly (for
@@ -478,4 +502,85 @@ test("persistZeroDteScan: a fresh COMMIT's upserted row pins entry_context.tier 
   for (const expected of ["Prime score band", "VIX calm band", "Clean Cortex support"]) {
     assert.ok(labels.includes(expected), `factor "${expected}" must argue the tier (got: ${labels.join(", ")})`);
   }
+});
+
+// ── AUDIT SEV-3 realized-loss halt — the ENFORCEMENT WIRING (scan.ts → gate stack) ──
+// Regression guard for the inert-halt bug: PR #1056 added governorLossHaltReason
+// (halt on ≥3 realized losers OR a session-P&L floor) and deriveGovernorFromLedger
+// correctly COMPUTES realized_losers/session_pnl_pct — but scan.ts's attachGateVerdicts
+// built the ENFORCEMENT snapshot as a hand-written literal that copied ONLY open_plans +
+// stops and DROPPED those two fields. Because they're optional on GovernorSnapshot
+// (read as 0 when absent), the loss-halt read 0 losers / 0% and could NEVER fire in the
+// live commit path — while the board strip showed "halted" from a separately, correctly
+// derived snapshot (summarizeGovernorForBoard). The unit tests in governor.test.ts pass
+// a snapshot in directly, so they never exercised this construction; only driving the
+// real scanZeroDteBoard pipeline touches the seam.
+//
+// Ledger fixture: THREE losing TIME-STOPS (CLOSED, plan_pnl_pct < 0, NONE at the −50%
+// hard-stop level) → realized_losers 3 (trips the count cap) BUT stops.length 0 (the
+// hard-stop halt stays untripped) and session_pnl_pct −90 (above the −120 floor). That
+// isolates EXACTLY the channel the dropped fields disabled: pre-fix this NVDA candidate
+// commits freely; post-fix the loss-halt block rides on its gate verdict.
+function losingTimeStop(ticker: string): LedgerRow {
+  // CLOSED and red, but trough (3.5) is well above the plan's −50% stop level
+  // (entry 4.2 × 0.5 = 2.1), so ledgerRowStopped() is false → it counts as a realized
+  // LOSER without counting as a hard STOP. plan_outcome left null (not "stopped").
+  return baseRow({
+    ticker,
+    status: "CLOSED",
+    plan_outcome: null,
+    plan_pnl_pct: -30,
+    entry_premium: 4.2,
+    trough_premium: 3.5,
+    last_mark: 3.0,
+  });
+}
+
+test("scanZeroDteBoard: 3 realized losing time-stops HALT a fresh commit — the enforcement snapshot carries realized_losers/session_pnl_pct (SEV-3 wiring)", async () => {
+  resetState();
+  // Ledger = three losing time-stops on OTHER tickers (so NVDA is a genuinely fresh,
+  // un-committed candidate the gate stack will judge).
+  state.ledgerRows = [losingTimeStop("AAA"), losingTimeStop("BBB"), losingTimeStop("CCC")];
+
+  // A clean, unambiguous NVDA 0DTE call print that survives deriveZeroDteSetups' evidence
+  // gates: gross $2M (> 750k min), 100% at-the-ask (aggression 1.0, all calls → dominance
+  // 1.0), a live underlying, and a near-ATM strike (well inside the ITM band).
+  state.flows = [
+    {
+      ticker: "NVDA",
+      premium: 2_000_000,
+      option_type: "call",
+      strike: 145,
+      expiry: "2026-07-06", // == mocked todayEt → a live 0DTE expiry
+      dte: 0,
+      alert_rule: "sweep",
+      ask_pct: 75, // ≥ 60 → full aggression weight
+      underlying_price: 140,
+      fill_price: 4.2,
+      open_interest: 100,
+      alerted_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+    },
+  ];
+
+  const { scanZeroDteBoard } = await mod();
+  const result = (await scanZeroDteBoard()) as {
+    setups: Array<{ ticker: string; gate?: { verdict: string; blocks: Array<{ code: string; reason: string }> } | null }>;
+  };
+
+  const nvda = result.setups.find((s) => s.ticker.toUpperCase() === "NVDA");
+  assert.ok(nvda, "the NVDA flow print must survive discovery into a gated setup");
+  assert.ok(nvda!.gate, "a fresh (un-committed) candidate must get a gate verdict");
+
+  // The discriminating assertion: the realized-loss halt block must be present. Its code
+  // reuses governor_session_stops but the reason is the loss-halt sentence ("realized
+  // losers"), distinct from the hard-stop-count halt (which never trips here: stops 0/3).
+  const lossHalt = nvda!.gate!.blocks.find(
+    (b) => b.code === "governor_session_stops" && /realized losers/i.test(b.reason)
+  );
+  assert.ok(
+    lossHalt,
+    "the enforcement snapshot must carry realized_losers so the loss-halt fires — pre-fix, the " +
+      "two-field literal dropped it and this block was absent (fresh commits ran through a 3-loser day)"
+  );
+  assert.equal(nvda!.gate!.verdict, "BLOCKED", "a halted session must not COMMIT a fresh play");
 });
