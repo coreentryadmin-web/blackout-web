@@ -54,7 +54,7 @@ delete process.env.REDIS_URL;
 process.env.ZERODTE_SETUP_MAX_OTM_PCT = "999";
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
@@ -90,8 +90,9 @@ function fapiHost() {
 const FAPI = fapiHost();
 
 // ── curl plumbing (mirrors scripts/audit/data-validator.mjs) ─────────────────────────
-const TMP = join(tmpdir(), `bo-fwreplay-${process.pid}`);
-mkdirSync(TMP, { recursive: true });
+// mkdtempSync creates a unique, non-predictable dir (0700) — avoids the symlink/race a
+// predictable os-temp path invites (CodeQL js/insecure-temporary-file).
+const TMP = mkdtempSync(join(tmpdir(), "bo-fwreplay-"));
 const JAR = join(TMP, "cookies.txt");
 let seq = 0;
 function curl({ method = "GET", url, headers = {}, form, urlencodeForm, json, jar = false, saveJar = false }) {
@@ -395,7 +396,7 @@ try {
 
   // Cross-check: run deriveZeroDteSetups in a child with the REAL cap=12 and confirm the rejection
   // log's max_otm_pct tickers exactly match removedByCap (proves the post-filter == a live cap run).
-  let capCheck = "skipped";
+  let capCheck; // assigned in both the try and catch below before it's read
   try {
     const res = runChildMjs(
       `import { deriveZeroDteSetups, SETUP_MAX_OTM_PCT } from ${JSON.stringify(`${SRC}lib/zerodte/board.ts`)};
@@ -606,7 +607,6 @@ try {
   console.log(`      all-8-absent → opt:true ${assessCortexVerdict(allAbsent, { failClosedOnVetoBlind: true }).decision} · opt:false ${assessCortexVerdict(allAbsent, { failClosedOnVetoBlind: false }).decision}`);
 
   // (2)/(3) evaluateZeroDteGates — a clean input isolating the VIX / macro firewall blocks.
-  const nowEt = new Date();
   const etMinNow = 11 * 60; // 11:00 ET — past the 10:00 opening-window gate
   const cleanGov = { open_plans: [], stops: [], realized_losers: 0, session_pnl_pct: 0 };
   const cleanPlan = { entry_status: "OK", illiquid: false, spread_pct: 5, vs_flow_pct: 0, mark: 1.0, occ: "O:TEST" };
