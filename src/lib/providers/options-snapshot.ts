@@ -96,6 +96,15 @@ export type OptionSnapshot = {
   iv: number | null;
   openInterest: number | null;
   /**
+   * Top-of-book quote sizes (contracts) from last_quote.bid_size / last_quote.ask_size, and the
+   * day/session volume from session.volume. ADDITIVE (PR-4): the SWING contract ranker reads these as
+   * quote-depth / liquidity inputs for its tradability score. null when the provider omitted them —
+   * NEVER fabricated; a consumer degrades to OI-only when absent.
+   */
+  bidSize: number | null;
+  askSize: number | null;
+  dayVolume: number | null;
+  /**
    * Underlying spot = underlying_asset.price (stock OCCs) ?? underlying_asset.value (index OCCs);
    * null when neither exists. NEVER fabricated.
    */
@@ -227,6 +236,12 @@ export function mapUnifiedSnapshotResult(r: UnifiedSnapshotResult): OptionSnapsh
     // normalizeImpliedVol() to guard the placeholder without rescaling real decimals.
     iv: finiteOrNull(r.implied_volatility),
     openInterest: finiteOrNull(r.open_interest),
+    // Quote-depth + day volume — mapped verbatim from the already-fetched raw fields (never a
+    // separate call). Sizes require >0 to be a real resting quote; volume 0 is a valid "no prints
+    // yet today" so it passes through as-is (finiteOrNull), null only when truly absent.
+    bidSize: (() => { const s = finiteOrNull(r.last_quote?.bid_size); return s != null && s > 0 ? s : null; })(),
+    askSize: (() => { const s = finiteOrNull(r.last_quote?.ask_size); return s != null && s > 0 ? s : null; })(),
+    dayVolume: finiteOrNull(r.session?.volume),
     underlyingPrice: up != null && up > 0 ? up : null,
     strike: finiteOrNull(r.details?.strike_price),
     optionType,
