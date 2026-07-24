@@ -829,9 +829,9 @@ function TierFactorsBlock({ tier }: { tier: NonNullable<PlayRow["tier"]> }) {
   );
 }
 
-function SizeChip({ view }: { view: PaneCortexView | null }) {
+function SizeChip({ view, earlyWindow = false }: { view: PaneCortexView | null; earlyWindow?: boolean }) {
   const verdict = view && !view.abstained ? view.verdict : null;
-  const chip = suggestedZeroDteSize(verdict?.score ?? null, (verdict?.vetoes.length ?? 0) > 0);
+  const chip = suggestedZeroDteSize(verdict?.score ?? null, (verdict?.vetoes.length ?? 0) > 0, earlyWindow);
   return (
     <span
       title={`${chip.basis} Richer sizing must be earned by ≥30 sessions of calibration — 0.5×/1× only until then.`}
@@ -1090,7 +1090,7 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
           <ConvictionBadge raw={row.conviction} />
           {row.setup?.confluence && <ConfluenceBadge confluence={row.setup.confluence} />}
           {row.setup?.flow_accumulation && <AccumulationBadge acc={row.setup.flow_accumulation} />}
-          {live && <SizeChip view={view} />}
+          {live && <SizeChip view={view} earlyWindow={row.setup?.confluence?.early_window ?? false} />}
           {row.closed_reason === "stopped" && (
             <span className="rounded-md border border-bear/35 bg-bear/[0.08] px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-bear">
               stopped −50%

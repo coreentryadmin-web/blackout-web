@@ -8,9 +8,28 @@ import {
   gateRejectionFor,
   MARKET_BIAS_MAX_AGE_MS,
   planQualityGateBlocks,
+  confluenceFloorAt,
+  ZERODTE_CONFLUENCE_MIN,
+  ZERODTE_CONFLUENCE_MIN_EARLY,
   type ZeroDteGateInput,
 } from "./gates";
 import type { ContractPlan } from "./plan";
+import type { ZeroDteConfluence } from "./confluence";
+
+/** Minimal confluence read carrying just the `confirmations` count G-12 gates on. */
+function conf(confirmations: number, over: Partial<ZeroDteConfluence> = {}): ZeroDteConfluence {
+  return {
+    score: confirmations,
+    confirmations,
+    timing_ok: true,
+    early_window: false,
+    vwap_ok: confirmations >= 1,
+    market_ok: confirmations >= 2,
+    tier: confirmations >= 2 ? "double" : "weak",
+    label: "test",
+    ...over,
+  };
+}
 
 const NOW_MS = Date.parse("2026-07-13T15:00:00Z"); // 11:00 ET on the fixture date
 
@@ -442,4 +461,81 @@ test("G-7: macro hard-block during CPI window", () => {
 test("planQualityGateBlocks: exported helper matches gate evaluation", () => {
   assert.deepEqual(planQualityGateBlocks(CLEAN_PLAN), []);
   assert.equal(planQualityGateBlocks(null)[0]!.code, "plan_no_quote");
+});
+
+// ── G-12 · confluence floor (Change 1 & 2, 2026-07-24) ───────────────────────────────
+
+test("G-12 default floor blocks a ZERO-confluence commit even at a very high score (the loud-print-alone case)", () => {
+  // score 95 clears G-3 easily; but 0 confirmations is the −12.5% EV bucket. Before G-12 the
+  // additive score carried it onto the board; now it's blocked.
+  const v = evaluateZeroDteGates(input({ score: 95, confluence: conf(0) }));
+  assert.equal(v.verdict, "BLOCKED");
+  const block = v.blocks.find((b) => b.code === "confluence_floor");
+  assert.ok(block, "confluence_floor must fire");
+  assert.equal(block!.threshold, ZERODTE_CONFLUENCE_MIN);
+  assert.match(block!.reason, /0-confirmation bucket ran −12\.5% EV|loud premium print/);
+});
+
+test("G-12 default floor: a single confirmation commits mid-session (11:00, standard floor = 1)", () => {
+  const v = evaluateZeroDteGates(input({ confluence: conf(1) }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks, []);
+});
+
+test("G-12 fails OPEN when no confluence read is attached (never manufactures a block from an unmeasured factor)", () => {
+  // The default input() carries no confluence — the fixture-replay / legacy path. Commits as before.
+  const v = evaluateZeroDteGates(input());
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "confluence_floor"), false);
+});
+
+test("G-12 early window (10:15) raises the floor to 2: a 1-conf setup that would commit at 11:00 is held", () => {
+  const early = 10 * 60 + 15;
+  const oneConf = evaluateZeroDteGates(input({ nowEtMinutes: early, confluence: conf(1) }));
+  assert.equal(oneConf.verdict, "BLOCKED");
+  const block = oneConf.blocks.find((b) => b.code === "confluence_floor");
+  assert.ok(block, "early-window 1-conf must block");
+  assert.equal(block!.threshold, ZERODTE_CONFLUENCE_MIN_EARLY);
+  assert.match(block!.reason, /early window/);
+
+  // The full VWAP+market double clears the early window.
+  const twoConf = evaluateZeroDteGates(input({ nowEtMinutes: early, confluence: conf(2) }));
+  assert.equal(twoConf.verdict, "COMMIT");
+
+  // And the SAME 1-conf setup commits once past 10:45 (standard floor).
+  const late = evaluateZeroDteGates(input({ nowEtMinutes: 11 * 60, confluence: conf(1) }));
+  assert.equal(late.verdict, "COMMIT");
+});
+
+test("confluenceFloorAt: standard floor outside the early window, higher floor inside [10:00, 10:45)", () => {
+  assert.equal(confluenceFloorAt(9 * 60 + 40), ZERODTE_CONFLUENCE_MIN); // pre-unlock
+  assert.equal(confluenceFloorAt(10 * 60), ZERODTE_CONFLUENCE_MIN_EARLY); // 10:00 inclusive
+  assert.equal(confluenceFloorAt(10 * 60 + 44), ZERODTE_CONFLUENCE_MIN_EARLY); // 10:44 inside
+  assert.equal(confluenceFloorAt(10 * 60 + 45), ZERODTE_CONFLUENCE_MIN); // 10:45 exclusive end
+  assert.equal(confluenceFloorAt(11 * 60), ZERODTE_CONFLUENCE_MIN); // past it
+  assert.ok(ZERODTE_CONFLUENCE_MIN_EARLY > ZERODTE_CONFLUENCE_MIN, "early floor must be strictly higher");
+});
+
+test("G-12 default floor is the conservative research-backed 1 (block only the losing 0-conf bucket)", () => {
+  assert.equal(ZERODTE_CONFLUENCE_MIN, 1);
+  assert.equal(ZERODTE_CONFLUENCE_MIN_EARLY, 2);
+});
+
+// ── Change 3 · staleness tightened to 5 min (config-gated) ──────────────────────────
+
+test("MARKET_BIAS_MAX_AGE_MS default tightened to 5 minutes (0DTE reaction-speed guard)", () => {
+  assert.equal(MARKET_BIAS_MAX_AGE_MS, 5 * 60 * 1000);
+});
+
+test("G-1 staleness: a 6-minute-old SPY bar now blocks (would have passed under the old 15-min window)", () => {
+  const sixMinOld = NOW_MS - 6 * 60 * 1000;
+  const v = evaluateZeroDteGates(input({ biasAsOfMs: sixMinOld }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks[0]!.code, "no_market_bias");
+
+  // 4 minutes old is still fresh under the tightened window.
+  assert.equal(
+    evaluateZeroDteGates(input({ biasAsOfMs: NOW_MS - 4 * 60 * 1000 })).verdict,
+    "COMMIT"
+  );
 });

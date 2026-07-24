@@ -5,6 +5,49 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-24 — [STRATEGY / entry-quality] 0DTE: confluence-gated commit (G-12) + early-window floor/size + tighter staleness — BUILT, HOLD for operator sign-off
+
+**Severity: strategy change (not a bug) — changes WHAT the board commits, so it deploys after close
+and stays on the branch until the operator says go.** Three evidence-driven entry-quality changes,
+all config-gated and conservative by default.
+
+**Change 1 — confluence was NON-gating; the additive score let one loud print carry an unconfirmed
+card.** `confluence.ts` computed the read but the module doc said "EVIDENCE ONLY … does NOT gate,"
+and the score (`board.ts:629-641`) is purely additive: the top premium tier alone is +40, so a
+single loud print + decent dominance/sweeps cleared the 65 floor (`gates.ts` G-3) with ZERO
+confirmations — exactly the E3 −12.5% EV bucket (0-conf −12.5% / 1-conf 0% / 2-conf +15.9%, 25
+sessions, `docs/audit/0DTE-RESEARCH.md`). **Fix:** new hard gate **G-12** (`gates.ts`) requires
+`confluence.confirmations` (the E3 axis = VWAP-side + market-aligned, added to `ZeroDteConfluence`)
+≥ `ZERODTE_CONFLUENCE_MIN` (default **1** — blocks only the measured-losing 0-conf; every 1-/2-conf
+setup is untouched, so the board is not starved). Confluence is now attached BEFORE the gate stack
+(`scan.ts`) and passed into the gate input. Fail-OPEN on a missing read (fixture replays), never a
+manufactured block.
+
+**Change 2 — entry unlocked into negative-EV territory.** G-2 unlocks at 10:00 ET but E2 measures
+10:00 −7.8% / 10:30 −9.1% EV; first positive is 11:00 (+1.5%). We do NOT move the 10:00 hard unlock
+(documented G-2 rationale + standing user directive; pushing to 11:00 empties the morning board).
+Instead G-12's floor rises to `ZERODTE_CONFLUENCE_MIN_EARLY` (default **2** — the full VWAP+market
+"double", the +15.9% bucket) inside the early window [10:00, 10:45) ET, and the size chip
+(`suggestedZeroDteSize`, `pane.ts`) halves for those commits (wired via `confluence.early_window`).
+
+**Change 3 — staleness too loose for a reaction-speed product.** `MARKET_BIAS_MAX_AGE_MS` 15 min → **5
+min** (env `ZERODTE_MARKET_BIAS_MAX_AGE_MS`) so a stale "up" read can't clear G-1 into a reversed
+tape; the RTH intraday cache (`scan.ts`) 3 min → **45 s** (env `ZERODTE_INTRADAY_CACHE_MS`; off-hours
+stays 3 min via `ZERODTE_INTRADAY_CACHE_OFFHOURS_MS`).
+
+**Evidence.** Board-gate A/B (identical setups, G-12 off vs on): **7/7 commit → 5/7**, the two
+filtered being (a) a 92-score loud-print flat-tape wrong-VWAP-side 0-conf setup and (b) a 10:15
+aligned-only 1-conf setup — both the exact classes E3/E2 flag; the 1-/2-conf setups still commit.
+`npm run sim:0dte` unchanged (25→5 published both runs; the sim exercises the deterministic-EDITION
+discovery path, not the board gate stack — documented scope boundary), confirming discovery isn't
+starved. `tsc --noEmit` clean, `check-brand.mjs` clean, **491/491** zerodte tests pass (new: G-12
+default/early/fail-open/floor tests, confluence `confirmations`+`early_window`, size-chip early
+window, 5-min staleness). Config knobs default to the research-backed conservative values; dial via
+env without a deploy.
+
+**Status:** BUILT on `feat/zerodte-confluence-entry-timing`. **HOLD — strategy change; do NOT
+auto-merge.** Deploy after close, operator sign-off before the live flip.
+
 ## 2026-07-24 — [SEV-3 + SEV-4] 0DTE command-deck live-marks: missing REST fallback + no sync-mark age flag — FIXED
 
 **SEV-3 — command-deck live-marks hook was SSE-only despite the documented REST fallback.**

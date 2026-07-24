@@ -162,6 +162,17 @@ test("suggestedZeroDteSize: a veto can never read as a full-size endorsement, wh
   assert.match(chip.basis, /veto/i);
 });
 
+test("suggestedZeroDteSize: an early-window commit (10:00–10:45) halves even a full-Cortex score (Change 2)", () => {
+  // Without the early-window flag a top score earns 1×…
+  assert.equal(suggestedZeroDteSize(99, false, false).size, "1×");
+  // …but inside the measured-negative early window it prints half size, de-risked until the drive resolves.
+  const early = suggestedZeroDteSize(99, false, true);
+  assert.equal(early.size, "0.5×");
+  assert.match(early.basis, /early window/i);
+  // A veto still outranks the early-window rule (defence-in-depth, never a fabricated 1×).
+  assert.equal(suggestedZeroDteSize(99, true, true).size, "0.5×");
+});
+
 // ── evidence row formatting ─────────────────────────────────────────────────────────
 
 test("evidenceRowParts: supports render [source] + positive signed weight", () => {
