@@ -127,7 +127,12 @@ export async function evaluateLedgerRowExit(
     // Freshest mark wins: lane mark if fresh (≤5s, the app-wide staleness rule),
     // else this sync pass's own snapshot mark. NEVER the row's stale last_mark —
     // exiting a play at a price nobody just observed is the wrong-number class
-    // this whole lane exists to kill.
+    // this whole lane exists to kill. CONTRACT: `opts.syncMark` must itself be a
+    // CURRENT mark (this pass just fetched it) — the age of a bare number can't be
+    // checked here, so a caller that only has a stale mark must pass null, not the
+    // stale value, or the engine could exit off it. The 1s live-marks caller passes
+    // its fresh-only `engineMark` (null when >5s old); scan.ts passes its just-
+    // fetched snapshot mark.
     const lane = occ ? (deps.readLaneMark ?? getZeroDteLiveMark)(occ) : undefined;
     const laneFresh = lane != null && lane.mark != null && !isZeroDteMarkStale(lane.asOf, nowMs);
     const mark = laneFresh ? lane!.mark : opts.syncMark;
