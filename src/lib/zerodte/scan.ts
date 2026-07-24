@@ -50,6 +50,7 @@ import {
   computeLedgerGrade,
   deriveZeroDteSetups,
   enrichSetup,
+  INDEX_OPTION_ROOTS,
   polygonSpotTicker,
   type EarningsFlag,
   type EnrichedZeroDteSetup,
@@ -571,10 +572,14 @@ export async function persistZeroDteScan(setups: EnrichedZeroDteSetup[]): Promis
     gross_premium: s.gross_premium,
     spike: s.spike,
     underlying: s.underlying_price,
-    // Premium reference the plan grades against — MUST match entry_max (the
-    // member's actual "enter at or below" instruction), not the raw live mark;
-    // see resolveLedgerEntryPremium's doc comment (plan.ts) for why.
-    entry_premium: resolveLedgerEntryPremium(s.plan?.entry_max, s.top_strike_avg_fill),
+    // Premium reference the plan grades against — entry_max (the member's actual
+    // "enter at or below" instruction), FLOORED at the flag-time mark so the graded
+    // basis is one a member could actually fill: a flow fill that sits below the live
+    // mark can't be gotten by someone arriving at flag time, and grading off it flatters
+    // the win rate (see resolveLedgerEntryPremium's doc comment, plan.ts). The mark is
+    // pinned here — the upsert COALESCEs entry_premium first-write-wins, so it's the
+    // flag-time mark, never a later refresh tick.
+    entry_premium: resolveLedgerEntryPremium(s.plan?.entry_max, s.top_strike_avg_fill, s.plan?.mark),
     flow_avg_fill: s.top_strike_avg_fill,
     plan_json: s.plan ? ({ ...s.plan } as unknown as Record<string, unknown>) : null,
     // G-4/G-6 calibration verdict at commit (C-2 context columns). Refresh-lane
@@ -701,6 +706,19 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
       // catch-and-retry path only covers thrown fetches, not empty ones).
       const bars = await fetchAggBars(polygonSpotTicker(row.ticker), 1, "day", row.session_date, row.session_date);
       const close = bars.length ? bars[bars.length - 1]!.c : null;
+      // A KNOWN index root returning ZERO bars is a transient provider gap, not a real
+      // "no close": the mapped I: symbol always has a daily bar for a finished session,
+      // so an empty result means the fetch degraded (rate limit, propagation lag), not
+      // that the index didn't trade. Stamping it now freezes a PERMANENT null direction
+      // grade — gradeZeroDteSetupRow sets graded_at, removing the row from every future
+      // pass. So treat empty bars for a mapped index root as a RETRYABLE non-grade,
+      // mirroring the throw path: leave it ungraded and let the next lazy pass retry.
+      // The plan grade written above is idempotent (skipped next pass once plan_outcome
+      // is set), so only the direction grade retries. Equities are unchanged: a missing
+      // daily bar there is a real gap and the clean path still stamps it.
+      if (close == null && INDEX_OPTION_ROOTS.includes(row.ticker.toUpperCase())) {
+        continue;
+      }
       const grade = computeLedgerGrade(row.direction, row.underlying_at_flag, close ?? null);
       await gradeZeroDteSetupRow(row.session_date, row.ticker, grade);
       graded += 1;

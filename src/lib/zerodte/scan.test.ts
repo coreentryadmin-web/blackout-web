@@ -399,6 +399,57 @@ test("gradeZeroDteLedger: an index-root row (SPXW) fetches its close from I:SPX 
   assert.ok(grade.move_pct != null && grade.move_pct > 0);
 });
 
+// Fix 7: a KNOWN index-root row whose mapped I: symbol returns ZERO daily bars (a transient
+// provider gap, NOT a real "no close") must be left UNGRADED and retried — NOT stamped
+// graded with a permanent null direction. gradeZeroDteSetupRow sets graded_at, so a
+// premature stamp freezes the null grade forever (empty results never hit the catch/retry).
+test("gradeZeroDteLedger: an index-root row with EMPTY daily bars is left ungraded (retryable), never a permanent null grade", async () => {
+  resetState();
+  state.ungradedRows = [
+    baseRow({
+      ticker: "SPXW",
+      session_date: "2026-07-03",
+      // Plan already graded so only the direction grade runs — isolates the empty-bars path.
+      plan_outcome: "stopped",
+      plan_pnl_pct: -50,
+      plan_json: { occ: "O:SPXW260703C07565000" },
+    }),
+  ];
+  // Seed NO bars for I:SPX → the mock returns [] (empty, not a throw) — the exact prod
+  // shape a rate-limited / lagging index fetch produces.
+  const { gradeZeroDteLedger } = await mod();
+  const graded = await gradeZeroDteLedger(true);
+
+  // It DID try the mapped index symbol...
+  assert.deepEqual(
+    state.aggBarCalls.filter((c) => c.timespan === "day").map((c) => c.symbol),
+    ["I:SPX"]
+  );
+  // ...but with empty bars it must NOT stamp a grade — leave it for the next pass.
+  assert.equal(graded, 0, "an empty-bars index root is not counted graded");
+  assert.equal(state.gradeCalls.length, 0, "gradeZeroDteSetupRow must NOT be called — no permanent null stamp");
+});
+
+// Guard the boundary: an EQUITY with empty daily bars is a real gap and the clean path is
+// unchanged (it still stamps an ungradeable/null grade) — the retry is index-roots only.
+test("gradeZeroDteLedger: an EQUITY with empty daily bars still stamps a grade (clean path unchanged — retry is index-roots only)", async () => {
+  resetState();
+  state.ungradedRows = [
+    baseRow({
+      ticker: "NVDA",
+      session_date: "2026-07-03",
+      plan_outcome: "stopped",
+      plan_pnl_pct: -50,
+      plan_json: { occ: "O:NVDA260703C00145000" },
+    }),
+  ];
+  const { gradeZeroDteLedger } = await mod();
+  const graded = await gradeZeroDteLedger(true);
+  assert.equal(graded, 1, "an equity with no daily bar is a real gap — still stamped (not retried forever)");
+  assert.equal(state.gradeCalls.length, 1);
+  assert.equal((state.gradeCalls[0]!.grade as { direction_hit: boolean | null }).direction_hit, null);
+});
+
 // ── PR-F commit-time tier stamp (persistZeroDteScan → entry_context.tier) ──────────
 // The #325 PR body promised exactly this wiring: "one assignZeroDteTier call at
 // commit". buildZeroDteEntryContext (REAL here, like the rest of ./entry-context's

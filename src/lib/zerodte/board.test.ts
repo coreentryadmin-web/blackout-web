@@ -234,6 +234,23 @@ test("ledger grade: missing flag price or close is ungradeable, never guessed", 
   assert.equal(computeLedgerGrade("long", 100, null).move_pct, null);
 });
 
+// Fix 4b: a dead-flat close (close == flag) is a BREAKEVEN, not a directional miss.
+// `direction_hit: signed > 0` booked every exactly-flat session as a false → a loss on
+// the underlying-move ledger (asymmetric with the SPX 3-way partition). It must be null.
+test("ledger grade: a flat close (signed exactly 0) is a breakeven, not a direction miss", () => {
+  const flatLong = computeLedgerGrade("long", 100, 100);
+  assert.equal(flatLong.move_pct, 0);
+  assert.equal(flatLong.direction_hit, null, "flat close is neither hit nor miss");
+  const flatShort = computeLedgerGrade("short", 100, 100);
+  assert.equal(flatShort.direction_hit, null);
+  // The real close is still present, so the row is genuinely graded (close_price set) —
+  // this is NOT the ungradeable/no-close branch.
+  assert.equal(flatLong.close_price, 100);
+  // A non-zero move is still a clean true/false either way.
+  assert.equal(computeLedgerGrade("long", 100, 100.01).direction_hit, true);
+  assert.equal(computeLedgerGrade("long", 100, 99.99).direction_hit, false);
+});
+
 // ── earnings + hot-news flags ────────────────────────────────────────────────────
 
 test("earnings: only tickers reporting today/next session are flagged", () => {
@@ -560,6 +577,46 @@ test("resolveLedgerEntryPremium: falls back to the flow fill when there's no pla
 
 test("resolveLedgerEntryPremium: null when neither a plan entry_max nor a flow fill exists — never fabricated", () => {
   assert.equal(resolveLedgerEntryPremium(null, null), null);
+});
+
+// Fix 3: the GRADED basis is floored at the flag-time mark so the recorded trade is one
+// a member could actually fill. A flow fill that sits BELOW the live mark (the smart money
+// got in earlier/cheaper) is not achievable for someone arriving at flag time; grading off
+// it flatters the win rate. The member-facing entry_max is unchanged — only the ledger basis.
+test("resolveLedgerEntryPremium: floors the graded basis at the flag-time mark when the mark is ABOVE the flow fill", () => {
+  // Flow filled 4.00, but the contract already marks 5.00 at flag time (+25%, still
+  // IN_RANGE under CHASE_PCT=35). A member fills at ~5.00, never 4.00 → grade off 5.00.
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 5.0), 5.0);
+  // Mark at/below the fill (IN_RANGE-below / CHEAPER): unchanged — entry_max stands.
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 3.5), 4.0);
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 4.0), 4.0);
+  // No mark supplied → legacy behavior (no floor), so every existing 2-arg caller is safe.
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0), 4.0);
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0, null), 4.0);
+  // No fill, only a mark: entry_max already IS the mark, so the floor is a no-op.
+  assert.equal(resolveLedgerEntryPremium(2.5, null, 2.5), 2.5);
+  // A malformed non-positive mark never drags the basis down.
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 0), 4.0);
+  // Rounds the floored basis at the data layer (no 5.1900000001 leaks).
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 5.19), 5.19);
+});
+
+// Fix 3, end-to-end: the achievable-entry floor flips a flattered "doubled" into the honest
+// "stopped" — the graded stop/target are recomputed off the floored basis by gradePlanFromBars.
+test("resolveLedgerEntryPremium + gradePlanFromBars: the achievable basis grades the trade a member could take", () => {
+  const T = Date.parse("2026-07-06T14:30:00Z");
+  const b = (i: number, h: number, l: number, c: number) => ({ t: T + i * 60_000, h, l, c });
+  // Contract path after flag: pops to 8.6 then craters to 2.4, closes 3.0.
+  const bars = [b(1, 8.6, 4.2, 5.0), b(2, 5.0, 2.4, 3.0)];
+  // Flow fill 4.20, live mark 5.20 at flag (paying up, still IN_RANGE).
+  const flattered = resolveLedgerEntryPremium(4.2, 4.2); // 4.20 — the OLD basis
+  const achievable = resolveLedgerEntryPremium(4.2, 4.2, 5.2); // 5.20 — floored at the mark
+  assert.equal(flattered, 4.2);
+  assert.equal(achievable, 5.2);
+  // Off 4.20: target 8.40 tags (8.6) → a phantom "doubled".
+  assert.equal(gradePlanFromBars(bars, flattered!, T).outcome, "doubled");
+  // Off the achievable 5.20: target 10.40 never tags, stop 2.60 does (2.4) → the honest stop.
+  assert.equal(gradePlanFromBars(bars, achievable!, T).outcome, "stopped");
 });
 
 // 14:30 UTC = 10:30 ET on 2026-07-06 (EDT) — helper for bar timestamps.
