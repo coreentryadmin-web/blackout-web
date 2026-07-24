@@ -234,7 +234,7 @@ function nvdaChain(expiry = "2026-08-08") {
 }
 
 test("runSwingDiscoveryScan: LIVE seam OPENS a graduated WATCH candidate (all four gates cleared)", async () => {
-  const { accessors, calls } = makeFakeAccum();
+  const { accessors } = makeFakeAccum();
   await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors)); // session 1
   const probe = await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors)); // session 2 → NVDA WATCH
   const nvda = probe.dossiers.find((d) => d.ticker === "NVDA")!;

@@ -40,7 +40,6 @@ import { subLaneForDte } from "./taxonomy";
 import type { SwingCalibrationReport } from "./calibration";
 import {
   evaluateSwingCommitBudget,
-  budgetRiskUsd,
   DEFAULT_PORTFOLIO_BUDGET,
   type PortfolioBudget,
   type BudgetPosition,

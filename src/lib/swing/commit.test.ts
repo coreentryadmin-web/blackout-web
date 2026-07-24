@@ -35,7 +35,6 @@ function gradedRows(archetype: SwingArchetype, subLane: SwingSubLane, nWin: numb
 function graduatedReport(archetype: SwingArchetype = "BREAKOUT", subLane: SwingSubLane = "STANDARD"): SwingCalibrationReport {
   return analyzeSwingCalibration(gradedRows(archetype, subLane, 32, 12));
 }
-const emptyReport = (): SwingCalibrationReport => analyzeSwingCalibration([]);
 
 // ── fixtures ──
 function contract(over: Partial<ChainContract> = {}): ChainContract {
