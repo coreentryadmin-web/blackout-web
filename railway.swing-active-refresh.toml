@@ -1,0 +1,31 @@
+# Cron config for the Night-Hawk-Swing-Refresh cron service.
+# Wire it up: service Settings -> Config-as-code -> set path to "railway.swing-active-refresh.toml"
+# Requires CRON_SECRET on this service (same value as blackout-web).
+#
+# Sibling of railway.swing-discovery.toml — same missing-schedule root cause. This cron does the
+# hourly management heartbeat for HELD swing positions (append a snapshot per open position + run the
+# capital-preservation manager). It is dormant until discovery actually opens positions, but must be
+# scheduled alongside discovery so a held position is never left unmanaged once the lane commits.
+# NEVER opens/closes a position (append-only snapshots + latch live state); fail-soft per position.
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+# Only redeploy this trigger service when its OWN driver/config changes — NOT on docs/src/log commits.
+# This service only runs scripts/hit-cron.mjs — ALL business logic lives in the blackout-web app it
+# pings — so it only needs to redeploy when hit-cron.mjs or this TOML changes.
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.swing-active-refresh.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "node scripts/hit-cron.mjs /api/cron/swing-active-refresh"
+# Hourly during the UTC band that covers RTH in BOTH EDT (UTC-4) and EST (UTC-5): 11-21 UTC spans
+# ~7AM-5PM ET. Fires at the top of each hour; the route's own ET/market-hours gate self-skips any
+# off-window minute. One snapshot per open position per hour is the grader/trajectory input cadence.
+# NOTE: if cronSchedule was set in the dashboard UI, the dashboard value overrides this TOML — update
+# it there too.
+cronSchedule = "0 11-21 * * 1-5"
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1

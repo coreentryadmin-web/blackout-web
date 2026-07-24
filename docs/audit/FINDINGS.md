@@ -1653,3 +1653,25 @@ grounds ONLY on `sectorLeadership01`, never SPY RS). Updated fixtures/symmetry +
 `src/lib/swing/taxonomy.ts` (+ test), `src/lib/swing/swing-archetype.ts`,
 `src/app/api/cron/swing-discovery/route.ts`. Status: FIXED, branch `fix/swing-sector-rotation-rs`
 (NON-DRAFT PR to main, no auto-merge per operator directive).
+
+## 2026-07-24 — [SEV-2, member-facing: SWING board permanently empty] the swing-discovery cron was never added to the EventBridge schedule catalog → it never fired in prod → 0 committed / 0 watch all day, every day since PR-13 — FIXED (schedule wiring; requires blackout-infra sync to activate)
+
+**Symptom (operator).** The live SWING board shows **0 committed / 0 watch all day** — "not one swing play." The serving read path (`discoverSwingFromPersisted`), the discovery cron (`persistSwingServingSnapshot`), and contract-attach (`fetchChainRows`) all merged today (#1066/#1073/#1069), yet the board is empty.
+
+**Root cause (confirmed by config + validator).** Every prod cron is fired by AWS EventBridge, whose schedule source-of-truth is the repo's `railway.<key>.toml` catalog (blackout-infra syncs those TOMLs → EventBridge trigger services running `scripts/hit-cron.mjs /api/cron/<key>`). The swing-discovery cron ROUTE (`src/app/api/cron/swing-discovery/route.ts`), the discovery core, the accumulation write, contract-attach, and the persist→read snapshot were all wired and correct — **but no `railway.swing-discovery.toml` was ever created** (the route landed in PR-13/#1046; the schedule TOML never followed). No TOML ⇒ EventBridge never provisions the trigger ⇒ the route never fires in prod. Consequences, both of which produce an empty board:
+- `persistSwingServingSnapshot(...)` is never called → the `swing:serving:latest:v1` shared-cache blob is never written → `discoverSwingFromPersisted()` reads null → `getSwingServingLane` serves the member-safe **empty** lane (serving-lane.ts:75, :149-155).
+- `observeSwingCandidate → upsertSwingAccum` is never called → the `swing_candidate_accumulation` table gets **zero rows** → nothing ever reaches the `distinct_session_days >= 2` WATCH bar (accumulation-store.ts:149-168), so even a single fire would surface an empty WATCH rail until a 2nd distinct session accretes.
+
+The sibling `swing-active-refresh` cron (held-position management heartbeat) had the identical gap — route + registry entry since PR-13, no `railway.swing-active-refresh.toml`.
+
+**Evidence.**
+- `ls railway.swing*.toml` → *No such file* (32 other crons each have one).
+- `node scripts/validate-railway-cron-manifest.mjs` (pre-fix): `[FAIL] registry key "swing-discovery" has no railway.swing-discovery.toml` + `missing from CRON_SERVICE_NAMES`; same two FAILs for `swing-active-refresh`; `count mismatch: registry=37 toml=32 service_map=31`.
+- No alternative scheduler fires it: `CRON_DISPATCH` (cron-dispatch.ts) — the only set the in-app `rth-warm-leader` self-heal can run — does not include swing-discovery; nothing else iterates the registry to self-fire.
+- Not caught earlier because the manifest validator lives only in the **deprecated** railway workflows (`railway-cron-config-check.yml` etc.), NOT in the required `verify`/`ci.yml` gate, so the registry↔TOML drift never turned CI red.
+
+**Fix (`fix/schedule-swing-discovery-cron`).** Add the two missing schedule catalog files — `railway.swing-discovery.toml` (phase-anchored wide-band: `*/30 * * * 1-5`; the route resolves the ET phase + is idempotent per (day,phase), so off-phase fires self-skip and DST needs no math here) and `railway.swing-active-refresh.toml` (hourly market-hours: `0 11-21 * * 1-5`) — and register both in `scripts/railway-cron-services.mjs` (`CRON_SERVICE_NAMES`). Regression guard: `scripts/swing-cron-schedule.test.mjs` asserts both swing crons are wired registry→TOML→service-map (6 tests, green). Post-fix the validator's swing FAILs are gone (only unrelated pre-existing `x-*` drift remains).
+
+**Activation caveat (real-money adjacent).** Merging this PR makes the cron *schedulable* but does NOT itself fire EventBridge — **blackout-infra must run its cron sync** (create/point the trigger service at the new TOML, with `CRON_SECRET` set). Note the commit seam went live today (#1073): once scheduled, discovery can open REAL positions — but only after a name accumulates ≥2 sessions AND its archetype×sub-lane bucket graduates (needs graded roll history, currently none) AND the portfolio budget is armed, so day-1 behavior is WATCH-only (commitEligible=0). Operator controls activation timing.
+
+**Status:** FIXED in-repo (schedule wiring + test); PENDING blackout-infra EventBridge sync to go live.
