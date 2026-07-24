@@ -69,6 +69,13 @@ export type ZeroDteBoardLedgerRow = {
   /** Mark provenance from the live lane: "mid" = two-sided quote, "last" =
    *  last-trade fallback (flagged), null = legacy sync lane. */
   mark_source: ZeroDteMarkSource | null;
+  /** True when the displayed mark came from the legacy SYNC lane (board `last_mark`,
+   *  which carries NO per-quote timestamp — mark_as_of is null) yet a mark exists.
+   *  SEV-4: lets the deck badge a non-live "sync" mark as unknown-age, so a member can't
+   *  mistake an unknown-age board mark for a 1s-fresh live one. False when the live lane
+   *  served this row (fresh + timestamped) or when there is no mark at all (nothing to
+   *  badge). Derived, additive — no payload restructure. */
+  mark_is_sync: boolean;
   move_pct: number | null;
   direction_hit: boolean | null;
   plan_outcome: string | null;
@@ -159,6 +166,10 @@ function mapLedgerRow(
     closed_reason: closedReason,
     mark_as_of: liveMark?.mark_as_of ?? null,
     mark_source: liveMark?.mark_source ?? null,
+    // SEV-4: flag a mark served by the SYNC lane (no per-quote timestamp) so the deck can
+    // badge it as unknown-age. liveMark == null ⟺ mark_as_of == null above; require a mark
+    // to exist (lastMark != null) — an absent mark has nothing to badge.
+    mark_is_sync: liveMark == null && lastMark != null,
     move_pct: r.move_pct,
     direction_hit: r.direction_hit,
     plan_outcome: r.plan_outcome,

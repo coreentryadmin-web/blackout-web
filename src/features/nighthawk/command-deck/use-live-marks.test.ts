@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { overlayLiveMarks, type LiveMarkRow } from "./use-live-marks.ts";
+import {
+  overlayLiveMarks,
+  marksMapFromPayload,
+  restFallbackShouldPoll,
+  type LiveMarkRow,
+} from "./use-live-marks.ts";
 import type { TerminalPlay } from "./types.ts";
 
 function play(over: Partial<TerminalPlay> = {}): TerminalPlay {
@@ -81,4 +86,48 @@ test("overlayLiveMarks: a STALE live row is NOT overlaid — the fresher board v
   assert.equal(out[0]!.mark, 5.0); // board value kept, stale 9.9 ignored
   assert.equal(out[0]!.pnlPct, 19);
   assert.equal(out[0]!.greeks, null); // stale greeks not applied either
+});
+
+// ── REST-fallback wiring (SEV-3) — pure pieces the hook composes ──────────────────────
+// The hook itself (EventSource + fetch + useEffect) can't unit-test under `tsx --test`
+// (no DOM/EventSource), so its two decisions are extracted as pure functions and covered
+// here: (1) the fallback activates ONLY while SSE is not OPEN, and (2) it feeds the SAME
+// OCC-keyed map the SSE path feeds.
+
+test("restFallbackShouldPoll: polls only while SSE is NOT open (CONNECTING/CLOSED), stands down when OPEN", () => {
+  // EventSource.readyState — 0 CONNECTING · 1 OPEN · 2 CLOSED.
+  assert.equal(restFallbackShouldPoll(0), true); // reconnect window → fallback carries
+  assert.equal(restFallbackShouldPoll(1), false); // healthy stream → do NOT double-fetch
+  assert.equal(restFallbackShouldPoll(2), true); // terminal CLOSED (no auto-retry) → fallback carries
+});
+
+test("marksMapFromPayload: SSE and REST payloads of the same rows build the IDENTICAL overlay map", () => {
+  // Both lanes deliver the same server payload shape; the map must be structurally identical
+  // whichever transport produced it (that is the whole point of one shared builder).
+  const rows: LiveMarkRow[] = [row(), row({ occ: "SPY260724C00500000", ticker: "SPY", mark: 3.3 })];
+  const fromSse = marksMapFromPayload({ available: true, marks: rows });
+  const fromRest = marksMapFromPayload({ available: true, idle: false, marks: rows });
+  assert.deepEqual([...fromRest!.entries()], [...fromSse!.entries()]);
+  // And it drives overlayLiveMarks exactly as an SSE-built map would.
+  const out = overlayLiveMarks([play()], fromRest!);
+  assert.equal(out[0]!.mark, 6.9);
+  assert.equal(out[0]!.pnlPct, 64);
+});
+
+test("marksMapFromPayload: empty / idle / malformed payload is a NO-OP (null → keep last good marks)", () => {
+  // Mirrors the SSE handler's rows.length===0 skip so an idle poll between frames can't blank the terminal.
+  assert.equal(marksMapFromPayload({ available: true, idle: true, marks: [] }), null);
+  assert.equal(marksMapFromPayload({ available: false }), null);
+  assert.equal(marksMapFromPayload({} as never), null);
+});
+
+test("marksMapFromPayload: a polled STALE row still routes through the >5s stale-drop (board value wins)", () => {
+  // The fallback feeds the same map, so overlayLiveMarks applies the identical stale drop to a POLLED row.
+  const map = marksMapFromPayload({
+    available: true,
+    marks: [row({ stale: true, mark: 9.9, live_pnl_pct: 135 })],
+  });
+  const out = overlayLiveMarks([play()], map!);
+  assert.equal(out[0]!.mark, 5.0); // stale polled mark ignored, board value kept
+  assert.equal(out[0]!.pnlPct, 19);
 });
