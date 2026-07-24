@@ -38,7 +38,7 @@ test("calendarDte counts calendar days", () => {
 test("one mover fans out to all three horizons at once", () => {
   const contracts = [
     c({ dte: 0, expiry: "2026-07-23", delta: 0.5 }), // 0DTE
-    c({ dte: 14, expiry: "2026-08-06", delta: 0.35 }), // Swing
+    c({ dte: 14, expiry: "2026-08-06", delta: 0.6 }), // Swing (0.50–0.75Δ directional stance)
     c({ dte: 60, expiry: "2026-09-21", delta: 0.6 }), // LEAPS
   ];
   const picks = fanOutContracts(contracts);
@@ -49,10 +49,10 @@ test("one mover fans out to all three horizons at once", () => {
 });
 
 test("each lane picks the delta closest to its target", () => {
-  // Swing target delta 0.35, band [0.25,0.50]: 0.34 beats 0.48
+  // Swing target delta 0.60, band [0.50,0.75]: 0.58 beats 0.72 (closest to target)
   const picks = fanOutContracts([
-    c({ dte: 10, strike: 90, delta: 0.48 }),
-    c({ dte: 10, strike: 105, delta: 0.34 }),
+    c({ dte: 10, strike: 90, delta: 0.72 }),
+    c({ dte: 10, strike: 105, delta: 0.58 }),
   ]);
   const swing = picks.find((p) => p.horizon === "SWING")!;
   assert.equal(swing.contract?.strike, 105);
@@ -103,7 +103,7 @@ test("explodeChainRows: LONG takes calls, SHORT takes puts, computes dte + abs d
 test("fanOutChain end-to-end: raw rows → three picks", () => {
   const rows = [
     { expiry: "2026-07-23", strike: 100, call_bid: 1.0, call_ask: 1.1, call_delta: 0.5, call_oi: 5000, put_bid: 1, put_ask: 1.1, put_delta: -0.5, put_oi: 5000 },
-    { expiry: "2026-08-06", strike: 108, call_bid: 1.2, call_ask: 1.3, call_delta: 0.34, call_oi: 3000, put_bid: 1, put_ask: 1.1, put_delta: -0.4, put_oi: 300 },
+    { expiry: "2026-08-06", strike: 108, call_bid: 1.2, call_ask: 1.3, call_delta: 0.6, call_oi: 3000, put_bid: 1, put_ask: 1.1, put_delta: -0.4, put_oi: 300 },
     { expiry: "2026-09-21", strike: 98, call_bid: 6.0, call_ask: 6.3, call_delta: 0.6, call_oi: 1500, put_bid: 1, put_ask: 1.1, put_delta: -0.4, put_oi: 300 },
   ];
   const picks = fanOutChain("XYZ", rows, ASOF, "LONG", DEFAULT_LIQUIDITY);

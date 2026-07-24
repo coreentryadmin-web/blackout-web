@@ -19,7 +19,7 @@ function fullChainCandidate(ticker: string, direction: "LONG" | "SHORT", score: 
     asOfYmd: ASOF,
     chainRows: [
       { expiry: "2026-07-23", strike: 100, call_bid: 1.0, call_ask: 1.1, call_delta: 0.5, call_oi: 5000, put_bid: 1.0, put_ask: 1.1, put_delta: -0.5, put_oi: 5000 }, // 0DTE
-      { expiry: "2026-08-06", strike: 108, call_bid: 1.2, call_ask: 1.3, call_delta: 0.34, call_oi: 3000, put_bid: 1.2, put_ask: 1.3, put_delta: -0.34, put_oi: 3000 }, // Swing (14 DTE)
+      { expiry: "2026-08-06", strike: 108, call_bid: 1.2, call_ask: 1.3, call_delta: 0.6, call_oi: 3000, put_bid: 1.2, put_ask: 1.3, put_delta: -0.6, put_oi: 3000 }, // Swing (14 DTE), 0.50–0.75Δ directional stance
       { expiry: "2026-09-21", strike: 98, call_bid: 6.0, call_ask: 6.3, call_delta: 0.6, call_oi: 1500, put_bid: 6.0, put_ask: 6.3, put_delta: -0.6, put_oi: 1500 }, // LEAPS (60 DTE)
     ],
   };
@@ -62,7 +62,7 @@ test("a candidate with only a swing-window expiry appears only in Swing", () => 
     score: 80,
     asOfYmd: ASOF,
     chainRows: [
-      { expiry: "2026-08-06", strike: 100, call_bid: 1.2, call_ask: 1.3, call_delta: 0.35, call_oi: 2000, put_bid: 1, put_ask: 1.1, put_delta: -0.35, put_oi: 500 },
+      { expiry: "2026-08-06", strike: 100, call_bid: 1.2, call_ask: 1.3, call_delta: 0.6, call_oi: 2000, put_bid: 1, put_ask: 1.1, put_delta: -0.6, put_oi: 500 },
     ],
   };
   const set = produceHorizonPlays([cand]);
