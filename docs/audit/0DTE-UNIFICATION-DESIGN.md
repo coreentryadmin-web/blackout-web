@@ -49,12 +49,35 @@ This supersedes the "two-engine parallel" state. **Legacy stays as its own thing
 
 `scanZeroDteBoard` stays the shell (keeps the whole spine). Three changes to what flows through it:
 
-### 1a. Discovery = union of three feeds (dedup by ticker; multi-feed = confluence boost)
-1. **Flow accumulation** (existing top-400 0-1DTE flow) — the whale-intent feed.
-2. **Whole-market breakout screen** (lift `screenBreakoutMovers`) — the price/volume/close-strength feed that makes no-whale momentum visible. *Adaptation required:* intraday it must read a live minute-aggregate snapshot, NOT grouped-daily-today (which is incomplete mid-session). Off-hours/first-print it may be empty — that's a SKIP, not a fail.
-3. **Multi-day accumulation magnet** (promote the existing `attachFlowAccumulation` read from evidence-only to a candidate *source* + a **direction check**). *Live proof it matters:* today the flow board took **MU long → −50%**; the multi-day accumulation was **MU bearish → +100%.* The signal that flips a max loss to a max win is already computed and currently thrown away at commit time.
+### 1a. Discovery = THREE INDEPENDENT sources, each stamping a first-class origin (NOT a collapsed pool)
 
-Every candidate — regardless of feed — is then aggregated/scored, contract-planned, and run through the **same** gate stack + Cortex + governor. A name surfaced by ≥2 feeds gets a corroboration boost (the +15.9% EV "confluence double" bucket).
+The sources run **independently** and each emits its own candidate carrying a single origin. They are never
+merged into one undifferentiated discovery pool — that would destroy the per-source research capability. The
+merge step unions **by ticker** but **preserves the origin as a set**, so a name found by two sources carries
+both origins.
+
+1. **FLOW discovery** → Candidate(origin=`FLOW`) — existing top-400 0-1DTE whale option prints (`fetchRecentFlows` → `deriveZeroDteSetups`). The whale-intent feed.
+2. **BREAKOUT discovery** → Candidate(origin=`BREAKOUT`) — whole-market price/volume/close-strength screen (lift `screenBreakoutMovers`) that makes no-whale momentum visible. *Adaptation:* intraday it must read a live minute-aggregate snapshot, NOT grouped-daily-today (incomplete mid-session). Off-hours/first-print empty = SKIP, not fail.
+3. **PIN discovery** → Candidate(origin=`PIN`) — mean-reversion: names pinned between dealer-defended GEX walls in a long-gamma tape (the range/fade setup the current momentum-only board structurally rejects). This is *also* the discovery source that feeds the iron-condor play-type (§1c).
+
+**Origin provenance (persisted, calibration-sliceable).** Each committed setup carries a `discovery_origin`
+SET stamped at merge time — one of `FLOW`, `BREAKOUT`, `PIN`, `FLOW+BREAKOUT`, `FLOW+PIN`, `BREAKOUT+PIN`,
+`ALL_THREE`. It is persisted on the ledger row AND the feature vector, and the calibration report gains an
+**origin-band** section (exactly like the existing `confluence_tiers` / `accumulation_alignment` bands) so
+the graded ledger can answer, per origin, on real outcomes:
+- Does `FLOW+BREAKOUT` outperform `FLOW` alone?
+- Are `PIN`-only setups profitable (and in which regime)?
+- Is `ALL_THREE` confluence worth a score boost — and how much?
+
+Each source stays **independently tunable and independently graduatable** through the n≥10 / delta≥15 ladder —
+a weak source can be throttled or dropped without touching the others, and a multi-origin corroboration boost
+is only applied once its origin band earns it on graded evidence (never hand-set).
+
+Every candidate — regardless of origin — then runs through the **same** contract-attach (§1b), gate stack,
+Cortex, and governor. The multi-day accumulation read (`attachFlowAccumulation`) is kept as a **cross-cutting
+direction/confirmation overlay** on every candidate (not a 4th origin): *live proof it matters:* today the flow
+board took **MU long → −50%** while multi-day accumulation was **MU bearish → +100%** — the direction check the
+board currently throws away at commit time.
 
 ### 1b. Contract attach is MANDATORY and gated
 Every candidate goes through `buildContractPlan` (0DTE, weekly fallback) → `plan_illiquid`/`plan_moved`/`plan_no_quote` are hard blocks. This closes ②'s fail-open contract hole: a cheap breakout with no liquid same-day contract is **dropped**, not shipped with a caveat. (This is also why the condor + index names matter — they're the liquid, tradeable core.)
@@ -114,7 +137,7 @@ Net effect on "board goes empty vs admit a loser": the confluence-2 gate (Layer 
 
 **Phase 2 — Trade management:** partial-trim exit behind `ZERODTE_EXIT_MODE`, graduate on the counterfactual ledger (adopt #1068). The #1 EV leak.
 
-**Phase 3 — Discovery unification:** whole-market breakout feed + multi-day accumulation magnet (with direction check) as candidate sources into `scanZeroDteBoard`, through mandatory `buildContractPlan` + full gate stack + Cortex. Flag `ZERODTE_WHOLE_MARKET`. Widen the funnel; this also un-starves the board and fills the banger scale-out ladder.
+**Phase 3 — Discovery unification (three INDEPENDENT origin-tagged sources):** add BREAKOUT and PIN discovery alongside the existing FLOW source into `scanZeroDteBoard`, each stamping a first-class `discovery_origin` (§1a) preserved as a SET through merge — never a collapsed pool. Persist origin on the ledger row + feature vector; add the calibration origin-band. Every candidate through mandatory `buildContractPlan` + full gate stack + Cortex; multi-day accumulation stays a cross-cutting direction overlay. Flag `ZERODTE_WHOLE_MARKET` (and a per-source flag each, so a source can be enabled/throttled independently). Widen the funnel, un-starve the board, fill the banger scale-out ladder — and make every future "does source X pay?" question answerable on graded evidence.
 
 **Phase 4 — Condor as a live second play-type**, regime-routed (calibration-first, small size, breach stop).
 
