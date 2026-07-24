@@ -18,8 +18,9 @@ import { logCronRun } from "@/lib/cron-run";
 import { runSwingActiveRefresh } from "@/lib/swing/active-refresh";
 import type { ManageSyncReads } from "@/lib/swing/manage-sync";
 import { dteOf } from "@/lib/zerodte/scan-trigger";
-import { fetchOpenSwingPositions, insertSwingSnapshot, updateSwingLiveState } from "@/lib/db";
+import { fetchOpenSwingPositions, insertSwingSnapshot, updateSwingLiveState, type SwingPositionRow } from "@/lib/db";
 import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
+import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,25 @@ async function loadUnderlyingSpot(ticker: string): Promise<number | null> {
   return Number.isFinite(p) && p > 0 ? p : null;
 }
 
+/**
+ * Best-effort live OPTION mark for a held position's contract (reuses the 0DTE unified-snapshot marks path).
+ * The ledger stores the OCC without the `O:` prefix the snapshot endpoint expects, so normalize it first.
+ * Returns null (contract unknown / no quote / fetch error) → the manager's premium rungs skip via null-honesty
+ * rather than acting on a fabricated mark. `.mark` is the doc-priority mark (mid → last → day close).
+ */
+async function loadOptionMark(row: SwingPositionRow): Promise<number | null> {
+  const raw = row.contract_occ?.trim();
+  if (!raw) return null;
+  const occ = raw.startsWith("O:") ? raw : `O:${raw}`;
+  try {
+    const snaps = await fetchOptionsUnifiedSnapshot([occ]);
+    const mark = snaps.get(occ)?.mark;
+    return typeof mark === "number" && Number.isFinite(mark) && mark > 0 ? mark : null;
+  } catch {
+    return null; // best-effort: a marks miss must never sink the refresh (underlying path still records)
+  }
+}
+
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -42,18 +62,23 @@ export async function GET(req: NextRequest) {
   try {
     const result = await runSwingActiveRefresh({
       fetchOpen: fetchOpenSwingPositions,
-      // Per-position reads: fresh underlying spot + current DTE. Returning null skips the position for this
-      // tick (no fabricated snapshot). Option mark is left null in v1 — the manager's premium rungs simply
-      // skip (null-honesty); the underlying path + DTE are the load-bearing swing reads and are captured here.
+      // Per-position reads: fresh underlying spot + current DTE + the held contract's live OPTION mark.
+      // Returning null skips the position for this tick (no fabricated snapshot). The underlying spot is
+      // load-bearing (null → skip); the option mark is best-effort (null → the manager's premium rungs skip
+      // via null-honesty, but the underlying path + snapshot still record).
       loadReads: async (row): Promise<ManageSyncReads | null> => {
-        const spot = await loadUnderlyingSpot(row.ticker);
-        if (spot == null) return null; // no usable read → skip (fail-soft, no snapshot)
+        const [spot, mark] = await Promise.all([loadUnderlyingSpot(row.ticker), loadOptionMark(row)]);
+        if (spot == null) return null; // no usable underlying read → skip (fail-soft, no snapshot)
         const dte = row.contract_expiry ? dteOf(row.contract_expiry, nowMs) : null;
         return {
           underlyingPrice: spot,
+          // Live contract mark → drives the premium ratchet (peak/trough) + the profit-ladder / −60% backstop
+          // premium rungs, and lands on the snapshot's option_mark + feature-vector option_return_pct.
+          mark,
           dte,
-          // MFE/MAE columns ratchet max/min underlying PRICE (GREATEST/LEAST) — feed the current spot as both
-          // candidates; the ledger keeps the running extremes.
+          // PRICE candidates for the ledger's underlying_mfe/underlying_mae high/low-water columns (ratcheted
+          // via GREATEST/LEAST). The snapshot's running_mfe/running_mae is the SIGNED excursion % that
+          // planManageSync derives from these ratcheted extremes + entry — NOT this raw spot.
           underlyingMfe: spot,
           underlyingMae: spot,
         };

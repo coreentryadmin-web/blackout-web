@@ -24,6 +24,7 @@ import {
   type SwingDiscoveryDeps,
 } from "@/lib/swing/discovery";
 import { ingestSwingReads } from "@/lib/swing/swing-ingest";
+import { persistSwingServingSnapshot } from "@/lib/swing/serving-lane";
 import {
   fetchRecentFlows,
   upsertSwingAccum,
@@ -147,6 +148,21 @@ export async function GET(req: NextRequest) {
   try {
     const deps = buildDiscoveryDeps(nowMs, sessionDay, decision.phase!);
     const result = await runSwingDiscoveryScan(deps);
+
+    // Persist the scored output so the member horizons route can serve it (getSwingServingLane's `discover`
+    // reads this blob). Before this, the scan advanced only the accumulation memory — the dossiers/plays/watch
+    // it produced were dropped, so the SWING board had nothing to read and rendered permanently empty.
+    // Best-effort (persist swallows its own errors) — a cache miss must never fail the discovery cron.
+    // `playSet.SWING` is only non-empty once discovery attaches concrete WATCH contracts (the OPTIONAL
+    // fetchChainRows dep — the evidence-only "WATCH by persistence, not by contract" posture); until then the
+    // member board is honestly empty, but the dossiers + watch list are persisted and the read path is live.
+    await persistSwingServingSnapshot({
+      asOf: result.asOf,
+      sessionDay,
+      dossiers: result.dossiers,
+      plays: result.playSet.SWING,
+      watch: result.watchCandidates,
+    });
 
     const payload = {
       ok: true,

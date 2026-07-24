@@ -17,6 +17,8 @@
 
 import type { SwingDossier } from "./dossier";
 import type { HorizonPlay } from "../horizon-plays";
+import type { SwingWatchCandidate } from "./accumulation-store";
+import { sharedCacheGet, sharedCacheSet } from "../shared-cache";
 import {
   assembleSwingServingLane,
   emptySwingServingLane,
@@ -85,4 +87,69 @@ export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Prom
     // MEMBER-SAFE: a discovery/DB hiccup must not throw the route or fabricate plays — serve an empty lane.
     return emptySwingServingLane();
   }
+}
+
+// ─── Persisted discovery snapshot (the write→read seam between the cron and the member route) ────────────
+//
+// WHY (the dead-end this closes): the whole-market swing discovery runs in a CRON, but the member horizons
+// route runs per-request and cannot reach the DB flow window / live chains / accumulation store the scan
+// needs. So the scan writes its scored output HERE (a small shared-cache blob), and the member route reads
+// it back through `discoverSwingFromPersisted` — a pure cache read, no provider IO on the request path.
+// Before this, the route called getSwingServingLane() with NO discover, so the SWING board was structurally
+// always empty; and the cron persisted only the accumulation memory, never the scored dossiers/plays.
+//
+// PERSISTENCE-GATED (the swing engine's core discipline): `discoverSwingFromPersisted` surfaces ONLY plays
+// whose (ticker, direction) has cleared the cross-session persistence bar — i.e. appears in the persisted
+// `watch` list. A first-sighting name that produced a play never reaches the member board on a single
+// sighting, exactly as the accumulation gate requires. Empty watch / empty plays ⇒ an honest empty lane.
+
+/** The scored output one discovery scan hands to the serving route, persisted between the two runtimes. */
+export interface SwingServingSnapshot {
+  /** ISO timestamp the scan was taken (for freshness/debug). */
+  asOf: string;
+  /** ET session day the scan is anchored to. */
+  sessionDay: string;
+  /** The scored dossiers (enrich each play's serving meta). */
+  dossiers: SwingDossier[];
+  /** The produced SWING plays (concrete WATCH contracts) — empty until discovery attaches chains. */
+  plays: HorizonPlay[];
+  /** The persistence-cleared WATCH candidates — the gate for which plays may surface to members. */
+  watch: SwingWatchCandidate[];
+}
+
+/** Shared-cache key + TTL. TTL outlives a full session day so the latest scan serves until the next scan
+ *  refreshes it (discovery fires per phase per day; a stale-but-present blob still degrades to gated plays). */
+export const SWING_SERVING_CACHE_KEY = "swing:serving:latest:v1";
+export const SWING_SERVING_TTL_SEC = 26 * 60 * 60;
+
+/** Persist one scan's scored output for the member route to read. Best-effort: a cache write miss just
+ *  leaves the serving lane on its member-safe empty fallback — it NEVER fails the discovery cron. */
+export async function persistSwingServingSnapshot(snapshot: SwingServingSnapshot): Promise<void> {
+  try {
+    await sharedCacheSet(SWING_SERVING_CACHE_KEY, snapshot, SWING_SERVING_TTL_SEC);
+  } catch {
+    // non-fatal — the read side degrades to an empty lane when there's nothing (or nothing fresh) to read.
+  }
+}
+
+/** Read the latest persisted scan (null when absent / cache unavailable). Pure cache read — no provider IO. */
+export async function readSwingServingSnapshot(): Promise<SwingServingSnapshot | null> {
+  try {
+    return await sharedCacheGet<SwingServingSnapshot>(SWING_SERVING_CACHE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The `discover` source the horizons route injects: read the latest persisted scan and hand back the
+ * serving-lane deps shape ({ dossiers, plays }), GATED so only persistence-cleared names surface. Returns
+ * null (⇒ empty lane) when nothing is persisted. Never throws — member-safe by construction.
+ */
+export async function discoverSwingFromPersisted(): Promise<SwingDiscoveryLike | null> {
+  const snap = await readSwingServingSnapshot();
+  if (!snap) return null;
+  const cleared = new Set((snap.watch ?? []).map((c) => `${c.ticker.toUpperCase()}|${c.direction}`));
+  const plays = (snap.plays ?? []).filter((p) => cleared.has(`${p.ticker.toUpperCase()}|${p.direction}`));
+  return { dossiers: snap.dossiers ?? [], plays };
 }

@@ -1,12 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getSwingServingLane, type SwingDiscoveryLike } from "./serving-lane.ts";
+import {
+  getSwingServingLane,
+  discoverSwingFromPersisted,
+  persistSwingServingSnapshot,
+  type SwingDiscoveryLike,
+} from "./serving-lane.ts";
 import { buildSwingDossier, type SwingDossierInput } from "./dossier.ts";
 import type { SwingReads } from "../swing-signals.ts";
 import type { ZeroDteFlowAccumulation } from "../zerodte/flow-accumulation-context.ts";
 import type { SwingServingReads } from "./serving-ingest.ts";
 import type { HorizonPlay } from "../horizon-plays.ts";
 import type { ChainContract } from "../horizon-fanout.ts";
+import type { SwingWatchCandidate } from "./accumulation-store.ts";
 
 function accum(direction: "bull" | "bear", days: number): ZeroDteFlowAccumulation {
   return {
@@ -89,4 +95,47 @@ test("assembles a real sectioned lane: WATCH + RESEARCH populate; setupState sta
   assert.equal(lane.sections.COMMIT_NOW[0]!.setupState, "TRIGGERED");
   assert.equal(lane.sections.COMMIT_NOW[0]!.entryStatus, "AT_TRIGGER");
   assert.equal(lane.sections.COMMIT_NOW[0]!.serving, "COMMIT_NOW"); // stamped by the section router
+});
+
+// ── FIX 1: the cron→route persistence seam (persist scored output; member route reads it, gated) ──────────
+
+function watchCand(over: Partial<SwingWatchCandidate>): SwingWatchCandidate {
+  return {
+    ticker: "NVDA", direction: "LONG", observationCount: 3, distinctSessionDays: 2,
+    phasesSeen: ["POST_CLOSE"], lastSessionDay: "2026-07-24",
+    firstSeenAt: "2026-07-22T20:00:00.000Z", lastSeenAt: "2026-07-24T20:00:00.000Z", ...over,
+  };
+}
+
+test("persist → discoverSwingFromPersisted round-trips and GATES to persistence-cleared names", async () => {
+  await persistSwingServingSnapshot({
+    asOf: "2026-07-24T20:00:00.000Z",
+    sessionDay: "2026-07-24",
+    dossiers: [buildSwingDossier(dossier("NVDA"))],
+    plays: [
+      play({ ticker: "NVDA", direction: "LONG", status: "WATCH" }), // cleared persistence → surfaces
+      play({ ticker: "FRSH", direction: "LONG", status: "WATCH" }), // single sighting (not in watch) → filtered
+    ],
+    watch: [watchCand({ ticker: "NVDA", direction: "LONG" })],
+  });
+
+  const result = await discoverSwingFromPersisted();
+  assert.ok(result, "the persisted scan is read back");
+  assert.deepEqual(result!.plays.map((p) => p.ticker), ["NVDA"], "only the persistence-cleared name surfaces");
+
+  // End-to-end: the exact horizons-route wiring returns the real candidate on the board (not the empty lane).
+  const lane = await getSwingServingLane({ discover: discoverSwingFromPersisted });
+  const rendered = Object.values(lane.sections).flat().map((p) => p.ticker);
+  assert.ok(rendered.includes("NVDA"), "the persisted WATCH candidate renders on the member board");
+  assert.ok(!rendered.includes("FRSH"), "a single-sighting name never reaches the member board (persistence gate)");
+});
+
+test("persisted scan with no cleared names → member-safe empty lane (empty is fine when there's no data)", async () => {
+  await persistSwingServingSnapshot({
+    asOf: "2026-07-24T20:00:00.000Z", sessionDay: "2026-07-24",
+    dossiers: [], plays: [play({ ticker: "AAA", status: "WATCH" })], watch: [], // play present but nothing cleared
+  });
+  const lane = await getSwingServingLane({ discover: discoverSwingFromPersisted });
+  assert.equal(lane.committedCount + lane.watchCount, 0);
+  for (const s of Object.values(lane.sections)) assert.equal(s.length, 0);
 });
