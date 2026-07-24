@@ -200,6 +200,58 @@ export function growthModulation(
   return neutral;
 }
 
+// ── ABSOLUTE $-GAMMA BEAD LADDER (continuous perceptual size — magnitude, not frame rank) ────────
+//
+// Bead SIZE has been FRAME-RELATIVE (relStrengthT normalises every bead to the strongest wall in
+// view), so the fattest bead is always "whatever is biggest on screen right now" — a genuinely
+// massive wall and a modest one look identical once each is its frame's local king, and a wall's
+// bead can even change size just because a bigger wall scrolled into/out of view. Members asked for
+// size to read as ABSOLUTE dollar magnitude instead: a size ladder of small / medium / large / huge
+// dot ≈ $200M / $600M / $1.2B / $2.5B of dealer-gamma exposure, so a bigger wall stays visibly
+// bigger even as the frame's king changes.
+//
+// beadRadiusForNotional maps a $ exposure onto a pixel radius on a LOG (perceptual) curve. Gamma
+// exposure spans orders of magnitude (a live SPX 0DTE king vs a straggler runs a ~680× range), so
+// equal RATIOS — 200M→600M→1.2B, each ~2-3× — must feel like equal size STEPS, which a linear map
+// cannot do (it would crush the whole low end into the floor). Anchored so ~$200M sits at the floor
+// and ~$2.5B at the ceiling; monotonic non-decreasing and saturating in between.
+const NOTIONAL_FLOOR_USD = 200e6; // "small" dot — the ladder's bottom anchor
+const NOTIONAL_CEIL_USD = 2_500e6; // "huge" dot — the ladder's top anchor
+
+/** Perceptual (log) map from ABSOLUTE $ gamma exposure → bead pixel radius, clamped to
+ *  [floorPx, ceilPx]. NaN / 0 / negative → floorPx (never throws, never a giant dot from bad data). */
+export function beadRadiusForNotional(
+  usd: number,
+  { floorPx, ceilPx }: { floorPx: number; ceilPx: number }
+): number {
+  if (!Number.isFinite(usd) || usd <= 0) return floorPx;
+  const lo = Math.log(NOTIONAL_FLOOR_USD);
+  const hi = Math.log(NOTIONAL_CEIL_USD);
+  const t = (Math.log(usd) - lo) / (hi - lo);
+  const clamped = Math.max(0, Math.min(1, t));
+  return floorPx + clamped * (ceilPx - floorPx);
+}
+
+// PROXY (documented, pending a real notional) ─────────────────────────────────────────────────────
+// The bead trail carries a per-strike gamma SHARE (`pct`, % of the ticker's total |gamma|), NOT a $
+// figure: GexWallLevel is only { strike, pct }, and the one absolute quantity upstream
+// (computeGexWalls' `totalAbsGamma`) is a unitless gamma sum that's discarded before the walls are
+// recorded. Threading a REAL gamma-$ total from the ladder through GexWalls → WallHistorySample →
+// StrikeTrailPoint AND the DB recorder/persist layer (+ their tests) was out of scope for this
+// change. Until StrikeTrailPoint.notional is populated with a real value, we estimate a $ notional as
+// share × a nominal book so the ABSOLUTE ladder still applies today: because it is strictly monotonic
+// in pct, bead ORDERING/relative magnitude is exact — only the $ CALIBRATION is nominal. To make it
+// literal later: thread the real per-ticker |gamma| dollar total onto the trail and set
+// StrikeTrailPoint.notional = (pct/100) × thatTotal; the renderer already prefers a real notional.
+const NOMINAL_TICKER_GAMMA_USD = 8e9;
+
+/** Estimate a $ gamma notional from a per-strike gamma SHARE (`pct`, 0-100). Proxy — see the note
+ *  above. 0 for non-positive/non-finite input (→ the ladder floor). Monotonic in pct. */
+export function pctToNotionalProxy(pct: number): number {
+  if (!Number.isFinite(pct) || pct <= 0) return 0;
+  return (pct / 100) * NOMINAL_TICKER_GAMMA_USD;
+}
+
 /**
  * Alpha multiplier for MODELED (reconstructed) beads vs OBSERVED (recorded) ones. Modeled beads
  * must read as a FAINT GHOST underlay — clearly secondary to solid recorded beads and to the
