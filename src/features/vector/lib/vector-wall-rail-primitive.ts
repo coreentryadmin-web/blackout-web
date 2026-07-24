@@ -13,28 +13,29 @@ import { relStrengthT, growthModulation, magnitudeGlowBoost } from "./vector-wal
 import type { StrikeTrail } from "./vector-wall-history";
 
 /**
- * WALL RAIL as a lightweight-charts SERIES PRIMITIVE — the dealer-wall "beads" drawn as CONTINUOUS
- * RIBBONS instead of same-size circle markers.
+ * WALL RAIL as a lightweight-charts SERIES PRIMITIVE — the dealer-wall "beads" drawn as CANVAS BEADS
+ * (one round dot per bucket) that carry the richer per-bead channels the old fixed-size marker API
+ * could not. Members preferred the beaded rail to the solid ribbon this briefly became; this restores
+ * beads WITHOUT losing the channels — every bead is sized + brightened by real strength/velocity.
  *
- * WHY this exists: circle markers expose only a quantized `size` coefficient + alpha, both in one
- * hue. That channel can't render the real per-strike gamma spread (live SPX 0DTE runs a ~680× range
- * — a 20%-of-gamma king next to a 0.03% straggler) nor the bucket-to-bucket growth/fade that's fully
- * present in the recorded trail (2800+ buckets/session). Every prior "all our beads look the same"
- * fix just widened a marker number; the channel itself was maxed out. A canvas ribbon has the free
- * channels the markers lack:
- *   • THICKNESS  = frame-relative strength (king wall is a fat band, a straggler a hairline) — the
- *                  "which wall is strong right now" cue markers couldn't give (circles aren't wide).
- *   • BRIGHTNESS = absolute magnitude + build/fade velocity (a genuinely massive wall glows; a wall
- *                  being STACKED this bucket flares, one bleeding out dims).
- *   • LEADING EDGE = a bright vertical cap where the wall is BUILDING (rising pct) — "forming now".
- *   • BIRTH FLASH  = a bright cap at the wall's first bucket — "this wall was born here".
- *   • DIM TAPER    = a departed (inactive) wall's tail fades out — "this wall is dying/gone".
+ * WHY canvas beads (not the built-in marker API): `series.setMarkers` circle markers expose only a
+ * quantized `size` coefficient + alpha, both in one hue. That channel can't render the real per-strike
+ * gamma spread (live SPX 0DTE runs a ~680× range — a 20%-of-gamma king next to a 0.03% straggler) nor
+ * the bucket-to-bucket growth/fade fully present in the recorded trail (2800+ buckets/session). Every
+ * prior "all our beads look the same" fix just widened a marker number; the channel itself was maxed
+ * out. Drawing the beads ourselves on the canvas gives each bead the free channels the marker API lacks:
+ *   • BEAD SIZE   = frame-relative strength (king wall = a fat bead, a straggler = a small dot) — the
+ *                  "which wall is strong right now" cue the fixed-size marker API couldn't give.
+ *   • BRIGHTNESS  = absolute magnitude + build/fade velocity (a genuinely massive wall glows; a wall
+ *                  being STACKED this bucket flares, one bleeding out dims), per bead along the rail.
+ *   • BIRTH FLASH = a bright vertical cap at the wall's first bucket — "this wall was born here".
+ *   • DIM TAPER   = a departed (inactive) wall's tail fades out — "this wall is dying/gone".
  *
  * It consumes the SAME `StrikeTrail[]` the marker path builds (per-side, lifecycle-filtered), maps
- * each point's (time, strike) through the real time/price scales, and fills a band whose half-height
- * tracks strength. Reuses the tuned math in vector-wall-visual (relStrengthT / growthModulation /
- * magnitudeGlowBoost) so the ribbon and any residual markers stay perceptually consistent. Empty /
- * invisible → renderer returns null → nothing drawn (honest absence).
+ * each point's (time, strike) through the real time/price scales, and stamps a strength-sized,
+ * velocity-brightened BEAD per bucket. Reuses the tuned math in vector-wall-visual (relStrengthT /
+ * growthModulation / magnitudeGlowBoost) so the beads stay perceptually consistent. Empty / invisible
+ * → renderer returns null → nothing drawn (honest absence).
  */
 
 export type WallRailData = {
@@ -69,8 +70,9 @@ const EDGE_ALPHA = 1;
 const GAP_SPLIT_FACTOR = 2.5;
 
 type BandPt = { x: number; yTop: number; yBot: number; a: number };
-/** One CONTINUOUS band segment for a wall (a run of adjacent buckets with no gap). Rendered as a
- *  single filled polygon so it reads as a solid ribbon, not a row of disconnected per-bucket dots. */
+/** One run of adjacent buckets for a wall (no time gap). Rendered as a ROW OF BEADS — one round dot
+ *  per bucket, each sized by its yTop/yBot half-height (strength) and brightened by its own alpha
+ *  (growth/fade). A dead-stretch gap splits the run so beads don't bridge time the wall was absent. */
 type Band = {
   pts: BandPt[];
   color: string;
@@ -88,40 +90,28 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
       ctx.globalAlpha = RAIL_TRANSLUCENCY;
       for (const b of this._bands) {
         const pts = b.pts;
-        if (pts.length >= 2) {
-          const x0 = pts[0]!.x;
-          const xN = pts[pts.length - 1]!.x;
-          // Multi-stop horizontal gradient: each bucket contributes its own alpha, so a wall that
-          // GREW brightens along its length and one that FADED dims — the growth/fade channel, now
-          // carried continuously instead of by per-bucket ticks.
-          const grad = ctx.createLinearGradient(x0, 0, Math.max(xN, x0 + 0.01), 0);
-          const span = Math.max(xN - x0, 1e-6);
-          for (let i = 0; i < pts.length; i++) {
-            grad.addColorStop(Math.min(1, Math.max(0, (pts[i]!.x - x0) / span)), withA(b.color, pts[i]!.a));
-          }
-          // Solid filled band: top edge left→right, bottom edge right→left.
-          ctx.fillStyle = grad;
+        // BEADS (member-preferred): one round bead per bucket rather than a single filled ribbon.
+        // Each point still carries the full channel set the ribbon exposed — the beads just render it
+        // as discrete dots (which read as a rail of "beads" the way members like) instead of a solid
+        // band: BEAD RADIUS = frame-relative strength (king wall = a fat bead, a straggler = a small
+        // one, from the same yTop/yBot half-height the band used), BEAD BRIGHTNESS = per-bucket alpha
+        // (a growing wall brightens along its length, a fading one dims — the growth/fade channel), and
+        // a thin crisp rim keeps every bead readable over the bright GEX heatmap. A dense run of
+        // buckets reads as a near-continuous beaded rail; a sparse/fading run reads as scattered dots.
+        for (const p of pts) {
+          const cy = (p.yTop + p.yBot) / 2;
+          const r = Math.max(1.6, (p.yBot - p.yTop) / 2); // half-height → bead radius (strength)
+          ctx.fillStyle = withA(b.color, p.a);
           ctx.beginPath();
-          ctx.moveTo(pts[0]!.x, pts[0]!.yTop);
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.yTop);
-          for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i]!.x, pts[i]!.yBot);
-          ctx.closePath();
+          ctx.arc(p.x, cy, r, 0, Math.PI * 2);
           ctx.fill();
-          // Bright crisp top+bottom edges so the thickness (strength) contrast reads as a defined
-          // shape even over a busy background.
-          ctx.lineWidth = 1.25;
-          for (const edge of ["yTop", "yBot"] as const) {
-            ctx.beginPath();
-            ctx.moveTo(pts[0]!.x, pts[0]![edge]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]![edge]);
-            ctx.strokeStyle = withA(b.color, Math.min(1, pts[pts.length - 1]!.a + 0.02));
+          // Thin brighter rim so a bead reads as a defined dot over a busy background (the ribbon used
+          // crisp top/bottom edges for the same reason).
+          if (r >= 2.2) {
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = withA(b.color, Math.min(1, p.a + 0.04));
             ctx.stroke();
           }
-        } else if (pts.length === 1) {
-          // A wall seen in exactly one bucket (a lone birth) — a small solid lozenge so it's not lost.
-          const p = pts[0]!;
-          ctx.fillStyle = withA(b.color, p.a);
-          ctx.fillRect(p.x - 2, p.yTop, 4, Math.max(2, p.yBot - p.yTop));
         }
         // Birth: a bright vertical flash at the wall's first in-window bucket ("formed here").
         if (b.birth) {
