@@ -2,12 +2,8 @@
 
 import useSWR from "swr";
 import { useEffect, useState } from "react";
-import { fetchNightHawkEdition, fetchNightHawkPlayStatus, fetchNightHawkRecord } from "@/lib/api";
-import type { PlaybookPlay, PlayMorningStatus } from "@/features/nighthawk/lib/types";
-import { ZeroDteBoard } from "@/features/nighthawk/components/ZeroDteBoard";
-import { PlayDetailModal } from "@/features/nighthawk/components/PlayDetailModal";
-import { PlaybookBoard } from "@/features/nighthawk/components/PlaybookBoard";
-import { HorizonLaneBoard } from "@/features/nighthawk/components/HorizonLaneBoard";
+import { fetchNightHawkEdition } from "@/lib/api";
+import { ZeroDteDeck, HorizonDeck, LegacyDeck } from "@/features/nighthawk/command-deck/containers";
 import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
 import {
   NIGHTHAWK_VIEWS,
@@ -18,12 +14,11 @@ import {
 } from "@/features/nighthawk/lib/nighthawk-view";
 
 /**
- * Night Hawk — one surface, four views (0DTE / Swings / LEAPS / Legacy), single-select. Selecting a view
- * scopes the ENTIRE desk to it; only the selected view's data is fetched/rendered. The choice is persisted
- * in the URL (?view=) so a refresh or shared link lands on the same board.
+ * Night Hawk — one surface, four views (0DTE / Swings / LEAPS / Legacy), single-select. Each view renders the
+ * COMMAND DECK: a two-panel matrix terminal (plays left, live breakdown right). Selecting a view scopes the
+ * ENTIRE desk to it and only that view's data is fetched. The choice persists in the URL (?view=).
  */
 export function NightHawkFeed() {
-  const [selectedPlay, setSelectedPlay] = useState<PlaybookPlay | null>(null);
   const [view, setView] = useState<NightHawkView>(DEFAULT_NIGHTHAWK_VIEW);
 
   // Hydrate the selected view from the URL on mount (client-only — keeps SSR output stable).
@@ -40,33 +35,13 @@ export function NightHawkFeed() {
   }
 
   const isLegacy = view === "LEGACY";
-
-  // Legacy (evening playbook) data — fetched ONLY when the Legacy view is active, so the other views don't
-  // pull the edition/record/status they never render (the "scope the whole desk to the selected one" rule).
-  const { data: edition, error: editionError, isLoading: editionLoading } = useSWR(
-    isLegacy ? "nighthawk-edition" : null,
-    fetchNightHawkEdition,
-    { refreshInterval: 120_000 }
-  );
-  const editionFor = edition?.edition_for ?? undefined;
-  const { data: playStatus } = useSWR(
-    isLegacy && editionFor ? ["nighthawk-play-status", editionFor] : null,
-    () => fetchNightHawkPlayStatus(editionFor),
-    { refreshInterval: 60_000 }
-  );
-  const { data: record, isLoading: recordLoading } = useSWR(
-    isLegacy ? "nighthawk-record" : null,
-    () => fetchNightHawkRecord(30),
-    { refreshInterval: 300_000 }
-  );
-
-  const confirmByTicker = new Map<string, PlayMorningStatus>();
-  if (playStatus?.available && playStatus.plays) {
-    for (const p of playStatus.plays) confirmByTicker.set(p.ticker.toUpperCase(), p);
-  }
+  // Legacy edition — fetched ONLY when the Legacy view is active (scope-to-selected rule).
+  const { data: edition } = useSWR(isLegacy ? "nighthawk-edition" : null, fetchNightHawkEdition, {
+    refreshInterval: 120_000,
+  });
 
   return (
-    <div className="nighthawk-content-canvas">
+    <div className="nighthawk-content-canvas flex min-h-0 flex-1 flex-col">
       <IosNativeSegment
         value={view}
         onChange={selectView}
@@ -77,37 +52,12 @@ export function NightHawkFeed() {
       />
       <p className="mb-3 text-xs text-mute">{NIGHTHAWK_VIEW_META[view].blurb}</p>
 
-      <div className="nighthawk-single-view flex w-full max-w-none flex-col">
-        {view === "ZERO_DTE" && <ZeroDteBoard />}
-        {view === "SWING" && <HorizonLaneBoard horizon="SWING" />}
-        {view === "LEAPS" && <HorizonLaneBoard horizon="LEAPS" />}
-        {isLegacy && (
-          <PlaybookBoard
-            lean
-            edition={edition}
-            loading={editionLoading}
-            editionError={
-              editionError
-                ? "Edition failed to load — auto-retrying every 2 minutes. Check connection or refresh."
-                : undefined
-            }
-            onPlaySelect={setSelectedPlay}
-            confirmByTicker={confirmByTicker}
-            playStatusAvailable={Boolean(playStatus?.available)}
-            morningConfirmCheckedAt={playStatus?.checked_at}
-            record={record}
-            recordLoading={recordLoading}
-          />
-        )}
+      <div className="nighthawk-single-view flex min-h-[560px] w-full max-w-none flex-1 flex-col">
+        {view === "ZERO_DTE" && <ZeroDteDeck />}
+        {view === "SWING" && <HorizonDeck horizon="SWING" />}
+        {view === "LEAPS" && <HorizonDeck horizon="LEAPS" />}
+        {isLegacy && <LegacyDeck edition={edition} />}
       </div>
-
-      <PlayDetailModal
-        play={selectedPlay}
-        editionFor={edition?.edition_for ?? null}
-        onClose={() => setSelectedPlay(null)}
-        morningConfirm={selectedPlay ? confirmByTicker.get(selectedPlay.ticker.toUpperCase()) : undefined}
-        morningConfirmCheckedAt={playStatus?.checked_at}
-      />
     </div>
   );
 }
