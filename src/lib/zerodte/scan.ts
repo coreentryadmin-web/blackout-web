@@ -285,14 +285,19 @@ async function attachIntradayEdge(
   const nowEt = hour * 60 + minute;
   const tod = timeOfDayFactor(nowEt);
 
-  const top = setups.slice(0, ENRICH_TOP_N);
+  // 9-7: compute the intraday edge for EVERY gated setup, not just the enriched top-N. Previously only the
+  // top-5 got a market-align / VWAP / time-of-day score adjustment, yet attachGateVerdicts gates all of
+  // them — so ranks 6-10 were gated on an UNADJUSTED score, G-10 (intraday_conflict) could never fire for
+  // them, and attachConfluence always logged them "weak" (biasing the confluence calibration set). This is
+  // the light per-ticker read; the heavy DOSSIER enrichment (Redis single-flight) still stays at top-N.
+  const edged = setups;
   const [spyRead, ...reads] = await Promise.all([
     intradayReadFor("SPY", today),
-    ...top.map((s) => intradayReadFor(s.ticker, today)),
+    ...edged.map((s) => intradayReadFor(s.ticker, today)),
   ]);
   const bias = marketBias(spyRead ?? null);
 
-  top.forEach((s, i) => {
+  edged.forEach((s, i) => {
     const read = reads[i] ?? null;
     const adj = intradayScoreAdjust(s.direction, read);
     const align = marketAlignAdjust(s.direction, bias);
