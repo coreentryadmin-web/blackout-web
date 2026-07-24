@@ -39,6 +39,24 @@ export interface ChainContract {
   ask: number | null;
   /** Mid premium per share = (bid+ask)/2 when both present, else null. */
   mid: number | null;
+  // ─── OPTIONAL enrichment (PR-4) — additive only; existing consumers never read these. ───
+  // The 0DTE fan-out (explodeChainRows/clearsLiquidity/fanOutContracts) reads only the fields
+  // above; the SWING contract ranker (contract-ranker.ts) reads these when the unified-snapshot
+  // provider supplies them and DEGRADES GRACEFULLY (OI-only tradability) when they are absent.
+  /** Gamma (per-contract), when the provider supplies greeks. */
+  gamma?: number | null;
+  /** Theta (per-contract), when the provider supplies greeks. */
+  theta?: number | null;
+  /** Vega (per-contract), when the provider supplies greeks. */
+  vega?: number | null;
+  /** Implied vol (raw provider value — normalize at the compare layer). */
+  iv?: number | null;
+  /** Top-of-book bid size (contracts). Quote-depth input for the tradability read. */
+  bidSize?: number | null;
+  /** Top-of-book ask size (contracts). */
+  askSize?: number | null;
+  /** Day/session volume (contracts traded today). Falls back to OI-only when absent. */
+  dayVolume?: number | null;
 }
 
 /** Hard liquidity gate a contract must clear to be tradeable. */
@@ -127,7 +145,7 @@ export function explodeChainRows(
   return out;
 }
 
-function clearsLiquidity(c: ChainContract, gate: LiquidityGate): boolean {
+export function clearsLiquidity(c: ChainContract, gate: LiquidityGate): boolean {
   if (c.openInterest < gate.minOpenInterest) return false;
   if (c.mid == null || c.mid <= 0) return false;
   if (c.mid > gate.maxPremiumPerShare) return false;

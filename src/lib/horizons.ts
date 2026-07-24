@@ -110,9 +110,14 @@ export const HORIZONS: Record<Horizon, HorizonSpec> = {
     grader: "hour",
     refresh: "live",
     contract: {
-      targetDelta: 0.35,
-      deltaBand: [0.25, 0.5],
-      note: "cheap OTM weekly/monthly call (the banger); positive-skew scale-out exit",
+      // DIRECTIONAL stance (PR-4, SEV-4/FM#5): 0.60Δ near-the-money, band [0.50,0.75]. This REPLACES
+      // the old 0.35Δ / [0.25,0.50] "cheap OTM banger" stance — a multi-session thesis wants an
+      // instrument that TRACKS the underlying with less premium-decay drag and better breakeven
+      // headroom, not a low-delta lotto. The per-sub-lane bands (taxonomy.ts SWING_SUB_LANES) refine
+      // this; this lane-level fallback is the default when no sub-lane is resolved. Scale-out exit unchanged.
+      targetDelta: 0.6,
+      deltaBand: [0.5, 0.75],
+      note: "0.50–0.75Δ directional call/put that tracks the underlying over the swing hold; positive-skew scale-out exit",
     },
   },
   LEAPS: {
