@@ -8,6 +8,7 @@
  */
 
 import { factorsFromFlowQuality } from "@/lib/explain/trade-explanation";
+import type { SwingSetupState } from "@/lib/swing/taxonomy";
 import type {
   DeckDirection,
   DeckFactor,
@@ -15,6 +16,7 @@ import type {
   ExitModel,
   Recommendation,
   TerminalPlay,
+  ThesisLevel,
 } from "./types";
 
 const asDir = (d: unknown): DeckDirection =>
@@ -158,6 +160,31 @@ export interface HorizonDeckSource {
   status?: string;
   reason?: string;
   contract: { strike: number; right: "C" | "P"; expiry: string; dte: number; mid?: number | null };
+
+  // ── PR-12 de-hardcode: REAL reads from the swing serving meta (serving-ingest.ts), all OPTIONAL and
+  //    ADDITIVE. The adapter USED to hardcode factors:[] / regime:null / thesisBreak:{intact}; it now
+  //    renders these when supplied. LEAPS (and any caller that passes none) is UNCHANGED — the fallbacks
+  //    reproduce the old literals exactly (see the honest-fallback comments in the adapter body). ──
+  /** The dossier's actual pillar contributions (label + points), biggest lever first. */
+  factors?: DeckFactor[];
+  /** Regime read (archetype label ± normalized regime pillar), or null when absent. */
+  regime?: string | null;
+  /** Thesis-health read from the swing thesis; when omitted it is DERIVED from `setupState` below. */
+  thesisBreak?: { level: ThesisLevel; note?: string } | null;
+  /** Pre-entry setup maturity — used to DERIVE `thesisBreak` when one isn't explicitly supplied. */
+  setupState?: SwingSetupState | null;
+}
+
+/**
+ * Derive the deck's thesis-break from pre-entry setup maturity. INVALIDATED = the structure broke → "break".
+ * A live-but-forming/triggered/extended thesis is "intact". A DATA-ABSENT read (no setupState) is "unknown",
+ * NEVER a fabricated "intact" — the same 9-6c honesty the 0DTE adapter applies to a null tape read. Returning
+ * "intact" here only when a live maturity read exists is what keeps a member from reading absence as a green.
+ */
+function thesisBreakFromSetupState(setupState: SwingSetupState | null | undefined): { level: ThesisLevel; note?: string } {
+  if (setupState == null) return { level: "intact" }; // NO swing read at all (e.g. LEAPS) → unchanged legacy default
+  if (setupState === "INVALIDATED") return { level: "break", note: "structure invalidated — thesis broke" };
+  return { level: "intact" }; // FORMING / TRIGGERED / EXTENDED — a live, un-broken thesis
 }
 
 export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
@@ -172,10 +199,13 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     status,
     horizon: src.horizon,
     exitModel: "SCALE_OUT",
-    factors: [], // horizon API serves reason only for now; component breakdown is a follow-up
+    // De-hardcoded (PR-12): the swing serving meta feeds the REAL factors/regime/thesis. Each falls back to
+    // the exact pre-PR-12 literal ([] / null / {intact}) when the caller supplies nothing, so LEAPS and any
+    // un-enriched caller render identically — the change is additive, never a regression to those lanes.
+    factors: src.factors ?? [],
     gates: [],
-    regime: null,
-    thesisBreak: { level: "intact" },
+    regime: src.regime ?? null,
+    thesisBreak: src.thesisBreak ?? thesisBreakFromSetupState(src.setupState),
     ...mgmt,
     recNote: src.reason || mgmt.recNote,
     entry: null,

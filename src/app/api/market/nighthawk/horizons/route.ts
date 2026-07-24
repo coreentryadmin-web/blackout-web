@@ -10,6 +10,7 @@ import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
 import { scopeBoardToHorizon } from "@/lib/horizon-board";
 import { horizonForView, parseNightHawkView } from "@/features/nighthawk/lib/nighthawk-view";
 import { horizonBoardFromZeroDtePayload } from "@/lib/zerodte/horizon-board-from-payload";
+import { getSwingServingLane } from "@/lib/swing/serving-lane";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 
@@ -36,7 +37,18 @@ export async function GET(req: NextRequest) {
     const viewParam = req.nextUrl.searchParams.get("view") ?? req.nextUrl.searchParams.get("horizon");
     const horizon = viewParam ? horizonForView(parseNightHawkView(viewParam)) : null;
     const payload = await getZeroDteBoardPayload();
-    const board = scopeBoardToHorizon(horizonBoardFromZeroDtePayload(payload, payload.as_of), horizon);
+    let board = horizonBoardFromZeroDtePayload(payload, payload.as_of);
+
+    // SWING branch (PR-12): the 0DTE payload only carries the 0DTE lane — its SWING lane is an empty
+    // placeholder. When the desk toggles to Swings, splice in the REAL sectioned serving lane (four pre-entry
+    // sections live; three live-position sections empty until PR-13) BEFORE scoping, so `scopeBoardToHorizon`
+    // recomputes the totals against it. `getSwingServingLane` degrades to an empty structured lane on any
+    // discovery hiccup, so this stays member-safe. Other views (0DTE/LEAPS/Legacy) are untouched.
+    if (horizon === "SWING") {
+      const swingLane = await getSwingServingLane();
+      board = { ...board, lanes: { ...board.lanes, SWING: swingLane } };
+    }
+    board = scopeBoardToHorizon(board, horizon);
     return NextResponse.json(
       { board, upstream_ok: payload.upstream_ok, session: payload.session },
       {
