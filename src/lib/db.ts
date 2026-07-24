@@ -1696,6 +1696,18 @@ async function runMigrations(): Promise<void> {
     );
   `);
   await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_swing_positions_commit_key ON swing_positions(commit_key)`);
+  // FINDINGS 2026-07-24 (SEV-2, fail-open status guard): the monotonic status ladder is enforced in the
+  // updateSwingLiveState CASE, but nothing at the SCHEMA level stopped a buggy writer from persisting a
+  // status OFF the ladder (a typo like 'CLOSE'/'ROLL', or a status invented by a future caller). A DB CHECK
+  // is the last line of defense — a value off the ladder is rejected at write time regardless of which
+  // accessor wrote it. Idempotent add (Postgres has no `ADD CONSTRAINT IF NOT EXISTS` for CHECK) via the
+  // standard catch-duplicate_object DO block, so a migration re-run is a no-op.
+  await p.query(`
+    DO $$ BEGIN
+      ALTER TABLE swing_positions ADD CONSTRAINT swing_positions_status_ck
+        CHECK (status IN ('PENDING','OPEN','HOLD','TRIM','CLOSED','ROLLED'));
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+  `);
   // Open-book scan: the active positions the manager/refresh loop walks each tick.
   await p.query(`
     CREATE INDEX IF NOT EXISTS idx_swing_positions_open
@@ -1711,6 +1723,15 @@ async function runMigrations(): Promise<void> {
   // Roll-chain walk (fetchSwingPositionChain) + range/feature reads.
   await p.query(`CREATE INDEX IF NOT EXISTS idx_swing_positions_root ON swing_positions(root_position_id, roll_seq)`);
   await p.query(`CREATE INDEX IF NOT EXISTS idx_swing_positions_session ON swing_positions(session_date DESC)`);
+  // FINDINGS 2026-07-24 (SEV-4, missing index): fetchGradedSwingFeatureRows scans WHERE graded_at IS NOT NULL
+  // AND feature_vector IS NOT NULL ORDER BY session_date DESC — the feature store's hot read. Without a
+  // matching partial index it degrades to a seq-scan + sort as the ledger grows. A partial index on
+  // session_date DESC over exactly that predicate serves the read directly (index-ordered, pre-filtered).
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_swing_positions_graded_features
+    ON swing_positions(session_date DESC)
+    WHERE graded_at IS NOT NULL AND feature_vector IS NOT NULL;
+  `);
 
   // Append-only longitudinal series: one row per observation of a live position, never
   // upserted (each tick is evidence of the path, not a correction of the last). The
@@ -5730,9 +5751,15 @@ export type SwingPositionInsert = {
  *  commit-time context: a re-running scan must not re-pick the contract, re-sign the
  *  thesis, or re-stamp the desk/gate/feature blobs. Scoring/live fields are NOT pinned —
  *  those are (re)set by updateSwingLiveState. */
+// FINDINGS 2026-07-24 (SEV-4, root/parent clobber): root_position_id and parent_position_id are the roll
+// chain's IDENTITY — fixed at first insert and load-bearing precisely when NULL (a root row carries
+// root_position_id = NULL; it IS the chain root). COALESCE-pinning them (COALESCE(stored, EXCLUDED)) looks
+// safe but a root row's semantically-meaningful NULL is NOT protected: COALESCE(NULL, EXCLUDED.x) returns
+// the incoming EXCLUDED value, so a later upsert carrying a non-null would overwrite the root's NULL and
+// silently re-thread the chain. They are therefore excluded from the DO UPDATE SET ENTIRELY — a column not
+// in the SET keeps its stored value unconditionally (NULL included). roll_seq stays pinned (it is set once
+// at insert and never legitimately changes on a re-touch; a non-null 0/N is safe under COALESCE).
 const SWING_POSITION_PINNED_COLUMNS = [
-  "root_position_id",
-  "parent_position_id",
   "roll_seq",
   "direction",
   "sub_lane",
@@ -5759,9 +5786,12 @@ const SWING_POSITION_PINNED_COLUMNS = [
  * first-write-wins (invariant #2) — only committed_at/updated_at advance on a re-touch.
  * Returns the position id.
  */
-export async function insertSwingPosition(pos: SwingPositionInsert): Promise<number> {
+export async function insertSwingPosition(pos: SwingPositionInsert, db?: Db): Promise<number> {
   await ensureSchema();
-  const res = await (await getPool()).query<{ id: string }>(
+  // `db` lets the caller run this write on an already-open transaction client (withSwingRollTx) instead of a
+  // fresh autocommit pool connection — so a roll's child insert + parent grade share ONE atomic transaction.
+  const executor = db ?? (await getPool());
+  const res = await executor.query<{ id: string }>(
     `
     INSERT INTO swing_positions (
       commit_key, root_position_id, parent_position_id, roll_seq, session_date, ticker,
@@ -5831,6 +5861,14 @@ export async function updateSwingLiveState(
          WHEN status IN ('CLOSED','ROLLED') THEN status                      -- terminal frozen
          WHEN status = 'TRIM' AND $2 IN ('PENDING','OPEN','HOLD') THEN status -- TRIM sticky
          WHEN status IN ('OPEN','HOLD') AND $2 = 'PENDING' THEN status        -- no regress to PENDING
+         -- FINDINGS 2026-07-24 (SEV-2, fail-open guard): the CASE previously fell through to ELSE $2,
+         -- writing ANY incoming status VERBATIM — including a value OFF the ladder (a CLOSE/ROLL typo
+         -- or a status a future caller invents). That is fail-OPEN: garbage persists. This final arm makes
+         -- the write fail-CLOSED — an unknown target keeps the current status (mirrors the pure
+         -- isMonotonicSwingStatusTransition, which also rejects an unknown target). The DB CHECK constraint
+         -- is the belt to this suspenders (it would reject the write outright); this keeps the mark/latch
+         -- writes on the row succeeding while simply dropping the bad status.
+         WHEN $2 NOT IN ('PENDING','OPEN','HOLD','TRIM','CLOSED','ROLLED') THEN status
          ELSE $2
        END,
        last_mark = COALESCE($3, last_mark),
@@ -5848,6 +5886,11 @@ export async function updateSwingLiveState(
  * Freeze the multi-truth grade onto a terminal position (status becomes CLOSED unless the
  * caller passes ROLLED for a rolled leg). Guarded WHERE graded_at IS NULL so a leg is graded
  * exactly once — a re-run of the lazy grader can never re-litigate a frozen realized_pnl_pct.
+ *
+ * Returns the AFFECTED ROWCOUNT (0 or 1). 0 means the guarded UPDATE matched nothing — the row is
+ * already graded/terminal (a grade race) — which the transactional roll (withSwingRollTx) treats as
+ * an ERROR so a fresh child never commits linked to a parent this call did not actually terminate.
+ * `db` runs the write on a caller-supplied transaction client instead of a fresh pool connection.
  */
 export async function gradeSwingPosition(
   id: number,
@@ -5857,10 +5900,12 @@ export async function gradeSwingPosition(
     legacy_grade?: Record<string, unknown> | null;
     realized_pnl_pct?: number | null;
     status?: "CLOSED" | "ROLLED";
-  }
-): Promise<void> {
+  },
+  db?: Db
+): Promise<number> {
   await ensureSchema();
-  await (await getPool()).query(
+  const executor = db ?? (await getPool());
+  const res = await executor.query(
     `UPDATE swing_positions SET
        grade_json = $2::jsonb,
        grade_methodology = $3,
@@ -5880,6 +5925,74 @@ export async function gradeSwingPosition(
       g.status ?? "CLOSED",
     ]
   );
+  return res.rowCount ?? 0;
+}
+
+/**
+ * FINDINGS 2026-07-24 (SEV-3, non-atomic roll): a roll is close+grade+link — insert the continuation
+ * CHILD, then flip the PARENT to a terminal graded status. Done as two separate autocommit queries
+ * (the prior shape) they can half-complete: the child commits, then the parent grade fails or races,
+ * leaving an orphan child linked to a still-OPEN parent (or two live legs of one chain). This helper
+ * runs BOTH writes on ONE pooled client inside BEGIN/COMMIT and ROLLBACKs on ANY error — all-or-nothing.
+ *
+ * The bound `gradeParent` reports affected rowcount and THROWS on 0 rows: a 0-row terminal flip means
+ * the parent was already graded/terminal (a grade race), which must ABORT the roll (rolling back the
+ * freshly-inserted child) rather than silently commit an orphan. Child-insert-before-parent-terminal
+ * ordering is preserved by the caller (roll.ts); this just makes the pair atomic and race-safe.
+ */
+export async function withSwingRollTx<T>(
+  fn: (tx: {
+    insertChild: (pos: SwingPositionInsert) => Promise<number>;
+    gradeParent: (
+      id: number,
+      g: {
+        grade_json: Record<string, unknown>;
+        grade_methodology: string;
+        legacy_grade?: Record<string, unknown> | null;
+        realized_pnl_pct?: number | null;
+        status?: "CLOSED" | "ROLLED";
+      }
+    ) => Promise<number>;
+  }) => Promise<T>
+): Promise<T> {
+  await ensureSchema();
+  const client = await (await getPool()).connect();
+  try {
+    await client.query("BEGIN");
+    const tx = {
+      insertChild: (pos: SwingPositionInsert) => insertSwingPosition(pos, client),
+      gradeParent: async (
+        id: number,
+        g: {
+          grade_json: Record<string, unknown>;
+          grade_methodology: string;
+          legacy_grade?: Record<string, unknown> | null;
+          realized_pnl_pct?: number | null;
+          status?: "CLOSED" | "ROLLED";
+        }
+      ): Promise<number> => {
+        const affected = await gradeSwingPosition(id, g, client);
+        if (affected === 0) {
+          throw new Error(
+            `swing roll: parent grade affected 0 rows (position ${id} already graded/terminal — grade race); rolling back`
+          );
+        }
+        return affected;
+      },
+    };
+    const result = await fn(tx);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      /* ignore rollback failure — surfacing the original error is what matters */
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /** Pin the scale-out (financial) grade first-write-wins — the exit decision that actually
@@ -6041,10 +6154,11 @@ export async function fetchSwingSnapshots(positionId: number, limit = 2000): Pro
 
 /**
  * Accrete one observation of a candidate for (ticker, direction). distinct_session_days only
- * increments when the incoming session day differs from the last one recorded (scans arrive in
- * time order), so the persistence gate ("seen across ≥2 sessions") is honest. phases_seen
- * accumulates a deduped set of the discovery phases the name showed up in. Never re-stamps
- * first_seen_at.
+ * increments when the incoming session day is STRICTLY NEWER than the last one recorded (genuine
+ * forward progress), and last_session_day is pinned to GREATEST(existing, incoming) — so an
+ * out-of-order or replayed scan (an older day) neither double-counts nor rewinds the high-water
+ * mark, keeping the persistence gate ("seen across ≥2 sessions") honest. phases_seen accumulates a
+ * deduped set of the discovery phases the name showed up in. Never re-stamps first_seen_at.
  */
 export async function upsertSwingAccum(a: {
   ticker: string;
@@ -6062,10 +6176,19 @@ export async function upsertSwingAccum(a: {
      ) VALUES ($1,$2,1,1,$3::date,$4::jsonb,NOW(),NOW())
      ON CONFLICT (ticker, direction) DO UPDATE SET
        observation_count = swing_candidate_accumulation.observation_count + 1,
-       -- +1 distinct day only when the session day actually changed (persistence, not repeats).
+       -- FINDINGS 2026-07-24 (SEV-3, distinct_session_days miscount): the prior guard used IS DISTINCT
+       -- FROM, which increments on ANY day *change* — including an OUT-OF-ORDER arrival (a re-run or a
+       -- backfill delivering an OLDER session day than last_session_day). That both double-counted the
+       -- persistence gate AND rewound last_session_day to the older day (= EXCLUDED...), so the next
+       -- in-order scan would count the same forward day AGAIN. Fix: increment ONLY on a STRICTLY-NEWER
+       -- day (monotonic forward progress = a genuinely new session), and pin last_session_day to the
+       -- GREATEST so an out-of-order day neither increments nor rewinds. (IS NULL guard: a legacy row with
+       -- a null last_session_day still counts its first dated observation as one distinct day.)
        distinct_session_days = swing_candidate_accumulation.distinct_session_days
-         + (CASE WHEN swing_candidate_accumulation.last_session_day IS DISTINCT FROM EXCLUDED.last_session_day THEN 1 ELSE 0 END),
-       last_session_day = EXCLUDED.last_session_day,
+         + (CASE WHEN swing_candidate_accumulation.last_session_day IS NULL
+                   OR EXCLUDED.last_session_day > swing_candidate_accumulation.last_session_day
+                 THEN 1 ELSE 0 END),
+       last_session_day = GREATEST(swing_candidate_accumulation.last_session_day, EXCLUDED.last_session_day),
        -- Deduped union of phases seen.
        phases_seen = (
          SELECT COALESCE(jsonb_agg(DISTINCT e), '[]'::jsonb)

@@ -267,6 +267,117 @@ test("TRANSACTIONAL: a grade failure after the child insert is caught fail-soft 
   assert.equal(childInserts.length, 1);
 });
 
+// ─── SEV-3: atomic roll through the runRollTx seam (child-insert + parent-grade in ONE tx) ──────
+
+// A fake that emulates db.ts `withSwingRollTx`: it stages the child insert + parent grade and only
+// "commits" them if the callback resolves; if the callback throws (e.g. the parent grade reports 0
+// rows — a grade race) it discards BOTH staged writes and rethrows, exactly like a ROLLBACK. The base
+// (non-tx) gradeParent/insertChild MUST NOT be reached on this path — the terminal writes go through
+// the tx seam.
+function fakeTxLedger(opts?: { gradeRowcount?: number }) {
+  const gradeCalls: GradeCall[] = [];
+  const committedChildren: SwingPositionInsert[] = [];
+  const snapshots: SwingSnapshotInsert[] = [];
+  let nextChildId = 900;
+  let nextSnapId = 500;
+  const deps: RollLedgerDeps = {
+    async gradeParent() {
+      throw new Error("base gradeParent must not run when runRollTx is present (terminal write must be atomic)");
+    },
+    async insertChild() {
+      throw new Error("base insertChild must not run when runRollTx is present (terminal write must be atomic)");
+    },
+    async insertSnapshot(s) {
+      snapshots.push(s);
+      return (nextSnapId += 1);
+    },
+    async runRollTx(fn) {
+      const stagedChildren: SwingPositionInsert[] = [];
+      const stagedGrades: GradeCall[] = [];
+      const tx = {
+        async insertChild(pos: SwingPositionInsert) {
+          stagedChildren.push(pos);
+          return (nextChildId += 1);
+        },
+        async gradeParent(id: number, g: GradeCall["g"]) {
+          const rc = opts?.gradeRowcount ?? 1;
+          if (rc === 0) {
+            // Mirror withSwingRollTx's 0-row guard: a terminal flip that matched nothing is a grade race.
+            throw new Error(`swing roll: parent grade affected 0 rows (position ${id} already graded/terminal — grade race); rolling back`);
+          }
+          stagedGrades.push({ id, g });
+          return rc;
+        },
+      };
+      // COMMIT only if the callback resolves; otherwise ROLLBACK (discard staged writes) and rethrow.
+      const res = await fn(tx);
+      committedChildren.push(...stagedChildren);
+      gradeCalls.push(...stagedGrades);
+      return res;
+    },
+  };
+  return { deps, gradeCalls, committedChildren, snapshots };
+}
+
+test("ATOMIC ROLL: with runRollTx, child insert + parent grade commit together through the tx seam (base accessors untouched)", async () => {
+  const { deps, gradeCalls, committedChildren, snapshots } = fakeTxLedger();
+  const out = await closeAndRollSwingPosition(deps, {
+    parent: parent({ id: 42, root_position_id: null, roll_seq: 0 }),
+    verdict: verdict({ rollIntent: { roll: true, reason: "roll" } }),
+    parentGrade: grade,
+    childSpec,
+    snapshot: snap,
+  });
+  assert.equal(out.action, "ROLL");
+  assert.equal(out.error, undefined);
+  assert.equal(out.parentGraded, true);
+  assert.equal(out.childId != null, true);
+  // Both terminal writes committed atomically; the child links off the parent; parent frozen ROLLED.
+  assert.equal(committedChildren.length, 1);
+  assert.equal(committedChildren[0]!.root_position_id, 42);
+  assert.equal(committedChildren[0]!.roll_seq, 1);
+  assert.equal(gradeCalls.length, 1);
+  assert.equal(gradeCalls[0]!.g.status, "ROLLED");
+  // Snapshot appended after the atomic close.
+  assert.equal(snapshots.length, 1);
+});
+
+test("ATOMIC ROLL (grade race): a 0-row parent-grade flip ROLLS BACK the child — parent left OPEN, no orphan, no snapshot", async () => {
+  const { deps, gradeCalls, committedChildren, snapshots } = fakeTxLedger({ gradeRowcount: 0 });
+  const out = await closeAndRollSwingPosition(deps, {
+    parent: parent(),
+    verdict: verdict({ rollIntent: { roll: true, reason: "roll" } }),
+    parentGrade: grade,
+    childSpec,
+    snapshot: snap,
+  });
+  assert.equal(out.action, "ROLL");
+  // The 0-row terminal flip is an ERROR, not a silent success — the whole roll aborts.
+  assert.match(out.error ?? "", /0 rows/);
+  assert.equal(out.parentGraded, false);
+  assert.equal(out.childId, null);
+  // Nothing committed: the staged child was rolled back with the failed grade — no orphan child on an OPEN parent.
+  assert.equal(committedChildren.length, 0);
+  assert.equal(gradeCalls.length, 0);
+  // No snapshot for the aborted roll (append happens only after a successful close).
+  assert.equal(snapshots.length, 0);
+});
+
+test("ATOMIC CLOSE: a broken-thesis close also routes its single grade through the tx seam (0-row guard applies)", async () => {
+  const { deps, gradeCalls, committedChildren } = fakeTxLedger({ gradeRowcount: 0 });
+  const out = await closeAndRollSwingPosition(deps, {
+    parent: parent(),
+    verdict: verdict({ rung: "structural_stop", rollIntent: { roll: false, reason: "thesis broken — close" } }),
+    parentGrade: grade,
+    snapshot: snap,
+  });
+  assert.equal(out.action, "CLOSE");
+  assert.match(out.error ?? "", /0 rows/);
+  assert.equal(out.parentGraded, false);
+  assert.equal(gradeCalls.length, 0);
+  assert.equal(committedChildren.length, 0);
+});
+
 test("ROLL with no childSpec: refuses and leaves the parent OPEN (no grade write)", async () => {
   const { deps, gradeCalls, childInserts } = fakeLedger();
   const out = await closeAndRollSwingPosition(deps, {
