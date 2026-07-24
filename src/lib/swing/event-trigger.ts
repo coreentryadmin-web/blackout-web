@@ -73,16 +73,31 @@ export function isMaterialSwingFlow(flow: MaterialSwingFlowInput, nowMs: number)
  */
 export function createSwingFlowDebouncer(minIntervalMs: number = SWING_EVENT_MIN_INTERVAL_MS): {
   maybeFire: (key: string, nowMs: number, fire: () => void) => boolean;
+  /** Test-only introspection: how many keys the throttle map currently holds. Read-only — it never touches
+   *  throttle state, so it cannot change observable firing behavior; it exists to PROVE eviction bounds memory. */
+  size: () => number;
 } {
   const lastFiredMs = new Map<string, number>();
   return {
     maybeFire(key, nowMs, fire) {
       const last = lastFiredMs.get(key);
       if (last != null && nowMs - last < minIntervalMs) return false;
+      // Bound memory: this map is keyed on `${ticker}|${direction}`, so left alone it grows one entry per
+      // name ever seen and never shrinks. But an entry whose last fire is a full interval or more in the
+      // past can no longer throttle anything — its next `maybeFire` is guaranteed to pass whether the key
+      // is present or absent. So on each fire, evict every such stale key. This is memory-only and does NOT
+      // change throttle semantics: a key evicted here is exactly one we would let fire next time anyway, and
+      // re-inserting it fresh on that later fire behaves identically to having kept it. Only keys that could
+      // still throttle (last fire strictly within the interval) survive, so the map is bounded by the number
+      // of distinct names active within one interval, not the all-time distinct-name count.
+      for (const [k, t] of lastFiredMs) {
+        if (nowMs - t >= minIntervalMs) lastFiredMs.delete(k);
+      }
       lastFiredMs.set(key, nowMs);
       fire();
       return true;
     },
+    size: () => lastFiredMs.size,
   };
 }
 

@@ -109,6 +109,11 @@ test("FM#1: a flow-less structure-only candidate STILL produces a dossier", () =
 
 function makeFakeAccum() {
   const rows = new Map<string, SwingAccumRow>();
+  // Track the position-linking accessor. It's the only commit-ish path in the store surface, so a >0 count
+  // means the scan wired a commit — the ACTUAL regression that "commitEligibleCount is 0" must guard against.
+  // (Asserting the literal-typed `commitEligibleCount === 0` is a tautology: the field's type IS `0`, so it
+  // can never be anything else — the assertion holds even if a real commit path were bolted on.)
+  const calls = { markAccumPromoted: 0 };
   const now = () => new Date("2026-07-24T21:00:00Z").toISOString();
   const accessors: SwingAccumAccessors = {
     async upsertSwingAccum(a) {
@@ -125,10 +130,10 @@ function makeFakeAccum() {
     async fetchAccumulating(minSessionDays = 1, limit = 500) {
       return [...rows.values()].filter((r) => r.promoted_position_id == null && r.distinct_session_days >= minSessionDays).slice(0, limit);
     },
-    async markAccumPromoted() {},
+    async markAccumPromoted() { calls.markAccumPromoted += 1; },
     async fadeStaleAccum() { return 0; },
   };
-  return { accessors, rows };
+  return { accessors, rows, calls };
 }
 
 // A bull NVDA flow tape (ask-side call premium across the window → bull accumulation).
@@ -169,8 +174,8 @@ function makeDeps(sessionDay: string, accessors: SwingAccumAccessors): SwingDisc
   };
 }
 
-test("runSwingDiscoveryScan: two-tier, both paths surface dossiers, commitEligibleCount is 0", async () => {
-  const { accessors } = makeFakeAccum();
+test("runSwingDiscoveryScan: two-tier, both paths surface dossiers, nothing commits", async () => {
+  const { accessors, calls } = makeFakeAccum();
   const res = await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors));
 
   assert.equal(res.tier0FlowCount, 1, "NVDA directional flow");
@@ -178,7 +183,10 @@ test("runSwingDiscoveryScan: two-tier, both paths surface dossiers, commitEligib
   assert.equal(res.mergedCount, 2);
   const tickers = res.dossiers.map((d) => d.ticker).sort();
   assert.deepEqual(tickers, ["ASTS", "NVDA"], "both the flow name AND the flow-less structure name yield dossiers (FM#1)");
-  assert.equal(res.commitEligibleCount, 0, "WATCH-only rail: nothing commits in PR-11");
+  // WATCH-only rail: assert the BEHAVIOR (no position was linked/committed) rather than the tautological
+  // literal-0 field — this fails if a commit path is ever wired into the scan. Inputs are directional
+  // (bull NVDA flow), so any commit path WOULD fire markAccumPromoted; it staying 0 is meaningful.
+  assert.equal(calls.markAccumPromoted, 0, "WATCH-only rail: the position-linking (commit) accessor never ran");
   assert.deepEqual(res.playSet, { ZERO_DTE: [], SWING: [], LEAPS: [] }, "no chains injected → empty play set");
 
   // First scan (1 distinct session day) → nothing has persisted yet.
@@ -186,7 +194,7 @@ test("runSwingDiscoveryScan: two-tier, both paths surface dossiers, commitEligib
 });
 
 test("runSwingDiscoveryScan: WATCH rail clears only after cross-session persistence", async () => {
-  const { accessors } = makeFakeAccum();
+  const { accessors, calls } = makeFakeAccum();
   await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors)); // session 1
   const res2 = await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors)); // session 2 (new distinct day)
 
@@ -194,5 +202,8 @@ test("runSwingDiscoveryScan: WATCH rail clears only after cross-session persiste
   assert.deepEqual(watchTickers, ["NVDA"], "NVDA persisted across 2 sessions → WATCH; structure-only ASTS has no direction to persist");
   assert.equal(res2.watchCandidates[0].direction, "LONG");
   assert.equal(res2.watchCandidates[0].distinctSessionDays, 2);
-  assert.equal(res2.commitEligibleCount, 0);
+  // Even after a candidate CLEARS the persistence bar and reaches WATCH, promotion must remain evidence-only:
+  // the position-linking accessor still never runs across BOTH scans. This is the real invariant behind the
+  // old `commitEligibleCount === 0` literal (which could never fail regardless of what the scan did).
+  assert.equal(calls.markAccumPromoted, 0, "promotion to WATCH still links no position — commit path never taken");
 });
