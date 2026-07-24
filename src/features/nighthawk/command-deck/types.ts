@@ -6,6 +6,9 @@
  * showing — the payoff of the HorizonPlay/explainability/allocation unification. Pure data; no React.
  */
 
+import type { SwingSetupState, SwingEntryState } from "@/lib/swing/taxonomy";
+import type { SwingServingSection } from "@/lib/swing/serving";
+
 export type DeckDirection = "LONG" | "SHORT";
 export type DeckStatus = "OPEN" | "HOLD" | "TRIM" | "CLOSED" | "WATCH" | "SKIP";
 export type ExitModel = "RATCHET" | "SCALE_OUT" | "PLAN";
@@ -63,4 +66,17 @@ export interface TerminalPlay {
 
   // ── greeks (live) ──
   greeks?: DeckGreeks | null;
+
+  // ── swing-only enrichment (all OPTIONAL, ADDITIVE — 0DTE/LEAPS/Legacy leave them undefined; PR-12
+  //    populates them through the horizon adapter). The observable swing state the serving router keys on. ──
+  /** The classified swing archetype label (taxonomy.ts), when this is a SWING play. */
+  archetype?: string | null;
+  /** The contract sub-lane (Tactical/Standard/Extended) label, when this is a SWING play. */
+  subLane?: string | null;
+  /** Pre-entry setup maturity — the OBSERVABLE the serving router branches on. */
+  setupState?: SwingSetupState | null;
+  /** Entry-execution stance — the other OBSERVABLE the serving router branches on. */
+  entryStatus?: SwingEntryState | null;
+  /** The serving section (serving.ts) this play resolved to, for the section-grouped terminal. */
+  servingSection?: SwingServingSection | null;
 }

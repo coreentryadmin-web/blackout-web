@@ -76,3 +76,40 @@ test("scopeBoardToHorizon with null (legacy/all-lanes view) returns the board un
   const full = assembleHorizonBoard(makePlaySet({ ZERO_DTE: [play({})] }), "2026-07-23T15:00:00Z");
   assert.equal(scopeBoardToHorizon(full, null), full);
 });
+
+test("SWING lane carries the seven serving sections; 0DTE/LEAPS carry none (back-compat intact)", () => {
+  const board = assembleHorizonBoard(
+    makePlaySet({
+      ZERO_DTE: [play({ status: "COMMIT" })],
+      SWING: [
+        play({ ticker: "COM", horizon: "SWING", scoreFloor: 60, status: "COMMIT", setupState: "TRIGGERED", entryStatus: "AT_TRIGGER" }),
+        play({ ticker: "EXT", horizon: "SWING", scoreFloor: 60, status: "COMMIT", setupState: "EXTENDED", entryStatus: "PRE_TRIGGER" }),
+      ],
+    }),
+    "2026-07-23T15:00:00Z",
+  );
+  // 91-pt EXTENDED → WAITING_FOR_ENTRY; 82-pt AT_TRIGGER → COMMIT_NOW (observable state, not the score).
+  assert.equal(board.lanes.SWING.sections!.COMMIT_NOW[0]!.ticker, "COM");
+  assert.equal(board.lanes.SWING.sections!.WAITING_FOR_ENTRY[0]!.ticker, "EXT");
+  // 0DTE/LEAPS untouched: no sections, committed/watch still populated.
+  assert.equal(board.lanes.ZERO_DTE.sections, undefined);
+  assert.equal(board.lanes.LEAPS.sections, undefined);
+  assert.equal(board.lanes.ZERO_DTE.committedCount, 1); // back-compat committed view intact
+});
+
+test("scopeBoardToHorizon zeroes sections on non-selected lanes; keeps them on the selected SWING lane", () => {
+  const full = assembleHorizonBoard(
+    makePlaySet({
+      ZERO_DTE: [play({ status: "COMMIT" })],
+      SWING: [play({ ticker: "COM", horizon: "SWING", scoreFloor: 60, status: "COMMIT", setupState: "TRIGGERED", entryStatus: "AT_TRIGGER" })],
+    }),
+    "2026-07-23T15:00:00Z",
+  );
+  // Scope to 0DTE → SWING lane's sections are zeroed to null (no stale swing triage).
+  const zeroOnly = scopeBoardToHorizon(full, "ZERO_DTE");
+  assert.equal(zeroOnly.lanes.SWING.sections, null);
+  assert.equal(zeroOnly.lanes.ZERO_DTE.sections, undefined); // 0DTE never had sections
+  // Scope to SWING → its sections survive.
+  const swingOnly = scopeBoardToHorizon(full, "SWING");
+  assert.equal(swingOnly.lanes.SWING.sections!.COMMIT_NOW[0]!.ticker, "COM");
+});

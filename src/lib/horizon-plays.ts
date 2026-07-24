@@ -25,6 +25,10 @@ import {
   type PlayDirection,
   explodeChainRows,
 } from "./horizon-fanout";
+// Type-only imports (erased at build → no runtime cycle with swing/serving, which imports HorizonPlay
+// as a type). These enrich a play with the OBSERVABLE swing state the serving router keys on.
+import type { SwingArchetype, SwingSubLane, SwingSetupState, SwingEntryState } from "./swing/taxonomy";
+import type { SwingServingSection } from "./swing/serving";
 
 /**
  * A whole-market candidate from discovery, with its full option chain attached.
@@ -75,6 +79,21 @@ export interface HorizonPlay {
   scoreFloor: number;
   /** Human summary of the chosen contract. */
   reason: string;
+
+  // ── SWING-only enrichment (all OPTIONAL, ADDITIVE — 0DTE/LEAPS and every existing consumer ignore
+  //    them; PR-12 wires the real reads). They carry the observable state the serving router keys on. ──
+  /** The classified swing archetype (taxonomy.ts) — the calibration partition key. */
+  archetype?: SwingArchetype;
+  /** The contract sub-lane (Tactical/Standard/Extended) this play's DTE resolved to. */
+  subLane?: SwingSubLane;
+  /** Pre-entry setup maturity (setup-state.ts) — an OBSERVABLE the serving router branches on. */
+  setupState?: SwingSetupState;
+  /** Entry-execution stance (entry-model.ts) — the other OBSERVABLE the serving router branches on. */
+  entryStatus?: SwingEntryState;
+  /** For a live-position play, the pre-entry play it was entered from (ledger linkage, PR-10+). */
+  parentPlayId?: string;
+  /** The serving section this play resolved to (serving.ts) — stamped once the section router runs. */
+  serving?: SwingServingSection;
 }
 
 /** The three lanes a candidate pool fans out into. */

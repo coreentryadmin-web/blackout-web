@@ -19,6 +19,7 @@ import {
   type HorizonPlay,
   type HorizonPlaySet,
 } from "./horizon-plays";
+import { buildSwingSections, type SwingServingSections } from "./swing/serving";
 
 /** One lane, ready to render: its spec metadata + the committed / watch splits and counts. */
 export interface HorizonLaneBoard {
@@ -34,6 +35,10 @@ export interface HorizonLaneBoard {
   watch: HorizonPlay[];
   committedCount: number;
   watchCount: number;
+  /** SWING-only: the seven serving sections (serving.ts) — the action-triage grouping the desk renders.
+   *  ADDITIVE & OPTIONAL: populated ONLY for the SWING lane; 0DTE/LEAPS leave it undefined and keep their
+   *  own committed/watch flow. `committed`/`watch` above stay as derived back-compat views on every lane. */
+  sections?: SwingServingSections | null;
 }
 
 /** The whole three-board payload. */
@@ -62,6 +67,9 @@ function laneBoard(set: HorizonPlaySet, horizon: Horizon): HorizonLaneBoard {
     watch,
     committedCount: committed.length,
     watchCount: watch.length,
+    // The seven-section serving triage is a SWING-lane concept only — 0DTE (ratchet flow) and LEAPS
+    // (thesis flow) leave `sections` undefined and keep their committed/watch split unchanged.
+    sections: horizon === "SWING" ? buildSwingSections(set.SWING) : undefined,
   };
 }
 
@@ -93,7 +101,9 @@ export function scopeBoardToHorizon(board: HorizonBoard, horizon: Horizon | null
       totalCommitted += lanes[h].committedCount;
       totalWatch += lanes[h].watchCount;
     } else {
-      lanes[h] = { ...lanes[h], committed: [], watch: [], committedCount: 0, watchCount: 0 };
+      // Zero the plays AND the serving sections on the de-selected lanes so a scoped Swing-off board
+      // carries no stale swing triage (the toggle chip still renders from the surviving metadata).
+      lanes[h] = { ...lanes[h], committed: [], watch: [], committedCount: 0, watchCount: 0, sections: null };
     }
   }
   return { ...board, lanes, totalCommitted, totalWatch };
