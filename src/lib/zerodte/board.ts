@@ -175,9 +175,45 @@ export type FlowSetupInput = {
   alerted_at: string;
 };
 
+// ── Discovery origin provenance (Phase 3a, docs/audit/0DTE-UNIFICATION-DESIGN.md §1a) ──
+// Each committed setup carries a SET of the independent discovery sources that surfaced it —
+// never collapsed into one undifferentiated pool. A flow-sourced setup is ["FLOW"]; a
+// whole-market breakout ["BREAKOUT"]; a ticker found by BOTH ["FLOW","BREAKOUT"]. The set is
+// persisted (ledger entry_context + feature vector) so the graded ledger can slice win-rate /
+// P&L by origin (the calibration origin band, calibration.ts) and each source graduates
+// through the n>=10 / delta>=15 ladder independently. PIN arrives in a later phase; the type
+// already admits it so the merge/label math never has to be revisited.
+export type DiscoveryOrigin = "FLOW" | "BREAKOUT" | "PIN";
+
+/** Canonical order for a stable, dedup-friendly origin set/label (FLOW < BREAKOUT < PIN). */
+export const DISCOVERY_ORIGIN_ORDER: readonly DiscoveryOrigin[] = ["FLOW", "BREAKOUT", "PIN"];
+
+/** Union two origin sets into a deduped, canonically-ordered set (pure). Used at merge time so
+ *  a ticker found by two sources carries both origins, never a collapsed single value. */
+export function unionDiscoveryOrigins(
+  a: readonly DiscoveryOrigin[],
+  b: readonly DiscoveryOrigin[]
+): DiscoveryOrigin[] {
+  const seen = new Set<DiscoveryOrigin>([...a, ...b]);
+  return DISCOVERY_ORIGIN_ORDER.filter((o) => seen.has(o));
+}
+
+/** Canonical "+"-joined label for an origin set ("FLOW", "BREAKOUT", "FLOW+BREAKOUT", …). An
+ *  empty/absent set (a pre-3a ledger row) is "no_origin" so the calibration band never
+ *  mislabels a legacy row as a real origin. Pure. */
+export function discoveryOriginLabel(origins: readonly DiscoveryOrigin[] | null | undefined): string {
+  if (!Array.isArray(origins) || origins.length === 0) return "no_origin";
+  const ordered = DISCOVERY_ORIGIN_ORDER.filter((o) => origins.includes(o));
+  return ordered.length ? ordered.join("+") : "no_origin";
+}
+
 export type ZeroDteSetup = {
   ticker: string;
   direction: "long" | "short";
+  /** Discovery provenance SET (Phase 3a) — which independent source(s) surfaced this setup.
+   *  Flow-sourced setups are ["FLOW"]; breakout-sourced ["BREAKOUT"]; both ["FLOW","BREAKOUT"].
+   *  Never collapsed into one pool — persisted so calibration can slice outcomes by origin. */
+  discovery_origin: DiscoveryOrigin[];
   /** Dominant strike by premium on the dominant side. */
   top_strike: number;
   expiry: string;
@@ -684,6 +720,10 @@ export function deriveZeroDteSetups(
     setups.push({
       ticker,
       direction: dominantCall ? "long" : "short",
+      // FLOW-origin provenance: this setup came from the whale-option-print discovery source.
+      // A ticker also surfaced by the breakout source has "BREAKOUT" unioned in at merge time
+      // (scan.ts / breakout-source.ts), never collapsed.
+      discovery_origin: ["FLOW"],
       top_strike: top.strike,
       top_strike_avg_fill: avgFill,
       expiry: topExpiry,

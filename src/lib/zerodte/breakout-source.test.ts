@@ -1,0 +1,224 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import { deriveZeroDteSetups, enrichSetup, type EnrichedZeroDteSetup, type ZeroDteSetup } from "./board";
+import {
+  breakoutScore,
+  breakoutSourceEnabled,
+  buildBreakoutSetup,
+  mergeDiscoveryOrigins,
+  pickAtmZeroDteContract,
+  type BreakoutChainRow,
+} from "./breakout-source";
+import { evaluateZeroDteGates, type ZeroDteGateInput } from "./gates";
+import type { ContractPlan } from "./plan";
+
+const TODAY = "2026-07-24";
+
+/** A clean single at-the-ask 0DTE call print that survives deriveZeroDteSetups' four evidence gates. */
+function cleanFlowRow(ticker: string, premium = 2_000_000) {
+  return {
+    ticker,
+    premium,
+    option_type: "call",
+    strike: 145,
+    expiry: TODAY,
+    dte: 0,
+    alert_rule: "sweep",
+    ask_pct: 75,
+    underlying_price: 140,
+    fill_price: 4.2,
+    open_interest: 100,
+    alerted_at: `${TODAY}T14:00:00.000Z`,
+  };
+}
+
+// ── Flow origin default ─────────────────────────────────────────────────────────────
+test("a flow-discovered setup defaults discovery_origin to [\"FLOW\"]", () => {
+  const setups = deriveZeroDteSetups([cleanFlowRow("NVDA")], { todayYmd: TODAY, nowMs: Date.parse(`${TODAY}T14:05:00Z`) });
+  assert.equal(setups.length, 1);
+  assert.deepEqual(setups[0]!.discovery_origin, ["FLOW"]);
+  // Survives enrichment unchanged (spread through enrichSetup).
+  assert.deepEqual(enrichSetup(setups[0]!, null).discovery_origin, ["FLOW"]);
+});
+
+// ── Breakout seed→setup bridge ──────────────────────────────────────────────────────
+test("buildBreakoutSetup builds a scored setup carrying discovery_origin [\"BREAKOUT\"] with honest flow nulls", () => {
+  const setup = buildBreakoutSetup({
+    mover: { ticker: "asts", gain: 0.15, close_strength: 0.9, volume: 20_000_000, dollar: 900_000_000 },
+    spot: 42.5,
+    contract: { strike: 44, expiry: TODAY, dte: 0 },
+    dollarNorm: 1,
+  });
+  assert.deepEqual(setup.discovery_origin, ["BREAKOUT"]);
+  assert.equal(setup.direction, "long");
+  assert.equal(setup.ticker, "ASTS");
+  assert.equal(setup.top_strike, 44);
+  assert.equal(setup.expiry, TODAY);
+  assert.equal(setup.underlying_price, 42.5);
+  // Real moneyness of the picked call strike: (44 − 42.5)/42.5 ≈ 3.53% OTM.
+  assert.ok(setup.otm_pct != null && setup.otm_pct > 3 && setup.otm_pct < 4);
+  // Honest flow nulls/neutral — never fabricated.
+  assert.equal(setup.aggression, null);
+  assert.equal(setup.gross_premium, 0);
+  assert.equal(setup.prints, 0);
+  assert.equal(setup.top_strike_avg_fill, null);
+  assert.equal(setup.flow_quality, null);
+  assert.equal(setup.side_dominance, 0.5);
+  assert.equal(setup.new_money, false);
+  assert.equal(setup.spike, false);
+  // Score in-range and, for a strong breakout, above the floor.
+  assert.ok(setup.score >= 0 && setup.score <= 100);
+});
+
+// ── Score mapping: in-range + conservative (no trivial 65 clear) ────────────────────
+test("breakoutScore stays in [0,100] and does NOT trivially clear the 65 commit floor", () => {
+  // Screen-floor breakout (5% gain, closed exactly mid-range) with max liquidity → far below 65.
+  assert.ok(breakoutScore({ gain: 0.05, close_strength: 0.5 }, 1) < 65);
+  // A 10% gainer closing upper-mid (0.75) with top liquidity → still below 65 (needs more).
+  assert.ok(breakoutScore({ gain: 0.1, close_strength: 0.75 }, 1) < 65);
+  // A genuinely strong, strong-closing, liquid breakout → clears 65.
+  assert.ok(breakoutScore({ gain: 0.15, close_strength: 0.9 }, 1) >= 65);
+  // Bounds hold at the extremes.
+  assert.equal(breakoutScore({ gain: 0.5, close_strength: 1 }, 1), 100);
+  // No gain AND no liquidity → 0 (a strong close alone earns nothing).
+  assert.equal(breakoutScore({ gain: 0, close_strength: 1 }, 0), 0);
+  // A strong close with max liquidity but ZERO gain still can't clear the floor (core collapses to 0).
+  assert.equal(breakoutScore({ gain: 0, close_strength: 1 }, 1), 20);
+  // Liquidity ALONE (weak move) can never lift a setup over the floor (dollar term capped at 20).
+  assert.ok(breakoutScore({ gain: 0.05, close_strength: 0.5 }, 1) <= 20);
+});
+
+// ── Gate boundary: flow evidence gates SKIPPED for breakout; shared hard gates STILL apply ──
+test("flow evidence gates reject a bare (no-flow) ticker, but a breakout setup bypasses them and is judged by the SHARED hard-gate stack", () => {
+  // deriveZeroDteSetups' FLOW evidence gates would kill a zero-premium ticker outright — proof the
+  // flow gates are hostile to a bare breakout and must NOT run on breakout-origin candidates.
+  const rejections: import("./board").ZeroDteGateRejection[] = [];
+  const flowFromBare = deriveZeroDteSetups(
+    [{ ...cleanFlowRow("ASTS"), premium: 0 }],
+    { todayYmd: TODAY, rejections }
+  );
+  assert.equal(flowFromBare.length, 0, "a no-flow ticker produces zero FLOW setups");
+
+  // The breakout path builds the setup directly (never through deriveZeroDteSetups), so those flow
+  // evidence gates structurally never see it. It is instead judged by the shared hard-gate stack.
+  const setup = buildBreakoutSetup({
+    mover: { ticker: "ASTS", gain: 0.16, close_strength: 0.95, volume: 30_000_000, dollar: 1_000_000_000 },
+    spot: 42.5,
+    contract: { strike: 43, expiry: TODAY, dte: 0 },
+    dollarNorm: 1,
+  });
+
+  const liquidPlan: ContractPlan = {
+    occ: "O:ASTS260724C00043000",
+    flow_avg_fill: null,
+    bid: 1.0,
+    ask: 1.06,
+    mark: 1.03,
+    entry_max: 1.03,
+    vs_flow_pct: null,
+    entry_status: "IN_RANGE",
+    spread_pct: 5.8,
+    illiquid: false,
+    stop_premium: 0.52,
+    target_premium: 2.06,
+    time_stop_et: "15:30",
+    underlying_target: null,
+    underlying_invalid: null,
+  };
+  const baseGateInput: ZeroDteGateInput = {
+    ticker: setup.ticker,
+    direction: setup.direction,
+    score: setup.score,
+    nowEtMinutes: 11 * 60, // after the 10:00 unlock
+    nowMs: Date.parse(`${TODAY}T15:00:00Z`),
+    bias: "up", // aligned with a long
+    biasAsOfMs: Date.parse(`${TODAY}T15:00:00Z`),
+    governor: { open_plans: [], stops: [] },
+    committedThisCycle: [],
+    plan: liquidPlan,
+    intradayConflict: false,
+    halted: false,
+    earnings: null,
+    todayYmd: TODAY,
+    confluence: { confirmations: 2, tier: "double", vwapSide: true, marketAligned: true } as never,
+  };
+  const verdict = evaluateZeroDteGates(baseGateInput);
+  assert.equal(verdict.verdict, "COMMIT", `strong breakout should clear the shared gates (blocks: ${verdict.blocks.map((b) => b.code).join(",")})`);
+
+  // And the shared G-3 score floor STILL applies to a breakout — a weak breakout score is blocked.
+  const weak = evaluateZeroDteGates({ ...baseGateInput, score: 40 });
+  assert.equal(weak.verdict, "BLOCKED");
+  assert.ok(weak.blocks.some((b) => b.code === "score_floor"), "G-3 score floor must gate a breakout candidate");
+});
+
+// ── Merge: union origins by ticker, preserve as a SET, append unique ─────────────────
+test("mergeDiscoveryOrigins unions a shared ticker to [\"FLOW\",\"BREAKOUT\"] and appends unique breakout tickers", () => {
+  const flow: EnrichedZeroDteSetup[] = deriveZeroDteSetups(
+    [cleanFlowRow("NVDA")],
+    { todayYmd: TODAY, nowMs: Date.parse(`${TODAY}T14:05:00Z`) }
+  ).map((s) => enrichSetup(s, null));
+  assert.equal(flow.length, 1);
+
+  const breakouts = [
+    buildBreakoutSetup({ mover: { ticker: "NVDA", gain: 0.16, close_strength: 0.95, volume: 1e7, dollar: 1e9 }, spot: 140, contract: { strike: 145, expiry: TODAY, dte: 0 }, dollarNorm: 1 }),
+    buildBreakoutSetup({ mover: { ticker: "ASTS", gain: 0.15, close_strength: 0.9, volume: 2e7, dollar: 9e8 }, spot: 42.5, contract: { strike: 44, expiry: TODAY, dte: 0 }, dollarNorm: 0.9 }),
+  ];
+
+  const merged = mergeDiscoveryOrigins(flow, breakouts);
+  const nvda = merged.find((s) => s.ticker === "NVDA")!;
+  const asts = merged.find((s) => s.ticker === "ASTS")!;
+  assert.deepEqual(nvda.discovery_origin, ["FLOW", "BREAKOUT"], "a ticker found by BOTH carries both origins, never collapsed");
+  assert.equal(nvda.gross_premium > 0, true, "the flow evidence is kept on the shared ticker (not the bare breakout)");
+  assert.deepEqual(asts.discovery_origin, ["BREAKOUT"], "a breakout-only ticker is appended with its origin");
+  assert.equal(merged.length, 2, "no duplicate row for the shared ticker");
+});
+
+// ── ATM 0DTE picker: 0DTE preferred, weekly fallback, out-of-window null ─────────────
+test("pickAtmZeroDteContract prefers the same-day (0DTE) ATM call, falls back to the nearest weekly, null out of window", () => {
+  const rows0dteAndWeekly: BreakoutChainRow[] = [
+    { expiry: TODAY, strike: 99, call_bid: 1.2, call_ask: 1.3, call_oi: 500 },
+    { expiry: TODAY, strike: 100, call_bid: 1.0, call_ask: 1.1, call_oi: 800 },
+    { expiry: TODAY, strike: 105, call_bid: 0.2, call_ask: 0.3, call_oi: 100 },
+    { expiry: "2026-07-31", strike: 100, call_bid: 2.0, call_ask: 2.2, call_oi: 900 },
+  ];
+  const pick = pickAtmZeroDteContract(rows0dteAndWeekly, 100.4, TODAY);
+  assert.ok(pick);
+  assert.equal(pick!.expiry, TODAY, "0DTE expiry is preferred");
+  assert.equal(pick!.dte, 0);
+  assert.equal(pick!.strike, 100, "ATM = strike closest to the 100.4 spot");
+
+  // No 0DTE listed → the nearest weekly is the fallback.
+  const weeklyOnly: BreakoutChainRow[] = [
+    { expiry: "2026-07-31", strike: 100, call_bid: 2.0, call_ask: 2.2, call_oi: 900 },
+  ];
+  const wk = pickAtmZeroDteContract(weeklyOnly, 100.4, TODAY);
+  assert.ok(wk);
+  assert.equal(wk!.expiry, "2026-07-31");
+  assert.equal(wk!.dte, 7);
+
+  // Only an expiry beyond the window → no contract (→ shared plan gate drops the candidate).
+  const farOnly: BreakoutChainRow[] = [
+    { expiry: "2026-08-15", strike: 100, call_bid: 2.0, call_ask: 2.2, call_oi: 900 },
+  ];
+  assert.equal(pickAtmZeroDteContract(farOnly, 100.4, TODAY), null);
+
+  // An illiquid-only chain (no quote, no OI) → null (never seed a plan off a dead strike).
+  const dead: BreakoutChainRow[] = [
+    { expiry: TODAY, strike: 100, call_bid: null, call_ask: null, call_oi: 0 },
+  ];
+  assert.equal(pickAtmZeroDteContract(dead, 100.4, TODAY), null);
+});
+
+// ── Flags: OFF by default, ON only when BOTH set ────────────────────────────────────
+test("breakoutSourceEnabled is OFF by default and requires BOTH flags", () => {
+  delete process.env.ZERODTE_WHOLE_MARKET;
+  delete process.env.ZERODTE_SRC_BREAKOUT;
+  assert.equal(breakoutSourceEnabled(), false);
+  process.env.ZERODTE_WHOLE_MARKET = "1";
+  assert.equal(breakoutSourceEnabled(), false, "master alone is not enough");
+  process.env.ZERODTE_SRC_BREAKOUT = "1";
+  assert.equal(breakoutSourceEnabled(), true, "both flags on → enabled");
+  delete process.env.ZERODTE_WHOLE_MARKET;
+  delete process.env.ZERODTE_SRC_BREAKOUT;
+});

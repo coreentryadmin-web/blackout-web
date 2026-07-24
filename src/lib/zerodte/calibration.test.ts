@@ -8,6 +8,8 @@ import {
   analyzeGateCalibration,
   analyzeAccumulationAlignment,
   analyzeConfluenceTiers,
+  analyzeOriginBands,
+  readOriginLabel,
   recommendConfluence,
   recommendAccumulation,
   recommendScaleOut,
@@ -84,6 +86,55 @@ test("gateVerdictOf: pinned verdicts read back; unknown-VIX and missing blobs ar
   const malformed = play({});
   (malformed.gate_calibration_json as Record<string, unknown>).g4_vix = { would_block: "yes" };
   assert.equal(gateVerdictOf(malformed, "g4_vix"), null);
+});
+
+// ── Phase 3a: discovery-origin band ─────────────────────────────────────────────────
+function originPlay(origin: string[] | undefined, win: boolean): CalibrationPlayRow {
+  const ec: Record<string, unknown> = {};
+  if (origin !== undefined) ec.discovery_origin = origin;
+  return {
+    session_date: "2026-07-10",
+    ticker: "SPY",
+    direction: "long",
+    score_max: 70,
+    plan_outcome: win ? "doubled" : "stopped",
+    plan_pnl_pct: win ? 100 : -50,
+    entry_context: Object.keys(ec).length ? ec : null,
+    gate_calibration_json: null,
+  };
+}
+
+test("readOriginLabel: canonicalizes the origin set defensively (absent/garbage → no_origin)", () => {
+  assert.equal(readOriginLabel({ discovery_origin: ["FLOW"] }), "FLOW");
+  assert.equal(readOriginLabel({ discovery_origin: ["BREAKOUT", "FLOW"] }), "FLOW+BREAKOUT");
+  assert.equal(readOriginLabel({ discovery_origin: [] }), "no_origin");
+  assert.equal(readOriginLabel(null), "no_origin");
+  assert.equal(readOriginLabel({ discovery_origin: ["JUNK"] }), "no_origin");
+});
+
+test("analyzeOriginBands: buckets graded plays by origin set with the standard n/WR math", () => {
+  const rows = [
+    originPlay(["FLOW"], true),
+    originPlay(["FLOW"], false),
+    originPlay(["BREAKOUT"], true),
+    originPlay(["FLOW", "BREAKOUT"], true),
+    originPlay(undefined, false), // pre-3a row → no_origin
+  ];
+  const bands = analyzeOriginBands(rows);
+  const byLabel = new Map(bands.map((b) => [b.label, b]));
+  // Canonical bands always present, stable shape.
+  for (const l of ["FLOW", "BREAKOUT", "FLOW+BREAKOUT", "no_origin"]) assert.ok(byLabel.has(l), l);
+  assert.equal(byLabel.get("FLOW")!.n, 2);
+  assert.equal(byLabel.get("FLOW")!.wins, 1);
+  assert.equal(byLabel.get("FLOW")!.win_rate_pct, 50);
+  assert.equal(byLabel.get("BREAKOUT")!.n, 1);
+  assert.equal(byLabel.get("BREAKOUT")!.wins, 1);
+  assert.equal(byLabel.get("FLOW+BREAKOUT")!.n, 1);
+  assert.equal(byLabel.get("no_origin")!.n, 1);
+  // Wired into the full report.
+  const report = analyzeGateCalibration({ rows, window: WINDOW });
+  assert.ok(Array.isArray(report.origin_bands));
+  assert.equal(report.origin_bands.find((b) => b.label === "FLOW")!.n, 2);
 });
 
 test("bucket math: per-bucket n/wins/losses/win rate/avg pnl and the delta", () => {
