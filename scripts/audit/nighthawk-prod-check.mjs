@@ -133,6 +133,12 @@ async function main() {
   rec('toggle build deployed (0DTE/Swings/LEAPS/Legacy)', toggleLive ? 'PASS' : 'WARN',
     toggleLive ? 'served HTML carries the Swings+LEAPS toggle labels' : `NOT yet — Swings:${hasSwings} LEAPS:${hasLeaps} (ECS deploy still rolling)`);
 
+  // --- 5. is the COMMAND DECK (matrix terminal) deployed? ---
+  const hasDeck = /nh-deck/.test(pg.b);
+  const hasTerminal = /Management|THESIS|Thesis|nh-deck-terminal|matrix/i.test(pg.b) && hasDeck;
+  rec('command deck / terminal deployed', hasDeck ? 'PASS' : 'WARN',
+    hasDeck ? `served HTML carries the nh-deck terminal markup${hasTerminal ? ' + tabs' : ''}` : 'NOT yet — command deck (#1016) not merged/deployed; the OLD board still serves');
+
   const fails = out.filter((o) => o.status === 'FAIL').length;
   console.log(`\n${fails === 0 ? '✅' : '❌'} ${out.filter((o) => o.status === 'PASS').length} pass · ${out.filter((o) => o.status === 'WARN').length} warn · ${fails} fail\n`);
   process.exitCode = fails === 0 ? 0 : 1;
