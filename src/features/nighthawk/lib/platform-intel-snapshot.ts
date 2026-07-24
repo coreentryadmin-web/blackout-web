@@ -1,5 +1,6 @@
 import { dbConfigured, dbQuery } from "@/lib/db";
 import { isPremarketBriefFresh, todayEtYmd } from "@/lib/providers/spx-session";
+import { formatEtDate, mostRecentTradingDayEt } from "@/features/nighthawk/lib/session";
 import { fetchSignalAccuracyBySource, blendedAccuracy, MIN_SAMPLE_FOR_RECOMMENDATION } from "@/lib/signal-accuracy";
 
 /** Cross-service intel pulled from the same Postgres tables as /api/platform/intel. */
@@ -11,6 +12,10 @@ export type PlatformIntelSnapshot = {
   net_gex: number | null;
   above_vwap: boolean | null;
   iv_percentile: number | null;
+  /** True when the latest market_regime row is from an earlier trading session than the
+   *  most-recent one (weekend/holiday/cron outage) — all regime_* fields above are then
+   *  nulled so nothing downstream presents a stale row as the live regime. */
+  regime_stale: boolean;
   critical_anomaly_count: number;
   anomaly_tickers: string[];
   signal_recommendation: string | null;
@@ -31,6 +36,7 @@ function emptySnapshot(): PlatformIntelSnapshot {
     net_gex: null,
     above_vwap: null,
     iv_percentile: null,
+    regime_stale: false,
     critical_anomaly_count: 0,
     anomaly_tickers: [],
     signal_recommendation: null,
@@ -66,8 +72,26 @@ export async function fetchPlatformIntelSnapshot(): Promise<PlatformIntelSnapsho
       fetchSignalAccuracyBySource(),
     ]);
 
-    const regimeRow = regimeRes.rows[0] as Record<string, unknown> | undefined;
+    const regimeRowRaw = regimeRes.rows[0] as Record<string, unknown> | undefined;
     const anomalies = anomalyRes.rows as Array<{ ticker?: string; severity?: string }>;
+
+    // Freshness gate — SAME logic as /api/market/regime/route.ts (task #173). The query is
+    // always "ORDER BY captured_at DESC LIMIT 1", so off-hours / over a weekend or holiday /
+    // during a cron outage it returns whatever was last written, possibly days old, with
+    // nothing distinguishing it from a live capture. This snapshot feeds member sizing notes
+    // and the AI prompt (formatPlatformIntelForPrompt), so a stale regime must NOT be surfaced
+    // as current. `regime_stale` is true whenever captured_at's ET calendar date isn't the
+    // most-recently-completed trading session; an unparseable/missing timestamp fails CLOSED
+    // (stale). When stale, every regime_* field below is nulled (freshRegime === undefined) so
+    // the prompt and /platform/intel JSON never present a stale row as live.
+    const capturedAtMs = regimeRowRaw?.captured_at
+      ? new Date(regimeRowRaw.captured_at as string | number | Date).getTime()
+      : NaN;
+    const regimeStale = regimeRowRaw
+      ? !Number.isFinite(capturedAtMs) ||
+        formatEtDate(new Date(capturedAtMs)) !== mostRecentTradingDayEt()
+      : false;
+    const regimeRow = regimeStale ? undefined : regimeRowRaw;
     const briefRowRaw = briefRes.rows[0] as Record<string, unknown> | undefined;
 
     // Same staleness gate as /api/brief/premarket — this snapshot feeds cron
@@ -109,6 +133,7 @@ export async function fetchPlatformIntelSnapshot(): Promise<PlatformIntelSnapsho
       net_gex: regimeRow?.net_gex != null ? Number(regimeRow.net_gex) : null,
       above_vwap: regimeRow?.above_vwap != null ? Boolean(regimeRow.above_vwap) : null,
       iv_percentile: regimeRow?.iv_percentile != null ? Number(regimeRow.iv_percentile) : null,
+      regime_stale: regimeStale,
       critical_anomaly_count: critical.length,
       anomaly_tickers: anomalies
         .map((a) => String(a.ticker ?? "").toUpperCase())

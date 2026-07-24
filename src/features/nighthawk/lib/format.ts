@@ -366,15 +366,19 @@ export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCa
     lines.push(`Risk reversal skew: ${dossier.risk_reversal_skew >= 0 ? "+" : ""}${dossier.risk_reversal_skew.toFixed(2)}`);
   }
 
+  // positioning is null when there was no GEX data at all — skip the whole block rather
+  // than print a fabricated "positive γ / flat" read (see fetchPositioningSummary).
   const pos = dossier.positioning;
-  if (pos.gex_king_strike != null) {
-    lines.push(
-      `GEX king $${pos.gex_king_strike} · ${pos.negative_gamma ? "negative γ" : "positive γ"} · regime ${pos.gamma_regime}${pos.gamma_flip != null ? ` · flip $${pos.gamma_flip}` : ""}`
-    );
+  if (pos) {
+    if (pos.gex_king_strike != null) {
+      lines.push(
+        `GEX king $${pos.gex_king_strike} · ${pos.negative_gamma ? "negative γ" : "positive γ"} · regime ${pos.gamma_regime}${pos.gamma_flip != null ? ` · flip $${pos.gamma_flip}` : ""}`
+      );
+    }
+    if (pos.net_vex != null) lines.push(`Net VEX: ${pos.net_vex >= 0 ? "+" : ""}${Math.round(pos.net_vex)}`);
+    if (pos.max_pain != null) lines.push(`Max pain: $${pos.max_pain}`);
+    if (pos.wall_summary !== "n/a") lines.push(`GEX walls: ${pos.wall_summary}`);
   }
-  if (pos.net_vex != null) lines.push(`Net VEX: ${pos.net_vex >= 0 ? "+" : ""}${Math.round(pos.net_vex)}`);
-  if (pos.max_pain != null) lines.push(`Max pain: $${pos.max_pain}`);
-  if (pos.wall_summary !== "n/a") lines.push(`GEX walls: ${pos.wall_summary}`);
 
   if (dossier.flow_by_expiry.length) {
     const expLines = dossier.flow_by_expiry.slice(0, 4).map((r) => {

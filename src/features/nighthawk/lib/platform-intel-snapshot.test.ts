@@ -2,6 +2,7 @@ import { before, describe, test, mock } from "node:test";
 import assert from "node:assert/strict";
 import type { PlatformIntelSnapshot } from "./platform-intel-snapshot";
 import { isPremarketBriefFresh } from "@/lib/providers/spx-session";
+import { mostRecentTradingDayEt } from "@/features/nighthawk/lib/session";
 import type { PlayOutcomeRow } from "@/features/spx/lib/spx-play-outcomes";
 import type { NighthawkPlayOutcomeRow } from "@/lib/db";
 
@@ -34,6 +35,8 @@ const briefRow = (brief_date: string) => ({
 });
 
 let mockBriefDate: string | null = null;
+// Stand in for the latest market_regime row. captured_at drives the freshness gate.
+let mockRegimeRow: Record<string, unknown> | null = null;
 // Stand in for the real spx_play_outcomes / nighthawk_play_outcomes ledgers that
 // fetchSignalAccuracyBySource() (src/lib/signal-accuracy.ts) reads.
 let mockSpxClosedRows: PlayOutcomeRow[] = [];
@@ -96,6 +99,8 @@ mock.module("../../../lib/db", {
     dbQuery: async (sql: string) =>
       /platform_briefs/.test(sql) && mockBriefDate
         ? { rows: [briefRow(mockBriefDate)], rowCount: 1 }
+        : /market_regime/.test(sql) && mockRegimeRow
+        ? { rows: [mockRegimeRow], rowCount: 1 }
         : emptyRows,
     // fetchSignalAccuracyBySource() (src/lib/signal-accuracy.ts) reads these two real-ledger
     // fetchers instead of the dead signal_events/signal_outcomes join — read the mutable
@@ -125,6 +130,69 @@ describe("fetchPlatformIntelSnapshot last_brief staleness", () => {
     mockBriefDate = "2026-06-30"; // 1 day before the mocked "today" — still fresh
     const snapshot = await fetchPlatformIntelSnapshot();
     assert.equal(snapshot.last_brief?.call_wall, 7550);
+  });
+});
+
+describe("fetchPlatformIntelSnapshot market_regime staleness gate", () => {
+  let fetchPlatformIntelSnapshot: () => Promise<PlatformIntelSnapshot>;
+  let formatPlatformIntelForPrompt: (i: PlatformIntelSnapshot) => string;
+
+  before(async () => {
+    ({ fetchPlatformIntelSnapshot, formatPlatformIntelForPrompt } = await import(
+      "./platform-intel-snapshot"
+    ));
+  });
+
+  const regimeRow = (captured_at: string) => ({
+    composite: "BULLISH_TREND",
+    gex_regime: "positive_gamma",
+    flow_regime: "call_heavy",
+    playbook: "buy dips into the call wall",
+    captured_at,
+    net_gex: 1_000_000,
+    above_vwap: true,
+    iv_percentile: 30,
+  });
+
+  test("stale regime row nulls every regime_* field and never reaches the AI prompt", async () => {
+    mockBriefDate = null;
+    mockSpxClosedRows = [];
+    mockNighthawkRows = [];
+    // A July-4th-observed-holiday capture served days later (the live incident, task #173).
+    mockRegimeRow = regimeRow("2026-07-03T14:00:00.000Z");
+    const snapshot = await fetchPlatformIntelSnapshot();
+    assert.equal(snapshot.regime_stale, true);
+    assert.equal(snapshot.composite_regime, null);
+    assert.equal(snapshot.gex_regime, null);
+    assert.equal(snapshot.flow_regime, null);
+    assert.equal(snapshot.playbook, null);
+    assert.equal(snapshot.net_gex, null);
+    assert.equal(snapshot.above_vwap, null);
+    assert.equal(snapshot.iv_percentile, null);
+    // The stale playbook text must not leak into the prompt formatter.
+    const prompt = formatPlatformIntelForPrompt(snapshot);
+    assert.doesNotMatch(prompt, /buy dips into the call wall/);
+    mockRegimeRow = null;
+  });
+
+  test("fresh regime row (most-recent trading day) is surfaced as live", async () => {
+    mockBriefDate = null;
+    mockSpxClosedRows = [];
+    mockNighthawkRows = [];
+    mockRegimeRow = regimeRow(`${mostRecentTradingDayEt()}T12:00:00.000Z`);
+    const snapshot = await fetchPlatformIntelSnapshot();
+    assert.equal(snapshot.regime_stale, false);
+    assert.equal(snapshot.composite_regime, "BULLISH_TREND");
+    assert.equal(snapshot.net_gex, 1_000_000);
+    mockRegimeRow = null;
+  });
+
+  test("no regime row at all → regime_stale:false (nothing stale, just absent)", async () => {
+    mockBriefDate = null;
+    mockRegimeRow = null;
+    const snapshot = await fetchPlatformIntelSnapshot();
+    assert.equal(snapshot.regime_stale, false);
+    assert.equal(snapshot.composite_regime, null);
   });
 });
 

@@ -586,7 +586,7 @@ export function scoreOptionsPositioning(
   dossier: {
     dark_pool?: { total_premium?: number; bias?: string } | null;
     oi_change?: Array<{ oi_change?: number; option_type?: string }>;
-    positioning?: PositioningSummary;
+    positioning?: PositioningSummary | null;
     strike_stacks?: FlowStrikeStack[];
     greek_flow?: TickerGreekFlowSummary | null;
   },
@@ -868,7 +868,7 @@ export function scoreCandidate(
   dossierExtras: {
     dark_pool?: { total_premium?: number; bias?: string } | null;
     oi_change?: Array<{ oi_change?: number; option_type?: string }>;
-    positioning?: PositioningSummary;
+    positioning?: PositioningSummary | null;
     strike_stacks?: FlowStrikeStack[];
     news_headlines?: string[];
     insider_buys?: number;

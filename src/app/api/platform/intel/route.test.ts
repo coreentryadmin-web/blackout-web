@@ -2,6 +2,7 @@ import { before, describe, test, mock } from "node:test";
 import assert from "node:assert/strict";
 import type { NextRequest } from "next/server";
 import { isPremarketBriefFresh } from "../../../../lib/providers/spx-session";
+import { mostRecentTradingDayEt } from "../../../../features/nighthawk/lib/session";
 import type { PlayOutcomeRow } from "../../../../lib/spx-play-outcomes";
 import type { NighthawkPlayOutcomeRow } from "../../../../lib/db";
 
@@ -41,6 +42,8 @@ const briefRow = (brief_date: string) => ({
 });
 
 let mockBriefDate: string | null = null;
+// Stand in for the latest market_regime row. captured_at drives the freshness gate.
+let mockRegimeRow: Record<string, unknown> | null = null;
 // Stand in for the real spx_play_outcomes / nighthawk_play_outcomes ledgers that
 // fetchSignalAccuracyBySource() (src/lib/signal-accuracy.ts) reads.
 let mockSpxClosedRows: PlayOutcomeRow[] = [];
@@ -102,6 +105,8 @@ mock.module("../../../../lib/db", {
     dbQuery: async (sql: string) =>
       /platform_briefs/.test(sql) && mockBriefDate
         ? { rows: [briefRow(mockBriefDate)], rowCount: 1 }
+        : /market_regime/.test(sql) && mockRegimeRow
+        ? { rows: [mockRegimeRow], rowCount: 1 }
         : emptyRows,
     // fetchSignalAccuracyBySource() (src/lib/signal-accuracy.ts) reads these two real-ledger
     // fetchers instead of the dead signal_events/signal_outcomes join — read the mutable
@@ -147,6 +152,60 @@ describe("/api/platform/intel lastBrief staleness", () => {
     const res = await GET(new Request("http://localhost/api/platform/intel") as NextRequest);
     const json = await res.json();
     assert.equal(json.lastBrief, null);
+  });
+});
+
+describe("/api/platform/intel market_regime staleness gate", () => {
+  let GET: (req: NextRequest) => Promise<Response>;
+
+  before(async () => {
+    ({ GET } = await import("./route"));
+  });
+
+  const regimeRow = (captured_at: string) => ({
+    composite: "BULLISH_TREND",
+    gex_regime: "positive_gamma",
+    vol_regime: "low",
+    trend_regime: "up",
+    flow_regime: "call_heavy",
+    playbook: "buy dips into the call wall",
+    captured_at,
+    net_gex: 1_000_000,
+    above_vwap: true,
+    iv_percentile: 30,
+  });
+
+  test("regime is nulled and regimeStale:true when the only row is from a prior session", async () => {
+    // A July-4th-observed-holiday capture (2026-07-03) served days later — the exact
+    // live incident this gate closes (task #173 / docs FINDINGS 2026-07-05).
+    mockRegimeRow = regimeRow("2026-07-03T14:00:00.000Z");
+    const res = await GET(new Request("http://localhost/api/platform/intel") as NextRequest);
+    const json = await res.json();
+    assert.equal(json.regime, null);
+    assert.equal(json.regimeStale, true);
+    // The stale playbook/composite must NOT leak into the cron-facing summary.
+    assert.equal(json.intelligence.currentRegime, "UNKNOWN");
+    mockRegimeRow = null;
+  });
+
+  test("regime is served when captured_at is the most-recent trading day", async () => {
+    // Build a captured_at that lands on the most-recent trading session's ET date so the
+    // test is stable regardless of the day it runs (noon UTC == same ET calendar date).
+    mockRegimeRow = regimeRow(`${mostRecentTradingDayEt()}T12:00:00.000Z`);
+    const res = await GET(new Request("http://localhost/api/platform/intel") as NextRequest);
+    const json = await res.json();
+    assert.equal(json.regimeStale, false);
+    assert.equal(json.regime?.composite, "BULLISH_TREND");
+    assert.equal(json.intelligence.currentRegime, "BULLISH_TREND");
+    mockRegimeRow = null;
+  });
+
+  test("regimeStale:false (not a fabricated stale flag) when there is no regime row at all", async () => {
+    mockRegimeRow = null;
+    const res = await GET(new Request("http://localhost/api/platform/intel") as NextRequest);
+    const json = await res.json();
+    assert.equal(json.regime, null);
+    assert.equal(json.regimeStale, false);
   });
 });
 
