@@ -52,10 +52,13 @@ test("createSwingFlowDebouncer: per-key throttle collapses a burst on one name, 
 // A fake accumulation store that records upserts AND exposes a commit spy that must NEVER be touched.
 function makeFakeAccum() {
   const upserts: Array<{ ticker: string; direction: string; session_day: string; phase: string }> = [];
-  let committed = false; // stand-in for any commit/insert-position path — the router has none.
+  // `committed` is a const false: the SwingAccumAccessors type has NO commit/insert-position method,
+  // so no accessor can ever set it. The never-commit invariant is proven by that type gap + the
+  // `upserts`-only assertions below; wasCommitted() is the belt-and-suspenders read of that gap.
+  const committed = false;
   const accessors: SwingAccumAccessors = {
     async upsertSwingAccum(a) { upserts.push(a); },
-    async fetchAccumulating() { committed = committed; return []; },
+    async fetchAccumulating() { return []; },
     async markAccumPromoted() { /* promotion links a position — not a commit, and unused here */ },
     async fadeStaleAccum() { return 0; },
   };
