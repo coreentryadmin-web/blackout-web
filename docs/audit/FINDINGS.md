@@ -5,6 +5,35 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-24 — [HIGH, honesty] iron-condor surfaced a literal "100%" WR with no breach companion — FIXED
+
+**Severity HIGH (member-facing honesty on a real-money product).** `selectIronCondor` returned
+`est_win_rate` straight off `CONDOR_WINRATE_BY_WIDTH`, whose top buckets read `0.010→96` and
+`0.015→100`. So a member could be shown a **literal 100% (or 96%/92%) win rate** on a 0DTE iron
+condor. Two defects: (1) a 25-session / ~75 ticker-session backtest cannot support a literal 100%;
+(2) the struct exposed ONLY close-settlement WR with **no intraday-breach companion**, while the
+repo's own condor-wr evidence records the shipped target-80 geometry at **98.7% WR / 18.7% intraday
+BREACH** — a negative-skew product that trades against you ~1 session in 5, presented as near-certain.
+
+**Root cause.** `iron-condor.ts:150` — `est_win_rate: estWinRateForWidth(tighter)` surfaced the raw
+table value verbatim, and `IronCondorLegs` had no breach/skew field, so the negative-skew tail lived
+only in a header comment (not machine-readable next to the number).
+
+**Evidence.** `docs/audit/0DTE-RESEARCH.md` (E-condor): shipped `selectIronCondor(target=80)` → 98.7%
+close WR **/ 18.7% intraday-breach**; `CONDOR_WINRATE_BY_WIDTH` table `±1.50%→100` (n≈75).
+
+**Fix (`iron-condor.ts`).** (a) `SURFACED_WIN_RATE_CAP = 97` + `surfacedWinRate()` clamp the DISPLAYED
+`est_win_rate` (raw table kept intact — it's the calibration basis `condor-wr.mjs` grades against, so
+capping there would corrupt the comparison; only the surfaced number is clamped). (b) new
+`est_win_rate_small_sample` flags any width whose raw WR exceeds the cap. (c) new `est_intraday_breach_pct`
+(= documented `SHIPPED_INTRADAY_BREACH_PCT = 18.7`, labeled AGGREGATE not per-width — the backtest
+published no per-width breach numbers, so no per-width value was invented) + `skew: "negative"` carry
+the breach tail machine-readably next to the WR. Geometry/strike math unchanged. Sole `IronCondorLegs`
+consumer (`board.ts`, pass-through) needs no change; new required fields are always set by
+`selectIronCondor`. **Verified:** `tsc --noEmit` clean; `iron-condor.test.ts` 16/16 pass (adds:
+est_win_rate ≤ cap across the width sweep, never 100; top-bucket clamps + flags small-sample; breach +
+skew present/finite on a normal pick); `check-brand.mjs` clean.
+
 ## 2026-07-23 — [HIGH, self-inflicted] `--watch` gave FALSE "all clean" after ~10min (silent auth decay) — FIXED
 
 **Severity HIGH** because it's the failure the whole audit layer exists to prevent: a validator that

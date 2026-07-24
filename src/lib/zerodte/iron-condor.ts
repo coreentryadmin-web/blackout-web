@@ -21,7 +21,13 @@
  * geometry + max-risk; it does NOT claim EV without a live credit.
  */
 
-/** Measured width → win-rate map (from the 25-session condor backtest). Exported for the UI/label. */
+/** Measured width → win-rate map (from the 25-session condor backtest). Exported for the UI/label.
+ *  These are the RAW measured close-settlement rates over SPY/QQQ/IWM × 25 sessions (n≈75 ticker-
+ *  sessions). The top buckets read 96/100 — but a ~75-sample cannot honestly support a *literal*
+ *  100% (or even a robust 96%) WR on a real-money 0DTE product, so this raw table is the calibration
+ *  basis (condor-wr.mjs grades against it) while what we SURFACE to a member is capped — see
+ *  SURFACED_WIN_RATE_CAP / surfacedWinRate below. Keep the raw numbers here honest; never emit them
+ *  verbatim as a member-facing "win rate". */
 export const CONDOR_WINRATE_BY_WIDTH: ReadonlyArray<{ width_pct: number; win_rate: number }> = [
   { width_pct: 0.004, win_rate: 61 },
   { width_pct: 0.006, win_rate: 77 },
@@ -29,6 +35,27 @@ export const CONDOR_WINRATE_BY_WIDTH: ReadonlyArray<{ width_pct: number; win_rat
   { width_pct: 0.010, win_rate: 96 },
   { width_pct: 0.015, win_rate: 100 },
 ];
+
+/** Hard cap on the SURFACED win rate. The raw table tops out at 100 (and 96), which a 25-session /
+ *  ~75 ticker-session backtest cannot support as a literal claim. We never display a number above
+ *  this to a member; anything whose raw measured WR exceeds the cap is additionally flagged
+ *  small-sample so the UI can caveat it. This caps the DISPLAY only — the raw table above is left
+ *  intact for calibration. */
+export const SURFACED_WIN_RATE_CAP = 97;
+
+/** Documented intraday-BREACH rate for the SHIPPED target-80 geometry, from the condor-wr backtest
+ *  (SPY/QQQ/IWM × 25 sessions; docs/audit/0DTE-RESEARCH.md, CLAUDE.md condor-wr entry): 98.7%
+ *  close-settlement WR but 18.7% of sessions BREACHED a short strike intraday (price touched a short,
+ *  then recovered by close). This is the negative-skew tail — ~1 session in 5 trades against you
+ *  before settling. It is an AGGREGATE for the shipped geometry, NOT a per-width figure (the backtest
+ *  did not publish per-width breach rates), so we surface this single documented number labeled as
+ *  such rather than inventing per-width values. */
+export const SHIPPED_INTRADAY_BREACH_PCT = 18.7;
+
+/** Clamp a raw measured win rate to the member-facing cap (never asserts an unsupportable 100). */
+export function surfacedWinRate(rawWinRate: number): number {
+  return Math.min(rawWinRate, SURFACED_WIN_RATE_CAP);
+}
 
 /** Smallest short-strike width whose measured win rate is >= the target. Defaults to the widest
  *  (most conservative) when the target exceeds the table. */
@@ -49,8 +76,20 @@ export type IronCondorLegs = {
   call_width_pct: number;
   /** Wing width in points (per side) — the defined-risk distance short→long. */
   wing_pts: number;
-  /** Approx expected win rate from the tighter of the two short widths (measured table, interpolated down). */
+  /** Approx expected win rate from the tighter of the two short widths (measured table, nearest-not-
+   *  above), CAPPED at SURFACED_WIN_RATE_CAP — never surfaces a literal 100. */
   est_win_rate: number;
+  /** True when this width's RAW measured WR exceeds the cap, i.e. est_win_rate was clamped down from
+   *  an unsupportable small-sample bucket (the UI should caveat "small sample" here). */
+  est_win_rate_small_sample: boolean;
+  /** Documented AGGREGATE intraday-breach rate for the shipped geometry (= SHIPPED_INTRADAY_BREACH_PCT):
+   *  the negative-skew tail carried machine-readably NEXT TO the win rate, not buried in prose. Not a
+   *  per-width figure — the shipped-geometry backtest aggregate — so read it alongside est_win_rate as
+   *  "wins ~most days, but breaches a short ~this often intraday". */
+  est_intraday_breach_pct: number;
+  /** This product is NEGATIVE skew: high close-settlement WR bought with a defined loss on the breach
+   *  days. Marked explicitly so a consumer can never render the WR as if it were symmetric edge. */
+  skew: "negative";
   /** Max loss per 1-lot spread (per side) in $ — (wing_pts − credit)·100; credit unknown here so this
    *  is the GROSS wing risk (upper bound). The caller subtracts the live credit. */
   gross_wing_risk_per_side: number;
@@ -139,6 +178,10 @@ export function selectIronCondor(input: {
   const put_width_pct = (spot - short_put) / spot;
   const tighter = Math.min(call_width_pct, put_width_pct);
 
+  // Surface the CAPPED win rate (never a literal 100), carry the small-sample flag + the negative-skew
+  // breach tail so the honest catch travels with the number instead of living only in a header comment.
+  const rawWinRate = estWinRateForWidth(tighter);
+
   return {
     short_put,
     long_put,
@@ -147,7 +190,10 @@ export function selectIronCondor(input: {
     put_width_pct: Number(put_width_pct.toFixed(4)),
     call_width_pct: Number(call_width_pct.toFixed(4)),
     wing_pts: Number((long_call - short_call).toFixed(4)),
-    est_win_rate: estWinRateForWidth(tighter),
+    est_win_rate: surfacedWinRate(rawWinRate),
+    est_win_rate_small_sample: rawWinRate > SURFACED_WIN_RATE_CAP,
+    est_intraday_breach_pct: SHIPPED_INTRADAY_BREACH_PCT,
+    skew: "negative",
     gross_wing_risk_per_side: Number(((long_call - short_call) * 100).toFixed(2)),
   };
 }
