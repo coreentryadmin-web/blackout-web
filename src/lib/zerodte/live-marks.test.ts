@@ -230,6 +230,42 @@ test("mark store: newest asOf wins — an older write never regresses a fresher 
   assert.equal(lm.getZeroDteLiveMark(occ)?.mark, 4.1);
 });
 
+test("greeks: snapshot greeks ride the mark, and carry forward across a WS tick that lacks them", async () => {
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const occ = "O:NVDA260714C00180000";
+  // REST snapshot mark carries greeks.
+  lm.putZeroDteLiveMark({
+    occ, bid: 4.0, ask: 4.2, mid: 4.1, last: null, mark: 4.1, source: "mid", asOf: 1_000, lane: "rest",
+    greeks: { delta: 0.55, gamma: 0.08, theta: -0.4, vega: 0.1, iv: 0.62 },
+  });
+  assert.equal(lm.getZeroDteLiveMark(occ)?.greeks?.delta, 0.55);
+  // A fresher WS tick (no greeks) updates the mark but must KEEP the last-known greeks.
+  lm.putZeroDteLiveMark({ occ, bid: 4.2, ask: 4.4, mid: 4.3, last: null, mark: 4.3, source: "mid", asOf: 2_000, lane: "ws" });
+  const m = lm.getZeroDteLiveMark(occ);
+  assert.equal(m?.mark, 4.3, "mark advanced to the WS tick");
+  assert.equal(m?.greeks?.delta, 0.55, "greeks carried forward, not lost");
+  assert.equal(m?.greeks?.theta, -0.4);
+});
+
+test("greeks: the payload row surfaces greeks (null when none priced yet)", async () => {
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const occ = "O:NVDA260714C00180000";
+  const now = Date.now();
+  lm.putZeroDteLiveMark({
+    occ, bid: 4.3, ask: 4.5, mid: 4.4, last: 4.35, mark: 4.4, source: "mid", asOf: now - 1_000, lane: "rest",
+    greeks: { delta: 0.6, gamma: 0.09, theta: -0.42, vega: 0.11, iv: 0.6 },
+  });
+  const payload = lm.buildZeroDteLiveMarksPayloadFrom(lm.boundActivePlays([ledgerRow({})]), now, "2026-07-14");
+  assert.equal(payload.marks[0]!.greeks?.delta, 0.6);
+  assert.equal(payload.marks[0]!.greeks?.iv, 0.6);
+  // A play with no stored mark → greeks null, not fabricated.
+  lm._resetZeroDteLiveMarksForTest();
+  const empty = lm.buildZeroDteLiveMarksPayloadFrom(lm.boundActivePlays([ledgerRow({})]), now, "2026-07-14");
+  assert.equal(empty.marks[0]!.greeks, null);
+});
+
 test("SSE payload shape: pinned-entry P&L, per-quote asOf, stale flag, idle marker", async () => {
   const lm = await loadLane();
   lm._resetZeroDteLiveMarksForTest();
