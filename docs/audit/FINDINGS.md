@@ -1183,3 +1183,48 @@ position commits). PR-4 shipped a fixture regression (10 horizon tests encoded t
 caught in CI and fixed; two CodeQL nits (self-assignment, unused import) caught + fixed in-flight. Every PR
 verified `tsc --noEmit` + full swing/horizon suite + `check-brand.mjs` before merge. The 0DTE HOLDs #1028
 (aggression floor) and #1031 (governor-txn) remain parked as drafts (operator validates).
+
+## 2026-07-24 — [MED, correctness] gex-positioning WS wall override summed ALL expiries (far-OpEx walls next to near-term flip) — FIXED
+
+**Severity MED (RTH-only wrong key levels on the desk-terminal/positioning surface; no capital path).**
+`getGexPositioning` publishes the canonical call/put wall consumed by the desk terminal, Largo and
+Night's Watch via `/api/market/gex-positioning`.
+
+**Root cause — an unscoped ladder call.** When the UW `gex_strike_expiry` WS channel is live (RTH),
+`gex-positioning.ts` (~L153-159) OVERRODE the near-term Polygon walls with a WS ladder summed over
+**every expiry** — it called `getGexStrikeExpiryLadder(root)` with **no `allowedExpiries` argument**:
+```ts
+const wsLadder = getGexStrikeExpiryLadder(root);   // ALL expiries — BUG
+```
+`base.flip` and the cross-validation oracle (~L177) are BOTH scoped to `resolveNearTermExpiriesFor
+CrossValidation(hm)` (Polygon's near-term-only set), but the wall override was not. So the call/put
+wall snapped to a far monthly/quarterly OpEx strike (larger all-expiry magnitude) hundreds of points
+from the near-term flip — internally inconsistent walls-vs-flip on the surface, and the cross-val
+warned `divergence=505/535pt vs UW strike ladder` every few seconds during RTH. Off-hours the WS
+channel is idle (`hasLiveGexStrikeExpiry` false) so the override never fired and walls were correct —
+which is why it only showed live.
+
+**Why it wasn't caught:** the only test for this file exercised the pure `gexPositioningFromHeatmap`
+mapper, never `getGexPositioning`'s live-WS override seam. The Vector CHART walls were already correct
+(a different, DTE-scoped ladder path); only this gex-positioning/desk surface was affected.
+
+**Fix (`gex-positioning.ts`, one line of substance):** resolve the near-term expiry set ONCE and pass
+it to BOTH the override and the oracle:
+```ts
+const nearTermExpiries = resolveNearTermExpiriesForCrossValidation(hm);
+const wsLadder = getGexStrikeExpiryLadder(root, nearTermExpiries);
+```
+`getGexStrikeExpiryLadder(ticker, allowedExpiries?)` already filters by expiry (proven in
+`gex-strike-expiry-ladder.test.ts`) — the bug was purely not passing the scope. Only the expiry SCOPE
+changes; the 5s WS-freshness benefit is retained. Also demoted the per-call cross-val `console.warn`
+(fired on `div > 5` nearly every call, ~few-sec spam during RTH) to `console.debug` UNLESS a WALL
+actually mismatched — a flip-only residual (Polygon zero-gamma interpolation vs UW per-strike ladder,
+within ±2 tolerance) is a known methodology gap, not a data bug.
+
+**Evidence/verify:** new `getGexPositioning` test wires a live WS ladder with near-term walls at
+6050/5950 (±50 from spot 6000) AND far-OpEx walls at 6500/5500 (±500, 50× magnitude); asserts the
+override picks the near-term pair. Proven to FAIL on the old unscoped call (`actual: 6500`) and PASS
+on the fix (`6050`). `tsc --noEmit` clean; all 77 `src/lib/providers/gex*.test.ts` pass;
+`check-brand.mjs` clean. Files: `src/lib/providers/gex-positioning.ts`,
+`src/lib/providers/gex-positioning.test.ts`. Status: FIXED, branch
+`fix/gex-positioning-walls-nearterm-scope` (PR to main).
