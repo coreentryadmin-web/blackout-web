@@ -168,6 +168,18 @@ mock.module("../../features/nighthawk/lib/session", {
     nextTradingDayEt: () => "2026-07-08",
   },
 });
+// Always-miss shared cache so getZeroDteBoardPayload cold-builds on EVERY call in these
+// state-driven tests — each case must see its own freshly-mutated `state`, never a
+// snapshot published by a prior case. (The convergence/liveness/fail-soft behaviour of
+// the shared snapshot is covered by zerodte-board-convergence.test.ts.)
+mock.module("../shared-cache", {
+  namedExports: {
+    sharedCacheGet: async () => null,
+    sharedCacheSet: async () => {},
+    sharedCacheSetNx: async () => true,
+    sharedCacheDel: async () => {},
+  },
+});
 
 test("livePnlPct: board ledger and Largo plays use identical rounding", async () => {
   state.ledgerRead = { rows: [ledgerRow()], committed_known: true };

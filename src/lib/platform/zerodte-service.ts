@@ -9,7 +9,8 @@ import { fetchNighthawkEchoForTickers, type EcosystemNightHawkTake } from "@/lib
 import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { fetchBenzingaNews } from "@/lib/providers/polygon";
 import { readGridEarnings } from "@/lib/zerodte/earnings";
-import { withServerCache, serverCache, TTL } from "@/lib/server-cache";
+import { serverCache, TTL } from "@/lib/server-cache";
+import { sharedCacheDel, sharedCacheGet, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 import { roundFloats } from "@/lib/round-floats";
 import {
   matchEarnings,
@@ -124,7 +125,38 @@ export type ZeroDteBoardPayload = {
   allocation: AllocationDecision[];
 };
 
-const BOARD_TTL_MS = 5_000;
+// ── Shared, converged board snapshot (fix/zerodte-board-convergence) ──────────────
+// WHY: the board used to be assembled PER-REPLICA and served from each replica's own
+// in-process withServerCache store for a 5s window (buildZeroDteBoardPayload re-derives
+// on every background refresh). Two replicas warm their score inputs (the per-ticker
+// `zerodte:intraday:*` reads, VIX-open, etc.) at different instants, so each converges
+// to its OWN stable-but-different setup scores — and a member's ~5s SWR poll round-robins
+// between replicas, so setup scores FLIP-FLOP between two values (proven live 2026-07-24:
+// QQQ 68↔50, MU 52↔56, SNDK 60↔52 across a 4-round poll while `as_of` advanced every
+// round). The live MARKS did NOT flip because they ride the shared `nw:optmark:` Redis
+// write-through — every replica READS one shared value. This lane gives the WHOLE board
+// the same property: one shared snapshot in Redis that every replica reads, so any two
+// replicas serve the IDENTICAL board. Liveness is preserved by refreshing that snapshot
+// on a stale-while-revalidate cadence (single writer per cycle) so `as_of`/scores/marks
+// advance every cycle instead of freezing.
+const BOARD_SNAPSHOT_KEY = "zerodte:board:snapshot:v1";
+// How long the published snapshot lives in Redis. Comfortably longer than the serve/
+// refresh windows below so freshness is governed by the snapshot's own `as_of` age
+// (BOARD_SNAPSHOT_*_MS), never by the Redis key silently expiring under us.
+const BOARD_SNAPSHOT_TTL_SEC = 60;
+// Soft age: once the shared snapshot is older than this, the NEXT reader kicks a
+// background rebuild (non-blocking SWR) so the cycle advances. Matches the ~5s member
+// poll cadence — most polls land inside a fresh snapshot and never trigger a rebuild.
+const BOARD_SNAPSHOT_REFRESH_MS = 5_000;
+// Hard age: a snapshot older than this is NOT served — the reader blocks on a fresh
+// build instead, so a stalled writer can never freeze the board on stale cross-replica
+// data (fail-safe upper bound; the SWR refresh normally keeps age well under this).
+const BOARD_SNAPSHOT_MAX_AGE_MS = 30_000;
+// Cross-replica rebuild lock: elects ONE replica to rebuild+publish per cycle so N
+// replicas don't each re-derive the same snapshot. Auto-expires (writer crash safety);
+// the winner also deletes it right after publishing so the next cycle can advance.
+const BOARD_BUILD_LOCK_KEY = "zerodte:board:build-lock:v1";
+const BOARD_BUILD_LOCK_TTL_SEC = 20;
 
 /** A live-lane mark overlay for one ledger row (see attachLiveMarkMeta below). */
 type LiveMarkMeta = { mark: number; mark_as_of: string; mark_source: ZeroDteMarkSource };
@@ -363,9 +395,117 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   };
 }
 
-/** Cached board read — shared by the member route and Largo/BIE consumers. */
+/** A shared snapshot read + its age (ms since the payload's own `as_of`). */
+type SharedBoardRead = { value: ZeroDteBoardPayload; ageMs: number };
+
+/** Read the shared board snapshot from Redis (in-memory fallback when Redis is
+ *  unavailable), returning it with its age. Fail-soft: any store error → null, so the
+ *  caller falls through to a local build (never a blank board). */
+async function readSharedBoardSnapshot(): Promise<SharedBoardRead | null> {
+  try {
+    const snap = await sharedCacheGet<ZeroDteBoardPayload>(BOARD_SNAPSHOT_KEY);
+    if (!snap || snap.available !== true || typeof snap.as_of !== "string") return null;
+    const asOfMs = Date.parse(snap.as_of);
+    if (!Number.isFinite(asOfMs)) return null;
+    return { value: snap, ageMs: Math.max(0, Date.now() - asOfMs) };
+  } catch {
+    return null;
+  }
+}
+
+// Intra-replica single-flight for the COLD/blocking rebuild path — collapses this
+// replica's concurrent polls (many tabs / rapid re-polls) into one build+publish.
+let coldBuildInflight: Promise<ZeroDteBoardPayload> | null = null;
+// Intra-replica guard so a replica fires at most ONE background SWR refresh at a time.
+let backgroundRefreshInflight = false;
+
+/** Build ONE board and publish it as the shared snapshot every replica reads. Used by
+ *  the cold/blocking path and by the cron warmer (proactive publish). Best-effort
+ *  publish: a failed Redis write still returns the freshly built board — the fix
+ *  degrades to the pre-fix per-replica behaviour, never to a blank board. */
+async function buildAndPublishBoard(): Promise<ZeroDteBoardPayload> {
+  const built = await buildZeroDteBoardPayload();
+  await sharedCacheSet(BOARD_SNAPSHOT_KEY, built, BOARD_SNAPSHOT_TTL_SEC).catch(() => {});
+  return built;
+}
+
+/** Single-writer background refresh: only the NX-lock winner rebuilds+publishes this
+ *  cycle; every other replica keeps serving the shared snapshot it already read (so the
+ *  served board never diverges). Fire-and-forget — errors are swallowed because the
+ *  caller already returned a valid (slightly stale) snapshot. */
+function refreshSharedBoardInBackground(): void {
+  if (backgroundRefreshInflight) return;
+  backgroundRefreshInflight = true;
+  void (async () => {
+    let won = false;
+    try {
+      won = await sharedCacheSetNx(BOARD_BUILD_LOCK_KEY, Date.now(), BOARD_BUILD_LOCK_TTL_SEC);
+    } catch {
+      won = false; // lock store unavailable → skip; a fresh reader will cold-build if needed
+    }
+    if (!won) return; // a peer replica owns this cycle's rebuild
+    try {
+      await buildAndPublishBoard();
+    } catch {
+      // Rebuild failed — the previous snapshot stands until the next cycle retries.
+    } finally {
+      // Free the lock so the NEXT cycle can advance (don't wait out the 20s TTL).
+      await sharedCacheDel(BOARD_BUILD_LOCK_KEY).catch(() => {});
+    }
+  })().finally(() => {
+    backgroundRefreshInflight = false;
+  });
+}
+
+/**
+ * Board read — shared by the member route and Largo/BIE consumers.
+ *
+ * Convergence contract (fix/zerodte-board-convergence): every replica READS the SAME
+ * shared Redis snapshot, so any two reads across any two replicas within a cycle return
+ * the identical board (mirrors the `nw:optmark:` marks lane). Liveness is preserved by a
+ * stale-while-revalidate refresh: a fresh-enough snapshot is served immediately; once it
+ * ages past the soft window a single-writer background rebuild advances it. Only a cold
+ * miss (or a snapshot too stale to serve) blocks on a build — and that build publishes,
+ * so peers converge onto it. Fail-soft throughout: a Redis outage degrades to a local
+ * build, never a blank board.
+ */
 export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
-  return withServerCache("zerodte:board:v1", BOARD_TTL_MS, buildZeroDteBoardPayload);
+  const shared = await readSharedBoardSnapshot();
+  if (shared && shared.ageMs <= BOARD_SNAPSHOT_MAX_AGE_MS) {
+    // Serve the shared, converged snapshot NOW. Past the soft window, kick a
+    // single-writer background rebuild so the next cycle advances — never block on it.
+    if (shared.ageMs > BOARD_SNAPSHOT_REFRESH_MS) refreshSharedBoardInBackground();
+    return shared.value;
+  }
+
+  // Cold miss / too stale to serve → blocking build+publish (single-flight per replica).
+  if (coldBuildInflight) return coldBuildInflight;
+  coldBuildInflight = (async () => {
+    // A peer may have published while we queued behind the single-flight — prefer it
+    // for convergence over spending another build.
+    const raced = await readSharedBoardSnapshot();
+    if (raced && raced.ageMs <= BOARD_SNAPSHOT_MAX_AGE_MS) return raced.value;
+    return buildAndPublishBoard();
+  })().finally(() => {
+    coldBuildInflight = null;
+  });
+  return coldBuildInflight;
+}
+
+/** Proactively rebuild + publish the shared board snapshot. Called by the ~1-5 min
+ *  cron warmer so the shared snapshot stays live even with no member traffic (mirrors
+ *  "the scan/cron builds the board once → writes the shared store"). Blocking on purpose
+ *  — the cron awaits it so the publish actually completes before the function returns. */
+export async function refreshZeroDteBoardSnapshot(): Promise<ZeroDteBoardPayload> {
+  return buildAndPublishBoard();
+}
+
+/** Test-only: clear the shared board snapshot + rebuild latches between cases. */
+export async function _resetZeroDteBoardSnapshotForTest(): Promise<void> {
+  coldBuildInflight = null;
+  backgroundRefreshInflight = false;
+  await sharedCacheDel(BOARD_SNAPSHOT_KEY).catch(() => {});
+  await sharedCacheDel(BOARD_BUILD_LOCK_KEY).catch(() => {});
 }
 
 /** Largo / BIE tool shape — derived from the same board payload the UI polls. */
