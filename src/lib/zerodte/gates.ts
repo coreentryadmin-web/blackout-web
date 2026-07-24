@@ -21,7 +21,21 @@ import type { MarketBias } from "./intraday";
 import type { EarningsFlag, EnrichedZeroDteSetup, ZeroDteGateFailure, ZeroDteGateRejection } from "./board";
 import { evaluateZeroDteGovernor, type GovernorOpenPlan, type GovernorSnapshot } from "./governor";
 import type { ContractPlan } from "./plan";
+import type { ZeroDteConfluence } from "./confluence";
+import { EARLY_ENTRY_WINDOW_END_ET_MINUTES } from "./confluence";
 import { evaluateMacroHardBlock, type MacroEventLike } from "@/lib/macro-hard-block";
+
+/** Read a positive-integer tuning knob from the environment, falling back to `def` when unset,
+ *  non-numeric, or ≤0. Evaluated ONCE at module load so the gate FUNCTIONS stay pure (they only
+ *  ever reference the resolved constant) — the same "tunable constant from env" pattern the
+ *  provider layer uses. Config-gating keeps these strategy dials adjustable without a code change,
+ *  per the standing "config-gated / conservative default" rule for entry-quality changes. */
+function envInt(name: string, def: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return def;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : def;
+}
 
 // ── G-1 · Tape-alignment block ──────────────────────────────────────────────────
 // Evidence (nh0dte forensics, 2026-07-13): counter-tape entries are the single most
@@ -29,9 +43,13 @@ import { evaluateMacroHardBlock, type MacroEventLike } from "@/lib/macro-hard-bl
 // went 0/5 (avg −54.7% premium) while the aligned shorts held 1W/2L. Until now this
 // was only a −6 score dent (marketAlignAdjust, ./intraday.ts); a 93-score SPY long
 // shrugged it off at 09:55 and stopped out. Promoted to a hard block.
-/** Max age of the SPY read the bias came from. A bias computed from bars that
- *  stopped arriving 15+ minutes ago is a memory, not a market state — fail closed. */
-export const MARKET_BIAS_MAX_AGE_MS = 15 * 60 * 1000;
+/** Max age of the SPY read the bias came from. A bias computed from bars that stopped arriving is a
+ *  memory, not a market state — fail closed. TIGHTENED 2026-07-24 (Change 3) from 15 min → 5 min: 0DTE
+ *  is a reaction-speed product and a 15-min-old "up" read could clear G-1 into a tape that has already
+ *  reversed. 5 min still tolerates a couple of missed 1-min SPY bars (provider hiccup) without emptying
+ *  the board. Config-gated (`ZERODTE_MARKET_BIAS_MAX_AGE_MS`, milliseconds) so it can be dialed on the
+ *  ledger without a deploy. */
+export const MARKET_BIAS_MAX_AGE_MS = envInt("ZERODTE_MARKET_BIAS_MAX_AGE_MS", 5 * 60 * 1000);
 
 // ── G-2 · Opening-window block ──────────────────────────────────────────────────
 // USER-AUTHORIZED 2026-07-23 (supersedes the 2026-07-13 "first 15 min only" directive):
@@ -51,6 +69,45 @@ export const MARKET_BIAS_MAX_AGE_MS = 15 * 60 * 1000;
 // unchanged and live upstream (persistZeroDteScan / PLAN_RULES).
 export const OPENING_WINDOW_UNLOCK_ET_MINUTES = 10 * 60;
 export const OPENING_WINDOW_UNLOCK_LABEL = "10:00 ET";
+
+// ── G-12 · Confluence floor — HARD GATE (2026-07-24, Changes 1 & 2) ───────────────
+// Evidence (E3, 25 sessions, docs/audit/0DTE-RESEARCH.md): expectancy ladders with the number of
+// INDEPENDENT confirmations that agree with the setup's direction (VWAP-side + market-aligned):
+//   0-conf → −12.5% EV | 1-conf → 0.0% | 2-conf → +15.9% EV (41% win, n=22).
+// confluence.ts computed this read but was explicitly NON-gating, so the ADDITIVE score
+// (board.ts) let a single loud premium tier (+40) drag a ZERO-confluence setup over the 65 floor —
+// exactly the −12.5% bucket. G-12 makes confluence a real commit input: a fresh commit needs at
+// least ZERODTE_CONFLUENCE_MIN confirmations. Default 1 is the CONSERVATIVE floor — it blocks only
+// the measured-losing 0-conf setups (a loud print with neither VWAP nor tape behind it) and leaves
+// every 1-/2-conf setup untouched, so the board is not starved (G-1 already blocks counter-tape, so
+// a survivor is either market-aligned = 1 conf, or flat-tape needing its own VWAP side = 1 conf).
+//
+// Change 2 (entry timing) rides the SAME gate: inside the measured-NEGATIVE early window
+// [10:00, 10:45) ET (E2: 10:00 −7.8% EV, 10:30 −9.1%; first positive is 11:00 +1.5%) the floor
+// rises to ZERODTE_CONFLUENCE_MIN_EARLY (default 2 — require the full VWAP+market "double", the
+// +15.9% bucket). We DON'T move the 10:00 hard unlock later (documented G-2 rationale + a standing
+// user directive keep it at 10:00, and pushing it to 11:00 empties the morning board); instead we
+// demand the strongest agreement to commit early, and the size chip halves (pane.ts). Both floors
+// are config-gated so the ledger can tune them without a deploy.
+//
+// FAIL-OPEN on a missing read: unlike the market-state preconditions (bias/governor, which fail
+// CLOSED), G-12 only fires when a confluence read is actually PRESENT and shows too few
+// confirmations. A null read (not the live path — scan.ts always attaches one — but true in
+// fixture replays) is not itself a block; we never manufacture a block from an unmeasured factor.
+export const ZERODTE_CONFLUENCE_MIN = envInt("ZERODTE_CONFLUENCE_MIN", 1);
+export const ZERODTE_CONFLUENCE_MIN_EARLY = Math.max(
+  ZERODTE_CONFLUENCE_MIN,
+  envInt("ZERODTE_CONFLUENCE_MIN_EARLY", 2)
+);
+
+/** The confluence floor in force at `nowEtMinutes`: the higher early-window floor inside
+ *  [10:00, 10:45) ET, else the standard floor. Pure. */
+export function confluenceFloorAt(nowEtMinutes: number): number {
+  const early =
+    nowEtMinutes >= OPENING_WINDOW_UNLOCK_ET_MINUTES &&
+    nowEtMinutes < EARLY_ENTRY_WINDOW_END_ET_MINUTES;
+  return early ? ZERODTE_CONFLUENCE_MIN_EARLY : ZERODTE_CONFLUENCE_MIN;
+}
 
 // ── G-4 · VIX regime throttle — HARD GATE (promoted from calibration 2026-07-16) ──
 // Evidence (F-1): the strongest per-play split in the whole forensics dataset —
@@ -179,6 +236,10 @@ export type ZeroDteGateInput = {
   earnings?: EarningsFlag | null;
   /** Session date (yyyy-mm-dd) for G-7 macro window math. */
   todayYmd?: string;
+  /** G-12: the setup's confluence read (confluence.ts), attached by the scan before gating.
+   *  Null/undefined = no read available → G-12 fails OPEN (never manufactures a block from an
+   *  unmeasured factor; the live scan always supplies one). */
+  confluence?: ZeroDteConfluence | null;
 };
 
 /**
@@ -238,6 +299,29 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
       threshold: ZERODTE_SCORE_FLOOR,
       unlock_et: null,
     });
+  }
+
+  // G-12 — confluence floor (2026-07-24, Changes 1 & 2). The additive score can't tell a
+  // triple-confirmed A+ setup from a loud-print-only one; require independent confirmations to
+  // AGREE. Fail-open when no read is attached (see the constant's doc). The early-window floor is
+  // higher, so this ALSO enforces Change 2's "take only the strongest agreement early".
+  if (input.confluence != null) {
+    const floor = confluenceFloorAt(input.nowEtMinutes);
+    const have = input.confluence.confirmations;
+    if (have < floor) {
+      const early = floor > ZERODTE_CONFLUENCE_MIN;
+      blocks.push({
+        code: "confluence_floor",
+        reason:
+          `Only ${have} of the needed ${floor} confluence confirmations ` +
+          `(VWAP-side + market-aligned) agree with this ${input.direction} — ` +
+          (early
+            ? `the ${OPENING_WINDOW_UNLOCK_LABEL}–10:45 early window backtests negative (E2), so it takes the full VWAP+market double to commit here.`
+            : "the 0-confirmation bucket ran −12.5% EV (E3, 25 sessions); a loud premium print alone isn't a trade."),
+        threshold: floor,
+        unlock_et: null,
+      });
+    }
   }
 
   // G-4 — VIX regime hard gate (promoted from calibration 2026-07-16).

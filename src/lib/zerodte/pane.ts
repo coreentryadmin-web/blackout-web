@@ -154,12 +154,24 @@ export type ZeroDteSizeChip = {
 
 export function suggestedZeroDteSize(
   cortexScore: number | null | undefined,
-  hasVeto: boolean
+  hasVeto: boolean,
+  /** True when the commit is inside the measured-negative early window [10:00, 10:45) ET
+   *  (confluence.early_window). Change 2 (2026-07-24): those commits already need the higher G-12
+   *  confluence floor to exist at all; when they do commit, they print at HALF size — the early
+   *  window backtests negative by expectancy (E2), so even the strongest early entry is de-risked
+   *  until the opening drive fully resolves. Overrides a 1× Cortex score; a veto still wins. */
+  earlyWindow = false
 ): ZeroDteSizeChip {
   if (hasVeto) {
     // Defensive: a vetoed verdict should never reach a committed card (the gate
     // stack blocks it), but if one does, it must not read as a full-size endorsement.
     return { size: "0.5×", basis: "Cortex veto present — minimum size only." };
+  }
+  if (earlyWindow) {
+    return {
+      size: "0.5×",
+      basis: "Early window (10:00–10:45 ET) — half size while the opening drive resolves (backtests negative by expectancy).",
+    };
   }
   if (cortexScore != null && Number.isFinite(cortexScore) && cortexScore >= CONVICTION_A_MIN_SCORE) {
     return {
