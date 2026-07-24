@@ -1178,3 +1178,24 @@ test("polygonSpotTicker: equities and ETF wrappers pass through unchanged (case-
   assert.equal(polygonSpotTicker("spxw"), "I:SPX");
   assert.equal(polygonSpotTicker("meta"), "META");
 });
+
+test("setups (9-1): a tape with NO aggressor metadata (all ask_pct missing) is rejected, not committed on the 0.5 default", () => {
+  // Every print lacks ask_pct → each gets the neutral 0.5 weight → aggression share ≈ 0.5 clears the
+  // 0.3 min, but there's ZERO real aggressor evidence. The known-aggressor floor must fail it closed.
+  const rows = [
+    row({ premium: 900_000, strike: 190, ask_pct: undefined }),
+    row({ premium: 800_000, strike: 190, ask_pct: undefined }),
+  ];
+  const rejections: Array<{ gate_failed?: string }> = [];
+  const out = deriveZeroDteSetups(rows, { rejections: rejections as never });
+  assert.equal(out.length, 0, "no aggressor evidence → no setup");
+  assert.ok(rejections.some((r) => r.gate_failed === "min_aggr_share"));
+});
+
+test("setups (9-1): the SAME tape WITH aggressor metadata still commits — the floor only bites when evidence is absent", () => {
+  const rows = [
+    row({ premium: 900_000, strike: 190, ask_pct: 80 }),
+    row({ premium: 800_000, strike: 190, ask_pct: 75 }),
+  ];
+  assert.equal(deriveZeroDteSetups(rows).length, 1);
+});
