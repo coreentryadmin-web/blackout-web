@@ -49,6 +49,33 @@ test("no usable forward bars → ungradeable (thin/expired OTM weekly — the su
   assert.equal(g.reason, "no_forward_bars");
 });
 
+// ── expiry gate: hold_mult is hold-to-EXPIRY, not hold-to-last-bar ────────────────
+const ms = (iso: string) => Date.parse(iso);
+
+test("forward series truncated before expiry → ungradeable (never credits a non-expiry close as held-to-expiry)", () => {
+  // Last bar is 2026-07-08 but the contract expires 2026-07-10: the option stopped
+  // printing (thin) / Polygon paged short. hold_mult off the last bar (5×) would read an
+  // artificially HIGH "still worth 5× at expiry" — the exact fabricated-value bug. Guard it.
+  const bars = [bar(ms("2026-07-06T15:00:00Z"), 2.2, 1.0, 2.0), bar(ms("2026-07-08T15:00:00Z"), 5.0, 3.0, 5.0)];
+  const g = gradeBangerScaleOut(1, bars, "2026-07-10");
+  assert.equal(g.ungradeable, true);
+  assert.equal(g.reason, "forward_bars_truncated");
+  assert.equal(g.hold_mult, null);
+  assert.equal(g.scale_out_realized_mult, null);
+});
+
+test("forward series reaches the expiry session → graded normally (expiry gate passes)", () => {
+  const bars = [bar(ms("2026-07-08T15:00:00Z"), 2.2, 1.0, 2.0), bar(ms("2026-07-10T15:00:00Z"), 5.0, 3.0, 5.0)];
+  const g = gradeBangerScaleOut(1, bars, "2026-07-10");
+  assert.equal(g.ungradeable, false);
+  assert.equal(g.hold_mult, 5.0);
+});
+
+test("no expiry supplied → gate is skipped (backward compatible)", () => {
+  const bars = [bar(ms("2026-07-08T15:00:00Z"), 2.2, 1.0, 2.0)];
+  assert.equal(gradeBangerScaleOut(1, bars).ungradeable, false);
+});
+
 // ── bangerOccSymbol ──────────────────────────────────────────────────────────────
 test("builds the OCC symbol from ticker/strike/expiry/side", () => {
   assert.equal(bangerOccSymbol("NVDA", 880, "2026-07-10", "call"), "O:NVDA260710C00880000");

@@ -771,7 +771,11 @@ export async function resolveBangerScaleOutGrades(opts?: {
         resolution.request.expiryYmd,
         "250"
       );
-      const grade = gradeBangerScaleOut(resolution.request.entryPremium, optionAggBarsToScaleOut(rawBars));
+      const grade = gradeBangerScaleOut(
+        resolution.request.entryPremium,
+        optionAggBarsToScaleOut(rawBars),
+        resolution.request.expiryYmd // gate hold-to-EXPIRY: never grade a series truncated before expiry
+      );
       await pinNighthawkScaleOutGrade(row.id, { ...grade });
       if (grade.ungradeable) ungradeable += 1;
       else graded += 1;

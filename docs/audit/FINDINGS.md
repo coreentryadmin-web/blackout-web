@@ -45,6 +45,39 @@ active one; two identical-market ticks share a content key while raw JSON differ
 7/7; `zerodte-service-marks.test.ts` 1/1; `check-brand.mjs` clean. Files: `src/lib/zerodte/live-marks.ts`,
 `src/lib/zerodte/exit-sync.ts`, `src/app/api/market/zerodte/marks/stream/route.ts`. Status: FIXED, on
 branch (not merged — no PR opened per request).
+## 2026-07-24 — [LOW×3, honesty] null-honesty cleanups: a null is honest, a fabricated zero is a lie — FIXED
+
+**Severity LOW ×3 (non-member-critical, but the platform's honesty discipline).** Three sites
+manufactured a numeric value where the honest answer was "no value":
+
+1. **`src/features/nighthawk/lib/analytics.ts` (~211-240).** `winRate`/`profitableRate` returned `0`
+   for a zero-row sample and `groupWithReturn` emitted `win_rate: 0` for an empty cut — a fabricated
+   **0% win rate** that reads as "every play lost," inconsistent with `calibration.ts`
+   (`win_rate_pct: rows.length>0 ? … : null`). **Fix:** both functions now return `number | null`
+   (`null` on empty / no-priced-rows); `NighthawkRecordCut.win_rate` + `by_score_bucket.win_rate`
+   widened to `number | null`; `emptyMetrics` empty cuts carry `win_rate: null`. Consumers made
+   null-safe: `AdminNightHawkDashboard` (`pctCut` → "—", `winRateStyle` accepts null) and the
+   member record route (`by_conviction.win_rate_pct` null-guarded, mirroring the existing
+   `segmentWire` convention). Headline `profitable_rate` stays `number` (`?? 0`) — it's reached only
+   when rows exist and has no `low_n` badge to carry a null.
+2. **`src/lib/nighthawk/cortex/fetch.ts` (~270).** `premium: finiteOrNull(r.premium) ?? 0` coerced an
+   unpriced print to `$0`. **Fix:** carry `null` (`CortexFlowPrint.premium: number | null`); the
+   aggregation site `findFlowCluster` (`flow-quality.ts`) now excludes null explicitly so an unpriced
+   print neither joins the premium sum nor inflates the print count (the `p.premium <= 0` guard
+   already dropped a coerced $0, but a null is the honest carrier).
+3. **`src/lib/zerodte/banger-scale-out-grade.ts` (~50).** `hold_mult = last.c / entry` measured
+   hold-to-last-bar; the defined baseline is hold-to-EXPIRY (which decays toward ~0 for an OTM
+   weekly). A series truncated before expiry (thin option / short Polygon page) read an artificially
+   HIGH hold_mult. **Fix:** `gradeBangerScaleOut` takes `expiryYmd`; if the last forward bar's ET
+   date < expiry, the row is `ungradeable` (`reason: "forward_bars_truncated"`) rather than crediting
+   a non-expiry close as held-to-expiry. Realized-multiple logic unchanged; caller (`play-outcomes.ts`)
+   passes `resolution.request.expiryYmd`.
+
+**Verified:** `tsc --noEmit` clean; touched tests pass — `analytics.test.ts` 24/24,
+`banger-scale-out-grade.test.ts` 30/30, `fetch.test.ts` + `flow-quality.test.ts` 28/28 (adds:
+null-on-empty for winRate/profitableRate/groupWithReturn; null-premium excluded from cluster sum+count;
+mapFlowSlice carries null; expiry-truncation → ungradeable), `analytics-methodology`/`analytics-pulled`
+8/8, intel route 9/9; `check-brand.mjs` clean. Branch `fix/null-honesty-cleanups`.
 
 ## 2026-07-24 — [HIGH, honesty] iron-condor surfaced a literal "100%" WR with no breach companion — FIXED
 

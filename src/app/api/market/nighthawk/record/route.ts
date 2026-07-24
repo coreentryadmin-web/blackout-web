@@ -82,7 +82,9 @@ export async function GET(req: NextRequest) {
         .map((c) => ({
           conviction: c.conviction,
           n: c.n,
-          win_rate_pct: pct(c.win_rate),
+          // null (never 0%) for an empty cut — same rule as the segment wire above. The
+          // n > 0 filter makes non-null the practical case; the guard keeps the type honest.
+          win_rate_pct: c.win_rate != null ? pct(c.win_rate) : null,
           // Shared LOW-N discipline (zerodte/record.ts threshold) — consumers badge it.
           low_n: c.low_n,
         })),

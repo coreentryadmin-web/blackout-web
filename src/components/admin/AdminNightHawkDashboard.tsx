@@ -46,10 +46,17 @@ function fmtPublishedAt(iso: string | null): string {
   });
 }
 
-function winRateStyle(rate: number): CSSProperties {
+// An empty cut's win_rate is null (analytics.ts null-honesty) — render "—", never "0%",
+// which would read as "every play lost." All call sites below are filtered to n > 0 so a
+// null is not expected in practice, but the helper stays honest if one slips through.
+function pctCut(rate: number | null): string {
+  return rate == null ? "—" : pct(rate);
+}
+
+function winRateStyle(rate: number | null): CSSProperties {
   // Value-driven heat ramp interpolating between brand bear (#ff2d55) at the
-  // low end and brand bull (#00e676) at the high end.
-  const clamped = Math.max(0, Math.min(1, rate));
+  // low end and brand bull (#00e676) at the high end. A null cut (no rate) is neutral.
+  const clamped = Math.max(0, Math.min(1, rate ?? 0));
   const red = Math.round(255 * (1 - clamped) + 0 * clamped);
   const green = Math.round(45 * (1 - clamped) + 230 * clamped);
   const blue = Math.round(85 * (1 - clamped) + 118 * clamped);
@@ -69,7 +76,7 @@ function EditionWinRateTrend({ editions }: { editions: NighthawkMetrics["by_edit
   const points = editions.map((e, i) => ({
     ...e,
     x: pad.left + (editions.length === 1 ? plotW / 2 : (i / (editions.length - 1)) * plotW),
-    y: pad.top + plotH - e.win_rate * plotH,
+    y: pad.top + plotH - (e.win_rate ?? 0) * plotH,
   }));
 
   const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
@@ -119,7 +126,7 @@ function EditionWinRateTrend({ editions }: { editions: NighthawkMetrics["by_edit
         {points.map((p) => (
           <circle key={p.edition_for} cx={p.x} cy={p.y} r={5} className="admin-nh-trend-dot">
             <title>
-              {p.edition_for}: {pct(p.win_rate)} · {p.n} plays · {fmtReturn(p.avg_return_pct)}
+              {p.edition_for}: {pctCut(p.win_rate)} · {p.n} plays · {fmtReturn(p.avg_return_pct)}
             </title>
           </circle>
         ))}
@@ -511,7 +518,7 @@ export function AdminNightHawkDashboard() {
                   <td className="admin-td-strong">{row.conviction}</td>
                   <td>{row.n}</td>
                   <td className="admin-td-strong" style={winRateStyle(row.win_rate)}>
-                    {pct(row.win_rate)}
+                    {pctCut(row.win_rate)}
                   </td>
                   <td className={row.avg_return_pct >= 0 ? "admin-td-bull" : "admin-td-bear"}>
                     {fmtReturn(row.avg_return_pct)}
@@ -532,10 +539,10 @@ export function AdminNightHawkDashboard() {
               <HorzBar
                 key={b.bucket}
                 label={b.bucket}
-                value={b.win_rate}
+                value={b.win_rate ?? 0}
                 max={1}
                 tone="bull"
-                right={`${b.n} plays · ${pct(b.win_rate)}`}
+                right={`${b.n} plays · ${pctCut(b.win_rate)}`}
               />
             ))}
           </div>
@@ -563,7 +570,7 @@ export function AdminNightHawkDashboard() {
                     <tr key={row.direction}>
                       <td className="admin-td-strong">{row.direction}</td>
                       <td>{row.n}</td>
-                      <td style={winRateStyle(row.win_rate)}>{pct(row.win_rate)}</td>
+                      <td style={winRateStyle(row.win_rate)}>{pctCut(row.win_rate)}</td>
                       <td className={row.avg_return_pct >= 0 ? "admin-td-bull" : "admin-td-bear"}>
                         {fmtReturn(row.avg_return_pct)}
                       </td>
@@ -592,7 +599,7 @@ export function AdminNightHawkDashboard() {
                   <tr key={row.sector}>
                     <td className="admin-td-strong">{row.sector}</td>
                     <td>{row.n}</td>
-                    <td style={winRateStyle(row.win_rate)}>{pct(row.win_rate)}</td>
+                    <td style={winRateStyle(row.win_rate)}>{pctCut(row.win_rate)}</td>
                     <td className={row.avg_return_pct >= 0 ? "admin-td-bull" : "admin-td-bear"}>
                       {fmtReturn(row.avg_return_pct)}
                     </td>

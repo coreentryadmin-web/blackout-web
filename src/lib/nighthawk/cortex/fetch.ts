@@ -267,7 +267,9 @@ export function classifyFlowPrintKind(alertRule: string | null | undefined): Cor
 export function mapFlowSlice(tape: Pick<FlowTapeSummary, "recent"> | null, asOf: string): CortexFlowSlice | null {
   if (!tape) return null;
   const prints = (tape.recent ?? []).map((r: FlowRow) => ({
-    premium: finiteOrNull(r.premium) ?? 0,
+    // Carry null for an unpriced print — never coerce to $0. The cluster sum in
+    // findFlowCluster excludes nulls; a fabricated $0 would silently join the tally.
+    premium: finiteOrNull(r.premium),
     direction: (r.direction === "bullish" || r.direction === "bearish" ? r.direction : "unknown") as
       | "bullish"
       | "bearish"

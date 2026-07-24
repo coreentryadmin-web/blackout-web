@@ -75,7 +75,9 @@ export function findFlowCluster(
     if (p.kind !== "sweep" && p.kind !== "block") continue;
     const at = parseMs(p.at);
     if (at == null || at < windowStartMs || at > nowMs) continue;
-    if (!Number.isFinite(p.premium) || p.premium <= 0) continue;
+    // Exclude unpriced prints (null) explicitly — they were never coerced to $0 upstream,
+    // so they add nothing to the sum AND do not inflate the print count.
+    if (p.premium == null || !Number.isFinite(p.premium) || p.premium <= 0) continue;
     total += p.premium;
     count += 1;
     if (p.kind === "sweep") sweeps += 1;

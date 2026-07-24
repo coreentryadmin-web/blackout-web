@@ -1,7 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { NighthawkPlayOutcomeRow } from "@/lib/db";
-import { entryMid, realizedReturnPct, avgLoserReturn, buildNighthawkFunnel } from "./analytics";
+import {
+  entryMid,
+  realizedReturnPct,
+  avgLoserReturn,
+  buildNighthawkFunnel,
+  winRate,
+  profitableRate,
+  groupWithReturn,
+} from "./analytics";
 import { REJECTION_TRIGGER_REASON } from "./play-outcomes";
 
 // Regression: this file used to compute entry mid inline with no corruption
@@ -58,6 +66,30 @@ test("avgLoserReturn clamps to <= 0 even when a stop row's realized return compu
 test("avgLoserReturn passes through a genuine negative average unclamped", () => {
   const stopRow = row({ direction: "LONG", outcome: "stop", next_day_close: 441 }); // -2%
   assert.equal(avgLoserReturn([stopRow]), -2);
+});
+
+// ── Null-honesty: an empty sample has no win rate (null), never a fabricated 0% ──────────
+
+test("winRate is null (not 0) for a zero-row sample — a 0% reads as 'every play lost'", () => {
+  assert.equal(winRate([]), null);
+});
+
+test("winRate computes a real ratio for a non-empty sample", () => {
+  assert.equal(winRate([row({ outcome: "target" }), row({ outcome: "stop" })]), 0.5);
+});
+
+test("profitableRate is null (not 0) for a zero-row sample", () => {
+  assert.equal(profitableRate([]), null);
+});
+
+test("profitableRate is null when no row has a computable return (corrupt ranges), never a fake 0%", () => {
+  const corrupt = row({ entry_range_low: 17, entry_range_high: 452 }); // realizedReturnPct → null
+  assert.equal(realizedReturnPct(corrupt), null);
+  assert.equal(profitableRate([corrupt]), null);
+});
+
+test("groupWithReturn emits win_rate: null for an empty cut (matches calibration.ts null-on-empty)", () => {
+  assert.deepEqual(groupWithReturn([]), { n: 0, win_rate: null, avg_return_pct: 0, low_n: true });
 });
 
 // ── Task #145: funnel/rejection-rate stats (buildNighthawkFunnel) ────────────────────────

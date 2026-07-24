@@ -29,12 +29,32 @@ export type BangerScaleOutGrade = {
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
+/** Calendar date (YYYY-MM-DD) of a bar's epoch-ms timestamp in US Eastern (exchange) time —
+ *  the same convention the rest of the platform uses to date a Polygon daily bar
+ *  (spx-session.ts etYmdFromMs). Pure (Intl only), so this module keeps its no-server-only
+ *  import graph. */
+function etYmdFromMs(ms: number): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(ms));
+}
+
 /**
  * Grade a banger's forward OPTION bars on the scale-out basis. `entryPremium` is the pinned ledger
- * entry; `bars` are the contract's forward bars (any resolution) from entry onward. Fail-soft: bad
- * entry or no usable bars → `ungradeable`, never a fabricated multiple.
+ * entry; `bars` are the contract's forward bars (any resolution) from entry onward; `expiryYmd` is
+ * the contract's expiry (YYYY-MM-DD) — the baseline `hold_mult` is defined as hold-to-EXPIRY, so it
+ * can only be measured once the forward series actually reaches the expiry session. Fail-soft: bad
+ * entry, no usable bars, or a series truncated before expiry → `ungradeable`, never a fabricated
+ * multiple.
  */
-export function gradeBangerScaleOut(entryPremium: number | null, bars: ScaleOutBar[]): BangerScaleOutGrade {
+export function gradeBangerScaleOut(
+  entryPremium: number | null,
+  bars: ScaleOutBar[],
+  expiryYmd?: string | null
+): BangerScaleOutGrade {
   if (entryPremium == null || !(entryPremium > 0)) {
     return { scale_out_realized_mult: null, hold_mult: null, ungradeable: true, reason: "no_entry_premium" };
   }
@@ -45,6 +65,14 @@ export function gradeBangerScaleOut(entryPremium: number | null, bars: ScaleOutB
     return { scale_out_realized_mult: null, hold_mult: null, ungradeable: true, reason: "no_forward_bars" };
   }
   const sorted = [...usable].sort((a, b) => a.t - b.t);
+  // hold_mult is hold-to-EXPIRY (the defined baseline, which decays toward ~0 for an OTM weekly).
+  // When the forward series is truncated before expiry (thin option that stopped printing, a short
+  // Polygon page), the last available bar is an intraday/mid-life close — crediting it as the expiry
+  // close reads an artificially HIGH hold_mult (a fabricated "still worth X at expiry"). A null is
+  // honest; grade the row ungradeable instead of inventing a non-expiry hold value.
+  if (expiryYmd && etYmdFromMs(sorted[sorted.length - 1]!.t) < expiryYmd) {
+    return { scale_out_realized_mult: null, hold_mult: null, ungradeable: true, reason: "forward_bars_truncated" };
+  }
   return {
     scale_out_realized_mult: round2(gradeScaleOut(sorted, entryPremium)),
     hold_mult: round2((sorted[sorted.length - 1]!.c) / entryPremium),
