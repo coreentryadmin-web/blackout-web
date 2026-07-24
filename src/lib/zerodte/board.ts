@@ -652,7 +652,9 @@ export function deriveZeroDteSetups(
       prints: agg.prints,
       sweep_pct: Math.round(sweepPct * 100) / 100,
       side_dominance: Math.round(dominance * 100) / 100,
-      underlying_price: agg.underlying,
+      // Round the raw UW underlying at the data layer (repo-wide "round at the data layer" rule) so a
+      // 178.36000000001-style float can't reach the member/ledger or the otm math (9-misc float honesty).
+      underlying_price: agg.underlying == null ? agg.underlying : Math.round(agg.underlying * 100) / 100,
       score: Math.max(0, Math.min(100, score)),
       aggression: Math.round(aggression * 100) / 100,
       otm_pct: otmPct,

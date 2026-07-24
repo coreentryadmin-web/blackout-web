@@ -246,13 +246,17 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // and blocks single names outright at extreme VIX.
   const vix = input.vixDayOpen ?? null;
   if (vix != null) {
+    // Round for display in the SKIP-card reason strings + the persisted gate_calibration_json — the raw
+    // provider value can be a 17.34000000001-style float (repo-wide "round at the data layer" rule). The
+    // threshold COMPARISONS below still use the raw `vix` (rounding is display-only).
+    const vixR = Math.round(vix * 100) / 100;
     const tickerUp = input.ticker.toUpperCase();
     if (vix >= VIX_EXTREME_THRESHOLD) {
       if (!INDEX_ETF_TICKERS.has(tickerUp)) {
         blocks.push({
           code: "vix_extreme",
           reason:
-            `VIX ${vix} ≥ ${VIX_EXTREME_THRESHOLD} — single-name 0DTE blocked in extreme-vol regime. ` +
+            `VIX ${vixR} ≥ ${VIX_EXTREME_THRESHOLD} — single-name 0DTE blocked in extreme-vol regime. ` +
             "Only index/ETF products survive at this volatility.",
           threshold: VIX_EXTREME_THRESHOLD,
           unlock_et: null,
@@ -273,8 +277,8 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         blocks.push({
           code: "vix_elevated",
           reason: tapeAligned
-            ? `VIX ${vix} in the elevated regime (≥${VIX_ELEVATED_THRESHOLD}) — tape-aligned score ${Math.round(input.score)} needs ≥${elevatedFloor} to commit (standard floor when G-1 clears).`
-            : `VIX ${vix} in the elevated regime (≥${VIX_ELEVATED_THRESHOLD}) — score ${Math.round(input.score)} ` +
+            ? `VIX ${vixR} in the elevated regime (≥${VIX_ELEVATED_THRESHOLD}) — tape-aligned score ${Math.round(input.score)} needs ≥${elevatedFloor} to commit (standard floor when G-1 clears).`
+            : `VIX ${vixR} in the elevated regime (≥${VIX_ELEVATED_THRESHOLD}) — score ${Math.round(input.score)} ` +
               `needs ≥${VIX_ELEVATED_SCORE_FLOOR} to commit. The 17-20 VIX regime ran 25% WR vs 69% below 17 (F-1).`,
           threshold: elevatedFloor,
           unlock_et: null,
@@ -461,6 +465,8 @@ export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCali
 
   // G-4 — VIX regime throttle verdict.
   const vix = input.vixDayOpen ?? null;
+  // Display-rounded for the persisted calibration notes (raw `vix` still used for comparisons + day_open_vix).
+  const vixR = vix == null ? null : Math.round(vix * 100) / 100;
   let g4: ZeroDteVixCalibration;
   if (vix == null) {
     g4 = {
@@ -478,8 +484,8 @@ export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCali
       would_block: !isIndexEtf,
       would_halve_size: isIndexEtf,
       note: isIndexEtf
-        ? `VIX ${vix} ≥ ${VIX_EXTREME_THRESHOLD}: index/ETF product survives at HALF plan size under hardened G-4.`
-        : `VIX ${vix} ≥ ${VIX_EXTREME_THRESHOLD}: single names blocked under hardened G-4 (index/ETF only).`,
+        ? `VIX ${vixR} ≥ ${VIX_EXTREME_THRESHOLD}: index/ETF product survives at HALF plan size under hardened G-4.`
+        : `VIX ${vixR} ≥ ${VIX_EXTREME_THRESHOLD}: single names blocked under hardened G-4 (index/ETF only).`,
     };
   } else if (vix >= VIX_ELEVATED_THRESHOLD) {
     const elevatedFloor =
@@ -492,11 +498,11 @@ export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCali
       would_halve_size: false,
       note: clears
         ? aligned === true
-          ? `VIX ${vix} ≥ ${VIX_ELEVATED_THRESHOLD}: tape-aligned with score ≥ ${ZERODTE_SCORE_FLOOR} — clears hardened G-4.`
-          : `VIX ${vix} ≥ ${VIX_ELEVATED_THRESHOLD}: score ≥ ${VIX_ELEVATED_SCORE_FLOOR} — clears hardened G-4.`
+          ? `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: tape-aligned with score ≥ ${ZERODTE_SCORE_FLOOR} — clears hardened G-4.`
+          : `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: score ≥ ${VIX_ELEVATED_SCORE_FLOOR} — clears hardened G-4.`
         : aligned === true
-          ? `VIX ${vix} ≥ ${VIX_ELEVATED_THRESHOLD}: tape-aligned setups need score ≥ ${ZERODTE_SCORE_FLOOR} under hardened G-4.`
-          : `VIX ${vix} ≥ ${VIX_ELEVATED_THRESHOLD}: hardened G-4 needs tape alignment AND score ≥ ${VIX_ELEVATED_SCORE_FLOOR} (17-20 regime ran 25% WR vs 69% at 15-17).`,
+          ? `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: tape-aligned setups need score ≥ ${ZERODTE_SCORE_FLOOR} under hardened G-4.`
+          : `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: hardened G-4 needs tape alignment AND score ≥ ${VIX_ELEVATED_SCORE_FLOOR} (17-20 regime ran 25% WR vs 69% at 15-17).`,
     };
   } else {
     g4 = {
@@ -504,7 +510,7 @@ export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCali
       tier: "normal",
       would_block: false,
       would_halve_size: false,
-      note: `VIX ${vix} < ${VIX_ELEVATED_THRESHOLD}: normal regime.`,
+      note: `VIX ${vixR} < ${VIX_ELEVATED_THRESHOLD}: normal regime.`,
     };
   }
 
