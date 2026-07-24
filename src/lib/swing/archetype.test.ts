@@ -22,7 +22,7 @@ const FIXTURES: Record<string, ArchetypeInputs> = {
   FAILED_BREAKDOWN: { direction: "LONG", reclaim01: 0.9 },
   POST_EARNINGS_DRIFT: { direction: "LONG", earningsGapRecent01: 0.9, postEarningsDrift01: 0.85 },
   FLOW_ACCUMULATION: { direction: "LONG", accumPersistence01: 0.95 },
-  SECTOR_ROTATION: { direction: "LONG", sectorLeadership01: 0.9, relStrength01: 0.88 },
+  SECTOR_ROTATION: { direction: "LONG", sectorLeadership01: 0.9 },
   EVENT_DRIVEN: { direction: "LONG", catalystInWindow01: 0.93 },
 };
 
@@ -37,6 +37,20 @@ test("each fitX fires on its own fixture (that archetype wins) and stays absent/
       assert.equal(v.fits[other], null, `${other} should have null fit on the ${a} fixture`);
     }
   }
+});
+
+test("SECTOR_ROTATION grounds ONLY on industry-group RS (sectorLeadership01), never the coarse SPY RS", () => {
+  // The mislabel fix (operator directive): a name with NO industry-group RS reading can never be labeled
+  // SECTOR_ROTATION — the fit is absent, not a fall-through to name-vs-SPY relative strength. `relStrength01`
+  // is no longer an archetype input at all, so a strong broad tape can't fabricate a rotation label.
+  const noGroupRs = classifyArchetype({ direction: "LONG", trendStack01: 0.92 });
+  assert.equal(noGroupRs.fits.SECTOR_ROTATION, null, "no sectorLeadership01 ⇒ SECTOR_ROTATION fit absent (no SPY-RS fallback)");
+  assert.notEqual(noGroupRs.archetype, "SECTOR_ROTATION");
+
+  // With a real industry-group RS leg, the fit grounds and the archetype can win.
+  const withGroupRs = classifyArchetype({ direction: "LONG", sectorLeadership01: 0.9 });
+  assert.equal(withGroupRs.fits.SECTOR_ROTATION, 0.9);
+  assert.equal(withGroupRs.archetype, "SECTOR_ROTATION");
 });
 
 test("margin confidence = topFit − secondFit is exposed and non-negative", () => {
@@ -175,7 +189,6 @@ test("archetypeInputsFromReads: LONG bull reads and their mirror-SHORT bear read
   assert.equal(si.direction, "SHORT");
   // direction-signed derived fields match
   assert.equal(li.trendStack01, si.trendStack01);
-  assert.equal(li.relStrength01, si.relStrength01);
   assert.equal(li.accumPersistence01, si.accumPersistence01);
   // → same archetype + fit (the whole point: conviction, not sign, drives the bucket)
   assert.deepEqual(classifyArchetype(si).fits, classifyArchetype(li).fits);
@@ -186,7 +199,6 @@ test("archetypeInputsFromReads: neutral/absent flow → direction null, derived 
   const reads: SwingReads = { accumulation: null, flowWindowDays: 5, returnPct10d: 8, spyReturnPct10d: 1 };
   const i = archetypeInputsFromReads(reads);
   assert.equal(i.direction, null);
-  assert.equal(i.relStrength01, null);
   assert.equal(i.accumPersistence01, null);
   assert.equal(i.trendStack01, null);
 });

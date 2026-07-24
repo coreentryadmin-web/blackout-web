@@ -26,16 +26,20 @@ test("archetypes: 8 members, each has meta, priority is a permutation", () => {
   assert.equal(new Set(ARCHETYPE_PRIORITY).size, SWING_ARCHETYPES.length);
 });
 
-test("critique #6: SECTOR_ROTATION is flagged provisional-until-industry-RS; no other archetype is", () => {
-  assert.equal(ARCHETYPE_META.SECTOR_ROTATION.provisionalUntilIndustryRs, true);
+test("critique #6 RESOLVED: the industry-group RS feed shipped, so NO archetype carries the provisional marker", () => {
+  // The industry-group RS feed (industry-group-rs.ts + swing-ingest sectorLeadership01) now grounds the
+  // SECTOR_ROTATION classifier, so the blocked-on-data marker is cleared everywhere (it used to be true on
+  // SECTOR_ROTATION). The enum value itself stays valid — only the classifier's data source changed.
   for (const a of SWING_ARCHETYPES) {
-    if (a === "SECTOR_ROTATION") continue;
     assert.notEqual(
       ARCHETYPE_META[a].provisionalUntilIndustryRs,
       true,
-      `${a} must NOT carry the industry-RS provisional marker`,
+      `${a} must NOT carry the industry-RS provisional marker (the feed shipped)`,
     );
   }
+  // SECTOR_ROTATION remains a valid, first-class archetype (still weighted/graded; only its RS source changed).
+  assert.ok(SWING_ARCHETYPES.includes("SECTOR_ROTATION"));
+  assert.equal(ARCHETYPE_META.SECTOR_ROTATION.id, "SECTOR_ROTATION");
 });
 
 test("critique #3: archetype-aware persistence policy — cross-session=2, event/immediate=1+corroboration", () => {

@@ -246,3 +246,88 @@ test("ingestSwingReads: wired catalyst/IV-rank fetchers thread through; fail-sof
   assert.ok(soft != null, "a provider outage never drops the candidate (fail-soft)");
   assert.equal(soft!.catalyst?.catalystStrength01 ?? null, null, "the failed catalyst read is just null, not a throw");
 });
+
+// ── SECTOR_ROTATION industry-group RS grounding (replaces the coarse SPY RS) ─────────────────────────
+
+test("assembleSwingDossierInput: group closes ground sectorLeadership01 (industry-group RS); absent without them", () => {
+  const withGroup = assembleSwingDossierInput({
+    ticker: "NVDA", asOf: "2026-07-24T21:00:00.000Z", intendedDte: 14,
+    accumulation: bullSignal(), flowWindowDays: 5,
+    nameCloses: ASC, spyCloses: FLAT_SPY,
+    groupBenchmark: { etf: "SMH", label: "Semiconductors", kind: "industry" },
+    groupCloses: FLAT_SPY, // the name (uptrend) leads a flat industry group → positive industry-group RS
+    mover: null,
+  });
+  assert.ok((withGroup.archetypeExtras?.sectorLeadership01 ?? 0) > 0, "name leading its group grounds the sector-rotation signal");
+
+  const withoutGroup = assembleSwingDossierInput({
+    ticker: "NVDA", asOf: "2026-07-24T21:00:00.000Z", intendedDte: 14,
+    accumulation: bullSignal(), flowWindowDays: 5, nameCloses: ASC, spyCloses: FLAT_SPY, mover: null,
+  });
+  assert.equal(withoutGroup.archetypeExtras?.sectorLeadership01, null, "no group closes ⇒ sector-rotation signal absent (no SPY-RS fallback)");
+});
+
+test("ingestSwingReads: classifier resolves the INDUSTRY benchmark (SIC); its closes ground sectorLeadership01", async () => {
+  const calls: string[] = [];
+  const deps: SwingIngestDeps = {
+    async fetchDailyCloses(ticker) {
+      calls.push(ticker.toUpperCase());
+      if (ticker.toUpperCase() === "NVDA") return ASC; // name uptrend
+      if (ticker.toUpperCase() === "SMH") return FLAT_SPY; // flat semiconductors group → name leads
+      return [];
+    },
+    async fetchTickerClassification(ticker) {
+      return ticker.toUpperCase() === "NVDA"
+        ? { sicCode: "3674", sicDescription: "SEMICONDUCTORS", tickerType: "CS" }
+        : null;
+    },
+  };
+  const input = await ingestSwingReads(deps, {
+    ticker: "NVDA", asOf: "2026-07-24T21:00:00.000Z", intendedDte: 14,
+    accumulation: bullSignal(), flowWindowDays: 5, spyCloses: FLAT_SPY,
+  });
+  assert.ok(input != null);
+  assert.ok(calls.includes("SMH"), "the SIC-resolved semiconductors benchmark (SMH) closes were fetched — not SPY");
+  assert.ok((input!.archetypeExtras?.sectorLeadership01 ?? 0) > 0, "the industry-group RS grounded the sector-rotation signal");
+});
+
+test("ingestSwingReads: classifier failure falls back to the static sector-map benchmark (fail-soft)", async () => {
+  const calls: string[] = [];
+  const deps: SwingIngestDeps = {
+    async fetchDailyCloses(ticker) {
+      calls.push(ticker.toUpperCase());
+      return ticker.toUpperCase() === "NVDA" ? ASC : FLAT_SPY;
+    },
+    async fetchTickerClassification() {
+      throw new Error("polygon reference down");
+    },
+  };
+  const input = await ingestSwingReads(deps, {
+    ticker: "NVDA", asOf: "2026-07-24T21:00:00.000Z", intendedDte: 14,
+    accumulation: bullSignal(), flowWindowDays: 5, spyCloses: FLAT_SPY,
+  });
+  assert.ok(input != null, "a classifier outage never drops the candidate");
+  assert.ok(calls.includes("XLK"), "fell back to the static sector-map sector benchmark (Tech → XLK)");
+  assert.ok((input!.archetypeExtras?.sectorLeadership01 ?? 0) > 0, "sector-ETF RS still grounds the signal without the classifier");
+});
+
+test("ingestSwingReads: an unclassifiable name gets no benchmark → null sector-rotation signal, no extra fetch", async () => {
+  const calls: string[] = [];
+  const deps: SwingIngestDeps = {
+    async fetchDailyCloses(ticker) {
+      calls.push(ticker.toUpperCase());
+      return ASC;
+    },
+    async fetchTickerClassification() {
+      return null; // no SIC
+    },
+  };
+  // "ZQZQ" is absent from the static sector-map (getSector → "Other") and has no SIC → no benchmark resolves.
+  const input = await ingestSwingReads(deps, {
+    ticker: "ZQZQ", asOf: "2026-07-24T21:00:00.000Z", intendedDte: 14,
+    accumulation: bullSignal(), flowWindowDays: 5, spyCloses: FLAT_SPY,
+  });
+  assert.ok(input != null);
+  assert.equal(input!.archetypeExtras?.sectorLeadership01 ?? null, null, "no benchmark ⇒ null sector-rotation signal");
+  assert.deepEqual(calls, ["ZQZQ"], "no benchmark ⇒ no benchmark-closes fetch (only the name was fetched)");
+});
