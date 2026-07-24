@@ -71,6 +71,8 @@ import {
 } from "./gates";
 import {
   deriveGovernorFromLedger,
+  GOVERNOR_MAX_CONCURRENT_PLANS,
+  GOVERNOR_MAX_SESSION_STOPS,
   loadRecordedGovernorStops,
   mergeGovernorStops,
   recordGovernorStops,
@@ -90,6 +92,7 @@ import {
   derivePlayStatus,
   gradePlanFromBars,
   NEW_PLAY_CUTOFF_ET_MINUTES,
+  PLAN_RULES,
   resolveLedgerEntryPremium,
   type PlanBar,
 } from "./plan";
@@ -636,7 +639,18 @@ export async function persistZeroDteScan(setups: EnrichedZeroDteSetup[]): Promis
       confluence: s.confluence?.tier ?? null,
     }) as unknown as Record<string, unknown>,
   }));
-  const freshlyFlagged = await upsertZeroDteSetupLog(rows);
+  // 9-8: enforce the governor caps IN the fresh-insert transaction, not just against the pre-persist
+  // snapshot the gate stack read. Two concurrent scan runs (cron + WS-trigger on different replicas) can
+  // each see "2 of 3 live" and each commit a fresh find; the guarded insert re-checks the live/stop counts
+  // atomically so the 4th never lands. Refresh-lane rows are already counted and always upsert.
+  const freshlyFlagged = await upsertZeroDteSetupLog(rows, {
+    governorGuard: {
+      freshTickers: new Set(committedFresh.map((s) => s.ticker.toUpperCase())),
+      maxConcurrent: GOVERNOR_MAX_CONCURRENT_PLANS,
+      maxStops: GOVERNOR_MAX_SESSION_STOPS,
+      stopPremiumMult: 1 + PLAN_RULES.stop_pct / 100, // −50% stop → 0.5× entry
+    },
+  });
   if (freshlyFlagged.size > 0) {
     recordZeroDteAuditTrail(
       eligible.filter((s) => freshlyFlagged.has(s.ticker.toUpperCase())),
