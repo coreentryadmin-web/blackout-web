@@ -248,6 +248,32 @@ test("greeks: snapshot greeks ride the mark, and carry forward across a WS tick 
   assert.equal(m?.greeks?.theta, -0.4);
 });
 
+test("greeks: an all-null snapshot collapses to greeks:null so carry-forward keeps the last good set", async () => {
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const occ = "O:NVDA260714C00180000";
+  // First a REST snapshot WITH greeks (via markFromSnapshot, the real REST path).
+  const priced = lm.markFromSnapshot(
+    occ,
+    { ticker: occ, mark: 4.1, bid: 4.0, ask: 4.2, last: 4.1, dayClose: null, delta: 0.5, gamma: 0.08, theta: -0.4, vega: 0.1, iv: 0.6, openInterest: null, underlyingPrice: null, strike: 180, optionType: "call", expiry: "2026-07-14", sharesPerContract: 100 },
+    1_000,
+  );
+  assert.equal(priced.greeks?.delta, 0.5);
+  lm.putZeroDteLiveMark(priced);
+  // Then a fresher REST snapshot with EVERY greek null (illiquid/expiring) — must collapse to null...
+  const unpriced = lm.markFromSnapshot(
+    occ,
+    { ticker: occ, mark: 4.3, bid: 4.2, ask: 4.4, last: 4.3, dayClose: null, delta: null, gamma: null, theta: null, vega: null, iv: null, openInterest: null, underlyingPrice: null, strike: 180, optionType: "call", expiry: "2026-07-14", sharesPerContract: 100 },
+    2_000,
+  );
+  assert.equal(unpriced.greeks, null, "all-null snapshot greeks collapse to null, not an all-null object");
+  // ...so putZeroDteLiveMark carries the last good set forward instead of blanking it.
+  lm.putZeroDteLiveMark(unpriced);
+  const m = lm.getZeroDteLiveMark(occ);
+  assert.equal(m?.mark, 4.3, "mark advanced");
+  assert.equal(m?.greeks?.delta, 0.5, "last good greeks carried forward across the unpriced snapshot");
+});
+
 test("greeks: the payload row surfaces greeks (null when none priced yet)", async () => {
   const lm = await loadLane();
   lm._resetZeroDteLiveMarksForTest();

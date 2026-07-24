@@ -225,8 +225,13 @@ export function putZeroDteLiveMark(m: ZeroDteLiveMark): void {
   markStore.set(m.occ, m);
 }
 
-function markFromSnapshot(occ: string, snap: OptionSnapshot, asOf: number): ZeroDteLiveMark {
+export function markFromSnapshot(occ: string, snap: OptionSnapshot, asOf: number): ZeroDteLiveMark {
   const { mark, source } = resolveZeroDteMark(snap.bid, snap.ask, snap.last);
+  // Only surface greeks when the snapshot actually priced at least one — an all-null object is NOT `== null`,
+  // so it would defeat the carry-forward guard in putZeroDteLiveMark and BLANK the last-known greeks every
+  // time an illiquid/expiring 0DTE snapshot omits them. Collapsing all-null → null lets the last good set ride.
+  const anyGreek =
+    snap.delta != null || snap.gamma != null || snap.theta != null || snap.vega != null || snap.iv != null;
   return {
     occ,
     bid: snap.bid,
@@ -237,7 +242,9 @@ function markFromSnapshot(occ: string, snap: OptionSnapshot, asOf: number): Zero
     source,
     asOf,
     lane: "rest",
-    greeks: { delta: snap.delta, gamma: snap.gamma, theta: snap.theta, vega: snap.vega, iv: snap.iv },
+    greeks: anyGreek
+      ? { delta: snap.delta, gamma: snap.gamma, theta: snap.theta, vega: snap.vega, iv: snap.iv }
+      : null,
   };
 }
 
