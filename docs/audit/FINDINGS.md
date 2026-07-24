@@ -5,6 +5,47 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-24 — [HIGH, infra] production deploy pipeline never rolled the market-worker → task-def ROT — FIXED (draft PR, HOLD)
+
+**Severity HIGH (silent worker outage).** `.github/workflows/ecr-push-production.yml` built+pushed the
+image then rolled ONLY the `blackout-production-web` ECS service. It NEVER touched the separate
+`blackout-production-market-worker` service, so that service's task def was updated only by hand and
+ROTTED between manual touches.
+
+**Root cause.** Two independent rot vectors, both because the worker was outside the deploy loop:
+(1) its task def pinned an old ECR image tag that the ECR **lifecycle policy eventually PRUNES** →
+`CannotPullContainerError: ... not found`; (2) its `secrets[]` kept referencing keys later removed from
+Secrets Manager (e.g. `NEXT_PUBLIC_WHOP_CHECKOUT_LIFETIME`) → `ResourceInitializationError: ... did not
+contain json key ...`. Today the worker was DOWN (runningCount 0/1) from BOTH at once.
+
+**Evidence.** Live 2026-07-24: the worker service at runningCount 0/1 with the two errors above in its
+stopped-task reasons. Manually restored by registering task-def revision `:10` (current SHA image +
+the stale `NEXT_PUBLIC_WHOP_CHECKOUT_LIFETIME` secret ref stripped). The web roll step already solves
+BOTH rot classes generically (rewrites `image` to the SHA-pinned build; strips any `secrets[]` entry
+whose `name` is absent from the Secrets Manager JSON) — the worker simply never ran that logic.
+
+**Fix.** Added ONE new, isolated step "Roll ECS production market-worker" that mirrors the web roll's
+generic fix for the worker service: fetch the live worker task def, repin `image` to
+`${REGISTRY}/${REPO}:${{ github.sha }}`, re-derive valid secret keys from the WORKER's own secret ARN
+and strip stale refs, register + `update-service --force-new-deployment`, then poll the PRIMARY
+deployment to `COMPLETED` with a 12-min timeout. Singleton-appropriate deploy config
+(`minimumHealthyPercent=0,maximumPercent=200` — minHealthy>0 deadlocks a 1-task service; circuit
+breaker + rollback kept). No `--desired-count` (worker desiredCount=1 lives on the service). Placed
+LAST — after web has fully rolled+purged+validated — so it is purely additive and a worker failure is
+visible (job red) but never rolls back or delays web.
+
+**Blast radius.** Every prior production deploy left the worker stale — it only survived on whatever
+manual revision someone last registered, guaranteeing eventual rot once the pinned image aged past the
+ECR lifecycle window or a secret key churned. Only the web service was ever kept current. The web roll
+step is deliberately left **byte-for-byte unchanged** (critical path); the change is one additive step.
+
+**Verify.** `yaml.safe_load` parses (8 steps); all 6 embedded python snippets `py_compile`-clean;
+de-indent simulation confirms the heredoc terminator lands at col0 in the executed shell script; `git
+diff` is purely additive (149 insertions, 0 deletions — web step untouched).
+
+**Status:** FIXED on branch `fix/market-worker-deploy-pipeline`. **DRAFT PR, HOLD** — deploy-pipeline
+infra; operator reviews before merge (do NOT auto-merge).
+
 ## 2026-07-24 — [SEV-3 + SEV-4] 0DTE command-deck live-marks: missing REST fallback + no sync-mark age flag — FIXED
 
 **SEV-3 — command-deck live-marks hook was SSE-only despite the documented REST fallback.**
