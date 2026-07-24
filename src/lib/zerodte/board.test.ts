@@ -599,6 +599,22 @@ test("plan grade: bars only BEFORE the flag → ungradeable, never graded on hin
   assert.equal(g.outcome, "ungradeable");
 });
 
+// FIX 3 regression: the flag bar itself is EXCLUDED (bar.t <= flaggedAt is skipped) — grading its
+// own high/low against target/stop would be intrabar look-ahead on the flag bar. This mirrors the
+// skip grader, which excludes the entry bar via entryBar.t + 1.
+test("plan grade: the flag bar's own high/low is NOT graded — grading starts on the next bar", () => {
+  // Flag exactly ON bar 0's timestamp. Bar 0 alone would touch BOTH target (8.4) and stop (2.1),
+  // but as the flag bar it must be ignored; with only that bar there's nothing after the flag.
+  const flagBarOnly = gradePlanFromBars([bar(0, 9.0, 2.0, 5.0)], 4.2, T0);
+  assert.equal(flagBarOnly.outcome, "ungradeable", "flag bar's own high/low must not decide the grade");
+
+  // Flag on bar 0 (a screaming +100% high that must be ignored); bar 1 is a quiet +10% close →
+  // the grade is the time-stop close, NOT the flag bar's phantom double.
+  const g = gradePlanFromBars([bar(0, 8.6, 4.1, 4.2), bar(1, 4.7, 4.2, 4.62)], 4.2, T0);
+  assert.equal(g.outcome, "time_stop");
+  assert.equal(g.pnl_pct, 10);
+});
+
 // ── live play lifecycle ──────────────────────────────────────────────────────────
 
 import { derivePlayStatus, NEW_PLAY_CUTOFF_ET_MINUTES } from "./plan";

@@ -94,8 +94,11 @@ export function isGradedZeroDteRow(row: Pick<ZeroDteSetupLogRow, "plan_outcome">
   return row.plan_outcome != null && row.plan_outcome !== "ungradeable";
 }
 
-/** Win = positive plan P&L — identical to the calibration harness's definition, so the
- *  member-facing record and the internal calibration can never disagree on what a win is. */
+/** Win = positive plan P&L — identical to the calibration harness's definition AND the feature
+ *  store's labelFromPlanOutcome (feature-store.ts), so the member-facing record, the internal
+ *  calibration, and the learning store can never disagree on what a win is. In particular a GREEN
+ *  time_stop is a win in all three (it was previously a loss in the feature store — a bias fixed
+ *  by pointing that label at this same plan_pnl_pct > 0 predicate). */
 export function isZeroDteWin(row: Pick<ZeroDteSetupLogRow, "plan_pnl_pct">): boolean {
   return (row.plan_pnl_pct ?? 0) > 0;
 }

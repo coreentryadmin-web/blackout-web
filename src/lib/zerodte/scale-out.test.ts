@@ -39,6 +39,19 @@ test("no bars / bad entry → breakeven 1.0", () => {
   assert.equal(gradeScaleOut([bar(1, 2, 1, 1.5)], 0), 1);
 });
 
+// FIX 1 regression: the trailing stop must be measured against a peak that ALREADY PRINTED, never
+// one set by the SAME bar's high. Here bar 2 (after the scale) both makes a huge new high (10) and
+// dips to a low (1.0) inside the same bar. The buggy code raised peak to 10 first, then exited the
+// runner at 10*0.5=5 on this bar's own low — intrabar clairvoyance. The fix measures the retrace
+// against the PRIOR peak (2.2 from the scale bar): 1.0 <= 2.2*0.5=1.1 is true, so the runner exits
+// at 2.2*0.5=1.1 — never at the same-bar-high-derived 5.0.
+test("trailing stop cannot exit on a peak set by the SAME bar (no intrabar look-ahead)", () => {
+  const bars = [bar(1, 2.2, 1.0, 2.0), bar(2, 10.0, 1.0, 3.0)];
+  // realized = 0.5*2.0 (locked at scale) + 0.5*(prevPeak 2.2 * 0.5 = 1.1) = 1.0 + 0.55 = 1.55x.
+  // The clairvoyant bug would have returned 0.5*2.0 + 0.5*(10*0.5=5) = 3.5x.
+  assert.equal(gradeScaleOut(bars, 1), 1.55);
+});
+
 // ── deriveScaleOutAction (live state machine) ──────────────────────────────────────
 test("live: pre-scale hard stop → STOP_OUT", () => {
   const a = deriveScaleOutAction({ entryPremium: 1, peakPremium: 1.2, lastMark: 0.4, scaledAlready: false });

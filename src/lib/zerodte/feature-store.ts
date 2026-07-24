@@ -23,16 +23,29 @@ export type GradeLabel = "win" | "loss";
 
 /**
  * Map a plan's grade (zerodte_setup_log.plan_outcome, graded vs the contract's own minute bars) to a
- * win/loss label. `doubled` (hit the +100% target) is the win; `stopped` / `time_stop` are losses.
- * Anything else — `ungradeable`, an open row, an unknown string — is NOT evidence → null.
+ * win/loss label.
+ *
+ * The OUTCOME gates evidence: only `doubled` / `stopped` / `time_stop` are real grades — mirrors
+ * record.ts `isGradedZeroDteRow`. Anything else (`ungradeable`, an open row, an unknown string) is
+ * NOT evidence → null.
+ *
+ * The WIN/LOSS itself is decided by realized plan P&L — `plan_pnl_pct > 0` — the EXACT predicate
+ * record.ts `isZeroDteWin` and the calibration harness use, so the learning store can never disagree
+ * with the member-facing record on what a win is. This matters for `time_stop`: a GREEN time_stop
+ * (closed above entry before 15:30) is a WIN, not a loss. The prior `doubled`-only rule scored every
+ * profitable-but-under-target trade as a loss — a systematic bias against the engine's real base rate.
  */
-export function labelFromPlanOutcome(outcome: string | null | undefined): GradeLabel | null {
+export function labelFromPlanOutcome(
+  outcome: string | null | undefined,
+  planPnlPct?: number | null
+): GradeLabel | null {
   switch ((outcome ?? "").toLowerCase()) {
     case "doubled":
-      return "win";
     case "stopped":
     case "time_stop":
-      return "loss";
+      // Win = positive plan P&L (identical to record.ts isZeroDteWin). doubled always prints +100
+      // and stopped −50, so those are unchanged; only a green time_stop flips to a win.
+      return (planPnlPct ?? 0) > 0 ? "win" : "loss";
     default:
       return null; // ungradeable / open / unknown — not evidence
   }
@@ -67,17 +80,19 @@ export interface RawGradedRow {
 export function toGradedFeatureRows(raw: RawGradedRow[]): GradedFeatureRow[] {
   const out: GradedFeatureRow[] = [];
   for (const r of raw) {
-    const label = labelFromPlanOutcome(typeof r.plan_outcome === "string" ? r.plan_outcome : null);
+    const pnl = typeof r.plan_pnl_pct === "number" && Number.isFinite(r.plan_pnl_pct) ? r.plan_pnl_pct : null;
+    // Win/loss is decided by realized P&L (pnl > 0), so the label must see it — a green time_stop
+    // is a win, matching record.ts isZeroDteWin. See labelFromPlanOutcome.
+    const label = labelFromPlanOutcome(typeof r.plan_outcome === "string" ? r.plan_outcome : null, pnl);
     if (!label) continue; // not gradeable → not evidence
     const fv = r.feature_vector;
     if (!fv || typeof fv !== "object") continue; // no pinned vector → nothing to learn from
-    const pnl = r.plan_pnl_pct;
     out.push({
       ticker: typeof r.ticker === "string" ? r.ticker : "",
       sessionDate: typeof r.session_date === "string" ? r.session_date : "",
       features: fv as SetupFeatureVector,
       label,
-      pnlPct: typeof pnl === "number" && Number.isFinite(pnl) ? pnl : null,
+      pnlPct: pnl,
     });
   }
   return out;

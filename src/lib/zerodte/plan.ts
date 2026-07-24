@@ -175,10 +175,14 @@ export function etMinutesOf(epochMs: number): number {
 
 /**
  * Grade the printed plan against the CONTRACT's own minute bars, walked in time
- * order from the flag onward: stop fires when the bar's low touches stop_premium,
- * target when the bar's high touches target_premium — when BOTH touch inside the
- * same bar, count the STOP (conservative; intrabar order is unknowable). Past the
- * time stop, exit at the last usable close ≤15:30 ET. No bars after the flag → ungradeable.
+ * order from the bar AFTER the flag onward: stop fires when the bar's low touches
+ * stop_premium, target when the bar's high touches target_premium — when BOTH touch
+ * inside the same bar, count the STOP (conservative; intrabar order is unknowable).
+ * The flag bar ITSELF is excluded (`bar.t <= flaggedAtMs` is skipped): its own high/low
+ * happened around the flag print in unknowable order, so testing them against target/stop
+ * would be intrabar clairvoyance — the same discipline the skip grader applies via
+ * `entryBar.t + 1`. Past the time stop, exit at the last usable close ≤15:30 ET. No bars
+ * strictly after the flag → ungradeable.
  */
 export function gradePlanFromBars(
   bars: PlanBar[],
@@ -192,7 +196,9 @@ export function gradePlanFromBars(
 
   let lastCloseInWindow: number | null = null;
   for (const bar of [...bars].sort((a, b) => a.t - b.t)) {
-    if (bar.t < flaggedAtMs) continue;
+    // Exclude the flag bar itself (<=, not <) — grading its own high/low would be intrabar
+    // look-ahead on the flag bar (asymmetric with the skip grader, which excludes the entry bar).
+    if (bar.t <= flaggedAtMs) continue;
     const pastTimeStop = etMinutesOf(bar.t) > PLAN_RULES.time_stop_et_minutes;
     if (pastTimeStop) break;
     // Conservative ordering: stop checked before target within the same bar.
