@@ -29,6 +29,7 @@
     "sim:swing": "node --import tsx scripts/audit/swing-sim.mjs",
     "scan:bangers": "node --import tsx scripts/audit/market-banger-scan.mjs",
     "scan:swing": "node --import tsx scripts/audit/swing-discovery-scan.mjs",
+    "sim:swing-portfolio": "node --import tsx scripts/audit/swing-portfolio-sim.mjs",
     "wr:condor": "node --import tsx scripts/audit/condor-wr.mjs",
     "validate:staging": "node scripts/staging-validate.mjs",
     "validate:staging-rth": "node scripts/staging-rth-check.mjs",
