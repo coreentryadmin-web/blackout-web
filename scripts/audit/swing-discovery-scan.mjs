@@ -140,6 +140,36 @@ console.log("═".repeat(96));
 console.log(`  FUNNEL  tier0-flow ${res.tier0FlowCount} · tier0-structure ${res.tier0StructureCount} · merged ${res.mergedCount} · enriched ${res.enrichedCount}`);
 console.log(`          watch-rail ${res.watchCount} · commit-eligible ${res.commitEligibleCount} (WATCH-only rail — evidence-only)`);
 console.log("");
+
+// ── RECALL BLOCK — the Tier-0→Tier-1 funnel + capped-out leak + per-cut recall (operator critique #7).
+//    Precision without recall silently destroys discovery: the top-N cap can sever a strong candidate and
+//    nothing downstream ever learns it existed. This block makes that leak VISIBLE, not silent.
+const rc = res.recall;
+if (rc) {
+  const recallPct = (cut) => (cut.seen ? `${((cut.enriched / cut.seen) * 100).toFixed(0)}%` : "—");
+  const printCuts = (label, rec) => {
+    const keys = Object.keys(rec).sort();
+    if (!keys.length) return;
+    console.log(`  ${label}`);
+    for (const k of keys) {
+      const cut = rec[k];
+      console.log(`    ${pad(k, 16)} seen ${padL(cut.seen, 3)} · enriched ${padL(cut.enriched, 3)} · recall ${padL(recallPct(cut), 4)}`);
+    }
+  };
+  console.log("  ── RECALL (evidence-only — did the funnel silently drop a strong candidate?) ──");
+  console.log(`  FUNNEL  tier0 ${rc.tier0Count} (flow ${rc.tier0FlowCount} / struct ${rc.tier0StructureCount}) → enriched ${rc.tier1EnrichedCount} · capped-out ${rc.cappedOutCount}`);
+  const nearFloor = rc.cappedOut.filter((c) => c.reason.includes("NEAR ENRICHED FLOOR"));
+  if (rc.cappedOutCount) {
+    console.log(`  CAPPED-OUT (dropped purely by the top-N budget${nearFloor.length ? ` — ${nearFloor.length} NEAR the enriched floor` : ""}):`);
+    for (const c of rc.cappedOut) console.log(`    ${pad(c.ticker, 7)} rank ${padL(c.tier0Rank, 4)} · ${c.reason}`);
+  } else {
+    console.log("  CAPPED-OUT: none (every Tier-0 candidate fit inside the Tier-1 budget).");
+  }
+  printCuts("RECALL BY ARCHETYPE (seen → enriched non-degraded):", rc.byArchetype);
+  printCuts("RECALL BY LIQUIDITY TIER:", rc.byLiquidityTier);
+  printCuts("RECALL BY REGIME:", rc.byRegime);
+  console.log("");
+}
 console.log(`  ${pad("TICKER", 7)}${pad("DIR", 6)}${pad("ARCHETYPE", 22)}${padL("SCORE", 7)}${padL("PILLARS", 9)}${padL("SUBLANE", 10)}`);
 console.log("  " + "─".repeat(90));
 for (const d of res.dossiers) {
@@ -161,7 +191,7 @@ console.log(`  NOTE: evidence-only. Nothing commits (commitEligibleCount=${res.c
 console.log("═".repeat(96));
 if (EMIT_JSON) {
   console.log("\n<<<JSON>>>");
-  console.log(JSON.stringify({ session, phase: res.phase, funnel: { tier0FlowCount: res.tier0FlowCount, tier0StructureCount: res.tier0StructureCount, mergedCount: res.mergedCount, enrichedCount: res.enrichedCount, watchCount: res.watchCount, commitEligibleCount: res.commitEligibleCount }, dossiers: res.dossiers, watchCandidates: res.watchCandidates }, null, 2));
+  console.log(JSON.stringify({ session, phase: res.phase, funnel: { tier0FlowCount: res.tier0FlowCount, tier0StructureCount: res.tier0StructureCount, mergedCount: res.mergedCount, enrichedCount: res.enrichedCount, watchCount: res.watchCount, commitEligibleCount: res.commitEligibleCount }, recall: res.recall, dossiers: res.dossiers, watchCandidates: res.watchCandidates }, null, 2));
 }
 
 // The DB pool keeps the event loop alive; exit explicitly once the report is printed.
