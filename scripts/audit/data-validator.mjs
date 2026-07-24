@@ -261,16 +261,22 @@ function withinHistRange(value, range, tolPct) {
 }
 
 let userId = null;
+// Create (or adopt) the temp admin/premium Clerk user, setting module-level `userId`. Extracted so
+// WATCH mode can ROTATE the identity: a fresh, rapid-sign-in temp email keeps each rotation clean.
+function createTempUser(email = EMAIL) {
+  const create = backend('POST', '/users', { email_address: [email], phone_number: [generateDefaultAuditPhone()], public_metadata: { role: 'admin', tier: 'premium' }, skip_password_requirement: true, skip_legal_checks: true });
+  const cj = J(create);
+  if (cj?.id) { userId = cj.id; return true; }
+  if (/form_identifier_exists/.test(JSON.stringify(cj?.errors || ''))) {
+    const u = (J(curl({ url: `${API}/users?email_address=${encodeURIComponent(email)}`, headers: { Authorization: `Bearer ${SECRET}` } })) || [])[0];
+    if (u?.id) { userId = u.id; backend('PATCH', `/users/${userId}`, { public_metadata: { role: 'admin', tier: 'premium' } }); return true; }
+  }
+  rec('auth: create/adopt temp user', 'FAIL', create.b.slice(0, 160));
+  return false;
+}
 async function main() {
   // --- auth (once) ---
-  const create = backend('POST', '/users', { email_address: [EMAIL], phone_number: [PHONE], public_metadata: { role: 'admin', tier: 'premium' }, skip_password_requirement: true, skip_legal_checks: true });
-  let cj = J(create);
-  if (cj?.id) userId = cj.id;
-  else if (/form_identifier_exists/.test(JSON.stringify(cj?.errors || ''))) {
-    const u = (J(curl({ url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`, headers: { Authorization: `Bearer ${SECRET}` } })) || [])[0];
-    if (u?.id) { userId = u.id; backend('PATCH', `/users/${userId}`, { public_metadata: { role: 'admin', tier: 'premium' } }); }
-  }
-  if (!userId) { rec('auth: create/adopt temp user', 'FAIL', create.b.slice(0, 160)); return; }
+  if (!createTempUser()) return;
   // Session state is RE-ESTABLISHABLE. A long-running WATCH loop outlives a single Clerk
   // session: mint() (a cheap token refresh off an existing session) eventually returns null once
   // the session ages out / the FAPI /tokens endpoint stops honoring it — at which point the ONLY
@@ -299,6 +305,24 @@ async function main() {
   // Cheap refresh → full re-establish, with a per-pass dead-flag so a genuinely-down Clerk can't
   // trigger a re-sign-in STORM (one dead session × ~30 app() calls × retries = FAPI rate-limit).
   const ensureAuth = () => { if (tok) return true; if (authDead) return false; if (mint()) return true; if (establishSession()) return true; authDead = true; return false; };
+  // WATCH-mode IDENTITY rotation. Per-minute authed validation for HOURS outlives not just a Clerk
+  // SESSION but the temp USER's tolerance for repeated sign-ins: FAPI rate-limits rapid sign-in
+  // cycles on one identity (CLAUDE.md: "authenticate once per run"), so ~10 min in even a full
+  // re-sign-in on the SAME user starts failing (observed live: pass#9+ went FAIL/unrecoverable).
+  // When the identity is spent, delete it, mint a BRAND-NEW temp user on a fresh email, drop the
+  // old client cookies, and re-auth clean. THIS is what lets the watch honor "check every minute"
+  // for a whole session instead of decaying — the earlier same-user re-establish was necessary but
+  // not sufficient. Uses a unique per-rotation email so an adopt-existing path can't resurrect a
+  // rate-limited identity.
+  const rotateUser = () => {
+    const spent = userId;
+    userId = null; sid = null; tok = null; authDead = false;
+    try { rmSync(JAR, { force: true }); } catch {}
+    const rotEmail = EMAIL.replace('@', `+r${Date.now().toString(36)}@`);
+    const ok = createTempUser(rotEmail) ? establishSession() : false;
+    try { if (spent) backend('DELETE', `/users/${spent}`); } catch {} // always retire the spent identity, even if the new one failed to auth
+    return ok;
+  };
   if (!establishSession()) { rec('auth: FAPI ticket exchange', 'FAIL', 'could not establish session'); return; }
   const app = (path) => {
     for (let i = 0; i < 2; i++) {
@@ -322,7 +346,7 @@ async function main() {
   const WATCH_END = process.env.WATCH_END_UTC ? Date.parse(process.env.WATCH_END_UTC) : Infinity;
   let baselinePass = 0; // pass-1 healthy PASS count; later passes flagged if they collapse below it
   for (let iter = 1; ; iter++) {
-    if (iter > 1) { checks.length = 0; authDead = false; tok = null; if (!ensureAuth()) establishSession(); }
+    if (iter > 1) { checks.length = 0; authDead = false; tok = null; if (!ensureAuth()) rotateUser(); }
     // Re-assert auth EVERY pass. A dead/unrecoverable session now records a FAIL (was: silent —
     // app() returned null, every payload check skipped to INFO, and the pass read "all clean").
     rec('auth: admin session', ensureAuth() ? 'PASS' : 'FAIL', ensureAuth() ? `session ${sid}` : 'session unrecoverable this pass (re-sign-in failed)');
