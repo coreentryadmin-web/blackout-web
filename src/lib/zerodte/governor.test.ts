@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import {
   deriveGovernorFromLedger,
   evaluateZeroDteGovernor,
+  governorLossHaltReason,
   loadRecordedGovernorStops,
   mergeGovernorStops,
   recordGovernorStops,
@@ -16,6 +17,8 @@ import {
   GOVERNOR_MAX_CONCURRENT_PLANS,
   GOVERNOR_MAX_SESSION_STOPS,
   GOVERNOR_REENTRY_LOCK_MS,
+  GOVERNOR_LOSS_HALT_COUNT,
+  GOVERNOR_SESSION_LOSS_FLOOR_PCT,
   type GovernorLedgerRow,
 } from "./governor";
 
@@ -29,8 +32,22 @@ function row(overrides: Partial<GovernorLedgerRow> = {}): GovernorLedgerRow {
     entry_premium: 4.0,
     trough_premium: 4.0,
     plan_outcome: null,
+    plan_pnl_pct: null,
     ...overrides,
   };
+}
+
+/** A LOSING time-stop: closed red at 15:30 without ever touching the −50% hard stop
+ *  (trough stays above the 2.0 stop level on a 4.0 entry). The exact class the
+ *  hard-stop count excluded (AUDIT SEV-3). */
+function losingTimeStop(ticker: string, pnlPct = -30): GovernorLedgerRow {
+  return row({
+    ticker,
+    status: "CLOSED",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: pnlPct,
+    trough_premium: 3.0, // above the 2.0 hard-stop level → NOT a hard stop
+  });
 }
 
 // ── anti-overfit FIREWALL: value-pin the governor caps (Step 5) ───────────────────────
@@ -41,6 +58,13 @@ test("FIREWALL: governor caps are pinned (max 3 concurrent, halt after 3 stops, 
   assert.equal(GOVERNOR_MAX_CONCURRENT_PLANS, 3);
   assert.equal(GOVERNOR_MAX_SESSION_STOPS, 3);
   assert.equal(GOVERNOR_REENTRY_LOCK_MS, 20 * 60 * 1000);
+});
+
+// AUDIT SEV-3 — the realized-loss halt only ever ADDS conservatism; a silent LOOSENING
+// (count up, floor down toward 0) would re-open the chop-and-bleed channel it closes.
+test("FIREWALL: realized-loss halt thresholds are pinned (3 losers, −120% session floor)", () => {
+  assert.equal(GOVERNOR_LOSS_HALT_COUNT, 3);
+  assert.equal(GOVERNOR_SESSION_LOSS_FLOOR_PCT, -120);
 });
 
 // ── ledger-derived snapshot ────────────────────────────────────────────────────────
@@ -159,6 +183,109 @@ test("governor: 20-min same-direction re-entry lock — inside blocks, outside/o
   // Untimed (ledger-only) stop can't drive the timed lock — never fabricate timing.
   const untimed = { open_plans: [], stops: [{ ticker: "META", direction: "short" as const, at_ms: null }] };
   assert.deepEqual(evaluateZeroDteGovernor({ ticker: "META", direction: "short" }, untimed, NOW), []);
+});
+
+// ── AUDIT SEV-3: realized-loss day-halt (losing time-stops, not just −50% hard stops) ──
+
+test("SEV-3 REGRESSION CLOSED: a session of 5 losing time-stops (no hard stop) now halts new commits", () => {
+  // The exact gap: five committed plays each close red at 15:30 (−30%) without ever
+  // touching the −50% hard stop. Pre-fix, stops.length stayed 0 all day and the scanner
+  // kept committing — same capital bleed as 7/13, uncapped.
+  const rows = ["A", "B", "C", "D", "E"].map((t) => losingTimeStop(t));
+  const snap = deriveGovernorFromLedger(rows);
+  assert.equal(snap.stops.length, 0, "none are HARD stops — the old halt channel stays silent");
+  assert.equal(snap.realized_losers, 5, "but all five are realized losers");
+
+  const blocks = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, snap, NOW);
+  assert.deepEqual(blocks.map((b) => b.code), ["governor_session_stops"]);
+  assert.equal(blocks[0]!.threshold, GOVERNOR_LOSS_HALT_COUNT);
+  assert.match(blocks[0]!.reason, /realized losers/, "the block names the realized-loss cause");
+});
+
+test("SEV-3: the cumulative session-P&L floor halts even below the loser COUNT", () => {
+  // Two big losers (−70% each = −140%) sink past the −120% floor before hitting 3 losers.
+  const rows = [
+    losingTimeStop("A", -70),
+    losingTimeStop("B", -70),
+  ];
+  const snap = deriveGovernorFromLedger(rows);
+  assert.equal(snap.realized_losers, 2, "below the count cap");
+  assert.ok(snap.session_pnl_pct! <= GOVERNOR_SESSION_LOSS_FLOOR_PCT, "but past the P&L floor");
+  const blocks = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, snap, NOW);
+  assert.deepEqual(blocks.map((b) => b.code), ["governor_session_stops"]);
+  assert.match(blocks[0]!.reason, /floor/);
+});
+
+test("SEV-3: a session of WINNERS does not halt (only losing exits count)", () => {
+  const rows = ["A", "B", "C", "D"].map((t) =>
+    row({ ticker: t, status: "CLOSED", plan_outcome: "doubled", plan_pnl_pct: 100, trough_premium: 3.5 })
+  );
+  const snap = deriveGovernorFromLedger(rows);
+  assert.equal(snap.realized_losers, 0);
+  assert.equal(snap.session_pnl_pct, 400);
+  assert.equal(governorLossHaltReason(snap), null, "no loss-halt reason to surface");
+  assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, snap, NOW), []);
+});
+
+test("SEV-3: winners net against losers — a green session under the floor stays open", () => {
+  // 2 losers (−40% each = −80%) but 2 winners (+100% each) → cumulative +120%, and only
+  // 2 losers < the count cap → no halt.
+  const rows = [
+    losingTimeStop("A", -40),
+    losingTimeStop("B", -40),
+    row({ ticker: "C", status: "CLOSED", plan_outcome: "doubled", plan_pnl_pct: 100, trough_premium: 3.5 }),
+    row({ ticker: "D", status: "CLOSED", plan_outcome: "doubled", plan_pnl_pct: 100, trough_premium: 3.5 }),
+  ];
+  const snap = deriveGovernorFromLedger(rows);
+  assert.equal(snap.realized_losers, 2);
+  assert.equal(snap.session_pnl_pct, 120);
+  assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, snap, NOW), []);
+});
+
+test("SEV-3: the existing 3× HARD-stop halt + re-entry lock still fire unchanged", () => {
+  // Hard-stop halt: 3 graded stops → the ORIGINAL block, with the ORIGINAL threshold.
+  const stops = ["SPY", "MU", "AMD"].map((t) => ({ ticker: t, direction: "long" as const, at_ms: null }));
+  const halt = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: [], stops }, NOW);
+  assert.deepEqual(halt.map((b) => b.code), ["governor_session_stops"]);
+  assert.equal(halt[0]!.threshold, GOVERNOR_MAX_SESSION_STOPS, "hard-stop halt keeps its own threshold");
+  assert.match(halt[0]!.reason, /stopped out today/, "hard-stop wording, not the realized-loss wording");
+
+  // Re-entry lock (keyed off a hard stop's timestamp) is untouched by the loss channel.
+  const stopAt = NOW - 10 * 60_000;
+  const lockSnap = { open_plans: [], stops: [{ ticker: "META", direction: "short" as const, at_ms: stopAt }] };
+  const locked = evaluateZeroDteGovernor({ ticker: "META", direction: "short" }, lockSnap, NOW);
+  assert.deepEqual(locked.map((b) => b.code), ["governor_reentry_lock"]);
+});
+
+test("SEV-3: a hard stop is also counted as a realized loser (union, not double-halt logic drift)", () => {
+  // An ungraded hard stop (trough crossed, plan_pnl_pct not yet stamped) still contributes
+  // its −50% to the session tally via the fallback — the loss channel agrees with the stop
+  // channel before the grader runs.
+  const snap = deriveGovernorFromLedger([
+    row({ ticker: "SPY", status: "CLOSED", trough_premium: 1.9 }), // ungraded hard stop
+  ]);
+  assert.equal(snap.stops.length, 1);
+  assert.equal(snap.realized_losers, 1);
+  assert.equal(snap.session_pnl_pct, -50);
+});
+
+test("SEV-3: would_halt is SURFACED on the board summary on real ledger evidence", () => {
+  const rows = ["A", "B", "C", "D", "E"].map((t) => losingTimeStop(t));
+  const s = summarizeGovernorForBoard(rows, []);
+  assert.equal(s.realized_losers, 5);
+  assert.equal(s.session_pnl_pct, -150);
+  assert.equal(s.loss_halt_count, GOVERNOR_LOSS_HALT_COUNT);
+  assert.equal(s.session_loss_floor_pct, GOVERNOR_SESSION_LOSS_FLOOR_PCT);
+  assert.match(s.would_halt ?? "", /realized losers/, "the halt reason is exposed for the operator");
+  assert.equal(s.halted, true, "and the desk reads as stood-down even with zero HARD stops");
+  assert.equal(s.stops.length, 0, "…none of which are hard stops");
+});
+
+test("SEV-3: a clean session surfaces no would_halt and stays un-halted", () => {
+  const s = summarizeGovernorForBoard([row({ ticker: "NVDA", status: "HOLD" })], []);
+  assert.equal(s.would_halt, null);
+  assert.equal(s.halted, false);
+  assert.equal(s.realized_losers, 0);
 });
 
 // ── board summary (PR-D governor strip) ────────────────────────────────────────────
