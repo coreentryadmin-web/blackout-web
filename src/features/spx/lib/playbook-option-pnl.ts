@@ -21,6 +21,16 @@ export type OptionPnlEstimate = {
   spread_cost: number;
   net_premium_pnl: number;
   model: "delta_gamma_theta_lite";
+  /**
+   * Provenance: TRUE when any greek/price feeding this estimate was a model
+   * default rather than an observed chain value (i.e. the entry snapshot's
+   * `synthetic_fields` was non-empty). The numeric est Δ$ is identical either
+   * way — this flag only lets the UI badge a figure built partly on modeled
+   * inputs so a synthetic number isn't shown as if it were fully observed.
+   */
+  modeled: boolean;
+  /** The specific greek/price fields that were modeled (empty when fully observed). */
+  modeled_fields: readonly string[];
 };
 
 const DEFAULT_THETA_PCT_PER_HOUR = 0.12;
@@ -106,6 +116,12 @@ export function estimateOptionPnl(input: {
   const rawNet = deltaPnl + gammaPnl + cappedThetaPnl - spreadCost;
   const netPremiumPnl = Math.max(maxThetaLoss, rawNet);
 
+  // Provenance passthrough: the entry snapshot records which inputs were modeled
+  // (theta is always model-derived here; delta/gamma/iv are synthetic only when
+  // the chain omitted them). Surface it so downstream UI can badge an est Δ$ that
+  // rests on guessed greeks. Value math above is untouched.
+  const modeledFields = input.greeks.synthetic_fields;
+
   return {
     spot_move_pts: ds,
     delta_pnl: deltaPnl,
@@ -114,5 +130,7 @@ export function estimateOptionPnl(input: {
     spread_cost: spreadCost,
     net_premium_pnl: netPremiumPnl,
     model: "delta_gamma_theta_lite",
+    modeled: modeledFields.length > 0,
+    modeled_fields: modeledFields,
   };
 }

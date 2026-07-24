@@ -127,6 +127,39 @@ test("degrade: a macro event downgrades confidence and adds a driver", () => {
   assert.ok(macro.drivers.some((d) => /downgrad/i.test(d.label)));
 });
 
+test("ivFallback: FALSE when a real ATM IV is supplied or readable from the chain", () => {
+  // base() supplies atmIv: 0.12 AND the chain carries iv: 0.12 — either way the vol input is
+  // real, so the forecast must NOT be flagged as running on the guessed 12%.
+  const real = forecastPin(base("2026-07-21T17:04:00Z"));
+  assert.equal(real.available, true);
+  assert.equal(real.ivFallback, false);
+
+  // Drop the supplied atmIv but keep chain IVs — the nearest-strike IV is still observed data.
+  const fromChain = forecastPin(base("2026-07-21T17:04:00Z", { atmIv: undefined }));
+  assert.equal(fromChain.available, true);
+  assert.equal(fromChain.ivFallback, false);
+});
+
+test("ivFallback: TRUE when no IV is supplied and the chain carries none (hardcoded 12% guess)", () => {
+  // No atmIv input AND every contract iv <= 0 → the only vol input the model has is the hardcoded
+  // 0.12 guess. (An IV-less chain also can't build a gamma ladder, so the forecast comes back
+  // unavailable — but the provenance flag still fires so a guessed-IV state is never mistaken for a
+  // real-IV one.) This is the path the line-291 / line-260 `?? 0.12` fallback actually reaches.
+  const ivless = chain().map((c) => ({ ...c, iv: 0 }));
+  const guessed = forecastPin(base("2026-07-21T17:04:00Z", { atmIv: undefined, contracts: ivless }));
+  assert.equal(guessed.ivFallback, true);
+  // Provenance only — this is distinct from the regime-degrade flag.
+  assert.equal(guessed.degraded, false);
+});
+
+test("ivFallback: FALSE on a thin chain when a real atmIv WAS supplied (guess not taken)", () => {
+  // Same IV-less chain, but the caller supplied a real atmIv → no 12% guess, so even the
+  // unavailable forecast must NOT be badged as vol-fallback.
+  const ivless = chain().map((c) => ({ ...c, iv: 0 }));
+  const supplied = forecastPin(base("2026-07-21T17:04:00Z", { atmIv: 0.18, contracts: ivless }));
+  assert.equal(supplied.ivFallback, false);
+});
+
 test("empty / closed guards never throw and report honestly", () => {
   const cold = forecastPin(base("2026-07-21T17:04:00Z", { contracts: [] }));
   assert.equal(cold.available, false);
