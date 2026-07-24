@@ -1,4 +1,4 @@
-// src/lib/swing/manage-sync.ts — the management IO shell for held swing positions (PR-13).
+// src/lib/swing/manage-sync.ts — the management IO shell for held swing positions (PR-13, roll-wired in PR-15).
 //
 // WHY (docs/audit/SWING-ENGINE.md §4 PR-13): the active-refresh cron must, for every OPEN position, run the
 // pure PR-7 management state machine (`evaluateSwingManagement`) against fresh reads and PERSIST the result —
@@ -6,14 +6,26 @@
 // between the ledger rows and that pure verdict: `planManageSync` (PURE) turns a position row + fresh reads
 // into the exact writes to make; `syncSwingManagement` (shell) applies them through injected accessors.
 //
-// TWO STANDING INVARIANTS (both encoded here, both commented at the call sites):
-//   • NEVER-COMMIT / NEVER-CLOSE — PR-13 is evidence-only and HOLD. This shell only ever LATCHES live state
-//     (mark/MFE/MAE ratchet + a status that never regresses) and APPENDS a snapshot. It never inserts a new
-//     position and never writes a TERMINAL status (CLOSED/ROLLED) — closing and rolling are PR-15's job.
-//     Capital-preservation gate rungs (expiry/structural/thesis/premium) ARE recorded and surfaced (their
-//     `enforced:true` verdict rides the snapshot), but the mechanical close/roll is deferred, by design.
+// PR-15 ROLL WIRING (the change): the shell now EXECUTES a roll/close on the GATING path instead of merely
+// recording the intent — but ONLY when the caller injects a roll executor AND supplies the roll plan (the
+// frozen parent grade + the child leg to open). The wiring is entirely OPT-IN and gated:
+//   • `decideRollAction` (roll.ts) is the one arbiter: GATING-ONLY (edge/hold rungs never write a terminal
+//     status), and THESIS-BROKEN = CLOSE-NOT-ROLL (a broken thesis exits; only a still-valid thesis with a
+//     theta/expiry problem rolls). The manager's `rollIntent` already vetoes a broken thesis upstream.
+//   • With no `executeRoll`/`buildRollPlan` dep (or when the plan can't be built — no forward bars / no new
+//     contract), the shell falls back to the PR-13 evidence-only behaviour byte-for-byte: latch live state +
+//     append the snapshot, record the intent, act on nothing. So the standing invariants below still hold on
+//     every path that does not deliberately opt into execution.
+//
+// STANDING INVARIANTS (all encoded here, all commented at the call sites):
 //   • APPEND-ONLY snapshots — each refresh is a distinct observation of the path; `insertSwingSnapshot` is an
-//     INSERT, never an upsert, so the longitudinal series (the grader's input) is preserved intact.
+//     INSERT, never an upsert, so the longitudinal series (the grader's input) is preserved intact. A roll
+//     appends its snapshot through the same accessor (via `closeAndRollSwingPosition`), so the series is
+//     unbroken across the roll boundary.
+//   • CLOSE/ROLL ONLY VIA THE ROLL EXECUTOR — the evidence-only latch (`updateLiveState`) never writes a
+//     terminal status; the ONLY terminal transition is `closeAndRollSwingPosition`, which the SQL
+//     monotonic-status guard forbids from un-rolling. Capital-preservation gates act; edge rungs stay
+//     evidence-only until the PR-16 ladder graduates them.
 //
 // The position row already KNOWS its direction + sub-lane (ledger ground truth), so we synthesize the minimal
 // dossier the manager reads from those, rather than re-deriving a classification — honest, not fabricated.
@@ -32,6 +44,14 @@ import {
   type SwingManageRung,
   type SwingManageVerdict,
 } from "./manage";
+import {
+  closeAndRollSwingPosition,
+  decideRollAction,
+  type ParentGradeFreeze,
+  type RollChildSpec,
+  type RollLedgerDeps,
+  type RollOutcome,
+} from "./roll";
 
 const numOrNull = (n: number | null | undefined): number | null =>
   n != null && Number.isFinite(n) ? n : null;
@@ -205,11 +225,28 @@ export function planManageSync(
   return { positionId: row.id, verdict, liveState, snapshot };
 }
 
+/** The roll plan a caller supplies when it can EXECUTE a gating roll/close: the frozen parent grade (from the
+ *  PR-8 grader over forward bars) plus, for a ROLL, the child leg to open (a freshly-picked further-out
+ *  contract). `childSpec` is REQUIRED to roll and IGNORED on a close; a null plan means "can't execute this
+ *  tick" → the shell stays evidence-only (records the intent, acts on nothing). */
+export interface ManageSyncRollPlan {
+  parentGrade: ParentGradeFreeze;
+  childSpec?: RollChildSpec;
+}
+
 /** Injected accessors — the PR-10 ledger surface this shell drives. Injected so the shell is testable without
- *  a live DB and asserts the never-commit/append-only invariants against fakes. */
-export interface ManageSyncDeps {
+ *  a live DB and asserts the append-only / gating-only invariants against fakes. `insertSnapshot` +
+ *  `updateLiveState` drive the evidence-only path; the OPTIONAL roll seam (`buildRollPlan` + `executeRoll`)
+ *  drives the PR-15 gating execution — absent → the shell behaves exactly as PR-13 (evidence-only, HOLD). */
+export interface ManageSyncDeps extends Partial<RollLedgerDeps> {
   insertSnapshot: (s: SwingSnapshotInsert) => Promise<number>;
   updateLiveState: (id: number, s: { status: string; mark?: number | null; underlyingMfe?: number | null; underlyingMae?: number | null }) => Promise<void>;
+  /** Build the frozen parent grade + child leg for a gating roll/close. Null → can't execute (evidence-only). */
+  buildRollPlan?: (row: SwingPositionRow, verdict: SwingManageVerdict, reads: ManageSyncReads) => Promise<ManageSyncRollPlan | null>;
+  /** Execute the transactional roll/close (wraps `closeAndRollSwingPosition` with the PR-10 accessors bound).
+   *  When omitted, the shell uses `closeAndRollSwingPosition` directly IF the three roll-ledger accessors are
+   *  present on this deps object; when they aren't either, the gating path stays evidence-only. */
+  executeRoll?: (deps: RollLedgerDeps, req: Parameters<typeof closeAndRollSwingPosition>[1]) => Promise<RollOutcome>;
 }
 
 export interface ManageSyncOutcome {
@@ -217,7 +254,19 @@ export interface ManageSyncOutcome {
   verdict: SwingManageVerdict;
   snapshotId: number | null;
   liveStateUpdated: boolean;
+  /** Set when the gating path EXECUTED a roll/close this tick (PR-15). Absent on the evidence-only path. */
+  roll?: RollOutcome;
   error?: string;
+}
+
+/** True when this deps object carries the full PR-10 roll-ledger surface (grade parent + insert child +
+ *  insert snapshot) — the minimum needed to execute a transactional roll/close. */
+function hasRollLedger(deps: ManageSyncDeps): deps is ManageSyncDeps & RollLedgerDeps {
+  return (
+    typeof deps.gradeParent === "function" &&
+    typeof deps.insertChild === "function" &&
+    typeof deps.insertSnapshot === "function"
+  );
 }
 
 /**
@@ -232,6 +281,61 @@ export async function syncSwingManagement(
   opts: { snapshotKind: string },
 ): Promise<ManageSyncOutcome> {
   const plan = planManageSync(row, reads, opts);
+
+  // ── PR-15 gating execution: a capital-preservation gate that the caller can act on EXECUTES a roll/close ──
+  // `decideRollAction` is GATING-ONLY (edge/hold → SKIP) and encodes THESIS-BROKEN = CLOSE-NOT-ROLL. We only
+  // take this path when (a) the verdict is a gate to act on, (b) the roll-ledger accessors are injected, and
+  // (c) the caller can build the roll plan for THIS tick (grade + child). Any of those absent → fall through
+  // to the evidence-only latch below, exactly as PR-13 (record the intent, act on nothing).
+  const decision = decideRollAction(plan.verdict);
+  if (decision.action !== "SKIP" && deps.buildRollPlan && hasRollLedger(deps)) {
+    let rollPlan: ManageSyncRollPlan | null = null;
+    try {
+      rollPlan = await deps.buildRollPlan(row, plan.verdict, reads);
+    } catch (err) {
+      // A plan-build failure must not sink the refresh — degrade to evidence-only, carrying the reason.
+      const outcome = await applyEvidenceOnly(deps, plan);
+      return { ...outcome, error: outcome.error ?? (err instanceof Error ? err.message : String(err)) };
+    }
+    if (rollPlan) {
+      const runRoll = deps.executeRoll ?? closeAndRollSwingPosition;
+      try {
+        // The roll executor OWNS the snapshot append for this tick (append-only, unbroken across the roll
+        // boundary), so we do NOT also run the evidence-only latch — the parent is going terminal.
+        const roll = await runRoll(deps, {
+          parent: row,
+          verdict: plan.verdict,
+          parentGrade: rollPlan.parentGrade,
+          childSpec: rollPlan.childSpec,
+          snapshot: plan.snapshot,
+        });
+        return {
+          positionId: plan.positionId,
+          verdict: plan.verdict,
+          snapshotId: roll.snapshotId,
+          liveStateUpdated: false,
+          roll,
+          error: roll.error,
+        };
+      } catch (err) {
+        return {
+          positionId: plan.positionId,
+          verdict: plan.verdict,
+          snapshotId: null,
+          liveStateUpdated: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }
+    // rollPlan == null → the caller couldn't build a plan this tick; fall through to evidence-only.
+  }
+
+  return applyEvidenceOnly(deps, plan);
+}
+
+/** The PR-13 evidence-only application: append the snapshot (durable evidence first), then latch live state.
+ *  NEVER writes a terminal status — the status carried on `plan.liveState` is the row's current live rung. */
+async function applyEvidenceOnly(deps: ManageSyncDeps, plan: ManageSyncPlan): Promise<ManageSyncOutcome> {
   let snapshotId: number | null = null;
   let liveStateUpdated = false;
   try {
