@@ -203,7 +203,11 @@ turns fleeting whole-market bangers into strongly +EV trades; holding to expiry 
 
 ## Prioritized plan (evidence-ordered)
 - **P1 — Confluence tier (0DTE)** — CONFIRMED +15.9% EV. `confluence_score` across {timing, VWAP,
-  market-align}; A+/"triple-confirmed" tier on let-it-run geometry. Calibration-first.
+  market-align}; A+/"triple-confirmed" tier on let-it-run geometry. **GRADUATED to a config-gated hard
+  gate (G-12, `feat/zerodte-confluence-entry-timing`, 2026-07-24, HOLD for operator sign-off):** the
+  additive score let a loud print clear the floor at 0-conf (the −12.5% bucket); G-12 now requires
+  `confluence.confirmations` (VWAP-side + market-aligned) ≥ `ZERODTE_CONFLUENCE_MIN` (default 1 — blocks
+  only the losing 0-conf, board not starved). Tunable up to 2 (the +15.9% double) as the ledger confirms.
 - **P2 — Whole-market banger scanner** — committed tool first (grouped screen + confluence), then wire
   into discovery. THE "scan the whole market for bangers" ask.
 - **P3 — Exit-engine study** — ✅ RESOLVED (E5). Sim now grades through the SHIPPED ratchet
@@ -211,7 +215,11 @@ turns fleeting whole-market bangers into strongly +EV trades; holding to expiry 
   ratchet CONFIRMED to cost EV vs hold (fix deferred to a larger sweep, FINDINGS 2026-07-23).
 - **P4 — Regime conditioning** — validate F-1 (VIX 15–17 → 69% WR) on 25+ sessions; gate/size by VIX.
 - **P5 — Entry-timing correction** — re-measure `timeOfDayFactor` + 9:45 unlock on the live by-ToD
-  ledger; propose a measured shift (surface the 2026-07-13 directive to the user).
+  ledger; propose a measured shift (surface the 2026-07-13 directive to the user). **PARTIAL (2026-07-24,
+  same branch/HOLD):** rather than move the 10:00 hard unlock (documented rationale + user directive keep
+  it), G-12 raises the confluence floor to `ZERODTE_CONFLUENCE_MIN_EARLY` (default 2) and halves size
+  inside the measured-negative early window [10:00, 10:45) ET — take only the strongest agreement early.
+  The `timeOfDayFactor` boundary re-measure on the live by-ToD ledger is still open.
 - **P6 — Learning machinery (PR-A)** — persist accumulation + calibration buckets so P1–P5 graduate on
   live evidence automatically.
 - **P7 — Event-driven scan + unify Night Hawk scorer** — infra + architecture.

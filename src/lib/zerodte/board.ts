@@ -265,8 +265,9 @@ export type ZeroDteGateFailure =
   // didn't ticker X commit" is one queryable surface for both gate families.
   | "tape_alignment" // G-1: direction fights the SPY session bias
   | "no_market_bias" // G-1 fail-closed: bias read missing or stale
-  | "opening_window" // G-2: no new commits before 10:30 ET
+  | "opening_window" // G-2: no new commits before 10:00 ET
   | "score_floor" // G-3: post-edge-layer score below 65
+  | "confluence_floor" // G-12: too few VWAP-side/market-aligned confirmations (0-conf −12.5% EV; higher floor 10:00–10:45)
   | "governor_max_concurrent" // G-5: 3 plans already open
   | "governor_session_stops" // G-5: 3 stops today — halted for the session
   | "governor_reentry_lock" // G-5: same-direction re-entry within 20m of that ticker's stop

@@ -238,25 +238,52 @@ export async function scanZeroDteBoard(flags?: {
 
   await attachContractPlans(setups);
   const tape = await attachIntradayEdge(setups);
-  // Hard-gate verdicts LAST — G-3 judges the final post-edge-layer score, and G-1
-  // reuses the same SPY read the edge layer just fetched (one bias per scan cycle,
-  // scoring and gating can never disagree about what the tape said).
-  await attachGateVerdicts(setups, tape.bias, tape.biasAsOfMs);
 
   // Confluence read — how many of {post-open timing, price vs VWAP, market alignment} agree with each
-  // setup's direction. Runs AFTER the intraday-edge pass (which populates intraday + market_aligned).
-  // Evidence only, calibration-first: the measured edge is the VWAP+market "double" bucket
-  // (+15.9% EV, docs/audit/0DTE-RESEARCH.md); does not gate/score the board yet. See confluence.ts.
+  // setup's direction. Runs AFTER the intraday-edge pass (which populates intraday + market_aligned)
+  // and BEFORE the gate stack, because G-12 now reads its `confirmations` count (Change 1, 2026-07-24):
+  // the VWAP+market agreement is a real commit input, not just a card badge. The tier/score stay
+  // calibration-first display; only the confirmation FLOOR gates. Attached to ALL setups (evidence).
   const nowEt = etNowParts();
-  attachConfluence(setups, nowEt.hour * 60 + nowEt.minute);
+  const nowEtMinutes = nowEt.hour * 60 + nowEt.minute;
+  attachConfluence(setups, nowEtMinutes);
+
+  // Hard-gate verdicts LAST — G-3 judges the final post-edge-layer score, G-1 reuses the same SPY read
+  // the edge layer just fetched, and G-12 reads the confluence just attached (one clock per cycle, so
+  // scoring, gating, and confluence can never disagree about the time or the tape).
+  await attachGateVerdicts(setups, tape.bias, tape.biasAsOfMs, nowEtMinutes);
 
   return { setups, nighthawk_covered: nighthawkCovered, upstream_ok: upstreamOk, rejections };
 }
 
-/** Cached (3-min) intraday read from a name's own minute bars. */
-async function intradayReadFor(ticker: string, today: string): Promise<IntradayRead | null> {
+// Intraday-read cache TTL (Change 3, 2026-07-24). The read feeds the G-1 tape bias, the VWAP-side
+// leg of G-12 confluence, and the intraday score adjust — all reaction-speed inputs. A 3-min cache
+// meant the "live" tape a fresh commit was judged against could be up to 3 min stale; during RTH we
+// shorten it to ~45s so the counter-tape/stale-bias guards read fresh bars, while off-hours (bars
+// aren't moving) we keep the longer TTL to spare the provider. Both config-gated via env.
+const RTH_INTRADAY_CACHE_MS = envIntMs("ZERODTE_INTRADAY_CACHE_MS", 45_000);
+const OFFHOURS_INTRADAY_CACHE_MS = envIntMs("ZERODTE_INTRADAY_CACHE_OFFHOURS_MS", 3 * 60 * 1000);
+const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
+const RTH_CLOSE_ET_MINUTES = 16 * 60;
+
+/** Positive-integer ms tuning knob from env (once per process); pure fallback otherwise. */
+function envIntMs(name: string, def: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return def;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : def;
+}
+
+/** Cache TTL for the intraday read: short during RTH (fresh tape), longer off-hours. */
+function intradayCacheTtlMs(nowEtMinutes: number): number {
+  const rth = nowEtMinutes >= RTH_OPEN_ET_MINUTES && nowEtMinutes < RTH_CLOSE_ET_MINUTES;
+  return rth ? RTH_INTRADAY_CACHE_MS : OFFHOURS_INTRADAY_CACHE_MS;
+}
+
+/** Cached (RTH ~45s / off-hours 3-min) intraday read from a name's own minute bars. */
+async function intradayReadFor(ticker: string, today: string, ttlMs: number): Promise<IntradayRead | null> {
   return within(
-    withServerCache<IntradayRead>(`zerodte:intraday:${ticker}:${today}`, 3 * 60 * 1000, async () => {
+    withServerCache<IntradayRead>(`zerodte:intraday:${ticker}:${today}`, ttlMs, async () => {
       // Index roots (SPXW/SPX/NDX…) only price under Polygon's I: namespace —
       // unmapped they return zero bars and the read silently degrades to nulls.
       const bars = await fetchAggBars(polygonSpotTicker(ticker), 1, "minute", today, today, "1000");
@@ -284,6 +311,7 @@ async function attachIntradayEdge(
   const { hour, minute } = etNowParts();
   const nowEt = hour * 60 + minute;
   const tod = timeOfDayFactor(nowEt);
+  const ttlMs = intradayCacheTtlMs(nowEt);
 
   // 9-7: compute the intraday edge for EVERY gated setup, not just the enriched top-N. Previously only the
   // top-5 got a market-align / VWAP / time-of-day score adjustment, yet attachGateVerdicts gates all of
@@ -292,8 +320,8 @@ async function attachIntradayEdge(
   // the light per-ticker read; the heavy DOSSIER enrichment (Redis single-flight) still stays at top-N.
   const edged = setups;
   const [spyRead, ...reads] = await Promise.all([
-    intradayReadFor("SPY", today),
-    ...edged.map((s) => intradayReadFor(s.ticker, today)),
+    intradayReadFor("SPY", today, ttlMs),
+    ...edged.map((s) => intradayReadFor(s.ticker, today, ttlMs)),
   ]);
   const bias = marketBias(spyRead ?? null);
 
@@ -318,12 +346,11 @@ async function attachIntradayEdge(
 async function attachGateVerdicts(
   setups: EnrichedZeroDteSetup[],
   bias: MarketBias | null,
-  biasAsOfMs: number | null
+  biasAsOfMs: number | null,
+  nowEtMinutes: number
 ): Promise<void> {
   if (setups.length === 0) return;
   const today = todayEt();
-  const { hour, minute } = etNowParts();
-  const nowEtMinutes = hour * 60 + minute;
   const nowMs = Date.now();
   const ledgerRows = dbConfigured()
     ? await fetchZeroDteSetupLog(today).catch(() => null)
@@ -425,6 +452,7 @@ async function attachGateVerdicts(
       intradayConflict: s.intraday_conflict,
       halted: s.halted,
       earnings: s.earnings,
+      confluence: s.confluence ?? null, // G-12 (Change 1): attached just above, before this gate pass
     });
     if (s.gate.verdict !== "COMMIT") continue;
 
