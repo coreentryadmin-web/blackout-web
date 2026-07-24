@@ -95,7 +95,9 @@ export type TickerDossier = {
   realized_vol: number | null;
   risk_reversal_skew: number | null;
   flow_by_expiry: Record<string, unknown>[];
-  positioning: PositioningSummary;
+  // Null when no positioning data exists — fetchPositioningSummary returns null on a
+  // cold cache + empty bundle rather than a fabricated flat book. Scorers null-guard it.
+  positioning: PositioningSummary | null;
   congress_trades: Record<string, unknown>[];
   congress_unusual: Record<string, unknown>[];
   institutional_activity: Record<string, unknown>[];
@@ -334,16 +336,10 @@ export async function fetchTickerDossier(
   ] = await Promise.all([
     dossierFetch(() => fetchMarketFlowAlertRows({ ticker: sym, limit: 80, min_premium: 50_000 }), [], t),
     dossierFetch(() => resolveIvRank(sym), null, t),
-    dossierFetch(() => fetchPositioningSummary(sym), {
-      net_gex: 0,
-      gex_king_strike: null,
-      negative_gamma: false,
-      gamma_regime: "unknown",
-      gamma_flip: null,
-      net_vex: null,
-      max_pain: null,
-      wall_summary: "n/a",
-    }, t),
+    // Fallback is null (not a fabricated flat book): on timeout/error we have no
+    // positioning data, so say so honestly rather than inventing net_gex:0 /
+    // negative_gamma:false. Downstream scorers null-guard `positioning`.
+    dossierFetch(() => fetchPositioningSummary(sym), null, t),
     dossierFetch(() => buildTechnicalCard(sym), null, t),
     dossierFetch(() => fetchPolygonNews(sym, 8), [], t),
     // Merge Benzinga general news + earnings articles so the dossier scoring pass

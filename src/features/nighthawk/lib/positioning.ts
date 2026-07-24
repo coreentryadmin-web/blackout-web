@@ -6,8 +6,6 @@ import {
 } from "@/lib/providers/gamma-desk";
 import { polygonConfigured } from "@/lib/providers/config";
 import { fetchPolygonPositioningBundle } from "@/lib/providers/polygon-options-gex";
-import { fetchStockSnapshot } from "@/lib/providers/polygon";
-import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 
 export type PositioningSummary = {
@@ -17,7 +15,11 @@ export type PositioningSummary = {
   gamma_regime: string;
   net_vex: number | null;
   max_pain: number | null;
-  negative_gamma: boolean;
+  // Nullable so "unknown" is representable. On the warm / direct-bundle paths this is
+  // the net_gex sign; but when there is NO positioning data the summary itself is null
+  // (see fetchPositioningSummary's empty branch). A bare `false` used to read as
+  // "confirmed positive gamma / flat book" even when the truth was "no data at all."
+  negative_gamma: boolean | null;
   wall_summary: string;
   source?: "polygon" | "unusual_whales";
 };
@@ -82,7 +84,7 @@ function buildSummary(
   };
 }
 
-export async function fetchPositioningSummary(ticker: string): Promise<PositioningSummary> {
+export async function fetchPositioningSummary(ticker: string): Promise<PositioningSummary | null> {
   const sym = ticker.toUpperCase();
 
   // PRIMARY: use the shared GEX matrix cache (getGexPositioning) — the same cache key
@@ -129,9 +131,11 @@ export async function fetchPositioningSummary(ticker: string): Promise<Positioni
     }
   }
 
-  // No Polygon data — return empty summary with current price.
-  const wsCandle = getStockLiveCandle(sym);
-  const wsPrice = wsCandle.current && wsCandle.current.close > 0 ? wsCandle.current.close : null;
-  const price = wsPrice ?? (await fetchStockSnapshot(sym).catch(() => null))?.price ?? 0;
-  return buildSummary([], price, null, "polygon");
+  // No Polygon data at all (shared cache cold AND direct bundle returned zero rows).
+  // Return null — NOT buildSummary([], ...), which fabricated net_gex:0 /
+  // negative_gamma:false / source:"polygon", making "no data" indistinguishable from a
+  // genuine flat, positive-gamma book sourced from Polygon. A null is honest; a
+  // fabricated zero is a lie. Every consumer null-guards (see index-dossier, run-tool,
+  // dossier fallback) so the honest null degrades cleanly.
+  return null;
 }

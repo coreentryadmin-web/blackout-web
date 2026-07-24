@@ -98,7 +98,10 @@ export async function GET(req: NextRequest) {
               degraded: true,
               ticker,
               spot: bundle.spot,
-              change_pct: 0,
+              // Degraded single-expiry fallback has no prior close / no multi-expiry vanna
+              // to compute these — null is the honest "unknown" (block is already
+              // degraded:true). A literal 0 read as "flat / no change" and "zero net vanna."
+              change_pct: null,
               asof: new Date().toISOString(),
               flip,
               call_wall,
@@ -107,7 +110,7 @@ export async function GET(req: NextRequest) {
               net_gex: gexAnalysis.net_gex,
               gamma_posture: flip != null && bundle.spot > 0 ? (bundle.spot >= flip ? "long" : "short") : null,
               gamma_regime_read: regime,
-              net_vex: 0,
+              net_vex: null,
               vanna_posture: null,
               vanna_regime_read: "partial — single-expiry fallback (walls from chain band)",
               net_dex: null,

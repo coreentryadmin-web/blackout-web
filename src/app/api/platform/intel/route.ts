@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { isPremarketBriefFresh, todayEtYmd } from "@/lib/providers/spx-session";
+import { formatEtDate, mostRecentTradingDayEt } from "@/features/nighthawk/lib/session";
 import {
   fetchSignalAccuracyBySource,
   blendedAccuracy,
@@ -79,8 +80,22 @@ export async function GET(req: NextRequest) {
       fetchSignalAccuracyBySource(),
     ]);
 
-    const regimeRow = regime.status === "fulfilled" && regime.value.rows.length > 0
+    const regimeRowRaw = regime.status === "fulfilled" && regime.value.rows.length > 0
       ? regime.value.rows[0] : null;
+    // Freshness gate — SAME logic as /api/market/regime/route.ts (task #173). This snapshot
+    // feeds cron decisioning and AI prompt context, so a market_regime row from an earlier
+    // session (weekend/holiday/cron outage) must NOT be served as the current regime. Stale =
+    // captured_at's ET date isn't the most-recent trading session; unparseable/missing
+    // captured_at fails CLOSED (stale). When stale, `regime` is nulled and currentRegime falls
+    // back to UNKNOWN so nothing presents the stale row as live.
+    const capturedAtMs = regimeRowRaw?.captured_at
+      ? new Date(regimeRowRaw.captured_at as string | number | Date).getTime()
+      : NaN;
+    const regimeStale = regimeRowRaw
+      ? !Number.isFinite(capturedAtMs) ||
+        formatEtDate(new Date(capturedAtMs)) !== mostRecentTradingDayEt()
+      : false;
+    const regimeRow = regimeStale ? null : regimeRowRaw;
 
     const anomalyRows: FlowAnomalyRow[] =
       anomalies.status === "fulfilled" ? (anomalies.value.rows as FlowAnomalyRow[]) : [];
@@ -135,6 +150,10 @@ export async function GET(req: NextRequest) {
         aboveVwap: regimeRow.above_vwap,
         ivPercentile: regimeRow.iv_percentile,
       } : null,
+
+      // Additive, non-breaking: distinguishes "regime nulled because the only row is stale"
+      // from "no regime row at all." Both render regime:null; this flag says which.
+      regimeStale,
 
       // Active anomalies
       anomalies: anomalyRows.map((a) => ({
