@@ -115,6 +115,64 @@ test("mapper: no usable price anywhere → mark null (never fabricated), other f
   assert.equal(snap!.openInterest, 10);
 });
 
+// -------------------- underlying spot: index `.value` vs stock `.price` --------------------
+
+test("mapper: INDEX OCC with underlying_asset.value (no .price) → underlyingPrice = value, not null", async () => {
+  const { mapUnifiedSnapshotResult } = await import("./options-snapshot");
+  const r = {
+    ticker: "O:SPXW250620C05850000",
+    type: "options",
+    // Index snapshots carry the underlying under `.value` (an index has no trade "price").
+    underlying_asset: { value: 5872.5, ticker: "I:SPX", last_updated: 1 },
+    details: { strike_price: 5850, contract_type: "call", expiration_date: "2025-06-20" },
+  };
+  const snap = mapUnifiedSnapshotResult(r);
+  assert.ok(snap);
+  assert.equal(snap!.underlyingPrice, 5872.5);
+});
+
+test("mapper: STOCK OCC with underlying_asset.price still resolves the spot", async () => {
+  const { mapUnifiedSnapshotResult } = await import("./options-snapshot");
+  const r = {
+    ticker: "O:AAPL250620C00200000",
+    type: "options",
+    underlying_asset: { price: 201.34, ticker: "AAPL", last_updated: 1 },
+    details: { strike_price: 200, contract_type: "call", expiration_date: "2025-06-20" },
+  };
+  const snap = mapUnifiedSnapshotResult(r);
+  assert.ok(snap);
+  assert.equal(snap!.underlyingPrice, 201.34);
+});
+
+test("mapper: neither .price nor .value present → underlyingPrice null (never fabricated)", async () => {
+  const { mapUnifiedSnapshotResult } = await import("./options-snapshot");
+  const r = {
+    ticker: "O:SPXW250620C05850000",
+    type: "options",
+    underlying_asset: { ticker: "I:SPX", last_updated: 1 },
+    details: { strike_price: 5850, contract_type: "call", expiration_date: "2025-06-20" },
+  };
+  const snap = mapUnifiedSnapshotResult(r);
+  assert.ok(snap);
+  assert.equal(snap!.underlyingPrice, null);
+});
+
+// -------------------- IV unit guard (normalizeImpliedVol) --------------------
+
+test("normalizeImpliedVol: real decimal IV passes through untouched; percent-scale placeholder rescales", async () => {
+  const { normalizeImpliedVol } = await import("./options-snapshot");
+  // Live decimals are NEVER rescaled.
+  assert.equal(normalizeImpliedVol(0.229), 0.229);
+  assert.equal(normalizeImpliedVol(3.0), 3.0); // extreme-but-real 300% vol stays as-is
+  // Unmistakable percent-scale placeholders (>= 500%) → /100.
+  assert.equal(normalizeImpliedVol(20), 0.2);
+  assert.equal(normalizeImpliedVol(15.83), 0.1583);
+  // Non-finite → null; 0/negative left as-is for the caller.
+  assert.equal(normalizeImpliedVol(null), null);
+  assert.equal(normalizeImpliedVol(undefined), null);
+  assert.equal(normalizeImpliedVol(0), 0);
+});
+
 // ----------------------------- chunking (>250) -----------------------------
 
 test("chunkOccs splits >250 into ≤250 batches with no loss or overlap", async () => {
