@@ -5,6 +5,46 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-24 — [SEV-3, member-facing display] 0DTE Command Deck showed Δ Γ Θ V IV + mark "—" for every WATCH-only setup (live greeks never sourced for non-entered contracts) — FIXED
+
+**Symptom (live screenshot).** Selecting a WATCH-only setup (not entered — below the score floor /
+SKIP / BLOCKED) on the 0DTE Command Deck (`PlayTerminal.tsx`) rendered **Δ Γ Θ V IV all "—"**,
+**"mark —"**, PnL **"— not entered"**. Only ENTERED ledger plays ever showed live greeks/mark.
+
+**Root cause.** The 1s live-marks lane quoted ENTERED ledger plays only. `live-marks.ts`
+`getActivePlays()`→`boundActivePlays()`→`toActivePlay()` tracks non-CLOSED ledger rows; a watch setup
+is never in the ledger, so its `plan.occ` never entered the mark store → never in
+`/api/market/zerodte/marks(/stream)` → `use-live-marks.ts` `overlayLiveMarks` (which overlays
+mark/pnl/greeks **by OCC**) found no row → the terminal fell back to the adapter's hardcoded
+`greeks: null` (`adapters.ts:149`) + `mark: fin(src.last_mark)` (null for a non-entered setup).
+
+**Fix.** Extend the lane to ALSO quote the CURRENT board setups' contracts as **quote-only**:
+- `zerodte-service.ts` `buildZeroDteBoardPayload` pushes the watch-only setups' OCCs
+  (`registerSetupQuotes` → `setZeroDteSetupQuotes`) into the lane each build (~5s). Watch-only = a
+  setup whose ticker is NOT in today's ledger (an entered/managed/closed ledger ticker OWNS its card's
+  mark via the entered lane; quoting its possibly-different-strike setup contract would overlay a
+  mismatched mark). No plan OCC → skipped. Sourced from the assembled board — no re-derivation.
+- `live-marks.ts` `mergeTrackedContracts` merges entered plays (PRIORITY, cap-first, never evicted)
+  with setup quotes (remaining slots, deduped by OCC), hard-capped at `ZERODTE_LIVE_CONTRACT_CAP` (16).
+  Setup plays carry `quote_only:true` + `entry_premium:null`. The poller quotes the FULL set (WS →
+  batched-REST fallback, which carries greeks — covers the code=1006 options-WS flaps); the persist /
+  exit-engine / latch pass iterates the ENTERED list ONLY. `pinnedLivePnlPct(null, mark)===null` keeps
+  PnL honest ("not entered"); only greeks + live mark populate. `overlayLiveMarks` then fills the
+  terminal automatically (unchanged).
+
+**Files:** `src/lib/zerodte/live-marks.ts` (registry + `mergeTrackedContracts` + tick/payload merge),
+`src/lib/platform/zerodte-service.ts` (`registerSetupQuotes` push), tests in
+`src/lib/zerodte/live-marks.test.ts`.
+
+**Evidence.** `npx tsc --noEmit` clean; `live-marks.test.ts` 29/29 pass (9 new: watch setup surfaces
+greeks+mark with `live_pnl_pct:null`; entered plays prioritized + still persisted/exited; cap
+entered-first/never-evicted; setup deduped/no-occ-skipped; ledger persist NOT invoked for a setup-only
+OCC); all `src/lib/zerodte/*.test.ts` 487/487 pass; command-deck suites pass; `check-brand.mjs` clean.
+
+**Status.** FIXED on `fix/zerodte-setup-live-greeks`. **SAFE TO DEPLOY MID-RTH** — display-only; a
+watch setup gets a QUOTE ONLY, never a ledger row/status/persist/exit, so nothing about what trades
+commit changes. NON-DRAFT PR; no auto-merge (per launch instruction).
+
 ## 2026-07-24 — [SEV-2/SEV-3, swing pre-live] Discovery reduced the 8-archetype × 7-pillar swing engine to a 3-pillar momentum screen; archetype fast-track + corroboration were dead — FIXED
 
 **Context / risk.** The swing lane is pre-live (WATCH-only, `commitEligibleCount` is a literal 0;

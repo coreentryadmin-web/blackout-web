@@ -37,6 +37,9 @@ import {
   type ZeroDteGovernorSummary,
 } from "@/lib/zerodte/governor";
 import { gradeZeroDteLedger, readZeroDteLedgerChecked, scanZeroDteBoard, syncLedgerLiveState } from "@/lib/zerodte/scan";
+// Type-only (erased at compile) — the runtime handle is dynamically imported in
+// registerSetupQuotes below, same relative-specifier pattern as attachLiveMarkMeta.
+import type { ZeroDteSetupQuote } from "@/lib/zerodte/live-marks";
 
 export type ZeroDteBoardLedgerRow = {
   ticker: string;
@@ -225,6 +228,47 @@ async function attachLiveMarkMeta(rows: ZeroDteSetupLogRow[]): Promise<Map<strin
   return out;
 }
 
+/**
+ * Register the board's WATCH-only setup contracts into the 1s live-marks lane so a
+ * non-entered setup's terminal shows live Δ Γ Θ V IV + mark instead of "—" (the lane
+ * only quoted entered ledger plays before). The lane treats these as QUOTE-ONLY — a
+ * live bid/ask/mid/mark + greeks, never a ledger row/status/persist/exit (see
+ * mergeTrackedContracts + the quote_only guard in live-marks.ts).
+ *
+ * Watch-only = a setup whose ticker is NOT in today's ledger. An entered / managed /
+ * closed ledger ticker already OWNS its card's mark via the entered lane (and the deck
+ * merges a same-ticker setup INTO that ledger card), so quoting its — possibly
+ * different-strike — setup contract would overlay a mismatched mark on that card. A
+ * setup with no plan OCC can't be quoted and is dropped. Lazy dynamic import (RELATIVE
+ * specifier — the tsx ESM loader can't resolve the "@/" alias in dynamic import, same
+ * as attachLiveMarkMeta) + best-effort: an unavailable lane just leaves "—", as before.
+ */
+async function registerSetupQuotes(
+  setups: EnrichedZeroDteSetup[],
+  ledgerRows: ZeroDteSetupLogRow[]
+): Promise<void> {
+  try {
+    const { setZeroDteSetupQuotes } = await import("../zerodte/live-marks");
+    const ledgerTickers = new Set(ledgerRows.map((r) => r.ticker.toUpperCase()));
+    const quotes: ZeroDteSetupQuote[] = setups
+      .filter(
+        (s) =>
+          !ledgerTickers.has(s.ticker.toUpperCase()) &&
+          typeof s.plan?.occ === "string" &&
+          s.plan.occ.length > 0
+      )
+      .map((s) => ({
+        ticker: s.ticker.toUpperCase(),
+        direction: s.direction,
+        strike: s.top_strike,
+        occ: s.plan!.occ,
+      }));
+    setZeroDteSetupQuotes(quotes);
+  } catch {
+    // Live lane unavailable — watch setups simply show "—", exactly as before this wiring.
+  }
+}
+
 /** Uncached board assembly — the exact pipeline the member route used before extraction. */
 export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   const today = todayEt();
@@ -274,6 +318,12 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   // instead of impersonating a live-but-empty board.
   const committedKnown = ledgerRead.committed_known;
   const displaySetups = committedKnown ? setups : [];
+
+  // Feed the watch-only setups' contracts to the 1s live-marks lane so their terminals
+  // stream live greeks + mark (fire-and-forget — the lane reads the registry on its own
+  // cadence; never block or fail the board on it). Uses displaySetups so a fail-closed
+  // build (committed set unknowable → []) also clears any stale setup quotes.
+  void registerSetupQuotes(displaySetups, ledgerRows);
 
   // Portfolio Allocation Engine (advisory): rank today's setups cross-sectionally, collapse duplicate theses,
   // and price opportunity cost against the currently-open book. Additive — attached alongside the setups; it

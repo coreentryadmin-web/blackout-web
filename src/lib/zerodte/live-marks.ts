@@ -124,11 +124,36 @@ export type ActiveZeroDtePlay = {
   direction: "long" | "short";
   strike: number | null;
   occ: string;
-  /** PINNED at first flag (ledger row) — the ONLY entry reference P&L may use. */
+  /** PINNED at first flag (ledger row) — the ONLY entry reference P&L may use.
+   *  Null for a quote-only board setup (never entered) → pinnedLivePnlPct returns null. */
   entry_premium: number | null;
   status: string | null;
   peak_premium: number | null;
   trough_premium: number | null;
+  /**
+   * True for a QUOTE-ONLY board setup (a watch card — below the score floor / SKIP /
+   * BLOCKED, never committed to the ledger). Such a contract gets a live bid/ask/mid/
+   * mark + greeks so its terminal shows Δ Γ Θ V IV instead of "—", but it is NEVER
+   * given a ledger row, status derivation, persist, exit evaluation, or peak/trough
+   * latch — it carries entry_premium:null so P&L stays "not entered". Absent/false =
+   * an entered ledger play (the priority path that keeps status/persist/exit).
+   */
+  quote_only?: boolean;
+};
+
+/**
+ * A board setup's contract to quote in the live lane WITHOUT entering it — the
+ * dominant-strike OCC of a WATCH-only setup (not in today's ledger). Registered by
+ * the board build (zerodte-service.buildZeroDteBoardPayload) each ~5s and read by the
+ * poller + payload builder here, so a setup's terminal gets the same ~1s greeks+mark
+ * lane an entered play gets. Deliberately the minimal identity — no entry/status/latch
+ * fields, because a setup quote never touches any of that (see quote_only above).
+ */
+export type ZeroDteSetupQuote = {
+  ticker: string;
+  direction: "long" | "short";
+  strike: number | null;
+  occ: string;
 };
 
 export type ZeroDteLiveMarkRow = {
@@ -202,6 +227,76 @@ export function boundActivePlays(
     if (out.length >= cap) break;
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Board setup quotes (watch-only contracts) — registered by the board build
+// ---------------------------------------------------------------------------
+
+/** The current board's WATCH-only setup contracts, pushed by the board build. Read
+ *  by the poller (to quote) and the payload builder (to surface). A plain module var
+ *  (not a DB read) so the lane never has to re-derive or fetch the board — the build
+ *  that already assembled it hands the OCCs over. Newest board build wins (replace). */
+let boardSetupQuotes: ZeroDteSetupQuote[] = [];
+
+/**
+ * Register the current board's watch-only setup contracts for the quote-only lane.
+ * Called by zerodte-service.buildZeroDteBoardPayload each build (~5s while the deck /
+ * Largo / BIE reads the board). Replaces the prior set wholesale so a setup that fell
+ * off the board stops being quoted (its OCC then prunes out of the store next tick).
+ */
+export function setZeroDteSetupQuotes(quotes: ZeroDteSetupQuote[]): void {
+  boardSetupQuotes = Array.isArray(quotes) ? quotes : [];
+}
+
+/** The currently-registered watch-only setup contracts (see setZeroDteSetupQuotes). */
+export function getZeroDteSetupQuotes(): ZeroDteSetupQuote[] {
+  return boardSetupQuotes;
+}
+
+/**
+ * Merge the entered ledger plays (PRIORITY) with the watch-only board setups into the
+ * lane's tracked set, deduped by OCC and hard-capped at ZERODTE_LIVE_CONTRACT_CAP.
+ *
+ * Guarantees (the lane's guardrails, made STRUCTURAL):
+ *  - Entered plays fill the cap FIRST and are never evicted — setups take only the
+ *    remaining slots, so a full book of entered plays leaves zero room for setups.
+ *  - A setup whose OCC is already an entered play (a committed ticker still surfacing
+ *    in the scan on the same contract) is dropped — the entered row owns that OCC
+ *    (entry + persist); the setup would only duplicate it.
+ *  - A setup with no OCC is skipped (nothing to quote).
+ *  - Setup plays are marked quote_only + entry_premium:null so the poller's persist/
+ *    exit pass (which iterates the entered list only) can never touch them and their
+ *    P&L stays "not entered".
+ */
+export function mergeTrackedContracts(
+  enteredPlays: ActiveZeroDtePlay[],
+  quotes: ZeroDteSetupQuote[],
+  sessionDate: string,
+  cap = ZERODTE_LIVE_CONTRACT_CAP
+): { enteredPlays: ActiveZeroDtePlay[]; setupPlays: ActiveZeroDtePlay[] } {
+  const entered = enteredPlays.slice(0, cap);
+  const seen = new Set(entered.map((p) => p.occ));
+  const room = cap - entered.length;
+  const setupPlays: ActiveZeroDtePlay[] = [];
+  for (const q of quotes) {
+    if (setupPlays.length >= room) break;
+    if (!q?.occ || seen.has(q.occ)) continue;
+    seen.add(q.occ);
+    setupPlays.push({
+      session_date: sessionDate,
+      ticker: q.ticker,
+      direction: q.direction,
+      strike: q.strike,
+      occ: q.occ,
+      entry_premium: null,
+      status: "WATCH",
+      peak_premium: null,
+      trough_premium: null,
+      quote_only: true,
+    });
+  }
+  return { enteredPlays: entered, setupPlays };
 }
 
 // ---------------------------------------------------------------------------
@@ -312,6 +407,7 @@ const latchMemo = new Map<string, PlayLatch>();
 /** One poll tick, exported for tests (deps injectable). Never throws. */
 export async function runZeroDteMarkTick(deps?: {
   plays?: ActiveZeroDtePlay[];
+  setupQuotes?: ZeroDteSetupQuote[];
   rowsByKey?: Map<string, ZeroDteSetupLogRow>;
   fetchSnapshots?: typeof fetchOptionsUnifiedSnapshot;
   readWsMark?: typeof getLiveOptionMark;
@@ -325,15 +421,23 @@ export async function runZeroDteMarkTick(deps?: {
   tickRunning = true;
   try {
     const now = deps?.nowMs ?? Date.now();
-    const plays = deps?.plays ?? (await getActivePlays(now));
-    if (plays.length === 0) return;
+    // Entered ledger plays (priority) + the current board's watch-only setup contracts.
+    // The merge caps at ZERODTE_LIVE_CONTRACT_CAP with entered FIRST (never evicted) and
+    // dedupes setups against entered OCCs — see mergeTrackedContracts. Setups get a quote
+    // ONLY; the persist/exit pass below iterates `entered`, never `setupPlays`.
+    const enteredRaw = deps?.plays ?? (await getActivePlays(now));
+    const quotesRaw = deps?.setupQuotes ?? getZeroDteSetupQuotes();
+    const { enteredPlays: entered, setupPlays } = mergeTrackedContracts(enteredRaw, quotesRaw, todayEt());
+    if (entered.length === 0 && setupPlays.length === 0) return;
 
-    const occs = Array.from(new Set(plays.map((p) => p.occ)));
+    // Quote the FULL tracked set (entered + watch setups); the persist pass stays entered-only.
+    const occs = Array.from(new Set([...entered, ...setupPlays].map((p) => p.occ)));
 
-    // Reconcile the mark store to the active set: drop marks for contracts that
-    // are no longer open (closed/rolled) so the store can't grow unbounded across
-    // a day of turnover. Runs against the SAME active set the WS reconcile uses, so
-    // an active OCC is never evicted (pruneMarkStore only removes absent keys).
+    // Reconcile the mark store to the tracked set: drop marks for contracts that
+    // are no longer tracked (closed/rolled entered plays, or setups that fell off the
+    // board) so the store can't grow unbounded across a day of turnover. Runs against
+    // the SAME set the WS reconcile uses, so a tracked OCC is never evicted
+    // (pruneMarkStore only removes absent keys).
     pruneMarkStore(occs);
 
     // Keep the app-wide options WS pool subscribed to exactly the active set —
@@ -389,7 +493,9 @@ export async function runZeroDteMarkTick(deps?: {
     // Ledger sync FROM THE SAME STORE (B-9 structural rule): latch peak/trough,
     // derive status, persist status flips immediately + heartbeat the rest. The
     // DB write itself is the same GREATEST/LEAST latch scan.ts's cron sync uses,
-    // so concurrent writers can only widen, never fight.
+    // so concurrent writers can only widen, never fight. ENTERED plays ONLY —
+    // `setupPlays` (watch-only quotes) are deliberately excluded: a watch setup gets
+    // a quote/greeks but NEVER a ledger row, status, persist, exit eval, or latch.
     const persist = deps?.persist ?? (dbConfigured() ? updateZeroDteLiveState : null);
     if (!deps?.skipPersist && persist) {
       const nowEtMinutes =
@@ -400,7 +506,7 @@ export async function runZeroDteMarkTick(deps?: {
         })();
       const rowsByKey = deps?.rowsByKey ?? activeRowsByKey;
       const evalExit = deps?.evaluateExit ?? evaluateLedgerRowExit;
-      for (const play of plays) {
+      for (const play of entered) {
         const key = `${play.session_date}:${play.ticker}`;
         const m = markStore.get(play.occ);
         // LATCH mark (peak/trough + the plan hard-stop): tolerates up to
@@ -562,14 +668,23 @@ export async function getZeroDteLiveMarksFrame(): Promise<{ json: string; conten
   if (payloadMemo && now - payloadMemo.builtAt <= PAYLOAD_MEMO_MS) {
     return { json: payloadMemo.json, contentKey: payloadMemo.contentKey };
   }
-  const plays = await getActivePlays(now);
   const sessionDate = todayEt();
+  // Entered ledger plays (priority, latched status/persist) + the watch-only board
+  // setup contracts (quote-only). Same merge the poller quotes, so a setup's OCC is in
+  // the payload iff the poller quoted it. quote_only rows skip the latched-status
+  // lookup (they have no latch) and carry entry_premium:null → live_pnl_pct:null.
+  const enteredRaw = await getActivePlays(now);
+  const { enteredPlays: entered, setupPlays } = mergeTrackedContracts(
+    enteredRaw,
+    getZeroDteSetupQuotes(),
+    sessionDate
+  );
   const payload = buildZeroDteLiveMarksPayloadFrom(
-    plays,
+    [...entered, ...setupPlays],
     now,
     sessionDate,
     getZeroDteLiveMark,
-    (p) => latchMemo.get(`${sessionDate}:${p.ticker}`)?.status ?? null
+    (p) => (p.quote_only ? null : latchMemo.get(`${sessionDate}:${p.ticker}`)?.status ?? null)
   );
   const json = JSON.stringify(payload);
   const contentKey = zeroDteMarksContentKey(payload);
@@ -592,6 +707,7 @@ export function _resetZeroDteLiveMarksForTest(): void {
   latchMemo.clear();
   persistMemo.clear();
   subscribedOccs = new Set();
+  boardSetupQuotes = [];
   activeCache = null;
   activeRowsByKey = new Map();
   activeInflight = null;
