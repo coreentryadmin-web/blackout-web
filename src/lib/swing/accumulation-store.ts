@@ -5,8 +5,22 @@
 // built to cure — a lone print looks identical to a three-day build. This store gives whole-market swing
 // discovery a cross-session memory: every scan accretes ONE observation per (ticker, direction) into
 // `swing_candidate_accumulation` (PR-10), and a candidate is only promotable to the WATCH rail once its
-// thesis has PERSISTED across ≥2 DISTINCT session days — never on a single sighting. That is the whole
-// point of the pre-commit ledger: separate "showed up once" from "keeps showing up."
+// thesis has PERSISTED enough — never on a single sighting. That is the whole point of the pre-commit
+// ledger: separate "showed up once" from "keeps showing up."
+//
+// ARCHETYPE-AWARE PERSISTENCE (operator critique #3): the gate is NO LONGER uniform. A "≥2 distinct
+// sessions" bar is right for theses that BUILD across days (flow accumulation, pullback continuation,
+// sector rotation, breakout, mean-reversion) but too restrictive for EVENT/IMMEDIATE setups
+// (event-driven catalysts, post-earnings drift, freshly-triggered failed-breakdowns) that are actionable
+// the session they fire. For those, the 2nd-SESSION requirement is replaced by a 2nd-INDEPENDENT-SIGNAL
+// requirement (corroboration) — the per-archetype policy lives in taxonomy.ts (`ARCHETYPE_PERSISTENCE`).
+//
+// ANTI-LONE-PRINT INVARIANT (do NOT weaken): corroboration is NOT "1 print is enough." An event
+// archetype still needs MORE than a single raw sighting — it needs ≥2 INDEPENDENT signals (e.g. a flow
+// print AND a structure/catalyst signal, i.e. ≥2 distinct signal kinds, proxied by `phases_seen`), or a
+// 2nd session. A lone print (one observation, one signal kind, one session) NEVER promotes for ANY
+// archetype. Corroboration swaps "wait a 2nd session" for "prove it twice, independently" — same anti-
+// amnesia guarantee, just satisfiable within one session for setups that can't afford to wait a day.
 //
 // DB accessors are INJECTED (SwingAccumAccessors) — this module is the thin policy layer over the PR-10
 // accessors (`upsertSwingAccum`/`fetchAccumulating`/`markAccumPromoted`/`fadeStaleAccum`), so the
@@ -18,10 +32,14 @@
 
 import type { PlayDirection } from "../horizon-fanout";
 import type { SwingAccumRow } from "../db";
+import type { SwingArchetype } from "./taxonomy";
+import { persistenceRuleFor } from "./taxonomy";
 
-/** Distinct session days a candidate must persist before it can be promoted to the WATCH rail. Two is the
- *  minimum that distinguishes a real multi-session build from a one-off sighting (a single scan can only
- *  ever record one distinct day). Provisional — never a graduated edge, just the persistence floor. */
+/** Distinct session days a CROSS-SESSION candidate (or an unclassified name) must persist before it can be
+ *  promoted to the WATCH rail. Two is the minimum that distinguishes a real multi-session build from a
+ *  one-off sighting (a single scan can only ever record one distinct day). Event/immediate archetypes use
+ *  a lower floor + corroboration instead — see `ARCHETYPE_PERSISTENCE` in taxonomy.ts and the header.
+ *  Provisional — never a graduated edge, just the persistence floor. */
 export const MIN_PERSISTENCE_SESSIONS = 2;
 
 /** The PR-10 db.ts accessor surface this store drives. Injected so persistence policy is testable without a
@@ -64,17 +82,69 @@ const toStoreDir = (d: PlayDirection): "long" | "short" => (d === "LONG" ? "long
 /** Table direction → PlayDirection. Exported so the discovery shell can key its dossier map by it. */
 export const fromStoreDir = (d: "long" | "short"): PlayDirection => (d === "long" ? "LONG" : "SHORT");
 
+/** The row fields the persistence predicate reads. `distinct_session_days` is always present;
+ *  `observation_count`/`phases_seen` are optional so a bare `{ distinct_session_days }` (the
+ *  cross-session path never needs corroboration signals) still typechecks at call sites/tests. */
+type PersistenceRowFields = Pick<SwingAccumRow, "distinct_session_days"> &
+  Partial<Pick<SwingAccumRow, "observation_count" | "phases_seen">>;
+
 /**
- * PURE persistence predicate: has this candidate persisted across enough distinct session days to promote?
- * A single scan can only ever bump `distinct_session_days` to 1 (the upsert only increments it when the
- * session day actually CHANGES), so a first-sighting candidate is structurally below the bar until a LATER
- * session records a second distinct day. This is the gate that keeps a lone print off the WATCH rail.
+ * Corroboration = "proved twice, independently" — the substitute for a 2nd session that event/immediate
+ * archetypes rely on. It is TRUE when the candidate carries ≥2 INDEPENDENT signals:
+ *   - it has been seen across ≥2 distinct sessions (each session is an independent observation), OR
+ *   - it showed up under ≥2 distinct signal kinds — proxied by `phases_seen`, the deduped set of
+ *     discovery signals/phases the name surfaced under (a flow print AND a structure/catalyst signal
+ *     land as two distinct entries). One kind = one signal = NOT corroborated.
+ *
+ * DELIBERATELY does NOT count raw `observation_count`: two prints of the SAME signal kind are still one
+ * kind of evidence repeated, not two independent signals — that's exactly the lone-print class this gate
+ * exists to reject. Distinct KINDS (or a 2nd session) is the bar.
+ */
+function hasCorroboration(row: PersistenceRowFields): boolean {
+  const distinctSignalKinds = new Set(row.phases_seen ?? []).size;
+  return (Number.isFinite(row.distinct_session_days) && row.distinct_session_days >= 2) ||
+    distinctSignalKinds >= 2;
+}
+
+/**
+ * PURE persistence predicate: has this candidate persisted ENOUGH to promote, given its archetype?
+ *
+ * Cross-session archetypes (and the unclassified default) require ≥2 DISTINCT session days — a single
+ * scan can only ever bump `distinct_session_days` to 1 (the PR-10 upsert increments it only when the
+ * session day actually CHANGES), so a first-sighting candidate is structurally below the bar until a
+ * LATER session records a second distinct day.
+ *
+ * Event/immediate archetypes (EVENT_DRIVEN, POST_EARNINGS_DRIFT, FAILED_BREAKDOWN) drop the floor to 1
+ * distinct session BUT require corroboration — a 2nd INDEPENDENT signal in the same session. This lets a
+ * post-earnings drift / catalyst / fresh reclaim promote the day it fires WITHOUT waiting for tomorrow's
+ * scan, while still refusing a lone print.
+ *
+ * ANTI-LONE-PRINT INVARIANT: no archetype ever promotes on a single raw sighting. For cross-session
+ * archetypes the 2-session floor enforces it; for event archetypes `requiresCorroboration` enforces it
+ * (a lone print has 1 signal kind + 1 session → not corroborated → not promoted). See the header.
+ *
+ * `archetype` is passed by the caller (the accumulation row itself carries no archetype column). Omitting
+ * it — or passing null — selects the conservative cross-session default, i.e. the pre-critique-#3 gate.
  */
 export function meetsPersistence(
-  row: Pick<SwingAccumRow, "distinct_session_days">,
-  minSessions: number = MIN_PERSISTENCE_SESSIONS,
+  row: PersistenceRowFields,
+  archetype: SwingArchetype | null = null,
 ): boolean {
-  return Number.isFinite(row.distinct_session_days) && row.distinct_session_days >= minSessions;
+  // Non-finite distinct-session count is never a truthy accident.
+  if (!Number.isFinite(row.distinct_session_days)) return false;
+
+  const rule = persistenceRuleFor(archetype);
+
+  // Cross-session archetypes: the classic gate — a real multi-session build (≥ minDistinctSessions),
+  // never a first sighting. Corroboration is irrelevant here; the distinct-session count IS the proof.
+  if (!rule.requiresCorroboration) {
+    return row.distinct_session_days >= rule.minDistinctSessions;
+  }
+
+  // Event/immediate archetypes: promote once the (lower) session floor is met AND the thesis is
+  // independently corroborated. Corroboration REPLACES the missing 2nd session — it never lowers the
+  // bar to a single lone print (hasCorroboration rejects one-kind-one-session).
+  return row.distinct_session_days >= rule.minDistinctSessions && hasCorroboration(row);
 }
 
 /** Record one sighting for a directional swing candidate (accretes an observation; +1 distinct day only when
@@ -102,19 +172,41 @@ const mapWatchRow = (r: SwingAccumRow): SwingWatchCandidate => ({
   lastSeenAt: r.last_seen_at,
 });
 
+/** The lowest distinct-session floor any archetype can promote at (event/immediate archetypes = 1).
+ *  Used as the DB pre-fetch floor when a per-candidate archetype resolver is supplied, so a 1-session
+ *  event candidate isn't excluded by the scalar DB filter before its per-archetype rule is applied. */
+export const MIN_EVENT_PERSISTENCE_SESSIONS = 1;
+
 /**
  * Fetch the candidates eligible for the WATCH rail — accumulating (not yet promoted) AND past the
- * persistence bar. The DB accessor already filters `distinct_session_days >= minSessions`; `meetsPersistence`
- * re-applies the same predicate defensively so a caller passing a laxer accessor default can't leak a
- * one-session candidate onto the rail.
+ * persistence bar. `meetsPersistence` is the authority on the bar (per-archetype); the DB accessor's
+ * `distinct_session_days >= floor` filter is only a coarse pre-narrow.
+ *
+ * Pass `archetypeOf` to make promotion ARCHETYPE-AWARE: event/immediate archetypes may clear on a single
+ * corroborated session, so we fetch at the global minimum floor (1) and let `meetsPersistence` apply the
+ * real per-archetype rule — otherwise the scalar DB filter would drop those candidates before we could
+ * classify them. WITHOUT a resolver the behavior is the conservative cross-session default (≥2 distinct
+ * sessions for every candidate): `meetsPersistence(r, null)` re-applies the 2-session floor defensively so
+ * a laxer accessor default can't leak a one-session candidate onto the rail.
  */
 export async function fetchWatchEligible(
   accessors: SwingAccumAccessors,
   minSessions: number = MIN_PERSISTENCE_SESSIONS,
   limit = 500,
+  archetypeOf?: (c: { ticker: string; direction: PlayDirection }) => SwingArchetype | null,
 ): Promise<SwingWatchCandidate[]> {
-  const rows = await accessors.fetchAccumulating(minSessions, limit);
-  return rows.filter((r) => meetsPersistence(r, minSessions)).map(mapWatchRow);
+  const fetchFloor = archetypeOf ? MIN_EVENT_PERSISTENCE_SESSIONS : minSessions;
+  const rows = await accessors.fetchAccumulating(fetchFloor, limit);
+  return rows
+    .filter((r) =>
+      meetsPersistence(
+        r,
+        archetypeOf
+          ? archetypeOf({ ticker: r.ticker.toUpperCase(), direction: fromStoreDir(r.direction) })
+          : null,
+      ),
+    )
+    .map(mapWatchRow);
 }
 
 /** Link a candidate to the position it promoted into (stops it counting as a fresh candidate). PR-13+ wires

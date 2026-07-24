@@ -57,13 +57,61 @@ function makeFakeAccessors() {
   return { accessors, rows };
 }
 
-test("meetsPersistence: 1 session below the bar, 2 clears it", () => {
+test("meetsPersistence: default (cross-session) — 1 session below the bar, 2 clears it", () => {
   assert.equal(MIN_PERSISTENCE_SESSIONS, 2);
   assert.equal(meetsPersistence({ distinct_session_days: 1 }), false);
   assert.equal(meetsPersistence({ distinct_session_days: 2 }), true);
   assert.equal(meetsPersistence({ distinct_session_days: 3 }), true);
   // Non-finite → false (honest, never a truthy accident).
   assert.equal(meetsPersistence({ distinct_session_days: NaN as unknown as number }), false);
+});
+
+test("meetsPersistence: cross-session archetypes still require 2 distinct sessions (critique #3)", () => {
+  // FLOW_ACCUMULATION with a single (even multi-print) session is NOT promotable — a build spans days.
+  assert.equal(
+    meetsPersistence({ distinct_session_days: 1, observation_count: 3, phases_seen: ["POST_CLOSE", "MIDDAY"] }, "FLOW_ACCUMULATION"),
+    false,
+    "one session never clears a cross-session archetype, even with multiple prints",
+  );
+  assert.equal(
+    meetsPersistence({ distinct_session_days: 2, observation_count: 2, phases_seen: ["POST_CLOSE"] }, "FLOW_ACCUMULATION"),
+    true,
+    "two distinct sessions clears the cross-session gate",
+  );
+  // BREAKOUT/PULLBACK/MEAN_REVERSION/SECTOR_ROTATION behave the same (all cross-session).
+  for (const a of ["BREAKOUT", "PULLBACK_CONTINUATION", "MEAN_REVERSION", "SECTOR_ROTATION"] as const) {
+    assert.equal(meetsPersistence({ distinct_session_days: 1, phases_seen: ["A", "B"] }, a), false, `${a} needs 2 sessions`);
+    assert.equal(meetsPersistence({ distinct_session_days: 2, phases_seen: ["A"] }, a), true, `${a} clears at 2 sessions`);
+  }
+});
+
+test("meetsPersistence: event archetypes clear on 1 session + corroboration, NOT on a lone print (anti-lone-print)", () => {
+  for (const a of ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT", "FAILED_BREAKDOWN"] as const) {
+    // 1 session + 2 distinct signal kinds (a flow print AND a structure/catalyst signal) → corroborated → promoted.
+    assert.equal(
+      meetsPersistence({ distinct_session_days: 1, observation_count: 2, phases_seen: ["FLOW", "STRUCTURE"] }, a),
+      true,
+      `${a}: 1 session + 2 distinct signal kinds promotes`,
+    );
+    // 1 session + a single lone print (one signal kind, one observation) → NOT corroborated → NOT promoted.
+    assert.equal(
+      meetsPersistence({ distinct_session_days: 1, observation_count: 1, phases_seen: ["FLOW"] }, a),
+      false,
+      `${a}: a lone print never promotes (anti-lone-print invariant holds)`,
+    );
+    // A 2nd session is itself independent corroboration → promoted even with a single signal kind.
+    assert.equal(
+      meetsPersistence({ distinct_session_days: 2, observation_count: 2, phases_seen: ["FLOW"] }, a),
+      true,
+      `${a}: a 2nd session corroborates on its own`,
+    );
+    // Two prints of the SAME kind in one session are NOT two independent signals → still a lone-print class.
+    assert.equal(
+      meetsPersistence({ distinct_session_days: 1, observation_count: 5, phases_seen: ["FLOW"] }, a),
+      false,
+      `${a}: repeated same-kind prints are not corroboration`,
+    );
+  }
 });
 
 test("fromStoreDir converts lowercase table direction back to PlayDirection", () => {
@@ -107,6 +155,23 @@ test("a 1-session candidate stays below persistence; a 2-distinct-session candid
   assert.equal(eligible[0].distinctSessionDays, 2);
   assert.equal(eligible[0].observationCount, 3); // 3 sightings, only 2 distinct days
   assert.deepEqual([...eligible[0].phasesSeen].sort(), ["MIDDAY", "POST_CLOSE"]);
+});
+
+test("fetchWatchEligible archetypeOf: a corroborated 1-session event candidate surfaces; a lone print does not", async () => {
+  const { accessors } = makeFakeAccessors();
+
+  // EVENT name: 1 session, two DISTINCT signal kinds (corroborated).
+  await observeSwingCandidate(accessors, { ticker: "MRNA", direction: "LONG", sessionDay: "2026-07-24", phase: "FLOW" });
+  await observeSwingCandidate(accessors, { ticker: "MRNA", direction: "LONG", sessionDay: "2026-07-24", phase: "CATALYST" });
+  // EVENT name: 1 session, a single lone print (no corroboration).
+  await observeSwingCandidate(accessors, { ticker: "PLTR", direction: "LONG", sessionDay: "2026-07-24", phase: "FLOW" });
+
+  // Without a resolver (conservative default) neither clears — both are single-session.
+  assert.equal((await fetchWatchEligible(accessors)).length, 0, "default gate keeps both off (1 session)");
+
+  // With an event-classifying resolver: the corroborated one promotes, the lone print does not.
+  const eligible = await fetchWatchEligible(accessors, MIN_PERSISTENCE_SESSIONS, 500, () => "EVENT_DRIVEN");
+  assert.deepEqual(eligible.map((c) => c.ticker).sort(), ["MRNA"]);
 });
 
 test("promoted candidates drop off the WATCH-eligible rail", async () => {
