@@ -5,6 +5,32 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-24 — [firewall RTH replay] Phase-0 fail-closed firewall would have HELD both of today's committed 0DTE plays — both losers (−54.9% avoided) — VALIDATED
+
+**Harness.** `scripts/audit/firewall-rth-replay.mjs` — replays a session's live 0DTE board OLD (guards off)
+vs NEW (Phase-0 firewall on, PR #1078) and diffs. Read-only vs prod (one temp Clerk user, deleted). Flow via
+UW REST with the exact `scanZeroDteBoard` params; OTM-cap toggle applied as the guard's own per-ticker
+post-filter (cross-checked byte-exact vs a real `cap=12` child run); G4/G7 toggled in real env-toggled child
+processes; Cortex veto-blind via `assessCortexVerdict(v,{failClosedOnVetoBlind})`.
+
+**Result 2026-07-24 (2 real commits, both held, both losers):**
+- **MU long 980c** — committed with `entry_context.vix_open=null` → G-4 `vix_unavailable` HOLD (non-index) → actual **−50%** (LOSER AVOIDED).
+- **SPXW long 7425c** — committed cortex `PASS` but **both** veto sources (gex-walls+flow-quality) absent → `veto_blind` HOLD → actual **−4.92%** (LOSER AVOIDED). VIX was fine (18.96).
+- Net: **2 losers avoided / 0 winners forgone; −54.9% combined play P&L avoided** (unsized %). Each play caught by a *different* guard (not one over-broad rule). Far-OTM cap + earnings-past-top-5 were inert today (correct — tail insurance).
+- Part D proves all three code-path guards fire on injected outages (VETO_BLIND vs PASS; `vix_unavailable`/`macro_unavailable` BLOCKED vs COMMIT).
+
+**Honest tradeoff on the record:** the firewall EMPTIED the board today (held both commits) — correct because both
+lost, but a veto-blind / VIX-null hold could forgo a winner on another day; every guard has an env kill-switch.
+Also note today's provider reads were flaky at commit time (VIX null, both veto sources absent) — exactly the
+fail-OPEN condition the firewall exists for.
+
+**[SEV-4, follow-up] `macroUnavailable` (and the fail-open flags generally) are NOT persisted on the ledger.**
+`macroUnavailable`/`vixUnavailable`/veto-blind are transient scan-time gate inputs; only `vix_open` and the cortex
+absent-list survive on `entry_context`, so a committed play's macro-at-commit state is UNKNOWABLE post-hoc (the
+replay reports it as such, never inferred). **Fix (future):** persist the fail-closed gate signals on the ledger
+row so this replay — and per-guard calibration — is exact. Aligns with the design's "persist gate-verdict / grade
+the skips" recommendation (`0DTE-UNIFICATION-DESIGN.md`). Status: OPEN (tracked; low priority).
+
 ## 2026-07-24 — [SEV-3, member-facing display] 0DTE board setup SCORES flip-flopped between two values across a member's poll (board assembled per-replica, no shared snapshot) — FIXED
 
 **Symptom (live evidence).** A 4-round authenticated poll of `/api/market/zerodte/board` ~12s apart
