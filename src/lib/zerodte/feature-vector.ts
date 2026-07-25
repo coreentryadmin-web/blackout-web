@@ -29,7 +29,7 @@
 
 import type { FlowQuality } from "./flow-quality";
 import type { MarketRegime } from "./regime";
-import { discoveryOriginLabel, type DiscoveryOrigin } from "./board";
+import { discoveryOriginLabel, type ContractHorizon, type DiscoveryOrigin } from "./board";
 
 /** Bump when the vector's shape changes so old graded rows stay interpretable. */
 export const FEATURE_VECTOR_VERSION = 1;
@@ -74,6 +74,12 @@ export interface SetupFeatureInputs {
    *  setup. Flattened to a canonical label (FLOW / BREAKOUT / FLOW+BREAKOUT) in the vector so the
    *  intelligence layer can slice/one-hot by origin. Absent → persists as null (never fabricated). */
   discoveryOrigin?: DiscoveryOrigin[] | null;
+  /** Contract HORIZON at commit (PR-1 horizon integrity): ZERO_DTE / ONE_DTE (a WEEKLY_FALLBACK is
+   *  excluded before commit, so it never reaches the feature store — keeping the 0DTE population
+   *  structurally homogeneous for the per-horizon calibration versioning later). Absent → null. */
+  contractHorizon?: ContractHorizon | null;
+  /** The REAL dte of the selected contract at commit (0 or 1 for a committed row). Absent → null. */
+  actualDteAtCommit?: number | null;
 }
 
 /** The flat, versioned feature row. Numeric where possible; small categorical strings otherwise. */
@@ -123,6 +129,11 @@ export interface SetupFeatureVector {
   confluence: string | null;
   /** Canonical discovery-origin label (FLOW / BREAKOUT / FLOW+BREAKOUT); null when not threaded. */
   discovery_origin: string | null;
+  /** Contract horizon at commit (ZERO_DTE / ONE_DTE). null when not threaded. Persisted so the
+   *  feature store can prove/slice its own same-day homogeneity (only these two values ever appear). */
+  contract_horizon: string | null;
+  /** Real selected-contract dte at commit (0 or 1 for a committed row). null when not threaded. */
+  actual_dte_at_commit: number | null;
 }
 
 const numOrNull = (n: number | null | undefined): number | null =>
@@ -180,6 +191,10 @@ export function buildSetupFeatureVector(input: SetupFeatureInputs): SetupFeature
       input.discoveryOrigin && input.discoveryOrigin.length > 0
         ? discoveryOriginLabel(input.discoveryOrigin)
         : null,
+    // Contract horizon at commit (PR-1). Only ZERO_DTE/ONE_DTE ever appear (weekly fallbacks are
+    // excluded before commit) — null (not a fabricated value) when the horizon wasn't threaded.
+    contract_horizon: input.contractHorizon ?? null,
+    actual_dte_at_commit: numOrNull(input.actualDteAtCommit),
   };
 }
 

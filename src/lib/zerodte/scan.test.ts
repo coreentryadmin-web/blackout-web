@@ -493,6 +493,10 @@ test("persistZeroDteScan: a fresh COMMIT's upserted row pins entry_context.tier 
     direction: "long" as const,
     top_strike: 145,
     expiry: "2026-07-06",
+    // Same-day horizon (PR-1) — a 0DTE contract commits; the persist guard drops anything else.
+    contract_horizon: "ZERO_DTE" as const,
+    actual_dte_at_commit: 0,
+    grading_policy: "same_day_1530_close",
     score: 78, // prime band (75-84) — the best measured band
     dossier_score: null,
     conviction: null,
@@ -569,6 +573,23 @@ test("persistZeroDteScan: a fresh COMMIT's upserted row pins entry_context.tier 
   };
   assert.equal(ctx.score, 78);
   assert.equal(ctx.vix_open, 16.1);
+  // HORIZON (PR-1): the same-day horizon is pinned to entry_context AND the feature vector so the
+  // graded ledger can assert same-day before applying the 15:30 time-stop, and the feature store
+  // stays structurally homogeneous (only ZERO_DTE/ONE_DTE ever land).
+  const hctx = state.upsertRows[0]!.entry_context as {
+    contract_horizon?: string;
+    actual_dte_at_commit?: number;
+    grading_policy?: string;
+  };
+  assert.equal(hctx.contract_horizon, "ZERO_DTE");
+  assert.equal(hctx.actual_dte_at_commit, 0);
+  assert.equal(hctx.grading_policy, "same_day_1530_close");
+  const fv = state.upsertRows[0]!.feature_vector as {
+    contract_horizon?: string;
+    actual_dte_at_commit?: number;
+  };
+  assert.equal(fv.contract_horizon, "ZERO_DTE");
+  assert.equal(fv.actual_dte_at_commit, 0);
   // Prime score (+2) + calm VIX (+2) + clean Cortex (+2) ≥ the A bar even with the
   // early-window penalty (committed_at_et is stamped from the REAL clock, so the
   // F-4 factor's presence depends on when this test runs — the tier does not).
@@ -578,6 +599,28 @@ test("persistZeroDteScan: a fresh COMMIT's upserted row pins entry_context.tier 
   for (const expected of ["Prime score band", "VIX calm band", "Clean Cortex support"]) {
     assert.ok(labels.includes(expected), `factor "${expected}" must argue the tier (got: ${labels.join(", ")})`);
   }
+});
+
+// ── HORIZON INTEGRITY fail-closed commit guard (PR-1) ──────────────────────────────
+test("persistZeroDteScan DROPS a WEEKLY_FALLBACK (dte≥2) candidate — never committed, never graded same-day", async () => {
+  resetState();
+  // A candidate whose selected contract is a 5-DTE weekly. Even if it carried a COMMIT gate verdict,
+  // the horizon guard must drop it BEFORE any ledger write so a 5-DTE contract can't be graded with
+  // the 0DTE 15:30 time-stop (invalid outcome + polluted calibration). The guard returns before it
+  // reads any other field, so a minimal literal exercises exactly the drop path.
+  const weekly = {
+    ticker: "NVDA",
+    direction: "long" as const,
+    contract_horizon: "WEEKLY_FALLBACK" as const,
+    actual_dte_at_commit: 5,
+    grading_policy: "excluded_non_same_day",
+    gate: { verdict: "COMMIT" as const, blocks: [], calibration: {} },
+    play_type: "DIRECTIONAL" as const,
+  };
+  const { persistZeroDteScan } = await mod();
+  const logged = await persistZeroDteScan([weekly as never]);
+  assert.equal(logged, 0, "a weekly-fallback candidate must not be committed");
+  assert.equal(state.upsertRows.length, 0, "no ledger row is written for an excluded weekly");
 });
 
 // ── AUDIT SEV-3 realized-loss halt — the ENFORCEMENT WIRING (scan.ts → gate stack) ──

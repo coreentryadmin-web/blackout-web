@@ -198,6 +198,51 @@ export type DiscoveryOrigin = "FLOW" | "BREAKOUT" | "PIN";
 // from discovery all the way to the graded ledger.
 export type PlayType = "DIRECTIONAL" | "CONDOR";
 
+// ── Contract horizon (0DTE hardening PR-1: HORIZON INTEGRITY) ───────────────────────
+// docs/audit/0DTE-DESIGN-DECISIONS.md Q2. A setup's HORIZON is derived from the REAL
+// dte of the contract that was actually selected — not from the intended board scope.
+// The 0DTE board grades every committed row with the same-day 15:30 time-stop (plan.ts /
+// condor.ts); applying that to a 2–7DTE weekly (different theta/gamma/overnight risk +
+// grading horizon) produces invalid outcomes and pollutes calibration. So the horizon
+// is stamped at every construction site and carried to the graded ledger:
+//   0  → ZERO_DTE          (same-day; graded 15:30 close)
+//   1  → ONE_DTE           (today+1; still the SETUP_MAX_DTE=1 same-day-discipline scope)
+//   ≥2 → WEEKLY_FALLBACK   (EXCLUDED from the 0DTE board — never committed, never graded)
+// Only ZERO_DTE/ONE_DTE ever commit; a WEEKLY_FALLBACK is dropped (the contract pickers no
+// longer reach past dte 1, and persist fails closed on any that somehow slips through). This
+// keeps the 0DTE calibration/feature population structurally HOMOGENEOUS (same grading
+// horizon for every row) — the precondition the later per-horizon versioning (Q12) needs.
+export type ContractHorizon = "ZERO_DTE" | "ONE_DTE" | "WEEKLY_FALLBACK";
+
+/** Grading policy for the two committed same-day horizons — the ONLY policy that ever reaches
+ *  the ledger (a WEEKLY_FALLBACK is excluded before commit, so no other policy is persisted). */
+export const SAME_DAY_GRADING_POLICY = "same_day_1530_close";
+
+/** Derive the horizon from the SELECTED contract's real dte (0→ZERO_DTE, 1→ONE_DTE, ≥2→
+ *  WEEKLY_FALLBACK). Fail-closed: a non-finite/negative dte is treated as WEEKLY_FALLBACK so an
+ *  unknown horizon can never be mistaken for same-day and graded with the 15:30 time-stop. Pure. */
+export function deriveContractHorizon(dte: number): ContractHorizon {
+  if (Number.isFinite(dte)) {
+    if (dte === 0) return "ZERO_DTE";
+    if (dte === 1) return "ONE_DTE";
+  }
+  return "WEEKLY_FALLBACK";
+}
+
+/** True for a committed same-day horizon (ZERO_DTE/ONE_DTE) the 0DTE 15:30 grader legitimately
+ *  applies to. Used both at commit (drop anything else) and at grade time (assert before the
+ *  same-day time-stop runs) so a stray dte≥2 can never be graded as same-day. Pure. */
+export function isSameDayHorizon(h: ContractHorizon): boolean {
+  return h === "ZERO_DTE" || h === "ONE_DTE";
+}
+
+/** The grading_policy string a setup carries for its horizon: the same-day 15:30 policy for a
+ *  committed ZERO/ONE_DTE, or an explicit "excluded_non_same_day" marker for a WEEKLY_FALLBACK
+ *  (which never commits — the marker only surfaces if such a setup is inspected pre-drop). Pure. */
+export function gradingPolicyForHorizon(h: ContractHorizon): string {
+  return isSameDayHorizon(h) ? SAME_DAY_GRADING_POLICY : "excluded_non_same_day";
+}
+
 /** Canonical order for a stable, dedup-friendly origin set/label (FLOW < BREAKOUT < PIN). */
 export const DISCOVERY_ORIGIN_ORDER: readonly DiscoveryOrigin[] = ["FLOW", "BREAKOUT", "PIN"];
 
@@ -238,6 +283,18 @@ export type ZeroDteSetup = {
   top_strike: number;
   expiry: string;
   dte: number;
+  /** Contract HORIZON (PR-1 horizon integrity) derived from the REAL selected-contract dte:
+   *  0→ZERO_DTE, 1→ONE_DTE, ≥2→WEEKLY_FALLBACK (deriveContractHorizon). Stamped at every
+   *  construction site and persisted to the ledger so downstream reads the HORIZON, not just the
+   *  numeric dte. Only ZERO_DTE/ONE_DTE ever commit; a WEEKLY_FALLBACK is excluded pre-commit. */
+  contract_horizon: ContractHorizon;
+  /** The REAL dte of the selected contract at commit — equal to `dte` today, but named to make the
+   *  "which horizon was this actually graded on" question answerable at the ledger without inferring
+   *  it back from expiry vs session date. */
+  actual_dte_at_commit: number;
+  /** Grading policy this setup is graded under. Committed rows are always the same-day 15:30 policy
+   *  (SAME_DAY_GRADING_POLICY); the excluded weeklies never reach commit. */
+  grading_policy: string;
   net_premium: number;
   gross_premium: number;
   prints: number;
@@ -760,6 +817,13 @@ export function deriveZeroDteSetups(
       top_strike_avg_fill: avgFill,
       expiry: topExpiry,
       dte: agg.minDte,
+      // Flow candidates are ZERO_DTE/ONE_DTE BY CONSTRUCTION — deriveZeroDteSetups already gates
+      // every print to dte ≤ SETUP_MAX_DTE (=1), so agg.minDte is 0 or 1 and the horizon is
+      // always same-day. Stamped from the real dte for uniformity with the breakout/pin/condor
+      // sites (deriveContractHorizon would return WEEKLY_FALLBACK only for an impossible dte≥2 here).
+      contract_horizon: deriveContractHorizon(agg.minDte),
+      actual_dte_at_commit: agg.minDte,
+      grading_policy: gradingPolicyForHorizon(deriveContractHorizon(agg.minDte)),
       net_premium: Math.round(agg.callAggr - agg.putAggr),
       gross_premium: agg.gross,
       prints: agg.prints,

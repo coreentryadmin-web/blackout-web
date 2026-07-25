@@ -18,7 +18,9 @@
 
 import type { BreakoutMover } from "@/features/nighthawk/lib/candidates";
 import {
+  deriveContractHorizon,
   enrichSetup,
+  gradingPolicyForHorizon,
   unionDiscoveryOrigins,
   type EnrichedZeroDteSetup,
   type ZeroDteSetup,
@@ -115,17 +117,21 @@ function callHasLiquidity(row: BreakoutChainRow): boolean {
 }
 
 /**
- * Pick the ATM CALL contract on the nearest usable expiry ≥ today. 0DTE (dte 0) is preferred;
- * when today isn't an expiry the nearest later expiry within `maxDte` is the weekly fallback.
- * ATM = strike closest to spot among liquid call rows on the chosen expiry (nearest-expiry wins
- * over ATM-ness, then closest-to-spot, then lower strike — deterministic). Returns null when no
- * liquid call sits inside the window (→ no contract → the shared plan gate drops the candidate).
+ * Pick the ATM CALL contract on the nearest usable expiry ≥ today, WITHIN the 0DTE horizon.
+ * 0DTE (dte 0) is preferred, then dte 1 (ONE_DTE). HORIZON INTEGRITY (PR-1, design Q2): `maxDte`
+ * is clamped to 1 — the picker DELIBERATELY no longer reaches a 2–7DTE weekly. A breakout mover
+ * whose only liquid call is a weekly returns null here → the candidate is DROPPED (never committed
+ * to the 0DTE ledger, never graded with the same-day 15:30 time-stop that would be structurally
+ * wrong for a multi-day weekly). Re-homing weekly fallbacks to a TACTICAL_SWING lane is a later
+ * effort; for now they are cleanly excluded. ATM = strike closest to spot among liquid call rows on
+ * the chosen expiry (nearest-expiry wins over ATM-ness, then closest-to-spot, then lower strike —
+ * deterministic). Returns null when no liquid same-day/1DTE call exists (→ no contract → dropped).
  */
 export function pickAtmZeroDteContract(
   rows: BreakoutChainRow[],
   spot: number,
   todayYmd: string,
-  maxDte = 7
+  maxDte = 1
 ): PickedBreakoutContract | null {
   if (!(spot > 0) || rows.length === 0) return null;
   type Cand = { strike: number; expiry: string; dte: number; dist: number };
@@ -137,8 +143,8 @@ export function pickAtmZeroDteContract(
     cands.push({ strike: row.strike, expiry: row.expiry.slice(0, 10), dte, dist: Math.abs(row.strike - spot) });
   }
   if (cands.length === 0) return null;
-  // Nearest expiry first (0DTE preferred, then the weekly fallback), then closest-to-spot, then
-  // the lower strike — the same deterministic tie-break shape pickChainContract uses.
+  // Nearest expiry first (0DTE preferred, then 1DTE within the clamped horizon), then closest-to-
+  // spot, then the lower strike — the same deterministic tie-break shape pickChainContract uses.
   cands.sort((a, b) => a.dte - b.dte || a.dist - b.dist || a.strike - b.strike);
   const best = cands[0]!;
   return { strike: best.strike, expiry: best.expiry, dte: best.dte };
@@ -177,6 +183,12 @@ export function buildBreakoutSetup(input: {
     top_strike_avg_fill: null, // no flow fill — attachContractPlans prices off the live mark
     expiry: contract.expiry,
     dte: contract.dte,
+    // HORIZON stamped from the REAL selected-contract dte. The picker is clamped to dte ≤ 1, so a
+    // committed breakout is always ZERO_DTE/ONE_DTE; the derivation still maps a hypothetical dte≥2
+    // to WEEKLY_FALLBACK (the persist-time guard would then drop it) — defense in depth.
+    contract_horizon: deriveContractHorizon(contract.dte),
+    actual_dte_at_commit: contract.dte,
+    grading_policy: gradingPolicyForHorizon(deriveContractHorizon(contract.dte)),
     net_premium: 0, // no directional option premium — this is a price/volume breakout
     gross_premium: 0,
     prints: 0,

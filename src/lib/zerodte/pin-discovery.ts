@@ -73,12 +73,14 @@ function calendarDte(todayYmd: string, expiryYmd: string): number {
 /** Price the four condor legs off the chain: find the nearest usable expiry (0DTE preferred, within
  *  `maxDte`) on which ALL FOUR strikes are listed, and return each leg's live quote. Returns null when
  *  no single expiry lists all four legs — that is "condor geometry/liquidity unavailable", and the
- *  caller falls back to the directional fade. Pure over the chain rows. */
+ *  caller falls back to the directional fade. HORIZON INTEGRITY (PR-1, design Q2): `maxDte` is clamped
+ *  to 1 so a condor is only ever priced on a same-day/1DTE expiry (SPX/NDX condors are cash-settled
+ *  same-day and graded on the session's own minute bars) — never a 2–7DTE weekly. Pure over the rows. */
 function priceCondorLegs(
   rows: PinChainRow[],
   legs: { short_put: number; long_put: number; short_call: number; long_call: number },
   todayYmd: string,
-  maxDte = 7
+  maxDte = 1
 ): { expiry: string; dte: number; quotes: { shortPut: CondorLegQuote; longPut: CondorLegQuote; shortCall: CondorLegQuote; longCall: CondorLegQuote } } | null {
   // Group rows by expiry → strike → row (last write wins; a chain has one row per strike/expiry).
   const byExpiry = new Map<string, Map<number, PinChainRow>>();
@@ -91,7 +93,7 @@ function priceCondorLegs(
   const expiries = Array.from(byExpiry.keys())
     .map((exp) => ({ exp, dte: calendarDte(todayYmd, exp) }))
     .filter((e) => Number.isFinite(e.dte) && e.dte >= 0 && e.dte <= maxDte)
-    .sort((a, b) => a.dte - b.dte); // 0DTE first, then nearest weekly fallback
+    .sort((a, b) => a.dte - b.dte); // 0DTE first, then 1DTE within the clamped same-day horizon
   for (const { exp, dte } of expiries) {
     const m = byExpiry.get(exp)!;
     const sp = m.get(legs.short_put);
