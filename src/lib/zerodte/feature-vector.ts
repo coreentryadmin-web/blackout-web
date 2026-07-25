@@ -80,6 +80,12 @@ export interface SetupFeatureInputs {
   contractHorizon?: ContractHorizon | null;
   /** The REAL dte of the selected contract at commit (0 or 1 for a committed row). Absent → null. */
   actualDteAtCommit?: number | null;
+  /** Frozen strategy config hash at commit (strategy-version.ts, design Q12). Stamped so the feature
+   *  store can partition its own population by strategy version exactly as the calibration analyzer
+   *  does — a scorer/gate/exit/grader change bumps the hash, and old vectors stay in their own cohort
+   *  instead of being blended with plays a changed strategy would have produced differently. Threaded
+   *  from the commit site (scan.ts); absent → null (an honest "unversioned" read, never fabricated). */
+  strategyConfigHash?: string | null;
 }
 
 /** The flat, versioned feature row. Numeric where possible; small categorical strings otherwise. */
@@ -134,6 +140,9 @@ export interface SetupFeatureVector {
   contract_horizon: string | null;
   /** Real selected-contract dte at commit (0 or 1 for a committed row). null when not threaded. */
   actual_dte_at_commit: number | null;
+  /** Frozen strategy config hash at commit (design Q12). null when not threaded → an "unversioned"
+   *  row the calibration analyzer keeps in its own cohort, never blended with the current hash. */
+  strategy_config_hash: string | null;
 }
 
 const numOrNull = (n: number | null | undefined): number | null =>
@@ -195,6 +204,9 @@ export function buildSetupFeatureVector(input: SetupFeatureInputs): SetupFeature
     // excluded before commit) — null (not a fabricated value) when the horizon wasn't threaded.
     contract_horizon: input.contractHorizon ?? null,
     actual_dte_at_commit: numOrNull(input.actualDteAtCommit),
+    // Strategy config hash at commit (design Q12). null (not a fabricated value) when the hash wasn't
+    // threaded — the calibration analyzer cohorts a null-hash row as "unversioned", never as current.
+    strategy_config_hash: input.strategyConfigHash ?? null,
   };
 }
 

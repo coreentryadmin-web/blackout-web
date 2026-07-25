@@ -28,6 +28,7 @@ import { LOW_N_THRESHOLD, isGradedZeroDteRow, isZeroDteWin, scoreForBanding } fr
 import { ZERODTE_SCORE_FLOOR } from "./gates";
 import { TIER_APLUS_UNLOCK, tierFromEntryContext, type ZeroDteTier } from "./tiers";
 import type { SkipCounterfactual } from "./skip-grading";
+import { currentStrategyConfigHash } from "./strategy-version";
 
 /** Methodology label served with every report — the honest-record rule (record.ts):
  *  plan-outcome grades on option premium, never blended with other methodologies. */
@@ -158,8 +159,102 @@ export type CalibrationReport = {
    *  vs hold-to-expiry over the pinned banger grades). Gates when the live managed exit may activate;
    *  insufficient_data until the basis-correct banger ledger accrues n>=10 gradeable rows. Non-gating. */
   scale_out_recommendation: ScaleOutRecommendation;
+  /** Version-cohort summary (design Q12) — which strategy versions the analyzed population spans, so
+   *  the operator can SEE when a scorer/gate/exit/grader change split the ledger. The bands ABOVE are
+   *  computed over the homogeneous cohort (current-hash + legacy rows by default); this reports the
+   *  whole partition, including any different-known-hash rows held apart. */
+  version_cohort: VersionCohortSummary;
   available: boolean;
 };
+
+// ── Strategy-version homogeneity (design Q12 — INTEGRITY) ──────────────────────────
+// Every band/gate/signal above aggregates GRADED plays into evidence. A play graded
+// under an OLD scorer/gate/Cortex/governor/selector/exit/grader is NOT the same
+// experiment as one graded under the current logic — blending two DISTINCT KNOWN
+// versions corrupts the evidence. Each freshly committed row carries a frozen
+// `strategy_config_hash` (scan.ts, from strategy-version.ts).
+//
+// TRANSITION RULE (why legacy rides with current). The whole existing ledger is
+// pre-stamp (null hash) — stamping ships in THIS change. Excluding null-hash rows would
+// blank calibration on rollout (every gate would drop to insufficient_data until a fresh
+// stamped population accrues), so that is NOT behavior-neutral and NOT what we want. The
+// default analysis set is therefore rows whose hash is the CURRENT manifest hash OR null
+// (legacy) — the legacy rows were graded under essentially today's logic, so folding them
+// in is the conservative, evidence-preserving choice. What the default NEVER blends is a
+// DIFFERENT, KNOWN (non-null) hash: the moment a real version bump produces a second
+// distinct hash, those rows split off automatically. Because calibration runs over a
+// bounded window, once the window rolls past the stamping cutover every row carries a
+// hash and the guarantee becomes exact. Cross-version aggregation (blend ALL known
+// versions too) stays an EXPLICIT opt-in: analyzeGateCalibration({ crossVersion: true }).
+
+/** How the report's bands were aggregated: the default homogeneous cohort (current hash
+ *  + legacy/unstamped rows) or every graded row regardless of version (explicit opt-in). */
+export type CalibrationAggregation = "current_and_legacy" | "cross_version";
+
+export type VersionCohortSummary = {
+  aggregation: CalibrationAggregation;
+  /** The current manifest's hash — the cohort the default report is built on. */
+  current_hash: string;
+  /** Graded rows stamped with the current hash (part of the default analysis population). */
+  n_current: number;
+  /** Graded rows stamped with a DIFFERENT, KNOWN (non-null) hash — a real version bump
+   *  split them off. EXCLUDED from the default bands; visible here so the split is never
+   *  silent. Only these are held apart by default. */
+  n_older: number;
+  /** Graded rows with NO hash (legacy, pre-stamp). INCLUDED in the default analysis set
+   *  (see the transition rule above) — excluding them would discard all existing evidence
+   *  and blank calibration on rollout. Counted here so their share is always visible. */
+  n_unversioned: number;
+  /** Per older-hash breakdown (largest first), so the operator can see how many
+   *  distinct prior strategy versions the ledger spans and how big each is. */
+  older_hashes: Array<{ hash: string; n: number }>;
+};
+
+/** Read a row's frozen strategy_config_hash off entry_context. Null = legacy/unstamped
+ *  (pre-Q12) — cohorted as "unversioned" and folded into the default set per the
+ *  transition rule, never mistaken for a DIFFERENT known version. */
+export function readStrategyConfigHash(ec: Record<string, unknown> | null | undefined): string | null {
+  const h = ec?.strategy_config_hash;
+  return typeof h === "string" && h.length > 0 ? h : null;
+}
+
+/** Partition graded rows into version cohorts and pick the analysis set. When
+ *  crossVersion is false (default) the analysis set is the homogeneous cohort — rows
+ *  whose hash is the current manifest hash OR null (legacy), per the transition rule —
+ *  and rows carrying a DIFFERENT known hash are excluded. When true the analysis set is
+ *  every graded row (blended, explicit). The summary always reports the full partition
+ *  regardless, so the excluded population is never invisible. */
+export function partitionByVersion(
+  graded: CalibrationPlayRow[],
+  currentHash: string,
+  crossVersion: boolean
+): { analysis: CalibrationPlayRow[]; summary: VersionCohortSummary } {
+  const current: CalibrationPlayRow[] = [];
+  const legacy: CalibrationPlayRow[] = [];
+  const older = new Map<string, CalibrationPlayRow[]>();
+  for (const r of graded) {
+    const h = readStrategyConfigHash(r.entry_context);
+    if (h == null) legacy.push(r);
+    else if (h === currentHash) current.push(r);
+    else older.set(h, [...(older.get(h) ?? []), r]);
+  }
+  const olderHashes = Array.from(older.entries())
+    .map(([hash, rows]) => ({ hash, n: rows.length }))
+    .sort((a, b) => b.n - a.n || a.hash.localeCompare(b.hash));
+  const nOlder = olderHashes.reduce((sum, o) => sum + o.n, 0);
+  const summary: VersionCohortSummary = {
+    aggregation: crossVersion ? "cross_version" : "current_and_legacy",
+    current_hash: currentHash,
+    n_current: current.length,
+    n_older: nOlder,
+    n_unversioned: legacy.length,
+    older_hashes: olderHashes,
+  };
+  // Default homogeneous set = current-hash rows + legacy (null-hash) rows; a different
+  // KNOWN hash is the only thing excluded by default. crossVersion blends everything.
+  const analysis = crossVersion ? graded : [...current, ...legacy];
+  return { analysis, summary };
+}
 
 // ── Merit-tier record analysis (PR-F) ─────────────────────────────────────────────
 // The tier function (./tiers.ts) was seeded from the SAME forensic priors that
@@ -792,8 +887,23 @@ export function analyzeGateCalibration(input: {
   rows: CalibrationPlayRow[];
   gradedSkips?: GradedSkipInput[];
   window: { since: string; through: string; days: number };
+  /** EXPLICIT opt-in (design Q12) to blend graded plays ACROSS strategy versions into
+   *  one population. Default false → the bands are computed over the homogeneous cohort
+   *  (current-hash + legacy rows; a different KNOWN hash is excluded). Cross-version
+   *  aggregation is never automatic. */
+  crossVersion?: boolean;
 }): CalibrationReport {
-  const graded = input.rows.filter(isGradedZeroDteRow);
+  const allGraded = input.rows.filter(isGradedZeroDteRow);
+  // Strategy-version homogeneity: partition the graded population by frozen config hash
+  // and, by default, analyze the current-hash + legacy cohort so a REAL version bump
+  // can't blend a different-known-version population into one band. `graded` below is the
+  // chosen cohort; every downstream band/gate/signal reads it, so they all inherit the
+  // same homogeneous (or, with crossVersion, explicitly blended) population.
+  const { analysis: graded, summary: versionCohort } = partitionByVersion(
+    allGraded,
+    currentStrategyConfigHash(),
+    input.crossVersion === true
+  );
 
   // Score bands: ALL five bands always present (n=0 buckets included) so the
   // machine-readable shape is stable regardless of what the window contained.
@@ -829,6 +939,7 @@ export function analyzeGateCalibration(input: {
     play_type_bands: analyzePlayTypeBands(graded),
     signal_recommendations: [recommendConfluence(graded), recommendAccumulation(graded)],
     scale_out_recommendation: recommendScaleOut(graded),
+    version_cohort: versionCohort,
     available: graded.length > 0,
   };
 }
