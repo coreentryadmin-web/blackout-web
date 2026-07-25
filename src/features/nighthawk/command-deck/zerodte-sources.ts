@@ -79,6 +79,14 @@ function sourceFrom(
     is_condor:
       (lg?.is_condor as boolean) ??
       (lg?.play_type === "CONDOR" || s?.play_type === "CONDOR" ? true : null),
+    // Condor render geometry (Wave 2): the frozen CondorPlan blob on the ledger row (server:
+    // entry_context.condor → the payload's `condor`; sim: the condor frame). Parsed structurally by
+    // the adapter, so a missing/malformed blob simply degrades the tent. The LIVE underlying comes
+    // from the freshest source available — the ledger row (server may carry it) or the setup's
+    // underlying_price — for the tent's current-price marker.
+    condor: (lg?.condor as unknown) ?? null,
+    underlying_price:
+      (lg?.underlying_price as number) ?? (s?.underlying_price as number) ?? null,
   };
 }
 

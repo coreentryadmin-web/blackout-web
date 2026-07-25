@@ -10,7 +10,9 @@
 import { factorsFromFlowQuality } from "@/lib/explain/trade-explanation";
 import type { SwingSetupState } from "@/lib/swing/taxonomy";
 import { executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
+import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
 import type {
+  DeckCondor,
   DeckDirection,
   DeckFactor,
   DeckGreeks,
@@ -28,6 +30,29 @@ const asStatus = (s: unknown): DeckStatus => {
   return (["OPEN", "HOLD", "TRIM", "CLOSED", "WATCH", "SKIP"].includes(u) ? u : "WATCH") as DeckStatus;
 };
 const fin = (n: unknown): number | null => (typeof n === "number" && Number.isFinite(n) ? n : null);
+
+/** Map a parsed condor geometry (snake, from the payload) + a live underlying into the terminal's
+ *  camelCase DeckCondor. `spot` prefers the LIVE underlying and flags it (spotIsLive); a null geometry
+ *  (a condor with no pinned plan) yields null so the render degrades to "geometry unavailable". */
+function deckCondorFrom(geom: CondorGeometry | null, liveSpot: number | null): DeckCondor | null {
+  if (!geom) return null;
+  const spotIsLive = liveSpot != null;
+  return {
+    spot: spotIsLive ? liveSpot : geom.spot,
+    spotIsLive,
+    shortPut: geom.short_put,
+    longPut: geom.long_put,
+    shortCall: geom.short_call,
+    longCall: geom.long_call,
+    wingPts: geom.wing_pts,
+    netCredit: geom.net_credit,
+    maxLoss: geom.max_loss,
+    breachLower: geom.breach_lower,
+    breachUpper: geom.breach_upper,
+    winRate: geom.est_win_rate,
+    breachRatePct: geom.est_intraday_breach_pct,
+  };
+}
 
 /**
  * Management read from the exit model + live P&L. ADVISORY (we recommend, you execute). For RATCHET the
@@ -115,6 +140,12 @@ export interface ZeroDteDeckSource {
   confluence?: number | null;
   /** Per-strategy calibration scorecard — rendered ONLY when present (never fabricated). */
   scorecard?: { winRate: number; avg: number; n: number } | null;
+  /** Wave 2 — the frozen condor geometry (server: entry_context.condor; sim: the condor frame). A
+   *  strict subset of CondorPlan; parsed structurally by condorGeometryFrom (never trusts a bad blob). */
+  condor?: unknown;
+  /** Wave 2 — the LIVE underlying (the setup's underlying_price), for the condor tent marker. When
+   *  absent the tent falls back to the geometry's commit-time spot. */
+  underlying_price?: number | null;
 }
 
 const FB_LABELS: Record<string, string> = {
@@ -161,7 +192,32 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const isCondor = src.is_condor ?? (src.setup?.play_type === "CONDOR" ? true : null);
   const exitPolicy = src.exit_policy ?? null;
   const exitModel: ExitModel = exitPolicy?.policy === "trim_scale" && isCondor !== true ? "SCALE_OUT" : "RATCHET";
-  const mgmt = managementFor(exitModel, status, pnl);
+
+  // ── Condor P&L is SELLER-framed (Wave 2 bug fix) ──────────────────────────────────
+  // A condor is SOLD for the credit (`entry_premium`) and bought back at the current mark, so its
+  // return is (entry − mark)/entry — the INVERSE of the directional (mark − entry)/entry the payload's
+  // `live_pnl_pct` carries (long-premium framed). Without this flip a DECAYING (WINNING) condor reads
+  // as a large NEGATIVE — the inverted-P&L flaw in the Wave-1 left card (e.g. a +76% winner shown as
+  // −76%). peak/trough invert the same way: a seller's BEST excursion is the LOWEST mark (deepest
+  // decay), the WORST is the highest mark. Directional rows are byte-identical (isCondor !== true).
+  const markNum = fin(src.last_mark);
+  const sellerPct = (m: number | null): number | null =>
+    isCondor === true && entry != null && entry > 0 && m != null ? Math.round(((entry - m) / entry) * 1000) / 10 : null;
+  const pnlDisplay = isCondor === true ? sellerPct(markNum) : pnl;
+  const peakDisplay =
+    isCondor === true
+      ? sellerPct(fin(src.trough_premium)) // lowest mark = best for the seller
+      : entry && fin(src.peak_premium)
+        ? Math.round((src.peak_premium! / entry - 1) * 100)
+        : null;
+  const troughDisplay =
+    isCondor === true
+      ? sellerPct(fin(src.peak_premium)) // highest mark = worst for the seller
+      : entry && fin(src.trough_premium)
+        ? Math.round((src.trough_premium! / entry - 1) * 100)
+        : null;
+
+  const mgmt = managementFor(exitModel, status, pnlDisplay);
   const alloc = src.allocation
     ? { role: src.allocation.role, sizing: src.allocation.sizing, reason: src.allocation.reasons?.[0] }
     : null;
@@ -183,6 +239,13 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const exec = executableFill(fin(src.bid), fin(src.ask), entry);
   const tierLabel = typeof src.tier?.tier === "string" ? src.tier.tier : null;
 
+  // Condor render geometry (Wave 2): only build it for a condor row that carries a real, parseable
+  // CondorPlan blob. `spot` resolves to the LIVE underlying (the setup's underlying_price) when the
+  // board carries one, else the commit-time spot pinned in the plan — the tent marks the current
+  // price honestly and flags which it used. A directional row (or a condor with no geometry) → null.
+  const condor: DeckCondor | null =
+    isCondor === true ? deckCondorFrom(condorGeometryFrom(src.condor), fin(src.underlying_price)) : null;
+
   return {
     id: `0DTE:${src.ticker}`,
     ticker: src.ticker.toUpperCase(),
@@ -195,6 +258,7 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     exitModel,
     exitPolicy,
     isCondor,
+    condor,
     factors,
     gates,
     regime: setup?.gamma_regime ? `gamma ${setup.gamma_regime}` : null,
@@ -207,12 +271,14 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
           : { level: "intact" },
     ...mgmt,
     entry,
-    mark: fin(src.last_mark),
-    pnlPct: pnl,
-    peak: entry && fin(src.peak_premium) ? Math.round((src.peak_premium! / entry - 1) * 100) : null,
-    trough: entry && fin(src.trough_premium) ? Math.round((src.trough_premium! / entry - 1) * 100) : null,
-    execMark: exec.fill,
-    execPnlPct: fin(src.live_pnl_pct_exec) ?? exec.pnl_pct,
+    mark: markNum,
+    pnlPct: pnlDisplay,
+    peak: peakDisplay,
+    trough: troughDisplay,
+    // Executable fill (sell-into-the-BID) is a directional LONG framing — inverted for a credit
+    // condor, so it is suppressed (null) on condor rows; the condor's honest number is its decay P&L.
+    execMark: isCondor === true ? null : exec.fill,
+    execPnlPct: isCondor === true ? null : (fin(src.live_pnl_pct_exec) ?? exec.pnl_pct),
     markAsOf: src.mark_as_of ?? null,
     markIsSync: src.mark_is_sync ?? null,
     discoveryOrigin: Array.isArray(src.discovery_origin) && src.discovery_origin.length > 0 ? src.discovery_origin : null,
