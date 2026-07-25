@@ -119,37 +119,142 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // entry premium, the mark trajectory (via keyframes on ET minutes), and the terminal
 // status. Marks between keyframes are linearly interpolated so the board moves smoothly.
 const SESSION_DATE = new Date().toISOString().slice(0, 10);
+
+// ── RENDER-STATE COVERAGE MATRIX ────────────────────────────────────────────────────
+// This synthetic roster is a VISUAL TEST HARNESS: every board state a member can see is
+// exercised by at least one play, so `--synthetic` doubles as a render-state sweep.
+//   WATCH (pre-commit, never commits) ......... QQQ setup   (SETUPS, no ledger row)
+//   SKIP  (evaluated, gate-blocked) ........... IWM setup   (SETUPS, gate BLOCKED)
+//   OPEN  (fresh, in the enterable band) ...... GOOGL       (mark stays within ±10%)
+//   HOLD  (working, out of the entry band) .... TSLA / COIN / F / NFLX / SMCI / SNOW
+//   TRIM  (post-target, sticky) ............... NVDA        (rides to +80%, stays TRIM)
+//   CLOSED · target ........................... META        (closed_reason 'target')
+//   CLOSED · ratchet .......................... AMZN        (closed_reason 'ratchet', +50%)
+//   CLOSED · time_stop (directional) .......... MSFT        (closed_reason 'time_stop')
+//   CLOSED · time_stop (condor winner) ........ SPX         (PIN condor, credit decays +76%)
+//   CLOSED · stopped (directional) ............ AMD         (closed_reason 'stopped', −50%)
+//   CLOSED · stopped (condor breach) .......... SPXW        (PIN condor breach → −50%)
+//   breakeven (~0%) ........................... COIN        (mark hovers at entry)
+//   tiny premium ($0.05-ish) .................. F           (entry 0.05)
+//   huge premium .............................. NFLX        (entry 42.0)
+//   STALE mark (staleness dim renders) ........ SMCI        (mark_as_of ~90s old)
+//   NO mark ("—") ............................. SNOW        (last_mark null)
+// The five canonical names (NVDA/TSLA/META/SPX/AMD) are preserved from the original arc.
 const PLAYS = [
+  // ── canonical five (unchanged arc) ──
   {
     ticker: 'NVDA', direction: 'long', origin: 'FLOW', strike: 182, right: 'C', entry: 2.0,
-    marks: [[570, 2.0], [600, 2.6], [660, 3.2], [720, 3.6], [810, 3.6]], // 09:30..13:30
+    marks: [[570, 2.0], [600, 2.6], [660, 3.2], [720, 3.6], [810, 3.6]], // 09:30..13:30 → TRIM +80%
     statusAt: (m, pnl) => (m >= 810 ? 'TRIM' : pnl >= 50 ? 'TRIM' : pnl >= 15 ? 'HOLD' : 'OPEN'),
     closed_reason: null,
   },
   {
     ticker: 'TSLA', direction: 'long', origin: 'BREAKOUT', strike: 250, right: 'C', entry: 1.5,
-    marks: [[585, 1.5], [630, 1.8], [690, 2.05], [780, 2.1], [900, 2.1]],
+    marks: [[585, 1.5], [630, 1.8], [690, 2.05], [780, 2.1], [900, 2.1]], // HOLD +40%
     statusAt: (m, pnl) => (m >= 780 ? 'HOLD' : pnl >= 15 ? 'HOLD' : 'OPEN'),
     closed_reason: null,
   },
   {
     ticker: 'META', direction: 'long', origin: 'FLOW', strike: 720, right: 'C', entry: 1.0,
-    marks: [[600, 1.0], [660, 1.15], [705, 1.3], [900, 1.3]],
+    marks: [[600, 1.0], [660, 1.15], [705, 1.3], [900, 1.3]], // CLOSED · target +30%
     statusAt: (m, pnl) => (m >= 705 ? 'CLOSED' : pnl >= 15 ? 'HOLD' : 'OPEN'),
     closed_reason: (m) => (m >= 705 ? 'target' : null),
   },
   {
-    ticker: 'SPX', direction: 'short', origin: 'PIN', strike: 6300, right: 'P', entry: 4.2,
-    // Iron condor / PIN fade: credit decays as the pin holds → +76% by the time stop.
+    ticker: 'SPX', direction: 'short', origin: 'PIN', strike: 6300, right: 'P', entry: 4.2, condor: true,
+    // Iron condor / PIN fade WINNER: credit decays as the pin holds → +76% by the time stop.
     marks: [[615, 4.2], [720, 2.4], [840, 1.2], [930, 1.0], [935, 1.0]],
     statusAt: (m) => (m >= 930 ? 'CLOSED' : m >= 720 ? 'HOLD' : 'OPEN'),
     closed_reason: (m) => (m >= 930 ? 'time_stop' : null),
   },
   {
     ticker: 'AMD', direction: 'short', origin: 'FLOW', strike: 165, right: 'P', entry: 1.2,
-    marks: [[600, 1.2], [645, 0.95], [690, 0.6], [900, 0.6]],
+    marks: [[600, 1.2], [645, 0.95], [690, 0.6], [900, 0.6]], // CLOSED · stopped −50%
     statusAt: (m) => (m >= 690 ? 'CLOSED' : 'OPEN'),
     closed_reason: (m) => (m >= 690 ? 'stopped' : null),
+  },
+  // ── added render-states ──
+  {
+    // OPEN, fresh, in the ±10% enterable band all session — never commits past OPEN.
+    ticker: 'GOOGL', direction: 'long', origin: 'FLOW', strike: 180, right: 'C', entry: 3.0,
+    marks: [[600, 3.0], [660, 3.1], [720, 2.95], [840, 3.05], [900, 3.0]],
+    statusAt: (m) => (m >= 900 ? 'HOLD' : 'OPEN'),
+    closed_reason: null,
+  },
+  {
+    // CLOSED · ratchet — runs to +70% then the ratchet floor takes it out at +50%.
+    ticker: 'AMZN', direction: 'long', origin: 'BREAKOUT', strike: 220, right: 'C', entry: 2.0,
+    marks: [[600, 2.0], [660, 2.8], [720, 3.4], [780, 3.0], [900, 3.0]],
+    statusAt: (m, pnl) => (m >= 780 ? 'CLOSED' : pnl >= 50 ? 'TRIM' : pnl >= 15 ? 'HOLD' : 'OPEN'),
+    closed_reason: (m) => (m >= 780 ? 'ratchet' : null),
+  },
+  {
+    // CLOSED · time_stop on a DIRECTIONAL long (distinct from the condor time-stop) — small green.
+    ticker: 'MSFT', direction: 'long', origin: 'FLOW', strike: 470, right: 'C', entry: 1.5,
+    marks: [[600, 1.5], [720, 1.7], [900, 1.6], [935, 1.6]],
+    statusAt: (m) => (m >= 930 ? 'CLOSED' : 'HOLD'),
+    closed_reason: (m) => (m >= 930 ? 'time_stop' : null),
+  },
+  {
+    // BREAKEVEN — mark hovers on entry, P&L ~0% all day (the ~flat working row).
+    ticker: 'COIN', direction: 'long', origin: 'FLOW', strike: 300, right: 'C', entry: 5.0,
+    marks: [[600, 5.0], [660, 5.05], [720, 4.98], [840, 5.02], [900, 5.0]],
+    statusAt: () => 'HOLD',
+    closed_reason: null,
+  },
+  {
+    // TINY PREMIUM — a $0.05 lotto that ticks to $0.08 (tests sub-dime formatting).
+    ticker: 'F', direction: 'long', origin: 'BREAKOUT', strike: 14, right: 'C', entry: 0.05,
+    marks: [[600, 0.05], [660, 0.07], [720, 0.09], [840, 0.08], [900, 0.08]],
+    statusAt: (m, pnl) => (pnl >= 15 ? 'HOLD' : 'OPEN'),
+    closed_reason: null,
+  },
+  {
+    // HUGE PREMIUM — a deep $42 contract (tests wide number formatting / column width).
+    ticker: 'NFLX', direction: 'long', origin: 'FLOW', strike: 1200, right: 'C', entry: 42.0,
+    marks: [[600, 42.0], [660, 48.0], [720, 52.0], [840, 50.0], [900, 50.0]],
+    statusAt: (m, pnl) => (pnl >= 15 ? 'HOLD' : 'OPEN'),
+    closed_reason: null,
+  },
+  {
+    // STALE MARK — a working row whose last quote is ~90s old → the staleness dim must render.
+    ticker: 'SMCI', direction: 'long', origin: 'FLOW', strike: 55, right: 'C', entry: 2.0,
+    marks: [[600, 2.0], [660, 2.3], [720, 2.3], [900, 2.3]],
+    statusAt: () => 'HOLD',
+    closed_reason: null,
+    staleMark: true,
+  },
+  {
+    // NO MARK — a working row with no live quote at all → mark renders as "—", P&L null.
+    ticker: 'SNOW', direction: 'long', origin: 'BREAKOUT', strike: 200, right: 'C', entry: 1.8,
+    marks: [[600, 1.8], [660, 1.9], [900, 1.9]],
+    statusAt: () => 'HOLD',
+    closed_reason: null,
+    noMark: true,
+  },
+  {
+    // CONDOR BREACH → stopped — the pin FAILS, the short side is breached, position stops at −50%.
+    ticker: 'SPXW', direction: 'short', origin: 'PIN', strike: 6250, right: 'P', entry: 5.0, condor: true,
+    marks: [[615, 5.0], [660, 6.5], [720, 7.5], [900, 7.5]],
+    statusAt: (m) => (m >= 720 ? 'CLOSED' : 'OPEN'),
+    closed_reason: (m) => (m >= 720 ? 'stopped' : null),
+  },
+];
+
+// ── WATCH / SKIP setups — pre-commit rows that live in `setups` (NOT the ledger). A WATCH
+//    setup is a candidate the floor is still weighing (never commits); a BLOCKED gate makes
+//    it a SKIP. Their tickers are deliberately absent from PLAYS so they never gain a ledger
+//    row and therefore stay in the pre-commit band all session.
+const SETUPS = [
+  {
+    ticker: 'QQQ', appearAt: 600, score: 58, direction: 'long', top_strike: 480, right: 'C', dte: 0,
+    gamma_regime: 'positive', market_aligned: true, gate: { verdict: 'WATCH', blocks: [] },
+    flow_quality: { components: { premiumDepth: 14, aggression: 11, sweepIntensity: 9 } },
+  },
+  {
+    ticker: 'IWM', appearAt: 600, score: 44, direction: 'short', top_strike: 210, right: 'P', dte: 0,
+    gamma_regime: 'negative', market_aligned: null, gate: { verdict: 'BLOCKED', blocks: [{ code: 'plan_illiquid' }] },
+    flow_quality: { components: { premiumDepth: 6, aggression: 4 } },
   },
 ];
 
@@ -173,20 +278,25 @@ const r2 = (x) => Math.round(x * 100) / 100;
 function ledgerRowFor(play, m) {
   const first = play.marks[0][0];
   if (m < first) return null;
-  const mark = r2(interp(play.marks, m));
   const closedReason = typeof play.closed_reason === 'function' ? play.closed_reason(m) : play.closed_reason;
+  // NO-mark row: a working position with no live quote → mark null, P&L null, "—" in the deck.
+  const mark = play.noMark ? null : r2(interp(play.marks, m));
   // Peak/trough across the elapsed window so the deck's peak/trough chips move.
   const elapsed = play.marks.map(([km]) => km).filter((km) => km <= m).concat([m]);
   const sampled = elapsed.map((km) => interp(play.marks, km));
-  const peak = r2(Math.max(...sampled));
-  const trough = r2(Math.min(...sampled));
-  const rawPnl = (mark / play.entry - 1) * 100;
-  const pnl = closedReason === 'stopped' ? STOP_PCT : Math.round(rawPnl * 10) / 10;
-  const status = play.statusAt(m, rawPnl);
+  const peak = play.noMark ? null : r2(Math.max(...sampled));
+  const trough = play.noMark ? null : r2(Math.min(...sampled));
+  const rawPnl = mark == null ? null : (mark / play.entry - 1) * 100;
+  const pnl = mark == null ? null : closedReason === 'stopped' ? STOP_PCT : Math.round(rawPnl * 10) / 10;
+  const status = play.statusAt(m, rawPnl ?? 0);
+  // Mark freshness: fresh (real wall clock) for normal rows; ~90s old for the STALE demo so the
+  // deck's staleness dim renders; null (no timestamp) for the no-mark / legacy-sync case.
+  const markAsOf = play.noMark ? null : play.staleMark ? new Date(Date.now() - 90_000).toISOString() : new Date().toISOString();
   return {
     ticker: play.ticker,
     direction: play.direction,
     origin: play.origin,
+    is_condor: play.condor === true,
     status,
     top_strike: play.strike,
     right: play.right,
@@ -198,8 +308,8 @@ function ledgerRowFor(play, m) {
     closed_reason: closedReason,
     graded: status === 'CLOSED',
     first_flagged_at: `${SESSION_DATE}T${fmtEt(first)}:00-04:00`,
-    mark_source: 'sim',
-    mark_as_of: null,
+    mark_source: mark == null ? null : 'mid',
+    mark_as_of: markAsOf,
     mark_is_sync: false,
     move_pct: null,
     direction_hit: null,
@@ -208,6 +318,24 @@ function ledgerRowFor(play, m) {
     nighthawk_echo: null,
     cortex: null,
     tier: null,
+  };
+}
+
+/** Build the pre-commit `setups` entry for a WATCH/SKIP candidate at ET minute `m` (null
+ *  before it appears). Shape mirrors what the deck's zeroDteSources reader consumes. */
+function setupRowFor(setup, m) {
+  if (m < setup.appearAt) return null;
+  return {
+    ticker: setup.ticker,
+    score: setup.score,
+    direction: setup.direction,
+    top_strike: setup.top_strike,
+    right: setup.right,
+    dte: setup.dte,
+    gamma_regime: setup.gamma_regime,
+    market_aligned: setup.market_aligned,
+    gate: setup.gate,
+    flow_quality: setup.flow_quality,
   };
 }
 
@@ -220,17 +348,37 @@ function sessionHeatFor(m) {
 /** One full ZeroDteBoardPayload frame at ET minute `m`. */
 function frameAt(m) {
   const ledger = PLAYS.map((p) => ledgerRowFor(p, m)).filter(Boolean);
+  const setups = SETUPS.map((s) => setupRowFor(s, m)).filter(Boolean);
   return {
     available: true,
     as_of: new Date().toISOString(),
     upstream_ok: true,
     session: { date: SESSION_DATE, trading_day: true, heat: sessionHeatFor(m) },
-    setups: [],
+    setups,
     ledger,
     covered_elsewhere: [],
     governor: null,
     allocation: [],
   };
+}
+
+/** Structural validity check mirroring src/lib/platform/zerodte-sim-board.ts
+ *  isZeroDteBoardPayload — the SAME contract the admin ingest endpoint enforces before
+ *  writing a frame. Used by `--dry-run` to prove every generated frame would be accepted
+ *  (0 invalid frames), so the synthetic roster can't silently drift out of the contract. */
+function isValidFramePayload(v) {
+  if (!v || typeof v !== 'object') return false;
+  if (v.available !== true) return false;
+  if (typeof v.as_of !== 'string' || !Number.isFinite(Date.parse(v.as_of))) return false;
+  if (!v.session || typeof v.session !== 'object') return false;
+  if (typeof v.session.date !== 'string') return false;
+  if (typeof v.session.trading_day !== 'boolean') return false;
+  if (!v.session.heat || typeof v.session.heat !== 'object') return false;
+  if (!Array.isArray(v.setups)) return false;
+  if (!Array.isArray(v.ledger)) return false;
+  if (!Array.isArray(v.covered_elsewhere)) return false;
+  if (!Array.isArray(v.allocation)) return false;
+  return true;
 }
 
 /** The synthetic schedule: one frame every 5 ET minutes across [START_ET, END_ET]. */
@@ -269,8 +417,29 @@ async function main() {
   }
 
   if (DRY && !RESET) {
-    for (const f of frames) console.log(`  ${fmtEt(f.etMinute)} ET  →  ${f.payload.ledger.length} plays`);
-    console.log('\n[dry-run] no auth, nothing posted.');
+    let invalid = 0;
+    for (const f of frames) {
+      const ok = isValidFramePayload(f.payload);
+      if (!ok) invalid++;
+      console.log(`  ${fmtEt(f.etMinute)} ET  ${ok ? '✓' : '✗ INVALID'}  ${f.payload.ledger.length} plays · ${f.payload.setups.length} setups`);
+    }
+    // Report the render-state coverage the last (fullest) frame exercises.
+    const last = frames[frames.length - 1]?.payload;
+    if (last) {
+      const statuses = [...new Set(last.ledger.map((r) => r.status))].sort();
+      const closed = [...new Set(last.ledger.filter((r) => r.status === 'CLOSED').map((r) => r.closed_reason))].sort();
+      const condors = last.ledger.filter((r) => r.is_condor).map((r) => `${r.ticker}:${r.closed_reason ?? 'live'}`);
+      const stale = last.ledger.filter((r) => r.mark_as_of && Date.now() - Date.parse(r.mark_as_of) > 5_000).map((r) => r.ticker);
+      const noMark = last.ledger.filter((r) => r.last_mark == null).map((r) => r.ticker);
+      console.log(`\n  ledger statuses:    ${statuses.join(', ')}`);
+      console.log(`  CLOSED reasons:     ${closed.join(', ')}`);
+      console.log(`  condors:            ${condors.join(', ')}`);
+      console.log(`  stale-mark rows:    ${stale.join(', ') || '(none)'}`);
+      console.log(`  no-mark rows:       ${noMark.join(', ') || '(none)'}`);
+      console.log(`  pre-commit setups:  ${last.setups.map((s) => `${s.ticker}:${s.gate?.verdict}`).join(', ')}`);
+    }
+    console.log(`\n[dry-run] no auth, nothing posted.  invalid frames: ${invalid}`);
+    if (invalid > 0) process.exitCode = 1;
     return;
   }
 

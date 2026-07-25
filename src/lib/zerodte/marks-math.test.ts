@@ -5,17 +5,25 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  advancePlayLatch,
+  closedStopReason,
   executablePnlPct,
   executionTaxBps,
+  isZeroDteMarkStale,
+  ledgerDisplayPnlPct,
   pinnedLivePnlPct,
+  resolveZeroDteMark,
   zeroDteExecutableEntry,
   zeroDteExecutableExit,
   zeroDteHalfSpreadFrac,
+  zeroDteMidOf,
   ZERODTE_DEFAULT_HALF_SPREAD_FRAC,
+  ZERODTE_MARK_STALE_MS,
 } from "./marks-math";
 import {
   gradePlanExecutableFromBars,
   gradePlanFromBars,
+  PLAN_RULES,
   reconstructTrimScaleExecutableFromBars,
   type PlanBar,
   type TrimScaleSpec,
@@ -199,4 +207,174 @@ test("WS-11: no post-flag bars → ungradeable (never a fabricated fill)", () =>
   const out = reconstructTrimScaleExecutableFromBars(bars, 1.0, flag, 0.1, NEUTRAL_TRIM);
   assert.equal(out.outcome, "ungradeable");
   assert.equal(out.pnl_pct, null);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// MONITORING LANE — mark resolution, staleness, ledger P&L, latched lifecycle. Pure,
+// deterministic; every displayed number derived here has exactly one source of truth.
+// ════════════════════════════════════════════════════════════════════════════════════
+
+// ── zeroDteMidOf / resolveZeroDteMark: mid > last > none, dayClose never a live mark ──
+test("zeroDteMidOf: valid two-sided quote → midpoint (4dp); one-sided/negative book → null", () => {
+  assert.equal(zeroDteMidOf(0.9, 1.1), 1.0);
+  assert.equal(zeroDteMidOf(0, 0.4), 0.2); // bid 0 is legal for deep-OTM (ask>0 is the gate)
+  assert.equal(zeroDteMidOf(null, 1.1), null);
+  assert.equal(zeroDteMidOf(1.0, null), null);
+  assert.equal(zeroDteMidOf(1.0, 0), null); // ask must be > 0
+  assert.equal(zeroDteMidOf(1.23456, 1.23458), 1.2346); // rounded to 4dp
+});
+
+test("resolveZeroDteMark: MID when a two-sided quote exists (provenance 'mid')", () => {
+  assert.deepEqual(resolveZeroDteMark(0.9, 1.1, 5.0), { mark: 1.0, source: "mid" });
+});
+
+test("resolveZeroDteMark: falls back to LAST (flagged) only when no usable mid", () => {
+  assert.deepEqual(resolveZeroDteMark(null, null, 3.3), { mark: 3.3, source: "last" });
+  assert.deepEqual(resolveZeroDteMark(1.0, null, 3.3), { mark: 3.3, source: "last" }); // one-sided → no mid
+});
+
+test("resolveZeroDteMark: no usable mid AND no positive last → none (never a fabricated mark)", () => {
+  assert.deepEqual(resolveZeroDteMark(null, null, null), { mark: null, source: "none" });
+  assert.deepEqual(resolveZeroDteMark(null, null, 0), { mark: null, source: "none" }); // last ≤ 0 rejected
+  assert.deepEqual(resolveZeroDteMark(0, 0, null), { mark: null, source: "none" }); // no book at all
+});
+
+test("resolveZeroDteMark: a mid that computes to 0 is NOT a mark (dead book) → falls through to last", () => {
+  // bid 0, ask 0 → zeroDteMidOf null; but a mid of exactly 0 (impossible here since ask>0) would be
+  // rejected by the `mid > 0` guard, so a real last trade wins.
+  assert.deepEqual(resolveZeroDteMark(0, 0, 2.0), { mark: 2.0, source: "last" });
+});
+
+// ── pinnedLivePnlPct: THE P&L formula, always vs the pinned entry ─────────────────────
+test("pinnedLivePnlPct: (mark − entry)/entry ×100, 2dp; guards on bad entry/mark", () => {
+  assert.equal(pinnedLivePnlPct(4.2, 6.9), 64.29);
+  assert.equal(pinnedLivePnlPct(1.0, 0.5), -50);
+  assert.equal(pinnedLivePnlPct(1.0, 2.0), 100);
+  assert.equal(pinnedLivePnlPct(null, 2.0), null);
+  assert.equal(pinnedLivePnlPct(0, 2.0), null); // entry ≤ 0
+  assert.equal(pinnedLivePnlPct(-1, 2.0), null);
+  assert.equal(pinnedLivePnlPct(1.0, null), null);
+});
+
+// ── isZeroDteMarkStale: boundary at EXACTLY ZERODTE_MARK_STALE_MS ──────────────────────
+test("isZeroDteMarkStale: fresh under the bound, stale strictly over it (boundary at =ms is FRESH)", () => {
+  const now = 1_000_000;
+  assert.equal(ZERODTE_MARK_STALE_MS, 5_000);
+  assert.equal(isZeroDteMarkStale(now - 4_999, now), false); // just fresh
+  assert.equal(isZeroDteMarkStale(now - ZERODTE_MARK_STALE_MS, now), false); // exactly the bound → NOT stale (strict >)
+  assert.equal(isZeroDteMarkStale(now - (ZERODTE_MARK_STALE_MS + 1), now), true); // 1ms over → stale
+});
+
+test("isZeroDteMarkStale: a missing/zero timestamp is ALWAYS stale (unknown age ≠ fresh)", () => {
+  assert.equal(isZeroDteMarkStale(0, 1_000_000), true);
+  assert.equal(isZeroDteMarkStale(-5, 1_000_000), true);
+});
+
+test("isZeroDteMarkStale: custom bound is honored", () => {
+  const now = 1_000_000;
+  assert.equal(isZeroDteMarkStale(now - 900, now, 1_000), false);
+  assert.equal(isZeroDteMarkStale(now - 1_001, now, 1_000), true);
+});
+
+// ── closedStopReason: a stopped CLOSED row books the stop P&L, not a frozen last_mark ─
+test("closedStopReason: CLOSED with trough ≤ stop and no prior target → 'stopped'", () => {
+  // entry 1.0 → stop 0.5, target 2.0. trough 0.4 crossed the stop; peak never reached target.
+  assert.equal(closedStopReason({ status: "CLOSED", entry_premium: 1.0, peak_premium: 1.3, trough_premium: 0.4 }), "stopped");
+  assert.equal(closedStopReason({ status: "CLOSED", entry_premium: 1.0, peak_premium: 1.3, trough_premium: 0.5 }), "stopped"); // == stop boundary
+});
+
+test("closedStopReason: a peak that tagged the target FIRST makes it a sticky TRIM, never 'stopped'", () => {
+  // Even though trough later crossed the stop, peak ≥ target (2.0) means the trim was sticky first.
+  assert.equal(closedStopReason({ status: "CLOSED", entry_premium: 1.0, peak_premium: 2.0, trough_premium: 0.3 }), null);
+});
+
+test("closedStopReason: non-CLOSED, missing entry, or trough above the stop → null (mark-derived P&L)", () => {
+  assert.equal(closedStopReason({ status: "OPEN", entry_premium: 1.0, peak_premium: 1.0, trough_premium: 0.3 }), null);
+  assert.equal(closedStopReason({ status: "CLOSED", entry_premium: null, peak_premium: 1.0, trough_premium: 0.3 }), null);
+  assert.equal(closedStopReason({ status: "CLOSED", entry_premium: 0, peak_premium: 1.0, trough_premium: 0.3 }), null);
+  assert.equal(closedStopReason({ status: "CLOSED", entry_premium: 1.0, peak_premium: 1.3, trough_premium: 0.51 }), null); // above stop
+  assert.equal(closedStopReason({ status: "CLOSED", entry_premium: 1.0, peak_premium: null, trough_premium: null }), null); // time-stop close
+});
+
+// ── ledgerDisplayPnlPct: stopped pins to the stop %, everything else marks live ────────
+test("ledgerDisplayPnlPct: a stopped row pins to PLAN_RULES.stop_pct regardless of the frozen mark", () => {
+  const row = { status: "CLOSED", entry_premium: 1.0, last_mark: 0.42, peak_premium: 1.1, trough_premium: 0.4 };
+  assert.equal(ledgerDisplayPnlPct(row), PLAN_RULES.stop_pct); // −50, not (0.42−1)/1 = −58
+});
+
+test("ledgerDisplayPnlPct: a non-stopped row derives from the mark (target/time-stop/live)", () => {
+  // Target-hit CLOSED (peak tagged target) → mark-derived, not the −50 stop.
+  assert.equal(ledgerDisplayPnlPct({ status: "CLOSED", entry_premium: 1.0, last_mark: 2.0, peak_premium: 2.1, trough_premium: 0.9 }), 100);
+  // Live OPEN row.
+  assert.equal(ledgerDisplayPnlPct({ status: "OPEN", entry_premium: 2.0, last_mark: 2.5, peak_premium: 2.5, trough_premium: 1.9 }), 25);
+  // No mark → null.
+  assert.equal(ledgerDisplayPnlPct({ status: "HOLD", entry_premium: 2.0, last_mark: null, peak_premium: 2.1, trough_premium: 1.9 }), null);
+});
+
+// ── advancePlayLatch: latches only WIDEN; a null mark advances the clock only ──────────
+const NOW_OPEN = 600; // 10:00 ET — inside the trading window, before every cutoff
+
+test("advancePlayLatch: a higher mark widens the peak; a lower mark widens the trough", () => {
+  const play = { entry_premium: 1.0, peak_premium: null, trough_premium: null };
+  const up = advancePlayLatch(play, null, 1.5, NOW_OPEN); // seeds from entry (1.0)
+  assert.equal(up.peak, 1.5); // widened up
+  assert.equal(up.trough, 1.0); // min(seed 1.0, 1.5) stays at the seed
+  const down = advancePlayLatch(play, up, 0.8, NOW_OPEN);
+  assert.equal(down.peak, 1.5); // peak does NOT shrink back
+  assert.equal(down.trough, 0.8); // trough widened down
+});
+
+test("advancePlayLatch: latches NEVER narrow — a mark inside [trough,peak] leaves both unchanged", () => {
+  const play = { entry_premium: 1.0, peak_premium: 1.8, trough_premium: 0.6 };
+  const prior = { peak: 1.8, trough: 0.6, status: "HOLD" as const };
+  const out = advancePlayLatch(play, prior, 1.2, NOW_OPEN);
+  assert.equal(out.peak, 1.8);
+  assert.equal(out.trough, 0.6);
+});
+
+test("advancePlayLatch: peak ≥ target → sticky TRIM; trough ≤ stop → CLOSED stopped", () => {
+  const play = { entry_premium: 1.0, peak_premium: null, trough_premium: null };
+  const trim = advancePlayLatch(play, null, 2.1, NOW_OPEN); // mark doubles → peak 2.1 ≥ target 2.0
+  assert.equal(trim.status, "TRIM");
+  const stopped = advancePlayLatch(play, null, 0.4, NOW_OPEN); // mark halves → trough 0.4 ≤ stop 0.5
+  assert.equal(stopped.status, "CLOSED");
+});
+
+test("advancePlayLatch: a null mark advances the clock (time-stop) WITHOUT touching the latches", () => {
+  const play = { entry_premium: 1.0, peak_premium: 1.5, trough_premium: 0.9 };
+  const prior = { peak: 1.5, trough: 0.9, status: "HOLD" as const };
+  const afterCutoff = advancePlayLatch(play, prior, null, PLAN_RULES.time_stop_et_minutes + 1); // 15:31 ET
+  assert.equal(afterCutoff.peak, 1.5, "null mark leaves the peak latch untouched");
+  assert.equal(afterCutoff.trough, 0.9, "null mark leaves the trough latch untouched");
+  assert.equal(afterCutoff.status, "CLOSED"); // past the hard time stop
+});
+
+test("advancePlayLatch: OPEN band — a mark within ±10% of entry before the cutoff stays OPEN", () => {
+  const play = { entry_premium: 1.0, peak_premium: null, trough_premium: null };
+  const out = advancePlayLatch(play, null, 1.05, NOW_OPEN);
+  assert.equal(out.status, "OPEN");
+});
+
+// ── executable-side edge cases (crossed/locked/one-sided books, f clamp) ──────────────
+test("zeroDteHalfSpreadFrac: crossed and locked and one-sided books all return null (default frac used)", () => {
+  assert.equal(zeroDteHalfSpreadFrac(1.2, 1.0), null); // crossed (ask < bid)
+  assert.equal(zeroDteHalfSpreadFrac(1.0, 1.0), 0); // locked but valid → zero spread (not null)
+  assert.equal(zeroDteHalfSpreadFrac(null, 1.0), null); // one-sided
+  assert.equal(zeroDteHalfSpreadFrac(1.0, 0), null); // ask not > 0
+  assert.equal(zeroDteHalfSpreadFrac(0, 1.0), 1.0); // bid 0 legal → frac (1−0)/(1+0) = 1
+});
+
+test("zeroDteExecutableEntry/Exit: negative frac is rejected (guards on !(f>=0)); exit floored at 0", () => {
+  assert.equal(zeroDteExecutableEntry(1.0, -0.1), null); // bad frac → null (never flatters the fill)
+  assert.equal(zeroDteExecutableExit(1.0, -0.1), null);
+  assert.equal(zeroDteExecutableExit(1.0, 2.0), 0); // >100% frac clamped to a 0 bid, never negative
+  assert.equal(zeroDteExecutableEntry(0, 0.1), null); // non-positive mid rejected on entry
+  assert.equal(zeroDteExecutableExit(0, 0.1), 0); // a 0 mid is a legal 0 exit bid
+});
+
+test("executablePnlPct / executionTaxBps: null-guarded, mid always ≥ executable", () => {
+  assert.equal(executablePnlPct(1.1, 0.9), -18.18);
+  assert.equal(executablePnlPct(0, 0.9), null); // entry ask must be > 0
+  assert.equal(executionTaxBps(100, 81.82), 1818); // the tax the mid lane hid
+  assert.equal(executionTaxBps(null, 5), null);
 });
