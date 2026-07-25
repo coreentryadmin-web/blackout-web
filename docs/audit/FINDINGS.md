@@ -5,6 +5,55 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-25 — [tooling] NEW: 0DTE E2E validation suite (`zerodte-e2e-suite.mjs`, `npm run validate:e2e`) + Monday-RTH readiness trace — ADDED
+
+**Severity.** N/A — additive read-only tooling + docs (no app/behavior change). Safe to merge on green.
+
+**What + why.** The one question before an open is "will 0DTE plays actually generate, and is anything
+blocking them?" There was a per-stage healthcheck and a per-number data-validator, but no single
+**pre-open GATE** that (a) hits EVERY upstream the pipeline reads with a schema + sanity assertion,
+(b) proves the RDS/Redis infra, and (c) proves the DB/cache data-path through the app — with a
+non-zero exit so it can gate. Added `scripts/audit/zerodte-e2e-suite.mjs` (`npm run validate:e2e`):
+
+- **API-POLYGON / API-UW** — every endpoint enumerated from `docs/audit/NIGHTHAWK-DATA-PROVENANCE.md`
+  + the real call sites in `src/lib/providers/{polygon,unusual-whales,options-snapshot,option-trades,
+  polygon-options-gex,polygon-news}.ts` (NOT guessed): marketstatus, indices (VIX/SPX), aggs prev +
+  minute range, grouped-daily, `/v3/snapshot/options/{u}`, `/v3/snapshot` unified OCC, reference
+  contracts, `/v3/trades/{occ}`, benzinga news; UW flow-alerts (global + per-stock), spot-exposures/
+  strike GEX, greek-exposure/strike, screener/stocks, darkpool, net-flow/expiry, earnings pre/after.
+  Each: HTTP-200 + shape check + sanity value (grouped ~12.4k, VIX 5–90, chain carries greeks/quote).
+- **INFRA** — RDS `blackout-production-postgres` available/Multi-AZ + ElastiCache
+  `blackout-production-redis-rg` available/failover via the AWS CLI. **SKIPPED (never RED) without AWS
+  creds** (sandbox defaults are `InvalidClientTokenId` placeholders), mirroring the healthcheck stage A.
+- **DATA-PATH** — raw TCP to PG/Redis is blocked here (do NOT attempt pg.Client/redis-cli — it hangs).
+  Validated THROUGH the app instead: `/board` served = Redis snapshot path live (+ as_of freshness),
+  `/record` graded rows = Postgres read path live. ONE temp admin Clerk user, deleted in `finally`.
+
+**Base-URL fix baked in.** `POLYGON_API_BASE` is a broken placeholder in this env; the suite
+self-defaults to `https://api.massive.com` (primary) with `https://api.polygon.io` fallback — tries
+in order, locks onto the first 200 for the run. A malformed value is dropped by a `/^https?:/` guard.
+
+**Evidence (live 2026-07-25, off-hours).** `npm run validate:e2e` → API-POLYGON all-required GREEN
+(SPX 7411.98 / **VIX 18.58**, grouped-daily **12,410 stocks**, reference exp 2026-07-27; off-hours
+ambers = empty greeks/trades), API-UW GREEN (flow 25 rows, **GEX 50 strike rows**, greek-exposure
+791), INFRA SKIPPED (placeholder AWS creds), DATA-PATH GREEN (`/board` fresh snapshot, `/record`
+**111 graded rows**). Overall AMBER (off-hours-empty only), **exit 0**. `--provider=uw` → GREEN.
+
+**Pure validators are unit-tested.** `scripts/audit/zerodte-e2e-suite.test.ts` (15 tests, `npx tsx
+--test`) drives every validator branch with mock payloads — VIX band, grouped floor, greeks-empty
+off-hours vs RTH, the unified-snapshot top-level-`ticker` shape, RDS/Redis/snapshot verdicts. All pass.
+
+**Companion doc.** `docs/audit/MONDAY-RTH-READINESS.md` — the full raw-data→committed-play BLOCKER
+trace: ingestion (UW leader lock fail-CLOSED on multi-replica + Redis blip; `flow_alerts` RDS write
+path), discovery ×3 (FLOW always-on; BREAKOUT/PIN flag-gated), gates G-1..G-12 + fail-closed firewall
+(with kill-switch defaults), governor, Cortex veto + confluence-2, commit→snapshot cadence, rate-limit
+budgets, and a prioritized 12-item open checklist. **Top-line verdict: plays ARE expected to generate
+Monday 2026-07-27 (a normal full trading day)**, conditional on (1) discovery flags set on the worker
+task def, (2) the ingestion write path warming after 10:00; the real anomaly to watch is the G-11
+fail-OPEN case (a board that PRINTS while halt/earnings feeds are cold), not an empty board.
+
+**Status.** MERGED via `feat/api-endpoint-validator` (additive; verified green).
+
 ## 2026-07-25 — [tooling] NEW: 0DTE Night Hawk end-to-end LIVE health check (`zerodte-e2e-healthcheck.mjs`) — ADDED
 
 **Severity.** N/A — additive read-only tooling (no app/behavior change). Safe to merge on green.
