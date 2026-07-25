@@ -504,6 +504,10 @@ test("persistZeroDteScan: a fresh COMMIT's upserted row pins entry_context.tier 
     spike: false,
     underlying_price: 140,
     top_strike_avg_fill: 4.2,
+    // WS-14: timestamps the input-age manifest reads at commit (freshest flow print +
+    // the name's own last minute bar). The other inputs carry no per-value timestamp here.
+    last_seen: "2026-07-06T14:59:30.000Z",
+    intraday: { last_bar_ms: Date.parse("2026-07-06T14:59:00.000Z") },
     plan: {
       occ: "O:NVDA260706C00145000",
       flow_avg_fill: 4.2,
@@ -590,6 +594,28 @@ test("persistZeroDteScan: a fresh COMMIT's upserted row pins entry_context.tier 
   };
   assert.equal(fv.contract_horizon, "ZERO_DTE");
   assert.equal(fv.actual_dte_at_commit, 0);
+  // WS-14: the commit freezes an input_age_manifest with EVERY key present — a real age
+  // for the inputs whose timestamp reached commit (flow/underlying), null for the ones
+  // whose age is genuinely unknown here (never fabricated).
+  const manifest = (state.upsertRows[0]!.entry_context as { input_age_manifest?: Record<string, number | null> })
+    .input_age_manifest;
+  assert.ok(manifest, "entry_context must carry the WS-14 input_age_manifest");
+  assert.deepEqual(Object.keys(manifest!).sort(), [
+    "flow",
+    "gex",
+    "macro",
+    "option_quote",
+    "spy_bias",
+    "underlying",
+    "vix",
+  ]);
+  assert.equal(typeof manifest!.flow, "number"); // last_seen present → a real age
+  assert.equal(typeof manifest!.underlying, "number"); // intraday.last_bar_ms present → a real age
+  assert.equal(manifest!.option_quote, null);
+  assert.equal(manifest!.gex, null);
+  assert.equal(manifest!.vix, null);
+  assert.equal(manifest!.macro, null);
+  assert.equal(manifest!.spy_bias, null);
   // Prime score (+2) + calm VIX (+2) + clean Cortex (+2) ≥ the A bar even with the
   // early-window penalty (committed_at_et is stamped from the REAL clock, so the
   // F-4 factor's presence depends on when this test runs — the tier does not).

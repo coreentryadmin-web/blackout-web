@@ -27,6 +27,9 @@ import { tierFromEntryContext, type ZeroDteTierAssignment } from "./tiers";
 // Type-only (erased): keeps this module import-light — ./cortex-gate's runtime
 // deps (the Cortex barrel) never enter this module's load graph.
 import type { ZeroDteCortexEntryContext } from "./cortex-gate";
+// Type-only (erased): the WS-14 input-age manifest shape. latency-telemetry.ts is pure
+// (no providers), so this adds nothing to the load graph even at runtime.
+import type { ZeroDteInputAgeManifest } from "./latency-telemetry";
 
 /** Await `p` for at most `ms`, else null — same semantics as scan.ts's within();
  *  duplicated (7 lines) rather than imported because scan.ts imports THIS module
@@ -96,6 +99,12 @@ export type ZeroDteEntryContext = {
    *  Note the tier is DERIVED from the blob's own fields, so a null here costs
    *  nothing durable — tierFromEntryContext re-derives it from the same pins. */
   tier: ZeroDteTierAssignment | null;
+  /** WS-14 input-age manifest: age (ms) at decision time of each input the commit used
+   *  (flow/underlying/option_quote/gex/vix/macro/spy_bias). Frozen at commit by
+   *  persistZeroDteScan (buildInputAgeManifest). Optional/additive — pre-WS-14 rows and the
+   *  many pure buildZeroDteEntryContext call sites that don't stamp it carry it undefined;
+   *  every present manifest has all keys, null where the input's age was genuinely unknown. */
+  input_age_manifest?: ZeroDteInputAgeManifest;
 };
 
 /** "YYYY-MM-DD HH:mm ET" for an epoch-ms instant. en-CA date + en-GB 24h time give

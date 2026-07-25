@@ -66,6 +66,17 @@ import {
 } from "./board";
 import { gradeCondorFromBars } from "./condor";
 import { buildZeroDteEntryContext, fetchZeroDteSessionContext } from "./entry-context";
+// WS-14/15 observability (additive, best-effort — never a decision input). See
+// latency-telemetry.ts's module doc: it records spans/durations and freezes a per-commit
+// input-age manifest; every recorder swallows its own errors so it can't affect the scan.
+import {
+  buildInputAgeManifest,
+  recordCommitLatency,
+  recordCommittedRows,
+  recordScanDuration,
+  recordScanSpans,
+  recordUngradeable,
+} from "./latency-telemetry";
 import { buildSetupFeatureVector } from "./feature-vector";
 import {
   buildStrategyManifest,
@@ -168,6 +179,9 @@ export async function scanZeroDteBoard(flags?: {
   news?: Map<string, NewsHeat>;
 }): Promise<ZeroDteScanResult> {
   const today = todayEt();
+  // WS-14 span capture (observability only): stamp the wall-clock at each pipeline hop the
+  // scan actually knows. These never gate anything — they feed recordScanSpans below.
+  const scanStartedAt = Date.now();
   let upstreamOk = true;
   const [flows, nhEdition, multiDayFlows] = await Promise.all([
     // max_dte: 1 is LOAD-BEARING — it scopes the premium ranking to 0-1DTE prints in
@@ -222,6 +236,7 @@ export async function scanZeroDteBoard(flags?: {
     })),
     { maxSetups: 10, excludeTickers: excludes, nowMs: Date.now(), todayYmd: today, rejections }
   );
+  const candidateDerivedAt = Date.now();
 
   const buildCache = createDossierBuildCache();
   const setups = await Promise.all(
@@ -320,6 +335,7 @@ export async function scanZeroDteBoard(flags?: {
   attachFlowAccumulation(setups, accumulationSignalsFromFlow(multiDayFlows, Date.now()));
 
   await attachContractPlans(setups);
+  const chainReceivedAt = Date.now();
   const tape = await attachIntradayEdge(setups);
 
   // Confluence read — how many of {post-open timing, price vs VWAP, market alignment} agree with each
@@ -336,6 +352,23 @@ export async function scanZeroDteBoard(flags?: {
   // the edge layer just fetched, and G-12 reads the confluence just attached (one clock per cycle, so
   // scoring, gating, and confluence can never disagree about the time or the tape).
   await attachGateVerdicts(setups, tape.bias, tape.biasAsOfMs, nowEtMinutes);
+  const gatesCompletedAt = Date.now();
+
+  // WS-14/15 (observability only, best-effort — recorders swallow their own errors): record
+  // this pass's stage spans + overall wall-clock. cortex_completed_at ≡ gatesCompletedAt (the
+  // Cortex runs INSIDE attachGateVerdicts on gate survivors). committed_at/board_visible_at are
+  // honestly null here — the commit happens in persistZeroDteScan and the board render in
+  // zerodte-service, neither of which this function can timestamp.
+  recordScanSpans({
+    scan_started_at: scanStartedAt,
+    candidate_derived_at: candidateDerivedAt,
+    chain_received_at: chainReceivedAt,
+    gates_completed_at: gatesCompletedAt,
+    cortex_completed_at: gatesCompletedAt,
+    committed_at: null,
+    board_visible_at: null,
+  });
+  recordScanDuration(gatesCompletedAt - scanStartedAt);
 
   return { setups, nighthawk_covered: nighthawkCovered, upstream_ok: upstreamOk, rejections };
 }
@@ -854,6 +887,24 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       // WS-06 — FULL origin maps: every discovery rail's (direction, score) at merge + which rail owned
       // the kept direction + all disagreements (not just the first conflict pair). Evidence only.
       origin_maps: buildOriginMaps(s),
+      // WS-14 — INPUT-AGE MANIFEST frozen at commit: the age (ms) at decision time of each input the
+      // decision used. Computed from timestamps ON the setup at commit (flow = freshest print
+      // `last_seen`; underlying = the name's own last minute bar). The remaining inputs (option quote,
+      // GEX, VIX, macro, SPY bias) carry no per-value timestamp into this commit function, so they are
+      // honestly null (the "never fabricate an unknown age" rule) rather than back-filled from a cache
+      // TTL. Observability only — never re-read as a decision input.
+      input_age_manifest: buildInputAgeManifest(
+        {
+          flow_at: s.last_seen ? Date.parse(s.last_seen) : null,
+          underlying_at: s.intraday?.last_bar_ms ?? null,
+          option_quote_at: null,
+          gex_at: null,
+          vix_at: null,
+          macro_at: null,
+          spy_bias_at: null,
+        },
+        committedAtMs
+      ),
     } as unknown as Record<string, unknown>,
     flags_json: {
       ...(s.earnings ? { earnings: s.earnings } : {}),
@@ -907,10 +958,16 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   }));
   const freshlyFlagged = await upsertZeroDteSetupLog(rows);
   if (freshlyFlagged.size > 0) {
-    recordZeroDteAuditTrail(
-      eligible.filter((s) => freshlyFlagged.has(s.ticker.toUpperCase())),
-      today
-    );
+    const freshRows = eligible.filter((s) => freshlyFlagged.has(s.ticker.toUpperCase()));
+    recordZeroDteAuditTrail(freshRows, today);
+    // WS-15 committed-row write counter + WS-14 per-origin end-to-end commit latency
+    // (observability only, best-effort). Counts genuinely-fresh commits (not refresh ticks);
+    // latency = freshest flow print (`last_seen`) → commit instant, bucketed by discovery origin.
+    recordCommittedRows(today, freshRows.length);
+    for (const s of freshRows) {
+      const flowAt = s.last_seen ? Date.parse(s.last_seen) : NaN;
+      if (Number.isFinite(flowAt)) recordCommitLatency(s.discovery_origin, committedAtMs - flowAt);
+    }
   }
   return rows.length;
 }
@@ -1022,6 +1079,10 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
           plan_outcome: planGrade.outcome,
           plan_pnl_pct: planGrade.pnl_pct,
         });
+        // WS-15 committed-ungradeable rate (observability only): a committed row the grader could
+        // not resolve to a real outcome (no post-flag minute bars / zero entry basis). Best-effort
+        // counter — does NOT change the stamped outcome or any grade decision.
+        if (planGrade.outcome === "ungradeable") recordUngradeable(row.session_date);
       }
       // polygonSpotTicker: an index-root row (SPXW/SPX/NDX…) must fetch its close
       // from the I: index symbol — the raw root "succeeds" with 0 results, which
