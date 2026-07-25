@@ -106,6 +106,11 @@ export function resolveTierFromMembership(
     );
   }
 
+  // Community products (e.g. Discord-only $75) must never resolve as premium, even if their
+  // plan ID is accidentally listed in a premium plan env var.
+  const communityProducts = getCommunityProductIds();
+  if (communityProducts.includes(productId)) return null;
+
   if (premiumProducts.includes(productId) || premiumPlans.includes(planId)) {
     return "premium";
   }
