@@ -50,12 +50,14 @@ export type ZeroDteRecordPlay = {
   plan_outcome: string | null;
   plan_pnl_pct: number | null;
   /** AS-MANAGED grade — how the position ACTUALLY closed (the exit the member was
-   *  guided to). `managed_source`: "engine" = from a stamped entry_context.exit (the
-   *  live ratchet/thesis/flat/plan exit), "plan" = no engine exit fired so it rode to
-   *  the mechanical outcome, null = ungraded. This is the member-facing per-play result. */
+   *  guided to). `managed_source`: "reconstructed" = a WS-11 TRIM-SCALE partial-path
+   *  reconstruction (the ⅓/⅓/⅓ scale-out replayed executable-side — the canonical official
+   *  number), "engine" = a stamped entry_context.exit (the live ratchet/thesis/flat/plan
+   *  single exit), "plan" = no engine exit fired so it rode to the mechanical outcome, null =
+   *  ungraded. This is the member-facing per-play result. */
   managed_outcome: string | null;
   managed_pnl_pct: number | null;
-  managed_source: "engine" | "plan" | null;
+  managed_source: "reconstructed" | "engine" | "plan" | null;
   /** Underlying direction grade (close vs flag) — the separate honesty ledger. */
   direction_hit: boolean | null;
   move_pct: number | null;
@@ -174,6 +176,31 @@ export function officialPlanOutcome(row: OfficialGradableRow): string | null {
   return readExecutableGrade(row.entry_context)?.plan_outcome ?? row.plan_outcome ?? null;
 }
 
+// ── WS-11: the OFFICIAL executable grade of a TRIM-SCALE row IS a reconstructed as-managed path ──
+// A trim_scale row's executable grade (entry_context.executable) is written by the grader as the
+// RECONSTRUCTED ⅓/⅓/⅓ scale-out (reconstructTrimScaleExecutableFromBars, scan.ts), carrying a
+// per-leg `tranches` array. Presence of that array is the signal that the OFFICIAL number is the
+// as-managed path itself — so the member-facing as-managed headline reads the SAME number the
+// calibration lane grades (officialPlanPnlPct), making grade_vs_asmanaged_delta ≈ 0 by
+// construction. Ratchet / legacy rows carry NO tranches, so this returns null and the as-managed
+// headline keeps its prior behavior (the live single-exit stamp, else the mechanical fallback).
+
+/** Read a WS-11 reconstructed TRIM-SCALE grade off entry_context.executable — only when it
+ *  carries a non-empty `tranches` array AND a finite plan_pnl_pct (a real reconstruction).
+ *  Null for ratchet/legacy executable blobs (no tranches) and malformed blobs. */
+export function readReconstructedTrimScale(
+  entryContext: Record<string, unknown> | null | undefined
+): { plan_outcome: string | null; plan_pnl_pct: number } | null {
+  const ex = entryContext?.executable;
+  if (!ex || typeof ex !== "object") return null;
+  const e = ex as Record<string, unknown>;
+  if (!Array.isArray(e.tranches) || e.tranches.length === 0) return null;
+  const pnl = typeof e.plan_pnl_pct === "number" && Number.isFinite(e.plan_pnl_pct) ? e.plan_pnl_pct : null;
+  if (pnl == null) return null;
+  const outcome = typeof e.plan_outcome === "string" ? e.plan_outcome : null;
+  return { plan_outcome: outcome, plan_pnl_pct: pnl };
+}
+
 /** Same graded-row predicate the calibration harness uses (bie/calibration.ts):
  *  'ungradeable' means the plan could not be measured — it is neither W nor L.
  *
@@ -215,7 +242,7 @@ type GradeView = {
   /** pnl exactly 0 — neither win nor loss. */
   breakeven: boolean;
   /** as-managed only: where the grade came from. */
-  source: "engine" | "plan" | null;
+  source: "reconstructed" | "engine" | "plan" | null;
 };
 
 /** The exit engine's realized-exit record, stamped first-write-wins at entry_context.exit
@@ -263,10 +290,29 @@ function mechanicalGradeView(row: ZeroDteSetupLogRow): GradeView {
   };
 }
 
-/** AS-MANAGED grade view — the exit the member was live-guided to take. Engine exit
- *  (entry_context.exit) when one was stamped; otherwise the play rode to the plan's own
- *  stop/target/time-stop, so it falls back to the mechanical grade. This is the headline. */
+/** AS-MANAGED grade view — the exit the member was live-guided to take. Precedence:
+ *  (1) WS-11 — a TRIM-SCALE row graded with a reconstructed partial path (executable blob
+ *      carries `tranches`): the reconstruction replays the exact ⅓/⅓/⅓ scale-out the engine
+ *      runs, priced executable-side, so it IS the canonical as-managed number AND the official
+ *      calibration number (officialPlanPnlPct) — one and the same, so the headline and the
+ *      grade agree by construction. It supersedes the live single-exit stamp for these rows.
+ *  (2) the live engine's stamped single exit (entry_context.exit) — ratchet mode, thesis/flat.
+ *  (3) no engine exit → the play rode to the plan's own stop/target/time-stop (mechanical). */
 function managedGradeView(row: ZeroDteSetupLogRow): GradeView {
+  const reco = readReconstructedTrimScale(row.entry_context);
+  if (reco) {
+    const pnl = round2(reco.plan_pnl_pct);
+    return {
+      graded: true,
+      // The reconstruction's own runner outcome (doubled/stopped/time_stop) is the honest
+      // as-managed label; the tranches carry the partial-banking detail behind the blend.
+      outcome: reco.plan_outcome,
+      pnl_pct: pnl,
+      win: pnl > 0,
+      breakeven: pnl === 0,
+      source: "reconstructed",
+    };
+  }
   const exit = readManagedExit(row.entry_context);
   if (exit && exit.pnl_pct != null) {
     const pnl = round2(exit.pnl_pct);
@@ -281,6 +327,15 @@ function managedGradeView(row: ZeroDteSetupLogRow): GradeView {
   }
   const mech = mechanicalGradeView(row);
   return { ...mech, source: mech.graded ? "plan" : null };
+}
+
+/** WS-11 — the member-facing AS-MANAGED plan P&L for a row (the same number managedGradeView's
+ *  headline reports). Exported so the grade path (scan.ts) can measure
+ *  grade_vs_asmanaged_delta = officialPlanPnlPct(row) − asManagedPnlPct(row) and confirm the
+ *  reconciliation holds (≈ 0 for a reconstructed TRIM-SCALE row). Null when the row is ungraded. */
+export function asManagedPnlPct(row: ZeroDteSetupLogRow): number | null {
+  const view = managedGradeView(row);
+  return view.graded ? view.pnl_pct : null;
 }
 
 /** The score every score-band gate acted on: commit-time score from entry_context when

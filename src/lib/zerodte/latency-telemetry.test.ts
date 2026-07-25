@@ -14,6 +14,7 @@ import {
   recordCommitLatency,
   recordCommittedRows,
   recordUngradeable,
+  recordGradeVsAsManagedDeltaBps,
   snapshotZeroDteLatency,
   _resetZeroDteLatencyForTest,
 } from "./latency-telemetry";
@@ -188,4 +189,20 @@ test("snapshotZeroDteLatency: scan duration, committed rows, ungradeable rate, p
   const cleared = snapshotZeroDteLatency();
   assert.equal(cleared.scan_duration.count, 0);
   assert.equal(cleared.committed_by_session.length, 0);
+});
+
+// ── WS-11: grade_vs_asmanaged_delta histogram (reconciliation guard, ≈0) ────────────────
+test("recordGradeVsAsManagedDeltaBps: abs-value samples; null/non-finite skipped; ≈0 after reconciliation", () => {
+  _resetZeroDteLatencyForTest();
+  recordGradeVsAsManagedDeltaBps(0); // the reconciled case
+  recordGradeVsAsManagedDeltaBps(-30); // a two-sided divergence still surfaces via |·|
+  recordGradeVsAsManagedDeltaBps(50);
+  recordGradeVsAsManagedDeltaBps(null); // skipped
+  recordGradeVsAsManagedDeltaBps(Number.NaN); // skipped
+  const snap = snapshotZeroDteLatency();
+  assert.equal(snap.grade_vs_asmanaged_delta_bps.count, 3);
+  assert.equal(snap.grade_vs_asmanaged_delta_bps.p50_ms, 30); // |−30| ranked in
+  assert.equal(snap.grade_vs_asmanaged_delta_bps.p95_ms, 50);
+  _resetZeroDteLatencyForTest();
+  assert.equal(snapshotZeroDteLatency().grade_vs_asmanaged_delta_bps.count, 0);
 });

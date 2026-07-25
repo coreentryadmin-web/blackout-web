@@ -294,6 +294,40 @@ export type PlanOutcome = {
   outcome: "doubled" | "stopped" | "time_stop" | "ungradeable";
   /** P/L % of premium at exit vs entry. */
   pnl_pct: number | null;
+  /** WS-11 — per-leg fills when this grade is a RECONSTRUCTED TRIM-SCALE path
+   *  (reconstructTrimScaleExecutableFromBars). The blended `pnl_pct` above is the
+   *  fraction-weighted sum of these legs. Omitted for the single-exit grades
+   *  (gradePlanFromBars / gradePlanExecutableFromBars) and the ratchet lane — those stay a
+   *  single stop/target/time-stop walk, so a consumer reads "no tranches" as "single exit". */
+  tranches?: PlanTrancheFill[];
+};
+
+/** WS-11 — one reconstructed profit-taking leg of a TRIM-SCALE as-managed path. `fraction`
+ *  is the share of the ORIGINAL position banked in this leg; `exit_pnl_pct` is that leg's
+ *  EXECUTABLE (bought-the-ask, sold-the-bid) return; `at_et` is the ET "H:MM" of the bar it
+ *  filled in. The array is the audit trail behind the one blended official number, so the
+ *  member record and calibration grade the SAME strategy the engine actually runs. */
+export type PlanTrancheFill = {
+  /** 1-based leg index in fill order (first trim = 1, second = 2, runner = last). */
+  tranche: number;
+  /** Share of the ORIGINAL position exited in this leg (the ⅓/⅓/⅓ ladder ⇒ ~0.333 each). */
+  fraction: number;
+  /** Executable (bid-to-close vs ask-to-open) P&L % for this leg. */
+  exit_pnl_pct: number;
+  /** Which rule closed this leg. */
+  exit_reason: "trim_scale_first" | "trim_scale_second" | "doubled" | "stopped" | "time_stop";
+  /** ET "H:MM" of the bar this leg filled in (DST-safe via etMinutesOf). */
+  at_et: string;
+};
+
+/** WS-11 — the resolved TRIM-SCALE ladder the reconstruction replays: the ORDERED profit-
+ *  taking tranches (peak-P&L trigger + fraction of the ORIGINAL position) and the runner
+ *  fraction that rides the plan rails after them. Plain numbers (structurally mirrors
+ *  ResolvedExitPolicy.trim_levels / runner_fraction from strategy-version.ts) so this leaf
+ *  never imports strategy-version — which imports THIS module, so the reverse would cycle. */
+export type TrimScaleSpec = {
+  trim_levels: { trigger_pct: number; fraction: number }[];
+  runner_fraction: number;
 };
 
 /** ET minutes-since-midnight for an epoch-ms timestamp (DST-safe via Intl). */
@@ -435,6 +469,155 @@ export function gradePlanExecutableFromBars(
   }
   if (lastBidCloseInWindow == null) return { outcome: "ungradeable", pnl_pct: null };
   return { outcome: "time_stop", pnl_pct: pnl(lastBidCloseInWindow) };
+}
+
+/**
+ * WS-11 — RECONSTRUCT the TRIM-SCALE as-managed path (the strategy the engine actually
+ * runs) as ONE canonical, executable-priced official outcome.
+ *
+ * WHY THIS EXISTS. gradePlanFromBars / gradePlanExecutableFromBars above are a SINGLE
+ * stop/target/time-stop walk — they exit the WHOLE position at one price. But the shipped
+ * profit-management family (exit-engine.ts trim_scale, FINDINGS 2026-07-23) is a PARTIAL
+ * scale-out: bank ⅓ of the original at the +25% trim, another ⅓ at +50%, and run the last ⅓
+ * to the plan target/stop/time-stop. Grading a trim_scale row with a single walk therefore
+ * grades a DIFFERENT strategy than the one the member is guided to trade — so the calibration
+ * grade and the member-facing "as-managed" record can disagree, and the ledger can graduate a
+ * strategy nobody actually trades. This function replays the FROZEN trim ladder (WS-02's
+ * resolved exit-policy snapshot) leg-by-leg so the OFFICIAL number IS the as-managed path.
+ *
+ * EXECUTABLE PER LEG (WS-10 frame, reused verbatim): entry basis = the ASK you pay to open
+ * (entryPremium × (1 + f)); every exit is the BID you sell into (tradePrice × (1 − f)). A trim
+ * tranche k fires the first bar the BID HIGH reaches the trim LEVEL (entryPremium × (1 +
+ * trigger_pctₖ/100)) — the same bid-side trigger discipline gradePlanExecutableFromBars applies
+ * to the target — and banks `fractionₖ` of the original at that level. The runner (whatever is
+ * left after the trims) then rides to the plan target (bid high ≥ target), the plan stop (bid
+ * low ≤ stop, checked FIRST within a bar per the frozen collision rule — stop-before-target),
+ * or the 15:30 time-stop (sell the remainder into the closing bid). `f` is the row's OWN pinned
+ * half-spread (clamped [0, 0.95] like the single-walk grade), so the reconstruction pays the
+ * real committed spread on every leg.
+ *
+ * ONE OFFICIAL NUMBER. `pnl_pct` is the fraction-weighted blend of the legs (Σ fractionₖ ×
+ * exit_pnl_pctₖ); `tranches` is the per-leg audit trail; `outcome` labels how the RUNNER (the
+ * last, largest-consequence leg) closed (doubled / stopped / time_stop), so by_outcome bucketing
+ * stays meaningful while the tranches carry the partial-banking detail. record.ts reconciles its
+ * as-managed headline to this same number (grade_vs_asmanaged_delta ≈ 0).
+ *
+ * SCOPE / BACK-COMPAT: called ONLY for a row whose FROZEN policy is trim_scale (scan.ts);
+ * ratchet and legacy/no-snapshot rows keep the single-walk gradePlanExecutableFromBars. An empty
+ * ladder, a non-positive entry, or no post-flag bars → ungradeable (never a fabricated fill).
+ */
+export function reconstructTrimScaleExecutableFromBars(
+  bars: PlanBar[],
+  entryPremium: number,
+  flaggedAtMs: number,
+  halfSpreadFrac: number,
+  spec: TrimScaleSpec,
+  params?: PlanGradeParams | null
+): PlanOutcome {
+  if (!(entryPremium > 0)) return { outcome: "ungradeable", pnl_pct: null };
+  const levels = spec.trim_levels ?? [];
+  if (levels.length === 0) {
+    // No trim ladder to replay → the runner IS the whole position: defer to the single walk
+    // so a degenerate/empty snapshot can never silently drop to "ungradeable".
+    return gradePlanExecutableFromBars(bars, entryPremium, flaggedAtMs, halfSpreadFrac, params);
+  }
+  const f = Math.min(0.95, Math.max(0, halfSpreadFrac));
+  const stopPct = params?.hard_stop_pct ?? PLAN_RULES.stop_pct;
+  const targetPct = params?.target_pct ?? PLAN_RULES.target_pct;
+  const timeStopMinutes = params?.time_stop_et_minutes ?? PLAN_RULES.time_stop_et_minutes;
+  const stop = entryPremium * (1 + stopPct / 100); // mid-premium plan levels (unchanged)
+  const target = entryPremium * (1 + targetPct / 100);
+  // Each trim's premium LEVEL = entry × (1 + trigger%/100), the same construction as the plan
+  // target — so the bid-high crossing it is the executable analog of "the peak armed the trim".
+  const trimLevels = levels.map((l) => entryPremium * (1 + l.trigger_pct / 100));
+  const entryAsk = entryPremium * (1 + f);
+  const pnl = (exitBid: number) => round2(((exitBid - entryAsk) / entryAsk) * 100);
+  const etHHMM = (t: number) => {
+    const m = etMinutesOf(t);
+    return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+  };
+
+  const tranches: PlanTrancheFill[] = [];
+  let remaining = 1; // fraction of the ORIGINAL position still open
+  let nextTrim = 0; // index of the next un-banked trim tranche
+  let lastBidClose: number | null = null;
+  let lastEt = "";
+  let runnerOutcome: "doubled" | "stopped" | "time_stop" | null = null;
+
+  for (const bar of [...bars].sort((a, b) => a.t - b.t)) {
+    if (bar.t <= flaggedAtMs) continue; // exclude the flag bar (same discipline as the walks)
+    if (etMinutesOf(bar.t) > timeStopMinutes) break;
+    const bidLow = bar.l * (1 - f);
+    const bidHigh = bar.h * (1 - f);
+    const et = etHHMM(bar.t);
+    // Collision rule (frozen: stop-before-target): a bar that touches the stop closes the WHOLE
+    // remaining position at the stop before any trim/target on that same bar can bank — the
+    // conservative intrabar order, identical to both single walks. A ⅓ already banked on an
+    // EARLIER bar is safe; only same-bar ambiguity resolves pessimistically.
+    if (bidLow <= stop) {
+      tranches.push({
+        tranche: tranches.length + 1,
+        fraction: remaining,
+        exit_pnl_pct: pnl(stop),
+        exit_reason: "stopped",
+        at_et: et,
+      });
+      remaining = 0;
+      runnerOutcome = "stopped";
+      break;
+    }
+    // Bank every trim tranche whose level the bid high reached this bar (peak armed it).
+    while (nextTrim < levels.length && remaining > 0 && bidHigh >= trimLevels[nextTrim]!) {
+      const frac = Math.min(levels[nextTrim]!.fraction, remaining);
+      tranches.push({
+        tranche: tranches.length + 1,
+        fraction: frac,
+        exit_pnl_pct: pnl(trimLevels[nextTrim]!),
+        exit_reason: nextTrim === 0 ? "trim_scale_first" : "trim_scale_second",
+        at_et: et,
+      });
+      remaining -= frac;
+      nextTrim += 1;
+    }
+    // Runner target: once every trim is banked, the last fraction runs to the +100% plan target.
+    if (nextTrim >= levels.length && remaining > 0 && bidHigh >= target) {
+      tranches.push({
+        tranche: tranches.length + 1,
+        fraction: remaining,
+        exit_pnl_pct: pnl(target),
+        exit_reason: "doubled",
+        at_et: et,
+      });
+      remaining = 0;
+      runnerOutcome = "doubled";
+      break;
+    }
+    lastBidClose = bar.c * (1 - f);
+    lastEt = et;
+  }
+
+  // Runner never hit stop or target inside the window → time-stop the remainder at the last
+  // closing bid. No usable post-flag bar at all (no trims banked either) → ungradeable.
+  if (remaining > 0) {
+    if (lastBidClose == null) return { outcome: "ungradeable", pnl_pct: null };
+    tranches.push({
+      tranche: tranches.length + 1,
+      fraction: remaining,
+      exit_pnl_pct: pnl(lastBidClose),
+      exit_reason: "time_stop",
+      at_et: lastEt,
+    });
+    // (No `remaining = 0` here — the position is fully closed by this final tranche and
+    // `remaining` is never read again before the return; CodeQL flagged the assignment as a
+    // dead store. The stop/target break paths above DO zero it, but only because they `break`
+    // out mid-loop and the invariant matters there; this tail runs after the loop.)
+    runnerOutcome = runnerOutcome ?? "time_stop";
+  }
+
+  if (tranches.length === 0) return { outcome: "ungradeable", pnl_pct: null };
+  // ONE official number: the fraction-weighted blend of the legs (fractions sum to 1).
+  const blended = round2(tranches.reduce((acc, t) => acc + t.fraction * t.exit_pnl_pct, 0));
+  return { outcome: runnerOutcome ?? "time_stop", pnl_pct: blended, tranches };
 }
 
 // ── Live play lifecycle (pure) ────────────────────────────────────────────────────
