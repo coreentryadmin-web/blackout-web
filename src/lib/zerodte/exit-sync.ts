@@ -39,6 +39,7 @@ import {
 import { getZeroDteLiveMark, type ZeroDteLiveMark } from "./live-marks";
 import { isZeroDteMarkStale, pinnedLivePnlPct } from "./marks-math";
 import { PLAN_RULES } from "./plan";
+import type { ResolvedExitPolicy } from "./strategy-version";
 
 /** Evidence cache TTL — one Cortex fan-out per (ticker, direction) per ~30s across
  *  every sync caller, not per row per tick. */
@@ -124,6 +125,35 @@ export function readFrozenExitMode(
   return v === "ratchet" || v === "trim_scale" ? v : null;
 }
 
+/**
+ * WS-02 — the FULLY-RESOLVED exit-policy SNAPSHOT frozen on a committed row
+ * (entry_context.exit_policy_snapshot, buildResolvedExitPolicy). Unlike readFrozenExitMode
+ * (only the mode NAME), this carries the actual NUMERIC thresholds — hard stop %, target %,
+ * trim ladder, time-stop, collision rule — as they were AT COMMIT. The exit engine and both
+ * graders prefer these numbers so a later numeric edit in code can NEVER retroactively
+ * re-grade a historical play. Returns null for a legacy/pre-WS-02 row (no snapshot) so those
+ * fall back to current-code PLAN_RULES — the exact prior behavior, never a fabricated policy.
+ * Validated structurally (finite stop/target + a hash string) so a malformed blob reads as
+ * absent rather than as a partial policy.
+ */
+export function readFrozenExitPolicy(
+  entryContext: Record<string, unknown> | null | undefined
+): ResolvedExitPolicy | null {
+  const snap = entryContext?.exit_policy_snapshot;
+  if (!snap || typeof snap !== "object") return null;
+  const s = snap as Record<string, unknown>;
+  if (
+    typeof s.hard_stop_pct === "number" &&
+    Number.isFinite(s.hard_stop_pct) &&
+    typeof s.target_pct === "number" &&
+    Number.isFinite(s.target_pct) &&
+    typeof s.config_hash === "string"
+  ) {
+    return s as unknown as ResolvedExitPolicy;
+  }
+  return null;
+}
+
 /** Injectable IO seams (cortex-gate.ts's CortexCommitDeps idiom) so the wiring is
  *  unit-testable without module mocks or a live platform. */
 export type ExitSyncDeps = {
@@ -186,14 +216,22 @@ export async function evaluateLedgerRowExit(
     const ageMinutes = Number.isFinite(Date.parse(row.first_flagged_at))
       ? Math.max(0, (nowMs - Date.parse(row.first_flagged_at)) / 60_000)
       : null;
+    // WS-02: when a fresh stop/target premium isn't pinned on the plan, derive it from the
+    // FROZEN exit-policy snapshot's numeric params (the numbers this row committed under),
+    // falling back to current-code PLAN_RULES ONLY for legacy rows with no snapshot. The
+    // pinned plan_json.stop_premium/target_premium (computed from PLAN_RULES at commit) still
+    // wins when present — it IS the commit-time number.
+    const frozenPolicy = readFrozenExitPolicy(row.entry_context as Record<string, unknown> | null);
+    const stopPct = frozenPolicy?.hard_stop_pct ?? PLAN_RULES.stop_pct;
+    const targetPct = frozenPolicy?.target_pct ?? PLAN_RULES.target_pct;
     const planStop =
       typeof row.plan_json?.stop_premium === "number"
         ? (row.plan_json.stop_premium as number)
-        : entry * (1 + PLAN_RULES.stop_pct / 100);
+        : entry * (1 + stopPct / 100);
     const planTarget =
       typeof row.plan_json?.target_premium === "number"
         ? (row.plan_json.target_premium as number)
-        : entry * (1 + PLAN_RULES.target_pct / 100);
+        : entry * (1 + targetPct / 100);
 
     // Exit family (A/B, default ratchet). In trim_scale mode there is no persisted
     // trim-count column yet (that is the graduation follow-up — FINDINGS 2026-07-23), so

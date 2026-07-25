@@ -103,6 +103,20 @@ export const CORRELATION_GROUPS: ReadonlyArray<ReadonlySet<string>> = [
   new Set(["SPY", "QQQ", "IWM", "DIA", "SPX", "SPXW", "NDX", "XSP"]),
 ];
 
+/** WS-05 version stamp for the concentration MEASURE frozen at commit (freezeConcentration
+ *  State below). Bump BY HAND when the concentration definition changes (which groups, how
+ *  same-beta/same-direction is counted) so a calibration read can partition frozen states by
+ *  the logic that produced them — same discipline as CONCENTRATION_POLICY's sibling version
+ *  strings. v1 = the single broad-index/ETF group + same-direction/same-group counting. */
+export const CONCENTRATION_POLICY_VERSION = "v1";
+
+/** A stable, deterministic id for a correlation group — its sorted members joined — so a
+ *  frozen concentration state names the exact group it measured without depending on array
+ *  index (which would silently re-map if the group list is reordered). Pure. */
+export function correlationGroupId(group: ReadonlySet<string>): string {
+  return `cg:${Array.from(group).map((t) => t.toUpperCase()).sort().join("-")}`;
+}
+
 /** The correlation group a ticker belongs to, or null. Exported so the SWING theme resolver
  *  (src/lib/swing/theme-cluster.ts, SEV-9) can seed its broad-market cluster from the ONE
  *  correlation-group source instead of hand-copying the index/ETF list. Caller must uppercase. */
@@ -155,6 +169,83 @@ export function maxCorrelatedSameDirection(
     }
   }
   return best;
+}
+
+// ── WS-05: FREEZE the concentration STATE at commit (MEASURE ONLY — no gating) ──────────
+// summarizeGovernorForBoard surfaces the concentration measure LIVE on the board, but it is
+// re-derived from the CURRENT ledger every build and never pinned to a row. So a graded row
+// cannot later be asked "how concentrated was the book WHEN THIS play committed?" — the exact
+// question the calibration-first plan needs to answer before flipping concentration from a
+// measure to a gate (governor.ts's own Q9 note). This freezes that state onto the committed
+// row's entry_context from the SAME inputs the live measure uses (the governor's open plans +
+// CORRELATION_GROUPS), so the evidence survives to the graded ledger. STRICTLY EVIDENCE — it
+// changes nothing that commits.
+
+/** The immutable concentration snapshot frozen onto a committed row (entry_context.concentration).
+ *  Every field is a MEASURE over the book state at commit; back-compat readers must null-guard it
+ *  (legacy rows have none). */
+export type ZeroDteConcentrationState = {
+  /** Existing OPEN plans (this candidate excluded) pointing the SAME direction as the candidate. */
+  same_direction_open_count: number;
+  /** Existing OPEN plans in the SAME correlation group AND same direction as the candidate — the
+   *  same-beta correlated exposure the Q9 measure flags against. */
+  same_beta_open_count: number;
+  /** Ids of the correlation group(s) the candidate belongs to (v1: the one broad-index/ETF group,
+   *  or empty for a single name outside it). */
+  correlation_group_ids: string[];
+  /** `${ticker}:${direction}` ids of the existing OPEN plans at commit (this candidate excluded) —
+   *  the concrete book the counts summarize. */
+  existing_open_setup_ids: string[];
+  /** Total existing OPEN directional plans at commit (this candidate excluded) — the gross book size. */
+  gross_directional_count: number;
+  /** Sum of entry premium across the existing OPEN plans at commit, when the caller can supply it
+   *  (open ledger rows' entry_premium). Null when unavailable — never fabricated. */
+  aggregate_premium_at_risk: number | null;
+  /** The version of the concentration definition this state was frozen under (CONCENTRATION_POLICY_VERSION). */
+  concentration_policy_version: string;
+};
+
+/**
+ * Freeze the concentration MEASURE for one committing candidate against the book's OPEN plans —
+ * the same `openPlans` + CORRELATION_GROUPS that summarizeGovernorForBoard / maxCorrelatedSameDirection
+ * read. PURE, measure-only: it returns evidence to pin, never a gate. Tickers are normalized here; the
+ * candidate is excluded from its own counts by ticker. `aggregatePremiumAtRisk` is passed through when
+ * the caller has the open rows' entry premiums (the governor's own plan shape carries none), else null.
+ */
+export function freezeConcentrationState(
+  candidate: { ticker: string; direction: "long" | "short" },
+  openPlans: GovernorOpenPlan[],
+  opts?: { aggregatePremiumAtRisk?: number | null }
+): ZeroDteConcentrationState {
+  const candTicker = candidate.ticker.toUpperCase();
+  // Existing open book with THIS candidate excluded by ticker (a refresh of the same name isn't
+  // "another correlated exposure"). Distinct by (ticker, direction) so a ledger quirk can't inflate.
+  const existing = Array.from(
+    new Map(
+      openPlans
+        .filter((p) => p.ticker.toUpperCase() !== candTicker)
+        .map((p) => [`${p.ticker.toUpperCase()}:${p.direction}`, { ticker: p.ticker.toUpperCase(), direction: p.direction }])
+    ).values()
+  );
+
+  const sameDirection = existing.filter((p) => p.direction === candidate.direction);
+  const group = correlationGroupOf(candTicker);
+  const sameBeta = group
+    ? sameDirection.filter((p) => group.has(p.ticker))
+    : [];
+
+  return {
+    same_direction_open_count: sameDirection.length,
+    same_beta_open_count: sameBeta.length,
+    correlation_group_ids: group ? [correlationGroupId(group)] : [],
+    existing_open_setup_ids: existing.map((p) => `${p.ticker}:${p.direction}`).sort(),
+    gross_directional_count: existing.length,
+    aggregate_premium_at_risk:
+      opts?.aggregatePremiumAtRisk != null && Number.isFinite(opts.aggregatePremiumAtRisk)
+        ? Math.round(opts.aggregatePremiumAtRisk)
+        : null,
+    concentration_policy_version: CONCENTRATION_POLICY_VERSION,
+  };
 }
 
 /** Per-candidate concentration reason (surfaced/measured — the future enforcement point),

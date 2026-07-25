@@ -29,6 +29,7 @@ import {
   gradingPolicyForHorizon,
   unionDiscoveryOrigins,
   noteOriginDirectionConflict,
+  recordOriginContributionsOnMerge,
   type DiscoveryOrigin,
   type EnrichedZeroDteSetup,
   type ZeroDteSetup,
@@ -357,6 +358,9 @@ export function mergePinOrigins(
       // Q1: a pin FADE that opposes the kept (flow/breakout momentum) direction is stamped
       // as evidence — the kept direction is never flipped (that would fabricate agreement),
       // but the opposing read survives to the graded origin band instead of vanishing.
+      // WS-06: record BOTH rails' (direction, score) BEFORE the union rewrites discovery_origin,
+      // so the frozen origin maps capture every disagreement, not just the first conflict pair.
+      recordOriginContributionsOnMerge(found, p);
       noteOriginDirectionConflict(found, p);
       found.discovery_origin = unionDiscoveryOrigins(found.discovery_origin, p.discovery_origin);
     } else {

@@ -86,6 +86,13 @@ export interface SetupFeatureInputs {
    *  instead of being blended with plays a changed strategy would have produced differently. Threaded
    *  from the commit site (scan.ts); absent → null (an honest "unversioned" read, never fabricated). */
   strategyConfigHash?: string | null;
+  /** WS-06: which discovery rail OWNED the kept direction at merge (FLOW under v1 precedence). The
+   *  full per-rail direction/score maps live in entry_context.origin_maps; the owner is flattened
+   *  here so the store can one-hot/slice by it. Absent → null (never fabricated). */
+  directionOwner?: DiscoveryOrigin | null;
+  /** WS-06: the merge/precedence version the origin maps were frozen under (MERGE_POLICY_VERSION).
+   *  Absent → null. */
+  mergePolicyVersion?: string | null;
 }
 
 /** The flat, versioned feature row. Numeric where possible; small categorical strings otherwise. */
@@ -143,6 +150,10 @@ export interface SetupFeatureVector {
   /** Frozen strategy config hash at commit (design Q12). null when not threaded → an "unversioned"
    *  row the calibration analyzer keeps in its own cohort, never blended with the current hash. */
   strategy_config_hash: string | null;
+  /** WS-06: discovery rail that owned the kept direction (FLOW / BREAKOUT / PIN). null when not threaded. */
+  direction_owner: string | null;
+  /** WS-06: merge/precedence version the origin maps were frozen under. null when not threaded. */
+  merge_policy_version: string | null;
 }
 
 const numOrNull = (n: number | null | undefined): number | null =>
@@ -207,6 +218,10 @@ export function buildSetupFeatureVector(input: SetupFeatureInputs): SetupFeature
     // Strategy config hash at commit (design Q12). null (not a fabricated value) when the hash wasn't
     // threaded — the calibration analyzer cohorts a null-hash row as "unversioned", never as current.
     strategy_config_hash: input.strategyConfigHash ?? null,
+    // WS-06 origin provenance (the full maps live in entry_context.origin_maps; these two are the
+    // flat slice-able keys). null (not fabricated) when not threaded.
+    direction_owner: input.directionOwner ?? null,
+    merge_policy_version: input.mergePolicyVersion ?? null,
   };
 }
 
