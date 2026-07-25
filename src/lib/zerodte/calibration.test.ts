@@ -9,6 +9,14 @@ import {
   analyzeAccumulationAlignment,
   analyzeConfluenceTiers,
   analyzeOriginBands,
+  analyzeOriginPlayTypeBands,
+  analyzeCortexVetoes,
+  cortexVetoSourceOf,
+  forwardHoldout,
+  readCrossedPlayTypeLabel,
+  recommendCrossedCell,
+  PRODUCTION_MIN_N,
+  PRODUCTION_WILSON_FLOOR_PCT,
   readOriginLabel,
   recommendConfluence,
   recommendAccumulation,
@@ -182,6 +190,7 @@ test("bucket math: per-bucket n/wins/losses/win rate/avg pnl and the delta", () 
     win_rate_pct: 25,
     avg_pnl_pct: -7.5,
     low_n: true, // n=4 < 5
+    win_rate_ci_pct: { lo: 4.6, hi: 69.9, mid: 37.2 }, // Wilson CI (WS-09), n=4
   });
   assert.deepEqual(g4.evidence.would_pass, {
     label: "would_pass",
@@ -191,6 +200,7 @@ test("bucket math: per-bucket n/wins/losses/win rate/avg pnl and the delta", () 
     win_rate_pct: 66.7,
     avg_pnl_pct: 50,
     low_n: false,
+    win_rate_ci_pct: { lo: 30.0, hi: 90.3, mid: 60.2 }, // Wilson CI (WS-09), n=6
   });
   assert.equal(g4.evidence.no_verdict_n, 1);
   assert.equal(g4.evidence.delta_win_rate_pts, 41.7);
@@ -665,4 +675,165 @@ test("recommendScaleOut is surfaced on the full report and never gates", () => {
   const report = analyzeGateCalibration({ rows: [play({ win: true })], window: WINDOW });
   assert.equal(report.scale_out_recommendation.signal, "scale_out");
   assert.ok(["enforce", "keep_calibrating", "insufficient_data"].includes(report.scale_out_recommendation.verdict));
+});
+
+// ── Hardening WS-07 / WS-09: crossed origin × play_type cohorts, Wilson CIs, forward holdout ──────
+/** Crossed-cohort row builder: origin set + optional condor structure + graded outcome + session_date. */
+function xrow(opts: { origin: string[]; condor?: boolean; win: boolean; date?: string }): CalibrationPlayRow {
+  const ec: Record<string, unknown> = { discovery_origin: opts.origin };
+  if (opts.condor) ec.play_type = "CONDOR";
+  return {
+    session_date: opts.date ?? "2026-07-10",
+    ticker: "SPY",
+    direction: "long",
+    score_max: 70,
+    plan_outcome: opts.win ? "doubled" : "stopped",
+    plan_pnl_pct: opts.win ? 100 : -50,
+    entry_context: ec,
+    gate_calibration_json: null,
+  };
+}
+
+test("readCrossedPlayTypeLabel: PIN directional is a FADE, PIN condor is CONDOR, others plain DIRECTIONAL", () => {
+  assert.equal(readCrossedPlayTypeLabel({ discovery_origin: ["PIN"] }), "DIRECTIONAL_FADE");
+  assert.equal(readCrossedPlayTypeLabel({ discovery_origin: ["PIN"], play_type: "CONDOR" }), "CONDOR");
+  assert.equal(readCrossedPlayTypeLabel({ discovery_origin: ["FLOW"] }), "DIRECTIONAL");
+  assert.equal(readCrossedPlayTypeLabel({ discovery_origin: ["FLOW", "PIN"] }), "DIRECTIONAL"); // mixed → not a pure fade
+});
+
+test("every bucket now carries a Wilson CI in percentage points (k=8,n=10 → ~[49,94])", () => {
+  const rows = [...repeat(8, () => play({ win: true })), ...repeat(2, () => play({ win: false }))];
+  const report = analyzeGateCalibration({ rows, window: WINDOW });
+  const scoreBand = report.score_bands.find((b) => b.n === 10)!;
+  assert.ok(scoreBand.win_rate_ci_pct != null);
+  assert.ok(Math.abs(scoreBand.win_rate_ci_pct!.lo - 49.0) < 1.0, `lo=${scoreBand.win_rate_ci_pct!.lo}`);
+  assert.ok(Math.abs(scoreBand.win_rate_ci_pct!.hi - 94.3) < 1.0, `hi=${scoreBand.win_rate_ci_pct!.hi}`);
+});
+
+test("WS-07: PIN marginal looks acceptable while the PIN×CONDOR crossed cell exposes the weakness", () => {
+  // PIN directional-fade is STRONG (16/20 = 80%); PIN condor is WEAK (4/20 = 20%). The PIN marginal
+  // blends them to a passable ~50%; only the crossed cell shows the condor bleeding.
+  const rows: CalibrationPlayRow[] = [
+    ...repeat(16, () => xrow({ origin: ["PIN"], win: true })),
+    ...repeat(4, () => xrow({ origin: ["PIN"], win: false })),
+    ...repeat(4, () => xrow({ origin: ["PIN"], condor: true, win: true })),
+    ...repeat(16, () => xrow({ origin: ["PIN"], condor: true, win: false })),
+  ];
+  const report = analyzeGateCalibration({ rows, window: WINDOW });
+
+  const pinMarginal = report.origin_bands.find((b) => b.label === "PIN")!;
+  assert.equal(pinMarginal.n, 40);
+  assert.equal(pinMarginal.win_rate_pct, 50); // 20/40 — reads acceptable, hiding the split
+
+  const pinCondor = report.origin_playtype_bands.find((c) => c.origin === "PIN" && c.play_type === "CONDOR")!;
+  const pinFade = report.origin_playtype_bands.find((c) => c.origin === "PIN" && c.play_type === "DIRECTIONAL_FADE")!;
+  assert.equal(pinCondor.win_rate_pct, 20); // the weakness is visible ONLY in the crossed cell
+  assert.equal(pinFade.win_rate_pct, 80);
+  assert.ok(pinCondor.win_rate_ci_pct!.hi < pinFade.win_rate_ci_pct!.lo, "condor CI sits entirely below the fade CI");
+  // Weak cell is nowhere near a production recommendation.
+  assert.notEqual(pinCondor.recommendation.verdict, "graduate_to_production");
+});
+
+test("WS-09: a cell strong on the whole window but decayed out of sample is NOT graduated", () => {
+  // 80 FLOW×DIRECTIONAL rows: earlier session all wins (40/40), later session 24/40 = 60%. Blended
+  // 80% clears n>=75 and the Wilson floor, but the later half is significantly worse → holdout unstable.
+  const rows: CalibrationPlayRow[] = [
+    ...repeat(40, () => xrow({ origin: ["FLOW"], win: true, date: "2026-06-01" })),
+    ...repeat(24, () => xrow({ origin: ["FLOW"], win: true, date: "2026-06-20" })),
+    ...repeat(16, () => xrow({ origin: ["FLOW"], win: false, date: "2026-06-20" })),
+  ];
+  const report = analyzeGateCalibration({ rows, window: WINDOW });
+  const cell = report.origin_playtype_bands.find((c) => c.origin === "FLOW" && c.play_type === "DIRECTIONAL")!;
+  assert.equal(cell.n, 80);
+  assert.equal(cell.recommendation.checks.n_ok, true);
+  assert.equal(cell.recommendation.checks.wilson_lb_ok, true); // point estimate/LB clears the floor
+  assert.equal(cell.recommendation.checks.stable, false); // but the forward holdout fails
+  assert.equal(cell.recommendation.verdict, "keep_calibrating"); // so it does NOT graduate
+  assert.ok(cell.holdout.decay_pts! < 0 && cell.holdout.decay_ci_pct!.hi < 0);
+});
+
+test("WS-09: a stable, large, floor-clearing crossed cell DOES earn a production recommendation (recommend-only)", () => {
+  // 80 rows, ~90% both halves, no decay — every check passes.
+  const rows: CalibrationPlayRow[] = [
+    ...repeat(36, () => xrow({ origin: ["FLOW"], win: true, date: "2026-06-01" })),
+    ...repeat(4, () => xrow({ origin: ["FLOW"], win: false, date: "2026-06-01" })),
+    ...repeat(36, () => xrow({ origin: ["FLOW"], win: true, date: "2026-06-20" })),
+    ...repeat(4, () => xrow({ origin: ["FLOW"], win: false, date: "2026-06-20" })),
+  ];
+  const report = analyzeGateCalibration({ rows, window: WINDOW });
+  const cell = report.origin_playtype_bands.find((c) => c.origin === "FLOW" && c.play_type === "DIRECTIONAL")!;
+  assert.equal(cell.recommendation.verdict, "graduate_to_production");
+  assert.ok(cell.recommendation.wilson_lb_pct! >= PRODUCTION_WILSON_FLOOR_PCT);
+});
+
+test("recommendCrossedCell: n under the production bar → insufficient_data even at 100% WR", () => {
+  const rows = repeat(10, () => xrow({ origin: ["FLOW"], win: true }));
+  const cell = analyzeOriginPlayTypeBands(rows).find((c) => c.origin === "FLOW" && c.play_type === "DIRECTIONAL")!;
+  assert.ok(cell.n < PRODUCTION_MIN_N);
+  assert.equal(cell.recommendation.verdict, "insufficient_data");
+});
+
+test("forwardHoldout: fewer than two distinct session dates → stability unproven, never falsely stable", () => {
+  const ho = forwardHoldout(repeat(10, () => xrow({ origin: ["FLOW"], win: true, date: "2026-07-10" })));
+  assert.equal(ho.split_date, null);
+  assert.equal(ho.stable, false);
+});
+
+// ── Hardening WS-17: per-source Cortex false-veto analysis ────────────────────────────────────────
+/** A graded-skip fixture: rejection code + counterfactual verdict (+ optional frozen hash). */
+function vetoSkip(gateFailed: string, verdict: "would_have_won" | "would_have_lost" | "ungradeable", hash?: string): GradedSkipInput {
+  return { gate_failed: gateFailed, counterfactual: { verdict }, strategy_config_hash: hash };
+}
+
+test("cortexVetoSourceOf: attributes to the exact source; veto_blind is the unattributable bucket", () => {
+  assert.equal(cortexVetoSourceOf("cortex_veto:gex-walls"), "gex-walls");
+  assert.equal(cortexVetoSourceOf("cortex_veto:flow-quality"), "flow-quality");
+  assert.equal(cortexVetoSourceOf("cortex_veto_blind"), "veto_blind");
+  assert.equal(cortexVetoSourceOf("g4_vix"), null); // not a cortex veto — belongs to blocked_value, not here
+});
+
+test("WS-17: a vetoed-would-have-won row is attributed to the SPECIFIC source, not 'veto_blind'", () => {
+  const skips: GradedSkipInput[] = [
+    vetoSkip("cortex_veto:gex-walls", "would_have_won"),
+    vetoSkip("cortex_veto:gex-walls", "would_have_lost"),
+    vetoSkip("cortex_veto:flow-quality", "would_have_lost"),
+    vetoSkip("cortex_veto_blind", "would_have_won"),
+    vetoSkip("g4_vix", "would_have_won"), // non-cortex — must be ignored here
+  ];
+  const analysis = analyzeCortexVetoes(skips);
+  const gex = analysis.cells.find((c) => c.source === "gex-walls")!;
+  assert.equal(gex.veto_count, 2);
+  assert.equal(gex.would_have_won, 1);
+  assert.equal(gex.would_have_won_rate_pct, 50); // 1/2 false-veto estimate, attributed to gex-walls exactly
+  assert.ok(gex.would_have_won_ci_pct != null);
+  const flow = analysis.cells.find((c) => c.source === "flow-quality")!;
+  assert.equal(flow.would_have_won, 0);
+  const blind = analysis.cells.find((c) => c.source === "veto_blind")!;
+  assert.equal(blind.would_have_won, 1); // kept as its own unattributable bucket
+  // The non-cortex g4_vix skip never entered the analysis.
+  assert.equal(analysis.total_veto_rejections, 4);
+  assert.equal(analysis.cells.every((c) => c.source !== "g4_vix"), true);
+});
+
+test("WS-17: strategy hash collapses to 'unknown' when unprojected, and keys (source × hash) when present", () => {
+  const analysis = analyzeCortexVetoes([
+    vetoSkip("cortex_veto:gex-walls", "would_have_won"), // no hash → unknown
+    vetoSkip("cortex_veto:gex-walls", "would_have_won", "abc123"), // real hash → separate cell
+  ]);
+  const unknown = analysis.cells.find((c) => c.source === "gex-walls" && c.strategy_config_hash === "unknown")!;
+  const versioned = analysis.cells.find((c) => c.source === "gex-walls" && c.strategy_config_hash === "abc123")!;
+  assert.equal(unknown.veto_count, 1);
+  assert.equal(versioned.veto_count, 1);
+});
+
+test("WS-07/17 fields are present on the full report and never gate", () => {
+  const report = analyzeGateCalibration({
+    rows: [xrow({ origin: ["FLOW"], win: true })],
+    gradedSkips: [vetoSkip("cortex_veto:gex-walls", "would_have_won")],
+    window: WINDOW,
+  });
+  assert.ok(Array.isArray(report.origin_playtype_bands));
+  assert.ok(report.origin_playtype_bands.length >= 4); // the four canonical cells always present
+  assert.ok(Array.isArray(report.cortex_veto_analysis.cells));
+  assert.equal(report.cortex_veto_analysis.total_veto_rejections, 1);
 });
