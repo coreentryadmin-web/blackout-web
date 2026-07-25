@@ -107,6 +107,23 @@ export function resolveExitMode(env: NodeJS.ProcessEnv = process.env): ZeroDteEx
   return env.ZERODTE_EXIT_MODE === "trim_scale" ? "trim_scale" : DEFAULT_EXIT_MODE;
 }
 
+/**
+ * FROZEN exit archetype for an already-committed row (design Q13 — INTEGRITY). scan.ts
+ * pins the ACTIVE exit mode onto every committed row's entry_context.exit_policy_at_commit
+ * at first flag. Reading it here — in preference to the live env — means an open play
+ * always exits under the policy it was COMMITTED with: a mid-session `ZERODTE_EXIT_MODE`
+ * flip can no longer retroactively change how a live position is managed (dumping a
+ * trim_scale runner as a ratchet, or vice-versa, at whatever the env happens to be when
+ * the sync tick fires). Returns null for a legacy/pre-Q13 row (no pin) so those fall back
+ * to resolveExitMode() — the exact prior behavior, never a fabricated mode.
+ */
+export function readFrozenExitMode(
+  entryContext: Record<string, unknown> | null | undefined
+): ZeroDteExitMode | null {
+  const v = entryContext?.exit_policy_at_commit;
+  return v === "ratchet" || v === "trim_scale" ? v : null;
+}
+
 /** Injectable IO seams (cortex-gate.ts's CortexCommitDeps idiom) so the wiring is
  *  unit-testable without module mocks or a live platform. */
 export type ExitSyncDeps = {
@@ -114,7 +131,8 @@ export type ExitSyncDeps = {
   fetchEvidence?: (ticker: string, direction: "long" | "short") => Promise<EvidenceItem[] | null>;
   stampExit?: ((sessionDate: string, ticker: string, exit: Record<string, unknown>) => Promise<void>) | null;
   nowMs?: number;
-  /** Exit family override (tests / A-B). Omitted → resolveExitMode() reads the env. */
+  /** Exit family override (tests / A-B). Omitted → the row's FROZEN exit_policy_at_commit
+   *  (design Q13), then resolveExitMode() reads the env for legacy/unpinned rows. */
   exitMode?: ZeroDteExitMode;
   /** Day regime for the trim_scale schedule (trim_scale only). Omitted → "neutral". */
   regime?: ZeroDteRegime | null;
@@ -186,7 +204,10 @@ export async function evaluateLedgerRowExit(
     // win — never dump the whole runner at breakeven, run it to the target/stop — while
     // the precise per-third banking accounting graduates with the persisted count. In the
     // DEFAULT ratchet mode every field below is ignored by the engine.
-    const exitMode = deps.exitMode ?? resolveExitMode();
+    // Exit archetype precedence (design Q13): an explicit test/AB override, else the mode
+    // FROZEN on the row at commit, else the live env. So a committed play manages itself
+    // under its own commit-time policy — the env flip only steers plays committed AFTER it.
+    const exitMode = deps.exitMode ?? readFrozenExitMode(row.entry_context) ?? resolveExitMode();
     const regime = deps.regime ?? null;
     const trimsTaken =
       exitMode === "trim_scale" ? trimTranchesArmed(pinnedLivePnlPct(entry, peak), regime ?? "neutral") : 0;

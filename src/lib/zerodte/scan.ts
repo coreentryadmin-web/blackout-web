@@ -66,7 +66,7 @@ import { gradeCondorFromBars } from "./condor";
 import { buildZeroDteEntryContext, fetchZeroDteSessionContext } from "./entry-context";
 import { buildSetupFeatureVector } from "./feature-vector";
 import { buildStrategyManifest, strategyConfigHash } from "./strategy-version";
-import { evaluateLedgerRowExit } from "./exit-sync";
+import { evaluateLedgerRowExit, resolveExitMode } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
 import { persistZeroDteRejections } from "./rejections";
 import {
@@ -727,7 +727,13 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   // the calibration analyzer keeps the new plays in a fresh cohort instead of blending them with plays
   // the old logic graded. The upsert COALESCE-pins entry_context/feature_vector at first flag, so a
   // manifest bump AFTER a row commits never rewrites that row's stamp.
-  const strategyManifest = buildStrategyManifest();
+  // ACTIVE exit archetype resolved ONCE per scan (design Q13) and frozen onto every row
+  // below. Threaded into the manifest too, so the config hash partitions ratchet vs
+  // trim_scale cohorts AND the exit-sync path reads the row's own commit-time policy
+  // (readFrozenExitMode) instead of the live env — a mid-session flip can't re-manage an
+  // open play. With ZERODTE_EXIT_MODE unset (prod default) this is "ratchet": behavior-neutral.
+  const exitPolicyAtCommit = resolveExitMode();
+  const strategyManifest = buildStrategyManifest({ exitPolicy: exitPolicyAtCommit });
   const strategyHash = strategyConfigHash(strategyManifest);
   const rows: ZeroDteSetupLogUpsert[] = eligible.map((s) => ({
     session_date: today,
@@ -794,6 +800,11 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       // future hash mismatch can be attributed to the specific subsystem that was bumped.
       strategy_manifest: strategyManifest,
       strategy_config_hash: strategyHash,
+      // Exit archetype FROZEN at first flag (design Q13). evaluateLedgerRowExit reads this
+      // (readFrozenExitMode) in preference to the live env, so an open play always exits
+      // under the policy it committed with — a mid-session ZERODTE_EXIT_MODE flip only
+      // steers plays committed afterward, never re-manages a live position.
+      exit_policy_at_commit: exitPolicyAtCommit,
     } as unknown as Record<string, unknown>,
     flags_json: {
       ...(s.earnings ? { earnings: s.earnings } : {}),

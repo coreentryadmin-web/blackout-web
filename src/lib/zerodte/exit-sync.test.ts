@@ -345,3 +345,19 @@ test("healthy green row passes the engine untouched (no exit, no stamp)", async 
   assert.equal(rows[0]!.last_mark, 4.3);
   assert.equal(state.stampCalls.length, 0);
 });
+
+// ── Q13: frozen exit archetype ──────────────────────────────────────────────────────
+// readFrozenExitMode is the pure reader evaluateLedgerRowExit consults BEFORE the live
+// env, so an open play exits under its commit-time policy. (Loaded via dynamic import so
+// the module's server-only deps resolve through the mocks registered above.)
+test("readFrozenExitMode: reads a valid pinned mode; null for missing/invalid (legacy → env fallback)", async () => {
+  const { readFrozenExitMode } = await import("./exit-sync");
+  assert.equal(readFrozenExitMode({ exit_policy_at_commit: "trim_scale" }), "trim_scale");
+  assert.equal(readFrozenExitMode({ exit_policy_at_commit: "ratchet" }), "ratchet");
+  // Anything not a known mode → null, so evaluateLedgerRowExit falls back to resolveExitMode()
+  // exactly as a pre-Q13 row did — never a fabricated mode.
+  assert.equal(readFrozenExitMode({ exit_policy_at_commit: "bogus" }), null);
+  assert.equal(readFrozenExitMode({}), null);
+  assert.equal(readFrozenExitMode(null), null);
+  assert.equal(readFrozenExitMode(undefined), null);
+});
