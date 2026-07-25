@@ -404,3 +404,120 @@ test("condorEligibleTicker: SPX+NDX cash-settled production allowlist; everythin
     assert.equal(condorEligibleTicker(t), false, `${t} is not in the SPX+NDX production allowlist`);
   }
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// SECOND-WAVE adversarial coverage — sell-regime + credit + range + grader boundaries.
+// ════════════════════════════════════════════════════════════════════════════════════
+
+// ── condorSellRegime EXACT thresholds ────────────────────────────────────────────────
+test("condorSellRegime: dominance boundary — exactly 6% sells, 5.99% does not", () => {
+  assert.equal(condorSellRegime({ ...sellPin(), bracketDomPct: 6 }).sell, true);
+  assert.equal(condorSellRegime({ ...sellPin(), bracketDomPct: 5.99 }).sell, false);
+});
+
+test("condorSellRegime: band-width boundary — exactly 3% sells, 3.01% does not", () => {
+  assert.equal(condorSellRegime({ ...sellPin(), bandWidthPct: 3 }).sell, true);
+  assert.equal(condorSellRegime({ ...sellPin(), bandWidthPct: 3.01 }).sell, false);
+});
+
+test("condorSellRegime: offset boundary — exactly 0.6 sells, 0.61 does not (spot must have room)", () => {
+  assert.equal(condorSellRegime({ ...sellPin(), offset: 0.6 }).sell, true);
+  assert.equal(condorSellRegime({ ...sellPin(), offset: 0.61 }).sell, false);
+});
+
+// ── buildCondorPlan credit edge cases ────────────────────────────────────────────────
+test("buildCondorPlan: a zero-bid short leg cannot price a credit (sPutBid > 0 required)", () => {
+  const p = cleanCondorPlan({ shortPut: { bid: 0, ask: 2.2 } });
+  assert.equal(p.net_credit, null, "a short with no real bid → credit unknowable");
+  assert.equal(p.illiquid, true);
+});
+
+test("buildCondorPlan: credit_to_risk EXACTLY at the 0.10 floor is tradeable (gate is `< floor`)", () => {
+  // net (1.0+1.0−0.75−0.75)·100 = 50 on 500 wing risk → 0.10 exactly.
+  const p = cleanCondorPlan({
+    shortPut: { bid: 1.0, ask: 1.05 },
+    shortCall: { bid: 1.0, ask: 1.05 },
+    longPut: { bid: 0.7, ask: 0.75 },
+    longCall: { bid: 0.7, ask: 0.75 },
+  });
+  assert.equal(p.credit_to_risk, CONDOR_MIN_CREDIT_TO_RISK);
+  assert.deepEqual(condorLiquidityGateBlocks(p), [], "0.10 exactly clears the floor");
+});
+
+test("buildCondorPlan: leg spread just under 12% is tradeable; just over is illiquid (strict `>` boundary)", () => {
+  const under = cleanCondorPlan({ shortCall: { bid: 1.0, ask: 1.12 } }); // (0.12/1.06)·100 ≈ 11.3%
+  assert.equal(under.illiquid, false);
+  assert.deepEqual(condorLiquidityGateBlocks(under), []);
+  const over = cleanCondorPlan({ shortCall: { bid: 1.0, ask: 1.16 } }); // (0.16/1.08)·100 ≈ 14.8%
+  assert.equal(over.illiquid, true);
+  assert.equal(condorLiquidityGateBlocks(over)[0]!.code, "condor_liquidity");
+});
+
+// ── condorRangeBreaking boundaries ───────────────────────────────────────────────────
+test("condorRangeBreaking: an unreadable (<=0) spot fails closed (HOLD), a breach at the short is a break", () => {
+  const p = cleanCondorPlan();
+  assert.equal(condorRangeBreaking(0, p), true, "spot 0 → fail closed");
+  assert.equal(condorRangeBreaking(-5, p), true);
+  assert.equal(condorRangeBreaking(595, p), true, "exactly at the lower short → already breached (`<=`)");
+  assert.equal(condorRangeBreaking(605, p), true, "exactly at the upper short → already breached (`>=`)");
+});
+
+test("condorRangeBreaking: nearest-room fraction exactly at the 0.25 margin is NOT a break (`< margin`)", () => {
+  // shorts 595/605 → center 600, halfWidth 5. margin 0.25 → the break line is 1.25 pts from a short.
+  // spot 603.75 → upRoom 1.25 → frac 0.25 → not `< 0.25` → NOT breaking.
+  const p = cleanCondorPlan();
+  assert.equal(condorRangeBreaking(603.75, p), false, "exactly at the margin holds the sale");
+  assert.equal(condorRangeBreaking(603.8, p), true, "a hair closer (frac < 0.25) breaks");
+});
+
+// ── gradeCondorFromBars degenerate / policy-driven paths ─────────────────────────────
+test("grader: no bars strictly AFTER the flag → ungradeable (never a fabricated win)", () => {
+  const p = cleanCondorPlan();
+  const o = gradeCondorFromBars([{ t: flaggedAtMs, h: 601, l: 599, c: 600 }], p, flaggedAtMs);
+  assert.equal(o.outcome, "ungradeable");
+});
+
+test("grader: every in-window bar past the time-stop → ungradeable (no close was ever inside the window)", () => {
+  const p = cleanCondorPlan();
+  // Both bars are after 15:30 → the loop breaks before recording any close.
+  const bars = [barAt("15:31:00", 601, 599, 600), barAt("15:45:00", 601, 599, 600)];
+  const o = gradeCondorFromBars(bars, p, flaggedAtMs);
+  assert.equal(o.outcome, "ungradeable");
+});
+
+test("grader: a low EXACTLY at the lower short is a breach (`l <= breach_lower`)", () => {
+  const p = cleanCondorPlan();
+  const bars = [barAt("14:30:00", 600, 595, 598)]; // low touches the 595 short exactly
+  const o = gradeCondorFromBars(bars, p, flaggedAtMs);
+  assert.equal(o.outcome, "condor_breach_loss");
+  assert.equal(o.breached_intraday, true);
+});
+
+test("grader: a FROZEN earlier time-stop excludes a later breach bar → the pre-cutoff close WINS (WS-02)", () => {
+  const p = cleanCondorPlan();
+  // 14:15 stays inside (win); 15:00 would breach, but a 14:30 frozen time-stop excludes it.
+  const bars = [barAt("14:15:00", 601, 599, 600), barAt("15:00:00", 610, 601, 606)];
+  const withDefault = gradeCondorFromBars(bars, p, flaggedAtMs);
+  assert.equal(withDefault.outcome, "condor_breach_loss", "default 15:30 time-stop sees the 15:00 breach");
+  const frozen = gradeCondorFromBars(bars, p, flaggedAtMs, { time_stop_et_minutes: 14 * 60 + 30 });
+  assert.equal(frozen.outcome, "condor_win", "a 14:30 frozen stop settles before the 15:00 breach");
+});
+
+test("grader: out-of-order bars are graded in TIME order (internal sort)", () => {
+  const p = cleanCondorPlan();
+  // Supplied newest-first; the breach at 14:30 must still be found before the 15:30 close.
+  const bars = [barAt("15:30:00", 601, 599, 600), barAt("14:30:00", 606, 601, 603)];
+  const o = gradeCondorFromBars(bars, p, flaggedAtMs);
+  assert.equal(o.outcome, "condor_breach_loss");
+});
+
+// ── buildCondorSetup: the neutral-structure honest nulls ─────────────────────────────
+test("buildCondorSetup: a condor is delta-neutral — premium/dominance/otm are honest neutral values", () => {
+  const s = buildCondorSetup({ ticker: "spx", spot: 600, regime: sellPin(), plan: cleanCondorPlan(), score: 80 });
+  assert.equal(s.ticker, "SPX", "ticker upper-cased");
+  assert.equal(s.net_premium, 0);
+  assert.equal(s.gross_premium, 0);
+  assert.equal(s.side_dominance, 0.5, "no directional flow side");
+  assert.equal(s.otm_pct, null, "a 4-leg neutral structure has no single moneyness");
+  assert.equal(s.top_strike, s.condor_plan!.short_call, "nominal anchor is the upper breach");
+});

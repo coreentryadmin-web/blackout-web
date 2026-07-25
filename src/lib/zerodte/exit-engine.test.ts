@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import type { EvidenceItem } from "@/lib/nighthawk/cortex/types";
 import {
   buildExitContext,
+  categorizeExitReason,
   detectThesisBreak,
   evaluateExitState,
   ratchetFloorPct,
@@ -493,4 +494,123 @@ test("trim_scale: missing mark holds with a null floor (no ratchet floor in this
   assert.equal(d.action, "HOLD");
   assert.equal(d.reason, "no_live_mark");
   assert.equal(d.floorPnlPct, null);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// SECOND-WAVE adversarial coverage — categorizeExitReason, the stop>floor collision
+// branch, thesis boundaries, trimsTaken clamping, and peak widening.
+// ════════════════════════════════════════════════════════════════════════════════════
+
+// ── categorizeExitReason: the whole raw-reason → coarse-family vocabulary ─────────────
+test("categorizeExitReason: every persisted reason maps to its coarse family; non-exits/unknown → null", () => {
+  assert.equal(categorizeExitReason("thesis_break:flow-quality"), "thesis");
+  assert.equal(categorizeExitReason("plan_stop"), "stop");
+  assert.equal(categorizeExitReason("flat_theta_bleed"), "flat");
+  assert.equal(categorizeExitReason("plan_target_trim"), "target");
+  assert.equal(categorizeExitReason("plan_target_final"), "target");
+  assert.equal(categorizeExitReason("trim_scale_first"), "target");
+  assert.equal(categorizeExitReason("trim_scale_runner_target"), "target");
+  assert.equal(categorizeExitReason("ratchet_breakeven_floor"), "ratchet");
+  assert.equal(categorizeExitReason("ratchet_profit_floor"), "ratchet");
+  assert.equal(categorizeExitReason("runner_floor"), "ratchet");
+  // Non-exit reasons (holds / floor-arm reports / guards) and unknown tokens are NOT a family.
+  assert.equal(categorizeExitReason("hold"), null);
+  assert.equal(categorizeExitReason("no_live_mark"), null);
+  assert.equal(categorizeExitReason("already_closed"), null);
+  assert.equal(categorizeExitReason("bogus_token"), null);
+  assert.equal(categorizeExitReason(null), null);
+  assert.equal(categorizeExitReason(undefined), null);
+  assert.equal(categorizeExitReason(""), null);
+});
+
+test("categorizeExitReason: a real EXIT decision's reason round-trips to a family", () => {
+  const stop = evaluateExitState(input({ currentMark: 2.0, peakPremium: 4.2 }));
+  assert.equal(categorizeExitReason(stop.reason), "stop");
+  const floor = evaluateExitState(input({ peakPremium: 5.0, currentMark: 4.0 }));
+  assert.equal(categorizeExitReason(floor.reason), "ratchet");
+});
+
+// ── protective collision: when the plan stop sits ABOVE the floor mark, plan_stop labels it ──
+test("precedence: stop AND floor breached but the STOP mark is the higher protector → plan_stop labels the exit", () => {
+  // Breakeven floor armed by a +25% peak → floor mark = entry = 4.0. A plan stop set ABOVE that
+  // (4.2) is the higher protective level, so the exit is labeled plan_stop, not the floor.
+  const d = evaluateExitState(input({ peakPremium: 5.0, currentMark: 4.0, planStop: 4.2 }));
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "plan_stop", "the higher protective mark (the stop) labels the exit");
+});
+
+// ── detectThesisBreak: veto short-circuit + exact margin + zero-weight filtering ──────
+test("detectThesisBreak: a veto is found even amid opposes and short-circuits the cluster math", () => {
+  const b = detectThesisBreak(
+    evidence([
+      { stance: "opposes", source: "gex-walls", weight: 0.1 },
+      { stance: "veto", source: "flow-quality", detail: "opposing $1M cluster" },
+    ]),
+    5.0 // a huge entry margin the opposes could never beat — the veto wins anyway
+  );
+  assert.ok(b);
+  assert.equal(b!.kind, "veto");
+  assert.equal(b!.source, "flow-quality");
+});
+
+test("detectThesisBreak: combined oppose weight EXACTLY at the margin does NOT break (`<= margin`)", () => {
+  // two opposes 0.6 + 0.6 = 1.2 == margin 1.2 → cushion holds.
+  const atMargin = detectThesisBreak(
+    evidence([{ stance: "opposes", weight: 0.6 }, { stance: "opposes", weight: 0.6 }]),
+    1.2
+  );
+  assert.equal(atMargin, null);
+  // a hair over (1.3 > 1.2) breaks.
+  const over = detectThesisBreak(
+    evidence([{ stance: "opposes", weight: 0.7 }, { stance: "opposes", weight: 0.6 }]),
+    1.2
+  );
+  assert.ok(over);
+});
+
+test("detectThesisBreak: zero-weight opposes don't count toward the 2-cluster (weight > 0 required)", () => {
+  // one real oppose + one zero-weight → only 1 counts → below the 2-cluster minimum → no break.
+  const b = detectThesisBreak(
+    evidence([{ stance: "opposes", weight: 2.0 }, { stance: "opposes", weight: 0 }]),
+    null
+  );
+  assert.equal(b, null);
+});
+
+// ── trim_scale trimsTaken latch clamping ─────────────────────────────────────────────
+test("trim_scale: trimsTaken is clamped/floored to 0..2 — an over-count runs the runner, a negative starts fresh", () => {
+  // trimsTaken 5 (> 2) → clamped to 2 → the last third RUNS (not another trim).
+  const over = evaluateExitState(input({ exitMode: "trim_scale", peakPremium: 8.0, currentMark: 5.6, trimsTaken: 5 }));
+  assert.equal(over.action, "RAISE_FLOOR");
+  assert.equal(over.reason, "trim_scale_running");
+  // trimsTaken −1 → floored to 0 → a +25% peak banks the FIRST third.
+  const neg = evaluateExitState(input({ exitMode: "trim_scale", peakPremium: 5.0, currentMark: 5.0, trimsTaken: -1 }));
+  assert.equal(neg.action, "TRIM");
+  assert.equal(neg.reason, "trim_scale_first");
+  // trimsTaken 1.9 → floored to 1 → banks the SECOND third at a +50% peak.
+  const frac = evaluateExitState(input({ exitMode: "trim_scale", peakPremium: 6.0, currentMark: 6.0, trimsTaken: 1.9 }));
+  assert.equal(frac.reason, "trim_scale_second");
+});
+
+// ── ratchetFloorPct: the trim latch dominates even a null peak ────────────────────────
+test("ratchetFloorPct: a trimmed runner floors at +50% even when the peak is unknown (latch dominates)", () => {
+  assert.equal(ratchetFloorPct(null, true), EXIT_RULES.runner_floor_pct);
+});
+
+// ── peak widening: a null peak with a live mark uses the mark as the peak ──────────────
+test("peak widening: no latched peak + a live mark derives the peak from the mark (never below it)", () => {
+  // No peakPremium but a +60% mark → the derived peak is +60%, which arms the +20% profit floor.
+  const d = evaluateExitState(input({ peakPremium: null, currentMark: 6.4 })); // +60%
+  assert.equal(d.action, "RAISE_FLOOR");
+  assert.equal(d.floorPnlPct, 20);
+});
+
+// ── buildExitContext: null entry premium → P&L fields are honest nulls ────────────────
+test("buildExitContext: a null entry premium yields null pnl/peak fields (never a fabricated number)", () => {
+  const decision = evaluateExitState(input({ entryPremium: null }));
+  const ctx = buildExitContext(decision, null, 3.9, 5.0, Date.UTC(2026, 6, 14, 15, 0, 0));
+  assert.equal(ctx.pnl_pct, null);
+  assert.equal(ctx.peak_pnl_pct, null);
+  assert.equal(ctx.mark, 3.9);
+  assert.equal(ctx.reason, "no_entry_premium");
 });

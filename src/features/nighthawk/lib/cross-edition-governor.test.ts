@@ -201,3 +201,97 @@ describe("applyCrossEditionGovernor", () => {
     assert.ok(GOV_CROSS_EDITION_SECTOR_CAP >= 1);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// SECOND-WAVE adversarial coverage — exact thresholds, stacked penalties, ranking.
+// ════════════════════════════════════════════════════════════════════════════════════
+
+describe("cross-edition-governor: second-wave boundaries", () => {
+  test("loss-streak boundary: exactly THRESHOLD−1 stops demotes (repeat), exactly THRESHOLD cuts", () => {
+    const belowThreshold = Array.from({ length: GOV_LOSS_STREAK_HALT_THRESHOLD - 1 }, (_, i) =>
+      fakeOutcome({ edition_for: `2026-07-${14 - i}`, outcome: "stop" })
+    );
+    const demote = evaluateGovernor(fakeCandidate(), belowThreshold, new Map());
+    assert.equal(demote.type, GOV_LOSS_STREAK_HALT_THRESHOLD - 1 > 0 ? "demote" : "pass");
+
+    const atThreshold = Array.from({ length: GOV_LOSS_STREAK_HALT_THRESHOLD }, (_, i) =>
+      fakeOutcome({ edition_for: `2026-07-${14 - i}`, outcome: "stop" })
+    );
+    assert.equal(evaluateGovernor(fakeCandidate(), atThreshold, new Map()).type, "cut");
+  });
+
+  test("sector cap boundary: exactly AT the cap demotes −10; one below passes", () => {
+    const atCap = new Map([["technology", GOV_CROSS_EDITION_SECTOR_CAP]]);
+    assert.equal(evaluateGovernor(fakeCandidate(), [], atCap).type, "demote");
+    const below = new Map([["technology", GOV_CROSS_EDITION_SECTOR_CAP - 1]]);
+    assert.equal(evaluateGovernor(fakeCandidate(), [], below).type, "pass");
+  });
+
+  test("sector cap: candidate sector is lower-cased before the count lookup (case-insensitive match)", () => {
+    const counts = new Map([["technology", GOV_CROSS_EDITION_SECTOR_CAP]]);
+    // Candidate sector supplied in mixed/upper case — must still hit the lower-cased count key.
+    const action = evaluateGovernor(fakeCandidate({ sector: "Technology" }), [], counts);
+    assert.equal(action.type, "demote");
+    assert.equal((action as { penalty: number }).penalty, 10);
+  });
+
+  test("null candidate sector never trips the sector cap", () => {
+    const counts = new Map([["technology", GOV_CROSS_EDITION_SECTOR_CAP + 5]]);
+    assert.equal(evaluateGovernor(fakeCandidate({ sector: null }), [], counts).type, "pass");
+  });
+
+  test("stacked penalties: repeat + pending + sector-cap sum into one demote", () => {
+    const outcomes = [
+      fakeOutcome({ outcome: "pending", edition_for: "2026-07-14" }),
+      fakeOutcome({ outcome: "target", edition_for: "2026-07-13" }),
+    ];
+    const sectorCounts = new Map([["technology", GOV_CROSS_EDITION_SECTOR_CAP]]);
+    const action = evaluateGovernor(fakeCandidate(), outcomes, sectorCounts);
+    assert.equal(action.type, "demote");
+    // repeat (2×5) + pending (5) + sector (10) = 25.
+    assert.equal(
+      (action as { penalty: number }).penalty,
+      GOV_REPEAT_PENALTY_PER_APPEARANCE * 2 + GOV_PENDING_EXTRA_PENALTY + 10
+    );
+  });
+
+  test("apply: a hard-cut candidate is removed AND absent from the ranked survivors even if it scored highest", () => {
+    const ranked = [
+      fakeCandidate({ ticker: "LOSER", score: 99 }),
+      fakeCandidate({ ticker: "MSFT", score: 40 }),
+    ];
+    const outcomes = [
+      fakeOutcome({ ticker: "LOSER", outcome: "stop", edition_for: "2026-07-14" }),
+      fakeOutcome({ ticker: "LOSER", outcome: "stop", edition_for: "2026-07-13" }),
+    ];
+    const result = applyCrossEditionGovernor(ranked, outcomes);
+    assert.deepEqual(result.ranked.map((c) => c.ticker), ["MSFT"]);
+    assert.ok(!result.ranked.some((c) => c.ticker === "LOSER"));
+    assert.equal(result.cut[0].ticker, "LOSER");
+  });
+
+  test("apply: demotion can flip the order but a small penalty keeps a big lead (effective-score sort)", () => {
+    // AAPL 60 with one repeat (−5) = 55; MSFT 58 clean = 58 → MSFT leads.
+    const flip = applyCrossEditionGovernor(
+      [fakeCandidate({ ticker: "AAPL", score: 60 }), fakeCandidate({ ticker: "MSFT", score: 58, sector: "energy" })],
+      [fakeOutcome({ ticker: "AAPL", edition_for: "2026-07-14" })]
+    );
+    assert.deepEqual(flip.ranked.map((c) => c.ticker), ["MSFT", "AAPL"]);
+
+    // Same penalty but a bigger lead: AAPL 70 (−5) = 65 > MSFT 58 → AAPL keeps the top.
+    const keep = applyCrossEditionGovernor(
+      [fakeCandidate({ ticker: "AAPL", score: 70 }), fakeCandidate({ ticker: "MSFT", score: 58, sector: "energy" })],
+      [fakeOutcome({ ticker: "AAPL", edition_for: "2026-07-14" })]
+    );
+    assert.deepEqual(keep.ranked.map((c) => c.ticker), ["AAPL", "MSFT"]);
+  });
+
+  test("pending only counts among a ticker's OWN outcomes — a different ticker's pending is irrelevant", () => {
+    const action = evaluateGovernor(
+      fakeCandidate({ ticker: "AAPL" }),
+      [fakeOutcome({ ticker: "MSFT", outcome: "pending" })],
+      new Map()
+    );
+    assert.equal(action.type, "pass", "AAPL has no history of its own");
+  });
+});

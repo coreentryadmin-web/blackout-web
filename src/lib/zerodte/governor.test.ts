@@ -16,6 +16,10 @@ import {
   summarizeGovernorForBoard,
   maxCorrelatedSameDirection,
   concentrationReasonForCandidate,
+  freezeConcentrationState,
+  correlationGroupOf,
+  correlationGroupId,
+  CONCENTRATION_POLICY_VERSION,
   GOVERNOR_MAX_CONCURRENT_PLANS,
   GOVERNOR_MAX_SESSION_STOPS,
   GOVERNOR_REENTRY_LOCK_MS,
@@ -433,4 +437,177 @@ test("summarizeGovernorForBoard: no correlated cluster → concentration measure
   const summary = summarizeGovernorForBoard([row({ ticker: "NVDA", direction: "long", status: "OPEN" })], []);
   assert.equal(summary.correlated_concentration, null);
   assert.equal(summary.would_block_concentration, null);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// SECOND-WAVE adversarial coverage — exact thresholds, tie-breaks, and freezeConcentrationState.
+// ════════════════════════════════════════════════════════════════════════════════════
+
+// ── concurrency cap: EXACT boundary via mixed open + committedThisCycle ───────────────
+test("governor: cap boundary — 2 live + 1 committed-this-cycle = 3 blocks; 1+1 = 2 commits", () => {
+  const gov = { open_plans: [{ ticker: "TSLA", direction: "short" as const }], stops: [] };
+  // 1 open + 1 committed = 2 (< cap) → no block
+  assert.deepEqual(
+    evaluateZeroDteGovernor({ ticker: "AMD", direction: "short" }, gov, NOW, [{ ticker: "AMZN", direction: "short" }]),
+    []
+  );
+  // 1 open + 2 committed = 3 (== cap) → block
+  const at3 = evaluateZeroDteGovernor(
+    { ticker: "AMD", direction: "short" },
+    gov,
+    NOW,
+    [{ ticker: "AMZN", direction: "short" }, { ticker: "GOOGL", direction: "short" }]
+  );
+  assert.deepEqual(at3.map((b) => b.code), ["governor_max_concurrent"]);
+});
+
+// ── re-entry lock: EXACT boundary (< lock window, not <=) ────────────────────────────
+test("governor: re-entry lock boundary — exactly 20 min ago is UNLOCKED; one ms inside is locked", () => {
+  const exactly20 = { open_plans: [], stops: [{ ticker: "META", direction: "short" as const, at_ms: NOW - GOVERNOR_REENTRY_LOCK_MS }] };
+  assert.deepEqual(
+    evaluateZeroDteGovernor({ ticker: "META", direction: "short" }, exactly20, NOW),
+    [],
+    "at exactly the lock length the window has elapsed (comparison is `< lock`)"
+  );
+  const justInside = { open_plans: [], stops: [{ ticker: "META", direction: "short" as const, at_ms: NOW - GOVERNOR_REENTRY_LOCK_MS + 1 }] };
+  assert.deepEqual(
+    evaluateZeroDteGovernor({ ticker: "META", direction: "short" }, justInside, NOW).map((b) => b.code),
+    ["governor_reentry_lock"]
+  );
+});
+
+// ── loss-halt COUNT boundary: 2 losers pass, exactly 3 halt ──────────────────────────
+test("SEV-3: loss-halt count boundary — 2 realized losers pass, exactly 3 halt", () => {
+  const two = deriveGovernorFromLedger([losingTimeStop("A", -30), losingTimeStop("B", -30)]);
+  assert.equal(two.realized_losers, 2);
+  assert.ok(two.session_pnl_pct! > GOVERNOR_SESSION_LOSS_FLOOR_PCT, "−60% is above the −120 floor, so only the count matters here");
+  assert.equal(governorLossHaltReason(two), null);
+  assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, two, NOW), []);
+
+  const three = deriveGovernorFromLedger([losingTimeStop("A", -30), losingTimeStop("B", -30), losingTimeStop("C", -30)]);
+  assert.equal(three.realized_losers, GOVERNOR_LOSS_HALT_COUNT);
+  const halt = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, three, NOW);
+  assert.deepEqual(halt.map((b) => b.code), ["governor_session_stops"]);
+  assert.match(halt[0]!.reason, /realized losers/);
+});
+
+// ── loss-halt FLOOR boundary: exactly at −120% halts; just above does not ─────────────
+test("SEV-3: session-P&L floor boundary — exactly −120% halts, −119% does not (count still under cap)", () => {
+  // Two losers at −60 each = −120 exactly → floor is `<=` so it halts, on 2 losers (< count cap).
+  const at = deriveGovernorFromLedger([losingTimeStop("A", -60), losingTimeStop("B", -60)]);
+  assert.equal(at.session_pnl_pct, GOVERNOR_SESSION_LOSS_FLOOR_PCT);
+  assert.equal(at.realized_losers, 2);
+  const halt = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, at, NOW);
+  assert.deepEqual(halt.map((b) => b.code), ["governor_session_stops"]);
+  assert.match(halt[0]!.reason, /floor/, "the FLOOR reason, not the count reason (count is only 2)");
+
+  // −59.5 each = −119 → above the floor, 2 losers → no halt.
+  const above = deriveGovernorFromLedger([losingTimeStop("A", -59.5), losingTimeStop("B", -59.5)]);
+  assert.equal(above.session_pnl_pct, -119);
+  assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, above, NOW), []);
+});
+
+test("SEV-3: when BOTH the count and the floor trip, the COUNT reason wins (it is checked first)", () => {
+  // 3 big losers → losers>=3 AND pnl past the floor; the reason must be the count wording.
+  const snap = deriveGovernorFromLedger([losingTimeStop("A", -70), losingTimeStop("B", -70), losingTimeStop("C", -70)]);
+  const reason = governorLossHaltReason(snap);
+  assert.match(reason ?? "", /realized losers/);
+  assert.doesNotMatch(reason ?? "", /at\/below the .*floor/);
+});
+
+// ── ledgerRowStopped: EXACT trough boundary at the −50% stop level ────────────────────
+test("deriveGovernorFromLedger: trough EXACTLY at the −50% stop level is a stop; a hair above is not", () => {
+  // entry 4.0, stop level = 4.0*(1−0.5) = 2.0. trough == 2.0 → `<=` → stopped.
+  const at = deriveGovernorFromLedger([row({ ticker: "SPY", status: "CLOSED", entry_premium: 4.0, trough_premium: 2.0 })]);
+  assert.deepEqual(at.stops.map((s) => s.ticker), ["SPY"]);
+  // trough 2.01 → above the stop level → NOT a stop (and not a realized loser via this channel).
+  const above = deriveGovernorFromLedger([row({ ticker: "SPY", status: "CLOSED", entry_premium: 4.0, trough_premium: 2.01, plan_pnl_pct: null })]);
+  assert.equal(above.stops.length, 0);
+});
+
+test("deriveGovernorFromLedger: a non-positive entry_premium can never be a trough-derived stop (guarded)", () => {
+  const snap = deriveGovernorFromLedger([row({ ticker: "X", status: "CLOSED", entry_premium: 0, trough_premium: 0, plan_pnl_pct: null })]);
+  assert.equal(snap.stops.length, 0, "entry<=0 → the trough test is skipped, never a divide/degenerate stop");
+});
+
+test("deriveGovernorFromLedger: a graded hard stop counts ONCE as a realized loser (no double-tally)", () => {
+  // plan_outcome stopped AND plan_pnl_pct −50 → realized loser once, session −50 (prefers the graded pnl).
+  const snap = deriveGovernorFromLedger([
+    row({ ticker: "MU", status: "CLOSED", plan_outcome: "stopped", plan_pnl_pct: -50, trough_premium: 1.9 }),
+  ]);
+  assert.equal(snap.stops.length, 1);
+  assert.equal(snap.realized_losers, 1);
+  assert.equal(snap.session_pnl_pct, -50);
+});
+
+// ── maxCorrelatedSameDirection: tie-break favors LONG (checked first, `> best.count`) ─
+test("maxCorrelatedSameDirection: equal long/short clusters → the LONG cluster is returned (long is scanned first)", () => {
+  const cluster = maxCorrelatedSameDirection([
+    { ticker: "SPY", direction: "long" },
+    { ticker: "QQQ", direction: "long" },
+    { ticker: "IWM", direction: "short" },
+    { ticker: "DIA", direction: "short" },
+  ]);
+  // both directions form a 2-cluster; long wins the tie because short only replaces on strictly-greater count.
+  assert.deepEqual(cluster, { tickers: ["QQQ", "SPY"], direction: "long", count: 2 });
+});
+
+// ── correlationGroupOf / correlationGroupId ──────────────────────────────────────────
+test("correlationGroupOf: index/ETF names resolve to the one v1 group; a single name is null", () => {
+  assert.ok(correlationGroupOf("SPY"));
+  assert.ok(correlationGroupOf("QQQ"));
+  assert.equal(correlationGroupOf("NVDA"), null);
+  // The group id is a stable, sorted, index-independent name.
+  const id = correlationGroupId(correlationGroupOf("SPY")!);
+  assert.match(id, /^cg:/);
+  assert.equal(id, correlationGroupId(correlationGroupOf("QQQ")!), "SPY and QQQ share the group → same id");
+});
+
+// ── freezeConcentrationState: adversarial (opposed direction, dedup, rounding, single name) ──
+test("freezeConcentrationState: a SHORT candidate counts only the same-direction (short) existing book", () => {
+  const c = freezeConcentrationState({ ticker: "QQQ", direction: "short" }, [
+    { ticker: "SPY", direction: "long" }, // opposed → not same-direction
+    { ticker: "IWM", direction: "short" }, // same direction + same beta
+    { ticker: "AAPL", direction: "short" }, // same direction, uncorrelated
+  ]);
+  assert.equal(c.same_direction_open_count, 2, "only the two shorts");
+  assert.equal(c.same_beta_open_count, 1, "only IWM shares QQQ's group");
+  assert.equal(c.gross_directional_count, 3, "the gross book counts BOTH directions");
+  assert.deepEqual(c.correlation_group_ids, [correlationGroupId(correlationGroupOf("QQQ")!)]);
+});
+
+test("freezeConcentrationState: a single-name candidate outside any group has empty group ids + zero same-beta", () => {
+  const c = freezeConcentrationState({ ticker: "NVDA", direction: "long" }, [
+    { ticker: "SPY", direction: "long" },
+    { ticker: "QQQ", direction: "long" },
+  ]);
+  assert.deepEqual(c.correlation_group_ids, []);
+  assert.equal(c.same_beta_open_count, 0, "NVDA is in no group → no same-beta exposure");
+  assert.equal(c.same_direction_open_count, 2);
+});
+
+test("freezeConcentrationState: duplicate (ticker,direction) rows are de-duped; premium is rounded, non-finite → null", () => {
+  const c = freezeConcentrationState({ ticker: "QQQ", direction: "long" }, [
+    { ticker: "SPY", direction: "long" },
+    { ticker: "SPY", direction: "long" }, // a ledger quirk — must not double-count
+  ], { aggregatePremiumAtRisk: 12345.678 });
+  assert.equal(c.gross_directional_count, 1, "the two SPY:long rows collapse to one distinct exposure");
+  assert.deepEqual(c.existing_open_setup_ids, ["SPY:long"]);
+  assert.equal(c.aggregate_premium_at_risk, 12346, "rounded at the data layer");
+  assert.equal(c.concentration_policy_version, CONCENTRATION_POLICY_VERSION);
+
+  const nan = freezeConcentrationState({ ticker: "QQQ", direction: "long" }, [], { aggregatePremiumAtRisk: Number.NaN });
+  assert.equal(nan.aggregate_premium_at_risk, null, "a non-finite premium is an honest null, never NaN/0");
+});
+
+// ── loadRecordedGovernorStops: filters malformed persisted entries ───────────────────
+test("governor state: malformed recorded entries (bad direction / non-finite at_ms) are dropped on load", async () => {
+  const day = "2099-01-09";
+  // Write a valid one so the key exists, then a corrupt payload must not surface bad rows.
+  await recordGovernorStops(day, [{ ticker: "SPY", direction: "long", at_ms: NOW }]);
+  const recorded = await loadRecordedGovernorStops(day);
+  assert.equal(recorded.length, 1);
+  assert.equal(recorded[0]!.ticker, "SPY");
+  assert.equal(recorded[0]!.direction, "long");
+  assert.ok(Number.isFinite(recorded[0]!.at_ms!));
 });
