@@ -5,6 +5,43 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-25 — [SIM-VIEW] Admin-only 0DTE simulation view of the Night Hawk board — NEW FEATURE (member board untouched)
+
+**Severity.** Feature (deploy-affecting, safety-critical isolation). Not a bug fix — an additive
+admin capability. The #1 requirement was that members can NEVER see sim data and the member board
+path stays byte-for-byte unchanged.
+
+**What shipped.** An admin can open `https://blackouttrades.com/night-hawk?sim=1` and watch a
+simulated 0DTE session play through the REAL Night Hawk panel, fed by `npm run sim:feed --
+--synthetic`. Members keep seeing the real, untouched board.
+
+**Isolation design (three independent layers, ALL must hold).** (1) **Admin gate** — ingest is
+`requireAdminApi()`; the board GET re-checks `isAdminUser` before serving sim. (2) **Separate Redis
+key** — `zerodte:board:snapshot:sim:v1`, distinct from the member `zerodte:board:snapshot:v1`; the
+sim module never touches the member key (grep-enforced by a test). (3) **Opt-in `?sim=1`** — absent
+it, the member path (`getZeroDteBoardPayload()`) runs unchanged for everyone. A non-admin passing
+`?sim=1` deliberately falls through to the member board.
+
+**Member-path-unchanged proof.** The board route's default call is the same
+`getZeroDteBoardPayload()` as before; sim is an added branch IN FRONT of it, gated on
+`isSimRequested && via==="user" && isAdminUser`. In sim mode the client also disables the real
+live-marks SSE overlay so real member marks never paint the sim board.
+
+**Evidence.** New `zerodte-sim-board.test.ts` (9 tests): the `shouldServeSimBoard` truth table (sim
+ONLY for admin+sim=1; non-admin+sim=1 → member), `?sim=1` opt-in parsing, malformed-frame rejection,
+key isolation (sim key ≠ member key, module never references the member literal), short self-expiring
+TTL, and route-source assertions (member call intact, ingest admin-gated + writes only sim). `npx tsc
+--noEmit` clean; eslint clean on all touched files; existing `zerodte-service.test.ts` (17) still green.
+
+**Files.** `src/lib/platform/zerodte-sim-board.ts` (+ `.test.ts`),
+`src/app/api/admin/zerodte/sim/board/route.ts` (new ingest POST/DELETE),
+`src/app/api/market/zerodte/board/route.ts` (gated read branch),
+`src/features/nighthawk/command-deck/containers.tsx` (`?sim=1` propagation + banner),
+`scripts/audit/zerodte-sim-feed.mjs` (`npm run sim:feed`), `docs/audit/ZERODTE-SIMULATOR.md`.
+
+**Status.** OPEN PR → auto-merge on green CI per standing policy (additive; member path proven
+unchanged).
+
 ## 2026-07-25 — [WS-11] Mechanical grader single-walked a TRIM-SCALE strategy — calibration graded a DIFFERENT strategy than the engine runs; now reconstructs the ⅓/⅓/⅓ partial path executable-side as ONE official as-managed number — FIXED
 
 **Severity.** High (calibration integrity / member-record honesty, TRADES). Ref: NightHawk Remediation
