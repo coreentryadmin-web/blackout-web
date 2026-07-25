@@ -42,6 +42,46 @@ can REMOVE stale-driven candidates, never ADD any; the flow board is untouched o
 
 **Status.** FIXED on `fix/breakout-grouped-bar-age-ws19`. `tsc --noEmit` clean; 7/7 new tests pass;
 `scan.test.ts` 15/15 still green. Draft PR opened.
+## 2026-07-25 — [Hardening WS-20] Record intentional-design items + add offline A/B measurement — DOCS + TOOLS
+
+**Severity.** None (additive documentation + read-only measurement). **NO production behavior changed.**
+
+**What.** Four 0DTE-board behaviors are DELIBERATE design decisions, not oversights. Recorded each as
+intentional in `docs/audit/INTENTIONAL-DESIGN.md` (rationale grounded in code + the specific offline
+measurement that would justify revisiting it), and added three offline, read-only A/B harnesses so any
+future change is evidence-driven:
+1. **FLOW-first merge precedence** — `breakout-source.ts mergeDiscoveryOrigins` / `pin-source.ts
+   mergePinOrigins` keep the highest-precedence rail (FLOW > BREAKOUT > PIN) on a same-ticker direction
+   conflict, no evidence weighting; now versioned `MERGE_POLICY_VERSION="v1"` (`board.ts` L303), every
+   rail's read frozen at `entry_context.origin_maps`. Measure → `scripts/audit/merge-precedence-ab.mjs`.
+2. **Cortex veto is stateless** — `cortex-gate.ts evaluateCortexForCommit` recomputes fresh each pass
+   (no latch/dwell), deliberately so the precision layer never suppresses a genuinely-cleared setup from
+   stale state. Measure → `scripts/audit/veto-flicker-rate.mjs`.
+3. **PIN wall is a single-snapshot test** — `pin-source.ts evaluatePinRegime` (L119) requires no
+   cross-snapshot persistence; the five strict structural conditions + G-1 carry the honesty instead.
+   Measure → `scripts/audit/wall-temporal-stability.mjs` (runs the REAL regime per snapshot).
+4. **Static `BREAKOUT_MAX_CANDIDATES`** — already measured by the existing
+   `discovery-recall-probe.mjs`; the **dynamic-N** question is PARKED as a documented follow-up (extend
+   that probe, don't duplicate). See INTENTIONAL-DESIGN item #4.
+
+**Evidence (harnesses run).** All three parse/import under `node --import tsx` and self-report
+INSUFFICIENT DATA (never fabricate) when their DB/UW-sourced input isn't reachable offline. Smoke runs:
+(a) graded a synthetic 3-row ledger — FLOW-first vs evidence-weighted disagreement detection + BOTH
+directions graded on REAL Polygon minute bars (SPY/QQQ 2026-07-24); single-origin rows correctly
+excluded. (b) exact flicker tally on a synthetic 4-pass roster → 3 veto episodes, 2 cleared within 3,
+flicker 0.667, median passes-to-clear 1. (c) REAL `evaluatePinRegime` qualified stable vs
+single-snapshot cohorts on a synthetic snapshot set (grading needs real bars). Baseline
+`npx tsc --noEmit` clean before and after (scripts are `.mjs`, no `src/` touched).
+
+**Root cause.** N/A — these are intentional choices; the finding is that they were undocumented and
+unmeasured, so a future reader could "fix" them blind or change them without evidence.
+
+**Fix.** Document as deliberate + ship the measurement (calibration-first: evidence, not gating).
+Registered the tools + INTENTIONAL-DESIGN.md in CLAUDE.md's audit-toolkit list.
+
+**Status.** DRAFT PR (docs + tools only). No behavioral change; no gate/merge/regime logic touched.
+
+---
 
 ## 2026-07-25 — [Q10] Discovery recall probe: the BREAKOUT top-6 $-volume cap is LEAKY — NEW TOOL
 
