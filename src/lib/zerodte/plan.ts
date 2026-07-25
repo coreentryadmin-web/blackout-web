@@ -212,14 +212,31 @@ export function etMinutesOf(epochMs: number): number {
  * So the number the member is shown and the number booked to their record agree; this
  * conservative grade is the honest hold-to-stop/target benchmark beside it.
  */
+/** WS-02: the grader-facing numeric exit params. When a committed row carries a frozen
+ *  exit-policy snapshot (entry_context.exit_policy_snapshot), the caller resolves it to this
+ *  shape (exitPolicyGraderParams) and passes it so the grade uses the numbers the row
+ *  COMMITTED under — not whatever PLAN_RULES currently holds. Omitted/nullish fields fall back
+ *  to PLAN_RULES, so a legacy row (no snapshot) grades exactly as before. Kept as a plain
+ *  numeric shape (not the ResolvedExitPolicy type) so this leaf never imports strategy-version
+ *  (which imports THIS module — that would cycle). */
+export type PlanGradeParams = {
+  hard_stop_pct?: number | null;
+  target_pct?: number | null;
+  time_stop_et_minutes?: number | null;
+};
+
 export function gradePlanFromBars(
   bars: PlanBar[],
   entryPremium: number,
-  flaggedAtMs: number
+  flaggedAtMs: number,
+  params?: PlanGradeParams | null
 ): PlanOutcome {
   if (!(entryPremium > 0)) return { outcome: "ungradeable", pnl_pct: null };
-  const stop = entryPremium * (1 + PLAN_RULES.stop_pct / 100);
-  const target = entryPremium * (1 + PLAN_RULES.target_pct / 100);
+  const stopPct = params?.hard_stop_pct ?? PLAN_RULES.stop_pct;
+  const targetPct = params?.target_pct ?? PLAN_RULES.target_pct;
+  const timeStopMinutes = params?.time_stop_et_minutes ?? PLAN_RULES.time_stop_et_minutes;
+  const stop = entryPremium * (1 + stopPct / 100);
+  const target = entryPremium * (1 + targetPct / 100);
   const pnl = (exit: number) => round2(((exit - entryPremium) / entryPremium) * 100);
 
   let lastCloseInWindow: number | null = null;
@@ -227,7 +244,7 @@ export function gradePlanFromBars(
     // Exclude the flag bar itself (<=, not <) — grading its own high/low would be intrabar
     // look-ahead on the flag bar (asymmetric with the skip grader, which excludes the entry bar).
     if (bar.t <= flaggedAtMs) continue;
-    const pastTimeStop = etMinutesOf(bar.t) > PLAN_RULES.time_stop_et_minutes;
+    const pastTimeStop = etMinutesOf(bar.t) > timeStopMinutes;
     if (pastTimeStop) break;
     // Conservative ordering: stop checked before target within the same bar.
     if (bar.l <= stop) return { outcome: "stopped", pnl_pct: pnl(stop) };

@@ -288,6 +288,98 @@ export function noteOriginDirectionConflict(
   };
 }
 
+// ── WS-06: FULL origin maps (persist every rail's read at merge, not just the first conflict) ──
+// noteOriginDirectionConflict above keeps only the FIRST opposing pair, and the feature vector
+// keeps only a collapsed origin LABEL. So a 3-origin / 2-direction merge (e.g. FLOW long +
+// BREAKOUT long + PIN short) loses which rail argued what and at what strength — the raw material
+// the calibration origin band needs to ask "does opposing co-discovery underperform, and does it
+// matter WHICH rails disagreed?". This records EACH rail's (direction, score) as it merges, so the
+// committed row can freeze the whole picture. EVIDENCE ONLY — merge behavior is unchanged; the kept
+// setup's direction/score are exactly what they were.
+
+/** The merge/precedence version these maps were frozen under. Bump BY HAND if the origin
+ *  precedence (which rail owns the kept direction) or the merge/union rule changes. v1 = FLOW >
+ *  BREAKOUT > PIN precedence, union-by-ticker keeping the highest-precedence rail's read. */
+export const MERGE_POLICY_VERSION = "v1";
+
+/** Per-origin (direction, score) contribution recorded at merge time. Score is the rail's raw
+ *  evidence score at merge (rounded). First-write-wins per origin. */
+export type OriginContribution = { direction: "long" | "short"; score: number };
+
+/** The frozen origin maps pinned on a committed row (entry_context.origin_maps). Back-compat:
+ *  legacy rows have none — readers must null-guard. */
+export type OriginMaps = {
+  /** Each rail's argued direction at merge, e.g. {FLOW:"long",BREAKOUT:"long",PIN:"short"}. */
+  origin_direction_map: Partial<Record<DiscoveryOrigin, "long" | "short">>;
+  /** Each rail's raw evidence score at merge. */
+  origin_score_map: Partial<Record<DiscoveryOrigin, number>>;
+  /** Which origin's direction was KEPT under the merge precedence (FLOW under v1 precedence when
+   *  present; else the highest-precedence rail on the row). */
+  direction_owner: DiscoveryOrigin;
+  /** Origins whose argued direction DISAGREES with the kept direction — ALL of them, not just the
+   *  first (the gap noteOriginDirectionConflict left). Empty on full agreement / single origin. */
+  disagreeing_origins: DiscoveryOrigin[];
+  merge_policy_version: string;
+};
+
+/** Record `origins`' (direction, score) onto a setup's contribution map, first-write-wins per
+ *  origin. Pure aside from the single in-place stamp (same idiom as noteOriginDirectionConflict). */
+function seedOriginContributions(
+  setup: EnrichedZeroDteSetup,
+  origins: readonly DiscoveryOrigin[],
+  direction: "long" | "short",
+  score: number
+): void {
+  if (!setup.origin_contributions) setup.origin_contributions = {};
+  const s = Number.isFinite(score) ? Math.round(score) : 0;
+  for (const o of origins) {
+    if (setup.origin_contributions[o] == null) setup.origin_contributions[o] = { direction, score: s };
+  }
+}
+
+/** At a merge, record BOTH the kept setup's own rails and the incoming rail's read (before the
+ *  union rewrites discovery_origin). Called by mergeDiscoveryOrigins / mergePinOrigins so every
+ *  rail that touched a ticker leaves its (direction, score) — the whole disagreement picture, not
+ *  just the first pair. Evidence only. */
+export function recordOriginContributionsOnMerge(
+  kept: EnrichedZeroDteSetup,
+  incoming: Pick<EnrichedZeroDteSetup, "direction" | "discovery_origin" | "score">
+): void {
+  seedOriginContributions(kept, kept.discovery_origin, kept.direction, kept.score);
+  seedOriginContributions(kept, incoming.discovery_origin, incoming.direction, incoming.score);
+}
+
+/** Build the frozen origin maps for a committing setup. Reads the contributions recorded at merge
+ *  time; for any origin on the setup with no recorded contribution (the common single-rail case, or
+ *  a rail that never went through a conflicting merge) it seeds from the setup's own kept
+ *  direction/score — so the maps are ALWAYS complete for the row's discovery_origin set. Pure.
+ *  direction_owner = the highest-precedence rail present (discovery_origin is canonically ordered
+ *  FLOW < BREAKOUT < PIN, and the merge always keeps the highest-precedence rail's setup, so its
+ *  first element owns the kept direction). */
+export function buildOriginMaps(setup: EnrichedZeroDteSetup): OriginMaps {
+  const contributions = setup.origin_contributions ?? {};
+  const dirMap: Partial<Record<DiscoveryOrigin, "long" | "short">> = {};
+  const scoreMap: Partial<Record<DiscoveryOrigin, number>> = {};
+  // Defensive: a setup always carries discovery_origin in production, but tolerate an
+  // absent/empty set (older fixtures) rather than throw — origin maps are evidence, never load-bearing.
+  const origins: readonly DiscoveryOrigin[] = Array.isArray(setup.discovery_origin) ? setup.discovery_origin : [];
+  for (const o of origins) {
+    const c = contributions[o];
+    dirMap[o] = c ? c.direction : setup.direction;
+    scoreMap[o] = c ? c.score : (Number.isFinite(setup.score) ? Math.round(setup.score) : 0);
+  }
+  const owner: DiscoveryOrigin = origins[0] ?? "FLOW";
+  const keptDirection = dirMap[owner] ?? setup.direction;
+  const disagreeing = origins.filter((o) => dirMap[o] !== keptDirection);
+  return {
+    origin_direction_map: dirMap,
+    origin_score_map: scoreMap,
+    direction_owner: owner,
+    disagreeing_origins: disagreeing,
+    merge_policy_version: MERGE_POLICY_VERSION,
+  };
+}
+
 /** Canonical "+"-joined label for an origin set ("FLOW", "BREAKOUT", "FLOW+BREAKOUT", …). An
  *  empty/absent set (a pre-3a ledger row) is "no_origin" so the calibration band never
  *  mislabels a legacy row as a real origin. Pure. */
@@ -1078,6 +1170,11 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  so the graded origin band can measure opposing-co-discovery outcomes; it does not change
    *  what commits. Absent = no conflict (same-direction corroboration or single origin). */
   origin_direction_conflict?: OriginDirectionConflict | null;
+  /** WS-06: per-origin (direction, score) recorded at merge time — the raw material buildOriginMaps
+   *  freezes onto the committed row. Populated in-place by recordOriginContributionsOnMerge for a
+   *  multi-source ticker; absent for a single-origin setup (buildOriginMaps seeds those from the
+   *  setup itself). Evidence only — never read by any gate/grader. */
+  origin_contributions?: Partial<Record<DiscoveryOrigin, OriginContribution>>;
 };
 
 // ── Stage 4 audit trail (alert_audit_log) ─────────────────────────────────────────

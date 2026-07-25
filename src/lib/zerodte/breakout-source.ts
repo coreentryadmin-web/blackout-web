@@ -23,6 +23,7 @@ import {
   gradingPolicyForHorizon,
   unionDiscoveryOrigins,
   noteOriginDirectionConflict,
+  recordOriginContributionsOnMerge,
   type EnrichedZeroDteSetup,
   type ZeroDteSetup,
 } from "./board";
@@ -234,6 +235,9 @@ export function mergeDiscoveryOrigins(
       // evidence (real prints/aggression), drop the bare breakout duplicate. No score change.
       // Q1: if breakout argued the OPPOSITE direction, stamp the masked read as evidence
       // (never flip the kept direction) so the origin band can grade opposing co-discovery.
+      // WS-06: record BOTH rails' (direction, score) BEFORE the union rewrites discovery_origin,
+      // so the frozen origin maps capture every disagreement, not just the first conflict pair.
+      recordOriginContributionsOnMerge(existing, b);
       noteOriginDirectionConflict(existing, b);
       existing.discovery_origin = unionDiscoveryOrigins(existing.discovery_origin, b.discovery_origin);
     } else {

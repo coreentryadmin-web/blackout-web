@@ -56,6 +56,8 @@ import {
   isSameDayHorizon,
   matchEarnings,
   polygonSpotTicker,
+  buildOriginMaps,
+  MERGE_POLICY_VERSION,
   type EarningsFlag,
   type EnrichedZeroDteSetup,
   type NewsHeat,
@@ -65,8 +67,13 @@ import {
 import { gradeCondorFromBars } from "./condor";
 import { buildZeroDteEntryContext, fetchZeroDteSessionContext } from "./entry-context";
 import { buildSetupFeatureVector } from "./feature-vector";
-import { buildStrategyManifest, strategyConfigHash } from "./strategy-version";
-import { evaluateLedgerRowExit, resolveExitMode } from "./exit-sync";
+import {
+  buildStrategyManifest,
+  strategyConfigHash,
+  buildResolvedExitPolicy,
+  exitPolicyGraderParams,
+} from "./strategy-version";
+import { evaluateLedgerRowExit, resolveExitMode, readFrozenExitPolicy } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
 import { persistZeroDteRejections } from "./rejections";
 import {
@@ -81,6 +88,7 @@ import {
   loadRecordedGovernorStops,
   mergeGovernorStops,
   recordGovernorStops,
+  freezeConcentrationState,
   type GovernorSnapshot,
 } from "./governor";
 import {
@@ -735,6 +743,21 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   const exitPolicyAtCommit = resolveExitMode();
   const strategyManifest = buildStrategyManifest({ exitPolicy: exitPolicyAtCommit });
   const strategyHash = strategyConfigHash(strategyManifest);
+  // WS-02: the FULLY-RESOLVED numeric exit policy (stop/target/trims/time-stop/collision + its own
+  // config_hash) frozen onto every row's entry_context at commit. Resolved ONCE per scan from the
+  // active mode (identical for every row this cycle). Graders read it back and prefer its numbers,
+  // so a later numeric edit in code can never retroactively re-grade these committed plays.
+  const exitPolicySnapshot = buildResolvedExitPolicy(exitPolicyAtCommit);
+  // WS-05: the open-book snapshot the concentration MEASURE reads — derived from today's ledger the
+  // SAME way summarizeGovernorForBoard does (deriveGovernorFromLedger over the committed rows). Plus
+  // the sum of entry premium across the currently-OPEN rows ("premium at risk"; the governor's
+  // open-plan shape carries no premium, so it's summed here from the full rows). Computed ONCE over
+  // the pre-commit open book — every fresh commit this cycle measures against the same snapshot.
+  const openPlansAtCommit = deriveGovernorFromLedger(existingRows).open_plans;
+  const aggregateOpenPremium = existingRows.reduce(
+    (sum, r) => (r.status !== "CLOSED" && typeof r.entry_premium === "number" && Number.isFinite(r.entry_premium) ? sum + r.entry_premium : sum),
+    0
+  );
   const rows: ZeroDteSetupLogUpsert[] = eligible.map((s) => ({
     session_date: today,
     ticker: s.ticker,
@@ -809,6 +832,23 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       // under the policy it committed with — a mid-session ZERODTE_EXIT_MODE flip only
       // steers plays committed afterward, never re-manages a live position.
       exit_policy_at_commit: exitPolicyAtCommit,
+      // WS-02 — the IMMUTABLE, fully-resolved exit-policy snapshot (numeric stop/target/trims/
+      // time-stop/collision + its own config_hash). Frozen so the grader replays this row under the
+      // numbers it COMMITTED with, never whatever PLAN_RULES holds at grade time. readFrozenExitPolicy
+      // reads it; null (legacy row) → graders fall back to current code, byte-for-byte prior behavior.
+      exit_policy_snapshot: exitPolicySnapshot,
+      // WS-05 — concentration STATE frozen at commit (MEASURE ONLY, no gating): how concentrated the
+      // open book was, from the SAME inputs summarizeGovernorForBoard uses (governor.open_plans +
+      // CORRELATION_GROUPS). Lets calibration ask "how concentrated was the book when this committed?"
+      // on the graded ledger before concentration is ever flipped from a measure to a gate (Q9).
+      concentration: freezeConcentrationState(
+        { ticker: s.ticker, direction: s.direction },
+        openPlansAtCommit,
+        { aggregatePremiumAtRisk: aggregateOpenPremium }
+      ),
+      // WS-06 — FULL origin maps: every discovery rail's (direction, score) at merge + which rail owned
+      // the kept direction + all disagreements (not just the first conflict pair). Evidence only.
+      origin_maps: buildOriginMaps(s),
     } as unknown as Record<string, unknown>,
     flags_json: {
       ...(s.earnings ? { earnings: s.earnings } : {}),
@@ -854,6 +894,10 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       // Same frozen hash as entry_context above (design Q12) — stamped on the feature vector too so
       // the intelligence/feature layer can partition its own population by strategy version.
       strategyConfigHash: strategyHash,
+      // WS-06: the origin owner + merge version flattened onto the vector (full maps ride in
+      // entry_context.origin_maps) so the feature store can slice/one-hot by which rail owned the take.
+      directionOwner: buildOriginMaps(s).direction_owner,
+      mergePolicyVersion: MERGE_POLICY_VERSION,
     }) as unknown as Record<string, unknown>,
   }));
   const freshlyFlagged = await upsertZeroDteSetupLog(rows);
@@ -924,6 +968,11 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
             `entry_context.contract_horizon=${pinnedHorizon} is not same-day (should never have committed)`
         );
       }
+      // WS-02: grade under the row's FROZEN exit-policy snapshot (the numbers it committed
+      // under) when present; null → the graders fall back to current-code PLAN_RULES (legacy
+      // rows grade exactly as before). Read once here and threaded into both grade paths.
+      const frozenExitPolicy = readFrozenExitPolicy(ec as Record<string, unknown> | null);
+      const graderParams = frozenExitPolicy ? exitPolicyGraderParams(frozenExitPolicy) : null;
       const isCondorRow = ec?.play_type === "CONDOR";
       const condorGeom = (ec?.condor ?? null) as Record<string, unknown> | null;
       if (sameDayOk && isCondorRow && row.plan_outcome == null && condorGeom && row.first_flagged_at) {
@@ -943,7 +992,12 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
           // realized_usd_mid stays null (never fabricated).
           net_credit_mid: condorGeom.net_credit_mid == null ? null : Number(condorGeom.net_credit_mid),
         };
-        const cGrade = gradeCondorFromBars(bars, geom, Date.parse(row.first_flagged_at));
+        const cGrade = gradeCondorFromBars(
+          bars,
+          geom,
+          Date.parse(row.first_flagged_at),
+          graderParams ? { time_stop_et_minutes: graderParams.time_stop_et_minutes } : null
+        );
         await updateZeroDtePlanOutcome(row.session_date, row.ticker, {
           plan_outcome: cGrade.outcome,
           plan_pnl_pct: cGrade.pnl_pct,
@@ -958,7 +1012,7 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
         const planBars: PlanBar[] = optBars
           .filter((b) => b.t != null && Number.isFinite(b.t))
           .map((b) => ({ t: b.t as number, h: b.h, l: b.l, c: b.c }));
-        const planGrade = gradePlanFromBars(planBars, row.entry_premium, Date.parse(row.first_flagged_at));
+        const planGrade = gradePlanFromBars(planBars, row.entry_premium, Date.parse(row.first_flagged_at), graderParams);
         await updateZeroDtePlanOutcome(row.session_date, row.ticker, {
           plan_outcome: planGrade.outcome,
           plan_pnl_pct: planGrade.pnl_pct,

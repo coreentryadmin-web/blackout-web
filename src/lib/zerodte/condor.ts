@@ -417,18 +417,24 @@ export type CondorOutcome = {
 export function gradeCondorFromBars(
   bars: PlanBar[],
   plan: Pick<CondorPlan, "breach_lower" | "breach_upper" | "net_credit" | "max_loss" | "gross_wing_risk" | "net_credit_mid">,
-  flaggedAtMs: number
+  flaggedAtMs: number,
+  // WS-02: the same-day time-stop from the row's FROZEN exit-policy snapshot, when it carries
+  // one — so a condor is settled at the minute the row COMMITTED under (not whatever
+  // PLAN_RULES currently holds). Omitted/nullish → PLAN_RULES (legacy rows grade as before).
+  // A condor is breach-graded, so only the time-stop is policy-driven (no stop/target %).
+  params?: { time_stop_et_minutes?: number | null } | null
 ): CondorOutcome {
   const { breach_lower, breach_upper, net_credit, max_loss, gross_wing_risk, net_credit_mid } = plan;
   if (net_credit == null || max_loss == null || !(gross_wing_risk > 0)) {
     return { outcome: "ungradeable", realized_usd: null, pnl_pct: null, breached_intraday: false, realized_usd_mid: null };
   }
+  const timeStopMinutes = params?.time_stop_et_minutes ?? PLAN_RULES.time_stop_et_minutes;
   const pct = (usd: number) => round2((usd / gross_wing_risk) * 100);
 
   let lastCloseInWindow: number | null = null;
   for (const bar of [...bars].sort((a, b) => a.t - b.t)) {
     if (bar.t <= flaggedAtMs) continue; // exclude the flag bar (intrabar look-ahead)
-    if (etMinutesOf(bar.t) > PLAN_RULES.time_stop_et_minutes) break; // past 15:30 — settle
+    if (etMinutesOf(bar.t) > timeStopMinutes) break; // past the time-stop — settle
     // Breach stop: the first touch of either short is the managed exit at the DEFINED max loss.
     if (bar.l <= breach_lower || bar.h >= breach_upper) {
       // The capped loss is dominated by the wing width and barely moves with entry fill, so the mid
