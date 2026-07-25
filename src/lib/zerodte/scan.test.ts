@@ -669,6 +669,7 @@ test("scanZeroDteBoard: flags OFF → flow-only board, every setup stamped disco
   resetState();
   delete process.env.ZERODTE_WHOLE_MARKET;
   delete process.env.ZERODTE_SRC_BREAKOUT;
+  delete process.env.ZERODTE_SRC_PIN; // Phase 3b: the pin source is off too — no PIN origin appears
   state.flows = [
     {
       ticker: "NVDA",

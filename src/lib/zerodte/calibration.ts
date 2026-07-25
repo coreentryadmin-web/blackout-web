@@ -372,9 +372,17 @@ export function analyzeAccumulationAlignment(graded: CalibrationPlayRow[]): Cali
 // "no_origin" bucket, never a fabricated verdict. Non-gating (evidence, exactly like the two bands
 // above); a source graduates through the same recommendSignal ladder once its band clears n>=10.
 
-/** The origin labels always emitted (stable machine-readable shape), best/simplest first. PIN and
- *  its combinations arrive with later phases — an unrecognized label is appended dynamically. */
-export const CALIBRATION_ORIGIN_BANDS = ["FLOW", "BREAKOUT", "FLOW+BREAKOUT", "no_origin"] as const;
+/** The origin labels always emitted (stable machine-readable shape), best/simplest first. PIN
+ *  arrived in Phase 3b (§1a); its combinations (FLOW+PIN, BREAKOUT+PIN, FLOW+BREAKOUT+PIN) are
+ *  emitted dynamically when observed — an unrecognized label is still appended so nothing is dropped. */
+export const CALIBRATION_ORIGIN_BANDS = [
+  "FLOW",
+  "BREAKOUT",
+  "PIN",
+  "FLOW+BREAKOUT",
+  "FLOW+PIN",
+  "no_origin",
+] as const;
 
 /** Canonical origin label off a row's entry_context.discovery_origin (defensive — an absent/garbage
  *  blob → "no_origin"). Reuses board.ts's one label function so the calibration slice and the

@@ -1,0 +1,141 @@
+// ── PIN discovery — IO orchestration (Phase 3b) ────────────────────────────────────────────
+// The provider-touching half of the PIN source (the pure half is pin-source.ts). Dynamic-imported
+// from scan.ts ONLY when the source is flag-enabled, so the flow-only board never loads the
+// whole-universe GEX/provider graph.
+//
+// UNIVERSE (the design's "liquid set", §1a): a pin needs BOTH a per-ticker dealer-gamma ladder AND
+// a liquid same-day/weekly option chain, so this is NOT the whole ~12k market (unlike BREAKOUT,
+// which screens a grouped-daily bar). It is a curated LIQUID set: the 0DTE-listed index products
+// (SPX + SPY/QQQ/IWM/DIA) plus the most-liquid mega-cap single names with real weekly chains. The
+// index products are the core — they carry true daily 0DTE and the deepest, most dealer-defended
+// gamma walls, which is exactly where a pin forms. Override via ZERODTE_PIN_UNIVERSE (comma list).
+//
+// PER TICKER: reuse the EXISTING gamma math — fetchGexHeatmap → gexPositioningFromHeatmap for the
+// canonical spot/flip/posture/call_wall/put_wall, and computeGexWalls(strike_totals) for each wall's
+// share of ladder |gamma| (dominance). Both derive the SAME top-wall strikes by construction
+// (gex-wall-levels.ts doc), so the strike and its dominance are consistent. evaluatePinRegime then
+// decides whether spot is genuinely pinned between dominant walls in a long-gamma tape, and if so
+// which way the fade points; a clean pin → pick an ATM fade contract off the live chain → build the
+// seed setup. NO clean pin, a provider miss, or off-hours → SKIP (return [], logged) — never fabricate.
+
+import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import { gexPositioningFromHeatmap } from "@/lib/providers/gex-positioning";
+import { computeGexWalls, mapFromStrikeTotalsRecord } from "@/lib/providers/gex-wall-levels";
+import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
+import { buildPinSetup, evaluatePinRegime, pickAtmPinContract, type PinChainRow } from "./pin-source";
+import type { EnrichedZeroDteSetup } from "./board";
+
+/** RTH commit window in ET minutes-since-midnight: [9:30, 15:00) — same gate as the breakout source.
+ *  Outside it the board opens no fresh plays anyway, and off-hours the GEX ladder / WS walls are
+ *  idle, so the pin source stays idle rather than read a stale/cold dealer-positioning snapshot. */
+const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
+const RTH_CUTOFF_ET_MINUTES = 15 * 60;
+
+/** The curated LIQUID pin universe (see the file header). Index products first — the deepest,
+ *  most dealer-defended gamma and true daily 0DTE — then the most-liquid mega-cap single names. */
+export const DEFAULT_PIN_UNIVERSE = [
+  "SPX", "SPY", "QQQ", "IWM", "DIA",
+  "AAPL", "MSFT", "NVDA", "AMZN", "META", "TSLA", "GOOGL", "AMD",
+] as const;
+
+/** Resolve the pin universe: env override (ZERODTE_PIN_UNIVERSE, comma-separated) else the default. */
+export function resolvePinUniverse(): string[] {
+  const raw = process.env.ZERODTE_PIN_UNIVERSE;
+  if (raw && raw.trim()) {
+    const list = raw.split(",").map((t) => t.trim().toUpperCase()).filter(Boolean);
+    if (list.length > 0) return list;
+  }
+  return [...DEFAULT_PIN_UNIVERSE];
+}
+
+/** Cap the per-ticker chain fetches per scan — the universe is already small + curated; this bounds
+ *  the work even if the universe is widened via the env override. */
+export const PIN_MAX_CANDIDATES = 8;
+
+/**
+ * Discover PIN-origin setups for the live board. Returns [] (a logged SKIP) whenever no clean pin
+ * exists — off-hours, a provider miss, or simply no ticker in the range/long-gamma regime — so the
+ * source never fabricates candidates. Best-effort throughout: any per-ticker failure degrades to a
+ * skip of that ticker; a total failure degrades to [] and the flow board is untouched.
+ */
+export async function discoverPinSetups(opts: {
+  today: string;
+  nowEtMinutes: number;
+  /** Tickers to exclude (static excludes + Night Hawk-covered names), same set the flow path uses. */
+  excludeTickers: Set<string>;
+  maxCandidates?: number;
+}): Promise<EnrichedZeroDteSetup[]> {
+  const { today, nowEtMinutes, excludeTickers } = opts;
+  const maxCandidates = opts.maxCandidates ?? PIN_MAX_CANDIDATES;
+
+  if (nowEtMinutes < RTH_OPEN_ET_MINUTES || nowEtMinutes >= RTH_CUTOFF_ET_MINUTES) {
+    console.info("[zerodte-pin] outside the RTH commit window — SKIP (dealer-positioning read idle)");
+    return [];
+  }
+
+  const universe = resolvePinUniverse()
+    .filter((t) => !excludeTickers.has(t.toUpperCase()))
+    .slice(0, maxCandidates);
+  if (universe.length === 0) {
+    console.info("[zerodte-pin] pin universe empty after excludes — SKIP");
+    return [];
+  }
+
+  const built = await Promise.all(
+    universe.map(async (ticker): Promise<EnrichedZeroDteSetup | null> => {
+      try {
+        // Reuse the shared GEX matrix (cache-reader — never a second upstream). Cold matrix → skip.
+        const hm = await fetchGexHeatmap(ticker).catch(() => null);
+        const pos = gexPositioningFromHeatmap(ticker, hm);
+        if (!hm || !pos || !(pos.spot > 0)) return null;
+
+        // Wall DOMINANCE from the SAME near-term-scoped ladder (computeGexWalls agrees with pos on
+        // the top-wall strikes; we take the pct/share for the score's bracket-strength term).
+        const walls = computeGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals));
+        const callWallPct =
+          pos.call_wall != null ? walls.callWalls.find((w) => w.strike === pos.call_wall)?.pct ?? null : null;
+        const putWallPct =
+          pos.put_wall != null ? walls.putWalls.find((w) => w.strike === pos.put_wall)?.pct ?? null : null;
+
+        const regime = evaluatePinRegime({
+          spot: pos.spot,
+          callWall: pos.call_wall,
+          putWall: pos.put_wall,
+          callWallPct,
+          putWallPct,
+          gammaPosture: pos.gamma_posture,
+        });
+        if (!regime) return null; // not a clean pin — never fabricate a fade
+
+        // Pick the ATM fade contract off the live chain (call for a long/up fade, put for short/down).
+        const chain = await resolveTickerChainRows(ticker).catch(() => null);
+        if (!chain || !(chain.spot > 0) || chain.rows.length === 0) return null;
+        const rows: PinChainRow[] = chain.rows.map((r) => ({
+          expiry: r.expiry,
+          strike: r.strike,
+          call_bid: r.call_bid,
+          call_ask: r.call_ask,
+          call_oi: r.call_oi,
+          put_bid: r.put_bid,
+          put_ask: r.put_ask,
+          put_oi: r.put_oi,
+        }));
+        const side = regime.fadeDirection === "long" ? "call" : "put";
+        const contract = pickAtmPinContract(rows, chain.spot, today, side);
+        if (!contract) return null; // no liquid same-day/weekly contract → shared plan gate would drop it
+
+        return buildPinSetup({ ticker, spot: chain.spot, regime, contract });
+      } catch {
+        return null; // best-effort per ticker — one bad read never sinks the batch
+      }
+    })
+  );
+
+  const setups = built.filter((s): s is EnrichedZeroDteSetup => s != null);
+  if (setups.length === 0) {
+    console.info(`[zerodte-pin] scanned ${universe.length} liquid name(s), no clean pin regime — SKIP`);
+    return [];
+  }
+  console.info(`[zerodte-pin] built ${setups.length} pin setup(s) from ${universe.length} liquid name(s)`);
+  return setups;
+}
