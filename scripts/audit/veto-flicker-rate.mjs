@@ -161,7 +161,6 @@ for (const [ticker, s] of series) {
       continue;
     }
     // start of a veto run
-    const runStart = i;
     while (i < s.length && s[i] === true) i++;
     const runEnd = i - 1; // inclusive last vetoed pass
     episodes++;

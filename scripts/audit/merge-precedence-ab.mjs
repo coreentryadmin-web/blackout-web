@@ -126,7 +126,13 @@ async function jget(url) {
   return r.json().catch(() => null);
 }
 async function fetchMinuteBars(ticker, date) {
-  const url = `${BASE}/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/minute/${date}/${date}?adjusted=true&sort=asc&limit=50000&apiKey=${KEY}`;
+  // CodeQL / SSRF hardening: ticker+date come from the operator's --ledger export (file data).
+  // Validate both against strict allowlists BEFORE they reach the outbound URL — a regex guard
+  // against a constant pattern breaks the taint flow and rejects any malformed/hostile row.
+  const t = String(ticker).toUpperCase();
+  const d = String(date);
+  if (!/^[A-Z][A-Z0-9.]{0,9}$/.test(t) || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return [];
+  const url = `${BASE}/v2/aggs/ticker/${t}/range/1/minute/${d}/${d}?adjusted=true&sort=asc&limit=50000&apiKey=${KEY}`;
   const j = await jget(url);
   return (j?.results ?? []).map((b) => ({ t: b.t, h: b.h, l: b.l, c: b.c }));
 }
