@@ -52,11 +52,15 @@ export function condorFlagEnabled(): boolean {
 // restricted to cash-settled index roots; every American underlying stays the directional fade.
 // Override via ZERODTE_CONDOR_ROOTS (comma-sep) — but do NOT add American roots without an
 // assignment model. This is a safety gate, not a tuning dial.
-// Production default is SPX ONLY — the single cleanest cash-settled, European, true-daily-0DTE
-// index root. XSP/NDX/RUT are also cash-settled index products but are added ONLY via the env
-// override (research), so production never carries a wider default than one fully-understood root.
+// Production default: SPX + NDX — both cash-settled, European-style index roots (NO early
+// assignment; defined loss holds) with daily 0DTE expirations that are PM/close-settled, so the
+// 15:30-close grader is valid for both. NDX 0DTE is thinner than SPX, but the condor liquidity
+// gate (4 legs quotable + per-leg spread + credit floor) blocks any bad-fill NDX condor, so adding
+// it can only add REAL condors, never a poorly-priced one. XSP/RUT (also cash-settled index) are
+// research-only via the env override. American ETFs/single names are NEVER eligible (assignment).
+// NOTE: NDX is ~20k → one condor is large notional; a sizing-discipline point, not a safety one.
 export const CASH_SETTLED_CONDOR_ROOTS: ReadonlySet<string> = new Set(
-  (process.env.ZERODTE_CONDOR_ROOTS ?? "SPX")
+  (process.env.ZERODTE_CONDOR_ROOTS ?? "SPX,NDX")
     .split(",")
     .map((s) => s.trim().toUpperCase())
     .filter(Boolean)

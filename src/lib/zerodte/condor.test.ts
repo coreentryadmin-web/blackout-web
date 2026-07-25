@@ -373,13 +373,14 @@ test("a tighter (1.5%) condor's raw-100 WR is clamped to 97 + flagged small-samp
 });
 
 // ── Assignment safety (design gap #8): condors only on cash-settled index roots ──
-test("condorEligibleTicker: SPX-only production allowlist; everything else excluded by default", () => {
-  // Production default is SPX ONLY (cash-settled, European, true daily 0DTE).
-  assert.equal(condorEligibleTicker("SPX"), true);
-  assert.equal(condorEligibleTicker("spx"), true);
-  // Everything else — other cash-settled index roots (research-only via env), American ETF
-  // wrappers, and single names — is NOT eligible by default (they stay the directional fade).
-  for (const t of ["XSP", "NDX", "RUT", "SPY", "QQQ", "IWM", "DIA", "AAPL", "NVDA", "TSLA"]) {
-    assert.equal(condorEligibleTicker(t), false, `${t} is not in the SPX-only production allowlist`);
+test("condorEligibleTicker: SPX+NDX cash-settled production allowlist; everything else excluded", () => {
+  // Production default: SPX + NDX — both cash-settled, European, PM-settled daily 0DTE.
+  for (const t of ["SPX", "spx", "NDX", "ndx"]) {
+    assert.equal(condorEligibleTicker(t), true, `${t} is a cash-settled index → condor-eligible`);
+  }
+  // Everything else — other cash-settled index roots (research-only via env: XSP/RUT), American
+  // ETF wrappers, and single names — is NOT eligible by default (they stay the directional fade).
+  for (const t of ["XSP", "RUT", "SPY", "QQQ", "IWM", "DIA", "AAPL", "NVDA", "TSLA"]) {
+    assert.equal(condorEligibleTicker(t), false, `${t} is not in the SPX+NDX production allowlist`);
   }
 });

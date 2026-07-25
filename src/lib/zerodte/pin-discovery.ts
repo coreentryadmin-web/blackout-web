@@ -43,7 +43,7 @@ const RTH_CUTOFF_ET_MINUTES = 15 * 60;
 /** The curated LIQUID pin universe (see the file header). Index products first — the deepest,
  *  most dealer-defended gamma and true daily 0DTE — then the most-liquid mega-cap single names. */
 export const DEFAULT_PIN_UNIVERSE = [
-  "SPX", "SPY", "QQQ", "IWM", "DIA",
+  "SPX", "NDX", "SPY", "QQQ", "IWM", "DIA",
   "AAPL", "MSFT", "NVDA", "AMZN", "META", "TSLA", "GOOGL", "AMD",
 ] as const;
 
