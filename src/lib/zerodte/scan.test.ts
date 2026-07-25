@@ -969,7 +969,7 @@ test("WS-01 persistZeroDteScan: RACE — a concurrent writer's committed rows (s
   state.atomicLedger = [openLedgerRow("AAPL"), openLedgerRow("TSLA")];
 
   const { persistZeroDteScan } = await mod();
-  const logged = await persistZeroDteScan([
+  await persistZeroDteScan([
     freshCommitSetup("NVDA", 80) as never, // higher score — offered the last slot first
     freshCommitSetup("AMD", 70) as never, // lower score — recount blocks it at the cap
   ]);

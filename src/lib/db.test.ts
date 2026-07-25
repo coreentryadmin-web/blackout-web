@@ -73,8 +73,13 @@ test("computeSafePgPoolMaxDefault: clamps to a floor of 1 for absurd replica cou
 
 test("upsertZeroDteSetupLog: direction/top_strike/expiry are pinned (COALESCE-guarded) in the ON CONFLICT UPDATE", () => {
   const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  // WS-01 extracted the one-and-only upsert SQL into the module-level const
+  // ZERODTE_SETUP_LOG_UPSERT_SQL (shared byte-identical by BOTH the plain pooled path
+  // upsertZeroDteSetupLog AND the atomic transactional path commitFreshZeroDteRowsAtomic),
+  // so pin the COALESCE guard against that single source — it's where the SQL now lives and
+  // guarantees neither path can drift the pinning.
   const upsertBody = src.slice(
-    src.indexOf("export async function upsertZeroDteSetupLog"),
+    src.indexOf("const ZERODTE_SETUP_LOG_UPSERT_SQL"),
     src.indexOf("RETURNING (xmax = 0) AS inserted")
   );
   assert.match(
