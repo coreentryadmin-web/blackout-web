@@ -5,10 +5,12 @@ import assert from "node:assert/strict";
 // erased at runtime; ./plan's etMinutesOf is dependency-free) — no mocks needed.
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import {
+  asManagedPnlPct,
   buildZeroDteRecord,
   isGradedZeroDteRow,
   isZeroDteWin,
   LOW_N_THRESHOLD,
+  officialPlanPnlPct,
   scoreBand,
   scoreForBanding,
   todBucket,
@@ -285,6 +287,99 @@ test("Fix 2: a play shown TRIM (target tagged) books the engine's WIN, not the m
   assert.equal(rec.wins, 1, "member saw a trimmed winner → the record books a win");
   assert.equal(rec.plays[0]!.managed_outcome, "doubled");
   assert.equal(rec.mechanical.losses, 1, "the conservative hold-to-stop grade is kept as the -50% comparison");
+});
+
+// ── WS-11: the OFFICIAL executable grade of a TRIM-SCALE row IS a reconstructed as-managed path ──
+// scan.ts writes the reconstruction (per-leg `tranches` + blended plan_pnl_pct/plan_outcome) into
+// entry_context.executable for a trim_scale row. record.ts routes the AS-MANAGED headline to that
+// reconstruction, so the member number == the calibration OFFICIAL number (officialPlanPnlPct).
+
+/** Stamp a WS-11 reconstructed TRIM-SCALE executable grade (the blob scan.ts builds) onto a row. */
+function withReconstruction(
+  over: Partial<ZeroDteSetupLogRow>,
+  exec: { plan_outcome: string; plan_pnl_pct: number; tranches: unknown[] }
+): ZeroDteSetupLogRow {
+  return row({
+    ...over,
+    entry_context: {
+      ...((over.entry_context as Record<string, unknown>) ?? {}),
+      executable: { lane: "conservative", entry_basis: "ask", exit_basis: "bid", exit_policy: "trim_scale", ...exec },
+    },
+  });
+}
+
+// ── REQUIRED TEST 2: mechanical grade == as-managed on the same reconstructed row (delta ≈ 0) ──
+test("WS-11 #2: a reconstructed TRIM-SCALE row — as-managed == official mechanical grade (grade_vs_asmanaged_delta ≈ 0)", () => {
+  // The three-leg reconstruction from the grader test (blended +25.61%, runner time-stopped).
+  const tranches = [
+    { tranche: 1, fraction: 1 / 3, exit_pnl_pct: 13.64, exit_reason: "trim_scale_first", at_et: "10:00" },
+    { tranche: 2, fraction: 1 / 3, exit_pnl_pct: 36.36, exit_reason: "trim_scale_second", at_et: "10:05" },
+    { tranche: 3, fraction: 1 / 3, exit_pnl_pct: 26.82, exit_reason: "time_stop", at_et: "10:10" },
+  ];
+  const r = withReconstruction(
+    // The MID columns still carry the (different) single-walk grade — proving the headline reads
+    // the executable reconstruction, not the mid column.
+    { ticker: "SPY", plan_outcome: "time_stop", plan_pnl_pct: 40 },
+    { plan_outcome: "time_stop", plan_pnl_pct: 25.61, tranches }
+  );
+  // The reconciliation invariant the scan telemetry records: official − as-managed ≈ 0.
+  assert.equal(officialPlanPnlPct(r), 25.61);
+  assert.equal(asManagedPnlPct(r), 25.61);
+  assert.equal((officialPlanPnlPct(r)! - asManagedPnlPct(r)!) * 100, 0, "grade_vs_asmanaged_delta is 0 bps");
+
+  const rec = buildZeroDteRecord([r], WINDOW);
+  const play = rec.plays[0]!;
+  assert.equal(play.managed_pnl_pct, 25.61, "member as-managed == the reconstruction");
+  assert.equal(play.managed_source, "reconstructed");
+  assert.equal(play.managed_outcome, "time_stop");
+  assert.equal(play.plan_pnl_pct, 25.61, "the per-play plan column is the executable reconstruction too");
+  // Headline == mechanical for a reconstructed row (they are the SAME official number now).
+  assert.equal(rec.wins, 1);
+  assert.equal(rec.avg_pnl_pct, 25.61);
+  assert.equal(rec.mechanical.avg_pnl_pct, 25.61);
+});
+
+// ── REQUIRED TEST 3: ratchet mode still single-exit (the reconstruction path does NOT engage) ──
+test("WS-11 #3: a RATCHET row (no tranches) is unregressed — as-managed = the live single exit, not a reconstruction", () => {
+  // A ratchet row carries a single-walk executable grade (NO tranches) + a live ratchet exit stamp.
+  const r = row({
+    ticker: "QQQ",
+    plan_outcome: "stopped",
+    plan_pnl_pct: -50,
+    entry_context: {
+      executable: { lane: "conservative", plan_outcome: "stopped", plan_pnl_pct: -54.5, exit_policy: "ratchet" },
+      exit: { reason: "ratchet_profit_floor", pnl_pct: 22.5 },
+    },
+  });
+  // Official = the single-walk executable grade (the mid fallback is superseded by the exec blob).
+  assert.equal(officialPlanPnlPct(r), -54.5);
+  // As-managed = the LIVE ratchet exit (source "engine"), untouched by WS-11 (no tranches present).
+  assert.equal(asManagedPnlPct(r), 22.5);
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "engine");
+  assert.equal(rec.plays[0]!.managed_pnl_pct, 22.5);
+  assert.equal(rec.wins, 1, "the ratchet exit still books its realized win");
+});
+
+// ── REQUIRED TEST 4: a row with NO executable reconstruction falls back to the prior behavior ──
+test("WS-11 #4: back-compat — a row with no executable blob / no tranches keeps the mid+engine fallback", () => {
+  // Legacy row: no entry_context.executable at all, no engine exit → mid columns, source "plan".
+  const legacy = row({ ticker: "AMD", plan_outcome: "doubled", plan_pnl_pct: 100, entry_context: null });
+  assert.equal(officialPlanPnlPct(legacy), 100); // mid column fallback
+  assert.equal(asManagedPnlPct(legacy), 100); // mechanical fallback
+  const rec = buildZeroDteRecord([legacy], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "plan");
+  // A malformed executable blob (tranches present but non-array) is ignored — never a fabricated grade.
+  const malformed = row({
+    ticker: "MU",
+    plan_outcome: "stopped",
+    plan_pnl_pct: -50,
+    entry_context: { executable: { plan_outcome: "stopped", plan_pnl_pct: -55, tranches: "oops" } },
+  });
+  const rec2 = buildZeroDteRecord([malformed], WINDOW);
+  // tranches non-array → not a reconstruction → as-managed falls back to the mechanical exec grade.
+  assert.notEqual(rec2.plays[0]!.managed_source, "reconstructed");
+  assert.equal(officialPlanPnlPct(malformed), -55);
 });
 
 // ── Fix 4a: pnl exactly 0 is a BREAKEVEN — neither win nor loss (SPX 3-way parity) ─────
