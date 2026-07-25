@@ -152,6 +152,9 @@ mock.module("../ws/uw-socket", {
       const hit = symbols.some((s) => state.haltedTickers.has(s.toUpperCase()));
       return { block: hit, reason: hit ? "halted" : null };
     },
+    // WS-21: scan.ts reads the live source-health snapshot for the (default-off) recovery gate.
+    // The mock must mirror the real module's surface; a benign "HEALTHY" keeps the gate inert.
+    getFlowSourceHealthState: () => "HEALTHY",
   },
 });
 

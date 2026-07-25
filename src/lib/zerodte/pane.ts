@@ -217,6 +217,7 @@ const GATE_LABELS: Record<string, string> = {
   governor_reentry_lock: "governor · re-entry lock",
   correlated_conflict: "governor · correlated conflict",
   gate_context_unavailable: "fail-closed · gate context",
+  source_recovering: "WS-21 · source recovering",
   vix_elevated: "G-4 · VIX elevated",
   vix_extreme: "G-4 · VIX extreme",
   cross_system_conflict: "G-6 · cross-system conflict",

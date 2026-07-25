@@ -562,3 +562,38 @@ test("confluenceFloorAt: early floor inside [10:00,10:45), base floor outside", 
   assert.equal(confluenceFloorAt(11 * 60), ZERODTE_CONFLUENCE_MIN); // 11:00
   assert.equal(confluenceFloorAt(9 * 60 + 40), ZERODTE_CONFLUENCE_MIN); // before the unlock
 });
+
+// ── WS-21 · source-recovery commit gate (default-OFF flag) ───────────────────────────
+
+test("WS-21: flag OFF (requireHealthySource absent) — commit behavior byte-for-byte unchanged", () => {
+  // The clean input commits. Adding a non-HEALTHY sourceHealth WITHOUT arming the flag must not
+  // change the verdict — the field is inert unless requireHealthySource is true.
+  assert.equal(evaluateZeroDteGates(input()).verdict, "COMMIT");
+  assert.equal(
+    evaluateZeroDteGates(input({ sourceHealth: "OFFLINE" })).verdict,
+    "COMMIT",
+    "source state is inert while the flag is off"
+  );
+  assert.equal(
+    evaluateZeroDteGates(input({ requireHealthySource: false, sourceHealth: "CATCHING_UP" })).verdict,
+    "COMMIT"
+  );
+});
+
+test("WS-21: flag ON — a committing setup is WITHHELD until the source is HEALTHY", () => {
+  for (const state of ["OFFLINE", "RECOVERING", "CATCHING_UP", "WARM"] as const) {
+    const v = evaluateZeroDteGates(input({ requireHealthySource: true, sourceHealth: state }));
+    assert.equal(v.verdict, "BLOCKED", `flag ON must withhold in ${state}`);
+    const block = v.blocks.find((b) => b.code === "source_recovering");
+    assert.ok(block, `source_recovering block expected in ${state}`);
+  }
+  // HEALTHY authorizes the same setup.
+  const healthy = evaluateZeroDteGates(input({ requireHealthySource: true, sourceHealth: "HEALTHY" }));
+  assert.equal(healthy.verdict, "COMMIT");
+  assert.ok(!healthy.blocks.some((b) => b.code === "source_recovering"));
+});
+
+test("WS-21: flag ON but sourceHealth null — gate does not manufacture a block", () => {
+  const v = evaluateZeroDteGates(input({ requireHealthySource: true, sourceHealth: null }));
+  assert.equal(v.verdict, "COMMIT");
+});

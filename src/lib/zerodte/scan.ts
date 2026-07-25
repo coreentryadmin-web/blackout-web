@@ -46,6 +46,8 @@ import { fetchAggBars } from "@/lib/providers/polygon-largo";
 import { macroEventsOnDateLive } from "@/lib/providers/macro-events";
 import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
 import { buildOcc } from "@/lib/ws/options-socket";
+import { requireHealthySourceEnabled } from "@/lib/ws/source-health";
+import { getFlowSourceHealthState } from "@/lib/ws/uw-socket";
 import { withServerCache } from "@/lib/server-cache";
 import {
   buildZeroDteAuditRow,
@@ -603,6 +605,12 @@ async function attachGateVerdicts(
       halted: freshHalts.has(s.ticker.toUpperCase()) || s.halted === true,
       earnings: freshEarnings.get(s.ticker.toUpperCase()) ?? s.earnings ?? null,
       confluence: s.confluence ?? null, // G-12 (Phase 1): attached just above, before this gate pass
+      // WS-21 source-recovery gate. DEFAULT-OFF: requireHealthySourceEnabled() is false unless
+      // ZERODTE_REQUIRE_HEALTHY_SOURCE=1, in which case the gate is a no-op inside
+      // evaluateZeroDteGates and commit behavior is byte-for-byte unchanged. When armed, a fresh
+      // commit is withheld until the live UW WS source has reconnected + reconciled its gap + warmed.
+      requireHealthySource: requireHealthySourceEnabled(),
+      sourceHealth: getFlowSourceHealthState(),
     });
     if (s.gate.verdict !== "COMMIT") continue;
 

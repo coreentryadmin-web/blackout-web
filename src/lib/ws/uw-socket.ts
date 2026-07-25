@@ -4,6 +4,9 @@
  */
 import { persistAndPublishFlowAlert, alertId as computeFlowAlertId, MIN_PREMIUM as FLOW_MIN_PREMIUM } from "@/lib/flow-persist";
 import { makeFlowDedup } from "@/lib/flow-dedup";
+import { makeSourceHealth, requireHealthySourceEnabled } from "@/lib/ws/source-health";
+import { computeBackfillWindowStartMs, reconcileGap } from "@/lib/ws/flow-reconciliation";
+import { deadLetter, deadLetterStats } from "@/lib/flow-dlq";
 import { isMaterialFlowAlert, createScanDebouncer } from "@/lib/zerodte/scan-trigger";
 import {
   isMaterialSwingFlow,
@@ -290,6 +293,10 @@ class UwSocketManager {
     this.ws = null;
     this.connectStarted = false;
     this.openedAt = null;
+    // WS-21: teardown paths (stall watchdog, markAuthFailed) detach onclose, so mark the flow
+    // source OFFLINE here too — otherwise a silent-stall reconnect would never reset the state
+    // machine. Idempotent with the onclose path (peer-initiated close), which teardown bypasses.
+    flowSourceHealth.onDisconnect();
     if (ws) {
       // Detach handlers BEFORE closing: the ws close handshake can DEFER the 'close' event up to ~30s
       // on a half-open peer (exactly when reconnectIfStalled tears down), so a still-attached onclose
@@ -317,6 +324,8 @@ class UwSocketManager {
     if (this.shuttingDown) return; // shutting down — do not resurrect the socket
     if (!uwIsLeader) return; // only the cluster leader holds the UW socket; standbys stay closed
     if (this.channelsWithHandlers().length === 0) return;
+    // WS-21: a reconnect is now scheduled — advance OFFLINE → RECOVERING (no-op if already past it).
+    flowSourceHealth.onReconnecting();
     this.clearReconnect();
     // Jitter (matches polygon-socket.ts/options-socket.ts) so a shared upstream blip that drops
     // every replica's socket at once doesn't have them all retry in lockstep.
@@ -413,7 +422,10 @@ class UwSocketManager {
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
-    } catch {
+    } catch (err) {
+      // WS-21 dead-letter: a malformed frame is captured (best-effort) rather than silently
+      // dropped, so operators can see corrupt-frame rates without it ever breaking ingest.
+      deadLetter("uw_frame", raw, err instanceof Error ? err.message : "JSON parse failed");
       return;
     }
 
@@ -492,6 +504,13 @@ class UwSocketManager {
         this.openedAt = Date.now();
         console.log("[uw-socket] multiplex connected — joining channels");
         this.joinActiveChannels();
+        // WS-21: begin the source-recovery catch-up (reconcile the reconnect gap when the gate is
+        // armed; otherwise pure observability). Never throws into the socket path.
+        try {
+          handleFlowSourceConnected();
+        } catch {
+          /* health/reconcile wiring must never break the socket */
+        }
       };
 
       ws.onmessage = (event) => {
@@ -514,6 +533,9 @@ class UwSocketManager {
         this.lastCloseReason = reason;
         this.ws = null;
         this.joined.clear();
+        // WS-21: peer-initiated close — reset the flow source to OFFLINE (scheduleReconnect below
+        // advances it to RECOVERING; the next onopen re-enters CATCHING_UP).
+        flowSourceHealth.onDisconnect();
         for (const ch of ALL_CHANNELS) {
           this.authenticated.set(ch, false);
           if (this.channelState.get(ch) !== "auth_failed") {
@@ -1108,6 +1130,110 @@ function startClusterFreshnessPoller(): void {
   (timer as unknown as { unref?: () => void }).unref?.();
 }
 
+// ── WS-21 flow-source recovery health + reconnect gap reconciliation ─────────────────────────────
+// The UW multiplex socket is the live flow SOURCE. When it drops and reconnects, frames delivered
+// during the outage were never seen in-process — a GAP. This tracks the recovery lifecycle
+// (OFFLINE→RECOVERING→CATCHING_UP→WARM→HEALTHY) and, ONLY when ZERODTE_REQUIRE_HEALTHY_SOURCE=1,
+// runs a REST backfill of that gap on reconnect before the source is trusted to warm to HEALTHY.
+// The health snapshot is surfaced in admin health; the commit GATE that consumes it lives in
+// zerodte/gates.ts and is likewise DEFAULT-OFF (byte-for-byte unchanged live behavior).
+const flowSourceHealth = makeSourceHealth();
+
+/** Admin-health snapshot of the live flow source's recovery state machine. */
+export function getFlowSourceHealth() {
+  return flowSourceHealth.snapshot();
+}
+
+/** Current flow-source health state — read by the (default-off) WS-21 commit gate in the scan. */
+export function getFlowSourceHealthState() {
+  return flowSourceHealth.snapshot().state;
+}
+
+/** Provider event time (ms) from a raw UW flow row — mirrors flow-persist's realCreatedAt logic. */
+function providerTsFromRaw(raw: Record<string, unknown>): number | null {
+  if (raw.created_at) {
+    const t = Date.parse(String(raw.created_at));
+    return Number.isFinite(t) ? t : null;
+  }
+  const st = raw.start_time;
+  if (st != null) {
+    const ts = Number(st);
+    if (Number.isFinite(ts)) return ts > 1e12 ? ts : ts * 1000;
+  }
+  return null;
+}
+
+/**
+ * Reconcile the reconnect gap: REST-backfill from `last_confirmed_provider_ts − overlap_buffer`,
+ * dedupe by alert_id (same key the live path + DB ON-CONFLICT use), persist the genuinely-missed
+ * rows, then mark catch-up complete so the source can warm to HEALTHY. Best-effort — a fetch/persist
+ * failure still completes catch-up (fail toward "let live frames warm it" rather than wedge OFFLINE),
+ * and any poison row is routed to the DLQ inside `process`. Only invoked when the gate is armed.
+ */
+async function runFlowSourceReconciliation(now = Date.now()): Promise<void> {
+  const snap = flowSourceHealth.snapshot();
+  const windowStartMs = computeBackfillWindowStartMs(snap.last_confirmed_provider_ts, undefined, now);
+  const dedup = makeFlowDedup({ ttlMs: 5 * 60_000, maxKeys: 20_000 });
+  try {
+    const result = await reconcileGap<{ alert_id: string; provider_ts: number | null; raw: Record<string, unknown>; flow: ReturnType<typeof parseUwFlowAlert> }>({
+      windowStartMs,
+      fetchSince: async (sinceMs) => {
+        const { fetchMarketFlowAlertRows } = await import("@/lib/providers/unusual-whales");
+        const rows = await fetchMarketFlowAlertRows({
+          limit: 200,
+          min_premium: FLOW_MIN_PREMIUM,
+          newer_than: new Date(sinceMs).toISOString(),
+        });
+        return rows.map(({ raw, flow }) => ({
+          alert_id: computeFlowAlertId(raw, flow),
+          provider_ts: providerTsFromRaw(raw),
+          raw,
+          flow,
+        }));
+      },
+      dedup,
+      process: async (row) => {
+        try {
+          await persistAndPublishFlowAlert(row.raw, row.flow);
+        } catch (err) {
+          deadLetter("reconcile", row.raw, err instanceof Error ? err.message : String(err), now);
+          throw err; // let reconcileGap count it as errored; row is already dead-lettered
+        }
+      },
+      now,
+    });
+    if (result.newestProviderTs != null) flowSourceHealth.recordConfirmedProviderTs(result.newestProviderTs);
+    flowSourceHealth.completeCatchUp(now, {
+      at: now,
+      backfilled: result.backfilled,
+      duplicates: result.duplicates,
+      window_start_ms: windowStartMs,
+    });
+    console.log(
+      `[uw-socket] reconnect reconciliation — backfilled ${result.backfilled}, ${result.duplicates} dup, ${result.errored} errored`
+    );
+  } catch (err) {
+    // Reconciliation must never wedge the source OFFLINE forever. Complete catch-up so live frames
+    // can still warm it; the existing flow-ingest cron also backfills via its durable cursor.
+    console.warn(`[uw-socket] reconnect reconciliation failed (best-effort): ${err instanceof Error ? err.message : String(err)}`);
+    flowSourceHealth.completeCatchUp(now, { at: now, backfilled: 0, duplicates: 0, window_start_ms: windowStartMs });
+  }
+}
+
+/**
+ * Called from the socket's onopen. Enter CATCHING_UP, then either run the REST gap reconciliation
+ * (gate ARMED) or immediately mark catch-up done (gate OFF — no new REST, pure observability so
+ * admin health still shows WARM→HEALTHY; live behavior byte-for-byte unchanged).
+ */
+function handleFlowSourceConnected(now = Date.now()): void {
+  flowSourceHealth.onConnected(now);
+  if (requireHealthySourceEnabled()) {
+    void runFlowSourceReconciliation(now);
+  } else {
+    flowSourceHealth.completeCatchUp(now, null);
+  }
+}
+
 export function initUwSocket() {
   if (uwSocketInitialized) return;
   if (!UW_API_KEY) {
@@ -1122,10 +1248,17 @@ export function initUwSocket() {
       const block = Array.isArray(payload) ? payload : [payload];
       recordUwDelivery("flow_alerts");
       const now = Date.now();
+      // WS-21: a live flow frame proves the source is delivering — drives WARM → HEALTHY.
+      flowSourceHealth.recordLiveFrame(now);
       for (const raw of block) {
         if (!raw || typeof raw !== "object") continue;
         const rec = raw as Record<string, unknown>;
+        // WS-21: per-row isolation. A poison row (unparseable/throws) is dead-lettered and skipped
+        // so it can never abort ingestion of the surrounding good rows in the same frame.
+        try {
         const flow = parseUwFlowAlert(rec);
+        // WS-21: advance the confirmed provider cursor so the reconnect backfill window is precise.
+        flowSourceHealth.recordConfirmedProviderTs(providerTsFromRaw(rec));
         // Premium pre-filter BEFORE persist: identical threshold/comparison to
         // persistAndPublishFlowAlert (flow.premium < MIN_PREMIUM => dropped there too),
         // so this only skips work persist would also reject. A NaN premium yields
@@ -1174,6 +1307,11 @@ export function initUwSocket() {
               })().catch(() => {});
             });
           }
+        }
+        } catch (err) {
+          // WS-21 dead-letter: an unprocessable row is captured (not swallowed, not fatal) so the
+          // rest of the frame still ingests. Best-effort — deadLetter itself never throws.
+          deadLetter("flow_alerts", rec, err instanceof Error ? err.message : String(err), now);
         }
       }
     } catch {
@@ -1413,6 +1551,9 @@ export function getUwSocketHealth() {
     cluster_live: clusterAge != null && clusterAge <= 120_000,
     auth_failed: authFailedChannels.length > 0,
     auth_failed_channels: authFailedChannels,
+    // WS-21: live flow-source recovery state machine + the dead-letter queue stats.
+    flow_source_health: flowSourceHealth.snapshot(),
+    flow_dlq: deadLetterStats(),
     channels,
     last_message_at,
     last_message_age_ms,
