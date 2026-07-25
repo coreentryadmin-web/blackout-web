@@ -144,31 +144,43 @@ const PLAYS = [
   // ── canonical five (unchanged arc) ──
   {
     ticker: 'NVDA', direction: 'long', origin: 'FLOW', strike: 182, right: 'C', entry: 2.0,
+    exit_mode: 'trim_scale', tier: 'A',
+    // Plausible long-call greeks so the sim previews the greeks strip + theta highlight.
+    greeks: { delta: 0.52, gamma: 0.06, theta: -0.18, vega: 0.11, iv: 0.44 },
     marks: [[570, 2.0], [600, 2.6], [660, 3.2], [720, 3.6], [810, 3.6]], // 09:30..13:30 → TRIM +80%
     statusAt: (m, pnl) => (m >= 810 ? 'TRIM' : pnl >= 50 ? 'TRIM' : pnl >= 15 ? 'HOLD' : 'OPEN'),
     closed_reason: null,
   },
   {
     ticker: 'TSLA', direction: 'long', origin: 'BREAKOUT', strike: 250, right: 'C', entry: 1.5,
+    exit_mode: 'trim_scale', tier: 'B',
+    greeks: { delta: 0.47, gamma: 0.05, theta: -0.14, vega: 0.09, iv: 0.51 },
     marks: [[585, 1.5], [630, 1.8], [690, 2.05], [780, 2.1], [900, 2.1]], // HOLD +40%
     statusAt: (m, pnl) => (m >= 780 ? 'HOLD' : pnl >= 15 ? 'HOLD' : 'OPEN'),
     closed_reason: null,
   },
   {
     ticker: 'META', direction: 'long', origin: 'FLOW', strike: 720, right: 'C', entry: 1.0,
+    exit_mode: 'trim_scale', tier: 'A',
+    greeks: { delta: 0.55, gamma: 0.07, theta: -0.12, vega: 0.08, iv: 0.39 },
     marks: [[600, 1.0], [660, 1.15], [705, 1.3], [900, 1.3]], // CLOSED · target +30%
     statusAt: (m, pnl) => (m >= 705 ? 'CLOSED' : pnl >= 15 ? 'HOLD' : 'OPEN'),
     closed_reason: (m) => (m >= 705 ? 'target' : null),
   },
   {
     ticker: 'SPX', direction: 'short', origin: 'PIN', strike: 6300, right: 'P', entry: 4.2, condor: true,
+    exit_mode: 'trim_scale', tier: 'A',
+    greeks: { delta: -0.38, gamma: 0.03, theta: -0.22, vega: 0.14, iv: 0.29 },
     // Iron condor / PIN fade WINNER: credit decays as the pin holds → +76% by the time stop.
     marks: [[615, 4.2], [720, 2.4], [840, 1.2], [930, 1.0], [935, 1.0]],
     statusAt: (m) => (m >= 930 ? 'CLOSED' : m >= 720 ? 'HOLD' : 'OPEN'),
     closed_reason: (m) => (m >= 930 ? 'time_stop' : null),
   },
   {
+    // Ratchet mode → previews the LEGACY single stop→target track (the un-changed branch).
     ticker: 'AMD', direction: 'short', origin: 'FLOW', strike: 165, right: 'P', entry: 1.2,
+    exit_mode: 'ratchet', tier: 'C',
+    greeks: { delta: -0.44, gamma: 0.05, theta: -0.16, vega: 0.1, iv: 0.48 },
     marks: [[600, 1.2], [645, 0.95], [690, 0.6], [900, 0.6]], // CLOSED · stopped −50%
     statusAt: (m) => (m >= 690 ? 'CLOSED' : 'OPEN'),
     closed_reason: (m) => (m >= 690 ? 'stopped' : null),
@@ -177,13 +189,18 @@ const PLAYS = [
   {
     // OPEN, fresh, in the ±10% enterable band all session — never commits past OPEN.
     ticker: 'GOOGL', direction: 'long', origin: 'FLOW', strike: 180, right: 'C', entry: 3.0,
+    exit_mode: 'trim_scale', tier: 'B',
+    greeks: { delta: 0.5, gamma: 0.04, theta: -0.11, vega: 0.09, iv: 0.33 },
     marks: [[600, 3.0], [660, 3.1], [720, 2.95], [840, 3.05], [900, 3.0]],
     statusAt: (m) => (m >= 900 ? 'HOLD' : 'OPEN'),
     closed_reason: null,
   },
   {
-    // CLOSED · ratchet — runs to +70% then the ratchet floor takes it out at +50%.
+    // CLOSED · ratchet — runs to +70% then the ratchet floor takes it out at +50%. Ratchet
+    // policy → the legacy single stop→target track (a 2nd preview of the unchanged branch).
     ticker: 'AMZN', direction: 'long', origin: 'BREAKOUT', strike: 220, right: 'C', entry: 2.0,
+    exit_mode: 'ratchet', tier: 'B',
+    greeks: { delta: 0.6, gamma: 0.05, theta: -0.19, vega: 0.1, iv: 0.42 },
     marks: [[600, 2.0], [660, 2.8], [720, 3.4], [780, 3.0], [900, 3.0]],
     statusAt: (m, pnl) => (m >= 780 ? 'CLOSED' : pnl >= 50 ? 'TRIM' : pnl >= 15 ? 'HOLD' : 'OPEN'),
     closed_reason: (m) => (m >= 780 ? 'ratchet' : null),
@@ -191,42 +208,56 @@ const PLAYS = [
   {
     // CLOSED · time_stop on a DIRECTIONAL long (distinct from the condor time-stop) — small green.
     ticker: 'MSFT', direction: 'long', origin: 'FLOW', strike: 470, right: 'C', entry: 1.5,
+    exit_mode: 'trim_scale', tier: 'C',
+    greeks: { delta: 0.49, gamma: 0.04, theta: -0.13, vega: 0.08, iv: 0.3 },
     marks: [[600, 1.5], [720, 1.7], [900, 1.6], [935, 1.6]],
     statusAt: (m) => (m >= 930 ? 'CLOSED' : 'HOLD'),
     closed_reason: (m) => (m >= 930 ? 'time_stop' : null),
   },
   {
-    // BREAKEVEN — mark hovers on entry, P&L ~0% all day (the ~flat working row).
+    // BREAKEVEN — mark hovers on entry, P&L ~0% all day (the ~flat working row). No greeks →
+    // exercises the null-greeks "—" strip path.
     ticker: 'COIN', direction: 'long', origin: 'FLOW', strike: 300, right: 'C', entry: 5.0,
+    exit_mode: 'trim_scale', tier: 'C',
     marks: [[600, 5.0], [660, 5.05], [720, 4.98], [840, 5.02], [900, 5.0]],
     statusAt: () => 'HOLD',
     closed_reason: null,
   },
   {
-    // TINY PREMIUM — a $0.05 lotto that ticks to $0.08 (tests sub-dime formatting).
+    // TINY PREMIUM — a $0.05 lotto that ticks to $0.08 (tests sub-dime formatting + ladder $ levels).
     ticker: 'F', direction: 'long', origin: 'BREAKOUT', strike: 14, right: 'C', entry: 0.05,
+    exit_mode: 'trim_scale', tier: 'D',
+    greeks: { delta: 0.3, gamma: 0.09, theta: -0.02, vega: 0.03, iv: 0.62 },
     marks: [[600, 0.05], [660, 0.07], [720, 0.09], [840, 0.08], [900, 0.08]],
     statusAt: (m, pnl) => (pnl >= 15 ? 'HOLD' : 'OPEN'),
     closed_reason: null,
   },
   {
-    // HUGE PREMIUM — a deep $42 contract (tests wide number formatting / column width).
+    // HUGE PREMIUM — a deep $42 contract (tests wide number formatting / ladder-level column width).
     ticker: 'NFLX', direction: 'long', origin: 'FLOW', strike: 1200, right: 'C', entry: 42.0,
+    exit_mode: 'trim_scale', tier: 'A',
+    greeks: { delta: 0.72, gamma: 0.01, theta: -0.85, vega: 0.4, iv: 0.36 },
     marks: [[600, 42.0], [660, 48.0], [720, 52.0], [840, 50.0], [900, 50.0]],
     statusAt: (m, pnl) => (pnl >= 15 ? 'HOLD' : 'OPEN'),
     closed_reason: null,
   },
   {
     // STALE MARK — a working row whose last quote is ~90s old → the staleness dim must render.
+    // Keeps greeks + a ladder so the v2 detail is visibly DIMMED (not blanked) when stale.
     ticker: 'SMCI', direction: 'long', origin: 'FLOW', strike: 55, right: 'C', entry: 2.0,
+    exit_mode: 'trim_scale', tier: 'B',
+    greeks: { delta: 0.51, gamma: 0.06, theta: -0.15, vega: 0.09, iv: 0.55 },
     marks: [[600, 2.0], [660, 2.3], [720, 2.3], [900, 2.3]],
     statusAt: () => 'HOLD',
     closed_reason: null,
     staleMark: true,
   },
   {
-    // NO MARK — a working row with no live quote at all → mark renders as "—", P&L null.
+    // NO MARK — a working row with no live quote at all → mark "—", P&L null, no exec fill.
+    // Greeks still carry (they come from the last snapshot, not the mark) so the strip renders.
     ticker: 'SNOW', direction: 'long', origin: 'BREAKOUT', strike: 200, right: 'C', entry: 1.8,
+    exit_mode: 'trim_scale', tier: 'C',
+    greeks: { delta: 0.48, gamma: 0.05, theta: -0.12, vega: 0.08, iv: 0.4 },
     marks: [[600, 1.8], [660, 1.9], [900, 1.9]],
     statusAt: () => 'HOLD',
     closed_reason: null,
@@ -235,6 +266,8 @@ const PLAYS = [
   {
     // CONDOR BREACH → stopped — the pin FAILS, the short side is breached, position stops at −50%.
     ticker: 'SPXW', direction: 'short', origin: 'PIN', strike: 6250, right: 'P', entry: 5.0, condor: true,
+    exit_mode: 'trim_scale', tier: 'D',
+    greeks: { delta: -0.55, gamma: 0.04, theta: -0.2, vega: 0.13, iv: 0.31 },
     marks: [[615, 5.0], [660, 6.5], [720, 7.5], [900, 7.5]],
     statusAt: (m) => (m >= 720 ? 'CLOSED' : 'OPEN'),
     closed_reason: (m) => (m >= 720 ? 'stopped' : null),
@@ -292,6 +325,19 @@ function ledgerRowFor(play, m) {
   // Mark freshness: fresh (real wall clock) for normal rows; ~90s old for the STALE demo so the
   // deck's staleness dim renders; null (no timestamp) for the no-mark / legacy-sync case.
   const markAsOf = play.noMark ? null : play.staleMark ? new Date(Date.now() - 90_000).toISOString() : new Date().toISOString();
+  // Terminal v2 — a live two-sided book around the mark (a ~4%-of-mid spread) so the sim previews
+  // the executable fill + exec P&L. Null-safe: a no-mark row has no book → bid/ask/exec-P&L null.
+  // A directional LONG-premium play sells into the BID: exec P&L = (bid − entry)/entry. A CONDOR is
+  // a CREDIT (short-premium) structure — closed by BUYING back at the ASK — so its realized return
+  // is (entry − ask)/entry (profit comes from the position DECAYING, not the premium rising).
+  const bid = mark == null ? null : r2(mark * 0.98);
+  const ask = mark == null ? null : r2(mark * 1.02);
+  const execPnl =
+    mark == null
+      ? null
+      : play.condor === true
+        ? Math.round(((play.entry - ask) / play.entry) * 1000) / 10
+        : Math.round(((bid - play.entry) / play.entry) * 1000) / 10;
   return {
     ticker: play.ticker,
     direction: play.direction,
@@ -317,7 +363,36 @@ function ledgerRowFor(play, m) {
     plan_pnl_pct: status === 'CLOSED' ? pnl : null,
     nighthawk_echo: null,
     cortex: null,
-    tier: null,
+    tier: play.tier ? { tier: play.tier } : null,
+    // Terminal v2 additive block — the real resolved exit ladder (priced + fired vs peak),
+    // live greeks, executable book, and discovery origin, so the sim renders the v2 terminal.
+    exit_policy: exitLadder(play.exit_mode, play.entry, peak),
+    bid,
+    ask,
+    live_pnl_pct_exec: execPnl,
+    greeks: play.greeks ?? null,
+    discovery_origin: play.origin ? [play.origin] : null,
+  };
+}
+
+/** Build the terminal exit ladder for the sim (mirrors src/lib/zerodte/terminal-ladder.ts
+ *  buildTerminalExitLadder). trim_scale = ⅓@+25% / ⅓@+50% ladder + a ⅓ runner; ratchet = a
+ *  single +100% half-trim (previews the legacy single-track render). Premiums are entry ×
+ *  (1+trigger/100); a tranche is FIRED once the latched peak reaches that level. */
+function exitLadder(mode, entry, peak) {
+  const lvl = (pct) => r2(entry * (1 + pct / 100));
+  const fired = (level) => peak != null && peak >= level;
+  const trim = (pct, frac) => { const premium = lvl(pct); return { trigger_pct: pct, fraction: frac, premium, fired: fired(premium) }; };
+  const trim_levels = mode === 'ratchet' ? [trim(100, 0.5)] : [trim(25, 1 / 3), trim(50, 1 / 3)];
+  return {
+    policy: mode === 'ratchet' ? 'ratchet' : 'trim_scale',
+    hard_stop_pct: -50,
+    target_pct: 100,
+    trim_levels,
+    runner_fraction: mode === 'ratchet' ? 0.5 : 1 / 3,
+    stop_premium: lvl(-50),
+    target_premium: lvl(100),
+    time_stop_et: '15:30',
   };
 }
 

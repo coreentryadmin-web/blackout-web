@@ -131,3 +131,26 @@ test("marksMapFromPayload: a polled STALE row still routes through the >5s stale
   assert.equal(out[0]!.mark, 5.0); // stale polled mark ignored, board value kept
   assert.equal(out[0]!.pnlPct, 19);
 });
+
+test("overlayLiveMarks: Terminal v2 — overlays executable fill, exec P&L, mark_as_of; marks a fresh frame not-sync", () => {
+  const p = play({ execMark: null, execPnlPct: null, markAsOf: null, markIsSync: true });
+  const marks = new Map<string, LiveMarkRow>([
+    [p.occ!, row({ bid: 6.7, live_pnl_pct_exec: 59, mark_as_of: "2026-07-25T14:00:00.000Z" })],
+  ]);
+  const [out] = overlayLiveMarks([p], marks);
+  assert.equal(out!.execMark, 6.7); // sells into the live bid
+  assert.equal(out!.execPnlPct, 59);
+  assert.equal(out!.markAsOf, "2026-07-25T14:00:00.000Z");
+  assert.equal(out!.markIsSync, false); // a live SSE frame is never a legacy sync mark
+});
+
+test("overlayLiveMarks: a stale live row keeps board values (never overlays exec/age either)", () => {
+  const p = play({ execMark: 1.11, markAsOf: "board-ts", markIsSync: true });
+  const marks = new Map<string, LiveMarkRow>([
+    [p.occ!, row({ stale: true, bid: 9.9, mark_as_of: "sse-ts" })],
+  ]);
+  const [out] = overlayLiveMarks([p], marks);
+  assert.equal(out!.execMark, 1.11); // unchanged — stale row skipped
+  assert.equal(out!.markAsOf, "board-ts");
+  assert.equal(out!.markIsSync, true);
+});

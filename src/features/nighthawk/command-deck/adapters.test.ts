@@ -399,3 +399,122 @@ test("managementFor: recNote reflects the recommendation + model", () => {
   assert.match(managementFor("RATCHET", "HOLD", 20).recNote, /In profit/); // HOLD in the green
   assert.match(managementFor("RATCHET", "HOLD", -10).recNote, /Managing to the plan/); // HOLD underwater
 });
+
+// ── Terminal v2 — trim-scale ladder routing, live greeks/executable, header badges ──
+
+const TRIM_SCALE_LADDER = {
+  policy: "trim_scale" as const,
+  hard_stop_pct: -50,
+  target_pct: 100,
+  trim_levels: [
+    { trigger_pct: 25, fraction: 1 / 3, premium: 2.5, fired: true },
+    { trigger_pct: 50, fraction: 1 / 3, premium: 3.0, fired: false },
+  ],
+  runner_fraction: 1 / 3,
+  stop_premium: 1.0,
+  target_premium: 4.0,
+  time_stop_et: "15:30",
+};
+
+test("0DTE adapter: a trim_scale frozen policy routes to SCALE_OUT + carries the real ladder", () => {
+  const play = terminalPlayFromZeroDte({
+    ticker: "nvda", strike: 182, status: "OPEN", score: 88, live_pnl_pct: 30,
+    entry_premium: 2.0, last_mark: 2.6, peak_premium: 2.6,
+    setup: { direction: "long", dte: 0 },
+    exit_policy: TRIM_SCALE_LADDER,
+  });
+  assert.equal(play.exitModel, "SCALE_OUT"); // NOT the old hard-coded RATCHET
+  assert.equal(play.exitPolicy!.policy, "trim_scale");
+  assert.equal(play.exitPolicy!.trim_levels[0]!.fired, true);
+  assert.equal(play.exitPolicy!.trim_levels[1]!.fired, false);
+  assert.equal(play.exitPolicy!.target_premium, 4.0);
+});
+
+test("0DTE adapter: a ratchet frozen policy (or none) keeps RATCHET single-track", () => {
+  const ratchet = terminalPlayFromZeroDte({
+    ticker: "amd", strike: 165, status: "OPEN", score: 70, live_pnl_pct: 10,
+    entry_premium: 1.2, last_mark: 1.3,
+    setup: { direction: "short", dte: 0 },
+    exit_policy: { ...TRIM_SCALE_LADDER, policy: "ratchet" },
+  });
+  assert.equal(ratchet.exitModel, "RATCHET");
+  assert.equal(ratchet.progress != null, true); // ratchet track position present
+
+  const none = terminalPlayFromZeroDte({
+    ticker: "amd", strike: 165, status: "OPEN", score: 70, live_pnl_pct: 10,
+    entry_premium: 1.2, last_mark: 1.3, setup: { direction: "short", dte: 0 },
+  });
+  assert.equal(none.exitModel, "RATCHET"); // legacy row, no policy → unchanged
+  assert.equal(none.exitPolicy, null);
+});
+
+test("0DTE adapter: maps live greeks, executable fill, mark honesty, and header badges", () => {
+  const play = terminalPlayFromZeroDte({
+    ticker: "nvda", strike: 182, status: "OPEN", score: 88, live_pnl_pct: 30,
+    entry_premium: 2.0, last_mark: 2.6, bid: 2.55, ask: 2.65, live_pnl_pct_exec: 27.5,
+    greeks: { delta: 0.52, gamma: 0.06, theta: -0.18, vega: 0.11, iv: 0.44 },
+    mark_as_of: "2026-07-25T14:00:00.000Z", mark_is_sync: false,
+    discovery_origin: ["FLOW", "BREAKOUT"], tier: { tier: "A" }, confluence: 2,
+    setup: { direction: "long", dte: 0 },
+  });
+  assert.equal(play.greeks!.theta, -0.18);
+  assert.equal(play.execMark, 2.55); // sells into the bid, not the 2.60 mid
+  assert.equal(play.execPnlPct, 27.5);
+  assert.equal(play.markAsOf, "2026-07-25T14:00:00.000Z");
+  assert.equal(play.markIsSync, false);
+  assert.deepEqual(play.discoveryOrigin, ["FLOW", "BREAKOUT"]);
+  assert.equal(play.tierLabel, "A");
+  assert.equal(play.confluence, 2);
+});
+
+test("0DTE adapter: greeks/executable/badges are null-safe when absent (never fabricated)", () => {
+  const play = terminalPlayFromZeroDte({
+    ticker: "spy", strike: 584, status: "WATCH", score: 60,
+    setup: { direction: "long", dte: 0 },
+  });
+  assert.equal(play.greeks, null);
+  assert.equal(play.execMark, null);
+  assert.equal(play.execPnlPct, null);
+  assert.equal(play.discoveryOrigin, null);
+  assert.equal(play.tierLabel, null);
+  assert.equal(play.confluence, null);
+  assert.equal(play.scorecard, null);
+});
+
+test("0DTE adapter: one-sided book → executable fill null (mid-only, no fake fill)", () => {
+  const play = terminalPlayFromZeroDte({
+    ticker: "nvda", strike: 182, status: "OPEN", score: 80, live_pnl_pct: 10,
+    entry_premium: 2.0, last_mark: 2.2, ask: 2.3, bid: null, // one-sided
+    setup: { direction: "long", dte: 0 },
+  });
+  assert.equal(play.execMark, null);
+});
+
+test("0DTE adapter: a CONDOR row is flagged isCondor and NEVER routes to the directional trim ladder", () => {
+  // Even if the frozen policy says trim_scale, a credit condor must not draw the long-premium ladder.
+  const condor = terminalPlayFromZeroDte({
+    ticker: "spx", strike: 6300, status: "HOLD", score: 82, live_pnl_pct: 40,
+    entry_premium: 4.2, last_mark: 2.4, is_condor: true,
+    setup: { direction: "short", dte: 0, play_type: "CONDOR" },
+    exit_policy: TRIM_SCALE_LADDER,
+  });
+  assert.equal(condor.isCondor, true);
+  assert.equal(condor.exitModel, "RATCHET"); // NOT SCALE_OUT — the directional ladder is suppressed
+
+  // Condor detected from the setup's play_type when the row lacks an explicit is_condor flag.
+  const fromSetup = terminalPlayFromZeroDte({
+    ticker: "spxw", status: "OPEN", score: 70,
+    setup: { direction: "short", dte: 0, play_type: "CONDOR" },
+    exit_policy: TRIM_SCALE_LADDER,
+  });
+  assert.equal(fromSetup.isCondor, true);
+  assert.equal(fromSetup.exitModel, "RATCHET");
+
+  // A directional trim_scale row is unaffected — still routes to SCALE_OUT + the real ladder.
+  const directional = terminalPlayFromZeroDte({
+    ticker: "nvda", status: "OPEN", score: 80, entry_premium: 2.0, last_mark: 2.6,
+    setup: { direction: "long", dte: 0 }, exit_policy: TRIM_SCALE_LADDER,
+  });
+  assert.equal(directional.isCondor, null);
+  assert.equal(directional.exitModel, "SCALE_OUT");
+});

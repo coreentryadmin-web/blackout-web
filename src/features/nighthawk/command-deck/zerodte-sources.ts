@@ -48,6 +48,10 @@ function sourceFrom(
           dte: null,
         } as ZeroDteDeckSource["setup"])
       : null);
+  // Terminal v2 additive block — read the real ladder + live greeks/book/executable + origin/tier
+  // straight off the ledger row (server payload) or the sim frame; confluence off the setup. All
+  // OPTIONAL: a legacy payload that omits them yields undefined and the terminal degrades to "—".
+  const confl = s?.confluence as { confirmations?: number } | undefined;
   return {
     ticker: tk,
     strike: (s?.top_strike as number) ?? (lg?.top_strike as number) ?? null,
@@ -60,6 +64,21 @@ function sourceFrom(
     trough_premium: (lg?.trough_premium as number) ?? null,
     setup,
     allocation,
+    exit_policy: (lg?.exit_policy as ZeroDteDeckSource["exit_policy"]) ?? null,
+    bid: (lg?.bid as number) ?? null,
+    ask: (lg?.ask as number) ?? null,
+    live_pnl_pct_exec: (lg?.live_pnl_pct_exec as number) ?? null,
+    greeks: (lg?.greeks as ZeroDteDeckSource["greeks"]) ?? null,
+    mark_as_of: (lg?.mark_as_of as string) ?? null,
+    mark_is_sync: (lg?.mark_is_sync as boolean) ?? null,
+    discovery_origin: (lg?.discovery_origin as string[]) ?? (s?.discovery_origin as string[]) ?? null,
+    tier: (lg?.tier as ZeroDteDeckSource["tier"]) ?? null,
+    confluence: confl?.confirmations ?? null,
+    scorecard: (lg?.scorecard as ZeroDteDeckSource["scorecard"]) ?? null,
+    // Condor detection: the ledger row's is_condor flag (server/sim) or the setup's play_type.
+    is_condor:
+      (lg?.is_condor as boolean) ??
+      (lg?.play_type === "CONDOR" || s?.play_type === "CONDOR" ? true : null),
   };
 }
 
