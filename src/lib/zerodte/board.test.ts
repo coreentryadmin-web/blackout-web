@@ -8,6 +8,8 @@ import {
   deriveZeroDteSetups,
   rankEngineCards,
   enrichSetup,
+  noteOriginDirectionConflict,
+  type EnrichedZeroDteSetup,
   matchEarnings,
   matchHotNews,
   polygonSpotTicker,
@@ -1313,3 +1315,29 @@ test("polygonSpotTicker: equities and ETF wrappers pass through unchanged (case-
   assert.equal(polygonSpotTicker("spxw"), "I:SPX");
   assert.equal(polygonSpotTicker("meta"), "META");
 });
+
+// ── Q1: opposing-direction co-discovery (noteOriginDirectionConflict) ────────────────
+test("noteOriginDirectionConflict: opposing direction stamps the masked read; agreement stamps nothing", () => {
+  const keptLong = { direction: "long", discovery_origin: ["FLOW"] } as unknown as EnrichedZeroDteSetup;
+  // A PIN fade arguing SHORT on a kept FLOW long → conflict recorded (kept direction unchanged).
+  noteOriginDirectionConflict(keptLong, { direction: "short", discovery_origin: ["PIN"] } as EnrichedZeroDteSetup);
+  assert.equal(keptLong.direction, "long", "the kept direction is NEVER flipped");
+  assert.deepEqual(keptLong.origin_direction_conflict, {
+    kept_direction: "long",
+    masked_direction: "short",
+    masked_origin: ["PIN"],
+  });
+
+  // Same-direction corroboration → nothing stamped (the common case stays clean).
+  const keptAgree = { direction: "long", discovery_origin: ["FLOW"] } as unknown as EnrichedZeroDteSetup;
+  noteOriginDirectionConflict(keptAgree, { direction: "long", discovery_origin: ["BREAKOUT"] } as EnrichedZeroDteSetup);
+  assert.equal(keptAgree.origin_direction_conflict, undefined);
+});
+
+test("noteOriginDirectionConflict: first conflict wins (a later opposing origin does not overwrite it)", () => {
+  const kept = { direction: "long", discovery_origin: ["FLOW"] } as unknown as EnrichedZeroDteSetup;
+  noteOriginDirectionConflict(kept, { direction: "short", discovery_origin: ["PIN"] } as EnrichedZeroDteSetup);
+  noteOriginDirectionConflict(kept, { direction: "short", discovery_origin: ["BREAKOUT"] } as EnrichedZeroDteSetup);
+  assert.deepEqual(kept.origin_direction_conflict!.masked_origin, ["PIN"], "the first recorded conflict is preserved");
+});
+

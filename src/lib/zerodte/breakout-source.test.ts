@@ -192,6 +192,34 @@ test("mergeDiscoveryOrigins unions a shared ticker to [\"FLOW\",\"BREAKOUT\"] an
   assert.equal(merged.length, 2, "no duplicate row for the shared ticker");
 });
 
+test("mergeDiscoveryOrigins stamps an opposing-direction co-discovery (Q1) without flipping the kept direction", () => {
+  // Kept setup is SHORT (e.g. a flow put-buyer); breakout argues LONG on the same ticker.
+  const kept = buildBreakoutSetup({ mover: { ticker: "NVDA", gain: 0.16, close_strength: 0.95, volume: 1e7, dollar: 1e9 }, spot: 140, contract: { strike: 145, expiry: TODAY, dte: 0 }, dollarNorm: 1 });
+  kept.direction = "short";
+  kept.discovery_origin = ["FLOW"];
+  const breakoutLong = buildBreakoutSetup({ mover: { ticker: "NVDA", gain: 0.16, close_strength: 0.95, volume: 1e7, dollar: 1e9 }, spot: 140, contract: { strike: 145, expiry: TODAY, dte: 0 }, dollarNorm: 1 });
+  // buildBreakoutSetup is momentum → long.
+  assert.equal(breakoutLong.direction, "long");
+
+  const merged = mergeDiscoveryOrigins([kept], [breakoutLong]);
+  const nvda = merged.find((s) => s.ticker === "NVDA")!;
+  assert.equal(nvda.direction, "short", "kept direction is preserved (never fabricates agreement)");
+  assert.deepEqual(nvda.discovery_origin, ["FLOW", "BREAKOUT"], "origins still union");
+  assert.deepEqual(nvda.origin_direction_conflict, {
+    kept_direction: "short",
+    masked_direction: "long",
+    masked_origin: ["BREAKOUT"],
+  });
+});
+
+test("mergeDiscoveryOrigins: same-direction co-discovery records NO conflict", () => {
+  const kept = buildBreakoutSetup({ mover: { ticker: "NVDA", gain: 0.16, close_strength: 0.95, volume: 1e7, dollar: 1e9 }, spot: 140, contract: { strike: 145, expiry: TODAY, dte: 0 }, dollarNorm: 1 });
+  kept.discovery_origin = ["FLOW"]; // both long (momentum)
+  const breakoutLong = buildBreakoutSetup({ mover: { ticker: "NVDA", gain: 0.16, close_strength: 0.95, volume: 1e7, dollar: 1e9 }, spot: 140, contract: { strike: 145, expiry: TODAY, dte: 0 }, dollarNorm: 1 });
+  const merged = mergeDiscoveryOrigins([kept], [breakoutLong]);
+  assert.equal(merged[0]!.origin_direction_conflict, undefined);
+});
+
 // ── ATM 0DTE picker: 0DTE preferred, 1DTE allowed, weekly (dte≥2) EXCLUDED ───────────
 // HORIZON INTEGRITY (PR-1): the picker is clamped to dte ≤ 1. A 0DTE is preferred, a 1DTE is the
 // only fallback, and ANY dte≥2 weekly returns null (dropped from the 0DTE board — not graded with

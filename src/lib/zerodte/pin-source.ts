@@ -28,6 +28,7 @@ import {
   enrichSetup,
   gradingPolicyForHorizon,
   unionDiscoveryOrigins,
+  noteOriginDirectionConflict,
   type DiscoveryOrigin,
   type EnrichedZeroDteSetup,
   type ZeroDteSetup,
@@ -353,6 +354,10 @@ export function mergePinOrigins(
     const key = p.ticker.toUpperCase();
     const found = byTicker.get(key);
     if (found) {
+      // Q1: a pin FADE that opposes the kept (flow/breakout momentum) direction is stamped
+      // as evidence — the kept direction is never flipped (that would fabricate agreement),
+      // but the opposing read survives to the graded origin band instead of vanishing.
+      noteOriginDirectionConflict(found, p);
       found.discovery_origin = unionDiscoveryOrigins(found.discovery_origin, p.discovery_origin);
     } else {
       byTicker.set(key, p);
