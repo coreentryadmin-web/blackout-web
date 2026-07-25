@@ -95,9 +95,9 @@ export const ZERODTE_DEFAULT_HALF_SPREAD_FRAC = 0.05;
  *  frac rather than modeling a negative or zero tax. */
 export function zeroDteHalfSpreadFrac(bid: number | null, ask: number | null): number | null {
   if (bid != null && ask != null && ask > 0 && bid >= 0 && ask >= bid) {
-    const denom = ask + bid;
-    if (denom <= 0) return null;
-    return (ask - bid) / denom;
+    // denom = ask + bid is provably > 0 here (ask > 0 excludes zero/NaN, bid >= 0), so no
+    // divide-by-zero guard is needed — a redundant `denom <= 0` check was flagged useless by CodeQL.
+    return (ask - bid) / (ask + bid);
   }
   return null;
 }
