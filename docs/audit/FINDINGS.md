@@ -5,6 +5,52 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-25 — [tooling] NEW: 0DTE Night Hawk end-to-end LIVE health check (`zerodte-e2e-healthcheck.mjs`) — ADDED
+
+**Severity.** N/A — additive read-only tooling (no app/behavior change). Safe to merge on green.
+
+**What + why.** There was no single "is the whole 0DTE system actually working end-to-end before
+the open" check. `data-validator.mjs` cross-checks individual numbers on the board; it does NOT walk
+the pipeline (discovery → commit → marks → exit → **condor** → grading) and assert each subsystem is
+live. Added `scripts/audit/zerodte-e2e-healthcheck.mjs` (`npm run healthcheck:0dte`): logs into prod
+as ONE temp admin+premium Clerk user (reused data-validator auth block — mint `sign_in_token` → FAPI
+ticket exchange → `__session`; always deleted in `finally`, self-heals leftovers; authenticates
+once), reads the SAME authenticated `/api/market/zerodte/{board,marks,record}` endpoints the desk
+polls, and prints a per-stage GREEN/AMBER/RED matrix. Exits non-zero if any non-skipped stage is RED.
+
+**Stages (grounded in the real payloads, not guessed fields).**
+- **A INFRA/CONFIG** — ECS `blackout-production-{web,market-worker}` `running==desired` + PRIMARY
+  rollout, and the `ZERODTE_WHOLE_MARKET`/`SRC_BREAKOUT`/`SRC_PIN`/`CONDOR` flags present in the
+  worker task def. AWS creds absent/placeholder → **SKIPPED**, never RED. Never prints secret values.
+- **B DISCOVERY ×3** — `board.setups[].discovery_origin` (`board.ts` `DiscoveryOrigin` = FLOW/
+  BREAKOUT/PIN) covers all three; a zero-origin → AMBER with the captured `session.heat` / `governor`
+  / `gate.blocks[].code` reason (empty is never assumed correct).
+- **C COMMIT/LEDGER** — each `board.ledger` row carries `entry_premium`, `direction`, `top_strike`,
+  `first_flagged_at`, and a frozen `cortex`/`tier` snapshot (the `entry_context` passthrough on
+  `ZeroDteBoardLedgerRow`, `zerodte-service.ts`).
+- **D LIVE MARKS+P&L** — `/marks` open rows (`ZeroDteLiveMarkRow`) have a fresh `mark`
+  (`mark_age_ms` ≤ 20s RTH, mirrors `ZERODTE_MARK_STALE_MS`), a coherent `live_pnl_pct`, and the
+  displayed mark is cross-checked vs Polygon `/v3/snapshot/options/{underlying}/{occ}` (±15%, the
+  app's own illiquid threshold; off-hours/thin → AMBER).
+- **E EXIT MGMT** — `status` ∈ {OPEN,HOLD,TRIM,CLOSED} coherence; a CLOSED `closed_reason:"stopped"`
+  row shows the pinned `PLAN_RULES.stop_pct` (−50%), matching `mapLedgerRow`'s D-1 pin.
+- **F IRON CONDOR (first-class, never skipped)** — a routed `play_type:"CONDOR"` `condor_plan`
+  (`condor.ts` `CondorPlan`: short/long put+call, `net_credit`, `wing_pts`, `breach_lower/upper`) with
+  correct leg ordering, OR (no live condor) the calibration `condor` geometry (`iron-condor.ts`
+  `IronCondorLegs`) attached to directional setups → engine proven wired even when
+  `ZERODTE_CONDOR`/`SRC_PIN` haven't routed a PIN candidate this session.
+- **G GRADING/RECORD** — `/record` (`ZeroDteRecord`) `wins+losses+breakeven == graded`; today's CLOSED
+  rows carry a graded outcome (`graded`/`plan_outcome`).
+
+**Evidence.** Pure verdict/coherence logic extracted to `scripts/audit/lib/zerodte-healthcheck-eval.mjs`
++ `…​.test.mjs` (8 tests, `node --test` → 8/8 pass): rollup ordering, staleness, mark agreement, condor
+leg-ordering geometry, track-record arithmetic, exit-lifecycle coherence, commit-row completeness.
+`node --check` clean on both `.mjs`; eslint clean on all three touched files; offline `--stage=A`
+dry-run renders the matrix + SKIPPED path with no network. The live prod path was intentionally NOT
+executed from the sandbox (no creds needed to build it).
+
+**Status.** DONE — merged additive tooling. Wire it into the market-open runbook as the "before the
+open" gate (documented in `docs/audit/MARKET-OPEN-VALIDATION.md`).
 ## 2026-07-25 — [SIM-VIEW] Admin-only 0DTE simulation view of the Night Hawk board — NEW FEATURE (member board untouched)
 
 **Severity.** Feature (deploy-affecting, safety-critical isolation). Not a bug fix — an additive
