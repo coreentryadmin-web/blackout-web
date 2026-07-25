@@ -43,6 +43,38 @@ can REMOVE stale-driven candidates, never ADD any; the flow board is untouched o
 **Status.** FIXED on `fix/breakout-grouped-bar-age-ws19`. `tsc --noEmit` clean; 7/7 new tests pass;
 `scan.test.ts` 15/15 still green. Draft PR opened.
 
+## 2026-07-25 — [Hardening WS-14/15] 0DTE end-to-end latency telemetry + input-age manifest — ADDITIVE observability
+
+**Severity.** SEV-5 (observability; no behavior change). **Status.** Shipped.
+
+**What.** The 0DTE scan had no measure of HOW LONG each pipeline hop took, nor HOW STALE each input was
+AT THE INSTANT a play committed — so a slow board or a commit on aged data had no persisted evidence to
+root-cause. New pure module `src/lib/zerodte/latency-telemetry.ts` (mirrors `api-telemetry.ts`: bounded
+in-process ring buffers + a shared nearest-rank `percentile()`):
+- **WS-14 span/latency.** `scanZeroDteBoard` stamps `scan_started/candidate_derived/chain_received/
+  gates_completed/cortex_completed` wall-clocks and records per-hop stage durations + overall scan
+  duration; `persistZeroDteScan` records per-commit end-to-end latency (freshest flow print → commit)
+  bucketed BY discovery origin.
+- **WS-14 input-age manifest.** `entry_context.input_age_manifest` is frozen at commit = age (ms) at
+  decision time of each input {flow, underlying, option_quote, gex, vix, macro, spy_bias}. Computed from
+  timestamps ON the setup at commit (`flow`=`last_seen`, `underlying`=`intraday.last_bar_ms`); the inputs
+  that carry no per-value timestamp into the commit function are stored **null** — the "never fabricate
+  an unknown age" rule — not back-filled from a cache TTL.
+- **WS-15 counters.** Per-session committed-row write counter + committed-**ungradeable** rate (rows the
+  grader stamps `ungradeable` / total committed). All three surfaced on `admin-zerodte-health.ts`
+  (`ZeroDteHealthSnapshot.latency`).
+
+**Additive guarantee.** Every recorder swallows its own errors and returns void; nothing is ever read back
+as a gate/grade/commit input. `entry_context.input_age_manifest` is an optional field (pre-WS-14 rows
+carry it undefined). No gate/Cortex/governor/grader decision path was touched.
+
+**Evidence.** `npx tsc --noEmit` → clean (exit 0). New `latency-telemetry.test.ts` (6 cases: manifest
+all-keys/null-where-unknown, clock-skew clamp, nearest-rank p50/p95/p99, stage-duration deltas, origin
+bucketing, full snapshot incl. ungradeable-rate=0.25 and null-rate for a zero-committed date) + extended
+`scan.test.ts` (the COMMIT test asserts the frozen manifest has all 7 keys, real ages for flow/underlying,
+null for the rest) → 6/6 + 15/15 pass; `entry-context.test.ts` 8/8, `admin-zerodte-health.test.ts` 12/12
+unaffected.
+
 ## 2026-07-25 — [Q10] Discovery recall probe: the BREAKOUT top-6 $-volume cap is LEAKY — NEW TOOL
 
 **What.** "No silent caps" (design Q10). The BREAKOUT origin screens the whole market (~12k grouped-daily

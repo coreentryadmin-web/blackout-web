@@ -52,6 +52,9 @@ import { dbConfigured, fetchZeroDteSetupLog, type ZeroDteSetupLogRow } from "@/l
 import { fetchZeroDteRejections, type ZeroDteRejectionRow } from "@/lib/zerodte/rejections";
 import { buildCronHealthSnapshot, type CronJobHealthStatus } from "@/lib/admin-cron-health";
 import { todayEt } from "@/features/nighthawk/lib/session";
+// WS-14/15: end-to-end latency + scan-duration + committed/ungradeable telemetry. Pure
+// in-process read (per-replica accumulators) — no IO, so it can't degrade this snapshot.
+import { snapshotZeroDteLatency, type ZeroDteLatencySnapshot } from "@/lib/zerodte/latency-telemetry";
 
 /** Generous vs. the throttled write volume rejections.ts documents (single digits
  *  to low tens of distinct tickers per day) — a page this size should cover a full
@@ -90,6 +93,11 @@ export type ZeroDteHealthSnapshot = {
    *  then be a floor, not the exact count. False the overwhelming majority of the
    *  time given the throttled write volume. */
   rejections_sample_capped: boolean;
+  /** WS-14/15 observability: scan-duration p95/p99, per-hop stage percentiles, end-to-end
+   *  committed latency by discovery origin, and the per-session committed-row/ungradeable
+   *  counters. In-process (per-replica) telemetry — reflects THIS replica's traffic since
+   *  its last restart, never a cluster-wide total. Null only if the read itself threw. */
+  latency: ZeroDteLatencySnapshot | null;
   // Partial-failure notes — populated when one leg degrades but the overall
   // snapshot still returns 200 with whatever else succeeded. Never thrown.
   errors: string[];
@@ -159,6 +167,15 @@ export async function fetchZeroDteHealthSnapshot(): Promise<ZeroDteHealthSnapsho
     rejections.length === REJECTIONS_SAMPLE_LIMIT &&
     rejections[rejections.length - 1]?.session_date === sessionDate;
 
+  // WS-14/15 latency telemetry — pure in-process read, but individually guarded (same
+  // discipline as every other leg above) so a future change can't take the panel down.
+  let latency: ZeroDteLatencySnapshot | null = null;
+  try {
+    latency = snapshotZeroDteLatency();
+  } catch (e) {
+    errors.push(`latency telemetry: ${e instanceof Error ? e.message : "failed"}`);
+  }
+
   return {
     generated_at: new Date().toISOString(),
     session_date: sessionDate,
@@ -169,6 +186,7 @@ export async function fetchZeroDteHealthSnapshot(): Promise<ZeroDteHealthSnapsho
     rejected_count: rejectedOnlyTickers.size,
     rejection_rate: rejectionRate,
     rejections_sample_capped: rejectionsSampleCapped,
+    latency,
     errors,
   };
 }
