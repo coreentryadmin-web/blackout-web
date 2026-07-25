@@ -540,6 +540,45 @@ test("G-11 D1: present earnings flag still fires `earnings` (unregressed by the 
   assert.equal(v.blocks.some((b) => b.code === "earnings_unavailable"), false);
 });
 
+// ── G-11 halt-feed fail-CLOSED (D2) — a COLD halt feed (empty store) must NOT look like "no halts".
+// Before the fix, scan.ts read the board halt with failClosedOnStale:false, so a dark/dead halt
+// socket left the store empty and a HALTED underlying could commit a fresh 0DTE. Now scan.ts also
+// surfaces haltFeedStale=true (both UW+LULD halt sources cold) and G-11 holds the fresh commit
+// closed under a distinct `halt_feed_stale` code. These cases pin the contract at the gate.
+
+test("G-11 D2: cold halt feed (haltFeedStale) fails a fresh commit closed", () => {
+  // No ACTIVE halt on this name (store empty) — the OLD code committed here.
+  const v = evaluateZeroDteGates(input({ halted: false, haltFeedStale: true }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "halt_feed_stale"), true);
+  assert.match(
+    v.blocks.find((b) => b.code === "halt_feed_stale")!.reason,
+    /halt feed cold/i
+  );
+});
+
+test("G-11 D2: healthy feed (haltFeedStale false/absent) still COMMITS — NO board starvation", () => {
+  // The critical safety property: on a healthy socket (flow/price/tide streaming) the halt source
+  // reads FRESH via the cross-channel freshest-message proxy, so haltFeedStale is false and a
+  // quiet-halt session commits exactly as before. A stale halt CHANNEL must never empty the board.
+  const explicitFalse = evaluateZeroDteGates(input({ halted: false, haltFeedStale: false }));
+  assert.equal(explicitFalse.verdict, "COMMIT");
+  assert.equal(explicitFalse.blocks.some((b) => b.code === "halt_feed_stale"), false);
+  // Field entirely absent (caller never set it) must behave identically — no spurious block.
+  const absent = evaluateZeroDteGates(input({ halted: false }));
+  assert.equal(absent.verdict, "COMMIT");
+  assert.equal(absent.blocks.some((b) => b.code === "halt_feed_stale"), false);
+});
+
+test("G-11 D2: an ACTIVE halt still fires `halted` and never double-fires halt_feed_stale", () => {
+  // Active halt AND a cold feed: the active-halt block wins (else-if), so exactly one G-11 halt
+  // block fires and it is the specific `halted` code, not the data-plane `halt_feed_stale`.
+  const v = evaluateZeroDteGates(input({ halted: true, haltFeedStale: true }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "halted"), true);
+  assert.equal(v.blocks.some((b) => b.code === "halt_feed_stale"), false);
+});
+
 test("G-7: macro hard-block during CPI window", () => {
   const v = evaluateZeroDteGates(
     input({
