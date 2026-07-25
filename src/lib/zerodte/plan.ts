@@ -607,7 +607,10 @@ export function reconstructTrimScaleExecutableFromBars(
       exit_reason: "time_stop",
       at_et: lastEt,
     });
-    remaining = 0;
+    // (No `remaining = 0` here — the position is fully closed by this final tranche and
+    // `remaining` is never read again before the return; CodeQL flagged the assignment as a
+    // dead store. The stop/target break paths above DO zero it, but only because they `break`
+    // out mid-loop and the invariant matters there; this tail runs after the loop.)
     runnerOutcome = runnerOutcome ?? "time_stop";
   }
 
