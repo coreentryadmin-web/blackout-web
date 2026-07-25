@@ -98,6 +98,22 @@ test("currentStrategyConfigHash === hash of the current manifest", () => {
   assert.equal(currentStrategyConfigHash(), strategyConfigHash(buildStrategyManifest()));
 });
 
+test("buildStrategyManifest: exitPolicy override sets exit_policy and repartitions the hash (design Q13)", () => {
+  const dflt = buildStrategyManifest();
+  const ratchet = buildStrategyManifest({ exitPolicy: "ratchet" });
+  const trim = buildStrategyManifest({ exitPolicy: "trim_scale" });
+  // The override lands on the manifest field...
+  assert.equal(ratchet.exit_policy, "ratchet");
+  assert.equal(trim.exit_policy, "trim_scale");
+  // ...and a different ACTIVE exit family produces a different cohort hash, so ratchet
+  // and trim_scale plays never blend in one calibration band.
+  assert.notEqual(strategyConfigHash(ratchet), strategyConfigHash(trim));
+  // Omitting the override falls back to the shipped default (EXIT_POLICY = "ratchet"),
+  // so the default call and an explicit "ratchet" are identical — behavior-neutral.
+  assert.equal(dflt.exit_policy, EXIT_POLICY);
+  assert.equal(strategyConfigHash(dflt), strategyConfigHash(ratchet));
+});
+
 // ── Feature-vector threading ────────────────────────────────────────────────────────
 
 test("buildSetupFeatureVector: strategy_config_hash threads through; absent → null (never fabricated)", () => {

@@ -64,9 +64,11 @@ export const GOVERNOR_VERSION = "v1";
 /** Contract selector (strike/expiry pick — pickChainContract & horizon clamp). Bump
  *  when the selected contract for the same signal would change (a different graded basis). */
 export const CONTRACT_SELECTOR_VERSION = "v1";
-/** ACTIVE profit-management mode ("ratchet" | "trim_scale"). Derived from the exit
- *  engine's shipped default so a live mode flip is reflected in the hash automatically
- *  (a different exit family grades the SAME entry to a different outcome). */
+/** Default profit-management mode ("ratchet" | "trim_scale") — the exit engine's shipped
+ *  default, used when a caller doesn't pass the ACTIVE mode. The live board passes the
+ *  RESOLVED mode (resolveExitMode, design Q13) into buildStrategyManifest so the config
+ *  hash actually partitions ratchet vs trim_scale cohorts (a different exit family grades
+ *  the SAME entry to a different outcome); this constant is only the fallback. */
 export const EXIT_POLICY: ZeroDteExitMode = DEFAULT_EXIT_MODE;
 /** Exit-rule VERSION within the active policy (the numeric thresholds — arm/lock/trim
  *  levels, time-stop). Bump when those move even if the POLICY name is unchanged. */
@@ -98,8 +100,10 @@ export interface StrategyManifest {
 
 /** Assemble the current manifest from the constants above. PURE — the single source
  *  of truth every persist/calibration site reads, so the stamp and the calibration
- *  cohort key can never disagree. */
-export function buildStrategyManifest(): StrategyManifest {
+ *  cohort key can never disagree. `opts.exitPolicy` lets the caller supply the ACTIVE
+ *  resolved exit mode (design Q13) instead of the shipped default, so the config hash
+ *  partitions ratchet vs trim_scale cohorts; omitted → EXIT_POLICY (still pure). */
+export function buildStrategyManifest(opts: { exitPolicy?: ZeroDteExitMode } = {}): StrategyManifest {
   return {
     engine: ENGINE_VERSION,
     discovery: DISCOVERY_VERSION,
@@ -108,7 +112,7 @@ export function buildStrategyManifest(): StrategyManifest {
     cortex: CORTEX_VERSION,
     governor: GOVERNOR_VERSION,
     contract_selector: CONTRACT_SELECTOR_VERSION,
-    exit_policy: EXIT_POLICY,
+    exit_policy: opts.exitPolicy ?? EXIT_POLICY,
     exit: EXIT_VERSION,
     grader: GRADER_VERSION,
     feature_schema: FEATURE_SCHEMA_VERSION,
