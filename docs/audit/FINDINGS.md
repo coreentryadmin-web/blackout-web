@@ -5,6 +5,44 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-25 — [WS-19] BREAKOUT trusted a successful grouped-daily response regardless of bar freshness — FIXED (fail closed)
+
+**Severity.** Medium (data-correctness / fail-open). Live-board discovery input; no crash, but a stale
+snapshot could silently drive the whole-market BREAKOUT origin and — worse — read as a *genuine* "no
+breakouts today".
+
+**Root cause.** `src/lib/zerodte/breakout-discovery.ts` (`discoverBreakoutSetups`) skipped only on the
+RTH-window gate and on an EMPTY grouped result (`results.length === 0`, old line ~58). A *successful,
+non-empty* grouped-daily response from `fetchDailyMarketSummary` was trusted unconditionally — its bar
+freshness was never checked. A provider/cache hiccup that serves a stale-but-non-empty snapshot (e.g.
+yesterday's bars) during RTH would (a) drive `screenBreakoutMovers` off dead data, and (b) if it screened
+to nothing, be indistinguishable from a real quiet market. Not caught earlier because the only staleness
+defense was "empty ⇒ skip"; a stale non-empty payload has neither an empty guard nor a freshness guard.
+
+**Evidence.** New hermetic test `breakout-discovery.test.ts` (7 cases). With `nowMs` fixed at
+2026-07-24T15:00Z and a grouped snapshot whose freshest bar is dated 26h earlier: OLD code path (screen +
+build) would have produced candidates from the stale bars; NEW code returns `{status:"data_unavailable",
+reason:"stale_snapshot", setups:[]}` and never calls the screen/chain (asserted call-count 0). A fresh
+(19h-old, same-session) snapshot that screens to nothing returns `{status:"ok", setups:[]}` — DISTINCT
+from stale. Polygon grouped-daily confirmed to carry a per-bar `t` (Unix-ms window start).
+
+**Fix.** Added `BREAKOUT_MAX_BAR_AGE_MS` (24h, rationale commented) + pure `assessGroupedBarFreshness()`.
+`discoverBreakoutSetups` now reads the freshest bar's `t`; if age > threshold, or no bar exposes a `t`, it
+returns a `data_unavailable` outcome (fail CLOSED) instead of an empty list. Return type changed from
+`EnrichedZeroDteSetup[]` to a discriminated `BreakoutDiscoveryOutcome` ({status, setups, reason?}) so a
+stale snapshot is never conflated with a genuine empty. Daily granularity is honestly commented: `t` is
+the session-open window start, so this catches the dominant real failure (a prior-day/cached snapshot
+during RTH), NOT intra-session freeze — the 24h cap sits above any legit same-day age (≤~20h in the
+[9:30,15:00) window) and below any prior-day bar (≥~33h). `t?: number` added to `DailyMarketBar`.
+
+**Blast radius.** Sole caller is `scan.ts` (~line 264), updated to consume `outcome.setups`. No other
+consumer of `discoverBreakoutSetups`. `fetchDailyMarketSummary`'s other callers (`fetchPriorDayCloses`,
+breadth) are untouched — the added optional `t` field is additive. Fail-closed direction only: the change
+can REMOVE stale-driven candidates, never ADD any; the flow board is untouched on every non-`ok` outcome.
+
+**Status.** FIXED on `fix/breakout-grouped-bar-age-ws19`. `tsc --noEmit` clean; 7/7 new tests pass;
+`scan.test.ts` 15/15 still green. Draft PR opened.
+
 ## 2026-07-25 — [Q10] Discovery recall probe: the BREAKOUT top-6 $-volume cap is LEAKY — NEW TOOL
 
 **What.** "No silent caps" (design Q10). The BREAKOUT origin screens the whole market (~12k grouped-daily

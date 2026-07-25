@@ -261,11 +261,16 @@ export async function scanZeroDteBoard(flags?: {
     try {
       const { hour, minute } = etNowParts();
       const { discoverBreakoutSetups } = await import("./breakout-discovery");
-      const breakoutSetups = await discoverBreakoutSetups({
+      // WS-19: outcome is discriminated — `data_unavailable` (stale/unverifiable grouped snapshot)
+      // fails CLOSED to an empty setups list, so a stale snapshot never adds candidates and never
+      // reads as a genuine "no breakouts". We consume setups directly; a non-`ok` status just means
+      // zero breakout setups this cycle (the flow board is untouched).
+      const breakoutOutcome = await discoverBreakoutSetups({
         today,
         nowEtMinutes: hour * 60 + minute,
         excludeTickers: excludes,
       });
+      const breakoutSetups = breakoutOutcome.setups;
       if (breakoutSetups.length > 0) {
         mergeDiscoveryOrigins(setups, breakoutSetups);
         // Keep the array score-ranked so the governor's concurrency budget still goes to the best

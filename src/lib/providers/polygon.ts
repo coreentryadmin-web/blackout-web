@@ -208,6 +208,11 @@ export type DailyMarketBar = {
   c: number;
   vw: number;
   v: number;
+  /** Unix-ms START of the aggregate window (session-open of the bar's trading date, ~midnight ET),
+   *  NOT a live tick time. Polygon grouped-daily always returns it; consumers use it as a coarse,
+   *  daily-granularity freshness signal (a prior-day / carried-over snapshot dates `t` to an earlier
+   *  session). See breakout-discovery.ts BREAKOUT_MAX_BAR_AGE_MS (WS-19). */
+  t?: number;
 };
 
 export type MarketBreadthMetrics = {

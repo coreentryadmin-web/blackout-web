@@ -1,0 +1,161 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  assessGroupedBarFreshness,
+  discoverBreakoutSetups,
+  BREAKOUT_MAX_BAR_AGE_MS,
+  type BreakoutDiscoveryDeps,
+} from "./breakout-discovery";
+import type { DailyMarketBar } from "@/lib/providers/polygon";
+import type { EnrichedZeroDteSetup } from "./board";
+import type { BreakoutMover } from "@/features/nighthawk/lib/candidates";
+
+// WS-19 — BREAKOUT grouped-bar age validation (fail closed on stale data).
+//
+// The guard sits BEFORE screening/chain-fetch, so these tests drive the pure freshness function
+// directly AND exercise discoverBreakoutSetups end-to-end through its injectable IO seam (no
+// network, no real providers). The three mandated scenarios:
+//   (1) a STALE non-empty grouped snapshot  → data_unavailable, zero candidates (fail closed).
+//   (2) a FRESH but empty market            → normal empty (status "ok"), DISTINCT from stale.
+//   (3) FRESH data with movers              → normal candidates.
+
+const RTH_NOW_ET_MINUTES = 11 * 60; // 11:00 ET — inside the [9:30, 15:00) commit window.
+
+/** A grouped-daily bar dated `t`, otherwise a plausible strong-close mover. */
+function bar(ticker: string, t: number, over: Partial<DailyMarketBar> = {}): DailyMarketBar {
+  return { T: ticker, o: 100, h: 130, l: 99, c: 129, vw: 120, v: 5_000_000, t, ...over };
+}
+
+/** Deps that record calls, so we can assert screening/chain-fetch never ran when we fail closed. */
+function makeDeps(over: Partial<BreakoutDiscoveryDeps> = {}): {
+  deps: Partial<BreakoutDiscoveryDeps>;
+  calls: { screen: number; resolveChain: number };
+} {
+  const calls = { screen: 0, resolveChain: 0 };
+  const deps: Partial<BreakoutDiscoveryDeps> = {
+    screen: ((results: Parameters<BreakoutDiscoveryDeps["screen"]>[0]) => {
+      calls.screen++;
+      // Default screen: turn every bar into a mover (tests that want "no movers" override this).
+      return (results as DailyMarketBar[]).map(
+        (r): BreakoutMover => ({
+          ticker: r.T,
+          gain: 0.25,
+          volume: r.v,
+          close_strength: 0.95,
+          dollar: r.c * r.v,
+        })
+      );
+    }) as BreakoutDiscoveryDeps["screen"],
+    resolveChain: (async (ticker: string) => {
+      calls.resolveChain++;
+      return {
+        spot: 130,
+        rows: [{ expiry: "2026-07-24", strike: 130, call_bid: 1, call_ask: 1.1, call_oi: 500 }],
+      };
+    }) as unknown as BreakoutDiscoveryDeps["resolveChain"],
+    pickContract: (() => ({ strike: 130, expiry: "2026-07-24", dte: 0 })) as BreakoutDiscoveryDeps["pickContract"],
+    buildSetup: ((input: { mover: { ticker: string } }) =>
+      ({ ticker: input.mover.ticker, score: 42 } as unknown as EnrichedZeroDteSetup)) as BreakoutDiscoveryDeps["buildSetup"],
+    ...over,
+  };
+  return { deps, calls };
+}
+
+// ── Pure freshness function ────────────────────────────────────────────────────────
+
+test("assessGroupedBarFreshness: prior-day snapshot (age > 24h) is stale", () => {
+  const now = Date.parse("2026-07-24T15:00:00Z");
+  // Freshest bar dated ~26h earlier — a carried-over prior-day snapshot.
+  const res = assessGroupedBarFreshness([{ t: now - 26 * 3_600_000 }, { t: now - 30 * 3_600_000 }], now);
+  assert.equal(res.fresh, false);
+  assert.equal(res.fresh === false && res.reason, "stale_snapshot");
+});
+
+test("assessGroupedBarFreshness: same-day live bar (age < 24h) is fresh", () => {
+  const now = Date.parse("2026-07-24T15:00:00Z");
+  // t ≈ midnight ET of the same session → ~19h old at 15:00Z, well under the 24h cap.
+  const res = assessGroupedBarFreshness([{ t: now - 19 * 3_600_000 }], now);
+  assert.equal(res.fresh, true);
+});
+
+test("assessGroupedBarFreshness: no usable timestamp fails closed (never fabricates one)", () => {
+  const now = Date.now();
+  const r = assessGroupedBarFreshness([{ t: undefined }, {}], now);
+  assert.equal(r.fresh, false);
+  assert.equal(r.fresh === false && r.reason, "missing_bar_timestamp");
+});
+
+test("BREAKOUT_MAX_BAR_AGE_MS is 24h", () => {
+  assert.equal(BREAKOUT_MAX_BAR_AGE_MS, 24 * 60 * 60 * 1000);
+});
+
+// ── Scenario 1: STALE non-empty snapshot → data_unavailable, zero candidates ─────────
+
+test("discoverBreakoutSetups: stale grouped snapshot fails closed (data_unavailable, no candidates)", async () => {
+  const now = Date.parse("2026-07-24T15:00:00Z");
+  const staleT = now - 26 * 3_600_000; // prior session
+  const { deps, calls } = makeDeps();
+  const out = await discoverBreakoutSetups({
+    today: "2026-07-24",
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    nowMs: now,
+    deps: {
+      ...deps,
+      fetchSummary: (async () => ({ results: [bar("AAAA", staleT), bar("BBBB", staleT)] })) as never,
+    },
+  });
+  assert.equal(out.status, "data_unavailable");
+  assert.equal(out.reason, "stale_snapshot");
+  assert.equal(out.setups.length, 0);
+  // Fail-closed means we never even screened the stale bars into candidates.
+  assert.equal(calls.screen, 0);
+  assert.equal(calls.resolveChain, 0);
+});
+
+// ── Scenario 2: FRESH but empty market → normal empty (distinct from stale) ──────────
+
+test("discoverBreakoutSetups: fresh snapshot with zero qualifying movers → ok + empty (not data_unavailable)", async () => {
+  const now = Date.parse("2026-07-24T15:00:00Z");
+  const freshT = now - 19 * 3_600_000; // same-session bar
+  const { deps } = makeDeps({
+    screen: (() => [] as BreakoutMover[]) as BreakoutDiscoveryDeps["screen"], // fresh data, but nothing qualifies
+  });
+  const out = await discoverBreakoutSetups({
+    today: "2026-07-24",
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    nowMs: now,
+    deps: {
+      ...deps,
+      fetchSummary: (async () => ({ results: [bar("AAAA", freshT), bar("BBBB", freshT)] })) as never,
+    },
+  });
+  assert.equal(out.status, "ok"); // NOT data_unavailable — the data was fresh, the market was just quiet
+  assert.equal(out.reason, undefined);
+  assert.equal(out.setups.length, 0);
+});
+
+// ── Scenario 3: FRESH data with movers → normal candidates ───────────────────────────
+
+test("discoverBreakoutSetups: fresh snapshot with movers → ok + built candidates", async () => {
+  const now = Date.parse("2026-07-24T15:00:00Z");
+  const freshT = now - 19 * 3_600_000;
+  const { deps, calls } = makeDeps();
+  const out = await discoverBreakoutSetups({
+    today: "2026-07-24",
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    nowMs: now,
+    maxCandidates: 6,
+    deps: {
+      ...deps,
+      fetchSummary: (async () => ({ results: [bar("AAAA", freshT), bar("BBBB", freshT)] })) as never,
+    },
+  });
+  assert.equal(out.status, "ok");
+  assert.equal(out.setups.length, 2);
+  assert.ok(calls.screen > 0, "fresh data must reach the screen");
+  assert.ok(calls.resolveChain > 0, "fresh movers must reach the chain fetch");
+});
