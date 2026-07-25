@@ -59,10 +59,11 @@ export const QUOTE_VALIDITY = {
    *  the % test) is still an untradeable exit tax on a 0DTE scalp. */
   max_spread_dollars: 5.0,
   /** Max quote age (ms) before a book is stale. ONLY enforced when a real quote
-   *  timestamp is available on the plan input — none is plumbed onto ContractPlan
-   *  today (see buildContractPlan), so in production this bound is currently dormant
-   *  and blocks nothing; the predicate is written so it activates the moment an age
-   *  is threaded through, with zero further logic change. */
+   *  timestamp is available on the plan input. As of D3 the 0DTE scan DOES plumb an
+   *  age (OptionSnapshot.quoteUpdatedMs = last_quote.last_updated ns→ms; scan.ts
+   *  computeQuoteAgeMs), so this bound is now LIVE in production for contracts that
+   *  carry a quote timestamp; a contract without one leaves quoteAgeMs unset and the
+   *  bound stays dormant for it (absence is not staleness). */
   max_quote_age_ms: 60_000,
   /** Minimum resting quote size (contracts) on BOTH sides. ONLY enforced when the
    *  provider actually reports size (bidSize/askSize non-null) — absent size is not
@@ -171,9 +172,9 @@ export function buildContractPlan(input: {
   bidSize?: number | null;
   askSize?: number | null;
   /** Age (ms) of the quote at plan time, when a quote timestamp is available. WS-04
-   *  quote_age is only enforced when this is supplied. NONE is threaded onto this input
-   *  today (OptionSnapshot does not map last_quote.last_updated through), so it is left
-   *  undefined and the stale predicate stays dormant — see the report / FINDINGS gap note. */
+   *  quote_age is only enforced when this is supplied. As of D3 the 0DTE scan threads it
+   *  through (OptionSnapshot.quoteUpdatedMs → scan.ts computeQuoteAgeMs → here), so the
+   *  stale predicate is LIVE; undefined (no timestamp on the snapshot) leaves it dormant. */
   quoteAgeMs?: number | null;
   keySupports: number[];
   keyResistances: number[];

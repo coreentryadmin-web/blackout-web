@@ -1096,3 +1096,56 @@ test("WS-01 persistZeroDteScan: RACE — a concurrent writer's committed rows (s
   assert.equal(amdRej!.gate_failed, "governor_max_concurrent");
   assert.match(String(amdRej!.reason), /max 3 concurrent/);
 });
+
+// ── D3 · option-quote staleness plumbing ─────────────────────────────────────────
+// computeQuoteAgeMs is the scan's bridge between OptionSnapshot.quoteUpdatedMs (last_quote
+// .last_updated, ns→ms) and the WS-04 `stale` predicate on buildContractPlan. It must:
+//  - return undefined when there is NO timestamp (predicate dormant — absence ≠ stale),
+//  - floor a negative age (provider/our clock skew) to 0 = fresh (skew never trips stale),
+//  - otherwise report the real age. Below also proves the END-TO-END wiring: the age it
+//    derives, fed into the REAL buildContractPlan, produces the stale reason (and only then).
+
+test("D3 computeQuoteAgeMs: missing → undefined, fresh/stale reported, negative skew floored to 0", async () => {
+  const { computeQuoteAgeMs } = await mod();
+  const now = 1_784_923_200_000;
+  // No timestamp → undefined (dormant), for both null and undefined inputs.
+  assert.equal(computeQuoteAgeMs(null, now), undefined);
+  assert.equal(computeQuoteAgeMs(undefined, now), undefined);
+  // Fresh: 5s old.
+  assert.equal(computeQuoteAgeMs(now - 5_000, now), 5_000);
+  // Stale: 90s old.
+  assert.equal(computeQuoteAgeMs(now - 90_000, now), 90_000);
+  // Negative (quote clock ahead of ours) → floored to 0, NOT a negative/huge age.
+  assert.equal(computeQuoteAgeMs(now + 10_000, now), 0);
+});
+
+test("D3 integration: computeQuoteAgeMs(quoteUpdatedMs) drives buildContractPlan's stale verdict", async () => {
+  const { computeQuoteAgeMs } = await mod();
+  const { buildContractPlan, QUOTE_VALIDITY } = await import("./plan");
+  const base = {
+    occ: "O:QQQ260713C00500000",
+    direction: "long" as const,
+    price: 500,
+    flowAvgFill: 2,
+    bid: 2.3,
+    ask: 2.5,
+    mark: 2.4,
+    keySupports: [] as number[],
+    keyResistances: [] as number[],
+    vwap: null,
+  };
+  const now = 1_784_923_200_000;
+
+  // STALE: a quote stamped just beyond the age bound → the derived age trips `stale`.
+  const staleUpdated = now - (QUOTE_VALIDITY.max_quote_age_ms + 5_000);
+  const stalePlan = buildContractPlan({ ...base, quoteAgeMs: computeQuoteAgeMs(staleUpdated, now) });
+  assert.equal(stalePlan.quote_invalid_reason, "stale");
+
+  // FRESH: a quote inside the bound → commits.
+  const freshPlan = buildContractPlan({ ...base, quoteAgeMs: computeQuoteAgeMs(now - 5_000, now) });
+  assert.equal(freshPlan.quote_invalid_reason, null);
+
+  // MISSING: no snapshot timestamp → undefined age → predicate dormant → NOT blocked.
+  const noTs = buildContractPlan({ ...base, quoteAgeMs: computeQuoteAgeMs(null, now) });
+  assert.equal(noTs.quote_invalid_reason, null);
+});
