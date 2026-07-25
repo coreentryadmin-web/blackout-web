@@ -111,6 +111,85 @@ export function correlationGroupOf(ticker: string): ReadonlySet<string> | null {
   return null;
 }
 
+// ── Q9 (design record) — SAME-DIRECTION concentration MEASURE (surfaced, NOT enforced) ──
+// The correlated-conflict rule above blocks OPPOSING plays on correlated names (SPY-long
+// + QQQ-short). It does NOT see same-DIRECTION concentration: SPY-long + QQQ-long +
+// IWM-long is 3× the same broad-market beta behind the 3-concurrent cap — one bad tape
+// takes all three. Q9 flagged this as a genuine gap.
+//
+// WHY MEASURE, NOT BLOCK (yet). Unlike the realized-loss halt (unambiguously good — you're
+// already down, stand down), concentration is ambiguous: three independent origins all
+// surfacing correlated longs can be CONVICTION, not reckless over-exposure. Enforcing a
+// cap could forgo the best trend days. So — per the house calibration-first rule ("evidence,
+// not gating; the ledger graduates it before it sizes") — this ships as a SURFACED measure:
+// the board reports the largest same-direction correlated cluster and a would-block reason,
+// the ledger accrues whether concentrated days win or lose, and a later PR flips it to an
+// enforced gate ONLY if the evidence says concentrated same-direction days underperform.
+// This channel changes NOTHING the board commits today.
+
+/** Max same-direction correlated open plans before the concentration measure flags it.
+ *  CONSERVATIVE starting value (calibration-first) — with the 3-concurrent cap, a cluster
+ *  of 3 same-direction correlated plays is the whole book pointed one way behind one beta;
+ *  flagging at 2 means "one more correlated same-direction add would be over-concentration". */
+export const GOVERNOR_MAX_CORRELATED_SAME_DIR = 2;
+
+/** The largest same-direction cluster of open plans within a single correlation group, or
+ *  null if no two open plans share a group+direction. Pure. Used both by the board measure
+ *  and by the per-candidate evaluator, so the "what counts as concentration" logic lives
+ *  in ONE place. Caller need not pre-uppercase — tickers are normalized here. */
+export function maxCorrelatedSameDirection(
+  openPlans: GovernorOpenPlan[]
+): { tickers: string[]; direction: "long" | "short"; count: number } | null {
+  let best: { tickers: string[]; direction: "long" | "short"; count: number } | null = null;
+  for (const group of CORRELATION_GROUPS) {
+    for (const direction of ["long", "short"] as const) {
+      const inCluster = openPlans
+        .filter((p) => p.direction === direction && group.has(p.ticker.toUpperCase()))
+        .map((p) => p.ticker.toUpperCase());
+      // De-dup tickers so a ledger quirk (two rows same ticker/direction) can't inflate
+      // the count — concentration is about distinct correlated exposures.
+      const distinct = Array.from(new Set(inCluster));
+      if (distinct.length >= 2 && (best == null || distinct.length > best.count)) {
+        best = { tickers: distinct.sort(), direction, count: distinct.length };
+      }
+    }
+  }
+  return best;
+}
+
+/** Per-candidate concentration reason (surfaced/measured — the future enforcement point),
+ *  or null. Fires when the candidate would JOIN a correlation group in which it already
+ *  holds `GOVERNOR_MAX_CORRELATED_SAME_DIR` same-direction open plans (i.e. adding it makes
+ *  the cluster exceed the cap). Pure; does NOT push a gate block today — evaluateZeroDte
+ *  Governor leaves the board's commits unchanged and the board summary surfaces this as
+ *  calibration evidence. Exported so a later enforce-PR can flip it into a block in one line. */
+export function concentrationReasonForCandidate(
+  candidate: { ticker: string; direction: "long" | "short" },
+  liveExposure: GovernorOpenPlan[]
+): string | null {
+  const candidateTicker = candidate.ticker.toUpperCase();
+  const group = correlationGroupOf(candidateTicker);
+  if (!group) return null;
+  const sameDirCorrelated = new Set(
+    liveExposure
+      .filter(
+        (p) =>
+          p.direction === candidate.direction &&
+          p.ticker.toUpperCase() !== candidateTicker &&
+          group.has(p.ticker.toUpperCase())
+      )
+      .map((p) => p.ticker.toUpperCase())
+  );
+  if (sameDirCorrelated.size < GOVERNOR_MAX_CORRELATED_SAME_DIR) return null;
+  const held = Array.from(sameDirCorrelated).sort().join(", ");
+  return (
+    `Session governor (MEASURE): ${candidateTicker} ${candidate.direction} would be the ` +
+    `${sameDirCorrelated.size + 1}th same-direction play on correlated index/ETF beta ` +
+    `(already open ${candidate.direction}: ${held}) — max ${GOVERNOR_MAX_CORRELATED_SAME_DIR} before ` +
+    "this is over-concentration in one direction. Surfaced as calibration evidence, not enforced (Q9)."
+  );
+}
+
 /** The ledger fields the governor reads — subset so tests need no full row. */
 export type GovernorLedgerRow = Pick<
   ZeroDteSetupLogRow,
@@ -354,6 +433,18 @@ export type ZeroDteGovernorSummary = {
    *  SURFACED so the operator sees the halt firing on ledger evidence. Non-null here
    *  is already reflected in `halted` (this channel enforces). */
   would_halt: string | null;
+  // ── Q9 same-direction concentration MEASURE (surfaced, NOT enforced) ─────────────
+  /** The largest same-direction cluster of open plans within one correlation group
+   *  (index/ETF beta), or null if none. Distinct tickers only. A pure measure — it does
+   *  NOT gate commits (unlike the enforcing halts above); it is calibration evidence. */
+  correlated_concentration: { tickers: string[]; direction: "long" | "short"; count: number } | null;
+  /** The same-direction concentration cap the measure flags against (payload number, not
+   *  a UI copy). */
+  max_correlated_same_dir: number;
+  /** A human reason when the current same-direction correlated cluster is at/over the cap
+   *  (a further correlated same-direction add would be over-concentration), else null.
+   *  SURFACED for the operator + the ledger; NOT reflected in `halted` (measure only, Q9). */
+  would_block_concentration: string | null;
 };
 
 /** Pure: the payload's governor block from today's ledger rows + the recorded
@@ -367,6 +458,16 @@ export function summarizeGovernorForBoard(
   // AUDIT SEV-3 — the realized-loss halt reason keys off the ledger-derived tallies
   // (timestamps don't matter for it), so compute it from `snap`, not the merged stops.
   const wouldHalt = governorLossHaltReason(snap);
+  // Q9 — same-direction concentration MEASURE over the open plans. Pure evidence: it is
+  // surfaced but never folded into `halted`, so it changes nothing the board commits.
+  const concentration = maxCorrelatedSameDirection(snap.open_plans);
+  const wouldBlockConcentration =
+    concentration != null && concentration.count >= GOVERNOR_MAX_CORRELATED_SAME_DIR
+      ? `Session governor (MEASURE): ${concentration.count} same-direction ${concentration.direction} plays ` +
+        `on correlated index/ETF beta (${concentration.tickers.join(", ")}) — at/over the ` +
+        `${GOVERNOR_MAX_CORRELATED_SAME_DIR}-play concentration ceiling; a further correlated ` +
+        `${concentration.direction} add would over-concentrate one direction. Surfaced as evidence, not enforced (Q9).`
+      : null;
   return {
     open_plans: snap.open_plans,
     max_concurrent: GOVERNOR_MAX_CONCURRENT_PLANS,
@@ -379,6 +480,9 @@ export function summarizeGovernorForBoard(
     loss_halt_count: GOVERNOR_LOSS_HALT_COUNT,
     session_loss_floor_pct: GOVERNOR_SESSION_LOSS_FLOOR_PCT,
     would_halt: wouldHalt,
+    correlated_concentration: concentration,
+    max_correlated_same_dir: GOVERNOR_MAX_CORRELATED_SAME_DIR,
+    would_block_concentration: wouldBlockConcentration,
   };
 }
 
