@@ -14,11 +14,14 @@ import {
   mergeGovernorStops,
   recordGovernorStops,
   summarizeGovernorForBoard,
+  maxCorrelatedSameDirection,
+  concentrationReasonForCandidate,
   GOVERNOR_MAX_CONCURRENT_PLANS,
   GOVERNOR_MAX_SESSION_STOPS,
   GOVERNOR_REENTRY_LOCK_MS,
   GOVERNOR_LOSS_HALT_COUNT,
   GOVERNOR_SESSION_LOSS_FLOOR_PCT,
+  GOVERNOR_MAX_CORRELATED_SAME_DIR,
   type GovernorLedgerRow,
 } from "./governor";
 
@@ -347,4 +350,87 @@ test("governor state: first-write-wins per ticker — re-observing a stopped row
 
 test("governor state: an empty/unknown session date loads as no stops (never a guess)", async () => {
   assert.deepEqual(await loadRecordedGovernorStops("2099-01-04"), []);
+});
+
+// ── Q9 — same-direction concentration MEASURE (surfaced, not enforced) ──────────────
+
+test("maxCorrelatedSameDirection: finds the largest same-direction correlated cluster; ignores opposed/uncorrelated", () => {
+  // SPY/QQQ/IWM long = a 3-cluster of the same index/ETF beta; the DIA short and the
+  // uncorrelated NVDA long don't join it.
+  const cluster = maxCorrelatedSameDirection([
+    { ticker: "SPY", direction: "long" },
+    { ticker: "QQQ", direction: "long" },
+    { ticker: "IWM", direction: "long" },
+    { ticker: "DIA", direction: "short" },
+    { ticker: "NVDA", direction: "long" },
+  ]);
+  assert.deepEqual(cluster, { tickers: ["IWM", "QQQ", "SPY"], direction: "long", count: 3 });
+});
+
+test("maxCorrelatedSameDirection: a single correlated plan (or none) is not a cluster → null", () => {
+  assert.equal(maxCorrelatedSameDirection([{ ticker: "SPY", direction: "long" }]), null);
+  assert.equal(maxCorrelatedSameDirection([{ ticker: "NVDA", direction: "long" }, { ticker: "AMD", direction: "long" }]), null);
+  assert.equal(maxCorrelatedSameDirection([]), null);
+});
+
+test("maxCorrelatedSameDirection: duplicate ticker rows do not inflate the count (distinct exposures only)", () => {
+  const cluster = maxCorrelatedSameDirection([
+    { ticker: "SPY", direction: "long" },
+    { ticker: "SPY", direction: "long" },
+  ]);
+  assert.equal(cluster, null); // one distinct exposure, not a 2-cluster
+});
+
+test("concentrationReasonForCandidate: fires when the candidate would exceed the cap; null under it", () => {
+  const twoLongs = [
+    { ticker: "SPY", direction: "long" as const },
+    { ticker: "QQQ", direction: "long" as const },
+  ];
+  // Adding a 3rd correlated long (cap 2) → measured reason.
+  const reason = concentrationReasonForCandidate({ ticker: "IWM", direction: "long" }, twoLongs);
+  assert.ok(reason && /over-concentration/.test(reason));
+  // A correlated SHORT is opposed, not concentration (that's the separate conflict rule).
+  assert.equal(concentrationReasonForCandidate({ ticker: "IWM", direction: "short" }, twoLongs), null);
+  // Only ONE correlated same-direction open → under the cap, no measure.
+  assert.equal(
+    concentrationReasonForCandidate({ ticker: "IWM", direction: "long" }, [{ ticker: "SPY", direction: "long" }]),
+    null
+  );
+  // Uncorrelated candidate → never a concentration measure.
+  assert.equal(concentrationReasonForCandidate({ ticker: "NVDA", direction: "long" }, twoLongs), null);
+});
+
+test("Q9 measure does NOT enforce: evaluateZeroDteGovernor still commits a 3rd correlated same-direction play", () => {
+  // Two correlated longs already open; a 3rd correlated long is over the concentration
+  // cap (2) but UNDER the concurrency cap (3). The measure must not block it — Q9 ships
+  // as evidence, not gating. (The only block here would be governor_max_concurrent, and
+  // 2 open < 3, so there is none.)
+  const snap = deriveGovernorFromLedger([
+    row({ ticker: "SPY", direction: "long", status: "OPEN" }),
+    row({ ticker: "QQQ", direction: "long", status: "OPEN" }),
+  ]);
+  const blocks = evaluateZeroDteGovernor({ ticker: "IWM", direction: "long" }, snap, NOW);
+  assert.deepEqual(blocks, []); // no concentration block, no other block
+});
+
+test("summarizeGovernorForBoard: surfaces the concentration measure without ever setting halted", () => {
+  const summary = summarizeGovernorForBoard(
+    [
+      row({ ticker: "SPY", direction: "long", status: "OPEN" }),
+      row({ ticker: "QQQ", direction: "long", status: "OPEN" }),
+    ],
+    []
+  );
+  assert.equal(summary.max_correlated_same_dir, GOVERNOR_MAX_CORRELATED_SAME_DIR);
+  assert.deepEqual(summary.correlated_concentration, { tickers: ["QQQ", "SPY"], direction: "long", count: 2 });
+  // At the cap → a would-block reason is surfaced…
+  assert.ok(summary.would_block_concentration && /concentration ceiling/.test(summary.would_block_concentration));
+  // …but the measure NEVER halts the desk (only the enforcing halts set that).
+  assert.equal(summary.halted, false);
+});
+
+test("summarizeGovernorForBoard: no correlated cluster → concentration measure is null/quiet", () => {
+  const summary = summarizeGovernorForBoard([row({ ticker: "NVDA", direction: "long", status: "OPEN" })], []);
+  assert.equal(summary.correlated_concentration, null);
+  assert.equal(summary.would_block_concentration, null);
 });
