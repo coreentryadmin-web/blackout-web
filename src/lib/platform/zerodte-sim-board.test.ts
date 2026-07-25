@@ -66,6 +66,49 @@ test("isZeroDteBoardPayload rejects malformed frames", () => {
   assert.equal(isZeroDteBoardPayload({ ...base, session: { date: "2026-07-25", trading_day: "yes", heat: {} } }), false, "trading_day must be boolean");
 });
 
+test("isZeroDteBoardPayload rejects EVERY missing/mistyped load-bearing field individually", () => {
+  const base = emptySimBoardPayload() as unknown as Record<string, unknown>;
+  // session sub-shape.
+  assert.equal(isZeroDteBoardPayload({ ...base, session: undefined }), false, "session required");
+  assert.equal(isZeroDteBoardPayload({ ...base, session: "x" }), false, "session must be an object");
+  assert.equal(isZeroDteBoardPayload({ ...base, session: { date: 20260725, trading_day: true, heat: {} } }), false, "date must be a string");
+  assert.equal(isZeroDteBoardPayload({ ...base, session: { date: "2026-07-25", trading_day: true, heat: null } }), false, "heat must be an object");
+  assert.equal(isZeroDteBoardPayload({ ...base, session: { date: "2026-07-25", trading_day: true } }), false, "heat required");
+  // top-level arrays.
+  assert.equal(isZeroDteBoardPayload({ ...base, covered_elsewhere: {} }), false, "covered_elsewhere must be an array");
+  assert.equal(isZeroDteBoardPayload({ ...base, allocation: "x" }), false, "allocation must be an array");
+  assert.equal(isZeroDteBoardPayload({ ...base, setups: undefined }), false, "setups must be an array");
+});
+
+test("isZeroDteBoardPayload accepts a fully-populated frame (ledger rows + populated arrays)", () => {
+  const payload = {
+    ...(emptySimBoardPayload() as unknown as Record<string, unknown>),
+    setups: [{ ticker: "NVDA", score: 80, gate: { verdict: "WATCH" } }],
+    ledger: [{ ticker: "NVDA", status: "OPEN", entry_premium: 2.0, last_mark: 2.1 }],
+    covered_elsewhere: ["SPY"],
+    allocation: [{ ticker: "NVDA", role: "PRIMARY", sizing: "FULL" }],
+  };
+  assert.equal(isZeroDteBoardPayload(payload), true);
+});
+
+test("isZeroDteBoardPayload: as_of must be a PARSEABLE date string, not just any string", () => {
+  const base = emptySimBoardPayload() as unknown as Record<string, unknown>;
+  assert.equal(isZeroDteBoardPayload({ ...base, as_of: "2026-07-25T10:00:00.000Z" }), true);
+  assert.equal(isZeroDteBoardPayload({ ...base, as_of: "not-a-date" }), false);
+  assert.equal(isZeroDteBoardPayload({ ...base, as_of: 1234567890 }), false, "as_of must be a string");
+});
+
+test("emptySimBoardPayload is available:true, governor null, and every collection empty", () => {
+  const p = emptySimBoardPayload();
+  assert.equal(p.available, true);
+  assert.equal(p.governor, null);
+  assert.deepEqual(p.setups, []);
+  assert.deepEqual(p.ledger, []);
+  assert.deepEqual(p.covered_elsewhere, []);
+  assert.deepEqual(p.allocation, []);
+  assert.equal(typeof p.session.heat, "object");
+});
+
 // ── Isolation invariants ────────────────────────────────────────────────────────────
 test("sim key is isolated from the member snapshot key", () => {
   assert.equal(SIM_BOARD_SNAPSHOT_KEY, "zerodte:board:snapshot:sim:v1");

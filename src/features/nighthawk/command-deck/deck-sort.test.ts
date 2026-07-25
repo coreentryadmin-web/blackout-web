@@ -70,3 +70,38 @@ test("sortPlaysForDeck: empty and single-band inputs are safe", () => {
   const allOpen = [play("a", "OPEN"), play("b", "TRIM")];
   assert.deepEqual(ids(sortPlaysForDeck(allOpen)), ["a", "b"]);
 });
+
+test("sortPlaysForDeck: fully interleaved 6-status input — every band split correctly, order preserved within", () => {
+  // A deliberately shuffled score-ranked list touching all six statuses more than once.
+  const input = [
+    play("c1", "CLOSED"),
+    play("h1", "HOLD"),
+    play("s1", "SKIP"),
+    play("o1", "OPEN"),
+    play("w1", "WATCH"),
+    play("t1", "TRIM"),
+    play("c2", "CLOSED"),
+    play("o2", "OPEN"),
+    play("w2", "WATCH"),
+  ];
+  const out = sortPlaysForDeck(input);
+  // Working band (OPEN/HOLD/TRIM) in incoming order, then middle (WATCH/SKIP), then CLOSED — all stable.
+  assert.deepEqual(ids(out), ["h1", "o1", "t1", "o2", "s1", "w1", "w2", "c1", "c2"]);
+});
+
+test("sortPlaysForDeck: WATCH and SKIP share the middle band and keep their incoming relative order", () => {
+  const input = [play("s1", "SKIP"), play("w1", "WATCH"), play("s2", "SKIP"), play("w2", "WATCH")];
+  // No working or closed rows → the whole list is the middle band, untouched.
+  assert.deepEqual(ids(sortPlaysForDeck(input)), ["s1", "w1", "s2", "w2"]);
+});
+
+test("sortPlaysForDeck: a stable tiebreak — same status, same score comes out in insertion order", () => {
+  // Three OPEN rows given in a specific order must survive verbatim (no re-sort by score/id).
+  const input = [play("z", "OPEN"), play("a", "OPEN"), play("m", "OPEN")];
+  assert.deepEqual(ids(sortPlaysForDeck(input)), ["z", "a", "m"]);
+});
+
+test("sortPlaysForDeck: all-CLOSED input is returned in order (bottom band, stable)", () => {
+  const input = [play("c1", "CLOSED"), play("c2", "CLOSED"), play("c3", "CLOSED")];
+  assert.deepEqual(ids(sortPlaysForDeck(input)), ["c1", "c2", "c3"]);
+});

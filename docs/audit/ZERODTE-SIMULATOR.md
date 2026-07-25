@@ -21,7 +21,8 @@ Feed board frames on a clock with the admin sim feeder (authenticates as a tempo
 admin Clerk user, deleted in a `finally`):
 
 ```bash
-# Full synthetic RTH arc — the canonical 5-play demo, plays in ~6–7 min:
+# Full synthetic RTH arc — a RENDER-STATE SWEEP (every board state a member can see; see the
+# coverage matrix below). The five canonical names lead:
 #   NVDA long/FLOW → +80% (TRIM) · TSLA long/BREAKOUT → +40% · META long → +30% target
 #   SPX iron CONDOR/PIN → +76% time_stop · AMD long put/FLOW → −50% STOPPED
 npm run sim:feed -- --synthetic --base=https://blackouttrades.com
@@ -38,6 +39,36 @@ npm run sim:feed -- --synthetic --dry-run
 
 Secrets are read from env only (`CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`)
 and never printed. The feeder prints the exact watch URL on start.
+
+### Render-state coverage matrix (`--synthetic` as a visual test harness)
+
+`--synthetic` is a **render-state sweep**: every board state a member can see is exercised
+by at least one play, so watching the arc (or reading a mid-session frame with `--dry-run`)
+walks the whole UI surface. `--dry-run` also structurally validates every generated frame
+against the same `isZeroDteBoardPayload` contract the admin ingest enforces and reports
+`invalid frames: 0` (plus a one-line coverage summary of the fullest frame).
+
+| Render state | Play | How it's produced |
+|---|---|---|
+| **WATCH** (pre-commit, never commits) | `QQQ` | a `setups` row, gate `WATCH`, no ledger row |
+| **SKIP** (evaluated, gate-blocked) | `IWM` | a `setups` row, gate `BLOCKED` |
+| **OPEN** (fresh, in the ±10% entry band) | `GOOGL` | mark hovers within ±10% of entry all session |
+| **HOLD** (working, out of the entry band) | `TSLA`, `COIN`, `F`, `NFLX`, `SMCI`, `SNOW` | mark past the band, not closed |
+| **TRIM** (post-target, sticky) | `NVDA` | rides to +80%, latched TRIM |
+| **CLOSED · target** | `META` | `closed_reason: 'target'`, +30% |
+| **CLOSED · ratchet** | `AMZN` | `closed_reason: 'ratchet'`, ratchet floor exit +50% |
+| **CLOSED · time_stop** (directional) | `MSFT` | `closed_reason: 'time_stop'` at 15:30 |
+| **CLOSED · time_stop** (condor winner) | `SPX` | PIN condor, credit decays → +76% time_stop |
+| **CLOSED · stopped** (directional) | `AMD` | `closed_reason: 'stopped'`, pinned −50% |
+| **CLOSED · stopped** (condor breach) | `SPXW` | PIN condor breached → −50% |
+| **breakeven (~0%)** | `COIN` | mark hovers on entry, P&L ~0% |
+| **tiny premium ($0.05-ish)** | `F` | entry `0.05` (sub-dime formatting) |
+| **huge premium** | `NFLX` | entry `42.0` (wide-number formatting) |
+| **STALE mark** (staleness dim) | `SMCI` | `mark_as_of` ~90s old (> `ZERODTE_MARK_STALE_MS`) |
+| **NO mark ("—")** | `SNOW` | `last_mark: null`, P&L null |
+
+The condor rows carry `is_condor: true` on the ledger row. Add a state → add a play (or a
+`setups` row) and it shows up in the `--dry-run` coverage summary automatically.
 
 ## Reset
 
