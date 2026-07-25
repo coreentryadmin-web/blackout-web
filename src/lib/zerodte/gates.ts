@@ -145,6 +145,13 @@ export const G7_MACRO_FAIL_CLOSED_ENABLED = process.env.ZERODTE_G7_FAIL_CLOSED !
  *  default; set ZERODTE_G11_FAIL_CLOSED=0 to disable (e.g. if a UW earnings-feed outage is
  *  emptying the board and the desk chooses to trade blind to the print calendar). */
 export const G11_EARNINGS_FAIL_CLOSED_ENABLED = process.env.ZERODTE_G11_FAIL_CLOSED !== "0";
+/** Phase-0 firewall kill-switch (D2): G-11 fails a fresh commit closed when the trading-halt
+ *  FEED is cold — i.e. BOTH the UW and LULD halt sources read stale (see
+ *  isTradingHaltChannelStale, uw-socket.ts). Distinct from an ACTIVE stored halt (that always
+ *  blocks regardless of this flag). ON by default; set ZERODTE_G11_HALT_FAIL_CLOSED=0 to disable
+ *  (e.g. if a genuine halt-feed outage is emptying the board and the desk chooses to trade blind
+ *  to halts). Ops revert without a redeploy — mirrors G4/G7/G11-earnings. */
+export const G11_HALT_FAIL_CLOSED_ENABLED = process.env.ZERODTE_G11_HALT_FAIL_CLOSED !== "0";
 /** Products that stay tradable (at half size) in an extreme-VIX regime — broad
  *  index options + their ETF wrappers, where 0DTE liquidity survives a vol spike. */
 export const INDEX_ETF_TICKERS = new Set([
@@ -277,6 +284,12 @@ export type ZeroDteGateInput = {
   intradayConflict?: boolean;
   /** G-11: UW trading halt on the underlying. */
   halted?: boolean;
+  /** Phase-0 firewall (D2): TRUE only when the trading-halt FEED is cold — BOTH the UW and LULD
+   *  halt sources read stale (isTradingHaltChannelStale, uw-socket.ts). Distinct from `halted`
+   *  (an ACTIVE stored halt), which always blocks. A cold feed can't rule out a halted underlying,
+   *  so when true (and G11-halt fail-closed is enabled) G-11 holds a fresh commit closed rather
+   *  than commit into a possible halt on a blind feed. Mirrors `earningsUnavailable`. */
+  haltFeedStale?: boolean;
   /** G-11: reports today or next session. */
   earnings?: EarningsFlag | null;
   /** Phase-0 firewall: TRUE only when scan.ts ATTEMPTED the market-wide earnings read and it
@@ -603,6 +616,28 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     blocks.push({
       code: "halted",
       reason: "Underlying is halted — no new 0DTE commits until trading resumes.",
+      threshold: null,
+      unlock_et: null,
+    });
+  } else if (input.haltFeedStale === true && G11_HALT_FAIL_CLOSED_ENABLED) {
+    // ── G-11 HALT-FEED FAIL-CLOSED (Phase-0 firewall, D2) ────────────────────────────────
+    // No ACTIVE stored halt, but the halt FEED itself is cold: BOTH the UW and LULD halt
+    // sources read stale (isTradingHaltChannelStale, uw-socket.ts). scan.ts previously read
+    // the board's halt with failClosedOnStale:false, so a dark/dead halt socket (post-deploy,
+    // or died mid-session) left the store empty and a HALTED underlying could commit a fresh
+    // 0DTE — the exact market-open danger. An empty halt store on a cold feed is NOT "no halts";
+    // it's "we can't see halts." Fail closed: HOLD fresh commits until the halt channel recovers.
+    // A distinct code (not `halted`) keeps observability honest — a stale FEED is a data-plane
+    // outage, not a live halt on this name. Direction-agnostic → applies to BOTH lanes exactly
+    // like the active-halt block above. (staleness is only ever set true on a genuine full-socket
+    // + LULD outage — a healthy socket streaming flow/price/tide reads FRESH via the cross-channel
+    // freshest-message proxy, so this does NOT starve the board on a normal quiet-halt session.)
+    blocks.push({
+      code: "halt_feed_stale",
+      reason:
+        "Trading-halt feed cold (UW + LULD halt sources stale) — a fresh 0DTE commit fails " +
+        "closed rather than trade blind past a possible halt, since an empty halt store on a " +
+        "dead feed is not the same as \"no halts\" (G-11 fail-closed).",
       threshold: null,
       unlock_et: null,
     });

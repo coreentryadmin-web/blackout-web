@@ -64,6 +64,79 @@ explicitly preserved as a COMMIT (test 48) so a quiet earnings day never empties
 **Status.** Fixed on `fix/d1-earnings-fail-closed`; DRAFT PR opened. **HOLD for explicit operator go before
 prod merge** ([TRADES] deploy-risky per CLAUDE.md — changes what commits).
 
+## 2026-07-25 — [D2] Halt/LULD gate (G-11) failed OPEN on a cold halt feed — a dark/dead halt socket left the store empty and a HALTED underlying could commit a fresh 0DTE — FIXED (fail-closed `haltFeedStale` firewall)
+
+**Severity.** High (correctness / TRADES). DANGER item **D2** from `docs/audit/NIGHTHAWK-DATA-PROVENANCE.md`
+(market-open danger list). Post-deploy (halt socket not yet connected) or on a mid-session socket death, the
+0DTE board could open a fresh 0DTE straight into a HALTED name — the store is empty precisely because the
+feed is dark, and an empty halt store on a dead feed is NOT "no halts." **STACKED on D1 (#1102).**
+**[TRADES] — DEPLOY-RISKY, HOLD for explicit operator go before prod merge.** Strictly safer (only ever
+WITHHOLDS a commit), but it changes what commits, so it holds on the branch until the operator says go.
+
+**Root cause.** In `src/lib/zerodte/scan.ts` (~546-562, pre-D2) the board halt IIFE read
+`shouldBlockForTradingHalt([t], { failClosedOnStale: false })` — `failClosedOnStale:false` means only an
+ACTIVELY-stored halt blocks; a stale/cold/dead halt channel does NOT. So when the UW halt socket hadn't
+connected (post-deploy) or died mid-session, the in-memory `tradingHaltsStore` was empty, every candidate
+read `halted:false`, and G-11 found nothing to block → committed. The desk/dossier path already used the
+fail-closed default. This is the exact inverse of the VIX/macro/earnings firewalls the codebase already had.
+
+**Why the fix is SAFE (no board-starvation — the critical property).** `shouldBlockForTradingHalt` with
+fail-closed-on-stale calls `isTradingHaltChannelStale()` (`uw-socket.ts:1018`), which is stale ONLY when BOTH
+the UW and LULD sources are stale. `isUwHaltSourceStale` (`:1010`) reads FRESH if `isUwChannelFresh("trading_halts")`
+OR `effectiveFreshestUwMessageAt()` is within maxAge — i.e. the **freshest message across ALL UW channels**,
+NOT the event-only `trading_halts` channel's naturally-silent heartbeat. On a healthy socket (flow/price/tide
+streaming constantly during RTH) the halt source therefore reads FRESH, so the fix does NOT block. It trips
+ONLY on a genuine full-socket + LULD outage — exactly when you want to hold. This is the "edition-builder
+trap" the code comments warn about, and it is pinned by tests (below).
+
+**Evidence.** Fail-before/pass-after. Reverting ONLY the three source files to the D1 base while keeping the
+D2 tests:
+```
+=== OLD behavior (D1 base sources) ===              === POST-FIX (D2) ===
+gates.test.ts:                                       gates.test.ts:
+not ok 50 - D2 cold halt feed fails closed           ok 50 - D2 cold halt feed fails closed
+ok   51 - D2 healthy feed still COMMITS (no starve)  ok 51 - D2 healthy feed still COMMITS (no starve)
+ok   52 - D2 active halt fires `halted` not stale    ok 52 - D2 active halt fires `halted` not stale
+# pass 69 # fail 1                                    # pass 70 # fail 0
+scan.test.ts:                                        scan.test.ts:
+not ok 16 - COLD halt feed → halt_feed_stale         ok 16 - COLD halt feed → halt_feed_stale
+ok   17 - HEALTHY feed adds NO halt_feed_stale        ok 17 - HEALTHY feed adds NO halt_feed_stale
+# pass 18 # fail 1                                    # pass 19 # fail 0
+```
+gates test 50 + scan test 16 prove the OLD `failClosedOnStale:false` code COMMITTED a fresh candidate past a
+dead halt feed. **The no-starve tests (gate 51 + scan 17) are the important ones**: a HEALTHY feed (quiet
+halt channel, socket live → `haltFeedStale=false`) never manufactures a block and still COMMITS — the fix
+does not empty the board on a normal day. gates test 52 proves an ACTIVE halt still fires the distinct
+`halted` code (never double-firing `halt_feed_stale`). `tsc --noEmit` clean; `trading-halts-expiry` 7/0,
+`gates-replay` 9/0, `skip-grading` 11/0 regression green.
+
+**Fix.** Strictly ADDITIVE, mirroring `earningsUnavailable` (D1) exactly:
+- `scan.ts` halt IIFE now returns `{ active, feedStale }` — `active` is the per-ticker stored-halt set
+  (unchanged `failClosedOnStale:false` read); `feedStale` is the GLOBAL `isTradingHaltChannelStale()` read
+  (both UW+LULD cold). Derived `freshHaltFeedStale` is threaded into `ZeroDteGateInput.haltFeedStale` for
+  EVERY committable rank. On a thrown import, `feedStale` stays false (pre-D2 behavior — a crash must not
+  empty the board).
+- `gates.ts` G-11 gains an `else if (input.haltFeedStale === true && G11_HALT_FAIL_CLOSED_ENABLED)` branch
+  pushing a distinct **`halt_feed_stale`** block (added to the `ZeroDteGateFailure` union in `board.ts`
+  beside `earnings_unavailable`). New env kill-switch `G11_HALT_FAIL_CLOSED_ENABLED`
+  (`ZERODTE_G11_HALT_FAIL_CLOSED=0` to disable), matching G-4/G-7/G-11-earnings.
+
+**Distinct code vs reusing `halted`.** Chose a DISTINCT `halt_feed_stale` code (not the `halted` path): a
+stale FEED is a data-plane outage, not a live halt on this specific name — conflating them would mislabel a
+socket outage as a per-ticker halt in the rejection ledger and on the WATCH/SKIP card. The surface added is
+tiny (one union member + one `else if`), mirroring the D1 `earnings_unavailable` shape, so the observability
+gain is worth it.
+
+**Blast radius.** Two lanes read the halt: (1) the board scan (`scan.ts` batch G-11) — the fixed path; (2)
+the desk/dossier path, which ALREADY used `shouldBlockForTradingHalt`'s fail-closed-on-stale default — so D2
+brings the board into line with the desk, it does not introduce new semantics. The `else if` on the
+active-halt block guarantees mutual exclusivity (an active `halted` wins; no double-block). Direction-agnostic
+(applies to BOTH directional and condor lanes, like the active-halt block) — a halt is side-independent, so
+NO `couldBlock` narrowing. No other call site was changed.
+
+**Status.** Fixed on `fix/d2-halt-fail-closed` (base `fix/d1-earnings-fail-closed`, STACKED); DRAFT PR opened.
+**HOLD for explicit operator go before prod merge** ([TRADES] deploy-risky per CLAUDE.md — changes what commits).
+
 ## 2026-07-25 — [WS-04] Malformed-quote books passed the liquidity gate as "liquid" — percent-spread check failed OPEN on zero/null-bid, crossed, and locked markets — FIXED (fail-closed quote-validity predicate)
 
 **Severity.** High (correctness / TRADES). A structurally malformed option quote could be treated as a

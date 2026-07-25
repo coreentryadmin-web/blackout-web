@@ -50,6 +50,9 @@ const state = {
   // snapshot readGridEarnings returns, and the set of tickers the halt store reports.
   earningsItems: [] as Array<Record<string, unknown>>,
   haltedTickers: new Set<string>(),
+  // D2 firewall wiring: the halt FEED's staleness (both UW + LULD halt sources cold). Distinct
+  // from haltedTickers (an ACTIVE stored halt). isTradingHaltChannelStale() reads this.
+  haltFeedStale: false,
 };
 
 function resetState() {
@@ -69,6 +72,7 @@ function resetState() {
   state.rejectionRows = [];
   state.earningsItems = [];
   state.haltedTickers = new Set();
+  state.haltFeedStale = false;
 }
 
 // scan.ts's exit-engine wiring (./exit-sync) imports ./live-marks, which reaches
@@ -187,6 +191,12 @@ mock.module("../ws/uw-socket", {
       const hit = symbols.some((s) => state.haltedTickers.has(s.toUpperCase()));
       return { block: hit, reason: hit ? "halted" : null };
     },
+    // D2: the halt-feed staleness read (both UW + LULD halt sources cold). scan.ts surfaces this
+    // as haltFeedStale so G-11 fails a fresh commit closed on a dead halt socket (empty store ≠
+    // "no halts"). Note this mock's shouldBlockForTradingHalt ignores failClosedOnStale (returns
+    // active-halt only), exactly like the real read scan.ts does with failClosedOnStale:false —
+    // so the OLD scan (which never read staleness) committed here, proving the fail-before.
+    isTradingHaltChannelStale: () => state.haltFeedStale,
     // WS-21: scan.ts reads the live source-health snapshot for the (default-off) recovery gate.
     // The mock must mirror the real module's surface; a benign "HEALTHY" keeps the gate inert.
     getFlowSourceHealthState: () => "HEALTHY",
@@ -858,6 +868,107 @@ test("scanZeroDteBoard: an earnings-today name at RANK 7 is blocked by G-11 (bat
     "G-11 earnings must fire for a rank-7 name — pre-fix, ranks 6-10 got earnings:null and committed blind"
   );
   assert.equal(ernz.gate!.verdict, "BLOCKED");
+});
+
+// ── D2 firewall: a COLD halt FEED fails a fresh commit closed for EVERY committable rank ──────
+// Root cause: attachGateVerdicts read the board halt with failClosedOnStale:false, so a dark/dead
+// halt socket (post-deploy, or died mid-session) left the store empty and a HALTED underlying could
+// commit a fresh 0DTE. The fix ALSO surfaces isTradingHaltChannelStale() → haltFeedStale, and G-11
+// fails the fresh commit closed under a distinct `halt_feed_stale` code. This drives the REAL
+// scanZeroDteBoard pipeline (not a hand-built snapshot) so it exercises the exact read seam.
+//
+// FAIL-BEFORE: the mocked shouldBlockForTradingHalt returns active-halt ONLY (ignores stale) —
+// exactly like scan.ts's failClosedOnStale:false read — so the OLD scan (which never read
+// staleness) produced NO halt_feed_stale block here and this NVDA candidate ran the gates as if
+// the halt feed were fine. PASS-AFTER: haltFeedStale=true now blocks it.
+//
+// HERMETICITY: scan.ts reads the halt inside a Promise.all via a CONCURRENT dynamic
+// import("@/lib/ws/uw-socket"), and its catch fails OPEN (feedStale:false) by design (a crash must
+// not empty the board). Under full-suite CPU contention the experimental module-mock loader can
+// intermittently reject that concurrent import → the catch silently drops the block → this
+// assertion flakes (the D1 earnings sibling doesn't, because ITS catch fails CLOSED). We pin it by
+// PRE-WARMING the mocked module below so the in-scan import is a pure module-cache hit (no loader
+// round-trip, so no race). This is test-only hardening — the D2 production logic is unchanged and
+// the deterministic gate-level contract lives in gates.test.ts "G-11 D2: …".
+test("scanZeroDteBoard: a COLD halt feed (both sources stale) fails a fresh commit closed with `halt_feed_stale`", async () => {
+  resetState();
+  state.haltFeedStale = true; // isTradingHaltChannelStale() → true (UW + LULD both cold)
+  await import("../ws/uw-socket"); // pre-warm the mocked module → in-scan dynamic import hits cache
+  // A clean NVDA 0DTE call print that survives discovery — NO active halt on the name (the store
+  // is empty precisely BECAUSE the feed is dark). Pre-fix this committed blind past the dead feed.
+  state.flows = [
+    {
+      ticker: "NVDA",
+      premium: 2_000_000,
+      option_type: "call",
+      strike: 145,
+      expiry: "2026-07-06", // == mocked todayEt → a live 0DTE expiry
+      dte: 0,
+      alert_rule: "sweep",
+      ask_pct: 75,
+      underlying_price: 140,
+      fill_price: 4.2,
+      open_interest: 100,
+      alerted_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+    },
+  ];
+
+  const { scanZeroDteBoard } = await mod();
+  const result = (await scanZeroDteBoard()) as {
+    setups: Array<{ ticker: string; gate?: { verdict: string; blocks: Array<{ code: string; reason: string }> } | null }>;
+  };
+  const nvda = result.setups.find((s) => s.ticker.toUpperCase() === "NVDA");
+  assert.ok(nvda, "the NVDA flow print must survive discovery into a gated setup");
+  assert.ok(nvda!.gate, "a fresh (un-committed) candidate must get a gate verdict");
+  assert.equal(
+    nvda!.gate!.blocks.some((b) => b.code === "halt_feed_stale"),
+    true,
+    "a cold halt feed must fire G-11 halt_feed_stale — pre-D2 the failClosedOnStale:false read " +
+      "never saw staleness and this candidate committed past a dead halt socket"
+  );
+  assert.equal(nvda!.gate!.verdict, "BLOCKED", "a blind halt feed must not COMMIT a fresh play");
+});
+
+// ── D2 NO-STARVE (the critical safety property): a HEALTHY feed never fires halt_feed_stale ────
+// On a normal session the halt CHANNEL is naturally silent (trading_halts is event-only), but the
+// socket is healthy — flow/price/tide stream constantly — so isTradingHaltChannelStale() reads
+// FRESH via the cross-channel effectiveFreshestUwMessageAt() proxy, NOT the halt channel's own
+// heartbeat. haltFeedStale stays false and the halt firewall adds NOTHING to the gate. This proves
+// the fix does NOT empty the board on a quiet-halt day (the edition-builder trap). (The full
+// COMMIT-through no-starve is pinned at the gate unit in gates.test.ts "G-11 D2: healthy feed …".)
+test("scanZeroDteBoard: a HEALTHY halt feed (quiet channel, socket live) adds NO halt_feed_stale block — no board starvation", async () => {
+  resetState();
+  state.haltFeedStale = false; // healthy socket → isTradingHaltChannelStale() false
+  await import("../ws/uw-socket"); // pre-warm the mocked module (same hermeticity guard as above)
+  state.flows = [
+    {
+      ticker: "NVDA",
+      premium: 2_000_000,
+      option_type: "call",
+      strike: 145,
+      expiry: "2026-07-06",
+      dte: 0,
+      alert_rule: "sweep",
+      ask_pct: 75,
+      underlying_price: 140,
+      fill_price: 4.2,
+      open_interest: 100,
+      alerted_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+    },
+  ];
+
+  const { scanZeroDteBoard } = await mod();
+  const result = (await scanZeroDteBoard()) as {
+    setups: Array<{ ticker: string; gate?: { verdict: string; blocks: Array<{ code: string; reason: string }> } | null }>;
+  };
+  const nvda = result.setups.find((s) => s.ticker.toUpperCase() === "NVDA");
+  assert.ok(nvda, "the NVDA flow print must survive discovery into a gated setup");
+  assert.ok(nvda!.gate, "a fresh (un-committed) candidate must get a gate verdict");
+  assert.equal(
+    nvda!.gate!.blocks.some((b) => b.code === "halt_feed_stale"),
+    false,
+    "a healthy halt feed must NOT manufacture a halt_feed_stale block — the fix must not starve the board"
+  );
 });
 
 // ── WS-01 governor commit atomicity (transactional recount + re-evaluate) ────────────

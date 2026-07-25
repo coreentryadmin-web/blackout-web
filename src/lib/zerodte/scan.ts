@@ -543,21 +543,38 @@ async function attachGateVerdicts(
         return { map: new Map(), unavailable: true }; // fetch/import threw — read failed
       }
     })(),
-    // G-11 halt for ALL fresh candidates: a cheap synchronous read of the in-memory UW
-    // trading-halts store. failClosedOnStale:false MIRRORS the dossier's existing halt
-    // semantics (dossier.ts) — active halts block; a naturally-quiet halt channel must NOT
-    // (that would empty the board, the exact edition-builder trap). Best-effort.
-    (async (): Promise<Set<string>> => {
-      if (freshTickers.length === 0) return new Set();
+    // G-11 halt for ALL fresh candidates. Two DISTINCT signals, never conflated:
+    //   • active (per-ticker): a stored ACTIVE halt on THIS underlying — read with
+    //     failClosedOnStale:false so a naturally-quiet halt channel does NOT flag every name
+    //     (that read only ever returns true on a genuinely stored halt).
+    //   • feedStale (global): the halt FEED itself is cold — isTradingHaltChannelStale() is
+    //     true ONLY when BOTH the UW and LULD halt sources read stale (uw-socket.ts). On a
+    //     healthy socket the UW source reads FRESH via effectiveFreshestUwMessageAt() — the
+    //     freshest message across ALL UW channels (flow/price/tide stream constantly during
+    //     RTH), NOT the event-only trading_halts channel's naturally-silent heartbeat. So this
+    //     trips ONLY on a real full-socket + LULD outage (dark post-deploy, or died mid-session),
+    //     and does NOT starve the board on a normal quiet-halt day (the edition-builder trap).
+    // D2 fix: the OLD code read only `active` (failClosedOnStale:false), so a cold/dead halt
+    // feed left the store empty and a HALTED underlying could commit a fresh 0DTE. We now ALSO
+    // surface feedStale → gates.ts G-11 fails the fresh commit closed (behind the
+    // ZERODTE_G11_HALT_FAIL_CLOSED kill-switch). This matches the desk/dossier default, which
+    // already reads the halt with fail-closed-on-stale semantics. Best-effort — a thrown import
+    // must not empty the board, so on catch feedStale stays false (the pre-D2 behavior).
+    (async (): Promise<{ active: Set<string>; feedStale: boolean }> => {
+      if (freshTickers.length === 0) return { active: new Set(), feedStale: false };
       try {
-        const { shouldBlockForTradingHalt } = await import("@/lib/ws/uw-socket");
-        const halted = new Set<string>();
+        // Relative specifier (not the "@/..." alias) so this dynamic import resolves to the SAME
+        // module key the test harness mocks (mock.module("../ws/uw-socket")) — an alias vs relative
+        // mismatch forces an extra resolution step that the experimental module-mock loader can lose
+        // under concurrent-import contention, silently dropping the block (CI flake). Identical module.
+        const { shouldBlockForTradingHalt, isTradingHaltChannelStale } = await import("../ws/uw-socket");
+        const active = new Set<string>();
         for (const t of freshTickers) {
-          if (shouldBlockForTradingHalt([t], { failClosedOnStale: false }).block) halted.add(t);
+          if (shouldBlockForTradingHalt([t], { failClosedOnStale: false }).block) active.add(t);
         }
-        return halted;
+        return { active, feedStale: isTradingHaltChannelStale() };
       } catch {
-        return new Set();
+        return { active: new Set(), feedStale: false };
       }
     })(),
   ]);
@@ -570,6 +587,11 @@ async function attachGateVerdicts(
   // unavailable=false and commits normally). G-11 fails a fresh commit closed on TRUE.
   const freshEarnings = freshEarningsResult.map;
   const earningsUnavailable = freshEarningsResult.unavailable;
+  // D2 firewall: the halt read yields a per-ticker ACTIVE-halt set plus one GLOBAL feed-stale
+  // flag (both UW + LULD halt sources cold). freshHaltFeedStale gates G-11's halt_feed_stale
+  // fail-closed for EVERY committable candidate (see gates.ts G11_HALT_FAIL_CLOSED_ENABLED).
+  const freshHaltActive = freshHalts.active;
+  const freshHaltFeedStale = freshHalts.feedStale;
 
   // Pre-warm the vector-full-state cache for fresh (non-committed) tickers so the
   // sequential Cortex evaluation below hits warm reads (~200ms) instead of cold
@@ -622,7 +644,11 @@ async function attachGateVerdicts(
       // (computed for all fresh tickers above) over the dossier-only flags that ranks
       // 6-10 never receive, so no halted / earnings-today name commits regardless of rank.
       // The dossier's own read (top-5) is kept as the fallback where the batch was empty.
-      halted: freshHalts.has(s.ticker.toUpperCase()) || s.halted === true,
+      halted: freshHaltActive.has(s.ticker.toUpperCase()) || s.halted === true,
+      // D2 firewall: G-11 fails a fresh commit closed when the halt FEED is cold (BOTH UW + LULD
+      // halt sources stale) — a dead halt socket can't rule out a halted underlying, and an empty
+      // halt store on a dead feed ≠ "no halts". Global (not per-ticker); mirrors earningsUnavailable.
+      haltFeedStale: freshHaltFeedStale,
       earnings: freshEarnings.get(s.ticker.toUpperCase()) ?? s.earnings ?? null,
       // D1 firewall: G-11 fails a fresh commit closed when the market-wide earnings read
       // FAILED (timeout/null/throw) — a blind earnings feed can't rule out a print today,
