@@ -541,6 +541,7 @@ export type ZeroDteGateFailure =
   // never spuriously empties the board. Each is env-overridable (see gates.ts).
   | "vix_unavailable" // G-4 fail-closed: day-open VIX unreadable AND a present VIX could have blocked
   | "macro_unavailable" // G-7 fail-closed: macro-calendar FETCH failed (not "zero events") — can't rule out CPI/FOMC/NFP
+  | "earnings_unavailable" // G-11 fail-closed: earnings FEED read failed (not "none report today") — can't rule out a print today
   | "max_otm_pct" // far-OTM lotto cap: top strike is more than SETUP_MAX_OTM_PCT% OTM
   // ── WS-21 source-recovery gate (default-OFF; ZERODTE_REQUIRE_HEALTHY_SOURCE=1 to arm) ──────
   // Only fires when the flag is ON and the WS data source is mid-recovery (not yet HEALTHY): a

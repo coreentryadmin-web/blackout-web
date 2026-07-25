@@ -5,6 +5,65 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-25 — [D1] Earnings gate (G-11) failed OPEN — a failed/timed-out earnings feed read looked identical to "no earnings" and let a name reporting today commit a fresh 0DTE — FIXED (fail-closed `earningsUnavailable` firewall)
+
+**Severity.** High (correctness / TRADES). DANGER item **D1** from `docs/audit/NIGHTHAWK-DATA-PROVENANCE.md`
+(market-open danger list). On a cold earnings snapshot or a busy-open read timeout, the desk could open a
+fresh 0DTE straight into a name printing earnings today (pre/after-hours) — a categorically different trade.
+**[TRADES] — DEPLOY-RISKY, HOLD for explicit operator go before prod merge.** Strictly safer (only ever
+WITHHOLDS a commit), but it changes what commits, so it holds on the branch until the operator says go.
+
+**Root cause.** The G-11 earnings read collapsed THREE distinct outcomes into one "no earnings" signal. In
+`src/lib/zerodte/scan.ts` (~523-533) the earnings IIFE returned a bare `Map<string, EarningsFlag>`:
+`readGridEarnings()` returns `ZeroDteEarningsSnapshot | null` (`earnings.ts:105` — **null already means
+failure**) and `within(p, 2500)` returns null on timeout (`scan.ts:143`), yet BOTH null cases, plus the
+`catch`, returned `new Map()` — indistinguishable from a successful read that genuinely matched no reporter.
+Then `gates.ts` (~598) blocked only when `input.earnings != null`; a failed read → empty map → every
+candidate had `earnings == null` → no earnings block → **committed**. The failed-vs-empty signal already
+EXISTED (the null return); it was just discarded — the exact inverse of the VIX/macro firewall the codebase
+already had (`vixUnavailable`/`macroUnavailable`, `scan.ts:553-554`, `gates.ts:460-492`/`:534-549`).
+
+**Evidence.** Fail-before/pass-after in `gates.test.ts` (three-outcome contract). Neutralizing only the new
+fail-closed block (simulating OLD behavior) while keeping the fixed tests:
+```
+=== OLD behavior (block neutralized) ===     === POST-FIX ===
+not ok 47 - FAILED read fails closed          ok 47 - FAILED read fails closed
+ok 48 - SUCCESS no-reporter still COMMITS     ok 48 - SUCCESS no-reporter still COMMITS
+ok 49 - present flag still fires `earnings`   ok 49 - present flag still fires `earnings`
+# pass 66  # fail 1                           # pass 67  # fail 0
+```
+Test 47 proves the OLD code COMMITTED a fresh candidate on a failed earnings read; 48 proves the fix does
+NOT over-block a successful "none report today" read (the critical no-false-empty case); 49 proves the
+existing present-and-reporting `earnings` block is unregressed. `scan.test.ts` 17/0, `board.test.ts` +
+`rejections.test.ts` 109/0 (with `--experimental-test-module-mocks`); `tsc --noEmit` clean.
+
+**Fix.** Strictly ADDITIVE, mirroring `vixUnavailable`/`macroUnavailable` exactly:
+- `scan.ts` earnings IIFE now returns `{ map, unavailable }` — `unavailable=true` ONLY on a genuine failure
+  (`within` timeout → null, `readGridEarnings()` typed null, or the `catch`); `false` on success (even when
+  the matched map is empty because no candidate reports today) and `false` when `freshTickers` is empty
+  (nothing to check). Derived `earningsUnavailable` is threaded into `ZeroDteGateInput` next to `earnings`.
+- `gates.ts` G-11 gains an `else if (input.earningsUnavailable === true && G11_EARNINGS_FAIL_CLOSED_ENABLED)`
+  branch pushing a distinct **`earnings_unavailable`** block (added to the `ZeroDteGateFailure` union in
+  `board.ts` beside `vix_unavailable`/`macro_unavailable`). New env kill-switch
+  `G11_EARNINGS_FAIL_CLOSED_ENABLED` (`ZERODTE_G11_FAIL_CLOSED=0` to disable), matching the G-4/G-7 switches.
+
+**Blast radius.** The earnings read has a single consumer — the batch G-11 path in `scan.ts` feeding
+`evaluateZeroDteGates` for EVERY committable rank (the fix covers ranks 6-10, not just the dossier top-5).
+The block sits OUTSIDE the `isCondor` branch (same as the present-and-reporting `earnings` block), so it
+applies to BOTH lanes — earnings risk is direction-agnostic, so NO `couldBlock` narrowing is used (unlike
+G-4's index/ETF narrowing, which is VIX-regime-specific). The dossier-only `s.earnings` fallback is
+unchanged. No other call site reads `readGridEarnings` for gating.
+
+**Fix rationale.** Mirror the proven VIX/macro firewall rather than invent a new shape: a failed read is a
+FAILURE, not a benign empty, and must fail closed. Additive `else if` keeps the present-and-reporting
+`earnings` block (and its behavior) byte-for-byte unchanged and guarantees the two branches are mutually
+exclusive (present flag wins; no double-block). Deliberately NOT narrowed by product/direction because any
+name printing today is out of scope for a 0DTE scalp regardless of side. The successful-but-empty case is
+explicitly preserved as a COMMIT (test 48) so a quiet earnings day never empties the board.
+
+**Status.** Fixed on `fix/d1-earnings-fail-closed`; DRAFT PR opened. **HOLD for explicit operator go before
+prod merge** ([TRADES] deploy-risky per CLAUDE.md — changes what commits).
+
 ## 2026-07-25 — [WS-04] Malformed-quote books passed the liquidity gate as "liquid" — percent-spread check failed OPEN on zero/null-bid, crossed, and locked markets — FIXED (fail-closed quote-validity predicate)
 
 **Severity.** High (correctness / TRADES). A structurally malformed option quote could be treated as a
