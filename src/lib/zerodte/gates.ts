@@ -140,6 +140,11 @@ export const G4_VIX_FAIL_CLOSED_ENABLED = process.env.ZERODTE_G4_FAIL_CLOSED !==
  *  FETCH failed (distinct from "fetched, zero events"). ON by default; set
  *  ZERODTE_G7_FAIL_CLOSED=0 to disable. */
 export const G7_MACRO_FAIL_CLOSED_ENABLED = process.env.ZERODTE_G7_FAIL_CLOSED !== "0";
+/** Phase-0 firewall kill-switch: G-11 fails a fresh commit closed when the market-wide
+ *  earnings FEED read failed (distinct from "read succeeded, none report today"). ON by
+ *  default; set ZERODTE_G11_FAIL_CLOSED=0 to disable (e.g. if a UW earnings-feed outage is
+ *  emptying the board and the desk chooses to trade blind to the print calendar). */
+export const G11_EARNINGS_FAIL_CLOSED_ENABLED = process.env.ZERODTE_G11_FAIL_CLOSED !== "0";
 /** Products that stay tradable (at half size) in an extreme-VIX regime — broad
  *  index options + their ETF wrappers, where 0DTE liquidity survives a vol spike. */
 export const INDEX_ETF_TICKERS = new Set([
@@ -274,6 +279,13 @@ export type ZeroDteGateInput = {
   halted?: boolean;
   /** G-11: reports today or next session. */
   earnings?: EarningsFlag | null;
+  /** Phase-0 firewall: TRUE only when scan.ts ATTEMPTED the market-wide earnings read and it
+   *  FAILED (within() timeout, readGridEarnings() returned its typed null, or the fetch threw).
+   *  Distinct from a SUCCESSFUL read that finds no reporter among the candidates — that leaves
+   *  `earnings` null with this UNSET and commits normally. When true (and G11 fail-closed is
+   *  enabled), G-11 holds a fresh commit closed rather than trade into a possible print on a
+   *  blind earnings feed. Mirrors `vixUnavailable`/`macroUnavailable`. */
+  earningsUnavailable?: boolean;
   /** Session date (yyyy-mm-dd) for G-7 macro window math. */
   todayYmd?: string;
   /** G-12: the setup's confluence read (confluence.ts), attached by the scan BEFORE gating.
@@ -601,6 +613,26 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     blocks.push({
       code: "earnings",
       reason: `Earnings ${when} (${input.earnings.report_date ?? "today"}) — 0DTE into a print is a different trade.`,
+      threshold: null,
+      unlock_et: null,
+    });
+  } else if (input.earningsUnavailable === true && G11_EARNINGS_FAIL_CLOSED_ENABLED) {
+    // ── G-11 FRESH-COMMIT FAIL-CLOSED (Phase-0 firewall, D1) ─────────────────────────────
+    // The market-wide earnings FEED read failed (scan.ts distinguishes this from "read
+    // succeeded, none report today" — only a within() timeout / readGridEarnings() null /
+    // thrown fetch sets earningsUnavailable). Previously a failed read yielded an empty map,
+    // so every candidate had earnings == null and this gate found nothing to block — the desk
+    // could open a fresh 0DTE straight into a name printing earnings today on a feed it simply
+    // couldn't see. Fail closed: HOLD fresh commits until the earnings feed is readable.
+    // Applies to BOTH lanes (directional and condor) exactly like the present-and-reporting
+    // block above — earnings risk is direction-agnostic, so no couldBlock narrowing. (A
+    // successful "none today" read never reaches here — earnings is null AND unavailable unset.)
+    blocks.push({
+      code: "earnings_unavailable",
+      reason:
+        "Earnings feed unavailable (read failed) — a fresh 0DTE commit fails closed rather than " +
+        "trade blind into a possible earnings print today, since a failed feed read is not the " +
+        "same as \"no earnings\" (G-11 fail-closed).",
       threshold: null,
       unlock_et: null,
     });

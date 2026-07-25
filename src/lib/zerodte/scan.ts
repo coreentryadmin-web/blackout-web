@@ -479,7 +479,7 @@ async function attachGateVerdicts(
   // and the earnings/halt reads feed G-11 for EVERY committable candidate, not just the
   // dossier-enriched top-5.
   const freshTickers = setups.map((s) => s.ticker.toUpperCase()).filter((t) => !committed.has(t));
-  const [vixDayOpen, slayerLive, nhEcho, macroRead, freshEarnings, freshHalts] = await Promise.all([
+  const [vixDayOpen, slayerLive, nhEcho, macroRead, freshEarningsResult, freshHalts] = await Promise.all([
     within(
       withServerCache<number | null>(`zerodte:vix-open:${today}`, 10 * 60 * 1000, async () => {
         const bars = await fetchAggBars("I:VIX", 1, "day", today, today);
@@ -517,18 +517,30 @@ async function attachGateVerdicts(
     ).catch(() => null as Awaited<ReturnType<typeof macroEventsOnDateLive>> | null),
     // G-11 earnings for ALL fresh candidates (not just the top-5 dossier): one cached
     // market-wide snapshot (warmed by the same zerodte-warm cron), matched to today/next
-    // session. Best-effort — a miss yields an empty map (no earnings flag), never a throw.
-    // Dynamic import mirrors the vector pre-warm below, keeping the heavy earnings graph
-    // out of this module's static import chain.
-    (async (): Promise<Map<string, EarningsFlag>> => {
-      if (freshTickers.length === 0) return new Map();
+    // session. Dynamic import mirrors the vector pre-warm below, keeping the heavy earnings
+    // graph out of this module's static import chain.
+    //
+    // D1 firewall — track the THREE distinct outcomes, never collapsing a failed read into
+    // "no earnings" (the exact G-11 fail-OPEN hole, docs/audit/NIGHTHAWK-DATA-PROVENANCE.md):
+    //   • nothing to check (freshTickers empty)        → unavailable=false, empty map;
+    //   • read SUCCEEDED (snap present, items array)   → unavailable=false, matched map
+    //     (an empty map here means "no candidate reports today" — a SAFE state, commits);
+    //   • read FAILED — within() timeout OR readGridEarnings() returned null (its typed
+    //     failure) OR the catch fired                  → unavailable=TRUE, empty map, and
+    //     G-11 fails a fresh commit closed (gates.ts). A failed feed must NOT look identical
+    //     to "no earnings" — trading into a print on a blind earnings feed is the danger.
+    (async (): Promise<{ map: Map<string, EarningsFlag>; unavailable: boolean }> => {
+      if (freshTickers.length === 0) return { map: new Map(), unavailable: false };
       try {
         const { readGridEarnings } = await import("./earnings");
         const snap = await within(readGridEarnings(), 2_500);
-        if (!snap) return new Map();
-        return matchEarnings(snap.items ?? [], { today, nextDay: nextTradingDayEt(today) });
+        if (!snap) return { map: new Map(), unavailable: true }; // timeout OR typed null failure
+        return {
+          map: matchEarnings(snap.items ?? [], { today, nextDay: nextTradingDayEt(today) }),
+          unavailable: false, // success — an empty match map is genuinely "none report today"
+        };
       } catch {
-        return new Map();
+        return { map: new Map(), unavailable: true }; // fetch/import threw — read failed
       }
     })(),
     // G-11 halt for ALL fresh candidates: a cheap synchronous read of the in-memory UW
@@ -549,10 +561,15 @@ async function attachGateVerdicts(
       }
     })(),
   ]);
-  // Phase-0 firewall signals derived from the reads above (see gates.ts G-4/G-7).
+  // Phase-0 firewall signals derived from the reads above (see gates.ts G-4/G-7/G-11).
   const vixUnavailable = vixDayOpen == null;
   const macroUnavailable = macroRead == null;
   const macroEvents = macroRead ?? [];
+  // D1 firewall: TRUE only when the earnings read was ATTEMPTED-but-FAILED (distinct from
+  // "read succeeded, no candidate reports today" — that keeps the map empty with
+  // unavailable=false and commits normally). G-11 fails a fresh commit closed on TRUE.
+  const freshEarnings = freshEarningsResult.map;
+  const earningsUnavailable = freshEarningsResult.unavailable;
 
   // Pre-warm the vector-full-state cache for fresh (non-committed) tickers so the
   // sequential Cortex evaluation below hits warm reads (~200ms) instead of cold
@@ -607,6 +624,10 @@ async function attachGateVerdicts(
       // The dossier's own read (top-5) is kept as the fallback where the batch was empty.
       halted: freshHalts.has(s.ticker.toUpperCase()) || s.halted === true,
       earnings: freshEarnings.get(s.ticker.toUpperCase()) ?? s.earnings ?? null,
+      // D1 firewall: G-11 fails a fresh commit closed when the market-wide earnings read
+      // FAILED (timeout/null/throw) — a blind earnings feed can't rule out a print today,
+      // and failed-read ≠ no-earnings (mirrors vixUnavailable/macroUnavailable above).
+      earningsUnavailable,
       confluence: s.confluence ?? null, // G-12 (Phase 1): attached just above, before this gate pass
       // WS-21 source-recovery gate. DEFAULT-OFF: requireHealthySourceEnabled() is false unless
       // ZERODTE_REQUIRE_HEALTHY_SOURCE=1, in which case the gate is a no-op inside

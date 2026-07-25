@@ -499,6 +499,47 @@ test("G-11: earnings reporter blocks", () => {
   assert.equal(v.blocks.some((b) => b.code === "earnings"), true);
 });
 
+// ── G-11 earnings fail-CLOSED (D1) — a FAILED earnings read must NOT look like "no earnings".
+// Before the fix, scan.ts collapsed timeout/null/throw into an empty map, so `earnings` was
+// null and the gate committed. Now scan.ts sets earningsUnavailable=true on a failed read and
+// G-11 holds the fresh commit closed. These three cases pin the three-outcome contract.
+
+test("G-11 D1: FAILED earnings read (earningsUnavailable) fails a fresh commit closed", () => {
+  // No earnings flag present (failed read yields an empty map) — the OLD code committed here.
+  const v = evaluateZeroDteGates(input({ earnings: null, earningsUnavailable: true }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "earnings_unavailable"), true);
+  assert.match(
+    v.blocks.find((b) => b.code === "earnings_unavailable")!.reason,
+    /Earnings feed unavailable/
+  );
+});
+
+test("G-11 D1: SUCCESSFUL earnings read with no reporter still COMMITS (not over-blocked)", () => {
+  // Read succeeded, no candidate reports today → earnings null AND earningsUnavailable unset/false.
+  const commits = evaluateZeroDteGates(input({ earnings: null, earningsUnavailable: false }));
+  assert.equal(commits.verdict, "COMMIT");
+  assert.equal(commits.blocks.some((b) => b.code === "earnings_unavailable"), false);
+  // Field entirely absent (caller never set it) must behave identically — no spurious block.
+  const absent = evaluateZeroDteGates(input({ earnings: null }));
+  assert.equal(absent.verdict, "COMMIT");
+  assert.equal(absent.blocks.some((b) => b.code === "earnings_unavailable"), false);
+});
+
+test("G-11 D1: present earnings flag still fires `earnings` (unregressed by the fail-closed add)", () => {
+  // Reporting-today AND an unavailable flag: the present-and-reporting block wins, and the
+  // fail-closed branch (else-if) never double-fires.
+  const v = evaluateZeroDteGates(
+    input({
+      earnings: { when: "premarket", report_date: "2026-07-13", expected_move_pct: 8 },
+      earningsUnavailable: true,
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "earnings"), true);
+  assert.equal(v.blocks.some((b) => b.code === "earnings_unavailable"), false);
+});
+
 test("G-7: macro hard-block during CPI window", () => {
   const v = evaluateZeroDteGates(
     input({
