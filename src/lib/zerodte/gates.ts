@@ -30,6 +30,7 @@ import type { EarningsFlag, EnrichedZeroDteSetup, PlayType, ZeroDteGateFailure, 
 import { evaluateZeroDteGovernor, type GovernorOpenPlan, type GovernorSnapshot } from "./governor";
 import type { ContractPlan } from "./plan";
 import type { ZeroDteConfluence } from "./confluence";
+import { commitAuthorizedBySourceHealth, type SourceHealthState } from "@/lib/ws/source-health";
 import { EARLY_ENTRY_WINDOW_END_ET_MINUTES } from "./confluence";
 import { evaluateMacroHardBlock, hasHighImpactMacroEvent, type MacroEventLike } from "@/lib/macro-hard-block";
 import { condorLiquidityGateBlocks, condorRangeBreaking, type CondorPlan } from "./condor";
@@ -279,6 +280,15 @@ export type ZeroDteGateInput = {
    *  Null/undefined = no read available → G-12 fails OPEN (never manufactures a block from an
    *  unmeasured factor; the live scan always supplies one). */
   confluence?: ZeroDteConfluence | null;
+  /** WS-21 source-recovery gate. DEFAULT-OFF: the scan passes
+   *  requireHealthySourceEnabled() (ZERODTE_REQUIRE_HEALTHY_SOURCE=1). When false/undefined the
+   *  gate is a NO-OP and the existing freshness thresholds still govern — commit behavior is
+   *  byte-for-byte unchanged. When true, a fresh commit is withheld unless `sourceHealth` is
+   *  HEALTHY (the WS source has reconnected, reconciled its gap, and warmed). */
+  requireHealthySource?: boolean;
+  /** WS-21: the live WS source health state (ws/source-health.ts). Only consulted when
+   *  `requireHealthySource` is true; null/undefined → the gate never fires. */
+  sourceHealth?: SourceHealthState | null;
 };
 
 /**
@@ -643,6 +653,31 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
           `${input.direction === "long" ? "Long" : "Short"} opposes ${conflictSources.join(" and ")} — ` +
           `score ${Math.round(input.score)} needs ≥${CONFLICT_SCORE_FLOOR} to override a cross-system conflict.`,
         threshold: CONFLICT_SCORE_FLOOR,
+        unlock_et: null,
+      });
+    }
+  }
+
+  // WS-21 — source-recovery gate. DEFAULT-OFF: `requireHealthySource` is only true when
+  // ZERODTE_REQUIRE_HEALTHY_SOURCE=1 (the scan passes requireHealthySourceEnabled()). When the flag
+  // is off this branch never pushes a block — the existing freshness thresholds (G-1 tape staleness,
+  // the flow-liveness heartbeat, the halt-channel staleness gate) still fully govern, so live commit
+  // behavior is byte-for-byte unchanged. When ON, a fresh commit off a source that is still
+  // recovering (OFFLINE/RECOVERING/CATCHING_UP/WARM — a reconnect gap that may not be reconciled) is
+  // withheld until the source warms back to HEALTHY. Applies to directional AND condor structures:
+  // both read the same recovering source.
+  if (input.requireHealthySource && input.sourceHealth != null) {
+    const auth = commitAuthorizedBySourceHealth({
+      state: input.sourceHealth,
+      requireHealthy: true,
+    });
+    if (!auth.authorized) {
+      blocks.push({
+        code: "source_recovering",
+        reason:
+          auth.reason ??
+          "Data source recovering — new commits withheld until the source warms back to HEALTHY.",
+        threshold: null,
         unlock_et: null,
       });
     }

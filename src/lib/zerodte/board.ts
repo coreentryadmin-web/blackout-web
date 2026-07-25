@@ -539,6 +539,11 @@ export type ZeroDteGateFailure =
   | "vix_unavailable" // G-4 fail-closed: day-open VIX unreadable AND a present VIX could have blocked
   | "macro_unavailable" // G-7 fail-closed: macro-calendar FETCH failed (not "zero events") — can't rule out CPI/FOMC/NFP
   | "max_otm_pct" // far-OTM lotto cap: top strike is more than SETUP_MAX_OTM_PCT% OTM
+  // ── WS-21 source-recovery gate (default-OFF; ZERODTE_REQUIRE_HEALTHY_SOURCE=1 to arm) ──────
+  // Only fires when the flag is ON and the WS data source is mid-recovery (not yet HEALTHY): a
+  // reconnect gap may not be reconciled, so a fresh source-dependent commit is withheld. Flag OFF
+  // (default) ⇒ this code is never produced and the existing freshness thresholds still govern.
+  | "source_recovering"
   // ── Night Hawk Cortex layer (./cortex-gate.ts, NIGHTHAWK-CORTEX-DESIGN.md §2) —
   // evaluated on gate SURVIVORS only, i.e. only after every hard gate above passed.
   // The <source> suffix names the Cortex source that vetoed (e.g. "cortex_veto:flow-quality").

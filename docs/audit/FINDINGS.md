@@ -114,6 +114,48 @@ bucketing, full snapshot incl. ungradeable-rate=0.25 and null-rate for a zero-co
 `scan.test.ts` (the COMMIT test asserts the frozen manifest has all 7 keys, real ages for flow/underlying,
 null for the rest) → 6/6 + 15/15 pass; `entry-context.test.ts` 8/8, `admin-zerodte-health.test.ts` 12/12
 unaffected.
+## 2026-07-25 — [WS-21/22] WS reconciliation + recovery health states + amended-print handling (FLAG-OFF)
+
+**Severity.** SEV-4 (hardening / capability; ZERO live behavior change until graduated).
+
+**What.** Adds — all behind a DEFAULT-OFF flag — reconnect gap reconciliation, an explicit source
+recovery health state machine, a commit-authorization gate, a dead-letter path, and amended-print
+supersede handling. New pure modules: `src/lib/ws/source-health.ts`, `src/lib/ws/flow-reconciliation.ts`,
+`src/lib/flow-dlq.ts`, `src/lib/flow-amendment.ts` (each with a `*.test.ts`). Wired into
+`src/lib/ws/uw-socket.ts` (lifecycle transitions, reconnect reconciliation, per-row DLQ, admin health),
+`src/lib/zerodte/gates.ts` (the gate), `board.ts` (`source_recovering` failure code), `scan.ts` (passes
+the flag), `pane.ts` (label).
+
+**Root cause addressed.** On a WS drop+reconnect the in-process live view has a GAP (frames delivered
+during the outage were never seen), yet the desk would keep committing off it. Separately, an amended UW
+print lands as a new `alert_id` and double-counts the underlying event in aggregates; and an unprocessable
+message was silently swallowed with no operator signal.
+
+**WS-21.** Source health lifecycle OFFLINE→RECOVERING→CATCHING_UP→WARM→HEALTHY. On reconnect (gate armed
+only) a REST backfill runs from `last_confirmed_provider_ts − overlap_buffer`, deduped by `alert_id`
+(reusing `makeFlowDedup`), and the source is marked HEALTHY only AFTER catch-up + a warm window. The
+commit gate `commitAuthorizedBySourceHealth` withholds new source-dependent commits until HEALTHY —
+**behind `ZERODTE_REQUIRE_HEALTHY_SOURCE` (default OFF)**. Flag off ⇒ gate is a no-op, existing freshness
+thresholds still govern, commit path byte-for-byte unchanged; flag off also means NO reconnect REST
+backfill fires (the existing flow-ingest cursor cron still covers gaps). DLQ (`flow-dlq.ts`) captures
+malformed frames + poison rows best-effort, never blocking ingest.
+
+**WS-22.** `flow-amendment.ts` ledger keys by the underlying-event identity (event_key → amends_id →
+alert_id), SUPERSEDES the prior version on a newer amendment (version, then receipt-time tiebreak), and
+`aggregatePremium()` reads the latest per identity — no double count. Idempotent: replaying the same
+amendment is a no-op ("duplicate").
+
+**Evidence.** `npx tsc --noEmit` clean (exit 0). New tests: source-health 6, flow-reconciliation 5,
+flow-dlq 4, flow-amendment 7, plus 3 WS-21 integration cases in `gates.test.ts` (53→56) — all green. The
+reconciliation test simulates a reconnect gap (overlap re-fetch of a1/a2 already seen + missed a3/a4) and
+asserts only a3/a4 are processed once; the gate test asserts flag-OFF verdict == unchanged in every source
+state, flag-ON withholds until HEALTHY.
+
+**Graduation.** Flip `ZERODTE_REQUIRE_HEALTHY_SOURCE=1` to arm the warm-up gate + reconnect reconciliation.
+
+**Status.** Merged flag-OFF (no behavior change). Follow-ups: durable `flow_dlq` sink via `setDlqSink`;
+route live amended prints through the ledger at the aggregation read sites (blast-radius-heavy — deliberately
+out of scope here).
 
 ## 2026-07-25 — [Q10] Discovery recall probe: the BREAKOUT top-6 $-volume cap is LEAKY — NEW TOOL
 
