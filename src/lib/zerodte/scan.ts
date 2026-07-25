@@ -939,6 +939,9 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
           net_credit: condorGeom.net_credit == null ? null : Number(condorGeom.net_credit),
           max_loss: condorGeom.max_loss == null ? null : Number(condorGeom.max_loss),
           gross_wing_risk: Number(condorGeom.gross_wing_risk),
+          // Q7 mid-fill bracket, pinned on the plan at commit; null for a pre-Q7 row so the grader's
+          // realized_usd_mid stays null (never fabricated).
+          net_credit_mid: condorGeom.net_credit_mid == null ? null : Number(condorGeom.net_credit_mid),
         };
         const cGrade = gradeCondorFromBars(bars, geom, Date.parse(row.first_flagged_at));
         await updateZeroDtePlanOutcome(row.session_date, row.ticker, {

@@ -159,6 +159,16 @@ export type CondorPlan = {
   /** Credit as a fraction of the wing risk (net_credit / gross_wing_risk) — the EV quality knob the
    *  liquidity gate floors: too thin a credit for the risk is a −EV sale no matter the WR. */
   credit_to_risk: number | null;
+  /** MID-fill credit bracket (design Q7), $ (×100): every leg filled at its bid/ask MIDPOINT — the
+   *  best realistic fill vs the worst-case `net_credit`. This surface has no real broker fills, so the
+   *  true realized credit lives in [net_credit (conservative), net_credit_mid (mid)]; carrying both
+   *  lets calibration measure the realized-P&L RANGE of a negative-skew sale instead of one pessimistic
+   *  point. NOT used to gate or grade — net_credit stays the safe number. Null when any leg lacks a
+   *  two-sided quote. Always ≥ net_credit (shorts fill higher, wings cheaper at mid). */
+  net_credit_mid: number | null;
+  /** credit_to_risk computed off the mid-fill bracket — the optimistic end of the EV knob. Null with
+   *  no mid credit. */
+  credit_to_risk_mid: number | null;
   /** Underlying breach levels = the short strikes. A WIN closes STRICTLY inside (breach_lower,
    *  breach_upper); touching either at/through settlement is the defined loss. */
   breach_lower: number; // short_put
@@ -227,6 +237,23 @@ export function buildCondorPlan(input: {
   const maxLoss = netCreditFinal != null ? round2(grossWingRisk - netCreditFinal) : null;
   const creditToRisk = netCreditFinal != null && grossWingRisk > 0 ? round2(netCreditFinal / grossWingRisk) : null;
 
+  // MID-fill credit bracket (design Q7): each leg at its bid/ask midpoint — the best realistic fill,
+  // vs the conservative worst-case above. Only computed when the SAME structure priced a positive
+  // conservative credit AND all four legs have a two-sided quote (a mid needs both sides), so the two
+  // brackets describe the exact same sellable condor. Always ≥ net_credit; never gates or grades.
+  const midOf = (q: CondorLegQuote): number | null =>
+    q.bid != null && q.ask != null && q.ask >= q.bid ? (q.bid + q.ask) / 2 : null;
+  const sPutMid = midOf(quotes.shortPut);
+  const sCallMid = midOf(quotes.shortCall);
+  const lPutMid = midOf(quotes.longPut);
+  const lCallMid = midOf(quotes.longCall);
+  const haveAllMid = sPutMid != null && sCallMid != null && lPutMid != null && lCallMid != null;
+  const netCreditMid =
+    creditPositive && haveAllMid
+      ? round2(((sPutMid as number) + (sCallMid as number) - (lPutMid as number) - (lCallMid as number)) * 100)
+      : null;
+  const creditToRiskMid = netCreditMid != null && grossWingRisk > 0 ? round2(netCreditMid / grossWingRisk) : null;
+
   const spreads = [quotes.shortPut, quotes.longPut, quotes.shortCall, quotes.longCall]
     .map(legSpreadPct)
     .filter((s): s is number => s != null);
@@ -262,6 +289,8 @@ export function buildCondorPlan(input: {
     gross_wing_risk: grossWingRisk,
     max_loss: maxLoss,
     credit_to_risk: creditToRisk,
+    net_credit_mid: netCreditMid,
+    credit_to_risk_mid: creditToRiskMid,
     breach_lower: legs.short_put,
     breach_upper: legs.short_call,
     max_leg_spread_pct: maxLegSpreadPct,
@@ -364,6 +393,12 @@ export type CondorOutcome = {
   pnl_pct: number | null;
   /** True when a short strike was TOUCHED intraday (the negative-skew tail actually fired). */
   breached_intraday: boolean;
+  /** Q7 mid-fill bracket: realized P&L had every leg filled at its bid/ask MID instead of the
+   *  conservative worst-case. Populated only on a WIN (the credit kept) and only when the plan
+   *  carried a mid credit — the upper end of the [conservative, mid] realized range for a
+   *  negative-skew sale. Null on a breach (the capped loss is ~fill-insensitive) and ungradeable.
+   *  INFORMATIONAL: `realized_usd` remains the conservative graded number calibration gates on. */
+  realized_usd_mid: number | null;
 };
 
 /**
@@ -381,12 +416,12 @@ export type CondorOutcome = {
  */
 export function gradeCondorFromBars(
   bars: PlanBar[],
-  plan: Pick<CondorPlan, "breach_lower" | "breach_upper" | "net_credit" | "max_loss" | "gross_wing_risk">,
+  plan: Pick<CondorPlan, "breach_lower" | "breach_upper" | "net_credit" | "max_loss" | "gross_wing_risk" | "net_credit_mid">,
   flaggedAtMs: number
 ): CondorOutcome {
-  const { breach_lower, breach_upper, net_credit, max_loss, gross_wing_risk } = plan;
+  const { breach_lower, breach_upper, net_credit, max_loss, gross_wing_risk, net_credit_mid } = plan;
   if (net_credit == null || max_loss == null || !(gross_wing_risk > 0)) {
-    return { outcome: "ungradeable", realized_usd: null, pnl_pct: null, breached_intraday: false };
+    return { outcome: "ungradeable", realized_usd: null, pnl_pct: null, breached_intraday: false, realized_usd_mid: null };
   }
   const pct = (usd: number) => round2((usd / gross_wing_risk) * 100);
 
@@ -396,15 +431,25 @@ export function gradeCondorFromBars(
     if (etMinutesOf(bar.t) > PLAN_RULES.time_stop_et_minutes) break; // past 15:30 — settle
     // Breach stop: the first touch of either short is the managed exit at the DEFINED max loss.
     if (bar.l <= breach_lower || bar.h >= breach_upper) {
-      return { outcome: "condor_breach_loss", realized_usd: -max_loss, pnl_pct: pct(-max_loss), breached_intraday: true };
+      // The capped loss is dominated by the wing width and barely moves with entry fill, so the mid
+      // bracket is null on a breach — the [conservative, mid] spread only matters on the credit-kept win.
+      return { outcome: "condor_breach_loss", realized_usd: -max_loss, pnl_pct: pct(-max_loss), breached_intraday: true, realized_usd_mid: null };
     }
     lastCloseInWindow = bar.c;
   }
   if (lastCloseInWindow == null) {
-    return { outcome: "ungradeable", realized_usd: null, pnl_pct: null, breached_intraday: false };
+    return { outcome: "ungradeable", realized_usd: null, pnl_pct: null, breached_intraday: false, realized_usd_mid: null };
   }
   // Never breached in-window → the last close is strictly inside both shorts → the credit is kept.
-  return { outcome: "condor_win", realized_usd: net_credit, pnl_pct: pct(net_credit), breached_intraday: false };
+  // realized_usd stays the CONSERVATIVE credit (the graded number); realized_usd_mid carries the
+  // best-fill upside so calibration sees the win's [conservative, mid] realized range (Q7).
+  return {
+    outcome: "condor_win",
+    realized_usd: net_credit,
+    pnl_pct: pct(net_credit),
+    breached_intraday: false,
+    realized_usd_mid: net_credit_mid ?? null,
+  };
 }
 
 // ── Seed→setup bridge ─────────────────────────────────────────────────────────────────
