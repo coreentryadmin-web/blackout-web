@@ -55,3 +55,63 @@ Use this prompt:
 - **Clerk instance requires a phone number** on user creation (default `+14155550123`).
 - **Market awareness** — the script reads Polygon market status and tightens price tolerance during RTH; off-hours it compares against prior close (VIX prev-close vs a live app VIX will differ — expected).
 - **Ephemeral sessions** — each triggered run starts clean; everything it needs is in this repo. Reports in `audit-output/` do not persist across sessions unless committed.
+
+---
+
+# 0DTE "Night Hawk" End-to-End Health Check
+
+A companion to the data-correctness validator that answers a different question: **is the
+WHOLE 0DTE system actually live, producing, tracking, and grading end-to-end before the
+open — INCLUDING the iron condor?** Where `data-validator.mjs` cross-checks individual
+numbers, this walks the pipeline stage by stage and prints a GREEN/AMBER/RED matrix.
+
+Tool: [`scripts/audit/zerodte-e2e-healthcheck.mjs`](../../scripts/audit/zerodte-e2e-healthcheck.mjs)
+(`npm run healthcheck:0dte`).
+
+It is **read-only** — it logs in as ONE temp admin+premium Clerk user (the proven
+data-validator auth block: mint `sign_in_token` → FAPI ticket exchange → `__session`
+cookie), reads the SAME authenticated board / marks / record endpoints the desk polls,
+cross-checks marks against Polygon, and (only when AWS creds are present) inspects ECS. It
+writes nothing to prod, mutates no board state, and ALWAYS deletes its temp user in a
+`finally` block (self-healing a leftover `claude-audit-temp@` user). Authenticates once per
+run.
+
+### The stage matrix — how to read it
+Each stage reports one verdict; the run exits **non-zero if any non-skipped stage is RED**
+(usable as a pre-open gate). Verdict vocabulary: **GREEN** = asserted live/coherent,
+**AMBER** = indeterminate or a legitimate-but-empty state (never assumed correct — the
+captured reason is printed), **RED** = a subsystem that should be live is broken/incoherent,
+**⚪ SKIPPED** = not applicable this run.
+
+| Stage | Asserts | AMBER when |
+|---|---|---|
+| **A INFRA/CONFIG** | ECS `blackout-production-web` + `blackout-production-market-worker` healthy (`running==desired`, PRIMARY rollout not FAILED) on the latest image, and the `ZERODTE_*` discovery flags (whole-market + `SRC_BREAKOUT` + `SRC_PIN` + `CONDOR`) present in the worker task def. **NEVER prints secret values** — only flag presence/on-off. | **SKIPPED** (not RED) when AWS creds are absent/placeholder or unusable. |
+| **B DISCOVERY ×3** | the live board carries setups from each origin **FLOW / BREAKOUT / PIN** (`setup.discovery_origin`). | an origin has 0 setups → AMBER **with the captured reason** (session heat, governor state, gate-block codes) — empty is never assumed correct. |
+| **C COMMIT/LEDGER** | every committed play (`board.ledger`) carries `entry_premium`, `direction`, `top_strike`, `first_flagged_at`, and a **frozen decision snapshot** (`cortex`/`tier` passthrough). | 0 committed rows, or legacy rows predating the cortex/tier wiring. |
+| **D LIVE MARKS+P&L** | each OPEN play (`/marks`) has a **fresh** live mark (age ≤ 20s during RTH) + a coherent `live_pnl_pct`, and the displayed mark is **cross-checked against Polygon's own option quote** (`/v3/snapshot/options`). | no open plays / off-hours (lane idles) / no Polygon quote to compare (thin contract). |
+| **E EXIT MGMT** | OPEN/HOLD/TRIM/CLOSED lifecycle values are internally coherent (a CLOSED-**stopped** row shows the pinned −50% stop P&L; a live row carries an entry premium). | 0 ledger rows. |
+| **F IRON CONDOR** *(first-class)* | the condor is **selected + tracked** — a routed `play_type:"CONDOR"` with real 4-leg geometry (short/long both sides, `net_credit`, `wing_pts`, breach levels), OR (when no live condor is routed) every directional setup carries well-formed calibration `condor` geometry, proving the engine is wired. | no live CONDOR routed (needs a PIN candidate + `ZERODTE_CONDOR`/`SRC_PIN` on) — engine proven wired but not actionable, or an empty board. |
+| **G GRADING/RECORD** | `/record` arithmetic holds (`wins+losses+breakeven == graded`) and today's CLOSED rows carry a graded outcome. | closed rows still pending the post-close grade pass / no graded rows in the window. |
+
+The condor (**F**) is a **first-class stage, never skipped**: it is the SELL-side half of the
+board (the negative-skew premium engine) and the easiest subsystem to silently lose — a
+flag flip or a routing regression leaves the directional board looking healthy while the
+condor quietly stops selling. The stage asserts real geometry either way, so a broken
+condor cannot hide behind a green directional board.
+
+### Run manually
+```bash
+# This tool WANTS AWS creds for stage A when available — do NOT strip them.
+CLERK_SECRET_KEY=...            \
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_... \
+POLYGON_API_KEY=...             \
+npm run healthcheck:0dte
+# subset + machine output:
+npm run healthcheck:0dte -- --stage=B,F,G --json
+```
+Flags: `--json` (full matrix + per-check evidence), `--quiet` (drop the per-check chatter),
+`--stage=A,B,...` (subset). `POLYGON_API_BASE` self-defaults to `https://api.polygon.io`
+(with a `/^https?:/` guard) like the sibling audit tools. Secrets are read from env only and
+never printed. Pure verdict/coherence logic lives in
+[`scripts/audit/lib/zerodte-healthcheck-eval.mjs`](../../scripts/audit/lib/zerodte-healthcheck-eval.mjs)
+(unit-tested: `node --test scripts/audit/lib/zerodte-healthcheck-eval.test.mjs`).
