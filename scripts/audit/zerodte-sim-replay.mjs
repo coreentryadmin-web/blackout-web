@@ -187,10 +187,6 @@ function buildOcc(ticker, expiry, optionType, strike) {
 function todayEt() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
 }
-function isTradingDayEt(ymd) {
-  const wd = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short" }).format(new Date(`${ymd}T12:00:00`));
-  return wd !== "Sat" && wd !== "Sun"; // (holidays ignored in the sim — a demo clock, not a calendar)
-}
 
 // ────────────────────────────────────────────────────────────────────────────────────
 // Synthetic session model
