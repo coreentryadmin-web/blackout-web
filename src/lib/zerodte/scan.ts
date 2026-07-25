@@ -684,6 +684,12 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
       bid: snap?.bid ?? null,
       ask: snap?.ask ?? null,
       mark: snap?.mark ?? null,
+      // WS-04: resting quote sizes ARE available on OptionSnapshot — thread them through so the
+      // min-size predicate (conditional-on-availability) can enforce. quote_age is enforced when a
+      // timestamp is plumbed; none currently on ContractPlan input (OptionSnapshot does not map
+      // last_quote.last_updated), so no quoteAgeMs is passed and the stale predicate stays dormant.
+      bidSize: snap?.bidSize ?? null,
+      askSize: snap?.askSize ?? null,
       keySupports: s.key_supports,
       keyResistances: s.key_resistances,
       vwap: s.vwap,

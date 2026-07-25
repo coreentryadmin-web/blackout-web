@@ -5,6 +5,73 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-25 — [WS-04] Malformed-quote books passed the liquidity gate as "liquid" — percent-spread check failed OPEN on zero/null-bid, crossed, and locked markets — FIXED (fail-closed quote-validity predicate)
+
+**Severity.** High (correctness / TRADES). A structurally malformed option quote could be treated as a
+tradeable 0DTE contract and committed to the ledger, entering/grading off a phantom price. **[TRADES] —
+CI-green on branch, HOLD for explicit human go before merge** (per the directive's Category-1 disposition).
+
+**Root cause.** `src/lib/zerodte/plan.ts` computed liquidity as PERCENT-SPREAD ONLY:
+`spreadPct = (ask−bid)/mark*100` guarded by `bid != null && ask != null && ask > 0 && mark > 0`, then
+`illiquid = spreadPct != null && spreadPct > 15` (plan.ts ~87-93). On a malformed book the percentage
+landed in a "convenient" direction and the `> 15` test waved it through:
+- **zero/null bid** → the `bid != null && …` guard made `spreadPct` **null** → `spreadPct != null` is
+  false → `illiquid = false` → **PASSED as liquid**.
+- **crossed (bid > ask)** → `(ask−bid)` negative → **negative** `spreadPct` → `−x > 15` is false → PASSED.
+- **locked (bid == ask)** → `spreadPct === 0` → `0 > 15` is false → PASSED.
+There was also no mark-in-band check (a mark outside `[bid,ask]`), no absolute-dollar spread cap, and no
+quote-age check. The block taxonomy in `gates.ts` `planQualityGateBlocks` (~696-735) emitted only
+`plan_no_quote` / `plan_moved` / `plan_illiquid` — none of which fire on these malformed books.
+
+**Evidence.** Fail-before/pass-after on the real plan builder + gate helper (only pre-existing exports, so
+the pre-fix source compiles): four cases — zero-bid `{bid:0,ask:2.4,mark:1.2}`, crossed
+`{bid:2.6,ask:2.4}`, locked `{bid:2.4,ask:2.4}`, mark-out-of-band `{bid:2.3,ask:2.5,mark:3.1}` — each
+built via `buildContractPlan` then checked with `planQualityGateBlocks`:
+```
+=== PRE-FIX (stashed) ===        === POST-FIX ===
+not ok 1 - zero-bid blocks       ok 1 - zero-bid blocks
+not ok 2 - crossed blocks        ok 2 - crossed blocks
+not ok 3 - locked blocks         ok 3 - locked blocks
+not ok 4 - mark out of band       ok 4 - mark out of band
+# pass 0  # fail 4               # pass 4  # fail 0
+```
+Full `gates.test.ts`: 55 → 64 tests, all pass; `board.test.ts` 97/0; `scan.test.ts` 17/0 and
+`skip-grading.test.ts` 11/0 (with `--experimental-test-module-mocks`); `tsc --noEmit` clean.
+
+**Fix.** Strictly ADDITIVE fail-closed predicate `evaluateQuoteValidity` in `plan.ts` requiring ALL of:
+`bid>0`, `ask>0`, `ask>bid` (rejects crossed AND locked), `mark ∈ [bid,ask]`, `ask−bid ≤ max_spread_dollars`
+(new $5.00 backstop constant), plus two conditional-on-availability bounds — `quote_age ≤ max_quote_age_ms`
+(60s) and `min_quote_size` (1 contract each side). It returns a distinct `QuoteInvalidReason`
+(`zero_bid`/`crossed`/`locked`/`mark_out_of_band`/`wide_dollars`/`thin_size`/`stale`/null) exposed on
+`ContractPlan.quote_invalid_reason` (OPTIONAL field → null-guarded, back-compat with historical/hand-built
+plans). `planQualityGateBlocks` translates a non-null reason into a distinct block: `stale` →
+**`plan_quote_stale`**, every other reason → **`plan_quote_invalid`** (both added to the `ZeroDteGateFailure`
+union in `board.ts`). The existing 15% `illiquid` → `plan_illiquid` check and all other blocks are untouched.
+`scan.ts` `attachContractPlans` now threads `snap.bidSize`/`snap.askSize` (already on `OptionSnapshot`) into
+the builder so the min-size predicate can enforce when present.
+
+**Fix rationale.** Additive predicate + distinct codes (not a rewrite of the % check) so the block taxonomy
+grows without touching graded behavior of the existing codes; the 15% illiquid check is deliberately KEPT
+(it catches proportionally-wide books the absolute $ cap does not). Fail-closed: a null/zero/degenerate side
+BLOCKS, never passes — the inverse of the loophole. `quote_age` is written as a live predicate but stays
+**dormant** because no quote timestamp is plumbed onto `ContractPlan` today — `OptionSnapshot` maps
+`last_quote.bid/ask/bid_size/ask_size` but NOT `last_quote.last_updated`. Rather than a large refactor to
+thread a timestamp end-to-end (out of scope for this fix), the predicate activates the moment an age is
+supplied, tested directly against the helper; the gap is noted here and in-code (`scan.ts`). `min_quote_size`
+is conditional-on-availability (absent size is not proof of illiquidity). New codes bucket cleanly:
+`zerodte_scan_rejections.gate_failed` is `TEXT` read back via `String()` everywhere (db.ts, skip-grading.ts,
+grid-rejections-read.ts) — no enum switch to choke; no migration.
+
+**Blast radius.** One root cause, one seam (`buildContractPlan` → `planQualityGateBlocks`), consumed by BOTH
+fresh-commit lanes that reuse it: `evaluateZeroDteGates` (gates.ts:575, the scan-time verdict) and the
+persist defense `freshCommitBlockedByPlan` / `planQualityGateBlocks` in `persistZeroDteScan` (scan.ts:744,
+754). CONDORs are unaffected — they carry no single-leg directional plan (`s.plan` null) and are gated on
+`condor_plan` liquidity separately, exactly as before. `resolveLedgerEntryPremium` / `gradePlanFromBars` /
+`derivePlayStatus` untouched.
+
+**Status.** FIXED on `fix/ws-04-malformed-quote-gate`. Tests fail-before/pass-after (above); tsc clean.
+**Draft PR — HOLD for explicit go before merge (TRADES).**
+
 ## 2026-07-25 — [WS-01] Governor commit was a TOCTOU race — two overlapping scans could each commit past GOVERNOR_MAX_CONCURRENT_PLANS — FIXED (atomic xact-lock recount)
 
 **Severity.** High (portfolio risk / over-exposure). This is the exact 7/13-class failure the session
