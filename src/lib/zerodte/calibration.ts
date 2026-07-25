@@ -29,6 +29,7 @@ import { ZERODTE_SCORE_FLOOR } from "./gates";
 import { TIER_APLUS_UNLOCK, tierFromEntryContext, type ZeroDteTier } from "./tiers";
 import type { SkipCounterfactual } from "./skip-grading";
 import { currentStrategyConfigHash } from "./strategy-version";
+import { wilsonInterval, proportionDiffCI } from "./calibration-stats";
 
 /** Methodology label served with every report — the honest-record rule (record.ts):
  *  plan-outcome grades on option premium, never blended with other methodologies. */
@@ -88,6 +89,12 @@ export type CalibrationBucket = {
   avg_pnl_pct: number | null;
   /** n < LOW_N_THRESHOLD — UIs must badge these; recommendations never rest on them. */
   low_n: boolean;
+  /** Wilson 95% score interval on the win rate, in PERCENTAGE points (WS-09). Makes the
+   *  sample size visible in the number itself — a tight band at n=100, a wide one at n=10 —
+   *  so a bucket is never read as its fragile point estimate. Null only when n=0 (nothing to
+   *  bound). `lo` is the graduation-relevant bound: a floor is cleared only when even the
+   *  pessimistic end of the interval clears it. */
+  win_rate_ci_pct: { lo: number; hi: number; mid: number } | null;
 };
 
 export type CalibrationGateKey = "g4_vix" | "g6_conflict";
@@ -151,6 +158,13 @@ export type CalibrationReport = {
    *  its structurally-high (negative-skew) win rate must be measured as its own bucket, with real
    *  realized credit/loss, before it sizes real risk. Non-gating (evidence only). */
   play_type_bands: CalibrationBucket[];
+  /** CROSSED (origin × play_type) cohorts (WS-07) — the interaction the marginals hide. Each cell carries
+   *  a Wilson CI, a forward-time holdout (earlier/later stability + OOS decay), and a recommend-only
+   *  production-graduation verdict evaluated on THAT cell. Non-gating (evidence only). */
+  origin_playtype_bands: OriginPlayTypeCell[];
+  /** Per-source Cortex false-veto analysis (WS-17) — the would-have-won rate among each veto source's
+   *  blocked candidates, attributed to the exact source. Non-gating diagnostic. */
+  cortex_veto_analysis: CortexVetoAnalysis;
   /** Coded graduation verdicts for the positive evidence signals (confluence double, accumulation
    *  alignment) — the same enforce/keep_calibrating/insufficient_data ladder the gates use, so a signal
    *  can only enter scoring once the live ledger clears the n>=10 / delta>=15pt bar. Non-gating. */
@@ -422,6 +436,10 @@ type GradablePlayRow = Pick<ZeroDteSetupLogRow, "plan_pnl_pct">;
 export function bucketOf(label: string, rows: GradablePlayRow[]): CalibrationBucket {
   const wins = rows.filter(isZeroDteWin).length;
   const pnls = rows.map((r) => r.plan_pnl_pct).filter((p): p is number => p != null);
+  // Wilson CI (WS-09) attached to EVERY bucket, in percentage points. n=0 → null (no
+  // observation to bound); the swing lane reuses this helper verbatim, so it inherits
+  // the interval too — one CI implementation, no drift.
+  const ci = wilsonInterval(wins, rows.length);
   return {
     label,
     n: rows.length,
@@ -430,6 +448,8 @@ export function bucketOf(label: string, rows: GradablePlayRow[]): CalibrationBuc
     win_rate_pct: rows.length > 0 ? round1((wins / rows.length) * 100) : null,
     avg_pnl_pct: pnls.length ? round2(pnls.reduce((a, b) => a + b, 0) / pnls.length) : null,
     low_n: rows.length < LOW_N_THRESHOLD,
+    win_rate_ci_pct:
+      ci.mid == null ? null : { lo: round1(ci.lo * 100), hi: round1(ci.hi * 100), mid: round1(ci.mid * 100) },
   };
 }
 
@@ -537,6 +557,214 @@ export function analyzePlayTypeBands(graded: CalibrationPlayRow[]): CalibrationB
     byLabel.set(label, [...(byLabel.get(label) ?? []), r]);
   }
   return CALIBRATION_PLAY_TYPE_BANDS.map((label) => bucketOf(label, byLabel.get(label) ?? []));
+}
+
+// ── Crossed origin × play_type cohorts (Hardening WS-07) ────────────────────────────────────
+// The marginal origin_bands ("does BREAKOUT pay?") and play_type_bands ("does the condor pay?")
+// each hide a Simpson's-paradox trap: a PIN marginal can look fine while its DIRECTIONAL-FADE cell
+// carries it and its CONDOR cell quietly bleeds (or vice-versa). The crossed cohort measures the
+// INTERACTION on real outcomes — one cell per (origin × structure) — so a weak sub-strategy can't
+// hide inside a healthy marginal. Keyed on the SAME two label readers the marginals use
+// (readOriginLabel × the crossed play-type refinement below), so the crossed and marginal slices
+// can never disagree about what a row is. Non-gating evidence, exactly like every band above.
+
+/** The crossed play-type label. Identical to readPlayTypeLabel EXCEPT a PIN-origin directional
+ *  play is named DIRECTIONAL_FADE: pin-source.ts builds ONLY the directional-fade discovery origin
+ *  (spot pinned near a wall → fade toward the pin), never momentum, so a pure-PIN directional play
+ *  IS a fade by construction. Refining the label here (a deterministic function of origin+play_type,
+ *  never a fabricated field) keeps the PIN×CONDOR-vs-PIN×fade contrast legible in the cell key. Mixed
+ *  origins (e.g. FLOW+PIN) keep the plain DIRECTIONAL label — the fade edge is not the sole driver. */
+export function readCrossedPlayTypeLabel(ec: Record<string, unknown> | null | undefined): string {
+  const playType = readPlayTypeLabel(ec);
+  if (playType === "CONDOR") return "CONDOR";
+  return readOriginLabel(ec) === "PIN" ? "DIRECTIONAL_FADE" : "DIRECTIONAL";
+}
+
+/** The crossed cells ALWAYS emitted (stable machine-readable shape, n=0 included) — the four the
+ *  design calls for at minimum. Any other observed (origin × structure) combination is appended
+ *  dynamically in sorted order so nothing is ever silently dropped. */
+export const CALIBRATION_ORIGIN_PLAYTYPE_CELLS = [
+  { origin: "FLOW", play_type: "DIRECTIONAL" },
+  { origin: "BREAKOUT", play_type: "DIRECTIONAL" },
+  { origin: "PIN", play_type: "DIRECTIONAL_FADE" },
+  { origin: "PIN", play_type: "CONDOR" },
+] as const;
+
+const crossedKey = (origin: string, playType: string): string => `${origin} × ${playType}`;
+
+/** A crossed cohort cell — a CalibrationBucket (with its Wilson CI) plus the forward-time holdout
+ *  (WS-09) and the recommend-only production-graduation verdict evaluated ON THIS cell. */
+export type OriginPlayTypeCell = CalibrationBucket & {
+  origin: string;
+  play_type: string;
+  /** EARLIER-vs-LATER stability split by session_date (WS-09) — see forwardHoldout. */
+  holdout: ForwardHoldout;
+  /** Recommend-only production verdict for this exact crossed cell — n≥75 AND Wilson lower bound
+   *  clears the floor AND forward-holdout stability AND no significant OOS decay. Verdict strings
+   *  only; a human/PR still graduates. */
+  recommendation: CrossedGraduation;
+};
+
+// ── Forward time holdout (Hardening WS-09) ──────────────────────────────────────────────────
+// A cohort's win rate over the whole window can be a mirage: an edge that worked in the FIRST
+// half and decayed to noise in the SECOND half still prints a healthy blended rate. We split each
+// cohort's graded rows by SESSION_DATE at the median into EARLIER vs LATER and check the two halves
+// agree. The split is by TIME, never random: 0DTE outcomes are a time series (regime drifts, the
+// scorer/gates evolve, the market adapts to a published edge), so a random split would leak future
+// sessions into the "training" half and mask exactly the decay we are hunting. A median session-date
+// cut is the honest out-of-sample proxy available inside a bounded calibration window.
+
+/** Minimum graded rows in EACH half before the holdout can assess stability. Below this the split is
+ *  too thin to compare — the cell is reported unstable-by-insufficiency, never falsely "stable". */
+export const HOLDOUT_MIN_PER_HALF = 3;
+
+export type ForwardHoldout = {
+  /** The session_date boundary: LATER = rows with session_date >= this; EARLIER = the rest. Null
+   *  when there aren't at least two distinct session dates to split on. */
+  split_date: string | null;
+  earlier: CalibrationBucket;
+  later: CalibrationBucket;
+  /** later win rate − earlier win rate, percentage points (null when either half is empty). Negative
+   *  = the edge decayed out of sample. */
+  decay_pts: number | null;
+  /** 95% CI on the decay (later − earlier), percentage points. Null when either half is empty. */
+  decay_ci_pct: { lo: number; hi: number } | null;
+  /** TRUE when both halves have >= HOLDOUT_MIN_PER_HALF graded rows AND there is no SIGNIFICANT
+   *  out-of-sample decay (the decay CI's upper bound stays >= 0 — we cannot conclude the later
+   *  period is worse). Stability is a REQUIREMENT for production graduation, never a gate on trading. */
+  stable: boolean;
+  reason: string;
+};
+
+/** Split a cohort's graded rows by session_date at the median and measure earlier/later agreement.
+ *  Pure: sorts by session_date, cuts at the median date, buckets each half with the standard math. */
+export function forwardHoldout(rows: CalibrationPlayRow[]): ForwardHoldout {
+  const dates = Array.from(new Set(rows.map((r) => r.session_date))).sort();
+  if (dates.length < 2) {
+    const only = bucketOf("earlier", rows);
+    return {
+      split_date: null,
+      earlier: only,
+      later: bucketOf("later", []),
+      decay_pts: null,
+      decay_ci_pct: null,
+      stable: false,
+      reason:
+        `only ${dates.length} distinct session date(s) — need at least 2 to split a forward holdout; ` +
+        `stability is unproven (not the same as stable).`,
+    };
+  }
+  // Median-date cut: LATER = the top half of distinct dates, EARLIER = the bottom half. Splitting on
+  // the distinct-date median (not the row median) keeps whole sessions on one side — a session is the
+  // atomic unit of a regime, and splitting mid-session would blend the same day's plays across halves.
+  const splitDate = dates[Math.floor(dates.length / 2)]!;
+  const earlierRows = rows.filter((r) => r.session_date < splitDate);
+  const laterRows = rows.filter((r) => r.session_date >= splitDate);
+  const earlier = bucketOf("earlier", earlierRows);
+  const later = bucketOf("later", laterRows);
+  const diff = proportionDiffCI(earlier.wins, earlier.n, later.wins, later.n);
+  const decayPts = earlier.n > 0 && later.n > 0 ? round1(diff.diff * 100) : null;
+  const decayCi =
+    earlier.n > 0 && later.n > 0 ? { lo: round1(diff.lo * 100), hi: round1(diff.hi * 100) } : null;
+  const enoughPerHalf = earlier.n >= HOLDOUT_MIN_PER_HALF && later.n >= HOLDOUT_MIN_PER_HALF;
+  // No SIGNIFICANT decay = the decay CI's upper bound stays at/above 0 (we can't conclude later<earlier).
+  const noSignificantDecay = decayCi != null && decayCi.hi >= 0;
+  const stable = enoughPerHalf && noSignificantDecay;
+  return {
+    split_date: splitDate,
+    earlier,
+    later,
+    decay_pts: decayPts,
+    decay_ci_pct: decayCi,
+    stable,
+    reason: !enoughPerHalf
+      ? `holdout halves too thin (earlier n=${earlier.n}, later n=${later.n}; need >=${HOLDOUT_MIN_PER_HALF} each) — stability unproven.`
+      : noSignificantDecay
+        ? `earlier ${earlier.win_rate_pct}% vs later ${later.win_rate_pct}% (decay ${decayPts} pts, CI [${decayCi!.lo}, ${decayCi!.hi}]) — no significant out-of-sample decay; stable.`
+        : `later ${later.win_rate_pct}% is significantly below earlier ${earlier.win_rate_pct}% (decay ${decayPts} pts, CI upper ${decayCi!.hi} < 0) — the edge decayed out of sample.`,
+  };
+}
+
+// ── Production graduation on the crossed cell (Hardening WS-09) — RECOMMEND ONLY ─────────────
+/** A crossed cell needs at least this many graded plays before a "production" recommendation is even
+ *  considered — far above ENFORCE_MIN_BLOCK_N (10). A per-strategy production call is a much bigger
+ *  commitment than a single gate graduating, and a crossed cell is a slice of an already-sliced
+ *  population, so it must clear a genuinely large sample first. */
+export const PRODUCTION_MIN_N = 75;
+/** The win-rate FLOOR the Wilson lower bound must clear, percentage points. 33.3% is the breakeven of
+ *  the −50% / +100% directional payoff (a +100/−50 bet needs >1/3 wins to be EV-positive). Condor cells
+ *  have a different payoff geometry and their own floor lives with the condor ledger — this default is
+ *  the DIRECTIONAL breakeven and the recommendation names the assumption. Recommend-only either way. */
+export const PRODUCTION_WILSON_FLOOR_PCT = 33.3;
+
+export type CrossedGraduation = {
+  verdict: "graduate_to_production" | "keep_calibrating" | "insufficient_data";
+  checks: { n_ok: boolean; wilson_lb_ok: boolean; stable: boolean; no_decay: boolean };
+  min_n: number;
+  floor_pct: number;
+  wilson_lb_pct: number | null;
+  reason: string;
+};
+
+/** The recommend-only production verdict for one crossed cell. "graduate_to_production" requires ALL of:
+ *  n>=PRODUCTION_MIN_N, the Wilson LOWER bound clears the floor (not the point estimate — the pessimistic
+ *  end must clear it), forward-holdout stability, and no significant OOS decay. Anything short with data
+ *  is keep_calibrating; too-small is insufficient_data. Returns strings only — a human/PR graduates. */
+export function recommendCrossedCell(cell: CalibrationBucket, holdout: ForwardHoldout): CrossedGraduation {
+  const wilsonLb = cell.win_rate_ci_pct?.lo ?? null;
+  const nOk = cell.n >= PRODUCTION_MIN_N;
+  const wilsonLbOk = wilsonLb != null && wilsonLb >= PRODUCTION_WILSON_FLOOR_PCT - DELTA_EPSILON;
+  const stable = holdout.stable;
+  // "No decay" is subsumed by stability (stable already requires no significant decay), but it is
+  // surfaced as its own check so the report shows WHICH requirement failed.
+  const noDecay = holdout.decay_ci_pct != null && holdout.decay_ci_pct.hi >= 0;
+  const checks = { n_ok: nOk, wilson_lb_ok: wilsonLbOk, stable, no_decay: noDecay };
+
+  let verdict: CrossedGraduation["verdict"];
+  let reason: string;
+  if (!nOk) {
+    verdict = "insufficient_data";
+    reason = `crossed cell has n=${cell.n} graded plays — a production recommendation requires n>=${PRODUCTION_MIN_N} (a slice of an already-sliced population needs a genuinely large sample before it sizes production risk).`;
+  } else if (wilsonLbOk && stable && noDecay) {
+    verdict = "graduate_to_production";
+    reason = `n=${cell.n}, Wilson lower bound ${wilsonLb}% clears the ${PRODUCTION_WILSON_FLOOR_PCT}% floor, and the forward holdout is stable (${holdout.reason}) — this crossed cohort has EARNED a production recommendation. Recommend-only: a human/PR graduates it.`;
+  } else {
+    verdict = "keep_calibrating";
+    const failed: string[] = [];
+    if (!wilsonLbOk) failed.push(`Wilson lower bound ${wilsonLb ?? "n/a"}% is under the ${PRODUCTION_WILSON_FLOOR_PCT}% floor`);
+    if (!stable) failed.push(`forward holdout not stable (${holdout.reason})`);
+    else if (!noDecay) failed.push(`significant out-of-sample decay (${holdout.reason})`);
+    reason = `n=${cell.n} is large enough, but: ${failed.join("; ")}. Not graduated; keep pinning evidence.`;
+  }
+  return { verdict, checks, min_n: PRODUCTION_MIN_N, floor_pct: PRODUCTION_WILSON_FLOOR_PCT, wilson_lb_pct: wilsonLb, reason };
+}
+
+/** Graded record crossed by (origin × play_type) with a Wilson CI, forward holdout, and recommend-only
+ *  production verdict on EACH cell. The four canonical cells are always present (stable shape); any other
+ *  observed combination is appended in sorted order so nothing is dropped. */
+export function analyzeOriginPlayTypeBands(graded: CalibrationPlayRow[]): OriginPlayTypeCell[] {
+  const byKey = new Map<string, CalibrationPlayRow[]>();
+  for (const r of graded) {
+    const origin = readOriginLabel(r.entry_context);
+    const playType = readCrossedPlayTypeLabel(r.entry_context);
+    byKey.set(crossedKey(origin, playType), [...(byKey.get(crossedKey(origin, playType)) ?? []), r]);
+  }
+  const canonicalKeys = new Set(CALIBRATION_ORIGIN_PLAYTYPE_CELLS.map((c) => crossedKey(c.origin, c.play_type)));
+  const extra = Array.from(byKey.keys()).filter((k) => !canonicalKeys.has(k)).sort();
+  const ordered: Array<{ origin: string; play_type: string; key: string }> = [
+    ...CALIBRATION_ORIGIN_PLAYTYPE_CELLS.map((c) => ({ origin: c.origin, play_type: c.play_type, key: crossedKey(c.origin, c.play_type) })),
+    // Recover origin/play_type from an observed key by splitting on the " × " separator.
+    ...extra.map((k) => {
+      const [origin, playType] = k.split(" × ");
+      return { origin: origin ?? k, play_type: playType ?? "", key: k };
+    }),
+  ];
+  return ordered.map(({ origin, play_type, key }) => {
+    const rows = byKey.get(key) ?? [];
+    const bucket = bucketOf(key, rows);
+    const holdout = forwardHoldout(rows);
+    return { ...bucket, origin, play_type, holdout, recommendation: recommendCrossedCell(bucket, holdout) };
+  });
 }
 
 /** Graded record bucketed by confluence tier — the "double" bucket is the +15.9% EV research finding. */
@@ -839,8 +1067,18 @@ export function calibrationScoreBand(score: number): (typeof CALIBRATION_SCORE_B
 }
 
 /** One graded counterfactual skip as the analyzer consumes it — `counterfactual` is
- *  the raw JSONB payload; parsing is defensive (fail-soft on malformed blobs). */
-export type GradedSkipInput = { gate_failed: string; counterfactual: unknown };
+ *  the raw JSONB payload; parsing is defensive (fail-soft on malformed blobs).
+ *  `strategy_config_hash` (WS-17) is OPTIONAL: the current skip-grading fetch
+ *  (skip-grading.ts fetchGradedSkips) does NOT project it, so it is undefined in
+ *  production today and the per-source veto analysis collapses the hash dimension to
+ *  "unknown". It is on the type so that when the rejection projection is widened to
+ *  carry the frozen hash, the analysis keys on (source × hash) with ZERO further change
+ *  here — and so a test can supply it. Never fabricated when absent. */
+export type GradedSkipInput = {
+  gate_failed: string;
+  counterfactual: unknown;
+  strategy_config_hash?: string | null;
+};
 
 function isSkipCounterfactual(v: unknown): v is SkipCounterfactual {
   if (v == null || typeof v !== "object") return false;
@@ -876,6 +1114,122 @@ function blockedValueLines(skips: GradedSkipInput[]): BlockedValueLine[] {
     })
     // Most-material first (largest graded sample), name as the deterministic tiebreak.
     .sort((a, b) => b.n - a.n || a.gate_failed.localeCompare(b.gate_failed));
+}
+
+// ── Per-source Cortex false-veto analysis (Hardening WS-17) ─────────────────────────────────
+// A Cortex veto is the ONLY unbounded hard-block in the stack (one loud opposing fact kills an
+// entry — cortex-gate.ts). That asymmetry is precision-first BY DESIGN, but it means a mis-firing
+// veto source silently forgoes winners with no ledger row to show for it. The skip-grading loop DOES
+// grade those blocked candidates counterfactually (skip-grading.ts: would_have_won / would_have_lost),
+// and each cortex-veto rejection carries its EXACT source in the rejection code (`cortex_veto:<source>`,
+// stamped in cortex-gate.ts). Joining the two lets us estimate, PER SOURCE, the false-veto rate = the
+// would-have-won share among that source's vetoed candidates. Attributing to the exact source (gex-walls
+// vs flow-quality), not the aggregate "veto_blind", is the whole point: it says WHICH veto channel to
+// re-tune. `cortex_veto_blind` (both veto sources dark — no attributable source) is kept as its own
+// unattributable bucket, never folded into a real source.
+//
+// LIMITATION (honest, not fabricated): the current skip-grading fetch does not project the frozen
+// strategy_config_hash onto graded skips, so the (source × hash) cross collapses the hash to "unknown"
+// today. The keying is already (source × hash); the moment the projection carries the hash, real version
+// splits appear here with no code change. We estimate the false-veto rate over the veto evidence that IS
+// joinable — the counterfactual verdict already stored on each rejection — and never impute a hash.
+
+/** Prefix on a per-source cortex-veto rejection code, e.g. "cortex_veto:gex-walls". */
+const CORTEX_VETO_PREFIX = "cortex_veto:";
+/** The unattributable veto-blind rejection code (both veto-capable sources failed to read). */
+const CORTEX_VETO_BLIND_CODE = "cortex_veto_blind";
+/** Sentinel used when the frozen strategy hash is not projected onto the graded skip (see LIMITATION). */
+const UNKNOWN_STRATEGY_HASH = "unknown";
+
+/** The cortex source a rejection code attributes to, or null when the code is not a cortex veto.
+ *  "cortex_veto:<source>" → "<source>"; "cortex_veto_blind" → "veto_blind" (unattributable). */
+export function cortexVetoSourceOf(gateFailed: string): string | null {
+  if (gateFailed === CORTEX_VETO_BLIND_CODE) return "veto_blind";
+  if (gateFailed.startsWith(CORTEX_VETO_PREFIX)) {
+    const src = gateFailed.slice(CORTEX_VETO_PREFIX.length).trim();
+    return src.length > 0 ? src : "veto_blind";
+  }
+  return null;
+}
+
+export type CortexVetoCell = {
+  /** The EXACT cortex source (e.g. "gex-walls", "flow-quality"), or "veto_blind" for the
+   *  unattributable both-sources-dark firewall block. */
+  source: string;
+  /** The frozen strategy_config_hash the vetoes were cast under, or "unknown" until skip-grading
+   *  projects it (see the module LIMITATION note). */
+  strategy_config_hash: string;
+  /** Gradeable vetoed candidates (counterfactual verdict != ungradeable). */
+  veto_count: number;
+  ungradeable: number;
+  /** Vetoed candidates that would_have_won — the false-veto numerator. */
+  would_have_won: number;
+  /** Estimated FALSE-VETO rate = would_have_won / veto_count, percentage points. A HIGH value means
+   *  this source is vetoing plays that would have paid — the signal to re-tune it. Null when veto_count=0. */
+  would_have_won_rate_pct: number | null;
+  /** Wilson 95% CI on the false-veto rate (percentage points) — a 3/4 false-veto rate at n=4 is not the
+   *  same evidence as 30/40; the CI keeps a tiny sample from reading as a verdict. Null when veto_count=0. */
+  would_have_won_ci_pct: { lo: number; hi: number; mid: number } | null;
+  low_n: boolean;
+};
+
+export type CortexVetoAnalysis = {
+  cells: CortexVetoCell[];
+  /** The joinability limitation, verbatim, so a report consumer never mistakes the collapsed hash for a
+   *  real single-version population. */
+  note: string;
+  /** Total cortex-veto rejections seen (gradeable + ungradeable), across all sources. */
+  total_veto_rejections: number;
+};
+
+/**
+ * Per (cortex_source × strategy_config_hash) false-veto analysis over graded rejection rows whose block
+ * was a cortex veto. Pure and deterministic; LOW-N discipline identical to blockedValueLines (ungradeable
+ * counterfactuals are counted separately and excluded from the rate, never imputed). Non-gating evidence.
+ */
+export function analyzeCortexVetoes(skips: GradedSkipInput[]): CortexVetoAnalysis {
+  const byCell = new Map<string, { source: string; hash: string; cfs: SkipCounterfactual[] }>();
+  let totalVeto = 0;
+  for (const s of skips) {
+    if (!s || typeof s.gate_failed !== "string") continue;
+    const source = cortexVetoSourceOf(s.gate_failed);
+    if (source == null) continue; // not a cortex veto — belongs to blockedValueLines, not here
+    if (!isSkipCounterfactual(s.counterfactual)) continue;
+    totalVeto += 1;
+    const hash = s.strategy_config_hash != null && s.strategy_config_hash.length > 0 ? s.strategy_config_hash : UNKNOWN_STRATEGY_HASH;
+    const key = `${source} ${hash}`;
+    const entry = byCell.get(key) ?? { source, hash, cfs: [] };
+    entry.cfs.push(s.counterfactual);
+    byCell.set(key, entry);
+  }
+  const cells: CortexVetoCell[] = Array.from(byCell.values())
+    .map(({ source, hash, cfs }) => {
+      const graded = cfs.filter((c) => c.verdict !== "ungradeable");
+      const won = graded.filter((c) => c.verdict === "would_have_won").length;
+      const ci = wilsonInterval(won, graded.length);
+      return {
+        source,
+        strategy_config_hash: hash,
+        veto_count: graded.length,
+        ungradeable: cfs.length - graded.length,
+        would_have_won: won,
+        would_have_won_rate_pct: graded.length > 0 ? round1((won / graded.length) * 100) : null,
+        would_have_won_ci_pct:
+          ci.mid == null ? null : { lo: round1(ci.lo * 100), hi: round1(ci.hi * 100), mid: round1(ci.mid * 100) },
+        low_n: graded.length < LOW_N_THRESHOLD,
+      };
+    })
+    // Worst offenders first: highest false-veto count, then source name as the deterministic tiebreak.
+    .sort((a, b) => b.would_have_won - a.would_have_won || b.veto_count - a.veto_count || a.source.localeCompare(b.source));
+  return {
+    cells,
+    total_veto_rejections: totalVeto,
+    note:
+      "False-veto rate = would_have_won / vetoed-and-gradeable, attributed to the EXACT cortex source " +
+      "(cortex_veto:<source>); cortex_veto_blind is the unattributable both-sources-dark bucket. " +
+      "strategy_config_hash collapses to \"unknown\" until skip-grading projects the frozen hash onto graded " +
+      "skips — the (source × hash) keying is already in place and needs no change here when it does.",
+  };
 }
 
 /**
@@ -937,6 +1291,12 @@ export function analyzeGateCalibration(input: {
     confluence_tiers: analyzeConfluenceTiers(graded),
     origin_bands: analyzeOriginBands(graded),
     play_type_bands: analyzePlayTypeBands(graded),
+    // Crossed (origin × play_type) cohorts with Wilson CIs + forward holdout + recommend-only production
+    // verdict (WS-07/09) — the interaction a marginal band can't show. Reads the same homogeneous cohort.
+    origin_playtype_bands: analyzeOriginPlayTypeBands(graded),
+    // Per-source Cortex false-veto analysis (WS-17) over the graded rejection rows — attributed to the
+    // EXACT veto source. Runs on the skips (rejections), independent of the graded-play cohort above.
+    cortex_veto_analysis: analyzeCortexVetoes(input.gradedSkips ?? []),
     signal_recommendations: [recommendConfluence(graded), recommendAccumulation(graded)],
     scale_out_recommendation: recommendScaleOut(graded),
     version_cohort: versionCohort,
