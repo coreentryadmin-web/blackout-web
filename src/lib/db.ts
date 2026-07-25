@@ -4683,15 +4683,11 @@ export type ZeroDteSetupLogUpsert = {
  *  session), detected via the `xmax = 0` Postgres idiom (xmax is unset on a
  *  brand-new row; ON CONFLICT DO UPDATE sets it) — so callers can write a
  *  Stage 4 audit-trail row exactly once per alert, never on a refresh tick. */
-export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Promise<Set<string>> {
-  if (!rows.length) return new Set();
-  await ensureSchema();
-  const p = await getPool();
-  const freshlyFlagged = new Set<string>();
-  for (const r of rows) {
-    const ticker = r.ticker.toUpperCase();
-    const res = await p.query<{ inserted: boolean }>(
-      `
+// The one-and-only zerodte_setup_log upsert. Extracted so BOTH the plain pooled path
+// (upsertZeroDteSetupLog) and the WS-01 atomic transactional path (commitFreshZeroDteRows
+// Atomic) run byte-identical SQL — the pinning COALESCEs must never drift between a fresh
+// commit and a refresh tick, and duplicating this string invited exactly that drift.
+const ZERODTE_SETUP_LOG_UPSERT_SQL = `
       INSERT INTO zerodte_setup_log (
         session_date, ticker, direction, top_strike, expiry, score, score_max,
         dossier_score, conviction, gross_premium, spike, underlying_at_flag,
@@ -4730,31 +4726,122 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
         feature_vector = COALESCE(zerodte_setup_log.feature_vector, EXCLUDED.feature_vector),
         last_seen_at = NOW()
       RETURNING (xmax = 0) AS inserted
-      `,
-      [
-        r.session_date,
-        ticker,
-        r.direction,
-        r.top_strike,
-        r.expiry,
-        Math.round(r.score),
-        r.dossier_score != null ? Math.round(r.dossier_score) : null,
-        r.conviction,
-        r.gross_premium,
-        r.spike,
-        r.underlying,
-        r.flags_json,
-        r.entry_premium,
-        r.flow_avg_fill,
-        r.plan_json,
-        r.gate_calibration_json,
-        r.entry_context ?? null,
-        r.feature_vector ?? null,
-      ]
-    );
-    if (res.rows[0]?.inserted === true) freshlyFlagged.add(ticker);
+      `;
+
+/** Run ONE zerodte_setup_log upsert on the given executor (pool OR a checked-out
+ *  transaction client) and return whether it was a FRESH insert (xmax=0). Shared by the
+ *  plain and atomic paths so the row shape/pinning is identical on both. */
+async function upsertOneZeroDteSetupRow(q: Db, r: ZeroDteSetupLogUpsert): Promise<boolean> {
+  const res = await q.query<{ inserted: boolean }>(ZERODTE_SETUP_LOG_UPSERT_SQL, [
+    r.session_date,
+    r.ticker.toUpperCase(),
+    r.direction,
+    r.top_strike,
+    r.expiry,
+    Math.round(r.score),
+    r.dossier_score != null ? Math.round(r.dossier_score) : null,
+    r.conviction,
+    r.gross_premium,
+    r.spike,
+    r.underlying,
+    r.flags_json,
+    r.entry_premium,
+    r.flow_avg_fill,
+    r.plan_json,
+    r.gate_calibration_json,
+    r.entry_context ?? null,
+    r.feature_vector ?? null,
+  ]);
+  return res.rows[0]?.inserted === true;
+}
+
+export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Promise<Set<string>> {
+  if (!rows.length) return new Set();
+  await ensureSchema();
+  const p = await getPool();
+  const freshlyFlagged = new Set<string>();
+  for (const r of rows) {
+    if (await upsertOneZeroDteSetupRow(p, r)) freshlyFlagged.add(r.ticker.toUpperCase());
   }
   return freshlyFlagged;
+}
+
+/**
+ * WS-01 — ATOMIC commit of FRESH 0DTE plays under a Postgres transaction advisory lock.
+ *
+ * THE RACE THIS CLOSES: the session governor (GOVERNOR_MAX_CONCURRENT_PLANS = 3) is
+ * evaluated in the scan pipeline against an open-book snapshot read at scan START, then
+ * persistZeroDteScan reads the pre-cycle book AGAIN and inserts. Between that read and the
+ * insert there is NO DB-level serialization, so two overlapping scan passes (member-poll +
+ * cron warm, or two ECS replicas) can each see "2 open, room for 1", each decide to commit,
+ * and BOTH insert — 4 concurrently-open plans, past the cap. That over-exposure is exactly
+ * the 7/13 incident the governor exists to prevent.
+ *
+ * THE FIX: wrap ONLY the count→evaluate→insert of fresh plays in a single transaction that
+ * takes `pg_advisory_xact_lock(hashtext('zerodte:commit:<session_date>'))` FIRST. The XACT
+ * variant auto-releases at COMMIT/ROLLBACK — no manual unlock, no leak on error (unlike the
+ * held-client pg_try_advisory_lock path above, this can never strand a lock). The second
+ * writer BLOCKS on the lock, and when it proceeds it RE-READS the ledger inside the txn — a
+ * TRANSACTIONAL RECOUNT that now includes the first writer's just-committed rows — so the
+ * caller's `select` re-runs the pure governor against the true current book and drops the
+ * over-cap candidate instead of racing it in.
+ *
+ * The lock wraps count→evaluate→insert ONLY. All provider/network work (chain quotes,
+ * Polygon, UW) already happened before persist; we deliberately hold the lock across zero
+ * network I/O so the contention window stays sub-millisecond.
+ *
+ * `select` receives the CURRENT (in-transaction) ledger rows and returns exactly the upsert
+ * rows to write (the survivors of the recount). It runs INSIDE the lock; keep it pure/sync
+ * and free of network I/O. Returns the freshly-inserted tickers, or NULL if the atomic path
+ * could not run (db not configured / bad date / lock or txn error) — the caller then falls
+ * back to the plain pooled upsert. On any error the txn ROLLS BACK (nothing inserted), so a
+ * fallback after null can never double-insert.
+ */
+export async function commitFreshZeroDteRowsAtomic(
+  sessionDate: string,
+  select: (currentLedger: ZeroDteSetupLogRow[]) => ZeroDteSetupLogUpsert[]
+): Promise<Set<string> | null> {
+  if (!dbConfigured()) return null;
+  const normalized = normalizeIsoDateInput(sessionDate);
+  if (!normalized) return null;
+  let client: PoolClient;
+  try {
+    client = await dbClient();
+  } catch {
+    return null; // couldn't check out a connection — caller falls back to the plain path
+  }
+  try {
+    await client.query("BEGIN");
+    // Serialize the whole recount→insert against any concurrent committer for this session.
+    // XACT lock: released automatically at COMMIT/ROLLBACK below, so an error path can't leak it.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1::text))", [
+      `zerodte:commit:${normalized}`,
+    ]);
+    // TRANSACTIONAL RECOUNT — the open book as it stands right now, inside the lock. A writer
+    // that was blocked sees the other writer's committed rows here; that is the whole point.
+    const ledgerRes = await client.query<QueryResultRow>(
+      `SELECT * FROM zerodte_setup_log WHERE session_date = $1::date`,
+      [normalized]
+    );
+    const currentLedger = ledgerRes.rows.map(mapZeroDteLogRow);
+    const rows = select(currentLedger);
+    const freshlyFlagged = new Set<string>();
+    for (const r of rows) {
+      if (await upsertOneZeroDteSetupRow(client, r)) freshlyFlagged.add(r.ticker.toUpperCase());
+    }
+    await client.query("COMMIT");
+    return freshlyFlagged;
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      /* connection already broken — nothing committed either way */
+    }
+    console.warn("[zerodte-atomic] fresh-commit transaction failed, falling back to pooled upsert:", err);
+    return null;
+  } finally {
+    client.release();
+  }
 }
 
 /**

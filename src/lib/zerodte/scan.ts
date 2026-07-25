@@ -25,6 +25,7 @@ import {
   updateZeroDteLiveState,
   updateZeroDtePlanOutcome,
   upsertZeroDteSetupLog,
+  commitFreshZeroDteRowsAtomic,
   type ZeroDteSetupLogRow,
   type ZeroDteSetupLogUpsert,
 } from "@/lib/db";
@@ -98,11 +99,13 @@ import {
 } from "./gates";
 import {
   deriveGovernorFromLedger,
+  evaluateZeroDteGovernor,
   loadRecordedGovernorStops,
   mergeGovernorStops,
   recordGovernorStops,
   freezeConcentrationState,
   type GovernorSnapshot,
+  type GovernorOpenPlan,
 } from "./governor";
 import {
   computeIntradayRead,
@@ -964,7 +967,79 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       mergePolicyVersion: MERGE_POLICY_VERSION,
     }) as unknown as Record<string, unknown>,
   }));
-  const freshlyFlagged = await upsertZeroDteSetupLog(rows);
+  // WS-01 — split the write into the FRESH lane (new exposure, cap-limited) and the
+  // REFRESH lane (tickers already open — never new exposure, never cap-limited). `eligible`
+  // is [...committedFresh, ...refresh] IN THAT ORDER, so `rows` aligns index-for-index: the
+  // first committedFresh.length rows are the fresh commits, the rest are refresh ticks.
+  const freshPairs = committedFresh.map((setup, i) => ({ setup, row: rows[i]! }));
+  const refreshRows = rows.slice(committedFresh.length);
+
+  // Refresh rows upsert exactly as before — a committed play is managed to its exit, never
+  // retro-blocked, and every plan/context field is COALESCE-pinned so a refresh can't move it.
+  const freshlyFlagged = new Set<string>();
+  if (refreshRows.length > 0) {
+    for (const t of await upsertZeroDteSetupLog(refreshRows)) freshlyFlagged.add(t);
+  }
+
+  // Fresh commits go through the ATOMIC path: a Postgres xact advisory lock keyed by the
+  // session date serializes the whole count→re-evaluate→insert against any concurrent
+  // committer (the member-poll scan, the cron warm, or a second ECS replica). Inside the
+  // lock we RE-DERIVE the governor snapshot from a fresh in-transaction ledger read — the
+  // transactional recount that sees a racing writer's just-committed rows — and re-run the
+  // PURE governor per candidate IN SCORE ORDER, threading the candidates already accepted
+  // this transaction into `committedThisCycle` exactly as the pure function expects. A
+  // candidate that now blocks (the loser of a race past the 3-concurrent cap) is DROPPED and
+  // recorded to zerodte_scan_rejections so the withhold is fail-VISIBLE, not silent. When
+  // uncontended the recount equals the scan-time snapshot, so the SAME candidates commit —
+  // behavior-identical. This channel can only ever WITHHOLD an over-cap commit, never add one.
+  if (freshPairs.length > 0) {
+    const recountRejections: import("./board").ZeroDteGateRejection[] = [];
+    const atomicSelect = (currentLedger: ZeroDteSetupLogRow[]): ZeroDteSetupLogUpsert[] => {
+      const snap = deriveGovernorFromLedger(currentLedger);
+      const acceptedThisTxn: GovernorOpenPlan[] = [];
+      const survivors: ZeroDteSetupLogUpsert[] = [];
+      // Score-descending: the governor's committedThisCycle threading only bounds a single
+      // cycle correctly when the highest-conviction candidates are offered the last open slots
+      // first (the same order the scan-time gate applied it).
+      const ordered = [...freshPairs].sort((a, b) => b.setup.score - a.setup.score);
+      for (const { setup, row } of ordered) {
+        const blocks = evaluateZeroDteGovernor(
+          { ticker: setup.ticker, direction: setup.direction },
+          snap,
+          committedAtMs,
+          acceptedThisTxn
+        );
+        if (blocks.length > 0) {
+          // Dropped by the transactional recount — durable, visible SKIP with the governor
+          // reason (same rejection bridge the scan-time gate blocks use).
+          recountRejections.push(
+            gateRejectionFor(setup, setup.gate ? { ...setup.gate, verdict: "BLOCKED", blocks } : null)
+          );
+          continue;
+        }
+        acceptedThisTxn.push({ ticker: setup.ticker.toUpperCase(), direction: setup.direction });
+        survivors.push(row);
+      }
+      return survivors;
+    };
+
+    const atomicResult = await commitFreshZeroDteRowsAtomic(today, atomicSelect);
+    if (atomicResult != null) {
+      // Atomic commit succeeded — record any recount drops (best-effort, never blocks the scan).
+      for (const t of atomicResult) freshlyFlagged.add(t);
+      if (recountRejections.length > 0) {
+        void persistZeroDteRejections(recountRejections).catch((err) => {
+          console.warn("[zerodte-atomic] failed to persist recount-drop rejections:", err);
+        });
+      }
+    } else {
+      // Fallback: the atomic path could not run (db down / lock or txn error). It ROLLED BACK,
+      // so nothing was inserted and this plain upsert cannot double-insert. No recount happened,
+      // so we do NOT emit recountRejections here (they only describe a race that didn't occur).
+      for (const t of await upsertZeroDteSetupLog(freshPairs.map((p) => p.row))) freshlyFlagged.add(t);
+    }
+  }
+
   if (freshlyFlagged.size > 0) {
     const freshRows = eligible.filter((s) => freshlyFlagged.has(s.ticker.toUpperCase()));
     recordZeroDteAuditTrail(freshRows, today);
@@ -977,7 +1052,11 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       if (Number.isFinite(flowAt)) recordCommitLatency(s.discovery_origin, committedAtMs - flowAt);
     }
   }
-  return rows.length;
+  // WS-01: report what was ACTUALLY written, not what was attempted. freshlyFlagged counts the
+  // fresh inserts (refresh ticks never appear — they conflict, xmax≠0); adding the refresh rows
+  // back gives the same total as the pre-fix `rows.length` when uncontended (all fresh survive),
+  // but honestly excludes a candidate the transactional recount dropped past the cap.
+  return freshlyFlagged.size + refreshRows.length;
 }
 
 /** Stage 4 audit trail: fire-and-forget, one row per setup, ONLY for setups that

@@ -5,6 +5,64 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-25 — [WS-01] Governor commit was a TOCTOU race — two overlapping scans could each commit past GOVERNOR_MAX_CONCURRENT_PLANS — FIXED (atomic xact-lock recount)
+
+**Severity.** High (portfolio risk / over-exposure). This is the exact 7/13-class failure the session
+governor exists to prevent — concurrently-open plans breaching the 3-play cap.
+
+**Root cause.** `src/lib/zerodte/scan.ts` `persistZeroDteScan` (~line 706+) commits fresh plays with NO
+DB-level serialization around count→evaluate→insert. The governor verdict (`evaluateZeroDteGovernor`,
+`src/lib/zerodte/governor.ts:394`) is computed EARLIER in the pipeline against a snapshot read at scan
+START; persist then re-reads the pre-cycle open book (`fetchZeroDteSetupLog`, scan.ts:728) and calls the
+per-row `INSERT … ON CONFLICT` (`upsertZeroDteSetupLog`, db.ts:4686) on a pooled connection. Between the
+count and the insert there is a classic time-of-check/time-of-use gap: two overlapping passes (the
+member-poll path and the cron `warmZeroDteBoard` path, or two ECS replicas) can each read the same
+pre-cycle count (say 2 open, cap 3), each independently decide "room for 1 more", and BOTH insert —
+producing 4 concurrently-open plans past the cap. The pure governor's `committedThisCycle` threading only
+bounds a SINGLE scan pass against ONE snapshot; it has no cross-pass/cross-replica interlock.
+
+**Evidence.** New hermetic test `scan.test.ts` "WS-01 … RACE": book 2/3 open (a racing writer's committed
+row surfaced only via the in-transaction recount), two fresh candidates NVDA(80)/AMD(70) that BOTH gated
+COMMIT at scan time. OLD path would insert both → 4 open. NEW path: the transactional recount re-runs the
+pure governor in score order threading acceptedThisTxn — NVDA takes the last slot, AMD returns
+`governor_max_concurrent` and is DROPPED, recorded to `zerodte_scan_rejections` (asserted
+`gate_failed === "governor_max_concurrent"`, reason matches /max 3 concurrent/). Companion
+"WS-01 … UNCONTENDED" test: with no concurrent writer the recount equals the scan-time snapshot, so the
+SAME candidates commit (both admit at 1-open+2-fresh) — behavior byte-identical, and zero rejections.
+
+**Fix.** New `commitFreshZeroDteRowsAtomic(sessionDate, select)` in `src/lib/db.ts` (near
+upsertZeroDteSetupLog): `BEGIN` → `pg_advisory_xact_lock(hashtext('zerodte:commit:<session_date>'))` (the
+XACT variant so the lock auto-releases at COMMIT/ROLLBACK — no manual unlock, no leak on error, matching
+the repo's `hashtext($1::text)` convention) → re-SELECT the current open book INSIDE the lock
+(transactional recount) → run the caller's `select` (the recount+re-evaluate) → per-row INSERT … ON
+CONFLICT → COMMIT (ROLLBACK on error, returns null). The lock wraps ONLY count→evaluate→insert; zero
+provider/network I/O happens under it (chain quotes/Polygon/UW all ran before persist). `persistZeroDteScan`
+now routes ONLY fresh candidates (`committedFresh`) through this path — inside the lock it re-derives the
+snapshot via `deriveGovernorFromLedger` and re-runs `evaluateZeroDteGovernor` per candidate IN SCORE ORDER,
+threading acceptedSoFar into `committedThisCycle`; a candidate that now blocks is dropped and recorded to
+rejections (fail-VISIBLE). REFRESH rows (ticker already in the ledger) are NOT new exposure and are never
+cap-limited — they upsert exactly as before. The single upsert SQL was extracted into one shared helper
+(`upsertOneZeroDteSetupRow`) so the plain and atomic paths can never drift.
+
+**Fix rationale.** No `ZERODTE_ATOMIC_COMMIT` flag needed: the change is strictly-more-conservative and
+proven uncontended-identical by test — the atomic path re-runs the SAME pure governor against the SAME
+snapshot when there is no racing writer, so the same rows commit. This channel can only ever WITHHOLD a
+commit that races past the cap, never add one. If `dbConfigured()` is false or the txn/lock cannot be
+acquired, `commitFreshZeroDteRowsAtomic` ROLLS BACK (nothing inserted) and returns null; the caller falls
+back to the plain pooled upsert — which cannot double-insert precisely because the rollback wrote nothing.
+Pure governor logic, the gate union, Cortex, grader and exit paths are deliberately untouched.
+
+**Blast radius.** Both scan entry points that reach `persistZeroDteScan` are covered by the one atomic
+seam: the member-poll path and the cron `warmZeroDteBoard` path, and — because the lock is a Postgres
+advisory lock keyed by session date — across BOTH ECS replicas (the lock is DB-side, not per-process,
+unlike the existing `heldLockClients` try-lock map). `upsertZeroDteSetupLog` keeps its original signature/
+behavior for every other caller. `persistZeroDteScan`'s return is now actual-committed
+(`freshlyFlagged.size + refreshRows.length`) instead of attempted (`rows.length`) — identical when
+uncontended, honest when a recount drops a racer.
+
+**Status.** FIXED on `fix/ws-01-governor-atomicity`. `tsc --noEmit` clean; `scan.test.ts` 17/17 (15→17,
++2 WS-01), `governor.test.ts` 32/32, `rejections.test.ts` 12/12 green. Draft PR opened.
+
 ## 2026-07-25 — [WS-19] BREAKOUT trusted a successful grouped-daily response regardless of bar freshness — FIXED (fail closed)
 
 **Severity.** Medium (data-correctness / fail-open). Live-board discovery input; no crash, but a stale
