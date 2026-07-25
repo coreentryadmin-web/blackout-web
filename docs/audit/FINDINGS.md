@@ -5,6 +5,39 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-25 — [Q10] Discovery recall probe: the BREAKOUT top-6 $-volume cap is LEAKY — NEW TOOL
+
+**What.** "No silent caps" (design Q10). The BREAKOUT origin screens the whole market (~12k grouped-daily
+names) but `discoverBreakoutSetups` keeps only the top `BREAKOUT_MAX_CANDIDATES` (=6) by $-volume
+(`breakout-discovery.ts:74`, `movers.slice(0, 6)`) — rank 7+ is silently dropped and never graded. New
+read-only probe `scripts/audit/discovery-recall-probe.mjs` screens a session with the EXACT production
+ranking (`screenBreakoutMovers`, imported from src), splits qualifying movers at the production cap into
+KEPT (top-6) vs DROPPED (rank 7…N), and grades each name's intraday continuation on REAL Polygon minute
+bars (favorable-first proxy for a long ATM-0DTE call: underlying +1.5% before −0.75%, entry 10:00 ET).
+
+**Evidence (5 real sessions, `--scan-top=40`).** Win-rate KEPT(top-6) vs DROPPED(7–40), + recall misses
+(dropped names that were favorable-first winners):
+- 2026-07-24: KEPT 33% / DROPPED **50%** — 17 misses (NBIZ +27.7%, IREZ +14.7%, RKLZ +15.2%…)
+- 2026-07-23: KEPT 50% / DROPPED 38% — 13 misses
+- 2026-07-22: KEPT 17% / DROPPED **29%** — 10 misses
+- 2026-07-21: KEPT 17% / DROPPED **29%** — 10 misses
+- 2026-07-20: KEPT 83% / DROPPED 44% — 15 misses
+→ On 3 of 5 sessions the DROPPED tail won at least as often as the kept top-6, and EVERY session dropped
+10–17 winning movers. The $-volume rank favors megacaps, which continued LESS than smaller high-gain
+movers below the cut. The cap is real recall leakage.
+
+**Root cause.** Ranking the momentum/continuation lane purely by $-volume (a liquidity proxy) then hard-
+capping at 6 selects for size, not for the intraday follow-through a 0DTE call needs.
+
+**Fix (this change): MEASURE it, don't blind-widen.** Ship the probe as committed evidence (calibration-
+first — evidence, not gating). It quantifies the recall cost per session so a cap decision (raise
+`BREAKOUT_MAX_CANDIDATES`, or rank the lane by gain×close-strength instead of $-volume) is made on data,
+not a guess. Caveats stated in-tool: n=6 kept is tiny, single-day proxy (underlying continuation, not
+exact option P&L) — the probe is the honest bound, not a verdict on one session.
+
+**Status.** Tool committed; multi-session evidence logged. Follow-up (separate PR, on the evidence): a
+gain-weighted rank and/or a wider cap for the breakout lane, graduated on the origin band.
+
 ## 2026-07-25 — [Phase 4] Iron-CONDOR as a live SELL-side 0DTE play-type (flag-gated `ZERODTE_CONDOR`, default OFF) — LANDED
 
 **What.** The board committed DIRECTIONAL single-contract plays only. Phase 4 adds the non-directional
