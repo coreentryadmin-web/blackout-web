@@ -881,9 +881,19 @@ test("scanZeroDteBoard: an earnings-today name at RANK 7 is blocked by G-11 (bat
 // exactly like scan.ts's failClosedOnStale:false read — so the OLD scan (which never read
 // staleness) produced NO halt_feed_stale block here and this NVDA candidate ran the gates as if
 // the halt feed were fine. PASS-AFTER: haltFeedStale=true now blocks it.
+//
+// HERMETICITY: scan.ts reads the halt inside a Promise.all via a CONCURRENT dynamic
+// import("@/lib/ws/uw-socket"), and its catch fails OPEN (feedStale:false) by design (a crash must
+// not empty the board). Under full-suite CPU contention the experimental module-mock loader can
+// intermittently reject that concurrent import → the catch silently drops the block → this
+// assertion flakes (the D1 earnings sibling doesn't, because ITS catch fails CLOSED). We pin it by
+// PRE-WARMING the mocked module below so the in-scan import is a pure module-cache hit (no loader
+// round-trip, so no race). This is test-only hardening — the D2 production logic is unchanged and
+// the deterministic gate-level contract lives in gates.test.ts "G-11 D2: …".
 test("scanZeroDteBoard: a COLD halt feed (both sources stale) fails a fresh commit closed with `halt_feed_stale`", async () => {
   resetState();
   state.haltFeedStale = true; // isTradingHaltChannelStale() → true (UW + LULD both cold)
+  await import("../ws/uw-socket"); // pre-warm the mocked module → in-scan dynamic import hits cache
   // A clean NVDA 0DTE call print that survives discovery — NO active halt on the name (the store
   // is empty precisely BECAUSE the feed is dark). Pre-fix this committed blind past the dead feed.
   state.flows = [
@@ -929,6 +939,7 @@ test("scanZeroDteBoard: a COLD halt feed (both sources stale) fails a fresh comm
 test("scanZeroDteBoard: a HEALTHY halt feed (quiet channel, socket live) adds NO halt_feed_stale block — no board starvation", async () => {
   resetState();
   state.haltFeedStale = false; // healthy socket → isTradingHaltChannelStale() false
+  await import("../ws/uw-socket"); // pre-warm the mocked module (same hermeticity guard as above)
   state.flows = [
     {
       ticker: "NVDA",
