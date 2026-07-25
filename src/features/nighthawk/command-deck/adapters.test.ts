@@ -518,3 +518,85 @@ test("0DTE adapter: a CONDOR row is flagged isCondor and NEVER routes to the dir
   assert.equal(directional.isCondor, null);
   assert.equal(directional.exitModel, "SCALE_OUT");
 });
+
+// ── Wave 2: condor render geometry + seller-framed P&L ───────────────────────────────
+
+const CONDOR_GEOM = {
+  spot: 6300, short_put: 6250, long_put: 6200, short_call: 6350, long_call: 6400, wing_pts: 50,
+  net_credit: 420, max_loss: 4580, breach_lower: 6250, breach_upper: 6350,
+  est_win_rate: 92, est_intraday_breach_pct: 18.7,
+};
+
+test("0DTE adapter (condor): P&L is SELLER-framed — a DECAYING condor is a POSITIVE return, not inverted", () => {
+  // Sold at 4.2 credit, now marking 1.0 → seller return (4.2−1.0)/4.2 = +76.2% (NOT the −76% the
+  // directional live_pnl_pct would carry). This is the Wave-1 inverted-P&L flaw the fix corrects.
+  const winner = terminalPlayFromZeroDte({
+    ticker: "spx", status: "HOLD", score: 82, is_condor: true,
+    entry_premium: 4.2, last_mark: 1.0, live_pnl_pct: -76.2,
+    peak_premium: 4.5, trough_premium: 0.9,
+    setup: { direction: "short", dte: 0, play_type: "CONDOR" },
+    condor: CONDOR_GEOM, underlying_price: 6301,
+  });
+  assert.equal(winner.pnlPct, 76.2); // seller return, positive
+  // peak = BEST excursion = lowest mark (0.9): (4.2−0.9)/4.2 = +78.6%; trough = worst (highest 4.5): −7.1%
+  assert.equal(winner.peak, 78.6);
+  assert.equal(winner.trough, -7.1);
+});
+
+test("0DTE adapter (condor): executable-fill P&L is suppressed (directional long framing is inverted)", () => {
+  const condor = terminalPlayFromZeroDte({
+    ticker: "spx", status: "HOLD", score: 82, is_condor: true,
+    entry_premium: 4.2, last_mark: 1.0, bid: 0.98, ask: 1.02, live_pnl_pct_exec: -76.6,
+    setup: { direction: "short", dte: 0, play_type: "CONDOR" },
+    condor: CONDOR_GEOM,
+  });
+  assert.equal(condor.execMark, null);
+  assert.equal(condor.execPnlPct, null);
+});
+
+test("0DTE adapter (condor): maps the tent geometry; spot resolves to the LIVE underlying + flags it", () => {
+  const condor = terminalPlayFromZeroDte({
+    ticker: "spx", status: "OPEN", score: 80, is_condor: true, entry_premium: 4.2, last_mark: 3.0,
+    setup: { direction: "short", dte: 0, play_type: "CONDOR" },
+    condor: CONDOR_GEOM, underlying_price: 6288,
+  });
+  assert.ok(condor.condor);
+  assert.equal(condor.condor!.shortPut, 6250);
+  assert.equal(condor.condor!.shortCall, 6350);
+  assert.equal(condor.condor!.breachLower, 6250);
+  assert.equal(condor.condor!.breachUpper, 6350);
+  assert.equal(condor.condor!.netCredit, 420);
+  assert.equal(condor.condor!.winRate, 92);
+  assert.equal(condor.condor!.breachRatePct, 18.7);
+  assert.equal(condor.condor!.spot, 6288); // live underlying wins
+  assert.equal(condor.condor!.spotIsLive, true);
+});
+
+test("0DTE adapter (condor): no live underlying → falls back to commit spot, spotIsLive=false", () => {
+  const condor = terminalPlayFromZeroDte({
+    ticker: "spx", status: "OPEN", score: 80, is_condor: true, entry_premium: 4.2, last_mark: 3.0,
+    setup: { direction: "short", dte: 0, play_type: "CONDOR" },
+    condor: CONDOR_GEOM, // no underlying_price
+  });
+  assert.equal(condor.condor!.spot, 6300); // commit spot fallback
+  assert.equal(condor.condor!.spotIsLive, false);
+});
+
+test("0DTE adapter (condor): a condor with no pinned geometry → condor null (honest, no fabricated tent)", () => {
+  const condor = terminalPlayFromZeroDte({
+    ticker: "spx", status: "OPEN", score: 80, is_condor: true, entry_premium: 4.2, last_mark: 3.0,
+    setup: { direction: "short", dte: 0, play_type: "CONDOR" },
+    // no condor blob
+  });
+  assert.equal(condor.isCondor, true);
+  assert.equal(condor.condor, null);
+});
+
+test("0DTE adapter: a DIRECTIONAL row never gets condor geometry (condor null)", () => {
+  const dir = terminalPlayFromZeroDte({
+    ticker: "nvda", status: "OPEN", score: 80, entry_premium: 2.0, last_mark: 2.6, live_pnl_pct: 30,
+    setup: { direction: "long", dte: 0 }, condor: CONDOR_GEOM, // even if a blob leaks in
+  });
+  assert.equal(dir.condor, null); // not a condor → never built
+  assert.equal(dir.pnlPct, 30); // directional P&L unchanged (from the live_pnl_pct path)
+});

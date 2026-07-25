@@ -5,6 +5,35 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-25 — [correctness] Night Hawk deck: iron-condor P&L was DIRECTIONALLY INVERTED (a winning condor read NEGATIVE) — FIXED (Wave 2 branch `feat/nighthawk-wave2-leftpanel`)
+
+**Severity.** Medium (member-facing correctness; condor rows only — dormant unless `ZERODTE_CONDOR=1`,
+so no live member saw it yet, but it would have shipped inverted the moment condors go live).
+
+**Root cause.** The command-deck adapter (`terminalPlayFromZeroDte`) mapped `pnlPct` straight from the
+payload's `live_pnl_pct`, which is the LONG-premium return `(mark − entry)/entry`. A credit iron condor
+is SOLD for the credit and bought back to close, so its return is the INVERSE `(entry − mark)/entry`. A
+decaying (winning) condor marks DOWN, so the long-framed number is a large NEGATIVE — e.g. a +76% winner
+rendered as −76%. The sim feeder even carried this: `zerodte-sim-feed.mjs` set the SPX condor winner's
+`live_pnl_pct` to −76% while its comment said "+76%". Peak/trough inherited the same inversion (a
+seller's BEST excursion is the LOWEST mark, not the highest), and the "sell into the BID" executable-fill
+line is a long framing that doesn't apply to a credit structure at all.
+
+**Evidence.** `src/features/nighthawk/command-deck/adapters.ts` old line `pnlPct: pnl` +
+`peak: …(peak_premium/entry − 1)…`. Sim: `scripts/audit/zerodte-sim-feed.mjs` `ledgerRowFor` `rawPnl =
+(mark/entry − 1)` (−76.2% for the 4.2→1.0 winner). New adapter test asserts the +76.2% seller return.
+
+**Fix.** In the adapter, for `isCondor` rows only, `pnlPct = (entry − mark)/entry` (seller-framed), with
+peak/trough inverted to match (lowest mark = best) and the executable-fill line suppressed (`execMark`/
+`execPnlPct` null). Directional rows are byte-identical. Management recommendation now reads the seller
+P&L too. Covered by `adapters.test.ts` ("condor: P&L is SELLER-framed …").
+
+**Blast radius.** Only condor rows; the session-P&L cockpit tape reads the corrected `pnlPct`, so it too
+is now seller-correct. No server/grader change (the payload's `live_pnl_pct` sign is untouched — the fix
+is at the render adapter, the one place that knows a row is a credit structure).
+
+**Status.** Fixed on the Wave-2 branch (DRAFT PR, member-facing — operator reviews before merge).
+
 ## 2026-07-25 — [tooling] NEW: 0DTE E2E validation suite (`zerodte-e2e-suite.mjs`, `npm run validate:e2e`) + Monday-RTH readiness trace — ADDED
 
 **Severity.** N/A — additive read-only tooling + docs (no app/behavior change). Safe to merge on green.

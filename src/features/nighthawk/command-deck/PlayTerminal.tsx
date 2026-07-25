@@ -5,8 +5,10 @@ import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
 import { timeStopClock } from "@/lib/zerodte/terminal-ladder";
 import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-math";
+import { condorTent, condorWinRateLine } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { showsRatchetTrack, showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
+import type { DeckCondor } from "./types";
 
 type Tab = "thesis" | "manage" | "pnl";
 
@@ -95,6 +97,10 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
     return <div className="nh-deck-right"><div className="nh-deck-empty">◂ select a play to break it down</div></div>;
   }
   const g = play.greeks;
+  // A CONDOR is a CREDIT structure closed by BUYING back — the directional "sell into the BID" fill
+  // (a long-premium framing) is inverted for it, so the executable-fill lines are suppressed on condor
+  // rows across the terminal. Its P&L IS the premium decay (pnlPct), which stays honest.
+  const isCondor = play.isCondor === true;
 
   // ── Honest liveliness: the mark is LIVE only when it carries a fresh per-quote timestamp. A
   //    legacy SYNC mark (no timestamp) is unknown-age; a timestamp older than the stale window is
@@ -129,8 +135,9 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
         )}
         {" · mark "}
         <span className={clsx(markFlash && "neon", stale && "nh-deck-stale-mark")}>{usd(play.mark)}</span>
-        {/* Executable fill — a long exits into the BID. Mid alone flatters the exit; show both. */}
-        {play.execMark != null && <span className="nh-deck-fill"> · fill ≈{usd(play.execMark)}</span>}
+        {/* Executable fill — a long exits into the BID. Mid alone flatters the exit; show both.
+            Suppressed for a condor (credit structure — the bid-fill framing is directional/inverted). */}
+        {!isCondor && play.execMark != null && <span className="nh-deck-fill"> · fill ≈{usd(play.execMark)}</span>}
         {ageLabel && <span className="nh-deck-age"> · {sync ? "sync" : ageLabel}</span>}
         {stale && <span className="nh-deck-stalebadge">stale &gt;{Math.round(ZERODTE_MARK_STALE_MS / 1000)}s</span>}
       </div>
@@ -257,13 +264,7 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
           would be flatly false. Also suppressed once a 0DTE row is CLOSED (nothing left to time out). */}
       {showsTimeStopClock(play) && <TimeStopClock nowMs={nowMs} />}
 
-      {isCondor && (
-        <div className="nh-deck-recnote" style={{ marginTop: 4 }}>
-          Credit iron condor — profit comes from the underlying pinning between the short strikes
-          (premium decay), not a rising long premium. The directional trim/ratchet ladder does not
-          apply; the condor-specific breach/decay view is a later wave.
-        </div>
-      )}
+      {isCondor && <CondorPanel play={play} />}
 
       {showsRatchetTrack(play) && (
         <>
@@ -336,6 +337,111 @@ function TrimScaleLadder({ play }: { play: TerminalPlay }) {
       </div>
       <div className="nh-deck-recnote">Trim-scale: bank ⅓ at each trim as the peak arms it (FIRED), run the last third to target/stop — the positive-skew exit the engine actually trades.</div>
     </>
+  );
+}
+
+/** Re-shape a DeckCondor (camelCase render geometry) into the snake CondorGeometry condorTent() reads.
+ *  One place so the panel + the left card build the tent from the same inputs. */
+function tentGeomOf(c: DeckCondor) {
+  return {
+    spot: c.spot, short_put: c.shortPut, long_put: c.longPut, short_call: c.shortCall,
+    long_call: c.longCall, wing_pts: c.wingPts, net_credit: c.netCredit, max_loss: c.maxLoss,
+    breach_lower: c.breachLower, breach_upper: c.breachUpper,
+    est_win_rate: c.winRate, est_intraday_breach_pct: c.breachRatePct,
+  };
+}
+
+/** The REAL iron-condor render (Wave 2): the "price-inside-the-tent" gauge (spot vs the two short
+ *  strikes), distance-to-breach both sides in points, the net credit captured, and WR shown TOGETHER
+ *  with the intraday-breach rate (never a bare WR — the honest negative-skew pairing). Replaces the
+ *  neutral Wave-1 placeholder. NEVER draws a directional long trim/ratchet ladder or a call/put P&L —
+ *  a condor profits from decay/pin, not a rising premium. Degrades to an honest note when the geometry
+ *  wasn't pinned on the row (never a fabricated tent). */
+function CondorPanel({ play }: { play: TerminalPlay }) {
+  const c = play.condor;
+  if (!c) {
+    return (
+      <div className="nh-deck-recnote" style={{ marginTop: 4 }}>
+        Credit iron condor — profit comes from the underlying pinning between the short strikes
+        (premium decay), not a rising long premium. The 4-leg geometry wasn&apos;t pinned on this row,
+        so the tent gauge is unavailable.
+      </div>
+    );
+  }
+  const tent = condorTent(tentGeomOf(c), c.spot);
+  const wr = condorWinRateLine({ est_win_rate: c.winRate, est_intraday_breach_pct: c.breachRatePct });
+  const pts = (n: number | null): string => (n == null ? "—" : n.toFixed(0));
+  return (
+    <div className="nh-deck-condor">
+      <div className="nh-deck-lab" style={{ marginTop: 4 }}>
+        Iron condor — sell the range · WIN if {c.spotIsLive ? "spot" : "close"} stays between the shorts
+      </div>
+
+      {/* Price-inside-the-tent gauge: the short-strike band with spot marked; the long wings frame it. */}
+      <div className="nh-deck-tent">
+        <div className="wing lo">▽ {c.longPut}</div>
+        <div className={clsx("tent-band", tent.breached && "brk")}>
+          <span className="edge lo">{c.breachLower}</span>
+          <span className="edge hi">{c.breachUpper}</span>
+          {tent.spotFrac != null ? (
+            <span
+              className={clsx("spot", tent.breached && "brk")}
+              style={{ left: `${Math.round(tent.spotFrac * 100)}%` }}
+            >
+              <span className="dot" />
+              <span className="lbl">{c.spot != null ? c.spot.toFixed(0) : "?"}{c.spotIsLive ? "" : " ∗"}</span>
+            </span>
+          ) : null}
+        </div>
+        <div className="wing hi">△ {c.longCall}</div>
+      </div>
+      {!c.spotIsLive && c.spot != null && (
+        <div className="nh-deck-recnote">∗ commit-time spot — live underlying not on this refresh.</div>
+      )}
+      {tent.spotFrac == null && (
+        <div className="nh-deck-recnote">Underlying price unavailable — showing the sold range only.</div>
+      )}
+
+      {/* Distance-to-breach, both sides, in underlying points. */}
+      <div className="nh-deck-breach">
+        <div className={clsx("side dn", (tent.roomDown ?? 1) <= 0 && "brk")}>
+          <span className="k">↓ to put breach</span>
+          <span className="v">{pts(tent.roomDown)} pt</span>
+        </div>
+        <div className={clsx("side up", (tent.roomUp ?? 1) <= 0 && "brk")}>
+          <span className="k">↑ to call breach</span>
+          <span className="v">{pts(tent.roomUp)} pt</span>
+        </div>
+      </div>
+
+      {/* Net credit captured + defined max loss + the WR / breach-rate pair. */}
+      <div className="nh-deck-meta" style={{ marginTop: 12 }}>
+        <div><span className="k">Net credit</span><span className="v">{c.netCredit != null ? `$${c.netCredit.toFixed(0)}` : "—"}</span></div>
+        <div><span className="k">Defined max loss</span><span className="v">{c.maxLoss != null ? `$${c.maxLoss.toFixed(0)}` : "—"}</span></div>
+        <div><span className="k">Wings</span><span className="v">{c.wingPts.toFixed(0)} pt</span></div>
+        <div><span className="k">Range</span><span className="v">{tent.widthPts.toFixed(0)} pt</span></div>
+      </div>
+
+      {/* WR is ALWAYS shown with the breach-rate companion — never a bare, flattering win-rate. */}
+      <div className={clsx("nh-deck-wrline", tent.breached && "brk")}>
+        {wr.winRate != null ? (
+          <>
+            <span className="wr">{Math.round(wr.winRate)}% close-settle WR</span>
+            {wr.breachRatePct != null ? (
+              <span className="br"> · {wr.breachRatePct.toFixed(0)}% intraday breach rate</span>
+            ) : (
+              <span className="br dim"> · intraday breach rate not measured for this geometry</span>
+            )}
+          </>
+        ) : (
+          <span className="dim">Calibrated WR not attached to this row.</span>
+        )}
+      </div>
+      <div className="nh-deck-recnote">
+        Negative skew: a small credit on most days, a DEFINED loss on a breakout. High WR is not edge on
+        its own — the credit, the breach stop, and small size are. {tent.breached ? "Range BREACHED — the defended pin failed; the loss is capped at the wing." : "Range holding — decay is working for you."}
+      </div>
+    </div>
   );
 }
 

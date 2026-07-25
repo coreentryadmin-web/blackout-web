@@ -59,6 +59,7 @@ export function ZeroDteDeck() {
         plays={plays}
         laneLabel={sim ? "0DTE · SIMULATION" : "0DTE · same-day"}
         degraded={degraded}
+        allocation={data?.allocation ?? null}
         emptyHint={
           degraded
             ? "Board data unavailable right now — retrying. Any open position is still live; this is a data outage, not a flat tape."

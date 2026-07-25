@@ -34,6 +34,7 @@ import {
   type ZeroDteMarkSource,
 } from "@/lib/zerodte/marks-math";
 import { buildTerminalExitLadder, executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
+import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
 import { readFrozenExitMode, readFrozenExitPolicy } from "@/lib/zerodte/exit-sync";
 import { buildResolvedExitPolicy } from "@/lib/zerodte/strategy-version";
 import type { ZeroDteGreeks } from "@/lib/zerodte/live-marks";
@@ -154,6 +155,12 @@ export type ZeroDteBoardLedgerRow = {
   /** True when this row is a CREDIT iron condor (entry_context.play_type === "CONDOR"). The terminal
    *  uses this to SUPPRESS the directional long-premium trim ladder (inverted for a credit structure). */
   is_condor: boolean;
+  /** Wave 2 — the frozen condor render geometry (short/long strikes, net_credit, wing_pts, breach
+   *  levels, WR + breach-rate), a strict subset of the pinned CondorPlan (entry_context.condor), for
+   *  the terminal's "price-inside-the-tent" gauge. Present ONLY on a CONDOR row that pinned a real
+   *  plan; null on a directional row or a legacy condor with no pinned geometry (the terminal shows an
+   *  honest "geometry unavailable" note, never a fabricated tent). Additive, null-safe, O(1) per row. */
+  condor: CondorGeometry | null;
 };
 
 export type ZeroDteBoardPayload = {
@@ -377,6 +384,13 @@ function mapLedgerRow(
     discovery_origin: readDiscoveryOrigins(r.entry_context),
     // Structure flag frozen at commit — a CONDOR must never render the directional trim ladder.
     is_condor: r.entry_context?.play_type === "CONDOR",
+    // Wave 2 — the condor tent geometry, read structurally from the pinned CondorPlan
+    // (entry_context.condor, stamped at commit — scan.ts). Only a CONDOR row carries one; parsed by
+    // condorGeometryFrom (fail-closed on a bad/absent blob → null, never a fabricated tent). O(1).
+    condor:
+      r.entry_context?.play_type === "CONDOR"
+        ? condorGeometryFrom(r.entry_context?.condor)
+        : null,
   };
 }
 

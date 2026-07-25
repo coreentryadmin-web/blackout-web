@@ -31,6 +31,34 @@ export interface DeckGreeks {
   iv: number | null;
 }
 
+/** Resolved iron-condor render geometry (Wave 2) — the "price-inside-the-tent" gauge inputs for a
+ *  CREDIT condor row. Emitted server-side from the row's frozen CondorPlan (entry_context.condor) and
+ *  mapped to camelCase by the adapter; `spot` is resolved to the LIVE underlying when the board carries
+ *  it (`spotIsLive`), else the commit-time spot. Present ONLY on `isCondor` rows; null otherwise. */
+export interface DeckCondor {
+  /** Resolved underlying: the live price when available (spotIsLive), else the commit-time spot. */
+  spot: number | null;
+  /** True when `spot` is a fresh live underlying; false when it fell back to the commit-time spot. */
+  spotIsLive: boolean;
+  shortPut: number;
+  longPut: number;
+  shortCall: number;
+  longCall: number;
+  /** Wing width per side in points (short→long). */
+  wingPts: number;
+  /** Net credit captured per 1-lot, $ (×100). Null when priced without a full book at commit. */
+  netCredit: number | null;
+  /** Defined max loss per 1-lot, $. Null without a credit. */
+  maxLoss: number | null;
+  /** Underlying breach levels = the short strikes (a WIN closes STRICTLY inside). */
+  breachLower: number;
+  breachUpper: number;
+  /** Surfaced win-rate estimate — ALWAYS rendered with `breachRatePct`, never alone (honest skew). */
+  winRate: number | null;
+  /** The negative-skew intraday-breach companion. Null on a legacy blob → render captions it unmeasured. */
+  breachRatePct: number | null;
+}
+
 export interface TerminalPlay {
   id: string;
   ticker: string;
@@ -67,6 +95,10 @@ export interface TerminalPlay {
   /** True when this is a CREDIT iron condor — suppresses the directional long-premium trim ladder
    *  (a condor profits from decay, not a rising premium, so the ⅓@+25%/⅓@+50% ladder is inverted). */
   isCondor?: boolean | null;
+  /** The resolved condor render geometry (Wave 2) — the tent gauge + breach math. Present ONLY on an
+   *  isCondor row that carried a real CondorPlan; null on a directional row or a condor with no pinned
+   *  geometry (the terminal then shows an honest "geometry unavailable" note, never a fabricated tent). */
+  condor?: DeckCondor | null;
 
   // ── pnl ──
   entry?: number | null;

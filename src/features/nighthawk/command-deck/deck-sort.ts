@@ -46,3 +46,69 @@ export function sortPlaysForDeck(plays: TerminalPlay[]): TerminalPlay[] {
   }
   return [...open, ...watch, ...closed];
 }
+
+// ── Conviction sort (Wave 2, optional/additive) ──────────────────────────────────────
+// A SECOND lens over the SAME list, alongside (never replacing) the status sort: rank by the
+// engine's own conviction signals — merit tier × confluence × tape-alignment — so the highest-
+// conviction plays float regardless of open/watch/closed banding. Pure + display-only; the incoming
+// array is untouched. Every input degrades safely: a play carrying none of the three signals scores 0
+// and holds its incoming (score-ranked) position via the stable tie-break.
+
+export type DeckSortMode = "status" | "conviction";
+
+/** Merit-tier letter → an ordinal (higher = better). A+ tops it; an unknown/absent tier is 0 (no
+ *  conviction credit — never a fabricated grade). Case-insensitive; the "+" adds a half-step so A+
+ *  beats A but sits below a full grade jump. */
+export function tierRank(tier: string | null | undefined): number {
+  if (!tier) return 0;
+  const t = tier.trim().toUpperCase();
+  const base: Record<string, number> = { A: 5, B: 4, C: 3, D: 2, E: 1, F: 0 };
+  const letter = t[0] ?? "";
+  const rank = base[letter];
+  if (rank == null) return 0;
+  return rank + (t.includes("+") ? 0.5 : t.includes("-") ? -0.25 : 0);
+}
+
+/** Tape-alignment contribution from the live thesis read: a confirmed-intact tape is conviction, a
+ *  degrading/broken one is a penalty, and a DATA-ABSENT ("unknown") read is neutral 0 — the same
+ *  9-6c honesty the adapter applies (absence is never treated as a confirmed green). */
+export function tapeAlignScore(play: Pick<TerminalPlay, "thesisBreak">): number {
+  switch (play.thesisBreak?.level) {
+    case "intact":
+      return 1;
+    case "warn":
+      return -1;
+    case "break":
+      return -2;
+    default:
+      return 0; // "unknown" or absent — neutral, not a fabricated confirmation
+  }
+}
+
+/**
+ * Composite conviction score for the conviction sort. Weights: tier is the heaviest lever (the
+ * engine's earned merit grade), confluence next (0–2 confirmations), tape-alignment a lighter tilt.
+ * Pure; higher = more conviction. Exposed for the unit tests.
+ */
+export function convictionScore(
+  play: Pick<TerminalPlay, "tierLabel" | "confluence" | "thesisBreak">,
+): number {
+  return tierRank(play.tierLabel) * 3 + (play.confluence ?? 0) * 2 + tapeAlignScore(play);
+}
+
+/**
+ * Return a NEW array ranked by conviction DESCENDING, STABLE for ties (incoming score-ranked order is
+ * preserved among equal-conviction plays). Never mutates the input. Ties fall back to the raw `score`
+ * then leave the original order — deterministic, no ticker coin-flip that would reorder on each poll.
+ */
+export function sortPlaysByConviction(plays: TerminalPlay[]): TerminalPlay[] {
+  return plays
+    .map((p, i) => ({ p, i, c: convictionScore(p) }))
+    .sort((a, b) => b.c - a.c || b.p.score - a.p.score || a.i - b.i)
+    .map((x) => x.p);
+}
+
+/** Dispatch the active sort mode — the deck picks status (default) or conviction. */
+export function sortPlaysForDeckBy(plays: TerminalPlay[], mode: DeckSortMode): TerminalPlay[] {
+  return mode === "conviction" ? sortPlaysByConviction(plays) : sortPlaysForDeck(plays);
+}
