@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
+import { timeStopClock } from "@/lib/zerodte/terminal-ladder";
+import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-math";
+import { etNowParts } from "@/features/nighthawk/lib/session";
+import { showsRatchetTrack, showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
 
 type Tab = "thesis" | "manage" | "pnl";
 
@@ -16,6 +20,9 @@ function fmtGreek(k: string, v: number | null): string {
   if (k === "theta") return v.toFixed(2);
   return `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
 }
+
+const usd = (n: number | null | undefined): string => (n != null ? `$${n.toFixed(2)}` : "—");
+const signPct = (n: number | null | undefined): string => (n != null ? `${n > 0 ? "+" : ""}${Math.round(n)}%` : "—");
 
 /** Flash a cell green/red when its value changes between renders (honest live-change feedback). */
 function useFlash(value: unknown) {
@@ -32,13 +39,28 @@ function useFlash(value: unknown) {
   return flash;
 }
 
+/** A 1s local clock so the time-stop countdown, session-decay bar, and mark-age readout advance
+ *  every second even between the board poll (5s) and the SSE mark push (1s) — the "always live"
+ *  requirement. Cheap: one interval for the whole terminal, cleared on unmount. */
+function useSecondTick(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
 function GreekCell({ k, v }: { k: string; v: number | null }) {
   const flash = useFlash(v);
-  const neg = k === "theta" || (k === "delta" && (v ?? 0) < 0);
+  // THETA is the 0DTE enemy — always highlight it (amber) so the decay cost reads at a glance;
+  // a negative delta (a put's directional delta) still renders red.
+  const theta = k === "theta";
+  const neg = !theta && k === "delta" && (v ?? 0) < 0;
   return (
     <div className="nh-deck-gk">
       <div className="gl">{GLAB[k]}</div>
-      <div className={clsx("gv", neg && "dn", flash && "neon")}>{fmtGreek(k, v)}</div>
+      <div className={clsx("gv", theta && "th", neg && "dn", flash && "neon")}>{fmtGreek(k, v)}</div>
     </div>
   );
 }
@@ -46,6 +68,12 @@ function GreekCell({ k, v }: { k: string; v: number | null }) {
 function Bar({ pts }: { pts: number }) {
   const w = Math.max(2, Math.min(100, (Math.abs(pts) / 30) * 100));
   return <div className="bar"><i style={{ width: `${w}%` }} /></div>;
+}
+
+/** ⅓ / ½ etc — a compact fraction glyph for a tranche's share of the original position. */
+function fractionGlyph(f: number): string {
+  const map: Record<string, string> = { "0.33": "⅓", "0.34": "⅓", "0.50": "½", "0.25": "¼", "0.67": "⅔", "1.00": "ALL" };
+  return map[f.toFixed(2)] ?? `${Math.round(f * 100)}%`;
 }
 
 export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
@@ -59,15 +87,29 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  const markFlash = useFlash(play?.mark ?? null); // hook must run unconditionally (before any early return)
+  // Hooks must run unconditionally (before any early return).
+  const markFlash = useFlash(play?.mark ?? null);
+  const nowMs = useSecondTick();
 
   if (!play) {
     return <div className="nh-deck-right"><div className="nh-deck-empty">◂ select a play to break it down</div></div>;
   }
   const g = play.greeks;
 
+  // ── Honest liveliness: the mark is LIVE only when it carries a fresh per-quote timestamp. A
+  //    legacy SYNC mark (no timestamp) is unknown-age; a timestamp older than the stale window is
+  //    STALE. We NEVER render a stale/sync mark under a confident green "LIVE" pulse. ──
+  const asOfMs = play.markAsOf ? Date.parse(play.markAsOf) : NaN;
+  const hasAsOf = Number.isFinite(asOfMs);
+  const ageMs = hasAsOf ? Math.max(0, nowMs - asOfMs) : null;
+  const stale = hasAsOf ? isZeroDteMarkStale(asOfMs, nowMs, ZERODTE_MARK_STALE_MS) : false;
+  const sync = play.markIsSync === true || (!hasAsOf && play.mark != null);
+  const live = play.mark != null && hasAsOf && !stale;
+  const ageLabel =
+    ageMs == null ? null : ageMs < 1000 ? "now" : ageMs < 60_000 ? `${Math.round(ageMs / 1000)}s ago` : `${Math.round(ageMs / 60_000)}m ago`;
+
   return (
-    <div className="nh-deck-right">
+    <div className={clsx("nh-deck-right", stale && "nh-deck-dim")}>
       <div className="nh-deck-th">
         <span className="tk">{play.ticker} · {play.direction}</span>
         <span className="ct">{play.contract}</span>
@@ -75,9 +117,22 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
         <span className="big"><div className="nh-deck-score">{play.score}</div><div className="lab">SCORE</div></span>
       </div>
 
+      <HeaderBadges play={play} />
+
       <div className="nh-deck-stream">
-        <span className="nh-deck-dot" /><span className="lv">LIVE</span> · marks push · mark{" "}
-        <span className={clsx(markFlash && "neon")}>{play.mark != null ? `$${play.mark.toFixed(2)}` : "—"}</span>
+        {live ? (
+          <><span className="nh-deck-dot" /><span className="lv">LIVE</span></>
+        ) : sync ? (
+          <><span className="nh-deck-dot sync" /><span className="sy">SYNC</span></>
+        ) : (
+          <><span className="nh-deck-dot off" /><span className="of">{stale ? "STALE" : "—"}</span></>
+        )}
+        {" · mark "}
+        <span className={clsx(markFlash && "neon", stale && "nh-deck-stale-mark")}>{usd(play.mark)}</span>
+        {/* Executable fill — a long exits into the BID. Mid alone flatters the exit; show both. */}
+        {play.execMark != null && <span className="nh-deck-fill"> · fill ≈{usd(play.execMark)}</span>}
+        {ageLabel && <span className="nh-deck-age"> · {sync ? "sync" : ageLabel}</span>}
+        {stale && <span className="nh-deck-stalebadge">stale &gt;{Math.round(ZERODTE_MARK_STALE_MS / 1000)}s</span>}
       </div>
 
       <div className="nh-deck-greeks">
@@ -96,15 +151,37 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
 
       <div className="nh-deck-body">
         {tab === "thesis" && <ThesisPanel play={play} />}
-        {tab === "manage" && <ManagePanel play={play} />}
+        {tab === "manage" && <ManagePanel play={play} nowMs={nowMs} />}
         {tab === "pnl" && <PnlPanel play={play} />}
       </div>
 
       <div className="nh-deck-foot">
-        <span>EXIT · {play.exitModel}</span>
+        <span>EXIT · {play.exitModel === "SCALE_OUT" ? "TRIM-SCALE" : play.exitModel}</span>
         <span>CONF {play.confidence != null ? `${Math.round(play.confidence * 100)}%` : "—"}</span>
         {play.allocation && <span style={{ marginLeft: "auto" }}>{play.allocation.role} · {play.allocation.sizing}</span>}
       </div>
+    </div>
+  );
+}
+
+/** Tier · confluence · discovery-origin header badges + the calibration scorecard line (shown ONLY
+ *  when the payload carries a real figure — never fabricated). Renders nothing when a play carries
+ *  none of them (a legacy row), so the header stays clean. */
+function HeaderBadges({ play }: { play: TerminalPlay }) {
+  const hasBadges = play.tierLabel || play.confluence != null || (play.discoveryOrigin?.length ?? 0) > 0;
+  if (!hasBadges && !play.scorecard) return null;
+  return (
+    <div className="nh-deck-badges">
+      {play.tierLabel && <span className="nh-deck-badge tier">TIER {play.tierLabel}</span>}
+      {play.confluence != null && <span className="nh-deck-badge conf">CONFLUENCE {play.confluence}/2</span>}
+      {play.discoveryOrigin?.map((o) => (
+        <span key={o} className="nh-deck-badge orig">{o}</span>
+      ))}
+      {play.scorecard && (
+        <span className="nh-deck-badge sc" title="Calibrated strategy record">
+          {Math.round(play.scorecard.winRate)}% WR · {signPct(play.scorecard.avg)} avg · n={play.scorecard.n}
+        </span>
+      )}
     </div>
   );
 }
@@ -137,7 +214,7 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
         {play.regime && <div><span className="k">Regime</span><span className="v">{play.regime}</span></div>}
         {play.confidence != null && <div><span className="k">Confidence</span><span className="v">{Math.round(play.confidence * 100)}%</span></div>}
         {play.allocation && <div><span className="k">Allocation</span><span className="v">{play.allocation.role}</span></div>}
-        <div><span className="k">Exit model</span><span className="v">{play.exitModel}</span></div>
+        <div><span className="k">Exit model</span><span className="v">{play.exitModel === "SCALE_OUT" ? "trim-scale" : play.exitModel.toLowerCase()}</span></div>
       </div>
       <div
         className="nh-deck-break"
@@ -160,8 +237,12 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
   );
 }
 
-function ManagePanel({ play }: { play: TerminalPlay }) {
+function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
   const badge = play.recommendation;
+  // A CONDOR is a credit structure — its profit comes from decay/pin, NOT a rising long premium,
+  // so it must never draw the directional trim ladder OR the −50/+100 ratchet track (both inverted).
+  const isCondor = play.isCondor === true;
+  const isTrimScale = showsTrimScaleLadder(play);
   return (
     <>
       <div className="nh-deck-lab">Trade management — advisory (we recommend, you execute)</div>
@@ -170,16 +251,38 @@ function ManagePanel({ play }: { play: TerminalPlay }) {
         {/* Plain text only — never inject HTML (recNote is authored plain; React escapes it safely). */}
         <span className="nh-deck-recnote">{play.recNote}</span>
       </div>
-      {play.exitModel === "RATCHET" && play.progress != null && (
+
+      {/* Time-stop clock is a 0DTE-ONLY discipline (flat by 15:30 ET the SAME session). A Swing/
+          LEAPS/Legacy position runs for days/weeks, so showing it a "flat by 15:30 today" countdown
+          would be flatly false. Also suppressed once a 0DTE row is CLOSED (nothing left to time out). */}
+      {showsTimeStopClock(play) && <TimeStopClock nowMs={nowMs} />}
+
+      {isCondor && (
+        <div className="nh-deck-recnote" style={{ marginTop: 4 }}>
+          Credit iron condor — profit comes from the underlying pinning between the short strikes
+          (premium decay), not a rising long premium. The directional trim/ratchet ladder does not
+          apply; the condor-specific breach/decay view is a later wave.
+        </div>
+      )}
+
+      {showsRatchetTrack(play) && (
         <>
           <div className="nh-deck-track">
             <span className="lo">STOP −50%</span><span className="hi">TARGET +100%</span>
-            <span className="mk" style={{ left: `${Math.round(play.progress * 100)}%` }} />
+            <span className="mk" style={{ left: `${Math.round((play.progress ?? 0) * 100)}%` }} />
           </div>
           <div className="nh-deck-recnote">Ratchet: fast 0DTE exit — stop trails up as it runs. Marker = distance stop→target.</div>
         </>
       )}
-      {play.exitModel === "SCALE_OUT" && (
+
+      {/* The REAL trim-scale ladder — each tranche with its trigger %, real premium level, and FIRED
+          (banked) vs pending. Rendered only when the row's FROZEN policy is trim_scale (dormant under
+          the prod ratchet default) AND it is not a condor. */}
+      {isTrimScale && <TrimScaleLadder play={play} />}
+
+      {/* Legacy SCALE_OUT fallback (horizon lanes carry no resolved policy): the pre-Terminal-v2
+          derive-from-status tranche view, unchanged. */}
+      {!isCondor && play.exitModel === "SCALE_OUT" && !isTrimScale && (
         <>
           <div className="nh-deck-tranches">
             <div className={clsx("nh-deck-tr", (play.pnlPct ?? 0) >= 50 && "done")}><span className="p">⅓</span>@ +50%</div>
@@ -193,18 +296,90 @@ function ManagePanel({ play }: { play: TerminalPlay }) {
   );
 }
 
+/** The real trim-scale ladder from the frozen exit policy: profit tranches (banked/pending) + the
+ *  runner's target/stop rails with live distance-to-each in $ and %. */
+function TrimScaleLadder({ play }: { play: TerminalPlay }) {
+  const p = play.exitPolicy!;
+  const mark = play.mark;
+  const distTo = (level: number | null): string => {
+    if (level == null || mark == null) return "";
+    const dollars = level - mark;
+    const pct = mark > 0 ? (level / mark - 1) * 100 : null;
+    return ` · ${dollars >= 0 ? "+" : ""}${dollars.toFixed(2)}${pct != null ? ` / ${pct >= 0 ? "+" : ""}${Math.round(pct)}%` : ""} away`;
+  };
+  return (
+    <>
+      <div className="nh-deck-lab" style={{ marginTop: 4 }}>Trim-scale ladder — the engine banks partials, then runs the rest</div>
+      <div className="nh-deck-ladder">
+        {p.trim_levels.map((t, i) => (
+          <div key={i} className={clsx("nh-deck-rung", t.fired ? "fired" : "pending")}>
+            <span className="frac">{fractionGlyph(t.fraction)}</span>
+            <span className="trg">@ +{Math.round(t.trigger_pct)}%</span>
+            <span className="lvl">{usd(t.premium)}</span>
+            <span className="state">{t.fired ? "✓ BANKED" : "• pending"}</span>
+          </div>
+        ))}
+        <div className="nh-deck-rung runner">
+          <span className="frac">{fractionGlyph(p.runner_fraction)}</span>
+          <span className="trg">RUNNER</span>
+          <span className="lvl">
+            <span className="tgt">tgt {usd(p.target_premium)}</span>
+            <span className="stp">stop {usd(p.stop_premium)}</span>
+          </span>
+          <span className="state run">rides the rails</span>
+        </div>
+      </div>
+      <div className="nh-deck-runner-rails">
+        <div className="rail tgt">▲ target {usd(p.target_premium)}<span className="d">{distTo(p.target_premium)}</span></div>
+        <div className="rail stp">▼ stop {usd(p.stop_premium)}<span className="d">{distTo(p.stop_premium)}</span></div>
+        <div className="rail ts">◷ hard time-stop {p.time_stop_et} ET</div>
+      </div>
+      <div className="nh-deck-recnote">Trim-scale: bank ⅓ at each trim as the peak arms it (FIRED), run the last third to target/stop — the positive-skew exit the engine actually trades.</div>
+    </>
+  );
+}
+
+/** Countdown to the 15:30 ET hard time-stop + a session-decay bar (09:30→15:30 elapsed). */
+function TimeStopClock({ nowMs }: { nowMs: number }) {
+  // Recompute ET minute-of-day each tick (etNowParts reads the live clock).
+  void nowMs; // depend on the tick so this recomputes every second
+  const { hour, minute } = etNowParts();
+  const clock = timeStopClock(hour * 60 + minute);
+  return (
+    <div className={clsx("nh-deck-clock", clock.past_time_stop && "past")}>
+      <div className="row">
+        <span className="lab">◷ THETA / TIME-STOP</span>
+        <span className={clsx("val", clock.minutes_remaining <= 30 && "warn")}>
+          {clock.past_time_stop ? "TIME STOP — flat by 15:30" : `${clock.label} to 15:30 ET`}
+        </span>
+      </div>
+      <div className="decay"><i style={{ width: `${Math.round(clock.elapsed_frac * 100)}%` }} /></div>
+    </div>
+  );
+}
+
 function PnlPanel({ play }: { play: TerminalPlay }) {
   const has = play.entry != null;
   const live = play.pnlPct;
+  const exec = play.execPnlPct;
   return (
     <>
       <div className="nh-deck-lab">Live P&amp;L</div>
       <div className={clsx("nh-deck-pnlbig", (live ?? 0) > 0 && "nh-deck-pos", (live ?? 0) < 0 && "nh-deck-neg")}>
         {has && live != null ? `${live > 0 ? "+" : ""}${live}%` : "— not entered"}
       </div>
+      {/* Executable P&L — what a member could actually realize selling into the BID right now,
+          beside the mid. Only shown when a live two-sided book priced it (no fabricated fill). */}
+      {exec != null && (
+        <div className="nh-deck-execline">
+          mid <b>{live != null ? `${live > 0 ? "+" : ""}${live}%` : "—"}</b>
+          {" · "}fill ≈<b className={clsx(exec < 0 && "nh-deck-neg")}>{`${exec > 0 ? "+" : ""}${exec}%`}</b>
+          {play.execMark != null && <span className="nh-deck-recnote"> (sell into {usd(play.execMark)} bid)</span>}
+        </div>
+      )}
       <div className="nh-deck-grid">
-        <div><span className="k">Entry</span><span className="v">{has ? `$${play.entry!.toFixed(2)}` : "—"}</span></div>
-        <div><span className="k">Live mark</span><span className="v">{play.mark != null ? `$${play.mark.toFixed(2)}` : "—"}</span></div>
+        <div><span className="k">Entry</span><span className="v">{has ? usd(play.entry) : "—"}</span></div>
+        <div><span className="k">Live mark</span><span className="v">{usd(play.mark)}</span></div>
         <div><span className="k">Peak</span><span className="v nh-deck-pos">{play.peak != null ? `+${play.peak}%` : "—"}</span></div>
         <div><span className="k">Trough</span><span className="v nh-deck-neg">{play.trough != null ? `${play.trough}%` : "—"}</span></div>
       </div>

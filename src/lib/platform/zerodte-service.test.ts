@@ -412,3 +412,20 @@ test("commit latch: unknowable committed set (ledger read failed, no same-sessio
   assert.deepEqual(board.setups, [], "no fresh find may render when fresh-vs-committed is unknowable");
   assert.equal(board.upstream_ok, false, "the freshness badge must say degraded, not impersonate a live empty board");
 });
+
+// Terminal v2 — assert mapLedgerRow emits the additive terminal fields (the source of the
+// RTH-real render), resolved from the row's OWN frozen policy/live-marks store, not fabricated.
+test("mapLedgerRow emits the Terminal v2 additive fields (exit ladder, greeks, book, executable, origin)", () => {
+  const service = readFileSync(join(ROOT, "lib/platform/zerodte-service.ts"), "utf8");
+  // The real ladder is resolved from the FROZEN exit policy (never current code), then priced/fired.
+  assert.match(service, /resolveExitLadder/);
+  assert.match(service, /readFrozenExitPolicy/);
+  assert.match(service, /buildTerminalExitLadder/);
+  // Live greeks + two-sided book flow from the SAME live-marks store entry behind last_mark.
+  assert.match(service, /greeks: liveMark\?\.greeks/);
+  assert.match(service, /bid: liveMark\?\.bid/);
+  // Executable P&L is the sell-into-the-bid number.
+  assert.match(service, /live_pnl_pct_exec: executableFill/);
+  // Discovery origin comes from the frozen origin maps.
+  assert.match(service, /discovery_origin: readDiscoveryOrigins/);
+});

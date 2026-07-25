@@ -8,6 +8,7 @@
 
 import type { SwingSetupState, SwingEntryState } from "@/lib/swing/taxonomy";
 import type { SwingServingSection } from "@/lib/swing/serving";
+import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 
 export type DeckDirection = "LONG" | "SHORT";
 export type DeckStatus = "OPEN" | "HOLD" | "TRIM" | "CLOSED" | "WATCH" | "SKIP";
@@ -57,12 +58,43 @@ export interface TerminalPlay {
   /** 0–1 position along the ratchet stop→target track (RATCHET); scale-out tranches derive from status. */
   progress?: number | null;
 
+  // ── management: the REAL resolved exit ladder (Terminal v2) ──
+  /** The engine's ACTUAL exit ladder for this row — the trim-scale ⅓/⅓ partial-scale ladder or
+   *  the single ratchet track — resolved server-side from the FROZEN exit policy and priced/fired
+   *  against entry + peak. When present with `policy: "trim_scale"` the terminal draws the real
+   *  ladder; a ratchet/absent policy keeps the legacy single stop→target track. */
+  exitPolicy?: TerminalExitLadder | null;
+  /** True when this is a CREDIT iron condor — suppresses the directional long-premium trim ladder
+   *  (a condor profits from decay, not a rising premium, so the ⅓@+25%/⅓@+50% ladder is inverted). */
+  isCondor?: boolean | null;
+
   // ── pnl ──
   entry?: number | null;
   mark?: number | null;
   pnlPct?: number | null;
   peak?: number | null;
   trough?: number | null;
+  /** Executable exit fill (the BID a long sells into) + its P&L vs entry — the honest realizable
+   *  number beside the mid `mark`/`pnlPct`. Null without a live two-sided book (mid-only). */
+  execMark?: number | null;
+  execPnlPct?: number | null;
+
+  // ── live-mark honesty (Terminal v2) ──
+  /** ISO instant of the quote behind `mark` — the terminal shows its age. */
+  markAsOf?: string | null;
+  /** Server-flagged: the mark is a legacy SYNC mark with no per-quote timestamp (unknown age). */
+  markIsSync?: boolean | null;
+
+  // ── header badges (Terminal v2) ──
+  /** Discovery rails that found this play (FLOW/BREAKOUT/PIN) — the origin badge. */
+  discoveryOrigin?: string[] | null;
+  /** Merit tier letter at commit (A+/A/…/F), read from the pinned tier blob. */
+  tierLabel?: string | null;
+  /** VWAP-side + market-aligned confirmation count (0–2) — the confluence badge. */
+  confluence?: number | null;
+  /** Per-strategy calibration scorecard — rendered ONLY when the payload carries it (never
+   *  fabricated): win-rate %, average return %, and sample size n. */
+  scorecard?: { winRate: number; avg: number; n: number } | null;
 
   // ── greeks (live) ──
   greeks?: DeckGreeks | null;

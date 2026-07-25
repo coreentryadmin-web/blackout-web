@@ -9,9 +9,11 @@
 
 import { factorsFromFlowQuality } from "@/lib/explain/trade-explanation";
 import type { SwingSetupState } from "@/lib/swing/taxonomy";
+import { executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import type {
   DeckDirection,
   DeckFactor,
+  DeckGreeks,
   DeckStatus,
   ExitModel,
   Recommendation,
@@ -81,8 +83,38 @@ export interface ZeroDteDeckSource {
     gate?: { verdict?: string; blocks?: unknown[] } | null;
     plan?: { occ?: string | null; stop_premium?: number | null; target_premium?: number | null } | null;
     market_aligned?: boolean | null;
+    /** Play STRUCTURE (Phase 4): "CONDOR" for a delta-neutral credit iron condor, else DIRECTIONAL. */
+    play_type?: string | null;
   } | null;
   allocation?: { role: string; sizing: string; reasons?: string[] } | null;
+  /** True when this row is a CREDIT iron condor (from the ledger row / entry_context.play_type or the
+   *  sim frame). A condor must NEVER draw the directional long-premium trim ladder (it's inverted —
+   *  profit comes from decay, not premium rising). */
+  is_condor?: boolean | null;
+
+  // ── Terminal v2 additive fields (server ledger row / sim frame). All OPTIONAL + null-safe —
+  //    a legacy source that omits them renders exactly as before this change. ──
+  /** The engine's REAL resolved exit ladder (trim-scale ⅓/⅓ or single ratchet), from the frozen
+   *  policy — priced + fired server-side. Drives the trim-scale render; absent → legacy ratchet. */
+  exit_policy?: TerminalExitLadder | null;
+  /** Live two-sided book behind last_mark, for the executable fill line. */
+  bid?: number | null;
+  ask?: number | null;
+  /** Executable (sell-into-the-bid) P&L % vs entry, computed server-side. */
+  live_pnl_pct_exec?: number | null;
+  /** Live option greeks (Δ Γ Θ V IV). */
+  greeks?: { delta?: number | null; gamma?: number | null; theta?: number | null; vega?: number | null; iv?: number | null } | null;
+  /** Mark-honesty inputs: ISO instant behind the mark + whether it is a legacy unknown-age sync mark. */
+  mark_as_of?: string | null;
+  mark_is_sync?: boolean | null;
+  /** Discovery rails that found this play (FLOW/BREAKOUT/PIN) — the origin badge. */
+  discovery_origin?: string[] | null;
+  /** Pinned merit-tier blob (entry_context.tier) — the terminal reads the letter grade. */
+  tier?: { tier?: string | null } | null;
+  /** VWAP-side + market-aligned confirmation count (setup.confluence.confirmations) — the confluence badge. */
+  confluence?: number | null;
+  /** Per-strategy calibration scorecard — rendered ONLY when present (never fabricated). */
+  scorecard?: { winRate: number; avg: number; n: number } | null;
 }
 
 const FB_LABELS: Record<string, string> = {
@@ -114,12 +146,43 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   ];
 
   const pnl = fin(src.live_pnl_pct);
-  const mgmt = managementFor("RATCHET", status, pnl);
+  const entry = fin(src.entry_premium);
+
+  // ── Terminal v2: render the exit model the row ACTUALLY froze, not a hard-coded constant.
+  //    The engine's frozen exit policy (resolved + priced server-side) decides the model.
+  //    PROD RUNS RATCHET by default (ZERODTE_EXIT_MODE unset, DEFAULT_EXIT_MODE="ratchet"), so
+  //    almost every real row resolves to RATCHET and keeps the single stop→target track. Only a
+  //    row that froze `trim_scale` (that mode enabled) draws the partial-scale ladder (SCALE_OUT);
+  //    a legacy row with no frozen policy also stays RATCHET. Previously this hard-coded "RATCHET"
+  //    unconditionally — harmless while ratchet IS the default, but it would have mis-drawn a
+  //    trim_scale row as a ratchet track the moment that mode was turned on.
+  // Condor = a CREDIT structure (explicit is_condor flag OR the setup's frozen play_type). It must
+  // never route to the directional trim ladder, so it is resolved BEFORE the exit-model decision.
+  const isCondor = src.is_condor ?? (src.setup?.play_type === "CONDOR" ? true : null);
+  const exitPolicy = src.exit_policy ?? null;
+  const exitModel: ExitModel = exitPolicy?.policy === "trim_scale" && isCondor !== true ? "SCALE_OUT" : "RATCHET";
+  const mgmt = managementFor(exitModel, status, pnl);
   const alloc = src.allocation
     ? { role: src.allocation.role, sizing: src.allocation.sizing, reason: src.allocation.reasons?.[0] }
     : null;
 
-  const entry = fin(src.entry_premium);
+  // Greeks: map the live snapshot's Δ Γ Θ V IV (board payload OR sim frame), each field
+  // independently null-safe — a missing greek renders "—", never a fabricated value.
+  const greeks: DeckGreeks | null = src.greeks
+    ? {
+        delta: fin(src.greeks.delta),
+        gamma: fin(src.greeks.gamma),
+        theta: fin(src.greeks.theta),
+        vega: fin(src.greeks.vega),
+        iv: fin(src.greeks.iv),
+      }
+    : null;
+
+  // Executable fill (a long exits into the BID, not the mid). The server already priced the
+  // executable P&L; the fill price comes from the same two-sided book. No book → mid only.
+  const exec = executableFill(fin(src.bid), fin(src.ask), entry);
+  const tierLabel = typeof src.tier?.tier === "string" ? src.tier.tier : null;
+
   return {
     id: `0DTE:${src.ticker}`,
     ticker: src.ticker.toUpperCase(),
@@ -129,7 +192,9 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     score: Math.round(fin(src.score) ?? 0),
     status,
     horizon: "ZERO_DTE",
-    exitModel: "RATCHET",
+    exitModel,
+    exitPolicy,
+    isCondor,
     factors,
     gates,
     regime: setup?.gamma_regime ? `gamma ${setup.gamma_regime}` : null,
@@ -146,7 +211,15 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     pnlPct: pnl,
     peak: entry && fin(src.peak_premium) ? Math.round((src.peak_premium! / entry - 1) * 100) : null,
     trough: entry && fin(src.trough_premium) ? Math.round((src.trough_premium! / entry - 1) * 100) : null,
-    greeks: null, // populated by the live greeks stream (backend follow-up)
+    execMark: exec.fill,
+    execPnlPct: fin(src.live_pnl_pct_exec) ?? exec.pnl_pct,
+    markAsOf: src.mark_as_of ?? null,
+    markIsSync: src.mark_is_sync ?? null,
+    discoveryOrigin: Array.isArray(src.discovery_origin) && src.discovery_origin.length > 0 ? src.discovery_origin : null,
+    tierLabel,
+    confluence: fin(src.confluence),
+    scorecard: src.scorecard ?? null,
+    greeks,
   };
 }
 

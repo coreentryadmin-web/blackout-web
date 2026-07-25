@@ -36,6 +36,17 @@ export interface LiveMarkRow {
   live_pnl_pct: number | null;
   stale: boolean;
   greeks: LiveMarkGreeks | null;
+  // ── Terminal v2 — the live executable-fill + honest-staleness inputs (all null-safe). The
+  //    server already prices these in the SAME frame (live-marks.ts ZeroDteLiveMarkRow); the
+  //    terminal renders "mid $X · fill ≈$Y", the executable-P&L line, and the mark age from
+  //    them without a second fetch. Optional so a legacy frame (pre-these-fields) still parses.
+  /** Live two-sided book behind the mark — a long exits into the BID. */
+  bid?: number | null;
+  ask?: number | null;
+  /** Executable (sell-into-the-bid) P&L % vs the pinned entry — the honest realizable number. */
+  live_pnl_pct_exec?: number | null;
+  /** ISO instant of the quote behind the mark — the terminal shows its age + freezes past stale. */
+  mark_as_of?: string | null;
 }
 
 interface LiveMarksPayload {
@@ -164,6 +175,13 @@ export function overlayLiveMarks(plays: TerminalPlay[], marks: Map<string, LiveM
       // Same percent scale as the board (both from pinnedLivePnlPct against the pinned entry premium).
       pnlPct: row.live_pnl_pct ?? p.pnlPct,
       greeks: row.greeks ?? p.greeks,
+      // Terminal v2: the executable fill (bid) + its P&L, and the fresh per-quote timestamp so the
+      // terminal shows a live (never "sync/unknown-age") mark age. Fall back to the board values
+      // when a field is absent from the frame — a pure enhancement, never a regression.
+      execMark: row.bid ?? p.execMark,
+      execPnlPct: row.live_pnl_pct_exec ?? p.execPnlPct,
+      markAsOf: row.mark_as_of ?? p.markAsOf,
+      markIsSync: false, // a fresh SSE frame is never a legacy sync mark
     };
   });
 }

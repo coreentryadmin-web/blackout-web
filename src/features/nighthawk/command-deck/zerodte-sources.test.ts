@@ -60,3 +60,44 @@ test("zeroDteSources: a working position already in the setups list is not dupli
   };
   assert.equal(zeroDteSources(resp).length, 1);
 });
+
+test("zeroDteSources: Terminal v2 fields (exit_policy, greeks, book, executable, origin, tier) pass through from the ledger row", () => {
+  const ladder = {
+    policy: "trim_scale", hard_stop_pct: -50, target_pct: 100,
+    trim_levels: [{ trigger_pct: 25, fraction: 0.333, premium: 2.5, fired: true }],
+    runner_fraction: 0.333, stop_premium: 1.0, target_premium: 4.0, time_stop_et: "15:30",
+  };
+  const resp: BoardResp = {
+    setups: [{ ticker: "nvda", score: 80, confluence: { confirmations: 2 } }],
+    ledger: [{
+      ticker: "NVDA", status: "OPEN", direction: "long", top_strike: 182,
+      entry_premium: 2.0, last_mark: 2.6, live_pnl_pct: 30, peak_premium: 2.6,
+      exit_policy: ladder, bid: 2.55, ask: 2.65, live_pnl_pct_exec: 27.5,
+      greeks: { delta: 0.5, gamma: 0.06, theta: -0.18, vega: 0.1, iv: 0.44 },
+      mark_as_of: "2026-07-25T14:00:00.000Z", mark_is_sync: false,
+      discovery_origin: ["FLOW"], tier: { tier: "A" },
+    }],
+  };
+  const [s] = zeroDteSources(resp);
+  assert.equal(s!.exit_policy!.policy, "trim_scale");
+  assert.equal(s!.bid, 2.55);
+  assert.equal(s!.live_pnl_pct_exec, 27.5);
+  assert.equal(s!.greeks!.theta, -0.18);
+  assert.equal(s!.mark_as_of, "2026-07-25T14:00:00.000Z");
+  assert.deepEqual(s!.discovery_origin, ["FLOW"]);
+  assert.equal(s!.tier!.tier, "A");
+  assert.equal(s!.confluence, 2); // read off the SETUP's confluence.confirmations
+});
+
+test("zeroDteSources: a legacy ledger row without Terminal v2 fields yields nulls (no fabrication)", () => {
+  const resp: BoardResp = {
+    ledger: [{ ticker: "SPY", status: "HOLD", direction: "long", entry_premium: 4, last_mark: 4.2 }],
+  };
+  const [s] = zeroDteSources(resp);
+  assert.equal(s!.exit_policy, null);
+  assert.equal(s!.greeks, null);
+  assert.equal(s!.bid, null);
+  assert.equal(s!.discovery_origin, null);
+  assert.equal(s!.tier, null);
+  assert.equal(s!.confluence, null);
+});

@@ -17,7 +17,9 @@ import {
   matchHotNews,
   resolveFreshFindStatus,
   sessionHeat,
+  type DiscoveryOrigin,
   type EnrichedZeroDteSetup,
+  type OriginMaps,
 } from "@/lib/zerodte/board";
 import { buildIntelNote } from "@/lib/zerodte/intel";
 import { allocateBoard, openPositionsFromLedger } from "@/lib/portfolio/board-allocation";
@@ -31,6 +33,10 @@ import {
   ZERODTE_MARK_STALE_MS,
   type ZeroDteMarkSource,
 } from "@/lib/zerodte/marks-math";
+import { buildTerminalExitLadder, executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
+import { readFrozenExitMode, readFrozenExitPolicy } from "@/lib/zerodte/exit-sync";
+import { buildResolvedExitPolicy } from "@/lib/zerodte/strategy-version";
+import type { ZeroDteGreeks } from "@/lib/zerodte/live-marks";
 import {
   categorizeExitReason,
   ratchetFloorPct,
@@ -125,6 +131,29 @@ export type ZeroDteBoardLedgerRow = {
    *  committed before the tier wiring shipped — the pane simply shows no chip,
    *  never a re-derived or fabricated grade. */
   tier: Record<string, unknown> | null;
+  /** Terminal v2 — the REAL resolved exit ladder the engine runs on this row (trim-scale
+   *  ⅓/⅓ ladder or the single ratchet track), resolved from the row's FROZEN
+   *  exit_policy_snapshot (entry_context) and priced/fired against entry + peak. The terminal
+   *  renders THIS instead of a hard-coded ratchet track, so the member sees the strategy the
+   *  engine actually traded. Null on a legacy row with no frozen policy AND no committed
+   *  entry_premium (nothing to resolve) — the terminal keeps the legacy single-track render. */
+  exit_policy: TerminalExitLadder | null;
+  /** Live two-sided book behind `last_mark` (from the 1s marks lane), for the terminal's
+   *  executable-fill line (a long exits into the BID). Null off-RTH / one-sided / legacy sync. */
+  bid: number | null;
+  ask: number | null;
+  /** Executable (sell-into-the-bid) P&L % vs the pinned entry — the number a member could
+   *  actually realize right now, beside the mid `live_pnl_pct`. Null without a live bid. */
+  live_pnl_pct_exec: number | null;
+  /** Live option greeks (Δ Γ Θ V IV) from the 1s snapshot lane, carried on the board payload
+   *  so a non-SSE consumer and the sim preview show the greeks strip. Null until priced. */
+  greeks: ZeroDteGreeks | null;
+  /** Which discovery rails found this play (FLOW/BREAKOUT/PIN), from the frozen origin maps —
+   *  the terminal's origin header badge. Null on a legacy row with no pinned origin maps. */
+  discovery_origin: DiscoveryOrigin[] | null;
+  /** True when this row is a CREDIT iron condor (entry_context.play_type === "CONDOR"). The terminal
+   *  uses this to SUPPRESS the directional long-premium trim ladder (inverted for a credit structure). */
+  is_condor: boolean;
 };
 
 export type ZeroDteBoardPayload = {
@@ -183,8 +212,19 @@ const BOARD_SNAPSHOT_MAX_AGE_MS = 30_000;
 const BOARD_BUILD_LOCK_KEY = "zerodte:board:build-lock:v1";
 const BOARD_BUILD_LOCK_TTL_SEC = 20;
 
-/** A live-lane mark overlay for one ledger row (see attachLiveMarkMeta below). */
-type LiveMarkMeta = { mark: number; mark_as_of: string; mark_source: ZeroDteMarkSource };
+/** A live-lane mark overlay for one ledger row (see attachLiveMarkMeta below). Carries the
+ *  fast-moving contract state the 1s live-marks store already prices — the mark + its two-
+ *  sided book (for the executable fill) + greeks — so the ~5s board payload can serve the
+ *  SAME live numbers to a non-SSE consumer (Largo/BIE) and to the admin sim preview, not
+ *  only to the SSE-subscribed browser. All null-safe: an absent field degrades to "—". */
+type LiveMarkMeta = {
+  mark: number;
+  mark_as_of: string;
+  mark_source: ZeroDteMarkSource;
+  bid: number | null;
+  ask: number | null;
+  greeks: ZeroDteGreeks | null;
+};
 
 /** Read the exit-engine record pinned on a row (entry_context.exit — stamped by
  *  exit-sync's buildExitContext on an engine EXIT). Structural + fail-soft: any missing
@@ -203,6 +243,36 @@ function readPinnedExit(entryContext: Record<string, unknown> | null | undefined
     reason: typeof exit.reason === "string" ? exit.reason : null,
     detail: typeof exit.detail === "string" ? exit.detail : null,
   };
+}
+
+/** Resolve the terminal exit ladder (Terminal v2) for a row from its FROZEN exit policy.
+ *  Preference order, each faithful to what the row COMMITTED under: the fully-resolved numeric
+ *  snapshot (entry_context.exit_policy_snapshot) → the frozen mode name → null. A null result
+ *  means "no frozen policy" — the terminal keeps its legacy single-track ratchet render rather
+ *  than fabricating a trim ladder for a row that never committed to one. Never throws (a
+ *  malformed blob reads as absent via the exit-sync structural guards). */
+function resolveExitLadder(r: ZeroDteSetupLogRow): TerminalExitLadder | null {
+  const frozen = readFrozenExitPolicy(r.entry_context);
+  const policy = frozen ?? (() => {
+    const mode = readFrozenExitMode(r.entry_context);
+    return mode ? buildResolvedExitPolicy(mode) : null;
+  })();
+  if (!policy) return null;
+  return buildTerminalExitLadder(policy, r.entry_premium, r.peak_premium);
+}
+
+/** Which discovery rails found this play, from the frozen origin maps (entry_context.origin_maps,
+ *  WS-06). Structural + fail-soft: a legacy row with no maps → null (the terminal shows no origin
+ *  badge, never a fabricated rail). Returns the rails in the map's own key order. */
+function readDiscoveryOrigins(entryContext: Record<string, unknown> | null | undefined): DiscoveryOrigin[] | null {
+  const maps = entryContext?.origin_maps;
+  if (!maps || typeof maps !== "object") return null;
+  const dirMap = (maps as OriginMaps).origin_direction_map;
+  if (!dirMap || typeof dirMap !== "object") return null;
+  const origins = Object.keys(dirMap).filter((o): o is DiscoveryOrigin =>
+    o === "FLOW" || o === "BREAKOUT" || o === "PIN"
+  );
+  return origins.length > 0 ? origins : null;
 }
 
 function mapLedgerRow(
@@ -295,6 +365,18 @@ function mapLedgerRow(
       r.entry_context && typeof r.entry_context.tier === "object"
         ? ((r.entry_context.tier as Record<string, unknown> | null) ?? null)
         : null,
+    // Terminal v2 additive block — all null-safe. The exit ladder is resolved from the
+    // FROZEN policy (never current code); bid/ask/greeks + the executable P&L come from the
+    // live-marks store entry behind `last_mark`; discovery_origin from the frozen origin maps.
+    exit_policy: resolveExitLadder(r),
+    bid: liveMark?.bid ?? null,
+    ask: liveMark?.ask ?? null,
+    // Executable (sell-into-the-bid) P&L vs the pinned entry — the honest exit-side number.
+    live_pnl_pct_exec: executableFill(liveMark?.bid ?? null, liveMark?.ask ?? null, r.entry_premium).pnl_pct,
+    greeks: liveMark?.greeks ?? null,
+    discovery_origin: readDiscoveryOrigins(r.entry_context),
+    // Structure flag frozen at commit — a CONDOR must never render the directional trim ladder.
+    is_condor: r.entry_context?.play_type === "CONDOR",
   };
 }
 
@@ -328,6 +410,11 @@ async function attachLiveMarkMeta(rows: ZeroDteSetupLogRow[]): Promise<Map<strin
         mark: m.mark,
         mark_as_of: new Date(m.asOf).toISOString(),
         mark_source: m.source,
+        // Two-sided book + greeks from the SAME fresh store entry — feeds the executable
+        // fill (sell-into-the-bid) and the terminal greeks strip on the board payload.
+        bid: m.bid ?? null,
+        ask: m.ask ?? null,
+        greeks: m.greeks ?? null,
       });
     }
   } catch {
@@ -467,6 +554,14 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
         row.closed_reason === "stopped"
           ? PLAN_RULES.stop_pct
           : pinnedLivePnlPct(row.entry_premium, row.last_mark),
+      // Re-price the executable P&L off the member-visible ROUNDED bid/entry (same reason the
+      // mid live_pnl_pct is recomputed here) so the two exit lanes stay directly comparable.
+      live_pnl_pct_exec: executableFill(row.bid, row.ask, row.entry_premium).pnl_pct,
+      // Re-derive the ladder fired-state off the rounded entry/peak so a tranche's rendered
+      // premium level and its FIRED flag agree with the numbers shown elsewhere on the row.
+      exit_policy: row.exit_policy
+        ? buildTerminalExitLadder(row.exit_policy, row.entry_premium, row.peak_premium)
+        : null,
     })),
   };
 }
