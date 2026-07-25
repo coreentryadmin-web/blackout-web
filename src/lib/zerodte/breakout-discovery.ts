@@ -10,8 +10,17 @@
 // is exactly the live intraday snapshot we want. Off-hours / pre-open that call returns EMPTY, and
 // we SKIP (return [], logged) rather than feed the screen a stale bar. We also gate to the RTH
 // commit window so a completed after-close "today" bar is never treated as live.
+//
+// WS-19 FAIL-CLOSED STALENESS GUARD: a *successful, non-empty* grouped response used to be trusted
+// unconditionally — but a provider/cache hiccup can serve a stale-but-non-empty snapshot (e.g.
+// yesterday's bars) during RTH. That would silently drive discovery off dead data and, worse, a
+// stale snapshot that screens to nothing would read as "no breakouts today" (a genuine empty) when
+// the truth is "we don't know". We now read the freshest bar's provider timestamp and, if its age
+// exceeds BREAKOUT_MAX_BAR_AGE_MS (or no bar exposes a timestamp at all), return `data_unavailable`
+// — failing CLOSED — instead of an empty candidate list. This can only ever REMOVE stale-driven
+// candidates, never add any.
 
-import { fetchDailyMarketSummary } from "@/lib/providers/polygon";
+import { fetchDailyMarketSummary, type DailyMarketBar } from "@/lib/providers/polygon";
 import { screenBreakoutMovers } from "@/features/nighthawk/lib/candidates";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import {
@@ -32,10 +41,94 @@ const RTH_CUTOFF_ET_MINUTES = 15 * 60;
 export const BREAKOUT_MAX_CANDIDATES = 6;
 
 /**
- * Discover BREAKOUT-origin setups for the live board. Returns [] (a logged SKIP) whenever no live
- * intraday breadth snapshot exists — off-hours, pre-open, or a provider miss — so the source never
- * fabricates candidates from stale data. Best-effort throughout: any failure degrades to [] and the
- * flow board is untouched.
+ * WS-19 — fail-closed max age for the whole-market grouped-daily snapshot.
+ *
+ * DAILY-GRANULARITY LIMITATION (commented deliberately, per the WS-19 brief): Polygon grouped-daily
+ * bars are DAILY aggregates. Each bar's `t` is the Unix-ms START of that trading day's aggregate
+ * window (session-open, ≈ midnight ET of the bar's date) — NOT a live tick time. So this signal
+ * cannot observe *intra-session* staleness (a bar that stopped updating at, say, 11:00 ET still
+ * reports today's `t`). What it CAN prove — and the dominant real failure this guard closes — is a
+ * PRIOR-DAY (carried-over / cached) snapshot served during RTH: its freshest bar is dated to an
+ * earlier session, so `now − t` jumps past a full day.
+ *
+ * THRESHOLD RATIONALE: discoverBreakoutSetups only runs inside the RTH commit window [9:30, 15:00)
+ * ET, so a genuine same-day live bar's `now − t` is at most ~15h (t ≈ midnight ET) — and up to ~20h
+ * once the widest `t`-convention / DST skew is allowed for. A prior-day snapshot is ≥ ~33h old. 24h
+ * sits cleanly between the two: strictly above any legitimate same-day age, strictly below any
+ * prior-day bar. We fail CLOSED past it rather than fabricate confidence in an unverifiable bar.
+ */
+export const BREAKOUT_MAX_BAR_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** Outcome of a freshness assessment over a grouped-daily result set (WS-19). */
+export type GroupedBarFreshness =
+  | { fresh: true; freshestBarMs: number; ageMs: number }
+  | { fresh: false; reason: "missing_bar_timestamp" }
+  | { fresh: false; reason: "stale_snapshot"; freshestBarMs: number; ageMs: number };
+
+/**
+ * Assess whether a NON-EMPTY grouped-daily result set is fresh enough to drive discovery.
+ * Reads the freshest bar's provider `t` (Unix-ms window start) and compares its age to
+ * BREAKOUT_MAX_BAR_AGE_MS. Fails CLOSED when no bar exposes a usable timestamp (we cannot prove
+ * freshness → do not trust it; do NOT fabricate a timestamp) or when the freshest bar is too old.
+ * A future/clock-skewed `t` (negative age) is treated as fresh — fail-closed only ever REMOVES.
+ */
+export function assessGroupedBarFreshness(
+  results: ReadonlyArray<Pick<DailyMarketBar, "t">>,
+  nowMs: number
+): GroupedBarFreshness {
+  let freshestBarMs = Number.NEGATIVE_INFINITY;
+  for (const bar of results) {
+    const t = bar.t;
+    if (typeof t === "number" && Number.isFinite(t) && t > freshestBarMs) freshestBarMs = t;
+  }
+  if (freshestBarMs === Number.NEGATIVE_INFINITY) {
+    return { fresh: false, reason: "missing_bar_timestamp" };
+  }
+  const ageMs = nowMs - freshestBarMs;
+  if (ageMs > BREAKOUT_MAX_BAR_AGE_MS) {
+    return { fresh: false, reason: "stale_snapshot", freshestBarMs, ageMs };
+  }
+  return { fresh: true, freshestBarMs, ageMs };
+}
+
+/** Discriminated result of a breakout discovery pass. `setups` is ALWAYS present (possibly empty).
+ *  `status` lets callers distinguish "fresh data, genuinely no breakouts" (`ok`, empty setups) from
+ *  "we could not trust the snapshot" (`data_unavailable`) — the WS-19 fail-closed distinction. */
+export type BreakoutDiscoveryOutcome = {
+  status:
+    | "ok" // fresh snapshot screened normally (setups may be empty = genuinely no breakouts today)
+    | "skip_off_hours" // outside the RTH commit window
+    | "skip_empty_market" // grouped-daily returned zero bars / a provider miss (no live snapshot)
+    | "data_unavailable"; // WS-19: snapshot present but STALE or unverifiable → fail closed
+  setups: EnrichedZeroDteSetup[];
+  /** Present only when status === "data_unavailable" — why we failed closed. */
+  reason?: "stale_snapshot" | "missing_bar_timestamp";
+};
+
+/** Injectable IO seam — real providers by default; tests substitute hermetic fakes. */
+export type BreakoutDiscoveryDeps = {
+  fetchSummary: typeof fetchDailyMarketSummary;
+  screen: typeof screenBreakoutMovers;
+  resolveChain: typeof resolveTickerChainRows;
+  buildSetup: typeof buildBreakoutSetup;
+  pickContract: typeof pickAtmZeroDteContract;
+};
+
+const DEFAULT_DEPS: BreakoutDiscoveryDeps = {
+  fetchSummary: fetchDailyMarketSummary,
+  screen: screenBreakoutMovers,
+  resolveChain: resolveTickerChainRows,
+  buildSetup: buildBreakoutSetup,
+  pickContract: pickAtmZeroDteContract,
+};
+
+/**
+ * Discover BREAKOUT-origin setups for the live board. Returns a discriminated {@link
+ * BreakoutDiscoveryOutcome}: `ok` (fresh data — `setups` may be empty when nothing qualified),
+ * a `skip_*` (off-hours / no live snapshot), or `data_unavailable` (WS-19 fail-closed: a stale or
+ * unverifiable snapshot). The source NEVER fabricates candidates from stale data, and a stale
+ * snapshot is NEVER reported as a genuine empty. Best-effort throughout: any thrown failure degrades
+ * to a `skip_empty_market` outcome and the flow board is untouched.
  */
 export async function discoverBreakoutSetups(opts: {
   today: string;
@@ -43,29 +136,49 @@ export async function discoverBreakoutSetups(opts: {
   /** Tickers to exclude (static excludes + Night Hawk-covered names), same set the flow path uses. */
   excludeTickers: Set<string>;
   maxCandidates?: number;
-}): Promise<EnrichedZeroDteSetup[]> {
+  /** Absolute wall-clock (Unix ms) for the WS-19 freshness check. Defaults to Date.now(); injected in tests. */
+  nowMs?: number;
+  /** IO seam override for tests; production omits it and uses the real providers. */
+  deps?: Partial<BreakoutDiscoveryDeps>;
+}): Promise<BreakoutDiscoveryOutcome> {
   const { today, nowEtMinutes, excludeTickers } = opts;
   const maxCandidates = opts.maxCandidates ?? BREAKOUT_MAX_CANDIDATES;
+  const nowMs = opts.nowMs ?? Date.now();
+  const { fetchSummary, screen, resolveChain, buildSetup, pickContract } = {
+    ...DEFAULT_DEPS,
+    ...opts.deps,
+  };
 
   if (nowEtMinutes < RTH_OPEN_ET_MINUTES || nowEtMinutes >= RTH_CUTOFF_ET_MINUTES) {
     console.info("[zerodte-breakout] outside the RTH commit window — SKIP (no live intraday breadth)");
-    return [];
+    return { status: "skip_off_hours", setups: [] };
   }
 
   // TODAY's grouped-daily = the LIVE incomplete session bar during RTH (never a prior-day bar).
-  const summary = await fetchDailyMarketSummary(today).catch(() => null);
+  const summary = await fetchSummary(today).catch(() => null);
   const results = summary?.results ?? [];
   if (results.length === 0) {
     console.info("[zerodte-breakout] no live intraday breadth snapshot (empty grouped-daily) — SKIP");
-    return [];
+    return { status: "skip_empty_market", setups: [] };
   }
 
-  const movers = screenBreakoutMovers(results).filter(
-    (m) => !excludeTickers.has(m.ticker.toUpperCase())
-  );
+  // WS-19: a non-empty snapshot must also be FRESH. A stale (or timestamp-less) snapshot fails
+  // CLOSED as data_unavailable — never an empty candidate list — so it can never be mistaken for a
+  // genuine "no breakouts today". This gate can only remove stale-driven candidates, never add any.
+  const freshness = assessGroupedBarFreshness(results, nowMs);
+  if (!freshness.fresh) {
+    const ageStr =
+      freshness.reason === "stale_snapshot" ? ` (age ${Math.round(freshness.ageMs / 3_600_000)}h)` : "";
+    console.warn(
+      `[zerodte-breakout] grouped-daily snapshot ${freshness.reason}${ageStr} — DATA_UNAVAILABLE (fail closed, not "no breakouts")`
+    );
+    return { status: "data_unavailable", setups: [], reason: freshness.reason };
+  }
+
+  const movers = screen(results).filter((m) => !excludeTickers.has(m.ticker.toUpperCase()));
   if (movers.length === 0) {
     console.info("[zerodte-breakout] breadth snapshot present but zero qualifying breakouts — SKIP");
-    return [];
+    return { status: "ok", setups: [] };
   }
 
   // Normalize $-volume against THIS cohort's max (like candidates.ts normalizeToMax) so the score's
@@ -79,7 +192,7 @@ export async function discoverBreakoutSetups(opts: {
   const built = await Promise.all(
     top.map(async (mover): Promise<EnrichedZeroDteSetup | null> => {
       try {
-        const chain = await resolveTickerChainRows(mover.ticker).catch(() => null);
+        const chain = await resolveChain(mover.ticker).catch(() => null);
         if (!chain || !(chain.spot > 0) || chain.rows.length === 0) return null;
         const rows: BreakoutChainRow[] = chain.rows.map((r) => ({
           expiry: r.expiry,
@@ -88,10 +201,10 @@ export async function discoverBreakoutSetups(opts: {
           call_ask: r.call_ask,
           call_oi: r.call_oi,
         }));
-        const contract = pickAtmZeroDteContract(rows, chain.spot, today);
+        const contract = pickContract(rows, chain.spot, today);
         if (!contract) return null;
         const dollarNorm = maxDollar > 0 ? mover.dollar / maxDollar : 0;
-        return buildBreakoutSetup({ mover, spot: chain.spot, contract, dollarNorm });
+        return buildSetup({ mover, spot: chain.spot, contract, dollarNorm });
       } catch {
         return null; // best-effort per ticker — one bad chain never sinks the batch
       }
@@ -102,5 +215,5 @@ export async function discoverBreakoutSetups(opts: {
   console.info(
     `[zerodte-breakout] ${movers.length} qualifying breakouts, built ${setups.length} setup(s) from top ${top.length}`
   );
-  return setups;
+  return { status: "ok", setups };
 }
