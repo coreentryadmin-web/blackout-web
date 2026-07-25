@@ -38,6 +38,7 @@ import {
 } from "./flow-accumulation-context";
 import { attachConfluence } from "./confluence";
 import { breakoutSourceEnabled, mergeDiscoveryOrigins } from "./breakout-source";
+import { pinSourceEnabled, mergePinOrigins } from "./pin-source";
 import { LEVERAGED_ETP_SET } from "@/features/nighthawk/lib/constants";
 import { createDossierBuildCache, fetchTickerDossier } from "@/features/nighthawk/lib/dossier";
 import { etNowParts, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
@@ -263,6 +264,36 @@ export async function scanZeroDteBoard(flags?: {
       }
     } catch (err) {
       console.warn("[zerodte-breakout] discovery failed — flow-only board this cycle:", err);
+    }
+  }
+
+  // ── PIN discovery origin (Phase 3b, §1a) — the THIRD, INDEPENDENT discovery source ──
+  // Flag-gated OFF by default (ZERODTE_WHOLE_MARKET + ZERODTE_SRC_PIN). When enabled, a liquid-universe
+  // screen emits mean-reversion candidates — names pinned between dominant dealer GEX walls in a
+  // long-gamma tape — as directional-FADE setups carrying discovery_origin ["PIN"]. They merge BY
+  // TICKER preserving origin as a SET (a shared ticker → e.g. ["FLOW","PIN"]), never a collapsed pool,
+  // and no corroboration score boost (evidence-only). Merged here, AFTER deriveZeroDteSetups, so the
+  // FLOW evidence gates structurally never see them; each pin candidate runs the SAME mandatory
+  // contract-attach + shared hard gates + Cortex as a flow one. The fade direction is only ever
+  // emitted in a genuine long-gamma RANGE, so G-1 (tape-alignment) passes cleanly in the flat-tape
+  // case and correctly culls a fade that fights a trending broad tape (see pin-source.ts's G-1 note).
+  // IO is dynamic-imported so the flow-only board never loads the whole-universe GEX graph; any
+  // failure degrades to the flow board (best-effort).
+  if (pinSourceEnabled()) {
+    try {
+      const { hour, minute } = etNowParts();
+      const { discoverPinSetups } = await import("./pin-discovery");
+      const pinSetups = await discoverPinSetups({
+        today,
+        nowEtMinutes: hour * 60 + minute,
+        excludeTickers: excludes,
+      });
+      if (pinSetups.length > 0) {
+        mergePinOrigins(setups, pinSetups);
+        setups.sort((a, b) => b.score - a.score);
+      }
+    } catch (err) {
+      console.warn("[zerodte-pin] discovery failed — flow-only board this cycle:", err);
     }
   }
 

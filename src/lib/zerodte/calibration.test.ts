@@ -137,6 +137,28 @@ test("analyzeOriginBands: buckets graded plays by origin set with the standard n
   assert.equal(report.origin_bands.find((b) => b.label === "FLOW")!.n, 2);
 });
 
+// ── Phase 3b: PIN origin buckets ─────────────────────────────────────────────────────
+test("analyzeOriginBands: a PIN-origin graded row buckets under PIN (and FLOW+PIN when co-discovered)", () => {
+  assert.equal(readOriginLabel({ discovery_origin: ["PIN"] }), "PIN");
+  // Canonical order is FLOW < BREAKOUT < PIN, so the co-discovery label is "FLOW+PIN".
+  assert.equal(readOriginLabel({ discovery_origin: ["PIN", "FLOW"] }), "FLOW+PIN");
+  const rows = [
+    originPlay(["PIN"], true),
+    originPlay(["PIN"], false),
+    originPlay(["FLOW", "PIN"], true),
+  ];
+  const byLabel = new Map(analyzeOriginBands(rows).map((b) => [b.label, b]));
+  // Canonical bands (incl. PIN + FLOW+PIN) always present for a stable shape.
+  for (const l of ["FLOW", "BREAKOUT", "PIN", "FLOW+BREAKOUT", "FLOW+PIN", "no_origin"]) {
+    assert.ok(byLabel.has(l), l);
+  }
+  assert.equal(byLabel.get("PIN")!.n, 2);
+  assert.equal(byLabel.get("PIN")!.wins, 1);
+  assert.equal(byLabel.get("PIN")!.win_rate_pct, 50);
+  assert.equal(byLabel.get("FLOW+PIN")!.n, 1);
+  assert.equal(byLabel.get("FLOW+PIN")!.wins, 1);
+});
+
 test("bucket math: per-bucket n/wins/losses/win rate/avg pnl and the delta", () => {
   const rows = [
     // would_block: 1W/3L, pnls 100, -50, -50, -30 → avg -7.5
