@@ -391,7 +391,7 @@ function ledgerRowFor(play, m) {
     // Wave 2 — the condor tent geometry + the LIVE underlying arc, so the sim renders the real condor
     // "price-inside-the-tent" gauge (winner holds centered; breach row sells through the lower short).
     // Null on a directional row → the deck draws the directional views exactly as before.
-    condor: play.condor ?? null,
+    condor: play.condorGeom ?? null,
     underlying_price: play.spotMarks ? r2(interp(play.spotMarks, m)) : null,
   };
 }
@@ -524,7 +524,17 @@ async function main() {
     if (last) {
       const statuses = [...new Set(last.ledger.map((r) => r.status))].sort();
       const closed = [...new Set(last.ledger.filter((r) => r.status === 'CLOSED').map((r) => r.closed_reason))].sort();
-      const condors = last.ledger.filter((r) => r.is_condor).map((r) => `${r.ticker}:${r.closed_reason ?? 'live'}`);
+      const condors = last.ledger
+        .filter((r) => r.is_condor)
+        .map((r) => {
+          // Confirm the tent GEOMETRY is actually emitted (not just the is_condor flag) so `?sim=1`
+          // renders the real condor tent/breach view instead of "geometry unavailable".
+          const g = r.condor;
+          const geom = g && typeof g === 'object' && Number.isFinite(g.breach_lower) && Number.isFinite(g.breach_upper)
+            ? `tent ${g.breach_lower}/${g.breach_upper}`
+            : 'NO-GEOMETRY';
+          return `${r.ticker}:${r.closed_reason ?? 'live'} (${geom})`;
+        });
       const stale = last.ledger.filter((r) => r.mark_as_of && Date.now() - Date.parse(r.mark_as_of) > 5_000).map((r) => r.ticker);
       const noMark = last.ledger.filter((r) => r.last_mark == null).map((r) => r.ticker);
       console.log(`\n  ledger statuses:    ${statuses.join(', ')}`);
