@@ -5,6 +5,49 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-25 — [WS-10] Official 0DTE P&L graded on the MIDPOINT — understated the execution tax; calibration/record now grade the CONSERVATIVE EXECUTABLE lane (entry=ask, exit=bid) — FIXED
+
+**Severity.** High (correctness / calibration integrity, TRADES). Ref: NightHawk Remediation Directive
+§WS-10. **[TRADES] — DEPLOY-RISKY, HOLD for explicit operator go before prod merge** (changes the official
+simulated P&L every calibration/record consumer reads — safer/honest, but a behavior change).
+
+**Root cause.** The mechanical grader `gradePlanFromBars` (`plan.ts:348`) grades on the MID: it fires the
+stop when the option's trade LOW touches the −50% level and books the exit at that level against a mid entry
+basis. But a long-premium 0DTE option is BOUGHT near the ASK and SOLD near the BID (both directions —
+"long"=bought call, "short"=bought put — are long premium; only the iron condor is credit, and it is graded
+on its own 4-leg path). Mid marks BOTH the entry and the exit at a price no member could transact, so the
+official `plan_pnl_pct` (calibration.ts buckets it; record.ts mechanical grades it) answered "did the MIDPOINT
+touch target/stop," not "could a member have EXITED there" — systematically understating the exit tax (acute
+for 0DTE, where spreads blow out into the stop). That lets calibration graduate strategies that only win at mid.
+
+**Evidence (fail-before / pass-after).** New `marks-math.test.ts` (executable math + `gradePlanExecutableFromBars`)
++ a calibration test. Against pre-change source the three required tests fail: #1/#2 fail to load (the
+executable exports/grader don't exist); #3 (`bucketOf` reading the executable lane) asserts `wins=1` but OLD
+`bucketOf` reads mid → `actual: 2`. Post-fix all pass. Wide-spread winner: mid `doubled +100%` vs executable
+`doubled +81.82%` ((2.0−1.1)/1.1). Bid-stop: a trade low of 0.54 (above the 0.50 mid stop) → mid `time_stop`,
+but the bid (0.54×0.9=0.486) crosses → executable `stopped −54.55%` — the negative-skew tail mid was blind to.
+Full suite `src/**/*.test.ts` 4864/0; `tsc --noEmit` clean; eslint clean.
+
+**Fix (three lanes; additive, no migration).**
+- `marks-math.ts` — pure executable math: `zeroDteHalfSpreadFrac` (ask−bid)/(ask+bid), `zeroDteExecutableEntry`
+  (ask), `zeroDteExecutableExit` (bid), `executablePnlPct` ((exit bid − entry ask)/entry ask), `executionTaxBps`
+  (mid−exec ×100), `ZERODTE_DEFAULT_HALF_SPREAD_FRAC` (5% floor for a one-sided book).
+- `plan.ts` — `gradePlanExecutableFromBars`: re-prices the plan on the executable frame — entry=ask, the stop/
+  target LATCH ON THE BID (bar×(1−f)), a time-stop sells the closing bid. Stop/target premium LEVELS unchanged.
+- `scan.ts` grade path — computes the executable grade beside the mid grade using the row's OWN pinned entry
+  spread (`plan_json.bid/ask`), stamps it additively at `entry_context.executable` (`stampZeroDteExecutableGrade`,
+  db.ts — same JSONB-merge/no-migration pattern as `stampZeroDteExitContext`), and emits `execution_tax_bps`.
+- `record.ts` — `officialPlanPnlPct`/`officialPlanOutcome`/`readExecutableGrade`; the shared `isZeroDteWin`/
+  `isGradedZeroDteRow` and the mechanical grade now read the executable lane, mid columns as the LEGACY fallback.
+- `calibration.ts` — `bucketOf` win + avg P&L read the official (executable) lane.
+- `live-marks.ts` — additive `live_pnl_pct_exec` (position marked at the bid) for monitoring; mid `live_pnl_pct`
+  stays the board default. `latency-telemetry.ts` — `execution_tax_bps` percentile histogram.
+
+**Blast radius.** Every P&L consumer verified: mechanical grader, `record.ts` (mechanical/per-play), calibration
+reader, feature-store label (via the shared predicates), live board (`live_pnl_pct` mid retained). CONDOR is out
+of scope (separate 4-leg grader). AS-MANAGED/engine-exit partials stay on mid — deferred to WS-11 (executable-side
+partial reconstruction), which depends on this lane. **Status: OPEN PR, holding for operator go (DEPLOY-RISKY).**
+
 ## 2026-07-25 — [D1] Earnings gate (G-11) failed OPEN — a failed/timed-out earnings feed read looked identical to "no earnings" and let a name reporting today commit a fresh 0DTE — FIXED (fail-closed `earningsUnavailable` firewall)
 
 **Severity.** High (correctness / TRADES). DANGER item **D1** from `docs/audit/NIGHTHAWK-DATA-PROVENANCE.md`

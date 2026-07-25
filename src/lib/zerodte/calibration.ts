@@ -24,7 +24,7 @@
 
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import { discoveryOriginLabel, type DiscoveryOrigin } from "./board";
-import { LOW_N_THRESHOLD, isGradedZeroDteRow, isZeroDteWin, scoreForBanding } from "./record";
+import { LOW_N_THRESHOLD, isGradedZeroDteRow, isZeroDteWin, officialPlanPnlPct, scoreForBanding } from "./record";
 import { ZERODTE_SCORE_FLOOR } from "./gates";
 import { TIER_APLUS_UNLOCK, tierFromEntryContext, type ZeroDteTier } from "./tiers";
 import type { SkipCounterfactual } from "./skip-grading";
@@ -427,15 +427,18 @@ export function gateVerdictOf(row: CalibrationPlayRow, gate: CalibrationGateKey)
 }
 
 /** The fields bucket math actually reads — lets the tier analysis reuse the exact
- *  same bucket/rate helpers on its narrower row shape (no casts). */
-type GradablePlayRow = Pick<ZeroDteSetupLogRow, "plan_pnl_pct">;
+ *  same bucket/rate helpers on its narrower row shape (no casts). Carries entry_context
+ *  too so the OFFICIAL (executable, WS-10) lane can be read with a mid fallback. */
+type GradablePlayRow = Pick<ZeroDteSetupLogRow, "plan_pnl_pct" | "entry_context">;
 
 // EXPORTED (additive, PR-16): the swing calibration wrappers (src/lib/swing/calibration.ts) reuse this
 // bucket math + the recommendSignal ladder VERBATIM so the swing lane graduates on the SAME n>=10 /
 // delta>=15pt bar as 0DTE — no second, drift-prone copy of the graduation math. Logic/signature unchanged.
 export function bucketOf(label: string, rows: GradablePlayRow[]): CalibrationBucket {
   const wins = rows.filter(isZeroDteWin).length;
-  const pnls = rows.map((r) => r.plan_pnl_pct).filter((p): p is number => p != null);
+  // avg P&L on the OFFICIAL (executable, WS-10) lane — the same number isZeroDteWin scores wins
+  // on — so a bucket's win rate and avg return can never come from two different lanes.
+  const pnls = rows.map((r) => officialPlanPnlPct(r)).filter((p): p is number => p != null);
   // Wilson CI (WS-09) attached to EVERY bucket, in percentage points. n=0 → null (no
   // observation to bound); the swing lane reuses this helper verbatim, so it inherits
   // the interval too — one CI implementation, no drift.

@@ -128,33 +128,75 @@ export type ZeroDteRecord = {
 const round1 = (v: number): number => Math.round(v * 10) / 10;
 const round2 = (v: number): number => Math.round(v * 100) / 100;
 
+// ── WS-10: the OFFICIAL plan P&L is the CONSERVATIVE EXECUTABLE lane ─────────────────
+// The grader now writes TWO lanes: the mid grade in the `plan_pnl_pct`/`plan_outcome`
+// columns (monitoring/comparison) and the conservative-executable grade (entry=ask,
+// exit=bid) pinned additively at entry_context.executable (scan.ts / stampZeroDteExecutableGrade).
+// The member-facing record AND calibration grade on the EXECUTABLE lane — the return a
+// member could actually have exited at — falling back to the mid columns ONLY for legacy
+// rows graded before WS-10 (no `executable` key). Reads are defensive: a malformed blob
+// degrades to the mid fallback, never a fabricated number.
+
+/** The minimal row shape the official-P&L readers need: the mid columns plus the optional
+ *  entry_context that may carry the executable lane. `entry_context` is optional so a bare
+ *  `{ plan_pnl_pct }` fixture (and the reused swing rows, which never carry an executable
+ *  key) still typecheck and simply fall back to the mid column. */
+type OfficialGradableRow = {
+  plan_outcome?: string | null;
+  plan_pnl_pct: number | null;
+  entry_context?: Record<string, unknown> | null;
+};
+
+/** Read the executable-lane grade off entry_context.executable (WS-10). Null = the row was
+ *  graded before WS-10 (mid only) or the blob is absent/malformed — the callers then use the
+ *  mid columns. Only a FINITE plan_pnl_pct counts as a real executable grade. */
+export function readExecutableGrade(
+  entryContext: Record<string, unknown> | null | undefined
+): { plan_outcome: string | null; plan_pnl_pct: number | null } | null {
+  const ex = entryContext?.executable;
+  if (!ex || typeof ex !== "object") return null;
+  const e = ex as Record<string, unknown>;
+  const pnl = typeof e.plan_pnl_pct === "number" && Number.isFinite(e.plan_pnl_pct) ? e.plan_pnl_pct : null;
+  if (pnl == null) return null;
+  const outcome = typeof e.plan_outcome === "string" ? e.plan_outcome : null;
+  return { plan_outcome: outcome, plan_pnl_pct: pnl };
+}
+
+/** The OFFICIAL per-row plan P&L: the executable lane when the row carries it, else the mid
+ *  column (legacy). This is the number calibration buckets and the record grades on. */
+export function officialPlanPnlPct(row: OfficialGradableRow): number | null {
+  return readExecutableGrade(row.entry_context)?.plan_pnl_pct ?? row.plan_pnl_pct;
+}
+
+/** The OFFICIAL per-row plan outcome label — the executable lane's outcome when present, else
+ *  the mid column. Kept in lockstep with officialPlanPnlPct so the label and the pnl agree. */
+export function officialPlanOutcome(row: OfficialGradableRow): string | null {
+  return readExecutableGrade(row.entry_context)?.plan_outcome ?? row.plan_outcome ?? null;
+}
+
 /** Same graded-row predicate the calibration harness uses (bie/calibration.ts):
  *  'ungradeable' means the plan could not be measured — it is neither W nor L.
  *
- *  A grade requires BOTH a real outcome AND a finite plan_pnl_pct: the win predicate
- *  (isZeroDteWin) keys on plan_pnl_pct while this one keys on plan_outcome, so a PARTIAL
- *  write — plan_outcome stamped but plan_pnl_pct still NULL (two column writes, a crash
+ *  A grade requires BOTH a real outcome AND a finite plan P&L: the win predicate
+ *  (isZeroDteWin) keys on the pnl while this one keys on the outcome, so a PARTIAL
+ *  write — outcome stamped but pnl still NULL (two column writes, a crash
  *  between them, a NUMERIC that failed to coerce) — used to count as graded-but-not-a-win,
  *  i.e. silently booked a LOSS. Requiring a finite pnl here means the two predicates can
- *  never disagree: a row missing its pnl is ungraded (retried), not a phantom loss. */
-export function isGradedZeroDteRow(
-  row: Pick<ZeroDteSetupLogRow, "plan_outcome" | "plan_pnl_pct">
-): boolean {
-  return (
-    row.plan_outcome != null &&
-    row.plan_outcome !== "ungradeable" &&
-    row.plan_pnl_pct != null &&
-    Number.isFinite(row.plan_pnl_pct)
-  );
+ *  never disagree: a row missing its pnl is ungraded (retried), not a phantom loss. Both read
+ *  the OFFICIAL (executable, WS-10) lane with a mid fallback so the graded set is identical
+ *  across the record, calibration, and the feature store. */
+export function isGradedZeroDteRow(row: OfficialGradableRow): boolean {
+  const outcome = officialPlanOutcome(row);
+  const pnl = officialPlanPnlPct(row);
+  return outcome != null && outcome !== "ungradeable" && pnl != null && Number.isFinite(pnl);
 }
 
-/** Win = positive plan P&L — identical to the calibration harness's definition AND the feature
- *  store's labelFromPlanOutcome (feature-store.ts), so the member-facing record, the internal
- *  calibration, and the learning store can never disagree on what a win is. In particular a GREEN
- *  time_stop is a win in all three (it was previously a loss in the feature store — a bias fixed
- *  by pointing that label at this same plan_pnl_pct > 0 predicate). */
-export function isZeroDteWin(row: Pick<ZeroDteSetupLogRow, "plan_pnl_pct">): boolean {
-  return (row.plan_pnl_pct ?? 0) > 0;
+/** Win = positive OFFICIAL (executable, WS-10) plan P&L — identical to the calibration
+ *  harness's definition AND the feature store's labelFromPlanOutcome (feature-store.ts), so
+ *  the member-facing record, the internal calibration, and the learning store can never
+ *  disagree on what a win is. In particular a GREEN time_stop is a win in all three. */
+export function isZeroDteWin(row: OfficialGradableRow): boolean {
+  return (officialPlanPnlPct(row) ?? 0) > 0;
 }
 
 // ── Grade views: one normalized W/L/BE + outcome-label per row, per track ────────────
@@ -204,13 +246,16 @@ function managedOutcomeLabel(reason: string | null, pnl: number): string {
   return bySign;
 }
 
-/** MECHANICAL grade view — the fixed -50/+100/15:30 plan grade. */
+/** MECHANICAL grade view — the fixed -50/+100/15:30 plan grade, on the OFFICIAL
+ *  (conservative-executable, WS-10) lane with a mid fallback for legacy rows. This is the
+ *  simulated plan P&L the directive switches to the executable frame; the AS-MANAGED headline
+ *  (the engine's realized exit) moves to the executable side separately in WS-11. */
 function mechanicalGradeView(row: ZeroDteSetupLogRow): GradeView {
   const graded = isGradedZeroDteRow(row);
-  const pnl = graded ? round2(row.plan_pnl_pct as number) : null;
+  const pnl = graded ? round2(officialPlanPnlPct(row) as number) : null;
   return {
     graded,
-    outcome: graded ? row.plan_outcome : null,
+    outcome: graded ? officialPlanOutcome(row) : null,
     pnl_pct: pnl,
     win: pnl != null && pnl > 0,
     breakeven: pnl === 0,
@@ -365,8 +410,10 @@ function toPlay(r: ZeroDteSetupLogRow): ZeroDteRecordPlay {
     flagged_et: flaggedEt,
     score: r.score_max,
     conviction: r.conviction,
-    plan_outcome: r.plan_outcome,
-    plan_pnl_pct: r.plan_pnl_pct != null ? round2(r.plan_pnl_pct) : null,
+    // The per-play "plan" column reflects the OFFICIAL (executable, WS-10) lane so the public
+    // record shows the return a member could have exited at; mid stays on the live board.
+    plan_outcome: officialPlanOutcome(r),
+    plan_pnl_pct: officialPlanPnlPct(r) != null ? round2(officialPlanPnlPct(r) as number) : null,
     managed_outcome: managed.outcome,
     managed_pnl_pct: managed.pnl_pct,
     managed_source: managed.source,

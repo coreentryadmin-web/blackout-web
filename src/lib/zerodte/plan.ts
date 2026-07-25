@@ -375,6 +375,68 @@ export function gradePlanFromBars(
   return { outcome: "time_stop", pnl_pct: pnl(lastCloseInWindow) };
 }
 
+/**
+ * WS-10 — the CONSERVATIVE EXECUTABLE grade (bid/ask, not mid). gradePlanFromBars above
+ * grades on the mid: it fires the stop when the trade LOW touches the stop level and books
+ * the exit at that level against a mid entry basis. But a long-premium 0DTE option is BOUGHT
+ * at the ASK and SOLD at the BID, so that mid grade prices a fill no member could take. This
+ * grade re-prices the SAME plan on the executable frame, a marketable-limit model over the
+ * option's own trade bars:
+ *   - entry basis = ASK  = entryPremium × (1 + f)   (you pay up to open)
+ *   - the exit side is the BID, modeled bar-by-bar as tradePrice × (1 − f)
+ *   - the stop LATCHES ON THE BID: it fires when the modeled bid LOW touches the stop level
+ *     (bar.l×(1−f) ≤ stop), i.e. STRICTLY EARLIER than the mid grade (which needs bar.l ≤ stop) —
+ *     the negative-skew tail a mid grade never sees. Same for the target on the bid HIGH.
+ *   - a time-stop sells into the closing bid (bar.c × (1 − f)).
+ * `f` is the half-spread as a fraction of mid, pinned from the row's OWN entry quote
+ * (plan_json.bid/ask via zeroDteHalfSpreadFrac) — the real spread the play committed under,
+ * not a global constant; the caller falls back to ZERODTE_DEFAULT_HALF_SPREAD_FRAC only when
+ * the committed book was one-sided/absent. The stop/target PREMIUM LEVELS are the plan's own
+ * (entry × (1 ± pct)) — unchanged from the mid grade; only the trigger side and the entry/exit
+ * bases move to the executable frame. Result: every executable return is ≤ its mid twin (higher
+ * entry basis + a lower, earlier-triggered exit), which is the whole point — the ledger stops
+ * graduating strategies that only "win" at mid.
+ *
+ * SCOPE: directional plan lane ONLY. A condor row is routed to gradeCondorFromBars (a 4-leg
+ * credit structure with its own geometry) and never reaches here; its executable/breach
+ * pricing is a separate concern (not touched by WS-10). f<0 is impossible (zeroDteHalfSpreadFrac
+ * guards it); f is clamped into [0, 0.95] so a pathologically wide pinned quote can't zero out
+ * the whole exit side.
+ */
+export function gradePlanExecutableFromBars(
+  bars: PlanBar[],
+  entryPremium: number,
+  flaggedAtMs: number,
+  halfSpreadFrac: number,
+  params?: PlanGradeParams | null
+): PlanOutcome {
+  if (!(entryPremium > 0)) return { outcome: "ungradeable", pnl_pct: null };
+  const f = Math.min(0.95, Math.max(0, halfSpreadFrac));
+  const stopPct = params?.hard_stop_pct ?? PLAN_RULES.stop_pct;
+  const targetPct = params?.target_pct ?? PLAN_RULES.target_pct;
+  const timeStopMinutes = params?.time_stop_et_minutes ?? PLAN_RULES.time_stop_et_minutes;
+  const stop = entryPremium * (1 + stopPct / 100); // mid-premium plan levels (unchanged)
+  const target = entryPremium * (1 + targetPct / 100);
+  const entryAsk = entryPremium * (1 + f); // pay the ask to open
+  // Realized return: sell the exit BID against the ask entry basis. Exit at the stop/target
+  // LEVEL is the bid you transact at when the bid touches it; a time-stop sells the closing bid.
+  const pnl = (exitBid: number) => round2(((exitBid - entryAsk) / entryAsk) * 100);
+
+  let lastBidCloseInWindow: number | null = null;
+  for (const bar of [...bars].sort((a, b) => a.t - b.t)) {
+    if (bar.t <= flaggedAtMs) continue; // exclude the flag bar (same discipline as the mid grade)
+    if (etMinutesOf(bar.t) > timeStopMinutes) break;
+    const bidLow = bar.l * (1 - f);
+    const bidHigh = bar.h * (1 - f);
+    // Conservative ordering: stop before target within the same bar — identical to the mid grade.
+    if (bidLow <= stop) return { outcome: "stopped", pnl_pct: pnl(stop) };
+    if (bidHigh >= target) return { outcome: "doubled", pnl_pct: pnl(target) };
+    lastBidCloseInWindow = bar.c * (1 - f);
+  }
+  if (lastBidCloseInWindow == null) return { outcome: "ungradeable", pnl_pct: null };
+  return { outcome: "time_stop", pnl_pct: pnl(lastBidCloseInWindow) };
+}
+
 // ── Live play lifecycle (pure) ────────────────────────────────────────────────────
 // A play's status is DERIVED, never hand-set: entry premium + fixed rules + the
 // contract's live mark (with latched peak/trough so a stop stays a stop even if

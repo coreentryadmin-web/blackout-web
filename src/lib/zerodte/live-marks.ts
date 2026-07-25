@@ -175,8 +175,15 @@ export type ZeroDteLiveMarkRow = {
   /** Quote age at build time (ms) — convenience for clients without clock skew. */
   mark_age_ms: number | null;
   stale: boolean;
-  /** (mark − entry)/entry via pinnedLivePnlPct — the ONE P&L derivation. */
+  /** (mark − entry)/entry via pinnedLivePnlPct — the ONE P&L derivation. The MID lane: the
+   *  monitoring/display number (KEPT as the default the board shows). */
   live_pnl_pct: number | null;
+  /** WS-10 — the CONSERVATIVE EXECUTABLE monitoring lane: the position marked at the current
+   *  BID (what a member could actually exit at right now: sell a long into the bid), vs the
+   *  mid `live_pnl_pct` above. Additive/visibility only — the OFFICIAL graded number is the
+   *  calibration/record executable lane; this is its live-board sibling so the desk can see the
+   *  exit-side tax as it moves. Null when no bid is quoted. */
+  live_pnl_pct_exec: number | null;
   /** Live greeks (Δ Γ Θ V + IV) for the terminal's streaming strip; null until a snapshot has priced them. */
   greeks: ZeroDteGreeks | null;
 };
@@ -647,6 +654,8 @@ export function buildZeroDteLiveMarksPayloadFrom(
       mark_age_ms: asOf > 0 ? Math.max(0, nowMs - asOf) : null,
       stale,
       live_pnl_pct: pinnedLivePnlPct(p.entry_premium, m?.mark ?? null),
+      // WS-10 monitoring lane: mark the long at the BID (the exit side) — null bid → null.
+      live_pnl_pct_exec: pinnedLivePnlPct(p.entry_premium, m?.bid ?? null),
       greeks: m?.greeks ?? null,
     };
   });

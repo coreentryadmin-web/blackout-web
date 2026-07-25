@@ -62,6 +62,78 @@ export function pinnedLivePnlPct(entryPremium: number | null, mark: number | nul
   return Math.round(((mark - entryPremium) / entryPremium) * 10000) / 100;
 }
 
+// ── WS-10: executable-side P&L lanes (bid/ask, not mid) ────────────────────────────
+// WHY THIS EXISTS. `pinnedLivePnlPct` above marks a play on the MID. But a long 0DTE
+// option is BOUGHT near the ASK and SOLD near the BID — mid marks BOTH the entry and the
+// exit at a price no member could actually transact, so a mid-based return systematically
+// UNDERSTATES the execution tax (acute for 0DTE, where spreads blow out into the stop as
+// the option goes worthless). The record then answers "did the MIDPOINT touch target/stop"
+// — not "could a member have EXITED there" — which lets calibration graduate strategies
+// that only win at mid. WS-10 makes the OFFICIAL simulated P&L (calibration + the public
+// record) executable-side honest. Three lanes are maintained:
+//   (a) MIDPOINT   — the functions above; the monitoring/display mark. KEPT AS-IS.
+//   (b) CONSERVATIVE EXECUTABLE — entry basis = ASK, exit = BID (a marketable-limit model).
+//       This is the OFFICIAL lane calibration/record grade on.
+//   (c) BROKER     — reserved for a future real-fill integration (shape only; unpopulated).
+// Directional 0DTE plays are LONG PREMIUM in BOTH directions ("long" = a bought call,
+// "short" = a bought put), so both BUY at the ask and SELL at the bid; the entry/exit sides
+// below are the same for either direction. (The only credit/short-premium structure on the
+// platform is the iron condor, which is graded on its OWN 4-leg path and is out of scope
+// for this lane — see gradePlanExecutableFromBars' doc in plan.ts.)
+
+/** Conservative half-spread as a fraction of MID, used when a row carries no two-sided
+ *  entry quote to measure the real spread from (legacy rows, or a one-sided book at flag).
+ *  5% of mid ≈ a 10%-of-mid round-trip spread — a deliberately conservative floor for a
+ *  0DTE contract (the platform already flags a book illiquid above a 15%-of-mark spread,
+ *  plan.ts). A modeled tax is honest ONLY if it never flatters the fill, so the fallback
+ *  errs wide, never tight. */
+export const ZERODTE_DEFAULT_HALF_SPREAD_FRAC = 0.05;
+
+/** Half-spread as a fraction of mid from a two-sided quote: (ask − bid) / (ask + bid)
+ *  ( = (spread/2) / mid ). Same validity guard as zeroDteMidOf (ask>0, bid>=0, ask>=bid),
+ *  so a crossed/locked/one-sided book returns null and the caller falls back to the default
+ *  frac rather than modeling a negative or zero tax. */
+export function zeroDteHalfSpreadFrac(bid: number | null, ask: number | null): number | null {
+  if (bid != null && ask != null && ask > 0 && bid >= 0 && ask >= bid) {
+    // denom = ask + bid is provably > 0 here (ask > 0 excludes zero/NaN, bid >= 0), so no
+    // divide-by-zero guard is needed — a redundant `denom <= 0` check was flagged useless by CodeQL.
+    return (ask - bid) / (ask + bid);
+  }
+  return null;
+}
+
+/** Executable ENTRY basis for a long-premium play: the ASK you pay to open. Modeled from
+ *  a mid + half-spread frac as mid×(1+f). Null-guarded on a bad mid. */
+export function zeroDteExecutableEntry(mid: number | null, halfSpreadFrac: number): number | null {
+  if (mid == null || mid <= 0 || !(halfSpreadFrac >= 0)) return null;
+  return mid * (1 + halfSpreadFrac);
+}
+
+/** Executable EXIT mark for a long-premium play: the BID you sell into to close. Modeled
+ *  from a mid + half-spread frac as mid×(1−f). Floored at 0 (a bid never goes negative —
+ *  a >100% half-spread frac can't manufacture a negative exit price). */
+export function zeroDteExecutableExit(mid: number | null, halfSpreadFrac: number): number | null {
+  if (mid == null || mid < 0 || !(halfSpreadFrac >= 0)) return null;
+  return Math.max(0, mid * (1 - halfSpreadFrac));
+}
+
+/** THE executable P&L derivation — (exit BID − entry ASK) / entry ASK. The conservative-
+ *  executable lane's return, the OFFICIAL simulated P&L calibration and the public record
+ *  grade on. Rounds 2dp like pinnedLivePnlPct so the two lanes are directly comparable. */
+export function executablePnlPct(entryAsk: number | null, exitBid: number | null): number | null {
+  if (entryAsk == null || entryAsk <= 0 || exitBid == null) return null;
+  return Math.round(((exitBid - entryAsk) / entryAsk) * 10000) / 100;
+}
+
+/** Execution tax in BASIS POINTS: mid P&L − executable P&L (1 percentage point = 100 bps).
+ *  Positive = the executable lane realized less than mid (the tax the member actually pays);
+ *  this is the histogram WS-10 emits beside the sibling calibration metrics. Null unless both
+ *  lanes priced. */
+export function executionTaxBps(midPnlPct: number | null, execPnlPct: number | null): number | null {
+  if (midPnlPct == null || execPnlPct == null) return null;
+  return Math.round((midPnlPct - execPnlPct) * 100);
+}
+
 /** Staleness predicate every renderer must apply (>ZERODTE_MARK_STALE_MS = dim). */
 export function isZeroDteMarkStale(
   asOfMs: number,
