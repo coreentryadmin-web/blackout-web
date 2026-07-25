@@ -146,6 +146,10 @@ export type CalibrationReport = {
   /** Graded record by discovery-origin set (FLOW / BREAKOUT / FLOW+BREAKOUT / …) — Phase 3a. Answers
    *  "does BREAKOUT pay?" and "does FLOW+BREAKOUT beat FLOW alone?" on real outcomes. Non-gating. */
   origin_bands: CalibrationBucket[];
+  /** Graded record by play_type (DIRECTIONAL / CONDOR) — Phase 4. The condor's own graduation ledger:
+   *  its structurally-high (negative-skew) win rate must be measured as its own bucket, with real
+   *  realized credit/loss, before it sizes real risk. Non-gating (evidence only). */
+  play_type_bands: CalibrationBucket[];
   /** Coded graduation verdicts for the positive evidence signals (confluence double, accumulation
    *  alignment) — the same enforce/keep_calibrating/insufficient_data ladder the gates use, so a signal
    *  can only enter scoring once the live ledger clears the n>=10 / delta>=15pt bar. Non-gating. */
@@ -412,6 +416,32 @@ export function analyzeOriginBands(graded: CalibrationPlayRow[]): CalibrationBuc
       .sort(),
   ];
   return labels.map((label) => bucketOf(label, byLabel.get(label) ?? []));
+}
+
+// ── Play-type band (Phase 4, docs/audit/0DTE-UNIFICATION-DESIGN.md §1c) ─────────────────────
+// play_type is pinned in each row's entry_context at commit (DIRECTIONAL / CONDOR). Bucketing GRADED
+// outcomes by it — same n / win-rate / avg-PnL math as every other band — is how the condor SELL
+// engine graduates on its OWN ledger evidence (real credits + breach fills) before it ever sizes real
+// risk: a condor's win rate is structurally high (negative skew), so it must be measured as its own
+// bucket, never blended into the directional record. Non-gating (evidence only). Reads defensively —
+// a pre-Phase-4 row with no play_type lands in DIRECTIONAL (its true structure; the condor path did
+// not exist), never a fabricated verdict.
+export const CALIBRATION_PLAY_TYPE_BANDS = ["DIRECTIONAL", "CONDOR"] as const;
+
+/** Canonical play_type label off a row's entry_context.play_type (absent/garbage → DIRECTIONAL, which
+ *  is what every pre-Phase-4 row actually was). */
+export function readPlayTypeLabel(ec: Record<string, unknown> | null | undefined): string {
+  return ec?.play_type === "CONDOR" ? "CONDOR" : "DIRECTIONAL";
+}
+
+/** Graded record bucketed by play_type (DIRECTIONAL / CONDOR) — the condor's own graduation ledger. */
+export function analyzePlayTypeBands(graded: CalibrationPlayRow[]): CalibrationBucket[] {
+  const byLabel = new Map<string, CalibrationPlayRow[]>();
+  for (const r of graded) {
+    const label = readPlayTypeLabel(r.entry_context);
+    byLabel.set(label, [...(byLabel.get(label) ?? []), r]);
+  }
+  return CALIBRATION_PLAY_TYPE_BANDS.map((label) => bucketOf(label, byLabel.get(label) ?? []));
 }
 
 /** Graded record bucketed by confluence tier — the "double" bucket is the +15.9% EV research finding. */
@@ -796,6 +826,7 @@ export function analyzeGateCalibration(input: {
     accumulation_alignment: analyzeAccumulationAlignment(graded),
     confluence_tiers: analyzeConfluenceTiers(graded),
     origin_bands: analyzeOriginBands(graded),
+    play_type_bands: analyzePlayTypeBands(graded),
     signal_recommendations: [recommendConfluence(graded), recommendAccumulation(graded)],
     scale_out_recommendation: recommendScaleOut(graded),
     available: graded.length > 0,

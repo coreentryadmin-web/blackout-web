@@ -290,6 +290,10 @@ export function buildPinSetup(input: {
   const base: ZeroDteSetup = {
     ticker: ticker.toUpperCase(),
     direction: regime.fadeDirection,
+    // A bare PIN candidate is the DIRECTIONAL mean-reversion fade (3b). The condor SELL play-type
+    // is routed SEPARATELY (condor.ts, flag-gated), never here — so with the condor flag off a pin
+    // is always the directional fade and the board is unchanged.
+    play_type: "DIRECTIONAL",
     discovery_origin: origin,
     top_strike: contract.strike,
     top_strike_avg_fill: null, // no flow fill — attachContractPlans prices off the live mark

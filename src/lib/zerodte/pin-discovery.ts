@@ -22,7 +22,15 @@ import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { gexPositioningFromHeatmap } from "@/lib/providers/gex-positioning";
 import { computeGexWalls, mapFromStrikeTotalsRecord } from "@/lib/providers/gex-wall-levels";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
-import { buildPinSetup, evaluatePinRegime, pickAtmPinContract, type PinChainRow } from "./pin-source";
+import { buildPinSetup, evaluatePinRegime, pickAtmPinContract, pinScore, type PinChainRow } from "./pin-source";
+import {
+  buildCondorPlan,
+  buildCondorSetup,
+  condorFlagEnabled,
+  condorSellRegime,
+  type CondorLegQuote,
+} from "./condor";
+import { selectIronCondor } from "./iron-condor";
 import type { EnrichedZeroDteSetup } from "./board";
 
 /** RTH commit window in ET minutes-since-midnight: [9:30, 15:00) — same gate as the breakout source.
@@ -51,6 +59,80 @@ export function resolvePinUniverse(): string[] {
 /** Cap the per-ticker chain fetches per scan — the universe is already small + curated; this bounds
  *  the work even if the universe is widened via the env override. */
 export const PIN_MAX_CANDIDATES = 8;
+
+/** Calendar days between two YYYY-MM-DD dates (UTC-noon anchored) — local copy so this module
+ *  doesn't reach into pin-source's private helper. */
+function calendarDte(todayYmd: string, expiryYmd: string): number {
+  const a = Date.parse(`${todayYmd}T12:00:00Z`);
+  const b = Date.parse(`${expiryYmd.slice(0, 10)}T12:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return Number.NaN;
+  return Math.round((b - a) / 86_400_000);
+}
+
+/** Price the four condor legs off the chain: find the nearest usable expiry (0DTE preferred, within
+ *  `maxDte`) on which ALL FOUR strikes are listed, and return each leg's live quote. Returns null when
+ *  no single expiry lists all four legs — that is "condor geometry/liquidity unavailable", and the
+ *  caller falls back to the directional fade. Pure over the chain rows. */
+function priceCondorLegs(
+  rows: PinChainRow[],
+  legs: { short_put: number; long_put: number; short_call: number; long_call: number },
+  todayYmd: string,
+  maxDte = 7
+): { expiry: string; dte: number; quotes: { shortPut: CondorLegQuote; longPut: CondorLegQuote; shortCall: CondorLegQuote; longCall: CondorLegQuote } } | null {
+  // Group rows by expiry → strike → row (last write wins; a chain has one row per strike/expiry).
+  const byExpiry = new Map<string, Map<number, PinChainRow>>();
+  for (const r of rows) {
+    const exp = r.expiry.slice(0, 10);
+    const m = byExpiry.get(exp) ?? new Map<number, PinChainRow>();
+    m.set(r.strike, r);
+    byExpiry.set(exp, m);
+  }
+  const expiries = Array.from(byExpiry.keys())
+    .map((exp) => ({ exp, dte: calendarDte(todayYmd, exp) }))
+    .filter((e) => Number.isFinite(e.dte) && e.dte >= 0 && e.dte <= maxDte)
+    .sort((a, b) => a.dte - b.dte); // 0DTE first, then nearest weekly fallback
+  for (const { exp, dte } of expiries) {
+    const m = byExpiry.get(exp)!;
+    const sp = m.get(legs.short_put);
+    const lp = m.get(legs.long_put);
+    const sc = m.get(legs.short_call);
+    const lc = m.get(legs.long_call);
+    if (!sp || !lp || !sc || !lc) continue; // some leg not listed on this expiry — try the next
+    return {
+      expiry: exp,
+      dte,
+      quotes: {
+        shortPut: { bid: sp.put_bid, ask: sp.put_ask },
+        longPut: { bid: lp.put_bid, ask: lp.put_ask },
+        shortCall: { bid: sc.call_bid, ask: sc.call_ask },
+        longCall: { bid: lc.call_bid, ask: lc.call_ask },
+      },
+    };
+  }
+  return null;
+}
+
+/** Build a priced CONDOR setup for one pin, or null to fall back to the directional fade. Reuses the
+ *  backtested selectIronCondor geometry (short strikes at a target-80 width floor, pushed beyond the
+ *  dealer walls) and prices the four legs off the same chain. Null when the geometry can't be selected
+ *  or its legs aren't listed on a common expiry (liquidity unavailable). */
+function buildCondorFromChain(input: {
+  ticker: string;
+  spot: number;
+  regime: import("./pin-source").PinRegime;
+  rows: PinChainRow[];
+  today: string;
+  callWall: number | null;
+  putWall: number | null;
+}): EnrichedZeroDteSetup | null {
+  const { ticker, spot, regime, rows, today, callWall, putWall } = input;
+  const legs = selectIronCondor({ spot, targetWinRate: 80, callWall, putWall });
+  if (!legs) return null;
+  const priced = priceCondorLegs(rows, legs, today);
+  if (!priced) return null; // geometry not listed on a common expiry → directional fallback
+  const plan = buildCondorPlan({ spot, expiry: priced.expiry, dte: priced.dte, legs, quotes: priced.quotes });
+  return buildCondorSetup({ ticker, spot, regime, plan, score: pinScore(regime) });
+}
 
 /**
  * Discover PIN-origin setups for the live board. Returns [] (a logged SKIP) whenever no clean pin
@@ -120,6 +202,26 @@ export async function discoverPinSetups(opts: {
           put_ask: r.put_ask,
           put_oi: r.put_oi,
         }));
+        // ── Phase 4 CONDOR routing ──────────────────────────────────────────────────────────────
+        // When the condor flag is on AND this deep long-gamma pin STRONGLY favors selling (tight,
+        // dominant, centered — condorSellRegime), sell a defined-risk iron condor beyond the dealer
+        // walls instead of fading directionally. If the condor geometry can't be selected or its four
+        // legs aren't LISTED on a common expiry in the chain (liquidity unavailable), fall THROUGH to
+        // the directional fade — the exact "stays 3b behavior when the condor isn't available" rule.
+        if (condorFlagEnabled() && condorSellRegime(regime).sell) {
+          const condorSetup = buildCondorFromChain({
+            ticker,
+            spot: chain.spot,
+            regime,
+            rows,
+            today,
+            callWall: pos.call_wall,
+            putWall: pos.put_wall,
+          });
+          if (condorSetup) return condorSetup;
+        }
+
+        // Pick the ATM fade contract off the live chain (call for a long/up fade, put for short/down).
         const side = regime.fadeDirection === "long" ? "call" : "put";
         const contract = pickAtmPinContract(rows, chain.spot, today, side);
         if (!contract) return null; // no liquid same-day/weekly contract → shared plan gate would drop it

@@ -169,6 +169,9 @@ export function buildBreakoutSetup(input: {
   const base: ZeroDteSetup = {
     ticker: mover.ticker.toUpperCase(),
     direction: "long",
+    // Breakout candidates are always DIRECTIONAL long-momentum plays — never a condor (the condor is
+    // routed only from PIN, condor.ts). Stamped explicitly so the flag-off board is unchanged.
+    play_type: "DIRECTIONAL",
     discovery_origin: ["BREAKOUT"],
     top_strike: contract.strike,
     top_strike_avg_fill: null, // no flow fill — attachContractPlans prices off the live mark

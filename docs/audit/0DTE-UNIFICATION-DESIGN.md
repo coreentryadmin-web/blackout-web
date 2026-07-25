@@ -140,6 +140,22 @@ Net effect on "board goes empty vs admit a loser": the confluence-2 gate (Layer 
 **Phase 3 — Discovery unification (three INDEPENDENT origin-tagged sources):** add BREAKOUT and PIN discovery alongside the existing FLOW source into `scanZeroDteBoard`, each stamping a first-class `discovery_origin` (§1a) preserved as a SET through merge — never a collapsed pool. Persist origin on the ledger row + feature vector; add the calibration origin-band. Every candidate through mandatory `buildContractPlan` + full gate stack + Cortex; multi-day accumulation stays a cross-cutting direction overlay. Flag `ZERODTE_WHOLE_MARKET` (and a per-source flag each, so a source can be enabled/throttled independently). Widen the funnel, un-starve the board, fill the banger scale-out ladder — and make every future "does source X pay?" question answerable on graded evidence.
 
 **Phase 4 — Condor as a live second play-type**, regime-routed (calibration-first, small size, breach stop).
+*Landed (flag-gated `ZERODTE_CONDOR`, default OFF; requires the PIN source's own flags too).* First
+version: `play_type: "DIRECTIONAL" | "CONDOR"` on every setup (defaults DIRECTIONAL at every
+construction site → flag-off board byte-for-byte unchanged); the condor router (`condor.ts`,
+`condorSellRegime`) turns a deep/tight/centered long-gamma PIN into a priced iron condor (reusing
+`selectIronCondor`) instead of the directional fade, falling back to the fade when the geometry/legs
+aren't available; a parallel `CondorPlan` (4 legs / net credit / defined max loss / breach levels)
+built off the live chain (conservative fill: shorts@bid − wings@ask); the gate stack branches by
+`play_type` (G-1/G-10/G-12/G-6 SKIPPED for the neutral structure, directional plan-quality replaced by
+a condor liquidity gate, G-4 VIX + G-7 macro block HARDER, plus a cheap range-intact proxy); a condor
+grader (WIN=close-inside-both-shorts / DEFINED-LOSS=breach, capped) separate from the −50/+100 grader;
+`play_type` + condor geometry persisted in `entry_context` and graded into `plan_outcome/plan_pnl_pct`;
+a `play_type_bands` calibration band. WR surfaced ≤97 with the breach companion throughout.
+DEFERRED (follow-ups): rich condor exit management (only hold-to-close + breach-stop here — no
+partial-trim / roll / delta-adjust), a full Cortex gex-walls "range-intact" read (a spot-proximity
+proxy stands in), condor UI leg rendering, and dead-CENTER pin discovery (the router only sees the
+off-center pins `evaluatePinRegime` already emits — see the design call in the PR write-up).
 
 **Phase 5 — Grade the regime router** (the one untested claim): build the "route-by-regime vs one-engine-everywhere" experiment; gate only after it graduates.
 
