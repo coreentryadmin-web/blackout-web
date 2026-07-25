@@ -662,6 +662,49 @@ test("WS-04 (4): stale quote beyond age → blocked (plan_quote_stale)", () => {
   assert.equal(blocks.some((b) => b.code === "plan_quote_invalid"), false);
 });
 
+test("D3 (WS-04 age now LIVE): a plumbed stale quote-age → plan_quote_stale block; pre-D3 (no age) did NOT block", () => {
+  // Pre-D3 the scan passed NO quoteAgeMs (OptionSnapshot dropped last_quote.last_updated), so
+  // the `stale` branch was DEAD in prod: a clean book with a minutes-old quote committed as fresh.
+  const dormant = buildContractPlan({ ...QUOTE_BASE, bid: 2.3, ask: 2.5, mark: 2.4 });
+  assert.equal(dormant.quote_invalid_reason, null, "no age → predicate dormant (pre-D3 behavior)");
+  assert.deepEqual(planQualityGateBlocks(dormant), []);
+
+  // D3 plumbs a real age. A book identical in every other way but with an age beyond the bound
+  // now fails closed with the DISTINCT plan_quote_stale code (not plan_quote_invalid).
+  const stale = buildContractPlan({
+    ...QUOTE_BASE,
+    bid: 2.3,
+    ask: 2.5,
+    mark: 2.4,
+    quoteAgeMs: QUOTE_VALIDITY.max_quote_age_ms + 5_000,
+  });
+  assert.equal(stale.quote_invalid_reason, "stale");
+  const blocks = planQualityGateBlocks(stale);
+  assert.equal(blocks.some((b) => b.code === "plan_quote_stale"), true);
+  assert.equal(blocks.some((b) => b.code === "plan_quote_invalid"), false);
+  const v = evaluateZeroDteGates(input({ plan: stale }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "plan_quote_stale"), true);
+});
+
+test("D3: a fresh quote-age commits (no stale block); a missing age stays dormant (back-compat)", () => {
+  // Within the freshness bound → commits, unregressed.
+  const fresh = buildContractPlan({
+    ...QUOTE_BASE,
+    bid: 2.3,
+    ask: 2.5,
+    mark: 2.4,
+    quoteAgeMs: QUOTE_VALIDITY.max_quote_age_ms - 1,
+  });
+  assert.equal(fresh.quote_invalid_reason, null);
+  assert.equal(evaluateZeroDteGates(input({ plan: fresh })).verdict, "COMMIT");
+
+  // Missing age (undefined / null) → the predicate is never applied → NOT blocked on absence.
+  const noAge = buildContractPlan({ ...QUOTE_BASE, bid: 2.3, ask: 2.5, mark: 2.4, quoteAgeMs: null });
+  assert.equal(noAge.quote_invalid_reason, null);
+  assert.deepEqual(planQualityGateBlocks(noAge), []);
+});
+
 test("WS-04 (5): a valid quote still commits (unregressed)", () => {
   const plan = buildContractPlan({ ...QUOTE_BASE, bid: 2.3, ask: 2.5, mark: 2.4 });
   assert.equal(plan.quote_invalid_reason, null);

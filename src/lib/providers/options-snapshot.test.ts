@@ -173,6 +173,59 @@ test("normalizeImpliedVol: real decimal IV passes through untouched; percent-sca
   assert.equal(normalizeImpliedVol(0), 0);
 });
 
+// -------------------- D3: quote-freshness timestamp (ns → epoch ms) --------------------
+// last_quote.last_updated on this endpoint is a NANOSECOND epoch (probe-verified live:
+// a real SPY chain row read 1784923199637468200 ~1.78e18 = 2026-07-24T19:59:59.637Z once
+// /1e6). The mapper must convert ns→ms so the WS-04 `stale` predicate (plan.ts) can measure
+// a real age; absence/garbage must map to null (predicate stays dormant, never fabricated).
+
+test("nsToEpochMs: a realistic nanosecond quote clock → correct epoch ms; garbage → null", async () => {
+  const { nsToEpochMs } = await import("./options-snapshot");
+  // Real probe-captured value: 1784923199637468200 ns → 1784923199637 ms.
+  assert.equal(nsToEpochMs(1784923199637468200), 1784923199637);
+  // Sanity: that ms is the prior session's ~4pm-ET close, not an overflowed far-future date.
+  assert.equal(new Date(1784923199637).toISOString(), "2026-07-24T19:59:59.637Z");
+  // Absent / zero / non-finite / sub-ms sentinel → null (absence is NOT staleness).
+  assert.equal(nsToEpochMs(undefined), null);
+  assert.equal(nsToEpochMs(null), null);
+  assert.equal(nsToEpochMs(0), null);
+  assert.equal(nsToEpochMs(-5), null);
+  assert.equal(nsToEpochMs(1), null); // 1 ns → 0 ms → treated as absent, not epoch-1970
+  assert.equal(nsToEpochMs("not-a-number"), null);
+});
+
+test("mapper: last_quote.last_updated (ns) → quoteUpdatedMs (ms), yielding a sane age", async () => {
+  const { mapUnifiedSnapshotResult } = await import("./options-snapshot");
+  // A quote stamped 30s before an anchor "now" — realistic nanosecond epoch.
+  const nowMs = 1784923200000;
+  const ns = (nowMs - 30_000) * 1e6; // 1.78e18-scale nanoseconds
+  const snap = mapUnifiedSnapshotResult({
+    ticker: "O:SPY260724C00600000",
+    type: "options",
+    last_quote: { bid: 2.3, ask: 2.5, last_updated: ns },
+    details: { strike_price: 600, contract_type: "call", expiration_date: "2026-07-24" },
+  });
+  assert.ok(snap);
+  assert.equal(snap!.quoteUpdatedMs, nowMs - 30_000);
+  // The conversion yields a SANE age (30s), not an overflowed one — catches a future
+  // unit regression (ms-vs-ns) that would make every quote read as absurdly old or fresh.
+  const ageMs = nowMs - snap!.quoteUpdatedMs!;
+  assert.equal(ageMs, 30_000);
+  assert.ok(ageMs > 0 && ageMs < 60 * 60 * 1000);
+});
+
+test("mapper: NO last_quote.last_updated → quoteUpdatedMs null (age predicate stays dormant)", async () => {
+  const { mapUnifiedSnapshotResult } = await import("./options-snapshot");
+  const snap = mapUnifiedSnapshotResult({
+    ticker: "O:AAPL260724C00200000",
+    type: "options",
+    last_quote: { bid: 3.0, ask: 3.4 }, // no last_updated
+    details: { strike_price: 200, contract_type: "call", expiration_date: "2026-07-24" },
+  });
+  assert.ok(snap);
+  assert.equal(snap!.quoteUpdatedMs, null);
+});
+
 // ----------------------------- chunking (>250) -----------------------------
 
 test("chunkOccs splits >250 into ≤250 batches with no loss or overlap", async () => {

@@ -137,6 +137,88 @@ NO `couldBlock` narrowing. No other call site was changed.
 **Status.** Fixed on `fix/d2-halt-fail-closed` (base `fix/d1-earnings-fail-closed`, STACKED); DRAFT PR opened.
 **HOLD for explicit operator go before prod merge** ([TRADES] deploy-risky per CLAUDE.md — changes what commits).
 
+## 2026-07-25 — [D3] Option-quote staleness never checked — `OptionSnapshot` dropped `last_quote.last_updated`, so the WS-04 `stale` predicate was DEAD CODE in prod and a minutes-old but structurally-valid quote entered/graded as fresh — FIXED (plumb the timestamp ns→ms → `quoteAgeMs`)
+
+**Severity.** High (correctness / TRADES). DANGER item **D3** from `docs/audit/NIGHTHAWK-DATA-PROVENANCE.md`
+(market-open danger list). WS-04 built a fail-closed `stale` branch (`plan.ts` `evaluateQuoteValidity`,
+guarded by `QUOTE_VALIDITY.max_quote_age_ms`=60000ms) but the quote timestamp was never plumbed, so the
+branch never executed: a thin 0DTE contract whose last quote was minutes old — but structurally valid
+(bid<ask, mark in band) — committed and graded off a **phantom mark** at an unfillable price.
+**STACKED on D2 (#1103) → D1 (#1102).** **[TRADES] — DEPLOY-RISKY, HOLD for explicit operator go before
+prod merge.** Strictly safer (only ever WITHHOLDS a commit on a genuinely stale quote), but it changes what
+commits, so it holds on the branch until the operator says go.
+
+**Root cause (dormant WS-04 predicate — the timestamp dropped at the mapper).** WS-04 wired the whole
+`stale` path EXCEPT its input: `evaluateQuoteValidity`/`buildContractPlan` already accept `quoteAgeMs` and
+fire `stale` when `quoteAgeMs > max_quote_age_ms`, but nothing ever fed a real age.
+- `src/lib/providers/options-snapshot.ts`: the RAW `UnifiedSnapshotResult.last_quote` type carried
+  `last_updated` (`:42`), but the exported `OptionSnapshot` type OMITTED it and the mapper never mapped it.
+- `src/lib/zerodte/scan.ts` `attachContractPlans` (~689-690, pre-D3) therefore passed NO `quoteAgeMs` into
+  `buildContractPlan`, so `input.quoteAgeMs ?? null` was always null and the `stale` branch was unreachable
+  in production. The WS-04 unit predicate proved the LOGIC works (gates test 58, calling the helper
+  directly), which masked the fact that the PRODUCTION path never supplied an age.
+
+**UNIT verification (ns vs ms — how I confirmed).** Polygon/Massive's `last_quote.last_updated` on the
+`/v3/snapshot` endpoint is a **NANOSECOND** epoch, same scale as `sip_timestamp` (`option-trades.ts:290`
+divides ns→ms). Confirmed against LIVE prod data (probe, 2026-07-25): a real SPY option chain row returned
+`last_quote.last_updated = 1784923199637468200` (~1.78e18). `/1e6 → 1784923199637 ms =
+2026-07-24T19:59:59.637Z` — the prior session's 3:59:59pm-ET close, a SANE timestamp. Interpreting the same
+value AS milliseconds overflows to an invalid far-future date (`new Date(1.78e18)` → RangeError). So the
+conversion is `epochMs = Math.floor(ns / 1e6)` (identical to `tradeMs`). The unit is asserted in tests so a
+future ms-vs-ns regression fails loudly.
+
+**Evidence.** Fail-before/pass-after — reverting ONLY the three source files to the D2 base while keeping the
+D3 tests:
+```
+=== OLD behavior (D2 base sources) ===                          === POST-FIX (D3) ===
+options-snapshot.test.ts:                                       options-snapshot.test.ts:
+not ok 10 - nsToEpochMs ns→ms; garbage→null                     ok 10 - nsToEpochMs ns→ms; garbage→null
+not ok 11 - mapper: last_updated(ns) → quoteUpdatedMs(ms)       ok 11 - mapper: last_updated(ns) → quoteUpdatedMs(ms)
+not ok 12 - mapper: NO last_updated → quoteUpdatedMs null       ok 12 - mapper: NO last_updated → quoteUpdatedMs null
+# pass 15 # fail 3                                               # pass 18 # fail 0
+scan.test.ts:                                                   scan.test.ts:
+not ok 20 - computeQuoteAgeMs missing/fresh/stale/skew          ok 20 - computeQuoteAgeMs missing/fresh/stale/skew
+not ok 21 - integration: age drives buildContractPlan stale     ok 21 - integration: age drives buildContractPlan stale
+# pass 19 # fail 2                                               # pass 21 # fail 0
+```
+The OLD failures are `nsToEpochMs is not a function` / `computeQuoteAgeMs is not a function` / `quoteUpdatedMs
+undefined` — i.e. the timestamp was genuinely absent from the prod data path. The **back-compat tests are the
+important ones**: a snapshot with NO `last_updated` maps `quoteUpdatedMs=null` → `computeQuoteAgeMs` returns
+`undefined` → the `stale` predicate stays DORMANT for that contract (never blocked on absence), and a FRESH
+quote (age < bound) still COMMITS (gates test 60). gates test 59 proves the pre-D3 (no-age) path did NOT block
+while a plumbed stale age now fires the distinct `plan_quote_stale`. `tsc --noEmit` clean; regression green:
+`options-snapshot` 18/0, `gates` 72/0, `board` 97/0, `scan` 21/0, `live-marks` 29/0, `contract-ranker` 9/0.
+
+**Fix.** Strictly ADDITIVE (plumb the existing WS-04 input; no threshold/predicate change):
+- `options-snapshot.ts`: new `nsToEpochMs()` (ns→epoch-ms, null on absent/zero/non-finite/sub-ms-garbage) +
+  new `OptionSnapshot.quoteUpdatedMs: number | null` mapped from `r.last_quote?.last_updated`.
+- `scan.ts`: new exported pure helper `computeQuoteAgeMs(quoteUpdatedMs, nowMs)` — returns `undefined` on a
+  null timestamp (predicate dormant — **absence is never staleness**) and floors a NEGATIVE age (clock skew
+  between the provider quote clock and ours) to `0`=fresh (skew must not manufacture a `stale` block).
+  `attachContractPlans` captures ONE cycle clock (`nowMs`) and passes `quoteAgeMs: computeQuoteAgeMs(...)`.
+- `plan.ts`: no logic change — only the now-outdated "none is plumbed / dormant" comments updated to note D3
+  makes the bound LIVE. Threshold (`max_quote_age_ms=60000`) and the predicate are untouched.
+
+**Fix rationale (why absence-is-exempt + negative-is-fresh, and not the alternatives).** Blocking on a MISSING
+timestamp would fail-closed on the (common, pre-market/quiet-tape) case where the provider simply omits
+`last_updated`, starving the board on absence rather than on a proven stale quote — so absence keeps the
+predicate dormant, matching WS-04's own min-size conditional-on-availability rule. Flooring negative age to 0
+(rather than reporting a negative or huge age) means provider/our clock skew can never fabricate a `stale`
+verdict. A garbage sub-millisecond `last_updated` (e.g. `1` ns → 0 ms epoch-1970) is treated as absent, not
+as a decades-old quote, so junk data doesn't fail a live book closed.
+
+**Blast radius.** `OptionSnapshot` has two other consumers besides the 0DTE scan — both are additive/null-safe
+with the new field: (1) `zerodte/live-marks.ts` `markFromSnapshot` reads only named fields (`bid/ask/last/greeks`),
+never `quoteUpdatedMs`, and builds its own output shape (live-marks 29/0); (2) `swing/contract-ranker.ts`'s
+`OptionSnapshot → ChainContract` mapper likewise reads named fields only (contract-ranker 9/0). The
+`swing-active-refresh` cron and `nighthawk/option-chain-prompt` consume via those same mappers. Neither
+iterates keys nor requires the field, so adding it changes no non-0DTE behavior. The CONDOR lane is unaffected
+(it skips single-contract plan-attach and gates its own 4-leg structure). No threshold or predicate was
+changed — only a real age is now fed into the already-shipped WS-04 `stale` branch.
+
+**Status.** Fixed on `fix/d3-quote-staleness` (base `fix/d2-halt-fail-closed`, STACKED); DRAFT PR opened.
+**HOLD for explicit operator go before prod merge** ([TRADES] deploy-risky per CLAUDE.md — changes what commits).
+
 ## 2026-07-25 — [WS-04] Malformed-quote books passed the liquidity gate as "liquid" — percent-spread check failed OPEN on zero/null-bid, crossed, and locked markets — FIXED (fail-closed quote-validity predicate)
 
 **Severity.** High (correctness / TRADES). A structurally malformed option quote could be treated as a

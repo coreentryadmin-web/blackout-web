@@ -119,6 +119,16 @@ export type OptionSnapshot = {
    * downstream P&L defaults to 100 in that case.
    */
   sharesPerContract: number | null;
+  /**
+   * D3: the top-of-book quote timestamp from last_quote.last_updated, normalized to EPOCH
+   * MILLISECONDS (the provider carries it in NANOSECONDS — see nsToEpochMs). This is what
+   * activates the WS-04 `stale` predicate (plan.ts QUOTE_VALIDITY.max_quote_age_ms): the
+   * 0DTE scan derives quoteAgeMs = now − quoteUpdatedMs and passes it into buildContractPlan.
+   * null when the provider omits/zeroes it — a MISSING timestamp is NOT proof of staleness,
+   * so the age predicate stays dormant for that contract (never fail-closed on absence;
+   * back-compat for non-0DTE readers that ignore this field). NEVER fabricated.
+   */
+  quoteUpdatedMs: number | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -131,6 +141,28 @@ export const UNIFIED_SNAPSHOT_MAX_PER_CALL = 250;
 function finiteOrNull(v: unknown): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Convert a Massive/Polygon quote timestamp to EPOCH MILLISECONDS.
+ *
+ * VERIFIED (probe, 2026-07-25): last_quote.last_updated on this endpoint is a NANOSECOND
+ * epoch — a live SPY chain row read `1784923199637468200` (~1.78e18), which /1e6 →
+ * 1784923199637 ms = 2026-07-24T19:59:59.637Z (the prior session's 3:59:59pm ET close);
+ * interpreting it AS milliseconds overflows to an invalid far-future date. This is the SAME
+ * nanosecond scale as sip_timestamp (option-trades.ts tradeMs divides ns→ms identically).
+ *
+ * Returns null for absent / zero / non-finite input (never fabricates a timestamp) — a null
+ * here keeps the WS-04 age predicate dormant for the contract (absence is not staleness).
+ */
+export function nsToEpochMs(ns: unknown): number | null {
+  const n = Number(ns);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const ms = Math.floor(n / 1e6);
+  // Guard a garbage sub-millisecond sentinel (e.g. last_updated=1 ns → 0 ms = epoch 1970):
+  // that is not a real quote clock, so treat it as ABSENT (null) rather than let a phantom
+  // epoch-0 timestamp read as "minutes stale" and fail the book closed on junk.
+  return ms > 0 ? ms : null;
 }
 
 /**
@@ -247,6 +279,10 @@ export function mapUnifiedSnapshotResult(r: UnifiedSnapshotResult): OptionSnapsh
     optionType,
     expiry,
     sharesPerContract,
+    // D3: quote freshness timestamp, NANOSECONDS → epoch ms (see nsToEpochMs). null when the
+    // provider omits/zeroes it — the scan then passes NO quoteAgeMs and the WS-04 stale
+    // predicate stays dormant for this contract (absence is never treated as stale).
+    quoteUpdatedMs: nsToEpochMs(r.last_quote?.last_updated),
   };
 }
 

@@ -695,6 +695,26 @@ async function attachGateVerdicts(
   }
 }
 
+/**
+ * D3: age (ms) of a contract's top-of-book quote at plan time, feeding the WS-04 `stale`
+ * predicate (plan.ts). Returns undefined when no quote timestamp is available
+ * (`quoteUpdatedMs == null`) so buildContractPlan leaves quoteAgeMs unset and the stale
+ * check stays DORMANT for that contract — a MISSING timestamp is never treated as stale
+ * (back-compat / fail-open on absence, mirroring the min-size conditional).
+ *
+ * A NEGATIVE age (quote timestamp ahead of `nowMs`, i.e. clock skew between the provider's
+ * quote clock and ours) is floored to 0 = FRESH, never reported as an age that could trip
+ * `stale` — skew must not manufacture a staleness block.
+ */
+export function computeQuoteAgeMs(
+  quoteUpdatedMs: number | null | undefined,
+  nowMs: number
+): number | undefined {
+  if (quoteUpdatedMs == null) return undefined;
+  const age = nowMs - quoteUpdatedMs;
+  return age > 0 ? age : 0;
+}
+
 /** One batched quote snapshot for every find's top-strike contract, then a pure
  *  plan per find. Soft-deadlined: a slow quote provider degrades to evidence-only
  *  cards (plan stays null), never a stalled scan. */
@@ -717,6 +737,9 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
     2_500
   );
   if (!snaps) return;
+  // Single cycle clock for the whole plan-attach pass so every contract's quote age is measured
+  // against the same instant (a per-contract Date.now() would drift across the loop).
+  const nowMs = Date.now();
   for (const s of setups) {
     const occ = occOf.get(s.ticker);
     if (!occ) continue;
@@ -732,11 +755,14 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
       ask: snap?.ask ?? null,
       mark: snap?.mark ?? null,
       // WS-04: resting quote sizes ARE available on OptionSnapshot — thread them through so the
-      // min-size predicate (conditional-on-availability) can enforce. quote_age is enforced when a
-      // timestamp is plumbed; none currently on ContractPlan input (OptionSnapshot does not map
-      // last_quote.last_updated), so no quoteAgeMs is passed and the stale predicate stays dormant.
+      // min-size predicate (conditional-on-availability) can enforce.
       bidSize: snap?.bidSize ?? null,
       askSize: snap?.askSize ?? null,
+      // D3: plumb the quote-freshness age so the WS-04 `stale` predicate ACTIVATES. OptionSnapshot
+      // now carries quoteUpdatedMs (last_quote.last_updated, ns→ms); computeQuoteAgeMs returns
+      // undefined when it's absent (predicate stays dormant for that contract) and floors clock
+      // skew to 0 (fresh). Previously no age was passed, so the stale branch was dead in prod.
+      quoteAgeMs: computeQuoteAgeMs(snap?.quoteUpdatedMs, nowMs),
       keySupports: s.key_supports,
       keyResistances: s.key_resistances,
       vwap: s.vwap,
