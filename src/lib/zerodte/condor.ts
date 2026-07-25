@@ -22,7 +22,6 @@
 // directional fade (3b behavior) and NOTHING is ever a condor.
 
 import {
-  selectIronCondor,
   surfacedWinRate,
   type IronCondorLegs,
 } from "./iron-condor";
@@ -53,8 +52,11 @@ export function condorFlagEnabled(): boolean {
 // restricted to cash-settled index roots; every American underlying stays the directional fade.
 // Override via ZERODTE_CONDOR_ROOTS (comma-sep) — but do NOT add American roots without an
 // assignment model. This is a safety gate, not a tuning dial.
+// Production default is SPX ONLY — the single cleanest cash-settled, European, true-daily-0DTE
+// index root. XSP/NDX/RUT are also cash-settled index products but are added ONLY via the env
+// override (research), so production never carries a wider default than one fully-understood root.
 export const CASH_SETTLED_CONDOR_ROOTS: ReadonlySet<string> = new Set(
-  (process.env.ZERODTE_CONDOR_ROOTS ?? "SPX,XSP,NDX,RUT")
+  (process.env.ZERODTE_CONDOR_ROOTS ?? "SPX")
     .split(",")
     .map((s) => s.trim().toUpperCase())
     .filter(Boolean)
