@@ -185,6 +185,19 @@ export type FlowSetupInput = {
 // already admits it so the merge/label math never has to be revisited.
 export type DiscoveryOrigin = "FLOW" | "BREAKOUT" | "PIN";
 
+// ── Play type (Phase 4, docs/audit/0DTE-UNIFICATION-DESIGN.md §1c + §3) ─────────────
+// The board commits TWO kinds of structure. Everything shipped through Phase 3b is
+// DIRECTIONAL — a single-contract long/short call/put graded on the −50/+100 premium
+// path (plan.ts). Phase 4 adds CONDOR — a non-directional 4-leg defined-risk iron
+// condor SOLD for a net credit, graded WIN=close-inside-both-shorts / DEFINED-LOSS=
+// breach (condor.ts). The field defaults to DIRECTIONAL at EVERY construction site, so
+// with the ZERODTE_CONDOR flag off nothing is ever a condor and the board is byte-for-
+// byte unchanged. It routes the gate stack (gates.ts branches G-1/G-10/G-12/G-6 OFF for
+// a neutral condor and swaps directional plan-quality for a condor liquidity gate), the
+// plan shape, the grader, and the calibration band — so it must travel with the setup
+// from discovery all the way to the graded ledger.
+export type PlayType = "DIRECTIONAL" | "CONDOR";
+
 /** Canonical order for a stable, dedup-friendly origin set/label (FLOW < BREAKOUT < PIN). */
 export const DISCOVERY_ORIGIN_ORDER: readonly DiscoveryOrigin[] = ["FLOW", "BREAKOUT", "PIN"];
 
@@ -210,6 +223,13 @@ export function discoveryOriginLabel(origins: readonly DiscoveryOrigin[] | null 
 export type ZeroDteSetup = {
   ticker: string;
   direction: "long" | "short";
+  /** Order STRUCTURE type (Phase 4). DIRECTIONAL = single-contract long/short call/put
+   *  (the only kind through Phase 3b); CONDOR = a delta-neutral 4-leg iron condor sold
+   *  for credit. Defaults DIRECTIONAL at every construction site — a CONDOR is only ever
+   *  produced by the flag-gated condor router (condor.ts). For a CONDOR, `direction` is
+   *  NOMINAL provenance only (the fade side of the pin it came from); the structure is
+   *  neutral, so the directional gates and the −50/+100 grader do NOT apply to it. */
+  play_type: PlayType;
   /** Discovery provenance SET (Phase 3a) — which independent source(s) surfaced this setup.
    *  Flow-sourced setups are ["FLOW"]; breakout-sourced ["BREAKOUT"]; both ["FLOW","BREAKOUT"].
    *  Never collapsed into one pool — persisted so calibration can slice outcomes by origin. */
@@ -343,7 +363,15 @@ export type ZeroDteGateFailure =
   // The <source> suffix names the Cortex source that vetoed (e.g. "cortex_veto:flow-quality").
   | `cortex_veto:${string}` // a Cortex source hard-vetoed the entry
   | "cortex_veto_blind" // Cortex blind to BOTH veto-capable sources on a fresh commit → HOLD
-  | "cortex_net_negative"; // no veto, but the evidence score nets < 0 — doesn't print
+  | "cortex_net_negative" // no veto, but the evidence score nets < 0 — doesn't print
+  // ── CONDOR play-type gates (Phase 4, gates.ts) — replace the DIRECTIONAL plan-quality /
+  // tape / confluence gates for a delta-neutral iron condor. A condor is graded WIN=close-
+  // inside-both-shorts / DEFINED-LOSS=breach, so it wants a CONTAINED, LOW-vol tape and a
+  // real credit — the opposite discipline from a directional momentum entry.
+  | "condor_liquidity" // all 4 legs must be quotable, credit ≥ floor, per-leg spread tax bounded
+  | "condor_vix_regime" // condor WANTS low VIX — elevated/extreme vol raises the bar / blocks the sale
+  | "condor_macro_block" // block a condor HARDER in a macro window (a CPI/FOMC breakout is its worst case)
+  | "condor_range_break"; // spot has approached/breached a short strike — the defended range is failing
 
 export type ZeroDteGateRejection = {
   ticker: string;
@@ -720,6 +748,10 @@ export function deriveZeroDteSetups(
     setups.push({
       ticker,
       direction: dominantCall ? "long" : "short",
+      // Flow candidates are ALWAYS directional single-contract plays — the condor is only
+      // ever routed from a PIN candidate (condor.ts), never from flow. Stamped explicitly so
+      // the flag-off board is byte-for-byte unchanged and no flow print can become a condor.
+      play_type: "DIRECTIONAL",
       // FLOW-origin provenance: this setup came from the whale-option-print discovery source.
       // A ticker also surfaced by the breakout source has "BREAKOUT" unioned in at merge time
       // (scan.ts / breakout-source.ts), never collapsed.
@@ -898,6 +930,12 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  the index-ETF measured-table estimate (exact for SPY/QQQ/IWM, approximate for a
    *  single name — the honest number comes from the ledger). Null when spot is unknown. */
   condor: IronCondorLegs | null;
+  /** PRICED, tradeable condor plan (Phase 4) — present ONLY on a `play_type: "CONDOR"` setup
+   *  built by the flag-gated condor router (condor.ts): the four legs off the live chain, the
+   *  net credit, defined max loss, and the breach (short-strike) levels the grader scores. This
+   *  is the ORDER STRUCTURE (distinct from the `condor` field above, which is calibration-only
+   *  geometry attached to every directional setup). Null on every DIRECTIONAL setup. */
+  condor_plan?: import("./condor").CondorPlan | null;
   /** Today's minute-bar read (session VWAP, opening range, 5m trend) — scan-attached. */
   intraday: IntradayRead | null;
   /** Hard intraday conflict: wrong side of VWAP AND short-term trend against — A-tier disqualifier. */

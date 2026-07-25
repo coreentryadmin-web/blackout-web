@@ -5,6 +5,45 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-25 — [Phase 4] Iron-CONDOR as a live SELL-side 0DTE play-type (flag-gated `ZERODTE_CONDOR`, default OFF) — LANDED
+
+**What.** The board committed DIRECTIONAL single-contract plays only. Phase 4 adds the non-directional
+iron-condor SELL structure, fed by the PIN discovery origin (deep long-gamma dealer-defended ranges).
+Triple-flag-gated OFF (`ZERODTE_CONDOR` + the PIN source's `ZERODTE_WHOLE_MARKET`/`ZERODTE_SRC_PIN`),
+so production is byte-for-byte unchanged until all three are on.
+
+**Files.** `board.ts` (`play_type: "DIRECTIONAL"|"CONDOR"` default DIRECTIONAL on `ZeroDteSetup`, stamped
+at every construction site; `condor_plan` on the enriched setup; 4 new gate-failure codes) · new
+`condor.ts` (router `condorSellRegime`, `buildCondorPlan`, liquidity gate, range-intact proxy, grader
+`gradeCondorFromBars`, seed→setup `buildCondorSetup`) · `pin-source.ts`/`breakout-source.ts` (stamp
+DIRECTIONAL) · `pin-discovery.ts` (condor routing off the same chain, falls back to the fade when
+geometry/legs unavailable) · `gates.ts` (branch by `play_type` — the delicate part) · `scan.ts` (skip
+directional plan-attach for condors; pass play_type/condorPlan to the gates; persist play_type +
+geometry in `entry_context`; route condor grading in `gradeZeroDteLedger`) · `macro-hard-block.ts`
+(`hasHighImpactMacroEvent`) · `calibration.ts` (`play_type_bands`).
+
+**Gate branch by play_type (the delicate part).** For a CONDOR: G-1 tape-alignment + its no_market_bias
+companion / G-10 intraday-conflict / G-12 confluence / G-6 cross-system are all SKIPPED (nothing
+directional to judge on a delta-neutral structure); directional plan-quality (G-8/G-9) is REPLACED by a
+condor liquidity gate (4 legs quotable + net credit ≥ wing-risk floor + per-leg spread tax ≤12%); G-4
+VIX blocks the sale outright at ≥17 (no score escape hatch) + fails closed on unavailable VIX; G-7 macro
+holds the sale for the WHOLE session on any high-impact release (a breakout is a condor's worst case) +
+fail-closed; a cheap range-intact proxy blocks when spot has crept to a short. Shared (both types): G-2
+window, G-3 score floor, G-5 governor, G-11 halt/earnings. Grading: WIN=close-inside-both-shorts (+credit)
+/ DEFINED-LOSS=breach (−max_loss, capped) — never the −50/+100 grader; realized credit/loss in
+`plan_outcome`/`plan_pnl_pct`. WR surfaced ≤97 with the 18.7% breach companion (iron-condor.ts honored).
+
+**Deferred (follow-ups):** rich condor exit management (only hold-to-close + breach-stop here); a full
+Cortex gex-walls range-intact read (spot-proximity proxy stands in); condor UI leg rendering; dead-CENTER
+pin discovery (the router only sees off-center pins `evaluatePinRegime` emits — condor routes the tight/
+centered *subset* of those). **Calibration-first:** condor sizes nothing until its `play_type_bands`
+ledger clears real credits + breach fills.
+
+**Verify.** `tsc --noEmit` clean; `lint:brand` clean; new `condor.test.ts` 31/31; full zerodte suite 503
+pass (7 pre-existing `mock.module`-unsupported failures in this Node sandbox, unrelated); `sim:0dte` runs
+unchanged (flags off). **Status:** committed to `fix/zerodte-condor-playtype`, pushed for lead review (no
+PR/merge per instruction).
+
 ## 2026-07-24 — [firewall RTH replay] Phase-0 fail-closed firewall would have HELD both of today's committed 0DTE plays — both losers (−54.9% avoided) — VALIDATED
 
 **Harness.** `scripts/audit/firewall-rth-replay.mjs` — replays a session's live 0DTE board OLD (guards off)

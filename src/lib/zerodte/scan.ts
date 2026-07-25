@@ -61,6 +61,7 @@ import {
   type SetupDossierView,
   type ZeroDteGateRejection,
 } from "./board";
+import { gradeCondorFromBars } from "./condor";
 import { buildZeroDteEntryContext, fetchZeroDteSessionContext } from "./entry-context";
 import { buildSetupFeatureVector } from "./feature-vector";
 import { evaluateLedgerRowExit } from "./exit-sync";
@@ -523,6 +524,10 @@ async function attachGateVerdicts(
     s.gate = evaluateZeroDteGates({
       ticker: s.ticker,
       direction: s.direction,
+      // Phase 4: route the gate stack by structure. A CONDOR skips the directional gates (G-1/G-10/
+      // G-12/G-6) and runs the condor liquidity + range + harder VIX/macro gates on condor_plan.
+      play_type: s.play_type,
+      condorPlan: s.condor_plan ?? null,
       score: s.score,
       nowEtMinutes,
       nowMs,
@@ -590,6 +595,11 @@ async function attachGateVerdicts(
 async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void> {
   const occOf = new Map<string, string>();
   for (const s of setups) {
+    // A CONDOR carries its own 4-leg priced structure (condor_plan, built at discovery); it has no
+    // single directional OCC, so the directional single-contract plan-attach is skipped for it —
+    // forcing it through buildOcc/buildContractPlan would fabricate a one-legged plan the gate stack
+    // and grader must never see. Its liquidity is gated on condor_plan instead (gates.ts).
+    if (s.play_type === "CONDOR") continue;
     const occ = buildOcc(s.ticker, s.expiry, s.direction === "long" ? "call" : "put", s.top_strike);
     if (occ) occOf.set(s.ticker, occ);
   }
@@ -653,7 +663,10 @@ export async function persistZeroDteScan(setups: EnrichedZeroDteSetup[]): Promis
   const committedFresh: EnrichedZeroDteSetup[] = [];
   const gateRejections: import("./board").ZeroDteGateRejection[] = [];
   for (const s of freshCandidates) {
-    const planBlocked = freshCommitBlockedByPlan(s.plan);
+    // A CONDOR's tradeability is enforced by the condor liquidity gate INSIDE evaluateZeroDteGates
+    // (s.gate already reflects it) — the directional freshCommitBlockedByPlan(s.plan) checks a
+    // single-leg plan a condor never has (s.plan is null), so it must not fire on a condor.
+    const planBlocked = s.play_type === "CONDOR" ? false : freshCommitBlockedByPlan(s.plan);
     if (s.gate?.verdict === "COMMIT" && !planBlocked) {
       committedFresh.push(s);
       continue;
@@ -736,6 +749,12 @@ export async function persistZeroDteScan(setups: EnrichedZeroDteSetup[]): Promis
       // work: it must survive to the graded ledger so the calibration origin band can slice WR/PnL
       // by FLOW / BREAKOUT / FLOW+BREAKOUT. Always present (flow-only setups persist ["FLOW"]).
       discovery_origin: s.discovery_origin,
+      // Play STRUCTURE (Phase 4) pinned at first flag: play_type routes the CONDOR grade path in
+      // gradeZeroDteLedger (a condor is graded WIN/breach, never on the −50/+100 directional grader)
+      // and the calibration play-type band. The full priced condor geometry rides along for the
+      // graded ledger's realized credit/loss. Always DIRECTIONAL unless the condor router fired.
+      play_type: s.play_type,
+      ...(s.play_type === "CONDOR" && s.condor_plan ? { condor: s.condor_plan } : {}),
     } as unknown as Record<string, unknown>,
     flags_json: {
       ...(s.earnings ? { earnings: s.earnings } : {}),
@@ -819,11 +838,41 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
   let graded = 0;
   for (const row of ungraded) {
     try {
+      // ── CONDOR grade (Phase 4) — routed by the pinned play_type, NEVER the −50/+100 directional
+      // grader. A condor row carries no single-leg occ (its structure is the pinned entry_context.
+      // condor blob), so the directional plan-grade below is a no-op for it; instead grade the SOLD
+      // structure against the UNDERLYING's minute bars (WIN=close-inside-both-shorts / breach=defined
+      // loss, condor.ts) and store the realized outcome/credit-loss in the same plan_outcome/pnl
+      // columns. The directional-move grade still runs afterward (harmless provenance) and stamps
+      // graded_at. Guarded strictly on play_type === "CONDOR", so a directional row is byte-identical.
+      const ec = row.entry_context ?? null;
+      const isCondorRow = ec?.play_type === "CONDOR";
+      const condorGeom = (ec?.condor ?? null) as Record<string, unknown> | null;
+      if (isCondorRow && row.plan_outcome == null && condorGeom && row.first_flagged_at) {
+        const minBars = await fetchAggBars(
+          polygonSpotTicker(row.ticker), 1, "minute", row.session_date, row.session_date, "50000"
+        );
+        const bars: PlanBar[] = minBars
+          .filter((b) => b.t != null && Number.isFinite(b.t))
+          .map((b) => ({ t: b.t as number, h: b.h, l: b.l, c: b.c }));
+        const geom = {
+          breach_lower: Number(condorGeom.breach_lower),
+          breach_upper: Number(condorGeom.breach_upper),
+          net_credit: condorGeom.net_credit == null ? null : Number(condorGeom.net_credit),
+          max_loss: condorGeom.max_loss == null ? null : Number(condorGeom.max_loss),
+          gross_wing_risk: Number(condorGeom.gross_wing_risk),
+        };
+        const cGrade = gradeCondorFromBars(bars, geom, Date.parse(row.first_flagged_at));
+        await updateZeroDtePlanOutcome(row.session_date, row.ticker, {
+          plan_outcome: cGrade.outcome,
+          plan_pnl_pct: cGrade.pnl_pct,
+        });
+      }
       // Plan grade FIRST (against the contract's own minute bars), then the
       // direction grade — gradeZeroDteSetupRow stamps graded_at, which removes the
       // row from future passes, so everything must land in this one try.
       const occ = typeof row.plan_json?.occ === "string" ? row.plan_json.occ : null;
-      if (row.plan_outcome == null && occ && row.entry_premium != null && row.entry_premium > 0) {
+      if (!isCondorRow && row.plan_outcome == null && occ && row.entry_premium != null && row.entry_premium > 0) {
         const optBars = await fetchAggBars(occ, 1, "minute", row.session_date, row.session_date, "50000");
         const planBars: PlanBar[] = optBars
           .filter((b) => b.t != null && Number.isFinite(b.t))

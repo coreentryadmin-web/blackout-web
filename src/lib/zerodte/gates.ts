@@ -26,12 +26,13 @@
 //   ./scan.ts assembles the async inputs.
 
 import type { MarketBias } from "./intraday";
-import type { EarningsFlag, EnrichedZeroDteSetup, ZeroDteGateFailure, ZeroDteGateRejection } from "./board";
+import type { EarningsFlag, EnrichedZeroDteSetup, PlayType, ZeroDteGateFailure, ZeroDteGateRejection } from "./board";
 import { evaluateZeroDteGovernor, type GovernorOpenPlan, type GovernorSnapshot } from "./governor";
 import type { ContractPlan } from "./plan";
 import type { ZeroDteConfluence } from "./confluence";
 import { EARLY_ENTRY_WINDOW_END_ET_MINUTES } from "./confluence";
-import { evaluateMacroHardBlock, type MacroEventLike } from "@/lib/macro-hard-block";
+import { evaluateMacroHardBlock, hasHighImpactMacroEvent, type MacroEventLike } from "@/lib/macro-hard-block";
+import { condorLiquidityGateBlocks, condorRangeBreaking, type CondorPlan } from "./condor";
 
 /** Read a positive-integer tuning knob from the environment, falling back to `def` when unset,
  *  non-numeric, or ≤0. Evaluated ONCE at module load so the gate FUNCTIONS stay pure (they only
@@ -218,6 +219,15 @@ export type ZeroDteGateVerdict = {
 export type ZeroDteGateInput = {
   ticker: string;
   direction: "long" | "short";
+  /** Play STRUCTURE (Phase 4). Absent/DIRECTIONAL → the full directional stack (unchanged). CONDOR →
+   *  the delta-neutral branch: G-1 / G-10 / G-12 / G-6 (all directional) are SKIPPED, the directional
+   *  plan-quality (G-8/G-9) is replaced by the condor liquidity gate, G-4 VIX blocks harder (a condor
+   *  wants low vol), and G-7 macro blocks the whole session (a release is a condor's worst case). */
+  play_type?: PlayType;
+  /** The priced condor structure (condor.ts) — required for a CONDOR play_type's liquidity + range
+   *  gates. Null on a condor → condor_liquidity fails closed (no sellable structure). Ignored for a
+   *  DIRECTIONAL setup (which uses `plan` instead). */
+  condorPlan?: CondorPlan | null;
   /** Post-edge-layer score (after intraday/market/time-of-day adjusts). */
   score: number;
   /** ET minutes since midnight at evaluation time. */
@@ -278,28 +288,40 @@ export type ZeroDteGateInput = {
 export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdict {
   const blocks: ZeroDteGateBlock[] = [];
 
-  // G-1 — tape alignment. Order matters within the gate: an unreadable bias is its
-  // own (fail-closed) block, distinct from a readable-but-opposed tape, so the
-  // rejection log can tell "we couldn't see the tape" from "the tape said no".
-  const biasStale =
-    input.biasAsOfMs == null || input.nowMs - input.biasAsOfMs > MARKET_BIAS_MAX_AGE_MS;
-  if (input.bias == null || biasStale) {
-    blocks.push({
-      code: "no_market_bias",
-      reason:
-        "Market tape read unavailable or stale — new commits fail closed until the SPY bias is readable again.",
-      threshold: null,
-      unlock_et: null,
-    });
-  } else if (input.bias !== "flat" && (input.bias === "up") !== (input.direction === "long")) {
-    blocks.push({
-      code: "tape_alignment",
-      reason:
-        `${input.direction === "long" ? "Long" : "Short"} setup fights the ${input.bias.toUpperCase()} market tape — ` +
-        "counter-tape 0DTE entries are blocked (7/13 evidence: counter-tape longs went 0/5 at the stop).",
-      threshold: null,
-      unlock_et: null,
-    });
+  // Phase 4: a CONDOR is delta-neutral order structure, so the DIRECTIONAL gates must not misfire on
+  // it. This one flag routes every direction-specific gate below. See each gate's condor note; the
+  // condor-specific gates (liquidity / VIX-harder / macro-harder / range-intact) are added in the
+  // `isCondor` block after the shared gates. Unknown/absent play_type is DIRECTIONAL (unchanged).
+  const isCondor = input.play_type === "CONDOR";
+
+  // G-1 — tape alignment. DIRECTIONAL ONLY: a condor has no direction to fight the tape, so G-1
+  // (and its fail-closed no_market_bias companion) does NOT apply — selling a defended range is not
+  // a bet on tape direction. (A trending tape IS a condor risk, but that is handled by the range-
+  // intact check + the strict sell-regime router, not by a directional tape-alignment block.)
+  if (!isCondor) {
+    // Order matters within the gate: an unreadable bias is its own (fail-closed) block, distinct
+    // from a readable-but-opposed tape, so the rejection log can tell "we couldn't see the tape"
+    // from "the tape said no".
+    const biasStale =
+      input.biasAsOfMs == null || input.nowMs - input.biasAsOfMs > MARKET_BIAS_MAX_AGE_MS;
+    if (input.bias == null || biasStale) {
+      blocks.push({
+        code: "no_market_bias",
+        reason:
+          "Market tape read unavailable or stale — new commits fail closed until the SPY bias is readable again.",
+        threshold: null,
+        unlock_et: null,
+      });
+    } else if (input.bias !== "flat" && (input.bias === "up") !== (input.direction === "long")) {
+      blocks.push({
+        code: "tape_alignment",
+        reason:
+          `${input.direction === "long" ? "Long" : "Short"} setup fights the ${input.bias.toUpperCase()} market tape — ` +
+          "counter-tape 0DTE entries are blocked (7/13 evidence: counter-tape longs went 0/5 at the stop).",
+        threshold: null,
+        unlock_et: null,
+      });
+    }
   }
 
   // G-2 — opening window (block the worst first 30 min, unlock 10:00 ET — user-authorized
@@ -330,11 +352,11 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     });
   }
 
-  // G-12 — confluence floor (Phase 1, 2026-07-24). The additive score can't tell a
-  // triple-confirmed A+ setup from a loud-print-only one; require independent confirmations to
-  // AGREE. Fail-open when no read is attached (see the constant's doc). The early-window floor is
-  // higher, so this ALSO enforces "take only the strongest agreement early" inside [10:00, 10:45).
-  if (input.confluence != null) {
+  // G-12 — confluence floor (Phase 1, 2026-07-24). DIRECTIONAL ONLY: confluence counts how many of
+  // {VWAP-side, market-aligned} agree with the setup's DIRECTION — a delta-neutral condor has no
+  // direction to confirm, so this gate does not apply to it (the sell-regime router + range-intact
+  // check are the condor's equivalent "is the structure right" test).
+  if (!isCondor && input.confluence != null) {
     const floor = confluenceFloorAt(input.nowEtMinutes);
     const have = input.confluence.confirmations;
     if (have < floor) {
@@ -358,7 +380,34 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // G-1 already enforces tape alignment; G-4 raises the score floor at elevated VIX
   // and blocks single names outright at extreme VIX.
   const vix = input.vixDayOpen ?? null;
-  if (vix != null) {
+  if (isCondor) {
+    // ── G-4 for a CONDOR — HARDER, and inverted-sensitivity. A condor SELLS vol, so an elevated/
+    // extreme VIX is its enemy, not just a score modifier: a vol expansion is exactly when a defended
+    // range breaks and the negative-skew tail fires. So ANY VIX at/above the elevated threshold blocks
+    // the sale outright (no score-floor escape hatch the directional path allows), and an unavailable
+    // VIX fails closed unconditionally — selling premium blind to the vol regime is the worst version
+    // of the fail-open leak Phase 0 closed.
+    if (vix != null && vix >= VIX_ELEVATED_THRESHOLD) {
+      const vixR = Math.round(vix * 100) / 100;
+      blocks.push({
+        code: "condor_vix_regime",
+        reason:
+          `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD} — a condor SELLS premium into a range, so an ` +
+          "elevated/extreme vol regime (where the range breaks) blocks the sale outright (condor G-4).",
+        threshold: VIX_ELEVATED_THRESHOLD,
+        unlock_et: null,
+      });
+    } else if (vix == null && input.vixUnavailable === true && G4_VIX_FAIL_CLOSED_ENABLED) {
+      blocks.push({
+        code: "condor_vix_regime",
+        reason:
+          "Day-open VIX unavailable (provider timeout) — a condor cannot be sold blind to the vol " +
+          "regime it is short; fails closed until VIX is readable (condor G-4 fail-closed).",
+        threshold: null,
+        unlock_et: null,
+      });
+    }
+  } else if (vix != null) {
     // Round for display in the SKIP-card reason strings + the persisted gate_calibration_json — the raw
     // provider value can be a 17.34000000001-style float (repo-wide "round at the data layer" rule). The
     // threshold COMPARISONS below still use the raw `vix` (rounding is display-only).
@@ -433,9 +482,36 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     }
   }
 
-  // G-7 — macro hard-block (Slayer parity via macro-hard-block.ts). Clock-based like
-  // G-2: the block self-expires when the window passes.
-  if (input.todayYmd && (input.macroEvents?.length ?? 0) > 0) {
+  // G-7 — macro hard-block. For a CONDOR it blocks HARDER: the directional path only avoids the
+  // ±window around the release (a directional bet just sidesteps the print minute), but a condor is
+  // SHORT vol on a defined-loss structure — a CPI/FOMC/NFP breakout is its single worst outcome — so
+  // ANY high-impact release scheduled today holds the sale for the WHOLE session, plus the same
+  // fail-closed on an unreadable calendar.
+  if (isCondor) {
+    if (
+      input.todayYmd &&
+      (input.macroEvents?.length ?? 0) > 0 &&
+      hasHighImpactMacroEvent(input.macroEvents!)
+    ) {
+      blocks.push({
+        code: "condor_macro_block",
+        reason:
+          "High-impact macro release today (CPI/FOMC/NFP/PPI/GDP) — a condor is short vol into the " +
+          "exact event that breaks its range; the sale is held for the whole session (condor G-7).",
+        threshold: null,
+        unlock_et: null,
+      });
+    } else if (input.macroUnavailable === true && G7_MACRO_FAIL_CLOSED_ENABLED) {
+      blocks.push({
+        code: "condor_macro_block",
+        reason:
+          "Macro calendar unavailable (fetch failed) — a condor cannot be sold blind to a possible " +
+          "CPI/FOMC/NFP release; fails closed for the session (condor G-7 fail-closed).",
+        threshold: null,
+        unlock_et: null,
+      });
+    }
+  } else if (input.todayYmd && (input.macroEvents?.length ?? 0) > 0) {
     const macro = evaluateMacroHardBlock(input.macroEvents!, input.nowEtMinutes, input.todayYmd);
     if (macro.blocked) {
       blocks.push({
@@ -463,19 +539,41 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     });
   }
 
-  // G-8/G-9 — plan quality: no chase (MOVED), no untradeable spread (illiquid), no
-  // plan without a real quote or fill. UI SKIP already hid these; persist must match.
-  blocks.push(...planQualityGateBlocks(input.plan ?? null));
+  if (isCondor) {
+    // ── CONDOR liquidity + range gates — the SELL-side replacement for the directional G-8/G-9/G-10.
+    // A condor is neutral, so no-chase (G-8) and single-leg spread (G-9) and VWAP/5m conflict (G-10)
+    // don't apply. Instead: (1) all four legs must be quotable, the net credit must clear the wing-
+    // risk floor, and the per-leg spread tax must be bounded (condor_liquidity, condor.ts); and (2)
+    // the defended range must still be intact — if spot has crept up to a short strike, HOLD the sale
+    // (condor_range_break, the cheap Cortex-gex-walls proxy — see condor.ts / the deferred follow-up).
+    for (const b of condorLiquidityGateBlocks(input.condorPlan ?? null)) {
+      blocks.push({ code: b.code, reason: b.reason, threshold: b.threshold, unlock_et: null });
+    }
+    if (input.condorPlan != null && condorRangeBreaking(input.condorPlan.spot, input.condorPlan)) {
+      blocks.push({
+        code: "condor_range_break",
+        reason:
+          "Spot has approached or breached a short strike — the dealer-defended range is failing, so a " +
+          "fresh condor is held rather than sold into an eroding range (condor range-intact).",
+        threshold: null,
+        unlock_et: null,
+      });
+    }
+  } else {
+    // G-8/G-9 — plan quality: no chase (MOVED), no untradeable spread (illiquid), no
+    // plan without a real quote or fill. UI SKIP already hid these; persist must match.
+    blocks.push(...planQualityGateBlocks(input.plan ?? null));
 
-  // G-10 — intraday structure conflict (was score-only; promoted 2026-07-18 audit).
-  if (input.intradayConflict === true) {
-    blocks.push({
-      code: "intraday_conflict",
-      reason:
-        "Name's session VWAP and 5m trend oppose this direction — structure conflict blocks new commits.",
-      threshold: null,
-      unlock_et: null,
-    });
+    // G-10 — intraday structure conflict (was score-only; promoted 2026-07-18 audit).
+    if (input.intradayConflict === true) {
+      blocks.push({
+        code: "intraday_conflict",
+        reason:
+          "Name's session VWAP and 5m trend oppose this direction — structure conflict blocks new commits.",
+        threshold: null,
+        unlock_et: null,
+      });
+    }
   }
 
   // G-11 — halt + earnings: different risk profile than a normal 0DTE scalp.
@@ -520,8 +618,10 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
 
   // G-6 — cross-system conflict hard gate (promoted from calibration 2026-07-16).
   // A 0DTE entry opposing a live Slayer play or Night Hawk take on a correlated
-  // ticker needs score ≥ 80 to override the desk disagreement.
-  {
+  // ticker needs score ≥ 80 to override the desk disagreement. DIRECTIONAL ONLY: a
+  // condor is delta-neutral, so it can't "oppose" another desk's directional take —
+  // there is no side to conflict with.
+  if (!isCondor) {
     const tickerUp = input.ticker.toUpperCase();
     const conflictSources: string[] = [];
     if (

@@ -37,6 +37,17 @@ function isMacroTitle(title: string): boolean {
 }
 
 /**
+ * Whether ANY high-impact macro release (CPI/FOMC/NFP/PPI/GDP) is scheduled at all on the day, used
+ * by the 0DTE condor gate (gates.ts) to block a premium SALE for the WHOLE session — not just the
+ * ±window the directional G-7 uses. Rationale: a CPI/FOMC breakout is a condor's worst case (defined
+ * loss on the exact day vol expands), so a neutral sale blocks harder than a directional bet, which
+ * only avoids the release minute itself. Pure; independent of the clock.
+ */
+export function hasHighImpactMacroEvent(events: MacroEventLike[]): boolean {
+  return events.some((ev) => isMacroTitle(String(ev.event ?? ev.country ?? "").toUpperCase()));
+}
+
+/**
  * Returns whether `nowEtMinutes` falls inside a macro hard-block window for any
  * high-impact release on `todayYmd`.
  */
