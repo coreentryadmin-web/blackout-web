@@ -37,6 +37,7 @@ import {
   MULTI_DAY_MIN_PREMIUM,
 } from "./flow-accumulation-context";
 import { attachConfluence } from "./confluence";
+import { breakoutSourceEnabled, mergeDiscoveryOrigins } from "./breakout-source";
 import { LEVERAGED_ETP_SET } from "@/features/nighthawk/lib/constants";
 import { createDossierBuildCache, fetchTickerDossier } from "@/features/nighthawk/lib/dossier";
 import { etNowParts, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
@@ -231,6 +232,39 @@ export async function scanZeroDteBoard(flags?: {
       return enrichSetup(setup, dossier, extras);
     })
   );
+
+  // ── BREAKOUT discovery origin (Phase 3a, §1a) — the SECOND, INDEPENDENT discovery source ──
+  // Flag-gated OFF by default (ZERODTE_WHOLE_MARKET + ZERODTE_SRC_BREAKOUT). When enabled, the
+  // whole-market breakout screen emits its own candidates carrying discovery_origin ["BREAKOUT"];
+  // they merge with the flow candidates BY TICKER preserving origin as a SET (a shared ticker →
+  // ["FLOW","BREAKOUT"]), never a collapsed pool, and no corroboration score boost (evidence-only).
+  // Merged BEFORE the accumulation overlay + contract-attach + gate/Cortex stack so every breakout
+  // candidate runs the SAME mandatory contract-attach + shared hard gates + Cortex as a flow one.
+  // The IO orchestration is dynamic-imported so the flow-only board never loads the whole-market
+  // provider graph; any failure degrades to the flow-only board (best-effort). The FLOW evidence
+  // gates (SETUP_MIN_GROSS / SETUP_MIN_AGGR_SHARE / dominance / moneyness) live INSIDE
+  // deriveZeroDteSetups and structurally never touch a breakout setup — it enters the pipeline here,
+  // AFTER that function, and is validated instead by its breakout score + the shared hard-gate stack.
+  if (breakoutSourceEnabled()) {
+    try {
+      const { hour, minute } = etNowParts();
+      const { discoverBreakoutSetups } = await import("./breakout-discovery");
+      const breakoutSetups = await discoverBreakoutSetups({
+        today,
+        nowEtMinutes: hour * 60 + minute,
+        excludeTickers: excludes,
+      });
+      if (breakoutSetups.length > 0) {
+        mergeDiscoveryOrigins(setups, breakoutSetups);
+        // Keep the array score-ranked so the governor's concurrency budget still goes to the best
+        // finds (attachGateVerdicts commits best-first). Enrichment already happened per-setup, so
+        // re-ordering here is safe.
+        setups.sort((a, b) => b.score - a.score);
+      }
+    } catch (err) {
+      console.warn("[zerodte-breakout] discovery failed — flow-only board this cycle:", err);
+    }
+  }
 
   // Multi-day flow-accumulation memory: attach whether each setup's direction is confirmed by
   // stacked positioning over the week (+ the magnet strike). Evidence only — calibration-first, does
@@ -667,6 +701,10 @@ export async function persistZeroDteScan(setups: EnrichedZeroDteSetup[]): Promis
       // itself still does NOT gate the board. Omitted when absent so the blob stays honest.
       ...(s.flow_accumulation ? { flow_accumulation: s.flow_accumulation } : {}),
       ...(s.confluence ? { confluence: s.confluence } : {}),
+      // Discovery provenance SET (Phase 3a) pinned at first flag — the whole point of the origin
+      // work: it must survive to the graded ledger so the calibration origin band can slice WR/PnL
+      // by FLOW / BREAKOUT / FLOW+BREAKOUT. Always present (flow-only setups persist ["FLOW"]).
+      discovery_origin: s.discovery_origin,
     } as unknown as Record<string, unknown>,
     flags_json: {
       ...(s.earnings ? { earnings: s.earnings } : {}),
@@ -703,6 +741,7 @@ export async function persistZeroDteScan(setups: EnrichedZeroDteSetup[]): Promis
       vix: sessionCtx?.vix_open ?? null,
       spyBias: sessionCtx?.spy_bias ?? null,
       confluence: s.confluence?.tier ?? null,
+      discoveryOrigin: s.discovery_origin,
     }) as unknown as Record<string, unknown>,
   }));
   const freshlyFlagged = await upsertZeroDteSetupLog(rows);

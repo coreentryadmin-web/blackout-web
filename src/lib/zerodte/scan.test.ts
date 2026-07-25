@@ -661,6 +661,41 @@ test("scanZeroDteBoard: 3 realized losing time-stops HALT a fresh commit — the
   assert.equal(nvda!.gate!.verdict, "BLOCKED", "a halted session must not COMMIT a fresh play");
 });
 
+// ── Phase 3a: with the whole-market flags OFF, the board is flow-only + every setup is ["FLOW"] ──
+// Byte-for-byte discovery-behavior guard: no breakout source runs (breakout-discovery is never even
+// imported — it's only dynamic-imported when the flags are on, so this test needs no polygon/chain
+// mocks), and every discovered setup carries the FLOW origin stamp.
+test("scanZeroDteBoard: flags OFF → flow-only board, every setup stamped discovery_origin [\"FLOW\"]", async () => {
+  resetState();
+  delete process.env.ZERODTE_WHOLE_MARKET;
+  delete process.env.ZERODTE_SRC_BREAKOUT;
+  state.flows = [
+    {
+      ticker: "NVDA",
+      premium: 2_000_000,
+      option_type: "call",
+      strike: 145,
+      expiry: "2026-07-06",
+      dte: 0,
+      alert_rule: "sweep",
+      ask_pct: 75,
+      underlying_price: 140,
+      fill_price: 4.2,
+      open_interest: 100,
+      alerted_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+    },
+  ];
+
+  const { scanZeroDteBoard } = await mod();
+  const result = (await scanZeroDteBoard()) as {
+    setups: Array<{ ticker: string; discovery_origin: string[] }>;
+  };
+  assert.ok(result.setups.length >= 1);
+  for (const s of result.setups) {
+    assert.deepEqual(s.discovery_origin, ["FLOW"], `${s.ticker} must be flow-only with the flags off`);
+  }
+});
+
 // ── G-11 firewall: halt/earnings for EVERY committable rank, not just the dossier top-5 ──
 // Pre-fix, ranks 6-10 never received a dossier (halt) and the cron commit path passed NO
 // earnings flags at all — so an earnings-today name outside the top-5 committed blind. The

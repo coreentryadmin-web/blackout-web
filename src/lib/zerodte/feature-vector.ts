@@ -29,6 +29,7 @@
 
 import type { FlowQuality } from "./flow-quality";
 import type { MarketRegime } from "./regime";
+import { discoveryOriginLabel, type DiscoveryOrigin } from "./board";
 
 /** Bump when the vector's shape changes so old graded rows stay interpretable. */
 export const FEATURE_VECTOR_VERSION = 1;
@@ -69,6 +70,10 @@ export interface SetupFeatureInputs {
   spyBias?: "up" | "down" | "flat" | null;
   /** Confluence tier at commit. */
   confluence?: "triple" | "double" | "weak" | null;
+  /** Discovery provenance SET at commit (Phase 3a) — which independent source(s) surfaced this
+   *  setup. Flattened to a canonical label (FLOW / BREAKOUT / FLOW+BREAKOUT) in the vector so the
+   *  intelligence layer can slice/one-hot by origin. Absent → persists as null (never fabricated). */
+  discoveryOrigin?: DiscoveryOrigin[] | null;
 }
 
 /** The flat, versioned feature row. Numeric where possible; small categorical strings otherwise. */
@@ -116,6 +121,8 @@ export interface SetupFeatureVector {
   vix: number | null;
   spy_bias: string | null;
   confluence: string | null;
+  /** Canonical discovery-origin label (FLOW / BREAKOUT / FLOW+BREAKOUT); null when not threaded. */
+  discovery_origin: string | null;
 }
 
 const numOrNull = (n: number | null | undefined): number | null =>
@@ -167,6 +174,12 @@ export function buildSetupFeatureVector(input: SetupFeatureInputs): SetupFeature
     vix: numOrNull(input.vix),
     spy_bias: input.spyBias ?? null,
     confluence: input.confluence ?? null,
+    // Canonical origin label; null (not "no_origin") when the origin wasn't threaded, so a missing
+    // read is honest rather than reading like a real "no origin" bucket in the store.
+    discovery_origin:
+      input.discoveryOrigin && input.discoveryOrigin.length > 0
+        ? discoveryOriginLabel(input.discoveryOrigin)
+        : null,
   };
 }
 
@@ -188,6 +201,7 @@ export const NUMERIC_FEATURE_KEYS = [
 export const CATEGORICAL_FEATURE_KEYS = [
   "side", "reg_structure", "reg_gap", "reg_vol",
   "or_break", "trend_5m", "gamma_regime", "dark_pool_bias", "spy_bias", "confluence",
+  "discovery_origin",
 ] as const satisfies ReadonlyArray<keyof SetupFeatureVector>;
 
 /**

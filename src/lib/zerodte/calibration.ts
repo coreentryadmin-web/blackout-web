@@ -23,6 +23,7 @@
 // The pure core takes rows and returns a report; no clocks, no providers, no DB.
 
 import type { ZeroDteSetupLogRow } from "@/lib/db";
+import { discoveryOriginLabel, type DiscoveryOrigin } from "./board";
 import { LOW_N_THRESHOLD, isGradedZeroDteRow, isZeroDteWin, scoreForBanding } from "./record";
 import { ZERODTE_SCORE_FLOOR } from "./gates";
 import { TIER_APLUS_UNLOCK, tierFromEntryContext, type ZeroDteTier } from "./tiers";
@@ -142,6 +143,9 @@ export type CalibrationReport = {
   /** Graded record by confluence tier (triple / double / weak / no_read) — the "double" bucket is the
    *  +15.9% EV research finding; this is where it earns (or fails to earn) enforcement. */
   confluence_tiers: CalibrationBucket[];
+  /** Graded record by discovery-origin set (FLOW / BREAKOUT / FLOW+BREAKOUT / …) — Phase 3a. Answers
+   *  "does BREAKOUT pay?" and "does FLOW+BREAKOUT beat FLOW alone?" on real outcomes. Non-gating. */
+  origin_bands: CalibrationBucket[];
   /** Coded graduation verdicts for the positive evidence signals (confluence double, accumulation
    *  alignment) — the same enforce/keep_calibrating/insufficient_data ladder the gates use, so a signal
    *  can only enter scoring once the live ledger clears the n>=10 / delta>=15pt bar. Non-gating. */
@@ -357,6 +361,49 @@ export function analyzeAccumulationAlignment(graded: CalibrationPlayRow[]): Cali
     (a === true ? aligned : a === false ? misaligned : noSignal).push(r);
   }
   return [bucketOf("aligned", aligned), bucketOf("misaligned", misaligned), bucketOf("no_signal", noSignal)];
+}
+
+// ── Discovery-origin band (Phase 3a, docs/audit/0DTE-UNIFICATION-DESIGN.md §1a) ─────────────
+// The origin SET is pinned in each row's entry_context.discovery_origin at commit. Bucketing
+// GRADED outcomes by it — with the exact same n / win-rate / avg-PnL math as every other band —
+// is the whole point of the provenance work: it lets the operator answer, per origin and on REAL
+// outcomes, "does BREAKOUT pay?" and "does FLOW+BREAKOUT beat FLOW alone?" before any corroboration
+// boost is ever hand-wired. Reads defensively: a pre-3a row with no origin blob lands in the
+// "no_origin" bucket, never a fabricated verdict. Non-gating (evidence, exactly like the two bands
+// above); a source graduates through the same recommendSignal ladder once its band clears n>=10.
+
+/** The origin labels always emitted (stable machine-readable shape), best/simplest first. PIN and
+ *  its combinations arrive with later phases — an unrecognized label is appended dynamically. */
+export const CALIBRATION_ORIGIN_BANDS = ["FLOW", "BREAKOUT", "FLOW+BREAKOUT", "no_origin"] as const;
+
+/** Canonical origin label off a row's entry_context.discovery_origin (defensive — an absent/garbage
+ *  blob → "no_origin"). Reuses board.ts's one label function so the calibration slice and the
+ *  persisted feature-vector label can never drift. */
+export function readOriginLabel(ec: Record<string, unknown> | null | undefined): string {
+  const raw = (ec?.discovery_origin ?? null) as unknown;
+  if (!Array.isArray(raw)) return "no_origin";
+  const origins = raw.filter(
+    (o): o is DiscoveryOrigin => o === "FLOW" || o === "BREAKOUT" || o === "PIN"
+  );
+  return discoveryOriginLabel(origins);
+}
+
+/** Graded record bucketed by discovery-origin set (FLOW / BREAKOUT / FLOW+BREAKOUT / …). */
+export function analyzeOriginBands(graded: CalibrationPlayRow[]): CalibrationBucket[] {
+  const byLabel = new Map<string, CalibrationPlayRow[]>();
+  for (const r of graded) {
+    const label = readOriginLabel(r.entry_context);
+    byLabel.set(label, [...(byLabel.get(label) ?? []), r]);
+  }
+  // Always emit the canonical bands (n=0 included) for a stable shape, then any other observed
+  // label (future PIN combinations) appended in sorted order so nothing is silently dropped.
+  const labels = [
+    ...CALIBRATION_ORIGIN_BANDS,
+    ...Array.from(byLabel.keys())
+      .filter((l) => !CALIBRATION_ORIGIN_BANDS.includes(l as (typeof CALIBRATION_ORIGIN_BANDS)[number]))
+      .sort(),
+  ];
+  return labels.map((label) => bucketOf(label, byLabel.get(label) ?? []));
 }
 
 /** Graded record bucketed by confluence tier — the "double" bucket is the +15.9% EV research finding. */
@@ -740,6 +787,7 @@ export function analyzeGateCalibration(input: {
     // pinned in entry_context and bucketed here so the ledger decides whether either graduates.
     accumulation_alignment: analyzeAccumulationAlignment(graded),
     confluence_tiers: analyzeConfluenceTiers(graded),
+    origin_bands: analyzeOriginBands(graded),
     signal_recommendations: [recommendConfluence(graded), recommendAccumulation(graded)],
     scale_out_recommendation: recommendScaleOut(graded),
     available: graded.length > 0,
