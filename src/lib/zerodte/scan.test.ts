@@ -37,6 +37,15 @@ const state = {
   dailyBars: new Map<string, Array<{ t: number; o: number; h: number; l: number; c: number }>>(),
   // persistZeroDteScan wiring (PR-F commit-time tier stamp test below)
   upsertRows: [] as Array<Record<string, unknown>>,
+  // WS-01 atomic-commit wiring. `atomicLedger`, when set, is the IN-TRANSACTION ledger the
+  // recount sees (a racing writer's committed book) — null means "recount == pre-cycle
+  // snapshot" (the uncontended case). `atomicReturnsNull` forces the fallback path.
+  atomicLedger: null as LedgerRow[] | null,
+  atomicReturnsNull: false,
+  atomicSelectedRows: [] as Array<Record<string, unknown>>,
+  // Durable rejection rows the REAL persistZeroDteRejections writes (WS-01 recount drops +
+  // scan-time gate blocks) — captured so a test can prove a withheld commit is fail-VISIBLE.
+  rejectionRows: [] as Array<Record<string, unknown>>,
   // G-11 firewall wiring (rank-7 earnings block test below): the market-wide earnings
   // snapshot readGridEarnings returns, and the set of tickers the halt store reports.
   earningsItems: [] as Array<Record<string, unknown>>,
@@ -54,6 +63,10 @@ function resetState() {
   state.aggBarCalls = [];
   state.dailyBars = new Map();
   state.upsertRows = [];
+  state.atomicLedger = null;
+  state.atomicReturnsNull = false;
+  state.atomicSelectedRows = [];
+  state.rejectionRows = [];
   state.earningsItems = [];
   state.haltedTickers = new Set();
 }
@@ -103,7 +116,29 @@ mock.module("../db", {
     updateZeroDtePlanOutcome: async () => {},
     upsertZeroDteSetupLog: async (rows: Array<Record<string, unknown>>) => {
       state.upsertRows.push(...rows);
-      return new Set<string>();
+      return new Set<string>(rows.map((r) => String(r.ticker).toUpperCase()));
+    },
+    // WS-01 — hermetic stand-in for the atomic transactional commit. Runs the caller's
+    // recount `select` against the IN-TRANSACTION ledger (state.atomicLedger ?? the pre-cycle
+    // book) exactly as the real xact-locked path does, so the recount+re-evaluate logic under
+    // test runs for real; only the Postgres transaction/lock machinery is stubbed away.
+    commitFreshZeroDteRowsAtomic: async (
+      _sessionDate: string,
+      select: (ledger: LedgerRow[]) => Array<Record<string, unknown>>
+    ) => {
+      if (state.atomicReturnsNull) return null; // force the fallback-to-plain-upsert path
+      const ledger = state.atomicLedger ?? state.ledgerRows;
+      const survivors = select(ledger);
+      state.atomicSelectedRows.push(...survivors);
+      state.upsertRows.push(...survivors);
+      return new Set<string>(survivors.map((r) => String(r.ticker).toUpperCase()));
+    },
+    // rejections.ts (left REAL) writes recount/gate drops through these; capture them so a
+    // test can assert the withheld commit is durably recorded (fail-VISIBLE, not silent).
+    getMeta: async () => null,
+    setMeta: async () => {},
+    insertZeroDteScanRejection: async (row: Record<string, unknown>) => {
+      state.rejectionRows.push(row);
     },
   },
 });
@@ -823,4 +858,130 @@ test("scanZeroDteBoard: an earnings-today name at RANK 7 is blocked by G-11 (bat
     "G-11 earnings must fire for a rank-7 name — pre-fix, ranks 6-10 got earnings:null and committed blind"
   );
   assert.equal(ernz.gate!.verdict, "BLOCKED");
+});
+
+// ── WS-01 governor commit atomicity (transactional recount + re-evaluate) ────────────
+// The session governor (GOVERNOR_MAX_CONCURRENT_PLANS = 3) is evaluated against an open-book
+// snapshot read at scan START, then persistZeroDteScan re-reads the pre-cycle book and inserts
+// with no DB-level serialization in between. Two overlapping commits (member-poll + cron warm,
+// or two replicas) could each see "room for 1 more" and BOTH insert past the cap. The fix runs
+// the fresh-commit count→evaluate→insert inside a Postgres xact advisory lock and RE-DERIVES the
+// governor from a fresh in-transaction ledger read before inserting. These two tests exercise
+// the recount+re-evaluate seam directly (the DB txn/lock is stubbed; the pure decision is real):
+// one proves the uncontended path is behavior-identical, the other proves a racing writer's
+// committed rows (surfaced via the in-transaction recount) drop the over-cap loser.
+
+/** A minimal FRESH, COMMIT-gated same-day setup — everything persistZeroDteScan reads to build
+ *  and commit a fresh row. Mirrors the PR-F literal above; only ticker/score/direction vary. */
+function freshCommitSetup(ticker: string, score: number, direction: "long" | "short" = "long") {
+  const strike = direction === "long" ? 145 : 135;
+  return {
+    ticker,
+    direction,
+    top_strike: strike,
+    expiry: "2026-07-06",
+    contract_horizon: "ZERO_DTE" as const,
+    actual_dte_at_commit: 0,
+    grading_policy: "same_day_1530_close",
+    score,
+    dossier_score: null,
+    conviction: null,
+    gross_premium: 2_000_000,
+    spike: false,
+    underlying_price: 140,
+    top_strike_avg_fill: 4.2,
+    last_seen: "2026-07-06T14:59:30.000Z",
+    intraday: { last_bar_ms: Date.parse("2026-07-06T14:59:00.000Z") },
+    plan: {
+      occ: `O:${ticker}260706C00145000`,
+      flow_avg_fill: 4.2,
+      bid: 4.0,
+      ask: 4.4,
+      mark: 4.2,
+      entry_max: 4.2,
+      vs_flow_pct: 0,
+      entry_status: "IN_RANGE",
+      spread_pct: 9.5,
+      illiquid: false,
+      stop_premium: 2.1,
+      target_premium: 8.4,
+      time_stop_et: "15:30",
+      underlying_target: null,
+      underlying_invalid: null,
+    },
+    gamma_regime: null,
+    cortex: null,
+    gate: { verdict: "COMMIT" as const, blocks: [], calibration: {} },
+    earnings: null,
+    news_hot: null,
+    halted: false,
+    fib_note: null,
+    direction_confirmed: null,
+  };
+}
+
+/** A currently-OPEN ledger row (non-CLOSED, un-stopped) — a live plan the governor counts as
+ *  one unit of concurrent exposure. Uses non-index tickers so no correlated-conflict fires. */
+function openLedgerRow(ticker: string, direction: "long" | "short" = "long"): Record<string, unknown> {
+  return {
+    session_date: "2026-07-06",
+    ticker,
+    direction,
+    status: "OPEN",
+    entry_premium: 4.2,
+    trough_premium: null,
+    plan_outcome: null,
+    plan_pnl_pct: null,
+  };
+}
+
+test("WS-01 persistZeroDteScan: UNCONTENDED — the in-transaction recount equals the scan-time snapshot, so the SAME fresh candidates commit (behavior-identical)", async () => {
+  resetState();
+  state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
+  // Pre-cycle book: ONE open plan (a non-index name). With the 3-concurrent cap that leaves
+  // room for two more, so both fresh candidates below fit — exactly as the scan-time gate saw.
+  state.ledgerRows = [openLedgerRow("AAPL")];
+  // atomicLedger stays null → the recount reads the SAME one-open book (no concurrent writer).
+
+  const { persistZeroDteScan } = await mod();
+  const logged = await persistZeroDteScan([
+    freshCommitSetup("NVDA", 80) as never,
+    freshCommitSetup("AMD", 70) as never,
+  ]);
+  await new Promise((r) => setTimeout(r, 0)); // let the best-effort rejection write flush
+
+  // Both fresh candidates commit (1 open + 2 fresh = 3, at but not over the cap) — identical to
+  // what today's non-atomic path would have inserted when uncontended.
+  const committed = state.atomicSelectedRows.map((r) => String(r.ticker).toUpperCase()).sort();
+  assert.deepEqual(committed, ["AMD", "NVDA"]);
+  assert.equal(logged, 2);
+  // No recount drop → no governor rejection recorded.
+  assert.equal(state.rejectionRows.length, 0);
+});
+
+test("WS-01 persistZeroDteScan: RACE — a concurrent writer's committed rows (seen only via the in-transaction recount) push the book to 2/3, so only ONE fresh play is admitted and the lower-score loser is rejected with a governor reason", async () => {
+  resetState();
+  state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
+  // At SCAN start the book had ONE open plan (AAPL), so BOTH fresh candidates gated COMMIT.
+  state.ledgerRows = [openLedgerRow("AAPL")];
+  // But by the time we hold the commit lock a RACING writer has already committed one more plan
+  // (TSLA). The transactional recount reads that fresh book — 2 open, one slot left.
+  state.atomicLedger = [openLedgerRow("AAPL"), openLedgerRow("TSLA")];
+
+  const { persistZeroDteScan } = await mod();
+  const logged = await persistZeroDteScan([
+    freshCommitSetup("NVDA", 80) as never, // higher score — offered the last slot first
+    freshCommitSetup("AMD", 70) as never, // lower score — recount blocks it at the cap
+  ]);
+  await new Promise((r) => setTimeout(r, 0)); // flush the best-effort rejection write
+
+  // Exactly ONE fresh play admitted — the higher-score NVDA — and NOT four concurrently-open.
+  const committed = state.atomicSelectedRows.map((r) => String(r.ticker).toUpperCase());
+  assert.deepEqual(committed, ["NVDA"]);
+  // The loser is DROPPED (never inserted) and durably recorded as a governor block — fail-VISIBLE.
+  assert.equal(state.upsertRows.some((r) => String(r.ticker).toUpperCase() === "AMD"), false);
+  const amdRej = state.rejectionRows.find((r) => String(r.ticker).toUpperCase() === "AMD");
+  assert.ok(amdRej, "the over-cap loser must be recorded to zerodte_scan_rejections");
+  assert.equal(amdRej!.gate_failed, "governor_max_concurrent");
+  assert.match(String(amdRej!.reason), /max 3 concurrent/);
 });
