@@ -78,6 +78,7 @@ import {
   recordCommitLatency,
   recordCommittedRows,
   recordExecutionTaxBps,
+  recordGradeVsAsManagedDeltaBps,
   recordScanDuration,
   recordScanSpans,
   recordUngradeable,
@@ -124,14 +125,20 @@ import {
   gradePlanExecutableFromBars,
   gradePlanFromBars,
   NEW_PLAY_CUTOFF_ET_MINUTES,
+  reconstructTrimScaleExecutableFromBars,
   resolveLedgerEntryPremium,
   type PlanBar,
+  type TrimScaleSpec,
 } from "./plan";
 import {
   executionTaxBps,
   zeroDteHalfSpreadFrac,
   ZERODTE_DEFAULT_HALF_SPREAD_FRAC,
 } from "./marks-math";
+// WS-11 — the grade path measures grade_vs_asmanaged_delta by comparing the OFFICIAL executable
+// grade to the record's AS-MANAGED number on the SAME row (both read from record.ts, the single
+// source of truth), so a reconciliation regression surfaces as a non-zero telemetry percentile.
+import { asManagedPnlPct, officialPlanPnlPct } from "./record";
 
 /** Leveraged/inverse wrappers and vol ETPs stay out (not directional single plays);
  *  index products (SPY/SPX/NDX/QQQ…) are eligible per product direction. Night
@@ -1267,15 +1274,32 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
         const entryBid = typeof planQuote?.bid === "number" ? planQuote.bid : null;
         const entryAsk = typeof planQuote?.ask === "number" ? planQuote.ask : null;
         const halfSpreadFrac = zeroDteHalfSpreadFrac(entryBid, entryAsk) ?? ZERODTE_DEFAULT_HALF_SPREAD_FRAC;
-        const execGrade = gradePlanExecutableFromBars(
-          planBars,
-          row.entry_premium,
-          flaggedAtMs,
-          halfSpreadFrac,
-          graderParams
-        );
+        // WS-11 — grade the STRATEGY the engine actually runs. When the row's FROZEN exit policy
+        // (WS-02 snapshot) is trim_scale, the OFFICIAL executable grade is the RECONSTRUCTED
+        // ⅓/⅓/⅓ scale-out path (reconstructTrimScaleExecutableFromBars), not a single stop/target
+        // walk — so calibration + the member record grade the same partial-banking path the member
+        // is guided to trade. Ratchet and legacy/no-snapshot rows keep the single-exit executable
+        // walk (gradePlanExecutableFromBars) — ratchet stays single-exit by design. The trim ladder
+        // (levels + runner fraction) comes straight off the frozen snapshot, so a later constant
+        // edit can never retroactively re-reconstruct a historical row.
+        const trimSpec: TrimScaleSpec | null =
+          frozenExitPolicy?.policy === "trim_scale" &&
+          Array.isArray(frozenExitPolicy.trim_levels) &&
+          frozenExitPolicy.trim_levels.length > 0
+            ? { trim_levels: frozenExitPolicy.trim_levels, runner_fraction: frozenExitPolicy.runner_fraction }
+            : null;
+        const execGrade = trimSpec
+          ? reconstructTrimScaleExecutableFromBars(
+              planBars,
+              row.entry_premium,
+              flaggedAtMs,
+              halfSpreadFrac,
+              trimSpec,
+              graderParams
+            )
+          : gradePlanExecutableFromBars(planBars, row.entry_premium, flaggedAtMs, halfSpreadFrac, graderParams);
         const taxBps = executionTaxBps(planGrade.pnl_pct, execGrade.pnl_pct);
-        await stampZeroDteExecutableGrade(row.session_date, row.ticker, {
+        const executableBlob: Record<string, unknown> = {
           lane: "conservative",
           entry_basis: "ask",
           exit_basis: "bid",
@@ -1285,13 +1309,37 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
           mid_plan_outcome: planGrade.outcome,
           mid_plan_pnl_pct: planGrade.pnl_pct,
           execution_tax_bps: taxBps,
+          // WS-11 — the per-leg fills of the reconstructed TRIM-SCALE path (null for the
+          // ratchet/legacy single-exit walk). Their presence is the signal record.ts reads to
+          // route the AS-MANAGED headline to this reconstruction (the canonical official number).
+          tranches: execGrade.tranches ?? null,
+          exit_policy: trimSpec ? "trim_scale" : (frozenExitPolicy?.policy ?? "ratchet"),
           // Lane (c): reserved for a future real broker-fill integration. Shape defined,
           // deliberately unpopulated (no live fill source yet).
           broker: null,
-        });
+        };
+        await stampZeroDteExecutableGrade(row.session_date, row.ticker, executableBlob);
         // WS-10 execution-tax histogram (bps = mid − executable), beside the sibling calibration
         // metrics. Best-effort; skipped when either lane was ungradeable (tax null).
         recordExecutionTaxBps(taxBps);
+        // WS-11 reconciliation guard — measured ONLY on reconstructed TRIM-SCALE rows, the ones
+        // the reconciliation applies to. On the SAME row (with the freshly-built executable blob)
+        // the OFFICIAL number (officialPlanPnlPct) and the member AS-MANAGED number (asManagedPnlPct)
+        // must agree — the reconstruction IS both — so this delta sits at ~0; a non-zero percentile
+        // means the reconciliation regressed. Ratchet/legacy rows are DELIBERATELY excluded: their
+        // mechanical grade (hold-to-stop) and as-managed (the live ratchet exit) differ by design,
+        // so recording them would pollute the invariant. Best-effort; never blocks the grade.
+        if (trimSpec) {
+          const rowWithExecutable = {
+            ...row,
+            entry_context: { ...(ec ?? {}), executable: executableBlob },
+          } as typeof row;
+          const officialPnl = officialPlanPnlPct(rowWithExecutable);
+          const asManaged = asManagedPnlPct(rowWithExecutable);
+          recordGradeVsAsManagedDeltaBps(
+            officialPnl != null && asManaged != null ? (officialPnl - asManaged) * 100 : null
+          );
+        }
         // WS-15 committed-ungradeable rate (observability only): a committed row the grader could
         // not resolve to a real outcome (no post-flag minute bars / zero entry basis). Best-effort
         // counter — does NOT change the stamped outcome or any grade decision.

@@ -51,6 +51,96 @@ executed from the sandbox (no creds needed to build it).
 
 **Status.** DONE — merged additive tooling. Wire it into the market-open runbook as the "before the
 open" gate (documented in `docs/audit/MARKET-OPEN-VALIDATION.md`).
+## 2026-07-25 — [SIM-VIEW] Admin-only 0DTE simulation view of the Night Hawk board — NEW FEATURE (member board untouched)
+
+**Severity.** Feature (deploy-affecting, safety-critical isolation). Not a bug fix — an additive
+admin capability. The #1 requirement was that members can NEVER see sim data and the member board
+path stays byte-for-byte unchanged.
+
+**What shipped.** An admin can open `https://blackouttrades.com/night-hawk?sim=1` and watch a
+simulated 0DTE session play through the REAL Night Hawk panel, fed by `npm run sim:feed --
+--synthetic`. Members keep seeing the real, untouched board.
+
+**Isolation design (three independent layers, ALL must hold).** (1) **Admin gate** — ingest is
+`requireAdminApi()`; the board GET re-checks `isAdminUser` before serving sim. (2) **Separate Redis
+key** — `zerodte:board:snapshot:sim:v1`, distinct from the member `zerodte:board:snapshot:v1`; the
+sim module never touches the member key (grep-enforced by a test). (3) **Opt-in `?sim=1`** — absent
+it, the member path (`getZeroDteBoardPayload()`) runs unchanged for everyone. A non-admin passing
+`?sim=1` deliberately falls through to the member board.
+
+**Member-path-unchanged proof.** The board route's default call is the same
+`getZeroDteBoardPayload()` as before; sim is an added branch IN FRONT of it, gated on
+`isSimRequested && via==="user" && isAdminUser`. In sim mode the client also disables the real
+live-marks SSE overlay so real member marks never paint the sim board.
+
+**Evidence.** New `zerodte-sim-board.test.ts` (9 tests): the `shouldServeSimBoard` truth table (sim
+ONLY for admin+sim=1; non-admin+sim=1 → member), `?sim=1` opt-in parsing, malformed-frame rejection,
+key isolation (sim key ≠ member key, module never references the member literal), short self-expiring
+TTL, and route-source assertions (member call intact, ingest admin-gated + writes only sim). `npx tsc
+--noEmit` clean; eslint clean on all touched files; existing `zerodte-service.test.ts` (17) still green.
+
+**Files.** `src/lib/platform/zerodte-sim-board.ts` (+ `.test.ts`),
+`src/app/api/admin/zerodte/sim/board/route.ts` (new ingest POST/DELETE),
+`src/app/api/market/zerodte/board/route.ts` (gated read branch),
+`src/features/nighthawk/command-deck/containers.tsx` (`?sim=1` propagation + banner),
+`scripts/audit/zerodte-sim-feed.mjs` (`npm run sim:feed`), `docs/audit/ZERODTE-SIMULATOR.md`.
+
+**Status.** OPEN PR → auto-merge on green CI per standing policy (additive; member path proven
+unchanged).
+
+## 2026-07-25 — [WS-11] Mechanical grader single-walked a TRIM-SCALE strategy — calibration graded a DIFFERENT strategy than the engine runs; now reconstructs the ⅓/⅓/⅓ partial path executable-side as ONE official as-managed number — FIXED
+
+**Severity.** High (calibration integrity / member-record honesty, TRADES). Ref: NightHawk Remediation
+Directive §WS-11. **[TRADES] — DEPLOY-RISKY, HOLD for operator go; STACKED on #1107 (WS-10)** (changes the
+official simulated P&L + the member as-managed record for trim_scale rows). Depends on WS-10 (executable
+per-leg pricing) and WS-02 (frozen exit-policy snapshot, already on main).
+
+**Root cause.** The engine's shipped profit-management family is TRIM-SCALE (exit-engine.ts, FINDINGS
+2026-07-23): bank ⅓ of the original at +25%, another ⅓ at +50%, run the last ⅓ to the plan rails. But the
+mechanical grader `gradePlanFromBars`/`gradePlanExecutableFromBars` (`plan.ts`) is a SINGLE stop/target/
+time-stop walk — it exits the WHOLE position once, never reconstructing the partials. So the OFFICIAL grade
+calibration buckets (calibration.ts → `officialPlanPnlPct`) and the member-facing "as-managed" record
+(record.ts) could grade a DIFFERENT strategy than the one the member is guided to trade, and the ledger could
+graduate a strategy nobody actually runs. The as-managed headline separately read a single stamped
+`entry_context.exit` (the live engine's one terminal EXIT, not the blended tranche path), so the two numbers
+could disagree with no reconciliation.
+
+**Evidence (fail-before / pass-after).** New WS-11 tests in `marks-math.test.ts` (6) + `record.test.ts` (3) +
+`latency-telemetry.test.ts` (1). Required #1 — a bar path that trims twice then trails reconstructs THREE legs
+(⅓/⅓/⅓), executable-priced (entry ask 1.10; legs sell the bid at 1.25/1.50 then time-stop the runner at the
+last close bid 1.395 → leg returns +13.64%/+36.36%/+26.82%), blended +25.61% = the fraction-weighted sum; the
+single-walk executable grade on the SAME bars is a different single number (fail-before proof). Required #2 —
+on a reconstructed row `officialPlanPnlPct == asManagedPnlPct` (grade_vs_asmanaged_delta = 0 bps) and the
+record headline books +25.61% with `managed_source: "reconstructed"`. Required #3 — a ratchet row (no
+tranches) is unregressed: official = the single-walk exec grade, as-managed = the live ratchet exit (source
+"engine"). Required #4 — a row with no executable blob / a malformed tranches field falls back to the prior
+mid+engine behavior. Full suite `src/**/*.test.ts` 4873/0; `tsc --noEmit` clean.
+
+**Fix (additive; no migration; WS-08 null-guarded back-compat).**
+- `plan.ts` — `reconstructTrimScaleExecutableFromBars(bars, entry, flaggedAt, halfSpreadFrac, spec, params)`:
+  replays the frozen trim ladder leg-by-leg on the WS-10 executable frame (entry=ask, each exit=bid), banks
+  `fractionₖ` at each trim LEVEL (bid-high crossing, mirroring the executable target trigger), runs the last
+  fraction to target/stop (stop-before-target same-bar collision, frozen rule)/time-stop, and returns ONE
+  blended `pnl_pct` + a per-leg `tranches` array `{tranche,fraction,exit_pnl_pct,exit_reason,at_et}`. New
+  `PlanTrancheFill`/`TrimScaleSpec` types; `PlanOutcome.tranches` optional (single walks omit it). Empty
+  ladder → defers to the single walk; no post-flag bars / non-positive entry → ungradeable (never fabricated).
+- `scan.ts` grade path — when the row's FROZEN policy (`readFrozenExitPolicy`) is `trim_scale`, the OFFICIAL
+  executable grade IS the reconstruction; ratchet/legacy rows keep the single-walk `gradePlanExecutableFromBars`.
+  The `tranches` (or null) ride in the `entry_context.executable` blob (same stamp as WS-10). Emits the WS-11
+  `grade_vs_asmanaged_delta` telemetry on reconstructed rows only.
+- `record.ts` — `readReconstructedTrimScale` (executable blob with a non-empty `tranches` array); the
+  as-managed headline routes to that reconstruction (`managed_source: "reconstructed"`) so the member number ==
+  the calibration official number by construction; ratchet/legacy rows unchanged. New `asManagedPnlPct` export.
+- `latency-telemetry.ts` — `grade_vs_asmanaged_delta_bps` percentile histogram (|official − as-managed|, ≈0),
+  beside WS-10 `execution_tax_bps`.
+
+**Blast radius.** `gradePlanFromBars` + the scan.ts grade path; `record.ts` as-managed + per-play columns;
+`calibration.ts` reader (now grading the reconstructed official outcome via `officialPlanPnlPct`); the
+`managed_source` union (+"reconstructed") — consumed only by the record route payload (pass-through) and tests.
+CONDOR stays on `gradeCondorFromBars` (out of scope, confirmed). Ratchet mode stays single-exit (confirmed by
+test #3). The executable-lane official number from WS-10 IS the per-tranche pricing basis (each leg priced
+bid-to-close vs ask-to-open). **Status: OPEN PR (base `fix/ws-10-executable-pnl`, stacked), holding for
+operator go (DEPLOY-RISKY); WS-10+WS-11 presented together as one go/no-go.**
 
 ## 2026-07-25 — [WS-10] Official 0DTE P&L graded on the MIDPOINT — understated the execution tax; calibration/record now grade the CONSERVATIVE EXECUTABLE lane (entry=ask, exit=bid) — FIXED
 

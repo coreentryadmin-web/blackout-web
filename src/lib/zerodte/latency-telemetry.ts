@@ -176,6 +176,12 @@ const ungradeableByDate = new Map<string, number>();
  *  cost the mid lane hid — a histogram beside the other calibration/grade metrics so the
  *  operator can see how big the executable-lane haircut actually is. Bounded like the rest. */
 const executionTaxBpsSamples: number[] = [];
+/** WS-11 |grade − as-managed| distribution (bps): |official mechanical grade − record's
+ *  as-managed| per graded row. After the TRIM-SCALE reconstruction reconciliation this is ≈ 0
+ *  (the official calibration number and the member as-managed number are the SAME reconstructed
+ *  path); a non-zero percentile is drift the operator should see. Absolute value so a two-sided
+ *  divergence still surfaces through the non-negative percentile helper. */
+const gradeVsAsManagedDeltaBpsSamples: number[] = [];
 
 function pushCapped(buf: number[], v: number): void {
   if (!Number.isFinite(v) || v < 0) return;
@@ -258,6 +264,18 @@ export function recordExecutionTaxBps(bps: number | null): void {
   }
 }
 
+/** WS-11 — record one graded row's |grade − as-managed| gap in bps ((official − as-managed) in
+ *  percentage points × 100, absolute). Called from the grade path after both numbers resolve.
+ *  Best-effort; a null/non-finite delta is skipped. Should sit at ~0 post-reconciliation. */
+export function recordGradeVsAsManagedDeltaBps(bps: number | null): void {
+  try {
+    if (bps == null || !Number.isFinite(bps)) return;
+    pushCapped(gradeVsAsManagedDeltaBpsSamples, Math.abs(bps));
+  } catch {
+    /* ignore */
+  }
+}
+
 export type ZeroDteLatencySnapshot = {
   /** Wall-clock scan duration percentiles (ms). */
   scan_duration: ZeroDteLatencyStats;
@@ -282,6 +300,10 @@ export type ZeroDteLatencySnapshot = {
    *  reuses the same nearest-rank percentile helper (fields are _ms by the shared type, but
    *  the unit here is bps; see recordExecutionTaxBps). */
   execution_tax_bps: ZeroDteLatencyStats;
+  /** WS-11 |official grade − as-managed| percentiles (BPS, absolute) over graded rows — the
+   *  reconciliation guard: ≈ 0 once the TRIM-SCALE reconstruction is the shared official +
+   *  as-managed number. Same nearest-rank helper (fields _ms by type; unit is bps). */
+  grade_vs_asmanaged_delta_bps: ZeroDteLatencyStats;
 };
 
 /** Full snapshot for the admin health dashboard. Pure read over the accumulators. */
@@ -312,6 +334,7 @@ export function snapshotZeroDteLatency(): ZeroDteLatencySnapshot {
       .map(([origin, samples]) => ({ origin, ...computeLatencyStats(samples) })),
     committed_by_session,
     execution_tax_bps: computeLatencyStats(executionTaxBpsSamples),
+    grade_vs_asmanaged_delta_bps: computeLatencyStats(gradeVsAsManagedDeltaBpsSamples),
   };
 }
 
@@ -327,4 +350,5 @@ export function _resetZeroDteLatencyForTest(): void {
   committedRowsByDate.clear();
   ungradeableByDate.clear();
   executionTaxBpsSamples.length = 0;
+  gradeVsAsManagedDeltaBpsSamples.length = 0;
 }
