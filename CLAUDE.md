@@ -39,36 +39,20 @@ same repo) can read the diff cold and understand it without asking follow-up que
 - In-code comments on the non-obvious parts (the WHY, per the repo's normal comment policy) so
   the reasoning survives even if the PR description is skimmed.
 
-## Vector per-push E2E validation (STANDING GATE — do this for EVERY push, not once)
-After **every** Vector change deploys to staging, run the full end-to-end validation and only move
-on when it's green. This is a hard gate, repeated per push — never a one-time check.
-- **Harness:** `scripts/vector-staging-e2e.mjs` (`npm run validate:vector-push-gate`). Signs into staging
-  (Cognito temp admin+premium user, always deleted) and sweeps **multiple stocks × multiple
-  timeframes × multiple expiries** — default `SPX,SPY,NVDA,ASTS` × `1m,5m,15m,1H` × `0DTE,WEEKLY,
-  MONTHLY,ALL` (override via `VECTOR_E2E_TICKERS/TFS/DTES`). Per ticker it asserts: chart canvas +
-  GEX ladder rows + spot + desk terminal + regime banner render; every DTE toggle re-scopes; every
-  timeframe redraws; the indicator menu shows BOTH groups and enabling one of each kind (overlay /
-  session level / prior-day level) actually draws; and **zero console errors**. Exits non-zero on
-  any failure. Run with `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY` so `~/.aws/credentials`
-  is used. Screenshots under `SHOT_DIR`.
-- **Rule:** a change isn't "done" until this passes on the deployed build. If it fails, fix (new
-  PR) before starting the next feature. Deploys take a few min — validate after the deploy settles,
-  not mid-deploy (mid-deploy chunk-hash races produce transient `_next` 404/MIME noise).
-
-## Vector HARDCORE suite (deep value + dynamism + wall/bead dynamics — RTH-reusable)
-Beyond the render gate: `scripts/vector-hardcore-e2e.mjs` (`npm run validate:vector-hardcore`) asserts
-the ACTUAL values are correct AND re-render dynamically on every selection change (the "stale data
-didn't update" class), plus that the wall/bead rail forms/updates/grows/fades over time. Per
-ticker × DTE × TF it checks (via the clean JSON APIs + DOM + canvas-hash diffs): ladder rows
-finite/descending/magnitude∈[0,1]/one-king-per-side/no-malformed-floats/spot-in-band; regime wording
-matches spot-vs-flip; max-pain within band; DTE re-scopes maxPain/flip/regime/terminal; timeframe
-redraws the canvas + re-aggregates bars; indicator toggles redraw + badge tracks; replay frame count
-(rail formed over time) + start≠end (beads change); narrowed-horizon wall strength growth/fade; and
-zero console errors; plus cross-ticker SPX≈10×SPY. **Reusable during RTH:** `RTH=1` adds a live-poll
-that asserts the wall rail advances within 35s (real forming/growing/fading). Run with
-`env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY`. KEEP GROWING IT — add a case whenever a new
-value/mapping/surface ships. Off-hours the narrowed-horizon rail can be empty (recorder idle); that's
-a SKIP not a fail, and the replay frame count covers the temporal aspect.
+## Vector E2E validation — STAGING DECOMMISSIONED (2026-07-25)
+The Vector **per-push E2E gate** (`vector-staging-e2e.mjs`) and the **HARDCORE** deep-value/dynamism
+suite (`vector-hardcore-e2e.mjs`) both ran against the **staging** environment
+(`staging.blackouttrades.com`, Cognito temp users, the `blackout-staging/app/env` secret). **Staging
+was fully decommissioned on 2026-07-25** — ECS, RDS, RDS Proxy, all 27 crons, the cron Lambda,
+Cognito, ALB, the dedicated VPC/NAT, secrets, IAM roles, log groups and the ACM cert are all deleted.
+Both harnesses and their `npm run validate:vector-*` scripts were removed with it.
+- **There is no staging deploy target anymore.** Vector (and every) change ships straight to
+  **production** (`ecr-push-production.yml` on merge to `main`) and is validated against prod with the
+  read-only tools below (`data-validator.mjs`, `firewall-rth-replay.mjs`, the market-open runbook)
+  plus the `verify` CI gate. Do NOT reference the deleted `blackout-staging-*` stack or
+  `staging.blackouttrades.com`.
+- If a pre-prod render/value gate is wanted again, **stand up a fresh ephemeral target first** and
+  point a new harness at it — the old one is gone on purpose.
 
 ## Audit toolkit (committed)
 - `scripts/audit/data-validator.mjs` — cross-provider validator (Polygon+UW ground truth vs the numbers members see: prices/indices, GEX/greeks, track-record math, malformed-number scan). Secrets from env only; one temp Clerk user per run, always deleted. Exits non-zero on any FAIL.
@@ -78,14 +62,12 @@ a SKIP not a fail, and the replay frame count covers the temporal aspect.
 - `scripts/audit/firewall-rth-replay.mjs` — **fail-closed firewall RTH replay** (before/after counterfactual). Replays a session's live 0DTE board OLD (guards off) vs NEW (Phase-0 firewall) and diffs which plays each fail-closed guard (far-OTM cap, G-4 `vix_unavailable`, G-7 `macro_unavailable`, cortex `veto_blind`, earnings-all-ranks) would have HELD, grading the delta on real minute bars → loser-avoided vs winner-forgone + net session P&L. Read-only vs prod (one temp Clerk user, deleted). Run with `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u POLYGON_API_BASE node --import tsx scripts/audit/firewall-rth-replay.mjs`. First run (2026-07-24) held both committed plays, both losers, −54.9% avoided — see FINDINGS.
 - `docs/audit/0DTE-UNIFICATION-DESIGN.md` — **design of record** for collapsing the two 0DTE engines into ONE whole-market board (①'s gate/Cortex/governor spine + ②'s discovery/condor/scale-out), the fail-closed negative-play firewall, EV trade-management, and the 5-phase build plan. Legacy = separate post-close next-day digest, untouched.
 - `docs/audit/0DTE-RESEARCH.md` — evidence-driven research map + prioritized plan for the 0DTE grinder AND the whole-market banger engine (confluence, timing, exits, regime). Keep it updated as experiments run.
-- `scripts/vector-staging-e2e.mjs` — the Vector per-push E2E gate (see the section above).
-- `scripts/vector-hardcore-e2e.mjs` — the deep value/dynamism/wall-dynamics suite (see the section above).
 - `docs/audit/MARKET-OPEN-VALIDATION.md` — runbook + the daily market-open **Claude scheduled-trigger** prompt + secrets checklist (13:32 UTC weekdays).
 - `docs/audit/BASELINE-2026-07-01.md` — pre-open baseline to diff the live run against.
 - `docs/audit/FINDINGS.md` — living issue log (keep updating).
 
 ## Environment realities (this cloud sandbox)
-- **All infrastructure runs on AWS ECS only** — there is no Railway. Docker images are built and pushed to ECR, ECS services are force-deployed, Cloudflare cache is purged. Staging: `blackout-staging-cluster` / `blackout-staging-web` at `staging.blackouttrades.com`.
+- **All infrastructure runs on AWS ECS only** — there is no Railway. Docker images are built and pushed to ECR, ECS services are force-deployed, Cloudflare cache is purged. **Production is now the ONLY environment** (`blackout-production-cluster` / `blackout-production-web` at `blackouttrades.com`) — the entire `blackout-staging-*` stack was decommissioned 2026-07-25 (see the Vector-validation note above). The `blackout-web` ECR repo is shared and still in use by production; it was deliberately NOT deleted.
 - **WebSockets are blocked** by the agent proxy (WS upgrades unsupported). UW/Polygon WS run **server-side** (AWS ECS); the browser gets data via **SSE + SWR polling**, so validate WS-sourced numbers through the REST/SSE endpoints that surface them.
 - **Playwright mobile UI E2E works** — `npm run test:ios-ui-e2e` drives prod (or `VALIDATE_BASE`) with iPhone viewport + `BlackOutiOSApp` UA, Clerk cookie auth, tab/segment clicks, and screenshots under `/opt/cursor/artifacts/ios-ui-e2e/`. Full `ios-native-shell` CSS requires PR #557 merged/deployed; until then the suite still clicks the tab bar and primary controls on the live `ios-app` shell.
 - **Direct Postgres (raw TCP) is blocked**, same as WebSockets — only HTTP(S) egress through the agent proxy works. So `pg_stat_activity`/lock/row-count probes against prod are **not possible from this sandbox** — root-causing a live DB-side issue (lock contention, slow query, table bloat) needs either an AWS ECS exec session or a temporary HTTP-exposed debug endpoint in the app itself. Don't spend time retrying a raw `pg.Client` connection here.
