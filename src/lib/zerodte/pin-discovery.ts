@@ -26,6 +26,7 @@ import { buildPinSetup, evaluatePinRegime, pickAtmPinContract, pinScore, type Pi
 import {
   buildCondorPlan,
   buildCondorSetup,
+  condorEligibleTicker,
   condorFlagEnabled,
   condorSellRegime,
   type CondorLegQuote,
@@ -208,7 +209,10 @@ export async function discoverPinSetups(opts: {
         // walls instead of fading directionally. If the condor geometry can't be selected or its four
         // legs aren't LISTED on a common expiry in the chain (liquidity unavailable), fall THROUGH to
         // the directional fade — the exact "stays 3b behavior when the condor isn't available" rule.
-        if (condorFlagEnabled() && condorSellRegime(regime).sell) {
+        // Assignment safety (gap #8): only sell condors on cash-settled index roots (SPX/XSP/NDX/RUT).
+        // An American ETF/single-name short can be assigned early past the "defined loss" the grader
+        // assumes, so those stay the directional fade until early-assignment is modeled.
+        if (condorFlagEnabled() && condorEligibleTicker(ticker) && condorSellRegime(regime).sell) {
           const condorSetup = buildCondorFromChain({
             ticker,
             spot: chain.spot,

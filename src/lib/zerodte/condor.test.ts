@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildCondorPlan,
   buildCondorSetup,
+  condorEligibleTicker,
   condorFlagEnabled,
   condorLiquidityGateBlocks,
   condorRangeBreaking,
@@ -369,4 +370,16 @@ test("a tighter (1.5%) condor's raw-100 WR is clamped to 97 + flagged small-samp
   assert.equal(p.est_win_rate_small_sample, true);
   // A non-shipped width carries NULL breach (never a mismatched 18.7 next to a different WR).
   assert.equal(p.est_intraday_breach_pct, null);
+});
+
+// ── Assignment safety (design gap #8): condors only on cash-settled index roots ──
+test("condorEligibleTicker: cash-settled index roots only; American ETFs/single names excluded", () => {
+  // Cash-settled, European index → eligible (no early-assignment risk on an ITM short).
+  for (const t of ["SPX", "XSP", "NDX", "RUT", "spx"]) {
+    assert.equal(condorEligibleTicker(t), true, `${t} is cash-settled → condor-eligible`);
+  }
+  // American ETF wrappers + single names → NOT eligible (they stay the directional fade).
+  for (const t of ["SPY", "QQQ", "IWM", "DIA", "AAPL", "NVDA", "TSLA"]) {
+    assert.equal(condorEligibleTicker(t), false, `${t} is American-style → NOT condor-eligible`);
+  }
 });

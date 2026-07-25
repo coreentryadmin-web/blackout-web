@@ -43,6 +43,29 @@ export function condorFlagEnabled(): boolean {
   return process.env.ZERODTE_CONDOR === "1";
 }
 
+// ── Assignment-safety allowlist (design gap #8) ───────────────────────────────────────
+// A short option leg that finishes ITM can be ASSIGNED. INDEX options (SPX/XSP/NDX/RUT) are
+// EUROPEAN + CASH-SETTLED — no early assignment, no share delivery, settled to a cash number at
+// expiry — so a condor on them has a truly defined, modeled max loss. AMERICAN options (every
+// ETF wrapper — SPY/QQQ/IWM/DIA — and every single name) can be assigned EARLY, especially an
+// ITM short into the close/dividend, which blows past the "defined loss" the grader assumes.
+// Until early-assignment is actually modeled (a called-out follow-up), the condor SELL path is
+// restricted to cash-settled index roots; every American underlying stays the directional fade.
+// Override via ZERODTE_CONDOR_ROOTS (comma-sep) — but do NOT add American roots without an
+// assignment model. This is a safety gate, not a tuning dial.
+export const CASH_SETTLED_CONDOR_ROOTS: ReadonlySet<string> = new Set(
+  (process.env.ZERODTE_CONDOR_ROOTS ?? "SPX,XSP,NDX,RUT")
+    .split(",")
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean)
+);
+
+/** True only for cash-settled, European index roots a condor can be sold on WITHOUT early-
+ *  assignment risk. American ETFs/single names return false → they stay the directional fade. */
+export function condorEligibleTicker(ticker: string): boolean {
+  return CASH_SETTLED_CONDOR_ROOTS.has(ticker.toUpperCase());
+}
+
 // ── Routing: does this long-gamma pin regime STRONGLY favor selling a condor? ──────────
 // The router runs on a regime that ALREADY passed evaluatePinRegime (a genuine long-gamma, dealer-
 // defended, contained bracket). It selects the SUBSET of those pins tight + dominant enough to SELL
