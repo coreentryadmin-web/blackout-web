@@ -156,6 +156,22 @@ test("buildCondorPlan: geometry + conservative credit (shorts@bid − wings@ask)
   assert.equal(p.illiquid, false);
 });
 
+test("buildCondorPlan: Q7 mid-fill bracket is the best realistic fill, always ≥ the conservative credit", () => {
+  const p = cleanCondorPlan();
+  // Every leg at its bid/ask MID: shorts 2.1 + 2.1, wings 0.95 + 0.95 → (4.2 − 1.9)·100 = 230.
+  assert.equal(p.net_credit_mid, 230);
+  assert.ok(p.net_credit_mid! >= p.net_credit!, "mid fill is never worse than the conservative worst-case");
+  assert.equal(p.credit_to_risk_mid, 0.46); // 230 / 500
+});
+
+test("buildCondorPlan: mid bracket is null when any leg lacks a two-sided quote (a mid needs both sides)", () => {
+  // shortPut one-sided: the conservative credit can still price off the bid, but no mid exists.
+  const p = cleanCondorPlan({ shortPut: { bid: 2.0, ask: null } });
+  assert.equal(p.net_credit, 200, "conservative credit unaffected (uses the short's bid)");
+  assert.equal(p.net_credit_mid, null, "no mid without a two-sided quote — never fabricated");
+  assert.equal(p.credit_to_risk_mid, null);
+});
+
 test("buildCondorPlan: a missing leg quote → no credit, illiquid", () => {
   const p = cleanCondorPlan({ shortCall: { bid: null, ask: null } });
   assert.equal(p.net_credit, null);
@@ -311,6 +327,8 @@ test("grader: stays inside both shorts to close → WIN (+credit)", () => {
   assert.equal(o.realized_usd, 200);
   assert.equal(o.pnl_pct, 40); // 200/500
   assert.equal(o.breached_intraday, false);
+  // Q7: the WIN carries the mid-fill upside bracket; the graded number stays conservative.
+  assert.equal(o.realized_usd_mid, 230);
 });
 
 test("grader: an intraday touch of a short → DEFINED breach loss (capped)", () => {
@@ -321,6 +339,8 @@ test("grader: an intraday touch of a short → DEFINED breach loss (capped)", ()
   assert.equal(o.realized_usd, -300); // capped at max loss
   assert.equal(o.pnl_pct, -60);
   assert.equal(o.breached_intraday, true);
+  // Q7: a breach's capped loss is ~fill-insensitive, so no mid bracket is reported.
+  assert.equal(o.realized_usd_mid, null);
 });
 
 test("grader: the flag bar itself is excluded (no intrabar look-ahead)", () => {
