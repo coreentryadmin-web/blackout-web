@@ -24,6 +24,95 @@ export const PLAN_RULES = {
  *  considered "already happened" — the user's explicit skip rule. */
 const CHASE_PCT = 35;
 
+// ── WS-04 · Malformed-quote validation (fail-closed) ──────────────────────────────
+// The legacy liquidity test was PERCENT-SPREAD ONLY: spread_pct=(ask−bid)/mark*100,
+// illiquid=spread_pct>15. That check fails OPEN on every malformed book because the
+// percentage lands in a "convenient" direction:
+//   • zero/null bid  → spread_pct is null → `illiquid = spread_pct != null && …` is false → PASSES
+//   • crossed (bid>ask) → NEGATIVE spread_pct → −x > 15 is false → PASSES
+//   • locked (bid==ask) → spread_pct === 0 → 0 > 15 is false → PASSES
+// A malformed quote must never be treated as tradeable, so these predicates are
+// EXPLICIT and fail CLOSED (a missing/degenerate input BLOCKS, it never waves through).
+// This is strictly ADDITIVE to the existing 15% illiquid check (kept as-is below).
+
+/** Why a contract's live quote is not committable. `null` = quote is valid.
+ *  Distinct, additive to the plan_illiquid/plan_no_quote taxonomy. Back-compat:
+ *  the field is optional on ContractPlan so historical/hand-built plans that omit
+ *  it read as "no explicit invalidity" (the legacy illiquid/no_quote checks still
+ *  govern them). */
+export type QuoteInvalidReason =
+  | "zero_bid" // bid ≤ 0 / null, or a missing/zero ask (a one-sided, non-committable book)
+  | "crossed" // bid > ask — an impossible/erroneous book
+  | "locked" // bid == ask — a zero-width book (no real two-sided market)
+  | "mark_out_of_band" // mark sits outside [bid, ask] — malformed/stale print
+  | "wide_dollars" // absolute ask−bid spread over the dollar cap (backstop to the % check)
+  | "thin_size" // resting quote size below the floor (only when the provider reports size)
+  | "stale" // quote age beyond the freshness bound (only when a timestamp is available)
+  | null;
+
+/** Fail-closed quote-validity bounds. Numeric bounds are NEW (the % check had none).
+ *  Tunable — a TRADES change, so conservative defaults that reject only the clearly
+ *  malformed / untradeable, never a legitimate 0DTE book. */
+export const QUOTE_VALIDITY = {
+  /** Absolute bid/ask spread cap ($). Backstop to spread_pct>15: a proportionally
+   *  OK but absolutely huge spread (e.g. $14 on a $100 premium = 14% < 15% → passes
+   *  the % test) is still an untradeable exit tax on a 0DTE scalp. */
+  max_spread_dollars: 5.0,
+  /** Max quote age (ms) before a book is stale. ONLY enforced when a real quote
+   *  timestamp is available on the plan input — none is plumbed onto ContractPlan
+   *  today (see buildContractPlan), so in production this bound is currently dormant
+   *  and blocks nothing; the predicate is written so it activates the moment an age
+   *  is threaded through, with zero further logic change. */
+  max_quote_age_ms: 60_000,
+  /** Minimum resting quote size (contracts) on BOTH sides. ONLY enforced when the
+   *  provider actually reports size (bidSize/askSize non-null) — absent size is not
+   *  proof of illiquidity, so it does not fail closed here (the one conditional-on-
+   *  availability predicate, same rule as quote age). */
+  min_quote_size: 1,
+} as const;
+
+/**
+ * WS-04 quote-validity verdict — a pure predicate over a contract's live quote.
+ * Returns the FIRST failing reason (checked most-degenerate-first) or null when the
+ * quote is valid. Fail-closed: a null/zero/degenerate input yields a reason (BLOCK),
+ * never null (pass). `bidSize`/`askSize`/`quoteAgeMs` are conditional — only enforced
+ * when actually supplied by the provider (see the field docs on QUOTE_VALIDITY).
+ */
+export function evaluateQuoteValidity(input: {
+  bid: number | null;
+  ask: number | null;
+  mark: number | null;
+  bidSize?: number | null;
+  askSize?: number | null;
+  quoteAgeMs?: number | null;
+}): QuoteInvalidReason {
+  const { bid, ask, mark, bidSize, askSize, quoteAgeMs } = input;
+  // A committable book needs a real two-sided quote. A null/≤0 side is where the
+  // percent-spread check silently computed null and read null as "liquid" — the
+  // core loophole. Here it BLOCKS.
+  if (bid == null || !(bid > 0)) return "zero_bid";
+  if (ask == null || !(ask > 0)) return "zero_bid";
+  // Crossed (negative %) and locked (0 %) both slipped under `> 15`. Explicit now.
+  if (ask < bid) return "crossed";
+  if (ask === bid) return "locked";
+  // The mark must sit inside the book it was derived from; a mark outside [bid,ask]
+  // is a malformed or stale midpoint that would grade/enter off a phantom price.
+  if (mark == null || mark < bid || mark > ask) return "mark_out_of_band";
+  // Absolute-dollar backstop (the % check alone can pass an absolutely huge spread).
+  if (ask - bid > QUOTE_VALIDITY.max_spread_dollars) return "wide_dollars";
+  // Conditional: min resting size, only when the provider reported both sides.
+  if (
+    bidSize != null &&
+    askSize != null &&
+    (bidSize < QUOTE_VALIDITY.min_quote_size || askSize < QUOTE_VALIDITY.min_quote_size)
+  ) {
+    return "thin_size";
+  }
+  // Conditional: quote age, only when a timestamp/age is available (none today).
+  if (quoteAgeMs != null && quoteAgeMs > QUOTE_VALIDITY.max_quote_age_ms) return "stale";
+  return null;
+}
+
 export type EntryStatus =
   | "IN_RANGE" // mark at/below the flow's fill (or within tolerance) — enterable
   | "MOVED" // premium already ran ≥CHASE_PCT past the flow's fill — skip, don't chase
@@ -47,6 +136,12 @@ export type ContractPlan = {
   /** Bid/ask spread as % of mark — exit tax. >15% flags the market as too thin. */
   spread_pct: number | null;
   illiquid: boolean;
+  /** WS-04: fail-closed malformed-quote verdict. null = quote valid; a non-null reason
+   *  is translated to a distinct plan_quote_invalid / plan_quote_stale block in
+   *  planQualityGateBlocks (gates.ts). OPTIONAL for back-compat — a historical/hand-built
+   *  plan that omits it is read as "no explicit invalidity" (the legacy illiquid /
+   *  no_quote checks still govern it). */
+  quote_invalid_reason?: QuoteInvalidReason;
   /** Premium exits from PLAN_RULES applied to entry_max. */
   stop_premium: number | null;
   target_premium: number | null;
@@ -71,6 +166,15 @@ export function buildContractPlan(input: {
   bid: number | null;
   ask: number | null;
   mark: number | null;
+  /** Top-of-book resting sizes (contracts), when the provider reports them — feeds the
+   *  WS-04 min-size predicate (conditional-on-availability). Absent → not enforced. */
+  bidSize?: number | null;
+  askSize?: number | null;
+  /** Age (ms) of the quote at plan time, when a quote timestamp is available. WS-04
+   *  quote_age is only enforced when this is supplied. NONE is threaded onto this input
+   *  today (OptionSnapshot does not map last_quote.last_updated through), so it is left
+   *  undefined and the stale predicate stays dormant — see the report / FINDINGS gap note. */
+  quoteAgeMs?: number | null;
   keySupports: number[];
   keyResistances: number[];
   vwap: number | null;
@@ -91,6 +195,20 @@ export function buildContractPlan(input: {
   // Wide markets tax every exit twice — a strong tape on an untradeable contract
   // is still a pass for a 0DTE scalp.
   const illiquid = spreadPct != null && spreadPct > 15;
+
+  // WS-04: explicit fail-closed malformed-quote verdict, computed BESIDE the legacy
+  // percent-spread check (which is kept untouched). This catches the books the % test
+  // waved through — zero/null bid (null %), crossed (negative %), locked (0 %), mark
+  // out of band, and an absolutely-huge dollar spread — plus the two conditional bounds
+  // (size, age) when the provider supplies them.
+  const quoteInvalidReason = evaluateQuoteValidity({
+    bid,
+    ask,
+    mark,
+    bidSize: input.bidSize ?? null,
+    askSize: input.askSize ?? null,
+    quoteAgeMs: input.quoteAgeMs ?? null,
+  });
 
   let status: EntryStatus;
   if (mark == null) status = "NO_QUOTE";
@@ -125,6 +243,7 @@ export function buildContractPlan(input: {
     entry_status: status,
     spread_pct: spreadPct,
     illiquid,
+    quote_invalid_reason: quoteInvalidReason,
     stop_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.stop_pct / 100)) : null,
     target_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.target_pct / 100)) : null,
     time_stop_et: "15:30",

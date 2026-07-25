@@ -14,6 +14,7 @@ import {
   type ZeroDteGateInput,
 } from "./gates";
 import type { ContractPlan } from "./plan";
+import { buildContractPlan, evaluateQuoteValidity, QUOTE_VALIDITY } from "./plan";
 import type { ZeroDteConfluence } from "./confluence";
 
 /** Minimal confluence read carrying `confirmations` (the only field G-12 reads). */
@@ -512,6 +513,106 @@ test("G-7: macro hard-block during CPI window", () => {
 test("planQualityGateBlocks: exported helper matches gate evaluation", () => {
   assert.deepEqual(planQualityGateBlocks(CLEAN_PLAN), []);
   assert.equal(planQualityGateBlocks(null)[0]!.code, "plan_no_quote");
+});
+
+// ── WS-04 · Malformed-quote validation gate (fail-closed) ─────────────────────────
+// Each case drives the REAL plan builder (buildContractPlan) with a malformed book and
+// asserts it is BLOCKED with the distinct plan_quote_invalid / plan_quote_stale code.
+// Pre-fix these all PASSED as liquid (spread_pct null/negative/zero slipped under >15).
+
+/** Common builder args — a mid-session long whose only malformed dimension is the quote. */
+const QUOTE_BASE = {
+  occ: "O:QQQ260713C00500000",
+  direction: "long" as const,
+  price: 500,
+  flowAvgFill: 2,
+  keySupports: [] as number[],
+  keyResistances: [] as number[],
+  vwap: null,
+};
+
+test("WS-04 (1): zero-bid quote → blocked (plan_quote_invalid / zero_bid)", () => {
+  // bid=0 made spread_pct null → legacy `illiquid` false → PASSED. Now fails closed.
+  const plan = buildContractPlan({ ...QUOTE_BASE, bid: 0, ask: 2.4, mark: 1.2 });
+  assert.equal(plan.quote_invalid_reason, "zero_bid");
+  const blocks = planQualityGateBlocks(plan);
+  assert.equal(blocks.some((b) => b.code === "plan_quote_invalid"), true);
+  const v = evaluateZeroDteGates(input({ plan }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "plan_quote_invalid"), true);
+});
+
+test("WS-04 (2): crossed market (bid>ask) → blocked (crossed)", () => {
+  // bid>ask made spread_pct NEGATIVE → −x > 15 false → PASSED. Now fails closed.
+  const plan = buildContractPlan({ ...QUOTE_BASE, bid: 2.6, ask: 2.4, mark: 2.5 });
+  assert.equal(plan.quote_invalid_reason, "crossed");
+  assert.equal(planQualityGateBlocks(plan).some((b) => b.code === "plan_quote_invalid"), true);
+});
+
+test("WS-04 (3): locked market (bid==ask) → blocked (locked)", () => {
+  // bid==ask made spread_pct 0 → 0 > 15 false → PASSED. Now fails closed.
+  const plan = buildContractPlan({ ...QUOTE_BASE, bid: 2.4, ask: 2.4, mark: 2.4 });
+  assert.equal(plan.quote_invalid_reason, "locked");
+  assert.equal(planQualityGateBlocks(plan).some((b) => b.code === "plan_quote_invalid"), true);
+});
+
+test("WS-04 (4): stale quote beyond age → blocked (plan_quote_stale)", () => {
+  // Quote age is NOT plumbed onto ContractPlan today, so this exercises the predicate
+  // helper directly (proving the logic) — the moment a timestamp is threaded through
+  // buildContractPlan, the same reason surfaces as a plan_quote_stale block with no
+  // further change. A within-bound age stays valid.
+  const stale = evaluateQuoteValidity({
+    bid: 2.3,
+    ask: 2.5,
+    mark: 2.4,
+    quoteAgeMs: QUOTE_VALIDITY.max_quote_age_ms + 1,
+  });
+  assert.equal(stale, "stale");
+  const fresh = evaluateQuoteValidity({
+    bid: 2.3,
+    ask: 2.5,
+    mark: 2.4,
+    quoteAgeMs: QUOTE_VALIDITY.max_quote_age_ms - 1,
+  });
+  assert.equal(fresh, null);
+  // And a plan carrying a stale reason translates to the distinct stale code.
+  const plan: ContractPlan = { ...CLEAN_PLAN, quote_invalid_reason: "stale" };
+  const blocks = planQualityGateBlocks(plan);
+  assert.equal(blocks.some((b) => b.code === "plan_quote_stale"), true);
+  assert.equal(blocks.some((b) => b.code === "plan_quote_invalid"), false);
+});
+
+test("WS-04 (5): a valid quote still commits (unregressed)", () => {
+  const plan = buildContractPlan({ ...QUOTE_BASE, bid: 2.3, ask: 2.5, mark: 2.4 });
+  assert.equal(plan.quote_invalid_reason, null);
+  assert.deepEqual(planQualityGateBlocks(plan), []);
+  const v = evaluateZeroDteGates(input({ plan }));
+  assert.equal(v.verdict, "COMMIT");
+});
+
+test("WS-04 (6): mark outside [bid,ask] → blocked (mark_out_of_band)", () => {
+  const plan = buildContractPlan({ ...QUOTE_BASE, bid: 2.3, ask: 2.5, mark: 3.1 });
+  assert.equal(plan.quote_invalid_reason, "mark_out_of_band");
+  assert.equal(planQualityGateBlocks(plan).some((b) => b.code === "plan_quote_invalid"), true);
+});
+
+test("WS-04: absolute-dollar spread over cap → blocked (wide_dollars); a proportional-but-fine book passes", () => {
+  // Backstop to the % check: a $6 spread on a $60 mark is 10% (< 15% → legacy PASS) but
+  // an absolute $6 exit tax on a 0DTE scalp. The new dollar cap catches it.
+  const wide = evaluateQuoteValidity({ bid: 57, ask: 63, mark: 60 });
+  assert.equal(wide, "wide_dollars");
+  const ok = evaluateQuoteValidity({ bid: 59.6, ask: 60.4, mark: 60 });
+  assert.equal(ok, null);
+});
+
+test("WS-04: min-size only enforced when the provider reports size (conditional)", () => {
+  // Absent size → not enforced (absent size is not proof of illiquidity).
+  assert.equal(evaluateQuoteValidity({ bid: 2.3, ask: 2.5, mark: 2.4 }), null);
+  // Present but below floor → blocked.
+  assert.equal(
+    evaluateQuoteValidity({ bid: 2.3, ask: 2.5, mark: 2.4, bidSize: 0.5, askSize: 5 }),
+    "thin_size"
+  );
 });
 
 // ── G-12 · confluence floor (Phase 1) ────────────────────────────────────────────

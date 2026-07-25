@@ -731,8 +731,47 @@ export function planQualityGateBlocks(plan: ContractPlan | null): ZeroDteGateBlo
       unlock_et: null,
     });
   }
+  // WS-04: translate the plan's fail-closed malformed-quote verdict into a DISTINCT
+  // block. `stale` → plan_quote_stale (age beyond bound); every other reason →
+  // plan_quote_invalid (a structurally malformed book). Null-guarded so a historical /
+  // hand-built plan that predates the field (undefined) produces no new block — the
+  // existing valid-quote path is unregressed. Additive: the legacy plan_illiquid /
+  // plan_no_quote blocks above are untouched.
+  if (plan.quote_invalid_reason != null) {
+    if (plan.quote_invalid_reason === "stale") {
+      blocks.push({
+        code: "plan_quote_stale",
+        reason:
+          "Contract quote is stale (age beyond the freshness bound) — cannot commit off a stale book (G-9).",
+        threshold: null,
+        unlock_et: null,
+      });
+    } else {
+      blocks.push({
+        code: "plan_quote_invalid",
+        reason: `${QUOTE_INVALID_SENTENCE[plan.quote_invalid_reason]} — malformed quote fails closed (G-9).`,
+        threshold: null,
+        unlock_et: null,
+      });
+    }
+  }
   return blocks;
 }
+
+/** Human-readable sentence per malformed-quote reason (WS-04). Keyed by the
+ *  QuoteInvalidReason values that map to plan_quote_invalid (stale is handled
+ *  separately as plan_quote_stale). */
+const QUOTE_INVALID_SENTENCE: Record<
+  Exclude<NonNullable<ContractPlan["quote_invalid_reason"]>, "stale">,
+  string
+> = {
+  zero_bid: "Contract has no real two-sided quote (zero/null bid or ask)",
+  crossed: "Contract quote is crossed (bid > ask)",
+  locked: "Contract quote is locked (bid == ask — zero-width book)",
+  mark_out_of_band: "Contract mark sits outside its own bid/ask",
+  wide_dollars: "Contract bid/ask dollar spread is over the cap",
+  thin_size: "Contract resting quote size is below the floor",
+};
 
 /** Belt-and-suspenders: true when a fresh find must NOT write a ledger row. */
 export function freshCommitBlockedByPlan(plan: ContractPlan | null | undefined): boolean {

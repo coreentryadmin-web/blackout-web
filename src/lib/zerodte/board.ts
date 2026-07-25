@@ -529,6 +529,9 @@ export type ZeroDteGateFailure =
   | "plan_moved" // G-8: mark ran ≥35% past the flow fill — don't chase
   | "plan_illiquid" // G-9: bid/ask spread >15% of mark — untradeable exit tax
   | "plan_no_quote" // G-9: no live quote and no fill — evidence only
+  // ── WS-04 malformed-quote validation (fail-closed; additive to plan_illiquid/plan_no_quote) ──
+  | "plan_quote_invalid" // G-9: malformed book — zero/null bid, crossed, locked, mark out of band, or $-spread over cap
+  | "plan_quote_stale" // G-9: quote age beyond the freshness bound (only when a quote timestamp is available)
   | "intraday_conflict" // G-10: VWAP + 5m trend oppose the play direction
   | "halted" // G-11: underlying trading halt
   | "earnings" // G-11: reports today/next session — different trade than 0DTE scalp
