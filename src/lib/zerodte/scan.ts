@@ -53,6 +53,7 @@ import {
   deriveZeroDteSetups,
   enrichSetup,
   INDEX_OPTION_ROOTS,
+  isSameDayHorizon,
   matchEarnings,
   polygonSpotTicker,
   type EarningsFlag,
@@ -647,8 +648,24 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
  *  After the 15:00 ET cutoff only EXISTING plays are refreshed — a fresh flag in
  *  power hour never opens a new 0DTE play (this predates and stays alongside the
  *  gate stack's own opening-window rule). */
-export async function persistZeroDteScan(setups: EnrichedZeroDteSetup[]): Promise<number> {
-  if (!dbConfigured() || setups.length === 0) return 0;
+export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Promise<number> {
+  if (!dbConfigured() || setupsIn.length === 0) return 0;
+  // HORIZON INTEGRITY fail-closed guard (PR-1, design Q2). The BREAKOUT/PIN/condor pickers are
+  // already clamped to dte ≤ 1, so nothing dte≥2 should reach here — but commit is the last gate
+  // before a row is graded with the same-day 15:30 time-stop, so we assert the horizon here too.
+  // Any WEEKLY_FALLBACK (dte≥2, or a fail-closed unknown horizon) is DROPPED before commit so it
+  // never pollutes the 0DTE ledger/calibration with an invalid same-day-graded outcome. This keeps
+  // the 0DTE feature-store population structurally HOMOGENEOUS (all rows same-day) — the precondition
+  // the later per-horizon calibration versioning (design Q12) depends on.
+  const setups = setupsIn.filter((s) => {
+    if (isSameDayHorizon(s.contract_horizon)) return true;
+    console.warn(
+      `[zerodte-horizon] dropping ${s.ticker} from 0DTE commit — horizon=${s.contract_horizon} ` +
+        `dte=${s.actual_dte_at_commit} is NOT same-day (weekly fallback excluded from the 0DTE board)`
+    );
+    return false;
+  });
+  if (setups.length === 0) return 0;
   const today = todayEt();
   const { hour, minute } = etNowParts();
   const pastCutoff = hour * 60 + minute >= NEW_PLAY_CUTOFF_ET_MINUTES;
@@ -755,6 +772,12 @@ export async function persistZeroDteScan(setups: EnrichedZeroDteSetup[]): Promis
       // graded ledger's realized credit/loss. Always DIRECTIONAL unless the condor router fired.
       play_type: s.play_type,
       ...(s.play_type === "CONDOR" && s.condor_plan ? { condor: s.condor_plan } : {}),
+      // Contract HORIZON pinned at first flag (PR-1 horizon integrity). Only ZERO_DTE/ONE_DTE ever
+      // reach here (the guard above dropped any weekly fallback), so grading can ASSERT same-day
+      // before applying the 15:30 time-stop instead of inferring the horizon from expiry vs date.
+      contract_horizon: s.contract_horizon,
+      actual_dte_at_commit: s.actual_dte_at_commit,
+      grading_policy: s.grading_policy,
     } as unknown as Record<string, unknown>,
     flags_json: {
       ...(s.earnings ? { earnings: s.earnings } : {}),
@@ -792,6 +815,11 @@ export async function persistZeroDteScan(setups: EnrichedZeroDteSetup[]): Promis
       spyBias: sessionCtx?.spy_bias ?? null,
       confluence: s.confluence?.tier ?? null,
       discoveryOrigin: s.discovery_origin,
+      // Contract horizon at commit (PR-1). Only ZERO_DTE/ONE_DTE reach here (weekly fallbacks were
+      // dropped above), so the feature store stays same-day homogeneous — the population invariant
+      // the per-horizon calibration versioning (design Q12) relies on.
+      contractHorizon: s.contract_horizon,
+      actualDteAtCommit: s.actual_dte_at_commit,
     }) as unknown as Record<string, unknown>,
   }));
   const freshlyFlagged = await upsertZeroDteSetupLog(rows);
@@ -846,9 +874,25 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
       // columns. The directional-move grade still runs afterward (harmless provenance) and stamps
       // graded_at. Guarded strictly on play_type === "CONDOR", so a directional row is byte-identical.
       const ec = row.entry_context ?? null;
+      // HORIZON assertion (PR-1, design Q2): the plan/condor grades below apply the SAME-DAY 15:30
+      // time-stop (plan.ts / condor.ts). That is only valid for a same-day (ZERO_DTE/ONE_DTE)
+      // contract. Read the pinned horizon and, if it is KNOWN to be non-same-day (a weekly fallback
+      // that somehow reached the ledger despite the commit guard), SKIP the same-day intraday grades
+      // so we never stamp an invalid 15:30 outcome. Legacy rows predate this pin (horizon absent) →
+      // undefined, and grade unchanged. `isSameDayHorizon` fail-closes an unknown string to false,
+      // so only a horizon explicitly ZERO_DTE/ONE_DTE (or a legacy null) is graded same-day.
+      const pinnedHorizon = typeof ec?.contract_horizon === "string" ? ec.contract_horizon : null;
+      const sameDayOk =
+        pinnedHorizon == null || isSameDayHorizon(pinnedHorizon as import("./board").ContractHorizon);
+      if (!sameDayOk) {
+        console.warn(
+          `[zerodte-horizon] skipping same-day grade for ${row.ticker} ${row.session_date} — ` +
+            `entry_context.contract_horizon=${pinnedHorizon} is not same-day (should never have committed)`
+        );
+      }
       const isCondorRow = ec?.play_type === "CONDOR";
       const condorGeom = (ec?.condor ?? null) as Record<string, unknown> | null;
-      if (isCondorRow && row.plan_outcome == null && condorGeom && row.first_flagged_at) {
+      if (sameDayOk && isCondorRow && row.plan_outcome == null && condorGeom && row.first_flagged_at) {
         const minBars = await fetchAggBars(
           polygonSpotTicker(row.ticker), 1, "minute", row.session_date, row.session_date, "50000"
         );
@@ -872,7 +916,7 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
       // direction grade — gradeZeroDteSetupRow stamps graded_at, which removes the
       // row from future passes, so everything must land in this one try.
       const occ = typeof row.plan_json?.occ === "string" ? row.plan_json.occ : null;
-      if (!isCondorRow && row.plan_outcome == null && occ && row.entry_premium != null && row.entry_premium > 0) {
+      if (sameDayOk && !isCondorRow && row.plan_outcome == null && occ && row.entry_premium != null && row.entry_premium > 0) {
         const optBars = await fetchAggBars(occ, 1, "minute", row.session_date, row.session_date, "50000");
         const planBars: PlanBar[] = optBars
           .filter((b) => b.t != null && Number.isFinite(b.t))

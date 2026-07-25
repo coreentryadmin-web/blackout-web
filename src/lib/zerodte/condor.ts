@@ -27,7 +27,9 @@ import {
 } from "./iron-condor";
 import { etMinutesOf, PLAN_RULES, type PlanBar } from "./plan";
 import {
+  deriveContractHorizon,
   enrichSetup,
+  gradingPolicyForHorizon,
   type DiscoveryOrigin,
   type EnrichedZeroDteSetup,
   type PlayType,
@@ -432,6 +434,12 @@ export function buildCondorSetup(input: {
     top_strike_avg_fill: null,
     expiry: plan.expiry,
     dte: plan.dte,
+    // HORIZON from the REAL condor expiry dte. SPX/NDX condors are cash-settled same-day; priceCondorLegs
+    // is clamped to dte ≤ 1 (pin-discovery.ts), so a committed condor is always ZERO_DTE/ONE_DTE. A
+    // hypothetical dte≥2 maps to WEEKLY_FALLBACK and would be dropped by the persist-time guard.
+    contract_horizon: deriveContractHorizon(plan.dte),
+    actual_dte_at_commit: plan.dte,
+    grading_policy: gradingPolicyForHorizon(deriveContractHorizon(plan.dte)),
     net_premium: 0,
     gross_premium: 0,
     prints: 0,

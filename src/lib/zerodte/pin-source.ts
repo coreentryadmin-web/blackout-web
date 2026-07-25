@@ -24,7 +24,9 @@
 // EXACTLY as today.
 
 import {
+  deriveContractHorizon,
   enrichSetup,
+  gradingPolicyForHorizon,
   unionDiscoveryOrigins,
   type DiscoveryOrigin,
   type EnrichedZeroDteSetup,
@@ -232,18 +234,21 @@ function sideHasLiquidity(row: PinChainRow, side: "call" | "put"): boolean {
 }
 
 /**
- * Pick the ATM contract on `side` on the nearest usable expiry ≥ today. 0DTE (dte 0) is preferred;
- * when today isn't an expiry the nearest later expiry within `maxDte` is the weekly fallback. ATM =
- * strike closest to spot among liquid rows on the chosen expiry (nearest-expiry wins over ATM-ness,
- * then closest-to-spot, then lower strike — deterministic). Returns null when no liquid contract
- * sits inside the window (→ no contract → the shared plan gate drops the candidate).
+ * Pick the ATM contract on `side` on the nearest usable expiry ≥ today, WITHIN the 0DTE horizon.
+ * 0DTE (dte 0) is preferred, then dte 1 (ONE_DTE). HORIZON INTEGRITY (PR-1, design Q2): `maxDte` is
+ * clamped to 1 — the picker DELIBERATELY no longer reaches a 2–7DTE weekly. A pin whose only liquid
+ * contract on `side` is a weekly returns null here → the candidate is DROPPED (never committed to
+ * the 0DTE ledger, never graded with the same-day 15:30 time-stop that would be structurally wrong
+ * for a multi-day weekly). ATM = strike closest to spot among liquid rows on the chosen expiry
+ * (nearest-expiry wins over ATM-ness, then closest-to-spot, then lower strike — deterministic).
+ * Returns null when no liquid same-day/1DTE contract sits inside the window (→ dropped).
  */
 export function pickAtmPinContract(
   rows: PinChainRow[],
   spot: number,
   todayYmd: string,
   side: "call" | "put",
-  maxDte = 7
+  maxDte = 1
 ): PickedPinContract | null {
   if (!(spot > 0) || rows.length === 0) return null;
   type Cand = { strike: number; expiry: string; dte: number; dist: number };
@@ -299,6 +304,12 @@ export function buildPinSetup(input: {
     top_strike_avg_fill: null, // no flow fill — attachContractPlans prices off the live mark
     expiry: contract.expiry,
     dte: contract.dte,
+    // HORIZON stamped from the REAL selected-contract dte. The picker is clamped to dte ≤ 1, so a
+    // committed pin fade is always ZERO_DTE/ONE_DTE; the derivation still maps a hypothetical dte≥2
+    // to WEEKLY_FALLBACK (the persist-time guard would then drop it) — defense in depth.
+    contract_horizon: deriveContractHorizon(contract.dte),
+    actual_dte_at_commit: contract.dte,
+    grading_policy: gradingPolicyForHorizon(deriveContractHorizon(contract.dte)),
     net_premium: 0, // no directional option premium — this is a dealer-positioning pin, not flow
     gross_premium: 0,
     prints: 0,

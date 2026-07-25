@@ -69,6 +69,24 @@ test("buildBreakoutSetup builds a scored setup carrying discovery_origin [\"BREA
   assert.equal(setup.spike, false);
   // Score in-range and, for a strong breakout, above the floor.
   assert.ok(setup.score >= 0 && setup.score <= 100);
+  // HORIZON (PR-1): a 0DTE picked contract stamps ZERO_DTE + the same-day grading policy.
+  assert.equal(setup.contract_horizon, "ZERO_DTE");
+  assert.equal(setup.actual_dte_at_commit, 0);
+  assert.equal(setup.grading_policy, "same_day_1530_close");
+});
+
+// ── HORIZON integrity: build-site tag reflects the REAL selected-contract dte ─────────
+test("buildBreakoutSetup stamps contract_horizon/actual_dte_at_commit/grading_policy from the contract dte", () => {
+  const base = { ticker: "asts", gain: 0.15, close_strength: 0.9, volume: 20_000_000, dollar: 900_000_000 };
+  const zero = buildBreakoutSetup({ mover: base, spot: 42.5, contract: { strike: 44, expiry: TODAY, dte: 0 }, dollarNorm: 1 });
+  assert.equal(zero.contract_horizon, "ZERO_DTE");
+  assert.equal(zero.actual_dte_at_commit, 0);
+  assert.equal(zero.grading_policy, "same_day_1530_close");
+
+  const one = buildBreakoutSetup({ mover: base, spot: 42.5, contract: { strike: 44, expiry: "2026-07-25", dte: 1 }, dollarNorm: 1 });
+  assert.equal(one.contract_horizon, "ONE_DTE");
+  assert.equal(one.actual_dte_at_commit, 1);
+  assert.equal(one.grading_policy, "same_day_1530_close");
 });
 
 // ── Score mapping: in-range + conservative (no trivial 65 clear) ────────────────────
@@ -174,8 +192,11 @@ test("mergeDiscoveryOrigins unions a shared ticker to [\"FLOW\",\"BREAKOUT\"] an
   assert.equal(merged.length, 2, "no duplicate row for the shared ticker");
 });
 
-// ── ATM 0DTE picker: 0DTE preferred, weekly fallback, out-of-window null ─────────────
-test("pickAtmZeroDteContract prefers the same-day (0DTE) ATM call, falls back to the nearest weekly, null out of window", () => {
+// ── ATM 0DTE picker: 0DTE preferred, 1DTE allowed, weekly (dte≥2) EXCLUDED ───────────
+// HORIZON INTEGRITY (PR-1): the picker is clamped to dte ≤ 1. A 0DTE is preferred, a 1DTE is the
+// only fallback, and ANY dte≥2 weekly returns null (dropped from the 0DTE board — not graded with
+// the same-day 15:30 time-stop that would be structurally wrong for a multi-day weekly).
+test("pickAtmZeroDteContract prefers 0DTE, allows 1DTE, EXCLUDES the weekly (dte≥2) fallback", () => {
   const rows0dteAndWeekly: BreakoutChainRow[] = [
     { expiry: TODAY, strike: 99, call_bid: 1.2, call_ask: 1.3, call_oi: 500 },
     { expiry: TODAY, strike: 100, call_bid: 1.0, call_ask: 1.1, call_oi: 800 },
@@ -188,14 +209,27 @@ test("pickAtmZeroDteContract prefers the same-day (0DTE) ATM call, falls back to
   assert.equal(pick!.dte, 0);
   assert.equal(pick!.strike, 100, "ATM = strike closest to the 100.4 spot");
 
-  // No 0DTE listed → the nearest weekly is the fallback.
+  // No 0DTE listed but a 1DTE (dte 1) exists → the 1DTE (ONE_DTE) is the only allowed fallback.
+  const oneDteOnly: BreakoutChainRow[] = [
+    { expiry: "2026-07-25", strike: 100, call_bid: 1.5, call_ask: 1.6, call_oi: 700 },
+  ];
+  const one = pickAtmZeroDteContract(oneDteOnly, 100.4, TODAY);
+  assert.ok(one);
+  assert.equal(one!.expiry, "2026-07-25");
+  assert.equal(one!.dte, 1);
+
+  // No 0DTE/1DTE listed, only a 7-DTE weekly → EXCLUDED (null): a dte≥2 weekly is dropped from the
+  // 0DTE board entirely (horizon integrity), not committed and not graded same-day.
   const weeklyOnly: BreakoutChainRow[] = [
     { expiry: "2026-07-31", strike: 100, call_bid: 2.0, call_ask: 2.2, call_oi: 900 },
   ];
-  const wk = pickAtmZeroDteContract(weeklyOnly, 100.4, TODAY);
-  assert.ok(wk);
-  assert.equal(wk!.expiry, "2026-07-31");
-  assert.equal(wk!.dte, 7);
+  assert.equal(pickAtmZeroDteContract(weeklyOnly, 100.4, TODAY), null, "weekly (dte 7) is excluded");
+
+  // A dte-2 weekly is likewise excluded (the clamp is dte ≤ 1, so 2 is already out).
+  const twoDteOnly: BreakoutChainRow[] = [
+    { expiry: "2026-07-26", strike: 100, call_bid: 2.0, call_ask: 2.2, call_oi: 900 },
+  ];
+  assert.equal(pickAtmZeroDteContract(twoDteOnly, 100.4, TODAY), null, "dte-2 weekly is excluded");
 
   // Only an expiry beyond the window → no contract (→ shared plan gate drops the candidate).
   const farOnly: BreakoutChainRow[] = [

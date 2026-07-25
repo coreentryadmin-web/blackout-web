@@ -20,6 +20,10 @@ import {
   type SetupDossierView,
   type ZeroDteGateRejection,
   type ZeroDteSetup,
+  deriveContractHorizon,
+  isSameDayHorizon,
+  gradingPolicyForHorizon,
+  SAME_DAY_GRADING_POLICY,
 } from "./board";
 import { computeFibLevels, nearestFibNote } from "./fib";
 
@@ -93,6 +97,60 @@ function row(overrides: Partial<FlowSetupInput>): FlowSetupInput {
     ...overrides,
   };
 }
+
+// ── contract horizon (PR-1 HORIZON INTEGRITY) ──────────────────────────────────────
+
+test("deriveContractHorizon maps the REAL dte: 0→ZERO_DTE, 1→ONE_DTE, ≥2→WEEKLY_FALLBACK", () => {
+  assert.equal(deriveContractHorizon(0), "ZERO_DTE");
+  assert.equal(deriveContractHorizon(1), "ONE_DTE");
+  assert.equal(deriveContractHorizon(2), "WEEKLY_FALLBACK");
+  assert.equal(deriveContractHorizon(5), "WEEKLY_FALLBACK");
+  assert.equal(deriveContractHorizon(7), "WEEKLY_FALLBACK");
+  // Fail-closed: a non-finite/negative dte must NEVER read as same-day.
+  assert.equal(deriveContractHorizon(Number.NaN), "WEEKLY_FALLBACK");
+  assert.equal(deriveContractHorizon(-1), "WEEKLY_FALLBACK");
+});
+
+test("isSameDayHorizon: only ZERO_DTE/ONE_DTE are same-day (the 15:30 grader's domain)", () => {
+  assert.equal(isSameDayHorizon("ZERO_DTE"), true);
+  assert.equal(isSameDayHorizon("ONE_DTE"), true);
+  assert.equal(isSameDayHorizon("WEEKLY_FALLBACK"), false);
+});
+
+test("gradingPolicyForHorizon: committed horizons carry the same-day 15:30 policy; weeklies are marked excluded", () => {
+  assert.equal(gradingPolicyForHorizon("ZERO_DTE"), SAME_DAY_GRADING_POLICY);
+  assert.equal(gradingPolicyForHorizon("ONE_DTE"), SAME_DAY_GRADING_POLICY);
+  assert.equal(gradingPolicyForHorizon("WEEKLY_FALLBACK"), "excluded_non_same_day");
+  assert.equal(SAME_DAY_GRADING_POLICY, "same_day_1530_close");
+});
+
+test("flow setups are ZERO_DTE/ONE_DTE by construction, stamping actual_dte_at_commit + grading_policy", () => {
+  // A 0DTE flow tape → ZERO_DTE.
+  const zero = deriveZeroDteSetups([
+    row({ premium: 900_000, strike: 190, dte: 0, expiry: "2026-07-06" }),
+    row({ premium: 700_000, strike: 190, dte: 0, expiry: "2026-07-06", alert_rule: "SweepsFollowedByFloor" }),
+  ], { todayYmd: "2026-07-06" });
+  assert.equal(zero.length, 1);
+  assert.equal(zero[0]!.contract_horizon, "ZERO_DTE");
+  assert.equal(zero[0]!.actual_dte_at_commit, 0);
+  assert.equal(zero[0]!.grading_policy, SAME_DAY_GRADING_POLICY);
+
+  // A 1DTE flow tape (dte 1, within SETUP_MAX_DTE) → ONE_DTE.
+  const one = deriveZeroDteSetups([
+    row({ premium: 900_000, strike: 190, dte: 1, expiry: "2026-07-07" }),
+    row({ premium: 700_000, strike: 190, dte: 1, expiry: "2026-07-07", alert_rule: "SweepsFollowedByFloor" }),
+  ], { todayYmd: "2026-07-06" });
+  assert.equal(one.length, 1);
+  assert.equal(one[0]!.contract_horizon, "ONE_DTE");
+  assert.equal(one[0]!.actual_dte_at_commit, 1);
+  assert.equal(one[0]!.grading_policy, SAME_DAY_GRADING_POLICY);
+
+  // The fields survive enrichment (spread through enrichSetup).
+  const enriched = enrichSetup(zero[0]!, null);
+  assert.equal(enriched.contract_horizon, "ZERO_DTE");
+  assert.equal(enriched.actual_dte_at_commit, 0);
+  assert.equal(enriched.grading_policy, SAME_DAY_GRADING_POLICY);
+});
 
 test("setups: one-sided 0DTE concentration produces a long setup with the dominant strike", () => {
   const rows = [
