@@ -426,3 +426,79 @@ test("cortexEntryContextFor: the FULL evidence vector rides the commit blob; abs
 
   assert.equal(cortexEntryContextFor(null), null); // refresh lane: no blob, never a fake one
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// SECOND-WAVE adversarial coverage — null/blind bridging, thin-floor boundary, veto priority.
+// ════════════════════════════════════════════════════════════════════════════════════
+
+test("cortexGateBlocks: a null assessment (Cortex never ran — refresh lane) yields ZERO blocks", () => {
+  assert.deepEqual(cortexGateBlocks(null), []);
+});
+
+test("thin evidence: score JUST below the 0.5 floor with <3 sources is NET_NEGATIVE (the floor is `<`)", () => {
+  const justBelow: CortexVerdict = {
+    score: 0.49,
+    conviction: "C" as CortexConviction,
+    direction: "short",
+    asOf: "2026-07-17T15:00:00.000Z",
+    vetoes: [],
+    supports: [{ source: "vex-charm", detail: "thin", weight: 0.49, asOf: "2026-07-17T15:00:00.000Z", halfLifeMs: 300_000 }],
+    opposes: [],
+    absent: ["gex-walls", "wall-trend", "flow-quality", "sector-heat", "darkpool-confluence", "opening-harvest"],
+    narrative: ["thin"],
+  };
+  assert.equal(assessCortexVerdict(justBelow).decision, "NET_NEGATIVE");
+  // …and at exactly the floor it passes (proving the boundary is inclusive on the PASS side).
+  assert.equal(assessCortexVerdict({ ...justBelow, score: 0.5, supports: [{ ...justBelow.supports[0]!, weight: 0.5 }] }).decision, "PASS");
+});
+
+test("veto priority: a real veto with BOTH veto sources otherwise blind still reports VETO (checked before veto-blind)", () => {
+  // flow-quality VETOED (so it answered) but supports/opposes empty; gex absent. Opt-in firewall on.
+  const v = verdict({
+    vetoes: [ev("flow-quality", "veto", 1.0, "opposing $1M cluster")],
+    absent: ["gex-walls: no GEX ladder", "wall-trend: absent", "sector-heat: absent", "catalyst-news: absent", "vex-charm: absent", "darkpool-confluence: absent", "opening-harvest: absent"],
+  });
+  const a = assessCortexVerdict(v, { failClosedOnVetoBlind: true });
+  assert.equal(a.decision, "VETO", "a fired veto is the loudest answer — never masked as veto-blind");
+  assert.deepEqual(cortexGateBlocks(a).map((b) => b.code), ["cortex_veto:flow-quality"]);
+});
+
+test("cortexSummaryFor: a VETO_BLIND assessment summarizes with decision VETO_BLIND and empty veto list", () => {
+  const vetoBlind = verdict({
+    score: 1.5,
+    supports: [ev("sector-heat", "supports", 1.5)],
+    absent: ["gex-walls: absent", "flow-quality: absent", "wall-trend: absent", "catalyst-news: absent", "vex-charm: absent", "darkpool-confluence: absent", "opening-harvest: absent"],
+  });
+  const s = cortexSummaryFor(assessCortexVerdict(vetoBlind, { failClosedOnVetoBlind: true }));
+  assert.ok(s && !s.abstained);
+  if (s && !s.abstained) {
+    assert.equal(s.decision, "VETO_BLIND");
+    assert.deepEqual(s.vetoes, [], "no veto fired — the HOLD is because BOTH veto channels went dark");
+  }
+});
+
+test("cortexEntryContextFor: a VETO_BLIND commit blob carries the FULL vector (the absent list IS the evidence)", () => {
+  const vb = verdict({
+    score: 1.5,
+    supports: [ev("sector-heat", "supports", 1.5)],
+    absent: ["gex-walls: absent", "flow-quality: absent", "wall-trend: absent", "catalyst-news: absent", "vex-charm: absent", "darkpool-confluence: absent", "opening-harvest: absent"],
+  });
+  const a = assessCortexVerdict(vb, { failClosedOnVetoBlind: true });
+  const blob = cortexEntryContextFor(a);
+  assert.ok(blob && !blob.abstained);
+  if (blob && !blob.abstained) {
+    assert.equal(blob.decision, "VETO_BLIND");
+    assert.equal(blob.absent.length, 7, "the two dark veto channels + the rest survive on the record");
+  }
+});
+
+test("evaluateCortexForCommit: an injected compose is used verbatim (the IO seam is fully substitutable)", async () => {
+  const handBuilt = verdict({ score: 2.0, supports: [ev("gex-walls", "supports", 2.0)], absent: [] });
+  const a = await evaluateCortexForCommit("QQQ", "short", new Date(AS_OF), {
+    fetchInputs: async () => baseInputs({ ticker: "QQQ", direction: "short", now: AS_OF }),
+    compose: () => handBuilt,
+  });
+  assert.equal(a.decision, "PASS");
+  assert.ok(!a.abstained);
+  if (!a.abstained) assert.equal(a.verdict.score, 2.0);
+});

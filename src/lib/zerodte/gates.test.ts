@@ -1,5 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 // gates.ts is a pure leaf (type-only imports from ./board, ./intraday) — no
 // mock.module scaffolding needed, unlike scan.test.ts's provider graph.
@@ -820,4 +825,205 @@ test("WS-21: flag ON — a committing setup is WITHHELD until the source is HEAL
 test("WS-21: flag ON but sourceHealth null — gate does not manufacture a block", () => {
   const v = evaluateZeroDteGates(input({ requireHealthySource: true, sourceHealth: null }));
   assert.equal(v.verdict, "COMMIT");
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// SECOND-WAVE adversarial coverage (test/zerodte-core-suite) — the paths the first pass
+// did NOT reach: env kill-switch="0" firewall PASS, every threshold's exact boundary,
+// stacked firewalls, and the correlated-ticker / conflict-score boundaries.
+// ════════════════════════════════════════════════════════════════════════════════════
+
+// ── Firewall kill-switches: BLOCK when default-on, PASS when the env switch = "0" ─────
+// The four Phase-0 fail-closed constants (G4_/G7_/G11_/G11_HALT_..._ENABLED) are read ONCE
+// at module load, so the "= 0 disables it" contract can only be exercised in a fresh module
+// registry — a child process with the env var set. The BLOCK (default-on) half is covered by
+// the existing single-process tests above; here we pin BOTH halves of the kill-switch together
+// so a silent default flip (firewall shipped OFF) is caught.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const GATES_PATH = join(HERE, "gates.ts");
+const REPO_ROOT = join(HERE, "..", "..", "..");
+
+/** Spawn the gate evaluator in a fresh process with `env` applied at module load, for one
+ *  clean directional scenario whose ONLY block is the named firewall. Returns the block codes. */
+function runFirewallScenario(scenario: "g4" | "g7" | "g11earn" | "g11halt", env: Record<string, string>): string[] {
+  const dir = mkdtempSync(join(tmpdir(), "ks-"));
+  const runner = join(dir, "runner.mts");
+  writeFileSync(
+    runner,
+    `
+import { evaluateZeroDteGates } from ${JSON.stringify(GATES_PATH)};
+const nowMs = Date.parse("2026-07-13T15:00:00Z");
+const CLEAN_PLAN = { occ:"O:NVDA260713P00100000", flow_avg_fill:2, bid:1.9, ask:2.1, mark:2, entry_max:2, vs_flow_pct:0, entry_status:"IN_RANGE", spread_pct:10, illiquid:false, stop_premium:1, target_premium:4, time_stop_et:"15:30", underlying_target:null, underlying_invalid:null };
+const base = { ticker:"NVDA", direction:"short", score:70, nowEtMinutes:660, nowMs, bias:"down", biasAsOfMs: nowMs-60000, governor:{open_plans:[],stops:[]}, plan: CLEAN_PLAN, intradayConflict:false, halted:false, earnings:null, todayYmd:"2026-07-13", macroEvents:[] };
+const scenarios = {
+  g4: { vixDayOpen:null, vixUnavailable:true },
+  g7: { macroUnavailable:true },
+  g11earn: { earnings:null, earningsUnavailable:true },
+  g11halt: { halted:false, haltFeedStale:true },
+};
+const v = evaluateZeroDteGates({ ...base, ...scenarios[${JSON.stringify(scenario)}] });
+console.log(JSON.stringify(v.blocks.map((b) => b.code)));
+`,
+    "utf8"
+  );
+  const res = spawnSync("npx", ["tsx", runner], {
+    cwd: REPO_ROOT,
+    env: { ...process.env, ...env },
+    encoding: "utf8",
+  });
+  assert.equal(res.status, 0, `child failed: ${res.stderr}`);
+  const line = res.stdout.trim().split("\n").filter(Boolean).pop() ?? "[]";
+  return JSON.parse(line) as string[];
+}
+
+const FIREWALLS: Array<{
+  scenario: "g4" | "g7" | "g11earn" | "g11halt";
+  killVar: string;
+  code: string;
+}> = [
+  { scenario: "g4", killVar: "ZERODTE_G4_FAIL_CLOSED", code: "vix_unavailable" },
+  { scenario: "g7", killVar: "ZERODTE_G7_FAIL_CLOSED", code: "macro_unavailable" },
+  { scenario: "g11earn", killVar: "ZERODTE_G11_FAIL_CLOSED", code: "earnings_unavailable" },
+  { scenario: "g11halt", killVar: "ZERODTE_G11_HALT_FAIL_CLOSED", code: "halt_feed_stale" },
+];
+
+for (const { scenario, killVar, code } of FIREWALLS) {
+  test(`firewall kill-switch ${killVar}: default-ON BLOCKs (${code}) but "0" lets the same fresh commit through`, () => {
+    // Default (the var UNSET so the module default holds): the firewall fires.
+    const on = runFirewallScenario(scenario, { [killVar]: "" });
+    assert.ok(on.includes(code), `default-on must block with ${code}, got ${JSON.stringify(on)}`);
+    // Kill switch off ("0"): the SAME clean commit passes — the firewall is the only block, so
+    // with it disabled the verdict is a clean COMMIT (empty block list).
+    const off = runFirewallScenario(scenario, { [killVar]: "0" });
+    assert.ok(!off.includes(code), `"0" must NOT block with ${code}, got ${JSON.stringify(off)}`);
+    assert.deepEqual(off, [], `with the firewall off the clean commit has zero blocks, got ${JSON.stringify(off)}`);
+  });
+}
+
+// ── A working (already-committed) row must NOT be re-blocked by a null refresh-lane context ──
+// The gate stack is for FRESH commits; the contract is that a null gate context is a fail-closed
+// block for a NEW commit but the caller never runs the stack on an already-committed row. Here we
+// pin the fail-closed direction: a null governor (the refresh lane can't read state) blocks a
+// fresh commit — and ONLY with gate_context_unavailable, not any directional block that would
+// imply the row was re-judged on stale directional inputs.
+test("refresh-lane: a null governor context fails a FRESH commit closed with exactly gate_context_unavailable", () => {
+  const v = evaluateZeroDteGates(input({ governor: null }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.deepEqual(v.blocks.map((b) => b.code), ["gate_context_unavailable"]);
+});
+
+// ── G-1 aligned-UP long commits (mirror of the base down/short fixture) ──────────────
+test("G-1: a long aligned WITH an up tape commits (positive mirror of the base fixture)", () => {
+  const v = evaluateZeroDteGates(input({ bias: "up", direction: "long" }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks, []);
+});
+
+// ── G-1 stale-bias EXACT boundary (fail-closed threshold) ────────────────────────────
+test("G-1: bias age exactly at MARKET_BIAS_MAX_AGE_MS is fresh; one ms older fails closed", () => {
+  const edge = evaluateZeroDteGates(input({ biasAsOfMs: NOW_MS - MARKET_BIAS_MAX_AGE_MS }));
+  assert.equal(edge.verdict, "COMMIT");
+  const overByOne = evaluateZeroDteGates(input({ biasAsOfMs: NOW_MS - MARKET_BIAS_MAX_AGE_MS - 1 }));
+  assert.equal(overByOne.verdict, "BLOCKED");
+  assert.equal(overByOne.blocks[0]!.code, "no_market_bias");
+});
+
+// ── G-2 opening-window EXACT boundary (one minute before the unlock still blocks) ─────
+test("G-2: 9:59 blocks, 10:00 commits — the unlock boundary is inclusive to the minute", () => {
+  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 9 * 60 + 59 })).verdict, "BLOCKED");
+  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 10 * 60 })).verdict, "COMMIT");
+});
+
+// ── G-3 score-floor EXACT boundary (raw comparison, not the rounded display) ──────────
+test("G-3: score 64.999 blocks, exactly 65 commits — the floor comparison is on the raw score", () => {
+  assert.equal(evaluateZeroDteGates(input({ score: 64.999 })).verdict, "BLOCKED");
+  assert.equal(evaluateZeroDteGates(input({ score: 65 })).verdict, "COMMIT");
+});
+
+// ── G-4 VIX tier EXACT boundaries (elevated 17, extreme 20) ──────────────────────────
+test("G-4: 16.999 is normal, exactly 17 is elevated, 19.999 is elevated, exactly 20 is extreme", () => {
+  // 16.999 → normal regime, no floor bump; a flat-tape 70 commits.
+  assert.equal(evaluateZeroDteGates(input({ vixDayOpen: 16.999, score: 70, bias: "flat" })).calibration.g4_vix.tier, "normal");
+  // Exactly 17 (>= elevated) → flat-tape 70 needs 75 → blocked.
+  const at17 = evaluateZeroDteGates(input({ vixDayOpen: 17, score: 70, bias: "flat" }));
+  assert.equal(at17.calibration.g4_vix.tier, "elevated");
+  assert.ok(at17.blocks.some((b) => b.code === "vix_elevated"));
+  // 19.999 → still elevated (a single name at 90 clears the 75 elevated floor).
+  const nvdaHi = evaluateZeroDteGates(input({ ticker: "NVDA", vixDayOpen: 19.999, score: 90, bias: "flat" }));
+  assert.equal(nvdaHi.calibration.g4_vix.tier, "elevated");
+  assert.equal(nvdaHi.verdict, "COMMIT");
+  // Exactly 20 (>= extreme) → the same single name is blocked outright (index/ETF only).
+  const nvdaExtreme = evaluateZeroDteGates(input({ ticker: "NVDA", vixDayOpen: 20, score: 90, bias: "flat" }));
+  assert.equal(nvdaExtreme.calibration.g4_vix.tier, "extreme");
+  assert.ok(nvdaExtreme.blocks.some((b) => b.code === "vix_extreme"));
+});
+
+test("G-4: elevated flat-tape score floor is 75 — 74 blocks, exactly 75 clears", () => {
+  const at74 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 74, bias: "flat" }));
+  assert.ok(at74.blocks.some((b) => b.code === "vix_elevated"));
+  const at75 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 75, bias: "flat" }));
+  assert.equal(at75.verdict, "COMMIT");
+});
+
+// ── G-4 fail-closed couldBlock narrowing: index/ETF flat at EXACTLY the 75 floor ──────
+test("G-4 fail-closed: an index/ETF flat-tape at exactly 75 could NOT have been blocked → unavailable VIX passes it", () => {
+  // couldBlock = !isIndexEtf || (!tapeAligned && score < 75). QQQ flat at 75 → 75<75 false → couldBlock false.
+  const v = evaluateZeroDteGates(input({ ticker: "QQQ", score: 75, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.ok(!v.blocks.some((b) => b.code === "vix_unavailable"));
+  // …one point lower (74) a present elevated VIX COULD have blocked it → fails closed.
+  const v74 = evaluateZeroDteGates(input({ ticker: "QQQ", score: 74, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
+  assert.equal(v74.verdict, "BLOCKED");
+  assert.ok(v74.blocks.some((b) => b.code === "vix_unavailable"));
+});
+
+// ── Stacked firewalls: every fail-closed signal at once surfaces every code ───────────
+test("stacked firewalls: vix + macro + earnings + halt-feed unavailable all block one fresh commit at once", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA",
+      vixDayOpen: null,
+      vixUnavailable: true,
+      macroUnavailable: true,
+      earnings: null,
+      earningsUnavailable: true,
+      halted: false,
+      haltFeedStale: true,
+      // clean everything else so ONLY the firewalls fire
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  const codes = v.blocks.map((b) => b.code);
+  for (const c of ["vix_unavailable", "macro_unavailable", "earnings_unavailable", "halt_feed_stale"]) {
+    assert.ok(codes.includes(c), `expected ${c} in ${JSON.stringify(codes)}`);
+  }
+});
+
+// ── G-6 correlated-ticker set + conflict-score EXACT boundary ─────────────────────────
+test("G-6: an SPX-correlated short (QQQ/NDX) opposing a live Slayer long conflicts; score 79 blocks, 80 clears", () => {
+  const slayerLive = { direction: "long" as const };
+  for (const ticker of ["QQQ", "NDX"]) {
+    const conflict = evaluateZeroDteGates(input({ ticker, direction: "short", score: 79, slayerLive }));
+    assert.equal(conflict.verdict, "BLOCKED", `${ticker} at 79 should block`);
+    assert.ok(conflict.blocks.some((b) => b.code === "cross_system_conflict"));
+    // Exactly 80 overrides the conflict (CONFLICT_SCORE_FLOOR is 80, comparison is `< 80`).
+    const cleared = evaluateZeroDteGates(input({ ticker, direction: "short", score: 80, slayerLive }));
+    assert.equal(cleared.verdict, "COMMIT", `${ticker} at 80 should override the conflict`);
+    assert.equal(cleared.calibration.g6_conflict.conflict, true, "still FLAGGED as a conflict in calibration");
+  }
+});
+
+// ── gateRejectionFor over a CONDOR verdict: primary code is the condor block ───────────
+test("gateRejectionFor: a condor's liquidity block becomes the primary gate_failed on the rejection row", () => {
+  const v = evaluateZeroDteGates({
+    ...input(),
+    play_type: "CONDOR",
+    condorPlan: null, // no priced structure → condor_liquidity fails closed
+    plan: null,
+    bias: "flat",
+  });
+  assert.equal(v.verdict, "BLOCKED");
+  const row = gateRejectionFor(rejectionSource, v);
+  assert.equal(row.gate_failed, v.blocks[0]!.code, "primary = first-evaluated failing gate");
+  assert.equal(row.gate_failed, "condor_liquidity");
 });

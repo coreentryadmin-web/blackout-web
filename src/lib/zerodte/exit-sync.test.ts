@@ -361,3 +361,20 @@ test("readFrozenExitMode: reads a valid pinned mode; null for missing/invalid (l
   assert.equal(readFrozenExitMode(null), null);
   assert.equal(readFrozenExitMode(undefined), null);
 });
+
+// ── resolveExitMode: the operator's env switch (DEFAULT-OFF) — SECOND-WAVE coverage ──
+// resolveExitMode reads ZERODTE_EXIT_MODE and is the fallback evaluateLedgerRowExit uses
+// for legacy/unpinned rows. Env is passed in (injectable), so no process.env mutation.
+test("resolveExitMode: only the exact string 'trim_scale' opts in; everything else stays the shipped ratchet", async () => {
+  const { resolveExitMode } = await import("./exit-sync");
+  const { DEFAULT_EXIT_MODE } = await import("./exit-engine");
+  assert.equal(DEFAULT_EXIT_MODE, "ratchet", "the default is the shipped ratchet");
+  // The one opt-in value.
+  assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "trim_scale" } as NodeJS.ProcessEnv), "trim_scale");
+  // Unset / empty / explicit ratchet / any other token / near-miss casing → ratchet.
+  assert.equal(resolveExitMode({} as NodeJS.ProcessEnv), "ratchet");
+  assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "" } as NodeJS.ProcessEnv), "ratchet");
+  assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "ratchet" } as NodeJS.ProcessEnv), "ratchet");
+  assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "TRIM_SCALE" } as NodeJS.ProcessEnv), "ratchet", "exact match only — no casing tolerance");
+  assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "trim" } as NodeJS.ProcessEnv), "ratchet");
+});

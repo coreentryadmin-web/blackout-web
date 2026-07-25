@@ -193,3 +193,40 @@ test("est_intraday_breach_pct: stamped for the shipped target-80 geometry (defau
   assert.equal(selectIronCondor({ spot: 6000, shortWidthPct: 0.01 })!.est_intraday_breach_pct, null);
   assert.equal(selectIronCondor({ spot: 6000, shortWidthPct: 0.008 })!.est_intraday_breach_pct, null);
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// SECOND-WAVE adversarial coverage — table + geometry exact boundaries.
+// ════════════════════════════════════════════════════════════════════════════════════
+
+test("widthPctForWinRate: exact-match target returns that row; target one point above the row skips it", () => {
+  assert.equal(widthPctForWinRate(77), 0.006); // exact hit
+  assert.equal(widthPctForWinRate(78), 0.008); // 77 misses (>= 78 fails) → next row up
+  assert.equal(widthPctForWinRate(92), 0.008); // exact hit
+  assert.equal(widthPctForWinRate(93), 0.01); // 92 misses → 96 row
+});
+
+test("estWinRateForWidth: EXACT table widths return the exact bucket (>= comparison, inclusive)", () => {
+  assert.equal(estWinRateForWidth(0.006), 77);
+  assert.equal(estWinRateForWidth(0.00599), 61, "a hair below the 0.006 row falls to the 0.004 bucket");
+  assert.equal(estWinRateForWidth(0.008), 92);
+  assert.equal(estWinRateForWidth(0.015), 100);
+});
+
+test("selectIronCondor: a wall EXACTLY at the width target ties to the width strike (Math.max/min inclusive)", () => {
+  // width-80 on 6000 → callTarget 6048 rounds to 6050, putTarget 5952 rounds to 5950.
+  // A callWall EXACTLY at 6050 (== the rounded width strike) leaves the short call at 6050.
+  const legs = selectIronCondor({ spot: 6000, targetWinRate: 80, callWall: 6050, putWall: 5950 });
+  assert.ok(legs);
+  assert.equal(legs!.short_call, 6050);
+  assert.equal(legs!.short_put, 5950);
+});
+
+test("selectIronCondor: wing/risk stays internally consistent (gross_wing_risk_per_side = wing_pts·100)", () => {
+  for (const w of [0.004, 0.008, 0.015]) {
+    const legs = selectIronCondor({ spot: 6000, shortWidthPct: w });
+    assert.ok(legs);
+    assert.equal(legs!.gross_wing_risk_per_side, Number((legs!.wing_pts * 100).toFixed(2)));
+    assert.ok(legs!.long_call > legs!.short_call, "long call is strictly outside the short (defined risk)");
+    assert.ok(legs!.long_put < legs!.short_put, "long put is strictly outside the short");
+  }
+});
