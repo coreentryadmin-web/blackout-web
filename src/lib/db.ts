@@ -6937,6 +6937,29 @@ export async function updateZeroDtePlanOutcome(
   );
 }
 
+/**
+ * WS-10 — stamp the CONSERVATIVE EXECUTABLE grade (bid/ask lane) alongside the mid grade,
+ * as an ADDITIVE `executable` key merged into the row's existing entry_context (same
+ * no-migration JSONB-merge pattern as stampZeroDteExitContext). This is the OFFICIAL P&L
+ * calibration and the public record read (officialPlanPnlPct, record.ts), falling back to
+ * the mid `plan_pnl_pct` column only for legacy rows graded before WS-10 (no `executable`
+ * key). FIRST-WRITE-WINS: the grade is idempotent and pinned once — the WHERE guard keeps a
+ * racing replica from rewriting it. Mid stays in plan_pnl_pct (monitoring/comparison).
+ */
+export async function stampZeroDteExecutableGrade(
+  sessionDate: string,
+  ticker: string,
+  executable: Record<string, unknown>
+): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `UPDATE zerodte_setup_log
+     SET entry_context = COALESCE(entry_context, '{}'::jsonb) || jsonb_build_object('executable', $3::jsonb)
+     WHERE session_date = $1::date AND ticker = $2 AND (entry_context -> 'executable') IS NULL`,
+    [sessionDate, ticker.toUpperCase(), JSON.stringify(executable)]
+  );
+}
+
 export async function fetchLatestPlayableNighthawkEdition(): Promise<NighthawkEditionRow | null> {
   await ensureSchema();
   const res = await (await getPool()).query<QueryResultRow>(

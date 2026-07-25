@@ -172,6 +172,10 @@ const stageSamples: { derive: number[]; chain: number[]; gates: number[]; total:
  *  date; naturally bounded (a handful of dates per replica lifetime). */
 const committedRowsByDate = new Map<string, number>();
 const ungradeableByDate = new Map<string, number>();
+/** WS-10 execution-tax distribution (bps): mid P&L − executable P&L per GRADED row. The
+ *  cost the mid lane hid — a histogram beside the other calibration/grade metrics so the
+ *  operator can see how big the executable-lane haircut actually is. Bounded like the rest. */
+const executionTaxBpsSamples: number[] = [];
 
 function pushCapped(buf: number[], v: number): void {
   if (!Number.isFinite(v) || v < 0) return;
@@ -243,6 +247,17 @@ export function recordUngradeable(sessionDate: string): void {
   }
 }
 
+/** WS-10 — record one graded row's execution tax (bps = mid P&L − executable P&L). Called
+ *  from the grade path once both lanes priced. Best-effort; a null/non-finite tax is skipped. */
+export function recordExecutionTaxBps(bps: number | null): void {
+  try {
+    if (bps == null || !Number.isFinite(bps)) return;
+    pushCapped(executionTaxBpsSamples, bps);
+  } catch {
+    /* ignore */
+  }
+}
+
 export type ZeroDteLatencySnapshot = {
   /** Wall-clock scan duration percentiles (ms). */
   scan_duration: ZeroDteLatencyStats;
@@ -263,6 +278,10 @@ export type ZeroDteLatencySnapshot = {
     ungradeable: number;
     ungradeable_rate: number | null;
   }>;
+  /** WS-10 execution-tax percentiles (BPS: mid P&L − executable P&L) over graded rows —
+   *  reuses the same nearest-rank percentile helper (fields are _ms by the shared type, but
+   *  the unit here is bps; see recordExecutionTaxBps). */
+  execution_tax_bps: ZeroDteLatencyStats;
 };
 
 /** Full snapshot for the admin health dashboard. Pure read over the accumulators. */
@@ -292,6 +311,7 @@ export function snapshotZeroDteLatency(): ZeroDteLatencySnapshot {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([origin, samples]) => ({ origin, ...computeLatencyStats(samples) })),
     committed_by_session,
+    execution_tax_bps: computeLatencyStats(executionTaxBpsSamples),
   };
 }
 
@@ -306,4 +326,5 @@ export function _resetZeroDteLatencyForTest(): void {
   stageSamples.total.length = 0;
   committedRowsByDate.clear();
   ungradeableByDate.clear();
+  executionTaxBpsSamples.length = 0;
 }

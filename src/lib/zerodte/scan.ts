@@ -22,6 +22,7 @@ import {
   fetchZeroDteSetupLog,
   gradeZeroDteSetupRow,
   insertAlertAuditLog,
+  stampZeroDteExecutableGrade,
   updateZeroDteLiveState,
   updateZeroDtePlanOutcome,
   upsertZeroDteSetupLog,
@@ -76,6 +77,7 @@ import {
   buildInputAgeManifest,
   recordCommitLatency,
   recordCommittedRows,
+  recordExecutionTaxBps,
   recordScanDuration,
   recordScanSpans,
   recordUngradeable,
@@ -119,11 +121,17 @@ import {
 import {
   buildContractPlan,
   derivePlayStatus,
+  gradePlanExecutableFromBars,
   gradePlanFromBars,
   NEW_PLAY_CUTOFF_ET_MINUTES,
   resolveLedgerEntryPremium,
   type PlanBar,
 } from "./plan";
+import {
+  executionTaxBps,
+  zeroDteHalfSpreadFrac,
+  ZERODTE_DEFAULT_HALF_SPREAD_FRAC,
+} from "./marks-math";
 
 /** Leveraged/inverse wrappers and vol ETPs stay out (not directional single plays);
  *  index products (SPY/SPX/NDX/QQQ…) are eligible per product direction. Night
@@ -1240,11 +1248,50 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
         const planBars: PlanBar[] = optBars
           .filter((b) => b.t != null && Number.isFinite(b.t))
           .map((b) => ({ t: b.t as number, h: b.h, l: b.l, c: b.c }));
-        const planGrade = gradePlanFromBars(planBars, row.entry_premium, Date.parse(row.first_flagged_at), graderParams);
+        const flaggedAtMs = Date.parse(row.first_flagged_at);
+        const planGrade = gradePlanFromBars(planBars, row.entry_premium, flaggedAtMs, graderParams);
         await updateZeroDtePlanOutcome(row.session_date, row.ticker, {
           plan_outcome: planGrade.outcome,
           plan_pnl_pct: planGrade.pnl_pct,
         });
+        // WS-10 — the OFFICIAL conservative-EXECUTABLE grade (entry=ask, exit=bid) beside the mid
+        // grade above. The mid grade stays in plan_pnl_pct (monitoring/comparison); the executable
+        // grade is pinned additively at entry_context.executable (stampZeroDteExecutableGrade) and
+        // is what calibration + the record read (officialPlanPnlPct). The half-spread fraction is
+        // the row's OWN entry quote (plan_json.bid/ask, pinned at commit — the real spread it
+        // committed under), falling back to the conservative default only when that book was
+        // one-sided/absent. A long-premium 0DTE play buys the ask and sells the bid in BOTH
+        // directions (call="long"/put="short"), so the model is direction-independent here; the
+        // condor path never reaches this block (routed to gradeCondorFromBars above).
+        const planQuote = row.plan_json as { bid?: unknown; ask?: unknown } | null;
+        const entryBid = typeof planQuote?.bid === "number" ? planQuote.bid : null;
+        const entryAsk = typeof planQuote?.ask === "number" ? planQuote.ask : null;
+        const halfSpreadFrac = zeroDteHalfSpreadFrac(entryBid, entryAsk) ?? ZERODTE_DEFAULT_HALF_SPREAD_FRAC;
+        const execGrade = gradePlanExecutableFromBars(
+          planBars,
+          row.entry_premium,
+          flaggedAtMs,
+          halfSpreadFrac,
+          graderParams
+        );
+        const taxBps = executionTaxBps(planGrade.pnl_pct, execGrade.pnl_pct);
+        await stampZeroDteExecutableGrade(row.session_date, row.ticker, {
+          lane: "conservative",
+          entry_basis: "ask",
+          exit_basis: "bid",
+          half_spread_frac: halfSpreadFrac,
+          plan_outcome: execGrade.outcome,
+          plan_pnl_pct: execGrade.pnl_pct,
+          mid_plan_outcome: planGrade.outcome,
+          mid_plan_pnl_pct: planGrade.pnl_pct,
+          execution_tax_bps: taxBps,
+          // Lane (c): reserved for a future real broker-fill integration. Shape defined,
+          // deliberately unpopulated (no live fill source yet).
+          broker: null,
+        });
+        // WS-10 execution-tax histogram (bps = mid − executable), beside the sibling calibration
+        // metrics. Best-effort; skipped when either lane was ungradeable (tax null).
+        recordExecutionTaxBps(taxBps);
         // WS-15 committed-ungradeable rate (observability only): a committed row the grader could
         // not resolve to a real outcome (no post-flag minute bars / zero entry basis). Best-effort
         // counter — does NOT change the stamped outcome or any grade decision.

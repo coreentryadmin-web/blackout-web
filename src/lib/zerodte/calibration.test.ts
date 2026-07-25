@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 
 import {
   analyzeGateCalibration,
+  bucketOf,
   analyzeAccumulationAlignment,
   analyzeConfluenceTiers,
   analyzeOriginBands,
@@ -836,4 +837,34 @@ test("WS-07/17 fields are present on the full report and never gate", () => {
   assert.ok(report.origin_playtype_bands.length >= 4); // the four canonical cells always present
   assert.ok(Array.isArray(report.cortex_veto_analysis.cells));
   assert.equal(report.cortex_veto_analysis.total_veto_rejections, 1);
+});
+
+// ── WS-10 REQUIRED TEST 3: calibration grades on the EXECUTABLE lane (mid fallback for legacy) ──
+test("WS-10 #3: bucketOf reads the OFFICIAL executable lane (entry_context.executable), falling back to mid", () => {
+  // Row A: the MID grade doubled (+100), but the executable lane (entry=ask/exit=bid) actually
+  // STOPPED at −5% — calibration must count A as a LOSS and average on −5, NOT +100.
+  const execLoser: CalibrationPlayRow = {
+    session_date: "2026-07-10",
+    ticker: "SPY",
+    direction: "long",
+    score_max: 70,
+    plan_outcome: "doubled",
+    plan_pnl_pct: 100, // mid lane (monitoring)
+    entry_context: { executable: { plan_outcome: "stopped", plan_pnl_pct: -5 } },
+    gate_calibration_json: null,
+  };
+  // Row B: a LEGACY row graded before WS-10 (no executable key) → the mid column stands (+100 win).
+  const legacyWinner: CalibrationPlayRow = {
+    ...execLoser,
+    plan_outcome: "doubled",
+    plan_pnl_pct: 100,
+    entry_context: null,
+  };
+
+  const bucket = bucketOf("official-executable", [execLoser, legacyWinner]);
+  assert.equal(bucket.n, 2);
+  assert.equal(bucket.wins, 1, "only the legacy mid-winner counts; the executable-lane loser does not");
+  assert.equal(bucket.losses, 1);
+  // avg reads the executable lane for A (−5) and the mid column for the legacy row B (+100).
+  assert.equal(bucket.avg_pnl_pct, 47.5); // (−5 + 100) / 2
 });
