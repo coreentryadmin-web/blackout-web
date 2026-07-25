@@ -563,7 +563,11 @@ async function attachGateVerdicts(
     (async (): Promise<{ active: Set<string>; feedStale: boolean }> => {
       if (freshTickers.length === 0) return { active: new Set(), feedStale: false };
       try {
-        const { shouldBlockForTradingHalt, isTradingHaltChannelStale } = await import("@/lib/ws/uw-socket");
+        // Relative specifier (not the "@/..." alias) so this dynamic import resolves to the SAME
+        // module key the test harness mocks (mock.module("../ws/uw-socket")) — an alias vs relative
+        // mismatch forces an extra resolution step that the experimental module-mock loader can lose
+        // under concurrent-import contention, silently dropping the block (CI flake). Identical module.
+        const { shouldBlockForTradingHalt, isTradingHaltChannelStale } = await import("../ws/uw-socket");
         const active = new Set<string>();
         for (const t of freshTickers) {
           if (shouldBlockForTradingHalt([t], { failClosedOnStale: false }).block) active.add(t);
