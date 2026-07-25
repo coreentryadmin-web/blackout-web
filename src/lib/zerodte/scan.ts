@@ -65,6 +65,7 @@ import {
 import { gradeCondorFromBars } from "./condor";
 import { buildZeroDteEntryContext, fetchZeroDteSessionContext } from "./entry-context";
 import { buildSetupFeatureVector } from "./feature-vector";
+import { buildStrategyManifest, strategyConfigHash } from "./strategy-version";
 import { evaluateLedgerRowExit } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
 import { persistZeroDteRejections } from "./rejections";
@@ -719,6 +720,15 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   // never writes a ledger row, so it never receives an entry_context either.
   const sessionCtx = await fetchZeroDteSessionContext().catch(() => null);
   const committedAtMs = Date.now();
+  // Strategy version manifest + config hash (design Q12, strategy-version.ts) — computed ONCE per
+  // scan (it's a pure snapshot of the current strategy constants, identical for every row this cycle)
+  // and FROZEN onto every committed row below. This is the integrity spine for calibration: a
+  // scorer/gate/Cortex/governor/selector/exit/grader change bumps a manifest constant → a new hash →
+  // the calibration analyzer keeps the new plays in a fresh cohort instead of blending them with plays
+  // the old logic graded. The upsert COALESCE-pins entry_context/feature_vector at first flag, so a
+  // manifest bump AFTER a row commits never rewrites that row's stamp.
+  const strategyManifest = buildStrategyManifest();
+  const strategyHash = strategyConfigHash(strategyManifest);
   const rows: ZeroDteSetupLogUpsert[] = eligible.map((s) => ({
     session_date: today,
     ticker: s.ticker,
@@ -778,6 +788,12 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       contract_horizon: s.contract_horizon,
       actual_dte_at_commit: s.actual_dte_at_commit,
       grading_policy: s.grading_policy,
+      // Strategy version manifest + hash frozen at first flag (design Q12). The hash is calibration's
+      // cohort key (calibration.ts partitions graded rows by it); the full manifest rides along so an
+      // operator reading a row in isolation sees exactly which strategy version produced it, and a
+      // future hash mismatch can be attributed to the specific subsystem that was bumped.
+      strategy_manifest: strategyManifest,
+      strategy_config_hash: strategyHash,
     } as unknown as Record<string, unknown>,
     flags_json: {
       ...(s.earnings ? { earnings: s.earnings } : {}),
@@ -820,6 +836,9 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       // the per-horizon calibration versioning (design Q12) relies on.
       contractHorizon: s.contract_horizon,
       actualDteAtCommit: s.actual_dte_at_commit,
+      // Same frozen hash as entry_context above (design Q12) — stamped on the feature vector too so
+      // the intelligence/feature layer can partition its own population by strategy version.
+      strategyConfigHash: strategyHash,
     }) as unknown as Record<string, unknown>,
   }));
   const freshlyFlagged = await upsertZeroDteSetupLog(rows);
