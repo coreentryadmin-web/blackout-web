@@ -256,6 +256,38 @@ export function unionDiscoveryOrigins(
   return DISCOVERY_ORIGIN_ORDER.filter((o) => seen.has(o));
 }
 
+/** Opposing-direction co-discovery record (design Q1). When a second origin surfaces a
+ *  ticker the merge already holds but in the OPPOSITE direction, the merge keeps the
+ *  evidence-bearing setup's direction (it never fabricates agreement by flipping) — but
+ *  that disagreement is real signal-quality information, so it is STAMPED here rather than
+ *  silently dropped. EVIDENCE ONLY: it does not change what commits; the graded origin band
+ *  measures whether opposing-co-discovery plays underperform before any no-trade rule. */
+export type OriginDirectionConflict = {
+  /** The direction the committed setup keeps (the evidence-bearing origin's read). */
+  kept_direction: "long" | "short";
+  /** The opposing direction the second origin argued for. */
+  masked_direction: "long" | "short";
+  /** The origin(s) whose opposing read was masked (e.g. ["PIN"] fading a FLOW long). */
+  masked_origin: DiscoveryOrigin[];
+};
+
+/** Record an opposing-direction co-discovery on the KEPT setup (design Q1), mutating it in
+ *  place, when an incoming same-ticker setup argues the opposite direction. Same-direction
+ *  corroboration (the common case) sets nothing. Idempotent-ish: re-merging keeps the first
+ *  recorded conflict. Pure aside from the single in-place stamp the merge functions rely on. */
+export function noteOriginDirectionConflict(
+  kept: EnrichedZeroDteSetup,
+  incoming: Pick<EnrichedZeroDteSetup, "direction" | "discovery_origin">
+): void {
+  if (incoming.direction === kept.direction) return;
+  if (kept.origin_direction_conflict) return; // first conflict wins
+  kept.origin_direction_conflict = {
+    kept_direction: kept.direction,
+    masked_direction: incoming.direction,
+    masked_origin: [...incoming.discovery_origin],
+  };
+}
+
 /** Canonical "+"-joined label for an origin set ("FLOW", "BREAKOUT", "FLOW+BREAKOUT", …). An
  *  empty/absent set (a pre-3a ledger row) is "no_origin" so the calibration band never
  *  mislabels a legacy row as a real origin. Pure. */
@@ -1041,6 +1073,11 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  edge is the VWAP+market "double" bucket (+15.9% EV, docs/audit/0DTE-RESEARCH.md); "triple" gilds
    *  it. Evidence only — does not gate/score the board yet. See confluence.ts. */
   confluence?: import("./confluence").ZeroDteConfluence | null;
+  /** Opposing-direction co-discovery (design Q1) — set by the origin merge when a second
+   *  source found this ticker in the OPPOSITE direction. Evidence only: surfaced + persisted
+   *  so the graded origin band can measure opposing-co-discovery outcomes; it does not change
+   *  what commits. Absent = no conflict (same-direction corroboration or single origin). */
+  origin_direction_conflict?: OriginDirectionConflict | null;
 };
 
 // ── Stage 4 audit trail (alert_audit_log) ─────────────────────────────────────────

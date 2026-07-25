@@ -782,6 +782,10 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       // work: it must survive to the graded ledger so the calibration origin band can slice WR/PnL
       // by FLOW / BREAKOUT / FLOW+BREAKOUT. Always present (flow-only setups persist ["FLOW"]).
       discovery_origin: s.discovery_origin,
+      // Opposing-direction co-discovery (design Q1) pinned when a second origin found this
+      // ticker the OTHER way — evidence for the calibration origin band, never a commit change.
+      // Present only on a real conflict so the blob stays honest for the common (agreeing) case.
+      ...(s.origin_direction_conflict ? { origin_direction_conflict: s.origin_direction_conflict } : {}),
       // Play STRUCTURE (Phase 4) pinned at first flag: play_type routes the CONDOR grade path in
       // gradeZeroDteLedger (a condor is graded WIN/breach, never on the −50/+100 directional grader)
       // and the calibration play-type band. The full priced condor geometry rides along for the

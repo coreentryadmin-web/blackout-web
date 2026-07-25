@@ -22,6 +22,7 @@ import {
   enrichSetup,
   gradingPolicyForHorizon,
   unionDiscoveryOrigins,
+  noteOriginDirectionConflict,
   type EnrichedZeroDteSetup,
   type ZeroDteSetup,
 } from "./board";
@@ -231,6 +232,9 @@ export function mergeDiscoveryOrigins(
     if (existing) {
       // Same ticker from two sources → union the origins onto the flow setup, keep the flow
       // evidence (real prints/aggression), drop the bare breakout duplicate. No score change.
+      // Q1: if breakout argued the OPPOSITE direction, stamp the masked read as evidence
+      // (never flip the kept direction) so the origin band can grade opposing co-discovery.
+      noteOriginDirectionConflict(existing, b);
       existing.discovery_origin = unionDiscoveryOrigins(existing.discovery_origin, b.discovery_origin);
     } else {
       byTicker.set(key, b);
