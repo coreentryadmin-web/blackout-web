@@ -11,6 +11,7 @@ import { factorsFromFlowQuality } from "@/lib/explain/trade-explanation";
 import type { SwingSetupState } from "@/lib/swing/taxonomy";
 import { executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
+import type { WhyNow } from "@/lib/zerodte/why-now";
 import type {
   DeckCondor,
   DeckDirection,
@@ -138,8 +139,13 @@ export interface ZeroDteDeckSource {
   tier?: { tier?: string | null } | null;
   /** VWAP-side + market-aligned confirmation count (setup.confluence.confirmations) — the confluence badge. */
   confluence?: number | null;
-  /** Per-strategy calibration scorecard — rendered ONLY when present (never fabricated). */
-  scorecard?: { winRate: number; avg: number; n: number } | null;
+  /** Per-strategy calibration scorecard — rendered ONLY when present (never fabricated). Wave 3:
+   *  the optional Wilson 95% CI bounds (percent) so the WR is never shown bare. */
+  scorecard?: { winRate: number; avg: number; n: number; ciLow?: number | null; ciHigh?: number | null } | null;
+  /** Wave 3 — the pinned "why now" trigger reason (entry_context.why_now / sim frame). */
+  why_now?: WhyNow | null;
+  /** Wave 3 — ISO first-flag instant, for the why-now ribbon's ET clock time. */
+  first_flagged_at?: string | null;
   /** Wave 2 — the frozen condor geometry (server: entry_context.condor; sim: the condor frame). A
    *  strict subset of CondorPlan; parsed structurally by condorGeometryFrom (never trusts a bad blob). */
   condor?: unknown;
@@ -292,6 +298,10 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     confluence: fin(src.confluence),
     scorecard: src.scorecard ?? null,
     greeks,
+    // Edge layer (Wave 3): the pinned trigger reason + first-flag time. Both null-safe — a legacy
+    // row with neither renders no ribbon (honest absence), never a fabricated reason.
+    whyNow: src.why_now ?? null,
+    firstFlaggedAt: src.first_flagged_at ?? null,
   };
 }
 

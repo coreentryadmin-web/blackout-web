@@ -36,6 +36,7 @@ import {
 } from "@/lib/zerodte/marks-math";
 import { buildTerminalExitLadder, executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
+import { readPinnedWhyNow, type WhyNow } from "@/lib/zerodte/why-now";
 import { readFrozenExitMode, readFrozenExitPolicy } from "@/lib/zerodte/exit-sync";
 import { buildResolvedExitPolicy } from "@/lib/zerodte/strategy-version";
 import type { ZeroDteGreeks } from "@/lib/zerodte/live-marks";
@@ -162,6 +163,12 @@ export type ZeroDteBoardLedgerRow = {
    *  plan; null on a directional row or a legacy condor with no pinned geometry (the terminal shows an
    *  honest "geometry unavailable" note, never a fabricated tent). Additive, null-safe, O(1) per row. */
   condor: CondorGeometry | null;
+  /** Wave 3 — the "why now" trigger reason that surfaced this play (multi-day accumulation /
+   *  breakout / gamma pin / sweep / flow spike / aggressor flow), read structurally from the
+   *  pinned entry_context.why_now (stamped at commit — scan.ts). Drives the terminal's
+   *  "⚡ triggered by …" ribbon. Null on a legacy row committed before the pin, or one whose
+   *  signals supported no reason — the ribbon is then omitted (never a fabricated trigger). O(1). */
+  why_now: WhyNow | null;
 };
 
 export type ZeroDteBoardPayload = {
@@ -405,6 +412,9 @@ function mapLedgerRow(
       r.entry_context?.play_type === "CONDOR"
         ? condorGeometryFrom(r.entry_context?.condor)
         : null,
+    // Wave 3 — the "why now" trigger reason pinned at commit (entry_context.why_now). Structural
+    // reader, fail-soft → null on a legacy/absent pin (the terminal omits the ribbon). O(1).
+    why_now: readPinnedWhyNow(r.entry_context),
   };
 }
 

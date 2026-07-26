@@ -40,6 +40,7 @@ import {
 } from "./flow-accumulation-context";
 import { attachConfluence } from "./confluence";
 import { breakoutSourceEnabled, mergeDiscoveryOrigins } from "./breakout-source";
+import { deriveWhyNow } from "./why-now";
 import { pinSourceEnabled, mergePinOrigins } from "./pin-source";
 import { LEVERAGED_ETP_SET } from "@/features/nighthawk/lib/constants";
 import { createDossierBuildCache, fetchTickerDossier } from "@/features/nighthawk/lib/dossier";
@@ -948,6 +949,20 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       // work: it must survive to the graded ledger so the calibration origin band can slice WR/PnL
       // by FLOW / BREAKOUT / FLOW+BREAKOUT. Always present (flow-only setups persist ["FLOW"]).
       discovery_origin: s.discovery_origin,
+      // "Why now" trigger reason (Wave 3) — the ONE event that surfaced this play (multi-day
+      // accumulation / breakout / gamma pin / sweep / flow spike / aggressor flow), derived from
+      // the SAME committed signals so the terminal can show an honest "⚡ triggered by …" ribbon.
+      // Pinned here so it survives for a working position long after the fresh scan; omitted when
+      // no committed signal supports a reason (never a fabricated trigger).
+      ...((): Record<string, unknown> => {
+        const wn = deriveWhyNow({
+          discovery_origin: s.discovery_origin,
+          sweep_pct: s.sweep_pct,
+          spike: s.spike,
+          flow_accumulation: s.flow_accumulation,
+        });
+        return wn ? { why_now: wn } : {};
+      })(),
       // Opposing-direction co-discovery (design Q1) pinned when a second origin found this
       // ticker the OTHER way — evidence for the calibration origin band, never a commit change.
       // Present only on a real conflict so the blob stays honest for the common (agreeing) case.
