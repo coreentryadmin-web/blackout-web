@@ -1,0 +1,47 @@
+name: admin-ui-walkthrough
+
+# Real headless-Chromium walk of the live AUTHENTICATED desk (mints a temp admin, navigates every
+# signed-in page, toggles the new Vector chart layers + intel-rail / board controls, screenshots
+# each step). Manual trigger — GH Actions runners have network egress to prod, so this is how we
+# capture actual rendered pixels of the AUTHED UI, which the agent sandbox cannot (its browser is
+# blocked from prod). Screenshots + report.json are uploaded as artifacts.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions): CLERK_SECRET_KEY and
+# NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY — the Clerk mint helper reads both; without them the run exits 1.
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Base URL to walk"
+        required: false
+        default: "https://blackouttrades.com"
+
+jobs:
+  walk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Walk the authenticated desk
+        env:
+          VALIDATE_BASE: ${{ github.event.inputs.base }}
+          ADMIN_WALKTHROUGH_DIR: ./artifacts/admin-ui-walkthrough
+          # Clerk auth — the mint helper (scripts/audit/lib/ios-playwright-auth.mjs) reads exactly
+          # these two env vars. They MUST exist as repo secrets or the run exits 1 (auth mint failed).
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+        run: node scripts/admin-ui-walkthrough.mjs
+      - name: Upload screenshots + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-ui-walkthrough
+          path: artifacts/admin-ui-walkthrough/
+          retention-days: 7
