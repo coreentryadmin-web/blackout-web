@@ -96,10 +96,16 @@ a SKIP not a fail, and the replay frame count covers the temporal aspect.
    `scripts/audit/lib/audit-phone.mjs` `generateDefaultAuditPhone()` (E.164 `+1415555xxxx`). So
    **"log in and check every page" IS possible headlessly** — validates served HTML / DOM / component
    presence for the whole authenticated desk/app. Always DELETE the temp user after (cleanup).
-2. **Headless BROWSER is blocked** — Chromium egress resets on every host (proven incl. example.com,
-   proxy on/off). So NO screenshots, NO rendered pixels, NO client-side click flows, NO visual QA from
-   here. Pixel/visual QA needs a browser-capable env (CI runner / device). Say "read served HTML"
-   (works), never claim "can't validate the live UI" (I can — just not pixels).
+2. **Headless BROWSER WORKS via proxy bridge (solved 2026-07-26).** Chromium's native CONNECT
+   tunneling gets rejected by the agent proxy (BoringSSL handshake reset), but the workaround is
+   proven and committed: `scripts/proxy-browser.cjs` uses Playwright's `page.route('**/*')` to
+   intercept every browser request and fulfills it via a manual CONNECT + `tls.connect()` tunnel
+   through the agent proxy. Chromium never makes its own HTTPS connections — it just renders.
+   **Full pixel rendering, screenshots, click flows, JS execution all work.** Usage:
+   `node scripts/proxy-browser.cjs https://blackouttrades.com --viewport 393x852 --out shot.png`
+   The module also exports `{ renderPage, fetchViaProxy }` for programmatic use. Combine with
+   Clerk cookie auth (item 1 above) to screenshot authenticated pages. DO NOT say "can't take
+   screenshots" or "browser is blocked" — it works, use the proxy bridge script.
 3. **AWS — the operator supplies valid creds; the sandbox defaults are INVALID.** Default
    `AWS_ACCESS_KEY_ID/SECRET` env vars are placeholders (`InvalidClientTokenId`). When the operator
    pastes valid creds (in-session env vars), the `aws` CLI works through the proxy — pass `--region
