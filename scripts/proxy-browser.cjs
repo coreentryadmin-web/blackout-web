@@ -11,7 +11,6 @@ const { chromium } = require('playwright');
 const http = require('http');
 const tls = require('tls');
 const fs = require('fs');
-const path = require('path');
 
 const CA = fs.readFileSync('/root/.ccr/ca-bundle.crt');
 
