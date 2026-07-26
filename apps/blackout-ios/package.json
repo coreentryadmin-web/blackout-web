@@ -7,6 +7,7 @@
     "sync": "cap sync ios",
     "open": "cap open ios",
     "ios:add": "cap add ios",
+    "assets:generate": "capacitor-assets generate --ios --assetPath assets",
     "validate": "node scripts/validate-config.mjs"
   },
   "dependencies": {
@@ -20,6 +21,7 @@
     "@capacitor/splash-screen": "^6.0.3"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^6.2.0",
     "typescript": "^5"
   }

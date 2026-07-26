@@ -1,21 +1,48 @@
-# Build BlackOut iOS → TestFlight on a GitHub-hosted Mac.
-# Requires secrets: APPLE_TEAM_ID, APP_STORE_CONNECT_ISSUER_ID,
-# APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_PRIVATE_KEY
+# Build, sign, and ship the BlackOut iOS shell to TestFlight from a GitHub-hosted Mac.
 #
-# Manual trigger until ASC API key is in GitHub Secrets.
-# Codemagic (apps/blackout-ios/codemagic.yaml) is the primary path.
+# WHY this mirrors Codemagic: the codemagic-cli-tools (`app-store-connect`,
+# `xcode-project`, `keychain`) are pip-installable and run on ANY Mac, so both CIs
+# share ONE signing story via apps/blackout-ios/scripts/codemagic-signing.sh
+# (fetch/create the distribution cert + App Store provisioning profile with the ASC
+# API key, then `xcode-project use-profiles`). Codemagic (root codemagic.yaml) stays
+# the primary path; this is the GitHub-hosted fallback / parallel path.
+#
+# Required GitHub Actions secrets (NAMES only — never commit values):
+#   APP_STORE_CONNECT_ISSUER_ID   – ASC API key issuer UUID
+#   APP_STORE_CONNECT_KEY_ID      – ASC API key identifier ("Key ID")
+#   APP_STORE_CONNECT_PRIVATE_KEY – full contents of the AuthKey_XXXX.p8 (multi-line PEM)
+# APPLE_TEAM_ID / BUNDLE_ID / the ASC app id are PUBLIC constants (already in
+# codemagic.yaml and the repo), so they are hardcoded below rather than stored as secrets.
 
 name: BlackOut iOS TestFlight
 
 on:
   workflow_dispatch:
+    inputs:
+      submit_to_external_testflight:
+        description: "Also submit the uploaded build for EXTERNAL TestFlight beta review (needs a beta group). Off = internal TestFlight only."
+        type: boolean
+        default: false
+      beta_group:
+        description: "External TestFlight beta group name (only used when submit_to_external_testflight is true)."
+        type: string
+        default: ""
   push:
     branches: [main]
     paths:
       - "apps/blackout-ios/**"
       - ".github/workflows/blackout-ios-testflight.yml"
 
+# Never run two builds of the same ref concurrently — an in-flight upload must finish
+# before the next starts (avoids racing on the same TestFlight build number). Do NOT
+# cancel-in-progress: killing a build mid-upload can leave a half-processed build in ASC.
+concurrency:
+  group: blackout-ios-testflight-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  # Cheap Linux lint of Capacitor/Codemagic config — no Xcode required. Kept from the
+  # stub; gates the expensive Mac job so config drift fails fast and free.
   validate-config:
     runs-on: ubuntu-latest
     steps:
@@ -25,13 +52,39 @@ jobs:
 
   build-ios:
     needs: validate-config
-    runs-on: macos-14
-    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-14 # pinned for reproducibility; bump to macos-latest to float
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: apps/blackout-ios
+    env:
+      # PUBLIC constants — mirror codemagic.yaml exactly. validate-codemagic-env.mjs
+      # (invoked by codemagic-signing.sh) hard-asserts APPLE_TEAM_ID + BUNDLE_ID, so a
+      # typo here fails the signing preflight with a clear message instead of a cryptic
+      # "no matching signing certificate for team" later.
+      BUNDLE_ID: "com.blackout-trades.app"
+      APPLE_TEAM_ID: "ZA32C782N5"
+      XCODE_WORKSPACE: "ios/App/App.xcworkspace"
+      XCODE_SCHEME: "App"
+      APP_STORE_APPLE_ID: "6787797476"
+      # ASC API key: the codemagic CLI auto-reads these EXACT env var names for
+      # --issuer-id / --key-id / --private-key. APP_STORE_CONNECT_PRIVATE_KEY carries
+      # the .p8 PEM content directly (multi-line secret is preserved through `env:`),
+      # and the CLI reads the key from this env var — no separate key file is written.
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v7
+
+      - name: Fail fast if ASC API key secrets are missing
+        run: |
+          set -eu
+          fail=0
+          [ -n "${APP_STORE_CONNECT_ISSUER_ID:-}" ]   || { echo "Missing secret APP_STORE_CONNECT_ISSUER_ID" >&2; fail=1; }
+          [ -n "${APP_STORE_CONNECT_KEY_IDENTIFIER:-}" ] || { echo "Missing secret APP_STORE_CONNECT_KEY_ID" >&2; fail=1; }
+          [ -n "${APP_STORE_CONNECT_PRIVATE_KEY:-}" ] || { echo "Missing secret APP_STORE_CONNECT_PRIVATE_KEY" >&2; fail=1; }
+          [ "$fail" -eq 0 ] || { echo "Add the missing secret(s): repo Settings -> Secrets and variables -> Actions." >&2; exit 1; }
 
       - uses: actions/setup-node@v7
         with:
@@ -39,27 +92,91 @@ jobs:
           cache: npm
           cache-dependency-path: apps/blackout-ios/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci || npm install
+      # Clean CPython avoids the macOS system-Python PEP 668 "externally-managed"
+      # pip failure and puts app-store-connect / xcode-project / keychain on PATH.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Generate iOS project
+      - name: Install codemagic-cli-tools
+        run: pip3 install codemagic-cli-tools
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Generate native iOS project (Capacitor)
         run: |
-          npx cap add ios || true
+          set -euo pipefail
+          # Capacitor appId has no hyphens; the Apple bundle id is patched in after sync.
+          if [ ! -f ios/App/App.xcodeproj/project.pbxproj ]; then
+            npx cap add ios
+          fi
           npx cap sync ios
+          node scripts/patch-ios-bundle-id.mjs
+
+      - name: Generate app icon + splash (native asset sets from assets/)
+        run: npm run assets:generate
+
+      - name: Set a unique TestFlight build number
+        run: |
+          set -euo pipefail
+          # CFBundleVersion must strictly increase per upload or ASC rejects the build
+          # ("bundle version must be higher than previously uploaded"). Pick the next
+          # value above BOTH the latest processed TestFlight build and this run number.
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || true)
+          case "$LATEST" in ''|*[!0-9]*) LATEST=0 ;; esac
+          NEW="$GITHUB_RUN_NUMBER"
+          if [ "$LATEST" -ge "$NEW" ]; then NEW=$((LATEST + 1)); fi
+          echo "Latest TestFlight build=$LATEST, run=$GITHUB_RUN_NUMBER -> CFBundleVersion=$NEW"
+          PBX="ios/App/App.xcodeproj/project.pbxproj"
+          # Capacitor's Info.plist sets CFBundleVersion to $(CURRENT_PROJECT_VERSION),
+          # so bumping the build setting propagates to the IPA. sed mirrors the repo's
+          # own patch-ios-bundle-id.mjs (BSD sed on macOS needs the `-i ''` form).
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = ${NEW};/g" "$PBX"
+          grep -q "CURRENT_PROJECT_VERSION = ${NEW};" "$PBX" || { echo "Failed to set CURRENT_PROJECT_VERSION in $PBX" >&2; exit 1; }
+
+      - name: Set up code signing (fetch/create cert + profile via ASC API key)
+        run: bash scripts/codemagic-signing.sh
 
       - name: Install CocoaPods
         run: cd ios/App && pod install
 
-      - name: Build and upload (requires ASC secrets)
-        env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+      - name: Build signed IPA
         run: |
-          if [ -z "$APP_STORE_CONNECT_PRIVATE_KEY" ]; then
-            echo "Skip IPA upload — add App Store Connect API secrets to GitHub Actions."
-            echo "Use Codemagic (apps/blackout-ios/codemagic.yaml) as primary build path."
-            exit 0
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+
+      - name: Upload to TestFlight
+        env:
+          SUBMIT_EXTERNAL: ${{ inputs.submit_to_external_testflight }}
+          BETA_GROUP: ${{ inputs.beta_group }}
+        run: |
+          set -euo pipefail
+          # `app-store-connect publish` uploads the IPA to App Store Connect; once Apple
+          # finishes processing it is available to INTERNAL TestFlight testers with no
+          # further step. --testflight (-t) additionally submits the build for EXTERNAL
+          # beta review into the named group (Apple review required for external testers).
+          args=(--path 'build/ios/ipa/*.ipa')
+          if [ "${SUBMIT_EXTERNAL:-false}" = "true" ]; then
+            if [ -z "${BETA_GROUP:-}" ]; then
+              echo "submit_to_external_testflight=true requires a beta_group input." >&2
+              exit 1
+            fi
+            args+=(--testflight --beta-group "$BETA_GROUP")
+            echo "Uploading + submitting to EXTERNAL TestFlight group '$BETA_GROUP'"
+          else
+            echo "Uploading to App Store Connect (INTERNAL TestFlight only)"
           fi
-          echo "Full Fastlane/upload step: add when ASC .p8 is in GitHub Secrets."
+          app-store-connect publish "${args[@]}"
+
+      - name: Upload build artifacts (IPA + xcodebuild logs)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: blackout-ios-ipa
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            apps/blackout-ios/build/ios/ipa/*.ipa
+            /tmp/xcodebuild_logs/*.log

@@ -36,6 +36,8 @@ workflows:
           fi
           npx cap sync ios
           node scripts/patch-ios-bundle-id.mjs
+      - name: Generate app icon + splash (native asset sets from assets/)
+        script: npm run assets:generate
       - name: Set up code signing (auto via App Store Connect API key)
         script: bash scripts/codemagic-signing.sh
       - name: Install CocoaPods
