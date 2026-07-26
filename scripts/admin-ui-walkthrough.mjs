@@ -58,6 +58,19 @@ const PAGES = [
   { path: "/dashboard", slug: "dashboard" },
   { path: "/vector", slug: "vector" },
   { path: "/vector?ticker=SPX", slug: "vector-spx" },
+  // Admin panel — READ-ONLY walk (navigate + screenshot + capture errors), NO click-sweep. See
+  // NO_SWEEP below: these are on live prod with a real admin session, so a click could mutate data.
+  { path: "/admin", slug: "admin" },
+  { path: "/admin/users", slug: "admin-users" },
+  { path: "/admin/track-record", slug: "admin-track-record" },
+  { path: "/admin/largo-answer-preview", slug: "admin-largo-answer-preview" },
+  // Remaining authenticated desk pages. /account is read-only here (subscription/profile mutations);
+  // the others get the safe (hardened unsafe-skip) click-sweep.
+  { path: "/account", slug: "account" },
+  { path: "/heatmap", slug: "heatmap" },
+  { path: "/flows", slug: "flows" },
+  { path: "/terminal", slug: "terminal" },
+  { path: "/track-record", slug: "track-record" },
 ];
 
 // Chart pages carry the Vector indicator trigger once the lightweight-charts bundle mounts.
@@ -286,7 +299,19 @@ async function walkNighthawk(page, pageKey, state) {
 
 // Text/aria fragments that mark a control as UNSAFE to click in a bounded sweep (destructive,
 // nav-away, sign-out, external, subscription). Matched case-insensitively against label + aria-label.
-const UNSAFE_LABEL = /sign\s*out|log\s*out|delete|remove|cancel subscription|unsubscribe|upgrade|manage (billing|subscription)|open in|external/i;
+const UNSAFE_LABEL =
+  /sign\s*out|log\s*out|logout|delete|remove|ban|revoke|grant|suspend|reset|impersonate|save|update|submit|confirm|buy|upgrade|subscribe|unsubscribe|cancel|manage (billing|subscription)|new user|add user|open in|external/i;
+
+/**
+ * Routes where the click-sweep is FORBIDDEN — navigate + screenshot + capture errors ONLY, zero
+ * clicks. WHY: these render on LIVE PROD under a REAL admin session, so a stray click could mutate
+ * real data (delete/ban/revoke/grant-role/reset/suspend/impersonate on /admin*; subscription/profile
+ * changes on /account). The hardened UNSAFE_LABEL list above is a second line of defence for the
+ * non-admin desk sweeps, but for these routes we do not sweep AT ALL.
+ */
+function isNoSweepRoute(path) {
+  return path.startsWith("/admin") || path === "/account";
+}
 
 /**
  * Bounded generic sweep — enumerate visible <button>/[role=tab]/[role=button] not already covered
@@ -435,8 +460,11 @@ try {
     }
 
     // Bounded generic clickable sweep — surfaces runtime bugs the targeted walk misses (coupled to
-    // the console-error counter). Skipped on a premium gate (nothing member-facing to sweep).
-    if (state !== "premium-gate") {
+    // the console-error counter). Skipped on a premium gate (nothing member-facing to sweep) AND on
+    // NO_SWEEP routes (/admin*, /account) — read-only on live prod to avoid mutating real data.
+    if (isNoSweepRoute(path)) {
+      note(slug, "sweep", "notfound", "read-only route (live prod admin session) — sweep disabled");
+    } else if (state !== "premium-gate") {
       await sweepClickables(page, slug);
     }
 
