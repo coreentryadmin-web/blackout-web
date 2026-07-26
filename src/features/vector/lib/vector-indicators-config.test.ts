@@ -10,6 +10,7 @@ import {
   isVectorLevelId,
   isVectorGexHeatmapId,
   isVectorGammaRegimeId,
+  isVectorExpectedMoveConeId,
   overlayFamilyAvailability,
   VECTOR_DEFAULT_ENABLED_INDICATORS,
   defaultVectorIndicators,
@@ -113,10 +114,23 @@ test("VECTOR_INDICATOR_GROUPS: covers every family + level + structure id exactl
     "confluence-band",
     "flow-markers",
     "expected-move",
+    "expected-move-cone",
     "gex-heatmap",
     "gamma-regime",
   ];
   assert.deepEqual([...grouped].sort(), [...expected].sort());
+});
+
+test("expected-move-cone: opt-in companion to the flat band, in the Expected move group, OFF by default", () => {
+  assert.ok(isVectorExpectedMoveConeId("expected-move-cone"));
+  assert.ok(!isVectorExpectedMoveConeId("expected-move"));
+  assert.ok(!isVectorExpectedMoveConeId(null));
+  // Lives next to the flat band in the "Expected move" group.
+  const em = VECTOR_INDICATOR_GROUPS.find((g) => g.title === "Expected move");
+  assert.ok(em);
+  assert.deepEqual(em!.items.map((i) => i.id), ["expected-move", "expected-move-cone"]);
+  // Strictly additive: the cone must NOT be enabled on first paint.
+  assert.ok(!defaultVectorIndicators().has("expected-move-cone"));
 });
 
 test("VECTOR_DEFAULT_ENABLED_INDICATORS: dealer gamma positioning on by default (gamma-regime OFF)", () => {

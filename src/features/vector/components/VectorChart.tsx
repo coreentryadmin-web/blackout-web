@@ -96,6 +96,9 @@ import {
 } from "@/features/vector/lib/vector-indicators-config";
 import { GexHeatmapPrimitive } from "@/features/vector/lib/vector-gex-heatmap-primitive";
 import { PinConePrimitive, type PinConeStep } from "@/features/vector/lib/vector-pin-cone-primitive";
+import { EmConePrimitive } from "@/features/vector/lib/vector-em-cone-primitive";
+import { emConeFromExpectedMove } from "@/features/vector/lib/vector-em-cone";
+import { etMinutesOfDay } from "@/lib/swing/scan-cadence";
 import { GammaRegimePrimitive } from "@/features/vector/lib/vector-gamma-regime-primitive";
 import { WallRailPrimitive } from "@/features/vector/lib/vector-wall-rail-primitive";
 import { gexCellAtGridPoint, heatmapBucketSecForChartTimeframe } from "@/features/vector/lib/vector-gex-heatmap-paint";
@@ -1235,6 +1238,13 @@ export function VectorChart({
   // reads as a funnel narrowing onto the pin. Cleared on ticker switch / unmount with the series.
   const pinConePrimitiveRef = useRef<PinConePrimitive | null>(null);
   const pinConeRef = useRef<PinConeStep[] | null>(null);
+  // TIME-CONVERGING EXPECTED-MOVE CONE (default OFF, "expected-move-cone" toggle): the "remaining
+  // intraday move" funnel — the last-fetched expected-move band (expectedMoveBandsRef, shared with
+  // the flat ±1σ/2σ lines) rebuilt via emConeFromExpectedMove into a cone that narrows from "now"
+  // (the latest bar's ET minute) to the 16:00 close, since move ∝ √time. Drawn in the right margin
+  // by EmConePrimitive at zOrder "bottom"; a null band/spot or off-hours clock draws nothing. Cleared
+  // on ticker switch / unmount with the series (chart.remove disposes attached primitives).
+  const emConePrimitiveRef = useRef<EmConePrimitive | null>(null);
   // GEX positioning heatmap (#14): the strike×time surface primitive attached BEHIND the candles
   // (zOrder "bottom"), plus the last horizon-scoped grid it draws. The grid is fetched in the
   // DTE-scoped effect (like max-pain/expected-move) and visibility is gated on the "gex-heatmap"
@@ -1836,6 +1846,36 @@ export function VectorChart({
           pinConeRef.current,
           bars.length ? (bars[bars.length - 1]!.time as Time) : null,
           ticker === "SPX"
+        );
+        // TIME-CONVERGING EXPECTED-MOVE CONE (default OFF) — the honest "remaining move" companion to
+        // the flat band above. Built from the SAME expected-move band + the live spot, funnelling
+        // from "now" to the 16:00 close. "Now" is the latest bar's ET minute-of-day (the same anchor
+        // the pin cone projects off, so both funnels start at the same x). Additive: the flat-band
+        // path above is untouched, so a member can run either or both.
+        //
+        // Gated on THREE conditions (compute skipped entirely when off — no 32-sample build):
+        //  1. the opt-in toggle;
+        //  2. 0DTE horizon ONLY — "converge to spot at 16:00 today" is only correct when the front
+        //     expiry IS today; on a later horizon the chain's move isn't a today-close budget;
+        //  3. a live RTH session — off-hours the last bar's ET minute is a stale pre-close sliver
+        //     (belt-and-suspenders with the geometry's own `nowEtMin >= 960 → null`).
+        const coneEnabled =
+          enabled.has("expected-move-cone") &&
+          dteHorizonRef.current === "0dte" &&
+          liveSessionRef.current;
+        const lastBar = bars.length ? bars[bars.length - 1]! : null;
+        const nowEtMin =
+          coneEnabled && lastBar && Number.isFinite(lastBar.time as number)
+            ? etMinutesOfDay((lastBar.time as number) * 1000)
+            : null;
+        const emCone =
+          nowEtMin != null
+            ? emConeFromExpectedMove(expectedMoveBandsRef.current, spotRef.current, nowEtMin)
+            : null;
+        emConePrimitiveRef.current?.setData(
+          emCone,
+          lastBar ? (lastBar.time as Time) : null,
+          coneEnabled
         );
       }
       // GEX positioning heatmap (#14) — push the last horizon-scoped grid + toggle state to the
@@ -3004,6 +3044,13 @@ export function VectorChart({
     const pinCone = new PinConePrimitive();
     series.attachPrimitive(pinCone);
     pinConePrimitiveRef.current = pinCone;
+    // TIME-CONVERGING EXPECTED-MOVE CONE — attach the "remaining move" funnel primitive. Renders at
+    // zOrder "bottom" (a faint cyan wash under the candles, alongside the heatmap/regime glow) and
+    // stays hidden until paintOverlays pushes a real cone AND the member enables the toggle. The
+    // right-margin room it maps into is the same VECTOR_RIGHT_OFFSET_BARS whitespace the pin cone uses.
+    const emCone = new EmConePrimitive();
+    series.attachPrimitive(emCone);
+    emConePrimitiveRef.current = emCone;
 
     refreshTrails("gex");
     refreshOverlays("gex", initialWalls, initialVexWalls, initialGammaFlip, initialVexFlip, initialDarkPoolLevels);
@@ -3180,6 +3227,9 @@ export function VectorChart({
       // chart.remove() disposed the pin-cone primitive with the series; drop refs so a remount reattaches.
       pinConePrimitiveRef.current = null;
       pinConeRef.current = null;
+      // Same for the EM cone primitive — disposed with the series; drop the ref so a remount reattaches
+      // (matches the field comment claiming it's cleared on remount).
+      emConePrimitiveRef.current = null;
       // chart.remove() disposes the overlay line series too — swap in a fresh map so a remount
       // rebuilds instead of touching the now-disposed series (matches the sibling ref resets).
       overlaySeriesRef.current = new Map();
