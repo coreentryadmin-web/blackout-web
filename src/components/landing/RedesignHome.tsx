@@ -266,8 +266,10 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         </div>
       </section>
 
-      {/* PRICING */}
-      <section className="rl-sec" id="rl-pricing" style={{ paddingTop: 0 }}>
+      {/* PRICING — hidden inside the iOS app (App Store guideline 3.1.1: the app
+          sells nothing in-app and must show no prices/purchase CTAs). Web is
+          unchanged; the app gets the neutral membership note below instead. */}
+      <section className="rl-sec hide-in-ios-app" id="rl-pricing" style={{ paddingTop: 0 }}>
         <div className="rl-wrap">
           <div className="rl-sec-head rl-reveal">
             <span className="rl-kicker"><span className="dot" aria-hidden />Membership</span>
@@ -296,6 +298,22 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         </div>
       </section>
 
+      {/* Neutral membership note — shown ONLY inside the iOS app in place of the
+          pricing table above. No prices, no purchase CTA (App Store 3.1.1): it
+          states the reader-app model and routes to sign-in. */}
+      <section className="rl-sec show-in-ios-app" style={{ paddingTop: 0 }}>
+        <div className="rl-wrap">
+          <div className="rl-sec-head rl-reveal">
+            <span className="rl-kicker"><span className="dot" aria-hidden />Membership</span>
+            <h2>One desk. <span className="rl-gt">Signed in.</span></h2>
+            <p>Your BlackOut membership is managed on the web. Sign in to open the full desk on your iPhone.</p>
+            <div className="rl-cta-row" style={{ justifyContent: "center", marginTop: 20 }}>
+              <Link href={signedIn ? "/dashboard" : "/sign-in"} prefetch={false} className="rl-btn rl-btn-primary">{signedIn ? "Open desk →" : "Sign in →"}</Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* CLOSING */}
       <section className="rl-closing">
         {/* Perspective phosphor floor receding to the horizon behind the final CTA. */}
@@ -306,7 +324,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
           <p>Six modules. One verified tape. Your broker, your trigger — start with the full desk today.</p>
           <div className="rl-cta-row">
             <Link href="/sign-up" prefetch={false} className="rl-btn rl-btn-primary">Get started →</Link>
-            <Link href="/pricing" prefetch={false} className="rl-btn rl-btn-ghost">See pricing</Link>
+            <Link href="/pricing" prefetch={false} className="rl-btn rl-btn-ghost hide-in-ios-app">See pricing</Link>
           </div>
         </div>
       </section>
