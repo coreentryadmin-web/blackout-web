@@ -4,6 +4,7 @@ import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
 import { IMAGES, MARKETING_MODULE_GALLERY } from "@/lib/images";
 import { InstrumentIcon } from "@/components/ui/icons/InstrumentIcons";
 import { ProductGallery } from "@/components/ui/motion/ProductGallery";
+import { ProductScroller } from "@/components/ui/motion/ProductScroller";
 import { Marquee } from "@/components/ui/motion/Marquee";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
@@ -174,58 +175,63 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         </div>
       </section>
 
-      {/* PER-PRODUCT DEEP DIVE — every module marketed in full */}
+      {/* PER-PRODUCT DEEP DIVE — every module marketed in full, presented as one
+          horizontal scroll strip. This was six tall stacked rows (the page's longest
+          block AND the third place MARKETING_PRODUCTS rendered); collapsing it into a
+          swipeable carousel keeps every product's full pitch while cutting the page's
+          vertical length and the visual repetition. */}
       <section className="rl-sec" id="rl-products" style={{ paddingTop: 0 }}>
         <div className="rl-wrap">
           <div className="rl-sec-head rl-reveal">
             <span className="rl-kicker"><span className="dot" aria-hidden />Every module, in depth</span>
             <h2>Six edges. <span className="rl-gt">One membership.</span></h2>
-            <p>Each module is a full product — purpose-built for one dimension of the tape, unified by BlackOut Intelligence. No add-ons, no upsells: the whole desk is one price.</p>
+            <p>Each module is a full product — purpose-built for one dimension of the tape, unified by BlackOut Intelligence. No add-ons, no upsells: the whole desk is one price. <span className="rl-swipe-hint">Swipe the desk →</span></p>
           </div>
-          <div className="rl-deep">
-            {MARKETING_PRODUCTS.map((m, i) => {
+          <ProductScroller count={MARKETING_PRODUCTS.length} ariaLabel="Desk modules in depth">
+            {MARKETING_PRODUCTS.map((m) => {
               const soon = m.launchStatus === "soon";
               return (
                 <article
                   key={m.id}
                   id={`product-${m.id}`}
-                  className={`rl-deep-row rl-reveal${i % 2 === 1 ? " rev" : ""}`}
+                  data-hscroll-card
+                  className="rl-pcard rl-reveal"
                   style={{ "--a": m.accent } as CSSProperties}
                 >
-                  <div className="rl-deep-copy">
-                    <div className="rl-deep-top">
+                  <div className="rl-pcard-visual">
+                    <div className="rl-pcard-chrome" aria-hidden>
+                      <span className="d" /><span className="d" /><span className="d" />
+                      <span className="rl-pcard-lbl">{m.label} · live desk</span>
+                    </div>
+                    {/* Real product screenshots — the strongest marketing is the actual
+                        desk. One shot renders static; multiple become a carousel. */}
+                    <ProductGallery images={MARKETING_MODULE_GALLERY[m.id]} label={m.label} />
+                  </div>
+                  <div className="rl-pcard-body">
+                    <div className="rl-pcard-top">
                       <span className="rl-deep-glyph" aria-hidden><InstrumentIcon id={m.id} size={20} /></span>
                       <span className="rl-deep-idx">{String(m.index).padStart(2, "0")}</span>
                       <span className="rl-deep-tag">{m.tag}</span>
                       <span className="rl-deep-aud">{m.audience}</span>
-                      {soon && <span className="rl-mod-soon">Launching soon</span>}
+                      {soon && <span className="rl-mod-soon">Soon</span>}
                     </div>
-                    <h3 className="rl-deep-name">{m.label}</h3>
-                    <p className="rl-deep-hl">{m.headline}</p>
-                    <p className="rl-deep-lede">{m.lede}</p>
+                    <h3 className="rl-pcard-name">{m.label}</h3>
+                    <p className="rl-pcard-hl">{m.headline}</p>
+                    <p className="rl-pcard-lede">{m.lede}</p>
                     <ul className="rl-deep-bullets">
                       {m.bullets.map((b) => <li key={b}>{b}</li>)}
                     </ul>
-                    <div className="rl-deep-foot">
+                    <div className="rl-pcard-foot">
                       <div className="rl-deep-stat"><span className="k">{m.stat.k}</span><span className="v">{m.stat.v}</span></div>
                       <Link href={m.href} prefetch={false} className="rl-mod-link">
                         {soon ? "Get early access →" : `Open ${m.label} →`}
                       </Link>
                     </div>
                   </div>
-                  <div className="rl-deep-visual">
-                    <div className="rl-deep-visual-chrome" aria-hidden>
-                      <span className="d" /><span className="d" /><span className="d" />
-                      <span className="rl-deep-visual-lbl">{m.label} · live desk</span>
-                    </div>
-                    {/* Real product screenshots — the strongest marketing is the actual
-                        desk. One shot renders static; multiple become a carousel. */}
-                    <ProductGallery images={MARKETING_MODULE_GALLERY[m.id]} label={m.label} />
-                  </div>
                 </article>
               );
             })}
-          </div>
+          </ProductScroller>
         </div>
       </section>
 
