@@ -7,7 +7,7 @@
  *   FAPI ticket exchange → __session cookie — the exact block used by
  *   scripts/audit/data-validator.mjs), then POSTs a stream of board frames to the
  *   admin-only ingest endpoint (POST /api/admin/zerodte/sim/board) on a clock. An admin
- *   watching <base>/night-hawk?sim=1 in a browser then sees a simulated 0DTE session
+ *   watching <base>/nighthawk?sim=1 in a browser then sees a simulated 0DTE session
  *   play through the REAL Night Hawk panel — while every member keeps seeing the real,
  *   untouched board (three-layer isolation: admin gate + separate Redis key + ?sim=1
  *   opt-in; see src/lib/platform/zerodte-sim-board.ts).
@@ -566,7 +566,7 @@ function replayFrames(file) {
 }
 
 // ── main ────────────────────────────────────────────────────────────────────────────
-const WATCH_URL = `${BASE}/night-hawk?sim=1`;
+const WATCH_URL = `${BASE}/nighthawk?sim=1`;
 const INGEST = `${BASE}/api/admin/zerodte/sim/board`;
 
 let userId = null;
