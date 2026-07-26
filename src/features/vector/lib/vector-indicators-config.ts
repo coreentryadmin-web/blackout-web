@@ -202,6 +202,22 @@ export function isVectorExpectedMoveId(v: unknown): v is VectorExpectedMoveId {
 }
 
 /**
+ * "Expected move — CONE" — the honest "remaining intraday move" companion to the flat ±1σ/2σ band.
+ * The flat band is the WHOLE-session range as horizontal lines; this draws the move STILL AHEAD from
+ * "now" to the 16:00 close as a shaded cone that narrows toward the close, because expected move
+ * scales with √time so the remaining-time move budget decays as the session burns down (geometry in
+ * `vector-em-cone.ts`, painted by `EmConePrimitive` at zOrder "bottom"). One toggle, DEFAULT OFF (a
+ * new visual members opt into — NOT in `VECTOR_DEFAULT_ENABLED_INDICATORS`); strictly additive, so a
+ * member can run the flat band, the cone, or both. Real-data-only: a null band/spot or off-hours
+ * clock draws nothing, never a fabricated cone.
+ */
+export type VectorExpectedMoveConeId = "expected-move-cone";
+
+export function isVectorExpectedMoveConeId(v: unknown): v is VectorExpectedMoveConeId {
+  return v === "expected-move-cone";
+}
+
+/**
  * "Positioning" — the strike×time dealer-gamma (GEX) surface drawn as a background HEATMAP BEHIND
  * the candles (task #14). x = time, y = strike (price axis), cell colour = signed net GEX intensity
  * (call-dominated positive → cyan/teal, put-dominated negative → magenta). Defaults ON via
@@ -247,6 +263,7 @@ export type VectorIndicatorId =
   | VectorConfluenceId
   | VectorFlowId
   | VectorExpectedMoveId
+  | VectorExpectedMoveConeId
   | VectorGexHeatmapId
   | VectorGammaRegimeId;
 
@@ -285,8 +302,12 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   },
   {
     title: "Expected move",
-    // Cyan matches the dashed ±1σ/2σ band lines drawn on the chart.
-    items: [{ id: "expected-move", label: "Expected move (±1σ/2σ range)", color: "#22d3ee" }],
+    // Cyan matches the dashed ±1σ/2σ band lines drawn on the chart. The cone is a distinct sky-cyan
+    // dot so members can tell the "remaining move" funnel apart from the flat whole-session band.
+    items: [
+      { id: "expected-move", label: "Expected move (±1σ/2σ range)", color: "#22d3ee" },
+      { id: "expected-move-cone", label: "EM cone (remaining move)", color: "#67e8f9" },
+    ],
   },
   {
     title: "Positioning",
