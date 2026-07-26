@@ -3,16 +3,21 @@
 **Read this first every session, then continue.** Full backlog + architecture live in
 `docs/ios/IOS-PREMIUM-PROGRAM.md`. This file is the "where am I / what's next" pointer.
 
-## Hard environment constraint (do not forget)
-This is a **Linux** sandbox — **no Mac, no Xcode**. Native iOS code can be *written* here but
-**cannot be compiled, run, simulated, screenshotted, or signed** without a Mac. Two unlocks:
-1. **Owner provides AWS creds** → provision an EC2 Mac we control → native dev + build + test + sign
-   there (true end-to-end). *(Requested; awaiting values.)*
-2. **Owner adds 3 GitHub secrets** (`APP_STORE_CONNECT_ISSUER_ID/KEY_ID/PRIVATE_KEY`) → GitHub Mac
-   runners build/sign/upload via `.github/workflows/blackout-ios-testflight.yml` (build-only; native
-   *testing* still needs unlock #1). *(Alternative; awaiting values.)*
-What IS fully doable + validatable here **now**: the web-side iOS-shell experience (renders inside
-the WKWebView), validated via `scripts/ios/ios-ui-audit.mjs` at true iPhone resolution against prod.
+## Hard environment constraint + the build strategy (RESOLVED 2026-07-26)
+This is a **Linux** sandbox — no local Mac/Xcode. Native iOS is *written* here and *compiled/tested*
+remotely. The strategy:
+1. **PRIMARY dev/test loop → GitHub Actions macOS runners.** Confirmed working via the GitHub MCP
+   channel (list/trigger workflows + read job logs + artifacts). Compiling Swift, running XCTest, and
+   snapshot/UI tests need **no AWS quota and no secrets** — I push code + a macOS CI workflow, trigger
+   it, and read results + snapshot PNGs as artifacts. This is the autonomous native build/test loop.
+2. **ACCELERATOR → AWS EC2 Mac.** Owner provided AWS creds (account 177922194517, profile
+   `blackout-mac`, session-local, never committed). All Mac host quotas were **0**; a quota increase
+   for `Running Dedicated mac2 Hosts` (L-5D8DADF5 → 1) is **PENDING AWS review** (req
+   `89b92573…`, 2026-07-26). When granted → interactive Xcode over SSH + local signing.
+3. **RELEASE signing/upload** → either the AWS Mac (sign with the ASC key already held) or the 3
+   GitHub secrets. Only needed at submission time, not during build-out.
+Web-side iOS-shell work remains fully doable + validatable now via `scripts/ios/ios-ui-audit.mjs`
+(the hybrid is the transitional bridge; native is the target per the master prompt).
 
 ## Architecture decision (current)
 Ship the **premium hybrid** (Capacitor WKWebView + rich native shell) to App-Store-ready FAST — it's
