@@ -76,7 +76,7 @@ tabs/segments/controls, asserts shell classes, two device passes. Reuse + grow i
 - [ ] **P0-1 `/privacy` page** — Apple requires a working Privacy Policy URL; route does not exist. Additive.
 - [ ] **P0-2 Homepage pricing leak (3.1.1)** — `RedesignHome.tsx` `#rl-pricing` ($75/$199/$1,999 + "Start now") + hero/closing "See pricing" links are un-gated in-app; it's the reviewer's cold-start screen. Gate for iOS.
 - [ ] **P0-3 Server-side iOS detection (durable 3.1.1)** — read `BlackOutiOSApp` UA on the server; render neutral variants so pricing/purchase markup never ships to the app (today it's CSS-hidden but present in DOM).
-- [ ] **P0-4 Remove `*.whop.com` from `allowNavigation`** (`capacitor.config.ts`) so checkout can never open in-app.
+- [x] **P0-4 Remove `*.whop.com` from `allowNavigation`** (`capacitor.config.ts`) so checkout can never open in-app. Done 2026-07-26.
 
 ### N — Native premium features
 - [ ] **N-1 Face ID / biometric app-lock** — plugin + app-resume gate + Account toggle.

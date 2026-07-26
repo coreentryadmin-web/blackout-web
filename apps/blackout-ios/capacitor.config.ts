@@ -34,8 +34,14 @@ const config: CapacitorConfig = {
     url: "https://blackouttrades.com",
     cleartext: false,
     // Domains the WKWebView is allowed to navigate to without bouncing to an
-    // external browser. Clerk auth + Cloudflare Turnstile + TradingView + Whop
-    // must be allow-listed or sign-in / charts / checkout break.
+    // external browser. Clerk auth + Cloudflare Turnstile + TradingView must be
+    // allow-listed or sign-in / charts break.
+    //
+    // Whop is deliberately NOT allow-listed (App Store guideline 3.1.1): the app
+    // sells nothing in-app, so any Whop/checkout URL must open in the EXTERNAL
+    // browser (Safari), never render inside the app's WKWebView. Removing it here
+    // means a stray checkout link bounces out instead of becoming an in-app
+    // purchase surface — the exact behavior review requires.
     allowNavigation: [
       "blackouttrades.com",
       "*.blackouttrades.com",
@@ -44,7 +50,6 @@ const config: CapacitorConfig = {
       "challenges.cloudflare.com",
       "*.tradingview.com",
       "s.tradingview.com",
-      "*.whop.com",
     ],
   },
   ios: {
