@@ -62,6 +62,36 @@ export function pinnedLivePnlPct(entryPremium: number | null, mark: number | nul
   return Math.round(((mark - entryPremium) / entryPremium) * 10000) / 100;
 }
 
+/**
+ * SELLER-framed premium P&L for a CREDIT structure (the iron condor) — the mirror of
+ * pinnedLivePnlPct. A condor is SOLD for the credit (`entryCredit`) at entry and BOUGHT BACK at
+ * the current `mark`, so its return is (entry − mark)/entry: a DECAYING mark (mark ↓ toward 0) is
+ * a POSITIVE return (the credit kept), and a mark that BLOWS OUT above the credit is the defined
+ * loss. This is the exact INVERSE of the long-premium formula — applying pinnedLivePnlPct to a
+ * credit structure records a winning (decaying) condor as a large NEGATIVE (a +76% winner stored
+ * as −76%; FINDINGS 2026-07-26). Same guards + 2dp rounding as pinnedLivePnlPct so the two lanes
+ * are directly comparable. Null-safe on a missing entry/mark (quote-only or unmarked condor row).
+ */
+export function condorSellerPnlPct(entryCredit: number | null, mark: number | null): number | null {
+  if (entryCredit == null || entryCredit <= 0 || mark == null) return null;
+  return Math.round(((entryCredit - mark) / entryCredit) * 10000) / 100;
+}
+
+/**
+ * THE structure-aware live-P&L branch — seller-framed for a credit condor, long-framed otherwise —
+ * so the board/live lanes branch on structure in ONE place and no consumer re-implements the flip
+ * (the Wave-2 render adapter used to invert at DISPLAY, which risked a double-invert once the source
+ * was corrected; this is the single source instead). Directional rows are byte-identical to
+ * pinnedLivePnlPct.
+ */
+export function livePnlPctFor(
+  isCondor: boolean,
+  entryPremium: number | null,
+  mark: number | null
+): number | null {
+  return isCondor ? condorSellerPnlPct(entryPremium, mark) : pinnedLivePnlPct(entryPremium, mark);
+}
+
 // ── WS-10: executable-side P&L lanes (bid/ask, not mid) ────────────────────────────
 // WHY THIS EXISTS. `pinnedLivePnlPct` above marks a play on the MID. But a long 0DTE
 // option is BOUGHT near the ASK and SOLD near the BID — mid marks BOTH the entry and the
@@ -177,6 +207,29 @@ export function ledgerDisplayPnlPct(row: {
   trough_premium: number | null;
 }): number | null {
   if (closedStopReason(row) === "stopped") return PLAN_RULES.stop_pct;
+  return pinnedLivePnlPct(row.entry_premium, row.last_mark);
+}
+
+/**
+ * THE board ledger row's `live_pnl_pct` — the ONE place the payload assembler derives it, applied
+ * IDENTICALLY at both build sites in zerodte-service (mapLedgerRow and the post-roundFloats
+ * re-price off the member-visible rounded premiums). Three cases, in order:
+ *   - CONDOR (credit structure): seller-framed (entry − mark)/entry (condorSellerPnlPct). The
+ *     directional −50% stop-pin does NOT apply — a condor is breach-graded, has no premium stop
+ *     level, and its loss is the defined-risk cap, not a fixed −50%.
+ *   - a directional STOPPED close: pinned to the stop P&L (the number the grader will stamp; D-1).
+ *   - every other directional row: long-framed (mark − entry)/entry (pinnedLivePnlPct).
+ * Pure + null-safe. Directional output is byte-identical to the previous inline expression.
+ */
+export function reconcileLedgerLivePnlPct(row: {
+  is_condor: boolean;
+  /** "stopped" pins the directional stop P&L; any other value / null falls through. */
+  closed_reason: string | null;
+  entry_premium: number | null;
+  last_mark: number | null;
+}): number | null {
+  if (row.is_condor) return condorSellerPnlPct(row.entry_premium, row.last_mark);
+  if (row.closed_reason === "stopped") return PLAN_RULES.stop_pct;
   return pinnedLivePnlPct(row.entry_premium, row.last_mark);
 }
 
