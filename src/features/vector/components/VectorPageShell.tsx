@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { PageShell, FreshnessChip } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
 import type { VectorBar } from "@/features/vector/components/VectorChart";
+import type { PlayLevelsInput } from "@/features/vector/lib/vector-play-levels";
 import type { VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
 import type { WallHistorySample, VectorWallLens } from "@/features/vector/lib/vector-wall-history";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
@@ -89,6 +90,11 @@ type Props = {
    *  Meaningful ONLY for the chart-only embed (the SPX desk); the standalone /vector page never
    *  sets it and never receives it. `seq` re-fires the flash on repeat clicks of the same level. */
   focusLevel?: { price: number; label: string; tone: string; seq: number } | null;
+  /** PLAYS ON THE CHART seam (2026-07-26): the member's ACTIVE SPX play (entry/stop/target/
+   *  invalidation) mapped to price-lines, forwarded verbatim to VectorChart so its risk levels draw
+   *  on the tape. Meaningful ONLY for the chart-only embed (the SPX desk); the standalone /vector
+   *  page never sets it and never receives it, so that page stays byte-identical. */
+  playLevels?: PlayLevelsInput;
   /** Host-desk slot rendered in the chart toolbar immediately LEFT of the Replay control
    *  (user-directed 2026-07-14: the desk focus toggle lives there after the time bar's removal). */
   toolbarReplayLeadSlot?: React.ReactNode;
@@ -123,6 +129,7 @@ export function VectorPageShell({
   defaultChartViewport = "session",
   onPriceScaleRender,
   focusLevel,
+  playLevels,
   toolbarReplayLeadSlot,
 }: Props) {
   const chartOnly = embed === "chart-only";
@@ -365,6 +372,7 @@ export function VectorPageShell({
           defaultChartViewport={defaultChartViewport}
           onPriceScaleRender={onPriceScaleRender}
           focusLevel={focusLevel}
+          playLevels={playLevels}
           onFreshness={liveSession ? setStreamUpdatedAt : undefined}
           onRegimeChange={setRegime}
           alertRules={alertRules}

@@ -84,6 +84,92 @@ export function playLevelLines(input: PlayLevelsInput): PlayLevelLine[] {
   return out.filter((l): l is PlayLevelLine => l !== null);
 }
 
+/**
+ * Minimal STRUCTURAL view of the SPX play payload (`SpxPlayPayload`) that the mapper reads. Kept
+ * structural — not an import of the full engine type — so this vector-layer helper stays decoupled
+ * from the SPX play engine (no cross-feature type coupling / import cycle) and is trivially
+ * unit-testable with a plain literal.
+ */
+export type SpxPlayLevelsSource =
+  | {
+      action?: string | null;
+      direction?: "long" | "short" | null;
+      levels?: {
+        entry?: number | null;
+        stop?: number | null;
+        target?: number | null;
+        // NOTE: in the LIVE payload `invalidation` is a human-readable STRING ("Below 6900 (GEX
+        // support wall − 3pt)"), NOT a price — so it coerces to null here and simply doesn't draw.
+        // The numeric `stop` already marks that same level, so no information is lost. Typed loosely
+        // so a future numeric invalidation would flow through unchanged.
+        invalidation?: number | string | null;
+      } | null;
+      open_play?: {
+        direction?: "long" | "short" | null;
+        entry_price?: number | null;
+        stop?: number | null;
+        target?: number | null;
+      } | null;
+    }
+  | null
+  | undefined;
+
+/** Coerce to a finite number or null — a NaN/undefined/string/non-finite value never reaches the
+ *  line generator, so a half-populated payload can't draw a fabricated level. */
+function toNum(x: unknown): number | null {
+  return typeof x === "number" && Number.isFinite(x) ? x : null;
+}
+
+/**
+ * Map the ACTIVE SPX play (the `useSpxPlay` payload) to the chart's {@link PlayLevelsInput}. This is
+ * the ONLY place that knows the payload shape; `playLevelLines` stays payload-agnostic. Three cases,
+ * in priority order — these are the member's OWN live risk levels, so an open position outranks a
+ * pending idea:
+ *  1. `open_play` present → the member is IN the trade → state:"open" (bold solid lines) with the
+ *     committed entry/stop/target off the open row.
+ *  2. else a live IDEA — `levels.entry` is finite AND the desk is actively signaling it (BUY or
+ *     WATCH*) → state:"idea" (faint dotted lines) at where the setup WOULD trigger. SCANNING / SELL /
+ *     idle are not actionable → nothing.
+ *  3. else → state:"none" (draws nothing; chart stays byte-identical to today).
+ */
+export function playPayloadToLevelsInput(play: SpxPlayLevelsSource): PlayLevelsInput {
+  const dirOf = (d: unknown): "long" | "short" | null =>
+    d === "long" || d === "short" ? d : null;
+
+  // (1) OPEN position — draw the live, committed risk levels.
+  const open = play?.open_play;
+  if (open) {
+    return {
+      state: "open",
+      direction: dirOf(open.direction),
+      entry: toNum(open.entry_price),
+      stop: toNum(open.stop),
+      target: toNum(open.target),
+      // The open row carries no invalidation; fall back to the current idea's levels for it.
+      invalidation: toNum(play?.levels?.invalidation),
+    };
+  }
+
+  // (2) LIVE IDEA — a proposed setup the desk is actively signaling, not yet entered.
+  const action = typeof play?.action === "string" ? play.action.toUpperCase() : "";
+  const levels = play?.levels;
+  const ideaEntry = toNum(levels?.entry);
+  const actionableIdea = action === "BUY" || action.startsWith("WATCH");
+  if (levels && ideaEntry != null && actionableIdea) {
+    return {
+      state: "idea",
+      direction: dirOf(play?.direction),
+      entry: ideaEntry,
+      stop: toNum(levels.stop),
+      target: toNum(levels.target),
+      invalidation: toNum(levels.invalidation),
+    };
+  }
+
+  // (3) Nothing actionable — draw nothing.
+  return { state: "none", direction: null, entry: null, stop: null, target: null, invalidation: null };
+}
+
 /** Colors are exported so the chart legend / rail can match the drawn lines exactly. */
 export const PLAY_LEVEL_COLORS = {
   entry: ENTRY_COLOR,

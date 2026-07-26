@@ -19,6 +19,11 @@ import {
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
+import {
+  playLevelLines,
+  type PlayLevelsInput,
+  type PlayLineKind,
+} from "@/features/vector/lib/vector-play-levels";
 import { VectorCrosshairLegend, type VectorCrosshairState } from "@/features/vector/components/VectorCrosshairLegend";
 import { VectorToolbar } from "@/features/vector/components/VectorToolbar";
 import {
@@ -300,6 +305,15 @@ type Props = {
    * byte-identical.
    */
   focusLevel?: { price: number; label: string; tone: string; seq: number } | null;
+  /**
+   * PLAYS ON THE CHART seam (2026-07-26): the member's ACTIVE SPX play mapped to entry/stop/target/
+   * invalidation price-lines. When present, the chart reconciles a DEDICATED set of labeled price-
+   * lines against `playLevelLines(playLevels)` — an OPEN position draws bold solid lines (live risk
+   * being managed), a pending IDEA draws faint dotted lines (where it WOULD trigger). Strictly
+   * optional: when undefined or `state:"none"` (the standalone /vector page, or no active play) no
+   * line is drawn and behavior is byte-identical.
+   */
+  playLevels?: PlayLevelsInput;
 };
 
 function lensVisuals(lens: VectorWallLens) {
@@ -1126,6 +1140,7 @@ export function VectorChart({
   defaultChartViewport = "live",
   onPriceScaleRender,
   focusLevel,
+  playLevels,
 }: Props) {
   const initialTimeframe = defaultTimeframe ?? VECTOR_DEFAULT_TIMEFRAME;
   const openingDteHorizon: VectorDteHorizon = defaultDteHorizon ?? "weekly";
@@ -1200,6 +1215,10 @@ export function VectorChart({
   // (and cancel its pending fade) before drawing the next one, and clean both up on unmount.
   const focusLineRef = useRef<IPriceLine | null>(null);
   const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // PLAYS ON THE CHART (2026-07-26): the member's ACTIVE SPX play drawn as entry/stop/target/
+  // invalidation price-lines, kept in a DEDICATED map keyed by line kind so it reconciles
+  // independently and never clobbers the flip / max-pain / EM / pin / confluence / focus lines.
+  const playLineRef = useRef<Map<PlayLineKind, IPriceLine>>(new Map());
   // Expected-move band (#15 cone, slice 3b): the last-fetched band, its drawn price-lines, and a
   // signature so paintOverlays only rebuilds the lines when the band or the toggle actually changes.
   const expectedMoveBandsRef = useRef<ExpectedMove | null>(null);
@@ -1491,6 +1510,72 @@ export function VectorChart({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusLevel?.seq]);
+
+  // PLAYS ON THE CHART (2026-07-26): reconcile the member's ACTIVE SPX play into a dedicated set of
+  // labeled price-lines. Mirrors the applyLevelLines / applyConfluenceBand reconcile idiom — add or
+  // update one line per kind, remove kinds no longer present — but against its OWN map so it never
+  // touches any other overlay. Keyed on the resolved lines' JSON signature so it repaints only when
+  // a level actually changes (not on every unrelated render). `state:"none"` / undefined → empty
+  // desired set → all lines removed, so /vector (which never passes the prop) is byte-identical.
+  const playLinesSig = JSON.stringify(
+    playLevelLines(playLevels ?? { state: "none", direction: null, entry: null, stop: null, target: null, invalidation: null })
+  );
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series) return;
+    const map = playLineRef.current;
+    const desired = playLevelLines(
+      playLevels ?? { state: "none", direction: null, entry: null, stop: null, target: null, invalidation: null }
+    );
+    const desiredByKind = new Map(desired.map((l) => [l.kind, l]));
+    // Remove lines whose kind is no longer wanted (play closed, level dropped, or state → none).
+    for (const [kind, pl] of map) {
+      if (!desiredByKind.has(kind)) {
+        series.removePriceLine(pl);
+        map.delete(kind);
+      }
+    }
+    // Add / update one line per desired kind.
+    for (const [kind, line] of desiredByKind) {
+      const opts = {
+        price: line.price,
+        color: line.color,
+        lineWidth: line.width,
+        lineStyle:
+          line.style === "solid"
+            ? LineStyle.Solid
+            : line.style === "dashed"
+              ? LineStyle.Dashed
+              : LineStyle.Dotted,
+        lineVisible: true,
+        axisLabelVisible: true,
+        title: line.label,
+      };
+      const existing = map.get(kind);
+      if (existing) existing.applyOptions(opts);
+      else map.set(kind, series.createPriceLine(opts));
+    }
+    // chartReady is REQUIRED here: this effect is declared before the chart-creation effect that
+    // assigns seriesRef.current, so at first commit it runs before the series exists and bails on
+    // `!series`. Without chartReady in the deps it would never re-run once the series is built —
+    // and on a mid-session refresh the play is seeded synchronously from sessionStorage, so
+    // playLinesSig is already its final (constant) value and never changes → the entry/stop/target
+    // lines would silently never draw. Matches the other series-touching effects in this file.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playLinesSig, chartReady]);
+
+  // Clear ALL play-lines on unmount so nothing lingers on a disposed series (the series itself is
+  // removed by the chart teardown, but drop our refs too and stay symmetric with the other overlays).
+  // `map` is captured here (the ref's Map identity is stable for the component's life) so the cleanup
+  // reads a local, not `playLineRef.current` — avoids the stale-ref-in-cleanup lint.
+  useEffect(() => {
+    const map = playLineRef.current;
+    return () => {
+      const series = seriesRef.current;
+      for (const pl of map.values()) series?.removePriceLine(pl);
+      map.clear();
+    };
+  }, []);
 
   const refreshTrails = useCallback((activeLens: VectorWallLens) => {
     const series = seriesRef.current;
