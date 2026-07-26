@@ -61,6 +61,8 @@ type FeedItem = PulseSignal & { id: string };
 
 const STALE_AFTER_MS = 30_000;
 const FLASH_MS = 1_200;
+/** The quiet footer only shows once the newest Tier-1 event is at least this old. */
+const QUIET_AFTER_MS = 3 * 60 * 1000;
 
 function fmtClock(ms: number): string {
   return new Date(ms).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
@@ -160,7 +162,11 @@ export function SpxPulseRail({ desk, live, focus }: Props) {
   const rateLedgerRef = useRef<number[]>([]); // global rate cap emit times
   const wallTrackerRef = useRef<WallBreakTracker>(emptyWallBreakTracker());
   const prevPlayRef = useRef<SpxPlayInput>(null);
+  const playSeededRef = useRef(false); // false until the FIRST play observation (seed, don't fire)
   const seenSweepRef = useRef<Set<string>>(new Set());
+  // Last processed desk tick (polled_at||as_of) — the detection block runs ONLY when the desk
+  // actually changed, so a pin-only re-render can't advance the wall-break hold counter.
+  const deskTickRef = useRef<string | null>(null);
   const idSeqRef = useRef(0);
 
   const push = (signals: PulseSignal[], now: number) => {
@@ -185,6 +191,14 @@ export function SpxPulseRail({ desk, live, focus }: Props) {
   // ── Core desk-tick detection ──
   useEffect(() => {
     if (!live || !desk?.available || !largoEnabled()) return;
+    // Run ONLY on a genuine desk change — a pin-only re-render (5s pin SWR, unchanged desk)
+    // must not advance the wall-break hold counter, so "held 3 polls" means 3 real desk ticks.
+    const deskTick = desk.polled_at ?? desk.as_of ?? null;
+    if (deskTick != null && deskTickRef.current === deskTick) return;
+    // First observation this mount (fresh page OR rail-toggle remount) — seed sweeps silently.
+    const firstTick = prevSnapRef.current === null;
+    deskTickRef.current = deskTick;
+
     const voice = voiceSnapshotFromDesk(desk);
     const now = Date.now();
     const snap = buildSpxPulseSnapshot({
@@ -203,11 +217,14 @@ export function SpxPulseRail({ desk, live, focus }: Props) {
     wallTrackerRef.current = tracker;
     raw.push(...breaks);
 
-    // Sweeps from the desk flow tape (no extra fetch).
+    // Sweeps from the desk flow tape (no extra fetch). On the FIRST observation we seed the
+    // seen-set WITHOUT emitting — else every pre-existing ≥$1M brief would flash stale-as-fresh
+    // at mount. New prints on later ticks are timestamped from brief.alerted_at (see engine).
     for (const brief of desk.spx_flows ?? []) {
       const id = `${brief.strike}:${brief.expiry}:${brief.alerted_at}`;
-      if (seenSweepRef.current.has(id)) continue;
+      const alreadySeen = seenSweepRef.current.has(id);
       seenSweepRef.current.add(id);
+      if (alreadySeen || firstTick) continue;
       const s = sweepToPulseSignal(brief, now);
       if (s) raw.push(s);
     }
@@ -245,7 +262,11 @@ export function SpxPulseRail({ desk, live, focus }: Props) {
           contractLabel: play.option_ticket?.contract_label ?? null,
         }
       : null;
-    const events = detectSpxPlaySignals(prevPlayRef.current, slice, now);
+    // Seed on the FIRST observation (mount OR rail-toggle remount resets prevPlayRef to null):
+    // an already-OPEN play must NOT emit a false "FIRED/ARMED" stamped now.
+    const hadPrev = playSeededRef.current;
+    playSeededRef.current = true;
+    const events = detectSpxPlaySignals(prevPlayRef.current, slice, now, hadPrev);
     prevPlayRef.current = slice;
     if (!events.length) return;
     const cooled = filterFreshPulseSignals(events, seenRef.current, now);
@@ -287,6 +308,12 @@ export function SpxPulseRail({ desk, live, focus }: Props) {
   const visible = useMemo(() => feed.filter((s) => signalPassesFilter(s, filter)), [feed, filter]);
   const { pinned, stream } = useMemo(() => orderPulseFeed(visible), [visible]);
   const lastTier1 = useMemo(() => feed.find((s) => signalTier(s) === 1) ?? null, [feed]);
+  // The honest quiet footer only appears once the tape has ACTUALLY gone quiet — hidden right
+  // after a Tier-1 fires (else it would contradict a fresh pinned regime-flip/wall-break).
+  const showQuiet = useMemo(() => {
+    void heartbeat; // re-evaluate on the heartbeat tick as a fresh Tier-1 ages out
+    return !lastTier1 || Date.now() - lastTier1.at > QUIET_AFTER_MS;
+  }, [lastTier1, heartbeat]);
 
   // ── FOCUS MODE — slim vertical strip (effects above keep accumulating) ──
   if (focus) {
@@ -370,12 +397,14 @@ export function SpxPulseRail({ desk, live, focus }: Props) {
               <p className="spx-pulse-empty">Watching the tape — no events yet this session.</p>
             ) : null}
 
-            {/* HONEST QUIET STATE */}
-            <div className="spx-pulse-quiet">
-              {lastTier1
-                ? `structure holding — no Tier-1 events since ${fmtHm(lastTier1.at)}`
-                : "structure holding — no Tier-1 events yet this session"}
-            </div>
+            {/* HONEST QUIET STATE — only once the tape has genuinely gone quiet. */}
+            {showQuiet && (
+              <div className="spx-pulse-quiet">
+                {lastTier1
+                  ? `structure holding — no Tier-1 events since ${fmtHm(lastTier1.at)}`
+                  : "structure holding — no Tier-1 events yet this session"}
+              </div>
+            )}
           </>
         )}
       </div>

@@ -259,7 +259,38 @@ test("sweepToPulseSignal drops non-sweeps and sub-floor premium", () => {
   assert.equal(sweepToPulseSignal(brief({ premium: 200_000 }), 5000), null);
 });
 
+test("sweepToPulseSignal timestamps from alerted_at, not the observation time", () => {
+  const s = sweepToPulseSignal(brief({ alerted_at: "2026-07-26T15:00:00Z" }), 999_000_000);
+  assert.ok(s);
+  assert.equal(s!.at, Date.parse("2026-07-26T15:00:00Z"));
+});
+
+test("sweepToPulseSignal falls back to now only when alerted_at is absent/unparseable", () => {
+  const s = sweepToPulseSignal(brief({ alerted_at: "" }), 999_000_000);
+  assert.ok(s);
+  assert.equal(s!.at, 999_000_000);
+});
+
 // ═══════════════════════════ PLAY LIFECYCLE (Tier 3) ═════════════════════════
+test("play signals: first observation seeds silently — no false FIRED for an already-open play", () => {
+  const open = { action: "BUY", direction: "long" as const, open_play: { direction: "long" as const, entry_price: 6000 } };
+  // hasPrevObservation = false → seed, emit nothing, even though a play is already OPEN.
+  assert.deepEqual(detectSpxPlaySignals(null, open, 1000, false), []);
+  // Once observed, an unchanged open→open still emits nothing (no transition).
+  assert.deepEqual(detectSpxPlaySignals(open, open, 2000, true), []);
+});
+
+test("wall build off a sub-floor base fires with notional only (no % artifact)", () => {
+  const prev = snap({ walls: [{ strike: 5950, netGex: 1, kind: "support" }] }); // ~nothing
+  const next = snap({ at: 2000, walls: [{ strike: 5950, netGex: -300_000, kind: "support" }] }); // material now
+  const w = detectSpxPulseSignals(prev, next).find((s) => s.kind === "wall-build");
+  assert.ok(w, "a wall forming from ~nothing to a material node still fires");
+  assert.match(w!.line, /building fast/);
+  assert.ok(w!.magnitude!.some((m) => m.unit === "notional"));
+  assert.equal(w!.magnitude!.some((m) => m.unit === "percent"), false, "no % chip off a sub-floor base");
+  assert.equal(/%/.test(w!.why ?? ""), false, "no % in the why line either (would be +29,999,900%)");
+});
+
 test("play signals fire on arm → fire → close transitions", () => {
   const armed = detectSpxPlaySignals(
     { action: "SCANNING", direction: null, open_play: null },

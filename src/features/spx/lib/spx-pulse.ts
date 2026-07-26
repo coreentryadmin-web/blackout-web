@@ -354,13 +354,22 @@ export function detectSpxPulseSignals(
     if (!p) continue;
     const before = Math.abs(p.netGex);
     const after = Math.abs(w.netGex);
-    if (Math.max(before, after) < SPX_WALL_MIN_ABS || before === 0) continue;
-    const change = (after - before) / before;
+    if (Math.max(before, after) < SPX_WALL_MIN_ABS) continue; // both sub-floor → noise
     const notionalDelta = w.netGex - p.netGex;
+    // A % is only meaningful off a RELIABLE base (≥ floor). Off a sub-floor base a wall that
+    // formed from ~nothing is still material and fires — but shows the notional-Δ chip only,
+    // never a 29,999,900%-off-a-base-of-1 artifact.
+    const baseReliable = before >= SPX_WALL_MIN_ABS;
+    const change = baseReliable ? (after - before) / before : Number.NaN;
+    const fires = baseReliable ? Math.abs(change) >= SPX_WALL_DELTA_PCT : true; // sub-floor→material = a build
+    if (!fires) continue;
+    const grew = after >= before;
+    const pctChip = baseReliable ? [mag("percent", Math.round(change * 100), `${grew ? "+" : ""}${Math.round(change * 100)}%`)] : [];
+    const pctPhrase = baseReliable ? ` ${Math.abs(Math.round(change * 100))}%` : "";
     const label = `${fmtLevel(w.strike)}${w.kind === "support" ? "P" : "C"}`;
-    if (change >= SPX_WALL_DELTA_PCT) {
+    if (grew) {
       lifecycle.push({
-        mag: Math.abs(change) * after,
+        mag: Math.abs(notionalDelta),
         s: sig({
           key: `spx-wall-build:${w.kind}:${Math.round(w.strike)}`,
           kind: "wall-build",
@@ -370,16 +379,13 @@ export function detectSpxPulseSignals(
           level: w.strike,
           line: `${label} wall building fast`,
           implication: w.kind === "support" ? "new support hardening below" : "cap hardening overhead",
-          magnitude: [
-            mag("notional", notionalDelta, `${fmtNotional(notionalDelta)} γ`),
-            mag("percent", Math.round(change * 100), `+${Math.round(change * 100)}%`),
-          ],
-          why: `|net gamma| at ${label} grew ${Math.round(change * 100)}% (${fmtNotional(before)}→${fmtNotional(after)}) between polls.`,
+          magnitude: [mag("notional", notionalDelta, `${fmtNotional(notionalDelta)} γ`), ...pctChip],
+          why: `|net gamma| at ${label} grew${pctPhrase} (${fmtNotional(before)}→${fmtNotional(after)}) between polls.`,
         }),
       });
-    } else if (change <= -SPX_WALL_DELTA_PCT) {
+    } else {
       lifecycle.push({
-        mag: Math.abs(change) * before,
+        mag: Math.abs(notionalDelta),
         s: sig({
           key: `spx-wall-dissolve:${w.kind}:${Math.round(w.strike)}`,
           kind: "wall-build",
@@ -389,11 +395,8 @@ export function detectSpxPulseSignals(
           level: w.strike,
           line: `${label} wall dissolving`,
           implication: w.kind === "support" ? "support thinning — floor less reliable" : "upside cap weakening",
-          magnitude: [
-            mag("notional", notionalDelta, `${fmtNotional(notionalDelta)} γ`),
-            mag("percent", Math.round(change * 100), `${Math.round(change * 100)}%`),
-          ],
-          why: `|net gamma| at ${label} shrank ${Math.abs(Math.round(change * 100))}% (${fmtNotional(before)}→${fmtNotional(after)}) between polls.`,
+          magnitude: [mag("notional", notionalDelta, `${fmtNotional(notionalDelta)} γ`), ...pctChip],
+          why: `|net gamma| at ${label} shrank${pctPhrase} (${fmtNotional(before)}→${fmtNotional(after)}) between polls.`,
         }),
       });
     }
@@ -630,7 +633,7 @@ function fmtPremium(n: number): string {
  * Returns null for anything below the premium floor or not a sweep — the rail headlines
  * conviction prints, not the whole tape.
  */
-export function sweepToPulseSignal(brief: SpxFlowBrief, at: number): PulseSignal | null {
+export function sweepToPulseSignal(brief: SpxFlowBrief, fallbackNow: number): PulseSignal | null {
   if (!brief.has_sweep) return null;
   if (num(brief.premium) == null || brief.premium < SPX_SWEEP_MIN_PREMIUM) return null;
   const isCall = brief.option_type?.toLowerCase() === "call";
@@ -639,6 +642,11 @@ export function sweepToPulseSignal(brief: SpxFlowBrief, at: number): PulseSignal
   const bullish = (isCall && bought) || (!isCall && !bought);
   const tone: PulseSignalTone = bullish ? "bull" : "bear";
   const contracts = num(brief.trade_count);
+  // Timestamp the sweep from when it actually printed, not when we first observed it — else a
+  // pre-existing tape brief would flash minutes-old as "now" on the first tick. `now` is only
+  // the fallback when the brief carries no parseable print time.
+  const printedAt = brief.alerted_at ? Date.parse(brief.alerted_at) : NaN;
+  const at = Number.isFinite(printedAt) ? printedAt : fallbackNow;
   return {
     key: `spx-sweep:${brief.strike}:${brief.expiry}:${Math.round(at / 1000)}`,
     kind: "flow-print",
@@ -663,8 +671,15 @@ export function sweepToPulseSignal(brief: SpxFlowBrief, at: number): PulseSignal
 export function detectSpxPlaySignals(
   prev: SpxPlayInput,
   next: SpxPlayInput,
-  at: number
+  at: number,
+  /** Seed silently on the FIRST observation (page mount / rail-toggle remount resets the
+   *  caller's ref to null). Without this an already-OPEN play would emit a false "FIRED"/
+   *  "ARMED" stamped `now` — presenting a minutes-old fill as fresh. Matches the snapshot
+   *  detector's `if (!prev) return []` seed-don't-fire discipline. Pass a real `prev` (even
+   *  an empty scanning slice) only when you WANT the transition graded. */
+  hasPrevObservation = true
 ): PulseSignal[] {
+  if (!hasPrevObservation) return []; // first observation: seed, emit nothing
   if (!next) return [];
   const events: PulseSignal[] = [];
 
