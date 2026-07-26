@@ -49,8 +49,11 @@ const VectorPageShell = dynamic(
   { loading: () => null }
 );
 
-const SpxCommentaryRail = dynamic(
-  () => import("./SpxCommentaryRail").then((m) => ({ default: m.SpxCommentaryRail })),
+// SPX left-column intel rail (2026-07-26): defaults to the ⚡ Pulse event feed, with a
+// one-click toggle back to the original Largo commentary rail (nothing removed). The Largo
+// engine/backend is untouched — SpxIntelRail just swaps which presentation is the default.
+const SpxIntelRail = dynamic(
+  () => import("./SpxIntelRail").then((m) => ({ default: m.SpxIntelRail })),
   { loading: () => null }
 );
 
@@ -264,7 +267,7 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
                 compactPanels && iosPanel === "intel" && "ios-native-panel-visible"
               )}
             >
-              <SpxCommentaryRail desk={desk} live={live} focus={focusActive} />
+              <SpxIntelRail desk={desk} live={live} focus={focusActive} />
             </aside>
           </Suspense>
         </SpxPanelErrorBoundary>

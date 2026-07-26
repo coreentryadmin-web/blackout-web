@@ -36,7 +36,36 @@ export type PulseSignalKind =
   | "magnet-shift"
   | "integrity"
   | "wall-structure"
-  | "flow-print";
+  | "flow-print"
+  // ── SPX Pulse taxonomy (2026-07-26, additive) — never emitted by the Vector engine,
+  //    only by src/features/spx/lib/spx-pulse.ts. Declared here so the SEVERITY tier map
+  //    and PulseSignal type stay a single source of truth across both surfaces. ──
+  | "wall-break"
+  | "macro-window"
+  | "pin-shift"
+  | "wall-build"
+  | "vol-regime"
+  | "session-phase";
+
+/**
+ * Curation severity (2026-07-26). Tier 1 = regime-defining (pinned, never rate-capped);
+ * Tier 2 = structural; Tier 3 = contextual. Additive: the Vector render ignores it, the
+ * SPX rail pins/streams by it.
+ */
+export type PulseSeverityTier = 1 | 2 | 3;
+
+export type PulseMagnitudeUnit = "points" | "notional" | "percent" | "contracts" | "premium";
+
+/**
+ * A quantified magnitude payload for a signal — the "how much" behind the "what". `value`
+ * is signed where a direction is meaningful (Δpts, Δnotional); `label` is the pre-formatted
+ * mono chip the rail renders verbatim so the display math lives with the number.
+ */
+export type PulseMagnitude = {
+  unit: PulseMagnitudeUnit;
+  value: number;
+  label: string;
+};
 
 export type PulseSignal = {
   key: string;
@@ -44,6 +73,18 @@ export type PulseSignal = {
   tone: PulseSignalTone;
   line: string;
   at: number;
+  // ── Optional enrichment (2026-07-26). All additive: existing Vector-emitted signals
+  //    omit them and render exactly as before. ──
+  /** Severity tier — defaults (when absent) to the kind's TIER_BY_KIND entry. */
+  tier?: PulseSeverityTier;
+  /** One or more quantified magnitudes (γ-notional Δ, points, %, contracts). */
+  magnitude?: PulseMagnitude[];
+  /** The trade implication — "dealers now amplify moves". Dim second line on the row. */
+  implication?: string;
+  /** One-line WHY revealed under the expand chevron. */
+  why?: string;
+  /** Numeric level this signal is anchored to (strike/price) — powers (kind, level) dedup. */
+  level?: number | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -371,3 +412,110 @@ export function isSignificantFlow(flow: FlowAlert): boolean {
 
 /** Max signals kept in the feed — older ones pruned to bound memory. */
 export const PULSE_FEED_MAX = 50;
+
+// ---------------------------------------------------------------------------
+// Severity tiers + curation primitives (2026-07-26, shared with the SPX engine).
+// All pure + additive — the Vector render path never calls them, so Vector's
+// existing behaviour is byte-for-byte unchanged.
+// ---------------------------------------------------------------------------
+
+/** Default severity per kind. `tier` on a signal overrides this when present. */
+export const TIER_BY_KIND: Record<PulseSignalKind, PulseSeverityTier> = {
+  // Tier 1 — regime-defining, pinned, never rate-capped.
+  "regime-flip": 1,
+  "wall-break": 1,
+  "macro-window": 1,
+  // Tier 2 — structural.
+  "magnet-shift": 2,
+  "pin-shift": 2,
+  "wall-build": 2,
+  "vol-regime": 2,
+  "integrity": 2,
+  "wall-structure": 2,
+  // Tier 3 — contextual.
+  "flow-print": 3,
+  "session-phase": 3,
+  "play-state": 3,
+  "proximity": 3,
+};
+
+export function severityTierForKind(kind: PulseSignalKind): PulseSeverityTier {
+  return TIER_BY_KIND[kind] ?? 3;
+}
+
+/** Effective tier of a signal — its explicit `tier`, else the kind default. */
+export function signalTier(sig: PulseSignal): PulseSeverityTier {
+  return sig.tier ?? severityTierForKind(sig.kind);
+}
+
+/**
+ * (kind, level) dedup within a window. Two signals of the same kind anchored to the same
+ * rounded level inside `windowMs` collapse to one — e.g. a wall that builds, ticks, and
+ * builds again at 7,530 prints once. Level falls back to the signal `key` when no numeric
+ * `level` is set, so keyed-but-levelless signals still dedup on identity. Pure.
+ */
+export function dedupeByKindLevel(
+  signals: PulseSignal[],
+  seenAtByKindLevel: Record<string, number>,
+  nowMs: number,
+  windowMs = 90 * 1000
+): { kept: PulseSignal[]; seen: Record<string, number> } {
+  const seen: Record<string, number> = {};
+  for (const [k, t] of Object.entries(seenAtByKindLevel)) {
+    if (nowMs - t < windowMs * 4) seen[k] = t;
+  }
+  const kept: PulseSignal[] = [];
+  for (const sig of signals) {
+    const levelKey = sig.level != null ? `${Math.round(sig.level)}` : sig.key;
+    const composite = `${sig.kind}:${levelKey}`;
+    const last = seen[composite];
+    if (last != null && nowMs - last < windowMs) continue;
+    seen[composite] = nowMs;
+    kept.push(sig);
+  }
+  return { kept, seen };
+}
+
+/** Default global cap — no more than this many NON-tier-1 signals per rolling minute. */
+export const DEFAULT_RATE_CAP_PER_MIN = 6;
+
+/**
+ * Global rate cap (≤N NON-tier-1/min). Tier-1 signals (regime-defining) ALWAYS pass — a wall
+ * break or γ-flip is never suppressed for volume, and does NOT consume the lower-tier budget.
+ * Lower-tier signals fill the remaining budget highest-severity-then-newest first; the
+ * overflow is dropped (it will re-fire on its next transition if still live). `recentEmitTimes`
+ * is the ledger of recent NON-tier-1 emit times. Pure: returns the emitted set and the pruned
+ * ledger for the next call.
+ */
+export function applyGlobalRateCap(
+  candidates: PulseSignal[],
+  recentEmitTimes: number[],
+  nowMs: number,
+  opts?: { maxPerMin?: number; windowMs?: number }
+): { emitted: PulseSignal[]; recent: number[] } {
+  const windowMs = opts?.windowMs ?? 60 * 1000;
+  const maxPerMin = opts?.maxPerMin ?? DEFAULT_RATE_CAP_PER_MIN;
+  const recent = recentEmitTimes.filter((t) => nowMs - t < windowMs);
+
+  // Tier-1 first (bypass), then tier asc + newest first for the budgeted remainder.
+  const ordered = [...candidates].sort((a, b) => {
+    const ta = signalTier(a);
+    const tb = signalTier(b);
+    if (ta !== tb) return ta - tb;
+    return b.at - a.at;
+  });
+
+  const emitted: PulseSignal[] = [];
+  for (const sig of ordered) {
+    if (signalTier(sig) === 1) {
+      emitted.push(sig); // regime-defining — never rate-capped, never consumes the budget
+      continue;
+    }
+    if (recent.length >= maxPerMin) continue; // non-tier-1 budget spent — drop the overflow
+    emitted.push(sig);
+    recent.push(nowMs);
+  }
+  // Emit in chronological order (newest-first is applied by the feed, not here).
+  emitted.sort((a, b) => a.at - b.at);
+  return { emitted, recent };
+}
