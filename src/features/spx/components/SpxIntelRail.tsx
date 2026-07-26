@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { clsx } from "clsx";
 
+import type { PulseSignal } from "@/features/vector/lib/vector-pulse";
 import type { SpxDeskPayload } from "@/lib/api";
 import { SpxPulseRail } from "./SpxPulseRail";
 import { SpxCommentaryRail } from "./SpxCommentaryRail";
@@ -23,10 +24,14 @@ export function SpxIntelRail({
   desk,
   live,
   focus,
+  onFocusLevel,
 }: {
   desk?: SpxDeskPayload;
   live?: boolean;
   focus?: boolean;
+  /** Chart-anchor seam — threaded straight to SpxPulseRail so a Pulse "→ chart" click reaches the
+   *  embedded Vector chart. Largo (SpxCommentaryRail) has no per-event levels, so it doesn't take it. */
+  onFocusLevel?: (level: number, label: string, tone: PulseSignal["tone"]) => void;
 }) {
   // Default Pulse; hydrate the persisted choice after mount so SSR markup is deterministic.
   const [mode, setMode] = useState<IntelMode>("pulse");
@@ -52,7 +57,7 @@ export function SpxIntelRail({
     return mode === "commentary" ? (
       <SpxCommentaryRail desk={desk} live={live} focus />
     ) : (
-      <SpxPulseRail desk={desk} live={live} focus />
+      <SpxPulseRail desk={desk} live={live} focus onFocusLevel={onFocusLevel} />
     );
   }
 
@@ -81,7 +86,7 @@ export function SpxIntelRail({
       {mode === "commentary" ? (
         <SpxCommentaryRail desk={desk} live={live} focus={focus} />
       ) : (
-        <SpxPulseRail desk={desk} live={live} focus={focus} />
+        <SpxPulseRail desk={desk} live={live} focus={focus} onFocusLevel={onFocusLevel} />
       )}
     </div>
   );

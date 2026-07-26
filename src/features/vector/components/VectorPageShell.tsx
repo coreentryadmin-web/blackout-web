@@ -84,6 +84,11 @@ type Props = {
    *  (SPX Slayer) can align its strike ladder to the chart's live y-scale. Only meaningful
    *  for embeds; the standalone /vector page never sets it. See vector-price-scale-map.ts. */
   onPriceScaleRender?: (map: VectorPriceScaleMap) => void;
+  /** PULSE → CHART ANCHOR seam (2026-07-26): a transient focus request from the SPX desk's Pulse
+   *  rail, forwarded verbatim to VectorChart so it flashes a highlight line at the event's price.
+   *  Meaningful ONLY for the chart-only embed (the SPX desk); the standalone /vector page never
+   *  sets it and never receives it. `seq` re-fires the flash on repeat clicks of the same level. */
+  focusLevel?: { price: number; label: string; tone: string; seq: number } | null;
   /** Host-desk slot rendered in the chart toolbar immediately LEFT of the Replay control
    *  (user-directed 2026-07-14: the desk focus toggle lives there after the time bar's removal). */
   toolbarReplayLeadSlot?: React.ReactNode;
@@ -117,6 +122,7 @@ export function VectorPageShell({
   defaultTimeframe,
   defaultChartViewport = "session",
   onPriceScaleRender,
+  focusLevel,
   toolbarReplayLeadSlot,
 }: Props) {
   const chartOnly = embed === "chart-only";
@@ -358,6 +364,7 @@ export function VectorPageShell({
           defaultTimeframe={defaultTimeframe}
           defaultChartViewport={defaultChartViewport}
           onPriceScaleRender={onPriceScaleRender}
+          focusLevel={focusLevel}
           onFreshness={liveSession ? setStreamUpdatedAt : undefined}
           onRegimeChange={setRegime}
           alertRules={alertRules}
