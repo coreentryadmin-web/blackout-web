@@ -9,6 +9,7 @@ import {
   isVectorOverlayFamilyId,
   isVectorLevelId,
   isVectorGexHeatmapId,
+  isVectorGammaRegimeId,
   overlayFamilyAvailability,
   VECTOR_DEFAULT_ENABLED_INDICATORS,
   defaultVectorIndicators,
@@ -113,12 +114,29 @@ test("VECTOR_INDICATOR_GROUPS: covers every family + level + structure id exactl
     "flow-markers",
     "expected-move",
     "gex-heatmap",
+    "gamma-regime",
   ];
   assert.deepEqual([...grouped].sort(), [...expected].sort());
 });
 
-test("VECTOR_DEFAULT_ENABLED_INDICATORS: dealer gamma positioning on by default", () => {
+test("VECTOR_DEFAULT_ENABLED_INDICATORS: dealer gamma positioning on by default (gamma-regime OFF)", () => {
   assert.deepEqual([...VECTOR_DEFAULT_ENABLED_INDICATORS], ["gex-heatmap"]);
   assert.ok(defaultVectorIndicators().has("gex-heatmap"));
   assert.equal(defaultVectorIndicators().size, 1);
+  // The new regime glow is opt-in — it must NOT be enabled on first paint.
+  assert.ok(!defaultVectorIndicators().has("gamma-regime"));
+});
+
+test("isVectorGammaRegimeId: matches only the regime toggle id", () => {
+  assert.ok(isVectorGammaRegimeId("gamma-regime"));
+  assert.ok(!isVectorGammaRegimeId("gex-heatmap"));
+  assert.ok(!isVectorGammaRegimeId("vwap"));
+  assert.ok(!isVectorGammaRegimeId(null));
+  // gamma-regime lives in the "Positioning" group alongside gex-heatmap.
+  const positioning = VECTOR_INDICATOR_GROUPS.find((g) => g.title === "Positioning");
+  assert.ok(positioning);
+  assert.deepEqual(
+    positioning!.items.map((i) => i.id).sort(),
+    ["gamma-regime", "gex-heatmap"]
+  );
 });

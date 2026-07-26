@@ -91,6 +91,7 @@ import {
 } from "@/features/vector/lib/vector-indicators-config";
 import { GexHeatmapPrimitive } from "@/features/vector/lib/vector-gex-heatmap-primitive";
 import { PinConePrimitive, type PinConeStep } from "@/features/vector/lib/vector-pin-cone-primitive";
+import { GammaRegimePrimitive } from "@/features/vector/lib/vector-gamma-regime-primitive";
 import { WallRailPrimitive } from "@/features/vector/lib/vector-wall-rail-primitive";
 import { gexCellAtGridPoint, heatmapBucketSecForChartTimeframe } from "@/features/vector/lib/vector-gex-heatmap-paint";
 import type { GexHeatmapGrid } from "@/features/vector/lib/vector-gex-reconstruct";
@@ -1207,6 +1208,13 @@ export function VectorChart({
   const gexHeatmapPrimitiveRef = useRef<GexHeatmapPrimitive | null>(null);
   const gexHeatmapGridRef = useRef<GexHeatmapGrid | null>(null);
   const gexHeatmapSpotAtFetchRef = useRef<number | null>(null);
+  // Dealer-gamma REGIME boundary glow (default OFF, "gamma-regime" toggle): a low-alpha teal/amber
+  // gradient hugging the gamma-flip line — calm/long-γ above, unstable/short-γ below. The primitive
+  // draws nothing until the toggle is on AND a finite flip is pushed. `regimeFlipRef` caches the
+  // last active-lens flip so a toggle repaint (paintOverlays) can re-push it without waiting for the
+  // next live tick (mirrors how gexHeatmapGridRef feeds the heatmap on toggle).
+  const gammaRegimePrimitiveRef = useRef<GammaRegimePrimitive | null>(null);
+  const regimeFlipRef = useRef<number | null>(null);
   const lastConfluenceRef = useRef<string>("");
   // Opt-in technical overlays (VWAP/EMA/SMA) — one lightweight-charts line series per enabled
   // indicator, created on demand and removed when toggled off. Default: none. `indicatorsRef`
@@ -1513,6 +1521,17 @@ export function VectorChart({
       // axis keeps auto-widening to reveal the bead rows.
       applyWallsToSeries(series, callGuideRefs, putGuideRefs, EMPTY_WALLS, activeLens, 0);
       applyFlipGuide(series, flipGuideRef, flip, v.flipLabel, v.flipColor);
+      // Dealer-gamma REGIME boundary glow — spatialize the long-γ (calm, above the flip) vs short-γ
+      // (unstable, below the flip) regime on the price pane. Fed the ACTIVE-lens flip (same one the
+      // flip guide draws) + live spot; the primitive brightens whichever side spot sits in. Cached
+      // to regimeFlipRef so a bare toggle-on (paintOverlays) can re-push without a live tick. Gated
+      // on the toggle → a no-op (draws nothing) until the member opts in; null flip draws nothing.
+      regimeFlipRef.current = flip;
+      gammaRegimePrimitiveRef.current?.setData({
+        flip,
+        spot: spotRef.current,
+        enabled: indicatorsRef.current.has("gamma-regime"),
+      });
       // King anchors: solid lines at the dominant call/put wall of the ACTIVE (horizon-scoped) walls,
       // so the anchor re-scopes with the DTE toggle. Timeframe-aware too: the band widens with the
       // candle interval (anchorBandPctForTimeframe), so a tight 1m view anchors to the nearest strong
@@ -1668,6 +1687,14 @@ export function VectorChart({
       // draws nothing. This lives in paintOverlays so a toggle flip (which repaints here via the
       // indicators effect) shows/hides the surface instantly; the fetch pushes fresh data directly.
       gexHeatmapPrimitiveRef.current?.setData(gexHeatmapGridRef.current, enabled.has("gex-heatmap"));
+      // Dealer-gamma regime glow — same toggle-repaint path as the heatmap: re-push the last cached
+      // active-lens flip + live spot so flipping "gamma-regime" on/off shows/hides the glow instantly
+      // (live flip/spot updates come through refreshOverlays on each tick). No-op when off.
+      gammaRegimePrimitiveRef.current?.setData({
+        flip: regimeFlipRef.current,
+        spot: spotRef.current,
+        enabled: enabled.has("gamma-regime"),
+      });
     }
 
     // Oscillator sub-panes (RSI / MACD) in their OWN panes below price. The pane LAYOUT is rebuilt
@@ -2807,6 +2834,12 @@ export function VectorChart({
     const gexHeatmap = new GexHeatmapPrimitive();
     series.attachPrimitive(gexHeatmap);
     gexHeatmapPrimitiveRef.current = gexHeatmap;
+    // Dealer-gamma regime boundary glow — attached AFTER the heatmap so, within the shared "bottom"
+    // zOrder, the glow sits just over the heatmap yet still under the candles. Stays hidden (draws
+    // nothing) until the member enables the "gamma-regime" toggle AND a finite flip is pushed.
+    const gammaRegime = new GammaRegimePrimitive();
+    series.attachPrimitive(gammaRegime);
+    gammaRegimePrimitiveRef.current = gammaRegime;
     // EOD pin CONE (SPX desk only): attach the converging-cone primitive to the candle series. It
     // renders at zOrder "top" (a translucent gold funnel over the candles) and stays hidden until
     // paintOverlays pushes a real MC cone for SPX. The right-margin room it needs comes from
@@ -3013,6 +3046,10 @@ export function VectorChart({
       // a remount (ticker switch) re-attaches a fresh primitive instead of touching a dead one.
       gexHeatmapPrimitiveRef.current = null;
       gexHeatmapGridRef.current = null;
+      // Same lifecycle as the heatmap primitive — chart.remove() disposed it; drop the refs so a
+      // remount re-attaches a fresh glow instead of touching a dead one.
+      gammaRegimePrimitiveRef.current = null;
+      regimeFlipRef.current = null;
       volumeSeriesRef.current = null;
       setChartReady(false);
     };

@@ -218,6 +218,23 @@ export function isVectorGexHeatmapId(v: unknown): v is VectorGexHeatmapId {
 }
 
 /**
+ * "Positioning" — the dealer-gamma REGIME as a boundary GLOW hugging the gamma-flip line, rather
+ * than a text banner. The flip is where net dealer gamma changes sign, so it is a regime boundary:
+ * ABOVE it dealers are LONG gamma → hedge against moves → the tape PINS / mean-reverts (cool teal);
+ * BELOW it dealers are SHORT gamma → hedge with moves → the tape TRENDS / is unstable (warm amber).
+ * The chart maps this to a lightweight-charts PRIMITIVE that draws a soft, low-alpha vertical
+ * gradient ~52px each side of the flip (fading to 0 at the edge) — a boundary glow, NOT a full-pane
+ * wash, so it coexists with the default-on GEX heatmap without muddying it. Real-data-only: a null/
+ * non-finite flip draws nothing, never a fabricated regime. Defaults OFF (not in
+ * `VECTOR_DEFAULT_ENABLED_INDICATORS`) — a new visual members opt into.
+ */
+export type VectorGammaRegimeId = "gamma-regime";
+
+export function isVectorGammaRegimeId(v: unknown): v is VectorGammaRegimeId {
+  return v === "gamma-regime";
+}
+
+/**
  * Every toggleable indicator id — a moving-average FAMILY (not an individual line), a level, a
  * structure toggle, or an oscillator. This is what the enabled Set and the menu deal in; the chart
  * expands each to its lines/markers/panes at draw time.
@@ -230,7 +247,8 @@ export type VectorIndicatorId =
   | VectorConfluenceId
   | VectorFlowId
   | VectorExpectedMoveId
-  | VectorGexHeatmapId;
+  | VectorGexHeatmapId
+  | VectorGammaRegimeId;
 
 /** Menu structure — the toggle menu renders straight from this (title + its items). */
 export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
@@ -277,6 +295,12 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
         id: "gex-heatmap",
         label: "GEX heatmap (reconstructed dealer positioning)",
         color: "#10b981",
+      },
+      {
+        // Teal dot = the calm/long-γ side of the boundary glow (short-γ side is amber on the pane).
+        id: "gamma-regime",
+        label: "Gamma regime (long / short γ zones)",
+        color: "#2dd4bf",
       },
     ],
   },
