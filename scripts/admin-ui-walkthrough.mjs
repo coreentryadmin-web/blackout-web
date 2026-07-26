@@ -382,6 +382,7 @@ try {
     const url = req.url();
     buckets.failedRequests().push({
       url: url.slice(0, 200),
+      method: req.method(),
       failure: req.failure()?.errorText || "failed",
       benign: BENIGN_REQUEST.test(url),
     });
@@ -390,7 +391,12 @@ try {
     const st = resp.status();
     if (st < 400) return;
     const url = resp.url();
-    buckets.failedRequests().push({ url: url.slice(0, 200), status: st, benign: BENIGN_REQUEST.test(url) });
+    buckets.failedRequests().push({
+      url: url.slice(0, 200),
+      method: resp.request().method(),
+      status: st,
+      benign: BENIGN_REQUEST.test(url),
+    });
   });
 
   for (const { path, slug } of PAGES) {
@@ -449,6 +455,21 @@ try {
       `  bugs[${path}]: ${bc.consoleErrors} console-err, ${bc.pageErrors} pageerror, ` +
         `${bc.failedRequests} failed-req (+${bc.benignRequests} benign)`,
     );
+    // Print the EXACT non-benign failed requests (URL + status/method) so the operator can tell an
+    // expected off-hours 404 from a real bug. Public asset/API URLs on blackouttrades.com — no
+    // secrets. Capped so the log stays readable; benign analytics/beacon requests are omitted here.
+    const trunc = (s) => String(s).slice(0, 200);
+    fr.filter((r) => !r.benign)
+      .slice(0, 25)
+      .forEach((r) => {
+        if (r.status) {
+          console.log(`  FAILREQ ${path} ${r.status} ${r.method || "?"} ${trunc(r.url)}`);
+        } else {
+          console.log(`  FAILREQ ${path} ERR ${r.method || "?"} ${trunc(r.url)} — ${trunc(r.failure || "failed")}`);
+        }
+      });
+    ce.slice(0, 25).forEach((c) => console.log(`  CONSOLEERR ${path} ${trunc(c.text)}`));
+    pe.slice(0, 25).forEach((t) => console.log(`  PAGEERR ${path} ${trunc(t)}`));
   }
 } finally {
   await browser.close().catch(() => {});
