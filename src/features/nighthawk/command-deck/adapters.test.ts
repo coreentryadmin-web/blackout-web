@@ -625,3 +625,36 @@ test("0DTE adapter: a DIRECTIONAL row never gets condor geometry (condor null)",
   assert.equal(dir.condor, null); // not a condor → never built
   assert.equal(dir.pnlPct, 30); // directional P&L unchanged (from the live_pnl_pct path)
 });
+
+// ── Wave 3 edge layer: why-now, first-flag time, scorecard CI passthrough ──────────────
+test("0DTE adapter (Wave 3): why_now + first_flagged_at map through to whyNow/firstFlaggedAt", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "nvda", status: "OPEN", score: 80, entry_premium: 2.0, last_mark: 2.6, live_pnl_pct: 30,
+    setup: { direction: "long", dte: 0 },
+    why_now: { reason: "accumulation", label: "multi-day accumulation (3d build)" },
+    first_flagged_at: "2026-07-25T10:42:00-04:00",
+  });
+  assert.equal(p.whyNow?.reason, "accumulation");
+  assert.match(p.whyNow!.label, /3d build/);
+  assert.equal(p.firstFlaggedAt, "2026-07-25T10:42:00-04:00");
+});
+
+test("0DTE adapter (Wave 3): absent why_now → whyNow null (ribbon omitted, no fabrication)", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "coin", status: "HOLD", score: 60, entry_premium: 5.0, last_mark: 5.0, live_pnl_pct: 0,
+    setup: { direction: "long", dte: 0 },
+  });
+  assert.equal(p.whyNow, null);
+  assert.equal(p.firstFlaggedAt, null);
+});
+
+test("0DTE adapter (Wave 3): scorecard with Wilson CI passes through unchanged", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "nvda", status: "OPEN", score: 80, entry_premium: 2.0, last_mark: 2.6, live_pnl_pct: 30,
+    setup: { direction: "long", dte: 0 },
+    scorecard: { winRate: 63, avg: 12, n: 214, ciLow: 55, ciHigh: 70 },
+  });
+  assert.equal(p.scorecard?.ciLow, 55);
+  assert.equal(p.scorecard?.ciHigh, 70);
+  assert.equal(p.scorecard?.n, 214);
+});

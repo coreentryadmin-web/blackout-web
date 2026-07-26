@@ -87,6 +87,10 @@ function sourceFrom(
     condor: (lg?.condor as unknown) ?? null,
     underlying_price:
       (lg?.underlying_price as number) ?? (s?.underlying_price as number) ?? null,
+    // Edge layer (Wave 3): the pinned trigger reason (server ledger row / sim frame) + the
+    // first-flag instant for the ribbon's ET clock time. Both OPTIONAL/null-safe.
+    why_now: (lg?.why_now as ZeroDteDeckSource["why_now"]) ?? null,
+    first_flagged_at: (lg?.first_flagged_at as string) ?? null,
   };
 }
 

@@ -9,6 +9,7 @@
 import type { SwingSetupState, SwingEntryState } from "@/lib/swing/taxonomy";
 import type { SwingServingSection } from "@/lib/swing/serving";
 import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
+import type { WhyNow } from "@/lib/zerodte/why-now";
 
 export type DeckDirection = "LONG" | "SHORT";
 export type DeckStatus = "OPEN" | "HOLD" | "TRIM" | "CLOSED" | "WATCH" | "SKIP";
@@ -125,8 +126,19 @@ export interface TerminalPlay {
   /** VWAP-side + market-aligned confirmation count (0–2) — the confluence badge. */
   confluence?: number | null;
   /** Per-strategy calibration scorecard — rendered ONLY when the payload carries it (never
-   *  fabricated): win-rate %, average return %, and sample size n. */
-  scorecard?: { winRate: number; avg: number; n: number } | null;
+   *  fabricated): win-rate %, average return %, and sample size n. Wave 3: the OPTIONAL Wilson
+   *  95% confidence bounds (percent units, from calibration's win_rate_ci_pct, WS-07/WS-09) so
+   *  the win-rate NEVER renders as a bare point estimate — present → "63% WR (95% CI 55–70%,
+   *  n=214)"; absent → "63% WR (n=214 · CI n/a)". Never a fabricated interval. */
+  scorecard?: { winRate: number; avg: number; n: number; ciLow?: number | null; ciHigh?: number | null } | null;
+
+  // ── edge layer (Wave 3) ──
+  /** The trigger reason that surfaced this play (event-driven scan). Drives the Thesis tab's
+   *  "⚡ triggered by …" ribbon; null → the ribbon is omitted (no fabricated reason). */
+  whyNow?: WhyNow | null;
+  /** ISO instant this play was first flagged by the scan — the honest "when" for the why-now
+   *  ribbon (rendered as an ET clock time). Null on a row that carried no flag time. */
+  firstFlaggedAt?: string | null;
 
   // ── greeks (live) ──
   greeks?: DeckGreeks | null;

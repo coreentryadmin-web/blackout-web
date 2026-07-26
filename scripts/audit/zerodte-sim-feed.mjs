@@ -139,12 +139,19 @@ const SESSION_DATE = new Date().toISOString().slice(0, 10);
 //   huge premium .............................. NFLX        (entry 42.0)
 //   STALE mark (staleness dim renders) ........ SMCI        (mark_as_of ~90s old)
 //   NO mark ("—") ............................. SNOW        (last_mark null)
+//   why-now: accumulation + scorecard CI ...... NVDA        (accumDays 3, WR CI)
+//   why-now: breakout + scorecard "CI n/a" .... TSLA        (noCi scorecard)
+//   why-now: gamma-wall pin ................... SPX / SPXW  (PIN condors)
+//   why-now: sweep / flow-spike ............... GOOGL / MSFT
+//   why-now ABSENT (ribbon omitted) ........... COIN        (noWhyNow)
 // The five canonical names (NVDA/TSLA/META/SPX/AMD) are preserved from the original arc.
 const PLAYS = [
   // ── canonical five (unchanged arc) ──
   {
     ticker: 'NVDA', direction: 'long', origin: 'FLOW', strike: 182, right: 'C', entry: 2.0,
     exit_mode: 'trim_scale', tier: 'A',
+    // Wave 3 — multi-day accumulation trigger + a calibration scorecard WITH the Wilson CI.
+    accumDays: 3, scorecard: { wins: 135, n: 214, avg: 12 },
     // Plausible long-call greeks so the sim previews the greeks strip + theta highlight.
     greeks: { delta: 0.52, gamma: 0.06, theta: -0.18, vega: 0.11, iv: 0.44 },
     marks: [[570, 2.0], [600, 2.6], [660, 3.2], [720, 3.6], [810, 3.6]], // 09:30..13:30 → TRIM +80%
@@ -154,6 +161,8 @@ const PLAYS = [
   {
     ticker: 'TSLA', direction: 'long', origin: 'BREAKOUT', strike: 250, right: 'C', entry: 1.5,
     exit_mode: 'trim_scale', tier: 'B',
+    // Wave 3 — breakout trigger + a scorecard with NO CI attached → exercises the "CI n/a" render.
+    scorecard: { wins: 40, n: 63, avg: 9, noCi: true },
     greeks: { delta: 0.47, gamma: 0.05, theta: -0.14, vega: 0.09, iv: 0.51 },
     marks: [[585, 1.5], [630, 1.8], [690, 2.05], [780, 2.1], [900, 2.1]], // HOLD +40%
     statusAt: (m, pnl) => (m >= 780 ? 'HOLD' : pnl >= 15 ? 'HOLD' : 'OPEN'),
@@ -198,6 +207,8 @@ const PLAYS = [
     // OPEN, fresh, in the ±10% enterable band all session — never commits past OPEN.
     ticker: 'GOOGL', direction: 'long', origin: 'FLOW', strike: 180, right: 'C', entry: 3.0,
     exit_mode: 'trim_scale', tier: 'B',
+    // Wave 3 — aggressive-sweep trigger (sweep_pct over the material threshold).
+    sweepPct: 0.7,
     greeks: { delta: 0.5, gamma: 0.04, theta: -0.11, vega: 0.09, iv: 0.33 },
     marks: [[600, 3.0], [660, 3.1], [720, 2.95], [840, 3.05], [900, 3.0]],
     statusAt: (m) => (m >= 900 ? 'HOLD' : 'OPEN'),
@@ -217,6 +228,8 @@ const PLAYS = [
     // CLOSED · time_stop on a DIRECTIONAL long (distinct from the condor time-stop) — small green.
     ticker: 'MSFT', direction: 'long', origin: 'FLOW', strike: 470, right: 'C', entry: 1.5,
     exit_mode: 'trim_scale', tier: 'C',
+    // Wave 3 — flow-spike trigger (30m surge) precedes the plain-FLOW fallback.
+    spikeFlag: true,
     greeks: { delta: 0.49, gamma: 0.04, theta: -0.13, vega: 0.08, iv: 0.3 },
     marks: [[600, 1.5], [720, 1.7], [900, 1.6], [935, 1.6]],
     statusAt: (m) => (m >= 930 ? 'CLOSED' : 'HOLD'),
@@ -227,6 +240,8 @@ const PLAYS = [
     // exercises the null-greeks "—" strip path.
     ticker: 'COIN', direction: 'long', origin: 'FLOW', strike: 300, right: 'C', entry: 5.0,
     exit_mode: 'trim_scale', tier: 'C',
+    // Wave 3 — NO trigger reason pinned → exercises the absent-omit (no why-now ribbon) render.
+    noWhyNow: true,
     marks: [[600, 5.0], [660, 5.05], [720, 4.98], [840, 5.02], [900, 5.0]],
     statusAt: () => 'HOLD',
     closed_reason: null,
@@ -322,6 +337,42 @@ function interp(marks, m) {
 }
 const r2 = (x) => Math.round(x * 100) / 100;
 
+// Wilson 95% score interval (percent bounds) — mirrors src/lib/zerodte/calibration-stats.ts so the
+// sim scorecard previews the SAME honest CI the live calibration lane computes (never fabricated).
+function wilsonPct(k, n, z = 1.96) {
+  if (!(n > 0)) return null;
+  const p = k / n, z2 = z * z, d = 1 + z2 / n;
+  const c = (p + z2 / (2 * n)) / d;
+  const m = (z / d) * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n));
+  const cl = (x) => Math.max(0, Math.min(1, x));
+  return { lo: Math.round(cl(c - m) * 1000) / 10, hi: Math.round(cl(c + m) * 1000) / 10 };
+}
+
+// "Why now" trigger reason — mirrors src/lib/zerodte/why-now.ts deriveWhyNow so `?sim=1` previews
+// the ribbon exactly as a live row (pinned into entry_context at commit server-side). Honest:
+// omitted (null) when the play carries no supporting signal (noWhyNow) — no fabricated reason.
+function whyNowFor(play) {
+  if (play.noWhyNow) return null;
+  const days = play.accumDays ?? null;
+  if (days != null && days >= 2) return { reason: 'accumulation', label: `multi-day accumulation (${Math.round(days)}d build)` };
+  if (play.origin === 'BREAKOUT') return { reason: 'breakout', label: 'breakout momentum' };
+  if (play.origin === 'PIN') return { reason: 'pin', label: 'gamma-wall pin' };
+  if ((play.sweepPct ?? 0) >= 0.5) return { reason: 'sweep', label: 'aggressive sweep' };
+  if (play.spikeFlag) return { reason: 'flow_spike', label: 'flow spike (30m surge)' };
+  if (play.origin === 'FLOW') return { reason: 'aggressor_flow', label: 'dominant aggressor flow' };
+  return null;
+}
+
+// The calibration scorecard for the play, with the Wilson CI attached (or omitted for the "CI n/a"
+// coverage row). Shape matches the deck's TerminalPlay.scorecard.
+function scorecardFor(play) {
+  const sc = play.scorecard;
+  if (!sc) return null;
+  const winRate = Math.round((sc.wins / sc.n) * 1000) / 10;
+  const ci = sc.noCi ? null : wilsonPct(sc.wins, sc.n);
+  return { winRate, avg: sc.avg, n: sc.n, ciLow: ci?.lo ?? null, ciHigh: ci?.hi ?? null };
+}
+
 /** Build the ledger row for one play at ET minute `m`. Returns null if the play hasn't
  *  committed yet (before its first keyframe). */
 function ledgerRowFor(play, m) {
@@ -409,6 +460,10 @@ function ledgerRowFor(play, m) {
     // Null on a directional row → the deck draws the directional views exactly as before.
     condor: play.condorGeom ?? null,
     underlying_price: play.spotMarks ? r2(interp(play.spotMarks, m)) : null,
+    // Wave 3 — the "why now" trigger reason (ribbon) + the calibration scorecard with its Wilson CI.
+    // Null-safe: a play with no signal / no scorecard emits null and the deck omits the widget.
+    why_now: whyNowFor(play),
+    scorecard: scorecardFor(play),
   };
 }
 
@@ -553,12 +608,21 @@ async function main() {
         });
       const stale = last.ledger.filter((r) => r.mark_as_of && Date.now() - Date.parse(r.mark_as_of) > 5_000).map((r) => r.ticker);
       const noMark = last.ledger.filter((r) => r.last_mark == null).map((r) => r.ticker);
+      // Wave 3 coverage: which trigger reasons + which scorecards carry a CI vs "CI n/a".
+      const whyNow = last.ledger.filter((r) => r.why_now).map((r) => `${r.ticker}:${r.why_now.reason}`);
+      const noWhy = last.ledger.filter((r) => !r.why_now).map((r) => r.ticker);
+      const scWithCi = last.ledger.filter((r) => r.scorecard && r.scorecard.ciLow != null).map((r) => r.ticker);
+      const scNoCi = last.ledger.filter((r) => r.scorecard && r.scorecard.ciLow == null).map((r) => r.ticker);
       console.log(`\n  ledger statuses:    ${statuses.join(', ')}`);
       console.log(`  CLOSED reasons:     ${closed.join(', ')}`);
       console.log(`  condors:            ${condors.join(', ')}`);
       console.log(`  stale-mark rows:    ${stale.join(', ') || '(none)'}`);
       console.log(`  no-mark rows:       ${noMark.join(', ') || '(none)'}`);
       console.log(`  pre-commit setups:  ${last.setups.map((s) => `${s.ticker}:${s.gate?.verdict}`).join(', ')}`);
+      console.log(`  why-now triggers:   ${whyNow.join(', ')}`);
+      console.log(`  no why-now (omit):  ${noWhy.join(', ') || '(none)'}`);
+      console.log(`  scorecard +CI:      ${scWithCi.join(', ') || '(none)'}`);
+      console.log(`  scorecard CI n/a:   ${scNoCi.join(', ') || '(none)'}`);
     }
     console.log(`\n[dry-run] no auth, nothing posted.  invalid frames: ${invalid}`);
     if (invalid > 0) process.exitCode = 1;

@@ -8,6 +8,7 @@ import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-m
 import { condorTent, condorWinRateLine } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { showsRatchetTrack, showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
+import { excursionBar, formatWinRateCi, signColorClass } from "@/lib/zerodte/terminal-edge";
 import type { DeckCondor } from "./types";
 
 type Tab = "thesis" | "manage" | "pnl";
@@ -25,6 +26,50 @@ function fmtGreek(k: string, v: number | null): string {
 
 const usd = (n: number | null | undefined): string => (n != null ? `$${n.toFixed(2)}` : "—");
 const signPct = (n: number | null | undefined): string => (n != null ? `${n > 0 ? "+" : ""}${Math.round(n)}%` : "—");
+
+/** ET wall-clock (HH:MM) of an ISO instant, for the why-now ribbon. Formats in America/New_York
+ *  regardless of the instant's stored offset (a DB row may be UTC). Null/unparseable → null. */
+function etClock(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false,
+    }).format(ms);
+  } catch {
+    return null;
+  }
+}
+
+/** One-tap OCC copy control on the contract label — copies the exact OCC symbol to the clipboard.
+ *  Pure client, accessible (real button, keyboard-focusable, aria-label, "Copied" feedback).
+ *  Renders nothing when no OCC is on the row (graceful absence — never a dead/empty control). */
+function OccCopy({ occ }: { occ: string | null | undefined }) {
+  const [copied, setCopied] = useState(false);
+  if (!occ) return null;
+  const copy = () => {
+    // navigator.clipboard is unavailable in insecure/legacy contexts — fail silently, never throw.
+    void navigator.clipboard?.writeText(occ).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      },
+      () => {},
+    );
+  };
+  return (
+    <button
+      type="button"
+      className={clsx("nh-deck-occcopy", copied && "done")}
+      onClick={copy}
+      aria-label={copied ? `Copied OCC symbol ${occ}` : `Copy OCC symbol ${occ}`}
+      title={occ}
+    >
+      {copied ? "✓ copied" : "⧉ OCC"}
+    </button>
+  );
+}
 
 /** Flash a cell green/red when its value changes between renders (honest live-change feedback). */
 function useFlash(value: unknown) {
@@ -118,7 +163,7 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
     <div className={clsx("nh-deck-right", stale && "nh-deck-dim")}>
       <div className="nh-deck-th">
         <span className="tk">{play.ticker} · {play.direction}</span>
-        <span className="ct">{play.contract}</span>
+        <span className="ct">{play.contract}<OccCopy occ={play.occ} /></span>
         <span className="nh-deck-cursor" aria-hidden />
         <span className="big"><div className="nh-deck-score">{play.score}</div><div className="lab">SCORE</div></span>
       </div>
@@ -185,8 +230,10 @@ function HeaderBadges({ play }: { play: TerminalPlay }) {
         <span key={o} className="nh-deck-badge orig">{o}</span>
       ))}
       {play.scorecard && (
-        <span className="nh-deck-badge sc" title="Calibrated strategy record">
-          {Math.round(play.scorecard.winRate)}% WR · {signPct(play.scorecard.avg)} avg · n={play.scorecard.n}
+        // Win-rate is NEVER shown bare: formatWinRateCi pairs it with the Wilson 95% CI when the
+        // payload carries one (WS-07/WS-09), else an explicit "CI n/a" — never a fabricated interval.
+        <span className="nh-deck-badge sc" title="Calibrated strategy record (Wilson 95% CI)">
+          {formatWinRateCi(play.scorecard)} · {signPct(play.scorecard.avg)} avg
         </span>
       )}
     </div>
@@ -197,8 +244,19 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
   const level = play.thesisBreak?.level ?? "intact";
   const broke = level === "warn" || level === "break";
   const unknown = level === "unknown";
+  // "Why now" ribbon — the event-driven trigger that surfaced this play, with the ET flag time
+  // when the row carries one. Omitted entirely when no reason was pinned (honest absence).
+  const whyAt = etClock(play.firstFlaggedAt);
   return (
     <>
+      {play.whyNow && (
+        <div className="nh-deck-whynow" title="The event-driven scan trigger that surfaced this play">
+          <span className="ic" aria-hidden>⚡</span>
+          <span className="lb">triggered by:</span>
+          <span className="rs">{play.whyNow.label}</span>
+          {whyAt && <span className="at"> · {whyAt} ET</span>}
+        </div>
+      )}
       <div className="nh-deck-lab">Why this play was picked</div>
       {play.factors.length === 0 && <div className="nh-deck-recnote">Component breakdown not served for this lane yet — score {play.score}. {play.recNote}</div>}
       {play.factors.map((f) => (
@@ -483,13 +541,54 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
           {play.execMark != null && <span className="nh-deck-recnote"> (sell into {usd(play.execMark)} bid)</span>}
         </div>
       )}
+      <ExcursionViz play={play} />
       <div className="nh-deck-grid">
         <div><span className="k">Entry</span><span className="v">{has ? usd(play.entry) : "—"}</span></div>
         <div><span className="k">Live mark</span><span className="v">{usd(play.mark)}</span></div>
-        <div><span className="k">Peak</span><span className="v nh-deck-pos">{play.peak != null ? `+${play.peak}%` : "—"}</span></div>
-        <div><span className="k">Trough</span><span className="v nh-deck-neg">{play.trough != null ? `${play.trough}%` : "—"}</span></div>
+        <div><span className="k">Peak</span><span className="v nh-deck-pos">{signPct(play.peak)}</span></div>
+        <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>
       </div>
       <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>
     </>
+  );
+}
+
+/** EXCURSION (MAE/MFE) mini-viz — the heat RANGE since entry: MFE (best) at one end, MAE (worst)
+ *  at the other, and the current mark placed between them. Structure-aware WITHOUT re-inverting:
+ *  the adapter already seller-frames a condor's peak/trough/pnl, so best/worst/current arrive in
+ *  one consistent %-space here. Honest labeling: this is the excursion RANGE, not a per-tick path
+ *  (the payload carries only the latched extremes — no tick history — so no sparkline is drawn).
+ *  Omitted when the extremes aren't on the row (nothing to draw). */
+function ExcursionViz({ play }: { play: TerminalPlay }) {
+  const bar = excursionBar(play.peak, play.trough, play.pnlPct);
+  const flash = useFlash(play.pnlPct ?? null);
+  if (!bar) return null;
+  const fmt = (n: number): string => `${n > 0 ? "+" : ""}${Math.round(n)}%`;
+  const pos = bar.currentFrac == null ? null : Math.round(bar.currentFrac * 100);
+  return (
+    <div className="nh-deck-exc">
+      <div className="nh-deck-lab" style={{ marginTop: 14 }}>Excursion range — heat taken since entry (MAE ↔ MFE)</div>
+      <div className="nh-deck-excbar">
+        {/* Caps are colored BY SIGN (signColorClass), not by which end they sit on — an all-green
+            run shows its MAE cap green, an all-red run its MFE cap red. Honest number AND color. */}
+        <span className={clsx("cap lo", signColorClass(bar.worst))}>{fmt(bar.worst)}</span>
+        <span className={clsx("cap hi", signColorClass(bar.best))}>{fmt(bar.best)}</span>
+        {pos != null && (
+          <span className={clsx("mk", flash && "neon")} style={{ left: `${pos}%` }}>
+            <span className="dot" />
+            <span className="lbl">{play.pnlPct != null ? fmt(play.pnlPct) : "—"}</span>
+          </span>
+        )}
+      </div>
+      <div className="nh-deck-exclabels">
+        <span className={clsx("mae", signColorClass(bar.worst))}>MAE {fmt(bar.worst)}</span>
+        <span className={clsx("mfe", signColorClass(bar.best))}>MFE {fmt(bar.best)}</span>
+      </div>
+      <div className="nh-deck-recnote">
+        {pos == null
+          ? "Best/worst excursion since entry — current mark not priced right now."
+          : "Marker = where the mark sits now between its worst (MAE) and best (MFE) since entry. Range, not a tick-by-tick path."}
+      </div>
+    </div>
   );
 }
