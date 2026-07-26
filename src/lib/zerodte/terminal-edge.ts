@@ -1,7 +1,7 @@
 /**
  * TERMINAL "EDGE" LAYER helpers (Night Hawk Wave 3) — small, pure, dependency-free display
  * transforms for the PlayTerminal's edge widgets. Kept out of the React module so they are
- * trivially unit-tested (no DOM, no SWR, no clock) and reused identically by the left card.
+ * trivially unit-tested (no DOM, no SWR, no clock).
  *
  * Two widgets live here:
  *  1. excursionBar — the MAE/MFE heat-range bar (the best/worst premium excursion since entry,
@@ -62,6 +62,13 @@ export function excursionBar(
   return { best: hi, worst: lo, current: cur, range, currentFrac, bestIsUp: hi > 0, worstIsDown: lo < 0 };
 }
 
+/** Sign → phosphor color class for an excursion cap/label: a positive % is green ("up"), a
+ *  negative % is red ("dn"), exactly zero is neutral ("flat"). Drives the MAE/MFE cap colors BY
+ *  THEIR ACTUAL SIGN so an all-green run never paints its MAE cap red (honest number AND color). */
+export function signColorClass(v: number): "up" | "dn" | "flat" {
+  return v > 0 ? "up" : v < 0 ? "dn" : "flat";
+}
+
 /** The scorecard fields the win-rate formatter reads. ciLow/ciHigh are Wilson 95% bounds in
  *  PERCENT units (matching calibration's win_rate_ci_pct), null/absent when not computed. */
 export interface WinRateCiInput {
@@ -78,6 +85,10 @@ export interface WinRateCiInput {
  * The interval is computed upstream (Wilson score interval, WS-07/WS-09); this only renders it.
  */
 export function formatWinRateCi(s: WinRateCiInput): string {
+  const n = Number.isFinite(s.n) ? s.n : 0;
+  // A non-finite win-rate (e.g. n=0 → 0/0) must never render "NaN% WR" — fall to the CI-n/a path
+  // with a "—" placeholder for the estimate itself (honest: no rate, no interval).
+  if (!Number.isFinite(s.winRate)) return `— WR (n=${n} · CI n/a)`;
   const wr = `${Math.round(s.winRate)}% WR`;
   const lo = s.ciLow;
   const hi = s.ciHigh;
@@ -86,7 +97,7 @@ export function formatWinRateCi(s: WinRateCiInput): string {
     // Order the bounds defensively so a swapped lo/hi still reads low→high.
     const l = Math.round(Math.min(lo!, hi!));
     const h = Math.round(Math.max(lo!, hi!));
-    return `${wr} (95% CI ${l}–${h}%, n=${s.n})`;
+    return `${wr} (95% CI ${l}–${h}%, n=${n})`;
   }
-  return `${wr} (n=${s.n} · CI n/a)`;
+  return `${wr} (n=${n} · CI n/a)`;
 }

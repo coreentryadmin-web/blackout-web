@@ -8,7 +8,7 @@ import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-m
 import { condorTent, condorWinRateLine } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { showsRatchetTrack, showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
-import { excursionBar, formatWinRateCi } from "@/lib/zerodte/terminal-edge";
+import { excursionBar, formatWinRateCi, signColorClass } from "@/lib/zerodte/terminal-edge";
 import type { DeckCondor } from "./types";
 
 type Tab = "thesis" | "manage" | "pnl";
@@ -545,8 +545,8 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
       <div className="nh-deck-grid">
         <div><span className="k">Entry</span><span className="v">{has ? usd(play.entry) : "—"}</span></div>
         <div><span className="k">Live mark</span><span className="v">{usd(play.mark)}</span></div>
-        <div><span className="k">Peak</span><span className="v nh-deck-pos">{play.peak != null ? `+${play.peak}%` : "—"}</span></div>
-        <div><span className="k">Trough</span><span className="v nh-deck-neg">{play.trough != null ? `${play.trough}%` : "—"}</span></div>
+        <div><span className="k">Peak</span><span className="v nh-deck-pos">{signPct(play.peak)}</span></div>
+        <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>
       </div>
       <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>
     </>
@@ -569,8 +569,10 @@ function ExcursionViz({ play }: { play: TerminalPlay }) {
     <div className="nh-deck-exc">
       <div className="nh-deck-lab" style={{ marginTop: 14 }}>Excursion range — heat taken since entry (MAE ↔ MFE)</div>
       <div className="nh-deck-excbar">
-        <span className="cap lo">{fmt(bar.worst)}</span>
-        <span className="cap hi">{fmt(bar.best)}</span>
+        {/* Caps are colored BY SIGN (signColorClass), not by which end they sit on — an all-green
+            run shows its MAE cap green, an all-red run its MFE cap red. Honest number AND color. */}
+        <span className={clsx("cap lo", signColorClass(bar.worst))}>{fmt(bar.worst)}</span>
+        <span className={clsx("cap hi", signColorClass(bar.best))}>{fmt(bar.best)}</span>
         {pos != null && (
           <span className={clsx("mk", flash && "neon")} style={{ left: `${pos}%` }}>
             <span className="dot" />
@@ -579,8 +581,8 @@ function ExcursionViz({ play }: { play: TerminalPlay }) {
         )}
       </div>
       <div className="nh-deck-exclabels">
-        <span className="mae">MAE {fmt(bar.worst)}</span>
-        <span className="mfe">MFE {fmt(bar.best)}</span>
+        <span className={clsx("mae", signColorClass(bar.worst))}>MAE {fmt(bar.worst)}</span>
+        <span className={clsx("mfe", signColorClass(bar.best))}>MFE {fmt(bar.best)}</span>
       </div>
       <div className="nh-deck-recnote">
         {pos == null

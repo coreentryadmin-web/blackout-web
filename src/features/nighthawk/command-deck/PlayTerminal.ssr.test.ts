@@ -81,3 +81,9 @@ test("scorecard: CI absent → explicit 'CI n/a', never a bare point estimate", 
   const html = await render(play({ scorecard: { winRate: 63, avg: 12, n: 214 } }));
   assert.match(html, /63% WR \(n=214 · CI n\/a\)/);
 });
+
+test("scorecard: non-finite win-rate (n=0) renders '— WR', never 'NaN% WR'", async () => {
+  const html = await render(play({ scorecard: { winRate: Number.NaN, avg: 0, n: 0 } }));
+  assert.match(html, /— WR \(n=0 · CI n\/a\)/);
+  assert.doesNotMatch(html, /NaN/);
+});

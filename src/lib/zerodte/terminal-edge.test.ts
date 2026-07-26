@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { excursionBar, formatWinRateCi } from "./terminal-edge";
+import { excursionBar, formatWinRateCi, signColorClass } from "./terminal-edge";
 
 // ── excursionBar (MAE/MFE placement) ──────────────────────────────────────────────────
 test("excursion: current placed proportionally between MAE and MFE", () => {
@@ -96,4 +96,33 @@ test("wilson-CI format: never renders a bare point estimate (always has CI or n/
 
 test("wilson-CI format: swapped bounds are ordered low→high defensively", () => {
   assert.equal(formatWinRateCi({ winRate: 63, n: 214, ciLow: 70, ciHigh: 55 }), "63% WR (95% CI 55–70%, n=214)");
+});
+
+test("wilson-CI format: non-finite win-rate (n=0 → 0/0) never renders 'NaN% WR'", () => {
+  const s = formatWinRateCi({ winRate: Number.NaN, n: 0 });
+  assert.equal(s, "— WR (n=0 · CI n/a)");
+  assert.doesNotMatch(s, /NaN/);
+});
+
+test("wilson-CI format: non-finite win-rate ignores any bounds (no rate → no interval)", () => {
+  assert.equal(formatWinRateCi({ winRate: Number.NaN, n: 12, ciLow: 40, ciHigh: 60 }), "— WR (n=12 · CI n/a)");
+});
+
+// ── signColorClass — cap/label color follows SIGN, not position ────────────────────────
+test("signColorClass: positive→up (green), negative→dn (red), zero→flat (neutral)", () => {
+  assert.equal(signColorClass(15), "up");
+  assert.equal(signColorClass(-5), "dn");
+  assert.equal(signColorClass(0), "flat");
+});
+
+test("signColorClass: an all-GREEN run colors BOTH caps up (MAE +15 is green, not red)", () => {
+  const b = excursionBar(60, 15, 30)!; // best +60, worst +15 — both positive
+  assert.equal(signColorClass(b.worst), "up"); // the MAE cap is green, honest to its sign
+  assert.equal(signColorClass(b.best), "up");
+});
+
+test("signColorClass: an all-RED run colors BOTH caps dn (MFE −5 is red, not green)", () => {
+  const b = excursionBar(-5, -30, -20)!; // best −5, worst −30 — both negative
+  assert.equal(signColorClass(b.best), "dn"); // the MFE cap is red, honest to its sign
+  assert.equal(signColorClass(b.worst), "dn");
 });
