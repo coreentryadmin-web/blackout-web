@@ -335,8 +335,24 @@ function ledgerRowFor(play, m) {
   const sampled = elapsed.map((km) => interp(play.marks, km));
   const peak = play.noMark ? null : r2(Math.max(...sampled));
   const trough = play.noMark ? null : r2(Math.min(...sampled));
-  const rawPnl = mark == null ? null : (mark / play.entry - 1) * 100;
-  const pnl = mark == null ? null : closedReason === 'stopped' ? STOP_PCT : Math.round(rawPnl * 10) / 10;
+  // P&L is STRUCTURE-aware, matching the corrected server (reconcileLedgerLivePnlPct, FINDINGS
+  // 2026-07-26): a CONDOR is a CREDIT structure whose return is SELLER-framed (entry − mark)/entry —
+  // a DECAYING mark (mark ↓) is a POSITIVE return — so a winning condor is fed POSITIVE (never the
+  // long-framed −76% that relied on the now-removed render flip). A directional row is long-framed
+  // (mark − entry)/entry with the stopped-P&L pin. (For the SPXW breach condor the seller formula
+  // yields −50% on its own — entry 5.0, mark 7.5 — so no stop-pin is needed for condors.)
+  const rawPnl =
+    mark == null
+      ? null
+      : play.condor === true
+        ? (1 - mark / play.entry) * 100
+        : (mark / play.entry - 1) * 100;
+  const pnl =
+    mark == null
+      ? null
+      : play.condor !== true && closedReason === 'stopped'
+        ? STOP_PCT
+        : Math.round(rawPnl * 10) / 10;
   const status = play.statusAt(m, rawPnl ?? 0);
   // Mark freshness: fresh (real wall clock) for normal rows; ~90s old for the STALE demo so the
   // deck's staleness dim renders; null (no timestamp) for the no-mark / legacy-sync case.

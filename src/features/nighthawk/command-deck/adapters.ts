@@ -193,17 +193,23 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const exitPolicy = src.exit_policy ?? null;
   const exitModel: ExitModel = exitPolicy?.policy === "trim_scale" && isCondor !== true ? "SCALE_OUT" : "RATCHET";
 
-  // ── Condor P&L is SELLER-framed (Wave 2 bug fix) ──────────────────────────────────
-  // A condor is SOLD for the credit (`entry_premium`) and bought back at the current mark, so its
-  // return is (entry − mark)/entry — the INVERSE of the directional (mark − entry)/entry the payload's
-  // `live_pnl_pct` carries (long-premium framed). Without this flip a DECAYING (WINNING) condor reads
-  // as a large NEGATIVE — the inverted-P&L flaw in the Wave-1 left card (e.g. a +76% winner shown as
-  // −76%). peak/trough invert the same way: a seller's BEST excursion is the LOWEST mark (deepest
-  // decay), the WORST is the highest mark. Directional rows are byte-identical (isCondor !== true).
+  // ── Condor P&L is SELLER-framed AT THE SOURCE now (FINDINGS 2026-07-26) ────────────────
+  // The board payload's `live_pnl_pct` is computed seller-framed (entry − mark)/entry for a credit
+  // condor by the server (reconcileLedgerLivePnlPct) — a DECAYING (WINNING) condor already arrives
+  // POSITIVE. So the render must DISPLAY it, never re-invert it: `pnlDisplay` reads `pnl` directly
+  // for BOTH structures. (Wave 2 originally RE-derived a seller P&L here from `last_mark`; once the
+  // source was corrected that recompute became a DOUBLE-invert, flipping a +76% winner back to
+  // −76%. Removed.)
   const markNum = fin(src.last_mark);
+  const pnlDisplay = pnl;
+  // Peak/trough excursion is a DISPLAY transform of the RAW latched premiums the payload carries
+  // (peak_premium/trough_premium are stored raw for the exit ladder, NOT as signed P&L). For a
+  // credit condor the seller's BEST excursion is the LOWEST mark (deepest decay) and the WORST is
+  // the highest mark, so best = seller-P&L(trough_premium), worst = seller-P&L(peak_premium). This
+  // reads the raw premiums (never the already-signed live_pnl_pct), so it is NOT a second invert of
+  // the corrected headline number. Directional rows are byte-identical (isCondor !== true).
   const sellerPct = (m: number | null): number | null =>
     isCondor === true && entry != null && entry > 0 && m != null ? Math.round(((entry - m) / entry) * 1000) / 10 : null;
-  const pnlDisplay = isCondor === true ? sellerPct(markNum) : pnl;
   const peakDisplay =
     isCondor === true
       ? sellerPct(fin(src.trough_premium)) // lowest mark = best for the seller

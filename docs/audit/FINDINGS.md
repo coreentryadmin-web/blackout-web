@@ -5,6 +5,56 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-26 — [correctness] Iron-condor `live_pnl_pct` inverted AT THE SERVER SOURCE — fixed at source + removed the redundant Wave-2 render flip (branch `fix/condor-graded-pnl-sign`)
+
+**Severity.** Medium (member-facing data correctness; condor rows only — active when `ZERODTE_CONDOR=1`).
+
+**Root cause.** The board payload's `live_pnl_pct` is derived in `zerodte-service.ts` via `pinnedLivePnlPct`
+= the LONG-premium return `(mark − entry)/entry`. That formula is correct for a bought option but WRONG for
+a credit iron condor, which is SOLD for the credit and bought back to close — its return is the inverse
+`(entry − mark)/entry`. A decaying (winning) condor marks DOWN, so the long formula stores a +76% winner as
+−76%. Wave 2 (#1117) masked this at the render adapter (`terminalPlayFromZeroDte`) by re-deriving a seller
+P&L from `last_mark`, but the underlying payload field stayed inverted, and the render flip risked a
+DOUBLE-invert the moment the source was corrected.
+
+**Two fields — investigated, only ONE was actually inverted:**
+- **Live `live_pnl_pct` (board payload) — WAS INVERTED.** Computed at two sites in `zerodte-service.ts`
+  (`mapLedgerRow` ~L350 and the post-`roundFloats` re-price ~L567), both via `pinnedLivePnlPct`. THIS is the
+  bug. Also `floor_pnl_pct` (a directional ratchet concept) was long-framed on a condor's peak = meaningless.
+- **Graded `plan_pnl_pct` (ledger) — was ALREADY CORRECT, NOT inverted.** A condor is graded by the
+  condor-specific `gradeCondorFromBars` (`condor.ts`), which returns `pnl_pct = usd / gross_wing_risk`:
+  `+net_credit` on a WIN (positive), `−max_loss` on a breach (negative). `scan.ts` routes condor rows there
+  and never to the directional `gradePlanFromBars`. So the graded column, and everything reading it
+  (`record.ts` win-rate `plan_pnl_pct > 0`, `officialPlanPnlPct`, `calibration.ts`), were already
+  correctly signed. The task's premise that the graded/calibration data was inverted did NOT hold — the
+  inversion was confined to the live board display path Wave 2 had masked.
+
+**Evidence.** `condorSellerPnlPct(4.2, 1.0) = +76.19` vs `pinnedLivePnlPct(4.2, 1.0) = −76.19` (exact
+mirrors — new `marks-math.test.ts` cases). `gradeCondorFromBars` win → `pnl_pct 40`, breach → `−60`
+(`condor.test.ts` L326/L340, unchanged — proves the grade was never inverted).
+
+**Fix.** New `marks-math.ts` leaf helpers: `condorSellerPnlPct` (seller-framed), `livePnlPctFor(isCondor,…)`,
+and `reconcileLedgerLivePnlPct(row)` — the ONE structure-aware board derivation used at BOTH
+`zerodte-service.ts` build sites (seller-framed for condors, long-framed + stopped-pin for directional,
+byte-identical for directional). `floor_pnl_pct` suppressed (null) for condors. In `adapters.ts` the Wave-2
+`pnlDisplay` seller RE-derive is REMOVED — the render now DISPLAYS the server's already-correct
+`live_pnl_pct` verbatim (no double-invert; new "no double-invert" regression test). Peak/trough stay a
+DISPLAY transform of the RAW latched premiums the payload carries (not a re-invert of the signed headline),
+and the executable-fill suppression for condors (a directional long framing) is KEPT. `zerodte-sim-feed.mjs`
+now feeds condor `live_pnl_pct`/`plan_pnl_pct` seller-framed too (winner positive), so `?sim=1` matches the
+corrected server; `--synthetic --dry-run` → `invalid frames: 0`.
+
+**Blast radius.** Live board `live_pnl_pct` + `floor_pnl_pct` (both zerodte-service sites) + the SSE re-price;
+the render adapter; the sim feeder. The per-OCC live-marks lane (`live-marks.ts`) carries single
+contracts only — a condor has no single OCC and never appears there, so it needed no change. Graded ledger /
+record / calibration unaffected (already correct).
+
+**Fix rationale.** Correcting the sign at the server source is the durable fix; the Wave-2 render flip was a
+display-layer workaround that would double-invert once the source was fixed. Doing both in one change is the
+only way to keep the member-visible number correct with no window of double-inversion.
+
+**Status.** DRAFT PR (member-facing data correctness — operator reviews + verifies before merge).
+
 ## 2026-07-25 — [correctness] Night Hawk deck: iron-condor P&L was DIRECTIONALLY INVERTED (a winning condor read NEGATIVE) — FIXED (Wave 2 branch `feat/nighthawk-wave2-leftpanel`)
 
 **Severity.** Medium (member-facing correctness; condor rows only — dormant unless `ZERODTE_CONDOR=1`,

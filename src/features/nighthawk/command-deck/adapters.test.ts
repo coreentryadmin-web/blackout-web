@@ -527,20 +527,45 @@ const CONDOR_GEOM = {
   est_win_rate: 92, est_intraday_breach_pct: 18.7,
 };
 
-test("0DTE adapter (condor): P&L is SELLER-framed — a DECAYING condor is a POSITIVE return, not inverted", () => {
-  // Sold at 4.2 credit, now marking 1.0 → seller return (4.2−1.0)/4.2 = +76.2% (NOT the −76% the
-  // directional live_pnl_pct would carry). This is the Wave-1 inverted-P&L flaw the fix corrects.
+test("0DTE adapter (condor): DISPLAYS the server's seller-framed P&L verbatim — no double-invert (FINDINGS 2026-07-26)", () => {
+  // The SERVER now computes live_pnl_pct seller-framed (reconcileLedgerLivePnlPct): sold at 4.2
+  // credit, marking 1.0 → (4.2−1.0)/4.2 = +76.2%, POSITIVE, arriving on the payload. The render must
+  // DISPLAY it, never re-invert it — the Wave 2 seller recompute (which would flip +76.2 back to a
+  // wrong sign) is removed. This test feeds the CORRECT server value and asserts it survives intact.
   const winner = terminalPlayFromZeroDte({
     ticker: "spx", status: "HOLD", score: 82, is_condor: true,
-    entry_premium: 4.2, last_mark: 1.0, live_pnl_pct: -76.2,
+    entry_premium: 4.2, last_mark: 1.0, live_pnl_pct: 76.2,
     peak_premium: 4.5, trough_premium: 0.9,
     setup: { direction: "short", dte: 0, play_type: "CONDOR" },
     condor: CONDOR_GEOM, underlying_price: 6301,
   });
-  assert.equal(winner.pnlPct, 76.2); // seller return, positive
-  // peak = BEST excursion = lowest mark (0.9): (4.2−0.9)/4.2 = +78.6%; trough = worst (highest 4.5): −7.1%
+  assert.equal(winner.pnlPct, 76.2); // server value displayed as-is (positive) — NOT re-inverted to −76.2
+  // peak = BEST excursion = lowest mark (0.9): (4.2−0.9)/4.2 = +78.6%; trough = worst (highest 4.5): −7.1%.
+  // These derive from the RAW latched premiums on the payload (not from live_pnl_pct), so they are a
+  // display transform, not a second invert of the corrected headline.
   assert.equal(winner.peak, 78.6);
   assert.equal(winner.trough, -7.1);
+});
+
+test("0DTE adapter (condor): NO double-invert — a correct positive server P&L is never flipped negative", () => {
+  // Regression lock for the removed Wave 2 recompute: if the render still derived (entry−mark)/entry
+  // AND the server also did, a positive winner would round-trip to negative. Feed a correct positive
+  // server value with a low mark and assert the sign is preserved exactly.
+  const positive = terminalPlayFromZeroDte({
+    ticker: "spx", status: "HOLD", is_condor: true,
+    entry_premium: 4.2, last_mark: 0.5, live_pnl_pct: 88.1,
+    setup: { direction: "short", dte: 0, play_type: "CONDOR" },
+    condor: CONDOR_GEOM,
+  });
+  assert.equal(positive.pnlPct, 88.1); // preserved, positive — not re-flipped
+  // A breached (losing) condor arrives NEGATIVE from the server and must also stay negative.
+  const loser = terminalPlayFromZeroDte({
+    ticker: "spx", status: "HOLD", is_condor: true,
+    entry_premium: 4.2, last_mark: 9.0, live_pnl_pct: -114.3,
+    setup: { direction: "short", dte: 0, play_type: "CONDOR" },
+    condor: CONDOR_GEOM,
+  });
+  assert.equal(loser.pnlPct, -114.3); // preserved, negative
 });
 
 test("0DTE adapter (condor): executable-fill P&L is suppressed (directional long framing is inverted)", () => {

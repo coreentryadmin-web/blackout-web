@@ -30,6 +30,7 @@ import {
   closedStopReason,
   isZeroDteMarkStale,
   pinnedLivePnlPct,
+  reconcileLedgerLivePnlPct,
   ZERODTE_MARK_STALE_MS,
   type ZeroDteMarkSource,
 } from "@/lib/zerodte/marks-math";
@@ -293,6 +294,10 @@ function mapLedgerRow(
   // sync value (r.last_mark) remains the fallback and carries no per-quote
   // timestamp, which is surfaced honestly as mark_as_of: null.
   const lastMark = liveMark?.mark ?? r.last_mark;
+  // Structure flag frozen at commit — a CONDOR is a CREDIT structure, so its P&L is
+  // seller-framed (see reconcileLedgerLivePnlPct); the directional stop-pin/ratchet-floor
+  // concepts below do not apply to it. Read once here and reused across the row build.
+  const isCondor = r.entry_context?.play_type === "CONDOR";
   // D-1 fix: a stopped play's displayed P&L is the stop P&L (what the grader will
   // stamp), never the frozen last_mark of whichever tick happened to cross it. This
   // "stopped" verdict is ALSO the only closed_reason that pins P&L (below) — every other
@@ -316,10 +321,13 @@ function mapLedgerRow(
   // ratchet's `trimmed` latch (a trimmed runner's floor is +50%). Null when the peak
   // never armed a floor. buildZeroDteBoardPayload's roundFloats() rounds this like every
   // other premium % on the payload.
-  const floorPnlPct = ratchetFloorPct(
-    pinnedLivePnlPct(r.entry_premium, r.peak_premium),
-    r.status === "TRIM"
-  );
+  // The ratchet floor is a DIRECTIONAL long-premium concept (a rising mark arms a protective
+  // floor). A credit condor has no such ladder — its risk is the defined-loss cap, and its
+  // "best" excursion is the LOWEST mark, not the highest — so applying the long-framed floor to
+  // it would surface an inverted, meaningless number. Suppress it for condors (null).
+  const floorPnlPct = isCondor
+    ? null
+    : ratchetFloorPct(pinnedLivePnlPct(r.entry_premium, r.peak_premium), r.status === "TRIM");
   // The terminal close label, now distinguishing the exit type: a pinned stop pins (and
   // wins); else an engine exit is categorized; else a plain 15:30 close is "time_stop";
   // else the row is still live (null).
@@ -346,8 +354,14 @@ function mapLedgerRow(
     last_mark: lastMark,
     peak_premium: r.peak_premium,
     trough_premium: r.trough_premium,
-    live_pnl_pct:
-      closedReason === "stopped" ? PLAN_RULES.stop_pct : pinnedLivePnlPct(r.entry_premium, lastMark),
+    // Structure-aware: seller-framed for a credit condor, long-framed (with the stopped stop-pin)
+    // for a directional row — the ONE derivation (marks-math) both build sites share.
+    live_pnl_pct: reconcileLedgerLivePnlPct({
+      is_condor: isCondor,
+      closed_reason: closedReason === "stopped" ? "stopped" : null,
+      entry_premium: r.entry_premium,
+      last_mark: lastMark,
+    }),
     closed_reason: boardClosedReason,
     floor_pnl_pct: floorPnlPct,
     exit_reason: engineExitCategory,
@@ -383,7 +397,7 @@ function mapLedgerRow(
     greeks: liveMark?.greeks ?? null,
     discovery_origin: readDiscoveryOrigins(r.entry_context),
     // Structure flag frozen at commit — a CONDOR must never render the directional trim ladder.
-    is_condor: r.entry_context?.play_type === "CONDOR",
+    is_condor: isCondor,
     // Wave 2 — the condor tent geometry, read structurally from the pinned CondorPlan
     // (entry_context.condor, stamped at commit — scan.ts). Only a CONDOR row carries one; parsed by
     // condorGeometryFrom (fail-closed on a bad/absent blob → null, never a fabricated tent). O(1).
@@ -557,17 +571,15 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   }) as ZeroDteBoardPayload;
 
   // roundFloats() rounds entry_premium/last_mark independently; recompute PnL from the
-  // member-visible rounded premiums so live_pnl_pct always matches (mark-entry)/entry —
-  // except a stopped play, whose result is PINNED to the stop P&L (D-1 fix; matches
-  // what gradePlanFromBars will stamp after the session).
+  // member-visible rounded premiums so live_pnl_pct always matches its structure's formula —
+  // seller-framed (entry−mark)/entry for a condor, long-framed (mark−entry)/entry otherwise,
+  // except a directional stopped play, whose result is PINNED to the stop P&L (D-1 fix; matches
+  // what gradePlanFromBars will stamp after the session). Same single derivation as mapLedgerRow.
   return {
     ...payload,
     ledger: payload.ledger.map((row) => ({
       ...row,
-      live_pnl_pct:
-        row.closed_reason === "stopped"
-          ? PLAN_RULES.stop_pct
-          : pinnedLivePnlPct(row.entry_premium, row.last_mark),
+      live_pnl_pct: reconcileLedgerLivePnlPct(row),
       // Re-price the executable P&L off the member-visible ROUNDED bid/entry (same reason the
       // mid live_pnl_pct is recomputed here) so the two exit lanes stay directly comparable.
       live_pnl_pct_exec: executableFill(row.bid, row.ask, row.entry_premium).pnl_pct,

@@ -7,11 +7,14 @@ import assert from "node:assert/strict";
 import {
   advancePlayLatch,
   closedStopReason,
+  condorSellerPnlPct,
   executablePnlPct,
   executionTaxBps,
   isZeroDteMarkStale,
   ledgerDisplayPnlPct,
+  livePnlPctFor,
   pinnedLivePnlPct,
+  reconcileLedgerLivePnlPct,
   resolveZeroDteMark,
   zeroDteExecutableEntry,
   zeroDteExecutableExit,
@@ -377,4 +380,54 @@ test("executablePnlPct / executionTaxBps: null-guarded, mid always ≥ executabl
   assert.equal(executablePnlPct(0, 0.9), null); // entry ask must be > 0
   assert.equal(executionTaxBps(100, 81.82), 1818); // the tax the mid lane hid
   assert.equal(executionTaxBps(null, 5), null);
+});
+
+// ── Condor seller-framed P&L (FINDINGS 2026-07-26 — the inverted credit-structure fix) ──────────
+test("condorSellerPnlPct: a DECAYING (winning) condor is POSITIVE — the inverse of the long formula", () => {
+  // Sold at 4.2 credit, bought back at 1.0 → (4.2−1.0)/4.2 = +76.19% (credit kept). The long formula
+  // pinnedLivePnlPct would record the SAME row as −76.19% (the bug).
+  assert.equal(condorSellerPnlPct(4.2, 1.0), 76.19);
+  assert.equal(pinnedLivePnlPct(4.2, 1.0), -76.19); // proves they are exact mirrors
+  // A breached condor whose mark blows OUT above the credit is a NEGATIVE (defined) loss.
+  assert.equal(condorSellerPnlPct(4.2, 9.0), -114.29);
+  // At the credit (mark == entry) the return is flat 0 either way.
+  assert.equal(condorSellerPnlPct(4.2, 4.2), 0);
+});
+
+test("condorSellerPnlPct: null-safe (missing/zero entry or mark) — never fabricates a number", () => {
+  assert.equal(condorSellerPnlPct(null, 1.0), null);
+  assert.equal(condorSellerPnlPct(4.2, null), null);
+  assert.equal(condorSellerPnlPct(0, 1.0), null); // non-positive credit rejected
+  assert.equal(condorSellerPnlPct(-1, 1.0), null);
+});
+
+test("livePnlPctFor: seller-framed for a condor, byte-identical to pinnedLivePnlPct for a directional row", () => {
+  // Condor branch → seller-framed positive winner.
+  assert.equal(livePnlPctFor(true, 4.2, 1.0), 76.19);
+  // Directional branch → the exact long-premium value, regression-locked.
+  assert.equal(livePnlPctFor(false, 4.2, 1.0), -76.19);
+  assert.equal(livePnlPctFor(false, 6.02, 7.38), pinnedLivePnlPct(6.02, 7.38)); // 22.59, unchanged
+});
+
+test("reconcileLedgerLivePnlPct: winning condor POSITIVE, breached condor NEGATIVE, directional unchanged", () => {
+  // WINNING (decaying) condor → POSITIVE. No directional stop-pin is applied to a credit structure.
+  assert.equal(
+    reconcileLedgerLivePnlPct({ is_condor: true, closed_reason: null, entry_premium: 4.2, last_mark: 1.0 }),
+    76.19
+  );
+  // BREACHED (losing) condor → NEGATIVE (defined loss).
+  assert.equal(
+    reconcileLedgerLivePnlPct({ is_condor: true, closed_reason: null, entry_premium: 4.2, last_mark: 9.0 }),
+    -114.29
+  );
+  // A directional row is byte-identical to the previous inline (mark−entry)/entry expression.
+  assert.equal(
+    reconcileLedgerLivePnlPct({ is_condor: false, closed_reason: null, entry_premium: 6.02, last_mark: 7.38 }),
+    22.59
+  );
+  // A directional STOPPED close still pins to the stop P&L (D-1) — condor never takes this branch.
+  assert.equal(
+    reconcileLedgerLivePnlPct({ is_condor: false, closed_reason: "stopped", entry_premium: 6.02, last_mark: 2.0 }),
+    PLAN_RULES.stop_pct
+  );
 });
