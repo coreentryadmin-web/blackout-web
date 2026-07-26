@@ -42,7 +42,12 @@ const swrLiveOpts = {
 };
 
 
-export function useMergedDesk() {
+/**
+ * @param sim ADMIN-only: when true (the dashboard is at `/dashboard?sim=1`), every desk-lane
+ *   fetch appends `?sim=1` so the routes serve the isolated sim bundle. Defaults false — for
+ *   every member the request URLs are byte-identical to today. See spx-sim-desk.ts.
+ */
+export function useMergedDesk(sim = false) {
   const { mutate } = useSWRConfig();
   const sessionDateRef = useRef(todayEtYmd());
   const deskStable = useRef<SpxDeskPayload | undefined>(
@@ -74,7 +79,7 @@ export function useMergedDesk() {
   // One bootstrap round-trip first — avoid 4 parallel cold lane XHRs on every dashboard load.
   const { data: bootstrap, isLoading: bootstrapLoading } = useSWR(
     "spx-desk-bootstrap",
-    fetchSpxBootstrap,
+    () => fetchSpxBootstrap(sim),
     {
       ...swrLiveOpts,
       revalidateOnFocus: false,
@@ -85,7 +90,9 @@ export function useMergedDesk() {
         if (data.desk) void mutate("spx-desk-full", data.desk, { revalidate: false });
         if (data.gexHeatmap && data.gexHeatmap.strikes?.length && data.gexHeatmap.spot > 0) {
           void mutate(
-            "/api/market/gex-heatmap?ticker=SPX",
+            // Seed the matrix's OWN SWR key — sim-aware so the seed lands on the same key the
+            // sim-mode matrix component polls (`&sim=1`), not the member key.
+            sim ? "/api/market/gex-heatmap?ticker=SPX&sim=1" : "/api/market/gex-heatmap?ticker=SPX",
             {
               available: true,
               ...data.gexHeatmap,
@@ -104,7 +111,7 @@ export function useMergedDesk() {
 
   const { data: pulseRest, isValidating: pulseValidating } = useSWR(
     "spx-desk-pulse",
-    fetchSpxDeskPulse,
+    () => fetchSpxDeskPulse(sim),
     {
       ...swrLiveOpts,
       revalidateOnMount: !bootstrapSeeded,
@@ -164,7 +171,7 @@ export function useMergedDesk() {
     error: deskFetchError,
     isLoading: deskLoading,
     isValidating: deskValidating,
-  } = useSWR(heavyLanesActive ? "spx-desk-full" : null, fetchSpxDesk, {
+  } = useSWR(heavyLanesActive ? "spx-desk-full" : null, () => fetchSpxDesk(sim), {
     ...swrLiveOpts,
     revalidateOnMount: !bootstrapSeeded,
     refreshInterval: sessionActive ? FULL_DESK_MS : 0,
@@ -174,7 +181,7 @@ export function useMergedDesk() {
 
   const { data: flow, isValidating: flowValidating } = useSWR(
     heavyLanesActive ? "spx-desk-flow" : null,
-    fetchSpxDeskFlow,
+    () => fetchSpxDeskFlow(sim),
     {
       ...swrLiveOpts,
       revalidateOnMount: !bootstrapSeeded,

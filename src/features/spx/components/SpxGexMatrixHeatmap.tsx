@@ -141,6 +141,9 @@ type DeskProps = {
   /** FOCUS MODE (2026-07-13): collapse to a 48px king-strike rail on the shared axis. Data
    *  hooks keep running so exiting focus restores the full panel instantly. */
   focus?: boolean;
+  /** ADMIN-only sim opt-in (`/dashboard?sim=1`): appends `&sim=1` to the SPX matrix request so
+   *  the route serves the isolated sim matrix. Defaults false — member URL is unchanged. */
+  sim?: boolean;
 };
 
 function nearestStrike(axis: number[], price: number): number | null {
@@ -164,6 +167,7 @@ export function SpxGexMatrixHeatmap({
   flow0dtePutPrem,
   priceScaleMap,
   focus,
+  sim = false,
 }: DeskProps) {
   const [lens, setLens] = useState<GexHeatmapLens>("gex");
   const pollMs = useDeskSessionPollIntervalMs(
@@ -179,10 +183,13 @@ export function SpxGexMatrixHeatmap({
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const forceResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ADMIN-only sim opt-in: append `&sim=1` so the route serves the isolated sim matrix. For
+  // every member `sim` is false → the key/URL is byte-identical to today. See spx-sim-desk.ts.
+  const simSuffix = sim ? "&sim=1" : "";
   const matrixKey =
     forceNonce > 0
-      ? `/api/market/gex-heatmap?ticker=SPX&force=1&n=${forceNonce}`
-      : "/api/market/gex-heatmap?ticker=SPX";
+      ? `/api/market/gex-heatmap?ticker=SPX&force=1&n=${forceNonce}${simSuffix}`
+      : `/api/market/gex-heatmap?ticker=SPX${simSuffix}`;
   const cachedMatrix = useMemo(() => readGexHeatmapSessionCache<GexHeatmapResponse>("SPX"), []);
 
   const clearForceNonce = () => {

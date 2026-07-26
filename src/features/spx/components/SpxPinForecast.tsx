@@ -14,8 +14,15 @@ const fmt = (n: number | null | undefined, d = 0) =>
   n == null || !Number.isFinite(n) ? "—" : n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 const KIND_LABEL: Record<string, string> = { call_wall: "call wall", put_wall: "put wall", max_pain: "max pain", flip: "gamma flip", path: "path cluster" };
 
-export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boolean }) {
-  const { pin, pinLoading } = useSpxPinForecast(sessionActive);
+export function SpxPinForecast({
+  sessionActive = true,
+  sim = false,
+}: {
+  sessionActive?: boolean;
+  /** ADMIN-only sim opt-in (`/dashboard?sim=1`); appends `?sim=1` to the pin fetch. */
+  sim?: boolean;
+}) {
+  const { pin, pinLoading } = useSpxPinForecast(sessionActive, sim);
   const [method, setMethod] = useState<"analytic" | "montecarlo">("analytic");
   const [showWhy, setShowWhy] = useState(false);
 

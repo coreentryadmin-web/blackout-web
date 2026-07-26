@@ -69,7 +69,11 @@ export function clearPlayCache(): void {
   clearSessionCacheKey(PLAY_CACHE_KEY);
 }
 
-export function useSpxPlay(sessionActive = true) {
+/**
+ * @param sim ADMIN-only: when true (`/dashboard?sim=1`) the play fetch appends `?sim=1` so the
+ *   route serves the isolated sim play. Defaults false — member request URLs are unchanged.
+ */
+export function useSpxPlay(sessionActive = true, sim = false) {
   const sessionDate = todayEtYmdClient();
 
   // Cached payload stored in state so readSessionCache is only called when
@@ -87,7 +91,7 @@ export function useSpxPlay(sessionActive = true) {
 
   const { data, isValidating, isLoading } = useSWR(
     sessionActive ? `spx-play:${sessionDate}` : null,
-    fetchSpxPlay,
+    () => fetchSpxPlay(sim),
     {
       refreshInterval: sessionActive ? PLAY_MS : 0,
       refreshWhenHidden: false,

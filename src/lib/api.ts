@@ -81,11 +81,21 @@ export async function requestSpxCommentary(
   return res.json() as Promise<SpxCommentaryResponse>;
 }
 
+/**
+ * ADMIN sim opt-in: append `?sim=1` to a desk-lane path ONLY when the dashboard is in sim mode
+ * (`/dashboard?sim=1`, admin-only). For every member (`sim` false / omitted) the returned path
+ * is BYTE-IDENTICAL to today — the server sim branch is gated on admin AND `?sim=1`, so a member
+ * never reaches it. See src/lib/platform/spx-sim-desk.ts.
+ */
+export function withSim(path: string, sim?: boolean): string {
+  return sim ? `${path}${path.includes("?") ? "&" : "?"}sim=1` : path;
+}
+
 /** Full SPX-Sniper desk — Polygon + UW dealer/flow (slower lane, ~10s). */
-export const fetchSpxDesk = () => marketFetch<SpxDeskPayload>("/spx/desk");
+export const fetchSpxDesk = (sim?: boolean) => marketFetch<SpxDeskPayload>(withSim("/spx/desk", sim));
 // Inline type import keeps the server-only spx-pin module out of the client bundle (type is erased).
-export const fetchSpxPin = () =>
-  marketFetch<import("@/features/spx/lib/spx-pin").SpxPinForecast>("/spx/pin");
+export const fetchSpxPin = (sim?: boolean) =>
+  marketFetch<import("@/features/spx/lib/spx-pin").SpxPinForecast>(withSim("/spx/pin", sim));
 
 /** One-shot dashboard bundle — desk + flow + pulse + merged (+ SPX matrix server-side). */
 export type SpxBootstrapPayload = {
@@ -96,16 +106,20 @@ export type SpxBootstrapPayload = {
   gexHeatmap: import("@/lib/providers/polygon-options-gex").GexHeatmap | null;
 };
 
-export const fetchSpxBootstrap = () => marketFetch<SpxBootstrapPayload>("/spx/bootstrap");
+export const fetchSpxBootstrap = (sim?: boolean) =>
+  marketFetch<SpxBootstrapPayload>(withSim("/spx/bootstrap", sim));
 
 /** Fast Polygon pulse — price, session, internals, mega-caps (~2s). */
-export const fetchSpxDeskPulse = () => marketFetch<import("@/features/spx/lib/spx-desk").SpxDeskPulse>("/spx/pulse");
+export const fetchSpxDeskPulse = (sim?: boolean) =>
+  marketFetch<import("@/features/spx/lib/spx-desk").SpxDeskPulse>(withSim("/spx/pulse", sim));
 
 /** UW flow lane — live tape, GEX walls, dark pool (~4s). */
-export const fetchSpxDeskFlow = () => marketFetch<import("@/features/spx/lib/spx-desk").SpxDeskFlow>("/spx/flow");
+export const fetchSpxDeskFlow = (sim?: boolean) =>
+  marketFetch<import("@/features/spx/lib/spx-desk").SpxDeskFlow>(withSim("/spx/flow", sim));
 
 /** Server play engine — BUY / HOLD / TRIM / SELL with gates + Claude arbiter. */
-export const fetchSpxPlay = () => marketFetch<import("@/features/spx/lib/spx-play-engine").SpxPlayPayload>("/spx/play");
+export const fetchSpxPlay = (sim?: boolean) =>
+  marketFetch<import("@/features/spx/lib/spx-play-engine").SpxPlayPayload>(withSim("/spx/play", sim));
 
 /** Parallel pre-market lotto track — catalyst thesis, independent from desk plays. */
 export const fetchSpxLottoToday = () =>

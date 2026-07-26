@@ -165,7 +165,11 @@ export function VectorPulse({
   // ── SPX play engine (state + playbook) ──
   const { data: spxPlay } = useSWR(
     isSpx && liveSession ? "vector-spx-playbook" : null,
-    fetchSpxPlay,
+    // MUST arrow-wrap: fetchSpxPlay is now (sim?) => …, and SWR invokes the fetcher with the KEY
+    // as its first arg. Passing it bare would send the truthy key string as `sim` → every member
+    // would poll /spx/play?sim=1 once/second in a live session (a per-second Clerk isAdminUser
+    // hammer + sim-data bleed into an admin's normal /dashboard). VectorPulse is not sim-aware.
+    () => fetchSpxPlay(),
     { refreshInterval: liveSession ? 1_000 : 0, revalidateOnFocus: false, revalidateOnReconnect: false }
   );
 

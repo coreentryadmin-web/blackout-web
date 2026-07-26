@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { loadBootstrapBundle, type MergedSpxDeskBundle } from "@/features/spx/lib/spx-desk-loader";
 import { roundFloats } from "@/lib/round-floats";
+import { auth as resolveAuthSession } from "@/lib/auth-server";
+import { isAdminUser } from "@/lib/admin-access";
+import { getSpxSimSnapshot, isSpxSimRequested, shouldServeSpxSim } from "@/lib/platform/spx-sim-desk";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +31,21 @@ export type SpxBootstrapPayload = {
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
   if (auth instanceof Response) return auth;
+
+  // ── ADMIN-ONLY simulation branch (fix/spx-desk-sim) ───────────────────────────────
+  // Serve the ISOLATED sim bundle ONLY when BOTH hold: a signed-in ADMIN and `?sim=1`.
+  // Every other case (no `?sim=1`, a non-admin even with `?sim=1`, a cron caller) falls
+  // straight through to the UNCHANGED live path below. See spx-sim-desk.ts.
+  if (isSpxSimRequested(req.nextUrl.searchParams.get("sim")) && auth.via === "user" && auth.userId) {
+    const { sessionClaims } = await resolveAuthSession();
+    if (shouldServeSpxSim(await isAdminUser(auth.userId, sessionClaims), true)) {
+      const snap = await getSpxSimSnapshot();
+      const simBootstrap =
+        snap.bootstrap ?? { desk: { available: false }, flow: null, pulse: null, merged: { available: false }, gexHeatmap: null };
+      return NextResponse.json(roundFloats(simBootstrap), { headers: { ...NO_STORE, "X-Spx-Sim": "1" } });
+    }
+    // Non-admin passed ?sim=1 → deliberately fall through to the live member path unchanged.
+  }
 
   try {
     const bundle = await loadBootstrapBundle();

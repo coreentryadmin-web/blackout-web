@@ -19,6 +19,9 @@ import { roundFloats, reconcileStrikeTotal } from "@/lib/round-floats";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { joinGexStrikeExpiryTicker, hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
+import { auth as resolveAuthSession } from "@/lib/auth-server";
+import { isAdminUser } from "@/lib/admin-access";
+import { getSpxSimSnapshot, isSpxSimRequested, shouldServeSpxSim } from "@/lib/platform/spx-sim-desk";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -257,6 +260,32 @@ export async function GET(req: NextRequest) {
   if (!/^[A-Z0-9.\-]{1,8}$/.test(ticker)) {
     return NextResponse.json({ error: "Invalid ticker" }, { status: 400 });
   }
+
+  // ── ADMIN-ONLY simulation branch (fix/spx-desk-sim) — SPX matrix only. Serve the ISOLATED
+  //    sim matrix ONLY when BOTH hold: a signed-in ADMIN and `?sim=1`, and only for ticker=SPX
+  //    (the desk's left-rail matrix). Every other case — a non-SPX ticker, no `?sim=1`, a
+  //    non-admin even with `?sim=1`, or a cron caller — falls straight through to the UNCHANGED
+  //    live path below. See src/lib/platform/spx-sim-desk.ts.
+  if (
+    ticker === "SPX" &&
+    isSpxSimRequested(req.nextUrl.searchParams.get("sim")) &&
+    auth.via === "user" &&
+    auth.userId
+  ) {
+    const { sessionClaims } = await resolveAuthSession();
+    if (shouldServeSpxSim(await isAdminUser(auth.userId, sessionClaims), true)) {
+      const snap = await getSpxSimSnapshot();
+      return NextResponse.json(roundFloats(snap.gexHeatmap ?? { available: false, underlying: "SPX" }), {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+          Pragma: "no-cache",
+          "X-Spx-Sim": "1",
+        },
+      });
+    }
+    // Non-admin passed ?sim=1 → fall through to the live member path unchanged.
+  }
+
   // Fast-move escape hatch: `?force=1` bypasses the shared matrix cache and recomputes
   // immediately (then re-writes the cache fresh). The client only fires this on a >0.5%
   // spot divergence, throttled to ≤1/8s, so it can't pressure the chain API — a normal

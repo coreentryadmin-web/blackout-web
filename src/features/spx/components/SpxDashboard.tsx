@@ -2,6 +2,7 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
 import { useAppAuth } from "@/lib/auth-client";
 import { useMergedDesk } from "@/features/spx/hooks/useMergedDesk";
@@ -90,7 +91,14 @@ type SpxDashboardProps = {
 
 export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
   const { isLoaded, tier } = useAppAuth();
-  const { desk, live, deskLoading, deskLaneFailed, sessionActive } = useMergedDesk();
+  // ADMIN-ONLY desk simulator (fix/spx-desk-sim): `/dashboard?sim=1` puts the desk in sim mode,
+  // where every lane fetch appends `?sim=1` and the routes serve the ISOLATED sim bundle. The
+  // server gate additionally requires the viewer to be an ADMIN, so a non-admin adding `?sim=1`
+  // sees the live desk unchanged (the flag only rewrites request URLs; it grants no access).
+  // Exactly "1" opts in — any other value is treated as a normal member view.
+  const searchParams = useSearchParams();
+  const sim = searchParams?.get("sim") === "1";
+  const { desk, live, deskLoading, deskLaneFailed, sessionActive } = useMergedDesk(sim);
   const nativeShell = useIosNativeShell();
   const compactPanels = useCompactDeskPanels(nativeShell);
   const [iosPanel, setIosPanel] = useState<"vector" | "matrix" | "intel">("vector");
@@ -118,7 +126,7 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
   // real desk snapshot) so the play SWR only polls when the desk is actually live. The mapped input
   // is memoized on the play's identity so an unchanged play doesn't churn the chart's reconcile.
   const playSessionActive = Boolean(live && desk?.available);
-  const { play } = useSpxPlay(playSessionActive);
+  const { play } = useSpxPlay(playSessionActive, sim);
   const playLevels = useMemo(() => playPayloadToLevelsInput(play), [play]);
 
   // FOCUS MODE (2026-07-13): `F` toggles / `Esc` exits (ignored while typing), persisted
@@ -331,6 +339,7 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
               flow0dtePutPrem={desk?.flow_0dte_put_premium}
               priceScaleMap={priceScaleMap}
               focus={focusActive}
+              sim={sim}
             />
           </aside>
         </SpxPanelErrorBoundary>
@@ -346,7 +355,7 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
               compactPanels && iosPanel === "matrix" && "ios-native-panel-visible"
             )}
           >
-            <SpxPinForecast sessionActive={sessionActive} />
+            <SpxPinForecast sessionActive={sessionActive} sim={sim} />
           </aside>
         </SpxPanelErrorBoundary>
 
