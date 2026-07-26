@@ -1,10 +1,12 @@
 "use client";
 
-import React, { Suspense, useCallback, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { clsx } from "clsx";
 import { useAppAuth } from "@/lib/auth-client";
 import { useMergedDesk } from "@/features/spx/hooks/useMergedDesk";
+import { useSpxPlay } from "@/features/spx/hooks/useSpxPlay";
+import { playPayloadToLevelsInput } from "@/features/vector/lib/vector-play-levels";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 import { useCompactDeskPanels } from "@/hooks/useCompactDeskPanels";
 import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
@@ -109,6 +111,15 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
     tone: string;
     seq: number;
   } | null>(null);
+
+  // PLAYS ON THE CHART (2026-07-26): the member's ACTIVE SPX play (entry/stop/target/invalidation)
+  // drawn as labeled price-lines on the embedded Vector chart — the play's risk levels right on the
+  // tape they're trading. Session gate matches the Pulse/commentary rails exactly (live desk AND a
+  // real desk snapshot) so the play SWR only polls when the desk is actually live. The mapped input
+  // is memoized on the play's identity so an unchanged play doesn't churn the chart's reconcile.
+  const playSessionActive = Boolean(live && desk?.available);
+  const { play } = useSpxPlay(playSessionActive);
+  const playLevels = useMemo(() => playPayloadToLevelsInput(play), [play]);
 
   // FOCUS MODE (2026-07-13): `F` toggles / `Esc` exits (ignored while typing), persisted
   // per device. Hydrated after mount so SSR markup is deterministic. Compact/iOS shells
@@ -360,6 +371,7 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
                 defaultTimeframe={3}
                 onPriceScaleRender={setPriceScaleMap}
                 focusLevel={chartFocus}
+                playLevels={playLevels}
                 toolbarReplayLeadSlot={
                   // Focus toggle relocated here from the removed session time bar
                   // (user-directed 2026-07-14: "move Focus to left of Replay").
