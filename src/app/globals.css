@@ -6645,6 +6645,213 @@ body::before {
     box-shadow: 0 0 10px rgba(255, 45, 85, 0.45);
   }
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     ⚡ SPX PULSE RAIL (2026-07-26) — enhanced live event feed replacing Largo
+     as the default left-column presentation. Dark desk language: white/5 rails,
+     mono numerics, per-type accent via the --pulse-accent custom property.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .spx-intel-rail-host {
+    @apply flex h-full min-h-0 w-full flex-col;
+  }
+
+  .spx-intel-rail-toggle {
+    @apply mb-1.5 flex shrink-0 gap-1 rounded-md border border-white/10 p-0.5;
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .spx-intel-rail-tab {
+    @apply flex-1 rounded px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-white/45 transition-colors;
+  }
+  .spx-intel-rail-tab:hover {
+    @apply text-white/70;
+  }
+  .spx-intel-rail-tab--active {
+    @apply text-white;
+    background: rgba(148, 163, 184, 0.16);
+  }
+
+  .spx-pulse-rail {
+    @apply flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-white/10;
+    background: rgba(255, 255, 255, 0.02);
+    transition: opacity 200ms ease;
+  }
+  .spx-pulse-rail--stale {
+    opacity: 0.72;
+  }
+  .spx-pulse-rail--standby {
+    opacity: 0.85;
+  }
+
+  .spx-pulse-header {
+    @apply shrink-0 border-b border-white/10 px-2.5 py-2;
+  }
+  .spx-pulse-title-row {
+    @apply flex items-center justify-between;
+  }
+  .spx-pulse-title {
+    @apply font-syne text-sm font-bold tracking-[0.14em] text-white;
+  }
+  .spx-pulse-live {
+    @apply inline-flex items-center gap-1 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-bull;
+  }
+  .spx-pulse-live--stale {
+    @apply text-white/40;
+  }
+  .spx-pulse-live-dot {
+    @apply inline-block h-1.5 w-1.5 rounded-full;
+    background: currentColor;
+    animation: spx-pulse-blink 2s ease-in-out infinite;
+  }
+  .spx-pulse-live--stale .spx-pulse-live-dot {
+    animation: none;
+  }
+
+  .spx-pulse-regime-chip {
+    @apply mt-1.5 inline-block rounded border px-2 py-0.5 font-mono text-[10px] font-semibold tabular-nums tracking-[0.05em];
+  }
+  .spx-pulse-regime-chip--bull {
+    @apply border-bull/30 text-bull;
+    background: rgba(0, 230, 118, 0.08);
+  }
+  .spx-pulse-regime-chip--bear {
+    @apply border-bear/30 text-bear;
+    background: rgba(255, 45, 85, 0.08);
+  }
+  .spx-pulse-regime-chip--unstable {
+    @apply border-amber-400/40 text-amber-300;
+    background: rgba(251, 191, 36, 0.08);
+  }
+
+  .spx-pulse-filters {
+    @apply mt-2 flex flex-wrap gap-1;
+  }
+  .spx-pulse-filter {
+    @apply rounded-full border border-white/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-white/45 transition-colors;
+  }
+  .spx-pulse-filter:hover {
+    @apply text-white/70;
+  }
+  .spx-pulse-filter--active {
+    @apply border-white/25 text-white;
+    background: rgba(148, 163, 184, 0.16);
+  }
+
+  .spx-pulse-viewport {
+    @apply min-h-0 flex-1 overflow-y-auto;
+  }
+  .spx-pulse-pinned {
+    @apply border-b border-white/10;
+    background: rgba(251, 191, 36, 0.03);
+  }
+  .spx-pulse-empty,
+  .spx-pulse-quiet {
+    @apply px-3 py-3 text-center font-mono text-[10px] leading-snug text-white/40;
+  }
+  .spx-pulse-quiet {
+    @apply border-t border-white/5;
+  }
+
+  /* ── EVENT ROW ── */
+  .spx-pulse-row {
+    @apply relative flex items-start gap-2 border-b border-white/5 py-1.5 pl-3 pr-2;
+    --pulse-accent: #94a3b8;
+  }
+  .spx-pulse-row-rail {
+    @apply absolute left-0 top-0 bottom-0 w-[3px];
+    background: var(--pulse-accent);
+    opacity: 0.85;
+  }
+  .spx-pulse-row--pinned {
+    background: rgba(251, 191, 36, 0.04);
+  }
+  .spx-pulse-row--flash {
+    animation: spx-pulse-flash 1200ms ease-out;
+  }
+  .spx-pulse-row-icon {
+    @apply shrink-0 text-sm leading-none;
+    margin-top: 1px;
+  }
+  .spx-pulse-row-main {
+    @apply min-w-0 flex-1;
+  }
+  .spx-pulse-row-top {
+    @apply flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5;
+  }
+  .spx-pulse-badge {
+    @apply shrink-0 rounded px-1 py-px font-mono text-[8px] font-bold uppercase tracking-[0.1em];
+    color: var(--pulse-accent);
+    border: 1px solid color-mix(in srgb, var(--pulse-accent) 40%, transparent);
+    background: color-mix(in srgb, var(--pulse-accent) 10%, transparent);
+  }
+  .spx-pulse-what {
+    @apply font-mono text-[11px] font-semibold leading-snug;
+  }
+  .spx-pulse-implication {
+    @apply mt-0.5 font-mono text-[10px] leading-snug text-white/45;
+  }
+  .spx-pulse-mags {
+    @apply mt-1 flex flex-wrap gap-1;
+  }
+  .spx-pulse-mag {
+    @apply rounded border border-white/15 px-1 py-px font-mono text-[9px] tabular-nums text-white/70;
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .spx-pulse-why {
+    @apply mt-1 border-l-2 border-white/15 pl-2 font-mono text-[10px] leading-relaxed text-white/55;
+  }
+  .spx-pulse-row-right {
+    @apply flex shrink-0 flex-col items-end gap-1;
+  }
+  .spx-pulse-time {
+    @apply font-mono text-[9px] tabular-nums text-white/35;
+  }
+  .spx-pulse-row-actions {
+    @apply flex items-center gap-1;
+  }
+  .spx-pulse-jump,
+  .spx-pulse-expand {
+    @apply rounded border border-white/10 px-1 py-px font-mono text-[8px] text-white/40 transition-colors;
+  }
+  .spx-pulse-jump:hover,
+  .spx-pulse-expand:hover {
+    @apply border-white/25 text-white/80;
+  }
+
+  /* ── FOCUS STRIP (mirrors Largo's) ── */
+  .spx-pulse-focus-rail {
+    @apply relative flex h-full min-h-0 w-full flex-col items-center gap-2 overflow-hidden rounded border border-white/10 py-2;
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .spx-pulse-focus-label {
+    @apply font-mono text-[8px] font-bold tracking-[0.2em] text-white/60;
+    writing-mode: vertical-rl;
+  }
+  .spx-pulse-focus-strip {
+    @apply w-1.5 flex-1 rounded-full;
+    background: rgba(148, 163, 184, 0.4);
+  }
+  .spx-pulse-focus-rail--bull .spx-pulse-focus-strip {
+    background: linear-gradient(180deg, rgba(0, 230, 118, 0.9), rgba(0, 230, 118, 0.25));
+    box-shadow: 0 0 10px rgba(0, 230, 118, 0.45);
+  }
+  .spx-pulse-focus-rail--bear .spx-pulse-focus-strip {
+    background: linear-gradient(180deg, rgba(255, 45, 85, 0.9), rgba(255, 45, 85, 0.25));
+    box-shadow: 0 0 10px rgba(255, 45, 85, 0.45);
+  }
+
+  @keyframes spx-pulse-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  @keyframes spx-pulse-flash {
+    0% { background: color-mix(in srgb, var(--pulse-accent) 22%, transparent); }
+    100% { background: transparent; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spx-pulse-live-dot { animation: none; }
+    .spx-pulse-row--flash { animation: none; }
+  }
+
   .spx-matrix-focus-rail {
     @apply flex h-full min-h-0 w-full flex-col overflow-hidden rounded border border-white/10 py-1;
     background: rgba(255, 255, 255, 0.02);

@@ -5,11 +5,15 @@ import { join } from "node:path";
 
 /**
  * SPX desk v3 (2026-07-13, member-directed consolidation): THREE panels —
- * Largo commentary | matrix | embedded SPX Vector chart (chart-only).
+ * intel rail | matrix | embedded SPX Vector chart (chart-only).
  * The Trade Alerts kanban (SpxTradeAlerts) and the Slayer desk terminal are REMOVED from the
  * flagship desk (components stay in the repo unused, one render away). NO terminal on SPX Slayer.
+ *
+ * Intel rail default (2026-07-26): the left column now mounts `SpxIntelRail`, which renders the
+ * ⚡ Pulse event feed BY DEFAULT with a one-click toggle back to the original Largo commentary
+ * rail. Largo is not removed — SpxIntelRail hosts both, so the narration is one toggle away.
  */
-test("SpxDashboard mounts triple desk: Largo | matrix | embedded Vector chart (no trade-alerts / terminal panels)", () => {
+test("SpxDashboard mounts triple desk: intel rail (Pulse default + Largo toggle) | matrix | embedded Vector chart (no trade-alerts / terminal panels)", () => {
   const src = readFileSync(join(process.cwd(), "src/features/spx/components/SpxDashboard.tsx"), "utf8");
 
   const banned = [
@@ -41,10 +45,23 @@ test("SpxDashboard mounts triple desk: Largo | matrix | embedded Vector chart (n
     );
   }
 
-  assert.match(src, /SpxCommentaryRail/);
+  // Left column now mounts the intel-rail host (Pulse default), NOT SpxCommentaryRail directly.
+  assert.match(src, /<SpxIntelRail/, "left column mounts SpxIntelRail");
+  assert.equal(
+    src.includes("<SpxCommentaryRail"),
+    false,
+    "Largo is reached via the SpxIntelRail toggle, not mounted directly in the dashboard"
+  );
   assert.match(src, /spx-left-commentary/);
   assert.match(src, /SpxGexMatrixHeatmap/);
   assert.match(src, /spx-left-matrix/);
+
+  // Nothing is lost: SpxIntelRail renders the ⚡ Pulse rail by DEFAULT and keeps the original
+  // Largo commentary rail one toggle away (default state = "pulse").
+  const intel = readFileSync(join(process.cwd(), "src/features/spx/components/SpxIntelRail.tsx"), "utf8");
+  assert.match(intel, /SpxPulseRail/, "intel rail renders the Pulse rail");
+  assert.match(intel, /SpxCommentaryRail/, "intel rail keeps Largo reachable via the toggle");
+  assert.match(intel, /useState<IntelMode>\("pulse"\)/, "Pulse is the default rail");
   // Declutter contract (user-directed 2026-07-14): the matrix column carries NO spot module
   // (spot lives in the header strip via StripSpot) and the session time bar is unrendered —
   // the Dealer Gamma Map owns the full column height.

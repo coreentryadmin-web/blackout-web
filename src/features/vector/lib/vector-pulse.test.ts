@@ -7,6 +7,10 @@ import {
   filterFreshPulseSignals,
   wallEventToPulseSignal,
   flowAlertToPulseSignal,
+  severityTierForKind,
+  signalTier,
+  dedupeByKindLevel,
+  applyGlobalRateCap,
   type PulseSnapshot,
   type PulseSignal,
   type PlayStateSnapshot,
@@ -384,4 +388,61 @@ test("flowAlertToPulseSignal: below threshold → null", () => {
     strike: 200, direction: "buy", score: 70, route: "", alerted_at: "2026-07-16T14:10:00Z",
   };
   assert.equal(flowAlertToPulseSignal(flow, 8000), null);
+});
+
+// ---------------------------------------------------------------------------
+// Additive curation primitives (2026-07-26) — proving they exist and that the
+// Vector detector still emits legacy signals WITHOUT the new optional fields.
+// ---------------------------------------------------------------------------
+
+test("VECTOR-UNAFFECTED: legacy signals carry no tier/magnitude/implication", () => {
+  const prev = snap();
+  const next = snap({ regime: { ...BASE_REGIME, posture: "short", headline: "SHORT GAMMA" } });
+  const sigs = detectPulseSignals(prev, next);
+  assert.equal(sigs.length, 1);
+  // The Vector engine never sets the new optional fields — additive change is invisible to it.
+  assert.equal(sigs[0]!.tier, undefined);
+  assert.equal(sigs[0]!.magnitude, undefined);
+  assert.equal(sigs[0]!.implication, undefined);
+});
+
+test("severityTierForKind maps the taxonomy to 1/2/3", () => {
+  assert.equal(severityTierForKind("regime-flip"), 1);
+  assert.equal(severityTierForKind("wall-break"), 1);
+  assert.equal(severityTierForKind("macro-window"), 1);
+  assert.equal(severityTierForKind("magnet-shift"), 2);
+  assert.equal(severityTierForKind("flow-print"), 3);
+});
+
+test("signalTier prefers the explicit tier, else the kind default", () => {
+  assert.equal(signalTier({ key: "x", kind: "flow-print", tone: "info", line: "", at: 0 }), 3);
+  assert.equal(signalTier({ key: "x", kind: "flow-print", tone: "info", line: "", at: 0, tier: 1 }), 1);
+});
+
+test("dedupeByKindLevel collapses same (kind, level) within the window", () => {
+  const mk = (level: number, at: number): PulseSignal => ({
+    key: `wall:${level}:${at}`, kind: "wall-build", tone: "bull", line: "", at, level,
+  });
+  const first = dedupeByKindLevel([mk(7530, 1000)], {}, 1000);
+  assert.equal(first.kept.length, 1);
+  // Same kind+level 10s later → suppressed; different level → passes.
+  const second = dedupeByKindLevel([mk(7530, 11_000), mk(7540, 11_000)], first.seen, 11_000);
+  assert.deepEqual(second.kept.map((s) => s.level), [7540]);
+});
+
+test("applyGlobalRateCap: Tier-1 always passes, lower tiers are budgeted", () => {
+  const t3 = (i: number): PulseSignal => ({ key: `f${i}`, kind: "flow-print", tone: "info", line: "", at: i, tier: 3 });
+  const t1: PulseSignal = { key: "r", kind: "regime-flip", tone: "bull", line: "", at: 99, tier: 1 };
+  const candidates = [t3(1), t3(2), t3(3), t1];
+  const { emitted } = applyGlobalRateCap(candidates, [], 1000, { maxPerMin: 2 });
+  // Tier-1 bypasses the cap; only 2 of the 3 Tier-3 fit the budget.
+  assert.ok(emitted.some((s) => s.kind === "regime-flip"));
+  assert.equal(emitted.filter((s) => s.kind === "flow-print").length, 2);
+});
+
+test("applyGlobalRateCap: window prunes old emit times", () => {
+  const t3: PulseSignal = { key: "f", kind: "flow-print", tone: "info", line: "", at: 0, tier: 3 };
+  // Ledger full but all entries are older than the window → budget frees up.
+  const { emitted } = applyGlobalRateCap([t3], [1, 2, 3, 4, 5, 6], 100_000, { maxPerMin: 6, windowMs: 60_000 });
+  assert.equal(emitted.length, 1);
 });
