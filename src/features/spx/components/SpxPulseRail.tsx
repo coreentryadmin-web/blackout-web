@@ -54,6 +54,14 @@ type Props = {
   desk?: SpxDeskPayload;
   live?: boolean;
   focus?: boolean;
+  /**
+   * Chart-anchor seam (2026-07-26): the SPX desk mounts this rail beside the embedded Vector chart.
+   * When present, clicking a Pulse event's "→ chart" affordance asks the chart to flash a transient
+   * highlight line at that event's price level. Optional everywhere — when undefined the button is a
+   * no-op affordance exactly as before (and rows with no level never render it). See SpxDashboard /
+   * VectorChart `focusLevel`.
+   */
+  onFocusLevel?: (level: number, label: string, tone: PulseSignal["tone"]) => void;
 };
 
 /** Feed item = a fired signal plus a stable unique id for React keys / flash tracking. */
@@ -80,11 +88,13 @@ function PulseRow({
   expanded,
   onToggle,
   flashing,
+  onFocusLevel,
 }: {
   item: FeedItem;
   expanded: boolean;
   onToggle: () => void;
   flashing: boolean;
+  onFocusLevel?: (level: number, label: string, tone: PulseSignal["tone"]) => void;
 }) {
   const view = kindView(item.kind);
   const pinned = signalTier(item) === 1;
@@ -114,18 +124,24 @@ function PulseRow({
       <div className="spx-pulse-row-right">
         <time className="spx-pulse-time" dateTime={new Date(item.at).toISOString()}>{fmtClock(item.at)}</time>
         <div className="spx-pulse-row-actions">
-          <button
-            type="button"
-            className="spx-pulse-jump"
-            title={item.level != null ? `Jump to ${Math.round(item.level)} on the chart` : "Jump to chart"}
-            aria-label="Jump to chart"
-            onClick={() => {
-              // Chart-anchor plumbing is out of scope; render the affordance as a no-op stub
-              // (the rail is mounted beside the Vector chart which owns level anchoring).
-            }}
-          >
-            → chart
-          </button>
+          {/* Only render the jump affordance when the event actually carries a price level — a
+              level-less event (e.g. a macro-window heads-up) has nothing to anchor, so we skip the
+              button rather than show a dead control. When wired, clicking asks the sibling Vector
+              chart to flash a transient highlight line at item.level (see onFocusLevel). */}
+          {item.level != null && (
+            <button
+              type="button"
+              className="spx-pulse-jump"
+              title={`Jump to ${Math.round(item.level)} on the chart`}
+              aria-label="Jump to chart"
+              // Pass the SHORT kind badge (e.g. "WALL BREAK"), not item.line: item.line is a full
+              // sentence that already carries its own glyph, so the chart's axis label — which
+              // prefixes its own icon — would read "⚡ ⚡ Broke & held …" and overflow the narrow axis.
+              onClick={() => onFocusLevel?.(item.level!, view.badge, item.tone)}
+            >
+              → chart
+            </button>
+          )}
           {item.why && (
             <button
               type="button"
@@ -143,7 +159,7 @@ function PulseRow({
   );
 }
 
-export function SpxPulseRail({ desk, live, focus }: Props) {
+export function SpxPulseRail({ desk, live, focus, onFocusLevel }: Props) {
   const sessionActive = Boolean(live && desk?.available);
   const { pin } = useSpxPinForecast(sessionActive);
   const { play } = useSpxPlay(sessionActive);
@@ -375,6 +391,7 @@ export function SpxPulseRail({ desk, live, focus }: Props) {
                     expanded={expandedId === item.id}
                     onToggle={() => setExpandedId((cur) => (cur === item.id ? null : item.id))}
                     flashing={flashIds.has(item.id)}
+                    onFocusLevel={onFocusLevel}
                   />
                 ))}
               </div>
@@ -390,6 +407,7 @@ export function SpxPulseRail({ desk, live, focus }: Props) {
                     expanded={expandedId === item.id}
                     onToggle={() => setExpandedId((cur) => (cur === item.id ? null : item.id))}
                     flashing={flashIds.has(item.id)}
+                    onFocusLevel={onFocusLevel}
                   />
                 ))}
               </div>

@@ -290,6 +290,16 @@ type Props = {
    * behavior is byte-identical.
    */
   onPriceScaleRender?: (map: VectorPriceScaleMap) => void;
+  /**
+   * PULSE → CHART ANCHOR seam (2026-07-26): a transient focus request from a host desk's Pulse rail
+   * (SPX Slayer). When present with a finite `price`, the chart flashes a bright labeled price-line
+   * at that level for ~3s then fades it — a "here's the event on the chart" cue, NOT a persistent
+   * overlay. `seq` is a monotonic counter bumped on every click so re-clicking the SAME level still
+   * re-triggers the flash (the effect keys on seq, not on the price value). `tone` colors the line.
+   * Strictly optional: when undefined (the standalone /vector page) no effect runs and behavior is
+   * byte-identical.
+   */
+  focusLevel?: { price: number; label: string; tone: string; seq: number } | null;
 };
 
 function lensVisuals(lens: VectorWallLens) {
@@ -1115,6 +1125,7 @@ export function VectorChart({
   defaultTimeframe,
   defaultChartViewport = "live",
   onPriceScaleRender,
+  focusLevel,
 }: Props) {
   const initialTimeframe = defaultTimeframe ?? VECTOR_DEFAULT_TIMEFRAME;
   const openingDteHorizon: VectorDteHorizon = defaultDteHorizon ?? "weekly";
@@ -1184,6 +1195,11 @@ export function VectorChart({
   // emit stacks it against the other levels.
   const maxPainLineRef = useRef<IPriceLine | null>(null);
   const maxPainValueRef = useRef<number | null>(null);
+  // PULSE → CHART ANCHOR (2026-07-26): the transient highlight line drawn for a Pulse "→ chart"
+  // click, and the timer that fades it. Kept in refs so the flash effect can remove a PRIOR line
+  // (and cancel its pending fade) before drawing the next one, and clean both up on unmount.
+  const focusLineRef = useRef<IPriceLine | null>(null);
+  const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Expected-move band (#15 cone, slice 3b): the last-fetched band, its drawn price-lines, and a
   // signature so paintOverlays only rebuilds the lines when the band or the toggle actually changes.
   const expectedMoveBandsRef = useRef<ExpectedMove | null>(null);
@@ -1419,6 +1435,62 @@ export function VectorChart({
   useEffect(() => {
     cursorIndexRef.current = cursorIndex;
   }, [cursorIndex]);
+
+  // PULSE → CHART ANCHOR (2026-07-26): flash a transient labeled price-line when a host desk's Pulse
+  // rail asks to anchor an event level. Keyed on `focusLevel?.seq` so re-clicking the SAME level
+  // re-fires (the {price,label,tone} object is otherwise referentially stable-ish and wouldn't).
+  // Deliberately does NOT scroll/zoom or touch autoscale — event levels on a 0DTE SPX chart sit near
+  // spot and the axis already spans the walls, so a brief highlight is the whole deliverable; a jump
+  // would fight the member's pan. The line removes itself after ~3s so it reads as a cue, not clutter.
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series || !focusLevel || !Number.isFinite(focusLevel.price)) return;
+    // Clear any still-showing prior focus line + its pending fade before drawing the new one, so a
+    // rapid second click doesn't leak a line or let an old timer wipe the fresh one early.
+    if (focusTimeoutRef.current) {
+      clearTimeout(focusTimeoutRef.current);
+      focusTimeoutRef.current = null;
+    }
+    if (focusLineRef.current) {
+      series.removePriceLine(focusLineRef.current);
+      focusLineRef.current = null;
+    }
+    const color =
+      focusLevel.tone === "bull"
+        ? "#00e676"
+        : focusLevel.tone === "bear"
+          ? "#ff2d55"
+          : focusLevel.tone === "warn"
+            ? "#ff8a3d"
+            : "#38bdf8"; // info / anything else
+    focusLineRef.current = series.createPriceLine({
+      price: focusLevel.price,
+      color,
+      lineWidth: 2 as const,
+      lineStyle: LineStyle.Solid,
+      axisLabelVisible: true,
+      title: `⚡ ${focusLevel.label}`,
+    });
+    focusTimeoutRef.current = setTimeout(() => {
+      if (focusLineRef.current) {
+        series.removePriceLine(focusLineRef.current);
+        focusLineRef.current = null;
+      }
+      focusTimeoutRef.current = null;
+    }, 3000);
+    return () => {
+      // Cleanup on unmount / next fire: drop the timer and the line so nothing lingers on a dead series.
+      if (focusTimeoutRef.current) {
+        clearTimeout(focusTimeoutRef.current);
+        focusTimeoutRef.current = null;
+      }
+      if (focusLineRef.current) {
+        series.removePriceLine(focusLineRef.current);
+        focusLineRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusLevel?.seq]);
 
   const refreshTrails = useCallback((activeLens: VectorWallLens) => {
     const series = seriesRef.current;

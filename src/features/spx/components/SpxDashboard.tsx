@@ -98,6 +98,18 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
   // and the spot line land at the SAME pixel heights as the chart.
   const [priceScaleMap, setPriceScaleMap] = useState<VectorPriceScaleMap | null>(null);
 
+  // PULSE → CHART ANCHOR (2026-07-26): a Pulse event's "→ chart" click flows UP through
+  // SpxIntelRail as a focus request and DOWN into the embedded Vector chart via `focusLevel`.
+  // `seq` is a monotonic counter, NOT a value the chart reads for content — it exists so that
+  // clicking the SAME level twice still re-fires the chart's flash effect (identical {price,label,
+  // tone} would otherwise dedupe under React's referential-equality effect keying).
+  const [chartFocus, setChartFocus] = useState<{
+    price: number;
+    label: string;
+    tone: string;
+    seq: number;
+  } | null>(null);
+
   // FOCUS MODE (2026-07-13): `F` toggles / `Esc` exits (ignored while typing), persisted
   // per device. Hydrated after mount so SSR markup is deterministic. Compact/iOS shells
   // keep the segmented layout — focus is a desktop-grid concept.
@@ -267,7 +279,14 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
                 compactPanels && iosPanel === "intel" && "ios-native-panel-visible"
               )}
             >
-              <SpxIntelRail desk={desk} live={live} focus={focusActive} />
+              <SpxIntelRail
+                desk={desk}
+                live={live}
+                focus={focusActive}
+                onFocusLevel={(price, label, tone) =>
+                  setChartFocus((prev) => ({ price, label, tone, seq: (prev?.seq ?? 0) + 1 }))
+                }
+              />
             </aside>
           </Suspense>
         </SpxPanelErrorBoundary>
@@ -340,6 +359,7 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
                 defaultChartViewport="session"
                 defaultTimeframe={3}
                 onPriceScaleRender={setPriceScaleMap}
+                focusLevel={chartFocus}
                 toolbarReplayLeadSlot={
                   // Focus toggle relocated here from the removed session time bar
                   // (user-directed 2026-07-14: "move Focus to left of Replay").
