@@ -52,8 +52,12 @@ const PAGES = opt("pages", "/,/desk/vector,/desk/helix,/desk/thermal")
   .map((p) => p.trim())
   .filter(Boolean);
 
-const baseHost = new URL(BASE).hostname;
 fs.mkdirSync(OUT, { recursive: true });
+
+/** True only for our own domain — dot-anchored so `evilblackouttrades.com` can't match. */
+function isBlackoutHost(hostname) {
+  return hostname === "blackouttrades.com" || hostname.endsWith(".blackouttrades.com");
+}
 
 /** Manual CONNECT + TLS request through the agent proxy. Full method/body/headers. */
 function proxyFetch(url, { method = "GET", headers = {}, body = null } = {}) {
@@ -159,7 +163,7 @@ async function main() {
       const url = req.url();
       if (url.startsWith("data:") || url.startsWith("blob:")) return route.continue();
       if (!url.startsWith("https://")) return route.abort();
-      const isOurHost = new URL(url).hostname.endsWith("blackouttrades.com");
+      const isOurHost = isBlackoutHost(new URL(url).hostname);
       try {
         const r = await proxyFetch(url, {
           method: req.method(),
