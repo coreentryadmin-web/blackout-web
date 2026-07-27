@@ -34,7 +34,12 @@ concurrency:
 
 jobs:
   build-test:
-    runs-on: macos-14
+    # macos-15 image ships Xcode 26.x. macos-14 was pinned earlier but its
+    # default Xcode 15.x can't open project.pbxproj files with objectVersion 77
+    # ("The project cannot be opened because it is in a future Xcode project
+    # file format"), which is what current XcodeGen generates. Bumping the
+    # image + explicitly selecting Xcode 26 keeps generate+xcodebuild aligned.
+    runs-on: macos-15
     timeout-minutes: 30
     defaults:
       run:
@@ -42,10 +47,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Select newest Xcode 26 (matches TestFlight workflow)
+        working-directory: .
+        run: |
+          set -euo pipefail
+          XCODE_APP=$(ls -1d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -z "$XCODE_APP" ]; then
+            echo "ERROR: No Xcode 26.x found on this runner." >&2
+            ls -1 /Applications | grep -i '^Xcode' || true
+            exit 1
+          fi
+          echo "Selecting $XCODE_APP"
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+
       - name: Show Xcode version
-        # Prints the resolved Xcode + Swift version into the log so a future
-        # simulator-selection failure has a breadcrumb trail — the runner
-        # image's default Xcode drifts over time.
         run: |
           xcodebuild -version
           swift --version || true

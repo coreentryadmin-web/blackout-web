@@ -38,3 +38,4 @@ apps/blackout-ios/ios/
 # BIE eval harness run artifacts (stable scorecard + output dir)
 scripts/bie-eval/last-scorecard.json
 bie-eval-out/
+artifacts/

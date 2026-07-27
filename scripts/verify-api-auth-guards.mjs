@@ -36,6 +36,12 @@ const PUBLIC_ROUTE_ALLOWLIST = new Set([
   "src/app/api/auth/cognito/login/route.ts",
   "src/app/api/auth/cognito/logout/route.ts",
   "src/app/api/auth/cognito/callback/route.ts",
+  // Native iOS Sign in with Google/Apple bridge — public by definition (the
+  // caller isn't signed in yet; this endpoint mints the session). Security is
+  // enforced by verifying the provider's identity token against JWKS + the
+  // audience allow-list pinned in env (`NATIVE_OAUTH_{GOOGLE,APPLE}_CLIENT_IDS`);
+  // any token from a different client-id is rejected as `verify_failed`.
+  "src/app/api/auth/native-oauth/complete/route.ts",
 ]);
 
 const GUARD_PATTERNS = [
