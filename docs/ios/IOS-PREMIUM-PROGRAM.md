@@ -75,14 +75,14 @@ tabs/segments/controls, asserts shell classes, two device passes. Reuse + grow i
 ### P0 — Submission blockers
 - [x] **P0-1 `/privacy` page** — real Privacy Policy at `/privacy` grounded in the actual data inventory (Clerk email/phone, Whop subscription status, push subscriptions, Sentry diagnostics, session cookies; no trackers, no ad SDKs). Public/unauthenticated. `EFFECTIVE_DATE` constant. Done 2026-07-27.
 - [x] **P0-2 Homepage pricing leak (3.1.1)** — gated `#rl-pricing` + closing "See pricing" link with `hide-in-ios-app`; added a neutral `show-in-ios-app` membership note (no price/purchase) in their place. Web unchanged. Done 2026-07-26 (commit pending deploy-validation on the iPhone render).
-- [ ] **P0-3 Server-side iOS detection (durable 3.1.1)** — read `BlackOutiOSApp` UA on the server; render neutral variants so pricing/purchase markup never ships to the app (today it's CSS-hidden but present in DOM).
+- [x] **P0-3 Server-side iOS detection (durable 3.1.1)** — `src/lib/ios-app-shell-server.ts` `isIosAppShellFromHeaders()`; homepage server-conditionally renders pricing/neutral note based on iosApp; CF cache rule `f261edb0` patched via API to also bypass on `http.user_agent contains "BlackOutiOSApp"` (mirrors `__session` bypass); verified live: iOS UA → cf-cache-status MISS, desktop → HIT. Done 2026-07-27.
 - [x] **P0-4 Remove `*.whop.com` from `allowNavigation`** (`capacitor.config.ts`) so checkout can never open in-app. Done 2026-07-26.
 
 ### N — Native premium features
 - [ ] **N-1 Face ID / biometric app-lock** — plugin + app-resume gate + Account toggle.
 - [ ] **N-2 Real APNs push** — native register → token table → server sender; hide the inert web-push toggle in-app.
 - [ ] **N-3 StatusBar calls + deep links (`appUrlOpen`) + native share.**
-- [ ] **N-4 Head-script fix** — pending-shell regex omits `vector`, includes dead `grid` (anti-flash).
+- [x] **N-4 Head-script fix** — pending-shell regex in `src/app/layout.tsx` fixed to add `/vector` and drop dead `/grid`; regression test in `src/lib/ios-tool-routes.test.ts` locks it to `IOS_NATIVE_SHELL_PATH_PREFIXES`. Done 2026-07-27.
 
 ### U — Per-page premium polish (validate each on the iPhone render)
 - [ ] **U-1 Dashboard (SPX Slayer)** · **U-2 Flows (HELIX)** · **U-3 Heatmap (Thermal)** · **U-4 Terminal (Largo)** · **U-5 Nighthawk** · **U-6 Vector** · **U-7 Account** · **U-8 Track-record (add native chrome — currently none)** · **U-9 FAQ/Learn** · **U-10 Upgrade** · **U-11 Sign-in/Sign-up** · **U-12 Offline** · **U-13 Home (marketing, in-app entry)**

@@ -39,19 +39,29 @@ EFFECTIVE_DATE constant. Verified AWS creds work (acct 177922194517, profile `bl
 Mac host quota = 0 → increase requested (mac2, L-5D8DADF5→1, req `89b92573…`, pending AWS review).
 Verified GitHub Actions macOS runners are the primary native dev/test loop (no quota/secrets).
 
+**2026-07-27 (cont.)** — **P0-3** server-side iOS UA gate: `isIosAppShellFromHeaders()`,
+`RedesignHome` server-conditionally renders pricing OR the neutral note (both `hide-in-ios-app`
+/ `show-in-ios-app` classes stay as belt-and-braces); CF cache rule `f261edb0` patched via API
+to also bypass on `BlackOutiOSApp` UA (mirrors `__session` bypass) — iOS UA → cf-cache-status
+MISS live-verified. **N-4** head-script pending-shell regex adds `/vector`, drops dead `/grid`,
+pinned with regression test in `ios-tool-routes.test.ts`. All 4 P0 submission blockers now DONE.
+
 ## NEXT HIGHEST-PRIORITY TASK
-1. **P0-3 server-side iOS UA detection** — read `BlackOutiOSApp` UA in middleware/root layout so
-   pricing/purchase markup never ships to the app (hardens P0-2 from CSS-hide to not-rendered).
-2. **N-4 head-script fix** — pending-shell regex in `src/app/layout.tsx:80-98` omits `/vector` and
-   includes dead `/grid` → `/vector` flashes web Nav in-app. Small fix.
-3. Once merged/deployed, re-run `scripts/ios/ios-ui-audit.mjs` against prod to confirm the iOS
-   render shows the neutral note + **no** pricing/amounts/"See pricing", and `/privacy` renders.
-4. **Native scaffold on GitHub macOS CI** — create `apps/blackout-ios-native/` Xcode/SwiftUI
-   project + a `.github/workflows/blackout-ios-native-ci.yml` (build + snapshot tests on
-   `macos-14`); this unlocks the native build/test loop this session.
-5. **N-1 Face ID** / **N-2 APNs native register + server sender**. Write now; validates on the
-   macOS CI (or the AWS Mac if quota clears).
-6. Then **U-*** per-page premium polish (validate each on the iPhone render).
+1. **After PR #1106 CI green + merge + prod deploy**, run the audit to prove the P0 set is live:
+   `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node scripts/ios/ios-ui-audit.mjs --base https://blackouttrades.com --pages "/,/privacy"`
+   Expected: `/` iOS render shows the neutral note + **no** pricing DOM (grep the served HTML
+   with `?ua=iOS` for `$75|$199|1,999|Start now|See pricing` — must be zero hits); `/privacy`
+   returns 200 with the policy content.
+2. **Native scaffold on GitHub macOS CI** — create `apps/blackout-ios-native/` Xcode/SwiftUI
+   project scaffold + `.github/workflows/blackout-ios-native-ci.yml` (build + XCTest snapshot
+   tests on `macos-14`, artifact upload). Unlocks the native build/test loop from this box —
+   no AWS Mac needed.
+3. **N-1 Face ID** (LocalAuthentication + Keychain + app-resume gate + Account toggle).
+4. **N-2 real APNs** (`@capacitor/push-notifications` register → native token table row →
+   server APNs sender using the ASC key; hide the inert web-push toggle in-app). Then N-3
+   (StatusBar calls + `@capacitor/app` `appUrlOpen` deep links + native share).
+5. **U-*** per-page premium polish (validate each on the iPhone render).
+6. **M-*** ASC listing metadata + demo account + screenshots — ask before mutating live.
 
 ## Requested-docs status (master prompt)
 `EXECUTION-STATE.md` (this) live. Others — PRODUCT-VISION, INFORMATION-ARCHITECTURE, DESIGN-SYSTEM,
