@@ -75,15 +75,41 @@ jobs:
         run: xcodegen generate
 
       - name: Resolve default iOS Simulator
-        # Prints available simulators and picks a stable one (latest iOS
-        # runtime, iPhone 15). A missing simulator is the most common cause
-        # of xcodebuild failures on the runner and this makes it obvious.
+        # Print the full simulator list to the log (breadcrumb for future
+        # picker misses) then pick ANY available iPhone from the newest iOS
+        # runtime. macos-15 + Xcode 26 no longer ships "iPhone 15" as a
+        # simulator name — the picker used to hard-code that, resulting in
+        # an empty SIMULATOR_ID and xcodebuild silently printing usage help
+        # instead of building. Now: latest iOS key, prefer iPhone 16 Pro
+        # then 16 then any iPhone as it iterates. Fails LOUD with an
+        # error message + full list if nothing matches instead of writing
+        # empty env.
         run: |
+          set -euo pipefail
           xcrun simctl list devices available
-          echo "SIMULATOR_ID=$(xcrun simctl list devices available --json | \
-            /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; \
-            keys=sorted([k for k in d if "iOS" in k], reverse=True); \
-            print(next(dev["udid"] for k in keys for dev in d[k] if dev["name"]=="iPhone 15" and dev.get("isAvailable")))')" >> "$GITHUB_ENV"
+          SIMULATOR_ID=$(xcrun simctl list devices available --json | /usr/bin/python3 - <<'PY'
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          # Newest iOS runtime first ("com.apple.CoreSimulator.SimRuntime.iOS-26-0" > 25-0 > …).
+          runtimes = sorted([k for k in data if "iOS" in k], reverse=True)
+          preferred = ("iPhone 16 Pro Max", "iPhone 16 Pro", "iPhone 16", "iPhone 15 Pro Max", "iPhone 15 Pro", "iPhone 15")
+          for name in preferred:
+              for rt in runtimes:
+                  for dev in data.get(rt, []):
+                      if dev.get("name") == name and dev.get("isAvailable"):
+                          print(dev["udid"])
+                          sys.exit(0)
+          # Fallback: FIRST available iPhone on the newest runtime.
+          for rt in runtimes:
+              for dev in data.get(rt, []):
+                  if dev.get("name", "").startswith("iPhone") and dev.get("isAvailable"):
+                      print(dev["udid"])
+                      sys.exit(0)
+          sys.exit("ERROR: no available iPhone simulator on this runner")
+          PY
+          )
+          echo "Resolved SIMULATOR_ID=$SIMULATOR_ID"
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
 
       - name: Build (Debug, iPhone 15 simulator, no signing)
         run: |
