@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { clsx } from "clsx";
 import { PricingBackdrop } from "@/components/landing/PricingBackdrop";
 import { AuthProofRail } from "@/components/auth/AuthProofRail";
+import { NativeOAuthButtons } from "@/components/auth/NativeOAuthButtons";
 import { isIosAppShell } from "@/lib/ios-app-shell";
 
 const paneStagger = {
@@ -146,9 +147,18 @@ export function AuthShell({ mode, children }: { mode: "signin" | "signup"; child
                 Discord, Apple, or email + one-time code.
               </p>
               <p className="mt-1 font-mono text-[11px] leading-relaxed text-sky-300">
-                Google sign-in is blocked inside the iOS app (Google's WebView policy) — every other provider below works. Or enter your email and we'll send a code.
+                Tap Apple or Google below — they open the system sign-in sheet
+                (no in-app WebView, no password). Or scroll down for Discord or
+                an email one-time code.
               </p>
             </div>
+            {/* Native Google + Apple buttons — iOS shell only. Uses Capacitor
+                plugins that open the SYSTEM auth sheet (not the WebView), so
+                Google's disallowed_useragent block doesn't apply and Apple
+                Sign In fires the native Face-ID/passcode sheet. On success
+                the endpoint mints a Clerk __session cookie and reloads to
+                /dashboard. Renders nothing on web, so no bundle bloat there. */}
+            <NativeOAuthButtons />
             <div className="auth-card-frame relative">{children}</div>
           </div>
         </div>

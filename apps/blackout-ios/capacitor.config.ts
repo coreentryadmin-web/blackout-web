@@ -69,6 +69,21 @@ const config: CapacitorConfig = {
     PushNotifications: {
       presentationOptions: ["badge", "sound", "alert"],
     },
+    // Native Sign in with Google — uses Google's iOS SDK (which opens the
+    // system-level auth sheet, not the WKWebView). serverClientId is the
+    // WEB OAuth client that Clerk trusts as the audience; iOS OAuth client
+    // is auto-detected from Info.plist's GIDClientID entry.
+    // Placeholder here — the real IDs are injected via CI env vars in
+    // codemagic.yaml (NATIVE_OAUTH_GOOGLE_SERVER_CLIENT_ID +
+    // NATIVE_OAUTH_GOOGLE_IOS_CLIENT_ID) so we don't check secrets into git.
+    // The Google client-id itself isn't secret (it's exposed in Info.plist
+    // + traffic to Google), but pinning the values live-in-CI keeps the
+    // repo agnostic to prod vs staging.
+    GoogleAuth: {
+      scopes: ["profile", "email"],
+      serverClientId: "GOOGLE_SERVER_CLIENT_ID_INJECTED_AT_BUILD",
+      forceCodeForRefreshToken: false,
+    },
   },
 };
 
