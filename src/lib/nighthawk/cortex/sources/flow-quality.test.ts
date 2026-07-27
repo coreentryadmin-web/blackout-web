@@ -102,7 +102,9 @@ describe("flow-quality: opposing-cluster veto (design $1M / 15 min)", () => {
     });
     const items = deriveFlowQualityEvidence(input);
     assert.equal(items.length, 1);
-    assert.equal(items[0].stance, "absent");
+    // Flow tape was read but no qualifying cluster → zero-weight "clear" support, not absent
+    assert.equal(items[0].stance, "supports");
+    assert.equal(items[0].weight, 0);
   });
 
   test("veto weight scales with cluster size relative to the $1M floor", () => {
@@ -138,7 +140,8 @@ describe("flow-quality: aligned sweep-cluster support", () => {
       direction: "long",
       flow: { asOf: TEST_NOW, prints: alignedPrints.slice(0, 2).map((p) => ({ ...p, premium: 500_000 })) },
     });
-    assert.equal(deriveFlowQualityEvidence(input).some((i) => i.stance === "supports"), false);
+    // No real support (weight > 0) — only the zero-weight "clear" item
+    assert.equal(deriveFlowQualityEvidence(input).some((i) => i.stance === "supports" && i.weight > 0), false);
   });
 
   test("a pure block stack (zero sweeps) earns no urgency support", () => {
@@ -146,7 +149,8 @@ describe("flow-quality: aligned sweep-cluster support", () => {
       direction: "long",
       flow: { asOf: TEST_NOW, prints: alignedPrints.map((p) => ({ ...p, kind: "block" as const })) },
     });
-    assert.equal(deriveFlowQualityEvidence(input).some((i) => i.stance === "supports"), false);
+    // No real support (weight > 0) — only the zero-weight "clear" item
+    assert.equal(deriveFlowQualityEvidence(input).some((i) => i.stance === "supports" && i.weight > 0), false);
   });
 
   test("'other' texture (RepeatedHits etc.) counts toward neither cluster", () => {
@@ -156,7 +160,9 @@ describe("flow-quality: aligned sweep-cluster support", () => {
     });
     const items = deriveFlowQualityEvidence(input);
     assert.equal(items.length, 1);
-    assert.equal(items[0].stance, "absent");
+    // Flow tape was read but no qualifying cluster → zero-weight "clear" support, not absent
+    assert.equal(items[0].stance, "supports");
+    assert.equal(items[0].weight, 0);
   });
 });
 
