@@ -3,11 +3,19 @@ export const dynamic = "force-static";
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
+import { SITE } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Risk Disclaimer · BlackOut",
   description:
     "Risk disclosure for BlackOut Trades — trading options, futures, and equities involves substantial risk of loss.",
+  alternates: { canonical: `${SITE.url}/disclaimer` },
+  openGraph: {
+    title: "Risk Disclaimer · BlackOut",
+    description:
+      "Risk disclosure for BlackOut Trades — trading options, futures, and equities involves substantial risk of loss.",
+    url: `${SITE.url}/disclaimer`,
+  },
 };
 
 export default function DisclaimerPage() {

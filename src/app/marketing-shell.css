@@ -386,6 +386,10 @@
   background: rgba(163, 230, 53, 0.04);
 }
 .legal-highlight a { font-weight: 600; }
+.legal-contact-cta{text-align:center;padding:2rem 0 2.5rem;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:2rem}
+.legal-contact-btn{display:inline-block;padding:.75rem 2rem;background:var(--brand,#00e87b);color:#000;font-weight:600;border-radius:6px;text-decoration:none;transition:opacity .15s}
+.legal-contact-btn:hover{opacity:.85}
+.legal-contact-alt{margin-top:.75rem;font-size:.85rem;opacity:.5}
 
 @media (prefers-reduced-motion: reduce) {
 

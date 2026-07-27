@@ -31,6 +31,7 @@ const LEGAL = [
   { label: "Privacy Policy", href: "/privacy" },
   { label: "Risk Disclaimer", href: "/disclaimer" },
   { label: "Refund Policy", href: "/refund-policy" },
+  { label: "Cookie Policy", href: "/cookie-policy" },
 ];
 
 const COMMUNITY = [
