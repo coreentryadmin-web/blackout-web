@@ -153,6 +153,11 @@ jobs:
           fi
           npx cap sync ios
           node scripts/patch-ios-bundle-id.mjs
+          # Answer the export-compliance question upfront so TestFlight
+          # doesn't silently withhold the build behind a "Missing
+          # Compliance" flag that requires manual dashboard clicking.
+          # See patch-ios-info-plist.mjs header for the full rationale.
+          node scripts/patch-ios-info-plist.mjs
 
       - name: Generate app icon + splash (native asset sets from assets/)
         run: npm run assets:generate
