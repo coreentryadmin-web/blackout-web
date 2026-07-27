@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 };
 
 export default async function DashboardPage() {
-  await requireTier("premium");
+  await requireTier("community");
 
   // DESK CONSOLIDATION (2026-07-13, member-directed): the flagship desk embeds the SPX Vector
   // chart (chart-only — no terminal) where the Trade Alerts + Slayer terminal panels used to be.

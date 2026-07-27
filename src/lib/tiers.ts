@@ -1,12 +1,14 @@
-export type Tier = "free" | "premium";
+export type Tier = "free" | "community" | "premium";
 
 const TIER_RANK: Record<Tier, number> = {
   free: 0,
-  premium: 1,
+  community: 1,
+  premium: 2,
 };
 
 export function parseTier(value: unknown): Tier {
   if (value === "premium" || value === "pro" || value === "elite") return "premium";
+  if (value === "community") return "community";
   return "free";
 }
 
@@ -16,5 +18,6 @@ export function tierAtLeast(have: Tier, need: Tier): boolean {
 
 export const TIER_LABELS: Record<Tier, string> = {
   free: "Free",
+  community: "SPX Slayer",
   premium: "Premium",
 };

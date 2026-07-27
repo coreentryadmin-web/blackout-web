@@ -30,7 +30,7 @@ export function classifyAdminUserAccess(input: {
   if (kind === "community" && tier !== "premium") {
     return {
       accessLabel: "community",
-      deskAccess: false,
+      deskAccess: true,
       accessSummary: "SPX Slayer ($49) — SPX desk only",
     };
   }
