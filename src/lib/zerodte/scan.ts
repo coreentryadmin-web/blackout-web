@@ -154,6 +154,16 @@ const DOSSIER_CACHE_TTL_MS = 10 * 60 * 1000;
  *  or poll (~15s) gets the enriched row instantly — the board "heats up". */
 const ENRICH_WAIT_MS = 3_000;
 
+// Fail-closed resilience: last-known-good fallback for provider timeouts.
+// When a provider fetch times out (within() → null), the fail-closed gates (G-4/G-7/G-11)
+// empty the board for that entire scan pass. A single transient timeout shouldn't kill
+// every play — if we have a recent successful read from this session, use it instead.
+// On a TRUE cold start (process restart, no prior read), there's nothing to fall back to
+// and the fail-closed gates correctly hold the board until the provider responds.
+let _lastVix: number | null = null;
+let _lastMacroRead: Awaited<ReturnType<typeof macroEventsOnDateLive>> | null = null;
+let _lastEarnings: { map: Map<string, EarningsFlag>; unavailable: boolean } | null = null;
+
 /** Await `p` for at most `ms`, else null — without cancelling `p` (it continues in
  *  the background and populates the server cache). */
 export function within<T>(p: Promise<T>, ms: number): Promise<T | null> {
@@ -596,15 +606,28 @@ async function attachGateVerdicts(
       }
     })(),
   ]);
-  // Phase-0 firewall signals derived from the reads above (see gates.ts G-4/G-7/G-11).
-  const vixUnavailable = vixDayOpen == null;
-  const macroUnavailable = macroRead == null;
-  const macroEvents = macroRead ?? [];
-  // D1 firewall: TRUE only when the earnings read was ATTEMPTED-but-FAILED (distinct from
-  // "read succeeded, no candidate reports today" — that keeps the map empty with
-  // unavailable=false and commits normally). G-11 fails a fresh commit closed on TRUE.
-  const freshEarnings = freshEarningsResult.map;
-  const earningsUnavailable = freshEarningsResult.unavailable;
+  // Phase-0 firewall signals — with stale-but-recent fallback (2026-07-27).
+  // If a provider fetch timed out (null) but we have a successful read from earlier
+  // this session, use the fallback instead of marking unavailable. On a fresh read,
+  // store it as the new fallback.
+  let effectiveVix = vixDayOpen;
+  if (vixDayOpen != null) _lastVix = vixDayOpen;
+  else if (_lastVix != null) effectiveVix = _lastVix;
+  const vixUnavailable = effectiveVix == null;
+
+  let effectiveMacro = macroRead;
+  if (macroRead != null) _lastMacroRead = macroRead;
+  else if (_lastMacroRead != null) effectiveMacro = _lastMacroRead;
+  const macroUnavailable = effectiveMacro == null;
+  const macroEvents = effectiveMacro ?? [];
+
+  // D1 firewall: TRUE only when the earnings read was ATTEMPTED-but-FAILED AND no
+  // prior successful read exists for this session.
+  let effectiveEarnings = freshEarningsResult;
+  if (!freshEarningsResult.unavailable) _lastEarnings = freshEarningsResult;
+  else if (_lastEarnings != null) effectiveEarnings = _lastEarnings;
+  const freshEarnings = effectiveEarnings.map;
+  const earningsUnavailable = effectiveEarnings.unavailable;
   // D2 firewall: the halt read yields a per-ticker ACTIVE-halt set plus one GLOBAL feed-stale
   // flag (both UW + LULD halt sources cold). freshHaltFeedStale gates G-11's halt_feed_stale
   // fail-closed for EVERY committable candidate (see gates.ts G11_HALT_FAIL_CLOSED_ENABLED).
@@ -645,9 +668,9 @@ async function attachGateVerdicts(
       biasAsOfMs,
       governor,
       committedThisCycle,
-      vixDayOpen,
+      vixDayOpen: effectiveVix,
       // Phase-0 firewall: G-4 fails a fresh commit closed when the VIX read was attempted
-      // but unavailable AND a present VIX could have blocked this candidate.
+      // but unavailable AND no stale-but-recent fallback exists for this session.
       vixUnavailable,
       slayerLive,
       nighthawkTake: recentNighthawkTake(nhEcho.get(s.ticker.toUpperCase()) ?? null, today),

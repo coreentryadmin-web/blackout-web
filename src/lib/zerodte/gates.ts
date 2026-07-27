@@ -90,14 +90,13 @@ export const OPENING_WINDOW_UNLOCK_LABEL = "10:00 ET";
 // untouched, so the board is not starved (G-1 already blocks counter-tape, so a survivor is either
 // market-aligned = 1 conf, or flat-tape needing its own VWAP side = 1 conf).
 //
-// Early window: inside the measured-NEGATIVE window [10:00, 10:45) ET (E2: 10:00 −7.8% EV, 10:30
-// −9.1%; first positive is 11:00 +1.5%) the floor rises to ZERODTE_CONFLUENCE_MIN_EARLY (default 2 —
-// require the full VWAP+market "double", the +15.9% bucket). We DON'T move the 10:00 hard unlock
-// later (documented G-2 rationale + a standing user directive keep it at 10:00, and pushing it to
-// 11:00 empties the morning board); instead we demand the strongest agreement to commit early. Both
-// floors are config-gated so the ledger can tune them without a deploy. Calibration-first: the
-// existing `confluence_tiers` calibration band measures whether tightening removes more −EV than it
-// forgoes in +EV; the operator raises MIN toward 2 on that evidence (no auto-graduation).
+// Early window: inside [10:00, 10:45) ET the floor rises to ZERODTE_CONFLUENCE_MIN_EARLY.
+// CHANGED 2026-07-27: default lowered from 2 → 1 (same as the standard floor). The 2-conf
+// early requirement was starving the morning board — most plays in the first 45 minutes only
+// carry 1 confirmation (market-aligned OR VWAP-confirmed, rarely both that early) and the
+// double requirement blocked nearly everything, contributing to zero-play sessions. The
+// operator can still raise it via env if calibration evidence supports it. Both floors are
+// config-gated so the ledger can tune them without a deploy.
 //
 // FAIL-OPEN on a missing read: unlike the market-state preconditions (bias/governor, which fail
 // CLOSED), G-12 only fires when a confluence read is actually PRESENT and shows too few
@@ -107,7 +106,7 @@ export const OPENING_WINDOW_UNLOCK_LABEL = "10:00 ET";
 export const ZERODTE_CONFLUENCE_MIN = envInt("ZERODTE_CONFLUENCE_MIN", 1);
 export const ZERODTE_CONFLUENCE_MIN_EARLY = Math.max(
   ZERODTE_CONFLUENCE_MIN,
-  envInt("ZERODTE_CONFLUENCE_MIN_EARLY", 2)
+  envInt("ZERODTE_CONFLUENCE_MIN_EARLY", 1)
 );
 
 /** The confluence floor in force at `nowEtMinutes`: the higher early-window floor inside
@@ -608,16 +607,12 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     // plan without a real quote or fill. UI SKIP already hid these; persist must match.
     blocks.push(...planQualityGateBlocks(input.plan ?? null));
 
-    // G-10 — intraday structure conflict (was score-only; promoted 2026-07-18 audit).
-    if (input.intradayConflict === true) {
-      blocks.push({
-        code: "intraday_conflict",
-        reason:
-          "Name's session VWAP and 5m trend oppose this direction — structure conflict blocks new commits.",
-        threshold: null,
-        unlock_et: null,
-      });
-    }
+    // G-10 — intraday structure conflict: DEMOTED back to score-only (2026-07-27).
+    // Evidence: flow precedes trend changes, and the hard block (promoted 2026-07-18) was
+    // killing valid plays where flow correctly led a reversal. The score penalty already
+    // exists via adj.delta in scan.ts (computeIntradayEdge), so the signal still weighs
+    // against commitment — it just can't single-handedly empty the board anymore.
+    // The intradayConflict field is still set and surfaced in the UI for audit/display.
   }
 
   // G-11 — halt + earnings: different risk profile than a normal 0DTE scalp.

@@ -491,10 +491,10 @@ test("G-9: missing plan blocks (no quote + no fill)", () => {
   assert.equal(v.blocks.some((b) => b.code === "plan_no_quote"), true);
 });
 
-test("G-10: intraday_conflict hard-blocks", () => {
+test("G-10: intraday_conflict is score-only (no hard block)", () => {
   const v = evaluateZeroDteGates(input({ intradayConflict: true }));
-  assert.equal(v.verdict, "BLOCKED");
-  assert.equal(v.blocks.some((b) => b.code === "intraday_conflict"), true);
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "intraday_conflict"), false);
 });
 
 test("G-11: halted underlying blocks", () => {
@@ -776,17 +776,20 @@ test("G-12: 1-conf and 2-conf commit at mid-session (11:00, floor 1)", () => {
   assert.equal(evaluateZeroDteGates(input({ confluence: confluence(2) })).verdict, "COMMIT");
 });
 
-test("G-12: early window [10:00,10:45) raises the floor — 1-conf BLOCKED, 2-conf commits", () => {
-  assert.equal(ZERODTE_CONFLUENCE_MIN_EARLY, 2, "test assumes the default early floor");
-  const oneEarly = evaluateZeroDteGates(input({ confluence: confluence(1), nowEtMinutes: EARLY_ET }));
-  assert.equal(oneEarly.verdict, "BLOCKED");
-  const b = oneEarly.blocks.find((x) => x.code === "confluence_floor");
+test("G-12: early window [10:00,10:45) — 1-conf commits (floor lowered to 1), 0-conf blocked", () => {
+  assert.equal(ZERODTE_CONFLUENCE_MIN_EARLY, 1, "test assumes the lowered early floor");
+  // 1-conf commits in the early window (floor is now 1, same as standard)
+  assert.equal(
+    evaluateZeroDteGates(input({ confluence: confluence(1), nowEtMinutes: EARLY_ET })).verdict,
+    "COMMIT"
+  );
+  // 0-conf is still blocked in the early window
+  const zeroEarly = evaluateZeroDteGates(input({ confluence: confluence(0), nowEtMinutes: EARLY_ET }));
+  assert.equal(zeroEarly.verdict, "BLOCKED");
+  const b = zeroEarly.blocks.find((x) => x.code === "confluence_floor");
   assert.ok(b);
-  assert.equal(b!.threshold, 2);
-  assert.match(b!.reason, /early window/);
-  // the same 1-conf setup commits once past the early window (11:00, floor drops to 1)
-  assert.equal(evaluateZeroDteGates(input({ confluence: confluence(1) })).verdict, "COMMIT");
-  // 2-conf (the +15.9% double) clears the early floor
+  assert.equal(b!.threshold, 1);
+  // 2-conf still commits
   assert.equal(
     evaluateZeroDteGates(input({ confluence: confluence(2), nowEtMinutes: EARLY_ET })).verdict,
     "COMMIT"
