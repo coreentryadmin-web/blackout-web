@@ -94,10 +94,14 @@ tabs/segments/controls, asserts shell classes, two device passes. Reuse + grow i
 ### Native-app screens — real content (replaces `PlaceholderView` one at a time)
 - [x] **Account tab** (2026-07-27) — Membership + Security + Notifications + About sections. Real Face ID toggle. Push status. Version + Privacy link + Support email.
 - [x] **Command tab v1** (2026-07-27) — Session header (SPX + regime + session chip + freshness), Regime card (interpretation + flip / spot / call wall / put wall grid), Skeleton loading, Error card with retry, pull-to-refresh + 30s auto-refresh via `.task`. Wired to real `GET /api/market/regime` through `LiveMarketRegimeRepository` (protocol-injected, unit-testable). `APIClient` handles the whole HTTP layer with typed `APIError` cases. 12 unit tests including preserve-previous-on-error behavior.
-- [ ] **Command tab v2** — Top intelligence brief, Active opportunities, What-changed timeline, Product pulse cards.
-- [ ] **Intelligence tab v1** — Native module list with pulse from each desk (SPX Slayer / Helix / Thermal / Largo / Night Hawk / Vector).
-- [ ] **Signals tab v1** — setup-lifecycle feed with filter chips.
-- [ ] **Watchlist tab v1** — ticker list + detail + alert builder.
+- [x] **Intelligence tab v1** (2026-07-27) — Six product cards (SPX Slayer / Helix / Thermal / Largo / Night Hawk / Vector) with real per-desk identity (accent color from `BOColor.Product.*`, product mark, tagline, purpose). Each card is a `NavigationLink` into a `ProductDetailView` showing the desk's purpose. `IntelligenceRegistry` is the single source of truth (id, name, mark, accent, tagline, purpose, webPath); contract-tested to match `IOS_TOOLS` in `src/lib/ios-tool-routes.ts` and the design-system product palette 1:1.
+- [x] **Signals tab v1** (2026-07-27) — `SignalLifecycle` enum + horizontal filter chip rail (All + 7 stages: detected → confirming → active → managing → closed → invalidated → graded). Per-stage empty state with plain-English "what this stage means" copy. Lifecycle glossary card explains the whole state machine. Contract test locks slug order.
+- [x] **Watchlist tab v1** (2026-07-27) — Local ticker CRUD with UserDefaults persistence. Add sheet with validated input (1–8 chars, letters/digits + optional single dot; case-normalized), dedupe on add, swipe-to-delete, drag-to-reorder via `.onMove`. Toolbar Add + Edit. Empty state routes into the Add sheet. 10 unit tests on `WatchlistStore` (normalize, add/dupe, remove, contains, move, persistence).
+- [x] **Shared UI atoms** (2026-07-27) — `BOCard` (single card container with accent-rail variant), `BOSectionLabel` (announces as `.isHeader` to VoiceOver), `BOChip` (44pt hit target, `.isSelected` accessibility trait), `BOEmptyState` (icon + title + message + optional action, combined accessibility label). Command view refactored to use them; one look across every screen.
+- [ ] **Command tab v2** — Top intelligence brief, Active opportunities, What-changed timeline, Product pulse cards backed by real endpoints.
+- [ ] **Signals tab v2** — Real `/api/signals` feed with lifecycle transitions + push-triggered updates.
+- [ ] **Watchlist tab v2** — Server sync (Clerk-bound), per-ticker detail + alert builder.
+- [ ] **Intelligence tab v2** — In-card live pulse per desk (regime, flow, dealer state).
 
 ### I / M — Icon, assets, metadata, ship
 - [x] **I-1 App icon 1024** from `public/images/blackout-emblem.webp` → `apps/blackout-ios/assets/icon.png` (opaque, no alpha).

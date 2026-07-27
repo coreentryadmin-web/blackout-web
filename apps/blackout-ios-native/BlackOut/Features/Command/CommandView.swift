@@ -34,36 +34,28 @@ struct CommandView: View {
     @ViewBuilder private var sessionHeader: some View {
         let regime = vm.state.regime
         let fetchedAt = vm.state.fetchedAtOrNil()
-        VStack(alignment: .leading, spacing: BOSpacing.snug) {
-            HStack(alignment: .firstTextBaseline, spacing: BOSpacing.comfortable) {
-                metricBlock(
-                    label: "SPX",
-                    value: MarketRegimeFormatter.price(regime?.spot),
-                    tint: BOColor.textAccent
-                )
-                Spacer()
-                sessionChip
-            }
-            HStack(alignment: .center, spacing: BOSpacing.snug) {
-                Text(MarketRegimeFormatter.regimeLabel(regime?.regime))
-                    .font(BOFont.label)
-                    .tracking(1.4)
-                    .textCase(.uppercase)
-                    .foregroundStyle(regime?.regime == nil ? BOColor.textCaption : regimeTint(regime?.regime))
-                Spacer(minLength: BOSpacing.snug)
-                freshnessChip(fetchedAt: fetchedAt, updatedAt: regime?.updated_at)
+        BOCard(tint: .accent(BOColor.textAccent)) {
+            VStack(alignment: .leading, spacing: BOSpacing.snug) {
+                HStack(alignment: .firstTextBaseline, spacing: BOSpacing.comfortable) {
+                    metricBlock(
+                        label: "SPX",
+                        value: MarketRegimeFormatter.price(regime?.spot),
+                        tint: BOColor.textAccent
+                    )
+                    Spacer()
+                    sessionChip
+                }
+                HStack(alignment: .center, spacing: BOSpacing.snug) {
+                    Text(MarketRegimeFormatter.regimeLabel(regime?.regime))
+                        .font(BOFont.label)
+                        .tracking(1.4)
+                        .textCase(.uppercase)
+                        .foregroundStyle(regime?.regime == nil ? BOColor.textCaption : regimeTint(regime?.regime))
+                    Spacer(minLength: BOSpacing.snug)
+                    freshnessChip(fetchedAt: fetchedAt, updatedAt: regime?.updated_at)
+                }
             }
         }
-        .padding(BOSpacing.comfortable)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: BORadius.card, style: .continuous)
-                .fill(BOColor.backgroundCard)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: BORadius.card, style: .continuous)
-                .strokeBorder(BOColor.border, lineWidth: 1)
-        )
     }
 
     private var sessionChip: some View {
@@ -90,31 +82,23 @@ struct CommandView: View {
         case .error(let message):
             errorCard(message: message)
         case .loaded(let regime, _):
-            VStack(alignment: .leading, spacing: BOSpacing.snug) {
-                sectionLabel("Regime")
-                Text(MarketRegimeFormatter.regimeInterpretation(regime.regime))
-                    .font(BOFont.body)
-                    .foregroundStyle(BOColor.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Divider().overlay(BOColor.border)
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
-                          spacing: BOSpacing.snug) {
-                    dataCell(label: "Flip", value: MarketRegimeFormatter.price(regime.flip_level))
-                    dataCell(label: "Spot", value: MarketRegimeFormatter.price(regime.spot))
-                    dataCell(label: "Call wall", value: MarketRegimeFormatter.price(regime.call_wall))
-                    dataCell(label: "Put wall", value: MarketRegimeFormatter.price(regime.put_wall))
+            BOCard {
+                VStack(alignment: .leading, spacing: BOSpacing.snug) {
+                    BOSectionLabel("Regime")
+                    Text(MarketRegimeFormatter.regimeInterpretation(regime.regime))
+                        .font(BOFont.body)
+                        .foregroundStyle(BOColor.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Divider().overlay(BOColor.border)
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
+                              spacing: BOSpacing.snug) {
+                        dataCell(label: "Flip", value: MarketRegimeFormatter.price(regime.flip_level))
+                        dataCell(label: "Spot", value: MarketRegimeFormatter.price(regime.spot))
+                        dataCell(label: "Call wall", value: MarketRegimeFormatter.price(regime.call_wall))
+                        dataCell(label: "Put wall", value: MarketRegimeFormatter.price(regime.put_wall))
+                    }
                 }
             }
-            .padding(BOSpacing.comfortable)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: BORadius.card, style: .continuous)
-                    .fill(BOColor.backgroundCard)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: BORadius.card, style: .continuous)
-                    .strokeBorder(BOColor.border, lineWidth: 1)
-            )
         }
     }
 
@@ -122,23 +106,15 @@ struct CommandView: View {
 
     private var comingSoonList: some View {
         VStack(alignment: .leading, spacing: BOSpacing.snug) {
-            sectionLabel("Building next")
-            VStack(alignment: .leading, spacing: BOSpacing.unit) {
-                comingRow("Top intelligence brief — what happened, why it matters, evidence")
-                comingRow("Active opportunities — top 3–5 setups with entry / invalidation / targets")
-                comingRow("What changed — prioritized timeline of meaningful events (not raw alerts)")
-                comingRow("Product pulse — compact SPX Slayer / Helix / Thermal / Largo / Night Hawk / Vector")
+            BOSectionLabel("Building next")
+            BOCard {
+                VStack(alignment: .leading, spacing: BOSpacing.unit) {
+                    comingRow("Top intelligence brief — what happened, why it matters, evidence")
+                    comingRow("Active opportunities — top 3–5 setups with entry / invalidation / targets")
+                    comingRow("What changed — prioritized timeline of meaningful events (not raw alerts)")
+                    comingRow("Product pulse — compact SPX Slayer / Helix / Thermal / Largo / Night Hawk / Vector")
+                }
             }
-            .padding(BOSpacing.comfortable)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: BORadius.card, style: .continuous)
-                    .fill(BOColor.backgroundCard)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: BORadius.card, style: .continuous)
-                    .strokeBorder(BOColor.border, lineWidth: 1)
-            )
         }
     }
 
@@ -157,10 +133,6 @@ struct CommandView: View {
             Text(value).font(BOFont.numericBody).monospacedDigit().foregroundStyle(BOColor.textPrimary)
         }
         .padding(.vertical, BOSpacing.hairline)
-    }
-
-    private func sectionLabel(_ text: String) -> some View {
-        Text(text).font(BOFont.label).tracking(1.4).textCase(.uppercase).foregroundStyle(BOColor.textCaption)
     }
 
     private func comingRow(_ text: String) -> some View {
@@ -184,48 +156,37 @@ struct CommandView: View {
     }
 
     private var skeletonCard: some View {
-        VStack(alignment: .leading, spacing: BOSpacing.snug) {
-            RoundedRectangle(cornerRadius: BORadius.chip).fill(BOColor.rule).frame(height: 14).frame(maxWidth: 120)
-            RoundedRectangle(cornerRadius: BORadius.chip).fill(BOColor.rule).frame(height: 14)
-            RoundedRectangle(cornerRadius: BORadius.chip).fill(BOColor.rule).frame(height: 14).frame(maxWidth: 220)
+        BOCard {
+            VStack(alignment: .leading, spacing: BOSpacing.snug) {
+                RoundedRectangle(cornerRadius: BORadius.chip).fill(BOColor.rule).frame(height: 14).frame(maxWidth: 120)
+                RoundedRectangle(cornerRadius: BORadius.chip).fill(BOColor.rule).frame(height: 14)
+                RoundedRectangle(cornerRadius: BORadius.chip).fill(BOColor.rule).frame(height: 14).frame(maxWidth: 220)
+            }
         }
-        .padding(BOSpacing.comfortable)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: BORadius.card, style: .continuous)
-                .fill(BOColor.backgroundCard)
-        )
+        .accessibilityLabel("Loading regime")
     }
 
     private func errorCard(message: String) -> some View {
-        VStack(alignment: .leading, spacing: BOSpacing.unit) {
-            HStack(spacing: BOSpacing.unit) {
-                Image(systemName: "exclamationmark.triangle").foregroundStyle(BOColor.statusCaution)
-                Text("Regime unavailable").font(BOFont.bodyBold).foregroundStyle(BOColor.textPrimary)
+        BOCard(tint: .accent(BOColor.statusCaution)) {
+            VStack(alignment: .leading, spacing: BOSpacing.unit) {
+                HStack(spacing: BOSpacing.unit) {
+                    Image(systemName: "exclamationmark.triangle").foregroundStyle(BOColor.statusCaution)
+                    Text("Regime unavailable").font(BOFont.bodyBold).foregroundStyle(BOColor.textPrimary)
+                }
+                Text(message).font(BOFont.caption).foregroundStyle(BOColor.textSecondary)
+                Button {
+                    Task { await vm.refresh() }
+                } label: {
+                    Text("Retry")
+                        .font(BOFont.label).tracking(1.6).textCase(.uppercase)
+                        .padding(.horizontal, BOSpacing.snug)
+                        .padding(.vertical, BOSpacing.hairline + 2)
+                }
+                .buttonStyle(.bordered)
+                .tint(BOColor.textAccent)
+                .padding(.top, BOSpacing.hairline)
             }
-            Text(message).font(BOFont.caption).foregroundStyle(BOColor.textSecondary)
-            Button {
-                Task { await vm.refresh() }
-            } label: {
-                Text("Retry")
-                    .font(BOFont.label).tracking(1.6).textCase(.uppercase)
-                    .padding(.horizontal, BOSpacing.snug)
-                    .padding(.vertical, BOSpacing.hairline + 2)
-            }
-            .buttonStyle(.bordered)
-            .tint(BOColor.textAccent)
-            .padding(.top, BOSpacing.hairline)
         }
-        .padding(BOSpacing.comfortable)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: BORadius.card, style: .continuous)
-                .fill(BOColor.backgroundCard)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: BORadius.card, style: .continuous)
-                .strokeBorder(BOColor.statusCaution.opacity(0.4), lineWidth: 1)
-        )
     }
 
     private func regimeTint(_ regime: String?) -> Color {
