@@ -282,7 +282,7 @@ export async function scanZeroDteBoard(flags?: {
   );
 
   // ── BREAKOUT discovery origin (Phase 3a, §1a) — the SECOND, INDEPENDENT discovery source ──
-  // Flag-gated OFF by default (ZERODTE_WHOLE_MARKET + ZERODTE_SRC_BREAKOUT). When enabled, the
+  // Flag-gated via ZERODTE_WHOLE_MARKET + ZERODTE_SRC_BREAKOUT (default ON; set to "0" to disable). When enabled, the
   // whole-market breakout screen emits its own candidates carrying discovery_origin ["BREAKOUT"];
   // they merge with the flow candidates BY TICKER preserving origin as a SET (a shared ticker →
   // ["FLOW","BREAKOUT"]), never a collapsed pool, and no corroboration score boost (evidence-only).
@@ -320,7 +320,7 @@ export async function scanZeroDteBoard(flags?: {
   }
 
   // ── PIN discovery origin (Phase 3b, §1a) — the THIRD, INDEPENDENT discovery source ──
-  // Flag-gated OFF by default (ZERODTE_WHOLE_MARKET + ZERODTE_SRC_PIN). When enabled, a liquid-universe
+  // Flag-gated via ZERODTE_WHOLE_MARKET + ZERODTE_SRC_PIN (default ON; set to "0" to disable). When enabled, a liquid-universe
   // screen emits mean-reversion candidates — names pinned between dominant dealer GEX walls in a
   // long-gamma tape — as directional-FADE setups carrying discovery_origin ["PIN"]. They merge BY
   // TICKER preserving origin as a SET (a shared ticker → e.g. ["FLOW","PIN"]), never a collapsed pool,
