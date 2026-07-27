@@ -87,9 +87,15 @@ jobs:
         run: |
           set -euo pipefail
           xcrun simctl list devices available
-          SIMULATOR_ID=$(xcrun simctl list devices available --json | /usr/bin/python3 - <<'PY'
+          # Write JSON to a temp file first — heredoc `python3 - <<PY` collides
+          # with the piped stdin (heredoc becomes the script, stdin ends up
+          # empty, json.load raises "Expecting value: line 1 column 1"). Two
+          # steps: dump → parse-from-file. Robust and readable.
+          xcrun simctl list devices available --json > /tmp/simctl.json
+          SIMULATOR_ID=$(/usr/bin/python3 - <<'PY'
           import json, sys
-          data = json.load(sys.stdin)["devices"]
+          with open("/tmp/simctl.json") as f:
+              data = json.load(f)["devices"]
           # Newest iOS runtime first ("com.apple.CoreSimulator.SimRuntime.iOS-26-0" > 25-0 > …).
           runtimes = sorted([k for k in data if "iOS" in k], reverse=True)
           preferred = ("iPhone 16 Pro Max", "iPhone 16 Pro", "iPhone 16", "iPhone 15 Pro Max", "iPhone 15 Pro", "iPhone 15")
