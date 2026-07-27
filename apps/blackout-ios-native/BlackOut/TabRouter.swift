@@ -19,7 +19,7 @@ import Combine
 public final class TabRouter: ObservableObject {
     @Published public var selectedTab: AppTab
 
-    public init(initial: AppTab = .command) {
+    public init(initial: AppTab = .intelligence) {
         // Support `-startTab <slug>` launch argument (CI screenshots and any
         // scripted `xcrun simctl launch` path). If the argument matches a
         // known AppTab rawValue, start on that tab instead of the default.
