@@ -131,9 +131,24 @@ export function AuthShell({ mode, children }: { mode: "signin" | "signup"; child
 
           <div className="relative">
             <div aria-hidden className="absolute -inset-4 rounded-3xl bg-bull/10 opacity-60 blur-2xl" />
-            <p className="show-in-ios-app relative z-10 mb-4 text-center font-mono text-[11px] leading-relaxed text-sky-300">
-              Use email sign-in in the app. Google OAuth is not supported inside the iOS shell — use your email and the one-time code.
-            </p>
+            {/* iOS shell auth callout — Google/Apple OAuth are blocked inside
+                WKWebView by Google/Apple policy (not a BlackOut bug), so the
+                widget below hides the social buttons via .hide-in-ios-app.
+                This callout tells the member WHY the buttons vanished and
+                what to do instead — visible only inside the app (.show-in-ios-app).
+                Kept prominent (larger type, bordered, above the widget) because
+                the 11px mono line members were seeing looked like decoration. */}
+            <div className="show-in-ios-app auth-ios-callout relative z-10 mb-5 rounded-xl border border-bull/25 bg-bull/[0.06] px-4 py-3 text-left">
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-bull">
+                In-app sign-in
+              </p>
+              <p className="mt-1 font-syne text-sm font-medium leading-snug text-white">
+                Use email + one-time code.
+              </p>
+              <p className="mt-1 font-mono text-[11px] leading-relaxed text-sky-300">
+                Google &amp; Apple sign-in are blocked inside the iOS app (Google/Apple policy). Enter your email below and we'll send a code — no password.
+              </p>
+            </div>
             <div className="auth-card-frame relative">{children}</div>
           </div>
         </div>
