@@ -80,6 +80,15 @@ so the inert VAPID button no longer appears in the WKWebView. `CLAUDE.md` gained
 "Never stop" standing rule so every future session inherits the autonomy mandate without
 being re-told.
 
+**2026-07-27 (cont. 11)** — **Command IndexTickerStrip shipped.** A
+horizontal live-price strip (SPX / SPY / QQQ / VIX) sits between the
+regime card and Active opportunities on Command, so members see the
+underlyings without leaving the default tab. Reuses `WatchlistQuoteStore`
+verbatim — the fixed-ticker case is a degenerate case of "manage per-
+ticker fetch loops" and duplicating the concurrency plumbing would be
+waste. Same "never $0, never phantom sign" rendering rules as
+`WatchlistRow` so members learn one visual grammar.
+
 **2026-07-27 (cont. 10)** — **Intelligence v2 live per-module pulse chip
 shipped.** New `IntelligencePulseStore` fetches `/api/mobile/signals` on
 a 60s cadence (Intelligence is a summary surface, not a decision surface

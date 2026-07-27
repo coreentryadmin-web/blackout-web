@@ -16,6 +16,7 @@ struct CommandView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: BOSpacing.block) {
                 sessionHeader
+                IndexTickerStrip()
                 regimeCard
                 ActiveOpportunitiesCard()
                 WhatChangedCard(snapshots: vm.history)
