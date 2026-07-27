@@ -307,9 +307,9 @@
 .cmd-carousel-wrap{position:relative;z-index:3;padding:0 0 4rem}
 .cmd-track{
   display:flex;gap:28px;
-  overflow-x:auto;scroll-behavior:smooth;
-  scroll-snap-type:x proximity;
+  overflow-x:auto;
   -webkit-overflow-scrolling:touch;
+  overscroll-behavior-x:none;
   padding:2rem calc(50vw - 580px) 3rem;
   scrollbar-width:none;
 }
@@ -320,7 +320,6 @@
 /* Individual card — premium floating object */
 .cmd-card{
   flex:0 0 420px;
-  scroll-snap-align:start;
   background:var(--p);
   border-radius:20px;
   position:relative;overflow:hidden;
