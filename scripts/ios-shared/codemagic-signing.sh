@@ -26,8 +26,13 @@ if [ "${SKIP_VALIDATE_ENV:-0}" != "1" ]; then
 fi
 
 # Verify Xcode bundle ID matches Apple ASC (patch step must have run).
+# NB: XcodeGen writes `PRODUCT_BUNDLE_IDENTIFIER = "com.foo.app";` with quotes,
+# Capacitor writes it unquoted. `\"?` matches either. Escape the dots in the
+# bundle id since it goes into an -E regex (`app` matching `app` is fine, but
+# `com.blackout-trades.app` should not also match `com!blackout-trades!app`).
 PBX="${PBX_PATH:-ios/App/App.xcodeproj/project.pbxproj}"
-if ! grep -q "PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID};" "$PBX"; then
+BUNDLE_ID_RE=$(printf '%s\n' "$BUNDLE_ID" | sed 's/[.[\*^$/]/\\&/g')
+if ! grep -qE "PRODUCT_BUNDLE_IDENTIFIER = \"?${BUNDLE_ID_RE}\"?;" "$PBX"; then
   echo "ERROR: $PBX bundle ID is not ${BUNDLE_ID} — re-run the bundle-id patch step or verify project.yml"
   grep "PRODUCT_BUNDLE_IDENTIFIER" "$PBX" || true
   exit 1
