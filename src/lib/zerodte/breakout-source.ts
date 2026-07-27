@@ -29,13 +29,15 @@ import {
 } from "./board";
 
 // ── Flags (read at call time so tests can toggle process.env per case) ──────────────
-/** Master whole-market switch. OFF by default (Phase 3a merges safely disabled). */
+// Default ON: the three discovery systems are production-ready and must survive ECS
+// task-definition updates that don't carry env vars. Set to "0" to disable.
+/** Master whole-market switch. ON by default. Set ZERODTE_WHOLE_MARKET=0 to disable. */
 export function wholeMarketEnabled(): boolean {
-  return process.env.ZERODTE_WHOLE_MARKET === "1";
+  return process.env.ZERODTE_WHOLE_MARKET !== "0";
 }
-/** Per-source BREAKOUT switch. OFF by default. */
+/** Per-source BREAKOUT switch. ON by default. Set ZERODTE_SRC_BREAKOUT=0 to disable. */
 export function breakoutSrcFlagEnabled(): boolean {
-  return process.env.ZERODTE_SRC_BREAKOUT === "1";
+  return process.env.ZERODTE_SRC_BREAKOUT !== "0";
 }
 /** The breakout source runs only when BOTH the master and the per-source flag are on. */
 export function breakoutSourceEnabled(): boolean {

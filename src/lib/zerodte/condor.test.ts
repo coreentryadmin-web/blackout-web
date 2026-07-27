@@ -95,11 +95,11 @@ test("play_type defaults DIRECTIONAL on a PIN fade setup", () => {
   assert.equal(setup.condor_plan ?? null, null, "a directional pin carries no priced condor");
 });
 
-test("condor flag is OFF by default", () => {
+test("condor flag is ON by default and disabled with '0'", () => {
   delete process.env.ZERODTE_CONDOR;
-  assert.equal(condorFlagEnabled(), false);
-  process.env.ZERODTE_CONDOR = "1";
-  assert.equal(condorFlagEnabled(), true);
+  assert.equal(condorFlagEnabled(), true, "unset → ON by default");
+  process.env.ZERODTE_CONDOR = "0";
+  assert.equal(condorFlagEnabled(), false, "'0' → disabled");
   delete process.env.ZERODTE_CONDOR;
 });
 

@@ -48,16 +48,16 @@ function pinNearPutWall(): PinRegimeInput {
   };
 }
 
-// ── Flags: OFF by default, ON only when BOTH set ────────────────────────────────────
-test("pinSourceEnabled is OFF by default and requires BOTH flags", () => {
+// ── Flags: ON by default, OFF only when explicitly set to "0" ──────────────────────
+test("pinSourceEnabled is ON by default and disabled with '0'", () => {
   delete process.env.ZERODTE_WHOLE_MARKET;
   delete process.env.ZERODTE_SRC_PIN;
-  assert.equal(pinSourceEnabled(), false);
-  process.env.ZERODTE_WHOLE_MARKET = "1";
-  assert.equal(pinSourceEnabled(), false, "master alone is not enough");
-  process.env.ZERODTE_SRC_PIN = "1";
-  assert.equal(pinSourceEnabled(), true, "both flags on → enabled");
+  assert.equal(pinSourceEnabled(), true, "both unset → ON by default");
+  process.env.ZERODTE_WHOLE_MARKET = "0";
+  assert.equal(pinSourceEnabled(), false, "master=0 → disabled");
   delete process.env.ZERODTE_WHOLE_MARKET;
+  process.env.ZERODTE_SRC_PIN = "0";
+  assert.equal(pinSourceEnabled(), false, "per-source=0 → disabled");
   delete process.env.ZERODTE_SRC_PIN;
 });
 

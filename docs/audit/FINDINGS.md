@@ -2796,3 +2796,64 @@ empties) and env-overridable.
 SPX play-engine + cortex-read (33), pane/replay/board-component (60) all green (shared-module regression
 guard). Files: `nighthawk/cortex/{types,index}.ts`, `zerodte/{cortex-gate,gates,board,scan,pane}.ts`.
 **Status:** DONE on branch — pushed, **NO PR / NO merge** (user reviews the diff first).
+
+---
+
+### 2026-07-27 — G-8 chase guard (CHASE_PCT) too tight for 0DTE gamma
+
+**Severity:** HIGH (board-emptying — sole blocker on the day's best setup)
+
+**Root cause:** `CHASE_PCT = 35` in `plan.ts` sat inside normal 0DTE intraday gamma noise.
+A 0.2% underlying move swings an ATM 0DTE option premium 30–50%, so the "already happened"
+threshold was trivially crossed by routine price action. The value had no empirical calibration.
+
+**Evidence:** 2026-07-27 live board — SPXW short, score 77, triple confluence (the strongest
+gate profile possible), blocked **solely** by `plan_moved` at `vs_flow_pct = 54%`. This was
+the only viable play on the board; the other two (QQQ score 48, GOOGL score 26) were correctly
+blocked by 5 gates each (tape_alignment, score_floor, confluence_floor, vix_elevated,
+intraday_conflict). Result: zero commits, zero ledger rows, empty board all session.
+
+**Fix:** `CHASE_PCT` raised from 35 → 55 (`plan.ts:25`), now exported and env-configurable
+via `ZERODTE_CHASE_PCT`. `gates.ts` imports the dynamic value instead of hardcoding 35.
+The achievability floor (`resolveLedgerEntryPremium`) independently handles grading honesty
+by flooring at the flag-time mark, so the wider IN_RANGE band does not flatter the win rate.
+
+**Blast radius:** `plan.ts` (threshold), `gates.ts` (import + dynamic message/threshold),
+`board.test.ts` (comment). No other consumers. Grading path unchanged.
+
+**File:line:** `src/lib/zerodte/plan.ts:25`, `src/lib/zerodte/gates.ts:782`
+**Status:** PR #1150 — CI pending.
+
+---
+
+### 2026-07-27 — Discovery engines silently OFF: flags default OFF, not set in infra
+
+**Severity:** CRITICAL — BREAKOUT, PIN, and CONDOR discovery never run unless env vars
+are manually set. ECS task definition and terraform carry no `ZERODTE_*` flags; any task
+definition update (deploy, scaling, infra change) silently drops manually-set env vars.
+
+**Root cause:** `wholeMarketEnabled()`, `breakoutSrcFlagEnabled()`, `pinSrcFlagEnabled()`,
+and `condorFlagEnabled()` all check `=== "1"` (opt-IN). These flags were originally
+gated OFF during the Phase 3 build (safe-by-default while shipping). Task #47 set them
+live via manual ECS env vars, but the code default remained OFF, so any task definition
+update that didn't carry the vars silently disabled 3 of 4 discovery systems + condor.
+The result: only FLOW discovery ran (tickers with ≥$150k option flow prints), producing
+≤3 setups from 12,000+ stocks. BREAKOUT (whole-market momentum scanner) and PIN
+(GEX-wall mean-reversion fades) never fired. Iron condor never built.
+
+**Evidence:** Live board on 2026-07-27 showed only 3 FLOW-origin setups (SPXW, QQQ, GOOGL).
+`grep ZERODTE` across `blackout-infra/terraform/` returned zero matches. The ECS task
+definition (`main.tf:140-143`) only sets `PROCESS_ROLE=web` and `DATA_SOCKETS_ENABLED=0`.
+
+**Fix:** Flip all four flags to default ON (`!== "0"` instead of `=== "1"`). The systems
+are production-ready (Phase 3a/3b/4 all shipped and tested). To disable, operators set
+the env var to `"0"` explicitly. This survives task definition updates.
+
+**Blast radius:** `breakout-source.ts:33-38`, `pin-source.ts:40-45`, `condor.ts:43-44`.
+Tests updated in all three `*.test.ts` files. `scan.ts` consumption unchanged (still
+checks `breakoutSourceEnabled()`/`pinSourceEnabled()`). `pin-discovery.ts` condor routing
+unchanged (still checks `condorFlagEnabled()`).
+
+**File:line:** `src/lib/zerodte/breakout-source.ts:33`, `src/lib/zerodte/pin-source.ts:40`,
+`src/lib/zerodte/condor.ts:43`
+**Status:** PR #1150 — included with chase-guard fix.

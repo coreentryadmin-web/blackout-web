@@ -28,7 +28,7 @@
 import type { MarketBias } from "./intraday";
 import type { EarningsFlag, EnrichedZeroDteSetup, PlayType, ZeroDteGateFailure, ZeroDteGateRejection } from "./board";
 import { evaluateZeroDteGovernor, type GovernorOpenPlan, type GovernorSnapshot } from "./governor";
-import type { ContractPlan } from "./plan";
+import { CHASE_PCT, type ContractPlan } from "./plan";
 import type { ZeroDteConfluence } from "./confluence";
 import { commitAuthorizedBySourceHealth, type SourceHealthState } from "@/lib/ws/source-health";
 import { EARLY_ENTRY_WINDOW_END_ET_MINUTES } from "./confluence";
@@ -779,12 +779,12 @@ export function planQualityGateBlocks(plan: ContractPlan | null): ZeroDteGateBlo
     });
   }
   if (plan.entry_status === "MOVED") {
-    const pct = plan.vs_flow_pct != null ? `${Math.round(plan.vs_flow_pct)}%` : "≥35%";
+    const pct = plan.vs_flow_pct != null ? `${Math.round(plan.vs_flow_pct)}%` : `≥${CHASE_PCT}%`;
     blocks.push({
       code: "plan_moved",
       reason:
         `Premium already ran ${pct} past the flow's fill — skip, don't chase (G-8).`,
-      threshold: 35,
+      threshold: CHASE_PCT,
       unlock_et: null,
     });
   }

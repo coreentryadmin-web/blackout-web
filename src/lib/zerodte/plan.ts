@@ -20,9 +20,19 @@ export const PLAN_RULES = {
   time_stop_et_minutes: 15 * 60 + 30,
 } as const;
 
-/** How far above the flow's average fill the mark can sit before the move is
- *  considered "already happened" — the user's explicit skip rule. */
-const CHASE_PCT = 35;
+// 55 not 35: 0DTE ATM options have extreme gamma — a 0.2% underlying move can
+// swing the option premium 30-50%, so 35% sat inside normal intraday noise and
+// blocked high-quality setups (2026-07-27: SPXW score-77 triple-confirmed blocked
+// at 54%). The achievability floor (resolveLedgerEntryPremium) already handles
+// grading honesty by flooring at the flag-time mark, so this guard only needs to
+// catch genuinely "already happened" moves, not routine 0DTE gamma swings.
+const CHASE_PCT_DEFAULT = 55;
+export const CHASE_PCT = (() => {
+  const raw = process.env.ZERODTE_CHASE_PCT?.trim();
+  if (!raw) return CHASE_PCT_DEFAULT;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : CHASE_PCT_DEFAULT;
+})();
 
 // ── WS-04 · Malformed-quote validation (fail-closed) ──────────────────────────────
 // The legacy liquidity test was PERCENT-SPREAD ONLY: spread_pct=(ask−bid)/mark*100,
@@ -264,7 +274,7 @@ export function buildContractPlan(input: {
  * ACHIEVABILITY FLOOR (`markAtFlag`) — grade the trade a member could actually take:
  * entry_max is the FLOW's own fill, i.e. the price the SMART MONEY got, which can sit
  * well BELOW the live mark (the tape front-ran the print). CHASE_PCT lets the mark run
- * up to +34% over that fill and still print IN_RANGE, so the graded entry/stop/target
+ * up to +(CHASE_PCT−1)% over that fill and still print IN_RANGE, so the graded entry/stop/target
  * could be pinned to a premium a member filling at the live mark at flag time simply
  * cannot get — a cheaper-than-achievable basis flatters the win rate (an easier double,
  * a stop that never realistically triggers). So the LEDGER basis is floored at the

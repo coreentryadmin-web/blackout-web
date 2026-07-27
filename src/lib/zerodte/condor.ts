@@ -38,10 +38,11 @@ import {
 import type { PinRegime } from "./pin-source";
 
 // ── Flag ────────────────────────────────────────────────────────────────────────────
-/** The condor play-type switch. OFF by default; the PIN source's own flags must ALSO be on for a
+// Default ON: the condor engine is production-ready. Set ZERODTE_CONDOR=0 to disable.
+/** The condor play-type switch. ON by default; the PIN source's own flags must ALSO be on for a
  *  condor to ever be built (the router only sees PIN candidates). Read at call time so tests toggle. */
 export function condorFlagEnabled(): boolean {
-  return process.env.ZERODTE_CONDOR === "1";
+  return process.env.ZERODTE_CONDOR !== "0";
 }
 
 // ── Assignment-safety allowlist (design gap #8) ───────────────────────────────────────

@@ -646,7 +646,7 @@ test("resolveLedgerEntryPremium: null when neither a plan entry_max nor a flow f
 // it flatters the win rate. The member-facing entry_max is unchanged — only the ledger basis.
 test("resolveLedgerEntryPremium: floors the graded basis at the flag-time mark when the mark is ABOVE the flow fill", () => {
   // Flow filled 4.00, but the contract already marks 5.00 at flag time (+25%, still
-  // IN_RANGE under CHASE_PCT=35). A member fills at ~5.00, never 4.00 → grade off 5.00.
+  // IN_RANGE under CHASE_PCT). A member fills at ~5.00, never 4.00 → grade off 5.00.
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 5.0), 5.0);
   // Mark at/below the fill (IN_RANGE-below / CHEAPER): unchanged — entry_max stands.
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 3.5), 4.0);
