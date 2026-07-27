@@ -10,60 +10,6 @@ export function LandingRedesignFx() {
     const cleanups: Array<() => void> = [];
     let destroyed = false;
 
-    // ── B-ring watermarks ──
-    function drawBRing(canvas: HTMLCanvasElement | null) {
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      const s = canvas.width;
-      const cx = s / 2,
-        cy = s / 2,
-        r = s * 0.38;
-      ctx.clearRect(0, 0, s, s);
-      ctx.strokeStyle = "rgba(163,230,53,1)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * 0.82, 0, Math.PI * 2);
-      ctx.stroke();
-      const bladeLen = r * 0.3;
-      const angles = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
-      ctx.lineWidth = 2;
-      for (const a of angles) {
-        const bx = cx + Math.cos(a) * (r + 2);
-        const by = cy + Math.sin(a) * (r + 2);
-        const ex = cx + Math.cos(a) * (r + bladeLen);
-        const ey = cy + Math.sin(a) * (r + bladeLen);
-        ctx.beginPath();
-        ctx.moveTo(bx, by);
-        ctx.lineTo(ex, ey);
-        ctx.stroke();
-        const p1 = a - 0.12,
-          p2 = a + 0.12;
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(p1) * (r - 4), cy + Math.sin(p1) * (r - 4));
-        ctx.lineTo(ex, ey);
-        ctx.lineTo(cx + Math.cos(p2) * (r - 4), cy + Math.sin(p2) * (r - 4));
-        ctx.stroke();
-      }
-      ctx.lineWidth = 0.5;
-      const cr = s * 0.06;
-      ctx.beginPath();
-      ctx.moveTo(cx - cr, cy);
-      ctx.lineTo(cx + cr, cy);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - cr);
-      ctx.lineTo(cx, cy + cr);
-      ctx.stroke();
-    }
-
-    ["mod-wm", "proto-wm", "edge-wm"].forEach((id) =>
-      drawBRing(document.getElementById(id) as HTMLCanvasElement),
-    );
-
     // ── Global atmosphere canvas ──
     const atC = document.getElementById("atmos") as HTMLCanvasElement | null;
     if (atC) {

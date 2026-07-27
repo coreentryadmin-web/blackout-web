@@ -66,8 +66,6 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
           <div className="cmd-glow" />
         </div>
 
-        <canvas id="mod-wm" className="wm" width={600} height={600} />
-
         {/* Dominating headline */}
         <div className="cmd-header">
           <span className="kk"><span className="dot" />Every module, in depth</span>
@@ -160,7 +158,6 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
 
       {/* ═══ §3 PROTOCOL — STAGGERED, OVERSIZED NUMBERS ═══ */}
       <section className="sec-proto" id="protocol">
-        <canvas id="proto-wm" className="wm" width={500} height={500} />
         <div className="w">
           <div className="proto-head">
             <span className="kk"><span className="dot" />The protocol</span>
@@ -227,7 +224,6 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
 
       {/* ═══ §4 WHY BLACKOUT — EDITORIAL ═══ */}
       <section className="sec-edge" id="edge">
-        <canvas id="edge-wm" className="wm" width={700} height={700} />
         <div className="w">
           <div className="edge-layout">
             <div className="edge-statement">
