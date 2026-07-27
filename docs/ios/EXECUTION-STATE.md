@@ -59,6 +59,19 @@ reused from the emblem master. **`.github/workflows/blackout-ios-native-ci.yml`*
 `xcodebuild build+test` on `macos-14` runners with `CODE_SIGNING_ALLOWED=NO` — the primary
 native dev/test loop, no AWS Mac needed, no secrets required. First run lands on the merge.
 
+**2026-07-27 (cont. 3)** — **N-2a APNs pipeline server side shipped**: `send-apns-push.ts`
+mints ES256 JWTs (test verifies signature against paired public key — 64-byte JOSE r||s
+form, correct for APNs), opens one HTTP/2 session per batch to
+`api.push.apple.com`, sets correct `apns-topic`/`apns-push-type`/`apns-priority` headers,
+and prunes 410/BadDeviceToken/Unregistered rows from `push_native_devices`. Inert unless
+APNS_TEAM_ID/APNS_KEY_ID/APNS_PRIVATE_KEY/APNS_BUNDLE_ID are all set. Register endpoint
+`POST/DELETE /api/push/native/register` UPSERTs with strict token/bundle validation and
+Clerk auth. 7 unit tests green. **Discovered credential requirement**: the .p8 already held
+is an *App Store Connect* API key, not an *APNs Auth Key* — Apple issues these separately.
+Sender stays inert until an APNs .p8 lands in env; documented in-file. Native side (N-2b)
+next: SwiftUI `PushRegistrationService` in the native app that captures the APNs token and
+POSTs it to the register endpoint.
+
 ## NEXT HIGHEST-PRIORITY TASK
 1. **After the branch merges + prod deploys**, run the audit to prove the P0 set is live:
    `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node scripts/ios/ios-ui-audit.mjs --base https://blackouttrades.com --pages "/,/privacy"`
