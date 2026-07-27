@@ -60,7 +60,6 @@ export function LandingRedesignFx() {
       ctx.stroke();
     }
 
-    drawBRing(document.getElementById("hero-wm") as HTMLCanvasElement);
     ["mod-wm", "proto-wm", "edge-wm"].forEach((id) =>
       drawBRing(document.getElementById(id) as HTMLCanvasElement),
     );

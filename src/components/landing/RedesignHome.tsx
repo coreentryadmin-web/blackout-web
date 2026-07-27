@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
 import { IMAGES, MARKETING_MODULE_GALLERY } from "@/lib/images";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
+import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
 import { LandingRedesignFx } from "./LandingRedesignFx";
 
 /** Redesigned homepage body — server-rendered content + one client FX layer (canvas, reveal, ticker). */
@@ -32,12 +33,8 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
             <canvas id="logo-breath" className="logo-breath" width={500} height={500} />
           </div>
           <canvas id="logo-edge-energy" className="logo-edge-energy" width={700} height={700} />
-          <div className="containment-ring" />
-          <div className="containment-ring2" />
           <canvas id="filaments" className="filament-canvas" width={600} height={600} />
         </div>
-        <div className="r-out" />
-        <canvas id="hero-wm" className="hero-watermark" width={800} height={800} />
 
         <div className="hero-h">
           <h1>Trade like<br />the lights<br /><span className="on">are on.</span></h1>
@@ -316,7 +313,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                 <li>Session discussions</li>
                 <li>Evening recaps</li>
               </ul>
-              <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="btn-g">Join the room</Link>
+              <a href={WHOP_CHECKOUT.community || (signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade")} className="btn-g">Join the room</a>
             </div>
 
             {/* Premium (featured) */}
@@ -335,7 +332,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                 <li>Strike-level heatmaps</li>
                 <li>Graded play log A-F</li>
               </ul>
-              <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="btn-p">Get full access &rarr;</Link>
+              <a href={WHOP_CHECKOUT.monthly || (signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade")} className="btn-p">Get full access &rarr;</a>
             </div>
 
             {/* Premium Yearly */}
@@ -353,7 +350,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                 <li>Strike-level heatmaps</li>
                 <li>Graded play log A-F</li>
               </ul>
-              <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="btn-g">Lock in yearly &rarr;</Link>
+              <a href={WHOP_CHECKOUT.yearly || (signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade")} className="btn-g">Lock in yearly &rarr;</a>
             </div>
           </div>
         </div>
@@ -367,7 +364,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
           <div className="footer-brand">BLACKOUT</div>
           <div className="footer-tagline">The intelligence layer behind modern trading.</div>
           <div className="footer-cta cta-row">
-            <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="btn-p">Stop trading blind</Link>
+            <Link href={signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade"} prefetch={false} className="btn-p">Stop trading blind</Link>
             <Link href="#modules" prefetch={false} className="btn-g">See the desk</Link>
           </div>
         </div>
@@ -380,7 +377,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
           <strong>{signedIn ? "Open desk" : "Get access"}</strong>
           From {usd(MEMBERSHIP_PRICING.monthly)}/mo
         </div>
-        <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="sticky-btn">
+        <Link href={signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade"} prefetch={false} className="sticky-btn">
           Start now &rarr;
         </Link>
       </div>
