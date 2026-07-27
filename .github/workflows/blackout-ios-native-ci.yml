@@ -1,0 +1,184 @@
+# Native BLACKOUT iOS — build + test on GitHub-hosted macOS runners.
+#
+# WHAT THIS UNLOCKS: the primary native SwiftUI dev/test loop, driven from a
+# Linux dev box with NO Apple certs required. GitHub-hosted macos runners
+# provide Xcode, the iOS simulators, and every command-line tool needed.
+# Signing / TestFlight upload for the native app rides the existing
+# `blackout-ios-testflight.yml` pipeline once we point it at this project;
+# THIS workflow is build-and-verify only (CODE_SIGNING_ALLOWED=NO).
+#
+# TRIGGERS:
+#   - workflow_dispatch (manual smoke)
+#   - PRs touching apps/blackout-ios-native/** (default coverage for changes)
+#   - push to main touching those paths (catch a race in a merged PR)
+
+name: BlackOut iOS Native CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/blackout-ios-native/**"
+      - ".github/workflows/blackout-ios-native-ci.yml"
+  pull_request:
+    paths:
+      - "apps/blackout-ios-native/**"
+      - ".github/workflows/blackout-ios-native-ci.yml"
+
+concurrency:
+  group: blackout-ios-native-ci-${{ github.ref }}
+  # PRs can safely cancel-in-progress (fresh commit supersedes). Main pushes
+  # don't overlap in practice, but the same rule applies.
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: macos-14
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/blackout-ios-native
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Show Xcode version
+        # Prints the resolved Xcode + Swift version into the log so a future
+        # simulator-selection failure has a breadcrumb trail — the runner
+        # image's default Xcode drifts over time.
+        run: |
+          xcodebuild -version
+          swift --version || true
+
+      - name: Install XcodeGen
+        # ~15s cached-install. XcodeGen generates BlackOut.xcodeproj from
+        # project.yml — we intentionally do NOT commit .xcodeproj (see
+        # project.yml comments).
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Resolve default iOS Simulator
+        # Prints available simulators and picks a stable one (latest iOS
+        # runtime, iPhone 15). A missing simulator is the most common cause
+        # of xcodebuild failures on the runner and this makes it obvious.
+        run: |
+          xcrun simctl list devices available
+          echo "SIMULATOR_ID=$(xcrun simctl list devices available --json | \
+            /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; \
+            keys=sorted([k for k in d if "iOS" in k], reverse=True); \
+            print(next(dev["udid"] for k in keys for dev in d[k] if dev["name"]=="iPhone 15" and dev.get("isAvailable")))')" >> "$GITHUB_ENV"
+
+      - name: Build (Debug, iPhone 15 simulator, no signing)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project BlackOut.xcodeproj \
+            -scheme BlackOut \
+            -configuration Debug \
+            -destination "id=$SIMULATOR_ID" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            | xcbeautify --renderer github-actions || true
+
+      - name: Test (unit + snapshot)
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project BlackOut.xcodeproj \
+            -scheme BlackOut \
+            -configuration Debug \
+            -destination "id=$SIMULATOR_ID" \
+            -enableCodeCoverage YES \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            | xcbeautify --renderer github-actions || true
+
+      - name: Upload test result bundle
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: blackout-ios-native-test-results
+          path: apps/blackout-ios-native/TestResults.xcresult
+          retention-days: 14
+          if-no-files-found: warn
+
+      # ─────────────────────────────────────────────────────────────────
+      # Screenshot capture — one PNG per tab, uploaded as artifacts.
+      #
+      # The macOS runner already has a booted iOS simulator (used by the
+      # test step above). We install the just-built .app onto it, then
+      # loop over every AppTab rawValue: launch the app with
+      # `-startTab <slug>` (TabRouter reads this and starts on the named
+      # tab), give the UI a beat to settle, screenshot, terminate.
+      #
+      # Uses only stock simctl — no XCUITest, no accessibility hunting,
+      # no injected navigation code beyond the tiny launch-arg reader
+      # TabRouter already has. Ships PNGs at ~3x on iPhone 15 (roughly
+      # 1170×2532), which is more than enough to spot layout regressions
+      # in PR review.
+      # ─────────────────────────────────────────────────────────────────
+      - name: Find built .app
+        id: find-app
+        if: always()
+        run: |
+          set -eo pipefail
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -type d -name "BlackOut.app" -path "*Debug-iphonesimulator*" 2>/dev/null | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "No BlackOut.app under DerivedData — build step must have failed. Skipping screenshots."
+            echo "found=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Found: $APP_PATH"
+          echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          echo "found=1" >> "$GITHUB_OUTPUT"
+
+      - name: Boot simulator + install app
+        if: steps.find-app.outputs.found == '1'
+        run: |
+          set -eo pipefail
+          xcrun simctl boot "$SIMULATOR_ID" 2>/dev/null || true
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          xcrun simctl install "$SIMULATOR_ID" "${{ steps.find-app.outputs.app_path }}"
+          # Force dark appearance (the app is dark-only, but the simulator
+          # ships in light — matching the on-device look in the shot).
+          xcrun simctl ui "$SIMULATOR_ID" appearance dark || true
+          # Deterministic status-bar (9:41 · full battery · WiFi) so PR
+          # screenshots don't diff on cosmetics.
+          xcrun simctl status_bar "$SIMULATOR_ID" override \
+            --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
+            --batteryState charged --batteryLevel 100 --cellularMode notSupported || true
+          mkdir -p screenshots
+
+      - name: Capture one screenshot per tab
+        if: steps.find-app.outputs.found == '1'
+        run: |
+          set -eo pipefail
+          for tab in command intelligence signals watchlist account; do
+            echo "== capturing $tab =="
+            # Terminate any prior run so the launch actually re-reads the
+            # startup args instead of just resuming.
+            xcrun simctl terminate "$SIMULATOR_ID" com.blackout-trades.app 2>/dev/null || true
+            xcrun simctl launch "$SIMULATOR_ID" com.blackout-trades.app -startTab "$tab"
+            # 2.5s covers the SwiftUI window mount, tab flip, first-render
+            # data fetch flash → skeleton, and the ScenePhase active pass.
+            # Longer than 3s starts eating CI budget without adding fidelity.
+            sleep 2.5
+            xcrun simctl io "$SIMULATOR_ID" screenshot "screenshots/tab-${tab}.png"
+          done
+          xcrun simctl terminate "$SIMULATOR_ID" com.blackout-trades.app 2>/dev/null || true
+          xcrun simctl status_bar "$SIMULATOR_ID" clear || true
+          ls -la screenshots/
+
+      - name: Upload tab screenshots
+        if: always() && steps.find-app.outputs.found == '1'
+        uses: actions/upload-artifact@v7
+        with:
+          name: blackout-ios-native-screenshots
+          path: apps/blackout-ios-native/screenshots/*.png
+          retention-days: 30
+          if-no-files-found: warn
