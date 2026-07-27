@@ -80,6 +80,34 @@ so the inert VAPID button no longer appears in the WKWebView. `CLAUDE.md` gained
 "Never stop" standing rule so every future session inherits the autonomy mandate without
 being re-told.
 
+**2026-07-27 (cont. 7)** — **Signals tab v2 shipped as real native content.**
+New `/api/mobile/signals` server-side aggregator (`src/app/api/mobile/signals/
+route.ts` + `src/lib/mobile/signals-projection.ts`) fans out **SPX Slayer**
+(live 0DTE desk, via `getSpxPlayState()`) + **Night Hawk** (post-close 5-play
+edition, via `fetchLatestPlayableNighthawkEdition` with the same
+carry-until-close semantic the web edition route uses) into ONE ordered
+`{ signals: Signal[] }` feed. Every phase in the API contract maps 1:1 to
+`SignalLifecycle` in the app — SPX SCANNING/WATCHING/OPEN → detected/
+confirming/active; NH pulled → invalidated, NH stale → detected. Two
+sources merged server-side means one round trip, deterministic ordering
+(active first, higher score wins), and one place to evolve the shape.
+7 projection tests green (spxPhaseFor, nighthawkPhaseFor, spx→signal,
+nh→signals, empty-edition guard, sort ordering).
+
+Swift-side: `SignalsRepository` (protocol + `LiveSignalsRepository` on
+`APIClient`) with a `Signal.LevelValue` enum that decodes BOTH numeric
+(SPX exact) AND string (Night Hawk "$500-503" range) entries. `Signal.Phase`
+reuses the existing `SignalLifecycle` enum verbatim — no duplicate — so a
+mislabelled stage can't sneak past the compiler. `SignalsViewModel`
+(@MainActor, .idle/.loading/.loaded/.error, preserve-on-error, 30s
+auto-refresh, client-side filter — chip switch never triggers a fetch).
+`SignalRow` renders source badge + ticker + direction + grade chip +
+entry/target/stop level chips (only when levels exist) + thesis + lifecycle
+chip + freshness; PULLED plays get a negative-tint accent rail + "Pulled —
+{reason}" caption per PR-N4's "never hidden" rule. New `SignalsViewModelTests`
+(5 tests) covers state transitions, preserve-on-error, filter isolation,
+and LevelValue decode.
+
 **2026-07-27 (cont. 6)** — **Command tab v1 shipped as real native content.** `APIClient`
 (URLSession-backed, typed `APIError` cases for every 4xx/5xx + timeout + cancelled),
 `MarketRegimeRepository` protocol + `LiveMarketRegimeRepository` binding to the real
