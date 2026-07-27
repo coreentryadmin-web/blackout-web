@@ -306,11 +306,11 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
             <p>Real trades. Real results. Straight from the community.</p>
           </div>
           <div className="fb-grid">
-            <div className="fb-card">
+            <div className="fb-card fb-card-top">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/images/feedback/twitter-nighthawk-pnl.jpeg" alt="Member sharing Night Hawk AAPL trade P&L on X" className="fb-img" loading="lazy" />
             </div>
-            <div className="fb-card">
+            <div className="fb-card fb-card-top">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/images/feedback/twitter-nighthawk-aapl.jpeg" alt="Member showing +249% return on Night Hawk AAPL trade" className="fb-img" loading="lazy" />
             </div>

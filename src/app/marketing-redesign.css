@@ -763,6 +763,13 @@
 
 /* ═══════ §5 MEMBER FEEDBACK ═══════ */
 .sec-feedback{position:relative;padding:6rem 0 7rem;overflow:hidden}
+.sec-feedback::before{
+  content:"";position:absolute;top:40%;left:50%;width:800px;height:800px;
+  transform:translate(-50%,-50%);
+  background:radial-gradient(circle,rgba(163,230,53,.05) 0%,rgba(163,230,53,.015) 35%,transparent 65%);
+  pointer-events:none;animation:fbGlow 10s ease-in-out infinite;
+}
+@keyframes fbGlow{0%,100%{opacity:.5;transform:translate(-50%,-50%) scale(1)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.1)}}
 .fb-head{text-align:center;margin-bottom:3.5rem;position:relative;z-index:4}
 .fb-head h2{font-family:var(--d);font-size:clamp(2.5rem,6vw,4.5rem);text-transform:uppercase;line-height:.82}
 .fb-head h2 .gt{color:var(--g);text-shadow:0 0 12px rgba(163,230,53,.2),0 0 28px rgba(163,230,53,.15)}
@@ -781,6 +788,7 @@
   box-shadow:0 4px 30px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.04) inset;
   transition:transform .35s ease,box-shadow .35s ease,border-color .35s ease;
 }
+.fb-card-top{height:480px}
 .fb-card:hover{
   transform:translateY(-4px);
   box-shadow:0 8px 40px rgba(0,0,0,.5),0 1px 0 rgba(255,255,255,.06) inset,0 30px 80px -20px rgba(163,230,53,.08);
@@ -792,9 +800,9 @@
   opacity:0;transition:opacity .35s ease;
 }
 .fb-card:hover::after{opacity:1}
-.fb-card-full{grid-column:1 / -1;max-width:700px;margin:0 auto}
+.fb-card-full{grid-column:1 / -1;max-width:500px;margin:0 auto}
 .fb-img{
-  display:block;width:100%;height:auto;
+  display:block;width:100%;height:100%;
   object-fit:cover;object-position:top center;
   border-radius:17px;
   transition:transform .5s cubic-bezier(.22,1,.36,1);
@@ -802,6 +810,7 @@
 .fb-card:hover .fb-img{transform:scale(1.02)}
 @media(max-width:768px){
   .fb-grid{grid-template-columns:1fr;max-width:500px;margin:0 auto}
+  .fb-card-top{height:auto}
 }
 
 /* ═══════ §6 PRICING ═══════ */
