@@ -17,12 +17,23 @@ import Combine
 @MainActor
 public final class WatchlistStore: ObservableObject {
     @Published public private(set) var tickers: [String]
+    /// True after the initial server pull has completed (success OR failure).
+    /// UI can use this to decide whether the empty state is "no watchlist yet"
+    /// vs "haven't fetched yet."
+    @Published public private(set) var didInitialSync: Bool = false
 
     private let defaults: UserDefaults
+    private let sync: WatchlistSyncing?
     private static let key = "blackout.watchlist.tickers"
 
-    public init(defaults: UserDefaults = .standard) {
+    /// - Parameters:
+    ///   - defaults: Local persistence store; defaults to .standard.
+    ///   - sync: Optional server sync. Pass nil (default) for local-only
+    ///     (tests + first-launch offline); pass `URLSessionWatchlistSync()`
+    ///     in the app composition root to enable cross-device sync.
+    public init(defaults: UserDefaults = .standard, sync: WatchlistSyncing? = nil) {
         self.defaults = defaults
+        self.sync = sync
         self.tickers = (defaults.array(forKey: Self.key) as? [String]) ?? []
     }
 
@@ -58,6 +69,38 @@ public final class WatchlistStore: ObservableObject {
 
     private func persist() {
         defaults.set(tickers, forKey: Self.key)
+        // Fire-and-forget push to the server when sync is enabled. Failures
+        // are silent — the local list is the source of truth and a failed
+        // push will retry on the next persist() (which happens on every user
+        // action). Reordering / dedupe on the server side means an echo
+        // that DIFFERS from what we sent replaces the local list; that's
+        // the last-write-wins policy documented on WatchlistSyncService.
+        if let sync {
+            Task { [tickers, weak self] in
+                if let echoed = await sync.pushLocal(tickers), echoed != tickers {
+                    await MainActor.run {
+                        guard let self else { return }
+                        self.tickers = echoed
+                        self.defaults.set(echoed, forKey: Self.key)
+                    }
+                }
+            }
+        }
+    }
+
+    /// One-shot server pull. Called at app start (App composition root) to
+    /// hydrate the local list with what other devices have saved. If the
+    /// server list DIFFERS from local, the server wins (last-write-wins
+    /// against the local UserDefaults snapshot; the newest device's writes
+    /// have already been PUT by then). Sets `didInitialSync` regardless of
+    /// outcome so UI can distinguish "haven't tried yet" from "tried, empty".
+    public func hydrateFromServer() async {
+        guard let sync else { didInitialSync = true; return }
+        if let remote = await sync.fetchRemote(), remote != tickers {
+            tickers = remote
+            defaults.set(remote, forKey: Self.key)
+        }
+        didInitialSync = true
     }
 
     /// Normalize + validate. Public + static so views can preview-validate

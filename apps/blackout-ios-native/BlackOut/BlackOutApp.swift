@@ -15,6 +15,11 @@ import SwiftUI
 struct BlackOutApp: App {
     @UIApplicationDelegateAdaptor(BlackOutAppDelegate.self) private var appDelegate
     @StateObject private var appLock = AppLockCoordinator()
+    // Cross-device watchlist sync. The store is @MainActor and long-lived
+    // for the app's lifetime; passing a URLSession-backed syncer wires it to
+    // /api/user/watchlist. Local UserDefaults remains the render source, so
+    // the app is instant + offline-safe; hydrate on first .active phase.
+    @StateObject private var watchlist = WatchlistStore(sync: URLSessionWatchlistSync())
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -32,6 +37,13 @@ struct BlackOutApp: App {
             }
             .animation(BOMotion.contextSwitch, value: appLock.state)
             .environmentObject(appLock)
+            .environmentObject(watchlist)
+            .task {
+                // One-shot server pull on first mount. Failures are silent
+                // (the local list still renders); the pull retries on any
+                // subsequent successful push (last-write-wins).
+                await watchlist.hydrateFromServer()
+            }
             .preferredColorScheme(.dark)
             .tint(BOColor.textAccent)
             .background(BOColor.backgroundBase.ignoresSafeArea())

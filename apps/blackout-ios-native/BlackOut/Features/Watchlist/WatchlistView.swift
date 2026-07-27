@@ -6,7 +6,12 @@ import SwiftUI
 /// Alerts + per-ticker detail land next; the store already exists so this
 /// won't change shape when the server sync arrives.
 struct WatchlistView: View {
-    @StateObject private var store = WatchlistStore()
+    // Shared across the app so the tab bar can badge future ticker counts
+    // and other screens (Command pulse, Signals filter) can read the same
+    // list — one source of truth. Provided by BlackOutApp with the sync
+    // service attached; SwiftUI previews can inject a plain WatchlistStore
+    // via .environmentObject.
+    @EnvironmentObject private var store: WatchlistStore
     @State private var showingAdd = false
 
     var body: some View {
