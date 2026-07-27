@@ -302,18 +302,18 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
             <h2>One desk.<br /><span className="gt">One price.</span></h2>
           </div>
           <div className="price-grid">
-            {/* Community */}
+            {/* SPX Slayer */}
             <div className="pc">
-              <div className="plan">Community</div>
+              <div className="plan">SPX Slayer</div>
               <div className="amt">{usd(MEMBERSHIP_PRICING.community)}<small> / mo</small></div>
-              <div className="sub">Discord + live signals + the room</div>
+              <div className="sub">SPX structure + 0DTE desk access</div>
               <ul className="perks">
-                <li>Private Discord access</li>
-                <li>Daily live signals</li>
-                <li>Session discussions</li>
-                <li>Evening recaps</li>
+                <li>Live SPX regime &amp; GEX</li>
+                <li>0DTE graded plays A–F</li>
+                <li>Dealer gamma positioning</li>
+                <li>Strike-level heatmaps</li>
               </ul>
-              <a href={WHOP_CHECKOUT.community || (signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade")} className="btn-g">Join the room</a>
+              <a href={WHOP_CHECKOUT.community || (signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade")} className="btn-g">Get SPX access</a>
             </div>
 
             {/* Premium (featured) */}

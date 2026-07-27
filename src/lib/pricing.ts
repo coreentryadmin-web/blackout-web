@@ -3,8 +3,8 @@
 // hard-coded its own copy, so the three pricing displays could silently drift
 // apart. Import these everywhere a price is shown so they can never disagree.
 export const MEMBERSHIP_PRICING = {
-  /** Community (Discord) — $/mo */
-  community: 75,
+  /** Community (SPX Slayer access) — $/mo */
+  community: 49,
   /** Premium, billed monthly — $/mo */
   monthly: 199,
   /** Premium, billed yearly — $/yr */

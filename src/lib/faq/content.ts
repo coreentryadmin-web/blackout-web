@@ -117,7 +117,7 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
   member: [
     {
       q: "How do I get access?",
-      a: "Create your free BlackOut account, then pick a plan: Community ($75/mo) for Discord-only access — live signals, daily reads, and the room — or Premium ($199/mo or $1,999/yr) to unlock the full platform and Discord. Same email, same login — upgrade anytime from your account.",
+      a: "Create your free BlackOut account, then pick a plan: SPX Slayer ($49/mo) for SPX desk access — live regime, GEX, 0DTE graded plays — or Premium ($199/mo or $1,999/yr) to unlock the full platform with all six modules. Same email, same login — upgrade anytime from your account.",
     },
     {
       q: "What's the difference between Community and Premium?",

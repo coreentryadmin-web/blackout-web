@@ -96,7 +96,7 @@ const FULL_STACK = `THE DESK (weave ALL of these naturally — one unified story
 • Night Hawk — overnight 0DTE playbook before the bell
 • SPX Slayer — 0DTE desk, AI signals, live setups + P&L`;
 
-const PRICING_RULES = `PRICING: Community $75/mo · Premium $199/mo (full desk) · Yearly $1,999/yr. Never say free.`;
+const PRICING_RULES = `PRICING: SPX Slayer $49/mo · Premium $199/mo (full desk) · Yearly $1,999/yr. Never say free.`;
 
 const BRAND_VOICE = `You write as a real trader who runs the @BlackOutTrade desk — not a social media manager.
 

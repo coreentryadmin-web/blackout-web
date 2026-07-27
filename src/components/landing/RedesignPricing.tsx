@@ -15,11 +15,11 @@ const DESK_PERKS = [
   "Transparent play log, graded A–F",
 ];
 
-const COMMUNITY_PERKS = [
-  "Private Discord server access",
-  "Daily live signals & market reads",
-  "Real-time session discussions",
-  "Evening recaps & next-day prep",
+const SPX_PERKS = [
+  "Live SPX regime & GEX positioning",
+  "0DTE graded plays A–F",
+  "Dealer gamma & strike heatmaps",
+  "Real-time VWAP & structure",
 ];
 
 /** Redesigned pricing page — three tiers, real perks, the "lights on" language. */
@@ -39,15 +39,15 @@ export function RedesignPricing() {
           </div>
 
           <div className="rl-tier-grid">
-            {/* Community */}
+            {/* SPX Slayer */}
             <div className="rl-plan">
-              <div className="pl">Community</div>
+              <div className="pl">SPX Slayer</div>
               <div className="amt">{usd(MEMBERSHIP_PRICING.community)}<span> / mo</span></div>
-              <div className="save">Discord · live signals · the room</div>
+              <div className="save">SPX structure · 0DTE desk · graded plays</div>
               <ul className="perks">
-                {COMMUNITY_PERKS.map((p) => <li key={p}>{p}</li>)}
+                {SPX_PERKS.map((p) => <li key={p}>{p}</li>)}
               </ul>
-              <a href={WHOP_CHECKOUT.community || "/sign-up?redirect_url=%2Fupgrade"} className="rl-btn rl-btn-ghost">Join community</a>
+              <a href={WHOP_CHECKOUT.community || "/sign-up?redirect_url=%2Fupgrade"} className="rl-btn rl-btn-ghost">Get SPX access</a>
             </div>
 
             {/* Premium Monthly — featured */}

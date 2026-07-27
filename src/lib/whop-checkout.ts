@@ -38,7 +38,7 @@ export const WHOP_CHECKOUT_UNAVAILABLE_MESSAGE =
 // configured on the Whop product behind each checkout URL. Keep these in sync with the
 // Whop product prices so customers never see one price and get charged another.
 export const WHOP_COMMUNITY_CHECKOUT_OPTION = WHOP_CHECKOUT.community
-  ? { label: "Community — $75", href: WHOP_CHECKOUT.community }
+  ? { label: "SPX Slayer — $49", href: WHOP_CHECKOUT.community }
   : null;
 
 export const WHOP_PREMIUM_CHECKOUT_OPTIONS = [

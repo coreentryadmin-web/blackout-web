@@ -44,7 +44,7 @@ export function getPremiumProductIds(): string[] {
   );
 }
 
-/** Discord Community ($75) — desk stays free; override via WHOP_COMMUNITY_PRODUCT_IDS. */
+/** SPX Slayer ($49) — SPX desk only; override via WHOP_COMMUNITY_PRODUCT_IDS. */
 export function getCommunityProductIds(): string[] {
   return parseIdList(
     process.env.WHOP_COMMUNITY_PRODUCT_IDS,

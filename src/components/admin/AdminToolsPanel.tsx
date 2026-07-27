@@ -151,7 +151,7 @@ export function AdminToolsPanel() {
             onChange={setBulkTier}
             options={[
               { value: "premium", label: "Premium" },
-              { value: "community", label: "Community ($75)" },
+              { value: "community", label: "SPX Slayer ($49)" },
               { value: "free", label: "Free" },
             ]}
           />
