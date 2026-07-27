@@ -2,324 +2,435 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
 import { IMAGES, MARKETING_MODULE_GALLERY } from "@/lib/images";
-import { InstrumentIcon } from "@/components/ui/icons/InstrumentIcons";
-import { ProductGallery } from "@/components/ui/motion/ProductGallery";
-import { ProductScroller } from "@/components/ui/motion/ProductScroller";
-import { Marquee } from "@/components/ui/motion/Marquee";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
-import { BorderBeam } from "@/components/ui/motion/BorderBeam";
-import { RetroGrid } from "@/components/ui/motion/RetroGrid";
 import { LandingRedesignFx } from "./LandingRedesignFx";
-import DealersLadderBackground from "@/components/render/DealersLadderBackground";
-
-/** Bento column spans per module id — tiles 6 modules into three 6-col rows. */
-const SPAN: Record<string, "big" | "wide" | ""> = {
-  spx: "big", helix: "", thermal: "wide", largo: "wide", hawk: "wide", vector: "wide",
-};
-
-const STATS = [
-  { v: "6", l: "Desk modules", c: "var(--rl-bull)" },
-  { v: "Live", l: "Tick-by-tick tape", c: "var(--rl-cyan)" },
-  { v: "A–F", l: "Graded play log", c: "var(--rl-gold)" },
-  { v: "1", l: "Membership · all tools", c: "var(--rl-violet)" },
-];
-
-const STEPS = [
-  { n: "01", tag: "IDENTIFY", c: "var(--rl-bull)", h: "Read the Floor", p: "Dealer gamma walls, institutional prints, dark-pool blocks — the structure that moves price before the tape catches up. You see it first." },
-  { n: "02", tag: "VALIDATE", c: "var(--rl-cyan)", h: "Every Setup Graded", p: "No opinions. Every read is gated by the BIE verification stack — confluence score, invalidation level, and a graded A–F log with receipts." },
-  { n: "03", tag: "EXECUTE", c: "var(--rl-violet)", h: "Your Trigger", p: "Pure intelligence — no order routing, no broker lock-in. Structure, levels, and the graded plan. You pull the trigger." },
-];
-
-const PILLARS = [
-  { c: "var(--rl-bull)", h: "Institutional Market Data", p: "The same dealer-positioning, flow, and gamma feeds professional desks pay six figures for — live, not delayed." },
-  { c: "var(--rl-cyan)", h: "Live Before the Crowd", p: "Tick-by-tick streams. Sub-second refresh. Institutional prints surface before the tape catches up." },
-  { c: "var(--rl-violet)", h: "Signal Over Noise", p: "AI-graded setups, confluence scoring, and a verified play log — no opinions, just receipts." },
-  { c: "var(--rl-ember)", h: "Everything. One Interface.", p: "Six modules. One command surface. One membership. Zero broker lock-in." },
-];
-
-const COMPARE: [string, "y" | "n" | "p", "y" | "n" | "p"][] = [
-  ["Live options flow (tick-by-tick)", "y", "n"],
-  ["0DTE SPX gamma matrix", "y", "n"],
-  ["Dealer GEX / charm heatmaps", "y", "p"],
-  ["AI desk analyst on live tape", "y", "n"],
-  ["Graded play log (A–F)", "y", "n"],
-  ["No broker lock-in", "y", "p"],
-  ["One membership · all modules", "y", "n"],
-];
-
-function cmpCell(v: "y" | "n" | "p") {
-  if (v === "y") return <span className="rl-c rl-yes">✓</span>;
-  if (v === "p") return <span className="rl-c rl-par">~</span>;
-  return <span className="rl-c rl-no">—</span>;
-}
 
 /** Redesigned homepage body — server-rendered content + one client FX layer (canvas, reveal, ticker). */
 export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
   return (
     <div className="rl">
-      {/* HERO */}
-      <header className="rl-hero" id="rl-top">
-        {/* Signature "Phosphor Ladder" WebGL background — the live dealer's gamma book
-            (strike rungs + marching beads + integrity rings + dark-pool substrate),
-            replacing the old flat 2D GEX canvas. Reduced-motion / no-WebGL fall back
-            to a static CSS gradient inside the component. */}
-        <DealersLadderBackground className="rl-hero-canvas" opacity={0.9} />
-        <div className="rl-hero-veil" aria-hidden />
-        <div className="rl-wrap">
-          <div className="rl-hero-grid">
-            <div className="rl-reveal rl-in">
-              <span className="rl-kicker"><span className="dot" aria-hidden />Institutional options desk</span>
-              <h1 className="rl-hero-h1">Trade like<br />the lights<br /><span className="on">are on.</span></h1>
-              <p className="rl-hero-lede">Options flow, dealer positioning, live gamma structure, and the Night Hawk swing scanner — <b>one command surface for the floor.</b> The intelligence layer institutions pay a premium for, unified by BlackOut Intelligence.</p>
-              <div className="rl-cta-row">
-                <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="rl-btn rl-btn-primary">{signedIn ? "Open desk →" : "Get access →"}</Link>
-                <Link href="#rl-modules" prefetch={false} className="rl-btn rl-btn-ghost">See the desk</Link>
-              </div>
-              <ul className="rl-creds">
-                <li>Real-time dealer positioning</li><li>Institutional-grade feeds</li><li>One command surface</li>
-              </ul>
-            </div>
-            <div className="rl-reveal rl-in" style={{ transitionDelay: ".12s" }}>
-              {/* Brand emblem as the hero's right-side statement (replaced the SPX desk
-                  mock). 1254² master exported to max-quality webp (502KB vs 2.67MB png)
-                  — visually identical, ~5× faster hero paint. A phosphor border beam
-                  orbits its housing (the "reactor" framing the brand mark). */}
-              <div className="rl-hero-emblem-frame">
-                <BorderBeam color="var(--rl-violet)" duration="7s" width="1.6px" />
-                {/* eslint-disable-next-line @next/next/no-img-element -- marketing hero brand logo */}
-                <img
-                  src={IMAGES.brandEmblem}
-                  alt="BlackOut"
-                  className="rl-hero-logo"
-                  width={1024}
-                  height={1024}
-                  fetchPriority="high"
-                  decoding="async"
-                />
-              </div>
-            </div>
+      {/* ═══ Atmosphere layers ═══ */}
+      <canvas id="atmos" aria-hidden="true" />
+      <div className="atmos-grid" aria-hidden="true" />
+      <div className="atmos-scan" aria-hidden="true" />
+      <div className="atmos-sweep" aria-hidden="true" />
+      <div className="spine" aria-hidden="true" />
+
+      {/* ═══ §1 HERO — ENERGY REACTOR ═══ */}
+      <section className="hero">
+        {/* Energy reactor — canvas particle system */}
+        <canvas id="energy-reactor-canvas" className="energy-canvas" aria-hidden="true" />
+
+        <div id="hero-reactor" className="hero-reactor">
+          <div className="logo-atmos" id="logo-atmos" />
+          <div className="r-core">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="logo-energy" src={IMAGES.brandEmblem} alt="BlackOut" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="logo-b" id="logo-img" src={IMAGES.brandEmblem} alt="BlackOut" />
+            <div className="logo-halo" />
+            <canvas id="logo-breath" className="logo-breath" width={500} height={500} />
           </div>
-          <p className="rl-floor">
-            <span className="hook">Serious traders don&apos;t wait for the tape.</span>
-            <span className="sub">Neither does BlackOut Intelligence.</span>
-          </p>
+          <canvas id="logo-edge-energy" className="logo-edge-energy" width={700} height={700} />
+          <div className="containment-ring" />
+          <div className="containment-ring2" />
+          <canvas id="filaments" className="filament-canvas" width={600} height={600} />
         </div>
-      </header>
+        <div className="r-out" />
+        <canvas id="hero-wm" className="hero-watermark" width={800} height={800} />
 
-      {/* TAPE */}
-      <div className="rl-tape" aria-hidden><div className="rl-tape-track" id="rl-tape" /></div>
+        <div className="hero-h">
+          <h1>Trade like<br />the lights<br /><span className="on">are on.</span></h1>
+        </div>
 
-      {/* STATS */}
-      <section className="rl-stats">
-        <div className="rl-wrap">
-          <div className="rl-stats-grid rl-reveal">
-            {STATS.map((s) => (
-              <div className="rl-stat" key={s.l}><span className="v" style={{ color: s.c }}>{s.v}</span><span className="l">{s.l}</span></div>
-            ))}
+        <div className="hero-sub">
+          <p><b>Institutional-grade intelligence</b> — live dealer flow, real-time gamma exposure, and a verification engine that grades every setup before you risk a dollar.</p>
+          <div className="cta-row">
+            <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="btn-p">
+              {signedIn ? "Open desk" : "Get access"}
+            </Link>
+            <Link href="#modules" prefetch={false} className="btn-g">Explore the desk</Link>
           </div>
+          <ul className="hero-creds">
+            <li>Live dealer flow</li>
+            <li>Real-time GEX</li>
+            <li>AI-graded setups</li>
+          </ul>
         </div>
       </section>
 
-      {/* INSTRUMENT BAND — the six desk instruments scrolling as a kinetic
-          "one desk, six instruments" strip; reuses the per-product glyphs. */}
-      <section className="rl-instband" aria-label="The desk instruments">
-        <Marquee durationSec={40} gap="18px">
-          {MARKETING_PRODUCTS.map((m) => (
-            <span key={m.id} className="rl-inst-chip" style={{ "--a": m.accent } as CSSProperties}>
-              <span className="rl-inst-ic" aria-hidden><InstrumentIcon id={m.id} size={18} /></span>
-              <span className="rl-inst-name">{m.label}</span>
-              <span className="rl-inst-tag">{m.tag}</span>
-            </span>
-          ))}
-        </Marquee>
-      </section>
+      <div className="node" aria-hidden="true" />
 
-      {/* MODULES */}
-      <section className="rl-sec" id="rl-modules">
-        <div className="rl-wrap">
-          <div className="rl-sec-head rl-reveal">
-            <span className="rl-kicker"><span className="dot" aria-hidden />The unified terminal</span>
-            <h2>Multiple modules.<br /><span className="rl-gt">One edge.</span></h2>
-            <p>Purpose-built modules — like the best terminals — unified by one verification gate, one live tape, no broker lock-in. Each is built for a dimension of trading intelligence.</p>
-          </div>
-          <div className="rl-bento">
-            {MARKETING_PRODUCTS.map((m, i) => {
-              const size = SPAN[m.id] ?? "";
-              const soon = m.launchStatus === "soon";
-              return (
-                <article key={m.id} className={`rl-mod rl-reveal ${size}`} style={{ "--a": m.accent, transitionDelay: `${i * 0.05}s` } as CSSProperties}>
-                  {/* Flagship card gets a border beam tinted to its accent — draws
-                      the eye to the anchor product without a second color channel. */}
-                  {size === "big" && <BorderBeam color="var(--a)" duration="7s" width="1.5px" />}
-                  <div className="rl-mod-top">
-                    <span className="rl-mod-glyph" aria-hidden><InstrumentIcon id={m.id} size={22} /></span>
-                    <span className="rl-mod-idx">{String(m.index).padStart(2, "0")}</span>
-                    <span className="rl-mod-tag">{m.tag}</span>
-                    {soon && <span className="rl-mod-soon">Soon</span>}
-                  </div>
-                  <div className="rl-mod-name">{m.label}</div>
-                  <div className="rl-mod-hl">{m.headline}</div>
-                  {size === "big" ? (
-                    <ul>{m.bullets.map((b) => <li key={b}>{b}</li>)}</ul>
+      {/* ═══ §2 COMMAND MODULES — APPLE KEYNOTE CAROUSEL ═══ */}
+      <section className="sec-cmd" id="modules">
+        {/* Atmospheric background layer */}
+        <div className="cmd-atmos">
+          <canvas id="cmd-bg" />
+          <div className="cmd-glow" />
+        </div>
+
+        <canvas id="mod-wm" className="wm" width={600} height={600} />
+
+        {/* Dominating headline */}
+        <div className="cmd-header">
+          <span className="kk"><span className="dot" />Every module, in depth</span>
+          <h2>Six engines.<br /><span className="gt">One edge.</span></h2>
+          <p className="cmd-sub">Each module is a full product — purpose-built for one dimension of the tape, unified by BlackOut Intelligence. No add-ons, no upsells: the whole desk is one price.</p>
+        </div>
+
+        {/* Carousel */}
+        <div className="cmd-carousel-wrap">
+          <div className="cmd-track" id="cmd-track">
+            {MARKETING_PRODUCTS.map((m) => (
+              <article key={m.id} className="cmd-card" style={{ "--ac": m.accent } as CSSProperties}>
+                <div className="cmd-ring" aria-hidden="true">
+                  <div className="cmd-ring-track" />
+                </div>
+                <div className="cmd-ring-glow" aria-hidden="true" />
+                <div className="cmd-ring-bloom" aria-hidden="true" />
+                <div className="cmd-chrome">
+                  <div className="cmd-chrome-dots"><span /><span /><span /></div>
+                  <span className="cmd-chrome-title">{m.label} &middot; live desk</span>
+                </div>
+                <div className="cmd-visual">
+                  {MARKETING_MODULE_GALLERY[m.id].length > 1 ? (
+                    <div className="cmd-gallery">
+                      <div className="gal-track">
+                        {MARKETING_MODULE_GALLERY[m.id].map((img, j) => (
+                          <div key={j} className={`gal-slide${j === 0 ? " gal-active" : ""}`}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img className="cmd-img" src={img} alt={`${m.label} screenshot ${j + 1}`} loading="lazy" />
+                          </div>
+                        ))}
+                      </div>
+                      <button className="gal-arrow gal-prev" aria-label="Previous">&#8249;</button>
+                      <button className="gal-arrow gal-next" aria-label="Next">&#8250;</button>
+                      <div className="gal-dots">
+                        {MARKETING_MODULE_GALLERY[m.id].map((_, j) => (
+                          <span key={j} className={`gal-dot${j === 0 ? " gal-dot-active" : ""}`} />
+                        ))}
+                      </div>
+                    </div>
                   ) : (
-                    <div className="rl-mod-lede">{m.lede}</div>
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img className="cmd-img" src={MARKETING_MODULE_GALLERY[m.id][0]} alt={`${m.label} screenshot`} loading="lazy" />
                   )}
-                  <div className="rl-mod-foot">
-                    <div className="rl-mod-stat"><span className="k">{m.stat.k}</span><span className="v">{m.stat.v}</span></div>
-                    <Link href={m.href} prefetch={false} className="rl-mod-link">{soon ? "Get early access →" : `Open ${m.label} →`}</Link>
+                  <div className="cmd-scan" aria-hidden="true" />
+                </div>
+                <div className="cmd-body">
+                  <div className="cmd-top">
+                    <span className="cmd-num">{String(m.index).padStart(2, "0")}</span>
+                    <span className="cmd-tag">{m.tag}</span>
+                    <span className="cmd-aud">{m.audience}</span>
+                    {m.launchStatus === "soon" && (
+                      <span className="cmd-aud" style={{ color: m.accent, background: `${m.accent}1a` }}>Soon</span>
+                    )}
                   </div>
-                </article>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* PER-PRODUCT DEEP DIVE — every module marketed in full, presented as one
-          horizontal scroll strip. This was six tall stacked rows (the page's longest
-          block AND the third place MARKETING_PRODUCTS rendered); collapsing it into a
-          swipeable carousel keeps every product's full pitch while cutting the page's
-          vertical length and the visual repetition. */}
-      <section className="rl-sec" id="rl-products" style={{ paddingTop: 0 }}>
-        <div className="rl-wrap">
-          <div className="rl-sec-head rl-reveal">
-            <span className="rl-kicker"><span className="dot" aria-hidden />Every module, in depth</span>
-            <h2>Six edges. <span className="rl-gt">One membership.</span></h2>
-            <p>Each module is a full product — purpose-built for one dimension of the tape, unified by BlackOut Intelligence. No add-ons, no upsells: the whole desk is one price. <span className="rl-swipe-hint">Swipe the desk →</span></p>
-          </div>
-          <ProductScroller count={MARKETING_PRODUCTS.length} ariaLabel="Desk modules in depth">
-            {MARKETING_PRODUCTS.map((m) => {
-              const soon = m.launchStatus === "soon";
-              return (
-                <article
-                  key={m.id}
-                  id={`product-${m.id}`}
-                  data-hscroll-card
-                  className="rl-pcard rl-reveal"
-                  style={{ "--a": m.accent } as CSSProperties}
-                >
-                  <div className="rl-pcard-visual">
-                    <div className="rl-energy-ring" aria-hidden />
-                    <div className="rl-energy-glow" aria-hidden />
-                    <div className="rl-pcard-chrome" aria-hidden>
-                      <span className="d" /><span className="d" /><span className="d" />
-                      <span className="rl-pcard-lbl">{m.label} · live desk</span>
+                  <div className="cmd-name">{m.label}</div>
+                  <div className="cmd-hl">{m.headline}</div>
+                  <div className="cmd-lede">{m.lede}</div>
+                  <ul className="cmd-bullets">
+                    {m.bullets.map((b) => <li key={b}>{b}</li>)}
+                  </ul>
+                  <div className="cmd-foot">
+                    <div className="cmd-stat">
+                      <span className="cmd-stat-v">{m.stat.k}</span>
+                      <span className="cmd-stat-k">{m.stat.v}</span>
                     </div>
-                    {/* Real product screenshots — the strongest marketing is the actual
-                        desk. One shot renders static; multiple become a carousel. */}
-                    <ProductGallery images={MARKETING_MODULE_GALLERY[m.id]} label={m.label} />
+                    <Link href={m.href} prefetch={false} className="cmd-cta">
+                      {m.launchStatus === "soon" ? "Get early access" : `Open ${m.label}`}
+                    </Link>
                   </div>
-                  <div className="rl-pcard-body">
-                    <div className="rl-pcard-top">
-                      <span className="rl-deep-glyph" aria-hidden><InstrumentIcon id={m.id} size={20} /></span>
-                      <span className="rl-deep-idx">{String(m.index).padStart(2, "0")}</span>
-                      <span className="rl-deep-tag">{m.tag}</span>
-                      <span className="rl-deep-aud">{m.audience}</span>
-                      {soon && <span className="rl-mod-soon">Soon</span>}
-                    </div>
-                    <h3 className="rl-pcard-name">{m.label}</h3>
-                    <p className="rl-pcard-hl">{m.headline}</p>
-                    <p className="rl-pcard-lede">{m.lede}</p>
-                    <ul className="rl-deep-bullets">
-                      {m.bullets.map((b) => <li key={b}>{b}</li>)}
-                    </ul>
-                    <div className="rl-pcard-foot">
-                      <div className="rl-deep-stat"><span className="k">{m.stat.k}</span><span className="v">{m.stat.v}</span></div>
-                      <Link href={m.href} prefetch={false} className="rl-mod-link">
-                        {soon ? "Get early access →" : `Open ${m.label} →`}
-                      </Link>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </ProductScroller>
-        </div>
-      </section>
-
-      {/* FLOW */}
-      <section className="rl-sec" id="rl-flow" style={{ paddingTop: 0 }}>
-        <div className="rl-wrap">
-          <div className="rl-sec-head rl-reveal">
-            <span className="rl-kicker"><span className="dot" aria-hidden />How it works</span>
-            <h2>Read. Score. <span className="rl-gt">Execute.</span></h2>
-          </div>
-          <div className="rl-flow">
-            {STEPS.map((s, i) => (
-              <div className="rl-step rl-glass rl-reveal" key={s.n} style={{ "--step-c": s.c, transitionDelay: `${i * 0.08}s` } as CSSProperties}>
-                <div className="rl-glass-ring" aria-hidden />
-                <span className="n" style={{ color: s.c }}>{s.n}</span>
-                <span className="tag" style={{ color: s.c }}>{s.tag}</span>
-                <h3>{s.h}</h3><p>{s.p}</p>
-              </div>
+                </div>
+              </article>
             ))}
           </div>
-        </div>
-      </section>
 
-      {/* EDGE */}
-      <section className="rl-sec" id="rl-edge" style={{ paddingTop: 0 }}>
-        <div className="rl-wrap">
-          <div className="rl-sec-head rl-reveal">
-            <span className="rl-kicker"><span className="dot" aria-hidden />The edge</span>
-            <h2>Same toolkit.<br /><span className="rl-gt">Better stack.</span></h2>
-          </div>
-          <div className="rl-pillars">
-            {PILLARS.map((p, i) => (
-              <div className="rl-pillar rl-glass rl-reveal" key={p.h} style={{ "--pillar-c": p.c, transitionDelay: `${i * 0.06}s` } as CSSProperties}>
-                <div className="rl-glass-ring" aria-hidden />
-                <span className="d" style={{ background: p.c, boxShadow: `0 0 10px ${p.c}` }} />
-                <h4>{p.h}</h4><p>{p.p}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* PRICING */}
-      <section className="rl-sec" id="rl-pricing" style={{ paddingTop: 0 }}>
-        <div className="rl-wrap">
-          <div className="rl-sec-head rl-reveal">
-            <span className="rl-kicker"><span className="dot" aria-hidden />Membership</span>
-            <h2>One desk. <span className="rl-gt">One price.</span></h2>
-            <p>Retail platforms stitch delayed feeds and chat bots. We ship one verified desk — priced for traders who already pay for edge.</p>
-          </div>
-          <div className="rl-price">
-            <div className="rl-compare rl-reveal">
-              <div className="rl-compare-h"><span>Capability</span><span className="bo">BlackOut</span><span>Typical</span></div>
-              {COMPARE.map((r) => (
-                <div className="rl-crow" key={r[0]}><span className="f">{r[0]}</span>{cmpCell(r[1])}{cmpCell(r[2])}</div>
+          {/* Navigation */}
+          <div className="cmd-nav">
+            <button className="cmd-arrow" id="cmd-prev" aria-label="Previous">&#8249;</button>
+            <div className="cmd-dots" id="cmd-dots">
+              {MARKETING_PRODUCTS.map((_, i) => (
+                <span key={i} className={`cmd-dot${i === 0 ? " active" : ""}`} />
               ))}
             </div>
-            <div className="rl-tiers rl-reveal" style={{ transitionDelay: ".1s" }}>
-              <div className="rl-tier"><div className="plan">Community</div><div className="amt">{usd(MEMBERSHIP_PRICING.community)}<small>/mo</small></div><div className="sub">Discord · live signals · the room</div></div>
-              <div className="rl-tier best">
-                <div className="badge">Full desk</div>
-                <div className="plan" style={{ color: "var(--rl-bull)" }}>Premium</div>
-                <div className="amt">{usd(MEMBERSHIP_PRICING.monthly)}<small>/mo</small></div>
-                <div className="sub">Every module + Discord · one membership</div>
-                <Link href="/sign-up" prefetch={false} className="rl-btn rl-btn-primary" style={{ width: "100%", marginTop: 16 }}>Start now →</Link>
+            <button className="cmd-arrow" id="cmd-next" aria-label="Next">&#8250;</button>
+          </div>
+        </div>
+      </section>
+
+      <div className="node" aria-hidden="true" />
+
+      {/* ═══ §3 PROTOCOL — STAGGERED, OVERSIZED NUMBERS ═══ */}
+      <section className="sec-proto" id="protocol">
+        <canvas id="proto-wm" className="wm" width={500} height={500} />
+        <div className="w">
+          <div className="proto-head">
+            <span className="kk"><span className="dot" />The protocol</span>
+            <h2>Identify. Validate.<br /><span className="gt">Execute.</span></h2>
+            <p>Three stages. Every trade passes through all of them — or it doesn&apos;t reach your screen.</p>
+          </div>
+          <div className="proto-row">
+            {/* Card 1: IDENTIFY */}
+            <div className="proto-card" style={{ "--sc": "#a3e635" } as CSSProperties}>
+              <span className="num">01</span>
+              <div className="pf-header">
+                <div className="pf-icon">&#9678;</div>
+                <div><span className="tag">IDENTIFY</span><h3>Read the Floor</h3></div>
               </div>
-              <div className="rl-tier"><div className="plan">Premium · Yearly</div><div className="amt">{usd(MEMBERSHIP_PRICING.yearly)}<small>/yr</small></div><div className="sub">Full desk · save ${MEMBERSHIP_PRICING.yearlySavingsVsMonthly} vs monthly</div></div>
+              <p className="pf-body">Live dealer gamma, dark-pool prints, institutional sweeps — every signal that moves SPX, surfaced before the tape catches up.</p>
+              <div className="pf-visual"><canvas id="cv-identify" width={600} height={260} /></div>
+              <div className="pf-metrics">
+                <span className="pf-chip live">SCANNING</span>
+                <span className="pf-chip">GEX WALLS</span>
+                <span className="pf-chip">DARK POOL</span>
+                <span className="pf-chip">SWEEPS</span>
+              </div>
+            </div>
+
+            {/* Card 2: VALIDATE */}
+            <div className="proto-card" style={{ "--sc": "#22d3ee" } as CSSProperties}>
+              <span className="num">02</span>
+              <div className="pf-header">
+                <div className="pf-icon">&#10003;</div>
+                <div><span className="tag">VALIDATE</span><h3>Every Setup Graded</h3></div>
+              </div>
+              <p className="pf-body">Gated by the BIE verification stack — confluence scoring, cortex analysis, invalidation triggers, and a graded A&ndash;F log with receipts.</p>
+              <div className="pf-visual"><canvas id="cv-validate" width={600} height={260} /></div>
+              <div className="pf-metrics">
+                <span className="pf-chip live">VERIFIED</span>
+                <span className="pf-chip">A&ndash;F GRADE</span>
+                <span className="pf-chip">CONFLUENCE</span>
+                <span className="pf-chip">CORTEX</span>
+              </div>
+            </div>
+
+            {/* Card 3: EXECUTE */}
+            <div className="proto-card" style={{ "--sc": "#bf5fff" } as CSSProperties}>
+              <span className="num">03</span>
+              <div className="pf-header">
+                <div className="pf-icon">&#9654;</div>
+                <div><span className="tag">EXECUTE</span><h3>Your Trigger</h3></div>
+              </div>
+              <p className="pf-body">Pure intelligence — no order routing, no broker lock-in. We surface the structure, the strike, and the timing. You pull the trigger.</p>
+              <div className="pf-visual"><canvas id="cv-execute" width={600} height={260} /></div>
+              <div className="pf-metrics">
+                <span className="pf-chip live">READY</span>
+                <span className="pf-chip">ENTRY</span>
+                <span className="pf-chip">STOP</span>
+                <span className="pf-chip">TARGET</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="diag-cut" aria-hidden="true" />
+      </section>
+
+      <div className="node" aria-hidden="true" />
+
+      {/* ═══ §4 WHY BLACKOUT — EDITORIAL ═══ */}
+      <section className="sec-edge" id="edge">
+        <canvas id="edge-wm" className="wm" width={700} height={700} />
+        <div className="w">
+          <div className="edge-layout">
+            <div className="edge-statement">
+              <span className="kk"><span className="dot" />Why BlackOut</span>
+              <h2>Built like a <span className="gt">trading desk.</span><br />Not a Discord server.</h2>
+              <p>Professional-grade intelligence, institutional data, and real-time execution — in a single interface anyone can use.</p>
+            </div>
+            <div className="edge-facts">
+              {/* Card 1: Institutional Market Data */}
+              <div className="edge-fact" style={{ "--fc": "#a3e635" } as CSSProperties}>
+                <div className="ef-header"><div className="ef-icon">&#9673;</div><h3>Institutional Market Data</h3></div>
+                <p className="ef-body">The same institutional positioning, options flow, dealer exposure, and execution intelligence trusted by professional trading desks — streamed live, without delay.</p>
+                <div className="ef-visual"><canvas id="cv-feeds" width={600} height={240} /></div>
+                <div className="ef-metrics">
+                  <span className="ef-chip live">LIVE FEED</span>
+                  <span className="ef-chip">GEX/DEX</span>
+                  <span className="ef-chip">OPTIONS FLOW</span>
+                  <span className="ef-chip">DARK POOL</span>
+                </div>
+              </div>
+
+              {/* Card 2: Live Before the Crowd */}
+              <div className="edge-fact" style={{ "--fc": "#22d3ee" } as CSSProperties}>
+                <div className="ef-header"><div className="ef-icon">&#9889;</div><h3>Live Before the Crowd</h3></div>
+                <p className="ef-body">No refresh buttons. No stale snapshots. Every sweep, dealer shift, and flow event updates as it happens — tick by tick, in real time.</p>
+                <div className="ef-visual"><canvas id="cv-latency" width={600} height={240} /></div>
+                <div className="ef-metrics">
+                  <span className="ef-chip live">0ms DELAY</span>
+                  <span className="ef-chip">TICK-BY-TICK</span>
+                  <span className="ef-chip">SSE STREAMS</span>
+                  <span className="ef-chip">LIVE MARKS</span>
+                </div>
+              </div>
+
+              {/* Card 3: Signal Over Noise */}
+              <div className="edge-fact" style={{ "--fc": "#bf5fff" } as CSSProperties}>
+                <div className="ef-header"><div className="ef-icon">&#10024;</div><h3>Signal Over Noise</h3></div>
+                <p className="ef-body">Every opportunity is filtered through the BIE verification engine — turning millions of market events into only the trades that matter.</p>
+                <div className="ef-visual"><canvas id="cv-intel" width={600} height={240} /></div>
+                <div className="ef-metrics">
+                  <span className="ef-chip live">AI VERIFIED</span>
+                  <span className="ef-chip">CONFLUENCE</span>
+                  <span className="ef-chip">CORTEX GATE</span>
+                  <span className="ef-chip">GRADED A&ndash;F</span>
+                </div>
+              </div>
+
+              {/* Card 4: Everything. One Interface. */}
+              <div className="edge-fact" style={{ "--fc": "#ff6b2b" } as CSSProperties}>
+                <div className="ef-header"><div className="ef-icon">&#9638;</div><h3>Everything. One Interface.</h3></div>
+                <p className="ef-body">Dealer positioning, institutional flow, AI verification, thermal heatmaps, swing intelligence, and market-wide scanning — all connected inside a single workspace.</p>
+                <div className="ef-visual"><canvas id="cv-surface" width={600} height={240} /></div>
+                <div className="ef-metrics">
+                  <span className="ef-chip live">6 MODULES</span>
+                  <span className="ef-chip">UNIFIED</span>
+                  <span className="ef-chip">ONE SCREEN</span>
+                  <span className="ef-chip">ZERO NOISE</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* CLOSING */}
-      <section className="rl-closing">
-        {/* Perspective phosphor floor receding to the horizon behind the final CTA. */}
-        <RetroGrid lineColor="rgba(191,95,255,0.20)" opacity={0.55} />
-        <div className="rl-wrap">
-          <span className="rl-kicker" style={{ justifyContent: "center" }}><span className="dot" aria-hidden />Ready when you are</span>
-          <h2>Stop trading <span className="rl-gt">blind.</span></h2>
-          <p>Six modules. One verified tape. Your broker, your trigger — start with the full desk today.</p>
-          <div className="rl-cta-row">
-            <Link href="/sign-up" prefetch={false} className="rl-btn rl-btn-primary">Get started →</Link>
-            <Link href="/pricing" prefetch={false} className="rl-btn rl-btn-ghost">See pricing</Link>
+      <div className="node" aria-hidden="true" />
+
+      {/* ═══ §5 PRICING ═══ */}
+      <section className="sec-price" id="pricing">
+        <div className="w">
+          <div className="price-head">
+            <span className="kk"><span className="dot" />Access</span>
+            <h2>One desk.<br /><span className="gt">One price.</span></h2>
+          </div>
+          <div className="price-grid">
+            {/* Community */}
+            <div className="pc">
+              <div className="plan">Community</div>
+              <div className="amt">{usd(MEMBERSHIP_PRICING.community)}<small> / mo</small></div>
+              <div className="sub">Discord + live signals + the room</div>
+              <ul className="perks">
+                <li>Private Discord access</li>
+                <li>Daily live signals</li>
+                <li>Session discussions</li>
+                <li>Evening recaps</li>
+              </ul>
+              <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="btn-g">Join the room</Link>
+            </div>
+
+            {/* Premium (featured) */}
+            <div className="pc feat">
+              <span className="badge">FULL DESK</span>
+              <div className="plan" style={{ color: "var(--g)" }}>Premium</div>
+              <div className="amt">{usd(MEMBERSHIP_PRICING.monthly)}<small> / mo</small></div>
+              <div className="sub">Every module + Discord — one membership</div>
+              <ul className="perks">
+                <li>HELIX live options-flow</li>
+                <li>SPX Slayer 0DTE desk</li>
+                <li>Largo AI analyst</li>
+                <li>Dealer gamma / GEX</li>
+                <li>Dark-pool prints</li>
+                <li>Night Hawk scanner</li>
+                <li>Strike-level heatmaps</li>
+                <li>Graded play log A-F</li>
+              </ul>
+              <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="btn-p">Get full access &rarr;</Link>
+            </div>
+
+            {/* Premium Yearly */}
+            <div className="pc">
+              <div className="plan">Premium &middot; Yearly</div>
+              <div className="amt">{usd(MEMBERSHIP_PRICING.yearly)}<small> / yr</small></div>
+              <div className="sub">{usd(MEMBERSHIP_PRICING.yearlyEffectiveMonthly)}/mo &middot; save {usd(MEMBERSHIP_PRICING.yearlySavingsVsMonthly)} vs monthly</div>
+              <ul className="perks">
+                <li>HELIX live options-flow</li>
+                <li>SPX Slayer 0DTE desk</li>
+                <li>Largo AI analyst</li>
+                <li>Dealer gamma / GEX</li>
+                <li>Dark-pool prints</li>
+                <li>Night Hawk scanner</li>
+                <li>Strike-level heatmaps</li>
+                <li>Graded play log A-F</li>
+              </ul>
+              <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="btn-g">Lock in yearly &rarr;</Link>
+            </div>
           </div>
         </div>
       </section>
+
+      {/* ═══ §6 CINEMATIC ENDING ═══ */}
+      <section className="footer">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={IMAGES.brandEmblem} alt="" className="footer-ghost" />
+        <div className="footer-content">
+          <div className="footer-brand">BLACKOUT</div>
+          <div className="footer-tagline">The intelligence layer behind modern trading.</div>
+          <div className="footer-cta cta-row">
+            <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="btn-p">Stop trading blind</Link>
+            <Link href="#modules" prefetch={false} className="btn-g">See the desk</Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══ §7 NAVIGATION FOOTER ═══ */}
+      <footer className="site-footer">
+        <span className="sf-ghost" aria-hidden="true">BLACKOUT</span>
+        <div className="sf-grid">
+          {/* Col 1: Brand + Social */}
+          <div className="sf-col">
+            <div className="sf-brand-name">BLACKOUT</div>
+            <div className="sf-brand-tag">Trade like the lights are on.</div>
+            <div className="sf-socials">
+              <a href="#" className="sf-social" aria-label="X / Twitter">
+                <svg viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" /></svg>
+              </a>
+              <a href="#" className="sf-social" aria-label="Instagram">
+                <svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z" /></svg>
+              </a>
+              <a href="#" className="sf-social" aria-label="Discord">
+                <svg viewBox="0 0 24 24"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189z" /></svg>
+              </a>
+            </div>
+          </div>
+
+          {/* Col 2: Instruments */}
+          <div className="sf-col">
+            <div className="sf-col-title">Instruments</div>
+            <Link href="/dashboard">SPX Slayer</Link>
+            <Link href="/flows">HELIX</Link>
+            <Link href="/heatmap">BlackOut Thermal</Link>
+            <Link href="/terminal">Largo</Link>
+            <Link href="/nighthawk">Night Hawk</Link>
+            <Link href="/pricing">Vector</Link>
+          </div>
+
+          {/* Col 3: Platform */}
+          <div className="sf-col">
+            <div className="sf-col-title">Platform</div>
+            <Link href="/learn">Learn</Link>
+            <Link href="/faq">FAQ</Link>
+            <Link href="/sign-in">Sign in</Link>
+            <Link href="#pricing">Pricing</Link>
+          </div>
+
+          {/* Col 4: CTA */}
+          <div className="sf-col sf-cta-col">
+            <div className="sf-col-title">Start now</div>
+            <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="sf-cta-btn">Get started &rarr;</Link>
+            <p className="sf-cta-desc">Institutional-grade intelligence.<br />Community from {usd(MEMBERSHIP_PRICING.community)}/mo.</p>
+          </div>
+        </div>
+
+        <div className="sf-bottom">
+          <div className="sf-copy">&copy; 2026 BlackOut Trading</div>
+          <div className="sf-bottom-links">
+            <a href="#">Terms</a>
+            <a href="#">Privacy</a>
+            <a href="#">Disclaimer</a>
+          </div>
+        </div>
+      </footer>
 
       <LandingRedesignFx />
     </div>
