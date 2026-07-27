@@ -19,7 +19,7 @@ import { AnchorGlyph, PanelLabel } from "@/features/thermal/lib/gex-heatmap/prim
 import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
 import { shiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
 import { createPulseEventSource, type PulseStreamSnapshot } from "@/lib/api";
-import { usePollIntervalMs } from "@/hooks/use-et-market-open";
+import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
 import { todayEt } from "@/lib/et-date";
 import {
@@ -2850,6 +2850,10 @@ export function GexHeatmap({
   // The active block is empty when it has no strike totals (e.g. VEX skipped all IVs).
   const blockEmpty = Object.keys(strikeTotals).length === 0;
   const empty = !isLoading && data != null && (!data.available || strikes.length === 0);
+  // RTH flag for the empty-state copy below — "no chain" outside RTH is expected
+  // (recorder idle); the older copy blamed the user ("pick a more liquid name"),
+  // which is wrong for SPY/SPX/QQQ where the answer is always "wait for 9:30 ET".
+  const isMarketOpen = useEtMarketOpen();
 
   // Whether the body renders the paired views (Profile+Matrix / Curve+Shift). Mirrors
   // the success-branch gate below so the view TabList on the control row only shows when
@@ -3944,8 +3948,12 @@ export function GexHeatmap({
         </div>
       ) : empty ? (
         <EmptyState
-          title="No options chain"
-          description={`No options chain for ${data?.underlying ?? ticker}. Pick a more liquid name or wait for the chain to print.`}
+          title={isMarketOpen ? "Chain warming up" : "Chain resumes at the open"}
+          description={
+            isMarketOpen
+              ? `The ${data?.underlying ?? ticker} options snapshot is priming — the recorder retries every 30s during the session.`
+              : `The ${data?.underlying ?? ticker} chain prints live during regular hours (9:30 AM – 4:00 PM ET). It resumes at the next open.`
+          }
         />
       ) : blockEmpty ? (
         <EmptyState
