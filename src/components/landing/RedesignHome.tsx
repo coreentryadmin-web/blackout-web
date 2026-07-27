@@ -297,7 +297,34 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
 
       <div className="node" aria-hidden="true" />
 
-      {/* ═══ §5 PRICING ═══ */}
+      {/* ═══ §5 MEMBER FEEDBACK ═══ */}
+      <section className="sec-feedback" id="feedback">
+        <div className="w">
+          <div className="fb-head">
+            <span className="kk"><span className="dot" />The room</span>
+            <h2>Members<br /><span className="gt">are winning.</span></h2>
+            <p>Real trades. Real results. Straight from the community.</p>
+          </div>
+          <div className="fb-grid">
+            <div className="fb-card">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/images/feedback/twitter-nighthawk-pnl.jpeg" alt="Member sharing Night Hawk AAPL trade P&L on X" className="fb-img" loading="lazy" />
+            </div>
+            <div className="fb-card">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/images/feedback/twitter-nighthawk-aapl.jpeg" alt="Member showing +249% return on Night Hawk AAPL trade" className="fb-img" loading="lazy" />
+            </div>
+            <div className="fb-card fb-card-full">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/images/feedback/discord-nighthawk-banger.jpeg" alt="Member praising Night Hawk AAPL call in Discord" className="fb-img" loading="lazy" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="node" aria-hidden="true" />
+
+      {/* ═══ §6 PRICING ═══ */}
       <section className="sec-price" id="pricing">
         <div className="w">
           <div className="price-head">
@@ -359,7 +386,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         </div>
       </section>
 
-      {/* ═══ §6 CINEMATIC ENDING ═══ */}
+      {/* ═══ §7 CINEMATIC ENDING ═══ */}
       <section className="footer">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={IMAGES.brandEmblem} alt="" className="footer-ghost" />
