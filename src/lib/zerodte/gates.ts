@@ -109,6 +109,13 @@ export const ZERODTE_CONFLUENCE_MIN_EARLY = Math.max(
   envInt("ZERODTE_CONFLUENCE_MIN_EARLY", 1)
 );
 
+/** Telemetry: how many times G-12 encountered a null confluence read and failed OPEN
+ *  (the setup was not blocked on confluence). Gives observability into how often the
+ *  fail-open path fires in practice — a rising count signals scan.ts is not attaching
+ *  confluence reads before gating. */
+let _nullConfluencePassCount = 0;
+export function getNullConfluencePassCount(): number { return _nullConfluencePassCount; }
+
 /** The confluence floor in force at `nowEtMinutes`: the higher early-window floor inside
  *  [10:00, 10:45) ET, else the standard floor. Pure. */
 export function confluenceFloorAt(nowEtMinutes: number): number {
@@ -175,6 +182,10 @@ export type ZeroDteVixCalibration = {
 export const CONFLICT_SCORE_FLOOR = 80;
 /** Tickers that trade the same broad-market direction as Slayer's SPX play — a
  *  0DTE short on any of these against a live Slayer long IS a desk disagreement. */
+// G-6 cross-system conflict scope: index + mega-cap tech that move in sympathy
+// with SPX. Intentionally BROADER than CORRELATION_GROUPS (governor.ts) which
+// only covers direct hedging pairs, and NARROWER than INDEX_ETF_TICKERS which
+// includes all VIX-regime-eligible instruments.
 export const SPX_CORRELATED_TICKERS = new Set(["SPX", "SPXW", "XSP", "SPY", "QQQ", "NDX", "NDXP"]);
 
 export type ZeroDteConflictCalibration = {
@@ -407,6 +418,10 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         unlock_et: null,
       });
     }
+  } else if (!isCondor && input.confluence == null) {
+    // G-12 fail-open: no confluence read attached — not a block (see module doc), but
+    // track how often this happens so a rising count signals scan.ts stopped attaching reads.
+    _nullConfluencePassCount++;
   }
 
   // G-4 — VIX regime hard gate (promoted from calibration 2026-07-16).
@@ -466,6 +481,10 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
       // PASSED G-1 (tape aligned or flat) or is a condor (skipped above). The 75 floor
       // only applies to the residual unknown-tape case (bias == null / stale — G-1's
       // no_market_bias already blocked these, so 75 here is belt-and-suspenders).
+      //
+      // NOTE: This branch is effectively unreachable in normal flow — G-1 (tape alignment)
+      // blocks any setup with null spy_bias before G-4 evaluates. Retained as a safety
+      // net if G-1 is ever disabled via ZERODTE_GATE_DISABLE.
       //
       // FLAT tape: the setup has no directional fight with the market (G-1 passed it),
       // so it keeps the standard 65 floor — the same treatment as tape-aligned. Before

@@ -109,6 +109,30 @@ export function resolveExitMode(env: NodeJS.ProcessEnv = process.env): ZeroDteEx
 }
 
 /**
+ * Tier-aware exit-mode resolver (CTO audit E5 graduation). The E5 study proved
+ * trim-scale dominates ratchet in EVERY backtest window — it is now the DEFAULT for
+ * A-tier and B-tier plays. C-tier plays stay on the conservative ratchet (their signal
+ * quality doesn't justify the looser partial-trim runway). The env override
+ * `ZERODTE_EXIT_MODE=ratchet` can force ALL tiers back to ratchet (operator kill-switch).
+ *
+ * @param tier - The play's assigned merit tier (A/B/C or null for untiered)
+ * @param env  - Process env (for the operator override)
+ */
+export function resolveExitModeForTier(
+  tier: "A" | "B" | "C" | null | undefined,
+  env: NodeJS.ProcessEnv = process.env
+): ZeroDteExitMode {
+  // Explicit env override takes precedence — the operator can force ratchet on all tiers.
+  if (env.ZERODTE_EXIT_MODE === "ratchet") return "ratchet";
+  // Explicit trim_scale env also forces all tiers (backwards-compat with the old knob).
+  if (env.ZERODTE_EXIT_MODE === "trim_scale") return "trim_scale";
+  // DEFAULT tier-based policy (E5 graduation): A/B get trim-scale, C stays on ratchet.
+  // Untiered plays (null — tier assignment failed soft) default to ratchet (conservative).
+  if (tier === "A" || tier === "B") return "trim_scale";
+  return "ratchet";
+}
+
+/**
  * FROZEN exit archetype for an already-committed row (design Q13 — INTEGRITY). scan.ts
  * pins the ACTIVE exit mode onto every committed row's entry_context.exit_policy_at_commit
  * at first flag. Reading it here — in preference to the live env — means an open play

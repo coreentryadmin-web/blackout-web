@@ -69,15 +69,31 @@ export const BREAKOUT_DOLLAR_MAX = 20; // max additive points from normalized $-
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 
 /**
- * Map one breakout mover to a 0–100 board score. `dollarNorm` is this mover's $-volume divided by
- * the cohort maximum (in [0,1]); the caller normalizes so the score is comparable within a scan.
- * Pure + deterministic.
+ * Map one breakout/breakdown mover to a 0-100 board score. `dollarNorm` is this mover's $-volume
+ * divided by the cohort maximum (in [0,1]); the caller normalizes so the score is comparable
+ * within a scan. Pure + deterministic.
+ *
+ * For breakouts (direction "long"), `gain` is positive and close_strength is in [0.5, 1] (closed
+ * strong = bullish conviction). For breakdowns (direction "short"), `gain` is the ABSOLUTE value
+ * of the drop and close_strength is in [0, 0.5] (closed weak = bearish conviction). The
+ * `direction` parameter flips the close-strength factor so both sides score symmetrically.
  */
-export function breakoutScore(mover: Pick<BreakoutMover, "gain" | "close_strength">, dollarNorm: number): number {
-  const gainFactor = clamp01(mover.gain / BREAKOUT_GAIN_FULL);
-  // close_strength ∈ [0.5, 1] after the screen; below 0.5 the screen already dropped it.
-  const closeFactor = clamp01((mover.close_strength - 0.5) / 0.5);
-  const core = gainFactor * closeFactor; // multiplicative — needs BOTH
+export function breakoutScore(
+  mover: Pick<BreakoutMover, "gain" | "close_strength">,
+  dollarNorm: number,
+  direction: "long" | "short" = "long"
+): number {
+  // Use abs(gain) so the formula works for both positive breakouts and negative breakdowns
+  // (screenBreakdownMovers already stores gain as abs, but be defensive).
+  const gainFactor = clamp01(Math.abs(mover.gain) / BREAKOUT_GAIN_FULL);
+  // For breakouts: close_strength in [0.5, 1] after the screen; higher = stronger close.
+  // For breakdowns: close_strength in [0, 0.5]; LOWER = stronger bearish close (near the low).
+  // Flip the factor for shorts so closing near the low scores high.
+  const closeFactor =
+    direction === "long"
+      ? clamp01((mover.close_strength - 0.5) / 0.5)
+      : clamp01((0.5 - mover.close_strength) / 0.5);
+  const core = gainFactor * closeFactor; // multiplicative -- needs BOTH
   const dollar = clamp01(dollarNorm);
   const raw = core * BREAKOUT_CORE_MAX + dollar * BREAKOUT_DOLLAR_MAX;
   return Math.max(0, Math.min(100, Math.round(raw)));
@@ -87,17 +103,21 @@ export function breakoutScore(mover: Pick<BreakoutMover, "gain" | "close_strengt
 // A breakout candidate is a bare ticker with NO option flow, so it can't go through
 // deriveZeroDteSetups (which aggregates flow prints). This picks a same-day (0DTE) contract —
 // weekly fallback — off the live chain so the EXISTING attachContractPlans → buildContractPlan
-// path (scan.ts) can attach a REAL, gated plan. Long-only for 3a (breakouts are up-moves), so
-// the picked side is always a CALL. Pure over the chain rows the provider already fetched.
+// path (scan.ts) can attach a REAL, gated plan. Breakouts pick a CALL; breakdowns pick a PUT.
+// Pure over the chain rows the provider already fetched.
 
 /** Minimal chain-row shape the picker reads — a structural subset of ChainStrikeRow so the
- *  picker is testable with plain objects and never imports the (provider-heavy) chain module. */
+ *  picker is testable with plain objects and never imports the (provider-heavy) chain module.
+ *  Includes BOTH sides so the same row type works for breakout (call) and breakdown (put). */
 export type BreakoutChainRow = {
   expiry: string;
   strike: number;
   call_bid: number | null;
   call_ask: number | null;
   call_oi: number;
+  put_bid: number | null;
+  put_ask: number | null;
+  put_oi: number;
 };
 
 export type PickedBreakoutContract = {
@@ -115,40 +135,46 @@ function calendarDteBetween(todayYmd: string, expiryYmd: string): number {
   return Math.round((b - a) / 86_400_000);
 }
 
-/** A call row is tradeable enough to seed a plan when it has a live quote (bid or ask) or real OI. */
-function callHasLiquidity(row: BreakoutChainRow): boolean {
-  return (row.call_bid != null && row.call_bid > 0) || (row.call_ask != null && row.call_ask > 0) || row.call_oi > 0;
+/** A row's chosen side is tradeable enough to seed a plan when it has a live quote (bid or ask) or real OI. */
+function sideHasLiquidity(row: BreakoutChainRow, side: "call" | "put"): boolean {
+  if (side === "call") {
+    return (row.call_bid != null && row.call_bid > 0) || (row.call_ask != null && row.call_ask > 0) || row.call_oi > 0;
+  }
+  return (row.put_bid != null && row.put_bid > 0) || (row.put_ask != null && row.put_ask > 0) || row.put_oi > 0;
 }
 
 /**
- * Pick the ATM CALL contract on the nearest usable expiry ≥ today, WITHIN the 0DTE horizon.
+ * Pick the ATM contract on `side` on the nearest usable expiry >= today, WITHIN the 0DTE horizon.
  * 0DTE (dte 0) is preferred, then dte 1 (ONE_DTE). HORIZON INTEGRITY (PR-1, design Q2): `maxDte`
- * is clamped to 1 — the picker DELIBERATELY no longer reaches a 2–7DTE weekly. A breakout mover
- * whose only liquid call is a weekly returns null here → the candidate is DROPPED (never committed
- * to the 0DTE ledger, never graded with the same-day 15:30 time-stop that would be structurally
- * wrong for a multi-day weekly). Re-homing weekly fallbacks to a TACTICAL_SWING lane is a later
- * effort; for now they are cleanly excluded. ATM = strike closest to spot among liquid call rows on
- * the chosen expiry (nearest-expiry wins over ATM-ness, then closest-to-spot, then lower strike —
- * deterministic). Returns null when no liquid same-day/1DTE call exists (→ no contract → dropped).
+ * is clamped to 1 -- the picker DELIBERATELY no longer reaches a 2-7DTE weekly. A mover whose only
+ * liquid contract on the chosen side is a weekly returns null here -> the candidate is DROPPED
+ * (never committed to the 0DTE ledger, never graded with the same-day 15:30 time-stop that would
+ * be structurally wrong for a multi-day weekly). ATM = strike closest to spot among liquid rows on
+ * the chosen expiry (nearest-expiry wins over ATM-ness, then closest-to-spot, then lower strike --
+ * deterministic). Returns null when no liquid same-day/1DTE contract exists (-> dropped).
+ *
+ * `side` defaults to "call" for backward compatibility (breakouts are long/call). Breakdowns pass
+ * "put" so the picked contract matches the short direction.
  */
 export function pickAtmZeroDteContract(
   rows: BreakoutChainRow[],
   spot: number,
   todayYmd: string,
-  maxDte = 1
+  maxDte = 1,
+  side: "call" | "put" = "call"
 ): PickedBreakoutContract | null {
   if (!(spot > 0) || rows.length === 0) return null;
   type Cand = { strike: number; expiry: string; dte: number; dist: number };
   const cands: Cand[] = [];
   for (const row of rows) {
-    if (!callHasLiquidity(row)) continue;
+    if (!sideHasLiquidity(row, side)) continue;
     const dte = calendarDteBetween(todayYmd, row.expiry);
     if (!Number.isFinite(dte) || dte < 0 || dte > maxDte) continue;
     cands.push({ strike: row.strike, expiry: row.expiry.slice(0, 10), dte, dist: Math.abs(row.strike - spot) });
   }
   if (cands.length === 0) return null;
   // Nearest expiry first (0DTE preferred, then 1DTE within the clamped horizon), then closest-to-
-  // spot, then the lower strike — the same deterministic tie-break shape pickChainContract uses.
+  // spot, then the lower strike -- the same deterministic tie-break shape pickChainContract uses.
   cands.sort((a, b) => a.dte - b.dte || a.dist - b.dist || a.strike - b.strike);
   const best = cands[0]!;
   return { strike: best.strike, expiry: best.expiry, dte: best.dte };
@@ -171,15 +197,25 @@ export function buildBreakoutSetup(input: {
   spot: number;
   contract: PickedBreakoutContract;
   dollarNorm: number;
+  /** Direction for this candidate: "long" for breakouts (up-moves), "short" for breakdowns
+   *  (gap-down movers). Defaults to "long" for backward compatibility. */
+  direction?: "long" | "short";
 }): EnrichedZeroDteSetup {
   const { mover, spot, contract, dollarNorm } = input;
-  const score = breakoutScore(mover, dollarNorm);
-  // Real moneyness of the picked call strike (positive = OTM), rounded at the data layer.
-  const otmPct = spot > 0 ? Math.round(((contract.strike - spot) / spot) * 100 * 100) / 100 : null;
+  const direction = input.direction ?? "long";
+  const score = breakoutScore(mover, dollarNorm, direction);
+  // Real moneyness of the picked strike (positive = OTM), rounded at the data layer.
+  // For a call (long): OTM = strike above spot. For a put (short): OTM = strike below spot.
+  const otmPct =
+    spot > 0
+      ? Math.round(
+          ((direction === "long" ? contract.strike - spot : spot - contract.strike) / spot) * 100 * 100
+        ) / 100
+      : null;
   const base: ZeroDteSetup = {
     ticker: mover.ticker.toUpperCase(),
-    direction: "long",
-    // Breakout candidates are always DIRECTIONAL long-momentum plays — never a condor (the condor is
+    direction,
+    // Breakout/breakdown candidates are always DIRECTIONAL plays -- never a condor (the condor is
     // routed only from PIN, condor.ts). Stamped explicitly so the flag-off board is unchanged.
     play_type: "DIRECTIONAL",
     discovery_origin: ["BREAKOUT"],
@@ -219,9 +255,11 @@ export function buildBreakoutSetup(input: {
 /**
  * Merge breakout setups into the flow setups IN PLACE, unioning origins by ticker. A ticker
  * already present in `flowSetups` keeps its (evidence-bearing) flow setup and gains "BREAKOUT" in
- * its discovery_origin set (→ ["FLOW","BREAKOUT"]); the duplicate breakout setup is dropped. A
- * ticker unique to the breakout source is appended. NO corroboration score boost (evidence-only —
- * the origin band earns any boost later on graded outcomes). Mutates + returns `flowSetups`.
+ * its discovery_origin set (e.g. ["FLOW","BREAKOUT"]); the duplicate breakout setup is dropped. A
+ * ticker unique to the breakout source is appended. When a ticker ends up with multiple discovery
+ * origins (FLOW + BREAKOUT corroboration), it gets a +8 score boost (capped at 100) -- two
+ * independent sources agreeing on a name is a genuine conviction signal. Mutates + returns
+ * `flowSetups`.
  */
 export function mergeDiscoveryOrigins(
   flowSetups: EnrichedZeroDteSetup[],
@@ -233,8 +271,8 @@ export function mergeDiscoveryOrigins(
     const key = b.ticker.toUpperCase();
     const existing = byTicker.get(key);
     if (existing) {
-      // Same ticker from two sources → union the origins onto the flow setup, keep the flow
-      // evidence (real prints/aggression), drop the bare breakout duplicate. No score change.
+      // Same ticker from two sources: union the origins onto the flow setup, keep the flow
+      // evidence (real prints/aggression), drop the bare breakout duplicate.
       // Q1: if breakout argued the OPPOSITE direction, stamp the masked read as evidence
       // (never flip the kept direction) so the origin band can grade opposing co-discovery.
       // WS-06: record BOTH rails' (direction, score) BEFORE the union rewrites discovery_origin,
@@ -242,6 +280,13 @@ export function mergeDiscoveryOrigins(
       recordOriginContributionsOnMerge(existing, b);
       noteOriginDirectionConflict(existing, b);
       existing.discovery_origin = unionDiscoveryOrigins(existing.discovery_origin, b.discovery_origin);
+      // Multi-source corroboration boost: two independent discovery systems agreeing on the same
+      // ticker is a conviction signal worth a score bump. +8 is conservative enough that a weak
+      // setup (score ~55) still fails G-3's 65 floor, but a borderline-good one (score ~60) can
+      // clear it with corroboration.
+      if (existing.discovery_origin && existing.discovery_origin.length > 1) {
+        existing.score = Math.min(100, (existing.score ?? 0) + 8);
+      }
     } else {
       byTicker.set(key, b);
       flowSetups.push(b);

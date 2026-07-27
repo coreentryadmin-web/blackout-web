@@ -16,6 +16,7 @@ import {
   confluenceFloorAt,
   ZERODTE_CONFLUENCE_MIN,
   ZERODTE_CONFLUENCE_MIN_EARLY,
+  getNullConfluencePassCount,
   type ZeroDteGateInput,
 } from "./gates";
 import type { ContractPlan } from "./plan";
@@ -1075,4 +1076,131 @@ test("gateRejectionFor: a condor's liquidity block becomes the primary gate_fail
   const row = gateRejectionFor(rejectionSource, v);
   assert.equal(row.gate_failed, v.blocks[0]!.code, "primary = first-evaluated failing gate");
   assert.equal(row.gate_failed, "condor_liquidity");
+});
+
+// ── Condor + FOMC macro gate tests (CTO audit coverage) ─────────────────────────
+
+test("condor G-7: a condor is BLOCKED by G-7 when ANY high-impact macro event exists (whole session, not just window)", () => {
+  // A condor is short vol — a CPI/FOMC/NFP breakout is its worst case — so the
+  // macro block covers the WHOLE session for condors, not just the ±window around the
+  // release that directional plays use. A FOMC event at 14:00 ET blocks a condor at
+  // 11:00 ET (well before the release window).
+  const v = evaluateZeroDteGates({
+    ...input({
+      bias: "flat",
+      nowEtMinutes: 11 * 60, // 11:00 ET — well before any FOMC window
+      macroEvents: [{ event: "FOMC Rate Decision", time: "14:00", date: "2026-07-13", country: "US" }],
+    }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(
+    v.blocks.some((b) => b.code === "condor_macro_block"),
+    "condor must be blocked by condor_macro_block when a high-impact macro event exists"
+  );
+  assert.match(
+    v.blocks.find((b) => b.code === "condor_macro_block")!.reason,
+    /whole session/,
+    "reason should mention whole-session scope"
+  );
+});
+
+test("condor range-break: a condor whose spot has breached a short strike is BLOCKED", () => {
+  // condorRangeBreaking returns true when spot is at or past a short strike — the
+  // range the condor defends is failing, so the sale is held.
+  const condorPlan = {
+    play_type: "CONDOR" as const,
+    expiry: "2026-07-13",
+    dte: 0,
+    spot: 500,         // spot AT the short call → breached
+    short_put: 495,
+    long_put: 490,
+    short_call: 500,
+    long_call: 505,
+    put_width_pct: 1,
+    call_width_pct: 1,
+    wing_pts: 5,
+    legs: [],
+    net_credit: 1.5,
+    gross_wing_risk: 500,
+    max_loss: 498.5,
+    credit_to_risk: 0.003,
+    breach_lower: 495,
+    breach_upper: 500,
+    max_leg_spread_pct: 5,
+    illiquid: false,
+    est_win_rate: null,
+    net_credit_mid: null,
+  };
+  const v = evaluateZeroDteGates({
+    ...input({ bias: "flat" }),
+    play_type: "CONDOR",
+    condorPlan,
+    plan: null,
+  });
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(
+    v.blocks.some((b) => b.code === "condor_range_break"),
+    "condor must be blocked when spot has breached a short strike"
+  );
+});
+
+test("FOMC afternoon window: directional play lifts after the ±15m window, condor stays blocked all session", () => {
+  // FOMC at 14:00 ET → directional window is [13:45, 14:15]. At 14:30 ET (well past
+  // the window), a directional play should NOT be blocked by G-7, but a condor should
+  // STILL be blocked because condors block the whole session on any high-impact event.
+  const fomcEvent = { event: "FOMC Rate Decision", time: "14:00", date: "2026-07-13", country: "US" };
+
+  // Directional play at 14:30 ET — FOMC window has passed
+  const directional = evaluateZeroDteGates(
+    input({
+      nowEtMinutes: 14 * 60 + 30,  // 14:30 ET — past the 14:15 window end
+      macroEvents: [fomcEvent],
+    })
+  );
+  assert.ok(
+    !directional.blocks.some((b) => b.code === "macro_hard_block"),
+    "directional play at 14:30 should NOT be blocked — FOMC ±15m window (13:45-14:15) has passed"
+  );
+
+  // Condor play at the same time — STILL blocked (whole session)
+  const condor = evaluateZeroDteGates({
+    ...input({
+      bias: "flat",
+      nowEtMinutes: 14 * 60 + 30,  // 14:30 ET — same time
+      macroEvents: [fomcEvent],
+    }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  assert.ok(
+    condor.blocks.some((b) => b.code === "condor_macro_block"),
+    "condor at 14:30 must STILL be blocked — condors block the whole session on FOMC day"
+  );
+});
+
+// ── G-12 null-confluence telemetry counter ──────────────────────────────────────
+
+test("G-12 telemetry: null confluence increments the fail-open counter", () => {
+  const before = getNullConfluencePassCount();
+  // A directional play with null confluence → G-12 fails open and increments the counter.
+  evaluateZeroDteGates(input({ confluence: null }));
+  assert.equal(getNullConfluencePassCount(), before + 1, "counter should increment on null confluence");
+  // A second call increments again.
+  evaluateZeroDteGates(input({ confluence: null }));
+  assert.equal(getNullConfluencePassCount(), before + 2);
+  // A present confluence does NOT increment.
+  evaluateZeroDteGates(input({ confluence: confluence(1) }));
+  assert.equal(getNullConfluencePassCount(), before + 2, "present confluence must not increment");
+  // A condor with null confluence does NOT increment (G-12 skips condors entirely).
+  evaluateZeroDteGates({
+    ...input({ confluence: null, bias: "flat" }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  assert.equal(getNullConfluencePassCount(), before + 2, "condor skips G-12 — no increment");
 });

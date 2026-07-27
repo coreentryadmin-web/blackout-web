@@ -518,6 +518,7 @@ export type ZeroDteGateFailure =
   | "confluence_floor" // G-12: too few VWAP-side/market-aligned confirmations (0-conf −12.5% EV; higher floor 10:00–10:45)
   | "governor_max_concurrent" // G-5: 3 plans already open
   | "governor_session_stops" // G-5: 3 stops today — halted for the session
+  | "governor_session_loss_halt" // G-5/SEV-3: realized-loss halt (3 losers or -120% cumulative) — distinct from hard-stop halt
   | "governor_reentry_lock" // G-5: same-direction re-entry within 20m of that ticker's stop
   | "correlated_conflict" // G-5/B-3: opposes an OPEN plan on a correlated ticker
   | "gate_context_unavailable" // fail-closed: gate inputs (ledger/governor) unreadable

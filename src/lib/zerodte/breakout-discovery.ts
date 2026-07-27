@@ -21,7 +21,7 @@
 // candidates, never add any.
 
 import { fetchDailyMarketSummary, type DailyMarketBar } from "@/lib/providers/polygon";
-import { screenBreakoutMovers } from "@/features/nighthawk/lib/candidates";
+import { screenBreakoutMovers, screenBreakdownMovers } from "@/features/nighthawk/lib/candidates";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import {
   buildBreakoutSetup,
@@ -36,9 +36,12 @@ import type { EnrichedZeroDteSetup } from "./board";
 const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
 const RTH_CUTOFF_ET_MINUTES = 15 * 60;
 
-/** Cap the per-ticker chain fetches per scan — the screen returns the top-$-volume movers already;
- *  a handful is enough to widen the funnel without a chain-fetch storm. */
-export const BREAKOUT_MAX_CANDIDATES = 6;
+/** Cap the per-ticker chain fetches per scan — the screen returns the top-$-volume movers already,
+ *  but the discovery-recall-probe (5-session run, 2026-07-20...24) proved that the old cap of 6
+ *  silently dropped 10-17 qualifying winners per session. Raised to 15 so the downstream gate
+ *  stack (G-3 score floor, Cortex, governor concurrency) does the quality filtering, not a blind
+ *  $-volume cutoff. Chain-fetch cost is bounded by the per-scan cap. */
+export const BREAKOUT_MAX_CANDIDATES = 15;
 
 /**
  * WS-19 — fail-closed max age for the whole-market grouped-daily snapshot.
@@ -105,10 +108,11 @@ export type BreakoutDiscoveryOutcome = {
   reason?: "stale_snapshot" | "missing_bar_timestamp";
 };
 
-/** Injectable IO seam — real providers by default; tests substitute hermetic fakes. */
+/** Injectable IO seam -- real providers by default; tests substitute hermetic fakes. */
 export type BreakoutDiscoveryDeps = {
   fetchSummary: typeof fetchDailyMarketSummary;
   screen: typeof screenBreakoutMovers;
+  screenBreakdowns: typeof screenBreakdownMovers;
   resolveChain: typeof resolveTickerChainRows;
   buildSetup: typeof buildBreakoutSetup;
   pickContract: typeof pickAtmZeroDteContract;
@@ -117,6 +121,7 @@ export type BreakoutDiscoveryDeps = {
 const DEFAULT_DEPS: BreakoutDiscoveryDeps = {
   fetchSummary: fetchDailyMarketSummary,
   screen: screenBreakoutMovers,
+  screenBreakdowns: screenBreakdownMovers,
   resolveChain: resolveTickerChainRows,
   buildSetup: buildBreakoutSetup,
   pickContract: pickAtmZeroDteContract,
@@ -144,13 +149,13 @@ export async function discoverBreakoutSetups(opts: {
   const { today, nowEtMinutes, excludeTickers } = opts;
   const maxCandidates = opts.maxCandidates ?? BREAKOUT_MAX_CANDIDATES;
   const nowMs = opts.nowMs ?? Date.now();
-  const { fetchSummary, screen, resolveChain, buildSetup, pickContract } = {
+  const { fetchSummary, screen, screenBreakdowns, resolveChain, buildSetup, pickContract } = {
     ...DEFAULT_DEPS,
     ...opts.deps,
   };
 
   if (nowEtMinutes < RTH_OPEN_ET_MINUTES || nowEtMinutes >= RTH_CUTOFF_ET_MINUTES) {
-    console.info("[zerodte-breakout] outside the RTH commit window — SKIP (no live intraday breadth)");
+    console.info("[zerodte-breakout] outside the RTH commit window -- SKIP (no live intraday breadth)");
     return { status: "skip_off_hours", setups: [] };
   }
 
@@ -158,62 +163,84 @@ export async function discoverBreakoutSetups(opts: {
   const summary = await fetchSummary(today).catch(() => null);
   const results = summary?.results ?? [];
   if (results.length === 0) {
-    console.info("[zerodte-breakout] no live intraday breadth snapshot (empty grouped-daily) — SKIP");
+    console.info("[zerodte-breakout] no live intraday breadth snapshot (empty grouped-daily) -- SKIP");
     return { status: "skip_empty_market", setups: [] };
   }
 
   // WS-19: a non-empty snapshot must also be FRESH. A stale (or timestamp-less) snapshot fails
-  // CLOSED as data_unavailable — never an empty candidate list — so it can never be mistaken for a
+  // CLOSED as data_unavailable -- never an empty candidate list -- so it can never be mistaken for a
   // genuine "no breakouts today". This gate can only remove stale-driven candidates, never add any.
   const freshness = assessGroupedBarFreshness(results, nowMs);
   if (!freshness.fresh) {
     const ageStr =
       freshness.reason === "stale_snapshot" ? ` (age ${Math.round(freshness.ageMs / 3_600_000)}h)` : "";
     console.warn(
-      `[zerodte-breakout] grouped-daily snapshot ${freshness.reason}${ageStr} — DATA_UNAVAILABLE (fail closed, not "no breakouts")`
+      `[zerodte-breakout] grouped-daily snapshot ${freshness.reason}${ageStr} -- DATA_UNAVAILABLE (fail closed, not "no breakouts")`
     );
     return { status: "data_unavailable", setups: [], reason: freshness.reason };
   }
 
-  const movers = screen(results).filter((m) => !excludeTickers.has(m.ticker.toUpperCase()));
-  if (movers.length === 0) {
-    console.info("[zerodte-breakout] breadth snapshot present but zero qualifying breakouts — SKIP");
+  // Screen BOTH directions from the same grouped-daily snapshot: breakouts (LONG) and breakdowns
+  // (SHORT). Each side is capped independently at maxCandidates, then merged into one candidate
+  // list. A ticker that qualifies on BOTH sides (rare but possible with intraday reversal bars)
+  // keeps the breakout (long) -- the higher-conviction direction for a momentum board.
+  const longMovers = screen(results).filter((m) => !excludeTickers.has(m.ticker.toUpperCase()));
+  const shortMovers = screenBreakdowns(results).filter((m) => !excludeTickers.has(m.ticker.toUpperCase()));
+
+  if (longMovers.length === 0 && shortMovers.length === 0) {
+    console.info("[zerodte-breakout] breadth snapshot present but zero qualifying breakouts/breakdowns -- SKIP");
     return { status: "ok", setups: [] };
   }
 
-  // Normalize $-volume against THIS cohort's max (like candidates.ts normalizeToMax) so the score's
-  // liquidity term is comparable within the scan; the screen already sorted by $-volume desc.
-  const maxDollar = movers.reduce((m, x) => Math.max(m, x.dollar), 0);
-  const top = movers.slice(0, maxCandidates);
+  // Build a helper to resolve one mover into a setup, parameterized by direction.
+  const buildOne = async (
+    mover: (typeof longMovers)[number],
+    direction: "long" | "short",
+    maxDollar: number
+  ): Promise<EnrichedZeroDteSetup | null> => {
+    try {
+      const chain = await resolveChain(mover.ticker).catch(() => null);
+      if (!chain || !(chain.spot > 0) || chain.rows.length === 0) return null;
+      const rows: BreakoutChainRow[] = chain.rows.map((r) => ({
+        expiry: r.expiry,
+        strike: r.strike,
+        call_bid: r.call_bid,
+        call_ask: r.call_ask,
+        call_oi: r.call_oi,
+        put_bid: r.put_bid,
+        put_ask: r.put_ask,
+        put_oi: r.put_oi,
+      }));
+      // Breakouts pick a CALL; breakdowns pick a PUT.
+      const side = direction === "long" ? "call" as const : "put" as const;
+      const contract = pickContract(rows, chain.spot, today, 1, side);
+      if (!contract) return null;
+      const dollarNorm = maxDollar > 0 ? mover.dollar / maxDollar : 0;
+      return buildSetup({ mover, spot: chain.spot, contract, dollarNorm, direction });
+    } catch {
+      return null; // best-effort per ticker -- one bad chain never sinks the batch
+    }
+  };
 
-  // Fetch each candidate's live chain, pick an ATM 0DTE (weekly fallback) contract, and build the
-  // seed setup. A candidate with no liquid same-day/weekly contract is DROPPED here (no fabricated
-  // plan) — and even a picked contract still runs the mandatory attachContractPlans gate downstream.
-  const built = await Promise.all(
-    top.map(async (mover): Promise<EnrichedZeroDteSetup | null> => {
-      try {
-        const chain = await resolveChain(mover.ticker).catch(() => null);
-        if (!chain || !(chain.spot > 0) || chain.rows.length === 0) return null;
-        const rows: BreakoutChainRow[] = chain.rows.map((r) => ({
-          expiry: r.expiry,
-          strike: r.strike,
-          call_bid: r.call_bid,
-          call_ask: r.call_ask,
-          call_oi: r.call_oi,
-        }));
-        const contract = pickContract(rows, chain.spot, today);
-        if (!contract) return null;
-        const dollarNorm = maxDollar > 0 ? mover.dollar / maxDollar : 0;
-        return buildSetup({ mover, spot: chain.spot, contract, dollarNorm });
-      } catch {
-        return null; // best-effort per ticker — one bad chain never sinks the batch
-      }
-    })
-  );
+  // Normalize $-volume within each cohort independently, then cap each side.
+  const longMaxDollar = longMovers.reduce((m, x) => Math.max(m, x.dollar), 0);
+  const shortMaxDollar = shortMovers.reduce((m, x) => Math.max(m, x.dollar), 0);
+  const topLong = longMovers.slice(0, maxCandidates);
+  const topShort = shortMovers.slice(0, maxCandidates);
+
+  // Dedup: if a ticker appears on BOTH sides, keep the long (breakout) only.
+  const longTickers = new Set(topLong.map((m) => m.ticker.toUpperCase()));
+  const dedupedShort = topShort.filter((m) => !longTickers.has(m.ticker.toUpperCase()));
+
+  const built = await Promise.all([
+    ...topLong.map((m) => buildOne(m, "long", longMaxDollar)),
+    ...dedupedShort.map((m) => buildOne(m, "short", shortMaxDollar)),
+  ]);
 
   const setups = built.filter((s): s is EnrichedZeroDteSetup => s != null);
   console.info(
-    `[zerodte-breakout] ${movers.length} qualifying breakouts, built ${setups.length} setup(s) from top ${top.length}`
+    `[zerodte-breakout] ${longMovers.length} breakouts + ${shortMovers.length} breakdowns, ` +
+    `built ${setups.length} setup(s) from top ${topLong.length}L + ${dedupedShort.length}S`
   );
   return { status: "ok", setups };
 }

@@ -2,12 +2,41 @@
  * Extended Polygon/Massive endpoints for Largo terminal.
  * Primary data source — unlimited calls on paid plan.
  */
-import { polygonTrackedFetch } from "./polygon-rate-limiter";
+import { polygonTrackedFetch, isPolygonCircuitOpen } from "./polygon-rate-limiter";
 import { polygonConfigured } from "./config";
 import { priorEtYmd, todayEtYmd } from "./spx-session";
 import { recordDataSourceing } from "@/features/nighthawk/lib/diagnostics";
 
-const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
+// Primary/fallback URL failover: when the circuit breaker trips (5 consecutive 429s),
+// switch to the fallback URL so requests aren't blocked for the full pause window.
+// Mirrors the pattern in scripts/audit/zerodte-e2e-suite.mjs (data-resilience audit 2026-07-27).
+const POLYGON_PRIMARY = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
+const POLYGON_FALLBACK = (() => {
+  try { return new URL(POLYGON_PRIMARY).hostname === "api.polygon.io" || new URL(POLYGON_PRIMARY).hostname.endsWith(".polygon.io"); }
+  catch { return false; }
+})()
+  ? "https://api.massive.com"
+  : "https://api.polygon.io";
+/** Sticky: once we fail over, stay on the fallback until the breaker resets. */
+let _usingFallback = false;
+let _lastBreakerCheck = false;
+
+function getPolygonBase(): string {
+  const breakerOpen = isPolygonCircuitOpen();
+  // Transition: breaker just opened → switch to fallback
+  if (breakerOpen && !_lastBreakerCheck) {
+    _usingFallback = true;
+    console.warn(`[polygon-largo] Circuit breaker open — failing over to ${POLYGON_FALLBACK}`);
+  }
+  // Transition: breaker just closed → try primary again
+  if (!breakerOpen && _lastBreakerCheck) {
+    _usingFallback = false;
+    console.warn(`[polygon-largo] Circuit breaker reset — returning to primary ${POLYGON_PRIMARY}`);
+  }
+  _lastBreakerCheck = breakerOpen;
+  return _usingFallback ? POLYGON_FALLBACK : POLYGON_PRIMARY;
+}
+
 const KEY = process.env.POLYGON_API_KEY ?? "";
 
 export type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };
@@ -16,13 +45,18 @@ async function polygonGet<T>(path: string, params: Record<string, string> = {}):
   if (!polygonConfigured()) return null;
   const qs = new URLSearchParams({ ...params, apiKey: KEY });
   try {
-    const res = await polygonTrackedFetch(path, `${BASE}${path}?${qs}`, {
+    const res = await polygonTrackedFetch(path, `${getPolygonBase()}${path}?${qs}`, {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[polygon-largo] ${path.replace(/[\r\n]/g, "")} returned ${res.status}`);
+      return null;
+    }
     return (await res.json()) as T;
-  } catch {
+  } catch (err) {
+    const msg = (err instanceof Error ? err.message : String(err)).replace(/[\r\n]/g, "");
+    console.warn(`[polygon-largo] ${path.replace(/[\r\n]/g, "")} failed: ${msg}`);
     return null;
   }
 }

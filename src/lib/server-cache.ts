@@ -157,6 +157,14 @@ export async function withServerCache<T>(
   if (hit && hit.expiresAt <= now && !inflight.has(key)) {
     const staleAge = now - hit.refreshedAt;
     if (staleAge > MAX_STALE_AGE_MS) {
+      // When the upstream is already degraded (3+ consecutive failures), a blocking
+      // refresh will almost certainly fail again, adding latency for no benefit.
+      // Return the stale entry and kick off a non-blocking refresh attempt instead.
+      if (degradedKeys.has(key) && hit) {
+        console.warn(`[server-cache] ${key}: degraded upstream, serving stale (age ${Math.round(staleAge / 1000)}s) instead of blocking refresh`);
+        void refreshCache(key, ttlMs, loader, localOnly);
+        return hit.value;
+      }
       return refreshCache(key, ttlMs, loader, localOnly);
     }
     if (!localOnly) {
