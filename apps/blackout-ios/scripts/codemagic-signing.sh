@@ -31,4 +31,25 @@ app-store-connect fetch-signing-files "$BUNDLE_ID" \
 keychain add-certificates
 xcode-project use-profiles
 
+# Xcode 15+ on GitHub Actions macOS runners reads provisioning profiles ONLY
+# from ~/Library/MobileDevice/Provisioning Profiles/. codemagic-cli-tools
+# saves them to the legacy ~/Library/Developer/Xcode/UserData/Provisioning
+# Profiles/ path, so xcodebuild fails the archive with "No profile for team
+# 'ZA32C782N5' matching 'BlackOut ios_app_store <ts>' found" even though the
+# profile was created and use-profiles configured the pbxproj. Copy them
+# across so both search paths resolve the same file.
+LEGACY="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+MODERN="$HOME/Library/MobileDevice/Provisioning Profiles"
+if [ -d "$LEGACY" ]; then
+  mkdir -p "$MODERN"
+  # -n so we never clobber an existing profile with the same filename (e.g.
+  # if the runner is warm from a prior run); cp -R with a glob would blow up
+  # if the source dir is empty, so shell-glob-guard with `shopt -s nullglob`.
+  shopt -s nullglob
+  for f in "$LEGACY"/*.mobileprovision "$LEGACY"/*.provisionprofile; do
+    cp -n "$f" "$MODERN/" && echo "  installed $(basename "$f")"
+  done
+  shopt -u nullglob
+fi
+
 echo "Code signing ready."
