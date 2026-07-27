@@ -7,8 +7,15 @@ import SwiftUI
 /// mark + tagline) and a chevron into the detail view. The premise:
 /// products are **coordinated intelligence modules inside one system**,
 /// not competing tabs — so this is the ONE surface where they live.
+///
+/// v2 adds a **live pulse strip** under each module — for the two desks
+/// that have a mobile aggregator hit today (SPX Slayer, Night Hawk) the
+/// row shows the current phase / grade / play-count coming off
+/// `/api/mobile/signals`. Other modules fall back to their static tagline;
+/// they'll wire in as their own aggregator endpoints land.
 struct IntelligenceView: View {
     private let modules = IntelligenceRegistry.all
+    @StateObject private var pulse = IntelligencePulseStore()
 
     var body: some View {
         ScrollView {
@@ -17,7 +24,7 @@ struct IntelligenceView: View {
                 LazyVStack(spacing: BOSpacing.snug) {
                     ForEach(modules) { m in
                         NavigationLink(value: m) {
-                            ModuleRow(module: m)
+                            ModuleRow(module: m, pulse: pulse.pulse(for: m.id))
                         }
                         .buttonStyle(.plain)
                     }
@@ -29,6 +36,8 @@ struct IntelligenceView: View {
         .background(BOColor.backgroundBase.ignoresSafeArea())
         .navigationTitle("Intelligence")
         .navigationBarTitleDisplayMode(.large)
+        .task { await pulse.startAutoRefresh() }
+        .refreshable { await pulse.refresh() }
         .navigationDestination(for: IntelligenceModule.self) { m in
             ProductDetailView(module: m)
         }
@@ -44,6 +53,7 @@ struct IntelligenceView: View {
 
 private struct ModuleRow: View {
     let module: IntelligenceModule
+    let pulse: IntelligencePulseStore.Pulse?
 
     var body: some View {
         BOCard(tint: .accent(module.accent)) {
@@ -66,6 +76,10 @@ private struct ModuleRow: View {
                             .font(BOFont.label)
                             .tracking(1.4)
                             .foregroundStyle(module.accent)
+                        Spacer(minLength: 0)
+                        if let p = pulse {
+                            pulseChip(p)
+                        }
                     }
                     Text(module.tagline)
                         .font(BOFont.caption)
@@ -80,8 +94,40 @@ private struct ModuleRow: View {
         }
         .frame(minHeight: BOTouchTarget.minimum + 20)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(module.name), \(module.tagline)")
+        .accessibilityLabel(a11yLabel)
         .accessibilityHint("Opens the \(module.name) desk")
         .accessibilityAddTraits(.isButton)
+    }
+
+    private func pulseChip(_ p: IntelligencePulseStore.Pulse) -> some View {
+        let tint = tintColor(p.tint)
+        return Text(p.label)
+            .font(BOFont.label)
+            .tracking(1.1)
+            .foregroundStyle(tint)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(tint.opacity(0.4), lineWidth: 1)
+            )
+            .accessibilityLabel("Live: \(p.label)")
+    }
+
+    private func tintColor(_ tint: IntelligencePulseStore.Pulse.Tint) -> Color {
+        switch tint {
+        case .positive:      return BOColor.statusPositive
+        case .negative:      return BOColor.statusNegative
+        case .caution:       return BOColor.statusCaution
+        case .informational: return BOColor.statusInformational
+        case .caption:       return BOColor.textCaption
+        }
+    }
+
+    private var a11yLabel: String {
+        if let p = pulse {
+            return "\(module.name), \(module.tagline). Live: \(p.label)"
+        }
+        return "\(module.name), \(module.tagline)"
     }
 }

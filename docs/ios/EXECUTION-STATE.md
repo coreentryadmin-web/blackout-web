@@ -80,6 +80,19 @@ so the inert VAPID button no longer appears in the WKWebView. `CLAUDE.md` gained
 "Never stop" standing rule so every future session inherits the autonomy mandate without
 being re-told.
 
+**2026-07-27 (cont. 10)** — **Intelligence v2 live per-module pulse chip
+shipped.** New `IntelligencePulseStore` fetches `/api/mobile/signals` on
+a 60s cadence (Intelligence is a summary surface, not a decision surface
+— extra freshness is waste) and derives a per-module pulse chip. SPX
+Slayer's chip composes as `PHASE · GRADE · DIRECTION` when a live signal
+exists (falls back to raw source phase when it doesn't); Night Hawk's
+chip is `N play(s) [· stale | · legacy]` with correct singular/plural.
+Helix / Thermal / Largo / Vector return nil (their aggregator hits land
+later) so their rows fall back to the static tagline instead of a
+placeholder — the row was designed so the pulse chip is optional.
+6 unit tests (spx-live-signal, spx-sources-fallback, spx-offline, NH
+singular/plural + stale, nil-for-unwired, preserve-on-error).
+
 **2026-07-27 (cont. 9)** — **Watchlist v2 live quotes shipped.** New
 `QuoteRepository` (backed by `/api/market/quote?ticker=X` — the tiny
 shared-cached 1.5s spot-tape that the Heat Maps header uses) +
