@@ -80,7 +80,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{if(/BlackOutiOSApp/.test(navigator.userAgent)){document.documentElement.classList.add('ios-app');var m=document.querySelector('meta[name=viewport]');if(m)m.setAttribute('content','width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover');var cw=Math.min(window.screen.width,window.innerWidth||window.screen.width);if(cw>=430){document.documentElement.classList.add('ios-tier-pro-max')}else if(cw>=393){document.documentElement.classList.add('ios-tier-pro')}var p=location.pathname;if(/^\\/(dashboard|flows|heatmap|terminal|nighthawk|grid|account|faq|learn|upgrade|admin)(\\/|$)/.test(p)){document.documentElement.classList.add('ios-app-pending-shell')}}}catch(e){}",
+              // The pending-shell path regex must match `isIosNativeShellPath` in
+              // src/lib/ios-tool-routes.ts — mismatches cause the target route to
+              // flash the web Nav before the native shell mounts. `vector` was
+              // omitted (present in the registry as a native-shell route) and
+              // `grid` was a dead placeholder (never had a route). Kept in sync
+              // by the ios-tool-routes.test.ts fixture check.
+              "try{if(/BlackOutiOSApp/.test(navigator.userAgent)){document.documentElement.classList.add('ios-app');var m=document.querySelector('meta[name=viewport]');if(m)m.setAttribute('content','width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover');var cw=Math.min(window.screen.width,window.innerWidth||window.screen.width);if(cw>=430){document.documentElement.classList.add('ios-tier-pro-max')}else if(cw>=393){document.documentElement.classList.add('ios-tier-pro')}var p=location.pathname;if(/^\\/(dashboard|flows|heatmap|terminal|nighthawk|vector|account|faq|learn|upgrade|admin)(\\/|$)/.test(p)){document.documentElement.classList.add('ios-app-pending-shell')}}}catch(e){}",
           }}
         />
         {/* Mid-deploy chunk-recovery guard: the freshly-served HTML can reference chunk hashes the

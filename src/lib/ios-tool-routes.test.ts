@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
   getIosHeaderMeta,
@@ -8,6 +9,7 @@ import {
   getIosToolRouteIndex,
   isIosNativeShellRoute,
   isIosToolRoute,
+  IOS_NATIVE_SHELL_PATH_PREFIXES,
   IOS_TOOLS,
 } from "@/lib/ios-tool-routes";
 
@@ -98,5 +100,26 @@ describe("getIosHeaderMeta", () => {
     assert.equal(account.kicker, "");
     assert.equal(account.showBack, true);
     assert.equal(getIosHeaderMeta("/learn").title, "Learn");
+  });
+});
+
+describe("layout.tsx head-script pending-shell regex ↔ IOS_NATIVE_SHELL_PATH_PREFIXES", () => {
+  // The inline <head> script in src/app/layout.tsx adds `ios-app-pending-shell`
+  // to <html> as an anti-flash marker before hydration. Its allow-list must be
+  // exactly the same set of native-shell path prefixes registered in
+  // `IOS_NATIVE_SHELL_PATH_PREFIXES` — a drift on either side causes the target
+  // route to flash the web Nav before the native shell mounts. This test locks
+  // the two together so a future edit to either the regex OR the registry that
+  // isn't mirrored on the other side fails CI.
+  it("keeps the head-script route allow-list in sync with the registry", () => {
+    const layout = readFileSync("src/app/layout.tsx", "utf8");
+    // The head-script regex on disk carries doubled backslashes (JS string
+    // literal → runtime regex). Match on the tokens block between the two
+    // fixed anchor sequences rather than reconstructing the whole regex.
+    const match = layout.match(/pathname;if\(\/\^\\{1,2}\/\(([a-z|]+)\)\(\\{1,2}\/\|\$\)\//);
+    assert.ok(match, "expected the pending-shell regex in src/app/layout.tsx");
+    const regexTokens = match[1].split("|");
+    const registryTokens = IOS_NATIVE_SHELL_PATH_PREFIXES.map((p) => p.replace(/^\//, ""));
+    assert.deepEqual([...regexTokens].sort(), [...registryTokens].sort());
   });
 });
