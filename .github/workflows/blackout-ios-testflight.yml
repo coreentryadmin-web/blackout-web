@@ -47,6 +47,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/blackout-ios/package-lock.json
+      # validate-config.mjs asserts `node_modules/typescript/package.json`
+      # exists (capacitor.config.ts is a .ts file; on Codemagic the install
+      # step runs before validation and hydrates that path). This job runs
+      # BEFORE the expensive macOS job by design — so it must hydrate the
+      # same node_modules the validator expects, or it fails on a check
+      # that isn't a real config error.
+      - name: Install iOS deps (for TS-config check)
+        run: npm ci
+        working-directory: apps/blackout-ios
       - name: Validate iOS config
         run: node apps/blackout-ios/scripts/validate-config.mjs
 
