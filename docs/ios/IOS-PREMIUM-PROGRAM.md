@@ -79,8 +79,9 @@ tabs/segments/controls, asserts shell classes, two device passes. Reuse + grow i
 - [x] **P0-4 Remove `*.whop.com` from `allowNavigation`** (`capacitor.config.ts`) so checkout can never open in-app. Done 2026-07-26.
 
 ### N — Native premium features
-- [ ] **N-1 Face ID / biometric app-lock** — plugin + app-resume gate + Account toggle.
-- [ ] **N-2 Real APNs push** — native register → token table → server sender; hide the inert web-push toggle in-app.
+- [x] **N-0 Native SwiftUI scaffold + macOS CI** (2026-07-27) — `apps/blackout-ios-native/` XcodeGen-driven, 5-tab IA, design system in Swift (contract-tested), `BiometricGate` service (LocalAuthentication behind a protocol seam, every LAError path unit-tested), Info.plist with Face ID descriptor + ATS lock, app icon reused from emblem. `blackout-ios-native-ci.yml` runs `xcodebuild build+test` on `macos-14` with no signing / no secrets — the primary native dev/test loop, no AWS Mac required. First run lands on the merge.
+- [ ] **N-1 Face ID UI wiring** — service exists; wire the Settings toggle + app-resume gate to the SceneDelegate lifecycle.
+- [ ] **N-2 Real APNs push** — native register → token table → server sender using the ASC key; hide the inert web-push toggle in-app.
 - [ ] **N-3 StatusBar calls + deep links (`appUrlOpen`) + native share.**
 - [x] **N-4 Head-script fix** — pending-shell regex in `src/app/layout.tsx` fixed to add `/vector` and drop dead `/grid`; regression test in `src/lib/ios-tool-routes.test.ts` locks it to `IOS_NATIVE_SHELL_PATH_PREFIXES`. Done 2026-07-27.
 

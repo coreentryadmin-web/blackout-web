@@ -46,21 +46,37 @@ to also bypass on `BlackOutiOSApp` UA (mirrors `__session` bypass) — iOS UA �
 MISS live-verified. **N-4** head-script pending-shell regex adds `/vector`, drops dead `/grid`,
 pinned with regression test in `ios-tool-routes.test.ts`. All 4 P0 submission blockers now DONE.
 
+**2026-07-27 (cont. 2)** — **Native SwiftUI scaffold shipped**: `apps/blackout-ios-native/`
+with an XcodeGen-driven Xcode project (project.yml is source of truth; .xcodeproj is
+generated, not committed), a SwiftUI @main App entry, the 5-tab IA (Command / Intelligence
+/ Signals / Watchlist / Account) from `INFORMATION-ARCHITECTURE.md`, and a design system in
+Swift (Colors/Typography/Spacing/Motion) whose values are contract-tested against the web
+CSS tokens + `IOS_TOOLS` product colors so identity travels 1:1. `BiometricGate` service
+wraps `LocalAuthentication` behind a protocol seam — every LAError path is a typed case,
+fully unit-tested with a `FakeEvaluator` (no real system prompt). Info.plist has Face ID
+usage description, dark-only, portrait-only, ATS locked to blackouttrades.com. App icon
+reused from the emblem master. **`.github/workflows/blackout-ios-native-ci.yml`** runs
+`xcodebuild build+test` on `macos-14` runners with `CODE_SIGNING_ALLOWED=NO` — the primary
+native dev/test loop, no AWS Mac needed, no secrets required. First run lands on the merge.
+
 ## NEXT HIGHEST-PRIORITY TASK
-1. **After PR #1106 CI green + merge + prod deploy**, run the audit to prove the P0 set is live:
+1. **After the branch merges + prod deploys**, run the audit to prove the P0 set is live:
    `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node scripts/ios/ios-ui-audit.mjs --base https://blackouttrades.com --pages "/,/privacy"`
-   Expected: `/` iOS render shows the neutral note + **no** pricing DOM (grep the served HTML
-   with `?ua=iOS` for `$75|$199|1,999|Start now|See pricing` — must be zero hits); `/privacy`
-   returns 200 with the policy content.
-2. **Native scaffold on GitHub macOS CI** — create `apps/blackout-ios-native/` Xcode/SwiftUI
-   project scaffold + `.github/workflows/blackout-ios-native-ci.yml` (build + XCTest snapshot
-   tests on `macos-14`, artifact upload). Unlocks the native build/test loop from this box —
-   no AWS Mac needed.
-3. **N-1 Face ID** (LocalAuthentication + Keychain + app-resume gate + Account toggle).
-4. **N-2 real APNs** (`@capacitor/push-notifications` register → native token table row →
-   server APNs sender using the ASC key; hide the inert web-push toggle in-app). Then N-3
-   (StatusBar calls + `@capacitor/app` `appUrlOpen` deep links + native share).
-5. **U-*** per-page premium polish (validate each on the iPhone render).
+   Expected: `/` iOS render shows the neutral note + **no** pricing DOM; `/privacy` returns
+   the policy.
+2. **After the native scaffold merges**, `blackout-ios-native-ci.yml` runs on the runner —
+   watch the first run and fix any Xcode-16-vs-simulator selection issue (e.g., need a
+   specific runtime or a fallback simulator name). Then extend `BiometricGate` into a
+   Settings toggle + app-resume gate wired to the SceneDelegate lifecycle.
+3. **N-2 native APNs**: (a) native register flow (SwiftUI-level `PushRegistrationService`);
+   (b) a `push_native_devices` DB table + `POST /api/push/native/register` endpoint that
+   stores the APNs token per user; (c) server sender in `src/lib/push-apns.ts` that mints
+   an ES256 JWT with the ASC key + POSTs to `api.push.apple.com`; (d) hide the inert
+   web-push toggle in the WKWebView shell so it never says "unsupported."
+4. Then **Command tab first native content** (session header + market regime), then Sign
+   in with Apple + Clerk bridge, then Intelligence tab modules starting with SPX Slayer.
+5. **U-*** per-page premium polish for the WKWebView shell (parallel track — validate on
+   the iPhone render).
 6. **M-*** ASC listing metadata + demo account + screenshots — ask before mutating live.
 
 ## Requested-docs status (master prompt)
