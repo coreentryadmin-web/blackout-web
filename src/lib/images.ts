@@ -31,7 +31,7 @@ export type MarketingModuleId = keyof typeof MARKETING_MODULE_IMAGES;
  */
 export const MARKETING_MODULE_GALLERY: Record<MarketingModuleId, readonly string[]> = {
   spx: [MARKETING_MODULE_IMAGES.spx],
-  helix: [MARKETING_MODULE_IMAGES.helix],
+  helix: [MARKETING_MODULE_IMAGES.helix, "/images/marketing/helix-2.webp", "/images/marketing/helix-3.webp", "/images/marketing/helix-4.webp"],
   thermal: [MARKETING_MODULE_IMAGES.thermal],
   largo: [MARKETING_MODULE_IMAGES.largo],
   hawk: [MARKETING_MODULE_IMAGES.hawk],
