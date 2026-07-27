@@ -128,7 +128,7 @@ export default function TermsPage() {
         <p>
           Any dispute arising from these Terms or your use of the platform shall be resolved through
           binding arbitration administered by the American Arbitration Association (AAA) under its
-          Consumer Arbitration Rules. Arbitration shall be conducted in English, and the arbitrator's
+          Consumer Arbitration Rules. Arbitration shall be conducted in English, and the arbitrator&apos;s
           decision shall be final and binding.
         </p>
         <p>
