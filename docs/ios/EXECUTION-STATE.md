@@ -68,29 +68,51 @@ APNS_TEAM_ID/APNS_KEY_ID/APNS_PRIVATE_KEY/APNS_BUNDLE_ID are all set. Register e
 `POST/DELETE /api/push/native/register` UPSERTs with strict token/bundle validation and
 Clerk auth. 7 unit tests green. **Discovered credential requirement**: the .p8 already held
 is an *App Store Connect* API key, not an *APNs Auth Key* — Apple issues these separately.
-Sender stays inert until an APNs .p8 lands in env; documented in-file. Native side (N-2b)
-next: SwiftUI `PushRegistrationService` in the native app that captures the APNs token and
-POSTs it to the register endpoint.
+Sender stays inert until an APNs .p8 lands in env; documented in-file.
+
+**2026-07-27 (cont. 4)** — **N-2b native push + N-1 Face ID UI shipped in the native app.**
+`AppConfig` centralizes backend URL / bundle id / apnsEnvironment / version.
+`PushRegistrationService` (protocol-injected — every dependency mockable) requests
+`[.alert, .sound, .badge]`, calls `registerForRemoteNotifications`, and forwards the token
+to `POST /api/push/native/register`. `BlackOutAppDelegate` (via `@UIApplicationDelegateAdaptor`)
+is the SwiftUI↔UIKit bridge — receives APNs callbacks + presents foreground pushes as
+banner+sound instead of silently swallowing them. `AppLockCoordinator` runs a
+`.disabled`/`.unlocked`/`.locked`/`.prompting` state machine wired to ScenePhase in
+`BlackOutApp` (lock on `.inactive` so the app-switcher preview never shows the desk;
+prompt on `.active`). `AppLockOverlay` covers the UI when locked; `SecuritySettingsView`
+(Account → App lock) enables it (Face ID confirmation required to enable, instant to
+disable). `AccountView` is now the FIRST tab off the placeholder scaffold — real
+Membership / Security / Notifications / About sections with live status. 13 unit tests
+across `PushRegistrationServiceTests` + `AppLockCoordinatorTests` using
+`FakeAuthorizer`/`FakeRegistrar`/`RecordingBackend`/`FakeEvaluator` — no real prompts,
+no real network. All validates on macOS CI on merge.
 
 ## NEXT HIGHEST-PRIORITY TASK
 1. **After the branch merges + prod deploys**, run the audit to prove the P0 set is live:
    `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node scripts/ios/ios-ui-audit.mjs --base https://blackouttrades.com --pages "/,/privacy"`
-   Expected: `/` iOS render shows the neutral note + **no** pricing DOM; `/privacy` returns
-   the policy.
-2. **After the native scaffold merges**, `blackout-ios-native-ci.yml` runs on the runner —
-   watch the first run and fix any Xcode-16-vs-simulator selection issue (e.g., need a
-   specific runtime or a fallback simulator name). Then extend `BiometricGate` into a
-   Settings toggle + app-resume gate wired to the SceneDelegate lifecycle.
-3. **N-2 native APNs**: (a) native register flow (SwiftUI-level `PushRegistrationService`);
-   (b) a `push_native_devices` DB table + `POST /api/push/native/register` endpoint that
-   stores the APNs token per user; (c) server sender in `src/lib/push-apns.ts` that mints
-   an ES256 JWT with the ASC key + POSTs to `api.push.apple.com`; (d) hide the inert
-   web-push toggle in the WKWebView shell so it never says "unsupported."
-4. Then **Command tab first native content** (session header + market regime), then Sign
-   in with Apple + Clerk bridge, then Intelligence tab modules starting with SPX Slayer.
-5. **U-*** per-page premium polish for the WKWebView shell (parallel track — validate on
-   the iPhone render).
-6. **M-*** ASC listing metadata + demo account + screenshots — ask before mutating live.
+   Expected: `/` iOS render shows the neutral note + **no** pricing DOM; `/privacy`
+   returns the policy.
+2. **After the branch merges, `blackout-ios-native-ci.yml` fires** — watch the first run
+   and fix any Xcode-16-vs-simulator selection issue. All 4 native test files (design system,
+   IA, biometric, push, app-lock) must go green.
+3. **N-2c**: hide the inert web-push toggle in the WKWebView shell so members don't see
+   "unsupported" (small, iOS-gated CSS/JS change on the web side).
+4. **N-3**: `@capacitor/status-bar` calls + `@capacitor/app` `appUrlOpen` deep links →
+   route pushed alerts to the right destination + native share via `@capacitor/share`.
+5. **Command tab first native content** — session header (SPX/SPY/QQQ/VIX + market status
+   + last update) + market regime cards, backed by real endpoints per `API-CONTRACTS.md`.
+   Repository pattern with a mockable networking layer so tests don't hit prod.
+6. **Sign in with Apple** + Clerk bridge (per TECHNICAL-ARCHITECTURE.md auth section).
+7. **U-*** per-page premium polish for the WKWebView shell (parallel track).
+8. **M-*** ASC listing metadata + demo account + screenshots — ask before mutating live.
+
+## Waiting on the operator (non-blocking)
+- **APNs Auth Key .p8** (distinct from the ASC key already held) — until it lands, the
+  APNs server sender stays inert (same pattern as VAPID). Details in
+  `src/lib/push/send-apns-push.ts` header. Get it at developer.apple.com → Certificates,
+  Identifiers & Profiles → Keys → + → "Apple Push Notifications service (APNs)".
+- **AWS Mac host quota** — request pending AWS review; GitHub macOS runners cover the
+  build/test loop in the meantime.
 
 ## Requested-docs status (master prompt)
 `EXECUTION-STATE.md` (this) live. Others — PRODUCT-VISION, INFORMATION-ARCHITECTURE, DESIGN-SYSTEM,
