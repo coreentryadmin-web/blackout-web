@@ -27,6 +27,10 @@ on:
         description: "External TestFlight beta group name (only used when submit_to_external_testflight is true)."
         type: string
         default: ""
+      probe_only:
+        description: "Skip build; only probe ASC for current TestFlight build states (processingState, compliance, review status). Use when a build isn't emailing testers and you need to see WHY."
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -41,9 +45,101 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Probe-only path: skip validate-config + build-ios and just hit ASC to
+  # dump every build's processingState, compliance answer, and beta-review
+  # state. Used when we uploaded but the "Ready to test" email hasn't
+  # fired and we need to see whether Apple is still processing, silently
+  # holding on compliance, or the build failed post-upload validation.
+  asc-probe:
+    if: ${{ inputs.probe_only == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe ASC via API
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          APP_STORE_APPLE_ID: "6787797476"
+        run: |
+          python3 -m pip install --quiet cryptography
+          python3 - <<'PY'
+          import base64, json, os, sys, time, urllib.request, urllib.error
+          from cryptography.hazmat.primitives import hashes, serialization
+          from cryptography.hazmat.primitives.asymmetric import ec
+          from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+
+          def b64u(b): return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+          issuer = os.environ["APP_STORE_CONNECT_ISSUER_ID"]
+          key_id = os.environ["APP_STORE_CONNECT_KEY_ID"]
+          pem    = os.environ["APP_STORE_CONNECT_PRIVATE_KEY"].encode()
+          app_id = os.environ["APP_STORE_APPLE_ID"]
+
+          header  = {"alg": "ES256", "kid": key_id, "typ": "JWT"}
+          payload = {"iss": issuer, "exp": int(time.time()) + 1200, "aud": "appstoreconnect-v1"}
+          signing = f"{b64u(json.dumps(header,separators=(',',':')).encode())}.{b64u(json.dumps(payload,separators=(',',':')).encode())}"
+          pk = serialization.load_pem_private_key(pem, password=None)
+          raw = pk.sign(signing.encode(), ec.ECDSA(hashes.SHA256()))
+          r, s = decode_dss_signature(raw)
+          sig = r.to_bytes(32, "big") + s.to_bytes(32, "big")
+          jwt = f"{signing}.{b64u(sig)}"
+
+          BASE = "https://api.appstoreconnect.apple.com/v1"
+          H = {"Authorization": f"Bearer {jwt}"}
+
+          def api(path):
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(BASE + path, headers=H)) as r:
+                      return r.status, json.loads(r.read())
+              except urllib.error.HTTPError as e:
+                  body = e.read().decode()[:400]
+                  return e.code, {"error": body}
+
+          print(f"\n=== BlackOut TestFlight builds (app {app_id}) ===\n")
+          st, body = api(f"/builds?filter[app]={app_id}&limit=8&sort=-uploadedDate")
+          if st != 200:
+              print(f"! /builds → {st}: {body}", file=sys.stderr); sys.exit(1)
+
+          builds = body.get("data", [])
+          if not builds:
+              print("(no builds on the account yet)"); sys.exit(0)
+
+          for b in builds:
+              a = b.get("attributes", {})
+              bid = b["id"]
+              print(f"Build ID: {bid}")
+              print(f"  Version:              {a.get('version', '?')}")
+              print(f"  Uploaded:             {a.get('uploadedDate', '?')}")
+              print(f"  Expires:              {a.get('expirationDate', '?')}")
+              print(f"  Processing state:     {a.get('processingState', '?')}  ← INVALID/PROCESSING/VALID/FAILED")
+              print(f"  Uses non-exempt enc:  {a.get('usesNonExemptEncryption', '?')}  (null = compliance NOT answered)")
+              print(f"  Expired:              {a.get('expired', '?')}")
+              print(f"  Icon asset token:     {'ok' if a.get('iconAssetToken') else 'MISSING'}")
+              st2, body2 = api(f"/builds/{bid}/betaAppReviewSubmission")
+              if st2 == 200 and body2.get("data"):
+                  ba = body2["data"].get("attributes", {})
+                  print(f"  Beta app review:      {ba.get('betaReviewState', '?')}")
+              print()
+
+          print("=" * 60)
+          print("Interpretation guide:")
+          print("  PROCESSING           → Apple still crunching. Wait 5-30 min.")
+          print("  VALID + enc=null     → Build READY but silent 'Missing Compliance' hold.")
+          print("                          Answer in ASC → TestFlight → Builds → the build →")
+          print("                          'Manage Missing Compliance' → Yes / Yes-exempt.")
+          print("                          (Future builds skip this — Info.plist patched.)")
+          print("  VALID + enc=true|false → Live for internal testers. Email should have")
+          print("                          fired within ~5 min of processing complete.")
+          print("                          Check spam / Promotions folder.")
+          print("  INVALID or FAILED    → Apple rejected the binary. Check the ASC dashboard")
+          print("                          for the specific validation error.")
+          PY
+
   # Cheap Linux lint of Capacitor/Codemagic config — no Xcode required. Kept from the
   # stub; gates the expensive Mac job so config drift fails fast and free.
   validate-config:
+    if: ${{ inputs.probe_only != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
