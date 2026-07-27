@@ -884,6 +884,10 @@
 .sf-bottom-links a{font-family:var(--m);font-size:.45rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);transition:color .2s}
 .sf-bottom-links a:hover{color:var(--g)}
 
+/* Risk disclaimer bar */
+.sf-risk{max-width:var(--mw);margin:2rem auto 0;padding:1.25rem 1.5rem 0;border-top:1px solid rgba(255,255,255,.04);position:relative;z-index:3}
+.sf-risk p{font-family:var(--m);font-size:.5rem;line-height:1.7;color:rgba(255,255,255,.25);text-align:center;max-width:50rem;margin:0 auto}
+
 /* Ghosted wordmark behind footer */
 .sf-ghost{
   position:absolute;bottom:-30%;left:50%;transform:translateX(-50%);
