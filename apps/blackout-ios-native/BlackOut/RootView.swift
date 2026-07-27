@@ -1,18 +1,19 @@
 import SwiftUI
 
 /// The 5-tab unified information architecture defined in
-/// `docs/ios/INFORMATION-ARCHITECTURE.md`. Order and slugs are load-bearing
-/// (analytics, deep-links, and the pinned-tab test all depend on them) —
-/// change only through the IA doc, not ad-hoc.
+/// `docs/ios/INFORMATION-ARCHITECTURE.md`. Slugs are load-bearing (analytics,
+/// deep-links, and the pinned-tab test all depend on them) — change only
+/// through the IA doc, not ad-hoc.
 ///
-/// Note the deliberate departure from the old WebView shell's product-per-tab
-/// layout (SPX / Helix / Thermal / Largo / NightHawk): products are now
-/// **intelligence modules inside Intelligence**, not competing tabs. The tabs
-/// are decisions the user needs to make (Command / Signals / Watchlist),
-/// not vendors of features.
+/// Case order is the tab-bar render order (SwiftUI TabView iterates
+/// `allCases`). **Intelligence is first, deliberately** — the six modules
+/// (SPX Slayer, Helix, Thermal, Largo, Night Hawk, Vector) ARE the identity
+/// of BlackOut, so a user who just installed the app and hasn't signed in
+/// yet needs to see the product suite immediately, not a generic
+/// "market regime = NEUTRAL" card that looks like every other trading app.
 public enum AppTab: String, CaseIterable, Identifiable {
-    case command      = "command"
     case intelligence = "intelligence"
+    case command      = "command"
     case signals      = "signals"
     case watchlist    = "watchlist"
     case account      = "account"
