@@ -12,6 +12,7 @@ struct WatchlistView: View {
     // service attached; SwiftUI previews can inject a plain WatchlistStore
     // via .environmentObject.
     @EnvironmentObject private var store: WatchlistStore
+    @StateObject private var quotes = WatchlistQuoteStore()
     @State private var showingAdd = false
 
     var body: some View {
@@ -34,20 +35,9 @@ struct WatchlistView: View {
                 List {
                     Section {
                         ForEach(store.tickers, id: \.self) { t in
-                            HStack(spacing: BOSpacing.snug) {
-                                Text(t)
-                                    .font(BOFont.heading3)
-                                    .foregroundStyle(BOColor.textPrimary)
-                                    .frame(minWidth: 68, alignment: .leading)
-                                Spacer(minLength: BOSpacing.snug)
-                                Text("Live data v2")
-                                    .font(BOFont.numericCaption)
-                                    .foregroundStyle(BOColor.textCaption)
-                            }
-                            .frame(minHeight: BOTouchTarget.minimum)
-                            .listRowBackground(BOColor.backgroundCard)
-                            .accessibilityElement(children: .combine)
-                            .accessibilityLabel(t)
+                            WatchlistRow(ticker: t, quote: quotes.quotes[t])
+                                .frame(minHeight: BOTouchTarget.minimum)
+                                .listRowBackground(BOColor.backgroundCard)
                         }
                         .onDelete { indexSet in
                             for i in indexSet.sorted(by: >) {
@@ -74,6 +64,9 @@ struct WatchlistView: View {
                 .toolbar { toolbarItems }
             }
         }
+        // Keep the per-ticker fetch loops in sync with the current
+        // watchlist — starts new tickers, cancels removed ones.
+        .task(id: store.tickers) { quotes.syncTo(watchlist: store.tickers) }
         .sheet(isPresented: $showingAdd) {
             AddTickerSheet { input in
                 _ = store.add(input)

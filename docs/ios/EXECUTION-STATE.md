@@ -80,6 +80,20 @@ so the inert VAPID button no longer appears in the WKWebView. `CLAUDE.md` gained
 "Never stop" standing rule so every future session inherits the autonomy mandate without
 being re-told.
 
+**2026-07-27 (cont. 9)** — **Watchlist v2 live quotes shipped.** New
+`QuoteRepository` (backed by `/api/market/quote?ticker=X` — the tiny
+shared-cached 1.5s spot-tape that the Heat Maps header uses) +
+`WatchlistQuoteStore` (@MainActor observable, one 5s refresh task per
+ticker, `syncTo(watchlist:)` reconciles start/stop when tickers are
+added/removed). `WatchlistRow` replaces the "Live data v2" placeholder
+with real price + change_pct + freshness. Rendering rules encoded: never
+render $0 as price (available:false → "—"), rounded-to-zero change never
+shows a phantom +/- sign, change tint is neutral at zero. 3 store unit
+tests (populate + start/stop reconciliation + preserve-on-error).
+Long-term: the store lives at view level (not per-row) because SwiftUI
+List rebuilds children on edit/reorder — a per-row @StateObject would
+blank every price on any mutation.
+
 **2026-07-27 (cont. 8)** — **Command v3 "Active opportunities" card + cross-tab
 `TabRouter`**. Command now surfaces the top 3 actionable signals from
 `/api/mobile/signals` directly on the default tab, with each row tapping
