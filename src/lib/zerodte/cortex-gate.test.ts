@@ -285,10 +285,10 @@ test("firewall: evaluateCortexForCommit threads the opt — a both-veto-absent r
 
 // ── Thin-evidence gate ──────────────────────────────────────────────────────────
 
-test("thin evidence: a bare +0.1 from <3 sources is blocked as NET_NEGATIVE — THIN_EVIDENCE_SCORE_FLOOR enforced", () => {
-  assert.equal(THIN_EVIDENCE_MIN_SOURCES, 3);
+test("thin evidence: a bare +0.1 from <2 sources is blocked as NET_NEGATIVE — THIN_EVIDENCE_SCORE_FLOOR enforced", () => {
+  assert.equal(THIN_EVIDENCE_MIN_SOURCES, 2);
   assert.equal(THIN_EVIDENCE_SCORE_FLOOR, 0.5);
-  // Build a verdict with 6 absent sources (only 2 answered) and a thin positive score.
+  // Build a verdict with 7 absent sources (only 1 answered) and a thin positive score.
   const thinVerdict: CortexVerdict = {
     score: 0.1,
     conviction: "C" as CortexConviction,
@@ -297,7 +297,7 @@ test("thin evidence: a bare +0.1 from <3 sources is blocked as NET_NEGATIVE — 
     vetoes: [],
     supports: [{ source: "vex-charm", detail: "thin positive", weight: 0.1, asOf: "2026-07-17T15:00:00.000Z", halfLifeMs: 300_000 }],
     opposes: [],
-    absent: ["gex-walls", "wall-trend", "flow-quality", "sector-heat", "darkpool-confluence", "opening-harvest"],
+    absent: ["gex-walls", "wall-trend", "flow-quality", "sector-heat", "darkpool-confluence", "opening-harvest", "catalyst-news"],
     narrative: ["thin"],
   };
   const a = assessCortexVerdict(thinVerdict);
@@ -305,7 +305,7 @@ test("thin evidence: a bare +0.1 from <3 sources is blocked as NET_NEGATIVE — 
   assert.deepEqual(cortexGateBlocks(a).map(b => b.code), ["cortex_net_negative"]);
 });
 
-test("thin evidence: score at or above THIN_EVIDENCE_SCORE_FLOOR passes even with <3 sources", () => {
+test("thin evidence: score at or above THIN_EVIDENCE_SCORE_FLOOR passes even with <2 sources", () => {
   const aboveFloor: CortexVerdict = {
     score: 0.5,
     conviction: "C" as CortexConviction,
@@ -314,13 +314,13 @@ test("thin evidence: score at or above THIN_EVIDENCE_SCORE_FLOOR passes even wit
     vetoes: [],
     supports: [{ source: "gex-walls", detail: "strong support", weight: 0.5, asOf: "2026-07-17T15:00:00.000Z", halfLifeMs: 300_000 }],
     opposes: [],
-    absent: ["wall-trend", "flow-quality", "sector-heat", "darkpool-confluence", "vex-charm", "opening-harvest"],
+    absent: ["wall-trend", "flow-quality", "sector-heat", "darkpool-confluence", "vex-charm", "opening-harvest", "catalyst-news"],
     narrative: ["one strong source"],
   };
   assert.equal(assessCortexVerdict(aboveFloor).decision, "PASS");
 });
 
-test("thin evidence: >=3 sources answering allows any non-negative score through (no floor)", () => {
+test("thin evidence: >=2 sources answering allows any non-negative score through (no floor)", () => {
   const adequate: CortexVerdict = {
     score: 0.1,
     conviction: "C" as CortexConviction,
@@ -329,10 +329,10 @@ test("thin evidence: >=3 sources answering allows any non-negative score through
     vetoes: [],
     supports: [{ source: "gex-walls", detail: "weak positive", weight: 0.1, asOf: "2026-07-17T15:00:00.000Z", halfLifeMs: 300_000 }],
     opposes: [],
-    absent: ["sector-heat", "darkpool-confluence", "opening-harvest", "catalyst-news", "wall-trend"],
+    absent: ["sector-heat", "darkpool-confluence", "opening-harvest", "catalyst-news", "wall-trend", "vex-charm"],
     narrative: ["adequate breadth"],
   };
-  // 8 total - 5 absent = 3 answering: at the threshold, so the floor does NOT apply.
+  // 8 total - 6 absent = 2 answering: at the threshold, so the floor does NOT apply.
   assert.equal(assessCortexVerdict(adequate).decision, "PASS");
 });
 
@@ -435,7 +435,7 @@ test("cortexGateBlocks: a null assessment (Cortex never ran — refresh lane) yi
   assert.deepEqual(cortexGateBlocks(null), []);
 });
 
-test("thin evidence: score JUST below the 0.5 floor with <3 sources is NET_NEGATIVE (the floor is `<`)", () => {
+test("thin evidence: score JUST below the 0.5 floor with <2 sources is NET_NEGATIVE (the floor is `<`)", () => {
   const justBelow: CortexVerdict = {
     score: 0.49,
     conviction: "C" as CortexConviction,
@@ -444,7 +444,7 @@ test("thin evidence: score JUST below the 0.5 floor with <3 sources is NET_NEGAT
     vetoes: [],
     supports: [{ source: "vex-charm", detail: "thin", weight: 0.49, asOf: "2026-07-17T15:00:00.000Z", halfLifeMs: 300_000 }],
     opposes: [],
-    absent: ["gex-walls", "wall-trend", "flow-quality", "sector-heat", "darkpool-confluence", "opening-harvest"],
+    absent: ["gex-walls", "wall-trend", "flow-quality", "sector-heat", "darkpool-confluence", "opening-harvest", "catalyst-news"],
     narrative: ["thin"],
   };
   assert.equal(assessCortexVerdict(justBelow).decision, "NET_NEGATIVE");

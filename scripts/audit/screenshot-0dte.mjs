@@ -3,13 +3,12 @@
  * Mints a temp Clerk admin user, authenticates, loads the page, screenshots.
  */
 import { chromium } from 'playwright';
-import { execFileSync, execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, existsSync, readFileSync } from 'fs';
 import { connect as tlsConnect } from 'tls';
 import { URL } from 'url';
-import https from 'https';
 import http from 'http';
 
 const SECRET = process.env.CLERK_SECRET_KEY;
@@ -114,34 +113,6 @@ async function cleanup() {
     const r = curl({ method: 'DELETE', url: `${API}/users/${userId}`, headers: { Authorization: `Bearer ${SECRET}` } });
     console.log(`DELETE ${r.s}`);
   }
-}
-
-async function proxyFetch(url, caBundle) {
-  const proxy = new URL(PROXY_URL);
-  const target = new URL(url);
-
-  return new Promise((resolve, reject) => {
-    const connectReq = http.request({
-      host: proxy.hostname,
-      port: proxy.port,
-      method: 'CONNECT',
-      path: `${target.hostname}:443`,
-    });
-    connectReq.on('connect', (res, socket) => {
-      if (res.statusCode !== 200) {
-        reject(new Error(`CONNECT failed: ${res.statusCode}`));
-        return;
-      }
-      const tlsSocket = tlsConnect({
-        socket,
-        servername: target.hostname,
-        ca: readFileSync(caBundle),
-      });
-      resolve(tlsSocket);
-    });
-    connectReq.on('error', reject);
-    connectReq.end();
-  });
 }
 
 async function main() {
