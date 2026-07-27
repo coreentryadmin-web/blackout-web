@@ -1670,7 +1670,7 @@ export function LandingRedesignFx() {
       lb.innerHTML =
         '<button class="gal-lb-close">&times;</button><button class="gal-lb-arrow gal-lb-prev">&#8249;</button><img class="gal-lb-img" src="" alt=""><button class="gal-lb-arrow gal-lb-next">&#8250;</button><div class="gal-lb-dots"></div>';
       document.body.appendChild(lb);
-      cleanups.push(() => lb.remove());
+      cleanups.push(() => { document.body.style.overflow = ""; lb.remove(); });
 
       const lbImg = lb.querySelector(".gal-lb-img") as HTMLImageElement;
       const lbDots = lb.querySelector(".gal-lb-dots") as HTMLElement;
@@ -1864,13 +1864,7 @@ export function LandingRedesignFx() {
     if (track && prevBtn && nextBtn) {
       const cardW = 420 + 28;
       function scrollToCard(i: number) {
-        const cards = track!.querySelectorAll(".cmd-card");
-        if (!cards[i]) return;
-        cards[i].scrollIntoView({
-          behavior: "smooth",
-          block: "nearest",
-          inline: "start",
-        });
+        track!.scrollTo({ left: i * cardW, behavior: "smooth" });
       }
       function updateDots() {
         const sl = track!.scrollLeft;
@@ -1897,58 +1891,6 @@ export function LandingRedesignFx() {
       track.addEventListener("scroll", updateDots, { passive: true });
       cleanups.push(() => track!.removeEventListener("scroll", updateDots));
 
-      // Auto-advance carousel every 8s
-      let autoTimer: ReturnType<typeof setInterval> | null = null;
-      let autoPaused = false;
-      function getCurrentIdx() {
-        return Math.round(track!.scrollLeft / cardW);
-      }
-      function resetDotAnimation() {
-        dots.forEach((d) => d.classList.remove("paused"));
-        const idx = getCurrentIdx();
-        dots.forEach((d, i) => {
-          if (i === idx) {
-            d.classList.remove("active");
-            void (d as HTMLElement).offsetWidth;
-            d.classList.add("active");
-          }
-        });
-      }
-      function autoAdvance() {
-        const cards = track!.querySelectorAll(".cmd-card");
-        const idx = getCurrentIdx();
-        const next = idx + 1 < cards.length ? idx + 1 : 0;
-        scrollToCard(next);
-        setTimeout(resetDotAnimation, 80);
-      }
-      function startAutoAdvance() {
-        if (autoTimer) clearInterval(autoTimer);
-        autoTimer = setInterval(() => {
-          if (!autoPaused && !destroyed) autoAdvance();
-        }, 8000);
-        resetDotAnimation();
-      }
-      function pauseAuto() {
-        autoPaused = true;
-        dots.forEach((d) => d.classList.add("paused"));
-      }
-      function resumeAuto() {
-        autoPaused = false;
-        startAutoAdvance();
-      }
-      track.addEventListener("mouseenter", pauseAuto);
-      track.addEventListener("mouseleave", resumeAuto);
-      cleanups.push(() => {
-        track!.removeEventListener("mouseenter", pauseAuto);
-        track!.removeEventListener("mouseleave", resumeAuto);
-      });
-      prevBtn.addEventListener("click", () => { startAutoAdvance(); });
-      nextBtn.addEventListener("click", () => { startAutoAdvance(); });
-      dots.forEach((d) => {
-        d.addEventListener("click", () => { startAutoAdvance(); });
-      });
-      startAutoAdvance();
-      cleanups.push(() => { if (autoTimer) clearInterval(autoTimer); });
     }
 
     // ── Carousel atmospheric background ──

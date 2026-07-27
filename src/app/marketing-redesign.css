@@ -308,7 +308,7 @@
 .cmd-track{
   display:flex;gap:28px;
   overflow-x:auto;scroll-behavior:smooth;
-  scroll-snap-type:x mandatory;
+  scroll-snap-type:x proximity;
   -webkit-overflow-scrolling:touch;
   padding:2rem calc(50vw - 580px) 3rem;
   scrollbar-width:none;
@@ -612,11 +612,7 @@
   width:8px;height:8px;border-radius:50%;
   background:rgba(255,255,255,.12);transition:all .4s;cursor:pointer;
 }
-.cmd-dot.active{width:28px;border-radius:4px;background:transparent;border:1px solid rgba(163,230,53,.25);position:relative;overflow:hidden}
-.cmd-dot.active::after{content:"";position:absolute;left:0;top:0;bottom:0;width:0;background:var(--g);border-radius:3px;animation:cmd-dot-fill 8s linear forwards}
-@keyframes cmd-dot-fill{from{width:0}to{width:100%}}
-.cmd-dot.paused.active::after{animation-play-state:paused}
-.cmd-auto-label{font-family:var(--m);font-size:.45rem;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-left:.5rem}
+.cmd-dot.active{width:28px;border-radius:4px;background:var(--g)}
 
 /* ═══════ MOBILE STICKY CTA ═══════ */
 .mobile-sticky-cta{
