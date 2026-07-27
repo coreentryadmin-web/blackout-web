@@ -21,6 +21,11 @@ final class BlackOutAppDelegate: NSObject, UIApplicationDelegate {
     /// Injectable so tests can wire a fake. In production it's the live one.
     lazy var pushService: PushRegistrationService = .live()
 
+    /// Routes push-notification taps to app tabs. Published to SwiftUI via
+    /// the `BlackOutApp` root observer — the delegate never touches
+    /// SwiftUI state directly (it's a UIKit class).
+    let pushRouter = PushRouter()
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
@@ -58,14 +63,16 @@ extension BlackOutAppDelegate: UNUserNotificationCenterDelegate {
         completionHandler([.banner, .sound, .badge])
     }
 
-    /// Tap on a notification — future work will pull `signalId`/`ticker` from
-    /// `userInfo` and deep-link to the right screen (part of N-3). For now we
-    /// just acknowledge so the callback contract is fulfilled.
+    /// Tap on a notification. Delegates to `pushRouter` which parses the
+    /// server-supplied userInfo (url / tab / signalId) into a destination
+    /// tab; `BlackOutApp` observes the router and forwards to TabRouter.
+    /// This class stays out of SwiftUI state entirely.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        pushRouter.handleTap(userInfo: response.notification.request.content.userInfo)
         completionHandler()
     }
 }

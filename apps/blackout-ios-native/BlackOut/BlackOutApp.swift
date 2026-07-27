@@ -43,6 +43,15 @@ struct BlackOutApp: App {
             .environmentObject(appLock)
             .environmentObject(watchlist)
             .environmentObject(tabRouter)
+            // Push-tap deep-linking. AppDelegate parses the tap into a
+            // PushDestination on its @Published `pending`; we observe here
+            // (App scope, not per-view) and hand off to TabRouter. Consume
+            // immediately after routing so a subsequent view re-render
+            // can't re-fire the same tap.
+            .onReceive(appDelegate.pushRouter.$pending.compactMap { $0 }) { destination in
+                tabRouter.route(to: destination.tab)
+                appDelegate.pushRouter.consume()
+            }
             .task {
                 // One-shot server pull on first mount. Failures are silent
                 // (the local list still renders); the pull retries on any

@@ -80,6 +80,18 @@ so the inert VAPID button no longer appears in the WKWebView. `CLAUDE.md` gained
 "Never stop" standing rule so every future session inherits the autonomy mandate without
 being re-told.
 
+**2026-07-27 (cont. 13)** — **Push-tap → tab-router deep linking shipped.**
+New `PushRouter` (@MainActor observable) parses APNs `userInfo` into a
+`PushDestination { tab, source }`. Priority: explicit `tab` key > `signalId`
+> URL heuristic > fallback. URL map matches the app IA (`/dashboard` →
+Command, `/nighthawk` → Signals, `/flows`/`/heatmap`/`/vector`/`/terminal`
+→ Intelligence, `/watchlist` → Watchlist, `/account` → Account). Delegate
+hands off to router; `BlackOutApp` observes via `onReceive` and forwards
+to `TabRouter` at App scope (not per-view) so no view lifecycle issue
+races the tap. Consume-after-route pattern prevents re-render replays.
+11 unit tests covering explicit-tab wins, empty-signalId fallthrough,
+each URL bucket, and unknown-URL → Command fallback.
+
 **2026-07-27 (cont. 12)** — **Watchlist v3 per-ticker detail sheet shipped.**
 New `/api/mobile/ticker/[ticker]` route projects the LIGHT gex-positioning
 surface into a tight, versioned mobile contract (spot / change / flip /
