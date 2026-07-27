@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { RetroGrid } from "@/components/ui/motion/RetroGrid";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
+import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
 
 /** Full-desk perks — every module, one membership. */
 const DESK_PERKS = [
@@ -47,7 +47,7 @@ export function RedesignPricing() {
               <ul className="perks">
                 {COMMUNITY_PERKS.map((p) => <li key={p}>{p}</li>)}
               </ul>
-              <Link href="/sign-up" prefetch={false} className="rl-btn rl-btn-ghost">Join community</Link>
+              <a href={WHOP_CHECKOUT.community || "/sign-up?redirect_url=%2Fupgrade"} className="rl-btn rl-btn-ghost">Join community</a>
             </div>
 
             {/* Premium Monthly — featured */}
@@ -61,7 +61,7 @@ export function RedesignPricing() {
               <ul className="perks">
                 {DESK_PERKS.map((p) => <li key={p}>{p}</li>)}
               </ul>
-              <Link href="/sign-up" prefetch={false} className="rl-btn rl-btn-primary">Start monthly →</Link>
+              <a href={WHOP_CHECKOUT.monthly || "/sign-up?redirect_url=%2Fupgrade"} className="rl-btn rl-btn-primary">Start monthly →</a>
             </div>
 
             {/* Premium Yearly */}
@@ -72,7 +72,7 @@ export function RedesignPricing() {
               <ul className="perks">
                 {DESK_PERKS.map((p) => <li key={p}>{p}</li>)}
               </ul>
-              <Link href="/sign-up" prefetch={false} className="rl-btn rl-btn-ghost">Go yearly</Link>
+              <a href={WHOP_CHECKOUT.yearly || "/sign-up?redirect_url=%2Fupgrade"} className="rl-btn rl-btn-ghost">Go yearly</a>
             </div>
           </div>
         </div>
