@@ -66,7 +66,13 @@ jobs:
 
   build-ios:
     needs: validate-config
-    runs-on: macos-14 # pinned for reproducibility; bump to macos-latest to float
+    # macos-15 image ships Xcode 26 alongside older versions. macos-14 was
+    # pinned earlier but ships Xcode 15.4 (iOS 17.5 SDK) — Apple's April 2026
+    # policy REJECTS any upload built with pre-iOS-26 SDK ("This app was
+    # built with the iOS 17.5 SDK. All iOS and iPadOS apps must be built
+    # with the iOS 26 SDK or later"). Bumping the image + explicitly
+    # xcode-selecting Xcode 26 below is the only way through.
+    runs-on: macos-15
     timeout-minutes: 60
     defaults:
       run:
@@ -90,6 +96,23 @@ jobs:
       APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v7
+
+      # Apple April 2026 policy: uploads must be built with Xcode 26+ /
+      # iOS 26 SDK+. macos-15 ships Xcode 26 in /Applications; select it
+      # explicitly so downstream `xcodebuild` invocations pick it up
+      # regardless of what the runner's default xcode-select points to.
+      # Fail fast + loud if Xcode_26.app is absent instead of silently
+      # falling back to an older version that would ASC-reject at upload.
+      - name: Select Xcode 26 (Apple SDK-26 upload policy)
+        run: |
+          set -euo pipefail
+          if [ ! -d /Applications/Xcode_26.app ]; then
+            echo "ERROR: /Applications/Xcode_26.app not found on this runner." >&2
+            ls -1 /Applications | grep -i '^Xcode' || true
+            exit 1
+          fi
+          sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer
+          xcodebuild -version
 
       - name: Fail fast if ASC API key secrets are missing
         run: |
