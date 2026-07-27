@@ -110,12 +110,12 @@ export type PlanValueProp = {
  * renders with just its label/href — framing is purely additive and optional.
  *
  * Numbers below are presentation copy derived from the list prices
- * ($75/mo Community, $199/mo Premium, $1,999/yr Premium). If you
+ * ($49/mo SPX Slayer, $199/mo Premium, $1,999/yr Premium). If you
  * change Whop prices, update the labels in whop-checkout.ts AND these strings together.
  */
 export const PLAN_VALUE_PROPS: Record<string, PlanValueProp> = {
-  "Community — $75": {
-    subline: "Discord access · billed monthly",
+  "SPX Slayer — $49": {
+    subline: "SPX desk access · billed monthly",
   },
   "Monthly — $199": {
     subline: "Billed monthly · stand down anytime",

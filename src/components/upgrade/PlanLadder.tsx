@@ -25,20 +25,20 @@ export function PlanLadder() {
     <div className="mx-auto grid max-w-4xl grid-cols-1 gap-5 sm:grid-cols-3">
       {WHOP_COMMUNITY_CHECKOUT_OPTION && (
         <div className="relative flex flex-col rounded-2xl border border-sky-300/25 bg-[#080a10]/60 p-6 text-left backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-sky-300/50">
-          <p className="font-syne text-[11px] font-bold uppercase tracking-[0.22em] text-sky-300">Community</p>
+          <p className="font-syne text-[11px] font-bold uppercase tracking-[0.22em] text-sky-300">SPX Slayer</p>
           <p className="mt-1 font-anton text-4xl leading-none text-white">{usd(MEMBERSHIP_PRICING.community)}</p>
-          <p className="mt-2 text-xs text-sky-300">Discord access · billed monthly</p>
+          <p className="mt-2 text-xs text-sky-300">SPX desk access · billed monthly</p>
           <p className="mt-3 text-[13px] leading-relaxed text-white/60">
-            Live signals, daily reads, session discussions, evening recaps — the room.
+            Live SPX regime, GEX positioning, 0DTE graded plays A–F, dealer gamma, and strike-level heatmaps.
           </p>
           <a
             href={WHOP_COMMUNITY_CHECKOUT_OPTION.href}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Join the Community"
+            aria-label="Get SPX Slayer access"
             className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-sky-300/25 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] whitespace-nowrap text-sky-100 transition-all duration-200 hover:border-sky-300 hover:bg-sky-300/5 hover:text-sky-300"
           >
-            Join Community →
+            Get SPX Access →
           </a>
         </div>
       )}

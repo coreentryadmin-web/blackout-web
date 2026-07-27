@@ -31,7 +31,7 @@ export function classifyAdminUserAccess(input: {
     return {
       accessLabel: "community",
       deskAccess: false,
-      accessSummary: "Community ($75) — Discord only, no web desk",
+      accessSummary: "SPX Slayer ($49) — SPX desk only",
     };
   }
 
