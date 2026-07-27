@@ -3,6 +3,29 @@
 (Repo also has `AGENTS.md` — the general agent playbook. This file captures the
 standing **audit + issue-handling policy**. Keep it and `docs/audit/FINDINGS.md` updated.)
 
+## iOS Premium Program — STANDING RULE (owner, 2026-07-27)
+**Never stop working on the iOS app. Never ask "what's next" — read the tracker
+and do the next thing.** The owner has given full autonomy: drive the iOS app
+end-to-end to submission-ready, across as many sessions as it takes. Do NOT
+end a turn with "waiting on you", "let me know", "on the next continue", or
+any variant that puts the ball back in the owner's court while there is
+unchecked work in `docs/ios/IOS-PREMIUM-PROGRAM.md`. If a turn is running out,
+commit what's done, update `docs/ios/EXECUTION-STATE.md` with the exact next
+task, and — if the session harness allows — self-schedule the next iteration
+via a recurring trigger or dynamic loop. The ONLY acceptable pauses are:
+(1) a genuine external unlock that only the owner can provide (a credential,
+an approval), and even then keep working on everything else in parallel;
+(2) the whole program is done. Every session inherits this rule from this
+file — do not re-litigate it.
+
+Read on entry:
+- `docs/ios/EXECUTION-STATE.md` — resume pointer, next task named.
+- `docs/ios/IOS-PREMIUM-PROGRAM.md` — full backlog + status log.
+- Supporting: `PRODUCT-VISION.md`, `INFORMATION-ARCHITECTURE.md`,
+  `DESIGN-SYSTEM.md`, `TECHNICAL-ARCHITECTURE.md`, `API-CONTRACTS.md`,
+  `ASC-METADATA.md`, `COMPLIANCE-3.1.1-AUDIT.md`,
+  `NATIVE-VALUE-AND-PRIVACY-AUDIT.md`.
+
 ## Issue-handling policy (standing instruction)
 As soon as an issue is spotted during any audit/validation:
 1. **Open a new branch off `main`**, named `fix/<slug>`. Do NOT push straight to `main`.

@@ -22,6 +22,7 @@ import {
   subscribeToPush,
   unsubscribeFromPush,
 } from "@/lib/push-client";
+import { isIosAppShell } from "@/lib/ios-app-shell";
 
 type PushState = "idle" | "checking" | "subscribed" | "unsubscribed" | "unsupported" | "denied" | "error";
 
@@ -38,6 +39,16 @@ export function PushNotificationToggle({ className = "", compact = false }: Push
 
   // On mount, detect current subscription state without prompting.
   useEffect(() => {
+    // Inside the Capacitor iOS shell (BlackOutiOSApp UA), Safari web-push
+    // via VAPID does not work — pushSupported() reports true but subscribing
+    // silently no-ops, so the button was always displaying "Unsupported"
+    // (or, worse, letting the user click a button that couldn't work). The
+    // native app uses APNs directly via PushRegistrationService; the WKWebView
+    // shell must not advertise a web-push affordance at all.
+    if (isIosAppShell()) {
+      setState("unsupported");
+      return;
+    }
     if (!pushConfigured() || !pushSupported()) {
       setState("unsupported");
       return;

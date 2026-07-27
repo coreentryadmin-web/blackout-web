@@ -7,6 +7,7 @@ import { ClientErrorReporter } from "@/components/ClientErrorReporter";
 import { OnboardingGuide } from "@/components/OnboardingGuide";
 import { PwaRegister } from "@/components/PwaRegister";
 import { IosViewportLock } from "@/components/ios/IosViewportLock";
+import { IosNativeInit } from "@/components/ios/IosNativeInit";
 import { IosKeyboardRoot } from "@/hooks/useIosKeyboardInset";
 import { SharedSigilDefs } from "@/components/marks/SharedSigilDefs";
 import {
@@ -24,6 +25,7 @@ function DeskShell({ children }: { children: React.ReactNode }) {
       <ClientErrorReporter />
       <PwaRegister />
       <IosViewportLock />
+      <IosNativeInit />
       <IosKeyboardRoot />
       <OnboardingGuide />
       {children}
