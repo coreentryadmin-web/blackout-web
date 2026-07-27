@@ -40,15 +40,18 @@ public enum AppTab: String, CaseIterable, Identifiable {
     }
 }
 
-/// Root of the app. Owns the tab selection state; each tab is a self-contained
-/// screen with its own `NavigationStack` so back-stacks don't cross-pollute.
+/// Root of the app. Tab selection is owned by `TabRouter` (injected from
+/// the App level) so cross-tab jumps — Command's active-opportunities card
+/// tapping into Signals, deep links landing on Watchlist — work from any
+/// screen without threading closures. Each tab is a self-contained screen
+/// with its own `NavigationStack` so back-stacks don't cross-pollute.
 public struct RootView: View {
-    @State private var selectedTab: AppTab = .command
+    @EnvironmentObject private var router: TabRouter
 
     public init() {}
 
     public var body: some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: $router.selectedTab) {
             ForEach(AppTab.allCases) { tab in
                 NavigationStack {
                     tabRoot(for: tab)
@@ -73,6 +76,7 @@ public struct RootView: View {
 
 #Preview("Root") {
     RootView()
+        .environmentObject(TabRouter())
         .preferredColorScheme(.dark)
         .tint(BOColor.textAccent)
 }

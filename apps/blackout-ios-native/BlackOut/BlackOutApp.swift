@@ -20,6 +20,10 @@ struct BlackOutApp: App {
     // /api/user/watchlist. Local UserDefaults remains the render source, so
     // the app is instant + offline-safe; hydrate on first .active phase.
     @StateObject private var watchlist = WatchlistStore(sync: URLSessionWatchlistSync())
+    // Cross-tab navigation. Command's "Active opportunities" card taps into
+    // Signals; deep links jump to Watchlist. Owned here so its lifetime is
+    // the whole app and every tab sees the same instance via environment.
+    @StateObject private var tabRouter = TabRouter()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -38,6 +42,7 @@ struct BlackOutApp: App {
             .animation(BOMotion.contextSwitch, value: appLock.state)
             .environmentObject(appLock)
             .environmentObject(watchlist)
+            .environmentObject(tabRouter)
             .task {
                 // One-shot server pull on first mount. Failures are silent
                 // (the local list still renders); the pull retries on any

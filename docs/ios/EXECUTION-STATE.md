@@ -80,6 +80,18 @@ so the inert VAPID button no longer appears in the WKWebView. `CLAUDE.md` gained
 "Never stop" standing rule so every future session inherits the autonomy mandate without
 being re-told.
 
+**2026-07-27 (cont. 8)** — **Command v3 "Active opportunities" card + cross-tab
+`TabRouter`**. Command now surfaces the top 3 actionable signals from
+`/api/mobile/signals` directly on the default tab, with each row tapping
+into the Signals tab via a new `@MainActor` `TabRouter` injected from
+`BlackOutApp`. Rules: only active/managing/confirming stages (never
+detected/graded/invalidated on the summary), dedup by ticker with
+higher-score-wins, preserve-on-error like every other Command card. 4
+ViewModel tests covering the actionable-stage filter, ticker dedup,
+score-desc ordering, and preserve-on-error. `RootView` now binds
+selectedTab through `$router.selectedTab` instead of a private @State so
+any screen can cross-navigate.
+
 **2026-07-27 (cont. 7)** — **Signals tab v2 shipped as real native content.**
 New `/api/mobile/signals` server-side aggregator (`src/app/api/mobile/signals/
 route.ts` + `src/lib/mobile/signals-projection.ts`) fans out **SPX Slayer**

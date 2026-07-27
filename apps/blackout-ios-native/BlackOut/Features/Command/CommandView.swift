@@ -17,6 +17,7 @@ struct CommandView: View {
             VStack(alignment: .leading, spacing: BOSpacing.block) {
                 sessionHeader
                 regimeCard
+                ActiveOpportunitiesCard()
                 WhatChangedCard(snapshots: vm.history)
                 productPulse
             }
