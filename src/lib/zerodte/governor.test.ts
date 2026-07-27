@@ -204,7 +204,7 @@ test("SEV-3 REGRESSION CLOSED: a session of 5 losing time-stops (no hard stop) n
   assert.equal(snap.realized_losers, 5, "but all five are realized losers");
 
   const blocks = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, snap, NOW);
-  assert.deepEqual(blocks.map((b) => b.code), ["governor_session_stops"]);
+  assert.deepEqual(blocks.map((b) => b.code), ["governor_session_loss_halt"]);
   assert.equal(blocks[0]!.threshold, GOVERNOR_LOSS_HALT_COUNT);
   assert.match(blocks[0]!.reason, /realized losers/, "the block names the realized-loss cause");
 });
@@ -219,7 +219,7 @@ test("SEV-3: the cumulative session-P&L floor halts even below the loser COUNT",
   assert.equal(snap.realized_losers, 2, "below the count cap");
   assert.ok(snap.session_pnl_pct! <= GOVERNOR_SESSION_LOSS_FLOOR_PCT, "but past the P&L floor");
   const blocks = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, snap, NOW);
-  assert.deepEqual(blocks.map((b) => b.code), ["governor_session_stops"]);
+  assert.deepEqual(blocks.map((b) => b.code), ["governor_session_loss_halt"]);
   assert.match(blocks[0]!.reason, /floor/);
 });
 
@@ -371,9 +371,13 @@ test("maxCorrelatedSameDirection: finds the largest same-direction correlated cl
   assert.deepEqual(cluster, { tickers: ["IWM", "QQQ", "SPY"], direction: "long", count: 3 });
 });
 
-test("maxCorrelatedSameDirection: a single correlated plan (or none) is not a cluster → null", () => {
+test("maxCorrelatedSameDirection: a single correlated plan (or none) is not a cluster → null; two in the same group IS a cluster", () => {
   assert.equal(maxCorrelatedSameDirection([{ ticker: "SPY", direction: "long" }]), null);
-  assert.equal(maxCorrelatedSameDirection([{ ticker: "NVDA", direction: "long" }, { ticker: "AMD", direction: "long" }]), null);
+  // NVDA + AMD are both Semiconductors (v2) → a 2-cluster
+  assert.deepEqual(maxCorrelatedSameDirection([{ ticker: "NVDA", direction: "long" }, { ticker: "AMD", direction: "long" }]),
+    { tickers: ["AMD", "NVDA"], direction: "long", count: 2 });
+  // Two uncorrelated names → no cluster
+  assert.equal(maxCorrelatedSameDirection([{ ticker: "NVDA", direction: "long" }, { ticker: "JPM", direction: "long" }]), null);
   assert.equal(maxCorrelatedSameDirection([]), null);
 });
 
@@ -487,7 +491,7 @@ test("SEV-3: loss-halt count boundary — 2 realized losers pass, exactly 3 halt
   const three = deriveGovernorFromLedger([losingTimeStop("A", -30), losingTimeStop("B", -30), losingTimeStop("C", -30)]);
   assert.equal(three.realized_losers, GOVERNOR_LOSS_HALT_COUNT);
   const halt = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, three, NOW);
-  assert.deepEqual(halt.map((b) => b.code), ["governor_session_stops"]);
+  assert.deepEqual(halt.map((b) => b.code), ["governor_session_loss_halt"]);
   assert.match(halt[0]!.reason, /realized losers/);
 });
 
@@ -498,7 +502,7 @@ test("SEV-3: session-P&L floor boundary — exactly −120% halts, −119% does 
   assert.equal(at.session_pnl_pct, GOVERNOR_SESSION_LOSS_FLOOR_PCT);
   assert.equal(at.realized_losers, 2);
   const halt = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, at, NOW);
-  assert.deepEqual(halt.map((b) => b.code), ["governor_session_stops"]);
+  assert.deepEqual(halt.map((b) => b.code), ["governor_session_loss_halt"]);
   assert.match(halt[0]!.reason, /floor/, "the FLOOR reason, not the count reason (count is only 2)");
 
   // −59.5 each = −119 → above the floor, 2 losers → no halt.
@@ -553,14 +557,16 @@ test("maxCorrelatedSameDirection: equal long/short clusters → the LONG cluster
 });
 
 // ── correlationGroupOf / correlationGroupId ──────────────────────────────────────────
-test("correlationGroupOf: index/ETF names resolve to the one v1 group; a single name is null", () => {
+test("correlationGroupOf: index/ETF names resolve to their group; sector names resolve to theirs; uncorrelated is null", () => {
   assert.ok(correlationGroupOf("SPY"));
   assert.ok(correlationGroupOf("QQQ"));
-  assert.equal(correlationGroupOf("NVDA"), null);
+  assert.ok(correlationGroupOf("NVDA"), "NVDA is in the Semiconductors group (v2)");
+  assert.equal(correlationGroupOf("PLTR"), null, "a name outside all groups is null");
   // The group id is a stable, sorted, index-independent name.
   const id = correlationGroupId(correlationGroupOf("SPY")!);
   assert.match(id, /^cg:/);
   assert.equal(id, correlationGroupId(correlationGroupOf("QQQ")!), "SPY and QQQ share the group → same id");
+  assert.notEqual(id, correlationGroupId(correlationGroupOf("NVDA")!), "NVDA is in a different group than SPY");
 });
 
 // ── freezeConcentrationState: adversarial (opposed direction, dedup, rounding, single name) ──
@@ -576,13 +582,13 @@ test("freezeConcentrationState: a SHORT candidate counts only the same-direction
   assert.deepEqual(c.correlation_group_ids, [correlationGroupId(correlationGroupOf("QQQ")!)]);
 });
 
-test("freezeConcentrationState: a single-name candidate outside any group has empty group ids + zero same-beta", () => {
-  const c = freezeConcentrationState({ ticker: "NVDA", direction: "long" }, [
+test("freezeConcentrationState: a candidate outside ALL open plans' groups has zero same-beta but its own group ids", () => {
+  const c = freezeConcentrationState({ ticker: "PLTR", direction: "long" }, [
     { ticker: "SPY", direction: "long" },
     { ticker: "QQQ", direction: "long" },
   ]);
-  assert.deepEqual(c.correlation_group_ids, []);
-  assert.equal(c.same_beta_open_count, 0, "NVDA is in no group → no same-beta exposure");
+  assert.deepEqual(c.correlation_group_ids, [], "PLTR is in no group → empty");
+  assert.equal(c.same_beta_open_count, 0, "PLTR is in no group → no same-beta exposure");
   assert.equal(c.same_direction_open_count, 2);
 });
 

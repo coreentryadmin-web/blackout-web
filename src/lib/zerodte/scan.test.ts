@@ -765,10 +765,9 @@ test("scanZeroDteBoard: 3 realized losing time-stops HALT a fresh commit — the
   assert.ok(nvda!.gate, "a fresh (un-committed) candidate must get a gate verdict");
 
   // The discriminating assertion: the realized-loss halt block must be present. Its code
-  // reuses governor_session_stops but the reason is the loss-halt sentence ("realized
-  // losers"), distinct from the hard-stop-count halt (which never trips here: stops 0/3).
+  // is governor_session_loss_halt (distinct from the hard-stop halt's governor_session_stops).
   const lossHalt = nvda!.gate!.blocks.find(
-    (b) => b.code === "governor_session_stops" && /realized losers/i.test(b.reason)
+    (b) => b.code === "governor_session_loss_halt" && /realized losers/i.test(b.reason)
   );
   assert.ok(
     lossHalt,

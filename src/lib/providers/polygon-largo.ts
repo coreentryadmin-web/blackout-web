@@ -11,7 +11,7 @@ import { recordDataSourceing } from "@/features/nighthawk/lib/diagnostics";
 // switch to the fallback URL so requests aren't blocked for the full pause window.
 // Mirrors the pattern in scripts/audit/zerodte-e2e-suite.mjs (data-resilience audit 2026-07-27).
 const POLYGON_PRIMARY = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
-const POLYGON_FALLBACK = POLYGON_PRIMARY.includes("polygon.io")
+const POLYGON_FALLBACK = new URL(POLYGON_PRIMARY).hostname.endsWith("polygon.io")
   ? "https://api.massive.com"
   : "https://api.polygon.io";
 /** Sticky: once we fail over, stay on the fallback until the breaker resets. */
@@ -34,7 +34,6 @@ function getPolygonBase(): string {
   return _usingFallback ? POLYGON_FALLBACK : POLYGON_PRIMARY;
 }
 
-const BASE = POLYGON_PRIMARY; // kept for backward compat in non-polygonGet paths
 const KEY = process.env.POLYGON_API_KEY ?? "";
 
 export type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };
@@ -48,12 +47,12 @@ async function polygonGet<T>(path: string, params: Record<string, string> = {}):
       cache: "no-store",
     });
     if (!res.ok) {
-      console.warn(`[polygon-largo] ${path} returned ${res.status}`);
+      console.warn(`[polygon-largo] ${path.replace(/[\r\n]/g, "")} returned ${res.status}`);
       return null;
     }
     return (await res.json()) as T;
   } catch (err) {
-    console.warn(`[polygon-largo] ${path} failed: ${err instanceof Error ? err.message : String(err)}`);
+    console.warn(`[polygon-largo] ${path.replace(/[\r\n]/g, "")} failed: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }

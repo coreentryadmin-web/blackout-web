@@ -91,7 +91,7 @@ import {
   buildResolvedExitPolicy,
   exitPolicyGraderParams,
 } from "./strategy-version";
-import { evaluateLedgerRowExit, resolveExitMode, resolveExitModeForTier, readFrozenExitPolicy } from "./exit-sync";
+import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
 import { persistZeroDteRejections } from "./rejections";
 import {
