@@ -3002,4 +3002,55 @@ updated from VETO_BLIND→ABSTAIN expectations), `scan.ts` (comment only). `boar
 `calibration.ts` retain VETO_BLIND in their types/logic for backward compat with historical data.
 
 **File:line:** `src/lib/zerodte/cortex-gate.ts:153-171`
+**Status:** MERGED (PR #1155)
+
+## 2026-07-27 — G-12 early-window confluence floor (2→1), G-10 intraday_conflict demotion, fail-closed stale fallback
+
+**Severity.** High (cumulative — the three issues combined produced zero-play sessions on full trading days).
+
+**Root cause (three interacting gates):**
+
+1. **G-12 early window `ZERODTE_CONFLUENCE_MIN_EARLY` default 2:** The early window [10:00, 10:45) ET
+   required 2 confluences (VWAP + market alignment) before committing. Most plays in the first 45
+   minutes carry only 1 confirmation (market-aligned OR VWAP-confirmed, rarely both that early). The
+   2-conf requirement blocked nearly everything in the morning window, starving the board during the
+   highest-activity period.
+   **File:line:** `src/lib/zerodte/gates.ts:110` — `envInt("ZERODTE_CONFLUENCE_MIN_EARLY", 2)` → `1`.
+
+2. **G-10 intraday_conflict hard block:** Promoted from score-only to hard block on 2026-07-18. The
+   gate blocked when a name's session VWAP and 5m trend opposed the play direction. But flow precedes
+   trend changes — the signal that justified the play (institutional flow) correctly leads reversals,
+   and the hard block killed valid plays where flow was right and structure was about to follow. The
+   score penalty via `adj.delta` in `scan.ts:computeIntradayEdge()` already weights structure conflict
+   into the score; the hard block was redundant and destructive.
+   **File:line:** `src/lib/zerodte/gates.ts:611-620` — block removed, replaced with comment explaining demotion.
+
+3. **Fail-closed provider timeout resilience:** The four fail-closed gates (G-4 `vix_unavailable`, G-7
+   `macro_unavailable`, G-11 `earnings_unavailable`, G-11 `halt_feed_stale`) correctly distinguish
+   "data unavailable" from "data present but nothing to block." But a single transient provider timeout
+   (the `within(withServerCache(...), 2500)` pattern) set the `*Unavailable` flag and emptied the board
+   for that entire scan pass — even when the previous scan pass 2 minutes ago had a successful read.
+   **File:line:** `src/lib/zerodte/scan.ts:609-628` — added module-level last-known-good fallback stores
+   (`_lastVix`, `_lastMacroRead`, `_lastEarnings`). On a successful read, the value is stored. On a
+   subsequent timeout, the fallback is used instead of marking unavailable. On true cold start (no prior
+   read), the fail-closed gates correctly hold as designed.
+
+**Evidence:** Live board 2026-07-27 — zero plays committed on a full trading Monday. The kill chain was:
+early window (G-12 floor=2 blocked 1-conf plays 10:00-10:45) + intraday_conflict (G-10 hard-blocked
+plays where flow led a reversal) + Cortex veto_blind (fixed in PR #1155) = nothing survived all gates.
+
+**Fix rationale:**
+- G-12: lowering the early floor to 1 matches the standard floor. The 0-conf bucket (−12.5% EV) is still
+  blocked. The operator can raise it via `ZERODTE_CONFLUENCE_MIN_EARLY` env if calibration supports it.
+- G-10: flow precedes trend by design — the intraday edge already penalizes the score, so the signal is
+  still present but can't single-handedly kill the board. The `intradayConflict` field remains on the
+  setup for audit/display.
+- Fail-closed: the fallback only activates after a successful read in the current session. A process
+  restart still has no fallback (correct — fail-closed on true unknowns). The halt feed stale flag is
+  not included in the fallback (it's a socket-health signal, not a fetch timeout).
+
+**Blast radius:** `gates.ts` (G-12 config + G-10 block removal), `gates.test.ts` (2 tests updated),
+`scan.ts` (3 module-level fallback stores + fallback logic at the firewall-signal derivation site).
+`board.ts` retains `intraday_conflict` field for display.
+
 **Status:** PR (pending)
