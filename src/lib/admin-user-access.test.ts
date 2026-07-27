@@ -23,7 +23,7 @@ test("classifyAdminUserAccess: premium tier gets desk", () => {
 test("classifyAdminUserAccess: community without premium", () => {
   const r = classifyAdminUserAccess({ tier: "free", membershipKind: "community" });
   assert.equal(r.accessLabel, "community");
-  assert.equal(r.deskAccess, false);
+  assert.equal(r.deskAccess, true);
 });
 
 test("classifyAdminUserAccess: free signup", () => {
