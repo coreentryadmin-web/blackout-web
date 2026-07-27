@@ -1896,6 +1896,59 @@ export function LandingRedesignFx() {
       });
       track.addEventListener("scroll", updateDots, { passive: true });
       cleanups.push(() => track!.removeEventListener("scroll", updateDots));
+
+      // Auto-advance carousel every 8s
+      let autoTimer: ReturnType<typeof setInterval> | null = null;
+      let autoPaused = false;
+      function getCurrentIdx() {
+        return Math.round(track!.scrollLeft / cardW);
+      }
+      function resetDotAnimation() {
+        dots.forEach((d) => d.classList.remove("paused"));
+        const idx = getCurrentIdx();
+        dots.forEach((d, i) => {
+          if (i === idx) {
+            d.classList.remove("active");
+            void (d as HTMLElement).offsetWidth;
+            d.classList.add("active");
+          }
+        });
+      }
+      function autoAdvance() {
+        const cards = track!.querySelectorAll(".cmd-card");
+        const idx = getCurrentIdx();
+        const next = idx + 1 < cards.length ? idx + 1 : 0;
+        scrollToCard(next);
+        setTimeout(resetDotAnimation, 80);
+      }
+      function startAutoAdvance() {
+        if (autoTimer) clearInterval(autoTimer);
+        autoTimer = setInterval(() => {
+          if (!autoPaused && !destroyed) autoAdvance();
+        }, 8000);
+        resetDotAnimation();
+      }
+      function pauseAuto() {
+        autoPaused = true;
+        dots.forEach((d) => d.classList.add("paused"));
+      }
+      function resumeAuto() {
+        autoPaused = false;
+        startAutoAdvance();
+      }
+      track.addEventListener("mouseenter", pauseAuto);
+      track.addEventListener("mouseleave", resumeAuto);
+      cleanups.push(() => {
+        track!.removeEventListener("mouseenter", pauseAuto);
+        track!.removeEventListener("mouseleave", resumeAuto);
+      });
+      prevBtn.addEventListener("click", () => { startAutoAdvance(); });
+      nextBtn.addEventListener("click", () => { startAutoAdvance(); });
+      dots.forEach((d) => {
+        d.addEventListener("click", () => { startAutoAdvance(); });
+      });
+      startAutoAdvance();
+      cleanups.push(() => { if (autoTimer) clearInterval(autoTimer); });
     }
 
     // ── Carousel atmospheric background ──
@@ -2062,6 +2115,20 @@ export function LandingRedesignFx() {
         if (s && s.raf) cancelAnimationFrame(s.raf);
       });
     });
+
+    // ── Mobile sticky CTA — show when hero CTA scrolls out of view ──
+    const heroCta = document.querySelector(".hero .cta-row");
+    const stickyCta = document.getElementById("mobile-sticky-cta");
+    if (heroCta && stickyCta) {
+      const stickyObs = new IntersectionObserver(
+        ([entry]) => {
+          stickyCta.classList.toggle("visible", !entry.isIntersecting);
+        },
+        { threshold: 0 },
+      );
+      stickyObs.observe(heroCta);
+      cleanups.push(() => stickyObs.disconnect());
+    }
 
     return () => {
       destroyed = true;
