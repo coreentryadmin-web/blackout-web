@@ -27,7 +27,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { fetchGexHeatmap, type GexEvent } from "@/lib/providers/polygon-options-gex";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
-import { sendWebPush, vapidConfigured } from "@/lib/push/send-web-push";
+import { vapidConfigured } from "@/lib/push/send-web-push";
+import { broadcastAlert } from "@/lib/push/broadcast-alert";
 import { logCronRun } from "@/lib/cron-run";
 
 export const runtime = "nodejs";
@@ -116,7 +117,17 @@ export async function GET(req: NextRequest) {
 
   const day = etDate();
   const evaluated: string[] = [];
-  const alerted: Array<{ ticker: string; type: GexEvent["type"]; sent: number }> = [];
+  const alerted: Array<{
+    ticker: string;
+    type: GexEvent["type"];
+    /** Total delivered across web + APNs — kept for backwards-compatible dashboards. */
+    sent: number;
+    /** Per-channel breakdown so a "0 sent" line in the log tells the truth (0 subscribers
+     *  vs channel inert) instead of hiding the reason under a single number. */
+    web_sent: number;
+    apns_sent: number;
+    apns_configured: boolean;
+  }> = [];
 
   // Best-effort PER TICKER: one ticker's failure (rejected fetch, null matrix) never aborts the rest,
   // and a single bad event never aborts the ticker. Cache-reader only — no new upstream here.
@@ -137,19 +148,36 @@ export async function GET(req: NextRequest) {
           const already = await sharedCacheGet<{ at: string }>(key);
           if (already) continue;
 
-          const result = await sendWebPush(
+          // Fan out to BOTH channels: web-push (VAPID browser subscribers)
+          // AND APNs (native iOS device tokens). broadcastAlert is inert on
+          // whichever channel isn't configured — same "silently do nothing"
+          // safety net sendWebPush has had, applied to APNs too. A gamma-flip
+          // cross that happens while APNs isn't wired up doesn't fire iOS
+          // devices; the log's `apns.sent = 0, apns.configured = false`
+          // tells the ops surface why. `interruptionLevel: "time-sensitive"`
+          // is correct for a flip cross — this is exactly what breaches Focus
+          // mode for a member watching for the event.
+          const result = await broadcastAlert(
             {
               title: `${ticker} ${eventLabel(ev.type)}`,
               body: ev.message,
               url: `/heatmap?ticker=${ticker}`,
-            },
-            {} // broadcast to all subscribers (per-ticker user prefs are a documented follow-up)
+              category: "gex.flip",
+              interruptionLevel: "time-sensitive",
+            }
           );
 
           // Record the send so this cross won't re-alert on the next 5-min tick. Mark even when
-          // `sent === 0` (no subscribers yet) — the cross HAS been evaluated for today.
+          // `totalSent === 0` (no subscribers yet) — the cross HAS been evaluated for today.
           await sharedCacheSet(key, { at: ev.at }, ALERT_DEDUP_TTL_SEC);
-          alerted.push({ ticker, type: ev.type, sent: result.sent });
+          alerted.push({
+            ticker,
+            type: ev.type,
+            sent: result.totalSent,
+            web_sent: result.web.sent,
+            apns_sent: result.apns.sent,
+            apns_configured: result.apns.configured,
+          });
         } catch {
           // A single event's dedup/send failure must not abort the remaining events/tickers.
         }

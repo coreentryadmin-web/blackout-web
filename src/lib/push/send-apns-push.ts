@@ -169,12 +169,20 @@ export interface SendResult {
   errors: Array<{ deviceToken: string; status: number; reason?: string }>;
 }
 
-/** Send `payload` to every APNs device registered for `userId`.
+/** Send `payload` via APNs.
+ *
+ *  - `opts.userId` set  → only that user's device tokens (personal alerts).
+ *  - `opts.userId` unset → BROADCAST to every device on this bundle_id
+ *    (system-wide alerts, e.g. SPX gamma-flip cross — mirrors the web-push
+ *    helper's broadcast semantics so the two channels stay symmetric).
  *
  *  Never throws. Returns a result envelope the caller can log/act on.
  *  On any 410 / BadDeviceToken response the offending row is DELETED from
  *  `push_native_devices` (mirrors the 404/410 prune the web-push helper does). */
-export async function sendApnsPush(userId: string, payload: ApnsPushPayload): Promise<SendResult> {
+export async function sendApnsPush(
+  payload: ApnsPushPayload,
+  opts?: { userId?: string }
+): Promise<SendResult> {
   const empty: SendResult = { configured: false, attempted: 0, sent: 0, pruned: 0, errors: [] };
   const cfg = readApnsConfig();
   if (!cfg) return empty;
@@ -182,10 +190,16 @@ export async function sendApnsPush(userId: string, payload: ApnsPushPayload): Pr
 
   await ensureApnsDeviceTable();
 
-  const devices = (await dbQuery(
-    `SELECT device_token FROM push_native_devices WHERE user_id = $1 AND bundle_id = $2`,
-    [userId, cfg.bundleId]
-  )).rows as Array<{ device_token: string }>;
+  const devices = (opts?.userId
+    ? await dbQuery(
+        `SELECT device_token FROM push_native_devices WHERE user_id = $1 AND bundle_id = $2`,
+        [opts.userId, cfg.bundleId]
+      )
+    : await dbQuery(
+        `SELECT device_token FROM push_native_devices WHERE bundle_id = $1`,
+        [cfg.bundleId]
+      )
+  ).rows as Array<{ device_token: string }>;
 
   if (devices.length === 0) return { ...empty, configured: true };
 

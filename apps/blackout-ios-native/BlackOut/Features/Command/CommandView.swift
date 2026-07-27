@@ -17,7 +17,7 @@ struct CommandView: View {
             VStack(alignment: .leading, spacing: BOSpacing.block) {
                 sessionHeader
                 regimeCard
-                comingSoonList
+                productPulse
             }
             .padding(BOSpacing.comfortable)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -27,6 +27,25 @@ struct CommandView: View {
         .navigationBarTitleDisplayMode(.large)
         .task { await vm.startAutoRefresh() }
         .refreshable { await vm.refresh() }
+        // Same NavigationStack destination Intelligence uses, so tapping a
+        // pulse card on Command routes into ProductDetailView with matching
+        // behaviour — no duplicated screen, no double implementations.
+        .navigationDestination(for: IntelligenceModule.self) { m in
+            ProductDetailView(module: m)
+        }
+    }
+
+    // MARK: - Product Pulse (per-desk one-liners driven by the shared regime)
+
+    private var productPulse: some View {
+        VStack(alignment: .leading, spacing: BOSpacing.snug) {
+            BOSectionLabel("Product pulse")
+            LazyVStack(spacing: BOSpacing.snug) {
+                ForEach(IntelligenceRegistry.all) { m in
+                    ProductPulseCard(module: m, regime: vm.state.regime)
+                }
+            }
+        }
     }
 
     // MARK: - Session header (SPX + regime headline + freshness)
@@ -102,22 +121,6 @@ struct CommandView: View {
         }
     }
 
-    // MARK: - Coming-soon list (honest scaffold for the remaining cards)
-
-    private var comingSoonList: some View {
-        VStack(alignment: .leading, spacing: BOSpacing.snug) {
-            BOSectionLabel("Building next")
-            BOCard {
-                VStack(alignment: .leading, spacing: BOSpacing.unit) {
-                    comingRow("Top intelligence brief — what happened, why it matters, evidence")
-                    comingRow("Active opportunities — top 3–5 setups with entry / invalidation / targets")
-                    comingRow("What changed — prioritized timeline of meaningful events (not raw alerts)")
-                    comingRow("Product pulse — compact SPX Slayer / Helix / Thermal / Largo / Night Hawk / Vector")
-                }
-            }
-        }
-    }
-
     // MARK: - Small view atoms
 
     private func metricBlock(label: String, value: String, tint: Color) -> some View {
@@ -133,13 +136,6 @@ struct CommandView: View {
             Text(value).font(BOFont.numericBody).monospacedDigit().foregroundStyle(BOColor.textPrimary)
         }
         .padding(.vertical, BOSpacing.hairline)
-    }
-
-    private func comingRow(_ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: BOSpacing.snug) {
-            Text("·").font(BOFont.body).foregroundStyle(BOColor.textAccent)
-            Text(text).font(BOFont.body).foregroundStyle(BOColor.textSecondary)
-        }
     }
 
     private func freshnessChip(fetchedAt: Date?, updatedAt: Date?) -> some View {
