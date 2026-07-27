@@ -416,20 +416,23 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // and blocks single names outright at extreme VIX.
   const vix = input.vixDayOpen ?? null;
   if (isCondor) {
-    // ── G-4 for a CONDOR — HARDER, and inverted-sensitivity. A condor SELLS vol, so an elevated/
-    // extreme VIX is its enemy, not just a score modifier: a vol expansion is exactly when a defended
-    // range breaks and the negative-skew tail fires. So ANY VIX at/above the elevated threshold blocks
-    // the sale outright (no score-floor escape hatch the directional path allows), and an unavailable
-    // VIX fails closed unconditionally — selling premium blind to the vol regime is the worst version
-    // of the fail-open leak Phase 0 closed.
-    if (vix != null && vix >= VIX_ELEVATED_THRESHOLD) {
+    // ── G-4 for a CONDOR — block at EXTREME VIX only (≥20), not elevated (17-20).
+    // A condor SELLS premium into a range. At VIX 17-20 on a flat/range-bound tape,
+    // elevated VIX means FATTER premiums collected while the range holds — that's the
+    // condor's best regime. The condor-WR backtest (condor-wr.mjs) showed 98.7% WR
+    // on shipped geometry across SPY/QQQ/IWM including VIX 17-20 sessions. The old
+    // threshold (17) borrowed the F-1 directional evidence (69% vs 25% WR) which
+    // measures single-leg directional plays, not delta-neutral sold ranges. At VIX ≥20
+    // (extreme), the vol expansion risk genuinely threatens range integrity, so condors
+    // are still blocked there. Unavailable VIX still fails closed unconditionally.
+    if (vix != null && vix >= VIX_EXTREME_THRESHOLD) {
       const vixR = Math.round(vix * 100) / 100;
       blocks.push({
         code: "condor_vix_regime",
         reason:
-          `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD} — a condor SELLS premium into a range, so an ` +
-          "elevated/extreme vol regime (where the range breaks) blocks the sale outright (condor G-4).",
-        threshold: VIX_ELEVATED_THRESHOLD,
+          `VIX ${vixR} ≥ ${VIX_EXTREME_THRESHOLD} — extreme vol regime threatens range integrity; ` +
+          "condor sale blocked (condor G-4).",
+        threshold: VIX_EXTREME_THRESHOLD,
         unlock_et: null,
       });
     } else if (vix == null && input.vixUnavailable === true && G4_VIX_FAIL_CLOSED_ENABLED) {

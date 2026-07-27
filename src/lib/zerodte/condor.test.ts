@@ -285,10 +285,10 @@ test("condor liquidity gate FIRES inside the gate stack (no priced plan)", () =>
   assert.ok(v.blocks.some((b) => b.code === "condor_liquidity"));
 });
 
-test("condor G-4: elevated VIX blocks the SALE (harder than directional)", () => {
+test("condor G-4: elevated VIX (18) does NOT block a condor — only extreme (≥20) does", () => {
   const v = evaluateZeroDteGates(condorGateInput({ vixDayOpen: 18 }));
-  assert.equal(v.verdict, "BLOCKED");
-  assert.ok(v.blocks.some((b) => b.code === "condor_vix_regime"));
+  assert.equal(v.verdict, "COMMIT");
+  assert.ok(!v.blocks.some((b) => b.code === "condor_vix_regime"));
 });
 
 test("condor G-4: unavailable VIX fails the sale closed", () => {

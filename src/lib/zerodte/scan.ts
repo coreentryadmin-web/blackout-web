@@ -444,7 +444,9 @@ async function attachIntradayEdge(
     const align = marketAlignAdjust(s.direction, bias);
     s.intraday = read;
     s.intraday_conflict = adj.conflict;
-    s.market_aligned = bias == null || bias === "flat" ? null : (bias === "up") === (s.direction === "long");
+    // Flat tape = no directional opposition → treat as aligned (same as G-4 fix in gates.ts).
+    // Only null/stale bias → null (unknown, not a confirmation).
+    s.market_aligned = bias == null ? null : bias === "flat" ? true : (bias === "up") === (s.direction === "long");
     s.tod_label = tod.label;
     s.score = Math.max(0, Math.min(100, s.score + adj.delta + align + tod.delta));
   });

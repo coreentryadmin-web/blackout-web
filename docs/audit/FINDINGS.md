@@ -2897,4 +2897,78 @@ fail-closed mirror, and the calibration snapshot all had the same flat-tape-as-n
 No other files reference `tapeAligned`. Tests updated in `gates.test.ts` (5 tests adjusted).
 
 **File:line:** `src/lib/zerodte/gates.ts:476`, `:510`, `:870`
-**Status:** PR #1153 (pending)
+**Status:** PR #1152 — MERGED
+
+---
+
+## 2026-07-27 — Condor VIX gate blocks at elevated (17) instead of extreme (20)
+
+**Severity:** CRITICAL — iron condors (the ONE structure designed for flat/range-bound markets)
+were hard-blocked on any day with VIX >= 17. Since VIX sits between 17-20 for ~40% of trading
+days, the condor engine — purpose-built for the exact market regime that directional plays
+struggle in — was dead on arrival in its primary use case.
+
+**Root cause:** In `gates.ts:425`, the condor VIX gate used `VIX_ELEVATED_THRESHOLD` (17):
+```
+if (vix != null && vix >= VIX_ELEVATED_THRESHOLD) {
+  return reject("condor_vix_elevated", ...);
+}
+```
+This was copy-pasted from the directional VIX gate logic. But the F-1 evidence for VIX-gating
+(docs/audit/0DTE-RESEARCH.md) measured DIRECTIONAL 0DTE plays — long calls/puts that suffer in
+high-vol from gamma crush and wide bid-asks. Iron condors are delta-neutral premium SELLERS that
+BENEFIT from elevated vol (higher credit collected, wider profitable range). The condor-WR
+backtest (`condor-wr.mjs`) showed 98.7% WR at the shipped geometry even through VIX 17-20
+sessions. The correct threshold for condors is VIX_EXTREME (>= 20), where even condors face
+tail risk from violent moves.
+
+**Evidence:** Live board on 2026-07-27 (VIX 17.62-18.82): zero condors generated despite
+SPY/QQQ/IWM all trading in tight ranges — the ideal condor setup. The condor gate rejected
+every candidate with `condor_vix_elevated`.
+
+**Fix:** Changed threshold from `VIX_ELEVATED_THRESHOLD` (17) to `VIX_EXTREME_THRESHOLD` (20)
+at `gates.ts:425`. Added explanatory comment documenting why condors use a different threshold.
+Three new tests added to `gates.test.ts`: VIX 18 passes condor, VIX 20 blocks condor,
+unavailable VIX still fails closed.
+
+**Blast radius:** Single site in `gates.ts`. The constant `VIX_EXTREME_THRESHOLD` (20) already
+existed and was used by the extreme-regime gate (G-4b). No other condor logic references the
+elevated threshold.
+
+**File:line:** `src/lib/zerodte/gates.ts:425`
+**Status:** PR (pending, bundled with confluence fix below)
+
+---
+
+## 2026-07-27 — Flat tape market_aligned=null blocks early-window confluence gate (G-12)
+
+**Severity:** HIGH — during the early entry window [10:00, 10:45) ET, G-12 requires >= 2
+confirmations (VWAP-side + market-aligned). But flat tape set `market_aligned = null` (unknown),
+which `confluence.ts` correctly treated as "not a confirmation" (`market_ok = false`). This
+capped confirmations at 1 (VWAP-side only) on flat-tape days, hard-blocking ALL setups in the
+early window — even ones with strong VWAP confirmation.
+
+**Root cause:** In `scan.ts:447`, the market_aligned assignment was:
+```
+s.market_aligned = bias == null || bias === "flat" ? null : (bias === "up") === (s.direction === "long");
+```
+This lumped flat tape (`bias === "flat"`) with unknown/stale tape (`bias == null`) and returned
+`null` for both. But they're semantically different: null = we don't know the tape (shouldn't
+confirm anything), flat = the tape is known and non-opposing (no directional headwind). G-1
+already blocks counter-tape entries, so a flat tape that reaches the confluence check is a
+non-opposing environment — it should count as a confirmation.
+
+**Evidence:** Combined with the G-4 flat-tape fix (PR #1152), this was the remaining blocker
+for early-window entries on flat-tape days. A setup with VWAP confirmation but flat tape would
+get `confirmations = 1`, hitting the `>= 2` early-window floor in G-12.
+
+**Fix:** In `scan.ts:447`, split the ternary so `bias === "flat"` returns `true` (non-opposing)
+while `bias == null` returns `null` (unknown). Updated comment in `confluence.ts:78` to document
+the semantics: `true = aligned or flat tape (non-opposing), false = counter, null = unknown`.
+
+**Blast radius:** `scan.ts:447` (the assignment), `confluence.ts:79` (already reads `=== true`,
+so `true` from flat tape flows through correctly with no code change needed — only the comment
+updated). No other files assign `market_aligned`.
+
+**File:line:** `src/lib/zerodte/scan.ts:447`, `src/lib/zerodte/confluence.ts:78`
+**Status:** PR (pending, bundled with condor fix above)
