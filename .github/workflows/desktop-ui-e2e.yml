@@ -32,7 +32,7 @@ jobs:
         run: node scripts/desktop-ui-e2e.mjs
       - name: Upload screenshots + report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-ui-e2e
           path: artifacts/desktop-ui-e2e/
