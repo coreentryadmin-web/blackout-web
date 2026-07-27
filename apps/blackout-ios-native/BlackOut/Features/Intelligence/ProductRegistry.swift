@@ -11,7 +11,7 @@ import SwiftUI
 ///   - the web IOS_TOOLS registry (src/lib/ios-tool-routes.ts) hex-for-hex,
 ///   - the marketing product descriptions (src/lib/marketing/products.ts),
 ///   - the design system per-desk accents (BOColor.Product.*).
-public struct IntelligenceModule: Identifiable, Equatable {
+public struct IntelligenceModule: Identifiable, Equatable, Hashable {
     public let id: String
     public let name: String
     public let mark: String          // 2-3 char product mark (SPX, HLX, THM, LRG, HWK, VEC)
