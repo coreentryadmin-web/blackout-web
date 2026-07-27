@@ -2796,3 +2796,30 @@ empties) and env-overridable.
 SPX play-engine + cortex-read (33), pane/replay/board-component (60) all green (shared-module regression
 guard). Files: `nighthawk/cortex/{types,index}.ts`, `zerodte/{cortex-gate,gates,board,scan,pane}.ts`.
 **Status:** DONE on branch — pushed, **NO PR / NO merge** (user reviews the diff first).
+
+---
+
+### 2026-07-27 — G-8 chase guard (CHASE_PCT) too tight for 0DTE gamma
+
+**Severity:** HIGH (board-emptying — sole blocker on the day's best setup)
+
+**Root cause:** `CHASE_PCT = 35` in `plan.ts` sat inside normal 0DTE intraday gamma noise.
+A 0.2% underlying move swings an ATM 0DTE option premium 30–50%, so the "already happened"
+threshold was trivially crossed by routine price action. The value had no empirical calibration.
+
+**Evidence:** 2026-07-27 live board — SPXW short, score 77, triple confluence (the strongest
+gate profile possible), blocked **solely** by `plan_moved` at `vs_flow_pct = 54%`. This was
+the only viable play on the board; the other two (QQQ score 48, GOOGL score 26) were correctly
+blocked by 5 gates each (tape_alignment, score_floor, confluence_floor, vix_elevated,
+intraday_conflict). Result: zero commits, zero ledger rows, empty board all session.
+
+**Fix:** `CHASE_PCT` raised from 35 → 55 (`plan.ts:25`), now exported and env-configurable
+via `ZERODTE_CHASE_PCT`. `gates.ts` imports the dynamic value instead of hardcoding 35.
+The achievability floor (`resolveLedgerEntryPremium`) independently handles grading honesty
+by flooring at the flag-time mark, so the wider IN_RANGE band does not flatter the win rate.
+
+**Blast radius:** `plan.ts` (threshold), `gates.ts` (import + dynamic message/threshold),
+`board.test.ts` (comment). No other consumers. Grading path unchanged.
+
+**File:line:** `src/lib/zerodte/plan.ts:25`, `src/lib/zerodte/gates.ts:782`
+**Status:** PR #1150 — CI pending.
