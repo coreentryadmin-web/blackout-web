@@ -19,6 +19,7 @@
 // feed (or a documented arithmetic derivation of it) — grounded by construction.
 
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
+import { decodeHtmlEntities } from "@/lib/largo/sanitize-feed-text";
 
 // ---------------------------------------------------------------------------
 // Snapshot — the normalized slice of the desk the voice reasons over.
@@ -787,7 +788,12 @@ export function composeCatalystLine(s: SpxVoiceSnapshot): string | null {
   const h = s.latestHeadline;
   if (!h?.title) return null;
   const time = h.publishedAt != null ? ` · ${fmtEtTime(h.publishedAt)}` : "";
-  return `📰 ${h.title.slice(0, 110)}${time}`;
+  // Benzinga headlines ship HTML-encoded (`Trump&#39;s Saudi Nuclear Deal`,
+  // `&#39;The W`). React renders text as-is, so members saw literal `&#39;`
+  // in the SPX Intel Largo commentary — decode before slicing so the cutoff
+  // doesn't fall inside a half-decoded entity either.
+  const title = decodeHtmlEntities(h.title);
+  return `📰 ${title.slice(0, 110)}${time}`;
 }
 
 // ---------------------------------------------------------------------------
