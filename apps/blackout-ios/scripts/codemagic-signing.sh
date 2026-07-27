@@ -1,13 +1,34 @@
 #!/usr/bin/env bash
 # Codemagic: fetch/create App Store signing cert + profile for BLACKOUT TRADE LLC.
+#
+# Shared between the Capacitor WebView shell (apps/blackout-ios) and the
+# native SwiftUI app (apps/blackout-ios-native). Both apps target the SAME
+# bundle id (`com.blackout-trades.app`) + team, so a SINGLE distribution
+# cert + provisioning profile serves both. What differs is where the
+# generated Xcode project sits:
+#   - WebView shell: ios/App/App.xcodeproj/project.pbxproj (Capacitor)
+#   - Native app:    BlackOut.xcodeproj/project.pbxproj    (XcodeGen)
+# The caller sets PBX_PATH to the correct path; env-var defaulting keeps
+# the existing WebView TestFlight workflow working without changes.
+#
+# CALLER ENV CONTRACT:
+#   BUNDLE_ID           the com.* bundle to sign for (both apps use the same)
+#   APPLE_TEAM_ID       the developer team id
+#   PBX_PATH (opt)      path to the pbxproj to sanity-check bundle id in;
+#                       defaults to the Capacitor path for backwards compat
+#   SKIP_VALIDATE_ENV   set to 1 to skip validate-codemagic-env.mjs (used by
+#                       the native workflow — the validator is Capacitor-
+#                       specific; native has its own preflight checks)
 set -euo pipefail
 
-node scripts/validate-codemagic-env.mjs
+if [ "${SKIP_VALIDATE_ENV:-0}" != "1" ]; then
+  node scripts/validate-codemagic-env.mjs
+fi
 
 # Verify Xcode bundle ID matches Apple ASC (patch step must have run).
-PBX="ios/App/App.xcodeproj/project.pbxproj"
+PBX="${PBX_PATH:-ios/App/App.xcodeproj/project.pbxproj}"
 if ! grep -q "PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID};" "$PBX"; then
-  echo "ERROR: $PBX bundle ID is not ${BUNDLE_ID} — re-run patch-ios-bundle-id.mjs"
+  echo "ERROR: $PBX bundle ID is not ${BUNDLE_ID} — re-run the bundle-id patch step or verify project.yml"
   grep "PRODUCT_BUNDLE_IDENTIFIER" "$PBX" || true
   exit 1
 fi

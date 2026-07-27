@@ -1,0 +1,191 @@
+# Native SwiftUI BlackOut iOS — build, sign, ship to TestFlight.
+#
+# The native app lives at apps/blackout-ios-native and is generated at build
+# time from project.yml via XcodeGen (rationale in that repo's README).
+# It targets the SAME bundle id + team as the transitional Capacitor
+# WebView shell (`com.blackout-trades.app` / `ZA32C782N5`), so uploading
+# here delivers a NEW BUILD of the SAME TestFlight app record — the same
+# testers get the native experience next time they open the app.
+#
+# This workflow mirrors blackout-ios-testflight.yml (the WebView pipeline)
+# in intent, but swaps the Capacitor scaffolding (npx cap sync / pods /
+# patch-info-plist) for the XcodeGen generate + direct xcodebuild path
+# the native app actually needs. Signing reuses the SHARED
+# apps/blackout-ios/scripts/codemagic-signing.sh (PBX_PATH env parameter
+# added for that purpose) — no cert / provisioning duplication.
+#
+# REQUIRED SECRETS (already present for the WebView workflow — same three):
+#   APP_STORE_CONNECT_ISSUER_ID    – ASC API key issuer UUID
+#   APP_STORE_CONNECT_KEY_ID       – ASC API key identifier ("Key ID")
+#   APP_STORE_CONNECT_PRIVATE_KEY  – full .p8 PEM contents
+
+name: BlackOut iOS Native TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      submit_to_external_testflight:
+        description: "Also submit for EXTERNAL TestFlight beta review (needs a beta group). Off = internal only."
+        type: boolean
+        default: false
+      beta_group:
+        description: "External TestFlight beta group name (only used when submit_to_external_testflight is true)."
+        type: string
+        default: ""
+
+# One build per ref at a time. Do NOT cancel-in-progress — killing a build
+# mid-upload can leave a half-processed build in ASC (same rule the WebView
+# workflow follows for the same reason).
+concurrency:
+  group: blackout-ios-native-testflight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-native:
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/blackout-ios-native
+    env:
+      # PUBLIC constants — same values the WebView workflow uses because the
+      # native app SHARES bundle id + team (the whole point: same TestFlight
+      # record, native replaces the WebView on the next member's app open).
+      BUNDLE_ID: "com.blackout-trades.app"
+      APPLE_TEAM_ID: "ZA32C782N5"
+      APP_STORE_APPLE_ID: "6787797476"
+      # ASC API key — codemagic-cli-tools auto-reads these EXACT env var
+      # names for --issuer-id / --key-id / --private-key.
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+      # Point the shared signing script at the XcodeGen-generated pbxproj.
+      PBX_PATH: "BlackOut.xcodeproj/project.pbxproj"
+      # Signing script's env-var preflight is Capacitor-specific — skip it.
+      # The native app validates its own env-set at generate time via
+      # project.yml (deployment target, team, swift version).
+      SKIP_VALIDATE_ENV: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      # Native app needs Xcode 26+ / iOS 26 SDK+ same as the WebView shell
+      # (Apple's April 2026 upload policy). macos-15 ships several Xcode
+      # 26.x under /Applications; we pick the highest.
+      - name: Select newest Xcode 26 (Apple SDK-26 upload policy)
+        working-directory: .
+        run: |
+          set -euo pipefail
+          XCODE_APP=$(ls -1d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -z "$XCODE_APP" ]; then
+            echo "ERROR: No Xcode 26.x found on this runner." >&2
+            ls -1 /Applications | grep -i '^Xcode' || true
+            exit 1
+          fi
+          echo "Selecting $XCODE_APP"
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+
+      - name: Fail fast if ASC API key secrets are missing
+        working-directory: .
+        run: |
+          set -eu
+          fail=0
+          [ -n "${APP_STORE_CONNECT_ISSUER_ID:-}" ]      || { echo "Missing secret APP_STORE_CONNECT_ISSUER_ID" >&2; fail=1; }
+          [ -n "${APP_STORE_CONNECT_KEY_IDENTIFIER:-}" ] || { echo "Missing secret APP_STORE_CONNECT_KEY_ID" >&2; fail=1; }
+          [ -n "${APP_STORE_CONNECT_PRIVATE_KEY:-}" ]    || { echo "Missing secret APP_STORE_CONNECT_PRIVATE_KEY" >&2; fail=1; }
+          [ "$fail" -eq 0 ] || { echo "Add the missing secret(s): repo Settings -> Secrets and variables -> Actions." >&2; exit 1; }
+
+      # Clean CPython avoids the macOS system-Python PEP 668 "externally-managed"
+      # pip failure and puts app-store-connect / xcode-project / keychain on PATH.
+      # (Same rationale as the WebView workflow.)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install codemagic-cli-tools
+        working-directory: .
+        run: pip3 install codemagic-cli-tools
+
+      - name: Install XcodeGen
+        working-directory: .
+        run: brew install xcodegen
+
+      - name: Generate Xcode project from XcodeGen spec
+        run: xcodegen generate
+
+      - name: Set a unique TestFlight build number
+        run: |
+          set -euo pipefail
+          # CFBundleVersion must strictly increase per upload or ASC rejects
+          # ("bundle version must be higher than previously uploaded"). This
+          # is CRUCIAL for the native app because it shares the same TestFlight
+          # record as the WebView shell — the WebView's build numbers count too.
+          # Pick the next value above BOTH the latest TestFlight build (any source)
+          # and this run number.
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || true)
+          case "$LATEST" in ''|*[!0-9]*) LATEST=0 ;; esac
+          NEW="$GITHUB_RUN_NUMBER"
+          if [ "$LATEST" -ge "$NEW" ]; then NEW=$((LATEST + 1)); fi
+          echo "Latest TestFlight build=$LATEST, run=$GITHUB_RUN_NUMBER -> CFBundleVersion=$NEW"
+          # XcodeGen writes CFBundleVersion into Info.plist AND
+          # CURRENT_PROJECT_VERSION into the pbxproj; the Info.plist value
+          # in project.yml wins because it's declared as a literal. Patch
+          # both to be safe, matching what the WebView workflow does.
+          PBX="BlackOut.xcodeproj/project.pbxproj"
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = ${NEW};/g" "$PBX"
+          # Info.plist path from project.yml — patch CFBundleVersion literal too.
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${NEW}" BlackOut/Info.plist
+          echo "CFBundleVersion set to ${NEW} in pbxproj + Info.plist"
+
+      - name: Answer export-compliance in Info.plist
+        run: |
+          # Same reason as the WebView shell: without ITSAppUsesNonExemptEncryption
+          # set at build time, ASC silently holds the build behind "Missing
+          # Compliance" and no email fires to testers. XcodeGen doesn't set
+          # this key — patch it in explicitly.
+          /usr/libexec/PlistBuddy -c "Delete :ITSAppUsesNonExemptEncryption" BlackOut/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" BlackOut/Info.plist
+
+      - name: Set up code signing (shared script — PBX_PATH points at XcodeGen pbxproj)
+        working-directory: .
+        run: bash apps/blackout-ios/scripts/codemagic-signing.sh
+
+      - name: Build signed IPA
+        run: |
+          set -euo pipefail
+          # XcodeGen produces .xcodeproj (no .xcworkspace since we have no
+          # CocoaPods dependency in the native app). xcode-project accepts
+          # --project as an alternative to --workspace.
+          xcode-project build-ipa \
+            --project BlackOut.xcodeproj \
+            --scheme BlackOut
+
+      - name: Upload to TestFlight
+        env:
+          SUBMIT_EXTERNAL: ${{ inputs.submit_to_external_testflight }}
+          BETA_GROUP: ${{ inputs.beta_group }}
+        run: |
+          set -euo pipefail
+          args=(--path 'build/ios/ipa/*.ipa')
+          if [ "${SUBMIT_EXTERNAL:-false}" = "true" ]; then
+            if [ -z "${BETA_GROUP:-}" ]; then
+              echo "submit_to_external_testflight=true requires a beta_group input." >&2
+              exit 1
+            fi
+            args+=(--testflight --beta-group "$BETA_GROUP")
+            echo "Uploading + submitting NATIVE build to EXTERNAL TestFlight group '$BETA_GROUP'"
+          else
+            echo "Uploading NATIVE build to App Store Connect (INTERNAL TestFlight only)"
+          fi
+          app-store-connect publish "${args[@]}"
+
+      - name: Upload build artifacts (IPA + xcodebuild logs)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: blackout-ios-native-ipa
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            apps/blackout-ios-native/build/ios/ipa/*.ipa
+            /tmp/xcodebuild_logs/*.log
