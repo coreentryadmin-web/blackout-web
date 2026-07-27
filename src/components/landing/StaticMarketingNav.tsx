@@ -1,13 +1,12 @@
 import Link from "next/link";
 import { NavAuthLinks } from "./NavAuthLinks";
 
-// Anchors must match the real section ids in RedesignHome. The old
-// "/#features" / "/#tape" targets never existed there (the redesign uses
-// rl-* ids), so Platform/Products silently scrolled nowhere. Point them at
-// the modules-overview and per-product deep-dive sections.
+// Anchors must match the real section ids in RedesignHome:
+// #protocol = "Identify. Validate. Execute." (the platform process)
+// #modules  = "Six engines. One edge." (the product carousel)
 const LINKS = [
-  { href: "/#rl-modules", label: "Platform" },
-  { href: "/#rl-products", label: "Products" },
+  { href: "/#protocol", label: "Platform" },
+  { href: "/#modules", label: "Products" },
   { href: "/learn", label: "Learn" },
   { href: "/faq", label: "FAQ" },
   { href: "/pricing", label: "Pricing", iosHide: true },
