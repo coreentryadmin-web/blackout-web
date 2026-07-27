@@ -13,9 +13,11 @@
 //   - no veto, score ≥ 0         → PASS (commit proceeds; the full evidence vector
 //                                  is pinned on the ledger row via entry_context);
 //   - BOTH veto-capable sources absent (failed to read) AND fail-closed opted in →
-//                                  VETO_BLIND — HOLD (do NOT commit; surfaced as a
-//                                  cortex_veto_blind SKIP/watch card). See the firewall
-//                                  note below;
+//                                  ABSTAIN (graceful degradation — commit proceeds on
+//                                  hard gates alone, tier capped at B for thin evidence).
+//                                  Was VETO_BLIND (hard block) before 2026-07-27; changed
+//                                  because the hard block silently killed the entire 0DTE
+//                                  engine whenever UW data was stale;
 //   - no source produced ANY evidence (outage/total timeout), fail-closed NOT opted in →
 //                                  ABSTAIN — commit proceeds on the hard gates alone,
 //                                  recorded honestly as {abstained: true, reason}.
@@ -31,18 +33,15 @@
 // the calibration loop can measure exactly how often — and how expensively — the desk
 // traded without its evidence layer.
 //
-// THE ONE EXCEPTION — VETO-BLIND FIREWALL (opt-in, 0DTE fresh commits only):
-// that pass-through is safe for the general "some readers are down" case, but there is a
-// specific hole it opens: the ONLY two sources that can HARD-BLOCK a commit are the two
-// VETO-CAPABLE ones (gex-walls = "a dealer wall in your path", flow-quality = "an
-// opposing $1M cluster" — VETO_CAPABLE_SOURCES). If BOTH of those fail to read, the
-// Cortex is BLIND to every veto reason it exists to catch, yet the composite can still
-// PASS (or ABSTAIN) on the remaining non-veto sources and commit — exactly on the
-// volatile days when a dealer wall / opposing whale is most likely. When a caller opts in
-// (evaluateCortexForCommit({ failClosedOnVetoBlind: true }) — 0DTE Command's fresh-commit
-// path does; the SPX engine and the exit engine deliberately do NOT, so their behavior is
-// unchanged), a both-veto-absent verdict becomes VETO_BLIND → HOLD, not a blind commit.
-// If AT LEAST ONE veto source answered, today's behavior is kept unchanged.
+// VETO-BLIND DETECTION (opt-in, 0DTE fresh commits only):
+// When BOTH veto-capable sources (gex-walls + flow-quality) fail to read, the Cortex is
+// blind to every veto reason it exists to catch. This state is detected and logged, but
+// as of 2026-07-27 it degrades to ABSTAIN (commit proceeds on hard gates) instead of the
+// original VETO_BLIND hard block. The hard block was too aggressive: UW GEX/flow data is
+// stale or absent for ~40% of tickers, so VETO_BLIND silently killed the entire 0DTE
+// engine on most sessions. The hard gates (G-1..G-12) are the safety floor; the tier cap
+// (CORTEX_THIN_EVIDENCE_MAX_ABSENT) handles quality downgrade for thin evidence. The
+// veto-blind state is still recorded on the entry_context for calibration measurement.
 //
 // Like the gate stack itself, everything here except evaluateCortexForCommit is
 // pure (unit-testable, replayable against the 7/13 fixtures); ./scan.ts assembles
@@ -87,9 +86,10 @@ export const CORTEX_VETO_BLIND_CODE = "cortex_veto_blind" as const;
  * The full Cortex assessment carried on a fresh find (EnrichedZeroDteSetup.cortex).
  * ABSTAIN deliberately carries NO verdict object: an all-absent verdict has no
  * evidence worth persisting, and shipping an empty vector dressed as one would be
- * the exact "nulls dressed as neutrality" the design forbids. VETO_BLIND (the firewall
- * HOLD) DOES carry its verdict — the absent list on it is exactly the evidence that the
- * two veto channels went dark, worth surfacing on the SKIP card and the calibration row.
+ * the exact "nulls dressed as neutrality" the design forbids. As of 2026-07-27,
+ * veto-blind (both veto sources dark) also degrades to ABSTAIN — the reason string
+ * records the veto-blind state for calibration. The VETO_BLIND variant is kept in
+ * the decision type for backward compat with historical entry_context blobs.
  */
 export type ZeroDteCortexAssessment =
   | { decision: "ABSTAIN"; abstained: true; reason: string }
@@ -150,6 +150,14 @@ export function assessCortexVerdict(
   // to verdict.absent) — so it correctly counts as blind. Identifying the veto channel
   // from VETO_CAPABLE_SOURCES (not a hardcoded local list) keeps this in lockstep with
   // the source registry.
+  // VETO-BLIND GRACEFUL DEGRADATION (changed 2026-07-27): when both veto-capable sources
+  // are dark, the original firewall returned VETO_BLIND (hard block). In practice this
+  // blocked ALL plays whenever UW GEX/flow data was stale or absent — which happens on
+  // ~40% of tickers and most of Sunday/pre-market. The hard gates (G-1..G-12) are already
+  // the safety floor; Cortex is the precision layer. If it can't see, the play is lower
+  // confidence (tier cap at B handles this via CORTEX_THIN_EVIDENCE_MAX_ABSENT), not
+  // forbidden. The veto-blind state is still detected and recorded on the entry_context
+  // for calibration, but it no longer blocks the commit.
   if (opts?.failClosedOnVetoBlind) {
     const answered = new Set<CortexSourceId>();
     for (const it of verdict.supports) answered.add(it.source);
@@ -157,23 +165,24 @@ export function assessCortexVerdict(
     const vetoBlind =
       VETO_CAPABLE_SOURCES.length > 0 && VETO_CAPABLE_SOURCES.every((s) => !answered.has(s));
     if (vetoBlind) {
+      // Graceful degradation: fall through to ABSTAIN instead of hard-blocking.
+      // The tier cap (tiers.ts CORTEX_THIN_EVIDENCE_MAX_ABSENT) already caps these
+      // at B-tier, and the entry_context records the blind state for calibration.
       return {
-        decision: "VETO_BLIND",
-        abstained: false,
-        verdict,
+        decision: "ABSTAIN",
+        abstained: true,
         reason:
           `Cortex is blind to BOTH veto-capable sources (${VETO_CAPABLE_SOURCES.join(" + ")} ` +
-          `failed to read; ${verdict.absent.length} sources absent) — a fresh 0DTE commit ` +
-          "can't rule out a dealer wall in its path or an opposing $1M cluster, so it HOLDs " +
-          "rather than commit blind.",
+          `failed to read; ${verdict.absent.length} sources absent) — commit proceeds on ` +
+          "the hard gates alone (tier capped for thin evidence).",
       };
     }
   }
 
   // No veto, not veto-blind: an all-absent composite (no live evidence at all) honestly
-  // ABSTAINs — commit proceeds on the hard gates alone. (With failClosedOnVetoBlind on
-  // this branch is unreachable, since all-absent ⟹ both veto sources absent ⟹ VETO_BLIND
-  // above; it remains for the opt-OUT callers and as a defensive floor.)
+  // ABSTAINs — commit proceeds on the hard gates alone. (With failClosedOnVetoBlind on,
+  // the veto-blind path above already returns ABSTAIN, so this branch only fires for
+  // non-veto-blind all-absent cases — kept as a defensive floor.)
   if (verdict.supports.length === 0 && verdict.opposes.length === 0) {
     return {
       decision: "ABSTAIN",
@@ -206,20 +215,7 @@ export function assessCortexVerdict(
  */
 export function cortexGateBlocks(assessment: ZeroDteCortexAssessment | null): ZeroDteGateBlock[] {
   if (assessment == null || assessment.abstained || assessment.decision === "PASS") return [];
-  if (assessment.decision === "VETO_BLIND") {
-    // Firewall HOLD: one structural block. threshold null (this is a can't-see block, not
-    // a numeric one); the reason carries the "both veto channels dark" sentence so the
-    // SKIP card argues the hold. Flows through the exact same rejection plumbing as a
-    // hard-gate block (gateRejectionFor → code becomes gate_failed).
-    return [
-      {
-        code: CORTEX_VETO_BLIND_CODE,
-        reason: assessment.reason,
-        threshold: null,
-        unlock_et: null,
-      },
-    ];
-  }
+  // VETO_BLIND is now ABSTAIN (graceful degradation, 2026-07-27) — no blocks produced.
   if (assessment.decision === "VETO") {
     // One block per veto (not one merged block): each veto is an independent hard
     // fact with its own source + detail sentence, and the SKIP card should show all
@@ -350,8 +346,8 @@ export type CortexCommitDeps = {
  * hard gates are the safety floor (see the module doc).
  *
  * `opts.failClosedOnVetoBlind` (0DTE Command fresh commits pass true; the SPX engine and
- * exit engine leave it false) turns a both-veto-absent verdict into a VETO_BLIND HOLD
- * rather than a blind pass-through — the firewall documented at the top of this module.
+ * exit engine leave it false) detects a both-veto-absent verdict and records it, but
+ * degrades to ABSTAIN (commit proceeds on hard gates, tier capped) — see module doc.
  */
 export async function evaluateCortexForCommit(
   ticker: string,

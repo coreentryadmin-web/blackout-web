@@ -167,11 +167,12 @@ test("ABSTAIN: an all-absent composition (total outage) passes through with zero
   assert.deepEqual(cortexGateBlocks(a), []);
 });
 
-// ── Veto-blind firewall (Phase-0 fail-CLOSED, opt-in) ─────────────────────────────
+// ── Veto-blind graceful degradation (was Phase-0 fail-CLOSED; changed 2026-07-27) ──
 // The two veto-capable sources (gex-walls + flow-quality) are the ONLY hard-block
-// channels. When BOTH fail to read, a fresh 0DTE commit that opts in must HOLD
-// (VETO_BLIND) instead of committing blind on the non-veto sources. Opt-OUT callers
-// (SPX engine, exit engine) keep the pre-firewall pass-through behavior unchanged.
+// channels. When BOTH fail to read, the Cortex can't see any veto reason. Previously
+// this was VETO_BLIND (hard block); now it degrades to ABSTAIN (commit proceeds on
+// hard gates alone, tier capped at B for thin evidence). The veto-blind state is
+// still detected and recorded for calibration, but no longer blocks.
 
 const AS_OF = "2026-07-17T15:00:00.000Z";
 /** Minimal evidence item for a hand-built verdict (matches EvidenceItem's real shape). */
@@ -202,7 +203,7 @@ test("VETO_CAPABLE_SOURCES is exactly the two veto emitters (single source of tr
   for (const v of spy.vetoes) assert.ok(VETO_CAPABLE_SOURCES.includes(v.source), v.source);
 });
 
-test("firewall: BOTH veto sources absent → VETO_BLIND HOLD (opt-in), even at a would-PASS score", () => {
+test("graceful degradation: BOTH veto sources absent → ABSTAIN (not blocked), even at a would-PASS score", () => {
   // Only a non-veto source (sector-heat) answered, +1.5 → this composite WOULD PASS today.
   const vetoBlind = verdict({
     score: 1.5,
@@ -217,27 +218,30 @@ test("firewall: BOTH veto sources absent → VETO_BLIND HOLD (opt-in), even at a
       "opening-harvest: absent",
     ],
   });
-  // Opt-IN (0DTE fresh commit): HOLD.
-  const held = assessCortexVerdict(vetoBlind, { failClosedOnVetoBlind: true });
-  assert.equal(held.decision, "VETO_BLIND");
-  assert.equal(held.abstained, false);
-  const blocks = cortexGateBlocks(held);
-  assert.deepEqual(blocks.map((b) => b.code), ["cortex_veto_blind"]);
-  assert.match(blocks[0]!.reason, /blind to BOTH veto-capable sources/i);
-  assert.equal(blocks[0]!.threshold, null);
+  // Opt-IN (0DTE fresh commit): ABSTAIN (graceful degradation, not hard block).
+  const degraded = assessCortexVerdict(vetoBlind, { failClosedOnVetoBlind: true });
+  assert.equal(degraded.decision, "ABSTAIN");
+  assert.equal(degraded.abstained, true);
+  if (degraded.abstained) {
+    assert.match(degraded.reason, /blind to BOTH veto-capable sources/i);
+    assert.match(degraded.reason, /commit proceeds on/);
+  }
+  // Zero blocks — commit proceeds on hard gates alone.
+  assert.deepEqual(cortexGateBlocks(degraded), []);
   // Opt-OUT (SPX/exit): unchanged — the +1.5 composite still PASSes.
   const passed = assessCortexVerdict(vetoBlind);
   assert.equal(passed.decision, "PASS");
   assert.deepEqual(cortexGateBlocks(passed), []);
 });
 
-test("firewall: total outage (all sources absent) → VETO_BLIND when opted in, ABSTAIN when not", () => {
+test("graceful degradation: total outage (all sources absent) → ABSTAIN both with and without opt-in", () => {
   const allAbsent = composeCortexEvidence(baseInputs({ ticker: "QQQ", direction: "short" }));
-  assert.equal(assessCortexVerdict(allAbsent, { failClosedOnVetoBlind: true }).decision, "VETO_BLIND");
-  assert.equal(assessCortexVerdict(allAbsent).decision, "ABSTAIN"); // pre-firewall behavior preserved
+  // Both paths degrade to ABSTAIN — the opt-in detects veto-blind but no longer blocks.
+  assert.equal(assessCortexVerdict(allAbsent, { failClosedOnVetoBlind: true }).decision, "ABSTAIN");
+  assert.equal(assessCortexVerdict(allAbsent).decision, "ABSTAIN");
 });
 
-test("firewall: at least ONE veto source answered → today's behavior kept (no VETO_BLIND)", () => {
+test("graceful degradation: at least ONE veto source answered → PASS (not degraded)", () => {
   // gex-walls (a veto source) answered with a support; flow-quality absent.
   const gexAnswered = verdict({
     score: 1.0,
@@ -255,7 +259,7 @@ test("firewall: at least ONE veto source answered → today's behavior kept (no 
   assert.equal(assessCortexVerdict(flowAnswered, { failClosedOnVetoBlind: true }).decision, "PASS");
 });
 
-test("firewall: all sources present is unchanged — real fixtures PASS/VETO identically with the opt on", () => {
+test("graceful degradation: all sources present is unchanged — real fixtures PASS/VETO identically with the opt on", () => {
   // Net-supportive winner still PASSes (both veto sources answered).
   const pass = assessCortexVerdict(composeCortexEvidence(QQQ_SHORT_2026_07_13), { failClosedOnVetoBlind: true });
   assert.equal(pass.decision, "PASS");
@@ -265,7 +269,7 @@ test("firewall: all sources present is unchanged — real fixtures PASS/VETO ide
   assert.equal(veto.decision, "VETO");
 });
 
-test("firewall: evaluateCortexForCommit threads the opt — a both-veto-absent read HOLDs", async () => {
+test("graceful degradation: evaluateCortexForCommit — a both-veto-absent read ABSTAINs (not blocked)", async () => {
   // fetchInputs returns a snapshot with NO gex + NO flow slices → both veto sources absent.
   const a = await evaluateCortexForCommit(
     "QQQ",
@@ -274,9 +278,9 @@ test("firewall: evaluateCortexForCommit threads the opt — a both-veto-absent r
     { fetchInputs: async () => baseInputs({ ticker: "QQQ", direction: "short", now: AS_OF }) },
     { failClosedOnVetoBlind: true }
   );
-  assert.equal(a.decision, "VETO_BLIND");
-  assert.deepEqual(cortexGateBlocks(a).map((b) => b.code), ["cortex_veto_blind"]);
-  // Without the opt, the same outage degrades to ABSTAIN (SPX/exit path unchanged).
+  assert.equal(a.decision, "ABSTAIN");
+  assert.deepEqual(cortexGateBlocks(a), []); // no blocks — commit proceeds
+  // Without the opt, the same outage also ABSTAINs (same behavior either way now).
   const b = await evaluateCortexForCommit("QQQ", "short", new Date(AS_OF), {
     fetchInputs: async () => baseInputs({ ticker: "QQQ", direction: "short", now: AS_OF }),
   });
@@ -452,32 +456,31 @@ test("thin evidence: score JUST below the 0.5 floor with <2 sources is NET_NEGAT
   assert.equal(assessCortexVerdict({ ...justBelow, score: 0.5, supports: [{ ...justBelow.supports[0]!, weight: 0.5 }] }).decision, "PASS");
 });
 
-test("veto priority: a real veto with BOTH veto sources otherwise blind still reports VETO (checked before veto-blind)", () => {
-  // flow-quality VETOED (so it answered) but supports/opposes empty; gex absent. Opt-in firewall on.
+test("veto priority: a real veto with BOTH veto sources otherwise blind still reports VETO (checked before degradation)", () => {
+  // flow-quality VETOED (so it answered) but supports/opposes empty; gex absent. Opt-in on.
   const v = verdict({
     vetoes: [ev("flow-quality", "veto", 1.0, "opposing $1M cluster")],
     absent: ["gex-walls: no GEX ladder", "wall-trend: absent", "sector-heat: absent", "catalyst-news: absent", "vex-charm: absent", "darkpool-confluence: absent", "opening-harvest: absent"],
   });
   const a = assessCortexVerdict(v, { failClosedOnVetoBlind: true });
-  assert.equal(a.decision, "VETO", "a fired veto is the loudest answer — never masked as veto-blind");
+  assert.equal(a.decision, "VETO", "a fired veto is the loudest answer — never masked by degradation");
   assert.deepEqual(cortexGateBlocks(a).map((b) => b.code), ["cortex_veto:flow-quality"]);
 });
 
-test("cortexSummaryFor: a VETO_BLIND assessment summarizes with decision VETO_BLIND and empty veto list", () => {
+test("cortexSummaryFor: a veto-blind assessment (now ABSTAIN) summarizes with abstained reason", () => {
   const vetoBlind = verdict({
     score: 1.5,
     supports: [ev("sector-heat", "supports", 1.5)],
     absent: ["gex-walls: absent", "flow-quality: absent", "wall-trend: absent", "catalyst-news: absent", "vex-charm: absent", "darkpool-confluence: absent", "opening-harvest: absent"],
   });
   const s = cortexSummaryFor(assessCortexVerdict(vetoBlind, { failClosedOnVetoBlind: true }));
-  assert.ok(s && !s.abstained);
-  if (s && !s.abstained) {
-    assert.equal(s.decision, "VETO_BLIND");
-    assert.deepEqual(s.vetoes, [], "no veto fired — the HOLD is because BOTH veto channels went dark");
+  assert.ok(s && s.abstained);
+  if (s && s.abstained) {
+    assert.match(s.reason, /blind to BOTH veto-capable sources/i);
   }
 });
 
-test("cortexEntryContextFor: a VETO_BLIND commit blob carries the FULL vector (the absent list IS the evidence)", () => {
+test("cortexEntryContextFor: a veto-blind assessment (now ABSTAIN) records the reason for calibration", () => {
   const vb = verdict({
     score: 1.5,
     supports: [ev("sector-heat", "supports", 1.5)],
@@ -485,10 +488,9 @@ test("cortexEntryContextFor: a VETO_BLIND commit blob carries the FULL vector (t
   });
   const a = assessCortexVerdict(vb, { failClosedOnVetoBlind: true });
   const blob = cortexEntryContextFor(a);
-  assert.ok(blob && !blob.abstained);
-  if (blob && !blob.abstained) {
-    assert.equal(blob.decision, "VETO_BLIND");
-    assert.equal(blob.absent.length, 7, "the two dark veto channels + the rest survive on the record");
+  assert.ok(blob && blob.abstained);
+  if (blob && blob.abstained) {
+    assert.match(blob.reason, /blind to BOTH veto-capable sources/i);
   }
 });
 

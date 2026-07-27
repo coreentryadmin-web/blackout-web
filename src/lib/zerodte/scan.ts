@@ -691,19 +691,18 @@ async function attachGateVerdicts(
     // (concurrency cap, correlated-conflict) depend on that set being accurate.
     // Latency is bounded: fetchCortexInputs is per-read time-budgeted (2.5s, cache-
     // first readers) and survivors per cycle are few (the governor caps open risk).
-    // evaluateCortexForCommit never throws. failClosedOnVetoBlind:true (Phase-0 firewall)
-    // means a fresh commit where BOTH veto-capable sources (gex-walls + flow-quality)
-    // failed to read HOLDs as VETO_BLIND instead of committing blind; a partial Cortex
-    // outage that still leaves one veto channel readable degrades to ABSTAIN and commits
-    // on the gates alone as before (see cortex-gate.ts for the WHY).
+    // evaluateCortexForCommit never throws. failClosedOnVetoBlind:true detects when BOTH
+    // veto-capable sources (gex-walls + flow-quality) failed to read and records it, but
+    // degrades to ABSTAIN (commit proceeds on hard gates, tier capped at B for thin
+    // evidence) instead of hard-blocking — see cortex-gate.ts for the WHY.
     s.cortex = await evaluateCortexForCommit(s.ticker, s.direction, new Date(nowMs), {}, {
       failClosedOnVetoBlind: true,
     });
     const cortexBlocks = cortexGateBlocks(s.cortex);
     if (cortexBlocks.length > 0) {
-      // A Cortex veto / veto-blind / net-negative blocks EXACTLY like a hard-gate block:
+      // A Cortex veto / net-negative blocks EXACTLY like a hard-gate block:
       // the verdict flips to BLOCKED carrying the Cortex blocks, so the SKIP card, the
-      // zerodte_scan_rejections row (code cortex_veto:<source> / cortex_veto_blind /
+      // zerodte_scan_rejections row (code cortex_veto:<source> /
       // cortex_net_negative + evidence sentences) and the fail-closed persist lane all
       // reuse the existing gate plumbing untouched. Gate blocks were empty here (COMMIT).
       s.gate = { ...s.gate, verdict: "BLOCKED", blocks: cortexBlocks };

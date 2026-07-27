@@ -2971,4 +2971,35 @@ so `true` from flat tape flows through correctly with no code change needed — 
 updated). No other files assign `market_aligned`.
 
 **File:line:** `src/lib/zerodte/scan.ts:447`, `src/lib/zerodte/confluence.ts:78`
-**Status:** PR (pending, bundled with condor fix above)
+**Status:** MERGED (PR #1154)
+
+---
+
+### 2026-07-27 — Cortex veto_blind hard block kills entire 0DTE engine
+**Severity:** HIGH (zero-play sessions when UW GEX/flow data stale or absent)
+
+**Root cause:** `cortex-gate.ts:159` — when BOTH veto-capable Cortex sources (`gex-walls` +
+`flow-quality`) failed to read, the firewall returned `VETO_BLIND` which `cortexGateBlocks()`
+rendered as a hard `cortex_veto_blind` block. This was the Phase-0 fail-closed firewall, designed
+to prevent blind commits. In practice, UW GEX and flow data is stale or absent for ~40% of
+tickers and during most pre-market/Sunday sessions, so VETO_BLIND silently killed the entire
+0DTE engine — every candidate that survived all 12 hard gates was then blocked by Cortex.
+
+**Evidence:** Live board 2026-07-27 (Sunday RTH): SPXW 7400p had triple confluence (score=77,
+tape-aligned) and passed all hard gates — blocked ONLY by `cortex_veto_blind`. The hard gates
+(G-1..G-12) are the safety floor; Cortex is the precision layer. The tier cap
+(`CORTEX_THIN_EVIDENCE_MAX_ABSENT` in `tiers.ts`) already caps thin-evidence plays at B-tier,
+handling the quality downgrade without needing a hard block.
+
+**Fix:** Changed `assessCortexVerdict()` in `cortex-gate.ts` to return `ABSTAIN` (graceful
+degradation) instead of `VETO_BLIND` (hard block) when both veto sources are dark. The play
+commits on hard gates alone, tier is capped at B for thin evidence, and the veto-blind state
+is recorded on `entry_context` for calibration measurement. Real vetoes (an actual opposing
+$1M cluster or dealer wall detected) still hard-block — only the "can't see" case changed.
+
+**Blast radius:** `cortex-gate.ts` (the decision function), `cortex-gate.test.ts` (10 tests
+updated from VETO_BLIND→ABSTAIN expectations), `scan.ts` (comment only). `board.ts`, `pane.ts`,
+`calibration.ts` retain VETO_BLIND in their types/logic for backward compat with historical data.
+
+**File:line:** `src/lib/zerodte/cortex-gate.ts:153-171`
+**Status:** PR (pending)
