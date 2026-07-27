@@ -52,8 +52,12 @@ function cmpCell(v: "y" | "n" | "p") {
   return <span className="rl-c rl-no">—</span>;
 }
 
-/** Redesigned homepage body — server-rendered content + one client FX layer (canvas, reveal, ticker). */
-export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
+/** Redesigned homepage body — server-rendered content + one client FX layer (canvas, reveal, ticker).
+ *  `iosApp` is set server-side (see src/app/(marketing)/page.tsx) from the request UA. When true,
+ *  the pricing table + closing "See pricing" link are SKIPPED — the neutral membership note is
+ *  rendered in their place. Web (`iosApp=false`) is unchanged. This is App Store guideline 3.1.1
+ *  in its durable form: the app receives no pricing markup at all, not even hidden in DOM. */
+export function RedesignHome({ signedIn = false, iosApp = false }: { signedIn?: boolean; iosApp?: boolean }) {
   return (
     <div className="rl">
       {/* HERO */}
@@ -266,9 +270,14 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         </div>
       </section>
 
-      {/* PRICING — hidden inside the iOS app (App Store guideline 3.1.1: the app
-          sells nothing in-app and must show no prices/purchase CTAs). Web is
-          unchanged; the app gets the neutral membership note below instead. */}
+      {/* PRICING — NOT rendered inside the iOS app (App Store guideline 3.1.1: the
+          app sells nothing in-app and must show no prices/purchase CTAs). Web
+          is unchanged; the app gets the neutral membership note below instead.
+          `iosApp` is set server-side from the request UA — the markup is skipped
+          entirely rather than shipped-and-CSS-hidden. `hide-in-ios-app` is kept
+          as a belt-and-braces safety net in case a request is served from a
+          cached/stale response that reaches the app anyway. */}
+      {!iosApp && (
       <section className="rl-sec hide-in-ios-app" id="rl-pricing" style={{ paddingTop: 0 }}>
         <div className="rl-wrap">
           <div className="rl-sec-head rl-reveal">
@@ -297,10 +306,14 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
           </div>
         </div>
       </section>
+      )}
 
-      {/* Neutral membership note — shown ONLY inside the iOS app in place of the
-          pricing table above. No prices, no purchase CTA (App Store 3.1.1): it
-          states the reader-app model and routes to sign-in. */}
+      {/* Neutral membership note — rendered SERVER-SIDE ONLY when iosApp=true,
+          replacing the pricing table above. No prices, no purchase CTA (App
+          Store 3.1.1): states the reader-app model and routes to sign-in.
+          `show-in-ios-app` remains as the CSS-based safety net for the same
+          belt-and-braces reason as the pricing block. */}
+      {iosApp && (
       <section className="rl-sec show-in-ios-app" style={{ paddingTop: 0 }}>
         <div className="rl-wrap">
           <div className="rl-sec-head rl-reveal">
@@ -313,6 +326,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
           </div>
         </div>
       </section>
+      )}
 
       {/* CLOSING */}
       <section className="rl-closing">
@@ -324,7 +338,12 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
           <p>Six modules. One verified tape. Your broker, your trigger — start with the full desk today.</p>
           <div className="rl-cta-row">
             <Link href="/sign-up" prefetch={false} className="rl-btn rl-btn-primary">Get started →</Link>
-            <Link href="/pricing" prefetch={false} className="rl-btn rl-btn-ghost hide-in-ios-app">See pricing</Link>
+            {/* "See pricing" link goes to /pricing, which itself is neutralized in-app; the link
+                markup is still SKIPPED server-side for iOS so the app never advertises the route.
+                `hide-in-ios-app` remains as the CSS safety net. */}
+            {!iosApp && (
+              <Link href="/pricing" prefetch={false} className="rl-btn rl-btn-ghost hide-in-ios-app">See pricing</Link>
+            )}
           </div>
         </div>
       </section>
