@@ -17,6 +17,7 @@ struct CommandView: View {
             VStack(alignment: .leading, spacing: BOSpacing.block) {
                 sessionHeader
                 regimeCard
+                WhatChangedCard(snapshots: vm.history)
                 productPulse
             }
             .padding(BOSpacing.comfortable)
@@ -55,23 +56,34 @@ struct CommandView: View {
         let fetchedAt = vm.state.fetchedAtOrNil()
         BOCard(tint: .accent(BOColor.textAccent)) {
             VStack(alignment: .leading, spacing: BOSpacing.snug) {
-                HStack(alignment: .firstTextBaseline, spacing: BOSpacing.comfortable) {
-                    metricBlock(
-                        label: "SPX",
-                        value: MarketRegimeFormatter.price(regime?.spot),
-                        tint: BOColor.textAccent
-                    )
+                HStack(alignment: .center, spacing: BOSpacing.comfortable) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Market regime")
+                            .font(BOFont.label)
+                            .tracking(1.4)
+                            .textCase(.uppercase)
+                            .foregroundStyle(BOColor.textCaption)
+                        Text(MarketRegimeFormatter.regimeLabel(regime?.regime))
+                            .font(BOFont.heading2)
+                            .foregroundStyle(regime?.regime == nil ? BOColor.textCaption : regimeTint(regime?.regime))
+                    }
                     Spacer()
                     sessionChip
                 }
                 HStack(alignment: .center, spacing: BOSpacing.snug) {
-                    Text(MarketRegimeFormatter.regimeLabel(regime?.regime))
-                        .font(BOFont.label)
-                        .tracking(1.4)
-                        .textCase(.uppercase)
-                        .foregroundStyle(regime?.regime == nil ? BOColor.textCaption : regimeTint(regime?.regime))
+                    if regime?.stale == true {
+                        Label {
+                            Text("Stale")
+                                .font(BOFont.label)
+                                .tracking(1.4)
+                                .textCase(.uppercase)
+                        } icon: {
+                            Circle().fill(BOColor.statusCaution).frame(width: 6, height: 6)
+                        }
+                        .foregroundStyle(BOColor.statusCaution)
+                    }
                     Spacer(minLength: BOSpacing.snug)
-                    freshnessChip(fetchedAt: fetchedAt, updatedAt: regime?.updated_at)
+                    freshnessChip(fetchedAt: fetchedAt, updatedAt: regime?.capturedAt)
                 }
             }
         }
@@ -79,7 +91,15 @@ struct CommandView: View {
 
     private var sessionChip: some View {
         let regime = vm.state.regime
-        let label = (regime?.session?.uppercased()) ?? "—"
+        let label: String = {
+            guard let regime else { return "—" }
+            switch (regime.marketOpen, regime.stale) {
+            case (true?, _):          return "MARKET OPEN"
+            case (false?, false?):    return "MARKET CLOSED"
+            case (false?, true?):     return "MARKET CLOSED · STALE"
+            default:                  return "—"
+            }
+        }()
         return Text(label)
             .font(BOFont.label)
             .tracking(1.4)
@@ -104,17 +124,24 @@ struct CommandView: View {
             BOCard {
                 VStack(alignment: .leading, spacing: BOSpacing.snug) {
                     BOSectionLabel("Regime")
-                    Text(MarketRegimeFormatter.regimeInterpretation(regime.regime))
+                    // Prefer the SERVER-owned playbook line when present (it's
+                    // the text the market-regime-detector cron wrote alongside
+                    // the snapshot, so it changes on the server without an app
+                    // release). Fall back to our built-in one-liner for the
+                    // three canonical regimes when the server didn't ship one.
+                    Text(regime.playbook?.isEmpty == false
+                         ? regime.playbook!
+                         : MarketRegimeFormatter.regimeInterpretation(regime.regime))
                         .font(BOFont.body)
                         .foregroundStyle(BOColor.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                     Divider().overlay(BOColor.border)
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
                               spacing: BOSpacing.snug) {
-                        dataCell(label: "Flip", value: MarketRegimeFormatter.price(regime.flip_level))
-                        dataCell(label: "Spot", value: MarketRegimeFormatter.price(regime.spot))
-                        dataCell(label: "Call wall", value: MarketRegimeFormatter.price(regime.call_wall))
-                        dataCell(label: "Put wall", value: MarketRegimeFormatter.price(regime.put_wall))
+                        subRegimeCell(label: "GEX", value: regime.gexRegime)
+                        subRegimeCell(label: "Vol", value: regime.volRegime)
+                        subRegimeCell(label: "Trend", value: regime.trendRegime)
+                        subRegimeCell(label: "Flow", value: regime.flowRegime)
                     }
                 }
             }
@@ -123,19 +150,15 @@ struct CommandView: View {
 
     // MARK: - Small view atoms
 
-    private func metricBlock(label: String, value: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(BOFont.label).tracking(1.6).textCase(.uppercase).foregroundStyle(BOColor.textCaption)
-            Text(value).font(BOFont.numericHero).monospacedDigit().foregroundStyle(tint)
-        }
-    }
-
-    private func dataCell(label: String, value: String) -> some View {
+    private func subRegimeCell(label: String, value: String?) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label).font(BOFont.label).tracking(1.4).textCase(.uppercase).foregroundStyle(BOColor.textCaption)
-            Text(value).font(BOFont.numericBody).monospacedDigit().foregroundStyle(BOColor.textPrimary)
+            Text(value?.replacingOccurrences(of: "_", with: " ").capitalized ?? "—")
+                .font(BOFont.body)
+                .foregroundStyle(value == nil ? BOColor.textCaption : BOColor.textPrimary)
         }
         .padding(.vertical, BOSpacing.hairline)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func freshnessChip(fetchedAt: Date?, updatedAt: Date?) -> some View {

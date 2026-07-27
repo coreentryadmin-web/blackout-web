@@ -33,7 +33,61 @@ function numericOrNull(raw: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export async function GET() {
+/**
+ * Convert a `market_regime` DB row into the camelCase JSON snapshot both the
+ * single-latest and history responses ship. Reused so any field change lands
+ * in ONE place — the two modes can't drift out of sync. `available` and the
+ * derived `stale` / `marketOpen` flags are included so a `?history` snapshot
+ * carries the same shape as a single-fetch snapshot (the native app decodes
+ * both with one `MarketRegime` Codable).
+ */
+function shapeSnapshotForClient(row: Record<string, unknown>): Record<string, unknown> {
+  const now = new Date();
+  const capturedAtMs = row.captured_at ? new Date(row.captured_at as string | number | Date).getTime() : NaN;
+  const stale = !Number.isFinite(capturedAtMs)
+    ? true
+    : formatEtDate(new Date(capturedAtMs)) !== mostRecentTradingDayEt(now);
+  return {
+    available: true,
+    regime: row.composite,
+    gexRegime: row.gex_regime,
+    volRegime: row.vol_regime,
+    trendRegime: row.trend_regime,
+    flowRegime: row.flow_regime,
+    playbook: row.playbook,
+    capturedAt: row.captured_at,
+    netGex: roundFloats(numericOrNull(row.net_gex)),
+    ivPercentile: roundFloats(numericOrNull(row.iv_percentile)),
+    aboveVwap: row.above_vwap,
+    stale,
+    marketOpen: isEtCashRth(now),
+  };
+}
+
+export async function GET(req: NextRequest) {
+  // Additive history mode — /api/market/regime?history=N returns the last N
+  // snapshots newest-first as `{snapshots: [...]}` so the native app's
+  // Command "What Changed" timeline can render regime transitions without a
+  // new endpoint. When `history` is absent the response shape is UNCHANGED
+  // (the existing single-snapshot contract every current caller depends on).
+  const historyParam = req.nextUrl.searchParams.get("history");
+  if (historyParam != null) {
+    // Bound: min 1, max 50. Non-numeric input coerces to 1 (safe default,
+    // not a 400 — this matches how our other public read endpoints handle
+    // malformed query params: silently clamp rather than reject).
+    const requested = Number.parseInt(historyParam, 10);
+    const limit = Number.isFinite(requested) ? Math.max(1, Math.min(requested, 50)) : 1;
+    try {
+      const result = await dbQuery(
+        "SELECT * FROM market_regime ORDER BY captured_at DESC LIMIT $1",
+        [limit]
+      );
+      const snapshots = (result.rows as Array<Record<string, unknown>>).map(shapeSnapshotForClient);
+      return NextResponse.json({ snapshots }, { status: 200, headers: CDN_CACHE });
+    } catch {
+      return NextResponse.json({ snapshots: [] }, { status: 200, headers: NO_STORE });
+    }
+  }
   try {
     const result = await dbQuery(
       "SELECT * FROM market_regime ORDER BY captured_at DESC LIMIT 1",
@@ -42,44 +96,13 @@ export async function GET() {
     if (result.rows.length === 0) {
       return NextResponse.json({ available: false }, { status: 200, headers: NO_STORE });
     }
-    const regime = result.rows[0];
-    const now = new Date();
-
-    // Staleness (task #173): this query is always "ORDER BY captured_at DESC LIMIT 1" —
-    // on a healthy trading day that's a <5min-old row (market-regime-detector cron writes
-    // every 5 min through isSpxEngineCronWindow), but off-hours, over a weekend/holiday, or
-    // during a cron outage it's whatever the last successful write ever was, with nothing in
-    // the response distinguishing "live" from "last one we ever captured, possibly days old."
-    // Confirmed live: a Fri 2026-07-03 (July-4th-observed holiday) capture was still being
-    // served `available: true` on Sun 2026-07-05, ~49h later, full playbook text included
-    // (docs/audit/FINDINGS.md). `stale` is true whenever captured_at's ET calendar date isn't
-    // the current/most-recently-completed trading session — an unparseable/missing timestamp
-    // fails CLOSED (stale) rather than silently claiming freshness.
-    const capturedAtMs = regime.captured_at ? new Date(regime.captured_at).getTime() : NaN;
-    const stale = !Number.isFinite(capturedAtMs)
-      ? true
-      : formatEtDate(new Date(capturedAtMs)) !== mostRecentTradingDayEt(now);
-
-    return NextResponse.json({
-      available: true,
-      regime: regime.composite,
-      gexRegime: regime.gex_regime,
-      volRegime: regime.vol_regime,
-      trendRegime: regime.trend_regime,
-      flowRegime: regime.flow_regime,
-      playbook: regime.playbook,
-      capturedAt: regime.captured_at,
-      netGex: roundFloats(numericOrNull(regime.net_gex)),
-      ivPercentile: roundFloats(numericOrNull(regime.iv_percentile)),
-      aboveVwap: regime.above_vwap,
-      // Additive fields (no existing field's meaning/type changed) — see PR for why
-      // `available` stays true rather than flipping to false off-hours: there is no
-      // known internal consumer of this route today (grepped; the Largo "get_market_regime"
-      // tool reads a different source, fetchPlatformIntelSnapshot), so the non-breaking,
-      // additive contract is the safer choice for any future/external consumer.
-      stale,
-      marketOpen: isEtCashRth(now),
-    }, { status: 200, headers: CDN_CACHE });
+    // Both the single-latest and ?history modes use `shapeSnapshotForClient`
+    // so the response contract can't drift. See its docstring for the
+    // staleness (task #173) rules — those still apply here.
+    return NextResponse.json(
+      shapeSnapshotForClient(result.rows[0] as Record<string, unknown>),
+      { status: 200, headers: CDN_CACHE }
+    );
   } catch {
     return NextResponse.json({ available: false }, { status: 200, headers: NO_STORE });
   }

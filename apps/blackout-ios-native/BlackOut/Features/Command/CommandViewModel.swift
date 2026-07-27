@@ -26,6 +26,10 @@ public final class CommandViewModel: ObservableObject {
     }
 
     @Published public private(set) var state: LoadState = .idle
+    /// Recent snapshots for the "What changed" timeline card. Newest first.
+    /// Populated by `refreshHistory()`. Stays empty on any error so the card
+    /// falls back to its skeleton/empty state — never fabricates a change.
+    @Published public private(set) var history: [MarketRegime] = []
 
     private let repo: MarketRegimeRepository
 
@@ -53,15 +57,33 @@ public final class CommandViewModel: ObservableObject {
     }
 
     /// Continuous refresh — call from `.task` in the view so cancellation on
-    /// disappear stops the loop for free. Fires an immediate first fetch, then
-    /// polls every `intervalSeconds`.
+    /// disappear stops the loop for free. Fires an immediate first fetch of
+    /// BOTH the latest snapshot AND the recent history, then polls the
+    /// latest every `intervalSeconds`. History is refetched every 4th tick
+    /// (default: every 2 min at a 30s cadence) — regime transitions are
+    /// slow enough that a fresh history every poll would just be waste.
     public func startAutoRefresh(intervalSeconds: UInt64 = 30) async {
         await refresh()
+        await refreshHistory()
+        var tick: UInt64 = 0
         while !Task.isCancelled {
             do {
                 try await Task.sleep(nanoseconds: intervalSeconds * 1_000_000_000)
             } catch { return }
             await refresh()
+            tick += 1
+            if tick % 4 == 0 { await refreshHistory() }
+        }
+    }
+
+    /// One-shot history fetch. On error, keeps the previous history so a
+    /// transient network flap doesn't blank the What-Changed card.
+    public func refreshHistory(limit: Int = 16) async {
+        do {
+            history = try await repo.history(limit: limit)
+        } catch {
+            // Keep the last known list — the freshness label on the top
+            // card already communicates the app's overall stale state.
         }
     }
 

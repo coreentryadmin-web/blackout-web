@@ -4,12 +4,13 @@ import SwiftUI
 ///
 /// Master prompt §5: "Product pulse. Each summary must communicate real
 /// intelligence, not merely provide an 'Open' button." v1 derives the pulse
-/// from the shared `MarketRegime` snapshot the Command view already fetched
-/// — SPX Slayer, Thermal, and Vector are all direct expressions of the
-/// current regime + walls, so we can give real one-line intelligence today
-/// without wiring per-desk endpoints. Helix / Largo / Night Hawk state their
-/// scope honestly ("live-tape driven"; "ask a question"; "post-close") until
-/// per-desk feeds land.
+/// from the shared `MarketRegime` snapshot the Command view already fetched.
+/// v2 (per-desk endpoints) hooks the real desk feeds; each card's `pulseText`
+/// swaps to a live per-desk read as those endpoints wire up.
+///
+/// Design rule: NEVER show a fake number. If we don't have live data for a
+/// given desk, the pulse states what the desk DOES in a specific way — not
+/// a filler line and not a fabricated stat.
 public struct ProductPulseCard: View {
     let module: IntelligenceModule
     let regime: MarketRegime?
@@ -60,18 +61,14 @@ public struct ProductPulseCard: View {
         .accessibilityHint("Opens the \(module.name) desk")
     }
 
-    /// One-line current intelligence for this desk, given the shared regime
-    /// snapshot. Keep every string short — this is a Command-tab tile, not
-    /// a paragraph. The premise (master prompt): each summary communicates
-    /// something concrete, not a marketing tagline.
+    /// One-line pulse for this desk from what the shared regime actually
+    /// carries. Only says something concrete when the data exists — otherwise
+    /// states what the desk DOES so the card is never empty and never lies.
     private var pulseText: String {
         switch module.id {
-        case "spx-slayer":
-            return spxPulse
-        case "thermal":
-            return thermalPulse
-        case "vector":
-            return vectorPulse
+        case "spx-slayer": return spxPulse
+        case "thermal":    return thermalPulse
+        case "vector":     return vectorPulse
         case "helix":
             return "Live options-flow tape — sweeps, blocks, and repeated-strike aggression scored in real time."
         case "largo":
@@ -84,28 +81,38 @@ public struct ProductPulseCard: View {
     }
 
     private var spxPulse: String {
-        guard let regime else { return "Waiting on regime snapshot." }
-        let label = MarketRegimeFormatter.regimeLabel(regime.regime).lowercased()
-        if let spot = regime.spot, let flip = regime.flip_level {
-            let distance = spot - flip
-            let sign = distance >= 0 ? "above" : "below"
-            let pts = String(format: "%.0f", abs(distance))
-            return "Spot is \(pts)pt \(sign) the dealer flip (\(label))."
+        guard let regime, regime.available else {
+            return "SPX regime + 0DTE decision desk. Waiting on today's snapshot."
         }
-        return "Regime: \(label)."
+        let label = MarketRegimeFormatter.regimeLabel(regime.regime).lowercased()
+        var parts: [String] = ["Regime: \(label)"]
+        if let trend = regime.trendRegime {
+            parts.append("trend \(trend.replacingOccurrences(of: "_", with: " "))")
+        }
+        if regime.aboveVwap == true { parts.append("above VWAP") }
+        else if regime.aboveVwap == false { parts.append("below VWAP") }
+        return parts.joined(separator: " · ") + "."
     }
 
     private var thermalPulse: String {
-        guard let regime else { return "Waiting on gamma structure." }
-        let cw = regime.call_wall.map { MarketRegimeFormatter.price($0) } ?? "—"
-        let pw = regime.put_wall.map { MarketRegimeFormatter.price($0) } ?? "—"
-        return "Call wall \(cw) · Put wall \(pw). Dealer positioning at these strikes drives hedging."
+        guard let regime, regime.available else {
+            return "Dealer gamma + vanna map. Waiting on positioning snapshot."
+        }
+        if let gex = regime.gexRegime {
+            let hedging = gex.contains("positive") ? "dealer hedging suppresses moves" :
+                          gex.contains("negative") ? "dealer hedging amplifies moves" :
+                          "regime in transition"
+            return "GEX regime: \(gex.replacingOccurrences(of: "_", with: " ")) — \(hedging)."
+        }
+        return "Dealer positioning across strikes and expiries."
     }
 
     private var vectorPulse: String {
-        guard let regime else { return "Cross-ticker gamma-wall radar. Waiting on snapshot." }
-        if let flip = regime.flip_level {
-            return "SPX flip at \(MarketRegimeFormatter.price(flip)). Vector shows the same structure across every optionable ticker."
+        guard let regime, regime.available else {
+            return "Cross-ticker gamma-wall radar. Waiting on snapshot."
+        }
+        if let gex = regime.gexRegime {
+            return "SPX \(gex.replacingOccurrences(of: "_", with: " ")). Vector shows the same structure across every optionable ticker."
         }
         return "Cross-ticker gamma-wall radar."
     }

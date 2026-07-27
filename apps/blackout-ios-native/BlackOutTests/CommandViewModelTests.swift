@@ -3,32 +3,42 @@ import XCTest
 
 final class FakeMarketRegimeRepo: MarketRegimeRepository, @unchecked Sendable {
     var scripted: [Result<MarketRegime, Error>] = []
+    var historyScripted: [Result<[MarketRegime], Error>] = []
     private(set) var calls = 0
+    private(set) var historyCalls = 0
 
     func latest() async throws -> MarketRegime {
         calls += 1
         guard !scripted.isEmpty else { throw APIError.network("no scripted response") }
         return try scripted.removeFirst().get()
     }
+
+    func history(limit: Int) async throws -> [MarketRegime] {
+        historyCalls += 1
+        guard !historyScripted.isEmpty else { return [] }
+        return try historyScripted.removeFirst().get()
+    }
 }
 
-private func sample(regime: String? = "positive_gamma",
-                    spot: Double? = 6400,
-                    flip: Double? = 6380,
-                    call: Double? = 6420,
-                    put: Double? = 6350,
-                    updatedAt: Date? = Date()) -> MarketRegime {
+func sample(regime: String? = "positive_gamma",
+            gex: String? = "positive_gamma",
+            trend: String? = "up",
+            aboveVwap: Bool? = true,
+            capturedAt: Date? = Date()) -> MarketRegime {
     MarketRegime(
+        available: true,
         regime: regime,
-        net_gex: 1_500_000_000,
-        iv_percentile: 42,
-        flip_level: flip,
-        call_wall: call,
-        put_wall: put,
-        spot: spot,
-        updated_at: updatedAt,
-        session: "rth",
-        session_date: "2026-07-27"
+        gexRegime: gex,
+        volRegime: "compressed",
+        trendRegime: trend,
+        flowRegime: "call_dominant",
+        playbook: nil,
+        capturedAt: capturedAt,
+        netGex: 1_500_000_000,
+        ivPercentile: 42,
+        aboveVwap: aboveVwap,
+        stale: false,
+        marketOpen: true
     )
 }
 
@@ -84,7 +94,8 @@ final class CommandViewModelTests: XCTestCase {
         XCTAssertEqual(vm.state, .idle)
         await vm.refresh()
         if case .loaded(let regime, _) = vm.state {
-            XCTAssertEqual(regime.spot, 6400)
+            XCTAssertEqual(regime.regime, "positive_gamma")
+            XCTAssertTrue(regime.available)
         } else {
             XCTFail("expected .loaded, got \(vm.state)")
         }
@@ -104,16 +115,16 @@ final class CommandViewModelTests: XCTestCase {
     }
 
     func test_refresh_failureAfterSuccess_keepsPreviousData() async {
-        // The premium behavior: never blow away the last-known snapshot on
-        // a transient error. Freshness chip will show the age; error card
-        // does NOT replace the good data.
+        // Premium behavior: never blow away the last-known snapshot on a
+        // transient error. Freshness chip carries the age; error card does
+        // NOT replace the good data.
         let repo = FakeMarketRegimeRepo()
-        repo.scripted = [.success(sample(spot: 6410)), .failure(APIError.network("offline"))]
+        repo.scripted = [.success(sample(regime: "positive_gamma")), .failure(APIError.network("offline"))]
         let vm = CommandViewModel(repo: repo)
         await vm.refresh()
         await vm.refresh()
         if case .loaded(let regime, _) = vm.state {
-            XCTAssertEqual(regime.spot, 6410, "must keep the previous good snapshot on error")
+            XCTAssertEqual(regime.regime, "positive_gamma", "must keep previous snapshot on error")
         } else {
             XCTFail("expected .loaded (preserved), got \(vm.state)")
         }
@@ -121,15 +132,36 @@ final class CommandViewModelTests: XCTestCase {
 
     func test_refresh_multipleSuccesses_updatesData() async {
         let repo = FakeMarketRegimeRepo()
-        repo.scripted = [.success(sample(spot: 6400)), .success(sample(spot: 6425))]
+        repo.scripted = [.success(sample(regime: "positive_gamma")), .success(sample(regime: "negative_gamma"))]
         let vm = CommandViewModel(repo: repo)
         await vm.refresh()
         await vm.refresh()
         if case .loaded(let regime, _) = vm.state {
-            XCTAssertEqual(regime.spot, 6425)
+            XCTAssertEqual(regime.regime, "negative_gamma")
         } else {
             XCTFail("expected .loaded second value, got \(vm.state)")
         }
         XCTAssertEqual(repo.calls, 2)
+    }
+
+    // MARK: - history
+
+    func test_refreshHistory_populatesHistoryOnSuccess() async {
+        let repo = FakeMarketRegimeRepo()
+        repo.historyScripted = [.success([sample(regime: "positive_gamma"), sample(regime: "negative_gamma")])]
+        let vm = CommandViewModel(repo: repo)
+        await vm.refreshHistory()
+        XCTAssertEqual(vm.history.count, 2)
+        XCTAssertEqual(vm.history[0].regime, "positive_gamma")
+    }
+
+    func test_refreshHistory_preservesPreviousOnError() async {
+        let repo = FakeMarketRegimeRepo()
+        repo.historyScripted = [.success([sample(regime: "positive_gamma")]),
+                                 .failure(APIError.network("offline"))]
+        let vm = CommandViewModel(repo: repo)
+        await vm.refreshHistory()
+        await vm.refreshHistory()
+        XCTAssertEqual(vm.history.count, 1, "history preserved across transient failure")
     }
 }

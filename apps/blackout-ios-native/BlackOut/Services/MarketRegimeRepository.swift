@@ -1,29 +1,61 @@
 import Foundation
 
 /// Domain model for a market regime snapshot as delivered by
-/// `GET /api/market/regime`. Field names match the API contract exactly so
-/// decoding is a straight passthrough — no CodingKeys mapping.
+/// `GET /api/market/regime`. Field names are camelCase to match the ACTUAL
+/// API response shape (verified against
+/// `src/app/api/market/regime/route.ts` — the route explicitly camelCases
+/// the DB row before serialising it).
 ///
-/// See docs/ios/API-CONTRACTS.md for the endpoint's full shape; the code path
-/// on the server is `src/app/api/market/regime/route.ts`, and NUMERIC values
-/// are already rounded/coerced to Doubles there.
+/// EARLIER MISTAKE (fixed 2026-07-27): a first pass of this file used
+/// invented snake_case field names (`flip_level`, `call_wall`, etc.) that
+/// the endpoint does NOT return. Those were left over from a wrong reading
+/// of the DB schema; the JSON contract is what the API actually serves.
+/// Walls / flip / spot live in `/api/market/gex-positioning`, not here —
+/// wired via a separate repository when that view lands.
 public struct MarketRegime: Codable, Equatable, Sendable {
-    public let regime: String?              // "positive_gamma" / "negative_gamma" / "transition" / nil
-    public let net_gex: Double?             // net dealer gamma exposure, notional $
-    public let iv_percentile: Double?       // 0..100 (or null)
-    public let flip_level: Double?          // dealer gamma flip strike
-    public let call_wall: Double?
-    public let put_wall: Double?
-    public let spot: Double?                // SPX print
-    public let updated_at: Date?
-    public let session: String?             // "premarket" / "rth" / "postmarket" / "closed"
-    public let session_date: String?        // "YYYY-MM-DD"
+    /// Always present. `false` means "we have no snapshot at all" (cold DB /
+    /// pre-first-cron); UI shows the loading skeleton state.
+    public let available: Bool
+
+    /// Composite regime label, e.g. "positive_gamma" / "negative_gamma" /
+    /// "transition". Nil off-hours or before the first cron of the day.
+    public let regime: String?
+
+    /// Sub-regime components. Any of these may be nil.
+    public let gexRegime: String?
+    public let volRegime: String?
+    public let trendRegime: String?
+    public let flowRegime: String?
+
+    /// Plain-English "what to do" text stored with the snapshot (server-owned
+    /// so language changes there without an app release).
+    public let playbook: String?
+
+    public let capturedAt: Date?
+    public let netGex: Double?
+    public let ivPercentile: Double?
+    public let aboveVwap: Bool?
+
+    /// True when the server determines the snapshot is old (off-hours,
+    /// weekend, cron outage). Never present stale data as live — use this
+    /// to caption the freshness chip. Master prompt Section 17.
+    public let stale: Bool?
+    /// Whether the US cash session is currently open. Independent of `stale`.
+    public let marketOpen: Bool?
+}
+
+/// Response envelope for `GET /api/market/regime/history?limit=N`.
+public struct MarketRegimeHistory: Codable, Equatable, Sendable {
+    public let snapshots: [MarketRegime]
 }
 
 /// Repository — the SwiftUI view depends on this protocol, not the concrete
 /// URLSession-backed impl, so tests inject a fake without hitting the network.
 public protocol MarketRegimeRepository: Sendable {
     func latest() async throws -> MarketRegime
+    /// Most recent `limit` snapshots, newest first. Used by the Command
+    /// "What Changed" timeline. Callers typically ask for 8–16.
+    func history(limit: Int) async throws -> [MarketRegime]
 }
 
 public struct LiveMarketRegimeRepository: MarketRegimeRepository {
@@ -32,6 +64,14 @@ public struct LiveMarketRegimeRepository: MarketRegimeRepository {
 
     public func latest() async throws -> MarketRegime {
         try await client.get("/api/market/regime", as: MarketRegime.self)
+    }
+
+    public func history(limit: Int) async throws -> [MarketRegime] {
+        let bounded = max(1, min(limit, 50))
+        let envelope: MarketRegimeHistory = try await client.get(
+            "/api/market/regime?history=\(bounded)", as: MarketRegimeHistory.self
+        )
+        return envelope.snapshots
     }
 }
 
@@ -77,7 +117,7 @@ public enum MarketRegimeFormatter {
         return f.string(from: NSNumber(value: v)) ?? "—"
     }
 
-    /// Freshness — how long since the API's `updated_at` timestamp. Used in
+    /// Freshness — how long since the API's `capturedAt` timestamp. Used in
     /// the "last update" chip in the session header. Contract: NEVER present
     /// stale data as live, per master prompt Section 17.
     public static func freshnessLabel(_ updatedAt: Date?, now: Date = Date()) -> String {
