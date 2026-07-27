@@ -40,7 +40,7 @@ jobs:
         run: node scripts/admin-ui-walkthrough.mjs
       - name: Upload screenshots + report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: admin-ui-walkthrough
           path: artifacts/admin-ui-walkthrough/
