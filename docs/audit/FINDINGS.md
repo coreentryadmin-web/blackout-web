@@ -3054,3 +3054,101 @@ plays where flow led a reversal) + Cortex veto_blind (fixed in PR #1155) = nothi
 `board.ts` retains `intraday_conflict` field for display.
 
 **Status:** PR (pending)
+
+## 2026-07-27 — [CTO AUDIT] Night Hawk 0DTE full-system hardening (27 findings, 4 workstreams)
+
+**Severity.** Mixed (4× HIGH, 8× MEDIUM, 15× LOW/additive). Full CTO-level audit of the entire Night
+Hawk 0DTE system — architecture, gates, discovery, exit engine, governor, data resilience, telemetry.
+
+**Workstream 1 — Data resilience** (4 fixes):
+
+1. **Stale fallback max-age cap (30 min):** Module-level `_lastVix`, `_lastMacroRead`, `_lastEarnings`
+   had NO timestamp — a 3-hour-old VIX could back-fill as "current." Added `_lastVixAt`,
+   `_lastMacroReadAt`, `_lastEarningsAt` timestamps + `MAX_FALLBACK_AGE_MS = 30 * 60 * 1000`. Fallbacks
+   older than 30 min are treated as truly unavailable (fail-closed).
+   **File:line:** `src/lib/zerodte/scan.ts:163-171`
+
+2. **Degraded-key blocking refresh skip:** `server-cache.ts` forced a BLOCKING refresh when
+   `staleAge > MAX_STALE_AGE_MS` even when the upstream was already degraded (3+ consecutive failures).
+   Now returns stale + kicks off non-blocking background refresh when `degradedKeys.has(key)`.
+   **File:line:** `src/lib/server-cache.ts:160-166`
+
+3. **Polygon null-return logging:** `polygon-largo.ts` `polygonGet()` returned null silently on errors.
+   Added `console.warn` for non-ok HTTP responses (path + status) and caught errors (path + message).
+   **File:line:** `src/lib/providers/polygon-largo.ts:50-56`
+
+4. **Polygon URL failover:** Production reads `POLYGON_API_BASE` once from env (no runtime failover).
+   Added primary/fallback URL switching (api.massive.com ↔ api.polygon.io) triggered by the circuit
+   breaker state via `isPolygonCircuitOpen()`. Sticky until breaker resets.
+   **File:line:** `src/lib/providers/polygon-largo.ts:11-35`
+
+**Workstream 2 — Discovery expansion** (4 fixes):
+
+5. **BREAKOUT_MAX_CANDIDATES raised 6→15:** The discovery-recall-probe proved the top-6 $-volume cap
+   dropped 10-17 winning movers per session. Downstream gate stack (G-3 score floor, Cortex, governor)
+   handles quality filtering.
+   **File:line:** `src/lib/zerodte/breakout-discovery.ts:41`
+
+6. **Breakdown (SHORT-side) discovery added:** New `screenBreakdownMovers()` screens gap-down movers
+   (gain >= 5% negative, weak close-strength <= 0.5). Breakout discovery now screens both long breakouts
+   AND short breakdowns from the same grouped-daily, deduplicates (long wins), picks put contracts.
+   **Files:** `candidates.ts`, `breakout-source.ts`, `breakout-discovery.ts`
+
+7. **PIN universe expanded 14→30:** Added 16 high-OI names: NFLX, CRM, AVGO, COST, LLY, JPM, V, MA,
+   UNH, WMT, PG, JNJ, HD, ADBE, INTC, MU.
+   **File:line:** `src/lib/zerodte/pin-discovery.ts`
+
+8. **Multi-source +8 score boost:** When a ticker appears in 2+ discovery origins (FLOW + BREAKOUT,
+   FLOW + PIN, etc.), score gets +8 (capped at 100). Applied in both `mergeDiscoveryOrigins` and
+   `mergePinOrigins`.
+   **Files:** `breakout-source.ts`, `pin-source.ts`
+
+**Workstream 3 — Exit engine + governor** (4 fixes):
+
+9. **Tier-aware exit mode (E5 graduation):** A/B-tier plays default to `trim_scale` (proven to dominate
+   ratchet in EVERY backtest window); C-tier stays on conservative ratchet. New `resolveExitModeForTier()`
+   in exit-sync.ts. Exit policy now resolved PER PLAY (not per scan) based on the assigned merit tier.
+   Operator `ZERODTE_EXIT_MODE=ratchet` env override still forces all tiers.
+   **Files:** `exit-sync.ts:112-132`, `scan.ts:913-951`
+
+10. **Distinct `governor_session_loss_halt` code:** Realized-loss halt reused the hard-stop halt's
+    `governor_session_stops` code. Consumers couldn't tell the two halts apart. Now uses distinct
+    `governor_session_loss_halt` code.
+    **Files:** `governor.ts:423-432`, `board.ts` (type union)
+
+11. **Sector-pair correlation groups:** Single broad-index/ETF group expanded with 4 sector pairs:
+    Semiconductors (NVDA/AMD/INTC/MU), Mega-cap tech (MSFT/GOOGL/META/AMZN), Tech/enterprise
+    (AAPL/AVGO/CRM/ADBE), Financials (JPM/GS/MS/BAC). `CONCENTRATION_POLICY_VERSION` bumped v1→v2.
+    **File:line:** `src/lib/zerodte/governor.ts:102-108`
+
+12. **Dedicated grading cron route:** New `src/app/api/cron/zerodte-grade/route.ts` — standalone grading
+    endpoint that bypasses the 10-minute throttle. Decouples grading from the warm cron.
+
+**Workstream 4 — Gate tests + docs** (4 fixes):
+
+13. **G-4 dead-code comment:** The null `spy_bias` path in G-4's elevated-VIX regime is unreachable
+    (G-1 blocks null bias first). Added explanatory comment.
+    **File:line:** `src/lib/zerodte/gates.ts:468`
+
+14. **Ticker-set divergence documented:** Added comments documenting that `SPX_CORRELATED_TICKERS`
+    (G-6) is intentionally broader than `CORRELATION_GROUPS` (governor).
+    **Files:** `gates.ts:178`, `governor.ts:101`
+
+15. **3 missing gate tests added:** `condor_macro_block` (G-7 blocks condors on high-impact macro),
+    `condor_range_break` (spot breached short strike), `FOMC_afternoon_window` (directional lifts
+    after ±15m, condor stays blocked). Total gate tests: 90→94.
+    **File:line:** `src/lib/zerodte/gates.test.ts`
+
+16. **G-12 null-confluence telemetry counter:** `_nullConfluencePassCount` + getter
+    `getNullConfluencePassCount()` tracks how often the G-12 fail-open path fires. Exported for
+    health checks. Test added.
+    **File:line:** `src/lib/zerodte/gates.ts`
+
+**Evidence:** Full audit artifact published. TypeScript compiles clean (0 errors). 94/94 gate tests
+pass. 10/10 breakout-source tests pass.
+
+**Blast radius:** 14 files changed across the 0DTE subsystem. No member-facing UI changes. Exit
+mode change is the highest-risk item — mitigated by operator kill-switch (`ZERODTE_EXIT_MODE=ratchet`)
+and per-play frozen exit policy (existing plays unaffected).
+
+**Status:** PR (pending)

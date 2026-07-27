@@ -99,8 +99,15 @@ export type GovernorSnapshot = {
 // instruments, one guaranteed loser. v1 keeps ONE static group (the broad
 // index/ETF complex); sector pairs (e.g. NVDA/AMD) come later via the calibration
 // loop once per-play evidence says which pairs actually co-move enough to matter.
+// Governor opposing-direction conflict scope: instruments that are direct hedging
+// proxies (SPY long + QQQ short = guaranteed one loser). Intentionally NARROWER
+// than SPX_CORRELATED_TICKERS (gates.ts G-6) which also catches sympathy movers.
 export const CORRELATION_GROUPS: ReadonlyArray<ReadonlySet<string>> = [
   new Set(["SPY", "QQQ", "IWM", "DIA", "SPX", "SPXW", "NDX", "XSP"]),
+  new Set(["NVDA", "AMD", "INTC", "MU"]),     // Semiconductors — high intraday beta co-movement
+  new Set(["MSFT", "GOOGL", "META", "AMZN"]), // Mega-cap tech — correlated on macro/NQ moves
+  new Set(["AAPL", "AVGO", "CRM", "ADBE"]),   // Tech/enterprise — second tech cluster
+  new Set(["JPM", "GS", "MS", "BAC"]),         // Financials — rate-sensitive, move together on yields
 ];
 
 /** WS-05 version stamp for the concentration MEASURE frozen at commit (freezeConcentration
@@ -108,7 +115,7 @@ export const CORRELATION_GROUPS: ReadonlyArray<ReadonlySet<string>> = [
  *  same-beta/same-direction is counted) so a calibration read can partition frozen states by
  *  the logic that produced them — same discipline as CONCENTRATION_POLICY's sibling version
  *  strings. v1 = the single broad-index/ETF group + same-direction/same-group counting. */
-export const CONCENTRATION_POLICY_VERSION = "v1";
+export const CONCENTRATION_POLICY_VERSION = "v2";
 
 /** A stable, deterministic id for a correlation group — its sorted members joined — so a
  *  frozen concentration state names the exact group it measured without depending on array
@@ -415,15 +422,15 @@ export function evaluateZeroDteGovernor(
   // AUDIT SEV-3 — realized-loss halt, ALONGSIDE the hard-stop halt above and equally
   // dominating. Catches the chop-and-bleed day the hard-stop count misses: enough
   // committed plays closing red (losing time-stops that never hit −50%) drains the
-  // same capital as the 7/13 seven-stop day but through a different exit reason. Reuses
-  // the existing governor_session_stops gate code deliberately — it IS a session halt,
-  // and the ZeroDteGateFailure union (board.ts) is intentionally left untouched to keep
-  // this change scoped to governor.ts; the realized-loss cause is spelled out in the
-  // reason. Strictly additive: it can only ADD a block, never remove one.
+  // same capital as the 7/13 seven-stop day but through a different exit reason.
+  // DISTINCT code `governor_session_loss_halt` (not the hard-stop halt's
+  // `governor_session_stops`) so consumers can tell the two halts apart — the
+  // hard-stop halt fires on 3 −50% stops, the loss halt fires on 3 realized losers
+  // (any exit reason) or cumulative −120% session P&L. Strictly additive.
   const lossHalt = governorLossHaltReason(snap);
   if (lossHalt) {
     blocks.push({
-      code: "governor_session_stops",
+      code: "governor_session_loss_halt",
       reason: lossHalt,
       threshold: GOVERNOR_LOSS_HALT_COUNT,
       unlock_et: null,

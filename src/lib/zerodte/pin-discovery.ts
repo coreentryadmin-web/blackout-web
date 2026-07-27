@@ -40,11 +40,19 @@ import type { EnrichedZeroDteSetup } from "./board";
 const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
 const RTH_CUTOFF_ET_MINUTES = 15 * 60;
 
-/** The curated LIQUID pin universe (see the file header). Index products first — the deepest,
- *  most dealer-defended gamma and true daily 0DTE — then the most-liquid mega-cap single names. */
+/** The curated LIQUID pin universe (see the file header). Index products first -- the deepest,
+ *  most dealer-defended gamma and true daily 0DTE -- then mega-cap single names with high OI.
+ *  Expanded from 14 to 30 names: the original 14 (indices + top mega-caps) plus 16 next-tier
+ *  high-OI names. evaluatePinRegime already works on any ticker with UW GEX data -- widening
+ *  the universe just lets the regime filter see more candidates. */
 export const DEFAULT_PIN_UNIVERSE = [
+  // Tier 1: index products (deepest gamma, true daily 0DTE)
   "SPX", "NDX", "SPY", "QQQ", "IWM", "DIA",
+  // Tier 2: original mega-cap single names
   "AAPL", "MSFT", "NVDA", "AMZN", "META", "TSLA", "GOOGL", "AMD",
+  // Tier 3: next-tier high-OI names (added for broader PIN coverage)
+  "NFLX", "CRM", "AVGO", "COST", "LLY", "JPM", "V", "MA",
+  "UNH", "WMT", "PG", "JNJ", "HD", "ADBE", "INTC", "MU",
 ] as const;
 
 /** Resolve the pin universe: env override (ZERODTE_PIN_UNIVERSE, comma-separated) else the default. */

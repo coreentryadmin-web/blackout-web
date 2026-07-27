@@ -91,7 +91,7 @@ import {
   buildResolvedExitPolicy,
   exitPolicyGraderParams,
 } from "./strategy-version";
-import { evaluateLedgerRowExit, resolveExitMode, readFrozenExitPolicy } from "./exit-sync";
+import { evaluateLedgerRowExit, resolveExitMode, resolveExitModeForTier, readFrozenExitPolicy } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
 import { persistZeroDteRejections } from "./rejections";
 import {
@@ -160,9 +160,15 @@ const ENRICH_WAIT_MS = 3_000;
 // every play — if we have a recent successful read from this session, use it instead.
 // On a TRUE cold start (process restart, no prior read), there's nothing to fall back to
 // and the fail-closed gates correctly hold the board until the provider responds.
+// Max-age cap: a fallback older than 30 minutes is treated as truly unavailable — stale
+// VIX/macro/earnings from hours ago is worse than fail-closed (data-resilience audit 2026-07-27).
+const MAX_FALLBACK_AGE_MS = 30 * 60 * 1000; // 30 minutes
 let _lastVix: number | null = null;
+let _lastVixAt = 0;
 let _lastMacroRead: Awaited<ReturnType<typeof macroEventsOnDateLive>> | null = null;
+let _lastMacroReadAt = 0;
 let _lastEarnings: { map: Map<string, EarningsFlag>; unavailable: boolean } | null = null;
+let _lastEarningsAt = 0;
 
 /** Await `p` for at most `ms`, else null — without cancelling `p` (it continues in
  *  the background and populates the server cache). */
@@ -610,22 +616,23 @@ async function attachGateVerdicts(
   // If a provider fetch timed out (null) but we have a successful read from earlier
   // this session, use the fallback instead of marking unavailable. On a fresh read,
   // store it as the new fallback.
+  const now = Date.now();
   let effectiveVix = vixDayOpen;
-  if (vixDayOpen != null) _lastVix = vixDayOpen;
-  else if (_lastVix != null) effectiveVix = _lastVix;
+  if (vixDayOpen != null) { _lastVix = vixDayOpen; _lastVixAt = now; }
+  else if (_lastVix != null && (now - _lastVixAt) < MAX_FALLBACK_AGE_MS) effectiveVix = _lastVix;
   const vixUnavailable = effectiveVix == null;
 
   let effectiveMacro = macroRead;
-  if (macroRead != null) _lastMacroRead = macroRead;
-  else if (_lastMacroRead != null) effectiveMacro = _lastMacroRead;
+  if (macroRead != null) { _lastMacroRead = macroRead; _lastMacroReadAt = now; }
+  else if (_lastMacroRead != null && (now - _lastMacroReadAt) < MAX_FALLBACK_AGE_MS) effectiveMacro = _lastMacroRead;
   const macroUnavailable = effectiveMacro == null;
   const macroEvents = effectiveMacro ?? [];
 
   // D1 firewall: TRUE only when the earnings read was ATTEMPTED-but-FAILED AND no
   // prior successful read exists for this session.
   let effectiveEarnings = freshEarningsResult;
-  if (!freshEarningsResult.unavailable) _lastEarnings = freshEarningsResult;
-  else if (_lastEarnings != null) effectiveEarnings = _lastEarnings;
+  if (!freshEarningsResult.unavailable) { _lastEarnings = freshEarningsResult; _lastEarningsAt = now; }
+  else if (_lastEarnings != null && (now - _lastEarningsAt) < MAX_FALLBACK_AGE_MS) effectiveEarnings = _lastEarnings;
   const freshEarnings = effectiveEarnings.map;
   const earningsUnavailable = effectiveEarnings.unavailable;
   // D2 firewall: the halt read yields a per-ticker ACTIVE-halt set plus one GLOBAL feed-stale
@@ -903,19 +910,17 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   // the calibration analyzer keeps the new plays in a fresh cohort instead of blending them with plays
   // the old logic graded. The upsert COALESCE-pins entry_context/feature_vector at first flag, so a
   // manifest bump AFTER a row commits never rewrites that row's stamp.
-  // ACTIVE exit archetype resolved ONCE per scan (design Q13) and frozen onto every row
-  // below. Threaded into the manifest too, so the config hash partitions ratchet vs
-  // trim_scale cohorts AND the exit-sync path reads the row's own commit-time policy
-  // (readFrozenExitMode) instead of the live env — a mid-session flip can't re-manage an
-  // open play. With ZERODTE_EXIT_MODE unset (prod default) this is "ratchet": behavior-neutral.
-  const exitPolicyAtCommit = resolveExitMode();
-  const strategyManifest = buildStrategyManifest({ exitPolicy: exitPolicyAtCommit });
-  const strategyHash = strategyConfigHash(strategyManifest);
-  // WS-02: the FULLY-RESOLVED numeric exit policy (stop/target/trims/time-stop/collision + its own
-  // config_hash) frozen onto every row's entry_context at commit. Resolved ONCE per scan from the
-  // active mode (identical for every row this cycle). Graders read it back and prefer its numbers,
-  // so a later numeric edit in code can never retroactively re-grade these committed plays.
-  const exitPolicySnapshot = buildResolvedExitPolicy(exitPolicyAtCommit);
+  // ACTIVE exit archetype: now TIER-AWARE (CTO audit E5 graduation). A/B-tier plays
+  // default to trim_scale (proven to dominate ratchet in every backtest window); C-tier
+  // stays on the conservative ratchet. The env override `ZERODTE_EXIT_MODE=ratchet` can
+  // force all tiers back to ratchet. Because the exit mode now varies per play (it
+  // depends on the tier, which is assigned per play inside buildZeroDteEntryContext), the
+  // strategy manifest/hash and the resolved exit-policy snapshot are built PER PLAY
+  // inside the upsert loop below instead of once per scan. resolveExitMode() (the
+  // tier-unaware fallback) is kept for the exit-sync path's own readFrozenExitMode
+  // fallback and for any pre-tier rows.
+  // (The scan-wide resolveExitMode is still imported but only used as the env-override
+  // check; per-play resolution is via resolveExitModeForTier.)
   // WS-05: the open-book snapshot the concentration MEASURE reads — derived from today's ledger the
   // SAME way summarizeGovernorForBoard does (deriveGovernorFromLedger over the committed rows). Plus
   // the sum of entry premium across the currently-OPEN rows ("premium at risk"; the governor's
@@ -926,7 +931,24 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     (sum, r) => (r.status !== "CLOSED" && typeof r.entry_premium === "number" && Number.isFinite(r.entry_premium) ? sum + r.entry_premium : sum),
     0
   );
-  const rows: ZeroDteSetupLogUpsert[] = eligible.map((s) => ({
+  const rows: ZeroDteSetupLogUpsert[] = eligible.map((s) => {
+    // PER-PLAY exit mode resolution (CTO audit E5 graduation): build the base entry
+    // context first (assigns the merit tier from pinned evidence), then resolve the exit
+    // mode from the tier. This replaces the scan-wide resolveExitMode() call — A/B-tier
+    // → trim_scale (proven to dominate in every E5 backtest window), C-tier/untiered →
+    // ratchet (conservative). The operator env override `ZERODTE_EXIT_MODE` still takes
+    // precedence in resolveExitModeForTier.
+    const baseEntryCtx = buildZeroDteEntryContext(
+      { score: s.score, gamma_regime: s.gamma_regime, cortex: cortexEntryContextFor(s.cortex) },
+      sessionCtx,
+      committedAtMs
+    );
+    const playTier = baseEntryCtx.tier?.tier ?? null;
+    const exitPolicyAtCommit = resolveExitModeForTier(playTier);
+    const strategyManifest = buildStrategyManifest({ exitPolicy: exitPolicyAtCommit });
+    const strategyHash = strategyConfigHash(strategyManifest);
+    const exitPolicySnapshot = buildResolvedExitPolicy(exitPolicyAtCommit);
+    return ({
     session_date: today,
     ticker: s.ticker,
     direction: s.direction,
@@ -959,11 +981,7 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     // either way. Blocked finds never reach this map at all — they went to
     // zerodte_scan_rejections above and never write entry_context.
     entry_context: {
-      ...buildZeroDteEntryContext(
-        { score: s.score, gamma_regime: s.gamma_regime, cortex: cortexEntryContextFor(s.cortex) },
-        sessionCtx,
-        committedAtMs
-      ),
+      ...baseEntryCtx,
       // Pin the two calibration-first evidence signals at first flag so the graded ledger can bucket
       // outcomes by them (calibration.ts) and let each graduate into scoring ON EVIDENCE — the read
       // itself still does NOT gate the board. Omitted when absent so the blob stays honest.
@@ -1011,7 +1029,7 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       strategy_config_hash: strategyHash,
       // Exit archetype FROZEN at first flag (design Q13). evaluateLedgerRowExit reads this
       // (readFrozenExitMode) in preference to the live env, so an open play always exits
-      // under the policy it committed with — a mid-session ZERODTE_EXIT_MODE flip only
+      // under the policy it committed with — a mid-session tier-based resolution only
       // steers plays committed afterward, never re-manages a live position.
       exit_policy_at_commit: exitPolicyAtCommit,
       // WS-02 — the IMMUTABLE, fully-resolved exit-policy snapshot (numeric stop/target/trims/
@@ -1099,7 +1117,7 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       directionOwner: buildOriginMaps(s).direction_owner,
       mergePolicyVersion: MERGE_POLICY_VERSION,
     }) as unknown as Record<string, unknown>,
-  }));
+  }); });
   // WS-01 — split the write into the FRESH lane (new exposure, cap-limited) and the
   // REFRESH lane (tickers already open — never new exposure, never cap-limited). `eligible`
   // is [...committedFresh, ...refresh] IN THAT ORDER, so `rows` aligns index-for-index: the

@@ -460,6 +460,42 @@ export function screenBreakoutMovers(
   return out.sort((a, b) => b.dollar - a.dollar).slice(0, maxKeep);
 }
 
+/** Pure whole-market BREAKDOWN (short-side) screen over grouped-daily bars. The mirror of
+ *  screenBreakoutMovers: screens for gap-DOWN movers (negative gain) that close WEAK (near the
+ *  low of the range). Returns the top `maxKeep` by $-volume. `gain` is stored as the ABSOLUTE
+ *  value (positive) so the downstream breakoutScore formula works unchanged; `close_strength` is
+ *  the RAW (c-l)/(h-l) which is LOW for a breakdown (closed near the low = bearish conviction).
+ *  Bar shape is Polygon grouped-daily (T/o/h/l/c/v). Deterministic; no IO. */
+export function screenBreakdownMovers(
+  results: Array<{ T?: string; o?: number; h?: number; l?: number; c?: number; v?: number }>,
+  maxKeep = 40
+): BreakoutMover[] {
+  const out: BreakoutMover[] = [];
+  for (const r of results) {
+    const ticker = String(r.T ?? "").toUpperCase();
+    if (!ticker || ticker.includes(".") || isExcludedInstrument(ticker)) continue;
+    const c = Number(r.c);
+    const o = Number(r.o);
+    const h = Number(r.h);
+    const l = Number(r.l);
+    const v = Number(r.v);
+    if (!(c >= BREAKOUT_MIN_PRICE && c <= BREAKOUT_MAX_PRICE) || !(v >= BREAKOUT_MIN_VOLUME)) continue;
+    // Breakdown = negative gain (gap-down) with magnitude >= the same threshold as breakouts.
+    if (!(o > 0)) continue;
+    const rawGain = (c - o) / o;
+    if (rawGain > -BREAKOUT_MIN_GAIN) continue; // must be a real drop (at least -5%)
+    const range = h - l;
+    const closeStrength = range > 0 ? (c - l) / range : 1;
+    // Weak close = closed near the LOW of the range (close_strength near 0). The inverse of the
+    // breakout screen's "closed strong" (near the high). A breakdown that bounced back to close
+    // mid-range is not a conviction short.
+    if (closeStrength > (1 - BREAKOUT_MIN_CLOSE_STRENGTH)) continue; // close_strength must be <= 0.5
+    // Store gain as abs() so breakoutScore's gain factor works unchanged; the caller sets direction.
+    out.push({ ticker, gain: Math.abs(rawGain), volume: v, close_strength: closeStrength, dollar: v * c });
+  }
+  return out.sort((a, b) => b.dollar - a.dollar).slice(0, maxKeep);
+}
+
 function laneBreakout(ctx: MarketWideContext): Map<string, number> {
   const entries: LaneEntry[] = [];
   for (const m of ctx.breakout_movers ?? []) {
