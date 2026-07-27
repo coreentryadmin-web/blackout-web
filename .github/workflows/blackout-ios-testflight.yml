@@ -96,6 +96,37 @@ jobs:
                   body = e.read().decode()[:400]
                   return e.code, {"error": body}
 
+          # Users on the account — tells us which email addresses get the
+          # "Ready to test" notification. Internal-tester notifications go
+          # to team users with a role that includes internal testing (Admin,
+          # App Manager, Developer). We list every user + their roles so we
+          # can see WHICH Apple ID email actually receives the push/email.
+          print(f"\n=== Users on the account (who gets TestFlight emails) ===\n")
+          st, body = api(f"/users?limit=200")
+          if st == 200:
+              for u in body.get("data", []):
+                  a = u.get("attributes", {})
+                  email = a.get("username", "?")
+                  name = f"{a.get('firstName','?')} {a.get('lastName','?')}".strip()
+                  roles = ", ".join(a.get("roles", [])) or "?"
+                  provs = "PROVISIONING" if a.get("provisioningAllowed") else "no-provisioning"
+                  print(f"  {email:40}  {name:30}  [{roles}]  {provs}")
+          else:
+              print(f"  (users query failed → {st})")
+
+          # Beta testers (specifically internal testers who receive builds)
+          print(f"\n=== Beta testers on the account ===\n")
+          st, body = api(f"/betaTesters?limit=200")
+          if st == 200:
+              testers = body.get("data", [])
+              if not testers:
+                  print("  (no beta testers configured — internal testers come from user roles)")
+              for t in testers:
+                  a = t.get("attributes", {})
+                  print(f"  {a.get('email','?'):40}  {a.get('firstName','')} {a.get('lastName','')}  invitation={a.get('inviteType','?')}  state={a.get('state','?')}")
+          else:
+              print(f"  (betaTesters query failed → {st})")
+
           print(f"\n=== BlackOut TestFlight builds (app {app_id}) ===\n")
           st, body = api(f"/builds?filter[app]={app_id}&limit=8&sort=-uploadedDate")
           if st != 200:
