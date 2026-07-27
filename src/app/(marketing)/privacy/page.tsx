@@ -3,11 +3,19 @@ export const dynamic = "force-static";
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
+import { SITE } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Privacy Policy · BlackOut",
   description:
     "How BlackOut Trades collects, uses, and protects your personal information — cookies, analytics, payments, and data retention.",
+  alternates: { canonical: `${SITE.url}/privacy` },
+  openGraph: {
+    title: "Privacy Policy · BlackOut",
+    description:
+      "How BlackOut Trades collects, uses, and protects your personal information — cookies, analytics, payments, and data retention.",
+    url: `${SITE.url}/privacy`,
+  },
 };
 
 export default function PrivacyPage() {
@@ -122,19 +130,55 @@ export default function PrivacyPage() {
           <a href="mailto:support@blackouttrades.com">support@blackouttrades.com</a>.
         </p>
 
-        <h2>9. Children&apos;s Privacy</h2>
+        <h2>9. California Privacy Rights (CCPA/CPRA)</h2>
+        <p>
+          If you are a California resident, you have additional rights under the California
+          Consumer Privacy Act (CCPA) and the California Privacy Rights Act (CPRA):
+        </p>
+        <ul>
+          <li>The right to know what personal information we collect, use, and disclose</li>
+          <li>The right to request deletion of your personal information</li>
+          <li>The right to opt out of the sale or sharing of your personal information</li>
+          <li>The right to non-discrimination for exercising your privacy rights</li>
+        </ul>
+        <p>
+          BlackOut does not sell your personal information. To exercise any of these rights,
+          contact us at{" "}
+          <a href="mailto:support@blackouttrades.com">support@blackouttrades.com</a>.
+        </p>
+
+        <h2>10. International Users (GDPR)</h2>
+        <p>
+          If you are located in the European Economic Area (EEA) or the United Kingdom, we process
+          your personal data under the following lawful bases: performance of our contract with you
+          (providing the platform), our legitimate interests (improving the service, preventing
+          fraud), and your consent (where applicable, such as marketing communications).
+        </p>
+        <p>In addition to the rights listed above, you may also:</p>
+        <ul>
+          <li>Request restriction of processing of your personal data</li>
+          <li>Object to processing based on our legitimate interests</li>
+          <li>Lodge a complaint with your local data protection authority</li>
+        </ul>
+        <p>
+          We transfer data outside the EEA using standard contractual clauses approved by the
+          European Commission. For questions about international data transfers, contact us at{" "}
+          <a href="mailto:support@blackouttrades.com">support@blackouttrades.com</a>.
+        </p>
+
+        <h2>11. Children&apos;s Privacy</h2>
         <p>
           BlackOut is not intended for users under 18. We do not knowingly collect data from minors.
           If we learn that a user is under 18, we will promptly delete their account.
         </p>
 
-        <h2>10. Changes to This Policy</h2>
+        <h2>12. Changes to This Policy</h2>
         <p>
           We may update this Privacy Policy periodically. Material changes will be communicated via
           email or platform notification. Continued use after changes constitutes acceptance.
         </p>
 
-        <h2>11. Contact</h2>
+        <h2>13. Contact</h2>
         <p>
           Privacy questions? Contact us at{" "}
           <a href="mailto:support@blackouttrades.com">support@blackouttrades.com</a>.

@@ -10,12 +10,34 @@ export const metadata: Metadata = {
   title: "Contact · BlackOut",
   description:
     "Get in touch with BlackOut Trades — support, billing questions, and community channels.",
+  alternates: { canonical: `${SITE.url}/contact` },
+  openGraph: {
+    title: "Contact · BlackOut",
+    description:
+      "Get in touch with BlackOut Trades — support, billing questions, and community channels.",
+    url: `${SITE.url}/contact`,
+  },
 };
 
 export default function ContactPage() {
   return (
     <MarketingPageShell showChart={false}>
       <LegalPageLayout kicker="Support" title="Contact Us" updated="July 27, 2026">
+        <div className="legal-contact-cta">
+          <h2>Send Us a Message</h2>
+          <p>
+            Have a question, issue, or suggestion? Reach out and we will get back to you
+            within <strong>24 hours</strong> on business days.
+          </p>
+          <a href="mailto:support@blackouttrades.com?subject=BlackOut%20Support%20Request" className="legal-contact-btn">
+            Open Email to Support
+          </a>
+          <p className="legal-contact-alt">
+            Or message us directly at{" "}
+            <a href="mailto:support@blackouttrades.com">support@blackouttrades.com</a>
+          </p>
+        </div>
+
         <h2>Email Support</h2>
         <p>
           For billing questions, account issues, refund requests, or general inquiries, email us
@@ -73,6 +95,14 @@ export default function ContactPage() {
           much detail as possible — screenshots, the page/tool you were using, and what you expected
           to happen.
         </p>
+
+        <h2>Response Times</h2>
+        <ul>
+          <li><strong>General inquiries:</strong> Within 24 hours (business days)</li>
+          <li><strong>Billing &amp; refund requests:</strong> Within 2 business days</li>
+          <li><strong>Account recovery:</strong> Within 48 hours</li>
+          <li><strong>Bug reports:</strong> Acknowledged within 24 hours; resolution time varies</li>
+        </ul>
       </LegalPageLayout>
     </MarketingPageShell>
   );

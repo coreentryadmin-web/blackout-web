@@ -3,11 +3,19 @@ export const dynamic = "force-static";
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
+import { SITE } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Terms of Service · BlackOut",
   description:
     "Terms of Service for BlackOut Trades — memberships, billing, cancellation, intellectual property, and user conduct.",
+  alternates: { canonical: `${SITE.url}/terms` },
+  openGraph: {
+    title: "Terms of Service · BlackOut",
+    description:
+      "Terms of Service for BlackOut Trades — memberships, billing, cancellation, intellectual property, and user conduct.",
+    url: `${SITE.url}/terms`,
+  },
 };
 
 export default function TermsPage() {
@@ -112,16 +120,33 @@ export default function TermsPage() {
           acceptance.
         </p>
 
-        <h2>13. Governing Law</h2>
+        <h2>13. Governing Law &amp; Dispute Resolution</h2>
         <p>
-          These Terms are governed by and construed in accordance with the laws of the United States.
-          Any disputes shall be resolved through binding arbitration.
+          These Terms are governed by and construed in accordance with the laws of the State of
+          Delaware, without regard to conflict of law principles.
+        </p>
+        <p>
+          Any dispute arising from these Terms or your use of the platform shall be resolved through
+          binding arbitration administered by the American Arbitration Association (AAA) under its
+          Consumer Arbitration Rules. Arbitration shall be conducted in English, and the arbitrator's
+          decision shall be final and binding.
+        </p>
+        <p>
+          You agree to resolve disputes on an individual basis — class actions and class arbitrations
+          are not permitted. Nothing in this section prevents either party from seeking injunctive
+          relief in a court of competent jurisdiction.
         </p>
 
         <h2>14. Contact</h2>
         <p>
           Questions about these Terms? Contact us at{" "}
           <a href="mailto:support@blackouttrades.com">support@blackouttrades.com</a>.
+        </p>
+
+        <h2>15. Severability</h2>
+        <p>
+          If any provision of these Terms is held to be unenforceable, the remaining provisions
+          shall continue in full force and effect.
         </p>
       </LegalPageLayout>
     </MarketingPageShell>
