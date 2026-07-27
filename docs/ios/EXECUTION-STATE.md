@@ -188,23 +188,31 @@ across `PushRegistrationServiceTests` + `AppLockCoordinatorTests` using
 no real network. All validates on macOS CI on merge.
 
 ## NEXT HIGHEST-PRIORITY TASK
-1. **After the branch merges + prod deploys**, run the audit to prove the P0 set is live:
-   `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node scripts/ios/ios-ui-audit.mjs --base https://blackouttrades.com --pages "/,/privacy"`
-   Expected: `/` iOS render shows the neutral note + **no** pricing DOM; `/privacy`
-   returns the policy.
-2. **After the branch merges, `blackout-ios-native-ci.yml` fires** — watch the first run
-   and fix any Xcode-16-vs-simulator selection issue. All 4 native test files (design system,
-   IA, biometric, push, app-lock) must go green.
-3. **N-2c**: hide the inert web-push toggle in the WKWebView shell so members don't see
-   "unsupported" (small, iOS-gated CSS/JS change on the web side).
-4. **N-3**: `@capacitor/status-bar` calls + `@capacitor/app` `appUrlOpen` deep links →
-   route pushed alerts to the right destination + native share via `@capacitor/share`.
-5. **Command tab first native content** — session header (SPX/SPY/QQQ/VIX + market status
-   + last update) + market regime cards, backed by real endpoints per `API-CONTRACTS.md`.
-   Repository pattern with a mockable networking layer so tests don't hit prod.
-6. **Sign in with Apple** + Clerk bridge (per TECHNICAL-ARCHITECTURE.md auth section).
-7. **U-*** per-page premium polish for the WKWebView shell (parallel track).
-8. **M-*** ASC listing metadata + demo account + screenshots — ask before mutating live.
+1. **After the branch merges, `blackout-ios-native-ci.yml` fires** — watch the first
+   run and fix any Xcode-16-vs-simulator selection issue. The native test count is now
+   ~40 across DesignSystem / IA / Biometric / PushRegistration / AppLock / Watchlist
+   (store + sync + quote-store) / Command (viewmodel + WhatChanged + ActiveOpportunities)
+   / Signals (viewmodel) / Intelligence (pulse). All must go green.
+2. **Sign in with Apple + Clerk bridge** (per TECHNICAL-ARCHITECTURE.md auth section).
+   Blocked-until-implementation: the app currently rides `URLSession.shared` cookies set
+   by whatever web flow signed in first. Real ASA + Clerk exchange unlocks the "install
+   → sign in → premium" first-run flow.
+3. **Command session header — SPX + VIX + freshness in one BIG number**, promoted above
+   the regime label so the very first pixel above the fold is the underlying price.
+   Reuse `IndexTickerStrip`'s `WatchlistQuoteStore` — no new store.
+4. **Watchlist per-ticker detail sheet** (v3) — tap a row → sheet with the ticker's
+   walls (from `/api/market/gex-positioning?ticker=X`), the recent Helix flow, and any
+   active Signal targeting the ticker.
+5. **Intelligence per-desk mobile aggregators** — Helix / Thermal / Largo / Vector each
+   get a tiny mobile endpoint (mirror of `/api/mobile/signals`'s shape) so their pulse
+   chips light up too. Server-side additions, small.
+6. **N-2c**: hide the inert web-push toggle in the WKWebView shell (already gated on
+   `isIosAppShell()` — confirm the deploy actually landed the guard).
+7. **M-*** ASC listing metadata + demo account + screenshots — ask before mutating live.
+8. **Once the 3 TestFlight secrets are added** (`APP_STORE_CONNECT_ISSUER_ID/KEY_ID/
+   PRIVATE_KEY` — see `docs/ios/TESTFLIGHT-SETUP.md`), trigger the dispatch workflow
+   and the shell app lands on TestFlight. The native SwiftUI app has its own workflow
+   (`blackout-ios-native-ci.yml`) that lands its own TestFlight track once mature.
 
 ## Waiting on the operator (non-blocking)
 - **APNs Auth Key .p8** (distinct from the ASC key already held) — until it lands, the
