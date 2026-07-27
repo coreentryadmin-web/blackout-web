@@ -19,7 +19,7 @@
 // PURE & deterministic — no IO. Evidence-only: this partition FEEDS the gate's overlap flag and the allocator's
 // cap; it sizes nothing on its own.
 
-import { CORRELATION_GROUPS, correlationGroupOf } from "../zerodte/governor";
+import { CORRELATION_GROUPS } from "../zerodte/governor";
 import { sectorFor } from "../portfolio/sector-map";
 
 /** Canonical label for the broad index/ETF complex (the governor's one correlation group). */
@@ -34,8 +34,12 @@ const OWN_CLUSTER_PREFIX = "NAME:";
  * (kept there so the swing engine and the allocation engine share the same curated map). Exposed so tooling /
  * tests can enumerate the seeded clusters.
  */
+// Only the FIRST correlation group (index/ETF complex) seeds the broad-market theme.
+// The sector-specific groups (semis, mega-cap tech, etc.) fall through to sectorFor
+// so the swing engine's theme resolution stays sector-grained.
+const BROAD_MARKET_GROUP = CORRELATION_GROUPS[0];
 export const CORRELATION_THEMES: Readonly<Record<string, ReadonlySet<string>>> = Object.freeze({
-  [BROAD_MARKET_THEME]: new Set<string>(CORRELATION_GROUPS.flatMap((g) => Array.from(g))),
+  [BROAD_MARKET_THEME]: new Set<string>(Array.from(BROAD_MARKET_GROUP)),
 });
 
 /**
@@ -76,8 +80,9 @@ export function resolveTheme(ticker: string | null | undefined): string {
   const proxy = ETF_PROXY_THEMES[up];
   if (proxy) return proxy;
 
-  // Governor's index/ETF complex is one thesis (seeded, not re-listed).
-  if (correlationGroupOf(up)) return BROAD_MARKET_THEME;
+  // Governor's index/ETF complex (group 0) is one thesis (seeded, not re-listed).
+  // Sector groups (semis, mega-cap tech, etc.) fall through to sectorFor.
+  if (BROAD_MARKET_GROUP.has(up)) return BROAD_MARKET_THEME;
 
   const sector = sectorFor(up);
   if (sector === "index-etf") return BROAD_MARKET_THEME; // unify the sector map's index label
