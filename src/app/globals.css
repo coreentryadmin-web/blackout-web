@@ -12,22 +12,19 @@
 html.ios-app .hide-in-ios-app { display: none !important; }
 .show-in-ios-app { display: none; }
 html.ios-app .show-in-ios-app { display: revert; }
-/* Selectively hide Google + Apple OAuth in the iOS shell — but keep Discord
-   and any other providers visible, and keep the container / divider so the
-   remaining social buttons still lay out cleanly.
-     - Google blocks WKWebView OAuth by policy (disallowed_useragent), so the
-       button would fail. Hidden.
-     - Apple's WKWebView OAuth flow needs ASWebAuthenticationSession (native
-       code); Clerk's stock button opens Apple ID inside the shell where the
-       cookie flow breaks. Hidden until a native bridge is built.
-     - Discord's OAuth works fine in WKWebView. Kept visible.
+/* Only Google is truly incompatible with WKWebView (Google rejects
+   `disallowed_useragent` since 2016 — any WebView Google OAuth request
+   fails at Google's servers, no client-side fix possible). Everything else
+   — Discord, Apple, GitHub, any provider Clerk gets configured with —
+   works fine in WKWebView via the standard redirect flow: Clerk opens
+   the provider's auth page, user completes, provider redirects back to
+   clerk.blackouttrades.com, Clerk redirects back to the app URL. Same
+   navigation the browser handles for any http link.
    Clerk's per-provider classes are `.cl-socialButtonsBlockButton__{provider}`
-   and `.cl-socialButtonsIconButton__{provider}` — hide both flavors so this
+   and `.cl-socialButtonsIconButton__{provider}` — hide both flavors so it
    works whether Clerk renders the block or icon variant. */
 html.ios-app .cl-socialButtonsBlockButton__google,
-html.ios-app .cl-socialButtonsBlockButton__apple,
-html.ios-app .cl-socialButtonsIconButton__google,
-html.ios-app .cl-socialButtonsIconButton__apple {
+html.ios-app .cl-socialButtonsIconButton__google {
   display: none !important;
 }
 

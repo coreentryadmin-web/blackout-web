@@ -143,10 +143,10 @@ export function AuthShell({ mode, children }: { mode: "signin" | "signup"; child
                 In-app sign-in
               </p>
               <p className="mt-1 font-syne text-sm font-medium leading-snug text-white">
-                Discord or email + one-time code.
+                Discord, Apple, or email + one-time code.
               </p>
               <p className="mt-1 font-mono text-[11px] leading-relaxed text-sky-300">
-                Google &amp; Apple sign-in are blocked inside the iOS app (Google/Apple policy) — use the Discord button below, or enter your email and we'll send a code.
+                Google sign-in is blocked inside the iOS app (Google's WebView policy) — every other provider below works. Or enter your email and we'll send a code.
               </p>
             </div>
             <div className="auth-card-frame relative">{children}</div>
