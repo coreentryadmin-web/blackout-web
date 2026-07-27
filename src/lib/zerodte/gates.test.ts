@@ -1029,6 +1029,37 @@ test("G-6: an SPX-correlated short (QQQ/NDX) opposing a live Slayer long conflic
 });
 
 // ── gateRejectionFor over a CONDOR verdict: primary code is the condor block ───────────
+// ── Condor G-4: VIX regime threshold is EXTREME (≥20), not elevated (≥17) ─────────
+test("condor G-4: VIX 18 (elevated) does NOT block a condor — condors sell premium into the range", () => {
+  const v = evaluateZeroDteGates({
+    ...input({ vixDayOpen: 18, bias: "flat" }),
+    play_type: "CONDOR",
+    condorPlan: null, // null plan → condor_liquidity will block, but condor_vix_regime should NOT
+    plan: null,
+  });
+  assert.ok(!v.blocks.some((b) => b.code === "condor_vix_regime"), "elevated VIX should not block condors");
+});
+
+test("condor G-4: VIX 20 (extreme) DOES block a condor — range integrity threatened", () => {
+  const v = evaluateZeroDteGates({
+    ...input({ vixDayOpen: 20, bias: "flat" }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  assert.ok(v.blocks.some((b) => b.code === "condor_vix_regime"), "extreme VIX must block condors");
+});
+
+test("condor G-4: unavailable VIX still fails closed for condors", () => {
+  const v = evaluateZeroDteGates({
+    ...input({ vixDayOpen: null, vixUnavailable: true, bias: "flat" }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  assert.ok(v.blocks.some((b) => b.code === "condor_vix_regime"), "unavailable VIX fails closed for condors");
+});
+
 test("gateRejectionFor: a condor's liquidity block becomes the primary gate_failed on the rejection row", () => {
   const v = evaluateZeroDteGates({
     ...input(),

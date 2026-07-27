@@ -75,7 +75,7 @@ export function computeConfluence(setup: EnrichedZeroDteSetup, nowEtMinutes: num
         : last < vwap
       : false;
 
-  // market_aligned is already "direction vs SPY tape" (null when flat/unknown → not a confirmation).
+  // market_aligned: true = aligned or flat tape (non-opposing), false = counter, null = unknown.
   const market_ok = setup.market_aligned === true;
 
   // The E3-measured axis: VWAP-side + market agreement (the count that laddered 0→1→2 into EV).
