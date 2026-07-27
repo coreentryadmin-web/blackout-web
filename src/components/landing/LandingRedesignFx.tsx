@@ -49,6 +49,57 @@ export function LandingRedesignFx() {
 
     // (Per-product deep-dive visuals now use real product screenshots — no canvas mocks.)
 
+    // 5. Energy ring — cursor-tracking conic-gradient border on product cards + glass cards
+    if (!reduce) {
+      const targets = document.querySelectorAll<HTMLElement>(".rl-pcard, .rl-glass");
+      const state = new Map<HTMLElement, { mx: number; my: number; angle: number; active: boolean; raf: number | null }>();
+
+      function tick(card: HTMLElement) {
+        const s = state.get(card)!;
+        if (!s.active) { s.raf = null; return; }
+
+        const cx = s.mx - 0.5;
+        const cy = s.my - 0.5;
+        const target = Math.atan2(cy, cx) * (180 / Math.PI) + 90;
+
+        let diff = target - s.angle;
+        while (diff > 180) diff -= 360;
+        while (diff < -180) diff += 360;
+        s.angle += diff * 0.12;
+
+        card.style.setProperty("--mx", (s.mx * 100).toFixed(1) + "%");
+        card.style.setProperty("--my", (s.my * 100).toFixed(1) + "%");
+        card.style.setProperty("--ring-angle", s.angle.toFixed(1) + "deg");
+
+        s.raf = requestAnimationFrame(() => tick(card));
+      }
+
+      targets.forEach((card) => {
+        state.set(card, { mx: 0.5, my: 0.5, angle: 0, active: false, raf: null });
+
+        const onEnter = () => { const s = state.get(card)!; s.active = true; if (!s.raf) tick(card); };
+        const onLeave = () => { const s = state.get(card)!; s.active = false; };
+        const onMove = (e: MouseEvent) => {
+          const rect = card.getBoundingClientRect();
+          const s = state.get(card)!;
+          s.mx = (e.clientX - rect.left) / rect.width;
+          s.my = (e.clientY - rect.top) / rect.height;
+        };
+
+        card.addEventListener("mouseenter", onEnter);
+        card.addEventListener("mouseleave", onLeave);
+        card.addEventListener("mousemove", onMove);
+
+        cleanups.push(() => {
+          card.removeEventListener("mouseenter", onEnter);
+          card.removeEventListener("mouseleave", onLeave);
+          card.removeEventListener("mousemove", onMove);
+          const s = state.get(card);
+          if (s?.raf) cancelAnimationFrame(s.raf);
+        });
+      });
+    }
+
     return () => cleanups.forEach((fn) => fn());
   }, []);
 

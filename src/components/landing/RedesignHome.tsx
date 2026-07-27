@@ -25,16 +25,16 @@ const STATS = [
 ];
 
 const STEPS = [
-  { n: "01", tag: "READ THE STRUCTURE", c: "var(--rl-bull)", h: "See the whole floor at once", p: "Live SPX, options flow, dealer gamma and dark-pool prints on one surface — structure before price moves." },
-  { n: "02", tag: "SCORE THE SETUP", c: "var(--rl-cyan)", h: "Grades, not guesses", p: "Graded reads and Largo surface the setup, the strike, and the invalidation — every alert gated by the BIE stack." },
-  { n: "03", tag: "EXECUTE YOUR WAY", c: "var(--rl-violet)", h: "Your broker, your trigger", p: "We surface the structure. You trade where you already execute — pure intelligence, zero order routing." },
+  { n: "01", tag: "IDENTIFY", c: "var(--rl-bull)", h: "Read the Floor", p: "Dealer gamma walls, institutional prints, dark-pool blocks — the structure that moves price before the tape catches up. You see it first." },
+  { n: "02", tag: "VALIDATE", c: "var(--rl-cyan)", h: "Every Setup Graded", p: "No opinions. Every read is gated by the BIE verification stack — confluence score, invalidation level, and a graded A–F log with receipts." },
+  { n: "03", tag: "EXECUTE", c: "var(--rl-violet)", h: "Your Trigger", p: "Pure intelligence — no order routing, no broker lock-in. Structure, levels, and the graded plan. You pull the trigger." },
 ];
 
 const PILLARS = [
-  { c: "var(--rl-bull)", h: "Professional-grade feeds", p: "Feeds professional desks pay a premium for." },
-  { c: "var(--rl-cyan)", h: "Real-time, tick by tick", p: "Live streams — no 15-minute delays." },
-  { c: "var(--rl-violet)", h: "Pure intelligence layer", p: "No order routing — intel, then your trigger." },
-  { c: "var(--rl-ember)", h: "Built for focused traders", p: "One decision surface — no noise." },
+  { c: "var(--rl-bull)", h: "Institutional Market Data", p: "The same dealer-positioning, flow, and gamma feeds professional desks pay six figures for — live, not delayed." },
+  { c: "var(--rl-cyan)", h: "Live Before the Crowd", p: "Tick-by-tick streams. Sub-second refresh. Institutional prints surface before the tape catches up." },
+  { c: "var(--rl-violet)", h: "Signal Over Noise", p: "AI-graded setups, confluence scoring, and a verified play log — no opinions, just receipts." },
+  { c: "var(--rl-ember)", h: "Everything. One Interface.", p: "Six modules. One command surface. One membership. Zero broker lock-in." },
 ];
 
 const COMPARE: [string, "y" | "n" | "p", "y" | "n" | "p"][] = [
@@ -199,6 +199,8 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                   style={{ "--a": m.accent } as CSSProperties}
                 >
                   <div className="rl-pcard-visual">
+                    <div className="rl-energy-ring" aria-hidden />
+                    <div className="rl-energy-glow" aria-hidden />
                     <div className="rl-pcard-chrome" aria-hidden>
                       <span className="d" /><span className="d" /><span className="d" />
                       <span className="rl-pcard-lbl">{m.label} · live desk</span>
@@ -244,7 +246,8 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
           </div>
           <div className="rl-flow">
             {STEPS.map((s, i) => (
-              <div className="rl-step rl-reveal" key={s.n} style={{ transitionDelay: `${i * 0.08}s` }}>
+              <div className="rl-step rl-glass rl-reveal" key={s.n} style={{ "--step-c": s.c, transitionDelay: `${i * 0.08}s` } as CSSProperties}>
+                <div className="rl-glass-ring" aria-hidden />
                 <span className="n" style={{ color: s.c }}>{s.n}</span>
                 <span className="tag" style={{ color: s.c }}>{s.tag}</span>
                 <h3>{s.h}</h3><p>{s.p}</p>
@@ -263,7 +266,8 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
           </div>
           <div className="rl-pillars">
             {PILLARS.map((p, i) => (
-              <div className="rl-pillar rl-reveal" key={p.h} style={{ transitionDelay: `${i * 0.06}s` }}>
+              <div className="rl-pillar rl-glass rl-reveal" key={p.h} style={{ "--pillar-c": p.c, transitionDelay: `${i * 0.06}s` } as CSSProperties}>
+                <div className="rl-glass-ring" aria-hidden />
                 <span className="d" style={{ background: p.c, boxShadow: `0 0 10px ${p.c}` }} />
                 <h4>{p.h}</h4><p>{p.p}</p>
               </div>

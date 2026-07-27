@@ -352,3 +352,80 @@
 .rl-hscroll-dot{width:8px;height:8px;padding:0;border:none;border-radius:50%;background:var(--rl-line2);cursor:pointer;transition:width .25s,background .25s}
 .rl-hscroll-dot.on{width:24px;border-radius:4px;background:var(--rl-ink)}
 @media(max-width:560px){.rl-pcard{flex-basis:86vw}.rl-pcard-visual{height:180px}}
+
+/* ── GLASS MORPHISM (protocol + pillar cards) ────────────────────────────── */
+.rl-glass{
+  background:linear-gradient(145deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.01) 100%);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:16px;
+  box-shadow:0 4px 30px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.04) inset;
+  overflow:hidden;position:relative;
+}
+.rl-step.rl-glass{border-top:none;border-radius:16px;padding:28px}
+.rl-step.rl-glass::before{height:2px;border-radius:16px 16px 0 0}
+.rl-pillar.rl-glass{border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:24px 20px}
+.rl-pillar.rl-glass::before{border-radius:16px 16px 0 0}
+.rl-glass:hover{
+  transform:translateY(-4px);
+  box-shadow:0 8px 40px rgba(0,0,0,.5),0 1px 0 rgba(255,255,255,.06) inset;
+  border-color:rgba(255,255,255,.12);
+}
+.rl-glass .rl-glass-ring{
+  position:absolute;inset:-1.5px;border-radius:17px;z-index:0;
+  pointer-events:none;overflow:hidden;opacity:0;
+  transition:opacity .4s cubic-bezier(.22,1,.36,1);
+}
+.rl-glass:hover .rl-glass-ring{opacity:1}
+.rl-glass .rl-glass-ring::before{
+  content:"";position:absolute;inset:0;
+  background:conic-gradient(
+    from var(--ring-angle,0deg),
+    color-mix(in srgb,var(--step-c,var(--pillar-c,var(--rl-bull))) 70%,white) 0deg,
+    color-mix(in srgb,var(--step-c,var(--pillar-c,var(--rl-bull))) 30%,transparent) 50deg,
+    transparent 120deg,
+    transparent 240deg,
+    color-mix(in srgb,var(--step-c,var(--pillar-c,var(--rl-bull))) 10%,transparent) 310deg,
+    color-mix(in srgb,var(--step-c,var(--pillar-c,var(--rl-bull))) 70%,white) 360deg
+  );
+  mask:linear-gradient(#fff,#fff) content-box,linear-gradient(#fff,#fff);
+  -webkit-mask:linear-gradient(#fff,#fff) content-box,linear-gradient(#fff,#fff);
+  mask-composite:exclude;-webkit-mask-composite:xor;
+  padding:1.5px;border-radius:17px;
+}
+
+/* ── ENERGY RING (product card visual frames) ───────────────────────────── */
+.rl-energy-ring{
+  position:absolute;inset:-1.5px;border-radius:3px;z-index:6;
+  pointer-events:none;overflow:hidden;opacity:0;
+  transition:opacity .4s cubic-bezier(.22,1,.36,1);
+}
+.rl-deep-row:hover .rl-energy-ring,.rl-pcard:hover .rl-energy-ring{opacity:1}
+.rl-energy-ring::before{
+  content:"";position:absolute;inset:0;
+  background:conic-gradient(
+    from var(--ring-angle,0deg),
+    color-mix(in srgb,var(--a) 90%,white) 0deg,
+    color-mix(in srgb,var(--a) 40%,transparent) 50deg,
+    transparent 120deg,
+    transparent 240deg,
+    color-mix(in srgb,var(--a) 10%,transparent) 310deg,
+    color-mix(in srgb,var(--a) 90%,white) 360deg
+  );
+  mask:linear-gradient(#fff,#fff) content-box,linear-gradient(#fff,#fff);
+  -webkit-mask:linear-gradient(#fff,#fff) content-box,linear-gradient(#fff,#fff);
+  mask-composite:exclude;-webkit-mask-composite:xor;
+  padding:1.5px;border-radius:3px;
+}
+.rl-energy-glow{
+  position:absolute;width:180px;height:180px;border-radius:50%;z-index:6;
+  background:radial-gradient(circle,color-mix(in srgb,var(--a) 35%,transparent) 0%,transparent 70%);
+  transform:translate(-50%,-50%);
+  left:var(--mx,50%);top:var(--my,50%);
+  filter:blur(20px);pointer-events:none;
+  opacity:0;transition:opacity .3s ease;
+}
+.rl-deep-row:hover .rl-energy-glow,.rl-pcard:hover .rl-energy-glow{opacity:1}
+@media(prefers-reduced-motion:reduce){
+  .rl-energy-ring,.rl-energy-glow,.rl-glass-ring{display:none}
+}
