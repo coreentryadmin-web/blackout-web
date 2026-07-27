@@ -30,8 +30,11 @@ import path from "node:path";
 import { mintClerkPremiumSession } from "../audit/lib/prod-clerk-session.mjs";
 
 const CA = fs.readFileSync("/root/.ccr/ca-bundle.crt");
-const PROXY_HOST = "127.0.0.1";
-const PROXY_PORT = 39619;
+// Read the agent proxy from HTTPS_PROXY — the port drifts across sessions
+// (seen 39619 → 33181), so hardcoding it silently breaks every render.
+const PROXY_URL = new URL(process.env.HTTPS_PROXY || process.env.https_proxy || "http://127.0.0.1:39619");
+const PROXY_HOST = PROXY_URL.hostname;
+const PROXY_PORT = Number(PROXY_URL.port) || 39619;
 const IOS_UA =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 BlackOutiOSApp";
 
@@ -190,9 +193,15 @@ async function main() {
       const name = p === "/" ? "home" : p.replace(/^\//, "").replace(/\//g, "_");
       let title = "";
       try {
-        await page.goto(BASE + p, { waitUntil: "networkidle", timeout: 60000 });
-        await page.waitForTimeout(2500); // let charts/canvas settle
-        title = await page.title();
+        // `domcontentloaded` (not `networkidle`) — the authed desks stream
+        // live data over SSE that NEVER goes idle, so `networkidle` times
+        // out with ERR_CONNECTION_RESET after 60s and the screenshot is
+        // blank. Wait for DOM, then a fixed settle window for charts /
+        // canvas / SSR hydration; that's a lot closer to what a real user
+        // sees than a page that never fully settled.
+        await page.goto(BASE + p, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await page.waitForTimeout(4500);
+        try { title = await page.title(); } catch { /* page closed by nav */ }
       } catch (e) {
         console.log(`  · ${p} partial: ${e.message.split("\n")[0]}`);
       }

@@ -13,6 +13,12 @@ const tls = require('tls');
 const fs = require('fs');
 
 const CA = fs.readFileSync('/root/.ccr/ca-bundle.crt');
+// Read the agent proxy from HTTPS_PROXY — the port drifts across sessions
+// (seen 39619 → 33181). Hardcoding it silently breaks every render, and the
+// symptoms are subtle (blank pages, no HTTP error) so it wastes debug time.
+const PROXY_URL = new URL(process.env.HTTPS_PROXY || process.env.https_proxy || 'http://127.0.0.1:39619');
+const PROXY_HOST = PROXY_URL.hostname;
+const PROXY_PORT = Number(PROXY_URL.port) || 39619;
 
 function fetchViaProxy(url, hdrs = {}) {
   const parsed = new URL(url);
@@ -23,7 +29,7 @@ function fetchViaProxy(url, hdrs = {}) {
     const timer = setTimeout(() => reject(new Error('timeout')), 20000);
 
     const proxyReq = http.request({
-      host: '127.0.0.1', port: 39619,
+      host: PROXY_HOST, port: PROXY_PORT,
       method: 'CONNECT', path: `${hostname}:443`,
     });
 
