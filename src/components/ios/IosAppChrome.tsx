@@ -61,8 +61,15 @@ export function IosAppChrome({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
     };
   }, [isLoaded, isSignedIn, userId]);
 
+  // Native-shell kill-switch (2026-07-27) — mirrors src/hooks/useIosNativeShell.ts.
+  // The class-swap was leaving HELIX / Thermal / Largo blank for real TestFlight
+  // members (flex+overflow chain doesn't survive the swap). Until the layout
+  // chain is repaired, keep `nativeActive` false so `html.ios-native-shell` never
+  // gets stamped and the pages render their standard mobile-web layout — which
+  // the ios-diagnose script confirms produces real content on every route.
+  // Removing the `false && ` prefix on ONE line brings the native shell back.
   const nativeActive =
-    iosApp && isLoaded && isSignedIn && isIosNativeShellRoute(path);
+    false && iosApp && isLoaded && isSignedIn && isIosNativeShellRoute(path);
 
   /* Drop head-script pending flag once we know shell state (avoids Nav flash). */
   useEffect(() => {
