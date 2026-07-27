@@ -73,7 +73,7 @@ tabs/segments/controls, asserts shell classes, two device passes. Reuse + grow i
 ## Backlog (priority order) — check off as done
 
 ### P0 — Submission blockers
-- [ ] **P0-1 `/privacy` page** — Apple requires a working Privacy Policy URL; route does not exist. Additive.
+- [x] **P0-1 `/privacy` page** — real Privacy Policy at `/privacy` grounded in the actual data inventory (Clerk email/phone, Whop subscription status, push subscriptions, Sentry diagnostics, session cookies; no trackers, no ad SDKs). Public/unauthenticated. `EFFECTIVE_DATE` constant. Done 2026-07-27.
 - [x] **P0-2 Homepage pricing leak (3.1.1)** — gated `#rl-pricing` + closing "See pricing" link with `hide-in-ios-app`; added a neutral `show-in-ios-app` membership note (no price/purchase) in their place. Web unchanged. Done 2026-07-26 (commit pending deploy-validation on the iPhone render).
 - [ ] **P0-3 Server-side iOS detection (durable 3.1.1)** — read `BlackOutiOSApp` UA on the server; render neutral variants so pricing/purchase markup never ships to the app (today it's CSS-hidden but present in DOM).
 - [x] **P0-4 Remove `*.whop.com` from `allowNavigation`** (`capacitor.config.ts`) so checkout can never open in-app. Done 2026-07-26.
