@@ -91,6 +91,14 @@ tabs/segments/controls, asserts shell classes, two device passes. Reuse + grow i
 - [ ] **U-1 Dashboard (SPX Slayer)** · **U-2 Flows (HELIX)** · **U-3 Heatmap (Thermal)** · **U-4 Terminal (Largo)** · **U-5 Nighthawk** · **U-6 Vector** · **U-7 Account** · **U-8 Track-record (add native chrome — currently none)** · **U-9 FAQ/Learn** · **U-10 Upgrade** · **U-11 Sign-in/Sign-up** · **U-12 Offline** · **U-13 Home (marketing, in-app entry)**
 - [ ] **U-sys** Cross-cutting: safe-area insets everywhere, 44pt touch targets, momentum scroll, no horizontal overflow, consistent type scale + tokens, tab-bar/header polish, page transitions, empty/loading/error states.
 
+### Native-app screens — real content (replaces `PlaceholderView` one at a time)
+- [x] **Account tab** (2026-07-27) — Membership + Security + Notifications + About sections. Real Face ID toggle. Push status. Version + Privacy link + Support email.
+- [x] **Command tab v1** (2026-07-27) — Session header (SPX + regime + session chip + freshness), Regime card (interpretation + flip / spot / call wall / put wall grid), Skeleton loading, Error card with retry, pull-to-refresh + 30s auto-refresh via `.task`. Wired to real `GET /api/market/regime` through `LiveMarketRegimeRepository` (protocol-injected, unit-testable). `APIClient` handles the whole HTTP layer with typed `APIError` cases. 12 unit tests including preserve-previous-on-error behavior.
+- [ ] **Command tab v2** — Top intelligence brief, Active opportunities, What-changed timeline, Product pulse cards.
+- [ ] **Intelligence tab v1** — Native module list with pulse from each desk (SPX Slayer / Helix / Thermal / Largo / Night Hawk / Vector).
+- [ ] **Signals tab v1** — setup-lifecycle feed with filter chips.
+- [ ] **Watchlist tab v1** — ticker list + detail + alert builder.
+
 ### I / M — Icon, assets, metadata, ship
 - [x] **I-1 App icon 1024** from `public/images/blackout-emblem.webp` → `apps/blackout-ios/assets/icon.png` (opaque, no alpha).
 - [x] **I-2 Splash** `assets/splash.png` + `splash-dark.png` (2732²) on `#040407`.

@@ -70,6 +70,30 @@ Clerk auth. 7 unit tests green. **Discovered credential requirement**: the .p8 a
 is an *App Store Connect* API key, not an *APNs Auth Key* — Apple issues these separately.
 Sender stays inert until an APNs .p8 lands in env; documented in-file.
 
+**2026-07-27 (cont. 5)** — Web-side native plugin wrappers landed: `ios-status-bar.ts` (Dark
+style + WKWebView overlay so the void reaches the top), `ios-share.ts` (native
+UIActivityViewController → Web Share → clipboard, typed envelope), `ios-deep-links.ts`
+(appUrlOpen listener + strict route allow-list — foreign hosts and /admin/* explicitly
+blocked, 8 unit tests). `IosNativeInit` component mounted in AppShellProviders fires all
+of it once per iOS-shell session. N-2c: `PushNotificationToggle` gated on `isIosAppShell()`
+so the inert VAPID button no longer appears in the WKWebView. `CLAUDE.md` gained the
+"Never stop" standing rule so every future session inherits the autonomy mandate without
+being re-told.
+
+**2026-07-27 (cont. 6)** — **Command tab v1 shipped as real native content.** `APIClient`
+(URLSession-backed, typed `APIError` cases for every 4xx/5xx + timeout + cancelled),
+`MarketRegimeRepository` protocol + `LiveMarketRegimeRepository` binding to the real
+`GET /api/market/regime` endpoint, `MarketRegimeFormatter` (regime label + interpretation
++ price + freshness), `CommandViewModel` (@MainActor, `.idle`/.loading`/`.loaded`/`.error`,
+preserves previous good snapshot on transient error so the freshness chip carries the age
+instead of blanking out, 30s auto-refresh via `.task`). `CommandView` renders a real
+session header (SPX + regime + session chip + BOTH server-updated-at + client-fetched-at
+freshness), regime card (interpretation + flip/spot/call wall/put wall grid), skeleton
+loader, error card with retry, pull-to-refresh. `CommandViewModelTests` — 12 tests
+including preserve-on-error, transitions, all formatter buckets. Account tab already had
+real content; Command is the second placeholder-off screen. Intelligence / Signals /
+Watchlist remain scaffolds pending their v1 content passes.
+
 **2026-07-27 (cont. 4)** — **N-2b native push + N-1 Face ID UI shipped in the native app.**
 `AppConfig` centralizes backend URL / bundle id / apnsEnvironment / version.
 `PushRegistrationService` (protocol-injected — every dependency mockable) requests
