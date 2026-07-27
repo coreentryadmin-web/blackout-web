@@ -272,15 +272,15 @@ test("pickAtmZeroDteContract prefers 0DTE, allows 1DTE, EXCLUDES the weekly (dte
   assert.equal(pickAtmZeroDteContract(dead, 100.4, TODAY), null);
 });
 
-// ── Flags: OFF by default, ON only when BOTH set ────────────────────────────────────
-test("breakoutSourceEnabled is OFF by default and requires BOTH flags", () => {
+// ── Flags: ON by default, OFF only when explicitly set to "0" ──────────────────────
+test("breakoutSourceEnabled is ON by default and disabled with '0'", () => {
   delete process.env.ZERODTE_WHOLE_MARKET;
   delete process.env.ZERODTE_SRC_BREAKOUT;
-  assert.equal(breakoutSourceEnabled(), false);
-  process.env.ZERODTE_WHOLE_MARKET = "1";
-  assert.equal(breakoutSourceEnabled(), false, "master alone is not enough");
-  process.env.ZERODTE_SRC_BREAKOUT = "1";
-  assert.equal(breakoutSourceEnabled(), true, "both flags on → enabled");
+  assert.equal(breakoutSourceEnabled(), true, "both unset → ON by default");
+  process.env.ZERODTE_WHOLE_MARKET = "0";
+  assert.equal(breakoutSourceEnabled(), false, "master=0 → disabled");
   delete process.env.ZERODTE_WHOLE_MARKET;
+  process.env.ZERODTE_SRC_BREAKOUT = "0";
+  assert.equal(breakoutSourceEnabled(), false, "per-source=0 → disabled");
   delete process.env.ZERODTE_SRC_BREAKOUT;
 });

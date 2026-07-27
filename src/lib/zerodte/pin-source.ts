@@ -36,13 +36,15 @@ import {
 } from "./board";
 
 // ── Flags (read at call time so tests can toggle process.env per case) ──────────────
-/** Master whole-market switch (shared with the breakout source). OFF by default. */
+// Default ON: the three discovery systems are production-ready and must survive ECS
+// task-definition updates that don't carry env vars. Set to "0" to disable.
+/** Master whole-market switch (shared with the breakout source). ON by default. Set ZERODTE_WHOLE_MARKET=0 to disable. */
 export function wholeMarketEnabled(): boolean {
-  return process.env.ZERODTE_WHOLE_MARKET === "1";
+  return process.env.ZERODTE_WHOLE_MARKET !== "0";
 }
-/** Per-source PIN switch. OFF by default. */
+/** Per-source PIN switch. ON by default. Set ZERODTE_SRC_PIN=0 to disable. */
 export function pinSrcFlagEnabled(): boolean {
-  return process.env.ZERODTE_SRC_PIN === "1";
+  return process.env.ZERODTE_SRC_PIN !== "0";
 }
 /** The pin source runs only when BOTH the master and the per-source flag are on. */
 export function pinSourceEnabled(): boolean {

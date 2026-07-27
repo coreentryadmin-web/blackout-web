@@ -2823,3 +2823,37 @@ by flooring at the flag-time mark, so the wider IN_RANGE band does not flatter t
 
 **File:line:** `src/lib/zerodte/plan.ts:25`, `src/lib/zerodte/gates.ts:782`
 **Status:** PR #1150 — CI pending.
+
+---
+
+### 2026-07-27 — Discovery engines silently OFF: flags default OFF, not set in infra
+
+**Severity:** CRITICAL — BREAKOUT, PIN, and CONDOR discovery never run unless env vars
+are manually set. ECS task definition and terraform carry no `ZERODTE_*` flags; any task
+definition update (deploy, scaling, infra change) silently drops manually-set env vars.
+
+**Root cause:** `wholeMarketEnabled()`, `breakoutSrcFlagEnabled()`, `pinSrcFlagEnabled()`,
+and `condorFlagEnabled()` all check `=== "1"` (opt-IN). These flags were originally
+gated OFF during the Phase 3 build (safe-by-default while shipping). Task #47 set them
+live via manual ECS env vars, but the code default remained OFF, so any task definition
+update that didn't carry the vars silently disabled 3 of 4 discovery systems + condor.
+The result: only FLOW discovery ran (tickers with ≥$150k option flow prints), producing
+≤3 setups from 12,000+ stocks. BREAKOUT (whole-market momentum scanner) and PIN
+(GEX-wall mean-reversion fades) never fired. Iron condor never built.
+
+**Evidence:** Live board on 2026-07-27 showed only 3 FLOW-origin setups (SPXW, QQQ, GOOGL).
+`grep ZERODTE` across `blackout-infra/terraform/` returned zero matches. The ECS task
+definition (`main.tf:140-143`) only sets `PROCESS_ROLE=web` and `DATA_SOCKETS_ENABLED=0`.
+
+**Fix:** Flip all four flags to default ON (`!== "0"` instead of `=== "1"`). The systems
+are production-ready (Phase 3a/3b/4 all shipped and tested). To disable, operators set
+the env var to `"0"` explicitly. This survives task definition updates.
+
+**Blast radius:** `breakout-source.ts:33-38`, `pin-source.ts:40-45`, `condor.ts:43-44`.
+Tests updated in all three `*.test.ts` files. `scan.ts` consumption unchanged (still
+checks `breakoutSourceEnabled()`/`pinSourceEnabled()`). `pin-discovery.ts` condor routing
+unchanged (still checks `condorFlagEnabled()`).
+
+**File:line:** `src/lib/zerodte/breakout-source.ts:33`, `src/lib/zerodte/pin-source.ts:40`,
+`src/lib/zerodte/condor.ts:43`
+**Status:** PR #1150 — included with chase-guard fix.
