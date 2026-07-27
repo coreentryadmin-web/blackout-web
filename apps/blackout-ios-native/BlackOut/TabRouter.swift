@@ -20,7 +20,17 @@ public final class TabRouter: ObservableObject {
     @Published public var selectedTab: AppTab
 
     public init(initial: AppTab = .command) {
-        self.selectedTab = initial
+        // Support `-startTab <slug>` launch argument (CI screenshots and any
+        // scripted `xcrun simctl launch` path). If the argument matches a
+        // known AppTab rawValue, start on that tab instead of the default.
+        // Falls back cleanly on unknown values — no crash, no silent misroute.
+        if let idx = ProcessInfo.processInfo.arguments.firstIndex(of: "-startTab"),
+           idx + 1 < ProcessInfo.processInfo.arguments.count,
+           let tab = AppTab(rawValue: ProcessInfo.processInfo.arguments[idx + 1]) {
+            self.selectedTab = tab
+        } else {
+            self.selectedTab = initial
+        }
     }
 
     /// Sugar for call sites — reads at the point of use as an intent
