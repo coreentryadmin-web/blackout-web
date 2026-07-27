@@ -2,31 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== iOS app (App Store compliance) =====
-   When the site runs INSIDE the iOS app, <html> gets the `ios-app` class (set by an
-   early inline script in layout.tsx, keyed off the "BlackOutiOSApp" user-agent token).
-   Apple guideline 3.1.1 forbids pricing / external-purchase links inside the app, so:
-     - `.hide-in-ios-app`  → visible on web, hidden in the iOS app
-     - `.show-in-ios-app`  → hidden on web, shown only in the iOS app
-   Purchasing happens on the website (Whop); the app is sign-in only. */
-html.ios-app .hide-in-ios-app { display: none !important; }
-.show-in-ios-app { display: none; }
-html.ios-app .show-in-ios-app { display: revert; }
-/* Only Google is truly incompatible with WKWebView (Google rejects
-   `disallowed_useragent` since 2016 — any WebView Google OAuth request
-   fails at Google's servers, no client-side fix possible). Everything else
-   — Discord, Apple, GitHub, any provider Clerk gets configured with —
-   works fine in WKWebView via the standard redirect flow: Clerk opens
-   the provider's auth page, user completes, provider redirects back to
-   clerk.blackouttrades.com, Clerk redirects back to the app URL. Same
-   navigation the browser handles for any http link.
-   Clerk's per-provider classes are `.cl-socialButtonsBlockButton__{provider}`
-   and `.cl-socialButtonsIconButton__{provider}` — hide both flavors so it
-   works whether Clerk renders the block or icon variant. */
-html.ios-app .cl-socialButtonsBlockButton__google,
-html.ios-app .cl-socialButtonsIconButton__google {
-  display: none !important;
-}
+/* The iOS app is native SwiftUI (`apps/blackout-ios-native/`) — it does not
+   render this site inside a WKWebView. The old iOS-shell CSS gates
+   (`.hide-in-ios-app`, `.show-in-ios-app`, `html.ios-app`, per-provider
+   Clerk button hides) have been removed. Any residual `.hide-in-ios-app`
+   / `.show-in-ios-app` classes elsewhere in the codebase are no-ops now
+   and will be cleaned up in a follow-up sweep. */
 
 :root {
   /* Fonts are provided by next/font (see layout.tsx) as

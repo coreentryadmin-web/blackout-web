@@ -147,8 +147,8 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" BlackOut/Info.plist
 
       - name: Set up code signing (shared script — PBX_PATH points at XcodeGen pbxproj)
-        working-directory: .
-        run: bash apps/blackout-ios/scripts/codemagic-signing.sh
+        working-directory: apps/blackout-ios-native
+        run: bash ../../scripts/ios-shared/codemagic-signing.sh
 
       - name: Build signed IPA
         run: |

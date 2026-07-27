@@ -349,9 +349,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
               <Link href="/sign-in" className="nav-signin font-syne hidden sm:inline">
                 Sign In
               </Link>
-              {/* Purchase flow lives on the web (Apple 3.1.1). Hide the "Get access →"
-                  CTA inside the iOS shell — signed-out iOS users get "Sign In" only. */}
-              <Link href="/sign-up" className="nav-join font-syne hide-in-ios-app">
+              <Link href="/sign-up" className="nav-join font-syne">
                 Get access →
               </Link>
             </>
@@ -444,7 +442,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
                     </Link>
                     <Link
                       href="/sign-up"
-                      className="nav-join font-syne w-full justify-center hide-in-ios-app"
+                      className="nav-join font-syne w-full justify-center"
                       onClick={() => setMobileOpen(false)}
                     >
                       Get access →

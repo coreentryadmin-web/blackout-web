@@ -1,13 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { clsx } from "clsx";
 import { PricingBackdrop } from "@/components/landing/PricingBackdrop";
 import { AuthProofRail } from "@/components/auth/AuthProofRail";
-import { NativeOAuthButtons } from "@/components/auth/NativeOAuthButtons";
-import { isIosAppShell } from "@/lib/ios-app-shell";
 
 const paneStagger = {
   hidden: {},
@@ -25,21 +21,13 @@ const riseItem = {
  * form floating in a darkened pool of light over the live backdrop. Below lg the pitch
  * pane drops and a compact brand header takes its place. All motion is gated by the root
  * MotionConfig reducedMotion="user".
+ *
+ * The iOS app is native SwiftUI (`apps/blackout-ios-native/`) — it does NOT reach this
+ * shell. Any iOS-shell branching that used to live here has been removed.
  */
 export function AuthShell({ mode, children }: { mode: "signin" | "signup"; children: React.ReactNode }) {
-  const [iosApp, setIosApp] = useState(false);
-
-  useEffect(() => {
-    setIosApp(isIosAppShell());
-  }, []);
-
   return (
-    <main
-      className={clsx(
-        "relative grid min-h-[100dvh] overflow-hidden bg-[#040407]",
-        iosApp ? "auth-ios-app grid-cols-1" : "lg:grid-cols-[1.05fr_0.95fr]"
-      )}
-    >
+    <main className="relative grid min-h-[100dvh] overflow-hidden bg-[#040407] lg:grid-cols-[1.05fr_0.95fr]">
       {/* full-bleed animated backdrop (behind both panes) */}
       <PricingBackdrop />
 
@@ -105,26 +93,21 @@ export function AuthShell({ mode, children }: { mode: "signin" | "signup"; child
           aria-hidden
           className="absolute inset-0"
           style={{
-            background: iosApp
-              ? "radial-gradient(ellipse 120% 80% at 50% 30%, rgba(4,4,7,0.92), rgba(4,4,7,0.75))"
-              : "radial-gradient(ellipse 100% 90% at 50% 50%, rgba(4,4,7,0.86), rgba(4,4,7,0.5) 70%, transparent), linear-gradient(to right, rgba(4,4,7,0.6), transparent)",
+            background:
+              "radial-gradient(ellipse 100% 90% at 50% 50%, rgba(4,4,7,0.86), rgba(4,4,7,0.5) 70%, transparent), linear-gradient(to right, rgba(4,4,7,0.6), transparent)",
           }}
         />
         <div className="relative z-10 mx-auto w-full max-w-[420px]">
           {/* mobile brand header (the pitch pane is hidden below lg) */}
-          <div className={clsx("mb-8 text-center lg:hidden", iosApp && "auth-ios-brand mb-6")}>
-            {!iosApp && (
-              <Link
-                href="/"
-                aria-label="Back to BlackOut home"
-                className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.35em] uppercase text-sky-300 hover:text-bull"
-              >
-                <span className="nav-dot" aria-hidden /> ← Back home
-              </Link>
-            )}
-            <h1 className={clsx("font-anton tracking-[0.04em] text-white", iosApp ? "mt-0 text-6xl" : "mt-4 text-5xl")}>
-              BLACKOUT
-            </h1>
+          <div className="mb-8 text-center lg:hidden">
+            <Link
+              href="/"
+              aria-label="Back to BlackOut home"
+              className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.35em] uppercase text-sky-300 hover:text-bull"
+            >
+              <span className="nav-dot" aria-hidden /> ← Back home
+            </Link>
+            <h1 className="mt-4 font-anton text-5xl tracking-[0.04em] text-white">BLACKOUT</h1>
             <p className="mt-2 font-mono text-[10px] tracking-[0.4em] uppercase text-bull">
               Institutional 0DTE · Options Flow
             </p>
@@ -132,33 +115,6 @@ export function AuthShell({ mode, children }: { mode: "signin" | "signup"; child
 
           <div className="relative">
             <div aria-hidden className="absolute -inset-4 rounded-3xl bg-bull/10 opacity-60 blur-2xl" />
-            {/* iOS shell auth callout — Google + Apple OAuth are blocked inside
-                WKWebView by Google/Apple policy (not a BlackOut bug), so the
-                CSS in globals.css hides those two provider buttons only.
-                Discord and email + one-time code both work here. Visible only
-                inside the app (.show-in-ios-app). Kept prominent (bordered
-                card, real type scale) because the 11px mono line members
-                were seeing looked like decoration. */}
-            <div className="show-in-ios-app auth-ios-callout relative z-10 mb-5 rounded-xl border border-bull/25 bg-bull/[0.06] px-4 py-3 text-left">
-              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-bull">
-                In-app sign-in
-              </p>
-              <p className="mt-1 font-syne text-sm font-medium leading-snug text-white">
-                Discord, Apple, or email + one-time code.
-              </p>
-              <p className="mt-1 font-mono text-[11px] leading-relaxed text-sky-300">
-                Tap Apple or Google below — they open the system sign-in sheet
-                (no in-app WebView, no password). Or scroll down for Discord or
-                an email one-time code.
-              </p>
-            </div>
-            {/* Native Google + Apple buttons — iOS shell only. Uses Capacitor
-                plugins that open the SYSTEM auth sheet (not the WebView), so
-                Google's disallowed_useragent block doesn't apply and Apple
-                Sign In fires the native Face-ID/passcode sheet. On success
-                the endpoint mints a Clerk __session cookie and reloads to
-                /dashboard. Renders nothing on web, so no bundle bloat there. */}
-            <NativeOAuthButtons />
             <div className="auth-card-frame relative">{children}</div>
           </div>
         </div>
