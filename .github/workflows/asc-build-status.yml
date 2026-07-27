@@ -1,0 +1,105 @@
+# Probe App Store Connect for the current state of our TestFlight builds.
+# Cheap, dispatch-only, no macOS runner — just curl + a JWT-signed Python
+# script hitting Apple's public ASC API. Prints processingState, any
+# betaBuildLocalization gaps, compliance state, and reviewer submission
+# status so we can pinpoint WHY a build isn't emailing testers.
+name: ASC Build Status Probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe ASC via API
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          APP_STORE_APPLE_ID: "6787797476"
+        run: |
+          python3 -m pip install --quiet cryptography
+          python3 - <<'PY'
+          import base64, json, os, sys, time, urllib.request, urllib.error
+
+          from cryptography.hazmat.primitives import hashes
+          from cryptography.hazmat.primitives.asymmetric import ec, utils as asym_utils
+          from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+          from cryptography.hazmat.primitives import serialization
+
+          def b64u(b): return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+          issuer = os.environ["APP_STORE_CONNECT_ISSUER_ID"]
+          key_id = os.environ["APP_STORE_CONNECT_KEY_ID"]
+          pem    = os.environ["APP_STORE_CONNECT_PRIVATE_KEY"].encode()
+          app_id = os.environ["APP_STORE_APPLE_ID"]
+
+          header  = {"alg": "ES256", "kid": key_id, "typ": "JWT"}
+          payload = {"iss": issuer, "exp": int(time.time()) + 1200, "aud": "appstoreconnect-v1"}
+          signing = f"{b64u(json.dumps(header,separators=(',',':')).encode())}.{b64u(json.dumps(payload,separators=(',',':')).encode())}"
+
+          pk = serialization.load_pem_private_key(pem, password=None)
+          raw = pk.sign(signing.encode(), ec.ECDSA(hashes.SHA256()))
+          r, s = decode_dss_signature(raw)
+          sig = r.to_bytes(32, "big") + s.to_bytes(32, "big")
+          jwt = f"{signing}.{b64u(sig)}"
+
+          BASE = "https://api.appstoreconnect.apple.com/v1"
+          H = {"Authorization": f"Bearer {jwt}"}
+
+          def api(path):
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(BASE + path, headers=H)) as r:
+                      return r.status, json.loads(r.read())
+              except urllib.error.HTTPError as e:
+                  return e.code, {"error": e.read().decode()[:400]}
+
+          print(f"\n=== BlackOut TestFlight builds (app {app_id}) ===\n")
+          st, body = api(f"/builds?filter[app]={app_id}&limit=8&sort=-uploadedDate&include=betaBuildLocalizations,preReleaseVersion")
+          if st != 200:
+              print(f"! /builds → {st}: {body}", file=sys.stderr)
+              sys.exit(1)
+
+          builds = body.get("data", [])
+          if not builds:
+              print("(no builds on the account yet)")
+              sys.exit(0)
+
+          for b in builds:
+              a = b.get("attributes", {})
+              bid = b["id"]
+              print(f"Build ID: {bid}")
+              print(f"  Version:              {a.get('version', '?')}")
+              print(f"  Uploaded:             {a.get('uploadedDate', '?')}")
+              print(f"  Expires:              {a.get('expirationDate', '?')}")
+              print(f"  Processing state:     {a.get('processingState', '?')}   ← INVALID/PROCESSING/VALID/FAILED")
+              print(f"  Uses non-exempt enc:  {a.get('usesNonExemptEncryption', '?')}   (null = compliance NOT answered)")
+              print(f"  Expired:              {a.get('expired', '?')}")
+              print(f"  Icon asset token:     {'ok' if a.get('iconAssetToken') else 'MISSING'}")
+
+              # Beta review submission — if compliance was skipped, this often
+              # shows as WAITING_FOR_REVIEW with a "missing compliance" flag.
+              st2, body2 = api(f"/builds/{bid}/betaAppReviewSubmission")
+              if st2 == 200 and body2.get("data"):
+                  ba = body2["data"].get("attributes", {})
+                  print(f"  Beta app review:      {ba.get('betaReviewState', '?')}")
+
+              # If processing failed, dump the error details
+              if a.get("processingState") == "FAILED":
+                  print(f"  ! Processing failed — check ASC dashboard for the specific error")
+              print()
+
+          print("=" * 60)
+          print("How to read this:")
+          print("  processingState=PROCESSING → Apple is still crunching — wait 5-30 min")
+          print("  processingState=VALID + usesNonExemptEncryption=null → build is READY but")
+          print("    the compliance question is holding it. Answer it in ASC → TestFlight →")
+          print("    Builds → the build row → 'Manage Missing Compliance' → Yes/Yes-exempt.")
+          print("  processingState=VALID + usesNonExemptEncryption=true|false → build is LIVE")
+          print("    on TestFlight for internal testers; the 'Ready to test' email fires")
+          print("    within ~5 min of processing completing (check spam folder).")
+          print("  processingState=INVALID or FAILED → Apple rejected the binary — check")
+          print("    the ASC dashboard for the specific validation error.")
+          PY
