@@ -106,10 +106,9 @@ export function resolveTierFromMembership(
     );
   }
 
-  // Community products (e.g. Discord-only $75) must never resolve as premium, even if their
-  // plan ID is accidentally listed in a premium plan env var.
+  // Community products (SPX Slayer $49) get desk access to /dashboard only, not full premium.
   const communityProducts = getCommunityProductIds();
-  if (communityProducts.includes(productId)) return null;
+  if (communityProducts.includes(productId)) return "community";
 
   if (premiumProducts.includes(productId) || premiumPlans.includes(planId)) {
     return "premium";
@@ -128,13 +127,14 @@ export function resolveTierFromMemberships(
   revokedIds?: ReadonlySet<string>,
   dunningGraceIds?: ReadonlySet<string>
 ): Tier {
+  let hasCommunity = false;
   for (const membership of memberships) {
     if (revokedIds?.has(membership.id)) continue;
-    if (resolveTierFromMembership(membership, { dunningGraceIds }) === "premium") {
-      return "premium";
-    }
+    const tier = resolveTierFromMembership(membership, { dunningGraceIds });
+    if (tier === "premium") return "premium";
+    if (tier === "community") hasCommunity = true;
   }
-  return "free";
+  return hasCommunity ? "community" : "free";
 }
 
 export function resolveBillingKindFromMembership(

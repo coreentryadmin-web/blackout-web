@@ -39,14 +39,14 @@ test("resolveBillingKindFromMemberships: premium wins over community", () => {
   );
 });
 
-test("resolveTierFromMembership: community product never resolves as premium even with matching plan ID", () => {
+test("resolveTierFromMembership: community product resolves as community even with matching premium plan ID", () => {
   const communityWithPremiumPlan = {
     id: "m_community_leak",
     status: "active" as const,
     plan: { id: "plan_prNHPwrOyFlm2" },
     product: { id: "prod_hPHU7bWcvWg8T" },
   };
-  assert.equal(resolveTierFromMembership(communityWithPremiumPlan), null);
+  assert.equal(resolveTierFromMembership(communityWithPremiumPlan), "community");
 });
 
 test("resolveBillingKindFromMembership: community product with premium plan ID stays community", () => {

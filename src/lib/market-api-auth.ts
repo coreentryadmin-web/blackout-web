@@ -70,9 +70,10 @@ export async function authorizeCronOrTierApi(
   return { userId: result.userId, via: "user" };
 }
 
-/** Premium desk / flow / SSE market data — cron OR signed-in premium user. */
+/** Desk market data — cron OR signed-in community+ user. Page-level gates on
+ *  non-SPX routes still require premium; this only gates the data API layer. */
 export async function authorizeMarketDeskApi(
   req: NextRequest
 ): Promise<{ userId: string | null; via: "cron" | "user" } | Response> {
-  return authorizeCronOrTierApi(req, "premium");
+  return authorizeCronOrTierApi(req, "community");
 }

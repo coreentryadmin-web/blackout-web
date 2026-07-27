@@ -198,6 +198,10 @@ export async function syncWhopMembershipForEmail(
         activeMembership = r.activeMembership;
         break;
       }
+      if (r.tier === "community") {
+        userTier = "community";
+        if (!activeMembership) activeMembership = r.activeMembership;
+      }
     }
 
     await updateClerkMembershipMetadata(user.id, {
@@ -221,6 +225,7 @@ export async function syncWhopMembershipForEmail(
     });
     updatedUserIds.push(user.id);
     if (userTier === "premium") bestTier = "premium";
+    else if (userTier === "community" && bestTier !== "premium") bestTier = "community";
     if (userBillingKind === "premium") bestBillingKind = "premium";
     else if (userBillingKind === "community" && bestBillingKind !== "premium") {
       bestBillingKind = "community";
