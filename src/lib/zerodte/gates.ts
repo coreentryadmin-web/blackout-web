@@ -460,20 +460,26 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         });
       }
     } else if (vix >= VIX_ELEVATED_THRESHOLD) {
-      const tapeAligned =
+      // G-1 already hard-blocks counter-tape entries. A setup that reaches G-4 either
+      // PASSED G-1 (tape aligned or flat) or is a condor (skipped above). The 75 floor
+      // only applies to the residual unknown-tape case (bias == null / stale — G-1's
+      // no_market_bias already blocked these, so 75 here is belt-and-suspenders).
+      //
+      // FLAT tape: the setup has no directional fight with the market (G-1 passed it),
+      // so it keeps the standard 65 floor — the same treatment as tape-aligned. Before
+      // this fix, flat tape was treated as non-aligned, requiring 75, which produced
+      // zero-commit sessions on choppy/range-bound days with VIX 17-20 (the most common
+      // market regime). The 75 floor was designed for COUNTER-tape entries, but G-1
+      // already hard-blocks those — double-gating them here was redundant, and
+      // collateral-damaging flat-tape setups that had no directional opposition.
+      const tapeAlignedOrFlat =
         input.bias != null &&
-        input.bias !== "flat" &&
-        (input.bias === "up") === (input.direction === "long");
-      // G-1 already hard-blocks counter-tape entries. On elevated-VIX days (17–20)
-      // the extra 75 floor was producing zero-commit sessions for tape-ALIGNED finds
-      // that cleared G-1 — e.g. 2026-07-20 down tape with real SPY/TSLA short flow
-      // stuck at 56–64 while counter-tape longs were correctly killed. Aligned setups
-      // keep the standard 65 floor; unaligned / unknown tape still need 75.
-      const elevatedFloor = tapeAligned ? ZERODTE_SCORE_FLOOR : VIX_ELEVATED_SCORE_FLOOR;
+        (input.bias === "flat" || (input.bias === "up") === (input.direction === "long"));
+      const elevatedFloor = tapeAlignedOrFlat ? ZERODTE_SCORE_FLOOR : VIX_ELEVATED_SCORE_FLOOR;
       if (input.score < elevatedFloor) {
         blocks.push({
           code: "vix_elevated",
-          reason: tapeAligned
+          reason: tapeAlignedOrFlat
             ? `VIX ${vixR} in the elevated regime (≥${VIX_ELEVATED_THRESHOLD}) — tape-aligned score ${Math.round(input.score)} needs ≥${elevatedFloor} to commit (standard floor when G-1 clears).`
             : `VIX ${vixR} in the elevated regime (≥${VIX_ELEVATED_THRESHOLD}) — score ${Math.round(input.score)} ` +
               `needs ≥${VIX_ELEVATED_SCORE_FLOOR} to commit. The 17-20 VIX regime ran 25% WR vs 69% below 17 (F-1).`,
@@ -499,11 +505,11 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     //     VIX regime → NOT blocked here (no spurious empty).
     const tickerUp = input.ticker.toUpperCase();
     const isIndexEtf = INDEX_ETF_TICKERS.has(tickerUp);
-    const tapeAligned =
+    // Mirror the G-4 elevated logic: flat tape is treated as aligned (standard 65 floor).
+    const tapeAlignedOrFlat =
       input.bias != null &&
-      input.bias !== "flat" &&
-      (input.bias === "up") === (input.direction === "long");
-    const couldBlock = !isIndexEtf || (!tapeAligned && input.score < VIX_ELEVATED_SCORE_FLOOR);
+      (input.bias === "flat" || (input.bias === "up") === (input.direction === "long"));
+    const couldBlock = !isIndexEtf || (!tapeAlignedOrFlat && input.score < VIX_ELEVATED_SCORE_FLOOR);
     if (couldBlock) {
       blocks.push({
         code: "vix_unavailable",
@@ -861,10 +867,13 @@ function etLabel(etMinutes: number): string {
  */
 export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCalibration {
   const ticker = input.ticker.toUpperCase();
+  // Flat tape = no directional opposition (same treatment as aligned in G-4).
   const aligned: boolean | null =
-    input.bias == null || input.bias === "flat"
+    input.bias == null
       ? null
-      : (input.bias === "up") === (input.direction === "long");
+      : input.bias === "flat"
+        ? true
+        : (input.bias === "up") === (input.direction === "long");
 
   // G-4 — VIX regime throttle verdict.
   const vix = input.vixDayOpen ?? null;

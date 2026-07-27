@@ -2857,3 +2857,44 @@ unchanged (still checks `condorFlagEnabled()`).
 **File:line:** `src/lib/zerodte/breakout-source.ts:33`, `src/lib/zerodte/pin-source.ts:40`,
 `src/lib/zerodte/condor.ts:43`
 **Status:** PR #1150 — included with chase-guard fix.
+
+---
+
+## 2026-07-27 — G-4 VIX elevated gate treats flat tape as non-aligned (zero-commit sessions)
+
+**Severity:** CRITICAL — the most common market regime (VIX 17-20, flat/choppy tape) produced
+ZERO committed plays across entire RTH sessions. The system was live but completely inert on
+range-bound days.
+
+**Root cause:** In `gates.ts`, the G-4 VIX elevated gate computed `tapeAligned` as:
+```
+input.bias != null && input.bias !== "flat" && (input.bias === "up") === (input.direction === "long")
+```
+This excluded flat tape (`bias === "flat"`), treating it the same as unknown/counter-tape and
+requiring score >= 75 (VIX_ELEVATED_SCORE_FLOOR) instead of the standard >= 65. But G-1 already
+hard-blocks counter-tape entries — a setup that reaches G-4 with flat tape has NO directional
+opposition (G-1 passed it). The 75 floor was designed for counter-tape entries that G-1 already
+kills, and flat tape was collateral damage.
+
+**Evidence:** Live board on 2026-07-27 (VIX 17.62-18.82, flat tape):
+```
+QQQ (long) score=74 — BLOCKED by vix_elevated (needs ≥75, got 74)
+```
+ONE POINT from committing. With the fix (flat tape → standard 65 floor), QQQ at 74 commits.
+The same pattern likely explains zero-commit sessions on 2026-07-24 (VIX 19+, choppy tape).
+
+**Fix:** Changed `tapeAligned` to `tapeAlignedOrFlat` in three locations:
+1. G-4 elevated gate (line ~476): flat tape gets the standard 65 floor
+2. G-4 fail-closed mirror (line ~510): flat tape treated as aligned for couldBlock calc
+3. Calibration `computeGateCalibration` (line ~870): flat tape → `aligned = true`
+
+The logic: `input.bias === "flat" || (input.bias === "up") === (input.direction === "long")`.
+Null bias (unknown/stale tape — already blocked by G-1 `no_market_bias`) still gets the 75
+belt-and-suspenders floor.
+
+**Blast radius:** Only `gates.ts` — three sites, one semantic change. The gate evaluation, its
+fail-closed mirror, and the calibration snapshot all had the same flat-tape-as-non-aligned bug.
+No other files reference `tapeAligned`. Tests updated in `gates.test.ts` (5 tests adjusted).
+
+**File:line:** `src/lib/zerodte/gates.ts:476`, `:510`, `:870`
+**Status:** PR #1153 (pending)

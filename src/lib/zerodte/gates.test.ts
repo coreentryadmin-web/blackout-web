@@ -251,13 +251,17 @@ test("G-4: elevated VIX tape-aligned score 65–74 commits (G-1 already blocks c
   assert.equal(aligned.calibration.g4_vix.would_block, false);
 });
 
-test("G-4: elevated VIX without readable tape alignment still needs score >= 75", () => {
-  const weak = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 70, bias: "flat" }));
-  assert.equal(weak.verdict, "BLOCKED");
-  assert.equal(weak.blocks.some((b) => b.code === "vix_elevated"), true);
-  assert.match(weak.blocks.find((b) => b.code === "vix_elevated")!.reason, /25% WR/);
-  assert.equal(weak.calibration.g4_vix.tier, "elevated");
-  assert.equal(weak.calibration.g4_vix.would_block, true);
+test("G-4: elevated VIX with flat tape uses the standard 65 floor (flat = no directional opposition)", () => {
+  // Flat tape clears G-1 (no counter-tape fight), so the elevated regime keeps the 65 floor.
+  const flat70 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 70, bias: "flat" }));
+  assert.equal(flat70.verdict, "COMMIT");
+  assert.equal(flat70.calibration.g4_vix.tier, "elevated");
+  assert.equal(flat70.calibration.g4_vix.would_block, false);
+  // Null bias (unknown tape — stale or unavailable) still requires 75 (belt-and-suspenders).
+  const null64 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 64, bias: null }));
+  assert.equal(null64.verdict, "BLOCKED");
+  assert.equal(null64.blocks.some((b) => b.code === "vix_elevated"), true);
+  assert.equal(null64.calibration.g4_vix.would_block, true);
 });
 
 test("G-4: elevated VIX (>=17) with score >= 75 clears", () => {
@@ -310,10 +314,15 @@ test("G-4 fail-closed: unavailable VIX does NOT block an index/ETF whose score c
   assert.equal(aligned.blocks.some((b) => b.code === "vix_unavailable"), false);
 });
 
-test("G-4 fail-closed: unavailable VIX DOES block an index/ETF that is NOT tape-aligned and below the 75 elevated floor (a present elevated VIX could have blocked it)", () => {
+test("G-4 fail-closed: unavailable VIX does NOT block an index/ETF with flat tape above the standard 65 floor (flat = aligned)", () => {
+  // Flat tape is treated as aligned, so the 65 floor applies — 70 >= 65 → no present VIX could block.
   const v = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
-  assert.equal(v.verdict, "BLOCKED");
-  assert.equal(v.blocks.some((b) => b.code === "vix_unavailable"), true);
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "vix_unavailable"), false);
+  // Null bias (unknown tape) at 70 < 75 → DOES block (belt-and-suspenders for unknown tape).
+  const nullBias = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, bias: null, vixDayOpen: null, vixUnavailable: true }));
+  assert.equal(nullBias.verdict, "BLOCKED");
+  assert.equal(nullBias.blocks.some((b) => b.code === "vix_unavailable"), true);
 });
 
 test("G-4 fail-closed: a PRESENT VIX ignores the unavailable signal entirely (normal regime path runs)", () => {
@@ -944,10 +953,14 @@ test("G-3: score 64.999 blocks, exactly 65 commits — the floor comparison is o
 test("G-4: 16.999 is normal, exactly 17 is elevated, 19.999 is elevated, exactly 20 is extreme", () => {
   // 16.999 → normal regime, no floor bump; a flat-tape 70 commits.
   assert.equal(evaluateZeroDteGates(input({ vixDayOpen: 16.999, score: 70, bias: "flat" })).calibration.g4_vix.tier, "normal");
-  // Exactly 17 (>= elevated) → flat-tape 70 needs 75 → blocked.
+  // Exactly 17 (>= elevated) → flat-tape 70 still commits (flat = aligned, 65 floor).
   const at17 = evaluateZeroDteGates(input({ vixDayOpen: 17, score: 70, bias: "flat" }));
   assert.equal(at17.calibration.g4_vix.tier, "elevated");
-  assert.ok(at17.blocks.some((b) => b.code === "vix_elevated"));
+  assert.equal(at17.verdict, "COMMIT");
+  // Exactly 17 with null bias (unknown tape) at 70 < 75 → blocked.
+  const at17null = evaluateZeroDteGates(input({ vixDayOpen: 17, score: 70, bias: null }));
+  assert.equal(at17null.calibration.g4_vix.tier, "elevated");
+  assert.ok(at17null.blocks.some((b) => b.code === "vix_elevated"));
   // 19.999 → still elevated (a single name at 90 clears the 75 elevated floor).
   const nvdaHi = evaluateZeroDteGates(input({ ticker: "NVDA", vixDayOpen: 19.999, score: 90, bias: "flat" }));
   assert.equal(nvdaHi.calibration.g4_vix.tier, "elevated");
@@ -958,23 +971,25 @@ test("G-4: 16.999 is normal, exactly 17 is elevated, 19.999 is elevated, exactly
   assert.ok(nvdaExtreme.blocks.some((b) => b.code === "vix_extreme"));
 });
 
-test("G-4: elevated flat-tape score floor is 75 — 74 blocks, exactly 75 clears", () => {
-  const at74 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 74, bias: "flat" }));
-  assert.ok(at74.blocks.some((b) => b.code === "vix_elevated"));
-  const at75 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 75, bias: "flat" }));
-  assert.equal(at75.verdict, "COMMIT");
+test("G-4: elevated flat-tape score floor is 65 (same as aligned) — 64 blocks, 65 clears", () => {
+  const at64 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 64, bias: "flat" }));
+  assert.ok(at64.blocks.some((b) => b.code === "vix_elevated"));
+  const at65 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 65, bias: "flat" }));
+  assert.equal(at65.verdict, "COMMIT");
+  // Null bias triggers G-1 no_market_bias first (can't reach G-4), so the 75 elevated
+  // floor for unknown tape is tested via the calibration path and fail-closed tests.
 });
 
-// ── G-4 fail-closed couldBlock narrowing: index/ETF flat at EXACTLY the 75 floor ──────
-test("G-4 fail-closed: an index/ETF flat-tape at exactly 75 could NOT have been blocked → unavailable VIX passes it", () => {
-  // couldBlock = !isIndexEtf || (!tapeAligned && score < 75). QQQ flat at 75 → 75<75 false → couldBlock false.
-  const v = evaluateZeroDteGates(input({ ticker: "QQQ", score: 75, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
+// ── G-4 fail-closed couldBlock narrowing: index/ETF flat at EXACTLY the 65 floor ──────
+test("G-4 fail-closed: an index/ETF flat-tape at 65+ could NOT have been blocked → unavailable VIX passes it", () => {
+  // couldBlock = !isIndexEtf || (!tapeAlignedOrFlat && score < 75). QQQ flat → tapeAlignedOrFlat=true → couldBlock false.
+  const v = evaluateZeroDteGates(input({ ticker: "QQQ", score: 65, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
   assert.equal(v.verdict, "COMMIT");
   assert.ok(!v.blocks.some((b) => b.code === "vix_unavailable"));
-  // …one point lower (74) a present elevated VIX COULD have blocked it → fails closed.
-  const v74 = evaluateZeroDteGates(input({ ticker: "QQQ", score: 74, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
-  assert.equal(v74.verdict, "BLOCKED");
-  assert.ok(v74.blocks.some((b) => b.code === "vix_unavailable"));
+  // Null bias (unknown tape) at 74 < 75 → a present elevated VIX COULD have blocked it → fails closed.
+  const vNull74 = evaluateZeroDteGates(input({ ticker: "QQQ", score: 74, bias: null, vixDayOpen: null, vixUnavailable: true }));
+  assert.equal(vNull74.verdict, "BLOCKED");
+  assert.ok(vNull74.blocks.some((b) => b.code === "vix_unavailable"));
 });
 
 // ── Stacked firewalls: every fail-closed signal at once surfaces every code ───────────
