@@ -80,6 +80,23 @@ so the inert VAPID button no longer appears in the WKWebView. `CLAUDE.md` gained
 "Never stop" standing rule so every future session inherits the autonomy mandate without
 being re-told.
 
+**2026-07-27 (cont. 12)** — **Watchlist v3 per-ticker detail sheet shipped.**
+New `/api/mobile/ticker/[ticker]` route projects the LIGHT gex-positioning
+surface into a tight, versioned mobile contract (spot / change / flip /
+call wall / put wall / max pain / nearest-wall / regime slug + posture +
+plain-English interpretation). Two-shape response: `available:true` with
+levels+regime, or `available:false` with a reason — "not yet covered" is
+a first-class state, not an error, so a fresh watchlist add doesn't
+render as a failure. Swift-side: `TickerDetailRepository` (protocol +
+`LiveTickerDetailRepository`); `TickerDetailViewModel` (state machine,
+preserve-on-error, single fetch on sheet-present + pull-to-refresh — no
+auto-poll because positioning doesn't move fast enough inside a modal to
+be worth the request budget); `TickerDetailSheet` — spot big-number card
++ dealer-levels receipt + regime interpretation + freshness + degraded
+badge. Wired into `WatchlistView` via `sheet(item:)` on row tap.
+5 ViewModel tests (available/unavailable/preserve-on-error/error-message/
+raw-JSON-decode both shapes).
+
 **2026-07-27 (cont. 11)** — **Command IndexTickerStrip shipped.** A
 horizontal live-price strip (SPX / SPY / QQQ / VIX) sits between the
 regime card and Active opportunities on Command, so members see the

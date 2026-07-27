@@ -14,6 +14,10 @@ struct WatchlistView: View {
     @EnvironmentObject private var store: WatchlistStore
     @StateObject private var quotes = WatchlistQuoteStore()
     @State private var showingAdd = false
+    // Tapping a row presents the detail sheet. Kept as an optional binding
+    // so `sheet(item:)` handles present/dismiss consistently — a bool +
+    // separate "which ticker" state would race on quick taps.
+    @State private var detailTicker: TickerSelection?
 
     var body: some View {
         Group {
@@ -35,9 +39,14 @@ struct WatchlistView: View {
                 List {
                     Section {
                         ForEach(store.tickers, id: \.self) { t in
-                            WatchlistRow(ticker: t, quote: quotes.quotes[t])
-                                .frame(minHeight: BOTouchTarget.minimum)
-                                .listRowBackground(BOColor.backgroundCard)
+                            Button {
+                                detailTicker = TickerSelection(ticker: t)
+                            } label: {
+                                WatchlistRow(ticker: t, quote: quotes.quotes[t])
+                            }
+                            .buttonStyle(.plain)
+                            .frame(minHeight: BOTouchTarget.minimum)
+                            .listRowBackground(BOColor.backgroundCard)
                         }
                         .onDelete { indexSet in
                             for i in indexSet.sorted(by: >) {
@@ -76,6 +85,11 @@ struct WatchlistView: View {
             }
             .presentationDetents([.medium])
         }
+        .sheet(item: $detailTicker) { sel in
+            TickerDetailSheet(ticker: sel.ticker)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
     }
 
     @ToolbarContentBuilder
@@ -95,6 +109,14 @@ struct WatchlistView: View {
             }
         }
     }
+}
+
+/// Wrapper struct so the row-tap sheet can use `sheet(item:)` instead of
+/// coupling a bool + optional ticker — avoids stale-state races when a user
+/// taps two rows in quick succession.
+private struct TickerSelection: Identifiable, Equatable {
+    let ticker: String
+    var id: String { ticker }
 }
 
 private struct AddTickerSheet: View {
