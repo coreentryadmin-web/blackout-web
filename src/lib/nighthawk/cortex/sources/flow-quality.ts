@@ -145,12 +145,22 @@ export function deriveFlowQualityEvidence(input: CortexInputs): EvidenceItem[] {
   }
 
   if (items.length === 0) {
+    // The flow tape was SUCCESSFULLY READ but no qualifying cluster exists on either
+    // side — that is a legitimate "coast clear" answer, not a data outage. Returning
+    // absent here made the veto-blind firewall treat a quiet tape identically to a
+    // failed read, blocking commits when gex-walls alone was unavailable (the two
+    // veto-capable sources both looked "blind" even though flow-quality had answered).
+    // A zero-weight supports item counts as "answered" for veto-blind without
+    // affecting the composite score.
     return [
-      absentForMissingSlice(
-        "flow-quality",
-        input,
-        "no qualifying sweep/block cluster on either side inside the 15-min window"
-      ),
+      {
+        source: "flow-quality" as const,
+        stance: "supports" as const,
+        weight: 0,
+        halfLifeSec: FLOW_HALF_LIFE_SEC,
+        asOf: input.now,
+        detail: "no opposing sweep/block cluster in the 15-min window — flow is clear.",
+      },
     ];
   }
   return items;

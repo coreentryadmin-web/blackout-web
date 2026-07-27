@@ -66,7 +66,13 @@ import type { ZeroDteGateBlock } from "./gates";
  *  higher net score to PASS. A thin +0.1 from 2 sources is not the same
  *  confidence as +0.1 from 6 — without this floor a near-empty composite
  *  slides through identically to a well-corroborated one. */
-export const THIN_EVIDENCE_MIN_SOURCES = 3;
+// 2 not 3: on a normal trading day outside the 9:30-9:45 opening window, only
+// ~2-3 of 8 Cortex sources can realistically answer (opening-harvest is
+// time-locked, darkpool-confluence is bonus-only, wall-trend needs accumulated
+// history, gex-walls/vex-charm need UW data often absent for non-index tickers).
+// A threshold of 3 was a near-blanket block; 2 lets the score floor do the real
+// filtering while still catching composites from a single stale source.
+export const THIN_EVIDENCE_MIN_SOURCES = 2;
 /** The score floor applied when evidence is thin (< THIN_EVIDENCE_MIN_SOURCES
  *  answered). Must be strictly positive — a thin wash (0) should not pass. */
 export const THIN_EVIDENCE_SCORE_FLOOR = 0.5;
