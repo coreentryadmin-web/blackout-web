@@ -432,6 +432,17 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         </div>
       </footer>
 
+      {/* ═══ MOBILE STICKY CTA ═══ */}
+      <div className="mobile-sticky-cta" id="mobile-sticky-cta">
+        <div className="sticky-text">
+          <strong>{signedIn ? "Open desk" : "Get access"}</strong>
+          From {usd(MEMBERSHIP_PRICING.monthly)}/mo
+        </div>
+        <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="sticky-btn">
+          Start now &rarr;
+        </Link>
+      </div>
+
       <LandingRedesignFx />
     </div>
   );
