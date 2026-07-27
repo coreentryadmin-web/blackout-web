@@ -11,7 +11,10 @@ import { recordDataSourceing } from "@/features/nighthawk/lib/diagnostics";
 // switch to the fallback URL so requests aren't blocked for the full pause window.
 // Mirrors the pattern in scripts/audit/zerodte-e2e-suite.mjs (data-resilience audit 2026-07-27).
 const POLYGON_PRIMARY = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
-const POLYGON_FALLBACK = new URL(POLYGON_PRIMARY).hostname.endsWith("polygon.io")
+const POLYGON_FALLBACK = (() => {
+  try { return new URL(POLYGON_PRIMARY).hostname === "api.polygon.io" || new URL(POLYGON_PRIMARY).hostname.endsWith(".polygon.io"); }
+  catch { return false; }
+})()
   ? "https://api.massive.com"
   : "https://api.polygon.io";
 /** Sticky: once we fail over, stay on the fallback until the breaker resets. */
@@ -52,7 +55,8 @@ async function polygonGet<T>(path: string, params: Record<string, string> = {}):
     }
     return (await res.json()) as T;
   } catch (err) {
-    console.warn(`[polygon-largo] ${path.replace(/[\r\n]/g, "")} failed: ${err instanceof Error ? err.message : String(err)}`);
+    const msg = (err instanceof Error ? err.message : String(err)).replace(/[\r\n]/g, "");
+    console.warn(`[polygon-largo] ${path.replace(/[\r\n]/g, "")} failed: ${msg}`);
     return null;
   }
 }
