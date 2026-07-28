@@ -132,8 +132,8 @@ export const MARKETING_PRODUCTS: readonly MarketingProduct[] = [
       "Rolling out as desk coverage expands",
     ],
     stat: { k: "Soon", v: "universe scan" },
-    href: "/pricing",
-    launchStatus: "soon",
+    href: "/vector",
+    launchStatus: "live",
   },
 ] as const;
 

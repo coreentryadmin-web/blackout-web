@@ -10,6 +10,6 @@ test("MARKETING_PRODUCTS lists six desk modules", () => {
 
 test("marketingProductById resolves routes", () => {
   assert.equal(marketingProductById("spx")?.href, "/dashboard");
-  assert.equal(marketingProductById("vector")?.launchStatus, "soon");
-  assert.equal(marketingProductById("vector")?.href, "/pricing");
+  assert.equal(marketingProductById("vector")?.launchStatus, "live");
+  assert.equal(marketingProductById("vector")?.href, "/vector");
 });

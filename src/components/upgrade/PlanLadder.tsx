@@ -7,6 +7,8 @@ import {
 import { valuePropFor } from "@/lib/upsell-features";
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
+import { useAppAuth } from "@/lib/auth-client";
+import { tierAtLeast, parseTier } from "@/lib/tiers";
 
 const COMMUNITY_FEATURES = [
   "SPX Slayer desk — live",
@@ -25,6 +27,11 @@ const PREMIUM_FEATURES = [
 ];
 
 export function PlanLadder() {
+  const { tier, isLoaded } = useAppAuth();
+  const userTier = parseTier(tier ?? "");
+  const hasCommunity = isLoaded && tierAtLeast(userTier, "community");
+  const hasPremium = isLoaded && tierAtLeast(userTier, "premium");
+
   const hasAnyOption = WHOP_COMMUNITY_CHECKOUT_OPTION || WHOP_PREMIUM_CHECKOUT_OPTIONS.length > 0;
 
   if (!hasAnyOption) {
@@ -80,15 +87,21 @@ export function PlanLadder() {
                 </p>
               </div>
 
-              <a
-                href={yearlyOption.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Unlock Premium Yearly"
-                className="inline-flex items-center justify-center rounded-xl bg-bull px-8 py-4 font-syne text-sm font-extrabold uppercase tracking-[0.12em] text-[#021108] transition-all duration-200 hover:scale-105 hover:shadow-[0_0_30px_rgba(0,255,100,0.3)]"
-              >
-                Unlock Premium →
-              </a>
+              {hasPremium ? (
+                <span className="inline-flex items-center justify-center rounded-xl border-2 border-bull/50 bg-bull/10 px-8 py-4 font-syne text-sm font-extrabold uppercase tracking-[0.12em] text-bull">
+                  Current Plan
+                </span>
+              ) : (
+                <a
+                  href={yearlyOption.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Unlock Premium Yearly"
+                  className="inline-flex items-center justify-center rounded-xl bg-bull px-8 py-4 font-syne text-sm font-extrabold uppercase tracking-[0.12em] text-[#021108] transition-all duration-200 hover:scale-105 hover:shadow-[0_0_30px_rgba(0,255,100,0.3)]"
+                >
+                  Unlock Premium →
+                </a>
+              )}
               <p className="font-mono text-[10px] text-white/30">Cancel anytime · instant access</p>
             </div>
           </div>
@@ -120,15 +133,21 @@ export function PlanLadder() {
               ))}
             </ul>
 
-            <a
-              href={monthlyOption.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Unlock Premium Monthly"
-              className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-white/15 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] whitespace-nowrap text-white/70 transition-all duration-200 hover:border-bull/50 hover:bg-bull/5 hover:text-bull"
-            >
-              Unlock Monthly →
-            </a>
+            {hasPremium ? (
+              <span className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-bull/50 bg-bull/10 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] text-bull">
+                Current Plan
+              </span>
+            ) : (
+              <a
+                href={monthlyOption.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Unlock Premium Monthly"
+                className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-white/15 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] whitespace-nowrap text-white/70 transition-all duration-200 hover:border-bull/50 hover:bg-bull/5 hover:text-bull"
+              >
+                Unlock Monthly →
+              </a>
+            )}
           </div>
         )}
 
@@ -155,15 +174,21 @@ export function PlanLadder() {
               ))}
             </ul>
 
-            <a
-              href={WHOP_COMMUNITY_CHECKOUT_OPTION.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Get SPX Slayer access"
-              className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-sky-300/20 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] whitespace-nowrap text-sky-300/70 transition-all duration-200 hover:border-sky-300/50 hover:bg-sky-300/5 hover:text-sky-300"
-            >
-              Get SPX Access →
-            </a>
+            {hasCommunity ? (
+              <span className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-sky-300/50 bg-sky-300/10 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] text-sky-300">
+                Current Plan
+              </span>
+            ) : (
+              <a
+                href={WHOP_COMMUNITY_CHECKOUT_OPTION.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Get SPX Slayer access"
+                className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-sky-300/20 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] whitespace-nowrap text-sky-300/70 transition-all duration-200 hover:border-sky-300/50 hover:bg-sky-300/5 hover:text-sky-300"
+              >
+                Get SPX Access →
+              </a>
+            )}
           </div>
         )}
       </div>
