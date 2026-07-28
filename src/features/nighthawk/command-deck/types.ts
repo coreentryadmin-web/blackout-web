@@ -151,6 +151,8 @@ export interface TerminalPlay {
   keySignal?: string | null;
   optionsPlay?: string | null;
   rrRatio?: number | null;
+  entryCostPerContract?: number | null;
+  premiumCapOk?: boolean | null;
 
   // ── legacy stock-level overlay (populated by overlayLegacyQuotes, not the adapter) ──
   stockPrice?: number | null;

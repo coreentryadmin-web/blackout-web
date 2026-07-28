@@ -998,6 +998,34 @@ test("Legacy adapter: optionsPlay and rrRatio surface on TerminalPlay", () => {
   assert.equal(play.rrRatio, 2.4);
 });
 
+test("Legacy adapter: premium_cap_ok false → PREMIUM HIGH gate", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "TSLA", direction: "long", rank: 1, score: 60,
+    premium_cap_ok: false, entry_premium: 22.50,
+  });
+  const g = play.gates.find((g) => g.label === "PREMIUM HIGH");
+  assert.ok(g, "expected a PREMIUM HIGH gate");
+  assert.equal(g!.ok, false);
+  assert.equal(play.premiumCapOk, false);
+});
+
+test("Legacy adapter: premium_cap_ok true → no PREMIUM HIGH gate", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AAPL", direction: "long", rank: 1, score: 60,
+    premium_cap_ok: true, entry_premium: 4.50,
+  });
+  assert.ok(!play.gates.some((g) => g.label === "PREMIUM HIGH"));
+  assert.equal(play.premiumCapOk, true);
+});
+
+test("Legacy adapter: entry_cost_per_contract surfaces on TerminalPlay", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 80,
+    entry_cost_per_contract: 680,
+  });
+  assert.equal(play.entryCostPerContract, 680);
+});
+
 test("Legacy adapter: missing optionsPlay/rrRatio → null", () => {
   const play = terminalPlayFromEdition({ ticker: "SPY", direction: "long", rank: 1, score: 50 });
   assert.equal(play.optionsPlay, null);

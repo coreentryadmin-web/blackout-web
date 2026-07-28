@@ -400,6 +400,8 @@ export interface EditionDeckSource {
   pulled_reason?: string | null;
   confirming_signals?: number | null;
   earnings_risk?: boolean | null;
+  entry_cost_per_contract?: number | null;
+  premium_cap_ok?: boolean | null;
   // Morning confirmation overlay (merged by the container).
   morning_status?: "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | null;
   morning_reason?: string | null;
@@ -474,6 +476,9 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
   if (src.earnings_risk) {
     gates.push({ label: "EARNINGS RISK", ok: false });
   }
+  if (src.premium_cap_ok === false) {
+    gates.push({ label: "PREMIUM HIGH", ok: false });
+  }
 
   // Thesis break from morning confirmation — risk_note enriches the warn/intact note.
   // CONFIRMED overrides risk_note — a morning confirmation means the thesis held.
@@ -531,5 +536,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     keySignal: src.key_signal ?? null,
     optionsPlay: src.options_play ?? null,
     rrRatio: fin(src.rr_ratio),
+    entryCostPerContract: fin(src.entry_cost_per_contract),
+    premiumCapOk: src.premium_cap_ok ?? null,
   };
 }

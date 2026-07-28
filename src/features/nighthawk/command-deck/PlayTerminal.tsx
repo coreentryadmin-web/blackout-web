@@ -596,6 +596,7 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
 function LegacyEntryPlan({ play }: { play: TerminalPlay }) {
   const hasContract = !!play.optionsPlay;
   const rr = play.rrRatio;
+  const cost = play.entryCostPerContract;
   if (!hasContract && rr == null) return null;
   return (
     <>
@@ -604,6 +605,15 @@ function LegacyEntryPlan({ play }: { play: TerminalPlay }) {
         <div className="nh-deck-meta">
           <div><span className="k">Contract</span><span className="v">{play.optionsPlay}</span></div>
           {play.entry != null && <div><span className="k">Entry premium</span><span className="v">{usd(play.entry)}</span></div>}
+          {cost != null && <div><span className="k">Cost / contract</span><span className="v">${cost.toFixed(0)}</span></div>}
+          {play.premiumCapOk != null && (
+            <div>
+              <span className="k">Premium cap</span>
+              <span className={clsx("v", play.premiumCapOk ? "nh-deck-pos" : "nh-deck-neg")}>
+                {play.premiumCapOk ? "✓ within cap" : "✗ above cap"}
+              </span>
+            </div>
+          )}
         </div>
       )}
       {rr != null && (
