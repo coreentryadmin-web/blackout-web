@@ -367,8 +367,8 @@ export function scoreFlowQuality(
     else putWeightedPrem += weightedPremium;
 
     if (boolish(r.has_sweep ?? r.is_sweep)) sweepPrem += prem;
-    const askPct = safeFloat(r.ask_side_pct ?? r.total_ask_side_prem);
-    if (askPct >= 60 || safeFloat(r.total_ask_side_prem) / prem >= 0.6) askPrem += prem;
+    const askSidePct = safeFloat(r.ask_side_pct);
+    if ((askSidePct > 0 && askSidePct >= 60) || safeFloat(r.total_ask_side_prem) / prem >= 0.6) askPrem += prem;
     if (boolish(r.all_opening_trades ?? r.is_opening)) openingPrem += prem;
     const strike = String(r.strike ?? "");
     const exp = String(r.expiry ?? r.expiration ?? "").slice(0, 10);
@@ -656,7 +656,7 @@ export function scoreOptionsPositioning(
     else if (deltaContradicts) score -= 1;
   }
 
-  return Math.min(18, Math.max(0, score));
+  return Math.min(18, Math.max(-3, score));
 }
 
 function predictionAlignsWithDirection(

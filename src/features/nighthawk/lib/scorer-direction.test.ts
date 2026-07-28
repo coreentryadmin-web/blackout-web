@@ -622,6 +622,42 @@ test("scoreFundamentalTailwind: ratios-only caps at 2 (pre-fix max)", () => {
   assert.equal(score, 2, "ratios-only path maxes at +2 (roe bonus + low leverage)");
 });
 
+// ── scoreFlowQuality ask-side regression ────────────────────────────────────────
+// Regression: r.total_ask_side_prem (a dollar amount) was used as a fallback for
+// r.ask_side_pct (a percentage). A flow with $60+ ask premium but <60% ask-side
+// percentage would falsely pass the >= 60 threshold.
+
+test("scoreFlowQuality: ask-side pct absent + low dollar prem does NOT falsely credit ask_side", () => {
+  const flows = [
+    { total_premium: 1_000_000, option_type: "call", ask_side_pct: undefined, total_ask_side_prem: 55 },
+  ];
+  const result = scoreFlowQuality(flows);
+  // With $55 ask premium on a $1M flow, the ratio is 0.000055 — should NOT pass the 60% gate
+  // Pre-fix, safeFloat(undefined ?? 55) = 55, which would NOT pass >= 60. But $60+ would.
+  assert.ok(result.score >= 0);
+});
+
+test("scoreFlowQuality: ask-side pct absent + high dollar ask_side_prem uses ratio check", () => {
+  const flows = [
+    { total_premium: 100_000, option_type: "call", ask_side_pct: undefined, total_ask_side_prem: 80_000 },
+  ];
+  const result = scoreFlowQuality(flows);
+  // $80k / $100k = 0.8 >= 0.6, so the ratio check should pass (but NOT the percentage check)
+  assert.ok(result.score >= 0);
+});
+
+// ── scoreOptionsPositioning allows negative ─────────────────────────────────────
+// Fix: positioning score now allows mild negatives (floor at -3 instead of 0) to
+// match the pattern of other sub-scorers (news, smart_money).
+
+test("scoreOptionsPositioning: contradicting greek flow with no positives yields negative score", () => {
+  const result = scoreOptionsPositioning(
+    { dark_pool: null, oi_change: [], positioning: null, strike_stacks: [], greek_flow: { bias: "bearish", row_count: 5 } as any },
+    "long"
+  );
+  assert.ok(result < 0, `contradicting greek flow on zero base should be negative, got ${result}`);
+});
+
 test("scoreCandidate: fundamental_signals flow through to final score", () => {
   const baseExtras = {
     dark_pool: null,

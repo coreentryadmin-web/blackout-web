@@ -264,7 +264,7 @@ function HeaderBadges({ play }: { play: TerminalPlay }) {
       )}
       {play.sector && <span className="nh-deck-badge sector">{play.sector.toUpperCase()}</span>}
       {play.tierLabel && <span className="nh-deck-badge tier">TIER {play.tierLabel}</span>}
-      {play.confluence != null && <span className="nh-deck-badge conf">CONFLUENCE {play.confluence}/2</span>}
+      {play.confluence != null && <span className="nh-deck-badge conf">CONFLUENCE {play.confluence}{play.horizon === "LEGACY" ? "" : "/2"}</span>}
       {play.discoveryOrigin?.map((o) => (
         <span key={o} className="nh-deck-badge orig">{o}</span>
       ))}
