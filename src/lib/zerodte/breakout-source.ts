@@ -13,8 +13,8 @@
 // chain) lives in breakout-discovery.ts, which is dynamic-imported only when the source is
 // flag-enabled — so the flow-only board never loads the whole-market provider graph.
 //
-// FLAG-GATED OFF by default (both flags must be "1"): ZERODTE_WHOLE_MARKET (master) AND
-// ZERODTE_SRC_BREAKOUT (per-source). When either is off, the board behaves EXACTLY as today.
+// FLAG-GATED ON by default (set either to "0" to disable): ZERODTE_WHOLE_MARKET (master) AND
+// ZERODTE_SRC_BREAKOUT (per-source). When either is off, the board is FLOW-only.
 
 import type { BreakoutMover } from "@/features/nighthawk/lib/candidates";
 import {

@@ -770,7 +770,7 @@ export async function zeroDtePlaysForLargo(): Promise<Record<string, unknown>> {
   // yet-ledgered) finds — without it, a find surfacing during POWER_HOUR/LATE_SESSION
   // (or after CLOSED, before the ledger sync catches up) got told to Largo as an
   // actionable play even though the product rule (this function's own `rules` string
-  // below) is "no new plays after 15:00 ET" and the board itself would show it as
+  // below) is "no new directional plays after 14:00 ET" and the board itself would show it as
   // SKIP/watch-only. A COMMITTED ticker never re-enters this lane (one-way commit
   // door): the ledger row above is the only presentation of that ticker, and the
   // dedupe is case-insensitive so a casing drift can never double-present a play.
@@ -839,6 +839,6 @@ export async function zeroDtePlaysForLargo(): Promise<Record<string, unknown>> {
     plays,
     fresh_finds: fresh,
     excluded_covered_elsewhere: board.covered_elsewhere,
-    rules: "0DTE discipline: no new plays after 15:00 ET; stop -50%, trim +100%, hard exit 15:30 ET.",
+    rules: "0DTE discipline: no new directional plays after 14:00 ET; stop -50%, trim +100%, hard exit 15:30 ET.",
   };
 }

@@ -19,7 +19,7 @@
 // pin-discovery.ts, dynamic-imported only when the source is flag-enabled — so the flow-only
 // board never loads the whole-universe GEX/provider graph.
 //
-// FLAG-GATED OFF by default (both flags must be "1"): ZERODTE_WHOLE_MARKET (master, shared with
+// FLAG-GATED ON by default (set either to "0" to disable): ZERODTE_WHOLE_MARKET (master, shared with
 // the breakout source) AND ZERODTE_SRC_PIN (per-source). When either is off, the board behaves
 // EXACTLY as today.
 

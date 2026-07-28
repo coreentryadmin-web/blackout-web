@@ -34,11 +34,13 @@ import {
 import { selectIronCondor } from "./iron-condor";
 import type { EnrichedZeroDteSetup } from "./board";
 
-/** RTH commit window in ET minutes-since-midnight: [9:30, 14:00) — same gate as the breakout
- *  source / NEW_PLAY_CUTOFF / G-14 (FINDINGS 2026-07-28). Outside it the board opens no fresh
- *  plays, and off-hours the GEX ladder / WS walls are idle. */
+/** Directional PIN window in ET minutes-since-midnight: [9:30, 14:00) — same gate as BREAKOUT /
+ *  NEW_PLAY_CUTOFF / G-14. After 14:00, discovery continues ONLY for condor-eligible index roots
+ *  until CONDOR_LATE_CUTOFF (G-14 exempts credit seats; persist mirrors that — FINDINGS 2026-07-28). */
 const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
 const RTH_CUTOFF_ET_MINUTES = 14 * 60;
+/** Stop hunting new condors into the last half-hour — liquidity + settlement noise. */
+const CONDOR_LATE_CUTOFF_ET_MINUTES = 15 * 60 + 30;
 
 /** The curated LIQUID pin universe (see the file header). Index products first -- the deepest,
  *  most dealer-defended gamma and true daily 0DTE -- then mega-cap single names with high OI.
@@ -161,14 +163,27 @@ export async function discoverPinSetups(opts: {
   const { today, nowEtMinutes, excludeTickers } = opts;
   const maxCandidates = opts.maxCandidates ?? PIN_MAX_CANDIDATES;
 
-  if (nowEtMinutes < RTH_OPEN_ET_MINUTES || nowEtMinutes >= RTH_CUTOFF_ET_MINUTES) {
-    console.info("[zerodte-pin] outside the RTH commit window — SKIP (dealer-positioning read idle)");
+  if (nowEtMinutes < RTH_OPEN_ET_MINUTES) {
+    console.info("[zerodte-pin] before RTH open — SKIP (dealer-positioning read idle)");
+    return [];
+  }
+  const lateCondorOnly =
+    nowEtMinutes >= RTH_CUTOFF_ET_MINUTES && nowEtMinutes < CONDOR_LATE_CUTOFF_ET_MINUTES;
+  if (nowEtMinutes >= RTH_CUTOFF_ET_MINUTES && !lateCondorOnly) {
+    console.info("[zerodte-pin] past condor late window — SKIP (dealer-positioning read idle)");
+    return [];
+  }
+  if (lateCondorOnly && !condorFlagEnabled()) {
+    console.info("[zerodte-pin] past directional cutoff and CONDOR disabled — SKIP");
     return [];
   }
 
-  const universe = resolvePinUniverse()
-    .filter((t) => !excludeTickers.has(t.toUpperCase()))
-    .slice(0, maxCandidates);
+  let universe = resolvePinUniverse().filter((t) => !excludeTickers.has(t.toUpperCase()));
+  if (lateCondorOnly) {
+    // Post-14:00: only cash-settled index roots can still open (G-14 / persist CONDOR exemption).
+    universe = universe.filter((t) => condorEligibleTicker(t));
+  }
+  universe = universe.slice(0, maxCandidates);
   if (universe.length === 0) {
     console.info("[zerodte-pin] pin universe empty after excludes — SKIP");
     return [];
@@ -234,6 +249,9 @@ export async function discoverPinSetups(opts: {
           });
           if (condorSetup) return condorSetup;
         }
+
+        // Past directional cutoff: never open a directional PIN fade — late window is CONDOR-only.
+        if (lateCondorOnly) return null;
 
         // Pick the ATM fade contract off the live chain (call for a long/up fade, put for short/down).
         const side = regime.fadeDirection === "long" ? "call" : "put";

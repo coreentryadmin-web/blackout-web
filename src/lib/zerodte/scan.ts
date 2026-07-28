@@ -8,10 +8,10 @@
 //
 // Mandate (product rule): this surface finds NEW plays. Index products (SPY/SPX/
 // NDX/QQQ…) ARE eligible — the dominance gate naturally admits them only when
-// their normally two-sided tape genuinely leans. Any ticker in the latest Night
-// Hawk edition is excluded — a name members already have is a repeat, not a find.
-// 0DTE discipline: no NEW plays after the 15:00 ET cutoff; everything is managed
-// to a close by 15:30 ET — nothing carries overnight.
+// their normally two-sided tape genuinely leans. Night Hawk edition tickers are
+// NOT excluded (2026-07-28 remodel — NH is next-day digest, not same-session).
+// 0DTE discipline: no NEW directional plays after the 14:00 ET cutoff; CONDOR may
+// still seat in the late window. Everything is managed to a close by 15:30 ET.
 
 import {
   dbConfigured,
@@ -853,9 +853,10 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
  *    unreadable) fails closed, and an unreadable committed set fails the whole
  *    persist closed (can't tell fresh from committed → nothing new may print).
  *
- *  After the 15:00 ET cutoff only EXISTING plays are refreshed — a fresh flag in
- *  power hour never opens a new 0DTE play (this predates and stays alongside the
- *  gate stack's own opening-window rule). */
+ *  After the 14:00 ET directional cutoff only EXISTING directional plays are refreshed —
+ *  a fresh directional flag past NEW_PLAY_CUTOFF never opens. CONDOR is exempt (matches
+ *  G-14 + late-theta sell design): fresh index credit seats may still commit when PIN
+ *  discovery finds them in the post-cutoff window. */
 export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Promise<number> {
   if (!dbConfigured() || setupsIn.length === 0) return 0;
   // HORIZON INTEGRITY fail-closed guard (PR-1, design Q2). The BREAKOUT/PIN/condor pickers are
@@ -883,7 +884,13 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   const existing = new Set(existingRows.map((r) => r.ticker.toUpperCase()));
 
   const refresh = setups.filter((s) => existing.has(s.ticker.toUpperCase()));
-  const freshCandidates = pastCutoff ? [] : setups.filter((s) => !existing.has(s.ticker.toUpperCase()));
+  // Past directional cutoff: only fresh CONDOR may open (G-14 exempts credit seats; discovery
+  // continues for condor-eligible roots only). Directional fresh → empty.
+  const freshCandidates = setups.filter((s) => {
+    if (existing.has(s.ticker.toUpperCase())) return false;
+    if (!pastCutoff) return true;
+    return s.play_type === "CONDOR";
+  });
 
   const committedFresh: EnrichedZeroDteSetup[] = [];
   const gateRejections: import("./board").ZeroDteGateRejection[] = [];

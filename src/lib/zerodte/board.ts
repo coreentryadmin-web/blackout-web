@@ -11,7 +11,8 @@
 export type SessionHeatState =
   | "PRE_MARKET" // before 9:30 ET — system warming: feeds, morning confirm, lotto scan
   | "OPENING_DRIVE" // 9:30-10:00 ET — heating up: ranges forming, engines arming
-  | "RTH" // 10:00-15:00 ET — fully hot
+  | "RTH" // 10:00-14:00 ET — fully hot; directional 0DTE commits allowed
+  | "POST_COMMIT" // 14:00-15:00 ET — no fresh directional commits (G-14 / NEW_PLAY_CUTOFF); manage open risk
   | "POWER_HOUR" // 15:00-15:30 ET — power-hour engine window
   | "LATE_SESSION" // 15:30-16:00 ET — winding down, no fresh entries
   | "CLOSED"; // outside RTH — hand off to Night Hawk
@@ -37,6 +38,9 @@ export function sessionHeat(etMinutes: number, isTradingDay: boolean): SessionHe
   }
   const OPEN = 9 * 60 + 30;
   const TEN = 10 * 60;
+  // Must match NEW_PLAY_CUTOFF_ET_MINUTES / G-14 (14:00 ET) — heat must not advertise
+  // "Desk hot" / WATCH while the commit door is already closed (FINDINGS 2026-07-28).
+  const COMMIT_CUTOFF = 14 * 60;
   const PH = 15 * 60;
   const PH_END = 15 * 60 + 30;
   const CLOSE = 16 * 60;
@@ -59,12 +63,20 @@ export function sessionHeat(etMinutes: number, isTradingDay: boolean): SessionHe
       note: "Ranges forming — engines arming. Best entries usually come after 9:50.",
     };
   }
-  if (etMinutes < PH) {
+  if (etMinutes < COMMIT_CUTOFF) {
     return {
       state: "RTH",
       label: "Desk hot",
       heat_pct: 100,
       note: "All engines live — plays fire when gates align.",
+    };
+  }
+  if (etMinutes < PH) {
+    return {
+      state: "POST_COMMIT",
+      label: "Managing",
+      heat_pct: 70,
+      note: "No new directional 0DTE commits after 14:00 ET — managing open risk; index credit seats may still print.",
     };
   }
   if (etMinutes < PH_END) {
@@ -93,9 +105,10 @@ export function sessionHeat(etMinutes: number, isTradingDay: boolean): SessionHe
 
 /**
  * Status for a FRESH (not-yet-ledgered) find, given the session clock and the
- * find's own plan flags — the same "no new plays after 15:00 ET" cutoff every
- * consumer of a fresh find must apply consistently. `heatState` undefined is
- * treated as closed (matches sessionHeat()'s own "no session today" fallback).
+ * find's own plan flags — the same "no new directional plays after 14:00 ET"
+ * cutoff every consumer of a fresh find must apply consistently. `heatState`
+ * undefined is treated as closed (matches sessionHeat()'s own "no session today"
+ * fallback).
  *
  * NEVER "OPEN" (P0 fix — the one-way commit door): a fresh find has NOT been
  * committed to the session ledger — its gate/plan/liquidity read is re-derived
@@ -114,6 +127,7 @@ export function resolveFreshFindStatus(
   illiquid: boolean
 ): "WATCH" | "SKIP" {
   const pastCutoff =
+    heatState === "POST_COMMIT" ||
     heatState === "POWER_HOUR" ||
     heatState === "LATE_SESSION" ||
     heatState === "CLOSED" ||
@@ -395,6 +409,23 @@ export function mergeSameTickerDiscovery(
   incoming: EnrichedZeroDteSetup
 ): EnrichedZeroDteSetup {
   recordOriginContributionsOnMerge(kept, incoming);
+  const keptCondor = kept.play_type === "CONDOR";
+  const incomingCondor = incoming.play_type === "CONDOR";
+  // Structure-preserving: a CONDOR seat carries condor_plan + credit geometry. Same-direction
+  // union used to keep the FLOW/directional incumbent and silently drop play_type/condor_plan —
+  // SPX FLOW + SPX CONDOR then never seated a condor (FINDINGS 2026-07-28 CTO audit). Prefer the
+  // CONDOR structure when exactly one side is CONDOR; union origins + corroboration onto it.
+  if (keptCondor !== incomingCondor && kept.direction === incoming.direction) {
+    const condor = keptCondor ? kept : incoming;
+    if (!keptCondor) {
+      incoming.origin_contributions = kept.origin_contributions;
+    }
+    condor.discovery_origin = unionDiscoveryOrigins(kept.discovery_origin, incoming.discovery_origin);
+    if (condor.discovery_origin.length > 1) {
+      condor.score = Math.min(100, (condor.score ?? 0) + CORROBORATION_SCORE_BOOST);
+    }
+    return condor;
+  }
   if (kept.direction === incoming.direction) {
     kept.discovery_origin = unionDiscoveryOrigins(kept.discovery_origin, incoming.discovery_origin);
     if (kept.discovery_origin.length > 1) {
@@ -404,7 +435,8 @@ export function mergeSameTickerDiscovery(
   }
   const keptScore = Number.isFinite(kept.score) ? kept.score : 0;
   const incomingScore = Number.isFinite(incoming.score) ? incoming.score : 0;
-  if (incomingScore > keptScore) {
+  // On a direction fight, prefer CONDOR on a score tie (structure > seating-order for credit seats).
+  if (incomingScore > keptScore || (incomingScore === keptScore && incomingCondor && !keptCondor)) {
     // Incoming owns the direction — take its setup, preserve contribution maps, stamp the masked read.
     incoming.origin_contributions = kept.origin_contributions;
     incoming.discovery_origin = unionDiscoveryOrigins(kept.discovery_origin, incoming.discovery_origin);
@@ -602,7 +634,7 @@ export type ZeroDteGateFailure =
   | "tape_alignment" // G-1: direction fights the SPY session bias
   | "no_market_bias" // G-1 fail-closed: bias read missing or stale
   | "opening_window" // G-2: no new commits before 10:00 ET
-  | "late_afternoon" // G-14: no new commits after 15:00 ET (last 30 min before hard exit)
+  | "late_afternoon" // G-14: no new directional commits after 14:00 ET
   | "score_floor" // G-3: post-edge-layer score below 65
   | "confluence_floor" // G-12: too few VWAP-side/market-aligned confirmations (0-conf −12.5% EV; higher floor 10:00–10:45)
   | "governor_max_concurrent" // G-5: 3 plans already open

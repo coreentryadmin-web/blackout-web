@@ -5,6 +5,37 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [0DTE-funnel] CTO audit pass-2: heat/CONDOR/ToD still broken after cutoff align
+
+**Severity.** P0 — second deep read after pass-1 cutoff align found **four more commit/path bugs**
+on the same branch that would have kept multi-rail / CONDOR starved even after deploy.
+
+**Root causes (code — fixed this pass).**
+1. **Heat/SKIP desync** — `sessionHeat` stayed `RTH` until 15:00 while G-14/persist die at 14:00 →
+   cards stayed WATCH in a closed commit window (`board.ts` `sessionHeat` / `resolveFreshFindStatus`).
+   Fix: `POST_COMMIT` heat 14:00–15:00; SKIP on that state.
+2. **CONDOR merge wipe** — `mergeSameTickerDiscovery` same-dir kept FLOW incumbent and dropped
+   `play_type`/`condor_plan` → SPX FLOW + SPX CONDOR never seated a condor. Fix: prefer CONDOR
+   structure when exactly one side is CONDOR; score-tie opposing also prefers CONDOR.
+3. **CONDOR late-theta dead** — G-14 exempted CONDOR but PIN discovery hard-stopped at 14:00 and
+   `persistZeroDteScan` zeroed **all** fresh after cutoff. Fix: PIN late window 14:00–15:30
+   condor-eligible roots only; persist allows fresh `play_type===CONDOR` past cutoff.
+4. **ToD score fought the calendar** — lunch −3 through 14:00 + dead +3 after 14:00. Fix: lunch
+   12:30–13:30; last commit hour neutral; post-14:00 zero.
+
+**Still NOT fixed (intentional / product / edge).**
+1. VIX≥17 elevated floor (starves weak FLOW on elevated days)
+2. Edge / ~35.6% WR (funnel ≠ expectancy)
+3. 1DTE still allowed on “0DTE” surface (`SETUP_MAX_DTE=1`)
+4. PIN `.slice(0,8)` before regime rank (recall risk for condor roots if universe reorder)
+5. Prod still on **main** — none of #1199 is live until merge+deploy
+
+**Live re-probe (~22:05 UTC / 18:05 ET).** Still 1 ledger CLOSED (SPY FLOW), 8 setups 100% FLOW,
+blocks: `late_afternoon@900`, `score_floor`, `vix_elevated`, `confluence_floor`, `plan_quote_stale`.
+`GATE_VERSION` bump → **v3**.
+
+**Status.** Fixed on draft PR #1199 (pass-2 commit); awaiting merge.
+
 ## 2026-07-28 — [0DTE-funnel] CTO deep audit: why only 1 play today (prod still on old engine)
 
 **Severity.** P0 product — 2026-07-28 RTH produced **1 OPEN** (SPY FLOW @ 11:01 ET, +12% thesis_break).

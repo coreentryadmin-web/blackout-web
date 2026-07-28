@@ -9,6 +9,7 @@ import {
   rankEngineCards,
   enrichSetup,
   noteOriginDirectionConflict,
+  mergeSameTickerDiscovery,
   summarizeDiscoveryRailMix,
   type EnrichedZeroDteSetup,
   matchEarnings,
@@ -41,6 +42,8 @@ test("heat: full ramp through a trading day", () => {
   assert.equal(sessionHeat(9 * 60 + 45, true).state, "OPENING_DRIVE");
   assert.equal(sessionHeat(12 * 60, true).state, "RTH");
   assert.equal(sessionHeat(12 * 60, true).heat_pct, 100);
+  assert.equal(sessionHeat(14 * 60, true).state, "POST_COMMIT", "14:00 matches G-14 / NEW_PLAY_CUTOFF");
+  assert.equal(sessionHeat(14 * 60 + 30, true).state, "POST_COMMIT");
   assert.equal(sessionHeat(15 * 60 + 10, true).state, "POWER_HOUR");
   assert.equal(sessionHeat(15 * 60 + 45, true).state, "LATE_SESSION");
   assert.equal(sessionHeat(16 * 60 + 1, true).state, "CLOSED");
@@ -53,7 +56,7 @@ test("heat: pre-market meter warms toward the open", () => {
   assert.ok(late > 25 && late <= 40);
 });
 
-// resolveFreshFindStatus: the SAME "no new plays after 15:00 ET" cutoff every
+// resolveFreshFindStatus: the SAME "no new directional plays after 14:00 ET" cutoff every
 // consumer of a fresh (not-yet-ledgered) find must apply — shared by ZeroDteBoard.tsx's
 // mergePlays() (the UI) and zerodte-service.ts's zeroDtePlaysForLargo() (Largo/BIE),
 // which previously re-derived its own copy that skipped this cutoff entirely (FINDINGS.md).
@@ -68,7 +71,8 @@ test("resolveFreshFindStatus: WATCH during RTH with no moved/illiquid flags — 
   assert.equal(resolveFreshFindStatus("OPENING_DRIVE", false, false), "WATCH");
 });
 
-test("resolveFreshFindStatus: SKIP once POWER_HOUR/LATE_SESSION/CLOSED starts — the entry cutoff", () => {
+test("resolveFreshFindStatus: SKIP once POST_COMMIT/POWER_HOUR/LATE_SESSION/CLOSED — the 14:00 entry cutoff", () => {
+  assert.equal(resolveFreshFindStatus("POST_COMMIT", false, false), "SKIP");
   assert.equal(resolveFreshFindStatus("POWER_HOUR", false, false), "SKIP");
   assert.equal(resolveFreshFindStatus("LATE_SESSION", false, false), "SKIP");
   assert.equal(resolveFreshFindStatus("CLOSED", false, false), "SKIP");
@@ -1195,9 +1199,10 @@ test("time of day: prime continuation rewards, opening chop + real lunch chop pe
   assert.ok(timeOfDayFactor(9 * 60 + 40).delta < 0); // opening chop (now runs to 10:00)
   assert.equal(timeOfDayFactor(10 * 60 + 15).delta, 0); // 10:00–10:30 soft transition
   assert.ok(timeOfDayFactor(11 * 60).delta > 0); // prime continuation window (was penalized as "lunch chop" before)
-  assert.ok(timeOfDayFactor(13 * 60).delta < 0); // real lunch chop is 12:30–14:00 now
+  assert.ok(timeOfDayFactor(13 * 60).delta < 0); // lunch chop is 12:30–13:30
   assert.match(timeOfDayFactor(13 * 60).label ?? "", /lunch chop/);
-  assert.ok(timeOfDayFactor(14 * 60 + 30).delta > 0); // afternoon trend window
+  assert.equal(timeOfDayFactor(13 * 60 + 45).delta, 0); // last directional commit hour (neutral)
+  assert.equal(timeOfDayFactor(14 * 60 + 30).delta, 0); // post G-14 — no dead +3 boost
 });
 
 // ── BlackOut Intelligence: live dynamics ─────────────────────────────────────────
@@ -1350,5 +1355,70 @@ test("summarizeDiscoveryRailMix counts per-rail presence and multi-rail rows", (
     { discovery_origin: ["BREAKOUT"] },
   ] as EnrichedZeroDteSetup[]);
   assert.deepEqual(mix, { FLOW: 2, BREAKOUT: 2, PIN: 1, multi: 1, total: 4 });
+});
+
+test("mergeSameTickerDiscovery: same-dir FLOW + CONDOR keeps CONDOR structure (never drops condor_plan)", () => {
+  const flow = {
+    ticker: "SPX",
+    direction: "short",
+    discovery_origin: ["FLOW"],
+    score: 70,
+    play_type: "DIRECTIONAL",
+    condor_plan: undefined,
+  } as unknown as EnrichedZeroDteSetup;
+  const condor = {
+    ticker: "SPX",
+    direction: "short",
+    discovery_origin: ["PIN"],
+    score: 72,
+    play_type: "CONDOR",
+    condor_plan: { net_credit: 150, short_put: 7400, short_call: 7460 },
+  } as unknown as EnrichedZeroDteSetup;
+
+  const keptWinsSeat = mergeSameTickerDiscovery(flow, condor);
+  assert.equal(keptWinsSeat.play_type, "CONDOR", "CONDOR structure wins over directional FLOW on same dir");
+  assert.ok(keptWinsSeat.condor_plan, "condor_plan must survive the merge");
+  assert.deepEqual(keptWinsSeat.discovery_origin, ["FLOW", "PIN"]);
+  assert.equal(keptWinsSeat.score, Math.min(100, 72 + 8), "same-dir corroboration boosts the CONDOR seat");
+
+  const condorFirst = {
+    ...condor,
+    discovery_origin: ["PIN"],
+    score: 72,
+    origin_contributions: undefined,
+    origin_direction_conflict: undefined,
+  } as unknown as EnrichedZeroDteSetup;
+  const flowSecond = {
+    ...flow,
+    discovery_origin: ["FLOW"],
+    score: 70,
+    origin_contributions: undefined,
+    origin_direction_conflict: undefined,
+  } as unknown as EnrichedZeroDteSetup;
+  const alreadySeated = mergeSameTickerDiscovery(condorFirst, flowSecond);
+  assert.equal(alreadySeated.play_type, "CONDOR");
+  assert.ok(alreadySeated.condor_plan);
+});
+
+test("mergeSameTickerDiscovery: opposing-dir score tie prefers CONDOR structure", () => {
+  const flow = {
+    ticker: "SPX",
+    direction: "long",
+    discovery_origin: ["FLOW"],
+    score: 70,
+    play_type: "DIRECTIONAL",
+  } as unknown as EnrichedZeroDteSetup;
+  const condor = {
+    ticker: "SPX",
+    direction: "short",
+    discovery_origin: ["PIN"],
+    score: 70,
+    play_type: "CONDOR",
+    condor_plan: { net_credit: 150 },
+  } as unknown as EnrichedZeroDteSetup;
+  const winner = mergeSameTickerDiscovery(flow, condor);
+  assert.equal(winner.play_type, "CONDOR");
+  assert.equal(winner.direction, "short");
+  assert.ok(winner.origin_direction_conflict);
 });
 

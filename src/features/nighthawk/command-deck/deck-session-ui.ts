@@ -22,7 +22,15 @@ export function isZeroDteSessionActive(
   etMinutes?: number,
 ): boolean {
   const h = String(heatState ?? "").toUpperCase();
-  if (h === "RTH" || h === "OPENING_DRIVE" || h === "POWER_HOUR" || h === "LATE_SESSION") return true;
+  if (
+    h === "RTH" ||
+    h === "OPENING_DRIVE" ||
+    h === "POST_COMMIT" ||
+    h === "POWER_HOUR" ||
+    h === "LATE_SESSION"
+  ) {
+    return true;
+  }
   if (h === "CLOSED" || h === "PRE_MARKET") return false;
   // Heat unknown — fall back to ET clock (09:25–16:00).
   if (etMinutes == null || !Number.isFinite(etMinutes)) return false;

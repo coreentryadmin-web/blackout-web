@@ -10,6 +10,7 @@ import {
 test("isZeroDteSessionActive: RTH heat states are active; CLOSED/PRE_MARKET are not", () => {
   assert.equal(isZeroDteSessionActive("RTH"), true);
   assert.equal(isZeroDteSessionActive("OPENING_DRIVE"), true);
+  assert.equal(isZeroDteSessionActive("POST_COMMIT"), true);
   assert.equal(isZeroDteSessionActive("POWER_HOUR"), true);
   assert.equal(isZeroDteSessionActive("CLOSED"), false);
   assert.equal(isZeroDteSessionActive("PRE_MARKET"), false);

@@ -17,7 +17,7 @@
 // stop (the grader caps the loss), and small size. WR is surfaced CAPPED at 97 with the breach
 // companion — never a bare 100.
 //
-// FLAG-GATED OFF by default: ZERODTE_CONDOR must be "1" AND the PIN source must itself be enabled
+// FLAG-GATED ON by default: set ZERODTE_CONDOR=0 to disable. PIN source must also be enabled
 // (ZERODTE_WHOLE_MARKET + ZERODTE_SRC_PIN). With the condor flag off, a PIN candidate stays the
 // directional fade (3b behavior) and NOTHING is ever a condor.
 
