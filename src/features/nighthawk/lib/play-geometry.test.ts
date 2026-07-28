@@ -80,8 +80,23 @@ test("geometry: prose-only entry with sane target/stop is kept but flagged", () 
 test("geometry: conditional prose + numeric band validates against the band", () => {
   // mapClaudePlayToEdition joins entry_condition and entry_range: "prose | $100-$104"
   const v = validatePlayGeometry(play({ entry_range: "Break above 99 | $100-$104" }));
-  // parsePlayLevels reads the numeric tokens; target 112.5 above, stop 96 below → ok
+  // parsePlayLevels strips the condition prefix and parses only the numeric band.
   assert.equal(v.ok, true);
+});
+
+test("parsePlayLevels: strips condition prefix before pipe delimiter", async () => {
+  const { parsePlayLevels } = await import("./play-levels");
+  // The condition "Break above 99" must NOT contaminate the parsed band.
+  const p = parsePlayLevels(play({ entry_range: "Break above 99 | $100-$104" }));
+  assert.equal(p.entry_range_low, 100, "low should be 100, not 99 from the condition");
+  assert.equal(p.entry_range_high, 104);
+});
+
+test("parsePlayLevels: no pipe delimiter still works", async () => {
+  const { parsePlayLevels } = await import("./play-levels");
+  const p = parsePlayLevels(play({ entry_range: "$100-$104" }));
+  assert.equal(p.entry_range_low, 100);
+  assert.equal(p.entry_range_high, 104);
 });
 
 test("partitionPlaysByGeometry: splits failing backfill-shaped plays", async () => {
