@@ -1058,7 +1058,7 @@ function ExposureProfile({
         </span>
         <span
           className="text-sky-300"
-          title={spot > 0 ? "Profile reflects the 20s snapshot; the header price updates live." : undefined}
+          title={spot > 0 ? "Profile reflects the 5s matrix snapshot; the header price updates live." : undefined}
         >
           {spot > 0 ? `spot ${fmtStrike(spot)}` : `net dealer ${v.noun.toLowerCase()}`}
         </span>
@@ -1890,9 +1890,10 @@ function fmtAsofSeconds(iso: string | undefined): string | null {
   });
 }
 
-/** The matrix is on a 20s cache; tint the freshness chip amber once the sample is older than
- *  ~2× that window so a sitting-stale grid (e.g. an off-warm-preset ticker) is visibly flagged. */
-const MATRIX_STALE_MS = 40_000;
+/** Matrix poll + server TTL are 5s; tint amber once the sample is older than ~3× that window
+ *  so a sitting-stale grid (e.g. an off-warm-preset ticker) is visibly flagged. Was 40s/“20s”
+ *  copy after the TTL dropped to 5s (FINDINGS 2026-07-28 Thermal audit). */
+const MATRIX_STALE_MS = 15_000;
 
 /** Always-visible "as of HH:MM:SS ET" freshness anchor for the matrix header. Renders null when
  *  there is no usable timestamp so it never fabricates freshness. */
@@ -1907,7 +1908,7 @@ function MatrixFreshness({ asof }: { asof: string | undefined }) {
         "flex items-center gap-1.5 tabular-nums normal-case",
         stale ? "text-gold/90" : "text-sky-300/75"
       )}
-      title={stale ? "Matrix sample is older than its 20s refresh window" : "Matrix sample time"}
+      title={stale ? "Matrix sample is older than its 5s refresh window" : "Matrix sample time"}
     >
       <span aria-hidden>{stale ? "◷" : "●"}</span>
       <span>as of {label} ET</span>

@@ -5,6 +5,31 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [Thermal] Deep audit: WS wall override still unscoped + stale 20s freshness copy
+
+**Severity.** P1 correctness (RTH) + P2 UX honesty.
+
+**Live probe (~22:19 UTC / 18:19 ET, admin).** SPY/SPX/QQQ/NVDA/IWM matrices `available:true`,
+2835+ nonzero GEX cells on SPX, walls match positioning (WS idle after hours so unscoped bug
+latent). SPX/SPY/QQQ `gex.flip=null` with honest “undetermined” regime read. `cross_validation=null`
+(expected off-hours: scoped REST fallback skipped). Shift `available:false`/`collecting` (off-RTH
+gate working). Page `/heatmap` 200, no Sign-In chrome for authed admin.
+
+**Root causes fixed.**
+1. **`/api/market/gex-heatmap` WS wall override unscoped** — `getGexStrikeExpiryLadder(ticker)` with
+   no `nearTermExpiries` while `cross_validation` + `getGexPositioning` were already scoped
+   (FINDINGS 2026-07-24). Thermal could paint far-OpEx walls next to near-term flip in RTH.
+   Fix: resolve near-term once; pass to wall override + oracle.
+2. **Stale “20s” freshness UX** — poll/TTL are 5s; `MATRIX_STALE_MS` was 40s with “20s window”
+   copy. Fix: 15s amber threshold + 5s copy.
+
+**Still open (adjacent, not this PR).**
+- `spx-desk.ts` still has unscoped `getGexStrikeExpiryLadder("SPX")` on sticky fallback paths
+- FreshnessChip institutional pattern unused (custom MatrixFreshness OK)
+- Cold-cache latency under burst (WATCH)
+
+**Status.** Fixed on `cursor/thermal-deep-audit-3d11`.
+
 ## 2026-07-28 — [data-honesty] Vector max-pain `?horizon=` silently defaulted to ALL (7410 vs desk 7440)
 
 **Severity.** P2 — cross-tool mismatch risk on `/dashboard` confluence + audit/API consumers.
