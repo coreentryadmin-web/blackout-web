@@ -174,7 +174,7 @@ export function timeOfDayFactor(etMinutes: number): TimeOfDayFactor {
   if (etMinutes < 10 * 60) return { delta: -5, label: "opening chop — ranges still forming" };
   if (etMinutes < 10 * 60 + 30) return { delta: 0, label: null }; // 10:00–10:30 transition, still soft
   if (etMinutes < 12 * 60 + 30) return { delta: 5, label: "prime continuation window" };
-  if (etMinutes < 14 * 60) return { delta: -5, label: "lunch chop — fake-out hours, size down" };
+  if (etMinutes < 14 * 60) return { delta: -3, label: "lunch chop — fade-prone, size down" };
   if (etMinutes < 15 * 60) return { delta: 3, label: "afternoon trend window" };
   return { delta: 0, label: null };
 }

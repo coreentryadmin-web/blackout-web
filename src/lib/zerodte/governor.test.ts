@@ -69,8 +69,8 @@ test("FIREWALL: governor caps are pinned (max 6 concurrent, halt after 3 stops, 
 
 // AUDIT SEV-3 — the realized-loss halt only ever ADDS conservatism; a silent LOOSENING
 // (count up, floor down toward 0) would re-open the chop-and-bleed channel it closes.
-test("FIREWALL: realized-loss halt thresholds are pinned (3 losers, −120% session floor)", () => {
-  assert.equal(GOVERNOR_LOSS_HALT_COUNT, 3);
+test("FIREWALL: realized-loss halt thresholds are pinned (5 losers, −120% session floor)", () => {
+  assert.equal(GOVERNOR_LOSS_HALT_COUNT, 5);
   assert.equal(GOVERNOR_SESSION_LOSS_FLOOR_PCT, -120);
 });
 
@@ -213,7 +213,7 @@ test("SEV-3 REGRESSION CLOSED: a session of 5 losing time-stops (no hard stop) n
 });
 
 test("SEV-3: the cumulative session-P&L floor halts even below the loser COUNT", () => {
-  // Two big losers (−70% each = −140%) sink past the −120% floor before hitting 3 losers.
+  // Two big losers (−70% each = −140%) sink past the −120% floor before hitting 5 losers.
   const rows = [
     losingTimeStop("A", -70),
     losingTimeStop("B", -70),
@@ -497,17 +497,17 @@ test("governor: re-entry lock boundary — exactly 20 min ago is UNLOCKED; one m
   );
 });
 
-// ── loss-halt COUNT boundary: 2 losers pass, exactly 3 halt ──────────────────────────
-test("SEV-3: loss-halt count boundary — 2 realized losers pass, exactly 3 halt", () => {
-  const two = deriveGovernorFromLedger([losingTimeStop("A", -30), losingTimeStop("B", -30)]);
-  assert.equal(two.realized_losers, 2);
-  assert.ok(two.session_pnl_pct! > GOVERNOR_SESSION_LOSS_FLOOR_PCT, "−60% is above the −120 floor, so only the count matters here");
-  assert.equal(governorLossHaltReason(two), null);
-  assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, two, NOW), []);
+// ── loss-halt COUNT boundary: 4 losers pass, exactly 5 halt ──────────────────────────
+test("SEV-3: loss-halt count boundary — 4 realized losers pass, exactly 5 halt", () => {
+  const four = deriveGovernorFromLedger([losingTimeStop("A", -20), losingTimeStop("B", -20), losingTimeStop("C", -20), losingTimeStop("D", -20)]);
+  assert.equal(four.realized_losers, 4);
+  assert.ok(four.session_pnl_pct! > GOVERNOR_SESSION_LOSS_FLOOR_PCT, "−80% is above the −120 floor, so only the count matters here");
+  assert.equal(governorLossHaltReason(four), null);
+  assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, four, NOW), []);
 
-  const three = deriveGovernorFromLedger([losingTimeStop("A", -30), losingTimeStop("B", -30), losingTimeStop("C", -30)]);
-  assert.equal(three.realized_losers, GOVERNOR_LOSS_HALT_COUNT);
-  const halt = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, three, NOW);
+  const five = deriveGovernorFromLedger([losingTimeStop("A", -20), losingTimeStop("B", -20), losingTimeStop("C", -20), losingTimeStop("D", -20), losingTimeStop("E", -20)]);
+  assert.equal(five.realized_losers, GOVERNOR_LOSS_HALT_COUNT);
+  const halt = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, five, NOW);
   assert.deepEqual(halt.map((b) => b.code), ["governor_session_loss_halt"]);
   assert.match(halt[0]!.reason, /realized losers/);
 });
@@ -529,8 +529,8 @@ test("SEV-3: session-P&L floor boundary — exactly −120% halts, −119% does 
 });
 
 test("SEV-3: when BOTH the count and the floor trip, the COUNT reason wins (it is checked first)", () => {
-  // 3 big losers → losers>=3 AND pnl past the floor; the reason must be the count wording.
-  const snap = deriveGovernorFromLedger([losingTimeStop("A", -70), losingTimeStop("B", -70), losingTimeStop("C", -70)]);
+  // 5 losers at −25% each → losers>=5 AND pnl at −125% past the −120% floor; the reason must be the count wording.
+  const snap = deriveGovernorFromLedger([losingTimeStop("A", -25), losingTimeStop("B", -25), losingTimeStop("C", -25), losingTimeStop("D", -25), losingTimeStop("E", -25)]);
   const reason = governorLossHaltReason(snap);
   assert.match(reason ?? "", /realized losers/);
   assert.doesNotMatch(reason ?? "", /at\/below the .*floor/);

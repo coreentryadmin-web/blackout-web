@@ -190,7 +190,7 @@ export type ZeroDteVixCalibration = {
 // META and was surfaced to members only as a whisper-echo. Slayer has an explicit
 // satellite-conflict module; this is the 0DTE analogue. Now enforced: a conflict
 // with score < 80 is a hard block. Calibration record still pins for measurement.
-export const CONFLICT_SCORE_FLOOR = 80;
+export const CONFLICT_SCORE_FLOOR = 65; // lowered from 80 — old floor blocked nearly everything with any conflict; 65 still filters genuine disagreements
 /** Tickers that trade the same broad-market direction as Slayer's SPX play — a
  *  0DTE short on any of these against a live Slayer long IS a desk disagreement. */
 // G-6 cross-system conflict scope: index + mega-cap tech that move in sympathy

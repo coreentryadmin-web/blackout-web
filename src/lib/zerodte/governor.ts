@@ -56,9 +56,11 @@ export const GOVERNOR_REENTRY_LOCK_MS = 20 * 60 * 1000;
 // floor is a cushion above three −50% hard stops (−150%) so a bleed of smaller losing
 // time-stops (each ~−25%…−45%) trips it before it reaches the same total drawdown as
 // the 7/13 day. Either condition halts new commits.
-/** Realized LOSERS in a session — regardless of exit reason (hard stop OR losing
- *  time-stop) — before the desk stands down. Mirrors the 3-stop hard-halt shape. */
-export const GOVERNOR_LOSS_HALT_COUNT = 3;
+/** Realized LOSERS in a session before the desk stands down. Raised from 3 to 5:
+ *  old count treated a -2% time-stop the same as a -50% hard stop, halting on 3
+ *  mild losers that barely dented capital. The SESSION_LOSS_FLOOR_PCT (-120%) still
+ *  catches rapid capital drain regardless of count. */
+export const GOVERNOR_LOSS_HALT_COUNT = 5;
 /** Cumulative session realized P&L % floor. At/below this, new commits halt even if
  *  the loser COUNT hasn't hit the cap (a few large losers drain capital just as fast
  *  as many small ones). −120% ≈ 2.4 hard stops' worth of realized drawdown. */

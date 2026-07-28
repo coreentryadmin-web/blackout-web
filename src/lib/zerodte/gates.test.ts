@@ -422,12 +422,12 @@ test("G-7 fail-closed: 'fetched, zero events' (empty array, macroUnavailable NOT
 
 // ── G-6 · cross-system conflict (HARD GATE — promoted from calibration 2026-07-16) ──
 
-test("G-6: opposing Night Hawk's take with score < 80 BLOCKS (was calibration-only)", () => {
+test("G-6: opposing Night Hawk's take with score < 65 BLOCKS (was calibration-only)", () => {
   const v = evaluateZeroDteGates(
     input({
       ticker: "META",
       direction: "short",
-      score: 67,
+      score: 60,
       nighthawkTake: { direction: "long", edition_for: "2026-07-10" },
     })
   );
@@ -442,9 +442,9 @@ test("G-6: opposing Night Hawk's take with score < 80 BLOCKS (was calibration-on
   assert.equal(v.calibration.g6_conflict.would_block, true);
 });
 
-test("G-6: opposing the live Slayer play on an SPX-correlated ticker BLOCKS at score < 80", () => {
+test("G-6: opposing the live Slayer play on an SPX-correlated ticker BLOCKS at score < 65", () => {
   const slayerLive = { direction: "long" as const };
-  const spy = evaluateZeroDteGates(input({ ticker: "SPY", direction: "short", slayerLive }));
+  const spy = evaluateZeroDteGates(input({ ticker: "SPY", direction: "short", score: 60, slayerLive }));
   assert.equal(spy.verdict, "BLOCKED");
   assert.equal(spy.blocks.some((b) => b.code === "cross_system_conflict"), true);
   assert.equal(spy.calibration.g6_conflict.conflict, true);
@@ -465,7 +465,7 @@ test("G-6: same direction as Slayer — no conflict, commits freely", () => {
   assert.equal(qqqLong.verdict, "COMMIT");
 });
 
-test("G-6: score >= 80 overrides the conflict — CONFLICT still flagged but commits", () => {
+test("G-6: score >= 65 overrides the conflict — CONFLICT still flagged but commits", () => {
   const v = evaluateZeroDteGates(
     input({
       ticker: "META",
@@ -1089,15 +1089,15 @@ test("stacked firewalls: vix + macro + earnings + halt-feed unavailable all bloc
 });
 
 // ── G-6 correlated-ticker set + conflict-score EXACT boundary ─────────────────────────
-test("G-6: an SPX-correlated short (QQQ/NDX) opposing a live Slayer long conflicts; score 79 blocks, 80 clears", () => {
+test("G-6: an SPX-correlated short (QQQ/NDX) opposing a live Slayer long conflicts; score 64 blocks, 65 clears", () => {
   const slayerLive = { direction: "long" as const };
   for (const ticker of ["QQQ", "NDX"]) {
-    const conflict = evaluateZeroDteGates(input({ ticker, direction: "short", score: 79, slayerLive }));
-    assert.equal(conflict.verdict, "BLOCKED", `${ticker} at 79 should block`);
+    const conflict = evaluateZeroDteGates(input({ ticker, direction: "short", score: 64, slayerLive }));
+    assert.equal(conflict.verdict, "BLOCKED", `${ticker} at 64 should block`);
     assert.ok(conflict.blocks.some((b) => b.code === "cross_system_conflict"));
-    // Exactly 80 overrides the conflict (CONFLICT_SCORE_FLOOR is 80, comparison is `< 80`).
-    const cleared = evaluateZeroDteGates(input({ ticker, direction: "short", score: 80, slayerLive }));
-    assert.equal(cleared.verdict, "COMMIT", `${ticker} at 80 should override the conflict`);
+    // Exactly 65 overrides the conflict (CONFLICT_SCORE_FLOOR is 65, comparison is `< 65`).
+    const cleared = evaluateZeroDteGates(input({ ticker, direction: "short", score: 65, slayerLive }));
+    assert.equal(cleared.verdict, "COMMIT", `${ticker} at 65 should override the conflict`);
     assert.equal(cleared.calibration.g6_conflict.conflict, true, "still FLAGGED as a conflict in calibration");
   }
 });

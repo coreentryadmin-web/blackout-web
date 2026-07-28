@@ -973,7 +973,7 @@ test("scanZeroDteBoard: a HEALTHY halt feed (quiet channel, socket live) adds NO
 });
 
 // ── WS-01 governor commit atomicity (transactional recount + re-evaluate) ────────────
-// The session governor (GOVERNOR_MAX_CONCURRENT_PLANS = 3) is evaluated against an open-book
+// The session governor (GOVERNOR_MAX_CONCURRENT_PLANS = 6) is evaluated against an open-book
 // snapshot read at scan START, then persistZeroDteScan re-reads the pre-cycle book and inserts
 // with no DB-level serialization in between. Two overlapping commits (member-poll + cron warm,
 // or two replicas) could each see "room for 1 more" and BOTH insert past the cap. The fix runs
@@ -1071,14 +1071,14 @@ test("WS-01 persistZeroDteScan: UNCONTENDED — the in-transaction recount equal
   assert.equal(state.rejectionRows.length, 0);
 });
 
-test("WS-01 persistZeroDteScan: RACE — a concurrent writer's committed rows (seen only via the in-transaction recount) push the book to 2/3, so only ONE fresh play is admitted and the lower-score loser is rejected with a governor reason", async () => {
+test("WS-01 persistZeroDteScan: RACE — a concurrent writer's committed rows (seen only via the in-transaction recount) push the book to 5/6, so only ONE fresh play is admitted and the lower-score loser is rejected with a governor reason", async () => {
   resetState();
   state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
-  // At SCAN start the book had ONE open plan (AAPL), so BOTH fresh candidates gated COMMIT.
-  state.ledgerRows = [openLedgerRow("AAPL")];
+  // At SCAN start the book had FOUR open plans, so BOTH fresh candidates gated COMMIT.
+  state.ledgerRows = [openLedgerRow("AAPL"), openLedgerRow("TSLA"), openLedgerRow("MSFT"), openLedgerRow("META")];
   // But by the time we hold the commit lock a RACING writer has already committed one more plan
-  // (TSLA). The transactional recount reads that fresh book — 2 open, one slot left.
-  state.atomicLedger = [openLedgerRow("AAPL"), openLedgerRow("TSLA")];
+  // (GOOGL). The transactional recount reads that fresh book — 5 open, one slot left.
+  state.atomicLedger = [openLedgerRow("AAPL"), openLedgerRow("TSLA"), openLedgerRow("MSFT"), openLedgerRow("META"), openLedgerRow("GOOGL")];
 
   const { persistZeroDteScan } = await mod();
   await persistZeroDteScan([
@@ -1095,7 +1095,7 @@ test("WS-01 persistZeroDteScan: RACE — a concurrent writer's committed rows (s
   const amdRej = state.rejectionRows.find((r) => String(r.ticker).toUpperCase() === "AMD");
   assert.ok(amdRej, "the over-cap loser must be recorded to zerodte_scan_rejections");
   assert.equal(amdRej!.gate_failed, "governor_max_concurrent");
-  assert.match(String(amdRej!.reason), /max 3 concurrent/);
+  assert.match(String(amdRej!.reason), /max 6 concurrent/);
 });
 
 // ── D3 · option-quote staleness plumbing ─────────────────────────────────────────
