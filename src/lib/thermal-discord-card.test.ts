@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  THERMAL_DISCORD_CARD_W,
   bandStrikesAroundSpot,
   buildThermalDiscordCardSvg,
   fmtCompactExpiry,
   fmtCompactHeatMoney,
+  fmtDeskExpiry,
   resolveCompactExpiries,
   thermalDiscordCaption,
   type ThermalCardColumn,
@@ -14,6 +16,11 @@ import type { GexHeatmap } from "./providers/polygon-options-gex.ts";
 test("fmtCompactExpiry → M/D", () => {
   assert.equal(fmtCompactExpiry("2026-07-28"), "7/28");
   assert.equal(fmtCompactExpiry("2026-12-01"), "12/1");
+});
+
+test("fmtDeskExpiry → Mon D", () => {
+  assert.equal(fmtDeskExpiry("2026-07-28"), "Jul 28");
+  assert.equal(fmtDeskExpiry("2026-12-01"), "Dec 1");
 });
 
 test("resolveCompactExpiries prefers near-term and caps", () => {
@@ -77,15 +84,21 @@ test("buildThermalDiscordCardSvg includes tickers and never invents spot", () =>
     { ticker: "QQQ", heatmap: null },
   ];
   const svg = buildThermalDiscordCardSvg(columns);
+  assert.match(svg, new RegExp(`width="${THERMAL_DISCORD_CARD_W}"`));
   assert.match(svg, /SPY/);
   assert.match(svg, /SPX/);
   assert.match(svg, /QQQ/);
   assert.match(svg, /634\.50/);
+  assert.match(svg, /CALL WALL/);
+  assert.match(svg, /PUT WALL/);
+  assert.match(svg, /FLIP/);
+  assert.match(svg, /LIVE SNAPSHOT/);
   assert.match(svg, /Matrix unavailable/);
   assert.doesNotMatch(svg, /Unusual Whales|Polygon|Railway/i);
 
   const caption = thermalDiscordCaption(columns);
   assert.match(caption, /SPY/);
-  assert.match(caption, /C 640/);
+  assert.match(caption, /Call wall/);
+  assert.match(caption, /640/);
   assert.doesNotMatch(caption, /Polygon|Unusual/i);
 });
