@@ -58,6 +58,7 @@ Secrets Manager. **Never commit real values.**
 |-----|---------|
 | `DISCORD_OPS_WEBHOOK_URL` | Ops alerts |
 | `DISCORD_TRADE_WEBHOOK_URL` | Trade notifications |
+| `DISCORD_THERMAL_WEBHOOK_URL` | Thermal triple-desk PNG → designated Discord channel (`/api/cron/thermal-discord`, 15m RTH) |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Push notifications |
 | `VAPID_PRIVATE_KEY` | Push notifications |
 | `CF_ZONE_ID` | Cache purge on deploy |
