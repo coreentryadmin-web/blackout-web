@@ -99,8 +99,7 @@ export function overlayLegacyQuotes(
 
     const target = parseLevelNum(orig.target);
     const stop = parseLevelNum(orig.stop);
-    const entryMid = parseLevelNum(orig.entry_range?.match(/[\d.]+/)?.[0] ? orig.entry_range : null)
-      ?? parseEntryRangeMid(orig.entry_range);
+    const entryMid = parseEntryRangeMid(orig.entry_range);
 
     if (!entryMid) return { ...p, markAsOf: q.asof };
 

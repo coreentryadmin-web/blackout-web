@@ -957,9 +957,9 @@ test("overlayLegacyQuotes: computes stock-level pnlPct from entry (LONG)", () =>
   const quotes = new Map([["NVDA", { price: 192.50, changePct: 2.3, asof: "2026-07-28T15:00:00Z" }]]);
   const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180 – $185" }];
   const [result] = overlayLegacyQuotes([play], quotes, originals);
-  // parseLevelNum picks first number: 180, stock = 192.50, pnl = (192.50-180)/180 = +6.94%
+  // entry mid = (180+185)/2 = 182.5, stock = 192.50, pnl = (192.50-182.5)/182.5 = +5.48%
   assert.ok(result.pnlPct != null, "pnlPct should be computed");
-  assert.ok(result.pnlPct! > 6.5 && result.pnlPct! < 7.5, `expected ~6.94%, got ${result.pnlPct}`);
+  assert.ok(result.pnlPct! > 5.0 && result.pnlPct! < 6.0, `expected ~5.48%, got ${result.pnlPct}`);
 });
 
 test("overlayLegacyQuotes: computes stock-level pnlPct from entry (SHORT)", () => {
@@ -970,9 +970,9 @@ test("overlayLegacyQuotes: computes stock-level pnlPct from entry (SHORT)", () =
   const quotes = new Map([["TSLA", { price: 240, changePct: -3, asof: "2026-07-28T15:00:00Z" }]]);
   const originals = [{ ticker: "TSLA", target: "$230", stop: "$265", entry_range: "$250 – $255" }];
   const [result] = overlayLegacyQuotes([play], quotes, originals);
-  // parseLevelNum picks first number: 250, stock = 240, short pnl = (250-240)/250 = +4.00%
+  // entry mid = (250+255)/2 = 252.5, stock = 240, short pnl = (252.5-240)/252.5 = +4.95%
   assert.ok(result.pnlPct != null, "pnlPct should be computed");
-  assert.ok(result.pnlPct! > 3.5 && result.pnlPct! < 4.5, `expected ~4.00%, got ${result.pnlPct}`);
+  assert.ok(result.pnlPct! > 4.5 && result.pnlPct! < 5.5, `expected ~4.95%, got ${result.pnlPct}`);
 });
 
 test("Legacy adapter: confirming_signals → Confirming factor", () => {

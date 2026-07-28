@@ -11,7 +11,7 @@ import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { rowToNightHawkEdition } from "@/features/nighthawk/lib/edition-builder";
 import { applyNighthawkPullOverlay } from "@/features/nighthawk/lib/pull-overlay";
 import { assignNighthawkTier } from "@/features/nighthawk/lib/nighthawk-tiers";
-import { isBeforeOrAtMarketCloseEt, nextTradingDayEt, priorEt, todayEt } from "@/features/nighthawk/lib/session";
+import { isBeforeOrAtMarketCloseEt, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { requireToolApi } from "@/lib/tool-access-server";
 import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
 import { roundFloats } from "@/lib/round-floats";
@@ -198,12 +198,6 @@ export async function GET(req: NextRequest) {
       if (edition.edition_for && edition.edition_for !== editionFor) {
         edition.stale = true;
         edition.served_for = edition.edition_for;
-      } else {
-        const recencyWindow = new Set([editionFor, todayEt(), priorEt()]);
-        if (edition.edition_for && !recencyWindow.has(edition.edition_for)) {
-          edition.stale = true;
-          edition.served_for = edition.edition_for;
-        }
       }
       return NextResponse.json(roundFloats(await withPullOverlay(edition)), { headers: NO_STORE_HEADERS });
     }

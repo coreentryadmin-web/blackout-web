@@ -19,6 +19,7 @@ import {
 } from "@/lib/zerodte/banger-scale-out-grade";
 import { parseOptionsContract } from "./option-chain-prompt";
 import { fetchPolygonOptionBars } from "@/lib/providers/polygon-largo";
+import { todayEt } from "./session";
 
 // Per-edition distributed lock for outcome sync.
 // Prevents concurrent force-rebuilds from racing on the same upsert and
@@ -586,7 +587,8 @@ export function resolveOutcome(row: NighthawkPlayOutcomeRow): {
   // of the band; short: session high stayed below the bottom — grade 'unfilled'
   // and exclude from win/loss tallies (same treatment as stop_data_unavailable).
   if (hasIntraday && row.entry_range_low != null && row.entry_range_high != null) {
-    const fillable = isLong ? low! <= row.entry_range_high : high! >= row.entry_range_low;
+    // Range intersection: session [low, high] must overlap entry [range_low, range_high].
+    const fillable = low! <= row.entry_range_high && high! >= row.entry_range_low;
     if (!fillable) {
       return { hit_target: false, hit_stop: false, outcome: "unfilled", stop_data_unavailable: false };
     }
@@ -707,7 +709,7 @@ export async function resolveBangerScaleOutGrades(opts?: {
     return { graded: 0, ungradeable: 0, skipped: 0, errors: ["Polygon not configured"] };
   }
   const lookbackDays = opts?.lookbackDays ?? 21;
-  const today = opts?.today ?? new Date().toISOString().slice(0, 10);
+  const today = opts?.today ?? todayEt();
   const candidates = await fetchNighthawkRowsMissingScaleOutGrade(lookbackDays);
 
   let graded = 0;

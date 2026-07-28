@@ -45,7 +45,7 @@ export function mapClaudePlayToEdition(play: ClaudePlayRaw, rank: number, dossie
   const dossier = dossiers[ticker];
   const playType = String(play.type ?? "stock").toLowerCase();
   const pinnedScore = dossier?.scored?.score ?? Number(play.score ?? 0);
-  const modelConviction = String(play.conviction ?? "B");
+  const modelConviction = String(play.conviction ?? "B").toUpperCase();
   const scored = dossier?.scored;
   const deterministicConviction = scored
     ? assignNighthawkTier(nhTierInputFromScored(scored)).tier
@@ -55,10 +55,10 @@ export function mapClaudePlayToEdition(play: ClaudePlayRaw, rank: number, dossie
       ? modelConviction
       : deterministicConviction;
   const scoredDirection = dossier?.scored?.direction;
-  const modelDirection = String(play.direction ?? "LONG");
+  const modelDirection = String(play.direction ?? "LONG").toUpperCase();
   if (
     scoredDirection &&
-    (scoredDirection === "short") !== modelDirection.toUpperCase().includes("SHORT")
+    (scoredDirection === "short") !== modelDirection.includes("SHORT")
   ) {
     console.warn(
       `[nighthawk/edition] ${ticker}: model direction ${modelDirection} diverges from scored flow direction ${scoredDirection}`

@@ -106,6 +106,38 @@ test("a gap-open that RETRACES into the band still grades normally", () => {
   assert.equal(resolveOutcome(row).outcome, "target");
 });
 
+test("LONG that gapped BELOW its entry band and never recovered grades 'unfilled'", () => {
+  const row = {
+    direction: "LONG",
+    entry_range_low: 100,
+    entry_range_high: 104,
+    target: 112,
+    stop: 96,
+    next_day_open: 88,
+    next_day_close: 92,
+    session_high: 93, // never reached the band [100, 104]
+    session_low: 85,
+  } as NighthawkPlayOutcomeRow;
+
+  assert.equal(resolveOutcome(row).outcome, "unfilled");
+});
+
+test("SHORT that gapped ABOVE its entry band and never returned grades 'unfilled'", () => {
+  const row = {
+    direction: "SHORT",
+    entry_range_low: 198,
+    entry_range_high: 202,
+    target: 185,
+    stop: 210,
+    next_day_open: 215,
+    next_day_close: 220,
+    session_high: 225,
+    session_low: 212, // never dipped back into [198, 202]
+  } as NighthawkPlayOutcomeRow;
+
+  assert.equal(resolveOutcome(row).outcome, "unfilled");
+});
+
 test("rows without an entry band skip the fillability gate", () => {
   const row = {
     direction: "LONG",
