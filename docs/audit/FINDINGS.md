@@ -90,6 +90,36 @@ through the Legacy pipeline. The confluence badge fix only affects the UI displa
 
 **Status.** FIXED — PR #1176.
 
+## 2026-07-28 — [data-loss + honesty] Sector dropped in LegacyDeck + fabricated discovery badges (PR #1176, batch 3)
+
+**Severity.** P3.
+
+**Finding 1: Sector field dropped in `LegacyDeck` container.**
+`containers.tsx:120` built the object passed to `terminalPlayFromEdition` but never included
+`sector: p.sector ?? null`. The edition builder populates `sector`, `EditionDeckSource` declares it,
+and the adapter + terminal both handle it — but the container that bridges them silently dropped it.
+Members never saw sector badges on Legacy plays, and `hasBadges` layout gating was partly broken.
+
+**Fix.** Added `sector: p.sector ?? null` to the container's map.
+
+**Finding 2: Fabricated discovery-origin badges from free-text regex.**
+`adapters.ts:518-536` inferred BREAKOUT/CATALYST/SWEEP origin badges and `whyNow` trigger reasons
+by running loose regexes against `key_signal`, a free-form thesis string never designed to encode
+taxonomy. A thesis like "avoiding a dark-pool overhang before earnings" would tag the play SWEEP +
+CATALYST even though neither discovery rail fired. This violates the codebase's "never fabricate"
+convention.
+
+**Fix.** Removed all regex-inferred badges. Only the data-grounded FLOW badge (from real
+`flow_streak_days`) remains. `whyNow` is now only set when `flow_streak_days > 0`.
+
+**Finding 3: Tier dimension count text wrong.**
+`nighthawk-tiers.ts:79,180` said "7 dimensions" but `confirming_signals` counts 9 (flow, tech,
+pos, news, smart, fundamental, shortInterest, wall, vex).
+
+**Fix.** Changed comment and detail text to "9 dimensions".
+
+**Status.** FIXED — PR #1176.
+
 ## 2026-07-28 — [correctness] Governor demotion undone by builder merge-sort + no R:R minimum gate (branch `fix/governor-sort-override`)
 
 **Severity.** Medium (edition quality — governor-demoted plays could re-promote to the top 5; plays with terrible R:R could publish).
