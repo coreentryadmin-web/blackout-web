@@ -44,10 +44,11 @@ import type { CortexVerdict } from "@/lib/nighthawk/cortex/types";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import { makeRedis } from "@/lib/make-redis";
 import { todayEt as etYmdOf } from "@/lib/et-date";
-import { requireDatabaseInProduction, fetchLatestNighthawkEdition, fetchNighthawkEditionByDate } from "@/lib/db";
+import { requireDatabaseInProduction, fetchLatestNighthawkEdition, fetchNighthawkEditionByDate, reanchorNighthawkEntryBand } from "@/lib/db";
 import { rowToNightHawkEdition } from "@/features/nighthawk/lib/edition-builder";
 import { todayEt, isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { inEtWindow } from "@/features/nighthawk/lib/et-window";
+import { parsePlayLevels, entryHalfWidth } from "@/features/nighthawk/lib/play-levels";
 import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
 
 export const runtime = "nodejs";
@@ -473,6 +474,60 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // ── Phase 3.75: re-anchor entry bands for gap-through plays ─────────────
+    // When pre-market confirms the thesis direction but the stock gapped past the
+    // published entry band, update the outcomes row so the grading engine uses a
+    // fillable band instead of the stale prior-close band. Only re-anchors when:
+    //   (a) the play was NOT invalidated/pulled (thesis still valid)
+    //   (b) pre-market price is available
+    //   (c) the stock gapped THROUGH the entry in the thesis direction
+    // The published edition is never mutated — only the grading-side entry band.
+    let reanchored = 0;
+    const reanchorLog: Array<{ ticker: string; from: string; to: string }> = [];
+    for (const play of plays) {
+      const ticker = play.ticker.toUpperCase();
+      const ps = finalStatuses.find((s) => s.ticker.toUpperCase() === ticker);
+      if (!ps || ps.status === "INVALIDATED") continue;
+      const stockPx = stockSnaps[ticker]?.price ?? null;
+      if (stockPx == null || stockPx <= 0) continue;
+
+      const levels = parsePlayLevels(play);
+      if (levels.entry_range_low == null || levels.entry_range_high == null) continue;
+      const isLong = !String(ps.direction ?? "LONG").toUpperCase().includes("SHORT");
+      const gappedThrough = isLong
+        ? stockPx > levels.entry_range_high
+        : stockPx < levels.entry_range_low;
+      if (!gappedThrough) continue;
+
+      const halfPct = entryHalfWidth(stockPx);
+      const newLo = Number((stockPx * (1 - halfPct)).toFixed(2));
+      const newHi = Number((stockPx * (1 + halfPct)).toFixed(2));
+      try {
+        const ok = await reanchorNighthawkEntryBand({
+          edition_for: editionFor,
+          ticker,
+          entry_range_low: newLo,
+          entry_range_high: newHi,
+        });
+        if (ok) {
+          reanchored++;
+          reanchorLog.push({
+            ticker,
+            from: `${levels.entry_range_low.toFixed(2)}-${levels.entry_range_high.toFixed(2)}`,
+            to: `${newLo.toFixed(2)}-${newHi.toFixed(2)}`,
+          });
+        }
+      } catch (err) {
+        console.warn(`[nighthawk-morning-confirm] reanchor failed for ${ticker}:`, err);
+      }
+    }
+    if (reanchorLog.length > 0) {
+      console.info(
+        `[nighthawk-morning-confirm] re-anchored ${reanchored} entry band(s):`,
+        reanchorLog.map((r) => `${r.ticker} ${r.from} → ${r.to}`).join(", ")
+      );
+    }
+
     // ── Phase 4: write to Redis ─────────────────────────────────────────────
     try {
       const redisUrl = process.env.REDIS_URL ?? "";
@@ -521,6 +576,7 @@ export async function GET(req: NextRequest) {
       verdict_persist_errors: verdictPersist.errors,
       // PR-N6: Cortex morning re-veto ledger.
       cortex_reveto: cortexRevetoMeta,
+      entry_bands_reanchored: reanchored,
       duration_ms: Date.now() - started,
     };
     await logCronRun(CRON_KEY, started, payload);

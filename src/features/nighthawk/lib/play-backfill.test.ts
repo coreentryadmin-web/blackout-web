@@ -182,7 +182,7 @@ test("buildDirectionalStockLevels: legacy path still works without spot (backfil
 
 test("buildDirectionalStockLevels: LONG high-ATR name gets a wider entry band than the old fixed 0.5%", () => {
   const spot = 212;
-  const atr = 12.72; // ~6% of spot -> atrPct*0.5 = 3%, capped at 2%
+  const atr = 12.72; // ~6% of spot -> atrPct*0.4 = 2.4%, capped at 2.5%
   const levels = buildDirectionalStockLevels({
     direction: "long",
     support: 174,
@@ -193,16 +193,16 @@ test("buildDirectionalStockLevels: LONG high-ATR name gets a wider entry band th
   const nums = levels.entry_range.match(/[\d.]+/g)!.map(Number);
   const lo = Math.min(...nums);
   const hi = Math.max(...nums);
-  // Capped at 2% half-band, not the old fixed 0.5%
-  assert.ok(Math.abs(spot - lo) / spot > 0.015, `lo ${lo} band too narrow for high-ATR name`);
-  assert.ok(Math.abs(hi - spot) / spot > 0.015, `hi ${hi} band too narrow for high-ATR name`);
-  assert.ok(Math.abs(spot - lo) / spot <= 0.021, `lo ${lo} exceeded the 2% cap`);
-  assert.ok(Math.abs(hi - spot) / spot <= 0.021, `hi ${hi} exceeded the 2% cap`);
+  // entryHalfWidth: (12.72/212)*0.4 = 2.4% half-band, under the 2.5% cap
+  assert.ok(Math.abs(spot - lo) / spot > 0.02, `lo ${lo} band too narrow for high-ATR name`);
+  assert.ok(Math.abs(hi - spot) / spot > 0.02, `hi ${hi} band too narrow for high-ATR name`);
+  assert.ok(Math.abs(spot - lo) / spot <= 0.026, `lo ${lo} exceeded the 2.5% cap`);
+  assert.ok(Math.abs(hi - spot) / spot <= 0.026, `hi ${hi} exceeded the 2.5% cap`);
 });
 
-test("buildDirectionalStockLevels: SHORT low-ATR name gets a tighter entry band, proportional to ATR", () => {
+test("buildDirectionalStockLevels: SHORT low-ATR name gets the floor band when ATR-scaled is below floor", () => {
   const spot = 354;
-  const atr = 1.77; // 0.5% of spot -> atrPct*0.5 = 0.25% half-band
+  const atr = 1.77; // 0.5% of spot -> atrPct*0.4 = 0.2% half-band, below 0.5% floor
   const levels = buildDirectionalStockLevels({
     direction: "short",
     support: 280,
@@ -213,14 +213,14 @@ test("buildDirectionalStockLevels: SHORT low-ATR name gets a tighter entry band,
   const nums = levels.entry_range.match(/[\d.]+/g)!.map(Number);
   const lo = Math.min(...nums);
   const hi = Math.max(...nums);
-  const expectedHalfBand = 0.0025; // atrPct(0.005) * 0.5
+  const expectedHalfBand = 0.005; // floor: MIN_ENTRY_HALF_PCT
   assert.ok(
     Math.abs(Math.abs(spot - lo) / spot - expectedHalfBand) < 0.0005,
-    `lo ${lo} does not match expected ATR-scaled half-band`,
+    `lo ${lo} does not match expected floor half-band`,
   );
   assert.ok(
     Math.abs(Math.abs(hi - spot) / spot - expectedHalfBand) < 0.0005,
-    `hi ${hi} does not match expected ATR-scaled half-band`,
+    `hi ${hi} does not match expected floor half-band`,
   );
 });
 
@@ -243,7 +243,7 @@ test("buildDirectionalStockLevels: missing/zero ATR falls back to the 0.5% defau
   const nums = withoutAtr.entry_range.match(/[\d.]+/g)!.map(Number);
   const lo = Math.min(...nums);
   const hi = Math.max(...nums);
-  // Default atrPct fallback of 0.5% -> half-band 0.25%
-  assert.equal(lo, 100 * (1 - 0.0025));
-  assert.equal(hi, 100 * (1 + 0.0025));
+  // Floor half-band: MIN_ENTRY_HALF_PCT = 0.5%
+  assert.equal(lo, 99.5);
+  assert.equal(hi, 100.5);
 });
