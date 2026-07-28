@@ -984,7 +984,7 @@
 .rl-faq-page .rl-wrap{position:relative;z-index:1;max-width:none;padding-inline:clamp(24px,4vw,72px)}
 .rl-faq-inner{max-width:none;margin:0}
 .rl-faq-inner h1{font-size:clamp(36px,6vw,64px);margin-top:14px}
-.rl-faq-inner>p{color:var(--rl-dim);margin-top:14px;font-size:16px}
+.rl-faq-inner>p{color:#b9c7d6;margin-top:14px;font-size:16px;line-height:1.7}
 .rl-faq-cats{display:flex;flex-wrap:wrap;gap:8px;margin-top:30px}
 .rl-faq-cats span{border:1px solid var(--rl-line2);border-radius:20px;padding:6px 12px;font-family:var(--rl-mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--rl-dim)}
 /* Full-width -> flow the accordion into columns instead of one long line; single
@@ -992,12 +992,15 @@
 .rl-faq-list{margin-top:26px;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,520px),1fr));gap:12px;align-items:start}
 .rl-faq-item{border:1px solid var(--rl-line);border-radius:var(--rl-r,12px);background:var(--rl-panel);overflow:hidden;transition:border-color .2s}
 .rl-faq-item[open]{border-color:color-mix(in srgb,var(--rl-bull) 30%,var(--rl-line))}
-.rl-faq-item summary{cursor:pointer;list-style:none;display:flex;align-items:flex-start;gap:10px;padding:18px 20px;font-family:var(--rl-sans);font-weight:700;font-size:15.5px;color:var(--rl-ink)}
+.rl-faq-item summary{cursor:pointer;list-style:none;display:flex;align-items:flex-start;gap:10px;padding:18px 20px;font-family:var(--rl-sans);font-weight:700;font-size:16px;color:var(--rl-ink)}
 .rl-faq-item summary::-webkit-details-marker{display:none}
 .rl-faq-item summary .cat{font-family:var(--rl-mono);font-size:11px;color:color-mix(in srgb,var(--rl-bull) 80%,white);white-space:nowrap;padding-top:2px}
 .rl-faq-item summary .ic{margin-left:auto;color:var(--rl-dim);transition:transform .25s cubic-bezier(.34,1.56,.64,1);flex-shrink:0}
 .rl-faq-item[open] summary .ic{transform:rotate(45deg);color:var(--rl-bull)}
-.rl-faq-item .ans{padding:0 20px 20px;color:var(--rl-dim);font-size:14px;line-height:1.6}
+.rl-faq-item .ans{padding:0 20px 20px;color:#b9c7d6;font-size:15px;line-height:1.75}
+.rl-faq-item .ans a{color:#00e676;font-weight:600;text-decoration:none;transition:color .15s}
+.rl-faq-item .ans a:hover{color:#69f0ae}
+.rl-faq-item .ans strong,.rl-faq-item .ans b{color:#fff;font-weight:700}
 
 /* ── PER-PRODUCT DEEP DIVE (every module marketed in full) ──────────────────── */
 .rl-deep{display:flex;flex-direction:column;gap:22px;margin-top:44px}
