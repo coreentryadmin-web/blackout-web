@@ -16588,7 +16588,7 @@ body::before {
   border-spacing: 0;
   table-layout: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -16670,11 +16670,11 @@ body::before {
   align-items: center;
   justify-content: flex-end;
   gap: 0.28rem;
-  padding: 0.28rem 0.45rem;
+  padding: 0.32rem 0.5rem;
   border: 0;
   background: transparent;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--tt-ink);
@@ -16750,9 +16750,9 @@ body::before {
 }
 
 .thermal-compact-cell {
-  padding: 0.28rem 0.35rem;
-  min-width: 4.5rem;
-  height: 1.85rem;
+  padding: 0.32rem 0.45rem;
+  min-width: 5rem;
+  height: 2rem;
   text-align: center;
   vertical-align: middle;
   border-right: 1px solid rgba(255, 255, 255, 0.03);
@@ -16762,18 +16762,18 @@ body::before {
 
 .thermal-compact-table.is-0dte .thermal-compact-cell {
   min-width: 100%;
-  height: 1.65rem;
-  padding: 0.2rem 0.55rem;
+  height: 1.85rem;
+  padding: 0.28rem 0.65rem;
 }
 
 .thermal-compact-table.is-0dte .thermal-compact-strike-btn {
-  padding: 0.22rem 0.5rem;
-  font-size: 12px;
+  padding: 0.28rem 0.55rem;
+  font-size: 13px;
 }
 
 .thermal-compact-cell-val {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
@@ -16783,7 +16783,7 @@ body::before {
 }
 
 .thermal-compact-table.is-0dte .thermal-compact-cell-val {
-  font-size: 12px;
+  font-size: 13px;
   position: relative;
   z-index: 2;
 }

@@ -8,16 +8,18 @@ import {
   fmtHeatmapStrike,
   heatmapCellStyle,
   heatmapCellTextStyle,
+  heatmapMatrixExtremeCellStyle,
 } from "@/lib/gex-heatmap-display";
 import {
   bandStrikesAroundSpot,
   compactMatrixPeak,
+  compactPerExpiryExtremes,
   nearestStrikeIndex,
   resolveCompactExpiries,
   resolveZeroDteExpiry,
 } from "@/features/thermal/lib/thermal-compact-matrix";
 
-/** Tall 0DTE heat strips (Bobby-style vertical ladders). */
+/** Tall 0DTE heat strips — readable like the major matrix. */
 export const THERMAL_COMPARE_STRIKE_HALF = 40;
 /** Fallback when near-term multi-expiry mode is selected. */
 export const THERMAL_COMPARE_MAX_EXPIRIES = 8;
@@ -55,18 +57,23 @@ function todayEtYmd(): string {
   }).format(new Date());
 }
 
-/** Boost mid-band intensity so the strip reads as a heat ladder, not pale cells. */
-function stripCellStyle(
+/**
+ * Green (+) / red (−) heat — same lens RGB as the major matrix, boosted alpha
+ * so the 0DTE strip reads as a ladder (never viridis / purple-yellow scale).
+ */
+function signedHeatStyle(
   value: number,
   peak: number,
   lens: GexHeatmapLens,
+  boost: boolean,
 ): CSSProperties {
   const base = heatmapCellStyle(value, peak, lens);
   if (!value || peak <= 0) {
-    return { backgroundColor: "rgba(15, 23, 42, 0.85)" };
+    return boost ? { backgroundColor: "rgba(8, 12, 22, 0.9)" } : {};
   }
+  if (!boost) return base;
   const mag = Math.min(1, Math.abs(value) / peak);
-  const alpha = 0.22 + Math.pow(mag, 1.1) * 0.78;
+  const alpha = 0.18 + Math.pow(mag, 1.15) * 0.8;
   const bg = String(base.backgroundColor ?? "");
   const boosted = bg.replace(
     /rgba\(([^,]+),([^,]+),([^,]+),([^)]+)\)/,
@@ -77,7 +84,7 @@ function stripCellStyle(
     backgroundColor: boosted || base.backgroundColor,
     boxShadow:
       mag > 0.35
-        ? `inset 0 0 22px ${boosted.replace(/[\d.]+\)$/, `${(mag * 0.45).toFixed(2)})`)}`
+        ? `inset 0 0 22px ${boosted.replace(/[\d.]+\)$/, `${(mag * 0.42).toFixed(2)})`)}`
         : base.boxShadow,
   };
 }
@@ -117,6 +124,7 @@ export default function ThermalCompactMatrix({
   const spotIdx = nearestStrikeIndex(strikes, data.spot ?? null);
   const pinSet = new Set(pinnedStrikes);
   const peak = compactMatrixPeak(data.cells, strikes, expiries);
+  const extremes = compactPerExpiryExtremes(data.cells, strikes, expiries);
   const is0dte = mode === "0dte";
 
   if (expiries.length === 0 || strikes.length === 0) {
@@ -139,16 +147,21 @@ export default function ThermalCompactMatrix({
       onMouseLeave={() => onCrosshairIndex?.(null)}
     >
       <table
-        className={`thermal-compact-table${is0dte ? " is-0dte" : ""}`}
+        className={`thermal-compact-table${is0dte ? " is-0dte" : ""} font-mono text-[13px] tabular-nums`}
         aria-label={`${data.ticker} ${lens.toUpperCase()} ${is0dte ? "0DTE" : "near-term"} matrix`}
       >
         <thead>
           <tr>
-            <th className="thermal-compact-corner" scope="col">
+            <th className="thermal-compact-corner text-[11px]" scope="col">
               Strike
             </th>
             {expiries.map((exp) => (
-              <th key={exp} className="thermal-compact-exp" scope="col" title={exp}>
+              <th
+                key={exp}
+                className="thermal-compact-exp text-[11px]"
+                scope="col"
+                title={exp}
+              >
                 {is0dte ? (
                   <>
                     <span className="thermal-compact-exp-chip">0DTE</span>
@@ -183,7 +196,7 @@ export default function ThermalCompactMatrix({
                 <th scope="row" className="thermal-compact-strike">
                   <button
                     type="button"
-                    className="thermal-compact-strike-btn"
+                    className="thermal-compact-strike-btn text-[13px] font-bold"
                     onClick={() => onTogglePin(strike)}
                     title={pinned ? `Unpin ${strike}` : `Pin ${strike}`}
                     aria-pressed={pinned}
@@ -196,22 +209,57 @@ export default function ThermalCompactMatrix({
                 </th>
                 {expiries.map((exp) => {
                   const val = row[exp];
-                  const n = typeof val === "number" && Number.isFinite(val) ? val : 0;
-                  const style: CSSProperties = {
-                    ...(is0dte
-                      ? stripCellStyle(n, peak, lens)
-                      : heatmapCellStyle(n, peak, lens)),
-                    ...heatmapCellTextStyle(n, peak),
-                  };
+                  const has = typeof val === "number" && Number.isFinite(val);
+                  const n = has ? val : 0;
+                  const day = extremes[exp];
+                  const isPosNode = has && day?.callWall === strike;
+                  const isNegNode = has && day?.putWall === strike;
+                  const isKing = has && n !== 0 && day?.king === strike;
+
+                  const style: CSSProperties = has
+                    ? isPosNode
+                      ? heatmapMatrixExtremeCellStyle("positive")
+                      : isNegNode
+                        ? heatmapMatrixExtremeCellStyle("negative")
+                        : {
+                            ...signedHeatStyle(n, peak, lens, is0dte),
+                            ...heatmapCellTextStyle(n, peak),
+                          }
+                    : {};
+
                   return (
                     <td
                       key={`${strike}-${exp}`}
-                      className="thermal-compact-cell"
+                      className={[
+                        "thermal-compact-cell whitespace-nowrap px-1 py-1 text-center font-bold",
+                        isPosNode || isNegNode ? "gex-heatmap-extreme-pop" : "",
+                        !isPosNode && !isNegNode && n > 0 ? "text-emerald-300" : "",
+                        !isPosNode && !isNegNode && n < 0 ? "text-rose-300" : "",
+                        !has || n === 0 ? "text-sky-300/40" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                       style={style}
-                      title={`${data.ticker} ${strike} ${exp} · ${lens.toUpperCase()} ${fmtHeatmapMoneySigned(n, { showZero: true })}`}
+                      title={
+                        isPosNode
+                          ? `+ node (call wall) · ${fmtHeatmapMoneySigned(n, { showZero: true })}`
+                          : isNegNode
+                            ? `− node (put wall) · ${fmtHeatmapMoneySigned(n, { showZero: true })}`
+                            : isKing
+                              ? `King node · ${fmtHeatmapMoneySigned(n, { showZero: true })}`
+                              : `${data.ticker} ${strike} ${exp} · ${lens.toUpperCase()} ${fmtHeatmapMoneySigned(n, { showZero: true })}`
+                      }
                     >
-                      <span className="thermal-compact-cell-val">
+                      <span className="thermal-compact-cell-val text-[13px] font-bold">
                         {fmtHeatmapMoneySigned(n, { showZero: true })}
+                        {isKing ? (
+                          <span
+                            aria-hidden
+                            className="ml-0.5 inline-block text-[13px] leading-none text-amber-400 [text-shadow:0_0_6px_rgba(251,191,36,0.9)]"
+                          >
+                            ★
+                          </span>
+                        ) : null}
                       </span>
                     </td>
                   );

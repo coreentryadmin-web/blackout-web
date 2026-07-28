@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   bandStrikesAroundSpot,
   compactMatrixPeak,
+  compactPerExpiryExtremes,
   fmtCompactExpiry,
   fmtCompactHeatMoney,
   resolveCompactExpiries,
@@ -55,4 +56,17 @@ test("compactMatrixPeak uses absolute max in window", () => {
     "101": { "2026-07-28": 25 },
   };
   assert.equal(compactMatrixPeak(cells, [100, 101], ["2026-07-28", "2026-07-29"]), 40);
+});
+
+test("compactPerExpiryExtremes marks +node yellow side, −node purple side, king by |mag|", () => {
+  const cells = {
+    "100": { "2026-07-28": 10 },
+    "101": { "2026-07-28": 50 },
+    "102": { "2026-07-28": -80 },
+    "103": { "2026-07-28": -20 },
+  };
+  const ex = compactPerExpiryExtremes(cells, [100, 101, 102, 103], ["2026-07-28"]);
+  assert.equal(ex["2026-07-28"]?.callWall, 101);
+  assert.equal(ex["2026-07-28"]?.putWall, 102);
+  assert.equal(ex["2026-07-28"]?.king, 102); // |−80| > |50|
 });

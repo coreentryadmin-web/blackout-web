@@ -3996,9 +3996,10 @@ export function GexHeatmap({
           />
           <p className="mt-4 border-t border-white/8 pt-3 text-[10px] leading-snug text-sky-300/75 gex-heatmap-methodology">
             <span aria-hidden className="mr-1 text-sky-300/70">ⓘ</span>
-            Triple desk shows near-term expiries + a tight strike band around each spot so
-            SPY, SPX, and QQQ fit side-by-side. Keys 1/2/3 focus a column; G/V/D/C switch lens.
-            Pin strikes to watch; CSV exports the full chain for that name.
+            Triple desk defaults to 0DTE heat strips (SPY | SPX | QQQ) with green/red cells,
+            yellow + node, purple − node, and ★ king — same paint as the major matrix. Toggle
+            Near for multi-expiry. Keys 1/2/3 focus; 0/N mode; G/V/D/C lens. Pin strikes; CSV
+            exports the full chain.
           </p>
         </div>
       ) : (isLoading && !data) || stale ? (

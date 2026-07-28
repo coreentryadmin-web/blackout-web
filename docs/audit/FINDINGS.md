@@ -17,8 +17,9 @@ Operator reference: tall 0DTE heat strips with a synced horizontal cursor.
 crushed fonts/columns far below the major Thermal matrix / 0DTE strip aesthetic.
 
 **Fix.** Default compare mode = **0DTE** single-expiry heat strip (Near toggle for multi);
-12px labels; boosted strip intensity; ~81-strike ladder (half=40); tall scroll
-`clamp(620px,82vh,1080px)`; synced crosshair + scroll across SPY|SPX|QQQ.
+13px labels; **green/red** signed heat (not viridis); **yellow + node / purple − node /
+★ king** via same `heatmapMatrixExtremeCellStyle` as major matrix; ~81-strike ladder;
+tall scroll; synced crosshair + scroll across SPY|SPX|QQQ.
 
 **Status.** PR `cursor/thermal-compare-matrix-size-3d11`.
 
