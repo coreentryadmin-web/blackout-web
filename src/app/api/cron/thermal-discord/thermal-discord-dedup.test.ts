@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { thermalDiscordBypassesDedup } from "./route";
+import { thermalDiscordBypassesDedup } from "./thermal-discord-dedup";
 
 describe("thermalDiscordBypassesDedup", () => {
   it("keeps EventBridge / bare force hits under the Redis claim", () => {

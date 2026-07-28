@@ -27,19 +27,15 @@ import {
   thermalDiscordCaption,
   type ThermalCardColumn,
 } from "@/lib/thermal-discord-card";
+import {
+  THERMAL_DISCORD_DEDUP_KEY,
+  THERMAL_DISCORD_DEDUP_TTL_SEC,
+  thermalDiscordBypassesDedup,
+} from "./thermal-discord-dedup";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
-
-/** Just under the 15-minute schedule so the next tick can claim cleanly. */
-export const THERMAL_DISCORD_DEDUP_TTL_SEC = 14 * 60;
-export const THERMAL_DISCORD_DEDUP_KEY = "thermal-discord:posted";
-
-/** `force=1` alone still dedupes; only `force=1&allow_dup=1` bypasses the claim. */
-export function thermalDiscordBypassesDedup(force: boolean, allowDup: boolean): boolean {
-  return force && allowDup;
-}
 
 function thermalWebhook(): string | null {
   return process.env.DISCORD_THERMAL_WEBHOOK_URL?.trim() || null;
