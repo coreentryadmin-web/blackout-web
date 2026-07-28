@@ -5,6 +5,22 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [Thermal] Compare triple desk unreadable (7.5px / 1.85rem cells)
+
+**Severity.** P1 UX.
+
+**Symptom.** Compare ON matrices (SPY|SPX|QQQ) were too small to read — ultra-dense
+`thermal-compact-*` CSS (7.5px cell text, 1.85rem expiry cols, 62vh/520px scroll).
+
+**Root cause.** Triple desk shipped with “fit three desks in one viewport” density that
+crushed fonts/columns far below the major Thermal matrix (`text-[12px]`, tall scroll clamp).
+
+**Fix.** Match major matrix sizing: 12px cell/strike text, `Jul 28` expiry headers,
+`fmtHeatmapMoneySigned` labels, min cell width ~4.5rem, scroll `clamp(480px,74vh,880px)`,
+strike half-band 28 (~57 rows), up to 12 near-term expiries, grid `minmax(22rem,1fr)`.
+
+**Status.** PR `cursor/thermal-compare-matrix-size-3d11`.
+
 ## 2026-07-28 — [Thermal] Discord desk card → 4K + clearer UI chrome
 
 **Severity.** P2 UX.

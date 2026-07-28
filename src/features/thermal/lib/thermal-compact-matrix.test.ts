@@ -26,6 +26,15 @@ test("bandStrikesAroundSpot centers on nearest strike", () => {
   assert.deepEqual(bandStrikesAroundSpot([], 100, 2), []);
 });
 
+test("compare desk strike band (~28 half-width) is long enough to read like major matrix", () => {
+  const strikes = Array.from({ length: 80 }, (_, i) => 100 + i);
+  const band = bandStrikesAroundSpot(strikes, 140, 28);
+  assert.equal(band.length, 57); // 28 below + spot + 28 above
+  assert.ok(band.includes(140));
+  assert.equal(band[0], 112);
+  assert.equal(band[band.length - 1], 168);
+});
+
 test("fmtCompactHeatMoney dense labels", () => {
   assert.equal(fmtCompactHeatMoney(0), "·");
   assert.equal(fmtCompactHeatMoney(2_500_000), "+2.5M");

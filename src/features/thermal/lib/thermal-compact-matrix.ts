@@ -1,6 +1,7 @@
 /**
- * Compact thermal matrix helpers — near-term expiries + strike band
- * so SPY | SPX | QQQ can sit side-by-side without horizontal sprawl.
+ * Compare-desk matrix helpers — near-term expiries + strike band around spot
+ * so SPY | SPX | QQQ share one surface. Cell chrome/fonts live in globals.css
+ * and match the major Thermal matrix (not the Discord card’s denser raster).
  */
 
 /** Compact expiry label: YYYY-MM-DD → M/D */

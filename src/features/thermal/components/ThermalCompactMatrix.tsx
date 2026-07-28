@@ -3,17 +3,22 @@
 import type { CSSProperties } from "react";
 import type { GexHeatmapLens } from "@/lib/gex-heatmap-display";
 import {
+  fmtHeatmapExpiry,
+  fmtHeatmapMoneySigned,
+  fmtHeatmapStrike,
   heatmapCellStyle,
   heatmapCellTextStyle,
 } from "@/lib/gex-heatmap-display";
 import {
   bandStrikesAroundSpot,
   compactMatrixPeak,
-  fmtCompactExpiry,
-  fmtCompactHeatMoney,
   nearestStrikeIndex,
   resolveCompactExpiries,
 } from "@/features/thermal/lib/thermal-compact-matrix";
+
+/** Match major Thermal matrix readability while keeping three desks side-by-side. */
+export const THERMAL_COMPARE_MAX_EXPIRIES = 12;
+export const THERMAL_COMPARE_STRIKE_HALF = 28;
 
 export type ThermalCompactPayload = {
   ticker: string;
@@ -37,8 +42,16 @@ export default function ThermalCompactMatrix({
   pinnedStrikes,
   onTogglePin,
 }: Props) {
-  const expiries = resolveCompactExpiries(data.nearTermExpiries, data.expiries, 8);
-  const strikes = bandStrikesAroundSpot(data.strikes, data.spot, 14);
+  const expiries = resolveCompactExpiries(
+    data.nearTermExpiries,
+    data.expiries,
+    THERMAL_COMPARE_MAX_EXPIRIES,
+  );
+  const strikes = bandStrikesAroundSpot(
+    data.strikes,
+    data.spot,
+    THERMAL_COMPARE_STRIKE_HALF,
+  );
   const spotIdx = nearestStrikeIndex(strikes, data.spot ?? null);
   const pinSet = new Set(pinnedStrikes);
   const peak = compactMatrixPeak(data.cells, strikes, expiries);
@@ -52,7 +65,7 @@ export default function ThermalCompactMatrix({
   }
 
   return (
-    <div className="thermal-compact-scroll is-dense">
+    <div className="thermal-compact-scroll">
       <table
         className="thermal-compact-table"
         aria-label={`${data.ticker} ${lens.toUpperCase()} matrix`}
@@ -60,11 +73,11 @@ export default function ThermalCompactMatrix({
         <thead>
           <tr>
             <th className="thermal-compact-corner" scope="col">
-              K
+              Strike
             </th>
             {expiries.map((exp) => (
               <th key={exp} className="thermal-compact-exp" scope="col" title={exp}>
-                {fmtCompactExpiry(exp)}
+                {fmtHeatmapExpiry(exp)}
               </th>
             ))}
           </tr>
@@ -96,9 +109,7 @@ export default function ThermalCompactMatrix({
                     <span className="thermal-compact-pin" aria-hidden>
                       {pinned ? "◆" : "◇"}
                     </span>
-                    {Number.isFinite(strike)
-                      ? strike.toFixed(strike % 1 === 0 ? 0 : 1)
-                      : "—"}
+                    {fmtHeatmapStrike(strike)}
                   </button>
                 </th>
                 {expiries.map((exp) => {
@@ -113,10 +124,10 @@ export default function ThermalCompactMatrix({
                       key={`${strike}-${exp}`}
                       className="thermal-compact-cell"
                       style={style}
-                      title={`${data.ticker} ${strike} ${exp} · ${lens.toUpperCase()} ${fmtCompactHeatMoney(n)}`}
+                      title={`${data.ticker} ${strike} ${exp} · ${lens.toUpperCase()} ${fmtHeatmapMoneySigned(n, { showZero: true })}`}
                     >
                       <span className="thermal-compact-cell-val">
-                        {fmtCompactHeatMoney(n)}
+                        {fmtHeatmapMoneySigned(n, { showZero: true })}
                       </span>
                     </td>
                   );
