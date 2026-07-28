@@ -27,11 +27,12 @@ export function SyncMembershipButton() {
       // that includes the legitimate case where no active membership was found and the
       // resolved tier is "free". Branching on res.ok alone (the old bug) showed a green
       // "Access granted" success state to non-paying users. Branch on the actual tier instead.
-      if (data.tier === "premium") {
-        setMessage(`Access granted — ${String(data.tier).toUpperCase()}. Floor is open.`);
+      if (data.tier === "premium" || data.tier === "community") {
+        const label = data.tier === "premium" ? "PREMIUM" : "SPX SLAYER";
+        setMessage(`Access granted — ${label}. Floor is open.`);
         router.refresh();
       } else {
-        setMessage("No active Premium membership found. If you already paid, allow a minute for Whop to sync, then try again — or contact support.");
+        setMessage("No active membership found. If you already paid, allow a minute for Whop to sync, then try again — or contact support.");
       }
     } catch {
       setMessage("Sync failed. Check your connection and try again.");

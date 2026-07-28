@@ -8,6 +8,22 @@ import { valuePropFor } from "@/lib/upsell-features";
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 
+const COMMUNITY_FEATURES = [
+  "SPX Slayer desk — live",
+  "GEX walls & dealer gamma",
+  "0DTE graded plays A–F",
+  "Strike-level heatmaps",
+];
+
+const PREMIUM_FEATURES = [
+  "Everything in SPX Slayer",
+  "HELIX live options-flow tape",
+  "Largo AI desk analyst",
+  "Night Hawk evening playbook",
+  "SPX AI commentary",
+  "Playbook & method docs",
+];
+
 export function PlanLadder() {
   const hasAnyOption = WHOP_COMMUNITY_CHECKOUT_OPTION || WHOP_PREMIUM_CHECKOUT_OPTIONS.length > 0;
 
@@ -21,70 +37,136 @@ export function PlanLadder() {
     );
   }
 
+  const monthlyOption = WHOP_PREMIUM_CHECKOUT_OPTIONS.find((o) => o.label.includes("Monthly"));
+  const yearlyOption = WHOP_PREMIUM_CHECKOUT_OPTIONS.find((o) => o.label.includes("Yearly"));
+
   return (
-    <div className="mx-auto grid max-w-4xl grid-cols-1 gap-5 sm:grid-cols-3">
-      {WHOP_COMMUNITY_CHECKOUT_OPTION && (
-        <div className="relative flex flex-col rounded-2xl border border-sky-300/25 bg-[#080a10]/60 p-6 text-left backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-sky-300/50">
-          <p className="font-syne text-[11px] font-bold uppercase tracking-[0.22em] text-sky-300">SPX Slayer</p>
-          <p className="mt-1 font-anton text-4xl leading-none text-white">{usd(MEMBERSHIP_PRICING.community)}</p>
-          <p className="mt-2 text-xs text-sky-300">SPX desk access · billed monthly</p>
-          <p className="mt-3 text-[13px] leading-relaxed text-white/60">
-            Live SPX regime, GEX positioning, 0DTE graded plays A–F, dealer gamma, and strike-level heatmaps.
-          </p>
-          <a
-            href={WHOP_COMMUNITY_CHECKOUT_OPTION.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Get SPX Slayer access"
-            className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-sky-300/25 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] whitespace-nowrap text-sky-100 transition-all duration-200 hover:border-sky-300 hover:bg-sky-300/5 hover:text-sky-300"
-          >
-            Get SPX Access →
-          </a>
+    <div className="mx-auto max-w-5xl">
+      {/* Yearly hero card — full width, dominant */}
+      {yearlyOption && (
+        <div className="plan-card-yearly relative overflow-hidden rounded-2xl border-2 border-bull/50 bg-gradient-to-br from-[#071a0e] via-[#080a10] to-[#0a1a12] p-8 text-left md:p-10">
+          <BorderBeam color="var(--sig-bull)" duration="6s" width="2px" />
+          <div className="absolute inset-0 bg-gradient-to-r from-bull/[0.06] via-transparent to-bull/[0.03] pointer-events-none" />
+
+          <div className="relative flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
+            <div className="flex-1">
+              <span className="inline-block rounded-full bg-bull px-4 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-black">
+                Best value — save {usd(MEMBERSHIP_PRICING.yearlySavingsVsMonthly)}
+              </span>
+              <h3 className="mt-5 font-syne text-3xl font-bold text-white md:text-4xl">
+                Premium Yearly
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-white/50">
+                Full platform access. Every instrument, every tool, every edge — for the price of fewer than two monthly payments.
+              </p>
+
+              <ul className="mt-6 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                {PREMIUM_FEATURES.map((f) => (
+                  <li key={f} className="flex items-start gap-2.5 text-sm text-white/70">
+                    <span className="mt-0.5 text-bull">✓</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="flex flex-col items-start gap-4 md:items-end md:text-right">
+              <div>
+                <p className="font-anton text-5xl leading-none text-white md:text-6xl">
+                  {usd(MEMBERSHIP_PRICING.yearly)}
+                </p>
+                <p className="mt-1.5 text-sm text-white/40">
+                  ≈ {usd(MEMBERSHIP_PRICING.yearlyEffectiveMonthly)}/mo · billed yearly
+                </p>
+              </div>
+
+              <a
+                href={yearlyOption.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Unlock Premium Yearly"
+                className="inline-flex items-center justify-center rounded-xl bg-bull px-8 py-4 font-syne text-sm font-extrabold uppercase tracking-[0.12em] text-[#021108] transition-all duration-200 hover:scale-105 hover:shadow-[0_0_30px_rgba(0,255,100,0.3)]"
+              >
+                Unlock Premium →
+              </a>
+              <p className="font-mono text-[10px] text-white/30">Cancel anytime · instant access</p>
+            </div>
+          </div>
         </div>
       )}
-      {WHOP_PREMIUM_CHECKOUT_OPTIONS.map((option) => {
-        const vp = valuePropFor(option.label);
-        const [term, price] = option.label.split("—").map((s) => s.trim());
-        return (
-          <div
-            key={option.label}
-            className={
-              "relative flex flex-col rounded-2xl border bg-[#080a10]/60 p-6 text-left backdrop-blur-md transition-all duration-300 hover:-translate-y-1 " +
-              (vp.featured
-                ? "upgrade-card-sheen border-bull/60 shadow-glow-bull md:scale-[1.02]"
-                : "border-white/10 hover:border-bull/40")
-            }
-          >
-            {/* Border beam marks the recommended plan — bull-green, matching /pricing. */}
-            {vp.featured && <BorderBeam color="var(--sig-bull)" duration="6s" width="1.6px" />}
-            {vp.badge && (
-              <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-bull px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-black">
-                {vp.badge}
-              </span>
-            )}
-            <p className="font-syne text-[11px] font-bold uppercase tracking-[0.22em] text-bull">{term}</p>
-            <p className="mt-1 font-anton text-4xl leading-none text-white">{price}</p>
-            {vp.subline && <p className="mt-2 text-xs text-sky-300">{vp.subline}</p>}
-            {vp.savings && (
-              <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.15em] text-bull">{vp.savings}</p>
-            )}
+
+      {/* Secondary cards row */}
+      <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2">
+        {/* Monthly card */}
+        {monthlyOption && (
+          <div className="relative flex flex-col rounded-2xl border border-white/10 bg-[#080a10]/80 p-6 text-left backdrop-blur-md transition-all duration-300 hover:border-white/20">
+            <p className="font-syne text-[11px] font-bold uppercase tracking-[0.22em] text-white/60">Monthly</p>
+            <div className="mt-2 flex items-baseline gap-2">
+              <p className="font-anton text-4xl leading-none text-white">{usd(MEMBERSHIP_PRICING.monthly)}</p>
+              <span className="text-sm text-white/30">/mo</span>
+            </div>
+            <p className="mt-2 text-xs text-white/40">Billed monthly · stand down anytime</p>
+
+            <p className="mt-4 text-[13px] leading-relaxed text-white/50">
+              Full premium access with the flexibility of month-to-month billing. Same tools, same edge.
+            </p>
+
+            <ul className="mt-4 space-y-2">
+              {PREMIUM_FEATURES.slice(0, 4).map((f) => (
+                <li key={f} className="flex items-start gap-2 text-xs text-white/50">
+                  <span className="mt-0.5 text-bull/60">✓</span>
+                  {f}
+                </li>
+              ))}
+            </ul>
+
             <a
-              href={option.href}
+              href={monthlyOption.href}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label={`Unlock Premium — ${option.label}`}
-              className={
-                "mt-6 inline-flex w-full items-center justify-center rounded-xl py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] whitespace-nowrap transition-all duration-200 " +
-                (vp.featured
-                  ? "bg-bull text-[#021108] hover:scale-105 hover:shadow-glow-bull"
-                  : "border-2 border-white/15 text-sky-100 hover:border-bull hover:bg-bull/5 hover:text-bull")
-              }
+              aria-label="Unlock Premium Monthly"
+              className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-white/15 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] whitespace-nowrap text-white/70 transition-all duration-200 hover:border-bull/50 hover:bg-bull/5 hover:text-bull"
             >
-              Unlock Premium →
+              Unlock Monthly →
             </a>
           </div>
-        );
-      })}
+        )}
+
+        {/* Community card */}
+        {WHOP_COMMUNITY_CHECKOUT_OPTION && (
+          <div className="relative flex flex-col rounded-2xl border border-sky-300/20 bg-[#080a10]/80 p-6 text-left backdrop-blur-md transition-all duration-300 hover:border-sky-300/40">
+            <p className="font-syne text-[11px] font-bold uppercase tracking-[0.22em] text-sky-300/70">SPX Slayer</p>
+            <div className="mt-2 flex items-baseline gap-2">
+              <p className="font-anton text-4xl leading-none text-white">{usd(MEMBERSHIP_PRICING.community)}</p>
+              <span className="text-sm text-white/30">/mo</span>
+            </div>
+            <p className="mt-2 text-xs text-sky-300/50">SPX desk access · billed monthly</p>
+
+            <p className="mt-4 text-[13px] leading-relaxed text-white/50">
+              The SPX desk only — GEX, dealer gamma, graded plays, and heatmaps. A focused edge at a focused price.
+            </p>
+
+            <ul className="mt-4 space-y-2">
+              {COMMUNITY_FEATURES.map((f) => (
+                <li key={f} className="flex items-start gap-2 text-xs text-white/50">
+                  <span className="mt-0.5 text-sky-300/60">✓</span>
+                  {f}
+                </li>
+              ))}
+            </ul>
+
+            <a
+              href={WHOP_COMMUNITY_CHECKOUT_OPTION.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Get SPX Slayer access"
+              className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-sky-300/20 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] whitespace-nowrap text-sky-300/70 transition-all duration-200 hover:border-sky-300/50 hover:bg-sky-300/5 hover:text-sky-300"
+            >
+              Get SPX Access →
+            </a>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

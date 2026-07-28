@@ -24,18 +24,24 @@ export function UpgradePageShell({ frame = true }: { frame?: boolean }) {
   const body = (
       <div
         className={clsx(
-          "content-rail mx-auto max-w-4xl py-8 pb-20 text-center md:py-12",
+          "content-rail mx-auto max-w-5xl py-8 pb-20 text-center md:py-16",
           nativeShell && "upgrade-page-inner-native py-4 pb-8"
         )}
       >
         {!nativeShell && (
-          <PageHeader
-            kicker="Premium access"
-            title="Unlock the"
-            titleAccent="full floor"
-            subtitle="One membership opens every instrument — live flow, SPX structure, AI analyst, and overnight playbook."
-            className="mb-10 justify-center text-center [&_h1]:mx-auto [&_p]:mx-auto"
-          />
+          <div className="mb-14 text-center">
+            <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-bull">
+              Premium access
+            </p>
+            <h1 className="mt-4 font-syne text-4xl font-bold leading-tight text-white md:text-5xl lg:text-6xl">
+              Unlock the{" "}
+              <span className="text-bull">full floor.</span>
+            </h1>
+            <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-white/50 md:text-lg">
+              One membership opens every instrument — live flow, SPX structure,
+              AI analyst, and overnight playbook.
+            </p>
+          </div>
         )}
 
         {nativeShell && (
@@ -66,12 +72,12 @@ export function UpgradePageShell({ frame = true }: { frame?: boolean }) {
           </Button>
         </div>
 
-        <div className="hide-in-ios-app mt-12">
+        <div className="hide-in-ios-app">
           <PlanLadder />
         </div>
 
-        <div className="hide-in-ios-app mx-auto mt-10 flex max-w-md flex-col items-center justify-center gap-4 rounded-2xl border border-white/10 bg-[rgba(8,9,14,0.45)] px-5 py-4 backdrop-blur-md sm:flex-row">
-          <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-mute">
+        <div className="hide-in-ios-app mx-auto mt-8 flex max-w-sm items-center justify-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-5 py-3">
+          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-white/30">
             Already paid?
           </span>
           <SyncMembershipButton />
@@ -98,7 +104,6 @@ export function UpgradePageShell({ frame = true }: { frame?: boolean }) {
       </div>
   );
 
-  // Frameless: the marketing chrome supplies nav + backdrop + footer.
   if (!frame) return body;
 
   return (
