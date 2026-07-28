@@ -5,6 +5,26 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [gate-calibration] Late-afternoon 0DTE entries (14:00-15:30) run 14.3% WR / −19% avg
+
+**Severity.** P1 — the late-afternoon window is the second-worst time bucket in the 90-day record
+(after the opening drive, already blocked by G-2). Responsible for ~7 losing plays that should
+never have committed.
+
+**Root cause.** The `NEW_PLAY_CUTOFF_ET_MINUTES` was set to 15:00 ET, allowing new directional
+entries between 14:00-15:00 ET. With <1.5 hours of 0DTE theta remaining, long-premium entries face
+accelerating decay and almost never reach the +100% target. 85.7% of late entries hit the -50% stop.
+No hard gate existed between the 10:00 ET opening window unlock and the 15:00 ET persist cutoff.
+
+**Evidence.** 90-day production record (101 graded plays): `late 14:00-15:30` bucket = 14.3% WR,
+−19.02% avg P&L. Compare to `prime 9:50-11:00` = 38.0% WR, +2.7% avg P&L.
+
+**Fix.** New hard gate G-14 (`late_afternoon`) blocks directional 0DTE commits at/after 14:00 ET.
+Condor-exempt: iron condors BENEFIT from late-session theta crush (credit seller). Persist-layer
+`NEW_PLAY_CUTOFF_ET_MINUTES` also moved from 15:00 → 14:00 as a backstop. Files:
+`gates.ts` (G-14 enforcement + constant), `board.ts` (failure type), `plan.ts` (cutoff constant).
+Tests: 3 new tests in `gates.test.ts` (boundary, condor exemption). **Status: MERGED.**
+
 ## 2026-07-28 — [data-honesty] Legacy 0% WR caused by unfillable entry bands (PR #1186)
 
 **Severity.** P0 — the single biggest quality gap in the Legacy engine. 15 of 31 resolved plays
