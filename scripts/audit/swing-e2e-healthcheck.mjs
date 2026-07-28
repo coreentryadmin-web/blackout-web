@@ -93,7 +93,8 @@ const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Geck
 const MARK_FRESH_BOUND_MS = 2 * 60 * 60 * 1000;
 // Serving snapshot freshness bound: the swing:serving:latest:v1 key has a 26h TTL.
 // A snapshot older than 26h means the cron has not fired for a full session cycle.
-const SERVING_FRESH_BOUND_MS = 26 * 60 * 60 * 1000;
+// eslint-disable-next-line no-unused-vars
+const SERVING_FRESH_BOUND_MS = 26 * 60 * 60 * 1000; // reserved for stage-D staleness check
 
 function fapiHost() {
   try {
@@ -159,11 +160,10 @@ function stageVerdict(st) {
 }
 
 // ── ET date helpers ──────────────────────────────────────────────────────────────────
-function todayEt() {
-  // ET calendar date (handles DST).
+function todayEt() { // eslint-disable-line no-unused-vars
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
-function etMinutesOfDay(nowMs) {
+function etMinutesOfDay(nowMs) { // eslint-disable-line no-unused-vars
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     hour: "2-digit",
@@ -334,7 +334,6 @@ function stageE_positions() {
   const research = Array.isArray(sections.RESEARCH) ? sections.RESEARCH : [];
 
   const openCount = livePositions.length;
-  const preEntryCount = commitNow.length + waitingEntry.length + watchSection.length + research.length;
 
   if (openCount > 0) {
     const tickers = livePositions.map((p) => p.ticker).filter(Boolean).slice(0, 10).join(", ");
