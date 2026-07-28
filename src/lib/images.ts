@@ -4,7 +4,7 @@ export const IMAGES = {
   brandEmblem: "/images/blackout-emblem.webp",
   nighthawkOperator: "/images/nighthawk-operator.jpg",
   dashboardBg: "/images/dashboard-bg.png",
-  ogImage: "/opengraph-image",
+  ogImage: "/og-image.png",
   authBg: "/images/hero-banner.png",
 } as const;
 
