@@ -3315,3 +3315,36 @@ mode change is the highest-risk item — mitigated by operator kill-switch (`ZER
 and per-play frozen exit policy (existing plays unaffected).
 
 **Status:** PR (pending)
+
+## 2026-07-28 — [UI/UX] Batch 5: keyboard shortcut conflict + stock-price flash + confirm polling + backfill score floor (PR #1176)
+
+**Severity.** P3 (keyboard) / P3 (flash) / P2 (confirm polling) / P2 (backfill floor).
+
+**Root cause — keyboard shortcut conflict (P3).** `PlayTerminal.tsx` registered `1`/`2`/`3`
+key listeners on `window` with no input-guard. Typing a number in any `<input>` or `<textarea>`
+on the page would switch the terminal tab instead of entering the character.
+
+**Fix:** Guard the keydown handler: skip when `e.target` is an INPUT/TEXTAREA/SELECT, or when
+a modifier key (meta/ctrl/alt) is held. File: `PlayTerminal.tsx:129-136`.
+
+**Root cause — stock-price flash missing for Legacy (P3).** `useFlash(play?.mark)` fires a
+green/red neon flash on price changes, but Legacy plays have `mark: null`. The stock price
+updates every 5s via polling but no flash hook tracked it — the Legacy stream bar never flashed.
+
+**Fix:** Added `useFlash(play?.stockPrice)` and wired `stockFlash` into the stream bar's class.
+File: `PlayTerminal.tsx:142,189`.
+
+**Root cause — morning confirm polling too slow (P2).** SWR `refreshInterval` for
+`/api/nighthawk/play-status` was 300_000ms (5 min). During the pre-market confirm window
+(9:10-9:45 ET), members could see stale badges for up to 5 minutes after invalidation.
+
+**Fix:** Reduced to 60_000ms (1 min). File: `containers.tsx:110`.
+
+**Root cause — backfill has no score floor (P2).** `backfillThinEditionPlays` applies no score
+floor. A candidate with score 5 could backfill into the edition. The main synthesis path
+enforces `MIN_PUBLISH_SCORE = 42`.
+
+**Fix:** Added `DIVERSITY_HEDGE_FLOOR = 20` as the minimum score for backfill candidates.
+File: `play-backfill.ts:87`.
+
+**Status:** COMMITTED (PR #1176, batch 5)
