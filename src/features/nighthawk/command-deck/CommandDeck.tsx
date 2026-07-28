@@ -11,7 +11,7 @@ import {
   type CockpitAllocation,
 } from "./cockpit";
 import { condorTent } from "@/lib/zerodte/condor-render";
-import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-math";
+import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
 import type { TerminalPlay } from "./types";
 
 /**
@@ -183,7 +183,8 @@ function PlayCard({
 
   const asOfMs = p.markAsOf ? Date.parse(p.markAsOf) : NaN;
   const hasAsOf = Number.isFinite(asOfMs);
-  const stale = hasAsOf ? isZeroDteMarkStale(asOfMs, now, ZERODTE_MARK_STALE_MS) : false;
+  const staleThresholdMs = p.horizon === "LEGACY" ? LEGACY_QUOTE_STALE_MS : ZERODTE_MARK_STALE_MS;
+  const stale = hasAsOf ? isZeroDteMarkStale(asOfMs, now, staleThresholdMs) : false;
   const ageMs = hasAsOf ? Math.max(0, now - asOfMs) : null;
   const ageLabel =
     ageMs == null ? null : ageMs < 60_000 ? `${Math.round(ageMs / 1000)}s` : `${Math.round(ageMs / 60_000)}m`;

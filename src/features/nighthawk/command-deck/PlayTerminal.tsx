@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
 import { timeStopClock } from "@/lib/zerodte/terminal-ladder";
-import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-math";
+import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
 import { condorTent, condorWinRateLine } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { showsRatchetTrack, showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
@@ -153,7 +153,9 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
   const asOfMs = play.markAsOf ? Date.parse(play.markAsOf) : NaN;
   const hasAsOf = Number.isFinite(asOfMs);
   const ageMs = hasAsOf ? Math.max(0, nowMs - asOfMs) : null;
-  const stale = hasAsOf ? isZeroDteMarkStale(asOfMs, nowMs, ZERODTE_MARK_STALE_MS) : false;
+  const isLegacy = play.horizon === "LEGACY";
+  const staleThresholdMs = isLegacy ? LEGACY_QUOTE_STALE_MS : ZERODTE_MARK_STALE_MS;
+  const stale = hasAsOf ? isZeroDteMarkStale(asOfMs, nowMs, staleThresholdMs) : false;
   const sync = play.markIsSync === true || (!hasAsOf && play.mark != null);
   const live = play.mark != null && hasAsOf && !stale;
   const ageLabel =
@@ -174,9 +176,13 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
         <div className="nh-deck-stream">
           {play.stockPrice != null ? (
             <>
-              <span className="nh-deck-dot" /><span className="lv">LIVE</span>
+              {stale ? (
+                <><span className="nh-deck-dot off" /><span className="of">STALE</span></>
+              ) : (
+                <><span className="nh-deck-dot" /><span className="lv">LIVE</span></>
+              )}
               {" · "}{play.ticker}{" "}
-              <span className={clsx(markFlash && "neon")}>${play.stockPrice.toFixed(2)}</span>
+              <span className={clsx(markFlash && "neon", stale && "nh-deck-stale-mark")}>${play.stockPrice.toFixed(2)}</span>
               {play.pnlPct != null ? (
                 <span className={clsx(play.pnlPct > 0 ? "nh-deck-pos" : play.pnlPct < 0 ? "nh-deck-neg" : "")}>
                   {" "}{play.pnlPct >= 0 ? "+" : ""}{play.pnlPct.toFixed(1)}% from entry
@@ -187,6 +193,7 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
                 </span>
               ) : null}
               {ageLabel && <span className="nh-deck-age"> · {ageLabel}</span>}
+              {stale && <span className="nh-deck-stalebadge">stale &gt;{Math.round(LEGACY_QUOTE_STALE_MS / 1000)}s</span>}
             </>
           ) : (
             <>
